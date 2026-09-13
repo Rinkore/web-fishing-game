@@ -109,7 +109,7 @@ const clickNav = async (page, name) => {
     check('图鉴汇总显示收集进度', /\d+ \/ \d+/.test(await p1.textContent('.codex-summary')));
 
     // —— 大鱼记录 ——
-    await clickNav(p1, '大鱼记录');
+    await clickNav(p1, '渔获记录');
     const recRows = await p1.$$('.rec-row');
     check('大鱼记录渲染榜单', recRows.length >= 6, String(recRows.length));
     check('榜首显示 287.2cm（黄金枪鱼）', (await p1.textContent('.rec-row')).includes('287.2'));

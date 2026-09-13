@@ -107,7 +107,7 @@ const clickNav = async (page, name) => {
     await p1.screenshot({ path: path.join(OUT, '23-codex.png') });
     console.log('23-codex.png');
 
-    await clickNav(p1, '大鱼记录');
+    await clickNav(p1, '渔获记录');
     await p1.screenshot({ path: path.join(OUT, '24-records.png') });
     console.log('24-records.png');
 

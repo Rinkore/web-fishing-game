@@ -1,6 +1,6 @@
 /*
  * 网页钓鱼小游戏 - UI 渲染与交互
- * 视图：钓鱼 / 钓竿BD / 渔场动态 / 系统商店 / 开放市集 / 在线交易 / 鱼类图鉴 / 大鱼记录
+ * 视图：钓鱼 / 钓竿配置 / 渔场动态 / 背包 / 系统商店 / 开放市集 / 在线交易 / 鱼类图鉴 / 渔获记录
  */
 window.UI = (function () {
   'use strict';
@@ -1502,7 +1502,7 @@ window.UI = (function () {
     const st = S();
     main.innerHTML = '';
     const panel = el('div', 'panel wide');
-    panel.innerHTML = '<h2>🏆 大鱼记录 <span class="subtitle">全服纪录 · 按鱼类分项查看</span></h2>';
+    panel.innerHTML = '<h2>🏆 渔获记录 <span class="subtitle">全服纪录 · 按鱼类分项查看</span></h2>';
 
     const recs = Object.keys(st.records || {}).map(function (id) { return st.records[id]; })
       .sort(function (a, b) { return b.size - a.size; });
@@ -1519,7 +1519,7 @@ window.UI = (function () {
         '<div class="rh-who">纪录保持者：' + esc(top.who) + ' · ' + timeStr(top.t) + '</div>';
       panel.appendChild(hero);
     } else {
-      panel.appendChild(el('div', 'hint', '还没有大鱼记录。第一条纪录等着你来刷新！'));
+      panel.appendChild(el('div', 'hint', '还没有渔获纪录。钓到一条鱼就会生成它的最大/最小纪录。'));
     }
 
     // 分鱼类查看：每种鱼一个卡片（有纪录按体型排序，无纪录灰显在后）

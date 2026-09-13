@@ -209,7 +209,7 @@
     { id: 'trade', name: '在线交易', icon: '🤝', implemented: true },
     { id: 'mall', name: '商城', icon: '🛒', implemented: false },
     { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true },
-    { id: 'records', name: '大鱼记录', icon: '🏆', implemented: true },
+    { id: 'records', name: '渔获记录', icon: '🏆', implemented: true },
     { id: 'collect', name: '收藏', icon: '⭐', implemented: false },
   ];
 
