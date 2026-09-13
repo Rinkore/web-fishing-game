@@ -86,7 +86,7 @@ window.Net = (function () {
     return r;
   });
   const sell = (id, qty) => authed('/api/sell', { id: id, qty: qty });
-  const marketList = (id, qty, price) => authed('/api/market/list', { id: id, qty: qty, price: price });
+  const marketList = (id, qty, price, hours) => authed('/api/market/list', hours ? { id: id, qty: qty, price: price, hours: hours } : { id: id, qty: qty, price: price });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
   const marketBuy = (lid, qty) => authed('/api/market/buy', qty ? { lid: lid, qty: qty } : { lid: lid });
   const marketCancel = (lid) => authed('/api/market/cancel', { lid: lid });

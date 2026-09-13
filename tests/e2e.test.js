@@ -5,7 +5,7 @@
  * 运行： node tests/e2e.test.js
  */
 'use strict';
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const url = require('url');
 const fs = require('fs');
@@ -23,6 +23,8 @@ function check(name, cond, extra) {
 }
 function section(t) { console.log('\n=== ' + t + ' ==='); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Windows 下 kill() 偶发不生效，用 taskkill 强制结束进程树
+function killTree(p) { try { spawnSync('taskkill', ['/F', '/T', '/PID', String(p.pid)], { stdio: 'ignore' }); } catch (e) {} }
 
 function req(method, u, body) {
   return new Promise((resolve) => {
@@ -196,7 +198,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('A 断线后 B 在线列表移除 A', sinkB.some(m => m.type === 'players' && !m.players.some(p => p.id === 'tester_a')));
 
   cliB.destroy();
-  srv.kill();
+  killTree(srv);
   await sleep(500);
 
   srv = start(P2);
@@ -208,7 +210,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('重启后 inventory 持久化', me2.data && me2.data.inventory && me2.data.inventory.carp === 9);
   check('重启后钓竿配置持久化（ reel=电动卷线器, hook=精钢鱼钩）', !!(me2.data && me2.data.bd && me2.data.bd.reel && me2.data.bd.reel.compId === 'reel_electric' && me2.data.bd.hook.compId === 'hook_steel'), JSON.stringify(me2.data && me2.data.bd));
   check('重启后显示名持久化', me2.data && me2.data.name === '测试甲改');
-  srv.kill();
+  killTree(srv);
 
   // ---------- 5. 市集历史订单 ----------
   srv = start(P1);
@@ -227,8 +229,34 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const mhB = await GET('http://localhost:' + P1 + '/api/market/history?token=' + lgB5.data.token);
   check('历史订单含 B 的卖出记录（含税额 5）', mhB.status === 200 && mhB.data.trades.some(function (t) { return t.seller === 'tester_b' && t.qty === 5 && t.tax === 5; }), JSON.stringify(mhB.data.trades).slice(0, 140));
 
-  // ---------- 6. 静态服务与前端资源 ----------
-  section('6. 静态服务与安全');
+  // ---------- 6. 挂单上限与过期退回 ----------
+  section('6. 挂单上限（40）与过期退回');
+  killTree(srv);
+  srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(8103), FISHING_DEV: '1', LISTING_TTL_MS: '1500' }) });
+  await sleep(800);
+  const lgA6 = await POST('http://localhost:8103/api/login', { username: 'tester_a', password: 'pass1234' });
+  check('补充库存 45 条鲫鱼', (await POST('http://localhost:8103/api/dev/seed', { token: lgA6.data.token, inventory: { crucian: 45 } })).status === 200);
+  check('上架 1 条（TTL 环境变量覆盖有效期）', (await POST('http://localhost:8103/api/market/list', { token: lgA6.data.token, id: 'crucian', qty: 1, price: 1 })).status === 200);
+  await sleep(2200);
+  const swept = await GET('http://localhost:8103/api/market');
+  check('A 的过期挂单已下架退回', swept.status === 200 && !swept.data.listings.some(function (l) { return l.seller === 'tester_a'; }), JSON.stringify(swept.data.listings).slice(0, 100));
+  const meExp = await GET('http://localhost:8103/api/me?token=' + lgA6.data.token);
+  check('过期物品退回背包（45 条鲫鱼）', meExp.data.inventory.crucian === 45, JSON.stringify(meExp.data.inventory));
+  check('过期不退上架费（1184 − 1 费 = 1183）', meExp.data.coins === 1183, String(meExp.data.coins));
+  let capOk = 0;
+  for (let i = 0; i < 40; i++) {
+    const r = await POST('http://localhost:8103/api/market/list', { token: lgA6.data.token, id: 'crucian', qty: 1, price: 1 });
+    if (r.status === 200) capOk++;
+  }
+  check('可连续挂满 40 个挂单', capOk === 40, String(capOk));
+  const overCap = await POST('http://localhost:8103/api/market/list', { token: lgA6.data.token, id: 'crucian', qty: 1, price: 1 });
+  check('第 41 个挂单被拒 400（超上限）', overCap.status === 400 && /上限/.test(overCap.data.error || ''));
+  killTree(srv);
+
+  // ---------- 7. 静态服务与前端资源 ----------
+  section('7. 静态服务与安全');
+  srv = start(P1);
+  await sleep(900);
   const idx = await GET('http://localhost:' + P1 + '/');
   check('首页可访问 200', idx.status === 200 && idx.text.includes('网页钓鱼小游戏'));
   check('首页含登录/注册界面', idx.text.includes('auth-card') && idx.text.includes('auth-user'));
@@ -240,7 +268,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('前端引入顺序正确 config->data->engine->net->ui', (function () { const t = idx.text; return t.indexOf('js/config.js') < t.indexOf('js/data.js') && t.indexOf('js/data.js') < t.indexOf('js/engine.js') && t.indexOf('js/engine.js') < t.indexOf('js/net.js') && t.indexOf('js/net.js') < t.indexOf('js/ui.js'); })());
   check('/data 目录被拦截 403', (await GET('http://localhost:' + P1 + '/data/users.json')).status === 403);
   check('已知未知路径返回 404', (await GET('http://localhost:' + P1 + '/nope-xyz')).status === 404);
-  srv.kill();
+  killTree(srv);
 
   try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
 

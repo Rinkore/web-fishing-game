@@ -244,19 +244,10 @@ window.UI = (function () {
         sb.addEventListener('click', function () { opts.onSell(k); });
         acts.appendChild(sb);
       }
-      if (opts.onList) {
-        const lb = el('button', 'mini', '上架');
-        lb.title = '挂到开放市集（收定价总额 1% 上架费，下架不退）';
-        lb.addEventListener('click', function () {
-          const qty = parseInt(prompt('上架数量（持有 ' + st.inventory[k] + '）', '1'), 10);
-          if (!qty || qty <= 0) return;
-          const base = shopP ? shopP.price : meta.price;
-          const price = parseInt(prompt('单价（金币；上架费 = 定价总额的 1%，下架不退；系统价 ' + base + '）', String(base * 2)), 10);
-          if (!price || price <= 0) return;
-          opts.onList(k, Math.min(qty, st.inventory[k]), price);
-        });
-        acts.appendChild(lb);
-      }
+      const lb = el('button', 'mini', '上架');
+      lb.title = '挂到开放市集（选择时长，支付对应上架费，下架不退）';
+      lb.addEventListener('click', function () { openListModal(k); });
+      acts.appendChild(lb);
       row.appendChild(acts);
       wrap.appendChild(row);
     });
@@ -539,6 +530,98 @@ window.UI = (function () {
       }
     });
     return out;
+  }
+
+  // ---- 上架弹窗：价格走势 + 数量/单价/时长 + 费用实时预览 ----
+  const LIST_PLANS = { 6: '1%', 12: '3%', 24: '5%' };
+  let listModalId = null;
+
+  function openListModal(id) {
+    listModalId = id;
+    const st = S();
+    const meta = itemMeta(id);
+    const have = st.inventory[id] || 0;
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    const overlay = el('div', 'modal-overlay');
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeListModal(); });
+    const box = el('div', 'modal-box shop-modal');
+    box.innerHTML =
+      '<div class="modal-head"><span class="modal-title">🏷️ 上架 ' + esc(meta.name) + '（持有 ' + have + '）</span><button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body">' +
+      '<div class="lm-trend" id="list-trend">价格走势加载中…</div>' +
+      '<div class="lm-row"><label>出售数量</label><input type="number" id="list-qty" class="bulk-select" min="1" max="' + have + '" value="1" /></div>' +
+      '<div class="lm-row"><label>单价（💰）</label><input type="number" id="list-price" class="bulk-select" min="1" value="' + Math.max(1, (st.shop && st.shop[id] ? st.shop[id].price : meta.price) * 2) + '" /></div>' +
+      '<div class="lm-row"><label>挂单时长</label><span id="list-hours">' +
+      [[6, '6 小时 · 1%'], [12, '12 小时 · 3%'], [24, '24 小时 · 5%']].map(function (kv) {
+        return '<button class="mini lm-hours' + (kv[0] === 6 ? ' on' : '') + '" data-h="' + kv[0] + '">' + kv[1] + '</button>';
+      }).join('') + '</span></div>' +
+      '<div class="bulk-est" id="list-est">—</div>' +
+      '<button class="primary" id="list-confirm">确认上架</button>' +
+      '<div class="hint" style="margin-top:8px">上架费 = 定价总额 × 时长费率，下架/过期均不退费；过期后物品自动退回背包。</div>' +
+      '</div>';
+    box.querySelector('.modal-close').addEventListener('click', function () { closeListModal(); });
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    const recalc = function () {
+      const qty = parseInt(document.getElementById('list-qty').value, 10) || 0;
+      const price = parseInt(document.getElementById('list-price').value, 10) || 0;
+      const hBtn = box.querySelector('.lm-hours.on');
+      const hours = hBtn ? parseInt(hBtn.getAttribute('data-h'), 10) : 6;
+      const rate = { 6: 0.01, 12: 0.03, 24: 0.05 }[hours];
+      const fee = Math.ceil(price * qty * rate);
+      document.getElementById('list-est').innerHTML =
+        '上架费 <b>' + fee + '</b>💰（费率 ' + Math.round(rate * 100) + '% · ' + hours + ' 小时）<span class="muted"> · 下架/过期不退</span>';
+    };
+    box.querySelectorAll('.lm-hours').forEach(function (b) {
+      b.addEventListener('click', function () {
+        box.querySelectorAll('.lm-hours').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        recalc();
+      });
+    });
+    document.getElementById('list-qty').addEventListener('input', recalc);
+    document.getElementById('list-price').addEventListener('input', recalc);
+    document.getElementById('list-confirm').addEventListener('click', function () {
+      const qty = parseInt(document.getElementById('list-qty').value, 10) || 0;
+      const price = parseInt(document.getElementById('list-price').value, 10) || 0;
+      const hBtn = box.querySelector('.lm-hours.on');
+      const hours = hBtn ? parseInt(hBtn.getAttribute('data-h'), 10) : 6;
+      if (qty <= 0 || price <= 0) { toast('请填写有效的数量与单价'); return; }
+      call(window.Net.marketList(id, Math.min(qty, have), price, hours), function (r) {
+        return '已上架 ' + meta.name + ' ×' + r.data.listing.qty + '（上架费 ' + r.data.fee + '💰 · ' + hours + ' 小时）';
+      }).then(function (r) {
+        if (r && r.ok) { closeListModal(); st.inventory = r.data.inventory; st.player.coins = r.data.coins; renderTopbar(); renderView(); }
+      });
+    });
+
+    // 价格走势
+    window.Net.shopHistory(id).then(function (r) {
+      const t = document.getElementById('list-trend');
+      if (!t || listModalId !== id) return;
+      t.innerHTML = '';
+      const pts = ((r && r.ok && r.data.points) || []).slice(-60);
+      if (pts.length >= 2) {
+        const prices = pts.map(function (x) { return x.p; }).concat([meta.price]);
+        const maxP = Math.max.apply(null, prices), minP = Math.min.apply(null, prices);
+        const spark = el('div', 'sd-spark');
+        pts.forEach(function (pt) {
+          const h = maxP === minP ? 50 : Math.round(10 + 90 * (pt.p - minP) / (maxP - minP));
+          const bar = el('i', pt.p >= meta.price ? 'up' : 'down');
+          bar.style.height = h + '%';
+          spark.appendChild(bar);
+        });
+        t.appendChild(spark);
+        t.appendChild(el('div', 'sd-legend', '系统收购价近 ' + recentLen(pts) + ' 分钟走势 · 红=不低于基准 · 蓝=低于基准'));
+      } else {
+        t.appendChild(el('div', 'sd-legend', '暂无足够价格采样（服务器每分钟记录一次）。'));
+      }
+    });
+  }
+  function recentLen(pts) { return pts.length; }
+  function closeListModal() {
+    listModalId = null;
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
   }
 
   // 打开商品详情弹窗并拉取数据
@@ -1000,18 +1083,8 @@ window.UI = (function () {
         });
         acts.appendChild(sellAll);
         const lb = el('button', 'mini', '上架');
-        lb.title = '挂到开放市集，由其他玩家购买（收定价总额 1% 上架费，下架不退）';
-        lb.addEventListener('click', function () {
-          const qty = parseInt(prompt('上架数量（持有 ' + cnt + '）', '1'), 10);
-          if (!qty || qty <= 0) return;
-          const price = parseInt(prompt('单价（金币；上架费 = 定价总额的 1%，下架不退；系统价 ' + unitPrice(id) + '）', String(unitPrice(id) * 2)), 10);
-          if (!price || price <= 0) return;
-          const realQty = Math.min(qty, cnt);
-          if (st.player.coins < listFee(price, realQty)) { toast('金币不足（需上架费 ' + listFee(price, realQty) + '💰）'); return; }
-          call(window.Net.marketList(id, realQty, price), function (r) { return '已上架到市集（支付上架费 ' + r.data.fee + '💰，下架不退）'; }).then(function (r) {
-            if (r && r.ok) { st.inventory = r.data.inventory; st.player.coins = r.data.coins; renderTopbar(); renderView(); }
-          });
-        });
+        lb.title = '挂到开放市集（选择时长，支付对应上架费，下架不退）';
+        lb.addEventListener('click', function () { openListModal(id); });
         acts.appendChild(lb);
         row.appendChild(acts);
         list.appendChild(row);

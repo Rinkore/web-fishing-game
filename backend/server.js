@@ -227,6 +227,10 @@ function itemName(id) { return ITEM_NAME[id] || id; }
 //   闲置：m 以 1 小时时间常数向 2.0 指数回升（长期无人供应缓慢涨价，最高翻倍）。
 // 涨跌共用同一个乘数，状态连续、无跳变。
 const PRICE_FLOOR = 0.4;
+// ---- 市集挂单规则：每人最多同时 40 个挂单；时长 6/12/24 小时对应费率 1%/3%/5%，过期退物品不退费 ----
+const MAX_LISTINGS_PER_PLAYER = 40;
+const LIST_FEE_RATES = { 6: 0.01, 12: 0.03, 24: 0.05 };
+const LISTING_TTL_MS_ENV = Number(process.env.LISTING_TTL_MS) || 0; // 测试用固定 TTL
 const PRICE_CEIL = 2.0;
 const SALE_DIVISOR = 0.0075;   // 每售 1 件，乘数除以 (1 + 0.0075)（约 -0.74%/件）
 const RISE_TAU_MS = 3600000;   // 闲置回升时间常数：1 小时
@@ -339,6 +343,33 @@ function shopSnapshot() {
 }
 function broadcastShop() { broadcast({ type: 'shop', shop: shopSnapshot() }); }
 function broadcastMarket() { broadcast({ type: 'market', listings: world.listings }); }
+
+// 过期挂单清扫：物品退回卖家（上架费不退），广播市集变化
+function sweepExpiredListings() {
+  const now = Date.now();
+  let changed = false;
+  const keep = [];
+  world.listings.forEach(function (l) {
+    if (l.expireAt && l.expireAt <= now) {
+      const seller = users[l.seller];
+      if (seller) {
+        invAdd(seller, l.id, l.qty);
+        sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory });
+        sendTo(l.seller, { type: 'notice', msg: '挂单过期：' + l.name + ' ×' + l.qty + ' 已退回背包（上架费不退）' });
+      }
+      changed = true;
+    } else {
+      keep.push(l);
+    }
+  });
+  if (changed) {
+    world.listings = keep;
+    saveUsers();
+    saveWorld();
+    broadcastMarket();
+  }
+}
+setInterval(function () { sweepExpiredListings(); }, 30 * 1000).unref();
 function broadcastRecords() { broadcast({ type: 'records', records: world.bigRecords, small: world.smallRecords }); }
 
 function groundCounts() {
@@ -608,6 +639,7 @@ const server = http.createServer(function (req, res) {
   }
   // 市集挂单快照（公开只读；前端进入市集页时按需拉取）
   if (p === '/api/market' && req.method === 'GET') {
+    sweepExpiredListings();
     return apiResp(res, 200, { listings: world.listings });
   }
   // ---- 商品价格历史与交易量（公开只读；points 为每分钟一次的价格采样） ----
@@ -651,11 +683,17 @@ const server = http.createServer(function (req, res) {
         const price = Math.max(1, Math.floor(Number(d.price) || 0));
         if (!ITEM_PRICE[id]) return apiResp(res, 400, { error: '该物品不可上架' });
         if (!invHas(rec, id, qty)) return apiResp(res, 400, { error: '数量不足' });
-        const fee = Math.ceil(price * qty * 0.01); // 上架费：定价总额的 1%，下架不退
+        sweepExpiredListings();
+        const myCount = world.listings.filter(function (l) { return l.seller === key; }).length;
+        if (myCount >= MAX_LISTINGS_PER_PLAYER) return apiResp(res, 400, { error: '挂单数量已达上限（每人最多同时 ' + MAX_LISTINGS_PER_PLAYER + ' 个）' });
+        const hours = [6, 12, 24].indexOf(Number(d.hours)) >= 0 ? Number(d.hours) : 6;
+        const feeRate = LIST_FEE_RATES[hours];
+        const fee = Math.ceil(price * qty * feeRate); // 上架费：定价总额 × 时长费率，下架不退
         if (rec.coins < fee) return apiResp(res, 400, { error: '金币不足（需上架费 ' + fee + '）' });
         invAdd(rec, id, -qty);
         rec.coins -= fee;
-        const listing = { lid: world.listingSeq++, seller: key, sellerName: rec.name, id: id, name: itemName(id), qty: qty, price: price, t: Date.now() };
+        const ttl = LISTING_TTL_MS_ENV || hours * 3600 * 1000;
+        const listing = { lid: world.listingSeq++, seller: key, sellerName: rec.name, id: id, name: itemName(id), qty: qty, price: price, t: Date.now(), expireAt: Date.now() + ttl, hours: hours };
         world.listings.push(listing);
         saveUsers(); saveWorld();
         broadcastMarket();
@@ -667,6 +705,7 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/market/buy' && req.method === 'POST') {
     readBody(req, function (body) {
       auth(req, res, body, function (d, key) {
+        sweepExpiredListings();
         const rec = users[key];
         const idx = world.listings.findIndex(function (l) { return l.lid === d.lid; });
         if (idx < 0) return apiResp(res, 404, { error: '该挂单已不存在' });
