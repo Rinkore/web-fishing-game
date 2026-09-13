@@ -448,6 +448,8 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 }
 .bf-search::placeholder { color: var(--muted); }
 .bf-search:focus { border-color: var(--accent); }
+.bf-sort { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+.bf-sort-label { margin-right: 2px; }
 
 /* ---- 钓竿配置 ---- */
 .r-epic { color: #fb923c; font-weight: 600; }

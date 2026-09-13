@@ -619,6 +619,7 @@ window.UI = (function () {
   let buyCategory = 'all';
   let buySearch = '';
   let buySearchFocus = false;
+  let buySort = { key: 'time', dir: 'desc' };
 
   // 挂单行：自己的显示「下架」，他人的显示「购买」
   function marketRow(l, st, me) {
@@ -736,19 +737,46 @@ window.UI = (function () {
         if (q) others = others.filter(function (l) {
           return l.name.toLowerCase().indexOf(q) >= 0 || (l.sellerName || '').toLowerCase().indexOf(q) >= 0;
         });
-        others.sort(function (a, b) { return b.t - a.t; });
+        others.sort(function (a, b) {
+          if (buySort.key === 'price') {
+            const d = buySort.dir === 'asc' ? a.price - b.price : b.price - a.price;
+            return d || b.t - a.t;
+          }
+          if (buySort.key === 'qty') {
+            const d = buySort.dir === 'asc' ? a.qty - b.qty : b.qty - a.qty;
+            return d || b.t - a.t;
+          }
+          return b.t - a.t; // 默认：最新上架在前
+        });
         list.innerHTML = '';
         if (!others.length) {
           list.appendChild(el('div', 'hint', othersAll.length ? '没有符合条件的挂单。' : '市场暂无其他玩家的挂单。你可以在右侧「我的背包」里上架物品。'));
           return;
         }
         others.forEach(function (l) { list.appendChild(marketRow(l, st, me)); });
-        if (q || buyCategory !== 'all') list.appendChild(el('div', 'hint', '匹配 ' + others.length + ' 条挂单。'));
+        if (q || buyCategory !== 'all' || buySort.key !== 'time') list.appendChild(el('div', 'hint', '匹配 ' + others.length + ' 条挂单。'));
       }
       inp.addEventListener('input', function () { buySearch = inp.value; refreshList(); });
       inp.addEventListener('focus', function () { buySearchFocus = true; });
       inp.addEventListener('blur', function () { buySearchFocus = false; });
       filters.appendChild(inp);
+
+      // 排序：时间（默认）/ 价格 / 数量；价格与数量可切换升降序
+      const sortWrap = el('span', 'bf-sort');
+      sortWrap.appendChild(el('span', 'bf-sort-label', '排序'));
+      [['time', '时间'], ['price', '价格'], ['qty', '数量']].forEach(function (kv) {
+        const activeSort = buySort.key === kv[0];
+        const arrow = activeSort && kv[0] !== 'time' ? (buySort.dir === 'asc' ? ' ↑' : ' ↓') : '';
+        const b = el('button', 'bf-cat bf-sort-btn' + (activeSort ? ' on' : ''), kv[1] + arrow);
+        b.addEventListener('click', function () {
+          if (buySort.key === kv[0] && kv[0] !== 'time') buySort.dir = buySort.dir === 'asc' ? 'desc' : 'asc';
+          else buySort = { key: kv[0], dir: kv[0] === 'price' ? 'asc' : 'desc' };
+          renderView();
+        });
+        sortWrap.appendChild(b);
+      });
+      filters.appendChild(sortWrap);
+
       colMain.appendChild(filters);
       colMain.appendChild(list);
       refreshList();
