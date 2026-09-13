@@ -67,6 +67,24 @@ window.Net = (function () {
   const marketHistory = () => apiFetch('GET', '/api/market/history?token=' + encodeURIComponent(me ? me.token : ''));
   // 某种鱼的全服前十大捕获记录（公开只读）
   const recordsTop = (id) => apiFetch('GET', '/api/records/top?id=' + encodeURIComponent(id));
+
+  // ---- 按需拉取：进入对应页面时才请求该页数据（不在的页面零请求） ----
+  const fetchShop = () => apiFetch('GET', '/shop').then(function (r) {
+    if (r && r.ok) { state().shop = r.data; if (window.UI) window.UI.refreshAll('shop'); }
+    return r;
+  });
+  const fetchMarket = () => apiFetch('GET', '/api/market').then(function (r) {
+    if (r && r.ok) { state().market = r.data.listings || []; if (window.UI) window.UI.refreshAll('market'); }
+    return r;
+  });
+  const fetchCodex = () => apiFetch('GET', '/api/codex?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
+    if (r && r.ok) { state().codex = r.data.codex || {}; state().catchCount = r.data.catchCount || 0; if (window.UI) window.UI.refreshAll('codex'); }
+    return r;
+  });
+  const fetchRecords = () => apiFetch('GET', '/api/records').then(function (r) {
+    if (r && r.ok) { state().records = r.data.records || {}; state().smallRecords = r.data.small || {}; if (window.UI) window.UI.refreshAll('records'); }
+    return r;
+  });
   const sell = (id, qty) => authed('/api/sell', { id: id, qty: qty });
   const marketList = (id, qty, price) => authed('/api/market/list', { id: id, qty: qty, price: price });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
@@ -184,6 +202,7 @@ window.Net = (function () {
     register: register, login: login, fetchMe: fetchMe, setAuth: setAuth,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
+    fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
     sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,
     tradeConfirm: tradeConfirm, tradeCancel: tradeCancel,

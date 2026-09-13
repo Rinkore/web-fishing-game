@@ -81,6 +81,7 @@ window.UI = (function () {
         currentView = item.id;
         renderNav();
         renderView();
+        loadViewData(item.id);
       });
       nav.appendChild(b);
     });
@@ -446,47 +447,65 @@ window.UI = (function () {
     main.appendChild(panel);
   }
 
-  // ---- 渔场动态视图（放大框体 + 各渔场人数） ----
+  // ---- 渔场动态视图（全服概览 + 单地图点击查看） ----
+  // 当前筛选的地图（null = 全服；模块级：重绘间保留）
+  let groundFilterId = null;
+
   function renderGround() {
     const main = $('main');
     const st = S();
     main.innerHTML = '';
     const panel = el('div', 'panel wide ground-panel');
-    panel.innerHTML = '<h2>🌊 渔场动态（全服实时）</h2>';
+    const filterGround = groundFilterId ? D.GROUNDS.find(function (g) { return g.id === groundFilterId; }) : null;
+    panel.innerHTML = '<h2>🌊 渔场动态 ' + (filterGround ? '· ' + esc(filterGround.name) : '（全服实时）') + '</h2>';
+    if (groundFilterId) {
+      const back = el('button', 'mini ground-back', '🌐 返回全服');
+      back.addEventListener('click', function () { groundFilterId = null; renderView(); });
+      panel.appendChild(back);
+    }
 
-    // 各渔场人数概览
+    // 地图概览：点击进入单地图动态
     const counts = el('div', 'ground-counts');
     D.GROUNDS.forEach(function (g) {
       const c = (st.groundCounts && st.groundCounts[g.id]) || 0;
-      const box = el('div', 'gc-box' + (g.locked ? ' locked' : '') + (c > 0 ? ' live' : ''));
+      const box = el('div', 'gc-box' + (g.locked ? ' locked' : '') + (c > 0 ? ' live' : '') + (groundFilterId === g.id ? ' sel' : ''));
       box.innerHTML = '<div class="gcb-name">' + esc(g.name) + '</div>' +
-        '<div class="gcb-num">' + c + '<span class="u">人</span></div>';
+        '<div class="gcb-num">' + c + '<span class="u">人</span></div>' +
+        (g.locked ? '' : '<div class="gcb-hint">点击查看</div>');
+      if (!g.locked) {
+        box.title = '点击查看「' + g.name + '」的动态';
+        box.addEventListener('click', function () { groundFilterId = (groundFilterId === g.id) ? null : g.id; renderView(); });
+      }
       counts.appendChild(box);
     });
-    counts.appendChild(el('div', 'gc-box total',
-      '<div class="gcb-name">全服在线</div><div class="gcb-num">' + st.players.length + '<span class="u">人</span></div>'));
+    const totalBox = el('div', 'gc-box total' + (groundFilterId ? '' : ' sel'));
+    totalBox.innerHTML = '<div class="gcb-name">🌐 全服在线</div><div class="gcb-num">' + st.players.length + '<span class="u">人</span></div>';
+    totalBox.title = '点击返回全服动态';
+    totalBox.addEventListener('click', function () { if (groundFilterId) { groundFilterId = null; renderView(); } });
+    counts.appendChild(totalBox);
     panel.appendChild(counts);
 
+    // 数据按所选地图过滤
+    const playersShown = groundFilterId ? st.players.filter(function (p) { return p.groundId === groundFilterId; }) : st.players;
+    const feedShown = groundFilterId ? st.feed.filter(function (e) { return e.ground === filterGround.name; }) : st.feed;
+
     const cols = el('div', 'ground-cols');
-    // 在线玩家
     const left = el('div', 'sub');
-    left.appendChild(el('h3', null, '👥 在线玩家（' + st.players.length + '）'));
+    left.appendChild(el('h3', null, '👥 ' + (groundFilterId ? '本地图在线玩家（' + playersShown.length + '）' : '在线玩家（' + st.players.length + '）')));
     const list = el('div', 'peeps');
-    if (st.players.length === 0) list.appendChild(el('div', 'hint', '暂无在线玩家。'));
-    // 在线优先、钓鱼中排前
-    st.players.slice().sort(function (a, b) {
+    if (playersShown.length === 0) list.appendChild(el('div', 'hint', groundFilterId ? '该地图暂无玩家。' : '暂无在线玩家。'));
+    playersShown.slice().sort(function (a, b) {
       const ra = a.status === 'fishing' ? 0 : 1, rb = b.status === 'fishing' ? 0 : 1;
       return ra - rb || String(a.name).localeCompare(String(b.name));
     }).forEach(function (b) { list.appendChild(peepCard(b)); });
     left.appendChild(list);
     cols.appendChild(left);
 
-    // 动态 feed（放大）
     const right = el('div', 'sub');
-    right.appendChild(el('h3', null, '📡 最新动态'));
+    right.appendChild(el('h3', null, '📡 最新动态' + (groundFilterId ? ' · ' + esc(filterGround.name) : '')));
     const feed = el('div', 'feed feed-big');
-    if (st.feed.length === 0) feed.appendChild(el('div', 'hint', '暂无动态，等待大家上鱼……'));
-    st.feed.slice(0, 60).forEach(function (e) {
+    if (feedShown.length === 0) feed.appendChild(el('div', 'hint', groundFilterId ? '该地图暂无动态，等待大家上鱼……' : '暂无动态，等待大家上鱼……'));
+    feedShown.slice(0, 60).forEach(function (e) {
       const meta = e.item || {};
       const line = el('div', 'feed-line' + (e.record ? ' record' : ''));
       line.innerHTML = '<span class="ftime">' + timeStr(e.t) + '</span> <b>' + esc(e.who) + '</b> 在 ' +
@@ -1489,6 +1508,15 @@ window.UI = (function () {
     main.innerHTML = '';
     main.appendChild(el('div', 'panel wide center',
       '<div class="big-lock">🔒</div><h2>' + esc(name) + '</h2><p class="hint">该功能尚未开放，为框架占位。完成基础功能前不可跳转。</p>'));
+  }
+
+  // 进入页面时按需拉取该页数据（其余页面不产生任何请求）
+  function loadViewData(view) {
+    if (!window.Net) return;
+    if (view === 'shop' || view === 'inventory') window.Net.fetchShop();
+    else if (view === 'market') window.Net.fetchMarket();
+    else if (view === 'codex') window.Net.fetchCodex();
+    else if (view === 'records') window.Net.fetchRecords();
   }
 
   function renderView() {

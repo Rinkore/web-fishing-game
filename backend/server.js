@@ -606,6 +606,10 @@ const server = http.createServer(function (req, res) {
   if (p === '/shop' && req.method === 'GET') {
     return apiResp(res, 200, shopSnapshot());
   }
+  // 市集挂单快照（公开只读；前端进入市集页时按需拉取）
+  if (p === '/api/market' && req.method === 'GET') {
+    return apiResp(res, 200, { listings: world.listings });
+  }
   // ---- 商品价格历史与交易量（公开只读；points 为每分钟一次的价格采样） ----
   if (p === '/api/shop/history' && req.method === 'GET') {
     const id = u.query.id;
