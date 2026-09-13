@@ -426,6 +426,24 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .rc-who { font-size: 11px; color: var(--muted); margin-top: 3px; }
 .cx-spots { color: var(--accent2) !important; }
 
+/* ---- 图鉴详情浮层 ---- */
+.codex-cell { position: relative; }
+.codex-grid { align-items: start; }
+.codex-cell.got { cursor: pointer; }
+.codex-cell.got:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.codex-detail {
+  position: absolute; top: 100%; left: 0; z-index: 30; margin-top: 6px;
+  width: 280px; min-height: 170px; box-sizing: border-box;
+  background: var(--panel-solid); border: 1px solid var(--accent2); border-radius: 8px; padding: 12px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.5); font-size: 12px; cursor: default;
+}
+.cd-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.cd-line { margin-bottom: 3px; }
+.cd-line b { color: var(--big); }
+.cd-sub { color: var(--accent2); font-weight: 600; margin: 10px 0 4px; }
+.cd-spots { display: flex; flex-direction: column; gap: 2px; max-height: 150px; overflow: auto; }
+.cd-spot { padding: 3px 6px; border-radius: 5px; background: rgba(255,255,255,.03); }
+
 /* ---- 市集历史订单 ---- */
 .market-history { display: flex; flex-direction: column; gap: 6px; max-height: 560px; overflow: auto; }
 .hist-line .hist-tag { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 600; flex: none; }

@@ -108,13 +108,17 @@
     }
     return null;
   }
-  // 鱼类产出地点索引：id -> ['钓场·钓点', ...]（图鉴展示用）
+  // 物品产出地点索引：id -> ['钓场·钓点', ...]（图鉴展示用）
+  // 鱼类/材料按各自掉落池匹配；组件来自通用组件掉落点（'component:' 条目）
   function spotsOf(id) {
+    const item = itemOf(id);
+    const type = item.kind === 'fish' ? 'fish' : item.kind === 'material' ? 'material' : 'component';
+    const pick = type + ':' + (type === 'component' ? '' : id);
     const out = [];
     GROUNDS.forEach(function (g) {
       g.spots.forEach(function (sp) {
         sp.pool.forEach(function (e) {
-          if (e.pick === 'fish:' + id) out.push(g.name + '·' + sp.name);
+          if (e.pick === pick) out.push(g.name + '·' + sp.name);
         });
       });
     });
