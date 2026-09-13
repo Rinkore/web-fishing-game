@@ -553,3 +553,6 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 /* 管理后台入口（仅管理员账号可见，由 ui.js 渲染） */
 .nav-item.admin-link { text-decoration: none; margin-top: 10px; color: var(--accent); border: 1px dashed var(--line); }
 .nav-item.admin-link:hover { border-color: var(--accent); background: var(--panel); }
+
+/* 负面词条（v0.7.0 取舍型组件）：红色展示 */
+.bec-aff.aff-neg, .af-line.aff-neg { color: var(--danger); }

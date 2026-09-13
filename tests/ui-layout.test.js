@@ -108,7 +108,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await clickNav(p1, '鱼类图鉴');
     const cells = await p1.$$('.codex-cell');
     const got = await p1.$$('.codex-cell.got');
-    check('图鉴渲染全部条目', cells.length === 16, String(cells.length));
+    check('图鉴渲染全部条目', cells.length === 77, String(cells.length));
     check('图鉴已解锁钓到的鱼', got.length >= 6, String(got.length) + ' 已解锁');
     check('图鉴汇总显示收集进度', /\d+ \/ \d+/.test(await p1.textContent('.codex-summary')));
 

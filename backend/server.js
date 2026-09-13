@@ -110,10 +110,10 @@ function weightedPickOf(pool) {
   for (const e of pool) { r -= e.weight; if (r <= 0) return e.pick; }
   return pool[pool.length - 1].pick;
 }
-// 体型随机：偏向小值；体型加成放大结果但不越过上限的 1.3 倍
+// 体型随机：偏向小值；体型词缀可正可负，放大/缩小结果但正向不越过上限的 1.3 倍
 function rollSizeOf(range, eff) {
   let v = range[0] + (range[1] - range[0]) * Math.pow(Math.random(), 1.6);
-  if (eff.size > 0) v = Math.min(range[1] * 1.3, v * (1 + eff.size / 100));
+  if (eff.size !== 0) v = Math.min(range[1] * 1.3, v * (1 + eff.size / 100));
   return Math.round(v * 10) / 10;
 }
 function resolveItemAt(spot, eff) {
@@ -524,6 +524,41 @@ function loadWorld() { try { world = Object.assign(world, JSON.parse(fs.readFile
 function saveWorld() { try { fs.writeFileSync(WORLD_FILE, JSON.stringify(world, null, 2)); } catch (e) {} }
 loadUsers();
 loadWorld();
+// v0.7.0 组件编码 ID 迁移：背包 / 钓竿配置 / 挂单 / 商店统计里的旧组件 id 原位换新
+(function migrateLegacyComponentIds() {
+  let dirty = false;
+  Object.keys(users).forEach(function (key) {
+    const rec = users[key];
+    if (rec.inventory) {
+      const next = {};
+      Object.keys(rec.inventory).forEach(function (id) {
+        const nid = D.normalizeItemId(id);
+        next[nid] = (next[nid] || 0) + rec.inventory[id];
+      });
+      if (JSON.stringify(next) !== JSON.stringify(rec.inventory)) { rec.inventory = next; dirty = true; }
+    }
+    if (rec.bd) {
+      Object.keys(rec.bd).forEach(function (part) {
+        const slot = rec.bd[part];
+        if (!slot || !slot.compId) return;
+        const comp = D.componentOf(slot.compId);
+        if (comp && comp.id !== slot.compId) { slot.compId = comp.id; slot.name = comp.name; dirty = true; }
+      });
+    }
+  });
+  (world.listings || []).forEach(function (l) {
+    const comp = D.componentOf(l.id);
+    if (comp && comp.id !== l.id) { l.id = comp.id; dirty = true; }
+  });
+  ['shopSales', 'priceLog'].forEach(function (field) {
+    const m = world[field] || {};
+    Object.keys(m).forEach(function (id) {
+      const comp = D.componentOf(id);
+      if (comp && comp.id !== id) { m[comp.id] = m[id]; delete m[id]; dirty = true; }
+    });
+  });
+  if (dirty) { saveUsers(); saveWorld(); console.log('[migrate] legacy component ids -> v0.7.0 coded ids'); }
+})();
 // 套用管理后台保存的钓场/钓点配置覆盖（掉落池 / 增益 / 锁定状态）
 applyGroundCfg();
 // 为所有物品补齐乘数状态（老档迁移：旧"供应压力"按 -1%/件 折算为初始乘数）

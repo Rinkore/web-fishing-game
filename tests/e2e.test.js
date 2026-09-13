@@ -68,7 +68,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
 function start(port) {
   // FISHING_DEV=1：开放 /api/dev/*（确定性回归用）；正常部署（run.bat）不开启
-  return spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(port), FISHING_DEV: '1', FISHING_DATA_DIR: dataDir || TMP_DATA }) });
+  // FISHING_DATA_DIR：测试数据写入临时目录，不触碰真实 backend/data
+  return spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(port), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }) });
 }
 
 // 静态数据：直接 require UMD 版 data.js（前后端共用同一文件，后端 require 即所得）
@@ -116,9 +117,9 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
 
   const invBefore = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
   const catchMark = sinkA.length;
-  await sleep(7000); // 基础间隔 3s → 至少 2 竿
+  await sleep(10000); // 基础间隔 3s → 至少 2 竿（留足上钩率波动余量）
   const myCatches = sinkA.slice(catchMark).filter(m => m.type === 'catch');
-  check('服务器循环自动抛竿（7s 内 ≥2 次渔获推送）', myCatches.length >= 2, String(myCatches.length));
+  check('服务器循环自动抛竿（10s 内 ≥2 次渔获推送）', myCatches.length >= 2, String(myCatches.length));
   check('渔获含物品与钓点信息', myCatches.every(m => m.entry.item && m.entry.item.id && m.entry.ground === '静水湖'));
   check('B 收到 A 的渔获动态广播', sinkB.some(m => m.type === 'feed' && m.entry.who === '测试甲'));
   const invAfter = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
@@ -143,20 +144,20 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
 
   section('钓速词缀即时调整服务器循环');
   // 组件安装 = 消耗道具：先经 dev 接口发放组件入包
-  check('dev 发放电动卷线器', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', rarity: 'epic', id: 'reel_electric', name: '电动卷线器' }, ground: '静水湖', spot: '老旧码头' })).status === 200);
-  check('dev 发放精钢鱼钩', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', rarity: 'rare', id: 'hook_steel', name: '精钢鱼钩' }, ground: '静水湖', spot: '老旧码头' })).status === 200);
-  check('未持有组件时装备被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: 'rod_carbon' })).status === 400);
-  const bdR = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: 'reel_electric' });
-  check('装备电动卷线器成功', bdR.status === 200 && bdR.data.ok === true && bdR.data.bd.reel.compId === 'reel_electric');
+  check('dev 发放电动卷线器', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', rarity: 'epic', id: 'reel_spd25', name: '电动卷线器' }, ground: '静水湖', spot: '老旧码头' })).status === 200);
+  check('dev 发放精钢鱼钩', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', rarity: 'rare', id: 'hook_big8_spd-5', name: '精钢鱼钩' }, ground: '静水湖', spot: '老旧码头' })).status === 200);
+  check('未持有组件时装备被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: 'rod_spd20_mat-10' })).status === 400);
+  const bdR = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: 'reel_spd25' });
+  check('装备电动卷线器成功', bdR.status === 200 && bdR.data.ok === true && bdR.data.bd.reel.compId === 'reel_spd25');
   const meAfterBd = await GET('http://localhost:' + P1 + '/api/me?token=' + tokA);
-  check('安装消耗组件道具（背包 reel_electric 已扣除）', !meAfterBd.data.inventory.reel_electric, JSON.stringify(meAfterBd.data.inventory));
+  check('安装消耗组件道具（背包 reel_spd25 已扣除）', !meAfterBd.data.inventory.reel_spd25, JSON.stringify(meAfterBd.data.inventory));
   check('响应返回服务器词缀汇总 +25% 钓速', bdR.data.effects && bdR.data.effects.speed === 25, JSON.stringify(bdR.data.effects));
   check('正在钓鱼时钓速即时生效（2250ms）', bdR.data.interval === 2250, String(bdR.data.interval));
   check('未知组件被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: 'nope' })).status === 400);
-  check('组件与部位不匹配被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: 'rod_bamboo' })).status === 400);
+  check('组件与部位不匹配被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: 'rod_spd10' })).status === 400);
   check('未知部位被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'nope', compId: null })).status === 400);
-  const bdH = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: 'hook_steel' });
-  check('装备精钢鱼钩（大鱼+5% 体型+10%）', bdH.status === 200 && bdH.data.effects.big === 5 && bdH.data.effects.size === 10, JSON.stringify(bdH.data.effects));
+  const bdH = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: 'hook_big8_spd-5' });
+  check('装备精钢鱼钩（大鱼+8%；钓速=电动25+钩-5=20，负词条生效）', bdH.status === 200 && bdH.data.effects.big === 8 && bdH.data.effects.speed === 20, JSON.stringify(bdH.data.effects));
 
   const stopMark = sinkA.length;
   check('停止钓鱼成功', (await POST('http://localhost:' + P1 + '/api/fishing/stop', { token: tokA })).status === 200);
@@ -203,7 +204,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('/api/profile 上报 inventory 被忽略（仍 carp 9）', meForge.data.inventory.carp === 9, JSON.stringify(meForge.data.inventory));
   await POST('http://localhost:' + P1 + '/api/profile', { token: tokA, name: '测试甲改' });
   check('显示名可经 /api/profile 修改', (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.name === '测试甲改');
-  const uf = path.join(ROOT, 'backend', 'data', 'users.json');
+  const uf = path.join(TMP_DATA, 'users.json');
   check('users.json 已落盘且含账号', fs.existsSync(uf) && Object.keys(JSON.parse(fs.readFileSync(uf, 'utf8'))).includes('tester_a'));
   const raw = fs.readFileSync(uf, 'utf8');
   check('密码以 salt+hash 存储（不存明文）', raw.includes('pwHash') && raw.includes('salt') && !raw.includes('pass1234'));
@@ -223,7 +224,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const me2 = await GET('http://localhost:' + P2 + '/api/me?token=' + (lg2.data && lg2.data.token));
   check('重启后 coins 持久化 = 1234', me2.data && me2.data.coins === 1234);
   check('重启后 inventory 持久化', me2.data && me2.data.inventory && me2.data.inventory.carp === 9);
-  check('重启后钓竿配置持久化（ reel=电动卷线器, hook=精钢鱼钩）', !!(me2.data && me2.data.bd && me2.data.bd.reel && me2.data.bd.reel.compId === 'reel_electric' && me2.data.bd.hook.compId === 'hook_steel'), JSON.stringify(me2.data && me2.data.bd));
+  check('重启后钓竿配置持久化（ reel=电动卷线器, hook=精钢鱼钩）', !!(me2.data && me2.data.bd && me2.data.bd.reel && me2.data.bd.reel.compId === 'reel_spd25' && me2.data.bd.hook.compId === 'hook_big8_spd-5'), JSON.stringify(me2.data && me2.data.bd));
   check('重启后显示名持久化', me2.data && me2.data.name === '测试甲改');
   killTree(srv);
 
@@ -247,7 +248,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   // ---------- 6. 挂单上限与过期退回 ----------
   section('6. 挂单上限（40）与过期退回');
   killTree(srv);
-  srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(8103), FISHING_DEV: '1', LISTING_TTL_MS: '1500' }) });
+  srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(8103), FISHING_DEV: '1', LISTING_TTL_MS: '1500', FISHING_DATA_DIR: TMP_DATA }) });
   await sleep(800);
   const lgA6 = await POST('http://localhost:8103/api/login', { username: 'tester_a', password: 'pass1234' });
   check('补充库存 45 条鲫鱼', (await POST('http://localhost:8103/api/dev/seed', { token: lgA6.data.token, inventory: { crucian: 45 } })).status === 200);

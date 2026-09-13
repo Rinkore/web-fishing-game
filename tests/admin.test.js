@@ -129,7 +129,7 @@ async function waitReady() {
   section('2. 掉落池与增益编辑');
   const w0 = await GET(B + '/api/admin/world?token=' + TOKA);
   check('world 返回 4 钓场 + 9 钓点', w0.status === 200 && w0.data.grounds.length === 4 && w0.data.grounds.reduce((n, g) => n + g.spots.length, 0) === 9);
-  check('目录含 12 种鱼 + 3 种材料', w0.data.catalog.fish.length === 12 && w0.data.catalog.materials.length === 3);
+  check('目录含 42 种鱼 + 3 种材料', w0.data.catalog.fish.length === 42 && w0.data.catalog.materials.length === 3);
   check(' frostmoon 默认锁定', w0.data.grounds.find(g => g.id === 'frostmoon').locked === true);
 
   const setPool = (groundId, spotId, pool, tok) => POST(B + '/api/admin/spot/pool', { token: tok || TOKA, groundId: groundId, spotId: spotId, pool: pool });

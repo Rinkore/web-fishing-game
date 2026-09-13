@@ -19,17 +19,47 @@
       { id: 'grass', name: '草鱼', rarity: 'common', price: 15, size: [30, 90] },
       { id: 'white', name: '白条', rarity: 'common', price: 6, size: [8, 25] },
       { id: 'tilapia', name: '罗非鱼', rarity: 'common', price: 10, size: [15, 45] },
+      { id: 'minnow', name: '麦穗鱼', rarity: 'common', price: 5, size: [4, 12] },
+      { id: 'loach', name: '泥鳅', rarity: 'common', price: 9, size: [10, 25] },
+      { id: 'sardine', name: '沙丁鱼', rarity: 'common', price: 6, size: [8, 18] },
+      { id: 'croaker', name: '小黄鱼', rarity: 'common', price: 11, size: [10, 25] },
+      { id: 'yellowcat', name: '黄辣丁', rarity: 'common', price: 13, size: [12, 30] },
+      { id: 'bream', name: '鳊鱼', rarity: 'common', price: 14, size: [20, 50] },
+      { id: 'silvercarp', name: '鲢鱼', rarity: 'common', price: 15, size: [30, 75] },
+      { id: 'bighead', name: '鳙鱼', rarity: 'common', price: 17, size: [35, 90] },
+      { id: 'riverperch', name: '河鲈', rarity: 'common', price: 12, size: [15, 40] },
+      { id: 'culter', name: '翘嘴鲌', rarity: 'common', price: 18, size: [25, 60] },
+      { id: 'blackcarp', name: '青鱼', rarity: 'common', price: 20, size: [40, 100] },
     ],
     big: [
       { id: 'catfish', name: '巨型鲶鱼', rarity: 'big', price: 120, size: [80, 220] },
       { id: 'bass', name: '湖王鲈鱼', rarity: 'big', price: 150, size: [60, 180] },
       { id: 'tuna', name: '黄金枪鱼', rarity: 'big', price: 260, size: [120, 320] },
       { id: 'sturgeon', name: '远古巨鲟', rarity: 'big', price: 320, size: [150, 400] },
+      { id: 'mandarin', name: '鳜鱼', rarity: 'big', price: 140, size: [35, 90] },
+      { id: 'blackbass', name: '大口黑鲈', rarity: 'big', price: 160, size: [45, 130] },
+      { id: 'seabass', name: '海鲈', rarity: 'big', price: 170, size: [55, 140] },
+      { id: 'yellowcheek', name: '鳡鱼', rarity: 'big', price: 180, size: [70, 170] },
+      { id: 'mackerel', name: '马鲛鱼', rarity: 'big', price: 210, size: [55, 160] },
+      { id: 'grouper', name: '石斑鱼', rarity: 'big', price: 230, size: [45, 150] },
+      { id: 'cobia', name: '军曹鱼', rarity: 'big', price: 250, size: [90, 200] },
+      { id: 'rubysnapper', name: '金目鲷', rarity: 'big', price: 280, size: [55, 140] },
+      { id: 'sunfish', name: '翻车鱼', rarity: 'big', price: 300, size: [150, 300] },
+      { id: 'arapaima', name: '巨骨舌鱼', rarity: 'big', price: 350, size: [180, 330] },
     ],
     rare: [
       { id: 'koi', name: '黄金锦鲤', rarity: 'rare', price: 400, size: [40, 110] },
       { id: 'pearl', name: '深海珍珠贝', rarity: 'rare', price: 300, size: [10, 40] },
       { id: 'relic', name: '沉船宝匣残片', rarity: 'rare', price: 380, size: [5, 60] },
+      { id: 'amberlobster', name: '琥珀龙虾', rarity: 'rare', price: 340, size: [20, 60] },
+      { id: 'voltaiceel', name: '电光鳗', rarity: 'rare', price: 380, size: [60, 140] },
+      { id: 'ghostray', name: '幽灵魟', rarity: 'rare', price: 420, size: [90, 220] },
+      { id: 'arowana', name: '金龙鱼', rarity: 'rare', price: 450, size: [45, 95] },
+      { id: 'moonkoi', name: '月光鲤', rarity: 'rare', price: 480, size: [40, 110] },
+      { id: 'dragonfish', name: '深海龙鱼', rarity: 'rare', price: 500, size: [50, 120] },
+      { id: 'swordfish', name: '剑鱼', rarity: 'rare', price: 520, size: [180, 380] },
+      { id: 'bluefin', name: '蓝鳍金枪鱼', rarity: 'rare', price: 560, size: [130, 300] },
+      { id: 'dragonpearl', name: '龙宫宝珠', rarity: 'rare', price: 600, size: [5, 30] },
     ],
   };
 
@@ -70,28 +100,75 @@
   };
 
   // ---- 钓竿组件目录（钓竿配置核心） ----
-  // 每个组件归属一个部位、词缀固定；钓鱼掉落获得，装备后仍留在背包（可出售/交易）。
-  // affixes: { type: AFFIX_LABEL 的 key, value: 百分比数值 }
+  // 组件 id 即效果编码：`部位_效果数值_效果数值…`，词缀直接由 id 解析（单一来源）。
+  // 新增组件只需按格式写 id，效果与数值自动生效，无需再手写 affixes。
+  // 效果代码：spd=钓速 big=大鱼概率 rare=稀有概率 mat=材料概率 size=体型 dbl=双钓概率
+  // 数值允许负数（取舍型词条），如 rod_spd15_size-5 = 钓速+15%、体型-5%。
+  const EFFECT_CODES = {
+    spd: 'speed', speed: 'speed',
+    big: 'big',
+    rare: 'rare',
+    mat: 'material', material: 'material',
+    size: 'size',
+    dbl: 'double', double: 'double',
+  };
+  const AFFIX_SEG_RE = /^(spd|speed|big|rare|mat|material|size|dbl|double)(-?\d+)$/i;
+  function affixesOf(id) {
+    const out = [];
+    String(id).split('_').slice(1).forEach(function (seg) {
+      const m = AFFIX_SEG_RE.exec(seg);
+      if (m) out.push({ type: EFFECT_CODES[m[1].toLowerCase()], value: parseInt(m[2], 10) });
+    });
+    return out;
+  }
   const COMPONENTS = [
-    { id: 'rod_bamboo', name: '竹制短竿', part: 'rod', rarity: 'common', price: 60, affixes: [{ type: 'speed', value: 10 }] },
-    { id: 'rod_carbon', name: '碳素长竿', part: 'rod', rarity: 'rare', price: 240, affixes: [{ type: 'speed', value: 15 }, { type: 'big', value: 3 }] },
-    { id: 'line_strong', name: '强化线组', part: 'line', rarity: 'common', price: 50, affixes: [{ type: 'material', value: 20 }] },
-    { id: 'line_ghost', name: '隐形鱼线', part: 'line', rarity: 'rare', price: 220, affixes: [{ type: 'rare', value: 3 }, { type: 'material', value: 10 }] },
-    { id: 'hook_barb', name: '倒刺钩', part: 'hook', rarity: 'common', price: 55, affixes: [{ type: 'big', value: 4 }] },
-    { id: 'hook_steel', name: '精钢鱼钩', part: 'hook', rarity: 'rare', price: 260, affixes: [{ type: 'big', value: 5 }, { type: 'size', value: 10 }] },
-    { id: 'bait_rich', name: '浓香饵料', part: 'bait', rarity: 'common', price: 45, affixes: [{ type: 'rare', value: 2 }] },
-    { id: 'bait_secret', name: '秘制香饵', part: 'bait', rarity: 'rare', price: 280, affixes: [{ type: 'rare', value: 5 }] },
-    { id: 'reel_smooth', name: '顺滑卷线器', part: 'reel', rarity: 'common', price: 60, affixes: [{ type: 'speed', value: 10 }] },
-    { id: 'reel_electric', name: '电动卷线器', part: 'reel', rarity: 'epic', price: 520, affixes: [{ type: 'speed', value: 25 }] },
-    { id: 'acc_net', name: '鱼护网袋', part: 'accessory', rarity: 'common', price: 70, affixes: [{ type: 'double', value: 10 }] },
-    { id: 'acc_sonar', name: '智能探鱼器', part: 'accessory', rarity: 'epic', price: 560, affixes: [{ type: 'big', value: 6 }, { type: 'rare', value: 4 }] },
-    { id: 'charm_coin', name: '幸运硬币', part: 'charm', rarity: 'rare', price: 300, affixes: [{ type: 'rare', value: 3 }, { type: 'size', value: 10 }] },
-    { id: 'charm_gold', name: '金鳞坠饰', part: 'charm', rarity: 'epic', price: 600, affixes: [{ type: 'big', value: 4 }, { type: 'rare', value: 3 }, { type: 'speed', value: 10 }] },
+    { id: 'rod_spd10', name: '竹制短竿', part: 'rod', rarity: 'common', price: 60 },
+    { id: 'rod_spd15_size-5', name: '玻璃钢竿', part: 'rod', rarity: 'common', price: 90 },
+    { id: 'rod_spd20_mat-10', name: '碳素长竿', part: 'rod', rarity: 'rare', price: 240 },
+    { id: 'rod_big8_spd-8', name: '深海碳叉竿', part: 'rod', rarity: 'rare', price: 300 },
+    { id: 'rod_big12_size10_spd-15', name: '龙骨巨竿', part: 'rod', rarity: 'epic', price: 640 },
+    { id: 'line_mat25_rare-5', name: '强化线组', part: 'line', rarity: 'common', price: 50 },
+    { id: 'line_rare5_size-10', name: '隐形鱼线', part: 'line', rarity: 'rare', price: 220 },
+    { id: 'line_size15_spd-5', name: '钛芯线', part: 'line', rarity: 'rare', price: 260 },
+    { id: 'line_big6_rare4_spd-10', name: '龙筋线', part: 'line', rarity: 'epic', price: 600 },
+    { id: 'hook_big4', name: '倒刺钩', part: 'hook', rarity: 'common', price: 55 },
+    { id: 'hook_spd12_size-8', name: '血燕钩', part: 'hook', rarity: 'common', price: 70 },
+    { id: 'hook_big8_spd-5', name: '精钢鱼钩', part: 'hook', rarity: 'rare', price: 260 },
+    { id: 'hook_big10_rare-5', name: '千钩·鬼牙', part: 'hook', rarity: 'epic', price: 580 },
+    { id: 'bait_rare2', name: '浓香饵料', part: 'bait', rarity: 'common', price: 45 },
+    { id: 'bait_mat30_spd-5', name: '酒米窝料', part: 'bait', rarity: 'common', price: 40 },
+    { id: 'bait_rare6_mat-10', name: '秘制香饵', part: 'bait', rarity: 'rare', price: 280 },
+    { id: 'bait_big6_rare3_mat-15', name: '仿生拟饵', part: 'bait', rarity: 'rare', price: 250 },
+    { id: 'bait_rare8_big4_mat-20', name: '龙涎香饵', part: 'bait', rarity: 'epic', price: 620 },
+    { id: 'reel_spd10', name: '顺滑卷线器', part: 'reel', rarity: 'common', price: 60 },
+    { id: 'reel_spd15_mat-10', name: '磁力刹车卷线器', part: 'reel', rarity: 'rare', price: 270 },
+    { id: 'reel_spd25', name: '电动卷线器', part: 'reel', rarity: 'epic', price: 520 },
+    { id: 'reel_spd35_big-8', name: '涡轮卷线器', part: 'reel', rarity: 'epic', price: 650 },
+    { id: 'acc_dbl10', name: '鱼护网袋', part: 'accessory', rarity: 'common', price: 70 },
+    { id: 'acc_rare3_size-5', name: '夜光浮漂', part: 'accessory', rarity: 'common', price: 55 },
+    { id: 'acc_dbl15', name: '自动抄网', part: 'accessory', rarity: 'rare', price: 290 },
+    { id: 'acc_big6_rare4', name: '智能探鱼器', part: 'accessory', rarity: 'epic', price: 560 },
+    { id: 'acc_rare6_size10_spd-10', name: '深海声呐雷达', part: 'accessory', rarity: 'epic', price: 700 },
+    { id: 'charm_rare3_size10', name: '幸运硬币', part: 'charm', rarity: 'rare', price: 300 },
+    { id: 'charm_size20_spd-8', name: '翡翠鲤玉', part: 'charm', rarity: 'rare', price: 320 },
+    { id: 'charm_big4_rare3_spd10', name: '金鳞坠饰', part: 'charm', rarity: 'epic', price: 600 },
+    { id: 'charm_big8_rare5_dbl10_spd-12', name: '海王徽记', part: 'charm', rarity: 'epic', price: 680 },
   ];
   const COMPONENT_MAP = {};
-  COMPONENTS.forEach(function (c) { COMPONENT_MAP[c.id] = c; });
+  COMPONENTS.forEach(function (c) { c.affixes = affixesOf(c.id); COMPONENT_MAP[c.id] = c; });
   // 旧存档兼容：框架版掉落的通用组件（无效果，不可装备，可出售）
   const LEGACY_COMPONENT = { id: 'comp_generic', name: '钓竿组件（默认）', part: null, rarity: 'common', price: 40, affixes: [] };
+  // v0.7.0 组件 ID 改版前的旧 id → 新编码 id（读档/挂单/统计原位换新）
+  const LEGACY_ID_ALIAS = {
+    rod_bamboo: 'rod_spd10', rod_carbon: 'rod_spd20_mat-10',
+    line_strong: 'line_mat25_rare-5', line_ghost: 'line_rare5_size-10',
+    hook_barb: 'hook_big4', hook_steel: 'hook_big8_spd-5',
+    bait_rich: 'bait_rare2', bait_secret: 'bait_rare6_mat-10',
+    reel_smooth: 'reel_spd10', reel_electric: 'reel_spd25',
+    acc_net: 'acc_dbl10', acc_sonar: 'acc_big6_rare4',
+    charm_coin: 'charm_rare3_size10', charm_gold: 'charm_big4_rare3_spd10',
+  };
+  function normalizeItemId(id) { return LEGACY_ID_ALIAS[id] || id; }
 
   // 组件掉落：先按稀有度 roll（common 70% / rare 24% / epic 6%），再在同稀有度中均匀取一个
   function rollComponent() {
@@ -101,7 +178,10 @@
     const c = pool[Math.floor(Math.random() * pool.length)];
     return { kind: 'component', rarity: c.rarity, id: c.id, name: c.name, size: null };
   }
-  function componentOf(id) { return COMPONENT_MAP[id] || (id === 'comp_generic' ? LEGACY_COMPONENT : null); }
+  function componentOf(id) {
+    const nid = normalizeItemId(id);
+    return COMPONENT_MAP[nid] || (id === 'comp_generic' ? LEGACY_COMPONENT : null);
+  }
   function fishTierOf(id) {
     for (const tier of ['common', 'big', 'rare']) {
       if (FISH[tier].some(function (f) { return f.id === id; })) return tier;
@@ -136,17 +216,21 @@
       desc: '风平浪静的淡水湖，适合日常稳定产出。',
       spots: [
         { id: 'dock', name: '老旧码头', pool: [
-          p('fish', 'crucian', 30), p('fish', 'carp', 20), p('fish', 'white', 18),
-          p('fish', 'catfish', 4), p('fish', 'bass', 3),
-          p('material', 'bait_pack', 10), p('component', '', 6), p('fish', 'koi', 1),
+          p('fish', 'crucian', 30), p('fish', 'white', 16), p('fish', 'carp', 18),
+          p('fish', 'minnow', 12), p('fish', 'bream', 8),
+          p('fish', 'catfish', 4), p('fish', 'bass', 3), p('fish', 'koi', 1),
+          p('material', 'bait_pack', 10), p('component', '', 6),
         ] },
         { id: 'reed', name: '芦苇浅滩', pool: [
-          p('fish', 'grass', 28), p('fish', 'white', 24), p('fish', 'crucian', 16),
-          p('fish', 'sturgeon', 3), p('material', 'rope', 12), p('component', '', 7),
+          p('fish', 'grass', 24), p('fish', 'white', 18), p('fish', 'crucian', 12),
+          p('fish', 'minnow', 12), p('fish', 'loach', 10), p('fish', 'yellowcat', 8),
+          p('material', 'rope', 12), p('component', '', 7),
         ] },
         { id: 'deep', name: '深水区', pool: [
-          p('fish', 'carp', 26), p('fish', 'crucian', 18), p('fish', 'catfish', 6),
-          p('fish', 'bass', 5), p('fish', 'sturgeon', 2), p('fish', 'relic', 1),
+          p('fish', 'carp', 22), p('fish', 'bighead', 14), p('fish', 'silvercarp', 12),
+          p('fish', 'blackcarp', 8), p('fish', 'catfish', 6), p('fish', 'bass', 6),
+          p('fish', 'sturgeon', 2), p('fish', 'arapaima', 2),
+          p('fish', 'voltaiceel', 1), p('fish', 'moonkoi', 1),
           p('material', 'lure', 10), p('component', '', 6),
         ] },
       ],
@@ -156,17 +240,21 @@
       desc: '水流湍急的河流，大鱼概率略高。',
       spots: [
         { id: 'shoal', name: '石滩', pool: [
-          p('fish', 'white', 26), p('fish', 'crucian', 20), p('fish', 'grass', 16),
-          p('fish', 'bass', 6), p('material', 'rope', 12), p('component', '', 7),
+          p('fish', 'white', 24), p('fish', 'riverperch', 18), p('fish', 'culter', 14),
+          p('fish', 'crucian', 10), p('fish', 'blackbass', 5),
+          p('material', 'rope', 12), p('component', '', 7),
         ] },
         { id: 'eddy', name: '回水湾', pool: [
-          p('fish', 'carp', 24), p('fish', 'crucian', 22), p('fish', 'catfish', 7),
-          p('fish', 'sturgeon', 3), p('material', 'bait_pack', 11), p('component', '', 6),
+          p('fish', 'carp', 24), p('fish', 'crucian', 20), p('fish', 'yellowcat', 12),
+          p('fish', 'grass', 10), p('fish', 'culter', 6), p('fish', 'mandarin', 5),
+          p('fish', 'arowana', 1),
+          p('material', 'bait_pack', 11), p('component', '', 6),
         ] },
         { id: 'fall', name: '瀑布潭', pool: [
-          p('fish', 'bass', 10), p('fish', 'catfish', 8), p('fish', 'carp', 16),
-          p('fish', 'sturgeon', 4), p('fish', 'relic', 1), p('material', 'lure', 10),
-          p('component', '', 7),
+          p('fish', 'carp', 12), p('fish', 'bass', 8), p('fish', 'yellowcheek', 6),
+          p('fish', 'catfish', 4), p('fish', 'mandarin', 3), p('fish', 'sturgeon', 2),
+          p('fish', 'ghostray', 1),
+          p('material', 'lure', 10), p('component', '', 7),
         ] },
       ],
     },
@@ -175,18 +263,22 @@
       desc: '咸淡水交界的海湾，稀有渔获倾向更高。',
       spots: [
         { id: 'beach', name: '沙滩', pool: [
-          p('fish', 'tilapia', 24), p('fish', 'crucian', 18), p('fish', 'tuna', 5),
-          p('fish', 'pearl', 2), p('material', 'bait_pack', 12), p('component', '', 7),
+          p('fish', 'tilapia', 22), p('fish', 'sardine', 18), p('fish', 'croaker', 14),
+          p('fish', 'sunfish', 5), p('fish', 'pearl', 2),
+          p('material', 'bait_pack', 12), p('component', '', 7),
         ] },
         { id: 'pier', name: '防波堤', pool: [
-          p('fish', 'tuna', 8), p('fish', 'bass', 6), p('fish', 'carp', 16),
-          p('fish', 'catfish', 5), p('fish', 'pearl', 2), p('material', 'lure', 11),
-          p('component', '', 7),
+          p('fish', 'seabass', 10), p('fish', 'tuna', 8), p('fish', 'mackerel', 8),
+          p('fish', 'cobia', 6), p('fish', 'bluefin', 3), p('fish', 'swordfish', 2),
+          p('fish', 'pearl', 2),
+          p('material', 'lure', 11), p('component', '', 7),
         ] },
         { id: 'reef', name: '礁石区', pool: [
-          p('fish', 'tuna', 10), p('fish', 'sturgeon', 4), p('fish', 'pearl', 3),
-          p('fish', 'koi', 2), p('fish', 'relic', 1), p('material', 'rope', 10),
-          p('component', '', 7),
+          p('fish', 'tuna', 10), p('fish', 'grouper', 9), p('fish', 'rubysnapper', 7),
+          p('fish', 'seabass', 4), p('fish', 'sturgeon', 3), p('fish', 'pearl', 3),
+          p('fish', 'dragonfish', 2), p('fish', 'amberlobster', 2),
+          p('fish', 'relic', 1), p('fish', 'dragonpearl', 1),
+          p('material', 'rope', 10), p('component', '', 7),
         ] },
       ],
     },
@@ -233,7 +325,10 @@
   }
   const ITEM_MAP = {};
   allItems().forEach(function (it) { ITEM_MAP[it.id] = it; });
-  function itemOf(id) { return ITEM_MAP[id] || { id: id, name: id, rarity: 'common', price: RARITY_PRICE.common, size: null, kind: 'unknown' }; }
+  function itemOf(id) {
+    const nid = normalizeItemId(id);
+    return ITEM_MAP[nid] || { id: nid, name: nid, rarity: 'common', price: RARITY_PRICE.common, size: null, kind: 'unknown' };
+  }
   function itemName(id) { return itemOf(id).name; }
 
   return {
@@ -241,6 +336,7 @@
     RARITY_PRICE: RARITY_PRICE,
     ROD_PARTS: ROD_PARTS, AFFIX_FRAMEWORK: AFFIX_FRAMEWORK,
     AFFIX_LABEL: AFFIX_LABEL, COMPONENTS: COMPONENTS,
+    EFFECT_CODES: EFFECT_CODES, affixesOf: affixesOf, normalizeItemId: normalizeItemId,
     rollComponent: rollComponent, componentOf: componentOf, fishTierOf: fishTierOf, spotsOf: spotsOf,
     GROUNDS: GROUNDS, NAV: NAV,
     allItems: allItems, itemOf: itemOf, itemName: itemName,

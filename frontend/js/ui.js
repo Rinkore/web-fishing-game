@@ -366,7 +366,7 @@ window.UI = (function () {
         const card = el('div', 'bec-card');
         card.innerHTML =
           '<div class="bec-name"><span class="' + rarityClass(c.rarity) + '">' + esc(c.name) + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
-          c.affixes.map(function (a) { return '<div class="bec-aff">+' + a.value + '% ' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</div>'; }).join('') +
+          c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + '">' + (a.value > 0 ? '+' : '') + a.value + '% ' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</div>'; }).join('') +
           '<div class="bec-meta">持有 ×' + o.n + '</div>';
         const use = el('button', 'mini primary-mini', (equipped && equipped.id === c.id) ? '已装备' : '装备');
         if (equipped && equipped.id === c.id) { use.disabled = true; use.classList.add('locked'); }
@@ -404,7 +404,7 @@ window.UI = (function () {
       const comp = D.componentOf(cur.compId);
       const cell = el('div', 'bd-cell' + (part.isCharm ? ' charm' : '') + (comp ? ' equipped' : ''));
       const affHtml = comp
-        ? comp.affixes.map(function (a) { return '<div class="af-line on">+' + a.value + '% ' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</div>'; }).join('')
+        ? comp.affixes.map(function (a) { return '<div class="af-line on' + (a.value < 0 ? ' aff-neg' : '') + '">' + (a.value > 0 ? '+' : '') + a.value + '% ' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</div>'; }).join('')
         : '<div class="af-line"><span class="muted">标准 · 无加成</span></div>';
       cell.innerHTML =
         '<div class="bd-part">' + esc(part.name) + (part.isCharm ? ' <span class="charm-tag">饰品</span>' : '') + '</div>' +
