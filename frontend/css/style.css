@@ -179,7 +179,7 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .r-rare { color: var(--rare); font-weight: 600; }
 
 /* BD 视图 */
-.bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 6px; align-items: start; }
+.bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 6px; }
 .bd-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
 .bd-cell.charm { border-color: var(--rare); }
 .bd-part { font-size: 13px; color: var(--muted); }
@@ -441,6 +441,16 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .rh-size .u { font-size: 12px; font-weight: 400; color: var(--muted); }
 .rh-who { color: var(--muted); font-size: 12px; margin-left: auto; }
 .record-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-items: start; }
+.record-cell.with-rec { cursor: pointer; }
+.record-cell.with-rec:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.rc-hint { font-size: 10px; color: var(--accent2); margin-top: 4px; }
+.rc-size.sf-size { color: var(--accent2) !important; }
+.top10-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; background: rgba(255,255,255,.03); margin-bottom: 5px; }
+.top10-rank { width: 36px; text-align: center; font-weight: 700; color: var(--big); flex: none; }
+.top10-size { font-weight: 700; width: 90px; flex: none; }
+.top10-size .u { font-size: 11px; font-weight: 400; color: var(--muted); }
+.top10-who { flex: 1; color: var(--accent2); }
+.top10-time { color: var(--muted); font-size: 11px; flex: none; }
 .record-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
 .record-cell.none { opacity: .5; }
 .rc-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
@@ -506,10 +516,10 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
   background: rgba(255,255,255,.05); color: var(--muted);
   border: 1px dashed var(--line); font-weight: 400;
 }
-.bd-cell { position: relative; }
+.bd-cell { position: relative; display: flex; flex-direction: column; }
 .bd-cell.equipped { border-color: var(--accent2); background: rgba(56,189,248,.05); }
 .bd-cell .af-line.on { color: var(--accent); }
-.bd-acts { display: flex; gap: 6px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+.bd-acts { display: flex; gap: 6px; margin-top: auto; padding-top: 10px; align-items: center; flex-wrap: wrap; }
 .bd-acts .tiny { font-size: 11px; }
 /* 组件选择器：浮层挂载在卡片下方，不撑大任何格子布局 */
 /* 装备面板：展示在卡片区域下方，全宽可读 */

@@ -1354,6 +1354,40 @@ window.UI = (function () {
   }
 
   // ---- 大鱼记录视图 ----
+  // 某种鱼的前十大捕获记录弹窗
+  function openRecordsModal(fishId) {
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    const meta = itemMeta(fishId);
+    const overlay = el('div', 'modal-overlay');
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeRecordsModal(); });
+    const box = el('div', 'modal-box shop-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">🏆 ' + esc(meta.name) + ' · 全服前十大捕获</span><button class="mini modal-close">✕ 关闭</button></div><div class="modal-body" id="records-modal-body">加载中…</div>';
+    box.querySelector('.modal-close').addEventListener('click', function () { closeRecordsModal(); });
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    window.Net.recordsTop(fishId).then(function (r) {
+      const body = document.getElementById('records-modal-body');
+      if (!body) return;
+      if (!r || !r.ok) { body.textContent = (r && r.data && r.data.error) || '加载失败'; return; }
+      const top = r.data.top || [];
+      body.innerHTML = '';
+      if (!top.length) { body.appendChild(el('div', 'hint', '该鱼还没有捕获记录。')); return; }
+      top.forEach(function (t, i) {
+        const rank = i + 1;
+        const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '#' + rank;
+        body.appendChild(el('div', 'top10-row',
+          '<span class="top10-rank">' + medal + '</span>' +
+          '<span class="top10-size">' + t.size + '<span class="u">cm</span></span>' +
+          '<span class="top10-who">' + esc(t.who) + '</span>' +
+          '<span class="top10-time">' + timeStr(t.t) + '</span>'));
+      });
+      body.appendChild(el('div', 'sd-legend', '共收录 ' + top.length + ' 条 · 每次捕获自动更新'));
+    });
+  }
+  function closeRecordsModal() {
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+  }
+
   function renderRecords() {
     const main = $('main');
     const st = S();
@@ -1389,12 +1423,15 @@ window.UI = (function () {
     withRec.sort(function (a, b) { return b.rec.size - a.rec.size; });
     const grid = el('div', 'record-grid');
     withRec.concat(without).forEach(function (e) {
-      const cell = el('div', 'record-cell' + (e.rec ? '' : ' none'));
+      const cell = el('div', 'record-cell' + (e.rec ? ' with-rec' : ' none'));
       if (e.rec) {
         cell.innerHTML =
           '<div class="rc-name ' + rarityClass(e.f.rarity) + '">' + esc(e.f.name) + '</div>' +
           '<div class="rc-size">' + e.rec.size + '<span class="u">cm</span></div>' +
-          '<div class="rc-who">' + esc(e.rec.who) + ' · ' + timeStr(e.rec.t) + '</div>';
+          '<div class="rc-who">' + esc(e.rec.who) + ' · ' + timeStr(e.rec.t) + '</div>' +
+          '<div class="rc-hint">点击查看前十大</div>';
+        cell.title = '点击查看该鱼全服前十大捕获';
+        cell.addEventListener('click', function () { openRecordsModal(e.f.id); });
       } else {
         cell.innerHTML =
           '<div class="rc-name locked-name">' + esc(e.f.name) + '</div>' +
@@ -1404,6 +1441,26 @@ window.UI = (function () {
       grid.appendChild(cell);
     });
     panel.appendChild(grid);
+
+    // 小鱼纪录（全服最小体型，升序）
+    const smalls = Object.keys(st.smallRecords || {}).map(function (id) { return st.smallRecords[id]; })
+      .sort(function (a, b) { return a.size - b.size; });
+    panel.appendChild(el('h3', null, '🐠 小鱼纪录（全服最小）'));
+    if (!smalls.length) {
+      panel.appendChild(el('div', 'hint', '还没有小鱼纪录。钓到一条鱼就会生成它的最小纪录。'));
+    } else {
+      const sgrid = el('div', 'record-grid');
+      smalls.forEach(function (r) {
+        const meta = itemMeta(r.id);
+        const cell = el('div', 'record-cell small-fish');
+        cell.innerHTML =
+          '<div class="rc-name ' + rarityClass(meta.rarity) + '">' + esc(r.name) + '</div>' +
+          '<div class="rc-size sf-size">' + r.size + '<span class="u">cm</span></div>' +
+          '<div class="rc-who">' + esc(r.who) + ' · ' + timeStr(r.t) + '</div>';
+        sgrid.appendChild(cell);
+      });
+      panel.appendChild(sgrid);
+    }
 
     // 我钓过的最大体型（从本地日志近似）
     const mine = {};

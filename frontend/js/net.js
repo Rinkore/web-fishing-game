@@ -65,6 +65,8 @@ window.Net = (function () {
   const shopHistory = (id) => apiFetch('GET', '/api/shop/history?id=' + encodeURIComponent(id));
   // 我的历史订单（市集成交：买入 + 卖出）
   const marketHistory = () => apiFetch('GET', '/api/market/history?token=' + encodeURIComponent(me ? me.token : ''));
+  // 某种鱼的全服前十大捕获记录（公开只读）
+  const recordsTop = (id) => apiFetch('GET', '/api/records/top?id=' + encodeURIComponent(id));
   const sell = (id, qty) => authed('/api/sell', { id: id, qty: qty });
   const marketList = (id, qty, price) => authed('/api/market/list', { id: id, qty: qty, price: price });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
@@ -112,6 +114,7 @@ window.Net = (function () {
           S.shop = m.shop || {};
           S.market = m.market || [];
           S.records = m.records || {};
+          if (m.small) S.smallRecords = m.small;
           S.groundCounts = m.grounds || {};
           S.trade = m.trade || null;
           if (m.codex) S.codex = m.codex;
@@ -133,6 +136,7 @@ window.Net = (function () {
           if (ui) ui.refreshAll('market');
         } else if (m.type === 'records') {
           S.records = m.records || {};
+          if (m.small) S.smallRecords = m.small;
           if (ui) ui.refreshAll('records');
         } else if (m.type === 'assets') {
           // 服务器权威资产：金币/库存/图鉴整体替换，前端不持账本
@@ -179,7 +183,7 @@ window.Net = (function () {
   return {
     register: register, login: login, fetchMe: fetchMe, setAuth: setAuth,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
-    shopHistory: shopHistory, marketHistory: marketHistory,
+    shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,
     tradeConfirm: tradeConfirm, tradeCancel: tradeCancel,

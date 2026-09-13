@@ -41,7 +41,7 @@ const sessions = new Map();  // token -> username(lowercased)
 let users = {};
 
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史） ----
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, priceLog: {}, tradeLog: {}, marketLog: [] };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, priceLog: {}, tradeLog: {}, marketLog: [] };
 
 // ---- 在线交易会话 ----
 // trade = { id, a:{key,name}, b:{key,name}, aItems:[{id,qty}], bItems:[], aOk, bOk, cooldownUntil, cancelled, createdAt }
@@ -143,11 +143,23 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   rec.codex[item.id] = cx;
 
   let recordEvent = null;
+  let smallEvent = false;
   if (FISH_ID_SET[item.id] && item.size != null && item.size > 0) {
     const cur = world.bigRecords[item.id];
     if (!cur || item.size > cur.size) {
       world.bigRecords[item.id] = { id: item.id, name: itemName(item.id), size: Math.round(item.size * 10) / 10, who: rec.name, t: Date.now() };
       recordEvent = world.bigRecords[item.id];
+    }
+    // 全服前十大捕获（记录页点开查看）
+    const top = (world.topCatches[item.id] = world.topCatches[item.id] || []);
+    top.push({ size: Math.round(item.size * 10) / 10, who: rec.name, t: Date.now() });
+    top.sort(function (a, b) { return b.size - a.size; });
+    if (top.length > 10) top.length = 10;
+    // 全服最小纪录
+    const sm = world.smallRecords[item.id];
+    if (!sm || item.size < sm.size) {
+      world.smallRecords[item.id] = { id: item.id, name: itemName(item.id), size: Math.round(item.size * 10) / 10, who: rec.name, t: Date.now() };
+      smallEvent = true;
     }
   }
 
@@ -162,10 +174,10 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     sendPlayersAll();
   }
   saveUsers();
-  if (recordEvent) {
+  if (recordEvent || smallEvent) {
     saveWorld();
     broadcastRecords();
-    broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null, record: true } });
+    if (recordEvent) broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null, record: true } });
   }
   // 定向推送：本条渔获 + 权威资产/图鉴（前端不持账本）
   sendTo(key, { type: 'catch', entry: entry });
@@ -327,7 +339,7 @@ function shopSnapshot() {
 }
 function broadcastShop() { broadcast({ type: 'shop', shop: shopSnapshot() }); }
 function broadcastMarket() { broadcast({ type: 'market', listings: world.listings }); }
-function broadcastRecords() { broadcast({ type: 'records', records: world.bigRecords }); }
+function broadcastRecords() { broadcast({ type: 'records', records: world.bigRecords, small: world.smallRecords }); }
 
 function groundCounts() {
   const map = {};
@@ -448,7 +460,7 @@ const server = http.createServer(function (req, res) {
     players.set(id, { id: id, name: rec.name, status: 'idle', groundId: null, spotId: null, recent: null, fishing: null });
     res.write('data: ' + JSON.stringify({
       type: 'init', you: id, players: Array.from(players.values()), feed: feed,
-      shop: shopSnapshot(), market: world.listings, records: world.bigRecords,
+      shop: shopSnapshot(), market: world.listings, records: world.bigRecords, small: world.smallRecords,
       grounds: groundCounts(), trade: myTradeView(id),
       codex: rec.codex || {}, catchCount: rec.catchCount || 0,
     }) + '\n\n');
@@ -557,6 +569,12 @@ const server = http.createServer(function (req, res) {
             world.bigRecords[itemId] = { id: itemId, name: itemName(itemId), size: Math.round(size * 10) / 10, who: rec.name, t: Date.now() };
             recordEvent = world.bigRecords[itemId];
           }
+          const topD = (world.topCatches[itemId] = world.topCatches[itemId] || []);
+          topD.push({ size: Math.round(size * 10) / 10, who: rec.name, t: Date.now() });
+          topD.sort(function (a, b) { return b.size - a.size; });
+          if (topD.length > 10) topD.length = 10;
+          const smD = world.smallRecords[itemId];
+          if (!smD || size < smD.size) world.smallRecords[itemId] = { id: itemId, name: itemName(itemId), size: Math.round(size * 10) / 10, who: rec.name, t: Date.now() };
         }
         const entry = { t: Date.now(), who: rec.name, item: d.item, ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
         feed.unshift(entry); if (feed.length > 60) feed.pop();
@@ -844,7 +862,13 @@ const server = http.createServer(function (req, res) {
     return apiResp(res, 200, { codex: rec.codex || {}, catchCount: rec.catchCount || 0 });
   }
   if (p === '/api/records' && req.method === 'GET') {
-    return apiResp(res, 200, { records: world.bigRecords });
+    return apiResp(res, 200, { records: world.bigRecords, small: world.smallRecords });
+  }
+  // 某种鱼的全服前十大捕获记录（公开只读）
+  if (p === '/api/records/top' && req.method === 'GET') {
+    const fid = u.query.id;
+    if (!FISH_ID_SET[fid]) return apiResp(res, 404, { error: '未知鱼类' });
+    return apiResp(res, 200, { id: fid, name: itemName(fid), top: (world.topCatches && world.topCatches[fid]) || [] });
   }
 
   // ---- 静态文件（集成模式托管 frontend；纯 API 模式返回 404） ----

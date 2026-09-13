@@ -23,6 +23,7 @@ window.Engine = (function () {
     shop: {},                   // 系统商店价格（服务器）
     market: [],                 // 市集挂单（服务器）
     records: {},                // 全服大鱼榜（服务器）
+    smallRecords: {},           // 全服小鱼纪录（服务器）
     groundCounts: {},           // 各渔场人数（服务器）
     onlineTotal: 0,
     trade: null, tradeLastEvent: null, tradeFlash: null,

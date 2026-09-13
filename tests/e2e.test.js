@@ -116,6 +116,12 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('B 收到 A 的渔获动态广播', sinkB.some(m => m.type === 'feed' && m.entry.who === '测试甲'));
   const invAfter = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
   check('渔获已服务器入库（背包增加）', Object.keys(invAfter).length > Object.keys(invBefore).length, JSON.stringify({ before: invBefore, after: invAfter }));
+  // 前十大 + 小鱼纪录
+  const fishId = Object.keys(invAfter).find(function (id) { return D.fishTierOf(id); }) || 'crucian';
+  const topC = await GET('http://localhost:' + P1 + '/api/records/top?id=' + fishId);
+  check('前十大接口返回捕获记录', topC.status === 200 && topC.data.top.length >= 1, JSON.stringify(topC.data).slice(0, 120));
+  const recSmall = await GET('http://localhost:' + P1 + '/api/records');
+  check('小鱼纪录随渔获生成', recSmall.status === 200 && Object.keys(recSmall.data.small || {}).length > 0);
   // 近期渔获（recent）：换大件概率最高的礁石区（~54%/竿），轮询等待广播
   await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'sunset', spotId: 'reef' });
   const recentMark = sinkB.length;
