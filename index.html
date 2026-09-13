@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>网页钓鱼小游戏 · 框架版 v0.2</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🎣 网页钓鱼小游戏 <span class="ver">v0.2 框架</span></div>
+    <div id="player-status" class="player-status"></div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <nav id="nav" class="nav"></nav>
+      <div class="side-foot">框架占位 · 未实现功能已锁定</div>
+    </aside>
+    <main id="main" class="content"></main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <div id="auth" class="auth-overlay">
+    <div class="auth-card">
+      <div class="brand-big">🎣 网页钓鱼小游戏</div>
+      <div class="auth-sub">v0.2 · 注册或登录后开始（支持真实多人联机）</div>
+      <div class="auth-tabs">
+        <button id="tab-login" class="active" data-tab="login">登录</button>
+        <button id="tab-register" data-tab="register">注册</button>
+      </div>
+      <input id="auth-user" class="auth-input" placeholder="用户名（3-20 位字母/数字/下划线）" autocomplete="username" />
+      <input id="auth-pass" class="auth-input" type="password" placeholder="密码（至少 4 位）" autocomplete="current-password" />
+      <input id="auth-name" class="auth-input" placeholder="显示名（注册可选，留空等同用户名）" style="display:none" />
+      <button id="auth-submit" class="primary big">登录</button>
+      <div id="auth-msg" class="auth-msg"></div>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/net.js"></script>
+  <script src="js/ui.js"></script>
+  <script>
+    window.Engine.init();
+    window.UI.init();
+  </script>
+</body>
+</html>
