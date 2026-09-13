@@ -77,7 +77,9 @@ window.Net = (function () {
   const tradeCancel = (tradeId) => authed('/api/trade/cancel', { tradeId: tradeId });
 
   function setAuth(token, profile) {
-    me = { id: profile.username, username: profile.username, name: profile.name, token: token };
+    // 服务器内部一律使用小写账号 key 作为身份（players/trade/market/history 均是），
+    // me.id 必须与之对齐，否则含大写字母的账号所有"是不是我"的判断都会失效
+    me = { id: (profile.username || '').toLowerCase(), username: profile.username, name: profile.name, token: token };
     state().me = me;
     connectStream();
   }
@@ -158,8 +160,9 @@ window.Net = (function () {
           if (ui) ui.refreshAll('trade');
         } else if (m.type === 'tradeDone') {
           const pl = S.player;
-          if (m.a && m.a.key === (me && me.id)) { pl.coins = m.a.coins; S.inventory = m.a.inventory || S.inventory; }
-          if (m.b && m.b.key === (me && me.id)) { pl.coins = m.b.coins; S.inventory = m.b.inventory || S.inventory; }
+          const myKey = me ? String(me.id).toLowerCase() : null;
+          if (m.a && myKey && String(m.a.key).toLowerCase() === myKey) { pl.coins = m.a.coins; S.inventory = m.a.inventory || S.inventory; }
+          if (m.b && myKey && String(m.b.key).toLowerCase() === myKey) { pl.coins = m.b.coins; S.inventory = m.b.inventory || S.inventory; }
           S.trade = null;
           S.tradeFlash = '交易完成，物品已互换';
           if (ui) ui.refreshAll('trade');

@@ -621,10 +621,10 @@ window.UI = (function () {
   let buySearchFocus = false;
   let buySort = { key: 'time', dir: 'desc' };
 
-  // 挂单行：自己的显示「下架」，他人的显示「购买」
+  // 挂单行：自己的显示「下架」，他人的显示「购买」（seller 为小写 key，比对做大小写免疫）
   function marketRow(l, st, me) {
     const meta = itemMeta(l.id);
-    const mine = me && l.seller === me.id;
+    const mine = !!(me && me.id != null && String(l.seller).toLowerCase() === String(me.id).toLowerCase());
     const total = l.price * l.qty;
     const row = el('div', 'mk-row' + (mine ? ' mine' : ''));
     row.innerHTML =
@@ -670,7 +670,7 @@ window.UI = (function () {
 
     const colMain = el('div', 'col-main');
     const market = st.market || [];
-    const mineCount = market.filter(function (l) { return me && l.seller === me.id; }).length;
+    const mineCount = market.filter(function (l) { return me && me.id != null && String(l.seller).toLowerCase() === String(me.id).toLowerCase(); }).length;
     const tabs = el('div', 'inv-cats');
     [['buy', '🛒 购买市场', market.length - mineCount], ['mine', '🏷️ 我的挂单', mineCount], ['history', '📜 历史订单', null]].forEach(function (kv) {
       const b = el('button', 'inv-cat' + (marketTab === kv[0] ? ' on' : ''), kv[1] + (kv[2] != null ? ' ' + kv[2] : ''));
@@ -705,7 +705,7 @@ window.UI = (function () {
           return;
         }
         trades.forEach(function (t) {
-          const isBuy = me && t.buyer === me.id;
+          const isBuy = me && String(t.buyer || '').toLowerCase() === String(me.id || '').toLowerCase();
           const row = el('div', 'inv-row hist-line');
           row.innerHTML =
             '<span class="hist-tag ' + (isBuy ? 'hist-buy' : 'hist-sell') + '">' + (isBuy ? '买入' : '卖出') + '</span>' +
@@ -912,7 +912,7 @@ window.UI = (function () {
     side.appendChild(breakdown);
 
     // 我的挂单（可下架；上架费不退）
-    const mine = (st.market || []).filter(function (l) { return st.me && l.seller === st.me.id; })
+    const mine = (st.market || []).filter(function (l) { return st.me && st.me.id != null && String(l.seller).toLowerCase() === String(st.me.id).toLowerCase(); })
       .sort(function (a, b) { return b.t - a.t; });
     side.appendChild(el('h3', null, '🏷️ 我的挂单（' + mine.length + '）'));
     const ml = el('div', 'my-listings');
@@ -950,7 +950,7 @@ window.UI = (function () {
   function draftFor(t) {
     if (tradeDraft.tid !== t.id) {
       // 新交易会话：以服务器当前提供项为初始草稿
-      const meIsA = S().me && t.a.key === S().me.id;
+      const meIsA = S().me && S().me.id != null && t.a.key === String(S().me.id).toLowerCase();
       const myItems = meIsA ? (t.aItems || []) : (t.bItems || []);
       const sel = {};
       myItems.forEach(function (it) { sel[it.id] = it.qty; });
@@ -994,8 +994,9 @@ window.UI = (function () {
       return;
     }
 
-    // 有交易：先确定双方身份，再按阶段渲染
-    const meIsA = !!(st.me && t.a.key === st.me.id);
+    // 有交易：先确定双方身份（key 均为小写，比对时做大小写免疫），再按阶段渲染
+    const meKey = st.me && st.me.id != null ? String(st.me.id).toLowerCase() : null;
+    const meIsA = !!(meKey && t.a.key === meKey);
     const myItems = meIsA ? t.aItems : t.bItems;
     const otherItems = meIsA ? t.bItems : t.aItems;
     const myOk = meIsA ? t.aOk : t.bOk;
