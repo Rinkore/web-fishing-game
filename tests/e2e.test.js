@@ -175,6 +175,14 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('正确密码登录成功', lg.status === 200 && !!lg.data.token);
   check('无 token 取资料被拒 401', (await GET('http://localhost:' + P1 + '/api/me')).status === 401);
   check('伪造 token 取资料被拒 401', (await GET('http://localhost:' + P1 + '/api/me?token=fake123')).status === 401);
+  // 顶号：同账号二次登录使旧会话失效
+  const rc3 = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_c', password: 'pass1234' });
+  check('第三个账号注册成功', rc3.status === 200);
+  const lgC1 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_c', password: 'pass1234' });
+  const lgC2 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_c', password: 'pass1234' });
+  check('同账号二次登录成功（顶号）', lgC2.status === 200);
+  check('旧 token 被顶号失效 401', (await GET('http://localhost:' + P1 + '/api/me?token=' + lgC1.data.token)).status === 401);
+  check('新 token 可用', (await GET('http://localhost:' + P1 + '/api/me?token=' + lgC2.data.token)).status === 200);
 
   // ---------- 4. 资产持久化与防伪造 ----------
   section('4. 资产持久化 + 客户端不可伪造（服务器权威）');

@@ -1643,6 +1643,13 @@ window.UI = (function () {
     $('auth-msg').textContent = '';
   }
   function showAuth() { $('auth').style.display = 'flex'; }
+  // 顶号/会话失效：回到登录界面并提示原因
+  function forceLogout(msg) {
+    currentView = 'fishing';
+    showAuth();
+    authMsg(msg || '');
+    renderNav();
+  }
   function authMsg(text) { $('auth-msg').textContent = text || ''; }
   function onAuthSubmit() {
     const user = $('auth-user').value.trim();
@@ -1752,7 +1759,7 @@ window.UI = (function () {
 
   return {
     init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
-    toast: toast, renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView,
+    toast: toast, renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,
     getView: function () { return currentView; },
     setView: function (v) { currentView = v; },
   };

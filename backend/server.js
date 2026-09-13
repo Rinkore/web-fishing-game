@@ -218,6 +218,25 @@ function stopFishingSession(key) {
   sendPlayersAll();
 }
 
+// 顶号：使该账号所有旧会话失效并断开其实时连接（一个账号同时只允许一个在线窗口）
+function kickUserSessions(key) {
+  const dead = [];
+  sessions.forEach(function (k, t) { if (k === key) dead.push(t); });
+  dead.forEach(function (t) { sessions.delete(t); }); // 使旧 token 全部失效（顶号核心）
+  stopFishingSession(key);
+  const doomed = [];
+  clientOwners.forEach(function (ownerKey, res) { if (ownerKey === key) doomed.push(res); });
+  doomed.forEach(function (res) {
+    clients.delete(res);
+    clientOwners.delete(res);
+    try { res.write('data: ' + JSON.stringify({ type: 'kicked', msg: '账号已在其他窗口登录' }) + '\n\n'); } catch (e) {}
+    try { res.end(); } catch (e) {}
+  });
+  if (players.has(key)) { players.delete(key); sendPlayersAll(); }
+  const t = tradeOfPlayer(key);
+  if (t) { t.cancelled = true; t.closed = true; broadcastTrade(t); trades.delete(t.id); }
+}
+
 function basePrice(id) { return ITEM_PRICE[id] || 10; }
 function itemName(id) { return ITEM_NAME[id] || id; }
 
@@ -450,6 +469,7 @@ const server = http.createServer(function (req, res) {
       const key = (d.username || '').trim().toLowerCase();
       const rec = users[key];
       if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) return apiResp(res, 401, { error: '用户名或密码错误' });
+      kickUserSessions(key); // 顶号：同账号旧会话全部失效
       const token = newToken(); sessions.set(token, key);
       apiResp(res, 200, { token: token, profile: profileOf(key) });
     });
@@ -482,7 +502,11 @@ const server = http.createServer(function (req, res) {
     const key = u.query.token && sessions.get(u.query.token);
     res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*' });
     res.write('retry: 3000\n\n');
-    if (!key) { res.write('data: ' + JSON.stringify({ type: 'init', you: null, players: [], feed: [] }) + '\n\n'); req.on('close', function () {}); return; }
+    if (!key) {
+      res.write('data: ' + JSON.stringify({ type: 'kicked', msg: '登录已失效，请重新登录' }) + '\n\n');
+      res.end();
+      return;
+    }
     clients.add(res);
     clientOwners.set(res, key);
     const id = key;
@@ -498,15 +522,21 @@ const server = http.createServer(function (req, res) {
     sendPlayersAll();
     const hb = setInterval(function () { try { res.write(': ping\n\n'); } catch (e) {} }, 25000);
     req.on('close', function () {
-      clients.delete(res); clientOwners.delete(res); clearInterval(hb);
+      clearInterval(hb);
+      const wasTracked = clientOwners.get(res) === id;
+      clients.delete(res); clientOwners.delete(res);
+      if (!wasTracked) return; // 该连接已被顶号流程接管，跳过清理
       stopFishingSession(id); // 断线即停竿：钓鱼循环是服务器权威的，人走竿收
-      if (players.has(id)) { players.delete(id); sendPlayersAll(); }
-      // 玩家掉线：其进行中的交易自动取消
-      const t = tradeOfPlayer(id);
-      if (t) {
-        t.cancelled = true; t.closed = true;
-        broadcastTrade(t);
-        trades.delete(t.id);
+      const stillLive = Array.from(clientOwners.values()).some(function (k) { return k === id; });
+      if (!stillLive) {
+        if (players.has(id)) { players.delete(id); sendPlayersAll(); }
+        // 玩家掉线：其进行中的交易自动取消
+        const t = tradeOfPlayer(id);
+        if (t) {
+          t.cancelled = true; t.closed = true;
+          broadcastTrade(t);
+          trades.delete(t.id);
+        }
       }
     });
     return;

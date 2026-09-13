@@ -174,6 +174,13 @@ window.Net = (function () {
             if (S.log.length > 60) S.log.pop();
           }
           if (ui) ui.refreshAll('catch');
+        } else if (m.type === 'kicked') {
+          // 顶号/会话失效：清理本地状态并回到登录界面
+          try { localStorage.removeItem('fishing_token'); } catch (e) {}
+          if (es) { try { es.close(); } catch (e) {} es = null; }
+          me = null;
+          state().me = null;
+          if (ui && ui.forceLogout) ui.forceLogout(m.msg || '账号已在其他窗口登录');
         } else if (m.type === 'notice') {
           if (ui && ui.toast) ui.toast(m.msg || '');
         } else if (m.type === 'trade') {
