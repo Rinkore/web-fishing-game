@@ -241,9 +241,11 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .bulk-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .bulk-row label { font-size: 12px; color: var(--muted); }
 .bulk-select {
-  padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line);
-  background: rgba(255,255,255,.05); color: var(--text); font-size: 13px;
+  padding: 6px 10px; border-radius: 8px; border: 1px solid var(--accent2);
+  background: var(--panel-solid); color: var(--text); font-size: 13px; cursor: pointer;
 }
+.bulk-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.bulk-select option { background: var(--panel-solid); color: var(--text); }
 .bulk-est {
   font-size: 13px; padding: 8px 10px; border-radius: 8px; margin-bottom: 8px;
   background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.35);

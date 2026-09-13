@@ -885,6 +885,23 @@ window.UI = (function () {
   let bulkCat = 'all';
   let bulkRar = 'all';
 
+  // 只更新一键出售的预估数字（不重绘页面，保住展开中的下拉框）
+  function updateBulkEst() {
+    const st = S();
+    const est = document.querySelector('.bulk-est');
+    if (!est) return;
+    const mIds = Object.keys(st.inventory).filter(function (id) {
+      const m = itemMeta(id);
+      return (bulkCat === 'all' || m.kind === bulkCat) && (bulkRar === 'all' || m.rarity === bulkRar);
+    });
+    const mCnt = mIds.reduce(function (s, id) { return s + st.inventory[id]; }, 0);
+    const unit = function (id) { const sp = st.shop && st.shop[id]; return sp ? sp.price : itemMeta(id).price; };
+    const mEst = mIds.reduce(function (s, id) { return s + unit(id) * st.inventory[id]; }, 0);
+    est.innerHTML = '将出售 <b>' + mIds.length + '</b> 种 / <b>' + mCnt + '</b> 件 · 预估收入 <b>' + Math.round(mEst) + '</b>💰<span class="muted">（按当前实时收购价）</span>';
+    const go = Array.from(document.querySelectorAll('.bulk-sub button')).find(function (b) { return b.textContent === '确认出售'; });
+    if (go) go.classList.toggle('locked', mCnt === 0);
+  }
+
   // 一键出售：按种类/品质筛选后逐个卖给系统商店（顺序执行，避免并发覆盖资产）
   function bulkSellMatching() {
     const st = S();
@@ -1033,7 +1050,7 @@ window.UI = (function () {
         const o = el('option', null, kv[1]); o.value = kv[0]; catSel.appendChild(o);
       });
       catSel.value = bulkCat;
-      catSel.addEventListener('change', function () { bulkCat = catSel.value; renderView(); });
+      catSel.addEventListener('change', function () { bulkCat = catSel.value; updateBulkEst(); });
       row1.appendChild(catSel);
       row1.appendChild(el('label', null, '品质'));
       const rarSel = el('select', 'bulk-select');
@@ -1041,7 +1058,7 @@ window.UI = (function () {
         const o = el('option', null, kv[1]); o.value = kv[0]; rarSel.appendChild(o);
       });
       rarSel.value = bulkRar;
-      rarSel.addEventListener('change', function () { bulkRar = rarSel.value; renderView(); });
+      rarSel.addEventListener('change', function () { bulkRar = rarSel.value; updateBulkEst(); });
       row1.appendChild(rarSel);
       sub.appendChild(row1);
 
@@ -1620,6 +1637,11 @@ window.UI = (function () {
   function refreshAll(scope) {
     if (scope === 'all') scope = null; // init 全量刷新
     if (shopModalId && scope === 'shop') fillShopModal(shopModalId); // 弹窗数据静默刷新
+    // 一键出售子菜单展开时：只更新预估数字，不重绘页面（下拉框不会被广播冲掉）
+    if (currentView === 'inventory' && bulkSellOpen && scope && scope !== 'shop') {
+      updateBulkEst();
+      return;
+    }
     renderTopbar(); renderNav();
     const scopes = VIEW_SCOPES[currentView];
     if (!scope || !scopes || scopes.indexOf(scope) >= 0) renderView();
