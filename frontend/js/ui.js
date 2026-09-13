@@ -285,7 +285,6 @@ window.UI = (function () {
   function setPart(partKey, compId) {
     call(window.Net.bdSet(partKey, compId || null), null).then(function (r) {
       if (r && r.ok) {
-        bdPickerPart = null;
         S().bd = r.data.bd;
         if (r.data.inventory) S().inventory = r.data.inventory;
         E().refreshEffects();
@@ -295,36 +294,89 @@ window.UI = (function () {
     });
   }
 
-  // 当前展开组件选择器的部位（模块级：SSE 刷新背包导致重绘后可恢复，不被刷掉）
-  let bdPickerPart = null;
+  // 装备面板状态：当前展开的部位 + 面板内筛选/排序（模块级：重绘间保留）
+  let bdEquipPart = null;
+  let bdEquipFilter = 'all';
+  let bdEquipSort = 'rarity';
+  let bdEquipDir = 'desc';
+  const BD_AFFIXES = [['speed', '⚡ 钓速'], ['big', '🐟 大鱼'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓']];
 
-  // 展开选择器：浮层定位，不撑大任何卡片布局
-  function openBdPicker(grid, cell, part) {
-    grid.querySelectorAll('.comp-picker').forEach(function (p) { p.remove(); });
-    const st = S();
+  // 装备面板：展示在卡片区域下方的空白区，可按属性筛选、按稀有度/价格/属性值排序
+  function renderBdEquipPanel(grid, st) {
+    const old = document.querySelector('.bd-equip-panel');
+    if (old) old.remove();
+    const part = D.ROD_PARTS.find(function (p) { return p.key === bdEquipPart; });
+    if (!part) return;
     const equipped = D.componentOf(st.bd[part.key] && st.bd[part.key].compId);
-    const owns = Object.keys(st.inventory).filter(function (id) {
-      const c = D.componentOf(id);
-      return c && c.part === part.key && st.inventory[id] > 0;
-    });
-    if (!owns.length) { bdPickerPart = null; return; }
-    const picker = el('div', 'comp-picker');
-    picker.appendChild(el('div', 'tp-head', '选择要装备的「' + part.name + '」组件（装备即消耗 1 件，卸下不返还）'));
-    owns.forEach(function (id) {
-      const c = D.componentOf(id);
-      const row = el('div', 'pick-row');
-      row.innerHTML = '<span class="' + rarityClass(c.rarity) + '">' + esc(c.name) + '</span>' +
-        '<span class="pick-aff">' + c.affixes.map(function (a) { return '+' + a.value + '% ' + esc(D.AFFIX_LABEL[a.type] || a.type); }).join(' · ') + '</span>' +
-        '<span class="cnt">持有 ×' + st.inventory[id] + '</span>';
-      const use = el('button', 'mini primary-mini', (equipped && equipped.id === id) ? '已装备' : '装备');
-      if (equipped && equipped.id === id) { use.disabled = true; use.classList.add('locked'); }
-      use.addEventListener('click', function () { setPart(part.key, id); });
-      row.appendChild(use);
-      picker.appendChild(row);
-    });
-    cell.appendChild(picker);
-  }
+    const owned = Object.keys(st.inventory)
+      .map(function (id) { return { c: D.componentOf(id), n: st.inventory[id] }; })
+      .filter(function (o) { return o.c && o.c.part === part.key && o.n > 0; });
+    if (!owned.length) { bdEquipPart = null; return; }
 
+    const panelBox = el('div', 'bd-equip-panel');
+    const head = el('div', 'bde-head');
+    head.innerHTML = '<span class="bde-title">可装备的「' + esc(part.name) + '」组件（装备即消耗 1 件，卸下不返还）</span>';
+    const close = el('button', 'mini', '收起');
+    close.addEventListener('click', function () { bdEquipPart = null; renderView(); });
+    head.appendChild(close);
+    panelBox.appendChild(head);
+
+    // 属性筛选 + 排序控件
+    const ctr = el('div', 'bde-controls');
+    [['all', '全部属性']].concat(BD_AFFIXES).forEach(function (kv) {
+      const b = el('button', 'bf-cat' + (bdEquipFilter === kv[0] ? ' on' : ''), kv[1]);
+      b.addEventListener('click', function () { if (bdEquipFilter !== kv[0]) { bdEquipFilter = kv[0]; renderView(); } });
+      ctr.appendChild(b);
+    });
+    ctr.appendChild(el('span', 'bf-sort-label', '排序'));
+    [['rarity', '稀有度'], ['price', '价格'], ['affix', '属性值']].forEach(function (kv) {
+      const active = bdEquipSort === kv[0];
+      const arrow = active ? (bdEquipDir === 'desc' ? ' ↓' : ' ↑') : '';
+      const b = el('button', 'bf-cat bf-sort-btn' + (active ? ' on' : ''), kv[1] + arrow);
+      b.addEventListener('click', function () {
+        if (bdEquipSort === kv[0]) bdEquipDir = bdEquipDir === 'desc' ? 'asc' : 'desc';
+        else { bdEquipSort = kv[0]; bdEquipDir = 'desc'; }
+        renderView();
+      });
+      ctr.appendChild(b);
+    });
+    panelBox.appendChild(ctr);
+
+    // 组件卡片
+    let list = owned.filter(function (o) { return bdEquipFilter === 'all' || o.c.affixes.some(function (a) { return a.type === bdEquipFilter; }); });
+    const rank = { epic: 3, rare: 2, common: 1 };
+    const affVal = function (o) {
+      if (bdEquipFilter === 'all') return o.c.affixes.reduce(function (s, a) { return s + a.value; }, 0);
+      const a = o.c.affixes.find(function (x) { return x.type === bdEquipFilter; });
+      return a ? a.value : 0;
+    };
+    list.sort(function (x, y) {
+      if (bdEquipSort === 'price') return bdEquipDir === 'desc' ? y.c.price - x.c.price : x.c.price - y.c.price;
+      if (bdEquipSort === 'affix') return bdEquipDir === 'desc' ? affVal(y) - affVal(x) : affVal(x) - affVal(y);
+      const d = (rank[y.c.rarity] || 0) - (rank[x.c.rarity] || 0);
+      return (bdEquipDir === 'desc' ? d : -d) || y.c.price - x.c.price;
+    });
+    const grid2 = el('div', 'bde-grid');
+    if (!list.length) {
+      grid2.appendChild(el('div', 'hint', '没有符合筛选条件的组件。'));
+    } else {
+      list.forEach(function (o) {
+        const c = o.c;
+        const card = el('div', 'bec-card');
+        card.innerHTML =
+          '<div class="bec-name"><span class="' + rarityClass(c.rarity) + '">' + esc(c.name) + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
+          c.affixes.map(function (a) { return '<div class="bec-aff">+' + a.value + '% ' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</div>'; }).join('') +
+          '<div class="bec-meta">持有 ×' + o.n + '</div>';
+        const use = el('button', 'mini primary-mini', (equipped && equipped.id === c.id) ? '已装备' : '装备');
+        if (equipped && equipped.id === c.id) { use.disabled = true; use.classList.add('locked'); }
+        use.addEventListener('click', function () { setPart(part.key, c.id); });
+        card.appendChild(use);
+        grid2.appendChild(card);
+      });
+    }
+    panelBox.appendChild(grid2);
+    grid.parentNode.insertBefore(panelBox, grid.nextSibling);
+  }
   function renderBD() {
     const main = $('main');
     const st = S();
@@ -346,7 +398,6 @@ window.UI = (function () {
     panel.appendChild(strip);
 
     const grid = el('div', 'bd-grid');
-    const partCells = {}; // key -> {cell, part}（重绘后恢复展开中的选择器）
     D.ROD_PARTS.forEach(function (part) {
       const cur = st.bd[part.key] || {};
       const comp = D.componentOf(cur.compId);
@@ -375,14 +426,9 @@ window.UI = (function () {
       if (owns.length) {
         const btn = el('button', 'mini primary-mini', '装备组件');
         btn.addEventListener('click', function () {
-          if (bdPickerPart === part.key) { // 再点一次收起
-            bdPickerPart = null;
-            const open = cell.querySelector('.comp-picker');
-            if (open) open.remove();
-            return;
-          }
-          bdPickerPart = part.key;
-          openBdPicker(grid, cell, part);
+          // 点开/切换：装备面板展示在卡片区域下方的大块空白区
+          bdEquipPart = (bdEquipPart === part.key) ? null : part.key;
+          renderView();
         });
         acts.appendChild(btn);
       } else {
@@ -390,11 +436,10 @@ window.UI = (function () {
       }
       cell.appendChild(acts);
       grid.appendChild(cell);
-      partCells[part.key] = { cell: cell, part: part };
     });
-    // 重绘（钓鱼入包触发 assets 刷新等）后恢复展开中的选择器
-    if (bdPickerPart && partCells[bdPickerPart]) openBdPicker(grid, partCells[bdPickerPart].cell, partCells[bdPickerPart].part);
     panel.appendChild(grid);
+    // 装备面板：展示在卡片区域下方的空白区（重绘后自动恢复）
+    if (bdEquipPart) renderBdEquipPanel(grid, st);
     panel.appendChild(el('div', 'note-block',
       '<b>组件怎么获得？</b>钓鱼时有概率钓到各部位组件（稀有/史诗更少见）。' +
       '<b>装备即消耗</b>：安装会使用掉背包中的 1 件该组件（卸下不返还），加成持续生效并在服务器实时结算（正在钓鱼时钓速也会立即调整）。'));
