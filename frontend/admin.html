@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>钓鱼后台管理</title>
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+  <!-- 登录浮层 -->
+  <div id="login" class="login-overlay">
+    <div class="login-card">
+      <div class="brand-big">🛡 钓鱼后台管理</div>
+      <div class="login-sub">使用游戏账号登录 · 服务器无管理员时，第一个登录的账号自动成为管理员</div>
+      <input id="login-user" class="ipt" placeholder="用户名" autocomplete="username" />
+      <input id="login-pass" class="ipt" type="password" placeholder="密码" autocomplete="current-password" />
+      <button id="login-btn" class="btn primary big">登录管理后台</button>
+      <div id="login-msg" class="login-msg"></div>
+      <div class="login-foot">游戏入口：<a href="index.html">index.html</a></div>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <header class="topbar">
+    <div class="brand">🛡 钓鱼后台管理 <span class="ver">admin</span></div>
+    <div class="top-right">
+      <span id="who" class="who"></span>
+      <button id="logout-btn" class="btn ghost">退出</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <nav id="nav" class="nav"></nav>
+    </aside>
+    <main id="main" class="content"></main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="js/admin.js"></script>
+</body>
+</html>
