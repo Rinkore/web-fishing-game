@@ -502,8 +502,8 @@ window.UI = (function () {
   }
 
   // ---- 系统商店视图 ----
-  // 当前展开详情的商品（模块级：SSE 刷新重绘后恢复）
-  let shopDetailId = null;
+  // 商品详情弹窗：固定居中子窗口，独立于页面重绘流程（广播只更新数据不重建窗口）
+  let shopModalId = null;
 
   // 交易记录合并：同一账号 60 秒内的多笔合为一笔（数量累加、价格取最新）
   function mergeTrades(trades) {
@@ -522,20 +522,39 @@ window.UI = (function () {
     return out;
   }
 
-  // 商品详情浮层：固定尺寸（开合不引起跳动）+ 全量价格走势（每分钟一采样，>160 点降采样）+ 常驻交易记录
-  function openShopDetail(grid, card, id) {
-    grid.querySelectorAll('.shop-detail').forEach(function (d) { d.remove(); });
-    const box = el('div', 'shop-detail loading', '加载中…');
-    card.appendChild(box);
-    window.Net.shopHistory(id).then(function (r) {
-      if (!r || !r.ok) { box.textContent = (r && r.data && r.data.error) || '加载失败'; return; }
-      if (shopDetailId !== id) return; // 已被收起
-      const d = r.data;
-      box.innerHTML = '';
-      box.appendChild(el('div', 'sd-title', '📈 ' + esc(itemMeta(id).name) + ' · 价格走势与交易量'));
-      box.appendChild(el('div', 'sd-vol', '今日售出 <b>' + (d.soldToday || 0) + '</b> 件 · 累计 <b>' + (d.soldTotal || 0) + '</b> 件 · 现价 <b>' + d.price + '</b>💰（基准 ' + d.base + '）'));
+  // 打开商品详情弹窗并拉取数据
+  function openShopModal(id) {
+    shopModalId = id;
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    const overlay = el('div', 'modal-overlay');
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeShopModal(); });
+    const box = el('div', 'modal-box shop-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">📈 加载中…</span><button class="mini modal-close">✕ 关闭</button></div><div class="modal-body" id="shop-modal-body">加载中…</div>';
+    box.querySelector('.modal-close').addEventListener('click', function () { closeShopModal(); });
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    fillShopModal(id);
+  }
 
-      // 价格走势：服务器每分钟采样，保留 6 小时；>160 点时按桶平均降采样显示
+  function closeShopModal() {
+    shopModalId = null;
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+  }
+
+  // 拉取并填充弹窗内容（广播触发时静默刷新，窗口本体不动）
+  function fillShopModal(id) {
+    const body = document.getElementById('shop-modal-body');
+    const overlay = document.querySelector('.modal-overlay');
+    if (overlay) overlay.querySelector('.modal-title').textContent = '📈 ' + (itemMeta(id).name) + ' · 价格走势与交易量';
+    if (!body || shopModalId !== id) return;
+    window.Net.shopHistory(id).then(function (r) {
+      if (!body || shopModalId !== id) return;
+      if (!r || !r.ok) { body.textContent = (r && r.data && r.data.error) || '加载失败'; return; }
+      const d = r.data;
+      body.innerHTML = '';
+      body.appendChild(el('div', 'sd-vol', '今日售出 <b>' + (d.soldToday || 0) + '</b> 件 · 累计 <b>' + (d.soldTotal || 0) + '</b> 件 · 现价 <b>' + d.price + '</b>💰（基准 ' + d.base + '）'));
+
+      // 价格走势：全部采样（>160 点按桶平均降采样）
       let pts = (d.points || []).slice();
       if (pts.length > 160) {
         const step = pts.length / 160;
@@ -557,15 +576,15 @@ window.UI = (function () {
           bar.style.height = h + '%';
           spark.appendChild(bar);
         });
-        box.appendChild(spark);
+        body.appendChild(spark);
         const spanMin = Math.max(1, Math.round((pts[pts.length - 1].t - pts[0].t) / 60000));
-        box.appendChild(el('div', 'sd-legend', '近 ' + spanMin + ' 分钟（每分钟一采样） · 红=不低于基准 · 蓝=低于基准'));
+        body.appendChild(el('div', 'sd-legend', '近 ' + spanMin + ' 分钟（每分钟一采样） · 红=不低于基准 · 蓝=低于基准'));
       } else {
-        box.appendChild(el('div', 'sd-legend', '价格采样积累中（服务器每分钟记录一次）。'));
+        body.appendChild(el('div', 'sd-legend', '价格采样积累中（服务器每分钟记录一次）。'));
       }
 
-      // 交易记录：同账号 1 分钟内合并，始终显示（固定高度滚动）
-      box.appendChild(el('div', 'sd-sub', '🧾 交易记录 <span class="muted">（同账号 1 分钟内合并）</span>'));
+      // 交易记录
+      body.appendChild(el('div', 'sd-sub', '🧾 交易记录 <span class="muted">（同账号 1 分钟内合并）</span>'));
       const tl = el('div', 'sd-trades');
       const merged = mergeTrades(d.trades || []);
       if (!merged.length) {
@@ -577,10 +596,10 @@ window.UI = (function () {
             ' @ ' + t.unit + '💰' + mergedTag));
         });
       }
-      box.appendChild(tl);
+      body.appendChild(tl);
 
       // 最新价格变化
-      box.appendChild(el('div', 'sd-sub', '💹 最新价格变化'));
+      body.appendChild(el('div', 'sd-sub', '💹 最新价格变化'));
       const arr = d.points || [];
       const list = el('div', 'sd-list');
       if (!arr.length) {
@@ -592,7 +611,7 @@ window.UI = (function () {
           list.appendChild(el('div', 'sd-line', timeStr(arr[i].t) + ' · ' + arr[i].p + '💰 ' + trend));
         }
       }
-      box.appendChild(list);
+      body.appendChild(list);
     });
   }
 
@@ -631,21 +650,10 @@ window.UI = (function () {
           .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderView(); } });
       });
       card.appendChild(btn);
-      card.addEventListener('click', function () {
-        if (shopDetailId === id) { // 再点一次收起
-          shopDetailId = null;
-          const d = card.querySelector('.shop-detail');
-          if (d) d.remove();
-          return;
-        }
-        shopDetailId = id;
-        openShopDetail(grid, card, id);
-      });
+      card.addEventListener('click', function () { openShopModal(id); });
       cardById[id] = card;
       grid.appendChild(card);
     });
-    // 重绘后恢复展开中的商品详情
-    if (shopDetailId && cardById[shopDetailId]) openShopDetail(grid, cardById[shopDetailId], shopDetailId);
     colMain.appendChild(grid);
     panel.appendChild(colMain);
 
@@ -854,6 +862,41 @@ window.UI = (function () {
   // ---- 背包视图（独立分页：分类明细 + 出售/上架 + 汇总 + 我的挂单） ----
   // 当前分类（模块级：重绘间保留）
   let invCategory = 'all';
+  let bulkSellOpen = false;
+  let bulkCat = 'all';
+  let bulkRar = 'all';
+
+  // 一键出售：按种类/品质筛选后逐个卖给系统商店（顺序执行，避免并发覆盖资产）
+  function bulkSellMatching() {
+    const st = S();
+    const unit = function (id) { const sp = st.shop && st.shop[id]; return sp ? sp.price : itemMeta(id).price; };
+    const ids = Object.keys(st.inventory).filter(function (id) {
+      const m = itemMeta(id);
+      return (bulkCat === 'all' || m.kind === bulkCat) && (bulkRar === 'all' || m.rarity === bulkRar);
+    });
+    if (!ids.length) { toast('没有符合条件可出售的物品'); return; }
+    const totalCnt = ids.reduce(function (s, id) { return s + st.inventory[id]; }, 0);
+    const totalEst = ids.reduce(function (s, id) { return s + unit(id) * st.inventory[id]; }, 0);
+    if (!confirm('将出售 ' + ids.length + ' 种共 ' + totalCnt + ' 件物品，按当前收购价预计收入 ' + Math.round(totalEst) + '💰，确定？')) return;
+    let gain = 0, sold = 0;
+    let chain = Promise.resolve();
+    ids.forEach(function (id) {
+      chain = chain.then(function () {
+        const qty = st.inventory[id] || 0;
+        if (qty <= 0) return null;
+        return window.Net.sell(id, qty).then(function (r) {
+          if (r && r.ok) {
+            gain += r.data.gain; sold += qty;
+            st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop;
+          }
+        });
+      });
+    });
+    chain.then(function () {
+      renderTopbar(); renderView();
+      toast('一键出售完成：' + sold + ' 件，共收入 💰' + gain);
+    });
+  }
 
   function renderInventory() {
     const main = $('main');
@@ -956,6 +999,50 @@ window.UI = (function () {
       '<div class="cs-box"><b>' + totalCnt + '</b><span>总件数</span></div>' +
       '<div class="cs-box"><b>' + totalValue + '</b><span>预估总价（基准）</span></div>';
     side.appendChild(summary);
+
+    // 一键出售子菜单（种类/品质筛选 + 实时预估收入）
+    const bulk = el('div', 'bulk-sell');
+    const bbtn = el('button', 'primary big', '⚡ 一键出售');
+    bbtn.addEventListener('click', function () { bulkSellOpen = !bulkSellOpen; renderView(); });
+    bulk.appendChild(bbtn);
+    if (bulkSellOpen) {
+      const sub = el('div', 'bulk-sub');
+      const row1 = el('div', 'bulk-row');
+      row1.appendChild(el('label', null, '种类'));
+      const catSel = el('select', 'bulk-select');
+      [['all', '全部种类'], ['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['component', '🔧 组件']].forEach(function (kv) {
+        const o = el('option', null, kv[1]); o.value = kv[0]; catSel.appendChild(o);
+      });
+      catSel.value = bulkCat;
+      catSel.addEventListener('change', function () { bulkCat = catSel.value; renderView(); });
+      row1.appendChild(catSel);
+      row1.appendChild(el('label', null, '品质'));
+      const rarSel = el('select', 'bulk-select');
+      [['all', '全部品质'], ['common', '普通'], ['big', '大鱼'], ['rare', '稀有'], ['epic', '史诗']].forEach(function (kv) {
+        const o = el('option', null, kv[1]); o.value = kv[0]; rarSel.appendChild(o);
+      });
+      rarSel.value = bulkRar;
+      rarSel.addEventListener('change', function () { bulkRar = rarSel.value; renderView(); });
+      row1.appendChild(rarSel);
+      sub.appendChild(row1);
+
+      const mIds = Object.keys(st.inventory).filter(function (id) {
+        const m = itemMeta(id);
+        return (bulkCat === 'all' || m.kind === bulkCat) && (bulkRar === 'all' || m.rarity === bulkRar);
+      });
+      const mCnt = mIds.reduce(function (s, id) { return s + st.inventory[id]; }, 0);
+      const unit = function (id) { const sp = st.shop && st.shop[id]; return sp ? sp.price : itemMeta(id).price; };
+      const mEst = mIds.reduce(function (s, id) { return s + unit(id) * st.inventory[id]; }, 0);
+      const est = el('div', 'bulk-est');
+      est.innerHTML = '将出售 <b>' + mIds.length + '</b> 种 / <b>' + mCnt + '</b> 件 · 预估收入 <b>' + Math.round(mEst) + '</b>💰<span class="muted">（按当前实时收购价）</span>';
+      sub.appendChild(est);
+      const go = el('button', 'primary' + (mCnt > 0 ? '' : ' locked'), '确认出售');
+      go.addEventListener('click', function () { if (mCnt > 0) bulkSellMatching(); });
+      sub.appendChild(go);
+      bulk.appendChild(sub);
+    }
+    side.appendChild(bulk);
+
     const breakdown = el('div', 'inv-breakdown');
     [['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['component', '🔧 组件']].forEach(function (kv) {
       if (!kinds[kv[0]]) return;
@@ -1447,6 +1534,7 @@ window.UI = (function () {
   };
   function refreshAll(scope) {
     if (scope === 'all') scope = null; // init 全量刷新
+    if (shopModalId && scope === 'shop') fillShopModal(shopModalId); // 弹窗数据静默刷新
     renderTopbar(); renderNav();
     const scopes = VIEW_SCOPES[currentView];
     if (!scope || !scopes || scopes.indexOf(scope) >= 0) renderView();

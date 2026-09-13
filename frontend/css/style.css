@@ -213,12 +213,37 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .sc-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); }
 .sc-bar .up { position: absolute; top: 0; left: 0; background: rgba(248,113,113,.9); }
 .shop-card { cursor: pointer; }
-.shop-detail {
-  position: absolute; top: 100%; left: 0; z-index: 30; margin-top: 6px;
-  width: 560px; max-width: 82vw; min-height: 340px; box-sizing: border-box;
-  background: var(--panel-solid); border: 1px solid var(--accent2); border-radius: 8px; padding: 14px;
-  box-shadow: 0 14px 34px rgba(0,0,0,.5); font-size: 12px; cursor: default;
+/* ---- 商品详情弹窗（居中子窗口） ---- */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 80; background: rgba(4,12,20,.66);
+  display: flex; align-items: center; justify-content: center;
 }
+.modal-box {
+  background: var(--panel-solid); border: 1px solid var(--accent2); border-radius: 12px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.6);
+}
+.shop-modal { width: 640px; max-width: 92vw; max-height: 84vh; display: flex; flex-direction: column; }
+.modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px; border-bottom: 1px solid var(--line);
+}
+.modal-title { font-size: 15px; font-weight: 700; color: var(--accent2); }
+.modal-body { padding: 14px 16px; overflow: auto; }
+
+/* ---- 背包一键出售 ---- */
+.bulk-sell { margin: 12px 0; }
+.bulk-sub { margin-top: 10px; border: 1px dashed var(--accent2); border-radius: 8px; padding: 10px; background: rgba(56,189,248,.05); }
+.bulk-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.bulk-row label { font-size: 12px; color: var(--muted); }
+.bulk-select {
+  padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: rgba(255,255,255,.05); color: var(--text); font-size: 13px;
+}
+.bulk-est {
+  font-size: 13px; padding: 8px 10px; border-radius: 8px; margin-bottom: 8px;
+  background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.35);
+}
+.bulk-est b { color: var(--big); }
 .sd-title { color: var(--accent2); font-weight: 600; margin-bottom: 6px; font-size: 13px; }
 .sd-vol { margin-bottom: 10px; color: var(--muted); }
 .sd-vol b { color: var(--big); }
