@@ -31,5 +31,5 @@ const server = http.createServer(function (req, res) {
 
 server.listen(PORT, function () {
   console.log('🎣 钓鱼小游戏前端已启动: http://localhost:' + PORT);
-  console.log('   API_BASE=auto：将自动连接同主机的 8080 后端，请先启动 node backend/server.js');
+  console.log('   API_BASE=auto：将自动连接同主机的 9000 后端，请先启动 node backend/server.js');
 });

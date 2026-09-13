@@ -21,7 +21,7 @@
 │       ├── net.js       # 网络层：指令 API + SSE 广播接收
 │       └── ui.js        # 页面渲染与交互
 ├── tests/               # 5 个测试套件 + run-all.js 一键运行
-├── run.bat              # 启动后端（集成模式，8080，同时托管前端）
+├── run.bat              # 启动后端（集成模式，9000，同时托管前端）
 └── start-frontend.bat   # 启动前端独立静态服务器（5500）
 ```
 
@@ -44,16 +44,16 @@
 run.bat
 ```
 
-打开 http://localhost:8080 ，注册登录即可；多开浏览器标签 = 多真实玩家。
+打开 http://localhost:9000 ，注册登录即可；多开浏览器标签 = 多真实玩家。
 
 ### 分离模式（前后端独立进程）
 
 ```bat
-run.bat                 :: 窗口1：后端 API，http://localhost:8080
+run.bat                 :: 窗口1：后端 API，http://localhost:9000
 start-frontend.bat      :: 窗口2：前端静态服务器，http://localhost:5500
 ```
 
-打开 http://localhost:5500 。前端 `API_BASE=auto` 会自动连接同主机的 8080 后端（后端已放行 CORS）。
+打开 http://localhost:5500 。前端 `API_BASE=auto` 会自动连接同主机的 9000 后端（后端已放行 CORS）。
 
 前端也可以用任意其他静态服务器托管 `frontend/` 目录（nginx、GitHub Pages 等），或把
 `frontend/js/config.js` 里的 `API_BASE` 改成显式地址（如 `https://api.example.com`）。
@@ -62,7 +62,7 @@ start-frontend.bat      :: 窗口2：前端静态服务器，http://localhost:55
 
 | 变量 | 说明 |
 |---|---|
-| `PORT` | 监听端口，默认 8080 |
+| `PORT` | 监听端口，默认 9000 |
 | `STATIC_DIR` | 指定前端目录；`none` 强制纯 API 模式（默认自动托管 `../frontend`，存在时） |
 
 ## 测试

@@ -1094,7 +1094,7 @@ window.UI = (function () {
     Promise.resolve(p).then(function (r) {
       btn.disabled = false; btn.textContent = oldLabel;
       if (!r || !r.ok) {
-        if (r && r.status === 0) { authMsg('无法连接服务器，请确认已运行 node server.js'); return; }
+        if (r && r.status === 0) { authMsg('无法连接服务器，请确认已运行 run.bat'); return; }
         authMsg((r && r.data && r.data.error) || '操作失败，请重试');
         return;
       }

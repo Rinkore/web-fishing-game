@@ -12,27 +12,40 @@ window.Net = (function () {
   let es = null;
 
   // ---- API 基地址（前后端分离）----
-  // 由 frontend/js/config.js 的 window.APP_CONFIG.API_BASE 决定，'auto' 时自动探测：
-  //   页面由后端 8080 托管 → 同源；file:// 或其他端口 → 同主机的 8080 端口。
-  const API_BASE = (function () {
+  // config.js 的 API_BASE：'auto'（默认）/ '' 同源 / 显式地址。
+  // 'auto' 探测：先按同源尝试（集成模式下后端用任意端口托管前端都成立），
+  //   若同源 /shop 未返回商店数据 → 退回同主机的默认后端端口（9000）。
+  let API_BASE = '';
+  let baseDetected = null;
+  function candidateBase() {
+    return (location.hostname ? location.protocol + '//' + location.hostname : 'http://localhost') + ':9000';
+  }
+  function detectBase() {
+    if (baseDetected) return baseDetected;
     const cfg = window.APP_CONFIG && window.APP_CONFIG.API_BASE;
-    if (typeof cfg === 'string' && cfg !== 'auto') return cfg.replace(/\/+$/, '');
-    if (location.port === '8080') return '';
-    if (location.protocol === 'file:') return 'http://localhost:8080';
-    return (location.hostname ? location.protocol + '//' + location.hostname : 'http://localhost') + ':8080';
-  })();
+    if (typeof cfg === 'string' && cfg !== 'auto') { API_BASE = cfg.replace(/\/+$/, ''); baseDetected = Promise.resolve(); return baseDetected; }
+    if (location.protocol === 'file:') { API_BASE = 'http://localhost:9000'; baseDetected = Promise.resolve(); return baseDetected; }
+    API_BASE = '';
+    baseDetected = fetch('/shop', { method: 'GET' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (!(j && j.crucian && j.crucian.base != null)) API_BASE = candidateBase(); })
+      .catch(function () { API_BASE = candidateBase(); });
+    return baseDetected;
+  }
 
   function apiFetch(method, u, body) {
-    return new Promise(function (resolve) {
-      const opts = { method: method, headers: { 'Content-Type': 'application/json' } };
-      if (body) opts.body = JSON.stringify(body);
-      fetch(API_BASE + u, opts)
-        .then(function (r) {
-          return r.json().then(function (j) { return { ok: r.ok, status: r.status, data: j }; })
-            .catch(function () { return { ok: false, status: r.status, data: {} }; });
-        })
-        .catch(function () { return { ok: false, status: 0, data: { error: '网络错误' } }; })
-        .then(resolve);
+    return detectBase().then(function () {
+      return new Promise(function (resolve) {
+        const opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+        if (body) opts.body = JSON.stringify(body);
+        fetch(API_BASE + u, opts)
+          .then(function (r) {
+            return r.json().then(function (j) { return { ok: r.ok, status: r.status, data: j }; })
+              .catch(function () { return { ok: false, status: r.status, data: {} }; });
+          })
+          .catch(function () { return { ok: false, status: 0, data: { error: '网络错误' } }; })
+          .then(resolve);
+      });
     });
   }
 

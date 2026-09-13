@@ -7,7 +7,7 @@
  *   - 实时联机：GET /events (SSE) 广播在线玩家、渔场人数、动态、市集、交易
  *   - 系统商店 / 开放市集 / 在线交易 / 图鉴 / 大鱼榜
  * 游戏数值目录：与前端共用 frontend/js/data.js（UMD，单一来源）
- * 运行： node backend/server.js   （默认端口 8080，可用 PORT 环境变量覆盖）
+ * 运行： node backend/server.js   （默认端口 9000，可用 PORT 环境变量覆盖）
  * 前后端分离：
  *   - 本服务是纯 API + SSE，跨域已放行（CORS *），前端可部署到任意静态服务器；
  *   - 默认集成模式：若 ../frontend/index.html 存在则一并托管，单命令即可跑全栈；
@@ -20,7 +20,7 @@ const path = require('path');
 const url = require('url');
 const crypto = require('crypto');
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 9000;
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, 'data');
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
