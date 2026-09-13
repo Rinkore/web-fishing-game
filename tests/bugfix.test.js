@@ -57,7 +57,7 @@ function sse(token, sink) {
 }
 
 async function openPage(token) {
-  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'frontend', 'index.html'), 'utf8');
   const vc = new VirtualConsole();
   const errs = [];
   vc.on('jsdomError', e => errs.push('jsdomError: ' + e.message));
@@ -108,7 +108,7 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
 
 (async () => {
   console.log('缺陷回归测试（5 个上报问题）');
-  const srv = spawn(NODE, ['server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
+  const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1' }) });
   await sleep(900);
 
   try {
@@ -123,7 +123,7 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     await sleep(400);
 
     // 为 A 预置库存（鲫鱼 10、鲤鱼 5），并留足金币
-    await POST('http://localhost:' + PORT + '/api/profile', { token: tokA, inventory: { crucian: 10, carp: 5 }, coins: 500 });
+    await POST('http://localhost:' + PORT + '/api/dev/seed', { token: tokA, inventory: { crucian: 10, carp: 5 }, coins: 500 });
 
     // ============================================================
     section('【问题 3】全服大鱼榜无数据');
@@ -132,7 +132,7 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     check('初始大鱼榜为空', recBefore.status === 200 && Object.keys(recBefore.data.records).length === 0);
 
     // 客户端会在 /catch 里带上 item.size
-    await POST('http://localhost:' + PORT + '/catch', {
+    await POST('http://localhost:' + PORT + '/api/dev/catch', {
       token: tokA, size: 95.5,
       item: { kind: 'fish', rarity: 'rare', id: 'koi', name: '黄金锦鲤', size: 95.5 },
       ground: '落日海湾', spot: '礁石区',
@@ -146,19 +146,19 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     check('B 收到 records 广播', sinkB.some(m => m.type === 'records' && m.records.koi && m.records.koi.size === 95.5));
 
     // 更小的鱼不覆盖纪录
-    await POST('http://localhost:' + PORT + '/catch', { token: tokB, size: 30, item: { kind: 'fish', rarity: 'rare', id: 'koi', name: '黄金锦鲤', size: 30 }, ground: '静水湖', spot: '深水区' });
+    await POST('http://localhost:' + PORT + '/api/dev/catch', { token: tokB, size: 30, item: { kind: 'fish', rarity: 'rare', id: 'koi', name: '黄金锦鲤', size: 30 }, ground: '静水湖', spot: '深水区' });
     await sleep(250);
     const rec2 = await GET('http://localhost:' + PORT + '/api/records');
     check('更小的鱼不覆盖纪录', rec2.data.records.koi.size === 95.5 && rec2.data.records.koi.who === '甲玩家');
 
     // 更大的鱼刷新纪录
-    await POST('http://localhost:' + PORT + '/catch', { token: tokB, size: 108.2, item: { kind: 'fish', rarity: 'rare', id: 'koi', name: '黄金锦鲤', size: 108.2 }, ground: '静水湖', spot: '深水区' });
+    await POST('http://localhost:' + PORT + '/api/dev/catch', { token: tokB, size: 108.2, item: { kind: 'fish', rarity: 'rare', id: 'koi', name: '黄金锦鲤', size: 108.2 }, ground: '静水湖', spot: '深水区' });
     await sleep(250);
     const rec3 = await GET('http://localhost:' + PORT + '/api/records');
     check('更大的鱼刷新纪录', rec3.data.records.koi.size === 108.2 && rec3.data.records.koi.who === '乙玩家', JSON.stringify(rec3.data.records.koi));
 
     // 材料 / 组件不进大鱼榜
-    await POST('http://localhost:' + PORT + '/catch', { token: tokA, size: null, item: { kind: 'material', rarity: 'common', id: 'rope', name: '耐磨绳', size: null }, ground: '静水湖', spot: '芦苇浅滩' });
+    await POST('http://localhost:' + PORT + '/api/dev/catch', { token: tokA, size: null, item: { kind: 'material', rarity: 'common', id: 'rope', name: '耐磨绳', size: null }, ground: '静水湖', spot: '芦苇浅滩' });
     await sleep(250);
     const rec4 = await GET('http://localhost:' + PORT + '/api/records');
     check('材料不进大鱼榜', !rec4.data.records.rope);
@@ -233,18 +233,16 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     check('买家累计扣款（440 - 140 = 300）', buyerAfter2.coins === 300, String(buyerAfter2.coins));
     check('买家共入库 10 个', buyerAfter2.inventory.crucian === 10, JSON.stringify(buyerAfter2.inventory));
 
-    // —— 关键回归：客户端自动保存不得覆盖服务器权威金币 ——
-    // 新客户端只上报 bd / name，不再上报 coins / inventory
-    const netSrc = fs.readFileSync(path.join(ROOT, 'js', 'net.js'), 'utf8');
-    const syncBlock = netSrc.slice(netSrc.indexOf('function startSync'), netSrc.indexOf('function sendPresence'));
-    check('客户端自动保存不再上报 coins（防覆盖收入）', !/coins\s*:/.test(syncBlock), syncBlock.replace(/\s+/g, ' ').slice(0, 160));
-    check('客户端自动保存不再上报 inventory', !/inventory\s*:/.test(syncBlock));
-    await POST('http://localhost:' + PORT + '/api/profile', { token: tokA, bd: {}, name: '甲玩家' });
+    // —— 关键回归：瘦客户端不得回传资产（coins/inventory 以服务器推送为唯一来源） ——
+    const netSrc = fs.readFileSync(path.join(ROOT, 'frontend', 'js', 'net.js'), 'utf8');
+    check('客户端网络层不再上报 coins（防覆盖收入）', !/coins\s*:/.test(netSrc), (netSrc.match(/.{0,40}coins\s*:.{0,40}/) || ['']).join(''));
+    check('客户端网络层不再上报 inventory', !/inventory\s*:/.test(netSrc));
+    await POST('http://localhost:' + PORT + '/api/profile', { token: tokA, name: '甲玩家' });
     const sellerAfterSync = (await GET('http://localhost:' + PORT + '/api/me?token=' + tokA)).data;
     check('自动保存后卖家金币不被清零（仍为 680）', sellerAfterSync.coins === 680, String(sellerAfterSync.coins));
 
     // 不能买自己的挂单
-    await POST('http://localhost:' + PORT + '/api/profile', { token: tokA, inventory: { crucian: 5 } });
+    await POST('http://localhost:' + PORT + '/api/dev/seed', { token: tokA, inventory: { crucian: 5 } });
     const selfList = await POST('http://localhost:' + PORT + '/api/market/list', { token: tokA, id: 'crucian', qty: 2, price: 3 });
     check('自持物品可上架（用于自购校验）', selfList.status === 200 && !!selfList.data.listing, JSON.stringify(selfList.data));
     check('不能购买自己的挂单被拒', (await POST('http://localhost:' + PORT + '/api/market/buy', { token: tokA, lid: selfList.data.listing.lid })).status === 400);
@@ -254,7 +252,7 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     section('【问题 1】在线交易勾选被重置');
     // ============================================================
     // A 预置库存（鲫鱼 10、鲤鱼 5）用于交易选取
-    await POST('http://localhost:' + PORT + '/api/profile', { token: tokA, inventory: { crucian: 10, carp: 5 } });
+    await POST('http://localhost:' + PORT + '/api/dev/seed', { token: tokA, inventory: { crucian: 10, carp: 5 } });
 
     const A = await openPage(tokA);
     const w = A.w;
@@ -377,7 +375,7 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     fail++;
   } finally {
     srv.kill();
-    try { fs.rmSync(path.join(ROOT, 'data'), { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
     console.log('\n============================');
     console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
     if (fail) console.log('失败项：\n  - ' + failed.join('\n  - '));

@@ -43,7 +43,7 @@ const clickNav = async (page, name) => {
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
-  const srv = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
+  const srv = spawn(process.execPath, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
   await sleep(1000);
   let browser;
   try {
@@ -184,7 +184,7 @@ const clickNav = async (page, name) => {
   } finally {
     if (browser) await browser.close();
     srv.kill();
-    try { fs.rmSync(path.join(ROOT, 'data'), { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
     setTimeout(() => process.exit(0), 250);
   }
 })();

@@ -1,10 +1,14 @@
 /*
- * 网页钓鱼小游戏 - 静态数据（框架版 v0.2）
- * 仅定义大框架：钓场 / 钓点 / 渔获 / 钓竿部位与默认组件。
- * 不含任何数值平衡、具体词缀效果或 BD 配方。
+ * 网页钓鱼小游戏 - 静态数据（前后端共享，单一来源）
+ * 浏览器经 <script> 加载挂到 window.GameData；后端 require 得到同一对象（UMD）。
+ * 钓场 / 钓点 / 渔获 / 组件目录 / 词缀定义只有这一份，服务器掷骰与前端展示共用。
  */
-window.GameData = (function () {
-  'use strict';
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.GameData = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+'use strict';
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于大鱼记录
@@ -58,6 +62,52 @@ window.GameData = (function () {
     normalNote: '普通词缀：每个组件可拥有 1 至 3 条（框架占位，未实现具体效果）。',
     rareNote: '稀有词缀：不一定拥有；拥有时提供特殊效果与联动（框架占位，未实现）。',
   };
+
+  // ---- 词缀类型（engine 计算效果、UI 展示共用） ----
+  const AFFIX_LABEL = {
+    speed: '钓速', big: '大鱼概率', rare: '稀有概率',
+    material: '材料概率', size: '体型', double: '双钓概率',
+  };
+
+  // ---- 钓竿组件目录（钓竿配置核心） ----
+  // 每个组件归属一个部位、词缀固定；钓鱼掉落获得，装备后仍留在背包（可出售/交易）。
+  // affixes: { type: AFFIX_LABEL 的 key, value: 百分比数值 }
+  const COMPONENTS = [
+    { id: 'rod_bamboo', name: '竹制短竿', part: 'rod', rarity: 'common', price: 60, affixes: [{ type: 'speed', value: 10 }] },
+    { id: 'rod_carbon', name: '碳素长竿', part: 'rod', rarity: 'rare', price: 240, affixes: [{ type: 'speed', value: 15 }, { type: 'big', value: 3 }] },
+    { id: 'line_strong', name: '强化线组', part: 'line', rarity: 'common', price: 50, affixes: [{ type: 'material', value: 20 }] },
+    { id: 'line_ghost', name: '隐形鱼线', part: 'line', rarity: 'rare', price: 220, affixes: [{ type: 'rare', value: 3 }, { type: 'material', value: 10 }] },
+    { id: 'hook_barb', name: '倒刺钩', part: 'hook', rarity: 'common', price: 55, affixes: [{ type: 'big', value: 4 }] },
+    { id: 'hook_steel', name: '精钢鱼钩', part: 'hook', rarity: 'rare', price: 260, affixes: [{ type: 'big', value: 5 }, { type: 'size', value: 10 }] },
+    { id: 'bait_rich', name: '浓香饵料', part: 'bait', rarity: 'common', price: 45, affixes: [{ type: 'rare', value: 2 }] },
+    { id: 'bait_secret', name: '秘制香饵', part: 'bait', rarity: 'rare', price: 280, affixes: [{ type: 'rare', value: 5 }] },
+    { id: 'reel_smooth', name: '顺滑卷线器', part: 'reel', rarity: 'common', price: 60, affixes: [{ type: 'speed', value: 10 }] },
+    { id: 'reel_electric', name: '电动卷线器', part: 'reel', rarity: 'epic', price: 520, affixes: [{ type: 'speed', value: 25 }] },
+    { id: 'acc_net', name: '鱼护网袋', part: 'accessory', rarity: 'common', price: 70, affixes: [{ type: 'double', value: 10 }] },
+    { id: 'acc_sonar', name: '智能探鱼器', part: 'accessory', rarity: 'epic', price: 560, affixes: [{ type: 'big', value: 6 }, { type: 'rare', value: 4 }] },
+    { id: 'charm_coin', name: '幸运硬币', part: 'charm', rarity: 'rare', price: 300, affixes: [{ type: 'rare', value: 3 }, { type: 'size', value: 10 }] },
+    { id: 'charm_gold', name: '金鳞坠饰', part: 'charm', rarity: 'epic', price: 600, affixes: [{ type: 'big', value: 4 }, { type: 'rare', value: 3 }, { type: 'speed', value: 10 }] },
+  ];
+  const COMPONENT_MAP = {};
+  COMPONENTS.forEach(function (c) { COMPONENT_MAP[c.id] = c; });
+  // 旧存档兼容：框架版掉落的通用组件（无效果，不可装备，可出售）
+  const LEGACY_COMPONENT = { id: 'comp_generic', name: '钓竿组件（默认）', part: null, rarity: 'common', price: 40, affixes: [] };
+
+  // 组件掉落：先按稀有度 roll（common 70% / rare 24% / epic 6%），再在同稀有度中均匀取一个
+  function rollComponent() {
+    const r = Math.random();
+    const tier = r < 0.70 ? 'common' : (r < 0.94 ? 'rare' : 'epic');
+    const pool = COMPONENTS.filter(function (c) { return c.rarity === tier; });
+    const c = pool[Math.floor(Math.random() * pool.length)];
+    return { kind: 'component', rarity: c.rarity, id: c.id, name: c.name, size: null };
+  }
+  function componentOf(id) { return COMPONENT_MAP[id] || (id === 'comp_generic' ? LEGACY_COMPONENT : null); }
+  function fishTierOf(id) {
+    for (const tier of ['common', 'big', 'rare']) {
+      if (FISH[tier].some(function (f) { return f.id === id; })) return tier;
+    }
+    return null;
+  }
 
   // ---- 钓场 ----
   // 普通钓场常驻；活动钓场为 locked 占位。
@@ -135,8 +185,9 @@ window.GameData = (function () {
   // implemented=false 的入口为占位符，点击不可跳转。
   const NAV = [
     { id: 'fishing', name: '钓鱼', icon: '🎣', implemented: true },
-    { id: 'bd', name: '钓竿 BD', icon: '🎯', implemented: true },
+    { id: 'bd', name: '钓竿配置', icon: '🎯', implemented: true },
     { id: 'ground', name: '渔场动态', icon: '🌊', implemented: true },
+    { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
     { id: 'shop', name: '系统商店', icon: '🏪', implemented: true },
     { id: 'market', name: '开放市集', icon: '💱', implemented: true },
     { id: 'trade', name: '在线交易', icon: '🤝', implemented: true },
@@ -158,6 +209,9 @@ window.GameData = (function () {
     MATERIALS.forEach(function (m) {
       out.push({ id: m.id, name: m.name, rarity: m.rarity, price: m.price, size: null, kind: 'material' });
     });
+    COMPONENTS.forEach(function (c) {
+      out.push({ id: c.id, name: c.name, rarity: c.rarity, price: c.price, size: null, kind: 'component' });
+    });
     out.push({ id: COMPONENT_DROP.id, name: COMPONENT_DROP.name, rarity: COMPONENT_DROP.rarity, price: COMPONENT_DROP.price, size: null, kind: 'component' });
     return out;
   }
@@ -170,7 +224,9 @@ window.GameData = (function () {
     FISH: FISH, MATERIALS: MATERIALS, COMPONENT_DROP: COMPONENT_DROP,
     RARITY_PRICE: RARITY_PRICE,
     ROD_PARTS: ROD_PARTS, AFFIX_FRAMEWORK: AFFIX_FRAMEWORK,
+    AFFIX_LABEL: AFFIX_LABEL, COMPONENTS: COMPONENTS,
+    rollComponent: rollComponent, componentOf: componentOf, fishTierOf: fishTierOf,
     GROUNDS: GROUNDS, NAV: NAV,
     allItems: allItems, itemOf: itemOf, itemName: itemName,
   };
-})();
+});

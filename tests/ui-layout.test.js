@@ -49,7 +49,7 @@ const clickNav = async (page, name) => {
 };
 
 (async () => {
-  const srv = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
+  const srv = spawn(process.execPath, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
   await sleep(1000);
   let browser;
   try {
@@ -84,7 +84,7 @@ const clickNav = async (page, name) => {
     await login(p2, tokB);
 
     section('新增页面渲染');
-    check('登录后 8 个已实现入口可见', (await p1.$$('#nav .nav-item:not(.locked)')).length === 8);
+    check('登录后 9 个已实现入口可见', (await p1.$$('#nav .nav-item:not(.locked)')).length === 9);
     check('2 个占位入口锁定', (await p1.$$('#nav .nav-item.locked')).length === 2);
 
     // —— 系统商店 ——
@@ -232,7 +232,7 @@ const clickNav = async (page, name) => {
   } finally {
     if (browser) await browser.close();
     srv.kill();
-    try { fs.rmSync(path.join(ROOT, 'data'), { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
     console.log('\n============================');
     console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
     if (fail) console.log('失败项：\n  - ' + failed.join('\n  - '));

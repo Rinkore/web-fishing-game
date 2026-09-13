@@ -1,14 +1,17 @@
 /*
- * 网页钓鱼小游戏 - 多人服务器（零第三方依赖）
- * 功能：
- *   - 账号系统：注册 / 登录 / 会话（token）；密码用 salt+sha256 哈希，落盘 data/users.json
- *   - 资料持久化：coins / inventory / bd / name / codex / records 随账号保存
- *   - 实时联机：GET /events (SSE) 广播在线玩家、各渔场人数、全服动态、市集、交易
- *   - 系统商店：按累计售出量动态调价，随时间缓慢回升
- *   - 开放市集：玩家挂单买卖，10% 交易税
- *   - 在线交易：以物易物，双方确认，任一方改动即取消确认（3s 冷却）
- *   - 鱼类图鉴 / 大鱼记录
- * 运行： node server.js   （默认端口 8080，可用 PORT 环境变量覆盖）
+ * 网页钓鱼小游戏 - 多人服务器（零第三方依赖 · 全部处理逻辑在服务端）
+ * 架构：前端仅展示；钓鱼循环/掷骰/词缀加成/资产结算/钓竿配置全部由本服务器权威执行。
+ *   - 账号系统：注册 / 登录 / 会话（token）；密码 salt+sha256，落盘 backend/data/users.json
+ *   - 钓鱼循环：POST /api/fishing/start|stop；服务器定时器掷骰，经 SSE 定向推送渔获与权威资产
+ *   - 钓竿配置：POST /api/bd/set（校验组件目录），钓速变化即时重置钓鱼循环
+ *   - 实时联机：GET /events (SSE) 广播在线玩家、渔场人数、动态、市集、交易
+ *   - 系统商店 / 开放市集 / 在线交易 / 图鉴 / 大鱼榜
+ * 游戏数值目录：与前端共用 frontend/js/data.js（UMD，单一来源）
+ * 运行： node backend/server.js   （默认端口 8080，可用 PORT 环境变量覆盖）
+ * 前后端分离：
+ *   - 本服务是纯 API + SSE，跨域已放行（CORS *），前端可部署到任意静态服务器；
+ *   - 默认集成模式：若 ../frontend/index.html 存在则一并托管，单命令即可跑全栈；
+ *   - STATIC_DIR 环境变量可指定其他前端目录，STATIC_DIR=none 强制纯 API 模式。
  */
 'use strict';
 const http = require('http');
@@ -24,14 +27,21 @@ try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const WORLD_FILE = path.join(DATA_DIR, 'world.json');
 
-const players = new Map();   // id(=username) -> presence
+// ---- 静态托管（前后端分离）----
+// 默认自动托管 ../frontend（存在时）；STATIC_DIR=none 关闭；STATIC_DIR=路径 指定其他前端目录。
+const STATIC_DIR = (process.env.STATIC_DIR === 'none') ? null
+  : (process.env.STATIC_DIR
+    || (fs.existsSync(path.join(__dirname, '..', 'frontend', 'index.html')) ? path.join(__dirname, '..', 'frontend') : null));
+
+const players = new Map();   // id(=username) -> presence（可安全 JSON 广播）
+const fishingTimers = new Map(); // username -> 钓鱼循环定时器（Node Timer，不可序列化，单独存放）
 const feed = [];             // { t, who, item, ground, spot }
 const clients = new Set();   // SSE response 对象
 const sessions = new Map();  // token -> username(lowercased)
 let users = {};
 
-// ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜） ----
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {} };
+// ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史） ----
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, priceLog: {}, tradeLog: {} };
 
 // ---- 在线交易会话 ----
 // trade = { id, a:{key,name}, b:{key,name}, aItems:[{id,qty}], bItems:[], aOk, bOk, cooldownUntil, cancelled, createdAt }
@@ -39,54 +49,212 @@ const trades = new Map();
 let tradeSeq = 1;
 const TRADE_COOLDOWN = 3000;
 
-// ---- 静态物品表（用于定价与校验，避免玩家伪造价格） ----
-const ITEM_PRICE = {
-  crucian: 8, carp: 12, grass: 15, white: 6, tilapia: 10,
-  catfish: 120, bass: 150, tuna: 260, sturgeon: 320,
-  koi: 400, pearl: 300, relic: 380,
-  bait_pack: 5, rope: 4, lure: 7,
-  comp_generic: 40,
-};
-const ITEM_NAME = {
-  crucian: '鲫鱼', carp: '鲤鱼', grass: '草鱼', white: '白条', tilapia: '罗非鱼',
-  catfish: '巨型鲶鱼', bass: '湖王鲈鱼', tuna: '黄金枪鱼', sturgeon: '远古巨鲟',
-  koi: '黄金锦鲤', pearl: '深海珍珠贝', relic: '沉船宝匣残片',
-  bait_pack: '诱饵包', rope: '耐磨绳', lure: '反光假饵',
-  comp_generic: '钓竿组件（默认）',
-};
-// 大鱼榜只统计鱼类（含普通/大鱼/稀有）
-const FISH_ID_SET = {
-  crucian: 1, carp: 1, grass: 1, white: 1, tilapia: 1,
-  catfish: 1, bass: 1, tuna: 1, sturgeon: 1, koi: 1, pearl: 1, relic: 1,
-};
+// ---- 游戏静态数据：与前端共用 frontend/js/data.js（UMD，单一来源） ----
+const D = require(path.join(__dirname, '..', 'frontend', 'js', 'data.js'));
+
+// 物品价格/名称表由共享目录派生（用于定价、市集与交易校验）
+const ITEM_PRICE = {}, ITEM_NAME = {}, FISH_ID_SET = {};
+D.allItems().forEach(function (it) {
+  ITEM_PRICE[it.id] = it.price;
+  ITEM_NAME[it.id] = it.name;
+  if (it.kind === 'fish') FISH_ID_SET[it.id] = 1;
+});
+
+// ---- 服务端游戏引擎（钓鱼循环 / 掷骰 / 词缀加成：唯一权威，前端仅展示） ----
+const FISH_INTERVAL_BASE = 3000; // 基础钓鱼间隔 ms
+
+function bdEffectsOf(bd) {
+  const eff = { speed: 0, big: 0, rare: 0, material: 0, size: 0, double: 0 };
+  D.ROD_PARTS.forEach(function (part) {
+    const comp = D.componentOf(bd && bd[part.key] && bd[part.key].compId);
+    if (!comp) return;
+    comp.affixes.forEach(function (a) { if (eff[a.type] != null) eff[a.type] += a.value; });
+  });
+  return eff;
+}
+function fishIntervalOf(bd) {
+  const eff = bdEffectsOf(bd);
+  return Math.max(800, Math.round(FISH_INTERVAL_BASE * (1 - Math.min(60, eff.speed) / 100)));
+}
+// 大鱼/稀有/材料加成：按类别放大掉落池权重
+function boostPoolOf(pool, eff) {
+  if (!eff.big && !eff.rare && !eff.material) return pool;
+  return pool.map(function (e) {
+    const i = e.pick.indexOf(':');
+    const type = e.pick.slice(0, i), id = e.pick.slice(i + 1);
+    let mult = 1;
+    if (type === 'fish') {
+      const tier = D.fishTierOf(id);
+      if (tier === 'big') mult = 1 + eff.big / 100;
+      else if (tier === 'rare') mult = 1 + eff.rare / 100;
+    } else if (type === 'material') mult = 1 + eff.material / 100;
+    return { pick: e.pick, weight: e.weight * mult };
+  });
+}
+function weightedPickOf(pool) {
+  let total = 0; pool.forEach(function (e) { total += e.weight; });
+  let r = Math.random() * total;
+  for (const e of pool) { r -= e.weight; if (r <= 0) return e.pick; }
+  return pool[pool.length - 1].pick;
+}
+// 体型随机：偏向小值；体型加成放大结果但不越过上限的 1.3 倍
+function rollSizeOf(range, eff) {
+  let v = range[0] + (range[1] - range[0]) * Math.pow(Math.random(), 1.6);
+  if (eff.size > 0) v = Math.min(range[1] * 1.3, v * (1 + eff.size / 100));
+  return Math.round(v * 10) / 10;
+}
+function resolveItemAt(spot, eff) {
+  const pick = weightedPickOf(boostPoolOf(spot.pool, eff));
+  const i = pick.indexOf(':');
+  const type = pick.slice(0, i), id = pick.slice(i + 1);
+  if (type === 'fish') {
+    for (const tier of ['common', 'big', 'rare']) {
+      const f = D.FISH[tier].find(function (x) { return x.id === id; });
+      if (f) return { kind: 'fish', rarity: f.rarity, id: f.id, name: f.name, size: f.size ? rollSizeOf(f.size, eff) : null };
+    }
+  }
+  if (type === 'material') {
+    const m = D.MATERIALS.find(function (x) { return x.id === id; });
+    if (m) return { kind: 'material', rarity: m.rarity, id: m.id, name: m.name, size: null };
+  }
+  if (type === 'component') return D.rollComponent();
+  return null;
+}
+function spotOf(groundId, spotId) {
+  const g = D.GROUNDS.find(function (x) { return x.id === groundId; });
+  if (!g) return null;
+  const s = g.spots.find(function (x) { return x.id === spotId; }) || null;
+  return s ? { ground: g, spot: s } : null;
+}
+// 单竿结算：掷骰 → 入库（背包/图鉴）→ 大鱼榜 → 全服动态 → 定向推送权威资产
+function doServerCatch(rec, key, ground, spot, eff, noDouble) {
+  const item = resolveItemAt(spot, eff);
+  if (!item) return;
+  invAdd(rec, item.id, 1);
+  rec.codex = rec.codex || {};
+  rec.catchCount = (rec.catchCount || 0) + 1;
+  const cx = rec.codex[item.id] || { count: 0, first: Date.now() };
+  cx.count += 1;
+  rec.codex[item.id] = cx;
+
+  let recordEvent = null;
+  if (FISH_ID_SET[item.id] && item.size != null && item.size > 0) {
+    const cur = world.bigRecords[item.id];
+    if (!cur || item.size > cur.size) {
+      world.bigRecords[item.id] = { id: item.id, name: itemName(item.id), size: Math.round(item.size * 10) / 10, who: rec.name, t: Date.now() };
+      recordEvent = world.bigRecords[item.id];
+    }
+  }
+
+  const entry = { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null };
+  feed.unshift(entry); if (feed.length > 60) feed.pop();
+  broadcast({ type: 'feed', entry: entry });
+
+  // 近期渔获（大鱼/稀有/组件）：更新 presence 并广播给所有人
+  const p = players.get(key);
+  if (p && (item.rarity === 'big' || item.rarity === 'rare' || item.kind === 'component')) {
+    p.recent = item.size ? (item.name + ' ' + item.size + 'cm') : item.name;
+    sendPlayersAll();
+  }
+  saveUsers();
+  if (recordEvent) {
+    saveWorld();
+    broadcastRecords();
+    broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null, record: true } });
+  }
+  // 定向推送：本条渔获 + 权威资产/图鉴（前端不持账本）
+  sendTo(key, { type: 'catch', entry: entry });
+  sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+  // 双钓词缀：立即再结算一竿（不连锁）
+  if (!noDouble && eff.double > 0 && Math.random() * 100 < eff.double) doServerCatch(rec, key, ground, spot, eff, true);
+}
+function fishTick(key) {
+  const p = players.get(key);
+  if (!p || !p.fishing) return;
+  const rec = users[key];
+  const found = spotOf(p.fishing.groundId, p.fishing.spotId);
+  if (!found) { stopFishingSession(key); return; }
+  doServerCatch(rec, key, found.ground, found.spot, bdEffectsOf(rec.bd), false);
+}
+function startFishingSession(key, groundId, spotId) {
+  const p = players.get(key);
+  if (!p) return { error: '请先进入游戏（建立实时连接）' };
+  const found = spotOf(groundId, spotId);
+  if (!found) return { error: '钓点不存在' };
+  if (found.ground.locked) return { error: '该钓场尚未开放' };
+  // 定时器单独存放：presence 对象会被 JSON 广播，Node Timer 有循环引用不能挂上去
+  const prev = fishingTimers.get(key);
+  if (prev) clearInterval(prev);
+  p.fishing = { groundId: groundId, spotId: spotId };
+  p.status = 'fishing'; p.groundId = groundId; p.spotId = spotId;
+  const interval = fishIntervalOf(users[key].bd);
+  fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
+  sendPlayersAll();
+  return { interval: interval };
+}
+function stopFishingSession(key) {
+  const t = fishingTimers.get(key);
+  if (t) clearInterval(t);
+  fishingTimers.delete(key);
+  const p = players.get(key);
+  if (p) { p.fishing = null; p.status = 'idle'; p.groundId = null; p.spotId = null; p.recent = null; }
+  sendPlayersAll();
+}
 
 function basePrice(id) { return ITEM_PRICE[id] || 10; }
 function itemName(id) { return ITEM_NAME[id] || id; }
 
-// 动态收购价：售出量越多越低（下限 40%），并随时间缓慢回升
-const PRICE_MIN_RATIO = 0.4;    // 最低价 = 基准价 * 0.4
-const PRICE_RECOVER_PER_SEC = 0.002; // 每秒回升枯竭量的 0.2%
+// ---- 动态收购价（服务器权威 · 单乘数模型）----
+// 每个物品维护一个价格乘数 m ∈ [0.4, 2.0]，实际价 = 基准价 × m：
+//   售出：m 每件除以 1.15（成比例下压——2 倍价卖一件回到 1.74 倍，不会一键跌回原价）；
+//   闲置：m 以 1 小时时间常数向 2.0 指数回升（长期无人供应缓慢涨价，最高翻倍）。
+// 涨跌共用同一个乘数，状态连续、无跳变。
+const PRICE_FLOOR = 0.4;
+const PRICE_CEIL = 2.0;
+const SALE_DIVISOR = 0.0075;   // 每售 1 件，乘数除以 (1 + 0.0075)（约 -0.74%/件）
+const RISE_TAU_MS = 3600000;   // 闲置回升时间常数：1 小时
 
-function currentPrice(id) {
-  const base = basePrice(id);
-  const s = world.shopSales[id];
-  if (!s || !s.count) return base;
-  // 先把“冷却时间”折算成衰减
-  const elapsed = (Date.now() - (s.lastTs || Date.now())) / 1000;
-  const decayed = Math.max(0, (s.debt || 0) - elapsed * PRICE_RECOVER_PER_SEC * base);
-  const ratio = Math.max(PRICE_MIN_RATIO, 1 - decayed * 0.06);
-  return Math.max(1, Math.round(base * ratio));
+// 当前乘数（含闲置增长；无状态计算，不写存储）
+function currentMultiplier(s, now) {
+  const idle = Math.max(0, now - (s.lastTs || now));
+  const m0 = Math.min(PRICE_CEIL, Math.max(PRICE_FLOOR, s.m == null ? 1 : s.m));
+  return Math.min(PRICE_CEIL, PRICE_CEIL - (PRICE_CEIL - m0) * Math.exp(-idle / RISE_TAU_MS));
 }
-// 售出时累积“价格债务”，使价格下滑
-function registerSale(id, qty) {
-  const s = world.shopSales[id] || { count: 0, debt: 0, lastTs: Date.now() };
-  const elapsed = (Date.now() - (s.lastTs || Date.now())) / 1000;
-  s.debt = Math.max(0, (s.debt || 0) - elapsed * PRICE_RECOVER_PER_SEC * basePrice(id));
-  s.count += qty;
-  s.debt += qty;
+function currentPrice(id) {
+  const s = world.shopSales[id];
+  if (!s) return basePrice(id);
+  return Math.max(1, Math.round(basePrice(id) * currentMultiplier(s, Date.now())));
+}
+// 售出：压低乘数 + 统计交易量 + 记录价格点 + 交易流水（同账号一分钟内由前端合并展示）
+function registerSale(id, qty, who, unit) {
+  const s = world.shopSales[id] || { m: 1, lastTs: Date.now(), soldTotal: 0, soldToday: 0, day: null };
+  const cur = currentMultiplier(s, Date.now());
+  s.m = Math.max(PRICE_FLOOR, cur / Math.pow(1 + SALE_DIVISOR, qty));
+  s.soldTotal = (s.soldTotal || 0) + qty;
+  const day = new Date().toISOString().slice(0, 10);
+  if (s.day !== day) { s.day = day; s.soldToday = 0; }
+  s.soldToday += qty;
   s.lastTs = Date.now();
   world.shopSales[id] = s;
+  world.tradeLog = world.tradeLog || {};
+  const log = world.tradeLog[id] || (world.tradeLog[id] = []);
+  log.push({ t: Date.now(), who: who || '?', qty: qty, unit: unit || currentPrice(id) });
+  if (log.length > 200) log.splice(0, log.length - 200);
+  recordPrice(id);
 }
+// 价格历史采样：售出即时记点 + 每分钟全量采样（捕捉无人供应时的缓慢上涨）
+function recordPrice(id) {
+  world.priceLog = world.priceLog || {};
+  const log = world.priceLog[id] || (world.priceLog[id] = []);
+  const p = currentPrice(id);
+  const last = log[log.length - 1];
+  if (!last || last.p !== p || Date.now() - last.t > 60000) log.push({ t: Date.now(), p: p });
+  if (log.length > 360) log.splice(0, log.length - 360); // 保留 6 小时（每分钟一次）
+}
+setInterval(function () {
+  Object.keys(ITEM_PRICE).forEach(recordPrice);
+  try { saveWorld(); } catch (e) {}
+}, 60000).unref();
 
 function loadUsers() { try { users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8') || '{}'); } catch (e) { users = {}; } }
 function saveUsers() { try { fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2)); } catch (e) {} }
@@ -94,6 +262,19 @@ function loadWorld() { try { world = Object.assign(world, JSON.parse(fs.readFile
 function saveWorld() { try { fs.writeFileSync(WORLD_FILE, JSON.stringify(world, null, 2)); } catch (e) {} }
 loadUsers();
 loadWorld();
+// 为所有物品补齐乘数状态（老档迁移：旧"供应压力"按 -1%/件 折算为初始乘数）
+(function ensureSaleStats() {
+  const day = new Date().toISOString().slice(0, 10);
+  Object.keys(ITEM_PRICE).forEach(function (id) {
+    const s = world.shopSales[id];
+    if (!s) { world.shopSales[id] = { m: 1, lastTs: Date.now(), soldTotal: 0, soldToday: 0, day: day }; return; }
+    if (s.m == null) {
+      s.m = Math.max(PRICE_FLOOR, 1 - Math.min(0.6, (s.debt || 0) * 0.01));
+      delete s.debt;
+    }
+    if (s.day !== day) { s.day = day; s.soldToday = s.soldToday || 0; }
+  });
+})();
 
 function hashPw(pw, salt) { return crypto.createHash('sha256').update(salt + ':' + pw).digest('hex'); }
 function newToken() { return crypto.randomBytes(16).toString('hex'); }
@@ -114,7 +295,13 @@ function sendTo(key, obj) {
 }
 function sendPlayers() { broadcast({ type: 'players', players: Array.from(players.values()) }); }
 function readBody(req, cb) { let b = ''; req.on('data', function (c) { b += c; if (b.length > 1e6) req.destroy(); }); req.on('end', function () { cb(b); }); }
-function apiResp(res, status, obj) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Max-Age': '86400',
+};
+function apiResp(res, status, obj) { res.writeHead(status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, CORS_HEADERS)); res.end(JSON.stringify(obj)); }
 function auth(req, res, body, cb) {
   let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
   const key = d.token && sessions.get(d.token);
@@ -127,7 +314,10 @@ function invHas(rec, id, qty) { return (rec.inventory && rec.inventory[id] || 0)
 // ---- 商店 / 市集 / 大鱼榜 对外快照 ----
 function shopSnapshot() {
   const out = {};
-  Object.keys(ITEM_PRICE).forEach(function (id) { out[id] = { base: basePrice(id), price: currentPrice(id) }; });
+  Object.keys(ITEM_PRICE).forEach(function (id) {
+    const s = world.shopSales[id] || {};
+    out[id] = { base: basePrice(id), price: currentPrice(id), soldToday: s.soldToday || 0, soldTotal: s.soldTotal || 0 };
+  });
   return out;
 }
 function broadcastShop() { broadcast({ type: 'shop', shop: shopSnapshot() }); }
@@ -176,6 +366,12 @@ const MIME = {
 };
 
 const server = http.createServer(function (req, res) {
+  // ---- CORS 预检（分离部署时，浏览器对跨域 POST 会先发 OPTIONS） ----
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS_HEADERS);
+    res.end();
+    return;
+  }
   const u = url.parse(req.url, true);
   const p = u.pathname;
 
@@ -219,17 +415,14 @@ const server = http.createServer(function (req, res) {
     return apiResp(res, 200, profileOf(key));
   }
 
-  // ---- 保存资料 ----
+  // ---- 保存显示名（资产/背包/配置一律由服务器维护，不再接受客户端上报） ----
   if (p === '/api/profile' && req.method === 'POST') {
     readBody(req, function (body) {
       let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
       const key = d.token && sessions.get(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
       const rec = users[key];
-      if (d.coins != null) rec.coins = d.coins;
-      if (d.inventory) rec.inventory = d.inventory;
-      if (d.bd) rec.bd = d.bd;
-      if (d.name) rec.name = d.name;
+      if (d.name) rec.name = String(d.name).slice(0, 20);
       saveUsers();
       apiResp(res, 200, { ok: true });
     });
@@ -247,7 +440,7 @@ const server = http.createServer(function (req, res) {
     const id = key;
     const rec = users[key];
     const existing = players.get(id);
-    players.set(id, { id: id, name: rec.name, status: 'idle', groundId: existing ? existing.groundId : null, spotId: existing ? existing.spotId : null, recent: existing ? existing.recent : null });
+    players.set(id, { id: id, name: rec.name, status: 'idle', groundId: null, spotId: null, recent: null, fishing: null });
     res.write('data: ' + JSON.stringify({
       type: 'init', you: id, players: Array.from(players.values()), feed: feed,
       shop: shopSnapshot(), market: world.listings, records: world.bigRecords,
@@ -258,6 +451,7 @@ const server = http.createServer(function (req, res) {
     const hb = setInterval(function () { try { res.write(': ping\n\n'); } catch (e) {} }, 25000);
     req.on('close', function () {
       clients.delete(res); clientOwners.delete(res); clearInterval(hb);
+      stopFishingSession(id); // 断线即停竿：钓鱼循环是服务器权威的，人走竿收
       if (players.has(id)) { players.delete(id); sendPlayersAll(); }
       // 玩家掉线：其进行中的交易自动取消
       const t = tradeOfPlayer(id);
@@ -270,75 +464,108 @@ const server = http.createServer(function (req, res) {
     return;
   }
 
-  // ---- 上报状态（需登录） ----
-  if (p === '/presence' && req.method === 'POST') {
+  // ---- 开始钓鱼（服务器权威循环：掷骰/入库/广播都在服务端，前端只收结果） ----
+  if (p === '/api/fishing/start' && req.method === 'POST') {
     readBody(req, function (body) {
       let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
       const key = d.token && sessions.get(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
-      const id = key; const rec = users[key];
-      const ex = players.get(id) || { id: id, name: rec.name };
-      ex.name = rec.name;
-      ex.status = d.status || 'idle';
-      ex.groundId = d.groundId !== undefined ? d.groundId : ex.groundId;
-      ex.spotId = d.spotId !== undefined ? d.spotId : ex.spotId;
-      // recent 三态：
-      //   recentClear=true → 显式清空（离开钓点）
-      //   recent=<名字>    → 更新记录
-      //   都不传           → 保持原值（避免普通状态上报抹掉大鱼记录）
-      if (d.recentClear) ex.recent = null;
-      else if (d.recent !== undefined) ex.recent = d.recent || null;
-      players.set(id, ex);
-      sendPlayersAll();
+      const r = startFishingSession(key, d.groundId, d.spotId);
+      if (r.error) return apiResp(res, 400, { error: r.error });
+      apiResp(res, 200, { ok: true, interval: r.interval });
+    });
+    return;
+  }
+  // ---- 停止钓鱼 ----
+  if (p === '/api/fishing/stop' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const key = d.token && sessions.get(d.token);
+      if (!key) return apiResp(res, 401, { error: '未登录' });
+      stopFishingSession(key);
       apiResp(res, 200, { ok: true });
     });
     return;
   }
 
-  // ---- 上报渔获（需登录，服务器解析账号名广播） ----
-  // 服务器权威：在此直接入库（图鉴 + 背包），并回推 assets/codex 给本人
-  if (p === '/catch' && req.method === 'POST') {
+  // ---- 钓竿配置：装备/卸下组件（服务器校验部位与组件目录，掷骰加成由此生效） ----
+  if (p === '/api/bd/set' && req.method === 'POST') {
     readBody(req, function (body) {
       let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
-      const key = d.token && sessions.get(d.token);
-      if (!key) return apiResp(res, 401, { error: '未登录' });
-      const rec = users[key];
-      const who = rec.name;
-      const itemId = d.item && d.item.id;
-      if (!itemId) return apiResp(res, 400, { error: '缺少物品' });
-
-      // 背包：服务器侧直接入库，客户端无需再自行同步库存
-      invAdd(rec, itemId, 1);
-
-      // 图鉴：记录个人钓到的每种鱼的数量与首次时间
-      rec.codex = rec.codex || {};
-      rec.catchCount = (rec.catchCount || 0) + 1;
-      const cx = rec.codex[itemId] || { count: 0, first: Date.now() };
-      cx.count += 1;
-      rec.codex[itemId] = cx;
-
-      // 大鱼榜：仅鱼类，按体型记录全服最大
-      let recordEvent = null;
-      const rawSize = d.item && d.item.size != null ? d.item.size : d.size;
-      const size = Number(rawSize);
-      if (FISH_ID_SET[itemId] && isFinite(size) && size > 0) {
-        const cur = world.bigRecords[itemId];
-        if (!cur || size > cur.size) {
-          world.bigRecords[itemId] = { id: itemId, name: itemName(itemId), size: Math.round(size * 10) / 10, who: who, t: Date.now() };
-          recordEvent = world.bigRecords[itemId];
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const part = D.ROD_PARTS.find(function (x) { return x.key === d.part; });
+        if (!part) return apiResp(res, 400, { error: '未知部位' });
+        let comp = null;
+        if (d.compId) {
+          comp = D.componentOf(d.compId);
+          if (!comp) return apiResp(res, 400, { error: '未知组件' });
+          if (comp.part !== part.key) return apiResp(res, 400, { error: '组件与部位不匹配' });
         }
-      }
+        rec.bd = rec.bd || {};
+        rec.bd[part.key] = { compId: comp ? comp.id : null, name: comp ? comp.name : part.default.name, affixes: [], rare: null, isCharm: !!part.isCharm };
+        saveUsers();
+        // 钓速变化即时生效：正在钓鱼则按新间隔重启循环
+        const pl = players.get(key);
+        let interval = null;
+        if (pl && pl.fishing) {
+          const old = fishingTimers.get(key);
+          if (old) clearInterval(old);
+          interval = fishIntervalOf(rec.bd);
+          fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
+        }
+        apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval });
+      });
+    });
+    return;
+  }
 
-      const entry = { t: Date.now(), who: who, item: d.item, ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
-      if (entry.item) { feed.unshift(entry); if (feed.length > 60) feed.pop(); broadcast({ type: 'feed', entry: entry }); }
-      saveUsers();
-      if (recordEvent) { saveWorld(); broadcastRecords(); broadcast({ type: 'feed', entry: { t: Date.now(), who: who, item: entry.item, ground: entry.ground, spot: entry.spot, size: entry.size, record: true } }); }
-
-      // 回推权威资产与图鉴（带 seq，用于客户端账本对账）
-      sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, seq: Number(d.seq) || 0 });
-      sendTo(key, { type: 'codex', codex: rec.codex, catchCount: rec.catchCount });
-
-      apiResp(res, 200, { ok: true, codex: cx, record: recordEvent });
+  // ---- 开发/测试辅助：仅 FISHING_DEV=1 时存在；正常部署（run.bat）不开启 ----
+  if (process.env.FISHING_DEV === '1' && p === '/api/dev/catch' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const itemId = d.item && d.item.id;
+        if (!itemId) return apiResp(res, 400, { error: '缺少物品' });
+        invAdd(rec, itemId, 1);
+        rec.codex = rec.codex || {};
+        rec.catchCount = (rec.catchCount || 0) + 1;
+        const cx = rec.codex[itemId] || { count: 0, first: Date.now() };
+        cx.count += 1;
+        rec.codex[itemId] = cx;
+        let recordEvent = null;
+        const rawSize = d.item && d.item.size != null ? d.item.size : d.size;
+        const size = Number(rawSize);
+        if (FISH_ID_SET[itemId] && isFinite(size) && size > 0) {
+          const cur = world.bigRecords[itemId];
+          if (!cur || size > cur.size) {
+            world.bigRecords[itemId] = { id: itemId, name: itemName(itemId), size: Math.round(size * 10) / 10, who: rec.name, t: Date.now() };
+            recordEvent = world.bigRecords[itemId];
+          }
+        }
+        const entry = { t: Date.now(), who: rec.name, item: d.item, ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
+        feed.unshift(entry); if (feed.length > 60) feed.pop();
+        broadcast({ type: 'feed', entry: entry });
+        saveUsers();
+        if (recordEvent) { saveWorld(); broadcastRecords(); broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: entry.item, ground: entry.ground, spot: entry.spot, size: entry.size, record: true } }); }
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        apiResp(res, 200, { ok: true, codex: cx, record: recordEvent });
+      });
+    });
+    return;
+  }
+  if (process.env.FISHING_DEV === '1' && p === '/api/dev/seed' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        if (d.inventory) rec.inventory = d.inventory;
+        if (d.coins != null) rec.coins = d.coins;
+        saveUsers();
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        apiResp(res, 200, { ok: true });
+      });
     });
     return;
   }
@@ -346,6 +573,18 @@ const server = http.createServer(function (req, res) {
   // ---- 系统商店：查询价格 / 出售物品 ----
   if (p === '/shop' && req.method === 'GET') {
     return apiResp(res, 200, shopSnapshot());
+  }
+  // ---- 商品价格历史与交易量（公开只读；points 为每分钟一次的价格采样） ----
+  if (p === '/api/shop/history' && req.method === 'GET') {
+    const id = u.query.id;
+    if (!ITEM_PRICE[id]) return apiResp(res, 404, { error: '未知物品' });
+    const s = world.shopSales[id] || {};
+    return apiResp(res, 200, {
+      id: id, base: basePrice(id), price: currentPrice(id),
+      soldToday: s.soldToday || 0, soldTotal: s.soldTotal || 0,
+      points: (world.priceLog && world.priceLog[id]) || [],
+      trades: ((world.tradeLog && world.tradeLog[id]) || []).slice(-120),
+    });
   }
   if (p === '/api/sell' && req.method === 'POST') {
     readBody(req, function (body) {
@@ -358,7 +597,7 @@ const server = http.createServer(function (req, res) {
         const gain = unit * qty;
         invAdd(rec, id, -qty);
         rec.coins += gain;
-        registerSale(id, qty);
+        registerSale(id, qty, rec.name, unit);
         saveUsers(); saveWorld();
         broadcastShop();
         apiResp(res, 200, { ok: true, unit: unit, gain: gain, coins: rec.coins, inventory: rec.inventory, shop: shopSnapshot() });
@@ -579,11 +818,12 @@ const server = http.createServer(function (req, res) {
     return apiResp(res, 200, { records: world.bigRecords });
   }
 
-  // ---- 静态文件（禁止访问 data/） ----
+  // ---- 静态文件（集成模式托管 frontend；纯 API 模式返回 404） ----
+  if (!STATIC_DIR) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('API only'); return; }
   if (p.startsWith('/data/')) { res.writeHead(403); res.end('Forbidden'); return; }
   const rel = p === '/' ? '/index.html' : p;
-  const fp = path.normalize(path.join(ROOT, rel));
-  if (!fp.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
+  const fp = path.normalize(path.join(STATIC_DIR, rel));
+  if (!fp.startsWith(STATIC_DIR)) { res.writeHead(403); res.end('Forbidden'); return; }
   fs.readFile(fp, function (err, data) {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Not found'); return; }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(fp)] || 'application/octet-stream' });
@@ -592,6 +832,8 @@ const server = http.createServer(function (req, res) {
 });
 
 server.listen(PORT, function () {
-  console.log('🎣 钓鱼多人服务器已启动: http://localhost:' + PORT);
+  console.log('🎣 钓鱼 API 服务器已启动: http://localhost:' + PORT);
+  if (STATIC_DIR) console.log('   集成模式：前端已托管 → http://localhost:' + PORT + '/  （' + STATIC_DIR + '）');
+  else console.log('   纯 API 模式：未托管静态前端（前后端分离部署）');
   console.log('   注册/登录后可开始；多开浏览器标签 = 多真实玩家。');
 });

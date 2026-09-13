@@ -35,7 +35,7 @@ function req(method, u, body) {
 
 // 用 jsdom 打开真实页面
 async function openPage() {
-  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'frontend', 'index.html'), 'utf8');
   const vc = new VirtualConsole();
   const errors = [];
   vc.on('jsdomError', e => errors.push('jsdomError: ' + e.message));
@@ -84,7 +84,7 @@ async function openPage() {
 
 (async () => {
   console.log('登录/注册前端交互测试（jsdom 真实 DOM）');
-  const srv = spawn(NODE, ['server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
+  const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
   await sleep(900);
 
   try {
@@ -106,7 +106,7 @@ async function openPage() {
     await sleep(600);
     check('点击登录后遮罩隐藏（进入游戏）', $('auth').style.display === 'none', 'display=' + $('auth').style.display);
     check('点击登录后无报错信息', !$('auth-msg').textContent, 'msg=' + $('auth-msg').textContent);
-    check('登录后已渲染导航（8 个已实现入口可见）', w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 8, 'got ' + w.document.querySelectorAll('#nav .nav-item:not(.locked)').length);
+    check('登录后已渲染导航（9 个已实现入口可见）', w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 9, 'got ' + w.document.querySelectorAll('#nav .nav-item:not(.locked)').length);
     check('未实现入口仍为锁定占位（不可跳转）', w.document.querySelectorAll('#nav .nav-item.locked').length === 2, 'got ' + w.document.querySelectorAll('#nav .nav-item.locked').length);
     check('登录后顶栏显示玩家名', $('player-status').textContent.includes('界面测试'), $('player-status').textContent);
     check('登录后 token 已写入 localStorage', !!w.localStorage.getItem('fishing_token'));
@@ -151,7 +151,7 @@ async function openPage() {
     const savedToken = w.localStorage.getItem('fishing_token');
     check('先登录取得 token', !!savedToken);
     // 重新打开页面（保留 localStorage 需同域，这里手动注入相同 token）
-    const dom2 = new JSDOM(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'), {
+    const dom2 = new JSDOM(fs.readFileSync(path.join(ROOT, 'frontend', 'index.html'), 'utf8'), {
       url: 'http://localhost:' + PORT + '/', runScripts: 'dangerously', resources: 'usable', pretendToBeVisual: true,
     });
     const w2 = dom2.window;
@@ -180,7 +180,7 @@ async function openPage() {
     fail++;
   } finally {
     srv.kill();
-    try { fs.rmSync(path.join(ROOT, 'data'), { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
     console.log('\n============================');
     console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
     if (fail) console.log('失败项：\n  - ' + failed.join('\n  - '));

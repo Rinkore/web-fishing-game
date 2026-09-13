@@ -52,7 +52,7 @@ function sse(token, sink) {
 }
 
 async function openPage(token) {
-  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'frontend', 'index.html'), 'utf8');
   const vc = new VirtualConsole();
   const errs = [];
   vc.on('jsdomError', e => errs.push('jsdomError: ' + e.message));
@@ -101,7 +101,7 @@ async function openPage(token) {
 
 (async () => {
   console.log('钓鱼交互 + 近期大鱼实时更新 测试');
-  const srv = spawn(NODE, ['server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
+  const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
   await sleep(900);
 
   try {
@@ -196,7 +196,7 @@ async function openPage(token) {
     fail++;
   } finally {
     srv.kill();
-    try { fs.rmSync(path.join(ROOT, 'data'), { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
     console.log('\n============================');
     console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
     if (fail) console.log('失败项：\n  - ' + failed.join('\n  - '));
