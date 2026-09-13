@@ -542,7 +542,7 @@ const server = http.createServer(function (req, res) {
         rec.catchCount = (rec.catchCount || 0) + 1;
         const cx = rec.codex[itemId] || { count: 0, first: Date.now() };
         cx.count += 1;
-        const dSize = Number(rawSize);
+        const dSize = Number(d.item && d.item.size != null ? d.item.size : d.size);
         if (isFinite(dSize) && dSize > 0) {
           if (cx.max == null || dSize > cx.max) cx.max = dSize;
           if (cx.min == null || dSize < cx.min) cx.min = dSize;
