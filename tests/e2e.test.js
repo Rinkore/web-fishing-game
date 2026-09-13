@@ -125,6 +125,8 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
     sawRecent = sinkB.slice(recentMark).some(m => m.type === 'players' && m.players.some(p => p.id === 'tester_a' && p.recent));
   }
   check('近期渔获（recent）出现在玩家列表', sawRecent, '等待 ' + waitedRecent / 1000 + 's');
+  const codexAfter = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.codex || {};
+  check('图鉴记录个人最大/最小体型', Object.keys(codexAfter).some(function (k) { return codexAfter[k].max != null && codexAfter[k].min != null; }));
 
   section('钓速词缀即时调整服务器循环');
   // 组件安装 = 消耗道具：先经 dev 接口发放组件入包

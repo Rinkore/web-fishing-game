@@ -1121,10 +1121,11 @@ window.UI = (function () {
   }
 
   // ---- 鱼类图鉴视图 ----
-  // 当前展开详情的图鉴条目（模块级：重绘间保留）
+  // 当前展开详情的图鉴条目 + 当前分类（模块级：重绘间保留）
   let codexDetailId = null;
+  let codexCategory = 'all';
 
-  // 图鉴详情浮层：全部产地 + 完整信息（点击已解锁卡片开合）
+  // 图鉴详情浮层：完整信息 + 全部产地（点击卡片开合；未解锁也可查看获取信息）
   function openCodexDetail(cell, it, rec) {
     document.querySelectorAll('.codex-detail').forEach(function (d) { d.remove(); });
     const spots = D.spotsOf(it.id);
@@ -1133,9 +1134,13 @@ window.UI = (function () {
     box.addEventListener('click', function (ev) { ev.stopPropagation(); }); // 浮层内点击不触发卡片开合
     box.innerHTML =
       '<div class="cd-title ' + rarityClass(it.rarity) + '">' + esc(it.name) + '</div>' +
-      '<div class="cd-line">已钓 <b>' + rec.count + '</b> 次 · 首获 ' + timeStr(rec.first) + '</div>' +
+      (rec
+        ? '<div class="cd-line">已钓 <b>' + rec.count + '</b> 次 · 首获 ' + timeStr(rec.first) + '</div>'
+        : '<div class="cd-line muted">未解锁 · 去产地垂钓即可解锁</div>') +
       '<div class="cd-line">稀有度：' + rarityName + ' · 基准价 ' + (it.price || 0) + '💰</div>' +
-      (it.size ? '<div class="cd-line">体型 ' + it.size[0] + '-' + it.size[1] + ' cm</div>' : '<div class="cd-line">材料 / 组件</div>');
+      (it.size ? '<div class="cd-line">体型 ' + it.size[0] + '-' + it.size[1] + ' cm</div>' : '<div class="cd-line">材料 / 组件</div>') +
+      (rec && rec.max != null ? '<div class="cd-line">我钓到过：最大 <b>' + rec.max + '</b> cm · 最小 <b>' + rec.min + '</b> cm</div>' : '') +
+      (rec && rec.max == null && it.size ? '<div class="cd-line muted">个人体型极值将在下次钓到后开始记录</div>' : '');
     if (spots.length) {
       box.appendChild(el('div', 'cd-sub', '📍 产出地点（全部 ' + spots.length + ' 处）'));
       const sl = el('div', 'cd-spots');
@@ -1165,7 +1170,7 @@ window.UI = (function () {
     const panel = el('div', 'panel wide');
     const caught = st.codex || {};
     const total = Object.keys(caught).length;
-    panel.innerHTML = '<h2>📖 鱼类图鉴 <span class="subtitle">个人收集进度 · 点击已解锁卡片查看产地等完整信息</span></h2>';
+    panel.innerHTML = '<h2>📖 鱼类图鉴 <span class="subtitle">个人收集进度 · 点击卡片查看完整信息（产地/个人体型极值）</span></h2>';
 
     // 汇总
     const items = D.allItems();
@@ -1177,29 +1182,40 @@ window.UI = (function () {
       '<div class="cs-box"><b>' + (st.catchCount || 0) + '</b><span>累计渔获</span></div>';
     panel.appendChild(summary);
 
+    // 分类页签（与背包一致；数量为各类条目数）
+    const tabs = el('div', 'inv-cats');
+    [['all', '📦 全部', items.length], ['fish', '🐟 鱼类', fishItems.length],
+     ['material', '🧵 材料', items.filter(function (i) { return i.kind === 'material'; }).length],
+     ['component', '🔧 组件', items.filter(function (i) { return i.kind === 'component'; }).length]].forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (codexCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
+      b.addEventListener('click', function () { if (codexCategory !== kv[0]) { codexCategory = kv[0]; renderView(); } });
+      tabs.appendChild(b);
+    });
+    panel.appendChild(tabs);
+
     const grid = el('div', 'codex-grid');
-    const cellById = {}; // 已解锁卡片：id -> cell（重绘后恢复展开的详情）
-    items.forEach(function (it) {
+    const cellById = {};
+    const shown = codexCategory === 'all' ? items : items.filter(function (i) { return i.kind === codexCategory; });
+    shown.forEach(function (it) {
       const rec = caught[it.id];
       const cell = el('div', 'codex-cell' + (rec ? ' got' : '') + ' k-' + it.kind);
-      if (rec) {
-        const spots = D.spotsOf(it.id);
-        cell.innerHTML = '<div class="cx-name ' + rarityClass(it.rarity) + '">' + esc(it.name) + '</div>' +
-          '<div class="cx-meta">已钓 ' + rec.count + ' 次</div>' +
-          '<div class="cx-meta muted">首获 ' + timeStr(rec.first) + '</div>' +
-          (it.size ? '<div class="cx-meta muted">体型 ' + it.size[0] + '-' + it.size[1] + 'cm</div>' : '<div class="cx-meta muted">材料 / 组件</div>') +
-          (spots.length ? '<div class="cx-meta cx-spots">📍 产地 ' + spots.length + ' 处</div>' : '');
-        cell.title = '点击查看产地等完整信息';
-        cell.addEventListener('click', function () { toggleCodexDetail(cell, it, rec); });
-        cellById[it.id] = cell;
-      } else {
-        cell.innerHTML = '<div class="cx-name locked-name">' + esc(it.name) + '</div><div class="cx-meta">未解锁</div>';
-      }
+      const spots = D.spotsOf(it.id);
+      const rarityName = it.rarity === 'big' ? '大鱼' : it.rarity === 'rare' ? '稀有' : it.rarity === 'epic' ? '史诗' : '普通';
+      // 统一五行骨架：全部卡片结构一致、高度对齐
+      cell.innerHTML =
+        '<div class="cx-name ' + (rec ? rarityClass(it.rarity) : 'locked-name') + '">' + esc(it.name) + '</div>' +
+        '<div class="cx-meta">' + (rec ? '已钓 ' + rec.count + ' 次' : '未解锁') + '</div>' +
+        '<div class="cx-meta muted">' + (rec ? '首获 ' + timeStr(rec.first) : rarityName + ' · ' + (it.price || 0) + '💰') + '</div>' +
+        (it.size ? '<div class="cx-meta muted">体型 ' + it.size[0] + '-' + it.size[1] + 'cm</div>' : '<div class="cx-meta muted">材料 / 组件</div>') +
+        (spots.length ? '<div class="cx-meta cx-spots">📍 产地 ' + spots.length + ' 处</div>' : '<div class="cx-meta muted">📍 —</div>');
+      cell.title = '点击查看完整信息';
+      cell.addEventListener('click', function () { toggleCodexDetail(cell, it, rec); });
+      cellById[it.id] = cell;
       grid.appendChild(cell);
     });
     // 重绘后恢复展开中的详情
     if (codexDetailId && cellById[codexDetailId]) {
-      openCodexDetail(cellById[codexDetailId], D.itemOf(codexDetailId), caught[codexDetailId]);
+      openCodexDetail(cellById[codexDetailId], D.itemOf(codexDetailId), caught[codexDetailId] || null);
     }
     panel.appendChild(grid);
     main.appendChild(panel);

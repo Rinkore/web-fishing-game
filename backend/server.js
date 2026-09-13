@@ -135,6 +135,11 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   rec.catchCount = (rec.catchCount || 0) + 1;
   const cx = rec.codex[item.id] || { count: 0, first: Date.now() };
   cx.count += 1;
+  // 记录个人最大/最小体型（图鉴详情展示）
+  if (item.size != null) {
+    if (cx.max == null || item.size > cx.max) cx.max = item.size;
+    if (cx.min == null || item.size < cx.min) cx.min = item.size;
+  }
   rec.codex[item.id] = cx;
 
   let recordEvent = null;
@@ -537,6 +542,11 @@ const server = http.createServer(function (req, res) {
         rec.catchCount = (rec.catchCount || 0) + 1;
         const cx = rec.codex[itemId] || { count: 0, first: Date.now() };
         cx.count += 1;
+        const dSize = Number(rawSize);
+        if (isFinite(dSize) && dSize > 0) {
+          if (cx.max == null || dSize > cx.max) cx.max = dSize;
+          if (cx.min == null || dSize < cx.min) cx.min = dSize;
+        }
         rec.codex[itemId] = cx;
         let recordEvent = null;
         const rawSize = d.item && d.item.size != null ? d.item.size : d.size;
