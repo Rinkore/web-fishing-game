@@ -192,6 +192,7 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     const listed = await POST('http://localhost:' + PORT + '/api/market/list', { token: tokA, id: 'crucian', qty: 10, price: 20 });
     check('上架 10 ×鲫鱼 @20 成功', listed.status === 200 && !!listed.data.listing);
     const lid = listed.data.listing.lid;
+    check('上架费 1% 已收取（定价总额 200 → 费 2，500→498）', listed.data.fee === 2 && listed.data.coins === 498, JSON.stringify({ fee: listed.data.fee, coins: listed.data.coins }));
     check('上架后卖家库存扣减 10', listed.data.inventory.crucian === undefined || listed.data.inventory.crucian === 0, JSON.stringify(listed.data.inventory));
 
     // —— 部分购买 3 个 ——
@@ -204,8 +205,8 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
 
     await sleep(350);
     const sellerAfter1 = (await GET('http://localhost:' + PORT + '/api/me?token=' + tokA)).data;
-    check('卖家收到货款（500→554，已扣 10% 税 6）', sellerAfter1.coins === 554, String(sellerAfter1.coins));
-    check('卖家收到 assets 定向推送（带最新金币）', sinkA.some(m => m.type === 'assets' && m.coins === 554), JSON.stringify(sinkA.filter(m => m.type === 'assets').slice(-1)));
+    check('卖家收到货款（498 → 552，货款 54 = 60 − 10% 税 6）', sellerAfter1.coins === 552, String(sellerAfter1.coins));
+    check('卖家收到 assets 定向推送（带最新金币）', sinkA.some(m => m.type === 'assets' && m.coins === 552), JSON.stringify(sinkA.filter(m => m.type === 'assets').slice(-1)));
     check('卖家收到售出通知 notice', sinkA.some(m => m.type === 'notice' && /售出/.test(m.msg || '')));
 
     const mk1 = await GET('http://localhost:' + PORT + '/api/records'); // 仅用于确保无异常
@@ -219,6 +220,8 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     const crucianListing = marketMsg && marketMsg.listings.find(l => l.lid === lid);
     check('部分购买后挂单仍在（剩余 7）', !!crucianListing && crucianListing.qty === 7, JSON.stringify(crucianListing));
     await POST('http://localhost:' + PORT + '/api/market/cancel', { token: tokA, lid: carpLid });
+    const afterCancel = (await GET('http://localhost:' + PORT + '/api/me?token=' + tokA)).data;
+    check('下架不退上架费（carp 挂单费 1，仍为 551）', afterCancel.coins === 551, String(afterCancel.coins));
 
     // —— 购买数量超过剩余 → 夹取为剩余值 ——
     const over = await POST('http://localhost:' + PORT + '/api/market/buy', { token: tokB, lid: lid, qty: 999 });
@@ -228,7 +231,7 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     check('整单买走后挂单被移除', !marketMsg2.listings.some(l => l.lid === lid));
 
     const sellerAfter2 = (await GET('http://localhost:' + PORT + '/api/me?token=' + tokA)).data;
-    check('卖家第二笔也收到钱（554 + 126 = 680，税 14）', sellerAfter2.coins === 680, String(sellerAfter2.coins));
+    check('卖家第二笔也收到钱（551 + 126 = 677，税 14）', sellerAfter2.coins === 677, String(sellerAfter2.coins));
     const buyerAfter2 = (await GET('http://localhost:' + PORT + '/api/me?token=' + tokB)).data;
     check('买家累计扣款（440 - 140 = 300）', buyerAfter2.coins === 300, String(buyerAfter2.coins));
     check('买家共入库 10 个', buyerAfter2.inventory.crucian === 10, JSON.stringify(buyerAfter2.inventory));
@@ -239,12 +242,12 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     check('客户端网络层不再上报 inventory', !/inventory\s*:/.test(netSrc));
     await POST('http://localhost:' + PORT + '/api/profile', { token: tokA, name: '甲玩家' });
     const sellerAfterSync = (await GET('http://localhost:' + PORT + '/api/me?token=' + tokA)).data;
-    check('自动保存后卖家金币不被清零（仍为 680）', sellerAfterSync.coins === 680, String(sellerAfterSync.coins));
+    check('自动保存后卖家金币不被清零（仍为 677）', sellerAfterSync.coins === 677, String(sellerAfterSync.coins));
 
     // 不能买自己的挂单
     await POST('http://localhost:' + PORT + '/api/dev/seed', { token: tokA, inventory: { crucian: 5 } });
     const selfList = await POST('http://localhost:' + PORT + '/api/market/list', { token: tokA, id: 'crucian', qty: 2, price: 3 });
-    check('自持物品可上架（用于自购校验）', selfList.status === 200 && !!selfList.data.listing, JSON.stringify(selfList.data));
+    check('自持物品可上架（用于自购校验；上架费 ceil(0.06)=1）', selfList.status === 200 && !!selfList.data.listing && selfList.data.fee === 1, JSON.stringify(selfList.data));
     check('不能购买自己的挂单被拒', (await POST('http://localhost:' + PORT + '/api/market/buy', { token: tokA, lid: selfList.data.listing.lid })).status === 400);
     await POST('http://localhost:' + PORT + '/api/market/cancel', { token: tokA, lid: selfList.data.listing.lid });
 
@@ -364,7 +367,7 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     const bFinal = await GET('http://localhost:' + PORT + '/api/me?token=' + tokB);
     check('A 换得出 B 的黄金锦鲤', aFinal.data.inventory.koi >= 1, JSON.stringify(aFinal.data.inventory));
     check('B 换得出 A 的鲫鱼 ×3', bFinal.data.inventory.crucian === 13, JSON.stringify(bFinal.data.inventory));
-    check('交易本身免税（金币不变）', aFinal.data.coins === 680 && bFinal.data.coins === 300,
+    check('交易本身免税（金币不变，含历次上架费后 A=676）', aFinal.data.coins === 676 && bFinal.data.coins === 300,
       aFinal.data.coins + '/' + bFinal.data.coins);
 
     cliA.destroy(); cliB.destroy();

@@ -501,10 +501,14 @@ const server = http.createServer(function (req, res) {
           comp = D.componentOf(d.compId);
           if (!comp) return apiResp(res, 400, { error: '未知组件' });
           if (comp.part !== part.key) return apiResp(res, 400, { error: '组件与部位不匹配' });
+          // 安装 = 使用组件道具：从背包消耗 1 件（卸下不返还）
+          if (!invHas(rec, comp.id, 1)) return apiResp(res, 400, { error: '背包中没有该组件' });
         }
         rec.bd = rec.bd || {};
         rec.bd[part.key] = { compId: comp ? comp.id : null, name: comp ? comp.name : part.default.name, affixes: [], rare: null, isCharm: !!part.isCharm };
+        if (comp) invAdd(rec, comp.id, -1);
         saveUsers();
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
         // 钓速变化即时生效：正在钓鱼则按新间隔重启循环
         const pl = players.get(key);
         let interval = null;
@@ -514,7 +518,7 @@ const server = http.createServer(function (req, res) {
           interval = fishIntervalOf(rec.bd);
           fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
         }
-        apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval });
+        apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval, inventory: rec.inventory });
       });
     });
     return;
@@ -615,12 +619,15 @@ const server = http.createServer(function (req, res) {
         const price = Math.max(1, Math.floor(Number(d.price) || 0));
         if (!ITEM_PRICE[id]) return apiResp(res, 400, { error: '该物品不可上架' });
         if (!invHas(rec, id, qty)) return apiResp(res, 400, { error: '数量不足' });
+        const fee = Math.ceil(price * qty * 0.01); // 上架费：定价总额的 1%，下架不退
+        if (rec.coins < fee) return apiResp(res, 400, { error: '金币不足（需上架费 ' + fee + '）' });
         invAdd(rec, id, -qty);
+        rec.coins -= fee;
         const listing = { lid: world.listingSeq++, seller: key, sellerName: rec.name, id: id, name: itemName(id), qty: qty, price: price, t: Date.now() };
         world.listings.push(listing);
         saveUsers(); saveWorld();
         broadcastMarket();
-        apiResp(res, 200, { ok: true, listing: listing, inventory: rec.inventory });
+        apiResp(res, 200, { ok: true, listing: listing, inventory: rec.inventory, fee: fee, coins: rec.coins });
       });
     });
     return;

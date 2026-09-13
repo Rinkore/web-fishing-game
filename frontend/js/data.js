@@ -108,6 +108,18 @@
     }
     return null;
   }
+  // 鱼类产出地点索引：id -> ['钓场·钓点', ...]（图鉴展示用）
+  function spotsOf(id) {
+    const out = [];
+    GROUNDS.forEach(function (g) {
+      g.spots.forEach(function (sp) {
+        sp.pool.forEach(function (e) {
+          if (e.pick === 'fish:' + id) out.push(g.name + '·' + sp.name);
+        });
+      });
+    });
+    return out;
+  }
 
   // ---- 钓场 ----
   // 普通钓场常驻；活动钓场为 locked 占位。
@@ -225,7 +237,7 @@
     RARITY_PRICE: RARITY_PRICE,
     ROD_PARTS: ROD_PARTS, AFFIX_FRAMEWORK: AFFIX_FRAMEWORK,
     AFFIX_LABEL: AFFIX_LABEL, COMPONENTS: COMPONENTS,
-    rollComponent: rollComponent, componentOf: componentOf, fishTierOf: fishTierOf,
+    rollComponent: rollComponent, componentOf: componentOf, fishTierOf: fishTierOf, spotsOf: spotsOf,
     GROUNDS: GROUNDS, NAV: NAV,
     allItems: allItems, itemOf: itemOf, itemName: itemName,
   };

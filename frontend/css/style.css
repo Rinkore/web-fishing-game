@@ -391,6 +391,41 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .panel.two-col .col-side .cs-box { padding: 10px 6px; }
 .panel.two-col .col-side .cs-box b { font-size: 19px; }
 
+/* ---- 背包分类与我的挂单 ---- */
+.inv-cats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.inv-cat {
+  padding: 6px 14px; border-radius: 20px; border: 1px solid var(--line);
+  background: rgba(255,255,255,.04); color: var(--muted); cursor: pointer; font-size: 13px;
+}
+.inv-cat:hover { border-color: var(--accent2); color: var(--text); }
+.inv-cat.on {
+  background: rgba(45,212,191,.16); border-color: var(--accent);
+  color: var(--accent); font-weight: 600;
+}
+.my-listings { display: flex; flex-direction: column; gap: 6px; max-height: 230px; overflow: auto; }
+
+/* ---- 大鱼记录：全场最大置顶 + 分鱼类网格 ---- */
+.record-hero {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  border: 1px solid var(--big); background: rgba(251,191,36,.10);
+  border-radius: 12px; padding: 14px 18px; margin-bottom: 6px;
+}
+.rh-crown { font-size: 13px; font-weight: 700; color: var(--big); width: 100%; }
+.rh-name { font-size: 20px; font-weight: 700; }
+.rh-size { font-size: 28px; font-weight: 800; color: var(--big); }
+.rh-size .u { font-size: 12px; font-weight: 400; color: var(--muted); }
+.rh-who { color: var(--muted); font-size: 12px; margin-left: auto; }
+.record-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-items: start; }
+.record-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
+.record-cell.none { opacity: .5; }
+.rc-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.rc-name.locked-name { color: var(--muted); font-weight: 400; }
+.rc-size { font-size: 20px; font-weight: 800; color: var(--big); }
+.rc-size.muted { color: var(--muted); font-weight: 400; }
+.rc-size .u { font-size: 11px; font-weight: 400; color: var(--muted); }
+.rc-who { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.cx-spots { color: var(--accent2) !important; }
+
 /* ---- 钓竿配置 ---- */
 .r-epic { color: #fb923c; font-weight: 600; }
 .eff-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }

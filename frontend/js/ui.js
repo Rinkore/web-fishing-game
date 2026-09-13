@@ -203,7 +203,7 @@ window.UI = (function () {
     right.appendChild(el('h3', null, '🎒 背包'));
     right.appendChild(inventoryBlock({
       onSell: function (id) { call(window.Net.sell(id, 1), function (r) { return '售出 1 ×' + itemMeta(id).name + '，获得 💰' + r.data.gain; }).then(function (r) { if (r && r.ok) { S().player.coins = r.data.coins; S().inventory = r.data.inventory; S().shop = r.data.shop; renderTopbar(); renderView(); } }); },
-      onList: function (id, qty, price) { call(window.Net.marketList(id, qty, price)).then(function (r) { if (r && r.ok) { S().inventory = r.data.inventory; renderTopbar(); renderView(); } }); },
+      onList: function (id, qty, price) { call(window.Net.marketList(id, qty, price), function (r) { return '已上架到市集（支付上架费 ' + r.data.fee + '💰，下架不退）'; }).then(function (r) { if (r && r.ok) { S().inventory = r.data.inventory; S().player.coins = r.data.coins; renderTopbar(); renderView(); } }); },
     }));
 
     main.appendChild(right);
@@ -238,12 +238,12 @@ window.UI = (function () {
       }
       if (opts.onList) {
         const lb = el('button', 'mini', '上架');
-        lb.title = '挂到开放市集，由其他玩家购买';
+        lb.title = '挂到开放市集（收定价总额 1% 上架费，下架不退）';
         lb.addEventListener('click', function () {
           const qty = parseInt(prompt('上架数量（持有 ' + st.inventory[k] + '）', '1'), 10);
           if (!qty || qty <= 0) return;
           const base = shopP ? shopP.price : meta.price;
-          const price = parseInt(prompt('单价（金币，建议参考系统价 ' + base + '）', String(base * 2)), 10);
+          const price = parseInt(prompt('单价（金币；上架费 = 定价总额的 1%，下架不退；系统价 ' + base + '）', String(base * 2)), 10);
           if (!price || price <= 0) return;
           opts.onList(k, Math.min(qty, st.inventory[k]), price);
         });
@@ -273,14 +273,16 @@ window.UI = (function () {
   }
 
   // ---- 钓竿配置视图（组件装备 + 词缀加成） ----
-  // 装备/卸下走服务器（/api/bd/set 校验目录并即时调整钓速），组件本体留在背包
+  // 装备/卸下走服务器（/api/bd/set 校验目录并即时调整钓速）。
+  // 安装 = 使用组件道具：消耗背包中 1 件（卸下不返还）。
   function setPart(partKey, compId) {
     call(window.Net.bdSet(partKey, compId || null), null).then(function (r) {
       if (r && r.ok) {
         bdPickerPart = null;
         S().bd = r.data.bd;
+        if (r.data.inventory) S().inventory = r.data.inventory;
         E().refreshEffects();
-        toast((compId ? '已装备 ' + itemMeta(compId).name : '已卸下组件') + '，加成已在服务器生效');
+        toast((compId ? '已装备 ' + itemMeta(compId).name + '（消耗 1 件组件）' : '已卸下组件') + '，加成已在服务器生效');
         renderView();
       }
     });
@@ -300,7 +302,7 @@ window.UI = (function () {
     });
     if (!owns.length) { bdPickerPart = null; return; }
     const picker = el('div', 'comp-picker');
-    picker.appendChild(el('div', 'tp-head', '选择要装备的「' + part.name + '」组件（装备后仍留在背包）'));
+    picker.appendChild(el('div', 'tp-head', '选择要装备的「' + part.name + '」组件（装备即消耗 1 件，卸下不返还）'));
     owns.forEach(function (id) {
       const c = D.componentOf(id);
       const row = el('div', 'pick-row');
@@ -352,7 +354,10 @@ window.UI = (function () {
       const acts = el('div', 'bd-acts');
       if (comp) {
         const off = el('button', 'mini', '卸下');
-        off.addEventListener('click', function () { setPart(part.key, null); });
+        off.addEventListener('click', function () {
+          if (!confirm('卸下后不返还组件（安装时已作为道具消耗），确定恢复标准' + part.name + '？')) return;
+          setPart(part.key, null);
+        });
         acts.appendChild(off);
       }
       // 背包中该部位的可用组件
@@ -385,7 +390,7 @@ window.UI = (function () {
     panel.appendChild(grid);
     panel.appendChild(el('div', 'note-block',
       '<b>组件怎么获得？</b>钓鱼时有概率钓到各部位组件（稀有/史诗更少见）。' +
-      '装备后组件仍留在背包，可出售或挂市集；所有加成在服务器实时生效（正在钓鱼时钓速也会立即调整）。'));
+      '<b>装备即消耗</b>：安装会使用掉背包中的 1 件该组件（卸下不返还），加成持续生效并在服务器实时结算（正在钓鱼时钓速也会立即调整）。'));
     main.appendChild(panel);
   }
 
@@ -594,14 +599,14 @@ window.UI = (function () {
 
     const side = el('div', 'col-side');
     side.appendChild(el('h3', null, '🎒 我的背包'));
-    side.appendChild(el('div', 'hint', '点击「出售」按当前收购价卖给系统；「上架」挂到开放市集等玩家购买（市集抽 10% 税）。'));
+    side.appendChild(el('div', 'hint', '点击「出售」按当前收购价卖给系统；「上架」挂到开放市集（收定价总额 1% 上架费，下架不退；成交另抽 10% 税）。'));
     side.appendChild(inventoryBlock({
       onSell: function (id) {
         call(window.Net.sell(id, 1), function (r) { return '售出 1 ×' + itemMeta(id).name + '，获得 💰' + r.data.gain; })
           .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderView(); } });
       },
       onList: function (id, qty, price) {
-        call(window.Net.marketList(id, qty, price), '已上架到市集').then(function (r) { if (r && r.ok) { st.inventory = r.data.inventory; renderTopbar(); renderView(); } });
+        call(window.Net.marketList(id, qty, price), function (r) { return '已上架到市集（支付上架费 ' + r.data.fee + '💰，下架不退）'; }).then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; renderTopbar(); renderView(); } });
       },
     }));
     panel.appendChild(side);
@@ -666,10 +671,10 @@ window.UI = (function () {
 
     const side = el('div', 'col-side');
     side.appendChild(el('h3', null, '🎒 我的背包'));
-    side.appendChild(el('div', 'hint', '「上架」把你的物品挂到市集，由其他玩家购买；可自定义数量与单价。'));
+    side.appendChild(el('div', 'hint', '「上架」把你的物品挂到市集（收定价总额 1% 上架费，下架不退）；成交另收 10% 税（卖家承担）。'));
     side.appendChild(inventoryBlock({
       onList: function (id, qty, price) {
-        call(window.Net.marketList(id, qty, price), '已上架到市集').then(function (r) { if (r && r.ok) { st.inventory = r.data.inventory; renderTopbar(); renderView(); } });
+        call(window.Net.marketList(id, qty, price), function (r) { return '已上架到市集（支付上架费 ' + r.data.fee + '💰，下架不退）'; }).then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; renderTopbar(); renderView(); } });
       },
     }));
     panel.appendChild(side);
@@ -677,13 +682,16 @@ window.UI = (function () {
     main.appendChild(panel);
   }
 
-  // ---- 背包视图（独立分页：明细 + 出售/上架 + 汇总） ----
+  // ---- 背包视图（独立分页：分类明细 + 出售/上架 + 汇总 + 我的挂单） ----
+  // 当前分类（模块级：重绘间保留）
+  let invCategory = 'all';
+
   function renderInventory() {
     const main = $('main');
     const st = S();
     main.innerHTML = '';
     const panel = el('div', 'panel wide two-col');
-    panel.innerHTML = '<h2>🎒 背包 <span class="subtitle">物品明细 · 出售 / 上架 · 全部一览</span></h2>';
+    panel.innerHTML = '<h2>🎒 背包 <span class="subtitle">分类明细 · 出售 / 上架 / 下架 · 预估总价按基准价计算（不随市场浮动）</span></h2>';
 
     // 现价优先（服务器动态价），无行情时退回基准价
     function unitPrice(id) { const s = st.shop && st.shop[id]; return s ? s.price : itemMeta(id).price; }
@@ -694,13 +702,29 @@ window.UI = (function () {
           if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderView(); }
         });
     }
+    function listFee(price, qty) { return Math.ceil(price * qty * 0.01); }
+
+    // 分类页签（重绘间保留当前选择）
+    const kindCount = { fish: 0, material: 0, component: 0 };
+    Object.keys(st.inventory).forEach(function (id) {
+      const k = itemMeta(id).kind;
+      if (kindCount[k] != null) kindCount[k] += 1;
+    });
+    const tabs = el('div', 'inv-cats');
+    [['all', '📦 全部', Object.keys(st.inventory).length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (invCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
+      b.addEventListener('click', function () { if (invCategory !== kv[0]) { invCategory = kv[0]; renderView(); } });
+      tabs.appendChild(b);
+    });
 
     const colMain = el('div', 'col-main');
     colMain.appendChild(el('h3', null, '📦 物品明细'));
+    colMain.appendChild(tabs);
     const list = el('div', 'inv-page');
-    const keys = Object.keys(st.inventory);
+    let keys = Object.keys(st.inventory);
+    if (invCategory !== 'all') keys = keys.filter(function (id) { return itemMeta(id).kind === invCategory; });
     if (keys.length === 0) {
-      list.appendChild(el('div', 'hint', '背包空空如也。去「钓鱼」页选个钓点抛竿，渔获会自动入包。'));
+      list.appendChild(el('div', 'hint', invCategory === 'all' ? '背包空空如也。去「钓鱼」页选个钓点抛竿，渔获会自动入包。' : '该分类下暂时没有物品。'));
     } else {
       // 按单价排序：出售/获得不改变行位置（排序与数量无关）
       keys.sort(function (a, b) { return unitPrice(b) - unitPrice(a) || (a < b ? -1 : 1); });
@@ -728,14 +752,16 @@ window.UI = (function () {
         });
         acts.appendChild(sellAll);
         const lb = el('button', 'mini', '上架');
-        lb.title = '挂到开放市集，由其他玩家购买';
+        lb.title = '挂到开放市集，由其他玩家购买（收定价总额 1% 上架费，下架不退）';
         lb.addEventListener('click', function () {
           const qty = parseInt(prompt('上架数量（持有 ' + cnt + '）', '1'), 10);
           if (!qty || qty <= 0) return;
-          const price = parseInt(prompt('单价（金币，建议参考系统价 ' + unitPrice(id) + '）', String(unitPrice(id) * 2)), 10);
+          const price = parseInt(prompt('单价（金币；上架费 = 定价总额的 1%，下架不退；系统价 ' + unitPrice(id) + '）', String(unitPrice(id) * 2)), 10);
           if (!price || price <= 0) return;
-          call(window.Net.marketList(id, Math.min(qty, cnt), price), '已上架到市集').then(function (r) {
-            if (r && r.ok) { st.inventory = r.data.inventory; renderTopbar(); renderView(); }
+          const realQty = Math.min(qty, cnt);
+          if (st.player.coins < listFee(price, realQty)) { toast('金币不足（需上架费 ' + listFee(price, realQty) + '💰）'); return; }
+          call(window.Net.marketList(id, realQty, price), function (r) { return '已上架到市集（支付上架费 ' + r.data.fee + '💰，下架不退）'; }).then(function (r) {
+            if (r && r.ok) { st.inventory = r.data.inventory; st.player.coins = r.data.coins; renderTopbar(); renderView(); }
           });
         });
         acts.appendChild(lb);
@@ -744,22 +770,22 @@ window.UI = (function () {
       });
     }
     colMain.appendChild(list);
-    colMain.appendChild(el('div', 'hint', '提示：出售走系统商店动态收购价（售出越多价越低）；「上架」挂到开放市集等玩家购买，成交收 10% 税（卖家承担）。'));
+    colMain.appendChild(el('div', 'hint', '提示：出售走系统商店动态收购价（售出越多价越低）；「上架」挂到开放市集等玩家购买，需支付定价总额 1% 上架费（下架不退），成交另收 10% 税（卖家承担）。'));
     panel.appendChild(colMain);
 
     const side = el('div', 'col-side');
     side.appendChild(el('h3', null, '📊 背包概览'));
     const kinds = {}; let totalCnt = 0, totalValue = 0;
-    keys.forEach(function (id) {
+    Object.keys(st.inventory).forEach(function (id) {
       kinds[itemMeta(id).kind] = (kinds[itemMeta(id).kind] || 0) + 1;
       totalCnt += st.inventory[id];
-      totalValue += itemValue(id);
+      totalValue += itemMeta(id).price * st.inventory[id]; // 预估总价：按基准价，不随市场浮动
     });
     const summary = el('div', 'codex-summary');
     summary.innerHTML =
-      '<div class="cs-box"><b>' + keys.length + '</b><span>物品种类</span></div>' +
+      '<div class="cs-box"><b>' + Object.keys(st.inventory).length + '</b><span>物品种类</span></div>' +
       '<div class="cs-box"><b>' + totalCnt + '</b><span>总件数</span></div>' +
-      '<div class="cs-box"><b>' + totalValue + '</b><span>总价值（现价）</span></div>';
+      '<div class="cs-box"><b>' + totalValue + '</b><span>预估总价（基准）</span></div>';
     side.appendChild(summary);
     const breakdown = el('div', 'inv-breakdown');
     [['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['component', '🔧 组件']].forEach(function (kv) {
@@ -767,6 +793,33 @@ window.UI = (function () {
       breakdown.appendChild(el('div', 'inv-kind-line', kv[1] + '　' + kinds[kv[0]] + ' 种'));
     });
     side.appendChild(breakdown);
+
+    // 我的挂单（可下架；上架费不退）
+    const mine = (st.market || []).filter(function (l) { return st.me && l.seller === st.me.id; })
+      .sort(function (a, b) { return b.t - a.t; });
+    side.appendChild(el('h3', null, '🏷️ 我的挂单（' + mine.length + '）'));
+    const ml = el('div', 'my-listings');
+    if (!mine.length) {
+      ml.appendChild(el('div', 'hint', '暂无在售挂单。在左侧物品行点「上架」挂到开放市集。'));
+    } else {
+      mine.forEach(function (l) {
+        const row = el('div', 'inv-row my-listing-row');
+        row.innerHTML = '<span class="' + rarityClass(itemMeta(l.id).rarity) + '">' + esc(l.name) + '</span>' +
+          '<span class="cnt">×' + l.qty + ' @ ' + l.price + '💰</span>';
+        const acts = el('span', 'inv-acts');
+        const cb = el('button', 'mini', '下架');
+        cb.title = '下架取回物品（上架费不退）';
+        cb.addEventListener('click', function () {
+          call(window.Net.marketCancel(l.lid), '已下架，物品退回背包（上架费不退）').then(function (r) {
+            if (r && r.ok) { st.inventory = r.data.inventory; renderTopbar(); renderView(); }
+          });
+        });
+        acts.appendChild(cb);
+        row.appendChild(acts);
+        ml.appendChild(row);
+      });
+    }
+    side.appendChild(ml);
     side.appendChild(el('div', 'hint', '现价随全服售出量浮动，可在「系统商店」看趋势；大鱼与稀有物品建议挂市集卖高价。'));
     panel.appendChild(side);
     main.appendChild(panel);
@@ -967,10 +1020,15 @@ window.UI = (function () {
       const rec = caught[it.id];
       const cell = el('div', 'codex-cell' + (rec ? ' got' : '') + ' k-' + it.kind);
       if (rec) {
+        const spots = it.kind === 'fish' ? D.spotsOf(it.id) : [];
+        const spotsHtml = spots.length
+          ? '<div class="cx-meta cx-spots" title="' + esc(spots.join('、')) + '">📍 ' + esc(spots.slice(0, 2).join('、')) + (spots.length > 2 ? ' 等' + spots.length + ' 处' : '') + '</div>'
+          : '';
         cell.innerHTML = '<div class="cx-name ' + rarityClass(it.rarity) + '">' + esc(it.name) + '</div>' +
           '<div class="cx-meta">已钓 ' + rec.count + ' 次</div>' +
           '<div class="cx-meta muted">首获 ' + timeStr(rec.first) + '</div>' +
-          (it.size ? '<div class="cx-meta muted">体型 ' + it.size[0] + '-' + it.size[1] + 'cm</div>' : '<div class="cx-meta muted">材料 / 组件</div>');
+          (it.size ? '<div class="cx-meta muted">体型 ' + it.size[0] + '-' + it.size[1] + 'cm</div>' : '<div class="cx-meta muted">材料 / 组件</div>') +
+          spotsHtml;
       } else {
         cell.innerHTML = '<div class="cx-name locked-name">' + esc(it.name) + '</div><div class="cx-meta">未解锁</div>';
       }
@@ -986,27 +1044,51 @@ window.UI = (function () {
     const st = S();
     main.innerHTML = '';
     const panel = el('div', 'panel wide');
-    panel.innerHTML = '<h2>🏆 大鱼记录 <span class="subtitle">全服最大体型榜</span></h2>';
+    panel.innerHTML = '<h2>🏆 大鱼记录 <span class="subtitle">全服纪录 · 按鱼类分项查看</span></h2>';
 
     const recs = Object.keys(st.records || {}).map(function (id) { return st.records[id]; })
       .sort(function (a, b) { return b.size - a.size; });
-    if (recs.length === 0) {
-      panel.appendChild(el('div', 'hint', '还没有大鱼记录。第一条纪录等着你来刷新！'));
+
+    // 全场最大纪录：单独置顶展示
+    if (recs.length) {
+      const top = recs[0];
+      const topMeta = itemMeta(top.id);
+      const hero = el('div', 'record-hero');
+      hero.innerHTML =
+        '<div class="rh-crown">👑 全场最大</div>' +
+        '<div class="rh-name ' + rarityClass(topMeta.rarity) + '">' + esc(top.name) + '</div>' +
+        '<div class="rh-size">' + top.size + '<span class="u">cm</span></div>' +
+        '<div class="rh-who">纪录保持者：' + esc(top.who) + ' · ' + timeStr(top.t) + '</div>';
+      panel.appendChild(hero);
     } else {
-      const list = el('div', 'record-list');
-      recs.forEach(function (r, i) {
-        const meta = itemMeta(r.id);
-        const rank = i + 1;
-        const row = el('div', 'rec-row' + (rank <= 3 ? ' top top-' + rank : ''));
-        row.innerHTML =
-          '<div class="rec-rank">' + (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '#' + rank) + '</div>' +
-          '<div class="rec-main"><div class="rec-name ' + rarityClass(meta.rarity) + '">' + esc(r.name) + '</div>' +
-          '<div class="rec-who">纪录保持者：' + esc(r.who) + ' · ' + timeStr(r.t) + '</div></div>' +
-          '<div class="rec-size">' + r.size + '<span class="u">cm</span></div>';
-        list.appendChild(row);
-      });
-      panel.appendChild(list);
+      panel.appendChild(el('div', 'hint', '还没有大鱼记录。第一条纪录等着你来刷新！'));
     }
+
+    // 分鱼类查看：每种鱼一个卡片（有纪录按体型排序，无纪录灰显在后）
+    panel.appendChild(el('h3', null, '🐟 分鱼类纪录'));
+    const withRec = [], without = [];
+    D.allItems().filter(function (i) { return i.kind === 'fish'; }).forEach(function (f) {
+      const rec = st.records && st.records[f.id];
+      (rec ? withRec : without).push({ f: f, rec: rec });
+    });
+    withRec.sort(function (a, b) { return b.rec.size - a.rec.size; });
+    const grid = el('div', 'record-grid');
+    withRec.concat(without).forEach(function (e) {
+      const cell = el('div', 'record-cell' + (e.rec ? '' : ' none'));
+      if (e.rec) {
+        cell.innerHTML =
+          '<div class="rc-name ' + rarityClass(e.f.rarity) + '">' + esc(e.f.name) + '</div>' +
+          '<div class="rc-size">' + e.rec.size + '<span class="u">cm</span></div>' +
+          '<div class="rc-who">' + esc(e.rec.who) + ' · ' + timeStr(e.rec.t) + '</div>';
+      } else {
+        cell.innerHTML =
+          '<div class="rc-name locked-name">' + esc(e.f.name) + '</div>' +
+          '<div class="rc-size muted">—</div>' +
+          '<div class="rc-who">暂无纪录</div>';
+      }
+      grid.appendChild(cell);
+    });
+    panel.appendChild(grid);
 
     // 我钓过的最大体型（从本地日志近似）
     const mine = {};
@@ -1120,16 +1202,26 @@ window.UI = (function () {
 
   function onFishingTick() { if (currentView === 'fishing') { renderTopbar(); renderFishing(); } }
 
-  // 刷新主视图。scope 用于避免「无关广播」把正在编辑的页面重绘掉：
-  // 例如钓鱼玩家每 3s 触发 players/grounds/feed，若重绘交易页会丢失勾选状态。
+  // 刷新主视图。每个视图只关心与自己相关的广播类型（scope）：
+  // 无关广播（如他人的渔获 feed/players）只更新顶栏/导航，不重绘主区——
+  // 否则只要有人上鱼，钓竿配置/背包等页面的组件卡片都会跟着整页闪烁重绘。
+  const VIEW_SCOPES = {
+    fishing: ['players', 'grounds', 'catch', 'assets'], // 实况/日志/背包随广播更新
+    bd: [],                                             // 钓竿配置：只随操作重绘（展示数据不受广播影响）
+    ground: ['players', 'grounds', 'feed'],
+    inventory: ['assets', 'shop'],
+    shop: ['assets', 'shop'],
+    market: ['assets', 'market'],
+    trade: ['trade', 'assets', 'codex'],
+    codex: ['codex'],
+    records: ['records'],
+    mall: [], collect: [],
+  };
   function refreshAll(scope) {
-    if (scope === 'all') scope = null;
-    // 交易页有输入状态，只有交易类事件才重绘主区（顶栏/导航仍更新）
-    if (currentView === 'trade' && scope && scope !== 'trade' && scope !== 'assets' && scope !== 'codex') {
-      renderTopbar(); renderNav();
-      return;
-    }
-    renderTopbar(); renderNav(); renderView();
+    if (scope === 'all') scope = null; // init 全量刷新
+    renderTopbar(); renderNav();
+    const scopes = VIEW_SCOPES[currentView];
+    if (!scope || !scopes || scopes.indexOf(scope) >= 0) renderView();
   }
 
   function init() {

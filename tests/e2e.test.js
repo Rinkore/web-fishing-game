@@ -127,8 +127,14 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('近期渔获（recent）出现在玩家列表', sawRecent, '等待 ' + waitedRecent / 1000 + 's');
 
   section('钓速词缀即时调整服务器循环');
+  // 组件安装 = 消耗道具：先经 dev 接口发放组件入包
+  check('dev 发放电动卷线器', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', rarity: 'epic', id: 'reel_electric', name: '电动卷线器' }, ground: '静水湖', spot: '老旧码头' })).status === 200);
+  check('dev 发放精钢鱼钩', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', rarity: 'rare', id: 'hook_steel', name: '精钢鱼钩' }, ground: '静水湖', spot: '老旧码头' })).status === 200);
+  check('未持有组件时装备被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: 'rod_carbon' })).status === 400);
   const bdR = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: 'reel_electric' });
   check('装备电动卷线器成功', bdR.status === 200 && bdR.data.ok === true && bdR.data.bd.reel.compId === 'reel_electric');
+  const meAfterBd = await GET('http://localhost:' + P1 + '/api/me?token=' + tokA);
+  check('安装消耗组件道具（背包 reel_electric 已扣除）', !meAfterBd.data.inventory.reel_electric, JSON.stringify(meAfterBd.data.inventory));
   check('响应返回服务器词缀汇总 +25% 钓速', bdR.data.effects && bdR.data.effects.speed === 25, JSON.stringify(bdR.data.effects));
   check('正在钓鱼时钓速即时生效（2250ms）', bdR.data.interval === 2250, String(bdR.data.interval));
   check('未知组件被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: 'nope' })).status === 400);
