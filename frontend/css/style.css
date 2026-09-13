@@ -333,8 +333,10 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .cs-box b { display: block; font-size: 24px; font-weight: 800; color: var(--accent); }
 .cs-box span { font-size: 12px; color: var(--muted); }
 .codex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
-.codex-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.02); opacity: .5; }
-.codex-cell.got { opacity: 1; background: rgba(255,255,255,.05); border-color: var(--accent2); }
+.codex-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.02); }
+/* 未解锁卡片只压暗自身内容：容器透明度会让内部详情浮层连带变透明、与背景重叠 */
+.codex-cell:not(.got) > *:not(.codex-detail) { opacity: .5; }
+.codex-cell.got { background: rgba(255,255,255,.05); border-color: var(--accent2); }
 .cx-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
 .cx-name.locked-name { color: var(--muted); }
 .cx-meta { font-size: 11px; color: var(--text); }

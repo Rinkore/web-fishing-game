@@ -446,7 +446,7 @@ window.Admin = (function () {
         if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
         poolDirty = false;
         toast('掉落池已保存，全服即时生效');
-        drawGrounds(worldCfg);
+        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c); }); // 重新拉取，避免用保存前的缓存重绘
       });
     };
     $('buff-save').onclick = function () {
@@ -454,7 +454,7 @@ window.Admin = (function () {
         if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
         buffsDirty = false;
         toast('增益已保存，正在该钓点钓鱼的玩家立即按新加成循环');
-        drawGrounds(worldCfg);
+        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c); });
       });
     };
   }

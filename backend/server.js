@@ -1449,7 +1449,8 @@ const server = http.createServer(function (req, res) {
   if (!fp.startsWith(STATIC_DIR)) { res.writeHead(403); res.end('Forbidden'); return; }
   fs.readFile(fp, function (err, data) {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Not found'); return; }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(fp)] || 'application/octet-stream' });
+    // no-cache：每次重载都向服务器校验，避免版本更新后浏览器仍用旧 HTML 配新 JS
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(fp)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(data);
   });
 });
