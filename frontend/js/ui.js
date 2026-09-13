@@ -391,9 +391,11 @@ window.UI = (function () {
     const strip = el('div', 'eff-strip');
     let any = false;
     effDefs.forEach(function (kv) {
-      if (!eff[kv[0]]) return;
+      const v = eff[kv[0]];
+      if (!v) return;
       any = true;
-      strip.appendChild(el('span', 'eff-chip', kv[1] + ' +' + eff[kv[0]] + '%'));
+      // 负值只显示一个 − 号，且整体加成为负时红底标注
+      strip.appendChild(el('span', 'eff-chip' + (v < 0 ? ' eff-neg' : ''), kv[1] + ' ' + (v > 0 ? '+' : '') + v + '%'));
     });
     if (!any) strip.appendChild(el('span', 'eff-chip none', '暂无加成 · 装备组件后生效'));
     panel.appendChild(strip);
@@ -1374,6 +1376,7 @@ window.UI = (function () {
   // 当前展开详情的图鉴条目 + 当前分类（模块级：重绘间保留）
   let codexDetailId = null;
   let codexCategory = 'all';
+  let codexSortRarity = false;
 
   // 图鉴详情浮层：完整信息 + 全部产地（点击卡片开合；未解锁也可查看获取信息）
   function openCodexDetail(cell, it, rec) {
@@ -1391,6 +1394,17 @@ window.UI = (function () {
       (it.size ? '<div class="cd-line">体型 ' + it.size[0] + '-' + it.size[1] + ' cm</div>' : '<div class="cd-line">材料 / 组件</div>') +
       (rec && rec.max != null ? '<div class="cd-line">我钓到过：最大 <b>' + rec.max + '</b> cm · 最小 <b>' + rec.min + '</b> cm</div>' : '') +
       (rec && rec.max == null && it.size ? '<div class="cd-line muted">个人体型极值将在下次钓到后开始记录</div>' : '');
+    // 组件效果词条（负词条红色）
+    const comp = it.kind === 'component' ? D.componentOf(it.id) : null;
+    if (comp && comp.affixes.length) {
+      box.appendChild(el('div', 'cd-sub', '⚙ 组件效果'));
+      const al = el('div', 'cd-spots');
+      comp.affixes.forEach(function (a) {
+        al.appendChild(el('div', 'cd-spot' + (a.value < 0 ? ' cd-aff-neg' : ''),
+          (D.AFFIX_LABEL[a.type] || a.type) + (a.value > 0 ? '+' : '') + a.value + '%'));
+      });
+      box.appendChild(al);
+    }
     if (spots.length) {
       box.appendChild(el('div', 'cd-sub', '📍 产出地点（全部 ' + spots.length + ' 处）'));
       const sl = el('div', 'cd-spots');
@@ -1441,22 +1455,39 @@ window.UI = (function () {
       b.addEventListener('click', function () { if (codexCategory !== kv[0]) { codexCategory = kv[0]; renderView(); } });
       tabs.appendChild(b);
     });
+    // 品级倒序开关（史诗 > 稀有 > 大鱼 > 普通）
+    const sortBtn = el('button', 'inv-cat codex-sort' + (codexSortRarity ? ' on' : ''), '⬇ 品级倒序');
+    sortBtn.title = '按品级从高到低排序';
+    sortBtn.addEventListener('click', function () { codexSortRarity = !codexSortRarity; renderView(); });
+    tabs.appendChild(sortBtn);
     panel.appendChild(tabs);
 
     const grid = el('div', 'codex-grid');
     const cellById = {};
-    const shown = codexCategory === 'all' ? items : items.filter(function (i) { return i.kind === codexCategory; });
+    const baseList = codexCategory === 'all' ? items : items.filter(function (i) { return i.kind === codexCategory; });
+    const TIER_ORDER = { epic: 4, rare: 3, big: 2, common: 1 };
+    const shown = codexSortRarity
+      ? baseList.slice().sort(function (a, b) { return (TIER_ORDER[b.rarity] || 0) - (TIER_ORDER[a.rarity] || 0); })
+      : baseList;
     shown.forEach(function (it) {
       const rec = caught[it.id];
       const cell = el('div', 'codex-cell' + (rec ? ' got' : '') + ' k-' + it.kind);
       const spots = D.spotsOf(it.id);
       const rarityName = it.rarity === 'big' ? '大鱼' : it.rarity === 'rare' ? '稀有' : it.rarity === 'epic' ? '史诗' : '普通';
+      // 组件卡第 4 行改显词条效果（替代"材料 / 组件"占位），负词条红色
+      const comp = it.kind === 'component' ? D.componentOf(it.id) : null;
+      const affHtml = comp && comp.affixes.length
+        ? '<div class="cx-meta cx-aff">' + comp.affixes.map(function (a) {
+            return '<span class="' + (a.value < 0 ? 'neg' : '') + '">' + esc(D.AFFIX_LABEL[a.type] || a.type) + (a.value > 0 ? '+' : '') + a.value + '%</span>';
+          }).join(' · ') + '</div>'
+        : null;
       // 统一五行骨架：全部卡片结构一致、高度对齐
       cell.innerHTML =
         '<div class="cx-name ' + (rec ? rarityClass(it.rarity) : 'locked-name') + '">' + esc(it.name) + '</div>' +
         '<div class="cx-meta">' + (rec ? '已钓 ' + rec.count + ' 次' : '未解锁') + '</div>' +
         '<div class="cx-meta muted">' + (rec ? '首获 ' + timeStr(rec.first) : rarityName + ' · ' + (it.price || 0) + '💰') + '</div>' +
-        (it.size ? '<div class="cx-meta muted">体型 ' + it.size[0] + '-' + it.size[1] + 'cm</div>' : '<div class="cx-meta muted">材料 / 组件</div>') +
+        (it.size ? '<div class="cx-meta muted">体型 ' + it.size[0] + '-' + it.size[1] + 'cm</div>'
+                  : (affHtml || '<div class="cx-meta muted">材料 / 组件</div>')) +
         (spots.length ? '<div class="cx-meta cx-spots">📍 产地 ' + spots.length + ' 处</div>' : '<div class="cx-meta muted">📍 —</div>');
       cell.title = '点击查看完整信息';
       cell.addEventListener('click', function () { toggleCodexDetail(cell, it, rec); });

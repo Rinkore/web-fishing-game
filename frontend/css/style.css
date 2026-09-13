@@ -558,3 +558,10 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 
 /* 负面词条（v0.7.0 取舍型组件）：红色展示 */
 .bec-aff.aff-neg, .af-line.aff-neg { color: var(--danger); }
+
+/* v0.7.1 修订：整体效果负值 chip 红底标注 */
+.eff-chip.eff-neg { background: rgba(248,113,113,.16); border-color: rgba(248,113,113,.5); color: var(--danger); }
+/* 图鉴组件词条行（负词条红色） */
+.cx-aff { color: var(--text); }
+.cx-aff .neg { color: var(--danger); }
+.cd-aff-neg { color: var(--danger) !important; }

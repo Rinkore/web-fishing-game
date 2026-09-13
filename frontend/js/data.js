@@ -50,7 +50,6 @@
     rare: [
       { id: 'koi', name: '黄金锦鲤', rarity: 'rare', price: 400, size: [40, 110] },
       { id: 'pearl', name: '深海珍珠贝', rarity: 'rare', price: 300, size: [10, 40] },
-      { id: 'relic', name: '沉船宝匣残片', rarity: 'rare', price: 380, size: [5, 60] },
       { id: 'amberlobster', name: '琥珀龙虾', rarity: 'rare', price: 340, size: [20, 60] },
       { id: 'voltaiceel', name: '电光鳗', rarity: 'rare', price: 380, size: [60, 140] },
       { id: 'ghostray', name: '幽灵魟', rarity: 'rare', price: 420, size: [90, 220] },
@@ -67,6 +66,7 @@
     { id: 'bait_pack', name: '诱饵包', rarity: 'common', price: 5, size: null },
     { id: 'rope', name: '耐磨绳', rarity: 'common', price: 4, size: null },
     { id: 'lure', name: '反光假饵', rarity: 'common', price: 7, size: null },
+    { id: 'relic', name: '沉船宝匣残片', rarity: 'rare', price: 380, size: null },
   ];
 
   // 掉落用默认组件（框架占位：无效果、无词缀）
@@ -277,7 +277,7 @@
           p('fish', 'tuna', 10), p('fish', 'grouper', 9), p('fish', 'rubysnapper', 7),
           p('fish', 'seabass', 4), p('fish', 'sturgeon', 3), p('fish', 'pearl', 3),
           p('fish', 'dragonfish', 2), p('fish', 'amberlobster', 2),
-          p('fish', 'relic', 1), p('fish', 'dragonpearl', 1),
+          p('material', 'relic', 1), p('fish', 'dragonpearl', 1),
           p('material', 'rope', 10), p('component', '', 7),
         ] },
       ],

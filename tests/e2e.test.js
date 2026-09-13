@@ -274,7 +274,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   srv = start(P1);
   await sleep(900);
   const idx = await GET('http://localhost:' + P1 + '/');
-  check('首页可访问 200', idx.status === 200 && idx.text.includes('网页钓鱼小游戏'));
+  check('首页可访问 200', idx.status === 200 && idx.text.includes('钓鱼网站'));
   check('首页含登录/注册界面', idx.text.includes('auth-card') && idx.text.includes('auth-user'));
   for (const f of ['/css/style.css', '/js/config.js', '/js/data.js', '/js/net.js', '/js/engine.js', '/js/ui.js']) {
     const r = await GET('http://localhost:' + P1 + f);
