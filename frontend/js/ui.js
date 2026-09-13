@@ -614,8 +614,11 @@ window.UI = (function () {
   }
 
   // ---- 开放市集视图 ----
-  // 当前页签（模块级：重绘间保留）
+  // 当前页签与购买市场筛选状态（模块级：重绘间保留）
   let marketTab = 'buy';
+  let buyCategory = 'all';
+  let buySearch = '';
+  let buySearchFocus = false;
 
   // 挂单行：自己的显示「下架」，他人的显示「购买」
   function marketRow(l, st, me) {
@@ -714,16 +717,43 @@ window.UI = (function () {
         });
       });
     } else {
-      // 购买市场：其他玩家的挂单
-      const others = market.filter(function (l) { return !(me && l.seller === me.id); })
-        .sort(function (a, b) { return b.t - a.t; });
+      // 购买市场：其他玩家的挂单 + 分类筛选 + 搜索
+      const othersAll = market.filter(function (l) { return !(me && l.seller === me.id); });
+      const filters = el('div', 'buy-filters');
+      [['all', '全部'], ['fish', '鱼'], ['material', '材料'], ['component', '组件']].forEach(function (kv) {
+        const n = kv[0] === 'all' ? othersAll.length : othersAll.filter(function (l) { return itemMeta(l.id).kind === kv[0]; }).length;
+        const b = el('button', 'bf-cat' + (buyCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + n);
+        b.addEventListener('click', function () { if (buyCategory !== kv[0]) { buyCategory = kv[0]; renderView(); } });
+        filters.appendChild(b);
+      });
+      const inp = el('input', 'bf-search');
+      inp.placeholder = '🔍 搜索物品或卖家…';
+      inp.value = buySearch;
       const list = el('div', 'market-list');
-      if (!others.length) {
-        list.appendChild(el('div', 'hint', '市场暂无其他玩家的挂单。你可以在右侧「我的背包」里上架物品。'));
-      } else {
+      function refreshList() {
+        const q = buySearch.trim().toLowerCase();
+        let others = othersAll.filter(function (l) { return buyCategory === 'all' || itemMeta(l.id).kind === buyCategory; });
+        if (q) others = others.filter(function (l) {
+          return l.name.toLowerCase().indexOf(q) >= 0 || (l.sellerName || '').toLowerCase().indexOf(q) >= 0;
+        });
+        others.sort(function (a, b) { return b.t - a.t; });
+        list.innerHTML = '';
+        if (!others.length) {
+          list.appendChild(el('div', 'hint', othersAll.length ? '没有符合条件的挂单。' : '市场暂无其他玩家的挂单。你可以在右侧「我的背包」里上架物品。'));
+          return;
+        }
         others.forEach(function (l) { list.appendChild(marketRow(l, st, me)); });
+        if (q || buyCategory !== 'all') list.appendChild(el('div', 'hint', '匹配 ' + others.length + ' 条挂单。'));
       }
+      inp.addEventListener('input', function () { buySearch = inp.value; refreshList(); });
+      inp.addEventListener('focus', function () { buySearchFocus = true; });
+      inp.addEventListener('blur', function () { buySearchFocus = false; });
+      filters.appendChild(inp);
+      colMain.appendChild(filters);
       colMain.appendChild(list);
+      refreshList();
+      // 广播重绘后恢复搜索框焦点与光标位置
+      if (buySearchFocus) { inp.focus(); const v = inp.value; inp.setSelectionRange(v.length, v.length); }
       colMain.appendChild(el('div', 'hint', '提示：买到的物品可拿去系统商店出售赚差价；市集成交收 10% 税（由卖家承担）。'));
     }
     panel.appendChild(colMain);

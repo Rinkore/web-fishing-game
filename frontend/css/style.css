@@ -433,6 +433,22 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .hist-tag.hist-sell { background: rgba(251,191,36,.16); color: var(--big); }
 .hist-line .hist-who { color: var(--muted); font-size: 12px; }
 
+/* ---- 购买市场：分类筛选 + 搜索 ---- */
+.buy-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.bf-cat {
+  padding: 5px 12px; border-radius: 16px; border: 1px solid var(--line);
+  background: rgba(255,255,255,.04); color: var(--muted); cursor: pointer; font-size: 12px;
+}
+.bf-cat:hover { border-color: var(--accent2); color: var(--text); }
+.bf-cat.on { background: rgba(56,189,248,.14); border-color: var(--accent2); color: var(--accent2); font-weight: 600; }
+.bf-search {
+  margin-left: auto; width: 210px; padding: 7px 12px; border-radius: 16px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.05);
+  color: var(--text); font-size: 13px; outline: none;
+}
+.bf-search::placeholder { color: var(--muted); }
+.bf-search:focus { border-color: var(--accent); }
+
 /* ---- 钓竿配置 ---- */
 .r-epic { color: #fb923c; font-weight: 600; }
 .eff-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
