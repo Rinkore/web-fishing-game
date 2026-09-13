@@ -5,6 +5,7 @@
  */
 'use strict';
 const { JSDOM, VirtualConsole } = require('jsdom');
+const os = require('os');
 const { spawn } = require('child_process');
 const http = require('http');
 const url = require('url');
@@ -82,9 +83,12 @@ async function openPage() {
   return { dom, w, errors };
 }
 
+const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
+
+
 (async () => {
   console.log('登录/注册前端交互测试（jsdom 真实 DOM）');
-  const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
+  const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DATA_DIR: TMP_DATA }) });
   await sleep(900);
 
   try {
@@ -180,7 +184,7 @@ async function openPage() {
     fail++;
   } finally {
     srv.kill();
-    try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(TMP_DATA, { recursive: true, force: true }); } catch (e) {}
     console.log('\n============================');
     console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
     if (fail) console.log('失败项：\n  - ' + failed.join('\n  - '));

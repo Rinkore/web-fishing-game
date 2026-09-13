@@ -549,3 +549,7 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 }
 .pick-row .pick-aff { color: var(--accent2); font-size: 12px; flex: 1; min-width: 0; }
 .pick-row .cnt { color: var(--muted); font-size: 12px; flex: none; }
+
+/* 管理后台入口（仅管理员账号可见，由 ui.js 渲染） */
+.nav-item.admin-link { text-decoration: none; margin-top: 10px; color: var(--accent); border: 1px dashed var(--line); }
+.nav-item.admin-link:hover { border-color: var(--accent); background: var(--panel); }

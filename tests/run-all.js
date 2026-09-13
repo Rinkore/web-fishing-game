@@ -1,7 +1,7 @@
 /*
  * 一键运行全部测试套件
  * 用法： node tests/run-all.js
- * （等价于依次运行 e2e / auth-ui / fishing-interaction / bugfix）
+ * （等价于依次运行 e2e / auth-ui / fishing-interaction / bugfix / ui-layout / admin）
  */
 'use strict';
 const { spawnSync } = require('child_process');
@@ -10,7 +10,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const NODE = process.execPath;
-const SUITES = ['e2e', 'auth-ui', 'fishing-interaction', 'bugfix', 'ui-layout'];
+const SUITES = ['e2e', 'auth-ui', 'fishing-interaction', 'bugfix', 'ui-layout', 'admin'];
 
 // jsdom / playwright-core 的安装位置。优先用已有的 NODE_PATH，
 // 也可以用 FISHING_TEST_MODULES 显式指定；

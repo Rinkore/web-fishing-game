@@ -9,6 +9,7 @@
  */
 'use strict';
 const { JSDOM, VirtualConsole } = require('jsdom');
+const os = require('os');
 const { spawn } = require('child_process');
 const http = require('http');
 const url = require('url');
@@ -106,9 +107,12 @@ async function openPage(token) {
 const navBtn = (w, name) => Array.from(w.document.querySelectorAll('.nav-item')).find(b => b.textContent.includes(name));
 const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).find(r => r.textContent.includes(name));
 
+const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
+
+
 (async () => {
   console.log('缺陷回归测试（5 个上报问题）');
-  const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1' }) });
+  const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }) });
   await sleep(900);
 
   try {
@@ -378,7 +382,7 @@ const tpRow = (w, name) => Array.from(w.document.querySelectorAll('.tp-row')).fi
     fail++;
   } finally {
     srv.kill();
-    try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(TMP_DATA, { recursive: true, force: true }); } catch (e) {}
     console.log('\n============================');
     console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
     if (fail) console.log('失败项：\n  - ' + failed.join('\n  - '));

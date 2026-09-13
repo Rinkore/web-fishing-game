@@ -61,7 +61,7 @@ window.UI = (function () {
   let navSig = null;
   function renderNav() {
     const st = S();
-    const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0].join('|');
+    const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0, st.me && st.me.admin ? 1 : 0].join('|');
     if (sig === navSig) return;
     navSig = sig;
     const nav = $('nav');
@@ -85,6 +85,15 @@ window.UI = (function () {
       });
       nav.appendChild(b);
     });
+    // 管理员：侧边栏底部加后台入口（新标签打开，admin.html 与游戏同源托管）
+    if (st.me && st.me.admin) {
+      const a = el('a', 'nav-item admin-link');
+      a.href = 'admin.html';
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.innerHTML = '<span class="nav-icon">🛡</span><span>管理后台</span>';
+      nav.appendChild(a);
+    }
   }
 
   // ---- 顶栏状态 ----
@@ -1703,14 +1712,14 @@ window.UI = (function () {
   // 无关广播（如他人的渔获 feed/players）只更新顶栏/导航，不重绘主区——
   // 否则只要有人上鱼，钓竿配置/背包等页面的组件卡片都会跟着整页闪烁重绘。
   const VIEW_SCOPES = {
-    fishing: ['players', 'grounds', 'catch', 'assets'], // 实况/日志/背包随广播更新
+    fishing: ['players', 'grounds', 'catch', 'assets', 'groundcfg'], // 实况/日志/背包随广播更新
     bd: [],                                             // 钓竿配置：只随操作重绘（展示数据不受广播影响）
-    ground: ['players', 'grounds', 'feed'],
+    ground: ['players', 'grounds', 'feed', 'groundcfg'],
     inventory: ['assets', 'shop'],
     shop: ['assets', 'shop'],
     market: ['assets', 'market'],
     trade: ['trade', 'assets', 'codex'],
-    codex: ['codex'],
+    codex: ['codex', 'groundcfg'],
     records: ['records'],
     mall: [], collect: [],
   };

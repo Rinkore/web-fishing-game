@@ -99,7 +99,7 @@ window.Net = (function () {
   function setAuth(token, profile) {
     // 服务器内部一律使用小写账号 key 作为身份（players/trade/market/history 均是），
     // me.id 必须与之对齐，否则含大写字母的账号所有"是不是我"的判断都会失效
-    me = { id: (profile.username || '').toLowerCase(), username: profile.username, name: profile.name, token: token };
+    me = { id: (profile.username || '').toLowerCase(), username: profile.username, name: profile.name, token: token, admin: !!profile.admin };
     state().me = me;
     connectStream();
   }
@@ -199,6 +199,13 @@ window.Net = (function () {
           S.feed.unshift(m.entry);
           if (S.feed.length > 60) S.feed.pop();
           if (ui) ui.refreshAll('feed');
+        } else if (m.type === 'groundcfg') {
+          // 管理后台修改了钓场/钓点配置：原位替换 GROUNDS 内容（保持数组引用），
+          // 渔场页/图鉴产地/钓场锁定状态随即与服务器一致
+          const G = window.GameData.GROUNDS;
+          G.length = 0;
+          (m.grounds || []).forEach(function (g) { G.push(g); });
+          if (ui) ui.refreshAll('groundcfg');
         }
       };
       es.onerror = function () { /* 断线静默，EventSource 自动重连 */ };

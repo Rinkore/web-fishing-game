@@ -5,6 +5,7 @@
  * 运行： node tests/e2e.test.js
  */
 'use strict';
+const os = require('os');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const url = require('url');
@@ -63,9 +64,11 @@ function sse(tok, port, sink) {
   return r;
 }
 
+const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
+
 function start(port) {
   // FISHING_DEV=1：开放 /api/dev/*（确定性回归用）；正常部署（run.bat）不开启
-  return spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(port), FISHING_DEV: '1' }) });
+  return spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(port), FISHING_DEV: '1', FISHING_DATA_DIR: dataDir || TMP_DATA }) });
 }
 
 // 静态数据：直接 require UMD 版 data.js（前后端共用同一文件，后端 require 即所得）
@@ -75,7 +78,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   console.log('钓鱼小游戏 · 全量功能测试（服务器权威）');
   console.log('Node ' + process.version);
   // 每轮从干净数据开始（上次崩溃可能残留）
-  try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
+  try { fs.rmSync(TMP_DATA, { recursive: true, force: true }); } catch (e) {}
 
   // ---------- 1. 静态数据 ----------
   section('1. 静态数据完整性（前后端共享目录）');
@@ -282,7 +285,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('已知未知路径返回 404', (await GET('http://localhost:' + P1 + '/nope-xyz')).status === 404);
   killTree(srv);
 
-  try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
+  try { fs.rmSync(TMP_DATA, { recursive: true, force: true }); } catch (e) {}
 
   console.log('\n============================');
   console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
