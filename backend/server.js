@@ -6,6 +6,9 @@
  *   - 钓竿配置：POST /api/bd/set（校验组件目录），钓速变化即时重置钓鱼循环
  *   - 实时联机：GET /events (SSE) 广播在线玩家、渔场人数、动态、市集、交易
  *   - 系统商店 / 开放市集 / 在线交易 / 图鉴 / 大鱼榜
+ *   - 管理后台：/api/admin/*（账号 admin 标志鉴权；服务器无管理员时首个登录后台的账号自动引导）
+ *     配套页面 frontend/admin.html（5500 分离模式 / 9000 集成模式均可打开）
+ *     功能：账号管理员授权 / 钓场钓点掉落池与增益 / 市集退回挂单 / 上钩判断公式 / 全服动态通知等级
  * 游戏数值目录：与前端共用 frontend/js/data.js（UMD，单一来源）
  * 运行： node backend/server.js   （默认端口 9000，可用 PORT 环境变量覆盖）
  * 前后端分离：
@@ -22,7 +25,8 @@ const crypto = require('crypto');
 
 const PORT = process.env.PORT || 9000;
 const ROOT = __dirname;
-const DATA_DIR = path.join(ROOT, 'data');
+// 数据目录：默认 backend/data；测试可用 FISHING_DATA_DIR 指到临时目录，避免跑测试清掉真实存档
+const DATA_DIR = process.env.FISHING_DATA_DIR ? path.resolve(process.env.FISHING_DATA_DIR) : path.join(ROOT, 'data');
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const WORLD_FILE = path.join(DATA_DIR, 'world.json');
@@ -40,8 +44,10 @@ const clients = new Set();   // SSE response 对象
 const sessions = new Map();  // token -> username(lowercased)
 let users = {};
 
-// ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史） ----
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, priceLog: {}, tradeLog: {}, marketLog: [] };
+// ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
+// biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
+const BITE_FORMULA_DEFAULT = 'min(98, 90 + speed * 0.15)';
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT };
 
 // ---- 在线交易会话 ----
 // trade = { id, a:{key,name}, b:{key,name}, aItems:[{id,qty}], bItems:[], aOk, bOk, cooldownUntil, cancelled, createdAt }
@@ -72,9 +78,16 @@ function bdEffectsOf(bd) {
   });
   return eff;
 }
-function fishIntervalOf(bd) {
-  const eff = bdEffectsOf(bd);
+function fishIntervalOf(eff) {
   return Math.max(800, Math.round(FISH_INTERVAL_BASE * (1 - Math.min(60, eff.speed) / 100)));
+}
+// 钓点增益并入总加成（管理员在后台为钓场/钓点配置，类别同词缀：speed/big/rare/material/size/double）
+function mergedEffOf(bd, spot) {
+  const eff = bdEffectsOf(bd);
+  ((spot && spot.buffs) || []).forEach(function (b) {
+    if (b && eff[b.type] != null) eff[b.type] += Number(b.value) || 0;
+  });
+  return eff;
 }
 // 大鱼/稀有/材料加成：按类别放大掉落池权重
 function boostPoolOf(pool, eff) {
@@ -164,12 +177,16 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   }
 
   const entry = { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null };
-  feed.unshift(entry); if (feed.length > 60) feed.pop();
-  broadcast({ type: 'feed', entry: entry });
+  // 通知等级过滤：只影响全服动态（feed 广播/历史/近期渔获），钓者自己的定向推送不受影响
+  const visible = feedVisible(item, recordEvent || smallEvent);
+  if (visible) {
+    feed.unshift(entry); if (feed.length > 60) feed.pop();
+    broadcast({ type: 'feed', entry: entry });
+  }
 
   // 近期渔获（大鱼/稀有/组件）：更新 presence 并广播给所有人
   const p = players.get(key);
-  if (p && (item.rarity === 'big' || item.rarity === 'rare' || item.kind === 'component')) {
+  if (p && visible && (item.rarity === 'big' || item.rarity === 'rare' || item.kind === 'component')) {
     p.recent = item.size ? (item.name + ' ' + item.size + 'cm') : item.name;
     sendPlayersAll();
   }
@@ -177,7 +194,7 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   if (recordEvent || smallEvent) {
     saveWorld();
     broadcastRecords();
-    if (recordEvent) broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null, record: true } });
+    if (recordEvent && feedVisible(item, true)) broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null, record: true } });
   }
   // 定向推送：本条渔获 + 权威资产/图鉴（前端不持账本）
   sendTo(key, { type: 'catch', entry: entry });
@@ -191,7 +208,10 @@ function fishTick(key) {
   const rec = users[key];
   const found = spotOf(p.fishing.groundId, p.fishing.spotId);
   if (!found) { stopFishingSession(key); return; }
-  doServerCatch(rec, key, found.ground, found.spot, bdEffectsOf(rec.bd), false);
+  const eff = mergedEffOf(rec.bd, found.spot);
+  // 上钩判断：公式结果 = 本次上钩概率（%）；落空则本竿无收获，定时器继续下一竿
+  if (Math.random() * 100 >= biteProbabilityOf(eff, fishIntervalOf(eff))) return;
+  doServerCatch(rec, key, found.ground, found.spot, eff, false);
 }
 function startFishingSession(key, groundId, spotId) {
   const p = players.get(key);
@@ -204,7 +224,7 @@ function startFishingSession(key, groundId, spotId) {
   if (prev) clearInterval(prev);
   p.fishing = { groundId: groundId, spotId: spotId };
   p.status = 'fishing'; p.groundId = groundId; p.spotId = spotId;
-  const interval = fishIntervalOf(users[key].bd);
+  const interval = fishIntervalOf(mergedEffOf(users[key].bd, found.spot));
   fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
   sendPlayersAll();
   return { interval: interval };
@@ -217,6 +237,208 @@ function stopFishingSession(key) {
   if (p) { p.fishing = null; p.status = 'idle'; p.groundId = null; p.spotId = null; p.recent = null; }
   sendPlayersAll();
 }
+
+// 钓点增益变化：正在该钓点钓鱼的玩家按新加成重启循环（钓速即时生效）
+function restartFishingAt(groundId, spotId) {
+  players.forEach(function (p, key) {
+    if (!p.fishing || p.fishing.groundId !== groundId || p.fishing.spotId !== spotId) return;
+    const old = fishingTimers.get(key);
+    if (old) clearInterval(old);
+    const found = spotOf(groundId, spotId);
+    const interval = fishIntervalOf(mergedEffOf(users[key].bd, found && found.spot));
+    fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
+  });
+}
+
+// ---- 上钩判断公式（管理员可编辑 · 递归下降解析，不用 eval）----
+// 每次抛竿掷骰时求值：结果 = 本次上钩概率（%）；未上钩则该竿无收获（定时器继续下一竿）。
+// 可用变量：speed/big/rare/material/size/double（钓竿词缀 + 钓点增益，%）与 interval（抛竿间隔 ms）。
+// 可用函数：min max floor ceil round abs clamp(x,lo,hi)。
+const BITE_FUNCS = {
+  min: Math.min, max: Math.max, floor: Math.floor, ceil: Math.ceil, round: Math.round, abs: Math.abs,
+  clamp: function (x, lo, hi) { return Math.min(hi, Math.max(lo, x)); },
+};
+const BITE_VAR_NAMES = ['speed', 'big', 'rare', 'material', 'size', 'double', 'interval'];
+// 解析器：每个语法节点返回 function(vars) -> number 的闭包；编译期即校验变量/函数名与语法
+function compileFormula(src) {
+  const s = String(src == null ? '' : src).trim();
+  if (!s) return { error: '公式不能为空' };
+  let i = 0;
+  function ws() { while (i < s.length && /\s/.test(s[i])) i++; }
+  function parseExpr() {
+    let f = parseTerm();
+    for (;;) {
+      ws();
+      if (s[i] === '+') { i++; const a = f, b = parseTerm(); f = function (v) { return a(v) + b(v); }; }
+      else if (s[i] === '-') { i++; const a = f, b = parseTerm(); f = function (v) { return a(v) - b(v); }; }
+      else return f;
+    }
+  }
+  function parseTerm() {
+    let f = parseFactor();
+    for (;;) {
+      ws();
+      if (s[i] === '*') { i++; const a = f, b = parseFactor(); f = function (v) { return a(v) * b(v); }; }
+      else if (s[i] === '/') { i++; const a = f, b = parseFactor(); f = function (v) { return a(v) / b(v); }; }
+      else if (s[i] === '%') { i++; const a = f, b = parseFactor(); f = function (v) { return a(v) % b(v); }; }
+      else return f;
+    }
+  }
+  function parseFactor() {
+    ws();
+    if (s[i] === '-') { i++; const a = parseFactor(); return function (v) { return -a(v); }; }
+    if (s[i] === '+') { i++; return parseFactor(); }
+    if (s[i] === '(') {
+      i++;
+      const a = parseExpr();
+      ws();
+      if (s[i] !== ')') throw new Error('缺少右括号');
+      i++;
+      return a;
+    }
+    const num = /^[0-9]*\.?[0-9]+/.exec(s.slice(i));
+    if (num) { i += num[0].length; const n = parseFloat(num[0]); return function () { return n; }; }
+    const idm = /^[A-Za-z_][A-Za-z0-9_]*/.exec(s.slice(i));
+    if (!idm) throw new Error('第 ' + (i + 1) + ' 个字符无法识别');
+    const name = idm[0];
+    i += name.length;
+    ws();
+    if (s[i] === '(') {
+      const fn = BITE_FUNCS[name];
+      if (!fn) throw new Error('未知函数：' + name);
+      i++;
+      const args = [];
+      ws();
+      if (s[i] !== ')') {
+        for (;;) {
+          args.push(parseExpr());
+          ws();
+          if (s[i] === ',') { i++; ws(); continue; }
+          break;
+        }
+      }
+      if (s[i] !== ')') throw new Error('函数 ' + name + ' 缺少右括号');
+      i++;
+      return function (v) { return fn.apply(null, args.map(function (a) { return a(v); })); };
+    }
+    if (BITE_VAR_NAMES.indexOf(name) < 0) throw new Error('未知变量：' + name);
+    return function (v) { return Number(v[name]) || 0; };
+  }
+  try {
+    const f = parseExpr();
+    ws();
+    if (i < s.length) throw new Error('第 ' + (i + 1) + ' 个字符起有多余内容');
+    const probe = {};
+    BITE_VAR_NAMES.forEach(function (n) { probe[n] = 1; });
+    if (!isFinite(f(probe))) throw new Error('公式结果不是有限数');
+    return { ok: true, fn: f };
+  } catch (e) { return { error: e.message || '公式无效' }; }
+}
+let biteCompiledFn = null, biteCompiledSrc = null;
+function biteProbabilityOf(eff, interval) {
+  const src = String(world.biteFormula || '').trim();
+  if (!src) return 100;
+  if (biteCompiledSrc !== src) {
+    const c = compileFormula(src);
+    biteCompiledFn = c.ok ? c.fn : null;
+    biteCompiledSrc = src;
+  }
+  if (!biteCompiledFn) return 100; // 公式无效时保底必上钩（正常保存路径已校验，不会走到）
+  let p;
+  try {
+    p = biteCompiledFn({ speed: eff.speed || 0, big: eff.big || 0, rare: eff.rare || 0, material: eff.material || 0, size: eff.size || 0, double: eff.double || 0, interval: interval || 0 });
+  } catch (e) { return 100; }
+  if (!isFinite(p)) p = p > 0 ? 100 : 0;
+  return Math.min(100, Math.max(0, p));
+}
+
+// ---- 全服动态通知等级（管理员可调；只影响广播的 feed，钓者自己的 catch 推送不受影响）----
+const NOTIFY_LEVELS = {
+  all: '全部渔获（默认）',
+  uncommon: '仅非普通：大鱼 / 稀有鱼 / 组件',
+  offrange: '仅体型超出基准范围的鱼（超出该鱼基准 [最小,最大] 体型）',
+  records: '仅破纪录时（全服最大 / 最小纪录）',
+  none: '关闭：不向全服推送任何渔获动态',
+};
+function baseRangeOf(id) {
+  for (const tier of ['common', 'big', 'rare']) {
+    const f = D.FISH[tier].find(function (x) { return x.id === id; });
+    if (f && f.size) return f.size;
+  }
+  return null;
+}
+function feedVisible(item, isRecord) {
+  const lv = world.notifyLevel || 'all';
+  if (lv === 'all') return true;
+  if (lv === 'none') return false;
+  if (lv === 'records') return !!isRecord;
+  if (lv === 'uncommon') return item.kind === 'component' || (item.kind === 'fish' && item.rarity !== 'common');
+  if (lv === 'offrange') {
+    if (item.kind !== 'fish' || item.size == null) return false;
+    const r = baseRangeOf(item.id);
+    return !r || item.size > r[1] || item.size < r[0];
+  }
+  return true;
+}
+
+// ---- 钓场/钓点管理配置（管理后台编辑；覆盖存 world.groundCfg，启动时套用到共享目录）----
+// spots 的 key 为 'groundId:spotId'；grounds 存 locked 等钓场级配置
+function validatePoolEntries(list) {
+  if (!Array.isArray(list)) return { error: '掉落池格式错误' };
+  if (!list.length) return { error: '掉落池不能为空（至少保留 1 个条目）' };
+  const out = [];
+  for (const e of list) {
+    const pick = String((e && e.pick) || '');
+    const i = pick.indexOf(':');
+    const type = i >= 0 ? pick.slice(0, i) : '';
+    const id = i >= 0 ? pick.slice(i + 1) : '';
+    const weight = Number(e && e.weight);
+    if (type === 'fish') { if (!D.fishTierOf(id)) return { error: '未知鱼类：' + (id || pick) }; }
+    else if (type === 'material') { if (!D.MATERIALS.some(function (m) { return m.id === id; })) return { error: '未知材料：' + (id || pick) }; }
+    else if (type !== 'component') return { error: '无效的掉落条目：' + pick };
+    if (!isFinite(weight) || weight < 0 || weight > 1000000) return { error: '权重需在 0 - 1000000 之间' };
+    out.push({ pick: type === 'component' ? 'component:' : pick, weight: weight });
+  }
+  return { ok: true, pool: out };
+}
+function validateBuffList(list) {
+  if (!Array.isArray(list)) return { error: '增益格式错误' };
+  const out = [];
+  for (const b of list) {
+    const type = String((b && b.type) || '');
+    if (!D.AFFIX_LABEL[type]) return { error: '未知增益类别：' + type };
+    const value = Number(b && b.value);
+    if (!isFinite(value) || value < -100 || value > 1000) return { error: '增益数值需在 -100 到 1000 之间' };
+    out.push({ type: type, value: Math.round(value * 10) / 10 });
+  }
+  return { ok: true, buffs: out };
+}
+function applyGroundCfg() {
+  const cfg = world.groundCfg || {};
+  Object.keys(cfg.spots || {}).forEach(function (k) {
+    const parts = k.split(':');
+    const found = spotOf(parts[0], parts[1]);
+    if (!found) return;
+    if (cfg.spots[k].pool) found.spot.pool = cfg.spots[k].pool;
+    if (cfg.spots[k].buffs) found.spot.buffs = cfg.spots[k].buffs;
+  });
+  Object.keys(cfg.grounds || {}).forEach(function (gid) {
+    const g = D.GROUNDS.find(function (x) { return x.id === gid; });
+    if (g && cfg.grounds[gid] && cfg.grounds[gid].locked != null) g.locked = !!cfg.grounds[gid].locked;
+  });
+}
+function saveSpotCfg(groundId, spotId, patch) {
+  world.groundCfg = world.groundCfg || {};
+  world.groundCfg.spots = world.groundCfg.spots || {};
+  const k = groundId + ':' + spotId;
+  const cur = world.groundCfg.spots[k] || {};
+  if (patch.pool) cur.pool = patch.pool;
+  if (patch.buffs) cur.buffs = patch.buffs;
+  world.groundCfg.spots[k] = cur;
+  saveWorld();
+}
+// 钓场配置变化：向游戏端广播整份目录（图鉴产地/渔场页即时同步）
+function broadcastGroundcfg() { broadcast({ type: 'groundcfg', grounds: D.GROUNDS }); }
 
 // 顶号：使该账号所有旧会话失效并断开其实时连接（一个账号同时只允许一个在线窗口）
 function kickUserSessions(key) {
@@ -302,6 +524,8 @@ function loadWorld() { try { world = Object.assign(world, JSON.parse(fs.readFile
 function saveWorld() { try { fs.writeFileSync(WORLD_FILE, JSON.stringify(world, null, 2)); } catch (e) {} }
 loadUsers();
 loadWorld();
+// 套用管理后台保存的钓场/钓点配置覆盖（掉落池 / 增益 / 锁定状态）
+applyGroundCfg();
 // 为所有物品补齐乘数状态（老档迁移：旧"供应压力"按 -1%/件 折算为初始乘数）
 (function ensureSaleStats() {
   const day = new Date().toISOString().slice(0, 10);
@@ -324,7 +548,18 @@ function profileOf(key) {
     username: rec.username, name: rec.name, coins: rec.coins,
     inventory: rec.inventory || {}, bd: rec.bd || {},
     codex: rec.codex || {}, catchCount: rec.catchCount || 0,
+    admin: !!rec.admin,
   };
+}
+
+// ---- 管理后台鉴权：token → 会话 → 账号须带 admin 标志 ----
+function anyAdminExists() {
+  return Object.keys(users).some(function (k) { return users[k].admin; });
+}
+function adminOf(token) {
+  const key = token && sessions.get(token);
+  const rec = key && users[key];
+  return (rec && rec.admin) ? { key: key, rec: rec } : null;
 }
 
 function broadcast(obj) { const d = 'data: ' + JSON.stringify(obj) + '\n\n'; clients.forEach(function (r) { try { r.write(d); } catch (e) {} }); }
@@ -593,7 +828,8 @@ const server = http.createServer(function (req, res) {
         if (pl && pl.fishing) {
           const old = fishingTimers.get(key);
           if (old) clearInterval(old);
-          interval = fishIntervalOf(rec.bd);
+          const found = spotOf(pl.fishing.groundId, pl.fishing.spotId);
+          interval = fishIntervalOf(mergedEffOf(rec.bd, found && found.spot));
           fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
         }
         apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval, inventory: rec.inventory });
@@ -942,6 +1178,232 @@ const server = http.createServer(function (req, res) {
     const fid = u.query.id;
     if (!FISH_ID_SET[fid]) return apiResp(res, 404, { error: '未知鱼类' });
     return apiResp(res, 200, { id: fid, name: itemName(fid), top: (world.topCatches && world.topCatches[fid]) || [] });
+  }
+
+  // ================================================================
+  // ---- 管理后台 API（/api/admin/*）：账号须带 admin 标志 ----
+  // 引导：服务器上没有任何管理员时，第一个通过后台登录的账号自动成为管理员。
+  // ================================================================
+
+  // ---- 管理后台登录（复用游戏账号密码；不顶号：不影响同一账号的游戏会话） ----
+  if (p === '/api/admin/login' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const key = (d.username || '').trim().toLowerCase();
+      const rec = users[key];
+      if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) return apiResp(res, 401, { error: '用户名或密码错误' });
+      if (!rec.admin) {
+        if (anyAdminExists()) return apiResp(res, 403, { error: '该账号没有管理员权限' });
+        rec.admin = true;
+        saveUsers();
+        console.log('🛡 管理员引导：服务器尚无管理员，账号 "' + rec.name + '" 已自动成为管理员');
+      }
+      const token = newToken(); sessions.set(token, key);
+      apiResp(res, 200, { ok: true, token: token, username: rec.username, name: rec.name, admin: true });
+    });
+    return;
+  }
+  // ---- 会话校验（页面刷新后恢复登录态） ----
+  if (p === '/api/admin/session' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    return apiResp(res, 200, { ok: true, username: a.rec.username, name: a.rec.name });
+  }
+  // ---- 概览统计 ----
+  if (p === '/api/admin/overview' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    let fishingCount = 0;
+    players.forEach(function (pl) { if (pl.status === 'fishing') fishingCount++; });
+    return apiResp(res, 200, {
+      ok: true,
+      userCount: Object.keys(users).length,
+      online: players.size,
+      fishingCount: fishingCount,
+      listings: world.listings.length,
+      activeTrades: Array.from(trades.values()).filter(function (t) { return !t.done && !t.cancelled; }).length,
+      notifyLevel: world.notifyLevel || 'all',
+      biteFormula: world.biteFormula || BITE_FORMULA_DEFAULT,
+      groundCount: D.GROUNDS.length,
+      spotCount: D.GROUNDS.reduce(function (n, g) { return n + g.spots.length; }, 0),
+    });
+  }
+  // ---- 账号列表（管理员授权数据源） ----
+  if (p === '/api/admin/users' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    const list = Object.keys(users).map(function (k) {
+      const r = users[k];
+      const pl = players.get(k);
+      return {
+        key: k, username: r.username, name: r.name,
+        admin: !!r.admin, coins: r.coins || 0,
+        catchCount: r.catchCount || 0,
+        online: !!pl,
+        fishing: (pl && pl.fishing) || null,
+        createdAt: r.createdAt || null,
+      };
+    }).sort(function (x, y) { return (y.createdAt || 0) - (x.createdAt || 0); });
+    return apiResp(res, 200, { ok: true, users: list, me: a.key });
+  }
+  // ---- 设置/撤销账号的管理员权限（不能撤销自己，避免把自己锁在后台外） ----
+  if (p === '/api/admin/users/setadmin' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const target = String(d.target || '').toLowerCase();
+      const rec = users[target];
+      if (!rec) return apiResp(res, 404, { error: '账号不存在' });
+      const want = !!d.admin;
+      if (target === a.key && !want) return apiResp(res, 400, { error: '不能撤销自己的管理员权限' });
+      rec.admin = want;
+      saveUsers();
+      sendTo(target, { type: 'notice', msg: want ? '🛡 你已获得管理员权限，可打开管理后台（/admin.html）' : '你的管理员权限已被收回' });
+      apiResp(res, 200, { ok: true, target: target, admin: want });
+    });
+    return;
+  }
+  // ---- 世界配置：钓场/钓点目录 + 当前设置（后台编辑器数据源） ----
+  if (p === '/api/admin/world' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    const fish = [];
+    ['common', 'big', 'rare'].forEach(function (tier) {
+      D.FISH[tier].forEach(function (f) { fish.push({ id: f.id, name: f.name, rarity: f.rarity, tier: tier, price: f.price, size: f.size || null }); });
+    });
+    return apiResp(res, 200, {
+      ok: true,
+      grounds: D.GROUNDS,
+      catalog: { fish: fish, materials: D.MATERIALS },
+      affixTypes: D.AFFIX_LABEL,
+      notifyLevel: world.notifyLevel || 'all',
+      notifyLevels: NOTIFY_LEVELS,
+      biteFormula: world.biteFormula || BITE_FORMULA_DEFAULT,
+    });
+  }
+  // ---- 钓点掉落池（种类 + 权重；保存后全服即时生效并广播游戏端） ----
+  if (p === '/api/admin/spot/pool' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const found = spotOf(d.groundId, d.spotId);
+      if (!found) return apiResp(res, 404, { error: '钓点不存在' });
+      const v = validatePoolEntries(d.pool);
+      if (v.error) return apiResp(res, 400, { error: v.error });
+      found.spot.pool = v.pool;
+      saveSpotCfg(d.groundId, d.spotId, { pool: v.pool });
+      broadcastGroundcfg();
+      apiResp(res, 200, { ok: true, pool: v.pool });
+    });
+    return;
+  }
+  // ---- 钓点增益（数值 + 类别；钓速增益即时重启受影响玩家的钓鱼循环） ----
+  if (p === '/api/admin/spot/buffs' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const found = spotOf(d.groundId, d.spotId);
+      if (!found) return apiResp(res, 404, { error: '钓点不存在' });
+      const v = validateBuffList(d.buffs);
+      if (v.error) return apiResp(res, 400, { error: v.error });
+      found.spot.buffs = v.buffs;
+      saveSpotCfg(d.groundId, d.spotId, { buffs: v.buffs });
+      restartFishingAt(d.groundId, d.spotId);
+      broadcastGroundcfg();
+      apiResp(res, 200, { ok: true, buffs: v.buffs });
+    });
+    return;
+  }
+  // ---- 钓场开放/锁定（锁定时立即停掉该场所有钓鱼循环） ----
+  if (p === '/api/admin/ground/lock' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const g = D.GROUNDS.find(function (x) { return x.id === d.groundId; });
+      if (!g) return apiResp(res, 404, { error: '钓场不存在' });
+      g.locked = !!d.locked;
+      world.groundCfg = world.groundCfg || {};
+      world.groundCfg.grounds = world.groundCfg.grounds || {};
+      world.groundCfg.grounds[g.id] = Object.assign({}, world.groundCfg.grounds[g.id] || {}, { locked: !!d.locked });
+      saveWorld();
+      broadcastGroundcfg();
+      if (g.locked) {
+        players.forEach(function (pl, key) {
+          if (pl.fishing && pl.fishing.groundId === g.id) {
+            stopFishingSession(key);
+            sendTo(key, { type: 'notice', msg: '钓场「' + g.name + '」已被管理员关闭，钓鱼已停止' });
+          }
+        });
+      }
+      apiResp(res, 200, { ok: true, groundId: g.id, locked: g.locked });
+    });
+    return;
+  }
+  // ---- 市集：退回挂单（物品退回卖家，上架费不退——与过期规则一致） ----
+  if (p === '/api/admin/market/return' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      sweepExpiredListings();
+      const idx = world.listings.findIndex(function (l) { return l.lid === d.lid; });
+      if (idx < 0) return apiResp(res, 404, { error: '该挂单已不存在' });
+      const l = world.listings[idx];
+      world.listings.splice(idx, 1);
+      const seller = users[l.seller];
+      if (seller) {
+        invAdd(seller, l.id, l.qty);
+        saveUsers();
+        sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory });
+        sendTo(l.seller, { type: 'notice', msg: '管理员退回了你的挂单：' + l.name + ' ×' + l.qty + '（上架费不退）' });
+      }
+      saveWorld();
+      broadcastMarket();
+      apiResp(res, 200, { ok: true, returned: { lid: l.lid, id: l.id, name: l.name, qty: l.qty, seller: l.seller } });
+    });
+    return;
+  }
+  // ---- 设置：通知等级 / 上钩公式（validateOnly=true 只校验不保存；evalVars 附带试算） ----
+  if (p === '/api/admin/settings' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const out = { ok: true };
+      let formulaSrc = null;
+      if (d.biteFormula != null) {
+        formulaSrc = String(d.biteFormula).trim();
+        const c = compileFormula(formulaSrc);
+        if (c.error) return apiResp(res, 400, { error: '公式无效：' + c.error });
+        if (!d.validateOnly) {
+          world.biteFormula = formulaSrc;
+          biteCompiledSrc = null; // 强制下次掷骰重新编译
+        }
+        out.biteFormula = formulaSrc;
+      }
+      if (d.notifyLevel != null) {
+        if (!NOTIFY_LEVELS[d.notifyLevel]) return apiResp(res, 400, { error: '未知的通知等级' });
+        if (!d.validateOnly) world.notifyLevel = d.notifyLevel;
+        out.notifyLevel = d.notifyLevel;
+      }
+      if (!d.validateOnly) saveWorld();
+      if (d.evalVars && formulaSrc != null) {
+        const c2 = compileFormula(formulaSrc);
+        if (c2.ok) {
+          const vars = { speed: 0, big: 0, rare: 0, material: 0, size: 0, double: 0, interval: 3000 };
+          Object.keys(d.evalVars).forEach(function (k) { if (k in vars) vars[k] = Number(d.evalVars[k]) || 0; });
+          let prob = c2.fn(vars);
+          if (!isFinite(prob)) prob = prob > 0 ? 100 : 0;
+          out.prob = Math.min(100, Math.max(0, Math.round(prob * 10) / 10));
+        }
+      }
+      apiResp(res, 200, out);
+    });
+    return;
   }
 
   // ---- 静态文件（集成模式托管 frontend；纯 API 模式返回 404） ----

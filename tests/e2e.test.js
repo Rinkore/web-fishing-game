@@ -74,6 +74,8 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
 (async () => {
   console.log('钓鱼小游戏 · 全量功能测试（服务器权威）');
   console.log('Node ' + process.version);
+  // 每轮从干净数据开始（上次崩溃可能残留）
+  try { fs.rmSync(path.join(ROOT, 'backend', 'data'), { recursive: true, force: true }); } catch (e) {}
 
   // ---------- 1. 静态数据 ----------
   section('1. 静态数据完整性（前后端共享目录）');
@@ -93,7 +95,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const ra = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_a', password: 'pass1234', name: '测试甲' });
   const rb = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_b', password: 'pass5678', name: '测试乙' });
   check('注册成功返回 token', ra.status === 200 && !!ra.data.token && rb.status === 200);
-  const tokA = ra.data.token, tokB = rb.data.token;
+  let tokA = ra.data.token, tokB = rb.data.token;
 
   section('2. 服务端钓鱼循环（掷骰/入库全在服务器）');
   check('未连接实时流时开钓被拒', (await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokB, groundId: 'stillwater', spotId: 'dock' })).status === 400);
@@ -173,6 +175,8 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('错误密码登录失败 401', (await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_a', password: 'bad' })).status === 401);
   const lg = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_a', password: 'pass1234' });
   check('正确密码登录成功', lg.status === 200 && !!lg.data.token);
+  check('顶号：再次登录后注册会话 token 失效', (await GET('http://localhost:' + P1 + '/api/me?token=' + ra.data.token)).status === 401);
+  tokA = lg.data.token; // 后续改用新会话 token
   check('无 token 取资料被拒 401', (await GET('http://localhost:' + P1 + '/api/me')).status === 401);
   check('伪造 token 取资料被拒 401', (await GET('http://localhost:' + P1 + '/api/me?token=fake123')).status === 401);
   // 顶号：同账号二次登录使旧会话失效
