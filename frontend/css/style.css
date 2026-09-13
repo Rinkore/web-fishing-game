@@ -426,6 +426,13 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .rc-who { font-size: 11px; color: var(--muted); margin-top: 3px; }
 .cx-spots { color: var(--accent2) !important; }
 
+/* ---- 市集历史订单 ---- */
+.market-history { display: flex; flex-direction: column; gap: 6px; max-height: 560px; overflow: auto; }
+.hist-line .hist-tag { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 600; flex: none; }
+.hist-tag.hist-buy { background: rgba(56,189,248,.16); color: var(--accent2); }
+.hist-tag.hist-sell { background: rgba(251,191,36,.16); color: var(--big); }
+.hist-line .hist-who { color: var(--muted); font-size: 12px; }
+
 /* ---- 钓竿配置 ---- */
 .r-epic { color: #fb923c; font-weight: 600; }
 .eff-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }

@@ -202,10 +202,25 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('重启后显示名持久化', me2.data && me2.data.name === '测试甲改');
   srv.kill();
 
-  // ---------- 5. 静态服务与前端资源 ----------
+  // ---------- 5. 市集历史订单 ----------
   srv = start(P1);
   await sleep(800);
-  section('5. 静态服务与安全');
+  section('5. 市集历史订单');
+  const lgA5 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_a', password: 'pass1234' });
+  const lgB5 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_b', password: 'pass5678' });
+  check('重启后双方可再登录', lgA5.status === 200 && lgB5.status === 200);
+  check('B 补充库存（dev seed）', (await POST('http://localhost:' + P1 + '/api/dev/seed', { token: lgB5.data.token, inventory: { carp: 5 } })).status === 200);
+  const lb5 = await POST('http://localhost:' + P1 + '/api/market/list', { token: lgB5.data.token, id: 'carp', qty: 5, price: 10 });
+  check('B 上架 5 ×carp @10', lb5.status === 200 && !!lb5.data.listing);
+  const ab5 = await POST('http://localhost:' + P1 + '/api/market/buy', { token: lgA5.data.token, lid: lb5.data.listing.lid });
+  check('A 购买 5 ×carp 成功（支出 50）', ab5.status === 200 && ab5.data.total === 50);
+  const mhA = await GET('http://localhost:' + P1 + '/api/market/history?token=' + lgA5.data.token);
+  check('历史订单含 A 的买入记录', mhA.status === 200 && mhA.data.trades.some(function (t) { return t.buyer === 'tester_a' && t.id === 'carp' && t.qty === 5; }), JSON.stringify(mhA.data.trades).slice(0, 140));
+  const mhB = await GET('http://localhost:' + P1 + '/api/market/history?token=' + lgB5.data.token);
+  check('历史订单含 B 的卖出记录（含税额 5）', mhB.status === 200 && mhB.data.trades.some(function (t) { return t.seller === 'tester_b' && t.qty === 5 && t.tax === 5; }), JSON.stringify(mhB.data.trades).slice(0, 140));
+
+  // ---------- 6. 静态服务与前端资源 ----------
+  section('6. 静态服务与安全');
   const idx = await GET('http://localhost:' + P1 + '/');
   check('首页可访问 200', idx.status === 200 && idx.text.includes('网页钓鱼小游戏'));
   check('首页含登录/注册界面', idx.text.includes('auth-card') && idx.text.includes('auth-user'));

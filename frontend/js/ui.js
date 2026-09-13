@@ -614,59 +614,118 @@ window.UI = (function () {
   }
 
   // ---- 开放市集视图 ----
+  // 当前页签（模块级：重绘间保留）
+  let marketTab = 'buy';
+
+  // 挂单行：自己的显示「下架」，他人的显示「购买」
+  function marketRow(l, st, me) {
+    const meta = itemMeta(l.id);
+    const mine = me && l.seller === me.id;
+    const total = l.price * l.qty;
+    const row = el('div', 'mk-row' + (mine ? ' mine' : ''));
+    row.innerHTML =
+      '<div class="mk-main"><div class="mk-name ' + rarityClass(meta.rarity) + '">' + esc(l.name) + ' <span class="qty">×' + l.qty + '</span></div>' +
+      '<div class="mk-sub">卖家：' + esc(l.sellerName) + (mine ? '（你）' : '') + ' · 上架 ' + timeStr(l.t) + '</div></div>' +
+      '<div class="mk-price"><b>💰 ' + l.price + '</b><span class="unit">/个</span><div class="total">合计 ' + total + '</div></div>';
+    const acts = el('div', 'mk-acts');
+    if (mine) {
+      const cb = el('button', 'mini', '下架');
+      cb.title = '下架取回物品（上架费不退）';
+      cb.addEventListener('click', function () {
+        call(window.Net.marketCancel(l.lid), '已下架，物品退回背包（上架费不退）').then(function (r) { if (r && r.ok) { st.inventory = r.data.inventory; renderTopbar(); renderView(); } });
+      });
+      acts.appendChild(cb);
+    } else {
+      const bb = el('button', 'mini primary-mini', '购买');
+      bb.addEventListener('click', function () {
+        // 支持自定义数量：默认 1，最多本挂单剩余数量
+        const input = prompt('购买数量（本挂单剩余 ' + l.qty + ' 个，单价 💰' + l.price + '）', '1');
+        if (input == null) return;
+        let n = parseInt(input, 10);
+        if (!n || n <= 0) { toast('请输入有效的购买数量'); return; }
+        n = Math.min(n, l.qty);
+        const total = l.price * n;
+        if (!confirm('花费 💰' + total + ' 购买 ' + l.name + ' ×' + n + ' ？')) return;
+        call(window.Net.marketBuy(l.lid, n), '购买成功：' + l.name + ' ×' + n).then(function (r) {
+          if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; renderTopbar(); renderView(); }
+        });
+      });
+      acts.appendChild(bb);
+    }
+    row.appendChild(acts);
+    return row;
+  }
+
   function renderMarket() {
     const main = $('main');
     const st = S();
     const me = st.me;
     main.innerHTML = '';
     const panel = el('div', 'panel wide two-col');
-    panel.innerHTML = '<h2>💱 开放市集 <span class="subtitle">玩家自由定价 · 成交收取 10% 交易税</span></h2>';
+    panel.innerHTML = '<h2>💱 开放市集 <span class="subtitle">购买 / 我的挂单 / 历史订单 分页管理 · 成交收 10% 税（卖家承担）</span></h2>';
 
     const colMain = el('div', 'col-main');
-    colMain.appendChild(el('h3', null, '📦 全部挂单（' + (st.market ? st.market.length : 0) + '）'));
-    const list = el('div', 'market-list');
-    if (!st.market || st.market.length === 0) {
-      list.appendChild(el('div', 'hint', '市集暂无挂单。你可以在右侧「我的背包」里上架物品。'));
-    } else {
-      st.market.slice().sort(function (a, b) { return b.t - a.t; }).forEach(function (l) {
-        const meta = itemMeta(l.id);
-        const mine = me && l.seller === me.id;
-        const total = l.price * l.qty;
-        const row = el('div', 'mk-row' + (mine ? ' mine' : ''));
-        row.innerHTML =
-          '<div class="mk-main"><div class="mk-name ' + rarityClass(meta.rarity) + '">' + esc(l.name) + ' <span class="qty">×' + l.qty + '</span></div>' +
-          '<div class="mk-sub">卖家：' + esc(l.sellerName) + (mine ? '（你）' : '') + ' · 上架 ' + timeStr(l.t) + '</div></div>' +
-          '<div class="mk-price"><b>💰 ' + l.price + '</b><span class="unit">/个</span><div class="total">合计 ' + total + '</div></div>';
-        const acts = el('div', 'mk-acts');
-        if (mine) {
-          const cb = el('button', 'mini', '下架');
-          cb.addEventListener('click', function () {
-            call(window.Net.marketCancel(l.lid), '已下架').then(function (r) { if (r && r.ok) { st.inventory = r.data.inventory; renderTopbar(); renderView(); } });
-          });
-          acts.appendChild(cb);
-        } else {
-          const bb = el('button', 'mini primary-mini', '购买');
-          bb.addEventListener('click', function () {
-            // 支持自定义数量：默认 1，最多本挂单剩余数量
-            const input = prompt('购买数量（本挂单剩余 ' + l.qty + ' 个，单价 💰' + l.price + '）', '1');
-            if (input == null) return;
-            let n = parseInt(input, 10);
-            if (!n || n <= 0) { toast('请输入有效的购买数量'); return; }
-            n = Math.min(n, l.qty);
-            const total = l.price * n;
-            if (!confirm('花费 💰' + total + ' 购买 ' + l.name + ' ×' + n + ' ？')) return;
-            call(window.Net.marketBuy(l.lid, n), '购买成功：' + l.name + ' ×' + n).then(function (r) {
-              if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; renderTopbar(); renderView(); }
-            });
-          });
-          acts.appendChild(bb);
+    const market = st.market || [];
+    const mineCount = market.filter(function (l) { return me && l.seller === me.id; }).length;
+    const tabs = el('div', 'inv-cats');
+    [['buy', '🛒 购买市场', market.length - mineCount], ['mine', '🏷️ 我的挂单', mineCount], ['history', '📜 历史订单', null]].forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (marketTab === kv[0] ? ' on' : ''), kv[1] + (kv[2] != null ? ' ' + kv[2] : ''));
+      b.addEventListener('click', function () { if (marketTab !== kv[0]) { marketTab = kv[0]; renderView(); } });
+      tabs.appendChild(b);
+    });
+    colMain.appendChild(tabs);
+
+    if (marketTab === 'mine') {
+      // 我的挂单：管理（下架）
+      const mineArr = market.filter(function (l) { return me && l.seller === me.id; })
+        .sort(function (a, b) { return b.t - a.t; });
+      const list = el('div', 'market-list');
+      if (!mineArr.length) {
+        list.appendChild(el('div', 'hint', '你没有在售的挂单。从右侧「我的背包」点「上架」（收定价总额 1% 上架费，下架不退）。'));
+      } else {
+        mineArr.forEach(function (l) { list.appendChild(marketRow(l, st, me)); });
+      }
+      colMain.appendChild(list);
+      colMain.appendChild(el('div', 'hint', '提示：下架取回物品，但上架费不退。'));
+    } else if (marketTab === 'history') {
+      // 历史订单：我的市集成交（买入 + 卖出）
+      const hist = el('div', 'market-history', '加载中…');
+      colMain.appendChild(hist);
+      window.Net.marketHistory().then(function (r) {
+        if (marketTab !== 'history') return; // 已切走
+        if (!r || !r.ok) { hist.textContent = (r && r.data && r.data.error) || '加载失败'; return; }
+        hist.innerHTML = '';
+        const trades = r.data.trades || [];
+        if (!trades.length) {
+          hist.appendChild(el('div', 'hint', '暂无历史订单。在「购买市场」成交后会在这里记录（买入与卖出都算）。'));
+          return;
         }
-        row.appendChild(acts);
-        list.appendChild(row);
+        trades.forEach(function (t) {
+          const isBuy = me && t.buyer === me.id;
+          const row = el('div', 'inv-row hist-line');
+          row.innerHTML =
+            '<span class="hist-tag ' + (isBuy ? 'hist-buy' : 'hist-sell') + '">' + (isBuy ? '买入' : '卖出') + '</span>' +
+            '<span class="' + rarityClass(itemMeta(t.id).rarity) + '">' + esc(t.name) + '</span>' +
+            '<span class="cnt">×' + t.qty + ' @ ' + t.price + '💰</span>' +
+            '<span class="hist-who">' + (isBuy ? '向 ' + esc(t.sellerName) : '卖给 ' + esc(t.buyerName)) + '</span>' +
+            '<span class="subtotal">' + (isBuy ? '支出 ' + t.total : '到账 ' + (t.total - t.tax)) + '💰</span>' +
+            '<span class="unit-price">' + timeStr(t.t) + '</span>';
+          hist.appendChild(row);
+        });
       });
+    } else {
+      // 购买市场：其他玩家的挂单
+      const others = market.filter(function (l) { return !(me && l.seller === me.id); })
+        .sort(function (a, b) { return b.t - a.t; });
+      const list = el('div', 'market-list');
+      if (!others.length) {
+        list.appendChild(el('div', 'hint', '市场暂无其他玩家的挂单。你可以在右侧「我的背包」里上架物品。'));
+      } else {
+        others.forEach(function (l) { list.appendChild(marketRow(l, st, me)); });
+      }
+      colMain.appendChild(list);
+      colMain.appendChild(el('div', 'hint', '提示：买到的物品可拿去系统商店出售赚差价；市集成交收 10% 税（由卖家承担）。'));
     }
-    colMain.appendChild(list);
-    colMain.appendChild(el('div', 'hint', '提示：买到的物品可拿去系统商店出售赚差价，但市集成交要付 10% 税（由卖家承担）。'));
     panel.appendChild(colMain);
 
     const side = el('div', 'col-side');

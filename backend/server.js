@@ -41,7 +41,7 @@ const sessions = new Map();  // token -> username(lowercased)
 let users = {};
 
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史） ----
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, priceLog: {}, tradeLog: {} };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, priceLog: {}, tradeLog: {}, marketLog: [] };
 
 // ---- 在线交易会话 ----
 // trade = { id, a:{key,name}, b:{key,name}, aItems:[{id,qty}], bItems:[], aOk, bOk, cooldownUntil, cancelled, createdAt }
@@ -656,6 +656,10 @@ const server = http.createServer(function (req, res) {
         if (qty >= l.qty) world.listings.splice(idx, 1);
         else l.qty -= qty;
         saveUsers(); saveWorld();
+        // 市集成交流水（双方的历史订单查询用）
+        world.marketLog = world.marketLog || [];
+        world.marketLog.push({ t: Date.now(), buyer: key, buyerName: rec.name, seller: l.seller, sellerName: l.sellerName, id: l.id, name: l.name, qty: qty, price: l.price, total: total, tax: tax });
+        if (world.marketLog.length > 300) world.marketLog.splice(0, world.marketLog.length - 300);
         broadcastMarket();
         // 卖家可能不在当前页面，必须主动推送权威资产，否则收不到钱
         if (seller) {
@@ -666,6 +670,14 @@ const server = http.createServer(function (req, res) {
       });
     });
     return;
+  }
+  // ---- 我的历史订单（市集成交记录：买入 + 卖出） ----
+  if (p === '/api/market/history' && req.method === 'GET') {
+    const key = u.query.token && sessions.get(u.query.token);
+    if (!key) return apiResp(res, 401, { error: '未登录' });
+    const mine = (world.marketLog || []).filter(function (m) { return m.buyer === key || m.seller === key; })
+      .sort(function (a, b) { return b.t - a.t; });
+    return apiResp(res, 200, { trades: mine.slice(0, 60) });
   }
   if (p === '/api/market/cancel' && req.method === 'POST') {
     readBody(req, function (body) {

@@ -63,6 +63,8 @@ window.Net = (function () {
   const bdSet = (part, compId) => authed('/api/bd/set', { part: part, compId: compId });
   // 公开只读：商品价格历史采样 + 交易量
   const shopHistory = (id) => apiFetch('GET', '/api/shop/history?id=' + encodeURIComponent(id));
+  // 我的历史订单（市集成交：买入 + 卖出）
+  const marketHistory = () => apiFetch('GET', '/api/market/history?token=' + encodeURIComponent(me ? me.token : ''));
   const sell = (id, qty) => authed('/api/sell', { id: id, qty: qty });
   const marketList = (id, qty, price) => authed('/api/market/list', { id: id, qty: qty, price: price });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
@@ -174,7 +176,7 @@ window.Net = (function () {
   return {
     register: register, login: login, fetchMe: fetchMe, setAuth: setAuth,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
-    shopHistory: shopHistory,
+    shopHistory: shopHistory, marketHistory: marketHistory,
     sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,
     tradeConfirm: tradeConfirm, tradeCancel: tradeCancel,
