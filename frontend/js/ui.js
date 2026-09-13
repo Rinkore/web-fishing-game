@@ -56,7 +56,14 @@ window.UI = (function () {
   }
 
   // ---- 侧边导航 ----
+  // 内容签名： fishing 徽标 / 交易徽标 / 当前视图 任一变化才重建。
+  // 否则每次广播都会 innerHTML 重建导航，悬停高亮与过渡动画被打断（左侧闪烁）。
+  let navSig = null;
   function renderNav() {
+    const st = S();
+    const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0].join('|');
+    if (sig === navSig) return;
+    navSig = sig;
     const nav = $('nav');
     nav.innerHTML = '';
     D.NAV.forEach(function (item) {
