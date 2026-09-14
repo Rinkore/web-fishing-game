@@ -337,6 +337,69 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       const fsReset = await get('/api/admin/world?token=' + adminLogin.data.token);
       check('后台恢复默认体型模型（normal）', fsReset.data.fishCfg.sizeModel === 'normal', JSON.stringify(fsReset.data.fishCfg));
 
+      // —— 账号管理：搜索联想 / 表头排序 / 快照弹窗（名称选择 + 定制配件）——
+      section('管理后台 · 账号管理');
+      await clickAdminNav('账号管理', '#mgr-q');
+      check('账号管理有搜索框', await pa.evaluate(() => !!document.getElementById('mgr-q')));
+      const rowsAll = await pa.$$eval('#mgr-list tbody tr', els => els.length);
+      check('账号列表渲染出全部账号（3 个）', rowsAll === 3, String(rowsAll));
+      // 搜索：输入 QQ 片段即过滤
+      await pa.evaluate(() => { const q = document.getElementById('mgr-q'); q.value = '10023'; q.dispatchEvent(new Event('input', { bubbles: true })); });
+      const rowsQQ = await pa.$$eval('#mgr-list tbody tr', els => els.length);
+      check('按 QQ 片段过滤（10023 → 1 个买家）', rowsQQ === 1, String(rowsQQ));
+      // 联想下拉：清空后输入，应出现候选并可点击定位
+      await pa.evaluate(() => { const q = document.getElementById('mgr-q'); q.value = ''; q.dispatchEvent(new Event('input', { bubbles: true })); });
+      await pa.evaluate(() => { const q = document.getElementById('mgr-q'); q.value = '后台买家'; q.dispatchEvent(new Event('input', { bubbles: true })); });
+      const sugN = await waitFor(async () => (await pa.$$('#mgr-sug .mgr-sug-item')).length, { timeout: 4000 }).catch(() => 0);
+      check('联想下拉出现候选（按显示名匹配）', sugN >= 1, String(sugN));
+      await pa.evaluate(() => { const d = document.querySelector('#mgr-sug .mgr-sug-item'); if (d) d.click(); });
+      const pickedRows = await pa.$$eval('#mgr-list tbody tr', els => els.length);
+      check('点击联想项定位到该账号', pickedRows === 1, String(pickedRows));
+      await pa.evaluate(() => { const q = document.getElementById('mgr-q'); q.value = ''; q.dispatchEvent(new Event('input', { bubbles: true })); });
+      // 排序：点「金币」表头 → 金币升序；再点 → 降序
+      await pa.evaluate(() => { document.querySelector('#mgr-list th[data-sort="coins"]').click(); });
+      const coinsAsc = await pa.$$eval('#mgr-list tbody tr', els => els.map(tr => Number(tr.querySelector('td.num').textContent)));
+      check('点表头按金币升序', coinsAsc.length === 3 && coinsAsc[0] <= coinsAsc[1] && coinsAsc[1] <= coinsAsc[2], JSON.stringify(coinsAsc));
+      await pa.evaluate(() => { document.querySelector('#mgr-list th[data-sort="coins"]').click(); });
+      const coinsDesc = await pa.$$eval('#mgr-list tbody tr', els => els.map(tr => Number(tr.querySelector('td.num').textContent)));
+      check('再点按金币降序', coinsDesc.length === 3 && coinsDesc[0] >= coinsDesc[1] && coinsDesc[1] >= coinsDesc[2], JSON.stringify(coinsDesc));
+      // 快照弹窗：新增物品是按名称的下拉（带分组），背包行显示物品名而非裸 ID
+      // 先用接口给该账号一个背包（新号背包为空，弹窗里只有「背包为空」提示）
+      await post('/api/admin/users/snapshot', { token: adminLogin.data.token, target: 'aui_player', coins: 500, inventory: { crucian: 3, line_nylon: 2 } });
+      await pa.evaluate(k => { const b = document.querySelector('[data-snap="' + k + '"]'); if (b) b.click(); }, 'aui_player');
+      await untilSel(pa, '#snap-add-id', 6000);
+      const snapUi = await pa.evaluate(() => {
+        const sel = document.getElementById('snap-add-id');
+        const groups = Array.from(sel.querySelectorAll('optgroup')).map(g => g.label);
+        const firstRow = document.querySelector('#snap-inv .snap-line label');
+        return {
+          groups: groups, opts: sel.querySelectorAll('option').length,
+          rowText: firstRow ? firstRow.textContent.trim().slice(0, 40) : '',
+          hasCus: !!document.getElementById('cus-base') && !!document.getElementById('cus-preview'),
+        };
+      });
+      check('新增物品为名称下拉（鱼/材料/组件分组）', snapUi.groups.join(',') === '鱼,材料,组件（底材）' && snapUi.opts >= 75, JSON.stringify(snapUi.groups));
+      check('背包行显示物品名而非裸 ID', /鲫鱼|黄金锦鲤|耐磨绳/.test(snapUi.rowText), snapUi.rowText);
+      check('定制配件区已渲染', snapUi.hasCus === true, JSON.stringify(snapUi.hasCus));
+      // 定制配件：选底材 → 加词条 → 预览生成名字 → 加入草稿
+      const cusPreview = await pa.evaluate(() => {
+        const base = document.getElementById('cus-base');
+        base.value = 'rod_bamboo';
+        base.dispatchEvent(new Event('change', { bubbles: true }));
+        document.getElementById('cus-aff-add').click();
+        const val = document.querySelector('#cus-affixes [data-cus-v="0"]');
+        val.value = '50';
+        val.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('cus-aff-add').click();
+        return document.getElementById('cus-preview').textContent;
+      });
+      check('定制配件预览生成名称与词条', /竹制短竿/.test(cusPreview) && /钓速\+50/.test(cusPreview), cusPreview.slice(0, 120));
+      await pa.evaluate(() => { document.getElementById('cus-add').click(); });
+      const cusRow = await waitFor(async () => (await pa.evaluate(() =>
+        Array.from(document.querySelectorAll('#snap-inv .snap-line label')).some(l => /竹制短竿/.test(l.textContent)))), { timeout: 4000 }).catch(() => false);
+      check('定制配件已加入背包草稿', cusRow === true, String(cusRow));
+      await pa.evaluate(() => { const b = document.querySelector('.modal-overlay .cf-no'); if (b) b.click(); });
+
       // —— 横幅：发布 → 玩家端滚播并上报 → 后台「当前滚播」→ 停止滚播 ——
       section('管理后台 · 横幅滚播');
       await clickAdminNav('横幅管理', '#bn-content');

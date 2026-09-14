@@ -360,39 +360,122 @@ window.Admin = (function () {
   // ================================
   // 账号管理（列表形式：改密码 / 改显示名 / 调整金币 / 删除 / 快照编辑背包）
   // ================================
+  // 账号管理：搜索与排序状态（模块级，切页/重绘间保留）
+  let mgrQuery = '';
+  let mgrSort = { key: 'createdAt', dir: 'desc' };
+  let mgrRows = [];
+  let mgrMeKey = '';
   function renderAccountMgr() {
     const main = $('main');
     main.innerHTML = '<h2>🔑 账号管理</h2>' +
-      '<div class="hint" style="margin-bottom:12px">与「账号授权」同款列表；可改密码 / 显示名 / 金币，查看并编辑玩家快照（金币与背包），或删除账号（需二次确认）。修改密码会使其所有登录会话失效。</div>' +
+      '<div class="hint" style="margin-bottom:12px">与「账号授权」同款列表；可改密码 / 显示名 / 金币，查看并编辑玩家快照（金币与背包），或删除账号（需二次确认）。修改密码会使其所有登录会话失效。点击表头可排序。</div>' +
+      '<div class="mgr-row" style="margin-bottom:10px">' +
+      '<label>🔍 搜索</label>' +
+      '<span style="position:relative;display:inline-block;vertical-align:middle">' +
+      '<input id="mgr-q" class="ipt" style="width:300px" placeholder="账号 ID / 显示名 / QQ 号" value="' + esc(mgrQuery) + '" autocomplete="off" />' +
+      '<div id="mgr-sug" class="mgr-sug"></div></span>' +
+      '<button class="btn mini" id="mgr-q-clear">清空</button>' +
+      '<span class="hint">输入即过滤；点联想项直接定位到该账号</span></div>' +
       '<div id="mgr-list" class="panel">加载中…</div>';
+    const q = $('mgr-q');
+    q.oninput = function () { mgrQuery = q.value; drawMgrList(); drawMgrSug(); };
+    q.onfocus = function () { drawMgrSug(); };
+    // 延迟隐藏，让「点联想项」的 click 先于 blur 生效
+    q.onblur = function () { setTimeout(function () { const b = $('mgr-sug'); if (b) b.style.display = 'none'; }, 180); };
+    $('mgr-q-clear').onclick = function () { mgrQuery = ''; q.value = ''; drawMgrList(); drawMgrSug(); };
     loadMgrList();
   }
   function loadMgrList() {
     adminApi('GET', '/api/admin/users?token=' + encodeURIComponent(token)).then(function (r) {
       if (!r.ok || view !== 'accountmgr') return;
-      const meKey = r.data.me;
-      const rows = r.data.users.map(function (u) {
-        const self = u.key === meKey;
-        return '<tr>' +
-          '<td><b>' + esc(u.name) + '</b> <span class="hint">' + esc(u.username) + (self ? '（你）' : '') + '</span>' +
-          (u.qq ? '<div class="hint">QQ：' + esc(u.qq) + '</div>' : '') + '</td>' +
-          '<td class="num">' + u.coins + '</td>' +
-          '<td class="num">' + u.catchCount + '</td>' +
-          '<td>' + (u.online ? '<span class="tag on">在线</span>' : '<span class="tag">离线</span>') + '</td>' +
-          '<td>' + fmtTime(u.createdAt) + '</td>' +
-          '<td class="mgr-acts">' +
-          '<button class="btn mini" data-edit="' + esc(u.key) + '">编辑</button>' +
-          '<button class="btn mini" data-snap="' + esc(u.key) + '">快照</button>' +
-          '<button class="btn mini danger" data-del="' + esc(u.key) + '"' + (self ? ' disabled title="不能删除自己"' : '') + '>删除</button>' +
-          '</td></tr>';
-      }).join('');
-      $('mgr-list').innerHTML = '<table class="tbl"><thead><tr>' +
-        '<th>账号</th><th class="num">金币</th><th class="num">捕获数</th><th>状态</th><th>注册时间</th><th>操作</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table>';
-      $('mgr-list').querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { openMgrEdit(b.getAttribute('data-edit')); }; });
-      $('mgr-list').querySelectorAll('[data-snap]').forEach(function (b) { b.onclick = function () { openMgrSnapshot(b.getAttribute('data-snap')); }; });
-      $('mgr-list').querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { confirmDeleteUser(b.getAttribute('data-del')); }; });
+      mgrRows = r.data.users || [];
+      mgrMeKey = r.data.me || '';
+      drawMgrList();
+      drawMgrSug();
     });
+  }
+  // 联想：按账号 ID / 显示名 / QQ 匹配，点击直接把该账号填入搜索框
+  function drawMgrSug() {
+    const box = $('mgr-sug');
+    if (!box) return;
+    const q = mgrQuery.trim().toLowerCase();
+    if (!q) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    const hits = mgrRows.filter(function (u) {
+      return (u.username || '').toLowerCase().indexOf(q) >= 0 || (u.name || '').toLowerCase().indexOf(q) >= 0 || String(u.qq || '').indexOf(q) >= 0;
+    }).slice(0, 8);
+    if (!hits.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.innerHTML = hits.map(function (u) {
+      return '<div class="mgr-sug-item" data-k="' + esc(u.key) + '"><b>' + esc(u.name) + '</b> <span class="hint">' + esc(u.username) + '</span>' +
+        (u.qq ? ' <span class="hint">QQ:' + esc(u.qq) + '</span>' : '') + '</div>';
+    }).join('');
+    box.style.display = 'block';
+    box.querySelectorAll('.mgr-sug-item').forEach(function (d) {
+      d.onclick = function () {
+        mgrQuery = d.getAttribute('data-k');
+        const inp = $('mgr-q'); if (inp) inp.value = mgrQuery;
+        box.style.display = 'none'; drawMgrList();
+      };
+    });
+  }
+  // 列表渲染：过滤 + 排序（点表头切换）
+  function drawMgrList() {
+    if (view !== 'accountmgr') return;
+    const q = mgrQuery.trim().toLowerCase();
+    let rows = mgrRows.filter(function (u) {
+      if (!q) return true;
+      return (u.username || '').toLowerCase().indexOf(q) >= 0 || (u.name || '').toLowerCase().indexOf(q) >= 0 || String(u.qq || '').indexOf(q) >= 0;
+    });
+    const cmp = {
+      name: function (a, b) { return String(a.name || '').localeCompare(String(b.name || ''), 'zh'); },
+      key: function (a, b) { return String(a.key || '').localeCompare(String(b.key || '')); },
+      coins: function (a, b) { return (a.coins || 0) - (b.coins || 0); },
+      catchCount: function (a, b) { return (a.catchCount || 0) - (b.catchCount || 0); },
+      online: function (a, b) { return (a.online ? 1 : 0) - (b.online ? 1 : 0); },
+      createdAt: function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); },
+    };
+    const fn = cmp[mgrSort.key] || cmp.createdAt;
+    rows = rows.slice().sort(fn);
+    if (mgrSort.dir < 0) rows.reverse();
+    const meKey = mgrMeKey;
+    const arrow = function (k) { return mgrSort.key === k ? (mgrSort.dir < 0 ? ' ▼' : ' ▲') : ''; };
+    const body = rows.map(function (u) {
+      const self = u.key === meKey;
+      return '<tr>' +
+        '<td><b>' + esc(u.name) + '</b> <span class="hint">' + esc(u.username) + (self ? '（你）' : '') + '</span>' +
+        (u.qq ? '<div class="hint">QQ：' + esc(u.qq) + '</div>' : '') + '</td>' +
+        '<td class="num">' + u.coins + '</td>' +
+        '<td class="num">' + u.catchCount + '</td>' +
+        '<td>' + (u.online ? '<span class="tag on">在线</span>' : '<span class="tag">离线</span>') + '</td>' +
+        '<td>' + fmtTime(u.createdAt) + '</td>' +
+        '<td class="mgr-acts">' +
+        '<button class="btn mini" data-edit="' + esc(u.key) + '">编辑</button>' +
+        '<button class="btn mini" data-snap="' + esc(u.key) + '">快照</button>' +
+        '<button class="btn mini danger" data-del="' + esc(u.key) + '"' + (self ? ' disabled title="不能删除自己"' : '') + '>删除</button>' +
+        '</td></tr>';
+    }).join('');
+    $('mgr-list').innerHTML =
+      '<div class="hint" style="margin-bottom:8px">共 ' + mgrRows.length + ' 个账号' + (q ? '，匹配 ' + rows.length + ' 个' : '') +
+      '；当前排序：' + ({ name: '显示名', coins: '金币', catchCount: '捕获数', online: '状态', createdAt: '注册时间' }[mgrSort.key] || mgrSort.key) + (mgrSort.dir < 0 ? ' ↓' : ' ↑') + '</div>' +
+      '<table class="tbl"><thead><tr>' +
+      '<th class="sortable" data-sort="name">账号' + arrow('name') + '</th>' +
+      '<th class="num sortable" data-sort="coins">金币' + arrow('coins') + '</th>' +
+      '<th class="num sortable" data-sort="catchCount">捕获数' + arrow('catchCount') + '</th>' +
+      '<th class="sortable" data-sort="online">状态' + arrow('online') + '</th>' +
+      '<th class="sortable" data-sort="createdAt">注册时间' + arrow('createdAt') + '</th>' +
+      '<th>操作</th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>';
+    $('mgr-list').querySelectorAll('th.sortable').forEach(function (th) {
+      th.style.cursor = 'pointer';
+      th.onclick = function () {
+        const k = th.getAttribute('data-sort');
+        if (mgrSort.key === k) mgrSort.dir = -mgrSort.dir;
+        else mgrSort = { key: k, dir: (k === 'name' ? 1 : -1) };
+        drawMgrList();
+      };
+    });
+    $('mgr-list').querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { openMgrEdit(b.getAttribute('data-edit')); }; });
+    $('mgr-list').querySelectorAll('[data-snap]').forEach(function (b) { b.onclick = function () { openMgrSnapshot(b.getAttribute('data-snap')); }; });
+    $('mgr-list').querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { confirmDeleteUser(b.getAttribute('data-del')); }; });
   }
   // 编辑密码 / 显示名 / 金币
   function openMgrEdit(key) {
@@ -431,6 +514,15 @@ window.Admin = (function () {
     adminApi('GET', '/api/admin/users/snapshot?token=' + encodeURIComponent(token) + '&key=' + encodeURIComponent(key)).then(function (r) {
       if (!r.ok) { toast(r.data.error || '读取快照失败', true); return; }
       const d = r.data;
+      // 物品目录（鱼/材料/组件底材）来自前端共享数据，新增物品改为按名称选择
+      const hasData = (typeof GameData !== 'undefined' && !!GameData.allItems);
+      const byKind = { fish: [], material: [], component: [] };
+      (hasData ? GameData.allItems() : []).forEach(function (it) { (byKind[it.kind] || (byKind[it.kind] = [])).push(it); });
+      const opt = function (it) { return '<option value="' + esc(it.id) + '">' + esc(it.name) + '（' + esc(it.id) + '）</option>'; };
+      const grp = function (label, arr) { return arr.length ? '<optgroup label="' + label + '">' + arr.map(opt).join('') + '</optgroup>' : ''; };
+      const itemOptions = hasData
+        ? (grp('鱼', byKind.fish) + grp('材料', byKind.material) + grp('组件（底材）', byKind.component))
+        : '<option value="">（数据目录未加载，请手动输入 ID）</option>';
       document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
       const ov = document.createElement('div');
       ov.className = 'modal-overlay';
@@ -439,10 +531,20 @@ window.Admin = (function () {
         '<div class="mgr-row"><label>金币</label><input id="snap-coins" class="ipt" type="number" min="0" value="' + d.coins + '" /></div>' +
         '<div class="hint" style="margin:10px 0 6px">背包（直接编辑每行的数量，0 或留空 = 移除）</div>' +
         '<div id="snap-inv" class="snap-inv"></div>' +
-        '<div class="mgr-row" style="margin-top:8px"><label>新增物品</label>' +
-        '<input id="snap-add-id" class="ipt" placeholder="物品 ID（如 crucian / rod_bamboo#common#spd+10）" />' +
+        '<div class="mgr-row" style="margin-top:10px"><label>新增物品</label>' +
+        '<select id="snap-add-id" class="ipt" style="min-width:240px">' + itemOptions + '</select>' +
         '<input id="snap-add-qty" class="ipt mk-num" type="number" min="1" value="1" />' +
         '<button class="btn mini" id="snap-add">添加</button></div>' +
+        '<div class="hint" style="margin:14px 0 6px">🔧 定制配件（自选底材 / 品质 / 词条数值，生成后直接放进背包）</div>' +
+        '<div class="mgr-row"><label>底材</label><select id="cus-base" class="ipt" style="min-width:240px"></select>' +
+        '<label>品质</label><select id="cus-quality" class="ipt"></select></div>' +
+        '<div id="cus-affixes" style="margin:6px 0"></div>' +
+        '<div class="mgr-row"><button class="btn mini" id="cus-aff-add">＋ 添加词条</button>' +
+        '<span class="hint">词条类型只能选该底材支持的；数值可超出自然区间（管理员定制）</span></div>' +
+        '<div class="hint" id="cus-preview" style="margin-top:6px"></div>' +
+        '<div class="mgr-row" style="margin-top:6px"><label>数量</label>' +
+        '<input id="cus-qty" class="ipt mk-num" type="number" min="1" value="1" />' +
+        '<button class="btn mini primary" id="cus-add">添加到背包</button></div>' +
         '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn primary" id="snap-save">保存快照</button></div>' +
         '</div></div>';
       document.body.appendChild(ov);
@@ -460,17 +562,110 @@ window.Admin = (function () {
         }).join('');
       }
       drawInv(d.inventory || {});
-      ov.querySelector('#snap-add').onclick = function () {
-        const id = ov.querySelector('#snap-add-id').value.trim();
-        const qty = Math.max(1, Number(ov.querySelector('#snap-add-qty').value) || 1);
-        if (!id) return;
+      // 统一的「往背包草稿加一件」：已有同 id 就叠加数量，否则追加一行
+      function invAddDraft(id, qty) {
+        if (!id) return false;
         const inputs = ov.querySelectorAll('[data-inv]');
-        for (const inp of inputs) { if (inp.getAttribute('data-inv') === id) { inp.value = (Number(inp.value) || 0) + qty; return; } }
+        for (const inp of inputs) { if (inp.getAttribute('data-inv') === id) { inp.value = (Number(inp.value) || 0) + qty; return true; } }
         const cur = {};
         inputs.forEach(function (inp) { cur[inp.getAttribute('data-inv')] = Number(inp.value) || 0; });
         cur[id] = qty;
         drawInv(cur);
+        return true;
+      }
+      function itemNameOf(id) {
+        const meta = (window.GameData && GameData.itemOf) ? GameData.itemOf(id) : null;
+        return meta ? meta.name : id;
+      }
+      ov.querySelector('#snap-add').onclick = function () {
+        const sel = ov.querySelector('#snap-add-id');
+        const id = sel.value;
+        const qty = Math.max(1, Number(ov.querySelector('#snap-add-qty').value) || 1);
+        if (!id) return;
+        invAddDraft(id, qty);
+        toast('已加入草稿：' + itemNameOf(id) + ' × ' + qty);
       };
+      // —— 定制配件：底材 × 品质 × 词条 → 组件实例。id 用 GameData.instanceId 生成（与游戏同一套编码），
+      // 服务端按实例规则校验后入包；词条类型只能选底材支持的，数值不设限（管理员定制）。——
+      const bases = (window.GameData && GameData.COMPONENT_BASES) || [];
+      const affLabel = (window.GameData && GameData.AFFIX_LABEL) || {};
+      const qDef = (window.GameData && GameData.QUALITY) || {};
+      const partName = {};
+      ((window.GameData && GameData.ROD_PARTS) || []).forEach(function (p) { partName[p.key] = p.name; });
+      const bSel = ov.querySelector('#cus-base');
+      bSel.innerHTML = bases.map(function (b) {
+        return '<option value="' + esc(b.id) + '">' + esc(partName[b.part] || b.part) + ' · ' + esc(b.name) + '（' + esc(b.id) + '）</option>';
+      }).join('');
+      ov.querySelector('#cus-quality').innerHTML = Object.keys(qDef).map(function (k) {
+        return '<option value="' + k + '">' + esc(qDef[k].name) + '</option>';
+      }).join('');
+      let cusList = [];
+      function cusBase() { return bases.find(function (b) { return b.id === bSel.value; }) || null; }
+      function drawCus() {
+        const b = cusBase();
+        const box = ov.querySelector('#cus-affixes');
+        if (!b) return;
+        const pool = b.pool || [];
+        cusList = cusList.filter(function (a) { return pool.some(function (p) { return p.type === a.type; }); }); // 换底材后清掉不支持的
+        box.innerHTML = cusList.length ? cusList.map(function (a, i) {
+          const pr = pool.find(function (p) { return p.type === a.type; });
+          return '<div class="cus-aff">' +
+            '<select class="ipt" data-cus-t="' + i + '">' + pool.map(function (p) {
+              return '<option value="' + esc(p.type) + '"' + (p.type === a.type ? ' selected' : '') + '>' + esc(affLabel[p.type] || p.type) + '</option>';
+            }).join('') + '</select>' +
+            '<input class="ipt mk-num" type="number" data-cus-v="' + i + '" value="' + a.value + '" />' +
+            '<span class="hint">自然 ' + (pr ? pr.min : '?') + '~' + (pr ? pr.max : '?') + '</span>' +
+            '<button class="btn mini danger" data-cus-del="' + i + '" title="移除词条">✕</button></div>';
+        }).join('') : '<div class="hint">暂无词条（0 条 = 无词条配件）</div>';
+        box.querySelectorAll('[data-cus-t]').forEach(function (sel) {
+          sel.onchange = function () { cusList[+sel.getAttribute('data-cus-t')].type = sel.value; drawCus(); };
+        });
+        box.querySelectorAll('[data-cus-v]').forEach(function (inp) {
+          inp.oninput = function () { cusList[+inp.getAttribute('data-cus-v')].value = Math.round(Number(inp.value) || 0); updateCusPreview(); };
+        });
+        box.querySelectorAll('[data-cus-del]').forEach(function (btn) {
+          btn.onclick = function () { cusList.splice(+btn.getAttribute('data-cus-del'), 1); drawCus(); };
+        });
+        updateCusPreview();
+      }
+      function cusId() {
+        const b = cusBase();
+        if (!b || !window.GameData || !GameData.instanceId) return '';
+        try { return GameData.instanceId(b.id, ov.querySelector('#cus-quality').value, cusList.slice()); } catch (e) { return ''; }
+      }
+      function updateCusPreview() {
+        const el = ov.querySelector('#cus-preview');
+        const id = cusId();
+        const meta = (window.GameData && GameData.instanceMeta) ? GameData.instanceMeta(id) : null;
+        if (!meta) { el.innerHTML = '<span class="err">无法生成该配件（词条类型与底材不匹配）</span>'; return; }
+        const aff = meta.affixes.length
+          ? meta.affixes.map(function (a) { return esc((affLabel[a.type] || a.type) + (a.value > 0 ? '+' : '') + a.value); }).join(' / ')
+          : '无词条';
+        const b = cusBase();
+        const cap = qDef[ov.querySelector('#cus-quality').value] ? qDef[ov.querySelector('#cus-quality').value].cap : '?';
+        el.innerHTML = '预览：<b>' + esc(meta.name) + '</b> · ' + esc(meta.qualityName) + ' · ' + aff +
+          ' <span class="hint">（' + esc(id) + '；该品质常规最多 ' + cap + ' 条，当前 ' + meta.affixes.length + ' 条）</span>';
+      }
+      bSel.onchange = function () { cusList = []; drawCus(); };
+      ov.querySelector('#cus-quality').onchange = function () { updateCusPreview(); };
+      ov.querySelector('#cus-aff-add').onclick = function () {
+        const b = cusBase(); if (!b) return;
+        const used = cusList.map(function (a) { return a.type; });
+        const next = (b.pool || []).find(function (p) { return used.indexOf(p.type) < 0; });
+        if (!next) { toast('该底材支持的词条类型都已添加', true); return; }
+        cusList.push({ type: next.type, value: next.min });
+        drawCus();
+      };
+      ov.querySelector('#cus-add').onclick = function () {
+        const id = cusId();
+        const meta = (window.GameData && GameData.instanceMeta) ? GameData.instanceMeta(id) : null;
+        if (!meta) { toast('无法生成该配件：词条类型与底材不匹配', true); return; }
+        const qty = Math.max(1, Number(ov.querySelector('#cus-qty').value) || 1);
+        invAddDraft(id, qty);
+        toast('已加入草稿：' + meta.name + ' × ' + qty);
+      };
+      drawCus();
+
       ov.querySelector('#snap-save').onclick = function () {
         const inv = {};
         ov.querySelectorAll('[data-inv]').forEach(function (inp) {

@@ -463,6 +463,20 @@ function waitReady() {
   const snap2 = await GET(B + '/api/admin/users/snapshot?token=' + TOKA + '&key=adm_p2');
   check('快照已更新（金币 555 / 鲫鱼 4）', snap2.data.coins === 555 && snap2.data.inventory.crucian === 4);
   check('快照非法物品被拒 400', (await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', inventory: { not_a_real_item: 1 } })).status === 400);
+  // 定制配件：管理员按「底材 × 品质 × 任意词条数值」生成组件实例直接入包（后台定制给予）。
+  // 实例编码与前端共用 data.js 的 instanceId；服务端按实例规则校验，词缀类型不合法会被拒。
+  const DData = require(path.join(ROOT, 'frontend', 'js', 'data.js'));
+  const cusId = DData.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 50 }, { type: 'big', value: 30 }]);
+  check('定制配件实例可编码（base#品质#词条）', /^rod_bamboo#epic#spd\+50,big\+30$/.test(cusId), cusId);
+  const cusGive = await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', inventory: { crucian: 4, [cusId]: 2 } });
+  check('定制配件可写入玩家背包', cusGive.status === 200, JSON.stringify(cusGive.data).slice(0, 100));
+  const cusSnap = await GET(B + '/api/admin/users/snapshot?token=' + TOKA + '&key=adm_p2');
+  check('定制配件已入包（数量 2）', cusSnap.data.inventory[cusId] === 2, JSON.stringify(cusSnap.data.inventory));
+  const meta = DData.instanceMeta(cusId);
+  check('定制配件可被前端解析出名称与词条', !!meta && meta.name.indexOf('竹制短竿') >= 0 && meta.affixes.length === 2,
+    JSON.stringify(meta && { name: meta.name, n: meta.affixes.length }));
+  check('词缀类型不合法的实例被拒 400', (await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', inventory: { 'rod_bamboo#common#hacker+99': 1 } })).status === 400);
+  check('无词条实例（第三段为空）也合法', (await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', inventory: { crucian: 4, 'hook_barb#common#': 1 } })).status === 200);
   check('非管理员读快照被拒 403', (await GET(B + '/api/admin/users/snapshot?token=' + TK2 + '&key=adm_p2')).status === 403);
 
   // 删除账号（二次确认）
