@@ -617,10 +617,20 @@ window.UI = (function () {
       right.appendChild(peeps);
     }
 
-    // 渔获日志已并入「📜 日志」页的「🐟 渔获」分列（右侧实况列表不再被日志挤占）
-    const toLog = el('div', 'hint');
-    toLog.innerHTML = '渔获日志已并入 <b>📜 日志 · 🐟 渔获</b>：' + (st.log.length ? ('最近一竿 ' + timeStr(st.log[0].t)) : '暂无渔获');
-    right.appendChild(toLog);
+    // 主界面渔获日志：随上鱼实时滚动刷新（同时也会写入「📜 日志 · 🐟 渔获」分列做长期留存）
+    const logHead = el('h3', null, '📜 我的渔获日志');
+    logHead.title = '上鱼时自动滚动刷新；完整记录见「日志 · 🐟 渔获」';
+    right.appendChild(logHead);
+    const log = el('div', 'catch-log');
+    if (st.log.length === 0) log.appendChild(el('div', 'hint', '还没有渔获，去抛竿吧。'));
+    st.log.slice(0, 25).forEach(function (e) {
+      const meta = e.item || {};
+      log.appendChild(el('div', 'log-line', timeStr(e.t) + ' · 钓到 <span class="' + qualityClass(meta) + '">' + esc(meta.name) +
+        '</span>' + (meta.size ? ' <span class="muted">' + meta.size + 'cm</span>' : '') +
+        (meta.rarity === 'big' ? ' 🐟大鱼' : meta.rarity === 'rare' ? ' ✨稀有' : '')));
+    });
+    right.appendChild(log);
+    right.appendChild(el('div', 'hint', '完整渔获记录已同步到 📜 日志 · 🐟 渔获（可在那里按时间线回看）'));
 
     main.appendChild(right);
   }

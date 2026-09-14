@@ -139,11 +139,18 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     // —— 钓鱼页：已移除背包，渔获日志与左栏底部对齐 ——
     await clickNav(p1, '钓鱼');
     check('钓鱼页不再显示背包模块', (await p1.$$('.fish-live .inventory, .content .inventory')).length === 0);
-    check('钓鱼页渔获日志已下架（并入「日志 · 渔获」分列）', (await p1.$$('.fish-live .catch-log')).length === 0);
-    check('钓鱼页提示渔获日志的新位置', await p1.evaluate(() => {
+    check('主界面保留渔获日志（并继续随上鱼刷新）', (await p1.$$('.fish-live .catch-log')).length === 1);
+    check('主界面提示完整记录同步到「日志 · 渔获」', await p1.evaluate(() => {
       const n = document.querySelector('.fish-live');
-      return !!n && /日志 · 🐟 渔获|日志/.test(n.textContent);
+      return !!n && /日志 · 🐟 渔获/.test(n.textContent);
     }), '');
+    // 上鱼后主界面日志应自动滚动刷新（走服务器推送 → 前端 catch 分支 → 主界面重绘）
+    await post('/api/dev/catch', { token: tokS, item: { kind: 'fish', id: 'minnow', rarity: 'common', name: '麦穗鱼', size: 21 }, ground: '静水湖', spot: '芦苇浅滩' });
+    const logGrow = await waitFor(async () => {
+      const n = await p1.evaluate(() => document.querySelectorAll('.fish-live .catch-log .log-line').length);
+      return n >= 1 ? n : false;
+    }, { timeout: 10000, interval: 300 }).catch(() => 0);
+    check('主界面渔获日志随上鱼自动刷新', logGrow >= 1, String(logGrow));
     // 切换账号：渔获日志应被清空（回归：曾残留上一个账号的日志）
     const switchLog = await p1.evaluate(() => {
       const S = window.Engine.state;
@@ -284,7 +291,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       void catchTab;
       await sleep(500);
       const catchLog = await p1.evaluate(() => (document.querySelector('.log-page') || {}).textContent || '');
-      check('渔获分列可筛选（有记录或空态提示）', /钓到|还没有/.test(catchLog), catchLog.slice(0, 120));
+      check('渔获分列可筛选（有记录或空态提示）', /钓到|还没有|没有记录/.test(catchLog), catchLog.slice(0, 120));
 
       // —— 背包改版：子分类筛选（品质 / 部位 / 词条数值）+ 可展开分组 + 逐件出售 ——      // —— 背包改版：子分类筛选（品质 / 部位 / 词条数值）+ 可展开分组 + 逐件出售 ——
       section('背包分类改版（真实 Chrome）');

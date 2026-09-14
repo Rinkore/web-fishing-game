@@ -88,7 +88,7 @@ body {
 /* 钓鱼页左右两栏等高：右栏渔获日志填满剩余空间，底部与左栏底部对齐 */
 .content > .fish-select, .content > .fish-live { align-self: stretch; }
 .fish-select, .fish-live { display: flex; flex-direction: column; }
-.fish-live .catch-log { flex: 1 1 auto; max-height: none; min-height: 120px; }
+.fish-live .catch-log { flex: 1 1 auto; max-height: 300px; min-height: 140px; overflow: auto; }
 .ground-list { display: flex; flex-direction: column; gap: 12px; }
 .ground-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
 .ground-card.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }

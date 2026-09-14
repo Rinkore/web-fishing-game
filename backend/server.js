@@ -1830,7 +1830,7 @@ const server = http.createServer(function (req, res) {
           const dTopS = upsertTopRanked((world.topSmall[itemId] = world.topSmall[itemId] || []), { size: rsize, who: rec.name, t: Date.now() }, true);
           if (dTopS.changed) topSmallRankDev = dTopS.rank;
         }
-        const entry = { t: Date.now(), who: rec.name, item: Object.assign({}, d.item, { id: itemId }), ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
+        const entry = { t: Date.now(), who: rec.name, item: Object.assign({}, d.item, { id: itemId }, isFinite(size) && size > 0 ? { size: Math.round(size * 10) / 10 } : {}), ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
         feed.unshift(entry); if (feed.length > 60) feed.pop();
         broadcast({ type: 'feed', entry: entry });
         saveAccount(key);
@@ -1845,6 +1845,8 @@ const server = http.createServer(function (req, res) {
           if (recordEvent || smallEventDev) broadcastRecords();
         }
         if (recordEvent) broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: entry.item, ground: entry.ground, spot: entry.spot, size: entry.size, record: true } });
+        // 与线上一致：定向推送本条渔获，主界面渔获日志才能随上鱼滚动刷新
+        sendTo(key, { type: 'catch', entry: entry });
         sendTo(key, { type: 'codex', codex: rec.codex, catchCount: rec.catchCount, entry: { id: codexId, name: itemName(codexId) } });
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
         maybeSendSubAlert(rec, key, itemMeta);
