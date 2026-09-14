@@ -108,29 +108,34 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
     browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const errs = [];
-    const p1 = await ctx.newPage(); p1.on('pageerror', e => errs.push(e.message));
-    const p2 = await ctx.newPage(); p2.on('pageerror', e => errs.push(e.message));
+    // 带上出错位置（堆栈第二行）：只记 message 时定位不到具体行
+    const pErr = e => e.message + ' @ ' + (String(e.stack || '').split('\n')[1] || '').trim();
+    const p1 = await ctx.newPage(); p1.on('pageerror', e => errs.push(pErr(e)));
+    const p2 = await ctx.newPage(); p2.on('pageerror', e => errs.push(pErr(e)));
     await login(p1, rp.data.token);
     await login(p2, tokB);
 
     // —— 管理后台「组件生成」：roll 模型保存（回归：单选框缺 value 被服务器判为未知模型） ——
     section('管理后台组件生成 · roll 模型');
     const pa = await ctx.newPage();
-    const adminErrs = []; pa.on('pageerror', e => adminErrs.push(e.message));
+    const adminErrs = []; pa.on('pageerror', e => adminErrs.push(pErr(e)));
     const adminLogin = await post('/api/admin/login', { username: 'aui_admin', password: 'abcd1234' });
     if (adminLogin.data && adminLogin.data.token) {
       await pa.goto('http://localhost:' + PORT + '/admin.html', { waitUntil: 'load' });
       await pa.evaluate(t => localStorage.setItem('fishing_admin_token', t), adminLogin.data.token);
       await pa.reload({ waitUntil: 'load' });
-      await sleep(1200);
+      // 等主界面渲染 + 等目标页关键控件就绪（替代固定 sleep：并行负载下 sleep 会不够，
+      // 直接 document.getElementById('cmp-save').click() 会抛 null click 把整个套件打断）
+      await untilSel(pa, '.nav-item', 10000);
       await pa.evaluate(() => { const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes('组件生成')); if (b) b.click(); });
-      await sleep(900);
+      await untilSel(pa, '#cmp-save', 10000);
       const radios = await pa.$$eval('input[name=rm]', els => els.map(e => e.value));
       check('roll 模型单选框都有非空 value', radios.length === 3 && radios.every(v => v && v !== 'on'), JSON.stringify(radios));
       await pa.evaluate(() => { const c = document.querySelector('.radio-card[data-rm=normal]'); if (c) c.click(); });
       await sleep(150);
-      await pa.evaluate(() => { document.getElementById('cmp-save').click(); });
-      await sleep(800);
+      await pa.evaluate(() => { const b = document.getElementById('cmp-save'); if (b) b.click(); });
+      // 保存结果文案由 POST 返回后写入：轮询到出现「已保存」再断言（固定 sleep 在并行负载下会不够）
+      await waitFor(async () => /已保存/.test(await pa.textContent('#cmp-state')), { timeout: 8000, interval: 40 }).catch(() => {});
       const state = await pa.textContent('#cmp-state');
       check('保存 roll 模型成功（非「未知的 roll 模型」）', /已保存/.test(state) && !/未知/.test(state), state);
       const saved = await get('/api/admin/world?token=' + adminLogin.data.token);
@@ -376,6 +381,18 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       }, { timeout: 5000 }).catch(() => false);
       check('单品锁价干预生效（鲫鱼 ×3）',
         !!(await get('/api/admin/world?token=' + adminLogin.data.token)).data.economyCatalog.find(i => i.id === 'crucian' && i.ov && i.ov.m === 3));
+
+      // 页面上该行必须真的把「锁 ×3」标签渲染出来。这一条是回归守卫：
+      // 原实现 `const ov = it.ov ? (… ov.until …) : ''` 在自己的初始化式里引用自己，
+      // 一旦该物品确实有覆盖就抛 TDZ「Cannot access 'ov' before initialization」，
+      // 整段经济列表崩掉；只查接口是查不出来的（接口正常，是渲染层炸）。
+      const ovTagShown = await untilGet(
+        async () => pa.evaluate(() => {
+          const inp = document.querySelector('.eco-ov-m[data-id="crucian"]');
+          return inp && inp.parentElement ? inp.parentElement.textContent : '';
+        }),
+        t => /锁 ×3/.test(t || ''), 8000);
+      check('单品覆盖率在页面上渲染出标签（锁 ×3）', /锁 ×3/.test(ovTagShown || ''), String(ovTagShown).slice(0, 160));
       const shopLocked = await get('/shop');
       check('锁价影响商店现价（8×3=24）', shopLocked.data.crucian.price === 24, JSON.stringify(shopLocked.data.crucian));
       await pa.evaluate(() => { document.querySelector('.eco-ov-clear[data-id="crucian"]').click(); });
@@ -580,6 +597,68 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
         return row ? row.textContent : '';
       });
       check('玩家端能看到「已获奖励」标记（买家）', /已获奖励 \+1500/.test(rwShown), rwShown.slice(0, 140));
+
+      // —— 宝匣配置页（突破保底 + 池外词缀区间）——
+      // 放在最后：本段只动 chestCfg / extraAffixRanges，不碰其它用例依赖的装配与榜单状态。
+      section('管理后台 · 宝匣配置');
+      await clickAdminNav('宝匣配置', '#ch-pity-save');
+      const chStruct = await pa.evaluate(() => ({
+        rows: document.querySelectorAll('#ch-body table tbody tr').length,
+        headers: Array.from(document.querySelectorAll('#ch-body table thead th')).map(e => e.textContent.trim()),
+        rangeInputs: document.querySelectorAll('#ch-body input[id^="ch-ar-"]').length,
+        // .mgr-row .ipt 默认 flex:1；宝匣页的输入框必须包在 .ch-fix 里才不会被拉宽
+        pityFlex: getComputedStyle(document.getElementById('ch-pity').parentElement).flexGrow,
+        pityWidth: document.getElementById('ch-pity').getBoundingClientRect().width,
+      }));
+      check('宝匣配置页渲染四档一览', chStruct.rows === 4 && chStruct.headers.length === 5, JSON.stringify(chStruct));
+      check('池外词缀区间有 6 类 × 2 输入', chStruct.rangeInputs === 12, String(chStruct.rangeInputs));
+      check('保底输入框未被 flex 拉宽（<200px）', Number(chStruct.pityWidth) < 200, JSON.stringify(chStruct));
+
+      // 保存保底 3 → 服务端生效
+      await pa.fill('#ch-pity', '3');
+      await pa.evaluate(() => document.getElementById('ch-pity-save').click());
+      await waitFor(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data.chestCfg.pityN === 3,
+        { timeout: 8000 }).catch(() => {});
+      const pitySaved = await get('/api/admin/world?token=' + adminLogin.data.token);
+      check('保存宝匣保底次数生效（3）', pitySaved.data.chestCfg.pityN === 3, JSON.stringify(pitySaved.data.chestCfg));
+      check('保底次数在玩家端可见（/api/version）', (await get('/api/version')).data.chestCfg.pityN === 3);
+
+      // 越界值必须被服务器拒绝且不改动现值
+      await pa.fill('#ch-pity', '999');
+      await pa.evaluate(() => document.getElementById('ch-pity-save').click());
+      await sleep(600);
+      check('保底次数越界 999 被拒（仍为 3）',
+        (await get('/api/admin/world?token=' + adminLogin.data.token)).data.chestCfg.pityN === 3);
+
+      // 关闭保底
+      await pa.evaluate(() => document.getElementById('ch-pity-reset').click());
+      await waitFor(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data.chestCfg.pityN === 0,
+        { timeout: 8000 }).catch(() => {});
+      check('「关闭保底」归零', (await get('/api/admin/world?token=' + adminLogin.data.token)).data.chestCfg.pityN === 0);
+
+      // 池外词缀区间：保存 → 恢复默认
+      await pa.fill('#ch-ar-speed-min', '2');
+      await pa.fill('#ch-ar-speed-max', '5');
+      await pa.evaluate(() => document.getElementById('ch-ar-save').click());
+      await waitFor(async () => {
+        const r = (await get('/api/admin/world?token=' + adminLogin.data.token)).data.extraAffixRanges || {};
+        return !!(r.speed && r.speed[0] === 2 && r.speed[1] === 5);
+      }, { timeout: 8000 }).catch(() => {});
+      const arSaved = ((await get('/api/admin/world?token=' + adminLogin.data.token)).data.extraAffixRanges || {}).speed;
+      check('池外词缀区间保存生效（钓速 2~5）', !!(arSaved && arSaved[0] === 2 && arSaved[1] === 5), JSON.stringify(arSaved));
+      await pa.evaluate(() => document.getElementById('ch-ar-reset').click());
+      await waitFor(async () => Object.keys((await get('/api/admin/world?token=' + adminLogin.data.token)).data.extraAffixRanges || {}).length === 0,
+        { timeout: 8000 }).catch(() => {});
+      check('「恢复默认」清空覆盖',
+        Object.keys((await get('/api/admin/world?token=' + adminLogin.data.token)).data.extraAffixRanges || {}).length === 0);
+
+      // 神话品质是宝匣专属：组件生成的品质权重里不能出现 mythic，否则钓鱼掉落会出神话件
+      await clickAdminNav('组件生成', '#cmp-save');
+      const qwIds = await pa.$$eval('#comp-body input[id^="qw-"]', els => els.map(e => e.id));
+      check('组件生成页品质权重无 mythic（神话不可由钓鱼掉落）',
+        qwIds.length === 3 && !qwIds.some(id => /mythic/.test(id)), qwIds.join(','));
+      await pa.evaluate(() => { const b = document.querySelector('.nav-item'); if (b) b.click(); });
+
       check('后台全程无页面错误', adminErrs.length === castErrs, adminErrs.slice(castErrs).join(' | '));
     } else {
       check('管理后台登录可用（前置条件）', false, JSON.stringify(adminLogin.data));

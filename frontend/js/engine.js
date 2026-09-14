@@ -41,6 +41,7 @@ window.Engine = (function () {
     codex: {},                  // 个人图鉴（服务器）
     catchCount: 0,
     feedback: null,             // 反馈意见：{ status:{nextAt,ready,remainingMs,skipCost}, mine:[] }
+    chest: null,                // 宝匣：{ chests:[{id,name,mode,costRelic,costCoins,have,pityNow,pityNeed}], relicHave, pityN }
     banners: [],                // 横幅队列（服务器）
     bannerCfg: {},              // 横幅配置（图标闪烁等）
     selected: { groundId: null, spotId: null },

@@ -215,11 +215,34 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .q-epic { color: #c084fc; font-weight: 600; }
 .q-full { color: #ffd24a !important; font-weight: 700; text-shadow: 0 0 8px rgba(255,210,74,.45); }
 .bd-comp.q-full, .bec-name .q-full, .cx-name .q-full { text-shadow: 0 0 8px rgba(255,210,74,.5); }
+/* 神话（宝匣专属品质）：灰蓝/黄/紫/金都已被占用，改用彩虹渐变，一眼和所有既有档位区分。
+   优先于「满词条」金色（qualityClass 里 mythic 先判定），否则突破件会和满词条史诗长得一样。 */
+/* ⚠ -webkit-text-fill-color 会继承：.q-mythic 只能挂在「叶子文本节点」上，
+   挂到容器上会让容器内全部文字（含 满词条/突破 标签）一起变透明不可见。
+   不支持的浏览器退回纯紫色，任何情况下都看得见。 */
+.q-mythic { color: #c084fc; font-weight: 700; }
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .q-mythic {
+    background: linear-gradient(90deg, #f87171, #fbbf24, #4ade80, #38bdf8, #c084fc);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+}
+.bd-comp.q-mythic, .bec-name .q-mythic { filter: drop-shadow(0 0 6px rgba(192,132,252,.45)); }
 .inst-meta { font-size: 11px; color: var(--muted); margin: 2px 0; }
 .inst-aff { font-size: 12px; margin: 2px 0; }
 .inst-aff.neg { color: var(--danger); }
 .inst-aff.pos { color: var(--accent); }
-.full-tag { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(255,210,74,.18); color: #ffd24a; margin-left: 4px; }
+/* 池外词缀（宝匣突破件补足的、该底材词缀池里本没有的词缀）：点线下划线区分。
+   背包/市集/交易/开箱结果用 .inst-aff 行，装备弹窗用 .bec-aff 行，两处都要能标出来。 */
+.inst-aff.extra, .bec-aff.extra { text-decoration: underline dotted; text-underline-offset: 3px; }
+/* 标签显式重置 -webkit-text-fill-color：否则嵌在 .q-mythic 里会被继承成透明而看不见 */
+.full-tag { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(255,210,74,.18); color: #ffd24a; -webkit-text-fill-color: #ffd24a; margin-left: 4px; }
+/* 「突破」标签：词条数越过史诗 3 条上限（即真正抽到 4 条） */
+.bt-tag {
+  background: linear-gradient(90deg, rgba(248,113,113,.28), rgba(192,132,252,.28));
+  color: #f0abfc; -webkit-text-fill-color: #f0abfc; border: 1px solid rgba(240,171,252,.45);
+}
 .pool-line { font-size: 12px; margin: 2px 0; color: var(--text); }
 .pool-line .rng { color: var(--muted); }
 .pool-line.capped { opacity: .55; }
@@ -1120,3 +1143,40 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .spot-pool-row .sp-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
 .spot-pool-row .sp-pct { min-width: 52px; text-align: right; font-weight: 600; }
 .spot-pool-row .hint { min-width: 76px; text-align: right; }
+
+/* ================= 宝匣合成页 ================= */
+.chest-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 10px; margin-bottom: 12px;
+  background: rgba(8, 22, 38, .5); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+.chest-bar .cb-item b { color: var(--accent); }
+.chest-bar .cb-item.hint { color: var(--muted); font-size: 12px; }
+/* 四档网格：桌面两列、窄屏一列（卡片内信息较多，不做更密的排布） */
+.chest-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.chest-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: rgba(8, 22, 38, .42);
+  display: flex; flex-direction: column; gap: 6px; }
+.chest-card .cc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.chest-card .cc-name { font-size: 16px; font-weight: 700; }
+.chest-card .cc-have { font-size: 12px; color: var(--muted); flex: none; }
+.chest-card .cc-desc { font-size: 12px; color: var(--text); }
+.chest-card .cc-plan { font-size: 12px; color: var(--accent2, #38bdf8); }
+.chest-card .cc-cost { font-size: 13px; }
+.chest-card .cc-cost b { color: var(--accent); }
+.chest-card .cc-pity { font-size: 12px; color: var(--muted); }
+.chest-card .cc-pity.hit { color: #f0abfc; font-weight: 600; }
+.chest-card .cc-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.chest-card .cc-acts button:disabled { opacity: .45; cursor: not-allowed; }
+/* 开箱子窗口的目标提示与产出规划 */
+.cr-plan { font-size: 13px; color: var(--accent2, #38bdf8); margin-bottom: 8px; }
+.cr-pity { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
+.cr-pity.hit { color: #f0abfc; font-weight: 600; }
+/* 开箱结果卡片 */
+.chest-result-modal .modal-box { max-width: 460px; }
+.chest-result { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: rgba(8, 22, 38, .5); }
+.chest-result .cr-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.chest-result .cr-meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.chest-result .cr-affs { display: flex; flex-wrap: wrap; gap: 6px; }
+.chest-result .cr-affs .inst-aff { background: rgba(255,255,255,.05); border-radius: 20px; padding: 2px 9px; }
+.chest-result .cr-note { font-size: 12px; color: #f0abfc; margin-top: 8px; }
+@media (max-width: 640px) {
+  .chest-grid { grid-template-columns: 1fr; }
+  .chest-bar { font-size: 12px; }
+}

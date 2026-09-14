@@ -120,7 +120,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   })());
   check('组件实例规范化：词条乱序仍得同签名', D.instanceId('rod_bamboo', 'rare', [{ type: 'size', value: -3 }, { type: 'speed', value: 12 }]) === D.instanceId('rod_bamboo', 'rare', [{ type: 'speed', value: 12 }, { type: 'size', value: -3 }]));
   check('底材（模板）不可直接出售，组件实例可出售', !D.isSellable('rod_bamboo') && D.isSellable(D.instanceId('rod_bamboo', 'common', [{ type: 'speed', value: 10 }])));
-  check('导航已实现入口 11 个（钓鱼/钓竿配置/渔场/背包/商店/市集/交易/图鉴/大鱼榜/反馈/日志）', D.NAV.filter(n => n.implemented).length === 11, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
+  check('导航已实现入口 12 个（钓鱼/钓竿配置/渔场/背包/宝匣/商店/市集/交易/图鉴/大鱼榜/反馈/日志）', D.NAV.filter(n => n.implemented).length === 12, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
   check('导航未实现占位入口 1 个（商城）', D.NAV.filter(n => !n.implemented).length === 1 && D.NAV.find(n => !n.implemented).id === 'mall', 'got ' + D.NAV.filter(n => !n.implemented).map(n => n.id).join(','));
   check('「收藏」占位已替换为「日志」功能入口', !D.NAV.some(n => n.id === 'collect') && !!D.NAV.find(n => n.id === 'logs' && n.implemented));
   check('共享目录暴露版本号', typeof D.VERSION === 'string' && /^v\d/.test(D.VERSION), String(D.VERSION));

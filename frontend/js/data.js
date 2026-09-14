@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.10.1';
+  const VERSION = 'v0.10.2';
   const BUILD = '2026-09-15';
 
   // ---- 渔获定义 ----
@@ -109,18 +109,78 @@
   };
   const CODE_TO_TYPE = {};
   Object.keys(AFFIX_CODES).forEach(function (t) { CODE_TO_TYPE[AFFIX_CODES[t]] = t; });
+  // 全部词缀类型（固定顺序；池外补足时按此顺序取候选，保证签名跨端一致）
+  const AFFIX_TYPES = Object.keys(AFFIX_CODES);
+
+  // ---- 池外词缀默认数值区间 ----
+  // 「海王遗匣」的突破件会在底材词缀池之外补足词缀（见 genBreakthrough）。
+  // 这些区间刻意明显弱于同类型的池内区间（如钓速 4~10 对照池内 8~38），
+  // 让池外词缀是「白给的加成」而不是顶替主力词缀——否则 2 条池的弱底材
+  // 补上 2 条强池外后，会反超 4 条池的海王徽记，出现强度倒挂。
+  // 且全部为正值：终局宝匣产出减益词缀的体感太差。
+  // 可被管理后台覆盖（componentCfg.extraAffixRanges）。
+  const DEFAULT_EXTRA_AFFIX_RANGES = {
+    speed:    [4, 10],
+    big:      [2, 6],
+    rare:     [1, 4],
+    material: [8, 16],
+    size:     [4, 10],
+    double:   [3, 8],
+  };
 
   // ---- 品质（== 组件的“稀有度”概念，统一称为品质） ----
   // cap = 该品质最多可拥有的词缀条数；mult = 实例基准价倍率；cls = 展示配色。
   // 配色规范（前后端同一套 CSS 类，定义在 style.css）：普通=灰蓝 #cbd5e1 / 稀有=黄 / 史诗=紫。
   // 大鱼是渔获的档位而非品质，统一金色 + 👑 皇冠前缀（.r-big::before）；
   // 组件实例的「满词条」金色强调只出现在背包/市集/装备弹窗，图鉴按品质正常显示。
+  // 神话 = 宝匣专属品质（只能由「海王遗匣」产出）：cap 4 使「池内优先 + 池外补足到 4 条」成为可能，
+  // 也使唯一 4 条池底材（海王徽记）第一次能真正抽满。配色用彩虹渐变，与已占用的灰蓝/黄/紫/金区分。
   const QUALITY = {
     common: { key: 'common', name: '普通', cap: 1, mult: 1,   cls: 'q-common' },
     rare:   { key: 'rare',   name: '稀有', cap: 2, mult: 1.5, cls: 'q-rare' },
     epic:   { key: 'epic',   name: '史诗', cap: 3, mult: 2.4, cls: 'q-epic' },
+    mythic: { key: 'mythic', name: '神话', cap: 4, mult: 3.6, cls: 'q-mythic' },
   };
-  const QUALITY_ORDER = { common: 1, rare: 2, epic: 3 };
+  const QUALITY_ORDER = { common: 1, rare: 2, epic: 3, mythic: 4 };
+
+  // ---- 宝匣（沉船打捞）----
+  // 四个档位，每一档消除一层随机：
+  //   Ⅰ 沉船宝匣  基底随机          → 消除「1 词条垃圾」（保底 2 条）
+  //   Ⅱ 深潜宝匣  自选部位          → 消除「基底范围」（基底在该部位内随机）
+  //   Ⅲ 深渊宝匣  自选底材 + 满词条 → 消除「品质与词条数随机」
+  //   Ⅳ 海王遗匣  自选底材 + 神话   → 消除「词缀池边界」（可补池外词缀）
+  // 合成消耗「残片 × costRelic + 金币 costCoins」产出宝匣物品（进背包、可市集交易、不可卖给系统商店）；
+  // 开箱由服务器权威掷骰（见 server.js 的 /api/chest/*）。
+  //   mode:           random = 基底随机；part = 自选部位；base = 自选底材
+  //   qualityWeights: 该档位品质权重（按权重归一，不必为 1）
+  //   minAffixes:     词条数下限（再受品质上限与底材池长约束）
+  //   forceMax:       true = 词条填满该底材池（min(池长, 品质上限)）
+  //   extra:          true = 允许池外补足（突破件，见 genBreakthrough）
+  const CHESTS = [
+    { id: 'chest_wreck', name: '沉船宝匣', rarity: 'rare',
+      desc: '沉船里的随机打捞件，至少 2 条词缀。',
+      costRelic: 8, costCoins: 8000, mode: 'random',
+      qualityWeights: { rare: 65, epic: 35 }, minAffixes: 2 },
+    { id: 'chest_deep', name: '深潜宝匣', rarity: 'rare',
+      desc: '自选部位，沉得更深、捞得更准，至少 2 条词缀。',
+      costRelic: 20, costCoins: 30000, mode: 'part',
+      qualityWeights: { rare: 50, epic: 50 }, minAffixes: 2 },
+    { id: 'chest_abyss', name: '深渊宝匣', rarity: 'epic',
+      desc: '自选底材，必定史诗，且词条填满该底材的全部词缀池。',
+      costRelic: 45, costCoins: 90000, mode: 'base',
+      qualityWeights: { epic: 100 }, forceMax: true },
+    { id: 'chest_king', name: '海王遗匣', rarity: 'mythic',
+      desc: '自选底材，必定神话：50% 概率突破词缀池边界，多出一条该部位本没有的词缀。',
+      costRelic: 100, costCoins: 300000, mode: 'base',
+      qualityWeights: { mythic: 100 }, extra: true,
+      hitCount: 4, missCount: 3, chance: 0.5 },
+  ];
+  // 宝匣基准价 = 金币成本 + 残片机会成本（仅用于展示与市集参考；宝匣不可卖给系统商店）
+  const RELIC_PRICE = (MATERIALS.find(function (m) { return m.id === 'relic'; }) || {}).price || 380;
+  const CHEST_MAP = {};
+  CHESTS.forEach(function (c) { c.price = c.costCoins + c.costRelic * RELIC_PRICE; CHEST_MAP[c.id] = c; });
+  function chestOf(id) { return CHEST_MAP[id] || null; }
+  function isChest(id) { return !!(id && CHEST_MAP[id]); }
 
   // ---- 组件底材目录（钓竿配置核心） ----
   // pool：底材可拥有的全部词缀（type + 数值区间 [min,max]）；实例从中抽取并 roll 数值。
@@ -281,15 +341,29 @@
     const base = BASE_MAP[inst.baseId];
     const q = QUALITY[inst.quality];
     const poolLen = base.pool.length;
-    const maxN = Math.min(q.cap, poolLen);
+    // 词缀条数上限：正常件 = min(品质上限, 池长)；突破件（池外补足）会超出该值，
+    // 取实际条数与上限的较大者，否则会出现「4/2 词条」这种自相矛盾的显示。
+    const maxN = Math.max(inst.affixes.length, Math.min(q.cap, poolLen));
+    // full = 池内全满（沿用旧语义）；突破件同样满足（它的池内部分是全满的）
     const full = inst.affixes.length >= poolLen && poolLen <= q.cap;
-    const adjective = adjectiveOf(inst.affixes, base, inst.quality);
+    // 词缀对象附带 extra 标记：该词缀不在底材词缀池内（只可能来自宝匣的池外补足）
+    const poolTypes = {};
+    base.pool.forEach(function (p) { poolTypes[p.type] = 1; });
+    const affixes = inst.affixes.map(function (a) {
+      return { type: a.type, value: a.value, extra: !poolTypes[a.type] };
+    });
+    // hasExtra = 含池外词缀（2 条池底材即使「未中」也必然含 1 条，占比很高，只用于逐条标注）
+    // breakthrough = 词条数突破史诗的 3 条上限，即真正抽到 4 条（突破件识别的唯一判据）。
+    //   两者刻意分开：若用 hasExtra 判定，82% 的海王遗匣产出都会挂上「突破」标签而失去意义。
+    const hasExtra = affixes.some(function (a) { return a.extra; });
+    const breakthrough = affixes.length > QUALITY.epic.cap;
+    const adjective = adjectiveOf(affixes, base, inst.quality);
     return {
       id: id, kind: 'component', baseId: base.id, baseName: base.name, part: base.part,
       quality: inst.quality, qualityName: q.name, qualityCls: q.cls,
       rarity: inst.quality, rarityName: q.name,
-      affixes: inst.affixes, pool: base.pool, maxAffixes: maxN,
-      full: full, isFull: full,
+      affixes: affixes, pool: base.pool, maxAffixes: maxN,
+      full: full, isFull: full, hasExtra: hasExtra, breakthrough: breakthrough,
       adjective: adjective,
       name: adjective + ' ' + base.name,
       price: Math.round(base.price * q.mult),
@@ -308,11 +382,13 @@
     epic: [1 / 3, 1 / 3, 1 / 3],
   };
   // affixRanges: { baseId: { type: [min, max] } }，覆盖底材池中对应词缀的数值区间
+  // extraAffixRanges: { type: [min, max] }，覆盖「池外词缀」的数值区间（突破件用）
   let componentCfg = {
     qualityWeights: Object.assign({}, DEFAULT_QUALITY_WEIGHTS),
     countWeights: JSON.parse(JSON.stringify(DEFAULT_COUNT_WEIGHTS)),
     rollModel: 'linear',         // linear | normal | skew
     affixRanges: {},
+    extraAffixRanges: {},
     adjectiveRules: DEFAULT_ADJECTIVE_RULES.map(function (r) { return Object.assign({}, r); }),
   };
   function defaultComponentCfg() {
@@ -321,6 +397,7 @@
       countWeights: JSON.parse(JSON.stringify(DEFAULT_COUNT_WEIGHTS)),
       rollModel: 'linear',
       affixRanges: {},
+      extraAffixRanges: {},
       adjectiveRules: DEFAULT_ADJECTIVE_RULES.map(function (r) { return Object.assign({}, r); }),
     };
   }
@@ -333,9 +410,17 @@
       countWeights: Object.assign(d.countWeights, cfg.countWeights || {}),
       rollModel: (ROLL_MODELS.indexOf(cfg.rollModel) >= 0) ? cfg.rollModel : d.rollModel,
       affixRanges: cfg.affixRanges || {},
+      extraAffixRanges: cfg.extraAffixRanges || {},
       adjectiveRules: (Array.isArray(cfg.adjectiveRules) && cfg.adjectiveRules.length) ? cfg.adjectiveRules : d.adjectiveRules,
     };
     return componentCfg;
+  }
+  // 池外词缀的实际数值区间（后台可覆盖；非法值回退默认表，再回退 ±0 保护）
+  function extraAffixRangeOf(type) {
+    const ov = componentCfg.extraAffixRanges && componentCfg.extraAffixRanges[type];
+    if (Array.isArray(ov) && ov.length === 2 && isFinite(ov[0]) && isFinite(ov[1]) && ov[1] >= ov[0]) return ov;
+    const dft = DEFAULT_EXTRA_AFFIX_RANGES[type];
+    return dft || [1, 3];
   }
   function getComponentCfg() { return componentCfg; }
 
@@ -395,10 +480,10 @@
     if (Array.isArray(r) && r.length === 2 && isFinite(r[0]) && isFinite(r[1]) && r[1] >= r[0]) return r;
     return [affix.min, affix.max];
   }
-  // 按品质的词条数量权重取 n（1..min(池长, cap)）
-  function rollAffixCount(quality, poolLen, cap) {
+  // 按品质的词条数量权重取 n（1..min(池长, cap)）；wOverride 供宝匣档位覆盖全局权重
+  function rollAffixCount(quality, poolLen, cap, wOverride) {
     const upper = Math.min(poolLen, cap);
-    const w = (componentCfg.countWeights && componentCfg.countWeights[quality]) || null;
+    const w = wOverride || (componentCfg.countWeights && componentCfg.countWeights[quality]) || null;
     if (!w || !w.length) return 1 + Math.floor(Math.random() * Math.max(1, upper));
     let total = 0;
     for (let i = 0; i < upper; i++) total += Math.max(0, Number(w[i]) || 0);
@@ -408,11 +493,18 @@
     return upper;
   }
   // 生成一件组件实例（底材 → 品质 → 抽 1..min(池长, 上限) 条词缀 → roll 数值）
-  function genComponent(baseId, quality) {
+  // opt 供宝匣档位覆盖（不传则与钓鱼掉落路径完全一致，行为不变）：
+  //   countWeights 覆盖词条数量权重；minAffixes 为词条数下限；forceMax 取满池。
+  function genComponent(baseId, quality, opt) {
     const base = BASE_MAP[baseId];
     if (!base) return null;
+    const o = opt || {};
     const q = QUALITY[quality] || QUALITY.common;
-    const n = rollAffixCount(q.key, base.pool.length, q.cap);
+    const upper = Math.min(base.pool.length, q.cap);
+    let n = o.forceMax ? upper : rollAffixCount(q.key, base.pool.length, q.cap, o.countWeights || null);
+    const floor = Math.max(1, Math.min(Number(o.minAffixes) || 0, upper));
+    if (n < floor) n = floor;
+    if (n > upper) n = upper;
     // 无放回抽取 n 条（洗牌池）
     const idxs = base.pool.map(function (_, i) { return i; });
     for (let i = idxs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = idxs[i]; idxs[i] = idxs[j]; idxs[j] = t; }
@@ -422,6 +514,44 @@
       return { type: a.type, value: rollAffixValue(rng[0], rng[1], componentCfg.rollModel) };
     });
     return instanceMeta(instanceId(base.id, q.key, picked));
+  }
+  // 宝匣突破件（「海王遗匣」专属）：品质锁定神话，词缀可越过底材池边界。
+  // 规则：掷一次 chance（默认 50%）——中则目标 hitCount（默认 4 条），未中则 missCount（默认 3 条）；
+  //       池内词缀全取，不足目标的部分从「池外词缀」补足（不重复、不与池内类型重复、数值恒为正）。
+  // 特例：池长已够最高目标的底材（全游戏只有 4 条池的海王徽记）直接满池、不掷骰也不补池外——
+  //       否则「未中」分支会把它 4 条池里弃掉 1 条，让最贵的宝匣产出降级件。
+  function genBreakthrough(baseId, opt) {
+    const base = BASE_MAP[baseId];
+    if (!base) return null;
+    const o = opt || {};
+    const hitN = o.hitCount != null ? o.hitCount : 4;
+    const missN = o.missCount != null ? o.missCount : 3;
+    const freePass = base.pool.length >= hitN;
+    const hit = freePass || Math.random() < (o.chance != null ? o.chance : 0.5);
+    const target = Math.max(base.pool.length, Math.min(QUALITY.mythic.cap, hit ? hitN : missN));
+    const picked = base.pool.map(function (a) {
+      const rng = affixRangeOf(base.id, a);
+      return { type: a.type, value: rollAffixValue(rng[0], rng[1], componentCfg.rollModel) };
+    });
+    let need = target - picked.length;
+    if (need > 0) {
+      const used = {};
+      picked.forEach(function (a) { used[a.type] = 1; });
+      const cands = AFFIX_TYPES.filter(function (t) { return !used[t]; });
+      for (let i = cands.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
+      cands.slice(0, need).forEach(function (t) {
+        const rng = extraAffixRangeOf(t);
+        picked.push({ type: t, value: rollAffixValue(rng[0], rng[1], componentCfg.rollModel) });
+      });
+    }
+    return instanceMeta(instanceId(base.id, QUALITY.mythic.key, picked));
+  }
+  // 按档位权重定品质（宝匣用；权重为空则回退全局品质权重）
+  function rollChestQuality(chest) {
+    const w = (chest && chest.qualityWeights) || null;
+    if (!w || !Object.keys(w).length) return rollComponentQuality();
+    const k = weightedKey(w, null);
+    return QUALITY[k] ? k : 'rare';
   }
   // 从整份底材目录均匀抽一个底材，再定品质生成
   function rollComponent() {
@@ -666,6 +796,7 @@
     { id: 'bd', name: '钓竿配置', icon: '🎯', implemented: true },
     { id: 'ground', name: '渔场动态', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
+    { id: 'chest', name: '宝匣合成', icon: '🎁', implemented: true },
     { id: 'shop', name: '系统商店', icon: '🏪', implemented: true },
     { id: 'market', name: '开放市集', icon: '💱', implemented: true },
     { id: 'trade', name: '在线交易', icon: '🤝', implemented: true },
@@ -688,6 +819,9 @@
     MATERIALS.forEach(function (m) {
       out.push({ id: m.id, name: m.name, rarity: m.rarity, price: m.price, size: null, kind: 'material' });
     });
+    CHESTS.forEach(function (c) {
+      out.push({ id: c.id, name: c.name, rarity: c.rarity, price: c.price, size: null, kind: 'chest', chest: c });
+    });
     COMPONENT_BASES.forEach(function (b) {
       out.push({ id: b.id, name: b.name, rarity: 'common', price: b.price, size: null, kind: 'component', part: b.part, pool: b.pool });
     });
@@ -708,11 +842,12 @@
     return { id: nid, name: nid, rarity: 'common', price: RARITY_PRICE.common, size: null, kind: 'unknown' };
   }
   function itemName(id) { return itemOf(id).name; }
-  // 可出售/可上架：渔获、材料、已生成的组件实例；组件底材（模板）与未知物不可交易
+  // 可出售/可上架：渔获、材料、已生成的组件实例、宝匣；组件底材（模板）与未知物不可交易
   function isSellable(id) {
     const it = itemOf(id);
     if (it.kind === 'fish' || it.kind === 'material') return true;
-    if (it.kind === 'rod') return true; // 整根钓竿：仅市集出售（服务端拒绝系统商店收购）
+    if (it.kind === 'rod') return true;  // 整根钓竿：仅市集出售（服务端拒绝系统商店收购）
+    if (it.kind === 'chest') return true; // 宝匣：仅市集交易（同上，服务端拒绝系统商店收购）
     if (it.kind === 'component') return isInstance(String(id)) || String(id) === 'comp_generic';
     return false;
   }
@@ -721,8 +856,11 @@
     VERSION: VERSION, BUILD: BUILD,
     FISH: FISH, MATERIALS: MATERIALS, RARITY_PRICE: RARITY_PRICE,
     ROD_PARTS: ROD_PARTS,
-    AFFIX_LABEL: AFFIX_LABEL, AFFIX_CODES: AFFIX_CODES,
+    AFFIX_LABEL: AFFIX_LABEL, AFFIX_CODES: AFFIX_CODES, AFFIX_TYPES: AFFIX_TYPES,
     QUALITY: QUALITY, QUALITY_ORDER: QUALITY_ORDER,
+    CHESTS: CHESTS, chestOf: chestOf, isChest: isChest, rollChestQuality: rollChestQuality,
+    genBreakthrough: genBreakthrough, RELIC_PRICE: RELIC_PRICE,
+    DEFAULT_EXTRA_AFFIX_RANGES: DEFAULT_EXTRA_AFFIX_RANGES, extraAffixRangeOf: extraAffixRangeOf,
     COMPONENT_BASES: COMPONENT_BASES, componentBase: componentBase,
     instanceId: instanceId, instanceOf: instanceOf, isInstance: isInstance,
     genComponent: genComponent, rollComponent: rollComponent, rollComponentQuality: rollComponentQuality,

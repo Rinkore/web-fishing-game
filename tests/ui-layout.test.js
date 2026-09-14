@@ -150,7 +150,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await login(p2, tokB);
 
     section('新增页面渲染');
-    check('登录后 11 个已实现入口可见', (await p1.$$('#nav .nav-item:not(.locked)')).length === 11);
+    check('登录后 12 个已实现入口可见', (await p1.$$('#nav .nav-item:not(.locked)')).length === 12);
     check('1 个占位入口锁定（商城）', (await p1.$$('#nav .nav-item.locked')).length === 1);
 
     // —— 钓鱼页：已移除背包，渔获日志与左栏底部对齐 ——
@@ -199,6 +199,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
     // —— 系统商店 ——
     await clickNav(p1, '系统商店');
+    // 商店卡片由 fetchShop 异步填充：并行负载下点击返回时数据可能刚到一半，轮询到再断言
+    await waitFor(async () => (await p1.$$('.shop-card')).length >= 15, { timeout: 8000 }).catch(() => {});
     check('系统商店渲染出价格卡片', (await p1.$$('.shop-card')).length >= 15, String((await p1.$$('.shop-card')).length));
     check('商店卡片显示动态价格与百分比', /当前 \d+%/.test(await p1.textContent('.sc-pct')));
     check('系统商店页已移除背包模块', (await p1.$$('.inventory, .col-side')).length === 0);
@@ -1201,7 +1203,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
     // —— 交易锁定：交易进行中列表不随广播重绘（v0.9.0）——
     section('交易锁定背包');
-    check('交易页提供物品列表带分类页签', (await p1.$$('.tp-cats .inv-cat')).length === 4, String((await p1.$$('.tp-cats .inv-cat')).length));
+    check('交易页提供物品列表带分类页签', (await p1.$$('.tp-cats .inv-cat')).length === 5, String((await p1.$$('.tp-cats .inv-cat')).length));
     await p1.evaluate(() => {
       const b = Array.from(document.querySelectorAll('.tp-cats .inv-cat')).find(x => x.textContent.includes('组件'));
       if (b) b.click();

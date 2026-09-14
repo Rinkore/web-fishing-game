@@ -49,8 +49,29 @@ window.UI = (function () {
   // 组件满词条在背包/市集/装备弹窗升为金色；大鱼是渔获档位而非品质，金色 + 👑 皇冠前缀（.r-big::before）
   function qualityClass(meta) {
     if (!meta) return 'r-common';
-    if (meta.kind === 'component' && meta.quality) return meta.isFull ? 'q-full' : ('q-' + meta.quality);
+    if (meta.kind === 'component' && meta.quality) {
+      // 神话（宝匣专属）优先于「满词条」金色：否则突破件会和普通满词条史诗长得一样，玩家分不出来
+      if (meta.quality === 'mythic') return 'q-mythic';
+      return meta.isFull ? 'q-full' : ('q-' + meta.quality);
+    }
     return rarityClass(meta.rarity);
+  }
+  // 组件词缀 span 的起始标签：池外词缀（宝匣突破件补足的、本部位本来没有的词缀）额外加 extra 标记
+  function affSpanOpen(a) {
+    return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + (a.extra ? ' extra' : '') + '">';
+  }
+  // 词缀数值区间 [min,max]；池内走底材区间、池外走「池外词缀区间」表，都没有则返回 null（不显示区间）
+  function affixRangeIn(meta, a) {
+    const pool = ((meta && meta.pool) || []).find(function (p) { return p.type === a.type; });
+    if (pool) return D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max];
+    return (a.extra && D.extraAffixRangeOf) ? D.extraAffixRangeOf(a.type) : null;
+  }
+  // 组件实例的状态标签：突破 > 满词条（突破件必然也满词条，但语义是「越过了词缀池边界」）
+  function itemTag(meta) {
+    if (!meta || meta.kind !== 'component') return '';
+    if (meta.breakthrough) return '<span class="full-tag bt-tag">突破</span>';
+    if (meta.isFull) return '<span class="full-tag">满词条</span>';
+    return '';
   }
   function qualityName(meta) {
     if (!meta) return '';
@@ -807,14 +828,13 @@ window.UI = (function () {
       const cur = el('div', 'bde-current' + (equipped ? '' : ' empty'));
       if (equipped) {
         const eqAffs = (equipped.affixes || []).map(function (a) {
-          const pool = (equipped.pool || []).find(function (p) { return p.type === a.type; });
-          const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(equipped.baseId, pool) : [pool.min, pool.max]) : null;
-          return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>' +
+          const rng = affixRangeIn(equipped, a);
+          return affSpanOpen(a) + esc(affixText(a)) + '</span>' +
             (rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '');
         }).join(' ');
         cur.innerHTML = '<div class="bec-head"><span class="bec-label">当前已装备</span>' +
           '<b class="' + qualityClass(equipped) + '">' + esc(equipped.name) + '</b>' +
-          (equipped.isFull ? '<span class="full-tag">满词条</span>' : '') +
+          itemTag(equipped) +
           '<span class="inst-meta">' + esc(qualityName(equipped)) + '品质 · ' + equipped.affixes.length + '/' + equipped.maxAffixes + ' 词条</span>' +
           '<span class="bec-price">' + equipped.price + '💰</span></div>' +
           '<div class="bec-affs">' + (eqAffs || '<span class="muted">无词条</span>') + '</div>' +
@@ -888,9 +908,9 @@ window.UI = (function () {
           const c = o.c;
           const card = el('div', 'bec-card');
           card.innerHTML =
-            '<div class="bec-name"><span class="' + qualityClass(c) + '">' + esc(c.name) + (c.isFull ? '<span class="full-tag">满词条</span>' : '') + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
+            '<div class="bec-name"><span class="' + qualityClass(c) + '">' + esc(c.name) + itemTag(c) + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
             '<div class="inst-meta">' + esc(qualityName(c)) + '品质 · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条</div>' +
-            c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('') +
+            c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + (a.extra ? ' extra' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('') +
             '<div class="bec-meta">持有 ×' + o.n + '</div>';
           const acts = el('div', 'bec-acts');
           const isOn = !!(equipped && equipped.id === c.id);
@@ -935,7 +955,7 @@ window.UI = (function () {
   // 组件摘要（整竿用）
   function rodAffixBadges(affixes) {
     return (affixes || []).map(function (a) {
-      return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>';
+      return affSpanOpen(a) + esc(affixText(a)) + '</span>';
     }).join(' ');
   }
   // 钓竿槽位栏：免费 1 个 + 可购买 7 个（价格递增）；存档 = 收起当前钓竿并锁定其配件
@@ -1113,7 +1133,7 @@ window.UI = (function () {
         : '<div class="af-line"><span class="muted">标准 · 无加成</span></div>';
       cell.innerHTML =
         '<div class="bd-part">' + esc(part.name) + (part.isCharm ? ' <span class="charm-tag">饰品</span>' : '') + '</div>' +
-        '<div class="bd-comp ' + (comp ? qualityClass(comp) : '') + '">' + esc(comp ? comp.name : part.default.name) + (comp && comp.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>' +
+        '<div class="bd-comp ' + (comp ? qualityClass(comp) : '') + '">' + esc(comp ? comp.name : part.default.name) + itemTag(comp) + '</div>' +
         '<div class="affix-frame">' + affHtml + '</div>';
       const acts = el('div', 'bd-acts');
       if (comp) {
@@ -1805,17 +1825,16 @@ window.UI = (function () {
       ? '<div class="mk-rod-parts">' + meta.parts.map(function (it) {
           return '<div class="mk-rod-part"><span class="mrp-name ' + qualityClass(it.comp) + '">' + esc(it.partName) + ' · ' + esc(it.comp.name) + '</span>' +
             '<span class="mrp-affs">' + it.comp.affixes.map(function (a) {
-              return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>';
+              return affSpanOpen(a) + esc(affixText(a)) + '</span>';
             }).join('') + '</span></div>';
         }).join('') + '</div>'
       : '';
     const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
       ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
-          const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
-          const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+          const rng = affixRangeIn(meta, a);
           const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
-          return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rangeTag + '</span>';
-        }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
+          return affSpanOpen(a) + esc(affixText(a)) + rangeTag + '</span>';
+        }).join('') + itemTag(meta) + '</div>'
       : '';
     row.innerHTML =
       '<div class="mk-main"><div class="mk-name ' + qualityClass(meta) + '">' + esc(l.name) + ' <span class="qty">×' + l.qty + '</span>' +
@@ -2070,12 +2089,12 @@ window.UI = (function () {
   function marketSellPanel(st) {
     const box = el('div', 'mkt-sell');
     const keysAll = Object.keys(st.inventory);
-    const kindCount = { fish: 0, material: 0, component: 0 };
+    const kindCount = { fish: 0, material: 0, chest: 0, component: 0 };
     keysAll.forEach(function (id) { const k = itemMeta(id).kind; if (kindCount[k] != null) kindCount[k] += 1; });
     box.appendChild(el('h3', null, '🎒 我的背包（上架）'));
     // 简易分类
     const cats = el('div', 'inv-cats mkt-cats');
-    [['all', '📦 全部', keysAll.length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
+    [['all', '📦 全部', keysAll.length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['chest', '🎁 宝匣', kindCount.chest], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
       const b = el('button', 'inv-cat' + (mktSellCat === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
       b.addEventListener('click', function () { if (mktSellCat !== kv[0]) { mktSellCat = kv[0]; renderView(); } });
       cats.appendChild(b);
@@ -2097,11 +2116,10 @@ window.UI = (function () {
       // 组件实例：词条直接显示在挂单列表里（含数值区间与满词条标记），便于挑要挂单的组件
       const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
         ? '<span class="mkt-sell-aff">' + meta.affixes.map(function (a) {
-            const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
-            const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+            const rng = affixRangeIn(meta, a);
             const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
-            return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rangeTag + '</span>';
-          }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</span>'
+            return affSpanOpen(a) + esc(affixText(a)) + rangeTag + '</span>';
+          }).join('') + itemTag(meta) + '</span>'
         : '';
       row.innerHTML = '<label class="mkt-pick"><input type="checkbox"' + (picked ? ' checked' : '') + ' /></label>' +
         '<span class="mkt-sell-info">' +
@@ -2312,12 +2330,12 @@ window.UI = (function () {
     // ---- 筛选控件（种类 / 品质 / 词条 + 数值区间）----
     const fwrap = box.querySelector('#bulk-filters');
     const catSel = el('select', 'bulk-select');
-    [['all', '全部种类'], ['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['component', '🔧 组件']].forEach(function (kv) {
+    [['all', '全部种类'], ['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['chest', '🎁 宝匣'], ['component', '🔧 组件']].forEach(function (kv) {
       const o = el('option', null, kv[1]); o.value = kv[0]; catSel.appendChild(o);
     });
     catSel.value = bulkCat;
     const rarSel = el('select', 'bulk-select');
-    [['all', '全部品质'], ['common', '普通'], ['big', '大鱼'], ['rare', '稀有'], ['epic', '史诗']].forEach(function (kv) {
+    [['all', '全部品质'], ['common', '普通'], ['big', '大鱼'], ['rare', '稀有'], ['epic', '史诗'], ['mythic', '神话']].forEach(function (kv) {
       const o = el('option', null, kv[1]); o.value = kv[0]; rarSel.appendChild(o);
     });
     rarSel.value = bulkRar;
@@ -2381,11 +2399,10 @@ window.UI = (function () {
         const row = el('div', 'bulk-row-item');
         const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
           ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
-              const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
-              const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+              const rng = affixRangeIn(meta, a);
               const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
-              return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rangeTag + '</span>';
-            }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
+              return affSpanOpen(a) + esc(affixText(a)) + rangeTag + '</span>';
+            }).join('') + itemTag(meta) + '</div>'
           : '';
         row.innerHTML = '<label class="bk-check"><input type="checkbox" data-id="' + esc(id) + '"' + ((bulkSel[id] || 0) > 0 ? ' checked' : '') + ' /></label>' +
           '<div class="bk-main"><div class="bk-name ' + qualityClass(meta) + '">' + esc(meta.name) + '</div>' + affHtml + '</div>' +
@@ -2598,7 +2615,7 @@ window.UI = (function () {
       '<label>底材<select class="bulk-select" id="sub-base"><option value="">全部底材</option>' +
       bases.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.name) + '</option>'; }).join('') + '</select></label>' +
       '<label>品质<select class="bulk-select" id="sub-q"><option value="">全部品质</option>' +
-      ['common', 'rare', 'epic'].map(function (k) { return '<option value="' + k + '">' + esc((D.QUALITY[k] || {}).name || k) + '</option>'; }).join('') + '</select></label>' +
+      ['common', 'rare', 'epic', 'mythic'].map(function (k) { return '<option value="' + k + '">' + esc((D.QUALITY[k] || {}).name || k) + '</option>'; }).join('') + '</select></label>' +
       '<label>词条<select class="bulk-select" id="sub-aff"><option value="">全部词条</option>' +
       BD_AFFIXES.map(function (kv) { return '<option value="' + kv[0] + '">' + esc(kv[1]) + '</option>'; }).join('') + '</select></label>' +
       '<label>数值 <input class="aff-num" id="sub-min" type="number" placeholder="最小" /> ~ <input class="aff-num" id="sub-max" type="number" placeholder="最大" /></label>' +
@@ -2666,7 +2683,7 @@ window.UI = (function () {
       '<div class="modal-body"><div class="codex-detail">' +
       '<div class="cd-title ' + qualityClass(meta) + '">' + esc(meta.name) + '</div>' +
       '<div class="cd-line">品质 <b>' + esc(meta.qualityName || '') + '</b> · 部位 ' + esc((D.ROD_PARTS.find(function (p) { return p.key === meta.part; }) || {}).name || meta.part || '—') +
-      ' · 基准价 <b>💰' + meta.price + '</b>' + (meta.isFull ? ' · <span class="full-tag">满词条</span>' : '') + '</div>' +
+      ' · 基准价 <b>💰' + meta.price + '</b>' + (itemTag(meta) ? ' · ' + itemTag(meta) : '') + '</div>' +
       '<div class="cm-sec">词条（数值 / 区间 / 区间位置）</div>' + rowsHtml +
       '<div class="cm-sec">该底材词条池</div><div class="cm-pool">' + poolHtml + '</div>' +
       '</div></div>';
@@ -2755,7 +2772,7 @@ window.UI = (function () {
       });
       const rarRow = el('div', 'inv-subrow');
       rarRow.appendChild(el('span', 'sub-label', '品质'));
-      [['all', '全部'], ['common', '普通'], ['big', '大鱼'], ['rare', '稀有'], ['epic', '史诗']].forEach(function (kv) {
+      [['all', '全部'], ['common', '普通'], ['big', '大鱼'], ['rare', '稀有'], ['epic', '史诗'], ['mythic', '神话']].forEach(function (kv) {
         const b = el('button', 'inv-cat sub' + (invSubRar === kv[0] ? ' on' : ''), kv[1] + ' ' + (cnt[kv[0]] || 0));
         b.addEventListener('click', function () { if (invSubRar !== kv[0]) { invSubRar = kv[0]; renderView(); } });
         rarRow.appendChild(b);
@@ -2809,7 +2826,7 @@ window.UI = (function () {
       head.innerHTML = '<span class="caret">' + (isOpen ? '▾' : '▸') + '</span>' +
         '<span class="' + qualityClass(g.rep || { kind: 'component', quality: 'common' }) + '">' + esc(g.rep ? g.rep.baseName : '旧版组件') + '</span>' +
         (lockCnt ? '<span class="rod-lock" title="该组有组件被钓竿占用（已锁定，不可单独交易）">🔒 ' + lockCnt + ' 种</span>' : '') +
-        (g.rep && g.rep.isFull ? '<span class="full-tag">满词条</span>' : '') +
+        itemTag(g.rep) +
         '<span class="inv-group-tag">' + esc(types) + '</span>' +
         '<span class="inv-group-price">' + priceRange + '</span>' +
         '<span class="inv-group-cnt">共 ' + totalCnt + ' 个 / ' + g.items.length + ' 种</span>';
@@ -2830,10 +2847,9 @@ window.UI = (function () {
         const meta = it.meta;
         const row = el('div', 'inv-row inv-page-row inv-comp-row indented');
         const affHtml = (meta.affixes || []).map(function (a) {
-          const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
-          const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+          const rng = affixRangeIn(meta, a);
           const rngTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
-          return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rngTag + '</span>';
+          return affSpanOpen(a) + esc(affixText(a)) + rngTag + '</span>';
         }).join('');
         row.innerHTML =
           '<span class="inv-comp-affs">' + affHtml + '</span>' +
@@ -2885,13 +2901,13 @@ window.UI = (function () {
     function listFee(price, qty) { return Math.ceil(price * qty * 0.01); }
 
     // 分类页签（重绘间保留当前选择）
-    const kindCount = { fish: 0, material: 0, component: 0 };
+    const kindCount = { fish: 0, material: 0, chest: 0, component: 0 };
     Object.keys(st.inventory).forEach(function (id) {
       const k = itemMeta(id).kind;
       if (kindCount[k] != null) kindCount[k] += 1;
     });
     const tabs = el('div', 'inv-cats');
-    [['all', '📦 全部', Object.keys(st.inventory).length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
+    [['all', '📦 全部', Object.keys(st.inventory).length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['chest', '🎁 宝匣', kindCount.chest], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
       const b = el('button', 'inv-cat' + (invCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
       b.addEventListener('click', function () { if (invCategory !== kv[0]) { invCategory = kv[0]; renderView(); } });
       tabs.appendChild(b);
@@ -2933,7 +2949,7 @@ window.UI = (function () {
       keys.forEach(function (id) {
         const meta = itemMeta(id);
         const cnt = st.inventory[id];
-        const kindName = meta.kind === 'fish' ? '鱼' : meta.kind === 'material' ? '材料' : meta.kind === 'component' ? '组件' : '物品';
+        const kindName = meta.kind === 'fish' ? '鱼' : meta.kind === 'material' ? '材料' : meta.kind === 'chest' ? '宝匣' : meta.kind === 'component' ? '组件' : '物品';
         const row = el('div', 'inv-row inv-page-row');
         row.innerHTML =
           '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
@@ -2943,14 +2959,22 @@ window.UI = (function () {
           '<span class="unit-price">现价 ' + unitPrice(id) + '💰</span>' +
           '<span class="subtotal">小计 ' + itemValue(id) + '💰</span>';
         const acts = el('span', 'inv-acts');
-        const sellBtn = el('button', 'mini primary-mini', '出售 1');
-        sellBtn.title = '按当前系统收购价出售 1 个';
-        sellBtn.addEventListener('click', function () { doSell(id, 1); });
-        acts.appendChild(sellBtn);
-        const sellAll = el('button', 'mini', '批量出售');
-        sellAll.title = '打开批量出售子窗口：可填数量或用滑块，并查看价格趋势';
-        sellAll.addEventListener('click', function () { openBatchSellModal(id); });
-        acts.appendChild(sellAll);
+        // 宝匣只能市集交易（系统商店不收购），所以不出售按钮，只给「上架」+ 前往开箱页
+        if (meta.kind !== 'chest') {
+          const sellBtn = el('button', 'mini primary-mini', '出售 1');
+          sellBtn.title = '按当前系统收购价出售 1 个';
+          sellBtn.addEventListener('click', function () { doSell(id, 1); });
+          acts.appendChild(sellBtn);
+          const sellAll = el('button', 'mini', '批量出售');
+          sellAll.title = '打开批量出售子窗口：可填数量或用滑块，并查看价格趋势';
+          sellAll.addEventListener('click', function () { openBatchSellModal(id); });
+          acts.appendChild(sellAll);
+        } else {
+          const goChest = el('button', 'mini', '去开箱');
+          goChest.title = '宝匣只能在「宝匣合成」页开箱；系统商店不收购宝匣';
+          goChest.addEventListener('click', function () { currentView = 'chest'; renderNav(); renderView(); loadViewData('chest'); });
+          acts.appendChild(goChest);
+        }
         const lb = el('button', 'mini', '上架');
         lb.title = '挂到开放市集（选择时长，支付对应上架费，下架不退）';
         lb.addEventListener('click', function () { openListModal(id); });
@@ -2991,7 +3015,7 @@ window.UI = (function () {
     side.appendChild(bulk);
 
     const breakdown = el('div', 'inv-breakdown');
-    [['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['component', '🔧 组件']].forEach(function (kv) {
+    [['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['chest', '🎁 宝匣'], ['component', '🔧 组件']].forEach(function (kv) {
       if (!kinds[kv[0]]) return;
       breakdown.appendChild(el('div', 'inv-kind-line', kv[1] + '　' + kinds[kv[0]] + ' 种'));
     });
@@ -3178,11 +3202,10 @@ window.UI = (function () {
       const row = el('div', 'ts-item');
       const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
         ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
-            const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
-            const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+            const rng = affixRangeIn(meta, a);
             const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
-            return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rangeTag + '</span>';
-          }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
+            return affSpanOpen(a) + esc(affixText(a)) + rangeTag + '</span>';
+          }).join('') + itemTag(meta) + '</div>'
         : '';
       const subHtml = meta.kind === 'component'
         ? '<div class="ts-sub">' + esc(qualityName(meta)) + '品质 · ' + meta.affixes.length + '/' + meta.maxAffixes + ' 词条 · 基准价 ' + meta.price + '💰</div>'
@@ -3207,10 +3230,10 @@ window.UI = (function () {
     if (allKeys.length === 0) { box.appendChild(el('div', 'hint', '背包为空，无法提供物品。')); return box; }
 
     // 分类页签：与背包一致的「全部 / 鱼类 / 材料 / 组件」
-    const kindCount = { fish: 0, material: 0, component: 0 };
+    const kindCount = { fish: 0, material: 0, chest: 0, component: 0 };
     allKeys.forEach(function (id) { const k = itemMeta(id).kind; if (kindCount[k] != null) kindCount[k] += 1; });
     const tabs = el('div', 'inv-cats tp-cats');
-    [['all', '📦 全部', allKeys.length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
+    [['all', '📦 全部', allKeys.length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['chest', '🎁 宝匣', kindCount.chest], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
       const b = el('button', 'inv-cat' + (tradePickCat === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
       b.addEventListener('click', function () { if (tradePickCat !== kv[0]) { tradePickCat = kv[0]; renderView(); } });
       tabs.appendChild(b);
@@ -3236,11 +3259,10 @@ window.UI = (function () {
       const row = el('div', 'tp-row');
       const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
         ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
-            const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
-            const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+            const rng = affixRangeIn(meta, a);
             const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
-            return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rangeTag + '</span>';
-          }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
+            return affSpanOpen(a) + esc(affixText(a)) + rangeTag + '</span>';
+          }).join('') + itemTag(meta) + '</div>'
         : '';
       row.innerHTML = '<label class="tp-name"><input type="checkbox"' + (checked ? ' checked' : '') + ' /> <span class="' +
         qualityClass(meta) + '">' + esc(meta.name) + '</span>' + rodLockBadge(id) + '</label>' + affHtml +
@@ -3416,6 +3438,253 @@ window.UI = (function () {
     draw();
   }
 
+  // ---- 宝匣合成（沉船打捞）----
+  // 四档梯度，每一档消除一层随机（档位定义见 data.js 的 CHESTS）：
+  //   Ⅰ 基底随机 → Ⅱ 自选部位 → Ⅲ 自选底材 + 满词条 → Ⅳ 自选底材 + 神话（50% 突破词缀池边界）
+  // 合成 = 残片 × costRelic + 金币 costCoins → 宝匣入包；开箱 = 服务器权威掷骰 → 组件实例。
+  // 宝匣可市集交易但不可卖给系统商店；残片来自礁石区（可用「材料概率」词缀提高产出）。
+  function chestPlanText(chest) {
+    if (chest.extra) {
+      const hit = Math.round((chest.chance != null ? chest.chance : 0.5) * 100);
+      return '必定神话 · ' + hit + '% 突破到 4 词条（补 1~2 条本部位没有的词缀）';
+    }
+    if (chest.forceMax) return '必定史诗 · 词条填满该底材的词缀池';
+    const w = chest.qualityWeights || {};
+    const qn = function (k) { return (D.QUALITY[k] || {}).name || k; };
+    const parts = Object.keys(w).map(function (k) { return qn(k) + ' ' + w[k] + '%'; }).join(' / ');
+    return (chest.mode === 'part' ? '自选部位 · ' : '随机底材 · ') +
+      '至少 ' + (chest.minAffixes || 1) + ' 条词缀' + (parts ? ' · ' + parts : '');
+  }
+  function chestMaxCraftable(chest, relicHave, coins) {
+    const byRelic = Math.floor(relicHave / chest.costRelic);
+    const byCoins = chest.costCoins > 0 ? Math.floor(coins / chest.costCoins) : 99;
+    return Math.max(0, Math.min(99, byRelic, byCoins));
+  }
+  // 开箱目标选择控件：mode='part' 列出部位；mode='base' 列出底材（按部位分 optgroup）
+  function chestTargetHtml(chest) {
+    const opts = [];
+    D.ROD_PARTS.forEach(function (p) {
+      const cands = D.COMPONENT_BASES.filter(function (b) { return b.part === p.key; });
+      if (!cands.length) return;
+      if (chest.mode === 'part') {
+        opts.push('<option value="' + esc(p.key) + '">' + esc(p.name) + '（' + cands.length + ' 种底材）</option>');
+      } else {
+        opts.push('<optgroup label="' + esc(p.name) + '">' + cands.map(function (b) {
+          return '<option value="' + esc(b.id) + '">' + esc(b.name) + '</option>';
+        }).join('') + '</optgroup>');
+      }
+    });
+    return '<select class="bulk-select" id="chest-target">' + opts.join('') + '</select>';
+  }
+  // 词缀后括号里的数值区间：池内取底材区间，池外取「池外词缀区间」表
+  function chestAffixRange(meta, a) {
+    if (a.extra) {
+      const r = D.extraAffixRangeOf ? D.extraAffixRangeOf(a.type) : null;
+      return r ? rangeText({ min: r[0], max: r[1] }) : '';
+    }
+    const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
+    if (!pool) return '';
+    const rng = D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max];
+    return rangeText({ min: rng[0], max: rng[1] });
+  }
+  // 开箱结果卡片（大图展示一件组件实例）
+  function chestItemCardHtml(meta) {
+    const extras = meta.affixes.filter(function (a) { return a.extra; });
+    // 品质类只挂叶子文本节点：.q-mythic 用 transparent 文字填充 + 背景裁切做彩虹字，
+    // 而 -webkit-text-fill-color 是会继承的，挂到容器上会让整块文本（含标签）一起消失。
+    return '<div class="chest-result">' +
+      '<div class="cr-name ' + qualityClass(meta) + '">' + esc(meta.name) + itemTag(meta) + '</div>' +
+      '<div class="cr-meta">' + esc(meta.qualityName) + '品质 · ' + meta.affixes.length + '/' + meta.maxAffixes +
+        ' 词条 · 基准价 ' + meta.price + '💰</div>' +
+      '<div class="cr-affs">' + meta.affixes.map(function (a) {
+        const rng = chestAffixRange(meta, a);
+        return affSpanOpen(a) + esc(affixText(a)) +
+          (rng ? '<span class="aff-rng">（' + esc(rng) + '%）</span>' : '') + '</span>';
+      }).join('') + '</div>' +
+      (extras.length
+        ? '<div class="cr-note">★ 标记的词缀不在「' + esc(meta.baseName) + '」的词缀池内——这是宝匣突破件补足的额外词缀。</div>'
+        : (meta.breakthrough ? '' : '')) +
+      '</div>';
+  }
+  function showChestResult(chest, data) {
+    const meta = data.item;
+    const st = S();
+    const overlay = buildOverlay(null);
+    const box = el('div', 'modal-box confirm-modal chest-result-modal');
+    const pityN = data.pityN || 0;
+    let pityLine = '';
+    if (chest.extra && pityN > 0) {
+      pityLine = data.forced
+        ? '<div class="cr-pity hit">⚡ 保底触发：本次必出突破件</div>'
+        : '<div class="cr-pity">保底：已连续 ' + (data.pityNow || 0) + ' 次未突破，再 ' +
+            Math.max(0, (pityN - 1) - (data.pityNow || 0)) + ' 次未突破则必出</div>';
+    }
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">🎁 开箱结果 · ' + esc(data.chestName || chest.name) + '</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body">' +
+      chestItemCardHtml(meta) +
+      pityLine +
+      '<div class="cf-actions">' +
+      '<button class="mini primary-mini cr-again">再开一个（持有 ' + (data.chests ? (data.chests.find(function (c) { return c.id === chest.id; }) || {}).have || 0 : 0) + '）</button>' +
+      '<button class="mini cr-ok">收下</button></div>' +
+      '<div class="hint" style="margin-top:6px">开出的组件已进背包，可装备 / 出售 / 上架。</div>' +
+      '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const close = function () { overlay.remove(); };
+    box.querySelector('.modal-close').addEventListener('click', close);
+    box.querySelector('.cr-ok').addEventListener('click', close);
+    if (overlay) overlay.addEventListener('click', function (ev) { if (ev.target === overlay) close(); });
+    box.querySelector('.cr-again').addEventListener('click', function () {
+      close();
+      openChestModal(chest);
+    });
+    void st;
+  }
+  // 开箱子窗口：自选目标（Ⅱ/Ⅲ/Ⅳ）+ 确认；Ⅰ 档直接开
+  function openChestModal(chest) {
+    const st = S();
+    const info = (st.chest && st.chest.chests || []).find(function (c) { return c.id === chest.id; }) || {};
+    const have = info.have || 0;
+    if (have <= 0) { toast('没有「' + chest.name + '」可开，请先合成'); return; }
+    const doOpen = function (sel) {
+      Promise.resolve(window.Net.chestOpen(chest.id, sel)).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.data && r.data.error) || '开箱失败'); return null; }
+        st.player.coins = r.data.coins;
+        st.inventory = r.data.inventory;
+        if (r.data.chests) st.chest = Object.assign({}, st.chest, { chests: r.data.chests });
+        renderTopbar(); renderView();
+        showChestResult(chest, r.data);
+        return r;
+      }).catch(function () { toast('网络错误'); });
+    };
+    if (chest.mode === 'random') { doOpen({}); return; }
+    const overlay = buildOverlay(null);
+    const box = el('div', 'modal-box confirm-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">🎁 开箱 · ' + esc(chest.name) + '</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body">' +
+      '<div class="cr-plan">' + esc(chestPlanText(chest)) + '</div>' +
+      '<div class="cf-row"><label>' + (chest.mode === 'part' ? '选择部位' : '选择底材') + '</label>' + chestTargetHtml(chest) + '</div>' +
+      '<div class="hint" id="chest-target-hint"></div>' +
+      (chest.extra && (st.chest && st.chest.pityN) > 0
+        ? '<div class="cr-pity">保底：已连续 ' + (info.pityNow || 0) + ' 次未突破，再 ' +
+            Math.max(0, ((st.chest.pityN - 1) - (info.pityNow || 0))) + ' 次未突破则必出</div>' : '') +
+      '<div class="cf-actions"><button class="mini cf-cancel">取消</button>' +
+      '<button class="mini primary-mini cf-ok">开箱（持有 ' + have + '）</button></div>' +
+      '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const sel = box.querySelector('#chest-target');
+    const hint = box.querySelector('#chest-target-hint');
+    const updHint = function () {
+      if (!sel || !hint) return;
+      const v = sel.value;
+      if (chest.mode === 'part') {
+        const n = D.COMPONENT_BASES.filter(function (b) { return b.part === v; }).length;
+        hint.textContent = '该部位有 ' + n + ' 种底材，具体是哪一种随机（这就是「自选部位」与「自选底材」的差别）。';
+      } else {
+        const b = D.componentBase(v);
+        if (b) hint.textContent = '词缀池：' + b.pool.map(function (p) { return (D.AFFIX_LABEL[p.type] || p.type) + ' ' + rangeText(p) + '%'; }).join(' · ');
+      }
+    };
+    if (sel) { sel.addEventListener('change', updHint); updHint(); }
+    const close = function () { overlay.remove(); };
+    box.querySelector('.modal-close').addEventListener('click', close);
+    box.querySelector('.cf-cancel').addEventListener('click', close);
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) close(); });
+    box.querySelector('.cf-ok').addEventListener('click', function () {
+      const v = sel ? sel.value : '';
+      close();
+      doOpen(chest.mode === 'part' ? { part: v } : { baseId: v });
+    });
+  }
+  function renderChest() {
+    const main = $('main');
+    const st = S();
+    const info = st.chest;
+    main.innerHTML = '';
+    const panel = el('div', 'panel wide');
+    panel.innerHTML = '<h2>🎁 宝匣合成 <span class="subtitle">沉船打捞 · 残片换确定性：每一档消除一层随机</span></h2>';
+    if (!info) {
+      panel.appendChild(el('div', 'hint', '宝匣数据加载中…（若长时间无响应请刷新页面）'));
+      main.appendChild(panel);
+      return;
+    }
+    // 残片与宝匣持有量以背包为权威（SSE assets 会持续刷新），不用服务端快照里可能已过期的 have
+    const invNow = st.inventory || {};
+    const relicHave = invNow.relic || 0;
+    const coins = st.player.coins || 0;
+    const pityN = info.pityN || 0;
+    panel.appendChild(el('div', 'chest-bar',
+      '<span class="cb-item">' + esc(info.relicName || '沉船宝匣残片') + ' ×<b>' + relicHave + '</b></span>' +
+      '<span class="cb-item">💰 <b>' + coins + '</b></span>' +
+      '<span class="cb-item hint">残片来自「落日海湾 · 礁石区」，钓竿的「材料概率」词缀可提高产出</span>' +
+      (pityN > 0 ? '<span class="cb-item hint">突破保底：连续 ' + (pityN - 1) + ' 次未突破后必出</span>' : '')));
+
+    const grid = el('div', 'chest-grid');
+    D.CHESTS.forEach(function (chest) {
+      const cur = (info.chests || []).find(function (c) { return c.id === chest.id; }) || {};
+      const have = invNow[chest.id] || 0;
+      const maxN = chestMaxCraftable(chest, relicHave, coins);
+      // 品质类只挂 .cc-name（叶子），见 chestItemCardHtml 的同款注释
+      const card = el('div', 'chest-card');
+      const pityLine = (chest.extra && pityN > 0)
+        ? (cur.pityNow >= pityN - 1
+            ? '<div class="cc-pity hit">⚡ 下次开箱必出突破件</div>'
+            : '<div class="cc-pity">保底：已连续 ' + (cur.pityNow || 0) + ' 次未突破，再 ' + Math.max(0, (pityN - 1) - (cur.pityNow || 0)) + ' 次必出</div>')
+        : '';
+      card.innerHTML =
+        '<div class="cc-head"><span class="cc-name ' + (D.QUALITY[chest.rarity] ? D.QUALITY[chest.rarity].cls : '') + '">' + esc(chest.name) + '</span>' +
+          '<span class="cc-have">持有 ×' + have + '</span></div>' +
+        '<div class="cc-desc">' + esc(chest.desc) + '</div>' +
+        '<div class="cc-plan">' + esc(chestPlanText(chest)) + '</div>' +
+        '<div class="cc-cost">消耗：' + esc(info.relicName || '残片') + ' ×<b>' + chest.costRelic + '</b>' +
+          ' + 💰<b>' + chest.costCoins + '</b></div>' +
+        pityLine +
+        '<div class="cc-acts"></div>';
+      const acts = card.querySelector('.cc-acts');
+      const b1 = el('button', 'mini primary-mini', '合成 ×1');
+      b1.disabled = maxN < 1;
+      b1.title = maxN < 1 ? '残片或金币不足' : '消耗 ' + chest.costRelic + ' 残片 + ' + chest.costCoins + ' 金币';
+      b1.addEventListener('click', function () { craftChest(chest, 1); });
+      acts.appendChild(b1);
+      if (maxN > 1) {
+        const bAll = el('button', 'mini', '合成最多 ×' + maxN);
+        bAll.title = '消耗 ' + (chest.costRelic * maxN) + ' 残片 + ' + (chest.costCoins * maxN) + ' 金币';
+        bAll.addEventListener('click', function () {
+          confirmModal({ title: '批量合成', okText: '合成 ×' + maxN,
+            html: '合成 <b>' + maxN + '</b> 个「' + esc(chest.name) + '」？<br/>消耗 ' +
+              (chest.costRelic * maxN) + ' 个' + esc(info.relicName || '残片') + ' + 💰' + (chest.costCoins * maxN) + '。' })
+            .then(function (ok) { if (ok) craftChest(chest, maxN); });
+        });
+        acts.appendChild(bAll);
+      }
+      const b2 = el('button', 'mini', '开箱');
+      b2.disabled = have < 1;
+      b2.title = have < 1 ? '先合成宝匣' : '消耗 1 个「' + chest.name + '」开箱';
+      b2.addEventListener('click', function () { openChestModal(chest); });
+      acts.appendChild(b2);
+      grid.appendChild(card);
+    });
+    panel.appendChild(grid);
+    panel.appendChild(el('div', 'hint',
+      '宝匣可到「开放市集」出售或与玩家交易（系统商店不收购）。开箱产出的组件直接进背包，可装备 / 出售 / 上架。'));
+    main.appendChild(panel);
+  }
+  function craftChest(chest, qty) {
+    const st = S();
+    Promise.resolve(window.Net.chestCraft(chest.id, qty)).then(function (r) {
+      if (!r || !r.ok) { toast((r && r.data && r.data.error) || '合成失败'); return null; }
+      st.player.coins = r.data.coins;
+      st.inventory = r.data.inventory;
+      if (r.data.chests) st.chest = Object.assign({}, st.chest, { chests: r.data.chests, relicHave: (r.data.inventory && r.data.inventory.relic) || 0 });
+      toast('合成「' + chest.name + '」×' + qty + ' 成功');
+      renderTopbar(); renderView();
+      return r;
+    }).catch(function () { toast('网络错误'); });
+  }
+
   function renderCodex() {
     const main = $('main');
     const st = S();
@@ -3425,8 +3694,9 @@ window.UI = (function () {
     const total = Object.keys(caught).length;
     panel.innerHTML = '<h2>📖 鱼类图鉴 <span class="subtitle">个人收集进度 · 点击卡片查看完整信息（产地/个人体型极值）</span></h2>';
 
-    // 汇总
-    const items = D.allItems();
+    // 汇总：图鉴只收「钓得到」的物品——宝匣是合成的、不在任何钓点掉落池里，
+    // 收录进来只会显示成「未解锁 · 去产地垂钓即可解锁」的假条目，所以这里剔除。
+    const items = D.allItems().filter(function (i) { return i.kind !== 'chest'; });
     const fishItems = items.filter(function (i) { return i.kind === 'fish'; });
     const gotFish = fishItems.filter(function (i) { return caught[i.id]; }).length;
     const summary = el('div', 'codex-summary');
@@ -3849,6 +4119,7 @@ window.UI = (function () {
   function loadViewData(view) {
     if (!window.Net) return;
     if (view === 'shop' || view === 'inventory') window.Net.fetchShop();
+    else if (view === 'chest') window.Net.fetchChest();
     else if (view === 'market') window.Net.fetchMarket();
     else if (view === 'codex') window.Net.fetchCodex();
     else if (view === 'records') window.Net.fetchRecords();
@@ -3882,6 +4153,7 @@ window.UI = (function () {
     else if (currentView === 'bd') renderBD();
     else if (currentView === 'ground') renderGround();
     else if (currentView === 'inventory') renderInventory();
+    else if (currentView === 'chest') renderChest();
     else if (currentView === 'shop') renderShop();
     else if (currentView === 'market') renderMarket();
     else if (currentView === 'trade') renderTrade();
@@ -4031,6 +4303,10 @@ window.UI = (function () {
     bd: [],                                             // 钓竿配置：只随操作重绘（展示数据不受广播影响）
     ground: ['players', 'grounds', 'feed', 'groundcfg'],
     inventory: ['assets', 'shop', 'pricecfg'],
+    // 宝匣页：随资产（残片/金币/宝匣数量）、后台宝匣配置广播更新；
+    // 末位 'chest' 是视图自身 id —— fetchChest 完成后用 refreshAll('chest') 触发重绘，
+    // 少了它就会命中「scope 不在列表内 → 不重绘」，页面永远停在「加载中」。
+    chest: ['assets', 'chestcfg', 'chest'],
     shop: ['assets', 'shop', 'pricecfg'],
     market: ['assets', 'market'],
     trade: ['trade', 'assets', 'codex'],

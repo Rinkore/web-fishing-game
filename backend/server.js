@@ -143,7 +143,24 @@ let users = {};
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
 // biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
 const BITE_FORMULA_DEFAULT = '90';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [] };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {} };
+
+// ---- 宝匣（沉船打捞）----
+// 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
+// 这里只放运行期可调项：突破保底次数（0 = 关闭）。改动即生效并落盘 config.json。
+const CHEST_PITY_MAX = 50;
+function chestCfgOf() {
+  const c = world.chestCfg || {};
+  const raw = Number(c.pityN);
+  return {
+    // 0 / 空 / 非法 / 越界一律按「关闭」处理，绝不让脏值把保底放大到无意义
+    pityN: (isFinite(raw) && raw >= 1 && raw <= CHEST_PITY_MAX) ? Math.floor(raw) : 0,
+  };
+}
+// 某账号在某档位上的「连续未突破」计数（惰性读取，0 表示没有记录）
+function chestPityOf(rec, chestId) {
+  return (rec && rec.chestPity && Number(rec.chestPity[chestId])) || 0;
+}
 
 // ---- 反馈意见 ----
 // CD 时长（小时）与跳过费用（金币）可由管理后台配置（落盘 config.json）；默认 24 小时 / 10000 金币。
@@ -1403,7 +1420,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
@@ -1556,6 +1573,7 @@ function auth(req, res, body, cb) {
 }
 function invAdd(rec, id, qty) { rec.inventory = rec.inventory || {}; rec.inventory[id] = (rec.inventory[id] || 0) + qty; if (rec.inventory[id] <= 0) delete rec.inventory[id]; }
 function invHas(rec, id, qty) { return (rec.inventory && rec.inventory[id] || 0) >= qty; }
+function invCountOf(rec, id) { return (rec.inventory && rec.inventory[id]) || 0; }
 
 // ---- 商店 / 市集 / 大鱼榜 对外快照 ----
 function shopSnapshot() {
@@ -2215,12 +2233,139 @@ const server = http.createServer(function (req, res) {
       trades: ((world.tradeLog && world.tradeLog[id]) || []).slice(-120),
     });
   }
+  // ---- 宝匣（沉船打捞）：查询 / 合成 / 开箱 ----
+  // 合成：残片 × costRelic + 金币 costCoins → 宝匣物品入包（宝匣可市集交易，但不可卖给系统商店）
+  // 开箱：消耗 1 个宝匣 → 服务器权威掷骰（基底/品质/词条数由 data.js 的 CHESTS 档位决定）
+  // 保底：连续 N-1 次未突破则第 N 次必出突破件（N 由后台「宝匣配置」设定，0 = 关闭）
+  //   仅对有突破判定的档位生效（即带 extra 的档位）；判定与计数都以 data.js 的 breakthrough 为准。
+  function chestPickBase(chest, d) {
+    if (chest.mode === 'random') {
+      return D.COMPONENT_BASES[Math.floor(Math.random() * D.COMPONENT_BASES.length)];
+    }
+    if (chest.mode === 'part') {
+      const part = String(d.part || '');
+      const cands = D.COMPONENT_BASES.filter(function (b) { return b.part === part; });
+      if (!cands.length) return { error: '未知的部位（该部位没有可用底材）' };
+      return cands[Math.floor(Math.random() * cands.length)];
+    }
+    const base = D.componentBase(String(d.baseId || ''));
+    if (!base) return { error: '未知的底材' };
+    return base;
+  }
+  function chestViewList(rec) {
+    const cfg = chestCfgOf();
+    return D.CHESTS.map(function (c) {
+      const p = chestPityOf(rec, c.id);
+      return {
+        id: c.id, name: c.name, rarity: c.rarity, desc: c.desc, mode: c.mode,
+        costRelic: c.costRelic, costCoins: c.costCoins, price: c.price,
+        hasExtra: !!c.extra, minAffixes: c.minAffixes || 0, forceMax: !!c.forceMax,
+        have: invCountOf(rec, c.id),
+        // 保底进度：pityNow = 已连续未突破次数；pityNeed = 还差几次触发（0 = 本档位无保底）
+        pityNow: c.extra ? p : 0,
+        pityNeed: (c.extra && cfg.pityN > 0) ? Math.max(0, cfg.pityN - p) : 0,
+      };
+    });
+  }
+  if (p === '/api/chest' && req.method === 'GET') {
+    const key = u.query.token && sessionGet(u.query.token);
+    if (!key) return apiResp(res, 401, { error: '未登录' });
+    const rec = users[key];
+    const cfg = chestCfgOf();
+    return apiResp(res, 200, {
+      chests: chestViewList(rec), relicId: 'relic', relicName: itemName('relic'),
+      relicHave: invCountOf(rec, 'relic'), relicPrice: basePrice('relic'),
+      pityN: cfg.pityN, coins: rec.coins,
+    });
+  }
+  if (p === '/api/chest/craft' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const chest = D.chestOf(String(d.chestId || ''));
+        if (!chest) return apiResp(res, 400, { error: '未知的宝匣' });
+        let qty = Math.floor(Number(d.qty) || 1);
+        if (!isFinite(qty) || qty < 1) qty = 1;
+        if (qty > 99) qty = 99; // 单次批量上限：避免误点把残片一次清光
+        const needRelic = chest.costRelic * qty;
+        const needCoins = chest.costCoins * qty;
+        if (!invHas(rec, 'relic', needRelic)) {
+          return apiResp(res, 400, { error: '宝匣残片不足（需 ' + needRelic + ' 个，当前 ' + invCountOf(rec, 'relic') + ' 个）' });
+        }
+        if ((rec.coins || 0) < needCoins) return apiResp(res, 400, { error: '金币不足（需 ' + needCoins + '）' });
+        invAdd(rec, 'relic', -needRelic);
+        invAdd(rec, chest.id, qty);
+        rec.coins -= needCoins;
+        saveAccount(key);
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        apiResp(res, 200, {
+          ok: true, chestId: chest.id, qty: qty, coins: rec.coins,
+          inventory: rec.inventory, chests: chestViewList(rec),
+        });
+      });
+    });
+    return;
+  }
+  if (p === '/api/chest/open' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const chest = D.chestOf(String(d.chestId || ''));
+        if (!chest) return apiResp(res, 400, { error: '未知的宝匣' });
+        if (!invHas(rec, chest.id, 1)) return apiResp(res, 400, { error: '没有「' + chest.name + '」可开（请先合成）' });
+        const base = chestPickBase(chest, d);
+        if (base && base.error) return apiResp(res, 400, { error: base.error });
+        const cfg = chestCfgOf();
+        const before = chestPityOf(rec, chest.id);
+        // 保底触发：把 50% 掷骰换成必中（genBreakthrough 内部对「池长已够」的底材本来就是免费满池）
+        const forced = !!(chest.extra && cfg.pityN > 0 && before >= cfg.pityN - 1);
+        const item = chest.extra
+          ? D.genBreakthrough(base.id, {
+              hitCount: chest.hitCount, missCount: chest.missCount,
+              chance: forced ? 1 : chest.chance,
+            })
+          : D.genComponent(base.id, D.rollChestQuality(chest), {
+              minAffixes: chest.minAffixes, forceMax: !!chest.forceMax,
+            });
+        if (!item) return apiResp(res, 500, { error: '产出生成失败' });
+        invAdd(rec, chest.id, -1);
+        invAdd(rec, item.id, 1);
+        // 图鉴登记（与钓鱼一致：组件按底材登记，累计获得次数）
+        rec.codex = rec.codex || {};
+        const cx = rec.codex[item.baseId] || { count: 0, first: Date.now() };
+        cx.count += 1;
+        rec.codex[item.baseId] = cx;
+        // 保底计数：突破则清零，未突破则累加
+        rec.chestPity = rec.chestPity || {};
+        if (item.breakthrough) delete rec.chestPity[chest.id];
+        else rec.chestPity[chest.id] = before + 1;
+        saveAccount(key);
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        // 突破件全服播报（复用纪录横幅轨）：稀有度足够高，是免费的内容运营素材
+        if (item.breakthrough) {
+          broadcast({
+            type: 'globalRecord',
+            record: { level: 2, who: rec.name, name: item.name, t: Date.now(),
+              text: '🎁 ' + rec.name + ' 从「' + chest.name + '」打捞出神话突破件：' + item.name + '（4 词条）' },
+          });
+        }
+        apiResp(res, 200, {
+          ok: true, chestId: chest.id, chestName: chest.name, item: item, coins: rec.coins,
+          inventory: rec.inventory, forced: forced,
+          pityNow: chestPityOf(rec, chest.id), pityNeed: (chest.extra && cfg.pityN > 0) ? Math.max(0, cfg.pityN - chestPityOf(rec, chest.id)) : 0,
+          chests: chestViewList(rec),
+        });
+      });
+    });
+    return;
+  }
   if (p === '/api/sell' && req.method === 'POST') {
     readBody(req, function (body) {
       auth(req, res, body, function (d, key) {
         const rec = users[key];
         const id = d.id; const qty = Math.max(1, Math.floor(Number(d.qty) || 1));
         if (D.isRodSet(id)) return apiResp(res, 400, { error: '整根钓竿请到「开放市集」出售（系统商店不收购）' });
+        if (D.isChest(id)) return apiResp(res, 400, { error: '宝匣请到「开放市集」出售（系统商店不收购）' });
         if (!sellableOf(id)) return apiResp(res, 400, { error: '该物品无法出售' });
         const rodLock = rodLockError(rec, id, qty);
         if (rodLock) return apiResp(res, 400, { error: rodLock });
@@ -2561,6 +2706,8 @@ const server = http.createServer(function (req, res) {
       // 经济参数（商店文案与容量提示用；改动经 pricecfg 广播同步）
       priceCfg: priceCfg(),
       dropCfg: dropCfg(),
+      // 宝匣配置（突破保底次数）：宝匣页据此显示保底进度
+      chestCfg: chestCfgOf(),
     });
   }
   // ---- 钓场目录（公开只读；含管理后台保存的掉落池/增益/锁定覆盖） ----
@@ -3202,6 +3349,15 @@ const server = http.createServer(function (req, res) {
       dropDefaults: DROP_DEFAULTS,
       economyCatalog: economyCatalog,
       economyLog: (world.economyLog || []).slice(-40),
+      // ---- 宝匣配置 ----
+      chestCfg: chestCfgOf(),
+      chestPityMax: CHEST_PITY_MAX,
+      chests: (D.CHESTS || []).map(function (c) {
+        return { id: c.id, name: c.name, rarity: c.rarity, mode: c.mode, costRelic: c.costRelic, costCoins: c.costCoins,
+          hasExtra: !!c.extra, hitCount: c.hitCount, missCount: c.missCount, chance: c.chance };
+      }),
+      extraAffixRanges: (D.getComponentCfg && D.getComponentCfg().extraAffixRanges) || {},
+      extraAffixDefaults: D.DEFAULT_EXTRA_AFFIX_RANGES,
     });
   }
   // ---- 组件生成配置：品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则 ----
@@ -3214,6 +3370,8 @@ const server = http.createServer(function (req, res) {
       if (d.qualityWeights != null) {
         if (typeof d.qualityWeights !== 'object') return apiResp(res, 400, { error: '品质概率格式错误' });
         const qw = {};
+        // 刻意不含 mythic：「神话」是宝匣专属品质（权重写在 data.js 的 CHESTS 各档位内），
+        // 一旦混进这里，普通钓鱼掉落就能出神话组件，宝匣的价值主张会被直接稀释。
         ['common', 'rare', 'epic'].forEach(function (k) {
           const v = Number(d.qualityWeights[k]);
           if (!isFinite(v) || v < 0) return;
@@ -3225,6 +3383,7 @@ const server = http.createServer(function (req, res) {
       if (d.countWeights != null) {
         if (typeof d.countWeights !== 'object') return apiResp(res, 400, { error: '词条数概率格式错误' });
         const cw = {};
+        // 同上：不含 mythic（神话件由 genBreakthrough 生成，不查词条数权重表）
         ['common', 'rare', 'epic'].forEach(function (k) {
           const arr = d.countWeights[k];
           if (!Array.isArray(arr)) return;
@@ -3257,6 +3416,20 @@ const server = http.createServer(function (req, res) {
           if (Object.keys(clean).length) out[bid] = clean;
         });
         cfg.affixRanges = out;
+      }
+      // 池外词缀数值区间（宝匣突破件的补足词缀用）：键为词缀类型，不限定底材
+      if (d.extraAffixRanges != null) {
+        if (typeof d.extraAffixRanges !== 'object') return apiResp(res, 400, { error: '池外词缀区间格式错误' });
+        const out = {};
+        Object.keys(d.extraAffixRanges).forEach(function (t) {
+          if (D.AFFIX_TYPES.indexOf(t) < 0) return;
+          const r = d.extraAffixRanges[t];
+          if (!Array.isArray(r) || r.length !== 2) return;
+          const mn = Number(r[0]), mx = Number(r[1]);
+          if (!isFinite(mn) || !isFinite(mx) || mx < mn) return;
+          out[t] = [Math.round(mn), Math.round(mx)];
+        });
+        cfg.extraAffixRanges = out;
       }
       if (d.adjectiveRules != null) {
         if (!Array.isArray(d.adjectiveRules)) return apiResp(res, 400, { error: '修饰词规则格式错误' });
@@ -3943,6 +4116,25 @@ const server = http.createServer(function (req, res) {
           }
         }
         if (!d.validateOnly && (d.resetPriceCfg || d.priceCfg != null || d.resetDropCfg || d.dropCfg != null || d.priceOv != null)) { saveConfig(); saveEconomy(); }
+      }
+      // ---- 宝匣配置：突破保底次数（0 = 关闭；1~50 = 连续 N-1 次未突破后第 N 次必出）----
+      if (d.chestCfg != null) {
+        if (typeof d.chestCfg !== 'object') return apiResp(res, 400, { error: 'chestCfg 格式错误' });
+        const raw = Number(d.chestCfg.pityN);
+        if (d.chestCfg.pityN != null && d.chestCfg.pityN !== '') {
+          if (!isFinite(raw) || raw < 0 || raw > CHEST_PITY_MAX) {
+            return apiResp(res, 400, { error: '突破保底次数需在 0 - ' + CHEST_PITY_MAX + ' 之间（0 = 关闭）' });
+          }
+          if (!d.validateOnly) world.chestCfg = { pityN: Math.floor(raw) };
+        } else if (!d.validateOnly) {
+          world.chestCfg = {}; // 留空 = 关闭保底
+        }
+        if (!d.validateOnly) {
+          saveConfig();
+          // 通知在线玩家刷新宝匣页的保底进度文案（无此广播则要重新进入页面才更新）
+          broadcast({ type: 'chestcfg', chestCfg: chestCfgOf() });
+        }
+        out.chestCfg = chestCfgOf();
       }
       if (d.evalVars && formulaSrc != null) {
         const c2 = compileFormula(formulaSrc);

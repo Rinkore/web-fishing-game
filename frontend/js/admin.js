@@ -136,6 +136,7 @@ window.Admin = (function () {
     { id: 'component', name: '🧩 组件生成' },
     { id: 'fishsize', name: '🐟 鱼类体型' },
     { id: 'economy', name: '💰 经济参数' },
+    { id: 'chest', name: '🎁 宝匣配置' },
     { id: 'formula', name: '🧮 公式管理' },
     { id: 'notify', name: '🔔 通知等级' },
     { id: 'banner', name: '📢 横幅管理' },
@@ -165,6 +166,7 @@ window.Admin = (function () {
     if (v === 'component') return renderComponent();
     if (v === 'fishsize') return renderFishSize();
     if (v === 'economy') return renderEconomy();
+    if (v === 'chest') return renderChest();
     if (v === 'formula') return renderFormula();
     if (v === 'notify') return renderNotify();
     if (v === 'banner') return renderBanner();
@@ -1346,6 +1348,112 @@ window.Admin = (function () {
     ['speed', '钓速加成 %（钓竿词缀 + 钓点增益）'], ['big', '大鱼概率加成 %'], ['rare', '稀有概率加成 %'],
     ['material', '材料概率加成 %'], ['size', '体型加成 %'], ['double', '双钓叠加值 A（概率按 A/(A+100) 换算）'], ['interval', '当前抛竿间隔 ms'],
   ];
+  // 🎁 宝匣配置：档位一览（只读，配方写在 data.js 的 CHESTS）+ 突破保底次数 + 池外词缀区间
+  function renderChest() {
+    const main = $('main');
+    main.innerHTML = '<h2>🎁 宝匣配置</h2>' +
+      '<div class="hint" style="margin-bottom:12px">宝匣四档的配方（残片数 / 金币 / 基底模式 / 品质权重）定义在游戏目录 <code>frontend/js/data.js</code> 的 <code>CHESTS</code>，随版本发布；本页只放运行期可调项，保存即生效并落盘 config.json。</div>' +
+      '<div id="ch-body" class="panel">加载中…</div>';
+    loadWorldCfg(true).then(function (cfg) {
+      if (!cfg || view !== 'chest') return;
+      drawChest(cfg);
+    });
+  }
+  function drawChest(cfg) {
+    const body = $('ch-body');
+    if (!body) return;
+    const C = cfg.chestCfg || {};
+    const MAX = cfg.chestPityMax || 50;
+    const chests = cfg.chests || [];
+    const AR = cfg.extraAffixRanges || {};
+    const AD = cfg.extraAffixDefaults || {};
+    const LABEL = { speed: '钓速', big: '大鱼概率', rare: '稀有概率', material: '材料概率', size: '体型', double: '双钓概率' };
+    const MODE = { random: '基底随机', part: '自选部位', base: '自选底材' };
+    const row = function (c) {
+      return '<tr><td><b>' + esc(c.name) + '</b></td><td>' + esc(MODE[c.mode] || c.mode) + '</td>' +
+        '<td>' + c.costRelic + ' 个</td><td>💰' + c.costCoins + '</td>' +
+        '<td>' + (c.hasExtra
+          ? '神话 · 50% 突破（' + c.missCount + '~' + c.hitCount + ' 条）'
+          : (c.id === 'chest_abyss' ? '史诗 · 满词条' : '稀有 / 史诗')) + '</td></tr>';
+    };
+    body.innerHTML =
+      '<h3 style="margin-top:0">📦 档位一览（只读）</h3>' +
+      '<table class="tbl"><thead><tr><th>档位</th><th>基底</th><th class="num">残片</th><th class="num">金币</th><th>产出</th></tr></thead><tbody>' +
+      chests.map(row).join('') + '</tbody></table>' +
+      '<div class="hint" style="margin-top:6px">改动档位配方请编辑 <code>data.js</code> 的 <code>CHESTS</code> 后发版（与组件底材/词缀池同一份目录，前后端共用）。</div>' +
+
+      '<h3>⚡ 突破保底</h3>' +
+      '<div class="hint" style="margin-bottom:8px">「海王遗匣」的破突判定为 50% 掷骰。设 N 后：连续 N−1 次未突破，第 N 次必出突破件（命中即清零）。<b>0 = 关闭</b>。</div>' +
+      // 输入框必须包在 .ch-fix 里：.mgr-row .ipt 默认 flex:1，直接放会被拉满整行
+      '<div class="mgr-row"><span class="ch-fix"><label>保底次数 N</label>' +
+      '<input id="ch-pity" class="ipt mk-num" type="number" min="0" max="' + MAX + '" step="1" value="' + (C.pityN || 0) + '"></span>' +
+      '<span class="hint">0 = 关闭；1~' + MAX + '。改小会让已累计次数的玩家更容易触发，改大会让「下次必出」退回。</span></div>' +
+      '<div class="mgr-row"><button class="btn primary" id="ch-pity-save">保存保底</button>' +
+      '<button class="btn" id="ch-pity-reset" style="margin-left:8px">关闭保底（0）</button>' +
+      '<span id="ch-pity-state" class="hint" style="margin-left:10px"></span></div>' +
+      '<div class="hint" style="margin-top:6px">参考：期望开箱次数 关闭=2.00 / N=4 → 1.88 / N=3 → 1.75 / N=2 → 1.50；N=3 把最坏情况从「无上限」压到 3 次，是性价比最高的一档。</div>' +
+
+      '<h3>🎲 池外词缀数值区间</h3>' +
+      '<div class="hint" style="margin-bottom:8px">突破件在底材词缀池之外补足的词缀所用的数值区间。<b>应当明显弱于池内区间</b>，否则 2 条池的弱底材补上强池外后会反超 4 条池底材。留空 = 用默认值。</div>' +
+      '<div class="ch-ar-wrap">' +
+      Object.keys(AD).map(function (t) {
+        const cur = AR[t];
+        const dv = AD[t];
+        return '<span class="ch-fix"><label class="hint">' + (LABEL[t] || t) + '</label>' +
+          '<input id="ch-ar-' + t + '-min" class="ipt mk-num" type="number" placeholder="' + dv[0] + '" value="' + (cur ? cur[0] : '') + '">' +
+          '<span class="hint">~</span>' +
+          '<input id="ch-ar-' + t + '-max" class="ipt mk-num" type="number" placeholder="' + dv[1] + '" value="' + (cur ? cur[1] : '') + '">' +
+          '<span class="hint">%（默认 ' + dv[0] + '~' + dv[1] + '）</span></span>';
+      }).join('') + '</div>' +
+      '<div class="mgr-row"><button class="btn primary" id="ch-ar-save">保存池外区间</button>' +
+      '<button class="btn" id="ch-ar-reset" style="margin-left:8px">恢复默认</button>' +
+      '<span id="ch-ar-state" class="hint" style="margin-left:10px"></span></div>';
+
+    $('ch-pity-save').onclick = function () {
+      const v = Number(($('ch-pity') || {}).value);
+      adminApi('POST', '/api/admin/settings', { token: token, chestCfg: { pityN: isFinite(v) && v > 0 ? v : 0 } }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+        worldCfg = null;
+        $('ch-pity-state').innerHTML = '<span style="color:var(--ok,#4ade80)">已保存：保底 ' + ((r.data.chestCfg || {}).pityN || 0) + ' 次，立即生效</span>';
+        toast('宝匣保底已保存，立即生效');
+      });
+    };
+    $('ch-pity-reset').onclick = function () {
+      adminApi('POST', '/api/admin/settings', { token: token, chestCfg: { pityN: 0 } }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+        worldCfg = null;
+        $('ch-pity').value = 0;
+        $('ch-pity-state').innerHTML = '<span style="color:var(--warn,#f59e0b)">已关闭保底</span>';
+        toast('已关闭宝匣保底');
+      });
+    };
+    $('ch-ar-save').onclick = function () {
+      const out = {};
+      Object.keys(AD).forEach(function (t) {
+        const mn = ($('ch-ar-' + t + '-min') || {}).value;
+        const mx = ($('ch-ar-' + t + '-max') || {}).value;
+        if (mn === '' && mx === '') return;             // 留空 = 用默认
+        const a = Number(mn), b = Number(mx);
+        if (!isFinite(a) || !isFinite(b) || b < a) return;
+        out[t] = [Math.round(a), Math.round(b)];
+      });
+      adminApi('POST', '/api/admin/component/config', { token: token, extraAffixRanges: out }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+        worldCfg = null;
+        $('ch-ar-state').innerHTML = '<span style="color:var(--ok,#4ade80)">已保存 ' + Object.keys(out).length + ' 项，立即生效</span>';
+        toast('池外词缀区间已保存');
+      });
+    };
+    $('ch-ar-reset').onclick = function () {
+      adminApi('POST', '/api/admin/component/config', { token: token, extraAffixRanges: {} }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+        worldCfg = null;
+        renderChest();
+        toast('池外词缀区间已恢复默认');
+      });
+    };
+  }
+
   function renderFormula() {
     const main = $('main');
     main.innerHTML = '<h2>🧮 公式管理</h2>' +
@@ -2028,14 +2136,18 @@ window.Admin = (function () {
     const TIER_NAME = { common: '普通', big: '大鱼', rare: '稀有', material: '材料' };
     box.innerHTML = '<div style="max-height:520px;overflow:auto">' + list.map(function (it) {
       const cls = it.kind === 'fish' && it.tier !== 'common' ? ' ' + RARITY_TAG[it.tier === 'big' ? 'big' : 'rare'] : '';
-      const ov = it.ov ? ('<span class="tag' + (ov.until ? '' : ' big') + '" title="' + (ov.until ? '到期 ' + fmtTime(ov.until) : '永久') + '">' + (ov.base ? '基准 ' + ov.base : '') + (ov.base && ov.m ? ' · ' : '') + (ov.m ? '锁 ×' + ov.m : '') + (ov.until ? ' · 限时' : '') + '</span>') : '';
+      // 单品干预标签。注意：不能在初始化式里引用它自己（原写法 `const ov = it.ov ? ... ov.until ...`
+      // 会在「该物品确实有覆盖」时抛 TDZ「Cannot access 'ov' before initialization」——
+      // 即设了干预再打开/重绘经济参数页，整段列表直接崩掉；没设过干预时三元短路才看不出来）。
+      const o = it.ov;
+      const ovTag = o ? ('<span class="tag' + (o.until ? '' : ' big') + '" title="' + (o.until ? '到期 ' + fmtTime(o.until) : '永久') + '">' + (o.base ? '基准 ' + o.base : '') + (o.base && o.m ? ' · ' : '') + (o.m ? '锁 ×' + o.m : '') + (o.until ? ' · 限时' : '') + '</span>') : '';
       return '<div class="inv-row" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)">' +
         '<span style="width:120px" class="' + cls.trim() + '">' + esc(it.name) + '</span>' +
         '<span class="hint" style="width:48px">' + (TIER_NAME[it.tier] || it.tier) + '</span>' +
         '<span style="width:110px">基准 <b>' + it.base + '</b> · 现价 <b>' + it.price + '</b> 💰</span>' +
         '<span style="width:70px">' + it.m + '%</span>' +
         '<span class="hint" style="width:100px">今日 ' + it.soldToday + '</span>' +
-        '<span style="width:150px">' + ov + '</span>' +
+        '<span style="width:150px">' + ovTag + '</span>' +
         '<input class="ipt mk-num eco-ov-base" data-id="' + esc(it.id) + '" type="number" min="1" placeholder="基准价" style="width:90px" value="' + (it.ov && it.ov.base ? it.ov.base : '') + '">' +
         '<input class="ipt mk-num eco-ov-m" data-id="' + esc(it.id) + '" type="number" min="0.05" max="10" step="0.05" placeholder="锁价×" style="width:80px" value="' + (it.ov && it.ov.m ? it.ov.m : '') + '">' +
         '<input class="ipt mk-num eco-ov-min" data-id="' + esc(it.id) + '" type="number" min="0" placeholder="分钟" style="width:70px">' +

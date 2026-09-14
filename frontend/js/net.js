@@ -212,6 +212,18 @@ window.Net = (function () {
     }
     return r;
   });
+  // 宝匣（沉船打捞）：拉取档位与保底进度 / 合成 / 开箱
+  const fetchChest = () => apiFetch('GET', '/api/chest?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
+    if (r && r.ok) {
+      state().chest = r.data;
+      if (r.data.coins != null) state().player.coins = r.data.coins;
+      if (window.UI) window.UI.refreshAll('chest');
+    }
+    return r;
+  });
+  const chestCraft = (chestId, qty) => authed('/api/chest/craft', { chestId: chestId, qty: qty || 1 });
+  // sel：自选目标（mode='part' 传 {part}；mode='base' 传 {baseId}；mode='random' 不传）
+  const chestOpen = (chestId, sel) => authed('/api/chest/open', Object.assign({ chestId: chestId }, sel || {}));
   const sell = (id, qty) => authed('/api/sell', { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', hours ? { id: id, qty: qty, price: price, hours: hours } : { id: id, qty: qty, price: price });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
@@ -326,6 +338,10 @@ window.Net = (function () {
               ui.addLog('system', '📢 公告：' + bn.content);
             });
           }
+        } else if (m.type === 'chestcfg') {
+          // 后台改了宝匣保底次数：就地更新（宝匣页显示保底进度，不用重新进页面）
+          S.chest = Object.assign({}, S.chest || {}, { pityN: (m.chestCfg || {}).pityN || 0 });
+          if (ui) ui.refreshAll('chestcfg');
         } else if (m.type === 'bannerStop') {
           if (ui && ui.onBannerStop) ui.onBannerStop(m.id);
         } else if (m.type === 'bitecfg') {
@@ -436,6 +452,7 @@ window.Net = (function () {
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
     fetchFeedback: fetchFeedback,
+    fetchChest: fetchChest, chestCraft: chestCraft, chestOpen: chestOpen,
     fetchBanners: fetchBanners, fetchGrounds: fetchGrounds,
     bannerPlaying: bannerPlaying,
     feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,
