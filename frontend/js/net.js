@@ -100,6 +100,8 @@ window.Net = (function () {
     if (r && r.ok) {
       state().banners = r.data.banners || [];
       state().bannerCfg = r.data.cfg || {};
+      // 进入游戏时把当前待播公告入队播放（此前只更新状态，导致登录后不播既有公告）
+      if (window.UI && window.UI.onBanners) window.UI.onBanners();
       if (window.UI) window.UI.refreshAll('banner');
     }
     return r;

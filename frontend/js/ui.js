@@ -65,78 +65,127 @@ window.UI = (function () {
 
   // ---- 顶部横幅：破纪录播报 + 管理后台公告队列共用同一滚动条 ----
   // 规则：等整段文字完整离开屏幕（一遍动画走完）后才收起；多条内容排队依次播放。
-  let recordBannerTimer = null;
-  let bannerQueue = [];      // 待播放队列 [{id, text, duration}]
-  let bannerPlaying = false;
-  let bannerRunId = 0;       // 每次 playMarquee 递增；旧轨道的动画事件作废，避免取消新横幅
-  let currentBannerId = null; // 正在滚播的公告横幅 id（后台停止/统计用）
-
-  // 播放单条滚动内容（duration 秒；到点或动画结束即收起并回调）；id = 管理后台横幅 id（可无）
-  function playMarquee(text, duration, done, id) {
-    const b = $('record-banner');
-    if (!b) { if (done) done(); return; }
-    if (recordBannerTimer) { clearTimeout(recordBannerTimer); recordBannerTimer = null; }
-    const runId = ++bannerRunId;
-    currentBannerId = id || null;
-    // 上报「正在滚播」给服务器（后台可看到当前有多少人在看这条横幅）
-    if (id && window.Net && window.Net.bannerPlaying) { try { window.Net.bannerPlaying(id); } catch (e) {} }
+  // ---- 顶部横幅：两条独立轨道，互不打断 ----
+  //  · 纪录轨（#record-banner）：纪录 / 最大鱼播报，**按到达顺序排队播放**，新的一条不会挤掉正在播的
+  //  · 公告轨（#notice-banner）：管理后台公告，独立排队；支持每条自定义颜色（醒目度）
+  //  两条轨道都会把页面整体下移（--banner-h），因此不会遮挡顶部状态栏。
+  const BANNER_LANE_H = 34;
+  function laneEl(lane) { return $(lane === 'notice' ? 'notice-banner' : 'record-banner'); }
+  const lanes = {
+    record: { queue: [], playing: false, timer: null, finish: null, runId: 0, current: null },
+    notice: { queue: [], playing: false, timer: null, finish: null, runId: 0, current: null },
+  };
+  // 按底色自动选深/浅文字，保证任何自定义颜色都看得清
+  function textColorFor(bg) {
+    const m = /^#([0-9a-f]{6})$/i.exec(String(bg || ''));
+    if (!m) return '';
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#06202e' : '#f8fafc';
+  }
+  // 两条轨道的可见高度累计 → 页面下移量（避免遮挡顶部状态栏）
+  function syncBannerOffset() {
+    const rec = laneEl('record'), not = laneEl('notice');
+    const recOn = !!(rec && rec.classList.contains('show'));
+    const notOn = !!(not && not.classList.contains('show'));
+    const h = (recOn ? BANNER_LANE_H : 0) + (notOn ? BANNER_LANE_H : 0);
+    document.body.style.setProperty('--banner-h', h + 'px');
+    document.body.classList.toggle('banner-open', h > 0);
+    if (not) not.style.top = (recOn ? BANNER_LANE_H : 0) + 'px';
+  }
+  // 播放单条（lane: 'record' | 'notice'；opts: { duration, id, color, onDone }）
+  function playMarquee(lane, text, opts) {
+    opts = opts || {};
+    const st = lanes[lane] || lanes.record;
+    const b = laneEl(lane);
+    if (!b) { if (opts.onDone) opts.onDone(); return; }
+    if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+    const runId = ++st.runId;
+    st.current = opts.id || null;
+    if (opts.id && window.Net && window.Net.bannerPlaying) { try { window.Net.bannerPlaying(opts.id); } catch (e) {} }
+    // 公告颜色（每条可自定义；未设置时用后台默认色；都没有则用样式默认渐变）
+    if (lane === 'notice') {
+      const cfg = S().bannerCfg || {};
+      const col = opts.color || cfg.noticeColor || '';
+      b.style.background = col || '';
+      b.style.color = col ? textColorFor(col) : '';
+    }
     const rep = esc(text) + '　　✦　　';
     b.innerHTML = '';
-    const track = el('span', 'rb-track', rep + rep + rep + rep + rep);
+    // 重复 2 遍即可铺满并完整滚出（原先 5 遍会让单条播放时间过长，排队时积压明显）
+    const track = el('span', 'rb-track', rep + rep);
     b.appendChild(track);
     b.classList.add('show');
-    document.body.classList.add('banner-open');
+    syncBannerOffset();
     let finished = false;
     function finish() {
-      // 已被后来的横幅取代：忽略这次（旧轨道被移除时也会触发 animationcancel）
-      if (runId !== bannerRunId || finished) return;
+      if (runId !== st.runId || finished) return;
       finished = true;
-      if (recordBannerTimer) { clearTimeout(recordBannerTimer); recordBannerTimer = null; }
-      if (currentBannerId === id) currentBannerId = null;
+      if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+      if (st.current === opts.id) st.current = null;
+      st.finish = null;
       b.classList.remove('show');
-      document.body.classList.remove('banner-open');
-      recordBannerTimer = setTimeout(function () { if (runId === bannerRunId) b.innerHTML = ''; if (done) done(); }, 400);
+      syncBannerOffset();
+      setTimeout(function () { if (runId === st.runId) b.innerHTML = ''; if (opts.onDone) opts.onDone(); }, 400);
     }
-    marqueeFinish = finish;
+    st.finish = finish;
     // 动画时长 = 按内容宽度推算（约 120px/s），保证字全部滚出屏幕；管理页可指定 duration 作为最短时长
     const w = Math.max(600, track.offsetWidth || 1200);
     const scrollMs = Math.max(6000, Math.min(60000, Math.round(w / 120) * 1000));
-    const ms = Math.max(scrollMs, Math.round((duration || 0) * 1000));
+    const ms = Math.max(scrollMs, Math.round((opts.duration || 0) * 1000));
     track.style.animationDuration = (ms / 1000) + 's';
     track.addEventListener('animationend', finish);
     track.addEventListener('animationcancel', finish);
-    recordBannerTimer = setTimeout(finish, ms + 800); // 兜底
+    st.timer = setTimeout(finish, ms + 800); // 兜底
   }
-  let marqueeFinish = null; // 当前滚动条的结束函数（播放下一轮/被停止时清理用）
-
-  // 破纪录播报（不入队列，立即插播）
+  // 轨道排队：当前这条播完再播下一条（不打断）
+  function pumpLane(lane) {
+    const st = lanes[lane];
+    if (!st || st.playing) return;
+    const next = st.queue.shift();
+    if (!next) return;
+    st.playing = true;
+    playMarquee(lane, next.text, Object.assign({}, next, { onDone: function () { st.playing = false; pumpLane(lane); } }));
+  }
+  // 纪录 / 最大鱼播报：入纪录轨队列，按顺序播放（不再插播打断）
+  const RECORD_QUEUE_MAX = 4; // 待播上限：超过则丢最旧的（新消息优先，避免积压成长队）
   function showRecordBanner(rec) {
     if (!rec) return;
-    // 服务端下发文案（覆盖：全场最大 / 该鱼种纪录 / 前十大 / 前十小，所有鱼种）
     const text = rec.text || ('🎉 全场最大纪录被破！' + rec.who + ' 钓到 ' + rec.name + ' ' + rec.size + 'cm');
-    playMarquee(text, 0, null);
+    const q = lanes.record.queue;
+    if (q.some(function (x) { return x.text === text; })) return; // 同文案不重复排队
+    q.push({ text: text });
+    while (q.length > RECORD_QUEUE_MAX) q.shift();
+    pumpLane('record');
+  }
+  // 调试/测试用：清空两条轨道的队列并中止当前播放
+  function resetBanners() {
+    ['record', 'notice'].forEach(function (ln) {
+      const st = lanes[ln];
+      st.queue = [];
+      if (st.finish) { const f = st.finish; st.finish = null; f(); }
+      st.playing = false;
+      const b = laneEl(ln);
+      if (b) { b.classList.remove('show'); b.innerHTML = ''; }
+    });
+    syncBannerOffset();
   }
 
-  // 管理后台公告队列：入队并顺序播放
+  // 管理后台公告队列（公告轨）：入队并顺序播放，支持每条自定义颜色
   function playBannerQueue(list) {
-    (list || []).forEach(function (bn) { bannerQueue.push({ id: bn.id, text: bn.content, duration: bn.duration }); });
-    pumpBannerQueue();
+    (list || []).forEach(function (bn) {
+      lanes.notice.queue.push({ id: bn.id, text: bn.content, duration: bn.duration, color: bn.color || '' });
+    });
+    pumpLane('notice');
   }
-  function pumpBannerQueue() {
-    if (bannerPlaying) return;
-    const next = bannerQueue.shift();
-    if (!next) return;
-    bannerPlaying = true;
-    playMarquee(next.text, next.duration, function () { bannerPlaying = false; pumpBannerQueue(); }, next.id);
-  }
-  // 后台「停止滚播」：立即中止正在播的那条，并把未播的同类从队列中移除
+  // 后台「停止滚播」：立即中止正在播的那条公告，并把未播的同类从队列中移除
   function onBannerStop(id) {
     if (!id) return;
-    bannerQueue = bannerQueue.filter(function (bn) { return bn.id !== id; });
+    lanes.notice.queue = lanes.notice.queue.filter(function (bn) { return bn.id !== id; });
     seenBannerIds[id] = true; // 标记已见，避免随后的 banner 广播把它重新入队
-    if (currentBannerId === id && marqueeFinish) {
-      const f = marqueeFinish;
-      marqueeFinish = null;
+    if (lanes.notice.current === id && lanes.notice.finish) {
+      const f = lanes.notice.finish;
+      lanes.notice.finish = null;
       f();
       toast('管理员停止了该公告横幅');
     }
@@ -154,6 +203,19 @@ window.UI = (function () {
       fresh.push(bn);
     });
     if (fresh.length) playBannerQueue(fresh);
+    // 管理员删除 / 清空队列 / 停止后：客户端也要丢掉已入队但还没播的旧公告，并在需要时中止当前这条
+    const alive = {};
+    list.forEach(function (bn) { if (bn && bn.id) alive[bn.id] = true; });
+    const before = lanes.notice.queue.length;
+    lanes.notice.queue = lanes.notice.queue.filter(function (bn) { return !bn.id || alive[bn.id]; });
+    if (before !== lanes.notice.queue.length) {
+      // 有被移除的待播公告
+    }
+    if (lanes.notice.current && !alive[lanes.notice.current] && lanes.notice.finish) {
+      const f = lanes.notice.finish;
+      lanes.notice.finish = null;
+      f();
+    }
     // 闪烁是独立开关：与队列里有没有横幅无关（后台「图标闪烁」单独设置）
     updateFaviconBlink(!!cfg.blink, cfg.blinkTitle);
   }
@@ -3382,8 +3444,15 @@ window.UI = (function () {
         if (window.Net && window.Net.getMe && window.Net.getMe()) { try { window.Net.closeStream && window.Net.closeStream(); } catch (e) {} }
         // 清空与账号绑定的临时状态与横幅/闪烁
         if (window.Engine && window.Engine.resetTransient) window.Engine.resetTransient();
-        bannerQueue = []; seenBannerIds = {}; subUnseen = 0; msgLogOwner = null; msgLog = [];
-        currentBannerId = null; marqueeFinish = null;
+        seenBannerIds = {}; subUnseen = 0; msgLogOwner = null; msgLog = [];
+        ['record', 'notice'].forEach(function (ln) {
+          const st = lanes[ln];
+          if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+          st.queue = []; st.playing = false; st.finish = null; st.current = null;
+          const b = laneEl(ln);
+          if (b) { b.classList.remove('show'); b.innerHTML = ''; b.style.background = ''; b.style.color = ''; }
+        });
+        syncBannerOffset();
         updateFaviconBlink(false);
         const rb = $('record-banner'); if (rb) { rb.classList.remove('show'); rb.innerHTML = ''; }
         document.body.classList.remove('banner-open');
@@ -3581,7 +3650,7 @@ window.UI = (function () {
   return {
     init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
     toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners, onBannerStop: onBannerStop,
-    addLog: addLog, onSubAlert: onSubAlert,
+    addLog: addLog, onSubAlert: onSubAlert, resetBanners: resetBanners,
     renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,
     getView: function () { return currentView; },
     setView: function (v) { currentView = v; },

@@ -1509,24 +1509,55 @@ window.Admin = (function () {
       '<div class="mgr-row"><label>闪烁</label><label class="switch"><input type="checkbox" id="bn-blink"><span class="sl"></span></label>' +
       '<label class="hint">闪烁时的标题</label><input id="bn-blink-title" class="ipt bn-title" placeholder="如：有新活动 ⚡" maxlength="40" />' +
       '<button class="btn primary" id="bn-cfg-save">保存闪烁设置</button>' +
-      '<span id="bn-blink-state" class="hint"></span></div></div>' +
+      '<span id="bn-blink-state" class="hint"></span>' +
+      '<label class="hint" style="margin-left:12px">公告默认颜色</label>' +
+      '<input id="bn-notice-color" class="ipt bn-color-input" type="color" value="#38bdf8" title="未单独设置颜色的公告使用该颜色" />' +
+      '<button class="btn mini" id="bn-notice-color-clear">用默认渐变</button></div></div>' +
       '<div class="panel"><div class="mgr-row"><label>内容</label><input id="bn-content" class="ipt" maxlength="200" placeholder="公告内容（最多 200 字）" />' +
       '<label class="hint">时长</label><input id="bn-dur" class="ipt mk-num" type="number" min="1" max="3600" step="0.5" value="10" />' +
-      '<span class="hint">秒</span><button class="btn primary" id="bn-add">发布</button>' +
+      '<span class="hint">秒</span>' +
+      '<label class="hint">颜色</label><span id="bn-colors" class="bn-colors"></span>' +
+      '<button class="btn primary" id="bn-add">发布</button>' +
       '<span style="flex:1"></span><button class="btn mini danger" id="bn-clear">清空队列</button></div>' +
       '<div id="bn-list" style="margin-top:12px">加载中…</div></div>';
+    // 颜色选择：预设色块 + 自定义（公告醒目度）
+    let pubColor = '';
+    const BN_COLORS = [['', '默认渐变'], ['#fbbf24', '金'], ['#ef4444', '红'], ['#22c55e', '绿'], ['#38bdf8', '蓝'], ['#a855f7', '紫']];
+    function drawColorChips() {
+      const wrap = $('bn-colors');
+      if (!wrap) return;
+      wrap.innerHTML = '';
+      BN_COLORS.forEach(function (kv) {
+        const b = document.createElement('button');
+        b.className = 'bn-color-chip' + (pubColor === kv[0] ? ' on' : '');
+        b.title = kv[1];
+        b.style.background = kv[0] || 'linear-gradient(90deg, #fbbf24, #2dd4bf)';
+        b.textContent = kv[0] ? '' : '默认';
+        b.onclick = function () { pubColor = kv[0]; drawColorChips(); };
+        wrap.appendChild(b);
+      });
+      const inp = document.createElement('input');
+      inp.type = 'color';
+      inp.className = 'bn-color-custom';
+      inp.title = '自定义颜色';
+      inp.value = /^#[0-9a-f]{6}$/.test(pubColor) ? pubColor : '#fbbf24';
+      inp.oninput = function () { pubColor = inp.value; drawColorChips(); };
+      wrap.appendChild(inp);
+    }
+    drawColorChips();
     $('bn-add').onclick = function () {
       const content = $('bn-content').value.trim();
       const duration = Number($('bn-dur').value) || 10;
       if (!content) { toast('请填写横幅内容', true); return; }
-      adminApi('POST', '/api/admin/banner/add', { token: token, content: content, duration: duration }).then(function (r) {
+      adminApi('POST', '/api/admin/banner/add', { token: token, content: content, duration: duration, color: pubColor }).then(function (r) {
         if (!r.ok) { toast(r.data.error || '发布失败', true); return; }
         $('bn-content').value = '';
         toast('已发布'); loadBanners();
       });
     };
     $('bn-cfg-save').onclick = function () {
-      adminApi('POST', '/api/admin/banner/cfg', { token: token, blink: $('bn-blink').checked, blinkTitle: $('bn-blink-title').value }).then(function (r) {
+      const ncVal = ($('bn-notice-color-clear') && $('bn-notice-color-clear').dataset.clear === '1') ? '' : ($('bn-notice-color') ? $('bn-notice-color').value : '');
+      adminApi('POST', '/api/admin/banner/cfg', { token: token, blink: $('bn-blink').checked, blinkTitle: $('bn-blink-title').value, noticeColor: ncVal }).then(function (r) {
         if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
         toast($('bn-blink').checked ? '已开启图标闪烁（与横幅无关，立即对在线玩家生效）' : '已关闭图标闪烁');
         const stEl = $('bn-blink-state');
@@ -1582,6 +1613,21 @@ window.Admin = (function () {
       b.onclick = function () { stopBanner(b.getAttribute('data-stop')); };
     });
   }
+  // 换色：在「默认 + 预设色」之间循环，立即广播给在线玩家
+  function changeBannerColor(id) {
+    const presets = ['', '#fbbf24', '#ef4444', '#22c55e', '#38bdf8', '#a855f7'];
+    let cur = '';
+    adminApi('GET', '/api/admin/banner?token=' + encodeURIComponent(token)).then(function (r) {
+      const bn = (r.ok && (r.data.banners || []).find(function (x) { return x.id === id; }));
+      cur = (bn && bn.color) || '';
+      const next = presets[(presets.indexOf(cur) + 1) % presets.length];
+      adminApi('POST', '/api/admin/banner/update', { token: token, id: id, color: next }).then(function (r2) {
+        if (!r2.ok) { toast(r2.data.error || '换色失败', true); return; }
+        toast(next ? ('公告颜色已改为 ' + next) : '公告已恢复默认渐变');
+        loadBanners();
+      });
+    });
+  }
   function stopBanner(id) {
     adminApi('POST', '/api/admin/banner/stop', { token: token, id: id }).then(function (r) {
       if (!r.ok) { toast(r.data.error || '停止失败', true); return; }
@@ -1597,6 +1643,12 @@ window.Admin = (function () {
       const editingBlink = document.activeElement === $('bn-blink-title');
       if (!editingBlink) $('bn-blink').checked = !!(r.data.cfg && r.data.cfg.blink);
       if (!editingBlink) $('bn-blink-title').value = (r.data.cfg && r.data.cfg.blinkTitle) || '📢 有新公告';
+      const ncInp = $('bn-notice-color'), ncClr = $('bn-notice-color-clear');
+      if (ncInp && ncClr && !editingBlink) {
+        const nc = (r.data.cfg && r.data.cfg.noticeColor) || '';
+        ncClr.dataset.clear = nc ? '0' : '1';
+        if (nc) ncInp.value = nc;
+      }
       const stEl = $('bn-blink-state');
       if (stEl) stEl.textContent = (r.data.cfg && r.data.cfg.blink) ? '当前：已开启' : '当前：已关闭';
       drawBannerLive(r.data);
@@ -1605,6 +1657,8 @@ window.Admin = (function () {
       box.innerHTML = '<table class="tbl"><thead><tr><th>#</th><th>内容</th><th class="num">时长</th><th>发布</th><th>操作</th></tr></thead><tbody>' +
         bs.map(function (b, i) {
           return '<tr><td>' + (i + 1) + '</td><td>' + esc(b.content) + '</td>' +
+            '<td><span class="bn-swatch" style="background:' + (b.color ? esc(b.color) : 'linear-gradient(90deg,#fbbf24,#2dd4bf)') + '"></span>' +
+            '<button class="btn mini" data-color="' + esc(b.id) + '">换色</button></td>' +
             '<td class="num">' + b.duration + 's</td>' +
             '<td class="hint">' + esc(b.by || '') + '</td>' +
             '<td class="mgr-acts"><button class="btn mini" data-up="' + esc(b.id) + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
@@ -1616,6 +1670,9 @@ window.Admin = (function () {
       box.querySelectorAll('[data-down]').forEach(function (b) { b.onclick = function () { moveBanner(b.getAttribute('data-down'), 'down'); }; });
       box.querySelectorAll('[data-rm]').forEach(function (b) { b.onclick = function () { removeBanner(b.getAttribute('data-rm')); }; });
       box.querySelectorAll('[data-stop2]').forEach(function (b) { b.onclick = function () { stopBanner(b.getAttribute('data-stop2')); }; });
+      box.querySelectorAll('[data-color]').forEach(function (b) {
+        b.onclick = function () { changeBannerColor(b.getAttribute('data-color')); };
+      });
     });
   }
   function moveBanner(id, dir) {

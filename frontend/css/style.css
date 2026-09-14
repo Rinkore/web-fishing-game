@@ -440,9 +440,10 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
   animation: rb-marquee 12s linear 1 both;
 }
 @keyframes rb-marquee { from { transform: translateX(0); } to { transform: translateX(-100%); } }
-/* 横幅显示时把页面整体下移，避免遮挡顶栏与内容（body.banner-open 由 JS 切换） */
-body.banner-open { padding-top: 34px; }
-body.banner-open .topbar { top: 34px; }
+.record-banner.notice-banner { top: 0; }
+/* 横幅显示时把页面整体下移，避免遮挡顶栏与内容：--banner-h 由 JS 按「可见轨道数 × 34px」维护 */
+body.banner-open { padding-top: var(--banner-h, 34px); }
+body.banner-open .topbar { top: var(--banner-h, 34px); }
 
 /* ---- 系统商店：出售数量控制条 ---- */
 .shop-qtybar {
@@ -1054,3 +1055,11 @@ body.banner-open .topbar { top: 34px; }
 .bl-row:last-child { border-bottom: none; }
 .bl-row .cnt { color: var(--muted); }
 .bl-row .bl-unit { margin-left: auto; color: var(--big); }
+
+/* ================= 横幅双轨道 + 公告颜色 ================= */
+.bn-colors { display: inline-flex; align-items: center; gap: 6px; }
+.bn-color-chip { width: 22px; height: 22px; border-radius: 6px; border: 2px solid transparent; cursor: pointer; font-size: 10px; color: #06202e; font-weight: 700; padding: 0; }
+.bn-color-chip.on { border-color: #fff; box-shadow: 0 0 0 2px rgba(56,189,248,.7); }
+.bn-color-custom { width: 30px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: transparent; cursor: pointer; }
+.bn-color-input { width: 44px; height: 26px; padding: 0; }
+.bn-swatch { display: inline-block; width: 22px; height: 14px; border-radius: 4px; vertical-align: middle; margin-right: 6px; border: 1px solid var(--line); }

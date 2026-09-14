@@ -790,13 +790,17 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await p1.evaluate(() => { const b = document.querySelector('.modal-close'); if (b) b.click(); });
     await sleep(200);
     // 破纪录横幅：调用 showRecordBanner 应出现 5 秒
+    // 先停止钓鱼并清空两条轨道（真实渔获播报会占满纪录轨，顺序播放不会插播）
+    await p1.evaluate(() => { const b = document.querySelector('.spot-btn.on'); if (b) b.click(); });
+    await sleep(500);
+    await p1.evaluate(() => window.UI.resetBanners && window.UI.resetBanners());
+    await waitFor(async () => (await p1.$$('#record-banner.show')).length === 0, { timeout: 8000, interval: 200 }).catch(() => {});
     await p1.evaluate(() => window.UI.showRecordBanner({ who: '测试甲', name: '黄金枪鱼', size: 999.9 }));
-    await sleep(200);
-    const bannerOn = await p1.evaluate(() => {
-      const b = document.getElementById('record-banner');
-      return b && b.classList.contains('show') && b.textContent.includes('999.9');
-    });
-    check('破纪录横幅显示且含纪录信息', bannerOn === true);
+    const bannerOn = await waitFor(async () => {
+      const b = await p1.evaluate(() => { const n = document.getElementById('record-banner'); return n && n.classList.contains('show') ? n.textContent : ''; });
+      return /999\.9/.test(b);
+    }, { timeout: 15000, interval: 300 }).catch(() => false);
+    check('破纪录横幅显示且含纪录信息（排队播放）', bannerOn === true, String(bannerOn));
 
     // —— 渔场动态：布局度量 ——
     await clickNav(p1, '渔场动态');
@@ -1129,17 +1133,46 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     if (spotSwitch.childSpot) check('点中 ⚡ 子元素也能选中该钓点', !!spotSwitch.childSpot.sel, JSON.stringify(spotSwitch.childSpot));
 
     // —— 横幅不遮挡顶栏与内容 ——
-    section('横幅遮挡');
-    await p1.evaluate(() => window.UI.showRecordBanner({ who: '测试', name: '黄金枪鱼', size: 888 }));
-    await sleep(500);
+    section('横幅遮挡 · 双轨排队 · 公告颜色');
+    await p1.evaluate(() => window.UI.resetBanners && window.UI.resetBanners());
+    await sleep(300);
+    // 纪录轨：先播 A；再入队 B → 不打断 A（排队），A 播完后接上 B
+    await p1.evaluate(() => window.UI.showRecordBanner({ who: '甲', name: '测试鱼', size: 111, text: '短纪录A' }));
+    const sawA = await waitFor(async () => /短纪录A/.test(await p1.textContent('#record-banner')), { timeout: 10000, interval: 200 }).catch(() => false);
+    check('纪录横幅开始播放', sawA === true, String(sawA));
+    await p1.evaluate(() => window.UI.showRecordBanner({ who: '乙', name: '测试鱼', size: 222, text: '短纪录B' }));
+    const stillA = await p1.evaluate(() => (document.getElementById('record-banner').textContent || '').indexOf('短纪录A') >= 0);
     const bannerBox = await p1.evaluate(() => {
-      const b = document.getElementById('record-banner').getBoundingClientRect();
+      const rec = document.getElementById('record-banner');
       const tb = document.querySelector('.topbar').getBoundingClientRect();
-      const shown = document.getElementById('record-banner').classList.contains('show');
-      const pad = getComputedStyle(document.body).paddingTop;
-      return { shown, bannerBottom: Math.round(b.bottom), topbarTop: Math.round(tb.top), pad };
+      return { shown: rec.classList.contains('show'), text: (rec.textContent || '').slice(0, 24), bannerBottom: Math.round(rec.getBoundingClientRect().bottom), topbarTop: Math.round(tb.top), pad: getComputedStyle(document.body).paddingTop };
     });
     check('横幅显示时不遮挡顶栏', bannerBox.shown && bannerBox.topbarTop >= bannerBox.bannerBottom - 1, JSON.stringify(bannerBox));
+    check('新的纪录横幅不挤掉正在播放的那条（排队播放）', stillA === true, JSON.stringify(bannerBox.text));
+    const advanced = await waitFor(async () => /短纪录B/.test(await p1.textContent('#record-banner')), { timeout: 20000, interval: 400 }).catch(() => false);
+    check('第一条播完后自动接上第二条（顺序播放）', advanced === true, String(advanced));
+    // 公告轨：独立成行 + 自定义颜色
+    const adminLoginB = await post('/api/admin/login', { username: 'lay_seller', password: 'abcd1234' });
+    if (adminLoginB.data && adminLoginB.data.token) {
+      await post('/api/admin/banner/add', { token: adminLoginB.data.token, content: 'QA 公告·红色', duration: 8, color: '#ef4444' });
+      await waitFor(async () => (await p1.$$('#notice-banner.show')).length === 1, { timeout: 10000 }).catch(() => {});
+      const lane2 = await p1.evaluate(() => {
+        const not = document.getElementById('notice-banner');
+        const rec = document.getElementById('record-banner');
+        const tb = document.querySelector('.topbar').getBoundingClientRect();
+        return {
+          notShown: not.classList.contains('show'), bg: getComputedStyle(not).backgroundColor,
+          notBottom: Math.round(not.getBoundingClientRect().bottom), recShown: rec.classList.contains('show'),
+          topbarTop: Math.round(tb.top), bodyPad: getComputedStyle(document.body).paddingTop,
+        };
+      });
+      check('公告使用独立轨道（与纪录轨互不干扰）', lane2.notShown === true, JSON.stringify(lane2));
+      check('公告自定义颜色生效（#ef4444）', /239, 68, 68/.test(lane2.bg), String(lane2.bg));
+      check('两条轨道都在顶部状态栏之上（整体下移不遮挡）', lane2.topbarTop >= lane2.notBottom - 1 && parseInt(lane2.bodyPad, 10) >= 34, JSON.stringify(lane2));
+      await post('/api/admin/banner/clear', { token: adminLoginB.data.token });
+    } else {
+      check('管理员登录可用（横幅双轨前置）', false, JSON.stringify(adminLoginB.data));
+    }
 
     // —— 管理后台「组件生成」：roll 模型保存（回归：单选框缺 value 被服务器判为未知模型） ——
     section('管理后台组件生成 · roll 模型');
@@ -1319,8 +1352,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
         document.getElementById('bn-add').click();
       });
       await sleep(1500);
-      const marqueeShown = await p1.evaluate(() => !!document.querySelector('#record-banner.show'));
-      check('玩家端收到新公告并开始滚播', marqueeShown === true);
+      const marqueeShown = await waitFor(async () => (await p1.$$('#notice-banner.show')).length === 1, { timeout: 10000 }).catch(() => false);
+      check('玩家端收到新公告并在公告轨开始滚播', marqueeShown === true, String(marqueeShown));
       await clickAdminNav('横幅管理');
       await sleep(1200);
       const liveTxt = await pa.evaluate(() => { const n = document.getElementById('bn-live'); return n ? n.textContent.replace(/\s+/g, ' ') : ''; });
@@ -1328,8 +1361,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('后台「当前滚播」列出观看人数与在线数', /观看人数/.test(liveTxt) && /在线/.test(liveTxt), liveTxt.slice(0, 140));
       await pa.evaluate(() => { const b = document.querySelector('[data-stop]'); if (b) b.click(); });
       await sleep(1300);
-      const marqueeAfter = await p1.evaluate(() => !!document.querySelector('#record-banner.show'));
-      check('「停止滚播」后玩家端横幅立即收起', marqueeAfter === false);
+      const marqueeAfter = await waitFor(async () => (await p1.$$('#notice-banner.show')).length === 0, { timeout: 6000, interval: 200 }).catch(() => false);
+      check('「停止滚播」后玩家端公告立即收起', marqueeAfter === true, String(marqueeAfter));
       await pa.evaluate(() => { document.getElementById('bn-clear').click(); });
       await sleep(400);
       await pa.evaluate(() => { const y = document.querySelector('.cf-yes'); if (y) y.click(); });

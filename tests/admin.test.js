@@ -565,6 +565,18 @@ function waitReady() {
   await sleep(350);
   check('在线玩家收到 bannerStop 事件', sink2b.some(x => x.ev.type === 'bannerStop' && x.ev.id === bnId), sink2b.slice(-5).map(x => x.ev.type).join(','));
   check('停止后滚播列表不再显示该横幅', !((await GET(B + '/api/admin/banner?token=' + TOKA)).data.playing || []).some(p => p.id === bnId));
+  // 公告颜色：每条可自定义 + 默认色可配
+  check('非法颜色被拒 400', (await POST(B + '/api/admin/banner/add', { token: TOKA, content: 'x', color: 'not-a-color' })).status === 400);
+  const bnColor = await POST(B + '/api/admin/banner/add', { token: TOKA, content: '彩色公告', duration: 10, color: '#EF4444' });
+  check('发布带颜色的公告成功（归一化小写）', bnColor.status === 200 && bnColor.data.banner.color === '#ef4444', JSON.stringify(bnColor.data.banner));
+  check('公开横幅接口带上颜色', ((await GET(B + '/api/banner')).data.banners || []).some(b => b.color === '#ef4444'));
+  const bnUpd = await POST(B + '/api/admin/banner/update', { token: TOKA, id: bnColor.data.banner.id, color: '#22c55e' });
+  check('修改公告颜色成功', bnUpd.status === 200 && bnUpd.data.banner.color === '#22c55e', JSON.stringify(bnUpd.data.banner));
+  check('非法颜色修改被拒 400', (await POST(B + '/api/admin/banner/update', { token: TOKA, id: bnColor.data.banner.id, color: 'red' })).status === 400);
+  check('非管理员修改公告颜色被拒 403', (await POST(B + '/api/admin/banner/update', { token: TK2B, id: bnColor.data.banner.id, color: '#000000' })).status === 403);
+  const ncCfg = await POST(B + '/api/admin/banner/cfg', { token: TOKA, blink: false, noticeColor: '#38BDF8' });
+  check('公告默认颜色可配置', ncCfg.status === 200 && ncCfg.data.cfg.noticeColor === '#38bdf8', JSON.stringify(ncCfg.data.cfg));
+  check('非法默认颜色被拒 400', (await POST(B + '/api/admin/banner/cfg', { token: TOKA, noticeColor: '#zz' })).status === 400);
   check('清空横幅队列', (await POST(B + '/api/admin/banner/clear', { token: TOKA })).status === 200);
   check('清空后队列为空', ((await GET(B + '/api/banner')).data.banners || []).length === 0);
 

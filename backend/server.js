@@ -936,6 +936,13 @@ function saveSpotCfg(groundId, spotId, patch) {
 // 钓场配置变化：向游戏端广播整份目录（图鉴产地/渔场页即时同步）
 function broadcastGroundcfg() { broadcast({ type: 'groundcfg', grounds: D.GROUNDS }); }
 
+// 横幅颜色校验（#rgb / #rrggbb；空串表示用样式默认渐变）
+function validBannerColor(v) {
+  const t = String(v == null ? '' : v).trim();
+  if (!t) return '';
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(t) ? t.toLowerCase() : null;
+}
+
 // ---- 横幅滚播跟踪（内存态，不落盘）：客户端在横幅开始播放时上报 ----
 // bannerPlaying = { [bannerId]: { watchers: { playerKey: lastAt }, lastAt } }
 const bannerPlaying = {};
@@ -2306,10 +2313,12 @@ const server = http.createServer(function (req, res) {
       if (!content) return apiResp(res, 400, { error: '横幅内容不能为空' });
       const dur = Number(d.duration);
       if (!isFinite(dur) || dur < 1 || dur > 3600) return apiResp(res, 400, { error: '时长需在 1-3600 秒之间' });
+      const color = validBannerColor(d.color);
+      if (color === null) return apiResp(res, 400, { error: '颜色需为 #RGB 或 #RRGGBB 格式' });
       const banner = {
         id: 'bn_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         seq: world.bannerSeq++, content: content, duration: Math.round(dur * 10) / 10,
-        createdAt: Date.now(), by: a.rec.name,
+        color: color, createdAt: Date.now(), by: a.rec.name,
       };
       world.banners = world.banners || [];
       world.banners.push(banner);
@@ -2359,12 +2368,46 @@ const server = http.createServer(function (req, res) {
       let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
-      world.bannerCfg = Object.assign({ blink: false, blinkTitle: '📢 有新公告' }, world.bannerCfg || {});
+      world.bannerCfg = Object.assign({ blink: false, blinkTitle: '📢 有新公告', noticeColor: '' }, world.bannerCfg || {});
       if (d.blink != null) world.bannerCfg.blink = !!d.blink;
+      if (d.noticeColor !== undefined) {
+        const nc = validBannerColor(d.noticeColor);
+        if (nc === null) return apiResp(res, 400, { error: '公告默认颜色需为 #RGB 或 #RRGGBB 格式' });
+        world.bannerCfg.noticeColor = nc;
+      }
       if (d.blinkTitle != null) world.bannerCfg.blinkTitle = String(d.blinkTitle).slice(0, 40);
       saveConfig();
       broadcast({ type: 'banner', banners: world.banners || [], cfg: world.bannerCfg });
       apiResp(res, 200, { ok: true, cfg: world.bannerCfg });
+    });
+    return;
+  }
+  // 修改已发布横幅（颜色 / 内容 / 时长）
+  if (p === '/api/admin/banner/update' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const bn = (world.banners || []).find(function (x) { return x.id === d.id; });
+      if (!bn) return apiResp(res, 404, { error: '横幅不存在' });
+      if (d.content != null) {
+        const c = String(d.content).trim().slice(0, 200);
+        if (!c) return apiResp(res, 400, { error: '横幅内容不能为空' });
+        bn.content = c;
+      }
+      if (d.duration != null) {
+        const dur = Number(d.duration);
+        if (!isFinite(dur) || dur < 1 || dur > 3600) return apiResp(res, 400, { error: '时长需在 1-3600 秒之间' });
+        bn.duration = Math.round(dur * 10) / 10;
+      }
+      if (d.color !== undefined) {
+        const color = validBannerColor(d.color);
+        if (color === null) return apiResp(res, 400, { error: '颜色需为 #RGB 或 #RRGGBB 格式' });
+        bn.color = color;
+      }
+      saveConfig();
+      broadcast({ type: 'banner', banners: world.banners, cfg: world.bannerCfg || {} });
+      apiResp(res, 200, { ok: true, banner: bn });
     });
     return;
   }
