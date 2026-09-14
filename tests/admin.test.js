@@ -274,6 +274,16 @@ async function waitReady() {
   check('组件试算接口可用', sim.status === 200 && sim.data.quality.epic === 1000, JSON.stringify(sim.data.quality));
   check('恢复默认组件配置', (await POST(B + '/api/admin/component/reset', { token: TOKA })).status === 200);
   check('非管理员改组件配置被拒 403', (await POST(B + '/api/admin/component/config', { token: TK2, rollModel: 'linear' })).status === 403);
+  // roll 模型三档都要能保存（回归：单选框缺 value 时前端会传 "on" 被拒）
+  for (const rm of ['linear', 'normal', 'skew']) {
+    check('可保存 roll 模型 ' + rm, (await POST(B + '/api/admin/component/config', { token: TOKA, rollModel: rm })).status === 200);
+    check('服务器已应用 roll 模型 ' + rm, (await GET(B + '/api/admin/world?token=' + TOKA)).data.componentCfg.rollModel === rm);
+  }
+  // 钓场目录兜底接口：后进入/刷新的玩家可拿到含增益的最新目录
+  const gPub = await GET(B + '/api/grounds');
+  check('GET /api/grounds 返回钓场目录', gPub.status === 200 && Array.isArray(gPub.data.grounds) && gPub.data.grounds.length === 4);
+  const gDock = gPub.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock');
+  check('/api/grounds 含钓点增益（⚡ 标记数据源）', Array.isArray(gDock.buffs) && gDock.buffs.length > 0, JSON.stringify(gDock.buffs));
 
   // ---------- 9c. 横幅队列 ----------
   section('9c. 横幅队列');

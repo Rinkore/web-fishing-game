@@ -122,6 +122,10 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const initMsg = sinkA.find(m => m.type === 'init');
   check('init 快照携带钓场目录（4 钓场）', !!(initMsg && Array.isArray(initMsg.groundCfg) && initMsg.groundCfg.length === 4), initMsg ? String(initMsg.groundCfg && initMsg.groundCfg.length) : 'no init');
   check('init 钓场目录含掉落池条目', !!(initMsg && initMsg.groundCfg[0].spots[0].pool.length > 0));
+  // 兜底接口：前端进入游戏时主动拉取钓场目录（后进入/刷新的玩家也能看到增益）
+  const gr = await GET('http://localhost:' + P1 + '/api/grounds');
+  check('GET /api/grounds 返回完整钓场目录', gr.status === 200 && Array.isArray(gr.data.grounds) && gr.data.grounds.length === 4);
+  check('/api/grounds 目录含钓点与掉落池', !!(gr.data.grounds[0].spots[0] && gr.data.grounds[0].spots[0].pool.length > 0));
   check('非法钓点被拒 400', (await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'stillwater', spotId: 'not-exist' })).status === 400);
   check('活动钓场（锁定）被拒 400', (await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'frostmoon', spotId: 'ice' })).status === 400);
   const fs1 = await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'stillwater', spotId: 'dock' });

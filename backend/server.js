@@ -1518,6 +1518,11 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/version' && req.method === 'GET') {
     return apiResp(res, 200, { version: D.VERSION, build: D.BUILD, componentCfg: D.getComponentCfg ? D.getComponentCfg() : null });
   }
+  // ---- 钓场目录（公开只读；含管理后台保存的掉落池/增益/锁定覆盖） ----
+  // 前端在进入游戏时主动拉取一次，作为 SSE init 之外的兜底，确保后进入/刷新的玩家也能拿到最新目录。
+  if (p === '/api/grounds' && req.method === 'GET') {
+    return apiResp(res, 200, { grounds: D.GROUNDS });
+  }
 
   // ---- 反馈意见：查询 CD 状态 / 提交（默认 24h CD；可花 10000 金币立即结束 CD）----
   function feedbackStatusOf(key) {

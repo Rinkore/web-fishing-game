@@ -35,6 +35,16 @@ function post(p, body) {
     r.write(data); r.end();
   });
 }
+function get(p) {
+  return new Promise(res => {
+    const r = http.request({ hostname: 'localhost', port: PORT, path: p, method: 'GET' }, rs => {
+      let d = ''; rs.on('data', c => d += c);
+      rs.on('end', () => { let j = null; try { j = JSON.parse(d); } catch (e) {} res({ status: rs.statusCode, data: j }); });
+    });
+    r.on('error', () => res({ status: 0 }));
+    r.end();
+  });
+}
 
 async function login(page, token) {
   await page.goto('http://localhost:' + PORT + '/', { waitUntil: 'load' });
@@ -568,6 +578,33 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       return { shown, bannerBottom: Math.round(b.bottom), topbarTop: Math.round(tb.top), pad };
     });
     check('横幅显示时不遮挡顶栏', bannerBox.shown && bannerBox.topbarTop >= bannerBox.bannerBottom - 1, JSON.stringify(bannerBox));
+
+    // —— 管理后台「组件生成」：roll 模型保存（回归：单选框缺 value 被服务器判为未知模型） ——
+    section('管理后台组件生成 · roll 模型');
+    const pa = await ctx.newPage();
+    const adminErrs = []; pa.on('pageerror', e => adminErrs.push(e.message));
+    const adminLogin = await post('/api/admin/login', { username: 'lay_seller', password: 'abcd1234' });
+    if (adminLogin.data && adminLogin.data.token) {
+      await pa.goto('http://localhost:' + PORT + '/admin.html', { waitUntil: 'load' });
+      await pa.evaluate(t => localStorage.setItem('fishing_admin_token', t), adminLogin.data.token);
+      await pa.reload({ waitUntil: 'load' });
+      await sleep(1200);
+      await pa.evaluate(() => { const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes('组件生成')); if (b) b.click(); });
+      await sleep(900);
+      const radios = await pa.$$eval('input[name=rm]', els => els.map(e => e.value));
+      check('roll 模型单选框都有非空 value', radios.length === 3 && radios.every(v => v && v !== 'on'), JSON.stringify(radios));
+      await pa.evaluate(() => { const c = document.querySelector('.radio-card[data-rm=normal]'); if (c) c.click(); });
+      await sleep(150);
+      await pa.evaluate(() => { document.getElementById('cmp-save').click(); });
+      await sleep(800);
+      const state = await pa.textContent('#cmp-state');
+      check('保存 roll 模型成功（非「未知的 roll 模型」）', /已保存/.test(state) && !/未知/.test(state), state);
+      const saved = await get('/api/admin/world?token=' + adminLogin.data.token);
+      check('服务器已应用所选 roll 模型（normal）', saved.data.componentCfg && saved.data.componentCfg.rollModel === 'normal', JSON.stringify(saved.data.componentCfg && saved.data.componentCfg.rollModel));
+      check('管理后台无页面错误', adminErrs.length === 0, adminErrs.join(' | '));
+    } else {
+      check('管理后台登录可用（前置条件）', false, JSON.stringify(adminLogin.data));
+    }
 
     check('全程无页面错误', errs.length === 0, errs.join(' | '));
 

@@ -671,12 +671,13 @@ window.UI = (function () {
     const counts = el('div', 'ground-counts');
     D.GROUNDS.forEach(function (g) {
       const c = (st.groundCounts && st.groundCounts[g.id]) || 0;
-      const box = el('div', 'gc-box' + (g.locked ? ' locked' : '') + (c > 0 ? ' live' : '') + (groundFilterId === g.id ? ' sel' : ''));
-      box.innerHTML = '<div class="gcb-name">' + esc(g.name) + '</div>' +
+      const buffCount = (g.spots || []).filter(function (sp) { return sp.buffs && sp.buffs.length; }).length;
+      const box = el('div', 'gc-box' + (g.locked ? ' locked' : '') + (c > 0 ? ' live' : '') + (groundFilterId === g.id ? ' sel' : '') + (buffCount ? ' has-buff' : ''));
+      box.innerHTML = '<div class="gcb-name">' + esc(g.name) + (buffCount ? ' <span class="spot-buff-mark" title="有 ' + buffCount + ' 个钓点带增益">⚡</span>' : '') + '</div>' +
         '<div class="gcb-num">' + c + '<span class="u">人</span></div>' +
-        (g.locked ? '' : '<div class="gcb-hint">点击查看</div>');
+        (g.locked ? '' : '<div class="gcb-hint">' + (buffCount ? '⚡ ' + buffCount + ' 个钓点有增益' : '点击查看') + '</div>');
       if (!g.locked) {
-        box.title = '点击查看「' + g.name + '」的动态';
+        box.title = '点击查看「' + g.name + '」的动态' + (buffCount ? '（' + buffCount + ' 个钓点带增益）' : '');
         box.addEventListener('click', function () { groundFilterId = (groundFilterId === g.id) ? null : g.id; renderView(); });
       }
       counts.appendChild(box);
@@ -2317,6 +2318,8 @@ window.UI = (function () {
     renderView();
     // 拉取横幅队列（管理后台公告）并在该会话首次播放
     if (window.Net.fetchBanners) window.Net.fetchBanners();
+    // 主动拉取钓场目录：兜底确保后进入/刷新的玩家也拿到含增益的最新目录（钓点 ⚡ 标记）
+    if (window.Net.fetchGrounds) window.Net.fetchGrounds();
   }
   function onFishingTick() { if (currentView === 'fishing') { renderTopbar(); renderFishing(); } }
 

@@ -103,6 +103,15 @@ window.Net = (function () {
     }
     return r;
   });
+  // 钓场目录（公开只读）：进入游戏时主动拉取一次，作为 SSE init 的兜底，
+  // 确保后进入或刷新过的玩家也能拿到含增益/掉落池覆盖的最新目录（钓点 ⚡ 标记等）。
+  const fetchGrounds = () => apiFetch('GET', '/api/grounds').then(function (r) {
+    if (r && r.ok && r.data && r.data.grounds) {
+      applyGroundCfg(r.data.grounds);
+      if (window.UI) window.UI.refreshAll('groundcfg');
+    }
+    return r;
+  });
 
   // ---- 按需拉取：进入对应页面时才请求该页数据（不在的页面零请求） ----
   const fetchShop = () => apiFetch('GET', '/shop').then(function (r) {
@@ -280,7 +289,7 @@ window.Net = (function () {
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
     fetchFeedback: fetchFeedback,
-    fetchBanners: fetchBanners,
+    fetchBanners: fetchBanners, fetchGrounds: fetchGrounds,
     feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,
     sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,
