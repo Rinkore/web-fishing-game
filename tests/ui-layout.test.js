@@ -709,6 +709,34 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(200);
     const sellLabels = await p1.$$eval('.shop-card .mini', els => els.map(e => e.textContent));
     check('出售按钮按设定数量显示', sellLabels.some(t => /出售 \d+ 个/.test(t)), JSON.stringify(sellLabels.slice(0, 3)));
+
+    // —— 自动售出管理栏（右栏）+ 双向排序 ——
+    check('商店有自动售出管理栏（右栏）', (await p1.$$('#shop-as-panel')).length === 1);
+    const asRows = await p1.$$('#as-list .as-row');
+    check('右栏逐鱼设置列表覆盖全部鱼类（41）', asRows.length === 41, String(asRows.length));
+    check('逐鱼行带「设置」入口', (await p1.$$('#as-list .as-row button')).length === 41, String((await p1.$$('#as-list .as-row button')).length));
+    // 双向排序：点「价格」降序（首卡最高），再点同键反向为升序（首卡最低）
+    const cardPrices = () => p1.$$eval('#shop-panel .shop-grid .shop-card', els => els.map(e => {
+      const m = /💰\s*(\d+)/.exec(e.querySelector('.sc-price').textContent);
+      return m ? Number(m[1]) : 0;
+    }));
+    await p1.evaluate(() => { document.querySelector('.bf-cat[data-ss="price"]').click(); });
+    const descP = await cardPrices();
+    check('点「价格」按价格降序', descP.length >= 30 && descP.every((v, i) => i === 0 || v <= descP[i - 1]), JSON.stringify(descP.slice(0, 6)));
+    check('排序按钮显示降序箭头', /价格 ↓/.test(await p1.evaluate(() => { const b = document.querySelector('.bf-cat[data-ss="price"]'); return b ? b.textContent : ''; })));
+    await p1.evaluate(() => { document.querySelector('.bf-cat[data-ss="price"]').click(); });
+    const ascP = await cardPrices();
+    check('再点「价格」反向为升序', ascP.length >= 30 && ascP.every((v, i) => i === 0 || v >= ascP[i - 1]), JSON.stringify(ascP.slice(0, 6)));
+    check('排序按钮显示升序箭头', /价格 ↑/.test(await p1.evaluate(() => { const b = document.querySelector('.bf-cat[data-ss="price"]'); return b ? b.textContent : ''; })));
+    // 输入框不再被行情广播清空（回归：上鱼/售出会触发 shop 广播重绘，但只刷网格）
+    await p1.evaluate(() => { document.getElementById('sa-pct').value = '175'; });
+    await post('/api/dev/catch', { token: tokS, item: { kind: 'fish', id: 'crucian', rarity: 'common' } });
+    await post('/api/sell', { token: tokS, id: 'crucian', qty: 1 });   // 触发 broadcastShop
+    await sleep(500);
+    check('行情广播后自动售出输入不被清空', await p1.evaluate(() => document.getElementById('sa-pct').value) === '175',
+      await p1.evaluate(() => document.getElementById('sa-pct').value));
+    check('行情广播后商品网格仍正常渲染', (await p1.$$('#shop-panel .shop-grid .shop-card')).length >= 30,
+      String((await p1.$$('#shop-panel .shop-grid .shop-card')).length));
     // 切页再回来，数量应保留（全局生效直到被修改）
     await clickNav(p1, '背包');
     await clickNav(p1, '系统商店');

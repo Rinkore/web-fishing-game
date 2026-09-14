@@ -263,6 +263,21 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .shop-card .sc-auto { font-size: 11px; color: var(--big); margin-left: 6px; }
 .shop-card .sc-kind { font-size: 11px; color: var(--muted); margin-left: 6px; font-weight: 500; }
 .shop-card .as-btn { position: absolute; top: 8px; right: 8px; }
+/* 系统商店两栏：左商品网格 / 右自动售出管理 */
+.shop-cols { display: flex; gap: 18px; align-items: flex-start; }
+.shop-colmain { flex: 1; min-width: 0; }
+.shop-colside { width: 340px; flex: none; border-left: 1px solid var(--line); padding-left: 16px; }
+.as-list { max-height: 520px; overflow: auto; }
+.as-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px dashed var(--line); font-size: 13px; }
+.as-row.on { background: rgba(251,191,36,.07); border-radius: 6px; }
+.as-row .as-name { font-weight: 600; min-width: 76px; }
+.as-row .as-meta { color: var(--muted); font-size: 12px; flex: 1; }
+.as-row .as-rule { color: var(--big); font-size: 12px; text-align: right; }
+@media (max-width: 1100px) {
+  .shop-cols { flex-direction: column; }
+  .shop-colside { width: auto; border-left: none; padding-left: 0; border-top: 1px solid var(--line); padding-top: 14px; }
+  .as-list { max-height: 340px; }
+}
 .sc-name { font-size: 14px; font-weight: 600; }
 .sc-price { font-size: 18px; font-weight: 800; margin: 6px 0 8px; display: flex; align-items: baseline; gap: 8px; }
 .sc-price.high { color: var(--accent); }

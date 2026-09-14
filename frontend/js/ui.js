@@ -1224,7 +1224,7 @@ window.UI = (function () {
   // 出售数量：对整个系统商店生效，直到下一次被修改（模块级，重绘与切换页面都保留）
   let sellQty = 1;
   let shopAuto = { loaded: false, all: null, fish: {} }; // 自动售出规则（来自服务器）
-  let shopCat = 'all'; let shopOwnedOnly = false; let shopAutoOnly = false; let shopSort = 'default'; // 商店筛选/排序
+  let shopCat = 'all'; let shopOwnedOnly = false; let shopAutoOnly = false; let shopSort = 'default'; let shopSortDir = 'desc'; // 商店筛选/排序（再点同键反向）
 
   // 交易记录合并：同一账号 60 秒内的多笔合为一笔（数量累加、价格取最新）
   function mergeTrades(trades) {
@@ -1451,120 +1451,211 @@ window.UI = (function () {
   }
 
   function renderShop() {
-    const main = $('main');
     const st = S();
-    main.innerHTML = '';
-    const panel = el('div', 'panel wide');
-    panel.innerHTML = '<h2>🏪 系统商店 <span class="subtitle">供需定价 · 单乘数模型：每卖一件约 -0.7% · 闲置时向 2 倍缓慢回升 · 点击商品查看走势与交易流水</span></h2>';
-    const colMain = el('div', 'col-main');
-
-    // 自动售出规则：首次进店拉取一次，之后以保存响应为准（模块级保留，广播重绘不打接口）
+    const main = $('main');
+    // 首次进店：先拉自动售出规则，避免面板显示成「未设置」
     if (!shopAuto.loaded) {
+      // 占位面板不带 id：否则规则拉取完成后会误判「骨架已建」而跳过，商店只剩「加载中…」
+      main.innerHTML = '';
+      const p0 = el('div', 'panel wide');
+      p0.textContent = '加载中…';
+      main.appendChild(p0);
       window.Net.autoSellGet().then(function (r) {
-        if (r && r.ok) { shopAuto.loaded = true; shopAuto.all = r.data.all; shopAuto.fish = r.data.fish || {}; if (currentView === 'shop') renderView(); }
+        if (r && r.ok) { shopAuto.loaded = true; shopAuto.all = r.data.all; shopAuto.fish = r.data.fish || {}; }
+        if (currentView === 'shop') renderShop();
       }).catch(function () {});
+      return;
+    }
+    // 骨架只在进入视图时建一次；上鱼/行情广播（shop/assets）只刷新网格与右栏列表，
+    // 自动售出面板的输入框不再被广播清掉（此前与「后台输入被自动刷新清空」同源的老毛病）。
+    if (!document.querySelector('#shop-panel .shop-grid')) {
+      const panel = el('div', 'panel wide');
+      panel.id = 'shop-panel';
+      panel.innerHTML = '<h2>🏪 系统商店 <span class="subtitle">供需定价 · 单乘数模型：每卖一件约 -0.7% · 闲置时向 2 倍缓慢回升 · 点击商品查看走势与交易流水</span></h2>';
+      const cols = el('div', 'shop-cols');
+      const colMain = el('div', 'shop-colmain');
+
+      // —— 出售数量（全局生效，模块级保留）——
+      const qtyBar = el('div', 'shop-qtybar');
+      qtyBar.innerHTML = '<span class="sqb-label">出售数量</span>';
+      const minus = el('button', 'sqb-btn', '−');
+      const qnum = el('input', 'sqb-num');
+      qnum.type = 'number'; qnum.min = '1'; qnum.value = String(sellQty);
+      const plus = el('button', 'sqb-btn', '+');
+      function setQty(v) {
+        v = Math.max(1, Math.min(9999, Math.floor(Number(v) || 1)));
+        sellQty = v;
+        if (qnum.value !== String(v)) qnum.value = String(v);
+      }
+      minus.addEventListener('click', function () { setQty(sellQty - 1); });
+      plus.addEventListener('click', function () { setQty(sellQty + 1); });
+      qnum.addEventListener('input', function () { setQty(qnum.value); });
+      qnum.addEventListener('blur', function () { setQty(qnum.value); });
+      qtyBar.appendChild(minus); qtyBar.appendChild(qnum); qtyBar.appendChild(plus);
+      qtyBar.appendChild(el('span', 'sqb-hint', '该数量对全商店生效，直到你再次修改'));
+      colMain.appendChild(qtyBar);
+
+      // —— 筛选栏（类别 / 持有 / 自动售出 / 排序；模块级保留）——
+      const fbar = el('div', 'shop-fbar');
+      fbar.appendChild(el('span', 'bf-sort-label', '类别'));
+      [['all', '全部'], ['fish', '🐟 鱼'], ['material', '🧵 材料']].forEach(function (kv) {
+        const b = el('button', 'bf-cat' + (shopCat === kv[0] ? ' on' : ''), kv[1]);
+        b.setAttribute('data-sc', kv[0]);
+        b.addEventListener('click', function () { if (shopCat !== kv[0]) { shopCat = kv[0]; renderShop(); } });
+        fbar.appendChild(b);
+      });
+      const ownChk = (function () {
+        const l = el('label', 'chk'); const c = el('input'); c.type = 'checkbox'; c.checked = !!shopOwnedOnly;
+        l.appendChild(c); l.appendChild(el('span', null, '仅显示我持有的'));
+        return { wrap: l, box: c };
+      })();
+      ownChk.box.addEventListener('change', function () { shopOwnedOnly = ownChk.box.checked; renderShop(); });
+      fbar.appendChild(ownChk.wrap);
+      const autoChk = (function () {
+        const l = el('label', 'chk'); const c = el('input'); c.type = 'checkbox'; c.checked = !!shopAutoOnly;
+        l.appendChild(c); l.appendChild(el('span', null, '🤖 仅显示已设自动售出'));
+        return { wrap: l, box: c };
+      })();
+      autoChk.box.addEventListener('change', function () { shopAutoOnly = autoChk.box.checked; renderShop(); });
+      fbar.appendChild(autoChk.wrap);
+      fbar.appendChild(el('span', 'bf-sort-label', '排序'));
+      [['default', '目录顺序'], ['price', '价格'], ['pct', '涨幅'], ['have', '持有']].forEach(function (kv) {
+        const active = shopSort === kv[0];
+        const arrow = (active && kv[0] !== 'default') ? (shopSortDir === 'desc' ? ' ↓' : ' ↑') : '';
+        const b = el('button', 'bf-cat' + (active ? ' on' : ''), kv[1] + arrow);
+        b.setAttribute('data-ss', kv[0]);
+        b.setAttribute('data-label', kv[1]);
+        b.title = kv[0] === 'default' ? '' : '再次点击可反向排序';
+        b.addEventListener('click', function () {
+          if (shopSort === kv[0]) { if (kv[0] !== 'default') shopSortDir = shopSortDir === 'desc' ? 'asc' : 'desc'; }
+          else { shopSort = kv[0]; shopSortDir = 'desc'; }
+          renderShop();
+        });
+        fbar.appendChild(b);
+      });
+      colMain.appendChild(fbar);
+
+      // —— 商品网格（广播只刷新这一块）——
+      const grid = el('div', 'shop-grid');
+      colMain.appendChild(grid);
+
+      // —— 右栏：自动售出管理 ——
+      const colSide = el('div', 'shop-colside');
+      const asPanel = el('div', 'shop-autosell');
+      asPanel.id = 'shop-as-panel';
+      const a = shopAuto.all;
+      asPanel.innerHTML =
+        '<div class="sa-head"><b>🤖 自动售出</b></div>' +
+        '<div class="hint" style="margin-bottom:8px">满足任一条件时，背包里的鱼按系统行情自动卖出（钓到即卖；价格闲置回升越过阈值也会卖）。</div>' +
+        '<label class="sa-switch"><input type="checkbox" id="sa-all-on"' + (a ? ' checked' : '') + '><span>全部鱼自动售出</span></label>' +
+        '<div class="sa-fld" style="margin-top:6px">基准 ≥ <input id="sa-pct" class="ipt mk-num" type="number" min="1" value="' + (a && a.minPct != null ? a.minPct : '') + '" placeholder="如 150">%</div>' +
+        '<div class="sa-fld">价格 ≥ <input id="sa-price" class="ipt mk-num" type="number" min="1" value="' + (a && a.minPrice != null ? a.minPrice : '') + '" placeholder="如 200">💰</div>' +
+        '<div class="sa-fld" title="行情在阈值附近回落时，允许提前「阈值 − 浮动」成交，避免错过">浮动：百分比 − <input id="sa-slack-pct" class="ipt mk-num" type="number" min="0" value="' + (a && a.slackPct != null ? a.slackPct : 0) + '">%</div>' +
+        '<div class="sa-fld">价格 − <input id="sa-slack-price" class="ipt mk-num" type="number" min="0" value="' + (a && a.slackPrice != null ? a.slackPrice : 0) + '">💰</div>' +
+        '<div class="sa-row" style="margin-top:8px">' +
+        '<button class="btn mini primary" id="sa-save">保存全部鱼规则</button>' +
+        '<button class="btn mini" id="sa-clear">清除</button></div>' +
+        '<div id="sa-state" class="hint" style="margin-top:6px">' + esc(allRuleText()) + '</div>';
+      colSide.appendChild(asPanel);
+      colSide.appendChild(el('div', 'cd-sub', '🐟 逐鱼设置（单独设置优先于全部鱼）'));
+      colSide.appendChild(el('div', 'hint', '每条鱼可单独设阈值；列表按目录顺序，价格随行情实时更新。'));
+      const asList = el('div', 'as-list');
+      asList.id = 'as-list';
+      colSide.appendChild(asList);
+      cols.appendChild(colMain);
+      cols.appendChild(colSide);
+      panel.appendChild(cols);
+      main.innerHTML = '';
+      main.appendChild(panel);
+
+      // —— 事件绑定（骨架一次，随骨架存活）——
+      asPanel.querySelector('#sa-save').onclick = function () {
+        const on = asPanel.querySelector('#sa-all-on').checked;
+        const pct = asPanel.querySelector('#sa-pct').value;
+        const pri = asPanel.querySelector('#sa-price').value;
+        if (on && pct === '' && pri === '') { toast('请至少填写一个阈值（基准百分比或价格）', true); return; }
+        const spct = asPanel.querySelector('#sa-slack-pct').value;
+        const spri = asPanel.querySelector('#sa-slack-price').value;
+        window.Net.autoSellSet('all', on && pct !== '' ? pct : null, on && pri !== '' ? pri : null,
+          on && pct !== '' ? (spct === '' ? 0 : spct) : 0, on && pri !== '' ? (spri === '' ? 0 : spri) : 0).then(function (r) {
+          if (!r || !r.ok) { toast((r && r.data.error) || '保存失败', true); return; }
+          shopAuto.all = r.data.all; shopAuto.fish = r.data.fish || {};
+          const stateEl = document.getElementById('sa-state');
+          if (stateEl) stateEl.textContent = allRuleText();
+          if (r.data.sold) toast('规则已生效：' + r.data.sold.length + ' 种鱼达标并自动售出');
+          else toast('全部鱼自动售出规则已保存');
+          renderShopSide(); renderShopGrid();
+        });
+      };
+      asPanel.querySelector('#sa-clear').onclick = function () {
+        window.Net.autoSellSet('all', null, null).then(function (r) {
+          if (!r || !r.ok) { toast((r && r.data.error) || '清除失败', true); return; }
+          shopAuto.all = null;
+          const stateEl = document.getElementById('sa-state');
+          if (stateEl) stateEl.textContent = allRuleText();
+          toast('已清除全部鱼规则');
+          renderShopSide(); renderShopGrid();
+        });
+      };
     }
 
-    // —— 自动售出面板 ——
-    const a = shopAuto.all;
-    const autoPanel = el('div', 'panel shop-autosell');
-    autoPanel.innerHTML =
-      '<div class="sa-head"><b>🤖 自动售出</b>' +
-      '<span class="hint">满足任一条件时，背包里的鱼按系统行情自动卖出（钓到即卖；价格闲置回升越过阈值也会卖）。单条鱼可在卡片上单独设置，单独设置优先于「全部鱼」。</span></div>' +
-      '<div class="sa-row">' +
-      '<label class="sa-switch"><input type="checkbox" id="sa-all-on"' + (a ? ' checked' : '') + '><span>全部鱼自动售出</span></label>' +
-      '<label class="sa-fld">基准 ≥ <input id="sa-pct" class="ipt mk-num" type="number" min="1" value="' + (a && a.minPct != null ? a.minPct : '') + '" placeholder="如 150">%</label>' +
-      '<label class="sa-fld">或 价格 ≥ <input id="sa-price" class="ipt mk-num" type="number" min="1" value="' + (a && a.minPrice != null ? a.minPrice : '') + '" placeholder="如 200">💰</label>' +
-      '<label class="sa-fld" title="行情在阈值附近回落时，允许提前「阈值 − 浮动」成交，避免错过">浮动：百分比 − <input id="sa-slack-pct" class="ipt mk-num" type="number" min="0" value="' + (a && a.slackPct != null ? a.slackPct : 0) + '">%</label>' +
-      '<label class="sa-fld">价格 − <input id="sa-slack-price" class="ipt mk-num" type="number" min="0" value="' + (a && a.slackPrice != null ? a.slackPrice : 0) + '">💰</label>' +
-      '<button class="btn mini primary" id="sa-save">保存全部鱼规则</button>' +
-      '<button class="btn mini" id="sa-clear">清除</button>' +
-      '<span id="sa-state" class="hint">' + esc(allRuleText()) + '</span></div>';
-    colMain.appendChild(autoPanel);
-    autoPanel.querySelector('#sa-save').onclick = function () {
-      const on = autoPanel.querySelector('#sa-all-on').checked;
-      const pct = autoPanel.querySelector('#sa-pct').value;
-      const pri = autoPanel.querySelector('#sa-price').value;
-      if (on && pct === '' && pri === '') { toast('请至少填写一个阈值（基准百分比或价格）', true); return; }
-      const spct = autoPanel.querySelector('#sa-slack-pct').value;
-      const spri = autoPanel.querySelector('#sa-slack-price').value;
-      window.Net.autoSellSet('all', on && pct !== '' ? pct : null, on && pri !== '' ? pri : null,
-        on && pct !== '' ? (spct === '' ? 0 : spct) : 0, on && pri !== '' ? (spri === '' ? 0 : spri) : 0).then(function (r) {
-        if (!r || !r.ok) { toast((r && r.data.error) || '保存失败', true); return; }
-        shopAuto.all = r.data.all; shopAuto.fish = r.data.fish || {}; shopAuto.loaded = true;
-        if (r.data.sold) toast('规则已生效：' + r.data.sold.length + ' 种鱼达标并自动售出');
-        else toast('全部鱼自动售出规则已保存');
-        renderView();
-      });
-    };
-    autoPanel.querySelector('#sa-clear').onclick = function () {
-      window.Net.autoSellSet('all', null, null).then(function (r) {
-        if (!r || !r.ok) { toast((r && r.data.error) || '清除失败', true); return; }
-        shopAuto.all = null; toast('已清除全部鱼规则'); renderView();
-      });
-    };
+    renderShopSide();
+    renderShopGrid();
+  }
 
-    // —— 出售数量（全局生效，模块级保留）——
-    const qtyBar = el('div', 'shop-qtybar');
-    qtyBar.innerHTML = '<span class="sqb-label">出售数量</span>';
-    const minus = el('button', 'sqb-btn', '−');
-    const qnum = el('input', 'sqb-num');
-    qnum.type = 'number'; qnum.min = '1'; qnum.value = String(sellQty);
-    const plus = el('button', 'sqb-btn', '+');
-    function setQty(v) {
-      v = Math.max(1, Math.min(9999, Math.floor(Number(v) || 1)));
-      sellQty = v;
-      if (qnum.value !== String(v)) qnum.value = String(v);
-    }
-    minus.addEventListener('click', function () { setQty(sellQty - 1); });
-    plus.addEventListener('click', function () { setQty(sellQty + 1); });
-    qnum.addEventListener('input', function () { setQty(qnum.value); });
-    qnum.addEventListener('blur', function () { setQty(qnum.value); });
-    qtyBar.appendChild(minus); qtyBar.appendChild(qnum); qtyBar.appendChild(plus);
-    qtyBar.appendChild(el('span', 'sqb-hint', '该数量对全商店生效，直到你再次修改'));
-    colMain.appendChild(qtyBar);
-
-    // —— 筛选栏（类别 / 持有 / 自动售出 / 排序；模块级保留）——
-    const fbar = el('div', 'shop-fbar');
-    fbar.appendChild(el('span', 'bf-sort-label', '类别'));
-    [['all', '全部'], ['fish', '🐟 鱼'], ['material', '🧵 材料']].forEach(function (kv) {
-      const b = el('button', 'bf-cat' + (shopCat === kv[0] ? ' on' : ''), kv[1]);
-      b.addEventListener('click', function () { if (shopCat !== kv[0]) { shopCat = kv[0]; renderView(); } });
-      fbar.appendChild(b);
+  // 右栏逐鱼规则列表（按钮行，无输入框，可安全随广播重绘）
+  function renderShopSide() {
+    const st = S();
+    const box = document.getElementById('as-list');
+    if (!box) return;
+    const ids = Object.keys(st.shop || {}).filter(function (id) { return itemMeta(id).kind === 'fish'; });
+    if (!ids.length) { box.innerHTML = '<div class="hint">商店暂无鱼类。</div>'; return; }
+    box.innerHTML = ids.map(function (id) {
+      const s = st.shop[id];
+      const meta = itemMeta(id);
+      const pct = s.base ? Math.round(s.price / s.base * 100) : 100;
+      const have = st.inventory[id] || 0;
+      const own = shopAuto.fish[id];
+      const covered = !own && shopAuto.all;
+      const status = own ? ('🤖 ' + esc(autoRuleText(id, 'fish'))) : (covered ? '🤖 全部鱼规则' : '未设置');
+      return '<div class="as-row' + (own ? ' on' : '') + '">' +
+        '<span class="as-name ' + rarityClass(meta.rarity) + '">' + esc(meta.name) + '</span>' +
+        '<span class="as-meta">💰' + s.price + ' · ' + pct + '% · 持有' + have + '</span>' +
+        '<span class="as-rule">' + status + '</span>' +
+        '<button class="mini' + (own ? ' primary-mini' : '') + '" data-as="' + esc(id) + '" title="设置该鱼的自动售出规则">设置</button></div>';
+    }).join('');
+    box.querySelectorAll('[data-as]').forEach(function (b) {
+      b.addEventListener('click', function () { openShopAutoModal(b.getAttribute('data-as')); });
     });
-    const ownChk = (function () {
-      const l = el('label', 'chk'); const c = el('input'); c.type = 'checkbox'; c.checked = !!shopOwnedOnly;
-      l.appendChild(c); l.appendChild(el('span', null, '仅显示我持有的'));
-      return { wrap: l, box: c };
-    })();
-    ownChk.box.addEventListener('change', function () { shopOwnedOnly = ownChk.box.checked; renderView(); });
-    fbar.appendChild(ownChk.wrap);
-    const autoChk = (function () {
-      const l = el('label', 'chk'); const c = el('input'); c.type = 'checkbox'; c.checked = !!shopAutoOnly;
-      l.appendChild(c); l.appendChild(el('span', null, '🤖 仅显示已设自动售出'));
-      return { wrap: l, box: c };
-    })();
-    autoChk.box.addEventListener('change', function () { shopAutoOnly = autoChk.box.checked; renderView(); });
-    fbar.appendChild(autoChk.wrap);
-    fbar.appendChild(el('span', 'bf-sort-label', '排序'));
-    [['default', '目录顺序'], ['price', '价格↓'], ['pct', '涨幅↓'], ['have', '持有↓']].forEach(function (kv) {
-      const b = el('button', 'bf-cat' + (shopSort === kv[0] ? ' on' : ''), kv[1]);
-      b.addEventListener('click', function () { if (shopSort !== kv[0]) { shopSort = kv[0]; renderView(); } });
-      fbar.appendChild(b);
-    });
-    colMain.appendChild(fbar);
+  }
 
-    // —— 商品网格（过滤 + 排序）——
-    const grid = el('div', 'shop-grid');
+  // 商品网格 + 筛选状态（广播只刷新这一块；面板/筛选栏输入不受影响）
+  function renderShopGrid() {
+    const st = S();
+    const grid = document.querySelector('#shop-panel .shop-grid');
+    const fbar = document.querySelector('#shop-panel .shop-fbar');
+    if (!grid || !fbar) return;
+    // 同步筛选控件选中态（chips 点击后本地更新；广播重绘时按模块状态恢复）
+    fbar.querySelectorAll('.bf-cat[data-sc]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-sc') === shopCat); });
+    fbar.querySelectorAll('.bf-cat[data-ss]').forEach(function (b) {
+      const k = b.getAttribute('data-ss');
+      b.classList.toggle('on', k === shopSort);
+      if (k !== 'default') {
+        const base = b.getAttribute('data-label') || b.textContent.replace(/ [↓↑]$/, '');
+        b.textContent = base + (k === shopSort ? (shopSortDir === 'desc' ? ' ↓' : ' ↑') : '');
+      }
+    });
     let entries = Object.keys(st.shop || {}).map(function (id) {
       return { id: id, s: st.shop[id], meta: itemMeta(id), have: st.inventory[id] || 0 };
     });
     if (shopCat !== 'all') entries = entries.filter(function (o) { return o.meta.kind === shopCat; });
     if (shopOwnedOnly) entries = entries.filter(function (o) { return o.have > 0; });
     if (shopAutoOnly) entries = entries.filter(function (o) { return hasAutoRule(o.id, o.meta.kind); });
-    if (shopSort === 'price') entries.sort(function (x, y) { return y.s.price - x.s.price; });
-    if (shopSort === 'pct') entries.sort(function (x, y) { return (y.s.price / (y.s.base || 1)) - (x.s.price / (x.s.base || 1)); });
-    if (shopSort === 'have') entries.sort(function (x, y) { return y.have - x.have; });
+    const sdir = shopSortDir === 'asc' ? -1 : 1; // 基础比较式 (y-x) 已是降序，升序时才翻转
+    if (shopSort === 'price') entries.sort(function (x, y) { return (y.s.price - x.s.price) * sdir; });
+    if (shopSort === 'pct') entries.sort(function (x, y) { return ((y.s.price / (y.s.base || 1)) - (x.s.price / (x.s.base || 1))) * sdir; });
+    if (shopSort === 'have') entries.sort(function (x, y) { return (y.have - x.have) * sdir; });
+    grid.innerHTML = '';
     entries.forEach(function (o) {
       const id = o.id, s = o.s, meta = o.meta, have = o.have;
       const ratio = s.base ? s.price / s.base : 1;
@@ -1589,24 +1680,15 @@ window.UI = (function () {
         if (!(st.inventory[id] > 0)) return;
         const n = Math.min(sellQty, st.inventory[id]);
         call(window.Net.sell(id, n), function (r) { return '售出 ' + meta.name + ' ×' + n + '，获得 💰' + r.data.gain + '（单价 ' + r.data.unit + '）'; })
-          .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderView(); } });
+          .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderShop(); } });
       });
       card.appendChild(btn);
-      // 自动售出设置：仅渔获（材料/组件不走该规则）
-      if (meta.kind === 'fish') {
-        const asBtn = el('button', 'mini as-btn', '🤖');
-        asBtn.title = '设置该鱼的自动售出规则（价格达到基准百分比或绝对价格时自动卖出）';
-        asBtn.addEventListener('click', function (ev) { ev.stopPropagation(); openShopAutoModal(id); });
-        card.appendChild(asBtn);
-      }
       card.addEventListener('click', function () { openShopModal(id); });
       grid.appendChild(card);
     });
     if (!entries.length) grid.appendChild(el('div', 'hint', '没有符合筛选条件的商品。'));
-    colMain.appendChild(grid);
-    panel.appendChild(colMain);
-    main.appendChild(panel);
   }
+
 
   // 自动售出：规则判断与文案（商店卡片共用）
   function hasAutoRule(id, kind) {
