@@ -239,10 +239,19 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('图鉴记录个人最大/最小体型', Object.keys(codexAfter).some(function (k) { return codexAfter[k].max != null && codexAfter[k].min != null; }));
 
   section('体型加成不设固定上限（回归：+55% 远古巨鲟应能超 520cm）');
-  const szRoll = await POST('http://localhost:' + P1 + '/api/dev/rollsize', { token: tokA, range: [150, 400], size: 55, n: 500 });
+  // 用 linear 模型做确定性验证：本节的命题是「加成不设上限」，与体型分布无关；
+  // 默认的 normal 分布下极值要靠运气（正态截断到 [0,1]，500 次未必能采到接近上限的值）。
+  const szRoll = await POST('http://localhost:' + P1 + '/api/dev/rollsize', { token: tokA, range: [150, 400], size: 55, n: 500, model: 'linear' });
   check('体型 roll 接口可用', szRoll.status === 200 && Array.isArray(szRoll.data.rolls));
   check('+55% 体型最高可超 520cm（旧版 1.3x 封顶）', szRoll.data.max > 520, 'max=' + szRoll.data.max);
   check('体型加成可达范围上限 ×(1+加成)（150~400 ×1.55 → 接近 620）', szRoll.data.max > 600, 'max=' + szRoll.data.max);
+  // 默认（正态）模型：全部落在 基准范围 ×(1+加成) 之内，且均值贴近区间中值 ×(1+加成)
+  const szDef = await POST('http://localhost:' + P1 + '/api/dev/rollsize', { token: tokA, range: [150, 400], size: 55, n: 500 });
+  check('未指定 model 时用当前配置（默认正态）', szDef.data.model === 'normal', String(szDef.data.model));
+  const szDefMean = szDef.data.rolls.reduce(function (a, b) { return a + b; }, 0) / szDef.data.rolls.length;
+  check('正态模型均值贴近区间中值 ×1.55（275×1.55≈426）', Math.abs(szDefMean - 426.25) < 25, 'mean=' + szDefMean.toFixed(1));
+  check('正态模型不越界（150×1.55 = 232.5 起）', szDef.data.rolls.every(function (v) { return v >= 232 && v <= 620; }),
+    'min=' + Math.min.apply(null, szDef.data.rolls) + ' max=' + szDef.data.max);
   const szNeg = await POST('http://localhost:' + P1 + '/api/dev/rollsize', { token: tokA, range: [150, 400], size: -50, n: 200 });
   check('负体型词缀缩小体型且不为负', szNeg.data.rolls.every(function (v) { return v >= 1; }));
 
@@ -612,6 +621,45 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const del1 = await POST('http://localhost:' + P1 + '/api/rod/delete', { token: tokA, slot: backSlot });
   check('删除未使用的槽位会退回配件（并解锁）', del1.status === 200 && del1.data.returned >= 1 && del1.data.wasActive === false,
     JSON.stringify({ returned: del1.data && del1.data.returned, wasActive: del1.data && del1.data.wasActive }));
+
+  // —— 回归：卸下配件 = 把这根已保存的钓竿拆开，对应槽位随之取消 ——
+  // 旧 bug：卸下时把改动后的装配同步回槽位快照 → 槽位被静默改写成残件，卸光后变成「空壳槽位」
+  // （界面显示为空、却被 freeRodSlotOf 当成空位复用），新存的竿把原配置顶掉；rodActiveSlot 还会悬空指向它。
+  section('钓竿槽位 · 卸下配件取消槽位');
+  const meFree = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data;
+  const freeSlot = (meFree.rodSlots || []).findIndex(function (x) { return !x; });
+  check('存在空闲槽位可供回归用例', freeSlot >= 0, JSON.stringify((meFree.rodSlots || []).map(function (x) { return x && x.name; })));
+  const regA = 'rod_bamboo#common#spd+12', regB = 'line_nylon#common#spd+10';
+  for (const id of [regA, regB]) await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: id } });
+  await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: regA });
+  await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'line', compId: regB });
+  const regSave = await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: freeSlot, name: '回归·配置一' });
+  check('回归前置：两件钓竿存进槽位', regSave.status === 200 && regSave.data.rodSlots[freeSlot]
+    && regSave.data.rodSlots[freeSlot].count === 2 && regSave.data.rodSlots[freeSlot].name === '回归·配置一',
+    JSON.stringify(regSave.data.rodSlots && regSave.data.rodSlots[freeSlot]));
+  // 换装（装，不是卸）：槽位保留，快照同步
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: regA } });
+  const regSwap = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: regA });
+  check('换装仍保留槽位（装 ≠ 卸）', regSwap.data.releasedSlot === -1 && !!regSwap.data.rodSlots[freeSlot]
+    && regSwap.data.rodSlots[freeSlot].count === 2, JSON.stringify({ r: regSwap.data.releasedSlot, s: regSwap.data.rodSlots[freeSlot] }));
+  // 卸下任一配件 → 显式取消该槽位
+  const invBeforeOff = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
+  const regOff = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'line', compId: null });
+  check('卸下配件：槽位被显式取消', regOff.status === 200 && regOff.data.releasedSlot === freeSlot && regOff.data.rodSlots[freeSlot] === null,
+    JSON.stringify({ r: regOff.data.releasedSlot, s: regOff.data.rodSlots[freeSlot] }));
+  check('取消时回报槽位名（供前端提示）', regOff.data.releasedName === '回归·配置一', String(regOff.data.releasedName));
+  check('取消后 rodActiveSlot 归 -1（不再悬空指向）', regOff.data.rodActiveSlot === -1, String(regOff.data.rodActiveSlot));
+  const invAfterOff = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
+  check('卸下的配件退回背包', (invAfterOff[regB] || 0) === (invBeforeOff[regB] || 0) + 1,
+    JSON.stringify({ before: invBeforeOff[regB] || 0, after: invAfterOff[regB] || 0 }));
+  check('未卸下的配件仍在装戴（不是整根清空）', !!(regOff.data.bd.rod && regOff.data.bd.rod.compId), JSON.stringify(regOff.data.bd.rod));
+  // 槽位清空后是「真空位」而非残件空壳：可被正常复用
+  const meAfter = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data;
+  check('槽位显示为空（无残件空壳）', meAfter.rodSlots[freeSlot] === null, JSON.stringify(meAfter.rodSlots[freeSlot]));
+  const regSave2 = await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: freeSlot, name: '回归·配置二' });
+  check('槽位可正常重新占用（旧 bug 会在这里顶掉原配置）', regSave2.status === 200
+    && regSave2.data.rodSlots[freeSlot] && regSave2.data.rodSlots[freeSlot].name === '回归·配置二',
+    JSON.stringify(regSave2.data.rodSlots && regSave2.data.rodSlots[freeSlot]));
 
   section('榜单更新播报（任意榜单 / 所有鱼种）');
   // 重启过服务器：旧 SSE 连接已失效，这里新建一条订阅（用新 token）

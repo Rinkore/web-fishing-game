@@ -529,12 +529,20 @@ window.UI = (function () {
         g.spots.forEach(function (sp) {
           const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
           const buffed = sp.buffs && sp.buffs.length > 0;
-          const buffTip = buffed ? sp.buffs.map(function (b) { return (D.AFFIX_LABEL[b.type] || b.type) + (b.value > 0 ? '+' : '') + b.value + '%'; }).join(' · ') : '';
           spotsHtml += '<button class="spot-btn' + (on ? ' on' : '') + (buffed ? ' buffed' : '') + '" data-g="' + g.id + '" data-s="' + sp.id + '"' +
-            (buffed ? ' title="该钓点有增益：' + esc(buffTip) + '"' : '') + '>' + esc(sp.name) +
+            '>' + esc(sp.name) +
             (buffed ? '<span class="spot-buff-mark">⚡</span>' : '') + '</button>';
         });
         spotsHtml += '</div>';
+        // 有增益的钓点在卡片内直接列出效果（不再只藏在原生悬浮提示里，鼠标移到才看得到）
+        const buffRows = g.spots.filter(function (sp) { return sp.buffs && sp.buffs.length; }).map(function (sp) {
+          const eff = sp.buffs.map(function (b) {
+            return '<b>' + esc(D.AFFIX_LABEL[b.type] || b.type) + (b.value > 0 ? '+' : '') + b.value + '%</b>';
+          }).join(' · ');
+          return '<span class="gc-buff-item" data-s="' + sp.id + '"><span class="gc-buff-mark">⚡</span>' +
+            '<span class="gc-buff-name">' + esc(sp.name) + '</span>' + eff + '</span>';
+        }).join('');
+        if (buffRows) spotsHtml += '<div class="gc-buffs">' + buffRows + '</div>';
       }
       card.innerHTML = '<div class="gc-head"><b>' + esc(g.name) + '</b>' +
         '<span class="gc-head-right">' +
@@ -693,6 +701,21 @@ window.UI = (function () {
   // 装备/卸下走服务器（/api/bd/set 校验目录并即时调整钓速）。
   // 安装 = 从背包取用 1 件组件；卸下（或换装）会把组件原样放回背包。
   function setPart(partKey, compId) {
+    // 卸下配件会把这根已保存的钓竿拆开 → 对应槽位随之取消，先弹窗预警（避免误操作丢配置）
+    const active = (typeof S().rodActiveSlot === 'number' && S().rodActiveSlot >= 0) ? S().rodActiveSlot : -1;
+    if (!compId && active >= 0) {
+      const part = D.ROD_PARTS.find(function (p) { return p.key === partKey; });
+      return confirmModal({
+        title: '卸下配件会取消钓竿槽位',
+        html: '当前钓竿「' + esc(S().rodName || '未命名') + '」保存在<b>槽位 ' + (active + 1) + '</b>。' +
+          '卸下' + esc((part && part.name) || partKey) + '会把这根钓竿拆开，<b>槽位 ' + (active + 1) + ' 会被取消</b>；' +
+          '该配件退回背包，可重新装配后再保存到槽位。',
+        okText: '仍要卸下',
+      }).then(function (ok) { if (ok) doSetPart(partKey, null); });
+    }
+    doSetPart(partKey, compId);
+  }
+  function doSetPart(partKey, compId) {
     call(window.Net.bdSet(partKey, compId || null), null).then(function (r) {
       if (r && r.ok) {
         S().bd = r.data.bd;
@@ -700,8 +723,11 @@ window.UI = (function () {
         if (r.data.castInfo) { S().castInfo = r.data.castInfo; S().fishingInterval = r.data.castInfo.interval; }
         if (r.data.rodSlots) S().rodSlots = r.data.rodSlots;
         if (r.data.rodLocked) S().rodLocked = r.data.rodLocked;
+        if (r.data.rodActiveSlot !== undefined) S().rodActiveSlot = r.data.rodActiveSlot;
         E().refreshEffects();
-        toast((compId ? '已装备 ' + itemMeta(compId).name + '（消耗 1 件组件）' : '已卸下组件') + '，加成已在服务器生效');
+        const released = (typeof r.data.releasedSlot === 'number' && r.data.releasedSlot >= 0) ? r.data.releasedSlot : -1;
+        toast((compId ? '已装备 ' + itemMeta(compId).name + '（消耗 1 件组件）' : '已卸下组件') +
+          (released >= 0 ? '，槽位 ' + (released + 1) + ' 的钓竿已取消' : '') + '，加成已在服务器生效');
         renderTopbar();
         renderView();
       }

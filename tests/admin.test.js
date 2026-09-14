@@ -383,6 +383,54 @@ function waitReady() {
   await POST(B + '/api/fishing/stop', { token: TK2 });
   check('恢复默认间隔', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 3000, castMinMs: 800 })).status === 200);
 
+  // ---------- 9g. 鱼类体型 roll 模型（默认正态） ----------
+  section('9g. 鱼类体型 roll 模型');
+  const setSize = m => POST(B + '/api/admin/fish/config', { token: TOKA, sizeModel: m });
+  const simSize = b => POST(B + '/api/admin/fish/simulate', Object.assign({ token: TOKA }, b));
+  // 分析一组掷骰结果：均值与 25~75 分位跨度（区分三种模型的形状）
+  function spread(rolls) {
+    const s = rolls.slice().sort((a, b) => a - b);
+    const at = q => s[Math.min(s.length - 1, Math.floor(q * s.length))];
+    return { mean: s.reduce((a, b) => a + b, 0) / s.length, span: at(0.75) - at(0.25) };
+  }
+  const wdFish = await GET(B + '/api/admin/world?token=' + TOKA);
+  check('world 返回体型配置（默认 normal）', wdFish.data.fishCfg && wdFish.data.fishCfg.sizeModel === 'normal', JSON.stringify(wdFish.data.fishCfg));
+  check('world 返回体型默认值 normal', wdFish.data.fishDefaults && wdFish.data.fishDefaults.sizeModel === 'normal');
+  check('/api/version 下发体型配置（前端可见）', (await GET(B + '/api/version')).data.fishCfg.sizeModel === 'normal');
+  check('未知模型被拒 400', (await setSize('bogus')).status === 400);
+  check('缺少 sizeModel 被拒 400', (await POST(B + '/api/admin/fish/config', { token: TOKA })).status === 400);
+  check('非管理员改体型模型被拒 403', (await POST(B + '/api/admin/fish/config', { token: TK2, sizeModel: 'linear' })).status === 403);
+  check('非管理员调用试算被拒 403', (await POST(B + '/api/admin/fish/simulate', { token: TK2 })).status === 403);
+  check('保存 linear 成功', (await setSize('linear')).status === 200);
+  check('配置回读生效（linear）', (await GET(B + '/api/admin/world?token=' + TOKA)).data.fishCfg.sizeModel === 'linear');
+  // 鲫鱼基准 10~35cm（中值 22.5）：三种模型的形状应有明显区别
+  const simLin = await simSize({ n: 20000, model: 'linear', fishId: 'crucian' });
+  const simNor = await simSize({ n: 20000, model: 'normal', fishId: 'crucian' });
+  const simSkw = await simSize({ n: 20000, model: 'skew', fishId: 'crucian' });
+  check('试算返回直方图 20 桶', simLin.data.buckets && simLin.data.buckets.length === 20);
+  check('试算 linear 均匀（25~75 分位跨度大）', simLin.data.stats.p75 - simLin.data.stats.p25 > 10, JSON.stringify(simLin.data.stats));
+  check('试算 normal 集中在中值（跨度小、中位数≈22.5）', (simNor.data.stats.p75 - simNor.data.stats.p25) < 8 && Math.abs(simNor.data.stats.p50 - 22.5) < 1.5, JSON.stringify(simNor.data.stats));
+  check('试算 skew 偏向小值（均值明显低于中值）', simSkw.data.stats.mean < 20, JSON.stringify(simSkw.data.stats));
+  check('normal 比 linear 更集中（跨度对比）', (simNor.data.stats.p75 - simNor.data.stats.p25) < (simLin.data.stats.p75 - simLin.data.stats.p25));
+  check('试算 model 参数可预览未保存的模型', simSkw.data.model === 'skew' && simSkw.data.currentModel === 'linear', JSON.stringify({ m: simSkw.data.model, c: simSkw.data.currentModel }));
+  check('未指定 model 时按当前配置（linear）', (await simSize({ n: 1000, fishId: 'crucian' })).data.model === 'linear');
+  const simBonus = await simSize({ n: 20000, model: 'normal', fishId: 'crucian', sizeBonus: 50 });
+  check('体型加成 50% 抬高体型（中位数≈22.5×1.5）', Math.abs(simBonus.data.stats.p50 - 33.75) < 2.5, JSON.stringify(simBonus.data.stats));
+  check('试算未知鱼被拒 400', (await simSize({ fishId: 'shark' })).status === 400);
+  check('试算未知模型被拒 400', (await simSize({ model: 'bogus' })).status === 400);
+  // 真实上鱼路径：dev/rollsize 调用线上同一个 rollSizeOf
+  await setSize('skew');
+  const liveSkew = spread((await POST(B + '/api/dev/rollsize', { token: TK2, range: [10, 35], n: 1000 })).data.rolls);
+  await setSize('normal');
+  const liveNor = spread((await POST(B + '/api/dev/rollsize', { token: TK2, range: [10, 35], n: 1000 })).data.rolls);
+  check('线上掷骰走配置模型：skew 均值偏小', liveSkew.mean < 20.5, String(liveSkew.mean));
+  check('线上掷骰走配置模型：normal 均值居中', Math.abs(liveNor.mean - 22.5) < 1.2, String(liveNor.mean));
+  check('线上掷骰 normal 比 skew 更集中', liveNor.span < liveSkew.span, JSON.stringify({ n: liveNor.span, s: liveSkew.span }));
+  check('掷骰结果始终落在基准区间内', (await POST(B + '/api/dev/rollsize', { token: TK2, range: [10, 35], n: 500 })).data.rolls.every(v => v >= 10 && v <= 35));
+  check('恢复默认（正态）', (await POST(B + '/api/admin/fish/reset', { token: TOKA })).status === 200
+    && (await GET(B + '/api/admin/world?token=' + TOKA)).data.fishCfg.sizeModel === 'normal');
+  check('非管理员恢复默认被拒 403', (await POST(B + '/api/admin/fish/reset', { token: TK2 })).status === 403);
+
 
   // ---------- 10. 账号管理（改密码 / 改显示名 / 调整金币） ----------
   section('10. 账号管理');
@@ -605,6 +653,8 @@ function waitReady() {
   // 留一个自定义渔场 + 限时窗口，验证 groundCfg 落盘并重算锁定状态
   await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'qa_keep', name: 'QA 常驻湾', spotName: '浅滩', preset: 'economy', fill: true });
   await POST(B + '/api/admin/ground/update', { token: TOKA, groundId: 'qa_keep', openFrom: Date.now() - 60000, openTo: Date.now() + 86400000 });
+  // 留一个非默认体型模型，验证 fishCfg 落盘
+  await setSize('skew');
   killTree(srv);
   srv = start(TMP_DATA);
   check('重启成功', await waitReady());
@@ -622,6 +672,7 @@ function waitReady() {
   check('钓场锁定重启后仍在（frostmoon 锁定）', w2.data.grounds.find(g => g.id === 'frostmoon').locked === true);
   check('基础双钓率重启后仍在（0.5）', w2.data.doubleBase === 0.5, String(w2.data.doubleBase));
   check('抛竿间隔重启后仍在（2500 / 700）', w2.data.castBaseMs === 2500 && w2.data.castMinMs === 700, JSON.stringify({ b: w2.data.castBaseMs, m: w2.data.castMinMs }));
+  check('鱼类体型模型重启后仍在（skew）', w2.data.fishCfg && w2.data.fishCfg.sizeModel === 'skew', JSON.stringify(w2.data.fishCfg));
   const keepG = (w2.data.grounds || []).find(g => g.id === 'qa_keep');
   check('自定义渔场与限时窗口重启后仍在（窗口内开放）', !!keepG && !!keepG.openTo && keepG.locked === false, JSON.stringify(keepG && { locked: keepG.locked, openTo: keepG.openTo }));
   check('自定义渔场的钓点与掉落池重启后仍在', !!keepG && keepG.spots.length === 1 && keepG.spots[0].pool.length === 13, keepG ? String(keepG.spots[0].pool.length) : 'none');

@@ -134,6 +134,7 @@ window.Admin = (function () {
     { id: 'grounds', name: '🌊 渔场钓点' },
     { id: 'market', name: '💱 市集管理' },
     { id: 'component', name: '🧩 组件生成' },
+    { id: 'fishsize', name: '🐟 鱼类体型' },
     { id: 'formula', name: '🧮 公式管理' },
     { id: 'notify', name: '🔔 通知等级' },
     { id: 'banner', name: '📢 横幅管理' },
@@ -161,6 +162,7 @@ window.Admin = (function () {
     if (v === 'grounds') return renderGrounds();
     if (v === 'market') return renderMarket();
     if (v === 'component') return renderComponent();
+    if (v === 'fishsize') return renderFishSize();
     if (v === 'formula') return renderFormula();
     if (v === 'notify') return renderNotify();
     if (v === 'banner') return renderBanner();
@@ -1492,6 +1494,126 @@ window.Admin = (function () {
       $('cmp-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
       toast('组件生成配置已保存');
     });
+  }
+
+  // ================================
+  // 鱼类体型（roll 模型 + 分布预览）
+  // ================================
+  // 体型 roll 模型存在 world.fishCfg.sizeModel，默认 normal(正态)。
+  // 预览走服务端 /api/admin/fish/simulate 并带上当前点选的模型，因此
+  // 尚未保存的选择也能先看效果；采样用的是与线上同一套 rollSizeOf。
+  let fishCfg = null;
+  const SIZE_MODEL_INFO = [
+    { k: 'linear', name: '线性（均匀）', desc: '区间内等概率取值' },
+    { k: 'normal', name: '正态', desc: '靠近区间中值概率更高（默认）' },
+    { k: 'skew', name: '偏态', desc: '偏向小值（小鱼更常见）' },
+  ];
+  function renderFishSize() {
+    const main = $('main');
+    main.innerHTML = '<h2>🐟 鱼类体型</h2>' +
+      '<div class="hint" style="margin-bottom:12px">控制上鱼体型在该鱼基准区间内的取值分布，影响所有渔获、大小鱼榜与图鉴体型。保存后对全服即时生效。</div>' +
+      '<div id="fish-body" class="panel">加载中…</div>';
+    loadWorldCfg(true).then(function (cfg) {
+      if (!cfg || view !== 'fishsize') return;
+      fishCfg = cfg.fishCfg || {};
+      drawFishSize();
+    });
+  }
+  function drawFishSize() {
+    const cfg = fishCfg || {};
+    const saved = SIZE_MODEL_INFO.some(function (m) { return m.k === cfg.sizeModel; }) ? cfg.sizeModel : 'normal';
+    let pick = saved; // 试算用模型（可能尚未保存）
+    const fishList = (worldCfg && worldCfg.catalog && worldCfg.catalog.fish) || [];
+    const withSize = fishList.filter(function (f) { return f.size; });
+    const body = $('fish-body');
+    body.innerHTML =
+      '<h3 style="margin-top:0">体型 roll 模型</h3>' +
+      '<div class="hint" style="margin-bottom:8px">当前生效：<b>' + esc(modelName(saved)) + '</b></div>' +
+      '<div class="cmp-row">' + SIZE_MODEL_INFO.map(function (m) {
+        return '<label class="radio-card' + (m.k === pick ? ' sel' : '') + '" data-fm="' + m.k + '">' +
+          '<input type="radio" name="fm" value="' + m.k + '"' + (m.k === pick ? ' checked' : '') + '>' +
+          '<div><b>' + m.name + '</b><span>' + m.desc + '</span></div></label>';
+      }).join('') + '</div>' +
+      '<h3 style="margin-top:20px">分布预览</h3>' +
+      '<div class="mgr-row">' +
+      '<label class="hint">目标鱼</label>' +
+      '<select class="ipt" id="fish-pick"><option value="">全部鱼种（归一化）</option>' +
+      withSize.map(function (f) {
+        return '<option value="' + esc(f.id) + '">' + esc(f.name) + '（基准 ' + f.size[0] + '~' + f.size[1] + ' cm）</option>';
+      }).join('') + '</select>' +
+      '<label class="hint">体型加成</label><input id="fish-bonus" class="ipt mk-num" type="number" step="5" value="0" style="width:80px" />' +
+      '<span class="hint">%（模拟体型词缀，0 = 无加成）</span>' +
+      '<button class="btn mini" id="fish-sim">刷新预览</button></div>' +
+      '<div id="fish-chart" class="hint" style="margin-top:10px">…</div>' +
+      '<div class="editor-foot" style="margin-top:18px">' +
+      '<button class="btn primary" id="fish-save">保存配置</button>' +
+      '<button class="btn danger" id="fish-reset">恢复默认（正态）</button>' +
+      '<span id="fish-state" class="hint">' + (cfg.sizeModel ? '' : '（尚未保存过，线上按默认正态运行）') + '</span></div>';
+
+    function modelName(k) {
+      const m = SIZE_MODEL_INFO.find(function (x) { return x.k === k; });
+      return m ? m.name : k;
+    }
+    function drawChart(data) {
+      const chart = $('fish-chart');
+      if (!chart) return;
+      const bs = data.buckets || [];
+      const max = Math.max.apply(null, bs.concat([1]));
+      const bars = bs.map(function (v, i) {
+        const pct = (v / max) * 100;
+        const lo = Math.round((i / bs.length) * 100), hi = Math.round(((i + 1) / bs.length) * 100);
+        return '<div title="' + lo + '~' + hi + '%：' + v + ' 次" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:90px;margin:0 1px">' +
+          '<div style="height:' + pct.toFixed(1) + '%;background:linear-gradient(180deg,#38bdf8,#0ea5e9);border-radius:2px"></div></div>';
+      }).join('');
+      const axis = '<div class="hint" style="display:flex;justify-content:space-between"><span>基准下限</span><span>区间中值</span><span>基准上限</span></div>';
+      const head = data.stats
+        ? esc(data.fishName) + '（基准 ' + data.range[0] + '~' + data.range[1] + ' cm' + (data.sizeBonus ? '，体型 +' + data.sizeBonus + '%' : '') + '）：' +
+          '中位数 ' + data.stats.p50 + ' cm · 均值 ' + data.stats.mean + ' cm · 25~75 分位 ' + data.stats.p25 + '~' + data.stats.p75 + ' cm'
+        : '全鱼种 · 位置分布（' + data.n + ' 次采样，左小右大）';
+      chart.innerHTML = '<div style="margin-bottom:6px">' + head + '</div>' +
+        '<div style="display:flex;align-items:flex-end;gap:1px">' + bars + '</div>' + axis;
+    }
+    function runSim() {
+      const chart = $('fish-chart');
+      if (chart) chart.textContent = '采样中…';
+      const sel = $('fish-pick');
+      adminApi('POST', '/api/admin/fish/simulate', {
+        token: token, n: 20000, model: pick,
+        fishId: (sel && sel.value) || undefined,
+        sizeBonus: Number(($('fish-bonus') || {}).value) || 0,
+      }).then(function (r) {
+        if (view !== 'fishsize' || !$('fish-chart')) return;
+        if (!r.ok) { $('fish-chart').innerHTML = '<span class="err">' + esc(r.data.error || '试算失败') + '</span>'; return; }
+        drawChart(r.data);
+      });
+    }
+    body.querySelectorAll('.radio-card[data-fm]').forEach(function (c) {
+      c.onclick = function () {
+        body.querySelectorAll('.radio-card[data-fm]').forEach(function (x) { x.classList.remove('sel'); });
+        c.classList.add('sel'); c.querySelector('input').checked = true;
+        pick = c.getAttribute('data-fm');
+        runSim();
+      };
+    });
+    $('fish-sim').onclick = runSim;
+    $('fish-pick').onchange = runSim;
+    $('fish-save').onclick = function () {
+      adminApi('POST', '/api/admin/fish/config', { token: token, sizeModel: pick }).then(function (r) {
+        if (!r.ok) { $('fish-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+        fishCfg = r.data.fishCfg; worldCfg.fishCfg = fishCfg;
+        toast('鱼类体型模型已保存（' + modelName(fishCfg.sizeModel) + '）');
+        drawFishSize();
+      });
+    };
+    $('fish-reset').onclick = function () {
+      adminApi('POST', '/api/admin/fish/reset', { token: token }).then(function (r) {
+        if (!r.ok) { $('fish-state').innerHTML = '<span class="err">' + esc(r.data.error || '恢复失败') + '</span>'; return; }
+        fishCfg = r.data.fishCfg; worldCfg.fishCfg = fishCfg;
+        toast('已恢复默认（正态）');
+        drawFishSize();
+      });
+    };
+    runSim();
   }
 
   // ================================

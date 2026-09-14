@@ -296,6 +296,8 @@
 
   // ---- 组件生成：先定品质，再抽词条，最后 roll 数值 ----
   // 生成参数可被管理后台覆盖（品质概率 / 词条数量概率 / 数值 roll 模型 / 底材词缀数值范围）。
+  // roll 模型：linear 均匀 / normal 正态 / skew 偏态；组件数值与鱼类体型共用。
+  const ROLL_MODELS = ['linear', 'normal', 'skew'];
   const DEFAULT_QUALITY_WEIGHTS = { common: 0.62, rare: 0.30, epic: 0.08 };
   const DEFAULT_COUNT_WEIGHTS = {
     common: [1],                 // 词条数 1..cap 的权重
@@ -326,13 +328,25 @@
     componentCfg = {
       qualityWeights: Object.assign(d.qualityWeights, cfg.qualityWeights || {}),
       countWeights: Object.assign(d.countWeights, cfg.countWeights || {}),
-      rollModel: (['linear', 'normal', 'skew'].indexOf(cfg.rollModel) >= 0) ? cfg.rollModel : d.rollModel,
+      rollModel: (ROLL_MODELS.indexOf(cfg.rollModel) >= 0) ? cfg.rollModel : d.rollModel,
       affixRanges: cfg.affixRanges || {},
       adjectiveRules: (Array.isArray(cfg.adjectiveRules) && cfg.adjectiveRules.length) ? cfg.adjectiveRules : d.adjectiveRules,
     };
     return componentCfg;
   }
   function getComponentCfg() { return componentCfg; }
+
+  // ---- 鱼类体型 roll 模型（管理后台可改）----
+  // 默认正态：大多数鱼落在基准区间的中段，越大/越小越罕见。
+  const SIZE_MODEL_DEFAULT = 'normal';
+  let fishCfg = { sizeModel: SIZE_MODEL_DEFAULT };
+  function defaultFishCfg() { return { sizeModel: SIZE_MODEL_DEFAULT }; }
+  function setFishCfg(cfg) {
+    const d = defaultFishCfg();
+    fishCfg = { sizeModel: (cfg && ROLL_MODELS.indexOf(cfg.sizeModel) >= 0) ? cfg.sizeModel : d.sizeModel };
+    return fishCfg;
+  }
+  function getFishCfg() { return fishCfg; }
   // 加权随机取 key
   function weightedKey(weights, fallback) {
     const keys = Object.keys(weights || {});
@@ -346,6 +360,17 @@
   function rollComponentQuality() {
     return weightedKey(componentCfg.qualityWeights, 'common');
   }
+  // 数值 roll 模型：取出 [0,1] 上的随机位置，供词缀数值与鱼类体型共用
+  function rollRatio(model) {
+    if (model === 'normal') {
+      // 正态：均值居中、标准差取 1/6，截断在 [0,1]
+      const u1 = Math.random() || 1e-9, u2 = Math.random();
+      const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      return Math.max(0, Math.min(1, 0.5 + z / 6));
+    }
+    if (model === 'skew') return Math.pow(Math.random(), 2); // 偏态：偏向低值（平方分布）
+    return Math.random();
+  }
   // 数值 roll：在 [min,max] 内按模型取值（整数）
   // 0 值词条无意义（+0% 加成）：roll 到 0 会被拒绝并重 roll 一次；
   // 若两次都为 0（区间跨越 0 时仍可能），落到区间内最近的 ±1，保证不产生 0 值词条。
@@ -353,19 +378,7 @@
     if (max <= min) return min;
     const span = max - min;
     function draw() {
-      let r;
-      if (model === 'normal') {
-        // 正态：均值居中、标准差取 1/6 区间，截断在 [min,max]
-        let u1 = Math.random() || 1e-9, u2 = Math.random();
-        const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-        r = Math.max(0, Math.min(1, 0.5 + z / 6));
-      } else if (model === 'skew') {
-        // 偏态：偏向低值（平方分布）
-        r = Math.pow(Math.random(), 2);
-      } else {
-        r = Math.random();
-      }
-      return min + Math.round(r * span);
+      return min + Math.round(rollRatio(model) * span);
     }
     let v = draw();
     if (v === 0) v = draw();
@@ -711,6 +724,8 @@
     instanceId: instanceId, instanceOf: instanceOf, isInstance: isInstance,
     genComponent: genComponent, rollComponent: rollComponent, rollComponentQuality: rollComponentQuality,
     setComponentCfg: setComponentCfg, getComponentCfg: getComponentCfg, defaultComponentCfg: defaultComponentCfg,
+    setFishCfg: setFishCfg, getFishCfg: getFishCfg, defaultFishCfg: defaultFishCfg,
+    ROLL_MODELS: ROLL_MODELS, rollRatio: rollRatio,
     affixRangeOf: affixRangeOf, rollAffixValue: rollAffixValue, weightedKey: weightedKey,
     adjectiveOf: adjectiveOf, instanceMeta: instanceMeta, componentOf: componentOf,
     legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,

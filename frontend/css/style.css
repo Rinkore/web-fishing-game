@@ -115,6 +115,12 @@ body {
 .spot-btn.buffed .spot-buff-mark { margin-left: 5px; font-size: 11px; color: var(--big); }
 .spot-btn.buffed.on .spot-buff-mark { color: #402; }
 .spot-btn.buffed:not(.on) { border-color: rgba(251,191,36,.55); }
+/* 钓场卡片内的钓点增益明细：每个有增益的钓点一条，效果直接可读（不再只靠悬浮提示） */
+.gc-buffs { display: flex; flex-wrap: wrap; gap: 5px 16px; margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 12px; }
+.gc-buff-item { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.gc-buff-item .gc-buff-mark { font-size: 11px; color: var(--big); }
+.gc-buff-item .gc-buff-name { color: var(--text); }
+.gc-buff-item b { color: var(--big); font-weight: 600; }
 
 /* 顶栏退出登录 */
 .logout-btn {

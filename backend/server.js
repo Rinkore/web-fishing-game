@@ -102,7 +102,7 @@ let users = {};
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
 // biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
 const BITE_FORMULA_DEFAULT = '90';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {} };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {} };
 
 // ---- 反馈意见 ----
 // CD 时长（小时）与跳过费用（金币）可由管理后台配置（落盘 config.json）；默认 24 小时 / 10000 金币。
@@ -390,11 +390,12 @@ function weightedPickOf(pool) {
   for (const e of pool) { r -= e.weight; if (r <= 0) return e.pick; }
   return pool[pool.length - 1].pick;
 }
-// 体型随机：偏向小值；体型词缀按百分比放大/缩小结果。
+// 体型随机：按后台配置的 roll 模型在基准区间内取值（默认正态，中段最常见）；体型词缀按百分比放大/缩小结果。
 // 不再对加成结果设固定上限（旧版硬性封顶 range[1]*1.3，导致 +55% 体型也被压到 520cm）；
 // 数值上限由底材体型范围与词缀本身决定。
-function rollSizeOf(range, eff) {
-  let v = range[0] + (range[1] - range[0]) * Math.pow(Math.random(), 1.6);
+function rollSizeOf(range, eff, modelOverride) {
+  const model = modelOverride || (D.getFishCfg && D.getFishCfg().sizeModel) || 'normal';
+  let v = range[0] + (range[1] - range[0]) * D.rollRatio(model);
   if (eff.size) v = Math.max(1, v * (1 + eff.size / 100));
   return Math.round(v * 10) / 10;
 }
@@ -1148,7 +1149,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
@@ -1228,6 +1229,8 @@ loadWorld();
 applyGroundCfg();
 // 套用管理后台保存的组件生成配置（品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则）
 if (D.setComponentCfg) D.setComponentCfg(world.componentCfg);
+// 套用管理后台保存的鱼类体型 roll 模型（默认正态；影响所有上鱼体型与大小鱼榜）
+if (D.setFishCfg) D.setFishCfg(world.fishCfg);
 // 为所有经济物品补齐乘数状态（老档迁移：旧"供应压力"按 -1%/件 折算为初始乘数）
 (function ensureSaleStats() {
   const day = new Date().toISOString().slice(0, 10);
@@ -1767,12 +1770,26 @@ const server = http.createServer(function (req, res) {
           fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
         }
         // 钓速明细随装备变化即时更新（含当前钓点的增益）
-        syncActiveRodSlot(rec); // 使用中的钓竿被改动 → 槽位快照同步（其配件仍锁定）
+        // 卸下配件 = 把这根已保存的钓竿拆开，它在槽位里的那份配置随之取消。
+        // 旧行为是把改动后的装配同步回槽位快照：槽位会被静默改写成残件，卸光后更会留下
+        // 「空壳槽位」——界面显示为空、却被 freeRodSlotOf 当成空位复用，新存的竿就把原配置顶掉。
+        const wasActiveSlot = rodActiveSlotOf(rec);
+        let releasedSlot = -1;
+        let releasedName = '';
+        if (!comp && wasActiveSlot >= 0) {
+          releasedSlot = wasActiveSlot;
+          releasedName = (rodSlotsOf(rec)[wasActiveSlot] || {}).name || '';
+          rodSlotsOf(rec)[wasActiveSlot] = null;
+          rec.rodActiveSlot = -1;
+        } else {
+          syncActiveRodSlot(rec); // 换装：使用中的钓竿被改动 → 槽位快照同步（其配件仍锁定）
+        }
         saveAccount(key);
         const pNow = players.get(key);
         const atSpot = (pNow && pNow.fishing) ? spotOf(pNow.fishing.groundId, pNow.fishing.spotId) : null;
         apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval, inventory: rec.inventory,
           rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
+          rodActiveSlot: rodActiveSlotOf(rec), releasedSlot: releasedSlot, releasedName: releasedName,
           castInfo: castInfoOf(rec, atSpot && atSpot.spot) });
       });
     });
@@ -1886,9 +1903,12 @@ const server = http.createServer(function (req, res) {
         const range = Array.isArray(d.range) && d.range.length === 2 ? d.range : [150, 400];
         const eff = { size: Number(d.size) || 0 };
         const n = Math.max(1, Math.min(1000, Number(d.n) || 1));
+        // 可选 model：验证「加成不设上限」这类与分布无关的性质时用 linear，避免正态下极值靠运气
+        const model = d.model != null ? d.model : null;
+        if (model != null && D.ROLL_MODELS.indexOf(model) < 0) return apiResp(res, 400, { error: '未知的体型 roll 模型' });
         const out = [];
-        for (let i = 0; i < n; i++) out.push(rollSizeOf(range, eff));
-        apiResp(res, 200, { ok: true, rolls: out, max: Math.max.apply(null, out) });
+        for (let i = 0; i < n; i++) out.push(rollSizeOf(range, eff, model));
+        apiResp(res, 200, { ok: true, rolls: out, max: Math.max.apply(null, out), model: model || D.getFishCfg().sizeModel });
       });
     });
     return;
@@ -2221,6 +2241,7 @@ const server = http.createServer(function (req, res) {
     return apiResp(res, 200, {
       version: D.VERSION, build: D.BUILD,
       componentCfg: D.getComponentCfg ? D.getComponentCfg() : null,
+      fishCfg: D.getFishCfg ? D.getFishCfg() : null,
       // 抛竿间隔与全服钓速配置：前端据此展示「后台基础值 + 实际钓速」（改动经 castcfg 广播同步）
       castCfg: { baseMs: castBaseMs(), minMs: castMinMs(), speedBonus: castSpeedBonus(), speedCap: castSpeedCap() },
     });
@@ -2834,6 +2855,8 @@ const server = http.createServer(function (req, res) {
       removedSpots: (world.groundCfg && world.groundCfg.removed && world.groundCfg.removed.spots) || [],
       componentCfg: D.getComponentCfg ? D.getComponentCfg() : null,
       componentDefaults: D.defaultComponentCfg ? D.defaultComponentCfg() : null,
+      fishCfg: D.getFishCfg ? D.getFishCfg() : null,
+      fishDefaults: D.defaultFishCfg ? D.defaultFishCfg() : null,
       affixCodes: D.AFFIX_CODES,
     });
   }
@@ -2950,6 +2973,81 @@ const server = http.createServer(function (req, res) {
       const affixStats = {};
       Object.keys(vals).forEach(function (t) { affixStats[t] = { mean: Math.round((vals[t].sum / vals[t].n) * 10) / 10, min: vals[t].min, max: vals[t].max }; });
       apiResp(res, 200, { ok: true, n: n, quality: qDist, count: cDist, affix: affixStats, zeroAffixes: zeroAffixes });
+    });
+    return;
+  }
+  // ---- 鱼类体型 roll 模型：保存（默认正态；影响全服上鱼体型与大小鱼榜，即时生效） ----
+  if (p === '/api/admin/fish/config' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      if (d.sizeModel == null) return apiResp(res, 400, { error: '缺少 sizeModel' });
+      if (D.ROLL_MODELS.indexOf(d.sizeModel) < 0) return apiResp(res, 400, { error: '未知的体型 roll 模型' });
+      const merged = Object.assign({}, D.getFishCfg ? D.getFishCfg() : {}, { sizeModel: d.sizeModel });
+      world.fishCfg = D.setFishCfg(merged);
+      saveConfig();
+      apiResp(res, 200, { ok: true, fishCfg: world.fishCfg });
+    });
+    return;
+  }
+  // ---- 鱼类体型 roll 模型：恢复默认（正态） ----
+  if (p === '/api/admin/fish/reset' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      world.fishCfg = D.setFishCfg(null);
+      saveConfig();
+      apiResp(res, 200, { ok: true, fishCfg: world.fishCfg });
+    });
+    return;
+  }
+  // ---- 鱼类体型分布试算（按当前模型采样，给后台预览分布形状） ----
+  // 可选 model 试算尚未保存的模型；可选 fishId 指定单条鱼（返回 cm 统计）；
+  // 否则返回全鱼种归一化位置的直方图。可选 sizeBonus 预览体型词缀加成后的分布（如 +55）。
+  if (p === '/api/admin/fish/simulate' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const n = Math.max(1, Math.min(200000, Number(d.n) || 20000));
+      const bonus = isFinite(Number(d.sizeBonus)) ? Number(d.sizeBonus) : 0;
+      const eff = bonus ? { size: bonus } : {};
+      const all = [];
+      ['common', 'big', 'rare'].forEach(function (t) {
+        D.FISH[t].forEach(function (f) { if (f.size) all.push(f); });
+      });
+      if (!all.length) return apiResp(res, 400, { error: '没有带体型范围的鱼' });
+      const cur = (D.getFishCfg && D.getFishCfg().sizeModel) || 'normal';
+      const model = d.model != null ? d.model : cur;
+      if (D.ROLL_MODELS.indexOf(model) < 0) return apiResp(res, 400, { error: '未知的体型 roll 模型' });
+      const target = d.fishId ? all.find(function (f) { return f.id === d.fishId; }) : null;
+      if (d.fishId && !target) return apiResp(res, 400, { error: '未知鱼类：' + d.fishId });
+      const buckets = new Array(20).fill(0);
+      const samples = [];
+      const use = target ? [target] : all;
+      for (let i = 0; i < n; i++) {
+        const f = use[i % use.length];
+        const size = rollSizeOf(f.size, eff, model);
+        const base = size / (1 + bonus / 100);
+        const pos = f.size[1] > f.size[0] ? (base - f.size[0]) / (f.size[1] - f.size[0]) : 0;
+        buckets[Math.max(0, Math.min(19, Math.floor(pos * 20)))]++;
+        if (target) samples.push(size);
+      }
+      const out = { ok: true, n: n, model: model, currentModel: cur, sizeBonus: bonus, bucketCount: buckets.length, buckets: buckets };
+      if (target) {
+        samples.sort(function (x, y) { return x - y; });
+        const at = function (q) { return samples[Math.min(samples.length - 1, Math.floor(q * samples.length))]; };
+        out.fishId = target.id;
+        out.fishName = target.name;
+        out.range = target.size;
+        out.stats = {
+          min: samples[0], p25: at(0.25), p50: at(0.5), p75: at(0.75), max: samples[samples.length - 1],
+          mean: Math.round((samples.reduce(function (s, v) { return s + v; }, 0) / samples.length) * 10) / 10,
+        };
+      }
+      apiResp(res, 200, out);
     });
     return;
   }
