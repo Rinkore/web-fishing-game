@@ -579,11 +579,47 @@ window.UI = (function () {
 
     renderBody();
 
+    // 装备子窗口内的「直接出售」：与背包「出售 1」同源，售出后重绘本弹窗（保持部位/筛选/排序）
+    function sellFromEquip(id) {
+      const meta = D.componentOf(id) || itemMeta(id);
+      call(window.Net.sell(id, 1), function (r) { return '售出 ' + meta.name + ' ×1，获得 💰' + r.data.gain; })
+        .then(function (r) {
+          if (r && r.ok) {
+            st.inventory = r.data.inventory; st.player.coins = r.data.coins; st.shop = r.data.shop;
+            renderTopbar();
+            if (bdEquipPart) renderBody();
+          }
+        });
+    }
+
     function renderBody() {
       const body = box.querySelector('#bde-body');
       if (!body) return;
       body.innerHTML = '';
       const equipped = D.componentOf(st.bd[part.key] && st.bd[part.key].compId);
+
+      // 顶部：当前已装备组件与属性（便于对比决定是否替换）
+      const cur = el('div', 'bde-current' + (equipped ? '' : ' empty'));
+      if (equipped) {
+        const eqAffs = (equipped.affixes || []).map(function (a) {
+          const pool = (equipped.pool || []).find(function (p) { return p.type === a.type; });
+          const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(equipped.baseId, pool) : [pool.min, pool.max]) : null;
+          return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>' +
+            (rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '');
+        }).join(' ');
+        cur.innerHTML = '<div class="bec-head"><span class="bec-label">当前已装备</span>' +
+          '<b class="' + qualityClass(equipped) + '">' + esc(equipped.name) + '</b>' +
+          (equipped.isFull ? '<span class="full-tag">满词条</span>' : '') +
+          '<span class="inst-meta">' + esc(qualityName(equipped)) + '品质 · ' + equipped.affixes.length + '/' + equipped.maxAffixes + ' 词条</span>' +
+          '<span class="bec-price">' + equipped.price + '💰</span></div>' +
+          '<div class="bec-affs">' + (eqAffs || '<span class="muted">无词条</span>') + '</div>' +
+          '<div class="bec-tip">对比下方组件决定是否替换：装备会消耗背包中的 1 件，被换下的旧组件自动放回背包。</div>';
+      } else {
+        cur.innerHTML = '<div class="bec-head"><span class="bec-label">当前已装备</span><b class="muted">（该栏位为空）</b></div>' +
+          '<div class="bec-tip">下方是该栏位背包中的组件，点「装备」获得词缀加成。</div>';
+      }
+      body.appendChild(cur);
+
       const owned = Object.keys(st.inventory)
         .map(function (id) { return { c: D.componentOf(id), n: st.inventory[id] }; })
         .filter(function (o) { return o.c && o.c.part === part.key && o.n > 0; });
@@ -636,13 +672,28 @@ window.UI = (function () {
             '<div class="inst-meta">' + esc(qualityName(c)) + '品质 · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条</div>' +
             c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('') +
             '<div class="bec-meta">持有 ×' + o.n + '</div>';
-          const use = el('button', 'mini primary-mini', (equipped && equipped.id === c.id) ? '已装备' : '装备');
-          if (equipped && equipped.id === c.id) { use.disabled = true; use.classList.add('locked'); }
+          const acts = el('div', 'bec-acts');
+          const isOn = !!(equipped && equipped.id === c.id);
+          const use = el('button', 'mini primary-mini', isOn ? '已装备' : '装备');
+          if (isOn) { use.disabled = true; use.classList.add('locked'); }
           use.addEventListener('click', function () {
             closeBdEquipModal();
             setPart(part.key, c.id);
           });
-          card.appendChild(use);
+          acts.appendChild(use);
+          // 直接出售（组件固定价，无需等行情）
+          const sellBtn = el('button', 'mini', '出售 1');
+          sellBtn.title = '按系统固定价出售 1 个（组件不随市场浮动）';
+          sellBtn.addEventListener('click', function () { sellFromEquip(c.id); });
+          acts.appendChild(sellBtn);
+          // 上架：复用市集「上架」子窗口（数量/单价/时长/费率/走势一致）
+          const listBtn = el('button', 'mini', '上架');
+          listBtn.title = '挂到开放市集（与市集「上架」同一子窗口：数量 / 单价 / 时长 / 费率）';
+          listBtn.addEventListener('click', function () {
+            openListModal(c.id, function () { openBdEquipModal(part.key); });
+          });
+          acts.appendChild(listBtn);
+          card.appendChild(acts);
           grid2.appendChild(card);
         });
       }
@@ -817,7 +868,8 @@ window.UI = (function () {
   const LIST_PLANS = { 6: '1%', 12: '3%', 24: '5%' };
   let listModalId = null;
 
-  function openListModal(id) {
+  // onListed：可选回调，上架成功后调用（装备子窗口用它回到原界面继续挑选）
+  function openListModal(id, onListed) {
     listModalId = id;
     const st = S();
     const meta = itemMeta(id);
@@ -863,6 +915,7 @@ window.UI = (function () {
     });
     document.getElementById('list-qty').addEventListener('input', recalc);
     document.getElementById('list-price').addEventListener('input', recalc);
+    recalc(); // 打开即按默认数量/单价/时长算出上架费（不必等用户改动）
     document.getElementById('list-confirm').addEventListener('click', function () {
       const qty = parseInt(document.getElementById('list-qty').value, 10) || 0;
       const price = parseInt(document.getElementById('list-price').value, 10) || 0;
@@ -872,7 +925,11 @@ window.UI = (function () {
       call(window.Net.marketList(id, Math.min(qty, have), price, hours), function (r) {
         return '已上架 ' + meta.name + ' ×' + r.data.listing.qty + '（上架费 ' + r.data.fee + '💰 · ' + hours + ' 小时）';
       }).then(function (r) {
-        if (r && r.ok) { closeListModal(); st.inventory = r.data.inventory; st.player.coins = r.data.coins; renderTopbar(); renderView(); }
+        if (r && r.ok) {
+          closeListModal(); st.inventory = r.data.inventory; st.player.coins = r.data.coins;
+          renderTopbar(); renderView();
+          if (typeof onListed === 'function') onListed();
+        }
       });
     });
 

@@ -216,6 +216,111 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       negColor.ok && negColor.color === negColor.danger,
       JSON.stringify(negColor));
 
+    // —— 装备子窗口：已装备对比 + 卡片内直接出售/上架 ——
+    // 选中「背包里备用组件最多」的部位（部分部位已被装备且无备用，按钮不显示）
+    const PART_NAMES = { rod: '竿身', line: '线组', hook: '钩', bait: '饵', reel: '卷线器', accessory: '配件', charm: '饰品栏位' };
+    // 前置：前面用例已消耗掉卖家的组件，这里补发 3 件竿身组件（走 dev 接口 → assets 广播回页面）
+    const grantInsts = [
+      D_DATA.instanceId('rod_bamboo', 'rare', [{ type: 'speed', value: 12 }, { type: 'size', value: -3 }]),
+      D_DATA.instanceId('rod_carbon', 'rare', [{ type: 'speed', value: 18 }, { type: 'material', value: -8 }, { type: 'size', value: 3 }]),
+      D_DATA.instanceId('rod_fiberglass', 'common', [{ type: 'speed', value: 11 }]),
+    ];
+    for (const inst of grantInsts) await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: inst } });
+    await waitFor(async () => {
+      try {
+        return await p1.evaluate((ids) => ids.every(id => (window.Engine.state.inventory[id] || 0) > 0), grantInsts);
+      } catch (e) { return false; }
+    }, { timeout: 8000 }).catch(() => {});
+    await p1.evaluate(() => { window.UI.refreshAll(); });
+    await waitFor(async () => (await get('/api/me?token=' + tokS)).data.inventory[grantInsts[0]] > 0, { timeout: 5000 }).catch(() => {});
+    async function openRichestEquipModal() {
+      const me = (await get('/api/me?token=' + tokS)).data;
+      const counts = {};
+      Object.keys(me.inventory || {}).forEach(k => {
+        const c = D_DATA.componentOf(k);
+        if (c) counts[c.part] = (counts[c.part] || 0) + me.inventory[k];
+      });
+      const best = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+      await p1.evaluate((pn) => {
+        const cells = Array.from(document.querySelectorAll('.bd-cell'));
+        const cell = cells.find(c => { const t = c.querySelector('.bd-part'); return t && t.textContent.includes(pn); });
+        const b = cell && Array.from(cell.querySelectorAll('button')).find(x => x.textContent.includes('装备组件'));
+        if (b) b.click();
+      }, PART_NAMES[best]);
+      await waitFor(async () => (await p1.$$('.bd-equip-modal')).length === 1, { timeout: 4000 }).catch(() => {});
+      return { part: best, have: counts[best] || 0 };
+    }
+    await clickNav(p1, '钓竿配置');
+    const ric = await openRichestEquipModal();
+    check('打开有备用组件的部位装备子窗口', ric.have >= 1 && (await p1.$$('.bd-equip-modal')).length === 1, JSON.stringify(ric));
+    const curPanel = await p1.evaluate(() => {
+      const n = document.querySelector('.bde-current');
+      if (!n) return { ok: false };
+      return {
+        ok: true, empty: n.classList.contains('empty'), affs: n.querySelectorAll('.inst-aff').length,
+        text: n.textContent.replace(/\s+/g, ' ').slice(0, 120), name: (n.querySelector('b') || {}).textContent || '',
+      };
+    });
+    check('对比区显示「当前已装备」区块', curPanel.ok && /当前已装备/.test(curPanel.text), JSON.stringify(curPanel));
+    check('对比区：已装备则列出词条与区间，空栏位则有提示',
+      curPanel.empty ? /该栏位为空/.test(curPanel.text) : (curPanel.affs >= 1 && /区间|（/.test(curPanel.text)),
+      JSON.stringify({ empty: curPanel.empty, affs: curPanel.affs }));
+    const acts = await p1.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('.bd-equip-modal .bec-card'));
+      if (!cards.length) return { ok: false };
+      return { ok: true, cards: cards.length, labels: Array.from(cards[0].querySelectorAll('.bec-acts button')).map(b => b.textContent.trim()) };
+    });
+    check('组件卡片带装备/出售/上架三个操作', acts.ok && acts.labels.some(l => l.indexOf('装备') >= 0)
+      && acts.labels.some(l => l.indexOf('出售') >= 0) && acts.labels.some(l => l.indexOf('上架') >= 0), JSON.stringify(acts));
+
+    // 上架：应打开与市集相同的上架子窗口（数量/单价/时长/费率/确认）
+    await p1.evaluate(() => {
+      const card = document.querySelector('.bd-equip-modal .bec-card');
+      const b = card && Array.from(card.querySelectorAll('.bec-acts button')).find(x => x.textContent.includes('上架'));
+      if (b) b.click();
+    });
+    await waitFor(async () => (await p1.$$('#list-confirm')).length === 1, { timeout: 5000 }).catch(() => {});
+    const listModal = await p1.evaluate(() => {
+      const c = document.getElementById('list-confirm');
+      if (!c) return { ok: false };
+      return {
+        ok: true,
+        qty: !!document.getElementById('list-qty'),
+        price: !!document.getElementById('list-price'),
+        hours: Array.from(document.querySelectorAll('.lm-hours')).map(b => b.textContent.trim()),
+        est: (document.getElementById('list-est') || {}).textContent || '',
+        trend: (document.getElementById('list-trend') || {}).textContent || '',
+      };
+    });
+    check('上架子窗口与市集一致（数量/单价/时长/费率）', listModal.ok && listModal.qty && listModal.price
+      && listModal.hours.length === 3 && /上架费/.test(listModal.est), JSON.stringify(listModal).slice(0, 200));
+    check('上架子窗口显示价格参考（组件为固定价）', /固定价/.test(listModal.trend), String(listModal.trend).slice(0, 80));
+    await p1.evaluate(() => { const b = document.querySelector('.modal-close'); if (b) b.click(); });
+    await waitFor(async () => (await p1.$$('.modal-overlay')).length === 0, { timeout: 3000 }).catch(() => {});
+
+    // 出售：直接卖出 1 件并重绘子窗口（金币增加、该部位备用件减少 1）
+    const beforeSell = (await get('/api/me?token=' + tokS)).data;
+    const partCount = (inv, pk) => Object.keys(inv || {}).reduce((n, k) => {
+      const c = D_DATA.componentOf(k);
+      return (c && c.part === pk) ? n + inv[k] : n;
+    }, 0);
+    const ric2 = await openRichestEquipModal();
+    const beforeCnt = partCount(beforeSell.inventory, ric2.part);
+    await p1.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('.bd-equip-modal .bec-card'));
+      const card = cards.find(c => Array.from(c.querySelectorAll('.bec-acts button')).some(b => b.textContent.includes('出售')));
+      const b = card && Array.from(card.querySelectorAll('.bec-acts button')).find(x => x.textContent.includes('出售'));
+      if (b) b.click();
+    });
+    await waitFor(async () => (await get('/api/me?token=' + tokS)).data.coins > beforeSell.coins, { timeout: 6000, interval: 150 }).catch(() => {});
+    const afterSell = (await get('/api/me?token=' + tokS)).data;
+    check('装备子窗口内可直接出售（金币增加）', afterSell.coins > beforeSell.coins, beforeSell.coins + ' -> ' + afterSell.coins);
+    check('出售后该部位备用组件减少 1', partCount(afterSell.inventory, ric2.part) === beforeCnt - 1,
+      ric2.part + ': ' + beforeCnt + ' -> ' + partCount(afterSell.inventory, ric2.part));
+    check('出售后子窗口保持打开并重绘', (await p1.$$('.bd-equip-modal')).length === 1);
+    await p1.evaluate(() => { const b = document.querySelector('.bd-equip-modal .modal-close'); if (b) b.click(); });
+    await waitFor(async () => (await p1.$$('.modal-overlay')).length === 0, { timeout: 3000 }).catch(() => {});
+
     // —— 开放市集 ——
     await clickNav(p1, '开放市集');
     // 购买市场默认只显示他人的挂单（本用例两条挂单均属卖家自己 → 0 行），切到「我的挂单」查看
