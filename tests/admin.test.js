@@ -92,7 +92,7 @@ async function waitReady() {
   section('1. 管理员引导与授权');
   check('错误密码登录被拒 401', (await POST(B + '/api/admin/login', { username: 'nobody', password: 'x' })).status === 401);
 
-  const rg1 = await POST(B + '/api/register', { username: 'adm_root', password: 'pass1234', name: ' Root' });
+  const rg1 = await POST(B + '/api/register', { username: 'adm_root', password: 'pass1234', name: ' Root', qq: '10004' });
   check('管理员候选账号注册成功', rg1.status === 200);
   const la = await POST(B + '/api/admin/login', { username: 'adm_root', password: 'pass1234' });
   check('服务器无管理员时首个登录自动成为管理员（引导）', la.status === 200 && la.data.admin === true);
@@ -101,8 +101,8 @@ async function waitReady() {
   const meRoot = await GET(B + '/api/me?token=' + TOKA);
   check('资料接口带 admin 标志', meRoot.data.admin === true, JSON.stringify(meRoot.data));
 
-  await POST(B + '/api/register', { username: 'adm_p1', password: 'pass1234', name: '玩家一号' });
-  await POST(B + '/api/register', { username: 'adm_p2', password: 'pass1234', name: '玩家二号' });
+  await POST(B + '/api/register', { username: 'adm_p1', password: 'pass1234', name: '玩家一号', qq: '10005' });
+  await POST(B + '/api/register', { username: 'adm_p2', password: 'pass1234', name: '玩家二号', qq: '10006' });
   const lp1 = await POST(B + '/api/login', { username: 'adm_p1', password: 'pass1234' });
   const lp2 = await POST(B + '/api/login', { username: 'adm_p2', password: 'pass1234' });
   const TK1 = lp1.data.token, TK2 = lp2.data.token;
@@ -246,8 +246,17 @@ async function waitReady() {
   const ovFb = await GET(B + '/api/admin/overview?token=' + TOKA);
   check('概览统计含反馈数', typeof ovFb.data.feedbackCount === 'number' && ovFb.data.feedbackCount >= 1, String(ovFb.data.feedbackCount));
 
-  // ---------- 8. 账号管理（改密码 / 改显示名 / 调整金币） ----------
-  section('8. 账号管理');
+  // ---------- 9. 基础双钓率配置 ----------
+  section('9. 基础双钓率');
+  const wdD = await GET(B + '/api/admin/world?token=' + TOKA);
+  check('world 返回基础双钓率字段', typeof wdD.data.doubleBase === 'number' && wdD.data.doubleBase === 0, String(wdD.data.doubleBase));
+  check('负数基础双钓率被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, doubleBase: -0.1 })).status === 400);
+  check('超过 1 的基础双钓率被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, doubleBase: 1.5 })).status === 400);
+  check('设置基础双钓率 0.5 成功', (await POST(B + '/api/admin/settings', { token: TOKA, doubleBase: 0.5 })).status === 200);
+  check('基础双钓率已生效（0.5）', (await GET(B + '/api/admin/world?token=' + TOKA)).data.doubleBase === 0.5);
+
+  // ---------- 10. 账号管理（改密码 / 改显示名 / 调整金币） ----------
+  section('10. 账号管理');
   check('非管理员调用账号管理被拒 403', (await POST(B + '/api/admin/users/update', { token: TK2, target: 'adm_p2', name: 'x' })).status === 403);
   check('不存在的账号被拒 404', (await POST(B + '/api/admin/users/update', { token: TOKA, target: 'nobody_here', name: 'x' })).status === 404);
   check('空修改被拒 400', (await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p2' })).status === 400);
@@ -267,7 +276,7 @@ async function waitReady() {
   check('改密后金币已应用', reLogin.data.profile.coins === 8888);
 
   // ---------- 9. 持久化（重启服务器） ----------
-  section('9. 配置持久化');
+  section('11. 配置持久化');
   killTree(srv);
   await sleep(800);
   srv = start(TMP_DATA);
@@ -284,6 +293,7 @@ async function waitReady() {
   check('上钩公式重启后仍在（100）', w2.data.biteFormula === '100');
   check('通知等级重启后仍在（none）', w2.data.notifyLevel === 'none');
   check('钓场锁定重启后仍在（frostmoon 锁定）', w2.data.grounds.find(g => g.id === 'frostmoon').locked === true);
+  check('基础双钓率重启后仍在（0.5）', w2.data.doubleBase === 0.5, String(w2.data.doubleBase));
 
   es1.destroy(); es2.destroy(); // 关闭 SSE 套接字，否则进程不会退出
   console.log('\n============================');

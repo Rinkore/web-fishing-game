@@ -47,8 +47,8 @@ const clickNav = async (page, name) => {
   await sleep(1000);
   let browser;
   try {
-    const rs = await post('/api/register', { username: 'shot_seller', password: 'abcd1234', name: '截图卖家' });
-    const rb = await post('/api/register', { username: 'shot_buyer', password: 'abcd1234', name: '截图买家' });
+    const rs = await post('/api/register', { username: 'shot_seller', password: 'abcd1234', name: '截图卖家', qq: '10016' });
+    const rb = await post('/api/register', { username: 'shot_buyer', password: 'abcd1234', name: '截图买家', qq: '10017' });
     const tokS = rs.data.token, tokB = rb.data.token;
 
     // 预置卖家库存 + 渔获（填充图鉴 / 大鱼榜）

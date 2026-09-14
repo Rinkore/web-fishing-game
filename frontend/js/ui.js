@@ -33,6 +33,8 @@ window.UI = (function () {
     return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2);
   }
   function itemMeta(id) { return D.itemOf ? D.itemOf(id) : { name: id, rarity: 'common', price: 10, kind: 'unknown' }; }
+  // 现价：优先系统商店行情，无行情时退回基准价（模块级，供各视图与子窗口共用）
+  function unitPriceOf(id) { const s = S().shop && S().shop[id]; return s ? s.price : itemMeta(id).price; }
   // ---- 组件展示辅助 ----
   // 品质配色类：组件用品质色（普通白/稀有色/史诗橙），满词条升为金色；其余物品沿用稀有度色
   function qualityClass(meta) {
@@ -61,17 +63,36 @@ window.UI = (function () {
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2400);
   }
 
-  // ---- 破纪录横幅：全场最大纪录被破时，在顶部滚动显示 5 秒 ----
+  // ---- 破纪录横幅：全场最大纪录被破时，在顶部滚动显示 ----
+  // 不再固定 5 秒硬关：等滚动文字完整离开屏幕（一遍动画走完）后再淡出收起。
   let bannerTimer = null;
   function showRecordBanner(rec) {
     const b = $('record-banner');
     if (!b || !rec) return;
     const text = '🎉 全场最大纪录被破！' + rec.who + ' 钓到 ' + rec.name + ' ' + rec.size + 'cm';
-    b.innerHTML = '<span class="rb-track">' + esc(text) + '　　✦　　' + esc(text) + '　　✦　　' + esc(text) + '</span>';
+    const rep = esc(text) + '　　✦　　';
+    b.innerHTML = '';
+    const track = el('span', 'rb-track', rep + rep + rep + rep + rep);
+    b.appendChild(track);
     b.classList.add('show');
     if (bannerTimer) clearTimeout(bannerTimer);
-    bannerTimer = setTimeout(function () { b.classList.remove('show'); b.innerHTML = ''; }, 5000);
+
+    function finish() {
+      b.classList.remove('show');
+      bannerTimer = setTimeout(function () { b.innerHTML = ''; }, 400);
+    }
+    // 动画总位移 = 轨道整宽（含 padding-left:100%），按约 120px/s 换算时长，保证整段字走完才关闭
+    const w = Math.max(600, track.offsetWidth || 1200);
+    const dur = Math.max(6000, Math.min(30000, Math.round(w / 120) * 1000));
+    track.style.animationDuration = (dur / 1000) + 's';
+    // 用动画结束事件判定「字全部离开屏幕」；不可用时退回按估算时长定时
+    let done = false;
+    function once() { if (done) return; done = true; finish(); }
+    track.addEventListener('animationend', once);
+    track.addEventListener('animationcancel', once);
+    bannerTimer = setTimeout(once, dur + 800); // 兜底
   }
+
 
   // ---- 通用：调用网络接口并提示结果 ----
   function call(promise, okMsg) {
@@ -81,6 +102,66 @@ window.UI = (function () {
       refreshAll();
       return r;
     }).catch(function () { toast('网络错误'); });
+  }
+
+  // ---- 子窗口式确认 / 输入（替代浏览器原生 confirm / prompt）----
+  // 关闭已有弹窗：用统一的 overlay 结构，样式与全局子窗口一致。
+  function closeOverlays() { document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); }); }
+  function buildOverlay(onCancel) {
+    const overlay = el('div', 'modal-overlay');
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay && onCancel) onCancel(); });
+    return overlay;
+  }
+  // 确认框：okText 默认「确定」，danger 时按钮标红
+  function confirmModal(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      closeOverlays();
+      const overlay = buildOverlay(function () { resolve(false); });
+      const box = el('div', 'modal-box confirm-modal');
+      box.innerHTML = '<div class="modal-head"><span class="modal-title">' + esc(opts.title || '请确认') + '</span></div>' +
+        '<div class="modal-body"><div class="cf-text">' + (opts.html || esc(opts.text || '')) + '</div>' +
+        '<div class="cf-actions"><button class="mini cf-cancel">取消</button>' +
+        '<button class="mini primary-mini cf-ok">' + esc(opts.okText || '确定') + '</button></div></div>';
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      const ok = box.querySelector('.cf-ok'), cancel = box.querySelector('.cf-cancel');
+      if (opts.danger) { ok.classList.remove('primary-mini'); ok.classList.add('danger-mini'); }
+      ok.addEventListener('click', function () { overlay.remove(); resolve(true); });
+      cancel.addEventListener('click', function () { overlay.remove(); resolve(false); });
+      ok.focus();
+    });
+  }
+  // 输入框：可返回数字；min/max 限制
+  function promptModal(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      closeOverlays();
+      const overlay = buildOverlay(function () { resolve(null); });
+      const box = el('div', 'modal-box confirm-modal');
+      const numeric = !!opts.numeric;
+      box.innerHTML = '<div class="modal-head"><span class="modal-title">' + esc(opts.title || '请输入') + '</span>' +
+        '<button class="mini modal-close">✕</button></div>' +
+        '<div class="modal-body">' + (opts.html || '') +
+        '<div class="cf-row"><input class="ipt cf-input" type="' + (numeric ? 'number' : 'text') + '"' +
+        (opts.min != null ? ' min="' + opts.min + '"' : '') + (opts.max != null ? ' max="' + opts.max + '"' : '') +
+        ' value="' + esc(opts.value != null ? opts.value : '') + '" /></div>' +
+        '<div class="cf-actions"><button class="mini cf-cancel">取消</button>' +
+        '<button class="mini primary-mini cf-ok">' + esc(opts.okText || '确定') + '</button></div></div>';
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      const inp = box.querySelector('.cf-input');
+      function submit() {
+        let v = inp.value;
+        if (numeric) { v = Number(v); if (!isFinite(v)) { inp.focus(); return; } if (opts.min != null && v < opts.min) v = opts.min; if (opts.max != null && v > opts.max) v = opts.max; }
+        overlay.remove(); resolve(v);
+      }
+      box.querySelector('.cf-ok').addEventListener('click', submit);
+      box.querySelector('.cf-cancel').addEventListener('click', function () { overlay.remove(); resolve(null); });
+      box.querySelector('.modal-close').addEventListener('click', function () { overlay.remove(); resolve(null); });
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+      inp.focus(); inp.select();
+    });
   }
 
   // ---- 侧边导航 ----
@@ -167,7 +248,11 @@ window.UI = (function () {
         spotsHtml = '<div class="spot-row">';
         g.spots.forEach(function (sp) {
           const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
-          spotsHtml += '<button class="spot-btn' + (on ? ' on' : '') + '" data-g="' + g.id + '" data-s="' + sp.id + '">' + esc(sp.name) + '</button>';
+          const buffed = sp.buffs && sp.buffs.length > 0;
+          const buffTip = buffed ? sp.buffs.map(function (b) { return (D.AFFIX_LABEL[b.type] || b.type) + (b.value > 0 ? '+' : '') + b.value + '%'; }).join(' · ') : '';
+          spotsHtml += '<button class="spot-btn' + (on ? ' on' : '') + (buffed ? ' buffed' : '') + '" data-g="' + g.id + '" data-s="' + sp.id + '"' +
+            (buffed ? ' title="该钓点有增益：' + esc(buffTip) + '"' : '') + '>' + esc(sp.name) +
+            (buffed ? '<span class="spot-buff-mark">⚡</span>' : '') + '</button>';
         });
         spotsHtml += '</div>';
       }
@@ -339,7 +424,7 @@ window.UI = (function () {
     const box = el('div', 'modal-box shop-modal bd-equip-modal');
     box.innerHTML = '<div class="modal-head"><span class="modal-title">🎯 装备「' + esc(part.name) + '」组件</span>' +
       '<button class="mini modal-close">✕ 关闭</button></div>' +
-      '<div class="modal-body"><div class="bde-note">装备会从背包取用 1 件；卸下或换装时原样放回背包</div><div id="bde-body"></div></div>';
+      '<div class="modal-body"><div class="bde-note">装备会从背包取用 1 件（卸下时自动放回）</div><div id="bde-body"></div></div>';
     box.querySelector('.modal-close').addEventListener('click', closeBdEquipModal);
     overlay.appendChild(box);
     document.body.appendChild(overlay);
@@ -457,10 +542,8 @@ window.UI = (function () {
       const acts = el('div', 'bd-acts');
       if (comp) {
         const off = el('button', 'mini', '卸下');
-        off.addEventListener('click', function () {
-          if (!confirm('确定卸下「' + comp.name + '」并放回背包、恢复标准' + part.name + '？')) return;
-          setPart(part.key, null);
-        });
+        off.title = '卸下并恢复标准' + part.name;
+        off.addEventListener('click', function () { setPart(part.key, null); });
         acts.appendChild(off);
       }
       // 背包中该部位的可用组件
@@ -481,7 +564,7 @@ window.UI = (function () {
     panel.appendChild(grid);
     panel.appendChild(el('div', 'note-block',
       '<b>组件怎么获得？</b>钓鱼时有概率钓到各部位组件（稀有/史诗更少见）。' +
-      '<b>装备取用</b>：安装会从背包取用 1 件该组件，<b>卸下或换装时原样放回背包</b>；加成持续生效并在服务器实时结算（正在钓鱼时钓速也会立即调整）。'));
+      '<b>装备取用</b>：安装会从背包取用 1 件该组件，加成持续生效并在服务器实时结算（正在钓鱼时钓速也会立即调整）。'));
     main.appendChild(panel);
   }
 
@@ -906,16 +989,26 @@ window.UI = (function () {
     } else {
       const bb = el('button', 'mini primary-mini', '购买');
       bb.addEventListener('click', function () {
-        // 支持自定义数量：默认 1，最多本挂单剩余数量
-        const input = prompt('购买数量（本挂单剩余 ' + l.qty + ' 个，单价 💰' + l.price + '）', '1');
-        if (input == null) return;
-        let n = parseInt(input, 10);
-        if (!n || n <= 0) { toast('请输入有效的购买数量'); return; }
-        n = Math.min(n, l.qty);
-        const total = l.price * n;
-        if (!confirm('花费 💰' + total + ' 购买 ' + l.name + ' ×' + n + ' ？')) return;
-        call(window.Net.marketBuy(l.lid, n), '购买成功：' + l.name + ' ×' + n).then(function (r) {
-          if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; renderTopbar(); renderView(); }
+        // 支持自定义数量：默认 1，最多本挂单剩余数量（子窗口输入，不用浏览器 prompt）
+        promptModal({
+          title: '购买 ' + l.name,
+          numeric: true, min: 1, max: l.qty, value: 1, okText: '购买',
+          html: '<div class="cf-hint">本挂单剩余 ' + l.qty + ' 个 · 单价 💰' + l.price + '</div>',
+        }).then(function (v) {
+          if (v == null) return;
+          const n = Math.max(1, Math.min(l.qty, Math.floor(Number(v) || 0)));
+          if (!n) { toast('请输入有效的购买数量'); return; }
+          const total = l.price * n;
+          confirmModal({
+            title: '确认购买',
+            html: '花费 <b>💰' + total + '</b> 购买 <b>' + esc(l.name) + ' ×' + n + '</b>？',
+            okText: '确定购买',
+          }).then(function (ok) {
+            if (!ok) return;
+            call(window.Net.marketBuy(l.lid, n), '购买成功：' + l.name + ' ×' + n).then(function (r) {
+              if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; renderTopbar(); renderView(); }
+            });
+          });
         });
       });
       acts.appendChild(bb);
@@ -1133,7 +1226,18 @@ window.UI = (function () {
     if (!ids.length) { toast('没有符合条件可出售的物品'); return; }
     const totalCnt = ids.reduce(function (s, id) { return s + st.inventory[id]; }, 0);
     const totalEst = ids.reduce(function (s, id) { return s + unit(id) * st.inventory[id]; }, 0);
-    if (!confirm('将出售 ' + ids.length + ' 种共 ' + totalCnt + ' 件物品，按当前收购价预计收入 ' + Math.round(totalEst) + '💰，确定？')) return;
+    confirmModal({
+      title: '批量出售',
+      html: '将出售 <b>' + ids.length + '</b> 种共 <b>' + totalCnt + '</b> 件物品，<br>按当前收购价预计收入 <b>💰' + Math.round(totalEst) + '</b>。',
+      okText: '确认出售',
+    }).then(function (ok) {
+      if (!ok) return;
+      bulkSellExec(ids);
+    });
+  }
+  // 执行批量出售（顺序执行，避免并发覆盖资产）
+  function bulkSellExec(ids) {
+    const st = S();
     let gain = 0, sold = 0;
     let chain = Promise.resolve();
     ids.forEach(function (id) {
@@ -1153,6 +1257,90 @@ window.UI = (function () {
       toast('一键出售完成：' + sold + ' 件，共收入 💰' + gain);
     });
   }
+
+  // 批量出售子窗口：数量可手填或用滑块，显示价格趋势图与预估收入
+  let batchSellId = null;
+  function openBatchSellModal(id) {
+    const st = S();
+    const meta = itemMeta(id);
+    const have = st.inventory[id] || 0;
+    if (have <= 0) { toast('没有可出售的物品'); return; }
+    batchSellId = id;
+    closeOverlays();
+    const overlay = buildOverlay(function () { closeBatchSell(); });
+    const box = el('div', 'modal-box shop-modal batch-sell-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">💰 批量出售 · ' + esc(meta.name) + '</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body">' +
+      '<div class="bs-vol" id="bs-vol">持有 ×' + have + ' · 现价 <b>' + unitPriceOf(id) + '</b>💰</div>' +
+      '<div class="bs-trend" id="bs-trend">价格走势加载中…</div>' +
+      '<div class="bs-row"><label>出售数量</label>' +
+      '<input id="bs-num" class="ipt bs-num" type="number" min="1" max="' + have + '" value="' + have + '" />' +
+      '<button class="mini" id="bs-max">全部</button></div>' +
+      '<input id="bs-range" class="bs-range" type="range" min="1" max="' + have + '" value="' + have + '" />' +
+      '<div class="bs-est" id="bs-est">—</div>' +
+      '<button class="primary big" id="bs-go">确认出售</button>' +
+      '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.querySelector('.modal-close').addEventListener('click', closeBatchSell);
+
+    const num = box.querySelector('#bs-num');
+    const range = box.querySelector('#bs-range');
+    const est = box.querySelector('#bs-est');
+    function clampQty(v) { v = Math.floor(Number(v) || 0); return Math.max(1, Math.min(have, v)); }
+    function recalc() {
+      const q = clampQty(num.value);
+      if (String(q) !== String(num.value)) num.value = q;
+      range.value = q;
+      est.innerHTML = '出售 <b>' + q + '</b> / ' + have + ' 个 · 预估收入 <b>💰' + Math.round(unitPriceOf(id) * q) + '</b><span class="muted">（按当前收购价）</span>';
+    }
+    num.addEventListener('input', function () { range.value = clampQty(num.value); recalc(); });
+    num.addEventListener('change', recalc);
+    range.addEventListener('input', function () { num.value = range.value; recalc(); });
+    box.querySelector('#bs-max').addEventListener('click', function () { num.value = have; recalc(); });
+    recalc();
+
+    box.querySelector('#bs-go').addEventListener('click', function () {
+      const q = clampQty(num.value);
+      confirmModal({
+        title: '确认出售',
+        html: '以现价 💰' + unitPriceOf(id) + ' 出售 <b>' + esc(meta.name) + ' ×' + q + '</b>（合计 <b>💰' + Math.round(unitPriceOf(id) * q) + '</b>）？',
+        okText: '确认出售',
+      }).then(function (ok) {
+        if (!ok) return;
+        closeBatchSell();
+        call(window.Net.sell(id, q), function (r) { return '售出 ' + meta.name + ' ×' + q + '，获得 💰' + r.data.gain; })
+          .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderView(); } });
+      });
+    });
+
+    // 价格趋势图（与商店详情同一数据源）
+    window.Net.shopHistory(id).then(function (r) {
+      const t = box.querySelector('#bs-trend');
+      if (!t || batchSellId !== id) return;
+      t.innerHTML = '';
+      if (!r || !r.ok) { t.appendChild(el('div', 'sd-legend', '价格走势不可用')); return; }
+      const d = r.data;
+      let pts = (d.points || []).slice();
+      if (pts.length >= 2) {
+        const prices = pts.map(function (x) { return x.p; }).concat([d.base]);
+        const maxP = Math.max.apply(null, prices), minP = Math.min.apply(null, prices);
+        const spark = el('div', 'sd-spark');
+        pts.forEach(function (pt) {
+          const h = maxP === minP ? 50 : Math.round(10 + 90 * (pt.p - minP) / (maxP - minP));
+          const bar = el('i', pt.p >= d.base ? 'up' : 'down');
+          bar.style.height = h + '%';
+          spark.appendChild(bar);
+        });
+        t.appendChild(spark);
+        t.appendChild(el('div', 'sd-legend', '近 ' + pts.length + ' 个采样 · 红=不低于基准 · 蓝=低于基准'));
+      } else {
+        t.appendChild(el('div', 'sd-legend', '价格采样积累中（服务器每分钟记录一次）。'));
+      }
+    });
+  }
+  function closeBatchSell() { batchSellId = null; closeOverlays(); }
 
   function renderInventory() {
     const main = $('main');
@@ -1216,12 +1404,9 @@ window.UI = (function () {
         sellBtn.title = '按当前系统收购价出售 1 个';
         sellBtn.addEventListener('click', function () { doSell(id, 1); });
         acts.appendChild(sellBtn);
-        const sellAll = el('button', 'mini', '全卖');
-        sellAll.title = '按当前系统收购价出售全部 ' + cnt + ' 个';
-        sellAll.addEventListener('click', function () {
-          if (!confirm('以现价 ' + unitPrice(id) + '💰 出售 ' + meta.name + ' ×' + cnt + '（合计 ' + itemValue(id) + '💰）？')) return;
-          doSell(id, cnt);
-        });
+        const sellAll = el('button', 'mini', '批量出售');
+        sellAll.title = '打开批量出售子窗口：可填数量或用滑块，并查看价格趋势';
+        sellAll.addEventListener('click', function () { openBatchSellModal(id); });
         acts.appendChild(sellAll);
         const lb = el('button', 'mini', '上架');
         lb.title = '挂到开放市集（选择时长，支付对应上架费，下架不退）';
@@ -1495,7 +1680,13 @@ window.UI = (function () {
         .map(function (id) {
           return { id: id, qty: Math.max(1, Math.min(st.inventory[id], sel[id])) };
         });
-      if (items.length === 0 && !confirm('你还没有选择任何物品，确定要清空「我的提供」吗？')) return;
+      if (items.length === 0) {
+        confirmModal({ title: '清空我的提供', html: '你还没有选择任何物品，确定要清空「我的提供」吗？', okText: '清空' }).then(function (ok) {
+          if (!ok) return;
+          call(window.Net.tradeSet(t.id, items), '已更新我的提供（双方确认已重置）').then(function (r) { if (r && r.ok) setTimeout(refreshAll, 200); });
+        });
+        return;
+      }
       call(window.Net.tradeSet(t.id, items), '已更新我的提供（双方确认已重置）').then(function (r) { if (r && r.ok) setTimeout(refreshAll, 200); });
     });
     box.appendChild(apply);
@@ -1829,9 +2020,11 @@ window.UI = (function () {
       const skip = el('button', 'mini primary-mini' + (canPay ? '' : ' locked'), '💸 花 ' + cost + ' 金币立即结束 CD');
       skip.addEventListener('click', function () {
         if (!canPay) { toast('金币不足（需 ' + cost + '）'); return; }
-        if (!confirm('花费 ' + cost + ' 金币立即结束反馈冷却？')) return;
-        call(window.Net.feedbackSkip(), '已结束冷却，现在可以提交反馈').then(function (r) {
-          if (r && r.ok) { st.feedback = Object.assign({}, st.feedback, { status: r.data.status }); renderTopbar(); renderView(); }
+        confirmModal({ title: '结束反馈冷却', html: '花费 <b>' + cost + '</b> 金币立即结束反馈冷却？', okText: '确认支付' }).then(function (ok) {
+          if (!ok) return;
+          call(window.Net.feedbackSkip(), '已结束冷却，现在可以提交反馈').then(function (r) {
+            if (r && r.ok) { st.feedback = Object.assign({}, st.feedback, { status: r.data.status }); renderTopbar(); renderView(); }
+          });
         });
       });
       banner.appendChild(skip);
@@ -1958,13 +2151,37 @@ window.UI = (function () {
     $('auth-submit').onclick = onAuthSubmit;
     $('auth-pass').addEventListener('keydown', function (e) { if (e.key === 'Enter') onAuthSubmit(); });
     $('auth-user').addEventListener('keydown', function (e) { if (e.key === 'Enter') onAuthSubmit(); });
+    $('auth-pass2').addEventListener('keydown', function (e) { if (e.key === 'Enter') onAuthSubmit(); });
+    $('auth-qq').addEventListener('keydown', function (e) { if (e.key === 'Enter') onAuthSubmit(); });
+    const lo = $('logout-btn');
+    if (lo) lo.addEventListener('click', doLogout);
+  }
+  // 登出：通知服务器使会话失效，清理本地状态并回到登录界面
+  function doLogout() {
+    confirmModal({ title: '退出登录', html: '确定要退出当前账号吗？', okText: '退出登录', danger: true }).then(function (ok) {
+      if (!ok) return;
+      const done = function () {
+        try { localStorage.removeItem('fishing_token'); } catch (e) {}
+        if (window.Net && window.Net.getMe && window.Net.getMe()) { try { window.Net.closeStream && window.Net.closeStream(); } catch (e) {} }
+        currentView = 'fishing';
+        showAuth();
+        authMsg('已退出登录');
+        renderNav();
+      };
+      if (window.Net && window.Net.logout) {
+        Promise.resolve(window.Net.logout()).then(done).catch(done);
+      } else done();
+    });
   }
   function setAuthTab(t) {
     authTab = t;
     $('tab-login').classList.toggle('active', t === 'login');
     $('tab-register').classList.toggle('active', t === 'register');
-    $('auth-name').style.display = t === 'register' ? 'block' : 'none';
-    $('auth-submit').textContent = t === 'login' ? '登录' : '注册';
+    const reg = t === 'register';
+    $('auth-name').style.display = reg ? 'block' : 'none';
+    $('auth-pass2').style.display = reg ? 'block' : 'none';
+    $('auth-qq').style.display = reg ? 'block' : 'none';
+    $('auth-submit').textContent = reg ? '注册' : '登录';
     $('auth-msg').textContent = '';
   }
   function showAuth() { $('auth').style.display = 'flex'; }
@@ -1981,6 +2198,14 @@ window.UI = (function () {
     const pass = $('auth-pass').value;
     const name = $('auth-name').value.trim();
     if (!user || !pass) { authMsg('请填写用户名和密码'); return; }
+    let qq = '', pass2 = '';
+    if (authTab === 'register') {
+      pass2 = $('auth-pass2').value;
+      qq = $('auth-qq').value.trim();
+      if (pass !== pass2) { authMsg('两次输入的密码不一致'); return; }
+      if (!qq) { authMsg('请填写 QQ 号'); return; }
+      if (!/^[0-9]{5,12}$/.test(qq)) { authMsg('QQ 号需为 5-12 位数字'); return; }
+    }
     const btn = $('auth-submit');
     if (btn.disabled) return;
     btn.disabled = true;
@@ -1989,7 +2214,7 @@ window.UI = (function () {
     authMsg('');
     let p;
     try {
-      p = authTab === 'register' ? window.Net.register(user, pass, name) : window.Net.login(user, pass);
+      p = authTab === 'register' ? window.Net.register(user, pass, name, qq, pass2) : window.Net.login(user, pass);
     } catch (e) {
       btn.disabled = false; btn.textContent = oldLabel;
       authMsg('请求失败：' + e.message);

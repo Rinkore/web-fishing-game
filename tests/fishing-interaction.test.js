@@ -110,8 +110,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
   try {
     // 注册 A / B
-    const ra = await POST('http://localhost:' + PORT + '/api/register', { username: 'fisher_a', password: 'pass1234', name: '钓手甲' });
-    const rb = await POST('http://localhost:' + PORT + '/api/register', { username: 'fisher_b', password: 'pass1234', name: '钓手乙' });
+    const ra = await POST('http://localhost:' + PORT + '/api/register', { username: 'fisher_a', password: 'pass1234', name: '钓手甲', qq: '10012' });
+    const rb = await POST('http://localhost:' + PORT + '/api/register', { username: 'fisher_b', password: 'pass1234', name: '钓手乙', qq: '10013' });
     const tokA = ra.data.token, tokB = rb.data.token;
 
     const sinkB = [];

@@ -101,7 +101,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('默认在「登录」tab', $('tab-login').classList.contains('active'));
 
     // 先注册一个账号（走真实 HTTP）
-    await req('POST', 'http://localhost:' + PORT + '/api/register', { username: 'uiuser', password: 'pass1234', name: '界面测试' });
+    await req('POST', 'http://localhost:' + PORT + '/api/register', { username: 'uiuser', password: 'pass1234', name: '界面测试', qq: '10001' });
 
     // 真实模拟：填表 + 点击登录按钮
     $('auth-user').value = 'uiuser';
@@ -135,14 +135,37 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(100);
     check('点击注册 tab 后按钮文案变化', $3('auth-submit').textContent.includes('注册'), $3('auth-submit').textContent);
     check('注册 tab 显示名输入框可见', $3('auth-name').style.display !== 'none');
+    check('注册 tab 显示确认密码输入框', $3('auth-pass2').style.display !== 'none');
+    check('注册 tab 显示 QQ 号输入框（必填）', $3('auth-qq').style.display !== 'none');
     $3('auth-user').value = 'newbie' + Math.floor(Math.random() * 10000);
     $3('auth-pass').value = 'abcd1234';
+    $3('auth-pass2').value = 'abcd1234';
+    $3('auth-qq').value = '123456789';
     $3('auth-name').value = '新钓手';
     const newName = $3('auth-user').value;
     $3('auth-submit').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
     await sleep(700);
     check('注册后进入游戏', $3('auth').style.display === 'none', 'msg=' + $3('auth-msg').textContent);
     check('注册后顶栏显示显示名', $3('player-status').textContent.includes('新钓手'), $3('player-status').textContent);
+
+    // ---------- 场景 3b：注册校验（必填 QQ / 确认密码一致）----------
+    console.log('\n=== 场景 3b：注册校验 ===');
+    ({ w, errors } = await openPage());
+    const $3b = id => w.document.getElementById(id);
+    $3b('tab-register').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await sleep(100);
+    $3b('auth-user').value = 'vfy' + Math.floor(Math.random() * 100000);
+    $3b('auth-pass').value = 'abcd1234';
+    $3b('auth-pass2').value = 'different9';
+    $3b('auth-qq').value = '123456789';
+    $3b('auth-submit').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await sleep(200);
+    check('两次密码不一致时提示且不进入游戏', $3b('auth').style.display !== 'none' && $3b('auth-msg').textContent.includes('密码'), $3b('auth-msg').textContent);
+    $3b('auth-pass2').value = 'abcd1234';
+    $3b('auth-qq').value = '';
+    $3b('auth-submit').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await sleep(200);
+    check('QQ 号为空时提示必填', $3b('auth').style.display !== 'none' && $3b('auth-msg').textContent.includes('QQ'), $3b('auth-msg').textContent);
 
     // ---------- 场景 4：本地已有 token 时自动登录 ----------
     console.log('\n=== 场景 4：已有 token 自动登录 ===');

@@ -49,8 +49,11 @@ window.Net = (function () {
     });
   }
 
-  function register(username, password, name) { return apiFetch('POST', '/api/register', { username: username, password: password, name: name }); }
+  function register(username, password, name, qq, confirmPassword) {
+    return apiFetch('POST', '/api/register', { username: username, password: password, name: name, qq: qq, confirmPassword: confirmPassword });
+  }
   function login(username, password) { return apiFetch('POST', '/api/login', { username: username, password: password }); }
+  function logout() { return authed('/api/logout', {}); }
   function fetchMe(token) { return apiFetch('GET', '/api/me?token=' + encodeURIComponent(token)); }
 
   // ---- 版本守卫 ----
@@ -248,7 +251,7 @@ window.Net = (function () {
   }
 
   return {
-    register: register, login: login, fetchMe: fetchMe, setAuth: setAuth,
+    register: register, login: login, logout: logout, fetchMe: fetchMe, setAuth: setAuth,
     guardVersion: guardVersion,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,

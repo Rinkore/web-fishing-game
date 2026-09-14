@@ -4,13 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0b1f33" />
-  <title>钓鱼网站 v0.8.2</title>
+  <title>钓鱼网站 v0.8.3</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🎣 钓鱼网站 <span class="ver">v0.8.2</span></div>
+    <div class="brand">🎣 钓鱼网站 <span class="ver">v0.8.3</span></div>
     <div id="player-status" class="player-status"></div>
+    <button id="logout-btn" class="logout-btn" title="退出登录">退出登录</button>
   </header>
 
   <!-- 破纪录横幅：全场最大纪录被破时在顶部滚动显示 -->
@@ -29,13 +30,16 @@
   <div id="auth" class="auth-overlay">
     <div class="auth-card">
       <div class="brand-big">🎣 钓鱼网站</div>
-      <div class="auth-sub">v0.8.2 · 注册或登录后开始（支持真实多人联机）</div>
+      <div class="auth-sub">v0.8.3 · 注册或登录后开始（支持真实多人联机）</div>
       <div class="auth-tabs">
         <button id="tab-login" class="active" data-tab="login">登录</button>
         <button id="tab-register" data-tab="register">注册</button>
       </div>
       <input id="auth-user" class="auth-input" placeholder="用户名（3-20 位字母/数字/下划线）" autocomplete="username" />
       <input id="auth-pass" class="auth-input" type="password" placeholder="密码（至少 4 位）" autocomplete="current-password" />
+      <!-- 仅注册时显示 -->
+      <input id="auth-pass2" class="auth-input" type="password" placeholder="确认密码（再次输入）" autocomplete="new-password" style="display:none" />
+      <input id="auth-qq" class="auth-input" placeholder="QQ 号（必填，5-12 位数字）" autocomplete="off" style="display:none" />
       <input id="auth-name" class="auth-input" placeholder="显示名（注册可选，留空等同用户名）" style="display:none" />
       <button id="auth-submit" class="primary big">登录</button>
       <div id="auth-msg" class="auth-msg"></div>

@@ -110,6 +110,19 @@ body {
 .spot-btn { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--text); cursor: pointer; font-size: 13px; }
 .spot-btn:hover { border-color: var(--accent2); }
 .spot-btn.on { background: var(--accent); color: #042; border-color: var(--accent); font-weight: 600; }
+/* 有钓点增益的钓点：⚡ 标记 + 高亮边框 */
+.spot-btn.buffed { position: relative; }
+.spot-btn.buffed .spot-buff-mark { margin-left: 5px; font-size: 11px; color: var(--big); }
+.spot-btn.buffed.on .spot-buff-mark { color: #402; }
+.spot-btn.buffed:not(.on) { border-color: rgba(251,191,36,.55); }
+
+/* 顶栏退出登录 */
+.logout-btn {
+  margin-left: 12px; flex: none; cursor: pointer; font-size: 12px;
+  padding: 5px 12px; border-radius: 8px; font-family: inherit;
+  border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--muted);
+}
+.logout-btn:hover { border-color: var(--danger); color: var(--danger); }
 
 .fish-ctrl { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
 .fish-state {
@@ -254,6 +267,27 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .modal-title { font-size: 15px; font-weight: 700; color: var(--accent2); }
 .modal-body { padding: 14px 16px; overflow: auto; }
 
+/* ---- 通用子窗口：确认 / 输入（替代浏览器 confirm/prompt） ---- */
+.confirm-modal { width: 400px; max-width: 92vw; }
+.confirm-modal .cf-text { font-size: 14px; line-height: 1.65; margin-bottom: 16px; }
+.confirm-modal .cf-hint { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.confirm-modal .cf-row { margin-bottom: 14px; }
+.confirm-modal .cf-input { width: 100%; }
+.confirm-modal .cf-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.mini.danger-mini { background: rgba(248,113,113,.16); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+.mini.danger-mini:hover { background: rgba(248,113,113,.28); }
+
+/* ---- 批量出售子窗口 ---- */
+.batch-sell-modal { width: 560px; }
+.bs-vol { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+.bs-vol b, .bs-est b { color: var(--big); }
+.bs-trend { margin-bottom: 12px; }
+.bs-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.bs-row label { font-size: 12px; color: var(--muted); flex: none; }
+.bs-num { width: 110px; }
+.bs-range { width: 100%; margin: 4px 0 14px; accent-color: var(--accent); }
+.bs-est { font-size: 13px; margin-bottom: 14px; }
+
 /* ---- 背包一键出售 ---- */
 .bulk-sell { margin: 12px 0; }
 .bulk-sub { margin-top: 10px; border: 1px dashed var(--accent2); border-radius: 8px; padding: 10px; background: rgba(56,189,248,.05); }
@@ -388,17 +422,18 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-/* ---- 破纪录横幅：顶部横向滚动，显示 5 秒 ---- */
+/* ---- 破纪录横幅：顶部横向滚动（一遍走完、字全部离开屏幕后由 JS 收起） ---- */
 .record-banner {
   position: fixed; left: 0; right: 0; top: 0; z-index: 60;
   height: 0; overflow: hidden; background: linear-gradient(90deg, rgba(251,191,36,.95), rgba(45,212,191,.95));
-  color: #06202e; font-weight: 700; white-space: nowrap;
+  color: #06202e; font-weight: 700;
   transition: height .3s ease; pointer-events: none;
 }
 .record-banner.show { height: 34px; display: flex; align-items: center; }
 .record-banner .rb-track {
-  display: inline-block; padding-left: 100%;
-  animation: rb-marquee 12s linear infinite; font-size: 14px; letter-spacing: .5px;
+  display: inline-block; white-space: nowrap; will-change: transform;
+  padding-left: 100%; font-size: 14px; letter-spacing: .5px;
+  animation: rb-marquee 12s linear 1 both;
 }
 @keyframes rb-marquee { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 

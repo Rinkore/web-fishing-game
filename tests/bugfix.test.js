@@ -116,8 +116,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
   await sleep(900);
 
   try {
-    const rA = await POST('http://localhost:' + PORT + '/api/register', { username: 'fix_a', password: 'pass1234', name: '甲玩家' });
-    const rB = await POST('http://localhost:' + PORT + '/api/register', { username: 'fix_b', password: 'pass1234', name: '乙玩家' });
+    const rA = await POST('http://localhost:' + PORT + '/api/register', { username: 'fix_a', password: 'pass1234', name: '甲玩家', qq: '10002' });
+    const rB = await POST('http://localhost:' + PORT + '/api/register', { username: 'fix_b', password: 'pass1234', name: '乙玩家', qq: '10003' });
     const tokA = rA.data.token, tokB = rB.data.token;
 
     // 监听双端广播

@@ -13,6 +13,8 @@ window.Admin = (function () {
   let worldCfg = null;          // /api/admin/world 结果（grounds + catalog + 设置）
   let usersList = null;         // /api/admin/users 结果
   let listings = [];            // 市集挂单
+  let mkSearch = '';            // 市集管理搜索
+  let mkKind = 'all';           // 市集管理类型筛选
   let timer = null;             // 概览自动刷新
   // 渔场编辑器状态
   let selGround = null, selSpot = null;
@@ -546,43 +548,88 @@ window.Admin = (function () {
     const main = $('main');
     main.innerHTML = '<h2>💱 开放市集管理</h2>' +
       '<div class="hint" style="margin-bottom:12px">「退回」将挂单物品退回卖家背包（上架费不退，与过期规则一致），卖家在线时会收到通知。</div>' +
+      '<div class="mk-filters"><input id="mk-search" class="ipt mk-search" placeholder="🔍 搜索物品 / 卖家 / 账号…" />' +
+      '<select id="mk-kind" class="ipt mk-kind"><option value="all">全部类型</option><option value="fish">🐟 鱼类</option><option value="material">🧵 材料</option><option value="component">🔧 组件</option></select>' +
+      '<span id="mk-count" class="hint"></span></div>' +
       '<div id="mk-body" class="panel">加载中…</div>';
+    const s = $('mk-search'), k = $('mk-kind');
+    s.addEventListener('input', function () { mkSearch = s.value; drawMarket(); });
+    k.addEventListener('change', function () { mkKind = k.value; drawMarket(); });
+    s.value = mkSearch; k.value = mkKind;
     return refreshMarket();
   }
-  function refreshMarket() {
-    return api('GET', '/api/market').then(function (r) {
-      if (!r.ok || view !== 'market') return;
-      listings = r.data.listings || [];
-      const body = $('mk-body');
-      if (!body) return;
-      if (!listings.length) { body.innerHTML = '<div class="hint">当前没有挂单。</div>'; return; }
-      body.innerHTML = '<table class="tbl"><thead><tr>' +
-        '<th>物品</th><th>卖家</th><th class="num">数量</th><th class="num">单价</th><th class="num">总价</th><th>剩余时长</th><th>操作</th>' +
-        '</tr></thead><tbody>' +
-        listings.map(function (l) {
-          return '<tr>' +
-            '<td><b>' + esc(l.name) + '</b></td>' +
-            '<td>' + esc(l.sellerName) + ' <span class="hint">' + esc(l.seller) + '</span></td>' +
-            '<td class="num">' + l.qty + '</td>' +
-            '<td class="num">' + l.price + '</td>' +
-            '<td class="num">' + (l.price * l.qty) + '</td>' +
-            '<td class="remain">' + remainText(l.expireAt) + '</td>' +
-            '<td><button class="btn mini danger" data-ret="' + l.lid + '">退回</button></td>' +
-            '</tr>';
-        }).join('') + '</tbody></table>';
-      body.querySelectorAll('[data-ret]').forEach(function (b) {
-        b.onclick = function () {
-          const lid = Number(b.getAttribute('data-ret'));
-          const l = listings.find(function (x) { return x.lid === lid; });
-          if (!confirm('确认退回挂单「' + (l ? l.name : lid) + '」？物品将退回卖家背包，上架费不退。')) return;
+  function filteredListings() {
+    const q = mkSearch.trim().toLowerCase();
+    return listings.filter(function (l) {
+      if (mkKind !== 'all') {
+        const meta = (typeof GameData !== 'undefined' && GameData.itemOf) ? GameData.itemOf(l.id) : null;
+        if (!meta || meta.kind !== mkKind) return false;
+      }
+      if (q) {
+        const hay = (l.name + ' ' + (l.sellerName || '') + ' ' + l.seller).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+  function drawMarket() {
+    const body = $('mk-body');
+    if (!body) return;
+    const cnt = $('mk-count');
+    const shown = filteredListings();
+    if (cnt) cnt.textContent = '显示 ' + shown.length + ' / ' + listings.length + ' 条挂单';
+    if (!listings.length) { body.innerHTML = '<div class="hint">当前没有挂单。</div>'; return; }
+    if (!shown.length) { body.innerHTML = '<div class="hint">没有符合条件的挂单。</div>'; return; }
+    body.innerHTML = '<table class="tbl"><thead><tr>' +
+      '<th>物品</th><th>卖家</th><th class="num">数量</th><th class="num">单价</th><th class="num">总价</th><th>剩余时长</th><th>操作</th>' +
+      '</tr></thead><tbody>' +
+      shown.map(function (l) {
+        return '<tr>' +
+          '<td><b>' + esc(l.name) + '</b></td>' +
+          '<td>' + esc(l.sellerName) + ' <span class="hint">' + esc(l.seller) + '</span></td>' +
+          '<td class="num">' + l.qty + '</td>' +
+          '<td class="num">' + l.price + '</td>' +
+          '<td class="num">' + (l.price * l.qty) + '</td>' +
+          '<td class="remain">' + remainText(l.expireAt) + '</td>' +
+          '<td><button class="btn mini danger" data-ret="' + l.lid + '">退回</button></td>' +
+          '</tr>';
+      }).join('') + '</tbody></table>';
+    body.querySelectorAll('[data-ret]').forEach(function (b) {
+      b.onclick = function () {
+        const lid = Number(b.getAttribute('data-ret'));
+        const l = listings.find(function (x) { return x.lid === lid; });
+        confirmModalLocal('确认退回挂单「' + (l ? l.name : lid) + '」？物品将退回卖家背包，上架费不退。').then(function (ok) {
+          if (!ok) return;
           b.disabled = true;
           adminApi('POST', '/api/admin/market/return', { token: token, lid: lid }).then(function (r) {
             if (!r.ok) { toast(r.data.error || '退回失败', true); b.disabled = false; refreshMarket(); return; }
             toast('已退回：' + (r.data.returned ? r.data.returned.name : '') + ' ×' + (r.data.returned ? r.data.returned.qty : ''));
             refreshMarket();
           });
-        };
-      });
+        });
+      };
+    });
+  }
+  // 子窗口确认（管理后台也用子窗口，替代浏览器 confirm）
+  function confirmModalLocal(text) {
+    return new Promise(function (resolve) {
+      document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+      const ov = document.createElement('div');
+      ov.className = 'modal-overlay';
+      ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">请确认</span></div>' +
+        '<div class="modal-body"><div class="cf-text">' + esc(text) + '</div>' +
+        '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn mini danger cf-yes">确定</button></div></div></div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click', function (e) { if (e.target === ov) { ov.remove(); resolve(false); } });
+      ov.querySelector('.cf-no').onclick = function () { ov.remove(); resolve(false); };
+      ov.querySelector('.cf-yes').onclick = function () { ov.remove(); resolve(true); };
+    });
+  }
+  function refreshMarket() {
+    return api('GET', '/api/market').then(function (r) {
+      if (!r.ok || view !== 'market') return;
+      listings = r.data.listings || [];
+      drawMarket();
     });
   }
 
@@ -591,7 +638,7 @@ window.Admin = (function () {
   // ================================
   const BITE_VARS_DOC = [
     ['speed', '钓速加成 %（钓竿词缀 + 钓点增益）'], ['big', '大鱼概率加成 %'], ['rare', '稀有概率加成 %'],
-    ['material', '材料概率加成 %'], ['size', '体型加成 %'], ['double', '双钓概率加成 %'], ['interval', '当前抛竿间隔 ms'],
+    ['material', '材料概率加成 %'], ['size', '体型加成 %'], ['double', '双钓叠加值 A（概率按 A/(A+100) 换算）'], ['interval', '当前抛竿间隔 ms'],
   ];
   function renderFormula() {
     const main = $('main');
@@ -673,7 +720,16 @@ window.Admin = (function () {
         '<div><b>' + esc(k) + ' — ' + esc(cfg.notifyLevels[k]) + '</b><span>' + esc(NOTIFY_HINT[k] || '') + '</span></div>' +
         '</label>';
     }).join('') +
-      '<div class="editor-foot"><button id="nt-save" class="btn primary">保存通知等级</button><span id="nt-state" class="hint"></span></div>';
+      '<div class="editor-foot"><button id="nt-save" class="btn primary">保存通知等级</button><span id="nt-state" class="hint"></span></div>' +
+      // 基础双钓率 B
+      '<h3 style="margin-top:22px">🎣 基础双钓率 B</h3>' +
+      '<div class="hint" style="margin-bottom:10px">叠加值 A（百分比点数）→ 单次追加概率 <code>P = A/(A+100)</code>；' +
+      '基础上钩 1 条，按 P 连续追加，最多 3 条。若已有基础双钓率 B，最终双钓概率 <code>1 − (1−B)(1−P)</code>。</div>' +
+      '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">基础双钓率 B</label>' +
+      '<input id="db-base" class="ipt" type="number" min="0" max="100" step="1" value="' + Math.round((cfg.doubleBase || 0) * 100) + '" style="width:110px" />' +
+      '<span class="hint">%</span>' +
+      '<button id="db-save" class="btn primary">保存</button><span id="db-state" class="hint"></span></div>' +
+      '<div id="db-preview" class="hint"></div>';
     body.querySelectorAll('.radio-card').forEach(function (c) {
       c.onclick = function () {
         body.querySelectorAll('.radio-card').forEach(function (x) { x.classList.remove('sel'); });
@@ -689,6 +745,25 @@ window.Admin = (function () {
         if (worldCfg) worldCfg.notifyLevel = r.data.notifyLevel;
         $('nt-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
         toast('通知等级已保存：' + sel.value);
+      });
+    };
+    const dbInp = $('db-base');
+    function preview() {
+      const b = Math.max(0, Math.min(1, (Number(dbInp.value) || 0) / 100));
+      const A = 50; // 以 50% 叠加值为例
+      let p = A / (A + 100);
+      if (b > 0) p = 1 - (1 - b) * (1 - p);
+      $('db-preview').innerHTML = '示例：叠加值 A=50 时，双钓概率 <b>' + (p * 100).toFixed(1) + '%</b>（期望上钩 ' + (1 + p + p * p).toFixed(2) + ' 条）';
+    }
+    dbInp.addEventListener('input', preview);
+    preview();
+    $('db-save').onclick = function () {
+      const b = Math.max(0, Math.min(100, Number(dbInp.value) || 0)) / 100;
+      adminApi('POST', '/api/admin/settings', { token: token, doubleBase: b }).then(function (r) {
+        if (!r.ok) { $('db-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+        if (worldCfg) worldCfg.doubleBase = r.data.doubleBase;
+        $('db-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
+        toast('基础双钓率已保存');
       });
     };
   }

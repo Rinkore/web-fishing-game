@@ -102,7 +102,7 @@ let users = {};
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
 // biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
 const BITE_FORMULA_DEFAULT = 'min(98, 90 + speed * 0.15)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, feedback: [], feedbackMeta: {} };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, feedback: [], feedbackMeta: {} };
 
 // ---- 反馈意见 ----
 // 默认每人每 24 小时可提交 1 条；花 10000 金币可立即结束 CD（下次可提交时间提前 24h）。
@@ -292,8 +292,31 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   sendTo(key, { type: 'catch', entry: entry });
   sendTo(key, { type: 'codex', codex: rec.codex, catchCount: rec.catchCount, entry: { id: codexId, name: itemName(codexId) } });
   sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
-  // 双钓词缀：立即再结算一竿（不连锁）
-  if (!noDouble && eff.double > 0 && Math.random() * 100 < eff.double) doServerCatch(rec, key, ground, spot, eff, true);
+  // 双钓：见 doubleCountOf。基础上钩 1 条，按双钓概率连续追加，最多 3 条。
+  const extra = doubleExtraOf(eff.double);
+  for (let i = 0; i < extra; i++) doServerCatch(rec, key, ground, spot, eff, true);
+}
+// ---- 双钓概率 ----
+// 叠加值 A（百分比点数，50% 写作 A=50）→ 实际每次追加概率 P = A / (A + 100) = 1 - 1/(1+A/100)。
+// 判定：基础上钩 1 条；掷 < P 成功则额外 +1；若成功再掷 < P，成功再 +1；最多 3 条。
+//   恰好 1 条 = 1-P，恰好 2 条 = P(1-P)，恰好 3 条 = P²，期望 E = 1 + P + P²。
+// 若已有基础双钓率 B（世界配置 doubleBase，0..1），最终双钓概率 = 1 - (1-B)(1-P)。
+function doubleProbOf(A) {
+  const a = Math.max(0, Number(A) || 0);
+  let p = a / (a + 100);
+  const B = Math.max(0, Math.min(1, Number(world.doubleBase) || 0));
+  if (B > 0) p = 1 - (1 - B) * (1 - p);
+  return Math.max(0, Math.min(1, p));
+}
+// 本次抛竿实际追加的额外鱼数（0..2）
+function doubleExtraOf(A) {
+  const p = doubleProbOf(A);
+  let extra = 0;
+  if (Math.random() < p) {
+    extra = 1;
+    if (Math.random() < p) extra = 2;
+  }
+  return extra;
 }
 function fishTick(key) {
   const p = players.get(key);
@@ -662,7 +685,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
@@ -759,7 +782,7 @@ function newToken() { return crypto.randomBytes(16).toString('hex'); }
 function profileOf(key) {
   const rec = users[key];
   return {
-    username: rec.username, name: rec.name, coins: rec.coins,
+    username: rec.username, name: rec.name, coins: rec.coins, qq: rec.qq || '',
     inventory: rec.inventory || {}, bd: rec.bd || {},
     codex: rec.codex || {}, catchCount: rec.catchCount || 0,
     admin: !!rec.admin,
@@ -902,10 +925,15 @@ const server = http.createServer(function (req, res) {
       const name = (d.name || '').trim() || username;
       if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) return apiResp(res, 400, { error: '用户名需为 3-20 位字母/数字/下划线' });
       if (password.length < 4) return apiResp(res, 400, { error: '密码至少 4 位' });
+      if (d.confirmPassword != null && String(d.confirmPassword) !== password) return apiResp(res, 400, { error: '两次输入的密码不一致' });
+      // QQ 号必填：5-12 位数字
+      const qq = String(d.qq == null ? '' : d.qq).trim();
+      if (!qq) return apiResp(res, 400, { error: '请填写 QQ 号' });
+      if (!/^[0-9]{5,12}$/.test(qq)) return apiResp(res, 400, { error: 'QQ 号需为 5-12 位数字' });
       const key = username.toLowerCase();
       if (users[key]) return apiResp(res, 409, { error: '用户名已存在' });
       const salt = crypto.randomBytes(8).toString('hex');
-      users[key] = { username: username, salt: salt, pwHash: hashPw(password, salt), name: name, coins: 500, inventory: {}, bd: {}, codex: {}, catchCount: 0, createdAt: Date.now() };
+      users[key] = { username: username, salt: salt, pwHash: hashPw(password, salt), name: name, qq: qq, coins: 500, inventory: {}, bd: {}, codex: {}, catchCount: 0, createdAt: Date.now() };
       saveAccount(key);
       const token = newToken(); sessions.set(token, key);
       apiResp(res, 200, { token: token, profile: profileOf(key) });
@@ -923,6 +951,35 @@ const server = http.createServer(function (req, res) {
       kickUserSessions(key); // 顶号：同账号旧会话全部失效
       const token = newToken(); sessions.set(token, key);
       apiResp(res, 200, { token: token, profile: profileOf(key) });
+    });
+    return;
+  }
+
+  // ---- 登出：使该 token 失效并断开实时连接 ----
+  if (p === '/api/logout' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { d = {}; }
+      const token = d.token || u.query.token;
+      const key = token && sessions.get(token);
+      if (key) {
+        sessions.delete(token);
+        // 仅当该账号已无其他有效会话时，才断开实时连接并移除玩家
+        const stillLive = Array.from(sessions.values()).some(function (k) { return k === key; });
+        if (!stillLive) {
+          stopFishingSession(key);
+          const doomed = [];
+          clientOwners.forEach(function (ownerKey, res) { if (ownerKey === key) doomed.push(res); });
+          doomed.forEach(function (res) {
+            clients.delete(res); clientOwners.delete(res);
+            try { res.write('data: ' + JSON.stringify({ type: 'kicked', msg: '你已登出' }) + '\n\n'); } catch (e) {}
+            try { res.end(); } catch (e) {}
+          });
+          if (players.has(key)) { players.delete(key); sendPlayersAll(); }
+          const t = tradeOfPlayer(key);
+          if (t) { t.cancelled = true; t.closed = true; broadcastTrade(t); trades.delete(t.id); }
+        }
+      }
+      apiResp(res, 200, { ok: true });
     });
     return;
   }
@@ -1121,6 +1178,29 @@ const server = http.createServer(function (req, res) {
         sendTo(key, { type: 'codex', codex: rec.codex, catchCount: rec.catchCount, entry: { id: codexId, name: itemName(codexId) } });
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, { ok: true, codex: cx, record: recordEvent });
+      });
+    });
+    return;
+  }
+  // 仅测试：模拟 n 次双钓判定，返回追加条数分布（验证 P=A/(A+100) 与最多 3 条）
+  if (process.env.FISHING_DEV === '1' && p === '/api/dev/doublecount' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      auth(req, res, body, function (d, key) {
+        const A = Number(d.A) || 0;
+        const n = Math.max(1, Math.min(200000, Number(d.n) || 1));
+        const dist = { '1': 0, '2': 0, '3': 0, '4': 0 };
+        let total = 0;
+        for (let i = 0; i < n; i++) {
+          const cnt = 1 + doubleExtraOf(A);
+          dist[String(cnt)] = (dist[String(cnt)] || 0) + 1;
+          total += cnt;
+        }
+        apiResp(res, 200, {
+          ok: true, A: A, n: n, P: doubleProbOf(A), doubleBase: Number(world.doubleBase) || 0,
+          dist: dist, mean: total / n,
+          p1: dist['1'] / n, p2: dist['2'] / n, p3: dist['3'] / n,
+        });
       });
     });
     return;
@@ -1572,7 +1652,7 @@ const server = http.createServer(function (req, res) {
       const r = users[k];
       const pl = players.get(k);
       return {
-        key: k, username: r.username, name: r.name,
+        key: k, username: r.username, name: r.name, qq: r.qq || '',
         admin: !!r.admin, coins: r.coins || 0,
         catchCount: r.catchCount || 0,
         online: !!pl,
@@ -1657,6 +1737,7 @@ const server = http.createServer(function (req, res) {
       notifyLevel: world.notifyLevel || 'all',
       notifyLevels: NOTIFY_LEVELS,
       biteFormula: world.biteFormula || BITE_FORMULA_DEFAULT,
+      doubleBase: Number(world.doubleBase) || 0,
     });
   }
   // ---- 钓点掉落池（种类 + 权重；保存后全服即时生效并广播游戏端） ----
@@ -1766,6 +1847,13 @@ const server = http.createServer(function (req, res) {
         if (!NOTIFY_LEVELS[d.notifyLevel]) return apiResp(res, 400, { error: '未知的通知等级' });
         if (!d.validateOnly) world.notifyLevel = d.notifyLevel;
         out.notifyLevel = d.notifyLevel;
+      }
+      // 基础双钓率 B（0..1）：叠加词缀双钓率 P 得最终双钓概率 1-(1-B)(1-P)
+      if (d.doubleBase != null) {
+        const b = Number(d.doubleBase);
+        if (!isFinite(b) || b < 0 || b > 1) return apiResp(res, 400, { error: '基础双钓率需在 0 - 1 之间' });
+        if (!d.validateOnly) world.doubleBase = b;
+        out.doubleBase = b;
       }
       if (!d.validateOnly) saveConfig();
       if (d.evalVars && formulaSrc != null) {

@@ -106,8 +106,8 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   let srv = start(P1);
   await sleep(900);
 
-  const ra = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_a', password: 'pass1234', name: '测试甲' });
-  const rb = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_b', password: 'pass5678', name: '测试乙' });
+  const ra = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_a', password: 'pass1234', name: '测试甲', qq: '10007' });
+  const rb = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_b', password: 'pass5678', name: '测试乙', qq: '10008' });
   check('注册成功返回 token', ra.status === 200 && !!ra.data.token && rb.status === 200);
   let tokA = ra.data.token, tokB = rb.data.token;
 
@@ -265,9 +265,9 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
 
   // ---------- 3. 账号系统 ----------
   section('3. 账号：注册 / 登录 / 会话');
-  const dupRes = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_a', password: 'another123' });
+  const dupRes = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_a', password: 'another123', qq: '10009' });
   check('重复用户名被拒 409', dupRes.status === 409, 'status=' + dupRes.status);
-  const dupCase = await POST('http://localhost:' + P1 + '/api/register', { username: 'TESTER_A', password: 'another123' });
+  const dupCase = await POST('http://localhost:' + P1 + '/api/register', { username: 'TESTER_A', password: 'another123', qq: '10010' });
   check('用户名大小写不敏感（同账号视为重复）409', dupCase.status === 409);
   check('非法用户名被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'ab', password: 'abcd' })).status === 400);
   check('过短密码被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_c', password: '1' })).status === 400);
@@ -279,13 +279,41 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('无 token 取资料被拒 401', (await GET('http://localhost:' + P1 + '/api/me')).status === 401);
   check('伪造 token 取资料被拒 401', (await GET('http://localhost:' + P1 + '/api/me?token=fake123')).status === 401);
   // 顶号：同账号二次登录使旧会话失效
-  const rc3 = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_c', password: 'pass1234' });
+  const rc3 = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_c', password: 'pass1234', qq: '10011' });
   check('第三个账号注册成功', rc3.status === 200);
-  const lgC1 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_c', password: 'pass1234' });
-  const lgC2 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_c', password: 'pass1234' });
+  const lgC1 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_c', password: 'pass1234', qq: '10011' });
+  const lgC2 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_c', password: 'pass1234', qq: '10011' });
   check('同账号二次登录成功（顶号）', lgC2.status === 200);
   check('旧 token 被顶号失效 401', (await GET('http://localhost:' + P1 + '/api/me?token=' + lgC1.data.token)).status === 401);
   check('新 token 可用', (await GET('http://localhost:' + P1 + '/api/me?token=' + lgC2.data.token)).status === 200);
+
+  section('注册校验：QQ 必填 + 确认密码');
+  check('缺少 QQ 号被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'noqq_user', password: 'pass1234', qq: '' })).status === 400);
+  check('QQ 号格式非法被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'badqq_user', password: 'pass1234', qq: 'abc' })).status === 400);
+  check('确认密码不一致被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'mismatch_user', password: 'pass1234', confirmPassword: 'other999', qq: '123456' })).status === 400);
+  const okReg = await POST('http://localhost:' + P1 + '/api/register', { username: 'goodqq_user', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  check('QQ 与确认密码合法时注册成功', okReg.status === 200 && !!okReg.data.token);
+  check('响应 profile 含 QQ 号', okReg.data.profile.qq === '123456', JSON.stringify(okReg.data.profile.qq));
+
+  section('登出：会话失效 + 实时连接断开');
+  const loTok = okReg.data.token;
+  check('登出前 token 可用', (await GET('http://localhost:' + P1 + '/api/me?token=' + loTok)).status === 200);
+  check('登出返回成功', (await POST('http://localhost:' + P1 + '/api/logout', { token: loTok })).status === 200);
+  check('登出后 token 失效 401', (await GET('http://localhost:' + P1 + '/api/me?token=' + loTok)).status === 401);
+  check('登出后可用账号密码重新登录', (await POST('http://localhost:' + P1 + '/api/login', { username: 'goodqq_user', password: 'pass1234' })).status === 200);
+  check('无 token 登出也返回成功（幂等）', (await POST('http://localhost:' + P1 + '/api/logout', {})).status === 200);
+
+  section('双钓：叠加值 A → 概率 P=A/(A+100)，最多 3 条');
+  const dc0 = await POST('http://localhost:' + P1 + '/api/dev/doublecount', { token: tokA, A: 0, n: 50 });
+  check('A=0 时不追加（始终 1 条）', dc0.status === 200 && dc0.data.dist['1'] === 50, JSON.stringify(dc0.data.dist));
+  const dc50 = await POST('http://localhost:' + P1 + '/api/dev/doublecount', { token: tokA, A: 50, n: 4000 });
+  check('A=50 时存在 2 条与 3 条的情况', dc50.status === 200 && dc50.data.dist['2'] > 0 && dc50.data.dist['3'] > 0, JSON.stringify(dc50.data.dist));
+  check('A=50 时从不出现 4 条（最多 3 条）', !dc50.data.dist['4'], JSON.stringify(dc50.data.dist));
+  // P=1/3：理论 1条=0.667,2条=0.222,3条=0.111, E=1.444
+  check('A=50 分布接近理论值（±0.06）', Math.abs(dc50.data.p1 - 2 / 3) < 0.06 && Math.abs(dc50.data.p2 - 2 / 9) < 0.06 && Math.abs(dc50.data.p3 - 1 / 9) < 0.06,
+    JSON.stringify({ p1: dc50.data.p1, p2: dc50.data.p2, p3: dc50.data.p3 }));
+  check('A=50 期望上钩数 ≈ 1.444', Math.abs(dc50.data.mean - (1 + 1 / 3 + 1 / 9)) < 0.06, String(dc50.data.mean));
+
 
   // ---------- 4. 资产持久化与防伪造 ----------
   section('4. 资产持久化 + 客户端不可伪造（服务器权威）');

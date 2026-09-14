@@ -159,6 +159,18 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 /* ---- 市集 ---- */
 .remain { font-size: 12px; color: var(--txt-dim); }
+.mk-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.mk-filters .mk-search { flex: 1; min-width: 180px; max-width: 340px; }
+.mk-filters .mk-kind { width: auto; flex: none; }
+
+/* 通用确认子窗口（管理后台） */
+.modal-overlay { position: fixed; inset: 0; z-index: 90; background: rgba(6,10,16,.66); display: flex; align-items: center; justify-content: center; }
+.confirm-modal { width: 400px; max-width: 92vw; background: var(--panel); border: 1px solid var(--acc2); border-radius: 12px; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
+.confirm-modal .modal-head { padding: 13px 16px; border-bottom: 1px solid var(--line); }
+.confirm-modal .modal-title { font-size: 15px; font-weight: 700; color: var(--acc); }
+.confirm-modal .modal-body { padding: 14px 16px; }
+.confirm-modal .cf-text { font-size: 14px; line-height: 1.6; margin-bottom: 16px; }
+.confirm-modal .cf-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
 /* ---- 公式 / 通知 ---- */
 .formula-box { display: flex; gap: 16px; flex-wrap: wrap; }

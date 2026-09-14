@@ -58,8 +58,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
   await sleep(1000);
   let browser;
   try {
-    const rs = await post('/api/register', { username: 'lay_seller', password: 'abcd1234', name: '布局卖家' });
-    const rb = await post('/api/register', { username: 'lay_buyer', password: 'abcd1234', name: '布局买家' });
+    const rs = await post('/api/register', { username: 'lay_seller', password: 'abcd1234', name: '布局卖家', qq: '10014' });
+    const rb = await post('/api/register', { username: 'lay_buyer', password: 'abcd1234', name: '布局买家', qq: '10015' });
     const tokS = rs.data.token, tokB = rb.data.token;
 
     await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, koi: 2, lure: 4 }, coins: 2400 });
@@ -222,6 +222,60 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await clickNav(p1, '系统商店');
     const qtyKept = await p1.inputValue('.shop-qtybar .sqb-num');
     check('出售数量跨页面保留（全局生效）', qtyKept === '3', qtyKept);
+
+    // —— 背包：批量出售 -> 子窗口（数字 + 滑块 + 趋势图） ——
+    await clickNav(p1, '背包');
+    check('背包行有「批量出售」按钮', (await p1.textContent('.inv-page')).includes('批量出售'));
+    await p1.evaluate(() => {
+      const b = Array.from(document.querySelectorAll('.inv-page-row .mini')).find(x => x.textContent.includes('批量出售'));
+      if (b) b.click();
+    });
+    await sleep(400);
+    check('批量出售弹出子窗口', (await p1.$$('.batch-sell-modal')).length === 1);
+    check('子窗口含数字输入与滑块', (await p1.$$('.batch-sell-modal .bs-num')).length === 1 && (await p1.$$('.batch-sell-modal .bs-range')).length === 1);
+    // 数字与滑块联动
+    await p1.fill('.batch-sell-modal .bs-num', '2');
+    await p1.evaluate(() => { const n = document.querySelector('.batch-sell-modal .bs-num'); n.dispatchEvent(new Event('input', { bubbles: true })); });
+    await sleep(150);
+    const rangeVal = await p1.inputValue('.batch-sell-modal .bs-range');
+    check('输入数量后滑块同步', rangeVal === '2', rangeVal);
+    await sleep(700);
+    check('子窗口渲染价格趋势区', (await p1.$$('.batch-sell-modal .bs-trend')).length === 1);
+    await p1.evaluate(() => { const b = document.querySelector('.batch-sell-modal .modal-close'); if (b) b.click(); });
+    await sleep(200);
+    check('关闭后批量出售子窗口消失', (await p1.$$('.batch-sell-modal')).length === 0);
+
+    // —— 顶栏登出按钮 + 登出确认子窗口 ——
+    check('顶栏有退出登录按钮', (await p1.$$('#logout-btn')).length === 1);
+    await p1.evaluate(() => { const b = document.getElementById('logout-btn'); if (b) b.click(); });
+    await sleep(300);
+    check('登出弹出确认子窗口（非浏览器弹窗）', (await p1.$$('.confirm-modal')).length === 1);
+    await p1.evaluate(() => { const b = document.querySelector('.confirm-modal .cf-cancel'); if (b) b.click(); });
+    await sleep(200);
+    check('取消登出后子窗口关闭', (await p1.$$('.confirm-modal')).length === 0);
+
+    // —— 钓点增益标记 ——
+    const spotMarkInfo = await p1.evaluate(async () => {
+      // 通过管理员接口给 dock 设置增益（测试服务器无管理员时首个登录的即为管理员）
+      const reg = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'lay_seller', password: 'abcd1234' }) }).then(r => r.json()).catch(() => null);
+      if (!reg || !reg.token) return { ok: false, why: 'no admin token' };
+      const r2 = await fetch('/api/admin/spot/buffs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: reg.token, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 15 }] }) }).then(r => r.json()).catch(() => null);
+      return { ok: !!(r2 && r2.ok), why: r2 && r2.error };
+    });
+    // 等待 groundcfg 广播后重绘钓鱼页
+    await sleep(600);
+    await clickNav(p1, '钓鱼');
+    await sleep(300);
+    check('有增益的钓点显示 ⚡ 标记', (await p1.$$('.spot-btn.buffed .spot-buff-mark')).length >= 1, JSON.stringify(spotMarkInfo));
+
+    // —— 确认子窗口替代浏览器弹窗（源码级断言：前端不再出现原生 confirm/prompt/alert） ——
+    const uiSrc = fs.readFileSync(path.join(ROOT, 'frontend', 'js', 'ui.js'), 'utf8');
+    const adminSrc = fs.readFileSync(path.join(ROOT, 'frontend', 'js', 'admin.js'), 'utf8');
+    const nativeDialogRe = /(^|[^.\w$])(confirm|prompt|alert)\s*\(\s*['"`]/;
+    check('前端 ui.js 不再调用原生 confirm/prompt/alert', !nativeDialogRe.test(uiSrc),
+      (uiSrc.match(nativeDialogRe) || []).join(' | '));
+    check('管理后台 admin.js 不再调用原生 confirm/prompt/alert', !nativeDialogRe.test(adminSrc),
+      (adminSrc.match(nativeDialogRe) || []).join(' | '));
 
     // —— 鱼类图鉴 ——
     await clickNav(p1, '鱼类图鉴');
