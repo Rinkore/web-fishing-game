@@ -414,7 +414,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       }, { timeout: 8000, interval: 200 }).catch(() => false);
       check('保存钓竿到槽位并命名（UI 流程）', savedOk === true, String(savedOk));
       const afterSave = await get('/api/me?token=' + tokS);
-      check('存档后装备位清空（配件随竿收起）', !(afterSave.data.bd && afterSave.data.bd.rod && afterSave.data.bd.rod.compId), JSON.stringify(afterSave.data.bd && afterSave.data.bd.rod));
+      check('存档后仍保持装戴（保存=占用槽位，不再收起）', !!(afterSave.data.bd && afterSave.data.bd.rod && afterSave.data.bd.rod.compId), JSON.stringify(afterSave.data.bd && afterSave.data.bd.rod));
+      check('存档后槽位标记为使用中', afterSave.data.rodActiveSlot === 1, String(afterSave.data.rodActiveSlot));
       await clickNav(p1, '钓竿配置');
       const slotCard = await p1.evaluate(() => {
         const cards = Array.from(document.querySelectorAll('.rs-card'));
@@ -433,6 +434,11 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
         return !!(me.data.bd && me.data.bd.rod && me.data.bd.rod.compId);
       }, { timeout: 8000, interval: 200 }).catch(() => false);
       check('点「使用」切换回该钓竿（装备恢复）', usedOk === true, String(usedOk));
+      const afterUse = await get('/api/me?token=' + tokS);
+      check('使用不腾空原槽位（钓竿留在槽位里）', !!(afterUse.data.rodSlots && afterUse.data.rodSlots[1] && afterUse.data.rodSlots[1].name === 'QA·钓速竿'),
+        JSON.stringify((afterUse.data.rodSlots || []).map(function (x) { return x && x.name; })));
+      check('槽位卡片显示「使用中」标记', await p1.evaluate(() => !!document.querySelector('.rs-active')), '');
+      check('页头有「收起当前钓竿」入口', await p1.evaluate(() => !!document.getElementById('rs-stow')), '');
       // 锁定标记：再发一件同签名组件 → 背包该行显示 🔒
       await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: rodComp } });
       await clickNav(p1, '背包');
@@ -665,7 +671,12 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await clickNav(p1, '背包');
     check('背包行有「批量出售」按钮', (await p1.textContent('.inv-page')).includes('批量出售'));
     await p1.evaluate(() => {
-      const b = Array.from(document.querySelectorAll('.inv-page-row .mini')).find(x => x.textContent.includes('批量出售'));
+      // 选一件「持有 ≥2」的物品（数量为 1 时输入会被夹到 1，无法验证联动）
+      const row = Array.from(document.querySelectorAll('.inv-page-row')).find(r => {
+        const m = /×(\d+)/.exec((r.querySelector('.cnt') || {}).textContent || '');
+        return m && Number(m[1]) >= 2 && Array.from(r.querySelectorAll('.mini')).some(b => b.textContent.includes('批量出售'));
+      });
+      const b = row && Array.from(row.querySelectorAll('.mini')).find(x => x.textContent.includes('批量出售'));
       if (b) b.click();
     });
     await sleep(400);

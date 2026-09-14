@@ -21,6 +21,7 @@ window.Engine = (function () {
     rodSlotsCount: 1,           // 已购买槽位数（首个免费）
     rodSlotsMax: 8,
     nextRodSlotPrice: null,     // 下一个槽位价格
+    rodActiveSlot: -1,          // 当前使用的槽位（-1 = 用的是散件装配）
     rodLocked: {},              // 被钓竿占用的组件实例件数（背包/交易显示锁定标记）
     inventory: {},              // 服务器权威，SSE assets 整体同步
     bd: buildDefaultBD(),       // 服务器权威，登录/装备时同步
@@ -70,6 +71,7 @@ window.Engine = (function () {
       if (profile.rodName !== undefined) state.rodName = profile.rodName || '';
       if (profile.rodSlots !== undefined) state.rodSlots = profile.rodSlots || [];
       if (profile.rodSlotsCount !== undefined) state.rodSlotsCount = profile.rodSlotsCount;
+      if (profile.rodActiveSlot !== undefined) state.rodActiveSlot = profile.rodActiveSlot;
       if (profile.rodSlotsMax !== undefined) state.rodSlotsMax = profile.rodSlotsMax;
       if (profile.nextRodSlotPrice !== undefined) state.nextRodSlotPrice = profile.nextRodSlotPrice;
       if (profile.rodLocked !== undefined) state.rodLocked = profile.rodLocked || {};

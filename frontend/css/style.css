@@ -1063,3 +1063,7 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .bn-color-custom { width: 30px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: transparent; cursor: pointer; }
 .bn-color-input { width: 44px; height: 26px; padding: 0; }
 .bn-swatch { display: inline-block; width: 22px; height: 14px; border-radius: 4px; vertical-align: middle; margin-right: 6px; border: 1px solid var(--line); }
+
+/* 钓竿槽位「使用中」标记 */
+.rs-card .rs-active { font-size: 10px; font-weight: 700; color: #04202e; background: var(--accent); border-radius: 20px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
+.rs-card.has.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }

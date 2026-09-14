@@ -161,6 +161,7 @@ window.Net = (function () {
   const rodRename = (slot, name) => authed('/api/rod/rename', { slot: slot, name: name });
   const rodUse = (slot) => authed('/api/rod/use', { slot: slot });
   const rodDelete = (slot) => authed('/api/rod/delete', { slot: slot });
+  const rodStow = () => authed('/api/rod/stow', {});
   // 整根钓竿上架（走同一挂单接口，带 rodSlot）
   const marketListRod = (slot, price, hours) => authed('/api/market/list', { rodSlot: slot, price: price, hours: hours });
   // 组件订阅提醒（玩家级配置：筛选条件 + 提醒方式）
@@ -359,7 +360,7 @@ window.Net = (function () {
     sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,
     rodBuySlot: rodBuySlot, rodSave: rodSave, rodName: rodName, rodRename: rodRename,
-    rodUse: rodUse, rodDelete: rodDelete, marketListRod: marketListRod,
+    rodUse: rodUse, rodDelete: rodDelete, rodStow: rodStow, marketListRod: marketListRod,
     tradeConfirm: tradeConfirm, tradeCancel: tradeCancel,
     getMe: function () { return me; },
   };

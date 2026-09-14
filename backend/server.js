@@ -143,11 +143,51 @@ function rodSlotsOf(rec) {
   while (rec.rodSlots.length < ROD_SLOT_MAX) rec.rodSlots.push(null);
   return rec.rodSlots;
 }
+// 已购买范围内的第一个空槽位（-1 = 已满）
+function freeRodSlotOf(rec) {
+  const slots = rodSlotsOf(rec);
+  const n = rodSlotCountOf(rec);
+  for (let i = 0; i < n; i++) {
+    if (!slots[i] || !Object.keys(rodPartsOfBd(slots[i].bd)).length) return i;
+  }
+  return -1;
+}
+// 当前使用的槽位（-1 = 当前装配的是散件，不属于任何槽位）
+function rodActiveSlotOf(rec) {
+  const i = Math.floor(Number(rec && rec.rodActiveSlot));
+  if (!isFinite(i) || i < 0) return -1;
+  const sl = rodSlotsOf(rec)[i];
+  return (sl && Object.keys(rodPartsOfBd(sl.bd)).length) ? i : -1;
+}
+// 把整根钓竿放进空槽位（市集买入 / 下架退回）；没有空槽位时返回 -1
+function stashRodToSlot(rec, rodId, nameHint) {
+  const parts = D.rodPartsOf ? D.rodPartsOf(rodId) : null;
+  if (!parts) return -1;
+  const idx = freeRodSlotOf(rec);
+  if (idx < 0) return -1;
+  const bd = {};
+  D.ROD_PARTS.forEach(function (p) {
+    const cid = parts[p.key];
+    if (!cid) return;
+    const meta = D.componentOf(cid);
+    bd[p.key] = { compId: cid, name: meta ? meta.name : cid, affixes: meta ? meta.affixes : [], rare: meta ? meta.quality : 'common', isCharm: !!p.isCharm };
+  });
+  rodSlotsOf(rec)[idx] = { name: String(nameHint || '').trim().slice(0, ROD_NAME_MAX), bd: bd, t: Date.now() };
+  return idx;
+}
 function rodPartsOfBd(bd) {
   const out = {};
   D.ROD_PARTS.forEach(function (p) { const c = bd && bd[p.key] && bd[p.key].compId; if (c) out[p.key] = c; });
   return out;
 }
+// 装戴内容变化时，同步回「使用中」的槽位（槽位与当前钓竿始终一致，避免快照过期导致误锁或复制）
+function syncActiveRodSlot(rec) {
+  const as = rodActiveSlotOf(rec);
+  if (as < 0) return;
+  rodSlotsOf(rec)[as].bd = JSON.parse(JSON.stringify(rec.bd || {}));
+  rodSlotsOf(rec)[as].t = Date.now();
+}
+
 // 各组件实例被「当前装备 + 已保存钓竿」占用的件数（用于锁定提示与校验）
 function rodUsageOf(rec) {
   const used = {};
@@ -158,7 +198,11 @@ function rodUsageOf(rec) {
     });
   }
   add(rec.bd);
-  rodSlotsOf(rec).forEach(function (sl) { if (sl && sl.bd) add(sl.bd); });
+  const active = rodActiveSlotOf(rec);
+  rodSlotsOf(rec).forEach(function (sl, i) {
+    if (i === active) return; // 使用中的槽位：其配件就是当前装戴的那一份，不重复计入
+    if (sl && sl.bd) add(sl.bd);
+  });
   return used;
 }
 // 出售/上架/交易前的钓竿锁定校验：背包余量够就放行；不够且被钓竿占用 → 明确报错
@@ -169,6 +213,13 @@ function rodLockError(rec, id, qty) {
   if (used) return '该配件已锁定在钓竿上（占用 ' + used + ' 件），背包可交易余量不足，请先卸下或删除对应钓竿';
   return null;
 }
+// 整根钓竿退回：优先整体放进空槽位；没有空槽位时拆散进背包（并返回方式，便于提示）
+function deliverRodBack(rec, rodId, nameHint) {
+  const hint = String(nameHint || '').replace(/\s*·?\s*整根钓竿（\d+ 件）$/, '').trim().slice(0, ROD_NAME_MAX);
+  const at = stashRodToSlot(rec, rodId, hint);
+  if (at >= 0) return { mode: 'slot', slot: at, count: 0 };
+  return { mode: 'inventory', slot: -1, count: deliverRodToInventory(rec, rodId) };
+}
 // 整根钓竿的组件发到背包（市集成交 / 下架 / 过期退回）
 function deliverRodToInventory(rec, rodId) {
   const parts = D.rodPartsOf ? D.rodPartsOf(rodId) : null;
@@ -178,6 +229,7 @@ function deliverRodToInventory(rec, rodId) {
   return n;
 }
 function rodSlotView(rec) {
+  const active = rodActiveSlotOf(rec);
   return rodSlotsOf(rec).map(function (sl, i) {
     if (!sl) return null;
     const parts = rodPartsOfBd(sl.bd);
@@ -188,6 +240,7 @@ function rodSlotView(rec) {
       slot: i, name: sl.name || '', parts: parts, rodId: rodId,
       count: Object.keys(parts).length,
       affixes: meta ? meta.affixes : [], price: meta ? meta.price : 0,
+      active: i === active,
     };
   });
 }
@@ -1203,6 +1256,8 @@ function profileOf(key) {
     rodName: rec.rodName || '',
     rodSlotsCount: rodSlotCountOf(rec),
     rodSlotsMax: ROD_SLOT_MAX,
+    rodActiveSlot: rodActiveSlotOf(rec),
+    freeRodSlots: (function () { let n = 0; for (let i = 0; i < rodSlotCountOf(rec); i++) if (freeRodSlotOf && freeRodSlotOf(rec) >= 0) { n++; break; } return freeRodSlotOf(rec) >= 0 ? 1 : 0; })(),
     rodSlots: rodSlotView(rec),
     nextRodSlotPrice: nextRodSlotPrice(rec),
     rodLocked: rodUsageOf(rec),
@@ -1265,7 +1320,7 @@ function sweepExpiredListings() {
     if (l.expireAt && l.expireAt <= now) {
       const seller = users[l.seller];
       if (seller) {
-        if (D.isRodSet(l.id)) deliverRodToInventory(seller, l.id);
+        if (D.isRodSet(l.id)) deliverRodBack(seller, l.id, l.name);
         else invAdd(seller, l.id, l.qty);
         sellers[l.seller] = 1;
         sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory });
@@ -1517,21 +1572,25 @@ const server = http.createServer(function (req, res) {
         const parts = rodPartsOfBd(rec.bd);
         if (!Object.keys(parts).length) return apiResp(res, 400, { error: '当前钓竿还没有装配任何组件' });
         const slots = rodSlotsOf(rec);
-        let returned = 0;
-        if (slots[slot] && Object.keys(rodPartsOfBd(slots[slot].bd)).length) {
-          // 覆盖已占用的槽位：旧钓竿的配件退回背包（不丢失），需调用方确认 force
-          if (!d.force) return apiResp(res, 400, { error: '该槽位已有钓竿，请先删除或勾选覆盖（旧钓竿配件将退回背包）' });
-          returned = deliverRodToInventory(rec, D.rodSetId(rodPartsOfBd(slots[slot].bd)) || '');
+        const activeSlot = rodActiveSlotOf(rec);
+        if (activeSlot >= 0 && activeSlot !== slot) {
+          return apiResp(res, 400, { error: '当前钓竿已占用槽位 ' + (activeSlot + 1) + '（可直接「改名」）；如需另存请先卸下再装配' });
         }
-        // 保存 = 把当前钓竿收起进槽位：配件随竿存放（不在背包 → 不可单独交易），装备位清空
-        const name = String(d.name != null ? d.name : '').trim().slice(0, ROD_NAME_MAX) || (rec.rodName || '');
+        if (slots[slot] && Object.keys(rodPartsOfBd(slots[slot].bd)).length && slot !== activeSlot) {
+          if (!d.force) return apiResp(res, 400, { error: '该槽位已有钓竿，请先删除或选择其他槽位' });
+          deliverRodToInventory(rec, D.rodSetId(rodPartsOfBd(slots[slot].bd)) || '');
+        }
+        // 保存 = 当前装配的这根直接占用该槽位（配件保持装戴并被锁定），仍可继续使用与改名
+        const name = String(d.name != null ? d.name : ((slots[slot] || {}).name || '')).trim().slice(0, ROD_NAME_MAX) || (rec.rodName || '');
         slots[slot] = { name: name, bd: JSON.parse(JSON.stringify(rec.bd || {})), t: Date.now() };
-        rec.bd = {};
-        rec.rodName = '';
+        rec.rodName = name;
+        rec.rodActiveSlot = slot;
         saveAccount(key);
+        const found = null;
+        void found;
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, {
-          ok: true, slot: slot, bd: rec.bd, rodName: rec.rodName, returned: returned,
+          ok: true, slot: slot, bd: rec.bd, rodName: rec.rodName, rodActiveSlot: rec.rodActiveSlot,
           inventory: rec.inventory, rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
         });
       });
@@ -1543,8 +1602,10 @@ const server = http.createServer(function (req, res) {
       auth(req, res, body, function (d, key) {
         const rec = users[key];
         rec.rodName = String(d.name || '').trim().slice(0, ROD_NAME_MAX);
+        const as = rodActiveSlotOf(rec);
+        if (as >= 0) rodSlotsOf(rec)[as].name = rec.rodName; // 使用中的钓竿改名 → 槽位名同步
         saveAccount(key);
-        apiResp(res, 200, { ok: true, rodName: rec.rodName });
+        apiResp(res, 200, { ok: true, rodName: rec.rodName, rodSlots: rodSlotView(rec) });
       });
     });
     return;
@@ -1557,8 +1618,9 @@ const server = http.createServer(function (req, res) {
         const sl = rodSlotsOf(rec)[slot];
         if (!sl) return apiResp(res, 404, { error: '该槽位没有已保存的钓竿' });
         sl.name = String(d.name || '').trim().slice(0, ROD_NAME_MAX);
+        if (rodActiveSlotOf(rec) === slot) rec.rodName = sl.name;
         saveAccount(key);
-        apiResp(res, 200, { ok: true, rodSlots: rodSlotView(rec) });
+        apiResp(res, 200, { ok: true, rodName: rec.rodName, rodSlots: rodSlotView(rec) });
       });
     });
     return;
@@ -1569,26 +1631,57 @@ const server = http.createServer(function (req, res) {
         const rec = users[key];
         const slot = Math.floor(Number(d.slot));
         const sl = rodSlotsOf(rec)[slot];
-        if (!sl) return apiResp(res, 404, { error: '该槽位没有已保存的钓竿' });
-        // 与当前装备互换（名字跟随钓竿走）
-        const curBd = JSON.parse(JSON.stringify(rec.bd || {}));
-        const curName = rec.rodName || '';
+        if (!sl || !Object.keys(rodPartsOfBd(sl.bd)).length) return apiResp(res, 404, { error: '该槽位没有已保存的钓竿' });
+        if (rodActiveSlotOf(rec) === slot) return apiResp(res, 400, { error: '这根钓竿正在使用中' });
+        // 当前装配的是「散件」（不属于任何槽位）时，切换前把散件退回背包，避免丢失
+        let returned = 0;
+        if (rodActiveSlotOf(rec) < 0) {
+          const loose = rodPartsOfBd(rec.bd);
+          Object.keys(loose).forEach(function (k) { invAdd(rec, loose[k], 1); returned++; });
+        }
+        // 使用槽位里的钓竿：槽位保持占用（原钓竿原地不动），仅切换「使用中」指向
         rec.bd = JSON.parse(JSON.stringify(sl.bd || {}));
         rec.rodName = sl.name || '';
-        if (Object.keys(rodPartsOfBd(curBd)).length) {
-          sl.bd = curBd;
-          sl.name = curName;
-          sl.t = Date.now();
-        } else {
-          rodSlotsOf(rec)[slot] = null; // 换出的是一根空竿 → 槽位视为空
-        }
+        rec.rodActiveSlot = slot;
         saveAccount(key);
         const pNow = players.get(key);
         const atSpot = (pNow && pNow.fishing) ? spotOf(pNow.fishing.groundId, pNow.fishing.spotId) : null;
         if (atSpot) restartFishingAt(atSpot.ground.id, atSpot.spot.id);
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, {
-          ok: true, bd: rec.bd, rodName: rec.rodName, rodSlots: rodSlotView(rec),
-          inventory: rec.inventory, rodLocked: rodUsageOf(rec),
+          ok: true, bd: rec.bd, rodName: rec.rodName, rodActiveSlot: rec.rodActiveSlot, returned: returned,
+          inventory: rec.inventory, rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
+          interval: atSpot ? intervalFor(rec, atSpot.spot) : null,
+          castInfo: atSpot ? castInfoOf(rec, atSpot.spot) : null,
+        });
+      });
+    });
+    return;
+  }
+  // ---- 收起当前钓竿：槽位钓竿只是「卸下」不再装戴（仍保留在槽位、配件继续锁定）；
+  //      散件装配则把配件退回背包，便于装配另一根钓竿。
+  if (p === '/api/rod/stow' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const parts = rodPartsOfBd(rec.bd);
+        if (!Object.keys(parts).length) return apiResp(res, 400, { error: '当前没有装戴钓竿' });
+        const as = rodActiveSlotOf(rec);
+        let returned = 0;
+        if (as < 0) {
+          Object.keys(parts).forEach(function (k) { invAdd(rec, parts[k], 1); returned++; });
+        }
+        rec.bd = {};
+        rec.rodName = '';
+        rec.rodActiveSlot = -1;
+        saveAccount(key);
+        const pNow = players.get(key);
+        const atSpot = (pNow && pNow.fishing) ? spotOf(pNow.fishing.groundId, pNow.fishing.spotId) : null;
+        if (atSpot) restartFishingAt(atSpot.ground.id, atSpot.spot.id);
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        apiResp(res, 200, {
+          ok: true, returned: returned, fromSlot: as, bd: rec.bd, rodName: rec.rodName, rodActiveSlot: -1,
+          inventory: rec.inventory, rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
           interval: atSpot ? intervalFor(rec, atSpot.spot) : null,
           castInfo: atSpot ? castInfoOf(rec, atSpot.spot) : null,
         });
@@ -1603,12 +1696,22 @@ const server = http.createServer(function (req, res) {
         const slot = Math.floor(Number(d.slot));
         const slots = rodSlotsOf(rec);
         if (!slots[slot]) return apiResp(res, 404, { error: '该槽位没有已保存的钓竿' });
-        // 删除存档：配件回到背包（即解锁，可自由交易）
-        const back = deliverRodToInventory(rec, D.rodSetId(rodPartsOfBd(slots[slot].bd)) || '');
+        const isActive = rodActiveSlotOf(rec) === slot;
+        let back = 0;
+        if (isActive) {
+          // 使用中的：解除占用但保持装戴（配件仍锁定在竿上），随后可直接改名/改动
+          rec.rodActiveSlot = -1;
+        } else {
+          // 未使用的：把它的配件退回背包（解锁可交易）
+          back = deliverRodToInventory(rec, D.rodSetId(rodPartsOfBd(slots[slot].bd)) || '');
+        }
         slots[slot] = null;
         saveAccount(key);
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
-        apiResp(res, 200, { ok: true, returned: back, rodSlots: rodSlotView(rec), inventory: rec.inventory, rodLocked: rodUsageOf(rec) });
+        apiResp(res, 200, {
+          ok: true, returned: back, wasActive: isActive, rodActiveSlot: rec.rodActiveSlot,
+          rodSlots: rodSlotView(rec), inventory: rec.inventory, rodLocked: rodUsageOf(rec),
+        });
       });
     });
     return;
@@ -1664,9 +1767,12 @@ const server = http.createServer(function (req, res) {
           fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
         }
         // 钓速明细随装备变化即时更新（含当前钓点的增益）
+        syncActiveRodSlot(rec); // 使用中的钓竿被改动 → 槽位快照同步（其配件仍锁定）
+        saveAccount(key);
         const pNow = players.get(key);
         const atSpot = (pNow && pNow.fishing) ? spotOf(pNow.fishing.groundId, pNow.fishing.spotId) : null;
         apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval, inventory: rec.inventory,
+          rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
           castInfo: castInfoOf(rec, atSpot && atSpot.spot) });
       });
     });
@@ -1884,7 +1990,8 @@ const server = http.createServer(function (req, res) {
         if (rodFrom >= 0) {
           const sl = rodSlotsOf(rec)[rodFrom];
           listingName = (sl.name ? sl.name + ' · ' : '') + '整根钓竿（' + Object.keys(rodPartsOfBd(sl.bd)).length + ' 件）';
-          rodSlotsOf(rec)[rodFrom] = null;
+          if (rodActiveSlotOf(rec) === rodFrom) { rec.bd = {}; rec.rodName = ''; rec.rodActiveSlot = -1; } // 卖掉的正是使用中的那根
+          rodSlotsOf(rec)[rodFrom] = null; // 从槽位移出
         } else {
           invAdd(rec, id, -qty);
         }
@@ -1917,9 +2024,16 @@ const server = http.createServer(function (req, res) {
         const tax = Math.ceil(total * 0.10);          // 10% 交易税（由卖家承担）
         const sellerGain = total - tax;
         if (D.isRodSet(l.id) && qty !== l.qty) return apiResp(res, 400, { error: '整根钓竿只能整单购买' });
+        if (D.isRodSet(l.id) && freeRodSlotOf(rec) < 0) {
+          return apiResp(res, 400, { error: '钓竿槽位已满（' + rodSlotCountOf(rec) + '/' + ROD_SLOT_MAX + '），请先购买槽位或清空一个槽位再购买整竿' });
+        }
         rec.coins -= total;
-        if (D.isRodSet(l.id)) deliverRodToInventory(rec, l.id); // 组件进入买家背包（可自行组装）
-        else invAdd(rec, l.id, qty);
+        if (D.isRodSet(l.id)) {
+          // 整根钓竿整体进入空槽位（不拆散）；槽位名沿用挂单名，可自行改名
+          const nameHint = String(l.name || '').replace(/\s*·?\s*整根钓竿（\d+ 件）$/, '').trim().slice(0, ROD_NAME_MAX);
+          const putAt = stashRodToSlot(rec, l.id, nameHint);
+          if (putAt < 0) return apiResp(res, 400, { error: '钓竿槽位已满，无法放入整根钓竿' });
+        } else invAdd(rec, l.id, qty);
         const seller = users[l.seller];
         if (seller) { seller.coins += sellerGain; }
         // 整单买走 → 移除挂单；否则扣减剩余数量
@@ -1960,7 +2074,7 @@ const server = http.createServer(function (req, res) {
         const l = world.listings[idx];
         if (l.seller !== key) return apiResp(res, 403, { error: '只能下架自己的挂单' });
         const rec = users[key];
-        if (D.isRodSet(l.id)) deliverRodToInventory(rec, l.id); // 整竿下架：组件回背包
+        if (D.isRodSet(l.id)) deliverRodBack(rec, l.id, l.name); // 整竿下架：优先整根回槽位
         else invAdd(rec, l.id, l.qty);
         world.listings.splice(idx, 1);
         saveAccount(key); saveMarket();
@@ -3158,7 +3272,7 @@ const server = http.createServer(function (req, res) {
       world.listings.splice(idx, 1);
       const seller = users[l.seller];
       if (seller) {
-        if (D.isRodSet(l.id)) deliverRodToInventory(seller, l.id);
+        if (D.isRodSet(l.id)) deliverRodBack(seller, l.id, l.name);
         else invAdd(seller, l.id, l.qty);
         saveAccount(l.seller);
         sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory });

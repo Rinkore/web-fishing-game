@@ -688,6 +688,8 @@ window.UI = (function () {
         S().bd = r.data.bd;
         if (r.data.inventory) S().inventory = r.data.inventory;
         if (r.data.castInfo) { S().castInfo = r.data.castInfo; S().fishingInterval = r.data.castInfo.interval; }
+        if (r.data.rodSlots) S().rodSlots = r.data.rodSlots;
+        if (r.data.rodLocked) S().rodLocked = r.data.rodLocked;
         E().refreshEffects();
         toast((compId ? '已装备 ' + itemMeta(compId).name + '（消耗 1 件组件）' : '已卸下组件') + '，加成已在服务器生效');
         renderTopbar();
@@ -871,11 +873,14 @@ window.UI = (function () {
     const max = st.rodSlotsMax || 8;
     const wrap = el('div', 'rod-slots');
     const head = el('div', 'rs-head');
+    const activeSlot = (typeof st.rodActiveSlot === 'number' && st.rodActiveSlot >= 0) ? st.rodActiveSlot : -1;
     head.innerHTML = '<b>🎣 我的钓竿</b>' +
-      '<span class="rs-cur">当前使用：<b class="' + qualityClass({ kind: 'component', quality: 'common' }) + '">' + esc(st.rodName || '（未命名）') + '</b>' +
+      '<span class="rs-cur">当前使用：<b>' + esc(st.rodName || '（未命名）') + '</b>' +
+      (activeSlot >= 0 ? '（槽位 ' + (activeSlot + 1) + '）' : '（散件装配，未占用槽位）') +
       ' · ' + Object.keys(st.bd || {}).filter(function (k) { return st.bd[k] && st.bd[k].compId; }).length + ' 件已装</span>' +
-      '<span class="rs-hint">存档会把当前钓竿收起进槽位（配件随之锁定，不可单独交易），需要时点「使用」切回</span>' +
-      '<button class="mini" id="rs-rename-cur">✏ 命名当前钓竿</button>';
+      '<span class="rs-hint">装配好后点「保存」即占用槽位（配件锁定），可在槽位间切换；「收起」会腾出装戴位（槽位钓竿保留，散件退回背包）以便装配另一根</span>' +
+      '<button class="mini" id="rs-rename-cur">✏ 命名当前钓竿</button>' +
+      '<button class="mini" id="rs-stow">📥 收起当前钓竿</button>';
     wrap.appendChild(head);
     const grid = el('div', 'rs-grid');
     for (let i = 0; i < max; i++) {
@@ -901,43 +906,52 @@ window.UI = (function () {
         }
       } else if (!slots[i]) {
         card.innerHTML = '<div class="rs-name">槽位 ' + (i + 1) + '</div><div class="rs-sub">空槽位</div>';
-        const b = el('button', 'mini', '保存当前钓竿');
-        b.title = '把当前装配的钓竿收起保存到该槽位（配件随之锁定）';
-        b.addEventListener('click', function () {
-          const parts = Object.keys(st.bd || {}).filter(function (k) { return st.bd[k] && st.bd[k].compId; });
-          if (!parts.length) { toast('当前钓竿还没有装配任何组件'); return; }
-          promptModal({ title: '保存钓竿到槽位 ' + (i + 1), numeric: false, value: st.rodName || '', okText: '保存', html: '<div class="cf-hint">给这根钓竿起个名字（最多 12 字）。保存后配件会被锁定，不可单独交易。</div>' }).then(function (name) {
-            if (name == null) return;
-            call(window.Net.rodSave(i, name), '已保存到槽位 ' + (i + 1) + '（配件已锁定）').then(function (r) {
-              if (r && r.ok) { st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked; if (r.data.inventory) st.inventory = r.data.inventory; E().refreshEffects(); renderTopbar(); renderView(); }
+        if (activeSlot >= 0) {
+          card.appendChild(el('div', 'hint', '当前钓竿已占用槽位 ' + (activeSlot + 1) + '（可直接改名）'));
+        } else {
+          const b = el('button', 'mini', '保存当前钓竿');
+          b.title = '把当前装配的钓竿整体放进该槽位（配件随之锁定），仍可继续使用与改名';
+          b.addEventListener('click', function () {
+            const parts = Object.keys(st.bd || {}).filter(function (k) { return st.bd[k] && st.bd[k].compId; });
+            if (!parts.length) { toast('当前钓竿还没有装配任何组件'); return; }
+            promptModal({ title: '保存钓竿到槽位 ' + (i + 1), numeric: false, value: st.rodName || '', okText: '保存', html: '<div class="cf-hint">给这根钓竿起个名字（最多 12 字）。保存后它占用该槽位，配件被锁定，可随时改名或切换。</div>' }).then(function (name) {
+              if (name == null) return;
+              call(window.Net.rodSave(i, name), '已占用槽位 ' + (i + 1) + '（配件已锁定，可继续使用）').then(function (r) {
+                if (r && r.ok) { st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodActiveSlot = r.data.rodActiveSlot; st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked; if (r.data.inventory) st.inventory = r.data.inventory; E().refreshEffects(); renderTopbar(); renderView(); }
+              });
             });
           });
-        });
-        card.appendChild(b);
+          card.appendChild(b);
+        }
       } else {
         const sl = slots[i];
-        card.innerHTML = '<div class="rs-name">' + esc(sl.name || ('槽位 ' + (i + 1))) + '</div>' +
+        const isActive = !!sl.active;
+        card.innerHTML = '<div class="rs-name">' + esc(sl.name || ('槽位 ' + (i + 1))) +
+          (isActive ? '<span class="rs-active">使用中</span>' : '') + '</div>' +
           '<div class="rs-sub">' + sl.count + ' 件 · 基准价 ' + sl.price + '💰</div>' +
           '<div class="rs-affs">' + rodAffixBadges(sl.affixes) + '</div>';
         const acts = el('div', 'rs-acts');
-        const useBtn = el('button', 'mini primary-mini', '使用');
-        useBtn.title = '与该槽位钓竿互换（当前装备收起进此槽位）';
-        useBtn.addEventListener('click', function () {
-          call(window.Net.rodUse(i), '已切换到「' + (sl.name || ('槽位 ' + (i + 1))) + '」').then(function (r) {
-            if (r && r.ok) {
-              st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodSlots = r.data.rodSlots;
-              st.rodLocked = r.data.rodLocked || {}; if (r.data.inventory) st.inventory = r.data.inventory;
-              if (r.data.castInfo) { st.castInfo = r.data.castInfo; st.fishingInterval = r.data.castInfo.interval; }
-              E().refreshEffects(); renderTopbar(); renderView();
-            }
+        const useBtn = el('button', 'mini primary-mini' + (isActive ? ' locked' : ''), isActive ? '使用中' : '使用');
+        useBtn.title = isActive ? '这根钓竿正在使用中（槽位保持占用）' : '切换使用这根钓竿（原钓竿留在自己的槽位）';
+        if (!isActive) {
+          useBtn.addEventListener('click', function () {
+            call(window.Net.rodUse(i), '已切换到「' + (sl.name || ('槽位 ' + (i + 1))) + '」').then(function (r) {
+              if (r && r.ok) {
+                st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodActiveSlot = r.data.rodActiveSlot; st.rodSlots = r.data.rodSlots;
+                st.rodLocked = r.data.rodLocked || {}; if (r.data.inventory) st.inventory = r.data.inventory;
+                if (r.data.castInfo) { st.castInfo = r.data.castInfo; st.fishingInterval = r.data.castInfo.interval; }
+                if (r.data.returned) toast('原散件装配已退回背包 ×' + r.data.returned);
+                E().refreshEffects(); renderTopbar(); renderView();
+              }
+            });
           });
-        });
+        }
         acts.appendChild(useBtn);
         const rn = el('button', 'mini', '改名');
         rn.addEventListener('click', function () {
           promptModal({ title: '重命名钓竿', numeric: false, value: sl.name || '', okText: '保存' }).then(function (name) {
             if (name == null) return;
-            call(window.Net.rodRename(i, name), '已重命名').then(function (r) { if (r && r.ok) { st.rodSlots = r.data.rodSlots; renderView(); } });
+            call(window.Net.rodRename(i, name), '已重命名').then(function (r) { if (r && r.ok) { st.rodSlots = r.data.rodSlots; if (r.data.rodName !== undefined) st.rodName = r.data.rodName; renderTopbar(); renderView(); } });
           });
         });
         acts.appendChild(rn);
@@ -950,8 +964,15 @@ window.UI = (function () {
         del.addEventListener('click', function () {
           confirmModal({ title: '删除钓竿存档', html: '删除「' + esc(sl.name || ('槽位 ' + (i + 1))) + '」？<br>该钓竿的 ' + sl.count + ' 件组件会退回背包（可再次交易）。', okText: '删除', danger: true }).then(function (ok) {
             if (!ok) return;
-            call(window.Net.rodDelete(i), '已删除存档，配件已退回背包').then(function (r) {
-              if (r && r.ok) { st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked || {}; if (r.data.inventory) st.inventory = r.data.inventory; renderTopbar(); renderView(); }
+            call(window.Net.rodDelete(i), function (r) {
+              return r.data.wasActive ? '已解除该槽位占用（钓竿仍在使用中）' : '已删除存档，配件已退回背包';
+            }).then(function (r) {
+              if (r && r.ok) {
+                st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked || {};
+                if (r.data.rodActiveSlot !== undefined) st.rodActiveSlot = r.data.rodActiveSlot;
+                if (r.data.inventory) st.inventory = r.data.inventory;
+                renderTopbar(); renderView();
+              }
             });
           });
         });
@@ -962,6 +983,32 @@ window.UI = (function () {
     }
     wrap.appendChild(grid);
     strip.appendChild(wrap);
+    const stowBtn = wrap.querySelector('#rs-stow');
+    if (stowBtn) {
+      stowBtn.addEventListener('click', function () {
+        const parts = Object.keys(st.bd || {}).filter(function (k) { return st.bd[k] && st.bd[k].compId; });
+        if (!parts.length) { toast('当前没有装戴钓竿'); return; }
+        const inSlot = (typeof st.rodActiveSlot === 'number' && st.rodActiveSlot >= 0);
+        confirmModal({
+          title: '收起当前钓竿',
+          html: inSlot
+            ? '当前钓竿「' + esc(st.rodName || '未命名') + '」会卸下装戴但<b>保留在槽位 ' + (st.rodActiveSlot + 1) + '</b>（配件继续锁定），可以接着装配另一根。'
+            : '当前是散件装配：收起后这 ' + parts.length + ' 件配件会退回背包。',
+          okText: '收起',
+        }).then(function (ok) {
+          if (!ok) return;
+          call(window.Net.rodStow(), function (r) { return r.data.fromSlot >= 0 ? '已卸下装戴（钓竿仍保留在槽位）' : '已收起，配件退回背包'; }).then(function (r) {
+            if (r && r.ok) {
+              st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodActiveSlot = r.data.rodActiveSlot;
+              st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked || {};
+              if (r.data.inventory) st.inventory = r.data.inventory;
+              if (r.data.castInfo) { st.castInfo = r.data.castInfo; st.fishingInterval = r.data.castInfo.interval; }
+              E().refreshEffects(); renderTopbar(); renderView();
+            }
+          });
+        });
+      });
+    }
     const rnBtn = wrap.querySelector('#rs-rename-cur');
     if (rnBtn) {
       rnBtn.addEventListener('click', function () {
@@ -1466,6 +1513,17 @@ window.UI = (function () {
       '<div class="mk-sub">卖家：' + esc(l.sellerName) + (mine ? '（你）' : '') + ' · 上架 ' + timeStr(l.t) + '</div></div>' +
       '<div class="mk-price"><b>💰 ' + l.price + '</b><span class="unit">/个</span><div class="total">合计 ' + total + '</div></div>';
     const acts = el('div', 'mk-acts');
+    if (!mine && meta.kind === 'rod') {
+      const st0 = S();
+      const free = (st0.rodSlotsCount || 1) - (st0.rodSlots || []).filter(function (x) { return x; }).length;
+      if (free <= 0) {
+        const nb = el('button', 'mini locked', '槽位已满');
+        nb.title = '钓竿槽位已满：整根钓竿需要占用一个槽位，请先购买槽位或清空一个槽位';
+        acts.appendChild(nb);
+        row.appendChild(acts);
+        return row;
+      }
+    }
     if (mine) {
       const cb = el('button', 'mini', '下架');
       cb.title = '下架取回物品（上架费不退）';
@@ -1493,7 +1551,11 @@ window.UI = (function () {
           }).then(function (ok) {
             if (!ok) return;
             call(window.Net.marketBuy(l.lid, n), '购买成功：' + l.name + ' ×' + n).then(function (r) {
-              if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; renderTopbar(); renderView(); }
+              if (r && r.ok) {
+                st.player.coins = r.data.coins; st.inventory = r.data.inventory;
+                if (r.data.rodSlots) { st.rodSlots = r.data.rodSlots; }
+                renderTopbar(); renderView();
+              }
             });
           });
         });

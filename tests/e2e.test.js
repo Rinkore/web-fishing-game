@@ -521,10 +521,12 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   for (const id of [rodInst1, rodInst2]) await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: id } });
   await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: rodInst1 });
   await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: rodInst2 });
+  const equippedCount = function (bd) { return Object.keys(bd || {}).filter(function (k) { return bd[k] && bd[k].compId; }).length; };
   const meRod0 = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data;
   check('初始钓竿槽位 1 个（免费）且给出下一槽位价格', meRod0.rodSlotsCount === 1 && meRod0.nextRodSlotPrice === 10000,
     JSON.stringify({ c: meRod0.rodSlotsCount, p: meRod0.nextRodSlotPrice }));
   check('槽位上限 8 根', meRod0.rodSlotsMax === 8, String(meRod0.rodSlotsMax));
+  check('未存槽位时标记为散件装配', meRod0.rodActiveSlot === -1, String(meRod0.rodActiveSlot));
   check('被钓竿占用的实例随资料下发（用于锁定标记）', meRod0.rodLocked && meRod0.rodLocked[rodInst1] === 1 && meRod0.rodLocked[rodInst2] === 1, JSON.stringify(meRod0.rodLocked));
   const coinsBeforeSlot = meRod0.coins;
   const buySlot1 = await POST('http://localhost:' + P1 + '/api/rod/slot/buy', { token: tokA });
@@ -533,67 +535,83 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('下一个槽位价格递增为 5w', buySlot1.data.nextRodSlotPrice === 50000, String(buySlot1.data.nextRodSlotPrice));
   for (let i = 0; i < 6; i++) await POST('http://localhost:' + P1 + '/api/rod/slot/buy', { token: tokA });
   check('买满 8 个槽位后再买被拒 400', (await POST('http://localhost:' + P1 + '/api/rod/slot/buy', { token: tokA })).status === 400);
-  const saveBad = await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: 9, name: 'x' });
-  check('未购买槽位保存被拒 400', saveBad.status === 400);
+  check('未购买槽位保存被拒 400', (await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: 9, name: 'x' })).status === 400);
+  // —— 保存 = 当前这根直接占用槽位（保持装戴），并可改名 ——
   const saved = await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: 1, name: '钓速竿' });
-  const savedParts = saved.data.rodSlots[1] ? Object.keys(saved.data.rodSlots[1].parts) : [];
-  check('保存钓竿成功（装备位清空、配件进槽位）', saved.status === 200 && Object.keys(saved.data.bd).length === 0
-    && saved.data.rodSlots[1] && saved.data.rodSlots[1].name === '钓速竿' && savedParts.length >= 2, JSON.stringify({ n: savedParts.length, name: saved.data.rodSlots[1] && saved.data.rodSlots[1].name }));
+  check('保存钓竿：占用槽位且保持装戴', saved.status === 200 && saved.data.rodSlots[1] && saved.data.rodSlots[1].name === '钓速竿'
+    && equippedCount(saved.data.bd) >= 2 && saved.data.rodActiveSlot === 1, JSON.stringify({ n: equippedCount(saved.data.bd), active: saved.data.rodActiveSlot }));
+  check('使用中的槽位带 active 标记', saved.data.rodSlots[1].active === true);
   check('存档后配件被锁定（占用 1 件）', saved.data.rodLocked[rodInst1] === 1, JSON.stringify(saved.data.rodLocked));
   const sellLocked = await POST('http://localhost:' + P1 + '/api/sell', { token: tokA, id: rodInst1, qty: 1 });
   check('锁定配件无法在系统商店出售', sellLocked.status === 400 && /锁定/.test(sellLocked.data.error || ''), JSON.stringify(sellLocked.data));
   const listLocked = await POST('http://localhost:' + P1 + '/api/market/list', { token: tokA, id: rodInst1, qty: 1, price: 500 });
   check('锁定配件无法上架市集', listLocked.status === 400 && /锁定/.test(listLocked.data.error || ''), JSON.stringify(listLocked.data));
-  const useRod = await POST('http://localhost:' + P1 + '/api/rod/use', { token: tokA, slot: 1 });
-  check('切换使用槽位钓竿（装备恢复、槽位腾空）', useRod.status === 200
-    && Object.keys(useRod.data.bd).filter(function (k) { return useRod.data.bd[k].compId; }).length >= 2 && useRod.data.rodSlots[1] === null,
-    JSON.stringify({ bd: Object.keys(useRod.data.bd), slot: useRod.data.rodSlots[1] }));
-  check('切回的钓竿带名字', useRod.data.rodName === '钓速竿', String(useRod.data.rodName));
-  const renamed = await POST('http://localhost:' + P1 + '/api/rod/name', { token: tokA, name: '主战竿' });
-  check('命名当前钓竿成功', renamed.status === 200 && renamed.data.rodName === '主战竿', JSON.stringify(renamed.data));
-  // 整竿上架 → 成交 → 买家拿到组件
-  const saved2 = await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: 2, name: '出售用竿' });
-  const rodId = saved2.data.rodSlots[2].rodId;
-  check('槽位返回整竿签名（rodset:）', /^rodset:/.test(rodId || ''), String(rodId));
-  const rodList = await POST('http://localhost:' + P1 + '/api/market/list', { token: tokA, rodSlot: 2, price: 9000, hours: 6 });
-  check('整根钓竿可上架市集（1 件整体）', rodList.status === 200 && rodList.data.listing && rodList.data.listing.id === rodId && rodList.data.listing.qty === 1,
-    JSON.stringify(rodList.data).slice(0, 200));
-  if (rodList.status !== 200) { console.log('  [info] 整竿上架失败原因：' + JSON.stringify(rodList.data)); }
-  check('整竿公开目录识别为 rod 类型', (function () { const m = D.itemOf(rodId); return m.kind === 'rod' && m.parts.length >= 2; })());
-  await POST('http://localhost:' + P1 + '/api/dev/seed', { token: tokB, coins: 20000 });
-  const coinsB0 = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokB)).data.coins;
-  const coinsA0 = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.coins;
-  const buyRod = await POST('http://localhost:' + P1 + '/api/market/buy', { token: tokB, lid: rodList.data.listing ? rodList.data.listing.lid : -1 });
-  check('买家购买整竿成功', buyRod.status === 200, JSON.stringify(buyRod.data).slice(0, 120));
-  const invB = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokB)).data.inventory;
-  check('买家收到该竿的全部组件', invB[rodInst1] === 1 && invB[rodInst2] === 1, JSON.stringify(invB));
-  const coinsB1 = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokB)).data.coins;
-  const coinsA1 = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.coins;
-  check('买家扣款 9000', coinsB1 === coinsB0 - 9000, coinsB0 + ' -> ' + coinsB1);
-  check('卖家到账 8100（扣 10% 税）', coinsA1 === coinsA0 + 8100, coinsA0 + ' -> ' + coinsA1);
-  // 下架/删除路径：再造一根（自带组件）→ 上架 → 下架 → 组件回背包
+  const rnCur = await POST('http://localhost:' + P1 + '/api/rod/name', { token: tokA, name: '主战竿' });
+  check('命名当前钓竿并同步槽位名', rnCur.status === 200 && rnCur.data.rodName === '主战竿'
+    && rnCur.data.rodSlots[1].name === '主战竿', JSON.stringify({ n: rnCur.data.rodName, s: rnCur.data.rodSlots[1].name }));
+  check('使用中的钓竿直接改名被拒（避免与槽位不一致）', (await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: 2, name: 'x' })).status === 400);
+  // —— 收起：腾出装戴位但保留槽位（配件继续锁定）——
+  const stow = await POST('http://localhost:' + P1 + '/api/rod/stow', { token: tokA });
+  check('收起当前钓竿：装戴清空、槽位保留', stow.status === 200 && stow.data.fromSlot === 1 && equippedCount(stow.data.bd) === 0
+    && stow.data.rodSlots[1] && stow.data.rodSlots[1].name === '主战竿' && stow.data.rodSlots[1].active === false, JSON.stringify({ from: stow.data.fromSlot, active: stow.data.rodSlots[1] && stow.data.rodSlots[1].active }));
+  check('收起后配件仍锁定在槽位钓竿里', stow.data.rodLocked[rodInst1] === 1, JSON.stringify(stow.data.rodLocked));
+  // —— 装配第二根（散件）→ 占用槽位 2 ——
   for (const id of [rodInst1, rodInst2]) await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: id } });
   await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: rodInst1 });
   await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: rodInst2 });
-  const saved3 = await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: 3, name: '临时竿' });
-  check('再造一根存档用于下架测试', saved3.status === 200 && !!saved3.data.rodSlots[3], JSON.stringify(saved3.data).slice(0, 120));
-  const list3 = await POST('http://localhost:' + P1 + '/api/market/list', { token: tokA, rodSlot: 3, price: 3000, hours: 6 });
-  if (list3.status !== 200) console.log('  [info] 第二根整竿上架失败：' + JSON.stringify(list3.data));
-  const before3 = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
-  if (list3.data && list3.data.listing) await POST('http://localhost:' + P1 + '/api/market/cancel', { token: tokA, lid: list3.data.listing.lid });
-  const after3 = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
-  check('整竿挂单下架后组件退回背包', (after3[rodInst1] || 0) > (before3[rodInst1] || 0), JSON.stringify({ before: before3, after: after3 }));
-  // 删除存档：配件退回背包（先把一根竿存进槽位 1，再删除它）
+  const saved2 = await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: 2, name: '二号竿' });
+  check('第二根钓竿占用槽位 2', saved2.status === 200 && saved2.data.rodSlots[2] && saved2.data.rodSlots[2].name === '二号竿' && saved2.data.rodActiveSlot === 2,
+    JSON.stringify({ slot2: saved2.data.rodSlots[2] && saved2.data.rodSlots[2].name, active: saved2.data.rodActiveSlot }));
+  // —— 切换使用槽位 1：槽位 2 必须保持占用（不再腾空）——
+  const useRod = await POST('http://localhost:' + P1 + '/api/rod/use', { token: tokA, slot: 1 });
+  check('切换使用槽位钓竿：装戴恢复且原槽位不被腾空', useRod.status === 200 && equippedCount(useRod.data.bd) >= 2
+    && useRod.data.rodSlots[1].active === true && !!useRod.data.rodSlots[2] && useRod.data.rodSlots[2].name === '二号竿',
+    JSON.stringify({ active: useRod.data.rodSlots[1].active, slot2: useRod.data.rodSlots[2] && useRod.data.rodSlots[2].name }));
+  check('切回的钓竿带名字', useRod.data.rodName === '主战竿', String(useRod.data.rodName));
+  check('重复使用同一槽位被拒 400', (await POST('http://localhost:' + P1 + '/api/rod/use', { token: tokA, slot: 1 })).status === 400);
+  // —— 整竿上架 → 买家整根获得（进槽位，不拆散）——
+  const rodList = await POST('http://localhost:' + P1 + '/api/market/list', { token: tokA, rodSlot: 2, price: 9000, hours: 6 });
+  check('整根钓竿可上架市集（1 件整体）', rodList.status === 200 && rodList.data.listing && /^rodset:/.test(rodList.data.listing.id) && rodList.data.listing.qty === 1,
+    JSON.stringify(rodList.data).slice(0, 200));
+  check('上架后槽位 2 释放', !rodList.data.rodSlots[2], JSON.stringify(rodList.data.rodSlots[2]));
+  const rodId = rodList.data.listing.id;
+  check('整竿公开目录识别为 rod 类型', (function () { const m = D.itemOf(rodId); return m.kind === 'rod' && m.parts.length >= 2; })());
+  await POST('http://localhost:' + P1 + '/api/dev/seed', { token: tokB, coins: 20000 });
+  const coinsB0 = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokB)).data.coins;
+  const invB0 = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokB)).data.inventory;
+  const coinsA0 = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.coins;
+  const buyRod = await POST('http://localhost:' + P1 + '/api/market/buy', { token: tokB, lid: rodList.data.listing.lid });
+  check('买家购买整竿成功', buyRod.status === 200, JSON.stringify(buyRod.data).slice(0, 120));
+  const meB = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokB)).data;
+  const gotRod = (meB.rodSlots || []).find(function (x) { return x && x.count >= 2; });
+  check('整根钓竿整体进入槽位（不再拆散成配件）', !!gotRod, JSON.stringify((meB.rodSlots || []).map(function (x) { return x && x.name; })));
+  check('买家背包未增加散装配件', JSON.stringify(meB.inventory) === JSON.stringify(invB0), JSON.stringify({ before: invB0, after: meB.inventory }));
+  check('买家扣款 9000', meB.coins === coinsB0 - 9000, coinsB0 + ' -> ' + meB.coins);
+  check('卖家到账 8100（扣 10% 税）', (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.coins === coinsA0 + 8100,
+    coinsA0 + ' -> ' + (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.coins);
+  // —— 槽位已满时不能购买整竿 ——
+  await POST('http://localhost:' + P1 + '/api/rod/stow', { token: tokA }); // 先收起使用中的钓竿（保留槽位）
+  for (const id of [rodInst1, rodInst2]) await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: id } });
   await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: rodInst1 });
   await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: rodInst2 });
-  const invBeforeDel = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
-  const saved4 = await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: 1, name: '待删除竿' });
-  check('删除前置：重新存档到槽位 1', saved4.status === 200 && !!saved4.data.rodSlots[1], JSON.stringify(saved4.data).slice(0, 120));
-  const del1 = await POST('http://localhost:' + P1 + '/api/rod/delete', { token: tokA, slot: 1 });
-  check('删除已占用槽位会退回该竿配件（并解锁）', del1.status === 200 && del1.data.returned >= 1, JSON.stringify({ returned: del1.data && del1.data.returned }));
-  const invAfterDel = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
-  check('退回的组件进入背包（可再次交易）', (invAfterDel[rodInst1] || 0) > (invBeforeDel[rodInst1] || 0) || (invAfterDel[rodInst2] || 0) > (invBeforeDel[rodInst2] || 0),
-    JSON.stringify({ before: invBeforeDel, after: invAfterDel }));
+  const saved3 = await POST('http://localhost:' + P1 + '/api/rod/save', { token: tokA, slot: 3, name: '三号竿' });
+  check('第三根占用槽位 3', saved3.status === 200 && !!saved3.data.rodSlots[3]);
+  const list3 = await POST('http://localhost:' + P1 + '/api/market/list', { token: tokA, rodSlot: 3, price: 4000, hours: 6 });
+  const buyFull = await POST('http://localhost:' + P1 + '/api/market/buy', { token: tokB, lid: list3.data.listing.lid });
+  check('买家槽位已满 → 购买整竿被拒 400', buyFull.status === 400 && /槽位已满/.test(buyFull.data.error || ''), JSON.stringify(buyFull.data));
+  // —— 下架：整根优先回槽位（不再拆散）——
+  const beforeCancel = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data;
+  await POST('http://localhost:' + P1 + '/api/market/cancel', { token: tokA, lid: list3.data.listing.lid });
+  const afterCancel = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data;
+  const backRod = (afterCancel.rodSlots || []).find(function (x) { return x && x.name === '三号竿'; });
+  check('整竿下架后整根回到槽位', !!backRod, JSON.stringify((afterCancel.rodSlots || []).map(function (x) { return x && x.name; })));
+  check('下架不再把整竿拆成散件', JSON.stringify(afterCancel.inventory) === JSON.stringify(beforeCancel.inventory), JSON.stringify({ before: beforeCancel.inventory, after: afterCancel.inventory }));
+  // —— 删除未使用的槽位：配件退回背包（解锁）——
+  const backSlot = (afterCancel.rodSlots || []).findIndex(function (x) { return x && x.name === '三号竿'; });
+  check('退回的整竿保留原名', backSlot >= 0, JSON.stringify((afterCancel.rodSlots || []).map(function (x) { return x && x.name; })));
+  const del1 = await POST('http://localhost:' + P1 + '/api/rod/delete', { token: tokA, slot: backSlot });
+  check('删除未使用的槽位会退回配件（并解锁）', del1.status === 200 && del1.data.returned >= 1 && del1.data.wasActive === false,
+    JSON.stringify({ returned: del1.data && del1.data.returned, wasActive: del1.data && del1.data.wasActive }));
 
   section('榜单更新播报（任意榜单 / 所有鱼种）');
   // 重启过服务器：旧 SSE 连接已失效，这里新建一条订阅（用新 token）
