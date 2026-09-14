@@ -808,6 +808,17 @@ function validatePoolEntries(list) {
   }
   return { ok: true, pool: out };
 }
+// 钓点增益数值范围：上限 100（曾允许到 1000，实测那个量级会让钓鱼循环异常频繁、拖垮服务器）
+const BUFF_VALUE_MIN = -100;
+const BUFF_VALUE_MAX = 100;
+// 收敛一份增益列表：丢掉未知类别，数值夹到 [MIN, MAX]（历史配置里可能存着超限值）
+function clampSpotBuffs(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter(function (b) { return b && D.AFFIX_LABEL[b.type]; }).map(function (b) {
+    const v = Math.round((Number(b.value) || 0) * 10) / 10;
+    return { type: b.type, value: Math.max(BUFF_VALUE_MIN, Math.min(BUFF_VALUE_MAX, v)) };
+  });
+}
 function validateBuffList(list) {
   if (!Array.isArray(list)) return { error: '增益格式错误' };
   const out = [];
@@ -815,7 +826,9 @@ function validateBuffList(list) {
     const type = String((b && b.type) || '');
     if (!D.AFFIX_LABEL[type]) return { error: '未知增益类别：' + type };
     const value = Number(b && b.value);
-    if (!isFinite(value) || value < -100 || value > 1000) return { error: '增益数值需在 -100 到 1000 之间' };
+    if (!isFinite(value) || value < BUFF_VALUE_MIN || value > BUFF_VALUE_MAX) {
+      return { error: '增益数值需在 ' + BUFF_VALUE_MIN + ' 到 ' + BUFF_VALUE_MAX + ' 之间' };
+    }
     out.push({ type: type, value: Math.round(value * 10) / 10 });
   }
   return { ok: true, buffs: out };
@@ -903,7 +916,7 @@ function applyGroundCfg() {
       id: cg.id, name: cg.name, type: cg.type === 'event' ? 'event' : 'normal', desc: cg.desc || '',
       locked: false, custom: true, openFrom: cg.openFrom || null, openTo: cg.openTo || null,
       spots: (cg.spots || []).filter(function (sp) { return !removedS[cg.id + ':' + sp.id]; }).map(function (sp) {
-        return { id: sp.id, name: sp.name, pool: JSON.parse(JSON.stringify(sp.pool || [])), buffs: JSON.parse(JSON.stringify(sp.buffs || [])) };
+        return { id: sp.id, name: sp.name, pool: JSON.parse(JSON.stringify(sp.pool || [])), buffs: clampSpotBuffs(sp.buffs) };
       }),
     });
   });
@@ -914,7 +927,7 @@ function applyGroundCfg() {
     (cfg.customSpots[gid] || []).forEach(function (sp) {
       if (removedS[gid + ':' + sp.id]) return;
       if (g.spots.some(function (x) { return x.id === sp.id; })) return;
-      g.spots.push({ id: sp.id, name: sp.name, pool: JSON.parse(JSON.stringify(sp.pool || [])), buffs: JSON.parse(JSON.stringify(sp.buffs || [])) });
+      g.spots.push({ id: sp.id, name: sp.name, pool: JSON.parse(JSON.stringify(sp.pool || [])), buffs: clampSpotBuffs(sp.buffs) });
     });
   });
   // 4) 钓点级覆盖（掉落池 / 增益）
@@ -924,7 +937,7 @@ function applyGroundCfg() {
     const sp = g && g.spots.find(function (x) { return x.id === parts[1]; });
     if (!sp) return;
     if (cfg.spots[k].pool) sp.pool = cfg.spots[k].pool;
-    if (cfg.spots[k].buffs) sp.buffs = cfg.spots[k].buffs;
+    if (cfg.spots[k].buffs) sp.buffs = clampSpotBuffs(cfg.spots[k].buffs);
     if (cfg.spots[k].biteRate != null && cfg.spots[k].biteRate !== '') sp.biteRate = Number(cfg.spots[k].biteRate);
     if (cfg.spots[k].intervalMs != null && cfg.spots[k].intervalMs !== '') sp.intervalMs = Math.round(Number(cfg.spots[k].intervalMs));
   });

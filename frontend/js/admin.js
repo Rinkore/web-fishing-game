@@ -806,6 +806,7 @@ window.Admin = (function () {
       '<button id="pool-save" class="btn primary">保存掉落池</button>' +
       '</div>' +
       '<h3>✨ 钓点增益（数值 + 类别，可与钓竿词缀叠加）</h3>' +
+      '<div class="hint" style="margin-bottom:8px">数值范围 <b>-100 ~ 100</b>（超出会被服务器拒绝）。</div>' +
       '<div id="buff-rows"></div>' +
       '<div class="editor-foot">' +
       '<button id="buff-add" class="btn mini">＋ 添加增益</button>' +
@@ -818,7 +819,7 @@ window.Admin = (function () {
     const buffNote = {
       speed: '钓速：该钓点抛竿速率的最终乘算（× (1-数值/100)），不与钓竿词缀/全服加成相加', big: '大鱼概率：放大「大鱼」条目权重',
       rare: '稀有概率：放大「稀有」条目权重', material: '材料概率：放大材料条目权重',
-      size: '体型：放大捕获体型（最高基准上限 1.3 倍）', double: '双钓概率：触发后立即再结算一竿',
+      size: '体型：放大捕获体型（不与钓竿词缀的体型上限相冲，按百分比放大结果）', double: '双钓概率：触发后立即再结算一竿',
     };
 
     function drawPool() {
@@ -899,7 +900,7 @@ window.Admin = (function () {
           '<select class="ipt c-type" data-idx="' + idx + '" data-f="type">' +
           Object.keys(affixes).map(function (k) { return '<option value="' + k + '"' + (b.type === k ? ' selected' : '') + '>' + esc(affixes[k]) + '（' + k + '）</option>'; }).join('') +
           '</select>' +
-          '<input class="ipt c-v" type="number" step="1" value="' + esc(b.value) + '" data-idx="' + idx + '" data-f="value">' +
+          '<input class="ipt c-v" type="number" min="-100" max="100" step="1" value="' + esc(b.value) + '" data-idx="' + idx + '" data-f="value" title="范围 -100 ~ 100">' +
           '<span class="buff-note">' + esc(buffNote[b.type] || '') + '</span>' +
           '<button class="row-del" data-bdel="' + idx + '" title="删除">✕</button>' +
           '</div>';

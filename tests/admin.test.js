@@ -149,6 +149,10 @@ function waitReady() {
   check('负权重被拒 400', (await setPool('stillwater', 'dock', [{ pick: 'fish:crucian', weight: -5 }])).status === 400);
   check('未知增益类别被拒 400', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'magic', value: 10 }] })).status === 400);
   check('超范围增益值被拒 400', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 5000 }] })).status === 400);
+  // 上限 100：曾允许到 1000，实测该量级会把抛竿间隔压到异常小、拖垮服务器
+  const overBuff = await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 101 }] });
+  check('增益值 101 被拒 400（上限 100）', overBuff.status === 400 && /-100 到 100/.test(overBuff.data.error || ''), JSON.stringify(overBuff.data));
+  check('增益值上限 100 可保存', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 100 }] })).status === 200);
   check('设置钓速增益 20%', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 20 }] })).status === 200);
 
   const w1 = await GET(B + '/api/admin/world?token=' + TOKA);
@@ -655,6 +659,15 @@ function waitReady() {
   await POST(B + '/api/admin/ground/update', { token: TOKA, groundId: 'qa_keep', openFrom: Date.now() - 60000, openTo: Date.now() + 86400000 });
   // 留一个非默认体型模型，验证 fishCfg 落盘
   await setSize('skew');
+  // 历史遗留：旧上限时代的 config.json 里可能存着超限增益（如 1000）→ 载入时应收敛到 100
+  // （换个不被其它断言覆盖的钓点写，避免影响 stillwater:dock 的既有校验）
+  const cfgPath = path.join(TMP_DATA, 'config.json');
+  const cfgJson = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  cfgJson.groundCfg = cfgJson.groundCfg || {};
+  cfgJson.groundCfg.spots = cfgJson.groundCfg.spots || {};
+  cfgJson.groundCfg.spots['stillwater:deep'] = Object.assign({}, cfgJson.groundCfg.spots['stillwater:deep'],
+    { buffs: [{ type: 'speed', value: 1000 }, { type: 'size', value: -400 }] });
+  fs.writeFileSync(cfgPath, JSON.stringify(cfgJson));
   killTree(srv);
   srv = start(TMP_DATA);
   check('重启成功', await waitReady());
@@ -673,6 +686,9 @@ function waitReady() {
   check('基础双钓率重启后仍在（0.5）', w2.data.doubleBase === 0.5, String(w2.data.doubleBase));
   check('抛竿间隔重启后仍在（2500 / 700）', w2.data.castBaseMs === 2500 && w2.data.castMinMs === 700, JSON.stringify({ b: w2.data.castBaseMs, m: w2.data.castMinMs }));
   check('鱼类体型模型重启后仍在（skew）', w2.data.fishCfg && w2.data.fishCfg.sizeModel === 'skew', JSON.stringify(w2.data.fishCfg));
+  const deepLegacy = w2.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'deep');
+  check('旧配置里超限的增益值被收敛到上限 100', deepLegacy.buffs.length === 2 && deepLegacy.buffs[0].value === 100 && deepLegacy.buffs[1].value === -100,
+    JSON.stringify(deepLegacy.buffs));
   const keepG = (w2.data.grounds || []).find(g => g.id === 'qa_keep');
   check('自定义渔场与限时窗口重启后仍在（窗口内开放）', !!keepG && !!keepG.openTo && keepG.locked === false, JSON.stringify(keepG && { locked: keepG.locked, openTo: keepG.openTo }));
   check('自定义渔场的钓点与掉落池重启后仍在', !!keepG && keepG.spots.length === 1 && keepG.spots[0].pool.length === 13, keepG ? String(keepG.spots[0].pool.length) : 'none');
