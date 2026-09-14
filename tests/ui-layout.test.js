@@ -103,6 +103,23 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await clickNav(p1, '钓鱼');
     check('钓鱼页不再显示背包模块', (await p1.$$('.fish-live .inventory, .content .inventory')).length === 0);
     check('钓鱼页仍有渔获日志', (await p1.$$('.fish-live .catch-log')).length === 1);
+    // 切换账号：渔获日志应被清空（回归：曾残留上一个账号的日志）
+    const switchLog = await p1.evaluate(() => {
+      const S = window.Engine.state;
+      const prevMe = S.me;
+      const backup = { inv: S.inventory, bd: S.bd, codex: S.codex, coins: S.player.coins, log: S.log, cnt: S.catchCount };
+      S.me = { id: 'user_a', username: 'user_a', name: '甲', token: 't' };
+      S.log = [{ t: Date.now(), item: { name: '上一个账号的鱼', rarity: 'common' } }];
+      const before = S.log.length;
+      window.Engine.applyProfile({ username: 'user_b', name: '乙', coins: 1, inventory: {}, bd: {}, codex: {} });
+      const after = window.Engine.state.log.length;
+      // 完整还原，避免影响后续用例
+      S.me = prevMe; S.inventory = backup.inv; S.bd = backup.bd; S.codex = backup.codex;
+      S.player.coins = backup.coins; S.log = backup.log; S.catchCount = backup.cnt;
+      if (window.Engine.refreshEffects) window.Engine.refreshEffects();
+      return { before, after };
+    });
+    check('切换账号后渔获日志被清空', switchLog.before === 1 && switchLog.after === 0, JSON.stringify(switchLog));
     const align = await p1.evaluate(() => {
       const left = document.querySelector('.content > .fish-select');
       const right = document.querySelector('.content > .fish-live');
@@ -120,8 +137,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await clickNav(p1, '系统商店');
     check('系统商店渲染出价格卡片', (await p1.$$('.shop-card')).length >= 15, String((await p1.$$('.shop-card')).length));
     check('商店卡片显示动态价格与百分比', /当前 \d+%/.test(await p1.textContent('.sc-pct')));
-    check('商店页展示我的背包', (await p1.$$('.inventory .inv-row')).length > 0);
-    check('背包行含出售按钮', (await p1.$$('.inventory .mini.primary-mini')).length > 0);
+    check('系统商店页已移除背包模块', (await p1.$$('.inventory, .col-side')).length === 0);
 
     // —— 钓竿配置：装备走子页面（弹窗），页面下方不再有装备模块；负词条红色 ——
     await clickNav(p1, '钓竿配置');
@@ -285,6 +301,14 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('图鉴已解锁钓到的鱼', got.length >= 6, String(got.length) + ' 已解锁');
     check('图鉴汇总显示收集进度', /\d+ \/ \d+/.test(await p1.textContent('.codex-summary')));
     check('组件图鉴卡展示底材词缀与数值范围', (await p1.$$('.codex-cell.k-component .cx-pool')).length > 0);
+    // 图鉴详情改为子窗口
+    await p1.evaluate(() => { const c = document.querySelector('.codex-cell'); if (c) c.click(); });
+    await sleep(300);
+    check('图鉴详情在子窗口中展示', (await p1.$$('.codex-modal .codex-detail')).length === 1);
+    check('图鉴页内不再内嵌详情浮层', (await p1.$$('.codex-cell .codex-detail')).length === 0);
+    await p1.evaluate(() => { const b = document.querySelector('.codex-modal .modal-close'); if (b) b.click(); });
+    await sleep(200);
+    check('关闭图鉴详情子窗口', (await p1.$$('.codex-modal')).length === 0);
 
     // —— 渔获记录 ——
     await clickNav(p1, '渔获记录');

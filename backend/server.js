@@ -102,7 +102,7 @@ let users = {};
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
 // biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
 const BITE_FORMULA_DEFAULT = 'min(98, 90 + speed * 0.15)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, feedback: [], feedbackMeta: {} };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {} };
 
 // ---- 反馈意见 ----
 // 默认每人每 24 小时可提交 1 条；花 10000 金币可立即结束 CD（下次可提交时间提前 24h）。
@@ -110,6 +110,8 @@ const FEEDBACK_CD_MS = 24 * 3600 * 1000;
 const FEEDBACK_SKIP_COST = 10000;
 const FEEDBACK_MAX_LEN = 1000;
 const FEEDBACK_KEEP = 500; // 最多保留的历史反馈条数
+// 反馈状态标识（玩家可见；管理员可改）
+const FEEDBACK_STATUSES = { submitted: '已提交', accepted: '已受理', done: '已完成' };
 
 // ---- 在线交易会话 ----
 // trade = { id, a:{key,name}, b:{key,name}, aItems:[{id,qty}], bItems:[], aOk, bOk, cooldownUntil, cancelled, createdAt }
@@ -685,7 +687,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'bannerSeq', 'banners', 'bannerCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
@@ -763,6 +765,8 @@ loadWorld();
 
 // 套用管理后台保存的钓场/钓点配置覆盖（掉落池 / 增益 / 锁定状态）
 applyGroundCfg();
+// 套用管理后台保存的组件生成配置（品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则）
+if (D.setComponentCfg) D.setComponentCfg(world.componentCfg);
 // 为所有经济物品补齐乘数状态（老档迁移：旧"供应压力"按 -1%/件 折算为初始乘数）
 (function ensureSaleStats() {
   const day = new Date().toISOString().slice(0, 10);
@@ -1509,7 +1513,7 @@ const server = http.createServer(function (req, res) {
 
   // ---- 版本信息（公开只读）：前端启动时比对，版本不一致则强制刷新以清掉旧缓存 ----
   if (p === '/api/version' && req.method === 'GET') {
-    return apiResp(res, 200, { version: D.VERSION, build: D.BUILD });
+    return apiResp(res, 200, { version: D.VERSION, build: D.BUILD, componentCfg: D.getComponentCfg ? D.getComponentCfg() : null });
   }
 
   // ---- 反馈意见：查询 CD 状态 / 提交（默认 24h CD；可花 10000 金币立即结束 CD）----
@@ -1537,7 +1541,7 @@ const server = http.createServer(function (req, res) {
         }
         const text = String(d.text || '').trim().slice(0, FEEDBACK_MAX_LEN);
         if (!text) return apiResp(res, 400, { error: '反馈内容不能为空' });
-        const entry = { id: 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), t: Date.now(), key: key, name: rec.name, text: text, kind: String(d.kind || 'other').slice(0, 20), version: D.VERSION };
+        const entry = { id: 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), t: Date.now(), key: key, name: rec.name, text: text, kind: String(d.kind || 'other').slice(0, 20), version: D.VERSION, status: 'submitted' };
         world.feedback = world.feedback || [];
         world.feedback.push(entry);
         if (world.feedback.length > FEEDBACK_KEEP) world.feedback.splice(0, world.feedback.length - FEEDBACK_KEEP);
@@ -1637,12 +1641,125 @@ const server = http.createServer(function (req, res) {
       feedbackCount: (world.feedback || []).length,
     });
   }
+  // ================================================================
+  // ---- 横幅（管理后台发布，队列播放） ----
+  // 玩家端启动时拉取队列，按顺序播放；图标闪烁可在 bannerCfg.blink 配置。
+  // ================================================================
+  if (p === '/api/banner' && req.method === 'GET') {
+    return apiResp(res, 200, {
+      banners: (world.banners || []).slice().sort(function (x, y) { return (x.seq || 0) - (y.seq || 0); }),
+      cfg: { blink: !!(world.bannerCfg && world.bannerCfg.blink), blinkTitle: (world.bannerCfg && world.bannerCfg.blinkTitle) || '📢 有新公告' },
+      seq: world.bannerSeq || 1,
+    });
+  }
+  if (p === '/api/admin/banner' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    return apiResp(res, 200, {
+      ok: true,
+      banners: (world.banners || []).slice().sort(function (x, y) { return (x.seq || 0) - (y.seq || 0); }),
+      cfg: Object.assign({ blink: false, blinkTitle: '📢 有新公告' }, world.bannerCfg || {}),
+      seq: world.bannerSeq || 1,
+    });
+  }
+  // 发布横幅：content + duration(秒)，可选 repeat(播放轮数，默认 1)
+  if (p === '/api/admin/banner/add' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const content = String(d.content || '').trim().slice(0, 200);
+      if (!content) return apiResp(res, 400, { error: '横幅内容不能为空' });
+      const dur = Number(d.duration);
+      if (!isFinite(dur) || dur < 1 || dur > 3600) return apiResp(res, 400, { error: '时长需在 1-3600 秒之间' });
+      const banner = {
+        id: 'bn_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        seq: world.bannerSeq++, content: content, duration: Math.round(dur * 10) / 10,
+        createdAt: Date.now(), by: a.rec.name,
+      };
+      world.banners = world.banners || [];
+      world.banners.push(banner);
+      saveConfig();
+      broadcast({ type: 'banner', banners: world.banners, cfg: world.bannerCfg || {} });
+      apiResp(res, 200, { ok: true, banner: banner });
+    });
+    return;
+  }
+  if (p === '/api/admin/banner/remove' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const before = (world.banners || []).length;
+      world.banners = (world.banners || []).filter(function (b) { return b.id !== d.id; });
+      if (world.banners.length === before) return apiResp(res, 404, { error: '横幅不存在' });
+      saveConfig();
+      broadcast({ type: 'banner', banners: world.banners, cfg: world.bannerCfg || {} });
+      apiResp(res, 200, { ok: true });
+    });
+    return;
+  }
+  // 调整队列顺序：把某条上移/下移（dir=up|down）
+  if (p === '/api/admin/banner/move' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const list = (world.banners || []).slice().sort(function (x, y) { return (x.seq || 0) - (y.seq || 0); });
+      const i = list.findIndex(function (b) { return b.id === d.id; });
+      if (i < 0) return apiResp(res, 404, { error: '横幅不存在' });
+      const j = d.dir === 'down' ? i + 1 : i - 1;
+      if (j < 0 || j >= list.length) return apiResp(res, 400, { error: '已经在队列端点' });
+      const t = list[i]; list[i] = list[j]; list[j] = t;
+      list.forEach(function (b, idx) { b.seq = idx + 1; });
+      world.banners = list;
+      saveConfig();
+      broadcast({ type: 'banner', banners: world.banners, cfg: world.bannerCfg || {} });
+      apiResp(res, 200, { ok: true, banners: world.banners });
+    });
+    return;
+  }
+  // 图标闪烁配置
+  if (p === '/api/admin/banner/cfg' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      world.bannerCfg = Object.assign({ blink: false, blinkTitle: '📢 有新公告' }, world.bannerCfg || {});
+      if (d.blink != null) world.bannerCfg.blink = !!d.blink;
+      if (d.blinkTitle != null) world.bannerCfg.blinkTitle = String(d.blinkTitle).slice(0, 40);
+      saveConfig();
+      broadcast({ type: 'banner', banners: world.banners || [], cfg: world.bannerCfg });
+      apiResp(res, 200, { ok: true, cfg: world.bannerCfg });
+    });
+    return;
+  }
+
   // ---- 反馈意见列表（管理员只读；按时间倒序） ----
   if (p === '/api/admin/feedback' && req.method === 'GET') {
     const a = adminOf(u.query.token);
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
     const list = (world.feedback || []).slice().sort(function (x, y) { return y.t - x.t; });
-    return apiResp(res, 200, { ok: true, feedback: list, total: list.length });
+    return apiResp(res, 200, { ok: true, feedback: list, total: list.length, statuses: FEEDBACK_STATUSES });
+  }
+  // ---- 反馈状态：管理员标记（已提交 / 已受理 / 已完成） ----
+  if (p === '/api/admin/feedback/status' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      if (!FEEDBACK_STATUSES[d.status]) return apiResp(res, 400, { error: '未知的反馈状态' });
+      const item = (world.feedback || []).find(function (f) { return f.id === d.id; });
+      if (!item) return apiResp(res, 404, { error: '反馈不存在' });
+      item.status = d.status;
+      item.statusAt = Date.now();
+      item.statusBy = a.rec.name;
+      saveFeedback();
+      // 通知提交者（若在线）
+      if (item.key) sendTo(item.key, { type: 'notice', msg: '你的反馈状态已更新为：' + FEEDBACK_STATUSES[d.status] });
+      apiResp(res, 200, { ok: true, id: item.id, status: item.status });
+    });
+    return;
   }
   // ---- 账号列表（管理员授权数据源） ----
   if (p === '/api/admin/users' && req.method === 'GET') {
@@ -1677,6 +1794,75 @@ const server = http.createServer(function (req, res) {
       saveAccount(target);
       sendTo(target, { type: 'notice', msg: want ? '🛡 你已获得管理员权限，可打开管理后台（/admin.html）' : '你的管理员权限已被收回' });
       apiResp(res, 200, { ok: true, target: target, admin: want });
+    });
+    return;
+  }
+  // ---- 删除账号（管理员；需二次确认——前端传 confirm: true） ----
+  if (p === '/api/admin/users/delete' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const target = String(d.target || '').toLowerCase();
+      if (!target || !users[target]) return apiResp(res, 404, { error: '账号不存在' });
+      if (target === a.key) return apiResp(res, 400, { error: '不能删除自己的账号' });
+      if (d.confirm !== true) return apiResp(res, 400, { error: '需要二次确认' });
+      // 踢下线、清理该账号的挂单与交易
+      kickUserSessions(target);
+      world.listings = (world.listings || []).filter(function (l) { return l.seller !== target; });
+      saveMarket();
+      (world.feedback || []).forEach(function (f) { if (f.key === target) f.key = null; });
+      delete users[target];
+      try { fs.unlinkSync(accountFile(target)); } catch (e) {}
+      saveFeedback();
+      broadcastMarket();
+      apiResp(res, 200, { ok: true, target: target });
+    });
+    return;
+  }
+  // ---- 账号快照：返回金币 + 背包（供管理后台展示与编辑） ----
+  if (p === '/api/admin/users/snapshot' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    const target = String(u.query.key || '').toLowerCase();
+    const rec = users[target];
+    if (!rec) return apiResp(res, 404, { error: '账号不存在' });
+    return apiResp(res, 200, {
+      ok: true, key: target, name: rec.name, username: rec.username, qq: rec.qq || '',
+      coins: rec.coins || 0, inventory: rec.inventory || {},
+      catchCount: rec.catchCount || 0, admin: !!rec.admin,
+    });
+  }
+  // ---- 账号快照编辑：直接设置金币与背包（管理员） ----
+  if (p === '/api/admin/users/snapshot' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const target = String(d.target || '').toLowerCase();
+      const rec = users[target];
+      if (!rec) return apiResp(res, 404, { error: '账号不存在' });
+      if (d.inventory != null) {
+        if (typeof d.inventory !== 'object') return apiResp(res, 400, { error: '背包格式错误' });
+        const next = {};
+        for (const rawId of Object.keys(d.inventory)) {
+          const qty = Math.floor(Number(d.inventory[rawId]));
+          if (!isFinite(qty) || qty <= 0) continue;
+          const id = D.normalizeItemId(rawId);
+          if (!sellableOf(id) && !D.componentBase(id)) return apiResp(res, 400, { error: '未知物品：' + rawId });
+          next[id] = (next[id] || 0) + qty;
+        }
+        rec.inventory = next;
+      }
+      if (d.coins != null) {
+        const c = Math.floor(Number(d.coins));
+        if (!isFinite(c) || c < 0 || c > 1e12) return apiResp(res, 400, { error: '金币数无效' });
+        rec.coins = c;
+      }
+      saveAccount(target);
+      sendTo(target, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+      sendTo(target, { type: 'notice', msg: '管理员更新了你的资产快照' });
+      apiResp(res, 200, { ok: true, key: target, coins: rec.coins, inventory: rec.inventory });
     });
     return;
   }
@@ -1738,7 +1924,121 @@ const server = http.createServer(function (req, res) {
       notifyLevels: NOTIFY_LEVELS,
       biteFormula: world.biteFormula || BITE_FORMULA_DEFAULT,
       doubleBase: Number(world.doubleBase) || 0,
+      componentCfg: D.getComponentCfg ? D.getComponentCfg() : null,
+      componentDefaults: D.defaultComponentCfg ? D.defaultComponentCfg() : null,
+      affixCodes: D.AFFIX_CODES,
     });
+  }
+  // ---- 组件生成配置：品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则 ----
+  if (p === '/api/admin/component/config' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const cfg = {};
+      if (d.qualityWeights != null) {
+        if (typeof d.qualityWeights !== 'object') return apiResp(res, 400, { error: '品质概率格式错误' });
+        const qw = {};
+        ['common', 'rare', 'epic'].forEach(function (k) {
+          const v = Number(d.qualityWeights[k]);
+          if (!isFinite(v) || v < 0) return;
+          qw[k] = v;
+        });
+        if (!Object.keys(qw).length) return apiResp(res, 400, { error: '品质概率至少需一项非负值' });
+        cfg.qualityWeights = qw;
+      }
+      if (d.countWeights != null) {
+        if (typeof d.countWeights !== 'object') return apiResp(res, 400, { error: '词条数概率格式错误' });
+        const cw = {};
+        ['common', 'rare', 'epic'].forEach(function (k) {
+          const arr = d.countWeights[k];
+          if (!Array.isArray(arr)) return;
+          const out = arr.slice(0, 3).map(function (x) { return Math.max(0, Number(x) || 0); });
+          if (out.length) cw[k] = out;
+        });
+        cfg.countWeights = cw;
+      }
+      if (d.rollModel != null) {
+        if (['linear', 'normal', 'skew'].indexOf(d.rollModel) < 0) return apiResp(res, 400, { error: '未知的 roll 模型' });
+        cfg.rollModel = d.rollModel;
+      }
+      if (d.affixRanges != null) {
+        if (typeof d.affixRanges !== 'object') return apiResp(res, 400, { error: '数值区间格式错误' });
+        const out = {};
+        Object.keys(d.affixRanges).forEach(function (bid) {
+          const base = D.componentBase(bid);
+          if (!base) return;
+          const types = d.affixRanges[bid];
+          if (!types || typeof types !== 'object') return;
+          const clean = {};
+          Object.keys(types).forEach(function (t) {
+            const r = types[t];
+            if (!base.pool.some(function (p) { return p.type === t; })) return;
+            if (!Array.isArray(r) || r.length !== 2) return;
+            const mn = Number(r[0]), mx = Number(r[1]);
+            if (!isFinite(mn) || !isFinite(mx) || mx < mn) return;
+            clean[t] = [Math.round(mn), Math.round(mx)];
+          });
+          if (Object.keys(clean).length) out[bid] = clean;
+        });
+        cfg.affixRanges = out;
+      }
+      if (d.adjectiveRules != null) {
+        if (!Array.isArray(d.adjectiveRules)) return apiResp(res, 400, { error: '修饰词规则格式错误' });
+        const rules = [];
+        for (const r of d.adjectiveRules.slice(0, 20)) {
+          const name = String((r && r.name) || '').trim().slice(0, 12);
+          if (!name) return apiResp(res, 400, { error: '修饰词名称不能为空' });
+          const rule = { name: name };
+          ['full', 'noNeg'].forEach(function (k) { if (r && r[k] != null) rule[k] = !!r[k]; });
+          ['netMin', 'netMax', 'minAffixes', 'maxAffixes'].forEach(function (k) {
+            if (r && r[k] != null && r[k] !== '') { const v = Number(r[k]); if (isFinite(v)) rule[k] = v; }
+          });
+          rules.push(rule);
+        }
+        cfg.adjectiveRules = rules;
+      }
+      // 合并到现有配置并套用
+      const merged = Object.assign({}, D.getComponentCfg ? D.getComponentCfg() : {}, cfg);
+      world.componentCfg = D.setComponentCfg(merged);
+      saveConfig();
+      apiResp(res, 200, { ok: true, componentCfg: world.componentCfg });
+    });
+    return;
+  }
+  // ---- 组件生成配置：恢复默认 ----
+  if (p === '/api/admin/component/reset' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      world.componentCfg = D.setComponentCfg(null);
+      saveConfig();
+      apiResp(res, 200, { ok: true, componentCfg: world.componentCfg });
+    });
+    return;
+  }
+  // ---- 组件掉落实测（按当前配置采样，给管理后台预览概率分布） ----
+  if (p === '/api/admin/component/simulate' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const n = Math.max(1, Math.min(200000, Number(d.n) || 20000));
+      const qDist = { common: 0, rare: 0, epic: 0 };
+      const cDist = { common: { 1: 0, 2: 0, 3: 0 }, rare: { 1: 0, 2: 0, 3: 0 }, epic: { 1: 0, 2: 0, 3: 0 } };
+      const vals = {};
+      for (let i = 0; i < n; i++) {
+        const c = D.rollComponent();
+        qDist[c.quality] = (qDist[c.quality] || 0) + 1;
+        cDist[c.quality][c.affixes.length] = (cDist[c.quality][c.affixes.length] || 0) + 1;
+        c.affixes.forEach(function (af) { vals[af.type] = vals[af.type] || { sum: 0, n: 0, min: 1e9, max: -1e9 }; const v = vals[af.type]; v.sum += af.value; v.n++; if (af.value < v.min) v.min = af.value; if (af.value > v.max) v.max = af.value; });
+      }
+      const affixStats = {};
+      Object.keys(vals).forEach(function (t) { affixStats[t] = { mean: Math.round((vals[t].sum / vals[t].n) * 10) / 10, min: vals[t].min, max: vals[t].max }; });
+      apiResp(res, 200, { ok: true, n: n, quality: qDist, count: cDist, affix: affixStats });
+    });
+    return;
   }
   // ---- 钓点掉落池（种类 + 权重；保存后全服即时生效并广播游戏端） ----
   if (p === '/api/admin/spot/pool' && req.method === 'POST') {

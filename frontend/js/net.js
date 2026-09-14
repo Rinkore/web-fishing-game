@@ -65,6 +65,8 @@ window.Net = (function () {
     if (!window.GameData || !window.GameData.VERSION) return Promise.resolve(false);
     return apiFetch('GET', '/api/version').then(function (r) {
       if (!r || !r.ok || !r.data || !r.data.version) return false;
+      // 顺带同步服务器的组件生成配置（数值范围/词条概率/roll 模型），供前端展示与本地 roll 一致
+      if (r.data.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(r.data.componentCfg);
       if (r.data.version === window.GameData.VERSION) return false;
       let already = false;
       try { already = sessionStorage.getItem(RELOAD_FLAG) === r.data.version; } catch (e) {}
@@ -92,6 +94,15 @@ window.Net = (function () {
   const marketHistory = () => apiFetch('GET', '/api/market/history?token=' + encodeURIComponent(me ? me.token : ''));
   // 某种鱼的全服前十大捕获记录（公开只读）
   const recordsTop = (id, kind) => apiFetch('GET', '/api/records/top?id=' + encodeURIComponent(id) + (kind ? '&kind=' + encodeURIComponent(kind) : ''));
+  // 横幅队列（公开只读；服务器管理后台发布）
+  const fetchBanners = () => apiFetch('GET', '/api/banner').then(function (r) {
+    if (r && r.ok) {
+      state().banners = r.data.banners || [];
+      state().bannerCfg = r.data.cfg || {};
+      if (window.UI) window.UI.refreshAll('banner');
+    }
+    return r;
+  });
 
   // ---- 按需拉取：进入对应页面时才请求该页数据（不在的页面零请求） ----
   const fetchShop = () => apiFetch('GET', '/shop').then(function (r) {
@@ -194,6 +205,10 @@ window.Net = (function () {
           if (ui) ui.refreshAll('records');
         } else if (m.type === 'globalRecord') {
           if (ui && ui.showRecordBanner && m.record) ui.showRecordBanner(m.record);
+        } else if (m.type === 'banner') {
+          S.banners = m.banners || [];
+          S.bannerCfg = m.cfg || {};
+          if (ui && ui.onBanners) ui.onBanners();
         } else if (m.type === 'assets') {
           // 服务器权威资产：金币/库存/图鉴整体替换，前端不持账本
           if (m.coins != null) S.player.coins = m.coins;
@@ -257,6 +272,7 @@ window.Net = (function () {
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
     fetchFeedback: fetchFeedback,
+    fetchBanners: fetchBanners,
     feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,
     sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,

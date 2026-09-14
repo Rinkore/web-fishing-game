@@ -195,10 +195,32 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 
 /* ---- 账号管理 ---- */
 .mgr-form { margin-top: 6px; }
-.mgr-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.mgr-row label { width: 76px; flex: none; font-size: 13px; color: var(--txt-dim); }
-.mgr-row .ipt { flex: 1; min-width: 0; }
+.mgr-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.mgr-row label { width: auto; flex: none; font-size: 13px; color: var(--txt-dim); }
+.mgr-row .ipt { flex: 1; min-width: 120px; }
 .mgr-foot { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.mgr-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.snap-modal { width: 620px; max-width: 94vw; }
+.snap-inv { max-height: 320px; overflow: auto; }
+.snap-line label { width: 220px; }
+.snap-line .mk-num { flex: 0 0 90px; }
+.mk-num { width: 90px; flex: none; }
+
+/* ---- 组件生成配置 ---- */
+.cmp-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; }
+.cmp-cell { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--txt-dim); }
+.cmp-cell .ipt { width: 84px; }
+.cmp-3 { display: flex; gap: 4px; }
+.cmp-3 .ipt { width: 62px; }
+.adj-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.adj-row .adj-name { width: 170px; flex: none; }
+.adj-chk { font-size: 12px; color: var(--txt-dim); display: flex; align-items: center; gap: 3px; }
+.adj-num { font-size: 12px; color: var(--txt-dim); display: flex; align-items: center; gap: 3px; }
+.adj-num .cmp-num { width: 64px; }
+.cmp-range { border-top: 1px solid var(--line); padding: 8px 0; }
+.cmp-range-title { font-size: 13px; margin-bottom: 6px; }
+.cmp-aff { display: inline-flex; align-items: center; gap: 4px; margin-right: 14px; font-size: 12px; color: var(--txt-dim); }
+.cmp-aff .cmp-num { width: 64px; }
 
 /* ---- 提示气泡 ---- */
 .toast {

@@ -63,34 +63,96 @@ window.UI = (function () {
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2400);
   }
 
-  // ---- 破纪录横幅：全场最大纪录被破时，在顶部滚动显示 ----
-  // 不再固定 5 秒硬关：等滚动文字完整离开屏幕（一遍动画走完）后再淡出收起。
-  let bannerTimer = null;
-  function showRecordBanner(rec) {
+  // ---- 顶部横幅：破纪录播报 + 管理后台公告队列共用同一滚动条 ----
+  // 规则：等整段文字完整离开屏幕（一遍动画走完）后才收起；多条内容排队依次播放。
+  let recordBannerTimer = null;
+  let bannerQueue = [];      // 待播放队列 [{text, duration}]
+  let bannerPlaying = false;
+
+  // 播放单条滚动内容（duration 秒；到点或动画结束即收起并回调）
+  function playMarquee(text, duration, done) {
     const b = $('record-banner');
-    if (!b || !rec) return;
-    const text = '🎉 全场最大纪录被破！' + rec.who + ' 钓到 ' + rec.name + ' ' + rec.size + 'cm';
+    if (!b) { if (done) done(); return; }
+    if (recordBannerTimer) { clearTimeout(recordBannerTimer); recordBannerTimer = null; }
     const rep = esc(text) + '　　✦　　';
     b.innerHTML = '';
     const track = el('span', 'rb-track', rep + rep + rep + rep + rep);
     b.appendChild(track);
     b.classList.add('show');
-    if (bannerTimer) clearTimeout(bannerTimer);
-
+    let finished = false;
     function finish() {
+      if (finished) return;
+      finished = true;
+      if (recordBannerTimer) { clearTimeout(recordBannerTimer); recordBannerTimer = null; }
       b.classList.remove('show');
-      bannerTimer = setTimeout(function () { b.innerHTML = ''; }, 400);
+      recordBannerTimer = setTimeout(function () { b.innerHTML = ''; if (done) done(); }, 400);
     }
-    // 动画总位移 = 轨道整宽（含 padding-left:100%），按约 120px/s 换算时长，保证整段字走完才关闭
+    // 动画时长 = 按内容宽度推算（约 120px/s），保证字全部滚出屏幕；管理页可指定 duration 作为最短时长
     const w = Math.max(600, track.offsetWidth || 1200);
-    const dur = Math.max(6000, Math.min(30000, Math.round(w / 120) * 1000));
-    track.style.animationDuration = (dur / 1000) + 's';
-    // 用动画结束事件判定「字全部离开屏幕」；不可用时退回按估算时长定时
-    let done = false;
-    function once() { if (done) return; done = true; finish(); }
-    track.addEventListener('animationend', once);
-    track.addEventListener('animationcancel', once);
-    bannerTimer = setTimeout(once, dur + 800); // 兜底
+    const scrollMs = Math.max(6000, Math.min(60000, Math.round(w / 120) * 1000));
+    const ms = Math.max(scrollMs, Math.round((duration || 0) * 1000));
+    track.style.animationDuration = (ms / 1000) + 's';
+    track.addEventListener('animationend', finish);
+    track.addEventListener('animationcancel', finish);
+    recordBannerTimer = setTimeout(finish, ms + 800); // 兜底
+  }
+
+  // 破纪录播报（不入队列，立即插播）
+  function showRecordBanner(rec) {
+    if (!rec) return;
+    playMarquee('🎉 全场最大纪录被破！' + rec.who + ' 钓到 ' + rec.name + ' ' + rec.size + 'cm', 0, null);
+  }
+
+  // 管理后台公告队列：入队并顺序播放
+  function playBannerQueue(list) {
+    (list || []).forEach(function (bn) { bannerQueue.push({ text: bn.content, duration: bn.duration }); });
+    pumpBannerQueue();
+  }
+  function pumpBannerQueue() {
+    if (bannerPlaying) return;
+    const next = bannerQueue.shift();
+    if (!next) return;
+    bannerPlaying = true;
+    playMarquee(next.text, next.duration, function () { bannerPlaying = false; pumpBannerQueue(); });
+  }
+  // 收到横幅更新：把服务器队列中尚未播放（本会话未见）的条目入队
+  let seenBannerIds = {};
+  function onBanners() {
+    const st = S();
+    const cfg = st.bannerCfg || {};
+    const list = st.banners || [];
+    const fresh = [];
+    list.forEach(function (bn) {
+      if (!bn || seenBannerIds[bn.id]) return;
+      seenBannerIds[bn.id] = true;
+      fresh.push(bn);
+    });
+    if (fresh.length) playBannerQueue(fresh);
+    updateFaviconBlink(!!cfg.blink && list.length > 0, cfg.blinkTitle);
+  }
+  // ---- 浏览器图标闪烁：有横幅内容且开启时，标题与 favicon 交替提示 ----
+  const baseTitle = document.title;
+  let blinkTimer = null, blinkOn = false;
+  function makeFaviconDot(color) {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">' +
+      '<circle cx="16" cy="16" r="13" fill="' + color + '"/></svg>';
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
+  }
+  function ensureFaviconLink() {
+    let l = document.querySelector('link[rel="icon"]');
+    if (!l) { l = document.createElement('link'); l.rel = 'icon'; document.head.appendChild(l); }
+    return l;
+  }
+  function updateFaviconBlink(on, titleText) {
+    if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null; }
+    const link = ensureFaviconLink();
+    if (!on) { document.title = baseTitle; blinkOn = false; link.href = makeFaviconDot('%232dd4bf'); return; }
+    const tip = titleText || '📢 有新公告';
+    blinkTimer = setInterval(function () {
+      blinkOn = !blinkOn;
+      document.title = blinkOn ? tip : baseTitle;
+      link.href = makeFaviconDot(blinkOn ? '%23fbbf24' : '%232dd4bf');
+    }, 800);
   }
 
 
@@ -858,7 +920,7 @@ window.UI = (function () {
     const main = $('main');
     const st = S();
     main.innerHTML = '';
-    const panel = el('div', 'panel wide two-col');
+    const panel = el('div', 'panel wide');
     panel.innerHTML = '<h2>🏪 系统商店 <span class="subtitle">供需定价 · 单乘数模型：每卖一件约 -0.7% · 闲置时向 2 倍缓慢回升 · 点击商品查看走势与交易流水</span></h2>';
 
     const colMain = el('div', 'col-main');
@@ -919,20 +981,6 @@ window.UI = (function () {
     });
     colMain.appendChild(grid);
     panel.appendChild(colMain);
-
-    const side = el('div', 'col-side');
-    side.appendChild(el('h3', null, '🎒 我的背包'));
-    side.appendChild(el('div', 'hint', '点击「出售」按当前收购价卖给系统；「上架」挂到开放市集（收定价总额 1% 上架费，下架不退；成交另抽 10% 税）。'));
-    side.appendChild(inventoryBlock({
-      onSell: function (id) {
-        call(window.Net.sell(id, 1), function (r) { return '售出 1 ×' + itemMeta(id).name + '，获得 💰' + r.data.gain; })
-          .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderView(); } });
-      },
-      onList: function (id, qty, price) {
-        call(window.Net.marketList(id, qty, price), function (r) { return '已上架到市集（支付上架费 ' + r.data.fee + '💰，下架不退）'; }).then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; renderTopbar(); renderView(); } });
-      },
-    }));
-    panel.appendChild(side);
     main.appendChild(panel);
   }
 
@@ -970,7 +1018,10 @@ window.UI = (function () {
     const row = el('div', 'mk-row' + (mine ? ' mine' : ''));
     const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
       ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
-          return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>';
+          const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
+          const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+          const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
+          return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rangeTag + '</span>';
         }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
       : '';
     row.innerHTML =
@@ -1694,20 +1745,28 @@ window.UI = (function () {
   }
 
   // ---- 鱼类图鉴视图 ----
-  // 当前展开详情的图鉴条目 + 当前分类（模块级：重绘间保留）
-  let codexDetailId = null;
+  // 当前分类（模块级：重绘间保留）；详情改为子窗口，无需记录展开项
   let codexCategory = 'all';
   let codexSortRarity = false;
 
   // 图鉴详情浮层：完整信息 + 全部产地（点击卡片开合；未解锁也可查看获取信息）
-  function openCodexDetail(cell, it, rec) {
-    document.querySelectorAll('.codex-detail').forEach(function (d) { d.remove(); });
+  // 图鉴详情：子窗口展示（替代原先卡片内展开）
+  function openCodexDetail(it, rec) {
     const spots = D.spotsOf(it.id);
     const base = it.kind === 'component' ? D.componentBase(it.id) : null;
     const rarityName = qualityName(it);
-    const box = el('div', 'codex-detail');
-    box.addEventListener('click', function (ev) { ev.stopPropagation(); }); // 浮层内点击不触发卡片开合
-    box.innerHTML =
+    closeOverlays();
+    const overlay = buildOverlay(function () { closeOverlays(); });
+    const box = el('div', 'modal-box codex-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">' + esc(it.name) + '</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body"><div class="codex-detail"></div></div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.querySelector('.modal-close').addEventListener('click', function () { closeOverlays(); });
+
+    const inner = box.querySelector('.codex-detail');
+    inner.innerHTML =
       '<div class="cd-title ' + qualityClass(it) + '">' + esc(it.name) + '</div>' +
       (rec
         ? '<div class="cd-line">已钓 <b>' + rec.count + '</b> 次 · 首获 ' + timeStr(rec.first) + '</div>'
@@ -1717,41 +1776,40 @@ window.UI = (function () {
       (rec && rec.max != null ? '<div class="cd-line">我钓到过：最大 <b>' + rec.max + '</b> cm · 最小 <b>' + rec.min + '</b> cm</div>' : '') +
       (rec && rec.max == null && it.size ? '<div class="cd-line muted">个人体型极值将在下次钓到后开始记录</div>' : '');
     if (base) {
-      // 组件底材：展示可拥有的全部词缀与数值范围（上限之外的词缀用暗色标注）
       const cap = D.QUALITY.epic.cap;
-      box.appendChild(el('div', 'cd-sub', '⚙ 可拥有词缀（' + base.pool.length + ' 条 · 数值范围）'));
+      inner.appendChild(el('div', 'cd-sub', '⚙ 可拥有词缀（' + base.pool.length + ' 条 · 数值范围）'));
       const al = el('div', 'cd-spots');
       base.pool.forEach(function (p) {
-        const neg = p.max < 0;
+        const rng = D.affixRangeOf ? D.affixRangeOf(base.id, p) : [p.min, p.max];
+        const neg = rng[1] < 0;
         al.appendChild(el('div', 'cd-spot' + (neg ? ' cd-aff-neg' : ''),
-          (D.AFFIX_LABEL[p.type] || p.type) + ' ' + rangeText(p) + '%'));
+          (D.AFFIX_LABEL[p.type] || p.type) + ' ' + rangeText({ min: rng[0], max: rng[1] }) + '%'));
       });
-      box.appendChild(al);
-      box.appendChild(el('div', 'cd-line muted',
-        '生成规则：从以上词缀中抽取 1 至 ' + Math.min(cap, base.pool.length) + ' 条并 roll 数值；' +
-        '品质越高可携带词缀越多（普通 1 / 稀有 2 / 史诗 3）。词缀全满的品质显示为金色（✨）。'));
+      inner.appendChild(al);
+      const nw = (D.getComponentCfg && D.getComponentCfg().countWeights) || {};
+      inner.appendChild(el('div', 'cd-line muted',
+        '生成规则：从以上词缀中抽取 1 至 ' + Math.min(cap, base.pool.length) + ' 条并 roll 数值（模型：' +
+        ((D.getComponentCfg && D.getComponentCfg().rollModel) || 'linear') + '）；品质越高可携带词缀越多。'));
       const owned = ownedInstancesOfBase(base.id);
-      if (owned.full) box.appendChild(el('div', 'cd-line q-full', '✨ 你已拥有满词条实例（品质显示为金）'));
+      if (owned.full) inner.appendChild(el('div', 'cd-line q-full', '✨ 你已拥有满词条实例（品质显示为金）'));
     }
-    // 旧通用组件（无底材）仍展示其（空的）效果
     const comp = !base && it.kind === 'component' ? D.componentOf(it.id) : null;
     if (comp && comp.affixes && comp.affixes.length) {
-      box.appendChild(el('div', 'cd-sub', '⚙ 组件效果'));
+      inner.appendChild(el('div', 'cd-sub', '⚙ 组件效果'));
       const al = el('div', 'cd-spots');
       comp.affixes.forEach(function (a) {
         al.appendChild(el('div', 'cd-spot' + (a.value < 0 ? ' cd-aff-neg' : ''), esc(affixText(a))));
       });
-      box.appendChild(al);
+      inner.appendChild(al);
     }
     if (spots.length) {
-      box.appendChild(el('div', 'cd-sub', '📍 产出地点（全部 ' + spots.length + ' 处）'));
+      inner.appendChild(el('div', 'cd-sub', '📍 产出地点（全部 ' + spots.length + ' 处）'));
       const sl = el('div', 'cd-spots');
       spots.forEach(function (s) { sl.appendChild(el('div', 'cd-spot', '🎣 ' + esc(s))); });
-      box.appendChild(sl);
+      inner.appendChild(sl);
     } else {
-      box.appendChild(el('div', 'cd-line muted', '暂无产地信息。'));
+      inner.appendChild(el('div', 'cd-line muted', '暂无产地信息。'));
     }
-    cell.appendChild(box);
   }
 
   // 玩家背包中某底材的实例统计（用于图鉴金色满词条标注）
@@ -1765,17 +1823,6 @@ window.UI = (function () {
       if (m.isFull) full = true;
     });
     return { any: any, full: full };
-  }
-
-  function toggleCodexDetail(cell, it, rec) {
-    if (codexDetailId === it.id) { // 再点一次收起
-      codexDetailId = null;
-      const d = cell.querySelector('.codex-detail');
-      if (d) d.remove();
-      return;
-    }
-    codexDetailId = it.id;
-    openCodexDetail(cell, it, rec);
   }
 
   function renderCodex() {
@@ -1814,7 +1861,6 @@ window.UI = (function () {
     panel.appendChild(tabs);
 
     const grid = el('div', 'codex-grid');
-    const cellById = {};
     const baseList = codexCategory === 'all' ? items : items.filter(function (i) { return i.kind === codexCategory; });
     const TIER_ORDER = { epic: 4, rare: 3, big: 2, common: 1 };
     const shown = codexSortRarity
@@ -1842,15 +1888,10 @@ window.UI = (function () {
         (it.size ? '<div class="cx-meta muted">体型 ' + it.size[0] + '-' + it.size[1] + 'cm</div>'
                   : (poolHtml || '<div class="cx-meta muted">材料 / 组件</div>')) +
         (spots.length ? '<div class="cx-meta cx-spots">📍 产地 ' + spots.length + ' 处</div>' : '<div class="cx-meta muted">📍 —</div>');
-      cell.title = '点击查看完整信息';
-      cell.addEventListener('click', function () { toggleCodexDetail(cell, it, rec); });
-      cellById[it.id] = cell;
+      cell.title = '点击查看完整信息（子窗口）';
+      cell.addEventListener('click', function () { openCodexDetail(it, rec); });
       grid.appendChild(cell);
     });
-    // 重绘后恢复展开中的详情
-    if (codexDetailId && cellById[codexDetailId]) {
-      openCodexDetail(cellById[codexDetailId], D.itemOf(codexDetailId), caught[codexDetailId] || null);
-    }
     panel.appendChild(grid);
     main.appendChild(panel);
   }
@@ -1995,6 +2036,7 @@ window.UI = (function () {
   // 默认每人每 24 小时可提交 1 条；花 10000 金币可立即结束 CD。
   let fbKind = 'bug';
   const FB_KINDS = [['bug', '🐛 Bug'], ['idea', '💡 建议'], ['balance', '⚖️ 平衡'], ['other', '💬 其他']];
+  const FB_STATUSES = { submitted: '已提交', accepted: '已受理', done: '已完成' };
   function fmtRemain(ms) {
     const s = Math.max(0, Math.ceil(ms / 1000));
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -2076,7 +2118,10 @@ window.UI = (function () {
       mine.forEach(function (f) {
         const row = el('div', 'fb-item');
         const kindName = (FB_KINDS.find(function (k) { return k[0] === f.kind; }) || ['', '其他'])[1];
+        const stKey = f.status || 'submitted';
+        const stName = FB_STATUSES[stKey] || FB_STATUSES.submitted;
         row.innerHTML = '<div class="fb-item-head"><span class="fb-tag">' + esc(kindName) + '</span>' +
+          '<span class="fb-status ' + stKey + '">' + esc(stName) + '</span>' +
           '<span class="fb-time">' + timeStr(f.t) + '</span></div>' +
           '<div class="fb-text">' + esc(f.text) + '</div>';
         list.appendChild(row);
@@ -2163,6 +2208,9 @@ window.UI = (function () {
       const done = function () {
         try { localStorage.removeItem('fishing_token'); } catch (e) {}
         if (window.Net && window.Net.getMe && window.Net.getMe()) { try { window.Net.closeStream && window.Net.closeStream(); } catch (e) {} }
+        // 清空与账号绑定的临时状态与横幅/闪烁
+        if (window.Engine && window.Engine.resetTransient) window.Engine.resetTransient();
+        bannerQueue = []; seenBannerIds = {}; updateFaviconBlink(false);
         currentView = 'fishing';
         showAuth();
         authMsg('已退出登录');
@@ -2245,8 +2293,9 @@ window.UI = (function () {
     renderNav();
     renderTopbar();
     renderView();
+    // 拉取横幅队列（管理后台公告）并在该会话首次播放
+    if (window.Net.fetchBanners) window.Net.fetchBanners();
   }
-
   function onFishingTick() { if (currentView === 'fishing') { renderTopbar(); renderFishing(); } }
 
   // 刷新主视图。每个视图只关心与自己相关的广播类型（scope）：
@@ -2333,7 +2382,7 @@ window.UI = (function () {
 
   return {
     init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
-    toast: toast, showRecordBanner: showRecordBanner,
+    toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners,
     renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,
     getView: function () { return currentView; },
     setView: function (v) { currentView = v; },

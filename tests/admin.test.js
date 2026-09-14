@@ -255,6 +255,60 @@ async function waitReady() {
   check('设置基础双钓率 0.5 成功', (await POST(B + '/api/admin/settings', { token: TOKA, doubleBase: 0.5 })).status === 200);
   check('基础双钓率已生效（0.5）', (await GET(B + '/api/admin/world?token=' + TOKA)).data.doubleBase === 0.5);
 
+  // ---------- 9b. 组件生成配置 ----------
+  section('9b. 组件生成配置');
+  const wc = await GET(B + '/api/admin/world?token=' + TOKA);
+  check('world 返回组件生成配置与默认值', !!wc.data.componentCfg && !!wc.data.componentDefaults);
+  check('未知 roll 模型被拒 400', (await POST(B + '/api/admin/component/config', { token: TOKA, rollModel: 'magic' })).status === 400);
+  const ccSet = await POST(B + '/api/admin/component/config', {
+    token: TOKA, qualityWeights: { common: 0, rare: 0, epic: 1 }, countWeights: { epic: [0, 0, 1] },
+    rollModel: 'skew', affixRanges: { rod_bamboo: { speed: [88, 88] } },
+    adjectiveRules: [{ name: '测试极品', full: true }, { name: '普通款' }],
+  });
+  check('保存组件生成配置成功', ccSet.status === 200);
+  check('品质概率已生效', JSON.stringify(ccSet.data.componentCfg.qualityWeights) === JSON.stringify({ common: 0, rare: 0, epic: 1 }));
+  check('数值区间已生效', JSON.stringify(ccSet.data.componentCfg.affixRanges.rod_bamboo.speed) === '[88,88]');
+  check('修饰词规则已生效', ccSet.data.componentCfg.adjectiveRules[0].name === '测试极品');
+  check('非法数值区间（max<min）被过滤而非报错', (await POST(B + '/api/admin/component/config', { token: TOKA, affixRanges: { rod_bamboo: { speed: [5, 1] } } })).status === 200);
+  const sim = await POST(B + '/api/admin/component/simulate', { token: TOKA, n: 1000 });
+  check('组件试算接口可用', sim.status === 200 && sim.data.quality.epic === 1000, JSON.stringify(sim.data.quality));
+  check('恢复默认组件配置', (await POST(B + '/api/admin/component/reset', { token: TOKA })).status === 200);
+  check('非管理员改组件配置被拒 403', (await POST(B + '/api/admin/component/config', { token: TK2, rollModel: 'linear' })).status === 403);
+
+  // ---------- 9c. 横幅队列 ----------
+  section('9c. 横幅队列');
+  const bn1 = await POST(B + '/api/admin/banner/add', { token: TOKA, content: '公告一', duration: 5 });
+  const bn2 = await POST(B + '/api/admin/banner/add', { token: TOKA, content: '公告二', duration: 6 });
+  check('发布横幅成功', bn1.status === 200 && bn2.status === 200);
+  check('空内容被拒 400', (await POST(B + '/api/admin/banner/add', { token: TOKA, content: '   ', duration: 5 })).status === 400);
+  check('非法时长被拒 400', (await POST(B + '/api/admin/banner/add', { token: TOKA, content: 'x', duration: 0 })).status === 400);
+  const bnPub = await GET(B + '/api/banner');
+  check('公开横幅接口返回队列（2 条）', bnPub.status === 200 && bnPub.data.banners.length >= 2);
+  check('队列按 seq 排序（公告一在前）', bnPub.data.banners[0].content === '公告一');
+  check('下移公告一调整顺序', (await POST(B + '/api/admin/banner/move', { token: TOKA, id: bn1.data.banner.id, dir: 'down' })).status === 200);
+  check('移动后公告二在前', (await GET(B + '/api/banner')).data.banners[0].content === '公告二');
+  check('设置图标闪烁', (await POST(B + '/api/admin/banner/cfg', { token: TOKA, blink: true, blinkTitle: '📢 新公告' })).status === 200);
+  check('公开接口返回闪烁配置', (await GET(B + '/api/banner')).data.cfg.blink === true);
+  check('删除横幅', (await POST(B + '/api/admin/banner/remove', { token: TOKA, id: bn1.data.banner.id })).status === 200);
+  check('删除后队列减少', (await GET(B + '/api/banner')).data.banners.every(b => b.id !== bn1.data.banner.id));
+  check('非管理员发布横幅被拒 403', (await POST(B + '/api/admin/banner/add', { token: TK2, content: 'x', duration: 5 })).status === 403);
+
+  // ---------- 9d. 反馈状态 ----------
+  section('9d. 反馈状态');
+  const rgFb = await POST(B + '/api/register', { username: 'fb_stater', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  const fbSubmit = await POST(B + '/api/feedback/submit', { token: rgFb.data.token, text: '状态测试反馈' });
+  check('新反馈状态为已提交（submitted）', fbSubmit.data.entry.status === 'submitted');
+  const fbAdminList = await GET(B + '/api/admin/feedback?token=' + TOKA);
+  const fbItem = fbAdminList.data.feedback.find(f => f.text === '状态测试反馈');
+  check('管理员列表含反馈且带状态', !!fbItem && fbItem.status === 'submitted');
+  check('未知状态被拒 400', (await POST(B + '/api/admin/feedback/status', { token: TOKA, id: fbItem.id, status: 'nope' })).status === 400);
+  check('标记为已受理', (await POST(B + '/api/admin/feedback/status', { token: TOKA, id: fbItem.id, status: 'accepted' })).status === 200);
+  check('标记为已完成', (await POST(B + '/api/admin/feedback/status', { token: TOKA, id: fbItem.id, status: 'done' })).status === 200);
+  const fbPlayer = await GET(B + '/api/feedback?token=' + rgFb.data.token);
+  check('玩家看到状态为已完成', fbPlayer.data.mine.find(f => f.id === fbItem.id).status === 'done');
+  check('非管理员改状态被拒 403', (await POST(B + '/api/admin/feedback/status', { token: TK2, id: fbItem.id, status: 'accepted' })).status === 403);
+
+
   // ---------- 10. 账号管理（改密码 / 改显示名 / 调整金币） ----------
   section('10. 账号管理');
   check('非管理员调用账号管理被拒 403', (await POST(B + '/api/admin/users/update', { token: TK2, target: 'adm_p2', name: 'x' })).status === 403);
@@ -275,8 +329,27 @@ async function waitReady() {
   check('改密后显示名已持久应用', reLogin.data.profile.name === '改名后的二号');
   check('改密后金币已应用', reLogin.data.profile.coins === 8888);
 
-  // ---------- 9. 持久化（重启服务器） ----------
-  section('11. 配置持久化');
+  // 快照：查看并编辑背包/金币
+  const snap = await GET(B + '/api/admin/users/snapshot?token=' + TOKA + '&key=adm_p2');
+  check('读取账号快照成功', snap.status === 200 && snap.data.coins === 8888 && typeof snap.data.inventory === 'object');
+  check('快照编辑背包与金币', (await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', coins: 555, inventory: { crucian: 4 } })).status === 200);
+  const snap2 = await GET(B + '/api/admin/users/snapshot?token=' + TOKA + '&key=adm_p2');
+  check('快照已更新（金币 555 / 鲫鱼 4）', snap2.data.coins === 555 && snap2.data.inventory.crucian === 4);
+  check('快照非法物品被拒 400', (await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', inventory: { not_a_real_item: 1 } })).status === 400);
+  check('非管理员读快照被拒 403', (await GET(B + '/api/admin/users/snapshot?token=' + TK2 + '&key=adm_p2')).status === 403);
+
+  // 删除账号（二次确认）
+  const rgDel = await POST(B + '/api/register', { username: 'del_me', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  check('待删除账号注册成功', rgDel.status === 200);
+  check('删除需二次确认（缺 confirm 被拒 400）', (await POST(B + '/api/admin/users/delete', { token: TOKA, target: 'del_me' })).status === 400);
+  check('不能删除自己', (await POST(B + '/api/admin/users/delete', { token: TOKA, target: 'adm_root', confirm: true })).status === 400);
+  check('确认后删除成功', (await POST(B + '/api/admin/users/delete', { token: TOKA, target: 'del_me', confirm: true })).status === 200);
+  check('删除后账号无法登录', (await POST(B + '/api/login', { username: 'del_me', password: 'pass1234' })).status === 401);
+  check('删除后不在账号列表', !(await GET(B + '/api/admin/users?token=' + TOKA)).data.users.some(u => u.key === 'del_me'));
+
+
+  // ---------- 持久化（重启服务器） ----------
+  section('12. 配置持久化');
   killTree(srv);
   await sleep(800);
   srv = start(TMP_DATA);

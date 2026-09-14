@@ -30,6 +30,8 @@ window.Engine = (function () {
     codex: {},                  // 个人图鉴（服务器）
     catchCount: 0,
     feedback: null,             // 反馈意见：{ status:{nextAt,ready,remainingMs,skipCost}, mine:[] }
+    banners: [],                // 横幅队列（服务器）
+    bannerCfg: {},              // 横幅配置（图标闪烁等）
     selected: { groundId: null, spotId: null },
   };
 
@@ -56,6 +58,10 @@ window.Engine = (function () {
 
   function applyProfile(profile) {
     if (!profile) return;
+    // 切换账号：清空上一个账号的渔获日志与全服动态，避免串号残留
+    const prevUser = state.me && state.me.username;
+    const nextUser = profile.username;
+    if (prevUser && nextUser && prevUser !== nextUser) resetTransient();
     state.player.name = profile.name || state.player.name;
     if (profile.coins != null) state.player.coins = profile.coins;
     state.inventory = profile.inventory || {};
@@ -63,6 +69,19 @@ window.Engine = (function () {
     state.codex = profile.codex || {};
     state.catchCount = profile.catchCount || 0;
     refreshEffects();
+  }
+  // 清空与账号绑定的临时展示状态（渔获日志等）
+  function resetTransient() {
+    state.log = [];
+    state.fishing = { active: false };
+    state.player.status = 'idle';
+    state.player.groundId = null;
+    state.player.spotId = null;
+    state.player.recent = null;
+    state.trade = null;
+    state.tradeLastEvent = null;
+    state.tradeFlash = null;
+    state.selected = { groundId: null, spotId: null };
   }
 
   // 词缀汇总（展示用：与服务器共用同一份组件目录计算；权威值在服务器）
@@ -131,7 +150,7 @@ window.Engine = (function () {
   return {
     state: state, init: init, save: save, applyProfile: applyProfile,
     refreshEffects: refreshEffects, bdEffects: function () { return state.bdEffects; },
-    startFishing: startFishing, stopFishing: stopFishing,
+    startFishing: startFishing, stopFishing: stopFishing, resetTransient: resetTransient,
     resolveSpot: resolveSpot, playersAtGround: playersAtGround,
     buildDefaultBD: buildDefaultBD,
   };

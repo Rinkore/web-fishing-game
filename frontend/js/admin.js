@@ -15,6 +15,9 @@ window.Admin = (function () {
   let listings = [];            // 市集挂单
   let mkSearch = '';            // 市集管理搜索
   let mkKind = 'all';           // 市集管理类型筛选
+  let mkAffix = 'all';          // 市集管理词条筛选
+  let mkAffixMin = '', mkAffixMax = '';
+  let mkSort = { key: 'time', dir: 'desc' };
   let timer = null;             // 概览自动刷新
   // 渔场编辑器状态
   let selGround = null, selSpot = null;
@@ -129,8 +132,10 @@ window.Admin = (function () {
     { id: 'accountmgr', name: '🔑 账号管理' },
     { id: 'grounds', name: '🌊 渔场钓点' },
     { id: 'market', name: '💱 市集管理' },
-    { id: 'formula', name: '🧮 上钩公式' },
+    { id: 'component', name: '🧩 组件生成' },
+    { id: 'formula', name: '🧮 公式管理' },
     { id: 'notify', name: '🔔 通知等级' },
+    { id: 'banner', name: '📢 横幅管理' },
     { id: 'feedback', name: '📮 反馈意见' },
   ];
   function renderNav() {
@@ -153,8 +158,10 @@ window.Admin = (function () {
     if (v === 'accountmgr') return renderAccountMgr();
     if (v === 'grounds') return renderGrounds();
     if (v === 'market') return renderMarket();
+    if (v === 'component') return renderComponent();
     if (v === 'formula') return renderFormula();
     if (v === 'notify') return renderNotify();
+    if (v === 'banner') return renderBanner();
     if (v === 'feedback') return renderFeedback();
   }
 
@@ -172,17 +179,35 @@ window.Admin = (function () {
       const list = r.data.feedback || [];
       if (!list.length) { box.innerHTML = '<div class="hint">暂无反馈。</div>'; return; }
       const KIND = { bug: '🐛 Bug', idea: '💡 建议', balance: '⚖️ 平衡', other: '💬 其他' };
+      const STATUSES = r.data.statuses || { submitted: '已提交', accepted: '已受理', done: '已完成' };
       box.innerHTML = '<div class="hint" style="margin-bottom:10px">共 ' + list.length + ' 条</div>' +
         list.map(function (f) {
           const dt = new Date(f.t);
           const ts = dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2) + ' ' +
             ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2);
+          const cur = f.status || 'submitted';
+          const opts = Object.keys(STATUSES).map(function (k) {
+            return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' + esc(STATUSES[k]) + '</option>';
+          }).join('');
           return '<div class="fb-admin-item">' +
             '<div class="fb-admin-head"><span class="fb-tag">' + esc(KIND[f.kind] || f.kind || '其他') + '</span>' +
             '<span class="fb-admin-who">' + esc(f.name || f.key) + '</span>' +
+            '<span class="fb-status ' + cur + '">' + esc(STATUSES[cur] || cur) + '</span>' +
             '<span class="fb-admin-time">' + ts + (f.version ? ' · ' + esc(f.version) : '') + '</span></div>' +
-            '<div class="fb-admin-text">' + esc(f.text) + '</div></div>';
+            '<div class="fb-admin-text">' + esc(f.text) + '</div>' +
+            '<div class="fb-admin-foot"><label class="hint">状态</label>' +
+            '<select class="ipt fb-status-sel" data-id="' + esc(f.id) + '" style="width:auto">' + opts + '</select>' +
+            (f.statusBy ? '<span class="hint">由 ' + esc(f.statusBy) + ' 更新</span>' : '') + '</div></div>';
         }).join('');
+      box.querySelectorAll('.fb-status-sel').forEach(function (sel) {
+        sel.onchange = function () {
+          adminApi('POST', '/api/admin/feedback/status', { token: token, id: sel.getAttribute('data-id'), status: sel.value }).then(function (rr) {
+            if (!rr.ok) { toast(rr.data.error || '更新失败', true); return; }
+            toast('反馈状态已更新为：' + (STATUSES[sel.value] || sel.value));
+            renderFeedback();
+          });
+        };
+      });
     });
   }
 
@@ -262,49 +287,148 @@ window.Admin = (function () {
   }
 
   // ================================
-  // 账号管理（改密码 / 改显示名 / 调整金币）
+  // 账号管理（列表形式：改密码 / 改显示名 / 调整金币 / 删除 / 快照编辑背包）
   // ================================
   function renderAccountMgr() {
     const main = $('main');
     main.innerHTML = '<h2>🔑 账号管理</h2>' +
-      '<div class="hint" style="margin-bottom:12px">选择账号后可修改其密码、显示名与金币。修改密码会使其所有登录会话失效（需重新登录）。</div>' +
-      '<div class="panel"><div class="mgr-row"><label>账号</label>' +
-      '<select id="mgr-user" class="ipt"><option value="">加载中…</option></select></div>' +
-      '<div id="mgr-body"></div></div>';
+      '<div class="hint" style="margin-bottom:12px">与「账号授权」同款列表；可改密码 / 显示名 / 金币，查看并编辑玩家快照（金币与背包），或删除账号（需二次确认）。修改密码会使其所有登录会话失效。</div>' +
+      '<div id="mgr-list" class="panel">加载中…</div>';
+    loadMgrList();
+  }
+  function loadMgrList() {
     adminApi('GET', '/api/admin/users?token=' + encodeURIComponent(token)).then(function (r) {
       if (!r.ok || view !== 'accountmgr') return;
-      const sel = $('mgr-user');
-      sel.innerHTML = '<option value="">— 选择账号 —</option>' + r.data.users.map(function (u) {
-        return '<option value="' + esc(u.key) + '">' + esc(u.name) + ' ( ' + esc(u.username) + ' )' + (u.admin ? ' 🛡' : '') + '</option>';
+      const meKey = r.data.me;
+      const rows = r.data.users.map(function (u) {
+        const self = u.key === meKey;
+        return '<tr>' +
+          '<td><b>' + esc(u.name) + '</b> <span class="hint">' + esc(u.username) + (self ? '（你）' : '') + '</span>' +
+          (u.qq ? '<div class="hint">QQ：' + esc(u.qq) + '</div>' : '') + '</td>' +
+          '<td class="num">' + u.coins + '</td>' +
+          '<td class="num">' + u.catchCount + '</td>' +
+          '<td>' + (u.online ? '<span class="tag on">在线</span>' : '<span class="tag">离线</span>') + '</td>' +
+          '<td>' + fmtTime(u.createdAt) + '</td>' +
+          '<td class="mgr-acts">' +
+          '<button class="btn mini" data-edit="' + esc(u.key) + '">编辑</button>' +
+          '<button class="btn mini" data-snap="' + esc(u.key) + '">快照</button>' +
+          '<button class="btn mini danger" data-del="' + esc(u.key) + '"' + (self ? ' disabled title="不能删除自己"' : '') + '>删除</button>' +
+          '</td></tr>';
       }).join('');
-      sel.onchange = function () { renderMgrForm(sel.value); };
+      $('mgr-list').innerHTML = '<table class="tbl"><thead><tr>' +
+        '<th>账号</th><th class="num">金币</th><th class="num">捕获数</th><th>状态</th><th>注册时间</th><th>操作</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>';
+      $('mgr-list').querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { openMgrEdit(b.getAttribute('data-edit')); }; });
+      $('mgr-list').querySelectorAll('[data-snap]').forEach(function (b) { b.onclick = function () { openMgrSnapshot(b.getAttribute('data-snap')); }; });
+      $('mgr-list').querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { confirmDeleteUser(b.getAttribute('data-del')); }; });
     });
   }
-  function renderMgrForm(key) {
-    const box = $('mgr-body');
-    if (!key) { box.innerHTML = ''; return; }
-    box.innerHTML = '<div class="mgr-form">' +
+  // 编辑密码 / 显示名 / 金币
+  function openMgrEdit(key) {
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay';
+    ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">编辑账号 ' + esc(key) + '</span></div>' +
+      '<div class="modal-body mgr-form">' +
       '<div class="mgr-row"><label>新密码</label><input id="mgr-pass" class="ipt" type="text" placeholder="留空则不修改（至少 4 位）" /></div>' +
       '<div class="mgr-row"><label>显示名</label><input id="mgr-name" class="ipt" placeholder="留空则不修改" /></div>' +
       '<div class="mgr-row"><label>金币</label><input id="mgr-coins" class="ipt" type="number" min="0" placeholder="留空则不修改" /></div>' +
-      '<div class="mgr-foot"><button id="mgr-save" class="btn primary">保存修改</button><span id="mgr-msg" class="hint"></span></div>' +
-      '</div>';
-    $('mgr-save').onclick = function () {
+      '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn primary" id="mgr-save">保存修改</button></div>' +
+      '<span id="mgr-msg" class="hint"></span>' +
+      '</div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+    ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
+    ov.querySelector('#mgr-save').onclick = function () {
       const payload = { token: token, target: key };
-      const pw = $('mgr-pass').value;
-      const nm = $('mgr-name').value.trim();
-      const co = $('mgr-coins').value;
+      const pw = ov.querySelector('#mgr-pass').value;
+      const nm = ov.querySelector('#mgr-name').value.trim();
+      const co = ov.querySelector('#mgr-coins').value;
       if (pw) payload.password = pw;
       if (nm) payload.name = nm;
       if (co !== '') payload.coins = Number(co);
       if (!pw && !nm && co === '') { toast('没有需要修改的字段', true); return; }
-      const btn = $('mgr-save'); btn.disabled = true;
       adminApi('POST', '/api/admin/users/update', payload).then(function (r) {
-        btn.disabled = false;
         if (!r.ok) { toast(r.data.error || '修改失败', true); return; }
-        $('mgr-msg').textContent = '已修改：' + (r.data.changed || []).join(' / ');
-        $('mgr-pass').value = ''; $('mgr-name').value = ''; $('mgr-coins').value = '';
-        toast('已保存');
+        toast('已修改：' + (r.data.changed || []).join(' / '));
+        ov.remove(); loadMgrList();
+      });
+    };
+  }
+  // 快照：查看金币与背包，可编辑
+  function openMgrSnapshot(key) {
+    adminApi('GET', '/api/admin/users/snapshot?token=' + encodeURIComponent(token) + '&key=' + encodeURIComponent(key)).then(function (r) {
+      if (!r.ok) { toast(r.data.error || '读取快照失败', true); return; }
+      const d = r.data;
+      document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+      const ov = document.createElement('div');
+      ov.className = 'modal-overlay';
+      ov.innerHTML = '<div class="modal-box confirm-modal snap-modal"><div class="modal-head"><span class="modal-title">资产快照 · ' + esc(d.name) + '（' + esc(key) + '）</span></div>' +
+        '<div class="modal-body">' +
+        '<div class="mgr-row"><label>金币</label><input id="snap-coins" class="ipt" type="number" min="0" value="' + d.coins + '" /></div>' +
+        '<div class="hint" style="margin:10px 0 6px">背包（直接编辑每行的数量，0 或留空 = 移除）</div>' +
+        '<div id="snap-inv" class="snap-inv"></div>' +
+        '<div class="mgr-row" style="margin-top:8px"><label>新增物品</label>' +
+        '<input id="snap-add-id" class="ipt" placeholder="物品 ID（如 crucian / rod_bamboo#common#spd+10）" />' +
+        '<input id="snap-add-qty" class="ipt mk-num" type="number" min="1" value="1" />' +
+        '<button class="btn mini" id="snap-add">添加</button></div>' +
+        '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn primary" id="snap-save">保存快照</button></div>' +
+        '</div></div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+      ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
+      const invBox = ov.querySelector('#snap-inv');
+      function drawInv(inv) {
+        const keys = Object.keys(inv);
+        if (!keys.length) { invBox.innerHTML = '<div class="hint">背包为空</div>'; return; }
+        invBox.innerHTML = keys.map(function (id) {
+          const meta = (typeof GameData !== 'undefined' && GameData.itemOf) ? GameData.itemOf(id) : null;
+          const nm = meta ? meta.name : id;
+          return '<div class="mgr-row snap-line"><label title="' + esc(id) + '">' + esc(nm) + '<div class="hint">' + esc(id) + '</div></label>' +
+            '<input class="ipt mk-num" type="number" min="0" data-inv="' + esc(id) + '" value="' + inv[id] + '" /></div>';
+        }).join('');
+      }
+      drawInv(d.inventory || {});
+      ov.querySelector('#snap-add').onclick = function () {
+        const id = ov.querySelector('#snap-add-id').value.trim();
+        const qty = Math.max(1, Number(ov.querySelector('#snap-add-qty').value) || 1);
+        if (!id) return;
+        const inputs = ov.querySelectorAll('[data-inv]');
+        for (const inp of inputs) { if (inp.getAttribute('data-inv') === id) { inp.value = (Number(inp.value) || 0) + qty; return; } }
+        const cur = {};
+        inputs.forEach(function (inp) { cur[inp.getAttribute('data-inv')] = Number(inp.value) || 0; });
+        cur[id] = qty;
+        drawInv(cur);
+      };
+      ov.querySelector('#snap-save').onclick = function () {
+        const inv = {};
+        ov.querySelectorAll('[data-inv]').forEach(function (inp) {
+          const q = Math.floor(Number(inp.value) || 0);
+          if (q > 0) inv[inp.getAttribute('data-inv')] = q;
+        });
+        adminApi('POST', '/api/admin/users/snapshot', { token: token, target: key, coins: Number(ov.querySelector('#snap-coins').value) || 0, inventory: inv }).then(function (rr) {
+          if (!rr.ok) { toast(rr.data.error || '保存失败', true); return; }
+          toast('快照已保存'); ov.remove(); loadMgrList();
+        });
+      };
+    });
+  }
+  // 删除账号（二次确认）
+  function confirmDeleteUser(key) {
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay';
+    ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">删除账号</span></div>' +
+      '<div class="modal-body"><div class="cf-text">确定删除账号 <b>' + esc(key) + '</b>？<br>此操作不可恢复：账号、背包、图鉴将被移除，该账号挂单也会一并清空。</div>' +
+      '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn danger" id="del-ok">确认删除</button></div></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+    ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
+    ov.querySelector('#del-ok').onclick = function () {
+      const btn = ov.querySelector('#del-ok'); btn.disabled = true; btn.textContent = '删除中…';
+      adminApi('POST', '/api/admin/users/delete', { token: token, target: key, confirm: true }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '删除失败', true); ov.remove(); return; }
+        toast('已删除账号 ' + key); ov.remove(); loadMgrList();
       });
     };
   }
@@ -548,19 +672,41 @@ window.Admin = (function () {
     const main = $('main');
     main.innerHTML = '<h2>💱 开放市集管理</h2>' +
       '<div class="hint" style="margin-bottom:12px">「退回」将挂单物品退回卖家背包（上架费不退，与过期规则一致），卖家在线时会收到通知。</div>' +
-      '<div class="mk-filters"><input id="mk-search" class="ipt mk-search" placeholder="🔍 搜索物品 / 卖家 / 账号…" />' +
+      '<div class="mk-filters">' +
+      '<input id="mk-search" class="ipt mk-search" placeholder="🔍 搜索物品 / 卖家 / 账号…" />' +
       '<select id="mk-kind" class="ipt mk-kind"><option value="all">全部类型</option><option value="fish">🐟 鱼类</option><option value="material">🧵 材料</option><option value="component">🔧 组件</option></select>' +
+      // 词条 + 数值筛选（仅对组件生效）
+      '<select id="mk-aff" class="ipt mk-kind"><option value="all">全部词条</option></select>' +
+      '<input id="mk-amin" class="ipt mk-num" type="number" placeholder="最小值" />' +
+      '<span class="hint">~</span>' +
+      '<input id="mk-amax" class="ipt mk-num" type="number" placeholder="最大值" />' +
+      // 排序：时间 / 价格 / 数量
+      '<select id="mk-sort" class="ipt mk-kind"><option value="time">排序：时间</option><option value="price">排序：价格</option><option value="qty">排序：数量</option></select>' +
+      '<select id="mk-dir" class="ipt mk-kind"><option value="desc">降序</option><option value="asc">升序</option></select>' +
       '<span id="mk-count" class="hint"></span></div>' +
       '<div id="mk-body" class="panel">加载中…</div>';
-    const s = $('mk-search'), k = $('mk-kind');
-    s.addEventListener('input', function () { mkSearch = s.value; drawMarket(); });
-    k.addEventListener('change', function () { mkKind = k.value; drawMarket(); });
-    s.value = mkSearch; k.value = mkKind;
+    // 词条选项来自共享目录
+    const affSel = $('mk-aff');
+    if (typeof GameData !== 'undefined' && GameData.AFFIX_LABEL) {
+      Object.keys(GameData.AFFIX_LABEL).forEach(function (t) {
+        const o = document.createElement('option'); o.value = t; o.textContent = GameData.AFFIX_LABEL[t]; affSel.appendChild(o);
+      });
+    }
+    $('mk-search').value = mkSearch; $('mk-kind').value = mkKind;
+    affSel.value = mkAffix; $('mk-amin').value = mkAffixMin; $('mk-amax').value = mkAffixMax;
+    $('mk-sort').value = mkSort.key; $('mk-dir').value = mkSort.dir;
+    $('mk-search').addEventListener('input', function () { mkSearch = this.value; drawMarket(); });
+    $('mk-kind').addEventListener('change', function () { mkKind = this.value; drawMarket(); });
+    affSel.addEventListener('change', function () { mkAffix = this.value; drawMarket(); });
+    $('mk-amin').addEventListener('input', function () { mkAffixMin = this.value; drawMarket(); });
+    $('mk-amax').addEventListener('input', function () { mkAffixMax = this.value; drawMarket(); });
+    $('mk-sort').addEventListener('change', function () { mkSort.key = this.value; drawMarket(); });
+    $('mk-dir').addEventListener('change', function () { mkSort.dir = this.value; drawMarket(); });
     return refreshMarket();
   }
   function filteredListings() {
     const q = mkSearch.trim().toLowerCase();
-    return listings.filter(function (l) {
+    let out = listings.filter(function (l) {
       if (mkKind !== 'all') {
         const meta = (typeof GameData !== 'undefined' && GameData.itemOf) ? GameData.itemOf(l.id) : null;
         if (!meta || meta.kind !== mkKind) return false;
@@ -569,8 +715,28 @@ window.Admin = (function () {
         const hay = (l.name + ' ' + (l.sellerName || '') + ' ' + l.seller).toLowerCase();
         if (hay.indexOf(q) < 0) return false;
       }
+      if (mkAffix !== 'all' || mkAffixMin !== '' || mkAffixMax !== '') {
+        const meta = (typeof GameData !== 'undefined' && GameData.itemOf) ? GameData.itemOf(l.id) : null;
+        if (!meta || meta.kind !== 'component' || !meta.affixes) return false;
+        const ok = meta.affixes.some(function (a) {
+          if (mkAffix !== 'all' && a.type !== mkAffix) return false;
+          if (mkAffixMin !== '' && a.value < Number(mkAffixMin)) return false;
+          if (mkAffixMax !== '' && a.value > Number(mkAffixMax)) return false;
+          return true;
+        });
+        if (!ok) return false;
+      }
       return true;
     });
+    const dir = mkSort.dir === 'asc' ? 1 : -1;
+    out.sort(function (a, b) {
+      let d;
+      if (mkSort.key === 'price') d = a.price - b.price;
+      else if (mkSort.key === 'qty') d = a.qty - b.qty;
+      else d = a.t - b.t;
+      return d * dir || (b.t - a.t);
+    });
+    return out;
   }
   function drawMarket() {
     const body = $('mk-body');
@@ -642,8 +808,8 @@ window.Admin = (function () {
   ];
   function renderFormula() {
     const main = $('main');
-    main.innerHTML = '<h2>🧮 上钩判断公式</h2>' +
-      '<div class="hint" style="margin-bottom:12px">每次抛竿掷骰时求值，结果 = 本次上钩概率（%），落空则该竿无收获。保存后对全服立即生效。语法：+ − × ÷ % 括号，不支持 eval。</div>' +
+    main.innerHTML = '<h2>🧮 公式管理</h2>' +
+      '<div class="hint" style="margin-bottom:12px">集中管理上钩概率公式与双钓率。修改保存后对全服立即生效。</div>' +
       '<div class="formula-box">' +
       '<div class="panel">' +
       '<h3>公式</h3>' +
@@ -662,10 +828,40 @@ window.Admin = (function () {
       BITE_VARS_DOC.map(function (v) { return '<code>' + v[0] + '</code> — ' + v[1] + '<br>'; }).join('') +
       '</div><h3>可用函数</h3><div class="kv"><code>min</code> <code>max</code> <code>floor</code> <code>ceil</code> <code>round</code> <code>abs</code> <code>clamp(x, lo, hi)</code><br>' +
       '示例：<code>min(98, 90 + speed * 0.15)</code> ／ <code>clamp(85 + rare, 50, 100)</code> ／ <code>interval &lt; 2000 ? 0 : 90</code> ❌（不支持三元）</div></div>' +
+      '<div class="panel" style="flex:1 1 100%;min-width:0">' +
+      '<h3>🎣 双钓率</h3>' +
+      '<div class="hint" style="margin-bottom:10px">叠加值 A（百分比点数）→ 单次追加概率 <code>P = A/(A+100) = 1 − 1/(1+A/100)</code>。' +
+      '基础上钩 1 条；掷 &lt; P 成功追加 +1，再掷 &lt; P 成功再 +1，最多 3 条。分布 1−P / P(1−P) / P²，期望 1+P+P²。' +
+      '若配置基础双钓率 B，最终概率 <code>1 − (1−B)(1−P)</code>。</div>' +
+      '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">基础双钓率 B</label>' +
+      '<input id="db-base" class="ipt" type="number" min="0" max="100" step="1" style="width:110px" />' +
+      '<span class="hint">%</span>' +
+      '<button id="db-save" class="btn primary">保存</button><span id="db-state" class="hint"></span></div>' +
+      '<div id="db-preview" class="hint"></div></div>' +
       '</div>';
     loadWorldCfg().then(function (cfg) {
       if (!cfg || view !== 'formula') return;
       $('fx-src').value = cfg.biteFormula || '';
+      const dbInp = $('db-base');
+      dbInp.value = Math.round((cfg.doubleBase || 0) * 100);
+      function preview() {
+        const b = Math.max(0, Math.min(1, (Number(dbInp.value) || 0) / 100));
+        const A = 50;
+        let p = A / (A + 100);
+        if (b > 0) p = 1 - (1 - b) * (1 - p);
+        $('db-preview').innerHTML = '示例：叠加值 A=50 时，双钓概率 <b>' + (p * 100).toFixed(1) + '%</b>（期望上钩 ' + (1 + p + p * p).toFixed(2) + ' 条）';
+      }
+      dbInp.addEventListener('input', preview);
+      preview();
+      $('db-save').onclick = function () {
+        const b = Math.max(0, Math.min(100, Number(dbInp.value) || 0)) / 100;
+        adminApi('POST', '/api/admin/settings', { token: token, doubleBase: b }).then(function (r) {
+          if (!r.ok) { $('db-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+          if (worldCfg) worldCfg.doubleBase = r.data.doubleBase;
+          $('db-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
+          toast('基础双钓率已保存');
+        });
+      };
     });
     $('fx-check').onclick = function () { saveFormula(true); };
     $('fx-save').onclick = function () { saveFormula(false); };
@@ -720,16 +916,7 @@ window.Admin = (function () {
         '<div><b>' + esc(k) + ' — ' + esc(cfg.notifyLevels[k]) + '</b><span>' + esc(NOTIFY_HINT[k] || '') + '</span></div>' +
         '</label>';
     }).join('') +
-      '<div class="editor-foot"><button id="nt-save" class="btn primary">保存通知等级</button><span id="nt-state" class="hint"></span></div>' +
-      // 基础双钓率 B
-      '<h3 style="margin-top:22px">🎣 基础双钓率 B</h3>' +
-      '<div class="hint" style="margin-bottom:10px">叠加值 A（百分比点数）→ 单次追加概率 <code>P = A/(A+100)</code>；' +
-      '基础上钩 1 条，按 P 连续追加，最多 3 条。若已有基础双钓率 B，最终双钓概率 <code>1 − (1−B)(1−P)</code>。</div>' +
-      '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">基础双钓率 B</label>' +
-      '<input id="db-base" class="ipt" type="number" min="0" max="100" step="1" value="' + Math.round((cfg.doubleBase || 0) * 100) + '" style="width:110px" />' +
-      '<span class="hint">%</span>' +
-      '<button id="db-save" class="btn primary">保存</button><span id="db-state" class="hint"></span></div>' +
-      '<div id="db-preview" class="hint"></div>';
+      '<div class="editor-foot"><button id="nt-save" class="btn primary">保存通知等级</button><span id="nt-state" class="hint"></span></div>';
     body.querySelectorAll('.radio-card').forEach(function (c) {
       c.onclick = function () {
         body.querySelectorAll('.radio-card').forEach(function (x) { x.classList.remove('sel'); });
@@ -747,25 +934,228 @@ window.Admin = (function () {
         toast('通知等级已保存：' + sel.value);
       });
     };
-    const dbInp = $('db-base');
-    function preview() {
-      const b = Math.max(0, Math.min(1, (Number(dbInp.value) || 0) / 100));
-      const A = 50; // 以 50% 叠加值为例
-      let p = A / (A + 100);
-      if (b > 0) p = 1 - (1 - b) * (1 - p);
-      $('db-preview').innerHTML = '示例：叠加值 A=50 时，双钓概率 <b>' + (p * 100).toFixed(1) + '%</b>（期望上钩 ' + (1 + p + p * p).toFixed(2) + ' 条）';
+  }
+
+  // ================================
+  // 组件生成配置（品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则）
+  // ================================
+  let compCfg = null;
+  function renderComponent() {
+    const main = $('main');
+    main.innerHTML = '<h2>🧩 组件生成配置</h2>' +
+      '<div class="hint" style="margin-bottom:12px">控制组件掉落的品质概率、词条数量概率、数值 roll 模型、各底材词缀数值范围，以及修饰词组合规则。保存后对全服即时生效。</div>' +
+      '<div id="comp-body" class="panel">加载中…</div>';
+    loadWorldCfg(true).then(function (cfg) {
+      if (!cfg || view !== 'component') return;
+      compCfg = cfg.componentCfg || {};
+      drawComponent();
+    });
+  }
+  function drawComponent() {
+    const cfg = compCfg || {};
+    const qw = cfg.qualityWeights || {};
+    const cw = cfg.countWeights || {};
+    const ranges = cfg.affixRanges || {};
+    const rules = cfg.adjectiveRules || [];
+    const bases = (worldCfg && worldCfg.catalog && worldCfg.catalog.components) || [];
+    const qKeys = ['common', 'rare', 'epic'];
+    const qName = { common: '普通', rare: '稀有', epic: '史诗' };
+    const body = $('comp-body');
+    body.innerHTML =
+      '<h3>品质掉落概率（相对权重）</h3>' +
+      '<div class="cmp-row">' + qKeys.map(function (k) {
+        return '<label class="cmp-cell">' + qName[k] + ' <input class="ipt" type="number" min="0" step="0.01" id="qw-' + k + '" value="' + (qw[k] != null ? qw[k] : 0) + '"></label>';
+      }).join('') + '</div>' +
+      '<h3>词条数量概率（权重：1 条 / 2 条 / 3 条）</h3>' +
+      '<div class="cmp-row">' + qKeys.map(function (k) {
+        const arr = cw[k] || [];
+        return '<label class="cmp-cell">' + qName[k] + ' <span class="cmp-3">' +
+          [0, 1, 2].map(function (i) { return '<input class="ipt" type="number" min="0" step="0.01" id="cw-' + k + '-' + i + '" value="' + (arr[i] != null ? arr[i] : '') + '" placeholder="0">'; }).join('') +
+          '</span></label>';
+      }).join('') + '</div>' +
+      '<h3>数值 roll 模型</h3>' +
+      '<div class="cmp-row"><label class="radio-card' + ((cfg.rollModel || 'linear') === 'linear' ? ' sel' : '') + '" data-rm="linear"><input type="radio" name="rm"' + ((cfg.rollModel || 'linear') === 'linear' ? ' checked' : '') + '><div><b>线性（均匀）</b><span>区间内等概率取值</span></div></label>' +
+      '<label class="radio-card' + (cfg.rollModel === 'normal' ? ' sel' : '') + '" data-rm="normal"><input type="radio" name="rm"' + (cfg.rollModel === 'normal' ? ' checked' : '') + '><div><b>正态</b><span>靠近区间中值概率更高</span></div></label>' +
+      '<label class="radio-card' + (cfg.rollModel === 'skew' ? ' sel' : '') + '" data-rm="skew"><input type="radio" name="rm"' + (cfg.rollModel === 'skew' ? ' checked' : '') + '><div><b>偏态</b><span>偏向低值（更常见低 roll）</span></div></label></div>' +
+      '<h3>修饰词规则（自上而下取第一条命中；留空字段表示不限制）</h3>' +
+      '<div class="hint" style="margin-bottom:8px">条件：满词条 / 无负词条 / 净收益区间 / 词条数区间。例如「满词条+无负」→ 完美的。</div>' +
+      '<div id="adj-rows">' + rules.map(adjRuleRow).join('') + '</div>' +
+      '<button class="btn mini" id="adj-add">＋ 添加规则</button>' +
+      '<h3 style="margin-top:20px">底材词缀数值范围</h3>' +
+      '<div id="range-rows">' + bases.map(function (b) {
+        const ov = ranges[b.id] || {};
+        return '<div class="cmp-range"><div class="cmp-range-title">' + esc(b.name) + ' <span class="hint">' + esc(b.id) + '</span></div>' +
+          b.pool.map(function (p) {
+            const cur = ov[p.type] || [p.min, p.max];
+            return '<span class="cmp-aff">' + esc(p.type) +
+              ' <input class="ipt cmp-num" type="number" data-bid="' + esc(b.id) + '" data-t="' + esc(p.type) + '" data-i="0" value="' + cur[0] + '">' +
+              ' ~ <input class="ipt cmp-num" type="number" data-bid="' + esc(b.id) + '" data-t="' + esc(p.type) + '" data-i="1" value="' + cur[1] + '">' +
+              ' <span class="hint">默认 ' + p.min + '~' + p.max + '</span></span>';
+          }).join('') + '</div>';
+      }).join('') + '</div>' +
+      '<div class="editor-foot" style="margin-top:18px">' +
+      '<button class="btn primary" id="cmp-save">保存配置</button>' +
+      '<button class="btn" id="cmp-sim">按当前配置试算 2 万次</button>' +
+      '<button class="btn danger" id="cmp-reset">恢复默认</button>' +
+      '<span id="cmp-state" class="hint"></span></div>' +
+      '<div id="cmp-sim-out" class="hint" style="margin-top:10px"></div>';
+
+    body.querySelectorAll('.radio-card[data-rm]').forEach(function (c) {
+      c.onclick = function () {
+        body.querySelectorAll('.radio-card[data-rm]').forEach(function (x) { x.classList.remove('sel'); });
+        c.classList.add('sel'); c.querySelector('input').checked = true;
+      };
+    });
+    function bindAdjRemove() {
+      body.querySelectorAll('.adj-del').forEach(function (b) { b.onclick = function () { b.closest('.adj-row').remove(); }; });
     }
-    dbInp.addEventListener('input', preview);
-    preview();
-    $('db-save').onclick = function () {
-      const b = Math.max(0, Math.min(100, Number(dbInp.value) || 0)) / 100;
-      adminApi('POST', '/api/admin/settings', { token: token, doubleBase: b }).then(function (r) {
-        if (!r.ok) { $('db-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
-        if (worldCfg) worldCfg.doubleBase = r.data.doubleBase;
-        $('db-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
-        toast('基础双钓率已保存');
+    body.querySelector('#adj-add').onclick = function () {
+      const box = $('adj-rows'); const wrap = document.createElement('div'); wrap.innerHTML = adjRuleRow({ name: '' }); box.appendChild(wrap.firstChild); bindAdjRemove();
+    };
+    bindAdjRemove();
+    $('cmp-save').onclick = saveComponent;
+    $('cmp-reset').onclick = function () {
+      adminApi('POST', '/api/admin/component/reset', { token: token }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '重置失败', true); return; }
+        toast('已恢复默认'); loadWorldCfg(true).then(function (cfg) { compCfg = cfg.componentCfg; drawComponent(); });
       });
     };
+    $('cmp-sim').onclick = function () {
+      adminApi('POST', '/api/admin/component/simulate', { token: token, n: 20000 }).then(function (r) {
+        if (!r.ok) { $('cmp-sim-out').textContent = r.data.error || '试算失败'; return; }
+        const d = r.data;
+        const qp = Object.keys(d.quality).map(function (k) { return k + ' ' + (d.quality[k] / d.n * 100).toFixed(1) + '%'; }).join(' / ');
+        $('cmp-sim-out').innerHTML = '品质分布：' + qp + '　|　' + Object.keys(d.affix).map(function (t) { return t + ' 均值 ' + d.affix[t].mean; }).join('，');
+      });
+    };
+  }
+  function adjRuleRow(r) {
+    r = r || {};
+    function chk(k, lab) { return '<label class="adj-chk"><input type="checkbox" data-f="' + k + '"' + (r[k] ? ' checked' : '') + '> ' + lab + '</label>'; }
+    function num(k, ph) { return '<input class="ipt cmp-num" type="number" data-f="' + k + '" value="' + (r[k] != null ? r[k] : '') + '" placeholder="' + ph + '">'; }
+    return '<div class="adj-row">' +
+      '<input class="ipt adj-name" data-f="name" value="' + esc(r.name || '') + '" placeholder="修饰词（如 完美的）">' +
+      chk('full', '满词条') + chk('noNeg', '无负词条') +
+      '<span class="adj-num">净收益≥' + num('netMin', '不限') + '</span>' +
+      '<span class="adj-num">≤' + num('netMax', '不限') + '</span>' +
+      '<span class="adj-num">词条数≥' + num('minAffixes', '-') + '</span>' +
+      '<span class="adj-num">≤' + num('maxAffixes', '-') + '</span>' +
+      '<button class="btn mini danger adj-del">删除</button></div>';
+  }
+  function saveComponent() {
+    const cbody = $('comp-body');
+    const qw = {};
+    ['common', 'rare', 'epic'].forEach(function (k) { const e2 = document.getElementById('qw-' + k); if (e2) qw[k] = Number(e2.value) || 0; });
+    const cw = {};
+    ['common', 'rare', 'epic'].forEach(function (k) {
+      const arr = [0, 1, 2].map(function (i) { const e2 = document.getElementById('cw-' + k + '-' + i); return e2 && e2.value !== '' ? Number(e2.value) || 0 : 0; });
+      if (arr.some(function (x) { return x > 0; })) cw[k] = arr;
+    });
+    const rm = (cbody.querySelector('input[name=rm]:checked') || {}).value || 'linear';
+    const ranges = {};
+    cbody.querySelectorAll('input[data-bid]').forEach(function (inp) {
+      const bid = inp.getAttribute('data-bid'), t = inp.getAttribute('data-t'), i = Number(inp.getAttribute('data-i'));
+      ranges[bid] = ranges[bid] || {}; ranges[bid][t] = ranges[bid][t] || [null, null];
+      ranges[bid][t][i] = Number(inp.value);
+    });
+    Object.keys(ranges).forEach(function (bid) {
+      const base = (worldCfg.catalog.components || []).find(function (b) { return b.id === bid; });
+      Object.keys(ranges[bid]).forEach(function (t) {
+        const r = ranges[bid][t];
+        const def = base && base.pool.find(function (p) { return p.type === t; });
+        if (!isFinite(r[0]) || !isFinite(r[1]) || r[1] < r[0] || (def && r[0] === def.min && r[1] === def.max)) delete ranges[bid][t];
+      });
+      if (!Object.keys(ranges[bid]).length) delete ranges[bid];
+    });
+    const rules = [];
+    cbody.querySelectorAll('.adj-row').forEach(function (row) {
+      const name = row.querySelector('.adj-name').value.trim();
+      if (!name) return;
+      const rule = { name: name };
+      row.querySelectorAll('input[data-f]').forEach(function (inp) {
+        const f = inp.getAttribute('data-f');
+        if (f === 'name') return;
+        if (inp.type === 'checkbox') { if (inp.checked) rule[f] = true; }
+        else if (inp.value !== '') rule[f] = Number(inp.value);
+      });
+      rules.push(rule);
+    });
+    adminApi('POST', '/api/admin/component/config', { token: token, qualityWeights: qw, countWeights: cw, rollModel: rm, affixRanges: ranges, adjectiveRules: rules }).then(function (r) {
+      if (!r.ok) { $('cmp-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+      compCfg = r.data.componentCfg; worldCfg.componentCfg = compCfg;
+      $('cmp-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
+      toast('组件生成配置已保存');
+    });
+  }
+
+  // ================================
+  // 横幅管理（内容 + 时长，队列播放，图标闪烁）
+  // ================================
+  function renderBanner() {
+    const main = $('main');
+    main.innerHTML = '<h2>📢 横幅管理</h2>' +
+      '<div class="hint" style="margin-bottom:12px">发布滚动公告（内容 + 时长），玩家端按队列顺序依次播放；有内容时可按配置让浏览器图标闪烁提示。</div>' +
+      '<div class="panel"><div class="mgr-row"><label>内容</label><input id="bn-content" class="ipt" maxlength="200" placeholder="公告内容（最多 200 字）" />' +
+      '<label class="hint">时长</label><input id="bn-dur" class="ipt mk-num" type="number" min="1" max="3600" step="0.5" value="10" />' +
+      '<span class="hint">秒</span><button class="btn primary" id="bn-add">发布</button></div>' +
+      '<div class="mgr-row"><label>图标闪烁</label><label class="switch"><input type="checkbox" id="bn-blink"><span class="sl"></span></label>' +
+      '<input id="bn-blink-title" class="ipt" placeholder="闪烁时浏览器标题" style="max-width:280px" />' +
+      '<button class="btn" id="bn-cfg-save">保存闪烁设置</button></div>' +
+      '<div id="bn-list" style="margin-top:12px">加载中…</div></div>';
+    $('bn-add').onclick = function () {
+      const content = $('bn-content').value.trim();
+      const duration = Number($('bn-dur').value) || 10;
+      if (!content) { toast('请填写横幅内容', true); return; }
+      adminApi('POST', '/api/admin/banner/add', { token: token, content: content, duration: duration }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '发布失败', true); return; }
+        $('bn-content').value = '';
+        toast('已发布'); loadBanners();
+      });
+    };
+    $('bn-cfg-save').onclick = function () {
+      adminApi('POST', '/api/admin/banner/cfg', { token: token, blink: $('bn-blink').checked, blinkTitle: $('bn-blink-title').value }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
+        toast('闪烁设置已保存');
+      });
+    };
+    loadBanners();
+  }
+  function loadBanners() {
+    adminApi('GET', '/api/admin/banner?token=' + encodeURIComponent(token)).then(function (r) {
+      if (!r.ok || view !== 'banner') return;
+      const bs = r.data.banners || [];
+      $('bn-blink').checked = !!(r.data.cfg && r.data.cfg.blink);
+      $('bn-blink-title').value = (r.data.cfg && r.data.cfg.blinkTitle) || '📢 有新公告';
+      const box = $('bn-list');
+      if (!bs.length) { box.innerHTML = '<div class="hint">队列为空。</div>'; return; }
+      box.innerHTML = '<table class="tbl"><thead><tr><th>#</th><th>内容</th><th class="num">时长</th><th>发布</th><th>操作</th></tr></thead><tbody>' +
+        bs.map(function (b, i) {
+          return '<tr><td>' + (i + 1) + '</td><td>' + esc(b.content) + '</td>' +
+            '<td class="num">' + b.duration + 's</td>' +
+            '<td class="hint">' + esc(b.by || '') + '</td>' +
+            '<td class="mgr-acts"><button class="btn mini" data-up="' + esc(b.id) + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+            '<button class="btn mini" data-down="' + esc(b.id) + '"' + (i === bs.length - 1 ? ' disabled' : '') + '>↓</button>' +
+            '<button class="btn mini danger" data-rm="' + esc(b.id) + '">删除</button></td></tr>';
+        }).join('') + '</tbody></table>';
+      box.querySelectorAll('[data-up]').forEach(function (b) { b.onclick = function () { moveBanner(b.getAttribute('data-up'), 'up'); }; });
+      box.querySelectorAll('[data-down]').forEach(function (b) { b.onclick = function () { moveBanner(b.getAttribute('data-down'), 'down'); }; });
+      box.querySelectorAll('[data-rm]').forEach(function (b) { b.onclick = function () { removeBanner(b.getAttribute('data-rm')); }; });
+    });
+  }
+  function moveBanner(id, dir) {
+    adminApi('POST', '/api/admin/banner/move', { token: token, id: id, dir: dir }).then(function (r) {
+      if (!r.ok) { toast(r.data.error || '移动失败', true); return; }
+      loadBanners();
+    });
+  }
+  function removeBanner(id) {
+    confirmModalLocal('确定从队列删除这条横幅？').then(function (ok) {
+      if (!ok) return;
+      adminApi('POST', '/api/admin/banner/remove', { token: token, id: id }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '删除失败', true); return; }
+        toast('已删除'); loadBanners();
+      });
+    });
   }
 
   // ================================

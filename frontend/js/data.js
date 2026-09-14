@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.8.3';
+  const VERSION = 'v0.8.4';
   const BUILD = '2026-09-14';
 
   // ---- 渔获定义 ----
@@ -235,19 +235,40 @@
   function isInstance(id) { return instanceOf(id) !== null; }
 
   // ---- 修饰词：由词缀组合推导（如「完美的 竹制短竿」）----
-  // 满词条（抽满底材全部词缀）且无负词条 → 完美；全正 → 精良；净收益为正 → 平衡；否则粗糙。
+  // 规则可被管理后台覆盖：按顺序取第一条命中的规则。
+  // 规则字段：name 修饰词；full 是否必须满词条；noNeg 是否必须无负词条；
+  //          netMin/netMax 词条净收益区间；minAffixes/maxAffixes 词条数区间。
+  const DEFAULT_ADJECTIVE_RULES = [
+    { name: '完美的', full: true, noNeg: true },
+    { name: '饱满的', full: true },
+    { name: '精良的', noNeg: true },
+    { name: '平衡的', netMin: 1 },
+    { name: '粗糙的' },
+  ];
+  function ruleMatches(rule, ctx) {
+    if (rule.full != null && !!rule.full !== ctx.full) return false;
+    if (rule.noNeg != null && !!rule.noNeg !== ctx.noNeg) return false;
+    if (rule.netMin != null && ctx.net < rule.netMin) return false;
+    if (rule.netMax != null && ctx.net > rule.netMax) return false;
+    if (rule.minAffixes != null && ctx.n < rule.minAffixes) return false;
+    if (rule.maxAffixes != null && ctx.n > rule.maxAffixes) return false;
+    return true;
+  }
   function adjectiveOf(affixes, base, quality) {
     const cap = (QUALITY[quality] || QUALITY.common).cap;
     const poolLen = base ? base.pool.length : (affixes ? affixes.length : 0);
     const maxN = Math.min(cap, poolLen);
-    const full = affixes && poolLen > 0 && affixes.length >= poolLen && poolLen <= cap && maxN > 0;
-    const neg = (affixes || []).some(function (a) { return a.value < 0; });
-    const net = (affixes || []).reduce(function (s, a) { return s + a.value; }, 0);
-    if (full && !neg) return '完美的';
-    if (full) return '饱满的';
-    if (!neg) return '精良的';
-    if (net > 0) return '平衡的';
-    return '粗糙的';
+    const list = affixes || [];
+    const ctx = {
+      n: list.length,
+      full: !!(list.length >= poolLen && poolLen > 0 && poolLen <= cap && maxN > 0),
+      noNeg: !list.some(function (a) { return a.value < 0; }),
+      net: list.reduce(function (s, a) { return s + a.value; }, 0),
+    };
+    const rules = (componentCfg && componentCfg.adjectiveRules && componentCfg.adjectiveRules.length)
+      ? componentCfg.adjectiveRules : DEFAULT_ADJECTIVE_RULES;
+    for (const r of rules) { if (ruleMatches(r, ctx)) return r.name; }
+    return '';
   }
 
   // 组件实例的完整展示元数据（名称/品质/价格/词条/是否满词条）
@@ -274,26 +295,107 @@
   }
 
   // ---- 组件生成：先定品质，再抽词条，最后 roll 数值 ----
-  const QUALITY_ROLL = [['common', 0.62], ['rare', 0.30], ['epic', 0.08]];
+  // 生成参数可被管理后台覆盖（品质概率 / 词条数量概率 / 数值 roll 模型 / 底材词缀数值范围）。
+  const DEFAULT_QUALITY_WEIGHTS = { common: 0.62, rare: 0.30, epic: 0.08 };
+  const DEFAULT_COUNT_WEIGHTS = {
+    common: [1],                 // 词条数 1..cap 的权重
+    rare: [0.5, 0.5],
+    epic: [1 / 3, 1 / 3, 1 / 3],
+  };
+  // affixRanges: { baseId: { type: [min, max] } }，覆盖底材池中对应词缀的数值区间
+  let componentCfg = {
+    qualityWeights: Object.assign({}, DEFAULT_QUALITY_WEIGHTS),
+    countWeights: JSON.parse(JSON.stringify(DEFAULT_COUNT_WEIGHTS)),
+    rollModel: 'linear',         // linear | normal | skew
+    affixRanges: {},
+    adjectiveRules: DEFAULT_ADJECTIVE_RULES.map(function (r) { return Object.assign({}, r); }),
+  };
+  function defaultComponentCfg() {
+    return {
+      qualityWeights: Object.assign({}, DEFAULT_QUALITY_WEIGHTS),
+      countWeights: JSON.parse(JSON.stringify(DEFAULT_COUNT_WEIGHTS)),
+      rollModel: 'linear',
+      affixRanges: {},
+      adjectiveRules: DEFAULT_ADJECTIVE_RULES.map(function (r) { return Object.assign({}, r); }),
+    };
+  }
+  // 覆盖生成配置（服务器下发或管理后台保存）；空字段回退默认
+  function setComponentCfg(cfg) {
+    const d = defaultComponentCfg();
+    if (!cfg || typeof cfg !== 'object') { componentCfg = d; return componentCfg; }
+    componentCfg = {
+      qualityWeights: Object.assign(d.qualityWeights, cfg.qualityWeights || {}),
+      countWeights: Object.assign(d.countWeights, cfg.countWeights || {}),
+      rollModel: (['linear', 'normal', 'skew'].indexOf(cfg.rollModel) >= 0) ? cfg.rollModel : d.rollModel,
+      affixRanges: cfg.affixRanges || {},
+      adjectiveRules: (Array.isArray(cfg.adjectiveRules) && cfg.adjectiveRules.length) ? cfg.adjectiveRules : d.adjectiveRules,
+    };
+    return componentCfg;
+  }
+  function getComponentCfg() { return componentCfg; }
+  // 加权随机取 key
+  function weightedKey(weights, fallback) {
+    const keys = Object.keys(weights || {});
+    let total = 0;
+    keys.forEach(function (k) { total += Math.max(0, Number(weights[k]) || 0); });
+    if (!(total > 0)) return fallback;
+    let r = Math.random() * total;
+    for (const k of keys) { r -= Math.max(0, Number(weights[k]) || 0); if (r <= 0) return k; }
+    return keys[keys.length - 1];
+  }
   function rollComponentQuality() {
-    const r = Math.random();
-    let acc = 0;
-    for (const kv of QUALITY_ROLL) { acc += kv[1]; if (r < acc) return kv[0]; }
-    return 'common';
+    return weightedKey(componentCfg.qualityWeights, 'common');
+  }
+  // 数值 roll：在 [min,max] 内按模型取值（整数）
+  function rollAffixValue(min, max, model) {
+    if (max <= min) return min;
+    const span = max - min;
+    let r;
+    if (model === 'normal') {
+      // 正态：均值居中、标准差取 1/6 区间，截断在 [min,max]
+      let u1 = Math.random() || 1e-9, u2 = Math.random();
+      const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      r = Math.max(0, Math.min(1, 0.5 + z / 6));
+    } else if (model === 'skew') {
+      // 偏态：偏向低值（平方分布）
+      r = Math.pow(Math.random(), 2);
+    } else {
+      r = Math.random();
+    }
+    return min + Math.round(r * span);
+  }
+  // 某底材某词缀的实际数值区间（管理后台可覆盖）
+  function affixRangeOf(baseId, affix) {
+    const ov = componentCfg.affixRanges && componentCfg.affixRanges[baseId];
+    const r = ov && ov[affix.type];
+    if (Array.isArray(r) && r.length === 2 && isFinite(r[0]) && isFinite(r[1]) && r[1] >= r[0]) return r;
+    return [affix.min, affix.max];
+  }
+  // 按品质的词条数量权重取 n（1..min(池长, cap)）
+  function rollAffixCount(quality, poolLen, cap) {
+    const upper = Math.min(poolLen, cap);
+    const w = (componentCfg.countWeights && componentCfg.countWeights[quality]) || null;
+    if (!w || !w.length) return 1 + Math.floor(Math.random() * Math.max(1, upper));
+    let total = 0;
+    for (let i = 0; i < upper; i++) total += Math.max(0, Number(w[i]) || 0);
+    if (!(total > 0)) return 1 + Math.floor(Math.random() * Math.max(1, upper));
+    let r = Math.random() * total;
+    for (let i = 0; i < upper; i++) { r -= Math.max(0, Number(w[i]) || 0); if (r <= 0) return i + 1; }
+    return upper;
   }
   // 生成一件组件实例（底材 → 品质 → 抽 1..min(池长, 上限) 条词缀 → roll 数值）
   function genComponent(baseId, quality) {
     const base = BASE_MAP[baseId];
     if (!base) return null;
     const q = QUALITY[quality] || QUALITY.common;
-    const upper = Math.min(base.pool.length, q.cap);
-    const n = 1 + Math.floor(Math.random() * upper); // 至少 1 条，至多全部（受品质上限约束）
+    const n = rollAffixCount(q.key, base.pool.length, q.cap);
     // 无放回抽取 n 条（洗牌池）
     const idxs = base.pool.map(function (_, i) { return i; });
     for (let i = idxs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = idxs[i]; idxs[i] = idxs[j]; idxs[j] = t; }
     const picked = idxs.slice(0, n).sort(function (a, b) { return a - b; }).map(function (i) {
       const a = base.pool[i];
-      return { type: a.type, value: a.min + Math.floor(Math.random() * (a.max - a.min + 1)) };
+      const rng = affixRangeOf(base.id, a);
+      return { type: a.type, value: rollAffixValue(rng[0], rng[1], componentCfg.rollModel) };
     });
     return instanceMeta(instanceId(base.id, q.key, picked));
   }
@@ -549,6 +651,8 @@
     COMPONENT_BASES: COMPONENT_BASES, componentBase: componentBase,
     instanceId: instanceId, instanceOf: instanceOf, isInstance: isInstance,
     genComponent: genComponent, rollComponent: rollComponent, rollComponentQuality: rollComponentQuality,
+    setComponentCfg: setComponentCfg, getComponentCfg: getComponentCfg, defaultComponentCfg: defaultComponentCfg,
+    affixRangeOf: affixRangeOf, rollAffixValue: rollAffixValue, weightedKey: weightedKey,
     adjectiveOf: adjectiveOf, instanceMeta: instanceMeta, componentOf: componentOf,
     legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,

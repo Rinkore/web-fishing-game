@@ -461,6 +461,16 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 
 
 /* ---- 反馈意见 ---- */
+.fb-status { font-size: 11px; padding: 1px 8px; border-radius: 20px; background: rgba(255,255,255,.08); color: var(--muted); }
+.fb-status.submitted { background: rgba(56,189,248,.16); color: var(--accent2); }
+.fb-status.accepted { background: rgba(251,191,36,.18); color: var(--big); }
+.fb-status.done { background: rgba(45,212,191,.18); color: var(--accent); }
+/* 市集词条后的数值范围标注 */
+.aff-rng { color: var(--muted); font-size: 11px; }
+/* 图鉴详情子窗口 */
+.codex-modal { width: 560px; }
+.codex-modal .modal-body { max-height: 74vh; }
+
 .fb-banner {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 12px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 16px;
