@@ -1076,3 +1076,11 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 /* 钓竿槽位「使用中」标记 */
 .rs-card .rs-active { font-size: 10px; font-weight: 700; color: #04202e; background: var(--accent); border-radius: 20px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
 .rs-card.has.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+
+/* 图鉴 · 钓点详情：掉落池行（物品 + 类型 + 概率条） */
+.spot-pool-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; }
+.spot-pool-row .sp-type { color: var(--muted); font-size: 12px; flex: none; }
+.spot-pool-row .sp-bar { flex: 1; height: 8px; background: rgba(255,255,255,.08); border-radius: 6px; overflow: hidden; }
+.spot-pool-row .sp-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.spot-pool-row .sp-pct { min-width: 52px; text-align: right; font-weight: 600; }
+.spot-pool-row .hint { min-width: 76px; text-align: right; }

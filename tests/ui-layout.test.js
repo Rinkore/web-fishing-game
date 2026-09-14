@@ -868,6 +868,60 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(200);
     check('关闭图鉴详情子窗口', (await p1.$$('.codex-modal')).length === 0);
 
+    // —— 钓点图鉴：按钓点分类 + 钓点详情（实时产出概率，随后台同步）——
+    await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('钓点')); if (b) b.click(); });
+    await sleep(300);
+    const spotCells = await p1.$$('.codex-cell.k-spots');
+    check('图鉴新增「钓点」分类（9 个钓点卡片）', spotCells.length === 9, String(spotCells.length));
+    check('钓点视图不显示品级倒序按钮', (await p1.$$('.codex-sort')).length === 0, String((await p1.$$('.codex-sort')).length));
+    // 点开第一个钓点（静水湖·老旧码头）→ 概率与 /api/grounds 的目录一致
+    await p1.evaluate(() => { const c = document.querySelector('.codex-cell.k-spots'); if (c) c.click(); });
+    await waitFor(async () => (await p1.$$('.spot-detail .spot-pool-row')).length >= 1, { timeout: 6000 }).catch(() => false);
+    const spotModal = await p1.evaluate(() => ({
+      title: (document.querySelector('.codex-modal .modal-title') || {}).textContent || '',
+      rows: Array.from(document.querySelectorAll('.spot-pool-row')).map(r => ({ pick: r.getAttribute('data-pick'), pct: Number(r.getAttribute('data-pct')) })),
+    }));
+    check('钓点详情弹窗展示掉落池与概率', spotModal.rows.length >= 1 && spotModal.title.indexOf('静水湖') >= 0, JSON.stringify(spotModal).slice(0, 200));
+    const pctMatch = await p1.evaluate(async () => {
+      const gr = await fetch('/api/grounds').then(r => r.json());
+      const sp = gr.grounds.find(x => x.id === 'stillwater').spots.find(x => x.id === 'dock');
+      const total = sp.pool.reduce((s, e) => s + e.weight, 0);
+      const expect = {};
+      sp.pool.forEach(e => { expect[e.pick] = Math.round(e.weight / total * 1000) / 10; });
+      const rows = Array.from(document.querySelectorAll('.spot-pool-row')).map(r => ({ pick: r.getAttribute('data-pick'), pct: Number(r.getAttribute('data-pct')) }));
+      const bad = rows.filter(r => expect[r.pick] === undefined || Math.abs(expect[r.pick] - r.pct) > 0.05);
+      return { bad: bad, n: rows.length, expectN: sp.pool.length };
+    });
+    check('详情概率与服务器目录一致', pctMatch.n === pctMatch.expectN && pctMatch.bad.length === 0, JSON.stringify(pctMatch));
+    // 与后台同步：改掉落池（管理员）→ SSE groundcfg → 打开中的详情自动刷新为单一 100%
+    const syncCheck = await p1.evaluate(async () => {
+      const login = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'lay_seller', password: 'abcd1234' }) }).then(r => r.json());
+      if (!login.token) return { ok: false, why: 'no admin token' };
+      const gr = await fetch('/api/grounds').then(r => r.json());
+      const sp = gr.grounds.find(x => x.id === 'stillwater').spots.find(x => x.id === 'dock');
+      const old = sp.pool;
+      await fetch('/api/admin/spot/pool', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: login.token, groundId: 'stillwater', spotId: 'dock', pool: [{ pick: 'fish:crucian', weight: 100 }] }) });
+      for (let i = 0; i < 50; i++) {
+        const now = await fetch('/api/grounds').then(r => r.json());
+        const cur = now.grounds.find(x => x.id === 'stillwater').spots.find(x => x.id === 'dock');
+        if (cur.pool.length === 1) break;
+        await new Promise(r => setTimeout(r, 100));
+      }
+      const rows = Array.from(document.querySelectorAll('.spot-pool-row')).map(r => ({ pick: r.getAttribute('data-pick'), pct: Number(r.getAttribute('data-pct')) }));
+      return { ok: true, rows: rows, old: old };
+    });
+    check('后台改掉落池后，打开中的钓点详情自动同步（鲫鱼 100%）',
+      syncCheck.ok && syncCheck.rows.length === 1 && syncCheck.rows[0].pick === 'fish:crucian' && syncCheck.rows[0].pct === 100,
+      JSON.stringify(syncCheck.rows));
+    check('同步后弹窗仍开着（无需关闭重开）', (await p1.$$('.codex-modal')).length === 1, String((await p1.$$('.codex-modal')).length));
+    // 恢复原掉落池，避免影响后续用例
+    const admT = (await post('/api/admin/login', { username: 'lay_seller', password: 'abcd1234' })).data.token;
+    check('管理端登录可用（恢复掉落池前置）', !!admT, String(!!admT));
+    await post('/api/admin/spot/pool', { token: admT, groundId: 'stillwater', spotId: 'dock', pool: syncCheck.old });
+    await p1.evaluate(() => { const b = document.querySelector('.codex-modal .modal-close'); if (b) b.click(); });
+    await sleep(200);
+    check('钓点详情可关闭', (await p1.$$('.codex-modal')).length === 0, String((await p1.$$('.codex-modal')).length));
+
     // —— 渔获记录 ——
     await clickNav(p1, '渔获记录');
     check('渔获记录渲染全场纪录卡片', (await p1.$$('.record-cell.with-rec')).length >= 6, String((await p1.$$('.record-cell.with-rec')).length));

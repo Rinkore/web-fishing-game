@@ -311,7 +311,10 @@ window.UI = (function () {
 
   // ---- 子窗口式确认 / 输入（替代浏览器原生 confirm / prompt）----
   // 关闭已有弹窗：用统一的 overlay 结构，样式与全局子窗口一致。
-  function closeOverlays() { document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); }); }
+  function closeOverlays() {
+    spotDetailRedraw = null; // 钓点详情弹窗的重绘钩子随弹窗一起移除
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+  }
   function buildOverlay(onCancel) {
     const overlay = el('div', 'modal-overlay');
     overlay.addEventListener('click', function (ev) { if (ev.target === overlay && onCancel) onCancel(); });
@@ -3087,6 +3090,67 @@ window.UI = (function () {
   }
 
   // 玩家背包中某底材的实例统计（用于图鉴金色满词条标注）
+  // —— 钓点图鉴：查看各钓点能钓到什么，以及实时产出概率 ——
+  // 数据源是 D.GROUNDS（后台改掉落池/增益后经 SSE groundcfg 推送、原位替换），
+  // 弹窗开着时收到 groundcfg 会立即重绘（见 refreshAll 顶部钩子），所以始终与后台一致。
+  let spotDetailRedraw = null;
+  function openSpotDetail(groundId, spotId) {
+    closeOverlays();
+    function close() { spotDetailRedraw = null; closeOverlays(); }
+    const overlay = buildOverlay(close);
+    const box = el('div', 'modal-box codex-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">📍 钓点详情</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body"><div class="codex-detail spot-detail"></div></div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.querySelector('.modal-close').addEventListener('click', close);
+    function draw() {
+      const g = D.GROUNDS.find(function (x) { return x.id === groundId; });
+      const sp = g && (g.spots || []).find(function (x) { return x.id === spotId; });
+      if (!g || !sp) return close(); // 该钓点刚被删除
+      box.querySelector('.modal-title').textContent = '📍 ' + g.name + ' · ' + sp.name;
+      const inner = box.querySelector('.spot-detail');
+      const pool = (sp.pool || []).slice().sort(function (a, b) { return (b.weight || 0) - (a.weight || 0); });
+      const total = pool.reduce(function (s, e) { return s + Math.max(0, e.weight || 0); }, 0);
+      let html = '<div class="cd-line">' + (g.locked ? '🔒 钓场锁定中' : '🎣 可垂钓') +
+        (sp.biteRate != null && sp.biteRate !== '' ? ' · 上鱼率 ' + esc(String(sp.biteRate)) + '%（钓点独立）' : '') +
+        (sp.intervalMs ? ' · 抛竿间隔 ' + esc(String(sp.intervalMs)) + 'ms（钓点独立）' : '') + '</div>';
+      if (sp.buffs && sp.buffs.length) {
+        html += '<div class="cd-line">⚡ 增益：' + sp.buffs.map(function (bf) {
+          return esc((D.AFFIX_LABEL[bf.type] || bf.type) + (bf.value > 0 ? '+' : '') + bf.value + '%');
+        }).join(' · ') + '</div>';
+      }
+      html += '<div class="cd-sub">🎯 可钓物品与实时产出概率（' + pool.length + ' 项）</div>';
+      if (!pool.length) {
+        html += '<div class="cd-line muted">该钓点尚未配置掉落池（可在后台「渔场钓点」配置）。</div>';
+      } else {
+        html += '<div class="spot-pool">';
+        pool.forEach(function (e) {
+          const i = e.pick.indexOf(':');
+          const type = i < 0 ? e.pick : e.pick.slice(0, i);
+          const iid = i < 0 ? '' : e.pick.slice(i + 1);
+          let name = '组件（随机组件掉落）', cls = '';
+          if (type === 'fish' || type === 'material') { const m = D.itemOf(iid); name = m.name; cls = qualityClass(m); }
+          const w = Math.max(0, e.weight || 0);
+          const pct = total > 0 ? Math.round(w / total * 1000) / 10 : 0;
+          html += '<div class="spot-pool-row" data-pick="' + esc(e.pick) + '" data-pct="' + pct + '">' +
+            '<span class="' + cls + '">' + esc(name) + '</span>' +
+            '<span class="sp-type">' + esc(type === 'fish' ? '鱼' : (type === 'material' ? '材料' : '组件')) + '</span>' +
+            '<span class="sp-bar"><i style="width:' + pct + '%"></i></span>' +
+            '<span class="sp-pct">' + pct + '%</span>' +
+            '<span class="hint">权重 ' + (e.weight || 0) + '</span></div>';
+        });
+        html += '</div>';
+        html += '<div class="cd-line muted">以上为基础权重占比（与后台「渔场钓点」配置一致，改动即时同步）；' +
+          '钓竿的大鱼 / 稀有 / 材料词缀会在此基础上放大对应类别的权重。</div>';
+      }
+      inner.innerHTML = html;
+    }
+    spotDetailRedraw = draw;
+    draw();
+  }
+
   function renderCodex() {
     const main = $('main');
     const st = S();
@@ -3108,21 +3172,47 @@ window.UI = (function () {
 
     // 分类页签（与背包一致；数量为各类条目数）
     const tabs = el('div', 'inv-cats');
+    const spotTotal = D.GROUNDS.reduce(function (n, g) { return n + (g.spots || []).length; }, 0);
     [['all', '📦 全部', items.length], ['fish', '🐟 鱼类', fishItems.length],
      ['material', '🧵 材料', items.filter(function (i) { return i.kind === 'material'; }).length],
-     ['component', '🔧 组件', items.filter(function (i) { return i.kind === 'component'; }).length]].forEach(function (kv) {
+     ['component', '🔧 组件', items.filter(function (i) { return i.kind === 'component'; }).length],
+     ['spots', '📍 钓点', spotTotal]].forEach(function (kv) {
       const b = el('button', 'inv-cat' + (codexCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
+      b.title = kv[0] === 'spots' ? '查看每个钓点能钓到什么（点开看实时产出概率）' : '';
       b.addEventListener('click', function () { if (codexCategory !== kv[0]) { codexCategory = kv[0]; renderView(); } });
       tabs.appendChild(b);
     });
-    // 品级倒序开关（史诗 > 稀有 > 大鱼 > 普通）
-    const sortBtn = el('button', 'inv-cat codex-sort' + (codexSortRarity ? ' on' : ''), '⬇ 品级倒序');
-    sortBtn.title = '按品级从高到低排序';
-    sortBtn.addEventListener('click', function () { codexSortRarity = !codexSortRarity; renderView(); });
-    tabs.appendChild(sortBtn);
+    // 品级倒序开关（史诗 > 稀有 > 大鱼 > 普通）；钓点视图下无品级概念，隐藏
+    if (codexCategory !== 'spots') {
+      const sortBtn = el('button', 'inv-cat codex-sort' + (codexSortRarity ? ' on' : ''), '⬇ 品级倒序');
+      sortBtn.title = '按品级从高到低排序';
+      sortBtn.addEventListener('click', function () { codexSortRarity = !codexSortRarity; renderView(); });
+      tabs.appendChild(sortBtn);
+    }
     panel.appendChild(tabs);
 
     const grid = el('div', 'codex-grid');
+    if (codexCategory === 'spots') {
+      // 钓点视图：每个钓点一张卡，点开看实时产出概率（与后台掉落池配置同步）
+      D.GROUNDS.forEach(function (g) {
+        (g.spots || []).forEach(function (sp) {
+          const pool = sp.pool || [];
+          const cell = el('div', 'codex-cell k-spots' + (g.locked ? ' locked' : ''));
+          cell.innerHTML =
+            '<div class="cx-name">' + esc(g.name + ' · ' + sp.name) + '</div>' +
+            '<div class="cx-meta">' + (pool.length ? '产出 ' + pool.length + ' 项' : '未配置掉落池') + '</div>' +
+            '<div class="cx-meta muted">' + (g.locked ? '🔒 锁定中' : '🎣 可垂钓') + '</div>' +
+            ((sp.buffs && sp.buffs.length) ? '<div class="cx-meta cx-spots">⚡ 增益 ' + sp.buffs.length + ' 项</div>' : '') +
+            '<div class="cx-meta cx-spots">🎯 点看产出概率</div>';
+          cell.title = '点击查看该钓点的实时产出概率（与后台掉落池同步）';
+          cell.addEventListener('click', function () { openSpotDetail(g.id, sp.id); });
+          grid.appendChild(cell);
+        });
+      });
+      panel.appendChild(grid);
+      main.appendChild(panel);
+      return;
+    }
     const baseList = codexCategory === 'all' ? items : items.filter(function (i) { return i.kind === codexCategory; });
     const TIER_ORDER = { epic: 4, rare: 3, big: 2, common: 1 };
     const shown = codexSortRarity
@@ -3688,6 +3778,8 @@ window.UI = (function () {
   function refreshAll(scope) {
     if (scope === 'all') scope = null; // init 全量刷新
     if (shopModalId && scope === 'shop') fillShopModal(shopModalId); // 弹窗数据静默刷新
+    // 钓点详情弹窗：后台改掉落池 / 增益（groundcfg 广播）时保持弹窗与最新配置同步
+    if (scope === 'groundcfg' && spotDetailRedraw) { spotDetailRedraw(); }
     // 一键出售 / 订阅弹窗内的筛选控件获得焦点时暂停重绘（避免下拉框被广播冲掉）
     if (bulkFocus && scope && scope !== 'all') { renderTopbar(); renderNav(); return; }
     // 弹窗打开时（批量出售/订阅/组件属性等）不重绘背后的页面列表，避免广播把弹窗下的操作上下文冲掉
