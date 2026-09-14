@@ -45,7 +45,8 @@ window.UI = (function () {
   // 现价：优先系统商店行情，无行情时退回基准价（模块级，供各视图与子窗口共用）
   function unitPriceOf(id) { const s = S().shop && S().shop[id]; return s ? s.price : itemMeta(id).price; }
   // ---- 组件展示辅助 ----
-  // 品质配色类：组件用品质色（普通白/稀有色/史诗橙），满词条升为金色；其余物品沿用稀有度色
+  // 品质配色类（配色规范：普通=白 / 稀有=黄 / 史诗=紫，见 style.css 的 .q-*/.r-* 与 data.js QUALITY 注释）：
+  // 组件满词条在背包/市集/装备弹窗升为金色；大鱼是渔获档位而非品质，金色 + 👑 皇冠前缀（.r-big::before）
   function qualityClass(meta) {
     if (!meta) return 'r-common';
     if (meta.kind === 'component' && meta.quality) return meta.isFull ? 'q-full' : ('q-' + meta.quality);
@@ -830,11 +831,26 @@ window.UI = (function () {
       const ctr = el('div', 'bde-controls');
       [['all', '全部属性']].concat(BD_AFFIXES).forEach(function (kv) {
         const b = el('button', 'bf-cat' + (bdEquipFilter === kv[0] ? ' on' : ''), kv[1]);
-        b.addEventListener('click', function () { if (bdEquipFilter !== kv[0]) { bdEquipFilter = kv[0]; renderBody(); } });
+        b.title = '选中词条后，排序自动按该词条的数值排';
+        b.addEventListener('click', function () {
+          if (bdEquipFilter === kv[0]) return;
+          bdEquipFilter = kv[0];
+          // 选中具体词条 → 排序自动切到「按该词条数值」；回到全部 → 恢复稀有度
+          if (kv[0] === 'all') { if (bdEquipSort === 'affix') { bdEquipSort = 'rarity'; bdEquipDir = 'desc'; } }
+          else { bdEquipSort = 'affix'; bdEquipDir = 'desc'; }
+          renderBody();
+        });
         ctr.appendChild(b);
       });
       ctr.appendChild(el('span', 'bf-sort-label', '排序'));
-      [['rarity', '稀有度'], ['price', '价格'], ['affix', '属性值']].forEach(function (kv) {
+      // 排序按钮跟着筛选联动：选中词条时把「属性值」显示为「某词条值」
+      const affSortName = (function () {
+        if (bdEquipFilter === 'all') return '属性值';
+        const hit = BD_AFFIXES.find(function (kv) { return kv[0] === bdEquipFilter; });
+        const nm = hit ? hit[1].replace(/^\S+\s*/, '') : '属性值';
+        return nm + '值';
+      })();
+      [['rarity', '稀有度'], ['price', '价格'], ['affix', affSortName]].forEach(function (kv) {
         const active = bdEquipSort === kv[0];
         const arrow = active ? (bdEquipDir === 'desc' ? ' ↓' : ' ↑') : '';
         const b = el('button', 'bf-cat bf-sort-btn' + (active ? ' on' : ''), kv[1] + arrow);
@@ -3049,8 +3065,7 @@ window.UI = (function () {
       inner.appendChild(el('div', 'cd-line muted',
         '生成规则：从以上词缀中抽取 1 至 ' + Math.min(cap, base.pool.length) + ' 条并 roll 数值（模型：' +
         ((D.getComponentCfg && D.getComponentCfg().rollModel) || 'linear') + '）；品质越高可携带词缀越多。'));
-      const owned = ownedInstancesOfBase(base.id);
-      if (owned.full) inner.appendChild(el('div', 'cd-line q-full', '✨ 你已拥有满词条实例（品质显示为金）'));
+      // 图鉴不再展示「满词条」标记：那是实例的属性，不该挂在底材/条目上
     }
     const comp = !base && it.kind === 'component' ? D.componentOf(it.id) : null;
     if (comp && comp.affixes && comp.affixes.length) {
@@ -3072,18 +3087,6 @@ window.UI = (function () {
   }
 
   // 玩家背包中某底材的实例统计（用于图鉴金色满词条标注）
-  function ownedInstancesOfBase(baseId) {
-    const inv = S().inventory || {};
-    let any = false, full = false;
-    Object.keys(inv).forEach(function (id) {
-      const m = D.componentOf(id);
-      if (!m || m.baseId !== baseId) return;
-      any = true;
-      if (m.isFull) full = true;
-    });
-    return { any: any, full: full };
-  }
-
   function renderCodex() {
     const main = $('main');
     const st = S();
@@ -3130,18 +3133,18 @@ window.UI = (function () {
       const cell = el('div', 'codex-cell' + (rec ? ' got' : '') + ' k-' + it.kind);
       const spots = D.spotsOf(it.id);
       const base = it.kind === 'component' ? D.componentBase(it.id) : null;
-      const owned = base ? ownedInstancesOfBase(base.id) : null;
-      // 组件底材卡：展示可拥有的全部词缀与数值范围（满词条实例 → 金色标注）
+      // 组件底材卡：展示可拥有的全部词缀与数值范围。
+      // 品质配色统一后，图鉴不再按「是否拥有满词条实例」改色或加后缀（满词条强调只留在背包/市集/装备弹窗）。
       const poolHtml = base
         ? '<div class="cx-meta cx-pool">' + base.pool.map(function (p) {
             return '<span class="pool-line' + (p.max < 0 ? ' neg' : '') + '">' + esc((D.AFFIX_LABEL[p.type] || p.type)) +
               ' <span class="rng">' + esc(rangeText(p)) + '%</span></span>';
           }).join(' · ') + '</div>'
         : null;
-      const nameCls = rec ? (owned && owned.full ? 'q-full' : qualityClass(it)) : 'locked-name';
+      const nameCls = rec ? qualityClass(it) : 'locked-name';
       // 统一五行骨架：全部卡片结构一致、高度对齐
       cell.innerHTML =
-        '<div class="cx-name ' + nameCls + '">' + esc(it.name) + (owned && owned.full ? '<span class="full-tag">满词条</span>' : '') + '</div>' +
+        '<div class="cx-name ' + nameCls + '">' + esc(it.name) + '</div>' +
         '<div class="cx-meta">' + (rec ? '已获得 ' + rec.count + ' 次' : '未解锁') + '</div>' +
         '<div class="cx-meta muted">' + (rec ? '首获 ' + timeStr(rec.first) : qualityName(it) + ' · ' + (it.price || 0) + '💰') + '</div>' +
         (it.size ? '<div class="cx-meta muted">体型 ' + it.size[0] + '-' + it.size[1] + 'cm</div>'

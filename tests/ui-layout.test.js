@@ -216,6 +216,29 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(400);
     check('点击装备组件弹出子页面（弹窗）', (await p1.$$('.modal-overlay .bd-equip-modal')).length === 1);
     check('子页面列出该部位组件卡片', (await p1.$$('.bd-equip-modal .bec-card')).length >= 1);
+    // 选中词条 → 排序自动切到「按该词条数值」；切回「全部属性」再恢复稀有度。
+    // （用钓速：卷线器的组件都带钓速词条；若用体型，卷线器没有该词条会得到空列表）
+    const sortCheck = await p1.evaluate(() => {
+      const modal = document.querySelector('.bd-equip-modal');
+      const btn = (txt) => Array.from(modal.querySelectorAll('.bf-cat')).find(b => b.textContent.trim() === txt);
+      const speed = btn('⚡ 钓速');
+      if (!speed) return { ok: false, why: 'no speed filter' };
+      speed.click();
+      const on = Array.from(modal.querySelectorAll('.bf-sort-btn')).find(b => b.classList.contains('on'));
+      const vals = Array.from(modal.querySelectorAll('.bec-card')).map(c => {
+        const m = /([+-]?\d+)%\s*钓速/.exec(c.textContent);
+        return m ? Number(m[1]) : null;
+      }).filter(v => v !== null);
+      const all = btn('全部属性');
+      if (all) all.click();                      // 恢复筛选（模块级状态会跨用例保留）
+      const on2 = Array.from(modal.querySelectorAll('.bf-sort-btn')).find(b => b.classList.contains('on'));
+      return { ok: true, sortLabel: on ? on.textContent.trim() : '', vals: vals, restored: on2 ? on2.textContent.trim() : '' };
+    });
+    check('选中词条后排序自动切到该词条值', sortCheck.ok && /钓速值/.test(sortCheck.sortLabel) && sortCheck.sortLabel.includes('↓'),
+      JSON.stringify(sortCheck));
+    check('列表按该词条数值降序排列', (function (a) { if (!a.length) return false; for (let i = 1; i < a.length; i++) if (a[i] > a[i - 1]) return false; return true; })(sortCheck.vals),
+      JSON.stringify(sortCheck.vals));
+    check('切回全部属性后排序恢复稀有度', /稀有度/.test(sortCheck.restored), sortCheck.restored);
     // 装备带负词条的组件
     await p1.evaluate(() => {
       const cards = Array.from(document.querySelectorAll('.bd-equip-modal .bec-card'));
@@ -786,6 +809,20 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const cells = await p1.$$('.codex-cell');
     const got = await p1.$$('.codex-cell.got');
     check('图鉴渲染全部条目', cells.length === 75, String(cells.length));
+    // 品质配色规范：普通白/稀有黄/史诗紫；大鱼金色+👑（.r-big::before，CSS 渲染）；图鉴不再显示「满词条」
+    const colorCheck = await p1.evaluate(() => {
+      const names = Array.from(document.querySelectorAll('.codex-cell .cx-name'));
+      return {
+        big: names.some(n => n.classList.contains('r-big')),
+        rare: names.some(n => n.classList.contains('r-rare')),
+        full: names.some(n => n.classList.contains('q-full')),
+        tag: names.filter(n => n.querySelector('.full-tag')).length,
+      };
+    });
+    check('大鱼条目用大鱼配色（金色 + 皇冠前缀）', colorCheck.big === true, JSON.stringify(colorCheck));
+    check('稀有条目用稀有配色（黄）', colorCheck.rare === true, JSON.stringify(colorCheck));
+    check('图鉴不再因满词条改金色', colorCheck.full === false, JSON.stringify(colorCheck));
+    check('图鉴卡片不再显示「满词条」后缀', colorCheck.tag === 0, JSON.stringify(colorCheck.tag));
     check('图鉴已解锁钓到的鱼', got.length >= 6, String(got.length) + ' 已解锁');
     check('图鉴汇总显示收集进度', /\d+ \/ \d+/.test(await p1.textContent('.codex-summary')));
     // 产地：卡片与详情窗显示的处数应与 GameData.spotsOf 一致（防止与服务端目录脱节）

@@ -111,7 +111,10 @@
   Object.keys(AFFIX_CODES).forEach(function (t) { CODE_TO_TYPE[AFFIX_CODES[t]] = t; });
 
   // ---- 品质（== 组件的“稀有度”概念，统一称为品质） ----
-  // cap = 该品质最多可拥有的词缀条数；mult = 实例基准价倍率；cls = 展示配色（满词条时另有金色）
+  // cap = 该品质最多可拥有的词缀条数；mult = 实例基准价倍率；cls = 展示配色。
+  // 配色规范（前后端同一套 CSS 类，定义在 style.css）：普通=白 / 稀有=黄 / 史诗=紫。
+  // 大鱼是渔获的档位而非品质，统一金色 + 👑 皇冠前缀（.r-big::before）；
+  // 组件实例的「满词条」金色强调只出现在背包/市集/装备弹窗，图鉴按品质正常显示。
   const QUALITY = {
     common: { key: 'common', name: '普通', cap: 1, mult: 1,   cls: 'q-common' },
     rare:   { key: 'rare',   name: '稀有', cap: 2, mult: 1.5, cls: 'q-rare' },

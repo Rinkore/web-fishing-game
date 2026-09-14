@@ -8,9 +8,9 @@
   --muted: #8aa6bd;
   --accent: #2dd4bf;
   --accent2: #38bdf8;
-  --common: #cbd5e1;
+  --common: #f8fafc;
   --big: #fbbf24;
-  --rare: #c084fc;
+  --rare: #facc15;
   --danger: #f87171;
   --radius: 12px;
 }
@@ -105,7 +105,7 @@ body {
 .gc-cnt.live { background: rgba(45,212,191,.18); color: var(--accent); font-weight: 600; }
 .tag { font-size: 11px; padding: 2px 8px; border-radius: 20px; }
 .tag.normal { background: rgba(56,189,248,.18); color: var(--accent2); }
-.tag.event { background: rgba(192,132,252,.18); color: var(--rare); }
+.tag.event { background: rgba(192,132,252,.18); color: #c084fc; }
 .gc-desc { font-size: 12px; color: var(--muted); margin: 6px 0 10px; }
 .locked-note { font-size: 12px; color: var(--muted); padding: 6px 0; }
 .spot-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -206,12 +206,13 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 /* 稀有度配色 */
 .r-common { color: var(--common); }
 .r-big { color: var(--big); font-weight: 600; }
+.r-big::before { content: '👑 '; }  /* 👑 大鱼档位特殊标注（配色规范见 data.js QUALITY 注释） */
 .r-rare { color: var(--rare); font-weight: 600; }
 
 /* 组件品质配色（普通=白 / 稀有=黄 / 史诗=橙；满词条额外升为金色） */
 .q-common { color: var(--common); }
-.q-rare { color: #f5c451; font-weight: 600; }
-.q-epic { color: #fb923c; font-weight: 600; }
+.q-rare { color: var(--rare); font-weight: 600; }
+.q-epic { color: #c084fc; font-weight: 600; }
 .q-full { color: #ffd24a !important; font-weight: 700; text-shadow: 0 0 8px rgba(255,210,74,.45); }
 .bd-comp.q-full, .bec-name .q-full, .cx-name .q-full { text-shadow: 0 0 8px rgba(255,210,74,.5); }
 .inst-meta { font-size: 11px; color: var(--muted); margin: 2px 0; }
@@ -818,7 +819,7 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .bf-sort-label { margin-right: 2px; }
 
 /* ---- 钓竿配置 ---- */
-.r-epic { color: #fb923c; font-weight: 600; }
+.r-epic { color: #c084fc; font-weight: 600; }
 .eff-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .eff-chip {
   font-size: 12px; padding: 4px 12px; border-radius: 20px;
