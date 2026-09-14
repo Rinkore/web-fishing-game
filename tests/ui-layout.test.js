@@ -63,6 +63,9 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const tokS = rs.data.token, tokB = rb.data.token;
 
     await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, koi: 2, lure: 4 }, coins: 2400 });
+    // 给卖家发一个带负词条的组件实例（用于验证装备后负词条显示为红色）
+    const NEG_COMP = D_DATA.instanceId('reel_turbo', 'rare', [{ type: 'speed', value: 30 }, { type: 'big', value: -8 }]);
+    await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: NEG_COMP } });
     const catches = [
       { id: 'koi', name: '黄金锦鲤', rarity: 'rare', size: 88.5 },
       { id: 'catfish', name: '巨型鲶鱼', rarity: 'big', size: 210.4 },
@@ -96,12 +99,69 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('登录后 10 个已实现入口可见', (await p1.$$('#nav .nav-item:not(.locked)')).length === 10);
     check('2 个占位入口锁定', (await p1.$$('#nav .nav-item.locked')).length === 2);
 
+    // —— 钓鱼页：已移除背包，渔获日志与左栏底部对齐 ——
+    await clickNav(p1, '钓鱼');
+    check('钓鱼页不再显示背包模块', (await p1.$$('.fish-live .inventory, .content .inventory')).length === 0);
+    check('钓鱼页仍有渔获日志', (await p1.$$('.fish-live .catch-log')).length === 1);
+    const align = await p1.evaluate(() => {
+      const left = document.querySelector('.content > .fish-select');
+      const right = document.querySelector('.content > .fish-live');
+      const log = document.querySelector('.fish-live .catch-log');
+      if (!left || !right || !log) return { ok: false };
+      const lb = left.getBoundingClientRect(), rb = right.getBoundingClientRect(), gb = log.getBoundingClientRect();
+      return { ok: true, leftBottom: lb.bottom, rightBottom: rb.bottom, logBottom: gb.bottom };
+    });
+    check('左右两栏底边对齐（右栏日志随左栏高度撑满）', align.ok && Math.abs(align.leftBottom - align.rightBottom) < 3,
+      JSON.stringify(align));
+    // 日志填满右栏到底部（不再被下方背包挤到半空；差值仅为面板内边距）
+    check('渔获日志填满至右栏底部', align.ok && align.logBottom > align.rightBottom - 30, JSON.stringify(align));
+
     // —— 系统商店 ——
     await clickNav(p1, '系统商店');
     check('系统商店渲染出价格卡片', (await p1.$$('.shop-card')).length >= 15, String((await p1.$$('.shop-card')).length));
     check('商店卡片显示动态价格与百分比', /当前 \d+%/.test(await p1.textContent('.sc-pct')));
     check('商店页展示我的背包', (await p1.$$('.inventory .inv-row')).length > 0);
     check('背包行含出售按钮', (await p1.$$('.inventory .mini.primary-mini')).length > 0);
+
+    // —— 钓竿配置：装备走子页面（弹窗），页面下方不再有装备模块；负词条红色 ——
+    await clickNav(p1, '钓竿配置');
+    check('钓竿配置页下方不再有内嵌装备模块', (await p1.$$('.bd-equip-panel, .panel > .bde-head')).length === 0);
+    // 点 reel 部位的「装备组件」打开子页面
+    await p1.evaluate(() => {
+      const cells = Array.from(document.querySelectorAll('.bd-cell'));
+      const cell = cells.find(c => c.querySelector('.bd-part') && /卷线器/.test(c.querySelector('.bd-part').textContent));
+      const b = cell && Array.from(cell.querySelectorAll('button')).find(x => x.textContent.includes('装备组件'));
+      if (b) b.click();
+    });
+    await sleep(400);
+    check('点击装备组件弹出子页面（弹窗）', (await p1.$$('.modal-overlay .bd-equip-modal')).length === 1);
+    check('子页面列出该部位组件卡片', (await p1.$$('.bd-equip-modal .bec-card')).length >= 1);
+    // 装备带负词条的组件
+    await p1.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('.bd-equip-modal .bec-card'));
+      const card = cards.find(c => c.querySelector('.bec-aff.aff-neg'));
+      const b = card && Array.from(card.querySelectorAll('button')).find(x => x.textContent.includes('装备'));
+      if (b) b.click();
+    });
+    await sleep(900);
+    // 弹窗应已关闭，主视图显示装备后的词条
+    check('装备后子页面自动关闭', (await p1.$$('.modal-overlay')).length === 0);
+    const negColor = await p1.evaluate(() => {
+      const lines = Array.from(document.querySelectorAll('.bd-cell .af-line.aff-neg'));
+      if (!lines.length) return { ok: false, why: 'no negative affix line' };
+      const cs = getComputedStyle(lines[0]);
+      const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(cs.color);
+      const proxy = document.createElement('span');
+      proxy.style.color = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#f87171';
+      document.body.appendChild(proxy);
+      const exp = getComputedStyle(proxy).color;
+      proxy.remove();
+      return { ok: true, color: cs.color, danger: exp, cls: lines[0].className, rgb: m ? [ +m[1], +m[2], +m[3] ] : null };
+    });
+    check('装备后负词条行存在', negColor.ok, JSON.stringify(negColor));
+    check('装备后负词条显示为红色（未被 .on 正色覆盖）',
+      negColor.ok && negColor.color === negColor.danger,
+      JSON.stringify(negColor));
 
     // —— 开放市集 ——
     await clickNav(p1, '开放市集');

@@ -19,14 +19,24 @@
 'use strict';
 const http = require('http');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const url = require('url');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 9000;
 const ROOT = __dirname;
-// 数据目录：默认 backend/data；测试可用 FISHING_DATA_DIR 指到临时目录，避免跑测试清掉真实存档
-const DATA_DIR = process.env.FISHING_DATA_DIR ? path.resolve(process.env.FISHING_DATA_DIR) : path.join(ROOT, 'data');
+// ---- 数据目录 ----
+// 默认存到用户「文档」目录（Windows: %USERPROFILE%\Documents\web-fishing-game），
+// 与程序文件分离，升级/覆盖安装不会丢存档；FISHING_DATA_DIR 可覆盖（测试用临时目录）。
+function defaultDataDir() {
+  const home = os.homedir();
+  const docs = path.join(home, 'Documents');
+  const base = fs.existsSync(docs) ? docs : home; // 少数系统无 Documents（或尚未创建）时退回用户目录
+  return path.join(base, 'web-fishing-game');
+}
+const DATA_DIR = process.env.FISHING_DATA_DIR ? path.resolve(process.env.FISHING_DATA_DIR) : defaultDataDir();
+const LEGACY_DATA_DIR = path.join(ROOT, 'data'); // 旧版数据目录（项目内 backend/data）
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
 // ---- 数据落盘拆分（v0.8）----
 // 按域 + 按账号分文件：每次上鱼只重写该账号一个文件，市集/记录/经济/配置各自独立，
@@ -36,6 +46,7 @@ try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
 //   records.json          大鱼榜 / 小鱼纪录 / 前十大
 //   economy.json          商店供需乘数 / 价格历史 / 交易流水 / 市集成交
 //   config.json           钓场钓点覆盖配置 / 通知等级 / 上钩公式
+//   feedback.json         反馈意见列表 + 每人下次可提交时间
 const ACCOUNTS_DIR = path.join(DATA_DIR, 'accounts');
 try { fs.mkdirSync(ACCOUNTS_DIR, { recursive: true }); } catch (e) {}
 const MARKET_FILE = path.join(DATA_DIR, 'market.json');
@@ -46,6 +57,33 @@ const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
 // 旧版单文件（仅用于首次自动迁移）
 const LEGACY_USERS_FILE = path.join(DATA_DIR, 'users.json');
 const LEGACY_WORLD_FILE = path.join(DATA_DIR, 'world.json');
+
+// 首次运行且默认数据目录为空时，把项目内旧数据目录整体拷贝到文档目录（保留旧目录作备份）
+// 判断目录是否"已有真实数据"：必须存在实际文件（accounts 目录本身可能只是启动时新建的空壳）
+function dirHasData(d) {
+  try {
+    const acc = path.join(d, 'accounts');
+    if (fs.existsSync(acc) && fs.readdirSync(acc).some(function (f) { return f.endsWith('.json'); })) return true;
+    return ['users.json', 'world.json', 'market.json', 'records.json', 'economy.json', 'config.json', 'feedback.json']
+      .some(function (f) { return fs.existsSync(path.join(d, f)); });
+  } catch (e) { return false; }
+}
+function copyDirSync(src, dst) {
+  fs.mkdirSync(dst, { recursive: true });
+  fs.readdirSync(src, { withFileTypes: true }).forEach(function (ent) {
+    const s = path.join(src, ent.name), d = path.join(dst, ent.name);
+    if (ent.isDirectory()) copyDirSync(s, d);
+    else { try { fs.copyFileSync(s, d); } catch (e) {} }
+  });
+}
+(function relocateLegacyData() {
+  if (process.env.FISHING_DATA_DIR) return; // 显式指定数据目录时不搬迁
+  if (dirHasData(DATA_DIR) || !dirHasData(LEGACY_DATA_DIR)) return;
+  try {
+    copyDirSync(LEGACY_DATA_DIR, DATA_DIR);
+    console.log('[migrate] 数据目录已迁移到：' + DATA_DIR);
+  } catch (e) { console.error('[migrate] 数据目录迁移失败：' + e.message); }
+})();
 
 
 // ---- 静态托管（前后端分离）----

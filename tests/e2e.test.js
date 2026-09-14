@@ -335,6 +335,39 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('已知未知路径返回 404', (await GET('http://localhost:' + P1 + '/nope-xyz')).status === 404);
   killTree(srv);
 
+  // ---------- 8. 数据目录默认落在用户「文档」 ----------
+  section('8. 数据目录：默认用户文档 + 旧目录自动搬迁');
+  const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-home-'));
+  const DOCS = path.join(HOME, 'Documents');
+  fs.mkdirSync(DOCS, { recursive: true });
+  const EXPECT_DATA = path.join(DOCS, 'web-fishing-game');
+  // 造一个「项目内旧数据目录」(backend/data)：启动后应被搬到 Documents
+  const projData = path.join(ROOT, 'backend', 'data');
+  let projBackup = null;
+  try {
+    if (fs.existsSync(projData)) { projBackup = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-proj-')); fs.cpSync(projData, projBackup, { recursive: true }); }
+    fs.rmSync(projData, { recursive: true, force: true });
+    fs.mkdirSync(path.join(projData, 'accounts'), { recursive: true });
+    fs.writeFileSync(path.join(projData, 'accounts', 'reloctest.json'),
+      JSON.stringify({ username: 'reloctest', salt: 'aa', pwHash: 'x', name: '搬迁测试', coins: 777, inventory: {}, bd: {}, codex: {}, catchCount: 0, createdAt: 1 }));
+
+    const env8 = Object.assign({}, process.env, { PORT: String(P1 + 40), FISHING_DEV: '1', HOME: HOME, USERPROFILE: HOME });
+    delete env8.FISHING_DATA_DIR; // 走默认目录解析
+    srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: env8 });
+    await sleep(1400);
+    check('数据目录默认解析到用户文档/web-fishing-game', fs.existsSync(EXPECT_DATA));
+    check('旧项目内数据已搬迁到文档目录', fs.existsSync(path.join(EXPECT_DATA, 'accounts', 'reloctest.json')));
+    const relocVer = await GET('http://localhost:' + (P1 + 40) + '/api/version');
+    check('搬迁后服务器正常启动并响应', relocVer.status === 200 && !!relocVer.data.version);
+    killTree(srv);
+  } finally {
+    // 复原：删掉测试造的旧目录，恢复原数据（即使上面抛错也保证执行）
+    killTree(srv);
+    try { fs.rmSync(projData, { recursive: true, force: true }); } catch (e) {}
+    if (projBackup) { try { fs.cpSync(projBackup, projData, { recursive: true }); } catch (e) {} }
+    try { fs.rmSync(HOME, { recursive: true, force: true }); } catch (e) {}
+  }
+
   try { fs.rmSync(TMP_DATA, { recursive: true, force: true }); } catch (e) {}
 
   console.log('\n============================');

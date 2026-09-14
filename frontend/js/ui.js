@@ -142,7 +142,7 @@ window.UI = (function () {
     main.innerHTML = '';
 
     // 左：选择钓场 / 钓点（带实时人数）
-    const left = el('div', 'panel');
+    const left = el('div', 'panel fish-select');
     left.innerHTML = '<h2>🎣 选择钓场与垂钓点</h2>';
     const groundWrap = el('div', 'ground-list');
     D.GROUNDS.forEach(function (g) {
@@ -205,7 +205,7 @@ window.UI = (function () {
     main.appendChild(left);
 
     // 右：渔场实况
-    const right = el('div', 'panel');
+    const right = el('div', 'panel fish-live');
     right.innerHTML = '<h2>🌊 渔场实况</h2>';
     const atGroundId = st.player.groundId;
     const gNow = atGroundId ? D.GROUNDS.find(function (x) { return x.id === atGroundId; }) : null;
@@ -232,12 +232,7 @@ window.UI = (function () {
         (meta.rarity === 'big' ? ' 🐟大鱼' : meta.rarity === 'rare' ? ' ✨稀有' : '')));
     });
     right.appendChild(log);
-
-    right.appendChild(el('h3', null, '🎒 背包'));
-    right.appendChild(inventoryBlock({
-      onSell: function (id) { call(window.Net.sell(id, 1), function (r) { return '售出 1 ×' + itemMeta(id).name + '，获得 💰' + r.data.gain; }).then(function (r) { if (r && r.ok) { S().player.coins = r.data.coins; S().inventory = r.data.inventory; S().shop = r.data.shop; renderTopbar(); renderView(); } }); },
-      onList: function (id, qty, price) { call(window.Net.marketList(id, qty, price), function (r) { return '已上架到市集（支付上架费 ' + r.data.fee + '💰，下架不退）'; }).then(function (r) { if (r && r.ok) { S().inventory = r.data.inventory; S().player.coins = r.data.coins; renderTopbar(); renderView(); } }); },
-    }));
+    // 说明：背包已移至独立「背包」页；此处移除以免页面过长，并使渔获日志与左栏底部对齐。
 
     main.appendChild(right);
   }
@@ -318,82 +313,100 @@ window.UI = (function () {
   let bdEquipDir = 'desc';
   const BD_AFFIXES = [['speed', '⚡ 钓速'], ['big', '🐟 大鱼'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓']];
 
-  // 装备面板：展示在卡片区域下方的空白区，可按属性筛选、按稀有度/价格/属性值排序
-  function renderBdEquipPanel(grid, st) {
-    const old = document.querySelector('.bd-equip-panel');
-    if (old) old.remove();
-    const part = D.ROD_PARTS.find(function (p) { return p.key === bdEquipPart; });
+  // 装备子页面：以弹窗形式展示该部位可装备的组件（筛选 / 排序 / 装备），
+  // 不再占用钓竿配置页下方的整块区域。
+  function openBdEquipModal(partKey) {
+    bdEquipPart = partKey;
+    const part = D.ROD_PARTS.find(function (p) { return p.key === partKey; });
     if (!part) return;
-    const equipped = D.componentOf(st.bd[part.key] && st.bd[part.key].compId);
-    const owned = Object.keys(st.inventory)
-      .map(function (id) { return { c: D.componentOf(id), n: st.inventory[id] }; })
-      .filter(function (o) { return o.c && o.c.part === part.key && o.n > 0; });
-    if (!owned.length) { bdEquipPart = null; return; }
+    const st = S();
 
-    const panelBox = el('div', 'bd-equip-panel');
-    const head = el('div', 'bde-head');
-    head.innerHTML = '<span class="bde-title">可装备的「' + esc(part.name) + '」组件（装备即消耗 1 件，卸下不返还）</span>';
-    const close = el('button', 'mini', '收起');
-    close.addEventListener('click', function () { bdEquipPart = null; renderView(); });
-    head.appendChild(close);
-    panelBox.appendChild(head);
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    const overlay = el('div', 'modal-overlay');
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeBdEquipModal(); });
+    const box = el('div', 'modal-box shop-modal bd-equip-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">🎯 装备「' + esc(part.name) + '」组件</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body"><div class="bde-note">装备即消耗 1 件（卸下不返还）</div><div id="bde-body"></div></div>';
+    box.querySelector('.modal-close').addEventListener('click', closeBdEquipModal);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
 
-    // 属性筛选 + 排序控件
-    const ctr = el('div', 'bde-controls');
-    [['all', '全部属性']].concat(BD_AFFIXES).forEach(function (kv) {
-      const b = el('button', 'bf-cat' + (bdEquipFilter === kv[0] ? ' on' : ''), kv[1]);
-      b.addEventListener('click', function () { if (bdEquipFilter !== kv[0]) { bdEquipFilter = kv[0]; renderView(); } });
-      ctr.appendChild(b);
-    });
-    ctr.appendChild(el('span', 'bf-sort-label', '排序'));
-    [['rarity', '稀有度'], ['price', '价格'], ['affix', '属性值']].forEach(function (kv) {
-      const active = bdEquipSort === kv[0];
-      const arrow = active ? (bdEquipDir === 'desc' ? ' ↓' : ' ↑') : '';
-      const b = el('button', 'bf-cat bf-sort-btn' + (active ? ' on' : ''), kv[1] + arrow);
-      b.addEventListener('click', function () {
-        if (bdEquipSort === kv[0]) bdEquipDir = bdEquipDir === 'desc' ? 'asc' : 'desc';
-        else { bdEquipSort = kv[0]; bdEquipDir = 'desc'; }
-        renderView();
+    renderBody();
+
+    function renderBody() {
+      const body = box.querySelector('#bde-body');
+      if (!body) return;
+      body.innerHTML = '';
+      const equipped = D.componentOf(st.bd[part.key] && st.bd[part.key].compId);
+      const owned = Object.keys(st.inventory)
+        .map(function (id) { return { c: D.componentOf(id), n: st.inventory[id] }; })
+        .filter(function (o) { return o.c && o.c.part === part.key && o.n > 0; });
+      if (!owned.length) { body.appendChild(el('div', 'hint', '背包暂无该部位的组件。')); return; }
+
+      // 属性筛选 + 排序控件
+      const ctr = el('div', 'bde-controls');
+      [['all', '全部属性']].concat(BD_AFFIXES).forEach(function (kv) {
+        const b = el('button', 'bf-cat' + (bdEquipFilter === kv[0] ? ' on' : ''), kv[1]);
+        b.addEventListener('click', function () { if (bdEquipFilter !== kv[0]) { bdEquipFilter = kv[0]; renderBody(); } });
+        ctr.appendChild(b);
       });
-      ctr.appendChild(b);
-    });
-    panelBox.appendChild(ctr);
-
-    // 组件卡片
-    let list = owned.filter(function (o) { return bdEquipFilter === 'all' || o.c.affixes.some(function (a) { return a.type === bdEquipFilter; }); });
-    const rank = { epic: 3, rare: 2, common: 1 };
-    const affVal = function (o) {
-      if (bdEquipFilter === 'all') return o.c.affixes.reduce(function (s, a) { return s + a.value; }, 0);
-      const a = o.c.affixes.find(function (x) { return x.type === bdEquipFilter; });
-      return a ? a.value : 0;
-    };
-    list.sort(function (x, y) {
-      if (bdEquipSort === 'price') return bdEquipDir === 'desc' ? y.c.price - x.c.price : x.c.price - y.c.price;
-      if (bdEquipSort === 'affix') return bdEquipDir === 'desc' ? affVal(y) - affVal(x) : affVal(x) - affVal(y);
-      const d = (rank[y.c.rarity] || 0) - (rank[x.c.rarity] || 0);
-      return (bdEquipDir === 'desc' ? d : -d) || y.c.price - x.c.price;
-    });
-    const grid2 = el('div', 'bde-grid');
-    if (!list.length) {
-      grid2.appendChild(el('div', 'hint', '没有符合筛选条件的组件。'));
-    } else {
-      list.forEach(function (o) {
-        const c = o.c;
-        const card = el('div', 'bec-card');
-        card.innerHTML =
-          '<div class="bec-name"><span class="' + qualityClass(c) + '">' + esc(c.name) + (c.isFull ? '<span class="full-tag">满词条</span>' : '') + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
-          '<div class="inst-meta">' + esc(qualityName(c)) + '品质 · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条</div>' +
-          c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('') +
-          '<div class="bec-meta">持有 ×' + o.n + '</div>';
-        const use = el('button', 'mini primary-mini', (equipped && equipped.id === c.id) ? '已装备' : '装备');
-        if (equipped && equipped.id === c.id) { use.disabled = true; use.classList.add('locked'); }
-        use.addEventListener('click', function () { setPart(part.key, c.id); });
-        card.appendChild(use);
-        grid2.appendChild(card);
+      ctr.appendChild(el('span', 'bf-sort-label', '排序'));
+      [['rarity', '稀有度'], ['price', '价格'], ['affix', '属性值']].forEach(function (kv) {
+        const active = bdEquipSort === kv[0];
+        const arrow = active ? (bdEquipDir === 'desc' ? ' ↓' : ' ↑') : '';
+        const b = el('button', 'bf-cat bf-sort-btn' + (active ? ' on' : ''), kv[1] + arrow);
+        b.addEventListener('click', function () {
+          if (bdEquipSort === kv[0]) bdEquipDir = bdEquipDir === 'desc' ? 'asc' : 'desc';
+          else { bdEquipSort = kv[0]; bdEquipDir = 'desc'; }
+          renderBody();
+        });
+        ctr.appendChild(b);
       });
+      body.appendChild(ctr);
+
+      // 组件卡片
+      let list = owned.filter(function (o) { return bdEquipFilter === 'all' || o.c.affixes.some(function (a) { return a.type === bdEquipFilter; }); });
+      const rank = { epic: 3, rare: 2, common: 1 };
+      const affVal = function (o) {
+        if (bdEquipFilter === 'all') return o.c.affixes.reduce(function (s, a) { return s + a.value; }, 0);
+        const a = o.c.affixes.find(function (x) { return x.type === bdEquipFilter; });
+        return a ? a.value : 0;
+      };
+      list.sort(function (x, y) {
+        if (bdEquipSort === 'price') return bdEquipDir === 'desc' ? y.c.price - x.c.price : x.c.price - y.c.price;
+        if (bdEquipSort === 'affix') return bdEquipDir === 'desc' ? affVal(y) - affVal(x) : affVal(x) - affVal(y);
+        const d = (rank[y.c.rarity] || 0) - (rank[x.c.rarity] || 0);
+        return (bdEquipDir === 'desc' ? d : -d) || y.c.price - x.c.price;
+      });
+      const grid2 = el('div', 'bde-grid');
+      if (!list.length) {
+        grid2.appendChild(el('div', 'hint', '没有符合筛选条件的组件。'));
+      } else {
+        list.forEach(function (o) {
+          const c = o.c;
+          const card = el('div', 'bec-card');
+          card.innerHTML =
+            '<div class="bec-name"><span class="' + qualityClass(c) + '">' + esc(c.name) + (c.isFull ? '<span class="full-tag">满词条</span>' : '') + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
+            '<div class="inst-meta">' + esc(qualityName(c)) + '品质 · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条</div>' +
+            c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('') +
+            '<div class="bec-meta">持有 ×' + o.n + '</div>';
+          const use = el('button', 'mini primary-mini', (equipped && equipped.id === c.id) ? '已装备' : '装备');
+          if (equipped && equipped.id === c.id) { use.disabled = true; use.classList.add('locked'); }
+          use.addEventListener('click', function () {
+            closeBdEquipModal();
+            setPart(part.key, c.id);
+          });
+          card.appendChild(use);
+          grid2.appendChild(card);
+        });
+      }
+      body.appendChild(grid2);
     }
-    panelBox.appendChild(grid2);
-    grid.parentNode.insertBefore(panelBox, grid.nextSibling);
+  }
+  function closeBdEquipModal() {
+    bdEquipPart = null;
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
   }
   function renderBD() {
     const main = $('main');
@@ -445,11 +458,7 @@ window.UI = (function () {
       });
       if (owns.length) {
         const btn = el('button', 'mini primary-mini', '装备组件');
-        btn.addEventListener('click', function () {
-          // 点开/切换：装备面板展示在卡片区域下方的大块空白区
-          bdEquipPart = (bdEquipPart === part.key) ? null : part.key;
-          renderView();
-        });
+        btn.addEventListener('click', function () { openBdEquipModal(part.key); });
         acts.appendChild(btn);
       } else {
         acts.appendChild(el('span', 'muted tiny', '背包暂无该部位组件'));
@@ -458,8 +467,6 @@ window.UI = (function () {
       grid.appendChild(cell);
     });
     panel.appendChild(grid);
-    // 装备面板：展示在卡片区域下方的空白区（重绘后自动恢复）
-    if (bdEquipPart) renderBdEquipPanel(grid, st);
     panel.appendChild(el('div', 'note-block',
       '<b>组件怎么获得？</b>钓鱼时有概率钓到各部位组件（稀有/史诗更少见）。' +
       '<b>装备即消耗</b>：安装会使用掉背包中的 1 件该组件（卸下不返还），加成持续生效并在服务器实时结算（正在钓鱼时钓速也会立即调整）。'));

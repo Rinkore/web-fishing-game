@@ -85,6 +85,10 @@ body {
 /* 钓鱼视图 */
 .content { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
 .panel { margin: 0; }
+/* 钓鱼页左右两栏等高：右栏渔获日志填满剩余空间，底部与左栏底部对齐 */
+.content > .fish-select, .content > .fish-live { align-self: stretch; }
+.fish-select, .fish-live { display: flex; flex-direction: column; }
+.fish-live .catch-log { flex: 1 1 auto; max-height: none; min-height: 120px; }
 .ground-list { display: flex; flex-direction: column; gap: 12px; }
 .ground-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
 .ground-card.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
@@ -716,14 +720,10 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .bd-cell .af-line.on { color: var(--accent); }
 .bd-acts { display: flex; gap: 6px; margin-top: auto; padding-top: 10px; align-items: center; flex-wrap: wrap; }
 .bd-acts .tiny { font-size: 11px; }
-/* 组件选择器：浮层挂载在卡片下方，不撑大任何格子布局 */
-/* 装备面板：展示在卡片区域下方，全宽可读 */
-.bd-equip-panel {
-  margin-top: 16px; border: 1px solid var(--accent2); border-radius: 10px;
-  background: rgba(56,189,248,.06); padding: 14px;
-}
-.bde-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-.bde-title { font-weight: 600; color: var(--accent2); font-size: 14px; flex: 1; min-width: 200px; }
+/* 组件装备子页面（弹窗）：复用通用 modal 结构 */
+.bd-equip-modal { width: 720px; }
+.bd-equip-modal .modal-body { max-height: 70vh; }
+.bde-note { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 .bde-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
 .bde-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; align-items: start; }
 .bec-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
@@ -742,8 +742,10 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .nav-item.admin-link { text-decoration: none; margin-top: 10px; color: var(--accent); border: 1px dashed var(--line); }
 .nav-item.admin-link:hover { border-color: var(--accent); background: var(--panel); }
 
-/* 负面词条（v0.7.0 取舍型组件）：红色展示 */
-.bec-aff.aff-neg, .af-line.aff-neg { color: var(--danger); }
+/* 负面词条（v0.7.0 取舍型组件）：红色展示。
+   装备后词条行同时带 .on（正色）与 .aff-neg，需让 .aff-neg 在同等特异性下后置生效，
+   否则 .bd-cell .af-line.on 会覆盖红色导致负词条不显红。 */
+.bec-aff.aff-neg, .af-line.aff-neg, .bd-cell .af-line.aff-neg { color: var(--danger); }
 
 /* v0.7.1 修订：整体效果负值 chip 红底标注 */
 .eff-chip.eff-neg { background: rgba(248,113,113,.16); border-color: rgba(248,113,113,.5); color: var(--danger); }
