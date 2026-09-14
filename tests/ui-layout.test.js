@@ -1148,6 +1148,19 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       return { ok: true, reloaded: reloaded, local: window.GameData.VERSION };
     });
     check('版本一致时不触发整页刷新', verCheck.ok && verCheck.reloaded === false, JSON.stringify(verCheck));
+    // 版本号只有一个来源（data.js）：index.html 不得再硬编码，界面上的副本由 ui.js 启动时填入。
+    // 曾出现「功能已是新版、左上角/标签页仍显示旧版本号」——就是 index.html 的副本没跟着改。
+    const idxSrc = fs.readFileSync(path.join(ROOT, 'frontend', 'index.html'), 'utf8');
+    check('index.html 不再硬编码版本号', !/v\d+\.\d+\.\d+/.test(idxSrc), (idxSrc.match(/v\d+\.\d+\.\d+/g) || []).join(','));
+    const verUi = await p1.evaluate(() => ({
+      local: window.GameData.VERSION,
+      brand: (document.querySelector('.brand .ver') || {}).textContent || '',
+      title: document.title,
+      authSub: (document.querySelector('.auth-sub') || {}).textContent || '',
+    }));
+    check('顶栏版本号取自 data.js', verUi.brand === verUi.local, JSON.stringify(verUi));
+    check('标签页标题含版本号', verUi.title.indexOf(verUi.local) >= 0, verUi.title);
+    check('登录页副标题含版本号', verUi.authSub.indexOf(verUi.local) >= 0, verUi.authSub);
 
     // 移动端窄屏
     section('窄屏自适应');

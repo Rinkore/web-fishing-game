@@ -5,6 +5,15 @@
 window.UI = (function () {
   'use strict';
   const D = window.GameData;
+  // 版本号唯一来源是 data.js：把 index.html 的 <title> 与 [data-ver] 占位符填上。
+  // 必须在下面 baseTitle 捕获标题之前执行，否则图标闪烁恢复时会用回不带版本号的旧标题。
+  (function applyVersion() {
+    const v = (D && D.VERSION) || '';
+    if (!v) return;
+    document.title = '钓鱼网站 ' + v;
+    const nodes = document.querySelectorAll('[data-ver]');
+    for (let i = 0; i < nodes.length; i++) nodes[i].textContent = v;
+  })();
   // 惰性获取：避免加载顺序问题
   function E() { return window.Engine; }
   function S() { return window.Engine.state; }
