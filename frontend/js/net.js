@@ -151,6 +151,11 @@ window.Net = (function () {
   const tradeSet = (tradeId, items) => authed('/api/trade/set', { tradeId: tradeId, items: items });
   const tradeConfirm = (tradeId) => authed('/api/trade/confirm', { tradeId: tradeId });
   const tradeCancel = (tradeId) => authed('/api/trade/cancel', { tradeId: tradeId });
+  // 组件订阅提醒（玩家级配置：筛选条件 + 提醒方式）
+  const fetchSubscribe = () => apiFetch('GET', '/api/subscribe?token=' + encodeURIComponent(me ? me.token : ''));
+  const subscribeSave = (cfg) => authed('/api/subscribe', cfg || {});
+  // 横幅滚播上报（后台「当前滚播」用于统计观看人数；失败静默）
+  const bannerPlaying = (id) => authed('/api/banner/playing', { id: id }).catch(function () { return null; });
 
   function setAuth(token, profile) {
     // 服务器内部一律使用小写账号 key 作为身份（players/trade/market/history 均是），
@@ -175,6 +180,7 @@ window.Net = (function () {
 
   function connectStream() {
     const u = API_BASE + '/events?token=' + encodeURIComponent(me.token);
+    const seenLogBanners = {}; // 本连接内已入日志的公告 id（重连后重播不重复记录）
     try {
       es = new EventSource(u);
       es.onmessage = function (ev) {
@@ -217,10 +223,29 @@ window.Net = (function () {
           if (ui) ui.refreshAll('records');
         } else if (m.type === 'globalRecord') {
           if (ui && ui.showRecordBanner && m.record) ui.showRecordBanner(m.record);
+          if (ui && ui.addLog && m.record) ui.addLog('record', '🎉 全场最大纪录被破：' + m.record.who + ' 钓到 ' + m.record.name + ' ' + m.record.size + 'cm');
         } else if (m.type === 'banner') {
           S.banners = m.banners || [];
           S.bannerCfg = m.cfg || {};
           if (ui && ui.onBanners) ui.onBanners();
+          // 公告横幅入日志（同一 id 只记一次，避免重连重播刷屏）
+          if (ui && ui.addLog && Array.isArray(m.banners)) {
+            m.banners.forEach(function (bn) {
+              if (!bn || !bn.id || seenLogBanners[bn.id]) return;
+              seenLogBanners[bn.id] = true;
+              ui.addLog('system', '📢 公告：' + bn.content);
+            });
+          }
+        } else if (m.type === 'bannerStop') {
+          if (ui && ui.onBannerStop) ui.onBannerStop(m.id);
+        } else if (m.type === 'castcfg') {
+          // 管理员调整抛竿间隔：正在钓鱼时重新开钓以同步新的间隔显示（服务器已按新值重启循环）
+          if (S.fishing && S.fishing.active && S.selected && S.selected.groundId) {
+            window.Net.fishingStart(S.selected.groundId, S.selected.spotId);
+          }
+          if (ui && ui.toast) ui.toast('管理员已调整抛竿间隔：基础 ' + (m.baseMs / 1000).toFixed(2) + 's / 最短 ' + (m.minMs / 1000).toFixed(2) + 's');
+        } else if (m.type === 'subalert') {
+          if (ui && ui.onSubAlert) ui.onSubAlert(m.item || {});
         } else if (m.type === 'assets') {
           // 服务器权威资产：金币/库存/图鉴整体替换，前端不持账本
           if (m.coins != null) S.player.coins = m.coins;
@@ -241,6 +266,7 @@ window.Net = (function () {
           if (ui) ui.refreshAll('catch');
         } else if (m.type === 'kicked') {
           // 顶号/会话失效：清理本地状态并回到登录界面
+          if (ui && ui.addLog) ui.addLog('system', '⚠ ' + (m.msg || '账号已在其他窗口登录'));
           try { localStorage.removeItem('fishing_token'); } catch (e) {}
           if (es) { try { es.close(); } catch (e) {} es = null; }
           me = null;
@@ -248,6 +274,7 @@ window.Net = (function () {
           if (ui && ui.forceLogout) ui.forceLogout(m.msg || '账号已在其他窗口登录');
         } else if (m.type === 'notice') {
           if (ui && ui.toast) ui.toast(m.msg || '');
+          if (ui && ui.addLog) ui.addLog('system', m.msg || '');
         } else if (m.type === 'trade') {
           S.trade = (m.trade && !m.trade.done && !m.trade.cancelled) ? m.trade : null;
           S.tradeLastEvent = m.trade;
@@ -259,6 +286,7 @@ window.Net = (function () {
           if (m.b && myKey && String(m.b.key).toLowerCase() === myKey) { pl.coins = m.b.coins; S.inventory = m.b.inventory || S.inventory; }
           S.trade = null;
           S.tradeFlash = '交易完成，物品已互换';
+          if (ui && ui.addLog) ui.addLog('trade', '✅ 交易完成，物品已互换');
           if (ui) ui.refreshAll('trade');
         } else if (m.type === 'feed') {
           S.feed.unshift(m.entry);
@@ -290,7 +318,9 @@ window.Net = (function () {
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
     fetchFeedback: fetchFeedback,
     fetchBanners: fetchBanners, fetchGrounds: fetchGrounds,
+    bannerPlaying: bannerPlaying,
     feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,
+    fetchSubscribe: fetchSubscribe, subscribeSave: subscribeSave,
     sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,
     tradeConfirm: tradeConfirm, tradeCancel: tradeCancel,

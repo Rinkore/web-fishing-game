@@ -5,8 +5,10 @@
  */
 'use strict';
 const { JSDOM, VirtualConsole } = require('jsdom');
+// 轮询等待工具（测试内部不依赖固定 sleep）：就绪即继续，超时才失败
+const { waitFor, waitHttp, waitPage } = require('./_util.js');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const url = require('url');
 const fs = require('fs');
@@ -18,6 +20,15 @@ const NODE = process.execPath;
 
 let pass = 0, fail = 0; const failed = [];
 function check(n, c, extra) { if (c) { pass++; console.log('  PASS  ' + n); } else { fail++; failed.push(n); console.log('  FAIL  ' + n + (extra ? ' -> ' + extra : '')); } }
+// 启动前清理端口占用：Windows 下测试进程被强杀时 taskkill 可能失败，残留的旧服务器会占住端口，
+// 导致下一次运行的所有请求打到「陈旧的服务器实例」上（表现为大面积 未登录/数据不符）。
+function killPortOccupant(port) {
+  try {
+    spawnSync('powershell', ['-NoProfile', '-Command',
+      "(Get-NetTCPConnection -State Listen -LocalPort " + port + " -ErrorAction SilentlyContinue).OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }"],
+      { stdio: 'ignore' });
+  } catch (e) {}
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function req(method, u, body) {
@@ -88,8 +99,9 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
 (async () => {
   console.log('登录/注册前端交互测试（jsdom 真实 DOM）');
+  killPortOccupant(PORT);
   const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DATA_DIR: TMP_DATA }) });
-  await sleep(900);
+  await waitHttp('http://localhost:' + PORT + '/shop', { timeout: 20000 });
 
   try {
     // ---------- 场景 1：全新用户（无 token），点击登录 ----------
@@ -110,8 +122,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(600);
     check('点击登录后遮罩隐藏（进入游戏）', $('auth').style.display === 'none', 'display=' + $('auth').style.display);
     check('点击登录后无报错信息', !$('auth-msg').textContent, 'msg=' + $('auth-msg').textContent);
-    check('登录后已渲染导航（10 个已实现入口可见）', w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 10, 'got ' + w.document.querySelectorAll('#nav .nav-item:not(.locked)').length);
-    check('未实现入口仍为锁定占位（不可跳转）', w.document.querySelectorAll('#nav .nav-item.locked').length === 2, 'got ' + w.document.querySelectorAll('#nav .nav-item.locked').length);
+    check('登录后已渲染导航（11 个已实现入口可见）', w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 11, 'got ' + w.document.querySelectorAll('#nav .nav-item:not(.locked)').length);
+    check('未实现入口仍为锁定占位（仅商城，不可跳转）', w.document.querySelectorAll('#nav .nav-item.locked').length === 1, 'got ' + w.document.querySelectorAll('#nav .nav-item.locked').length);
     check('登录后顶栏显示玩家名', $('player-status').textContent.includes('界面测试'), $('player-status').textContent);
     check('登录后 token 已写入 localStorage', !!w.localStorage.getItem('fishing_token'));
 

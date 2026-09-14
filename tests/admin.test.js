@@ -12,6 +12,8 @@ const url = require('url');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+// 轮询等待工具（测试内部不依赖固定 sleep）：就绪即继续，超时才失败
+const { waitFor, waitHttp, waitPage } = require('./_util.js');
 
 const ROOT = path.join(__dirname, '..');
 const NODE = process.execPath;
@@ -68,19 +70,25 @@ function sse(tok, sink) {
   return r;
 }
 
+// 启动前清理端口占用：Windows 下测试进程被强杀时 taskkill 可能失败，残留的旧服务器会占住端口，
+// 导致下一次运行的所有请求打到「陈旧的服务器实例」上（表现为大面积 未登录/数据不符）。
+function killPortOccupant(port) {
+  try {
+    spawnSync('powershell', ['-NoProfile', '-Command',
+      "(Get-NetTCPConnection -State Listen -LocalPort " + port + " -ErrorAction SilentlyContinue).OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }"],
+      { stdio: 'ignore' });
+  } catch (e) {}
+}
 function start(dataDir) {
+  killPortOccupant(PORT);
   return spawn(NODE, ['backend/server.js'], {
     cwd: ROOT,
     env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: dataDir }),
   });
 }
-async function waitReady() {
-  for (let i = 0; i < 40; i++) {
-    const r = await GET(B + '/shop');
-    if (r.status === 200) return true;
-    await sleep(200);
-  }
-  return false;
+function waitReady() {
+  // 轮询就绪：服务器一响应就继续（通常 0.3-0.8s），不再固定等待
+  return waitHttp(B + '/shop', { timeout: 20000 });
 }
 
 (async () => {
@@ -200,7 +208,7 @@ async function waitReady() {
   check('保存公式 0', (await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '0' })).status === 200);
   const marker0 = Date.now();
   await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
-  await sleep(7000);
+  await waitFor(() => false, { timeout: 7000 }); // 观察窗口：7 秒内不应有任何渔获
   check('公式 0 时 7 秒内零渔获', !sink2.some(x => x.ev.type === 'catch' && x.t > marker0));
   // 公式 100%：竿竿上钩
   await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '100' });
@@ -272,6 +280,7 @@ async function waitReady() {
   check('非法数值区间（max<min）被过滤而非报错', (await POST(B + '/api/admin/component/config', { token: TOKA, affixRanges: { rod_bamboo: { speed: [5, 1] } } })).status === 200);
   const sim = await POST(B + '/api/admin/component/simulate', { token: TOKA, n: 1000 });
   check('组件试算接口可用', sim.status === 200 && sim.data.quality.epic === 1000, JSON.stringify(sim.data.quality));
+  check('试算无 0 值词条（roll=0 已被拒绝）', sim.data.zeroAffixes === 0, String(sim.data.zeroAffixes));
   check('恢复默认组件配置', (await POST(B + '/api/admin/component/reset', { token: TOKA })).status === 200);
   check('非管理员改组件配置被拒 403', (await POST(B + '/api/admin/component/config', { token: TK2, rollModel: 'linear' })).status === 403);
   // roll 模型三档都要能保存（回归：单选框缺 value 时前端会传 "on" 被拒）
@@ -341,6 +350,37 @@ async function waitReady() {
   // 恢复默认，避免影响后续用例
   await POST(B + '/api/admin/feedback/cfg', { token: TOKA, cdHours: 24, skipCost: 10000 });
 
+  // ---------- 9f. 抛竿间隔（基础值 / 最短值） ----------
+  section('9f. 抛竿间隔配置');
+  const wdCast = await GET(B + '/api/admin/world?token=' + TOKA);
+  check('world 返回抛竿间隔默认值（3000 / 800）', wdCast.data.castBaseMs === 3000 && wdCast.data.castMinMs === 800, JSON.stringify({ b: wdCast.data.castBaseMs, m: wdCast.data.castMinMs }));
+  check('基础间隔过小被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 50 })).status === 400);
+  check('最短间隔大于基础被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 3000, castMinMs: 5000 })).status === 400);
+  check('非管理员改间隔被拒 403', (await POST(B + '/api/admin/settings', { token: TK2, castBaseMs: 4000 })).status === 403);
+  check('validateOnly 只校验不落库', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 1234, validateOnly: true })).status === 200
+    && (await GET(B + '/api/admin/world?token=' + TOKA)).data.castBaseMs === 3000);
+  // 玩家二号在线开钓：基础 3000 → 4000ms 验证实际生效
+  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
+  const castSinkMark = sink2.length;
+  check('设置基础 4000 / 最短 600 成功', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 4000, castMinMs: 600 })).status === 200);
+  check('配置回读生效（4000 / 600）', (await GET(B + '/api/admin/world?token=' + TOKA)).data.castBaseMs === 4000);
+  await sleep(400);
+  check('间隔变更广播 castcfg 给游戏端', sink2.slice(castSinkMark).some(x => x.ev.type === 'castcfg' && x.ev.baseMs === 4000 && x.ev.minMs === 600),
+    sink2.slice(castSinkMark).map(x => x.ev.type).join(','));
+  const reStart = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
+  check('按新基础间隔开钓（4000 × 0.8 钓点增益 = 3200ms）', reStart.data.interval === 3200, JSON.stringify(reStart.data));
+  // 最短间隔限制：钓点 +20% 增益 + 组件 +25% = 45%，1000 × (1-0.45) = 550 → 应被 900ms 下限兜住
+  const spdInst = 'reel_electric#common#spd+25';
+  await POST(B + '/api/dev/catch', { token: TK2, item: { kind: 'component', id: spdInst } });
+  await POST(B + '/api/bd/set', { token: TK2, part: 'reel', compId: spdInst });
+  await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 1000, castMinMs: 900 });
+  const reStart2 = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
+  check('最短间隔兜住词缀+增益（1000 × 0.55 = 550 → 900ms）', reStart2.data.interval === 900, JSON.stringify(reStart2.data));
+  // 恢复：卸下组件 + 默认间隔
+  await POST(B + '/api/bd/set', { token: TK2, part: 'reel', compId: null });
+  await POST(B + '/api/fishing/stop', { token: TK2 });
+  check('恢复默认间隔', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 3000, castMinMs: 800 })).status === 200);
+
 
   // ---------- 10. 账号管理（改密码 / 改显示名 / 调整金币） ----------
   section('10. 账号管理');
@@ -381,10 +421,142 @@ async function waitReady() {
   check('删除后不在账号列表', !(await GET(B + '/api/admin/users?token=' + TOKA)).data.users.some(u => u.key === 'del_me'));
 
 
+  // ---------- 11a. 全服钓速（钓速只影响抛竿间隔） ----------
+  section('11a. 全服钓速与默认上钩率');
+  // 第 10 节改过 adm_p2 密码，旧 token 已失效：重新登录并建立实时连接（后续断言依赖）
+  const lp2b = await POST(B + '/api/login', { username: 'adm_p2', password: 'newpass99' });
+  const TK2B = lp2b.data.token;
+  const sink2b = [];
+  const es2b = sse(TK2B, sink2b);
+  await sleep(400);
+  check('玩家重新登录成功（新会话可用）', lp2b.status === 200 && !!TK2B);
+  // 默认公式 = 平值 90：把公式恢复成默认值后，上钩率不随钓速变化（试算 speed 0 / 50 结果一致）
+  const fx0 = await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '90' });
+  const fxEval0 = await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '90', validateOnly: true, evalVars: { speed: 0 } });
+  const fxEval50 = await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '90', validateOnly: true, evalVars: { speed: 50 } });
+  check('默认上钩公式为平值 90（钓速不再影响上钩率）', fx0.status === 200 && fxEval0.data.prob === 90 && fxEval50.data.prob === 90,
+    JSON.stringify({ a: fxEval0.data.prob, b: fxEval50.data.prob }));
+  // 复原第 2 节设的公式 100（第 12 节持久化用例依赖该值）
+  await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '100' });
+  const w11 = await GET(B + '/api/admin/world?token=' + TOKA);
+  check('world 返回全服钓速加成/上限默认值（0 / 80）', w11.data.castSpeedBonus === 0 && w11.data.castSpeedCap === 80, JSON.stringify({ b: w11.data.castSpeedBonus, c: w11.data.castSpeedCap }));
+  check('非管理员改全服钓速被拒 403', (await POST(B + '/api/admin/settings', { token: TK2B, castSpeedBonus: 50 })).status === 403);
+  check('全服钓速加成超范围被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 900 })).status === 400);
+  check('钓速上限超范围被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedCap: 150 })).status === 400);
+  // dock 钓点在本文件第 2 节被加了 +20% 钓速增益；全服 +50% → 有效 70% → 3000 × 0.3 = 900ms
+  check('设置全服钓速 +50% 成功', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 50 })).status === 200);
+  const spd1 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
+  check('全服钓速生效（3000 × (1-0.7) = 900ms，含钓点 +20%）', spd1.data.interval === 900, JSON.stringify(spd1.data));
+  // 上限截断：+200% 但上限 80% → 3000 × 0.2 = 600 → 最短间隔 800 兜底
+  check('设置 +200% / 上限 80%', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 200, castSpeedCap: 80 })).status === 200);
+  const spd2 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
+  check('钓速上限截断 + 最短间隔兜底（800ms）', spd2.data.interval === 800, JSON.stringify(spd2.data));
+  await POST(B + '/api/fishing/stop', { token: TK2B });
+  check('恢复默认钓速（0 / 80）', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 0, castSpeedCap: 80 })).status === 200);
+
+  // ---------- 11b. 渔场与钓点增删（实时生效） ----------
+  section('11b. 渔场与钓点增删 · 限时渔场 · 一键填充');
+  check('非法渔场 ID 被拒 400', (await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'Bad-ID!', name: 'x' })).status === 400);
+  check('与内置渔场冲撞的 ID 被拒 400', (await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'stillwater', name: 'x' })).status === 400);
+  check('空名称被拒 400', (await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'qa_bay', name: '' })).status === 400);
+  const gAdd = await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'qa_bay', name: 'QA 湾', type: 'event', desc: '测试渔场', spotName: '浅滩', preset: 'big', fill: true });
+  check('新建渔场成功且按「大物塘」预设填充（14 条）', gAdd.status === 200 && gAdd.data.ground.spots.length === 1 && gAdd.data.ground.spots[0].pool.length === 14, JSON.stringify(gAdd.data.ground && gAdd.data.ground.spots[0].pool.length));
+  const grPub = await GET(B + '/api/grounds');
+  check('新渔场实时进入公开目录（玩家可钓）', (grPub.data.grounds || []).some(g => g.id === 'qa_bay' && g.spots.length === 1));
+  check('重复渔场 ID 被拒 409', (await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'qa_bay', name: 'x' })).status === 409);
+  // 限时窗口
+  check('限时时间格式非法被拒 400', (await POST(B + '/api/admin/ground/update', { token: TOKA, groundId: 'qa_bay', openFrom: 'not-a-date' })).status === 400);
+  check('开始晚于结束被拒 400', (await POST(B + '/api/admin/ground/update', { token: TOKA, groundId: 'qa_bay', openFrom: Date.now() + 10000, openTo: Date.now() })).status === 400);
+  const winPast = await POST(B + '/api/admin/ground/update', { token: TOKA, groundId: 'qa_bay', openFrom: Date.now() - 7200000, openTo: Date.now() - 3600000 });
+  check('限时窗口已过期 → 自动锁定', winPast.status === 200 && winPast.data.ground.locked === true, JSON.stringify(winPast.data.ground && winPast.data.ground.locked));
+  const winFuture = await POST(B + '/api/admin/ground/update', { token: TOKA, groundId: 'qa_bay', openFrom: Date.now() + 3600000, openTo: Date.now() + 7200000 });
+  check('未到开窗时间 → 保持锁定', winFuture.data.ground.locked === true);
+  const winOpen = await POST(B + '/api/admin/ground/update', { token: TOKA, groundId: 'qa_bay', openFrom: Date.now() - 1000, openTo: Date.now() + 3600000 });
+  check('窗口内 → 自动开放', winOpen.data.ground.locked === false);
+  const lockedStart = await POST(B + '/api/admin/ground/update', { token: TOKA, groundId: 'qa_bay', openFrom: Date.now() - 100000, openTo: Date.now() - 1000 });
+  void lockedStart;
+  const lockStart2 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'qa_bay', spotId: 'main' });
+  check('限时关闭期间开钓被拒（尚未开放）', lockStart2.status === 400 && /尚未开放/.test(lockStart2.data.error || ''), JSON.stringify(lockStart2.data));
+  check('清除限时窗口（恢复常驻）', (await POST(B + '/api/admin/ground/update', { token: TOKA, groundId: 'qa_bay', clearWindow: true })).status === 200);
+  const openStart = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'qa_bay', spotId: 'main' });
+  check('清除限时后可正常开钓（新渔场新钓点亮了）', openStart.status === 200 && openStart.data.interval > 0, JSON.stringify(openStart.data));
+  await POST(B + '/api/fishing/stop', { token: TK2B });
+  // 钓点增删
+  check('内置渔场新增钓点（一键填充材料工坊 11 条）', (await POST(B + '/api/admin/spot/add', { token: TOKA, groundId: 'stillwater', id: 'qa_spot', name: 'QA 钓点', preset: 'material', fill: true })).status === 200);
+  const grPub2 = await GET(B + '/api/grounds');
+  const stW = (grPub2.data.grounds || []).find(g => g.id === 'stillwater');
+  check('新钓点进入目录且池按预设填充', !!stW && stW.spots.some(s => s.id === 'qa_spot' && s.pool.length === 11));
+  check('同名钓点被拒 409', (await POST(B + '/api/admin/spot/add', { token: TOKA, groundId: 'stillwater', id: 'qa_spot', name: 'dup' })).status === 409);
+  check('钓点 ID 非法被拒 400', (await POST(B + '/api/admin/spot/add', { token: TOKA, groundId: 'stillwater', id: '9bad', name: 'x' })).status === 400);
+  check('删除自定义钓点', (await POST(B + '/api/admin/spot/remove', { token: TOKA, groundId: 'stillwater', spotId: 'qa_spot' })).status === 200);
+  const grPub3 = await GET(B + '/api/grounds');
+  check('删除后目录中不再有该钓点', !((grPub3.data.grounds || []).find(g => g.id === 'stillwater') || { spots: [] }).spots.some(s => s.id === 'qa_spot'));
+  // 内置钓点删除 → 可恢复
+  const stSpots = ((grPub3.data.grounds || []).find(g => g.id === 'stillwater') || { spots: [] }).spots;
+  const victimSpot = stSpots[stSpots.length - 1].id;
+  check('删除内置钓点（标记可恢复）', (await POST(B + '/api/admin/spot/remove', { token: TOKA, groundId: 'stillwater', spotId: victimSpot })).status === 200);
+  check('恢复内置钓点', (await POST(B + '/api/admin/ground/restore', { token: TOKA, groundId: 'stillwater', spotId: victimSpot })).status === 200);
+  const grPub4 = await GET(B + '/api/grounds');
+  check('恢复后钓点回到目录', ((grPub4.data.grounds || []).find(g => g.id === 'stillwater') || { spots: [] }).spots.some(s => s.id === victimSpot));
+  check('恢复不存在的钓点被拒 404', (await POST(B + '/api/admin/ground/restore', { token: TOKA, groundId: 'stillwater', spotId: 'nope' })).status === 404);
+  // 渔场删除：自定义直接移除、内置可恢复
+  check('删除自定义渔场', (await POST(B + '/api/admin/ground/remove', { token: TOKA, groundId: 'qa_bay' })).status === 200);
+  check('删除内置渔场（标记可恢复）', (await POST(B + '/api/admin/ground/remove', { token: TOKA, groundId: 'rapids' })).status === 200);
+  const grPub5 = await GET(B + '/api/grounds');
+  check('删除后两个渔场都不在目录', !(grPub5.data.grounds || []).some(g => g.id === 'qa_bay' || g.id === 'rapids'), String((grPub5.data.grounds || []).length));
+  check('恢复内置渔场', (await POST(B + '/api/admin/ground/restore', { token: TOKA, groundId: 'rapids' })).status === 200);
+  const grPub6 = await GET(B + '/api/grounds');
+  check('恢复后内置渔场回到目录', (grPub6.data.grounds || []).some(g => g.id === 'rapids'));
+  // 一键填充预设接口
+  const pr = await POST(B + '/api/admin/pool/preset', { token: TOKA, preset: 'rare' });
+  check('一键填充预设接口返回条目与说明', pr.status === 200 && pr.data.pool.length === 13 && !!pr.data.presets.rare);
+  check('未知预设被拒 400', (await POST(B + '/api/admin/pool/preset', { token: TOKA, preset: 'nope' })).status === 400);
+  check('非管理员读取预设被拒 403', (await POST(B + '/api/admin/pool/preset', { token: TK2B, preset: 'rare' })).status === 403);
+
+  // ---------- 11c. 横幅滚播状态与停止 ----------
+  section('11c. 横幅滚播状态与停止');
+  const bnAdd = await POST(B + '/api/admin/banner/add', { token: TOKA, content: 'QA 滚播横幅', duration: 30 });
+  check('发布横幅成功', bnAdd.status === 200 && !!bnAdd.data.banner.id);
+  const bnId = bnAdd.data.banner.id;
+  check('未登录上报滚播被拒 401', (await POST(B + '/api/banner/playing', { id: bnId })).status === 401);
+  check('玩家上报滚播状态成功', (await POST(B + '/api/banner/playing', { token: TK2B, id: bnId })).status === 200);
+  const bnList = await GET(B + '/api/admin/banner?token=' + TOKA);
+  const playingRow = (bnList.data.playing || []).find(p => p.id === bnId);
+  check('后台可见滚播人数（1 人）与在线数', !!playingRow && playingRow.count === 1 && typeof bnList.data.online === 'number', JSON.stringify(bnList.data.playing));
+  check('非管理员停止滚播被拒 403', (await POST(B + '/api/admin/banner/stop', { token: TK2B, id: bnId })).status === 403);
+  check('停止滚播成功', (await POST(B + '/api/admin/banner/stop', { token: TOKA, id: bnId })).status === 200);
+  await sleep(350);
+  check('在线玩家收到 bannerStop 事件', sink2b.some(x => x.ev.type === 'bannerStop' && x.ev.id === bnId), sink2b.slice(-5).map(x => x.ev.type).join(','));
+  check('停止后滚播列表不再显示该横幅', !((await GET(B + '/api/admin/banner?token=' + TOKA)).data.playing || []).some(p => p.id === bnId));
+  check('清空横幅队列', (await POST(B + '/api/admin/banner/clear', { token: TOKA })).status === 200);
+  check('清空后队列为空', ((await GET(B + '/api/banner')).data.banners || []).length === 0);
+
+  // ---------- 11d. 反馈奖励 ----------
+  section('11d. 反馈奖励');
+  // 用全新账号（adm_p2 在第 7 节已提交过反馈，24h CD 会挡住第二次）
+  const rgRw = await POST(B + '/api/register', { username: 'qa_reward', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  const TKR = rgRw.data.token;
+  const fbSub11 = await POST(B + '/api/feedback/submit', { token: TKR, text: 'QA 奖励反馈' });
+  check('玩家提交反馈（奖励前置）', fbSub11.status === 200 && !!fbSub11.data.entry.id);
+  const fbId11 = fbSub11.data.entry.id;
+  check('奖励金额非法被拒 400', (await POST(B + '/api/admin/feedback/reward', { token: TOKA, id: fbId11, coins: -5 })).status === 400);
+  check('奖励不存在的反馈被拒 404', (await POST(B + '/api/admin/feedback/reward', { token: TOKA, id: 'nope', coins: 10 })).status === 404);
+  check('非管理员奖励被拒 403', (await POST(B + '/api/admin/feedback/reward', { token: TKR, id: fbId11, coins: 10 })).status === 403);
+  const coinsBeforeFb = (await GET(B + '/api/me?token=' + TKR)).data.coins;
+  const rw11 = await POST(B + '/api/admin/feedback/reward', { token: TOKA, id: fbId11, coins: 888, note: 'QA 奖励' });
+  check('奖励反馈成功且金币到账', rw11.status === 200 && rw11.data.playerCoins === coinsBeforeFb + 888, JSON.stringify(rw11.data));
+  const fbRow11 = ((await GET(B + '/api/admin/feedback?token=' + TOKA)).data.feedback || []).find(f => f.id === fbId11);
+  check('反馈记录带奖励信息（金额/备注/操作人）', !!(fbRow11 && fbRow11.reward && fbRow11.reward.coins === 888 && fbRow11.reward.note === 'QA 奖励' && fbRow11.reward.by), JSON.stringify(fbRow11 && fbRow11.reward));
+  check('玩家侧反馈列表带奖励信息', !!(await GET(B + '/api/feedback?token=' + TKR)).data.mine.find(f => f.id === fbId11).reward);
+
   // ---------- 持久化（重启服务器） ----------
   section('12. 配置持久化');
+  // 留一个非默认抛竿间隔，验证 config.json 落盘（9f 结束时已恢复默认）
+  await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 2500, castMinMs: 700 });
+  // 留一个自定义渔场 + 限时窗口，验证 groundCfg 落盘并重算锁定状态
+  await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'qa_keep', name: 'QA 常驻湾', spotName: '浅滩', preset: 'economy', fill: true });
+  await POST(B + '/api/admin/ground/update', { token: TOKA, groundId: 'qa_keep', openFrom: Date.now() - 60000, openTo: Date.now() + 86400000 });
   killTree(srv);
-  await sleep(800);
   srv = start(TMP_DATA);
   check('重启成功', await waitReady());
   const la2 = await POST(B + '/api/admin/login', { username: 'adm_root', password: 'pass1234' });
@@ -400,12 +572,19 @@ async function waitReady() {
   check('通知等级重启后仍在（none）', w2.data.notifyLevel === 'none');
   check('钓场锁定重启后仍在（frostmoon 锁定）', w2.data.grounds.find(g => g.id === 'frostmoon').locked === true);
   check('基础双钓率重启后仍在（0.5）', w2.data.doubleBase === 0.5, String(w2.data.doubleBase));
+  check('抛竿间隔重启后仍在（2500 / 700）', w2.data.castBaseMs === 2500 && w2.data.castMinMs === 700, JSON.stringify({ b: w2.data.castBaseMs, m: w2.data.castMinMs }));
+  const keepG = (w2.data.grounds || []).find(g => g.id === 'qa_keep');
+  check('自定义渔场与限时窗口重启后仍在（窗口内开放）', !!keepG && !!keepG.openTo && keepG.locked === false, JSON.stringify(keepG && { locked: keepG.locked, openTo: keepG.openTo }));
+  check('自定义渔场的钓点与掉落池重启后仍在', !!keepG && keepG.spots.length === 1 && keepG.spots[0].pool.length === 13, keepG ? String(keepG.spots[0].pool.length) : 'none');
 
-  es1.destroy(); es2.destroy(); // 关闭 SSE 套接字，否则进程不会退出
+  es1.destroy(); es2.destroy(); es2b.destroy(); // 关闭 SSE 套接字，否则进程不会退出
   console.log('\n============================');
   console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
   if (fail) { console.log('失败项：\n  - ' + failed.join('\n  - ')); process.exitCode = 1; }
 })().catch(e => { console.error('测试执行异常：', e); process.exitCode = 1; }).finally(() => {
   try { killTree(srv); } catch (e) {}
   try { fs.rmSync(TMP_DATA, { recursive: true, force: true }); } catch (e) {}
+  // 显式退出：SSE 套接字 / 子进程句柄可能让事件循环继续存活，
+  // 会让 run-all 一直等不到进程退出（表现为「套件卡住、无汇总」）
+  setTimeout(function () { process.exit(process.exitCode || 0); }, 200);
 });

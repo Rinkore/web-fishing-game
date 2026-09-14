@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.8.9';
+  const VERSION = 'v0.10.0';
   const BUILD = '2026-09-14';
 
   // ---- 渔获定义 ----
@@ -347,22 +347,30 @@
     return weightedKey(componentCfg.qualityWeights, 'common');
   }
   // 数值 roll：在 [min,max] 内按模型取值（整数）
+  // 0 值词条无意义（+0% 加成）：roll 到 0 会被拒绝并重 roll 一次；
+  // 若两次都为 0（区间跨越 0 时仍可能），落到区间内最近的 ±1，保证不产生 0 值词条。
   function rollAffixValue(min, max, model) {
     if (max <= min) return min;
     const span = max - min;
-    let r;
-    if (model === 'normal') {
-      // 正态：均值居中、标准差取 1/6 区间，截断在 [min,max]
-      let u1 = Math.random() || 1e-9, u2 = Math.random();
-      const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-      r = Math.max(0, Math.min(1, 0.5 + z / 6));
-    } else if (model === 'skew') {
-      // 偏态：偏向低值（平方分布）
-      r = Math.pow(Math.random(), 2);
-    } else {
-      r = Math.random();
+    function draw() {
+      let r;
+      if (model === 'normal') {
+        // 正态：均值居中、标准差取 1/6 区间，截断在 [min,max]
+        let u1 = Math.random() || 1e-9, u2 = Math.random();
+        const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        r = Math.max(0, Math.min(1, 0.5 + z / 6));
+      } else if (model === 'skew') {
+        // 偏态：偏向低值（平方分布）
+        r = Math.pow(Math.random(), 2);
+      } else {
+        r = Math.random();
+      }
+      return min + Math.round(r * span);
     }
-    return min + Math.round(r * span);
+    let v = draw();
+    if (v === 0) v = draw();
+    if (v === 0) v = max > 0 ? 1 : (min < 0 ? -1 : 0);
+    return v;
   }
   // 某底材某词缀的实际数值区间（管理后台可覆盖）
   function affixRangeOf(baseId, affix) {
@@ -601,7 +609,7 @@
     { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true },
     { id: 'records', name: '渔获记录', icon: '🏆', implemented: true },
     { id: 'feedback', name: '反馈意见', icon: '📮', implemented: true },
-    { id: 'collect', name: '收藏', icon: '⭐', implemented: false },
+    { id: 'logs', name: '日志', icon: '📜', implemented: true },
   ];
 
   // ---- 物品索引（供 UI / 引擎统一查询） ----

@@ -6,6 +6,8 @@
  */
 'use strict';
 const os = require('os');
+// 轮询等待工具（测试内部不依赖固定 sleep）：就绪即继续，超时才失败
+const { waitFor, waitHttp, waitPage } = require('./_util.js');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const url = require('url');
@@ -23,6 +25,16 @@ function check(name, cond, extra) {
   else { fail++; failed.push(name); console.log('  FAIL  ' + name + (extra ? '  -> ' + extra : '')); }
 }
 function section(t) { console.log('\n=== ' + t + ' ==='); }
+// 递归复制目录：不用 fs.cpSync（Windows 下复制含大文件的目录会让 node 进程 fail-fast 崩溃，
+// 退出码 0xC0000409；同样的内容放临时目录却正常，属环境/文件系统怪癖），逐文件复制稳定可靠。
+function copyDirSafe(src, dst) {
+  fs.mkdirSync(dst, { recursive: true });
+  fs.readdirSync(src, { withFileTypes: true }).forEach(function (e) {
+    const s = path.join(src, e.name), d = path.join(dst, e.name);
+    if (e.isDirectory()) copyDirSafe(s, d);
+    else fs.copyFileSync(s, d);
+  });
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Windows 下 kill() 偶发不生效，用 taskkill 强制结束进程树
 function killTree(p) { try { spawnSync('taskkill', ['/F', '/T', '/PID', String(p.pid)], { stdio: 'ignore' }); } catch (e) {} }
@@ -66,9 +78,19 @@ function sse(tok, port, sink) {
 
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
+// 启动前清理端口占用：Windows 下测试进程被强杀时 taskkill 可能失败，残留的旧服务器会占住端口，
+// 导致下一次运行的所有请求打到「陈旧的服务器实例」上（表现为大面积 未登录/数据不符）。
+function killPortOccupant(port) {
+  try {
+    spawnSync('powershell', ['-NoProfile', '-Command',
+      "(Get-NetTCPConnection -State Listen -LocalPort " + port + " -ErrorAction SilentlyContinue).OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }"],
+      { stdio: 'ignore' });
+  } catch (e) {}
+}
 function start(port) {
   // FISHING_DEV=1：开放 /api/dev/*（确定性回归用）；正常部署（run.bat）不开启
   // FISHING_DATA_DIR：测试数据写入临时目录，不触碰真实 backend/data
+  killPortOccupant(port);
   return spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(port), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }) });
 }
 
@@ -98,13 +120,35 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   })());
   check('组件实例规范化：词条乱序仍得同签名', D.instanceId('rod_bamboo', 'rare', [{ type: 'size', value: -3 }, { type: 'speed', value: 12 }]) === D.instanceId('rod_bamboo', 'rare', [{ type: 'speed', value: 12 }, { type: 'size', value: -3 }]));
   check('底材（模板）不可直接出售，组件实例可出售', !D.isSellable('rod_bamboo') && D.isSellable(D.instanceId('rod_bamboo', 'common', [{ type: 'speed', value: 10 }])));
-  check('导航已实现入口 10 个（钓鱼/钓竿配置/渔场/背包/商店/市集/交易/图鉴/大鱼榜/反馈）', D.NAV.filter(n => n.implemented).length === 10, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
-  check('导航未实现占位入口 2 个（商城/收藏）', D.NAV.filter(n => !n.implemented).length === 2, 'got ' + D.NAV.filter(n => !n.implemented).map(n => n.id).join(','));
+  check('导航已实现入口 11 个（钓鱼/钓竿配置/渔场/背包/商店/市集/交易/图鉴/大鱼榜/反馈/日志）', D.NAV.filter(n => n.implemented).length === 11, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
+  check('导航未实现占位入口 1 个（商城）', D.NAV.filter(n => !n.implemented).length === 1 && D.NAV.find(n => !n.implemented).id === 'mall', 'got ' + D.NAV.filter(n => !n.implemented).map(n => n.id).join(','));
+  check('「收藏」占位已替换为「日志」功能入口', !D.NAV.some(n => n.id === 'collect') && !!D.NAV.find(n => n.id === 'logs' && n.implemented));
   check('共享目录暴露版本号', typeof D.VERSION === 'string' && /^v\d/.test(D.VERSION), String(D.VERSION));
+  // roll=0 拒绝：0 值词条无意义，roll 到 0 重 roll 一次；仍为 0 时落到区间内最近 ±1
+  check('词条 roll 不产生 0 值（跨 0 区间 3000 次抽样）', (function () {
+    for (let i = 0; i < 3000; i++) if (D.rollAffixValue(-5, 5, 'linear') === 0) return false;
+    for (let i = 0; i < 3000; i++) if (D.rollAffixValue(-3, 6, 'normal') === 0) return false;
+    for (let i = 0; i < 3000; i++) if (D.rollAffixValue(-8, 2, 'skew') === 0) return false;
+    return true;
+  })());
+  check('词条 roll 仍落在区间内（含负值区间）', (function () {
+    for (let i = 0; i < 2000; i++) {
+      const v = D.rollAffixValue(-9, -2, 'linear');
+      if (v < -9 || v > -2) return false;
+    }
+    return true;
+  })());
+  check('roll=0 修复后组件掉落无 0 值词条（800 件）', (function () {
+    for (let i = 0; i < 800; i++) {
+      const c = D.rollComponent();
+      if (c.affixes.some(a => a.value === 0)) return false;
+    }
+    return true;
+  })());
 
   // ---------- 2. 服务端钓鱼循环 ----------
   let srv = start(P1);
-  await sleep(900);
+  check('服务器就绪（轮询 /shop）', await waitHttp('http://localhost:' + P1 + '/shop', { timeout: 20000 }));
 
   const ra = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_a', password: 'pass1234', name: '测试甲', qq: '10007' });
   const rb = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_b', password: 'pass5678', name: '测试乙', qq: '10008' });
@@ -135,7 +179,8 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
 
   const invBefore = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
   const catchMark = sinkA.length;
-  await sleep(13000); // 基础间隔 3s → 约 4 竿、约 90% 上钩率，至少 2 次渔获（留足概率波动余量，降低偶发失败）
+  // 轮询等待至少 2 次渔获（基础间隔 3s、约 90% 上钩率）：达标即继续，超时才判定失败
+  await waitFor(() => sinkA.slice(catchMark).filter(m => m.type === 'catch').length >= 2, { timeout: 25000, interval: 120 });
   const myCatches = sinkA.slice(catchMark).filter(m => m.type === 'catch');
   check('服务器循环自动抛竿（13s 内 ≥2 次渔获推送）', myCatches.length >= 2, String(myCatches.length));
   check('渔获含物品与钓点信息', myCatches.every(m => m.entry.item && m.entry.item.id && m.entry.ground === '静水湖'));
@@ -182,12 +227,9 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   // 近期渔获（recent）：换大件概率最高的礁石区（~54%/竿），轮询等待广播
   await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'sunset', spotId: 'reef' });
   const recentMark = sinkB.length;
-  let sawRecent = false, waitedRecent = 0;
-  while (!sawRecent && waitedRecent < 20000) {
-    await sleep(1000); waitedRecent += 1000;
-    sawRecent = sinkB.slice(recentMark).some(m => m.type === 'players' && m.players.some(p => p.id === 'tester_a' && p.recent));
-  }
-  check('近期渔获（recent）出现在玩家列表', sawRecent, '等待 ' + waitedRecent / 1000 + 's');
+  const sawRecent = await waitFor(() => sinkB.slice(recentMark).some(m => m.type === 'players' && m.players.some(p => p.id === 'tester_a' && p.recent)),
+    { timeout: 20000, interval: 300 });
+  check('近期渔获（recent）出现在玩家列表', sawRecent, '超时 20s');
   const codexAfter = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.codex || {};
   check('图鉴记录个人最大/最小体型', Object.keys(codexAfter).some(function (k) { return codexAfter[k].max != null && codexAfter[k].min != null; }));
 
@@ -240,6 +282,41 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('未知部位被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'nope', compId: null })).status === 400);
   const bdH = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: hookInst });
   check('装备精钢鱼钩（大鱼+8%；钓速=电动25+钩-5=20，负词条生效）', bdH.status === 200 && bdH.data.effects.big === 8 && bdH.data.effects.speed === 20, JSON.stringify(bdH.data.effects));
+
+  section('组件订阅提醒：条件匹配 + 定向推送 subalert');
+  // 停止 A 的自动钓鱼，避免随机掉落干扰判定（本段只经 dev 接口注入组件）
+  await POST('http://localhost:' + P1 + '/api/fishing/stop', { token: tokA });
+  const subInst = D.instanceId('reel_electric', 'common', [{ type: 'speed', value: 25 }]);
+  const subOtherBase = D.instanceId('hook_steel', 'common', [{ type: 'speed', value: 25 }]);
+  const subLowVal = D.instanceId('reel_electric', 'common', [{ type: 'speed', value: 12 }]);
+  let subMark = sinkA.length;
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: subInst } });
+  await sleep(250);
+  check('未配置订阅时不推送 subalert', !sinkA.slice(subMark).some(m => m.type === 'subalert'));
+  check('订阅非法词条类型被拒 400', (await POST('http://localhost:' + P1 + '/api/subscribe', { token: tokA, on: true, affixType: 'nope' })).status === 400);
+  check('订阅非法底材被拒 400', (await POST('http://localhost:' + P1 + '/api/subscribe', { token: tokA, on: true, baseId: 'nope' })).status === 400);
+  check('订阅数值区间反了被拒 400', (await POST('http://localhost:' + P1 + '/api/subscribe', { token: tokA, on: true, min: 10, max: 5 })).status === 400);
+  const subSave = await POST('http://localhost:' + P1 + '/api/subscribe', { token: tokA, on: true, baseId: 'reel_electric', affixType: 'speed', min: 20, max: 30, badge: true, blink: true });
+  check('订阅保存成功（条件回显）', subSave.status === 200 && subSave.data.cfg.on === true && subSave.data.cfg.baseId === 'reel_electric' && subSave.data.cfg.min === 20 && subSave.data.cfg.max === 30, JSON.stringify(subSave.data));
+  const subGet = await GET('http://localhost:' + P1 + '/api/subscribe?token=' + tokA);
+  check('订阅随账号持久化（GET 回读一致）', subGet.status === 200 && subGet.data.cfg.affixType === 'speed' && subGet.data.cfg.blink === true);
+  subMark = sinkA.length;
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: subInst } });
+  await sleep(250);
+  check('命中订阅推送 subalert（含底材与词条数值）', sinkA.slice(subMark).some(m => m.type === 'subalert' && m.item && m.item.baseId === 'reel_electric' && (m.item.affixes || []).some(a => a.type === 'speed' && a.value === 25)));
+  subMark = sinkA.length;
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: subOtherBase } });
+  await sleep(250);
+  check('底材不匹配不推送', !sinkA.slice(subMark).some(m => m.type === 'subalert'));
+  subMark = sinkA.length;
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: subLowVal } });
+  await sleep(250);
+  check('词条数值超出区间不推送', !sinkA.slice(subMark).some(m => m.type === 'subalert'));
+  await POST('http://localhost:' + P1 + '/api/subscribe', { token: tokA, on: false });
+  subMark = sinkA.length;
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: subInst } });
+  await sleep(250);
+  check('关闭订阅后不再推送', !sinkA.slice(subMark).some(m => m.type === 'subalert'));
 
   section('卸下组件放回背包（不再摧毁）');
   const bdOff = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: null });
@@ -433,26 +510,26 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const projData = path.join(ROOT, 'backend', 'data');
   let projBackup = null;
   try {
-    if (fs.existsSync(projData)) { projBackup = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-proj-')); fs.cpSync(projData, projBackup, { recursive: true }); }
+    if (fs.existsSync(projData)) { projBackup = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-proj-')); copyDirSafe(projData, projBackup); }
     fs.rmSync(projData, { recursive: true, force: true });
     fs.mkdirSync(path.join(projData, 'accounts'), { recursive: true });
     fs.writeFileSync(path.join(projData, 'accounts', 'reloctest.json'),
       JSON.stringify({ username: 'reloctest', salt: 'aa', pwHash: 'x', name: '搬迁测试', coins: 777, inventory: {}, bd: {}, codex: {}, catchCount: 0, createdAt: 1 }));
 
-    const env8 = Object.assign({}, process.env, { PORT: String(P1 + 40), FISHING_DEV: '1', HOME: HOME, USERPROFILE: HOME });
+    const env8 = Object.assign({}, process.env, { PORT: String(P1 + 80), FISHING_DEV: '1', HOME: HOME, USERPROFILE: HOME });
     delete env8.FISHING_DATA_DIR; // 走默认目录解析
     srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: env8 });
     await sleep(1400);
     check('数据目录默认解析到用户文档/web-fishing-game', fs.existsSync(EXPECT_DATA));
     check('旧项目内数据已搬迁到文档目录', fs.existsSync(path.join(EXPECT_DATA, 'accounts', 'reloctest.json')));
-    const relocVer = await GET('http://localhost:' + (P1 + 40) + '/api/version');
+    const relocVer = await GET('http://localhost:' + (P1 + 80) + '/api/version');
     check('搬迁后服务器正常启动并响应', relocVer.status === 200 && !!relocVer.data.version);
     killTree(srv);
   } finally {
     // 复原：删掉测试造的旧目录，恢复原数据（即使上面抛错也保证执行）
     killTree(srv);
     try { fs.rmSync(projData, { recursive: true, force: true }); } catch (e) {}
-    if (projBackup) { try { fs.cpSync(projBackup, projData, { recursive: true }); } catch (e) {} }
+    if (projBackup) { try { copyDirSafe(projBackup, projData); } catch (e) {} }
     try { fs.rmSync(HOME, { recursive: true, force: true }); } catch (e) {}
   }
 

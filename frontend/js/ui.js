@@ -66,16 +66,20 @@ window.UI = (function () {
   // ---- 顶部横幅：破纪录播报 + 管理后台公告队列共用同一滚动条 ----
   // 规则：等整段文字完整离开屏幕（一遍动画走完）后才收起；多条内容排队依次播放。
   let recordBannerTimer = null;
-  let bannerQueue = [];      // 待播放队列 [{text, duration}]
+  let bannerQueue = [];      // 待播放队列 [{id, text, duration}]
   let bannerPlaying = false;
   let bannerRunId = 0;       // 每次 playMarquee 递增；旧轨道的动画事件作废，避免取消新横幅
+  let currentBannerId = null; // 正在滚播的公告横幅 id（后台停止/统计用）
 
-  // 播放单条滚动内容（duration 秒；到点或动画结束即收起并回调）
-  function playMarquee(text, duration, done) {
+  // 播放单条滚动内容（duration 秒；到点或动画结束即收起并回调）；id = 管理后台横幅 id（可无）
+  function playMarquee(text, duration, done, id) {
     const b = $('record-banner');
     if (!b) { if (done) done(); return; }
     if (recordBannerTimer) { clearTimeout(recordBannerTimer); recordBannerTimer = null; }
     const runId = ++bannerRunId;
+    currentBannerId = id || null;
+    // 上报「正在滚播」给服务器（后台可看到当前有多少人在看这条横幅）
+    if (id && window.Net && window.Net.bannerPlaying) { try { window.Net.bannerPlaying(id); } catch (e) {} }
     const rep = esc(text) + '　　✦　　';
     b.innerHTML = '';
     const track = el('span', 'rb-track', rep + rep + rep + rep + rep);
@@ -88,10 +92,12 @@ window.UI = (function () {
       if (runId !== bannerRunId || finished) return;
       finished = true;
       if (recordBannerTimer) { clearTimeout(recordBannerTimer); recordBannerTimer = null; }
+      if (currentBannerId === id) currentBannerId = null;
       b.classList.remove('show');
       document.body.classList.remove('banner-open');
       recordBannerTimer = setTimeout(function () { if (runId === bannerRunId) b.innerHTML = ''; if (done) done(); }, 400);
     }
+    marqueeFinish = finish;
     // 动画时长 = 按内容宽度推算（约 120px/s），保证字全部滚出屏幕；管理页可指定 duration 作为最短时长
     const w = Math.max(600, track.offsetWidth || 1200);
     const scrollMs = Math.max(6000, Math.min(60000, Math.round(w / 120) * 1000));
@@ -101,6 +107,7 @@ window.UI = (function () {
     track.addEventListener('animationcancel', finish);
     recordBannerTimer = setTimeout(finish, ms + 800); // 兜底
   }
+  let marqueeFinish = null; // 当前滚动条的结束函数（播放下一轮/被停止时清理用）
 
   // 破纪录播报（不入队列，立即插播）
   function showRecordBanner(rec) {
@@ -110,7 +117,7 @@ window.UI = (function () {
 
   // 管理后台公告队列：入队并顺序播放
   function playBannerQueue(list) {
-    (list || []).forEach(function (bn) { bannerQueue.push({ text: bn.content, duration: bn.duration }); });
+    (list || []).forEach(function (bn) { bannerQueue.push({ id: bn.id, text: bn.content, duration: bn.duration }); });
     pumpBannerQueue();
   }
   function pumpBannerQueue() {
@@ -118,7 +125,19 @@ window.UI = (function () {
     const next = bannerQueue.shift();
     if (!next) return;
     bannerPlaying = true;
-    playMarquee(next.text, next.duration, function () { bannerPlaying = false; pumpBannerQueue(); });
+    playMarquee(next.text, next.duration, function () { bannerPlaying = false; pumpBannerQueue(); }, next.id);
+  }
+  // 后台「停止滚播」：立即中止正在播的那条，并把未播的同类从队列中移除
+  function onBannerStop(id) {
+    if (!id) return;
+    bannerQueue = bannerQueue.filter(function (bn) { return bn.id !== id; });
+    seenBannerIds[id] = true; // 标记已见，避免随后的 banner 广播把它重新入队
+    if (currentBannerId === id && marqueeFinish) {
+      const f = marqueeFinish;
+      marqueeFinish = null;
+      f();
+      toast('管理员停止了该公告横幅');
+    }
   }
   // 收到横幅更新：把服务器队列中尚未播放（本会话未见）的条目入队
   let seenBannerIds = {};
@@ -135,9 +154,11 @@ window.UI = (function () {
     if (fresh.length) playBannerQueue(fresh);
     updateFaviconBlink(!!cfg.blink && list.length > 0, cfg.blinkTitle);
   }
-  // ---- 浏览器图标闪烁：有横幅内容且开启时，标题与 favicon 交替提示 ----
+  // ---- 浏览器图标闪烁：公告横幅（黄）与组件订阅提醒（红）两路来源共用一套闪烁 ----
   const baseTitle = document.title;
   let blinkTimer = null, blinkOn = false;
+  let bannerBlink = { on: false, title: '' }; // 公告横幅闪烁状态（onBanners 维护）
+  let subUnseen = 0;                          // 组件订阅提醒未读数（背包红标 / 图标闪烁）
   function makeFaviconDot(color) {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">' +
       '<circle cx="16" cy="16" r="13" fill="' + color + '"/></svg>';
@@ -148,17 +169,59 @@ window.UI = (function () {
     if (!l) { l = document.createElement('link'); l.rel = 'icon'; document.head.appendChild(l); }
     return l;
   }
-  function updateFaviconBlink(on, titleText) {
+  // 订阅提醒是否要求闪烁（未配置订阅 / 关闭闪烁时视为不闪）
+  function subBlinkOn() {
+    const cfg = S().subCfg;
+    return subUnseen > 0 && !!cfg && !!cfg.on && cfg.blink !== false;
+  }
+  function updateBlink() {
     if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null; }
     const link = ensureFaviconLink();
-    if (!on) { document.title = baseTitle; blinkOn = false; link.href = makeFaviconDot('%232dd4bf'); return; }
-    const tip = titleText || '📢 有新公告';
+    const subOn = subBlinkOn();
+    if (!subOn && !bannerBlink.on) { document.title = baseTitle; blinkOn = false; link.href = makeFaviconDot('%232dd4bf'); return; }
+    const tip = subOn ? ('🎒 订阅组件到货 ×' + subUnseen) : (bannerBlink.title || '📢 有新公告');
+    const color = subOn ? '%23ef4444' : '%23fbbf24';
     blinkTimer = setInterval(function () {
       blinkOn = !blinkOn;
       document.title = blinkOn ? tip : baseTitle;
-      link.href = makeFaviconDot(blinkOn ? '%23fbbf24' : '%232dd4bf');
+      link.href = makeFaviconDot(blinkOn ? color : '%232dd4bf');
     }, 800);
   }
+  // 公告横幅入口（onBanners 与登出清理共用；保持原签名）
+  function updateFaviconBlink(on, titleText) {
+    bannerBlink = { on: !!on, title: titleText || '' };
+    updateBlink();
+  }
+
+  // ---- 日志：记录玩家收到的服务器消息（弹窗 / 公告 / 交易 / 纪录 / 订阅提醒）----
+  // 前端本地持久化（localStorage 按账号分开）上限 300 条，不占服务器存储。
+  const LOG_KEEP = 300;
+  const LOG_KINDS = { system: ['🖥', '系统'], trade: ['✅', '交易'], record: ['🏆', '纪录'], subscribe: ['🔔', '订阅'] };
+  let msgLog = [];
+  let msgLogOwner = null;
+  function logKeyOf() { const me = S().me; return me && me.id ? 'fishing_log_' + me.id : null; }
+  function loadLog() {
+    const k = logKeyOf();
+    if (!k) { msgLog = []; msgLogOwner = null; return; }
+    if (msgLogOwner === k) return;
+    msgLogOwner = k;
+    msgLog = [];
+    try { const raw = localStorage.getItem(k); if (raw) msgLog = JSON.parse(raw) || []; } catch (e) { msgLog = []; }
+  }
+  function saveLog() {
+    const k = logKeyOf();
+    if (!k) return;
+    try { localStorage.setItem(k, JSON.stringify(msgLog)); } catch (e) {}
+  }
+  // 记一条服务器消息（同一账号跨页面/刷新保留；不重复登录时不会串号）
+  function addLog(kind, msg) {
+    loadLog();
+    msgLog.unshift({ t: Date.now(), kind: LOG_KINDS[kind] ? kind : 'system', msg: String(msg == null ? '' : msg) });
+    if (msgLog.length > LOG_KEEP) msgLog.length = LOG_KEEP;
+    saveLog();
+    if (currentView === 'logs') renderView();
+  }
+  function clearLog() { loadLog(); msgLog = []; saveLog(); }
 
 
   // ---- 通用：调用网络接口并提示结果 ----
@@ -237,7 +300,7 @@ window.UI = (function () {
   let navSig = null;
   function renderNav() {
     const st = S();
-    const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0, st.me && st.me.admin ? 1 : 0].join('|');
+    const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0, st.me && st.me.admin ? 1 : 0, subUnseen].join('|');
     if (sig === navSig) return;
     navSig = sig;
     const nav = $('nav');
@@ -247,6 +310,8 @@ window.UI = (function () {
       let badge = '';
       if (item.id === 'fishing' && S().fishing.active) badge = '<span class="nav-badge on">钓</span>';
       if (item.id === 'trade' && S().trade) badge = '<span class="nav-badge alert">!</span>';
+      // 组件订阅提醒：背包入口显示未读红标（进入背包即清零）
+      if (item.id === 'inventory' && subUnseen > 0) badge = '<span class="nav-badge unread">' + (subUnseen > 99 ? '99+' : subUnseen) + '</span>';
       b.innerHTML = '<span class="nav-icon">' + item.icon + '</span><span>' + esc(item.name) + '</span>' + badge +
         (item.implemented ? '' : '<span class="lock">🔒</span>');
       b.addEventListener('click', function () {
@@ -255,6 +320,7 @@ window.UI = (function () {
           return; // 未完成功能：不可跳转
         }
         currentView = item.id;
+        if (item.id === 'inventory') clearSubAlerts();
         renderNav();
         renderView();
         loadViewData(item.id);
@@ -1266,57 +1332,225 @@ window.UI = (function () {
   // ---- 背包视图（独立分页：分类明细 + 出售/上架 + 汇总 + 我的挂单） ----
   // 当前分类（模块级：重绘间保留）
   let invCategory = 'all';
-  let bulkSellOpen = false;
   let bulkCat = 'all';
   let bulkRar = 'all';
 
-  // 只更新一键出售的预估数字（不重绘页面，保住展开中的下拉框）
-  function updateBulkEst() {
-    const st = S();
-    const est = document.querySelector('.bulk-est');
-    if (!est) return;
-    const mIds = Object.keys(st.inventory).filter(function (id) {
-      const m = itemMeta(id);
-      return (bulkCat === 'all' || m.kind === bulkCat) && (bulkRar === 'all' || m.rarity === bulkRar);
+  // ---- 一键出售（预览弹窗）：筛选候选 → 逐项勾选/改数量 → 确认出售 ----
+  // 筛选：种类 / 品质 / 词条类型 + 数值区间（词条筛选只作用于组件，与市集同款交互）。
+  // 预览列表默认全选，可取消勾选或改数量；确认前可反复调整。出售顺序执行，避免并发覆盖资产。
+  let bulkAffixType = 'all';
+  let bulkAffixMin = '';
+  let bulkAffixMax = '';
+  let bulkSel = {};        // id -> 勾选数量（弹窗活动清单；改筛选时保留仍匹配的勾选）
+  let bulkFocus = false;   // 筛选控件聚焦时暂停广播重绘（同类：市集筛选聚焦暂停）
+  function bulkAffixActive() { return bulkAffixType !== 'all' || bulkAffixMin !== '' || bulkAffixMax !== ''; }
+  function bulkMatch(id) {
+    const m = itemMeta(id);
+    if (bulkCat !== 'all' && m.kind !== bulkCat) return false;
+    if (bulkRar !== 'all' && m.rarity !== bulkRar) return false;
+    if (!bulkAffixActive()) return true;
+    if (m.kind !== 'component' || !m.affixes) return false;
+    return m.affixes.some(function (a) {
+      if (bulkAffixType !== 'all' && a.type !== bulkAffixType) return false;
+      if (bulkAffixMin !== '' && a.value < Number(bulkAffixMin)) return false;
+      if (bulkAffixMax !== '' && a.value > Number(bulkAffixMax)) return false;
+      return true;
     });
-    const mCnt = mIds.reduce(function (s, id) { return s + st.inventory[id]; }, 0);
-    const unit = function (id) { const sp = st.shop && st.shop[id]; return sp ? sp.price : itemMeta(id).price; };
-    const mEst = mIds.reduce(function (s, id) { return s + unit(id) * st.inventory[id]; }, 0);
-    est.innerHTML = '将出售 <b>' + mIds.length + '</b> 种 / <b>' + mCnt + '</b> 件 · 预估收入 <b>' + Math.round(mEst) + '</b>💰<span class="muted">（按当前实时收购价）</span>';
-    const go = Array.from(document.querySelectorAll('.bulk-sub button')).find(function (b) { return b.textContent === '确认出售'; });
-    if (go) go.classList.toggle('locked', mCnt === 0);
   }
+  function bulkCandidates() {
+    const st = S();
+    return Object.keys(st.inventory).filter(bulkMatch).sort(function (a, b) {
+      const ca = itemMeta(a).kind === 'component' ? 1 : 0, cb = itemMeta(b).kind === 'component' ? 1 : 0;
+      if (ca !== cb) return ca - cb;
+      return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1);
+    });
+  }
+  function openBulkSellModal() {
+    const st = S();
+    bulkSel = {};
+    bulkCandidates().forEach(function (id) { bulkSel[id] = st.inventory[id] || 0; });
+    drawBulkModal(true);
+  }
+  // 重绘弹窗：rebuild=true 时重置勾选（打开弹窗），否则保留仍匹配的勾选、新候选默认全选
+  function drawBulkModal(rebuild) {
+    const st = S();
+    const cands = bulkCandidates();
+    if (rebuild) bulkSel = {};
+    Object.keys(bulkSel).forEach(function (id) { if (cands.indexOf(id) < 0) delete bulkSel[id]; });
+    cands.forEach(function (id) { if (bulkSel[id] == null) bulkSel[id] = st.inventory[id] || 0; });
+    closeOverlays();
+    const overlay = buildOverlay(function () { closeOverlays(); bulkFocus = false; });
+    const box = el('div', 'modal-box shop-modal bulk-sell-modal');
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">⚡ 一键出售 · 预览</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body"><div class="bulk-filters" id="bulk-filters"></div>' +
+      '<div class="bulk-rows" id="bulk-rows"></div>' +
+      '<div class="bulk-est" id="bulk-est"></div>' +
+      '<div class="cf-actions bulk-acts"><button class="mini" id="bulk-all">全选</button>' +
+      '<button class="mini" id="bulk-none">全不选</button><button class="mini" id="bulk-invert">反选</button>' +
+      '<button class="mini cf-cancel">取消</button><button class="mini primary-mini" id="bulk-go">确认出售</button></div>' +
+      '<div class="hint">预览列表默认全选；取消勾选或调整数量后点「确认出售」。词条 / 数值筛选只作用于组件。</div></div>';
+    box.querySelector('.modal-close').addEventListener('click', function () { closeOverlays(); bulkFocus = false; });
+    box.querySelector('.cf-cancel').addEventListener('click', function () { closeOverlays(); bulkFocus = false; });
 
-  // 一键出售：按种类/品质筛选后逐个卖给系统商店（顺序执行，避免并发覆盖资产）
-  function bulkSellMatching() {
-    const st = S();
-    const unit = function (id) { const sp = st.shop && st.shop[id]; return sp ? sp.price : itemMeta(id).price; };
-    const ids = Object.keys(st.inventory).filter(function (id) {
-      const m = itemMeta(id);
-      return (bulkCat === 'all' || m.kind === bulkCat) && (bulkRar === 'all' || m.rarity === bulkRar);
+    // ---- 筛选控件（种类 / 品质 / 词条 + 数值区间）----
+    const fwrap = box.querySelector('#bulk-filters');
+    const catSel = el('select', 'bulk-select');
+    [['all', '全部种类'], ['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['component', '🔧 组件']].forEach(function (kv) {
+      const o = el('option', null, kv[1]); o.value = kv[0]; catSel.appendChild(o);
     });
-    if (!ids.length) { toast('没有符合条件可出售的物品'); return; }
-    const totalCnt = ids.reduce(function (s, id) { return s + st.inventory[id]; }, 0);
-    const totalEst = ids.reduce(function (s, id) { return s + unit(id) * st.inventory[id]; }, 0);
-    confirmModal({
-      title: '批量出售',
-      html: '将出售 <b>' + ids.length + '</b> 种共 <b>' + totalCnt + '</b> 件物品，<br>按当前收购价预计收入 <b>💰' + Math.round(totalEst) + '</b>。',
-      okText: '确认出售',
-    }).then(function (ok) {
-      if (!ok) return;
-      bulkSellExec(ids);
+    catSel.value = bulkCat;
+    const rarSel = el('select', 'bulk-select');
+    [['all', '全部品质'], ['common', '普通'], ['big', '大鱼'], ['rare', '稀有'], ['epic', '史诗']].forEach(function (kv) {
+      const o = el('option', null, kv[1]); o.value = kv[0]; rarSel.appendChild(o);
     });
+    rarSel.value = bulkRar;
+    const affSel = el('select', 'bulk-select');
+    [['all', '全部词条']].concat(BD_AFFIXES.map(function (kv) { return [kv[0], kv[1]]; })).forEach(function (kv) {
+      const o = el('option', null, kv[1]); o.value = kv[0]; affSel.appendChild(o);
+    });
+    affSel.value = bulkAffixType;
+    const minInp = el('input', 'aff-num');
+    minInp.type = 'number'; minInp.placeholder = '最小值'; minInp.value = bulkAffixMin;
+    const maxInp = el('input', 'aff-num');
+    maxInp.type = 'number'; maxInp.placeholder = '最大值'; maxInp.value = bulkAffixMax;
+    fwrap.appendChild(el('span', 'bf-sort-label', '种类'));
+    fwrap.appendChild(catSel);
+    fwrap.appendChild(el('span', 'bf-sort-label', '品质'));
+    fwrap.appendChild(rarSel);
+    fwrap.appendChild(el('span', 'bf-sort-label', '词条'));
+    fwrap.appendChild(affSel);
+    fwrap.appendChild(minInp);
+    fwrap.appendChild(el('span', 'bf-sort-label', '~'));
+    fwrap.appendChild(maxInp);
+    if (bulkAffixActive()) {
+      const clr = el('button', 'mini', '清除词条筛选');
+      clr.addEventListener('click', function () { bulkAffixType = 'all'; bulkAffixMin = ''; bulkAffixMax = ''; drawBulkModal(false); });
+      fwrap.appendChild(clr);
+    }
+    // 聚焦时暂停广播重绘（SSE 广播不会重建弹窗 DOM）
+    [catSel, rarSel, affSel, minInp, maxInp].forEach(function (n) {
+      n.addEventListener('focus', function () { bulkFocus = true; });
+      n.addEventListener('blur', function () { bulkFocus = false; });
+    });
+    catSel.addEventListener('change', function () { bulkCat = catSel.value; drawBulkModal(false); });
+    rarSel.addEventListener('change', function () { bulkRar = rarSel.value; drawBulkModal(false); });
+    affSel.addEventListener('change', function () { bulkAffixType = affSel.value; drawBulkModal(false); });
+    function onNum() { bulkAffixMin = minInp.value; bulkAffixMax = maxInp.value; }
+    minInp.addEventListener('input', function () { onNum(); refreshBulkRows(); });
+    maxInp.addEventListener('input', function () { onNum(); refreshBulkRows(); });
+
+    // ---- 预览列表 ----
+    const rows = box.querySelector('#bulk-rows');
+    const est = box.querySelector('#bulk-est');
+    function selectedItems() {
+      return cands.filter(function (id) { return (bulkSel[id] || 0) > 0; })
+        .map(function (id) { return { id: id, qty: Math.max(1, Math.min(st.inventory[id] || 0, bulkSel[id])) }; });
+    }
+    function refreshEst() {
+      const items = selectedItems();
+      const cnt = items.reduce(function (s, it) { return s + it.qty; }, 0);
+      const money = items.reduce(function (s, it) { return s + unitPriceOf(it.id) * it.qty; }, 0);
+      est.innerHTML = '已选 <b>' + items.length + '</b> 种 / <b>' + cnt + '</b> 件 · 预估收入 <b>' + Math.round(money) + '</b>💰<span class="muted">（按当前实时收购价）</span>';
+      const go = box.querySelector('#bulk-go');
+      if (go) go.classList.toggle('locked', cnt === 0);
+      go.textContent = cnt > 0 ? ('确认出售（' + cnt + ' 件）') : '确认出售';
+    }
+    function buildRows() {
+      rows.innerHTML = '';
+      if (!cands.length) { rows.appendChild(el('div', 'hint', '没有符合筛选条件的物品。')); return; }
+      cands.forEach(function (id) {
+        const meta = itemMeta(id);
+        const have = st.inventory[id] || 0;
+        const row = el('div', 'bulk-row-item');
+        const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
+          ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
+              const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
+              const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+              const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
+              return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rangeTag + '</span>';
+            }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
+          : '';
+        row.innerHTML = '<label class="bk-check"><input type="checkbox" data-id="' + esc(id) + '"' + ((bulkSel[id] || 0) > 0 ? ' checked' : '') + ' /></label>' +
+          '<div class="bk-main"><div class="bk-name ' + qualityClass(meta) + '">' + esc(meta.name) + '</div>' + affHtml + '</div>' +
+          '<span class="bk-have">持有 ' + have + '</span>' +
+          '<input class="bk-qty" type="number" min="1" max="' + have + '" value="' + Math.max(1, Math.min(have, bulkSel[id] || have)) + '"' + ((bulkSel[id] || 0) > 0 ? '' : ' disabled') + ' />' +
+          '<span class="bk-unit">' + unitPriceOf(id) + '💰</span>' +
+          '<span class="bk-sub">' + Math.round(unitPriceOf(id) * Math.max(0, bulkSel[id] || 0)) + '💰</span>';
+        rows.appendChild(row);
+        const cb = row.querySelector('input[type=checkbox]');
+        const qi = row.querySelector('.bk-qty');
+        const sub = row.querySelector('.bk-sub');
+        function syncSub() { sub.textContent = Math.round(unitPriceOf(id) * (bulkSel[id] || 0)) + '💰'; }
+        cb.addEventListener('change', function () {
+          if (cb.checked) { bulkSel[id] = Math.max(1, Math.min(have, parseInt(qi.value, 10) || have)); qi.disabled = false; }
+          else { delete bulkSel[id]; qi.disabled = true; }
+          syncSub(); refreshEst();
+        });
+        qi.addEventListener('input', function () {
+          if (!cb.checked) return;
+          bulkSel[id] = Math.max(1, Math.min(have, parseInt(qi.value, 10) || 1));
+          syncSub(); refreshEst();
+        });
+      });
+    }
+    // 数值区间变化：候选集不变时只同步可见行（不重建 DOM，避免输入框失焦）；候选集变化则重建
+    let lastCandSig = '';
+    function refreshBulkRows() {
+      const next = bulkCandidates();
+      const nowCands = {}; next.forEach(function (id) { nowCands[id] = 1; });
+      Object.keys(bulkSel).forEach(function (id) { if (!nowCands[id]) delete bulkSel[id]; });
+      let added = false;
+      next.forEach(function (id) { if (bulkSel[id] == null) { bulkSel[id] = st.inventory[id] || 0; added = true; } });
+      const sig = next.join('\u0001');
+      if (added || sig !== lastCandSig) { lastCandSig = sig; buildRows(); refreshEst(); return; }
+      // 候选集未变：仅同步每行勾选状态与行小计
+      rows.querySelectorAll('.bulk-row-item').forEach(function (row) {
+        const cbin = row.querySelector('input[type=checkbox]');
+        if (!cbin) return;
+        const id = cbin.getAttribute('data-id');
+        const on = (bulkSel[id] || 0) > 0;
+        cbin.checked = on;
+        const qi = row.querySelector('.bk-qty');
+        if (qi) { qi.disabled = !on; if (on) qi.value = Math.min(Number(qi.max) || 1, bulkSel[id]); }
+        const sub = row.querySelector('.bk-sub');
+        if (sub) sub.textContent = Math.round(unitPriceOf(id) * (bulkSel[id] || 0)) + '💰';
+      });
+      refreshEst();
+    }
+    box.querySelector('#bulk-all').addEventListener('click', function () { cands.forEach(function (id) { bulkSel[id] = st.inventory[id] || 0; }); buildRows(); refreshEst(); });
+    box.querySelector('#bulk-none').addEventListener('click', function () { bulkSel = {}; buildRows(); refreshEst(); });
+    box.querySelector('#bulk-invert').addEventListener('click', function () {
+      const inv = {};
+      cands.forEach(function (id) { if (!(bulkSel[id] > 0)) inv[id] = st.inventory[id] || 0; });
+      bulkSel = inv; buildRows(); refreshEst();
+    });
+    box.querySelector('#bulk-go').addEventListener('click', function () {
+      const items = selectedItems();
+      if (!items.length) { toast('请先勾选要出售的物品'); return; }
+      const cnt = items.reduce(function (s, it) { return s + it.qty; }, 0);
+      const money = items.reduce(function (s, it) { return s + unitPriceOf(it.id) * it.qty; }, 0);
+      confirmModal({
+        title: '确认出售',
+        html: '将出售 <b>' + items.length + '</b> 种共 <b>' + cnt + '</b> 件物品，<br>按当前收购价预计收入 <b>💰' + Math.round(money) + '</b>。',
+        okText: '确认出售',
+      }).then(function (ok) { if (ok) bulkSellExec(items); });
+    });
+    buildRows();
+    refreshEst();
   }
-  // 执行批量出售（顺序执行，避免并发覆盖资产）
-  function bulkSellExec(ids) {
+  // 执行批量出售：逐个卖给系统商店（顺序执行，避免并发覆盖资产）
+  function bulkSellExec(items) {
     const st = S();
     let gain = 0, sold = 0;
     let chain = Promise.resolve();
-    ids.forEach(function (id) {
+    items.forEach(function (it) {
       chain = chain.then(function () {
-        const qty = st.inventory[id] || 0;
+        const qty = Math.max(0, Math.min(st.inventory[it.id] || 0, it.qty));
         if (qty <= 0) return null;
-        return window.Net.sell(id, qty).then(function (r) {
+        return window.Net.sell(it.id, qty).then(function (r) {
           if (r && r.ok) {
             gain += r.data.gain; sold += qty;
             st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop;
@@ -1325,6 +1559,7 @@ window.UI = (function () {
       });
     });
     chain.then(function () {
+      closeOverlays();
       renderTopbar(); renderView();
       toast('一键出售完成：' + sold + ' 件，共收入 💰' + gain);
     });
@@ -1414,6 +1649,118 @@ window.UI = (function () {
   }
   function closeBatchSell() { batchSellId = null; closeOverlays(); }
 
+  // ---- 组件订阅提醒：筛选条件 + 提醒方式（背包红标 / 浏览器图标闪烁） ----
+  // 判定在服务端（新组件入包时推送 subalert），这里只负责配置与提醒展示。
+  function subCfg() { return (S().subCfg && typeof S().subCfg === 'object') ? S().subCfg : {}; }
+  function clearSubAlerts(rerender) {
+    if (!subUnseen) return;
+    subUnseen = 0;
+    navSig = null;
+    updateBlink();
+    renderNav();
+    if (rerender) renderView();
+  }
+  function onSubAlert(item) {
+    loadLog();
+    // 人在背包页时无需红标（列表已可见），仍记日志与闪烁
+    if (currentView !== 'inventory' && subCfg().badge !== false) { subUnseen++; navSig = null; }
+    addLog('subscribe', '订阅命中：' + (item.name || item.id) +
+      (item.affixes && item.affixes.length ? '（' + item.affixes.map(affixText).join('、') + '）' : ''));
+    toast('🔔 订阅组件到货：' + (item.name || ''));
+    updateBlink();
+    renderNav();
+  }
+  function openSubscribeModal() {
+    const cfg = subCfg();
+    closeOverlays();
+    const overlay = buildOverlay(function () { closeOverlays(); });
+    const box = el('div', 'modal-box shop-modal subscribe-modal');
+    const bases = D.COMPONENT_BASES || [];
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">🔔 组件订阅提醒</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body">' +
+      '<label class="sub-on"><input type="checkbox" id="sub-on"' + (cfg.on ? ' checked' : '') + ' /> 开启订阅（获得符合条件的组件时提醒）</label>' +
+      '<div class="sub-grid">' +
+      '<label>底材<select class="bulk-select" id="sub-base"><option value="">全部底材</option>' +
+      bases.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.name) + '</option>'; }).join('') + '</select></label>' +
+      '<label>品质<select class="bulk-select" id="sub-q"><option value="">全部品质</option>' +
+      ['common', 'rare', 'epic'].map(function (k) { return '<option value="' + k + '">' + esc((D.QUALITY[k] || {}).name || k) + '</option>'; }).join('') + '</select></label>' +
+      '<label>词条<select class="bulk-select" id="sub-aff"><option value="">全部词条</option>' +
+      BD_AFFIXES.map(function (kv) { return '<option value="' + kv[0] + '">' + esc(kv[1]) + '</option>'; }).join('') + '</select></label>' +
+      '<label>数值 <input class="aff-num" id="sub-min" type="number" placeholder="最小" /> ~ <input class="aff-num" id="sub-max" type="number" placeholder="最大" /></label>' +
+      '</div>' +
+      '<div class="sub-methods">提醒方式：<label><input type="checkbox" id="sub-badge"' + (cfg.badge === false ? '' : ' checked') + ' /> 背包红标</label>' +
+      '<label><input type="checkbox" id="sub-blink"' + (cfg.blink === false ? '' : ' checked') + ' /> 浏览器图标闪烁</label></div>' +
+      '<div class="hint">条件全部留空 = 任意组件都提醒。词条/数值筛选按「任一命中」判定（组件含该词条且数值在区间内）。</div>' +
+      '<div class="cf-actions"><button class="mini cf-cancel">取消</button>' +
+      '<button class="mini primary-mini" id="sub-save">保存订阅</button></div>' +
+      '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const baseSel = box.querySelector('#sub-base'), qSel = box.querySelector('#sub-q'), affSel = box.querySelector('#sub-aff');
+    baseSel.value = cfg.baseId || ''; qSel.value = cfg.quality || ''; affSel.value = cfg.affixType || '';
+    const minInp = box.querySelector('#sub-min'), maxInp = box.querySelector('#sub-max');
+    if (cfg.min != null) minInp.value = cfg.min;
+    if (cfg.max != null) maxInp.value = cfg.max;
+    box.querySelector('.modal-close').addEventListener('click', closeOverlays);
+    box.querySelector('.cf-cancel').addEventListener('click', closeOverlays);
+    box.querySelector('#sub-save').addEventListener('click', function () {
+      const min = minInp.value === '' ? null : Number(minInp.value);
+      const max = maxInp.value === '' ? null : Number(maxInp.value);
+      if ((min != null && !isFinite(min)) || (max != null && !isFinite(max))) { toast('数值范围需为数字'); return; }
+      if (min != null && max != null && min > max) { toast('最小值不能大于最大值'); return; }
+      const payload = {
+        on: box.querySelector('#sub-on').checked,
+        baseId: baseSel.value, quality: qSel.value, affixType: affSel.value,
+        min: min, max: max,
+        badge: box.querySelector('#sub-badge').checked,
+        blink: box.querySelector('#sub-blink').checked,
+      };
+      call(window.Net.subscribeSave(payload), payload.on ? '订阅已保存，命中时会提醒' : '订阅已关闭').then(function (r) {
+        if (r && r.ok) {
+          S().subCfg = r.data.cfg;
+          if (!r.data.cfg.on) clearSubAlerts(false);
+          closeOverlays();
+          updateBlink();
+          renderView();
+        }
+      });
+    });
+  }
+
+  // ---- 组件属性子窗口：直接查看词条与数值区间（交易/背包/市集前先看清属性） ----
+  function openComponentDetail(id) {
+    const meta = D.componentOf ? D.componentOf(id) : null;
+    if (!meta) { toast('该物品没有可查看的组件属性'); return; }
+    closeOverlays();
+    const overlay = buildOverlay(function () { closeOverlays(); });
+    const box = el('div', 'modal-box codex-modal comp-modal');
+    const pool = meta.pool || [];
+    const rowsHtml = (meta.affixes || []).map(function (a) {
+      const p = pool.find(function (x) { return x.type === a.type; });
+      const rng = p ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, p) : [p.min, p.max]) : null;
+      const q = rng ? Math.max(0, Math.min(100, Math.round(100 * (a.value - rng[0]) / Math.max(1, rng[1] - rng[0])))) : null;
+      return '<div class="cm-aff-row"><span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>' +
+        (rng ? '<span class="aff-rng">区间 ' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%</span>' +
+          '<span class="cm-bar"><i style="width:' + q + '%"></i></span><span class="muted">' + q + '%</span>' : '') + '</div>';
+    }).join('') || '<div class="hint">该组件没有词条。</div>';
+    const poolHtml = pool.map(function (p) {
+      return '<span class="cm-pool-tag">' + esc(D.AFFIX_LABEL[p.type] || p.type) + ' ' + esc(rangeText(p)) + '%</span>';
+    }).join('');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">🔧 ' + esc(meta.name) + '</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body"><div class="codex-detail">' +
+      '<div class="cd-title ' + qualityClass(meta) + '">' + esc(meta.name) + '</div>' +
+      '<div class="cd-line">品质 <b>' + esc(meta.qualityName || '') + '</b> · 部位 ' + esc((D.ROD_PARTS.find(function (p) { return p.key === meta.part; }) || {}).name || meta.part || '—') +
+      ' · 基准价 <b>💰' + meta.price + '</b>' + (meta.isFull ? ' · <span class="full-tag">满词条</span>' : '') + '</div>' +
+      '<div class="cm-sec">词条（数值 / 区间 / 区间位置）</div>' + rowsHtml +
+      '<div class="cm-sec">该底材词条池</div><div class="cm-pool">' + poolHtml + '</div>' +
+      '</div></div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.querySelector('.modal-close').addEventListener('click', closeOverlays);
+  }
+
   // 组件分类：按「词条组合 + 数值范围」分组展示。
   // 分组键 = 底材 + 品质 + 词条类型集合（不含具体数值）；组内按具体数值排列。
   // 这样同底材同品质、词条种类相同（数值不同）的实例归为一组，便于比较取舍。
@@ -1491,6 +1838,10 @@ window.UI = (function () {
           '<span class="unit-price">现价 ' + unitPrice(it.id) + '💰</span>' +
           '<span class="subtotal">小计 ' + itemValue(it.id) + '💰</span>';
         const acts = el('span', 'inv-acts');
+        const dt = el('button', 'mini', '属性');
+        dt.title = '查看组件词条与数值区间（交易/上架前确认属性）';
+        dt.addEventListener('click', function () { openComponentDetail(it.id); });
+        acts.appendChild(dt);
         const sb = el('button', 'mini primary-mini', '出售 1');
         sb.addEventListener('click', function () { doSell(it.id, 1); });
         acts.appendChild(sb);
@@ -1509,9 +1860,13 @@ window.UI = (function () {
   function renderInventory() {
     const main = $('main');
     const st = S();
+    // 进入背包即视为已读订阅提醒（清红标与图标闪烁）
+    clearSubAlerts(false);
     main.innerHTML = '';
     const panel = el('div', 'panel wide two-col');
     panel.innerHTML = '<h2>🎒 背包 <span class="subtitle">分类明细 · 出售 / 上架 / 下架 · 预估总价按基准价计算（不随市场浮动）</span></h2>';
+    // 交易进行中：背包内容锁定（新渔获不会自动刷新列表，避免交易选物品时被冲掉）
+    if (tradeLockOn()) panel.appendChild(tradeLockBar());
 
     // 现价优先（服务器动态价），无行情时退回基准价
     function unitPrice(id) { const s = st.shop && st.shop[id]; return s ? s.price : itemMeta(id).price; }
@@ -1598,47 +1953,16 @@ window.UI = (function () {
       '<div class="cs-box"><b>' + totalValue + '</b><span>预估总价（基准）</span></div>';
     side.appendChild(summary);
 
-    // 一键出售子菜单（种类/品质筛选 + 实时预估收入）
+    // 一键出售（预览弹窗）+ 组件订阅提醒入口
     const bulk = el('div', 'bulk-sell');
-    const bbtn = el('button', 'primary big', '⚡ 一键出售');
-    bbtn.addEventListener('click', function () { bulkSellOpen = !bulkSellOpen; renderView(); });
+    const bbtn = el('button', 'primary big', '⚡ 一键出售（预览）');
+    bbtn.title = '打开预览子窗口：筛选后可逐项勾选与调整数量，确认后才会出售';
+    bbtn.addEventListener('click', openBulkSellModal);
     bulk.appendChild(bbtn);
-    if (bulkSellOpen) {
-      const sub = el('div', 'bulk-sub');
-      const row1 = el('div', 'bulk-row');
-      row1.appendChild(el('label', null, '种类'));
-      const catSel = el('select', 'bulk-select');
-      [['all', '全部种类'], ['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['component', '🔧 组件']].forEach(function (kv) {
-        const o = el('option', null, kv[1]); o.value = kv[0]; catSel.appendChild(o);
-      });
-      catSel.value = bulkCat;
-      catSel.addEventListener('change', function () { bulkCat = catSel.value; updateBulkEst(); });
-      row1.appendChild(catSel);
-      row1.appendChild(el('label', null, '品质'));
-      const rarSel = el('select', 'bulk-select');
-      [['all', '全部品质'], ['common', '普通'], ['big', '大鱼'], ['rare', '稀有'], ['epic', '史诗']].forEach(function (kv) {
-        const o = el('option', null, kv[1]); o.value = kv[0]; rarSel.appendChild(o);
-      });
-      rarSel.value = bulkRar;
-      rarSel.addEventListener('change', function () { bulkRar = rarSel.value; updateBulkEst(); });
-      row1.appendChild(rarSel);
-      sub.appendChild(row1);
-
-      const mIds = Object.keys(st.inventory).filter(function (id) {
-        const m = itemMeta(id);
-        return (bulkCat === 'all' || m.kind === bulkCat) && (bulkRar === 'all' || m.rarity === bulkRar);
-      });
-      const mCnt = mIds.reduce(function (s, id) { return s + st.inventory[id]; }, 0);
-      const unit = function (id) { const sp = st.shop && st.shop[id]; return sp ? sp.price : itemMeta(id).price; };
-      const mEst = mIds.reduce(function (s, id) { return s + unit(id) * st.inventory[id]; }, 0);
-      const est = el('div', 'bulk-est');
-      est.innerHTML = '将出售 <b>' + mIds.length + '</b> 种 / <b>' + mCnt + '</b> 件 · 预估收入 <b>' + Math.round(mEst) + '</b>💰<span class="muted">（按当前实时收购价）</span>';
-      sub.appendChild(est);
-      const go = el('button', 'primary' + (mCnt > 0 ? '' : ' locked'), '确认出售');
-      go.addEventListener('click', function () { if (mCnt > 0) bulkSellMatching(); });
-      sub.appendChild(go);
-      bulk.appendChild(sub);
-    }
+    const subBtn = el('button', 'mini sub-entry', '🔔 组件订阅提醒' + (subUnseen > 0 ? '（' + subUnseen + ' 条未读）' : ''));
+    subBtn.title = '设置组件到货提醒：筛选条件 + 提醒方式（背包红标 / 浏览器图标闪烁）';
+    subBtn.addEventListener('click', openSubscribeModal);
+    bulk.appendChild(subBtn);
     side.appendChild(bulk);
 
     const breakdown = el('div', 'inv-breakdown');
@@ -1680,9 +2004,36 @@ window.UI = (function () {
   }
 
   // ---- 在线交易（以物易物） ----
+  // 交易锁定：交易进入选物品阶段后，背包与交易页的列表不随广播重绘——
+  // 否则别人上鱼 / 自己上鱼（assets 广播）都会重建 DOM，把正在挑选的物品窗口刷新掉。
+  // 需要看最新库存时点锁定条上的「刷新」按钮（草稿勾选会保留）。
+  function tradeLockOn() {
+    const t = S().trade;
+    return !!(t && t.accepted && !t.done && !t.cancelled);
+  }
+  function tradeLockBar() {
+    const bar = el('div', 'trade-lock');
+    bar.innerHTML = '<span>🔒 交易进行中：背包内容已锁定，新渔获 / 广播不会刷新此列表</span>';
+    const rf = el('button', 'mini', '🔄 刷新列表');
+    rf.title = '按当前库存重建列表（已勾选的提供项保留）';
+    rf.addEventListener('click', function () { renderTopbar(); renderView(); toast('列表已按当前库存刷新'); });
+    bar.appendChild(rf);
+    return bar;
+  }
+  // 冷却倒计时（锁定期间只改文字，不整页重建）
+  function updateTradeCountdown(cd) {
+    const stage = document.querySelector('.trade-head .th-stage');
+    if (stage) stage.textContent = cd > 0 ? ('确认已重置，冷却 ' + Math.ceil(cd / 1000) + 's') : '请双方放入物品并确认';
+    const btn = document.querySelector('.trade-actions button.primary');
+    if (btn && !btn.classList.contains('done')) {
+      btn.textContent = cd > 0 ? ('冷却中 ' + Math.ceil(cd / 1000) + 's') : '确认交易';
+      btn.classList.toggle('locked', cd > 0);
+    }
+  }
   // 交易草稿状态：必须放在模块级并在重绘间保留，否则任何一次重绘
   // （SSE 广播非常频繁）都会把用户刚勾选的物品清空。
   let tradeDraft = { tid: null, sel: {} };
+  let tradePickCat = 'all'; // 提供物品列表的分类页签（全部/鱼类/材料/组件）
 
   function draftFor(t) {
     if (tradeDraft.tid !== t.id) {
@@ -1748,6 +2099,8 @@ window.UI = (function () {
       (st.players.some(function (p) { return p.id === otherKey; }) ? '在线' : '已离线') + '</span></div>' +
       '<div class="th-stage">' + (!t.accepted ? '等待对方接受邀请…' : (cd > 0 ? '确认已重置，冷却 ' + Math.ceil(cd / 1000) + 's' : '请双方放入物品并确认')) + '</div>';
     panel.appendChild(head);
+    // 交易进行中：提示列表已锁定（新渔获不会自动刷新，可手动刷新）
+    if (tradeLockOn()) panel.appendChild(tradeLockBar());
 
     if (!t.accepted) {
       const acts = el('div', 'trade-actions');
@@ -1800,16 +2153,38 @@ window.UI = (function () {
     return box;
   }
 
-  // 我方物品选择器：勾选 + 数量。选择写入模块级草稿，重绘不丢失。
-  // 点击「更新」提交后，服务器会让双方确认作废并进入 3s 冷却。
+  // 我方物品选择器：分类页签（同背包）+ 勾选 + 数量 + 组件词条直显。
+  // 选择写入模块级草稿，重绘不丢失。点「更新我的提供」提交后，服务器让双方确认作废并进入 3s 冷却。
   function tradePicker(t, sel) {
     const st = S();
     // 清理已不在背包中的草稿项（例如中途把物品卖掉了）
     Object.keys(sel).forEach(function (id) { if (!(st.inventory[id] > 0)) delete sel[id]; });
     const box = el('div', 'trade-picker');
     box.innerHTML = '<div class="tp-head">选择我要提供的物品（改动会重置双方确认）</div>';
-    const keys = Object.keys(st.inventory);
-    if (keys.length === 0) { box.appendChild(el('div', 'hint', '背包为空，无法提供物品。')); return box; }
+    const allKeys = Object.keys(st.inventory);
+    if (allKeys.length === 0) { box.appendChild(el('div', 'hint', '背包为空，无法提供物品。')); return box; }
+
+    // 分类页签：与背包一致的「全部 / 鱼类 / 材料 / 组件」
+    const kindCount = { fish: 0, material: 0, component: 0 };
+    allKeys.forEach(function (id) { const k = itemMeta(id).kind; if (kindCount[k] != null) kindCount[k] += 1; });
+    const tabs = el('div', 'inv-cats tp-cats');
+    [['all', '📦 全部', allKeys.length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (tradePickCat === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
+      b.addEventListener('click', function () { if (tradePickCat !== kv[0]) { tradePickCat = kv[0]; renderView(); } });
+      tabs.appendChild(b);
+    });
+    box.appendChild(tabs);
+
+    let keys = allKeys;
+    if (tradePickCat !== 'all') keys = keys.filter(function (id) { return itemMeta(id).kind === tradePickCat; });
+    // 排序：组件在前（词条可比较），其余按现价降序；数量/勾选变化不改变行位置
+    keys.sort(function (a, b) {
+      const ca = itemMeta(a).kind === 'component' ? 0 : 1, cb = itemMeta(b).kind === 'component' ? 0 : 1;
+      if (ca !== cb) return ca - cb;
+      return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1);
+    });
+    if (!keys.length) { box.appendChild(el('div', 'hint', '该分类下没有可提供的物品。')); return box; }
+
     const rows = el('div', 'tp-rows');
     keys.forEach(function (id) {
       const meta = itemMeta(id);
@@ -1817,10 +2192,24 @@ window.UI = (function () {
       const checked = sel[id] != null && sel[id] > 0;
       const qty = checked ? Math.min(sel[id], have) : 1;
       const row = el('div', 'tp-row');
-      row.innerHTML = '<label class="tp-name"><input type="checkbox" data-id="' + id + '"' + (checked ? ' checked' : '') + ' /> <span class="' +
-        qualityClass(meta) + '">' + esc(meta.name) + '</span></label>' +
+      const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
+        ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
+            const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
+            const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+            const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
+            return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rangeTag + '</span>';
+          }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
+        : '';
+      row.innerHTML = '<label class="tp-name"><input type="checkbox"' + (checked ? ' checked' : '') + ' /> <span class="' +
+        qualityClass(meta) + '">' + esc(meta.name) + '</span></label>' + affHtml +
         '<span class="tp-have">持有 ' + have + '</span>' +
         '<input class="tp-qty" type="number" min="1" max="' + have + '" value="' + qty + '"' + (checked ? '' : ' disabled') + ' />';
+      if (meta.kind === 'component') {
+        const dt = el('button', 'mini tp-attr', '属性');
+        dt.title = '查看组件词条与数值区间';
+        dt.addEventListener('click', function () { openComponentDetail(id); });
+        row.appendChild(dt);
+      }
       rows.appendChild(row);
 
       const cb = row.querySelector('input[type=checkbox]');
@@ -2149,6 +2538,9 @@ window.UI = (function () {
   let fbKind = 'bug';
   const FB_KINDS = [['bug', '🐛 Bug'], ['idea', '💡 建议'], ['balance', '⚖️ 平衡'], ['other', '💬 其他']];
   const FB_STATUSES = { submitted: '已提交', accepted: '已受理', done: '已完成' };
+  // 我的反馈列表筛选（模块级：重绘间保留）
+  let fbFilterKind = 'all';
+  let fbFilterStatus = 'all';
   function fmtRemain(ms) {
     const s = Math.max(0, Math.ceil(ms / 1000));
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -2223,26 +2615,109 @@ window.UI = (function () {
     form.appendChild(submit);
     panel.appendChild(form);
 
-    // 我的历史反馈
+    // 我的历史反馈（可按「反馈类型 + 处理状态」筛选）
     panel.appendChild(el('h3', null, '📜 我提交过的反馈'));
     const mine = (fb.mine || []);
     if (!mine.length) {
       panel.appendChild(el('div', 'hint', '还没有提交过反馈。'));
     } else {
+      const filters = el('div', 'fb-filters');
+      filters.appendChild(el('span', 'bf-sort-label', '类型'));
+      const kSel = el('select', 'bulk-select');
+      [['all', '全部类型']].concat(FB_KINDS.map(function (k) { return [k[0], k[1]]; })).forEach(function (kv) {
+        const o = el('option', null, kv[1]); o.value = kv[0]; kSel.appendChild(o);
+      });
+      kSel.value = fbFilterKind;
+      kSel.addEventListener('change', function () { fbFilterKind = kSel.value; renderView(); });
+      filters.appendChild(kSel);
+      filters.appendChild(el('span', 'bf-sort-label', '状态'));
+      const sSel = el('select', 'bulk-select');
+      [['all', '全部状态'], ['submitted', '已提交'], ['accepted', '已受理'], ['done', '已完成']].forEach(function (kv) {
+        const o = el('option', null, kv[1]); o.value = kv[0]; sSel.appendChild(o);
+      });
+      sSel.value = fbFilterStatus;
+      sSel.addEventListener('change', function () { fbFilterStatus = sSel.value; renderView(); });
+      filters.appendChild(sSel);
+      const shown = mine.filter(function (f) {
+        if (fbFilterKind !== 'all' && (f.kind || 'other') !== fbFilterKind) return false;
+        if (fbFilterStatus !== 'all' && (f.status || 'submitted') !== fbFilterStatus) return false;
+        return true;
+      });
+      filters.appendChild(el('span', 'hint', '匹配 ' + shown.length + ' / ' + mine.length + ' 条'));
+      if (fbFilterKind !== 'all' || fbFilterStatus !== 'all') {
+        const clr = el('button', 'mini', '清除筛选');
+        clr.addEventListener('click', function () { fbFilterKind = 'all'; fbFilterStatus = 'all'; renderView(); });
+        filters.appendChild(clr);
+      }
+      panel.appendChild(filters);
       const list = el('div', 'fb-history');
-      mine.forEach(function (f) {
+      if (!shown.length) list.appendChild(el('div', 'hint', '没有符合筛选条件的反馈。'));
+      shown.forEach(function (f) {
         const row = el('div', 'fb-item');
         const kindName = (FB_KINDS.find(function (k) { return k[0] === f.kind; }) || ['', '其他'])[1];
         const stKey = f.status || 'submitted';
         const stName = FB_STATUSES[stKey] || FB_STATUSES.submitted;
+        const rw = f.reward;
         row.innerHTML = '<div class="fb-item-head"><span class="fb-tag">' + esc(kindName) + '</span>' +
           '<span class="fb-status ' + stKey + '">' + esc(stName) + '</span>' +
+          (rw && rw.coins ? '<span class="fb-reward">🎁 已获奖励 +' + rw.coins + '💰' + (rw.note ? '（' + esc(rw.note) + '）' : '') + '</span>' : '') +
           '<span class="fb-time">' + timeStr(f.t) + '</span></div>' +
           '<div class="fb-text">' + esc(f.text) + '</div>';
         list.appendChild(row);
       });
       panel.appendChild(list);
     }
+    main.appendChild(panel);
+  }
+
+  // ---- 日志视图：记录玩家收到的服务器消息弹窗 ----
+  // 来源：notice 提示、公告横幅、交易完成、破纪录播报、组件订阅提醒、顶号下线。
+  // 数据为前端本地持久化（按账号），过滤页签与背包分类一致。
+  let logFilter = 'all';
+  function renderLogs() {
+    loadLog();
+    const main = $('main');
+    main.innerHTML = '';
+    const panel = el('div', 'panel wide');
+    panel.innerHTML = '<h2>📜 日志 <span class="subtitle">你收到的服务器消息（公告 / 系统提示 / 交易 / 纪录 / 订阅提醒），本地保留最近 ' + LOG_KEEP + ' 条</span></h2>';
+    const counts = { all: msgLog.length };
+    Object.keys(LOG_KINDS).forEach(function (k) { counts[k] = msgLog.filter(function (e) { return e.kind === k; }).length; });
+    const tabs = el('div', 'inv-cats');
+    [['all', '📜 全部']].concat(Object.keys(LOG_KINDS).map(function (k) { return [k, LOG_KINDS[k][0] + ' ' + LOG_KINDS[k][1]]; })).forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (logFilter === kv[0] ? ' on' : ''), kv[1] + ' ' + (counts[kv[0]] || 0));
+      b.addEventListener('click', function () { if (logFilter !== kv[0]) { logFilter = kv[0]; renderView(); } });
+      tabs.appendChild(b);
+    });
+    panel.appendChild(tabs);
+
+    const list = el('div', 'log-page');
+    const rows = msgLog.filter(function (e) { return logFilter === 'all' || e.kind === logFilter; });
+    if (!rows.length) {
+      list.appendChild(el('div', 'hint', msgLog.length ? '该分类下没有记录。' : '还没有收到服务器消息。公告、系统提示、交易与订阅提醒都会记录在这里。'));
+    } else {
+      rows.forEach(function (e) {
+        const kind = LOG_KINDS[e.kind] || LOG_KINDS.system;
+        const row = el('div', 'log-row');
+        row.innerHTML = '<span class="log-time">' + timeStr(e.t) + '</span>' +
+          '<span class="log-tag log-' + e.kind + '">' + kind[0] + ' ' + kind[1] + '</span>' +
+          '<span class="log-msg">' + esc(e.msg) + '</span>';
+        list.appendChild(row);
+      });
+    }
+    panel.appendChild(list);
+    const foot = el('div', 'log-foot');
+    const clr = el('button', 'mini danger-mini', '清空日志');
+    clr.addEventListener('click', function () {
+      confirmModal({ title: '清空日志', html: '确定清空本账号的全部日志记录吗？此操作不可恢复。', okText: '清空', danger: true }).then(function (ok) {
+        if (!ok) return;
+        clearLog();
+        renderView();
+        toast('日志已清空');
+      });
+    });
+    foot.appendChild(clr);
+    foot.appendChild(el('span', 'hint', '日志仅保存在本机浏览器（按账号区分），不上传服务器。'));
+    panel.appendChild(foot);
     main.appendChild(panel);
   }
 
@@ -2266,7 +2741,7 @@ window.UI = (function () {
   // 重绘前记录可滚动容器位置，重绘后恢复。
   // SSE 广播（他人上鱼/新纪录）会触发整页重绘，若不保留滚动位置，
   // 浏览中的渔获日志 / 渔获记录 / 动态列表会被 innerHTML 重建并拽回顶部。
-  const SCROLL_SELECTORS = ['.content', '.catch-log', '.feed', '.codex-detail', '.trade-lists'];
+  const SCROLL_SELECTORS = ['.content', '.catch-log', '.feed', '.codex-detail', '.trade-lists', '.tp-rows', '.bulk-rows', '.log-page'];
   function captureScroll() {
     const saved = [];
     SCROLL_SELECTORS.forEach(function (sel) {
@@ -2296,6 +2771,7 @@ window.UI = (function () {
     else if (currentView === 'codex') renderCodex();
     else if (currentView === 'records') renderRecords();
     else if (currentView === 'feedback') renderFeedback();
+    else if (currentView === 'logs') renderLogs();
     else {
       const navItem = D.NAV.find(function (x) { return x.id === currentView; });
       renderPlaceholder(navItem ? navItem.name : '未开放');
@@ -2325,7 +2801,9 @@ window.UI = (function () {
         if (window.Net && window.Net.getMe && window.Net.getMe()) { try { window.Net.closeStream && window.Net.closeStream(); } catch (e) {} }
         // 清空与账号绑定的临时状态与横幅/闪烁
         if (window.Engine && window.Engine.resetTransient) window.Engine.resetTransient();
-        bannerQueue = []; seenBannerIds = {}; updateFaviconBlink(false);
+        bannerQueue = []; seenBannerIds = {}; subUnseen = 0; msgLogOwner = null; msgLog = [];
+        currentBannerId = null; marqueeFinish = null;
+        updateFaviconBlink(false);
         const rb = $('record-banner'); if (rb) { rb.classList.remove('show'); rb.innerHTML = ''; }
         document.body.classList.remove('banner-open');
         currentView = 'fishing';
@@ -2405,6 +2883,10 @@ window.UI = (function () {
     const st = S();
     st.codex = (profile && profile.codex) || {};
     st.catchCount = (profile && profile.catchCount) || 0;
+    // 组件订阅配置随登录下发（提醒方式/条件由玩家在背包页维护）
+    st.subCfg = (profile && profile.subNotify) || null;
+    subUnseen = 0;
+    msgLogOwner = null; // 切换账号后日志按新账号重新加载
     window.Net.setAuth(token, profile);
     $('auth').style.display = 'none';
     renderNav();
@@ -2431,14 +2913,21 @@ window.UI = (function () {
     codex: ['codex', 'groundcfg'],
     records: ['records'],
     feedback: ['feedback'],                              // 反馈页：fetchFeedback 到达后重绘（CD/费用随服务器下发）
-    mall: [], collect: [],
+    logs: [],                                            // 日志页：仅在收到消息（addLog）或本地操作时重绘
+    mall: [],
   };
   function refreshAll(scope) {
     if (scope === 'all') scope = null; // init 全量刷新
     if (shopModalId && scope === 'shop') fillShopModal(shopModalId); // 弹窗数据静默刷新
-    // 一键出售子菜单展开时：只更新预估数字，不重绘页面（下拉框不会被广播冲掉）
-    if (currentView === 'inventory' && bulkSellOpen && scope && scope !== 'shop') {
-      updateBulkEst();
+    // 一键出售 / 订阅弹窗内的筛选控件获得焦点时暂停重绘（避免下拉框被广播冲掉）
+    if (bulkFocus && scope && scope !== 'all') { renderTopbar(); renderNav(); return; }
+    // 弹窗打开时（批量出售/订阅/组件属性等）不重绘背后的页面列表，避免广播把弹窗下的操作上下文冲掉
+    if (document.querySelector('.modal-overlay') && currentView !== 'trade' && scope) {
+      return;
+    }
+    // 交易进行中：背包与交易页锁定（新渔获等广播只更新数据，不重绘列表；可点锁定条手动刷新）
+    if (tradeLockOn() && (currentView === 'inventory' || currentView === 'trade') && scope && scope !== 'trade') {
+      renderTopbar(); renderNav();
       return;
     }
     // 市集筛选控件（词条下拉/数值输入）获得焦点时暂停重绘：否则广播会重建 DOM 导致下拉框被关闭。
@@ -2468,7 +2957,11 @@ window.UI = (function () {
       const t = S().trade;
       if (!t) { cdLast = 0; return; }
       const cd = Math.max(0, (t.cooldownUntil || 0) - Date.now());
-      if (cd > 0 || cdLast > 0) { renderTopbar(); renderView(); }
+      if (cd > 0 || cdLast > 0) {
+        // 锁定中只改倒计时文字，不整页重建（否则会刷新正在挑选的物品列表）
+        if (cd > 0 && tradeLockOn()) updateTradeCountdown(cd);
+        else { renderTopbar(); renderView(); }
+      }
       cdLast = cd;
     }, 500);
     // 反馈页冷却倒计时：仅在反馈页且冷却中时按秒重绘剩余时间
@@ -2501,7 +2994,8 @@ window.UI = (function () {
 
   return {
     init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
-    toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners,
+    toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners, onBannerStop: onBannerStop,
+    addLog: addLog, onSubAlert: onSubAlert,
     renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,
     getView: function () { return currentView; },
     setView: function (v) { currentView = v; },

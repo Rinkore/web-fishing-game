@@ -7,8 +7,10 @@
  */
 'use strict';
 const { chromium } = require('playwright-core');
+// 轮询等待工具（测试内部不依赖固定 sleep）：就绪即继续，超时才失败
+const { waitFor, waitHttp, waitPage } = require('./_util.js');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
@@ -17,12 +19,27 @@ const ROOT = path.join(__dirname, '..');
 const PORT = 8171;
 const D_DATA = require(path.join(ROOT, 'frontend', 'js', 'data.js'));
 // 浏览器可执行文件：优先 CHROME_PATH 环境变量，否则用系统默认安装位置
-const CHROME = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+// 真实浏览器路径：优先 CHROME_PATH；否则自动探测 Chrome / Edge（本机只装了 Edge）
+const CHROME = process.env.CHROME_PATH || [
+  'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+  'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+].find(p => fs.existsSync(p)) || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 
 let pass = 0, fail = 0; const failed = [];
 function check(n, c, extra) { if (c) { pass++; console.log('  PASS  ' + n); } else { fail++; failed.push(n); console.log('  FAIL  ' + n + (extra ? ' -> ' + extra : '')); } }
 function section(t) { console.log('\n=== ' + t + ' ==='); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// 启动前清理端口占用：Windows 下测试进程被强杀时 taskkill 可能失败，残留的旧服务器会占住端口，
+// 导致下一次运行的所有请求打到「陈旧的服务器实例」上（表现为大面积 未登录/数据不符）。
+function killPortOccupant(port) {
+  try {
+    spawnSync('powershell', ['-NoProfile', '-Command',
+      "(Get-NetTCPConnection -State Listen -LocalPort " + port + " -ErrorAction SilentlyContinue).OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }"],
+      { stdio: 'ignore' });
+  } catch (e) {}
+}
 
 function post(p, body) {
   return new Promise(res => {
@@ -57,15 +74,25 @@ const clickNav = async (page, name) => {
     const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
     if (b) b.click();
   }, name);
-  await sleep(450);
+  // 轮询到目标页变为 active 且主区已渲染（替代固定 sleep）
+  await waitFor(async () => {
+    try {
+      return await page.evaluate(n => {
+        const act = document.querySelector('.nav-item.active');
+        const main = document.getElementById('main');
+        return !!act && act.textContent.includes(n) && !!main && main.children.length > 0;
+      }, name);
+    } catch (e) { return false; }
+  }, { timeout: 6000 }).catch(() => {});
 };
 
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
 
 (async () => {
+  killPortOccupant(PORT);
   const srv = spawn(process.execPath, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }) });
-  await sleep(1000);
+  await waitHttp('http://localhost:' + PORT + '/shop', { timeout: 20000 });
   let browser;
   try {
     const rs = await post('/api/register', { username: 'lay_seller', password: 'abcd1234', name: '布局卖家', qq: '10014' });
@@ -106,8 +133,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await login(p2, tokB);
 
     section('新增页面渲染');
-    check('登录后 10 个已实现入口可见', (await p1.$$('#nav .nav-item:not(.locked)')).length === 10);
-    check('2 个占位入口锁定', (await p1.$$('#nav .nav-item.locked')).length === 2);
+    check('登录后 11 个已实现入口可见', (await p1.$$('#nav .nav-item:not(.locked)')).length === 11);
+    check('1 个占位入口锁定（商城）', (await p1.$$('#nav .nav-item.locked')).length === 1);
 
     // —— 钓鱼页：已移除背包，渔获日志与左栏底部对齐 ——
     await clickNav(p1, '钓鱼');
@@ -500,6 +527,100 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('点击确认后按钮变为「已确认」', (await p1.textContent('.trade-actions')).includes('已确认'), await p1.textContent('.trade-actions'));
     check('确认状态同步到对方视图', (await p2.textContent('.trade-side:not(.mine)')).includes('已确认'), await p2.textContent('.trade-side:not(.mine)'));
 
+    // —— 交易锁定：交易进行中列表不随广播重绘（v0.9.0）——
+    section('交易锁定背包');
+    check('交易页提供物品列表带分类页签', (await p1.$$('.tp-cats .inv-cat')).length === 4, String((await p1.$$('.tp-cats .inv-cat')).length));
+    await p1.evaluate(() => {
+      const b = Array.from(document.querySelectorAll('.tp-cats .inv-cat')).find(x => x.textContent.includes('组件'));
+      if (b) b.click();
+    });
+    await sleep(400);
+    check('切到「组件」分类页签后选择器仍在', (await p1.$$('.trade-picker')).length === 1);
+    await p1.evaluate(() => {
+      const b = Array.from(document.querySelectorAll('.tp-cats .inv-cat')).find(x => x.textContent.includes('全部'));
+      if (b) b.click();
+    });
+    await sleep(400);
+    check('交易页显示锁定条', (await p1.$$('.trade-lock')).length === 1);
+    check('锁定条含手动刷新按钮', await p1.evaluate(() => {
+      const n = document.querySelector('.trade-lock');
+      return !!n && n.textContent.includes('刷新列表');
+    }), '');
+    const domKept = await p1.evaluate(async () => {
+      const r = Array.from(document.querySelectorAll('.tp-row')).find(x => x.textContent.includes('黄金锦鲤'));
+      if (!r) return { ok: false };
+      r.dataset.keepTag = '1';
+      await new Promise(res => setTimeout(res, 4200)); // 跨过至少一个钓鱼周期，期间必有多次广播
+      const again = Array.from(document.querySelectorAll('.tp-row')).find(x => x.textContent.includes('黄金锦鲤'));
+      return { ok: !!again && again.dataset.keepTag === '1' };
+    });
+    check('持续广播 4.2s 后选择器 DOM 未被重建（锁定生效）', domKept.ok === true, JSON.stringify(domKept));
+    await clickNav(p1, '背包');
+    check('交易中背包页显示锁定提示', (await p1.$$('.trade-lock')).length === 1);
+    // 收起交易，避免影响后续用例
+    await clickNav(p1, '在线交易');
+    await p1.evaluate(() => {
+      const b = Array.from(document.querySelectorAll('.trade-actions button')).find(x => x.textContent.includes('取消交易'));
+      if (b) b.click();
+    });
+    await sleep(700);
+
+    // —— v0.9.0 新增：一键出售预览 / 组件订阅 / 日志页 ——
+    section('一键出售预览 · 组件订阅 · 日志页');
+    await clickNav(p1, '背包');
+    check('背包页有「一键出售（预览）」按钮', (await p1.textContent('.bulk-sell')).includes('一键出售（预览）'));
+    check('背包页有组件订阅入口', (await p1.textContent('.bulk-sell')).includes('组件订阅提醒'));
+    await p1.evaluate(() => {
+      const b = Array.from(document.querySelectorAll('.bulk-sell button')).find(x => x.textContent.includes('一键出售'));
+      if (b) b.click();
+    });
+    await sleep(500);
+    check('预览弹窗打开', (await p1.$$('.bulk-sell-modal')).length === 1);
+    const bulkRows = (await p1.$$('.bulk-rows .bulk-row-item')).length;
+    check('预览列表列出候选物品', bulkRows > 0, String(bulkRows));
+    check('预览弹窗含词条/数值筛选', await p1.evaluate(() => {
+      const n = document.querySelector('.bulk-filters');
+      return !!n && n.textContent.includes('词条');
+    }), '');
+    const bulkEdit = await p1.evaluate(() => {
+      const first = document.querySelector('.bulk-rows .bulk-row-item');
+      const cb = first.querySelector('input[type=checkbox]');
+      const before = document.querySelectorAll('.bulk-rows input[type=checkbox]:checked').length;
+      cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true }));
+      const after = document.querySelectorAll('.bulk-rows input[type=checkbox]:checked').length;
+      const est = document.querySelector('#bulk-est').textContent;
+      return { before, after, est };
+    });
+    check('取消勾选后已选数量减少（可编辑选择）', bulkEdit.after === bulkEdit.before - 1, JSON.stringify(bulkEdit));
+    const bulkQty = await p1.evaluate(() => {
+      const first = document.querySelector('.bulk-rows .bulk-row-item');
+      const qi = first.querySelector('.bk-qty');
+      qi.value = '1'; qi.dispatchEvent(new Event('input', { bubbles: true }));
+      return document.querySelector('#bulk-est').textContent;
+    });
+    check('调整数量后预估收入实时刷新', /已选/.test(bulkQty), bulkQty);
+    await p1.evaluate(() => { const b = document.querySelector('.bulk-sell-modal .cf-cancel'); if (b) b.click(); });
+    await sleep(300);
+    check('关闭后弹窗消失', (await p1.$$('.bulk-sell-modal')).length === 0);
+    // 订阅弹窗
+    await p1.evaluate(() => {
+      const b = Array.from(document.querySelectorAll('.bulk-sell button')).find(x => x.textContent.includes('组件订阅'));
+      if (b) b.click();
+    });
+    await sleep(500);
+    check('订阅弹窗打开并含筛选与提醒方式', await p1.evaluate(() => {
+      const n = document.querySelector('.subscribe-modal');
+      if (!n) return false;
+      return n.textContent.includes('背包红标') && n.textContent.includes('浏览器图标闪烁') && !!n.querySelector('#sub-base');
+    }), '');
+    await p1.evaluate(() => { const b = document.querySelector('.subscribe-modal .cf-cancel'); if (b) b.click(); });
+    await sleep(300);
+    // 日志页
+    await clickNav(p1, '日志');
+    check('日志页渲染（分类页签 + 说明）', (await p1.textContent('.content')).includes('日志') && (await p1.$$('.log-page')).length === 1);
+    check('日志页有分类筛选页签', (await p1.$$('.inv-cats .inv-cat')).length === 5, String((await p1.$$('.inv-cats .inv-cat')).length));
+    check('日志页无未实现占位锁', (await p1.$$('.content .big-lock')).length === 0);
+
     // —— 滚动位置保持（SSE 广播重绘不再把长列表拽回顶部）——
     section('重绘滚动保持');
     await clickNav(p1, '渔获记录');
@@ -638,6 +759,190 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       const saved = await get('/api/admin/world?token=' + adminLogin.data.token);
       check('服务器已应用所选 roll 模型（normal）', saved.data.componentCfg && saved.data.componentCfg.rollModel === 'normal', JSON.stringify(saved.data.componentCfg && saved.data.componentCfg.rollModel));
       check('管理后台无页面错误', adminErrs.length === 0, adminErrs.join(' | '));
+
+      // —— 渔场管理：新建（一键填充）/ 限时窗口 / 删除恢复 / 已有钓点一键填充 ——
+      section('管理后台渔场管理 · 横幅滚播 · 反馈奖励');
+      const gidNew = 'qa_cove_' + Math.random().toString(36).slice(2, 6);
+      const clickAdminNav = async (name) => {
+        await pa.evaluate(n => { const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n)); if (b) b.click(); }, name);
+        await sleep(900);
+      };
+      await clickAdminNav('渔场钓点');
+      await pa.evaluate((gid) => {
+        document.getElementById('ng-id').value = gid;
+        document.getElementById('ng-name').value = 'QA 测试湾';
+        document.getElementById('ng-spot').value = '主钓点';
+        document.getElementById('ng-preset').value = 'rare';
+        document.getElementById('ng-create').click();
+      }, gidNew);
+      await sleep(1300);
+      const gr1 = await get('/api/grounds');
+      const newG = (gr1.data.grounds || []).find(g => g.id === gidNew);
+      check('新建渔场实时进入全服目录（含 1 个钓点）', !!newG && newG.spots.length === 1, JSON.stringify((gr1.data.grounds || []).map(g => g.id)));
+      check('新钓点按「稀有秘境」预设一键填充（13 条）', !!newG && newG.spots[0].pool.length === 13, newG ? String(newG.spots[0].pool.length) : 'none');
+      check('新渔场默认开放可钓', !!newG && newG.locked === false);
+      // 限时窗口：设成已过期 → 自动锁定
+      await pa.evaluate(() => {
+        const f = d => d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + 'T' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+        document.getElementById('gi-from').value = f(new Date(Date.now() - 3600 * 1000));
+        document.getElementById('gi-to').value = f(new Date(Date.now() - 1800 * 1000));
+        document.getElementById('gi-window').click();
+      });
+      await sleep(1100);
+      const gr2 = await get('/api/grounds');
+      const lockedG = (gr2.data.grounds || []).find(g => g.id === gidNew);
+      check('限时窗口已过期 → 渔场自动锁定', !!lockedG && lockedG.locked === true, JSON.stringify(lockedG && { locked: lockedG.locked, openTo: lockedG.openTo }));
+      check('限时开窗时间随目录下发（前端可展示）', !!lockedG && !!lockedG.openFrom && !!lockedG.openTo);
+      await pa.evaluate(() => { document.getElementById('gi-clearwin').click(); });
+      await sleep(900);
+      const gr3 = await get('/api/grounds');
+      check('清除限时后恢复常驻开放', !!((gr3.data.grounds || []).find(g => g.id === gidNew) || {}).locked === false);
+      // 已有钓点一键填充：经济浅水预设 → 保存生效
+      await pa.evaluate(() => { document.getElementById('pool-preset').value = 'economy'; document.getElementById('pool-fill').click(); });
+      await sleep(800);
+      const fillRows = await pa.$$eval('#pool-rows .pool-row', els => els.length);
+      check('一键填充替换草稿（经济浅水 13 条）', fillRows === 13, String(fillRows));
+      await pa.evaluate(() => { document.getElementById('pool-save').click(); });
+      await sleep(1100);
+      const gr4 = await get('/api/grounds');
+      const filledG = (gr4.data.grounds || []).find(g => g.id === gidNew);
+      check('保存后掉落池按预设生效', !!filledG && filledG.spots[0].pool.length === 13, filledG ? String(filledG.spots[0].pool.length) : 'none');
+      // 删除自定义渔场 → 目录移除（不可恢复）
+      await pa.evaluate((gid) => { const c = document.querySelector('.gcard[data-g="' + gid + '"]'); if (c) c.querySelector('[data-rmg]').click(); }, gidNew);
+      await sleep(400);
+      await pa.evaluate(() => { const y = document.querySelector('.cf-yes'); if (y) y.click(); });
+      await sleep(1200);
+      const gr5 = await get('/api/grounds');
+      check('自定义渔场删除后从目录移除', !(gr5.data.grounds || []).some(g => g.id === gidNew));
+      const rstChips = await pa.$$eval('[data-rstg]', els => els.map(e => e.getAttribute('data-rstg')));
+      check('自定义渔场删除后不在恢复名单', rstChips.indexOf(gidNew) < 0, rstChips.join(','));
+      // 内置钓点删除 → 可恢复
+      await clickAdminNav('渔场钓点');
+      const builtSpot = await pa.evaluate(async () => {
+        const g = await fetch('/api/grounds').then(r => r.json());
+        const st = g.grounds.find(x => x.id === 'stillwater');
+        return (st && st.spots.length) ? { gid: 'stillwater', sid: st.spots[st.spots.length - 1].id } : null;
+      });
+      check('存在可测试的内置钓点', !!builtSpot, JSON.stringify(builtSpot));
+      await pa.evaluate((sid) => {
+        const t = Array.from(document.querySelectorAll('.spot-tab')).find(x => x.getAttribute('data-s') === sid);
+        if (t) t.click();
+      }, builtSpot.sid);
+      await sleep(700);
+      await pa.evaluate(() => { const b = document.getElementById('ns-del'); if (b) b.click(); });
+      await sleep(400);
+      await pa.evaluate(() => { const y = document.querySelector('.cf-yes'); if (y) y.click(); });
+      await sleep(1200);
+      const gr6 = await get('/api/grounds');
+      const still = (gr6.data.grounds || []).find(g => g.id === 'stillwater');
+      check('内置钓点删除后从目录移除', !!still && !still.spots.some(s => s.id === builtSpot.sid), still ? String(still.spots.length) : 'none');
+      const chips2 = await pa.$$eval('[data-rsts]', els => els.map(e => e.getAttribute('data-rsts')));
+      check('内置钓点进入可恢复名单', chips2.indexOf('stillwater:' + builtSpot.sid) >= 0, chips2.join(','));
+      await pa.evaluate((key) => { const b = document.querySelector('[data-rsts="' + key + '"]'); if (b) b.click(); }, 'stillwater:' + builtSpot.sid);
+      await sleep(1200);
+      const gr7 = await get('/api/grounds');
+      const still2 = (gr7.data.grounds || []).find(g => g.id === 'stillwater');
+      check('一键恢复内置钓点', !!still2 && still2.spots.some(s => s.id === builtSpot.sid));
+
+      // —— 横幅：发布 → 玩家端滚播并上报 → 后台「当前滚播」→ 停止滚播 ——
+      // —— 公式管理：抛竿间隔与全服钓速表单 ——
+      await clickAdminNav('公式管理');
+      await pa.evaluate(() => {
+        document.getElementById('cast-bonus').value = '50';
+        document.getElementById('cast-cap').value = '80';
+        document.getElementById('cast-save').click();
+      });
+      await sleep(1100);
+      const castSaved = await get('/api/admin/world?token=' + adminLogin.data.token);
+      check('后台保存全服钓速加成与上限生效（50 / 80）', castSaved.data.castSpeedBonus === 50 && castSaved.data.castSpeedCap === 80,
+        JSON.stringify({ b: castSaved.data.castSpeedBonus, c: castSaved.data.castSpeedCap }));
+      const castPreviewTxt = await pa.evaluate(() => { const n = document.getElementById('cast-preview'); return n ? n.textContent : ''; });
+      check('间隔预览随参数实时更新（含有效钓速换算）', /有效 80%/.test(castPreviewTxt), castPreviewTxt.slice(0, 160));
+      await pa.evaluate(() => { document.getElementById('cast-reset').click(); });
+      await sleep(1100);
+      const castReset = await get('/api/admin/world?token=' + adminLogin.data.token);
+      check('恢复默认钓速设置（0 / 80）', castReset.data.castSpeedBonus === 0 && castReset.data.castSpeedCap === 80,
+        JSON.stringify({ b: castReset.data.castSpeedBonus, c: castReset.data.castSpeedCap }));
+      const castErrs = adminErrs.length;
+
+      // —— 横幅：发布 → 玩家端滚播并上报 → 后台「当前滚播」→ 停止滚播 ——
+      await clickAdminNav('横幅管理');
+      await pa.evaluate(() => {
+        document.getElementById('bn-content').value = 'QA 横幅滚播测试 ' + Date.now();
+        document.getElementById('bn-dur').value = '20';
+        document.getElementById('bn-add').click();
+      });
+      await sleep(1500);
+      const marqueeShown = await p1.evaluate(() => !!document.querySelector('#record-banner.show'));
+      check('玩家端收到新公告并开始滚播', marqueeShown === true);
+      await clickAdminNav('横幅管理');
+      await sleep(1200);
+      const liveTxt = await pa.evaluate(() => { const n = document.getElementById('bn-live'); return n ? n.textContent.replace(/\s+/g, ' ') : ''; });
+      check('后台「当前滚播」显示滚播中 1 条', /滚播中 1 条/.test(liveTxt), liveTxt.slice(0, 140));
+      check('后台「当前滚播」列出观看人数与在线数', /观看人数/.test(liveTxt) && /在线/.test(liveTxt), liveTxt.slice(0, 140));
+      await pa.evaluate(() => { const b = document.querySelector('[data-stop]'); if (b) b.click(); });
+      await sleep(1300);
+      const marqueeAfter = await p1.evaluate(() => !!document.querySelector('#record-banner.show'));
+      check('「停止滚播」后玩家端横幅立即收起', marqueeAfter === false);
+      await pa.evaluate(() => { document.getElementById('bn-clear').click(); });
+      await sleep(400);
+      await pa.evaluate(() => { const y = document.querySelector('.cf-yes'); if (y) y.click(); });
+      await sleep(900);
+      const cleared = await get('/api/banner');
+      check('清空队列后无待播横幅', (cleared.data.banners || []).length === 0, String((cleared.data.banners || []).length));
+
+      // —— 反馈奖励（金币到账 + 记录 + 筛选）——
+      await post('/api/feedback/submit', { token: tokB, text: 'QA 奖励测试反馈', kind: 'idea' });
+      await clickAdminNav('反馈意见');
+      const coinsBeforeRw = (await get('/api/me?token=' + tokB)).data.coins;
+      await pa.evaluate(() => {
+        const row = Array.from(document.querySelectorAll('.fb-admin-item')).find(r => r.textContent.includes('QA 奖励测试反馈'));
+        if (row) row.querySelector('[data-reward]').click();
+      });
+      await sleep(500);
+      await pa.evaluate(() => { document.querySelector('.cf-val').value = '1500'; document.querySelector('.cf-yes').click(); });
+      await sleep(500);
+      await pa.evaluate(() => { const o = document.querySelector('.modal-overlay'); if (o) { const y = o.querySelector('.cf-yes'); if (y) y.click(); } });
+      await sleep(1200);
+      const coinsAfterRw = (await get('/api/me?token=' + tokB)).data.coins;
+      check('反馈奖励金币实时到账（+1500）', coinsAfterRw === coinsBeforeRw + 1500, coinsBeforeRw + ' -> ' + coinsAfterRw);
+      const fbList2 = await get('/api/admin/feedback?token=' + adminLogin.data.token);
+      const rwItem = (fbList2.data.feedback || []).find(f => f.text === 'QA 奖励测试反馈');
+      check('反馈记录带奖励信息（金币 + 操作人）', !!(rwItem && rwItem.reward && rwItem.reward.coins === 1500 && rwItem.reward.by), JSON.stringify(rwItem && rwItem.reward));
+      await pa.evaluate(() => {
+        const sel = document.getElementById('fba-kind');
+        if (sel) { sel.value = 'bug'; sel.dispatchEvent(new Event('change')); }
+      });
+      await sleep(1100);
+      const tagTexts = await pa.$$eval('.fb-admin-item .fb-tag', els => els.map(e => e.textContent.trim()));
+      check('后台反馈按类型筛选生效（仅剩 Bug）', tagTexts.every(t => t.indexOf('Bug') >= 0), tagTexts.join(','));
+      // 玩家端：我的反馈按状态筛选 + 奖励标记
+      await clickNav(p1, '反馈意见');
+      await sleep(600);
+      const pFilter = await p1.evaluate(() => {
+        const sels = Array.from(document.querySelectorAll('.fb-filters select'));
+        if (sels.length < 2) return { ok: false };
+        const before = document.querySelectorAll('.fb-history .fb-item').length;
+        sels[1].value = 'done';
+        sels[1].dispatchEvent(new Event('change'));
+        const after = document.querySelectorAll('.fb-history .fb-item').length;
+        return { ok: true, before: before, after: after };
+      });
+      check('玩家端反馈可按处理状态筛选（已完成 → 0 条）', pFilter.ok && pFilter.after === 0 && pFilter.before > 0, JSON.stringify(pFilter));
+      await p1.evaluate(() => {
+        const sels = Array.from(document.querySelectorAll('.fb-filters select'));
+        if (sels.length > 1) { sels[1].value = 'all'; sels[1].dispatchEvent(new Event('change')); }
+      });
+      await sleep(600);
+      // 奖励对象是买家（tokB → p2），在买家页面验证奖励标记
+      await clickNav(p2, '反馈意见');
+      await sleep(700);
+      const rwShown = await p2.evaluate(() => {
+        const row = Array.from(document.querySelectorAll('.fb-history .fb-item')).find(r => r.textContent.includes('奖励'));
+        return row ? row.textContent : '';
+      });
+      check('玩家端能看到「已获奖励」标记（买家）', /已获奖励 \+1500/.test(rwShown), rwShown.slice(0, 140));
+      check('后台全程无页面错误', adminErrs.length === castErrs, adminErrs.slice(castErrs).join(' | '));
     } else {
       check('管理后台登录可用（前置条件）', false, JSON.stringify(adminLogin.data));
     }

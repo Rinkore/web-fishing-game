@@ -9,8 +9,10 @@
  */
 'use strict';
 const { JSDOM, VirtualConsole } = require('jsdom');
+// 轮询等待工具（测试内部不依赖固定 sleep）：就绪即继续，超时才失败
+const { waitFor, waitHttp, waitPage } = require('./_util.js');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const url = require('url');
 const fs = require('fs');
@@ -23,6 +25,15 @@ const NODE = process.execPath;
 let pass = 0, fail = 0; const failed = [];
 function check(n, c, extra) { if (c) { pass++; console.log('  PASS  ' + n); } else { fail++; failed.push(n); console.log('  FAIL  ' + n + (extra ? ' -> ' + extra : '')); } }
 function section(t) { console.log('\n=== ' + t + ' ==='); }
+// 启动前清理端口占用：Windows 下测试进程被强杀时 taskkill 可能失败，残留的旧服务器会占住端口，
+// 导致下一次运行的所有请求打到「陈旧的服务器实例」上（表现为大面积 未登录/数据不符）。
+function killPortOccupant(port) {
+  try {
+    spawnSync('powershell', ['-NoProfile', '-Command',
+      "(Get-NetTCPConnection -State Listen -LocalPort " + port + " -ErrorAction SilentlyContinue).OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }"],
+      { stdio: 'ignore' });
+  } catch (e) {}
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function req(method, u, body) {
@@ -112,8 +123,9 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
 (async () => {
   console.log('缺陷回归测试（5 个上报问题）');
+  killPortOccupant(PORT);
   const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }) });
-  await sleep(900);
+  await waitHttp('http://localhost:' + PORT + '/shop', { timeout: 20000 });
 
   try {
     const rA = await POST('http://localhost:' + PORT + '/api/register', { username: 'fix_a', password: 'pass1234', name: '甲玩家', qq: '10002' });

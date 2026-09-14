@@ -867,3 +867,101 @@ body.banner-open .topbar { top: 34px; }
 .cx-pool .pool-line .rng { color: var(--muted); }
 .cx-pool .pool-line.neg { color: var(--danger); }
 .cd-aff-neg { color: var(--danger) !important; }
+
+/* ================= v0.9.0 新增 ================= */
+
+/* 背包红标（组件订阅未读）：与现有 nav-badge.alert（黄）区分，订阅用红色 */
+.nav-badge.unread { background: var(--danger); color: #fff; }
+
+/* ---- 一键出售：预览弹窗 ---- */
+.bulk-sell-modal { width: 740px; }
+.bulk-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.bulk-rows { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; background: rgba(255,255,255,.02); }
+.bulk-row-item { display: flex; align-items: center; gap: 10px; padding: 8px 2px; border-bottom: 1px dashed var(--line); }
+.bulk-row-item:last-child { border-bottom: none; }
+.bulk-row-item .bk-check { flex: none; }
+.bulk-row-item .bk-main { flex: 1 1 auto; min-width: 0; }
+.bulk-row-item .bk-name { font-size: 13px; }
+.bulk-row-item .bk-have { flex: none; font-size: 12px; color: var(--muted); }
+.bulk-row-item .bk-qty { width: 72px; }
+.bulk-row-item .bk-unit { flex: none; font-size: 12px; color: var(--big); width: 64px; text-align: right; }
+.bulk-row-item .bk-sub { flex: none; font-size: 12px; color: var(--muted); width: 76px; text-align: right; }
+.bulk-acts { margin-top: 12px; }
+.bulk-acts .cf-cancel { margin-left: auto; }
+
+/* ---- 组件订阅提醒：入口 + 配置弹窗 ---- */
+.bulk-sell .sub-entry { margin-top: 8px; width: 100%; }
+.subscribe-modal { width: 640px; }
+.subscribe-modal .sub-on { display: block; margin-bottom: 12px; font-size: 13px; }
+.subscribe-modal .sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.subscribe-modal .sub-grid label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.subscribe-modal .sub-grid select { flex: 1; min-width: 0; }
+.subscribe-modal .sub-methods { display: flex; gap: 18px; align-items: center; font-size: 13px; margin-bottom: 8px; }
+.subscribe-modal .cf-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
+
+/* ---- 组件属性子窗口 ---- */
+.comp-modal { width: 580px; }
+.comp-modal .cm-sec { margin: 12px 0 6px; font-size: 12px; color: var(--muted); }
+.comp-modal .cm-aff-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+.comp-modal .cm-bar { flex: 1; height: 6px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; }
+.comp-modal .cm-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); }
+.comp-modal .cm-pool { display: flex; flex-wrap: wrap; gap: 6px; }
+.comp-modal .cm-pool-tag { font-size: 11px; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
+
+/* ---- 交易：背包锁定条 + 提供物品分类 ---- */
+.trade-lock { display: flex; align-items: center; gap: 12px; justify-content: space-between; font-size: 12px;
+  border: 1px dashed var(--big); border-radius: 8px; padding: 8px 12px; background: rgba(251,191,36,.08); margin: 10px 0; }
+.tp-cats { margin-bottom: 8px; }
+.tp-row .tp-attr { flex: none; }
+
+/* ---- 日志页 ---- */
+.log-page { max-height: 62vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 4px 12px; background: rgba(255,255,255,.02); }
+.log-row { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+.log-row:last-child { border-bottom: none; }
+.log-row .log-time { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.log-row .log-tag { flex: none; font-size: 11px; padding: 1px 8px; border-radius: 20px; border: 1px solid var(--line); }
+.log-row .log-tag.log-system { border-color: var(--accent2); color: var(--accent2); }
+.log-row .log-tag.log-trade { border-color: var(--accent); color: var(--accent); }
+.log-row .log-tag.log-record { border-color: var(--big); color: var(--big); }
+.log-row .log-tag.log-subscribe { border-color: var(--rare); color: var(--rare); }
+.log-row .log-msg { flex: 1; min-width: 0; word-break: break-word; }
+.log-foot { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+
+@media (max-width: 640px) {
+  .subscribe-modal .sub-grid { grid-template-columns: 1fr; }
+  .bulk-row-item .bk-unit { display: none; }
+  .bulk-row-item .bk-sub { width: 56px; }
+  .log-row { flex-wrap: wrap; }
+}
+
+/* ================= v0.9.1 / 管理后台与反馈增强 ================= */
+
+/* ---- 渔场管理：新建/删除/恢复/限时 ---- */
+.gd-new h3 { color: var(--accent2); }
+.gd-new .gi-id { width: 180px; }
+.gd-new .gi-name { width: 140px; }
+.gd-new .gi-desc { flex: 1; min-width: 160px; }
+.gd-new .gi-type { width: auto; }
+.gd-new .gi-time { width: 190px; }
+.gd-info .gi-name { width: 140px; }
+.gd-info .gi-desc { flex: 1; min-width: 160px; }
+.gd-info .gi-type { width: auto; }
+.gd-info .gi-time { width: 190px; }
+.gd-removed { margin-top: 8px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.gd-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px dashed var(--line); border-radius: 20px; padding: 2px 10px; }
+.gd-badge { font-size: 10px; font-weight: 600; border-radius: 20px; padding: 1px 8px; margin-left: 6px; vertical-align: middle; }
+.gd-badge.custom { background: rgba(56,189,248,.18); color: var(--accent2); }
+.gd-badge.limited { background: rgba(251,191,36,.18); color: var(--big); }
+.gd-spot-acts { display: inline-flex; align-items: center; gap: 8px; margin-left: 12px; }
+.gd-spot-acts .gi-name { width: 130px; }
+.gd-spot-acts .gi-type { width: auto; }
+
+/* ---- 横幅「当前滚播」面板 ---- */
+.bn-live-sum { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.bn-chip { font-size: 12px; border: 1px solid var(--line); border-radius: 20px; padding: 3px 12px; color: var(--muted); }
+.bn-chip b { color: var(--accent); }
+
+/* ---- 反馈：奖励与筛选 ---- */
+.fb-reward { font-size: 11px; color: var(--big); border: 1px solid rgba(251,191,36,.5); border-radius: 20px; padding: 1px 8px; }
+.fb-filters, .fb-admin-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.fb-admin-filters { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; }

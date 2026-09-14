@@ -19,6 +19,7 @@ window.Admin = (function () {
   let mkAffixMin = '', mkAffixMax = '';
   let mkSort = { key: 'time', dir: 'desc' };
   let timer = null;             // 概览自动刷新
+  let bannerTimer = null;       // 横幅滚播面板自动刷新
   // 渔场编辑器状态
   let selGround = null, selSpot = null;
   let poolDraft = [], buffsDraft = [], poolDirty = false, buffsDirty = false;
@@ -152,6 +153,7 @@ window.Admin = (function () {
   function switchView(v) {
     view = v;
     stopOverviewTimer();
+    stopBannerTimer();
     renderNav();
     if (v === 'overview') return renderOverview();
     if (v === 'accounts') return renderAccounts();
@@ -168,6 +170,28 @@ window.Admin = (function () {
   // ================================
   // 反馈意见（只读列表）
   // ================================
+  // 反馈页筛选状态（模块级：重绘间保留）
+  let fbFilterKind = 'all';
+  let fbFilterStatus = 'all';
+  let fbFilterReward = false;
+  // 奖励反馈玩家：输入金币（可附备注）→ 服务器给该玩家加币并通知
+  function rewardFeedback(id, who) {
+    promptModalLocal({ title: '🎁 奖励反馈玩家', label: '奖励金币', value: 1000, numeric: true, hint: '奖励对象：' + (who || id) + '（立即到账并通知）' })
+      .then(function (val) {
+        if (val == null) return null;
+        const coins = Math.floor(Number(val) || 0);
+        if (coins <= 0) { toast('奖励金币需大于 0', true); return null; }
+        return promptModalLocal({ title: '备注（可选）', label: '备注', value: '', hint: '例如：优质 Bug 反馈，感谢' }).then(function (note) {
+          if (note == null) return null;
+          return adminApi('POST', '/api/admin/feedback/reward', { token: token, id: id, coins: coins, note: note }).then(function (r) {
+            if (!r.ok) { toast(r.data.error || '奖励失败', true); return null; }
+            toast('已奖励 ' + coins + ' 金币给 ' + (who || '该玩家'));
+            renderFeedback();
+            return r.data;
+          });
+        });
+      });
+  }
   function renderFeedback() {
     const main = $('main');
     main.innerHTML = '<h2>📮 玩家反馈</h2><div class="hint" style="margin-bottom:12px">玩家提交的 Bug / 建议 / 平衡反馈，按时间倒序。</div>' +
@@ -196,29 +220,53 @@ window.Admin = (function () {
       if (!r.ok) { box.textContent = (r.data && r.data.error) || '加载失败'; return; }
       // 回填反馈规则
       if (r.data.cfg) { $('fbc-cd').value = r.data.cfg.cdHours; $('fbc-cost').value = r.data.cfg.skipCost; }
-      const list = r.data.feedback || [];
-      if (!list.length) { box.innerHTML = '<div class="hint">暂无反馈。</div>'; return; }
+      const all = r.data.feedback || [];
       const KIND = { bug: '🐛 Bug', idea: '💡 建议', balance: '⚖️ 平衡', other: '💬 其他' };
       const STATUSES = r.data.statuses || { submitted: '已提交', accepted: '已受理', done: '已完成' };
-      box.innerHTML = '<div class="hint" style="margin-bottom:10px">共 ' + list.length + ' 条</div>' +
-        list.map(function (f) {
-          const dt = new Date(f.t);
-          const ts = dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2) + ' ' +
-            ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2);
-          const cur = f.status || 'submitted';
-          const opts = Object.keys(STATUSES).map(function (k) {
-            return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' + esc(STATUSES[k]) + '</option>';
-          }).join('');
-          return '<div class="fb-admin-item">' +
-            '<div class="fb-admin-head"><span class="fb-tag">' + esc(KIND[f.kind] || f.kind || '其他') + '</span>' +
-            '<span class="fb-admin-who">' + esc(f.name || f.key) + '</span>' +
-            '<span class="fb-status ' + cur + '">' + esc(STATUSES[cur] || cur) + '</span>' +
-            '<span class="fb-admin-time">' + ts + (f.version ? ' · ' + esc(f.version) : '') + '</span></div>' +
-            '<div class="fb-admin-text">' + esc(f.text) + '</div>' +
-            '<div class="fb-admin-foot"><label class="hint">状态</label>' +
-            '<select class="ipt fb-status-sel" data-id="' + esc(f.id) + '" style="width:auto">' + opts + '</select>' +
-            (f.statusBy ? '<span class="hint">由 ' + esc(f.statusBy) + ' 更新</span>' : '') + '</div></div>';
+      // 分类筛选：反馈类型 + 处理状态（另附「仅未奖励」）
+      const list = all.filter(function (f) {
+        if (fbFilterKind !== 'all' && (f.kind || 'other') !== fbFilterKind) return false;
+        if (fbFilterStatus !== 'all' && (f.status || 'submitted') !== fbFilterStatus) return false;
+        if (fbFilterReward && !(f.reward && f.reward.coins)) return false;
+        return true;
+      });
+      const kindOpts = [['all', '全部类型']].concat(Object.keys(KIND).map(function (k) { return [k, KIND[k]]; }))
+        .map(function (kv) { return '<option value="' + kv[0] + '"' + (fbFilterKind === kv[0] ? ' selected' : '') + '>' + esc(kv[1]) + '</option>'; }).join('');
+      const stOpts = [['all', '全部状态']].concat(Object.keys(STATUSES).map(function (k) { return [k, STATUSES[k]]; }))
+        .map(function (kv) { return '<option value="' + kv[0] + '"' + (fbFilterStatus === kv[0] ? ' selected' : '') + '>' + esc(kv[1]) + '</option>'; }).join('');
+      const barHtml = '<div class="fb-admin-filters" style="margin-bottom:10px">' +
+        '<label class="hint">类型</label><select class="ipt" id="fba-kind" style="width:auto">' + kindOpts + '</select>' +
+        '<label class="hint" style="margin-left:10px">状态</label><select class="ipt" id="fba-status" style="width:auto">' + stOpts + '</select>' +
+        '<label class="hint" style="margin-left:10px"><input type="checkbox" id="fba-reward"' + (fbFilterReward ? ' checked' : '') + ' /> 仅未奖励</label>' +
+        '<span class="hint" style="margin-left:10px">匹配 ' + list.length + ' / ' + all.length + ' 条</span></div>';
+      if (!all.length) { box.innerHTML = '<div class="hint">暂无反馈。</div>'; return; }
+      box.innerHTML = barHtml + (list.length ? list.map(function (f) {
+        const dt = new Date(f.t);
+        const ts = dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2) + ' ' +
+          ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2);
+        const cur = f.status || 'submitted';
+        const opts = Object.keys(STATUSES).map(function (k) {
+          return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' + esc(STATUSES[k]) + '</option>';
         }).join('');
+        const rw = f.reward;
+        return '<div class="fb-admin-item">' +
+          '<div class="fb-admin-head"><span class="fb-tag">' + esc(KIND[f.kind] || f.kind || '其他') + '</span>' +
+          '<span class="fb-admin-who">' + esc(f.name || f.key) + '</span>' +
+          '<span class="fb-status ' + cur + '">' + esc(STATUSES[cur] || cur) + '</span>' +
+          (rw && rw.coins ? '<span class="fb-reward">🎁 已奖励 +' + rw.coins + '💰' + (rw.note ? '（' + esc(rw.note) + '）' : '') + '</span>' : '') +
+          '<span class="fb-admin-time">' + ts + (f.version ? ' · ' + esc(f.version) : '') + '</span></div>' +
+          '<div class="fb-admin-text">' + esc(f.text) + '</div>' +
+          '<div class="fb-admin-foot"><label class="hint">状态</label>' +
+          '<select class="ipt fb-status-sel" data-id="' + esc(f.id) + '" style="width:auto">' + opts + '</select>' +
+          '<button class="btn mini primary" data-reward="' + esc(f.id) + '" data-who="' + esc(f.name || f.key) + '">🎁 奖励金币</button>' +
+          (f.statusBy ? '<span class="hint">由 ' + esc(f.statusBy) + ' 更新</span>' : '') + '</div></div>';
+      }).join('') : '<div class="hint">没有符合筛选条件的反馈。</div>');
+      $('fba-kind').onchange = function () { fbFilterKind = $('fba-kind').value; renderFeedback(); };
+      $('fba-status').onchange = function () { fbFilterStatus = $('fba-status').value; renderFeedback(); };
+      $('fba-reward').onchange = function () { fbFilterReward = $('fba-reward').checked; renderFeedback(); };
+      box.querySelectorAll('[data-reward]').forEach(function (b) {
+        b.onclick = function () { rewardFeedback(b.getAttribute('data-reward'), b.getAttribute('data-who')); };
+      });
       box.querySelectorAll('.fb-status-sel').forEach(function (sel) {
         sel.onchange = function () {
           adminApi('POST', '/api/admin/feedback/status', { token: token, id: sel.getAttribute('data-id'), status: sel.value }).then(function (rr) {
@@ -235,6 +283,7 @@ window.Admin = (function () {
   // 概览
   // ================================
   function stopOverviewTimer() { if (timer) { clearInterval(timer); timer = null; } }
+  function stopBannerTimer() { if (bannerTimer) { clearInterval(bannerTimer); bannerTimer = null; } }
   function renderOverview() {
     const main = $('main');
     main.innerHTML = '<h2>📊 服务器概览</h2><div id="ov-body" class="hint">加载中…</div>';
@@ -482,24 +531,77 @@ window.Admin = (function () {
     if (!g) return;
     if (!selSpot || !g.spots.some(function (s) { return s.id === selSpot; })) selSpot = g.spots.length ? g.spots[0].id : null;
     const body = $('gd-body');
+    const presets = cfg.poolPresets || {};
+    const presetOpts = Object.keys(presets).map(function (k) {
+      return '<option value="' + k + '">' + esc(presets[k].name) + '</option>';
+    }).join('');
+    const removedG = cfg.removedGrounds || [];
+    const removedS = cfg.removedSpots || [];
     body.innerHTML =
+      // —— 新建渔场（支持一键填充 + 限时窗口）——
+      '<div class="panel gd-new">' +
+      '<h3 style="margin-top:0">➕ 新建渔场</h3>' +
+      '<div class="mgr-row"><label>ID</label><input id="ng-id" class="ipt gi-id" placeholder="如 coral_bay（小写字母/数字/下划线）" />' +
+      '<label class="hint">名称</label><input id="ng-name" class="ipt gi-name" placeholder="如 珊瑚湾" maxlength="20" />' +
+      '<label class="hint">类型</label><select id="ng-type" class="ipt gi-type"><option value="normal">普通钓场</option><option value="event">活动钓场</option></select>' +
+      '<label class="hint">首个钓点</label><input id="ng-spot" class="ipt gi-name" value="主钓点" maxlength="20" /></div>' +
+      '<div class="mgr-row"><label>简介</label><input id="ng-desc" class="ipt gi-desc" placeholder="一句话描述（可选）" maxlength="80" />' +
+      '<label class="hint">一键填充</label><select id="ng-preset" class="ipt gi-type">' + presetOpts + '</select>' +
+      '<label class="hint" title="创建首个钓点时就按预设填好掉落池，之后仍可在下方逐条调整">填充掉落池</label>' +
+      '<input type="checkbox" id="ng-fill" checked /></div>' +
+      '<div class="mgr-row"><label>限时开放</label><input id="ng-from" class="ipt gi-time" type="datetime-local" />' +
+      '<span class="hint">~</span><input id="ng-to" class="ipt gi-time" type="datetime-local" />' +
+      '<span class="hint">留空 = 常驻开放；到点自动开/关并广播</span>' +
+      '<button class="btn primary" id="ng-create">创建渔场</button><span id="ng-state" class="hint"></span></div>' +
+      ((removedG.length || removedS.length)
+        ? '<div class="gd-removed"><b>已删除（可恢复）</b>：' +
+          removedG.map(function (id) {
+            const base = GROUND_NAME_HINT(cfg, id);
+            return '<span class="gd-chip">🌊 ' + esc(base) + ' <button class="btn mini" data-rstg="' + esc(id) + '">恢复</button></span>';
+          }).join('') +
+          removedS.map(function (key) {
+            const parts = key.split(':');
+            return '<span class="gd-chip">🎣 ' + esc(GROUND_NAME_HINT(cfg, parts[0])) + ' · ' + esc(parts[1]) + ' <button class="btn mini" data-rsts="' + esc(key) + '">恢复</button></span>';
+          }).join('') + '</div>'
+        : '') +
+      '</div>' +
+      // —— 渔场卡片 ——
       '<div class="ground-tabs">' + cfg.grounds.map(function (gr) {
+        const limited = !!(gr.openFrom || gr.openTo);
+        const badge = (gr.custom ? '<span class="gd-badge custom">自定义</span>' : '') +
+          (limited ? '<span class="gd-badge limited" title="限时渔场">⏰ 限时</span>' : '');
         return '<div class="gcard' + (gr.id === selGround ? ' sel' : '') + (gr.locked ? ' locked' : '') + '" data-g="' + esc(gr.id) + '">' +
-          '<b>' + esc(gr.name) + (gr.locked ? ' 🔒' : '') + '</b>' +
+          '<b>' + esc(gr.name) + (gr.locked ? ' 🔒' : '') + badge + '</b>' +
           '<span class="gi">' + esc(gr.desc) + '</span>' +
-          '<div style="margin-top:6px"><button class="btn mini" data-lock="' + esc(gr.id) + '">' + (gr.locked ? '解锁钓场' : '锁定钓场') + '</button></div>' +
+          '<div style="margin-top:6px"><button class="btn mini" data-lock="' + esc(gr.id) + '">' + (gr.locked ? '解锁钓场' : '锁定钓场') + '</button>' +
+          '<button class="btn mini danger" data-rmg="' + esc(gr.id) + '">删除</button></div>' +
           '</div>';
       }).join('') + '</div>' +
       '<div class="panel">' +
+      // —— 选中渔场的信息编辑 + 钓点管理 ——
+      '<div class="mgr-row gd-info"><label>名称</label><input id="gi-name" class="ipt gi-name" value="' + esc(g.name) + '" maxlength="20" />' +
+      '<label class="hint">类型</label><select id="gi-type" class="ipt gi-type"><option value="normal"' + (g.type !== 'event' ? ' selected' : '') + '>普通钓场</option><option value="event"' + (g.type === 'event' ? ' selected' : '') + '>活动钓场</option></select>' +
+      '<label class="hint">简介</label><input id="gi-desc" class="ipt gi-desc" value="' + esc(g.desc || '') + '" maxlength="80" />' +
+      '<button class="btn primary" id="gi-save">保存信息</button><span id="gi-state" class="hint"></span></div>' +
+      '<div class="mgr-row gd-info"><label>限时开放</label><input id="gi-from" class="ipt gi-time" type="datetime-local" value="' + esc(toLocalInput(g.openFrom)) + '" />' +
+      '<span class="hint">~</span><input id="gi-to" class="ipt gi-time" type="datetime-local" value="' + esc(toLocalInput(g.openTo)) + '" />' +
+      '<button class="btn" id="gi-window">保存限时</button><button class="btn mini" id="gi-clearwin">清除限时</button>' +
+      '<span class="hint">窗口外自动锁定（含手动锁定叠加）</span></div>' +
       '<div class="spot-tabs">' + g.spots.map(function (s) {
         return '<button class="spot-tab' + (s.id === selSpot ? ' on' : '') + '" data-s="' + esc(s.id) + '">' + esc(s.name) + '</button>';
-      }).join('') + '</div>' +
+      }).join('') +
+      '<span class="gd-spot-acts"><input id="ns-name" class="ipt gi-name" placeholder="新钓点名称" maxlength="20" />' +
+      '<select id="ns-preset" class="ipt gi-type">' + presetOpts + '</select>' +
+      '<button class="btn mini" id="ns-add">＋ 新建钓点（一键填充）</button>' +
+      (sp0Exists(g) ? '<button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button>' : '') +
+      '</span></div>' +
       '<div id="ed-body"></div>' +
       '</div>';
+    void presets;
 
     body.querySelectorAll('.gcard').forEach(function (c) {
       c.onclick = function (ev) {
-        if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-lock')) return;
+        if (ev.target && ev.target.getAttribute && (ev.target.getAttribute('data-lock') || ev.target.getAttribute('data-rmg'))) return;
         selGround = c.getAttribute('data-g'); selSpot = null;
         poolDirty = buffsDirty = false;
         drawGrounds(cfg);
@@ -516,6 +618,42 @@ window.Admin = (function () {
         });
       };
     });
+    // 删除渔场（内置渔场可恢复；自定义直接移除）
+    body.querySelectorAll('[data-rmg]').forEach(function (b) {
+      b.onclick = function () {
+        const gid = b.getAttribute('data-rmg');
+        const gr = cfg.grounds.find(function (x) { return x.id === gid; });
+        confirmModalLocal('删除渔场「' + (gr ? gr.name : gid) + '」？该场正在钓鱼的玩家会被停止' + (gr && gr.custom ? '（自定义渔场删除后不可恢复）' : '（内置渔场可在上方「已删除」中恢复）')).then(function (ok) {
+          if (!ok) return;
+          adminApi('POST', '/api/admin/ground/remove', { token: token, groundId: gid }).then(function (r) {
+            if (!r.ok) { toast(r.data.error || '删除失败', true); return; }
+            toast('渔场已删除' + (r.data.restorable ? '（可恢复）' : ''));
+            if (selGround === gid) selGround = null;
+            loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
+          });
+        });
+      };
+    });
+    body.querySelectorAll('[data-rstg]').forEach(function (b) {
+      b.onclick = function () {
+        adminApi('POST', '/api/admin/ground/restore', { token: token, groundId: b.getAttribute('data-rstg') }).then(function (r) {
+          if (!r.ok) { toast(r.data.error || '恢复失败', true); return; }
+          toast('渔场已恢复');
+          loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
+        });
+      };
+    });
+    body.querySelectorAll('[data-rsts]').forEach(function (b) {
+      b.onclick = function () {
+        const key = b.getAttribute('data-rsts');
+        const parts = key.split(':');
+        adminApi('POST', '/api/admin/ground/restore', { token: token, groundId: parts[0], spotId: parts[1] }).then(function (r) {
+          if (!r.ok) { toast(r.data.error || '恢复失败', true); return; }
+          toast('钓点已恢复');
+          loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
+        });
+      };
+    });
     body.querySelectorAll('.spot-tab').forEach(function (t) {
       t.onclick = function () {
         selSpot = t.getAttribute('data-s');
@@ -523,15 +661,110 @@ window.Admin = (function () {
         drawGrounds(cfg);
       };
     });
+    // 新建渔场
+    $('ng-create').onclick = function () {
+      const bodyNow = {
+        token: token,
+        id: $('ng-id').value.trim(),
+        name: $('ng-name').value.trim(),
+        type: $('ng-type').value,
+        desc: $('ng-desc').value.trim(),
+        spotId: 'main',
+        spotName: $('ng-spot').value.trim() || '主钓点',
+        preset: $('ng-preset').value,
+        fill: $('ng-fill').checked,
+        openFrom: $('ng-from').value || null,
+        openTo: $('ng-to').value || null,
+      };
+      if (!bodyNow.id) { $('ng-state').innerHTML = '<span class="err">请填写渔场 ID</span>'; return; }
+      if (!bodyNow.name) { $('ng-state').innerHTML = '<span class="err">请填写渔场名称</span>'; return; }
+      adminApi('POST', '/api/admin/ground/add', bodyNow).then(function (r) {
+        if (!r.ok) { $('ng-state').innerHTML = '<span class="err">' + esc(r.data.error || '创建失败') + '</span>'; return; }
+        toast('渔场已创建' + (bodyNow.fill ? '（已按预设填充掉落池）' : ''));
+        selGround = bodyNow.id; selSpot = 'main';
+        poolDirty = buffsDirty = false;
+        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
+      });
+    };
+    // 选中渔场的信息/限时窗口
+    $('gi-save').onclick = function () {
+      adminApi('POST', '/api/admin/ground/update', {
+        token: token, groundId: g.id,
+        name: $('gi-name').value.trim(), type: $('gi-type').value, desc: $('gi-desc').value.trim(),
+      }).then(function (r) {
+        if (!r.ok) { $('gi-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+        $('gi-state').innerHTML = '<span style="color:var(--ok)">已保存</span>';
+        toast('渔场信息已更新');
+        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
+      });
+    };
+    $('gi-window').onclick = function () {
+      adminApi('POST', '/api/admin/ground/update', {
+        token: token, groundId: g.id,
+        openFrom: $('gi-from').value || null, openTo: $('gi-to').value || null,
+      }).then(function (r) {
+        if (!r.ok) { $('gi-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+        toast('限时窗口已保存，到点自动开/关');
+        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
+      });
+    };
+    $('gi-clearwin').onclick = function () {
+      adminApi('POST', '/api/admin/ground/update', { token: token, groundId: g.id, clearWindow: true }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '操作失败', true); return; }
+        toast('已清除限时窗口（恢复常驻）');
+        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
+      });
+    };
+    // 新建钓点（一键填充）
+    $('ns-add').onclick = function () {
+      const name = $('ns-name').value.trim();
+      if (!name) { toast('请填写新钓点名称', true); return; }
+      const autoId = 'spot_' + Date.now().toString(36).slice(-5);
+      adminApi('POST', '/api/admin/spot/add', { token: token, groundId: g.id, id: autoId, name: name, preset: $('ns-preset').value, fill: true }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '创建失败', true); return; }
+        toast('钓点「' + name + '」已创建（掉落池已按预设填充）');
+        selSpot = r.data.spot.id;
+        poolDirty = buffsDirty = false;
+        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
+      });
+    };
+    if ($('ns-del')) {
+      $('ns-del').onclick = function () {
+        const spNow = g.spots.find(function (x) { return x.id === selSpot; });
+        if (!spNow) return;
+        confirmModalLocal('删除钓点「' + spNow.name + '」？在该点钓鱼的玩家会被停止' + (g.custom ? '（自定义渔场内的钓点删除后不可恢复）' : '（内置钓点可在「已删除」中恢复）')).then(function (ok) {
+          if (!ok) return;
+          adminApi('POST', '/api/admin/spot/remove', { token: token, groundId: g.id, spotId: spNow.id }).then(function (r) {
+            if (!r.ok) { toast(r.data.error || '删除失败', true); return; }
+            toast('钓点已删除' + (r.data.restorable ? '（可恢复）' : ''));
+            selSpot = null;
+            loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
+          });
+        });
+      };
+    }
 
     const sp = g.spots.find(function (x) { return x.id === selSpot; });
-    if (!sp) { $('ed-body').innerHTML = '<div class="hint">该钓场暂无钓点。</div>'; return; }
+    if (!sp) { $('ed-body').innerHTML = '<div class="hint">该渔场暂无钓点，可用上方「＋ 新建钓点」添加（自动填充掉落池）。</div>'; return; }
     // 草稿：首次进入或切换钓点时从服务器数据拷贝
     if (!poolDirty && !buffsDirty) {
       poolDraft = (sp.pool || []).map(function (e) { return poolToRow(e.pick, e.weight); });
       buffsDraft = (sp.buffs || []).map(function (b) { return { type: b.type, value: b.value }; });
     }
     drawEditors(cfg, g, sp);
+  }
+  // 已删除项的名称提示（内置目录已不在 cfg.grounds 中，退回显示 id）
+  function GROUND_NAME_HINT(cfg, id) {
+    const g = cfg.grounds.find(function (x) { return x.id === id; });
+    return g ? g.name : id;
+  }
+  function sp0Exists(g) { return !!(g && g.spots && g.spots.length); }
+  // 毫秒时间戳 → datetime-local 输入值（本地时区）
+  function toLocalInput(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    function p(n) { return ('0' + n).slice(-2); }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
   function poolToRow(pick, weight) {
     const i = pick.indexOf(':');
@@ -543,10 +776,15 @@ window.Admin = (function () {
 
   function drawEditors(cfg, g, sp) {
     const ed = $('ed-body');
+    const presetOpts2 = Object.keys(cfg.poolPresets || {}).map(function (k) {
+      return '<option value="' + k + '">' + esc(cfg.poolPresets[k].name) + '</option>';
+    }).join('');
     ed.innerHTML = '<h3>🎣 掉落池 — ' + esc(g.name) + ' · ' + esc(sp.name) + '</h3>' +
       '<div id="pool-rows"></div>' +
       '<div class="editor-foot">' +
       '<button id="pool-add" class="btn mini">＋ 添加条目</button>' +
+      '<select id="pool-preset" class="ipt gi-type" title="一键填充的预设组合">' + presetOpts2 + '</select>' +
+      '<button id="pool-fill" class="btn mini" title="按预设替换整份掉落池（填充后仍可逐条修改，保存才生效）">⚡ 一键填充</button>' +
       '<span id="pool-state" class="hint"></span>' +
       '<span style="flex:1"></span>' +
       '<button id="pool-save" class="btn primary">保存掉落池</button>' +
@@ -562,7 +800,7 @@ window.Admin = (function () {
 
     const affixes = cfg.affixTypes;
     const buffNote = {
-      speed: '钓速：缩短抛竿间隔（上限 60%）', big: '大鱼概率：放大「大鱼」条目权重',
+      speed: '钓速：缩短抛竿间隔（与全服钓速加成叠加后按上限截断，见「公式管理」）', big: '大鱼概率：放大「大鱼」条目权重',
       rare: '稀有概率：放大「稀有」条目权重', material: '材料概率：放大材料条目权重',
       size: '体型：放大捕获体型（最高基准上限 1.3 倍）', double: '双钓概率：触发后立即再结算一竿',
     };
@@ -666,6 +904,18 @@ window.Admin = (function () {
     drawBuffs();
 
     $('pool-add').onclick = function () { poolDraft.push({ type: 'fish', id: '', weight: 10 }); poolDirty = true; drawPool(); };
+    // 一键填充：按预设（经济浅水/大物塘/稀有秘境/材料工坊）替换草稿，保存后生效
+    $('pool-fill').onclick = function () {
+      const preset = $('pool-preset').value;
+      adminApi('POST', '/api/admin/pool/preset', { token: token, preset: preset }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '加载预设失败', true); return; }
+        poolDraft = r.data.pool.map(function (e) { return poolToRow(e.pick, e.weight); });
+        poolDirty = true;
+        drawPool();
+        const nm = (r.data.presets && r.data.presets[preset]) ? r.data.presets[preset].name : preset;
+        toast('已按「' + nm + '」填充 ' + poolDraft.length + ' 条，点「保存掉落池」生效');
+      });
+    };
     $('buff-add').onclick = function () { buffsDraft.push({ type: 'speed', value: 10 }); buffsDirty = true; drawBuffs(); };
     $('pool-save').onclick = function () {
       adminApi('POST', '/api/admin/spot/pool', { token: token, groundId: g.id, spotId: sp.id, pool: poolDraft.map(function (r) { return { pick: rowToPick(r), weight: Number(r.weight) || 0 }; }) }).then(function (r) {
@@ -811,6 +1061,30 @@ window.Admin = (function () {
       ov.querySelector('.cf-yes').onclick = function () { ov.remove(); resolve(true); };
     });
   }
+  // 子窗口输入（数字/文本；替代浏览器 prompt）
+  function promptModalLocal(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+      const ov = document.createElement('div');
+      ov.className = 'modal-overlay';
+      ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">' + esc(opts.title || '请输入') + '</span>' +
+        '<button class="btn mini cf-x">✕</button></div>' +
+        '<div class="modal-body">' + (opts.hint ? '<div class="cf-hint">' + esc(opts.hint) + '</div>' : '') +
+        '<div class="cf-row"><label class="hint">' + esc(opts.label || '') + '</label>' +
+        '<input class="ipt cf-val" type="' + (opts.numeric ? 'number' : 'text') + '" value="' + esc(opts.value != null ? opts.value : '') + '" /></div>' +
+        '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn mini primary cf-yes">确定</button></div></div></div>';
+      document.body.appendChild(ov);
+      const inp = ov.querySelector('.cf-val');
+      function done(v) { ov.remove(); resolve(v); }
+      ov.addEventListener('click', function (e) { if (e.target === ov) done(null); });
+      ov.querySelector('.cf-x').onclick = function () { done(null); };
+      ov.querySelector('.cf-no').onclick = function () { done(null); };
+      ov.querySelector('.cf-yes').onclick = function () { done(opts.numeric ? Number(inp.value) : inp.value); };
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') done(opts.numeric ? Number(inp.value) : inp.value); });
+      inp.focus(); inp.select();
+    });
+  }
   function refreshMarket() {
     return api('GET', '/api/market').then(function (r) {
       if (!r.ok || view !== 'market') return;
@@ -847,7 +1121,7 @@ window.Admin = (function () {
       '<div class="panel"><h3>可用变量</h3><div class="kv">' +
       BITE_VARS_DOC.map(function (v) { return '<code>' + v[0] + '</code> — ' + v[1] + '<br>'; }).join('') +
       '</div><h3>可用函数</h3><div class="kv"><code>min</code> <code>max</code> <code>floor</code> <code>ceil</code> <code>round</code> <code>abs</code> <code>clamp(x, lo, hi)</code><br>' +
-      '示例：<code>min(98, 90 + speed * 0.15)</code> ／ <code>clamp(85 + rare, 50, 100)</code> ／ <code>interval &lt; 2000 ? 0 : 90</code> ❌（不支持三元）</div></div>' +
+      '示例：<code>90</code>（默认：平值 90% 上钩） ／ <code>min(98, 90 + speed * 0.15)</code>（旧版：上钩率随钓速提升） ／ <code>clamp(85 + rare, 50, 100)</code></div></div>' +
       '<div class="panel" style="flex:1 1 100%;min-width:0">' +
       '<h3>🎣 双钓率</h3>' +
       '<div class="hint" style="margin-bottom:10px">叠加值 A（百分比点数）→ 单次追加概率 <code>P = A/(A+100) = 1 − 1/(1+A/100)</code>。' +
@@ -858,6 +1132,26 @@ window.Admin = (function () {
       '<span class="hint">%</span>' +
       '<button id="db-save" class="btn primary">保存</button><span id="db-state" class="hint"></span></div>' +
       '<div id="db-preview" class="hint"></div></div>' +
+      '<div class="panel" style="flex:1 1 100%;min-width:0">' +
+      '<h3>🎣 抛竿间隔与全服钓速</h3>' +
+      '<div class="hint" style="margin-bottom:10px">服务端每隔该间隔自动抛一竿。<b>钓速只影响抛竿间隔</b>：间隔 = 基础 × (1 − 有效钓速/100)，不低于最短间隔；' +
+      '有效钓速 = 钓竿词缀 + 钓点增益 + <b>全服钓速加成</b>，并按<b>钓速上限</b>截断。上钩率由上方公式单独决定（默认平值 90%）。' +
+      '保存后正在钓鱼的玩家循环会立即按新间隔重启。</div>' +
+      '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">基础间隔</label>' +
+      '<input id="cast-base" class="ipt" type="number" min="200" max="60000" step="100" style="width:110px" />' +
+      '<span class="hint">ms（默认 3000）</span>' +
+      '<label style="width:110px;color:var(--txt-dim);font-size:13px;margin-left:12px">最短间隔</label>' +
+      '<input id="cast-min" class="ipt" type="number" min="100" max="60000" step="100" style="width:110px" />' +
+      '<span class="hint">ms（默认 800）</span></div>' +
+      '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">全服钓速加成</label>' +
+      '<input id="cast-bonus" class="ipt" type="number" min="-100" max="500" step="5" style="width:110px" />' +
+      '<span class="hint">%（加到每位玩家的有效钓速上，默认 0）</span>' +
+      '<label style="width:110px;color:var(--txt-dim);font-size:13px;margin-left:12px">钓速上限</label>' +
+      '<input id="cast-cap" class="ipt" type="number" min="0" max="100" step="5" style="width:110px" />' +
+      '<span class="hint">%（默认 80）</span>' +
+      '<button id="cast-save" class="btn primary" style="margin-left:12px">保存</button><span id="cast-state" class="hint"></span>' +
+      '<button id="cast-reset" class="btn mini" style="margin-left:8px">恢复默认</button></div>' +
+      '<div id="cast-preview" class="hint"></div></div>' +
       '</div>';
     loadWorldCfg().then(function (cfg) {
       if (!cfg || view !== 'formula') return;
@@ -880,6 +1174,50 @@ window.Admin = (function () {
           if (worldCfg) worldCfg.doubleBase = r.data.doubleBase;
           $('db-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
           toast('基础双钓率已保存');
+        });
+      };
+      // 抛竿间隔 + 全服钓速（基础值 / 最短值 / 全服加成 / 上限）；保存后服务器广播并重启在线循环
+      const cbInp = $('cast-base'), cmInp = $('cast-min'), cboInp = $('cast-bonus'), ccpInp = $('cast-cap');
+      const cdft = cfg.castDefaults || { baseMs: 3000, minMs: 800, speedBonus: 0, speedCap: 80 };
+      cbInp.value = cfg.castBaseMs != null ? cfg.castBaseMs : cdft.baseMs;
+      cmInp.value = cfg.castMinMs != null ? cfg.castMinMs : cdft.minMs;
+      cboInp.value = cfg.castSpeedBonus != null ? cfg.castSpeedBonus : cdft.speedBonus;
+      ccpInp.value = cfg.castSpeedCap != null ? cfg.castSpeedCap : cdft.speedCap;
+      function castPreview() {
+        const base = Number(cbInp.value) || 0, min = Number(cmInp.value) || 0;
+        const bonus = Number(cboInp.value) || 0, cap = Number(ccpInp.value) || 0;
+        const samples = [0, 20, 45, 60, 80].map(function (sp) {
+          const eff = Math.max(0, Math.min(cap, sp + bonus));
+          const ms = Math.max(min, Math.round(base * (1 - eff / 100)));
+          return '玩家钓速 ' + sp + '%→有效 ' + Math.round(eff) + '%→' + (ms / 1000).toFixed(2) + 's';
+        }).join('　');
+        $('cast-preview').innerHTML = '实际间隔预览：' + samples;
+      }
+      [cbInp, cmInp, cboInp, ccpInp].forEach(function (n) { n.addEventListener('input', castPreview); });
+      castPreview();
+      $('cast-save').onclick = function () {
+        const body = {
+          token: token,
+          castBaseMs: Number(cbInp.value), castMinMs: Number(cmInp.value),
+          castSpeedBonus: Number(cboInp.value), castSpeedCap: Number(ccpInp.value),
+        };
+        adminApi('POST', '/api/admin/settings', body).then(function (r) {
+          if (!r.ok) { $('cast-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+          $('cast-base').value = r.data.castBaseMs; $('cast-min').value = r.data.castMinMs;
+          $('cast-bonus').value = r.data.castSpeedBonus; $('cast-cap').value = r.data.castSpeedCap;
+          castPreview();
+          $('cast-state').innerHTML = '<span style="color:var(--ok)">已保存，在线玩家循环已按新间隔重启</span>';
+          toast('抛竿间隔与钓速已保存');
+        });
+      };
+      $('cast-reset').onclick = function () {
+        adminApi('POST', '/api/admin/settings', { token: token, castBaseMs: cdft.baseMs, castMinMs: cdft.minMs, resetCastSpeed: true }).then(function (r) {
+          if (!r.ok) { $('cast-state').innerHTML = '<span class="err">' + esc(r.data.error || '重置失败') + '</span>'; return; }
+          $('cast-base').value = r.data.castBaseMs; $('cast-min').value = r.data.castMinMs;
+          $('cast-bonus').value = r.data.castSpeedBonus; $('cast-cap').value = r.data.castSpeedCap;
+          castPreview();
+          $('cast-state').innerHTML = '<span style="color:var(--ok)">已恢复默认</span>';
+          toast('已恢复默认抛竿间隔与钓速');
         });
       };
     });
@@ -1117,12 +1455,15 @@ window.Admin = (function () {
     const main = $('main');
     main.innerHTML = '<h2>📢 横幅管理</h2>' +
       '<div class="hint" style="margin-bottom:12px">发布滚动公告（内容 + 时长），玩家端按队列顺序依次播放；有内容时可按配置让浏览器图标闪烁提示。</div>' +
+      '<div class="panel"><h3 style="margin-top:0">📡 当前滚播</h3>' +
+      '<div id="bn-live" class="bn-live">加载中…</div></div>' +
       '<div class="panel"><div class="mgr-row"><label>内容</label><input id="bn-content" class="ipt" maxlength="200" placeholder="公告内容（最多 200 字）" />' +
       '<label class="hint">时长</label><input id="bn-dur" class="ipt mk-num" type="number" min="1" max="3600" step="0.5" value="10" />' +
       '<span class="hint">秒</span><button class="btn primary" id="bn-add">发布</button></div>' +
       '<div class="mgr-row"><label>图标闪烁</label><label class="switch"><input type="checkbox" id="bn-blink"><span class="sl"></span></label>' +
       '<input id="bn-blink-title" class="ipt" placeholder="闪烁时浏览器标题" style="max-width:280px" />' +
-      '<button class="btn" id="bn-cfg-save">保存闪烁设置</button></div>' +
+      '<button class="btn" id="bn-cfg-save">保存闪烁设置</button>' +
+      '<span style="flex:1"></span><button class="btn mini danger" id="bn-clear">清空队列</button></div>' +
       '<div id="bn-list" style="margin-top:12px">加载中…</div></div>';
     $('bn-add').onclick = function () {
       const content = $('bn-content').value.trim();
@@ -1140,7 +1481,53 @@ window.Admin = (function () {
         toast('闪烁设置已保存');
       });
     };
+    $('bn-clear').onclick = function () {
+      confirmModalLocal('确定清空整个横幅队列？正在滚播的横幅也会立即停止。').then(function (ok) {
+        if (!ok) return;
+        adminApi('POST', '/api/admin/banner/clear', { token: token }).then(function (r) {
+          if (!r.ok) { toast(r.data.error || '清空失败', true); return; }
+          toast('已清空 ' + (r.data.cleared || 0) + ' 条横幅');
+          loadBanners();
+        });
+      });
+    };
     loadBanners();
+    stopBannerTimer();
+    bannerTimer = setInterval(function () { if (view === 'banner') loadBanners(); else stopBannerTimer(); }, 5000);
+  }
+  // 当前滚播面板：队列条数 + 每条横幅的实时观看人数（客户端播放时上报，15s 无心跳视为播完）
+  function drawBannerLive(d) {
+    const box = $('bn-live');
+    if (!box) return;
+    const playing = d.playing || [];
+    const total = (d.banners || []).length;
+    const watching = playing.filter(function (p) { return p.count > 0; });
+    let html = '<div class="bn-live-sum">' +
+      '<span class="bn-chip">队列 <b>' + total + '</b> 条</span>' +
+      '<span class="bn-chip">滚播中 <b>' + watching.length + '</b> 条</span>' +
+      '<span class="bn-chip">在线 <b>' + (d.online || 0) + '</b> 人</span></div>';
+    if (!watching.length) {
+      html += '<div class="hint">当前没有横幅正在玩家端滚播（队列为空或玩家端已播完）。</div>';
+    } else {
+      html += '<table class="tbl"><thead><tr><th>正在滚播</th><th class="num">观看人数</th><th>最后心跳</th><th>操作</th></tr></thead><tbody>' +
+        watching.map(function (p) {
+          const dt = new Date(p.lastAt);
+          const ts = ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2) + ':' + ('0' + dt.getSeconds()).slice(-2);
+          return '<tr><td>' + esc(p.content) + '</td><td class="num">' + p.count + '</td><td class="hint">' + ts + '</td>' +
+            '<td class="mgr-acts"><button class="btn mini danger" data-stop="' + esc(p.id) + '">停止滚播</button></td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+    box.innerHTML = html;
+    box.querySelectorAll('[data-stop]').forEach(function (b) {
+      b.onclick = function () { stopBanner(b.getAttribute('data-stop')); };
+    });
+  }
+  function stopBanner(id) {
+    adminApi('POST', '/api/admin/banner/stop', { token: token, id: id }).then(function (r) {
+      if (!r.ok) { toast(r.data.error || '停止失败', true); return; }
+      toast('已通知所有玩家停止该横幅');
+      loadBanners();
+    });
   }
   function loadBanners() {
     adminApi('GET', '/api/admin/banner?token=' + encodeURIComponent(token)).then(function (r) {
@@ -1148,6 +1535,7 @@ window.Admin = (function () {
       const bs = r.data.banners || [];
       $('bn-blink').checked = !!(r.data.cfg && r.data.cfg.blink);
       $('bn-blink-title').value = (r.data.cfg && r.data.cfg.blinkTitle) || '📢 有新公告';
+      drawBannerLive(r.data);
       const box = $('bn-list');
       if (!bs.length) { box.innerHTML = '<div class="hint">队列为空。</div>'; return; }
       box.innerHTML = '<table class="tbl"><thead><tr><th>#</th><th>内容</th><th class="num">时长</th><th>发布</th><th>操作</th></tr></thead><tbody>' +
@@ -1157,11 +1545,13 @@ window.Admin = (function () {
             '<td class="hint">' + esc(b.by || '') + '</td>' +
             '<td class="mgr-acts"><button class="btn mini" data-up="' + esc(b.id) + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
             '<button class="btn mini" data-down="' + esc(b.id) + '"' + (i === bs.length - 1 ? ' disabled' : '') + '>↓</button>' +
+            '<button class="btn mini" data-stop2="' + esc(b.id) + '">停止</button>' +
             '<button class="btn mini danger" data-rm="' + esc(b.id) + '">删除</button></td></tr>';
         }).join('') + '</tbody></table>';
       box.querySelectorAll('[data-up]').forEach(function (b) { b.onclick = function () { moveBanner(b.getAttribute('data-up'), 'up'); }; });
       box.querySelectorAll('[data-down]').forEach(function (b) { b.onclick = function () { moveBanner(b.getAttribute('data-down'), 'down'); }; });
       box.querySelectorAll('[data-rm]').forEach(function (b) { b.onclick = function () { removeBanner(b.getAttribute('data-rm')); }; });
+      box.querySelectorAll('[data-stop2]').forEach(function (b) { b.onclick = function () { stopBanner(b.getAttribute('data-stop2')); }; });
     });
   }
   function moveBanner(id, dir) {
