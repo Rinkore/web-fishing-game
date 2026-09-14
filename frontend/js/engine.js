@@ -16,6 +16,12 @@ window.Engine = (function () {
     fishingInterval: 3000,      // 服务器返回的实际钓速（展示用）
     castInfo: null,             // 钓速明细：后台基础值 + 词缀/钓点增益/全服加成 + 实际间隔
     castCfg: null,              // 后台抛竿间隔/全服钓速配置（/api/version 与 castcfg 广播同步）
+    rodName: '',                // 当前钓竿命名
+    rodSlots: [],               // 钓竿槽位（含已保存钓竿：name/parts/affixes）
+    rodSlotsCount: 1,           // 已购买槽位数（首个免费）
+    rodSlotsMax: 8,
+    nextRodSlotPrice: null,     // 下一个槽位价格
+    rodLocked: {},              // 被钓竿占用的组件实例件数（背包/交易显示锁定标记）
     inventory: {},              // 服务器权威，SSE assets 整体同步
     bd: buildDefaultBD(),       // 服务器权威，登录/装备时同步
     bdEffects: { speed: 0, big: 0, rare: 0, material: 0, size: 0, double: 0 },
@@ -59,6 +65,15 @@ window.Engine = (function () {
   }
 
   function applyProfile(profile) {
+    // 钓竿存档字段：只在 profile 真的带这些字段时覆盖（局部 profile 不应清空运行时状态）
+    if (profile) {
+      if (profile.rodName !== undefined) state.rodName = profile.rodName || '';
+      if (profile.rodSlots !== undefined) state.rodSlots = profile.rodSlots || [];
+      if (profile.rodSlotsCount !== undefined) state.rodSlotsCount = profile.rodSlotsCount;
+      if (profile.rodSlotsMax !== undefined) state.rodSlotsMax = profile.rodSlotsMax;
+      if (profile.nextRodSlotPrice !== undefined) state.nextRodSlotPrice = profile.nextRodSlotPrice;
+      if (profile.rodLocked !== undefined) state.rodLocked = profile.rodLocked || {};
+    }
     if (!profile) return;
     // 切换账号：清空上一个账号的渔获日志与全服动态，避免串号残留
     const prevUser = state.me && state.me.username;

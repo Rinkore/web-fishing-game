@@ -112,7 +112,9 @@ window.UI = (function () {
   // 破纪录播报（不入队列，立即插播）
   function showRecordBanner(rec) {
     if (!rec) return;
-    playMarquee('🎉 全场最大纪录被破！' + rec.who + ' 钓到 ' + rec.name + ' ' + rec.size + 'cm', 0, null);
+    // 服务端下发文案（覆盖：全场最大 / 该鱼种纪录 / 前十大 / 前十小，所有鱼种）
+    const text = rec.text || ('🎉 全场最大纪录被破！' + rec.who + ' 钓到 ' + rec.name + ' ' + rec.size + 'cm');
+    playMarquee(text, 0, null);
   }
 
   // 管理后台公告队列：入队并顺序播放
@@ -197,7 +199,7 @@ window.UI = (function () {
   // ---- 日志：记录玩家收到的服务器消息（弹窗 / 公告 / 交易 / 纪录 / 订阅提醒）----
   // 前端本地持久化（localStorage 按账号分开）上限 300 条，不占服务器存储。
   const LOG_KEEP = 300;
-  const LOG_KINDS = { system: ['🖥', '系统'], trade: ['✅', '交易'], record: ['🏆', '纪录'], subscribe: ['🔔', '订阅'] };
+  const LOG_KINDS = { system: ['🖥', '系统'], trade: ['✅', '交易'], record: ['🏆', '纪录'], subscribe: ['🔔', '订阅'], catch: ['🐟', '渔获'] };
   let msgLog = [];
   let msgLogOwner = null;
   function logKeyOf() { const me = S().me; return me && me.id ? 'fishing_log_' + me.id : null; }
@@ -544,23 +546,19 @@ window.UI = (function () {
     } else {
       const here = E().playersAtGround(atGroundId);
       right.appendChild(el('div', 'here-count', '所在：' + esc(gNow ? gNow.name : '') + (spNow ? '·' + esc(spNow.name) : '') + ' · 在线 ' + here.length + ' 人'));
-      const peeps = el('div', 'peeps');
+      // 同屏最多 5 条，超出可下滑（不挤占下方的渔获日志入口）
+      const peepHead = el('div', 'peeps-head', '同钓点 ' + here.length + ' 人' + (here.length > 5 ? '（可下滑查看全部）' : ''));
+      right.appendChild(peepHead);
+      const peeps = el('div', 'peeps scroll5');
       if (here.length === 0) peeps.appendChild(el('div', 'hint', '暂无同一钓点的玩家。'));
       here.forEach(function (b) { peeps.appendChild(peepCard(b)); });
       right.appendChild(peeps);
     }
 
-    right.appendChild(el('h3', null, '📜 我的渔获日志'));
-    const log = el('div', 'catch-log');
-    if (st.log.length === 0) log.appendChild(el('div', 'hint', '还没有渔获，去抛竿吧。'));
-    st.log.slice(0, 25).forEach(function (e) {
-      const meta = e.item || {};
-      log.appendChild(el('div', 'log-line', timeStr(e.t) + ' · 钓到 <span class="' + qualityClass(meta) + '">' + esc(meta.name) +
-        '</span>' + (meta.size ? ' <span class="muted">' + meta.size + 'cm</span>' : '') +
-        (meta.rarity === 'big' ? ' 🐟大鱼' : meta.rarity === 'rare' ? ' ✨稀有' : '')));
-    });
-    right.appendChild(log);
-    // 说明：背包已移至独立「背包」页；此处移除以免页面过长，并使渔获日志与左栏底部对齐。
+    // 渔获日志已并入「📜 日志」页的「🐟 渔获」分列（右侧实况列表不再被日志挤占）
+    const toLog = el('div', 'hint');
+    toLog.innerHTML = '渔获日志已并入 <b>📜 日志 · 🐟 渔获</b>：' + (st.log.length ? ('最近一竿 ' + timeStr(st.log[0].t)) : '暂无渔获');
+    right.appendChild(toLog);
 
     main.appendChild(right);
   }
@@ -789,12 +787,138 @@ window.UI = (function () {
     bdEquipPart = null;
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
   }
+  // ---- 钓竿存档 / 槽位 ----
+  // 被钓竿（当前装备 + 已保存的槽位钓竿）占用的实例件数；背包/交易/市集据此显示锁定标记。
+  function rodLockCount(id) { const m = S().rodLocked || {}; return m[id] || 0; }
+  function rodLockBadge(id) {
+    const n = rodLockCount(id);
+    if (!n) return '';
+    return '<span class="rod-lock" title="有 ' + n + ' 件装在钓竿上（已锁定，不可单独交易）；背包里的余量可正常出售">🔒×' + n + '</span>';
+  }
+  // 组件摘要（整竿用）
+  function rodAffixBadges(affixes) {
+    return (affixes || []).map(function (a) {
+      return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>';
+    }).join(' ');
+  }
+  // 钓竿槽位栏：免费 1 个 + 可购买 7 个（价格递增）；存档 = 收起当前钓竿并锁定其配件
+  function renderRodSlots(strip) {
+    const st = S();
+    const slots = st.rodSlots || [];
+    const bought = st.rodSlotsCount || 1;
+    const max = st.rodSlotsMax || 8;
+    const wrap = el('div', 'rod-slots');
+    const head = el('div', 'rs-head');
+    head.innerHTML = '<b>🎣 我的钓竿</b>' +
+      '<span class="rs-cur">当前使用：<b class="' + qualityClass({ kind: 'component', quality: 'common' }) + '">' + esc(st.rodName || '（未命名）') + '</b>' +
+      ' · ' + Object.keys(st.bd || {}).filter(function (k) { return st.bd[k] && st.bd[k].compId; }).length + ' 件已装</span>' +
+      '<span class="rs-hint">存档会把当前钓竿收起进槽位（配件随之锁定，不可单独交易），需要时点「使用」切回</span>' +
+      '<button class="mini" id="rs-rename-cur">✏ 命名当前钓竿</button>';
+    wrap.appendChild(head);
+    const grid = el('div', 'rs-grid');
+    for (let i = 0; i < max; i++) {
+      const card = el('div', 'rs-card' + (i >= bought ? ' locked' : '') + (slots[i] ? ' has' : ''));
+      if (i >= bought) {
+        const price = i === bought ? st.nextRodSlotPrice : null;
+        card.innerHTML = '<div class="rs-name">🔒 槽位 ' + (i + 1) + '</div>' +
+          '<div class="rs-sub">' + (price != null ? ('购买需 💰' + price) : '需先购买前一个槽位') + '</div>';
+        if (price != null) {
+          const isAdmin = !!(st.me && st.me.admin);
+          const b = el('button', 'mini primary-mini' + ((st.player.coins || 0) < price ? ' locked' : ''), '购买');
+          b.title = '购买后用金币解锁该槽位，可保存并快速切换钓竿';
+          b.addEventListener('click', function () {
+            if ((st.player.coins || 0) < price) { toast('金币不足（需 ' + price + '）'); return; }
+            confirmModal({ title: '购买钓竿槽位', html: '花费 <b>💰' + price + '</b> 解锁第 ' + (i + 1) + ' 个钓竿槽位？', okText: '确认购买' }).then(function (ok) {
+              if (!ok) return;
+              call(window.Net.rodBuySlot(), function (r) { return '已解锁第 ' + r.data.rodSlotsCount + ' 个槽位（花费 💰' + r.data.price + '）'; }).then(function (r) {
+                if (r && r.ok) { st.player.coins = r.data.coins; st.rodSlotsCount = r.data.rodSlotsCount; st.nextRodSlotPrice = r.data.nextRodSlotPrice; renderTopbar(); renderView(); }
+              });
+            });
+          });
+          card.appendChild(b);
+        }
+      } else if (!slots[i]) {
+        card.innerHTML = '<div class="rs-name">槽位 ' + (i + 1) + '</div><div class="rs-sub">空槽位</div>';
+        const b = el('button', 'mini', '保存当前钓竿');
+        b.title = '把当前装配的钓竿收起保存到该槽位（配件随之锁定）';
+        b.addEventListener('click', function () {
+          const parts = Object.keys(st.bd || {}).filter(function (k) { return st.bd[k] && st.bd[k].compId; });
+          if (!parts.length) { toast('当前钓竿还没有装配任何组件'); return; }
+          promptModal({ title: '保存钓竿到槽位 ' + (i + 1), numeric: false, value: st.rodName || '', okText: '保存', html: '<div class="cf-hint">给这根钓竿起个名字（最多 12 字）。保存后配件会被锁定，不可单独交易。</div>' }).then(function (name) {
+            if (name == null) return;
+            call(window.Net.rodSave(i, name), '已保存到槽位 ' + (i + 1) + '（配件已锁定）').then(function (r) {
+              if (r && r.ok) { st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked; if (r.data.inventory) st.inventory = r.data.inventory; E().refreshEffects(); renderTopbar(); renderView(); }
+            });
+          });
+        });
+        card.appendChild(b);
+      } else {
+        const sl = slots[i];
+        card.innerHTML = '<div class="rs-name">' + esc(sl.name || ('槽位 ' + (i + 1))) + '</div>' +
+          '<div class="rs-sub">' + sl.count + ' 件 · 基准价 ' + sl.price + '💰</div>' +
+          '<div class="rs-affs">' + rodAffixBadges(sl.affixes) + '</div>';
+        const acts = el('div', 'rs-acts');
+        const useBtn = el('button', 'mini primary-mini', '使用');
+        useBtn.title = '与该槽位钓竿互换（当前装备收起进此槽位）';
+        useBtn.addEventListener('click', function () {
+          call(window.Net.rodUse(i), '已切换到「' + (sl.name || ('槽位 ' + (i + 1))) + '」').then(function (r) {
+            if (r && r.ok) {
+              st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodSlots = r.data.rodSlots;
+              st.rodLocked = r.data.rodLocked || {}; if (r.data.inventory) st.inventory = r.data.inventory;
+              if (r.data.castInfo) { st.castInfo = r.data.castInfo; st.fishingInterval = r.data.castInfo.interval; }
+              E().refreshEffects(); renderTopbar(); renderView();
+            }
+          });
+        });
+        acts.appendChild(useBtn);
+        const rn = el('button', 'mini', '改名');
+        rn.addEventListener('click', function () {
+          promptModal({ title: '重命名钓竿', numeric: false, value: sl.name || '', okText: '保存' }).then(function (name) {
+            if (name == null) return;
+            call(window.Net.rodRename(i, name), '已重命名').then(function (r) { if (r && r.ok) { st.rodSlots = r.data.rodSlots; renderView(); } });
+          });
+        });
+        acts.appendChild(rn);
+        const sell = el('button', 'mini', '上架');
+        sell.title = '把整根钓竿挂到开放市集（组件随竿一起卖出）';
+        sell.addEventListener('click', function () { openListModal(sl.rodId, null, { rodSlot: i, name: sl.name, affixes: sl.affixes, price: sl.price, count: sl.count }); });
+        acts.appendChild(sell);
+        const del = el('button', 'mini danger-mini', '删除');
+        del.title = '删除存档：配件退回背包（解除锁定）';
+        del.addEventListener('click', function () {
+          confirmModal({ title: '删除钓竿存档', html: '删除「' + esc(sl.name || ('槽位 ' + (i + 1))) + '」？<br>该钓竿的 ' + sl.count + ' 件组件会退回背包（可再次交易）。', okText: '删除', danger: true }).then(function (ok) {
+            if (!ok) return;
+            call(window.Net.rodDelete(i), '已删除存档，配件已退回背包').then(function (r) {
+              if (r && r.ok) { st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked || {}; if (r.data.inventory) st.inventory = r.data.inventory; renderTopbar(); renderView(); }
+            });
+          });
+        });
+        acts.appendChild(del);
+        card.appendChild(acts);
+      }
+      grid.appendChild(card);
+    }
+    wrap.appendChild(grid);
+    strip.appendChild(wrap);
+    const rnBtn = wrap.querySelector('#rs-rename-cur');
+    if (rnBtn) {
+      rnBtn.addEventListener('click', function () {
+        promptModal({ title: '命名当前钓竿', numeric: false, value: st.rodName || '', okText: '保存', html: '<div class="cf-hint">仅影响显示名（最多 12 字）</div>' }).then(function (name) {
+          if (name == null) return;
+          call(window.Net.rodName(name), '已命名').then(function (r) { if (r && r.ok) { st.rodName = r.data.rodName; renderView(); } });
+        });
+      });
+    }
+    return wrap;
+  }
+
   function renderBD() {
     const main = $('main');
     const st = S();
     main.innerHTML = '';
     const panel = el('div', 'panel wide');
-    panel.innerHTML = '<h2>🎯 钓竿配置 <span class="subtitle">装备组件获得词缀加成 · 配置随账号自动保存</span></h2>';
+    panel.innerHTML = '<h2>🎯 钓竿配置 <span class="subtitle">装备组件获得词缀加成 · 存档并命名多根钓竿随时切换</span></h2>';
+    renderRodSlots(panel);
 
     // 加成总览（与 Engine 的钓鱼逻辑同源）
     const eff = E().bdEffects();
@@ -954,21 +1078,24 @@ window.UI = (function () {
   let listModalId = null;
 
   // onListed：可选回调，上架成功后调用（装备子窗口用它回到原界面继续挑选）
-  function openListModal(id, onListed) {
+  // rodInfo：整根钓竿模式（{rodSlot, name, affixes, price, count}）——数量固定 1，组件随竿卖出
+  function openListModal(id, onListed, rodInfo) {
     listModalId = id;
     const st = S();
     const meta = itemMeta(id);
-    const have = st.inventory[id] || 0;
+    const isRod = !!(rodInfo && rodInfo.rodSlot != null);
+    const have = isRod ? 1 : (st.inventory[id] || 0);
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
     const overlay = el('div', 'modal-overlay');
     overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeListModal(); });
     const box = el('div', 'modal-box shop-modal');
     box.innerHTML =
-      '<div class="modal-head"><span class="modal-title">🏷️ 上架 ' + esc(meta.name) + '（持有 ' + have + '）</span><button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-head"><span class="modal-title">🏷️ 上架 ' + esc(isRod ? (rodInfo.name ? rodInfo.name + ' · 整根钓竿' : '整根钓竿') : meta.name) + (isRod ? '（' + rodInfo.count + ' 件组件）' : '（持有 ' + have + '）') + '</span><button class="mini modal-close">✕ 关闭</button></div>' +
       '<div class="modal-body">' +
+      (isRod ? '<div class="lm-rod">' + rodAffixBadges(rodInfo.affixes) + '</div><div class="hint" style="margin-bottom:8px">整根钓竿按 1 件整体出售，组件随竿交给买家（买家收到的是背包中的组件，可自行组装）。</div>' : '') +
       '<div class="lm-trend" id="list-trend">价格走势加载中…</div>' +
-      '<div class="lm-row"><label>出售数量</label><input type="number" id="list-qty" class="bulk-select" min="1" max="' + have + '" value="1" /></div>' +
-      '<div class="lm-row"><label>单价（💰）</label><input type="number" id="list-price" class="bulk-select" min="1" value="' + Math.max(1, (st.shop && st.shop[id] ? st.shop[id].price : meta.price) * 2) + '" /></div>' +
+      '<div class="lm-row"><label>出售数量</label><input type="number" id="list-qty" class="bulk-select" min="1" max="' + have + '" value="1"' + (isRod ? ' disabled' : '') + ' /></div>' +
+      '<div class="lm-row"><label>单价（💰）</label><input type="number" id="list-price" class="bulk-select" min="1" value="' + Math.max(1, Math.round((isRod ? (rodInfo.price || meta.price) : (st.shop && st.shop[id] ? st.shop[id].price : meta.price)) * (isRod ? 1 : 2))) + '" /></div>' +
       '<div class="lm-row"><label>挂单时长</label><span id="list-hours">' +
       [[6, '6 小时 · 1%'], [12, '12 小时 · 3%'], [24, '24 小时 · 5%']].map(function (kv) {
         return '<button class="mini lm-hours' + (kv[0] === 6 ? ' on' : '') + '" data-h="' + kv[0] + '">' + kv[1] + '</button>';
@@ -1007,21 +1134,29 @@ window.UI = (function () {
       const hBtn = box.querySelector('.lm-hours.on');
       const hours = hBtn ? parseInt(hBtn.getAttribute('data-h'), 10) : 6;
       if (qty <= 0 || price <= 0) { toast('请填写有效的数量与单价'); return; }
-      call(window.Net.marketList(id, Math.min(qty, have), price, hours), function (r) {
-        return '已上架 ' + meta.name + ' ×' + r.data.listing.qty + '（上架费 ' + r.data.fee + '💰 · ' + hours + ' 小时）';
+      const req = isRod
+        ? window.Net.marketListRod(rodInfo.rodSlot, price, hours)
+        : window.Net.marketList(id, Math.min(qty, have), price, hours);
+      call(req, function (r) {
+        return '已上架 ' + (isRod ? (rodInfo.name || '整根钓竿') : meta.name) + ' ×' + r.data.listing.qty + '（上架费 ' + r.data.fee + '💰 · ' + hours + ' 小时）';
       }).then(function (r) {
         if (r && r.ok) {
-          closeListModal(); st.inventory = r.data.inventory; st.player.coins = r.data.coins;
+          closeListModal();
+          if (r.data.inventory) st.inventory = r.data.inventory;
+          st.player.coins = r.data.coins;
+          if (r.data.rodSlots) st.rodSlots = r.data.rodSlots;
           renderTopbar(); renderView();
           if (typeof onListed === 'function') onListed();
         }
       });
     });
 
-    // 价格走势（组件为固定价，无供需行情）
-    if (meta.kind === 'component') {
+    // 价格走势（组件/整竿为固定价，无供需行情）
+    if (meta.kind === 'component' || isRod) {
       const t0 = document.getElementById('list-trend');
-      if (t0) t0.innerHTML = '<div class="sd-legend">组件为固定价道具（按品质定价，不随市场浮动）：参考价 ' + meta.price + '💰</div>';
+      if (t0) t0.innerHTML = '<div class="sd-legend">' + (isRod
+        ? '整根钓竿参考价 = 各组件基准价合计 ' + (rodInfo.price || meta.price) + '💰（可自由定价）'
+        : '组件为固定价道具（按品质定价，不随市场浮动）：参考价 ' + meta.price + '💰') + '</div>';
       return;
     }
     window.Net.shopHistory(id).then(function (r) {
@@ -1229,7 +1364,7 @@ window.UI = (function () {
   function listingMatchesAffix(l) {
     if (buyAffixType === 'all' && buyAffixMin === '' && buyAffixMax === '') return true;
     const meta = itemMeta(l.id);
-    if (meta.kind !== 'component' || !meta.affixes) return !buyOnlyComponents ? false : false;
+    if ((meta.kind !== 'component' && meta.kind !== 'rod') || !meta.affixes) return false;
     return meta.affixes.some(function (a) {
       if (buyAffixType !== 'all' && a.type !== buyAffixType) return false;
       if (buyAffixMin !== '' && a.value < Number(buyAffixMin)) return false;
@@ -1245,6 +1380,15 @@ window.UI = (function () {
     const mine = !!(me && me.id != null && String(l.seller).toLowerCase() === String(me.id).toLowerCase());
     const total = l.price * l.qty;
     const row = el('div', 'mk-row' + (mine ? ' mine' : ''));
+    // 整根钓竿：展出每件组件（部位 + 词条）
+    const rodHtml = (meta.kind === 'rod' && meta.parts)
+      ? '<div class="mk-rod-parts">' + meta.parts.map(function (it) {
+          return '<div class="mk-rod-part"><span class="mrp-name ' + qualityClass(it.comp) + '">' + esc(it.partName) + ' · ' + esc(it.comp.name) + '</span>' +
+            '<span class="mrp-affs">' + it.comp.affixes.map(function (a) {
+              return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>';
+            }).join('') + '</span></div>';
+        }).join('') + '</div>'
+      : '';
     const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
       ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
           const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
@@ -1254,8 +1398,9 @@ window.UI = (function () {
         }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
       : '';
     row.innerHTML =
-      '<div class="mk-main"><div class="mk-name ' + qualityClass(meta) + '">' + esc(l.name) + ' <span class="qty">×' + l.qty + '</span></div>' +
-      affHtml +
+      '<div class="mk-main"><div class="mk-name ' + qualityClass(meta) + '">' + esc(l.name) + ' <span class="qty">×' + l.qty + '</span>' +
+      (meta.kind === 'rod' ? '<span class="mk-tag">🎣 整竿' + (meta.parts ? ' · ' + meta.parts.length + ' 件' : '') + '</span>' : '') + '</div>' +
+      affHtml + rodHtml +
       '<div class="mk-sub">卖家：' + esc(l.sellerName) + (mine ? '（你）' : '') + ' · 上架 ' + timeStr(l.t) + '</div></div>' +
       '<div class="mk-price"><b>💰 ' + l.price + '</b><span class="unit">/个</span><div class="total">合计 ' + total + '</div></div>';
     const acts = el('div', 'mk-acts');
@@ -1358,7 +1503,7 @@ window.UI = (function () {
       // 购买市场：其他玩家的挂单 + 分类筛选 + 搜索
       const othersAll = market.filter(function (l) { return !(me && l.seller === me.id); });
       const filters = el('div', 'buy-filters');
-      [['all', '全部'], ['fish', '鱼'], ['material', '材料'], ['component', '组件']].forEach(function (kv) {
+      [['all', '全部'], ['fish', '鱼'], ['material', '材料'], ['component', '组件'], ['rod', '🎣 钓竿']].forEach(function (kv) {
         const n = kv[0] === 'all' ? othersAll.length : othersAll.filter(function (l) { return itemMeta(l.id).kind === kv[0]; }).length;
         const b = el('button', 'bf-cat' + (buyCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + n);
         b.addEventListener('click', function () { if (buyCategory !== kv[0]) { buyCategory = kv[0]; renderView(); } });
@@ -1382,6 +1527,20 @@ window.UI = (function () {
           }
           if (buySort.key === 'qty') {
             const d = buySort.dir === 'asc' ? a.qty - b.qty : b.qty - a.qty;
+            return d || b.t - a.t;
+          }
+          if (buySort.key === 'affix') {
+            // 词条值排序：选中词条类型时用该词条数值，否则用全部词条合计（组件与整竿都适用）
+            const av = function (id) {
+              const m = itemMeta(id);
+              if (!m.affixes || !m.affixes.length) return -1e9;
+              if (buyAffixType !== 'all') {
+                const hit = m.affixes.find(function (x) { return x.type === buyAffixType; });
+                return hit ? hit.value : -1e9;
+              }
+              return m.affixes.reduce(function (s2, x) { return s2 + x.value; }, 0);
+            };
+            const d = buySort.dir === 'asc' ? av(a.id) - av(b.id) : av(b.id) - av(a.id);
             return d || b.t - a.t;
           }
           return b.t - a.t; // 默认：最新上架在前
@@ -1436,10 +1595,11 @@ window.UI = (function () {
       // 排序：时间（默认）/ 价格 / 数量；价格与数量可切换升降序
       const sortWrap = el('span', 'bf-sort');
       sortWrap.appendChild(el('span', 'bf-sort-label', '排序'));
-      [['time', '时间'], ['price', '价格'], ['qty', '数量']].forEach(function (kv) {
+      [['time', '时间'], ['price', '价格'], ['qty', '数量'], ['affix', '词条值']].forEach(function (kv) {
         const activeSort = buySort.key === kv[0];
         const arrow = activeSort && kv[0] !== 'time' ? (buySort.dir === 'asc' ? ' ↑' : ' ↓') : '';
         const b = el('button', 'bf-cat bf-sort-btn' + (activeSort ? ' on' : ''), kv[1] + arrow);
+        b.title = kv[0] === 'affix' ? '按词条值排序：选中词条时按该词条数值，未选时按全部词条合计' : '';
         b.addEventListener('click', function () {
           if (buySort.key === kv[0] && kv[0] !== 'time') buySort.dir = buySort.dir === 'asc' ? 'desc' : 'asc';
           else buySort = { key: kv[0], dir: kv[0] === 'price' ? 'asc' : 'desc' };
@@ -1461,19 +1621,169 @@ window.UI = (function () {
     const side = el('div', 'col-side');
     side.appendChild(el('h3', null, '🎒 我的背包'));
     side.appendChild(el('div', 'hint', '「上架」把你的物品挂到市集（收定价总额 1% 上架费，下架不退）；成交另收 10% 税（卖家承担）。'));
-    side.appendChild(inventoryBlock({
-      onList: function (id, qty, price) {
-        call(window.Net.marketList(id, qty, price), function (r) { return '已上架到市集（支付上架费 ' + r.data.fee + '💰，下架不退）'; }).then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; renderTopbar(); renderView(); } });
-      },
-    }));
+    side.appendChild(marketSellPanel(st));
     panel.appendChild(side);
 
     main.appendChild(panel);
   }
 
+  // ---- 市集右栏「我的背包」：简易分类筛选 + 多选 + 一键上架 ----
+  // 分类只为快速定位要上架的物品；多选后统一设置时长与价格倍率，逐个调用挂单接口。
+  let mktSellCat = 'all';
+  let mktSellPick = {};      // 勾选的物品 id → true
+  function marketSellPanel(st) {
+    const box = el('div', 'mkt-sell');
+    const keysAll = Object.keys(st.inventory);
+    const kindCount = { fish: 0, material: 0, component: 0 };
+    keysAll.forEach(function (id) { const k = itemMeta(id).kind; if (kindCount[k] != null) kindCount[k] += 1; });
+    box.appendChild(el('h3', null, '🎒 我的背包（上架）'));
+    // 简易分类
+    const cats = el('div', 'inv-cats mkt-cats');
+    [['all', '📦 全部', keysAll.length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (mktSellCat === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
+      b.addEventListener('click', function () { if (mktSellCat !== kv[0]) { mktSellCat = kv[0]; renderView(); } });
+      cats.appendChild(b);
+    });
+    box.appendChild(cats);
+    let keys = mktSellCat === 'all' ? keysAll : keysAll.filter(function (id) { return itemMeta(id).kind === mktSellCat; });
+    if (!keys.length) { box.appendChild(el('div', 'hint', '该分类下没有可上架的物品。')); return box; }
+    keys = keys.slice().sort(function (a, b) { return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1); });
+    const list = el('div', 'mkt-sell-list');
+    keys.forEach(function (id) {
+      const meta = itemMeta(id);
+      const row = el('div', 'inv-row mkt-sell-row');
+      const picked = !!mktSellPick[id];
+      row.innerHTML = '<label class="mkt-pick"><input type="checkbox"' + (picked ? ' checked' : '') + ' /></label>' +
+        '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' + rodLockBadge(id) +
+        '<span class="cnt">×' + st.inventory[id] + '</span>' +
+        '<span class="unit-price">' + unitPriceOf(id) + '💰</span>';
+      const cb = row.querySelector('input[type=checkbox]');
+      cb.addEventListener('change', function () {
+        if (cb.checked) mktSellPick[id] = true; else delete mktSellPick[id];
+        renderView();
+      });
+      const acts = el('span', 'inv-acts');
+      const b1 = el('button', 'mini', '上架');
+      b1.title = '单个上架（自定义数量/单价/时长）';
+      b1.addEventListener('click', function () { openListModal(id); });
+      acts.appendChild(b1);
+      row.appendChild(acts);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    const pickedIds = keys.filter(function (id) { return mktSellPick[id]; });
+    const foot = el('div', 'mkt-sell-foot');
+    const batch = el('button', 'primary' + (pickedIds.length ? '' : ' locked'), '⚡ 一键上架（已选 ' + pickedIds.length + '）');
+    if (pickedIds.length) {
+      batch.addEventListener('click', function () { openBatchListModal(pickedIds); });
+    }
+    foot.appendChild(batch);
+    const clr = el('button', 'mini', '清空选择');
+    clr.addEventListener('click', function () { mktSellPick = {}; renderView(); });
+    foot.appendChild(clr);
+    box.appendChild(foot);
+    box.appendChild(el('div', 'hint', '勾选多件后点「一键上架」：统一设置时长与价格倍率（按各物品现价计算），逐个挂单。'));
+    return box;
+  }
+  // 一键上架子窗口：统一时长 + 价格倍率（或各物品现价），逐件挂单并汇总结果
+  function openBatchListModal(ids) {
+    const st = S();
+    closeOverlays();
+    const overlay = buildOverlay(function () { closeOverlays(); });
+    const box = el('div', 'modal-box shop-modal batch-list-modal');
+    let hours = 6;
+    const rowsHtml = ids.map(function (id) {
+      const meta = itemMeta(id);
+      const qty = st.inventory[id] || 0;
+      return '<div class="bl-row"><span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
+        '<span class="cnt">×' + qty + '</span><span class="bl-unit" data-id="' + esc(id) + '">' + unitPriceOf(id) + '💰</span></div>';
+    }).join('');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">⚡ 一键上架（' + ids.length + ' 种）</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body">' +
+      '<div class="lm-row"><label>挂单时长</label><span id="bl-hours">' +
+      [[6, '6 小时 · 1%'], [12, '12 小时 · 3%'], [24, '24 小时 · 5%']].map(function (kv) {
+        return '<button class="mini lm-hours' + (kv[0] === 6 ? ' on' : '') + '" data-h="' + kv[0] + '">' + kv[1] + '</button>';
+      }).join('') + '</span></div>' +
+      '<div class="lm-row"><label>价格倍率</label><input id="bl-mult" class="bulk-select" type="number" min="0.1" step="0.5" value="2" style="width:90px" />' +
+      '<span class="hint">按各物品现价 ×倍率 定价（现价见下表）</span></div>' +
+      '<div class="bl-rows">' + rowsHtml + '</div>' +
+      '<div class="bulk-est" id="bl-est">—</div>' +
+      '<button class="primary" id="bl-go">确认一键上架</button>' +
+      '<div class="hint" style="margin-top:8px">每种按「全部持有数量」上架；上架费 = 定价总额 × 时长费率，下架/过期不退。</div>' +
+      '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.querySelector('.modal-close').addEventListener('click', closeOverlays);
+    const multInp = box.querySelector('#bl-mult');
+    function recalc() {
+      const mult = Math.max(0.1, Number(multInp.value) || 1);
+      const rate = { 6: 0.01, 12: 0.03, 24: 0.05 }[hours];
+      let total = 0, fee = 0;
+      ids.forEach(function (id) {
+        const qty = st.inventory[id] || 0;
+        const price = Math.max(1, Math.round(unitPriceOf(id) * mult));
+        total += price * qty;
+        fee += Math.ceil(price * qty * rate);
+        const cell = box.querySelector('.bl-unit[data-id="' + id.replace(/"/g, '\\"') + '"]');
+        if (cell) cell.textContent = price + '💰';
+      });
+      box.querySelector('#bl-est').innerHTML = '预计收入 <b>' + total + '</b>💰 · 上架费合计 <b>' + fee + '</b>💰（费率 ' + Math.round(rate * 100) + '% · ' + hours + ' 小时）';
+    }
+    box.querySelectorAll('.lm-hours').forEach(function (b) {
+      b.addEventListener('click', function () {
+        box.querySelectorAll('.lm-hours').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        hours = parseInt(b.getAttribute('data-h'), 10) || 6;
+        recalc();
+      });
+    });
+    multInp.addEventListener('input', recalc);
+    recalc();
+    box.querySelector('#bl-go').addEventListener('click', function () {
+      const mult = Math.max(0.1, Number(multInp.value) || 1);
+      const btn = box.querySelector('#bl-go');
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = '上架中…';
+      let ok = 0, fail = 0, failMsg = '', chain = Promise.resolve();
+      ids.forEach(function (id) {
+        chain = chain.then(function () {
+          const qty = st.inventory[id] || 0;
+          if (qty <= 0) return null;
+          const price = Math.max(1, Math.round(unitPriceOf(id) * mult));
+          return window.Net.marketList(id, qty, price, hours).then(function (r) {
+            if (r && r.ok) {
+              ok++;
+              st.player.coins = r.data.coins; st.inventory = r.data.inventory;
+            } else {
+              fail++;
+              if (!failMsg) failMsg = (r && r.data && r.data.error) || '失败';
+            }
+          });
+        });
+      });
+      chain.then(function () {
+        closeOverlays();
+        mktSellPick = {};
+        renderTopbar(); renderView();
+        toast('一键上架完成：成功 ' + ok + ' 种' + (fail ? ('，失败 ' + fail + ' 种（' + failMsg + '）') : ''));
+      });
+    });
+  }
+
   // ---- 背包视图（独立分页：分类明细 + 出售/上架 + 汇总 + 我的挂单） ----
   // 当前分类（模块级：重绘间保留）
   let invCategory = 'all';
+  // 子分类筛选（随分类页签切换显示）：
+  //   鱼类/材料 → 品质；组件 → 一级「部位」 + 二级「词条 + 数值范围」
+  let invSubRar = 'all';
+  let invPart = 'all';
+  let invAffixType = 'all';
+  let invAffixMin = '';
+  let invAffixMax = '';
+  let invOpen = {};          // 组件按底材名分组的展开状态（{ baseId: true }）
+  let invFocus = false;      // 子筛选控件聚焦时暂停广播重绘（避免下拉被关闭）
   let bulkCat = 'all';
   let bulkRar = 'all';
 
@@ -1903,16 +2213,111 @@ window.UI = (function () {
     box.querySelector('.modal-close').addEventListener('click', closeOverlays);
   }
 
-  // 组件分类：按「词条组合 + 数值范围」分组展示。
+  // 子分类筛选行：按当前分类给出「品质」或「部位 + 词条/数值范围」二级筛选
+  function renderInvSubFilters(st) {
+    const row = el('div', 'inv-subfilters');
+    const invKeys = Object.keys(st.inventory);
+    if (invCategory === 'component') {
+      // 一级：部位
+      const partCount = {};
+      invKeys.forEach(function (id) {
+        const m = itemMeta(id);
+        if (m.kind !== 'component') return;
+        partCount[m.part] = (partCount[m.part] || 0) + st.inventory[id];
+      });
+      const partsRow = el('div', 'inv-subrow');
+      partsRow.appendChild(el('span', 'sub-label', '部位'));
+      const total = invKeys.filter(function (id) { return itemMeta(id).kind === 'component'; })
+        .reduce(function (n, id) { return n + st.inventory[id]; }, 0);
+      [['all', '全部', total]].concat(D.ROD_PARTS.map(function (p) {
+        return [p.key, p.name, partCount[p.key] || 0];
+      })).forEach(function (kv) {
+        if (kv[0] !== 'all' && !kv[2]) return; // 没有该部位组件就不显示，保持紧凑
+        const b = el('button', 'inv-cat sub' + (invPart === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
+        b.addEventListener('click', function () { if (invPart !== kv[0]) { invPart = kv[0]; renderView(); } });
+        partsRow.appendChild(b);
+      });
+      row.appendChild(partsRow);
+
+      // 二级：词条类型 + 数值范围
+      const affRow = el('div', 'inv-subrow');
+      affRow.appendChild(el('span', 'sub-label', '词条'));
+      const sel = el('select', 'bulk-select sub-sel');
+      [['all', '全部词条']].concat(BD_AFFIXES.map(function (kv) { return [kv[0], kv[1]]; })).forEach(function (kv) {
+        const o = el('option', null, kv[1]); o.value = kv[0]; sel.appendChild(o);
+      });
+      sel.value = invAffixType;
+      sel.addEventListener('change', function () { invAffixType = sel.value; renderView(); });
+      sel.addEventListener('focus', function () { invFocus = true; });
+      sel.addEventListener('blur', function () { invFocus = false; });
+      affRow.appendChild(sel);
+      const minInp = el('input', 'aff-num');
+      minInp.type = 'number'; minInp.placeholder = '最小'; minInp.value = invAffixMin;
+      const maxInp = el('input', 'aff-num');
+      maxInp.type = 'number'; maxInp.placeholder = '最大'; maxInp.value = invAffixMax;
+      function onNum() { invAffixMin = minInp.value; invAffixMax = maxInp.value; renderView(); }
+      [minInp, maxInp].forEach(function (n) {
+        n.addEventListener('change', onNum);
+        n.addEventListener('focus', function () { invFocus = true; });
+        n.addEventListener('blur', function () { invFocus = false; });
+      });
+      affRow.appendChild(minInp);
+      affRow.appendChild(el('span', 'sub-label', '~'));
+      affRow.appendChild(maxInp);
+      const active = invAffixType !== 'all' || invAffixMin !== '' || invAffixMax !== '';
+      if (active) {
+        const clr = el('button', 'mini', '清除');
+        clr.addEventListener('click', function () { invAffixType = 'all'; invAffixMin = ''; invAffixMax = ''; renderView(); });
+        affRow.appendChild(clr);
+      }
+      // 展开/折叠全部
+      const exp = el('button', 'mini', '全部展开');
+      exp.addEventListener('click', function () {
+        const groupIds = Object.keys(st.inventory).filter(function (id) { return itemMeta(id).kind === 'component'; })
+          .map(function (id) { return itemMeta(id).baseId; });
+        groupIds.forEach(function (b) { invOpen[b] = true; });
+        renderView();
+      });
+      const col = el('button', 'mini', '全部折叠');
+      col.addEventListener('click', function () { invOpen = {}; renderView(); });
+      affRow.appendChild(exp);
+      affRow.appendChild(col);
+      row.appendChild(affRow);
+    } else {
+      // 鱼/材料（含全部）：品质筛选
+      const cnt = { all: invKeys.length };
+      invKeys.forEach(function (id) {
+        if (invCategory !== 'all' && itemMeta(id).kind !== invCategory) return;
+        const r = itemMeta(id).rarity;
+        cnt[r] = (cnt[r] || 0) + 1;
+      });
+      const rarRow = el('div', 'inv-subrow');
+      rarRow.appendChild(el('span', 'sub-label', '品质'));
+      [['all', '全部'], ['common', '普通'], ['big', '大鱼'], ['rare', '稀有'], ['epic', '史诗']].forEach(function (kv) {
+        const b = el('button', 'inv-cat sub' + (invSubRar === kv[0] ? ' on' : ''), kv[1] + ' ' + (cnt[kv[0]] || 0));
+        b.addEventListener('click', function () { if (invSubRar !== kv[0]) { invSubRar = kv[0]; renderView(); } });
+        rarRow.appendChild(b);
+      });
+      row.appendChild(rarRow);
+    }
+    return row;
+  }
+
+  // 组件分类：按「底材名」分组、可展开；展开后逐件显示属性与操作（单独出售/上架）。
   // 分组键 = 底材 + 品质 + 词条类型集合（不含具体数值）；组内按具体数值排列。
   // 这样同底材同品质、词条种类相同（数值不同）的实例归为一组，便于比较取舍。
+  // 组件列表：一级按「底材名」分组（可点击展开/折叠），展开后逐件列出实例（属性 + 单独出售/上架）。
+  // 当筛选后只剩一个分组时自动展开，避免多余的点击。
   function renderComponentGroups(list, keys, st, unitPrice, itemValue, doSell) {
-    const groups = {};
+    const groups = {};   // baseId → { rep, items: [{id, meta}] }
     keys.forEach(function (id) {
       const meta = D.componentOf(id);
-      if (!meta) { groups['__legacy__'] = groups['__legacy__'] || { meta: null, items: [] }; groups['__legacy__'].items.push({ id: id, meta: D.itemOf(id) }); return; }
-      const types = meta.affixes.map(function (a) { return a.type; }).sort().join('+');
-      const gk = meta.baseId + '|' + meta.quality + '|' + types;
+      if (!meta) {
+        groups['__legacy__'] = groups['__legacy__'] || { rep: null, items: [] };
+        groups['__legacy__'].items.push({ id: id, meta: D.itemOf(id) });
+        return;
+      }
+      const gk = meta.baseId;
       groups[gk] = groups[gk] || { rep: meta, items: [] };
       groups[gk].items.push({ id: id, meta: meta });
     });
@@ -1924,41 +2329,36 @@ window.UI = (function () {
       if (q) return q;
       return ga.rep.name.localeCompare(gb.rep.name);
     });
+    const onlyOne = groupKeys.length === 1;
+
     groupKeys.forEach(function (gk) {
       const g = groups[gk];
-      if (!g.rep) {
-        // 旧通用组件（无底材）
-        g.items.forEach(function (it) {
-          const row = el('div', 'inv-row inv-page-row');
-          row.innerHTML = '<span class="' + qualityClass(it.meta) + '">' + esc(it.meta.name) + '</span>' +
-            '<span class="kind-tag">组件</span><span class="cnt">×' + st.inventory[it.id] + '</span>' +
-            '<span class="unit-price">现价 ' + unitPrice(it.id) + '💰</span>' +
-            '<span class="subtotal">小计 ' + itemValue(it.id) + '💰</span>';
-          const acts = el('span', 'inv-acts');
-          const sb = el('button', 'mini primary-mini', '出售 1');
-          sb.addEventListener('click', function () { doSell(it.id, 1); });
-          acts.appendChild(sb);
-          const sa = el('button', 'mini', '批量出售');
-          sa.addEventListener('click', function () { openBatchSellModal(it.id); });
-          acts.appendChild(sa);
-          const lb = el('button', 'mini', '上架');
-          lb.addEventListener('click', function () { openListModal(it.id); });
-          acts.appendChild(lb);
-          row.appendChild(acts);
-          list.appendChild(row);
-        });
-        return;
-      }
-      // 组标题：底材名（品质色 / 满词条金色）+ 词条类型集合 + 出现次数
-      const cntAll = g.items.reduce(function (s, it) { return s + st.inventory[it.id]; }, 0);
-      const head = el('div', 'inv-group-head');
-      head.innerHTML =
-        '<span class="' + qualityClass(g.rep) + '">' + esc(g.rep.baseName) + '</span>' +
-        (g.rep.isFull ? '<span class="full-tag">满词条</span>' : '') +
-        '<span class="inv-group-tag">' + esc(g.rep.qualityName) + ' · ' + g.items[0].meta.affixes.length + ' 词条</span>' +
-        '<span class="inv-group-cnt">共 ' + cntAll + ' 个</span>';
+      const totalCnt = g.items.reduce(function (n, it) { return n + st.inventory[it.id]; }, 0);
+      const isOpen = onlyOne || !!invOpen[gk];
+      // 组标题：底材名（品质色）+ 词条类型摘要 + 件数；点击整行展开/折叠
+      const head = el('div', 'inv-group-head clickable' + (isOpen ? ' open' : ''));
+      const types = g.rep ? g.rep.affixes.map(function (a) { return D.AFFIX_LABEL[a.type] || a.type; }).join(' · ') : '旧版通用组件';
+      const priceRange = (function () {
+        const ps = g.items.map(function (it) { return unitPrice(it.id); });
+        const lo = Math.min.apply(null, ps), hi = Math.max.apply(null, ps);
+        return lo === hi ? (lo + '💰') : (lo + ' ~ ' + hi + '💰');
+      })();
+      const lockCnt = g.items.reduce(function (n, it) { return n + (rodLockCount(it.id) > 0 ? 1 : 0); }, 0);
+      head.innerHTML = '<span class="caret">' + (isOpen ? '▾' : '▸') + '</span>' +
+        '<span class="' + qualityClass(g.rep || { kind: 'component', quality: 'common' }) + '">' + esc(g.rep ? g.rep.baseName : '旧版组件') + '</span>' +
+        (lockCnt ? '<span class="rod-lock" title="该组有组件被钓竿占用（已锁定，不可单独交易）">🔒 ' + lockCnt + ' 种</span>' : '') +
+        (g.rep && g.rep.isFull ? '<span class="full-tag">满词条</span>' : '') +
+        '<span class="inv-group-tag">' + esc(types) + '</span>' +
+        '<span class="inv-group-price">' + priceRange + '</span>' +
+        '<span class="inv-group-cnt">共 ' + totalCnt + ' 个 / ' + g.items.length + ' 种</span>';
+      head.addEventListener('click', function () {
+        invOpen[gk] = !isOpen;
+        renderView();
+      });
       list.appendChild(head);
-      // 组内每个不同数值的实例一行
+      if (!isOpen) return;
+
+      // 展开：组内逐件（按词条数值排序，同内容相邻）
       g.items.sort(function (x, y) {
         const sx = x.meta.affixes.map(function (a) { return a.type + ':' + a.value; }).join(',');
         const sy = y.meta.affixes.map(function (a) { return a.type + ':' + a.value; }).join(',');
@@ -1966,9 +2366,8 @@ window.UI = (function () {
       });
       g.items.forEach(function (it) {
         const meta = it.meta;
-        const row = el('div', 'inv-row inv-page-row inv-comp-row');
-        // 词条 + 对应数值范围（来自底材池 / 管理后台覆盖）
-        const affHtml = meta.affixes.map(function (a) {
+        const row = el('div', 'inv-row inv-page-row inv-comp-row indented');
+        const affHtml = (meta.affixes || []).map(function (a) {
           const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
           const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
           const rngTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
@@ -1976,15 +2375,17 @@ window.UI = (function () {
         }).join('');
         row.innerHTML =
           '<span class="inv-comp-affs">' + affHtml + '</span>' +
+          rodLockBadge(it.id) +
           '<span class="cnt">×' + st.inventory[it.id] + '</span>' +
           '<span class="unit-price">现价 ' + unitPrice(it.id) + '💰</span>' +
           '<span class="subtotal">小计 ' + itemValue(it.id) + '💰</span>';
         const acts = el('span', 'inv-acts');
         const dt = el('button', 'mini', '属性');
-        dt.title = '查看组件词条与数值区间（交易/上架前确认属性）';
+        dt.title = '查看组件词条与数值区间';
         dt.addEventListener('click', function () { openComponentDetail(it.id); });
         acts.appendChild(dt);
         const sb = el('button', 'mini primary-mini', '出售 1');
+        sb.title = '单独出售这 1 件（系统固定价）';
         sb.addEventListener('click', function () { doSell(it.id, 1); });
         acts.appendChild(sb);
         const sa = el('button', 'mini', '批量出售');
@@ -2006,7 +2407,7 @@ window.UI = (function () {
     clearSubAlerts(false);
     main.innerHTML = '';
     const panel = el('div', 'panel wide two-col');
-    panel.innerHTML = '<h2>🎒 背包 <span class="subtitle">分类明细 · 出售 / 上架 / 下架 · 预估总价按基准价计算（不随市场浮动）</span></h2>';
+    panel.innerHTML = '<h2>🎒 背包 <span class="subtitle">分类 → 子分类筛选（鱼/材料按品质；组件按部位 + 词条数值）· 组件按底材名分组可展开 · 逐件出售/上架</span></h2>';
     // 交易进行中：背包内容锁定（新渔获不会自动刷新列表，避免交易选物品时被冲掉）
     if (tradeLockOn()) panel.appendChild(tradeLockBar());
 
@@ -2037,13 +2438,32 @@ window.UI = (function () {
     const colMain = el('div', 'col-main');
     colMain.appendChild(el('h3', null, '📦 物品明细'));
     colMain.appendChild(tabs);
+    colMain.appendChild(renderInvSubFilters(st)); // 子分类行（品质 / 部位 / 词条+数值）
     const list = el('div', 'inv-page');
     let keys = Object.keys(st.inventory);
     if (invCategory !== 'all') keys = keys.filter(function (id) { return itemMeta(id).kind === invCategory; });
+    if (invCategory === 'component') {
+      // 组件：一级按部位、二级按词条+数值范围筛选；列表按底材名分组可展开
+      keys = keys.filter(function (id) {
+        const m = itemMeta(id);
+        if (invPart !== 'all' && (m.part || '') !== invPart) return false;
+        if (invAffixType === 'all' && invAffixMin === '' && invAffixMax === '') return true;
+        if (!m.affixes) return false;
+        return m.affixes.some(function (a) {
+          if (invAffixType !== 'all' && a.type !== invAffixType) return false;
+          if (invAffixMin !== '' && a.value < Number(invAffixMin)) return false;
+          if (invAffixMax !== '' && a.value > Number(invAffixMax)) return false;
+          return true;
+        });
+      });
+    } else if (invSubRar !== 'all') {
+      keys = keys.filter(function (id) { return itemMeta(id).rarity === invSubRar; });
+    }
     if (keys.length === 0) {
-      list.appendChild(el('div', 'hint', invCategory === 'all' ? '背包空空如也。去「钓鱼」页选个钓点抛竿，渔获会自动入包。' : '该分类下暂时没有物品。'));
+      list.appendChild(el('div', 'hint', Object.keys(st.inventory).length === 0
+        ? '背包空空如也。去「钓鱼」页选个钓点抛竿，渔获会自动入包。'
+        : '该筛选条件下没有物品。'));
     } else if (invCategory === 'component') {
-      // 组件分类：按「词条组合 + 数值范围」分组展示
       renderComponentGroups(list, keys, st, unitPrice, itemValue, doSell);
     } else {
       // 按单价排序：出售/获得不改变行位置（排序与数量无关）
@@ -2056,6 +2476,7 @@ window.UI = (function () {
         row.innerHTML =
           '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
           '<span class="kind-tag">' + kindName + '</span>' +
+          rodLockBadge(id) +
           '<span class="cnt">×' + cnt + '</span>' +
           '<span class="unit-price">现价 ' + unitPrice(id) + '💰</span>' +
           '<span class="subtotal">小计 ' + itemValue(id) + '💰</span>';
@@ -2360,7 +2781,7 @@ window.UI = (function () {
           }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
         : '';
       row.innerHTML = '<label class="tp-name"><input type="checkbox"' + (checked ? ' checked' : '') + ' /> <span class="' +
-        qualityClass(meta) + '">' + esc(meta.name) + '</span></label>' + affHtml +
+        qualityClass(meta) + '">' + esc(meta.name) + '</span>' + rodLockBadge(id) + '</label>' + affHtml +
         '<span class="tp-have">持有 ' + have + '</span>' +
         '<input class="tp-qty" type="number" min="1" max="' + have + '" value="' + qty + '"' + (checked ? '' : ' disabled') + ' />';
       if (meta.kind === 'component') {
@@ -2838,11 +3259,12 @@ window.UI = (function () {
     const main = $('main');
     main.innerHTML = '';
     const panel = el('div', 'panel wide');
-    panel.innerHTML = '<h2>📜 日志 <span class="subtitle">你收到的服务器消息（公告 / 系统提示 / 交易 / 纪录 / 订阅提醒），本地保留最近 ' + LOG_KEEP + ' 条</span></h2>';
+    panel.innerHTML = '<h2>📜 日志 <span class="subtitle">渔获记录 · 公告 / 系统提示 / 交易 / 纪录 / 订阅提醒 · 本地按账号保留最近 ' + LOG_KEEP + ' 条</span></h2>';
     const counts = { all: msgLog.length };
     Object.keys(LOG_KINDS).forEach(function (k) { counts[k] = msgLog.filter(function (e) { return e.kind === k; }).length; });
     const tabs = el('div', 'inv-cats');
-    [['all', '📜 全部']].concat(Object.keys(LOG_KINDS).map(function (k) { return [k, LOG_KINDS[k][0] + ' ' + LOG_KINDS[k][1]]; })).forEach(function (kv) {
+    const kindOrder = ['catch', 'system', 'trade', 'record', 'subscribe'].filter(function (k) { return !!LOG_KINDS[k]; });
+    [['all', '📜 全部']].concat(kindOrder.map(function (k) { return [k, LOG_KINDS[k][0] + ' ' + LOG_KINDS[k][1]]; })).forEach(function (kv) {
       const b = el('button', 'inv-cat' + (logFilter === kv[0] ? ' on' : ''), kv[1] + ' ' + (counts[kv[0]] || 0));
       b.addEventListener('click', function () { if (logFilter !== kv[0]) { logFilter = kv[0]; renderView(); } });
       tabs.appendChild(b);
@@ -3086,6 +3508,11 @@ window.UI = (function () {
     }
     // 交易进行中：背包与交易页锁定（新渔获等广播只更新数据，不重绘列表；可点锁定条手动刷新）
     if (tradeLockOn() && (currentView === 'inventory' || currentView === 'trade') && scope && scope !== 'trade') {
+      renderTopbar(); renderNav();
+      return;
+    }
+    // 背包子筛选控件获得焦点时同样暂停重绘（避免输入被广播冲掉）
+    if (currentView === 'inventory' && invFocus && scope && scope !== 'all') {
       renderTopbar(); renderNav();
       return;
     }

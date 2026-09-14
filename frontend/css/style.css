@@ -990,3 +990,67 @@ body.banner-open .topbar { top: 34px; }
 
 /* 顶部状态栏的上鱼率（与钓速并列） */
 #player-status .meta.bite { color: var(--big); border-left: 1px solid var(--line); padding-left: 10px; }
+
+/* ================= 钓竿存档 / 槽位 / 锁定标记 ================= */
+.rod-slots { margin-bottom: 12px; }
+.rod-slots .rs-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.rod-slots .rs-cur { font-size: 12px; color: var(--muted); }
+.rod-slots .rs-hint { font-size: 12px; color: var(--muted); flex: 1; min-width: 200px; }
+.rs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.rs-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: rgba(255,255,255,.03); }
+.rs-card.has { border-color: var(--accent2); background: rgba(56,189,248,.07); }
+.rs-card.locked { border-style: dashed; opacity: .75; }
+.rs-card .rs-name { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.rs-card .rs-sub { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.rs-card .rs-affs { font-size: 11px; margin-bottom: 6px; }
+.rs-card .rs-affs .inst-aff { margin-right: 6px; }
+.rs-card .rs-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.rs-card .rs-acts button { flex: 1 1 auto; }
+
+/* 锁定标记（背包 / 交易 / 市集） */
+.rod-lock { font-size: 11px; color: var(--big); border: 1px solid rgba(251,191,36,.5); border-radius: 20px; padding: 0 6px; margin-left: 6px; white-space: nowrap; }
+
+/* 市集整竿行 */
+.mk-tag { font-size: 11px; color: var(--accent2); border: 1px solid var(--accent2); border-radius: 20px; padding: 0 6px; margin-left: 6px; }
+.mk-rod-parts { margin: 4px 0 2px; }
+.mk-rod-part { display: flex; gap: 8px; align-items: baseline; font-size: 11px; padding: 1px 0; }
+.mk-rod-part .mrp-name { flex: none; min-width: 120px; }
+.mk-rod-part .mrp-affs { flex: 1; min-width: 0; }
+.mk-rod-part .mrp-affs .inst-aff { margin-right: 8px; }
+.lm-rod { margin-bottom: 8px; }
+.lm-rod .inst-aff { margin-right: 8px; }
+
+/* ================= 背包：子分类筛选 + 可展开分组 ================= */
+.inv-subfilters { margin: 6px 0 10px; display: flex; flex-direction: column; gap: 6px; }
+.inv-subrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.inv-subrow .sub-label { font-size: 12px; color: var(--muted); flex: none; min-width: 32px; }
+.inv-cat.sub { padding: 2px 9px; font-size: 12px; }
+.inv-subrow .sub-sel { padding: 3px 8px; font-size: 12px; }
+.inv-subrow .aff-num { width: 68px; background: rgba(255,255,255,.05); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 3px 6px; font-size: 12px; }
+
+.inv-group-head.clickable { cursor: pointer; user-select: none; }
+.inv-group-head .caret { color: var(--accent2); width: 12px; display: inline-block; }
+.inv-group-head .inv-group-tag { font-size: 11px; color: var(--muted); margin-left: 8px; }
+.inv-group-head .inv-group-price { font-size: 11px; color: var(--big); margin-left: 8px; }
+.inv-group-head .inv-group-cnt { margin-left: auto; font-size: 11px; color: var(--muted); }
+.inv-group-head.clickable:hover { border-color: var(--accent2); }
+.inv-row.inv-comp-row.indented { margin-left: 14px; border-left: 2px solid rgba(56,189,248,.25); border-radius: 0 8px 8px 0; }
+
+/* ================= 实况列表（最多 5 条可下滑）+ 市集一键上架 ================= */
+.peeps-head { font-size: 12px; color: var(--muted); margin: 2px 0 6px; }
+.peeps.scroll5 { max-height: 430px; overflow-y: auto; padding-right: 4px; }
+.peeps.scroll5::-webkit-scrollbar { width: 8px; }
+.peeps.scroll5::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 4px; }
+
+.mkt-sell .mkt-cats { margin: 6px 0 8px; }
+.mkt-sell-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.mkt-sell-row { padding: 4px 6px; }
+.mkt-sell-row .mkt-pick { flex: none; }
+.mkt-sell-row .cnt { flex: none; }
+.mkt-sell-foot { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.batch-list-modal { width: 620px; }
+.bl-rows { max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
+.bl-row { display: flex; align-items: baseline; gap: 8px; font-size: 12px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+.bl-row:last-child { border-bottom: none; }
+.bl-row .cnt { color: var(--muted); }
+.bl-row .bl-unit { margin-left: auto; color: var(--big); }

@@ -152,6 +152,15 @@ window.Net = (function () {
   const tradeSet = (tradeId, items) => authed('/api/trade/set', { tradeId: tradeId, items: items });
   const tradeConfirm = (tradeId) => authed('/api/trade/confirm', { tradeId: tradeId });
   const tradeCancel = (tradeId) => authed('/api/trade/cancel', { tradeId: tradeId });
+  // 钓竿存档 / 槽位
+  const rodBuySlot = () => authed('/api/rod/slot/buy', {});
+  const rodSave = (slot, name, force) => authed('/api/rod/save', { slot: slot, name: name, force: !!force });
+  const rodName = (name) => authed('/api/rod/name', { name: name });
+  const rodRename = (slot, name) => authed('/api/rod/rename', { slot: slot, name: name });
+  const rodUse = (slot) => authed('/api/rod/use', { slot: slot });
+  const rodDelete = (slot) => authed('/api/rod/delete', { slot: slot });
+  // 整根钓竿上架（走同一挂单接口，带 rodSlot）
+  const marketListRod = (slot, price, hours) => authed('/api/market/list', { rodSlot: slot, price: price, hours: hours });
   // 组件订阅提醒（玩家级配置：筛选条件 + 提醒方式）
   const fetchSubscribe = () => apiFetch('GET', '/api/subscribe?token=' + encodeURIComponent(me ? me.token : ''));
   const subscribeSave = (cfg) => authed('/api/subscribe', cfg || {});
@@ -224,7 +233,7 @@ window.Net = (function () {
           if (ui) ui.refreshAll('records');
         } else if (m.type === 'globalRecord') {
           if (ui && ui.showRecordBanner && m.record) ui.showRecordBanner(m.record);
-          if (ui && ui.addLog && m.record) ui.addLog('record', '🎉 全场最大纪录被破：' + m.record.who + ' 钓到 ' + m.record.name + ' ' + m.record.size + 'cm');
+          if (ui && ui.addLog && m.record) ui.addLog('record', m.record.text || ('🎉 全场最大纪录被破：' + m.record.who + ' 钓到 ' + m.record.name + ' ' + m.record.size + 'cm'));
         } else if (m.type === 'banner') {
           S.banners = m.banners || [];
           S.bannerCfg = m.cfg || {};
@@ -275,6 +284,13 @@ window.Net = (function () {
           if (m.entry && me && m.entry.who === me.name) {
             S.log.unshift(m.entry);
             if (S.log.length > 60) S.log.pop();
+            // 渔获同时记入「📜 日志 · 🐟 渔获」分列（本地按账号保留）
+            if (ui && ui.addLog) {
+              const it = m.entry.item || {};
+              ui.addLog('catch', '钓到 ' + (it.name || '?') + (it.size ? ' ' + it.size + 'cm' : '') +
+                (it.rarity === 'big' ? ' 🐟大鱼' : it.rarity === 'rare' ? ' ✨稀有' : '') +
+                (m.entry.ground ? '（' + m.entry.ground + (m.entry.spot ? '·' + m.entry.spot : '') + '）' : ''));
+            }
           }
           if (ui) ui.refreshAll('catch');
         } else if (m.type === 'kicked') {
@@ -340,6 +356,8 @@ window.Net = (function () {
     fetchSubscribe: fetchSubscribe, subscribeSave: subscribeSave,
     sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,
+    rodBuySlot: rodBuySlot, rodSave: rodSave, rodName: rodName, rodRename: rodRename,
+    rodUse: rodUse, rodDelete: rodDelete, marketListRod: marketListRod,
     tradeConfirm: tradeConfirm, tradeCancel: tradeCancel,
     getMe: function () { return me; },
   };

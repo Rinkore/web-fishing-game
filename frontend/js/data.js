@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.9.4';
+  const VERSION = 'v0.9.5';
   const BUILD = '2026-09-14';
 
   // ---- 渔获定义 ----
@@ -413,6 +413,54 @@
     return genComponent(base.id, rollComponentQuality());
   }
 
+  // ---- 整根钓竿（rodset：part=compId;part=compId…）----
+  // 钓竿槽位里保存的整根钓竿在市集上作为「一件」交易；此标识可被前后端共同解析。
+  const ROD_SET_PREFIX = 'rodset:';
+  function isRodSet(id) { return typeof id === 'string' && id.indexOf(ROD_SET_PREFIX) === 0; }
+  function rodPartsOf(id) {
+    if (!isRodSet(id)) return null;
+    const out = {};
+    String(id).slice(ROD_SET_PREFIX.length).split(';').forEach(function (seg) {
+      const i = seg.indexOf('=');
+      if (i <= 0) return;
+      out[seg.slice(0, i)] = seg.slice(i + 1);
+    });
+    return Object.keys(out).length ? out : null;
+  }
+  // 由 { 部位: 组件实例id } 生成整竿标识（按部位固定顺序，保证同内容同签名）
+  function rodSetId(parts) {
+    const segs = [];
+    ROD_PARTS.forEach(function (p) { if (parts && parts[p.key]) segs.push(p.key + '=' + parts[p.key]); });
+    return segs.length ? (ROD_SET_PREFIX + segs.join(';')) : null;
+  }
+  // 整竿展示元数据：名称/最高品质/汇总词条（同类型累加）/基准价（各件之和）/逐件明细
+  function rodMeta(id) {
+    const parts = rodPartsOf(id);
+    if (!parts) return null;
+    const comps = [];
+    ROD_PARTS.forEach(function (p) {
+      const c = instanceMeta(parts[p.key]);
+      if (c) comps.push({ part: p.key, partName: p.name, comp: c });
+    });
+    if (!comps.length) return null;
+    const agg = {};
+    comps.forEach(function (it) { it.comp.affixes.forEach(function (a) { agg[a.type] = (agg[a.type] || 0) + a.value; }); });
+    const affixes = Object.keys(agg).map(function (t) { return { type: t, value: agg[t] }; });
+    let price = 0, best = 'common';
+    comps.forEach(function (it) {
+      price += it.comp.price;
+      if ((QUALITY_ORDER[it.comp.quality] || 0) > (QUALITY_ORDER[best] || 0)) best = it.comp.quality;
+    });
+    const q = QUALITY[best];
+    return {
+      id: id, kind: 'rod', name: '整根钓竿（' + comps.length + ' 件）', parts: comps,
+      quality: best, qualityName: q.name, qualityCls: q.cls,
+      rarity: best, rarityName: q.name, rarity: best,
+      affixes: affixes, pool: [], maxAffixes: comps.length * 3, isFull: false,
+      price: price, size: null,
+    };
+  }
+
   // 旧存档兼容：框架版掉落的通用组件（无效果、不可装备、可出售）
   const LEGACY_COMPONENT = { id: 'comp_generic', name: '钓竿组件（默认）', part: null, rarity: 'common', price: 40, affixes: [] };
 
@@ -635,6 +683,8 @@
   function itemOf(id) {
     if (id == null) return { id: id, name: String(id), rarity: 'common', price: RARITY_PRICE.common, size: null, kind: 'unknown' };
     const s = String(id);
+    const rod = rodMeta(s);
+    if (rod) return rod;
     const inst = instanceMeta(s);
     if (inst) return inst;
     const nid = normalizeItemId(s);
@@ -646,6 +696,7 @@
   function isSellable(id) {
     const it = itemOf(id);
     if (it.kind === 'fish' || it.kind === 'material') return true;
+    if (it.kind === 'rod') return true; // 整根钓竿：仅市集出售（服务端拒绝系统商店收购）
     if (it.kind === 'component') return isInstance(String(id)) || String(id) === 'comp_generic';
     return false;
   }
@@ -663,6 +714,7 @@
     affixRangeOf: affixRangeOf, rollAffixValue: rollAffixValue, weightedKey: weightedKey,
     adjectiveOf: adjectiveOf, instanceMeta: instanceMeta, componentOf: componentOf,
     legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,
+    ROD_SET_PREFIX: ROD_SET_PREFIX, isRodSet: isRodSet, rodPartsOf: rodPartsOf, rodSetId: rodSetId, rodMeta: rodMeta,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
     GROUNDS: GROUNDS, NAV: NAV,
     allItems: allItems, itemOf: itemOf, itemName: itemName, isSellable: isSellable,
