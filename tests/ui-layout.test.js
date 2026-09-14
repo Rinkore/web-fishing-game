@@ -584,7 +584,15 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     });
     await sleep(300);
     await p1.click('.spot-btn');          // 让 p1 处于钓鱼中 → 持续触发 players/grounds/feed 广播
-    await sleep(400);
+    await waitFor(async () => /实际/.test(await p1.textContent('.fish-state')), { timeout: 5000 }).catch(() => {});
+    const castBar = await p1.textContent('.fish-state');
+    check('状态条显示后台基础间隔', /后台基础 \d+\.\d+s\/竿/.test(castBar), castBar.slice(0, 140));
+    check('状态条显示实际钓速（含加成拆分或“无加成”）', /实际 \d+\.\d+s\/竿/.test(castBar), castBar.slice(0, 140));
+    // 顶部角色状态栏同步展示钓速（基础值 + 实际值），便于随时查看
+    await waitFor(async () => /每 \d+\.\d+s 一竿/.test(await p1.textContent('#player-status')), { timeout: 6000 }).catch(() => {});
+    const topCast = await p1.textContent('#player-status');
+    check('顶部状态栏显示实际钓速与后台基础值', /每 \d+\.\d+s 一竿/.test(topCast) && /基础 \d+\.\d+s/.test(topCast), topCast.slice(0, 160));
+    check('顶部钓速含加成拆分（钓竿/钓点/全服或无加成）', /竿|点|服|无加成/.test(topCast), topCast.slice(0, 160));
     await clickNav(p1, '在线交易');
 
     await p1.evaluate(() => {

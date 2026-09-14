@@ -184,6 +184,28 @@ function bdEffectsOf(bd) {
 function fishIntervalOf(eff) {
   return Math.max(castMinMs(), Math.round(castBaseMs() * (1 - effectiveSpeed(eff) / 100)));
 }
+// 钓速明细（下发给前端展示：基础值来自后台配置，实际值含钓竿词缀 / 钓点增益 / 全服加成并受上限截断）
+function castInfoOf(rec, spot) {
+  const bdEff = bdEffectsOf(rec && rec.bd);
+  let buffSpeed = 0, buffTypes = [];
+  ((spot && spot.buffs) || []).forEach(function (b) {
+    if (b && b.type === 'speed') buffSpeed += Number(b.value) || 0;
+    if (b) buffTypes.push(b.type);
+  });
+  const raw = bdEff.speed + buffSpeed + castSpeedBonus();
+  const eff = { speed: bdEff.speed + buffSpeed }; // mergedEffOf 的等价物（仅取 speed）
+  return {
+    baseMs: castBaseMs(),
+    minMs: castMinMs(),
+    globalBonus: castSpeedBonus(),
+    cap: castSpeedCap(),
+    affixSpeed: bdEff.speed,        // 钓竿词缀合计
+    buffSpeed: buffSpeed,           // 钓点增益合计
+    rawSpeed: Math.round(raw * 10) / 10,
+    effSpeed: effectiveSpeed(eff),  // 实际参与计算的钓速（已按上限截断）
+    interval: fishIntervalOf(eff),  // 当前实际抛竿间隔
+  };
+}
 // 钓点增益并入总加成（管理员在后台为钓场/钓点配置，类别同词缀：speed/big/rare/material/size/double）
 function mergedEffOf(bd, spot) {
   const eff = bdEffectsOf(bd);
@@ -1311,7 +1333,8 @@ const server = http.createServer(function (req, res) {
       if (!key) return apiResp(res, 401, { error: '未登录' });
       const r = startFishingSession(key, d.groundId, d.spotId);
       if (r.error) return apiResp(res, 400, { error: r.error });
-      apiResp(res, 200, { ok: true, interval: r.interval });
+      const found = spotOf(d.groundId, d.spotId);
+      apiResp(res, 200, { ok: true, interval: r.interval, castInfo: castInfoOf(users[key], found && found.spot) });
     });
     return;
   }
@@ -1364,7 +1387,11 @@ const server = http.createServer(function (req, res) {
           interval = fishIntervalOf(mergedEffOf(rec.bd, found && found.spot));
           fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
         }
-        apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval, inventory: rec.inventory });
+        // 钓速明细随装备变化即时更新（含当前钓点的增益）
+        const pNow = players.get(key);
+        const atSpot = (pNow && pNow.fishing) ? spotOf(pNow.fishing.groundId, pNow.fishing.spotId) : null;
+        apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval, inventory: rec.inventory,
+          castInfo: castInfoOf(rec, atSpot && atSpot.spot) });
       });
     });
     return;
@@ -1763,7 +1790,12 @@ const server = http.createServer(function (req, res) {
 
   // ---- 版本信息（公开只读）：前端启动时比对，版本不一致则强制刷新以清掉旧缓存 ----
   if (p === '/api/version' && req.method === 'GET') {
-    return apiResp(res, 200, { version: D.VERSION, build: D.BUILD, componentCfg: D.getComponentCfg ? D.getComponentCfg() : null });
+    return apiResp(res, 200, {
+      version: D.VERSION, build: D.BUILD,
+      componentCfg: D.getComponentCfg ? D.getComponentCfg() : null,
+      // 抛竿间隔与全服钓速配置：前端据此展示「后台基础值 + 实际钓速」（改动经 castcfg 广播同步）
+      castCfg: { baseMs: castBaseMs(), minMs: castMinMs(), speedBonus: castSpeedBonus(), speedCap: castSpeedCap() },
+    });
   }
   // ---- 钓场目录（公开只读；含管理后台保存的掉落池/增益/锁定覆盖） ----
   // 前端在进入游戏时主动拉取一次，作为 SSE init 之外的兜底，确保后进入/刷新的玩家也能拿到最新目录。

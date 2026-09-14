@@ -981,3 +981,6 @@ body.banner-open .topbar { top: 34px; }
 .bde-current .bec-tip { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .bec-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .bec-acts button { flex: 1 1 auto; }
+
+/* 顶部状态栏的钓速（基础值 + 实际值）：与其它 meta 区分，弱强调 */
+#player-status .meta.cast { color: var(--accent); border-left: 1px solid var(--line); padding-left: 10px; }

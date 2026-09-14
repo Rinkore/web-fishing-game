@@ -174,6 +174,10 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('活动钓场（锁定）被拒 400', (await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'frostmoon', spotId: 'ice' })).status === 400);
   const fs1 = await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'stillwater', spotId: 'dock' });
   check('合法钓点开钓成功且基础间隔 3000ms', fs1.status === 200 && fs1.data.ok === true && fs1.data.interval === 3000, JSON.stringify(fs1.data));
+  // 钓速明细：基础值来自后台配置，实际值含词缀/钓点增益/全服加成（前端状态条据此展示）
+  check('开钓返回钓速明细（基础/实际/加成拆分）', !!(fs1.data.castInfo && fs1.data.castInfo.baseMs === 3000
+    && fs1.data.castInfo.interval === 3000 && fs1.data.castInfo.globalBonus === 0
+    && fs1.data.castInfo.affixSpeed === 0 && fs1.data.castInfo.buffSpeed === 0), JSON.stringify(fs1.data.castInfo));
   await sleep(300);
   check('B 收到 A 的在线状态与钓点（服务器维护）', sinkB.some(m => m.type === 'players' && m.players.some(p => p.id === 'tester_a' && p.status === 'fishing' && p.groundId === 'stillwater')));
 

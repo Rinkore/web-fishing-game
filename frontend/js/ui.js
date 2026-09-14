@@ -354,6 +354,7 @@ window.UI = (function () {
       '<span class="dot ' + (p.status === 'fishing' ? 'on' : 'idle') + '"></span>' +
       '<span class="pname">' + esc(p.name) + '</span>' +
       '<span class="meta">状态：' + statusText + '</span>' +
+      (castSpeedShort() ? '<span class="meta cast" title="后台基础间隔与全部加成（钓竿词缀 / 钓点增益 / 全服钓速），实时跟随后台设置">🎣 ' + esc(castSpeedShort()) + '</span>' : '') +
       '<span class="meta">位置：' + esc(loc) + '</span>' +
       '<span class="meta">在线：' + est.players + ' 人</span>' +
       '<span class="meta coins">💰 ' + p.coins + '</span>';
@@ -362,6 +363,60 @@ window.UI = (function () {
   const est = { get players() { return S().players.length; } };
 
   // ---- 钓鱼视图 ----
+  // ---- 钓速信息（顶部状态栏与钓鱼页共用） ----
+  // 优先用服务器下发的 castInfo（精确，含上限截断与钓点增益）；未拿到时用本地已知的
+  // 后台配置（st.castCfg，随 /api/version 与 castcfg 广播同步）+ 钓竿词缀 + 当前钓点增益推算，
+  // 保证后台一改数字，界面立刻显示新值。
+  function currentSpotOf() {
+    const st = S();
+    const gid = st.player.groundId || (st.selected && st.selected.groundId);
+    const sid = st.player.spotId || (st.selected && st.selected.spotId);
+    if (!gid || !sid) return null;
+    const g = D.GROUNDS.find(function (x) { return x.id === gid; });
+    const sp = g && g.spots.find(function (x) { return x.id === sid; });
+    return sp || null;
+  }
+  function castSpeedInfo() {
+    const st = S();
+    if (st.castInfo) return st.castInfo;
+    const cfg = st.castCfg;
+    if (!cfg || !cfg.baseMs) return null;
+    const effBd = E().bdEffects ? E().bdEffects() : { speed: 0 };
+    const spot = currentSpotOf();
+    let buffSpeed = 0;
+    ((spot && spot.buffs) || []).forEach(function (b) { if (b && b.type === 'speed') buffSpeed += Number(b.value) || 0; });
+    const globalBonus = Number(cfg.speedBonus) || 0;
+    const cap = cfg.speedCap != null ? Number(cfg.speedCap) : 80;
+    const minMs = cfg.minMs != null ? Number(cfg.minMs) : 800;
+    const raw = (effBd.speed || 0) + buffSpeed + globalBonus;
+    const eff = Math.max(0, Math.min(cap, raw));
+    return {
+      baseMs: cfg.baseMs, minMs: minMs, globalBonus: globalBonus, cap: cap,
+      affixSpeed: effBd.speed || 0, buffSpeed: buffSpeed,
+      rawSpeed: Math.round(raw * 10) / 10, effSpeed: eff,
+      interval: Math.max(minMs, Math.round(cfg.baseMs * (1 - eff / 100))),
+    };
+  }
+  // 简短文案：实际 0.90s/竿（基础 3.00s · 竿+25% · 点+20%）
+  function castSpeedShort() {
+    const ci = castSpeedInfo();
+    if (!ci) return '';
+    const parts = [];
+    if (ci.affixSpeed) parts.push('竿' + (ci.affixSpeed > 0 ? '+' : '') + ci.affixSpeed + '%');
+    if (ci.buffSpeed) parts.push('点' + (ci.buffSpeed > 0 ? '+' : '') + ci.buffSpeed + '%');
+    if (ci.globalBonus) parts.push('服' + (ci.globalBonus > 0 ? '+' : '') + ci.globalBonus + '%');
+    const capTag = ci.rawSpeed > ci.effSpeed ? '，封顶 ' + ci.cap + '%' : '';
+    return '每 ' + (ci.interval / 1000).toFixed(2) + 's 一竿（基础 ' + (ci.baseMs / 1000).toFixed(2) + 's'
+      + (parts.length ? ' · ' + parts.join(' · ') + capTag : ' · 无加成') + '）';
+  }
+  // 完整文案（钓鱼页状态条）
+  function castText() {
+    const ci = castSpeedInfo();
+    if (!ci) return '服务器每 ' + (S().fishingInterval / 1000).toFixed(2) + 's 抛一竿';
+    return '后台基础 ' + (ci.baseMs / 1000).toFixed(2) + 's/竿 · 实际 ' + (ci.interval / 1000).toFixed(2) + 's/竿'
+      + (ci.rawSpeed ? '（有效钓速 ' + ci.effSpeed + '%' + (ci.rawSpeed > ci.effSpeed ? '，封顶 ' + ci.cap + '%' : '') + '）' : '（无加成）');
+  }
+
   function renderFishing() {
     const main = $('main');
     const st = S();
@@ -416,7 +471,7 @@ window.UI = (function () {
       renderTopbar(); renderNav(); renderFishing(); // 乐观渲染，服务器拒绝时回滚
       E().startFishing(gid, sid).then(function (r) {
         if (!r.ok) { toast(r.msg); st.selected = { groundId: null, spotId: null }; }
-        else { toast(wasFishing ? '已切换钓点，服务器每 ' + (st.fishingInterval / 1000).toFixed(2) + ' 秒抛一竿' : '已开始自动钓鱼，服务器每 ' + (st.fishingInterval / 1000).toFixed(2) + ' 秒抛一竿'); }
+        else { toast((wasFishing ? '已切换钓点 · ' : '已开始自动钓鱼 · ') + castText()); }
         renderTopbar(); renderNav(); renderFishing();
       });
     }
@@ -441,7 +496,7 @@ window.UI = (function () {
       const g = D.GROUNDS.find(function (x) { return x.id === st.player.groundId; });
       const sp = g && g.spots.find(function (x) { return x.id === st.player.spotId; });
       stateBar.innerHTML = '<span class="dot on"></span> 自动钓鱼中 · ' + esc(g ? g.name : '') + (sp ? '·' + esc(sp.name) : '') +
-        '<span class="state-hint">服务器每 ' + (st.fishingInterval / 1000).toFixed(2) + 's 抛一竿 · 再点当前钓点可取消</span>';
+        '<span class="state-hint">' + esc(castText()) + ' · 再点当前钓点可取消</span>';
     } else {
       stateBar.innerHTML = '<span class="dot idle"></span> 未在钓鱼<span class="state-hint">点击任意垂钓点即可开始自动钓鱼</span>';
     }
@@ -544,8 +599,10 @@ window.UI = (function () {
       if (r && r.ok) {
         S().bd = r.data.bd;
         if (r.data.inventory) S().inventory = r.data.inventory;
+        if (r.data.castInfo) { S().castInfo = r.data.castInfo; S().fishingInterval = r.data.castInfo.interval; }
         E().refreshEffects();
         toast((compId ? '已装备 ' + itemMeta(compId).name + '（消耗 1 件组件）' : '已卸下组件') + '，加成已在服务器生效');
+        renderTopbar();
         renderView();
       }
     });
@@ -2977,7 +3034,7 @@ window.UI = (function () {
   // 无关广播（如他人的渔获 feed/players）只更新顶栏/导航，不重绘主区——
   // 否则只要有人上鱼，钓竿配置/背包等页面的组件卡片都会跟着整页闪烁重绘。
   const VIEW_SCOPES = {
-    fishing: ['players', 'grounds', 'catch', 'assets', 'groundcfg'], // 实况/日志/背包随广播更新
+    fishing: ['players', 'grounds', 'catch', 'assets', 'groundcfg', 'castcfg'], // 实况/日志/钓速随广播更新
     bd: [],                                             // 钓竿配置：只随操作重绘（展示数据不受广播影响）
     ground: ['players', 'grounds', 'feed', 'groundcfg'],
     inventory: ['assets', 'shop'],

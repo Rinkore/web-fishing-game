@@ -14,6 +14,8 @@ window.Engine = (function () {
     player: { name: '你', status: 'idle', groundId: null, spotId: null, coins: 500, recent: null },
     fishing: { active: false },
     fishingInterval: 3000,      // 服务器返回的实际钓速（展示用）
+    castInfo: null,             // 钓速明细：后台基础值 + 词缀/钓点增益/全服加成 + 实际间隔
+    castCfg: null,              // 后台抛竿间隔/全服钓速配置（/api/version 与 castcfg 广播同步）
     inventory: {},              // 服务器权威，SSE assets 整体同步
     bd: buildDefaultBD(),       // 服务器权威，登录/装备时同步
     bdEffects: { speed: 0, big: 0, rare: 0, material: 0, size: 0, double: 0 },
@@ -117,7 +119,10 @@ window.Engine = (function () {
     if (!window.Net) return Promise.resolve({ ok: false, msg: '网络层未就绪' });
     return window.Net.fishingStart(groundId, spotId).then(function (r) {
       if (r && r.ok) {
-        state.fishingInterval = r.interval || state.fishingInterval;
+        // 注意：网络层返回 { ok, status, data }，业务字段都在 data 里
+        const d = r.data || {};
+        state.fishingInterval = d.interval || state.fishingInterval;
+        state.castInfo = d.castInfo || state.castInfo || null; // 钓速明细（基础值/词缀/钓点增益/全服加成/实际间隔）
         save();
         return { ok: true };
       }

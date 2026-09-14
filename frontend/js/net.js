@@ -67,6 +67,7 @@ window.Net = (function () {
       if (!r || !r.ok || !r.data || !r.data.version) return false;
       // 顺带同步服务器的组件生成配置（数值范围/词条概率/roll 模型），供前端展示与本地 roll 一致
       if (r.data.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(r.data.componentCfg);
+      if (r.data.castCfg) state().castCfg = r.data.castCfg; // 后台抛竿间隔/全服钓速（顶部状态栏展示用）
       if (r.data.version === window.GameData.VERSION) return false;
       let already = false;
       try { already = sessionStorage.getItem(RELOAD_FLAG) === r.data.version; } catch (e) {}
@@ -239,11 +240,16 @@ window.Net = (function () {
         } else if (m.type === 'bannerStop') {
           if (ui && ui.onBannerStop) ui.onBannerStop(m.id);
         } else if (m.type === 'castcfg') {
-          // 管理员调整抛竿间隔：正在钓鱼时重新开钓以同步新的间隔显示（服务器已按新值重启循环）
+          // 管理员调整抛竿间隔/全服钓速：先记住新配置，再让服务器重算实际间隔（会即刻重绘钓鱼页）
+          S.castCfg = { baseMs: m.baseMs, minMs: m.minMs, speedBonus: m.speedBonus, speedCap: m.speedCap };
+          // 清掉旧的 castInfo：界面立刻按新配置 + 本地词缀/增益重算（随后服务器回传的精确值覆盖）
+          S.castInfo = null;
           if (S.fishing && S.fishing.active && S.selected && S.selected.groundId) {
             window.Net.fishingStart(S.selected.groundId, S.selected.spotId);
+          } else if (ui && ui.refreshAll) {
+            ui.refreshAll('castcfg');
           }
-          if (ui && ui.toast) ui.toast('管理员已调整抛竿间隔：基础 ' + (m.baseMs / 1000).toFixed(2) + 's / 最短 ' + (m.minMs / 1000).toFixed(2) + 's');
+          if (ui && ui.toast) ui.toast('管理员已调整抛竿间隔：基础 ' + (m.baseMs / 1000).toFixed(2) + 's / 最短 ' + (m.minMs / 1000).toFixed(2) + 's' + (m.speedBonus ? ' / 全服钓速 ' + m.speedBonus + '%' : ''));
         } else if (m.type === 'subalert') {
           if (ui && ui.onSubAlert) ui.onSubAlert(m.item || {});
         } else if (m.type === 'assets') {
@@ -296,6 +302,10 @@ window.Net = (function () {
           // 管理后台修改了钓场/钓点配置：原位替换 GROUNDS 内容（保持数组引用），
           // 渔场页/图鉴产地/钓场锁定状态随即与服务器一致
           applyGroundCfg(m.grounds);
+          // 钓点增益可能变了：正在钓鱼时顺带刷新实际钓速明细（服务器已按新增益重启循环）
+          if (S.fishing && S.fishing.active && S.selected && S.selected.groundId) {
+            window.Net.fishingStart(S.selected.groundId, S.selected.spotId);
+          }
           if (ui) ui.refreshAll('groundcfg');
         }
       };
