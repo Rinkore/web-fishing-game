@@ -421,7 +421,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('钓竿配置页出现 8 个槽位卡片', (await p1.$$('.rs-card')).length === 8, String((await p1.$$('.rs-card')).length));
       check('槽位栏显示当前钓竿与命名入口', await p1.evaluate(() => {
         const n = document.querySelector('.rod-slots');
-        return !!n && /我的钓竿/.test(n.textContent) && !!document.getElementById('rs-rename-cur');
+        return !!n && /我的钓竿/.test(n.textContent) && !document.getElementById('rs-rename-cur') && !document.getElementById('rs-stow');
       }), '');
       check('未购买槽位显示价格与购买按钮', await p1.evaluate(() => {
         const cards = Array.from(document.querySelectorAll('.rs-card'));
@@ -485,7 +485,13 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('使用不腾空原槽位（钓竿留在槽位里）', !!(afterUse.data.rodSlots && afterUse.data.rodSlots[1] && afterUse.data.rodSlots[1].name === 'QA·钓速竿'),
         JSON.stringify((afterUse.data.rodSlots || []).map(function (x) { return x && x.name; })));
       check('槽位卡片显示「使用中」标记', await p1.evaluate(() => !!document.querySelector('.rs-active')), '');
-      check('页头有「收起当前钓竿」入口', await p1.evaluate(() => !!document.getElementById('rs-stow')), '');
+      // 「收起」已移到使用中的槽位卡上（与「删除」并排）；页头不再有独立的命名/收起按钮
+      const rodBtns = await p1.evaluate(() => {
+        const card = Array.from(document.querySelectorAll('.rs-card')).find(c => c.querySelector('.rs-active'));
+        const btns = card ? Array.from(card.querySelectorAll('button')).map(b => b.textContent.trim()) : [];
+        return { btns: btns, hasStow: btns.some(t => t.indexOf('收起') >= 0), hasDel: btns.some(t => t === '删除') };
+      });
+      check('使用中槽位卡提供「收起」（与删除并排）', rodBtns.hasStow && rodBtns.hasDel, JSON.stringify(rodBtns));
       // —— 卸下配件前弹窗预警（会取消对应槽位），取消则不影响槽位 ——
       const offBtn = await p1.evaluate(() => {
         const b = Array.from(document.querySelectorAll('.bd-acts button')).find(x => x.textContent.trim() === '卸下');

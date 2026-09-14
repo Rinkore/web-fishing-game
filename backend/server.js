@@ -581,6 +581,8 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   // 双钓：见 doubleCountOf。基础上钩 1 条，按双钓概率连续追加，最多 3 条。
   const extra = doubleExtraOf(eff.double);
   for (let i = 0; i < extra; i++) doServerCatch(rec, key, ground, spot, eff, true);
+  // 自动售出：本竿（含双钓）钓到的鱼若满足规则，按系统行情立即卖出（资产/通知由 autoSellCheck 推送）
+  try { autoSellCheck(key); } catch (e) {}
 }
 // ---- 双钓概率 ----
 // 叠加值 A（百分比点数，50% 写作 A=50）→ 实际每次追加概率 P = A / (A + 100) = 1 - 1/(1+A/100)。
@@ -1101,6 +1103,58 @@ function sellableOf(id) { return D.isSellable(id) || id === 'comp_generic'; }
 // 单件成交价：经济物品随供需浮动；组件实例与旧通用组件为固定价
 function unitPriceOf(id) { return ECO_PRICE[id] ? currentPrice(id) : (D.itemOf(id).price || 10); }
 
+// ---- 自动售出（玩家自助规则，仅渔获；规则存在账号上）----
+// rec.autoSell = { all: {minPct,minPrice}|null, fish: { <鱼id>: {minPct,minPrice} } }
+// 单鱼规则优先于「全部鱼」；minPct=基准价的百分比线，minPrice=绝对价格线，两线任一达到即卖。
+// 触发时机：钓到鱼入包后 / 每分钟价格采样（价格回升越过阈值）/ 登录时。
+// 出售走与手动 /api/sell 完全相同的经济路径（单乘数下压、今日售出、交易流水），行情一致。
+function autoSellRuleOf(rec, id) {
+  const a = rec.autoSell || {};
+  const own = (a.fish || {})[id];
+  if (own) return own;
+  return a.all || null;
+}
+function autoSellHit(rec, id) {
+  const rule = autoSellRuleOf(rec, id);
+  if (!rule) return null;
+  const base = basePrice(id);
+  const price = currentPrice(id);
+  // 浮动接受值（slack）：行情在阈值附近回落时，允许提前「阈值 − 浮动」成交，避免错过；
+  // 有效线最低钳到 1（百分比 1% / 价格 1💰），用户填多大浮动都不会变成无条件卖出。
+  const pctLine = rule.minPct != null ? Math.max(1, rule.minPct - (Number(rule.slackPct) || 0)) : null;
+  const priceLine = rule.minPrice != null ? Math.max(1, rule.minPrice - (Number(rule.slackPrice) || 0)) : null;
+  const pctOk = pctLine != null && base > 0 && price >= base * pctLine / 100;
+  const priceOk = priceLine != null && price >= priceLine;
+  return (pctOk || priceOk) ? { price: price, base: base, by: pctOk ? '基准' : '价格' } : null;
+}
+// 扫描背包里满足规则的鱼并按系统行情卖出；返回本次售出明细（无则 null）
+function autoSellCheck(key) {
+  const rec = users[key];
+  if (!rec || !rec.autoSell) return null;
+  const sold = [];
+  Object.keys(rec.inventory || {}).forEach(function (id) {
+    if (!FISH_ID_SET[id]) return;                       // 仅渔获
+    const have = (rec.inventory[id] || 0);
+    if (have <= 0 || sold.some(function (x) { return x.id === id; })) return;
+    const hit = autoSellHit(rec, id);
+    if (!hit) return;
+    const qty = have;
+    const unit = unitPriceOf(id);
+    const gain = unit * qty;
+    invAdd(rec, id, -qty);
+    rec.coins += gain;
+    if (ECO_PRICE[id]) registerSale(id, qty, rec.name + '·自动', unit);
+    sold.push({ id: id, name: itemName(id), qty: qty, unit: unit, gain: gain, by: hit.by });
+  });
+  if (!sold.length) return null;
+  saveAccount(key); saveEconomy(); broadcastShop();
+  const total = sold.reduce(function (s, x) { return s + x.gain; }, 0);
+  sendTo(key, { type: 'notice', msg: '🤖 自动售出 ' + sold.map(function (x) { return x.name + '×' + x.qty; }).join('、') +
+    '，+ ' + total + '💰（' + sold[0].by + '线达标）' });
+  sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+  return sold;
+}
+
 // ---- 动态收购价（服务器权威 · 单乘数模型）----
 // 每个物品维护一个价格乘数 m ∈ [0.4, 2.0]，实际价 = 基准价 × m：
 //   售出：m 每件除以 1.15（成比例下压——2 倍价卖一件回到 1.74 倍，不会一键跌回原价）；
@@ -1155,6 +1209,8 @@ function recordPrice(id) {
 setInterval(function () {
   Object.keys(ECO_PRICE).forEach(recordPrice);
   try { saveEconomy(); } catch (e) {}
+  // 自动售出：价格闲置回升可能越过玩家设的阈值 → 对在线玩家跑一遍
+  players.forEach(function (p, key) { try { autoSellCheck(key); } catch (e) {} });
 }, 60000).unref();
 
 // ---- 落盘原语（同步写、整文件重写；单账号/单域粒度） ----
@@ -1310,6 +1366,7 @@ function profileOf(key) {
     inventory: rec.inventory || {}, bd: rec.bd || {},
     codex: rec.codex || {}, catchCount: rec.catchCount || 0,
     admin: !!rec.admin,
+    autoSell: rec.autoSell || null,
     subNotify: rec.subNotify || null,
     // 钓竿存档：当前装备命名 / 槽位（含已购买数量与下一槽位价格）/ 被钓竿占用的实例件数（前端锁定标记）
     rodName: rec.rodName || '',
@@ -1523,6 +1580,7 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/me' && req.method === 'GET') {
     const key = u.query.token && sessionGet(u.query.token);
     if (!key) return apiResp(res, 401, { error: '未登录或会话失效' });
+    try { autoSellCheck(key); } catch (e) {}  // 读档即触发：离线期间价格回升越过阈值的情况
     return apiResp(res, 200, profileOf(key));
   }
 
@@ -1926,6 +1984,8 @@ const server = http.createServer(function (req, res) {
         sendTo(key, { type: 'codex', codex: rec.codex, catchCount: rec.catchCount, entry: { id: codexId, name: itemName(codexId) } });
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
         maybeSendSubAlert(rec, key, itemMeta);
+        // 与线上一致：模拟的是一次真实上鱼 → 若满足玩家的自动售出规则，同样立即卖出
+        try { autoSellCheck(key); } catch (e) {}
         apiResp(res, 200, { ok: true, codex: cx, record: recordEvent });
       });
     });
@@ -2031,6 +2091,58 @@ const server = http.createServer(function (req, res) {
         saveAccount(key); saveEconomy();
         broadcastShop();
         apiResp(res, 200, { ok: true, unit: unit, gain: gain, coins: rec.coins, inventory: rec.inventory, shop: shopSnapshot() });
+      });
+    });
+    return;
+  }
+
+  // ---- 自动售出规则：读取 / 设置（玩家自助，仅渔获） ----
+  // 规则：scope='all' 为全部鱼；scope=鱼id 为单鱼（优先于全部鱼）。
+  // minPct=基准价百分比线（如 150 = 基准的 150%），minPrice=绝对价格线；两线任一达到即卖，都空 = 清除该规则。
+  if (p === '/api/autosell' && req.method === 'GET') {
+    const key = u.query.token && sessionGet(u.query.token);
+    if (!key) return apiResp(res, 401, { error: '未登录' });
+    const rec = users[key];
+    return apiResp(res, 200, { ok: true, all: (rec.autoSell && rec.autoSell.all) || null, fish: (rec.autoSell && rec.autoSell.fish) || {} });
+  }
+  if (p === '/api/autosell' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const scope = String(d.scope || '');
+        const clean = function (v, max) {
+          if (v == null || v === '') return null;
+          const n = Math.floor(Number(v));
+          return (isFinite(n) && n > 0 && n <= max) ? n : NaN;
+        };
+        const minPct = clean(d.minPct, 1000000);
+        const minPrice = clean(d.minPrice, 1e9);
+        // 浮动接受值：允许 0（不浮动）；为非负数
+        const cleanSlack = function (v, max) {
+          if (v == null || v === '') return 0;
+          const n = Math.floor(Number(v));
+          return (isFinite(n) && n >= 0 && n <= max) ? n : NaN;
+        };
+        const slackPct = cleanSlack(d.slackPct, 1000000);
+        const slackPrice = cleanSlack(d.slackPrice, 1e9);
+        if (isNaN(minPct) || isNaN(minPrice) || isNaN(slackPct) || isNaN(slackPrice)) {
+          return apiResp(res, 400, { error: '阈值需为正整数，浮动需为非负数' });
+        }
+        rec.autoSell = rec.autoSell || { fish: {} };
+        if (!rec.autoSell.fish) rec.autoSell.fish = {};
+        if (scope === 'all') {
+          if (minPct == null && minPrice == null) delete rec.autoSell.all;
+          else rec.autoSell.all = { minPct: minPct, minPrice: minPrice, slackPct: slackPct, slackPrice: slackPrice };
+        } else {
+          if (!FISH_ID_SET[scope]) return apiResp(res, 400, { error: '未知鱼类：' + scope });
+          if (minPct == null && minPrice == null) delete rec.autoSell.fish[scope];
+          else rec.autoSell.fish[scope] = { minPct: minPct, minPrice: minPrice, slackPct: slackPct, slackPrice: slackPrice };
+        }
+        saveAccount(key);
+        const sold = (function () { try { return autoSellCheck(key); } catch (e) { return null; } })();
+        apiResp(res, 200, { ok: true, all: rec.autoSell.all || null, fish: rec.autoSell.fish || {},
+          sold: sold || null, coins: rec.coins, inventory: rec.inventory, shop: shopSnapshot() });
       });
     });
     return;

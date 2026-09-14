@@ -155,6 +155,9 @@ window.Net = (function () {
   const fishingStart = (groundId, spotId) => authed('/api/fishing/start', { groundId: groundId, spotId: spotId });
   const fishingStop = () => authed('/api/fishing/stop', {});
   const bdSet = (part, compId) => authed('/api/bd/set', { part: part, compId: compId });
+  // 自动售出规则（玩家自助，仅渔获）：scope='all' 全部鱼；scope=鱼id 单鱼（优先于全部鱼）
+  const autoSellGet = () => apiFetch('GET', '/api/autosell?token=' + encodeURIComponent(me ? me.token : ''));
+  const autoSellSet = (scope, minPct, minPrice, slackPct, slackPrice) => authed('/api/autosell', { scope: scope, minPct: minPct, minPrice: minPrice, slackPct: slackPct, slackPrice: slackPrice });
   // 公开只读：商品价格历史采样 + 交易量
   const shopHistory = (id) => apiFetch('GET', '/api/shop/history?id=' + encodeURIComponent(id));
   // 我的历史订单（市集成交：买入 + 卖出）
@@ -422,6 +425,7 @@ window.Net = (function () {
     guardVersion: guardVersion, startVersionWatch: startVersionWatch,
     probeServer: probeServer, connState: connState, reloadForVersion: reloadForVersion,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
+    autoSellGet: autoSellGet, autoSellSet: autoSellSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
     fetchFeedback: fetchFeedback,

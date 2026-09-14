@@ -248,7 +248,21 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 
 /* ---- 系统商店 ---- */
 .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; align-items: start; }
-.shop-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
+.shop-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); position: relative; }
+/* 自动售出：面板与卡片标记 */
+.shop-autosell { border: 1px solid rgba(251,191,36,.35); background: rgba(251,191,36,.06); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+.shop-autosell .sa-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.shop-autosell .sa-head b { color: var(--big); }
+.sa-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.sa-switch { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
+.sa-fld { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); font-size: 13px; }
+.sa-fld .ipt { width: 90px; }
+.shop-fbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.shop-fbar .chk { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); font-size: 13px; cursor: pointer; }
+.shop-card.has-auto { border-color: rgba(251,191,36,.55); }
+.shop-card .sc-auto { font-size: 11px; color: var(--big); margin-left: 6px; }
+.shop-card .sc-kind { font-size: 11px; color: var(--muted); margin-left: 6px; font-weight: 500; }
+.shop-card .as-btn { position: absolute; top: 8px; right: 8px; }
 .sc-name { font-size: 14px; font-weight: 600; }
 .sc-price { font-size: 18px; font-weight: 800; margin: 6px 0 8px; display: flex; align-items: baseline; gap: 8px; }
 .sc-price.high { color: var(--accent); }
