@@ -102,7 +102,7 @@ let users = {};
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
 // biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
 const BITE_FORMULA_DEFAULT = 'min(98, 90 + speed * 0.15)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, feedback: [], feedbackMeta: {} };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, feedback: [], feedbackMeta: {} };
 
 // ---- 反馈意见 ----
 // 默认每人每 24 小时可提交 1 条；花 10000 金币可立即结束 CD（下次可提交时间提前 24h）。
@@ -205,6 +205,20 @@ function spotOf(groundId, spotId) {
   const s = g.spots.find(function (x) { return x.id === spotId; }) || null;
   return s ? { ground: g, spot: s } : null;
 }
+// ---- 排行榜工具 ----
+// 每个玩家在单个榜单上只保留一条记录（大鱼榜取其最大、小鱼榜取其最小），再排序取前 10。
+function upsertTop(list, entry, keepSmall) {
+  const i = list.findIndex(function (x) { return x.who === entry.who; });
+  if (i >= 0) {
+    const worse = keepSmall ? entry.size >= list[i].size : entry.size <= list[i].size;
+    if (worse) return; // 已有更优记录，忽略本次
+    list[i] = entry;
+  } else {
+    list.push(entry);
+  }
+  list.sort(function (a, b) { return keepSmall ? a.size - b.size : b.size - a.size; });
+  if (list.length > 10) list.length = 10;
+}
 // 单竿结算：掷骰 → 入库（背包/图鉴）→ 大鱼榜 → 全服动态 → 定向推送权威资产
 function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   const item = resolveItemAt(spot, eff);
@@ -225,23 +239,32 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
 
   let recordEvent = null;
   let smallEvent = false;
+  let globalRecord = null; // 全场最大纪录被破（用于顶部横幅）
   if (FISH_ID_SET[item.id] && item.size != null && item.size > 0) {
+    const size = Math.round(item.size * 10) / 10;
     const cur = world.bigRecords[item.id];
-    if (!cur || item.size > cur.size) {
-      world.bigRecords[item.id] = { id: item.id, name: itemName(item.id), size: Math.round(item.size * 10) / 10, who: rec.name, t: Date.now() };
+    if (!cur || size > cur.size) {
+      world.bigRecords[item.id] = { id: item.id, name: itemName(item.id), size: size, who: rec.name, t: Date.now() };
       recordEvent = world.bigRecords[item.id];
     }
-    // 全服前十大捕获（记录页点开查看）
+    // 全场最大纪录（跨鱼种）：被破时返回新纪录，供顶部横幅滚动播报
+    const gm = world.globalMax;
+    if (!gm || size > gm.size) {
+      world.globalMax = { id: item.id, name: itemName(item.id), size: size, who: rec.name, t: Date.now() };
+      globalRecord = world.globalMax;
+    }
+    // 全服前十大捕获（记录页点开查看；每人只保留一条最大）
     const top = (world.topCatches[item.id] = world.topCatches[item.id] || []);
-    top.push({ size: Math.round(item.size * 10) / 10, who: rec.name, t: Date.now() });
-    top.sort(function (a, b) { return b.size - a.size; });
-    if (top.length > 10) top.length = 10;
+    upsertTop(top, { size: size, who: rec.name, t: Date.now() }, false);
     // 全服最小纪录
     const sm = world.smallRecords[item.id];
-    if (!sm || item.size < sm.size) {
-      world.smallRecords[item.id] = { id: item.id, name: itemName(item.id), size: Math.round(item.size * 10) / 10, who: rec.name, t: Date.now() };
+    if (!sm || size < sm.size) {
+      world.smallRecords[item.id] = { id: item.id, name: itemName(item.id), size: size, who: rec.name, t: Date.now() };
       smallEvent = true;
     }
+    // 全服前十小捕获（每人只保留一条最小）
+    const topS = (world.topSmall[item.id] = world.topSmall[item.id] || []);
+    upsertTop(topS, { size: size, who: rec.name, t: Date.now() }, true);
   }
 
   const entry = { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null };
@@ -259,9 +282,10 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     sendPlayersAll();
   }
   saveAccount(key);
-  if (recordEvent || smallEvent) {
+  if (recordEvent || smallEvent || globalRecord) {
     saveRecords();
-    broadcastRecords();
+    if (recordEvent || smallEvent) broadcastRecords();
+    if (globalRecord) broadcast({ type: 'globalRecord', record: globalRecord });
     if (recordEvent && feedVisible(item, true)) broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null, record: true } });
   }
   // 定向推送：本条渔获 + 图鉴条目 + 权威资产（前端不持账本）
@@ -636,7 +660,7 @@ function saveDomain(file, keys) {
   writeJson(file, out);
 }
 const MARKET_KEYS = ['listingSeq', 'listings'];
-const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches'];
+const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog'];
 const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
@@ -1001,14 +1025,17 @@ const server = http.createServer(function (req, res) {
         const rec = users[key];
         const part = D.ROD_PARTS.find(function (x) { return x.key === d.part; });
         if (!part) return apiResp(res, 400, { error: '未知部位' });
+        const prev = (rec.bd && rec.bd[part.key] && rec.bd[part.key].compId) || null;
         let comp = null;
         if (d.compId) {
           comp = D.componentOf(d.compId);
           if (!comp) return apiResp(res, 400, { error: '未知组件' });
           if (comp.part !== part.key) return apiResp(res, 400, { error: '组件与部位不匹配' });
-          // 安装 = 使用组件道具：从背包消耗 1 件（卸下不返还）
+          // 安装 = 从背包取用 1 件（卸下会原样放回背包，不再摧毁）
           if (!invHas(rec, comp.id, 1)) return apiResp(res, 400, { error: '背包中没有该组件' });
         }
+        // 换下/卸下：把原先装备的组件放回背包
+        if (prev && prev !== (comp ? comp.id : null)) invAdd(rec, prev, 1);
         rec.bd = rec.bd || {};
         rec.bd[part.key] = {
           compId: comp ? comp.id : null, name: comp ? comp.name : part.default.name,
@@ -1057,26 +1084,40 @@ const server = http.createServer(function (req, res) {
         }
         rec.codex[codexId] = cx;
         let recordEvent = null;
+        let smallEventDev = false;
+        let globalRecordDev = null;
         const rawSize = d.item && d.item.size != null ? d.item.size : d.size;
         const size = Number(rawSize);
         if (FISH_ID_SET[itemId] && isFinite(size) && size > 0) {
+          const rsize = Math.round(size * 10) / 10;
           const cur = world.bigRecords[itemId];
-          if (!cur || size > cur.size) {
-            world.bigRecords[itemId] = { id: itemId, name: itemName(itemId), size: Math.round(size * 10) / 10, who: rec.name, t: Date.now() };
+          if (!cur || rsize > cur.size) {
+            world.bigRecords[itemId] = { id: itemId, name: itemName(itemId), size: rsize, who: rec.name, t: Date.now() };
             recordEvent = world.bigRecords[itemId];
           }
-          const topD = (world.topCatches[itemId] = world.topCatches[itemId] || []);
-          topD.push({ size: Math.round(size * 10) / 10, who: rec.name, t: Date.now() });
-          topD.sort(function (a, b) { return b.size - a.size; });
-          if (topD.length > 10) topD.length = 10;
+          const gm = world.globalMax;
+          if (!gm || rsize > gm.size) {
+            world.globalMax = { id: itemId, name: itemName(itemId), size: rsize, who: rec.name, t: Date.now() };
+            globalRecordDev = world.globalMax;
+          }
+          upsertTop((world.topCatches[itemId] = world.topCatches[itemId] || []), { size: rsize, who: rec.name, t: Date.now() }, false);
           const smD = world.smallRecords[itemId];
-          if (!smD || size < smD.size) world.smallRecords[itemId] = { id: itemId, name: itemName(itemId), size: Math.round(size * 10) / 10, who: rec.name, t: Date.now() };
+          if (!smD || rsize < smD.size) {
+            world.smallRecords[itemId] = { id: itemId, name: itemName(itemId), size: rsize, who: rec.name, t: Date.now() };
+            smallEventDev = true;
+          }
+          upsertTop((world.topSmall[itemId] = world.topSmall[itemId] || []), { size: rsize, who: rec.name, t: Date.now() }, true);
         }
         const entry = { t: Date.now(), who: rec.name, item: Object.assign({}, d.item, { id: itemId }), ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
         feed.unshift(entry); if (feed.length > 60) feed.pop();
         broadcast({ type: 'feed', entry: entry });
         saveAccount(key);
-        if (recordEvent) { saveRecords(); broadcastRecords(); broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: entry.item, ground: entry.ground, spot: entry.spot, size: entry.size, record: true } }); }
+        if (recordEvent || smallEventDev || globalRecordDev) {
+          saveRecords();
+          if (recordEvent || smallEventDev) broadcastRecords();
+          if (globalRecordDev) broadcast({ type: 'globalRecord', record: globalRecordDev });
+        }
+        if (recordEvent) broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: entry.item, ground: entry.ground, spot: entry.spot, size: entry.size, record: true } });
         sendTo(key, { type: 'codex', codex: rec.codex, catchCount: rec.catchCount, entry: { id: codexId, name: itemName(codexId) } });
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, { ok: true, codex: cx, record: recordEvent });
@@ -1456,13 +1497,15 @@ const server = http.createServer(function (req, res) {
     return apiResp(res, 200, { codex: rec.codex || {}, catchCount: rec.catchCount || 0 });
   }
   if (p === '/api/records' && req.method === 'GET') {
-    return apiResp(res, 200, { records: world.bigRecords, small: world.smallRecords });
+    return apiResp(res, 200, { records: world.bigRecords, small: world.smallRecords, globalMax: world.globalMax || null });
   }
-  // 某种鱼的全服前十大捕获记录（公开只读）
+  // 某种鱼的全服前十大捕获记录 / 前十小（公开只读；kind=small 取小鱼榜）
   if (p === '/api/records/top' && req.method === 'GET') {
     const fid = u.query.id;
     if (!FISH_ID_SET[fid]) return apiResp(res, 404, { error: '未知鱼类' });
-    return apiResp(res, 200, { id: fid, name: itemName(fid), top: (world.topCatches && world.topCatches[fid]) || [] });
+    const small = String(u.query.kind || '') === 'small';
+    const list = small ? ((world.topSmall && world.topSmall[fid]) || []) : ((world.topCatches && world.topCatches[fid]) || []);
+    return apiResp(res, 200, { id: fid, name: itemName(fid), kind: small ? 'small' : 'big', top: list });
   }
 
   // ================================================================
@@ -1554,6 +1597,46 @@ const server = http.createServer(function (req, res) {
       saveAccount(target);
       sendTo(target, { type: 'notice', msg: want ? '🛡 你已获得管理员权限，可打开管理后台（/admin.html）' : '你的管理员权限已被收回' });
       apiResp(res, 200, { ok: true, target: target, admin: want });
+    });
+    return;
+  }
+  // ---- 账号管理：改密码 / 改显示名 / 调整金币（管理员） ----
+  if (p === '/api/admin/users/update' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const target = String(d.target || '').toLowerCase();
+      const rec = users[target];
+      if (!rec) return apiResp(res, 404, { error: '账号不存在' });
+      const changed = [];
+      if (d.password != null && String(d.password) !== '') {
+        const pw = String(d.password);
+        if (pw.length < 4) return apiResp(res, 400, { error: '密码至少 4 位' });
+        rec.salt = crypto.randomBytes(8).toString('hex');
+        rec.pwHash = hashPw(pw, rec.salt);
+        changed.push('密码');
+        // 改密后使该账号所有旧会话失效（强制重新登录），并断开实时连接
+        kickUserSessions(target);
+      }
+      if (d.name != null && String(d.name).trim() !== '') {
+        rec.name = String(d.name).trim().slice(0, 20);
+        changed.push('显示名');
+      }
+      if (d.coins != null) {
+        const c = Math.floor(Number(d.coins));
+        if (!isFinite(c) || c < 0 || c > 1e12) return apiResp(res, 400, { error: '金币数无效' });
+        rec.coins = c;
+        changed.push('金币');
+      }
+      if (!changed.length) return apiResp(res, 400, { error: '没有需要修改的字段' });
+      saveAccount(target);
+      // 若该账号在线，推送最新资产/名称
+      const pl = players.get(target);
+      if (pl) { pl.name = rec.name; sendPlayersAll(); }
+      sendTo(target, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+      sendTo(target, { type: 'notice', msg: '管理员修改了你的账号信息：' + changed.join(' / ') });
+      apiResp(res, 200, { ok: true, target: target, changed: changed, name: rec.name, coins: rec.coins });
     });
     return;
   }

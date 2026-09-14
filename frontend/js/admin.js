@@ -124,6 +124,7 @@ window.Admin = (function () {
   const NAV = [
     { id: 'overview', name: '📊 概览' },
     { id: 'accounts', name: '👥 账号授权' },
+    { id: 'accountmgr', name: '🔑 账号管理' },
     { id: 'grounds', name: '🌊 渔场钓点' },
     { id: 'market', name: '💱 市集管理' },
     { id: 'formula', name: '🧮 上钩公式' },
@@ -147,6 +148,7 @@ window.Admin = (function () {
     renderNav();
     if (v === 'overview') return renderOverview();
     if (v === 'accounts') return renderAccounts();
+    if (v === 'accountmgr') return renderAccountMgr();
     if (v === 'grounds') return renderGrounds();
     if (v === 'market') return renderMarket();
     if (v === 'formula') return renderFormula();
@@ -255,6 +257,54 @@ window.Admin = (function () {
         function selfOf(k) { return k === usersList.me; }
       });
     });
+  }
+
+  // ================================
+  // 账号管理（改密码 / 改显示名 / 调整金币）
+  // ================================
+  function renderAccountMgr() {
+    const main = $('main');
+    main.innerHTML = '<h2>🔑 账号管理</h2>' +
+      '<div class="hint" style="margin-bottom:12px">选择账号后可修改其密码、显示名与金币。修改密码会使其所有登录会话失效（需重新登录）。</div>' +
+      '<div class="panel"><div class="mgr-row"><label>账号</label>' +
+      '<select id="mgr-user" class="ipt"><option value="">加载中…</option></select></div>' +
+      '<div id="mgr-body"></div></div>';
+    adminApi('GET', '/api/admin/users?token=' + encodeURIComponent(token)).then(function (r) {
+      if (!r.ok || view !== 'accountmgr') return;
+      const sel = $('mgr-user');
+      sel.innerHTML = '<option value="">— 选择账号 —</option>' + r.data.users.map(function (u) {
+        return '<option value="' + esc(u.key) + '">' + esc(u.name) + ' ( ' + esc(u.username) + ' )' + (u.admin ? ' 🛡' : '') + '</option>';
+      }).join('');
+      sel.onchange = function () { renderMgrForm(sel.value); };
+    });
+  }
+  function renderMgrForm(key) {
+    const box = $('mgr-body');
+    if (!key) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="mgr-form">' +
+      '<div class="mgr-row"><label>新密码</label><input id="mgr-pass" class="ipt" type="text" placeholder="留空则不修改（至少 4 位）" /></div>' +
+      '<div class="mgr-row"><label>显示名</label><input id="mgr-name" class="ipt" placeholder="留空则不修改" /></div>' +
+      '<div class="mgr-row"><label>金币</label><input id="mgr-coins" class="ipt" type="number" min="0" placeholder="留空则不修改" /></div>' +
+      '<div class="mgr-foot"><button id="mgr-save" class="btn primary">保存修改</button><span id="mgr-msg" class="hint"></span></div>' +
+      '</div>';
+    $('mgr-save').onclick = function () {
+      const payload = { token: token, target: key };
+      const pw = $('mgr-pass').value;
+      const nm = $('mgr-name').value.trim();
+      const co = $('mgr-coins').value;
+      if (pw) payload.password = pw;
+      if (nm) payload.name = nm;
+      if (co !== '') payload.coins = Number(co);
+      if (!pw && !nm && co === '') { toast('没有需要修改的字段', true); return; }
+      const btn = $('mgr-save'); btn.disabled = true;
+      adminApi('POST', '/api/admin/users/update', payload).then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) { toast(r.data.error || '修改失败', true); return; }
+        $('mgr-msg').textContent = '已修改：' + (r.data.changed || []).join(' / ');
+        $('mgr-pass').value = ''; $('mgr-name').value = ''; $('mgr-coins').value = '';
+        toast('已保存');
+      });
+    };
   }
 
   // ================================

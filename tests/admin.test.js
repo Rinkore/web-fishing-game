@@ -246,8 +246,28 @@ async function waitReady() {
   const ovFb = await GET(B + '/api/admin/overview?token=' + TOKA);
   check('概览统计含反馈数', typeof ovFb.data.feedbackCount === 'number' && ovFb.data.feedbackCount >= 1, String(ovFb.data.feedbackCount));
 
-  // ---------- 8. 持久化（重启服务器） ----------
-  section('8. 配置持久化');
+  // ---------- 8. 账号管理（改密码 / 改显示名 / 调整金币） ----------
+  section('8. 账号管理');
+  check('非管理员调用账号管理被拒 403', (await POST(B + '/api/admin/users/update', { token: TK2, target: 'adm_p2', name: 'x' })).status === 403);
+  check('不存在的账号被拒 404', (await POST(B + '/api/admin/users/update', { token: TOKA, target: 'nobody_here', name: 'x' })).status === 404);
+  check('空修改被拒 400', (await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p2' })).status === 400);
+  check('过短密码被拒 400', (await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p2', password: '1' })).status === 400);
+  const upName = await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p2', name: '改名后的二号' });
+  check('修改显示名成功', upName.status === 200 && upName.data.changed.indexOf('显示名') >= 0);
+  const upCoins = await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p2', coins: 8888 });
+  check('调整金币成功', upCoins.status === 200 && upCoins.data.coins === 8888);
+  check('负金币被拒 400', (await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p2', coins: -5 })).status === 400);
+  // 改密码：旧密码失效、新密码可登录、旧会话被顶
+  const upPw = await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p2', password: 'newpass99' });
+  check('修改密码成功', upPw.status === 200 && upPw.data.changed.indexOf('密码') >= 0);
+  check('旧密码登录失败 401', (await POST(B + '/api/login', { username: 'adm_p2', password: 'pass5678' })).status === 401);
+  const reLogin = await POST(B + '/api/login', { username: 'adm_p2', password: 'newpass99' });
+  check('新密码可登录', reLogin.status === 200 && !!reLogin.data.token);
+  check('改密后显示名已持久应用', reLogin.data.profile.name === '改名后的二号');
+  check('改密后金币已应用', reLogin.data.profile.coins === 8888);
+
+  // ---------- 9. 持久化（重启服务器） ----------
+  section('9. 配置持久化');
   killTree(srv);
   await sleep(800);
   srv = start(TMP_DATA);
@@ -255,7 +275,8 @@ async function waitReady() {
   const la2 = await POST(B + '/api/admin/login', { username: 'adm_root', password: 'pass1234' });
   check('管理员标志持久化（重启后可登录）', la2.status === 200);
   const TOKA2 = la2.data.token;
-  check('普通账号仍无权限（adm_p2 已被撤销）', (await POST(B + '/api/admin/login', { username: 'adm_p2', password: 'pass1234' })).status === 403);
+  // 注意：adm_p2 的密码在「8. 账号管理」中已被改为 newpass99
+  check('普通账号仍无权限（adm_p2 已被撤销）', (await POST(B + '/api/admin/login', { username: 'adm_p2', password: 'newpass99' })).status === 403);
   const w2 = await GET(B + '/api/admin/world?token=' + TOKA2);
   const dock2 = w2.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock');
   check('掉落池覆盖重启后仍在', dock2.pool.length === 1 && dock2.pool[0].pick === 'fish:crucian');

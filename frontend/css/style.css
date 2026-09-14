@@ -388,6 +388,43 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ---- 破纪录横幅：顶部横向滚动，显示 5 秒 ---- */
+.record-banner {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 60;
+  height: 0; overflow: hidden; background: linear-gradient(90deg, rgba(251,191,36,.95), rgba(45,212,191,.95));
+  color: #06202e; font-weight: 700; white-space: nowrap;
+  transition: height .3s ease; pointer-events: none;
+}
+.record-banner.show { height: 34px; display: flex; align-items: center; }
+.record-banner .rb-track {
+  display: inline-block; padding-left: 100%;
+  animation: rb-marquee 12s linear infinite; font-size: 14px; letter-spacing: .5px;
+}
+@keyframes rb-marquee { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+/* ---- 系统商店：出售数量控制条 ---- */
+.shop-qtybar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 8px 12px; border: 1px solid var(--line);
+  border-radius: 10px; background: rgba(255,255,255,.03);
+}
+.sqb-label { font-size: 12px; color: var(--muted); }
+.sqb-btn {
+  width: 34px; height: 34px; flex: none; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: rgba(255,255,255,.06); color: var(--text);
+  font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.sqb-btn:hover { border-color: var(--accent2); }
+.sqb-num {
+  width: 70px; height: 34px; text-align: center; border-radius: 8px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--text);
+  font-size: 14px; font-weight: 600;
+}
+.sqb-num:focus { outline: none; border-color: var(--accent); }
+.sqb-hint { font-size: 11px; color: var(--muted); }
+.top10-size.sf { color: var(--accent2); }
+
+
 /* ---- 反馈意见 ---- */
 .fb-banner {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;

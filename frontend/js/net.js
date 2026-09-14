@@ -88,7 +88,7 @@ window.Net = (function () {
   // 我的历史订单（市集成交：买入 + 卖出）
   const marketHistory = () => apiFetch('GET', '/api/market/history?token=' + encodeURIComponent(me ? me.token : ''));
   // 某种鱼的全服前十大捕获记录（公开只读）
-  const recordsTop = (id) => apiFetch('GET', '/api/records/top?id=' + encodeURIComponent(id));
+  const recordsTop = (id, kind) => apiFetch('GET', '/api/records/top?id=' + encodeURIComponent(id) + (kind ? '&kind=' + encodeURIComponent(kind) : ''));
 
   // ---- 按需拉取：进入对应页面时才请求该页数据（不在的页面零请求） ----
   const fetchShop = () => apiFetch('GET', '/shop').then(function (r) {
@@ -189,6 +189,8 @@ window.Net = (function () {
           S.records = m.records || {};
           if (m.small) S.smallRecords = m.small;
           if (ui) ui.refreshAll('records');
+        } else if (m.type === 'globalRecord') {
+          if (ui && ui.showRecordBanner && m.record) ui.showRecordBanner(m.record);
         } else if (m.type === 'assets') {
           // 服务器权威资产：金币/库存/图鉴整体替换，前端不持账本
           if (m.coins != null) S.player.coins = m.coins;

@@ -140,6 +140,37 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('前十大接口返回捕获记录', topC.status === 200 && topC.data.top.length >= 1, JSON.stringify(topC.data).slice(0, 120));
   const recSmall = await GET('http://localhost:' + P1 + '/api/records');
   check('小鱼纪录随渔获生成', recSmall.status === 200 && Object.keys(recSmall.data.small || {}).length > 0);
+
+  // ---------- 排行榜：每人仅保留最好一条 + 前十小 + 全场最大 ----------
+  section('排行榜去重 / 前十小 / 全场最大纪录');
+  const dupFish = 'crucian';
+  const dupBefore = sinkA.length;
+  // A 连钓 3 条同种鱼：大 50 / 小 10 / 中 30 → 大鱼榜留 50，小鱼榜留 10，各只 1 条
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'fish', id: dupFish, rarity: 'common', size: 50 }, ground: '静水湖', spot: '老旧码头' });
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'fish', id: dupFish, rarity: 'common', size: 10 }, ground: '静水湖', spot: '老旧码头' });
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'fish', id: dupFish, rarity: 'common', size: 30 }, ground: '静水湖', spot: '老旧码头' });
+  await sleep(200);
+  const topBig = await GET('http://localhost:' + P1 + '/api/records/top?id=' + dupFish);
+  const mineBig = topBig.data.top.filter(function (r) { return r.who === '测试甲'; });
+  check('大鱼榜同一玩家只保留一条', mineBig.length === 1, JSON.stringify(topBig.data.top));
+  check('大鱼榜保留该玩家最大的一条（50cm）', mineBig.length === 1 && mineBig[0].size === 50, JSON.stringify(mineBig));
+  const topSm = await GET('http://localhost:' + P1 + '/api/records/top?id=' + dupFish + '&kind=small');
+  check('前十小接口返回 kind=small', topSm.status === 200 && topSm.data.kind === 'small');
+  const mineSm = topSm.data.top.filter(function (r) { return r.who === '测试甲'; });
+  check('小鱼榜同一玩家只保留一条', mineSm.length === 1, JSON.stringify(topSm.data.top));
+  check('小鱼榜保留该玩家最小的一条（10cm）', mineSm.length === 1 && mineSm[0].size === 10, JSON.stringify(mineSm));
+  check('小鱼榜按体型升序', topSm.data.top.every(function (r, i, a) { return i === 0 || a[i - 1].size <= r.size; }), JSON.stringify(topSm.data.top));
+  const recAll = await GET('http://localhost:' + P1 + '/api/records');
+  check('全服快照含全场最大纪录', !!recAll.data.globalMax && typeof recAll.data.globalMax.size === 'number', JSON.stringify(recAll.data.globalMax));
+  const gmSize = recAll.data.globalMax.size;
+  const bigger = Math.round(gmSize) + 50;
+  const gmMark = sinkB.length;
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'fish', id: 'tuna', rarity: 'big', size: bigger }, ground: '落日海湾', spot: '礁石区' });
+  await sleep(300);
+  check('破纪录后全场最大已更新', (await GET('http://localhost:' + P1 + '/api/records')).data.globalMax.size === bigger, String(bigger));
+  check('订阅者收到 globalRecord 广播', sinkB.slice(gmMark).some(function (m) { return m.type === 'globalRecord' && m.record && m.record.size === bigger; }),
+    JSON.stringify(sinkB.slice(gmMark).map(function (m) { return m.type; })));
+
   // 近期渔获（recent）：换大件概率最高的礁石区（~54%/竿），轮询等待广播
   await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'sunset', spotId: 'reef' });
   const recentMark = sinkB.length;
@@ -201,6 +232,27 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('未知部位被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'nope', compId: null })).status === 400);
   const bdH = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: hookInst });
   check('装备精钢鱼钩（大鱼+8%；钓速=电动25+钩-5=20，负词条生效）', bdH.status === 200 && bdH.data.effects.big === 8 && bdH.data.effects.speed === 20, JSON.stringify(bdH.data.effects));
+
+  section('卸下组件放回背包（不再摧毁）');
+  const bdOff = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: null });
+  check('卸下卷线器成功', bdOff.status === 200 && !bdOff.data.bd.reel.compId);
+  check('卸下的组件放回背包', !!(bdOff.data.inventory && bdOff.data.inventory[reelInst] >= 1), JSON.stringify(bdOff.data.inventory));
+  // 卷线器 +25% 卸下后不再计入；钩仍是 -5%，故钓速 = -5
+  check('卸下后卷线器加成移除（仅剩钩 -5%）', bdOff.data.effects.speed === -5, JSON.stringify(bdOff.data.effects));
+  // 换装：给背包两件竿身，装上 A 再换 B，A 应回到背包（可循环取用）
+  const rodA = D.instanceId('rod_bamboo', 'common', [{ type: 'speed', value: 10 }]);
+  const rodB = D.instanceId('rod_carbon', 'rare', [{ type: 'speed', value: 20 }, { type: 'material', value: -10 }]);
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: rodA } });
+  await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: rodB } });
+  const eq1 = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: rodA });
+  check('先装上竿身 A', eq1.status === 200 && eq1.data.bd.rod.compId === rodA);
+  const eq2 = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: rodB });
+  check('换装竿身 B 成功', eq2.status === 200 && eq2.data.bd.rod.compId === rodB);
+  check('被换下的旧组件回到背包', (eq2.data.inventory[rodA] || 0) >= 1, JSON.stringify(eq2.data.inventory));
+  check('换装后仍持有新组件扣除（B 已不在背包）', !eq2.data.inventory[rodB], JSON.stringify(eq2.data.inventory));
+  // 复原：把卷线器重新装上（后续重启持久化测试依赖 reel=电动卷线器）
+  const reEq = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: reelInst });
+  check('重新装回卷线器', reEq.status === 200 && reEq.data.bd.reel.compId === reelInst);
 
   const stopMark = sinkA.length;
   check('停止钓鱼成功', (await POST('http://localhost:' + P1 + '/api/fishing/stop', { token: tokA })).status === 200);

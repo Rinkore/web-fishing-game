@@ -61,6 +61,18 @@ window.UI = (function () {
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2400);
   }
 
+  // ---- 破纪录横幅：全场最大纪录被破时，在顶部滚动显示 5 秒 ----
+  let bannerTimer = null;
+  function showRecordBanner(rec) {
+    const b = $('record-banner');
+    if (!b || !rec) return;
+    const text = '🎉 全场最大纪录被破！' + rec.who + ' 钓到 ' + rec.name + ' ' + rec.size + 'cm';
+    b.innerHTML = '<span class="rb-track">' + esc(text) + '　　✦　　' + esc(text) + '　　✦　　' + esc(text) + '</span>';
+    b.classList.add('show');
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(function () { b.classList.remove('show'); b.innerHTML = ''; }, 5000);
+  }
+
   // ---- 通用：调用网络接口并提示结果 ----
   function call(promise, okMsg) {
     return Promise.resolve(promise).then(function (r) {
@@ -293,7 +305,7 @@ window.UI = (function () {
 
   // ---- 钓竿配置视图（组件装备 + 词缀加成） ----
   // 装备/卸下走服务器（/api/bd/set 校验目录并即时调整钓速）。
-  // 安装 = 使用组件道具：消耗背包中 1 件（卸下不返还）。
+  // 安装 = 从背包取用 1 件组件；卸下（或换装）会把组件原样放回背包。
   function setPart(partKey, compId) {
     call(window.Net.bdSet(partKey, compId || null), null).then(function (r) {
       if (r && r.ok) {
@@ -327,7 +339,7 @@ window.UI = (function () {
     const box = el('div', 'modal-box shop-modal bd-equip-modal');
     box.innerHTML = '<div class="modal-head"><span class="modal-title">🎯 装备「' + esc(part.name) + '」组件</span>' +
       '<button class="mini modal-close">✕ 关闭</button></div>' +
-      '<div class="modal-body"><div class="bde-note">装备即消耗 1 件（卸下不返还）</div><div id="bde-body"></div></div>';
+      '<div class="modal-body"><div class="bde-note">装备会从背包取用 1 件；卸下或换装时原样放回背包</div><div id="bde-body"></div></div>';
     box.querySelector('.modal-close').addEventListener('click', closeBdEquipModal);
     overlay.appendChild(box);
     document.body.appendChild(overlay);
@@ -446,7 +458,7 @@ window.UI = (function () {
       if (comp) {
         const off = el('button', 'mini', '卸下');
         off.addEventListener('click', function () {
-          if (!confirm('卸下后不返还组件（安装时已作为道具消耗），确定恢复标准' + part.name + '？')) return;
+          if (!confirm('确定卸下「' + comp.name + '」并放回背包、恢复标准' + part.name + '？')) return;
           setPart(part.key, null);
         });
         acts.appendChild(off);
@@ -469,7 +481,7 @@ window.UI = (function () {
     panel.appendChild(grid);
     panel.appendChild(el('div', 'note-block',
       '<b>组件怎么获得？</b>钓鱼时有概率钓到各部位组件（稀有/史诗更少见）。' +
-      '<b>装备即消耗</b>：安装会使用掉背包中的 1 件该组件（卸下不返还），加成持续生效并在服务器实时结算（正在钓鱼时钓速也会立即调整）。'));
+      '<b>装备取用</b>：安装会从背包取用 1 件该组件，<b>卸下或换装时原样放回背包</b>；加成持续生效并在服务器实时结算（正在钓鱼时钓速也会立即调整）。'));
     main.appendChild(panel);
   }
 
@@ -549,6 +561,8 @@ window.UI = (function () {
   // ---- 系统商店视图 ----
   // 商品详情弹窗：固定居中子窗口，独立于页面重绘流程（广播只更新数据不重建窗口）
   let shopModalId = null;
+  // 出售数量：对整个系统商店生效，直到下一次被修改（模块级，重绘与切换页面都保留）
+  let sellQty = 1;
 
   // 交易记录合并：同一账号 60 秒内的多笔合为一笔（数量累加、价格取最新）
   function mergeTrades(trades) {
@@ -765,6 +779,28 @@ window.UI = (function () {
     panel.innerHTML = '<h2>🏪 系统商店 <span class="subtitle">供需定价 · 单乘数模型：每卖一件约 -0.7% · 闲置时向 2 倍缓慢回升 · 点击商品查看走势与交易流水</span></h2>';
 
     const colMain = el('div', 'col-main');
+    // 出售数量：全局生效，直到下一次被修改（模块级 sellQty，重绘/切页保留）
+    const qtyBar = el('div', 'shop-qtybar');
+    qtyBar.innerHTML = '<span class="sqb-label">出售数量</span>';
+    const minus = el('button', 'sqb-btn', '−');
+    const qnum = el('input', 'sqb-num');
+    qnum.type = 'number'; qnum.min = '1'; qnum.value = String(sellQty);
+    const plus = el('button', 'sqb-btn', '+');
+    function setQty(v) {
+      v = Math.max(1, Math.min(9999, Math.floor(Number(v) || 1)));
+      sellQty = v;
+      if (qnum.value !== String(v)) qnum.value = String(v);
+    }
+    minus.addEventListener('click', function () { setQty(sellQty - 1); });
+    plus.addEventListener('click', function () { setQty(sellQty + 1); });
+    qnum.addEventListener('input', function () { setQty(qnum.value); });
+    qnum.addEventListener('blur', function () { setQty(qnum.value); });
+    qtyBar.appendChild(minus);
+    qtyBar.appendChild(qnum);
+    qtyBar.appendChild(plus);
+    qtyBar.appendChild(el('span', 'sqb-hint', '该数量对全商店生效，直到你再次修改'));
+    colMain.appendChild(qtyBar);
+
     const grid = el('div', 'shop-grid');
     const cardById = {};
     Object.keys(st.shop || {}).forEach(function (id) {
@@ -784,11 +820,13 @@ window.UI = (function () {
         '<div class="sc-bar"><i class="up" style="width:' + upPct + '%"></i><i style="width:' + fillPct + '%"></i></div>' +
         '<div class="sc-pct">当前 ' + pct + '% · 持有 ' + have + ' · 今日售出 ' + (s.soldToday || 0) + '</div>';
       card.title = '点击查看价格走势与交易量';
-      const btn = el('button', 'mini' + (have > 0 ? ' primary-mini' : ' locked'), have > 0 ? '出售 1 个' : '无库存');
+      const sellN = Math.min(sellQty, have);
+      const btn = el('button', 'mini' + (have > 0 ? ' primary-mini' : ' locked'), have > 0 ? ('出售 ' + sellN + ' 个') : '无库存');
       btn.addEventListener('click', function (ev) {
         ev.stopPropagation(); // 出售不触发展开详情
         if (!(st.inventory[id] > 0)) return;
-        call(window.Net.sell(id, 1), function (r) { return '售出 ' + meta.name + '，获得 💰' + r.data.gain + '（单价 ' + r.data.unit + '）'; })
+        const n = Math.min(sellQty, st.inventory[id]);
+        call(window.Net.sell(id, n), function (r) { return '售出 ' + meta.name + ' ×' + n + '，获得 💰' + r.data.gain + '（单价 ' + r.data.unit + '）'; })
           .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderView(); } });
       });
       card.appendChild(btn);
@@ -826,6 +864,7 @@ window.UI = (function () {
   let buyAffixMin = '';       // 该词条的最小数值（含），空 = 不限
   let buyAffixMax = '';       // 该词条的最大数值（含），空 = 不限
   let buyOnlyComponents = true; // 词条筛选仅在组件上生效，此开关便于混合搜索
+  let marketFilterActive = false; // 市集筛选控件获得焦点时暂停广播重绘（防止下拉框被刷新关闭）
   // 一个挂单是否满足「词条类型 + 数值区间」筛选。非组件挂单：仅在筛选为 all 时通过。
   function listingMatchesAffix(l) {
     if (buyAffixType === 'all' && buyAffixMin === '' && buyAffixMax === '') return true;
@@ -983,11 +1022,12 @@ window.UI = (function () {
         if (q || buyCategory !== 'all' || buySort.key !== 'time' || affixFilterActive()) list.appendChild(el('div', 'hint', '匹配 ' + others.length + ' 条挂单。'));
       }
       inp.addEventListener('input', function () { buySearch = inp.value; refreshList(); });
-      inp.addEventListener('focus', function () { buySearchFocus = true; });
-      inp.addEventListener('blur', function () { buySearchFocus = false; });
+      inp.addEventListener('focus', function () { buySearchFocus = true; marketFilterActive = true; });
+      inp.addEventListener('blur', function () { buySearchFocus = false; marketFilterActive = false; });
       filters.appendChild(inp);
 
       // 组件词条筛选：选择词条类型 + 数值区间，只搜带该词条的组件挂单
+      // 下拉/输入获得焦点时置 marketFilterActive，广播重绘被暂停，避免下拉框被刷新关闭。
       const affWrap = el('div', 'aff-filter');
       affWrap.appendChild(el('span', 'bf-sort-label', '词条'));
       const affSel = el('select', 'bulk-select');
@@ -996,14 +1036,20 @@ window.UI = (function () {
       });
       affSel.value = buyAffixType;
       affSel.addEventListener('change', function () { buyAffixType = affSel.value; renderView(); });
+      affSel.addEventListener('focus', function () { marketFilterActive = true; });
+      affSel.addEventListener('blur', function () { marketFilterActive = false; });
       affWrap.appendChild(affSel);
       const minInp = el('input', 'aff-num');
       minInp.type = 'number'; minInp.placeholder = '最小值'; minInp.value = buyAffixMin;
       const maxInp = el('input', 'aff-num');
       maxInp.type = 'number'; maxInp.placeholder = '最大值'; maxInp.value = buyAffixMax;
       function onNum() { buyAffixMin = minInp.value; buyAffixMax = maxInp.value; refreshList(); }
+      function focusOn() { marketFilterActive = true; }
+      function blurOff() { marketFilterActive = false; }
       minInp.addEventListener('input', onNum);
       maxInp.addEventListener('input', onNum);
+      minInp.addEventListener('focus', focusOn); maxInp.addEventListener('focus', focusOn);
+      minInp.addEventListener('blur', blurOff); maxInp.addEventListener('blur', blurOff);
       affWrap.appendChild(minInp);
       affWrap.appendChild(el('span', 'bf-sort-label', '~'));
       affWrap.appendChild(maxInp);
@@ -1618,19 +1664,21 @@ window.UI = (function () {
     main.appendChild(panel);
   }
 
-  // ---- 大鱼记录视图 ----
-  // 某种鱼的前十大捕获记录弹窗
-  function openRecordsModal(fishId) {
+  // ---- 渔获记录视图 ----
+  // 某种鱼的前十大 / 前十小捕获记录弹窗（kind='small' 时为前十小）
+  function openRecordsModal(fishId, kind) {
+    const small = kind === 'small';
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
     const meta = itemMeta(fishId);
+    const title = small ? ('🐠 ' + meta.name + ' · 全服前十小捕获') : ('🏆 ' + meta.name + ' · 全服前十大捕获');
     const overlay = el('div', 'modal-overlay');
     overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeRecordsModal(); });
     const box = el('div', 'modal-box shop-modal');
-    box.innerHTML = '<div class="modal-head"><span class="modal-title">🏆 ' + esc(meta.name) + ' · 全服前十大捕获</span><button class="mini modal-close">✕ 关闭</button></div><div class="modal-body" id="records-modal-body">加载中…</div>';
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">' + esc(title) + '</span><button class="mini modal-close">✕ 关闭</button></div><div class="modal-body" id="records-modal-body">加载中…</div>';
     box.querySelector('.modal-close').addEventListener('click', function () { closeRecordsModal(); });
     overlay.appendChild(box);
     document.body.appendChild(overlay);
-    window.Net.recordsTop(fishId).then(function (r) {
+    window.Net.recordsTop(fishId, small ? 'small' : 'big').then(function (r) {
       const body = document.getElementById('records-modal-body');
       if (!body) return;
       if (!r || !r.ok) { body.textContent = (r && r.data && r.data.error) || '加载失败'; return; }
@@ -1642,11 +1690,11 @@ window.UI = (function () {
         const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '#' + rank;
         body.appendChild(el('div', 'top10-row',
           '<span class="top10-rank">' + medal + '</span>' +
-          '<span class="top10-size">' + t.size + '<span class="u">cm</span></span>' +
+          '<span class="top10-size' + (small ? ' sf' : '') + '">' + t.size + '<span class="u">cm</span></span>' +
           '<span class="top10-who">' + esc(t.who) + '</span>' +
           '<span class="top10-time">' + timeStr(t.t) + '</span>'));
       });
-      body.appendChild(el('div', 'sd-legend', '共收录 ' + top.length + ' 条 · 每次捕获自动更新'));
+      body.appendChild(el('div', 'sd-legend', '共收录 ' + top.length + ' 条（每位玩家仅保留最好一条）· 每次捕获自动更新'));
     });
   }
   function closeRecordsModal() {
@@ -1717,11 +1765,14 @@ window.UI = (function () {
       const sgrid = el('div', 'record-grid');
       smalls.forEach(function (r) {
         const meta = itemMeta(r.id);
-        const cell = el('div', 'record-cell small-fish');
+        const cell = el('div', 'record-cell small-fish with-rec');
         cell.innerHTML =
           '<div class="rc-name ' + rarityClass(meta.rarity) + '">' + esc(r.name) + '</div>' +
           '<div class="rc-size sf-size">' + r.size + '<span class="u">cm</span></div>' +
-          '<div class="rc-who">' + esc(r.who) + ' · ' + timeStr(r.t) + '</div>';
+          '<div class="rc-who">' + esc(r.who) + ' · ' + timeStr(r.t) + '</div>' +
+          '<div class="rc-hint">点击查看前十小</div>';
+        cell.title = '点击查看该鱼全服前十小捕获';
+        cell.addEventListener('click', function () { openRecordsModal(r.id, 'small'); });
         sgrid.appendChild(cell);
       });
       panel.appendChild(sgrid);
@@ -1997,6 +2048,11 @@ window.UI = (function () {
       updateBulkEst();
       return;
     }
+    // 市集筛选控件（词条下拉/数值输入）获得焦点时暂停重绘：否则广播会重建 DOM 导致下拉框被关闭。
+    if (currentView === 'market' && marketFilterActive && scope && scope !== 'all') {
+      renderTopbar(); renderNav();
+      return;
+    }
     renderTopbar(); renderNav();
     const scopes = VIEW_SCOPES[currentView];
     if (!scope || !scopes || scopes.indexOf(scope) >= 0) renderView();
@@ -2052,7 +2108,8 @@ window.UI = (function () {
 
   return {
     init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
-    toast: toast, renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,
+    toast: toast, showRecordBanner: showRecordBanner,
+    renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,
     getView: function () { return currentView; },
     setView: function (v) { currentView = v; },
   };

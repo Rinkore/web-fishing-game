@@ -187,6 +187,41 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(250);
     const filtered = await p1.$$('.mk-row');
     check('按词条+数值筛选后匹配到组件挂单', filtered.length === 1, String(filtered.length));
+    // 筛选状态下收到市集广播重绘：下拉框不应被关闭（保持展开 / 保留选中值）
+    const keepOpen = await p1.evaluate(() => {
+      const sel = document.querySelector('.aff-filter select');
+      if (!sel) return { ok: false, why: 'no select' };
+      sel.focus();
+      sel.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+      // 模拟 SSE market 广播触发的重绘
+      window.UI.refreshAll('market');
+      return { ok: true, value: sel.value, stillFocused: document.activeElement === sel };
+    });
+    await sleep(200);
+    const afterBroadcast = await p1.evaluate(() => {
+      const sel = document.querySelector('.aff-filter select');
+      return { exists: !!sel, value: sel ? sel.value : null, focused: document.activeElement === sel };
+    });
+    check('广播重绘时词条下拉未被关闭（筛选控件仍在且选中值保留）',
+      keepOpen.ok && afterBroadcast.exists && afterBroadcast.value === 'speed', JSON.stringify({ keepOpen, afterBroadcast }));
+    check('广播重绘时下拉保持焦点（不被打断）', afterBroadcast.focused === true, JSON.stringify(afterBroadcast));
+    await p1.evaluate(() => { const b = document.querySelector('.aff-filter .bf-cat'); if (b && b.textContent.includes('清除')) b.click(); });
+    await sleep(250);
+
+    // —— 系统商店：出售数量控制条（全局生效） ——
+    await clickNav(p1, '系统商店');
+    check('商店有出售数量控制条', (await p1.$$('.shop-qtybar')).length === 1);
+    check('数量控制条含加减与输入框', (await p1.$$('.shop-qtybar .sqb-btn')).length === 2 && (await p1.$$('.shop-qtybar .sqb-num')).length === 1);
+    await p1.fill('.shop-qtybar .sqb-num', '3');
+    await p1.evaluate(() => { document.querySelector('.shop-qtybar .sqb-num').dispatchEvent(new Event('input', { bubbles: true })); });
+    await sleep(200);
+    const sellLabels = await p1.$$eval('.shop-card .mini', els => els.map(e => e.textContent));
+    check('出售按钮按设定数量显示', sellLabels.some(t => /出售 \d+ 个/.test(t)), JSON.stringify(sellLabels.slice(0, 3)));
+    // 切页再回来，数量应保留（全局生效直到被修改）
+    await clickNav(p1, '背包');
+    await clickNav(p1, '系统商店');
+    const qtyKept = await p1.inputValue('.shop-qtybar .sqb-num');
+    check('出售数量跨页面保留（全局生效）', qtyKept === '3', qtyKept);
 
     // —— 鱼类图鉴 ——
     await clickNav(p1, '鱼类图鉴');
@@ -201,7 +236,34 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await clickNav(p1, '渔获记录');
     check('渔获记录渲染全场纪录卡片', (await p1.$$('.record-cell.with-rec')).length >= 6, String((await p1.$$('.record-cell.with-rec')).length));
     check('全场最大置顶显示 287.2cm（黄金枪鱼）', (await p1.textContent('.record-hero')).includes('287.2'));
-    check('小鱼纪录渲染卡片', (await p1.$$('.record-cell.small-fish')).length >= 1);
+    const smallCells = await p1.$$('.record-cell.small-fish');
+    check('小鱼纪录渲染卡片', smallCells.length >= 1);
+    check('小鱼纪录卡片标注可点查看前十小', (await p1.textContent('.record-cell.small-fish')).includes('前十小'));
+    // 点小鱼卡片 → 弹出前十小弹窗
+    await p1.evaluate(() => { const c = document.querySelector('.record-cell.small-fish'); if (c) c.click(); });
+    await sleep(500);
+    check('点击小鱼纪录弹出前十小弹窗', (await p1.textContent('.modal-head .modal-title')).includes('前十小'));
+    const sfModal = await p1.evaluate(() => {
+      const sizes = Array.from(document.querySelectorAll('#records-modal-body .top10-size')).map(e => parseFloat(e.textContent));
+      return { sizes: sizes, sortedAsc: sizes.every((v, i) => i === 0 || sizes[i - 1] <= v) };
+    });
+    check('前十小弹窗按体型升序排列', sfModal.sizes.length >= 1 && sfModal.sortedAsc, JSON.stringify(sfModal));
+    await p1.evaluate(() => { const b = document.querySelector('.modal-close'); if (b) b.click(); });
+    await sleep(200);
+    // 点大鱼卡片 → 弹出前十大
+    await p1.evaluate(() => { const c = document.querySelector('.record-cell.with-rec:not(.small-fish)'); if (c) c.click(); });
+    await sleep(500);
+    check('点击大鱼纪录弹出前十大弹窗', (await p1.textContent('.modal-head .modal-title')).includes('前十大'));
+    await p1.evaluate(() => { const b = document.querySelector('.modal-close'); if (b) b.click(); });
+    await sleep(200);
+    // 破纪录横幅：调用 showRecordBanner 应出现 5 秒
+    await p1.evaluate(() => window.UI.showRecordBanner({ who: '测试甲', name: '黄金枪鱼', size: 999.9 }));
+    await sleep(200);
+    const bannerOn = await p1.evaluate(() => {
+      const b = document.getElementById('record-banner');
+      return b && b.classList.contains('show') && b.textContent.includes('999.9');
+    });
+    check('破纪录横幅显示且含纪录信息', bannerOn === true);
 
     // —— 渔场动态：布局度量 ——
     await clickNav(p1, '渔场动态');
