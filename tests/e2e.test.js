@@ -178,6 +178,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('开钓返回钓速明细（基础/实际/加成拆分）', !!(fs1.data.castInfo && fs1.data.castInfo.baseMs === 3000
     && fs1.data.castInfo.interval === 3000 && fs1.data.castInfo.globalBonus === 0
     && fs1.data.castInfo.affixSpeed === 0 && fs1.data.castInfo.buffSpeed === 0), JSON.stringify(fs1.data.castInfo));
+  check('钓速明细带上鱼率（默认公式 90）', !!(fs1.data.castInfo && fs1.data.castInfo.biteRate === 90 && fs1.data.castInfo.biteOverride === false), JSON.stringify(fs1.data.castInfo && { bite: fs1.data.castInfo.biteRate }));
   await sleep(300);
   check('B 收到 A 的在线状态与钓点（服务器维护）', sinkB.some(m => m.type === 'players' && m.players.some(p => p.id === 'tester_a' && p.status === 'fishing' && p.groundId === 'stillwater')));
 

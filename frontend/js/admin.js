@@ -779,7 +779,21 @@ window.Admin = (function () {
     const presetOpts2 = Object.keys(cfg.poolPresets || {}).map(function (k) {
       return '<option value="' + k + '">' + esc(cfg.poolPresets[k].name) + '</option>';
     }).join('');
-    ed.innerHTML = '<h3>🎣 掉落池 — ' + esc(g.name) + ' · ' + esc(sp.name) + '</h3>' +
+    const rateBite = sp.biteRate != null && sp.biteRate !== '' ? sp.biteRate : '';
+    const rateMs = sp.intervalMs != null && sp.intervalMs !== '' ? sp.intervalMs : '';
+    ed.innerHTML = '<h3>🎯 钓点独立上鱼率 / 速率 — ' + esc(g.name) + ' · ' + esc(sp.name) + '</h3>' +
+      '<div class="hint" style="margin-bottom:8px">留空 = 使用全服默认：上鱼率走「公式管理」的上钩公式，抛竿间隔按「基础间隔 + 钓速」计算。' +
+      '上鱼率填 100 表示该钓点必上钩；间隔填写后该钓点固定按此间隔抛竿（玩家钓速不再影响）。</div>' +
+      '<div class="mgr-row"><label>上鱼率</label>' +
+      '<input id="sr-bite" class="ipt mk-num" type="number" min="0" max="100" step="1" placeholder="留空=全服公式" value="' + esc(rateBite) + '" />' +
+      '<span class="hint">%</span>' +
+      '<label class="hint" style="margin-left:12px">抛竿间隔</label>' +
+      '<input id="sr-ms" class="ipt mk-num" type="number" min="100" max="60000" step="100" placeholder="留空=按钓速计算" value="' + esc(rateMs) + '" />' +
+      '<span class="hint">ms</span>' +
+      '<button class="btn primary" id="sr-save">保存</button>' +
+      '<button class="btn mini" id="sr-clear">恢复默认</button>' +
+      '<span id="sr-state" class="hint"></span></div>' +
+      '<h3>🎣 掉落池 — ' + esc(g.name) + ' · ' + esc(sp.name) + '</h3>' +
       '<div id="pool-rows"></div>' +
       '<div class="editor-foot">' +
       '<button id="pool-add" class="btn mini">＋ 添加条目</button>' +
@@ -800,7 +814,7 @@ window.Admin = (function () {
 
     const affixes = cfg.affixTypes;
     const buffNote = {
-      speed: '钓速：缩短抛竿间隔（与全服钓速加成叠加后按上限截断，见「公式管理」）', big: '大鱼概率：放大「大鱼」条目权重',
+      speed: '钓速：该钓点抛竿速率的最终乘算（× (1-数值/100)），不与钓竿词缀/全服加成相加', big: '大鱼概率：放大「大鱼」条目权重',
       rare: '稀有概率：放大「稀有」条目权重', material: '材料概率：放大材料条目权重',
       size: '体型：放大捕获体型（最高基准上限 1.3 倍）', double: '双钓概率：触发后立即再结算一竿',
     };
@@ -903,6 +917,38 @@ window.Admin = (function () {
     drawPool();
     drawBuffs();
 
+    // 钓点独立上鱼率 / 速率（留空 = 全服默认）
+    function saveSpotRate(clear) {
+      const biteRaw = $('sr-bite').value.trim();
+      const msRaw = $('sr-ms').value.trim();
+      const payload = { token: token, groundId: g.id, spotId: sp.id };
+      if (clear) { payload.biteRate = ''; payload.intervalMs = ''; }
+      else {
+        if (biteRaw !== '') {
+          const b = Number(biteRaw);
+          if (!isFinite(b) || b < 0 || b > 100) { $('sr-state').innerHTML = '<span class="err">上鱼率需在 0 - 100 之间</span>'; return; }
+        }
+        if (msRaw !== '') {
+          const m = Number(msRaw);
+          if (!isFinite(m) || m < 100 || m > 60000) { $('sr-state').innerHTML = '<span class="err">间隔需在 100 - 60000 ms 之间</span>'; return; }
+        }
+        payload.biteRate = biteRaw;
+        payload.intervalMs = msRaw;
+      }
+      adminApi('POST', '/api/admin/spot/rate', payload).then(function (r) {
+        if (!r.ok) { $('sr-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+        const parts = [];
+        parts.push(r.data.biteRate != null ? ('上鱼率 ' + r.data.biteRate + '%') : '上鱼率=全服公式');
+        parts.push(r.data.intervalMs != null ? ('间隔 ' + r.data.intervalMs + 'ms') : '间隔=按钓速计算');
+        $('sr-state').innerHTML = '<span style="color:var(--ok)">已保存：' + esc(parts.join(' · ')) + '</span>';
+        toast('钓点速率已保存，正在该钓点钓鱼的玩家立即生效');
+        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c); });
+      });
+    }
+    $('sr-save').onclick = function () { saveSpotRate(false); };
+    $('sr-clear').onclick = function () {
+      confirmModalLocal('恢复该钓点的上鱼率与间隔为全服默认？').then(function (ok) { if (ok) saveSpotRate(true); });
+    };
     $('pool-add').onclick = function () { poolDraft.push({ type: 'fish', id: '', weight: 10 }); poolDirty = true; drawPool(); };
     // 一键填充：按预设（经济浅水/大物塘/稀有秘境/材料工坊）替换草稿，保存后生效
     $('pool-fill').onclick = function () {

@@ -239,6 +239,13 @@ window.Net = (function () {
           }
         } else if (m.type === 'bannerStop') {
           if (ui && ui.onBannerStop) ui.onBannerStop(m.id);
+        } else if (m.type === 'bitecfg') {
+          // 后台改了上钩公式：正在钓鱼时重新拉取明细（含新上鱼率），否则直接重绘
+          if (S.fishing && S.fishing.active && S.selected && S.selected.groundId) {
+            window.Net.fishingStart(S.selected.groundId, S.selected.spotId);
+          } else if (ui && ui.refreshAll) {
+            ui.refreshAll('castcfg');
+          }
         } else if (m.type === 'castcfg') {
           // 管理员调整抛竿间隔/全服钓速：先记住新配置，再让服务器重算实际间隔（会即刻重绘钓鱼页）
           S.castCfg = { baseMs: m.baseMs, minMs: m.minMs, speedBonus: m.speedBonus, speedCap: m.speedCap };

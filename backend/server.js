@@ -184,29 +184,62 @@ function bdEffectsOf(bd) {
 function fishIntervalOf(eff) {
   return Math.max(castMinMs(), Math.round(castBaseMs() * (1 - effectiveSpeed(eff) / 100)));
 }
+// 钓点钓速增益（%）：作为「最终乘算」的速率倍率，不与钓竿词缀加算
+function spotSpeedOf(spot) {
+  let v = 0;
+  ((spot && spot.buffs) || []).forEach(function (b) { if (b && b.type === 'speed') v += Number(b.value) || 0; });
+  return v;
+}
+// 钓点独立上鱼率覆盖（%）：未配置返回 null（用全服公式）
+function spotBiteRateOf(spot) {
+  const v = spot && spot.biteRate;
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return isFinite(n) ? Math.max(0, Math.min(100, n)) : null;
+}
+// 当前实际抛竿间隔：优先钓点独立间隔；否则 基础 × (1 - 有效钓速/100) × (1 - 钓点钓速/100)
+// 钓点钓速为最终乘算（乘在钓竿/全服之后），最后再按「最短间隔」兜底。
+function intervalFor(rec, spot) {
+  const fixed = spot && spot.intervalMs;
+  if (fixed != null && fixed !== '') {
+    const n = Number(fixed);
+    if (isFinite(n) && n >= 100) return Math.round(n);
+  }
+  const bdEff = bdEffectsOf(rec && rec.bd);
+  const rodMs = castBaseMs() * (1 - effectiveSpeed({ speed: bdEff.speed }) / 100);
+  const spotPct = Math.max(-100, Math.min(95, spotSpeedOf(spot)));
+  const ms = rodMs * (1 - spotPct / 100);
+  return Math.max(castMinMs(), Math.round(ms));
+}
 // 钓速明细（下发给前端展示：基础值来自后台配置，实际值含钓竿词缀 / 钓点增益 / 全服加成并受上限截断）
 function castInfoOf(rec, spot) {
   const bdEff = bdEffectsOf(rec && rec.bd);
-  let buffSpeed = 0, buffTypes = [];
-  ((spot && spot.buffs) || []).forEach(function (b) {
-    if (b && b.type === 'speed') buffSpeed += Number(b.value) || 0;
-    if (b) buffTypes.push(b.type);
-  });
-  const raw = bdEff.speed + buffSpeed + castSpeedBonus();
-  const eff = { speed: bdEff.speed + buffSpeed }; // mergedEffOf 的等价物（仅取 speed）
+  const eff = mergedEffOf(rec && rec.bd, spot);
+  const spotPct = spotSpeedOf(spot);
+  const rodEff = effectiveSpeed({ speed: bdEff.speed });
+  const interval = intervalFor(rec, spot);
+  const override = spotBiteRateOf(spot);
+  const biteRate = override != null ? override : Math.round(biteProbabilityOf(eff, interval, spot) * 10) / 10;
   return {
     baseMs: castBaseMs(),
     minMs: castMinMs(),
     globalBonus: castSpeedBonus(),
     cap: castSpeedCap(),
-    affixSpeed: bdEff.speed,        // 钓竿词缀合计
-    buffSpeed: buffSpeed,           // 钓点增益合计
-    rawSpeed: Math.round(raw * 10) / 10,
-    effSpeed: effectiveSpeed(eff),  // 实际参与计算的钓速（已按上限截断）
-    interval: fishIntervalOf(eff),  // 当前实际抛竿间隔
+    affixSpeed: bdEff.speed,            // 钓竿词缀合计（%）
+    buffSpeed: spotPct,                 // 钓点钓速增益（%，最终乘算）
+    rawSpeed: Math.round((rodEff) * 10) / 10,
+    effSpeed: Math.round(rodEff * 10) / 10, // 钓竿 + 全服加成（已按上限截断）
+    spotMult: Math.round((1 - Math.max(-100, Math.min(95, spotPct)) / 100) * 1000) / 1000,
+    intervalMs: spot && spot.intervalMs != null && spot.intervalMs !== '' ? Math.round(Number(spot.intervalMs)) : null,
+    interval: interval,                 // 当前实际抛竿间隔
+    biteRate: biteRate,                 // 当前实际上鱼率（%）：钓点覆盖优先，否则全服公式
+    biteOverride: override != null,     // 是否来自钓点独立配置
   };
 }
+
 // 钓点增益并入总加成（管理员在后台为钓场/钓点配置，类别同词缀：speed/big/rare/material/size/double）
+// 说明：这里的 speed 合计只用于「公式变量」与其它加成；抛竿间隔走 intervalFor()，
+// 其中钓点钓速是最终乘算（不与钓竿词缀/全服加成相加）。
 function mergedEffOf(bd, spot) {
   const eff = bdEffectsOf(bd);
   ((spot && spot.buffs) || []).forEach(function (b) {
@@ -388,8 +421,8 @@ function fishTick(key) {
   const found = spotOf(p.fishing.groundId, p.fishing.spotId);
   if (!found) { stopFishingSession(key); return; }
   const eff = mergedEffOf(rec.bd, found.spot);
-  // 上钩判断：公式结果 = 本次上钩概率（%）；落空则本竿无收获，定时器继续下一竿
-  if (Math.random() * 100 >= biteProbabilityOf(eff, fishIntervalOf(eff))) return;
+  // 上钩判断：钓点独立上鱼率优先，否则用全服公式；落空则本竿无收获，定时器继续下一竿
+  if (Math.random() * 100 >= biteProbabilityOf(eff, intervalFor(rec, found.spot), found.spot)) return;
   doServerCatch(rec, key, found.ground, found.spot, eff, false);
 }
 function startFishingSession(key, groundId, spotId) {
@@ -403,7 +436,7 @@ function startFishingSession(key, groundId, spotId) {
   if (prev) clearInterval(prev);
   p.fishing = { groundId: groundId, spotId: spotId };
   p.status = 'fishing'; p.groundId = groundId; p.spotId = spotId;
-  const interval = fishIntervalOf(mergedEffOf(users[key].bd, found.spot));
+  const interval = intervalFor(users[key], found.spot);
   fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
   sendPlayersAll();
   return { interval: interval };
@@ -424,7 +457,7 @@ function restartFishingAt(groundId, spotId) {
     const old = fishingTimers.get(key);
     if (old) clearInterval(old);
     const found = spotOf(groundId, spotId);
-    const interval = fishIntervalOf(mergedEffOf(users[key].bd, found && found.spot));
+    const interval = intervalFor(users[key], found && found.spot);
     fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
   });
 }
@@ -437,7 +470,7 @@ function restartAllFishing() {
     if (!found) { stopFishingSession(key); return; }
     const old = fishingTimers.get(key);
     if (old) clearInterval(old);
-    const interval = fishIntervalOf(mergedEffOf(users[key].bd, found.spot));
+    const interval = intervalFor(users[key], found.spot);
     fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
   });
 }
@@ -527,7 +560,9 @@ function compileFormula(src) {
   } catch (e) { return { error: e.message || '公式无效' }; }
 }
 let biteCompiledFn = null, biteCompiledSrc = null;
-function biteProbabilityOf(eff, interval) {
+function biteProbabilityOf(eff, interval, spot) {
+  const override = spotBiteRateOf(spot);
+  if (override != null) return override; // 钓点独立上鱼率（后台钓点管理里配置）
   const src = String(world.biteFormula || '').trim();
   if (!src) return 100;
   if (biteCompiledSrc !== src) {
@@ -741,6 +776,8 @@ function applyGroundCfg() {
     if (!sp) return;
     if (cfg.spots[k].pool) sp.pool = cfg.spots[k].pool;
     if (cfg.spots[k].buffs) sp.buffs = cfg.spots[k].buffs;
+    if (cfg.spots[k].biteRate != null && cfg.spots[k].biteRate !== '') sp.biteRate = Number(cfg.spots[k].biteRate);
+    if (cfg.spots[k].intervalMs != null && cfg.spots[k].intervalMs !== '') sp.intervalMs = Math.round(Number(cfg.spots[k].intervalMs));
   });
   // 5) 渔场级覆盖：名称/描述/类型/手动锁定/限时窗口（窗口外自动锁定）
   const now = Date.now();
@@ -796,6 +833,8 @@ function saveSpotCfg(groundId, spotId, patch) {
   const cur = world.groundCfg.spots[k] || {};
   if (patch.pool) cur.pool = patch.pool;
   if (patch.buffs) cur.buffs = patch.buffs;
+  if (patch.biteRate !== undefined) { if (patch.biteRate == null) delete cur.biteRate; else cur.biteRate = patch.biteRate; }
+  if (patch.intervalMs !== undefined) { if (patch.intervalMs == null) delete cur.intervalMs; else cur.intervalMs = patch.intervalMs; }
   world.groundCfg.spots[k] = cur;
   saveConfig();
 }
@@ -1384,7 +1423,7 @@ const server = http.createServer(function (req, res) {
           const old = fishingTimers.get(key);
           if (old) clearInterval(old);
           const found = spotOf(pl.fishing.groundId, pl.fishing.spotId);
-          interval = fishIntervalOf(mergedEffOf(rec.bd, found && found.spot));
+          interval = intervalFor(rec, found && found.spot);
           fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
         }
         // 钓速明细随装备变化即时更新（含当前钓点的增益）
@@ -2737,6 +2776,40 @@ const server = http.createServer(function (req, res) {
     });
     return;
   }
+  // ---- 钓点独立上鱼率 / 速率（留空 = 用全服默认：上鱼率用公式，速率按基础间隔+钓速计算） ----
+  if (p === '/api/admin/spot/rate' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const found = spotOf(d.groundId, d.spotId);
+      if (!found) return apiResp(res, 404, { error: '钓点不存在' });
+      const patch = {};
+      function opt(name, min, max, label) {
+        if (!(name in d)) return null;
+        const raw = d[name];
+        if (raw == null || raw === '') { patch[name] = null; return null; }
+        const n = Number(raw);
+        if (!isFinite(n) || n < min || n > max) return label + '需在 ' + min + ' - ' + max + ' 之间（留空表示用全服默认）';
+        patch[name] = Math.round(n * 100) / 100;
+        return null;
+      }
+      let err = opt('biteRate', 0, 100, '上鱼率（%）');
+      if (!err) err = opt('intervalMs', 100, 60000, '抛竿间隔（ms）');
+      if (err) return apiResp(res, 400, { error: err });
+      saveSpotCfg(found.ground.id, found.spot.id, patch);
+      applyGroundCfg();
+      restartFishingAt(found.ground.id, found.spot.id);
+      broadcastGroundcfg();
+      const sp = spotOf(found.ground.id, found.spot.id).spot;
+      apiResp(res, 200, {
+        ok: true,
+        biteRate: sp.biteRate != null ? sp.biteRate : null,
+        intervalMs: sp.intervalMs != null ? sp.intervalMs : null,
+      });
+    });
+    return;
+  }
   // ---- 钓场开放/锁定（锁定时立即停掉该场所有钓鱼循环） ----
   if (p === '/api/admin/ground/lock' && req.method === 'POST') {
     readBody(req, function (body) {
@@ -2802,6 +2875,7 @@ const server = http.createServer(function (req, res) {
         if (!d.validateOnly) {
           world.biteFormula = formulaSrc;
           biteCompiledSrc = null; // 强制下次掷骰重新编译
+          broadcast({ type: 'bitecfg' }); // 通知玩家端刷新「当前上鱼率」显示
         }
         out.biteFormula = formulaSrc;
       }

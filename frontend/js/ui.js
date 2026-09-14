@@ -355,7 +355,8 @@ window.UI = (function () {
       '<span class="dot ' + (p.status === 'fishing' ? 'on' : 'idle') + '"></span>' +
       '<span class="pname">' + esc(p.name) + '</span>' +
       '<span class="meta">状态：' + statusText + '</span>' +
-      (castSpeedShort() ? '<span class="meta cast" title="后台基础间隔与全部加成（钓竿词缀 / 钓点增益 / 全服钓速），实时跟随后台设置">🎣 ' + esc(castSpeedShort()) + '</span>' : '') +
+      (castSpeedShort() ? '<span class="meta cast" title="后台基础间隔与全部加成（钓竿词缀 / 钓点增益乘算 / 全服钓速），实时跟随后台设置">🎣 ' + esc(castSpeedShort()) + '</span>' : '') +
+      (biteRateShort() ? '<span class="meta bite" title="当前钓点实时上鱼率：钓点独立配置优先，否则由后台「公式管理」的上钩公式决定">🐟 ' + esc(biteRateShort()) + '</span>' : '') +
       '<span class="meta">位置：' + esc(loc) + '</span>' +
       '<span class="meta">在线：' + est.players + ' 人</span>' +
       '<span class="meta coins">💰 ' + p.coins + '</span>';
@@ -364,10 +365,11 @@ window.UI = (function () {
   const est = { get players() { return S().players.length; } };
 
   // ---- 钓鱼视图 ----
-  // ---- 钓速信息（顶部状态栏与钓鱼页共用） ----
-  // 优先用服务器下发的 castInfo（精确，含上限截断与钓点增益）；未拿到时用本地已知的
-  // 后台配置（st.castCfg，随 /api/version 与 castcfg 广播同步）+ 钓竿词缀 + 当前钓点增益推算，
-  // 保证后台一改数字，界面立刻显示新值。
+  // ---- 钓速 / 上鱼率信息（顶部状态栏与钓鱼页共用） ----
+  // 优先用服务器下发的 castInfo（精确）；未拿到时用本地已知的后台配置（st.castCfg）
+  // + 钓竿词缀 + 当前钓点增益推算，保证后台一改数字界面立刻更新。
+  // 速率规则：间隔 = 基础 × (1 - 有效钓速/100) × (1 - 钓点钓速/100)，钓点钓速为最终乘算；
+  //           钓点若配置了「独立间隔」则直接使用；上鱼率优先取钓点独立值，否则由全服公式决定。
   function currentSpotOf() {
     const st = S();
     const gid = st.player.groundId || (st.selected && st.selected.groundId);
@@ -377,6 +379,11 @@ window.UI = (function () {
     const sp = g && g.spots.find(function (x) { return x.id === sid; });
     return sp || null;
   }
+  function spotSpeedPct(spot) {
+    let v = 0;
+    ((spot && spot.buffs) || []).forEach(function (b) { if (b && b.type === 'speed') v += Number(b.value) || 0; });
+    return v;
+  }
   function castSpeedInfo() {
     const st = S();
     if (st.castInfo) return st.castInfo;
@@ -384,38 +391,58 @@ window.UI = (function () {
     if (!cfg || !cfg.baseMs) return null;
     const effBd = E().bdEffects ? E().bdEffects() : { speed: 0 };
     const spot = currentSpotOf();
-    let buffSpeed = 0;
-    ((spot && spot.buffs) || []).forEach(function (b) { if (b && b.type === 'speed') buffSpeed += Number(b.value) || 0; });
+    const spotPct = spotSpeedPct(spot);
+    const clampedSpot = Math.max(-100, Math.min(95, spotPct));
     const globalBonus = Number(cfg.speedBonus) || 0;
     const cap = cfg.speedCap != null ? Number(cfg.speedCap) : 80;
     const minMs = cfg.minMs != null ? Number(cfg.minMs) : 800;
-    const raw = (effBd.speed || 0) + buffSpeed + globalBonus;
-    const eff = Math.max(0, Math.min(cap, raw));
+    const rodEff = Math.max(0, Math.min(cap, (effBd.speed || 0) + globalBonus));
+    const fixed = spot && spot.intervalMs;
+    const hasFixed = fixed != null && fixed !== '' && isFinite(Number(fixed));
+    const interval = hasFixed
+      ? Math.round(Math.max(100, Number(fixed)))
+      : Math.max(minMs, Math.round(cfg.baseMs * (1 - rodEff / 100) * (1 - clampedSpot / 100)));
+    const spotBite = spot && spot.biteRate != null && spot.biteRate !== '' ? Number(spot.biteRate) : null;
     return {
       baseMs: cfg.baseMs, minMs: minMs, globalBonus: globalBonus, cap: cap,
-      affixSpeed: effBd.speed || 0, buffSpeed: buffSpeed,
-      rawSpeed: Math.round(raw * 10) / 10, effSpeed: eff,
-      interval: Math.max(minMs, Math.round(cfg.baseMs * (1 - eff / 100))),
+      affixSpeed: effBd.speed || 0, buffSpeed: spotPct,
+      rawSpeed: Math.round(rodEff * 10) / 10, effSpeed: Math.round(rodEff * 10) / 10,
+      spotMult: Math.round((1 - clampedSpot / 100) * 1000) / 1000,
+      intervalMs: hasFixed ? Math.round(Number(fixed)) : null,
+      interval: interval,
+      biteRate: spotBite, biteOverride: spotBite != null,
     };
   }
-  // 简短文案：实际 0.90s/竿（基础 3.00s · 竿+25% · 点+20%）
+  // 简短文案：每 2.75s 一竿（基础 3.00s · 竿+25% · 点速×0.80）
   function castSpeedShort() {
     const ci = castSpeedInfo();
     if (!ci) return '';
     const parts = [];
+    if (ci.intervalMs != null) parts.push('钓点固定间隔');
     if (ci.affixSpeed) parts.push('竿' + (ci.affixSpeed > 0 ? '+' : '') + ci.affixSpeed + '%');
-    if (ci.buffSpeed) parts.push('点' + (ci.buffSpeed > 0 ? '+' : '') + ci.buffSpeed + '%');
+    if (ci.buffSpeed) parts.push('点速×' + (ci.spotMult != null ? ci.spotMult.toFixed(2) : '1.00'));
     if (ci.globalBonus) parts.push('服' + (ci.globalBonus > 0 ? '+' : '') + ci.globalBonus + '%');
     const capTag = ci.rawSpeed > ci.effSpeed ? '，封顶 ' + ci.cap + '%' : '';
     return '每 ' + (ci.interval / 1000).toFixed(2) + 's 一竿（基础 ' + (ci.baseMs / 1000).toFixed(2) + 's'
       + (parts.length ? ' · ' + parts.join(' · ') + capTag : ' · 无加成') + '）';
   }
+  // 上鱼率文案（钓点独立值优先，否则由全服公式决定）：数值未知时返回空串
+  function biteRateShort() {
+    const ci = castSpeedInfo();
+    if (!ci || ci.biteRate == null) return '';
+    return '上鱼率 ' + (Math.round(ci.biteRate * 10) / 10) + '%' + (ci.biteOverride ? '（钓点独立）' : '');
+  }
   // 完整文案（钓鱼页状态条）
   function castText() {
     const ci = castSpeedInfo();
     if (!ci) return '服务器每 ' + (S().fishingInterval / 1000).toFixed(2) + 's 抛一竿';
-    return '后台基础 ' + (ci.baseMs / 1000).toFixed(2) + 's/竿 · 实际 ' + (ci.interval / 1000).toFixed(2) + 's/竿'
-      + (ci.rawSpeed ? '（有效钓速 ' + ci.effSpeed + '%' + (ci.rawSpeed > ci.effSpeed ? '，封顶 ' + ci.cap + '%' : '') + '）' : '（无加成）');
+    const speedTag = '后台基础 ' + (ci.baseMs / 1000).toFixed(2) + 's/竿 · 实际 ' + (ci.interval / 1000).toFixed(2) + 's/竿';
+    const biteTag = biteRateShort() ? ' · ' + biteRateShort() : '';
+    const parts = [];
+    if (ci.affixSpeed) parts.push('钓竿 ' + (ci.affixSpeed > 0 ? '+' : '') + ci.affixSpeed + '%');
+    if (ci.buffSpeed) parts.push('钓点 ×' + (ci.spotMult != null ? ci.spotMult.toFixed(2) : '1.00'));
+    if (ci.globalBonus) parts.push('全服 +' + ci.globalBonus + '%');
+    return speedTag + (parts.length ? '（' + parts.join(' · ') + '）' : '（无加成）') + biteTag;
   }
 
   function renderFishing() {

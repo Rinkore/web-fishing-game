@@ -593,6 +593,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const topCast = await p1.textContent('#player-status');
     check('顶部状态栏显示实际钓速与后台基础值', /每 \d+\.\d+s 一竿/.test(topCast) && /基础 \d+\.\d+s/.test(topCast), topCast.slice(0, 160));
     check('顶部钓速含加成拆分（钓竿/钓点/全服或无加成）', /竿|点|服|无加成/.test(topCast), topCast.slice(0, 160));
+    check('顶部状态栏紧邻显示当前场地上鱼率', /🐟 上鱼率 \d+/.test(topCast), topCast.slice(0, 200));
     await clickNav(p1, '在线交易');
 
     await p1.evaluate(() => {
@@ -958,6 +959,47 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('自定义渔场删除后从目录移除', !(gr5.data.grounds || []).some(g => g.id === gidNew));
       const rstChips = await pa.$$eval('[data-rstg]', els => els.map(e => e.getAttribute('data-rstg')));
       check('自定义渔场删除后不在恢复名单', rstChips.indexOf(gidNew) < 0, rstChips.join(','));
+      // —— 钓点独立上鱼率 / 速率（留空 = 全服默认）——
+      // 先切回「静水湖」渔场，再选老旧码头钓点（前面的用例切换过选中渔场）
+      await pa.evaluate(() => { const c = document.querySelector('.gcard[data-g="stillwater"]'); if (c) c.click(); });
+      await waitFor(async () => (await pa.$$('.spot-tab[data-s="dock"]')).length === 1, { timeout: 6000 }).catch(() => {});
+      await pa.evaluate(() => {
+        const t = document.querySelector('.spot-tab[data-s="dock"]');
+        if (t) t.click();
+      });
+      await waitFor(async () => (await pa.$$('#sr-bite')).length === 1, { timeout: 6000 }).catch(() => {});
+      await waitFor(async () => (await pa.$$('#sr-bite')).length === 1, { timeout: 5000 }).catch(() => {});
+      const srPanel = await pa.evaluate(() => ({
+        hasPanel: !!document.getElementById('sr-bite') && !!document.getElementById('sr-ms') && !!document.getElementById('sr-save'),
+        hint: (document.querySelector('#ed-body') || {}).textContent || '',
+      }));
+      check('钓点管理处有独立的「上鱼率 / 速率」控件', srPanel.hasPanel === true, JSON.stringify({ hasPanel: srPanel.hasPanel }));
+      check('控件说明写明留空=全服默认', /留空 = 使用全服默认/.test(srPanel.hint), srPanel.hint.slice(0, 120));
+      // 设置该钓点 上鱼率 100% / 间隔 1500ms → 保存后服务器生效
+      await pa.evaluate(() => {
+        document.getElementById('sr-bite').value = '100';
+        document.getElementById('sr-ms').value = '1500';
+        document.getElementById('sr-save').click();
+      });
+      const srSaved = await waitFor(async () => {
+        const g = await get('/api/grounds');
+        const st = (g.data.grounds || []).find(x => x.id === 'stillwater');
+        const sp = st && st.spots.find(s => s.id === 'dock');
+        return !!(sp && sp.biteRate === 100 && sp.intervalMs === 1500);
+      }, { timeout: 6000, interval: 200 }).catch(() => false);
+      check('钓点独立上鱼率/间隔保存并下发到全服目录', srSaved === true, String(srSaved));
+      // 恢复默认，避免影响其他用例
+      await pa.evaluate(() => { document.getElementById('sr-clear').click(); });
+      await sleep(400);
+      await pa.evaluate(() => { const y = document.querySelector('.cf-yes'); if (y) y.click(); });
+      const srCleared = await waitFor(async () => {
+        const g = await get('/api/grounds');
+        const st = (g.data.grounds || []).find(x => x.id === 'stillwater');
+        const sp = st && st.spots.find(s => s.id === 'dock');
+        return !!(sp && sp.biteRate == null && sp.intervalMs == null);
+      }, { timeout: 6000, interval: 200 }).catch(() => false);
+      check('点「恢复默认」清除钓点独立配置', srCleared === true, String(srCleared));
+
       // 内置钓点删除 → 可恢复
       await clickAdminNav('渔场钓点');
       const builtSpot = await pa.evaluate(async () => {

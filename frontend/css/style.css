@@ -987,3 +987,6 @@ body.banner-open .topbar { top: 34px; }
 
 /* 横幅管理：闪烁设置（独立面板）输入框宽度 */
 .bn-title { max-width: 260px; }
+
+/* 顶部状态栏的上鱼率（与钓速并列） */
+#player-status .meta.bite { color: var(--big); border-left: 1px solid var(--line); padding-left: 10px; }

@@ -27,6 +27,8 @@ function check(name, cond, extra) {
   else { fail++; failed.push(name); console.log('  FAIL  ' + name + (extra ? '  -> ' + extra : '')); }
 }
 function section(t) { console.log('\n=== ' + t + ' ==='); }
+// 按 id 找渔场（11e 用）
+function dockFind(grounds) { return (grounds || []).find(function (g) { return g.id === 'stillwater'; }); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Windows 下 kill() 偶发不生效，用 taskkill 强制结束进程树
 function killTree(p) { try { spawnSync('taskkill', ['/F', '/T', '/PID', String(p.pid)], { stdio: 'ignore' }); } catch (e) {} }
@@ -446,7 +448,8 @@ function waitReady() {
   // dock 钓点在本文件第 2 节被加了 +20% 钓速增益；全服 +50% → 有效 70% → 3000 × 0.3 = 900ms
   check('设置全服钓速 +50% 成功', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 50 })).status === 200);
   const spd1 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
-  check('全服钓速生效（3000 × (1-0.7) = 900ms，含钓点 +20%）', spd1.data.interval === 900, JSON.stringify(spd1.data));
+  // 钓点钓速为最终乘算：3000 × (1-0.50) × (1-0.20) = 1200ms（旧的加算写法会得 900ms）
+  check('全服钓速生效且钓点钓速乘算（3000×0.5×0.8=1200ms）', spd1.data.interval === 1200, JSON.stringify(spd1.data));
   // 上限截断：+200% 但上限 80% → 3000 × 0.2 = 600 → 最短间隔 800 兜底
   check('设置 +200% / 上限 80%', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 200, castSpeedCap: 80 })).status === 200);
   const spd2 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
@@ -512,6 +515,40 @@ function waitReady() {
   check('一键填充预设接口返回条目与说明', pr.status === 200 && pr.data.pool.length === 13 && !!pr.data.presets.rare);
   check('未知预设被拒 400', (await POST(B + '/api/admin/pool/preset', { token: TOKA, preset: 'nope' })).status === 400);
   check('非管理员读取预设被拒 403', (await POST(B + '/api/admin/pool/preset', { token: TK2B, preset: 'rare' })).status === 403);
+
+  // ---------- 11e. 钓点独立上鱼率 / 速率（留空 = 全服默认） ----------
+  section('11e. 钓点独立上鱼率 / 速率');
+  check('非法上鱼率被拒 400', (await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'stillwater', spotId: 'dock', biteRate: 120 })).status === 400);
+  check('非法间隔被拒 400', (await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'stillwater', spotId: 'dock', intervalMs: 10 })).status === 400);
+  check('非管理员被拒 403', (await POST(B + '/api/admin/spot/rate', { token: TK2B, groundId: 'stillwater', spotId: 'dock', biteRate: 50 })).status === 403);
+  check('不存在的钓点被拒 404', (await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'stillwater', spotId: 'nope', biteRate: 50 })).status === 404);
+  const sr1 = await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'stillwater', spotId: 'dock', biteRate: 100, intervalMs: 1500 });
+  check('设置钓点独立上鱼率与间隔', sr1.status === 200 && sr1.data.biteRate === 100 && sr1.data.intervalMs === 1500, JSON.stringify(sr1.data));
+  const srPub = await GET(B + '/api/grounds');
+  const dockNow = (dockFind(srPub.data.grounds) || {}).spots.find(s => s.id === 'dock');
+  check('钓点独立配置随目录下发（前端可见）', !!dockNow && dockNow.biteRate === 100 && dockNow.intervalMs === 1500, JSON.stringify(dockNow && { b: dockNow.biteRate, m: dockNow.intervalMs }));
+  const srStart = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
+  check('钓点独立间隔生效（1500ms）', srStart.data.interval === 1500, JSON.stringify(srStart.data));
+  check('castInfo 返回钓点独立上鱼率（100%）', !!(srStart.data.castInfo && srStart.data.castInfo.biteRate === 100 && srStart.data.castInfo.biteOverride === true), JSON.stringify(srStart.data.castInfo));
+  const srMark = sink2b.length;
+  await waitFor(() => sink2b.slice(srMark).filter(x => x.ev.type === 'catch').length >= 2, { timeout: 9000, interval: 150 });
+  check('上鱼率 100% 时每竿必上钩（9s 内 ≥2 条）', sink2b.slice(srMark).filter(x => x.ev.type === 'catch').length >= 2,
+    String(sink2b.slice(srMark).filter(x => x.ev.type === 'catch').length));
+  await POST(B + '/api/fishing/stop', { token: TK2B });
+  const srClear = await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'stillwater', spotId: 'dock', biteRate: '', intervalMs: '' });
+  check('清除后恢复全服默认（返回 null）', srClear.status === 200 && srClear.data.biteRate == null && srClear.data.intervalMs == null, JSON.stringify(srClear.data));
+  // 乘算证明：钓竿 +25% 与钓点 +20% → 3000×0.75×0.8 = 1800（加算会是 1650）
+  const multInst = 'reel_electric#common#spd+25';
+  await POST(B + '/api/dev/catch', { token: TK2B, item: { kind: 'component', id: multInst } });
+  await POST(B + '/api/bd/set', { token: TK2B, part: 'reel', compId: multInst });
+  const multStart = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
+  check('钓点钓速为最终乘算（3000×0.75×0.8=1800，非加算 1650）', multStart.data.interval === 1800, JSON.stringify(multStart.data));
+  check('乘算明细随 castInfo 下发（spotMult 0.8）', !!(multStart.data.castInfo && multStart.data.castInfo.spotMult === 0.8 && multStart.data.castInfo.buffSpeed === 20), JSON.stringify(multStart.data.castInfo));
+  await POST(B + '/api/bd/set', { token: TK2B, part: 'reel', compId: null });
+  await POST(B + '/api/fishing/stop', { token: TK2B });
+  const srBack = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
+  check('清除独立间隔后回到按钓速计算（2400ms）', srBack.data.interval === 2400, JSON.stringify(srBack.data));
+  await POST(B + '/api/fishing/stop', { token: TK2B });
 
   // ---------- 11c. 横幅滚播状态与停止 ----------
   section('11c. 横幅滚播状态与停止');
