@@ -984,3 +984,6 @@ body.banner-open .topbar { top: 34px; }
 
 /* 顶部状态栏的钓速（基础值 + 实际值）：与其它 meta 区分，弱强调 */
 #player-status .meta.cast { color: var(--accent); border-left: 1px solid var(--line); padding-left: 10px; }
+
+/* 横幅管理：闪烁设置（独立面板）输入框宽度 */
+.bn-title { max-width: 260px; }

@@ -1454,15 +1454,19 @@ window.Admin = (function () {
   function renderBanner() {
     const main = $('main');
     main.innerHTML = '<h2>📢 横幅管理</h2>' +
-      '<div class="hint" style="margin-bottom:12px">发布滚动公告（内容 + 时长），玩家端按队列顺序依次播放；有内容时可按配置让浏览器图标闪烁提示。</div>' +
+      '<div class="hint" style="margin-bottom:12px">发布滚动公告（内容 + 时长），玩家端按队列顺序依次播放。</div>' +
       '<div class="panel"><h3 style="margin-top:0">📡 当前滚播</h3>' +
       '<div id="bn-live" class="bn-live">加载中…</div></div>' +
+      // 闪烁独立设置：与是否发布横幅无关，开启即让玩家端浏览器图标/标题闪烁提示
+      '<div class="panel"><h3 style="margin-top:0">🔔 浏览器图标闪烁</h3>' +
+      '<div class="hint" style="margin-bottom:8px">独立开关：<b>与是否发布横幅无关</b>。开启后所有在线玩家的浏览器图标与标签标题会交替闪烁，直到关闭或玩家登出。</div>' +
+      '<div class="mgr-row"><label>闪烁</label><label class="switch"><input type="checkbox" id="bn-blink"><span class="sl"></span></label>' +
+      '<label class="hint">闪烁时的标题</label><input id="bn-blink-title" class="ipt bn-title" placeholder="如：有新活动 ⚡" maxlength="40" />' +
+      '<button class="btn primary" id="bn-cfg-save">保存闪烁设置</button>' +
+      '<span id="bn-blink-state" class="hint"></span></div></div>' +
       '<div class="panel"><div class="mgr-row"><label>内容</label><input id="bn-content" class="ipt" maxlength="200" placeholder="公告内容（最多 200 字）" />' +
       '<label class="hint">时长</label><input id="bn-dur" class="ipt mk-num" type="number" min="1" max="3600" step="0.5" value="10" />' +
-      '<span class="hint">秒</span><button class="btn primary" id="bn-add">发布</button></div>' +
-      '<div class="mgr-row"><label>图标闪烁</label><label class="switch"><input type="checkbox" id="bn-blink"><span class="sl"></span></label>' +
-      '<input id="bn-blink-title" class="ipt" placeholder="闪烁时浏览器标题" style="max-width:280px" />' +
-      '<button class="btn" id="bn-cfg-save">保存闪烁设置</button>' +
+      '<span class="hint">秒</span><button class="btn primary" id="bn-add">发布</button>' +
       '<span style="flex:1"></span><button class="btn mini danger" id="bn-clear">清空队列</button></div>' +
       '<div id="bn-list" style="margin-top:12px">加载中…</div></div>';
     $('bn-add').onclick = function () {
@@ -1478,7 +1482,9 @@ window.Admin = (function () {
     $('bn-cfg-save').onclick = function () {
       adminApi('POST', '/api/admin/banner/cfg', { token: token, blink: $('bn-blink').checked, blinkTitle: $('bn-blink-title').value }).then(function (r) {
         if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
-        toast('闪烁设置已保存');
+        toast($('bn-blink').checked ? '已开启图标闪烁（与横幅无关，立即对在线玩家生效）' : '已关闭图标闪烁');
+        const stEl = $('bn-blink-state');
+        if (stEl) stEl.innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
       });
     };
     $('bn-clear').onclick = function () {
@@ -1493,7 +1499,15 @@ window.Admin = (function () {
     };
     loadBanners();
     stopBannerTimer();
-    bannerTimer = setInterval(function () { if (view === 'banner') loadBanners(); else stopBannerTimer(); }, 5000);
+    // 自动刷新只拉「当前滚播」数据（不重绘表单/队列，否则正在输入的内容会被重置）
+    bannerTimer = setInterval(function () { if (view === 'banner') refreshBannerLive(); else stopBannerTimer(); }, 5000);
+  }
+  // 仅刷新「当前滚播」面板（自动刷新走这里，不碰表单）
+  function refreshBannerLive() {
+    adminApi('GET', '/api/admin/banner?token=' + encodeURIComponent(token)).then(function (r) {
+      if (!r.ok || view !== 'banner') return;
+      drawBannerLive(r.data);
+    });
   }
   // 当前滚播面板：队列条数 + 每条横幅的实时观看人数（客户端播放时上报，15s 无心跳视为播完）
   function drawBannerLive(d) {
@@ -1533,8 +1547,12 @@ window.Admin = (function () {
     adminApi('GET', '/api/admin/banner?token=' + encodeURIComponent(token)).then(function (r) {
       if (!r.ok || view !== 'banner') return;
       const bs = r.data.banners || [];
-      $('bn-blink').checked = !!(r.data.cfg && r.data.cfg.blink);
-      $('bn-blink-title').value = (r.data.cfg && r.data.cfg.blinkTitle) || '📢 有新公告';
+      // 正在编辑闪烁设置时不覆盖输入（避免打字被冲掉）
+      const editingBlink = document.activeElement === $('bn-blink-title');
+      if (!editingBlink) $('bn-blink').checked = !!(r.data.cfg && r.data.cfg.blink);
+      if (!editingBlink) $('bn-blink-title').value = (r.data.cfg && r.data.cfg.blinkTitle) || '📢 有新公告';
+      const stEl = $('bn-blink-state');
+      if (stEl) stEl.textContent = (r.data.cfg && r.data.cfg.blink) ? '当前：已开启' : '当前：已关闭';
       drawBannerLive(r.data);
       const box = $('bn-list');
       if (!bs.length) { box.innerHTML = '<div class="hint">队列为空。</div>'; return; }

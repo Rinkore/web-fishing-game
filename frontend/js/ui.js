@@ -152,7 +152,8 @@ window.UI = (function () {
       fresh.push(bn);
     });
     if (fresh.length) playBannerQueue(fresh);
-    updateFaviconBlink(!!cfg.blink && list.length > 0, cfg.blinkTitle);
+    // 闪烁是独立开关：与队列里有没有横幅无关（后台「图标闪烁」单独设置）
+    updateFaviconBlink(!!cfg.blink, cfg.blinkTitle);
   }
   // ---- 浏览器图标闪烁：公告横幅（黄）与组件订阅提醒（红）两路来源共用一套闪烁 ----
   const baseTitle = document.title;

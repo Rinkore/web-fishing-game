@@ -1033,6 +1033,49 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       const cleared = await get('/api/banner');
       check('清空队列后无待播横幅', (cleared.data.banners || []).length === 0, String((cleared.data.banners || []).length));
 
+      // —— 闪烁设置：独立开关（与横幅无关）+ 输入不被自动刷新冲掉 ——
+      const typed = 'QA 闪烁标题 ' + Math.random().toString(36).slice(2, 6);
+      await pa.evaluate((v) => {
+        const inp = document.getElementById('bn-blink-title');
+        inp.focus();
+        inp.value = v;
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+      }, typed);
+      // 自动刷新周期 5s：等过一轮，输入内容应保持不变（修复「打字被刷新掉」）
+      await waitFor(() => false, { timeout: 6200 });
+      const kept = await pa.evaluate(() => document.getElementById('bn-blink-title').value);
+      check('闪烁标题输入不会被自动刷新冲掉', kept === typed, JSON.stringify({ expect: typed, got: kept }));
+      // 队列为空也允许开启闪烁（独立于横幅发布）
+      await pa.evaluate(() => { document.getElementById('bn-blink').checked = true; document.getElementById('bn-cfg-save').click(); });
+      await waitFor(async () => {
+        const r = await get('/api/banner');
+        return !!(r.data && r.data.cfg && r.data.cfg.blink);
+      }, { timeout: 5000 }).catch(() => {});
+      const cfgNow = await get('/api/banner');
+      check('队列为空仍可开启闪烁（设置独立生效）', !!(cfgNow.data.cfg && cfgNow.data.cfg.blink && (cfgNow.data.banners || []).length === 0),
+        JSON.stringify({ blink: cfgNow.data.cfg && cfgNow.data.cfg.blink, banners: (cfgNow.data.banners || []).length }));
+      // 玩家端：无横幅时标题/图标也闪烁（采样标题是否变化）
+      const blinked = await waitFor(async () => {
+        const t1 = await p1.evaluate(() => document.title);
+        await waitFor(() => false, { timeout: 900 });
+        const t2 = await p1.evaluate(() => document.title);
+        return t1 !== t2;
+      }, { timeout: 6000, interval: 300 }).catch(() => false);
+      check('无横幅时玩家端标题仍在闪烁（独立开关生效）', blinked === true, String(blinked));
+      // 关闭闪烁 → 标题恢复为固定基准
+      await pa.evaluate(() => { document.getElementById('bn-blink').checked = false; document.getElementById('bn-cfg-save').click(); });
+      await waitFor(async () => {
+        const r = await get('/api/banner');
+        return !!(r.data && r.data.cfg && !r.data.cfg.blink);
+      }, { timeout: 5000 }).catch(() => {});
+      const stabled = await waitFor(async () => {
+        const t1 = await p1.evaluate(() => document.title);
+        await waitFor(() => false, { timeout: 900 });
+        const t2 = await p1.evaluate(() => document.title);
+        return t1 === t2;
+      }, { timeout: 5000, interval: 300 }).catch(() => false);
+      check('关闭闪烁后标题恢复稳定', stabled === true, String(stabled));
+
       // —— 反馈奖励（金币到账 + 记录 + 筛选）——
       await post('/api/feedback/submit', { token: tokB, text: 'QA 奖励测试反馈', kind: 'idea' });
       await clickAdminNav('反馈意见');
