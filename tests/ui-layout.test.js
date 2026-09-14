@@ -359,6 +359,19 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(300);
     check('图鉴详情在子窗口中展示', (await p1.$$('.codex-modal .codex-detail')).length === 1);
     check('图鉴页内不再内嵌详情浮层', (await p1.$$('.codex-cell .codex-detail')).length === 0);
+    // 回归：详情内容必须真正落在子窗口内且可见（曾因残留绝对定位导致窗口空白）
+    const codexDetailVis = await p1.evaluate(() => {
+      const box = document.querySelector('.codex-modal');
+      if (!box) return { ok: false, why: 'no modal' };
+      const bm = box.getBoundingClientRect();
+      const parts = Array.from(box.querySelectorAll('.cd-title,.cd-line,.cd-sub,.cd-spot'));
+      const cs = getComputedStyle(box.querySelector('.codex-detail'));
+      const outside = parts.filter(e => { const r = e.getBoundingClientRect(); return r.width <= 0 || r.height <= 0 || r.bottom > bm.bottom + 1; });
+      return { ok: true, parts: parts.length, outside: outside.length, pos: cs.position, boxH: Math.round(bm.height), withinViewport: bm.bottom <= window.innerHeight + 1 };
+    });
+    check('详情内容定位为静态且在子窗口内', codexDetailVis.ok && codexDetailVis.pos === 'static', JSON.stringify(codexDetailVis));
+    check('详情各内容块均在子窗口内可见', codexDetailVis.ok && codexDetailVis.parts > 0 && codexDetailVis.outside === 0, JSON.stringify(codexDetailVis));
+    check('子窗口高度随内容撑开且在视口内', codexDetailVis.ok && codexDetailVis.boxH > 150 && codexDetailVis.withinViewport, JSON.stringify(codexDetailVis));
     await p1.evaluate(() => { const b = document.querySelector('.codex-modal .modal-close'); if (b) b.click(); });
     await sleep(200);
     check('关闭图鉴详情子窗口', (await p1.$$('.codex-modal')).length === 0);

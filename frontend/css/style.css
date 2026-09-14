@@ -387,8 +387,8 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .cs-box span { font-size: 12px; color: var(--muted); }
 .codex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; grid-auto-rows: 1fr; }
 .codex-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.02); display: flex; flex-direction: column; }
-/* 未解锁卡片只压暗自身内容：容器透明度会让内部详情浮层连带变透明、与背景重叠 */
-.codex-cell:not(.got) > *:not(.codex-detail) { opacity: .5; }
+/* 未解锁卡片只压暗自身内容（详情现已移到子窗口，不再是卡片子节点） */
+.codex-cell:not(.got) > * { opacity: .5; }
 .codex-cell.got { background: rgba(255,255,255,.05); border-color: var(--accent2); }
 .cx-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
 .cx-name.locked-name { color: var(--muted); }
@@ -764,11 +764,13 @@ body.banner-open .topbar { top: 34px; }
 .codex-cell .cx-spots { margin-top: auto; } /* 产地行贴底，等高时不显突兀 */
 .codex-cell.got { cursor: pointer; }
 .codex-cell.got:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+/* 图鉴详情内容：现为子窗口（modal）内的普通内容块。
+   注意：早期它是卡片内展开的浮层（position:absolute; top:100%），
+   改为子窗口后必须重置定位，否则内容会被定位到窗口之外、子窗口看起来是空的。 */
 .codex-detail {
-  position: absolute; top: 100%; left: 0; z-index: 30; margin-top: 6px;
-  width: 280px; min-height: 170px; box-sizing: border-box;
-  background: var(--panel-solid); border: 1px solid var(--accent2); border-radius: 8px; padding: 12px;
-  box-shadow: 0 14px 34px rgba(0,0,0,.5); font-size: 12px; cursor: default;
+  position: static; width: auto; min-height: 0; margin: 0;
+  background: none; border: none; border-radius: 0; padding: 0; box-shadow: none;
+  font-size: 13px; cursor: default;
 }
 .cd-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
 .cd-line { margin-bottom: 3px; }
