@@ -691,6 +691,19 @@ body.banner-open .topbar { top: 34px; }
 .inv-page-row .unit-price { color: var(--muted); font-size: 12px; }
 .inv-page-row .subtotal { color: var(--big); font-size: 12px; }
 .inv-page + .hint { margin-top: 12px; }
+/* 背包组件分组（按词条组合 + 数值范围分类） */
+.inv-group-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 10px; padding: 7px 10px; border-radius: 8px;
+  background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.28);
+  font-size: 13px; font-weight: 600;
+}
+.inv-group-head:first-child { margin-top: 0; }
+.inv-group-tag { font-size: 11px; font-weight: 400; color: var(--muted); }
+.inv-group-cnt { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--muted); }
+.inv-comp-row { padding-left: 20px; border-left: 2px solid rgba(56,189,248,.35); }
+.inv-comp-affs { display: inline-flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.inv-comp-affs .inst-aff { margin: 0; }
 .inv-breakdown { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .inv-kind-line {
   font-size: 13px; padding: 7px 10px; border-radius: 8px;

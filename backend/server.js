@@ -102,14 +102,24 @@ let users = {};
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
 // biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
 const BITE_FORMULA_DEFAULT = 'min(98, 90 + speed * 0.15)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {} };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {} };
 
 // ---- 反馈意见 ----
-// 默认每人每 24 小时可提交 1 条；花 10000 金币可立即结束 CD（下次可提交时间提前 24h）。
-const FEEDBACK_CD_MS = 24 * 3600 * 1000;
-const FEEDBACK_SKIP_COST = 10000;
+// CD 时长（小时）与跳过费用（金币）可由管理后台配置（落盘 config.json）；默认 24 小时 / 10000 金币。
+const FEEDBACK_CD_DEFAULT_HOURS = 24;
+const FEEDBACK_SKIP_COST_DEFAULT = 10000;
 const FEEDBACK_MAX_LEN = 1000;
 const FEEDBACK_KEEP = 500; // 最多保留的历史反馈条数
+// 取当前生效的 CD 毫秒 / 跳过费用（未配置时用默认）
+function feedbackCdMs() {
+  const h = Number(world.feedbackCfg && world.feedbackCfg.cdHours);
+  const hours = (isFinite(h) && h >= 0) ? h : FEEDBACK_CD_DEFAULT_HOURS;
+  return Math.round(hours * 3600 * 1000);
+}
+function feedbackSkipCost() {
+  const c = Number(world.feedbackCfg && world.feedbackCfg.skipCost);
+  return (isFinite(c) && c >= 0) ? Math.floor(c) : FEEDBACK_SKIP_COST_DEFAULT;
+}
 // 反馈状态标识（玩家可见；管理员可改）
 const FEEDBACK_STATUSES = { submitted: '已提交', accepted: '已受理', done: '已完成' };
 
@@ -687,7 +697,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'bannerSeq', 'banners', 'bannerCfg'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
@@ -1529,7 +1539,7 @@ const server = http.createServer(function (req, res) {
     const meta = (world.feedbackMeta && world.feedbackMeta[key]) || {};
     const nextAt = meta.nextAt || 0;
     const now = Date.now();
-    return { nextAt: nextAt, ready: now >= nextAt, remainingMs: Math.max(0, nextAt - now), skipCost: FEEDBACK_SKIP_COST };
+    return { nextAt: nextAt, ready: now >= nextAt, remainingMs: Math.max(0, nextAt - now), skipCost: feedbackSkipCost(), cdHours: Math.round(feedbackCdMs() / 3600000 * 100) / 100 };
   }
   if (p === '/api/feedback' && req.method === 'GET') {
     const key = u.query.token && sessions.get(u.query.token);
@@ -1545,7 +1555,7 @@ const server = http.createServer(function (req, res) {
         const rec = users[key];
         const st = feedbackStatusOf(key);
         if (!st.ready) {
-          return apiResp(res, 429, { error: '冷却中，' + Math.ceil(st.remainingMs / 60000) + ' 分钟后可再次提交（或花 ' + FEEDBACK_SKIP_COST + ' 金币立即结束冷却）', status: st });
+          return apiResp(res, 429, { error: '冷却中，' + Math.ceil(st.remainingMs / 60000) + ' 分钟后可再次提交（或花 ' + st.skipCost + ' 金币立即结束冷却）', status: st });
         }
         const text = String(d.text || '').trim().slice(0, FEEDBACK_MAX_LEN);
         if (!text) return apiResp(res, 400, { error: '反馈内容不能为空' });
@@ -1554,7 +1564,7 @@ const server = http.createServer(function (req, res) {
         world.feedback.push(entry);
         if (world.feedback.length > FEEDBACK_KEEP) world.feedback.splice(0, world.feedback.length - FEEDBACK_KEEP);
         world.feedbackMeta = world.feedbackMeta || {};
-        world.feedbackMeta[key] = { nextAt: Date.now() + FEEDBACK_CD_MS, lastAt: Date.now() };
+        world.feedbackMeta[key] = { nextAt: Date.now() + feedbackCdMs(), lastAt: Date.now() };
         saveFeedback();
         // 有管理员在线则实时提醒
         Object.keys(users).forEach(function (k) { if (users[k].admin && players.has(k)) sendTo(k, { type: 'notice', msg: '📮 收到新反馈（' + rec.name + '）：' + text.slice(0, 40) }); });
@@ -1570,8 +1580,9 @@ const server = http.createServer(function (req, res) {
         const rec = users[key];
         const st = feedbackStatusOf(key);
         if (st.ready) return apiResp(res, 400, { error: '当前不在冷却中，无需跳过' });
-        if (rec.coins < FEEDBACK_SKIP_COST) return apiResp(res, 400, { error: '金币不足（需 ' + FEEDBACK_SKIP_COST + '）' });
-        rec.coins -= FEEDBACK_SKIP_COST;
+        const cost = feedbackSkipCost();
+        if (rec.coins < cost) return apiResp(res, 400, { error: '金币不足（需 ' + cost + '）' });
+        rec.coins -= cost;
         world.feedbackMeta[key] = Object.assign({}, world.feedbackMeta[key] || {}, { nextAt: 0 });
         saveAccount(key); saveFeedback();
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
@@ -1748,7 +1759,40 @@ const server = http.createServer(function (req, res) {
     const a = adminOf(u.query.token);
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
     const list = (world.feedback || []).slice().sort(function (x, y) { return y.t - x.t; });
-    return apiResp(res, 200, { ok: true, feedback: list, total: list.length, statuses: FEEDBACK_STATUSES });
+    return apiResp(res, 200, {
+      ok: true, feedback: list, total: list.length, statuses: FEEDBACK_STATUSES,
+      cfg: {
+        cdHours: Math.round(feedbackCdMs() / 3600000 * 100) / 100,
+        skipCost: feedbackSkipCost(),
+        cdHoursDefault: FEEDBACK_CD_DEFAULT_HOURS,
+        skipCostDefault: FEEDBACK_SKIP_COST_DEFAULT,
+      },
+    });
+  }
+  // ---- 反馈配置：CD 时长（小时）与清空 CD 费用（金币） ----
+  if (p === '/api/admin/feedback/cfg' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      world.feedbackCfg = Object.assign({}, world.feedbackCfg || {});
+      if (d.cdHours != null) {
+        const h = Number(d.cdHours);
+        if (!isFinite(h) || h < 0 || h > 8760) return apiResp(res, 400, { error: 'CD 时长需在 0 - 8760 小时之间' });
+        world.feedbackCfg.cdHours = Math.round(h * 100) / 100;
+      }
+      if (d.skipCost != null) {
+        const c = Math.floor(Number(d.skipCost));
+        if (!isFinite(c) || c < 0 || c > 1e12) return apiResp(res, 400, { error: '清空 CD 费用需为非负整数' });
+        world.feedbackCfg.skipCost = c;
+      }
+      saveConfig();
+      apiResp(res, 200, {
+        ok: true,
+        cfg: { cdHours: Math.round(feedbackCdMs() / 3600000 * 100) / 100, skipCost: feedbackSkipCost() },
+      });
+    });
+    return;
   }
   // ---- 反馈状态：管理员标记（已提交 / 已受理 / 已完成） ----
   if (p === '/api/admin/feedback/status' && req.method === 'POST') {

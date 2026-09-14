@@ -1414,6 +1414,98 @@ window.UI = (function () {
   }
   function closeBatchSell() { batchSellId = null; closeOverlays(); }
 
+  // 组件分类：按「词条组合 + 数值范围」分组展示。
+  // 分组键 = 底材 + 品质 + 词条类型集合（不含具体数值）；组内按具体数值排列。
+  // 这样同底材同品质、词条种类相同（数值不同）的实例归为一组，便于比较取舍。
+  function renderComponentGroups(list, keys, st, unitPrice, itemValue, doSell) {
+    const groups = {};
+    keys.forEach(function (id) {
+      const meta = D.componentOf(id);
+      if (!meta) { groups['__legacy__'] = groups['__legacy__'] || { meta: null, items: [] }; groups['__legacy__'].items.push({ id: id, meta: D.itemOf(id) }); return; }
+      const types = meta.affixes.map(function (a) { return a.type; }).sort().join('+');
+      const gk = meta.baseId + '|' + meta.quality + '|' + types;
+      groups[gk] = groups[gk] || { rep: meta, items: [] };
+      groups[gk].items.push({ id: id, meta: meta });
+    });
+    const groupKeys = Object.keys(groups).sort(function (a, b) {
+      const ga = groups[a], gb = groups[b];
+      if (!ga.rep) return 1;
+      if (!gb.rep) return -1;
+      const q = (D.QUALITY_ORDER[gb.rep.quality] || 0) - (D.QUALITY_ORDER[ga.rep.quality] || 0);
+      if (q) return q;
+      return ga.rep.name.localeCompare(gb.rep.name);
+    });
+    groupKeys.forEach(function (gk) {
+      const g = groups[gk];
+      if (!g.rep) {
+        // 旧通用组件（无底材）
+        g.items.forEach(function (it) {
+          const row = el('div', 'inv-row inv-page-row');
+          row.innerHTML = '<span class="' + qualityClass(it.meta) + '">' + esc(it.meta.name) + '</span>' +
+            '<span class="kind-tag">组件</span><span class="cnt">×' + st.inventory[it.id] + '</span>' +
+            '<span class="unit-price">现价 ' + unitPrice(it.id) + '💰</span>' +
+            '<span class="subtotal">小计 ' + itemValue(it.id) + '💰</span>';
+          const acts = el('span', 'inv-acts');
+          const sb = el('button', 'mini primary-mini', '出售 1');
+          sb.addEventListener('click', function () { doSell(it.id, 1); });
+          acts.appendChild(sb);
+          const sa = el('button', 'mini', '批量出售');
+          sa.addEventListener('click', function () { openBatchSellModal(it.id); });
+          acts.appendChild(sa);
+          const lb = el('button', 'mini', '上架');
+          lb.addEventListener('click', function () { openListModal(it.id); });
+          acts.appendChild(lb);
+          row.appendChild(acts);
+          list.appendChild(row);
+        });
+        return;
+      }
+      // 组标题：底材名（品质色 / 满词条金色）+ 词条类型集合 + 出现次数
+      const cntAll = g.items.reduce(function (s, it) { return s + st.inventory[it.id]; }, 0);
+      const head = el('div', 'inv-group-head');
+      head.innerHTML =
+        '<span class="' + qualityClass(g.rep) + '">' + esc(g.rep.baseName) + '</span>' +
+        (g.rep.isFull ? '<span class="full-tag">满词条</span>' : '') +
+        '<span class="inv-group-tag">' + esc(g.rep.qualityName) + ' · ' + g.items[0].meta.affixes.length + ' 词条</span>' +
+        '<span class="inv-group-cnt">共 ' + cntAll + ' 个</span>';
+      list.appendChild(head);
+      // 组内每个不同数值的实例一行
+      g.items.sort(function (x, y) {
+        const sx = x.meta.affixes.map(function (a) { return a.type + ':' + a.value; }).join(',');
+        const sy = y.meta.affixes.map(function (a) { return a.type + ':' + a.value; }).join(',');
+        return sx < sy ? -1 : (sx > sy ? 1 : 0);
+      });
+      g.items.forEach(function (it) {
+        const meta = it.meta;
+        const row = el('div', 'inv-row inv-page-row inv-comp-row');
+        // 词条 + 对应数值范围（来自底材池 / 管理后台覆盖）
+        const affHtml = meta.affixes.map(function (a) {
+          const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
+          const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+          const rngTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
+          return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rngTag + '</span>';
+        }).join('');
+        row.innerHTML =
+          '<span class="inv-comp-affs">' + affHtml + '</span>' +
+          '<span class="cnt">×' + st.inventory[it.id] + '</span>' +
+          '<span class="unit-price">现价 ' + unitPrice(it.id) + '💰</span>' +
+          '<span class="subtotal">小计 ' + itemValue(it.id) + '💰</span>';
+        const acts = el('span', 'inv-acts');
+        const sb = el('button', 'mini primary-mini', '出售 1');
+        sb.addEventListener('click', function () { doSell(it.id, 1); });
+        acts.appendChild(sb);
+        const sa = el('button', 'mini', '批量出售');
+        sa.addEventListener('click', function () { openBatchSellModal(it.id); });
+        acts.appendChild(sa);
+        const lb = el('button', 'mini', '上架');
+        lb.addEventListener('click', function () { openListModal(it.id); });
+        acts.appendChild(lb);
+        row.appendChild(acts);
+        list.appendChild(row);
+      });
+    });
+  }
+
   function renderInventory() {
     const main = $('main');
     const st = S();
@@ -1453,6 +1545,9 @@ window.UI = (function () {
     if (invCategory !== 'all') keys = keys.filter(function (id) { return itemMeta(id).kind === invCategory; });
     if (keys.length === 0) {
       list.appendChild(el('div', 'hint', invCategory === 'all' ? '背包空空如也。去「钓鱼」页选个钓点抛竿，渔获会自动入包。' : '该分类下暂时没有物品。'));
+    } else if (invCategory === 'component') {
+      // 组件分类：按「词条组合 + 数值范围」分组展示
+      renderComponentGroups(list, keys, st, unitPrice, itemValue, doSell);
     } else {
       // 按单价排序：出售/获得不改变行位置（排序与数量无关）
       keys.sort(function (a, b) { return unitPrice(b) - unitPrice(a) || (a < b ? -1 : 1); });
@@ -1461,12 +1556,8 @@ window.UI = (function () {
         const cnt = st.inventory[id];
         const kindName = meta.kind === 'fish' ? '鱼' : meta.kind === 'material' ? '材料' : meta.kind === 'component' ? '组件' : '物品';
         const row = el('div', 'inv-row inv-page-row');
-        const nameCell = meta.kind === 'component' && meta.affixes
-          ? '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</span>' +
-            '<span class="inst-aff-inline">' + meta.affixes.map(function (a) { return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>'; }).join('') + '</span>'
-          : '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>';
         row.innerHTML =
-          nameCell +
+          '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
           '<span class="kind-tag">' + kindName + '</span>' +
           '<span class="cnt">×' + cnt + '</span>' +
           '<span class="unit-price">现价 ' + unitPrice(id) + '💰</span>' +
@@ -2067,17 +2158,20 @@ window.UI = (function () {
     const main = $('main');
     const st = S();
     main.innerHTML = '';
-    const panel = el('div', 'panel wide feedback-panel');
-    panel.innerHTML = '<h2>📮 反馈意见 <span class="subtitle">Bug / 建议 / 平衡 · 默认每 24 小时可提交 1 条 · 花 ' + 10000 + ' 金币可立即结束冷却</span></h2>';
     const fb = st.feedback || {};
-    const status = fb.status || { ready: true, remainingMs: 0, nextAt: 0, skipCost: 10000 };
+    const status = fb.status || { ready: true, remainingMs: 0, nextAt: 0, skipCost: 10000, cdHours: 24 };
+    // CD 时长与清空费用由服务器下发（管理后台可配）
+    const cdHours = status.cdHours != null ? status.cdHours : 24;
+    const cdText = cdHours >= 1 ? (cdHours + ' 小时') : Math.round(cdHours * 60) + ' 分钟';
+    const panel = el('div', 'panel wide feedback-panel');
+    panel.innerHTML = '<h2>📮 反馈意见 <span class="subtitle">Bug / 建议 / 平衡 · 每 ' + cdText + ' 可提交 1 条 · 花 ' + status.skipCost + ' 金币可立即结束冷却</span></h2>';
 
     // 冷却状态条
     const banner = el('div', 'fb-banner' + (status.ready ? ' ready' : ' cooling'));
     if (status.ready) {
-      banner.innerHTML = '✅ 现在可以提交反馈（提交后进入 24 小时冷却）';
+      banner.innerHTML = '✅ 现在可以提交反馈（提交后进入 ' + cdText + ' 冷却）';
     } else {
-      const cost = status.skipCost || 10000;
+      const cost = status.skipCost;
       const canPay = (st.player.coins || 0) >= cost;
       banner.innerHTML = '⏳ 冷却中 · 剩余 <b>' + fmtRemain(status.remainingMs) + '</b>';
       const skip = el('button', 'mini primary-mini' + (canPay ? '' : ' locked'), '💸 花 ' + cost + ' 金币立即结束 CD');
@@ -2336,7 +2430,7 @@ window.UI = (function () {
     trade: ['trade', 'assets', 'codex'],
     codex: ['codex', 'groundcfg'],
     records: ['records'],
-    feedback: [],                                        // 反馈页：只随操作重绘（冷却倒计时另有定时器）
+    feedback: ['feedback'],                              // 反馈页：fetchFeedback 到达后重绘（CD/费用随服务器下发）
     mall: [], collect: [],
   };
   function refreshAll(scope) {

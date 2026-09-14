@@ -318,6 +318,29 @@ async function waitReady() {
   check('玩家看到状态为已完成', fbPlayer.data.mine.find(f => f.id === fbItem.id).status === 'done');
   check('非管理员改状态被拒 403', (await POST(B + '/api/admin/feedback/status', { token: TK2, id: fbItem.id, status: 'accepted' })).status === 403);
 
+  // ---------- 9e. 反馈规则（CD 时长 / 清空费用） ----------
+  section('9e. 反馈规则配置');
+  const fbCfg0 = await GET(B + '/api/admin/feedback?token=' + TOKA);
+  check('反馈列表返回默认规则（24h / 10000）', fbCfg0.data.cfg && fbCfg0.data.cfg.cdHours === 24 && fbCfg0.data.cfg.skipCost === 10000, JSON.stringify(fbCfg0.data.cfg));
+  check('负数 CD 被拒 400', (await POST(B + '/api/admin/feedback/cfg', { token: TOKA, cdHours: -1 })).status === 400);
+  check('负数费用被拒 400', (await POST(B + '/api/admin/feedback/cfg', { token: TOKA, skipCost: -5 })).status === 400);
+  check('非管理员改规则被拒 403', (await POST(B + '/api/admin/feedback/cfg', { token: TK2, cdHours: 1 })).status === 403);
+  check('设置 CD=2h / 费用=500', (await POST(B + '/api/admin/feedback/cfg', { token: TOKA, cdHours: 2, skipCost: 500 })).status === 200);
+  // 玩家端状态应反映新规则
+  const rgFb2 = await POST(B + '/api/register', { username: 'fb_ruler', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  const stNew = (await GET(B + '/api/feedback?token=' + rgFb2.data.token)).data.status;
+  check('玩家端 status 返回新规则', stNew.skipCost === 500 && stNew.cdHours === 2, JSON.stringify(stNew));
+  // 提交后 CD 约 2 小时
+  await POST(B + '/api/feedback/submit', { token: rgFb2.data.token, text: '规则测试' });
+  const stAfter = (await GET(B + '/api/feedback?token=' + rgFb2.data.token)).data.status;
+  check('提交后 CD 约 2 小时', Math.abs(stAfter.remainingMs / 3600000 - 2) < 0.05, String(stAfter.remainingMs / 3600000));
+  // 清空 CD 按新费用扣费
+  await POST(B + '/api/dev/seed', { token: rgFb2.data.token, coins: 1000 });
+  const skipNew = await POST(B + '/api/feedback/skip', { token: rgFb2.data.token });
+  check('按新费用（500）清空 CD', skipNew.status === 200 && skipNew.data.coins === 500, JSON.stringify({ s: skipNew.status, coins: skipNew.data.coins }));
+  // 恢复默认，避免影响后续用例
+  await POST(B + '/api/admin/feedback/cfg', { token: TOKA, cdHours: 24, skipCost: 10000 });
+
 
   // ---------- 10. 账号管理（改密码 / 改显示名 / 调整金币） ----------
   section('10. 账号管理');

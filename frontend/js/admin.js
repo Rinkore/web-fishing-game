@@ -171,11 +171,31 @@ window.Admin = (function () {
   function renderFeedback() {
     const main = $('main');
     main.innerHTML = '<h2>📮 玩家反馈</h2><div class="hint" style="margin-bottom:12px">玩家提交的 Bug / 建议 / 平衡反馈，按时间倒序。</div>' +
+      '<div class="panel"><h3 style="margin-top:0">⚙ 反馈规则</h3>' +
+      '<div class="mgr-row"><label>CD 时长</label><input id="fbc-cd" class="ipt mk-num" type="number" min="0" max="8760" step="0.5" />' +
+      '<span class="hint">小时（0 = 不限制）</span>' +
+      '<label class="hint" style="margin-left:12px">清空 CD 费用</label><input id="fbc-cost" class="ipt mk-num" type="number" min="0" step="1" />' +
+      '<span class="hint">金币</span>' +
+      '<button class="btn primary" id="fbc-save">保存</button><span id="fbc-state" class="hint"></span></div></div>' +
       '<div id="fb-body" class="panel">加载中…</div>';
+    $('fbc-save').onclick = function () {
+      const cdHours = Number($('fbc-cd').value);
+      const skipCost = Number($('fbc-cost').value);
+      if (!isFinite(cdHours) || cdHours < 0 || cdHours > 8760) { toast('CD 时长需在 0 - 8760 小时之间', true); return; }
+      if (!isFinite(skipCost) || skipCost < 0) { toast('清空 CD 费用需为非负整数', true); return; }
+      adminApi('POST', '/api/admin/feedback/cfg', { token: token, cdHours: cdHours, skipCost: skipCost }).then(function (r) {
+        if (!r.ok) { $('fbc-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+        $('fbc-cd').value = r.data.cfg.cdHours; $('fbc-cost').value = r.data.cfg.skipCost;
+        $('fbc-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
+        toast('反馈规则已保存');
+      });
+    };
     adminApi('GET', '/api/admin/feedback?token=' + encodeURIComponent(token)).then(function (r) {
       if (view !== 'feedback') return;
       const box = $('fb-body');
       if (!r.ok) { box.textContent = (r.data && r.data.error) || '加载失败'; return; }
+      // 回填反馈规则
+      if (r.data.cfg) { $('fbc-cd').value = r.data.cfg.cdHours; $('fbc-cost').value = r.data.cfg.skipCost; }
       const list = r.data.feedback || [];
       if (!list.length) { box.innerHTML = '<div class="hint">暂无反馈。</div>'; return; }
       const KIND = { bug: '🐛 Bug', idea: '💡 建议', balance: '⚖️ 平衡', other: '💬 其他' };

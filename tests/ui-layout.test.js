@@ -249,6 +249,29 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const qtyKept = await p1.inputValue('.shop-qtybar .sqb-num');
     check('出售数量跨页面保留（全局生效）', qtyKept === '3', qtyKept);
 
+    // —— 背包：组件分类按「词条 + 数值范围」分组 ——
+    // 预先投喂两件同底材同品质不同数值 + 一件不同词条组合的组件
+    const compIds = [
+      D_DATA.instanceId('rod_bamboo', 'rare', [{ type: 'speed', value: 12 }, { type: 'size', value: -3 }]),
+      D_DATA.instanceId('rod_bamboo', 'rare', [{ type: 'speed', value: 9 }, { type: 'size', value: -5 }]),
+      D_DATA.instanceId('reel_electric', 'common', [{ type: 'speed', value: 25 }]),
+    ];
+    for (const cid of compIds) await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: cid } });
+    await clickNav(p1, '背包');
+    await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('组件')); if (b) b.click(); });
+    await sleep(500);
+    const compGroup = await p1.evaluate(() => ({
+      heads: Array.from(document.querySelectorAll('.inv-group-head')).map(h => h.textContent.replace(/\s+/g, ' ').trim()),
+      rows: document.querySelectorAll('.inv-comp-row').length,
+      ranges: document.querySelectorAll('.inv-comp-row .aff-rng').length,
+    }));
+    check('组件分类按词条+词条组合分组显示', compGroup.heads.length >= 2 && compGroup.rows >= 3, JSON.stringify(compGroup));
+    check('组内每行标注词条数值范围', compGroup.ranges > 0, JSON.stringify(compGroup));
+    // 同底材同品质不同数值应归入同一组（组标题只出现一次「竹制短竿」稀有）
+    check('同底材同品质同词条组合归为一组', compGroup.heads.filter(h => h.includes('竹制短竿') && h.includes('稀有')).length === 1, JSON.stringify(compGroup.heads));
+    await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('全部')); if (b) b.click(); });
+    await sleep(300);
+
     // —— 背包：批量出售 -> 子窗口（数字 + 滑块 + 趋势图） ——
     await clickNav(p1, '背包');
     check('背包行有「批量出售」按钮', (await p1.textContent('.inv-page')).includes('批量出售'));
