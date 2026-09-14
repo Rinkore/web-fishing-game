@@ -37,6 +37,8 @@ body {
 .player-status .pname { font-weight: 700; }
 .player-status .meta { color: var(--muted); }
 .player-status .coins { color: var(--big); font-weight: 600; }
+/* 与服务器的实时连接断开（EventSource 自动重连中）：红色提示，恢复后自动消失 */
+.player-status .conn-off { color: #f87171; font-weight: 600; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
 .dot.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
 .dot.idle { background: var(--muted); }

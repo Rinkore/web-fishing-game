@@ -1162,6 +1162,39 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('标签页标题含版本号', verUi.title.indexOf(verUi.local) >= 0, verUi.title);
     check('登录页副标题含版本号', verUi.authSub.indexOf(verUi.local) >= 0, verUi.authSub);
 
+    // 热更新：SSE 重连带回服务器版本号 → 客户端发现自己是旧前端就强刷（同版本不刷、已刷过的不再刷）
+    const pVer = await ctx.newPage();
+    await login(pVer, tokS);
+    const verGuard = await pVer.evaluate(() => {
+      const local = window.GameData.VERSION;
+      const same = window.Net.reloadForVersion(local);            // 版本一致 → 不刷
+      try { sessionStorage.setItem('fishing_version_reload', 'v0.0.0-seen'); } catch (e) {}
+      const seen = window.Net.reloadForVersion('v0.0.0-seen');    // 该版本已刷过 → 不再刷（防死循环）
+      return { local: local, same: same, seen: seen };
+    });
+    check('版本一致时不触发强刷', verGuard.same === false, JSON.stringify(verGuard));
+    check('同一服务器版本只刷一次（防死循环）', verGuard.seen === false, JSON.stringify(verGuard));
+    // 真正触发一次：导航会重建页面，所以单独一步、不依赖返回值
+    await pVer.evaluate(() => { window.Net.reloadForVersion('v0.0.0-probe'); }).catch(() => {});
+    const jumped = await waitFor(() => /v=v0\.0\.0-probe/.test(pVer.url()), { timeout: 8000 }).catch(() => false);
+    check('服务器版本不同时强刷并带 cache-bust 参数（热更新）', jumped === true, pVer.url());
+    await pVer.close();
+
+    // 连接状态：断线时顶栏给提示，恢复后自动消失（EventSource 会自动重连，不刷新页面）
+    const connBadge = await p1.evaluate(() => {
+      const prev = window.Net.connState;
+      window.Net.connState = function () { return false; };
+      window.UI.renderTopbar();
+      const off = !!document.querySelector('.player-status .conn-off');
+      window.Net.connState = prev;
+      window.UI.renderTopbar();
+      const cleared = !!document.querySelector('.player-status .conn-off');
+      return { off: off, cleared: cleared, ok: window.Net.connState() };
+    });
+    check('断线时顶栏显示提示', connBadge.off === true, JSON.stringify(connBadge));
+    check('重连后提示消失', connBadge.cleared === false && connBadge.ok === true, JSON.stringify(connBadge));
+    check('暴露连接状态与轮询接口（供界面与探测使用）', await p1.evaluate(() => typeof window.Net.connState === 'function' && typeof window.Net.probeServer === 'function'));
+
     // 移动端窄屏
     section('窄屏自适应');
     const p3 = await ctx.newPage();

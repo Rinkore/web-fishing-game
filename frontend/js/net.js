@@ -10,6 +10,7 @@ window.Net = (function () {
   function state() { return window.Engine.state; }
   let me = null;
   let es = null;
+  let errTimer = null;   // SSE 断线确认定时器（见 connectStream 的 onerror）
 
   // ---- API 基地址（前后端分离）----
   // config.js 的 API_BASE：'auto'（默认）/ '' 同源 / 显式地址。
@@ -56,29 +57,74 @@ window.Net = (function () {
   function logout() { return authed('/api/logout', {}); }
   function fetchMe(token) { return apiFetch('GET', '/api/me?token=' + encodeURIComponent(token)); }
 
-  // ---- 版本守卫 ----
-  // 服务器升级后，浏览器缓存里的旧前端可能请求到不兼容的新接口而「进不去新版页面」。
-  // 这里在启动时比对本地 data.js 版本与 /api/version：不一致则带 cache-bust 参数强刷一次。
-  // 用 sessionStorage 记录本次会话是否已刷新，避免服务器版本异常时无限刷新死循环。
+  // ---- 版本守卫 / 热更新 ----
+  // 服务器升级 = 换代码 + 重启：页面里的旧前端会遇到不兼容的新接口。这里用三条路径发现版本变化，
+  // 发现后带 cache-bust 参数强刷一次（拿到新前端），实现「服务器更新后客户端自动跟上」：
+  //   ① 启动时 guardVersion()
+  //   ② SSE 收到 init——重启必然断开 SSE，浏览器几秒内自动重连，init 会把新版本号带回来（最快的一条）
+  //   ③ 兜底轮询（5 分钟一次）＋ 标签页回到前台时补一次（后台标签页的定时器会被浏览器节流）
+  // sessionStorage 记录「已为哪个服务器版本刷过」，同一版本只刷一次，避免异常时无限刷新。
   const RELOAD_FLAG = 'fishing_version_reload';
+  function localVersion() { return (window.GameData && window.GameData.VERSION) || ''; }
+  function reloadForVersion(serverVersion) {
+    if (!serverVersion || serverVersion === localVersion()) return false;
+    let already = false;
+    try { already = sessionStorage.getItem(RELOAD_FLAG) === serverVersion; } catch (e) {}
+    if (already) return false; // 本次会话已为该版本刷过，避免死循环
+    try { sessionStorage.setItem(RELOAD_FLAG, serverVersion); } catch (e) {}
+    // 用带时间戳的 URL 重新加载，绕过 HTML/JS 缓存
+    const loc = window.location;
+    const bust = (loc.search.indexOf('?') >= 0 ? loc.search + '&' : '?') + 'v=' + encodeURIComponent(serverVersion) + '&t=' + Date.now();
+    loc.replace(loc.pathname + bust + loc.hash);
+    return true; // 已触发刷新
+  }
+  // 顺带同步服务器的组件生成配置 / 抛竿间隔与全服钓速（展示与本地 roll 保持一致）
+  function applyServerCfg(d) {
+    if (!d) return;
+    if (d.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(d.componentCfg);
+    if (d.castCfg) state().castCfg = d.castCfg;
+  }
   function guardVersion() {
-    if (!window.GameData || !window.GameData.VERSION) return Promise.resolve(false);
+    if (!localVersion()) return Promise.resolve(false);
     return apiFetch('GET', '/api/version').then(function (r) {
       if (!r || !r.ok || !r.data || !r.data.version) return false;
-      // 顺带同步服务器的组件生成配置（数值范围/词条概率/roll 模型），供前端展示与本地 roll 一致
-      if (r.data.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(r.data.componentCfg);
-      if (r.data.castCfg) state().castCfg = r.data.castCfg; // 后台抛竿间隔/全服钓速（顶部状态栏展示用）
-      if (r.data.version === window.GameData.VERSION) return false;
-      let already = false;
-      try { already = sessionStorage.getItem(RELOAD_FLAG) === r.data.version; } catch (e) {}
-      if (already) return false; // 本次会话已尝试过刷新，避免死循环
-      try { sessionStorage.setItem(RELOAD_FLAG, r.data.version); } catch (e) {}
-      // 用带时间戳的 URL 重新加载，绕过 HTML/JS 缓存
-      const loc = window.location;
-      const bust = (loc.search.indexOf('?') >= 0 ? loc.search + '&' : '?') + 'v=' + encodeURIComponent(r.data.version) + '&t=' + Date.now();
-      loc.replace(loc.pathname + bust + loc.hash);
-      return true; // 已触发刷新
+      applyServerCfg(r.data);
+      return reloadForVersion(r.data.version);
     }).catch(function () { return false; });
+  }
+
+  // ---- 连接健康 + 兜底版本轮询 ----
+  // 断线本身不刷新页面：EventSource 会自己重连，而服务器没起来时刷新只会更糟（可能反复刷成白屏）。
+  // 只有「版本变了」才强刷；断线只作为界面提示，重连成功后自动消失。
+  const VERSION_POLL_MS = 5 * 60 * 1000;
+  const CONN_FAILS_TO_OFFLINE = 2;  // 连续失败几次才算断线（避开偶发抖动）
+  let verTimer = null;
+  let probeFails = 0;
+  let connOk = true;
+  function setConn(ok) {
+    if (connOk === ok) return;
+    connOk = ok;
+    if (window.UI && window.UI.onConnChange) window.UI.onConnChange(ok);
+  }
+  function connState() { return connOk; }
+  function probeServer() {
+    return apiFetch('GET', '/api/version').then(function (r) {
+      if (!r || !r.ok) throw new Error('probe failed');
+      probeFails = 0;
+      setConn(true);
+      applyServerCfg(r.data);
+      return reloadForVersion(r.data.version); // 版本不同 → 强刷（刷新后自然重建连接）
+    }).catch(function () {
+      probeFails++;
+      if (probeFails >= CONN_FAILS_TO_OFFLINE) setConn(false);
+      return false;
+    });
+  }
+  function startVersionWatch() {
+    if (verTimer) return;
+    verTimer = setInterval(function () { probeServer(); }, VERSION_POLL_MS);
+    // 后台标签页里定时器会被节流到分钟级甚至更久，切回前台时补一次，让「回到页面」即时可用
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) probeServer(); });
   }
 
   // ---- 业务指令（自动带 token；结果一律以服务器响应/SSE 推送为准） ----
@@ -176,6 +222,7 @@ window.Net = (function () {
     me = { id: (profile.username || '').toLowerCase(), username: profile.username, name: profile.name, token: token, admin: !!profile.admin };
     state().me = me;
     connectStream();
+    startVersionWatch();
   }
 
   // 把服务器 presence 同步到本地展示状态（顶栏/渔场实况/状态条都以服务器为准）
@@ -201,6 +248,11 @@ window.Net = (function () {
         const S = state();
         const ui = window.UI;
         if (m.type === 'init') {
+          // 服务器重启换版本后 SSE 会自动重连并带回新版本号：这是「热更新」最快的一条路径
+          // （通常几秒内），比定时轮询快得多。刷新后本条连接自然被替换，无需额外处理。
+          if (reloadForVersion(m.version)) return;
+          if (errTimer) { clearTimeout(errTimer); errTimer = null; }
+          setConn(true);
           S.players = m.players || [];
           syncSelfFromPresence(S.players);
           S.feed = m.feed || [];
@@ -335,7 +387,12 @@ window.Net = (function () {
           if (ui) ui.refreshAll('groundcfg');
         }
       };
-      es.onerror = function () { /* 断线静默，EventSource 自动重连 */ };
+      // 断线静默：EventSource 会自动重连。延迟几秒再置为「断开」，
+      // 避免重连过程中的瞬时抖动把提示闪出来；收到 init 会立刻恢复为「已连接」。
+      es.onerror = function () {
+        if (errTimer) clearTimeout(errTimer);
+        errTimer = setTimeout(function () { setConn(false); }, 4000);
+      };
     } catch (e) { /* EventSource 不可用 */ }
   }
   // 用服务器下发的钓场目录原位替换本地 GROUNDS（保持数组引用，spotsOf 等按引用读取即刻生效）
@@ -348,7 +405,8 @@ window.Net = (function () {
 
   return {
     register: register, login: login, logout: logout, fetchMe: fetchMe, setAuth: setAuth,
-    guardVersion: guardVersion,
+    guardVersion: guardVersion, startVersionWatch: startVersionWatch,
+    probeServer: probeServer, connState: connState, reloadForVersion: reloadForVersion,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,

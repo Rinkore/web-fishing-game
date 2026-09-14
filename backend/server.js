@@ -1521,6 +1521,9 @@ const server = http.createServer(function (req, res) {
       // 否则前端会一直用 data.js 里的硬编码默认值，导致图鉴产地与实际掉落不符。
       groundCfg: D.GROUNDS,
       codex: rec.codex || {}, catchCount: rec.catchCount || 0,
+      // 服务器版本：客户端据此判断自己是不是旧前端。重启换版本后 SSE 会自动重连，
+      // 这条 init 就是「服务器已更新」的最快信号（比定时轮询快得多）。
+      version: D.VERSION,
     }) + '\n\n');
     sendPlayersAll();
     const hb = setInterval(function () { try { res.write(': ping\n\n'); } catch (e) {} }, 25000);

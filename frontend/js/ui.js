@@ -432,10 +432,18 @@ window.UI = (function () {
       (biteRateShort() ? '<span class="meta bite" title="当前钓点实时上鱼率：钓点独立配置优先，否则由后台「公式管理」的上钩公式决定">🐟 ' + esc(biteRateShort()) + '</span>' : '') +
       '<span class="meta">位置：' + esc(loc) + '</span>' +
       '<span class="meta">在线：' + est.players + ' 人</span>' +
+      // 与服务器的实时连接断了：EventSource 会自动重连，这里只提示，不刷新页面
+      (connOk() ? '' : '<span class="meta conn-off" title="与服务器的实时连接已断开，正在自动重连；期间显示的数据可能不是最新。服务器若已更新，重连后会自动刷新到新版本。">⚠ 连接断开 · 重连中</span>') +
       '<span class="meta coins">💰 ' + p.coins + '</span>';
   }
   // 顶栏在线数用小工具（避免每次手写）
   const est = { get players() { return S().players.length; } };
+  // 连接状态（由 net.js 的探测/SSE 维护）：断线时顶栏给提示，恢复后自动消失
+  function connOk() { return !window.Net || !window.Net.connState || window.Net.connState(); }
+  function onConnChange(ok) {
+    renderTopbar();
+    if (ok) toast('已重新连接服务器');
+  }
 
   // ---- 钓鱼视图 ----
   // ---- 钓速 / 上鱼率信息（顶部状态栏与钓鱼页共用） ----
@@ -3759,6 +3767,7 @@ window.UI = (function () {
     toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners, onBannerStop: onBannerStop,
     addLog: addLog, onSubAlert: onSubAlert, resetBanners: resetBanners,
     renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,
+    onConnChange: onConnChange,
     getView: function () { return currentView; },
     setView: function (v) { currentView = v; },
   };
