@@ -68,24 +68,29 @@ window.UI = (function () {
   let recordBannerTimer = null;
   let bannerQueue = [];      // 待播放队列 [{text, duration}]
   let bannerPlaying = false;
+  let bannerRunId = 0;       // 每次 playMarquee 递增；旧轨道的动画事件作废，避免取消新横幅
 
   // 播放单条滚动内容（duration 秒；到点或动画结束即收起并回调）
   function playMarquee(text, duration, done) {
     const b = $('record-banner');
     if (!b) { if (done) done(); return; }
     if (recordBannerTimer) { clearTimeout(recordBannerTimer); recordBannerTimer = null; }
+    const runId = ++bannerRunId;
     const rep = esc(text) + '　　✦　　';
     b.innerHTML = '';
     const track = el('span', 'rb-track', rep + rep + rep + rep + rep);
     b.appendChild(track);
     b.classList.add('show');
+    document.body.classList.add('banner-open');
     let finished = false;
     function finish() {
-      if (finished) return;
+      // 已被后来的横幅取代：忽略这次（旧轨道被移除时也会触发 animationcancel）
+      if (runId !== bannerRunId || finished) return;
       finished = true;
       if (recordBannerTimer) { clearTimeout(recordBannerTimer); recordBannerTimer = null; }
       b.classList.remove('show');
-      recordBannerTimer = setTimeout(function () { b.innerHTML = ''; if (done) done(); }, 400);
+      document.body.classList.remove('banner-open');
+      recordBannerTimer = setTimeout(function () { if (runId === bannerRunId) b.innerHTML = ''; if (done) done(); }, 400);
     }
     // 动画时长 = 按内容宽度推算（约 120px/s），保证字全部滚出屏幕；管理页可指定 duration 作为最短时长
     const w = Math.max(600, track.offsetWidth || 1200);
@@ -325,9 +330,11 @@ window.UI = (function () {
         '<div class="gc-desc">' + esc(g.desc) + '</div>' + spotsHtml;
       groundWrap.appendChild(card);
     });
-    groundWrap.addEventListener('click', function (ev) {
-      const t = ev.target;
-      if (!t || !t.classList.contains('spot-btn')) return;
+    // 钓点选择：主路径用 pointerdown（上鱼广播会整页重绘，若在 mouseup 前重绘则 click 会丢失，
+    // 表现为「切换钓点被上鱼卡住」；pointerdown 一定发生在存活 DOM 上）。
+    // 同时保留 click 以支持键盘激活，并用时间戳避免同一次操作被处理两次。
+    let lastSpotPointerTs = 0;
+    function chooseSpot(t) {
       const gid = t.getAttribute('data-g');
       const sid = t.getAttribute('data-s');
       const atSame = st.fishing.active && st.player.groundId === gid && st.player.spotId === sid;
@@ -346,6 +353,19 @@ window.UI = (function () {
         else { toast(wasFishing ? '已切换钓点，服务器每 ' + (st.fishingInterval / 1000).toFixed(2) + ' 秒抛一竿' : '已开始自动钓鱼，服务器每 ' + (st.fishingInterval / 1000).toFixed(2) + ' 秒抛一竿'); }
         renderTopbar(); renderNav(); renderFishing();
       });
+    }
+    groundWrap.addEventListener('pointerdown', function (ev) {
+      const t = ev.target && ev.target.closest ? ev.target.closest('.spot-btn') : null;
+      if (!t) return;
+      lastSpotPointerTs = Date.now();
+      chooseSpot(t);
+    });
+    groundWrap.addEventListener('click', function (ev) {
+      // pointerdown 已处理（鼠标/触摸）；这里只兜底键盘激活
+      if (Date.now() - lastSpotPointerTs < 700) return;
+      const t = ev.target && ev.target.closest ? ev.target.closest('.spot-btn') : null;
+      if (!t) return;
+      chooseSpot(t);
     });
     left.appendChild(groundWrap);
 
@@ -2211,6 +2231,8 @@ window.UI = (function () {
         // 清空与账号绑定的临时状态与横幅/闪烁
         if (window.Engine && window.Engine.resetTransient) window.Engine.resetTransient();
         bannerQueue = []; seenBannerIds = {}; updateFaviconBlink(false);
+        const rb = $('record-banner'); if (rb) { rb.classList.remove('show'); rb.innerHTML = ''; }
+        document.body.classList.remove('banner-open');
         currentView = 'fishing';
         showAuth();
         authMsg('已退出登录');

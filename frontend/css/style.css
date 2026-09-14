@@ -385,8 +385,8 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .cs-box { border: 1px solid var(--line); border-radius: 12px; padding: 14px; text-align: center; background: rgba(255,255,255,.03); }
 .cs-box b { display: block; font-size: 24px; font-weight: 800; color: var(--accent); }
 .cs-box span { font-size: 12px; color: var(--muted); }
-.codex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
-.codex-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.02); }
+.codex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; grid-auto-rows: 1fr; }
+.codex-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.02); display: flex; flex-direction: column; }
 /* 未解锁卡片只压暗自身内容：容器透明度会让内部详情浮层连带变透明、与背景重叠 */
 .codex-cell:not(.got) > *:not(.codex-detail) { opacity: .5; }
 .codex-cell.got { background: rgba(255,255,255,.05); border-color: var(--accent2); }
@@ -436,6 +436,9 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
   animation: rb-marquee 12s linear 1 both;
 }
 @keyframes rb-marquee { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+/* 横幅显示时把页面整体下移，避免遮挡顶栏与内容（body.banner-open 由 JS 切换） */
+body.banner-open { padding-top: 34px; }
+body.banner-open .topbar { top: 34px; }
 
 /* ---- 系统商店：出售数量控制条 ---- */
 .shop-qtybar {
@@ -744,7 +747,8 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 
 /* ---- 图鉴详情浮层 ---- */
 .codex-cell { position: relative; }
-.codex-grid { align-items: start; }
+.codex-grid { align-items: stretch; } /* 等高：让卡片撑满等高行 */
+.codex-cell .cx-spots { margin-top: auto; } /* 产地行贴底，等高时不显突兀 */
 .codex-cell.got { cursor: pointer; }
 .codex-cell.got:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .codex-detail {

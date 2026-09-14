@@ -316,6 +316,10 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       return mismatch;
     });
     check('图鉴卡片产地处数与目录一致', spotCheck === null, JSON.stringify(spotCheck));
+    // 图鉴框体等高：所有卡片高度一致（对齐最高的那张）
+    const codexHeights = await p1.$$eval('.codex-cell', els => els.map(e => Math.round(e.getBoundingClientRect().height)));
+    const uniqH = Array.from(new Set(codexHeights));
+    check('图鉴所有卡片等高', uniqH.length === 1, JSON.stringify(uniqH.slice(0, 6)) + ' n=' + codexHeights.length);
     check('组件图鉴卡展示底材词缀与数值范围', (await p1.$$('.codex-cell.k-component .cx-pool')).length > 0);
     // 图鉴详情改为子窗口
     await p1.evaluate(() => { const c = document.querySelector('.codex-cell'); if (c) c.click(); });
@@ -526,6 +530,44 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       if (bad) { mobBad = v; break; }
     }
     check('手机端各页面均无横向溢出', mobBad === null, mobBad ? ('溢出页：' + mobBad) : '');
+
+    // —— 切换钓点不被上鱼卡住（pointerdown 主路径）+ 点 ⚡ 子元素也能选中 ——
+    section('切换钓点');
+    await clickNav(p1, '钓鱼');
+    await sleep(300);
+    const spotSwitch = await p1.evaluate(() => {
+      const btn = n => Array.from(document.querySelectorAll('.spot-btn')).find(x => x.textContent.includes(n));
+      const fire = (n) => { const b = btn(n); if (b) b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); return !!b; };
+      fire('老旧码头');
+      const s1 = window.Engine.state.player.spotId;
+      fire('深水区');
+      const s2 = window.Engine.state.player.spotId;
+      // 点击 ⚡ 子元素（用当前页第一个带标记的钓点）
+      let childSpot = null;
+      const marked = Array.from(document.querySelectorAll('.spot-btn .spot-buff-mark'));
+      if (marked.length) {
+        const name = marked[0].closest('.spot-btn').textContent.replace('⚡', '').trim();
+        marked[0].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        childSpot = { name, sel: window.Engine.state.selected.spotId };
+      }
+      return { s1, s2, childSpot };
+    });
+    check('pointerdown 可开始钓鱼', spotSwitch.s1 === 'dock', JSON.stringify(spotSwitch));
+    check('pointerdown 可切换钓点', spotSwitch.s2 === 'deep', JSON.stringify(spotSwitch));
+    if (spotSwitch.childSpot) check('点中 ⚡ 子元素也能选中该钓点', !!spotSwitch.childSpot.sel, JSON.stringify(spotSwitch.childSpot));
+
+    // —— 横幅不遮挡顶栏与内容 ——
+    section('横幅遮挡');
+    await p1.evaluate(() => window.UI.showRecordBanner({ who: '测试', name: '黄金枪鱼', size: 888 }));
+    await sleep(500);
+    const bannerBox = await p1.evaluate(() => {
+      const b = document.getElementById('record-banner').getBoundingClientRect();
+      const tb = document.querySelector('.topbar').getBoundingClientRect();
+      const shown = document.getElementById('record-banner').classList.contains('show');
+      const pad = getComputedStyle(document.body).paddingTop;
+      return { shown, bannerBottom: Math.round(b.bottom), topbarTop: Math.round(tb.top), pad };
+    });
+    check('横幅显示时不遮挡顶栏', bannerBox.shown && bannerBox.topbarTop >= bannerBox.bannerBottom - 1, JSON.stringify(bannerBox));
 
     check('全程无页面错误', errs.length === 0, errs.join(' | '));
 
