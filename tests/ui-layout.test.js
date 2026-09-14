@@ -300,6 +300,22 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('图鉴渲染全部条目', cells.length === 75, String(cells.length));
     check('图鉴已解锁钓到的鱼', got.length >= 6, String(got.length) + ' 已解锁');
     check('图鉴汇总显示收集进度', /\d+ \/ \d+/.test(await p1.textContent('.codex-summary')));
+    // 产地：卡片与详情窗显示的处数应与 GameData.spotsOf 一致（防止与服务端目录脱节）
+    const spotCheck = await p1.evaluate(() => {
+      const cells = Array.from(document.querySelectorAll('.codex-cell.k-fish'));
+      let mismatch = null;
+      for (const c of cells) {
+        const name = c.querySelector('.cx-name').textContent.trim();
+        const item = window.GameData.allItems().find(i => i.name === name && i.kind === 'fish');
+        if (!item) continue;
+        const expect = window.GameData.spotsOf(item.id).length;
+        const m = c.textContent.match(/产地\s*(\d+)\s*处/);
+        const shown = m ? Number(m[1]) : 0;
+        if (shown !== expect) { mismatch = { name, shown, expect }; break; }
+      }
+      return mismatch;
+    });
+    check('图鉴卡片产地处数与目录一致', spotCheck === null, JSON.stringify(spotCheck));
     check('组件图鉴卡展示底材词缀与数值范围', (await p1.$$('.codex-cell.k-component .cx-pool')).length > 0);
     // 图鉴详情改为子窗口
     await p1.evaluate(() => { const c = document.querySelector('.codex-cell'); if (c) c.click(); });

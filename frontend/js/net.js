@@ -181,6 +181,9 @@ window.Net = (function () {
           S.records = m.records || {};
           if (m.small) S.smallRecords = m.small;
           S.groundCounts = m.grounds || {};
+          // 钓场目录（含管理后台的掉落池/增益/锁定覆盖）：原位替换 data.js 的默认值，
+          // 保证图鉴产地与渔场页展示与实际掉落一致
+          if (m.groundCfg) applyGroundCfg(m.groundCfg);
           S.trade = m.trade || null;
           if (m.codex) S.codex = m.codex;
           if (m.catchCount != null) S.catchCount = m.catchCount;
@@ -255,14 +258,19 @@ window.Net = (function () {
         } else if (m.type === 'groundcfg') {
           // 管理后台修改了钓场/钓点配置：原位替换 GROUNDS 内容（保持数组引用），
           // 渔场页/图鉴产地/钓场锁定状态随即与服务器一致
-          const G = window.GameData.GROUNDS;
-          G.length = 0;
-          (m.grounds || []).forEach(function (g) { G.push(g); });
+          applyGroundCfg(m.grounds);
           if (ui) ui.refreshAll('groundcfg');
         }
       };
       es.onerror = function () { /* 断线静默，EventSource 自动重连 */ };
     } catch (e) { /* EventSource 不可用 */ }
+  }
+  // 用服务器下发的钓场目录原位替换本地 GROUNDS（保持数组引用，spotsOf 等按引用读取即刻生效）
+  function applyGroundCfg(list) {
+    const G = window.GameData.GROUNDS;
+    if (!G || !Array.isArray(list)) return;
+    G.length = 0;
+    list.forEach(function (g) { G.push(g); });
   }
 
   return {

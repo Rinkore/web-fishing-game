@@ -118,6 +118,10 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const cliB = sse(tokB, P1, sinkB);
   await sleep(400);
   check('A 连接后收到 init 快照', sinkA.some(m => m.type === 'init' && m.you === 'tester_a'));
+  // 图鉴产地依赖钓场目录：init 必须下发完整钓场目录（含管理后台覆盖），否则新客户端用硬编码默认值
+  const initMsg = sinkA.find(m => m.type === 'init');
+  check('init 快照携带钓场目录（4 钓场）', !!(initMsg && Array.isArray(initMsg.groundCfg) && initMsg.groundCfg.length === 4), initMsg ? String(initMsg.groundCfg && initMsg.groundCfg.length) : 'no init');
+  check('init 钓场目录含掉落池条目', !!(initMsg && initMsg.groundCfg[0].spots[0].pool.length > 0));
   check('非法钓点被拒 400', (await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'stillwater', spotId: 'not-exist' })).status === 400);
   check('活动钓场（锁定）被拒 400', (await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'frostmoon', spotId: 'ice' })).status === 400);
   const fs1 = await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'stillwater', spotId: 'dock' });

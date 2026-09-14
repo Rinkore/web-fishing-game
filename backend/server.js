@@ -1029,6 +1029,9 @@ const server = http.createServer(function (req, res) {
       type: 'init', you: id, players: Array.from(players.values()), feed: feed,
       shop: shopSnapshot(), market: world.listings, records: world.bigRecords, small: world.smallRecords,
       grounds: groundCounts(), trade: myTradeView(id),
+      // 钓场目录（含管理后台保存的掉落池/增益/锁定覆盖）：新客户端连接时同步，
+      // 否则前端会一直用 data.js 里的硬编码默认值，导致图鉴产地与实际掉落不符。
+      groundCfg: D.GROUNDS,
       codex: rec.codex || {}, catchCount: rec.catchCount || 0,
     }) + '\n\n');
     sendPlayersAll();
