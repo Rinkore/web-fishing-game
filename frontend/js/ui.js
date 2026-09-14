@@ -45,7 +45,7 @@ window.UI = (function () {
   // 现价：优先系统商店行情，无行情时退回基准价（模块级，供各视图与子窗口共用）
   function unitPriceOf(id) { const s = S().shop && S().shop[id]; return s ? s.price : itemMeta(id).price; }
   // ---- 组件展示辅助 ----
-  // 品质配色类（配色规范：普通=白 / 稀有=黄 / 史诗=紫，见 style.css 的 .q-*/.r-* 与 data.js QUALITY 注释）：
+  // 品质配色类（配色规范：普通=灰蓝 / 稀有=黄 / 史诗=紫，见 style.css 的 .q-*/.r-* 与 data.js QUALITY 注释）：
   // 组件满词条在背包/市集/装备弹窗升为金色；大鱼是渔获档位而非品质，金色 + 👑 皇冠前缀（.r-big::before）
   function qualityClass(meta) {
     if (!meta) return 'r-common';
