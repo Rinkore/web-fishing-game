@@ -624,6 +624,35 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     });
     await sleep(900);
     check('提交后「我的提供」显示所选物品', (await p1.textContent('.trade-side.mine')).includes('黄金锦鲤'));
+
+    // 提供栏展示所选物品属性（双方可见）：补选一件带词条的组件后提交
+    await p1.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.tp-row'));
+      const r = rows.find(x => x.querySelector('.mk-aff .inst-aff'));
+      if (r) { const cb = r.querySelector('input[type=checkbox]'); cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+    await sleep(200);
+    await p1.evaluate(() => {
+      const b = Array.from(document.querySelectorAll('.trade-picker .mini')).find(x => x.textContent.includes('更新我的提供'));
+      if (b) b.click();
+    });
+    await waitFor(async () => (await p1.$$('.trade-side.mine .ts-item .inst-aff')).length >= 1, { timeout: 6000 }).catch(() => {});
+    const mineAff = await p1.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.trade-side.mine .ts-item'));
+      const it = items.find(x => x.querySelector('.inst-aff'));
+      return it ? it.textContent.replace(/\s+/g, ' ').trim().slice(0, 100) : '';
+    });
+    check('「我的提供」栏显示所选组件属性（词条/数值/区间）', /%|区间|（/.test(mineAff) && mineAff.length > 0, mineAff);
+    check('「我的提供」栏显示渔获信息（稀有度与基准价）', /基准价/.test(await p1.textContent('.trade-side.mine')), '');
+    // 对方视角：同一物品属性同样可见（双方可见）
+    await waitFor(async () => (await p2.$$('.trade-side:not(.mine) .ts-item .inst-aff')).length >= 1, { timeout: 8000 }).catch(() => {});
+    const otherAff = await p2.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.trade-side:not(.mine) .ts-item'));
+      const it = items.find(x => x.querySelector('.inst-aff'));
+      return it ? it.textContent.replace(/\s+/g, ' ').trim().slice(0, 100) : '';
+    });
+    check('对方「提供」栏也能看到该组件属性（双方可见）', otherAff.length > 0, otherAff);
+    check('双方看到的词条信息一致', mineAff.length > 0 && otherAff.length > 0 && mineAff.split(' ')[0] === otherAff.split(' ')[0], JSON.stringify({ mineAff: mineAff.slice(0, 40), otherAff: otherAff.slice(0, 40) }));
     await p1.evaluate(() => {
       const b = Array.from(document.querySelectorAll('.trade-actions button')).find(x => x.textContent.includes('确认交易'));
       if (b) b.click();

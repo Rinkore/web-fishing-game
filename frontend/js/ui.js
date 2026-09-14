@@ -2197,6 +2197,9 @@ window.UI = (function () {
     main.appendChild(panel);
   }
 
+  // 交易双方可见的「提供」栏：除名称/数量外，展示物品信息——
+  // 组件：品质 + 词条条数 + 每条词条的数值与底材区间（负值红色）；渔获/材料：稀有度 + 基准价。
+  // 双方用同一渲染函数，物品实例签名（id）即包含词条，因此对方也能看到完整属性。
   function tradeSide(title, items, ok, isMine) {
     const box = el('div', 'trade-side' + (isMine ? ' mine' : ''));
     box.innerHTML = '<div class="ts-head">' + esc(title) + (ok ? ' <span class="ok-tag">✔ 已确认</span>' : ' <span class="wait-tag">待确认</span>') + '</div>';
@@ -2204,7 +2207,21 @@ window.UI = (function () {
     if (!items || items.length === 0) list.appendChild(el('div', 'hint', '（空）'));
     (items || []).forEach(function (it) {
       const meta = itemMeta(it.id);
-      list.appendChild(el('div', 'ts-item', '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span><span class="cnt">×' + it.qty + '</span>'));
+      const row = el('div', 'ts-item');
+      const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
+        ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
+            const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
+            const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+            const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
+            return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rangeTag + '</span>';
+          }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
+        : '';
+      const subHtml = meta.kind === 'component'
+        ? '<div class="ts-sub">' + esc(qualityName(meta)) + '品质 · ' + meta.affixes.length + '/' + meta.maxAffixes + ' 词条 · 基准价 ' + meta.price + '💰</div>'
+        : '<div class="ts-sub">' + esc(qualityName(meta)) + (meta.price ? ' · 基准价 ' + meta.price + '💰' : '') + '</div>';
+      row.innerHTML = '<div class="ts-line"><span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
+        '<span class="cnt">×' + it.qty + '</span></div>' + subHtml + affHtml;
+      list.appendChild(row);
     });
     box.appendChild(list);
     return box;
