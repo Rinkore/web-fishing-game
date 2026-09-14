@@ -161,8 +161,10 @@ window.Engine = (function () {
     return g.spots.find(function (x) { return x.id === spotId; }) || null;
   }
 
-  function playersAtGround(groundId) {
-    return state.players.filter(function (b) { return b.groundId === groundId; });
+  // 同一钓点的在线玩家（含自己）：钓场与钓点都相同才算「同钓点」。
+  // 旧版只按钓场过滤，同钓场不同钓点的人也会被列进「同钓点」面板。
+  function playersAtSpot(groundId, spotId) {
+    return state.players.filter(function (b) { return b.groundId === groundId && b.spotId === spotId; });
   }
 
   function init() {
@@ -173,7 +175,7 @@ window.Engine = (function () {
     state: state, init: init, save: save, applyProfile: applyProfile,
     refreshEffects: refreshEffects, bdEffects: function () { return state.bdEffects; },
     startFishing: startFishing, stopFishing: stopFishing, resetTransient: resetTransient,
-    resolveSpot: resolveSpot, playersAtGround: playersAtGround,
+    resolveSpot: resolveSpot, playersAtSpot: playersAtSpot,
     buildDefaultBD: buildDefaultBD,
   };
 })();

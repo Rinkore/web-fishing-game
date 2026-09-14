@@ -207,6 +207,32 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const aAfter = afterPlayers && afterPlayers.players.find(p => p.id === 'fisher_a');
     check('离开钓点后服务器上 recent 已清空', aAfter ? !aAfter.recent : true, JSON.stringify(aAfter));
 
+    // —— 同钓点过滤：同钓场但不同钓点的人不算「同钓点」（回归：旧版只按钓场过滤）——
+    section('H. 同钓点过滤（同钓场不同钓点不算）');
+    findSpot('老旧码头').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await sleep(400);
+    check('H 前置：A 在静水湖·老旧码头钓鱼', (w.document.querySelector('.fish-state') || {}).textContent.includes('自动钓鱼中'),
+      (w.document.querySelector('.fish-state') || {}).textContent);
+    // B 用 API 去同钓场的另一个钓点（芦苇浅滩）
+    const stB1 = await POST('http://localhost:' + PORT + '/api/fishing/start', { token: tokB, groundId: 'stillwater', spotId: 'reed' });
+    check('H 前置：B 在同钓场另一钓点开钓', stB1.status === 200, JSON.stringify(stB1.data).slice(0, 80));
+    const bAtReed = await waitFor(() => w.Engine.state.players.some(p => p.name === '钓手乙' && p.spotId === 'reed'), { timeout: 6000 });
+    check('H 前置：A 的页面已收到 B 的位置', bAtReed === true, String(bAtReed));
+    check('同钓场不同钓点不计入「同钓点」', /同钓点 1 人/.test(w.document.querySelector('.peeps-head').textContent),
+      w.document.querySelector('.peeps-head').textContent);
+    check('列表只显示同钓点玩家（1 人）', w.document.querySelectorAll('.peep').length === 1, String(w.document.querySelectorAll('.peep').length));
+    // B 换到 A 的同一个钓点 → 立即算同钓点
+    await POST('http://localhost:' + PORT + '/api/fishing/start', { token: tokB, groundId: 'stillwater', spotId: 'dock' });
+    const bAtDock = await waitFor(() => w.Engine.state.players.some(p => p.name === '钓手乙' && p.spotId === 'dock'), { timeout: 6000 });
+    check('H 前置：B 已换到与 A 相同的钓点', bAtDock === true, String(bAtDock));
+    check('同钓点玩家计入面板（2 人）', /同钓点 2 人/.test(w.document.querySelector('.peeps-head').textContent),
+      w.document.querySelector('.peeps-head').textContent);
+    check('列表显示同钓点 2 人', w.document.querySelectorAll('.peep').length === 2, String(w.document.querySelectorAll('.peep').length));
+    // 清理：双方停钓（本段是最后一段，避免影响收尾）
+    await POST('http://localhost:' + PORT + '/api/fishing/stop', { token: tokB });
+    findSpot('老旧码头').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await sleep(400);
+
     cliB.destroy();
     if (A.listeners) A.listeners.forEach(l => { try { l.destroy(); } catch (e) {} });
 

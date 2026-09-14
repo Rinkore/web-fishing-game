@@ -631,8 +631,9 @@ window.UI = (function () {
       right.appendChild(el('div', 'here-count', '当前不在任何钓点'));
       right.appendChild(el('div', 'hint', '点击左侧任意垂钓点即可开始自动钓鱼。'));
     } else {
-      const here = E().playersAtGround(atGroundId);
-      right.appendChild(el('div', 'here-count', '所在：' + esc(gNow ? gNow.name : '') + (spNow ? '·' + esc(spNow.name) : '') + ' · 在线 ' + here.length + ' 人'));
+      const here = E().playersAtSpot(atGroundId, st.player.spotId);
+      // 只报所在位置；人数交给下面的「同钓点 N 人」（钓场级人数左侧钓场卡片已有 👥）
+      right.appendChild(el('div', 'here-count', '所在：' + esc(gNow ? gNow.name : '') + (spNow ? '·' + esc(spNow.name) : '')));
       // 同屏最多 5 条，超出可下滑（不挤占下方的渔获日志入口）
       const peepHead = el('div', 'peeps-head', '同钓点 ' + here.length + ' 人' + (here.length > 5 ? '（可下滑查看全部）' : ''));
       right.appendChild(peepHead);
