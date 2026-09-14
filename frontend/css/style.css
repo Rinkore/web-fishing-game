@@ -1083,9 +1083,16 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 
 .mkt-sell .mkt-cats { margin: 6px 0 8px; }
 .mkt-sell-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
-.mkt-sell-row { padding: 4px 6px; }
-.mkt-sell-row .mkt-pick { flex: none; }
-.mkt-sell-row .cnt { flex: none; }
+.mkt-sell-row { padding: 4px 6px; align-items: flex-start; }
+.mkt-sell-row .mkt-pick { flex: none; padding-top: 2px; }
+.mkt-sell-row .cnt { flex: none; margin-left: auto; }
+.mkt-sell-row .unit-price { flex: none; }
+/* 名称 + 词条纵向排布：词条换行时不挤压右侧数量/价格 */
+.mkt-sell-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; align-items: flex-start; }
+.mkt-sell-info .mkt-sell-name { display: inline-flex; align-items: center; gap: 6px; }
+.mkt-sell-aff { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.mkt-sell-aff .inst-aff { font-size: 11px; }
+.mkt-sell-aff .aff-rng { color: var(--muted); font-size: 10px; }
 .mkt-sell-foot { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
 .batch-list-modal { width: 620px; }
 .bl-rows { max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 8px 0; }

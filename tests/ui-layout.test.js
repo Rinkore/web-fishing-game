@@ -202,6 +202,10 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('系统商店渲染出价格卡片', (await p1.$$('.shop-card')).length >= 15, String((await p1.$$('.shop-card')).length));
     check('商店卡片显示动态价格与百分比', /当前 \d+%/.test(await p1.textContent('.sc-pct')));
     check('系统商店页已移除背包模块', (await p1.$$('.inventory, .col-side')).length === 0);
+    // 商店头部文案跟随后台经济参数（默认 每件 -0.75% / 60 分钟 / 2 倍）
+    const shopSub = await p1.textContent('#shop-sub');
+    check('商店头部文案由经济参数生成（-0.75% / 1 小时 / 2 倍）',
+      /每卖一件约 -0\.75%/.test(shopSub) && /1 小时/.test(shopSub) && /2 倍/.test(shopSub), shopSub);
 
     // —— 钓竿配置：装备走子页面（弹窗），页面下方不再有装备模块；负词条红色 ——
     await clickNav(p1, '钓竿配置');
@@ -278,6 +282,60 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
         kinds: Array.from(document.querySelectorAll('.mkt-sell-row .kind-tag')).length,
       }));
       check('分类筛选后只列该类物品（鱼类行可勾选）', catFiltered.rows >= 1, JSON.stringify(catFiltered));
+      // —— 组件行显示词条（便于挑选要挂单的组件；含数值区间）——
+      // 先注入一件确定性的双词条组件，避免依赖此前用例留下的背包状态
+      const AFF_COMP = D_DATA.instanceId('reel_turbo', 'epic', [{ type: 'speed', value: 35 }, { type: 'big', value: -9 }]);
+      await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: AFF_COMP } });
+      let compAff = { rows: 0, withAff: 0, text: '', hasRange: false, hasName: false };
+      const affOk = await waitFor(async () => {
+        // 点「组件」分类（每次轮询重试：面板可能被行情广播重绘，点击需落在当前 DOM 上）
+        await p1.evaluate(() => {
+          const b = Array.from(document.querySelectorAll('.mkt-cats .inv-cat')).find(x => x.textContent.includes('组件'));
+          if (b && !b.classList.contains('on')) b.click();
+        });
+        compAff = await p1.evaluate(() => {
+          const rows = Array.from(document.querySelectorAll('.mkt-sell-row'));
+          const withAff = rows.filter(r => r.querySelector('.mkt-sell-aff .inst-aff'));
+          const first = withAff[0] ? withAff[0].querySelector('.mkt-sell-aff') : null;
+          return {
+            rows: rows.length, withAff: withAff.length,
+            text: first ? first.textContent : '',
+            hasRange: first ? !!first.querySelector('.aff-rng') : false,
+            hasName: withAff[0] ? !!withAff[0].querySelector('.mkt-sell-name') : false,
+          };
+        });
+        return compAff.withAff >= 1 && compAff.hasRange && compAff.hasName;
+      }, { timeout: 12000, interval: 400 }).catch(() => false);
+      check('挂单列表的组件行显示词条（含数值区间）', affOk === true, JSON.stringify(compAff).slice(0, 200));
+      check('组件词条文案形如「+N% 效果（区间）」', /[+-]\d+%/.test(compAff.text) && /（.*%）/.test(compAff.text), compAff.text.slice(0, 120));
+      // —— 滚动位置保持：勾选下方物品不再把列表弹回顶部（此前 change → renderView 整页重绘）——
+      await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.mkt-cats .inv-cat')).find(x => x.textContent.includes('全部')); if (b) b.click(); });
+      await waitFor(async () => (await p1.$$('.mkt-sell-row')).length >= 3, { timeout: 5000 }).catch(() => {});
+      const scrollKeep = await p1.evaluate(() => {
+        const list = document.querySelector('.mkt-sell-list');
+        if (!list) return { ok: false };
+        const scrollable = list.scrollHeight > list.clientHeight;
+        list.scrollTop = 100;
+        const before = list.scrollTop;
+        const boxes = Array.from(list.querySelectorAll('input[type=checkbox]'));
+        const last = boxes[boxes.length - 1];
+        if (last) { last.checked = true; last.dispatchEvent(new Event('change', { bubbles: true })); }
+        const list2 = document.querySelector('.mkt-sell-list');
+        const btn = document.querySelector('.mkt-sell-foot .primary');
+        return { ok: true, scrollable: scrollable, before: before, after: list2 ? list2.scrollTop : -1, same: list2 === list, btn: btn ? btn.textContent : '' };
+      });
+      check('挂单列表可滚动（前置条件）', scrollKeep.ok && scrollKeep.scrollable === true, JSON.stringify(scrollKeep));
+      check('勾选最下方物品后列表不重绘（同一 DOM 节点）', scrollKeep.same === true, JSON.stringify(scrollKeep));
+      check('勾选后滚动位置保持（不再弹回顶部）', scrollKeep.before > 0 && scrollKeep.after === scrollKeep.before, JSON.stringify(scrollKeep));
+      check('勾选后底部按钮就地更新（已选数量）', /已选 \d/.test(scrollKeep.btn || ''), String(scrollKeep.btn));
+      // 清理：取消刚才的勾选，回到鱼类分类（不影响后续「一键上架」用例）
+      await p1.evaluate(() => {
+        const list = document.querySelector('.mkt-sell-list');
+        if (list) list.querySelectorAll('input[type=checkbox]').forEach(cb => { if (cb.checked) { cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true })); } });
+        const b = Array.from(document.querySelectorAll('.mkt-cats .inv-cat')).find(x => x.textContent.includes('鱼类'));
+        if (b) b.click();
+      });
+      await sleep(300);
       // 多选两件 → 一键上架
       const beforeListings = (await get('/api/market')).data.listings.length;
       await p1.evaluate(() => {

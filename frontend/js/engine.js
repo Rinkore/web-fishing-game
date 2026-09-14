@@ -16,6 +16,8 @@ window.Engine = (function () {
     fishingInterval: 3000,      // 服务器返回的实际钓速（展示用）
     castInfo: null,             // 钓速明细：后台基础值 + 词缀/钓点增益/全服加成 + 实际间隔
     castCfg: null,              // 后台抛竿间隔/全服钓速配置（/api/version 与 castcfg 广播同步）
+    priceCfg: null,             // 后台经济参数（价格模型；/api/version 与 pricecfg 广播同步）
+    dropCfg: null,              // 后台产出倍率（全局+分类；同上）
     rodName: '',                // 当前钓竿命名
     rodSlots: [],               // 钓竿槽位（含已保存钓竿：name/parts/affixes）
     rodSlotsCount: 1,           // 已购买槽位数（首个免费）

@@ -664,6 +664,65 @@ function waitReady() {
   check('反馈记录带奖励信息（金额/备注/操作人）', !!(fbRow11 && fbRow11.reward && fbRow11.reward.coins === 888 && fbRow11.reward.note === 'QA 奖励' && fbRow11.reward.by), JSON.stringify(fbRow11 && fbRow11.reward));
   check('玩家侧反馈列表带奖励信息', !!(await GET(B + '/api/feedback?token=' + TKR)).data.mine.find(f => f.id === fbId11).reward);
 
+  // ---------- 11f. 经济参数（价格模型全程可调） ----------
+  section('11f. 经济参数（价格模型全程可调）');
+  // 独立账号做抛售测试（背包用后台快照直接设定，确定性好）
+  const rgEco = await POST(B + '/api/register', { username: 'qa_econ', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  const TKE = rgEco.data.token;
+  const we0 = await GET(B + '/api/admin/world?token=' + TOKA);
+  check('经济参数默认值（地板40 / 天花板200 / 回升60分 / 下压0.0075）',
+    we0.data.priceCfg.floorPct === 40 && we0.data.priceCfg.ceilPct === 200 && we0.data.priceCfg.riseTauMin === 60
+    && Math.abs(we0.data.priceCfg.saleDivisor - 0.0075) < 1e-9, JSON.stringify(we0.data.priceCfg));
+  check('经济参数默认值下发到 world.priceDefaults', we0.data.priceDefaults && we0.data.priceDefaults.floorPct === 40);
+  check('产出倍率默认全 100', we0.data.dropCfg.global === 100 && we0.data.dropCfg.material === 100, JSON.stringify(we0.data.dropCfg));
+  check('经济目录覆盖全部经济物品（41 鱼 + 4 材料 = 45）', (we0.data.economyCatalog || []).length === 45, String((we0.data.economyCatalog || []).length));
+  check('/api/version 下发 priceCfg（前端商店文案用）', (await GET(B + '/api/version')).data.priceCfg.floorPct === 40);
+  // 范围校验（越界一律 400）
+  check('地板价越界被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { floorPct: 5 } })).status === 400);
+  check('天花板越界被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { ceilPct: 50 } })).status === 400);
+  check('地板==天花板被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { floorPct: 100, ceilPct: 100 } })).status === 400);
+  check('每件下压越界被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { saleDivisor: 0.5 } })).status === 400);
+  check('回升时间常数越界被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { riseTauMin: 1 } })).status === 400);
+  check('采样间隔越界被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { sampleSec: 2 } })).status === 400);
+  check('回升目标越界被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { riseTargetPct: 500 } })).status === 400);
+  check('产出倍率越界被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, dropCfg: { global: 9999 } })).status === 400);
+  check('非管理员改经济参数 403', (await POST(B + '/api/admin/settings', { token: TKE, priceCfg: { riseTauMin: 15 } })).status === 403);
+  check('validateOnly 只校验不落库', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { riseTauMin: 12 }, validateOnly: true })).status === 200
+    && (await GET(B + '/api/admin/world?token=' + TOKA)).data.priceCfg.riseTauMin === 60);
+  // 保存生效：地板 50% + 回升 15 分钟 → 大额抛售压到 0.5 倍基准价
+  const saveEco = await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { floorPct: 50, riseTauMin: 15 } });
+  check('保存地板50% / 回升15分钟 200', saveEco.status === 200 && saveEco.data.priceCfg.floorPct === 50 && saveEco.data.priceCfg.riseTauMin === 15, JSON.stringify(saveEco.data.priceCfg));
+  check('world 回读生效（50 / 15）', (await GET(B + '/api/admin/world?token=' + TOKA)).data.priceCfg.riseTauMin === 15);
+  await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'qa_econ', inventory: { crucian: 300 } });
+  check('测试账号已备好 300 条鲫鱼', (await GET(B + '/api/me?token=' + TKE)).data.inventory.crucian === 300);
+  check('抛售 300 条成功', (await POST(B + '/api/sell', { token: TKE, id: 'crucian', qty: 300 })).status === 200);
+  check('地板价生效：鲫鱼 8 × 50% = 4', (await GET(B + '/shop')).data.crucian.price === 4, JSON.stringify((await GET(B + '/shop')).data.crucian));
+  // 单品干预：锁价 → 无视供需；覆盖基准价 × 锁价；清除后回落到行情
+  check('锁价干预（×3 → 24）', (await POST(B + '/api/admin/settings', { token: TOKA, priceOv: { id: 'crucian', m: 3 } })).status === 200
+    && (await GET(B + '/shop')).data.crucian.price === 24, JSON.stringify((await GET(B + '/shop')).data.crucian));
+  check('覆盖基准价 + 锁价（20×3 = 60）', (await POST(B + '/api/admin/settings', { token: TOKA, priceOv: { id: 'crucian', base: 20, m: 3 } })).status === 200
+    && (await GET(B + '/shop')).data.crucian.price === 60, JSON.stringify((await GET(B + '/shop')).data.crucian));
+  check('干预出现在经济目录', !!(await GET(B + '/api/admin/world?token=' + TOKA)).data.economyCatalog.find(i => i.id === 'crucian' && i.ov && i.ov.m === 3));
+  check('清除干预（恢复行情地板价 4）', (await POST(B + '/api/admin/settings', { token: TOKA, priceOv: { id: 'crucian', clear: true } })).status === 200
+    && (await GET(B + '/shop')).data.crucian.price === 4);
+  check('未知物品干预被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceOv: { id: 'no_such_item', m: 2 } })).status === 400);
+  // 品质层覆盖：大鱼 每件下压 3% / 回升 30 分
+  const tierSave = await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { tiers: { big: { saleDivisor: 0.03, riseTauMin: 30 } } } });
+  check('品质层覆盖保存并回传', tierSave.status === 200 && tierSave.data.priceCfg.tiers && tierSave.data.priceCfg.tiers.big.saleDivisor === 0.03,
+    JSON.stringify(tierSave.data.priceCfg.tiers));
+  check('品质层覆盖无效值被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { tiers: { big: { saleDivisor: 0.5 } } } })).status === 400);
+  // 产出倍率：大鱼 ×0 → 下发有效权重为 0（用未被其它用例改过池的 rapids:fall 断言）
+  check('保存产出倍率（大鱼 0%）200', (await POST(B + '/api/admin/settings', { token: TOKA, dropCfg: { big: 0 } })).status === 200);
+  const gEco = await GET(B + '/api/grounds');
+  const fallEco = gEco.data.grounds.find(g => g.id === 'rapids').spots.find(s => s.id === 'fall');
+  const wFish = id => (fallEco.pool.find(e => e.pick === 'fish:' + id) || {}).weight;
+  check('大鱼权重归零（fall 的 bass）', wFish('bass') === 0, JSON.stringify(fallEco.pool));
+  check('稀有鱼权重不受影响（fall 的 ghostray = 1）', wFish('ghostray') === 1, String(wFish('ghostray')));
+  check('材料权重不受影响（fall 的 lure = 10）', (fallEco.pool.find(e => e.pick === 'material:lure') || {}).weight === 10);
+  check('产出倍率改动不污染服务端原始权重', (await GET(B + '/api/admin/world?token=' + TOKA)).data.grounds.find(g => g.id === 'rapids').spots.find(s => s.id === 'fall')
+    .pool.find(e => e.pick === 'fish:bass').weight === 8);
+  check('审计日志记录了经济改动', ((await GET(B + '/api/admin/world?token=' + TOKA)).data.economyLog || []).some(l => /价格参数|产出倍率|单品干预/.test(l.text)));
+
   // ---------- 持久化（重启服务器） ----------
   section('12. 配置持久化');
   // 留一个非默认抛竿间隔，验证 config.json 落盘（9f 结束时已恢复默认）
@@ -710,6 +769,11 @@ function waitReady() {
   check('基础双钓率重启后仍在（0.5）', w2.data.doubleBase === 0.5, String(w2.data.doubleBase));
   check('抛竿间隔重启后仍在（2500 / 700）', w2.data.castBaseMs === 2500 && w2.data.castMinMs === 700, JSON.stringify({ b: w2.data.castBaseMs, m: w2.data.castMinMs }));
   check('鱼类体型模型重启后仍在（skew）', w2.data.fishCfg && w2.data.fishCfg.sizeModel === 'skew', JSON.stringify(w2.data.fishCfg));
+  check('经济参数重启后仍在（地板50 / 回升15分）', w2.data.priceCfg.floorPct === 50 && w2.data.priceCfg.riseTauMin === 15, JSON.stringify(w2.data.priceCfg));
+  check('品质层覆盖重启后仍在（大鱼 3% / 30 分）', !!(w2.data.priceCfg.tiers && w2.data.priceCfg.tiers.big && w2.data.priceCfg.tiers.big.saleDivisor === 0.03));
+  check('产出倍率重启后仍在（大鱼 0%）', w2.data.dropCfg.big === 0, JSON.stringify(w2.data.dropCfg));
+  check('产出倍率重启后仍下发有效权重（fall 大鱼为 0）', (await GET(B + '/api/grounds')).data.grounds.find(g => g.id === 'rapids').spots.find(s => s.id === 'fall')
+    .pool.find(e => e.pick === 'fish:bass').weight === 0);
   const deepLegacy = w2.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'deep');
   check('旧配置里超限的增益值被收敛到上限 100', deepLegacy.buffs.length === 2 && deepLegacy.buffs[0].value === 100 && deepLegacy.buffs[1].value === -100,
     JSON.stringify(deepLegacy.buffs));

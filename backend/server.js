@@ -143,7 +143,7 @@ let users = {};
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
 // biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
 const BITE_FORMULA_DEFAULT = '90';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {} };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [] };
 
 // ---- 反馈意见 ----
 // CD 时长（小时）与跳过费用（金币）可由管理后台配置（落盘 config.json）；默认 24 小时 / 10000 金币。
@@ -410,18 +410,21 @@ function mergedEffOf(bd, spot) {
   });
   return eff;
 }
-// 大鱼/稀有/材料加成：按类别放大掉落池权重
+// 大鱼/稀有/材料加成：按类别放大掉落池权重；后台「产出倍率」dropCfg 同层叠加（全局 × 分类，组件只吃全局）
 function boostPoolOf(pool, eff) {
-  if (!eff.big && !eff.rare && !eff.material) return pool;
+  const hasBoost = !!(eff.big || eff.rare || eff.material);
+  if (!hasBoost && dropCfgIsDefault()) return pool;
+  const dc = dropCfg();
   return pool.map(function (e) {
     const i = e.pick.indexOf(':');
     const type = e.pick.slice(0, i), id = e.pick.slice(i + 1);
-    let mult = 1;
+    let mult = dc.global / 100;
     if (type === 'fish') {
       const tier = D.fishTierOf(id);
-      if (tier === 'big') mult = 1 + eff.big / 100;
-      else if (tier === 'rare') mult = 1 + eff.rare / 100;
-    } else if (type === 'material') mult = 1 + eff.material / 100;
+      if (tier === 'big') mult *= (dc.big / 100) * (1 + eff.big / 100);
+      else if (tier === 'rare') mult *= (dc.rare / 100) * (1 + eff.rare / 100);
+      else mult *= dc.common / 100;
+    } else if (type === 'material') mult *= (dc.material / 100) * (1 + eff.material / 100);
     return { pick: e.pick, weight: e.weight * mult };
   });
 }
@@ -1044,7 +1047,7 @@ function saveSpotCfg(groundId, spotId, patch) {
   saveConfig();
 }
 // 钓场配置变化：向游戏端广播整份目录（图鉴产地/渔场页即时同步）
-function broadcastGroundcfg() { broadcast({ type: 'groundcfg', grounds: D.GROUNDS }); }
+function broadcastGroundcfg() { broadcast({ type: 'groundcfg', grounds: groundsWithDrop() }); }
 
 // 横幅颜色校验（#rgb / #rrggbb；空串表示用样式默认渐变）
 function validBannerColor(v) {
@@ -1096,7 +1099,7 @@ function kickUserSessions(key) {
   if (t) { t.cancelled = true; t.closed = true; broadcastTrade(t); trades.delete(t.id); }
 }
 
-function basePrice(id) { return ECO_PRICE[id] || (D.itemOf(id).price || 10); }
+function basePrice(id) { const ov = priceOvOf(id); if (ov && ov.base > 0) return Math.round(ov.base); return ECO_PRICE[id] || (D.itemOf(id).price || 10); }
 function itemName(id) { return ITEM_NAME[id] || D.itemOf(id).name || id; }
 // 物品是否可出售/上架：渔获、材料、组件实例、旧通用组件
 function sellableOf(id) { return D.isSellable(id) || id === 'comp_generic'; }
@@ -1155,36 +1158,166 @@ function autoSellCheck(key) {
   return sold;
 }
 
-// ---- 动态收购价（服务器权威 · 单乘数模型）----
-// 每个物品维护一个价格乘数 m ∈ [0.4, 2.0]，实际价 = 基准价 × m：
-//   售出：m 每件除以 1.15（成比例下压——2 倍价卖一件回到 1.74 倍，不会一键跌回原价）；
-//   闲置：m 以 1 小时时间常数向 2.0 指数回升（长期无人供应缓慢涨价，最高翻倍）。
-// 涨跌共用同一个乘数，状态连续、无跳变。
-const PRICE_FLOOR = 0.4;
 // ---- 市集挂单规则：每人最多同时 40 个挂单；时长 6/12/24 小时对应费率 1%/3%/5%，过期退物品不退费 ----
 const MAX_LISTINGS_PER_PLAYER = 40;
 const LIST_FEE_RATES = { 6: 0.01, 12: 0.03, 24: 0.05 };
 const LISTING_TTL_MS_ENV = Number(process.env.LISTING_TTL_MS) || 0; // 测试用固定 TTL
-const PRICE_CEIL = 2.0;
-const SALE_DIVISOR = 0.0075;   // 每售 1 件，乘数除以 (1 + 0.0075)（约 -0.74%/件）
-const RISE_TAU_MS = 3600000;   // 闲置回升时间常数：1 小时
 
-// 当前乘数（含闲置增长；无状态计算，不写存储）
-function currentMultiplier(s, now) {
+// ---- 动态收购价（服务器权威 · 单乘数模型 · 参数全程可调）----
+// 每个物品维护一个价格乘数 m ∈ [floor, ceil]（默认 [0.4, 2.0]），实际价 = 基准价 × m：
+//   售出：m 每件除以 (1 + saleDivisor)（成比例下压——2 倍价卖一件不会一键跌回原价）；
+//   闲置：m 以 riseTauMin 为时间常数向 riseTargetPct 指数靠拢（高于目标缓慢回落，低于目标缓慢回升）。
+// 涨跌共用同一个乘数，状态连续、无跳变。
+// 全部参数由后台「💰 经济参数」页配置（world.priceCfg，落 config.json）：
+//   保存时逐项校验范围，读取时再次收敛——历史文件被手改或旧值越界都不会让模型失稳。
+const PRICE_DEFAULTS = {
+  floorPct: 40,        // 地板（% 基准价，10-100）
+  ceilPct: 200,        // 天花板（% 基准价，100-500）
+  saleDivisor: 0.0075, // 每售 1 件乘数 ÷(1+divisor)（0.001-0.05，即 -0.1%~-5%/件）
+  riseTauMin: 60,      // 闲置靠拢时间常数（分钟，5-1440）
+  riseTargetPct: 200,  // 闲置靠拢目标（% 基准价，100-300；默认=天花板）
+  sampleSec: 60,       // 价格采样间隔（秒，15-300）
+  historyMin: 360,     // 价格历史保留时长（分钟，60-1440）
+};
+// 产出倍率（后台「💰 经济参数」页；百分比，0-500）= 掉落池权重倍率，全局 × 分类
+const DROP_DEFAULTS = { global: 100, common: 100, big: 100, rare: 100, material: 100 };
+const DROP_KEYS = ['global', 'common', 'big', 'rare', 'material'];
+function clampNum(v, lo, hi, dft) {
+  const n = Number(v);
+  return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dft;
+}
+// 生效参数（含范围收敛；tiers 为品质层覆盖，仅 saleDivisor / riseTauMin 支持）
+function priceCfg() {
+  const c = world.priceCfg || {};
+  const ceilPct = clampNum(c.ceilPct, 100, 500, PRICE_DEFAULTS.ceilPct);
+  const tiers = {};
+  const srcTiers = c.tiers || {};
+  ['common', 'big', 'rare'].forEach(function (tier) {
+    const o = srcTiers[tier];
+    if (!o) return;
+    const e = {};
+    if (o.saleDivisor != null) e.saleDivisor = clampNum(o.saleDivisor, 0.001, 0.05, PRICE_DEFAULTS.saleDivisor);
+    if (o.riseTauMin != null) e.riseTauMin = clampNum(o.riseTauMin, 5, 1440, PRICE_DEFAULTS.riseTauMin);
+    if (Object.keys(e).length) tiers[tier] = e;
+  });
+  return {
+    floorPct: clampNum(c.floorPct, 10, 100, PRICE_DEFAULTS.floorPct),
+    ceilPct: ceilPct,
+    saleDivisor: clampNum(c.saleDivisor, 0.001, 0.05, PRICE_DEFAULTS.saleDivisor),
+    riseTauMin: clampNum(c.riseTauMin, 5, 1440, PRICE_DEFAULTS.riseTauMin),
+    riseTargetPct: clampNum(c.riseTargetPct, 100, 300, ceilPct),
+    sampleSec: clampNum(c.sampleSec, 15, 300, PRICE_DEFAULTS.sampleSec),
+    historyMin: clampNum(c.historyMin, 60, 1440, PRICE_DEFAULTS.historyMin),
+    tiers: Object.keys(tiers).length ? tiers : null,
+  };
+}
+function dropCfg() {
+  const c = world.dropCfg || {};
+  const out = {};
+  DROP_KEYS.forEach(function (k) { out[k] = clampNum(c[k], 0, 500, 100); });
+  return out;
+}
+function dropCfgIsDefault() {
+  const c = world.dropCfg || {};
+  return DROP_KEYS.every(function (k) { return c[k] == null || clampNum(c[k], 0, 500, 100) === 100; });
+}
+// 下发用钓场目录：产出倍率不为默认时，把有效权重换算后返回（图鉴/钓点详情与实钓概率一致；服务端落盘权重不受影响）
+function groundsWithDrop() {
+  if (dropCfgIsDefault()) return D.GROUNDS;
+  const dc = dropCfg();
+  return D.GROUNDS.map(function (g) {
+    return Object.assign({}, g, {
+      spots: (g.spots || []).map(function (s) {
+        return Object.assign({}, s, {
+          pool: (s.pool || []).map(function (e) {
+            const i = e.pick.indexOf(':');
+            const type = e.pick.slice(0, i), id = e.pick.slice(i + 1);
+            let mult = dc.global / 100;
+            if (type === 'fish') {
+              const tier = D.fishTierOf(id);
+              if (tier === 'big') mult *= dc.big / 100;
+              else if (tier === 'rare') mult *= dc.rare / 100;
+              else mult *= dc.common / 100;
+            } else if (type === 'material') mult *= dc.material / 100;
+            return { pick: e.pick, weight: Math.round(e.weight * mult * 1000) / 1000 };
+          }),
+        });
+      }),
+    });
+  });
+}
+// 品质层动态覆盖（普通/大鱼/稀有各自可覆盖 下压/回升；未覆盖 = 跟随全局）
+function tierDynOf(tier) {
+  if (!tier) return null;
+  const t = (world.priceCfg && world.priceCfg.tiers) || {};
+  const o = t[tier];
+  if (!o) return null;
+  const out = {};
+  if (o.saleDivisor != null) out.saleDivisor = clampNum(o.saleDivisor, 0.001, 0.05, null);
+  if (o.riseTauMin != null) out.riseTauMin = clampNum(o.riseTauMin, 5, 1440, null);
+  return (out.saleDivisor != null || out.riseTauMin != null) ? out : null;
+}
+// 某物品的生效率（品质层覆盖优先于全局）
+function dynOf(id) {
+  const g = priceCfg();
+  const tc = D.fishTierOf ? tierDynOf(D.fishTierOf(id)) : null;
+  return {
+    saleDivisor: (tc && tc.saleDivisor != null) ? tc.saleDivisor : g.saleDivisor,
+    riseTauMin: (tc && tc.riseTauMin != null) ? tc.riseTauMin : g.riseTauMin,
+    floor: g.floorPct / 100,
+    ceil: g.ceilPct / 100,
+    target: g.riseTargetPct / 100,
+  };
+}
+// 单品干预（运营工具）：world.priceOv = { [id]: { base?, m?, until? } }
+//   base = 覆盖基准价；m = 锁定乘数（无视供需）；until = 过期时间戳（到时自动失效）
+function priceOvOf(id) {
+  const o = world.priceOv && world.priceOv[id];
+  if (!o) return null;
+  if (o.until && Date.now() > o.until) return null;
+  return o;
+}
+// 清理已过期的单品覆盖（后台读取/保存时顺带调用，避免残留）
+function sweepPriceOv() {
+  const ov = world.priceOv;
+  if (!ov) return false;
+  let changed = false;
+  Object.keys(ov).forEach(function (id) {
+    const o = ov[id];
+    if (!o) return;
+    if (o.until && Date.now() > o.until) { delete ov[id]; changed = true; }
+    else if (o.base == null && o.m == null) { delete ov[id]; changed = true; }
+  });
+  return changed;
+}
+// 经济改动审计（后台每次调参/干预留痕，落 economy.json，玩家端不可见）
+function econLog(who, text) {
+  world.economyLog = world.economyLog || [];
+  world.economyLog.push({ t: Date.now(), who: who || '?', text: text });
+  if (world.economyLog.length > 200) world.economyLog.splice(0, world.economyLog.length - 200);
+}
+
+// 当前乘数（含闲置靠拢；无状态计算，不写存储）
+function currentMultiplier(s, now, id) {
+  const dyn = id ? dynOf(id) : { riseTauMin: priceCfg().riseTauMin, floor: priceCfg().floorPct / 100, ceil: priceCfg().ceilPct / 100, target: priceCfg().riseTargetPct / 100 };
   const idle = Math.max(0, now - (s.lastTs || now));
-  const m0 = Math.min(PRICE_CEIL, Math.max(PRICE_FLOOR, s.m == null ? 1 : s.m));
-  return Math.min(PRICE_CEIL, PRICE_CEIL - (PRICE_CEIL - m0) * Math.exp(-idle / RISE_TAU_MS));
+  const m0 = Math.min(dyn.ceil, Math.max(dyn.floor, s.m == null ? 1 : s.m));
+  const tauMs = dyn.riseTauMin * 60000;
+  return Math.min(dyn.ceil, Math.max(dyn.floor, dyn.target - (dyn.target - m0) * Math.exp(-idle / tauMs)));
 }
 function currentPrice(id) {
+  const ov = priceOvOf(id);
+  if (ov && ov.m > 0) return Math.max(1, Math.round(basePrice(id) * ov.m)); // 锁价：无视供需
   const s = world.shopSales[id];
   if (!s) return basePrice(id);
-  return Math.max(1, Math.round(basePrice(id) * currentMultiplier(s, Date.now())));
+  return Math.max(1, Math.round(basePrice(id) * currentMultiplier(s, Date.now(), id)));
 }
 // 售出：压低乘数 + 统计交易量 + 记录价格点 + 交易流水（同账号一分钟内由前端合并展示）
 function registerSale(id, qty, who, unit) {
   const s = world.shopSales[id] || { m: 1, lastTs: Date.now(), soldTotal: 0, soldToday: 0, day: null };
-  const cur = currentMultiplier(s, Date.now());
-  s.m = Math.max(PRICE_FLOOR, cur / Math.pow(1 + SALE_DIVISOR, qty));
+  const dyn = dynOf(id);
+  const cur = currentMultiplier(s, Date.now(), id);
+  s.m = Math.max(dyn.floor, cur / Math.pow(1 + dyn.saleDivisor, qty));
   s.soldTotal = (s.soldTotal || 0) + qty;
   const day = new Date().toISOString().slice(0, 10);
   if (s.day !== day) { s.day = day; s.soldToday = 0; }
@@ -1197,21 +1330,31 @@ function registerSale(id, qty, who, unit) {
   if (log.length > 200) log.splice(0, log.length - 200);
   recordPrice(id);
 }
-// 价格历史采样：售出即时记点 + 每分钟全量采样（捕捉无人供应时的缓慢上涨）
+// 价格历史采样：售出即时记点 + 全量周期采样（捕捉无人供应时的缓慢涨落）
 function recordPrice(id) {
+  const P = priceCfg();
   world.priceLog = world.priceLog || {};
   const log = world.priceLog[id] || (world.priceLog[id] = []);
   const p = currentPrice(id);
   const last = log[log.length - 1];
-  if (!last || last.p !== p || Date.now() - last.t > 60000) log.push({ t: Date.now(), p: p });
-  if (log.length > 360) log.splice(0, log.length - 360); // 保留 6 小时（每分钟一次）
+  if (!last || last.p !== p || Date.now() - last.t > P.sampleSec * 1000) log.push({ t: Date.now(), p: p });
+  const maxPts = Math.max(30, Math.round(P.historyMin * 60 / P.sampleSec));
+  if (log.length > maxPts) log.splice(0, log.length - maxPts);
 }
-setInterval(function () {
-  Object.keys(ECO_PRICE).forEach(recordPrice);
-  try { saveEconomy(); } catch (e) {}
-  // 自动售出：价格闲置回升可能越过玩家设的阈值 → 对在线玩家跑一遍
-  players.forEach(function (p, key) { try { autoSellCheck(key); } catch (e) {} });
-}, 60000).unref();
+// 采样定时器：间隔可调（保存 sampleSec 后重挂）
+let priceSamplerTimer = null;
+function armPriceSampler() {
+  if (priceSamplerTimer) clearInterval(priceSamplerTimer);
+  const sec = priceCfg().sampleSec;
+  priceSamplerTimer = setInterval(function () {
+    Object.keys(ECO_PRICE).forEach(recordPrice);
+    try { saveEconomy(); } catch (e) {}
+    // 自动售出：价格闲置回升可能越过玩家设的阈值 → 对在线玩家跑一遍
+    players.forEach(function (p, key) { try { autoSellCheck(key); } catch (e) {} });
+  }, sec * 1000);
+  priceSamplerTimer.unref();
+}
+armPriceSampler();
 
 // ---- 落盘原语（同步写、整文件重写；单账号/单域粒度） ----
 function readJson(fp) { try { return JSON.parse(fs.readFileSync(fp, 'utf8') || 'null'); } catch (e) { return null; } }
@@ -1259,8 +1402,8 @@ function saveDomain(file, keys) {
 }
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
-const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg'];
+const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
@@ -1350,7 +1493,7 @@ if (D.setFishCfg) D.setFishCfg(world.fishCfg);
     const s = world.shopSales[id];
     if (!s) { world.shopSales[id] = { m: 1, lastTs: Date.now(), soldTotal: 0, soldToday: 0, day: day }; return; }
     if (s.m == null) {
-      s.m = Math.max(PRICE_FLOOR, 1 - Math.min(0.6, (s.debt || 0) * 0.01));
+      s.m = Math.max(priceCfg().floorPct / 100, 1 - Math.min(0.6, (s.debt || 0) * 0.01));
       delete s.debt;
     }
     if (s.day !== day) { s.day = day; s.soldToday = s.soldToday || 0; }
@@ -2415,12 +2558,16 @@ const server = http.createServer(function (req, res) {
       fishCfg: D.getFishCfg ? D.getFishCfg() : null,
       // 抛竿间隔与全服钓速配置：前端据此展示「后台基础值 + 实际钓速」（改动经 castcfg 广播同步）
       castCfg: { baseMs: castBaseMs(), minMs: castMinMs(), speedBonus: castSpeedBonus(), speedCap: castSpeedCap() },
+      // 经济参数（商店文案与容量提示用；改动经 pricecfg 广播同步）
+      priceCfg: priceCfg(),
+      dropCfg: dropCfg(),
     });
   }
   // ---- 钓场目录（公开只读；含管理后台保存的掉落池/增益/锁定覆盖） ----
   // 前端在进入游戏时主动拉取一次，作为 SSE init 之外的兜底，确保后进入/刷新的玩家也能拿到最新目录。
+  // 产出倍率（dropCfg）非默认时下发「有效权重」，图鉴概率与实钓一致。
   if (p === '/api/grounds' && req.method === 'GET') {
-    return apiResp(res, 200, { grounds: D.GROUNDS });
+    return apiResp(res, 200, { grounds: groundsWithDrop() });
   }
 
   // ---- 组件订阅提醒：查询 / 保存（玩家级配置，落盘账号文件，重登后保留）----
@@ -3006,6 +3153,25 @@ const server = http.createServer(function (req, res) {
     ['common', 'big', 'rare'].forEach(function (tier) {
       D.FISH[tier].forEach(function (f) { fish.push({ id: f.id, name: f.name, rarity: f.rarity, tier: tier, price: f.price, size: f.size || null }); });
     });
+    // 经济目录：全部经济物品（渔获/材料）的基准价、现价、乘数、销量与单品覆盖
+    sweepPriceOv();
+    const ecoItems = [];
+    ['common', 'big', 'rare'].forEach(function (tier) {
+      D.FISH[tier].forEach(function (f) { ecoItems.push({ id: f.id, name: f.name, kind: 'fish', tier: tier, rarity: f.rarity }); });
+    });
+    D.MATERIALS.forEach(function (m) { ecoItems.push({ id: m.id, name: m.name, kind: 'material', tier: 'material', rarity: m.rarity }); });
+    const economyCatalog = ecoItems.map(function (it) {
+      const s = world.shopSales[it.id] || {};
+      const base = basePrice(it.id);
+      const price = currentPrice(it.id);
+      const ov = (world.priceOv && world.priceOv[it.id]) || null;
+      return Object.assign({}, it, {
+        base: base, price: price,
+        m: base > 0 ? Math.round(price / base * 100) : 100,
+        soldToday: s.soldToday || 0, soldTotal: s.soldTotal || 0,
+        ov: ov ? { base: ov.base || null, m: ov.m || null, until: ov.until || null } : null,
+      });
+    });
     return apiResp(res, 200, {
       ok: true,
       grounds: D.GROUNDS,
@@ -3029,6 +3195,13 @@ const server = http.createServer(function (req, res) {
       fishCfg: D.getFishCfg ? D.getFishCfg() : null,
       fishDefaults: D.defaultFishCfg ? D.defaultFishCfg() : null,
       affixCodes: D.AFFIX_CODES,
+      // ---- 经济参数（价格模型全程可调）----
+      priceCfg: priceCfg(),
+      priceDefaults: PRICE_DEFAULTS,
+      dropCfg: dropCfg(),
+      dropDefaults: DROP_DEFAULTS,
+      economyCatalog: economyCatalog,
+      economyLog: (world.economyLog || []).slice(-40),
     });
   }
   // ---- 组件生成配置：品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则 ----
@@ -3612,6 +3785,165 @@ const server = http.createServer(function (req, res) {
         out.castSpeedCap = Math.round(cap);
       }
       if (!d.validateOnly) saveConfig();
+      // ---- 经济参数：价格模型全程可调（world.priceCfg / world.dropCfg / 单品干预 world.priceOv）----
+      // 逐项范围校验，并做跨项约束（地板 < 天花板、回升目标 ≥ 地板、0 ≤ 回升目标）；validateOnly 只校验。
+      {
+        const RANGES = {
+          floorPct: [10, 100], ceilPct: [100, 500], saleDivisor: [0.001, 0.05],
+          riseTauMin: [5, 1440], riseTargetPct: [100, 300], sampleSec: [15, 300], historyMin: [60, 1440],
+        };
+        const LABEL = {
+          floorPct: '地板价', ceilPct: '天花板价', saleDivisor: '每件下压', riseTauMin: '回升时间常数',
+          riseTargetPct: '回升目标', sampleSec: '采样间隔', historyMin: '历史保留',
+        };
+        const fmt = function (k, v) {
+          if (k === 'saleDivisor') return Math.round(v * 100000) / 100000;
+          return Math.round(v * 100) / 100;
+        };
+        if (d.resetPriceCfg) {
+          if (!d.validateOnly) {
+            world.priceCfg = {};
+            armPriceSampler();
+            econLog(a.name, '恢复默认价格参数');
+            broadcast({ type: 'pricecfg', priceCfg: priceCfg(), dropCfg: dropCfg() });
+            broadcastShop();
+          }
+          out.priceCfg = priceCfg();
+        } else if (d.priceCfg != null) {
+          if (typeof d.priceCfg !== 'object') return apiResp(res, 400, { error: 'priceCfg 格式错误' });
+          const src = d.priceCfg;
+          const cur = Object.assign({}, world.priceCfg || {});
+          const changed = [];
+          const keys = Object.keys(RANGES);
+          for (let i = 0; i < keys.length; i++) {
+            const k = keys[i];
+            if (src[k] == null) continue;
+            const v = Number(src[k]);
+            const r = RANGES[k];
+            if (!isFinite(v) || v < r[0] || v > r[1]) {
+              return apiResp(res, 400, { error: LABEL[k] + '需在 ' + r[0] + ' - ' + r[1] + ' 之间' });
+            }
+            cur[k] = fmt(k, v);
+            changed.push(LABEL[k] + '=' + cur[k]);
+          }
+          // 品质层覆盖：{ common|big|rare: {saleDivisor?, riseTauMin?} }；传 null 清除该层覆盖
+          if (src.tiers !== undefined) {
+            if (src.tiers != null && typeof src.tiers !== 'object') return apiResp(res, 400, { error: '品质层覆盖格式错误' });
+            const tiers = {};
+            let tierErr = null;
+            ['common', 'big', 'rare'].forEach(function (tier) {
+              const t = src.tiers && src.tiers[tier];
+              if (t == null) return;
+              const o = {};
+              if (t.saleDivisor != null) {
+                const v = Number(t.saleDivisor);
+                if (!isFinite(v) || v < 0.001 || v > 0.05) { tierErr = tier + ' 每件下压需在 0.001 - 0.05 之间'; return; }
+                o.saleDivisor = fmt('saleDivisor', v);
+              }
+              if (t.riseTauMin != null) {
+                const v = Number(t.riseTauMin);
+                if (!isFinite(v) || v < 5 || v > 1440) { tierErr = tier + ' 回升时间常数需在 5 - 1440 之间'; return; }
+                o.riseTauMin = fmt('riseTauMin', v);
+              }
+              if (Object.keys(o).length) tiers[tier] = o;
+            });
+            if (tierErr) return apiResp(res, 400, { error: tierErr });
+            cur.tiers = Object.keys(tiers).length ? tiers : null;
+            changed.push('品质层覆盖');
+          }
+          // 跨项约束（按合并后的生效值判断）
+          const effFloor = cur.floorPct != null ? Number(cur.floorPct) : PRICE_DEFAULTS.floorPct;
+          const effCeil = cur.ceilPct != null ? Number(cur.ceilPct) : PRICE_DEFAULTS.ceilPct;
+          const effTarget = cur.riseTargetPct != null ? Number(cur.riseTargetPct) : Math.min(effCeil, PRICE_DEFAULTS.riseTargetPct);
+          if (effFloor >= effCeil) return apiResp(res, 400, { error: '地板价必须低于天花板价' });
+          if (effTarget < effFloor) return apiResp(res, 400, { error: '回升目标不能低于地板价' });
+          if (!d.validateOnly && changed.length) {
+            world.priceCfg = cur;
+            armPriceSampler(); // 采样间隔可能变化：重挂定时器
+            econLog(a.name, '价格参数：' + changed.join('、'));
+            broadcast({ type: 'pricecfg', priceCfg: priceCfg(), dropCfg: dropCfg() });
+            broadcastShop();
+          }
+          out.priceCfg = priceCfg();
+        }
+        // ---- 产出倍率：全局 + 分类（普通/大鱼/稀有/材料）百分比 ----
+        if (d.resetDropCfg) {
+          if (!d.validateOnly) {
+            world.dropCfg = {};
+            econLog(a.name, '恢复默认产出倍率');
+            broadcast({ type: 'pricecfg', priceCfg: priceCfg(), dropCfg: dropCfg() });
+            broadcastGroundcfg(); // 下发有效权重，图鉴/钓点概率同步
+          }
+          out.dropCfg = dropCfg();
+        } else if (d.dropCfg != null) {
+          if (typeof d.dropCfg !== 'object') return apiResp(res, 400, { error: 'dropCfg 格式错误' });
+          const cur = Object.assign({}, world.dropCfg || {});
+          const changed = [];
+          const DLABEL = { global: '全局产出', common: '普通鱼', big: '大鱼', rare: '稀有鱼', material: '材料' };
+          for (let i = 0; i < DROP_KEYS.length; i++) {
+            const k = DROP_KEYS[i];
+            if (d.dropCfg[k] == null) continue;
+            const v = Number(d.dropCfg[k]);
+            if (!isFinite(v) || v < 0 || v > 500) return apiResp(res, 400, { error: DLABEL[k] + '倍率需在 0 - 500% 之间' });
+            cur[k] = Math.round(v * 10) / 10;
+            changed.push(DLABEL[k] + '=' + cur[k] + '%');
+          }
+          if (!d.validateOnly && changed.length) {
+            world.dropCfg = cur;
+            econLog(a.name, '产出倍率：' + changed.join('、'));
+            broadcast({ type: 'pricecfg', priceCfg: priceCfg(), dropCfg: dropCfg() });
+            broadcastGroundcfg(); // 下发有效权重，图鉴/钓点概率同步
+          }
+          out.dropCfg = dropCfg();
+        }
+        // ---- 单品干预：覆盖基准价 / 锁定乘数（可带过期分钟数，0 或空 = 永久）----
+        if (d.priceOv != null) {
+          if (typeof d.priceOv !== 'object' || !d.priceOv.id) return apiResp(res, 400, { error: 'priceOv 需指定物品 id' });
+          const id = String(d.priceOv.id);
+          if (!ECO_PRICE[id]) return apiResp(res, 400, { error: '该物品不在系统商店经济内' });
+          if (d.priceOv.clear) {
+            if (!d.validateOnly) {
+              if (world.priceOv) delete world.priceOv[id];
+              econLog(a.name, '清除单品干预：' + itemName(id));
+              broadcastShop();
+            }
+            out.priceOv = null;
+          } else {
+            const o = {};
+            if (d.priceOv.base != null && d.priceOv.base !== '') {
+              const v = Number(d.priceOv.base);
+              if (!isFinite(v) || v < 1 || v > 10000000) return apiResp(res, 400, { error: '覆盖基准价需在 1 - 10000000 之间' });
+              o.base = Math.round(v);
+            }
+            if (d.priceOv.m != null && d.priceOv.m !== '') {
+              const v = Number(d.priceOv.m);
+              if (!isFinite(v) || v < 0.05 || v > 10) return apiResp(res, 400, { error: '锁定乘数需在 0.05 - 10 之间' });
+              o.m = Math.round(v * 1000) / 1000;
+            }
+            if (!Object.keys(o).length) return apiResp(res, 400, { error: '至少填写覆盖基准价或锁定乘数之一' });
+            const mins = Number(d.priceOv.untilMin);
+            if (d.priceOv.untilMin != null && d.priceOv.untilMin !== '' && (!isFinite(mins) || mins < 0 || mins > 10080)) {
+              return apiResp(res, 400, { error: '过期时间需在 0 - 10080 分钟之间（0 = 永久）' });
+            }
+            if (isFinite(mins) && mins > 0) o.until = Date.now() + Math.round(mins) * 60000;
+            const before = priceOvOf(id);
+            const b0 = basePrice(id);
+            const p0 = currentPrice(id);
+            if (!d.validateOnly) {
+              world.priceOv = world.priceOv || {};
+              world.priceOv[id] = o;
+              econLog(a.name, '单品干预：' + itemName(id) +
+                (o.base ? ' 基准价 ' + b0 + '→' + o.base : '') +
+                (o.m ? ' 锁价 ×' + o.m : '') +
+                (o.until ? '（' + Math.round(mins) + ' 分钟后恢复）' : ''));
+              broadcastShop();
+            }
+            out.priceOv = Object.assign({ id: id, base: b0, price: p0, next: currentPrice(id) }, o);
+            void before;
+          }
+        }
+        if (!d.validateOnly && (d.resetPriceCfg || d.priceCfg != null || d.resetDropCfg || d.dropCfg != null || d.priceOv != null)) { saveConfig(); saveEconomy(); }
+      }
       if (d.evalVars && formulaSrc != null) {
         const c2 = compileFormula(formulaSrc);
         if (c2.ok) {

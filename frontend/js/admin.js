@@ -135,6 +135,7 @@ window.Admin = (function () {
     { id: 'market', name: '💱 市集管理' },
     { id: 'component', name: '🧩 组件生成' },
     { id: 'fishsize', name: '🐟 鱼类体型' },
+    { id: 'economy', name: '💰 经济参数' },
     { id: 'formula', name: '🧮 公式管理' },
     { id: 'notify', name: '🔔 通知等级' },
     { id: 'banner', name: '📢 横幅管理' },
@@ -163,6 +164,7 @@ window.Admin = (function () {
     if (v === 'market') return renderMarket();
     if (v === 'component') return renderComponent();
     if (v === 'fishsize') return renderFishSize();
+    if (v === 'economy') return renderEconomy();
     if (v === 'formula') return renderFormula();
     if (v === 'notify') return renderNotify();
     if (v === 'banner') return renderBanner();
@@ -1810,6 +1812,263 @@ window.Admin = (function () {
       });
     };
     runSim();
+  }
+
+  // ================================
+  // 💰 经济参数（价格模型全程可调 + 产出倍率 + 品质层覆盖 + 单品干预）
+  // ================================
+  let ecoSearch = '';       // 单品列表搜索（模块级：重绘间保留）
+  const ECO_PRESETS = [
+    { k: 'std', name: '保守（现状）', desc: '1 小时回升 · 每件 -0.75%', cfg: { floorPct: 40, ceilPct: 200, saleDivisor: 0.0075, riseTauMin: 60, riseTargetPct: 200, sampleSec: 60, historyMin: 360 } },
+    { k: 'fast', name: '推荐（15 分钟）', desc: '回升快 4 倍 · 容量 ×4', cfg: { floorPct: 40, ceilPct: 200, saleDivisor: 0.0075, riseTauMin: 15, riseTargetPct: 200, sampleSec: 60, historyMin: 360 } },
+    { k: 'event', name: '活动（10 分钟）', desc: '活跃行情 · 适合在线高峰', cfg: { floorPct: 40, ceilPct: 200, saleDivisor: 0.0075, riseTauMin: 10, riseTargetPct: 200, sampleSec: 30, historyMin: 360 } },
+    { k: 'tight', name: '紧缩（重税）', desc: '每件 -2% · 30 分钟回升 · 抑制肝度', cfg: { floorPct: 40, ceilPct: 200, saleDivisor: 0.02, riseTauMin: 30, riseTargetPct: 200, sampleSec: 60, historyMin: 360 } },
+  ];
+  function renderEconomy() {
+    const main = $('main');
+    main.innerHTML = '<h2>💰 经济参数</h2>' +
+      '<div class="hint" style="margin-bottom:12px">系统商店价格模型与产出倍率的全程可调参数。保存后即时生效：玩家端商店文案、图鉴/钓点概率自动同步；「采样间隔」改动会重挂服务器采样定时器。</div>' +
+      '<div id="eco-body" class="panel">加载中…</div>';
+    loadWorldCfg(true).then(function (cfg) {
+      if (!cfg || view !== 'economy') return;
+      drawEconomy(cfg);
+    });
+  }
+  // 从表单读取价格参数（数字化；校验交给服务器，这里只做基础兜底）
+  function ecoReadForm() {
+    const num = function (id, dft) { const v = Number(($(id) || {}).value); return isFinite(v) ? v : dft; };
+    const tiers = {};
+    [['common', '普通'], ['big', '大鱼'], ['rare', '稀有']].forEach(function (tk) {
+      const tier = tk[0];
+      const follow = $('pc-t-' + tier + '-follow');
+      if (follow && follow.checked) return;
+      const o = {};
+      const sd = Number(($('pc-t-' + tier + '-div') || {}).value);
+      const rt = Number(($('pc-t-' + tier + '-tau') || {}).value);
+      if (isFinite(sd) && sd > 0) o.saleDivisor = sd / 100; // 界面按 % 输入
+      if (isFinite(rt) && rt > 0) o.riseTauMin = rt;
+      if (Object.keys(o).length) tiers[tier] = o;
+    });
+    return {
+      floorPct: num('pc-floor', 40), ceilPct: num('pc-ceil', 200),
+      saleDivisor: num('pc-div', 0.75) / 100, riseTauMin: num('pc-tau', 60), riseTargetPct: num('pc-target', 200),
+      sampleSec: num('pc-sample', 60), historyMin: num('pc-history', 360),
+      tiers: tiers,
+    };
+  }
+  // 容量试算：稳态均衡 s = (target − m) / (ln(1+divisor) · m · τ)；毕业玩家满产 ≈ 5184 件/h
+  function ecoCapacityInfo(P) {
+    const tauH = Math.max(0.001, P.riseTauMin / 60);
+    const c = Math.log(1 + Math.max(0.0001, P.saleDivisor));
+    const target = P.riseTargetPct / 100, floor = P.floorPct / 100;
+    const sBase = Math.max(0, (target - 1) / (c * 1 * tauH));
+    const sFloor = Math.max(0, (target - floor) / (c * floor * tauH));
+    return { sBase: sBase, sFloor: sFloor, gradEquiv: sFloor / 5184 };
+  }
+  function drawEconomy(cfg) {
+    const body = $('eco-body');
+    if (!body) return;
+    const P = cfg.priceCfg || {};
+    const D = cfg.priceDefaults || {};
+    const DC = cfg.dropCfg || {};
+    const DD = cfg.dropDefaults || {};
+    const tiers = P.tiers || {};
+    const trow = function (key, name) {
+      const t = tiers[key] || null;
+      const follow = !t;
+      return '<div class="mgr-row" style="margin-bottom:6px">' +
+        '<label style="width:60px">' + name + '</label>' +
+        '<label class="chk"><input type="checkbox" id="pc-t-' + key + '-follow"' + (follow ? ' checked' : '') + '><span>跟随全局</span></label>' +
+        '<label class="hint">每件下压</label><input id="pc-t-' + key + '-div" class="ipt mk-num" type="number" step="0.05" min="0.1" max="5" style="width:90px" value="' + (t && t.saleDivisor != null ? (t.saleDivisor * 100) : '') + '" placeholder="' + (D.saleDivisor != null ? (D.saleDivisor * 100) : 0.75) + '">' +
+        '<span class="hint">%</span>' +
+        '<label class="hint" style="margin-left:10px">回升</label><input id="pc-t-' + key + '-tau" class="ipt mk-num" type="number" step="1" min="5" max="1440" style="width:90px" value="' + (t && t.riseTauMin != null ? t.riseTauMin : '') + '" placeholder="' + (P.riseTauMin != null ? P.riseTauMin : 60) + '">' +
+        '<span class="hint">分钟</span></div>';
+    };
+    body.innerHTML =
+      '<h3 style="margin-top:0">📈 价格模型参数</h3>' +
+      '<div class="hint" style="margin-bottom:8px">乘数 m ∈ [地板, 天花板]；售出按「每件下压」逐件压低，闲置时以「回升时间常数」向「回升目标」靠拢（高于目标会缓慢回落）。</div>' +
+      '<div class="mgr-row"><label style="width:110px">地板价</label><input id="pc-floor" class="ipt mk-num" type="number" min="10" max="100" step="5" value="' + (P.floorPct != null ? P.floorPct : 40) + '" style="width:100px">' +
+      '<span class="hint">% 基准价（10-100）</span>' +
+      '<label class="hint" style="margin-left:16px">天花板价</label><input id="pc-ceil" class="ipt mk-num" type="number" min="100" max="500" step="10" value="' + (P.ceilPct != null ? P.ceilPct : 200) + '" style="width:100px">' +
+      '<span class="hint">%（100-500）</span></div>' +
+      '<div class="mgr-row"><label style="width:110px">每件下压</label><input id="pc-div" class="ipt mk-num" type="number" min="0.1" max="5" step="0.05" value="' + (P.saleDivisor != null ? Math.round(P.saleDivisor * 10000) / 100 : 0.75) + '" style="width:100px">' +
+      '<span class="hint">%（0.1-5，即每卖一件乘数 ÷(1+x)）</span>' +
+      '<label class="hint" style="margin-left:16px">回升时间常数</label><input id="pc-tau" class="ipt mk-num" type="number" min="5" max="1440" step="5" value="' + (P.riseTauMin != null ? P.riseTauMin : 60) + '" style="width:100px">' +
+      '<span class="hint">分钟（5-1440）</span></div>' +
+      '<div class="mgr-row"><label style="width:110px">回升目标</label><input id="pc-target" class="ipt mk-num" type="number" min="100" max="300" step="10" value="' + (P.riseTargetPct != null ? P.riseTargetPct : 200) + '" style="width:100px">' +
+      '<span class="hint">%（100-300，默认=天花板）</span>' +
+      '<label class="hint" style="margin-left:16px">采样间隔</label><input id="pc-sample" class="ipt mk-num" type="number" min="15" max="300" step="15" value="' + (P.sampleSec != null ? P.sampleSec : 60) + '" style="width:100px">' +
+      '<span class="hint">秒（15-300）</span>' +
+      '<label class="hint" style="margin-left:16px">历史保留</label><input id="pc-history" class="ipt mk-num" type="number" min="60" max="1440" step="60" value="' + (P.historyMin != null ? P.historyMin : 360) + '" style="width:100px">' +
+      '<span class="hint">分钟（60-1440）</span></div>' +
+      '<h3 style="margin-top:16px">🎚 品质层覆盖（空 = 跟随全局）</h3>' +
+      trow('common', '普通') + trow('big', '大鱼') + trow('rare', '稀有') +
+      '<div class="effect-line" id="eco-cap" style="margin:10px 0 4px">—</div>' +
+      '<div class="mgr-row" style="margin-top:8px"><label style="width:110px">预设</label>' +
+      ECO_PRESETS.map(function (p) { return '<button class="btn mini" data-preset="' + p.k + '" title="' + esc(p.desc) + '">' + p.name + '</button>'; }).join('') +
+      '<button class="btn primary" id="pc-save" style="margin-left:10px">保存价格参数</button>' +
+      '<button class="btn danger" id="pc-reset">恢复默认</button>' +
+      '<span id="pc-state" class="hint"></span></div>' +
+      '<div class="mgr-row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">' +
+      '<h3 style="margin:0">🌊 产出倍率（掉落池权重倍率；组件只吃全局）</h3></div>' +
+      '<div class="mgr-row">' +
+      '<label style="width:80px">全局</label><input id="dc-global" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.global != null ? DC.global : 100) + '" style="width:90px"><span class="hint">%</span>' +
+      '<label class="hint" style="margin-left:12px">普通鱼</label><input id="dc-common" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.common != null ? DC.common : 100) + '" style="width:90px"><span class="hint">%</span>' +
+      '<label class="hint" style="margin-left:12px">大鱼</label><input id="dc-big" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.big != null ? DC.big : 100) + '" style="width:90px"><span class="hint">%</span>' +
+      '<label class="hint" style="margin-left:12px">稀有鱼</label><input id="dc-rare" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.rare != null ? DC.rare : 100) + '" style="width:90px"><span class="hint">%</span>' +
+      '<label class="hint" style="margin-left:12px">材料</label><input id="dc-material" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.material != null ? DC.material : 100) + '" style="width:90px"><span class="hint">%</span></div>' +
+      '<div class="mgr-row"><button class="btn mini" data-dpreset="daily">日常 ×1</button><button class="btn mini" data-dpreset="event">活动 ×2</button><button class="btn mini" data-dpreset="big">大鱼季（大鱼 ×2）</button>' +
+      '<button class="btn primary" id="dc-save" style="margin-left:10px">保存产出倍率</button>' +
+      '<button class="btn danger" id="dc-reset">恢复默认</button><span id="dc-state" class="hint"></span></div>' +
+      '<h3 style="margin-top:18px">🎯 单品干预（覆盖基准价 / 锁定乘数；分钟留空 = 永久）</h3>' +
+      '<div class="mgr-row"><label class="hint">搜索</label><input id="eco-search" class="ipt" placeholder="鱼名 / ID" value="' + esc(ecoSearch) + '" style="width:200px">' +
+      '<span class="hint" id="eco-count"></span></div>' +
+      '<div id="eco-list">…</div>' +
+      '<h3 style="margin-top:18px">📝 最近改动</h3>' +
+      '<div id="eco-log" class="hint">' + ((cfg.economyLog && cfg.economyLog.length)
+        ? cfg.economyLog.slice().reverse().map(function (l) { return '<div>' + fmtTime(l.t) + ' · ' + esc(l.who) + ' · ' + esc(l.text) + '</div>'; }).join('')
+        : '暂无改动记录。') + '</div>';
+
+    // ---- 容量试算实时更新 ----
+    function refreshCap() {
+      const info = ecoCapacityInfo(ecoReadForm());
+      const el2 = $('eco-cap');
+      if (!el2) return;
+      el2.innerHTML = '📐 按当前参数：单鱼种可维持 <b>基准价</b> 的销量 ≈ <b>' + Math.round(info.sBase) + '</b> 件/h · ' +
+        '压到 <b>地板价</b> 前 ≈ <b>' + Math.round(info.sFloor) + '</b> 件/h（≈ <b>' + info.gradEquiv.toFixed(2) + '</b> 个毕业玩家满产并发）';
+    }
+    ['pc-floor', 'pc-ceil', 'pc-div', 'pc-tau', 'pc-target'].forEach(function (id) {
+      const el2 = $(id); if (el2) el2.addEventListener('input', refreshCap);
+    });
+    refreshCap();
+
+    // ---- 预设按钮：填入表单（需再点保存） ----
+    body.querySelectorAll('[data-preset]').forEach(function (b) {
+      b.onclick = function () {
+        const p = ECO_PRESETS.find(function (x) { return x.k === b.getAttribute('data-preset'); });
+        if (!p) return;
+        $('pc-floor').value = p.cfg.floorPct; $('pc-ceil').value = p.cfg.ceilPct;
+        $('pc-div').value = Math.round(p.cfg.saleDivisor * 10000) / 100; $('pc-tau').value = p.cfg.riseTauMin;
+        $('pc-target').value = p.cfg.riseTargetPct; $('pc-sample').value = p.cfg.sampleSec; $('pc-history').value = p.cfg.historyMin;
+        $('pc-state').innerHTML = '<span style="color:var(--warn,#f59e0b)">已填入「' + p.name + '」，点「保存价格参数」生效</span>';
+        refreshCap();
+      };
+    });
+    body.querySelectorAll('[data-dpreset]').forEach(function (b) {
+      b.onclick = function () {
+        const k = b.getAttribute('data-dpreset');
+        const set = function (id, v) { $(id).value = v; };
+        if (k === 'daily') { set('dc-global', 100); set('dc-common', 100); set('dc-big', 100); set('dc-rare', 100); set('dc-material', 100); }
+        if (k === 'event') { set('dc-global', 200); set('dc-common', 100); set('dc-big', 100); set('dc-rare', 100); set('dc-material', 100); }
+        if (k === 'big') { set('dc-global', 100); set('dc-common', 80); set('dc-big', 200); set('dc-rare', 100); set('dc-material', 100); }
+        $('dc-state').innerHTML = '<span style="color:var(--warn,#f59e0b)">已填入预设，点「保存产出倍率」生效</span>';
+      };
+    });
+    // 品质层「跟随全局」勾选时禁用输入
+    ['common', 'big', 'rare'].forEach(function (tier) {
+      const f = $('pc-t-' + tier + '-follow');
+      const sync = function () {
+        ['pc-t-' + tier + '-div', 'pc-t-' + tier + '-tau'].forEach(function (id) { const el2 = $(id); if (el2) el2.disabled = f.checked; });
+      };
+      f.onchange = sync; sync();
+    });
+
+    // ---- 保存：价格参数 / 产出倍率 / 干预 ----
+    $('pc-save').onclick = function () {
+      adminApi('POST', '/api/admin/settings', { token: token, priceCfg: ecoReadForm() }).then(function (r) {
+        if (!r.ok) { $('pc-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+        toast('价格参数已保存，立即生效');
+        worldCfg = null;
+        loadWorldCfg(true).then(function (c2) { if (c2 && view === 'economy') drawEconomy(c2); });
+      });
+    };
+    $('pc-reset').onclick = function () {
+      adminApi('POST', '/api/admin/settings', { token: token, resetPriceCfg: true }).then(function (r) {
+        if (!r.ok) { $('pc-state').innerHTML = '<span class="err">' + esc(r.data.error || '恢复失败') + '</span>'; return; }
+        toast('价格参数已恢复默认');
+        worldCfg = null;
+        loadWorldCfg(true).then(function (c2) { if (c2 && view === 'economy') drawEconomy(c2); });
+      });
+    };
+    $('dc-save').onclick = function () {
+      const dc = {
+        global: Number($('dc-global').value), common: Number($('dc-common').value), big: Number($('dc-big').value),
+        rare: Number($('dc-rare').value), material: Number($('dc-material').value),
+      };
+      adminApi('POST', '/api/admin/settings', { token: token, dropCfg: dc }).then(function (r) {
+        if (!r.ok) { $('dc-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+        toast('产出倍率已保存，图鉴概率已同步');
+        worldCfg = null;
+        loadWorldCfg(true).then(function (c2) { if (c2 && view === 'economy') drawEconomy(c2); });
+      });
+    };
+    $('dc-reset').onclick = function () {
+      adminApi('POST', '/api/admin/settings', { token: token, resetDropCfg: true }).then(function (r) {
+        if (!r.ok) { $('dc-state').innerHTML = '<span class="err">' + esc(r.data.error || '恢复失败') + '</span>'; return; }
+        toast('产出倍率已恢复默认');
+        worldCfg = null;
+        loadWorldCfg(true).then(function (c2) { if (c2 && view === 'economy') drawEconomy(c2); });
+      });
+    };
+    $('eco-search').oninput = function () { ecoSearch = $('eco-search').value.trim(); drawEcoList(cfg); };
+    drawEcoList(cfg);
+  }
+  // 单品干预列表（搜索过滤 + 逐项覆盖/清除）
+  function drawEcoList(cfg) {
+    const box = $('eco-list');
+    if (!box) return;
+    const all = (cfg && cfg.economyCatalog) || [];
+    const kw = ecoSearch.toLowerCase();
+    const list = all.filter(function (it) {
+      return !kw || it.name.toLowerCase().indexOf(kw) >= 0 || it.id.toLowerCase().indexOf(kw) >= 0;
+    });
+    const cnt = $('eco-count');
+    if (cnt) cnt.textContent = '匹配 ' + list.length + ' / ' + all.length + ' 项（覆盖后立即影响收购价与自动售出阈值）';
+    if (!list.length) { box.innerHTML = '<div class="hint">无匹配物品。</div>'; return; }
+    const TIER_NAME = { common: '普通', big: '大鱼', rare: '稀有', material: '材料' };
+    box.innerHTML = '<div style="max-height:520px;overflow:auto">' + list.map(function (it) {
+      const cls = it.kind === 'fish' && it.tier !== 'common' ? ' ' + RARITY_TAG[it.tier === 'big' ? 'big' : 'rare'] : '';
+      const ov = it.ov ? ('<span class="tag' + (ov.until ? '' : ' big') + '" title="' + (ov.until ? '到期 ' + fmtTime(ov.until) : '永久') + '">' + (ov.base ? '基准 ' + ov.base : '') + (ov.base && ov.m ? ' · ' : '') + (ov.m ? '锁 ×' + ov.m : '') + (ov.until ? ' · 限时' : '') + '</span>') : '';
+      return '<div class="inv-row" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)">' +
+        '<span style="width:120px" class="' + cls.trim() + '">' + esc(it.name) + '</span>' +
+        '<span class="hint" style="width:48px">' + (TIER_NAME[it.tier] || it.tier) + '</span>' +
+        '<span style="width:110px">基准 <b>' + it.base + '</b> · 现价 <b>' + it.price + '</b> 💰</span>' +
+        '<span style="width:70px">' + it.m + '%</span>' +
+        '<span class="hint" style="width:100px">今日 ' + it.soldToday + '</span>' +
+        '<span style="width:150px">' + ov + '</span>' +
+        '<input class="ipt mk-num eco-ov-base" data-id="' + esc(it.id) + '" type="number" min="1" placeholder="基准价" style="width:90px" value="' + (it.ov && it.ov.base ? it.ov.base : '') + '">' +
+        '<input class="ipt mk-num eco-ov-m" data-id="' + esc(it.id) + '" type="number" min="0.05" max="10" step="0.05" placeholder="锁价×" style="width:80px" value="' + (it.ov && it.ov.m ? it.ov.m : '') + '">' +
+        '<input class="ipt mk-num eco-ov-min" data-id="' + esc(it.id) + '" type="number" min="0" placeholder="分钟" style="width:70px">' +
+        '<button class="btn mini primary eco-ov-set" data-id="' + esc(it.id) + '">设置</button>' +
+        '<button class="btn mini eco-ov-clear" data-id="' + esc(it.id) + '">清除</button>' +
+        '</div>';
+    }).join('') + '</div>';
+
+    const apply = function (id, body) {
+      adminApi('POST', '/api/admin/settings', Object.assign({ token: token, priceOv: Object.assign({ id: id }, body) }, {})).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '操作失败', true); return; }
+        toast(body.clear ? '已清除干预' : '干预已生效');
+        worldCfg = null;
+        loadWorldCfg(true).then(function (c2) { if (c2 && view === 'economy') drawEconomy(c2); });
+      });
+    };
+    box.querySelectorAll('.eco-ov-set').forEach(function (b) {
+      b.onclick = function () {
+        const id = b.getAttribute('data-id');
+        const baseEl = box.querySelector('.eco-ov-base[data-id="' + id + '"]');
+        const mEl = box.querySelector('.eco-ov-m[data-id="' + id + '"]');
+        const minEl = box.querySelector('.eco-ov-min[data-id="' + id + '"]');
+        const payload = { id: id };
+        if (baseEl.value !== '') payload.base = Number(baseEl.value);
+        if (mEl.value !== '') payload.m = Number(mEl.value);
+        if (minEl.value !== '') payload.untilMin = Number(minEl.value);
+        if (payload.base == null && payload.m == null) { toast('至少填写覆盖基准价或锁定乘数之一', true); return; }
+        apply(id, payload);
+      };
+    });
+    box.querySelectorAll('.eco-ov-clear').forEach(function (b) {
+      b.onclick = function () { apply(b.getAttribute('data-id'), { clear: true }); };
+    });
   }
 
   // ================================

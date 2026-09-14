@@ -337,6 +337,58 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       const fsReset = await get('/api/admin/world?token=' + adminLogin.data.token);
       check('后台恢复默认体型模型（normal）', fsReset.data.fishCfg.sizeModel === 'normal', JSON.stringify(fsReset.data.fishCfg));
 
+      // —— 经济参数：参数面板 / 预设填充 / 保存生效 / 单品干预 / 恢复默认 ——
+      section('管理后台 · 经济参数');
+      await clickAdminNav('经济参数', '#pc-save');
+      const ecoPage = await pa.evaluate(() => ({
+        hasSave: !!document.getElementById('pc-save'),
+        hasReset: !!document.getElementById('pc-reset'),
+        floor: (document.getElementById('pc-floor') || {}).value,
+        tau: (document.getElementById('pc-tau') || {}).value,
+        cap: (document.getElementById('eco-cap') || {}).textContent,
+        presets: Array.from(document.querySelectorAll('[data-preset]')).length,
+        tiers: Array.from(document.querySelectorAll('[id^="pc-t-"][id$="-follow"]')).length,
+        listRows: document.querySelectorAll('#eco-list .eco-ov-set').length,
+      }));
+      check('经济参数页渲染（保存/恢复/7 项价格字段/预设/品质层/单品列表）',
+        ecoPage.hasSave && ecoPage.hasReset && ecoPage.presets >= 4 && ecoPage.tiers === 3 && ecoPage.listRows === 45, JSON.stringify(ecoPage));
+      check('默认值回填（地板 40 / 回升 60 分钟）', ecoPage.floor === '40' && ecoPage.tau === '60', JSON.stringify(ecoPage));
+      check('容量试算行显示件/小时与毕业等效', /件\/h/.test(ecoPage.cap || '') && /毕业玩家/.test(ecoPage.cap || ''), (ecoPage.cap || '').slice(0, 120));
+      // 预设「推荐（15 分钟）」填入表单（不自动保存）
+      await pa.evaluate(() => { document.querySelector('[data-preset="fast"]').click(); });
+      check('预设填充回升 15 分钟（未保存提示）',
+        (await pa.evaluate(() => document.getElementById('pc-tau').value)) === '15'
+        && /保存价格参数/.test(await pa.evaluate(() => document.getElementById('pc-state').textContent)));
+      await pa.evaluate(() => { document.getElementById('pc-save').click(); });
+      await waitFor(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data.priceCfg.riseTauMin === 15,
+        { timeout: 5000 }).catch(() => false);
+      check('保存后服务端生效（回升 15 分钟）',
+        (await get('/api/admin/world?token=' + adminLogin.data.token)).data.priceCfg.riseTauMin === 15);
+      // 单品干预：给鲫鱼设锁价 ×3 → 目录出现覆盖 → 清除
+      await pa.evaluate(() => {
+        const m = document.querySelector('.eco-ov-m[data-id="crucian"]');
+        m.value = '3';
+        document.querySelector('.eco-ov-set[data-id="crucian"]').click();
+      });
+      await waitFor(async () => {
+        const w = await get('/api/admin/world?token=' + adminLogin.data.token);
+        return !!(w.data.economyCatalog || []).find(i => i.id === 'crucian' && i.ov && i.ov.m === 3);
+      }, { timeout: 5000 }).catch(() => false);
+      check('单品锁价干预生效（鲫鱼 ×3）',
+        !!(await get('/api/admin/world?token=' + adminLogin.data.token)).data.economyCatalog.find(i => i.id === 'crucian' && i.ov && i.ov.m === 3));
+      const shopLocked = await get('/shop');
+      check('锁价影响商店现价（8×3=24）', shopLocked.data.crucian.price === 24, JSON.stringify(shopLocked.data.crucian));
+      await pa.evaluate(() => { document.querySelector('.eco-ov-clear[data-id="crucian"]').click(); });
+      await waitFor(async () => !(await get('/api/admin/world?token=' + adminLogin.data.token)).data.economyCatalog.find(i => i.id === 'crucian').ov,
+        { timeout: 5000 }).catch(() => false);
+      check('清除干预后目录无覆盖', !(await get('/api/admin/world?token=' + adminLogin.data.token)).data.economyCatalog.find(i => i.id === 'crucian').ov);
+      // 恢复默认（价格参数）
+      await pa.evaluate(() => { document.getElementById('pc-reset').click(); });
+      await waitFor(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data.priceCfg.riseTauMin === 60,
+        { timeout: 5000 }).catch(() => false);
+      check('恢复默认价格参数（回升 60 分钟）',
+        (await get('/api/admin/world?token=' + adminLogin.data.token)).data.priceCfg.riseTauMin === 60);
+
       // —— 账号管理：搜索联想 / 表头排序 / 快照弹窗（名称选择 + 定制配件）——
       section('管理后台 · 账号管理');
       await clickAdminNav('账号管理', '#mgr-q');

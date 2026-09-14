@@ -90,11 +90,13 @@ window.Net = (function () {
     if (ui && ui.forceLogout) ui.forceLogout(msg);
   }
 
-  // 顺带同步服务器的组件生成配置 / 抛竿间隔与全服钓速（展示与本地 roll 保持一致）
+  // 顺带同步服务器的组件生成配置 / 抛竿间隔与全服钓速 / 经济参数（展示与本地 roll 保持一致）
   function applyServerCfg(d) {
     if (!d) return;
     if (d.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(d.componentCfg);
     if (d.castCfg) state().castCfg = d.castCfg;
+    if (d.priceCfg) state().priceCfg = d.priceCfg;
+    if (d.dropCfg) state().dropCfg = d.dropCfg;
   }
   function guardVersion() {
     if (!localVersion()) return Promise.resolve(false);
@@ -344,6 +346,11 @@ window.Net = (function () {
             ui.refreshAll('castcfg');
           }
           if (ui && ui.toast) ui.toast('管理员已调整抛竿间隔：基础 ' + (m.baseMs / 1000).toFixed(2) + 's / 最短 ' + (m.minMs / 1000).toFixed(2) + 's' + (m.speedBonus ? ' / 全服钓速 ' + m.speedBonus + '%' : ''));
+        } else if (m.type === 'pricecfg') {
+          // 管理员调整经济参数（价格模型/产出倍率）：记住新值，商店文案与容量提示随重绘更新
+          if (m.priceCfg) S.priceCfg = m.priceCfg;
+          if (m.dropCfg) S.dropCfg = m.dropCfg;
+          if (ui && ui.refreshAll) ui.refreshAll('pricecfg');
         } else if (m.type === 'subalert') {
           if (ui && ui.onSubAlert) ui.onSubAlert(m.item || {});
         } else if (m.type === 'assets') {

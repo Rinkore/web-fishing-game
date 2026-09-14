@@ -1413,7 +1413,8 @@ window.UI = (function () {
         });
         body.appendChild(spark);
         const spanMin = Math.max(1, Math.round((pts[pts.length - 1].t - pts[0].t) / 60000));
-        body.appendChild(el('div', 'sd-legend', '近 ' + spanMin + ' 分钟（每分钟一采样） · 红=不低于基准 · 蓝=低于基准'));
+        const sampleSec = (S() && S().priceCfg && S().priceCfg.sampleSec) || 60;
+        body.appendChild(el('div', 'sd-legend', '近 ' + spanMin + ' 分钟（每 ' + sampleSec + ' 秒一采样） · 红=不低于基准 · 蓝=低于基准'));
       } else {
         body.appendChild(el('div', 'sd-legend', '价格采样积累中（服务器每分钟记录一次）。'));
       }
@@ -1450,6 +1451,17 @@ window.UI = (function () {
     });
   }
 
+  // 商店头部文案：跟随后台经济参数（world.priceCfg 经 /api/version 与 pricecfg 广播同步）
+  function shopSubtitle() {
+    const c = (S() && S().priceCfg) || null;
+    const divisorPct = c && c.saleDivisor != null ? (c.saleDivisor * 100) : 0.75;
+    const tauMin = c && c.riseTauMin != null ? c.riseTauMin : 60;
+    const targetX = c && c.riseTargetPct != null ? (c.riseTargetPct / 100) : 2;
+    const tauText = tauMin >= 60 ? (Math.round(tauMin / 6) / 10) + ' 小时' : Math.round(tauMin) + ' 分钟';
+    const fmtPct = Math.round(divisorPct * 100) / 100;
+    return '供需定价 · 单乘数模型：每卖一件约 -' + fmtPct + '% · 闲置时以 ' + tauText + ' 为时间常数向 ' + targetX + ' 倍靠拢 · 点击商品查看走势与交易流水';
+  }
+
   function renderShop() {
     const st = S();
     const main = $('main');
@@ -1471,7 +1483,7 @@ window.UI = (function () {
     if (!document.querySelector('#shop-panel .shop-grid')) {
       const panel = el('div', 'panel wide');
       panel.id = 'shop-panel';
-      panel.innerHTML = '<h2>🏪 系统商店 <span class="subtitle">供需定价 · 单乘数模型：每卖一件约 -0.7% · 闲置时向 2 倍缓慢回升 · 点击商品查看走势与交易流水</span></h2>';
+      panel.innerHTML = '<h2>🏪 系统商店 <span class="subtitle" id="shop-sub">' + shopSubtitle() + '</span></h2>';
       const cols = el('div', 'shop-cols');
       const colMain = el('div', 'shop-colmain');
 
@@ -1599,6 +1611,9 @@ window.UI = (function () {
       };
     }
 
+    // 广播刷新：只重建网格与右栏列表，不动输入框；头部文案跟随经济参数变化
+    const subEl = document.getElementById('shop-sub');
+    if (subEl) subEl.textContent = shopSubtitle();
     renderShopSide();
     renderShopGrid();
   }
@@ -2051,6 +2066,7 @@ window.UI = (function () {
   // 分类只为快速定位要上架的物品；多选后统一设置时长与价格倍率，逐个调用挂单接口。
   let mktSellCat = 'all';
   let mktSellPick = {};      // 勾选的物品 id → true
+  let mktSellScroll = 0;     // 列表滚动位置（重绘后还原，避免多选时被弹回顶部）
   function marketSellPanel(st) {
     const box = el('div', 'mkt-sell');
     const keysAll = Object.keys(st.inventory);
@@ -2069,18 +2085,34 @@ window.UI = (function () {
     if (!keys.length) { box.appendChild(el('div', 'hint', '该分类下没有可上架的物品。')); return box; }
     keys = keys.slice().sort(function (a, b) { return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1); });
     const list = el('div', 'mkt-sell-list');
+    // 重绘（行情广播 / 上架后刷新）时还原滚动位置：列表可滚动，弹回顶部会让多选很难用
+    list.scrollTop = mktSellScroll;
+    list.addEventListener('scroll', function () { mktSellScroll = list.scrollTop; });
+    // 勾选变化只更新底部按钮（不整页重绘）：列表可滚动，重绘会把滚动条弹回顶部，多选时很难用
+    let syncFoot = function () {};
     keys.forEach(function (id) {
       const meta = itemMeta(id);
       const row = el('div', 'inv-row mkt-sell-row');
       const picked = !!mktSellPick[id];
+      // 组件实例：词条直接显示在挂单列表里（含数值区间与满词条标记），便于挑要挂单的组件
+      const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
+        ? '<span class="mkt-sell-aff">' + meta.affixes.map(function (a) {
+            const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
+            const rng = pool ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max]) : null;
+            const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
+            return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + rangeTag + '</span>';
+          }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</span>'
+        : '';
       row.innerHTML = '<label class="mkt-pick"><input type="checkbox"' + (picked ? ' checked' : '') + ' /></label>' +
-        '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' + rodLockBadge(id) +
+        '<span class="mkt-sell-info">' +
+        '<span class="mkt-sell-name ' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' + rodLockBadge(id) + affHtml +
+        '</span>' +
         '<span class="cnt">×' + st.inventory[id] + '</span>' +
         '<span class="unit-price">' + unitPriceOf(id) + '💰</span>';
       const cb = row.querySelector('input[type=checkbox]');
       cb.addEventListener('change', function () {
         if (cb.checked) mktSellPick[id] = true; else delete mktSellPick[id];
-        renderView();
+        syncFoot();
       });
       const acts = el('span', 'inv-acts');
       const b1 = el('button', 'mini', '上架');
@@ -2091,18 +2123,28 @@ window.UI = (function () {
       list.appendChild(row);
     });
     box.appendChild(list);
-    const pickedIds = keys.filter(function (id) { return mktSellPick[id]; });
     const foot = el('div', 'mkt-sell-foot');
-    const batch = el('button', 'primary' + (pickedIds.length ? '' : ' locked'), '⚡ 一键上架（已选 ' + pickedIds.length + '）');
-    if (pickedIds.length) {
-      batch.addEventListener('click', function () { openBatchListModal(pickedIds); });
-    }
+    const batch = el('button', 'primary');
     foot.appendChild(batch);
     const clr = el('button', 'mini', '清空选择');
-    clr.addEventListener('click', function () { mktSellPick = {}; renderView(); });
+    clr.addEventListener('click', function () {
+      // 就地取消勾选（同样避免重绘导致的滚动跳动）
+      mktSellPick = {};
+      list.querySelectorAll('input[type=checkbox]').forEach(function (c) { c.checked = false; });
+      syncFoot();
+    });
     foot.appendChild(clr);
     box.appendChild(foot);
     box.appendChild(el('div', 'hint', '勾选多件后点「一键上架」：统一设置时长与价格倍率（按各物品现价计算），逐个挂单。'));
+    // 底部按钮与勾选状态同步（就地更新：文案 / 禁用态 / 点击行为）
+    syncFoot = function () {
+      const pickedIds = keys.filter(function (id) { return mktSellPick[id]; });
+      batch.textContent = '⚡ 一键上架（已选 ' + pickedIds.length + '）';
+      batch.classList.toggle('locked', !pickedIds.length);
+      batch.title = pickedIds.length ? '统一设置时长与价格倍率后逐个挂单' : '先勾选要上架的物品';
+      batch.onclick = pickedIds.length ? function () { openBatchListModal(pickedIds); } : null;
+    };
+    syncFoot();
     return box;
   }
   // 一键上架子窗口：统一时长 + 价格倍率（或各物品现价），逐件挂单并汇总结果
@@ -3988,8 +4030,8 @@ window.UI = (function () {
     fishing: ['players', 'grounds', 'catch', 'assets', 'groundcfg', 'castcfg'], // 实况/日志/钓速随广播更新
     bd: [],                                             // 钓竿配置：只随操作重绘（展示数据不受广播影响）
     ground: ['players', 'grounds', 'feed', 'groundcfg'],
-    inventory: ['assets', 'shop'],
-    shop: ['assets', 'shop'],
+    inventory: ['assets', 'shop', 'pricecfg'],
+    shop: ['assets', 'shop', 'pricecfg'],
     market: ['assets', 'market'],
     trade: ['trade', 'assets', 'codex'],
     codex: ['codex', 'groundcfg'],
