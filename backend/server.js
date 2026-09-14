@@ -54,6 +54,7 @@ const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const ECONOMY_FILE = path.join(DATA_DIR, 'economy.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 // 旧版单文件（仅用于首次自动迁移）
 const LEGACY_USERS_FILE = path.join(DATA_DIR, 'users.json');
 const LEGACY_WORLD_FILE = path.join(DATA_DIR, 'world.json');
@@ -96,7 +97,47 @@ const players = new Map();   // id(=username) -> presence（可安全 JSON 广�
 const fishingTimers = new Map(); // username -> 钓鱼循环定时器（Node Timer，不可序列化，单独存放）
 const feed = [];             // { t, who, item, ground, spot }
 const clients = new Set();   // SSE response 对象
-const sessions = new Map();  // token -> username(lowercased)
+// 会话：tokenHash -> { key, exp }。**落盘只存 token 的 SHA-256**，文件泄露不等于拿到可用凭据。
+// 落盘的意义：服务器重启（升级 / 崩溃）后登录态仍在，客户端带着本地 token 自动登录、
+// SSE 自动重连，不必让玩家重新输密码——配合前端的版本强刷就是「无感热更新」。
+const SESSION_TTL_MS = 30 * 24 * 3600 * 1000; // 30 天未使用即失效，避免文件无限增长
+const sessions = new Map();
+function tokenHash(t) { return crypto.createHash('sha256').update(String(t)).digest('hex'); }
+function saveSessions() {
+  const out = {};
+  const now = Date.now();
+  sessions.forEach(function (v, h) { if (v && v.exp > now) out[h] = { k: v.key, e: v.exp }; });
+  writeJson(SESSIONS_FILE, { tokens: out });
+}
+function loadSessions() {
+  const data = readJson(SESSIONS_FILE);
+  const now = Date.now();
+  const tokens = (data && data.tokens) || {};
+  Object.keys(tokens).forEach(function (h) {
+    const v = tokens[h];
+    if (!v || !v.k || !(v.e > now)) return; // 过期的不载入
+    sessions.set(h, { key: v.k, exp: v.e });
+  });
+}
+function sessionSet(token, key) {
+  sessions.set(tokenHash(token), { key: key, exp: Date.now() + SESSION_TTL_MS });
+  saveSessions();
+}
+function sessionGet(token) {
+  if (!token) return null;
+  const h = tokenHash(token);
+  const v = sessions.get(h);
+  if (!v) return null;
+  if (!(v.exp > Date.now())) { sessions.delete(h); saveSessions(); return null; }
+  // 滑动续期：剩余不足一半时才写盘，避免每次请求都落一次文件
+  if (v.exp - Date.now() < SESSION_TTL_MS / 2) { v.exp = Date.now() + SESSION_TTL_MS; saveSessions(); }
+  return v.key;
+}
+function sessionDelete(token) {
+  if (!token) return;
+  sessions.delete(tokenHash(token));
+  saveSessions();
+}
 let users = {};
 
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
@@ -1036,8 +1077,9 @@ function bannerPlayingView() {
 // 顶号：使该账号所有旧会话失效并断开其实时连接（一个账号同时只允许一个在线窗口）
 function kickUserSessions(key) {
   const dead = [];
-  sessions.forEach(function (k, t) { if (k === key) dead.push(t); });
-  dead.forEach(function (t) { sessions.delete(t); }); // 使旧 token 全部失效（顶号核心）
+  sessions.forEach(function (v, h) { if (v && v.key === key) dead.push(h); });
+  dead.forEach(function (h) { sessions.delete(h); }); // 使旧 token 全部失效（顶号核心）
+  if (dead.length) saveSessions();
   stopFishingSession(key);
   const doomed = [];
   clientOwners.forEach(function (ownerKey, res) { if (ownerKey === key) doomed.push(res); });
@@ -1196,6 +1238,7 @@ function loadWorld() {
 }
 loadUsers();
 loadWorld();
+loadSessions(); // 重启后恢复登录态（客户端可自动登录，见 sessionGet 注释）
 // v0.8 组件实例化迁移：旧编码组件 id（`部位_code值_…`）→ 实例签名；背包/钓竿配置/挂单原位换新。
 // 同时清理经济域里遗留的组件键（组件实例改走固定价，不再进入供需/价格历史）。
 (function migrateLegacyComponentIds() {
@@ -1285,7 +1328,7 @@ function anyAdminExists() {
   return Object.keys(users).some(function (k) { return users[k].admin; });
 }
 function adminOf(token) {
-  const key = token && sessions.get(token);
+  const key = token && sessionGet(token);
   const rec = key && users[key];
   return (rec && rec.admin) ? { key: key, rec: rec } : null;
 }
@@ -1307,7 +1350,7 @@ const CORS_HEADERS = {
 function apiResp(res, status, obj) { res.writeHead(status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, CORS_HEADERS)); res.end(JSON.stringify(obj)); }
 function auth(req, res, body, cb) {
   let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
-  const key = d.token && sessions.get(d.token);
+  const key = d.token && sessionGet(d.token);
   if (!key) return apiResp(res, 401, { error: '未登录' });
   cb(d, key);
 }
@@ -1427,7 +1470,7 @@ const server = http.createServer(function (req, res) {
       const salt = crypto.randomBytes(8).toString('hex');
       users[key] = { username: username, salt: salt, pwHash: hashPw(password, salt), name: name, qq: qq, coins: 500, inventory: {}, bd: {}, codex: {}, catchCount: 0, createdAt: Date.now() };
       saveAccount(key);
-      const token = newToken(); sessions.set(token, key);
+      const token = newToken(); sessionSet(token, key);
       apiResp(res, 200, { token: token, profile: profileOf(key) });
     });
     return;
@@ -1441,7 +1484,7 @@ const server = http.createServer(function (req, res) {
       const rec = users[key];
       if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) return apiResp(res, 401, { error: '用户名或密码错误' });
       kickUserSessions(key); // 顶号：同账号旧会话全部失效
-      const token = newToken(); sessions.set(token, key);
+      const token = newToken(); sessionSet(token, key);
       apiResp(res, 200, { token: token, profile: profileOf(key) });
     });
     return;
@@ -1452,11 +1495,11 @@ const server = http.createServer(function (req, res) {
     readBody(req, function (body) {
       let d; try { d = JSON.parse(body); } catch (e) { d = {}; }
       const token = d.token || u.query.token;
-      const key = token && sessions.get(token);
+      const key = token && sessionGet(token);
       if (key) {
-        sessions.delete(token);
+        sessionDelete(token);
         // 仅当该账号已无其他有效会话时，才断开实时连接并移除玩家
-        const stillLive = Array.from(sessions.values()).some(function (k) { return k === key; });
+        const stillLive = Array.from(sessions.values()).some(function (v) { return v && v.key === key; });
         if (!stillLive) {
           stopFishingSession(key);
           const doomed = [];
@@ -1478,7 +1521,7 @@ const server = http.createServer(function (req, res) {
 
   // ---- 取自身资料 ----
   if (p === '/api/me' && req.method === 'GET') {
-    const key = u.query.token && sessions.get(u.query.token);
+    const key = u.query.token && sessionGet(u.query.token);
     if (!key) return apiResp(res, 401, { error: '未登录或会话失效' });
     return apiResp(res, 200, profileOf(key));
   }
@@ -1487,7 +1530,7 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/profile' && req.method === 'POST') {
     readBody(req, function (body) {
       let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
-      const key = d.token && sessions.get(d.token);
+      const key = d.token && sessionGet(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
       const rec = users[key];
       if (d.name) rec.name = String(d.name).slice(0, 20);
@@ -1499,7 +1542,7 @@ const server = http.createServer(function (req, res) {
 
   // ---- SSE 事件流（需登录） ----
   if (p === '/events' && req.method === 'GET') {
-    const key = u.query.token && sessions.get(u.query.token);
+    const key = u.query.token && sessionGet(u.query.token);
     res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*' });
     res.write('retry: 3000\n\n');
     if (!key) {
@@ -1552,7 +1595,7 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/fishing/start' && req.method === 'POST') {
     readBody(req, function (body) {
       let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
-      const key = d.token && sessions.get(d.token);
+      const key = d.token && sessionGet(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
       const r = startFishingSession(key, d.groundId, d.spotId);
       if (r.error) return apiResp(res, 400, { error: r.error });
@@ -1740,7 +1783,7 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/fishing/stop' && req.method === 'POST') {
     readBody(req, function (body) {
       let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
-      const key = d.token && sessions.get(d.token);
+      const key = d.token && sessionGet(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
       stopFishingSession(key);
       apiResp(res, 200, { ok: true });
@@ -2098,7 +2141,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 我的历史订单（市集成交记录：买入 + 卖出） ----
   if (p === '/api/market/history' && req.method === 'GET') {
-    const key = u.query.token && sessions.get(u.query.token);
+    const key = u.query.token && sessionGet(u.query.token);
     if (!key) return apiResp(res, 401, { error: '未登录' });
     const mine = (world.marketLog || []).filter(function (m) { return m.buyer === key || m.seller === key; })
       .sort(function (a, b) { return b.t - a.t; });
@@ -2270,7 +2313,7 @@ const server = http.createServer(function (req, res) {
 
   // ---- 组件订阅提醒：查询 / 保存（玩家级配置，落盘账号文件，重登后保留）----
   if (p === '/api/subscribe' && req.method === 'GET') {
-    const key = u.query.token && sessions.get(u.query.token);
+    const key = u.query.token && sessionGet(u.query.token);
     if (!key) return apiResp(res, 401, { error: '未登录' });
     const cfg = users[key].subNotify || {};
     return apiResp(res, 200, {
@@ -2315,7 +2358,7 @@ const server = http.createServer(function (req, res) {
     return { nextAt: nextAt, ready: now >= nextAt, remainingMs: Math.max(0, nextAt - now), skipCost: feedbackSkipCost(), cdHours: Math.round(feedbackCdMs() / 3600000 * 100) / 100 };
   }
   if (p === '/api/feedback' && req.method === 'GET') {
-    const key = u.query.token && sessions.get(u.query.token);
+    const key = u.query.token && sessionGet(u.query.token);
     if (!key) return apiResp(res, 401, { error: '未登录' });
     const rec = users[key];
     const mine = (world.feedback || []).filter(function (f) { return f.key === key; })
@@ -2367,7 +2410,7 @@ const server = http.createServer(function (req, res) {
 
   // ---- 图鉴 / 大鱼榜 ----
   if (p === '/api/codex' && req.method === 'GET') {
-    const key = u.query.token && sessions.get(u.query.token);
+    const key = u.query.token && sessionGet(u.query.token);
     if (!key) return apiResp(res, 401, { error: '未登录' });
     const rec = users[key];
     return apiResp(res, 200, { codex: rec.codex || {}, catchCount: rec.catchCount || 0 });
@@ -2402,7 +2445,7 @@ const server = http.createServer(function (req, res) {
         saveAccount(key);
         console.log('🛡 管理员引导：服务器尚无管理员，账号 "' + rec.name + '" 已自动成为管理员');
       }
-      const token = newToken(); sessions.set(token, key);
+      const token = newToken(); sessionSet(token, key);
       apiResp(res, 200, { ok: true, token: token, username: rec.username, name: rec.name, admin: true });
     });
     return;

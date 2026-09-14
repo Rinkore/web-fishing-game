@@ -674,6 +674,16 @@ function waitReady() {
   const la2 = await POST(B + '/api/admin/login', { username: 'adm_root', password: 'pass1234' });
   check('管理员标志持久化（重启后可登录）', la2.status === 200);
   const TOKA2 = la2.data.token;
+  // 会话落盘：重启后旧 token 依然有效 → 客户端带着本地 token 自动登录、SSE 自动重连，
+  // 不用让玩家重新输密码（配合前端版本强刷 = 无感热更新）。
+  const oldTok = await GET(B + '/api/admin/session?token=' + TOKA);
+  check('重启后旧 token 仍有效（自动登录）', oldTok.status === 200, JSON.stringify(oldTok.data));
+  const oldMe = await GET(B + '/api/me?token=' + TOKA);
+  check('重启后旧 token 可读资料（游戏侧同样免登录）', oldMe.status === 200 && !!oldMe.data.username, JSON.stringify(oldMe.data).slice(0, 80));
+  // 落盘只存哈希：文件泄露不等于拿到可用凭据
+  const sessRaw = fs.readFileSync(path.join(TMP_DATA, 'sessions.json'), 'utf8');
+  check('会话文件不落原始 token（只存 SHA-256）', !!sessRaw && !sessRaw.includes(TOKA) && !sessRaw.includes(TOKA2), 'len=' + sessRaw.length);
+  check('会话文件含账号与过期时间', /"k"\s*:\s*"adm_root"/.test(sessRaw) && /"e"\s*:\s*\d{10,}/.test(sessRaw), sessRaw.slice(0, 120));
   // 注意：adm_p2 的密码在「8. 账号管理」中已被改为 newpass99
   check('普通账号仍无权限（adm_p2 已被撤销）', (await POST(B + '/api/admin/login', { username: 'adm_p2', password: 'newpass99' })).status === 403);
   const w2 = await GET(B + '/api/admin/world?token=' + TOKA2);

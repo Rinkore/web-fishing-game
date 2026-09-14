@@ -1195,6 +1195,28 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('重连后提示消失', connBadge.cleared === false && connBadge.ok === true, JSON.stringify(connBadge));
     check('暴露连接状态与轮询接口（供界面与探测使用）', await p1.evaluate(() => typeof window.Net.connState === 'function' && typeof window.Net.probeServer === 'function'));
 
+    // 会话在服务端失效、且客户端没收到 SSE 通知（如 30 天过期 / 服务端清理）时，
+    // 兜底探测应主动发现并回到登录页。这里只让 /api/me 返回 401 来隔离这条路径
+    // （真实调用 /api/logout 会推 SSE 通知，走的是另一条分支）。
+    const rgLost = await post('/api/register', { username: 'lay_lost', password: 'abcd1234', qq: '10031' });
+    const pLost = await ctx.newPage();
+    await login(pLost, rgLost.data.token);
+    await pLost.evaluate(() => {
+      const orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/api/me') >= 0) {
+          return Promise.resolve(new Response(JSON.stringify({ error: '未登录' }), { status: 401, headers: { 'Content-Type': 'application/json' } }));
+        }
+        return orig.apply(this, arguments);
+      };
+      return window.Net.probeServer();
+    }).catch(() => {});
+    const lostBack = await waitFor(async () => pLost.evaluate(() => document.getElementById('auth').style.display === 'flex'),
+      { timeout: 6000 }).catch(() => false);
+    check('会话失效且无 SSE 通知时，探测把玩家送回登录页', lostBack === true, String(lostBack));
+    check('回登录页时给出失效原因', /登录状态已失效/.test(await pLost.textContent('#auth-msg')), await pLost.textContent('#auth-msg'));
+    await pLost.close();
+
     // 移动端窄屏
     section('窄屏自适应');
     const p3 = await ctx.newPage();

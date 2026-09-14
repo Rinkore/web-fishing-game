@@ -78,6 +78,18 @@ window.Net = (function () {
     loc.replace(loc.pathname + bust + loc.hash);
     return true; // 已触发刷新
   }
+  // 会话失效（顶号 / 过期 / 服务器侧被清）：清理本地状态并回到登录界面。
+  // 不做这一步的话，页面看起来还在，实际所有操作都会失败（僵尸页面）。
+  function dropSession(msg) {
+    const ui = window.UI;
+    if (ui && ui.addLog) ui.addLog('system', '⚠ ' + msg);
+    try { localStorage.removeItem('fishing_token'); } catch (e) {}
+    if (es) { try { es.close(); } catch (e) {} es = null; }
+    me = null;
+    state().me = null;
+    if (ui && ui.forceLogout) ui.forceLogout(msg);
+  }
+
   // 顺带同步服务器的组件生成配置 / 抛竿间隔与全服钓速（展示与本地 roll 保持一致）
   function applyServerCfg(d) {
     if (!d) return;
@@ -113,7 +125,15 @@ window.Net = (function () {
       probeFails = 0;
       setConn(true);
       applyServerCfg(r.data);
-      return reloadForVersion(r.data.version); // 版本不同 → 强刷（刷新后自然重建连接）
+      if (reloadForVersion(r.data.version)) return true; // 版本不同 → 强刷（刷新后自然重建连接）
+      // 顺带确认登录态还有效：会话过期（默认 30 天）或服务器侧被清理时，把玩家送回登录页
+      if (me && me.token) {
+        return apiFetch('GET', '/api/me?token=' + encodeURIComponent(me.token)).then(function (mr) {
+          if (mr && mr.status === 401) dropSession('登录状态已失效，请重新登录');
+          return false;
+        }).catch(function () { return false; });
+      }
+      return false;
     }).catch(function () {
       probeFails++;
       if (probeFails >= CONN_FAILS_TO_OFFLINE) setConn(false);
@@ -349,13 +369,7 @@ window.Net = (function () {
           }
           if (ui) ui.refreshAll('catch');
         } else if (m.type === 'kicked') {
-          // 顶号/会话失效：清理本地状态并回到登录界面
-          if (ui && ui.addLog) ui.addLog('system', '⚠ ' + (m.msg || '账号已在其他窗口登录'));
-          try { localStorage.removeItem('fishing_token'); } catch (e) {}
-          if (es) { try { es.close(); } catch (e) {} es = null; }
-          me = null;
-          state().me = null;
-          if (ui && ui.forceLogout) ui.forceLogout(m.msg || '账号已在其他窗口登录');
+          dropSession(m.msg || '账号已在其他窗口登录');
         } else if (m.type === 'notice') {
           if (ui && ui.toast) ui.toast(m.msg || '');
           if (ui && ui.addLog) ui.addLog('system', m.msg || '');
