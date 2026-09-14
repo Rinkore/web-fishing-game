@@ -29,6 +29,7 @@ window.Engine = (function () {
     trade: null, tradeLastEvent: null, tradeFlash: null,
     codex: {},                  // 个人图鉴（服务器）
     catchCount: 0,
+    feedback: null,             // 反馈意见：{ status:{nextAt,ready,remainingMs,skipCost}, mine:[] }
     selected: { groundId: null, spotId: null },
   };
 

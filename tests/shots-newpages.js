@@ -43,7 +43,7 @@ const clickNav = async (page, name) => {
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
-  const srv = spawn(process.execPath, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT) }) });
+  const srv = spawn(process.execPath, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1' }) });
   await sleep(1000);
   let browser;
   try {
@@ -52,7 +52,7 @@ const clickNav = async (page, name) => {
     const tokS = rs.data.token, tokB = rb.data.token;
 
     // 预置卖家库存 + 渔获（填充图鉴 / 大鱼榜）
-    await post('/api/profile', { token: tokS, inventory: { crucian: 12, carp: 6, koi: 2, lure: 4 }, coins: 2400 });
+    await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, koi: 2, lure: 4 }, coins: 2400 });
     const catches = [
       { id: 'koi', name: '黄金锦鲤', rarity: 'rare', size: 88.5 },
       { id: 'catfish', name: '巨型鲶鱼', rarity: 'big', size: 210.4 },
@@ -62,7 +62,7 @@ const clickNav = async (page, name) => {
       { id: 'pearl', name: '深海珍珠贝', rarity: 'rare', size: 34.1 },
     ];
     for (const c of catches) {
-      await post('/catch', {
+      await post('/api/dev/catch', {
         token: tokS, size: c.size,
         item: { kind: 'fish', rarity: c.rarity, id: c.id, name: c.name, size: c.size },
         ground: '落日海湾', spot: '礁石区',

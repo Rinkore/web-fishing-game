@@ -236,8 +236,18 @@ async function waitReady() {
   check('none 下钓者自己仍收到推送', sink2.some(x => x.ev.type === 'catch' && x.t > marker3));
   check('none 下无任何 feed 广播', !sink2.some(x => x.ev.type === 'feed' && x.t > marker3));
 
-  // ---------- 7. 持久化（重启服务器） ----------
-  section('7. 配置持久化');
+  // ---------- 7. 反馈意见管理 ----------
+  section('7. 反馈意见');
+  check('玩家提交反馈成功', (await POST(B + '/api/feedback/submit', { token: TK2, text: '管理员可见的测试反馈', kind: 'idea' })).status === 200);
+  const fbList = await GET(B + '/api/admin/feedback?token=' + TOKA);
+  check('管理员可读取反馈列表', fbList.status === 200 && Array.isArray(fbList.data.feedback));
+  check('反馈列表含玩家提交内容', fbList.data.feedback.some(f => f.text === '管理员可见的测试反馈' && f.kind === 'idea' && f.name === '玩家二号'));
+  check('非管理员读取反馈被拒 403', (await GET(B + '/api/admin/feedback?token=' + TK2)).status === 403);
+  const ovFb = await GET(B + '/api/admin/overview?token=' + TOKA);
+  check('概览统计含反馈数', typeof ovFb.data.feedbackCount === 'number' && ovFb.data.feedbackCount >= 1, String(ovFb.data.feedbackCount));
+
+  // ---------- 8. 持久化（重启服务器） ----------
+  section('8. 配置持久化');
   killTree(srv);
   await sleep(800);
   srv = start(TMP_DATA);

@@ -1,7 +1,15 @@
 /*
  * 网页钓鱼小游戏 - 静态数据（前后端共享，单一来源）
  * 浏览器经 <script> 加载挂到 window.GameData；后端 require 得到同一对象（UMD）。
- * 钓场 / 钓点 / 渔获 / 组件目录 / 词缀定义只有这一份，服务器掷骰与前端展示共用。
+ * 钓场 / 钓点 / 渔获 / 组件底材与词缀池 / 品质定义只有这一份，服务器掷骰与前端展示共用。
+ *
+ * 组件模型（v0.8 大改）：
+ *   底材（base）—— 组件模板，定义部位、基准价与「可拥有词缀池」（每条词缀含数值区间）。
+ *   品质（quality）—— common/rare/epic，决定一件组件最多能带几条词缀（1/2/3），并给基准价倍率。
+ *   实例（instance）—— 钓鱼等途径产出时从底材词缀池中抽取 1 至全部词缀并逐条 roll 数值生成。
+ *   实例身份 = 内容签名：baseId#quality#code+value,code+value（词条按底材池顺序规范化）。
+ *     词缀组合与数值完全相同的组件天然堆叠，背包仍是 {实例签名: 数量}。
+ *   修饰词 —— 由词缀组合推导，如「完美的 竹制短竿」（见 adjectiveOf）。
  */
 (function (root, factory) {
   const api = factory();
@@ -9,6 +17,12 @@
   else root.GameData = api;
 })(typeof self !== 'undefined' ? self : this, function () {
 'use strict';
+
+  // ---- 版本标识（前后端唯一来源）----
+  // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
+  // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
+  const VERSION = 'v0.8.0';
+  const BUILD = '2026-09-14';
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于大鱼记录
@@ -69,97 +83,233 @@
     { id: 'relic', name: '沉船宝匣残片', rarity: 'rare', price: 380, size: null },
   ];
 
-  // 掉落用默认组件（框架占位：无效果、无词缀）
-  const COMPONENT_DROP = { id: 'comp_generic', name: '钓竿组件（默认）', rarity: 'common', price: 40, note: '框架占位，无效果' };
-
-  // 稀有度基准价倍率（无独立 price 时兜底）
+  // 稀有度基准价倍率（无独立 price 时兜底；仅用于渔获/材料）
   const RARITY_PRICE = { common: 10, big: 150, rare: 350 };
 
   // ---- 钓竿部位框架（含饰品栏位） ----
   // 每个部位默认安装一个“标准”组件，默认无词缀、无效果。
   const ROD_PARTS = [
-    { key: 'rod', name: '竿身', default: { name: '标准竿身', affixes: [], rare: null } },
-    { key: 'line', name: '线组', default: { name: '标准线组', affixes: [], rare: null } },
-    { key: 'hook', name: '钩', default: { name: '标准钩', affixes: [], rare: null } },
-    { key: 'bait', name: '饵', default: { name: '标准饵', affixes: [], rare: null } },
-    { key: 'reel', name: '卷线器', default: { name: '标准卷线器', affixes: [], rare: null } },
-    { key: 'accessory', name: '配件', default: { name: '标准配件', affixes: [], rare: null } },
-    { key: 'charm', name: '饰品栏位', isCharm: true, default: { name: '（空）', affixes: [], rare: null } },
+    { key: 'rod', name: '竿身', default: { name: '标准竿身' } },
+    { key: 'line', name: '线组', default: { name: '标准线组' } },
+    { key: 'hook', name: '钩', default: { name: '标准钩' } },
+    { key: 'bait', name: '饵', default: { name: '标准饵' } },
+    { key: 'reel', name: '卷线器', default: { name: '标准卷线器' } },
+    { key: 'accessory', name: '配件', default: { name: '标准配件' } },
+    { key: 'charm', name: '饰品栏位', isCharm: true, default: { name: '（空）' } },
   ];
-
-  // 词缀框架占位文本（具体词缀/效果后续设计）
-  const AFFIX_FRAMEWORK = {
-    normalNote: '普通词缀：每个组件可拥有 1 至 3 条（框架占位，未实现具体效果）。',
-    rareNote: '稀有词缀：不一定拥有；拥有时提供特殊效果与联动（框架占位，未实现）。',
-  };
 
   // ---- 词缀类型（engine 计算效果、UI 展示共用） ----
   const AFFIX_LABEL = {
     speed: '钓速', big: '大鱼概率', rare: '稀有概率',
     material: '材料概率', size: '体型', double: '双钓概率',
   };
-
-  // ---- 钓竿组件目录（钓竿配置核心） ----
-  // 组件 id 即效果编码：`部位_效果数值_效果数值…`，词缀直接由 id 解析（单一来源）。
-  // 新增组件只需按格式写 id，效果与数值自动生效，无需再手写 affixes。
-  // 效果代码：spd=钓速 big=大鱼概率 rare=稀有概率 mat=材料概率 size=体型 dbl=双钓概率
-  // 数值允许负数（取舍型词条），如 rod_spd15_size-5 = 钓速+15%、体型-5%。
-  const EFFECT_CODES = {
-    spd: 'speed', speed: 'speed',
-    big: 'big',
-    rare: 'rare',
-    mat: 'material', material: 'material',
-    size: 'size',
-    dbl: 'double', double: 'double',
+  // 效果代码（实例签名里用的短码）
+  const AFFIX_CODES = {
+    speed: 'spd', big: 'big', rare: 'rare', material: 'mat', size: 'size', double: 'dbl',
   };
-  const AFFIX_SEG_RE = /^(spd|speed|big|rare|mat|material|size|dbl|double)(-?\d+)$/i;
-  function affixesOf(id) {
-    const out = [];
-    String(id).split('_').slice(1).forEach(function (seg) {
-      const m = AFFIX_SEG_RE.exec(seg);
-      if (m) out.push({ type: EFFECT_CODES[m[1].toLowerCase()], value: parseInt(m[2], 10) });
-    });
-    return out;
-  }
-  const COMPONENTS = [
-    { id: 'rod_spd10', name: '竹制短竿', part: 'rod', rarity: 'common', price: 60 },
-    { id: 'rod_spd15_size-5', name: '玻璃钢竿', part: 'rod', rarity: 'common', price: 90 },
-    { id: 'rod_spd20_mat-10', name: '碳素长竿', part: 'rod', rarity: 'rare', price: 240 },
-    { id: 'rod_big8_spd-8', name: '深海碳叉竿', part: 'rod', rarity: 'rare', price: 300 },
-    { id: 'rod_big12_size10_spd-15', name: '龙骨巨竿', part: 'rod', rarity: 'epic', price: 640 },
-    { id: 'line_mat25_rare-5', name: '强化线组', part: 'line', rarity: 'common', price: 50 },
-    { id: 'line_rare5_size-10', name: '隐形鱼线', part: 'line', rarity: 'rare', price: 220 },
-    { id: 'line_size15_spd-5', name: '钛芯线', part: 'line', rarity: 'rare', price: 260 },
-    { id: 'line_big6_rare4_spd-10', name: '龙筋线', part: 'line', rarity: 'epic', price: 600 },
-    { id: 'hook_big4', name: '倒刺钩', part: 'hook', rarity: 'common', price: 55 },
-    { id: 'hook_spd12_size-8', name: '血燕钩', part: 'hook', rarity: 'common', price: 70 },
-    { id: 'hook_big8_spd-5', name: '精钢鱼钩', part: 'hook', rarity: 'rare', price: 260 },
-    { id: 'hook_big10_rare-5', name: '千钩·鬼牙', part: 'hook', rarity: 'epic', price: 580 },
-    { id: 'bait_rare2', name: '浓香饵料', part: 'bait', rarity: 'common', price: 45 },
-    { id: 'bait_mat30_spd-5', name: '酒米窝料', part: 'bait', rarity: 'common', price: 40 },
-    { id: 'bait_rare6_mat-10', name: '秘制香饵', part: 'bait', rarity: 'rare', price: 280 },
-    { id: 'bait_big6_rare3_mat-15', name: '仿生拟饵', part: 'bait', rarity: 'rare', price: 250 },
-    { id: 'bait_rare8_big4_mat-20', name: '龙涎香饵', part: 'bait', rarity: 'epic', price: 620 },
-    { id: 'reel_spd10', name: '顺滑卷线器', part: 'reel', rarity: 'common', price: 60 },
-    { id: 'reel_spd15_mat-10', name: '磁力刹车卷线器', part: 'reel', rarity: 'rare', price: 270 },
-    { id: 'reel_spd25', name: '电动卷线器', part: 'reel', rarity: 'epic', price: 520 },
-    { id: 'reel_spd35_big-8', name: '涡轮卷线器', part: 'reel', rarity: 'epic', price: 650 },
-    { id: 'acc_dbl10', name: '鱼护网袋', part: 'accessory', rarity: 'common', price: 70 },
-    { id: 'acc_rare3_size-5', name: '夜光浮漂', part: 'accessory', rarity: 'common', price: 55 },
-    { id: 'acc_dbl15', name: '自动抄网', part: 'accessory', rarity: 'rare', price: 290 },
-    { id: 'acc_big6_rare4', name: '智能探鱼器', part: 'accessory', rarity: 'epic', price: 560 },
-    { id: 'acc_rare6_size10_spd-10', name: '深海声呐雷达', part: 'accessory', rarity: 'epic', price: 700 },
-    { id: 'charm_rare3_size10', name: '幸运硬币', part: 'charm', rarity: 'rare', price: 300 },
-    { id: 'charm_size20_spd-8', name: '翡翠鲤玉', part: 'charm', rarity: 'rare', price: 320 },
-    { id: 'charm_big4_rare3_spd10', name: '金鳞坠饰', part: 'charm', rarity: 'epic', price: 600 },
-    { id: 'charm_big8_rare5_dbl10_spd-12', name: '海王徽记', part: 'charm', rarity: 'epic', price: 680 },
+  const CODE_TO_TYPE = {};
+  Object.keys(AFFIX_CODES).forEach(function (t) { CODE_TO_TYPE[AFFIX_CODES[t]] = t; });
+
+  // ---- 品质（== 组件的“稀有度”概念，统一称为品质） ----
+  // cap = 该品质最多可拥有的词缀条数；mult = 实例基准价倍率；cls = 展示配色（满词条时另有金色）
+  const QUALITY = {
+    common: { key: 'common', name: '普通', cap: 1, mult: 1,   cls: 'q-common' },
+    rare:   { key: 'rare',   name: '稀有', cap: 2, mult: 1.5, cls: 'q-rare' },
+    epic:   { key: 'epic',   name: '史诗', cap: 3, mult: 2.4, cls: 'q-epic' },
+  };
+  const QUALITY_ORDER = { common: 1, rare: 2, epic: 3 };
+
+  // ---- 组件底材目录（钓竿配置核心） ----
+  // pool：底材可拥有的全部词缀（type + 数值区间 [min,max]）；实例从中抽取并 roll 数值。
+  // price：底材基准价（实例价 = 底材价 × 品质倍率）。
+  // 每个底材池至少 2 条词缀，使「满词条」（抽满全部词缀）成为可追求的稀有结果。
+  const COMPONENT_BASES = [
+    // 竿身
+    { id: 'rod_bamboo', name: '竹制短竿', part: 'rod', price: 55, pool: [
+      { type: 'speed', min: 8, max: 14 }, { type: 'size', min: -6, max: 4 } ] },
+    { id: 'rod_fiberglass', name: '玻璃钢竿', part: 'rod', price: 85, pool: [
+      { type: 'speed', min: 10, max: 18 }, { type: 'size', min: -8, max: -1 } ] },
+    { id: 'rod_carbon', name: '碳素长竿', part: 'rod', price: 150, pool: [
+      { type: 'speed', min: 14, max: 22 }, { type: 'material', min: -14, max: -4 }, { type: 'size', min: -6, max: 6 } ] },
+    { id: 'rod_dragonbone', name: '龙骨巨竿', part: 'rod', price: 260, pool: [
+      { type: 'big', min: 8, max: 14 }, { type: 'size', min: 4, max: 12 }, { type: 'speed', min: -18, max: -8 } ] },
+    // 线组
+    { id: 'line_nylon', name: '尼龙线组', part: 'line', price: 45, pool: [
+      { type: 'material', min: 15, max: 28 }, { type: 'size', min: -6, max: 4 } ] },
+    { id: 'line_stealth', name: '隐形鱼线', part: 'line', price: 140, pool: [
+      { type: 'rare', min: 3, max: 7 }, { type: 'size', min: -14, max: -5 } ] },
+    { id: 'line_titan', name: '钛芯线', part: 'line', price: 170, pool: [
+      { type: 'size', min: 10, max: 18 }, { type: 'speed', min: -9, max: -2 } ] },
+    { id: 'line_dragon', name: '龙筋线', part: 'line', price: 250, pool: [
+      { type: 'big', min: 4, max: 8 }, { type: 'rare', min: 3, max: 6 }, { type: 'speed', min: -14, max: -6 } ] },
+    // 钩
+    { id: 'hook_barb', name: '倒刺钩', part: 'hook', price: 50, pool: [
+      { type: 'big', min: 3, max: 6 }, { type: 'size', min: -4, max: 3 } ] },
+    { id: 'hook_swallow', name: '血燕钩', part: 'hook', price: 70, pool: [
+      { type: 'speed', min: 8, max: 15 }, { type: 'size', min: -12, max: -4 } ] },
+    { id: 'hook_steel', name: '精钢鱼钩', part: 'hook', price: 150, pool: [
+      { type: 'big', min: 6, max: 10 }, { type: 'speed', min: -8, max: -2 } ] },
+    { id: 'hook_ghost', name: '千钩·鬼牙', part: 'hook', price: 245, pool: [
+      { type: 'big', min: 8, max: 12 }, { type: 'rare', min: -9, max: -3 }, { type: 'size', min: 3, max: 9 } ] },
+    // 饵
+    { id: 'bait_corn', name: '浓香饵料', part: 'bait', price: 40, pool: [
+      { type: 'rare', min: 1, max: 3 }, { type: 'speed', min: 4, max: 9 } ] },
+    { id: 'bait_rice', name: '酒米窝料', part: 'bait', price: 42, pool: [
+      { type: 'material', min: 22, max: 34 }, { type: 'speed', min: -8, max: -2 } ] },
+    { id: 'bait_secret', name: '秘制香饵', part: 'bait', price: 165, pool: [
+      { type: 'rare', min: 4, max: 8 }, { type: 'material', min: -14, max: -5 } ] },
+    { id: 'bait_bionic', name: '仿生拟饵', part: 'bait', price: 175, pool: [
+      { type: 'big', min: 4, max: 8 }, { type: 'rare', min: 2, max: 5 }, { type: 'material', min: -18, max: -9 } ] },
+    // 卷线器
+    { id: 'reel_smooth', name: '顺滑卷线器', part: 'reel', price: 55, pool: [
+      { type: 'speed', min: 8, max: 13 }, { type: 'material', min: -5, max: 3 } ] },
+    { id: 'reel_magnetic', name: '磁力刹车卷线器', part: 'reel', price: 160, pool: [
+      { type: 'speed', min: 12, max: 18 }, { type: 'material', min: -14, max: -5 } ] },
+    { id: 'reel_electric', name: '电动卷线器', part: 'reel', price: 240, pool: [
+      { type: 'speed', min: 20, max: 28 }, { type: 'big', min: -6, max: 2 } ] },
+    { id: 'reel_turbo', name: '涡轮卷线器', part: 'reel', price: 270, pool: [
+      { type: 'speed', min: 28, max: 38 }, { type: 'big', min: -12, max: -4 } ] },
+    // 配件
+    { id: 'acc_net', name: '鱼护网袋', part: 'accessory', price: 60, pool: [
+      { type: 'double', min: 7, max: 12 }, { type: 'speed', min: -4, max: 3 } ] },
+    { id: 'acc_float', name: '夜光浮漂', part: 'accessory', price: 52, pool: [
+      { type: 'rare', min: 2, max: 5 }, { type: 'size', min: -10, max: -3 } ] },
+    { id: 'acc_scoop', name: '自动抄网', part: 'accessory', price: 165, pool: [
+      { type: 'double', min: 12, max: 18 }, { type: 'material', min: -8, max: -2 } ] },
+    { id: 'acc_sonar', name: '智能探鱼器', part: 'accessory', price: 255, pool: [
+      { type: 'big', min: 5, max: 9 }, { type: 'rare', min: 3, max: 6 }, { type: 'speed', min: -10, max: -3 } ] },
+    { id: 'acc_radar', name: '深海声呐雷达', part: 'accessory', price: 300, pool: [
+      { type: 'rare', min: 5, max: 9 }, { type: 'size', min: 8, max: 14 }, { type: 'speed', min: -14, max: -6 } ] },
+    // 饰品
+    { id: 'charm_coin', name: '幸运硬币', part: 'charm', price: 145, pool: [
+      { type: 'rare', min: 2, max: 5 }, { type: 'size', min: 6, max: 12 } ] },
+    { id: 'charm_jade', name: '翡翠鲤玉', part: 'charm', price: 155, pool: [
+      { type: 'size', min: 15, max: 24 }, { type: 'speed', min: -12, max: -4 } ] },
+    { id: 'charm_gold', name: '金鳞坠饰', part: 'charm', price: 250, pool: [
+      { type: 'big', min: 3, max: 6 }, { type: 'rare', min: 2, max: 5 }, { type: 'speed', min: 6, max: 12 } ] },
+    { id: 'charm_trident', name: '海王徽记', part: 'charm', price: 290, pool: [
+      { type: 'big', min: 6, max: 10 }, { type: 'rare', min: 4, max: 8 }, { type: 'double', min: 8, max: 14 }, { type: 'speed', min: -16, max: -8 } ] },
   ];
-  const COMPONENT_MAP = {};
-  COMPONENTS.forEach(function (c) { c.affixes = affixesOf(c.id); COMPONENT_MAP[c.id] = c; });
-  // 旧存档兼容：框架版掉落的通用组件（无效果，不可装备，可出售）
+  const BASE_MAP = {};
+  COMPONENT_BASES.forEach(function (b) { b.pool = b.pool.map(function (a) { return { type: a.type, min: a.min, max: a.max }; }); BASE_MAP[b.id] = b; });
+  function componentBase(id) { return BASE_MAP[id] || null; }
+
+  // ---- 实例签名 ----
+  // 格式：baseId#quality#code+value,code+value…（无词缀时第三段为空）
+  const INSTANCE_SEP = '#';
+  function codeOf(type) { return AFFIX_CODES[type] || type; }
+  function typeOfCode(code) { return CODE_TO_TYPE[code] || code; }
+  function affixToken(a) { return codeOf(a.type) + (a.value >= 0 ? '+' : '') + a.value; }
+  // 按底材池顺序规范化词缀，保证同内容 → 同签名
+  function orderAffixes(base, affixes) {
+    const idx = {};
+    (base ? base.pool : []).forEach(function (a, i) { idx[a.type] = i; });
+    return affixes.slice().sort(function (x, y) {
+      const ix = idx[x.type] == null ? 99 : idx[x.type], iy = idx[y.type] == null ? 99 : idx[y.type];
+      return ix - iy || (x.type < y.type ? -1 : 1);
+    });
+  }
+  function instanceId(baseId, quality, affixes) {
+    const base = BASE_MAP[baseId];
+    const ordered = orderAffixes(base, affixes || []);
+    return baseId + INSTANCE_SEP + quality + INSTANCE_SEP + ordered.map(affixToken).join(',');
+  }
+  function instanceOf(id) {
+    const s = String(id);
+    const i = s.indexOf(INSTANCE_SEP);
+    if (i <= 0) return null;
+    const parts = s.split(INSTANCE_SEP);
+    if (parts.length !== 3) return null;
+    const base = BASE_MAP[parts[0]];
+    if (!base || !QUALITY[parts[1]]) return null;
+    const affixes = [];
+    if (parts[2]) {
+      for (const tok of parts[2].split(',')) {
+        const m = /^(spd|big|rare|mat|size|dbl)([+-]?\d+)$/.exec(tok);
+        if (!m) return null;
+        affixes.push({ type: typeOfCode(m[1]), value: parseInt(m[2], 10) });
+      }
+    }
+    return { baseId: base.id, quality: parts[1], affixes: affixes };
+  }
+  function isInstance(id) { return instanceOf(id) !== null; }
+
+  // ---- 修饰词：由词缀组合推导（如「完美的 竹制短竿」）----
+  // 满词条（抽满底材全部词缀）且无负词条 → 完美；全正 → 精良；净收益为正 → 平衡；否则粗糙。
+  function adjectiveOf(affixes, base, quality) {
+    const cap = (QUALITY[quality] || QUALITY.common).cap;
+    const poolLen = base ? base.pool.length : (affixes ? affixes.length : 0);
+    const maxN = Math.min(cap, poolLen);
+    const full = affixes && poolLen > 0 && affixes.length >= poolLen && poolLen <= cap && maxN > 0;
+    const neg = (affixes || []).some(function (a) { return a.value < 0; });
+    const net = (affixes || []).reduce(function (s, a) { return s + a.value; }, 0);
+    if (full && !neg) return '完美的';
+    if (full) return '饱满的';
+    if (!neg) return '精良的';
+    if (net > 0) return '平衡的';
+    return '粗糙的';
+  }
+
+  // 组件实例的完整展示元数据（名称/品质/价格/词条/是否满词条）
+  function instanceMeta(id) {
+    const inst = instanceOf(id);
+    if (!inst) return null;
+    const base = BASE_MAP[inst.baseId];
+    const q = QUALITY[inst.quality];
+    const poolLen = base.pool.length;
+    const maxN = Math.min(q.cap, poolLen);
+    const full = inst.affixes.length >= poolLen && poolLen <= q.cap;
+    const adjective = adjectiveOf(inst.affixes, base, inst.quality);
+    return {
+      id: id, kind: 'component', baseId: base.id, baseName: base.name, part: base.part,
+      quality: inst.quality, qualityName: q.name, qualityCls: q.cls,
+      rarity: inst.quality, rarityName: q.name,
+      affixes: inst.affixes, pool: base.pool, maxAffixes: maxN,
+      full: full, isFull: full,
+      adjective: adjective,
+      name: adjective + ' ' + base.name,
+      price: Math.round(base.price * q.mult),
+      size: null,
+    };
+  }
+
+  // ---- 组件生成：先定品质，再抽词条，最后 roll 数值 ----
+  const QUALITY_ROLL = [['common', 0.62], ['rare', 0.30], ['epic', 0.08]];
+  function rollComponentQuality() {
+    const r = Math.random();
+    let acc = 0;
+    for (const kv of QUALITY_ROLL) { acc += kv[1]; if (r < acc) return kv[0]; }
+    return 'common';
+  }
+  // 生成一件组件实例（底材 → 品质 → 抽 1..min(池长, 上限) 条词缀 → roll 数值）
+  function genComponent(baseId, quality) {
+    const base = BASE_MAP[baseId];
+    if (!base) return null;
+    const q = QUALITY[quality] || QUALITY.common;
+    const upper = Math.min(base.pool.length, q.cap);
+    const n = 1 + Math.floor(Math.random() * upper); // 至少 1 条，至多全部（受品质上限约束）
+    // 无放回抽取 n 条（洗牌池）
+    const idxs = base.pool.map(function (_, i) { return i; });
+    for (let i = idxs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = idxs[i]; idxs[i] = idxs[j]; idxs[j] = t; }
+    const picked = idxs.slice(0, n).sort(function (a, b) { return a - b; }).map(function (i) {
+      const a = base.pool[i];
+      return { type: a.type, value: a.min + Math.floor(Math.random() * (a.max - a.min + 1)) };
+    });
+    return instanceMeta(instanceId(base.id, q.key, picked));
+  }
+  // 从整份底材目录均匀抽一个底材，再定品质生成
+  function rollComponent() {
+    const base = COMPONENT_BASES[Math.floor(Math.random() * COMPONENT_BASES.length)];
+    return genComponent(base.id, rollComponentQuality());
+  }
+
+  // 旧存档兼容：框架版掉落的通用组件（无效果、不可装备、可出售）
   const LEGACY_COMPONENT = { id: 'comp_generic', name: '钓竿组件（默认）', part: null, rarity: 'common', price: 40, affixes: [] };
-  // v0.7.0 组件 ID 改版前的旧 id → 新编码 id（读档/挂单/统计原位换新）
-  const LEGACY_ID_ALIAS = {
+
+  // ---- 旧组件 id（v0.7 编码格式 `部位_code值_…` 及更早别名）→ 新实例签名 ----
+  // 迁移只需产出合法实例：词缀取自旧 id，部位取自前缀，底材选同部位中词缀类型覆盖最多的那个。
+  const LEGACY_SEG_RE = /^(spd|speed|big|rare|mat|material|size|dbl|double)(-?\d+)$/i;
+  const LEGACY_ALIAS = {
     rod_bamboo: 'rod_spd10', rod_carbon: 'rod_spd20_mat-10',
     line_strong: 'line_mat25_rare-5', line_ghost: 'line_rare5_size-10',
     hook_barb: 'hook_big4', hook_steel: 'hook_big8_spd-5',
@@ -168,41 +318,70 @@
     acc_net: 'acc_dbl10', acc_sonar: 'acc_big6_rare4',
     charm_coin: 'charm_rare3_size10', charm_gold: 'charm_big4_rare3_spd10',
   };
-  function normalizeItemId(id) { return LEGACY_ID_ALIAS[id] || id; }
+  const LEGACY_PART_PREFIX = { rod: 'rod', line: 'line', hook: 'hook', bait: 'bait', reel: 'reel', acc: 'accessory', charm: 'charm' };
+  function legacyAffixesOf(coded) {
+    const out = [];
+    String(coded).split('_').slice(1).forEach(function (seg) {
+      const m = LEGACY_SEG_RE.exec(seg);
+      if (m) out.push({ type: typeOfCode(m[1].toLowerCase()), value: parseInt(m[2], 10) });
+    });
+    return out;
+  }
+  function pickBaseForLegacy(part, affixes) {
+    const cands = COMPONENT_BASES.filter(function (b) { return b.part === part; });
+    if (!cands.length) return null;
+    let best = cands[0], bestScore = -1;
+    cands.forEach(function (b) {
+      let score = 0;
+      affixes.forEach(function (a) {
+        const slot = b.pool.find(function (p) { return p.type === a.type; });
+        if (!slot) return;
+        score += 2;                                        // 类型命中
+        if (a.value >= slot.min && a.value <= slot.max) score += 1; // 数值落在区间内
+      });
+      if (score > bestScore) { bestScore = score; best = b; }
+    });
+    return best;
+  }
+  function legacyToInstance(oldId) {
+    const coded = LEGACY_ALIAS[oldId] || oldId;
+    if (BASE_MAP[coded]) return null;
+    const prefix = String(coded).split('_')[0].toLowerCase();
+    const part = LEGACY_PART_PREFIX[prefix];
+    if (!part) return null;
+    const affixes = legacyAffixesOf(coded);
+    if (!affixes.length) return null;
+    const base = pickBaseForLegacy(part, affixes);
+    if (!base) return null;
+    const quality = affixes.length >= 3 ? 'epic' : (affixes.length === 2 ? 'rare' : 'common');
+    return instanceId(base.id, quality, affixes);
+  }
+  // 任意 id 规范化：实例签名原样返回；旧组件 id 升级为实例签名；其余（鱼/材料）不变
+  function normalizeItemId(id) {
+    if (id == null) return id;
+    const s = String(id);
+    if (instanceOf(s)) return s;
+    if (s === 'comp_generic') return s;
+    const up = legacyToInstance(s);
+    return up || s;
+  }
 
-  // 组件掉落：先按稀有度 roll（common 70% / rare 24% / epic 6%），再在同稀有度中均匀取一个
-  function rollComponent() {
-    const r = Math.random();
-    const tier = r < 0.70 ? 'common' : (r < 0.94 ? 'rare' : 'epic');
-    const pool = COMPONENTS.filter(function (c) { return c.rarity === tier; });
-    const c = pool[Math.floor(Math.random() * pool.length)];
-    return { kind: 'component', rarity: c.rarity, id: c.id, name: c.name, size: null };
-  }
+  // ---- 组件识别：既接受实例签名，也接受旧组件 id ----
   function componentOf(id) {
-    const nid = normalizeItemId(id);
-    return COMPONENT_MAP[nid] || (id === 'comp_generic' ? LEGACY_COMPONENT : null);
+    if (id == null) return null;
+    const s = String(id);
+    const inst = instanceMeta(s);
+    if (inst) return inst;
+    const up = normalizeItemId(s);
+    if (up !== s) return instanceMeta(up);
+    return null;
   }
+
   function fishTierOf(id) {
     for (const tier of ['common', 'big', 'rare']) {
       if (FISH[tier].some(function (f) { return f.id === id; })) return tier;
     }
     return null;
-  }
-  // 物品产出地点索引：id -> ['钓场·钓点', ...]（图鉴展示用）
-  // 鱼类/材料按各自掉落池匹配；组件来自通用组件掉落点（'component:' 条目）
-  function spotsOf(id) {
-    const item = itemOf(id);
-    const type = item.kind === 'fish' ? 'fish' : item.kind === 'material' ? 'material' : 'component';
-    const pick = type + ':' + (type === 'component' ? '' : id);
-    const out = [];
-    GROUNDS.forEach(function (g) {
-      g.spots.forEach(function (sp) {
-        sp.pool.forEach(function (e) {
-          if (e.pick === pick) out.push(g.name + '·' + sp.name);
-        });
-      });
-    });
-    return out;
   }
 
   // ---- 钓场 ----
@@ -289,6 +468,23 @@
     },
   ];
 
+  // 物品产出地点索引：id -> ['钓场·钓点', ...]（图鉴展示用）
+  // 鱼类/材料按各自掉落池匹配；组件来自通用组件掉落点（'component:' 条目）
+  function spotsOf(id) {
+    const item = itemOf(id);
+    const type = item.kind === 'fish' ? 'fish' : item.kind === 'material' ? 'material' : 'component';
+    const pick = type + ':' + (type === 'component' ? '' : id);
+    const out = [];
+    GROUNDS.forEach(function (g) {
+      g.spots.forEach(function (sp) {
+        sp.pool.forEach(function (e) {
+          if (e.pick === pick) out.push(g.name + '·' + sp.name);
+        });
+      });
+    });
+    return out;
+  }
+
   // ---- 导航配置 ----
   // implemented=false 的入口为占位符，点击不可跳转。
   const NAV = [
@@ -302,11 +498,12 @@
     { id: 'mall', name: '商城', icon: '🛒', implemented: false },
     { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true },
     { id: 'records', name: '渔获记录', icon: '🏆', implemented: true },
+    { id: 'feedback', name: '反馈意见', icon: '📮', implemented: true },
     { id: 'collect', name: '收藏', icon: '⭐', implemented: false },
   ];
 
   // ---- 物品索引（供 UI / 引擎统一查询） ----
-  // 返回 { id, name, rarity, price, size }
+  // 静态物品：渔获 / 材料 / 组件底材（图鉴按底材展示词缀池与数值范围）。
   function allItems() {
     const out = [];
     ['common', 'big', 'rare'].forEach(function (tier) {
@@ -317,28 +514,45 @@
     MATERIALS.forEach(function (m) {
       out.push({ id: m.id, name: m.name, rarity: m.rarity, price: m.price, size: null, kind: 'material' });
     });
-    COMPONENTS.forEach(function (c) {
-      out.push({ id: c.id, name: c.name, rarity: c.rarity, price: c.price, size: null, kind: 'component' });
+    COMPONENT_BASES.forEach(function (b) {
+      out.push({ id: b.id, name: b.name, rarity: 'common', price: b.price, size: null, kind: 'component', part: b.part, pool: b.pool });
     });
-    out.push({ id: COMPONENT_DROP.id, name: COMPONENT_DROP.name, rarity: COMPONENT_DROP.rarity, price: COMPONENT_DROP.price, size: null, kind: 'component' });
+    out.push({ id: LEGACY_COMPONENT.id, name: LEGACY_COMPONENT.name, rarity: LEGACY_COMPONENT.rarity, price: LEGACY_COMPONENT.price, size: null, kind: 'component', part: null, pool: [] });
     return out;
   }
   const ITEM_MAP = {};
   allItems().forEach(function (it) { ITEM_MAP[it.id] = it; });
   function itemOf(id) {
-    const nid = normalizeItemId(id);
-    return ITEM_MAP[nid] || { id: nid, name: nid, rarity: 'common', price: RARITY_PRICE.common, size: null, kind: 'unknown' };
+    if (id == null) return { id: id, name: String(id), rarity: 'common', price: RARITY_PRICE.common, size: null, kind: 'unknown' };
+    const s = String(id);
+    const inst = instanceMeta(s);
+    if (inst) return inst;
+    const nid = normalizeItemId(s);
+    if (ITEM_MAP[nid]) return ITEM_MAP[nid];
+    return { id: nid, name: nid, rarity: 'common', price: RARITY_PRICE.common, size: null, kind: 'unknown' };
   }
   function itemName(id) { return itemOf(id).name; }
+  // 可出售/可上架：渔获、材料、已生成的组件实例；组件底材（模板）与未知物不可交易
+  function isSellable(id) {
+    const it = itemOf(id);
+    if (it.kind === 'fish' || it.kind === 'material') return true;
+    if (it.kind === 'component') return isInstance(String(id)) || String(id) === 'comp_generic';
+    return false;
+  }
 
   return {
-    FISH: FISH, MATERIALS: MATERIALS, COMPONENT_DROP: COMPONENT_DROP,
-    RARITY_PRICE: RARITY_PRICE,
-    ROD_PARTS: ROD_PARTS, AFFIX_FRAMEWORK: AFFIX_FRAMEWORK,
-    AFFIX_LABEL: AFFIX_LABEL, COMPONENTS: COMPONENTS,
-    EFFECT_CODES: EFFECT_CODES, affixesOf: affixesOf, normalizeItemId: normalizeItemId,
-    rollComponent: rollComponent, componentOf: componentOf, fishTierOf: fishTierOf, spotsOf: spotsOf,
+    VERSION: VERSION, BUILD: BUILD,
+    FISH: FISH, MATERIALS: MATERIALS, RARITY_PRICE: RARITY_PRICE,
+    ROD_PARTS: ROD_PARTS,
+    AFFIX_LABEL: AFFIX_LABEL, AFFIX_CODES: AFFIX_CODES,
+    QUALITY: QUALITY, QUALITY_ORDER: QUALITY_ORDER,
+    COMPONENT_BASES: COMPONENT_BASES, componentBase: componentBase,
+    instanceId: instanceId, instanceOf: instanceOf, isInstance: isInstance,
+    genComponent: genComponent, rollComponent: rollComponent, rollComponentQuality: rollComponentQuality,
+    adjectiveOf: adjectiveOf, instanceMeta: instanceMeta, componentOf: componentOf,
+    legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,
+    fishTierOf: fishTierOf, spotsOf: spotsOf,
     GROUNDS: GROUNDS, NAV: NAV,
-    allItems: allItems, itemOf: itemOf, itemName: itemName,
+    allItems: allItems, itemOf: itemOf, itemName: itemName, isSellable: isSellable,
   };
 });

@@ -128,6 +128,7 @@ window.Admin = (function () {
     { id: 'market', name: '💱 市集管理' },
     { id: 'formula', name: '🧮 上钩公式' },
     { id: 'notify', name: '🔔 通知等级' },
+    { id: 'feedback', name: '📮 反馈意见' },
   ];
   function renderNav() {
     const nav = $('nav');
@@ -150,6 +151,35 @@ window.Admin = (function () {
     if (v === 'market') return renderMarket();
     if (v === 'formula') return renderFormula();
     if (v === 'notify') return renderNotify();
+    if (v === 'feedback') return renderFeedback();
+  }
+
+  // ================================
+  // 反馈意见（只读列表）
+  // ================================
+  function renderFeedback() {
+    const main = $('main');
+    main.innerHTML = '<h2>📮 玩家反馈</h2><div class="hint" style="margin-bottom:12px">玩家提交的 Bug / 建议 / 平衡反馈，按时间倒序。</div>' +
+      '<div id="fb-body" class="panel">加载中…</div>';
+    adminApi('GET', '/api/admin/feedback?token=' + encodeURIComponent(token)).then(function (r) {
+      if (view !== 'feedback') return;
+      const box = $('fb-body');
+      if (!r.ok) { box.textContent = (r.data && r.data.error) || '加载失败'; return; }
+      const list = r.data.feedback || [];
+      if (!list.length) { box.innerHTML = '<div class="hint">暂无反馈。</div>'; return; }
+      const KIND = { bug: '🐛 Bug', idea: '💡 建议', balance: '⚖️ 平衡', other: '💬 其他' };
+      box.innerHTML = '<div class="hint" style="margin-bottom:10px">共 ' + list.length + ' 条</div>' +
+        list.map(function (f) {
+          const dt = new Date(f.t);
+          const ts = dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2) + ' ' +
+            ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2);
+          return '<div class="fb-admin-item">' +
+            '<div class="fb-admin-head"><span class="fb-tag">' + esc(KIND[f.kind] || f.kind || '其他') + '</span>' +
+            '<span class="fb-admin-who">' + esc(f.name || f.key) + '</span>' +
+            '<span class="fb-admin-time">' + ts + (f.version ? ' · ' + esc(f.version) : '') + '</span></div>' +
+            '<div class="fb-admin-text">' + esc(f.text) + '</div></div>';
+        }).join('');
+    });
   }
 
   // ================================

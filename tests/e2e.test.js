@@ -86,11 +86,21 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const D = loadData();
   check('钓场总数 4（3 普通 + 1 活动）', D.GROUNDS.length === 4 && D.GROUNDS.filter(g => g.type === 'normal').length === 3 && D.GROUNDS.filter(g => g.type === 'event').length === 1);
   check('钓竿部位 7 且含饰品栏位', D.ROD_PARTS.length === 7 && D.ROD_PARTS.some(p => p.isCharm));
-  check('每个部位至少 1 个可装备组件', D.ROD_PARTS.every(p => D.COMPONENTS.some(c => c.part === p.key)));
-  check('词缀类型均有展示标签', D.COMPONENTS.every(c => c.affixes.every(a => !!D.AFFIX_LABEL[a.type])));
-  check('组件掉落只产出目录内组件', (function () { for (let i = 0; i < 300; i++) { if (!D.componentOf(D.rollComponent().id)) return false; } return true; })());
-  check('导航已实现入口 9 个（钓鱼/钓竿配置/渔场/背包/商店/市集/交易/图鉴/大鱼榜）', D.NAV.filter(n => n.implemented).length === 9, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
+  check('每个部位至少 1 个组件底材', D.ROD_PARTS.every(p => D.COMPONENT_BASES.some(c => c.part === p.key)));
+  check('底材词缀类型均有展示标签与数值区间', D.COMPONENT_BASES.every(b => b.pool.length > 0 && b.pool.every(a => !!D.AFFIX_LABEL[a.type] && a.min <= a.max)));
+  check('组件掉落产出合法实例（可被识别）', (function () { for (let i = 0; i < 300; i++) { const c = D.rollComponent(); if (!c || !D.componentOf(c.id) || !D.isInstance(c.id)) return false; } return true; })());
+  check('组件实例词条数在品质上限内（1 / 2 / 3）', (function () {
+    for (let i = 0; i < 600; i++) {
+      const c = D.rollComponent();
+      if (c.affixes.length < 1 || c.affixes.length > D.QUALITY[c.quality].cap) return false;
+    }
+    return true;
+  })());
+  check('组件实例规范化：词条乱序仍得同签名', D.instanceId('rod_bamboo', 'rare', [{ type: 'size', value: -3 }, { type: 'speed', value: 12 }]) === D.instanceId('rod_bamboo', 'rare', [{ type: 'speed', value: 12 }, { type: 'size', value: -3 }]));
+  check('底材（模板）不可直接出售，组件实例可出售', !D.isSellable('rod_bamboo') && D.isSellable(D.instanceId('rod_bamboo', 'common', [{ type: 'speed', value: 10 }])));
+  check('导航已实现入口 10 个（钓鱼/钓竿配置/渔场/背包/商店/市集/交易/图鉴/大鱼榜/反馈）', D.NAV.filter(n => n.implemented).length === 10, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
   check('导航未实现占位入口 2 个（商城/收藏）', D.NAV.filter(n => !n.implemented).length === 2, 'got ' + D.NAV.filter(n => !n.implemented).map(n => n.id).join(','));
+  check('共享目录暴露版本号', typeof D.VERSION === 'string' && /^v\d/.test(D.VERSION), String(D.VERSION));
 
   // ---------- 2. 服务端钓鱼循环 ----------
   let srv = start(P1);
@@ -117,9 +127,9 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
 
   const invBefore = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
   const catchMark = sinkA.length;
-  await sleep(10000); // 基础间隔 3s → 至少 2 竿（留足上钩率波动余量）
+  await sleep(13000); // 基础间隔 3s → 约 4 竿、约 90% 上钩率，至少 2 次渔获（留足概率波动余量，降低偶发失败）
   const myCatches = sinkA.slice(catchMark).filter(m => m.type === 'catch');
-  check('服务器循环自动抛竿（10s 内 ≥2 次渔获推送）', myCatches.length >= 2, String(myCatches.length));
+  check('服务器循环自动抛竿（13s 内 ≥2 次渔获推送）', myCatches.length >= 2, String(myCatches.length));
   check('渔获含物品与钓点信息', myCatches.every(m => m.entry.item && m.entry.item.id && m.entry.ground === '静水湖'));
   check('B 收到 A 的渔获动态广播', sinkB.some(m => m.type === 'feed' && m.entry.who === '测试甲'));
   const invAfter = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
@@ -142,21 +152,54 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const codexAfter = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.codex || {};
   check('图鉴记录个人最大/最小体型', Object.keys(codexAfter).some(function (k) { return codexAfter[k].max != null && codexAfter[k].min != null; }));
 
+  section('体型加成不设固定上限（回归：+55% 远古巨鲟应能超 520cm）');
+  const szRoll = await POST('http://localhost:' + P1 + '/api/dev/rollsize', { token: tokA, range: [150, 400], size: 55, n: 500 });
+  check('体型 roll 接口可用', szRoll.status === 200 && Array.isArray(szRoll.data.rolls));
+  check('+55% 体型最高可超 520cm（旧版 1.3x 封顶）', szRoll.data.max > 520, 'max=' + szRoll.data.max);
+  check('体型加成可达范围上限 ×(1+加成)（150~400 ×1.55 → 接近 620）', szRoll.data.max > 600, 'max=' + szRoll.data.max);
+  const szNeg = await POST('http://localhost:' + P1 + '/api/dev/rollsize', { token: tokA, range: [150, 400], size: -50, n: 200 });
+  check('负体型词缀缩小体型且不为负', szNeg.data.rolls.every(function (v) { return v >= 1; }));
+
+  section('版本接口（前端缓存守卫数据源）');
+  const ver = await GET('http://localhost:' + P1 + '/api/version');
+  check('GET /api/version 返回版本号与构建日期', ver.status === 200 && typeof ver.data.version === 'string' && !!ver.data.build);
+  check('服务器版本与共享目录一致', ver.data.version === D.VERSION, ver.data.version + ' vs ' + D.VERSION);
+
+  section('反馈意见：一天 CD + 花金币立即结束 CD');
+  const fb0 = await GET('http://localhost:' + P1 + '/api/feedback?token=' + tokA);
+  check('反馈状态查询返回 CD 与跳过费用', fb0.status === 200 && !!fb0.data.status && fb0.data.status.skipCost === 10000);
+  await POST('http://localhost:' + P1 + '/api/dev/seed', { token: tokA, coins: 20000 });
+  const fb1 = await POST('http://localhost:' + P1 + '/api/feedback/submit', { token: tokA, text: '第一条测试反馈', kind: 'bug' });
+  check('首次提交反馈成功', fb1.status === 200 && fb1.data.entry && fb1.data.entry.text === '第一条测试反馈');
+  check('提交后进入 24 小时冷却', fb1.data.status.ready === false && fb1.data.status.remainingMs > 23 * 3600 * 1000, JSON.stringify(fb1.data.status));
+  const fb2 = await POST('http://localhost:' + P1 + '/api/feedback/submit', { token: tokA, text: '冷却中再提交' });
+  check('冷却中重复提交被拒 429', fb2.status === 429, 'status=' + fb2.status);
+  const coinsBefore = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.coins;
+  const fbSkip = await POST('http://localhost:' + P1 + '/api/feedback/skip', { token: tokA });
+  check('花 10000 金币结束 CD 成功', fbSkip.status === 200 && fbSkip.data.status.ready === true);
+  check('结束 CD 扣除 10000 金币', fbSkip.data.coins === coinsBefore - 10000, coinsBefore + ' -> ' + fbSkip.data.coins);
+  const fb3 = await POST('http://localhost:' + P1 + '/api/feedback/submit', { token: tokA, text: '结束 CD 后第二条' });
+  check('结束 CD 后可再次提交', fb3.status === 200 && fb3.data.ok === true);
+  const fbMine = await GET('http://localhost:' + P1 + '/api/feedback?token=' + tokA);
+  check('我的反馈列表含两条记录', (fbMine.data.mine || []).length === 2, JSON.stringify((fbMine.data.mine || []).map(function (f) { return f.text; })));
+
   section('钓速词缀即时调整服务器循环');
-  // 组件安装 = 消耗道具：先经 dev 接口发放组件入包
-  check('dev 发放电动卷线器', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', rarity: 'epic', id: 'reel_spd25', name: '电动卷线器' }, ground: '静水湖', spot: '老旧码头' })).status === 200);
-  check('dev 发放精钢鱼钩', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', rarity: 'rare', id: 'hook_big8_spd-5', name: '精钢鱼钩' }, ground: '静水湖', spot: '老旧码头' })).status === 200);
-  check('未持有组件时装备被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: 'rod_spd20_mat-10' })).status === 400);
-  const bdR = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: 'reel_spd25' });
-  check('装备电动卷线器成功', bdR.status === 200 && bdR.data.ok === true && bdR.data.bd.reel.compId === 'reel_spd25');
+  // 组件安装 = 消耗道具：先经 dev 接口发放组件实例入包（实例签名 = 底材#品质#词条）
+  const reelInst = D.instanceId('reel_electric', 'common', [{ type: 'speed', value: 25 }]);   // reel_electric#common#spd+25
+  const hookInst = D.instanceId('hook_steel', 'rare', [{ type: 'big', value: 8 }, { type: 'speed', value: -5 }]);
+  check('dev 发放电动卷线器实例', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: reelInst }, ground: '静水湖', spot: '老旧码头' })).status === 200);
+  check('dev 发放精钢鱼钩实例', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: hookInst }, ground: '静水湖', spot: '老旧码头' })).status === 200);
+  check('未持有组件时装备被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: D.instanceId('rod_carbon', 'rare', [{ type: 'speed', value: 20 }, { type: 'material', value: -10 }]) })).status === 400);
+  const bdR = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: reelInst });
+  check('装备电动卷线器成功（实例签名入库）', bdR.status === 200 && bdR.data.ok === true && bdR.data.bd.reel.compId === reelInst);
   const meAfterBd = await GET('http://localhost:' + P1 + '/api/me?token=' + tokA);
-  check('安装消耗组件道具（背包 reel_spd25 已扣除）', !meAfterBd.data.inventory.reel_spd25, JSON.stringify(meAfterBd.data.inventory));
+  check('安装消耗组件道具（背包实例已扣除）', !meAfterBd.data.inventory[reelInst], JSON.stringify(meAfterBd.data.inventory));
   check('响应返回服务器词缀汇总 +25% 钓速', bdR.data.effects && bdR.data.effects.speed === 25, JSON.stringify(bdR.data.effects));
   check('正在钓鱼时钓速即时生效（2250ms）', bdR.data.interval === 2250, String(bdR.data.interval));
   check('未知组件被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: 'nope' })).status === 400);
-  check('组件与部位不匹配被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: 'rod_spd10' })).status === 400);
+  check('组件与部位不匹配被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: reelInst })).status === 400);
   check('未知部位被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'nope', compId: null })).status === 400);
-  const bdH = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: 'hook_big8_spd-5' });
+  const bdH = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: hookInst });
   check('装备精钢鱼钩（大鱼+8%；钓速=电动25+钩-5=20，负词条生效）', bdH.status === 200 && bdH.data.effects.big === 8 && bdH.data.effects.speed === 20, JSON.stringify(bdH.data.effects));
 
   const stopMark = sinkA.length;
@@ -204,10 +247,12 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('/api/profile 上报 inventory 被忽略（仍 carp 9）', meForge.data.inventory.carp === 9, JSON.stringify(meForge.data.inventory));
   await POST('http://localhost:' + P1 + '/api/profile', { token: tokA, name: '测试甲改' });
   check('显示名可经 /api/profile 修改', (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.name === '测试甲改');
-  const uf = path.join(TMP_DATA, 'users.json');
-  check('users.json 已落盘且含账号', fs.existsSync(uf) && Object.keys(JSON.parse(fs.readFileSync(uf, 'utf8'))).includes('tester_a'));
+  // v0.8 存储拆分：账号按文件落在 accounts/<key>.json；世界域拆为 market/records/economy/config
+  const uf = path.join(TMP_DATA, 'accounts', 'tester_a.json');
+  check('账号已落盘 accounts/tester_a.json', fs.existsSync(uf));
   const raw = fs.readFileSync(uf, 'utf8');
   check('密码以 salt+hash 存储（不存明文）', raw.includes('pwHash') && raw.includes('salt') && !raw.includes('pass1234'));
+  check('旧版 users.json 不再写入（已迁移到 accounts/）', !fs.existsSync(path.join(TMP_DATA, 'users.json')));
 
   cliA.destroy();
   await sleep(400);
@@ -224,7 +269,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const me2 = await GET('http://localhost:' + P2 + '/api/me?token=' + (lg2.data && lg2.data.token));
   check('重启后 coins 持久化 = 1234', me2.data && me2.data.coins === 1234);
   check('重启后 inventory 持久化', me2.data && me2.data.inventory && me2.data.inventory.carp === 9);
-  check('重启后钓竿配置持久化（ reel=电动卷线器, hook=精钢鱼钩）', !!(me2.data && me2.data.bd && me2.data.bd.reel && me2.data.bd.reel.compId === 'reel_spd25' && me2.data.bd.hook.compId === 'hook_big8_spd-5'), JSON.stringify(me2.data && me2.data.bd));
+  check('重启后钓竿配置持久化（ reel=电动卷线器, hook=精钢鱼钩）', !!(me2.data && me2.data.bd && me2.data.bd.reel && me2.data.bd.reel.compId === reelInst && me2.data.bd.hook && me2.data.bd.hook.compId === hookInst), JSON.stringify(me2.data && me2.data.bd));
   check('重启后显示名持久化', me2.data && me2.data.name === '测试甲改');
   killTree(srv);
 
@@ -244,6 +289,10 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('历史订单含 A 的买入记录', mhA.status === 200 && mhA.data.trades.some(function (t) { return t.buyer === 'tester_a' && t.id === 'carp' && t.qty === 5; }), JSON.stringify(mhA.data.trades).slice(0, 140));
   const mhB = await GET('http://localhost:' + P1 + '/api/market/history?token=' + lgB5.data.token);
   check('历史订单含 B 的卖出记录（含税额 5）', mhB.status === 200 && mhB.data.trades.some(function (t) { return t.seller === 'tester_b' && t.qty === 5 && t.tax === 5; }), JSON.stringify(mhB.data.trades).slice(0, 140));
+  // 市集/记录/经济域各自独立落盘
+  check('世界域已拆分为 market/records/economy.json',
+    ['market.json', 'records.json', 'economy.json'].every(f => fs.existsSync(path.join(TMP_DATA, f))),
+    '存在：' + fs.readdirSync(TMP_DATA).join(','));
 
   // ---------- 6. 挂单上限与过期退回 ----------
   section('6. 挂单上限（40）与过期退回');

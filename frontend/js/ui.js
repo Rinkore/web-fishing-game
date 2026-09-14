@@ -33,6 +33,22 @@ window.UI = (function () {
     return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2);
   }
   function itemMeta(id) { return D.itemOf ? D.itemOf(id) : { name: id, rarity: 'common', price: 10, kind: 'unknown' }; }
+  // ---- 组件展示辅助 ----
+  // 品质配色类：组件用品质色（普通白/稀有色/史诗橙），满词条升为金色；其余物品沿用稀有度色
+  function qualityClass(meta) {
+    if (!meta) return 'r-common';
+    if (meta.kind === 'component' && meta.quality) return meta.isFull ? 'q-full' : ('q-' + meta.quality);
+    return rarityClass(meta.rarity);
+  }
+  function qualityName(meta) {
+    if (!meta) return '';
+    if (meta.kind === 'component' && meta.qualityName) return meta.qualityName;
+    return meta.rarity === 'big' ? '大鱼' : meta.rarity === 'rare' ? '稀有' : meta.rarity === 'epic' ? '史诗' : '普通';
+  }
+  // 单条词缀文案：+12% 钓速 / -5% 体型
+  function affixText(a) { return (a.value > 0 ? '+' : '') + a.value + '% ' + (D.AFFIX_LABEL[a.type] || a.type); }
+  // 底材词缀区间文案：+8 ~ +14
+  function rangeText(p) { return (p.min > 0 ? '+' : '') + p.min + ' ~ ' + (p.max > 0 ? '+' : '') + p.max; }
 
   // ---- Toast ----
   let toastTimer = null;
@@ -211,7 +227,7 @@ window.UI = (function () {
     if (st.log.length === 0) log.appendChild(el('div', 'hint', '还没有渔获，去抛竿吧。'));
     st.log.slice(0, 25).forEach(function (e) {
       const meta = e.item || {};
-      log.appendChild(el('div', 'log-line', timeStr(e.t) + ' · 钓到 <span class="' + rarityClass(meta.rarity) + '">' + esc(meta.name) +
+      log.appendChild(el('div', 'log-line', timeStr(e.t) + ' · 钓到 <span class="' + qualityClass(meta) + '">' + esc(meta.name) +
         '</span>' + (meta.size ? ' <span class="muted">' + meta.size + 'cm</span>' : '') +
         (meta.rarity === 'big' ? ' 🐟大鱼' : meta.rarity === 'rare' ? ' ✨稀有' : '')));
     });
@@ -243,7 +259,7 @@ window.UI = (function () {
       const meta = itemMeta(k);
       const shopP = st.shop && st.shop[k];
       const row = el('div', 'inv-row');
-      row.innerHTML = '<span class="' + rarityClass(meta.rarity) + '">' + esc(meta.name) + '</span>' +
+      row.innerHTML = '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
         '<span class="cnt">×' + st.inventory[k] + '</span>';
       const acts = el('span', 'inv-acts');
       if (opts.onSell) {
@@ -365,8 +381,9 @@ window.UI = (function () {
         const c = o.c;
         const card = el('div', 'bec-card');
         card.innerHTML =
-          '<div class="bec-name"><span class="' + rarityClass(c.rarity) + '">' + esc(c.name) + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
-          c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + '">' + (a.value > 0 ? '+' : '') + a.value + '% ' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</div>'; }).join('') +
+          '<div class="bec-name"><span class="' + qualityClass(c) + '">' + esc(c.name) + (c.isFull ? '<span class="full-tag">满词条</span>' : '') + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
+          '<div class="inst-meta">' + esc(qualityName(c)) + '品质 · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条</div>' +
+          c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('') +
           '<div class="bec-meta">持有 ×' + o.n + '</div>';
         const use = el('button', 'mini primary-mini', (equipped && equipped.id === c.id) ? '已装备' : '装备');
         if (equipped && equipped.id === c.id) { use.disabled = true; use.classList.add('locked'); }
@@ -406,11 +423,11 @@ window.UI = (function () {
       const comp = D.componentOf(cur.compId);
       const cell = el('div', 'bd-cell' + (part.isCharm ? ' charm' : '') + (comp ? ' equipped' : ''));
       const affHtml = comp
-        ? comp.affixes.map(function (a) { return '<div class="af-line on' + (a.value < 0 ? ' aff-neg' : '') + '">' + (a.value > 0 ? '+' : '') + a.value + '% ' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</div>'; }).join('')
+        ? comp.affixes.map(function (a) { return '<div class="af-line on' + (a.value < 0 ? ' aff-neg' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('')
         : '<div class="af-line"><span class="muted">标准 · 无加成</span></div>';
       cell.innerHTML =
         '<div class="bd-part">' + esc(part.name) + (part.isCharm ? ' <span class="charm-tag">饰品</span>' : '') + '</div>' +
-        '<div class="bd-comp ' + (comp ? rarityClass(comp.rarity) : '') + '">' + esc(comp ? comp.name : part.default.name) + '</div>' +
+        '<div class="bd-comp ' + (comp ? qualityClass(comp) : '') + '">' + esc(comp ? comp.name : part.default.name) + (comp && comp.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>' +
         '<div class="affix-frame">' + affHtml + '</div>';
       const acts = el('div', 'bd-acts');
       if (comp) {
@@ -511,7 +528,7 @@ window.UI = (function () {
       const meta = e.item || {};
       const line = el('div', 'feed-line' + (e.record ? ' record' : ''));
       line.innerHTML = '<span class="ftime">' + timeStr(e.t) + '</span> <b>' + esc(e.who) + '</b> 在 ' +
-        esc(e.ground) + '·' + esc(e.spot) + ' 钓到 <span class="' + rarityClass(meta.rarity) + '">' + esc(meta.name) + '</span>' +
+        esc(e.ground) + '·' + esc(e.spot) + ' 钓到 <span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
         (e.size ? ' <span class="muted">' + e.size + 'cm</span>' : '') +
         (e.record ? ' 🏆刷新纪录' : meta.rarity === 'big' ? ' 🐟大鱼' : meta.rarity === 'rare' ? ' ✨稀有' : meta.kind === 'component' ? ' 🔧组件' : '');
       feed.appendChild(line);
@@ -606,7 +623,12 @@ window.UI = (function () {
       });
     });
 
-    // 价格走势
+    // 价格走势（组件为固定价，无供需行情）
+    if (meta.kind === 'component') {
+      const t0 = document.getElementById('list-trend');
+      if (t0) t0.innerHTML = '<div class="sd-legend">组件为固定价道具（按品质定价，不随市场浮动）：参考价 ' + meta.price + '💰</div>';
+      return;
+    }
     window.Net.shopHistory(id).then(function (r) {
       const t = document.getElementById('list-trend');
       if (!t || listModalId !== id) return;
@@ -793,6 +815,23 @@ window.UI = (function () {
   let buySearch = '';
   let buySearchFocus = false;
   let buySort = { key: 'time', dir: 'desc' };
+  let buyAffixType = 'all';   // 组件词条类型筛选：all / speed / big / ...
+  let buyAffixMin = '';       // 该词条的最小数值（含），空 = 不限
+  let buyAffixMax = '';       // 该词条的最大数值（含），空 = 不限
+  let buyOnlyComponents = true; // 词条筛选仅在组件上生效，此开关便于混合搜索
+  // 一个挂单是否满足「词条类型 + 数值区间」筛选。非组件挂单：仅在筛选为 all 时通过。
+  function listingMatchesAffix(l) {
+    if (buyAffixType === 'all' && buyAffixMin === '' && buyAffixMax === '') return true;
+    const meta = itemMeta(l.id);
+    if (meta.kind !== 'component' || !meta.affixes) return !buyOnlyComponents ? false : false;
+    return meta.affixes.some(function (a) {
+      if (buyAffixType !== 'all' && a.type !== buyAffixType) return false;
+      if (buyAffixMin !== '' && a.value < Number(buyAffixMin)) return false;
+      if (buyAffixMax !== '' && a.value > Number(buyAffixMax)) return false;
+      return true;
+    });
+  }
+  function affixFilterActive() { return buyAffixType !== 'all' || buyAffixMin !== '' || buyAffixMax !== ''; }
 
   // 挂单行：自己的显示「下架」，他人的显示「购买」（seller 为小写 key，比对做大小写免疫）
   function marketRow(l, st, me) {
@@ -800,8 +839,14 @@ window.UI = (function () {
     const mine = !!(me && me.id != null && String(l.seller).toLowerCase() === String(me.id).toLowerCase());
     const total = l.price * l.qty;
     const row = el('div', 'mk-row' + (mine ? ' mine' : ''));
+    const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
+      ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
+          return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>';
+        }).join('') + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</div>'
+      : '';
     row.innerHTML =
-      '<div class="mk-main"><div class="mk-name ' + rarityClass(meta.rarity) + '">' + esc(l.name) + ' <span class="qty">×' + l.qty + '</span></div>' +
+      '<div class="mk-main"><div class="mk-name ' + qualityClass(meta) + '">' + esc(l.name) + ' <span class="qty">×' + l.qty + '</span></div>' +
+      affHtml +
       '<div class="mk-sub">卖家：' + esc(l.sellerName) + (mine ? '（你）' : '') + ' · 上架 ' + timeStr(l.t) + '</div></div>' +
       '<div class="mk-price"><b>💰 ' + l.price + '</b><span class="unit">/个</span><div class="total">合计 ' + total + '</div></div>';
     const acts = el('div', 'mk-acts');
@@ -910,6 +955,7 @@ window.UI = (function () {
         if (q) others = others.filter(function (l) {
           return l.name.toLowerCase().indexOf(q) >= 0 || (l.sellerName || '').toLowerCase().indexOf(q) >= 0;
         });
+        if (affixFilterActive()) others = others.filter(listingMatchesAffix);
         others.sort(function (a, b) {
           if (buySort.key === 'price') {
             const d = buySort.dir === 'asc' ? a.price - b.price : b.price - a.price;
@@ -927,12 +973,39 @@ window.UI = (function () {
           return;
         }
         others.forEach(function (l) { list.appendChild(marketRow(l, st, me)); });
-        if (q || buyCategory !== 'all' || buySort.key !== 'time') list.appendChild(el('div', 'hint', '匹配 ' + others.length + ' 条挂单。'));
+        if (q || buyCategory !== 'all' || buySort.key !== 'time' || affixFilterActive()) list.appendChild(el('div', 'hint', '匹配 ' + others.length + ' 条挂单。'));
       }
       inp.addEventListener('input', function () { buySearch = inp.value; refreshList(); });
       inp.addEventListener('focus', function () { buySearchFocus = true; });
       inp.addEventListener('blur', function () { buySearchFocus = false; });
       filters.appendChild(inp);
+
+      // 组件词条筛选：选择词条类型 + 数值区间，只搜带该词条的组件挂单
+      const affWrap = el('div', 'aff-filter');
+      affWrap.appendChild(el('span', 'bf-sort-label', '词条'));
+      const affSel = el('select', 'bulk-select');
+      [['all', '全部词条']].concat(BD_AFFIXES.map(function (kv) { return [kv[0], kv[1]]; })).forEach(function (kv) {
+        const o = el('option', null, kv[1]); o.value = kv[0]; affSel.appendChild(o);
+      });
+      affSel.value = buyAffixType;
+      affSel.addEventListener('change', function () { buyAffixType = affSel.value; renderView(); });
+      affWrap.appendChild(affSel);
+      const minInp = el('input', 'aff-num');
+      minInp.type = 'number'; minInp.placeholder = '最小值'; minInp.value = buyAffixMin;
+      const maxInp = el('input', 'aff-num');
+      maxInp.type = 'number'; maxInp.placeholder = '最大值'; maxInp.value = buyAffixMax;
+      function onNum() { buyAffixMin = minInp.value; buyAffixMax = maxInp.value; refreshList(); }
+      minInp.addEventListener('input', onNum);
+      maxInp.addEventListener('input', onNum);
+      affWrap.appendChild(minInp);
+      affWrap.appendChild(el('span', 'bf-sort-label', '~'));
+      affWrap.appendChild(maxInp);
+      if (affixFilterActive()) {
+        const clr = el('button', 'bf-cat', '清除');
+        clr.addEventListener('click', function () { buyAffixType = 'all'; buyAffixMin = ''; buyAffixMax = ''; renderView(); });
+        affWrap.appendChild(clr);
+      }
+      filters.appendChild(affWrap);
 
       // 排序：时间（默认）/ 价格 / 数量；价格与数量可切换升降序
       const sortWrap = el('span', 'bf-sort');
@@ -1075,8 +1148,12 @@ window.UI = (function () {
         const cnt = st.inventory[id];
         const kindName = meta.kind === 'fish' ? '鱼' : meta.kind === 'material' ? '材料' : meta.kind === 'component' ? '组件' : '物品';
         const row = el('div', 'inv-row inv-page-row');
+        const nameCell = meta.kind === 'component' && meta.affixes
+          ? '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + (meta.isFull ? '<span class="full-tag">满词条</span>' : '') + '</span>' +
+            '<span class="inst-aff-inline">' + meta.affixes.map(function (a) { return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>'; }).join('') + '</span>'
+          : '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>';
         row.innerHTML =
-          '<span class="' + rarityClass(meta.rarity) + '">' + esc(meta.name) + '</span>' +
+          nameCell +
           '<span class="kind-tag">' + kindName + '</span>' +
           '<span class="cnt">×' + cnt + '</span>' +
           '<span class="unit-price">现价 ' + unitPrice(id) + '💰</span>' +
@@ -1180,7 +1257,7 @@ window.UI = (function () {
     } else {
       mine.forEach(function (l) {
         const row = el('div', 'inv-row my-listing-row');
-        row.innerHTML = '<span class="' + rarityClass(itemMeta(l.id).rarity) + '">' + esc(l.name) + '</span>' +
+        row.innerHTML = '<span class="' + qualityClass(itemMeta(l.id)) + '">' + esc(l.name) + '</span>' +
           '<span class="cnt">×' + l.qty + ' @ ' + l.price + '💰</span>';
         const acts = el('span', 'inv-acts');
         const cb = el('button', 'mini', '下架');
@@ -1316,7 +1393,7 @@ window.UI = (function () {
     if (!items || items.length === 0) list.appendChild(el('div', 'hint', '（空）'));
     (items || []).forEach(function (it) {
       const meta = itemMeta(it.id);
-      list.appendChild(el('div', 'ts-item', '<span class="' + rarityClass(meta.rarity) + '">' + esc(meta.name) + '</span><span class="cnt">×' + it.qty + '</span>'));
+      list.appendChild(el('div', 'ts-item', '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span><span class="cnt">×' + it.qty + '</span>'));
     });
     box.appendChild(list);
     return box;
@@ -1340,7 +1417,7 @@ window.UI = (function () {
       const qty = checked ? Math.min(sel[id], have) : 1;
       const row = el('div', 'tp-row');
       row.innerHTML = '<label class="tp-name"><input type="checkbox" data-id="' + id + '"' + (checked ? ' checked' : '') + ' /> <span class="' +
-        rarityClass(meta.rarity) + '">' + esc(meta.name) + '</span></label>' +
+        qualityClass(meta) + '">' + esc(meta.name) + '</span></label>' +
         '<span class="tp-have">持有 ' + have + '</span>' +
         '<input class="tp-qty" type="number" min="1" max="' + have + '" value="' + qty + '"' + (checked ? '' : ' disabled') + ' />';
       rows.appendChild(row);
@@ -1382,26 +1459,43 @@ window.UI = (function () {
   function openCodexDetail(cell, it, rec) {
     document.querySelectorAll('.codex-detail').forEach(function (d) { d.remove(); });
     const spots = D.spotsOf(it.id);
-    const rarityName = it.rarity === 'big' ? '大鱼' : it.rarity === 'rare' ? '稀有' : it.rarity === 'epic' ? '史诗' : '普通';
+    const base = it.kind === 'component' ? D.componentBase(it.id) : null;
+    const rarityName = qualityName(it);
     const box = el('div', 'codex-detail');
     box.addEventListener('click', function (ev) { ev.stopPropagation(); }); // 浮层内点击不触发卡片开合
     box.innerHTML =
-      '<div class="cd-title ' + rarityClass(it.rarity) + '">' + esc(it.name) + '</div>' +
+      '<div class="cd-title ' + qualityClass(it) + '">' + esc(it.name) + '</div>' +
       (rec
         ? '<div class="cd-line">已钓 <b>' + rec.count + '</b> 次 · 首获 ' + timeStr(rec.first) + '</div>'
         : '<div class="cd-line muted">未解锁 · 去产地垂钓即可解锁</div>') +
-      '<div class="cd-line">稀有度：' + rarityName + ' · 基准价 ' + (it.price || 0) + '💰</div>' +
-      (it.size ? '<div class="cd-line">体型 ' + it.size[0] + '-' + it.size[1] + ' cm</div>' : '<div class="cd-line">材料 / 组件</div>') +
+      '<div class="cd-line">' + (base ? '组件底材' : '稀有度') + '：' + rarityName + ' · 基准价 ' + (it.price || 0) + '💰</div>' +
+      (it.size ? '<div class="cd-line">体型 ' + it.size[0] + '-' + it.size[1] + ' cm</div>' : (base ? '' : '<div class="cd-line">材料 / 组件</div>')) +
       (rec && rec.max != null ? '<div class="cd-line">我钓到过：最大 <b>' + rec.max + '</b> cm · 最小 <b>' + rec.min + '</b> cm</div>' : '') +
       (rec && rec.max == null && it.size ? '<div class="cd-line muted">个人体型极值将在下次钓到后开始记录</div>' : '');
-    // 组件效果词条（负词条红色）
-    const comp = it.kind === 'component' ? D.componentOf(it.id) : null;
-    if (comp && comp.affixes.length) {
+    if (base) {
+      // 组件底材：展示可拥有的全部词缀与数值范围（上限之外的词缀用暗色标注）
+      const cap = D.QUALITY.epic.cap;
+      box.appendChild(el('div', 'cd-sub', '⚙ 可拥有词缀（' + base.pool.length + ' 条 · 数值范围）'));
+      const al = el('div', 'cd-spots');
+      base.pool.forEach(function (p) {
+        const neg = p.max < 0;
+        al.appendChild(el('div', 'cd-spot' + (neg ? ' cd-aff-neg' : ''),
+          (D.AFFIX_LABEL[p.type] || p.type) + ' ' + rangeText(p) + '%'));
+      });
+      box.appendChild(al);
+      box.appendChild(el('div', 'cd-line muted',
+        '生成规则：从以上词缀中抽取 1 至 ' + Math.min(cap, base.pool.length) + ' 条并 roll 数值；' +
+        '品质越高可携带词缀越多（普通 1 / 稀有 2 / 史诗 3）。词缀全满的品质显示为金色（✨）。'));
+      const owned = ownedInstancesOfBase(base.id);
+      if (owned.full) box.appendChild(el('div', 'cd-line q-full', '✨ 你已拥有满词条实例（品质显示为金）'));
+    }
+    // 旧通用组件（无底材）仍展示其（空的）效果
+    const comp = !base && it.kind === 'component' ? D.componentOf(it.id) : null;
+    if (comp && comp.affixes && comp.affixes.length) {
       box.appendChild(el('div', 'cd-sub', '⚙ 组件效果'));
       const al = el('div', 'cd-spots');
       comp.affixes.forEach(function (a) {
-        al.appendChild(el('div', 'cd-spot' + (a.value < 0 ? ' cd-aff-neg' : ''),
-          (D.AFFIX_LABEL[a.type] || a.type) + (a.value > 0 ? '+' : '') + a.value + '%'));
+        al.appendChild(el('div', 'cd-spot' + (a.value < 0 ? ' cd-aff-neg' : ''), esc(affixText(a))));
       });
       box.appendChild(al);
     }
@@ -1414,6 +1508,19 @@ window.UI = (function () {
       box.appendChild(el('div', 'cd-line muted', '暂无产地信息。'));
     }
     cell.appendChild(box);
+  }
+
+  // 玩家背包中某底材的实例统计（用于图鉴金色满词条标注）
+  function ownedInstancesOfBase(baseId) {
+    const inv = S().inventory || {};
+    let any = false, full = false;
+    Object.keys(inv).forEach(function (id) {
+      const m = D.componentOf(id);
+      if (!m || m.baseId !== baseId) return;
+      any = true;
+      if (m.isFull) full = true;
+    });
+    return { any: any, full: full };
   }
 
   function toggleCodexDetail(cell, it, rec) {
@@ -1473,21 +1580,23 @@ window.UI = (function () {
       const rec = caught[it.id];
       const cell = el('div', 'codex-cell' + (rec ? ' got' : '') + ' k-' + it.kind);
       const spots = D.spotsOf(it.id);
-      const rarityName = it.rarity === 'big' ? '大鱼' : it.rarity === 'rare' ? '稀有' : it.rarity === 'epic' ? '史诗' : '普通';
-      // 组件卡第 4 行改显词条效果（替代"材料 / 组件"占位），负词条红色
-      const comp = it.kind === 'component' ? D.componentOf(it.id) : null;
-      const affHtml = comp && comp.affixes.length
-        ? '<div class="cx-meta cx-aff">' + comp.affixes.map(function (a) {
-            return '<span class="' + (a.value < 0 ? 'neg' : '') + '">' + esc(D.AFFIX_LABEL[a.type] || a.type) + (a.value > 0 ? '+' : '') + a.value + '%</span>';
+      const base = it.kind === 'component' ? D.componentBase(it.id) : null;
+      const owned = base ? ownedInstancesOfBase(base.id) : null;
+      // 组件底材卡：展示可拥有的全部词缀与数值范围（满词条实例 → 金色标注）
+      const poolHtml = base
+        ? '<div class="cx-meta cx-pool">' + base.pool.map(function (p) {
+            return '<span class="pool-line' + (p.max < 0 ? ' neg' : '') + '">' + esc((D.AFFIX_LABEL[p.type] || p.type)) +
+              ' <span class="rng">' + esc(rangeText(p)) + '%</span></span>';
           }).join(' · ') + '</div>'
         : null;
+      const nameCls = rec ? (owned && owned.full ? 'q-full' : qualityClass(it)) : 'locked-name';
       // 统一五行骨架：全部卡片结构一致、高度对齐
       cell.innerHTML =
-        '<div class="cx-name ' + (rec ? rarityClass(it.rarity) : 'locked-name') + '">' + esc(it.name) + '</div>' +
-        '<div class="cx-meta">' + (rec ? '已钓 ' + rec.count + ' 次' : '未解锁') + '</div>' +
-        '<div class="cx-meta muted">' + (rec ? '首获 ' + timeStr(rec.first) : rarityName + ' · ' + (it.price || 0) + '💰') + '</div>' +
+        '<div class="cx-name ' + nameCls + '">' + esc(it.name) + (owned && owned.full ? '<span class="full-tag">满词条</span>' : '') + '</div>' +
+        '<div class="cx-meta">' + (rec ? '已获得 ' + rec.count + ' 次' : '未解锁') + '</div>' +
+        '<div class="cx-meta muted">' + (rec ? '首获 ' + timeStr(rec.first) : qualityName(it) + ' · ' + (it.price || 0) + '💰') + '</div>' +
         (it.size ? '<div class="cx-meta muted">体型 ' + it.size[0] + '-' + it.size[1] + 'cm</div>'
-                  : (affHtml || '<div class="cx-meta muted">材料 / 组件</div>')) +
+                  : (poolHtml || '<div class="cx-meta muted">材料 / 组件</div>')) +
         (spots.length ? '<div class="cx-meta cx-spots">📍 产地 ' + spots.length + ' 处</div>' : '<div class="cx-meta muted">📍 —</div>');
       cell.title = '点击查看完整信息';
       cell.addEventListener('click', function () { toggleCodexDetail(cell, it, rec); });
@@ -1633,6 +1742,99 @@ window.UI = (function () {
     main.appendChild(panel);
   }
 
+  // ---- 反馈意见视图 ----
+  // 默认每人每 24 小时可提交 1 条；花 10000 金币可立即结束 CD。
+  let fbKind = 'bug';
+  const FB_KINDS = [['bug', '🐛 Bug'], ['idea', '💡 建议'], ['balance', '⚖️ 平衡'], ['other', '💬 其他']];
+  function fmtRemain(ms) {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return (h > 0 ? h + ' 小时 ' : '') + (h > 0 || m > 0 ? m + ' 分 ' : '') + sec + ' 秒';
+  }
+  function renderFeedback() {
+    const main = $('main');
+    const st = S();
+    main.innerHTML = '';
+    const panel = el('div', 'panel wide feedback-panel');
+    panel.innerHTML = '<h2>📮 反馈意见 <span class="subtitle">Bug / 建议 / 平衡 · 默认每 24 小时可提交 1 条 · 花 ' + 10000 + ' 金币可立即结束冷却</span></h2>';
+    const fb = st.feedback || {};
+    const status = fb.status || { ready: true, remainingMs: 0, nextAt: 0, skipCost: 10000 };
+
+    // 冷却状态条
+    const banner = el('div', 'fb-banner' + (status.ready ? ' ready' : ' cooling'));
+    if (status.ready) {
+      banner.innerHTML = '✅ 现在可以提交反馈（提交后进入 24 小时冷却）';
+    } else {
+      const cost = status.skipCost || 10000;
+      const canPay = (st.player.coins || 0) >= cost;
+      banner.innerHTML = '⏳ 冷却中 · 剩余 <b>' + fmtRemain(status.remainingMs) + '</b>';
+      const skip = el('button', 'mini primary-mini' + (canPay ? '' : ' locked'), '💸 花 ' + cost + ' 金币立即结束 CD');
+      skip.addEventListener('click', function () {
+        if (!canPay) { toast('金币不足（需 ' + cost + '）'); return; }
+        if (!confirm('花费 ' + cost + ' 金币立即结束反馈冷却？')) return;
+        call(window.Net.feedbackSkip(), '已结束冷却，现在可以提交反馈').then(function (r) {
+          if (r && r.ok) { st.feedback = Object.assign({}, st.feedback, { status: r.data.status }); renderTopbar(); renderView(); }
+        });
+      });
+      banner.appendChild(skip);
+    }
+    panel.appendChild(banner);
+
+    // 提交表单
+    const form = el('div', 'fb-form');
+    const kindWrap = el('div', 'fb-kinds');
+    FB_KINDS.forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (fbKind === kv[0] ? ' on' : ''), kv[1]);
+      b.addEventListener('click', function () { fbKind = kv[0]; renderView(); });
+      kindWrap.appendChild(b);
+    });
+    form.appendChild(kindWrap);
+    const ta = el('textarea', 'fb-input');
+    ta.placeholder = '描述你遇到的问题或建议（最多 1000 字）…';
+    form.appendChild(ta);
+    const cnt = el('div', 'fb-count', '0 / 1000');
+    ta.addEventListener('input', function () { cnt.textContent = ta.value.length + ' / 1000'; });
+    form.appendChild(cnt);
+    const submit = el('button', 'primary big' + (status.ready ? '' : ' locked'), status.ready ? '提交反馈' : '冷却中…');
+    submit.disabled = !status.ready;
+    submit.addEventListener('click', function () {
+      const text = ta.value.trim();
+      if (!text) { toast('请填写反馈内容'); return; }
+      submit.disabled = true;
+      submit.textContent = '提交中…';
+      call(window.Net.feedbackSubmit(text, fbKind), '感谢反馈！已进入 24 小时冷却').then(function (r) {
+        if (r && r.ok) {
+          ta.value = '';
+          st.feedback = { status: r.data.status, mine: [r.data.entry].concat((fb.mine || [])) };
+          renderTopbar(); renderView();
+        } else {
+          submit.disabled = false; submit.textContent = '提交反馈';
+        }
+      });
+    });
+    form.appendChild(submit);
+    panel.appendChild(form);
+
+    // 我的历史反馈
+    panel.appendChild(el('h3', null, '📜 我提交过的反馈'));
+    const mine = (fb.mine || []);
+    if (!mine.length) {
+      panel.appendChild(el('div', 'hint', '还没有提交过反馈。'));
+    } else {
+      const list = el('div', 'fb-history');
+      mine.forEach(function (f) {
+        const row = el('div', 'fb-item');
+        const kindName = (FB_KINDS.find(function (k) { return k[0] === f.kind; }) || ['', '其他'])[1];
+        row.innerHTML = '<div class="fb-item-head"><span class="fb-tag">' + esc(kindName) + '</span>' +
+          '<span class="fb-time">' + timeStr(f.t) + '</span></div>' +
+          '<div class="fb-text">' + esc(f.text) + '</div>';
+        list.appendChild(row);
+      });
+      panel.appendChild(list);
+    }
+    main.appendChild(panel);
+  }
+
   function renderPlaceholder(name) {
     const main = $('main');
     main.innerHTML = '';
@@ -1647,9 +1849,32 @@ window.UI = (function () {
     else if (view === 'market') window.Net.fetchMarket();
     else if (view === 'codex') window.Net.fetchCodex();
     else if (view === 'records') window.Net.fetchRecords();
+    else if (view === 'feedback') window.Net.fetchFeedback();
+  }
+
+  // 重绘前记录可滚动容器位置，重绘后恢复。
+  // SSE 广播（他人上鱼/新纪录）会触发整页重绘，若不保留滚动位置，
+  // 浏览中的渔获日志 / 渔获记录 / 动态列表会被 innerHTML 重建并拽回顶部。
+  const SCROLL_SELECTORS = ['.content', '.catch-log', '.feed', '.codex-detail', '.trade-lists'];
+  function captureScroll() {
+    const saved = [];
+    SCROLL_SELECTORS.forEach(function (sel) {
+      document.querySelectorAll(sel).forEach(function (n, i) {
+        if (n.scrollTop > 0) saved.push([sel, i, n.scrollTop]);
+      });
+    });
+    return saved;
+  }
+  function restoreScroll(saved) {
+    if (!saved || !saved.length) return;
+    saved.forEach(function (rec) {
+      const n = document.querySelectorAll(rec[0])[rec[1]];
+      if (n) n.scrollTop = rec[2];
+    });
   }
 
   function renderView() {
+    const saved = captureScroll();
     if (currentView === 'fishing') renderFishing();
     else if (currentView === 'bd') renderBD();
     else if (currentView === 'ground') renderGround();
@@ -1659,10 +1884,12 @@ window.UI = (function () {
     else if (currentView === 'trade') renderTrade();
     else if (currentView === 'codex') renderCodex();
     else if (currentView === 'records') renderRecords();
+    else if (currentView === 'feedback') renderFeedback();
     else {
       const navItem = D.NAV.find(function (x) { return x.id === currentView; });
       renderPlaceholder(navItem ? navItem.name : '未开放');
     }
+    restoreScroll(saved);
   }
 
   // ---- 认证流程 ----
@@ -1752,6 +1979,7 @@ window.UI = (function () {
     trade: ['trade', 'assets', 'codex'],
     codex: ['codex', 'groundcfg'],
     records: ['records'],
+    feedback: [],                                        // 反馈页：只随操作重绘（冷却倒计时另有定时器）
     mall: [], collect: [],
   };
   function refreshAll(scope) {
@@ -1769,6 +1997,14 @@ window.UI = (function () {
 
   function init() {
     wireAuth();
+    // 启动前先做版本守卫：服务器版本与本地前端不一致时带缓存参数强刷（避免旧缓存进不去新版页面）
+    const boot = (window.Net && window.Net.guardVersion) ? window.Net.guardVersion() : Promise.resolve(false);
+    boot.then(function (reloading) {
+      if (reloading) return; // 已触发整页刷新，不再继续初始化
+      initApp();
+    }).catch(function () { initApp(); });
+  }
+  function initApp() {
     // 交易页冷却倒计时：仅在冷却期间重绘，冷却结束后补一次
     let cdLast = 0;
     setInterval(function () {
@@ -1779,6 +2015,16 @@ window.UI = (function () {
       if (cd > 0 || cdLast > 0) { renderTopbar(); renderView(); }
       cdLast = cd;
     }, 500);
+    // 反馈页冷却倒计时：仅在反馈页且冷却中时按秒重绘剩余时间
+    let fbLast = 0;
+    setInterval(function () {
+      if (currentView !== 'feedback') { fbLast = 0; return; }
+      const st = S().feedback;
+      if (!st || !st.status) { fbLast = 0; return; }
+      const rem = Math.max(0, (st.status.nextAt || 0) - Date.now());
+      if (rem > 0 || fbLast > 0) renderView();
+      fbLast = rem;
+    }, 1000);
     let token = null;
     try { token = localStorage.getItem('fishing_token'); } catch (e) {}
     if (token) {

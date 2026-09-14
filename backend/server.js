@@ -28,8 +28,25 @@ const ROOT = __dirname;
 // 数据目录：默认 backend/data；测试可用 FISHING_DATA_DIR 指到临时目录，避免跑测试清掉真实存档
 const DATA_DIR = process.env.FISHING_DATA_DIR ? path.resolve(process.env.FISHING_DATA_DIR) : path.join(ROOT, 'data');
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const WORLD_FILE = path.join(DATA_DIR, 'world.json');
+// ---- 数据落盘拆分（v0.8）----
+// 按域 + 按账号分文件：每次上鱼只重写该账号一个文件，市集/记录/经济/配置各自独立，
+// 互不干扰、单文件损坏影响面最小。旧版 users.json / world.json 在启动时自动迁移。
+//   accounts/<账号>.json  身份 + 金币 + 背包 + 钓竿配置 + 图鉴（每账号独立文件）
+//   market.json           市集挂单与序号
+//   records.json          大鱼榜 / 小鱼纪录 / 前十大
+//   economy.json          商店供需乘数 / 价格历史 / 交易流水 / 市集成交
+//   config.json           钓场钓点覆盖配置 / 通知等级 / 上钩公式
+const ACCOUNTS_DIR = path.join(DATA_DIR, 'accounts');
+try { fs.mkdirSync(ACCOUNTS_DIR, { recursive: true }); } catch (e) {}
+const MARKET_FILE = path.join(DATA_DIR, 'market.json');
+const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
+const ECONOMY_FILE = path.join(DATA_DIR, 'economy.json');
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
+// 旧版单文件（仅用于首次自动迁移）
+const LEGACY_USERS_FILE = path.join(DATA_DIR, 'users.json');
+const LEGACY_WORLD_FILE = path.join(DATA_DIR, 'world.json');
+
 
 // ---- 静态托管（前后端分离）----
 // 默认自动托管 ../frontend（存在时）；STATIC_DIR=none 关闭；STATIC_DIR=路径 指定其他前端目录。
@@ -47,7 +64,14 @@ let users = {};
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
 // biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
 const BITE_FORMULA_DEFAULT = 'min(98, 90 + speed * 0.15)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, feedback: [], feedbackMeta: {} };
+
+// ---- 反馈意见 ----
+// 默认每人每 24 小时可提交 1 条；花 10000 金币可立即结束 CD（下次可提交时间提前 24h）。
+const FEEDBACK_CD_MS = 24 * 3600 * 1000;
+const FEEDBACK_SKIP_COST = 10000;
+const FEEDBACK_MAX_LEN = 1000;
+const FEEDBACK_KEEP = 500; // 最多保留的历史反馈条数
 
 // ---- 在线交易会话 ----
 // trade = { id, a:{key,name}, b:{key,name}, aItems:[{id,qty}], bItems:[], aOk, bOk, cooldownUntil, cancelled, createdAt }
@@ -59,10 +83,12 @@ const TRADE_COOLDOWN = 3000;
 const D = require(path.join(__dirname, '..', 'frontend', 'js', 'data.js'));
 
 // 物品价格/名称表由共享目录派生（用于定价、市集与交易校验）
-const ITEM_PRICE = {}, ITEM_NAME = {}, FISH_ID_SET = {};
+//   ECO_PRICE：进入系统商店供需经济（有动态乘数与价格历史）的物品 —— 仅渔获与材料。
+//   组件为固定价道具（实例价 = 底材基准价 × 品质倍率），不走供需乘数；名称表覆盖全部物品。
+const ECO_PRICE = {}, ITEM_NAME = {}, FISH_ID_SET = {};
 D.allItems().forEach(function (it) {
-  ITEM_PRICE[it.id] = it.price;
   ITEM_NAME[it.id] = it.name;
+  if (it.kind === 'fish' || it.kind === 'material') ECO_PRICE[it.id] = it.price;
   if (it.kind === 'fish') FISH_ID_SET[it.id] = 1;
 });
 
@@ -110,10 +136,12 @@ function weightedPickOf(pool) {
   for (const e of pool) { r -= e.weight; if (r <= 0) return e.pick; }
   return pool[pool.length - 1].pick;
 }
-// 体型随机：偏向小值；体型词缀可正可负，放大/缩小结果但正向不越过上限的 1.3 倍
+// 体型随机：偏向小值；体型词缀按百分比放大/缩小结果。
+// 不再对加成结果设固定上限（旧版硬性封顶 range[1]*1.3，导致 +55% 体型也被压到 520cm）；
+// 数值上限由底材体型范围与词缀本身决定。
 function rollSizeOf(range, eff) {
   let v = range[0] + (range[1] - range[0]) * Math.pow(Math.random(), 1.6);
-  if (eff.size !== 0) v = Math.min(range[1] * 1.3, v * (1 + eff.size / 100));
+  if (eff.size) v = Math.max(1, v * (1 + eff.size / 100));
   return Math.round(v * 10) / 10;
 }
 function resolveItemAt(spot, eff) {
@@ -146,14 +174,16 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   invAdd(rec, item.id, 1);
   rec.codex = rec.codex || {};
   rec.catchCount = (rec.catchCount || 0) + 1;
-  const cx = rec.codex[item.id] || { count: 0, first: Date.now() };
+  // 图鉴按「底材」登记（组件实例归入其底材条目），渔获/材料按自身 id 登记
+  const codexId = item.kind === 'component' ? (item.baseId || item.id) : item.id;
+  const cx = rec.codex[codexId] || { count: 0, first: Date.now() };
   cx.count += 1;
   // 记录个人最大/最小体型（图鉴详情展示）
   if (item.size != null) {
     if (cx.max == null || item.size > cx.max) cx.max = item.size;
     if (cx.min == null || item.size < cx.min) cx.min = item.size;
   }
-  rec.codex[item.id] = cx;
+  rec.codex[codexId] = cx;
 
   let recordEvent = null;
   let smallEvent = false;
@@ -190,14 +220,15 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     p.recent = item.size ? (item.name + ' ' + item.size + 'cm') : item.name;
     sendPlayersAll();
   }
-  saveUsers();
+  saveAccount(key);
   if (recordEvent || smallEvent) {
-    saveWorld();
+    saveRecords();
     broadcastRecords();
     if (recordEvent && feedVisible(item, true)) broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null, record: true } });
   }
-  // 定向推送：本条渔获 + 权威资产/图鉴（前端不持账本）
+  // 定向推送：本条渔获 + 图鉴条目 + 权威资产（前端不持账本）
   sendTo(key, { type: 'catch', entry: entry });
+  sendTo(key, { type: 'codex', codex: rec.codex, catchCount: rec.catchCount, entry: { id: codexId, name: itemName(codexId) } });
   sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
   // 双钓词缀：立即再结算一竿（不连锁）
   if (!noDouble && eff.double > 0 && Math.random() * 100 < eff.double) doServerCatch(rec, key, ground, spot, eff, true);
@@ -435,7 +466,7 @@ function saveSpotCfg(groundId, spotId, patch) {
   if (patch.pool) cur.pool = patch.pool;
   if (patch.buffs) cur.buffs = patch.buffs;
   world.groundCfg.spots[k] = cur;
-  saveWorld();
+  saveConfig();
 }
 // 钓场配置变化：向游戏端广播整份目录（图鉴产地/渔场页即时同步）
 function broadcastGroundcfg() { broadcast({ type: 'groundcfg', grounds: D.GROUNDS }); }
@@ -459,8 +490,12 @@ function kickUserSessions(key) {
   if (t) { t.cancelled = true; t.closed = true; broadcastTrade(t); trades.delete(t.id); }
 }
 
-function basePrice(id) { return ITEM_PRICE[id] || 10; }
-function itemName(id) { return ITEM_NAME[id] || id; }
+function basePrice(id) { return ECO_PRICE[id] || (D.itemOf(id).price || 10); }
+function itemName(id) { return ITEM_NAME[id] || D.itemOf(id).name || id; }
+// 物品是否可出售/上架：渔获、材料、组件实例、旧通用组件
+function sellableOf(id) { return D.isSellable(id) || id === 'comp_generic'; }
+// 单件成交价：经济物品随供需浮动；组件实例与旧通用组件为固定价
+function unitPriceOf(id) { return ECO_PRICE[id] ? currentPrice(id) : (D.itemOf(id).price || 10); }
 
 // ---- 动态收购价（服务器权威 · 单乘数模型）----
 // 每个物品维护一个价格乘数 m ∈ [0.4, 2.0]，实际价 = 基准价 × m：
@@ -514,19 +549,95 @@ function recordPrice(id) {
   if (log.length > 360) log.splice(0, log.length - 360); // 保留 6 小时（每分钟一次）
 }
 setInterval(function () {
-  Object.keys(ITEM_PRICE).forEach(recordPrice);
-  try { saveWorld(); } catch (e) {}
+  Object.keys(ECO_PRICE).forEach(recordPrice);
+  try { saveEconomy(); } catch (e) {}
 }, 60000).unref();
 
-function loadUsers() { try { users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8') || '{}'); } catch (e) { users = {}; } }
-function saveUsers() { try { fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2)); } catch (e) {} }
-function loadWorld() { try { world = Object.assign(world, JSON.parse(fs.readFileSync(WORLD_FILE, 'utf8') || '{}')); } catch (e) {} }
-function saveWorld() { try { fs.writeFileSync(WORLD_FILE, JSON.stringify(world, null, 2)); } catch (e) {} }
+// ---- 落盘原语（同步写、整文件重写；单账号/单域粒度） ----
+function readJson(fp) { try { return JSON.parse(fs.readFileSync(fp, 'utf8') || 'null'); } catch (e) { return null; } }
+function writeJson(fp, obj) { try { fs.writeFileSync(fp, JSON.stringify(obj, null, 2)); } catch (e) { console.error('[save] ' + fp + ' 写入失败：' + e.message); } }
+function safeKey(k) { return String(k).replace(/[^a-zA-Z0-9_.-]/g, '_'); } // 账号 key 已是小写字母数字下划线，这里再兜底
+function accountFile(key) { return path.join(ACCOUNTS_DIR, safeKey(key) + '.json'); }
+
+// ---- 账号：每账号一个文件 ----
+function loadAccounts() {
+  users = {};
+  let files = [];
+  try { files = fs.readdirSync(ACCOUNTS_DIR).filter(function (f) { return f.endsWith('.json'); }); } catch (e) {}
+  files.forEach(function (f) {
+    const rec = readJson(path.join(ACCOUNTS_DIR, f));
+    if (rec && rec.username) users[String(rec.username).toLowerCase()] = rec;
+  });
+  // 首次运行且无账号文件：从旧版 users.json 迁移
+  if (!files.length) {
+    const old = readJson(LEGACY_USERS_FILE);
+    if (old && typeof old === 'object') {
+      users = old;
+      saveAllAccounts();
+      console.log('[migrate] users.json → accounts/（' + Object.keys(users).length + ' 个账号）');
+    }
+  }
+}
+function saveAccount(key) {
+  const rec = users[key];
+  if (!rec) return;
+  writeJson(accountFile(key), rec);
+}
+function saveAllAccounts() {
+  Object.keys(users).forEach(saveAccount);
+}
+
+// ---- 世界域：市集 / 记录 / 经济 / 配置 各自一个文件 ----
+function loadDomain(file, keys) {
+  const data = readJson(file);
+  if (data && typeof data === 'object') keys.forEach(function (k) { if (data[k] !== undefined) world[k] = data[k]; });
+}
+function saveDomain(file, keys) {
+  const out = {};
+  keys.forEach(function (k) { out[k] = world[k]; });
+  writeJson(file, out);
+}
+const MARKET_KEYS = ['listingSeq', 'listings'];
+const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches'];
+const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula'];
+// 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
+const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
+function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
+function saveMarket() { saveDomain(MARKET_FILE, MARKET_KEYS); }
+function loadRecords() { loadDomain(RECORDS_FILE, RECORDS_KEYS); }
+function saveRecords() { saveDomain(RECORDS_FILE, RECORDS_KEYS); }
+function loadEconomy() { loadDomain(ECONOMY_FILE, ECONOMY_KEYS); }
+function saveEconomy() { saveDomain(ECONOMY_FILE, ECONOMY_KEYS); }
+function loadConfig() { loadDomain(CONFIG_FILE, CONFIG_KEYS); }
+function saveConfig() { saveDomain(CONFIG_FILE, CONFIG_KEYS); }
+function loadFeedback() { loadDomain(FEEDBACK_FILE, FEEDBACK_KEYS); }
+function saveFeedback() { saveDomain(FEEDBACK_FILE, FEEDBACK_KEYS); }
+function saveWorld() { saveMarket(); saveRecords(); saveEconomy(); saveConfig(); saveFeedback(); }
+
+function loadUsers() { loadAccounts(); }
+function saveUsers() { saveAllAccounts(); }
+// 世界加载：从拆分后的域文件读取；若域文件尚不存在则从旧版 world.json 迁移
+function loadWorld() {
+  const hasDomain = MARKET_FILE && fs.existsSync(MARKET_FILE);
+  if (!fs.existsSync(MARKET_FILE) && !fs.existsSync(RECORDS_FILE) && !fs.existsSync(ECONOMY_FILE) && !fs.existsSync(CONFIG_FILE)) {
+    const old = readJson(LEGACY_WORLD_FILE);
+    if (old && typeof old === 'object') {
+      world = Object.assign(world, old);
+      saveWorld(); // 拆分落盘
+      console.log('[migrate] world.json → market/records/economy/config.json');
+      return;
+    }
+  }
+  loadMarket(); loadRecords(); loadEconomy(); loadConfig(); loadFeedback();
+  void hasDomain;
+}
 loadUsers();
 loadWorld();
-// v0.7.0 组件编码 ID 迁移：背包 / 钓竿配置 / 挂单 / 商店统计里的旧组件 id 原位换新
+// v0.8 组件实例化迁移：旧编码组件 id（`部位_code值_…`）→ 实例签名；背包/钓竿配置/挂单原位换新。
+// 同时清理经济域里遗留的组件键（组件实例改走固定价，不再进入供需/价格历史）。
 (function migrateLegacyComponentIds() {
-  let dirty = false;
+  let accountsDirty = false, marketDirty = false, econDirty = false;
   Object.keys(users).forEach(function (key) {
     const rec = users[key];
     if (rec.inventory) {
@@ -535,36 +646,42 @@ loadWorld();
         const nid = D.normalizeItemId(id);
         next[nid] = (next[nid] || 0) + rec.inventory[id];
       });
-      if (JSON.stringify(next) !== JSON.stringify(rec.inventory)) { rec.inventory = next; dirty = true; }
+      if (JSON.stringify(next) !== JSON.stringify(rec.inventory)) { rec.inventory = next; accountsDirty = true; }
     }
     if (rec.bd) {
       Object.keys(rec.bd).forEach(function (part) {
         const slot = rec.bd[part];
         if (!slot || !slot.compId) return;
         const comp = D.componentOf(slot.compId);
-        if (comp && comp.id !== slot.compId) { slot.compId = comp.id; slot.name = comp.name; dirty = true; }
+        if (comp && (comp.id !== slot.compId || slot.name !== comp.name)) {
+          slot.compId = comp.id; slot.name = comp.name; slot.affixes = comp.affixes; slot.rare = comp.quality;
+          accountsDirty = true;
+        }
       });
     }
   });
   (world.listings || []).forEach(function (l) {
-    const comp = D.componentOf(l.id);
-    if (comp && comp.id !== l.id) { l.id = comp.id; dirty = true; }
+    const nid = D.normalizeItemId(l.id);
+    if (nid !== l.id) { l.id = nid; l.name = D.itemName(nid); marketDirty = true; }
   });
-  ['shopSales', 'priceLog'].forEach(function (field) {
+  ['shopSales', 'priceLog', 'tradeLog'].forEach(function (field) {
     const m = world[field] || {};
     Object.keys(m).forEach(function (id) {
-      const comp = D.componentOf(id);
-      if (comp && comp.id !== id) { m[comp.id] = m[id]; delete m[id]; dirty = true; }
+      if (!ECO_PRICE[id]) { delete m[id]; econDirty = true; }
     });
   });
-  if (dirty) { saveUsers(); saveWorld(); console.log('[migrate] legacy component ids -> v0.7.0 coded ids'); }
+  if (accountsDirty) saveAllAccounts();
+  if (marketDirty) saveMarket();
+  if (econDirty) saveEconomy();
+  if (accountsDirty || marketDirty || econDirty) console.log('[migrate] legacy component ids → v0.8 instance signatures');
 })();
+
 // 套用管理后台保存的钓场/钓点配置覆盖（掉落池 / 增益 / 锁定状态）
 applyGroundCfg();
-// 为所有物品补齐乘数状态（老档迁移：旧"供应压力"按 -1%/件 折算为初始乘数）
+// 为所有经济物品补齐乘数状态（老档迁移：旧"供应压力"按 -1%/件 折算为初始乘数）
 (function ensureSaleStats() {
   const day = new Date().toISOString().slice(0, 10);
-  Object.keys(ITEM_PRICE).forEach(function (id) {
+  Object.keys(ECO_PRICE).forEach(function (id) {
     const s = world.shopSales[id];
     if (!s) { world.shopSales[id] = { m: 1, lastTs: Date.now(), soldTotal: 0, soldToday: 0, day: day }; return; }
     if (s.m == null) {
@@ -624,7 +741,7 @@ function invHas(rec, id, qty) { return (rec.inventory && rec.inventory[id] || 0)
 // ---- 商店 / 市集 / 大鱼榜 对外快照 ----
 function shopSnapshot() {
   const out = {};
-  Object.keys(ITEM_PRICE).forEach(function (id) {
+  Object.keys(ECO_PRICE).forEach(function (id) {
     const s = world.shopSales[id] || {};
     out[id] = { base: basePrice(id), price: currentPrice(id), soldToday: s.soldToday || 0, soldTotal: s.soldTotal || 0 };
   });
@@ -638,11 +755,13 @@ function sweepExpiredListings() {
   const now = Date.now();
   let changed = false;
   const keep = [];
+  const sellers = {};
   world.listings.forEach(function (l) {
     if (l.expireAt && l.expireAt <= now) {
       const seller = users[l.seller];
       if (seller) {
         invAdd(seller, l.id, l.qty);
+        sellers[l.seller] = 1;
         sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory });
         sendTo(l.seller, { type: 'notice', msg: '挂单过期：' + l.name + ' ×' + l.qty + ' 已退回背包（上架费不退）' });
       }
@@ -653,8 +772,8 @@ function sweepExpiredListings() {
   });
   if (changed) {
     world.listings = keep;
-    saveUsers();
-    saveWorld();
+    Object.keys(sellers).forEach(saveAccount);
+    saveMarket();
     broadcastMarket();
   }
 }
@@ -725,7 +844,7 @@ const server = http.createServer(function (req, res) {
       if (users[key]) return apiResp(res, 409, { error: '用户名已存在' });
       const salt = crypto.randomBytes(8).toString('hex');
       users[key] = { username: username, salt: salt, pwHash: hashPw(password, salt), name: name, coins: 500, inventory: {}, bd: {}, codex: {}, catchCount: 0, createdAt: Date.now() };
-      saveUsers();
+      saveAccount(key);
       const token = newToken(); sessions.set(token, key);
       apiResp(res, 200, { token: token, profile: profileOf(key) });
     });
@@ -761,7 +880,7 @@ const server = http.createServer(function (req, res) {
       if (!key) return apiResp(res, 401, { error: '未登录' });
       const rec = users[key];
       if (d.name) rec.name = String(d.name).slice(0, 20);
-      saveUsers();
+      saveAccount(key);
       apiResp(res, 200, { ok: true });
     });
     return;
@@ -853,9 +972,12 @@ const server = http.createServer(function (req, res) {
           if (!invHas(rec, comp.id, 1)) return apiResp(res, 400, { error: '背包中没有该组件' });
         }
         rec.bd = rec.bd || {};
-        rec.bd[part.key] = { compId: comp ? comp.id : null, name: comp ? comp.name : part.default.name, affixes: [], rare: null, isCharm: !!part.isCharm };
+        rec.bd[part.key] = {
+          compId: comp ? comp.id : null, name: comp ? comp.name : part.default.name,
+          affixes: comp ? comp.affixes : [], rare: comp ? comp.quality : null, isCharm: !!part.isCharm,
+        };
         if (comp) invAdd(rec, comp.id, -1);
-        saveUsers();
+        saveAccount(key);
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
         // 钓速变化即时生效：正在钓鱼则按新间隔重启循环
         const pl = players.get(key);
@@ -879,19 +1001,23 @@ const server = http.createServer(function (req, res) {
       let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
       auth(req, res, body, function (d, key) {
         const rec = users[key];
-        const itemId = d.item && d.item.id;
+        let itemId = d.item && d.item.id;
         if (!itemId) return apiResp(res, 400, { error: '缺少物品' });
+        // 组件：规范化为实例签名（旧编码 id 会被升级）；渔获/材料保持不变
+        itemId = D.normalizeItemId(itemId);
+        const itemMeta = D.itemOf(itemId);
         invAdd(rec, itemId, 1);
         rec.codex = rec.codex || {};
         rec.catchCount = (rec.catchCount || 0) + 1;
-        const cx = rec.codex[itemId] || { count: 0, first: Date.now() };
+        const codexId = itemMeta.kind === 'component' ? (itemMeta.baseId || itemId) : itemId;
+        const cx = rec.codex[codexId] || { count: 0, first: Date.now() };
         cx.count += 1;
         const dSize = Number(d.item && d.item.size != null ? d.item.size : d.size);
         if (isFinite(dSize) && dSize > 0) {
           if (cx.max == null || dSize > cx.max) cx.max = dSize;
           if (cx.min == null || dSize < cx.min) cx.min = dSize;
         }
-        rec.codex[itemId] = cx;
+        rec.codex[codexId] = cx;
         let recordEvent = null;
         const rawSize = d.item && d.item.size != null ? d.item.size : d.size;
         const size = Number(rawSize);
@@ -908,13 +1034,29 @@ const server = http.createServer(function (req, res) {
           const smD = world.smallRecords[itemId];
           if (!smD || size < smD.size) world.smallRecords[itemId] = { id: itemId, name: itemName(itemId), size: Math.round(size * 10) / 10, who: rec.name, t: Date.now() };
         }
-        const entry = { t: Date.now(), who: rec.name, item: d.item, ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
+        const entry = { t: Date.now(), who: rec.name, item: Object.assign({}, d.item, { id: itemId }), ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
         feed.unshift(entry); if (feed.length > 60) feed.pop();
         broadcast({ type: 'feed', entry: entry });
-        saveUsers();
-        if (recordEvent) { saveWorld(); broadcastRecords(); broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: entry.item, ground: entry.ground, spot: entry.spot, size: entry.size, record: true } }); }
+        saveAccount(key);
+        if (recordEvent) { saveRecords(); broadcastRecords(); broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: entry.item, ground: entry.ground, spot: entry.spot, size: entry.size, record: true } }); }
+        sendTo(key, { type: 'codex', codex: rec.codex, catchCount: rec.catchCount, entry: { id: codexId, name: itemName(codexId) } });
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, { ok: true, codex: cx, record: recordEvent });
+      });
+    });
+    return;
+  }
+  // 仅测试：直接掷一次体型（验证体型加成无固定上限）
+  if (process.env.FISHING_DEV === '1' && p === '/api/dev/rollsize' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      auth(req, res, body, function (d, key) {
+        const range = Array.isArray(d.range) && d.range.length === 2 ? d.range : [150, 400];
+        const eff = { size: Number(d.size) || 0 };
+        const n = Math.max(1, Math.min(1000, Number(d.n) || 1));
+        const out = [];
+        for (let i = 0; i < n; i++) out.push(rollSizeOf(range, eff));
+        apiResp(res, 200, { ok: true, rolls: out, max: Math.max.apply(null, out) });
       });
     });
     return;
@@ -924,9 +1066,13 @@ const server = http.createServer(function (req, res) {
       let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
       auth(req, res, body, function (d, key) {
         const rec = users[key];
-        if (d.inventory) rec.inventory = d.inventory;
+        if (d.inventory) {
+          const next = {};
+          Object.keys(d.inventory).forEach(function (id) { const nid = D.normalizeItemId(id); next[nid] = (next[nid] || 0) + Number(d.inventory[id] || 0); });
+          rec.inventory = next;
+        }
         if (d.coins != null) rec.coins = d.coins;
-        saveUsers();
+        saveAccount(key);
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, { ok: true });
       });
@@ -943,10 +1089,10 @@ const server = http.createServer(function (req, res) {
     sweepExpiredListings();
     return apiResp(res, 200, { listings: world.listings });
   }
-  // ---- 商品价格历史与交易量（公开只读；points 为每分钟一次的价格采样） ----
+  // ---- 商品价格历史与交易量（公开只读；points 为每分钟一次的价格采样；仅经济物品） ----
   if (p === '/api/shop/history' && req.method === 'GET') {
     const id = u.query.id;
-    if (!ITEM_PRICE[id]) return apiResp(res, 404, { error: '未知物品' });
+    if (!ECO_PRICE[id]) return apiResp(res, 404, { error: '未知物品' });
     const s = world.shopSales[id] || {};
     return apiResp(res, 200, {
       id: id, base: basePrice(id), price: currentPrice(id),
@@ -960,14 +1106,15 @@ const server = http.createServer(function (req, res) {
       auth(req, res, body, function (d, key) {
         const rec = users[key];
         const id = d.id; const qty = Math.max(1, Math.floor(Number(d.qty) || 1));
-        if (!ITEM_PRICE[id]) return apiResp(res, 400, { error: '该物品无法出售' });
+        if (!sellableOf(id)) return apiResp(res, 400, { error: '该物品无法出售' });
         if (!invHas(rec, id, qty)) return apiResp(res, 400, { error: '数量不足' });
-        const unit = currentPrice(id);
+        const unit = unitPriceOf(id);
         const gain = unit * qty;
         invAdd(rec, id, -qty);
         rec.coins += gain;
-        registerSale(id, qty, rec.name, unit);
-        saveUsers(); saveWorld();
+        // 仅经济物品（渔获/材料）影响供需乘数与价格历史；组件固定价，只加金币
+        if (ECO_PRICE[id]) registerSale(id, qty, rec.name, unit);
+        saveAccount(key); saveEconomy();
         broadcastShop();
         apiResp(res, 200, { ok: true, unit: unit, gain: gain, coins: rec.coins, inventory: rec.inventory, shop: shopSnapshot() });
       });
@@ -980,9 +1127,9 @@ const server = http.createServer(function (req, res) {
     readBody(req, function (body) {
       auth(req, res, body, function (d, key) {
         const rec = users[key];
-        const id = d.id; const qty = Math.max(1, Math.floor(Number(d.qty) || 1));
+        const id = D.normalizeItemId(d.id); const qty = Math.max(1, Math.floor(Number(d.qty) || 1));
         const price = Math.max(1, Math.floor(Number(d.price) || 0));
-        if (!ITEM_PRICE[id]) return apiResp(res, 400, { error: '该物品不可上架' });
+        if (!sellableOf(id)) return apiResp(res, 400, { error: '该物品不可上架' });
         if (!invHas(rec, id, qty)) return apiResp(res, 400, { error: '数量不足' });
         sweepExpiredListings();
         const myCount = world.listings.filter(function (l) { return l.seller === key; }).length;
@@ -996,7 +1143,7 @@ const server = http.createServer(function (req, res) {
         const ttl = LISTING_TTL_MS_ENV || hours * 3600 * 1000;
         const listing = { lid: world.listingSeq++, seller: key, sellerName: rec.name, id: id, name: itemName(id), qty: qty, price: price, t: Date.now(), expireAt: Date.now() + ttl, hours: hours };
         world.listings.push(listing);
-        saveUsers(); saveWorld();
+        saveAccount(key); saveMarket();
         broadcastMarket();
         apiResp(res, 200, { ok: true, listing: listing, inventory: rec.inventory, fee: fee, coins: rec.coins });
       });
@@ -1027,11 +1174,14 @@ const server = http.createServer(function (req, res) {
         // 整单买走 → 移除挂单；否则扣减剩余数量
         if (qty >= l.qty) world.listings.splice(idx, 1);
         else l.qty -= qty;
-        saveUsers(); saveWorld();
+        saveAccount(key);
+        if (seller && l.seller !== key) saveAccount(l.seller);
+        saveMarket();
         // 市集成交流水（双方的历史订单查询用）
         world.marketLog = world.marketLog || [];
         world.marketLog.push({ t: Date.now(), buyer: key, buyerName: rec.name, seller: l.seller, sellerName: l.sellerName, id: l.id, name: l.name, qty: qty, price: l.price, total: total, tax: tax });
         if (world.marketLog.length > 300) world.marketLog.splice(0, world.marketLog.length - 300);
+        saveEconomy();
         broadcastMarket();
         // 卖家可能不在当前页面，必须主动推送权威资产，否则收不到钱
         if (seller) {
@@ -1061,7 +1211,7 @@ const server = http.createServer(function (req, res) {
         const rec = users[key];
         invAdd(rec, l.id, l.qty);
         world.listings.splice(idx, 1);
-        saveUsers(); saveWorld();
+        saveAccount(key); saveMarket();
         broadcastMarket();
         apiResp(res, 200, { ok: true, inventory: rec.inventory });
       });
@@ -1131,8 +1281,8 @@ const server = http.createServer(function (req, res) {
         const rec = users[key];
         const norm = [];
         for (const it of items) {
-          const id = it.id; const qty = Math.max(0, Math.floor(Number(it.qty) || 0));
-          if (!id || !ITEM_PRICE[id] || qty <= 0) continue;
+          const id = D.normalizeItemId(it.id); const qty = Math.max(0, Math.floor(Number(it.qty) || 0));
+          if (!id || !sellableOf(id) || qty <= 0) continue;
           if (!invHas(rec, id, qty)) return apiResp(res, 400, { error: '你没有足够的 ' + itemName(id) });
           norm.push({ id: id, qty: qty });
         }
@@ -1170,7 +1320,7 @@ const server = http.createServer(function (req, res) {
           t.aItems.forEach(function (it) { invAdd(ra, it.id, -it.qty); invAdd(rb, it.id, it.qty); });
           t.bItems.forEach(function (it) { invAdd(rb, it.id, -it.qty); invAdd(ra, it.id, it.qty); });
           t.done = true;
-          saveUsers();
+          saveAccount(t.a.key); saveAccount(t.b.key);
           broadcastTrade(t);
           trades.delete(t.id);
           // 通知双方最新库存
@@ -1193,6 +1343,68 @@ const server = http.createServer(function (req, res) {
         broadcastTrade(t);
         trades.delete(t.id);
         apiResp(res, 200, { ok: true });
+      });
+    });
+    return;
+  }
+
+  // ---- 版本信息（公开只读）：前端启动时比对，版本不一致则强制刷新以清掉旧缓存 ----
+  if (p === '/api/version' && req.method === 'GET') {
+    return apiResp(res, 200, { version: D.VERSION, build: D.BUILD });
+  }
+
+  // ---- 反馈意见：查询 CD 状态 / 提交（默认 24h CD；可花 10000 金币立即结束 CD）----
+  function feedbackStatusOf(key) {
+    const meta = (world.feedbackMeta && world.feedbackMeta[key]) || {};
+    const nextAt = meta.nextAt || 0;
+    const now = Date.now();
+    return { nextAt: nextAt, ready: now >= nextAt, remainingMs: Math.max(0, nextAt - now), skipCost: FEEDBACK_SKIP_COST };
+  }
+  if (p === '/api/feedback' && req.method === 'GET') {
+    const key = u.query.token && sessions.get(u.query.token);
+    if (!key) return apiResp(res, 401, { error: '未登录' });
+    const rec = users[key];
+    const mine = (world.feedback || []).filter(function (f) { return f.key === key; })
+      .sort(function (a, b) { return b.t - a.t; }).slice(0, 20);
+    return apiResp(res, 200, { status: feedbackStatusOf(key), mine: mine, coins: rec.coins });
+  }
+  if (p === '/api/feedback/submit' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const st = feedbackStatusOf(key);
+        if (!st.ready) {
+          return apiResp(res, 429, { error: '冷却中，' + Math.ceil(st.remainingMs / 60000) + ' 分钟后可再次提交（或花 ' + FEEDBACK_SKIP_COST + ' 金币立即结束冷却）', status: st });
+        }
+        const text = String(d.text || '').trim().slice(0, FEEDBACK_MAX_LEN);
+        if (!text) return apiResp(res, 400, { error: '反馈内容不能为空' });
+        const entry = { id: 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), t: Date.now(), key: key, name: rec.name, text: text, kind: String(d.kind || 'other').slice(0, 20), version: D.VERSION };
+        world.feedback = world.feedback || [];
+        world.feedback.push(entry);
+        if (world.feedback.length > FEEDBACK_KEEP) world.feedback.splice(0, world.feedback.length - FEEDBACK_KEEP);
+        world.feedbackMeta = world.feedbackMeta || {};
+        world.feedbackMeta[key] = { nextAt: Date.now() + FEEDBACK_CD_MS, lastAt: Date.now() };
+        saveFeedback();
+        // 有管理员在线则实时提醒
+        Object.keys(users).forEach(function (k) { if (users[k].admin && players.has(k)) sendTo(k, { type: 'notice', msg: '📮 收到新反馈（' + rec.name + '）：' + text.slice(0, 40) }); });
+        apiResp(res, 200, { ok: true, entry: entry, status: feedbackStatusOf(key) });
+      });
+    });
+    return;
+  }
+  // 花 10000 金币立即结束 CD
+  if (p === '/api/feedback/skip' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const st = feedbackStatusOf(key);
+        if (st.ready) return apiResp(res, 400, { error: '当前不在冷却中，无需跳过' });
+        if (rec.coins < FEEDBACK_SKIP_COST) return apiResp(res, 400, { error: '金币不足（需 ' + FEEDBACK_SKIP_COST + '）' });
+        rec.coins -= FEEDBACK_SKIP_COST;
+        world.feedbackMeta[key] = Object.assign({}, world.feedbackMeta[key] || {}, { nextAt: 0 });
+        saveAccount(key); saveFeedback();
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        apiResp(res, 200, { ok: true, coins: rec.coins, status: feedbackStatusOf(key) });
       });
     });
     return;
@@ -1230,7 +1442,7 @@ const server = http.createServer(function (req, res) {
       if (!rec.admin) {
         if (anyAdminExists()) return apiResp(res, 403, { error: '该账号没有管理员权限' });
         rec.admin = true;
-        saveUsers();
+        saveAccount(key);
         console.log('🛡 管理员引导：服务器尚无管理员，账号 "' + rec.name + '" 已自动成为管理员');
       }
       const token = newToken(); sessions.set(token, key);
@@ -1261,7 +1473,15 @@ const server = http.createServer(function (req, res) {
       biteFormula: world.biteFormula || BITE_FORMULA_DEFAULT,
       groundCount: D.GROUNDS.length,
       spotCount: D.GROUNDS.reduce(function (n, g) { return n + g.spots.length; }, 0),
+      feedbackCount: (world.feedback || []).length,
     });
+  }
+  // ---- 反馈意见列表（管理员只读；按时间倒序） ----
+  if (p === '/api/admin/feedback' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    const list = (world.feedback || []).slice().sort(function (x, y) { return y.t - x.t; });
+    return apiResp(res, 200, { ok: true, feedback: list, total: list.length });
   }
   // ---- 账号列表（管理员授权数据源） ----
   if (p === '/api/admin/users' && req.method === 'GET') {
@@ -1293,7 +1513,7 @@ const server = http.createServer(function (req, res) {
       const want = !!d.admin;
       if (target === a.key && !want) return apiResp(res, 400, { error: '不能撤销自己的管理员权限' });
       rec.admin = want;
-      saveUsers();
+      saveAccount(target);
       sendTo(target, { type: 'notice', msg: want ? '🛡 你已获得管理员权限，可打开管理后台（/admin.html）' : '你的管理员权限已被收回' });
       apiResp(res, 200, { ok: true, target: target, admin: want });
     });
@@ -1310,8 +1530,9 @@ const server = http.createServer(function (req, res) {
     return apiResp(res, 200, {
       ok: true,
       grounds: D.GROUNDS,
-      catalog: { fish: fish, materials: D.MATERIALS },
+      catalog: { fish: fish, materials: D.MATERIALS, components: D.COMPONENT_BASES },
       affixTypes: D.AFFIX_LABEL,
+      quality: D.QUALITY,
       notifyLevel: world.notifyLevel || 'all',
       notifyLevels: NOTIFY_LEVELS,
       biteFormula: world.biteFormula || BITE_FORMULA_DEFAULT,
@@ -1364,7 +1585,7 @@ const server = http.createServer(function (req, res) {
       world.groundCfg = world.groundCfg || {};
       world.groundCfg.grounds = world.groundCfg.grounds || {};
       world.groundCfg.grounds[g.id] = Object.assign({}, world.groundCfg.grounds[g.id] || {}, { locked: !!d.locked });
-      saveWorld();
+      saveConfig();
       broadcastGroundcfg();
       if (g.locked) {
         players.forEach(function (pl, key) {
@@ -1392,11 +1613,11 @@ const server = http.createServer(function (req, res) {
       const seller = users[l.seller];
       if (seller) {
         invAdd(seller, l.id, l.qty);
-        saveUsers();
+        saveAccount(l.seller);
         sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory });
         sendTo(l.seller, { type: 'notice', msg: '管理员退回了你的挂单：' + l.name + ' ×' + l.qty + '（上架费不退）' });
       }
-      saveWorld();
+      saveMarket();
       broadcastMarket();
       apiResp(res, 200, { ok: true, returned: { lid: l.lid, id: l.id, name: l.name, qty: l.qty, seller: l.seller } });
     });
@@ -1425,7 +1646,7 @@ const server = http.createServer(function (req, res) {
         if (!d.validateOnly) world.notifyLevel = d.notifyLevel;
         out.notifyLevel = d.notifyLevel;
       }
-      if (!d.validateOnly) saveWorld();
+      if (!d.validateOnly) saveConfig();
       if (d.evalVars && formulaSrc != null) {
         const c2 = compileFormula(formulaSrc);
         if (c2.ok) {

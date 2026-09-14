@@ -53,6 +53,28 @@ window.Net = (function () {
   function login(username, password) { return apiFetch('POST', '/api/login', { username: username, password: password }); }
   function fetchMe(token) { return apiFetch('GET', '/api/me?token=' + encodeURIComponent(token)); }
 
+  // ---- 版本守卫 ----
+  // 服务器升级后，浏览器缓存里的旧前端可能请求到不兼容的新接口而「进不去新版页面」。
+  // 这里在启动时比对本地 data.js 版本与 /api/version：不一致则带 cache-bust 参数强刷一次。
+  // 用 sessionStorage 记录本次会话是否已刷新，避免服务器版本异常时无限刷新死循环。
+  const RELOAD_FLAG = 'fishing_version_reload';
+  function guardVersion() {
+    if (!window.GameData || !window.GameData.VERSION) return Promise.resolve(false);
+    return apiFetch('GET', '/api/version').then(function (r) {
+      if (!r || !r.ok || !r.data || !r.data.version) return false;
+      if (r.data.version === window.GameData.VERSION) return false;
+      let already = false;
+      try { already = sessionStorage.getItem(RELOAD_FLAG) === r.data.version; } catch (e) {}
+      if (already) return false; // 本次会话已尝试过刷新，避免死循环
+      try { sessionStorage.setItem(RELOAD_FLAG, r.data.version); } catch (e) {}
+      // 用带时间戳的 URL 重新加载，绕过 HTML/JS 缓存
+      const loc = window.location;
+      const bust = (loc.search.indexOf('?') >= 0 ? loc.search + '&' : '?') + 'v=' + encodeURIComponent(r.data.version) + '&t=' + Date.now();
+      loc.replace(loc.pathname + bust + loc.hash);
+      return true; // 已触发刷新
+    }).catch(function () { return false; });
+  }
+
   // ---- 业务指令（自动带 token；结果一律以服务器响应/SSE 推送为准） ----
   function authed(path, body) {
     if (!me) return Promise.resolve({ ok: false, status: 401, data: { error: '未登录' } });
@@ -85,11 +107,22 @@ window.Net = (function () {
     if (r && r.ok) { state().records = r.data.records || {}; state().smallRecords = r.data.small || {}; if (window.UI) window.UI.refreshAll('records'); }
     return r;
   });
+  const fetchFeedback = () => apiFetch('GET', '/api/feedback?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
+    if (r && r.ok) {
+      state().feedback = { status: r.data.status, mine: r.data.mine || [] };
+      if (r.data.coins != null) state().player.coins = r.data.coins;
+      if (window.UI) window.UI.refreshAll('feedback');
+    }
+    return r;
+  });
   const sell = (id, qty) => authed('/api/sell', { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', hours ? { id: id, qty: qty, price: price, hours: hours } : { id: id, qty: qty, price: price });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
   const marketBuy = (lid, qty) => authed('/api/market/buy', qty ? { lid: lid, qty: qty } : { lid: lid });
   const marketCancel = (lid) => authed('/api/market/cancel', { lid: lid });
+  const feedbackStatus = () => apiFetch('GET', '/api/feedback?token=' + encodeURIComponent(me ? me.token : ''));
+  const feedbackSubmit = (text, kind) => authed('/api/feedback/submit', { text: text, kind: kind });
+  const feedbackSkip = () => authed('/api/feedback/skip', {});
   const tradeInvite = (target) => authed('/api/trade/invite', { target: target });
   const tradeRespond = (tradeId, accept) => authed('/api/trade/respond', { tradeId: tradeId, accept: accept });
   const tradeSet = (tradeId, items) => authed('/api/trade/set', { tradeId: tradeId, items: items });
@@ -214,9 +247,12 @@ window.Net = (function () {
 
   return {
     register: register, login: login, fetchMe: fetchMe, setAuth: setAuth,
+    guardVersion: guardVersion,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
+    fetchFeedback: fetchFeedback,
+    feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,
     sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,
     tradeConfirm: tradeConfirm, tradeCancel: tradeCancel,
