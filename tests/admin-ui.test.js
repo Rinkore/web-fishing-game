@@ -706,11 +706,22 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
 
       // —— 渔场钓点：地图定位支持拖动 ——
       await clickAdminNav('渔场钓点', '#gd-map-canvas');
-      // 明确选中「静水湖」再测拖动：地图面板只画**当前选中渔场**的钓点，
-      // 前面用例可能把选中项留在了没有钓点的渔场上（例如活动场占位）。
-      await untilSel(pa, '.gcard[data-g="stillwater"]', 8000);
-      await pa.evaluate(() => { const c = document.querySelector('.gcard[data-g="stillwater"]'); if (c) c.click(); });
-      await untilSel(pa, '.gd-node', 12000);
+      // 明确选中「静水湖」：地图面板只画**当前选中渔场**的钓点，前面用例可能把选中项留在没有钓点的渔场上。
+      // 后台页的 /api/admin/world 偶发慢（本就有 8 秒超时 + GET 重试），这里再兜一层：
+      // 若 3 秒后地图节点还没出来，就重进一次本页（不重复点同一页时是空操作，代价很小）。
+      const mapReady0 = await waitFor(async () => {
+        const ok = (await pa.$$('.gd-node')).length >= 3;
+        if (!ok) {
+          await pa.evaluate(() => {
+            const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes('渔场钓点'));
+            if (b) b.click();
+          });
+          await waitFor(async () => (await pa.$$('.gcard[data-g="stillwater"]')).length > 0, { timeout: 9000, interval: 200 }).catch(() => false);
+          await pa.evaluate(() => { const c = document.querySelector('.gcard[data-g="stillwater"]'); if (c) c.click(); });
+        }
+        return ok;
+      }, { timeout: 30000, interval: 3000 }).catch(() => false);
+      void mapReady0;
       const mapReady = await waitFor(async () => (await pa.$$('.gd-node')).length >= 3, { timeout: 15000, interval: 400 }).catch(() => false);
       check('地图定位面板渲染全部钓点节点', mapReady === true, String((await pa.$$('.gd-node')).length));
       const beforePos = await pa.evaluate(() => {

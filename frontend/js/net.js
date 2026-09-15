@@ -34,18 +34,35 @@ window.Net = (function () {
     return baseDetected;
   }
 
+  // 请求超时：偶发请求悬挂时页面会停在旧状态（按钮点了没反应），超时后中断并当网络错误报出，
+  // GET 再自动重试一次；写操作不重试，避免重复提交。
+  const API_TIMEOUT_MS = 8000;
+  function apiOnce(method, u, body) {
+    return new Promise(function (resolve) {
+      const opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+      if (body) opts.body = JSON.stringify(body);
+      let ctrl = null, timer = null;
+      if (typeof AbortController !== 'undefined') {
+        ctrl = new AbortController();
+        opts.signal = ctrl.signal;
+        timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, API_TIMEOUT_MS);
+      }
+      const done = function () { if (timer) { clearTimeout(timer); timer = null; } };
+      fetch(API_BASE + u, opts)
+        .then(function (r) {
+          done();
+          return r.json().then(function (j) { return { ok: r.ok, status: r.status, data: j }; })
+            .catch(function () { return { ok: false, status: r.status, data: {} }; });
+        })
+        .catch(function () { done(); resolve({ ok: false, status: 0, data: { error: '网络错误' }, timedOut: true }); })
+        .then(resolve);
+    });
+  }
   function apiFetch(method, u, body) {
     return detectBase().then(function () {
-      return new Promise(function (resolve) {
-        const opts = { method: method, headers: { 'Content-Type': 'application/json' } };
-        if (body) opts.body = JSON.stringify(body);
-        fetch(API_BASE + u, opts)
-          .then(function (r) {
-            return r.json().then(function (j) { return { ok: r.ok, status: r.status, data: j }; })
-              .catch(function () { return { ok: false, status: r.status, data: {} }; });
-          })
-          .catch(function () { return { ok: false, status: 0, data: { error: '网络错误' } }; })
-          .then(resolve);
+      return apiOnce(method, u, body).then(function (r) {
+        if (r && r.timedOut && method === 'GET') return apiOnce(method, u, body);
+        return r;
       });
     });
   }

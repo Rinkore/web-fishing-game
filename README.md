@@ -393,6 +393,9 @@ node tools/fix-save-v011.js --data <目录>    # 指定数据目录
 - **反馈意见**：`GET /api/feedback` 查 CD、`POST /api/feedback/submit` 提交（默认 24h CD）、
   `POST /api/feedback/skip` 花 10000 金币立即结束 CD；每条反馈带**状态标识**（已提交 / 已受理 / 已完成），
   玩家可见自己的状态，管理员在后台「反馈意见」页可逐条切换状态（`POST /api/admin/feedback/status`）；落盘 `feedback.json`。
+- **前端请求超时**：游戏页与管理后台的 `fetch` 统一带 8 秒超时（`AbortController`），超时按网络错误处理，
+  **GET 自动重试一次**（写操作不重试，避免重复提交）——偶发请求悬挂不会让页面停在「加载中…」；
+  后台画界面时也会先确认容器还在（切页期间的迟到响应直接丢弃）。
 - **版本**：`GET /api/version` 供前端缓存守卫比对。
 - **测试辅助**：`FISHING_DEV=1` 环境变量开启 `/api/dev/seed|catch|rollsize|doublecount`（确定性回归用），
   正常部署不开启。

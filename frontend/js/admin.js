@@ -49,13 +49,34 @@ window.Admin = (function () {
     }
     return tryNext();
   }
+  // 请求超时：浏览器偶发请求悬挂（连接池/网络抖动）会让页面永远停在「加载中…」，
+  // 超时后中断连接并按网络错误处理，GET 再自动重试一次，页面可自愈。
+  const API_TIMEOUT_MS = 8000;
+  function apiOnce(method, path, body) {
+    const opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    let ctrl = null, timer = null;
+    if (typeof AbortController !== 'undefined') {
+      ctrl = new AbortController();
+      opts.signal = ctrl.signal;
+      timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, API_TIMEOUT_MS);
+    }
+    const done = function () { if (timer) { clearTimeout(timer); timer = null; } };
+    return fetch(API_BASE + path, opts).then(function (r) {
+      done();
+      return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, data: j }; });
+    }).catch(function () {
+      done();
+      return { ok: false, status: 0, data: { error: '网络错误' }, timedOut: true };
+    });
+  }
   function api(method, path, body) {
     return detectBase().then(function () {
-      const opts = { method: method, headers: { 'Content-Type': 'application/json' } };
-      if (body) opts.body = JSON.stringify(body);
-      return fetch(API_BASE + path, opts).then(function (r) {
-        return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, data: j }; });
-      }).catch(function () { return { ok: false, status: 0, data: { error: '网络错误' } }; });
+      return apiOnce(method, path, body).then(function (r) {
+        // GET 悬挂/失败 → 重试一次（写操作不重试，避免重复提交）
+        if (r.timedOut && method === 'GET') return apiOnce(method, path, body);
+        return r;
+      });
     });
   }
   // 所有管理 API 的统一出口：权限被收回（403）时回到登录页
@@ -752,6 +773,8 @@ window.Admin = (function () {
     if (!g) return;
     if (!selSpot || !g.spots.some(function (s) { return s.id === selSpot; })) selSpot = g.spots.length ? g.spots[0].id : null;
     const body = $('gd-body');
+    // 拉数据期间页面可能已被切走或重绘（例如快速来回切页签）：容器不在就什么都不做
+    if (!body) return;
     const presets = cfg.poolPresets || {};
     const presetOpts = Object.keys(presets).map(function (k) {
       return '<option value="' + k + '">' + esc(presets[k].name) + '</option>';
