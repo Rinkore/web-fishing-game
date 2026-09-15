@@ -1321,3 +1321,14 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 /* 未开放的钓点：🔒 图标 + 名字后缀 */
 .px-node .pn-lock { font-size: 15px; line-height: 1; filter: drop-shadow(1px 1px 0 rgba(0,0,0,.6)); }
 .px-node .pn-soon { color: #9fb8cc; font-size: 10px; margin-left: 3px; }
+
+/* ---- 侧栏「更多」折叠组（低频入口：图鉴 / 记录 / 反馈 / 日志）---- */
+.nav-more { color: var(--muted); }
+.nav-more:hover { color: var(--text); }
+.nav-more .nav-more-cnt {
+  margin-left: auto; font-size: 11px; padding: 0 6px; border-radius: 8px;
+  background: rgba(255, 255, 255, .08); border: 1px solid var(--line);
+}
+.nav-more.active-group { color: var(--accent2); }
+.nav-group { display: flex; flex-direction: column; gap: 4px; padding-left: 8px; border-left: 2px solid var(--line); margin-left: 6px; }
+.nav-group .nav-item { font-size: 13px; padding: 8px 10px; }

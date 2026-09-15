@@ -87,10 +87,19 @@ async function login(page, token) {
   await sleep(700);
 }
 const clickNav = async (page, name) => {
-  await page.evaluate(n => {
-    const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
-    if (b) b.click();
+  // 低频入口默认收在「更多」折叠组里：找不到就先展开再点
+  const clicked = await page.evaluate(n => {
+    const find = () => Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
+    let b = find();
+    if (!b) {
+      const more = document.querySelector('.nav-more');
+      if (more) { more.click(); b = find(); }
+    }
+    if (!b) return false;
+    b.click();
+    return true;
   }, name);
+  if (!clicked) { console.log('  [clickNav] 未找到入口：' + name); }
   // 轮询到目标页变为 active 且主区已渲染（替代固定 sleep）
   await waitFor(async () => {
     try {
@@ -150,7 +159,18 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await login(p2, tokB);
 
     section('新增页面渲染');
-    check('登录后 14 个已实现入口可见（含工坊与商城）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 14);
+    // 高频入口常驻 + 低频入口收在「更多」折叠组里（展开后共 14 项）
+    check('高频导航常驻可见（10 项 + 更多折叠组）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 11,
+      String((await p1.$$('#nav .nav-item:not(.locked)')).length));
+    check('「更多」折叠组默认收起（低频入口需展开才显示）', (await p1.$$('#nav .nav-group')).length === 0);
+    await p1.evaluate(() => { const m = document.querySelector('.nav-more'); if (m) m.click(); });
+    await untilSel(p1, '.nav-group', 4000);
+    check('展开「更多」后全部 14 个入口可见', (await p1.$$('#nav .nav-item:not(.locked)')).length === 15,
+      String((await p1.$$('#nav .nav-item:not(.locked)')).length));
+    check('折叠组内是图鉴/记录/反馈/日志', await p1.evaluate(() => {
+      const t = Array.from(document.querySelectorAll('.nav-group .nav-item')).map(n => n.textContent);
+      return t.length === 4 && /图鉴/.test(t[0]) && /记录/.test(t[1]) && /反馈/.test(t[2]) && /日志/.test(t[3]);
+    }));
     check('无占位锁定入口（商城与工坊均已开放）', (await p1.$$('#nav .nav-item.locked')).length === 0);
 
     // —— 钓鱼页：已移除背包，渔获日志与左栏底部对齐 ——

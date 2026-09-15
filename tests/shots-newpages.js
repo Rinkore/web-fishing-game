@@ -35,7 +35,9 @@ async function login(page, token) {
 
 const clickNav = async (page, name) => {
   await page.evaluate(n => {
-    const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
+    const find = () => Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
+    let b = find();
+    if (!b) { const more = document.querySelector('.nav-more'); if (more) { more.click(); b = find(); } }
     if (b) b.click();
   }, name);
   await sleep(400);

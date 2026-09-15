@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.11.1';
+  const VERSION = 'v0.11.2';
   const BUILD = '2026-09-15';
 
   // ---- 渔获定义 ----
@@ -1063,6 +1063,8 @@
 
   // ---- 导航配置 ----
   // implemented=false 的入口为占位符，点击不可跳转。
+  // 侧栏导航：group='more' 的条目默认收进「更多」折叠组（低频入口），
+  // 高频入口常驻可见 —— 菜单项继续增加也不必滚动侧栏。
   const NAV = [
     { id: 'fishing', name: '钓鱼', icon: '🎣', implemented: true },
     { id: 'bd', name: '钓竿配置', icon: '🎯', implemented: true },
@@ -1074,10 +1076,10 @@
     { id: 'market', name: '开放市集', icon: '💱', implemented: true },
     { id: 'trade', name: '在线交易', icon: '🤝', implemented: true },
     { id: 'mall', name: '商城', icon: '🛒', implemented: true },
-    { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true },
-    { id: 'records', name: '渔获记录', icon: '🏆', implemented: true },
-    { id: 'feedback', name: '反馈意见', icon: '📮', implemented: true },
-    { id: 'logs', name: '日志', icon: '📜', implemented: true },
+    { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true, group: 'more' },
+    { id: 'records', name: '渔获记录', icon: '🏆', implemented: true, group: 'more' },
+    { id: 'feedback', name: '反馈意见', icon: '📮', implemented: true, group: 'more' },
+    { id: 'logs', name: '日志', icon: '📜', implemented: true, group: 'more' },
   ];
 
   // ---- 物品索引（供 UI / 引擎统一查询） ----

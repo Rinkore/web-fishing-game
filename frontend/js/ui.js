@@ -449,17 +449,35 @@ window.UI = (function () {
   }
 
   // ---- 侧边导航 ----
-  // 内容签名： fishing 徽标 / 交易徽标 / 当前视图 任一变化才重建。
+  // 内容签名： 当前视图 / 折叠展开态 / 钓鱼徽标 / 交易徽标 / 订阅红标 任一变化才重建。
   // 否则每次广播都会 innerHTML 重建导航，悬停高亮与过渡动画被打断（左侧闪烁）。
+  // 结构：高频入口常驻 + 低频入口收进「更多」折叠组（NAV 里 group==='more' 的条目），
+  // 因此菜单项再多也不需要滚动侧栏；窗口很矮时导航区仍保留滚动兜底。
+  const NAV_MORE_KEY = 'fishing_nav_more_open';
+  let navMoreOpen = (function () {
+    try { return localStorage.getItem(NAV_MORE_KEY) === '1'; } catch (e) { return false; }
+  })();
+  function setNavMore(open) {
+    navMoreOpen = !!open;
+    try { localStorage.setItem(NAV_MORE_KEY, navMoreOpen ? '1' : '0'); } catch (e) {}
+    navSig = null;   // 强制重建
+    renderNav();
+  }
+  // 「更多」组里有当前视图时强制展开：刷新/分享链接后不会看不到自己在哪
+  function navMoreHasActive() {
+    return D.NAV.some(function (x) { return x.group === 'more' && x.id === currentView; });
+  }
   let navSig = null;
   function renderNav() {
     const st = S();
-    const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0, st.me && st.me.admin ? 1 : 0, subUnseen].join('|');
+    const moreOpen = navMoreOpen || navMoreHasActive();
+    const sig = [currentView, moreOpen ? 1 : 0, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0,
+      st.me && st.me.admin ? 1 : 0, subUnseen].join('|');
     if (sig === navSig) return;
     navSig = sig;
     const nav = $('nav');
     nav.innerHTML = '';
-    D.NAV.forEach(function (item) {
+    const makeItem = function (item) {
       const b = el('button', 'nav-item' + (item.id === currentView ? ' active' : '') + (item.implemented ? '' : ' locked'));
       let badge = '';
       if (item.id === 'fishing' && S().fishing.active) badge = '<span class="nav-badge on">钓</span>';
@@ -482,8 +500,25 @@ window.UI = (function () {
         renderView();
         loadViewData(item.id);
       });
-      nav.appendChild(b);
-    });
+      return b;
+    };
+    const primary = D.NAV.filter(function (x) { return x.group !== 'more'; });
+    const extra = D.NAV.filter(function (x) { return x.group === 'more'; });
+    primary.forEach(function (item) { nav.appendChild(makeItem(item)); });
+    if (extra.length) {
+      const more = el('button', 'nav-item nav-more' + (moreOpen ? ' open' : '') + (navMoreHasActive() ? ' active-group' : ''));
+      more.innerHTML = '<span class="nav-icon">' + (moreOpen ? '▾' : '▸') + '</span>' +
+        '<span>' + (moreOpen ? '收起' : '更多') + '</span>' +
+        '<span class="nav-more-cnt">' + extra.length + '</span>';
+      more.title = moreOpen ? '收起低频入口（图鉴 / 记录 / 反馈 / 日志）' : '展开低频入口（图鉴 / 记录 / 反馈 / 日志）';
+      more.addEventListener('click', function () { setNavMore(!moreOpen); });
+      nav.appendChild(more);
+      if (moreOpen) {
+        const box = el('div', 'nav-group');
+        extra.forEach(function (item) { box.appendChild(makeItem(item)); });
+        nav.appendChild(box);
+      }
+    }
     // 管理员：侧边栏底部加后台入口（新标签打开，admin.html 与游戏同源托管）
     if (st.me && st.me.admin) {
       const a = el('a', 'nav-item admin-link');

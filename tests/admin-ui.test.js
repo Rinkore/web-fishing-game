@@ -75,8 +75,14 @@ async function login(page, token) {
   await untilSel(page, '.nav-item', 10000);   // 等主界面渲染，替代固定 sleep
 }
 const clickNav = async (page, name) => {
+  // 玩家侧栏的低频入口（图鉴/记录/反馈/日志）默认收在「更多」折叠组里：找不到就先展开
   await page.evaluate(n => {
-    const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
+    const find = () => Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
+    let b = find();
+    if (!b) {
+      const more = document.querySelector('.nav-more');
+      if (more) { more.click(); b = find(); }
+    }
     if (b) b.click();
   }, name);
   await waitFor(async () => {
