@@ -243,8 +243,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
         selSeller: (document.getElementById('bl-seller') || {}).value || '',
         cards: document.querySelectorAll('.bl-card').length,
         kinds: ['fish', 'material', 'chest', 'component'].every(k => !!document.getElementById('bl-c-' + k)),
-        fishOpts: document.querySelectorAll('#bl-p-fish option').length,
-        compOpts: document.querySelectorAll('#bl-p-component option').length,
+        fishOpts: document.querySelectorAll('#bl-p-fish input[type=checkbox]').length,
+        compOpts: document.querySelectorAll('#bl-p-component input[type=checkbox]').length,
         parts: document.querySelectorAll('#bl-part option').length,
         qs: ['common', 'rare', 'epic', 'mythic'].every(k => !!document.getElementById('bl-q-' + k)),
         compCount: Number((document.getElementById('bl-c-component') || {}).value),
@@ -253,6 +253,24 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
         bp.sellers.length >= 2 && bp.cards === 4 && bp.kinds && bp.parts >= 6 && bp.qs, JSON.stringify(bp));
       check('卖家名头下拉默认选中当前管理员', bp.selSeller === 'aui_admin', JSON.stringify({ sel: bp.selSeller, s: bp.sellers }));
       check('限定物品下拉按类型列举（鱼 40+ / 组件底材 20+）', bp.fishOpts >= 40 && bp.compOpts >= 20, JSON.stringify({ fish: bp.fishOpts, comp: bp.compOpts }));
+      // v0.11.10：限定物品改成可勾可取消的列表（原生 multiple 单击=选择、取消要按 Ctrl，选错了清不掉）
+      const pickFlow = await pa.evaluate(() => {
+        const box = document.getElementById('bl-p-fish');
+        const cbs = Array.from(box.querySelectorAll('input[type=checkbox]'));
+        const badge = () => (document.getElementById('bl-pn-fish') || {}).textContent.trim();
+        cbs[0].click(); cbs[1].click();
+        const afterPick = badge();
+        cbs[0].click();   // 再点一次 = 取消勾选
+        const afterUnpick = badge();
+        document.querySelector('.bl-clr[data-clr="fish"]').click();
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem('fishing_admin_bulk') || '{}').picks; } catch (e) {}
+        return { afterPick, afterUnpick, afterClear: badge(), checked: cbs.filter(c => c.checked).length, savedFish: saved && saved.fish };
+      });
+      check('限定物品可点选也可取消（点一下勾上、再点一下取消）',
+        /已选 2 项/.test(pickFlow.afterPick) && /已选 1 项/.test(pickFlow.afterUnpick), JSON.stringify(pickFlow));
+      check('「清空选择」一次取消该类全部勾选并写回 localStorage',
+        pickFlow.checked === 0 && pickFlow.afterClear === '' && Array.isArray(pickFlow.savedFish) && pickFlow.savedFish.length === 0, JSON.stringify(pickFlow));
       check('组件条数默认预填 200（可直接改）', bp.compCount === 200, String(bp.compCount));
 
       const mkN0 = (await get('/api/market')).data.listings.length;
@@ -579,6 +597,29 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
         return !(us.find(u => u.key === 'aui_player') || {}).admin;
       }, { timeout: 6000 }).catch(() => false);
       check('再次取消勾选即收回管理员权限', revoked === true, String(revoked));
+      // v0.11.10：每个账号可调「市集挂单上限」（0 = 不限；留空 = 默认 40）
+      const capCells = await pa.evaluate(() => Array.from(document.querySelectorAll('#mgr-list input[data-cap]')).map(i => i.getAttribute('data-cap')));
+      check('账号列表每个账号一个挂单上限输入框', capCells.length === 3 && capCells.includes('aui_player'), JSON.stringify(capCells));
+      await pa.evaluate(() => {
+        const inp = document.querySelector('#mgr-list input[data-cap="aui_player"]');
+        inp.value = '7'; inp.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      const capSaved = await waitFor(async () => {
+        const us = (await get('/api/admin/users?token=' + adminLogin.data.token)).data.users;
+        return (us.find(u => u.key === 'aui_player') || {}).listingCap === 7;
+      }, { timeout: 6000 }).catch(() => false);
+      check('在账号管理改挂单上限即存到服务器（7）', capSaved === true, String(capSaved));
+      // 还原成默认（留空 → 40），不影响后续用例
+      await pa.evaluate(() => {
+        const inp = document.querySelector('#mgr-list input[data-cap="aui_player"]');
+        inp.value = ''; inp.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      const capReset = await waitFor(async () => {
+        const us = (await get('/api/admin/users?token=' + adminLogin.data.token)).data.users;
+        const u = us.find(x => x.key === 'aui_player') || {};
+        return u.listingCap === 40 && u.capSet === false;
+      }, { timeout: 6000 }).catch(() => false);
+      check('留空即恢复默认 40', capReset === true, String(capReset));
       // 搜索：输入 QQ 片段即过滤
       await pa.evaluate(() => { const q = document.getElementById('mgr-q'); q.value = '10023'; q.dispatchEvent(new Event('input', { bubbles: true })); });
       const rowsQQ = await pa.$$eval('#mgr-list tbody tr', els => els.length);

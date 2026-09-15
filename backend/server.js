@@ -1686,8 +1686,14 @@ function autoSellCheck(key) {
   return sold;
 }
 
-// ---- 市集挂单规则：每人最多同时 40 个挂单；时长 6/12/24 小时对应费率 1%/3%/5%，过期退物品不退费 ----
-const MAX_LISTINGS_PER_PLAYER = 40;
+// ---- 市集挂单规则：同时挂单上限默认每人 40 个（账号可用 listingCap 单独覆盖，0 = 不限）；
+//      时长 6/12/24 小时对应费率 1%/3%/5%，过期退物品不退费 ----
+const DEFAULT_LISTING_CAP = 40;
+// 挂单上限：未设置 → 默认 40；显式 0 → 不限
+function listingCapOf(rec) {
+  const n = Math.floor(Number(rec && rec.listingCap));
+  return (isFinite(n) && n >= 0) ? n : DEFAULT_LISTING_CAP;
+}
 const LIST_FEE_RATES = { 6: 0.01, 12: 0.03, 24: 0.05 };
 const LISTING_TTL_MS_ENV = Number(process.env.LISTING_TTL_MS) || 0; // 测试用固定 TTL
 
@@ -2068,7 +2074,19 @@ const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
 const STATS_KEYS = ['statMin', 'statHour', 'statPeak'];
 const HEAT_STATS = { min: 1440, hour: 720, gapMs: 60000, flushEvery: 10 };
-function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
+function loadMarket() {
+  loadDomain(MARKET_FILE, MARKET_KEYS);
+  // 存量修复：后台批量上架曾把「原始大小写的用户名」写进 seller（如 Wj1752），
+  // 而成交/下架/退单/删号全按账号 key（小写）查——统一归一化，否则这些挂单卖出去
+  // 不进卖家账、也不出现在它的历史订单里。
+  let fixed = 0;
+  (world.listings || []).forEach(function (l) {
+    if (!l || l.seller == null) return;
+    const k = String(l.seller).toLowerCase();
+    if (l.seller !== k) { l.seller = k; fixed++; }
+  });
+  if (fixed) saveMarket();
+}
 function saveMarket() { saveDomain(MARKET_FILE, MARKET_KEYS); }
 function loadRecords() { loadDomain(RECORDS_FILE, RECORDS_KEYS); }
 function saveRecords() { saveDomain(RECORDS_FILE, RECORDS_KEYS); }
@@ -2194,6 +2212,8 @@ function profileOf(key) {
     inventory: rec.inventory || {}, bd: rec.bd || {},
     codex: rec.codex || {}, catchCount: rec.catchCount || 0,
     admin: !!rec.admin,
+    listingCap: listingCapOf(rec),
+    listingCapSet: rec.listingCap != null,
     autoSell: rec.autoSell || null,
     subNotify: rec.subNotify || null,
     // 钓竿存档：当前装备命名 / 槽位（含已购买数量与下一槽位价格）/ 被钓竿占用的实例件数（前端锁定标记）
@@ -3423,7 +3443,8 @@ const server = http.createServer(function (req, res) {
         }
         sweepExpiredListings();
         const myCount = world.listings.filter(function (l) { return l.seller === key; }).length;
-        if (myCount >= MAX_LISTINGS_PER_PLAYER) return apiResp(res, 400, { error: '挂单数量已达上限（每人最多同时 ' + MAX_LISTINGS_PER_PLAYER + ' 个）' });
+        const myCap = listingCapOf(rec);
+        if (myCap > 0 && myCount >= myCap) return apiResp(res, 400, { error: '挂单数量已达上限（同时最多 ' + myCap + ' 个，可在市集下架后再上架）' });
         const hours = [6, 12, 24].indexOf(Number(d.hours)) >= 0 ? Number(d.hours) : 6;
         const feeRate = LIST_FEE_RATES[hours];
         const fee = Math.ceil(price * qty * feeRate); // 上架费：定价总额 × 时长费率，下架不退
@@ -4125,12 +4146,19 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/admin/users' && req.method === 'GET') {
     const a = adminOf(u.query.token);
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    // 每账号当前挂单数（账号管理页展示「已用 / 上限」，后台批量上架会把这里顶满）
+    const listingCount = {};
+    (world.listings || []).forEach(function (l) {
+      const k = l && l.seller;
+      if (k) listingCount[k] = (listingCount[k] || 0) + 1;
+    });
     const list = Object.keys(users).map(function (k) {
       const r = users[k];
       const pl = players.get(k);
       return {
         key: k, username: r.username, name: r.name, qq: r.qq || '',
         admin: !!r.admin, coins: r.coins || 0,
+        listingCap: listingCapOf(r), capSet: r.listingCap != null, listings: listingCount[k] || 0,
         catchCount: r.catchCount || 0,
         online: !!pl,
         fishing: (pl && pl.fishing) || null,
@@ -4255,6 +4283,18 @@ const server = http.createServer(function (req, res) {
         rec.coins = c;
         changed.push('金币');
       }
+      // 市集挂单上限：0 = 不限；null/'' = 清掉自定义值、回到默认 40
+      if (d.listingCap !== undefined) {
+        if (d.listingCap === null || d.listingCap === '') {
+          delete rec.listingCap;
+          changed.push('挂单上限（恢复默认 ' + DEFAULT_LISTING_CAP + '）');
+        } else {
+          const n = Math.floor(Number(d.listingCap));
+          if (!isFinite(n) || n < 0 || n > 100000) return apiResp(res, 400, { error: '挂单上限无效（0 = 不限，最大 100000）' });
+          rec.listingCap = n;
+          changed.push('挂单上限（' + (n === 0 ? '不限' : n) + '）');
+        }
+      }
       if (!changed.length) return apiResp(res, 400, { error: '没有需要修改的字段' });
       saveAccount(target);
       // 若该账号在线，推送最新资产/名称
@@ -4262,7 +4302,7 @@ const server = http.createServer(function (req, res) {
       if (pl) { pl.name = rec.name; sendPlayersAll(); }
       sendTo(target, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
       sendTo(target, { type: 'notice', msg: '管理员修改了你的账号信息：' + changed.join(' / ') });
-      apiResp(res, 200, { ok: true, target: target, changed: changed, name: rec.name, coins: rec.coins });
+      apiResp(res, 200, { ok: true, target: target, changed: changed, name: rec.name, coins: rec.coins, listingCap: listingCapOf(rec), capSet: rec.listingCap != null });
     });
     return;
   }
@@ -4936,14 +4976,15 @@ const server = http.createServer(function (req, res) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
-      const seller = users[String(d.seller || '').toLowerCase()];
+      const sellerKey = String(d.seller || '').toLowerCase();
+      const seller = users[sellerKey];
       if (!seller) return apiResp(res, 400, { error: '卖家账号不存在' });
       // 生成过程兜底：抛错也要回一个响应，否则请求会一直挂着（客户端只能等到超时）
       let plan = null;
       try { plan = bulkListPlan(d); } catch (e) { return apiResp(res, 500, { error: '生成失败：' + ((e && e.message) || e) }); }
       if (plan.error) return apiResp(res, 400, { error: plan.error });      if (d.dryRun) {
         return apiResp(res, 200, {
-          ok: true, dryRun: true, seller: { key: seller.username, name: seller.name },
+          ok: true, dryRun: true, seller: { key: sellerKey, name: seller.name },
           count: plan.items.length, samples: plan.items.slice(0, 8).map(bulkSampleOf),
           totalValue: plan.items.reduce(function (s, it) { return s + it.price * it.qty; }, 0),
           hours: plan.hours, mul: plan.mul, byKind: plan.byKind,
@@ -4954,7 +4995,9 @@ const server = http.createServer(function (req, res) {
       const created = [];
       plan.items.forEach(function (it) {
         const listing = {
-          lid: world.listingSeq++, seller: seller.username, sellerName: seller.name,
+          // seller 必须是账号 key（小写）：成交/下架/退单/删除账号都按 key 查，
+          // 写成 seller.username 会因大小写不符而不入账、不进该账号的历史订单。
+          lid: world.listingSeq++, seller: sellerKey, sellerName: seller.name,
           id: it.id, name: it.name, qty: it.qty, price: it.price,
           t: now, expireAt: now + ttl, hours: plan.hours, src: 'admin',
         };
@@ -4964,11 +5007,11 @@ const server = http.createServer(function (req, res) {
       saveMarket();
       broadcastMarket();
       if (created.length) {
-        sendTo(seller.username, { type: 'notice', msg: '管理员以你的名头在开放市集上架了 ' + created.length + ' 件物品（' + plan.hours + ' 小时）' });
+        sendTo(sellerKey, { type: 'notice', msg: '管理员以你的名头在开放市集上架了 ' + created.length + ' 件物品（' + plan.hours + ' 小时）' });
       }
       apiResp(res, 200, {
         ok: true, created: created.length, hours: plan.hours, mul: plan.mul, byKind: plan.byKind,
-        seller: { key: seller.username, name: seller.name },
+        seller: { key: sellerKey, name: seller.name },
         samples: created.slice(0, 8).map(bulkSampleOf),
         totalValue: created.reduce(function (s, l) { return s + l.price * l.qty; }, 0),
       });

@@ -280,6 +280,56 @@ function waitReady() {
   const p2Coins = (await GET(B + '/api/me?token=' + TK2)).data.coins;
   check('成交款进卖家账号（扣 10% 税后 > 0）', p2Coins > 0, String(p2Coins));
 
+  // ---------- 4c. 名头带大写字母：挂单与成交必须完全走该账号名下 ----------
+  // 回归：批量上架曾把 seller 写成账号的原始大小写用户名（如 Wj1752），而成交/下架/退单/删号
+  // 全按账号 key（小写）查 —— 结果是挂单看得见、卖出去却不进账、也不出现在它的历史订单里。
+  section('4c. 后台批量上架 · 名头含大写字母');
+  const rgCase = await POST(B + '/api/register', { username: 'CaseHead9', password: 'pass1234', name: '大小写名头', qq: '10084' });
+  check('新建含大写字母的账号（CaseHead9）', rgCase.status === 200, JSON.stringify(rgCase.data).slice(0, 100));
+  const TKC = rgCase.data.token;
+  const KEYC = 'casehead9';
+  const dryCase = await POST(B + '/api/admin/market/bulk', { token: TOKA, seller: 'CaseHead9', counts: { fish: 4, material: 2 }, dryRun: true });
+  check('预览回带账号 key（小写）而非原始大小写', dryCase.status === 200 && dryCase.data.seller.key === KEYC && dryCase.data.seller.name === '大小写名头', JSON.stringify(dryCase.data.seller));
+  const bulkCase = await POST(B + '/api/admin/market/bulk', { token: TOKA, seller: 'CaseHead9', hours: 6, counts: { fish: 4, material: 2 } });
+  check('大小写名头批量上架成功（6 条）', bulkCase.status === 200 && bulkCase.data.created === 6, JSON.stringify(bulkCase.data).slice(0, 120));
+  const mkAllCase = (await GET(B + '/api/market')).data.listings;
+  const mkCase = mkAllCase.filter(l => l.seller === KEYC);
+  check('挂单 seller 存的是账号 key（小写）', mkCase.length === 6 && !mkAllCase.some(l => String(l.seller) === 'CaseHead9'), JSON.stringify(mkAllCase.map(l => l.seller).slice(0, 5)));
+  check('挂单展示名仍是账号显示名', mkCase.every(l => l.sellerName === '大小写名头'));
+  const caseBuy = mkCase[0] || { lid: -1, price: 0 };   // 空市集兜底：下面的断言照常失败，但别让用例抛异常中断
+  const coinsBefore = (await GET(B + '/api/me?token=' + TKC)).data.coins;
+  const buyCase = await POST(B + '/api/market/buy', { token: TK1, lid: caseBuy.lid, qty: 1 });
+  const coinsAfter = (await GET(B + '/api/me?token=' + TKC)).data.coins;
+  const caseGain = caseBuy.price * 1 - Math.ceil(caseBuy.price * 1 * 0.10);
+  check('玩家买走该名头挂出的物品', buyCase.status === 200, JSON.stringify(buyCase.data).slice(0, 120));
+  check('成交款按 key 进该账号（扣 10% 税）', buyCase.status === 200 && coinsAfter === coinsBefore + caseGain, JSON.stringify({ before: coinsBefore, after: coinsAfter, gain: caseGain }));
+  const histCase = await GET(B + '/api/market/history?token=' + TKC);
+  check('售出出现在该账号的历史订单里（自己=卖家）', (histCase.data.trades || []).some(t => t.seller === KEYC && t.buyer === 'adm_p1'), JSON.stringify((histCase.data.trades || []).slice(0, 2)));
+  const histBuyerCase = await GET(B + '/api/market/history?token=' + TK1);
+  check('买家侧历史订单显示卖家名', (histBuyerCase.data.trades || []).some(t => t.seller === KEYC && t.sellerName === '大小写名头'), JSON.stringify((histBuyerCase.data.trades || []).slice(0, 2)));
+
+  // ---------- 4d. 每账号挂单上限（默认 40，可单独覆盖，0 = 不限） ----------
+  section('4d. 每账号挂单上限');
+  check('普通玩家看不到账号列表 403', (await GET(B + '/api/admin/users?token=' + TKC)).status === 403);
+  const usersCap0 = (await GET(B + '/api/admin/users?token=' + TOKA)).data.users;
+  const uCase0 = usersCap0.find(u => u.key === KEYC);
+  const uPlain0 = usersCap0.find(u => u.key === 'adm_p2');
+  check('账号列表回带挂单上限 + 在用数（未设置 = 默认 40）', !!uCase0 && uCase0.listingCap === 40 && uCase0.capSet === false && uPlain0.listingCap === 40, JSON.stringify(uCase0));
+  check('在用数按账号统计（含后台批量上架的名头）', uCase0.listings >= 5, JSON.stringify({ listings: uCase0.listings }));
+  const capLow = Math.max(1, uCase0.listings - 1);
+  check('设置该账号挂单上限成功', (await POST(B + '/api/admin/users/update', { token: TOKA, target: KEYC, listingCap: capLow })).status === 200);
+  const meLow = (await GET(B + '/api/me?token=' + TKC)).data;
+  check('账号资料回带上限（玩家端据此提示）', meLow.listingCap === capLow && meLow.listingCapSet === true, JSON.stringify({ cap: meLow.listingCap, set: meLow.listingCapSet }));
+  await POST(B + '/api/dev/seed', { token: TKC, inventory: { crucian: 5 } });
+  const blockLow = await POST(B + '/api/market/list', { token: TKC, id: 'crucian', qty: 1, price: 1 });
+  check('达到该账号上限后上架被拒 400（错误里带该上限数）', blockLow.status === 400 && String(blockLow.data.error).indexOf(String(capLow)) >= 0, JSON.stringify(blockLow.data));
+  check('放宽上限成功', (await POST(B + '/api/admin/users/update', { token: TOKA, target: KEYC, listingCap: uCase0.listings + 5 })).status === 200);
+  check('放宽后立刻可以上架', (await POST(B + '/api/market/list', { token: TKC, id: 'crucian', qty: 1, price: 1 })).status === 200);
+  check('上限设 0 = 不限', (await POST(B + '/api/admin/users/update', { token: TOKA, target: KEYC, listingCap: 0 })).status === 200);
+  check('不限时继续上架成功', (await POST(B + '/api/market/list', { token: TKC, id: 'crucian', qty: 1, price: 1 })).status === 200);
+  check('上限非法值（负数）被拒 400', (await POST(B + '/api/admin/users/update', { token: TOKA, target: KEYC, listingCap: -3 })).status === 400);
+  check('未设置的账号仍按默认 40 卡', (await GET(B + '/api/admin/users?token=' + TOKA)).data.users.find(u => u.key === 'adm_p2').listingCap === 40);
+
   // ---------- 5. 上钩公式 ----------
   section('5. 上钩判断公式');
   check('非法公式被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '1 +', validateOnly: true })).status === 400);

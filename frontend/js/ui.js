@@ -1763,6 +1763,18 @@ window.UI = (function () {
     const meta = itemMeta(id);
     const isRod = !!(rodInfo && rodInfo.rodSlot != null);
     const have = isRod ? 1 : (st.inventory[id] || 0);
+    // 挂单上限提示（上限由后台按账号设置：默认 40，0 = 不限；后台批量上架也会占用这个额度）
+    const capRaw = Number(st && st.me ? st.me.listingCap : NaN);
+    const myCap = isFinite(capRaw) && capRaw > 0 ? capRaw : 0;
+    let capHint = '';
+    if (myCap) {
+      const used = (st.market || []).filter(function (l) {
+        return st.me && st.me.id != null && String(l.seller).toLowerCase() === String(st.me.id).toLowerCase();
+      }).length;
+      const full = used >= myCap;
+      capHint = '<div class="hint" style="margin-top:6px' + (full ? ';color:var(--bad)' : '') + '">你的挂单 ' + used + ' / 上限 ' + myCap +
+        (full ? '（已达上限，先下架一些再上架）' : '') + '</div>';
+    }
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
     const overlay = el('div', 'modal-overlay');
     overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeListModal(); });
@@ -1781,6 +1793,7 @@ window.UI = (function () {
       '<div class="bulk-est" id="list-est">—</div>' +
       '<button class="primary" id="list-confirm">确认上架</button>' +
       '<div class="hint" style="margin-top:8px">上架费 = 定价总额 × 时长费率，下架/过期均不退费；过期后物品自动退回背包。</div>' +
+      capHint +
       '</div>';
     box.querySelector('.modal-close').addEventListener('click', function () { closeListModal(); });
     overlay.appendChild(box);
@@ -2402,9 +2415,13 @@ window.UI = (function () {
     const colMain = el('div', 'col-main');
     const market = st.market || [];
     const mineCount = market.filter(function (l) { return me && me.id != null && String(l.seller).toLowerCase() === String(me.id).toLowerCase(); }).length;
+    // 挂单上限（后台按账号设；0 = 不限）：顶满时在页签上直接标出来，免得反复被服务器拒绝
+    const myCap = me && Number(me.listingCap) > 0 ? Number(me.listingCap) : 0;
     const tabs = el('div', 'inv-cats');
     [['buy', '🛒 购买市场', market.length - mineCount], ['mine', '🏷️ 我的挂单', mineCount], ['history', '📜 历史订单', null]].forEach(function (kv) {
-      const b = el('button', 'inv-cat' + (marketTab === kv[0] ? ' on' : ''), kv[1] + (kv[2] != null ? ' ' + kv[2] : ''));
+      const label = kv[1] + (kv[2] != null ? ' ' + kv[2] : '') + (kv[0] === 'mine' && myCap ? ' / ' + myCap : '');
+      const b = el('button', 'inv-cat' + (marketTab === kv[0] ? ' on' : ''), label);
+      if (kv[0] === 'mine' && myCap && mineCount >= myCap) b.title = '挂单已达上限 ' + myCap + '，下架后才能再上架';
       b.addEventListener('click', function () { if (marketTab !== kv[0]) { marketTab = kv[0]; renderView(); } });
       tabs.appendChild(b);
     });

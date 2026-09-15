@@ -794,6 +794,11 @@ window.Admin = (function () {
         '<td>' + (u.online ? '<span class="tag on">在线' + (u.fishing ? ' · 钓鱼中' : '') + '</span>' : '<span class="tag">离线</span>') + '</td>' +
         '<td>' + fmtTime(u.createdAt) + '</td>' +
         '<td><label class="switch"><input type="checkbox" data-admin="' + esc(u.key) + '"' + (u.admin ? ' checked' : '') + (self ? ' disabled title="不能撤销自己的权限"' : '') + '><span class="sl"></span></label></td>' +
+        '<td class="mgr-cap">' +
+        // 留空 = 用默认 40；0 = 不限。改完立刻生效（玩家再上架时按这个数卡）
+        '<input class="ipt mk-num" type="number" min="0" max="100000" data-cap="' + esc(u.key) + '" value="' +
+        (u.capSet ? u.listingCap : '') + '" placeholder="40" title="同时挂单上限；0 = 不限；留空 = 默认 40" />' +
+        '<div class="hint">在用 ' + (u.listings || 0) + (u.listingCap > 0 ? ' / ' + u.listingCap : ' / 不限') + '</div></td>' +
         '<td class="mgr-acts">' +
         '<button class="btn mini" data-edit="' + esc(u.key) + '">编辑</button>' +
         '<button class="btn mini" data-snap="' + esc(u.key) + '">快照</button>' +
@@ -810,6 +815,7 @@ window.Admin = (function () {
       '<th class="sortable" data-sort="online">状态' + arrow('online') + '</th>' +
       '<th class="sortable" data-sort="createdAt">注册时间' + arrow('createdAt') + '</th>' +
       '<th class="sortable" data-sort="admin">管理员' + arrow('admin') + '</th>' +
+      '<th>挂单上限</th>' +
       '<th>操作</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table>';
     $('mgr-list').querySelectorAll('th.sortable').forEach(function (th) {
@@ -824,6 +830,28 @@ window.Admin = (function () {
     $('mgr-list').querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { openMgrEdit(b.getAttribute('data-edit')); }; });
     $('mgr-list').querySelectorAll('[data-snap]').forEach(function (b) { b.onclick = function () { openMgrSnapshot(b.getAttribute('data-snap')); }; });
     $('mgr-list').querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { confirmDeleteUser(b.getAttribute('data-del')); }; });
+    // 挂单上限：改完即存（留空 = 清掉自定义值、回默认 40；0 = 不限）
+    $('mgr-list').querySelectorAll('input[data-cap]').forEach(function (inp) {
+      inp.onchange = function () {
+        const key = inp.getAttribute('data-cap');
+        const raw = String(inp.value || '').trim();
+        let cap = null;   // null = 恢复默认
+        if (raw !== '') {
+          cap = Math.floor(Number(raw));
+          if (!isFinite(cap) || cap < 0 || cap > 100000) { toast('挂单上限需为 0~100000 的整数（0 = 不限，留空 = 默认 40）', true); return; }
+        }
+        inp.disabled = true;
+        adminApi('POST', '/api/admin/users/update', { token: token, target: key, listingCap: cap }).then(function (r) {
+          inp.disabled = false;
+          if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+          const row = mgrRows.find(function (u) { return u.key === key; });
+          if (row) { row.listingCap = r.data.listingCap; row.capSet = r.data.capSet; }
+          inp.value = r.data.capSet ? r.data.listingCap : '';
+          toast('「' + key + '」挂单上限已设为 ' + (r.data.listingCap === 0 ? '不限' : r.data.listingCap) + (r.data.capSet ? '' : '（默认）'));
+          drawMgrList();   // 让「在用 x / y」跟着刷新
+        });
+      };
+    });
     // 管理员授权开关（原「账号授权」页的功能，v0.11.6 并入本页）
     $('mgr-list').querySelectorAll('input[type=checkbox][data-admin]').forEach(function (cb) {
       cb.onchange = function () {
@@ -1703,7 +1731,7 @@ window.Admin = (function () {
         (step ? ' step="' + step + '"' : '') + ' value="' + esc(val) + '" />';
     };
     return '<div class="panel mk-bulk">' +
-      '<h3>🎪 后台批量上架 <span class="hint">以某个账号的名头挂出一批服务器现造的物品（不扣背包、不收上架费、不受每人 40 单限制）</span></h3>' +
+      '<h3>🎪 后台批量上架 <span class="hint">以某个账号的名头挂出一批服务器现造的物品（不扣背包、不收上架费、不受挂单上限限制；上限在「账号管理」页按账号调）</span></h3>' +
       '<div class="bl-row">' +
       '<label>卖家名头</label><select id="bl-seller" class="ipt"><option value="">加载账号…</option></select>' +
       '<label>时长</label><select id="bl-hours" class="ipt">' +
@@ -1716,11 +1744,19 @@ window.Admin = (function () {
       BULK_KINDS.map(function (k) {
         const items = bulkItemsOf(k.id);
         const picked = (c.picks && c.picks[k.id]) || [];
+        // 勾选列表而非原生多选：原生 multiple 里单击是「选择」、取消要按 Ctrl，选错了没法清掉
         return '<div class="bl-card"><div class="bl-head"><span>' + k.label + '</span>' +
           nums('bl-c-' + k.id, (c.counts && c.counts[k.id]) || 0, 0, 500) + '<span class="hint">条</span></div>' +
-          '<select id="bl-p-' + k.id + '" class="ipt bl-pick" multiple size="4">' +
-          items.map(function (it) { return '<option value="' + esc(it.id) + '"' + (picked.indexOf(it.id) >= 0 ? ' selected' : '') + '>' + esc(it.name) + '</option>'; }).join('') +
-          '</select><div class="hint">不选 = 该类全部随机</div></div>';
+          '<div class="bl-pick" id="bl-p-' + k.id + '">' +
+          items.map(function (it) {
+            return '<label class="bl-opt"><input type="checkbox" value="' + esc(it.id) + '"' +
+              (picked.indexOf(it.id) >= 0 ? ' checked' : '') + ' /><span>' + esc(it.name) + '</span></label>';
+          }).join('') +
+          '</div>' +
+          '<div class="bl-pickbar"><span class="hint">不选 = 该类全部随机</span>' +
+          '<span class="bl-picked" id="bl-pn-' + k.id + '"></span>' +
+          '<button type="button" class="btn mini bl-clr" data-clr="' + k.id + '" title="取消该类全部已勾选项">清空选择</button>' +
+          '</div></div>';
       }).join('') +
       '</div>' +
       '<div class="bl-row">' +
@@ -1760,7 +1796,7 @@ window.Admin = (function () {
     BULK_KINDS.forEach(function (k) {
       c.counts[k.id] = Math.max(0, num('bl-c-' + k.id, 0));
       const ps = $('bl-p-' + k.id);
-      c.picks[k.id] = ps ? Array.prototype.filter.call(ps.options, function (o) { return o.selected; }).map(function (o) { return o.value; }) : [];
+      c.picks[k.id] = ps ? Array.prototype.filter.call(ps.querySelectorAll('input[type=checkbox]'), function (o) { return o.checked; }).map(function (o) { return o.value; }) : [];
     });
     BULK_QUALITIES.forEach(function (kv) { c.quality[kv[0]] = Math.max(0, num('bl-q-' + kv[0], 0)); });
     bulkSave();
@@ -1789,6 +1825,20 @@ window.Admin = (function () {
     const el = $('bl-state');
     if (el) { el.innerHTML = msg; el.style.color = err ? 'var(--bad)' : ''; }
   }
+  // 勾选列表：已选件数就地刷新（不动 DOM 结构，避免滚动位置跳动）
+  function bulkSyncPick(kind) {
+    const box = $('bl-p-' + kind);
+    const n = box ? box.querySelectorAll('input[type=checkbox]:checked').length : 0;
+    const badge = $('bl-pn-' + kind);
+    if (badge) badge.textContent = n ? '已选 ' + n + ' 项' : '';
+  }
+  // 清空该类全部勾选：取消勾选 + 立即写回 localStorage（选错了不用挨个点掉）
+  function bulkClearPick(kind) {
+    const box = $('bl-p-' + kind);
+    if (box) Array.prototype.forEach.call(box.querySelectorAll('input[type=checkbox]'), function (cb) { cb.checked = false; });
+    bulkSyncPick(kind);
+    bulkReadForm();
+  }
   function wireBulkPanel() {
     // 账号名头下拉：管理员排前面（会显示成市集里的「卖家」名）
     adminApi('GET', '/api/admin/users?token=' + encodeURIComponent(token)).then(function (r) {
@@ -1800,10 +1850,22 @@ window.Admin = (function () {
         return (y.admin ? 1 : 0) - (x.admin ? 1 : 0) || (y.coins || 0) - (x.coins || 0);
       });
       sel.innerHTML = rows.map(function (u) {
+        // 名头下拉顺带显示该账号的挂单占用：后台批量上架会把「已用」顶上去，而它自己上架受这个上限约束
+        const capTxt = (u.listingCap > 0 ? (u.listings || 0) + '/' + u.listingCap : (u.listings || 0) + '/不限');
         return '<option value="' + esc(u.key) + '" data-name="' + esc(u.name || u.key) + '"' +
           ((c.seller === u.key || (!c.seller && u.key === r.data.me)) ? ' selected' : '') + '>' +
-          esc(u.name || u.key) + '（' + esc(u.key) + '）' + (u.admin ? ' · 管理员' : '') + '</option>';
+          esc(u.name || u.key) + '（' + esc(u.key) + '）' + (u.admin ? ' · 管理员' : '') + ' · 挂单 ' + capTxt + '</option>';
       }).join('') || '<option value="">没有账号</option>';
+    });
+    // 四类勾选列表：勾/取消即时更新「已选 N 项」，清空按钮一次取消该类全部勾选
+    BULK_KINDS.forEach(function (k) {
+      const box = $('bl-p-' + k.id);
+      if (box) {
+        box.addEventListener('change', function () { bulkSyncPick(k.id); });
+        bulkSyncPick(k.id);
+      }
+      const clr = document.querySelector('.bl-clr[data-clr="' + k.id + '"]');
+      if (clr) clr.addEventListener('click', function () { bulkClearPick(k.id); });
     });
     const prev = $('bl-preview');
     if (prev) prev.addEventListener('click', function () {

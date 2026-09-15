@@ -304,7 +304,7 @@ window.Net = (function () {
   function setAuth(token, profile) {
     // 服务器内部一律使用小写账号 key 作为身份（players/trade/market/history 均是），
     // me.id 必须与之对齐，否则含大写字母的账号所有"是不是我"的判断都会失效
-    me = { id: (profile.username || '').toLowerCase(), username: profile.username, name: profile.name, token: token, admin: !!profile.admin };
+    me = { id: (profile.username || '').toLowerCase(), username: profile.username, name: profile.name, token: token, admin: !!profile.admin, listingCap: profile.listingCap == null ? null : profile.listingCap };
     state().me = me;
     connectStream();
     startVersionWatch();
