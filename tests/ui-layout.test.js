@@ -1731,14 +1731,15 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       // 副件必须与主件同部位（v0.11.1）：同为竿身的龙骨巨竿（带技巧词缀，用于池外搬运）
       const wsSub = D_DATA.instanceId('rod_dragonbone', 'epic', [{ type: 'skill', value: 10 }, { type: 'size', value: 8 }, { type: 'speed', value: -12 }]);
       // 注意顺序：dev/seed 是「整体替换背包」，必须放在 dev/catch 之前
-      await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, rope: 6 }, coins: 200000 });
+      //（dragon_scale 用于 v0.11.5 的「补缀可越过底材池边界」断言：双钓是竹制短竿池外的词缀）
+      await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, rope: 6, dragon_scale: 6 }, coins: 200000 });
       await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsMain } });
       await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsSub } });
       // 重铸只收「宝匣产出的神话件」：发一件神话组件与足够的残片
       const wsMythic = D_DATA.instanceId('rod_bamboo', 'mythic', [{ type: 'speed', value: 9 }, { type: 'size', value: 3 }, { type: 'skill', value: 4 }, { type: 'rare', value: 2 }]);
       await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsMythic } });
       await post('/api/mall/buy', { token: tokS, id: 'relic', qty: 3 }).catch(() => {});
-      const relicNow = await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, rope: 6, relic: 30 }, coins: 200000 });
+      const relicNow = await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, rope: 6, relic: 30, dragon_scale: 6 }, coins: 200000 });
       void relicNow;
       await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsMain } });
       await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsSub } });
@@ -1807,6 +1808,36 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('选定词条后出现成功率与花费预览',
         /熔炼成功率\s*\d+(\.\d+)?%/.test(wsPrev || '') && /💰/.test(wsPrev || ''), String(wsPrev).slice(0, 80));
       check('基础成功率 50%（无投料）', /熔炼成功率\s*50%/.test(wsPrev || ''), String(wsPrev).slice(0, 60));
+      // —— v0.11.5：预览逐条列出三者的取值区间，并标注区间来源（副件那条按副件区间） ——
+      const wsRng = await p1.evaluate(() => ({
+        rows: Array.from(document.querySelectorAll('.ws-res-affs li')).map(n => n.textContent.replace(/\s+/g, ' ').trim()),
+      }));
+      check('预览逐条列出熔炼后词缀与取值区间（主件 / 副件来源）',
+        wsRng.rows.length >= 2 && wsRng.rows.some(t => /钓速/.test(t) && /主件区间/.test(t)) &&
+        wsRng.rows.some(t => /技巧/.test(t) && /副件区间/.test(t)),
+        JSON.stringify(wsRng.rows));
+      check('预览的副件区间取自副件底材（技巧 8~14，而非主件的池外 2~6）',
+        wsRng.rows.some(t => /技巧/.test(t) && /\+8 ~ \+14%/.test(t)), JSON.stringify(wsRng.rows));
+      // 投料：补一条主件池外的词缀（龙鳞碎屑 → 双钓），预览应标出「池外区间」并按池外区间取值
+      const wsAddPrev = await p1.evaluate(async () => {
+        const inp = document.querySelector('.ws-mat-qty[data-mat="dragon_scale"]');
+        if (!inp || inp.disabled) return null;
+        inp.value = '2';
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 120));
+        return {
+          rows: Array.from(document.querySelectorAll('.ws-res-affs li')).map(n => n.textContent.replace(/\s+/g, ' ').trim()),
+          prev: (document.getElementById('ws-preview') || {}).textContent || '',
+        };
+      });
+      check('投料可补主件池外的词缀（双钓标为池外区间，不再提示「没有可补」）',
+        !!wsAddPrev && wsAddPrev.rows.some(t => /双钓/.test(t) && /池外区间/.test(t)) && !/没有可补/.test(wsAddPrev.prev || ''),
+        JSON.stringify(wsAddPrev && wsAddPrev.rows));
+      await p1.evaluate(() => {
+        const inp = document.querySelector('.ws-mat-qty[data-mat="dragon_scale"]');
+        inp.value = '0';
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+      });
 
       // —— v0.11.3：神话主件的「残片保留」入口（勾选后拉满片数 → 保留概率 100%） ——
       const relicRow0 = await p1.evaluate(() => ({

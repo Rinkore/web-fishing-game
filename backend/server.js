@@ -401,11 +401,17 @@ function mallView(rec) {
 // 失败结算（v0.11.3 起）：副件、投料、残片、金币照旧损失，且**主件被熔掉选中的那条词条**（其余词条与品质保留）。
 const SMELT_RATE_PRECISION = 10;
 function smeltCfgOf() { return D.getSmeltCfg(); }
-// 主件熔炼后的词缀取值区间：词缀在主件池内 → 用主件区间；不在池内（从副件搬过来的）→ 用池外区间
-function smeltRangeFor(base, type) {
-  const slot = base.pool.find(function (p) { return p.type === type; });
-  if (slot) return D.affixRangeOf(base.id, slot);
-  return D.extraAffixRangeOf(type);
+// 熔炼每条词缀的取值区间由 data.js 的 smeltRangeOf 统一给出（服务器掷骰与前端预览同一份口径）：
+//   主件选中的那条 → 主件区间（突破件的池外词缀 → 池外区间）；
+//   副件搬来的那条 → 默认**副件区间**（v0.11.5 起，副件连区间一起提供），后台可切回「主件区间」；
+//   投料补缀的那条 → 默认**池外（突破）区间**（与宝匣突破件一致，随后台「池外词缀数值区间」改动即时生效）。
+function smeltRangesOf(mainMeta, subMeta, mainType, subType, addType) {
+  const mid = mainMeta && mainMeta.baseId, sid = subMeta && subMeta.baseId;
+  return {
+    main: D.smeltRangeOf(mid, sid, 'main', mainType),
+    sub: D.smeltRangeOf(mid, sid, 'sub', subType),
+    add: addType ? D.smeltRangeOf(mid, sid, 'add', addType) : null,
+  };
 }
 // 一次熔炼取值的 roll（宝珠开启时掷两次取靠近区间边界的那次）
 function smeltRoll(range, useBoundary) {
@@ -501,14 +507,23 @@ function planSmelt(rec, d) {
     consume.push({ id: relicId, qty: relicQty });
   }
   const load = D.smeltLoadOf(matList);
-  // 补缀目标：投料主词缀必须还在主件池里、且熔炼后的主件没有它
+  // 补缀目标（v0.11.5 起放宽）：投料主词缀只要是「熔炼结果还没有的词缀」即可 —— 默认不再受主件底材词缀池限制
+  // （候选 = 全部 6 类词缀里结果没拥有的那些，见 smeltAddableAffixes）；但仍要求结果词条数不超过补缀上限（默认 3）。
   const afterTypes = [mainAffix.type, subAffix.type];
   let extraType = null;
   if (load.total > 0) {
     extraType = load.dominant;
     const addable = D.smeltAddableAffixes(mainMeta.baseId, afterTypes);
     if (!extraType || addable.indexOf(extraType) < 0) {
-      return { error: '投料对应的词缀「' + (D.AFFIX_LABEL[extraType] || extraType || '?') + '」无法加入该主件（主件词缀池里已经没有可补的该类词缀）' };
+      const already = extraType ? afterTypes.indexOf(extraType) >= 0 : false;
+      return {
+        error: '投料对应的词缀「' + (D.AFFIX_LABEL[extraType] || extraType || '?') + '」无法补进该主件（' +
+          (already ? '熔炼结果里已经有这条词缀了' : '主件词缀池里已经没有可补的该类词缀') + '）',
+      };
+    }
+    const addCap = D.smeltAddAffixCap();
+    if (afterTypes.length + 1 > addCap) {
+      return { error: '补缀后词条数会超过上限（当前 ' + afterTypes.length + ' 条 +1 > 上限 ' + addCap + ' 条，可在后台「⚒ 工坊配置」调整）' };
     }
   }
   const rates = D.smeltRatesOf(load, pearl);
@@ -521,6 +536,7 @@ function planSmelt(rec, d) {
     rollBoundary: !!(pearl && cfg.pearlRollTwice),
     relicId: relicId, relics: relicQty, extraAffixes: extraAffixes,
     retainChance: D.smeltRetainChance(relicQty),
+    ranges: smeltRangesOf(mainMeta, subMeta, mainAffix.type, subAffix.type, extraType),
   };
 }
 // 某账号在某档位上的「连续未突破」计数（惰性读取，0 表示没有记录）
@@ -2914,12 +2930,13 @@ const server = http.createServer(function (req, res) {
         let result = null, extraOk = false, retainOk = false, mainAfter = null;
         const retained = [];
         if (success) {
+          const rr = plan.ranges;   // 三条词缀各自的取值区间（主件 / 副件 / 补缀，见 smeltRangesOf）
           const affixes = [];
-          affixes.push({ type: plan.mainAffix.type, value: smeltRoll(smeltRangeFor(base, plan.mainAffix.type), useBoundary) });
-          affixes.push({ type: plan.subAffix.type, value: smeltRoll(smeltRangeFor(base, plan.subAffix.type), useBoundary) });
+          affixes.push({ type: plan.mainAffix.type, value: smeltRoll(rr.main, useBoundary) });
+          affixes.push({ type: plan.subAffix.type, value: smeltRoll(rr.sub, useBoundary) });
           if (plan.extraType) {
             extraOk = Math.random() * 100 < plan.rates.extraRate;
-            if (extraOk) affixes.push({ type: plan.extraType, value: smeltRoll(smeltRangeFor(base, plan.extraType), useBoundary) });
+            if (extraOk) affixes.push({ type: plan.extraType, value: smeltRoll(rr.add, useBoundary) });
           }
           // 残片保留：掷一次，命中则把主件的池外（突破）词缀按原值追加回结果。
           // 与选中/补缀词条同类型的不再重复追加（同一件组件里同类型词条只该有一条）。
@@ -2956,7 +2973,7 @@ const server = http.createServer(function (req, res) {
           ok: true, success: success, extraOk: extraOk,
           rate: plan.rates.rate, extraRate: plan.rates.extraRate, gold: plan.gold,
           pearl: plan.pearl, rollBoundary: useBoundary,
-          load: plan.load, extraType: plan.extraType,
+          load: plan.load, extraType: plan.extraType, ranges: plan.ranges,
           relics: plan.relics, relicId: plan.relicId, retainChance: plan.retainChance,
           retainOk: retainOk, retained: retained, mainAfter: mainAfter,
           removedAffix: success ? null : plan.mainAffix.type,
@@ -4118,6 +4135,8 @@ const server = http.createServer(function (req, res) {
       const merged = Object.assign({}, D.getComponentCfg ? D.getComponentCfg() : {}, cfg);
       world.componentCfg = D.setComponentCfg(merged);
       saveConfig();
+      // v0.11.5：池外（突破）区间也会决定工坊补缀词缀的取值，改了要立刻同步到在线客户端
+      broadcast({ type: 'componentcfg', componentCfg: world.componentCfg });
       apiResp(res, 200, { ok: true, componentCfg: world.componentCfg });
     });
     return;
@@ -4130,6 +4149,7 @@ const server = http.createServer(function (req, res) {
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       world.componentCfg = D.setComponentCfg(null);
       saveConfig();
+      broadcast({ type: 'componentcfg', componentCfg: world.componentCfg });
       apiResp(res, 200, { ok: true, componentCfg: world.componentCfg });
     });
     return;
@@ -4632,12 +4652,14 @@ const server = http.createServer(function (req, res) {
         maxMaterials: [0, 99], maxTypes: [0, 8],
         recastRelic: [0, 9999], recastGold: [0, 100000000],
         retainPerRelic: [0, 100], retainMaxRelic: [0, 99],
+        addAffixCap: [1, 6],
       };
       const LABEL = {
         baseRate: '熔炼基础成功率', failPerMaterial: '每份材料对失败率的影响', extraRatePerMaterial: '每份材料的补缀成功率加成',
         extraRatePearl: '龙宫宝珠的补缀成功率加成', extraRateMax: '补缀成功率上限', rateMin: '熔炼成功率下限', rateMax: '熔炼成功率上限',
         goldBase: '基础金币花费', goldPerMaterial: '每份材料金币', goldPearl: '龙宫宝珠金币', maxMaterials: '单次最大投料份数', maxTypes: '单次最大投料种类', recastRelic: '重铸所需残片', recastGold: '重铸所需金币',
         retainPerRelic: '每片残片的保留概率', retainMaxRelic: '单次最大投入残片',
+        addAffixCap: '补缀后词条数上限',
       };
       const patch = {};
       let err = null;
@@ -4650,6 +4672,10 @@ const server = http.createServer(function (req, res) {
       });
       if (d.pearlRollTwice != null) patch.pearlRollTwice = !!d.pearlRollTwice;
       if (d.recastMinValue != null) patch.recastMinValue = (d.recastMinValue === true || d.recastMinValue === 1 || d.recastMinValue === '1') ? 1 : 0;
+      // v0.11.5：词缀搬移与补缀的三项开关（副件区间 / 不受底材池限制 / 补缀按池外区间取值）
+      if (d.subRangeFromSub != null) patch.subRangeFromSub = !!d.subRangeFromSub;
+      if (d.addAnyAffix != null) patch.addAnyAffix = !!d.addAnyAffix;
+      if (d.addAffixExtraRange != null) patch.addAffixExtraRange = !!d.addAffixExtraRange;
       if (err) return apiResp(res, 400, { error: err });
       if (d.reset) {
         world.smeltCfg = D.setSmeltCfg(null);

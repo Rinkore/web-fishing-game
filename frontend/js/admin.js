@@ -1543,7 +1543,8 @@ window.Admin = (function () {
       '<div class="hint" style="margin-top:6px">参考：期望开箱次数 关闭=2.00 / N=4 → 1.88 / N=3 → 1.75 / N=2 → 1.50；N=3 把最坏情况从「无上限」压到 3 次，是性价比最高的一档。</div>' +
 
       '<h3>🎲 池外词缀数值区间</h3>' +
-      '<div class="hint" style="margin-bottom:8px">突破件在底材词缀池之外补足的词缀所用的数值区间。<b>应当明显弱于池内区间</b>，否则 2 条池的弱底材补上强池外后会反超 4 条池底材。留空 = 用默认值。</div>' +
+      '<div class="hint" style="margin-bottom:8px">突破件在底材词缀池之外补足的词缀所用的数值区间。<b>应当明显弱于池内区间</b>，否则 2 条池的弱底材补上强池外后会反超 4 条池底材。留空 = 用默认值。' +
+      '工坊熔炼的<b>补缀词缀</b>也按这套区间取值，所以这里改动会同时影响熔炼（已开启「补缀按池外区间取值」时，改动经广播即时同步到玩家端预览）。</div>' +
       '<div class="ch-ar-wrap">' +
       Object.keys(AD).map(function (t) {
         const cur = AR[t];
@@ -1802,6 +1803,23 @@ window.Admin = (function () {
       F('retainMaxRelic', '单次最多投入残片', '默认 10') +
       '<span class="hint">投入残片不计入投料：不改变熔炼成功率 / 补缀率 / 金币花费，只消耗残片本身</span>' +
       '</div>' +
+      '<h3>🧬 词缀搬移与补缀（v0.11.5）</h3>' +
+      '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      '<span class="ch-fix"><label>副件连区间一起提供</label><input type="checkbox" id="ws-cfg-subRangeFromSub"' +
+      (SC.subRangeFromSub !== false ? ' checked' : '') + '></span>' +
+      '<span class="hint">勾选 = 副件搬来的词缀按<b>副件自己的底材区间</b>取值（副件池外用池外区间）；取消 = 旧规则（主件池内按主件区间）</span>' +
+      '</div>' +
+      '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      '<span class="ch-fix"><label>补缀不受底材池限制</label><input type="checkbox" id="ws-cfg-addAnyAffix"' +
+      (SC.addAnyAffix !== false ? ' checked' : '') + '></span>' +
+      F('addAffixCap', '补缀后词条数上限', '默认 3（主 + 副 + 补缀，可越过品质上限与底材池长）；1 = 禁止补缀，最大 6') +
+      '</div>' +
+      '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      '<span class="ch-fix"><label>补缀按池外区间取值</label><input type="checkbox" id="ws-cfg-addAffixExtraRange"' +
+      (SC.addAffixExtraRange !== false ? ' checked' : '') + '></span>' +
+      '<span class="hint">勾选 = 投料补的词缀按<b>池外（突破）区间</b>取值，与宝匣突破件同一套区间' +
+      '（改「🎁 宝匣配置 → 🎲 池外词缀数值区间」即时生效）；取消 = 该词缀在主件池内时按主件区间</span>' +
+      '</div>' +
       '<div class="mgr-row" style="margin-top:10px"><button class="btn primary" id="ws-cfg-save">保存熔炼参数</button>' +
       '<button class="btn" id="ws-cfg-reset">恢复默认</button><span id="ws-cfg-state" class="hint" style="margin-left:10px"></span></div>' +
       '<h3>🧵 材料 → 词缀对照（只读）</h3>' +
@@ -1833,6 +1851,10 @@ window.Admin = (function () {
         recastMinValue: $('ws-cfg-recastMinValue').checked,
         retainPerRelic: $('ws-cfg-retainPerRelic').value,
         retainMaxRelic: $('ws-cfg-retainMaxRelic').value,
+        subRangeFromSub: $('ws-cfg-subRangeFromSub').checked,
+        addAnyAffix: $('ws-cfg-addAnyAffix').checked,
+        addAffixCap: $('ws-cfg-addAffixCap').value,
+        addAffixExtraRange: $('ws-cfg-addAffixExtraRange').checked,
       }).then(function (r) {
         if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
         worldCfg = null;

@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.11.4';
+  const VERSION = 'v0.11.5';
   const BUILD = '2026-09-15';
 
   // ---- 渔获定义 ----
@@ -640,9 +640,14 @@
 
   // ---- 工坊 · 熔炼 ----
   // 玩家放两件组件（主 / 副），各选一条词条，熔炼后**主件的词条就是选中的那两条**（重新 roll 数值）：
-  //   主件选中的那条 → 在原底材区间内重 roll；副件选中的那条 → 该词缀若在主件词缀池内按主件区间 roll，
-  //   若不在池内（把副件独有的词缀熔到主件上）则按「池外词缀区间」roll，与宝匣突破件同一套规则。
-  // 投料（可选）：从**主件自己的词缀池**里再补一条主件尚未拥有的词缀并 roll 值；投料越多，补缀成功率越高。
+  //   主件选中的那条 → 在原底材区间内重 roll（突破件的池外词缀则按「池外词缀区间」）。
+  //   副件选中的那条（v0.11.5 改）：**副件一并提供它的取值区间** —— 该词缀在副件底材池内就按副件区间 roll，
+  //     不在副件池内（副件本身是突破件）才回退「池外词缀区间」；后台关掉「副件区间」开关则回退旧行为
+  //     （在主件池内按主件区间，否则池外区间）。
+  // 投料（可选）：从**全部词缀类型**里再补一条熔炼结果尚未拥有的词缀并 roll 值；投料越多，补缀成功率越高。
+  //   不受主件底材词缀池限制（后台开关 addAnyAffix），补缀后词条数上限默认 3（后台可调 addAffixCap，
+  //   即普通/稀有底材也能被补到 3 条）；补缀词缀默认按**池外（突破）区间**取值（与宝匣突破件同一套区间，
+  //   后台改「池外词缀数值区间」即时生效；开关 addAffixExtraRange 可切回旧行为）。
   // 龙宫宝珠（可选）：roll 值改为掷两次取靠近区间边界的那次（与海王遗匣同一规则，见 rollAffixValueBoundary）。
   // 残片保留（可选，v0.11.3 新增，只对海王遗匣产出的神话主件）：投入至多 10 片沉船宝匣残片，
   //   成功时按概率把主件的池外（突破）词缀原值保留到结果上，见 smeltExtraAffixesOf / smeltRetainChance。
@@ -660,7 +665,7 @@
     dragon_scale: 'double', // 龙鳞碎屑 → 双钓（新材料）
   };
   const SMELT_PEARL = 'dragonpearl'; // 龙宫宝珠：催化剂（roll 两次取边界值）
-  // 只投料想补的词缀：主件池里必须还有该词缀、且主件当前没有它，否则该材料对这次熔炼无意义。
+  // 补缀（投料新增词缀）的候选：默认 = **全部 6 类词缀**里熔炼结果尚未拥有的那些（不再受主件底材词缀池限制）。
   function smeltMaterialAffix(id) { return SMELT_MATERIAL_AFFIX[id] || null; }
   function smeltMaterialIds() { return Object.keys(SMELT_MATERIAL_AFFIX); }
 
@@ -685,6 +690,11 @@
     // ---- 残片保留（海王遗匣产出的神话主件专用）----
     retainPerRelic: 10,        // 每片沉船宝匣残片提供的「保留池外词缀」概率（%）：10 片 = 100%
     retainMaxRelic: 10,        // 单次熔炼最多可投入的残片数
+    // ---- 词缀搬移与补缀（v0.11.5 新增，均可在后台「⚒ 工坊配置」里改）----
+    subRangeFromSub: true,     // 副件搬来的词缀按**副件自己的区间**取值（关闭 = 旧行为：主件池内按主件区间，否则池外区间）
+    addAnyAffix: true,         // 补缀不再受主件底材词缀池限制：可取任意尚未拥有的词缀
+    addAffixCap: 3,            // 补缀后主件允许的词条数上限（默认 3 = 主 + 副 + 补缀，可越过品质上限与池长）
+    addAffixExtraRange: true,  // 补缀词缀按**池外（突破）区间**取值，与宝匣突破件同一套区间（随后台改动即时生效）
   };
   let smeltCfg = Object.assign({}, SMELT_DEFAULTS);
   function defaultSmeltCfg() { return Object.assign({}, SMELT_DEFAULTS); }
@@ -700,6 +710,8 @@
     d.maxTypes = Math.max(0, Math.min(8, Math.floor(d.maxTypes)));
     d.retainPerRelic = Math.max(0, Math.min(100, d.retainPerRelic));
     d.retainMaxRelic = Math.max(0, Math.min(99, Math.floor(d.retainMaxRelic)));
+    // 补缀词条数上限：1 条（等于禁止补缀）~ 6 条（词缀类型全集）；非数字回退出厂默认 3
+    d.addAffixCap = Math.max(1, Math.min(AFFIX_TYPES.length, Math.floor(Number(d.addAffixCap) || SMELT_DEFAULTS.addAffixCap)));
     smeltCfg = d;
     return smeltCfg;
   }
@@ -749,13 +761,42 @@
     const pearl = hasPearl != null ? !!hasPearl : !!(load && load.pearl > 0);
     return Math.max(0, Math.round(c.goldBase + c.goldPerMaterial * total + (pearl ? c.goldPearl : 0)));
   }
-  // 某件主件本次熔炼可补的词缀候选（主件池内、且主件当前没有的词缀）
+  // 本次熔炼可补的词缀候选（服务器校验与前端预览共用同一份，保证两端口径一致）：
+  //   addAnyAffix 开启（默认）→ 全部 6 类词缀里熔炼结果还没有的那些（可越过底材词缀池边界）
+  //   关闭 → 旧行为：只列主件底材池内、且结果还没有的词缀
   function smeltAddableAffixes(baseId, currentTypes) {
     const base = BASE_MAP[baseId];
-    if (!base) return [];
     const have = {};
     (currentTypes || []).forEach(function (t) { have[t] = 1; });
+    const anyAffix = smeltCfg.addAnyAffix !== false;
+    if (anyAffix) return AFFIX_TYPES.filter(function (t) { return !have[t]; });
+    if (!base) return [];
     return base.pool.filter(function (p) { return !have[p.type]; }).map(function (p) { return p.type; });
+  }
+  // 补缀（投料新增词缀）后允许的词条数上限：默认 3（主 + 副 + 补缀），可越过品质上限与底材池长
+  function smeltAddAffixCap() { return smeltCfg.addAffixCap; }
+
+  // 熔炼取值区间（服务器掷骰与前端展示共用）：
+  //   kind = 'main' → 主件选中的那条：在主件池内按主件区间，否则（突破件的池外词缀）按池外区间
+  //   kind = 'sub'  → 副件搬来的那条：默认按**副件区间**（副件池内 → 副件底材区间；副件池外 → 池外区间）；
+  //                   subRangeFromSub 关闭时回退旧行为（主件池内 → 主件区间；否则池外区间）
+  //   kind = 'add'  → 投料补缀的那条：默认按**池外（突破）区间**（与宝匣突破件一致，随后台改动即时生效）；
+  //                   addAffixExtraRange 关闭时回退旧行为（主件池内 → 主件区间；否则池外区间）
+  function smeltRangeOf(mainBaseId, subBaseId, kind, type) {
+    const mainBase = BASE_MAP[mainBaseId] || null;
+    const subBase = BASE_MAP[subBaseId] || null;
+    function poolRangeOf(base) {
+      if (!base) return null;
+      const slot = base.pool.find(function (p) { return p.type === type; });
+      return slot ? affixRangeOf(base.id, slot) : null;
+    }
+    if (kind === 'sub' && smeltCfg.subRangeFromSub !== false) {
+      return poolRangeOf(subBase) || extraAffixRangeOf(type);
+    }
+    if (kind === 'add' && smeltCfg.addAffixExtraRange !== false) {
+      return extraAffixRangeOf(type);
+    }
+    return poolRangeOf(mainBase) || extraAffixRangeOf(type);
   }
 
   // ---- 熔炼 · 残片保留（只对海王遗匣产出的神话主件开放）----
@@ -1171,6 +1212,7 @@
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds,
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
+    smeltRangeOf: smeltRangeOf, smeltAddAffixCap: smeltAddAffixCap,
     smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,
     RECAST_QUALITY: RECAST_QUALITY, canRecast: canRecast, recastAffixes: recastAffixes,
     MALL_DEFAULTS: MALL_DEFAULTS, defaultMallCfg: defaultMallCfg,

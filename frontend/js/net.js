@@ -403,6 +403,10 @@ window.Net = (function () {
             if (window.GameData.setSmeltCfg) window.GameData.setSmeltCfg(m.smeltCfg);
           }
           if (ui) ui.refreshAll('smeltcfg');
+        } else if (m.type === 'componentcfg') {
+          // 后台改了组件生成配置（含池外/突破词缀数值区间）：工坊补缀与宝匣突破件的预览区间都要跟着变
+          if (m.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(m.componentCfg);
+          if (ui) ui.refreshAll('componentcfg');
         } else if (m.type === 'recordscfg') {
           // 后台改了「全场最大鱼」贴图的缩放/偏移：就地更新并重绘纪录页
           if (m.recordsCfg) S.recordsCfg = m.recordsCfg;

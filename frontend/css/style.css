@@ -585,6 +585,13 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .ws-line { margin-bottom: 4px; }
 .ws-line b.ok, .ok { color: #34d399; }
 .ws-line b.err, .err { color: var(--danger); }
+/* 熔炼结果预览：逐条列出「词缀 · 取值区间来源 · 区间」，与服务器掷骰同一份口径 */
+.ws-res-affs { list-style: none; margin: 2px 0 6px; padding: 0; font-size: 13px; }
+.ws-res-affs li { margin-bottom: 2px; }
+.ws-res-affs .muted { color: var(--muted); }
+/* 投料里「这次补不了」的材料（该词缀已经在熔炼结果里）标灰 + 划掉词缀名 */
+.ws-mat.unfit { opacity: .45; }
+.ws-mat.unfit .wm-aff { text-decoration: line-through; }
 .cr-fail { font-size: 15px; font-weight: 700; color: var(--danger); padding: 12px 0; }
 
 /* ---- 商城（每日限购） ---- */

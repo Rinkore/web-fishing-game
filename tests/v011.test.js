@@ -206,13 +206,27 @@ function startServer() {
   await POST(BASE + '/api/mall/buy', { token: TOKP, id: 'rope', qty: 2 });
   const mallFull = await GET(BASE + '/api/mall?token=' + encodeURIComponent(TOKP));
   check('限购已用满', mallFull.data.items[0].remain === 0, JSON.stringify(mallFull.data.items[0]));
-  // 把刷新时间改到「今天稍后」→ 当前周期起点退回昨天 → 周期键变化 → 计数清零
-  const later = new Date(Date.now() + 3 * 3600 * 1000);
-  const hhmm = ('0' + later.getHours()).slice(-2) + ':' + ('0' + later.getMinutes()).slice(-2);
-  await POST(BASE + '/api/admin/mall/config', { token: TOKA, refreshTime: hhmm, items: [{ id: 'rope', price: 10, limit: 2 }] });
-  const mallReset = await GET(BASE + '/api/mall?token=' + encodeURIComponent(TOKP));
-  check('跨过刷新时间点后限购自动重置', mallReset.data.items[0].bought === 0 && mallReset.data.items[0].remain === 2,
-    JSON.stringify({ refreshTime: mallReset.data.refreshTime, item: mallReset.data.items[0] }));
+  // 把刷新时间改到「能让当前周期起点换一天」的时点 → 周期键变化 → 计数清零。
+  // 注意别写成「now + 3 小时」：周期起点只可能是今天或昨天，21 点后（或凌晨 4 点前）
+  // now+3h 会落回同一天，周期键不变 —— 那是测试假设的问题，不是限购逻辑的问题。
+  // 这里直接按周期键搜索一个会变化的刷新时间，全天（除每天最后 1 分钟）都成立。
+  const keyFull = mallFull.data.cycleKey;
+  let hhmm = null;
+  for (let m = 0; m < 24 * 60; m++) {
+    const cand = ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m % 60)).slice(-2);
+    if (D.mallCycleOf(cand, Date.now()).key !== keyFull) { hhmm = cand; break; }
+  }
+  if (hhmm) {
+    await POST(BASE + '/api/admin/mall/config', { token: TOKA, refreshTime: hhmm, items: [{ id: 'rope', price: 10, limit: 2 }] });
+    const mallReset = await GET(BASE + '/api/mall?token=' + encodeURIComponent(TOKP));
+    check('跨过刷新时间点后限购自动重置',
+      mallReset.data.items[0].bought === 0 && mallReset.data.items[0].remain === 2 &&
+      mallReset.data.cycleKey !== keyFull,
+      JSON.stringify({ refreshTime: mallReset.data.refreshTime, key: mallReset.data.cycleKey, was: keyFull, item: mallReset.data.items[0] }));
+  } else {
+    // 每天最后 1 分钟内所有刷新时间都落在同一周期，无法构造跨周期（跳过而非误报失败）
+    console.log('  SKIP  跨过刷新时间点后限购自动重置（当前时刻无可用跨周期刷新时间）');
+  }
 
   // ==========================================================================
   section('⑤ 宝匣：合成成本可改 + 突破件边界取值');
@@ -335,13 +349,14 @@ function startServer() {
   check('主副选中同类型词条被拒', (await POST(BASE + '/api/workshop/smelt', {
     token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'size', subAffix: 'size',
   })).status === 400);
-  // 潮汐砂 → 钓速；但这件主件熔炼后已经有钓速（选中的就是它），池内无处可补 → 必须被拒
+  // 潮汐砂 → 钓速；但这件主件熔炼后已经有钓速（选中的就是它）→ 该词缀已在结果里，必须被拒
+  //（v0.11.5 起补缀不再受底材池限制，所以「补不了」只剩「结果里已经有了」这一种）
   await seed({ [mainComp]: 1, [subComp]: 1, tide_sand: 3 }, 200000);
   const smeltBadMat = await POST(BASE + '/api/workshop/smelt', {
     token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill', materials: [{ id: 'tide_sand', qty: 2 }],
   });
-  check('材料方向不可补缀时被拒（主件池里没有该词缀）',
-    smeltBadMat.status === 400 && /无法加入|没有可补/.test(smeltBadMat.data.error || ''), JSON.stringify(smeltBadMat.data));
+  check('材料方向与结果词缀重复时被拒（该词缀已经在熔炼结果里）',
+    smeltBadMat.status === 400 && /无法补进|已经有/.test(smeltBadMat.data.error || ''), JSON.stringify(smeltBadMat.data));
   check('缺少副件被拒', (await POST(BASE + '/api/workshop/smelt', {
     token: TOKP, mainId: mainComp, subId: D.instanceId('hook_barb', 'common', [{ type: 'size', value: 2 }]), mainAffix: 'speed', subAffix: 'size',
   })).status === 400);
@@ -503,6 +518,126 @@ function startServer() {
     JSON.stringify(smeltReset.data.smeltCfg));
   const smeltBad = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 500 });
   check('熔炼参数越界被拒 400', smeltBad.status === 400, JSON.stringify(smeltBad.data));
+
+  // ==========================================================================
+  section('⑥e 工坊熔炼 · 副件区间 / 补缀越池与词条数上限（v0.11.5）');
+  // 数据层：副件区间取自副件底材池（龙骨巨竿 技巧 8~14）
+  check('数据层：副件搬来的词缀按副件区间取值（技巧 = 龙骨巨竿 8~14）',
+    JSON.stringify(D.smeltRangeOf('rod_bamboo', 'rod_dragonbone', 'sub', 'skill')) === JSON.stringify([8, 14]),
+    JSON.stringify(D.smeltRangeOf('rod_bamboo', 'rod_dragonbone', 'sub', 'skill')));
+  check('数据层：主件选中的词缀仍按主件区间（钓速 = 竹制短竿 8~14）',
+    JSON.stringify(D.smeltRangeOf('rod_bamboo', 'rod_dragonbone', 'main', 'speed')) === JSON.stringify([8, 14]),
+    JSON.stringify(D.smeltRangeOf('rod_bamboo', 'rod_dragonbone', 'main', 'speed')));
+  check('数据层：补缀词缀按池外（突破）区间取值（钓速池外 4~10，与主件池内 8~14 不同）',
+    JSON.stringify(D.smeltRangeOf('rod_bamboo', 'rod_dragonbone', 'add', 'speed')) === JSON.stringify([4, 10]),
+    JSON.stringify(D.smeltRangeOf('rod_bamboo', 'rod_dragonbone', 'add', 'speed')));
+  check('数据层：补缀候选 = 全部词缀类型里结果还没有的那些（不再受底材池限制）',
+    D.smeltAddableAffixes('rod_bamboo', ['speed', 'skill']).indexOf('double') >= 0 &&
+    D.smeltAddableAffixes('rod_bamboo', ['speed', 'skill']).indexOf('rare') >= 0 &&
+    D.smeltAddableAffixes('rod_bamboo', ['speed', 'skill']).indexOf('material') >= 0,
+    JSON.stringify(D.smeltAddableAffixes('rod_bamboo', ['speed', 'skill'])));
+  // 后台改底材/池外区间是否真正生效，看服务器回传的 ranges（见下段）；
+  // 本文件顶部的 D 是**测试进程**里独立加载的一份 data.js，看不到服务器进程的配置改动。
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 100, rateMax: 100, failPerMaterial: 0, extraRatePerMaterial: 100, extraRateMax: 100, addAffixCap: 3 });
+  const smeltWith = (body) => POST(BASE + '/api/workshop/smelt', Object.assign({
+    token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill',
+  }, body));
+  // 后台改副件底材区间 → 副件搬词区间随之变化（证明副件区间用的是可配的底材区间，而非写死值）
+  await POST(BASE + '/api/admin/component/config', { token: TOKA, affixRanges: { rod_dragonbone: { skill: [9, 13] } } });
+  await seed({ [mainComp]: 1, [subComp]: 1 }, 200000);
+  const smeltSubRng = await smeltWith({});
+  check('后台改副件底材区间后，副件搬词区间同步（技巧 8~14 → 9~13）',
+    smeltSubRng.status === 200 && JSON.stringify(smeltSubRng.data.ranges.sub) === JSON.stringify([9, 13]) &&
+    smeltSubRng.data.item.affixes.every(a => a.type !== 'skill' || (a.value >= 9 && a.value <= 13)),
+    JSON.stringify({ range: smeltSubRng.data.ranges && smeltSubRng.data.ranges.sub, affs: smeltSubRng.data.item && smeltSubRng.data.item.affixes }));
+  await POST(BASE + '/api/admin/component/config', { token: TOKA, affixRanges: {} });
+  // 后台改「池外词缀数值区间」→ 补缀区间同步（证明补缀用的就是宝匣突破件那套区间，不是独立副本）
+  await POST(BASE + '/api/admin/component/config', { token: TOKA, extraAffixRanges: { double: [6, 7] } });
+  await seed({ [mainComp]: 1, [subComp]: 1, dragon_scale: 4 }, 200000);
+  const smeltAddRng = await smeltWith({ materials: [{ id: 'dragon_scale', qty: 2 }] });
+  check('后台改池外区间后，补缀区间同步（双钓 3~8 → 6~7）且补出的数值落在新区间',
+    smeltAddRng.status === 200 && smeltAddRng.data.extraType === 'double' && smeltAddRng.data.extraOk &&
+    JSON.stringify(smeltAddRng.data.ranges.add) === JSON.stringify([6, 7]) &&
+    smeltAddRng.data.item.affixes.every(a => a.type !== 'double' || (a.value >= 6 && a.value <= 7)),
+    JSON.stringify({ range: smeltAddRng.data.ranges && smeltAddRng.data.ranges.add, affs: smeltAddRng.data.item && smeltAddRng.data.item.affixes }));
+  await POST(BASE + '/api/admin/component/config', { token: TOKA, extraAffixRanges: {} });
+
+  // 服务端执行：补一条**主件池外**的词缀（竹制短竿池 = 钓速/体型；补「双钓」= 池外），
+  // 验证补缀成功、数值落在池外区间 [3,8]、结果词条数 3 条
+  await seed({ [mainComp]: 1, [subComp]: 1, dragon_scale: 4 }, 200000);
+  const smeltAny = await smeltWith({ materials: [{ id: 'dragon_scale', qty: 2 }] });
+  check('补缀可越过底材池边界（补出主件池外的「双钓」词缀）',
+    smeltAny.status === 200 && smeltAny.data.success && smeltAny.data.extraOk && smeltAny.data.extraType === 'double' &&
+    !!smeltAny.data.item && smeltAny.data.item.affixes.some(a => a.type === 'double' && a.extra === true),
+    JSON.stringify(smeltAny.data && { t: smeltAny.data.extraType, affs: smeltAny.data.item && smeltAny.data.item.affixes }));
+  check('池外补缀的数值落在池外区间（双钓 3~8），且响应回传三条词缀各自的区间',
+    !!smeltAny.data.item && smeltAny.data.item.affixes.every(a => a.type !== 'double' || (a.value >= 3 && a.value <= 8)) &&
+    JSON.stringify(smeltAny.data.ranges.add) === JSON.stringify([3, 8]) &&
+    JSON.stringify(smeltAny.data.ranges.sub) === JSON.stringify([8, 14]),
+    JSON.stringify({ add: smeltAny.data.ranges && smeltAny.data.ranges.add, sub: smeltAny.data.ranges && smeltAny.data.ranges.sub }));
+  // 词条数上限突破：稀有件品质上限 2，但补缀后允许到 3
+  const rareMain = D.instanceId('rod_bamboo', 'rare', [{ type: 'speed', value: 12 }, { type: 'size', value: 3 }]);
+  await seed({ [rareMain]: 1, [subComp]: 1, dragon_scale: 4 }, 200000);
+  const smeltCap3 = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: rareMain, subId: subComp, mainAffix: 'speed', subAffix: 'skill', materials: [{ id: 'dragon_scale', qty: 2 }],
+  });
+  check('词条数上限可突破至 3（稀有件品质上限为 2，熔炼后 3 条）',
+    smeltCap3.status === 200 && smeltCap3.data.success && !!smeltCap3.data.item &&
+    smeltCap3.data.item.affixes.length === 3 && smeltCap3.data.item.quality === 'rare',
+    JSON.stringify(smeltCap3.data.item && { q: smeltCap3.data.item.quality, n: smeltCap3.data.item.affixes.length }));
+  // 词条数上限可后台收紧到 2 → 补缀被拒
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, addAffixCap: 2 });
+  await seed({ [mainComp]: 1, [subComp]: 1, dragon_scale: 4 }, 200000);
+  const smeltCap2 = await smeltWith({ materials: [{ id: 'dragon_scale', qty: 2 }] });
+  check('补缀后词条数超过上限（上限收到 2）被拒',
+    smeltCap2.status === 400 && /超过上限|上限/.test(smeltCap2.data.error || ''), JSON.stringify(smeltCap2.data));
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, addAffixCap: 3 });
+
+  // 后台可关闭「副件区间」与「补缀按池外区间」→ 回退旧行为（都看服务器回传的 ranges）
+  const v115Cfg = await POST(BASE + '/api/admin/smelt/config', {
+    token: TOKA, subRangeFromSub: false, addAnyAffix: true, addAffixCap: 3, addAffixExtraRange: false,
+  });
+  check('后台可配置词缀搬移与补缀三项开关',
+    v115Cfg.status === 200 && v115Cfg.data.smeltCfg.subRangeFromSub === false &&
+    v115Cfg.data.smeltCfg.addAnyAffix === true && v115Cfg.data.smeltCfg.addAffixCap === 3 &&
+    v115Cfg.data.smeltCfg.addAffixExtraRange === false, JSON.stringify(v115Cfg.data.smeltCfg));
+  // 关闭「副件区间」：副件选「体型」→ 体型在**主件**池内 → 用主件区间 [-6,4]（不再是副件的 [4,12]）
+  await seed({ [mainComp]: 1, [subComp]: 1 }, 200000);
+  const smeltSubOff = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'size',
+  });
+  check('关闭「副件区间」后回退旧行为（主件池内按主件区间：体型 -6~4 而非副件的 4~12）',
+    smeltSubOff.status === 200 && JSON.stringify(smeltSubOff.data.ranges.sub) === JSON.stringify([-6, 4]),
+    JSON.stringify(smeltSubOff.data.ranges));
+  // 关闭「补缀按池外区间」：补「体型」（在主件池内）→ 用主件区间 [-6,4]（池外的双钓仍用池外区间）
+  await seed({ [mainComp]: 1, [subComp]: 1, rope: 4 }, 200000);
+  const smeltAddOff = await smeltWith({ materials: [{ id: 'rope', qty: 2 }] });
+  check('关闭「补缀按池外区间」后回退旧行为（主件池内按主件区间：体型 -6~4）',
+    smeltAddOff.status === 200 && smeltAddOff.data.extraType === 'size' &&
+    JSON.stringify(smeltAddOff.data.ranges.add) === JSON.stringify([-6, 4]),
+    JSON.stringify({ t: smeltAddOff.data.extraType, r: smeltAddOff.data.ranges && smeltAddOff.data.ranges.add }));
+  await seed({ [mainComp]: 1, [subComp]: 1, dragon_scale: 4 }, 200000);
+  const smeltAddOffOut = await smeltWith({ materials: [{ id: 'dragon_scale', qty: 2 }] });
+  check('关闭「补缀按池外区间」时，池外词缀仍按池外区间（双钓 3~8）',
+    smeltAddOffOut.status === 200 && smeltAddOffOut.data.extraType === 'double' &&
+    JSON.stringify(smeltAddOffOut.data.ranges.add) === JSON.stringify([3, 8]),
+    JSON.stringify(smeltAddOffOut.data.ranges));
+  // 关闭「补缀不受底材池限制」→ 池外词缀不再可补（候选退回主件池内）
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, addAnyAffix: false });
+  await seed({ [mainComp]: 1, [subComp]: 1, dragon_scale: 4 }, 200000);
+  const smeltPoolOnly = await smeltWith({ materials: [{ id: 'dragon_scale', qty: 2 }] });
+  check('关闭「补缀不受底材池限制」后，池外词缀不可补缀（候选退回主件池内）',
+    smeltPoolOnly.status === 400 && /无法补进|池/.test(smeltPoolOnly.data.error || ''), JSON.stringify(smeltPoolOnly.data));
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, subRangeFromSub: true, addAnyAffix: true, addAffixExtraRange: true });
+  check('词缀搬移与补缀开关越界值被拒（addAffixCap 不在 1~6）',
+    (await POST(BASE + '/api/admin/smelt/config', { token: TOKA, addAffixCap: 9 })).status === 400);
+  check('非管理员改 v0.11.5 熔炼开关 403',
+    (await POST(BASE + '/api/admin/smelt/config', { token: TOKP, subRangeFromSub: false })).status === 403);
+  const v115Reset = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, reset: true });
+  check('恢复默认含 v0.11.5 开关（副件区间 / 任意补缀 / 上限 3 / 补缀按池外区间）',
+    v115Reset.status === 200 && v115Reset.data.smeltCfg.subRangeFromSub === true &&
+    v115Reset.data.smeltCfg.addAnyAffix === true && v115Reset.data.smeltCfg.addAffixCap === 3 &&
+    v115Reset.data.smeltCfg.addAffixExtraRange === true, JSON.stringify(v115Reset.data.smeltCfg));
 
   // ==========================================================================
   section('⑦ 钓点地图坐标（后台可改）');

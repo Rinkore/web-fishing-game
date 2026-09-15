@@ -764,6 +764,26 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       check('工坊配置页渲染熔炼参数与材料对照', wsCfgView.base === '50' && wsCfgView.mats >= 7 && wsCfgView.save, JSON.stringify(wsCfgView));
       check('工坊配置页含残片保留参数（每片 10% / 上限 10 片）',
         wsCfgView.retainPer === '10' && wsCfgView.retainMax === '10', JSON.stringify(wsCfgView));
+      // —— v0.11.5：词缀搬移与补缀三项开关（副件区间 / 任意补缀 + 词条数上限 / 补缀按池外区间） ——
+      const wsNewCfg = await pa.evaluate(() => ({
+        subRange: !!(document.getElementById('ws-cfg-subRangeFromSub') || {}).checked,
+        anyAffix: !!(document.getElementById('ws-cfg-addAnyAffix') || {}).checked,
+        cap: (document.getElementById('ws-cfg-addAffixCap') || {}).value,
+        addExtra: !!(document.getElementById('ws-cfg-addAffixExtraRange') || {}).checked,
+      }));
+      check('工坊配置页含 v0.11.5 补缀开关（副件区间 / 任意补缀 / 上限 3 / 补缀池外区间）',
+        wsNewCfg.subRange === true && wsNewCfg.anyAffix === true && wsNewCfg.cap === '3' && wsNewCfg.addExtra === true,
+        JSON.stringify(wsNewCfg));
+      // 改「补缀后词条数上限」为 4 并保存 → 生效
+      await pa.evaluate(() => {
+        document.getElementById('ws-cfg-addAffixCap').value = '4';
+        document.getElementById('ws-cfg-save').click();
+      });
+      const capApplied = await untilGet(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data,
+        d => !!d && !!d.smeltCfg && d.smeltCfg.addAffixCap === 4, 8000);
+      check('补缀词条数上限可后台修改并生效（3 → 4）',
+        !!(capApplied.smeltCfg && capApplied.smeltCfg.addAffixCap === 4), JSON.stringify(capApplied.smeltCfg));
+      await post('/api/admin/smelt/config', { token: adminLogin.data.token, addAffixCap: 3 });   // 还原
       await pa.evaluate(() => {
         document.getElementById('ws-cfg-baseRate').value = '66';
         document.getElementById('ws-cfg-retainMaxRelic').value = '6';

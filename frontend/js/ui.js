@@ -4204,8 +4204,11 @@ window.UI = (function () {
 
   // ---- 工坊 · 熔炼 / 重铸 ----
   // 熔炼：主件 + 副件（**必须同部位**）各选一条词条 → 熔炼成功后主件的词条就是这两条，并重新 roll 数值；
-  //   副件那条若不在主件词缀池内，按「池外词缀区间」取值——等于把副件独有的词缀搬到主件上。
-  //   可选投料：从主件自己的词缀池里再补一条主件没有的词缀（投料越多越容易成功，也越贵）。
+  //   v0.11.5 起**副件连区间一起提供**：副件搬来的词缀按副件自己的底材区间取值（副件本身是突破件、
+  //   该词缀在副件池外时按池外区间）；后台可关掉该行为，回退「主件池内按主件区间」的旧规则。
+  //   可选投料：补一条熔炼结果还没有的词缀——默认**不受主件底材池限制**（可取全部 6 类词缀里没有的那些），
+  //   补缀后词条数上限默认 3（越过品质上限与池长）；补缀词缀默认按**池外（突破）区间**取值，
+  //   与宝匣突破件同一套区间（后台「池外词缀数值区间」改动即时生效）。以上三项都可在后台「⚒ 工坊配置」调整。
   //   可选龙宫宝珠：roll 值改为掷两次取靠近区间边界的那次（与海王遗匣同一规则）。
   //   可选残片保留（v0.11.3，仅海王遗匣产出的神话主件）：投至多 10 片沉船宝匣残片，成功时按概率
   //     （每片 10%，10 片必中）把主件的池外（突破）词缀原值保留到结果上；残片不计入投料 → 不改成功率与花费。
@@ -4298,6 +4301,7 @@ window.UI = (function () {
     const rates = D.smeltRatesOf(load, pearl);
     const gold = D.smeltGoldOf(load, pearl);
     const retain = wsRetainInfo(mainC);
+    const addCap = D.smeltAddAffixCap();
     let error = '';
     if (!mainC) error = '请选择主组件';
     else if (!subC) error = '请选择副组件';
@@ -4309,15 +4313,48 @@ window.UI = (function () {
     else if (load.total > 0) {
       const addable = D.smeltAddableAffixes(mainC.meta.baseId, [wsMainAffix, wsSubAffix]);
       if (addable.indexOf(load.dominant) < 0) {
-        error = '投料对应「' + (D.AFFIX_LABEL[load.dominant] || load.dominant) + '」，但主件词缀池里已没有可补的该类词缀';
+        error = '投料对应「' + (D.AFFIX_LABEL[load.dominant] || load.dominant) + '」，但熔炼结果里已经有这条词缀了';
+      } else if (2 + 1 > addCap) {
+        error = '补缀后词条数会超过上限（' + addCap + ' 条），可在后台「⚒ 工坊配置」调整';
       }
     }
+    // 预览里要点出的三条词缀区间（与服务端掷骰同一份口径，见 data.js 的 smeltRangeOf）
+    const mid = mainC ? mainC.meta.baseId : null, sid = subC ? subC.meta.baseId : null;
+    const extraType = load.total > 0 ? load.dominant : null;
+    const ranges = (mainC && subC) ? {
+      main: wsMainAffix ? D.smeltRangeOf(mid, sid, 'main', wsMainAffix) : null,
+      sub: wsSubAffix ? D.smeltRangeOf(mid, sid, 'sub', wsSubAffix) : null,
+      add: extraType ? D.smeltRangeOf(mid, sid, 'add', extraType) : null,
+    } : null;
     return {
       ok: !error, error: error, main: mainC, sub: subC, materials: mats, load: load,
-      pearl: pearl, rates: rates, gold: gold, extraType: load.total > 0 ? load.dominant : null,
+      pearl: pearl, rates: rates, gold: gold, extraType: extraType, ranges: ranges, addCap: addCap,
       rollBoundary: pearl && (D.getSmeltCfg().pearlRollTwice !== false),
       retain: retain,
     };
+  }
+  // 取值区间的来源说明（与 D.smeltRangeOf 同一套判断，只用于界面上标注「这条词缀按谁的区间 roll」）
+  function wsRangeNote(kind, type) {
+    const cfg = D.getSmeltCfg();
+    const main = D.componentOf(wsMain), sub = D.componentOf(wsSub);
+    const inPool = function (meta) {
+      return !!(meta && (meta.pool || []).some(function (p) { return p.type === type; }));
+    };
+    if (kind === 'sub') {
+      if (cfg.subRangeFromSub !== false) return inPool(sub) ? '副件区间' : '池外区间';
+      return inPool(main) ? '主件区间' : '池外区间';
+    }
+    if (kind === 'add') {
+      if (cfg.addAffixExtraRange !== false) return '池外区间';
+      return inPool(main) ? '主件区间' : '池外区间';
+    }
+    return inPool(main) ? '主件区间' : '池外区间';
+  }
+  // 「词缀：来源区间 +a ~ +b%」一行（熔炼结果预览用）
+  function wsAffixRangeLine(kind, type, range) {
+    if (!type || !range) return '';
+    return '<li>' + esc(D.AFFIX_LABEL[type] || type) + '：<span class="muted">' + esc(wsRangeNote(kind, type)) +
+      '</span> <b>' + esc(rangeText({ min: range[0], max: range[1] })) + '%</b></li>';
   }
   function wsRefreshPreview() {
     const panel = $('ws-preview');
@@ -4326,14 +4363,23 @@ window.UI = (function () {
     const st = S();
     const canGold = (st.player.coins || 0) >= p.gold;
     const go = $('ws-go');
+    // 投料网格：把「这次补不了」的材料（该词缀已经在结果里）标灰，省得靠报错才知道
+    const addableNow = p.main ? D.smeltAddableAffixes(p.main.meta.baseId, [wsMainAffix, wsSubAffix]) : [];
+    document.querySelectorAll('.ws-mat[data-mat]').forEach(function (row) {
+      const aff = row.getAttribute('data-affix');
+      row.classList.toggle('unfit', !!aff && wsMainAffix && wsSubAffix && addableNow.indexOf(aff) < 0);
+    });
     if (!p.ok) {
       panel.innerHTML = '<div class="ws-line err">⚠ ' + esc(p.error) + '</div>';
       if (go) go.disabled = true;
       return;
     }
+    const rr = p.ranges || {};
     const extra = p.extraType
       ? '<div class="ws-line">补缀：<b>' + esc(D.AFFIX_LABEL[p.extraType] || p.extraType) + '</b>（投料 ' + p.load.total +
-        ' 份）· 成功率 <b>' + p.rates.extraRate + '%</b></div>'
+        ' 份）· 成功率 <b>' + p.rates.extraRate + '%</b>' +
+        (rr.add ? ' · ' + esc(wsRangeNote('add', p.extraType)) + ' <b>' + esc(rangeText({ min: rr.add[0], max: rr.add[1] })) + '%</b>' : '') +
+        '</div>'
       : '<div class="ws-line muted">未投料：熔炼后主件只有选中的两条词条</div>';
     // 残片保留：只在主件是海王遗匣神话件（且带池外词缀）时出现
     const rt = p.retain;
@@ -4352,11 +4398,14 @@ window.UI = (function () {
       '<div class="ws-line">花费 <b class="' + (canGold ? '' : 'err') + '">' + p.gold + '💰</b>' +
       (rt.qty > 0 ? ' · 另有 ' + rt.qty + ' 片沉船宝匣残片' : '') +
       (p.pearl ? ' · 已加入龙宫宝珠：' + (p.rollBoundary ? 'roll 两次取靠近区间边界的值' : '（后台已关闭边界取值）') : '') + '</div>' +
-      '<div class="ws-line muted">熔炼后主件词缀：' +
-      [(D.AFFIX_LABEL[wsMainAffix] || wsMainAffix), (D.AFFIX_LABEL[wsSubAffix] || wsSubAffix)]
-        .concat(p.extraType ? [D.AFFIX_LABEL[p.extraType] || p.extraType] : [])
-        .concat(rt.qty > 0 ? rt.affixes.map(function (a) { return D.AFFIX_LABEL[a.type] || a.type; }) : [])
-        .map(function (t) { return esc(t); }).join(' + ') + '（数值重新 roll' + (rt.qty > 0 ? '；池外词缀按原值保留' : '') + '）</div>';
+      '<div class="ws-line muted">熔炼后主件词缀（数值重新 roll' + (rt.qty > 0 ? '；池外词缀按原值保留' : '') + '）：</div>' +
+      '<ul class="ws-res-affs">' +
+      wsAffixRangeLine('main', wsMainAffix, rr.main) +
+      wsAffixRangeLine('sub', wsSubAffix, rr.sub) +
+      wsAffixRangeLine('add', p.extraType, rr.add) +
+      (rt.qty > 0 ? '<li>🛡 ' + rt.affixes.map(function (a) { return esc(D.AFFIX_LABEL[a.type] || a.type); }).join(' + ') +
+        '：<span class="muted">保留原值</span></li>' : '') +
+      '</ul>';
     if (go) go.disabled = false;
   }
   // 打开组件选择子页面（与钓竿配置「装备组件」同一个子页面）
@@ -4441,7 +4490,9 @@ window.UI = (function () {
         : '');
     body.innerHTML =
       '<div class="ws-help">放两件<b>同部位</b>的组件：<b>主件</b>保留、<b>副件</b>熔毁。各选一条词条后熔炼，主件的词条就变成这两条并重新 roll 数值——' +
-      '把副件独有的词缀熔到主件上，是除宝匣之外唯一能跨出词缀池边界的途径。投料可为熔炼后的主件再补一条它还没有的词缀；' +
+      '副件<b>连词缀带区间一起提供</b>（副件那条按副件自己的区间取值），把副件独有的词缀熔到主件上，是除宝匣之外唯一能跨出词缀池边界的途径。' +
+      '投料可为熔炼后的主件再补一条它还没有的词缀（<b>不受该底材词缀池限制</b>，最多补到 ' +
+      Math.max(1, Math.floor(Number(D.getSmeltCfg().addAffixCap) || 3)) + ' 条，数值按<b>池外（突破）区间</b>取值）；' +
       '加入<b>龙宫宝珠</b>可让每个词条 roll 两次、取更靠近区间边界的那次。主件是<b>海王遗匣</b>产出的神话件时，' +
       '还可投入<b>沉船宝匣残片</b>（至多 ' + Math.max(0, Math.floor(Number(D.getSmeltCfg().retainMaxRelic) || 0)) +
       ' 片，每片 ' + (Number(D.getSmeltCfg().retainPerRelic) || 0) + '%）在成功时保留它的池外突破词缀，残片不影响成功率。' +
@@ -4450,14 +4501,15 @@ window.UI = (function () {
       wsCompCardHtml('main', mainC, '点上方按钮打开组件选择窗口（与钓竿配置的「装备组件」同一个子页面）') +
       wsCompCardHtml('sub', subC, mainC ? '副件必须与主件同部位（' + esc(partNameOf(mainC.part)) + '）' : '先选主件，再选同部位的副件') +
       '</div>' +
-      '<h3>🧵 投料（可选）<span class="hint">每种材料对应一个词缀；投料份数最多的那种材料决定要补的词缀</span></h3>' +
+      '<h3>🧵 投料（可选）<span class="hint">每种材料对应一个词缀；投料份数最多的那种材料决定要补的词缀' +
+      '（可补熔炼结果还没有的<b>任意</b>词缀，数值按池外区间取值）</span></h3>' +
       '<div class="ws-mat-grid" id="ws-mats">' + (function () {
         const mats = (st.workshop && st.workshop.materials) || [];
         if (!mats.length) return '<div class="hint">加载中…</div>';
         return mats.map(function (m) {
           const have = st.inventory[m.id] || 0;
           const qty = wsMats[m.id] || 0;
-          return '<label class="ws-mat' + (have <= 0 ? ' none' : '') + '" data-mat="' + esc(m.id) + '">' +
+          return '<label class="ws-mat' + (have <= 0 ? ' none' : '') + '" data-mat="' + esc(m.id) + '" data-affix="' + esc(m.affix || '') + '">' +
             '<span class="wm-name">' + esc(m.name) + '</span>' +
             '<span class="wm-aff">→ ' + esc(m.affixName || m.affix) + '</span>' +
             '<span class="wm-have">持有 ' + have + '</span>' +
@@ -4572,6 +4624,12 @@ window.UI = (function () {
       (d.extraType ? ' · 补缀成功率 ' + d.extraRate + '%' : '') +
       ' · 花费 ' + d.gold + '💰' + (d.pearl ? ' · 使用龙宫宝珠' : '') +
       (d.relics > 0 ? ' · 残片 ' + d.relics + ' 片（保留概率 ' + d.retainChance + '%）' : '') + '</div>' +
+      // 本次熔炼三条词缀各自用的取值区间（副件那条按副件区间 —— v0.11.5 起副件连区间一起提供）
+      (d.ranges && d.ranges.main && d.ranges.sub
+        ? '<div class="hint" style="margin-top:2px">取值区间：主件 ' + esc(rangeText({ min: d.ranges.main[0], max: d.ranges.main[1] })) + '%' +
+          ' · 副件 ' + esc(rangeText({ min: d.ranges.sub[0], max: d.ranges.sub[1] })) + '%' +
+          (d.ranges.add ? ' · 补缀（池外）' + esc(rangeText({ min: d.ranges.add[0], max: d.ranges.add[1] })) + '%' : '') + '</div>'
+        : '') +
       '<div class="cf-actions"><button class="mini primary-mini cr-ok">知道了</button></div></div>';
     overlay.appendChild(box);
     document.body.appendChild(overlay);
@@ -5523,7 +5581,8 @@ window.UI = (function () {
     // 商城/工坊：末位是视图自身 id——fetchMall / fetchWorkshop 完成后用 refreshAll('mall'|'workshop')
     // 触发重绘；少了它就会命中「scope 不在列表内 → 不重绘」，页面永远停在「加载中…」。
     mall: ['assets', 'mall'],
-    workshop: ['assets', 'smeltcfg', 'workshop'],
+    // componentcfg（后台改池外/突破区间）也要重绘：工坊补缀与副件搬词的预览区间都取自它
+    workshop: ['assets', 'smeltcfg', 'componentcfg', 'workshop'],
   };
   // 主区内是否有输入控件正被编辑（数字框 / 文本 / 下拉 / 可编辑元素）
   function mainInputFocused() {
