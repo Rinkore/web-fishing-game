@@ -552,7 +552,13 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
   color: var(--text); border-radius: 8px; padding: 5px 9px; font-size: 12px;
 }
 .ws-aff:hover { border-color: var(--accent2); }
-.ws-aff.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; color: var(--accent); }
+/* 选中的词条：整块填充高亮 —— 原来只改文字颜色，整条词条在几条里并不显眼。
+   边框与光晕在 pixel.css 的按钮主题里统一给（那边对 button 的边框是 !important，写这里盖不住）。 */
+.ws-aff.on { background: var(--accent); color: #042; font-weight: 700; }
+.ws-aff.on .ws-aff-rng { color: rgba(4, 34, 34, .72); font-weight: 600; }
+/* 负值词条（红字）选中时同样整块高亮，别让红字压在青色底上 */
+.ws-aff.on.neg { background: var(--danger); color: #350d0d; }
+.ws-aff.on.neg .ws-aff-rng { color: rgba(53, 13, 13, .72); }
 .ws-aff.neg { color: var(--danger); }
 .ws-aff .ws-aff-rng { color: var(--muted); font-size: 10px; margin-left: 5px; }
 .ws-mat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; margin: 8px 0 12px; }
@@ -589,9 +595,9 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .ws-res-affs { list-style: none; margin: 2px 0 6px; padding: 0; font-size: 13px; }
 .ws-res-affs li { margin-bottom: 2px; }
 .ws-res-affs .muted { color: var(--muted); }
-/* 投料里「这次补不了」的材料（该词缀已经在熔炼结果里）标灰 + 划掉词缀名 */
-.ws-mat.unfit { opacity: .45; }
-.ws-mat.unfit .wm-aff { text-decoration: line-through; }
+/* 投料里「这次补不了」的材料（该词缀已经在熔炼结果里 / 补缀超上限）直接不显示，
+   份数也会一并清掉，见 ui.js 的 wsFitMaterials */
+.ws-mat.hide { display: none; }
 .cr-fail { font-size: 15px; font-weight: 700; color: var(--danger); padding: 12px 0; }
 
 /* ---- 商城（每日限购） ---- */

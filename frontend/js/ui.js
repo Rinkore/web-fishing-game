@@ -686,6 +686,107 @@ window.UI = (function () {
     return parts.join('|');
   }
 
+  // ---- 渔场实况 · 游鱼（装饰动画，无逻辑） ----
+  // 鱼群 = 当前钓点掉落池里的鱼（不在钓点则取当前所选钓场全部钓点），按掉落权重随机，
+  // 每条按自身常见体型缩放；贴图鱼头朝左，向左游不翻转、向右游镜像。
+  // 定时换鱼只挑已经游到画面边上的那条，半路上不换，免得鱼凭空消失。
+  const SCENE_LANES = 4;                       // 同屏游鱼条数
+  const SCENE_LANE_BOTTOM = [4, 11, 19, 27];   // 各条泳道离底百分比（越靠下的泳道越近、越清楚）
+  let scenePool = [];                          // [{ id, weight, px }] 当前可能出现的鱼
+  function scenePickId(e) {                    // 'fish:crucian' → 'crucian'（非鱼返回 ''）
+    const s = e && e.pick;
+    return (typeof s === 'string' && s.slice(0, 5) === 'fish:') ? s.slice(5) : '';
+  }
+  // 常见体型（cm）→ 贴图宽度 px：麦穗鱼 30 出头，巨鲟 70 上下
+  function sceneFishPx(id) {
+    const sz = D.itemOf(id).size;
+    const mid = (Array.isArray(sz) && sz.length >= 2) ? (sz[0] + sz[1]) / 2 : 40;
+    return Math.round(26 + 50 * Math.sqrt(Math.max(0, Math.min(1, mid / 320))));
+  }
+  // 当前实况该出现哪些鱼 + 池子签名（签名变了就重掷，见 patchFishingLive ⑤）
+  function scenePoolOf(st) {
+    const atG = st.player.groundId, atS = st.player.spotId;
+    const gid = atG || st.selected.groundId;
+    const g = gid ? D.GROUNDS.find(function (x) { return x.id === gid; }) : null;
+    const sp = (g && atG) ? (g.spots || []).find(function (x) { return x.id === atS; }) : null;
+    const pools = !g ? [] : (sp ? [sp.pool || []] : (g.spots || []).map(function (x) { return x.pool || []; }));
+    const list = [], at = {};
+    let sig = g ? g.id + (sp ? ':' + sp.id : '') : '';
+    pools.forEach(function (pool) {
+      (pool || []).forEach(function (e) {
+        const id = scenePickId(e), w = Math.max(0, e.weight || 0);
+        sig += '|' + id + ':' + w;
+        if (!id) return;
+        if (at[id] == null) { at[id] = list.length; list.push({ id: id, weight: w, px: sceneFishPx(id) }); }
+        else if (list[at[id]].weight < w) list[at[id]].weight = w;   // 同一条鱼被重复配置时取较大权重
+      });
+    });
+    if (!list.length) {   // 没配掉落池 / 不在任何钓场：回落默认淡水鱼，画面不留空
+      sig = 'default';
+      ['crucian', 'carp', 'white'].forEach(function (id) { list.push({ id: id, weight: 1, px: sceneFishPx(id) }); });
+    }
+    return { sig: sig, list: list };
+  }
+  // 按掉落权重随机取一条鱼（权重全为 0 时退化为等概率）
+  function sceneFishPick() {
+    let total = 0;
+    scenePool.forEach(function (f) { total += f.weight; });
+    if (total <= 0) return scenePool[Math.floor(Math.random() * scenePool.length)];
+    let r = Math.random() * total;
+    for (let i = 0; i < scenePool.length; i++) {
+      r -= scenePool[i].weight;
+      if (r <= 0) return scenePool[i];
+    }
+    return scenePool[scenePool.length - 1];
+  }
+  // 造一条游鱼：鱼种 / 朝向 / 泳道 / 速度都随机。
+  // spread=true 时用负延迟把开局这几条错开（一上来就分布在水里），false 时从画面外游入（换鱼用）。
+  function sceneFishEl(lane, spread) {
+    const f = sceneFishPick();
+    const right = Math.random() < .5;                          // 向右游？
+    const dur = (12 + Math.random() * 8) * (.7 + f.px / 90);   // 大鱼游得慢些
+    const img = el('img', 'px-fish ' + (right ? 'swim-r' : 'swim-l'));
+    img.src = 'assets/fish/' + f.id + '.png';
+    img.alt = '';
+    img.draggable = false;
+    img.setAttribute('data-lane', lane);
+    img.setAttribute('data-fish', f.id);
+    img.style.width = f.px + 'px';
+    img.style.setProperty('--fw', f.px + 'px');                // 出画位置按鱼宽算（见 pixel.css）
+    img.style.setProperty('--fo', (0.58 - lane * 0.08).toFixed(2));  // 越靠下的泳道越近、越清楚
+    img.style.bottom = (SCENE_LANE_BOTTOM[lane] + (Math.random() * 4 - 2)).toFixed(1) + '%';
+    img.style.animationDuration = dur.toFixed(1) + 's';
+    img.style.animationDelay = (spread ? -Math.random() * dur : 0).toFixed(1) + 's';
+    img.onerror = function () { img.style.display = 'none'; };  // 缺贴图时不留破图
+    return img;
+  }
+  // 铺满场景游鱼（首次渲染、换钓点、后台改过掉落池时重掷整批）
+  function fillSceneFish(scene, st, spread) {
+    const p = scenePoolOf(st);
+    scenePool = p.list;
+    scene.setAttribute('data-pool', p.sig);
+    Array.prototype.forEach.call(scene.querySelectorAll('.px-fish'), function (im) { im.remove(); });
+    for (let i = 0; i < SCENE_LANES; i++) scene.appendChild(sceneFishEl(i, spread));
+  }
+  // 换掉一条已经游到画面边上的鱼（露出来的部分不超过自身 2/5，首尾 6% 又正好淡出到看不见）。
+  // 判定量的是实际几何而不是动画进度：进度值与屏幕上真正画出来的位置差着几帧，
+  // 按进度换会在窄面板里把还露着一大截的鱼换掉。
+  function rollSceneFish(scene) {
+    if (!scenePool.length) return;
+    const box = scene.getBoundingClientRect();
+    const fishes = scene.querySelectorAll('.px-fish');
+    const out = [];
+    Array.prototype.forEach.call(fishes, function (im, i) {
+      const r = im.getBoundingClientRect();
+      const vis = Math.min(r.right, box.right) - Math.max(r.left, box.left);   // 与画面重叠的宽度
+      if (vis <= r.width * .4) out.push(i);
+    });
+    if (!out.length) return;
+    const i = out[Math.floor(Math.random() * out.length)];
+    const old = fishes[i];
+    old.parentNode.replaceChild(sceneFishEl(i, false), old);
+  }
+
   function renderFishing() {
     const main = $('main');
     const st = S();
@@ -871,16 +972,14 @@ window.UI = (function () {
     left.setAttribute('data-sig', sig); // 增量刷新靠它判断结构是否变化
     main.appendChild(left);
 
-    // 右：渔场实况（顶部为装饰性垂钓场景：水面/浮漂/游鱼动画，active 时浮漂跳动，无逻辑）
+    // 右：渔场实况（顶部为装饰性垂钓场景：水面 / 钓线 / 浮漂 / 游鱼动画，active 时浮漂跳动，无逻辑）
     const right = el('div', 'panel fish-live');
     right.innerHTML = '<h2>🌊 渔场实况</h2>';
     const scene = el('div', 'px-scene');
     scene.setAttribute('data-active', st.fishing.active ? '1' : '0');
     scene.innerHTML = '<div class="px-scene-water"></div><div class="px-scene-line"></div>' +
-      '<div class="px-scene-bobber"></div>' +
-      '<img class="px-fish px-f1" src="assets/fish/sardine.png" alt="" draggable="false">' +
-      '<img class="px-fish px-f2" src="assets/fish/carp.png" alt="" draggable="false">' +
-      '<img class="px-fish px-f3" src="assets/fish/bass.png" alt="" draggable="false">';
+      '<div class="px-scene-bobber"></div>';
+    fillSceneFish(scene, st, true);   // 游鱼：当前钓点会出现的鱼里随机取（换钓点 / 改掉落池时重掷）
     right.appendChild(scene);
     const atGroundId = st.player.groundId;
     const gNow = atGroundId ? D.GROUNDS.find(function (x) { return x.id === atGroundId; }) : null;
@@ -978,6 +1077,10 @@ window.UI = (function () {
         log.appendChild(el('div', 'hint', '还没有渔获，去抛竿吧。'));
       }
     }
+    // ⑤ 实况场景游鱼：钓点或掉落池变了（换钓点 / 后台改配置）→ 按新池子重掷整批；
+    // 平时只由定时器换单条，所以这里不能无条件重掷，否则每次上鱼鱼都会跳一下。
+    const scene = main.querySelector('.fish-live .px-scene');
+    if (scene && scene.getAttribute('data-pool') !== scenePoolOf(st).sig) fillSceneFish(scene, st, true);
   }
 
   // 背包区块（钓鱼页与商店页共用）
@@ -4387,19 +4490,45 @@ window.UI = (function () {
     return '<li>' + esc(D.AFFIX_LABEL[type] || type) + '：<span class="muted">' + esc(wsRangeNote(kind, type)) +
       '</span> <b>' + esc(rangeText({ min: range[0], max: range[1] })) + '%</b></li>';
   }
+  // 投料区按规则过滤（服务端 smelt 校验的同一套判据，见 data.js 的 smeltAddableAffixes）：
+  //   主副各选一条词条后，熔炼结果就是这两条 → 只有「结果里还没有」的词缀才补得进去，其余材料直接不显示；
+  //   顺带按上限判断（补缀后 2+1 条不得超过 addAffixCap），超限时整个投料区都不可用。
+  //   两条词条没选完时规则未定，仍然全列出来，免得还没选就被藏掉选项。
+  // 被隐藏的材料连同已填份数一起清掉：否则会留下「看不见却仍在投」的份数，到熔炼时才报错。
+  function wsFitMaterials() {
+    const comps = wsComponents();
+    const mainC = comps.find(function (c) { return c.id === wsMain; });
+    const known = !!(mainC && wsMainAffix && wsSubAffix);
+    const addable = known ? D.smeltAddableAffixes(mainC.meta.baseId, [wsMainAffix, wsSubAffix]) : [];
+    const capOk = 2 + 1 <= D.smeltAddAffixCap();
+    const note = $('ws-mats-note');
+    let hidden = 0;
+    document.querySelectorAll('.ws-mat[data-mat]').forEach(function (row) {
+      const aff = row.getAttribute('data-affix');
+      const fit = !known || (capOk && !!aff && addable.indexOf(aff) >= 0);
+      row.classList.toggle('hide', !fit);
+      if (fit) return;
+      hidden++;
+      const id = row.getAttribute('data-mat');
+      if (!wsMats[id]) return;
+      delete wsMats[id];
+      const inp = row.querySelector('.ws-mat-qty');
+      if (inp) inp.value = '0';
+    });
+    if (note) {
+      note.textContent = !known ? ''
+        : (!capOk ? '⚠ 当前补缀上限为 ' + D.smeltAddAffixCap() + ' 条，主副两条词条已占满，本次投料补不进任何词缀（可在后台「⚒ 工坊配置」调整）'
+          : (hidden ? '已按所选词条过滤：只显示这次补得进去的材料（' + hidden + ' 种材料对应的词缀已经在熔炼结果里）' : ''));
+    }
+  }
   function wsRefreshPreview() {
     const panel = $('ws-preview');
     if (!panel) return;
+    wsFitMaterials();                 // 先按规则把补不进去的材料剔掉，再算方案
     const p = wsPlan();
     const st = S();
     const canGold = (st.player.coins || 0) >= p.gold;
     const go = $('ws-go');
-    // 投料网格：把「这次补不了」的材料（该词缀已经在结果里）标灰，省得靠报错才知道
-    const addableNow = p.main ? D.smeltAddableAffixes(p.main.meta.baseId, [wsMainAffix, wsSubAffix]) : [];
-    document.querySelectorAll('.ws-mat[data-mat]').forEach(function (row) {
-      const aff = row.getAttribute('data-affix');
-      row.classList.toggle('unfit', !!aff && wsMainAffix && wsSubAffix && addableNow.indexOf(aff) < 0);
-    });
     if (!p.ok) {
       panel.innerHTML = '<div class="ws-line err">⚠ ' + esc(p.error) + '</div>';
       if (go) go.disabled = true;
@@ -4549,6 +4678,7 @@ window.UI = (function () {
             '<span class="wm-unit">份</span></label>';
         }).join('');
       })() + '</div>' +
+      '<div class="hint" id="ws-mats-note"></div>' +
       '<label class="ws-pearl"><input type="checkbox" id="ws-pearl"' + (wsPearl ? ' checked' : '') + ' /> ' +
       '🐚 加入龙宫宝珠（持有 <span data-have="' + esc(D.SMELT_PEARL) + '">' + (st.inventory[D.SMELT_PEARL] || 0) + '</span>）· roll 两次取靠近区间边界的值</label>' +
       retainRow +
@@ -5710,6 +5840,13 @@ window.UI = (function () {
       const rem = Math.max(0, (st.status.nextAt || 0) - Date.now());
       if (rem > 0 || fbLast > 0) renderView();
       fbLast = rem;
+    }, 1000);
+    // 渔场实况游鱼：每秒看有没有鱼游到画面边上（露不到 1/4 且正在淡出），
+    // 有就换成同钓点掉落池里的另一条 —— 平均几秒换一条，画面保持实时变化且不会半路跳鱼
+    setInterval(function () {
+      if (currentView !== 'fishing') return;
+      const scene = document.querySelector('.fish-live .px-scene');
+      if (scene) rollSceneFish(scene);
     }, 1000);
     let token = null;
     try { token = localStorage.getItem('fishing_token'); } catch (e) {}

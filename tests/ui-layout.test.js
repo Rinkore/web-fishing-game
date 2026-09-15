@@ -293,6 +293,94 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     });
     check('实况区高度受限（不再撑满/挤占下方）', align.ok && align.maxH !== 'none', JSON.stringify(align));
 
+    // —— 渔场实况场景：游鱼必须来自当前钓点掉落池、朝向必须跟游动方向一致、钓线必须落在浮漂上 ——
+    // 回归三处：① 三条写死的贴图（沙丁/鲤鱼/鲈鱼）与所钓钓点无关；② 左右两个方向都在用反的镜像，
+    // 贴图鱼头朝左 => 向右游时看着就是「倒着游」；③ 钓线右端比浮漂偏左约 60px 且带 rotate，错位。
+    const sceneChk = await p1.evaluate(() => {
+      const S = window.Engine.state, G = window.GameData.GROUNDS;
+      const ids = pool => (pool || []).filter(e => /^fish:/.test(e.pick)).map(e => e.pick.slice(5));
+      const g = G.find(x => x.id === S.player.groundId);
+      const sp = g && (g.spots || []).find(x => x.id === S.player.spotId);
+      const scene = document.querySelector('.fish-live .px-scene');
+      const imgs = scene ? Array.from(scene.querySelectorAll('.px-fish')) : [];
+      const line = scene && scene.querySelector('.px-scene-line');
+      const bob = scene && scene.querySelector('.px-scene-bobber');
+      const lb = line && line.getBoundingClientRect(), bb = bob && bob.getBoundingClientRect();
+      const r1 = v => Math.round(v * 10) / 10;
+      return {
+        atSpot: !!sp, poolAttr: scene && scene.getAttribute('data-pool'),
+        allowed: sp ? ids(sp.pool) : (g ? [].concat.apply([], (g.spots || []).map(x => ids(x.pool))) : []),
+        fish: imgs.map(im => {
+          const anim = im.getAnimations()[0];
+          const kf = (anim && anim.effect) ? anim.effect.getKeyframes() : [];
+          return {
+            id: im.dataset.fish, lane: im.dataset.lane, cls: im.className,
+            w: Math.round(im.getBoundingClientRect().width),
+            tf: kf.map(k => k.transform).filter(Boolean),
+            left: kf.map(k => k.left).filter(Boolean),
+          };
+        }),
+        line: lb && { right: r1(lb.right), bottom: r1(lb.bottom) },
+        bob: bb && { cx: r1(bb.left + bb.width / 2), top: r1(bb.top) },
+      };
+    });
+    check('实况游鱼都在当前钓点掉落池里', sceneChk.atSpot && !!sceneChk.poolAttr && sceneChk.allowed.length > 3 &&
+      sceneChk.fish.length === 4 && sceneChk.fish.every(f => sceneChk.allowed.indexOf(f.id) >= 0),
+      JSON.stringify({ poolAttr: !!sceneChk.poolAttr, allowed: sceneChk.allowed.length, fish: sceneChk.fish.map(f => f.id) }));
+    // 朝向＝游动方向：贴图鱼头朝左，所以向右游的每一帧都必须是 scaleX(-1)、向左游必须是 scaleX(1)。
+    // 两层证据：① 关键帧——镜像符号与类名一致，且起止位置一端是 100%（右侧画外）；
+    // ② 行为——手动把动画时间轴拨到 25%/75% 量同一条鱼的实际位移方向（不依赖动画时钟是否在走，
+    //    并行跑测试时页面被遮挡、动画时钟会停）。
+    const kfOk = f => {
+      const right = /swim-r/.test(f.cls);
+      const tfOk = f.tf.length >= 2 && f.tf.every(t => {
+        const m = /^matrix\((-?[\d.]+)/.exec(t) || /^scaleX\((-?[\d.]+)\)/.exec(t);
+        return !!m && (parseFloat(m[1]) < 0) === right;
+      });
+      const a = f.left[0], b = f.left[1];
+      return tfOk && (right ? (a !== '100%' && b === '100%') : (a === '100%' && b !== '100%'));
+    };
+    const moveChk = await p1.evaluate(() => {
+      const scene = document.querySelector('.fish-live .px-scene');
+      return Array.from(scene.querySelectorAll('.px-fish')).map(im => {
+        try {
+          const a = im.getAnimations()[0];
+          const tm = (a && a.effect) ? a.effect.getTiming() : null;
+          const dur = tm ? Number(tm.duration) : 0;
+          if (!dur) return { id: im.dataset.fish };
+          // 开局几条鱼用负延迟错开（animation-delay 为负），currentTime 是「本地时间」，
+          // 要加上 delay 才落在有效进度上，否则会 seek 到动画还没开始的阶段、量到位移假象。
+          const delay = Number(tm.delay) || 0;
+          const keep = Number(a.currentTime) || 0;
+          a.currentTime = delay + dur * .25;
+          const x1 = im.getBoundingClientRect().left;
+          a.currentTime = delay + dur * .75;
+          const x2 = im.getBoundingClientRect().left;
+          const cs = getComputedStyle(im);
+          const m = /^matrix\((-?[\d.]+)/.exec(cs.transform) || /^scaleX\((-?[\d.]+)\)/.exec(cs.transform);
+          a.currentTime = keep;                       // 拨回去，别把实况画面留在半路上
+          return { id: im.dataset.fish, dx: Math.round(x2 - x1), sx: m ? parseFloat(m[1]) : null };
+        } catch (e) { return { id: im.dataset.fish, err: String(e.message) }; }
+      });
+    });
+    // ② 行为证据：把时间轴拨到 25%/75% 量同一条鱼的实际位移方向。9 路并行跑时页面被遮挡、
+    //    动画时间轴会停摆，seek 未必真的作用到渲染上（位移量会是 0 或几像素的噪声），
+    //    所以只采信「位移量 ≥ 画面宽 1/10」的样本；一个可用样本都没有时只由关键帧兜底。
+    const sceneW = await p1.evaluate(() => document.querySelector('.px-scene').getBoundingClientRect().width);
+    const usable = moveChk.filter(f => f.sx != null && f.dx != null && Math.abs(f.dx) >= sceneW * .1);
+    check('实况游鱼朝向与游动方向一致（不再倒着游）',
+      sceneChk.fish.every(kfOk) && (usable.length === 0 || usable.every(f => (f.sx < 0) === (f.dx > 0))),
+      JSON.stringify({ kf: sceneChk.fish.map(f => f.cls), move: moveChk }));
+    check('实况游鱼按泳道分层、按体型缩放', sceneChk.fish.map(f => f.lane).join(',') === '0,1,2,3' &&
+      sceneChk.fish.every(f => f.w >= 26 && f.w <= 76),
+      JSON.stringify(sceneChk.fish.map(f => f.lane + ':' + f.id + ':' + f.w)));
+    check('钓线右端落在浮漂中心（不再错位）',
+      !!sceneChk.line && !!sceneChk.bob && Math.abs(sceneChk.line.right - sceneChk.bob.cx) <= 2,
+      JSON.stringify({ line: sceneChk.line, bob: sceneChk.bob }));
+    // 钓线要比漂尾低一点（重叠），浮漂上下跳动 ±4px 时才不会跟钓线断开
+    const overlap = sceneChk.line && sceneChk.bob ? sceneChk.line.bottom - sceneChk.bob.top : -1;
+    check('钓线接到漂尾（浮漂跳动时也不脱开）', overlap >= 1 && overlap <= 12, '重叠 ' + overlap + 'px');
+
     // —— 系统商店 ——
     await clickNav(p1, '系统商店');
     // 商店卡片由 fetchShop 异步填充：并行负载下点击返回时数据可能刚到一半，轮询到再断言
@@ -1908,6 +1996,49 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
         JSON.stringify(wsRng.rows));
       check('预览的副件区间取自副件底材（技巧 8~14，而非主件的池外 2~6）',
         wsRng.rows.some(t => /技巧/.test(t) && /\+8 ~ \+14%/.test(t)), JSON.stringify(wsRng.rows));
+      // —— v0.11.8：词条整块填充高亮 + 投料只列「这次补得进去」的材料（服务端 smelt 校验的同一套判据） ——
+      const wsFit = await p1.evaluate(() => {
+        const shown = id => {
+          const row = document.querySelector('.ws-mat[data-mat="' + id + '"]');
+          return !!row && !row.classList.contains('hide');
+        };
+        const inp = document.querySelector('.ws-mat-qty[data-mat="rope"]');
+        inp.value = '2';
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        return {
+          rope: shown('rope'),        // 耐磨绳 → 体型：结果里没有，可补 → 该显示
+          lure: shown('lure'),        // 反光假饵 → 技巧：副件选中的词缀已在结果里 → 该隐藏
+          tide: shown('tide_sand'),   // 潮汐砂 → 钓速：主件选中的词缀已在结果里 → 该隐藏
+          qty: inp.value,
+          note: (document.getElementById('ws-mats-note') || {}).textContent || '',
+        };
+      });
+      check('投料只显示这次补得进去的材料（结果里已有的词缀不列出来）',
+        wsFit.rope === true && wsFit.lure === false && wsFit.tide === false && wsFit.qty === '2' && /只显示/.test(wsFit.note),
+        JSON.stringify(wsFit));
+      // 改选主件词条 → 体型进了结果：该材料行被隐藏，已填份数一并清掉（否则是「看不见却仍在投」）
+      await p1.click('.ws-aff[data-which="main"][data-type="size"]');
+      const wsFit2 = await p1.evaluate(() => {
+        const row = document.querySelector('.ws-mat[data-mat="rope"]');
+        return {
+          hidden: row.classList.contains('hide'),
+          qty: document.querySelector('.ws-mat-qty[data-mat="rope"]').value,
+          prev: (document.getElementById('ws-preview') || {}).textContent || '',
+        };
+      });
+      check('词条改选后该材料被隐藏且份数清零（不再计入投料）',
+        wsFit2.hidden === true && wsFit2.qty === '0' && /未投料/.test(wsFit2.prev), JSON.stringify(wsFit2));
+      await p1.click('.ws-aff[data-which="main"][data-type="speed"]');   // 还原主件词条，后续断言照旧
+      const wsPill = await p1.evaluate(() => {
+        const cs = getComputedStyle(document.querySelector('.ws-aff[data-which="main"][data-type="speed"]'));
+        return { bg: cs.backgroundColor, color: cs.color, weight: cs.fontWeight };
+      });
+      const lumOf = s => {
+        const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(s || '');
+        return m ? (Number(m[1]) + Number(m[2]) + Number(m[3])) / 3 : 0;
+      };
+      check('选中的词条整块填充高亮（亮底 + 深色字，不再只是文字变色）',
+        lumOf(wsPill.bg) > 90 && lumOf(wsPill.color) < 90 && Number(wsPill.weight) >= 700, JSON.stringify(wsPill));
       // 投料：补一条主件池外的词缀（龙鳞碎屑 → 双钓），预览应标出「池外区间」并按池外区间取值
       const wsAddPrev = await p1.evaluate(async () => {
         const inp = document.querySelector('.ws-mat-qty[data-mat="dragon_scale"]');

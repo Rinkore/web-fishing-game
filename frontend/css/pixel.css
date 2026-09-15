@@ -90,10 +90,13 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
   transform: translateY(3px) !important;
   box-shadow: 0 1px 0 var(--px-shadow), inset 0 2px 0 rgba(255, 255, 255, .08) !important;
 }
-.spot-btn.on, .inv-cat.on, .bf-cat.on, .auth-tabs button.active {
+.spot-btn.on, .inv-cat.on, .bf-cat.on, .auth-tabs button.active, .ws-aff.on {
   border-color: var(--accent) !important;
   box-shadow: 0 4px 0 rgba(0, 0, 0, .5), 0 0 12px rgba(52, 224, 192, .35) !important;
 }
+/* 熔炼词条：选中态是整块填充（背景色在 style.css），边框/光晕在这里才能盖住上面的 !important；
+   负值词条换成红块，一眼能看出这条是减益 */
+.ws-aff.on.neg { border-color: var(--danger) !important; box-shadow: 0 4px 0 rgba(0, 0, 0, .5), 0 0 12px rgba(248, 113, 113, .35) !important; }
 .primary, .auth-submit, #auth-submit {
   border-color: #1e8a74 !important;
 }
@@ -224,6 +227,11 @@ input:disabled, select:disabled, textarea:disabled { color: var(--px-input-off) 
   border: 3px solid var(--px-line); border-radius: 4px; overflow: hidden;
   background: linear-gradient(180deg, #16385f 0%, #123055 45%, #0c2340 100%);
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, .08), 4px 4px 0 var(--px-shadow);
+  /* 浮漂锚点：浮漂、钓线右端、水花全都由它推算 —— 三者各写各的时候就会「钓线浮漂错位」 */
+  --bob-x: 62%;       /* 浮漂左边距 */
+  --bob-bottom: 51%;  /* 漂身离底高度：水面线在 62%，白色漂尾正好露在水面之上 */
+  --bob-w: 20px;
+  --bob-h: 26px;
 }
 .px-scene-water {
   position: absolute; left: 0; right: 0; bottom: 0; height: 62%;
@@ -233,7 +241,8 @@ input:disabled, select:disabled, textarea:disabled { color: var(--px-input-off) 
   animation: px-waves 5.5s linear infinite;
 }
 .px-scene-bobber {
-  position: absolute; left: 68%; bottom: 44%; width: 20px; height: 26px;
+  position: absolute; left: var(--bob-x); bottom: var(--bob-bottom);
+  width: var(--bob-w); height: var(--bob-h);
   animation: px-bob-idle 3s ease-in-out infinite;
   opacity: .55;
 }
@@ -255,15 +264,21 @@ input:disabled, select:disabled, textarea:disabled { color: var(--px-input-off) 
   30% { transform: translateY(-4px); }
   60% { transform: translateY(1px) rotate(6deg); }
 }
-.px-scene[data-active="1"] .px-scene-line {
-  position: absolute; left: 12%; top: 8%; width: 46%; height: 40%;
-  border-left: 3px solid rgba(240, 246, 250, .65);
-  border-bottom: 3px solid rgba(240, 246, 250, .65);
-  border-radius: 0 0 0 60%;
-  transform: rotate(8deg);
+/* 钓线：从竿梢（左上）落到浮漂顶端。右端落在漂身中心的 x 上、并压到漂尾里 6px，
+   浮漂上下跳动时钓线也不会跟它脱开（之前是各写各的 left/width + rotate，必然错位）。 */
+.px-scene-line {
+  position: absolute; left: 8%; top: 12px;
+  right: calc(100% - var(--bob-x) - var(--bob-w) / 2);
+  bottom: calc(var(--bob-bottom) + var(--bob-h) - 6px);
+  border-left: 3px solid rgba(240, 246, 250, .5);
+  border-bottom: 3px solid rgba(240, 246, 250, .5);
+  border-radius: 0 0 0 22px;
+  opacity: .55;
 }
-.px-scene[data-active="1"]::after { /* 鱼影咬钩水花 */
-  content: ''; position: absolute; left: 66%; bottom: 38%; width: 30px; height: 8px;
+.px-scene[data-active="1"] .px-scene-line { border-color: rgba(240, 246, 250, .75); opacity: 1; }
+.px-scene[data-active="1"]::after { /* 浮漂处的水花：与浮漂同锚点 */
+  content: ''; position: absolute; left: calc(var(--bob-x) - 5px); bottom: calc(var(--bob-bottom) + 14px);
+  width: 30px; height: 8px;
   background: radial-gradient(6px 3px at 30% 60%, rgba(216, 236, 248, .8), transparent),
               radial-gradient(6px 3px at 70% 40%, rgba(216, 236, 248, .6), transparent);
   animation: px-splash 2.2s ease-in-out infinite;
@@ -272,20 +287,30 @@ input:disabled, select:disabled, textarea:disabled { color: var(--px-input-off) 
   0%, 55%, 100% { opacity: 0; transform: scale(.6); }
   65% { opacity: 1; transform: scale(1); }
 }
+/* 游鱼：鱼种 / 泳道深浅 / 宽度 / 速度全部由 ui.js 内联给出（按钓点掉落池随机），
+   这里只管朝向与出画位置 —— 贴图鱼头朝左，所以向左游保持原样、向右游镜像，
+   朝向永远与游动方向一致（原先两个方向都在用反的镜像，看着就是「倒着游」）。
+   --fw = 该条鱼的宽度、--fo = 该条鱼的深浅透明度，由 ui.js 内联给出：
+   出画位置按鱼宽算（大鱼在窄面板里也要能整条游出画面），首尾 6% 里淡入淡出，
+   所以「只在鱼游到画面边上时换鱼」的定时器换鱼时不会看到鱼半路消失。 */
 .px-fish {
-  position: absolute; width: 56px; height: 32px; object-fit: contain;
+  position: absolute; height: auto;
   image-rendering: pixelated; opacity: .5; filter: brightness(.55);
   pointer-events: none;
 }
-.px-f1 { bottom: 12%; animation: px-swim-by 14s linear infinite; }
-.px-f2 { bottom: 26%; animation: px-swim-by 21s linear infinite; animation-delay: -8s; width: 44px; }
-.px-f3 { bottom: 5%; animation: px-swim-by 18s linear infinite; animation-delay: -13s; width: 64px; opacity: .35; }
-@keyframes px-swim-by {
-  from { left: -12%; transform: scaleX(1); }
-  49% { transform: scaleX(1); }
-  50% { left: 104%; transform: scaleX(-1); }
-  99% { transform: scaleX(-1); }
-  to { left: -12%; transform: scaleX(1); }
+.px-fish.swim-l { animation: px-swim-left linear infinite; }
+.px-fish.swim-r { animation: px-swim-right linear infinite; }
+@keyframes px-swim-left {
+  from { left: 100%; transform: scaleX(1); opacity: 0; }
+  6% { opacity: var(--fo); }
+  94% { opacity: var(--fo); }
+  to { left: calc(0% - var(--fw)); transform: scaleX(1); opacity: 0; }
+}
+@keyframes px-swim-right {
+  from { left: calc(0% - var(--fw)); transform: scaleX(-1); opacity: 0; }
+  6% { opacity: var(--fo); }
+  94% { opacity: var(--fo); }
+  to { left: 100%; transform: scaleX(-1); opacity: 0; }
 }
 
 /* ---------- 渔获日志 / 记录 / 列表行 ---------- */
