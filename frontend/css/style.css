@@ -47,6 +47,18 @@ body {
 .layout { display: flex; flex: 1; min-height: 0; }
 .sidebar { width: 220px; background: rgba(8, 22, 38, 0.6); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; }
 .nav { display: flex; flex-direction: column; gap: 4px; }
+/* 桌面端：侧边栏高度封顶在视口内，导航区自己滚动。
+   导航项会随版本增加（现在 14 项 + 后台入口），不封顶的话侧栏会把整页撑高、
+   玩家必须滚动整页才能看到底部菜单；封顶后只有导航区滚动，底部「框架占位」提示始终可见。
+   calc 里减去的 64px 是顶栏高度，--banner-h 是顶部横幅把页面下移的量（横幅出现时侧栏可用高度同步减少）。 */
+@media (min-width: 641px) {
+  .sidebar { max-height: calc(100vh - 64px - var(--banner-h, 0px)); }
+  .nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
+  .nav::-webkit-scrollbar { width: 6px; }
+  .nav::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .18); border-radius: 3px; }
+  .nav::-webkit-scrollbar-track { background: transparent; }
+  .side-foot { flex: none; }
+}
 .nav-item {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px;
   background: transparent; border: 1px solid transparent; border-radius: 10px;
@@ -1270,3 +1282,42 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
   .chest-grid { grid-template-columns: 1fr; }
   .chest-bar { font-size: 12px; }
 }
+
+/* ---- 工坊：组件选择卡片 / 重铸对比 ---- */
+.ws-tabs { margin-bottom: 10px; }
+.ws-pick {
+  display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; text-align: left;
+  border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px;
+  background: rgba(255, 255, 255, .03); color: var(--text); font-size: 13px;
+}
+.ws-pick:hover { border-color: var(--accent2); }
+.ws-pick.empty { justify-content: center; color: var(--muted); }
+.ws-pick.chosen { border-style: solid; }
+.ws-pick .ws-pick-icon { width: 34px; height: 24px; object-fit: contain; image-rendering: pixelated; flex: none; }
+.ws-pick .ws-pick-name { font-weight: 700; }
+.ws-pick .ws-pick-meta { color: var(--muted); font-size: 11px; }
+.ws-pick .ws-pick-change { margin-left: auto; color: var(--accent2); font-size: 11px; flex: none; }
+.ws-aff.extra { border-style: dotted; }
+.rc-diff { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 13px; }
+.rc-line { display: flex; align-items: center; gap: 8px; }
+.rc-line .rc-old { color: var(--muted); font-variant-numeric: tabular-nums; }
+.rc-line .rc-arrow { color: var(--muted); }
+.rc-line .rc-new { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rc-line .rc-new.up { color: #34d399; }
+.rc-line .rc-new.down { color: var(--danger); }
+.rc-line .rc-new.same { color: var(--muted); }
+.aff-extra-tag { font-size: 10px; color: var(--accent2); border: 1px solid var(--accent2); border-radius: 6px; padding: 0 4px; }
+
+/* ---- 顶栏状态块（可点击跳转）---- */
+.player-status .meta-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid transparent; border-radius: 9px;
+  padding: 3px 8px; color: inherit; font: inherit; cursor: pointer; transition: .15s;
+}
+.player-status .meta-btn:hover { background: rgba(255, 255, 255, .08); border-color: var(--line); }
+.player-status .meta-btn:active { transform: translateY(1px); }
+.player-status .meta-btn.coins { cursor: default; }
+.player-status .meta-btn.coins:hover { background: transparent; border-color: transparent; }
+/* 未开放的钓点：🔒 图标 + 名字后缀 */
+.px-node .pn-lock { font-size: 15px; line-height: 1; filter: drop-shadow(1px 1px 0 rgba(0,0,0,.6)); }
+.px-node .pn-soon { color: #9fb8cc; font-size: 10px; margin-left: 3px; }

@@ -507,17 +507,38 @@ window.UI = (function () {
           return g ? (g.name + (sp ? '·' + sp.name : '')) : '';
         })()
       : '—';
-    $('player-status').innerHTML =
-      '<span class="dot ' + (p.status === 'fishing' ? 'on' : 'idle') + '"></span>' +
-      '<span class="pname">' + esc(p.name) + '</span>' +
-      '<span class="meta">状态：' + statusText + '</span>' +
-      (castSpeedShort() ? '<span class="meta cast" title="后台基础间隔与全部加成（钓竿词缀 / 钓点增益乘算 / 全服钓速），实时跟随后台设置">🎣 ' + esc(castSpeedShort()) + '</span>' : '') +
-      (biteRateShort() ? '<span class="meta bite" title="当前钓点实时上鱼率：钓点独立配置优先，否则由后台「公式管理」的上钩公式决定">🐟 ' + esc(biteRateShort()) + '</span>' : '') +
-      '<span class="meta">位置：' + esc(loc) + '</span>' +
-      '<span class="meta">在线：' + est.players + ' 人</span>' +
-      // 与服务器的实时连接断了：EventSource 会自动重连，这里只提示，不刷新页面
-      (connOk() ? '' : '<span class="meta conn-off" title="与服务器的实时连接已断开，正在自动重连；期间显示的数据可能不是最新。服务器若已更新，重连后会自动刷新到新版本。">⚠ 连接断开 · 重连中</span>') +
-      '<span class="meta coins">💰 ' + p.coins + '</span>';
+    // 顶栏状态块可点击跳转（判定以**框体**为准：整块都是按钮，点空白也算）
+    //   状态 / 位置 → 钓鱼页；抛竿间隔 → 钓竿配置；在线人数 → 渔场动态；上鱼率 → 公式由后台控制，跳钓鱼页
+    const navTo = function (view, tip) {
+      return { cls: ' meta-btn', tip: tip, view: view };
+    };
+    const chips = [
+      { cls: ' meta-btn', tip: '点击回到钓鱼页', view: 'fishing', html: '<span class="dot ' + (p.status === 'fishing' ? 'on' : 'idle') + '"></span>' +
+        '<span class="pname">' + esc(p.name) + '</span><span class="meta-txt">状态：' + esc(statusText) + '</span>' },
+    ];
+    if (castSpeedShort()) chips.push(Object.assign(navTo('bd', '点击打开钓竿配置（抛竿间隔由钓竿词缀 / 钓点增益 / 全服钓速共同决定）'), { html: '<span class="meta-txt">🎣 ' + esc(castSpeedShort()) + '</span>' }));
+    if (biteRateShort()) chips.push(Object.assign(navTo('fishing', '上鱼率由后台「公式管理」的上钩公式决定；点击回到钓鱼页'), { html: '<span class="meta-txt">🐟 ' + esc(biteRateShort()) + '</span>' }));
+    chips.push(Object.assign(navTo('fishing', '点击回到钓鱼页'), { html: '<span class="meta-txt">位置：' + esc(loc) + '</span>' }));
+    chips.push(Object.assign(navTo('ground', '点击查看渔场动态（各钓场人数与产出）'), { html: '<span class="meta-txt">在线：' + est.players + ' 人</span>' }));
+    if (!connOk()) {
+      chips.push({ cls: ' meta-btn conn-off', tip: '与服务器的实时连接已断开，正在自动重连；期间显示的数据可能不是最新。服务器若已更新，重连后会自动刷新到新版本。', view: '', html: '<span class="meta-txt">⚠ 连接断开 · 重连中</span>' });
+    }
+    chips.push({ cls: ' meta-btn coins', tip: '金币余额', view: '', html: '<span class="meta-txt">💰 ' + p.coins + '</span>' });
+    const status = $('player-status');
+    status.innerHTML = chips.map(function (c) {
+      // 保留原有 .meta 类（顶栏配色与像素主题都挂在它上面），再叠加 .meta-btn 表示可点击
+      const cls = ('meta ' + c.cls).replace(/[ 	]+/g, ' ').trim();
+      return '<button class="' + cls + '" data-view="' + esc(c.view || '') + '" title="' + esc(c.tip || '') + '">' + c.html + '</button>';
+    }).join('');
+    status.querySelectorAll('[data-view]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        const v = b.getAttribute('data-view');
+        if (!v) return;
+        currentView = v;
+        renderNav(); renderView(); loadViewData(v);
+        renderTopbar();   // 选中态与提示随视图更新
+      });
+    });
   }
   // 顶栏在线数用小工具（避免每次手写）
   const est = { get players() { return S().players.length; } };
@@ -650,6 +671,9 @@ window.UI = (function () {
     function chooseSpot(t) {
       const gid = t.getAttribute('data-g');
       const sid = t.getAttribute('data-s');
+      // 未开放的钓场：只提示，不进入选择流程（服务器同样会拒绝）
+      const gT = D.GROUNDS.find(function (x) { return x.id === gid; });
+      if (gT && gT.locked) { toast('「' + gT.name + '」暂未开放' + (gT.openFrom ? '（限时钓场，未到开放时间）' : '（活动钓场）')); return; }
       const atSame = st.fishing.active && st.player.groundId === gid && st.player.spotId === sid;
       if (atSame) {
         E().stopFishing();
@@ -672,11 +696,13 @@ window.UI = (function () {
       const vl = el('div', 'px-region locked', '航线规划中 · 未来版本开放');
       vl.style.left = '55%'; vl.style.top = '90%';
       map.appendChild(vl);
+      // 未开放的钓点统一用 🔒 图标 + 名字后缀（暂未开放）：一眼看出「这里现在钓不了」
       VOYAGE_NODES.forEach(function (n) {
         const node = el('button', 'px-node locked');
         node.style.left = n.pos[0] + '%';
         node.style.top = n.pos[1] + '%';
-        node.innerHTML = '<span class="pn-bob"></span><span class="pn-name">🔒 ' + esc(n.name) + '</span>';
+        node.innerHTML = '<span class="pn-lock">🔒</span><span class="pn-name">' + esc(n.name) +
+          '<span class="pn-soon">（暂未开放）</span></span>';
         node.title = n.tip;
         node.addEventListener('pointerdown', function () { toast('「出海」航线仍在规划中，未来版本开放'); });
         map.appendChild(node);
@@ -699,12 +725,15 @@ window.UI = (function () {
         const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
         const here = st.player.groundId === g.id && st.player.spotId === sp.id;
         const buffed = sp.buffs && sp.buffs.length > 0;
-        const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : ''));
+        // 锁定的钓场（活动场未开窗 / 后台手动锁定）：节点画成 🔒 并标注「暂未开放」，点击只提示
+        const locked = !!g.locked;
+        const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : '') + (locked ? ' locked' : ''));
         node.setAttribute('data-g', g.id);
         node.setAttribute('data-s', sp.id);
         node.style.left = pos[0] + '%';
         node.style.top = pos[1] + '%';
-        node.innerHTML = '<span class="pn-bob"></span><span class="pn-name">' + esc(sp.name) +
+        node.innerHTML = (locked ? '<span class="pn-lock">🔒</span>' : '<span class="pn-bob"></span>') +
+          '<span class="pn-name">' + esc(sp.name) + (locked ? '<span class="pn-soon">（暂未开放）</span>' : '') +
           (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
           // 增益常驻可见（不依赖悬浮提示）：增益钓点名牌下直接列出效果
           (buffed ? '<span class="pn-bufftip">⚡ ' + sp.buffs.map(function (b) {
@@ -926,28 +955,51 @@ window.UI = (function () {
     });
   }
 
-  // 装备面板状态：当前展开的部位 + 面板内筛选/排序（模块级：重绘间保留）
+  // 组件选择子窗口（模块级状态：筛选/排序在重绘间保留）
+  // 两种模式共用同一个子页面：
+  //   equip —— 钓竿配置页「装备组件」：顶部显示当前已装备组件用于对比，卡片操作是「装备 / 出售 / 上架」
+  //   pick  —— 工坊选主件/副件：顶部显示当前已选的组件，卡片操作只有「选择」，可限定部位
   let bdEquipPart = null;
+  let compPickCtx = null;      // pick 模式的上下文 { title, note, part, pickLabel, exclude, getCurrent, onPick }
   let bdEquipFilter = 'all';
+  let bdEquipFilterPart = '';
   let bdEquipSort = 'rarity';
   let bdEquipDir = 'desc';
   const BD_AFFIXES = [['speed', '⚡ 钓速'], ['skill', '🎯 技巧'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓']];
+  function partNameOf(key) {
+    const p = D.ROD_PARTS.find(function (x) { return x.key === key; });
+    return p ? p.name : key;
+  }
+  // 装备子页面：以弹窗形式展示该部位可装备的组件（筛选 / 排序 / 装备）
+  function openBdEquipModal(partKey) { openCompPicker({ mode: 'equip', part: partKey }); }
 
-  // 装备子页面：以弹窗形式展示该部位可装备的组件（筛选 / 排序 / 装备），
-  // 不再占用钓竿配置页下方的整块区域。
-  function openBdEquipModal(partKey) {
-    bdEquipPart = partKey;
-    const part = D.ROD_PARTS.find(function (p) { return p.key === partKey; });
-    if (!part) return;
+  // opts（pick 模式）：{ title, note, part（限定部位，null = 全部部位）, pickLabel, exclude:[id…], getCurrent(), onPick(id) }
+  function openCompPicker(opts) {
+    const o = opts || {};
+    const mode = o.mode === 'pick' ? 'pick' : 'equip';
+    const wantPart = o.part || null;
+    bdEquipPart = wantPart;
+    compPickCtx = (mode === 'pick') ? {
+      title: o.title || '选择组件',
+      note: o.note || '',
+      part: wantPart,
+      quality: o.quality || null,   // 只列出该品质（重铸用：只列宝匣产出的神话件）
+      pickLabel: o.pickLabel || '选择',
+      exclude: o.exclude || [],
+      getCurrent: o.getCurrent || function () { return null; },
+      onPick: o.onPick || function () {},
+    } : null;
     const st = S();
-
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
     const overlay = el('div', 'modal-overlay');
     overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeBdEquipModal(); });
     const box = el('div', 'modal-box shop-modal bd-equip-modal');
-    box.innerHTML = '<div class="modal-head"><span class="modal-title">🎯 装备「' + esc(part.name) + '」组件</span>' +
+    const title = mode === 'pick' ? ('🔧 ' + compPickCtx.title) : ('🎯 装备「' + partNameOf(wantPart) + '」组件');
+    const note = mode === 'pick' ? compPickCtx.note : '装备会从背包取用 1 件（卸下时自动放回）';
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">' + esc(title) + '</span>' +
       '<button class="mini modal-close">✕ 关闭</button></div>' +
-      '<div class="modal-body"><div class="bde-note">装备会从背包取用 1 件（卸下时自动放回）</div><div id="bde-body"></div></div>';
+      '<div class="modal-body">' + (note ? '<div class="bde-note">' + esc(note) + '</div>' : '') +
+      '<div id="bde-body"></div></div>';
     box.querySelector('.modal-close').addEventListener('click', closeBdEquipModal);
     overlay.appendChild(box);
     document.body.appendChild(overlay);
@@ -962,7 +1014,7 @@ window.UI = (function () {
           if (r && r.ok) {
             st.inventory = r.data.inventory; st.player.coins = r.data.coins; st.shop = r.data.shop;
             renderTopbar();
-            if (bdEquipPart) renderBody();
+            if (bdEquipPart || compPickCtx) renderBody();
           }
         });
     }
@@ -971,37 +1023,64 @@ window.UI = (function () {
       const body = box.querySelector('#bde-body');
       if (!body) return;
       body.innerHTML = '';
-      const equipped = D.componentOf(st.bd[part.key] && st.bd[part.key].compId);
-
-      // 顶部：当前已装备组件与属性（便于对比决定是否替换）
-      const cur = el('div', 'bde-current' + (equipped ? '' : ' empty'));
-      if (equipped) {
-        const eqAffs = (equipped.affixes || []).map(function (a) {
-          const rng = affixRangeIn(equipped, a);
+      const pick = compPickCtx;
+      const partKey = pick ? pick.part : bdEquipPart;
+      // 顶部：当前对象（装备模式 = 已装备的组件；选择模式 = 已选中的组件）
+      const currentId = pick ? pick.getCurrent() : (st.bd[partKey] && st.bd[partKey].compId);
+      const cur0 = D.componentOf(currentId);
+      const cur = el('div', 'bde-current' + (cur0 ? '' : ' empty'));
+      if (cur0) {
+        const curAffs = (cur0.affixes || []).map(function (a) {
+          const rng = affixRangeIn(cur0, a);
           return affSpanOpen(a) + esc(affixText(a)) + '</span>' +
             (rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '');
         }).join(' ');
-        cur.innerHTML = '<div class="bec-head"><span class="bec-label">当前已装备</span>' +
-          '<img class="bec-icon" src="assets/item/' + esc(equipped.baseId || '') + '.png" alt="" draggable="false">' +
-          '<b class="' + qualityClass(equipped) + '">' + esc(equipped.name) + '</b>' +
-          itemTag(equipped) +
-          '<span class="inst-meta">' + esc(qualityName(equipped)) + '品质 · ' + equipped.affixes.length + '/' + equipped.maxAffixes + ' 词条</span>' +
-          '<span class="bec-price">' + equipped.price + '💰</span></div>' +
-          '<div class="bec-affs">' + (eqAffs || '<span class="muted">无词条</span>') + '</div>' +
-          '<div class="bec-tip">对比下方组件决定是否替换：装备会消耗背包中的 1 件，被换下的旧组件自动放回背包。</div>';
+        cur.innerHTML = '<div class="bec-head"><span class="bec-label">' + (pick ? '已选' : '当前已装备') + '</span>' +
+          '<img class="bec-icon" src="assets/item/' + esc(cur0.baseId || '') + '.png" alt="" draggable="false">' +
+          '<b class="' + qualityClass(cur0) + '">' + esc(cur0.name) + '</b>' +
+          itemTag(cur0) +
+          '<span class="inst-meta">' + esc(partNameOf(cur0.part)) + ' · ' + esc(qualityName(cur0)) + '品质 · ' + cur0.affixes.length + '/' + cur0.maxAffixes + ' 词条</span>' +
+          '<span class="bec-price">' + cur0.price + '💰</span></div>' +
+          '<div class="bec-affs">' + (curAffs || '<span class="muted">无词条</span>') + '</div>' +
+          '<div class="bec-tip">' + (pick
+            ? '在下方换成其它组件，或直接关闭窗口保持当前选择。'
+            : '对比下方组件决定是否替换：装备会消耗背包中的 1 件，被换下的旧组件自动放回背包。') + '</div>';
       } else {
-        cur.innerHTML = '<div class="bec-head"><span class="bec-label">当前已装备</span><b class="muted">（该栏位为空）</b></div>' +
-          '<div class="bec-tip">下方是该栏位背包中的组件，点「装备」获得词缀加成。</div>';
+        cur.innerHTML = '<div class="bec-head"><span class="bec-label">' + (pick ? '已选' : '当前已装备') + '</span><b class="muted">（' +
+          (pick ? '尚未选择' : '该栏位为空') + '）</b></div>' +
+          '<div class="bec-tip">' + (pick
+            ? '在下方点「' + esc(pick.pickLabel) + '」选定。'
+            : '下方是该栏位背包中的组件，点「装备」获得词缀加成。') + '</div>';
       }
       body.appendChild(cur);
 
       const owned = Object.keys(st.inventory)
-        .map(function (id) { return { c: D.componentOf(id), n: st.inventory[id] }; })
-        .filter(function (o) { return o.c && o.c.part === part.key && o.n > 0; });
-      if (!owned.length) { body.appendChild(el('div', 'hint', '背包暂无该部位的组件。')); return; }
+        .map(function (id) { return { id: id, c: D.componentOf(id), n: st.inventory[id] }; })
+        .filter(function (o2) {
+          if (!o2.c || o2.n <= 0) return false;
+          if (partKey && o2.c.part !== partKey) return false;
+          if (pick && pick.quality && o2.c.quality !== pick.quality) return false;
+          return true;
+        });
+      if (!owned.length) {
+        const qn = pick && pick.quality ? ((D.QUALITY[pick.quality] || {}).name || pick.quality) : '';
+        body.appendChild(el('div', 'hint', pick && pick.quality
+          ? ('背包里没有「' + qn + '」品质的组件。' + qn + '是宝匣专属品质——只有海王遗匣开出来的组件才能重铸。')
+          : (partKey ? ('背包暂无「' + partNameOf(partKey) + '」部位的组件。') : '背包里还没有可选的组件。')));
+        return;
+      }
 
-      // 属性筛选 + 排序控件
       const ctr = el('div', 'bde-controls');
+      // 部位筛选：仅在「未限定部位的选择模式」（工坊选主件）里出现
+      if (pick && !pick.part) {
+        ctr.appendChild(el('span', 'bf-sort-label', '部位'));
+        [['', '全部']].concat(D.ROD_PARTS.map(function (p) { return [p.key, p.name]; })).forEach(function (kv) {
+          const b = el('button', 'bf-cat' + (bdEquipFilterPart === kv[0] ? ' on' : ''), kv[1]);
+          b.addEventListener('click', function () { if (bdEquipFilterPart === kv[0]) return; bdEquipFilterPart = kv[0]; renderBody(); });
+          ctr.appendChild(b);
+        });
+      }
+      // 属性筛选 + 排序控件
       [['all', '全部属性']].concat(BD_AFFIXES).forEach(function (kv) {
         const b = el('button', 'bf-cat' + (bdEquipFilter === kv[0] ? ' on' : ''), kv[1]);
         b.title = '选中词条后，排序自动按该词条的数值排';
@@ -1020,7 +1099,7 @@ window.UI = (function () {
       const affSortName = (function () {
         if (bdEquipFilter === 'all') return '属性值';
         const hit = BD_AFFIXES.find(function (kv) { return kv[0] === bdEquipFilter; });
-        const nm = hit ? hit[1].replace(/^\S+\s*/, '') : '属性值';
+        const nm = hit ? hit[1].replace(/^[^ ]+\s*/, '') : '属性值';
         return nm + '值';
       })();
       [['rarity', '稀有度'], ['price', '价格'], ['affix', affSortName]].forEach(function (kv) {
@@ -1037,53 +1116,66 @@ window.UI = (function () {
       body.appendChild(ctr);
 
       // 组件卡片
-      let list = owned.filter(function (o) { return bdEquipFilter === 'all' || o.c.affixes.some(function (a) { return a.type === bdEquipFilter; }); });
-      const rank = { epic: 3, rare: 2, common: 1 };
-      const affVal = function (o) {
-        if (bdEquipFilter === 'all') return o.c.affixes.reduce(function (s, a) { return s + a.value; }, 0);
-        const a = o.c.affixes.find(function (x) { return x.type === bdEquipFilter; });
+      let list = owned.filter(function (o2) {
+        if (bdEquipFilterPart && o2.c.part !== bdEquipFilterPart) return false;
+        return bdEquipFilter === 'all' || o2.c.affixes.some(function (a) { return a.type === bdEquipFilter; });
+      });
+      const rank = { mythic: 4, epic: 3, rare: 2, common: 1 };
+      const affVal = function (o2) {
+        if (bdEquipFilter === 'all') return o2.c.affixes.reduce(function (s2, a) { return s2 + a.value; }, 0);
+        const a = o2.c.affixes.find(function (x) { return x.type === bdEquipFilter; });
         return a ? a.value : 0;
       };
       list.sort(function (x, y) {
         if (bdEquipSort === 'price') return bdEquipDir === 'desc' ? y.c.price - x.c.price : x.c.price - y.c.price;
         if (bdEquipSort === 'affix') return bdEquipDir === 'desc' ? affVal(y) - affVal(x) : affVal(x) - affVal(y);
-        const d = (rank[y.c.rarity] || 0) - (rank[x.c.rarity] || 0);
+        const d = (rank[y.c.quality] || 0) - (rank[x.c.quality] || 0);
         return (bdEquipDir === 'desc' ? d : -d) || y.c.price - x.c.price;
       });
       const grid2 = el('div', 'bde-grid');
       if (!list.length) {
         grid2.appendChild(el('div', 'hint', '没有符合筛选条件的组件。'));
       } else {
-        list.forEach(function (o) {
-          const c = o.c;
+        list.forEach(function (o2) {
+          const c = o2.c;
           const card = el('div', 'bec-card');
           card.innerHTML =
             '<div class="bec-name"><img class="bec-icon" src="assets/item/' + esc(c.baseId || '') + '.png" alt="" draggable="false">' +
             '<span class="' + qualityClass(c) + '">' + esc(c.name) + itemTag(c) + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
-            '<div class="inst-meta">' + esc(qualityName(c)) + '品质 · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条</div>' +
+            '<div class="inst-meta">' + (partKey ? '' : esc(partNameOf(c.part)) + ' · ') + esc(qualityName(c)) + '品质 · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条</div>' +
             c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + (a.extra ? ' extra' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('') +
-            '<div class="bec-meta">持有 ×' + o.n + '</div>';
+            '<div class="bec-meta">持有 ×' + o2.n + '</div>';
           const acts = el('div', 'bec-acts');
-          const isOn = !!(equipped && equipped.id === c.id);
-          const use = el('button', 'mini primary-mini', isOn ? '已装备' : '装备');
-          if (isOn) { use.disabled = true; use.classList.add('locked'); }
-          use.addEventListener('click', function () {
-            closeBdEquipModal();
-            setPart(part.key, c.id);
-          });
-          acts.appendChild(use);
-          // 直接出售（组件固定价，无需等行情）
-          const sellBtn = el('button', 'mini', '出售 1');
-          sellBtn.title = '按系统固定价出售 1 个（组件不随市场浮动）';
-          sellBtn.addEventListener('click', function () { sellFromEquip(c.id); });
-          acts.appendChild(sellBtn);
-          // 上架：复用市集「上架」子窗口（数量/单价/时长/费率/走势一致）
-          const listBtn = el('button', 'mini', '上架');
-          listBtn.title = '挂到开放市集（与市集「上架」同一子窗口：数量 / 单价 / 时长 / 费率）';
-          listBtn.addEventListener('click', function () {
-            openListModal(c.id, function () { openBdEquipModal(part.key); });
-          });
-          acts.appendChild(listBtn);
+          if (pick) {
+            const excluded = pick.exclude.indexOf(o2.id) >= 0;
+            const isCur = !!cur0 && cur0.id === o2.id;
+            const use = el('button', 'mini primary-mini', isCur ? '已选' : (excluded ? '已被占用' : pick.pickLabel));
+            if (isCur || excluded) { use.disabled = true; use.classList.add('locked'); }
+            use.title = excluded ? '该组件已被另一端选中（同一件组件不能既是主件又是副件）' : '';
+            use.addEventListener('click', function () { pick.onPick(o2.id); closeBdEquipModal(); });
+            acts.appendChild(use);
+          } else {
+            const isOn = !!cur0 && cur0.id === o2.id;
+            const use = el('button', 'mini primary-mini', isOn ? '已装备' : '装备');
+            if (isOn) { use.disabled = true; use.classList.add('locked'); }
+            use.addEventListener('click', function () {
+              closeBdEquipModal();
+              setPart(partKey, o2.id);
+            });
+            acts.appendChild(use);
+            // 直接出售（组件固定价，无需等行情）
+            const sellBtn = el('button', 'mini', '出售 1');
+            sellBtn.title = '按系统固定价出售 1 个（组件不随市场浮动）';
+            sellBtn.addEventListener('click', function () { sellFromEquip(o2.id); });
+            acts.appendChild(sellBtn);
+            // 上架：复用市集「上架」子窗口（数量/单价/时长/费率/走势一致）
+            const listBtn = el('button', 'mini', '上架');
+            listBtn.title = '挂到开放市集（与市集「上架」同一子窗口：数量 / 单价 / 时长 / 费率）';
+            listBtn.addEventListener('click', function () {
+              openListModal(o2.id, function () { openBdEquipModal(partKey); });
+            });
+            acts.appendChild(listBtn);
+          }
           card.appendChild(acts);
           grid2.appendChild(card);
         });
@@ -1093,8 +1185,10 @@ window.UI = (function () {
   }
   function closeBdEquipModal() {
     bdEquipPart = null;
+    compPickCtx = null;
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
   }
+
   // ---- 钓竿存档 / 槽位 ----
   // 被钓竿（当前装备 + 已保存的槽位钓竿）占用的实例件数；背包/交易/市集据此显示锁定标记。
   function rodLockCount(id) { const m = S().rodLocked || {}; return m[id] || 0; }
@@ -3848,18 +3942,20 @@ window.UI = (function () {
     }).catch(function () { toast('网络错误'); });
   }
 
-  // ---- 工坊 · 熔炼 ----
-  // 规则（服务器权威，成功率与花费由后台「⚒ 工坊配置」决定）：
-  //   主件 + 副件 → 各选一条词条 → 熔炼成功后**主件的词条就是选中的这两条**，并重新 roll 数值；
-  //   副件那条若不在主件词缀池内，就按「池外词缀区间」取值——等于把副件独有的词缀搬到主件上。
+  // ---- 工坊 · 熔炼 / 重铸 ----
+  // 熔炼：主件 + 副件（**必须同部位**）各选一条词条 → 熔炼成功后主件的词条就是这两条，并重新 roll 数值；
+  //   副件那条若不在主件词缀池内，按「池外词缀区间」取值——等于把副件独有的词缀搬到主件上。
   //   可选投料：从主件自己的词缀池里再补一条主件没有的词缀（投料越多越容易成功，也越贵）。
   //   可选龙宫宝珠：roll 值改为掷两次取靠近区间边界的那次（与海王遗匣同一规则）。
-  //   熔炼失败：副件与材料被熔毁、金币花掉，主件保持原样。
+  //   失败：副件与材料被熔毁、金币花掉，主件保持原样。
+  // 重铸：把宝匣产出的**神话**组件放进去，用沉船宝匣残片重 roll 全部词条的数值（类型与条数不变）。
+  //   成功率和花费都由后台「⚒ 工坊配置」决定，服务器权威。
+  let wsTab = 'smelt';          // 'smelt' | 'recast'
   let wsMain = '', wsSub = '', wsMainAffix = '', wsSubAffix = '', wsPearl = false;
-  let wsMats = {};      // { 材料id: 份数 }（投料草稿，重绘间保留）
-  let wsError = '';     // 上一次熔炼/预览的错误提示
+  let wsMats = {};              // { 材料id: 份数 }（投料草稿，重绘间保留）
+  let wsRecast = '';            // 重铸选中的组件签名
 
-  // 背包里可作为熔炼素材的组件实例（按签名排序，稳定展示）
+  // 背包里可作为素材的组件实例（按价格降序，稳定展示）
   function wsComponents() {
     const st = S();
     const out = [];
@@ -3873,24 +3969,32 @@ window.UI = (function () {
     });
     return out;
   }
-  // 组件下拉选项：名称（品质 · 词条）＋ 持有数
-  function wsOptionHtml(c) {
-    const affs = c.meta.affixes.map(function (a) { return affixText(a); }).join(' / ');
-    return '<option value="' + esc(c.id) + '">' + esc(c.meta.name) + '（' + esc(c.meta.qualityName) + ' · ' +
-      esc(affs) + '）' + (c.count > 1 ? ' ×' + c.count : '') + '</option>';
-  }
-  // 词条选择：可点选的胶囊（每件组件一张）
-  function wsAffixPickerHtml(comp, which) {
-    if (!comp) return '<div class="hint">先选择组件</div>';
-    const sel = which === 'main' ? wsMainAffix : wsSubAffix;
-    return '<div class="ws-affs">' + comp.meta.affixes.map(function (a) {
+  // 主/副件卡片（点击打开与「装备组件」同一个组件选择子页面）
+  function wsCompCardHtml(which, comp, hint) {
+    const title = which === 'main' ? '主组件（保留）' : '副组件（熔毁）';
+    const icon = which === 'main' ? '🔧' : '🔥';
+    if (!comp) {
+      return '<div class="ws-col"><h3>' + icon + ' ' + title + '</h3>' +
+        '<button class="ws-pick empty" data-pick="' + which + '">＋ 点击选择组件</button>' +
+        '<div class="hint">' + esc(hint) + '</div></div>';
+    }
+    const affs = comp.meta.affixes.map(function (a) {
       const rng = affixRangeIn(comp.meta, a);
       const rtxt = rng ? rangeText({ min: rng[0], max: rng[1] }) : '';
-      return '<button class="ws-aff' + (a.type === sel ? ' on' : '') + (a.value < 0 ? ' neg' : '') +
+      return '<button class="ws-aff' + (a.value < 0 ? ' neg' : '') + (a.extra ? ' extra' : '') +
+        ((which === 'main' ? wsMainAffix : wsSubAffix) === a.type ? ' on' : '') +
         '" data-which="' + which + '" data-type="' + esc(a.type) + '">' + esc(affixText(a)) +
         (rtxt ? '<span class="ws-aff-rng">' + esc(rtxt) + '%</span>' : '') + '</button>';
-    }).join('') + '</div>' +
-      '<div class="hint">' + (which === 'main' ? '点击选择主件保留的词条' : '点击选择从副件搬到主件的词条') + '</div>';
+    }).join('');
+    return '<div class="ws-col"><h3>' + icon + ' ' + title + '</h3>' +
+      '<button class="ws-pick chosen" data-pick="' + which + '">' +
+      '<img class="ws-pick-icon" src="assets/item/' + esc(comp.meta.baseId) + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
+      '<span class="ws-pick-name ' + qualityClass(comp.meta) + '">' + esc(comp.meta.name) + '</span>' +
+      itemTag(comp.meta) +
+      '<span class="ws-pick-meta">' + esc(partNameOf(comp.meta.part)) + ' · ' + esc(comp.meta.qualityName) + ' · 持有 ×' + comp.count + '</span>' +
+      '<span class="ws-pick-change">更换</span></button>' +
+      '<div class="ws-affs">' + affs + '</div>' +
+      '<div class="hint">' + (which === 'main' ? '点击选择主件保留的词条' : '点击选择从副件搬到主件的词条') + '</div></div>';
   }
   function wsPlan() {
     const comps = wsComponents();
@@ -3905,7 +4009,9 @@ window.UI = (function () {
     let error = '';
     if (!mainC) error = '请选择主组件';
     else if (!subC) error = '请选择副组件';
-    else if (!wsMainAffix) error = '请选择主件上要保留的词条';
+    else if (mainC.meta.part !== subC.meta.part) {
+      error = '主件与副件必须是同一部位的组件（当前：' + partNameOf(mainC.meta.part) + ' / ' + partNameOf(subC.meta.part) + '）';
+    } else if (!wsMainAffix) error = '请选择主件上要保留的词条';
     else if (!wsSubAffix) error = '请选择副件上要搬运的词条';
     else if (wsMainAffix === wsSubAffix) error = '主副选中的词条类型不能相同';
     else if (load.total > 0) {
@@ -3926,9 +4032,9 @@ window.UI = (function () {
     const p = wsPlan();
     const st = S();
     const canGold = (st.player.coins || 0) >= p.gold;
+    const go = $('ws-go');
     if (!p.ok) {
       panel.innerHTML = '<div class="ws-line err">⚠ ' + esc(p.error) + '</div>';
-      const go = $('ws-go');
       if (go) go.disabled = true;
       return;
     }
@@ -3947,37 +4053,71 @@ window.UI = (function () {
       [(D.AFFIX_LABEL[wsMainAffix] || wsMainAffix), (D.AFFIX_LABEL[wsSubAffix] || wsSubAffix)]
         .concat(p.extraType ? [D.AFFIX_LABEL[p.extraType] || p.extraType] : [])
         .map(function (t) { return esc(t); }).join(' + ') + '（数值重新 roll）</div>';
-    const go = $('ws-go');
     if (go) go.disabled = false;
+  }
+  // 打开组件选择子页面（与钓竿配置「装备组件」同一个子页面）
+  function wsOpenPicker(which) {
+    const mainC = which === 'sub' ? D.componentOf(wsMain) : null;
+    openCompPicker({
+      mode: 'pick',
+      part: which === 'sub' ? (mainC ? mainC.part : null) : null,
+      title: which === 'main' ? '选择主组件' : ('选择副组件（需与主件同部位：' + (mainC ? partNameOf(mainC.part) : '?') + '）'),
+      note: which === 'main'
+        ? '从背包里挑一件组件作为主件（保留的那件）。可按部位与词条筛选。'
+        : '副件会被熔毁，且必须与主件**同部位**——这里只列出与主件同部位的组件。',
+      pickLabel: which === 'main' ? '选为主件' : '选为副件',
+      exclude: which === 'main' ? [wsSub] : [wsMain],
+      getCurrent: function () { return which === 'main' ? wsMain : wsSub; },
+      onPick: function (id) {
+        if (which === 'main') {
+          const before = D.componentOf(wsMain);
+          const after = D.componentOf(id);
+          wsMain = id; wsMainAffix = '';
+          // 主件换部位后，原副件若不同部位就不再合法：直接清掉，避免提交时才报错
+          if (before && after && before.part !== after.part) { wsSub = ''; wsSubAffix = ''; }
+        } else {
+          wsSub = id; wsSubAffix = '';
+        }
+        renderView();
+      },
+    });
   }
   function renderWorkshop() {
     const main = $('main');
     const st = S();
     main.innerHTML = '';
     const panel = el('div', 'panel wide ws-panel');
-    panel.innerHTML = '<h2>⚒ 工坊 <span class="subtitle">熔炼 · 用副件改写主件的词条</span></h2>' +
-      '<div class="ws-help">放两件组件：<b>主件</b>保留、<b>副件</b>熔毁。各选一条词条后熔炼，主件的词条就变成这两条并重新 roll 数值——' +
-      '把副件独有的词缀熔到主件上，是除宝匣之外唯一能跨出词缀池边界的途径。投料可为熔炼后的主件再补一条它还没有的词缀；' +
-      '加入<b>龙宫宝珠</b>可让每个词条 roll 两次、取更靠近区间边界的那次。失败时副件与材料熔毁、金币花掉，主件保持原样。</div>';
+    panel.innerHTML = '<h2>⚒ 工坊 <span class="subtitle">熔炼 · 用副件改写主件的词条 ｜ 重铸 · 用残片重 roll 宝匣神话件</span></h2>' +
+      '<div class="inv-cats ws-tabs">' +
+      [['smelt', '🔥 熔炼'], ['recast', '♻ 重铸']].map(function (kv) {
+        return '<button class="inv-cat' + (wsTab === kv[0] ? ' on' : '') + '" data-wstab="' + kv[0] + '">' + kv[1] + '</button>';
+      }).join('') + '</div>';
+    const body = el('div', 'ws-body');
+    panel.appendChild(body);
+    main.appendChild(panel);
+    // 页签按钮在 panel 上（body 是它下面的内容容器），绑定要查 panel 而不是 body
+    panel.querySelectorAll('[data-wstab]').forEach(function (b) {
+      b.addEventListener('click', function () { const t = b.getAttribute('data-wstab'); if (t !== wsTab) { wsTab = t; renderView(); } });
+    });
+    if (wsTab === 'recast') return wsRenderRecast(body);
+    wsRenderSmelt(body);
+  }
+  function wsRenderSmelt(body) {
+    const st = S();
     const comps = wsComponents();
-    const mainC = comps.find(function (c) { return c.id === wsMain; }) || null;
-    const subC = comps.find(function (c) { return c.id === wsSub; }) || null;
     if (!comps.length) {
-      panel.appendChild(el('div', 'hint', '背包里还没有可熔炼的组件实例。钓竿组件来自钓鱼掉落、宝匣开箱或市集购买。'));
-      main.appendChild(panel);
+      body.innerHTML = '<div class="ws-help">背包里还没有可熔炼的组件实例。钓竿组件来自钓鱼掉落、宝匣开箱或市集购买。</div>';
       return;
     }
-    const body = el('div', 'ws-body');
+    const mainC = comps.find(function (c) { return c.id === wsMain; }) || null;
+    const subC = comps.find(function (c) { return c.id === wsSub; }) || null;
     body.innerHTML =
+      '<div class="ws-help">放两件<b>同部位</b>的组件：<b>主件</b>保留、<b>副件</b>熔毁。各选一条词条后熔炼，主件的词条就变成这两条并重新 roll 数值——' +
+      '把副件独有的词缀熔到主件上，是除宝匣之外唯一能跨出词缀池边界的途径。投料可为熔炼后的主件再补一条它还没有的词缀；' +
+      '加入<b>龙宫宝珠</b>可让每个词条 roll 两次、取更靠近区间边界的那次。失败时副件与材料熔毁、金币花掉，主件保持原样。</div>' +
       '<div class="ws-grid">' +
-      '<div class="ws-col"><h3>🔧 主组件（保留）</h3>' +
-      '<select class="ipt ws-select" id="ws-main"><option value="">— 选择主组件 —</option>' +
-      comps.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === wsMain ? ' selected' : '') + '>' + wsOptionHtml(c) + '</option>'; }).join('') +
-      '</select><div id="ws-main-affs">' + wsAffixPickerHtml(mainC, 'main') + '</div></div>' +
-      '<div class="ws-col"><h3>🔥 副组件（熔毁）</h3>' +
-      '<select class="ipt ws-select" id="ws-sub"><option value="">— 选择副组件 —</option>' +
-      comps.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === wsSub ? ' selected' : '') + '>' + wsOptionHtml(c) + '</option>'; }).join('') +
-      '</select><div id="ws-sub-affs">' + wsAffixPickerHtml(subC, 'sub') + '</div></div>' +
+      wsCompCardHtml('main', mainC, '点上方按钮打开组件选择窗口（与钓竿配置的「装备组件」同一个子页面）') +
+      wsCompCardHtml('sub', subC, mainC ? '副件必须与主件同部位（' + esc(partNameOf(mainC.part)) + '）' : '先选主件，再选同部位的副件') +
       '</div>' +
       '<h3>🧵 投料（可选）<span class="hint">每种材料对应一个词缀；投料份数最多的那种材料决定要补的词缀</span></h3>' +
       '<div class="ws-mat-grid" id="ws-mats">' + (function () {
@@ -3999,34 +4139,18 @@ window.UI = (function () {
       '🐚 加入龙宫宝珠（持有 ' + (st.inventory[D.SMELT_PEARL] || 0) + '）· roll 两次取靠近区间边界的值</label>' +
       '<div class="ws-preview" id="ws-preview"></div>' +
       '<button class="primary big" id="ws-go">开始熔炼</button>';
-    panel.appendChild(body);
-    main.appendChild(panel);
 
-    // ---- 交互绑定 ----
-    $('ws-main').addEventListener('change', function () {
-      wsMain = this.value; wsMainAffix = '';
-      $('ws-main-affs').innerHTML = wsAffixPickerHtml(comps.find(function (c) { return c.id === wsMain; }) || null, 'main');
-      bindWsAffix($('ws-main-affs'));
-      wsRefreshPreview();
+    body.querySelectorAll('[data-pick]').forEach(function (b) {
+      b.addEventListener('click', function () { wsOpenPicker(b.getAttribute('data-pick')); });
     });
-    $('ws-sub').addEventListener('change', function () {
-      wsSub = this.value; wsSubAffix = '';
-      $('ws-sub-affs').innerHTML = wsAffixPickerHtml(comps.find(function (c) { return c.id === wsSub; }) || null, 'sub');
-      bindWsAffix($('ws-sub-affs'));
-      wsRefreshPreview();
-    });
-    bindWsAffix($('ws-main-affs'));
-    bindWsAffix($('ws-sub-affs'));
-    function bindWsAffix(host) {
-      host.querySelectorAll('.ws-aff').forEach(function (b) {
-        b.addEventListener('click', function () {
-          const which = b.getAttribute('data-which'), type = b.getAttribute('data-type');
-          if (which === 'main') wsMainAffix = type; else wsSubAffix = type;
-          host.querySelectorAll('.ws-aff').forEach(function (x) { x.classList.toggle('on', x === b); });
-          wsRefreshPreview();
-        });
+    body.querySelectorAll('.ws-aff').forEach(function (b) {
+      b.addEventListener('click', function () {
+        const which = b.getAttribute('data-which'), type = b.getAttribute('data-type');
+        if (which === 'main') wsMainAffix = type; else wsSubAffix = type;
+        body.querySelectorAll('.ws-aff[data-which="' + which + '"]').forEach(function (x) { x.classList.toggle('on', x === b); });
+        wsRefreshPreview();
       });
-    }
+    });
     body.querySelectorAll('.ws-mat-qty').forEach(function (inp) {
       inp.addEventListener('input', function () {
         const id = inp.getAttribute('data-mat');
@@ -4092,8 +4216,139 @@ window.UI = (function () {
     const close = function () { overlay.remove(); };
     box.querySelector('.modal-close').addEventListener('click', close);
     box.querySelector('.cr-ok').addEventListener('click', close);
-    // 打开中的箱子：点遮罩关闭
-    void 0;
+  }
+
+  // ---- 工坊 · 重铸 ----
+  // 放一件宝匣产出的神话组件 → 自动列出所需材料（目前只有沉船宝匣残片）→ 重 roll 全部词条数值。
+  function wsRecastInfo() {
+    const ws = S().workshop || {};
+    const r = ws.recast || {};
+    const cfg = D.getSmeltCfg();
+    return {
+      quality: r.quality || D.RECAST_QUALITY,
+      qualityName: r.qualityName || '神话',
+      relicId: r.relicId || 'relic',
+      relicName: r.relicName || '沉船宝匣残片',
+      relicNeed: r.relicNeed != null ? r.relicNeed : (cfg.recastRelic || 0),
+      relicHave: S().inventory[r.relicId || 'relic'] || 0,
+      gold: r.gold != null ? r.gold : (cfg.recastGold || 0),
+      minValue: r.minValue != null ? !!r.minValue : !!cfg.recastMinValue,
+    };
+  }
+  function wsRenderRecast(body) {
+    const st = S();
+    const info = wsRecastInfo();
+    const comp = wsRecast ? D.componentOf(wsRecast) : null;
+    const eligible = comp && D.canRecast(comp) ? comp : null;
+    const enough = info.relicHave >= info.relicNeed && (st.player.coins || 0) >= info.gold;
+    body.innerHTML =
+      '<div class="ws-help">重铸只针对<b>宝匣产出的神话组件</b>（海王遗匣的产出，含突破件）：' +
+      '保持词条类型与条数不变，把<b>全部词条的数值</b>按当前 roll 模型重新掷一遍。' +
+      (info.minValue ? '<b class="ok">当前设置为「至少不比原来差」</b>：每条取新旧里更好的那个。' : '') +
+      '所需材料随组件自动识别，目前只有一种。</div>' +
+      '<div class="ws-grid">' +
+      '<div class="ws-col"><h3>♻ 待重铸组件（' + esc(info.qualityName) + '品质）</h3>' +
+      (eligible
+        ? '<button class="ws-pick chosen" data-recast-pick="1">' +
+          '<img class="ws-pick-icon" src="assets/item/' + esc(eligible.baseId) + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
+          '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
+          '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + ' 词条 · 基准价 ' + eligible.price + '💰</span>' +
+          '<span class="ws-pick-change">更换</span></button>' +
+          '<div class="ws-affs">' + eligible.affixes.map(function (a) {
+            const rng = affixRangeIn(eligible, a);
+            return affSpanOpen(a) + esc(affixText(a)) +
+              (rng ? '<span class="ws-aff-rng">' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%</span>' : '') + '</span>';
+          }).join('') + '</div>'
+        : '<button class="ws-pick empty" data-recast-pick="1">＋ 点击选择组件</button>' +
+          '<div class="hint">只有' + esc(info.qualityName) + '品质（宝匣产出）的组件可以重铸；背包里没有符合条件的组件时会列不出来。</div>') +
+      '</div>' +
+      '<div class="ws-col"><h3>🧾 重铸材料（自动识别）</h3>' +
+      '<div class="ws-mat-grid" id="ws-recast-mats">' +
+      '<label class="ws-mat' + (info.relicHave >= info.relicNeed ? '' : ' none') + '">' +
+      '<span class="wm-name">' + esc(info.relicName) + '</span>' +
+      '<span class="wm-aff">→ 重铸全部词条</span>' +
+      '<span class="wm-have">持有 ' + info.relicHave + '</span>' +
+      '<span class="wm-unit">需要 ' + info.relicNeed + '</span></label>' +
+      (info.gold > 0 ? '<label class="ws-mat' + ((st.player.coins || 0) >= info.gold ? '' : ' none') +
+        '"><span class="wm-name">金币</span><span class="wm-aff">→ 手续费</span>' +
+        '<span class="wm-have">持有 ' + Math.round(st.player.coins || 0) + '</span>' +
+        '<span class="wm-unit">需要 ' + info.gold + '</span></label>' : '') +
+      '</div>' +
+      '<div class="ws-preview">' +
+      '<div class="ws-line">' + (eligible
+        ? (enough ? '<b class="ok">材料充足</b>' : '<b class="err">材料不足</b>') +
+          '：' + esc(info.relicName) + ' ×' + info.relicNeed + (info.gold > 0 ? ' + 💰' + info.gold : '') +
+          ' · 重 roll ' + eligible.affixes.length + ' 条词条的数值'
+        : '<span class="muted">先放入一件待重铸的组件</span>') + '</div>' +
+      '<div class="ws-line muted">重铸不改变品质 / 底材 / 词条类型与条数，也不会失败——只有数值会变。</div>' +
+      '</div>' +
+      '<button class="primary big" id="ws-recast-go"' + (eligible && enough ? '' : ' disabled') + '>开始重铸（' +
+      info.relicNeed + ' 残片' + (info.gold > 0 ? ' + ' + info.gold + '💰' : '') + '）</button>' +
+      '</div></div>';
+    body.querySelectorAll('[data-recast-pick]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        openCompPicker({
+          mode: 'pick', part: null, quality: info.quality,
+          title: '选择要重铸的组件（' + info.qualityName + '）',
+          note: '只列出' + info.qualityName + '品质的组件——目前只有「海王遗匣」的产出（含突破件）符合条件。',
+          pickLabel: '选为重铸件',
+          exclude: [], getCurrent: function () { return wsRecast; },
+          onPick: function (id) { wsRecast = id; renderView(); },
+        });
+      });
+    });
+    if ($('ws-recast-go')) $('ws-recast-go').addEventListener('click', function () { wsDoRecast(); });
+  }
+  function wsDoRecast() {
+    const info = wsRecastInfo();
+    const comp = D.componentOf(wsRecast);
+    if (!comp || !D.canRecast(comp)) { toast('请先选择一件宝匣产出的神话组件'); return; }
+    confirmModal({
+      title: '♻ 确认重铸',
+      okText: '开始重铸（' + info.relicNeed + ' 残片）',
+      html: '重铸 <b>' + esc(comp.name) + '</b>？<br/>消耗 <b>' + esc(info.relicName) + ' ×' + info.relicNeed + '</b>' +
+        (info.gold > 0 ? ' + 💰' + info.gold : '') + '。<br/>' +
+        '全部 ' + comp.affixes.length + ' 条词条会重新掷数值（类型与条数不变）' +
+        (info.minValue ? '，且每条都保证不比原来差' : '') + '。',
+    }).then(function (ok) {
+      if (!ok) return;
+      Promise.resolve(window.Net.recast(wsRecast)).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.data && r.data.error) || '重铸失败'); return; }
+        const st = S();
+        st.player.coins = r.data.coins;
+        st.inventory = r.data.inventory;
+        wsRecast = r.data.id || '';
+        renderTopbar(); renderView();
+        wsShowRecastResult(comp, r.data);
+      }).catch(function () { toast('网络错误'); });
+    });
+  }
+  function wsShowRecastResult(before, d) {
+    const overlay = buildOverlay(function () { overlay.remove(); });
+    const box = el('div', 'modal-box confirm-modal chest-result-modal');
+    const lines = (d.item ? d.item.affixes : []).map(function (a, i) {
+      const b = (before && before.affixes[i]) || { value: null };
+      const up = b.value != null && a.value > b.value;
+      const same = b.value != null && a.value === b.value;
+      return '<div class="rc-line">' + esc(D.AFFIX_LABEL[a.type] || a.type) +
+        '<span class="rc-old">' + (b.value == null ? '—' : (b.value > 0 ? '+' : '') + b.value) + '</span>' +
+        '<span class="rc-arrow">→</span>' +
+        '<span class="rc-new ' + (up ? 'up' : (same ? 'same' : 'down')) + '">' + (a.value > 0 ? '+' : '') + a.value + '</span>' +
+        (a.extra ? '<span class="aff-extra-tag">池外</span>' : '') + '</div>';
+    }).join('');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">♻ 重铸完成</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body">' +
+      (d.item ? chestItemCardHtml(d.item) : '') +
+      '<div class="rc-diff">' + lines + '</div>' +
+      '<div class="hint" style="margin-top:6px">消耗 ' + esc((d.materials && d.materials[0] && d.materials[0].name) || '材料') + ' ×' + d.relicNeed +
+      (d.gold ? ' + 💰' + d.gold : '') + ' · 剩余 ' + (d.materials && d.materials[0] ? d.materials[0].have : '—') + ' 个</div>' +
+      '<div class="cf-actions"><button class="mini primary-mini cr-ok">知道了</button></div></div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const close = function () { overlay.remove(); };
+    box.querySelector('.modal-close').addEventListener('click', close);
+    box.querySelector('.cr-ok').addEventListener('click', close);
   }
 
   // ---- 商城（每日限购）----
@@ -4363,8 +4618,13 @@ window.UI = (function () {
       const top = recs[0];
       const topMeta = itemMeta(top.id);
       const hero = el('div', 'record-hero');
+      // 贴图缩放/偏移由后台配置（默认 175% = 245×147，与 v0.11 起的一致）；
+      // 用 CSS 变量驱动 width/height（而不是 transform: scale），这样放大后卡片会跟着长高、不会压住文字。
+      const rc = S().recordsCfg || { scale: 175, x: 0, y: 0 };
+      // scale 是相对**原始贴图 140×84** 的百分比（默认 175% = 245×147），所以倍数 = scale/100
       hero.innerHTML =
-        '<img class="rh-icon" src="assets/fish/' + esc(top.id) + '.png" alt="" draggable="false">' +
+        '<img class="rh-icon" style="--rh-scale:' + (rc.scale / 100).toFixed(4) +
+        ';--rh-dx:' + (rc.x || 0) + 'px;--rh-dy:' + (rc.y || 0) + 'px" src="assets/fish/' + esc(top.id) + '.png" alt="" draggable="false">' +
         '<div class="rh-crown">👑 全场最大</div>' +
         '<div class="rh-name ' + rarityClass(topMeta.rarity) + '">' + esc(top.name) + '</div>' +
         '<div class="rh-size">' + top.size + '<span class="u">cm</span></div>' +

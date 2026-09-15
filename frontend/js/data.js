@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.11.0';
+  const VERSION = 'v0.11.1';
   const BUILD = '2026-09-15';
 
   // ---- 渔获定义 ----
@@ -675,6 +675,10 @@
     maxMaterials: 20,          // 单次最多投料份数
     maxTypes: 4,               // 单次最多投料种类
     pearlRollTwice: true,      // 龙宫宝珠是否启用「掷两次取边界值」
+    // ---- 重铸（用沉船宝匣残片给宝匣产出的神话件重 roll 全部词条数值）----
+    recastRelic: 10,           // 每次重铸消耗的沉船宝匣残片
+    recastGold: 0,             // 每次重铸消耗的金币（0 = 只收残片）
+    recastMinValue: 0,         // 重铸是否强制「至少不比原来差」：0 = 完全重 roll，1 = 每条取更高值
   };
   let smeltCfg = Object.assign({}, SMELT_DEFAULTS);
   function defaultSmeltCfg() { return Object.assign({}, SMELT_DEFAULTS); }
@@ -744,6 +748,28 @@
     const have = {};
     (currentTypes || []).forEach(function (t) { have[t] = 1; });
     return base.pool.filter(function (p) { return !have[p.type]; }).map(function (p) { return p.type; });
+  }
+
+  // ---- 重铸（海王遗匣产出的神话件）----
+  // 允许重铸的品质：全游戏只有「海王遗匣」产出神话件（后台掉落权重刻意不含 mythic），
+  // 所以神话品质就是「宝匣产出的组件」这一身份标识；工坊熔炼保留主件品质，熔出来的神话件同样可重铸。
+  const RECAST_QUALITY = 'mythic';
+  function canRecast(meta) { return !!(meta && meta.kind === 'component' && meta.quality === RECAST_QUALITY); }
+  // 重铸取值：保持词缀**类型与条数不变**，按当前 roll 模型重新取值
+  // （池内词缀用底材区间，池外词缀用「池外词缀区间」——与突破件生成同一套区间）
+  function recastAffixes(baseId, affixes) {
+    const base = BASE_MAP[baseId];
+    if (!base) return null;
+    const poolTypes = {};
+    base.pool.forEach(function (p) { poolTypes[p.type] = 1; });
+    const keepBetter = !!smeltCfg.recastMinValue; // 开启后「至少不比原来差」：取重 roll 与原值里更好的那个
+    return (affixes || []).map(function (a) {
+      const slot = poolTypes[a.type] ? base.pool.find(function (p) { return p.type === a.type; }) : null;
+      const rng = slot ? affixRangeOf(baseId, slot) : extraAffixRangeOf(a.type);
+      const v = rollAffixValue(rng[0], rng[1], componentCfg.rollModel);
+      // 数值越大越好（负词缀同理：-5 优于 -12），所以「更好」= Math.max
+      return { type: a.type, value: keepBetter ? Math.max(v, a.value) : v };
+    });
   }
 
   // ---- 商城（每日限购）----
@@ -1113,6 +1139,7 @@
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds,
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
+    RECAST_QUALITY: RECAST_QUALITY, canRecast: canRecast, recastAffixes: recastAffixes,
     MALL_DEFAULTS: MALL_DEFAULTS, defaultMallCfg: defaultMallCfg,
     parseRefreshTime: parseRefreshTime, mallCycleOf: mallCycleOf,
     DEFAULT_EXTRA_AFFIX_RANGES: DEFAULT_EXTRA_AFFIX_RANGES, extraAffixRangeOf: extraAffixRangeOf,

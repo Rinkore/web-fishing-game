@@ -146,7 +146,7 @@ let users = {};
 // 默认公式：基础 90% + 「技巧」词缀（技巧是上钩率公式里的一个变量，钩率提示一律不写死在代码里）。
 // 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
 const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null };
 
 // ---- 宝匣（沉船打捞）----
 // 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
@@ -294,6 +294,26 @@ function startUpdateTask(opts) {
   return updateTask;
 }
 
+// ---- 渔获记录贴图（全场最大鱼图标的缩放 / 偏移）----
+// 玩家端「🎁 渔获记录」页顶部那张大贴图：scale 为相对原始尺寸的百分比，x/y 为像素偏移。
+const RECORDS_SCALE_MIN = 50;
+const RECORDS_SCALE_MAX = 500;
+const RECORDS_OFFSET_MIN = -400;
+const RECORDS_OFFSET_MAX = 400;
+const RECORDS_DEFAULTS = { scale: 175, x: 0, y: 0 };  // 175% = v0.11 起的默认大小（原 140×84 → 245×147）
+function recordsCfgOf() {
+  const c = world.recordsCfg || {};
+  const clamp = function (v, lo, hi, dft) {
+    const n = Number(v);
+    return isFinite(n) ? Math.round(Math.min(hi, Math.max(lo, n))) : dft;
+  };
+  return {
+    scale: clamp(c.scale, RECORDS_SCALE_MIN, RECORDS_SCALE_MAX, RECORDS_DEFAULTS.scale),
+    x: clamp(c.x, RECORDS_OFFSET_MIN, RECORDS_OFFSET_MAX, RECORDS_DEFAULTS.x),
+    y: clamp(c.y, RECORDS_OFFSET_MIN, RECORDS_OFFSET_MAX, RECORDS_DEFAULTS.y),
+  };
+}
+
 // ---- 商城（每日限购）----
 // 商品校验上限：避免手改配置/接口把价格与限购写到溢出的量级
 const MALL_PRICE_MAX = 100000000;
@@ -396,12 +416,15 @@ function smeltRoll(range, useBoundary) {
 // 校验一次熔炼请求（不改状态，纯校验 + 计算），返回 { error } 或完整方案
 function planSmelt(rec, d) {
   const cfg = smeltCfgOf();
-  const mainId = String(d.mainId || '');
-  const subId = String(d.subId || '');
-  const mainMeta = D.componentOf(mainId);
-  const subMeta = D.componentOf(subId);
-  if (!mainMeta || !D.isInstance(mainId)) return { error: '主组件必须是已生成的组件实例' };
-  if (!subMeta || !D.isInstance(subId)) return { error: '副组件必须是已生成的组件实例' };
+  const mainRaw = String(d.mainId || '');
+  const subRaw = String(d.subId || '');
+  const mainMeta = D.componentOf(mainRaw);
+  const subMeta = D.componentOf(subRaw);
+  if (!mainMeta || !D.isInstance(mainRaw)) return { error: '主组件必须是已生成的组件实例' };
+  if (!subMeta || !D.isInstance(subRaw)) return { error: '副组件必须是已生成的组件实例' };
+  // 一律用**规范签名**做背包键（客户端可能传来词条顺序不同的等价签名）
+  const mainId = mainMeta.id;
+  const subId = subMeta.id;
   const needMain = mainId === subId ? 2 : 1;
   if (!invHas(rec, mainId, needMain)) {
     const lock = rodLockError(rec, mainId, needMain);
@@ -412,6 +435,10 @@ function planSmelt(rec, d) {
     const lock = rodLockError(rec, subId, 1);
     if (lock) return { error: lock };
     return { error: '背包中没有该副组件' };
+  }
+  // 主副必须是**同类型（同部位）**组件：跨部位熔炼会把竿身的词缀搬到线上，语义与展示都会乱
+  if (mainMeta.part !== subMeta.part) {
+    return { error: '主件与副件必须是同一部位的组件（当前：' + partNameOf(mainMeta.part) + ' / ' + partNameOf(subMeta.part) + '）' };
   }
   const mainAffix = mainMeta.affixes.find(function (a) { return a.type === d.mainAffix; });
   const subAffix = subMeta.affixes.find(function (a) { return a.type === d.subAffix; });
@@ -472,6 +499,41 @@ function planSmelt(rec, d) {
   };
 }
 // 某账号在某档位上的「连续未突破」计数（惰性读取，0 表示没有记录）
+// 部位名（错误提示与界面文案共用）
+function partNameOf(key) {
+  const p = D.ROD_PARTS.find(function (x) { return x.key === key; });
+  return p ? p.name : String(key || '?');
+}
+// ---- 工坊 · 重铸 ----
+// 用「沉船宝匣残片」给**宝匣产出的神话件**重 roll 全部词条数值（词条类型与条数不变）。
+// 只允许神话品质：全游戏只有海王遗匣产出神话件（后台掉落权重刻意不含 mythic），
+// 因此神话品质就是「宝匣产出」这一身份的判据；工坊熔炼保留主件品质，熔出来的神话件同样可重铸。
+// 花费与「是否保底不降级」由后台「⚒ 工坊配置」决定（默认 10 残片 + 0 金币，完全重 roll）。
+function planRecast(rec, id) {
+  const cfg = smeltCfgOf();
+  const meta = D.componentOf(id);
+  if (!meta || !D.isInstance(id)) return { error: '请选择一件已生成的组件' };
+  if (!D.canRecast(meta)) {
+    return { error: '只有宝匣产出的神话组件可以重铸（当前：' + meta.qualityName + '品质）' };
+  }
+  if (!invHas(rec, meta.id, 1)) {
+    const lock = rodLockError(rec, meta.id, 1);
+    return { error: lock || '背包中没有该组件' };
+  }
+  const relicId = 'relic';
+  const relicNeed = Math.max(0, Math.floor(Number(cfg.recastRelic) || 0));
+  const goldNeed = Math.max(0, Math.floor(Number(cfg.recastGold) || 0));
+  const relicHave = invCountOf(rec, relicId);
+  if (relicHave < relicNeed) {
+    return { error: itemName(relicId) + '不足（需 ' + relicNeed + ' 个，当前 ' + relicHave + ' 个）' };
+  }
+  if ((rec.coins || 0) < goldNeed) return { error: '金币不足（需 ' + goldNeed + '，当前 ' + Math.round(rec.coins || 0) + '）' };
+  return {
+    ok: true, cfg: cfg, meta: meta, relicId: relicId, relicNeed: relicNeed, relicHave: relicHave,
+    gold: goldNeed, materials: [{ id: relicId, name: itemName(relicId), need: relicNeed, have: relicHave }],
+  };
+}
+
 function chestPityOf(rec, chestId) {
   return (rec && rec.chestPity && Number(rec.chestPity[chestId])) || 0;
 }
@@ -1777,7 +1839,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
@@ -2790,6 +2852,16 @@ const server = http.createServer(function (req, res) {
       ok: true, cfg: cfg, materials: materials,
       pearl: { id: D.SMELT_PEARL, name: pearlMeta.name, rarity: pearlMeta.rarity },
       affixLabel: D.AFFIX_LABEL, coins: rec.coins || 0,
+      // 重铸：默认只收「沉船宝匣残片」，数量与金币由后台「⚒ 工坊配置」决定；
+      // 客户端据此在放入组件后自动列出所需材料（目前只有残片这一种）。
+      recast: {
+        quality: D.RECAST_QUALITY, qualityName: (D.QUALITY[D.RECAST_QUALITY] || {}).name || D.RECAST_QUALITY,
+        relicId: 'relic', relicName: itemName('relic'),
+        relicNeed: Math.max(0, Math.floor(Number(cfg.recastRelic) || 0)),
+        relicHave: invCountOf(rec, 'relic'),
+        gold: Math.max(0, Math.floor(Number(cfg.recastGold) || 0)),
+        minValue: !!cfg.recastMinValue,
+      },
     });
   }
   // ---- 工坊 · 熔炼：执行（服务器掷骰；失败只损失副件与材料，主件保持原样） ----
@@ -2829,6 +2901,36 @@ const server = http.createServer(function (req, res) {
           pearl: plan.pearl, rollBoundary: useBoundary,
           load: plan.load, extraType: plan.extraType,
           mainId: plan.mainId, subId: plan.subId, item: result,
+          coins: rec.coins, inventory: rec.inventory,
+        });
+      });
+    });
+    return;
+  }
+  // ---- 工坊 · 重铸：用残片重 roll 神话件的全部词条数值（服务器掷骰） ----
+  if (p === '/api/workshop/recast' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const plan = planRecast(rec, d.id);
+        if (plan.error) return apiResp(res, 400, { error: plan.error });
+        const rolled = D.recastAffixes(plan.meta.baseId, plan.meta.affixes);
+        if (!rolled || !rolled.length) return apiResp(res, 400, { error: '该组件没有可重铸的词条' });
+        const before = plan.meta.affixes.map(function (a) { return { type: a.type, value: a.value }; });
+        // 先扣材料与金币，再换件（新旧签名相同时也要走一遍「扣一件、加一件」）
+        invAdd(rec, plan.relicId, -plan.relicNeed);
+        if (plan.gold) rec.coins -= plan.gold;
+        invAdd(rec, plan.meta.id, -1);
+        const newId = D.instanceId(plan.meta.baseId, plan.meta.quality, rolled);
+        invAdd(rec, newId, 1);
+        try { syncActiveRodSlot(rec); } catch (e) {}
+        saveAccount(key);
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        apiResp(res, 200, {
+          ok: true, changed: newId !== plan.meta.id,
+          before: before, item: D.componentOf(newId), id: newId,
+          gold: plan.gold, relicNeed: plan.relicNeed,
+          materials: [{ id: plan.relicId, name: itemName(plan.relicId), need: plan.relicNeed, have: invCountOf(rec, plan.relicId) }],
           coins: rec.coins, inventory: rec.inventory,
         });
       });
@@ -3186,6 +3288,8 @@ const server = http.createServer(function (req, res) {
       chestCfg: chestCfgOf(),
       // 工坊熔炼参数（成功率/花费系数）：工坊页据此展示预览；改动经 smeltcfg 广播同步
       smeltCfg: smeltCfgOf(),
+      // 渔获记录贴图（全场最大鱼图标的缩放 / 偏移）：改动经 recordscfg 广播同步
+      recordsCfg: recordsCfgOf(),
       // 版本更新进行中（60 秒通知横幅）：后连进来的客户端也能看到倒计时
       update: updateStateView(),
     });
@@ -3853,6 +3957,10 @@ const server = http.createServer(function (req, res) {
       // ---- 商城（每日限购）：商品 + 刷新时间 ----
       mallCfg: mallCfgOf(),
       mallDefaults: D.defaultMallCfg(),
+      // ---- 渔获记录贴图（缩放 / 偏移）----
+      recordsCfg: recordsCfgOf(),
+      recordsDefaults: RECORDS_DEFAULTS,
+      recordsLimits: { scaleMin: RECORDS_SCALE_MIN, scaleMax: RECORDS_SCALE_MAX, offsetMin: RECORDS_OFFSET_MIN, offsetMax: RECORDS_OFFSET_MAX },
       // ---- 版本更新：候选 .bat 与当前任务 ----
       updateBats: listBatCandidates(),
       updateState: updateStateView(),
@@ -4462,11 +4570,12 @@ const server = http.createServer(function (req, res) {
         extraRateMax: [0, 100], rateMin: [0, 100], rateMax: [0, 100],
         goldBase: [0, 100000000], goldPerMaterial: [0, 10000000], goldPearl: [0, 100000000],
         maxMaterials: [0, 99], maxTypes: [0, 8],
+        recastRelic: [0, 9999], recastGold: [0, 100000000],
       };
       const LABEL = {
         baseRate: '熔炼基础成功率', failPerMaterial: '每份材料对失败率的影响', extraRatePerMaterial: '每份材料的补缀成功率加成',
         extraRatePearl: '龙宫宝珠的补缀成功率加成', extraRateMax: '补缀成功率上限', rateMin: '熔炼成功率下限', rateMax: '熔炼成功率上限',
-        goldBase: '基础金币花费', goldPerMaterial: '每份材料金币', goldPearl: '龙宫宝珠金币', maxMaterials: '单次最大投料份数', maxTypes: '单次最大投料种类',
+        goldBase: '基础金币花费', goldPerMaterial: '每份材料金币', goldPearl: '龙宫宝珠金币', maxMaterials: '单次最大投料份数', maxTypes: '单次最大投料种类', recastRelic: '重铸所需残片', recastGold: '重铸所需金币',
       };
       const patch = {};
       let err = null;
@@ -4478,6 +4587,7 @@ const server = http.createServer(function (req, res) {
         patch[k] = (k === 'failPerMaterial' || k === 'extraRatePerMaterial') ? Math.round(v * 10) / 10 : Math.round(v);
       });
       if (d.pearlRollTwice != null) patch.pearlRollTwice = !!d.pearlRollTwice;
+      if (d.recastMinValue != null) patch.recastMinValue = (d.recastMinValue === true || d.recastMinValue === 1 || d.recastMinValue === '1') ? 1 : 0;
       if (err) return apiResp(res, 400, { error: err });
       if (d.reset) {
         world.smeltCfg = D.setSmeltCfg(null);
@@ -4492,6 +4602,39 @@ const server = http.createServer(function (req, res) {
       broadcast({ type: 'smeltcfg', smeltCfg: smeltCfgOf() });
       econLog(a.name, '熔炼配置：基础成功率 ' + world.smeltCfg.baseRate + '%');
       apiResp(res, 200, { ok: true, smeltCfg: smeltCfgOf() });
+    });
+    return;
+  }
+  // ---- 渔获记录贴图：全场最大鱼图标的缩放与偏移（玩家端即时生效）----
+  // scale：相对原始贴图的百分比（50 ~ 500，默认 175）；x/y：像素偏移（-400 ~ 400）
+  if (p === '/api/admin/records/config' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      if (d.reset) {
+        world.recordsCfg = null;
+        saveConfig();
+        broadcast({ type: 'recordscfg', recordsCfg: recordsCfgOf() });
+        return apiResp(res, 200, { ok: true, recordsCfg: recordsCfgOf() });
+      }
+      const scale = Number(d.scale);
+      const x = Number(d.x);
+      const y = Number(d.y);
+      if (!isFinite(scale) || scale < RECORDS_SCALE_MIN || scale > RECORDS_SCALE_MAX) {
+        return apiResp(res, 400, { error: '缩放需在 ' + RECORDS_SCALE_MIN + ' - ' + RECORDS_SCALE_MAX + '% 之间' });
+      }
+      if (!isFinite(x) || x < RECORDS_OFFSET_MIN || x > RECORDS_OFFSET_MAX) {
+        return apiResp(res, 400, { error: '横向偏移需在 ' + RECORDS_OFFSET_MIN + ' - ' + RECORDS_OFFSET_MAX + ' px 之间' });
+      }
+      if (!isFinite(y) || y < RECORDS_OFFSET_MIN || y > RECORDS_OFFSET_MAX) {
+        return apiResp(res, 400, { error: '纵向偏移需在 ' + RECORDS_OFFSET_MIN + ' - ' + RECORDS_OFFSET_MAX + ' px 之间' });
+      }
+      world.recordsCfg = { scale: Math.round(scale), x: Math.round(x), y: Math.round(y) };
+      saveConfig();
+      broadcast({ type: 'recordscfg', recordsCfg: recordsCfgOf() });
+      econLog(a.name, '纪录贴图：缩放 ' + world.recordsCfg.scale + '% / 偏移 ' + world.recordsCfg.x + ',' + world.recordsCfg.y);
+      apiResp(res, 200, { ok: true, recordsCfg: recordsCfgOf() });
     });
     return;
   }

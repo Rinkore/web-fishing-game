@@ -276,7 +276,10 @@ function startServer() {
   // ==========================================================================
   section('⑥ 工坊熔炼');
   const mainComp = D.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 12 }, { type: 'size', value: 3 }]);
-  const subComp = D.instanceId('hook_ghost', 'epic', [{ type: 'skill', value: 10 }, { type: 'rare', value: -5 }, { type: 'size', value: 5 }]);
+  // 副件必须与主件**同部位**（v0.11.1 起）：这里用同为「竿身」的龙骨巨竿，它带技巧词缀，
+  // 而竹制短竿的词缀池里没有技巧 → 正好用来验证「把副件独有的词缀搬到主件」的池外取值。
+  const subComp = D.instanceId('rod_dragonbone', 'epic', [{ type: 'skill', value: 10 }, { type: 'size', value: 8 }, { type: 'speed', value: -12 }]);
+  const crossPartComp = D.instanceId('hook_ghost', 'epic', [{ type: 'skill', value: 10 }, { type: 'rare', value: -5 }, { type: 'size', value: 5 }]);
   const ws0 = await GET(BASE + '/api/workshop?token=' + encodeURIComponent(TOKP));
   check('读取工坊参数成功', ws0.status === 200 && !!ws0.data.cfg && Array.isArray(ws0.data.materials), JSON.stringify(ws0.data).slice(0, 100));
   check('材料→词缀对照：潮汐砂=钓速、龙鳞碎屑=双钓、反光假饵=技巧',
@@ -341,6 +344,13 @@ function startServer() {
   check('缺少副件被拒', (await POST(BASE + '/api/workshop/smelt', {
     token: TOKP, mainId: mainComp, subId: D.instanceId('hook_barb', 'common', [{ type: 'size', value: 2 }]), mainAffix: 'speed', subAffix: 'size',
   })).status === 400);
+  // —— v0.11.1：主副必须同部位 ——
+  await seed({ [mainComp]: 1, [subComp]: 1, [crossPartComp]: 1 }, 200000);
+  const crossPart = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mainComp, subId: crossPartComp, mainAffix: 'speed', subAffix: 'skill',
+  });
+  check('跨部位熔炼被拒（主副必须同类型）',
+    crossPart.status === 400 && /同一部位/.test(crossPart.data.error || ''), JSON.stringify(crossPart.data));
   await seed({ [mainComp]: 1, [subComp]: 1 }, 10);
   const smeltPoor = await POST(BASE + '/api/workshop/smelt', { token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill' });
   check('金币不足被拒', smeltPoor.status === 400 && /金币不足/.test(smeltPoor.data.error || ''), JSON.stringify(smeltPoor.data));
@@ -482,6 +492,121 @@ function startServer() {
   }
 
   // ==========================================================================
+  section('⑥b 工坊 · 重铸（沉船宝匣残片重 roll 神话件词条）');
+  {
+    const myth = D.instanceId('rod_bamboo', 'mythic', [{ type: 'speed', value: 9 }, { type: 'size', value: 3 }, { type: 'skill', value: 4 }, { type: 'rare', value: 2 }]);
+    const epicComp = D.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 9 }, { type: 'size', value: 3 }]);
+    await seed({}, 100000);
+    const ws2 = await GET(BASE + '/api/workshop?token=' + encodeURIComponent(TOKP));
+    check('工坊接口下发重铸参数（材料自动识别：只列残片）',
+      !!ws2.data.recast && ws2.data.recast.relicId === 'relic' && ws2.data.recast.relicNeed === 10 && ws2.data.recast.quality === 'mythic',
+      JSON.stringify(ws2.data.recast));
+    check('非神话组件不可重铸', (await (async function () {
+      await seed({ [epicComp]: 1, relic: 50 }, 100000);
+      return POST(BASE + '/api/workshop/recast', { token: TOKP, id: epicComp });
+    })()).status === 400);
+    // 残片不足 → 拒绝
+    await seed({ [myth]: 1, relic: 3 }, 100000);
+    const poor = await POST(BASE + '/api/workshop/recast', { token: TOKP, id: myth });
+    check('残片不足被拒', poor.status === 400 && /残片不足/.test(poor.data.error || ''), JSON.stringify(poor.data));
+    // 正常重铸：词条类型与条数不变、数值重 roll、扣 10 残片
+    await seed({ [myth]: 1, relic: 12 }, 100000);
+    const before = D.componentOf(myth);
+    const rc = await POST(BASE + '/api/workshop/recast', { token: TOKP, id: myth });
+    check('重铸成功', rc.status === 200 && !!rc.data.item, JSON.stringify(rc.data).slice(0, 140));
+    const after = rc.data.item;
+    check('重铸保持品质 / 底材 / 词条类型与条数',
+      after.quality === before.quality && after.baseId === before.baseId &&
+      after.affixes.length === before.affixes.length &&
+      after.affixes.every(function (a, i) { return a.type === before.affixes[i].type; }),
+      JSON.stringify({ before: before.affixes, after: after.affixes }));
+    check('重铸消耗残片（12 → 2）', rc.data.inventory.relic === 2, JSON.stringify(rc.data.inventory));
+    check('重铸消耗旧件、产出新件',
+      rc.data.inventory[myth] === undefined && rc.data.inventory[after.id] === 1, JSON.stringify(rc.data.inventory));
+    check('重铸返回前后对照', Array.isArray(rc.data.before) && rc.data.before.length === before.affixes.length,
+      JSON.stringify(rc.data.before));
+    // 池外词缀仍按池外区间取值（技巧在竹制短竿池外 → 2~6）
+    const skillAff = after.affixes.find(function (a) { return a.type === 'skill'; });
+    check('重铸后池外词缀仍落在池外区间内', !!skillAff && skillAff.value >= 2 && skillAff.value <= 6, JSON.stringify(skillAff));
+    // 后台可改重铸参数
+    check('非管理员改重铸参数 403', (await POST(BASE + '/api/admin/smelt/config', { token: TOKP, recastRelic: 5 })).status === 403);
+    const setRc = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, recastRelic: 4, recastGold: 100, recastMinValue: 1 });
+    check('保存重铸参数（4 残片 + 100 金币 + 保底不降级）',
+      setRc.status === 200 && setRc.data.smeltCfg.recastRelic === 4 && setRc.data.smeltCfg.recastMinValue === 1,
+      JSON.stringify(setRc.data.smeltCfg));
+    const ws3 = await GET(BASE + '/api/workshop?token=' + encodeURIComponent(TOKP));
+    check('玩家端看到新重铸花费', ws3.data.recast.relicNeed === 4 && ws3.data.recast.gold === 100 && ws3.data.recast.minValue === true,
+      JSON.stringify(ws3.data.recast));
+    // 金币不足：先把残片补够（否则会先报残片不足），再把金币压到阈值以下
+    await seed({ [after.id]: 1, relic: 10 }, 50);
+    const gc = await POST(BASE + '/api/workshop/recast', { token: TOKP, id: after.id });
+    check('金币不足时被拒', gc.status === 400 && /金币不足/.test(gc.data.error || ''), JSON.stringify(gc.data));
+    // 恢复默认，避免影响后续用例
+    await POST(BASE + '/api/admin/smelt/config', { token: TOKA, reset: true });
+  }
+
+  // ==========================================================================
+  section('⑥c 渔获纪录贴图：后台可调缩放（≤500%）与 xy 偏移');
+  {
+    const w1 = await GET(BASE + '/api/admin/world?token=' + encodeURIComponent(TOKA));
+    check('默认贴图设置（175% / 0,0）',
+      w1.data.recordsCfg.scale === 175 && w1.data.recordsCfg.x === 0 && w1.data.recordsCfg.y === 0,
+      JSON.stringify(w1.data.recordsCfg));
+    check('缩放上限为 500%', (w1.data.recordsLimits || {}).scaleMax === 500, JSON.stringify(w1.data.recordsLimits));
+    const bad = await POST(BASE + '/api/admin/records/config', { token: TOKA, scale: 900, x: 0, y: 0 });
+    check('超过 500% 被拒', bad.status === 400 && /缩放/.test(bad.data.error || ''), JSON.stringify(bad.data));
+    check('偏移越界被拒', (await POST(BASE + '/api/admin/records/config', { token: TOKA, scale: 200, x: 9999, y: 0 })).status === 400);
+    check('非管理员改贴图设置 403', (await POST(BASE + '/api/admin/records/config', { token: TOKP, scale: 200 })).status === 403);
+    const ok = await POST(BASE + '/api/admin/records/config', { token: TOKA, scale: 320, x: -24, y: 36 });
+    check('保存 320% / -24,36 成功',
+      ok.status === 200 && ok.data.recordsCfg.scale === 320 && ok.data.recordsCfg.x === -24 && ok.data.recordsCfg.y === 36,
+      JSON.stringify(ok.data.recordsCfg));
+    const ver = await GET(BASE + '/api/version');
+    check('贴图设置随 /api/version 下发（玩家端即时生效）',
+      ver.data.recordsCfg && ver.data.recordsCfg.scale === 320, JSON.stringify(ver.data.recordsCfg));
+    check('恢复默认成功', (await POST(BASE + '/api/admin/records/config', { token: TOKA, reset: true })).data.recordsCfg.scale === 175);
+  }
+
+  // ==========================================================================
+  section('⑨c 龙宫宝珠清理脚本');
+  {
+    const CLEAN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-pearl-test-'));
+    fs.mkdirSync(path.join(CLEAN_DIR, 'accounts'), { recursive: true });
+    fs.writeFileSync(path.join(CLEAN_DIR, 'records.json'), JSON.stringify({
+      bigRecords: { dragonpearl: { id: 'dragonpearl', name: '龙宫宝珠', size: 28.5, who: '甲', t: 1 }, tuna: { id: 'tuna', name: '黄金枪鱼', size: 300, who: '乙', t: 2 } },
+      smallRecords: { dragonpearl: { id: 'dragonpearl', name: '龙宫宝珠', size: 6, who: '丙', t: 3 } },
+      topCatches: { dragonpearl: [{ size: 28.5, who: '甲', t: 1 }] },
+      topSmall: { dragonpearl: [{ size: 6, who: '丙', t: 3 }] },
+      globalMax: { id: 'dragonpearl', name: '龙宫宝珠', size: 28.5, who: '甲', t: 1 },
+    }, null, 2));
+    fs.writeFileSync(path.join(CLEAN_DIR, 'accounts', 'p.json'), JSON.stringify({
+      username: 'p', coins: 1,
+      codex: { dragonpearl: { count: 3, first: 1 }, tuna: { count: 1 } },
+      autoSell: { fish: { dragonpearl: { minPct: 150 }, tuna: { minPrice: 100 } } },
+    }, null, 2));
+    const dry = spawnSync(NODE, [path.join('tools', 'clean-dragonpearl.js'), '--data', CLEAN_DIR, '--dry-run'], { cwd: ROOT, encoding: 'utf8' });
+    check('清理脚本 --dry-run 不写盘', dry.status === 0 && /演练/.test(dry.stdout), (dry.stdout || '').slice(-80));
+    check('演练未改动记录文件', !!JSON.parse(fs.readFileSync(path.join(CLEAN_DIR, 'records.json'), 'utf8')).bigRecords.dragonpearl);
+    const run = spawnSync(NODE, [path.join('tools', 'clean-dragonpearl.js'), '--data', CLEAN_DIR, '--no-backup'], { cwd: ROOT, encoding: 'utf8' });
+    check('清理脚本零错误退出', run.status === 0, String(run.status) + ' ' + (run.stderr || '').slice(0, 160));
+    const rec = JSON.parse(fs.readFileSync(path.join(CLEAN_DIR, 'records.json'), 'utf8'));
+    check('榜单里的龙宫宝珠被清空',
+      !rec.bigRecords.dragonpearl && !rec.smallRecords.dragonpearl && !rec.topCatches.dragonpearl && !rec.topSmall.dragonpearl,
+      JSON.stringify({ b: Object.keys(rec.bigRecords), s: Object.keys(rec.smallRecords) }));
+    check('其他鱼种的纪录保留', !!rec.bigRecords.tuna);
+    check('全场最大按剩余纪录重算（黄金枪鱼 300cm）',
+      !!rec.globalMax && rec.globalMax.id === 'tuna' && rec.globalMax.size === 300, JSON.stringify(rec.globalMax));
+    const acc = JSON.parse(fs.readFileSync(path.join(CLEAN_DIR, 'accounts', 'p.json'), 'utf8'));
+    check('自动售出里的龙宫宝珠规则被清掉、其它规则保留',
+      !(acc.autoSell.fish || {}).dragonpearl && !!acc.autoSell.fish.tuna, JSON.stringify(acc.autoSell));
+    check('图鉴条目默认保留（--codex 才删）', !!acc.codex.dragonpearl, JSON.stringify(Object.keys(acc.codex)));
+    const run2 = spawnSync(NODE, [path.join('tools', 'clean-dragonpearl.js'), '--data', CLEAN_DIR, '--no-backup', '--codex'], { cwd: ROOT, encoding: 'utf8' });
+    const acc2 = JSON.parse(fs.readFileSync(path.join(CLEAN_DIR, 'accounts', 'p.json'), 'utf8'));
+    check('--codex 会同时清掉图鉴条目', run2.status === 0 && !acc2.codex.dragonpearl, JSON.stringify(Object.keys(acc2.codex)));
+    try { fs.rmSync(CLEAN_DIR, { recursive: true, force: true }); } catch (e) {}
+  }
+
+  // ==========================================================================
   section('⑩ 重启后配置持久化');
   killTree(srv);
   srv = null;
@@ -505,6 +630,8 @@ function startServer() {
   const chestAfter = await GET(BASE + '/api/chest?token=' + encodeURIComponent(TOKP2));
   check('宝匣成本持久化（恢复出厂 100 / 300000）',
     chestAfter.data.chests.find(c => c.id === 'chest_king').costRelic === 100);
+  const verAfter = await GET(BASE + '/api/version');
+  check('纪录贴图设置持久化（恢复默认 175%）', verAfter.data.recordsCfg.scale === 175, JSON.stringify(verAfter.data.recordsCfg));
 
   // ---- 收尾 ----
   killTree(srv);

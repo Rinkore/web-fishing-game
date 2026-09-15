@@ -786,6 +786,59 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
         mallSaved.mallCfg.items.some(x => x.id === 'koi' && x.price === 888 && x.limit === 2),
         JSON.stringify(mallSaved.mallCfg && mallSaved.mallCfg.items.slice(-2)));
 
+      // —— 纪录贴图：缩放（≤500%）与 xy 偏移 ——
+      await clickAdminNav('纪录贴图', '#rc-scale');
+      const rcView = await pa.evaluate(() => {
+        const sc = document.getElementById('rc-scale');
+        const num = document.getElementById('rc-scale-num');
+        const prev = document.getElementById('rc-preview');
+        return {
+          range: !!sc, num: (num || {}).value, max: (sc || {}).max, min: (sc || {}).min,
+          preview: !!prev, previewStyle: prev ? (prev.getAttribute('style') || '') : '',
+        };
+      });
+      check('纪录贴图页渲染（滑块 + 数字框，上限 500%）',
+        rcView.range && rcView.preview && rcView.max === '500' && rcView.num === '175', JSON.stringify(rcView));
+      check('预览贴图套用了缩放变量（默认 1.75）', /--rh-scale:1\.75/.test(rcView.previewStyle), rcView.previewStyle);
+      await pa.evaluate(() => {
+        document.getElementById('rc-scale-num').value = '250';
+        document.getElementById('rc-scale-num').dispatchEvent(new Event('input'));
+        document.getElementById('rc-x').value = '20';
+        document.getElementById('rc-x').dispatchEvent(new Event('input'));
+        document.getElementById('rc-y').value = '-15';
+        document.getElementById('rc-y').dispatchEvent(new Event('input'));
+      });
+      const rcPreview = await pa.evaluate(() => (document.getElementById('rc-preview') || {}).getAttribute('style') || '');
+      check('调整后预览实时跟随（2.5 倍 / 20,-15）',
+        /--rh-scale:2\.5/.test(rcPreview) && /--rh-dx:20px/.test(rcPreview) && /--rh-dy:-15px/.test(rcPreview), rcPreview);
+      await pa.evaluate(() => document.getElementById('rc-save').click());
+      const rcSaved = await untilGet(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data,
+        d => !!d && !!d.recordsCfg && d.recordsCfg.scale === 250, 8000);
+      check('保存后玩家端贴图设置生效（250% / 20,-15）',
+        !!rcSaved.recordsCfg && rcSaved.recordsCfg.scale === 250 && rcSaved.recordsCfg.x === 20 && rcSaved.recordsCfg.y === -15,
+        JSON.stringify(rcSaved.recordsCfg));
+      await pa.evaluate(() => document.getElementById('rc-reset').click());
+      const rcReset = await untilGet(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data,
+        d => !!d && !!d.recordsCfg && d.recordsCfg.scale === 175, 8000);
+      check('恢复默认贴图设置（175%）', rcReset.recordsCfg.scale === 175, JSON.stringify(rcReset.recordsCfg));
+
+      // —— 公式管理：可用变量里要有「技巧」 ——
+      await clickAdminNav('公式管理', '#fx-src');
+      const fxView = await pa.evaluate(() => {
+        const panel = Array.from(document.querySelectorAll('.panel')).find(p => /可用变量/.test(p.textContent));
+        const fxv = document.getElementById('fxv-skill');
+        return {
+          text: panel ? panel.textContent.replace(/\s+/g, ' ').slice(0, 200) : '',
+          hasSkillCode: panel ? !!panel.querySelector('code') && /skill/.test(panel.textContent) : false,
+          evalField: !!fxv,
+          defaultFormula: (document.getElementById('fx-src') || {}).value || '',
+        };
+      });
+      check('可用变量区列出 skill（技巧）并说明它的作用',
+        fxView.hasSkillCode && /技巧/.test(fxView.text) && /90 \+ skill/.test(fxView.text), JSON.stringify(fxView).slice(0, 220));
+      check('试算表单含技巧变量输入框，默认公式使用 skill',
+        fxView.evalField === true && /skill/.test(fxView.defaultFormula), fxView.defaultFormula);
+
       // —— 版本更新：候选脚本 + 发布（演练）→ 在线面板 → 取消 ——
       await clickAdminNav('版本更新', '#up-bat');
       const upView = await pa.evaluate(() => ({

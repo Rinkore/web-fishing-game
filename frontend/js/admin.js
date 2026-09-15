@@ -151,6 +151,7 @@ window.Admin = (function () {
     { id: 'notify', name: '🔔 通知等级' },
     { id: 'banner', name: '📢 横幅管理' },
     { id: 'feedback', name: '📮 反馈意见' },
+    { id: 'records', name: '🏆 纪录贴图' },
     { id: 'update', name: '🔄 版本更新' },
   ];
   function renderNav() {
@@ -181,6 +182,7 @@ window.Admin = (function () {
     if (v === 'chest') return renderChest();
     if (v === 'workshop') return renderWorkshop();
     if (v === 'mall') return renderMall();
+    if (v === 'records') return renderRecords();
     if (v === 'update') return renderUpdate();
     if (v === 'formula') return renderFormula();
     if (v === 'notify') return renderNotify();
@@ -1450,9 +1452,17 @@ window.Admin = (function () {
   // ================================
   // 上钩公式
   // ================================
+  // 上钩公式的可用变量（顺序与服务器 BITE_VAR_NAMES 一致，供文档与试算表单共用）
+  // skill = v0.11 起由「技巧」词缀提供的变量，是新版提升上钩率的主参数；big 是旧版遗留变量（恒为 0）。
   const BITE_VARS_DOC = [
-    ['speed', '钓速加成 %（钓竿词缀 + 钓点增益）'], ['big', '大鱼概率加成 %'], ['rare', '稀有概率加成 %'],
-    ['material', '材料概率加成 %'], ['size', '体型加成 %'], ['double', '双钓叠加值 A（概率按 A/(A+100) 换算）'], ['interval', '当前抛竿间隔 ms'],
+    ['speed', '钓速加成 %（钓竿词缀 + 钓点增益）'],
+    ['skill', '技巧加成 %（钓竿「技巧」词缀合计 · v0.11 新增，默认公式 90 + skill）'],
+    ['rare', '稀有概率加成 %'],
+    ['material', '材料概率加成 %'],
+    ['size', '体型加成 %'],
+    ['double', '双钓叠加值 A（概率按 A/(A+100) 换算）'],
+    ['interval', '当前抛竿间隔 ms'],
+    ['big', '（旧版遗留）大鱼概率加成 %：v0.11 起组件不再产出该词缀，恒为 0，保留仅为兼容历史公式'],
   ];
   // 🎁 宝匣配置：档位一览（只读，配方写在 data.js 的 CHESTS）+ 突破保底次数 + 池外词缀区间
   function renderChest() {
@@ -1755,6 +1765,14 @@ window.Admin = (function () {
       (SC.pearlRollTwice !== false ? ' checked' : '') + '></span>' +
       '<span class="hint">勾选 = 投入龙宫宝珠时每个词条 roll 两次、取靠近区间边界的那次</span>' +
       '</div>' +
+      '<h3>♻ 重铸（宝匣神话件重 roll 词条数值）</h3>' +
+      '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      F('recastRelic', '每次消耗残片', '默认 10（材料目前只有沉船宝匣残片）') +
+      F('recastGold', '每次消耗金币', '默认 0（只收残片）') +
+      '<span class="ch-fix"><label>至少不比原来差</label><input type="checkbox" id="ws-cfg-recastMinValue"' +
+      (SC.recastMinValue ? ' checked' : '') + '></span>' +
+      '<span class="hint">勾选 = 重铸时每条词条取新旧里更好的那个（不会把好数值洗坏）</span>' +
+      '</div>' +
       '<div class="mgr-row" style="margin-top:10px"><button class="btn primary" id="ws-cfg-save">保存熔炼参数</button>' +
       '<button class="btn" id="ws-cfg-reset">恢复默认</button><span id="ws-cfg-state" class="hint" style="margin-left:10px"></span></div>' +
       '<h3>🧵 材料 → 词缀对照（只读）</h3>' +
@@ -1781,6 +1799,9 @@ window.Admin = (function () {
         maxMaterials: $('ws-cfg-maxMaterials').value,
         maxTypes: $('ws-cfg-maxTypes').value,
         pearlRollTwice: $('ws-cfg-pearlRollTwice').checked,
+        recastRelic: $('ws-cfg-recastRelic').value,
+        recastGold: $('ws-cfg-recastGold').value,
+        recastMinValue: $('ws-cfg-recastMinValue').checked,
       }).then(function (r) {
         if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
         worldCfg = null;
@@ -1796,6 +1817,84 @@ window.Admin = (function () {
         renderWorkshop();
       });
     };
+  }
+
+  // ================================
+  // 纪录贴图（全场最大鱼图标的缩放 / 偏移）
+  // ================================
+  const RECORDS_PREVIEW_FISH = 'tuna';   // 预览用鱼（黄金枪鱼，体型大、贴图辨识度高）
+  function recordsCssVars(scale, x, y) {
+    // 前端 .rh-icon 的基准尺寸是 140×84，--rh-scale 是相对该基准的倍数（175% → 1.75）
+    return '--rh-scale:' + (scale / 100).toFixed(4) + ';--rh-dx:' + x + 'px;--rh-dy:' + y + 'px';
+  }
+  function renderRecords() {
+    stopUpdateTimer();
+    const main = $('main');
+    main.innerHTML = '<h2>🏆 纪录贴图</h2>' +
+      '<div class="hint" style="margin-bottom:12px">玩家端「渔获记录」页顶部「全场最大」那张大贴图：可调缩放（50 ~ 500%）与 xy 偏移（像素）。' +
+      '保存后立即对全服生效（在线玩家的纪录页会即时重绘）。</div>' +
+      '<div id="rc-body" class="panel">加载中…</div>';
+    loadWorldCfg(true).then(function (cfg) {
+      if (!cfg || view !== 'records') return;
+      drawRecords(cfg);
+    });
+  }
+  function drawRecords(cfg) {
+    const body = $('rc-body');
+    if (!body) return;
+    const C = cfg.recordsCfg || { scale: 175, x: 0, y: 0 };
+    const DEF = cfg.recordsDefaults || { scale: 175, x: 0, y: 0 };
+    const L = cfg.recordsLimits || { scaleMin: 50, scaleMax: 500, offsetMin: -400, offsetMax: 400 };
+    body.innerHTML =
+      '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      '<span class="ch-fix"><label>缩放 %</label>' +
+      '<input id="rc-scale" class="ipt mk-num" type="range" min="' + L.scaleMin + '" max="' + L.scaleMax + '" step="5" value="' + C.scale + '" style="width:220px">' +
+      '<input id="rc-scale-num" class="ipt mk-num" type="number" min="' + L.scaleMin + '" max="' + L.scaleMax + '" step="5" value="' + C.scale + '"></span>' +
+      '<span class="ch-fix"><label>横向偏移</label><input id="rc-x" class="ipt mk-num" type="number" min="' + L.offsetMin + '" max="' + L.offsetMax + '" step="1" value="' + C.x + '"><span class="hint">px</span></span>' +
+      '<span class="ch-fix"><label>纵向偏移</label><input id="rc-y" class="ipt mk-num" type="number" min="' + L.offsetMin + '" max="' + L.offsetMax + '" step="1" value="' + C.y + '"><span class="hint">px</span></span>' +
+      '</div>' +
+      '<div class="mgr-row"><button class="btn primary" id="rc-save">保存贴图设置</button>' +
+      '<button class="btn" id="rc-reset">恢复默认（175% / 0,0）</button>' +
+      '<span id="rc-state" class="hint" style="margin-left:10px">默认 ' + DEF.scale + '% · ' + DEF.x + ',' + DEF.y + '</span></div>' +
+      '<h3>预览</h3>' +
+      '<div class="gd-removed" style="text-align:center">' +
+      '<div class="rc-preview-wrap"><img id="rc-preview" class="rh-icon" src="assets/fish/' + RECORDS_PREVIEW_FISH + '.png" alt="" draggable="false"></div>' +
+      '<div class="hint" id="rc-preview-txt"></div></div>';
+
+    const sync = function () {
+      const sc = Math.round(Number($('rc-scale-num').value) || DEF.scale);
+      const x = Math.round(Number($('rc-x').value) || 0);
+      const y = Math.round(Number($('rc-y').value) || 0);
+      const img = $('rc-preview');
+      if (img) img.setAttribute('style', recordsCssVars(sc, x, y));
+      const txt = $('rc-preview-txt');
+      if (txt) txt.textContent = '缩放 ' + sc + '% · 偏移 ' + x + ', ' + y +
+        ' · 实际尺寸 ' + Math.round(140 * sc / 100) + '×' + Math.round(84 * sc / 100) + 'px';
+      return { scale: sc, x: x, y: y };
+    };
+    $('rc-scale').oninput = function () { $('rc-scale-num').value = this.value; sync(); };
+    $('rc-scale-num').oninput = function () { $('rc-scale').value = this.value; sync(); };
+    $('rc-x').oninput = sync;
+    $('rc-y').oninput = sync;
+    $('rc-save').onclick = function () {
+      const v = sync();
+      adminApi('POST', '/api/admin/records/config', { token: token, scale: v.scale, x: v.x, y: v.y }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+        worldCfg = null;
+        setHint('rc-state', '<span style="color:var(--ok)">已保存：缩放 ' + r.data.recordsCfg.scale + '% · 偏移 ' +
+          r.data.recordsCfg.x + ',' + r.data.recordsCfg.y + '（玩家端即时生效）</span>');
+        toast('纪录贴图设置已保存');
+      });
+    };
+    $('rc-reset').onclick = function () {
+      adminApi('POST', '/api/admin/records/config', { token: token, reset: true }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '操作失败', true); return; }
+        worldCfg = null;
+        toast('已恢复默认贴图设置');
+        renderRecords();
+      });
+    };
+    sync();
   }
 
   // ================================
@@ -1910,10 +2009,15 @@ window.Admin = (function () {
       '<button id="fx-eval" class="btn mini">试算概率</button>' +
       '<div id="fx-prob" class="prob-out"></div>' +
       '</div>' +
-      '<div class="panel"><h3>可用变量</h3><div class="kv">' +
+      '<div class="panel"><h3>可用变量</h3>' +
+      '<div class="hint" style="margin-bottom:8px">变量值 = 该玩家当前生效的加成（钓竿词缀 + 钓点增益）。' +
+      '<b><code>skill</code> 是 v0.11 新增的「技巧」词缀变量</b>——钓竿上的「技巧」词缀全部计入它，' +
+      '默认公式 <code>clamp(90 + skill, 0, 100)</code> 就是靠它提升上钩率（代码里不写死钩率提示，一切以本页公式为准）。</div>' +
+      '<div class="kv">' +
       BITE_VARS_DOC.map(function (v) { return '<code>' + v[0] + '</code> — ' + v[1] + '<br>'; }).join('') +
       '</div><h3>可用函数</h3><div class="kv"><code>min</code> <code>max</code> <code>floor</code> <code>ceil</code> <code>round</code> <code>abs</code> <code>clamp(x, lo, hi)</code><br>' +
-      '示例：<code>90</code>（默认：平值 90% 上钩） ／ <code>min(98, 90 + speed * 0.15)</code>（旧版：上钩率随钓速提升） ／ <code>clamp(85 + rare, 50, 100)</code></div></div>' +
+      '示例：<code>clamp(90 + skill, 0, 100)</code>（默认：基础 90% + 技巧词缀） ／ <code>90</code>（平值 90% 上钩） ／ ' +
+      '<code>clamp(85 + rare + skill * 0.5, 50, 100)</code>（稀有与技巧各占一部分）</div></div>' +
       '<div class="panel" style="flex:1 1 100%;min-width:0">' +
       '<h3>🎣 双钓率</h3>' +
       '<div class="hint" style="margin-bottom:10px">叠加值 A（百分比点数）→ 单次追加概率 <code>P = A/(A+100) = 1 − 1/(1+A/100)</code>。' +

@@ -515,8 +515,16 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
 /* ---------- 各页面贴图 ---------- */
 /* 宝匣合成卡片 */
 .cc-icon { display: block; width: 88px; height: 62px; object-fit: contain; margin: 0 auto 8px; image-rendering: pixelated; }
-/* 渔获记录（全场最大鱼图标 140×84 → 放大到 175%：245×147，作为页面视觉重心） */
-.rh-icon { display: block; width: 245px; height: 147px; object-fit: contain; margin: 4px auto 8px; image-rendering: pixelated; }
+/* 渔获记录（全场最大鱼图标）：基准 140×84，默认 175%（245×147）作为页面视觉重心。
+   缩放与 xy 偏移可在管理后台「🏆 纪录贴图」页调整（50%~500%），通过 CSS 变量下发；
+   用 width/height 而不是 transform: scale，放大后卡片会一起长高，不会压住下面的文字。 */
+.rh-icon {
+  display: block;
+  width: calc(140px * var(--rh-scale, 1.75));
+  height: calc(84px * var(--rh-scale, 1.75));
+  transform: translate(var(--rh-dx, 0px), var(--rh-dy, 0px));
+  object-fit: contain; margin: 4px auto 8px; image-rendering: pixelated;
+}
 .rc-icon { display: block; width: 72px; height: 44px; object-fit: contain; margin: 0 auto 6px; image-rendering: pixelated; }
 .rc-icon.dim { filter: grayscale(.7) brightness(.7); opacity: .6; }
 .record-cell { display: flex; flex-direction: column; }

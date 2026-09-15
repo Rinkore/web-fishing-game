@@ -1522,30 +1522,109 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
       // —— 工坊：熔炼页渲染（主/副组件下拉 + 词条胶囊 + 投料行 + 预览） ——
       const wsMain = D_DATA.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 12 }, { type: 'size', value: 3 }]);
-      const wsSub = D_DATA.instanceId('hook_ghost', 'epic', [{ type: 'skill', value: 10 }, { type: 'rare', value: -5 }, { type: 'size', value: 5 }]);
+      // 副件必须与主件同部位（v0.11.1）：同为竿身的龙骨巨竿（带技巧词缀，用于池外搬运）
+      const wsSub = D_DATA.instanceId('rod_dragonbone', 'epic', [{ type: 'skill', value: 10 }, { type: 'size', value: 8 }, { type: 'speed', value: -12 }]);
       // 注意顺序：dev/seed 是「整体替换背包」，必须放在 dev/catch 之前
       await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, rope: 6 }, coins: 200000 });
       await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsMain } });
       await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsSub } });
+      // 重铸只收「宝匣产出的神话件」：发一件神话组件与足够的残片
+      const wsMythic = D_DATA.instanceId('rod_bamboo', 'mythic', [{ type: 'speed', value: 9 }, { type: 'size', value: 3 }, { type: 'skill', value: 4 }, { type: 'rare', value: 2 }]);
+      await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsMythic } });
+      await post('/api/mall/buy', { token: tokS, id: 'relic', qty: 3 }).catch(() => {});
+      const relicNow = await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, rope: 6, relic: 30 }, coins: 200000 });
+      void relicNow;
+      await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsMain } });
+      await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsSub } });
+      await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsMythic } });
       await clickNav(p1, '工坊');
       await untilSel(p1, '.ws-mat', 8000);
       const wsView = await p1.evaluate(() => ({
-        mainOpts: (document.getElementById('ws-main') || { options: [] }).options.length,
+        mainPicks: document.querySelectorAll('.ws-pick[data-pick="main"]').length,
+        subPicks: document.querySelectorAll('.ws-pick[data-pick="sub"]').length,
         mats: document.querySelectorAll('.ws-mat').length,
         pearl: !!document.getElementById('ws-pearl'),
         go: !!document.getElementById('ws-go'),
+        tabs: Array.from(document.querySelectorAll('[data-wstab]')).map(b => b.textContent.trim()),
       }));
-      check('工坊熔炼页渲染（主/副组件下拉 + 投料行 + 宝珠选项 + 熔炼按钮）',
-        wsView.mainOpts >= 3 && wsView.mats >= 6 && wsView.pearl && wsView.go, JSON.stringify(wsView));
-      await p1.selectOption('#ws-main', wsMain);
-      await p1.selectOption('#ws-sub', wsSub);
-      await untilSel(p1, '#ws-main-affs .ws-aff', 4000);
-      await p1.click('#ws-main-affs .ws-aff[data-type="speed"]');
-      await p1.click('#ws-sub-affs .ws-aff[data-type="skill"]');
+      check('工坊熔炼页渲染（主/副组件选择卡 + 投料行 + 宝珠选项 + 熔炼按钮 + 熔炼/重铸页签）',
+        wsView.mainPicks === 1 && wsView.subPicks === 1 && wsView.mats >= 6 && wsView.pearl && wsView.go &&
+        wsView.tabs.length === 2, JSON.stringify(wsView));
+
+      // —— 组件选择走「与钓竿配置『装备组件』同一个子页面」——
+      await p1.click('.ws-pick[data-pick="main"]');
+      await untilSel(p1, '.bd-equip-modal .bec-card', 8000);
+      const picker1 = await p1.evaluate(() => ({
+        title: (document.querySelector('.bd-equip-modal .modal-title') || {}).textContent || '',
+        filters: Array.from(document.querySelectorAll('.bd-equip-modal .bf-cat')).map(b => b.textContent.trim()),
+        cards: document.querySelectorAll('.bd-equip-modal .bec-card').length,
+        partChips: document.querySelectorAll('.bd-equip-modal .bde-controls .bf-cat').length,
+      }));
+      check('主件选择子页面 = 钓竿配置的组件子页面（标题/筛选/排序/卡片同款）',
+        /选择主组件/.test(picker1.title) && picker1.cards >= 2 && picker1.filters.some(t => /全部属性/.test(t)) &&
+        picker1.filters.some(t => /稀有度/.test(t)), JSON.stringify(picker1));
+      // 选一件当主件（挑名字里带「竹制短竿」的那张卡）
+      await p1.evaluate(() => {
+        const cards = Array.from(document.querySelectorAll('.bd-equip-modal .bec-card'));
+        const card = cards.find(c => c.textContent.includes('竹制短竿')) || cards[0];
+        card.querySelector('.bec-acts button').click();
+      });
+      await untilGet(async () => await p1.textContent('.ws-col .ws-pick-name'), t => /竹制短竿/.test(t || ''), 4000);
+      check('选定主件后卡片显示底材/品质/持有数', /竹制短竿/.test(await p1.textContent('.ws-col .ws-pick-name')));
+      // 副件选择器应被限定在主件部位（竿身）
+      await p1.click('.ws-pick[data-pick="sub"]');
+      await untilSel(p1, '.bd-equip-modal .bec-card', 8000);
+      const picker2 = await p1.evaluate(() => {
+        // 卡片上的贴图文件名就是底材 id，用它判断「列表是否只剩主件的部位」
+        const bases = Array.from(document.querySelectorAll('.bd-equip-modal .bec-card img.bec-icon'))
+          .map(n => (n.getAttribute('src') || '').replace(/^.*\//, '').replace(/\.png$/, ''));
+        const rodBases = (window.GameData.COMPONENT_BASES || []).filter(b => b.part === 'rod').map(b => b.id);
+        return {
+          title: (document.querySelector('.bd-equip-modal .modal-title') || {}).textContent || '',
+          bases: bases,
+          allRod: bases.length > 0 && bases.every(id => rodBases.indexOf(id) >= 0),
+        };
+      });
+      check('副件选择器限定同部位（标题点明竿身、列表只剩竿身件）',
+        /竿身/.test(picker2.title) && picker2.allRod === true, JSON.stringify(picker2));
+      await p1.evaluate(() => {
+        const cards = Array.from(document.querySelectorAll('.bd-equip-modal .bec-card'));
+        const card = cards.find(c => c.textContent.includes('龙骨巨竿')) || cards[0];
+        card.querySelector('.bec-acts button').click();
+      });
+      await untilGet(async () => await p1.textContent('.ws-col:nth-child(2) .ws-pick-name'), t => /龙骨巨竿/.test(t || ''), 4000);
+      check('选定副件后卡片显示（副件只能同部位）', /龙骨巨竿/.test(await p1.textContent('.ws-col:nth-child(2) .ws-pick-name')));
+      await p1.click('.ws-aff[data-which="main"][data-type="speed"]');
+      await p1.click('.ws-aff[data-which="sub"][data-type="skill"]');
       const wsPrev = await untilGet(async () => await p1.textContent('#ws-preview'), t => /熔炼成功率/.test(t || ''), 4000);
       check('选定词条后出现成功率与花费预览',
         /熔炼成功率\s*\d+(\.\d+)?%/.test(wsPrev || '') && /💰/.test(wsPrev || ''), String(wsPrev).slice(0, 80));
       check('基础成功率 50%（无投料）', /熔炼成功率\s*50%/.test(wsPrev || ''), String(wsPrev).slice(0, 60));
+
+      // —— 重铸页：放入组件后自动列出所需材料 ——
+      await p1.click('[data-wstab="recast"]');
+      await untilSel(p1, '#ws-recast-go', 6000);
+      const rc0 = await p1.evaluate(() => ({
+        mats: Array.from(document.querySelectorAll('#ws-recast-mats .ws-mat')).map(n => n.textContent.replace(/\s+/g, ' ').trim()),
+        btn: (document.getElementById('ws-recast-go') || {}).textContent || '',
+        disabled: !!(document.getElementById('ws-recast-go') || {}).disabled,
+      }));
+      check('重铸页自动列出所需材料（沉船宝匣残片，未选组件时按钮禁用）',
+        rc0.mats.length >= 1 && /沉船宝匣残片/.test(rc0.mats[0]) && /需要/.test(rc0.mats[0]) && rc0.disabled === true,
+        JSON.stringify(rc0));
+      await p1.click('[data-recast-pick]');
+      await untilSel(p1, '.bd-equip-modal .bec-card', 8000);
+      const rcPicker = await p1.evaluate(() => ({
+        title: (document.querySelector('.bd-equip-modal .modal-title') || {}).textContent || '',
+        cards: document.querySelectorAll('.bd-equip-modal .bec-card').length,
+        quals: Array.from(document.querySelectorAll('.bd-equip-modal .inst-meta')).map(n => n.textContent),
+      }));
+      check('重铸选择器只列神话件（宝匣产出）',
+        /重铸/.test(rcPicker.title) && rcPicker.cards >= 1 && rcPicker.quals.every(t => /神话/.test(t)),
+        JSON.stringify({ t: rcPicker.title, n: rcPicker.cards, q: rcPicker.quals.slice(0, 2) }));
+      await p1.evaluate(() => { document.querySelector('.bd-equip-modal .bec-acts button').click(); });
+      const rcBtn = await untilGet(async () => await p1.textContent('#ws-recast-go'), t => /开始重铸/.test(t || ''), 4000);
+      check('选定神话件后按钮可用并显示花费', /开始重铸/.test(rcBtn || ''), String(rcBtn).slice(0, 40));
 
       // —— 商城：商品卡 + 限购文案 + 购买 ——
       await clickNav(p1, '商城');
@@ -1610,6 +1689,97 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       });
       check('全场最大鱼图标为原来的 175%（245×147）', rhSize.w === 245 && rhSize.h === 147, JSON.stringify(rhSize));
       check('纪录页不再出现「大鱼」品质配色（r-big）', (await p1.$$('.content .r-big')).length === 0);
+
+      // —— 桌面端侧栏：不高于视口且导航可滚动 ——
+      const sidebarBox = await p1.evaluate(() => {
+        const sb = document.querySelector('.sidebar');
+        const nav = document.querySelector('.nav');
+        const cs = getComputedStyle(nav);
+        return {
+          sbH: Math.round(sb.getBoundingClientRect().height), vh: window.innerHeight,
+          overflowY: cs.overflowY, scrollable: nav.scrollHeight > nav.clientHeight + 1,
+          items: document.querySelectorAll('.nav-item').length,
+        };
+      });
+      check('侧边栏不超过视口高度', sidebarBox.sbH <= sidebarBox.vh, JSON.stringify(sidebarBox));
+      check('导航区可滚动（overflow-y 生效）', sidebarBox.overflowY === 'auto' || sidebarBox.overflowY === 'scroll', JSON.stringify(sidebarBox));
+
+      // —— 顶栏状态块点击跳转（判定以框体为准）——
+      await clickNav(p1, '钓鱼');
+      const topbarNav = await p1.evaluate(async () => {
+        const out = {};
+        const clickChip = async (re, expect) => {
+          const btn = Array.from(document.querySelectorAll('#player-status .meta-btn')).find(b => re.test(b.textContent));
+          if (!btn) return 'missing';
+          btn.click();
+          await new Promise(r => setTimeout(r, 250));
+          const active = document.querySelector('.nav-item.active');
+          out[expect] = active ? (active.textContent.includes(expect) ? 'ok' : active.textContent) : 'none';
+          return 'ok';
+        };
+        // 状态 → 钓鱼
+        await clickChip(/状态：/, '钓鱼');
+        // 位置 → 钓鱼
+        await clickChip(/位置：/, '钓鱼');
+        // 抛竿间隔 → 钓竿配置
+        await clickChip(/🎣.*s 一竿/, '钓竿配置');
+        // 在线人数 → 渔场动态
+        await clickChip(/在线：/, '渔场动态');
+        return out;
+      });
+      check('点击「状态」跳到钓鱼页', topbarNav['钓鱼'] === 'ok', JSON.stringify(topbarNav));
+      check('点击「抛竿间隔」跳到钓竿配置页', topbarNav['钓竿配置'] === 'ok', JSON.stringify(topbarNav));
+      check('点击「在线人数」跳到渔场动态页', topbarNav['渔场动态'] === 'ok', JSON.stringify(topbarNav));
+      check('顶栏状态块是按钮（整块可点）',
+        (await p1.$$('#player-status button.meta-btn')).length >= 4, String((await p1.$$('#player-status button.meta-btn')).length));
+
+      // —— 未开放的钓点：🔒 +（暂未开放） ——
+      // 上面的顶栏跳转把页面带到了渔场动态，先回钓鱼页再测地图
+      await clickNav(p1, '钓鱼');
+      await untilSel(p1, '.px-map-tab', 8000);
+      const lockedTab = await p1.evaluate(() => {
+        const tabs = Array.from(document.querySelectorAll('.px-map-tab'));
+        const t = tabs.find(x => /出海/.test(x.textContent));
+        if (t) t.click();
+        return !!t;
+      });
+      await sleep(300);
+      const lockedNode = await p1.evaluate(() => {
+        const node = document.querySelector('.px-node.locked');
+        return node ? { lock: !!node.querySelector('.pn-lock'), text: (node.textContent || '').slice(0, 40), bob: !!node.querySelector('.pn-bob') } : null;
+      });
+      check('未开放钓点显示 🔒 图标 +（暂未开放）且不再显示浮漂',
+        !!lockedNode && lockedNode.lock === true && /（暂未开放）/.test(lockedNode.text) && lockedNode.bob === false,
+        JSON.stringify(lockedNode));
+      check('未开放钓点整组都是锁定态（🎣 近岸活动场锁定后同样标注）',
+        (await p1.$$('.px-node.locked')).length >= 3, String((await p1.$$('.px-node.locked')).length));
+      if (lockedTab) {
+        await p1.evaluate(() => {
+          const tabs = Array.from(document.querySelectorAll('.px-map-tab'));
+          const t = tabs.find(x => /近岸/.test(x.textContent));
+          if (t) t.click();
+        });
+        await sleep(250);
+      }
+
+      // —— 渔获纪录贴图：后台调缩放 / 偏移后玩家端即时生效 ——
+      if (tokAdmin) {
+        await post('/api/admin/records/config', { token: tokAdmin, scale: 300, x: 12, y: -8 });
+        await clickNav(p1, '渔获记录');
+        await untilSel(p1, '.rh-icon', 8000);
+        const rh = await untilGet(async () => await p1.evaluate(() => {
+          const n = document.querySelector('.rh-icon');
+          const cs = getComputedStyle(n);
+          return { w: Math.round(parseFloat(cs.width)), h: Math.round(parseFloat(cs.height)), tf: cs.transform, inline: n.getAttribute('style') || '' };
+        }), v => v && v.w === Math.round(140 * 3), 6000);
+        check('纪录贴图按后台设置缩放（300% → 420×252）', rh && rh.w === 420 && rh.h === 252, JSON.stringify(rh));
+        check('纪录贴图带 xy 偏移（translate 12,-8）', !!rh && /12[^0-9]/.test(rh.inline) && /-8/.test(rh.inline), rh && rh.inline);
+        await post('/api/admin/records/config', { token: tokAdmin, reset: true });
+        const rh2 = await untilGet(async () => await p1.evaluate(() => Math.round(parseFloat(getComputedStyle(document.querySelector('.rh-icon')).width))), w => w === 245, 6000);
+        check('恢复默认后回到 175%（245px）', rh2 === 245, String(rh2));
+      } else {
+        check('管理员登录可用（纪录贴图前置）', false, '');
+      }
 
       // —— 版本更新横幅：发布 → 60 秒倒计时横幅 → 取消后撤回 ——
       if (tokAdmin) {

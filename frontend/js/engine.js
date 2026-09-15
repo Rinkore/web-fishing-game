@@ -45,6 +45,7 @@ window.Engine = (function () {
     mall: null,                 // 商城（每日限购）：{ refreshTime, cycleKey, nextRefreshAt, coins, items:[…] }
     workshop: null,             // 工坊：{ cfg, materials:[{id,name,affix,affixName}], pearl }
     smeltCfg: null,             // 熔炼参数（/api/version 与 smeltcfg 广播同步：本地预览与服务器同一套系数）
+    recordsCfg: null,           // 渔获记录贴图：{ scale, x, y }（/api/version 与 recordscfg 广播同步）
     update: null,               // 服务端版本更新通知：null 或 { phase, bat, endAt, fireAt, … }
     banners: [],                // 横幅队列（服务器）
     bannerCfg: {},              // 横幅配置（图标闪烁等）

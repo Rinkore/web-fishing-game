@@ -102,6 +102,7 @@ window.Net = (function () {
       window.GameData.setSmeltCfg(d.smeltCfg);
       state().smeltCfg = window.GameData.getSmeltCfg();
     }
+    if (d.recordsCfg) state().recordsCfg = d.recordsCfg;
     state().update = d.update || null;
     if (window.UI && window.UI.onUpdate) window.UI.onUpdate(state().update);
   }
@@ -252,6 +253,8 @@ window.Net = (function () {
   });
   // 熔炼：payload = { mainId, subId, mainAffix, subAffix, materials:[{id,qty}], pearl }
   const smelt = (payload) => authed('/api/workshop/smelt', payload || {});
+  // 重铸：用残片重 roll 宝匣神话件的全部词条数值
+  const recast = (id) => authed('/api/workshop/recast', { id: id });
   const sell = (id, qty) => authed('/api/sell', { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', hours ? { id: id, qty: qty, price: price, hours: hours } : { id: id, qty: qty, price: price });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
@@ -383,6 +386,10 @@ window.Net = (function () {
             if (window.GameData.setSmeltCfg) window.GameData.setSmeltCfg(m.smeltCfg);
           }
           if (ui) ui.refreshAll('smeltcfg');
+        } else if (m.type === 'recordscfg') {
+          // 后台改了「全场最大鱼」贴图的缩放/偏移：就地更新并重绘纪录页
+          if (m.recordsCfg) S.recordsCfg = m.recordsCfg;
+          if (ui) ui.refreshAll('records');
         } else if (m.type === 'update') {
           // 服务端版本更新：60 秒通知横幅 + 倒计时（横幅结束 5 秒后服务器会切到新版本）
           S.update = m.update || null;
@@ -498,7 +505,7 @@ window.Net = (function () {
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
     fetchFeedback: fetchFeedback,
     fetchChest: fetchChest, chestCraft: chestCraft, chestOpen: chestOpen,
-    fetchMall: fetchMall, mallBuy: mallBuy, fetchWorkshop: fetchWorkshop, smelt: smelt,
+    fetchMall: fetchMall, mallBuy: mallBuy, fetchWorkshop: fetchWorkshop, smelt: smelt, recast: recast,
     fetchBanners: fetchBanners, fetchGrounds: fetchGrounds,
     bannerPlaying: bannerPlaying,
     feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,
