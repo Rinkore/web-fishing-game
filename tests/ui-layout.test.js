@@ -1284,6 +1284,10 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     }), o => !!o, 4000);
     check('悬停出现简介浮标（图片 + 一句话 + 点击提示）',
       !!tipChk && tipChk.img && tipChk.hint && /持有 ×\d+/.test(tipChk.txt), JSON.stringify(tipChk).slice(0, 180));
+    // 原生 title 浮框（白底黑字）晚一拍才冒出来，还会叠在自绘浮标上，看着像卡出的白框：行上一律不许挂。
+    check('悬停行没有原生 title 浮框（避免和自绘浮标重叠）',
+      await p1.evaluate(() => Array.from(document.querySelectorAll('.inv-page-row')).every(r => !r.getAttribute('title'))),
+      '仍有 .inv-page-row 带 title 属性');
     await p1.mouse.click(pickRow.x, pickRow.y);
     const readDetail = () => p1.evaluate(() => {
       const m = document.querySelector('.item-detail-modal');

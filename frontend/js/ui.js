@@ -3759,7 +3759,7 @@ window.UI = (function () {
   function wireItemIntro(row, id) {
     if (itemMeta(id).kind === 'component') return;
     row.classList.add('clickable');
-    row.title = '悬停看简介 · 点击看完整简介';
+    // 不设 row.title：原生浮框晚一拍才冒出来、还会叠在自绘浮标上，像卡出的白框。
     row.addEventListener('mouseenter', function (e) { showItemTip(id, e.clientX, e.clientY); });
     row.addEventListener('mousemove', function (e) { if (itemTipId) placeItemTip(e.clientX, e.clientY); });
     row.addEventListener('mouseleave', hideItemTip);
