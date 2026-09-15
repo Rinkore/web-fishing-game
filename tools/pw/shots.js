@@ -1,47 +1,53 @@
+// 全面验证：登录页 / 近岸地图(含激活钓鱼) / 出海页签 / 图鉴页
 const puppeteer = require('puppeteer-core');
 (async () => {
-  const browser = await puppeteer.launch({
-    executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-    headless: 'new', args: ['--no-sandbox'],
-  });
-  // 桌面：开始钓鱼后的场景状态
-  const page = await browser.newPage();
-  await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1.5 });
-  await page.goto('http://localhost:9000/', { waitUntil: 'networkidle2', timeout: 30000 });
-  const user = 'px2_' + Date.now().toString(36);
-  await page.type('#auth-user', user);
-  await page.type('#auth-pass', 'test1234');
-  await page.click('[data-tab="register"]');
-  await new Promise(r => setTimeout(r, 300));
-  await page.type('#auth-pass2', 'test1234');
-  await page.type('#auth-qq', '12345678');
-  await page.click('#auth-submit');
-  await new Promise(r => setTimeout(r, 2500));
-  // 点击「老旧码头」开始钓鱼
-  await page.evaluate(() => {
-    [...document.querySelectorAll('.spot-btn')].find(b => b.textContent.includes('老旧码头')).click();
-  });
-  await new Promise(r => setTimeout(r, 1500));
-  const sceneState = await page.evaluate(() => document.querySelector('.px-scene').getAttribute('data-active'));
-  console.log('钓鱼激活后场景 data-active =', sceneState);
-  const sceneBox = await (await page.$('.px-scene')).boundingBox();
-  await page.screenshot({ path: 'px_active.png', clip: { x: sceneBox.x - 10, y: sceneBox.y - 10, width: sceneBox.width + 20, height: sceneBox.height + 40 } });
-  await page.close();
+  const b = await puppeteer.launch({ executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', headless: 'new' });
+  const p = await b.newPage();
+  await p.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1.5 });
+  const errors = [];
+  p.on('pageerror', e => errors.push(e.message));
+  const broken = [];
+  p.on('response', r => { if (r.status() === 404 && !r.url().includes('favicon')) broken.push(r.url().split('/').pop()); });
+  await p.goto('http://localhost:9000/', { waitUntil: 'networkidle2', timeout: 30000 });
+  await new Promise(r => setTimeout(r, 1000));
+  await p.screenshot({ path: 'v2_login.png' });
 
-  // 手机端：登录页 + 钓鱼页
-  const mob = await browser.newPage();
-  await mob.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  await mob.goto('http://localhost:9000/', { waitUntil: 'networkidle2', timeout: 30000 });
-  await mob.type('#auth-user', 'px_' + user);
-  await mob.type('#auth-pass', 'test1234');
-  await mob.click('[data-tab="register"]');
+  const user = 'v2_' + Date.now().toString(36);
+  await p.type('#auth-user', user);
+  await p.type('#auth-pass', 'test1234');
+  await p.click('[data-tab="register"]');
   await new Promise(r => setTimeout(r, 300));
-  await mob.type('#auth-pass2', 'test1234');
-  await mob.type('#auth-qq', '12345678');
-  await mob.click('#auth-submit');
+  await p.type('#auth-pass2', 'test1234');
+  await p.type('#auth-qq', '12345678');
+  await p.click('#auth-submit');
   await new Promise(r => setTimeout(r, 2500));
-  await mob.screenshot({ path: 'px_mobile.png' });
-  const mobErr = await mob.evaluate(() => document.body.scrollWidth <= window.innerWidth + 1);
-  console.log('手机端无横向溢出:', mobErr);
-  await browser.close();
+  await p.screenshot({ path: 'v2_map.png' });
+
+  // 点击码头开始钓鱼 -> 渔夫标记应出现
+  await p.evaluate(() => {
+    const n = [...document.querySelectorAll('.px-node')].find(x => x.textContent.includes('老旧码头'));
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  });
+  await new Promise(r => setTimeout(r, 1800));
+  const st = await p.evaluate(() => ({
+    active: window.Engine.state.fishing.active,
+    fisher: !!document.querySelector('.pn-fisher'),
+    navIcons: document.querySelectorAll('.nav-ico').length,
+  }));
+  console.log('钓鱼激活:', JSON.stringify(st));
+  await p.screenshot({ path: 'v2_active.png' });
+
+  // 出海页签
+  await p.evaluate(() => [...document.querySelectorAll('.px-map-tab')].find(t => t.textContent.includes('出海')).click());
+  await new Promise(r => setTimeout(r, 600));
+  await p.screenshot({ path: 'v2_voyage.png' });
+
+  // 图鉴页
+  await p.evaluate(() => [...document.querySelectorAll('.nav-item')].find(x => x.textContent.includes('图鉴')).click());
+  await new Promise(r => setTimeout(r, 900));
+  await p.screenshot({ path: 'v2_codex.png' });
+
+  console.log('404:', broken.length ? broken : '无', '| JS 错误:', errors.length ? errors : '无');
+  await b.close();
+  process.exit(st.active && st.fisher && !errors.length && !broken.length ? 0 : 1);
 })().catch(e => { console.error('FAILED:', e.message); process.exit(1); });

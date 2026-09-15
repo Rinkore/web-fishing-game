@@ -411,7 +411,10 @@ window.UI = (function () {
       if (item.id === 'trade' && S().trade) badge = '<span class="nav-badge alert">!</span>';
       // 组件订阅提醒：背包入口显示未读红标（进入背包即清零）
       if (item.id === 'inventory' && subUnseen > 0) badge = '<span class="nav-badge unread">' + (subUnseen > 99 ? '99+' : subUnseen) + '</span>';
-      b.innerHTML = '<span class="nav-icon">' + item.icon + '</span><span>' + esc(item.name) + '</span>' + badge +
+      // 像素导航图标（assets/nav/<id>.png，由 tools/gen_nav.py 生成）；emoji 作为降级兜底
+      const navIcon = '<span class="nav-icon"><img class="nav-ico" src="assets/nav/' + esc(item.id) +
+        '.png" alt="" draggable="false" onerror="this.outerHTML=\'' + item.icon + '\'"></span>';
+      b.innerHTML = navIcon + '<span>' + esc(item.name) + '</span>' + badge +
         (item.implemented ? '' : '<span class="lock">🔒</span>');
       b.addEventListener('click', function () {
         if (!item.implemented) {
@@ -557,17 +560,51 @@ window.UI = (function () {
     main.innerHTML = '';
 
     // 左：像素世界地图（钓场为区域、钓点为可点节点；点击节点=选择钓点，逻辑不变）
+    // 多地图页签：近岸（现有地图，冰湖活动场也在此图上）/ 出海（未来航线新地图预告）
     const left = el('div', 'panel fish-select');
     left.innerHTML = '<h2>🎣 世界地图 · 点击钓点开始垂钓</h2>';
+    const tabBar = el('div', 'px-map-tabs');
+    [['nearshore', '🏞 近岸'], ['voyage', '⛵ 出海 · 未来']].forEach(function (kv) {
+      const tb = el('button', 'px-map-tab' + (mapTab === kv[0] ? ' on' : ''), kv[1]);
+      tb.addEventListener('click', function () { if (mapTab !== kv[0]) { mapTab = kv[0]; renderView(); } });
+      tabBar.appendChild(tb);
+    });
+    left.appendChild(tabBar);
     // 地图节点坐标（地图宽高的百分比）：与 assets/worldmap.png 中场景对应
     const MAP_LAYOUT = {
       stillwater: { dock: [15, 33], reed: [10, 61], deep: [19, 52], label: [19, 80] },
       rapids: { shoal: [50, 23], eddy: [49, 45], fall: [50, 87], label: [50, 97] },
-      sunset: { beach: [78, 13], pier: [86, 48], reef: [79, 77], label: [84, 85] },
+      sunset: { beach: [77, 11], pier: [88, 55], reef: [78, 80], label: [90, 68] },
       frostmoon: { label: [37, 13] },
     };
+    // 出海预告图的锁定节点
+    const VOYAGE_NODES = [
+      { pos: [26, 73], name: '母港 · 起程', tip: '出海航线的起点' },
+      { pos: [62, 44], name: '雾中群岛 · 未知钓场', tip: '敬请期待' },
+      { pos: [85, 26], name: '远海群岛 · 未知钓场', tip: '敬请期待' },
+    ];
     const map = el('div', 'px-map');
-    map.innerHTML = '<img class="px-map-img" src="assets/worldmap.png" alt="" draggable="false">';
+    const mapImg = mapTab === 'voyage' ? 'assets/voyagemap.png' : 'assets/worldmap.png';
+    map.innerHTML = '<img class="px-map-img" src="' + mapImg + '" alt="" draggable="false">';
+    if (mapTab === 'voyage') {
+      // 出海预告：全部锁定，点按只提示
+      const vl = el('div', 'px-region locked', '航线规划中 · 未来版本开放');
+      vl.style.left = '55%'; vl.style.top = '90%';
+      map.appendChild(vl);
+      VOYAGE_NODES.forEach(function (n) {
+        const node = el('button', 'px-node locked');
+        node.style.left = n.pos[0] + '%';
+        node.style.top = n.pos[1] + '%';
+        node.innerHTML = '<span class="pn-bob"></span><span class="pn-name">🔒 ' + esc(n.name) + '</span>';
+        node.title = n.tip;
+        node.addEventListener('pointerdown', function () { toast('「出海」航线仍在规划中，未来版本开放'); });
+        map.appendChild(node);
+      });
+      left.appendChild(map);
+    } else {
+    // 近岸地图：两只飞鸟掠过（纯装饰）
+    map.innerHTML += '<img class="px-bird b1" src="assets/ui/bird.png" alt="">' +
+      '<img class="px-bird b2" src="assets/ui/bird.png" alt="">';
     D.GROUNDS.forEach(function (g) {
       const lay = MAP_LAYOUT[g.id] || {};
       const cnt = (st.groundCounts && st.groundCounts[g.id]) || 0;
@@ -576,12 +613,17 @@ window.UI = (function () {
           esc(g.name) + (g.locked ? ' 🔒' : '') + (cnt > 0 && !g.locked ? ' · 👥' + cnt : ''));
         lb.style.left = lay.label[0] + '%';
         lb.style.top = lay.label[1] + '%';
-        if (g.locked) lb.title = '活动钓场 · 即将开放';
+        if (g.locked) lb.title = g.desc || '活动钓场 · 即将开放';
         map.appendChild(lb);
       }
-      (g.spots || []).forEach(function (sp) {
-        const pos = lay[sp.id];
-        if (!pos) return;
+      // 未预置坐标的钓点（例如冰湖活动场开启后后台新配的钓点）：围绕区域标签环状排列
+      (g.spots || []).forEach(function (sp, spIdx) {
+        let pos = lay[sp.id];
+        if (!pos) {
+          const base = lay.label || [50, 50];
+          const ang = -90 + spIdx * 60;
+          pos = [base[0] + 9 * Math.cos(ang * Math.PI / 180), base[1] + 9 * Math.sin(ang * Math.PI / 180)];
+        }
         const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
         const here = st.player.groundId === g.id && st.player.spotId === sp.id;
         const buffed = sp.buffs && sp.buffs.length > 0;
@@ -591,7 +633,8 @@ window.UI = (function () {
         node.style.left = pos[0] + '%';
         node.style.top = pos[1] + '%';
         node.innerHTML = '<span class="pn-bob"></span><span class="pn-name">' + esc(sp.name) +
-          (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>';
+          (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
+          (here ? '<img class="pn-fisher" src="assets/ui/fisherman.png" alt="">' : '');
         node.title = buffed
           ? '⚡ ' + sp.buffs.map(function (b) { return (D.AFFIX_LABEL[b.type] || b.type) + (b.value > 0 ? '+' : '') + b.value + '%'; }).join(' · ')
           : (on ? '再点一次取消钓鱼' : '点击开始自动钓鱼');
@@ -624,7 +667,7 @@ window.UI = (function () {
     }
     map.addEventListener('pointerdown', function (ev) {
       const t = ev.target && ev.target.closest ? ev.target.closest('.px-node') : null;
-      if (!t) return;
+      if (!t || !t.getAttribute('data-g')) return;
       lastSpotPointerTs = Date.now();
       chooseSpot(t);
     });
@@ -632,10 +675,11 @@ window.UI = (function () {
       // pointerdown 已处理（鼠标/触摸）；这里只兜底键盘激活
       if (Date.now() - lastSpotPointerTs < 700) return;
       const t = ev.target && ev.target.closest ? ev.target.closest('.px-node') : null;
-      if (!t) return;
+      if (!t || !t.getAttribute('data-g')) return;
       chooseSpot(t);
     });
     left.appendChild(map);
+    }
     // 图例：帮助首次进入的玩家看懂地图标记
     const legend = el('div', 'px-legend');
     legend.innerHTML = '<span><i class="lg-bob"></i> 钓点</span>' +
@@ -3332,6 +3376,7 @@ window.UI = (function () {
   // ---- 鱼类图鉴视图 ----
   // 当前分类（模块级：重绘间保留）；详情改为子窗口，无需记录展开项
   let codexCategory = 'all';
+  let mapTab = 'nearshore'; // 钓鱼页地图页签：nearshore 近岸 / voyage 出海预告
   let codexSortRarity = false;
 
   // 图鉴详情浮层：完整信息 + 全部产地（点击卡片开合；未解锁也可查看获取信息）

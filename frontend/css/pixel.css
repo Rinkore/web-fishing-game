@@ -422,3 +422,83 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
 .px-legend .lg-bob::after { content: ''; position: absolute; left: 0; bottom: 0; width: 10px; height: 8px; background: #e84a3a; border-radius: 0 0 3px 3px; }
 .px-legend .lg-ring { display: inline-block; width: 14px; height: 14px; border: 3px solid var(--px-gold); border-radius: 50%; }
 .px-legend .lg-buff { color: var(--px-gold); }
+
+/* ---------- 地图页签 ---------- */
+.px-map-tabs { display: flex; gap: 10px; margin-bottom: 12px; }
+.px-map-tab {
+  padding: 8px 18px; font-size: 14px; letter-spacing: 2px; cursor: pointer;
+  color: #b8d4ea; background: rgba(0, 0, 0, .3);
+}
+.px-map-tab.on {
+  color: #042; font-weight: 700; background: var(--accent);
+  border-color: #1e8a74 !important;
+  box-shadow: 0 4px 0 var(--px-shadow), 0 0 14px rgba(52, 224, 192, .4) !important;
+}
+
+/* 锁定节点（出海预告） */
+.px-node.locked { cursor: not-allowed; }
+.px-node.locked .pn-bob { filter: grayscale(.8) brightness(.7); animation: none; }
+.px-node.locked .pn-name { color: #9fb8cc; border-style: dashed; }
+
+/* 渔夫标记：当前垂钓位置 */
+.pn-fisher {
+  position: absolute; left: 50%; top: -36px; width: 34px; height: auto;
+  transform: translateX(-50%) scaleX(-1);
+  image-rendering: pixelated;
+  animation: px-fisher-sit 2.8s ease-in-out infinite;
+  filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, .5));
+}
+@keyframes px-fisher-sit {
+  0%, 100% { transform: translateX(-50%) scaleX(-1) translateY(0); }
+  50% { transform: translateX(-50%) scaleX(-1) translateY(-2px); }
+}
+
+/* 飞鸟掠过近岸地图 */
+.px-bird {
+  position: absolute; top: 10%; width: 30px; height: auto;
+  image-rendering: pixelated; pointer-events: none; z-index: 1;
+  animation: px-fly 24s linear infinite;
+}
+.px-bird.b2 { top: 20%; width: 22px; animation-duration: 34s; animation-delay: -16s; opacity: .8; }
+@keyframes px-fly {
+  0% { left: -8%; transform: translateY(0); }
+  25% { transform: translateY(-10px); }
+  50% { left: 55%; transform: translateY(4px); }
+  75% { transform: translateY(-6px); }
+  100% { left: 104%; transform: translateY(0); }
+}
+
+/* ---------- 像素导航图标 ---------- */
+.nav-icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; }
+.nav-ico { width: 24px; height: 24px; image-rendering: pixelated; display: block; }
+
+/* ---------- RPG 窗口框（九切片，应用于面板/弹窗/登录卡） ---------- */
+.panel, .modal-box, .auth-card {
+  border: 12px solid transparent !important;
+  border-radius: 0 !important;
+  border-image: url('../assets/ui/frame.png') 12 fill stretch !important;
+  background: none !important;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, .45) !important;
+}
+.panel { padding: 10px 14px; }
+.modal-box { padding: 10px; }
+.auth-card { padding: 18px 22px; }
+/* 面板标题：像素下划线 */
+.panel h2 {
+  border-bottom: 3px solid var(--px-line);
+  padding-bottom: 8px; margin-bottom: 14px;
+}
+.panel h2::after {
+  content: ''; display: block; width: 64px; height: 3px;
+  background: var(--accent); margin-top: 4px;
+  box-shadow: 0 0 8px rgba(52, 224, 192, .6);
+}
+
+/* ---------- 登录页：hero 大图背景 ---------- */
+.auth-overlay {
+  background:
+    linear-gradient(180deg, rgba(6, 14, 26, .25) 0%, rgba(6, 14, 26, .45) 100%),
+    url('../assets/ui/hero.png') center bottom / cover no-repeat,
+    linear-gradient(180deg, #0a1c34 0%, #081426 100%) !important;
+}
+.auth-overlay::before { display: none; }   /* hero 已含水面，去掉波浪层 */
