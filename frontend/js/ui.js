@@ -556,42 +556,47 @@ window.UI = (function () {
     const st = S();
     main.innerHTML = '';
 
-    // 左：选择钓场 / 钓点（带实时人数）
+    // 左：像素世界地图（钓场为区域、钓点为可点节点；点击节点=选择钓点，逻辑不变）
     const left = el('div', 'panel fish-select');
-    left.innerHTML = '<h2>🎣 选择钓场与垂钓点</h2>';
-    const groundWrap = el('div', 'ground-list');
+    left.innerHTML = '<h2>🎣 世界地图 · 点击钓点开始垂钓</h2>';
+    // 地图节点坐标（地图宽高的百分比）：与 assets/worldmap.png 中场景对应
+    const MAP_LAYOUT = {
+      stillwater: { dock: [15, 33], reed: [10, 61], deep: [19, 52], label: [19, 80] },
+      rapids: { shoal: [50, 23], eddy: [49, 45], fall: [50, 87], label: [50, 97] },
+      sunset: { beach: [78, 13], pier: [86, 48], reef: [79, 77], label: [84, 85] },
+      frostmoon: { label: [37, 13] },
+    };
+    const map = el('div', 'px-map');
+    map.innerHTML = '<img class="px-map-img" src="assets/worldmap.png" alt="" draggable="false">';
     D.GROUNDS.forEach(function (g) {
+      const lay = MAP_LAYOUT[g.id] || {};
       const cnt = (st.groundCounts && st.groundCounts[g.id]) || 0;
-      const card = el('div', 'ground-card' + (g.locked ? ' locked' : '') + (st.selected.groundId === g.id ? ' sel' : ''));
-      let spotsHtml = '';
-      if (g.locked) {
-        spotsHtml = '<div class="locked-note">活动钓场 · 即将开放</div>';
-      } else {
-        spotsHtml = '<div class="spot-row">';
-        g.spots.forEach(function (sp) {
-          const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
-          const buffed = sp.buffs && sp.buffs.length > 0;
-          spotsHtml += '<button class="spot-btn' + (on ? ' on' : '') + (buffed ? ' buffed' : '') + '" data-g="' + g.id + '" data-s="' + sp.id + '"' +
-            '>' + esc(sp.name) +
-            (buffed ? '<span class="spot-buff-mark">⚡</span>' : '') + '</button>';
-        });
-        spotsHtml += '</div>';
-        // 有增益的钓点在卡片内直接列出效果（不再只藏在原生悬浮提示里，鼠标移到才看得到）
-        const buffRows = g.spots.filter(function (sp) { return sp.buffs && sp.buffs.length; }).map(function (sp) {
-          const eff = sp.buffs.map(function (b) {
-            return '<b>' + esc(D.AFFIX_LABEL[b.type] || b.type) + (b.value > 0 ? '+' : '') + b.value + '%</b>';
-          }).join(' · ');
-          return '<span class="gc-buff-item" data-s="' + sp.id + '"><span class="gc-buff-mark">⚡</span>' +
-            '<span class="gc-buff-name">' + esc(sp.name) + '</span>' + eff + '</span>';
-        }).join('');
-        if (buffRows) spotsHtml += '<div class="gc-buffs">' + buffRows + '</div>';
+      if (lay.label) {
+        const lb = el('div', 'px-region' + (g.locked ? ' locked' : ''),
+          esc(g.name) + (g.locked ? ' 🔒' : '') + (cnt > 0 && !g.locked ? ' · 👥' + cnt : ''));
+        lb.style.left = lay.label[0] + '%';
+        lb.style.top = lay.label[1] + '%';
+        if (g.locked) lb.title = '活动钓场 · 即将开放';
+        map.appendChild(lb);
       }
-      card.innerHTML = '<div class="gc-head"><b>' + esc(g.name) + '</b>' +
-        '<span class="gc-head-right">' +
-        (g.locked ? '' : '<span class="gc-cnt' + (cnt > 0 ? ' live' : '') + '">👥 ' + cnt + ' 人</span>') +
-        '<span class="tag ' + g.type + '">' + (g.type === 'normal' ? '普通钓场' : '活动钓场') + '</span></span></div>' +
-        '<div class="gc-desc">' + esc(g.desc) + '</div>' + spotsHtml;
-      groundWrap.appendChild(card);
+      (g.spots || []).forEach(function (sp) {
+        const pos = lay[sp.id];
+        if (!pos) return;
+        const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
+        const here = st.player.groundId === g.id && st.player.spotId === sp.id;
+        const buffed = sp.buffs && sp.buffs.length > 0;
+        const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : ''));
+        node.setAttribute('data-g', g.id);
+        node.setAttribute('data-s', sp.id);
+        node.style.left = pos[0] + '%';
+        node.style.top = pos[1] + '%';
+        node.innerHTML = '<span class="pn-bob"></span><span class="pn-name">' + esc(sp.name) +
+          (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>';
+        node.title = buffed
+          ? '⚡ ' + sp.buffs.map(function (b) { return (D.AFFIX_LABEL[b.type] || b.type) + (b.value > 0 ? '+' : '') + b.value + '%'; }).join(' · ')
+          : (on ? '再点一次取消钓鱼' : '点击开始自动钓鱼');
+        map.appendChild(node);
+      });
     });
     // 钓点选择：主路径用 pointerdown（上鱼广播会整页重绘，若在 mouseup 前重绘则 click 会丢失，
     // 表现为「切换钓点被上鱼卡住」；pointerdown 一定发生在存活 DOM 上）。
@@ -617,20 +622,27 @@ window.UI = (function () {
         renderTopbar(); renderNav(); renderFishing();
       });
     }
-    groundWrap.addEventListener('pointerdown', function (ev) {
-      const t = ev.target && ev.target.closest ? ev.target.closest('.spot-btn') : null;
+    map.addEventListener('pointerdown', function (ev) {
+      const t = ev.target && ev.target.closest ? ev.target.closest('.px-node') : null;
       if (!t) return;
       lastSpotPointerTs = Date.now();
       chooseSpot(t);
     });
-    groundWrap.addEventListener('click', function (ev) {
+    map.addEventListener('click', function (ev) {
       // pointerdown 已处理（鼠标/触摸）；这里只兜底键盘激活
       if (Date.now() - lastSpotPointerTs < 700) return;
-      const t = ev.target && ev.target.closest ? ev.target.closest('.spot-btn') : null;
+      const t = ev.target && ev.target.closest ? ev.target.closest('.px-node') : null;
       if (!t) return;
       chooseSpot(t);
     });
-    left.appendChild(groundWrap);
+    left.appendChild(map);
+    // 图例：帮助首次进入的玩家看懂地图标记
+    const legend = el('div', 'px-legend');
+    legend.innerHTML = '<span><i class="lg-bob"></i> 钓点</span>' +
+      '<span><i class="lg-ring"></i> 当前垂钓位置</span>' +
+      '<span><i class="lg-buff">⚡</i> 有增益的钓点</span>' +
+      '<span>🔒 未开放钓场</span>';
+    left.appendChild(legend);
 
     const ctrl = el('div', 'fish-ctrl');
     const stateBar = el('div', 'fish-state' + (st.fishing.active ? ' on' : ''));
@@ -646,9 +658,17 @@ window.UI = (function () {
     left.appendChild(ctrl);
     main.appendChild(left);
 
-    // 右：渔场实况
+    // 右：渔场实况（顶部为装饰性垂钓场景：水面/浮漂/游鱼动画，active 时浮漂跳动，无逻辑）
     const right = el('div', 'panel fish-live');
     right.innerHTML = '<h2>🌊 渔场实况</h2>';
+    const scene = el('div', 'px-scene');
+    scene.setAttribute('data-active', st.fishing.active ? '1' : '0');
+    scene.innerHTML = '<div class="px-scene-water"></div><div class="px-scene-line"></div>' +
+      '<div class="px-scene-bobber"></div>' +
+      '<img class="px-fish px-f1" src="assets/fish/sardine.png" alt="" draggable="false">' +
+      '<img class="px-fish px-f2" src="assets/fish/carp.png" alt="" draggable="false">' +
+      '<img class="px-fish px-f3" src="assets/fish/bass.png" alt="" draggable="false">';
+    right.appendChild(scene);
     const atGroundId = st.player.groundId;
     const gNow = atGroundId ? D.GROUNDS.find(function (x) { return x.id === atGroundId; }) : null;
     const spNow = gNow && gNow.spots.find(function (x) { return x.id === st.player.spotId; });
