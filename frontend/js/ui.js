@@ -3515,6 +3515,179 @@ window.UI = (function () {
     return true;
   }
 
+  // ---- 物品简介（v0.11.8）----
+  // 背包里鼠标停一下给轻量浮标（这是什么 / 现价 / 干嘛用），点一下开完整简介：
+  // 图片 + 一句话简介 + 用途 + 产地或合成配方 + 持有量与图鉴纪录。
+  // 鱼 / 材料 / 宝匣走这里；组件仍走原有的「属性」窗口（openComponentDetail）。
+  // 文案全部由实际机制与当前后台配置现算（宝匣用配置里的 desc），不另写死一份说明。
+  function itemKindName(it) {
+    return it.kind === 'fish' ? '渔获' : it.kind === 'material' ? '材料' : it.kind === 'chest' ? '宝匣' : it.kind === 'component' ? '组件' : '物品';
+  }
+  function itemIconSrc(it) {
+    if (it.kind === 'fish') return 'assets/fish/' + it.id + '.png';
+    if (it.kind === 'material' || it.kind === 'chest' || it.kind === 'component') return 'assets/item/' + it.id + '.png';
+    return '';
+  }
+  function itemIconHtml(it, cls) {
+    const src = itemIconSrc(it);
+    if (!src) return '';
+    return '<img class="' + cls + '" src="' + esc(src) + '" alt="" draggable="false" onerror="this.style.display=\'none\'">';
+  }
+  // 一句话简介
+  function itemBriefText(it) {
+    if (it.kind === 'chest') return (it.chest && it.chest.desc) || '宝匣：开启后获得带词条的组件。';
+    if (it.kind === 'fish') {
+      const spots = D.spotsOf(it.id);
+      return qualityName(it) + '渔获 · 体型 ' + it.size[0] + '~' + it.size[1] + 'cm' +
+        (spots.length ? ' · 见于 ' + spots[0] + (spots.length > 1 ? ' 等 ' + spots.length + ' 处' : '') : '');
+    }
+    if (it.kind === 'material') {
+      if (it.id === D.SMELT_PEARL) return '熔炼催化剂：让熔炼的每条词条 roll 两次、取更靠近区间边界的那次。';
+      const aff = D.smeltMaterialAffix(it.id);
+      if (aff) {
+        return '熔炼投料 → 定向补「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀' +
+          (it.id === 'relic' ? '；另用于宝匣合成、残片保留与重铸。' : '。');
+      }
+      return qualityName(it) + '材料 · 可在系统商店出售，或挂到开放市集。';
+    }
+    return qualityName(it) + '物品。';
+  }
+  // 用途条目（数值与开关全部读当前后台配置）
+  function itemUses(it) {
+    const cfg = (D.getSmeltCfg && D.getSmeltCfg()) || {};
+    const out = [];
+    if (it.kind === 'chest') {
+      const c = it.chest || {};
+      out.push('开启：在「🎁 宝匣合成」页消耗 <b>' + (c.costRelic || 0) + '</b> 片沉船宝匣残片 + <b>' + (c.costCoins || 0) + '</b>💰 开箱');
+      out.push('选材：' + (c.mode === 'part' ? '自选部位' : c.mode === 'base' ? '自选底材' : '随机部位'));
+      const w = Object.keys(c.qualityWeights || {}).map(function (k) {
+        return (D.QUALITY[k] ? D.QUALITY[k].name : k) + ' ' + c.qualityWeights[k] + '%';
+      }).join(' / ');
+      if (w) out.push('产出品质：' + w);
+      if (c.forceMax) out.push('词条：填满所选底材的全部词缀池');
+      else if (c.hitCount) {
+        out.push('词条数：' + (c.chance != null ? Math.round(c.chance * 100) + '% 概率 ' : '') + c.hitCount + ' 条' +
+          (c.chance != null ? ' / ' + Math.round((1 - c.chance) * 100) + '% 概率 ' + c.missCount + ' 条' : '') +
+          (c.extra ? '（多出的那条是池外突破词缀）' : ''));
+      } else if (c.minAffixes) out.push('词条数：至少 ' + c.minAffixes + ' 条');
+      out.push('交易：系统商店不收购宝匣，只能挂到开放市集');
+    } else if (it.kind === 'fish') {
+      out.push('出售：系统商店按现价动态收购（卖出越多价越低）');
+      out.push('挂单：开放市集上架付定价总额 1% 上架费，成交另收 10% 税');
+      out.push('记录：计入「📖 鱼类图鉴」与「🏆 渔获记录」的大小鱼榜');
+    } else {
+      const aff = D.smeltMaterialAffix && D.smeltMaterialAffix(it.id);
+      if (it.id === D.SMELT_PEARL) out.push('熔炼：作为催化剂（每件熔炼至多 1 个），让每条词条 roll 两次取更靠近边界的值');
+      else if (aff) {
+        out.push('熔炼投料：对应「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀 —— 投得最多的那种材料决定补哪条，每份 ' +
+          (cfg.extraRatePerMaterial || 0) + '% 补缀率、失败率 ' + (cfg.failPerMaterial || 0) + '%');
+      }
+      if (it.id === 'relic') {
+        out.push('宝匣：合成各档宝匣的主材料（' + (D.CHESTS || []).map(function (c) { return c.name + ' ' + c.costRelic + ' 片'; }).join(' · ') + '）');
+        out.push('熔炼：残片保留（每片 ' + (cfg.retainPerRelic || 0) + '% 概率按原值保留池外词缀）+ 重铸（洗词条数值）');
+      }
+      out.push('出售 / 挂单：系统商店 ' + (it.price || 0) + '💰，也可挂到开放市集');
+    }
+    return out;
+  }
+  function itemDetailHtml(id) {
+    const st = S();
+    const it = itemMeta(id);
+    const shopP = st.shop && st.shop[id];
+    const rec = (st.codex && st.codex[id]) || null;
+    const spots = D.spotsOf(id);
+    let html = itemIconHtml(it, 'cd-icon') +
+      '<div class="cd-title ' + qualityClass(it) + '">' + esc(it.name) + '</div>' +
+      '<div class="cd-line">' + esc(itemKindName(it)) + ' · ' + esc(qualityName(it)) + ' · 基准价 ' + (it.price || 0) + '💰' +
+      (shopP ? ' · 现价 <b>' + shopP.price + '💰</b>' : '') + '</div>' +
+      '<div class="cd-line">背包持有 <b>×' + (st.inventory[id] || 0) + '</b>' +
+      (it.size ? ' · 体型 ' + it.size[0] + '~' + it.size[1] + ' cm' : '') + '</div>' +
+      (rec && it.kind !== 'chest'
+        ? '<div class="cd-line muted">图鉴：' + (it.kind === 'fish' ? '已钓 ' : '已获得 ') + rec.count + ' 次（首获 ' + timeStr(rec.first) + '）' +
+          (rec.max != null ? ' · 最大 ' + rec.max + ' cm / 最小 ' + rec.min + ' cm' : '') + '</div>'
+        : '') +
+      '<div class="cd-desc">' + esc(itemBriefText(it)) + '</div>' +
+      '<div class="cd-sub">🧭 用途</div><ul class="cd-uses">' +
+      itemUses(it).map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ul>';
+    if (it.kind === 'chest') {
+      html += '<div class="cd-sub">📦 来源</div><div class="cd-line muted">在「🎁 宝匣合成」页用沉船宝匣残片 + 金币合成；残片来自钓鱼掉落与商城。</div>';
+    } else if (spots.length) {
+      html += '<div class="cd-sub">📍 产出地点（全部 ' + spots.length + ' 处）</div><div class="cd-spots">' +
+        spots.map(function (s) { return '<div class="cd-spot">🎣 ' + esc(s) + '</div>'; }).join('') + '</div>';
+    } else {
+      html += '<div class="cd-line muted">暂无产地信息。</div>';
+    }
+    return html;
+  }
+  function openItemDetail(id) {
+    const it = itemMeta(id);
+    if (it.kind === 'component') return openComponentDetail(id);   // 组件沿用原有「属性」窗口
+    closeOverlays();
+    const overlay = buildOverlay(function () { closeOverlays(); });
+    const box = el('div', 'modal-box codex-modal item-detail-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">' + esc(it.name) + '</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body"><div class="codex-detail"></div></div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.querySelector('.modal-close').addEventListener('click', function () { closeOverlays(); });
+    box.querySelector('.codex-detail').innerHTML = itemDetailHtml(id);
+  }
+  // 悬停浮标：跟着光标走且不出界；内容只在换了物品时重画
+  let itemTipEl = null, itemTipId = '';
+  function itemTipNode() {
+    if (!itemTipEl) {
+      itemTipEl = el('div', 'item-tip');
+      document.body.appendChild(itemTipEl);
+      document.addEventListener('scroll', function () { hideItemTip(); }, true);
+    }
+    return itemTipEl;
+  }
+  function hideItemTip() {
+    if (itemTipEl) itemTipEl.classList.remove('show');
+    itemTipId = '';
+  }
+  function placeItemTip(x, y) {
+    const tip = itemTipNode();
+    const r = tip.getBoundingClientRect();
+    let left = x + 16, top = y + 16;
+    if (left + r.width > window.innerWidth - 10) left = Math.max(10, x - r.width - 16);
+    if (top + r.height > window.innerHeight - 10) top = Math.max(10, y - r.height - 16);
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  function showItemTip(id, x, y) {
+    const st = S();
+    const it = itemMeta(id);
+    const tip = itemTipNode();
+    if (id !== itemTipId) {
+      const shopP = st.shop && st.shop[id];
+      tip.innerHTML = itemIconHtml(it, 'it-icon') +
+        '<div class="it-name ' + qualityClass(it) + '">' + esc(it.name) + '</div>' +
+        '<div class="it-line">' + esc(itemKindName(it)) + ' · ' + esc(qualityName(it)) + ' · ' +
+        (shopP ? '现价 ' + shopP.price + '💰' : '基准价 ' + (it.price || 0) + '💰') + ' · 持有 ×' + (st.inventory[id] || 0) + '</div>' +
+        '<div class="it-desc">' + esc(itemBriefText(it)) + '</div>' +
+        '<div class="it-hint">点击查看完整简介</div>';
+      itemTipId = id;
+    }
+    tip.classList.add('show');
+    placeItemTip(x, y);
+  }
+  // 给背包里的鱼 / 材料 / 宝匣行挂上「悬停简介 + 点击详情」（组件行已有「属性」按钮，不接）
+  function wireItemIntro(row, id) {
+    if (itemMeta(id).kind === 'component') return;
+    row.classList.add('clickable');
+    row.title = '悬停看简介 · 点击看完整简介';
+    row.addEventListener('mouseenter', function (e) { showItemTip(id, e.clientX, e.clientY); });
+    row.addEventListener('mousemove', function (e) { if (itemTipId) placeItemTip(e.clientX, e.clientY); });
+    row.addEventListener('mouseleave', hideItemTip);
+    row.addEventListener('click', function (e) {
+      if (e.target.closest('button')) return;   // 点的是出售 / 上架等按钮，不弹简介
+      hideItemTip();
+      openItemDetail(id);
+    });
+  }
+
   function renderInventory() {
     const main = $('main');
     const st = S();
@@ -3624,6 +3797,7 @@ window.UI = (function () {
         lb.addEventListener('click', function () { openListModal(id); });
         acts.appendChild(lb);
         row.appendChild(acts);
+        wireItemIntro(row, id);   // 悬停出简介浮标 + 点击开完整简介（鱼 / 材料 / 宝匣）
         list.appendChild(row);
       });
     }
@@ -5573,6 +5747,7 @@ window.UI = (function () {
   }
 
   function renderView() {
+    hideItemTip();   // 整页重绘会把行换掉（mouseleave 不一定触发），浮标先收起来
     const saved = captureScroll();
     if (currentView === 'fishing') renderFishing();
     else if (currentView === 'bd') renderBD();

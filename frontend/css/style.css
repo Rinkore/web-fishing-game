@@ -969,6 +969,30 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .cd-sub { color: var(--accent2); font-weight: 600; margin: 10px 0 4px; }
 .cd-spots { display: flex; flex-direction: column; gap: 2px; max-height: 150px; overflow: auto; }
 .cd-spot { padding: 3px 6px; border-radius: 5px; background: rgba(255,255,255,.03); }
+/* 物品简介（v0.11.8）：一句话简介与用途清单；悬停浮标同款排版，见 .item-tip */
+.cd-desc { margin: 8px 0 2px; padding: 7px 9px; font-size: 13px; color: var(--text);
+  background: rgba(255,255,255,.04); border-left: 3px solid var(--accent2); border-radius: 0 6px 6px 0; }
+.cd-uses { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.cd-uses li { position: relative; padding: 3px 0 3px 16px; color: var(--muted); }
+.cd-uses li::before { content: '·'; position: absolute; left: 5px; color: var(--accent2); font-weight: 700; }
+.cd-uses li b { color: var(--big); }
+/* 背包里可点开的行（鱼 / 材料 / 宝匣）：给一点可点的提示 */
+.inv-page-row.clickable { cursor: pointer; }
+.inv-page-row.clickable:hover { background: rgba(255,255,255,.05); }
+/* 悬停浮标：贴光标显示，不拦截鼠标事件（行里还有出售 / 上架按钮） */
+.item-tip {
+  position: fixed; z-index: 900; max-width: 320px; pointer-events: none;
+  padding: 9px 11px; font-size: 12px; line-height: 1.5;
+  background: var(--panel-solid); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0,0,0,.45);
+  opacity: 0; visibility: hidden; transition: opacity .08s;
+}
+.item-tip.show { opacity: 1; visibility: visible; }
+.item-tip .it-icon { display: block; width: 72px; height: 46px; object-fit: contain; margin: 0 auto 6px; image-rendering: pixelated; }
+.item-tip .it-name { font-weight: 700; margin-bottom: 3px; }
+.item-tip .it-line { color: var(--muted); }
+.item-tip .it-desc { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line); }
+.item-tip .it-hint { margin-top: 6px; color: var(--accent2); font-size: 11px; }
 
 /* ---- 市集历史订单 ---- */
 .market-history { display: flex; flex-direction: column; gap: 6px; max-height: 560px; overflow: auto; }

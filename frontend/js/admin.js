@@ -560,7 +560,7 @@ window.Admin = (function () {
         '<label>品质</label><select id="cus-quality" class="ipt"></select></div>' +
         '<div id="cus-affixes" style="margin:6px 0"></div>' +
         '<div class="mgr-row"><button class="btn mini" id="cus-aff-add">＋ 添加词条</button>' +
-        '<span class="hint">词条类型只能选该底材支持的；数值可超出自然区间（管理员定制）</span></div>' +
+        '<span class="hint">6 类词条都能选（★池外＝该底材原来没有的，按池外区间取值）；数值可超出自然区间（越界标 ⚠，不拦）</span></div>' +
         '<div class="hint" id="cus-preview" style="margin-top:6px"></div>' +
         '<div class="mgr-row" style="margin-top:6px"><label>数量</label>' +
         '<input id="cus-qty" class="ipt mk-num" type="number" min="1" value="1" />' +
@@ -606,9 +606,12 @@ window.Admin = (function () {
         toast('已加入草稿：' + itemNameOf(id) + ' × ' + qty);
       };
       // —— 定制配件：底材 × 品质 × 词条 → 组件实例。id 用 GameData.instanceId 生成（与游戏同一套编码），
-      // 服务端按实例规则校验后入包；词条类型只能选底材支持的，数值不设限（管理员定制）。——
+      // 服务端按实例规则校验后入包。
+      // 定制件刻意**不受底材词缀池与自然区间限制**：6 类词条都能选（不在该底材池里的按池外区间显示、
+      // 入包后与宝匣突破件一样带「池外」标记），数值也能超出自然区间（越界处标 ⚠ 提示，不拦）。——
       const bases = (window.GameData && GameData.COMPONENT_BASES) || [];
       const affLabel = (window.GameData && GameData.AFFIX_LABEL) || {};
+      const affTypes = (window.GameData && GameData.AFFIX_TYPES) || [];
       const qDef = (window.GameData && GameData.QUALITY) || {};
       const partName = {};
       ((window.GameData && GameData.ROD_PARTS) || []).forEach(function (p) { partName[p.key] = p.name; });
@@ -621,24 +624,45 @@ window.Admin = (function () {
       }).join('');
       let cusList = [];
       function cusBase() { return bases.find(function (b) { return b.id === bSel.value; }) || null; }
+      // 某类词条对当前底材的「自然区间」：底材池内 → 该底材区间（含后台覆盖）；池外 → 池外（突破）区间
+      function cusRange(b, type) {
+        const pr = (b && b.pool || []).find(function (p) { return p.type === type; });
+        if (pr) {
+          const r = (GameData.affixRangeOf ? GameData.affixRangeOf(b.id, pr) : null) || [pr.min, pr.max];
+          return { min: r[0], max: r[1], extra: false };
+        }
+        const e = (GameData.extraAffixRangeOf ? GameData.extraAffixRangeOf(type) : null) || [1, 3];
+        return { min: e[0], max: e[1], extra: true };
+      }
       function drawCus() {
         const b = cusBase();
         const box = ov.querySelector('#cus-affixes');
         if (!b) return;
-        const pool = b.pool || [];
-        cusList = cusList.filter(function (a) { return pool.some(function (p) { return p.type === a.type; }); }); // 换底材后清掉不支持的
+        // 换底材不再清空已加词条：定制件本来就能带池外词条，只是「自然区间」按新底材重算
         box.innerHTML = cusList.length ? cusList.map(function (a, i) {
-          const pr = pool.find(function (p) { return p.type === a.type; });
+          const nr = cusRange(b, a.type);
+          const over = a.value < nr.min || a.value > nr.max;
           return '<div class="cus-aff">' +
-            '<select class="ipt" data-cus-t="' + i + '">' + pool.map(function (p) {
-              return '<option value="' + esc(p.type) + '"' + (p.type === a.type ? ' selected' : '') + '>' + esc(affLabel[p.type] || p.type) + '</option>';
+            '<select class="ipt" data-cus-t="' + i + '">' + affTypes.map(function (t) {
+              return '<option value="' + esc(t) + '"' + (t === a.type ? ' selected' : '') + '>' +
+                esc(affLabel[t] || t) + (cusRange(b, t).extra ? ' ★池外' : '') + '</option>';
             }).join('') + '</select>' +
             '<input class="ipt mk-num" type="number" data-cus-v="' + i + '" value="' + a.value + '" />' +
-            '<span class="hint">自然 ' + (pr ? pr.min : '?') + '~' + (pr ? pr.max : '?') + '</span>' +
+            '<span class="hint' + (over ? ' cus-over' : '') + '">' + (nr.extra ? '池外 ' : '自然 ') + nr.min + '~' + nr.max +
+            (over ? ' ⚠越界' : '') + '</span>' +
             '<button class="btn mini danger" data-cus-del="' + i + '" title="移除词条">✕</button></div>';
         }).join('') : '<div class="hint">暂无词条（0 条 = 无词条配件）</div>';
         box.querySelectorAll('[data-cus-t]').forEach(function (sel) {
-          sel.onchange = function () { cusList[+sel.getAttribute('data-cus-t')].type = sel.value; drawCus(); };
+          sel.onchange = function () {
+            const i = +sel.getAttribute('data-cus-t'), t = sel.value;
+            if (cusList.some(function (a, j) { return j !== i && a.type === t; })) {
+              toast('「' + (affLabel[t] || t) + '」已经加过一条了（同类词条只能一条）', true);
+              drawCus();
+              return;
+            }
+            cusList[i].type = t;
+            drawCus();
+          };
         });
         box.querySelectorAll('[data-cus-v]').forEach(function (inp) {
           inp.oninput = function () { cusList[+inp.getAttribute('data-cus-v')].value = Math.round(Number(inp.value) || 0); updateCusPreview(); };
@@ -657,23 +681,25 @@ window.Admin = (function () {
         const el = ov.querySelector('#cus-preview');
         const id = cusId();
         const meta = (window.GameData && GameData.instanceMeta) ? GameData.instanceMeta(id) : null;
-        if (!meta) { el.innerHTML = '<span class="err">无法生成该配件（词条类型与底材不匹配）</span>'; return; }
+        if (!meta) { el.innerHTML = '<span class="err">无法生成该配件（底材 / 品质 / 词条编码非法）</span>'; return; }
         const aff = meta.affixes.length
-          ? meta.affixes.map(function (a) { return esc((affLabel[a.type] || a.type) + (a.value > 0 ? '+' : '') + a.value); }).join(' / ')
+          ? meta.affixes.map(function (a) {
+            return esc((affLabel[a.type] || a.type) + (a.value > 0 ? '+' : '') + a.value) +
+              (a.extra ? '<span class="cus-extra">池外</span>' : '');
+          }).join(' / ')
           : '无词条';
-        const b = cusBase();
         const cap = qDef[ov.querySelector('#cus-quality').value] ? qDef[ov.querySelector('#cus-quality').value].cap : '?';
         el.innerHTML = '预览：<b>' + esc(meta.name) + '</b> · ' + esc(meta.qualityName) + ' · ' + aff +
-          ' <span class="hint">（' + esc(id) + '；该品质常规最多 ' + cap + ' 条，当前 ' + meta.affixes.length + ' 条）</span>';
+          ' <span class="hint">（' + esc(id) + '；该品质常规最多 ' + cap + ' 条，定制件可超出，当前 ' + meta.affixes.length + ' 条）</span>';
       }
-      bSel.onchange = function () { cusList = []; drawCus(); };
+      bSel.onchange = function () { drawCus(); };   // 换底材不清空词条：只重算自然区间与池外标记
       ov.querySelector('#cus-quality').onchange = function () { updateCusPreview(); };
       ov.querySelector('#cus-aff-add').onclick = function () {
         const b = cusBase(); if (!b) return;
         const used = cusList.map(function (a) { return a.type; });
-        const next = (b.pool || []).find(function (p) { return used.indexOf(p.type) < 0; });
-        if (!next) { toast('该底材支持的词条类型都已添加', true); return; }
-        cusList.push({ type: next.type, value: next.min });
+        const next = affTypes.find(function (t) { return used.indexOf(t) < 0; });
+        if (!next) { toast('6 类词条都已添加', true); return; }
+        cusList.push({ type: next, value: cusRange(b, next).min });
         drawCus();
       };
       ov.querySelector('#cus-add').onclick = function () {

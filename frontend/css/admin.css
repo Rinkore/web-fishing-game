@@ -280,6 +280,9 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 /* 账号管理：定制配件的词条行 */
 .cus-aff { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
 .cus-aff .hint { white-space: nowrap; }
+/* 池外词条标记（该底材原来没有的）与「数值超出自然区间」提示：定制件允许越界，只标不拦 */
+.cus-extra { font-size: 10px; color: var(--acc); border: 1px solid var(--acc); border-radius: 6px; padding: 0 4px; margin-left: 4px; }
+.cus-aff .hint.cus-over { color: var(--warn); }
 
 /* ================= 宝匣配置页 ================= */
 /* .mgr-row .ipt 默认 flex:1（拉满整行），这里的输入框要紧凑固定宽度，

@@ -497,6 +497,37 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       const cusRow = await waitFor(async () => (await pa.evaluate(() =>
         Array.from(document.querySelectorAll('#snap-inv .snap-line label')).some(l => /竹制短竿/.test(l.textContent)))), { timeout: 4000 }).catch(() => false);
       check('定制配件已加入背包草稿', cusRow === true, String(cusRow));
+      // —— v0.11.8：定制件不受底材词缀池与自然区间限制（6 类词条都能加、数值可越界，只标不拦） ——
+      const cusFree = await pa.evaluate(() => {
+        const rows = () => Array.from(document.querySelectorAll('#cus-affixes .cus-aff'));
+        const opts = rows()[0].querySelector('select').options.length;
+        for (let i = 0; i < 5; i++) document.getElementById('cus-aff-add').click();   // 2 条 → 再点 5 次（上限 6，第 7 次会被拦）
+        const list = rows();
+        const last = list[list.length - 1];
+        const sel = last.querySelector('select');
+        const v0 = rows()[0].querySelector('[data-cus-v]');
+        v0.value = '999';
+        v0.dispatchEvent(new Event('input', { bubbles: true }));
+        const base = (window.GameData.COMPONENT_BASES || []).find(b => b.id === 'rod_bamboo');
+        return {
+          n: list.length, opts: opts, pool: ((base && base.pool) || []).map(p => p.type),
+          types: list.map(r => r.querySelector('select').value),
+          lastLabel: sel.options[sel.selectedIndex].textContent,
+          lastHint: last.querySelector('.hint').textContent,
+          extraHints: list.filter(r => /池外/.test(r.querySelector('.hint').textContent)).length,
+          over: { txt: rows()[0].querySelector('.hint').textContent, cls: rows()[0].querySelector('.hint').className },
+          preview: document.getElementById('cus-preview').textContent.replace(/\s+/g, ' ').trim(),
+        };
+      });
+      check('定制件词条类型不再限底材池（下拉 6 类、最多可加到 6 条）',
+        cusFree.opts === 6 && cusFree.pool.length === 2 && cusFree.n === 6 && new Set(cusFree.types).size === 6,
+        JSON.stringify({ opts: cusFree.opts, pool: cusFree.pool, n: cusFree.n, types: cusFree.types }));
+      check('池外词条标 ★池外、自然范围按池外（突破）区间给出',
+        /★池外/.test(cusFree.lastLabel) && /^池外 /.test(cusFree.lastHint) && cusFree.extraHints >= 4,
+        JSON.stringify({ last: cusFree.lastLabel, hint: cusFree.lastHint, extras: cusFree.extraHints }));
+      check('数值可超出自然区间（标 ⚠越界，不拦）',
+        /⚠越界/.test(cusFree.over.txt) && /cus-over/.test(cusFree.over.cls) && /钓速\+999/.test(cusFree.preview),
+        JSON.stringify(cusFree.over) + ' | ' + cusFree.preview.slice(0, 130));
       await pa.evaluate(() => { const b = document.querySelector('.modal-overlay .cf-no'); if (b) b.click(); });
 
       // —— 横幅：发布 → 玩家端滚播并上报 → 后台「当前滚播」→ 停止滚播 ——

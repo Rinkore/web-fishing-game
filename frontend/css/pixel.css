@@ -377,6 +377,16 @@ input:disabled, select:disabled, textarea:disabled { color: var(--px-input-off) 
   .px-scene { height: 120px; }
 }
 
+/* ---------- 物品简介（背包悬停浮标 + 点击详情） ---------- */
+/* 与模态框同一套像素窗框：基色/排版在 style.css，这里只补边框与投影 */
+.item-tip {
+  border: 3px solid var(--px-line) !important;
+  border-radius: 4px !important;
+  background: var(--px-panel) !important;
+  box-shadow: 4px 4px 0 var(--px-shadow) !important;
+  letter-spacing: .5px;
+}
+
 /* ---------- 像素世界地图 ---------- */
 .px-map {
   position: relative; width: 100%; overflow: hidden;

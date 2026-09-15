@@ -1216,6 +1216,97 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(200);
     check('关闭后批量出售子窗口消失', (await p1.$$('.batch-sell-modal')).length === 0);
 
+    // —— v0.11.8：背包物品简介（悬停浮标 + 点击完整简介，鱼 / 材料 / 宝匣） ——
+    // 注意 untilSel 超时是静默返回 false：点分类前必须确认资产广播已到（背包里有这件东西），
+    // 否则分类页是空的、点不到行，断言只会拿到 null。
+    await post('/api/dev/catch', { token: tokS, item: { kind: 'chest', id: 'chest_wreck' } });
+    await waitFor(async () => (await p1.evaluate(() => window.Engine.state.inventory.chest_wreck || 0)) > 0, { timeout: 8000 }).catch(() => {});
+    await clickNav(p1, '背包');
+    // 品质子筛选是模块级状态，前面「按品质筛选」那节把它留在「稀有」上没复位（模块级状态跨用例保留），
+    // 这里先点回「全部」，否则材料/宝匣分类会被滤空、点不到行。
+    await p1.evaluate(() => {
+      const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => !x.textContent.includes('📦') && x.textContent.trim().indexOf('全部') === 0);
+      if (b) b.click();
+    });
+    await sleep(300);
+    await untilSel(p1, '.inv-page-row.clickable', 8000);
+    const pickRow = await p1.evaluate(() => {
+      const row = document.querySelector('.inv-page-row.clickable');
+      if (!row) return null;
+      const b = row.getBoundingClientRect();
+      return {
+        name: (row.querySelector('span') || {}).textContent || '',
+        kind: (row.querySelector('.kind-tag') || {}).textContent || '',
+        // 点左侧名字区域：行的右侧是「出售 / 批量出售 / 上架」按钮，别点到按钮上
+        x: Math.round(b.left + 24), y: Math.round(b.top + b.height / 2),
+      };
+    });
+    check('背包里鱼/材料/宝匣行可点开简介（已标 clickable）', !!pickRow && /鱼|材料|宝匣/.test(pickRow.kind), JSON.stringify(pickRow));
+    await p1.mouse.move(pickRow.x, pickRow.y, { steps: 3 });
+    const tipChk = await untilGet(async () => await p1.evaluate(() => {
+      const t = document.querySelector('.item-tip');
+      if (!t || !t.classList.contains('show')) return null;
+      return { txt: t.textContent.replace(/\s+/g, ' ').trim(), img: !!t.querySelector('img'), hint: /点击查看完整简介/.test(t.textContent) };
+    }), o => !!o, 4000);
+    check('悬停出现简介浮标（图片 + 一句话 + 点击提示）',
+      !!tipChk && tipChk.img && tipChk.hint && /持有 ×\d+/.test(tipChk.txt), JSON.stringify(tipChk).slice(0, 180));
+    await p1.mouse.click(pickRow.x, pickRow.y);
+    const readDetail = () => p1.evaluate(() => {
+      const m = document.querySelector('.item-detail-modal');
+      if (!m) return null;
+      return {
+        title: (m.querySelector('.modal-title') || {}).textContent || '',
+        txt: (m.querySelector('.codex-detail') || {}).textContent.replace(/\s+/g, ' ').trim(),
+        img: !!m.querySelector('.cd-icon'),
+        uses: m.querySelectorAll('.cd-uses li').length,
+        spots: m.querySelectorAll('.cd-spot').length,
+      };
+    });
+    const closeDetail = async () => {
+      await p1.evaluate(() => { const b = document.querySelector('.item-detail-modal .modal-close'); if (b) b.click(); });
+      await sleep(200);
+    };
+    const detailChk = await untilGet(readDetail, o => !!o, 4000);
+    check('点击背包行打开完整简介（图片 + 一句话 + 用途 + 产地或来源）',
+      !!detailChk && detailChk.img && detailChk.uses >= 2 && /用途/.test(detailChk.txt) &&
+      (/产出地点/.test(detailChk.txt) ? detailChk.spots >= 1 : /来源/.test(detailChk.txt)),
+      JSON.stringify(detailChk).slice(0, 220));
+    check('简介标题与所点行一致', !!detailChk && detailChk.title === pickRow.name,
+      JSON.stringify({ t: detailChk && detailChk.title, row: pickRow.name }));
+    await closeDetail();
+    check('关闭后简介子窗口消失', (await p1.$$('.item-detail-modal')).length === 0);
+    // 鱼类：简介要给出体型、产地清单与记录用途
+    await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('鱼类')); if (b) b.click(); });
+    await untilSel(p1, '.inv-page-row.clickable', 5000);
+    await p1.evaluate(() => { const r = document.querySelector('.inv-page-row.clickable'); if (r) r.click(); });
+    const fishDetail = await untilGet(readDetail, o => !!o, 4000);
+    check('鱼类简介含体型、产地与「记入图鉴 / 渔获记录」用途',
+      !!fishDetail && /体型 \d+~\d+ cm/.test(fishDetail.txt) && fishDetail.spots >= 1 &&
+      /渔获记录/.test(fishDetail.txt) && /挂单/.test(fishDetail.txt), JSON.stringify(fishDetail).slice(0, 220));
+    await closeDetail();
+    // 材料：简介要说清熔炼用途（投料对应词缀 / 催化剂）；先确保背包里有材料（前面几节可能已卖掉）
+    await post('/api/dev/catch', { token: tokS, item: { kind: 'material', id: 'rope' } });
+    await waitFor(async () => (await p1.evaluate(() => window.Engine.state.inventory.rope || 0)) > 0, { timeout: 8000 }).catch(() => {});
+    await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('材料')); if (b) b.click(); });
+    await untilSel(p1, '.inv-page-row.clickable', 5000);
+    await p1.evaluate(() => { const r = document.querySelector('.inv-page-row.clickable'); if (r) r.click(); });
+    const matDetail = await untilGet(readDetail, o => !!o, 4000);
+    check('材料简介含熔炼用途与产地', !!matDetail && /熔炼/.test(matDetail.txt) && matDetail.spots >= 1,
+      JSON.stringify(matDetail).slice(0, 200));
+    await closeDetail();
+    // 宝匣：用途要写清合成消耗与产出（走配置里的 desc / costRelic / qualityWeights）
+    await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('宝匣')); if (b) b.click(); });
+    await untilSel(p1, '.inv-page-row.clickable', 5000);
+    await p1.evaluate(() => { const r = document.querySelector('.inv-page-row.clickable'); if (r) r.click(); });
+    const chestDetail = await untilGet(readDetail, o => !!o, 4000);
+    check('宝匣简介写明合成消耗、产出品质与来源',
+      !!chestDetail && /宝匣合成/.test(chestDetail.txt) && /消耗/.test(chestDetail.txt) &&
+      /产出品质/.test(chestDetail.txt) && /残片/.test(chestDetail.txt) && /来源/.test(chestDetail.txt),
+      JSON.stringify(chestDetail).slice(0, 240));
+    await closeDetail();
+    await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('全部')); if (b) b.click(); });
+    await sleep(200);
+
     // —— 顶栏登出按钮 + 登出确认子窗口 ——
     check('顶栏有退出登录按钮', (await p1.$$('#logout-btn')).length === 1);
     await p1.evaluate(() => { const b = document.getElementById('logout-btn'); if (b) b.click(); });

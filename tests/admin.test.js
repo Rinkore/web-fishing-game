@@ -478,6 +478,26 @@ function waitReady() {
     JSON.stringify(meta && { name: meta.name, n: meta.affixes.length }));
   check('词缀类型不合法的实例被拒 400', (await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', inventory: { 'rod_bamboo#common#hacker+99': 1 } })).status === 400);
   check('无词条实例（第三段为空）也合法', (await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', inventory: { crucian: 4, 'hook_barb#common#': 1 } })).status === 200);
+  // v0.11.8：定制件刻意**不受底材词缀池与自然区间限制**——6 类词条全上（rod_bamboo 池里只有钓速/体型，
+  // 其余 4 类都是池外）、数值远超自然区间也不截断（管理员定制，服务端只按实例编码规则校验）。
+  const cusFreeId = DData.instanceId('rod_bamboo', 'mythic', [
+    { type: 'speed', value: 999 }, { type: 'skill', value: 120 }, { type: 'rare', value: 120 },
+    { type: 'material', value: 120 }, { type: 'size', value: 400 }, { type: 'double', value: 150 },
+  ]);
+  const cusFreeGive = await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', inventory: { crucian: 4, [cusFreeId]: 1 } });
+  check('定制件 6 类词条 + 越界数值可写入背包', cusFreeGive.status === 200, JSON.stringify(cusFreeGive.data).slice(0, 120));
+  const cusFreeSnap = await GET(B + '/api/admin/users/snapshot?token=' + TOKA + '&key=adm_p2');
+  const cusFreeMeta = DData.instanceMeta(cusFreeId);
+  check('定制件解析出 6 条词条且数值未被截断', cusFreeMeta.affixes.length === 6 &&
+    cusFreeMeta.affixes.some(a => a.type === 'speed' && a.value === 999) &&
+    cusFreeMeta.affixes.some(a => a.type === 'size' && a.value === 400),
+    JSON.stringify(cusFreeMeta.affixes));
+  check('池外词条标 extra（与宝匣突破件同一套标记）', cusFreeMeta.affixes.filter(a => a.extra).length === 4,
+    JSON.stringify(cusFreeMeta.affixes.map(a => a.type + (a.extra ? '*' : ''))));
+  check('超品质条数上限的定制件按「突破」呈现',
+    cusFreeMeta.breakthrough === true && cusFreeMeta.affixes.length > DData.QUALITY.mythic.cap,
+    JSON.stringify({ n: cusFreeMeta.affixes.length, cap: DData.QUALITY.mythic.cap, bt: cusFreeMeta.breakthrough }));
+  check('定制件已入包且键为规范化实例签名', cusFreeSnap.data.inventory[cusFreeId] === 1, JSON.stringify(Object.keys(cusFreeSnap.data.inventory)));
   check('非管理员读快照被拒 403', (await GET(B + '/api/admin/users/snapshot?token=' + TK2 + '&key=adm_p2')).status === 403);
 
   // 删除账号（二次确认）
