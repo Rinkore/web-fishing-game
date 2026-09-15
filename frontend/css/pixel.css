@@ -502,3 +502,71 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
     linear-gradient(180deg, #0a1c34 0%, #081426 100%) !important;
 }
 .auth-overlay::before { display: none; }   /* hero 已含水面，去掉波浪层 */
+
+/* 增益钓点的常驻提示（无需悬浮） */
+.pn-bufftip {
+  display: inline-block; padding: 1px 7px; font-size: 11px; white-space: nowrap;
+  color: var(--px-gold); background: rgba(6, 16, 30, .85);
+  border: 2px solid rgba(255, 210, 62, .55); border-radius: 3px;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, .6);
+}
+
+/* ---------- 各页面贴图 ---------- */
+/* 宝匣合成卡片 */
+.cc-icon { display: block; width: 88px; height: 62px; object-fit: contain; margin: 0 auto 8px; image-rendering: pixelated; }
+/* 渔获记录 */
+.rh-icon { display: block; width: 140px; height: 84px; object-fit: contain; margin: 4px auto 8px; image-rendering: pixelated; }
+.rc-icon { display: block; width: 72px; height: 44px; object-fit: contain; margin: 0 auto 6px; image-rendering: pixelated; }
+.rc-icon.dim { filter: grayscale(.7) brightness(.7); opacity: .6; }
+.record-cell { display: flex; flex-direction: column; }
+.rec-icon { width: 56px; height: 34px; object-fit: contain; flex: none; image-rendering: pixelated; }
+/* 钓竿配置 */
+.bd-icon { display: block; width: 56px; height: 40px; object-fit: contain; margin: 4px auto 6px; image-rendering: pixelated; }
+.bd-icon.std { opacity: .45; }
+.bec-icon { width: 40px; height: 28px; object-fit: contain; vertical-align: middle; margin-right: 6px; image-rendering: pixelated; }
+
+/* ---------- 钓场状态卡（地图外） ---------- */
+.px-grounds {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px;
+}
+.px-region.g-card {
+  position: static; transform: none;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; letter-spacing: 1px;
+  background: rgba(0, 0, 0, .3);
+  border: 3px solid var(--px-line); border-radius: 4px;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .06), 4px 4px 0 var(--px-shadow);
+}
+.px-region.g-card .pg-icon {
+  width: 48px; height: 48px; object-fit: contain; flex: none;
+  image-rendering: pixelated;
+  border: 2px solid var(--px-line); border-radius: 3px;
+  background: rgba(255, 255, 255, .04);
+}
+.px-region.g-card .pg-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.px-region.g-card .pg-info b { font-size: 14px; color: var(--accent2); text-shadow: 1px 1px 0 rgba(0, 0, 0, .5); }
+.px-region.g-card .pg-info span { font-size: 12px; color: #b8d4ea; white-space: nowrap; }
+.px-region.g-card.locked { opacity: .75; }
+.px-region.g-card.locked .pg-info b { color: #9fb8cc; }
+@media (max-width: 900px) {
+  .px-grounds { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ---------- 增益钓点一览（地图下方） ---------- */
+.px-buffbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px;
+  padding: 8px 14px;
+  border: 3px solid rgba(255, 210, 62, .45); border-radius: 4px;
+  background: rgba(255, 210, 62, .06);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .05), 4px 4px 0 var(--px-shadow);
+}
+.pb-title { font-size: 13px; color: var(--px-gold); letter-spacing: 1px; text-shadow: 1px 1px 0 rgba(0, 0, 0, .5); }
+.pb-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; font-size: 12px; cursor: pointer;
+  color: #e8f4ff; background: rgba(0, 0, 0, .35);
+  border: 2px solid rgba(255, 210, 62, .55) !important;
+  animation: px-nav-glow 2.4s ease-in-out infinite;
+}
+.pb-chip b { color: var(--px-gold); font-weight: 600; }
+.pb-chip i { font-style: normal; color: var(--accent2); }

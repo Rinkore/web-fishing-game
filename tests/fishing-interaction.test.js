@@ -136,7 +136,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const A = await openPage(tokA);
     const w = A.w;
     const $ = id => w.document.getElementById(id);
-    const spotBtns = () => Array.from(w.document.querySelectorAll('.spot-btn'));
+    const spotBtns = () => Array.from(w.document.querySelectorAll('.px-node'));
     const findSpot = (name) => spotBtns().find(b => b.textContent.trim() === name);
 
     section('A. 点钓点即开始自动钓鱼');
@@ -199,7 +199,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
     section('G. 离开钓点后 recent 清空');
     const before = sinkB.length;
-    const curSpot = w.document.querySelector('.spot-btn.on');
+    const curSpot = w.document.querySelector('.px-node.on');
     if (curSpot) curSpot.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
     await sleep(600);
     const afterMsgs = sinkB.slice(before);

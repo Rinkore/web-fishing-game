@@ -572,10 +572,10 @@ window.UI = (function () {
     left.appendChild(tabBar);
     // 地图节点坐标（地图宽高的百分比）：与 assets/worldmap.png 中场景对应
     const MAP_LAYOUT = {
-      stillwater: { dock: [15, 33], reed: [10, 61], deep: [19, 52], label: [19, 80] },
-      rapids: { shoal: [50, 23], eddy: [49, 45], fall: [50, 87], label: [50, 97] },
-      sunset: { beach: [77, 11], pier: [88, 55], reef: [78, 80], label: [90, 68] },
-      frostmoon: { label: [37, 13] },
+      stillwater: { dock: [69, 30], reed: [68, 60], deep: [74, 48], label: [74, 72] },
+      rapids: { shoal: [77, 34], eddy: [58, 42], fall: [83, 20], label: [50, 48] },
+      sunset: { beach: [42, 71], pier: [35, 30], reef: [18, 78], label: [20, 28] },
+      frostmoon: { label: [67, 11] },
     };
     // 出海预告图的锁定节点
     const VOYAGE_NODES = [
@@ -586,64 +586,9 @@ window.UI = (function () {
     const map = el('div', 'px-map');
     const mapImg = mapTab === 'voyage' ? 'assets/voyagemap.png' : 'assets/worldmap.png';
     map.innerHTML = '<img class="px-map-img" src="' + mapImg + '" alt="" draggable="false">';
-    if (mapTab === 'voyage') {
-      // 出海预告：全部锁定，点按只提示
-      const vl = el('div', 'px-region locked', '航线规划中 · 未来版本开放');
-      vl.style.left = '55%'; vl.style.top = '90%';
-      map.appendChild(vl);
-      VOYAGE_NODES.forEach(function (n) {
-        const node = el('button', 'px-node locked');
-        node.style.left = n.pos[0] + '%';
-        node.style.top = n.pos[1] + '%';
-        node.innerHTML = '<span class="pn-bob"></span><span class="pn-name">🔒 ' + esc(n.name) + '</span>';
-        node.title = n.tip;
-        node.addEventListener('pointerdown', function () { toast('「出海」航线仍在规划中，未来版本开放'); });
-        map.appendChild(node);
-      });
-      left.appendChild(map);
-    } else {
-    // 近岸地图：两只飞鸟掠过（纯装饰）
-    map.innerHTML += '<img class="px-bird b1" src="assets/ui/bird.png" alt="">' +
-      '<img class="px-bird b2" src="assets/ui/bird.png" alt="">';
-    D.GROUNDS.forEach(function (g) {
-      const lay = MAP_LAYOUT[g.id] || {};
-      const cnt = (st.groundCounts && st.groundCounts[g.id]) || 0;
-      if (lay.label) {
-        const lb = el('div', 'px-region' + (g.locked ? ' locked' : ''),
-          esc(g.name) + (g.locked ? ' 🔒' : '') + (cnt > 0 && !g.locked ? ' · 👥' + cnt : ''));
-        lb.style.left = lay.label[0] + '%';
-        lb.style.top = lay.label[1] + '%';
-        if (g.locked) lb.title = g.desc || '活动钓场 · 即将开放';
-        map.appendChild(lb);
-      }
-      // 未预置坐标的钓点（例如冰湖活动场开启后后台新配的钓点）：围绕区域标签环状排列
-      (g.spots || []).forEach(function (sp, spIdx) {
-        let pos = lay[sp.id];
-        if (!pos) {
-          const base = lay.label || [50, 50];
-          const ang = -90 + spIdx * 60;
-          pos = [base[0] + 9 * Math.cos(ang * Math.PI / 180), base[1] + 9 * Math.sin(ang * Math.PI / 180)];
-        }
-        const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
-        const here = st.player.groundId === g.id && st.player.spotId === sp.id;
-        const buffed = sp.buffs && sp.buffs.length > 0;
-        const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : ''));
-        node.setAttribute('data-g', g.id);
-        node.setAttribute('data-s', sp.id);
-        node.style.left = pos[0] + '%';
-        node.style.top = pos[1] + '%';
-        node.innerHTML = '<span class="pn-bob"></span><span class="pn-name">' + esc(sp.name) +
-          (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
-          (here ? '<img class="pn-fisher" src="assets/ui/fisherman.png" alt="">' : '');
-        node.title = buffed
-          ? '⚡ ' + sp.buffs.map(function (b) { return (D.AFFIX_LABEL[b.type] || b.type) + (b.value > 0 ? '+' : '') + b.value + '%'; }).join(' · ')
-          : (on ? '再点一次取消钓鱼' : '点击开始自动钓鱼');
-        map.appendChild(node);
-      });
-    });
-    // 钓点选择：主路径用 pointerdown（上鱼广播会整页重绘，若在 mouseup 前重绘则 click 会丢失，
+    // 钓点选择（定义提前到分支外，增益一览等地图外控件也要用）：
+    // 主路径用 pointerdown（上鱼广播会整页重绘，若在 mouseup 前重绘则 click 会丢失，
     // 表现为「切换钓点被上鱼卡住」；pointerdown 一定发生在存活 DOM 上）。
-    // 同时保留 click 以支持键盘激活，并用时间戳避免同一次操作被处理两次。
     let lastSpotPointerTs = 0;
     function chooseSpot(t) {
       const gid = t.getAttribute('data-g');
@@ -665,6 +610,54 @@ window.UI = (function () {
         renderTopbar(); renderNav(); renderFishing();
       });
     }
+    if (mapTab === 'voyage') {
+      // 出海预告：全部锁定，点按只提示
+      const vl = el('div', 'px-region locked', '航线规划中 · 未来版本开放');
+      vl.style.left = '55%'; vl.style.top = '90%';
+      map.appendChild(vl);
+      VOYAGE_NODES.forEach(function (n) {
+        const node = el('button', 'px-node locked');
+        node.style.left = n.pos[0] + '%';
+        node.style.top = n.pos[1] + '%';
+        node.innerHTML = '<span class="pn-bob"></span><span class="pn-name">🔒 ' + esc(n.name) + '</span>';
+        node.title = n.tip;
+        node.addEventListener('pointerdown', function () { toast('「出海」航线仍在规划中，未来版本开放'); });
+        map.appendChild(node);
+      });
+      left.appendChild(map);
+    } else {
+    // 近岸地图：两只飞鸟掠过（纯装饰）
+    map.innerHTML += '<img class="px-bird b1" src="assets/ui/bird.png" alt="">' +
+      '<img class="px-bird b2" src="assets/ui/bird.png" alt="">';
+    D.GROUNDS.forEach(function (g) {
+      const lay = MAP_LAYOUT[g.id] || {};
+      // 未预置坐标的钓点（例如冰湖活动场开启后后台新配的钓点）：围绕区域锚点环状排列
+      (g.spots || []).forEach(function (sp, spIdx) {
+        let pos = lay[sp.id];
+        if (!pos) {
+          const base = lay.label || [50, 50];
+          const ang = -90 + spIdx * 60;
+          pos = [base[0] + 9 * Math.cos(ang * Math.PI / 180), base[1] + 9 * Math.sin(ang * Math.PI / 180)];
+        }
+        const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
+        const here = st.player.groundId === g.id && st.player.spotId === sp.id;
+        const buffed = sp.buffs && sp.buffs.length > 0;
+        const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : ''));
+        node.setAttribute('data-g', g.id);
+        node.setAttribute('data-s', sp.id);
+        node.style.left = pos[0] + '%';
+        node.style.top = pos[1] + '%';
+        node.innerHTML = '<span class="pn-bob"></span><span class="pn-name">' + esc(sp.name) +
+          (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
+          // 增益常驻可见（不依赖悬浮提示）：增益钓点名牌下直接列出效果
+          (buffed ? '<span class="pn-bufftip">⚡ ' + sp.buffs.map(function (b) {
+            return esc((D.AFFIX_LABEL[b.type] || b.type) + (b.value > 0 ? '+' : '') + b.value + '%');
+          }).join(' ') + '</span>' : '') +
+          (here ? '<img class="pn-fisher" src="assets/ui/fisherman.png" alt="">' : '');
+        map.appendChild(node);
+      });
+    });
+    // 同时保留 click 以支持键盘激活，并用时间戳避免同一次操作被处理两次。
     map.addEventListener('pointerdown', function (ev) {
       const t = ev.target && ev.target.closest ? ev.target.closest('.px-node') : null;
       if (!t || !t.getAttribute('data-g')) return;
@@ -679,6 +672,41 @@ window.UI = (function () {
       chooseSpot(t);
     });
     left.appendChild(map);
+    }
+    // 钓场状态卡（地图外）：图标 + 名称 + 类型 + 实时人数/锁定状态
+    const groundsBar = el('div', 'px-grounds');
+    D.GROUNDS.forEach(function (g) {
+      const cnt = (st.groundCounts && st.groundCounts[g.id]) || 0;
+      const card = el('div', 'px-region g-card' + (g.locked ? ' locked' : ''));
+      card.innerHTML = '<img class="pg-icon" src="assets/ground/' + esc(g.id) + '.png" alt="" draggable="false"' +
+        ' onerror="this.style.display=\'none\'">' +
+        '<div class="pg-info"><b>' + esc(g.name) + '</b>' +
+        '<span>' + (g.locked ? '🔒 活动钓场 · 即将开放' : (g.type === 'normal' ? '普通钓场' : '活动钓场') + ' · 👥 ' + cnt + ' 人') + '</span></div>';
+      groundsBar.appendChild(card);
+    });
+    left.appendChild(groundsBar);
+    // 增益钓点一览：列出当前所有带增益的钓点（与地图节点 ⚡ 同源），点击直达该钓点
+    const buffed = [];
+    D.GROUNDS.forEach(function (g) {
+      (g.spots || []).forEach(function (sp) {
+        if (sp.buffs && sp.buffs.length) buffed.push({ g: g, sp: sp });
+      });
+    });
+    if (buffed.length) {
+      const buffBar = el('div', 'px-buffbar');
+      buffBar.appendChild(el('span', 'pb-title', '⚡ 增益钓点'));
+      buffed.forEach(function (e) {
+        const chip = el('button', 'pb-chip');
+        chip.setAttribute('data-g', e.g.id);
+        chip.setAttribute('data-s', e.sp.id);
+        chip.innerHTML = '<b>' + esc(e.g.name + '·' + e.sp.name) + '</b>' +
+          e.sp.buffs.map(function (b) {
+            return '<i>' + esc((D.AFFIX_LABEL[b.type] || b.type) + (b.value > 0 ? '+' : '') + b.value + '%') + '</i>';
+          }).join('');
+        chip.addEventListener('pointerdown', function () { chooseSpot(chip); });
+        buffBar.appendChild(chip);
+      });
+      left.appendChild(buffBar);
     }
     // 图例：帮助首次进入的玩家看懂地图标记
     const legend = el('div', 'px-legend');
@@ -897,6 +925,7 @@ window.UI = (function () {
             (rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '');
         }).join(' ');
         cur.innerHTML = '<div class="bec-head"><span class="bec-label">当前已装备</span>' +
+          '<img class="bec-icon" src="assets/item/' + esc(equipped.baseId || '') + '.png" alt="" draggable="false">' +
           '<b class="' + qualityClass(equipped) + '">' + esc(equipped.name) + '</b>' +
           itemTag(equipped) +
           '<span class="inst-meta">' + esc(qualityName(equipped)) + '品质 · ' + equipped.affixes.length + '/' + equipped.maxAffixes + ' 词条</span>' +
@@ -972,7 +1001,8 @@ window.UI = (function () {
           const c = o.c;
           const card = el('div', 'bec-card');
           card.innerHTML =
-            '<div class="bec-name"><span class="' + qualityClass(c) + '">' + esc(c.name) + itemTag(c) + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
+            '<div class="bec-name"><img class="bec-icon" src="assets/item/' + esc(c.baseId || '') + '.png" alt="" draggable="false">' +
+            '<span class="' + qualityClass(c) + '">' + esc(c.name) + itemTag(c) + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
             '<div class="inst-meta">' + esc(qualityName(c)) + '品质 · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条</div>' +
             c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + (a.extra ? ' extra' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('') +
             '<div class="bec-meta">持有 ×' + o.n + '</div>';
@@ -1195,8 +1225,13 @@ window.UI = (function () {
       const affHtml = comp
         ? comp.affixes.map(function (a) { return '<div class="af-line on' + (a.value < 0 ? ' aff-neg' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('')
         : '<div class="af-line"><span class="muted">标准 · 无加成</span></div>';
+      // 组件图标：装备中显示底材贴图（assets/item/<baseId>.png），未装备显示通用组件螺母
+      const bdIcon = comp
+        ? '<img class="bd-icon" src="assets/item/' + esc(comp.baseId || '') + '.png" alt="" draggable="false">'
+        : '<img class="bd-icon std" src="assets/item/comp_generic.png" alt="" draggable="false">';
       cell.innerHTML =
         '<div class="bd-part">' + esc(part.name) + (part.isCharm ? ' <span class="charm-tag">饰品</span>' : '') + '</div>' +
+        bdIcon +
         '<div class="bd-comp ' + (comp ? qualityClass(comp) : '') + '">' + esc(comp ? comp.name : part.default.name) + itemTag(comp) + '</div>' +
         '<div class="affix-frame">' + affHtml + '</div>';
       const acts = el('div', 'bd-acts');
@@ -3705,6 +3740,7 @@ window.UI = (function () {
             : '<div class="cc-pity">保底：已连续 ' + (cur.pityNow || 0) + ' 次未突破，再 ' + Math.max(0, (pityN - 1) - (cur.pityNow || 0)) + ' 次必出</div>')
         : '';
       card.innerHTML =
+        '<img class="cc-icon" src="assets/item/' + esc(chest.id) + '.png" alt="" draggable="false">' +
         '<div class="cc-head"><span class="cc-name ' + (D.QUALITY[chest.rarity] ? D.QUALITY[chest.rarity].cls : '') + '">' + esc(chest.name) + '</span>' +
           '<span class="cc-have">持有 ×' + have + '</span></div>' +
         '<div class="cc-desc">' + esc(chest.desc) + '</div>' +
@@ -3913,6 +3949,7 @@ window.UI = (function () {
       const topMeta = itemMeta(top.id);
       const hero = el('div', 'record-hero');
       hero.innerHTML =
+        '<img class="rh-icon" src="assets/fish/' + esc(top.id) + '.png" alt="" draggable="false">' +
         '<div class="rh-crown">👑 全场最大</div>' +
         '<div class="rh-name ' + rarityClass(topMeta.rarity) + '">' + esc(top.name) + '</div>' +
         '<div class="rh-size">' + top.size + '<span class="u">cm</span></div>' +
@@ -3935,6 +3972,7 @@ window.UI = (function () {
       const cell = el('div', 'record-cell' + (e.rec ? ' with-rec' : ' none'));
       if (e.rec) {
         cell.innerHTML =
+          '<img class="rc-icon" src="assets/fish/' + esc(e.f.id) + '.png" alt="" draggable="false">' +
           '<div class="rc-name ' + rarityClass(e.f.rarity) + '">' + esc(e.f.name) + '</div>' +
           '<div class="rc-size">' + e.rec.size + '<span class="u">cm</span></div>' +
           '<div class="rc-who">' + esc(e.rec.who) + ' · ' + timeStr(e.rec.t) + '</div>' +
@@ -3943,6 +3981,7 @@ window.UI = (function () {
         cell.addEventListener('click', function () { openRecordsModal(e.f.id); });
       } else {
         cell.innerHTML =
+          '<img class="rc-icon dim" src="assets/fish/' + esc(e.f.id) + '.png" alt="" draggable="false">' +
           '<div class="rc-name locked-name">' + esc(e.f.name) + '</div>' +
           '<div class="rc-size muted">—</div>' +
           '<div class="rc-who">暂无纪录</div>';
@@ -3963,6 +4002,7 @@ window.UI = (function () {
         const meta = itemMeta(r.id);
         const cell = el('div', 'record-cell small-fish with-rec');
         cell.innerHTML =
+          '<img class="rc-icon" src="assets/fish/' + esc(r.id) + '.png" alt="" draggable="false">' +
           '<div class="rc-name ' + rarityClass(meta.rarity) + '">' + esc(r.name) + '</div>' +
           '<div class="rc-size sf-size">' + r.size + '<span class="u">cm</span></div>' +
           '<div class="rc-who">' + esc(r.who) + ' · ' + timeStr(r.t) + '</div>' +
@@ -3987,7 +4027,8 @@ window.UI = (function () {
       const ml = el('div', 'record-list small');
       mkeys.sort(function (a, b) { return mine[b].size - mine[a].size; }).forEach(function (id) {
         const m = mine[id];
-        ml.appendChild(el('div', 'rec-row', '<div class="rec-main"><div class="rec-name ' + rarityClass(m.rarity) + '">' + esc(m.name) +
+        ml.appendChild(el('div', 'rec-row', '<img class="rec-icon" src="assets/fish/' + esc(id) + '.png" alt="" draggable="false">' +
+          '<div class="rec-main"><div class="rec-name ' + rarityClass(m.rarity) + '">' + esc(m.name) +
           '</div></div><div class="rec-size">' + m.size + '<span class="u">cm</span></div>'));
       });
       panel.appendChild(ml);

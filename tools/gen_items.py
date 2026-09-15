@@ -410,6 +410,53 @@ COMPONENTS = {
 
 MATERIALS = {'bait_pack': m_bait_pack, 'rope': m_rope, 'lure': m_lure, 'relic': m_relic}
 
+# ---------- 宝匣（沉船打捞四档，逐级华丽） ----------
+def chest_base(cv, wood, band, glow=None):
+    wood, band = hex2rgb(wood), hex2rgb(band)
+    cv.fill(5, 10, 23, 23, wood)                    # 箱体
+    cv.fill(5, 10, 23, 15, shade(wood, .8))         # 箱盖
+    cv.line(5, 15, 23, 15, shade(wood, .6))
+    cv.fill(5, 10, 7, 23, band)                     # 包边
+    cv.fill(21, 10, 23, 23, band)
+    cv.fill(13, 13, 15, 17, band)                   # 锁扣
+    cv.fill(13, 16, 15, 19, shade(band, .8))
+    cv.set(14, 15, hex2rgb('#2a2018'))              # 锁孔
+    if glow:
+        g = hex2rgb(glow)
+        for ang in range(0, 360, 45):
+            cv.set(14 + math.cos(math.radians(ang)) * 11, 16 + math.sin(math.radians(ang)) * 10, g)
+
+def ch_wreck(cv):
+    """Ⅰ 沉船宝匣：风化木箱 + 藤壶"""
+    chest_base(cv, '#6a5638', '#4a3c26')
+    barn = hex2rgb('#b8c4b0')
+    cv.set(7, 21, barn); cv.set(8, 20, barn); cv.set(22, 19, barn); cv.set(21, 22, barn)
+    cv.line(10, 12, 12, 21, hex2rgb('#4a3c26'))     # 裂纹
+
+def ch_deep(cv):
+    """Ⅱ 深潜宝匣：铁箍深木箱 + 舷窗"""
+    chest_base(cv, '#4a3f36', '#8a949e')
+    cv.ellipse(14, 20, 3, 3, hex2rgb('#3ec9f0'))    # 舷窗
+    cv.ellipse(14, 20, 1.5, 1.5, hex2rgb('#bfe8f8'))
+    spark(cv, 22, 8, '#aef6ec')
+
+def ch_abyss(cv):
+    """Ⅲ 深渊宝匣：紫晶黑箱 + 幽光"""
+    chest_base(cv, '#2e2438', '#6a5a8a', glow='#9a7aff')
+    cv.set(14, 14, hex2rgb('#c9b0ff'))
+    for x, y in [(8, 9), (20, 8), (23, 22), (6, 24)]:
+        flame_wisp(cv, x, y, hex2rgb('#9a7aff'))
+
+def ch_king(cv):
+    """Ⅳ 海王遗匣：黄金圣箱 + 三叉戟纹章"""
+    chest_base(cv, '#c9963e', '#ffd23e', glow='#ffe98a')
+    tri = hex2rgb('#7a5a1e')
+    cv.line(14, 18, 14, 22, tri, thick=1)           # 三叉戟纹
+    cv.line(14, 18, 12, 19, tri); cv.line(14, 18, 16, 19, tri)
+    spark(cv, 5, 8, '#fff2c8'); spark(cv, 23, 6, '#fff2c8'); spark(cv, 14, 4, '#fff2c8')
+
+CHEST_ICONS = {'chest_wreck': ch_wreck, 'chest_deep': ch_deep, 'chest_abyss': ch_abyss, 'chest_king': ch_king}
+
 # ---------- 钓点 ----------
 def s_dock(cv):
     """老旧码头：木栈桥 + 水面"""
@@ -512,6 +559,8 @@ if __name__ == '__main__':
     for fid, fn in MATERIALS.items():
         cv = new(); fn(cv); print('item', fid, cv.render(os.path.join(ITEM_DIR, fid + '.png')))
     for fid, fn in COMPONENTS.items():
+        cv = new(); fn(cv); print('item', fid, cv.render(os.path.join(ITEM_DIR, fid + '.png')))
+    for fid, fn in CHEST_ICONS.items():
         cv = new(); fn(cv); print('item', fid, cv.render(os.path.join(ITEM_DIR, fid + '.png')))
     for fid, fn in SPOTS.items():
         cv = new(); fn(cv); print('spot', fid, cv.render(os.path.join(SPOT_DIR, fid + '.png')))

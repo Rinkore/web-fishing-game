@@ -186,7 +186,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     });
     check('切换账号后渔获日志被清空', switchLog.before === 1 && switchLog.after === 0, JSON.stringify(switchLog));
     // 先站到一个钓点（右栏实况列表仅在钓点时渲染），检查完再取消，保持原有流程状态
-    await p1.evaluate(() => { const b = document.querySelector('.spot-btn'); if (b) b.click(); });
+    await p1.evaluate(() => { const b = document.querySelector('.px-node'); if (b) b.click(); });
     await waitFor(async () => (await p1.$$('.fish-live .peeps')).length === 1, { timeout: 8000 }).catch(() => {});
     const align = await p1.evaluate(() => {
       const right = document.querySelector('.content > .fish-live');
@@ -870,24 +870,25 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       const r2 = await fetch('/api/admin/spot/buffs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: reg.token, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 15 }] }) }).then(r => r.json()).catch(() => null);
       return { ok: !!(r2 && r2.ok), why: r2 && r2.error };
     });
-    // 等 groundcfg 广播后重绘钓鱼页（增益行出现即说明已重绘）
+    // 等 groundcfg 广播后重绘钓鱼页（增益标签出现即说明已重绘）
     await clickNav(p1, '钓鱼');
-    const buffItems = await untilGet(() => p1.$$eval('.gc-buffs .gc-buff-item',
+    const buffItems = await untilGet(() => p1.$$eval('.pn-bufftip',
       els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim())), arr => !!(arr && arr.length), 8000);
-    check('有增益的钓点显示 ⚡ 标记', (await p1.$$('.spot-btn.buffed .spot-buff-mark')).length >= 1, JSON.stringify(spotMarkInfo));
-    // 增益直接显示在钓场卡片内，不需要鼠标悬浮
-    check('钓场卡片内直接列出钓点增益（钓速+15%）',
-      buffItems.some(t => t.indexOf('老旧码头') >= 0 && t.indexOf('钓速+15%') >= 0), JSON.stringify(buffItems));
+    check('有增益的钓点显示 ⚡ 标记', (await p1.$$('.px-node.buffed .pn-buff')).length >= 1, JSON.stringify(spotMarkInfo));
+    // 增益直接显示在地图钓点名牌下，不需要鼠标悬浮
+    check('地图上直接列出钓点增益（钓速+15%）',
+      buffItems.some(t => t.indexOf('钓速+15%') >= 0), JSON.stringify(buffItems));
     const buffMarkOk = await p1.evaluate(() => {
-      const it = document.querySelector('.gc-buffs .gc-buff-item');
-      return !!(it && it.querySelector('.gc-buff-mark') && it.querySelector('.gc-buff-name'));
+      const tip = document.querySelector('.pn-bufftip');
+      if (!tip) return false;
+      const node = tip.closest('.px-node');
+      return !!(node && node.querySelector('.pn-buff') && node.querySelector('.pn-name') && /老旧码头/.test(node.textContent));
     });
-    check('增益行含 ⚡ 标记与钓点名', buffMarkOk === true, String(buffMarkOk));
-    const noBuffCards = await p1.$$eval('.ground-card',
-      els => els.filter(e => e.querySelector('.spot-btn') && !e.querySelector('.gc-buffs')).length);
-    check('没有增益的钓场不显示增益行', noBuffCards >= 1, String(noBuffCards));
-    const noNativeTip = await p1.$$eval('.spot-btn', els => els.filter(e => e.hasAttribute('title')).length);
-    check('钓点按钮不再依赖原生 title 悬浮提示', noNativeTip === 0, String(noNativeTip));
+    check('增益节点含 ⚡ 标记与钓点名', buffMarkOk === true, String(buffMarkOk));
+    const noBuffTips = await p1.$$eval('.px-node:not(.buffed) .pn-bufftip', els => els.length);
+    check('没有增益的钓点不显示增益标签', noBuffTips === 0, String(noBuffTips));
+    const noNativeTip = await p1.$$eval('.px-node', els => els.filter(e => e.hasAttribute('title')).length);
+    check('钓点节点不依赖原生 title 悬浮提示', noNativeTip === 0, String(noNativeTip));
 
     // —— 确认子窗口替代浏览器弹窗（源码级断言：前端不再出现原生 confirm/prompt/alert） ——
     const uiSrc = fs.readFileSync(path.join(ROOT, 'frontend', 'js', 'ui.js'), 'utf8');
@@ -1042,7 +1043,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(200);
     // 破纪录横幅：调用 showRecordBanner 应出现 5 秒
     // 先停止钓鱼并清空两条轨道（真实渔获播报会占满纪录轨，顺序播放不会插播）
-    await p1.evaluate(() => { const b = document.querySelector('.spot-btn.on'); if (b) b.click(); });
+    await p1.evaluate(() => { const b = document.querySelector('.px-node.on'); if (b) b.click(); });
     await sleep(500);
     await p1.evaluate(() => window.UI.resetBanners && window.UI.resetBanners());
     await waitFor(async () => (await p1.$$('#record-banner.show')).length === 0, { timeout: 8000, interval: 200 }).catch(() => {});
@@ -1083,8 +1084,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const boxTexts = await p1.$$eval('.gc-box .gcb-num', els => els.map(e => e.textContent.trim()));
     check('渔场动态页列出每个渔场的人数', boxTexts.length === 5 && boxTexts.every(t => /\d+人/.test(t)), JSON.stringify(boxTexts));
     await clickNav(p1, '钓鱼');
-    const cntTexts = await p1.$$eval('.gc-cnt', els => els.map(e => e.textContent.trim()));
-    check('钓场列表每个渔场显示人数', cntTexts.length === 3 && cntTexts.every(t => /人/.test(t)), JSON.stringify(cntTexts));
+    const cntTexts = await p1.$$eval('.px-region:not(.locked)', els => els.map(e => e.textContent.trim()));
+    check('地图区域标签每个渔场显示人数', cntTexts.length === 3 && cntTexts.every(t => /人/.test(t)), JSON.stringify(cntTexts));
     await clickNav(p1, '渔场动态');
 
     // —— 在线交易：真实 Chrome 内勾选不被重置 ——
@@ -1097,7 +1098,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(300);
     // 让 p1 处于钓鱼中（若已在该钓点，换一个钓点，避免点到当前钓点把钓鱼取消）
     await p1.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('.spot-btn'));
+      const btns = Array.from(document.querySelectorAll('.px-node'));
       const target = btns.find(b => !b.classList.contains('on')) || btns[0];
       if (target) target.click();
     });
@@ -1445,7 +1446,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await clickNav(p1, '钓鱼');
     await sleep(300);
     const spotSwitch = await p1.evaluate(() => {
-      const btn = n => Array.from(document.querySelectorAll('.spot-btn')).find(x => x.textContent.includes(n));
+      const btn = n => Array.from(document.querySelectorAll('.px-node')).find(x => x.textContent.includes(n));
       const fire = (n) => { const b = btn(n); if (b) b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); return !!b; };
       fire('老旧码头');
       const s1 = window.Engine.state.player.spotId;
@@ -1453,9 +1454,9 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       const s2 = window.Engine.state.player.spotId;
       // 点击 ⚡ 子元素（用当前页第一个带标记的钓点）
       let childSpot = null;
-      const marked = Array.from(document.querySelectorAll('.spot-btn .spot-buff-mark'));
+      const marked = Array.from(document.querySelectorAll('.px-node .pn-buff'));
       if (marked.length) {
-        const name = marked[0].closest('.spot-btn').textContent.replace('⚡', '').trim();
+        const name = marked[0].closest('.px-node').textContent.replace('⚡', '').trim();
         marked[0].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
         childSpot = { name, sel: window.Engine.state.selected.spotId };
       }
