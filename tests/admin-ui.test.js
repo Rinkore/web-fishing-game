@@ -143,6 +143,143 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       check('服务器已应用所选 roll 模型（normal）', saved.data.componentCfg && saved.data.componentCfg.rollModel === 'normal', JSON.stringify(saved.data.componentCfg && saved.data.componentCfg.rollModel));
       check('管理后台无页面错误', adminErrs.length === 0, adminErrs.join(' | '));
 
+      // —— 概览·服务器热力图：区间 / 曲线开关 / 热力格 / 5 秒轮询不重建面板 ——
+      section('管理后台概览 · 服务器热力图');
+      // 直接点导航（本段在 clickAdminNav 声明之前，用它会被 TDZ 拦下）
+      await pa.evaluate(() => { const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes('概览')); if (b) b.click(); });
+      await untilSel(pa, '#ov-chart', 10000);
+      await waitFor(async () => Number((await pa.evaluate(() => (document.getElementById('ov-chart') || {}).dataset
+        ? document.getElementById('ov-chart').dataset.draw : 0))) >= 1, { timeout: 10000, interval: 100 }).catch(() => {});
+      const heatPanel = await pa.evaluate(() => {
+        const cv = document.getElementById('ov-chart');
+        return {
+          bar: !!document.querySelector('.hm-bar'),
+          ranges: document.querySelectorAll('#ov-range .hm-rng').length,
+          modes: document.querySelectorAll('#ov-mode .hm-md').length,
+          legend: document.querySelectorAll('#ov-legend .hm-item').length,
+          on: Array.from(document.querySelectorAll('#ov-legend .hm-item')).filter(l => l.querySelector('input').checked).map(l => l.getAttribute('data-series')),
+          canvas: !!cv,
+          draws: cv ? Number(cv.dataset.draw || 0) : 0,
+          w: cv ? cv.width : 0,
+          hint: (document.getElementById('ov-chart-hint') || {}).textContent || '',
+        };
+      });
+      check('概览有热力图面板（5 个区间 / 2 种视图 / 画布）',
+        heatPanel.bar && heatPanel.ranges === 5 && heatPanel.modes === 2 && heatPanel.canvas && heatPanel.w > 0, JSON.stringify(heatPanel));
+      check('曲线开关列出 6 条（默认开 5 条，「注册账号」默认关）',
+        heatPanel.legend === 6 && heatPanel.on.length === 5 && heatPanel.on.indexOf('users') < 0, JSON.stringify(heatPanel.on));
+      check('曲线已绘制（画布有绘制计数，非空白）', heatPanel.draws >= 1, String(heatPanel.draws));
+      check('曲线提示含采样与峰值说明', /采样/.test(heatPanel.hint) && /历史峰值/.test(heatPanel.hint), heatPanel.hint.slice(0, 120));
+      // 关掉「在线玩家」：只重绘画布，开关状态就地保留，且该曲线真的从画布上消失
+      const hmToggle = await pa.evaluate(() => {
+        const lab = document.querySelector('#ov-legend .hm-item[data-series="online"]');
+        const cv = document.getElementById('ov-chart');
+        const ctx = cv.getContext('2d');
+        // 数一数「在线玩家」那条曲线的颜色像素（#4da3ff）
+        const countSeries = () => {
+          const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
+          let n = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            if (Math.abs(d[i] - 77) < 20 && Math.abs(d[i + 1] - 163) < 20 && Math.abs(d[i + 2] - 255) < 20) n++;
+          }
+          return n;
+        };
+        const before = Number(cv.dataset.draw || 0);
+        const pxOn = countSeries();
+        const cb = lab.querySelector('input');
+        cb.checked = false;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+        return { off: lab.classList.contains('off'), before: before, draws: Number(cv.dataset.draw || 0), pxOn: pxOn, pxOff: countSeries() };
+      });
+      check('关掉一条曲线后开关变灰并就地重绘', hmToggle.off === true && hmToggle.draws > hmToggle.before, JSON.stringify(hmToggle));
+      check('关掉的曲线真从画布上消失（该色像素归零）', hmToggle.pxOn > 0 && hmToggle.pxOff === 0, JSON.stringify(hmToggle));
+      // 切到热力格视图
+      const hmGrid = await pa.evaluate(() => {
+        const cv = document.getElementById('ov-chart');
+        const before = Number(cv.dataset.draw || 0);
+        document.querySelector('#ov-mode .hm-md[data-mode="heat"]').click();
+        return {
+          on: document.querySelector('#ov-mode .hm-md[data-mode="heat"]').classList.contains('on'),
+          before: before, draws: Number(cv.dataset.draw || 0),
+          hint: (document.getElementById('ov-chart-hint') || {}).textContent || '',
+        };
+      });
+      check('切到「星期 × 小时热力格」并重绘', hmGrid.on === true && hmGrid.draws > hmGrid.before, JSON.stringify(hmGrid));
+      check('热力格提示说明色深与覆盖天数', /色深/.test(hmGrid.hint) && /28 天/.test(hmGrid.hint), hmGrid.hint.slice(0, 110));
+      await pa.evaluate(() => { document.querySelector('#ov-mode .hm-md[data-mode="line"]').click(); });
+      // 切区间：7 天用小时样本，提示随之更新
+      await pa.evaluate(() => { document.querySelector('#ov-range .hm-rng[data-range="7d"]').click(); });
+      await waitFor(async () => /7 天区间/.test((await pa.textContent('#ov-chart-hint')) || ''), { timeout: 8000, interval: 60 }).catch(() => {});
+      const hmRange = await pa.evaluate(() => ({
+        on: document.querySelector('#ov-range .hm-rng[data-range="7d"]').classList.contains('on'),
+        hint: (document.getElementById('ov-chart-hint') || {}).textContent || '',
+      }));
+      check('切到 7 天区间后提示更新（按小时桶）', hmRange.on === true && /7 天区间/.test(hmRange.hint) && /1 小时/.test(hmRange.hint), hmRange.hint.slice(0, 130));
+      // 5 秒轮询：面板不重建（同一画布节点），曲线开关不被重置
+      await pa.evaluate(() => { window.__ovCv = document.getElementById('ov-chart'); });
+      await sleep(6200);
+      const hmTick = await pa.evaluate(() => {
+        const lab = document.querySelector('#ov-legend .hm-item[data-series="online"]');
+        return {
+          same: document.getElementById('ov-chart') === window.__ovCv,
+          panel: !!document.querySelector('.hm-bar'),
+          off: lab.classList.contains('off'),
+          cb: lab.querySelector('input').checked,
+          rangeOn: document.querySelector('#ov-range .hm-rng[data-range="7d"]').classList.contains('on'),
+        };
+      });
+      check('概览 5 秒轮询不重建热力图（同一画布节点）', hmTick.same === true && hmTick.panel === true, JSON.stringify(hmTick));
+      check('轮询不重置曲线开关（关掉的那条仍关着）', hmTick.off === true && hmTick.cb === false, JSON.stringify(hmTick));
+      check('轮询不重置区间选择（仍是 7 天）', hmTick.rangeOn === true, JSON.stringify(hmTick));
+      check('概览热力图无页面错误', adminErrs.length === 0, adminErrs.join(' | '));
+
+      // —— 市集管理 · 后台批量上架（活跃市场）——
+      section('管理后台市集 · 批量上架');
+      await pa.evaluate(() => { const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes('市集管理')); if (b) b.click(); });
+      await untilSel(pa, '#bl-go', 10000);
+      await waitFor(async () => (await pa.$$('#bl-seller option')).length > 0, { timeout: 8000, interval: 80 }).catch(() => {});
+      const bp = await pa.evaluate(() => ({
+        sellers: Array.from(document.querySelectorAll('#bl-seller option')).map(o => o.value),
+        selSeller: (document.getElementById('bl-seller') || {}).value || '',
+        cards: document.querySelectorAll('.bl-card').length,
+        kinds: ['fish', 'material', 'chest', 'component'].every(k => !!document.getElementById('bl-c-' + k)),
+        fishOpts: document.querySelectorAll('#bl-p-fish option').length,
+        compOpts: document.querySelectorAll('#bl-p-component option').length,
+        parts: document.querySelectorAll('#bl-part option').length,
+        qs: ['common', 'rare', 'epic', 'mythic'].every(k => !!document.getElementById('bl-q-' + k)),
+        compCount: Number((document.getElementById('bl-c-component') || {}).value),
+      }));
+      check('市集管理页有批量上架面板（卖家下拉 + 四类卡片 + 部位/品质/词条参数）',
+        bp.sellers.length >= 2 && bp.cards === 4 && bp.kinds && bp.parts >= 6 && bp.qs, JSON.stringify(bp));
+      check('卖家名头下拉默认选中当前管理员', bp.selSeller === 'aui_admin', JSON.stringify({ sel: bp.selSeller, s: bp.sellers }));
+      check('限定物品下拉按类型列举（鱼 40+ / 组件底材 20+）', bp.fishOpts >= 40 && bp.compOpts >= 20, JSON.stringify({ fish: bp.fishOpts, comp: bp.compOpts }));
+      check('组件条数默认预填 200（可直接改）', bp.compCount === 200, String(bp.compCount));
+
+      const mkN0 = (await get('/api/market')).data.listings.length;
+      await pa.evaluate(() => { document.getElementById('bl-c-component').value = '6'; });
+      await pa.evaluate(() => document.getElementById('bl-preview').click());
+      await waitFor(async () => /预览（未写入）/.test((await pa.textContent('#bl-state')) || ''), { timeout: 8000, interval: 80 }).catch(() => {});
+      const prevState = await pa.textContent('#bl-state');
+      check('预览给出条数/类别/样例', /共 6 条/.test(prevState || '') && /组件 6 条/.test(prevState || ''), String(prevState).slice(0, 160));
+      check('预览不写入（市集挂单数未变）', (await get('/api/market')).data.listings.length === mkN0, String(mkN0));
+
+      await pa.evaluate(() => document.getElementById('bl-go').click());
+      await waitFor(async () => (await pa.$$('.modal-overlay .cf-text')).length === 1, { timeout: 8000, interval: 80 }).catch(() => {});
+      const cfText = await pa.textContent('.cf-text');
+      check('上架前弹确认（写明卖家名头与条数）', /批量上架 6 条/.test(cfText || '') && /后台管理员|aui_admin/.test(cfText || ''), String(cfText).slice(0, 140));
+      check('确认文案不含转义标签（confirmModal 会 esc）', !/&lt;|<br/.test(cfText || ''), String(cfText).slice(0, 80));
+      await pa.evaluate(() => { const b = document.querySelector('.modal-overlay .cf-yes'); if (b) b.click(); });
+      await waitFor(async () => (await get('/api/market')).data.listings.length >= mkN0 + 6, { timeout: 12000, interval: 150 }).catch(() => {});
+      const mkAfterBulk = (await get('/api/market')).data.listings;
+      check('批量上架落到服务器（+6 条）', mkAfterBulk.length >= mkN0 + 6, mkN0 + ' -> ' + mkAfterBulk.length);
+      check('挂单挂在所选账号名头下', mkAfterBulk.filter(l => l.seller === 'aui_admin').length >= 6,
+        JSON.stringify(mkAfterBulk.filter(l => l.seller === 'aui_admin').slice(0, 2)));
+      check('上架后列表就地刷新出这些挂单', (await pa.$$('#mk-body tbody tr')).length >= 6, String((await pa.$$('#mk-body tbody tr')).length));
+      check('面板参数写进 localStorage（下次进来不用重填）', await pa.evaluate(() => {
+        try { return JSON.parse(localStorage.getItem('fishing_admin_bulk') || '{}').counts.component === 6; } catch (e) { return false; }
+      }));
+      check('市集批量上架无页面错误', adminErrs.length === 0, adminErrs.join(' | '));
+
       // —— 渔场管理：新建（一键填充）/ 限时窗口 / 删除恢复 / 已有钓点一键填充 ——
       section('管理后台渔场管理 · 横幅滚播 · 反馈奖励');
       const gidNew = 'qa_cove_' + Math.random().toString(36).slice(2, 6);

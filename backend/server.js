@@ -48,6 +48,7 @@ try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
 //   economy.json          商店供需乘数 / 价格历史 / 交易流水 / 市集成交
 //   config.json           钓场钓点覆盖配置 / 通知等级 / 上钩公式
 //   feedback.json         反馈意见列表 + 每人下次可提交时间
+//   stats.json            服务器统计采样（后台概览热力图：在线/钓鱼/挂单/交易，分钟样本 24h + 小时样本 30 天）
 const ACCOUNTS_DIR = path.join(DATA_DIR, 'accounts');
 try { fs.mkdirSync(ACCOUNTS_DIR, { recursive: true }); } catch (e) {}
 const MARKET_FILE = path.join(DATA_DIR, 'market.json');
@@ -55,6 +56,7 @@ const RECORDS_FILE = path.join(DATA_DIR, 'records.json');
 const ECONOMY_FILE = path.join(DATA_DIR, 'economy.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
+const STATS_FILE = path.join(DATA_DIR, 'stats.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 // 旧版单文件（仅用于首次自动迁移）
 const LEGACY_USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -158,7 +160,7 @@ let users = {};
 // 默认公式：基础 90% + 「技巧」词缀（技巧是上钩率公式里的一个变量，钩率提示一律不写死在代码里）。
 // 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
 const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
 
 // ---- 宝匣（沉船打捞）----
 // 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
@@ -1882,6 +1884,137 @@ function armPriceSampler() {
 }
 armPriceSampler();
 
+// ================================================================
+// ---- 服务器统计采样（后台概览「服务器热力图」的数据源）----
+// 每 60 秒记一条：在线 / 正在钓鱼 / 市集挂单 / 进行中交易 / 注册账号。
+//  - statMin：分钟样本，保留 24 小时（近 1-6 小时的细节靠它）
+//  - statHour：小时聚合（均值 + 峰值），保留 30 天（热力格与 7/30 天曲线靠它）
+// 每隔 10 条采样才落盘（约 10 分钟），不会每分钟重写整个文件。
+// ================================================================
+function statsLive() {
+  let fishing = 0;
+  players.forEach(function (pl) { if (pl.status === 'fishing') fishing++; });
+  let activeTrades = 0;
+  trades.forEach(function (t) { if (!t.done && !t.cancelled) activeTrades++; });
+  return {
+    t: Math.floor(Date.now() / HEAT_STATS.gapMs) * HEAT_STATS.gapMs,
+    online: players.size,
+    fishing: fishing,
+    listings: world.listings.length,
+    trades: activeTrades,
+    users: Object.keys(users).length,
+  };
+}
+let statsDirty = 0;
+let statsFlushed = false;   // 首次采样先落一次盘：重启后立刻有历史，不会从空曲线开始
+function statsSample() {
+  const s = statsLive();
+  const min = world.statMin || (world.statMin = []);
+  const last = min[min.length - 1];
+  if (last && last.t >= s.t) return;   // 同一分钟内被重复调用：不重复记
+  min.push(s);
+  if (min.length > HEAT_STATS.min) min.splice(0, min.length - HEAT_STATS.min);
+  // 小时聚合：同一小时内在最后一条上累加，滚到下一小时就开新桶
+  const hour = world.statHour || (world.statHour = []);
+  const hT = Math.floor(s.t / 3600000) * 3600000;
+  let h = hour[hour.length - 1];
+  const rolled = !h || h.t !== hT;
+  if (rolled) {
+    h = { t: hT, n: 0, oSum: 0, oMax: 0, fSum: 0, lSum: 0, trSum: 0, uLast: 0 };
+    hour.push(h);
+    if (hour.length > HEAT_STATS.hour) hour.splice(0, hour.length - HEAT_STATS.hour);
+  }
+  h.n++; h.oSum += s.online; h.oMax = Math.max(h.oMax, s.online);
+  h.fSum += s.fishing; h.lSum += s.listings; h.trSum += s.trades; h.uLast = s.users;
+  if (s.online > ((world.statPeak && world.statPeak.online) || 0)) world.statPeak = { online: s.online, t: s.t };
+  statsDirty++;
+  // 落盘：首次采样 / 每 10 条 / 整点换桶（整点检查点），其余时刻不重写文件
+  if (statsDirty >= HEAT_STATS.flushEvery || !statsFlushed || rolled) {
+    statsDirty = 0; statsFlushed = true;
+    try { saveStats(); } catch (e) {}
+  }
+}
+// 区间档位：短区间用分钟样本（越短步长越细），长区间用小时样本
+const STATS_RANGES = {
+  '1h': { span: 3600000, step: 60000, src: 'min' },
+  '6h': { span: 6 * 3600000, step: 5 * 60000, src: 'min' },
+  '24h': { span: 24 * 3600000, step: 10 * 60000, src: 'min' },
+  '7d': { span: 7 * 86400000, step: 3600000, src: 'hour' },
+  '30d': { span: 30 * 86400000, step: 6 * 3600000, src: 'hour' },
+};
+// 区间曲线 + 星期×小时热力格（热力格取最近 28 天的小时样本，按服务器本地时间落格）
+function statsReport(range) {
+  const rf = STATS_RANGES[range] ? range : '24h';
+  const R = STATS_RANGES[rf];
+  const now = Date.now();
+  const from = now - R.span;
+  const acc = {};
+  const put = function (t, o, oMax, f, l, tr, u) {
+    const key = Math.floor(t / R.step) * R.step;
+    const b = acc[key] || (acc[key] = { t: key, n: 0, oSum: 0, oMax: 0, fSum: 0, lSum: 0, trSum: 0, uLast: 0 });
+    b.n++; b.oSum += o; b.oMax = Math.max(b.oMax, oMax); b.fSum += f; b.lSum += l; b.trSum += tr; b.uLast = u;
+  };
+  if (R.src === 'min') {
+    (world.statMin || []).forEach(function (s) {
+      if (s.t >= from) put(s.t, s.online, s.online, s.fishing, s.listings, s.trades, s.users);
+    });
+  } else {
+    (world.statHour || []).forEach(function (h) {
+      if (h.t >= from && h.n) put(h.t, h.oSum / h.n, h.oMax, h.fSum / h.n, h.lSum / h.n, h.trSum / h.n, h.uLast);
+    });
+  }
+  const live = statsLive();
+  put(live.t, live.online, live.online, live.fishing, live.listings, live.trades, live.users); // 曲线始终连到「现在」
+  const r1 = function (v) { return Math.round(v * 10) / 10; };
+  const points = Object.keys(acc).map(function (k) { return acc[k]; })
+    .sort(function (x, y) { return x.t - y.t; })
+    .map(function (b) {
+      return {
+        t: b.t, n: b.n,
+        online: r1(b.oSum / b.n), onlineMax: b.oMax,
+        fishing: r1(b.fSum / b.n), listings: r1(b.lSum / b.n),
+        trades: r1(b.trSum / b.n), users: b.uLast,
+      };
+    });
+  const grid = [], cnt = [];
+  for (let i = 0; i < 7; i++) { grid.push(new Array(24).fill(0)); cnt.push(new Array(24).fill(0)); }
+  const heatDays = 28;
+  const heatFrom = now - heatDays * 86400000;
+  const srcH = (world.statHour || []).filter(function (h) { return h.t >= heatFrom && h.n; });
+  (srcH.length ? srcH : (world.statMin || [])).forEach(function (s) {
+    const d = new Date(s.t);
+    const wd = (d.getDay() + 6) % 7;   // 周一 = 0
+    const hh = d.getHours();
+    grid[wd][hh] += (s.n ? (s.oSum / s.n) : s.online) || 0;
+    cnt[wd][hh] += 1;
+  });
+  let heatMax = 0;
+  const heat = grid.map(function (row, i) {
+    return row.map(function (v, j) {
+      const n = cnt[i][j];
+      if (!n) return null;
+      const avg = Math.round(v / n * 10) / 10;
+      if (avg > heatMax) heatMax = avg;
+      return avg;
+    });
+  });
+  return {
+    range: rf, step: R.step, span: R.span, from: from, now: now,
+    points: points, heat: heat, heatN: cnt, heatMax: heatMax, heatDays: heatDays,
+    peak: world.statPeak || { online: 0, t: 0 }, live: live,
+    samples: { min: (world.statMin || []).length, hour: (world.statHour || []).length },
+  };
+}
+let statsSamplerTimer = null;
+function armStatsSampler() {
+  if (statsSamplerTimer) clearInterval(statsSamplerTimer);
+  try { statsSample(); } catch (e) {}   // 启动即记一条：重启后曲线马上就有右端点
+  statsSamplerTimer = setInterval(function () {
+    try { statsSample(); } catch (e) { console.error('[statsSample] ' + ((e && e.stack) || e)); }
+  }, HEAT_STATS.gapMs);
+  statsSamplerTimer.unref();
+}
+
 // ---- 落盘原语（同步写、整文件重写；单账号/单域粒度） ----
 function readJson(fp) { try { return JSON.parse(fs.readFileSync(fp, 'utf8') || 'null'); } catch (e) { return null; } }
 function writeJson(fp, obj) { try { fs.writeFileSync(fp, JSON.stringify(obj, null, 2)); } catch (e) { console.error('[save] ' + fp + ' 写入失败：' + e.message); } }
@@ -1932,6 +2065,9 @@ const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv
 const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
+// 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
+const STATS_KEYS = ['statMin', 'statHour', 'statPeak'];
+const HEAT_STATS = { min: 1440, hour: 720, gapMs: 60000, flushEvery: 10 };
 function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
 function saveMarket() { saveDomain(MARKET_FILE, MARKET_KEYS); }
 function loadRecords() { loadDomain(RECORDS_FILE, RECORDS_KEYS); }
@@ -1942,7 +2078,9 @@ function loadConfig() { loadDomain(CONFIG_FILE, CONFIG_KEYS); }
 function saveConfig() { saveDomain(CONFIG_FILE, CONFIG_KEYS); }
 function loadFeedback() { loadDomain(FEEDBACK_FILE, FEEDBACK_KEYS); }
 function saveFeedback() { saveDomain(FEEDBACK_FILE, FEEDBACK_KEYS); }
-function saveWorld() { saveMarket(); saveRecords(); saveEconomy(); saveConfig(); saveFeedback(); }
+function loadStats() { loadDomain(STATS_FILE, STATS_KEYS); }
+function saveStats() { saveDomain(STATS_FILE, STATS_KEYS); }
+function saveWorld() { saveMarket(); saveRecords(); saveEconomy(); saveConfig(); saveFeedback(); saveStats(); }
 
 function loadUsers() { loadAccounts(); }
 function saveUsers() { saveAllAccounts(); }
@@ -1958,11 +2096,12 @@ function loadWorld() {
       return;
     }
   }
-  loadMarket(); loadRecords(); loadEconomy(); loadConfig(); loadFeedback();
+  loadMarket(); loadRecords(); loadEconomy(); loadConfig(); loadFeedback(); loadStats();
   void hasDomain;
 }
 loadUsers();
 loadWorld();
+armStatsSampler();   // 统计采样基于 loadWorld 后的历史样本，必须排在其后
 loadSessions(); // 重启后恢复登录态（客户端可自动登录，见 sessionGet 注释）
 // v0.8 组件实例化迁移：旧编码组件 id（`部位_code值_…`）→ 实例签名；背包/钓竿配置/挂单原位换新。
 // 同时清理经济域里遗留的组件键（组件实例改走固定价，不再进入供需/价格历史）。
@@ -2133,6 +2272,8 @@ function sweepExpiredListings() {
   const sellers = {};
   world.listings.forEach(function (l) {
     if (l.expireAt && l.expireAt <= now) {
+      // 后台批量上架的虚拟挂单：物品本就是服务器现造的，退回背包等于凭空生成 → 直接清除
+      if (l.src === 'admin') { changed = true; return; }
       const seller = users[l.seller];
       if (seller) {
         if (D.isRodSet(l.id)) deliverRodBack(seller, l.id, l.name);
@@ -2154,6 +2295,108 @@ function sweepExpiredListings() {
   }
 }
 setInterval(function () { try { sweepExpiredListings(); } catch (e) { console.error('[sweepExpiredListings] ' + ((e && e.stack) || e)); } }, 30 * 1000).unref();
+
+// ================================================================
+// ---- 后台批量上架（活跃市场）：按配置现造一批可上架物品 ----
+// 支持鱼 / 材料 / 宝匣 / 组件实例（整根钓竿除外：它来自钓竿槽位，不能凭空造）。
+// 组件用 data.js 的 genComponent，即与钓鱼掉落完全同一条路径 —— 池内底材 + 自然区间数值，
+// 也就是「正常配件」（不出池外词缀、不越界）。要池外/越界件请用后台「组件生成」页逐件定制。
+// ================================================================
+const BULK_LIST_MAX = 500;   // 单次上限：市集是所有玩家共用的列表，一次挂太多会拖慢客户端
+const BULK_KINDS = ['fish', 'material', 'chest', 'component'];
+function bulkNum(v, def, lo, hi) {
+  const n = Math.floor(Number(v));
+  return isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def;
+}
+function bulkMul(v, def) {
+  const n = Number(v);
+  return isFinite(n) ? Math.max(0.1, Math.min(10, Math.round(n * 100) / 100)) : def;
+}
+// 限定物品：给了合法 id 就只用这些，否则用该类的全部
+function bulkPicksOf(v, all) {
+  const arr = (Array.isArray(v) ? v : []).map(String).filter(function (x) { return all.indexOf(x) >= 0; });
+  return arr.length ? arr : all.slice();
+}
+function bulkSampleOf(it) {
+  const meta = D.itemOf(it.id);
+  return { id: it.id, name: it.name, kind: meta.kind, quality: meta.quality || null, affixN: (meta.affixes || []).length, qty: it.qty, price: it.price };
+}
+// 生成挂单条目（只算不写）：counts 每类条数 / picks 限定物品 / part 组件部位 /
+// quality 品质权重 / affixMin·affixMax 词条条数 / qtyMin·qtyMax 每单数量 / mulMin·mulMax 价格倍率
+function bulkListPlan(d) {
+  const counts = (d.counts && typeof d.counts === 'object') ? d.counts : {};
+  const rawOf = function (k) { const n = Math.floor(Number(counts[k])); return isFinite(n) && n > 0 ? n : 0; };
+  // 超上限直接拒绝（不静默截断）：管理员填 501 时应该看到原因，而不是以为上架了 501 条
+  const overKinds = BULK_KINDS.filter(function (k) { return rawOf(k) > BULK_LIST_MAX; });
+  if (overKinds.length) return { error: '单类最多 ' + BULK_LIST_MAX + ' 条，请调小：' + overKinds.join('、') };
+  const kinds = BULK_KINDS.filter(function (k) { return rawOf(k) > 0; });
+  if (!kinds.length) return { error: '请至少给一类物品设置条数' };
+  let total = 0;
+  kinds.forEach(function (k) { total += rawOf(k); });
+  if (total > BULK_LIST_MAX) return { error: '单次最多上架 ' + BULK_LIST_MAX + ' 条（当前 ' + total + ' 条）' };
+
+  const picks = (d.picks && typeof d.picks === 'object') ? d.picks : {};
+  // 可上架的静态物品一律走 D.allItems()（带 kind 标签）：注意 D.FISH 是**按 id 索引的对象**、
+  // D.MATERIALS / D.CHESTS 才是数组，直接 .map 会抛「不是函数」。
+  const ALL_ITEMS = D.allItems();
+  const idsOfKind = function (kind) { return ALL_ITEMS.filter(function (i) { return i.kind === kind; }).map(function (i) { return i.id; }); };
+  const fishIds = bulkPicksOf(picks.fish, idsOfKind('fish'));
+  const matIds = bulkPicksOf(picks.material, idsOfKind('material'));
+  const chestIds = bulkPicksOf(picks.chest, idsOfKind('chest'));
+  const part = String(d.part || '');
+  const partBases = D.COMPONENT_BASES.filter(function (b) { return !part || b.part === part; });
+  // 限定了底材却与所选部位没有交集 → 直接报错（静默忽略限定会让人以为「按限定挂的」）
+  const rawPicked = (Array.isArray(picks.component) ? picks.component : []).map(String);
+  const pickedBases = rawPicked.filter(function (id) { return partBases.some(function (b) { return b.id === id; }); });
+  if (rawPicked.length && !pickedBases.length) return { error: '限定的组件底材都不在所选部位下（换部位或清空底材限定）' };
+  const baseIds = pickedBases.length ? pickedBases : partBases.map(function (b) { return b.id; });
+  if (kinds.indexOf('component') >= 0 && !baseIds.length) return { error: '所选部位下没有可用的底材（换部位或清空底材限定）' };
+
+  const q = (d.quality && typeof d.quality === 'object') ? d.quality : {};
+  const qWeights = { common: 3, rare: 2, epic: 1, mythic: 0 };
+  Object.keys(qWeights).forEach(function (k) { if (q[k] != null) qWeights[k] = Math.max(0, Number(q[k]) || 0); });
+  if (kinds.indexOf('component') >= 0 && !Object.keys(qWeights).some(function (k) { return qWeights[k] > 0; })) {
+    return { error: '组件的品质权重至少要有一项大于 0' };
+  }
+  // 词条条数区间 → genComponent 的数量权重（数组下标 = 条数-1）
+  const affixMin = bulkNum(d.affixMin, 1, 1, 4);
+  const affixMax = bulkNum(d.affixMax, 0, 0, 4);   // 0 = 用该品质上限
+  const affixWeights = [1, 2, 3, 4].map(function (n) {
+    return (n >= affixMin && (!affixMax || n <= affixMax)) ? 1 : 0;
+  });
+  const qtyMin = bulkNum(d.qtyMin, 1, 1, 999);
+  const qtyMax = Math.max(qtyMin, bulkNum(d.qtyMax, 1, 1, 999));
+  let mulMin = bulkMul(d.mulMin, 1), mulMax = bulkMul(d.mulMax, 1);
+  if (mulMin > mulMax) { const t = mulMin; mulMin = mulMax; mulMax = t; }
+  const hours = [6, 12, 24].indexOf(Number(d.hours)) >= 0 ? Number(d.hours) : 24;
+
+  const pickOne = function (arr) { return arr[Math.floor(Math.random() * arr.length)]; };
+  const randInt = function (a, b) { return a + Math.floor(Math.random() * (b - a + 1)); };
+  const priceOf = function (id) { return Math.max(1, Math.round(unitPriceOf(id) * (mulMin + Math.random() * (mulMax - mulMin)))); };
+  const items = [];
+  const byKind = {};
+  kinds.forEach(function (kind) {
+    const n = rawOf(kind);
+    for (let i = 0; i < n; i++) {
+      let id = null;
+      if (kind === 'fish') id = pickOne(fishIds);
+      else if (kind === 'material') id = pickOne(matIds);
+      else if (kind === 'chest') id = pickOne(chestIds);
+      // 组件走 genComponent（返回的是实例元数据对象，取 .id —— 与宝匣开箱同一套用法）
+      else {
+        const comp = D.genComponent(pickOne(baseIds), D.weightedKey(qWeights, 'common'), { countWeights: affixWeights, minAffixes: affixMin });
+        id = comp ? comp.id : null;
+      }
+      // 兜底：造不出来 / 不可上架 / 整竿（整竿只能来自钓竿槽位）一律跳过，不让脏数据进市集
+      if (!id || !sellableOf(id) || D.isRodSet(id)) continue;
+      items.push({ id: id, name: itemName(id), qty: kind === 'component' ? 1 : randInt(qtyMin, qtyMax), price: priceOf(id) });
+      byKind[kind] = (byKind[kind] || 0) + 1;
+    }
+  });
+  if (!items.length) return { error: '没有生成出任何可上架的物品（检查限定物品与品质权重）' };
+  const mul = mulMin === mulMax ? String(mulMin) : (mulMin + '~' + mulMax);
+  return { items: items, hours: hours, mul: mul, byKind: byKind };
+}
 function broadcastRecords() { broadcast({ type: 'records', records: world.bigRecords, small: world.smallRecords }); }
 
 function groundCounts() {
@@ -3606,6 +3849,13 @@ const server = http.createServer(function (req, res) {
       feedbackCount: (world.feedback || []).length,
     });
   }
+  // ---- 服务器热力图（概览页）：区间曲线 + 星期×小时热力格 ----
+  // range: 1h / 6h / 24h / 7d / 30d（默认 24h）
+  if (p === '/api/admin/stats' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    return apiResp(res, 200, Object.assign({ ok: true }, statsReport(u.query.range)));
+  }
   // ================================================================
   // ---- 横幅（管理后台发布，队列播放） ----
   // 玩家端启动时拉取队列，按顺序播放；图标闪烁可在 bannerCfg.blink 配置。
@@ -4662,7 +4912,8 @@ const server = http.createServer(function (req, res) {
       const l = world.listings[idx];
       world.listings.splice(idx, 1);
       const seller = users[l.seller];
-      if (seller) {
+      // 后台批量上架的虚拟挂单：物品本是现造的，退回会凭空塞进该账号背包 → 直接清除
+      if (seller && l.src !== 'admin') {
         if (D.isRodSet(l.id)) deliverRodBack(seller, l.id, l.name);
         else invAdd(seller, l.id, l.qty);
         saveAccount(l.seller);
@@ -4672,6 +4923,55 @@ const server = http.createServer(function (req, res) {
       saveMarket();
       broadcastMarket();
       apiResp(res, 200, { ok: true, returned: { lid: l.lid, id: l.id, name: l.name, qty: l.qty, seller: l.seller } });
+    });
+    return;
+  }
+  // ---- 市集：后台批量上架（活跃市场）----
+  // 以某个账号的名头挂出一批**服务器现造**的物品（组件 / 鱼 / 材料 / 宝匣），用来把空市集填活。
+  // 与玩家上架的区别：不扣背包、不收上架费、不受「每人 40 单」限制；挂单带 src:'admin'，
+  // 过期或被退回时直接清除（见 sweepExpiredListings / market/return）。
+  // dryRun=true 只生成样例与统计，不写任何数据（前端「预览」用）。
+  if (p === '/api/admin/market/bulk' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const seller = users[String(d.seller || '').toLowerCase()];
+      if (!seller) return apiResp(res, 400, { error: '卖家账号不存在' });
+      // 生成过程兜底：抛错也要回一个响应，否则请求会一直挂着（客户端只能等到超时）
+      let plan = null;
+      try { plan = bulkListPlan(d); } catch (e) { return apiResp(res, 500, { error: '生成失败：' + ((e && e.message) || e) }); }
+      if (plan.error) return apiResp(res, 400, { error: plan.error });      if (d.dryRun) {
+        return apiResp(res, 200, {
+          ok: true, dryRun: true, seller: { key: seller.username, name: seller.name },
+          count: plan.items.length, samples: plan.items.slice(0, 8).map(bulkSampleOf),
+          totalValue: plan.items.reduce(function (s, it) { return s + it.price * it.qty; }, 0),
+          hours: plan.hours, mul: plan.mul, byKind: plan.byKind,
+        });
+      }
+      const ttl = LISTING_TTL_MS_ENV || plan.hours * 3600 * 1000;
+      const now = Date.now();
+      const created = [];
+      plan.items.forEach(function (it) {
+        const listing = {
+          lid: world.listingSeq++, seller: seller.username, sellerName: seller.name,
+          id: it.id, name: it.name, qty: it.qty, price: it.price,
+          t: now, expireAt: now + ttl, hours: plan.hours, src: 'admin',
+        };
+        world.listings.push(listing);
+        created.push(listing);
+      });
+      saveMarket();
+      broadcastMarket();
+      if (created.length) {
+        sendTo(seller.username, { type: 'notice', msg: '管理员以你的名头在开放市集上架了 ' + created.length + ' 件物品（' + plan.hours + ' 小时）' });
+      }
+      apiResp(res, 200, {
+        ok: true, created: created.length, hours: plan.hours, mul: plan.mul, byKind: plan.byKind,
+        seller: { key: seller.username, name: seller.name },
+        samples: created.slice(0, 8).map(bulkSampleOf),
+        totalValue: created.reduce(function (s, l) { return s + l.price * l.qty; }, 0),
+      });
     });
     return;
   }

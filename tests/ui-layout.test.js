@@ -525,6 +525,40 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('勾选最下方物品后列表不重绘（同一 DOM 节点）', scrollKeep.same === true, JSON.stringify(scrollKeep));
       check('勾选后滚动位置保持（不再弹回顶部）', scrollKeep.before > 0 && scrollKeep.after === scrollKeep.before, JSON.stringify(scrollKeep));
       check('勾选后底部按钮就地更新（已选数量）', /已选 \d/.test(scrollKeep.btn || ''), String(scrollKeep.btn));
+      // —— 资产广播（上鱼）不再重建右栏：滚动位置、勾选与底部计数在广播后全部保留 ——
+      // 此前 patchMarketAssets 是整块 replaceWith，每条广播都把列表弹回顶部、换掉正在点的勾选框，
+      // 表现就是「选不到下面要上架的物品」。
+      const bcastComp = D_DATA.instanceId('reel_turbo', 'rare', [{ type: 'speed', value: 12 }]);
+      await p1.evaluate(inst => {
+        window.__mktNewId = inst;
+        const list = document.querySelector('.mkt-sell-list');
+        if (!list) return;
+        list.scrollTop = 100;
+        window.__mktList = list;
+        window.__mktScroll = list.scrollTop;
+      }, bcastComp);
+      await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: bcastComp } });
+      await waitFor(async () => p1.evaluate(() => Array.from(document.querySelectorAll('.mkt-sell-row'))
+        .some(r => r.getAttribute('data-mkt-id') === window.__mktNewId)), { timeout: 8000, interval: 100 }).catch(() => {});
+      const bcast = await p1.evaluate(() => {
+        const list = document.querySelector('.mkt-sell-list');
+        const boxes = list ? Array.from(list.querySelectorAll('input[type=checkbox]')) : [];
+        const batchBtn = document.querySelector('.mkt-sell-foot .primary');
+        const rows = list ? Array.from(list.querySelectorAll('.mkt-sell-row')) : [];
+        return {
+          same: list === window.__mktList,
+          before: window.__mktScroll,
+          top: list ? list.scrollTop : -1,
+          checked: boxes.filter(c => c.checked).length,
+          hasNew: rows.some(r => r.getAttribute('data-mkt-id') === window.__mktNewId),
+          rows: rows.length,
+          btn: batchBtn ? batchBtn.textContent : '',
+        };
+      });
+      check('上鱼广播后右栏列表仍是同一 DOM 节点（不重建）', bcast.same === true, JSON.stringify(bcast));
+      check('上鱼广播后列表没被弹回顶部', bcast.before > 0 && bcast.top > 0, JSON.stringify(bcast));
+      check('上鱼广播后的勾选与底部计数保留', bcast.checked === 1 && /已选 1/.test(bcast.btn || ''), JSON.stringify(bcast));
+      check('上鱼广播后新渔获就地进列表（不是整页重绘的假象）', bcast.hasNew === true && bcast.rows >= 3, JSON.stringify(bcast));
       // 清理：取消刚才的勾选，回到鱼类分类（不影响后续「一键上架」用例）
       await p1.evaluate(() => {
         const list = document.querySelector('.mkt-sell-list');

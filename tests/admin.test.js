@@ -19,6 +19,8 @@ const ROOT = path.join(__dirname, '..');
 const NODE = process.execPath;
 const PORT = 8105;
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-test-'));
+// 双端共享目录：校验批量上架生成的组件实例（词条是否在池内、数值是否在自然区间）
+const D_DATA = require(path.join(ROOT, 'frontend', 'js', 'data.js'));
 
 let pass = 0, fail = 0;
 const failed = [];
@@ -203,6 +205,81 @@ function waitReady() {
   check('物品已退回卖家背包（5 条鲫鱼）', meP2.data.inventory.crucian === 5, JSON.stringify(meP2.data.inventory));
   check('退回不存在的挂单 404', (await POST(B + '/api/admin/market/return', { token: TOKA, lid: 99999 })).status === 404);
 
+  // ---------- 4b. 后台批量上架（活跃市场） ----------
+  section('4b. 后台批量上架');
+  check('普通玩家无权批量上架 403', (await POST(B + '/api/admin/market/bulk', { token: TK2, seller: 'adm_p2', counts: { component: 1 } })).status === 403);
+  check('卖家账号不存在被拒 400', (await POST(B + '/api/admin/market/bulk', { token: TOKA, seller: 'nobody_zzz', counts: { component: 1 } })).status === 400);
+  check('一类条数都没给被拒 400', (await POST(B + '/api/admin/market/bulk', { token: TOKA, seller: 'adm_p2', counts: {} })).status === 400);
+  check('超过单次上限（500）被拒 400', (await POST(B + '/api/admin/market/bulk', { token: TOKA, seller: 'adm_p2', counts: { component: 501 } })).status === 400);
+  check('部件筛选后没有可用底材被拒 400',
+    (await POST(B + '/api/admin/market/bulk', { token: TOKA, seller: 'adm_p2', counts: { component: 1 }, part: 'rod', picks: { component: ['line_nylon'] } })).status === 400);
+  check('品质权重全 0 被拒 400',
+    (await POST(B + '/api/admin/market/bulk', { token: TOKA, seller: 'adm_p2', counts: { component: 1 }, quality: { common: 0, rare: 0, epic: 0, mythic: 0 } })).status === 400);
+
+  const mkPre = (await GET(B + '/api/market')).data.listings.length;
+  const dry = await POST(B + '/api/admin/market/bulk', { token: TOKA, seller: 'adm_p2', counts: { component: 30 }, dryRun: true });
+  check('预览返回条数与样例（8 条）', dry.status === 200 && dry.data.count === 30 && dry.data.samples.length === 8, JSON.stringify(dry.data).slice(0, 150));
+  check('预览不写入任何挂单', (await GET(B + '/api/market')).data.listings.length === mkPre, String(mkPre));
+  check('预览样例是组件且带词条', dry.data.samples.every(s => s.kind === 'component' && s.affixN >= 1), JSON.stringify(dry.data.samples[0]));
+
+  const bulk = await POST(B + '/api/admin/market/bulk', {
+    token: TOKA, seller: 'adm_p2', hours: 12, counts: { component: 20, fish: 4, material: 3, chest: 2 }, mulMin: 0.9, mulMax: 1.1,
+  });
+  check('批量上架成功（20+4+3+2=29 条）', bulk.status === 200 && bulk.data.created === 29, JSON.stringify(bulk.data).slice(0, 150));
+  const mkBulk = (await GET(B + '/api/market')).data.listings.filter(l => l.seller === 'adm_p2');
+  check('市集出现这 29 条（挂在该账号名头下）', mkBulk.length === 29 && mkBulk.every(l => l.sellerName === '玩家二号'), JSON.stringify({ n: mkBulk.length, name: mkBulk[0] && mkBulk[0].sellerName }));
+  check('挂单带后台标记 src=admin', mkBulk.every(l => l.src === 'admin'));
+  const kindOf = l => D_DATA.itemOf(l.id).kind;
+  check('四类物品都按条数挂出', ['component', 'fish', 'material', 'chest'].every(k => mkBulk.filter(l => kindOf(l) === k).length === ({ component: 20, fish: 4, material: 3, chest: 2 })[k]),
+    JSON.stringify({ component: mkBulk.filter(l => kindOf(l) === 'component').length, fish: mkBulk.filter(l => kindOf(l) === 'fish').length, material: mkBulk.filter(l => kindOf(l) === 'material').length, chest: mkBulk.filter(l => kindOf(l) === 'chest').length }));
+  check('组件每单固定 1 件（实例不可合并）', mkBulk.filter(l => kindOf(l) === 'component').every(l => l.qty === 1));
+  check('非组件每单数量落在配置区间内（默认 1~1）', mkBulk.filter(l => kindOf(l) !== 'component').every(l => l.qty === 1));
+  check('时长写入挂单（12 小时）', mkBulk.every(l => l.hours === 12 && l.expireAt > l.t));
+  check('价格 = 现价 × 倍率区间（0.9~1.1）', mkBulk.every(l => {
+    const base = D_DATA.itemOf(l.id).price || 0;   // 组件按品质固定价，鱼/材料按基准价
+    return l.price >= Math.max(1, Math.floor(base * 0.9)) && l.price <= Math.ceil(base * 1.1) + 1;
+  }), JSON.stringify(mkBulk.slice(0, 3).map(l => [l.name, l.price])));
+
+  const comps = mkBulk.filter(l => kindOf(l) === 'component');
+  check('组件都是合法实例', comps.every(l => !!D_DATA.instanceOf(l.id)));
+  check('组件词条在底材池内、数值在自然区间（正常配件，不出池外/越界）', comps.every(l => {
+    const inst = D_DATA.instanceOf(l.id);
+    const base = D_DATA.componentBase(inst.baseId);
+    return inst.affixes.length >= 1 && inst.affixes.every(a => {
+      const slot = base.pool.filter(p => p.type === a.type)[0];
+      return !!slot && a.value >= slot.min && a.value <= slot.max;
+    });
+  }), JSON.stringify(comps.filter(l => {
+    const inst = D_DATA.instanceOf(l.id); const base = D_DATA.componentBase(inst.baseId);
+    return !inst.affixes.every(a => { const slot = base.pool.filter(p => p.type === a.type)[0]; return !!slot && a.value >= slot.min && a.value <= slot.max; });
+  }).slice(0, 2)));
+
+  // 部位限定 + 品质限定：生成结果必须都落在限定内
+  const limited = await POST(B + '/api/admin/market/bulk', { token: TOKA, seller: 'adm_p2', counts: { component: 12 }, part: 'reel', quality: { common: 0, rare: 0, epic: 1, mythic: 0 }, affixMin: 3, affixMax: 3, dryRun: true });
+  check('部位限定生效（只出卷线器底材）', limited.status === 200 && limited.data.samples.every(s => D_DATA.componentBase(D_DATA.instanceOf(s.id).baseId).part === 'reel'), JSON.stringify(limited.data.samples.map(s => s.id)).slice(0, 140));
+  check('品质权重限定生效（只出史诗）', limited.data.samples.every(s => D_DATA.instanceOf(s.id).quality === 'epic'));
+  // 词条条数受「底材池长」与「品质上限」夹取（池里没有的词缀不会凭空出现，仍是正常配件）
+  check('词条条数限定生效（期望 min(3, 池长) 条）', limited.data.samples.every(s => {
+    const inst = D_DATA.instanceOf(s.id);
+    return s.affixN === Math.min(3, D_DATA.componentBase(inst.baseId).pool.length);
+  }), JSON.stringify(limited.data.samples.map(s => s.affixN)));
+
+  // 过期/退回：后台虚拟挂单的物品是现造的，不能退回卖家背包（否则等于凭空生成道具）
+  const invB2 = JSON.stringify((await GET(B + '/api/me?token=' + TK2)).data.inventory);
+  // 注意退回的是**组件**单：下面还要拿一条**鱼**单验证购买（别把同一条单退了又买）
+  const backTarget = mkBulk.find(l => kindOf(l) === 'component');
+  const backOne = await POST(B + '/api/admin/market/return', { token: TOKA, lid: backTarget.lid });
+  check('退回后台挂单成功', backOne.status === 200);
+  check('退回虚拟挂单不把物品塞进卖家背包', JSON.stringify((await GET(B + '/api/me?token=' + TK2)).data.inventory) === invB2, invB2);
+  check('退回后该挂单从市集消失', !(await GET(B + '/api/market')).data.listings.some(l => l.lid === backTarget.lid));
+
+  // 玩家照常能买后台挂出的物品（钱进卖家账号）
+  await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p1', coins: 100000 });
+  const buyBulk = await POST(B + '/api/market/buy', { token: TK1, lid: mkBulk.find(l => kindOf(l) === 'fish').lid, qty: 1 });
+  check('玩家可以买走后台挂出的物品', buyBulk.status === 200, JSON.stringify(buyBulk.data).slice(0, 120));
+  const p2Coins = (await GET(B + '/api/me?token=' + TK2)).data.coins;
+  check('成交款进卖家账号（扣 10% 税后 > 0）', p2Coins > 0, String(p2Coins));
+
   // ---------- 5. 上钩公式 ----------
   section('5. 上钩判断公式');
   check('非法公式被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '1 +', validateOnly: true })).status === 400);
@@ -260,6 +337,28 @@ function waitReady() {
   check('非管理员读取反馈被拒 403', (await GET(B + '/api/admin/feedback?token=' + TK2)).status === 403);
   const ovFb = await GET(B + '/api/admin/overview?token=' + TOKA);
   check('概览统计含反馈数', typeof ovFb.data.feedbackCount === 'number' && ovFb.data.feedbackCount >= 1, String(ovFb.data.feedbackCount));
+
+  // ---------- 8. 服务器热力图（概览面板的数据源） ----------
+  section('8. 服务器热力图数据');
+  check('非管理员读取热力图被拒 403', (await GET(B + '/api/admin/stats?range=24h&token=' + TK2)).status === 403);
+  check('伪造 token 读取热力图被拒 403', (await GET(B + '/api/admin/stats?range=24h&token=fake')).status === 403);
+  const heat = await GET(B + '/api/admin/stats?range=24h&token=' + TOKA);
+  check('热力图接口返回 200', heat.status === 200 && heat.data.ok === true, JSON.stringify(heat.data).slice(0, 140));
+  check('曲线至少含「当前」一个采样桶', Array.isArray(heat.data.points) && heat.data.points.length >= 1, JSON.stringify(heat.data.points));
+  check('每个点含 t/online/onlineMax/fishing/listings/trades/users',
+    !!(heat.data.points[0] && heat.data.points[0].t && 'online' in heat.data.points[0] && 'onlineMax' in heat.data.points[0]
+      && 'fishing' in heat.data.points[0] && 'listings' in heat.data.points[0] && 'trades' in heat.data.points[0] && 'users' in heat.data.points[0]),
+    JSON.stringify(heat.data.points[0]));
+  check('24h 桶步长 10 分钟 / 跨度 24 小时', heat.data.range === '24h' && heat.data.step === 600000 && heat.data.span === 86400000,
+    heat.data.range + '/' + heat.data.step + '/' + heat.data.span);
+  check('热力格为 7×24', Array.isArray(heat.data.heat) && heat.data.heat.length === 7 && heat.data.heat.every(r => r.length === 24),
+    JSON.stringify(heat.data.heat && heat.data.heat.length));
+  check('热力格含本次启动的样本（存在非空格）', heat.data.heat.some(r => r.some(v => v != null)));
+  check('返回 live 在线数与概览一致', heat.data.live.online === ovFb.data.online, heat.data.live.online + ' vs ' + ovFb.data.online);
+  check('返回历史峰值在线（含时间戳）', typeof heat.data.peak.online === 'number' && typeof heat.data.peak.t === 'number', JSON.stringify(heat.data.peak));
+  const heat30 = await GET(B + '/api/admin/stats?range=30d&token=' + TOKA);
+  check('30 天区间改用小时样本（步长 6 小时）', heat30.data.range === '30d' && heat30.data.step === 6 * 3600000, String(heat30.data.step));
+  check('非法区间回落到 24h', (await GET(B + '/api/admin/stats?range=whatever&token=' + TOKA)).data.range === '24h');
 
   // ---------- 9. 基础双钓率配置 ----------
   section('9. 基础双钓率');

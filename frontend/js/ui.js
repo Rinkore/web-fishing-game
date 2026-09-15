@@ -2389,6 +2389,12 @@ window.UI = (function () {
     const main = $('main');
     const st = S();
     const me = st.me;
+    // 右栏「我的背包（上架）」优先复用已有节点（别人挂单 / 成交的广播会整页重建市集）：
+    // 重建右栏会把滚动位置、勾选焦点与鼠标悬停全丢掉，多选上架时列表被弹回顶部、点击落空。
+    const prevSell = main.querySelector('.mkt-sell');
+    const keepSell = (prevSell && prevSell.getAttribute('data-cat') === mktSellCat) ? prevSell : null;
+    const prevList = keepSell ? keepSell.querySelector('.mkt-sell-list') : null;
+    const prevScroll = prevList ? prevList.scrollTop : 0;
     main.innerHTML = '';
     const panel = el('div', 'panel wide two-col');
     panel.innerHTML = '<h2>💱 开放市集 <span class="subtitle">购买 / 我的挂单 / 历史订单 分页管理 · 成交收 10% 税（卖家承担）</span></h2>';
@@ -2573,105 +2579,181 @@ window.UI = (function () {
     const side = el('div', 'col-side');
     side.appendChild(el('h3', null, '🎒 我的背包'));
     side.appendChild(el('div', 'hint', '「上架」把你的物品挂到市集（收定价总额 1% 上架费，下架不退）；成交另收 10% 税（卖家承担）。'));
-    side.appendChild(marketSellPanel(st));
+    side.appendChild(keepSell || marketSellPanel(st));
     panel.appendChild(side);
 
     main.appendChild(panel);
+    if (keepSell) {
+      patchMarketAssets();   // 复用旧节点后按最新背包补齐行（增删 / 数量 / 现价 / 分类计数）
+      const l = keepSell.querySelector('.mkt-sell-list');
+      if (l && prevScroll) l.scrollTop = prevScroll;   // 节点被摘走过，滚动位置显式还原
+    }
   }
 
   // ---- 市集右栏「我的背包」：简易分类筛选 + 多选 + 一键上架 ----
   // 分类只为快速定位要上架的物品；多选后统一设置时长与价格倍率，逐个调用挂单接口。
   let mktSellCat = 'all';
   let mktSellPick = {};      // 勾选的物品 id → true
-  let mktSellScroll = 0;     // 列表滚动位置（重绘后还原，避免多选时被弹回顶部）
+  let mktSellScroll = 0;     // 列表滚动位置（仅在必须重建时还原，避免多选时被弹回顶部）
+  const MKT_SELL_CATS = [
+    ['all', '📦 全部'], ['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['chest', '🎁 宝匣'], ['component', '🔧 组件'],
+  ];
+  // 当前分类下要列出的物品 id（按现价从高到低；现价随售出量浮动）
+  function mktSellKeys(st) {
+    const ids = Object.keys(st.inventory).filter(function (id) { return mktSellCat === 'all' || itemMeta(id).kind === mktSellCat; });
+    return ids.sort(function (a, b) { return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1); });
+  }
+  function mktSellCatCounts(st) {
+    const n = { fish: 0, material: 0, chest: 0, component: 0 };
+    Object.keys(st.inventory).forEach(function (id) { const k = itemMeta(id).kind; if (n[k] != null) n[k] += 1; });
+    n.all = Object.keys(st.inventory).length;
+    return n;
+  }
+  // 组件实例：词条直接显示在挂单列表里（含数值区间与满词条标记），便于挑要挂单的组件
+  function mktSellAffHtml(meta) {
+    if (meta.kind !== 'component' || !meta.affixes || !meta.affixes.length) return '';
+    return '<span class="mkt-sell-aff">' + meta.affixes.map(function (a) {
+      const rng = affixRangeIn(meta, a);
+      const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
+      return affSpanOpen(a) + esc(affixText(a)) + rangeTag + '</span>';
+    }).join('') + itemTag(meta) + '</span>';
+  }
+  // 单行。行上带 data-mkt-id：资产广播时按 id 就地改数量 / 现价，DOM 本身不重建
+  //（重建会让滚动位置、勾选焦点与鼠标悬停全部丢失 —— 多选上架时表现为列表弹回顶部、点击落空）。
+  function mktSellRow(id, st) {
+    const meta = itemMeta(id);
+    const row = el('div', 'inv-row mkt-sell-row');
+    row.setAttribute('data-mkt-id', id);
+    row.innerHTML = '<label class="mkt-pick"><input type="checkbox"' + (mktSellPick[id] ? ' checked' : '') + ' /></label>' +
+      '<span class="mkt-sell-info">' +
+      '<span class="mkt-sell-name ' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
+      '<span class="mkt-lock">' + rodLockBadge(id) + '</span>' + mktSellAffHtml(meta) +
+      '</span>' +
+      '<span class="cnt">×' + st.inventory[id] + '</span>' +
+      '<span class="unit-price">' + unitPriceOf(id) + '💰</span>';
+    row.querySelector('input[type=checkbox]').addEventListener('change', function (e) {
+      if (e.target.checked) mktSellPick[id] = true; else delete mktSellPick[id];
+      syncMktSellFoot();
+    });
+    const acts = el('span', 'inv-acts');
+    const b1 = el('button', 'mini', '上架');
+    b1.title = '单个上架（自定义数量/单价/时长）';
+    b1.addEventListener('click', function () { openListModal(id); });
+    acts.appendChild(b1);
+    row.appendChild(acts);
+    return row;
+  }
+  // 勾选集合取自当前 DOM 里的行：物品已从背包消失时自动排除，不会把幽灵 id 带进一键上架
+  function mktSellPickedIds() {
+    const host = document.querySelector('.mkt-sell');
+    if (!host) return [];
+    return Array.prototype.map.call(host.querySelectorAll('.mkt-sell-row[data-mkt-id]'), function (r) {
+      return r.getAttribute('data-mkt-id');
+    }).filter(function (id) { return !!mktSellPick[id]; });
+  }
+  // 底部按钮随勾选就地更新（文案 / 禁用态 / 点击行为），不整页重绘
+  function syncMktSellFoot() {
+    const host = document.querySelector('.mkt-sell');
+    const batch = host && host.querySelector('.mkt-sell-foot .primary');
+    if (!batch) return;
+    const pickedIds = mktSellPickedIds();
+    batch.textContent = '⚡ 一键上架（已选 ' + pickedIds.length + '）';
+    batch.classList.toggle('locked', !pickedIds.length);
+    batch.title = pickedIds.length ? '统一设置时长与价格倍率后逐个挂单' : '先勾选要上架的物品';
+    batch.onclick = pickedIds.length ? function () { openBatchListModal(pickedIds); } : null;
+  }
   function marketSellPanel(st) {
     const box = el('div', 'mkt-sell');
-    const keysAll = Object.keys(st.inventory);
-    const kindCount = { fish: 0, material: 0, chest: 0, component: 0 };
-    keysAll.forEach(function (id) { const k = itemMeta(id).kind; if (kindCount[k] != null) kindCount[k] += 1; });
+    box.setAttribute('data-cat', mktSellCat);   // 供 renderMarket 判断这个节点能否原样复用
     box.appendChild(el('h3', null, '🎒 我的背包（上架）'));
     // 简易分类
+    const counts = mktSellCatCounts(st);
     const cats = el('div', 'inv-cats mkt-cats');
-    [['all', '📦 全部', keysAll.length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['chest', '🎁 宝匣', kindCount.chest], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
-      const b = el('button', 'inv-cat' + (mktSellCat === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
-      b.addEventListener('click', function () { if (mktSellCat !== kv[0]) { mktSellCat = kv[0]; renderView(); } });
+    MKT_SELL_CATS.forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (mktSellCat === kv[0] ? ' on' : ''), kv[1] + ' ' + counts[kv[0]]);
+      b.setAttribute('data-cat', kv[0]);
+      b.addEventListener('click', function () {
+        if (mktSellCat === kv[0]) return;
+        mktSellCat = kv[0];
+        mktSellScroll = 0;   // 换分类从头看起
+        renderView();
+      });
       cats.appendChild(b);
     });
     box.appendChild(cats);
-    let keys = mktSellCat === 'all' ? keysAll : keysAll.filter(function (id) { return itemMeta(id).kind === mktSellCat; });
+    const keys = mktSellKeys(st);
     if (!keys.length) { box.appendChild(el('div', 'hint', '该分类下没有可上架的物品。')); return box; }
-    keys = keys.slice().sort(function (a, b) { return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1); });
     const list = el('div', 'mkt-sell-list');
-    // 重绘（行情广播 / 上架后刷新）时还原滚动位置：列表可滚动，弹回顶部会让多选很难用
-    list.scrollTop = mktSellScroll;
     list.addEventListener('scroll', function () { mktSellScroll = list.scrollTop; });
-    // 勾选变化只更新底部按钮（不整页重绘）：列表可滚动，重绘会把滚动条弹回顶部，多选时很难用
-    let syncFoot = function () {};
-    keys.forEach(function (id) {
-      const meta = itemMeta(id);
-      const row = el('div', 'inv-row mkt-sell-row');
-      const picked = !!mktSellPick[id];
-      // 组件实例：词条直接显示在挂单列表里（含数值区间与满词条标记），便于挑要挂单的组件
-      const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
-        ? '<span class="mkt-sell-aff">' + meta.affixes.map(function (a) {
-            const rng = affixRangeIn(meta, a);
-            const rangeTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
-            return affSpanOpen(a) + esc(affixText(a)) + rangeTag + '</span>';
-          }).join('') + itemTag(meta) + '</span>'
-        : '';
-      row.innerHTML = '<label class="mkt-pick"><input type="checkbox"' + (picked ? ' checked' : '') + ' /></label>' +
-        '<span class="mkt-sell-info">' +
-        '<span class="mkt-sell-name ' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' + rodLockBadge(id) + affHtml +
-        '</span>' +
-        '<span class="cnt">×' + st.inventory[id] + '</span>' +
-        '<span class="unit-price">' + unitPriceOf(id) + '💰</span>';
-      const cb = row.querySelector('input[type=checkbox]');
-      cb.addEventListener('change', function () {
-        if (cb.checked) mktSellPick[id] = true; else delete mktSellPick[id];
-        syncFoot();
-      });
-      const acts = el('span', 'inv-acts');
-      const b1 = el('button', 'mini', '上架');
-      b1.title = '单个上架（自定义数量/单价/时长）';
-      b1.addEventListener('click', function () { openListModal(id); });
-      acts.appendChild(b1);
-      row.appendChild(acts);
-      list.appendChild(row);
-    });
+    keys.forEach(function (id) { list.appendChild(mktSellRow(id, st)); });
     box.appendChild(list);
     const foot = el('div', 'mkt-sell-foot');
-    const batch = el('button', 'primary');
-    foot.appendChild(batch);
+    foot.appendChild(el('button', 'primary'));
     const clr = el('button', 'mini', '清空选择');
     clr.addEventListener('click', function () {
       // 就地取消勾选（同样避免重绘导致的滚动跳动）
       mktSellPick = {};
       list.querySelectorAll('input[type=checkbox]').forEach(function (c) { c.checked = false; });
-      syncFoot();
+      syncMktSellFoot();
     });
     foot.appendChild(clr);
     box.appendChild(foot);
     box.appendChild(el('div', 'hint', '勾选多件后点「一键上架」：统一设置时长与价格倍率（按各物品现价计算），逐个挂单。'));
-    // 底部按钮与勾选状态同步（就地更新：文案 / 禁用态 / 点击行为）
-    syncFoot = function () {
-      const pickedIds = keys.filter(function (id) { return mktSellPick[id]; });
-      batch.textContent = '⚡ 一键上架（已选 ' + pickedIds.length + '）';
-      batch.classList.toggle('locked', !pickedIds.length);
-      batch.title = pickedIds.length ? '统一设置时长与价格倍率后逐个挂单' : '先勾选要上架的物品';
-      batch.onclick = pickedIds.length ? function () { openBatchListModal(pickedIds); } : null;
-    };
-    syncFoot();
+    syncMktSellFoot();
     return box;
   }
-  // 市集：纯资产广播（上鱼 / 售出 / 交易只改背包与金币）只重画右栏「我的背包（上架）」，
-  // 左栏的挂单列表 / 历史订单原样保留——否则每次上鱼都会把历史订单整列重建并重新请求，画面闪一下。
+  // 市集：纯资产广播（上鱼 / 售出 / 交易只改背包与金币）就地更新右栏「我的背包（上架）」——
+  // 按 id 改数量 / 现价、增删行、刷新分类计数，DOM 节点（含滚动位置与勾选）原样保留。
+  // 此前是整块 replaceWith 重建，上鱼广播一来就把列表弹回顶部、把正在点的勾选框换掉，
+  // 表现就是「选不到下面要上架的物品」。左栏挂单 / 历史订单同样不重建。
   function patchMarketAssets() {
     const main = $('main');
     const st = S();
     if (!main) return false;
     const host = main.querySelector('.mkt-sell');
     if (!host) return false;
-    host.replaceWith(marketSellPanel(st));
+    if (host.getAttribute('data-cat') !== mktSellCat) return false;  // 分类刚变：交给整页重建
+    const list = host.querySelector('.mkt-sell-list');
+    const keys = mktSellKeys(st);
+    const hasRows = !!(list && list.querySelector('.mkt-sell-row'));
+    // 面板当前是空分类提示、或该分类刚好变空：这两种情况下没有勾选与滚动位置要保留，
+    // 整块原地换新最省事（此时换 DOM 不会被用户感知）。
+    if (!hasRows || !keys.length) { host.replaceWith(marketSellPanel(st)); return true; }
+    const counts = mktSellCatCounts(st);
+    host.querySelectorAll('.mkt-cats .inv-cat[data-cat]').forEach(function (b) {
+      const c = b.getAttribute('data-cat');
+      const label = (MKT_SELL_CATS.filter(function (kv) { return kv[0] === c; })[0] || [null, c])[1];
+      const txt = label + ' ' + (counts[c] || 0);
+      if (b.textContent !== txt) b.textContent = txt;
+    });
+    const rows = Object.create(null);
+    list.querySelectorAll('.mkt-sell-row[data-mkt-id]').forEach(function (r) { rows[r.getAttribute('data-mkt-id')] = r; });
+    // 1) 按目标顺序更新已有行 / 补新行。已有行只改动态字段，不重排（现价浮动导致的换序
+    //    会顶动用户正在点的行；下次整页重绘自然归位）。
+    let prev = null;
+    keys.forEach(function (id) {
+      let row = rows[id];
+      if (row) {
+        delete rows[id];
+        const cnt = row.querySelector('.cnt');
+        const cntTxt = '×' + st.inventory[id];
+        if (cnt && cnt.textContent !== cntTxt) cnt.textContent = cntTxt;
+        const up = row.querySelector('.unit-price');
+        const upTxt = unitPriceOf(id) + '💰';
+        if (up && up.textContent !== upTxt) up.textContent = upTxt;
+        const lock = row.querySelector('.mkt-lock');
+        const lockHtml = rodLockBadge(id);
+        if (lock && lock.innerHTML !== lockHtml) lock.innerHTML = lockHtml;
+      } else {
+        row = mktSellRow(id, st);
+        if (prev) prev.parentNode.insertBefore(row, prev.nextSibling);
+        else list.insertBefore(row, list.firstChild);
+      }
+      prev = row;
+    });
+    // 2) 剩下的行背包里已经没有了（全部售出 / 上架 / 交易掉）：移除并清掉勾选
+    Object.keys(rows).forEach(function (id) { rows[id].remove(); delete mktSellPick[id]; });
+    syncMktSellFoot();
     return true;
   }
   // 一键上架子窗口：统一时长 + 价格倍率（或各物品现价），逐件挂单并汇总结果

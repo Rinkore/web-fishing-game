@@ -325,34 +325,378 @@ window.Admin = (function () {
   // ================================
   function stopOverviewTimer() { if (timer) { clearInterval(timer); timer = null; } }
   function stopBannerTimer() { if (bannerTimer) { clearInterval(bannerTimer); bannerTimer = null; } }
+  // ---- 概览·服务器热力图 ----
+  // 曲线/热力格的区间、显隐开关放模块级：切页往返、5 秒轮询都不会把用户的开关重置。
+  const HEAT_SERIES = [
+    { id: 'online', name: '在线玩家', color: '#4da3ff' },
+    { id: 'onlineMax', name: '在线峰值', color: '#ffb454', dash: [4, 3] },
+    { id: 'fishing', name: '正在钓鱼', color: '#3ecf8e' },
+    { id: 'listings', name: '市集挂单', color: '#b07cff' },
+    { id: 'trades', name: '进行中交易', color: '#ff9d5c' },
+    { id: 'users', name: '注册账号', color: '#8a94aa' },
+  ];
+  const HEAT_RANGES = [['1h', '1 小时'], ['6h', '6 小时'], ['24h', '24 小时'], ['7d', '7 天'], ['30d', '30 天']];
+  const HL = { h: 240, padL: 42, padR: 14, padT: 12, padB: 26 };   // 曲线画布几何
+  const HG = { h: 252, padL: 34, padR: 14, padT: 22, padB: 20 };   // 热力格画布几何
+  const HEAT_REFRESH_MS = 20000;   // 概览每 5 秒轮询，曲线按 20 秒节流重拉（服务端 60 秒才多一个点）
+  let heatRange = '24h';
+  let heatMode = 'line';           // line | heat
+  let heatOn = { online: true, onlineMax: true, fishing: true, listings: true, trades: true, users: false };
+  let heatData = null;             // /api/admin/stats 最近一次结果
+  let heatAt = 0;                  // 上次拉取时间
+  let heatHover = -1;              // 曲线：悬停的数据点下标（-1 = 无）
+  let heatCell = null;             // 热力格：悬停的 [星期, 小时]
+  let heatDraws = 0;               // 绘制计数（写到 canvas.dataset.draw，测试与排查用）
+  // 画布按容器宽度与 DPR 重建，返回绘图上下文
+  function heatCanvas(hh) {
+    const cv = $('ov-chart');
+    if (!cv) return null;
+    const wrap = cv.parentNode;
+    const w = Math.max(300, (wrap && wrap.clientWidth ? wrap.clientWidth : 600) - 2);
+    const dpr = window.devicePixelRatio || 1;
+    cv.style.width = w + 'px';
+    cv.style.height = hh + 'px';
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(hh * dpr)) {
+      cv.width = Math.round(w * dpr);
+      cv.height = Math.round(hh * dpr);
+    }
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, hh);
+    ctx.font = '11px "Microsoft YaHei", "PingFang SC", sans-serif';
+    return { cv: cv, ctx: ctx, w: w, h: hh };
+  }
+  function heatP2(n) { return (n < 10 ? '0' : '') + n; }
+  function heatTimeLabel(t, span) {
+    const d = new Date(t);
+    if (span <= 24 * 3600000) return heatP2(d.getHours()) + ':' + heatP2(d.getMinutes());
+    return (d.getMonth() + 1) + '-' + d.getDate() + ' ' + heatP2(d.getHours()) + ':00';
+  }
+  // 曲线几何：X(t) / 绘图区，绘制与悬停命中都用它，保证坐标一致
+  function heatLineGeo(w, data) {
+    const plotW = Math.max(10, w - HL.padL - HL.padR);
+    const plotH = Math.max(10, HL.h - HL.padT - HL.padB);
+    const pts = (data && data.points) || [];
+    const t0 = pts.length ? pts[0].t : 0;
+    const t1 = pts.length ? Math.max(pts[pts.length - 1].t, t0 + 60000) : 1;
+    return {
+      pts: pts, t0: t0, t1: t1, plotW: plotW, plotH: plotH,
+      X: function (t) { return HL.padL + (t - t0) / (t1 - t0) * plotW; },
+    };
+  }
+  function drawHeatLine() {
+    const c = heatCanvas(HL.h);
+    if (!c) return;
+    const ctx = c.ctx;
+    const data = heatData;
+    const geo = heatLineGeo(c.w, data);
+    const pts = geo.pts;
+    if (!pts.length) {
+      ctx.fillStyle = 'rgba(216,224,238,0.55)';
+      ctx.fillText('暂无样本——服务端每 60 秒记一条，稍后回来自动出现', HL.padL, HL.padT + 18);
+      heatDraws++; c.cv.dataset.draw = String(heatDraws);
+      return;
+    }
+    const vis = HEAT_SERIES.filter(function (s) { return heatOn[s.id]; });
+    let vmax = 1;
+    pts.forEach(function (p) {
+      vis.forEach(function (s) { const v = Number(p[s.id]) || 0; if (v > vmax) vmax = v; });
+    });
+    vmax = Math.max(1, vmax * 1.15);
+    const Y = function (v) { return HL.padT + geo.plotH - v / vmax * geo.plotH; };
+    // Y 轴刻度 + 横向网格
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+      const v = vmax * i / 4;
+      const y = Math.round(Y(v)) + 0.5;
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(HL.padL, y); ctx.lineTo(HL.padL + geo.plotW, y); ctx.stroke();
+      ctx.fillStyle = 'rgba(216,224,238,0.5)';
+      ctx.fillText(String(Math.round(v)), HL.padL - 6, y + 4);
+    }
+    // X 轴时间刻度
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= 4; i++) {
+      const t = geo.t0 + (geo.t1 - geo.t0) * i / 4;
+      ctx.fillStyle = 'rgba(216,224,238,0.5)';
+      ctx.fillText(heatTimeLabel(t, data.span), HL.padL + geo.plotW * i / 4, HL.h - HL.padB + 16);
+    }
+    // 折线：样本间隔超过 2.5 个桶就断线，避免把停机的空白连成一条假直线
+    const gap = (data.step || 60000) * 2.5;
+    vis.forEach(function (s) {
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash(s.dash || []);
+      ctx.beginPath();
+      let started = false, prevT = 0;
+      pts.forEach(function (p) {
+        const x = geo.X(p.t), y = Y(Number(p[s.id]) || 0);
+        if (started && (p.t - prevT) > gap) { ctx.stroke(); ctx.beginPath(); started = false; }
+        if (started) ctx.lineTo(x, y); else { ctx.moveTo(x, y); started = true; }
+        prevT = p.t;
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // 样本太少（新服刚开只有一两条）时折线没有长度，补个点让「有数据」看得见
+      if (pts.length <= 2) {
+        ctx.fillStyle = s.color;
+        pts.forEach(function (p) {
+          ctx.beginPath();
+          ctx.arc(geo.X(p.t), Y(Number(p[s.id]) || 0), 2.6, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+    });
+    // 悬停：竖线 + 各曲线上的点
+    if (heatHover >= 0 && heatHover < pts.length) {
+      const p = pts[heatHover];
+      const x = geo.X(p.t);
+      ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, HL.padT); ctx.lineTo(x, HL.padT + geo.plotH); ctx.stroke();
+      vis.forEach(function (s) {
+        ctx.fillStyle = s.color;
+        ctx.beginPath(); ctx.arc(x, Y(Number(p[s.id]) || 0), 3, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+    heatDraws++; c.cv.dataset.draw = String(heatDraws);
+  }
+  function drawHeatGrid() {
+    const c = heatCanvas(HG.h);
+    if (!c) return;
+    const ctx = c.ctx;
+    const data = heatData;
+    const hasCell = !!(data && data.heat && data.heat.some(function (r) { return r.some(function (v) { return v != null; }); }));
+    if (!hasCell) {
+      ctx.fillStyle = 'rgba(216,224,238,0.55)';
+      ctx.fillText('暂无样本——服务端每 60 秒记一条，稍后回来自动出现', HG.padL, HG.padT + 14);
+      heatDraws++; c.cv.dataset.draw = String(heatDraws);
+      return;
+    }
+    const heatMax = Math.max(1, data.heatMax);
+    const cellW = Math.max(8, (c.w - HG.padL - HG.padR) / 24);
+    const cellH = Math.max(8, (HG.h - HG.padT - HG.padB) / 7);
+    const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    ctx.textAlign = 'right';
+    for (let wd = 0; wd < 7; wd++) {
+      ctx.fillStyle = 'rgba(216,224,238,0.55)';
+      ctx.fillText(days[wd], HG.padL - 6, HG.padT + cellH * wd + cellH / 2 + 4);
+    }
+    ctx.textAlign = 'center';
+    for (let hh = 0; hh < 24; hh += 2) {
+      ctx.fillStyle = 'rgba(216,224,238,0.55)';
+      ctx.fillText(hh + '时', HG.padL + cellW * (hh + 0.5), HG.h - HG.padB + 15);
+    }
+    for (let wd = 0; wd < 7; wd++) {
+      for (let hh = 0; hh < 24; hh++) {
+        const v = data.heat[wd][hh];
+        const x = HG.padL + cellW * hh, y = HG.padT + cellH * wd;
+        if (v == null) ctx.fillStyle = 'rgba(255,255,255,0.03)';
+        else ctx.fillStyle = 'rgba(77,163,255,' + (0.12 + 0.78 * Math.min(1, v / heatMax)).toFixed(3) + ')';
+        ctx.fillRect(x + 1, y + 1, Math.max(1, cellW - 2), Math.max(1, cellH - 2));
+        if (heatCell && heatCell[0] === wd && heatCell[1] === hh) {
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(x + 1.5, y + 1.5, Math.max(1, cellW - 3), Math.max(1, cellH - 3));
+        }
+      }
+    }
+    heatDraws++; c.cv.dataset.draw = String(heatDraws);
+  }
+  function heatDraw() { if (heatMode === 'heat') drawHeatGrid(); else drawHeatLine(); }
+  // 悬停命中：曲线取最近的数据点，热力格取所在单元格
+  function heatHit(x, y) {
+    if (heatMode === 'heat') {
+      const cv = $('ov-chart');
+      if (!cv) return;
+      const cellW = Math.max(8, (cv.clientWidth - HG.padL - HG.padR) / 24);
+      const cellH = Math.max(8, (HG.h - HG.padT - HG.padB) / 7);
+      const hh = Math.floor((x - HG.padL) / cellW), wd = Math.floor((y - HG.padT) / cellH);
+      heatCell = (hh >= 0 && hh < 24 && wd >= 0 && wd < 7) ? [wd, hh] : null;
+      heatHover = -1;
+      return;
+    }
+    const cv = $('ov-chart');
+    const data = heatData;
+    if (!cv || !data || !data.points.length) { heatHover = -1; return; }
+    const geo = heatLineGeo(cv.clientWidth, data);
+    let best = -1, bestD = Infinity;
+    geo.pts.forEach(function (p, i) { const d = Math.abs(geo.X(p.t) - x); if (d < bestD) { bestD = d; best = i; } });
+    heatHover = best;
+    heatCell = null;
+  }
+  function heatTipUpdate(x, y) {
+    const tip = $('ov-tip');
+    if (!tip) return;
+    let html = '';
+    if (heatMode === 'heat' && heatCell) {
+      const wd = heatCell[0], hh = heatCell[1];
+      const v = (heatData && heatData.heat[wd][hh]);
+      const n = (heatData && heatData.heatN && heatData.heatN[wd][hh]) || 0;
+      const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+      html = '<div class="hm-tip-t">' + days[wd] + ' ' + heatP2(hh) + ':00 - ' + heatP2(hh) + ':59</div>' +
+        (v == null ? '无样本' : '平均在线 <b>' + v + '</b> 人<span style="color:var(--txt-dim)"> · ' + n + ' 个样本</span>');
+    } else if (heatMode === 'line' && heatData && heatHover >= 0 && heatData.points[heatHover]) {
+      const p = heatData.points[heatHover];
+      html = '<div class="hm-tip-t">' + new Date(p.t).toLocaleString() + '</div>' +
+        HEAT_SERIES.filter(function (s) { return heatOn[s.id]; }).map(function (s) {
+          return '<div><i style="background:' + s.color + '"></i>' + s.name + '：<b>' + (Number(p[s.id]) || 0) + '</b></div>';
+        }).join('');
+    }
+    if (!html) { tip.classList.remove('show'); return; }
+    tip.innerHTML = html;
+    tip.classList.add('show');
+    const wrap = tip.parentNode;
+    const w = wrap ? wrap.clientWidth : 0;
+    const tw = tip.offsetWidth;
+    tip.style.left = Math.max(0, Math.min(w - tw, x + 12)) + 'px';
+    tip.style.top = Math.max(0, y + 12) + 'px';
+  }
+  function heatHint() {
+    const hint = $('ov-chart-hint');
+    if (!hint) return;
+    const d = heatData;
+    if (!d) { hint.textContent = '加载中…'; return; }
+    const peak = (d.peak && d.peak.online) || 0;
+    const peakAt = (d.peak && d.peak.t) ? '（' + new Date(d.peak.t).toLocaleString() + '）' : '';
+    const rangeName = (HEAT_RANGES.filter(function (kv) { return kv[0] === d.range; })[0] || [null, d.range])[1];
+    if (heatMode === 'heat') {
+      hint.textContent = '色深 = 该时段平均在线人数（最深 ' + d.heatMax + ' 人，空样本为浅灰）· 覆盖最近 ' + d.heatDays +
+        ' 天 · 悬停查看具体数值 · 历史峰值 ' + peak + ' 人' + peakAt;
+      return;
+    }
+    const stepTxt = d.step >= 3600000 ? (d.step / 3600000) + ' 小时' : (d.step / 60000) + ' 分钟';
+    hint.textContent = rangeName + '区间：' + d.points.length + ' 个采样桶（每桶 ' + stepTxt + '，桶内取均值；峰值线取桶内最高）' +
+      ' · 采样 分钟 ' + d.samples.min + ' / 小时 ' + d.samples.hour + ' 条 · 历史峰值 ' + peak + ' 人' + peakAt +
+      ' · 每 ' + Math.round(HEAT_REFRESH_MS / 1000) + ' 秒刷新';
+  }
+  function heatLoad() {
+    if (view !== 'overview') return;
+    return adminApi('GET', '/api/admin/stats?range=' + heatRange + '&token=' + encodeURIComponent(token)).then(function (r) {
+      if (!r.ok || view !== 'overview') return;
+      heatData = r.data;
+      heatAt = Date.now();
+      const peakEl = document.querySelector('[data-stat="peak"]');
+      if (peakEl) {
+        peakEl.textContent = (r.data.peak && r.data.peak.online) || 0;
+        peakEl.title = (r.data.peak && r.data.peak.t) ? '历史峰值时间：' + new Date(r.data.peak.t).toLocaleString() : '';
+      }
+      heatDraw();
+      heatHint();
+    });
+  }
+  function heatPanelHtml() {
+    return '<div class="panel">' +
+      '<h3>🔥 服务器热力图 <span class="hint">在线 / 钓鱼 / 挂单 / 交易随时间的变化，曲线可逐条开关</span></h3>' +
+      '<div class="hm-bar">' +
+      '<span class="hm-group" id="ov-range">' + HEAT_RANGES.map(function (kv) {
+        return '<button class="btn mini hm-rng' + (heatRange === kv[0] ? ' on' : '') + '" data-range="' + kv[0] + '">' + kv[1] + '</button>';
+      }).join('') + '</span>' +
+      '<span class="hm-group" id="ov-mode">' +
+      '<button class="btn mini hm-md' + (heatMode === 'line' ? ' on' : '') + '" data-mode="line">📈 曲线</button>' +
+      '<button class="btn mini hm-md' + (heatMode === 'heat' ? ' on' : '') + '" data-mode="heat">🌡️ 星期 × 小时热力格</button>' +
+      '</span>' +
+      '</div>' +
+      '<div class="hm-legend" id="ov-legend">' + HEAT_SERIES.map(function (s) {
+        return '<label class="hm-item' + (heatOn[s.id] ? '' : ' off') + '" data-series="' + s.id + '">' +
+          '<input type="checkbox"' + (heatOn[s.id] ? ' checked' : '') + ' />' +
+          '<i class="hm-chip" style="background:' + s.color + '"></i>' + s.name + '</label>';
+      }).join('') + '</div>' +
+      '<div class="hm-wrap" id="ov-wrap"><canvas id="ov-chart"></canvas><div class="hm-tip" id="ov-tip"></div></div>' +
+      '<div class="hint" id="ov-chart-hint" style="margin-top:8px">加载中…</div>' +
+      '</div>';
+  }
+  // 只在首次渲染时调用一次：之后 5 秒轮询只改数字，绝不重建（否则用户的曲线开关会被重置）
+  function wireHeatPanel() {
+    document.querySelectorAll('#ov-range .hm-rng').forEach(function (b) {
+      b.addEventListener('click', function () {
+        heatRange = b.getAttribute('data-range');
+        document.querySelectorAll('#ov-range .hm-rng').forEach(function (x) { x.classList.toggle('on', x === b); });
+        heatLoad();
+      });
+    });
+    document.querySelectorAll('#ov-mode .hm-md').forEach(function (b) {
+      b.addEventListener('click', function () {
+        heatMode = b.getAttribute('data-mode');
+        document.querySelectorAll('#ov-mode .hm-md').forEach(function (x) { x.classList.toggle('on', x === b); });
+        heatHover = -1; heatCell = null;
+        const tip = $('ov-tip'); if (tip) tip.classList.remove('show');
+        heatDraw();
+        heatHint();
+      });
+    });
+    document.querySelectorAll('#ov-legend .hm-item').forEach(function (lab) {
+      const cb = lab.querySelector('input');
+      cb.addEventListener('change', function () {
+        heatOn[lab.getAttribute('data-series')] = cb.checked;
+        lab.classList.toggle('off', !cb.checked);
+        heatDraw();
+      });
+    });
+    const cv = $('ov-chart');
+    if (cv) {
+      cv.addEventListener('mousemove', function (e) {
+        const box = cv.getBoundingClientRect();
+        const x = e.clientX - box.left, y = e.clientY - box.top;
+        heatHit(x, y);
+        heatDraw();
+        heatTipUpdate(x, y);
+      });
+      cv.addEventListener('mouseleave', function () {
+        heatHover = -1; heatCell = null;
+        const tip = $('ov-tip'); if (tip) tip.classList.remove('show');
+        heatDraw();
+      });
+    }
+  }
+  // 窗口变宽变窄时重画（画布尺寸跟着容器走）
+  window.addEventListener('resize', function () { if (view === 'overview' && $('ov-chart')) heatDraw(); });
   function renderOverview() {
     const main = $('main');
-    main.innerHTML = '<h2>📊 服务器概览</h2><div id="ov-body" class="hint">加载中…</div>';
+    main.innerHTML = '<h2>📊 服务器概览</h2><div id="ov-body">' +
+      '<div class="stat-grid">' +
+      '<div class="stat"><div class="v" data-stat="online">–</div><div class="k">在线玩家</div></div>' +
+      '<div class="stat"><div class="v" data-stat="fishingCount">–</div><div class="k">正在钓鱼</div></div>' +
+      '<div class="stat"><div class="v" data-stat="userCount">–</div><div class="k">注册账号</div></div>' +
+      '<div class="stat"><div class="v" data-stat="listings">–</div><div class="k">市集挂单</div></div>' +
+      '<div class="stat"><div class="v" data-stat="activeTrades">–</div><div class="k">进行中交易</div></div>' +
+      '<div class="stat"><div class="v" data-stat="spots">–</div><div class="k">钓场 / 钓点</div></div>' +
+      '<div class="stat"><div class="v" data-stat="peak">–</div><div class="k">历史峰值在线</div></div>' +
+      '</div>' +
+      heatPanelHtml() +
+      '<div class="panel"><h3>当前生效配置</h3>' +
+      '<div class="kv" id="ov-cfg">–</div>' +
+      '<div class="hint" style="margin-top:8px">统计每 5 秒自动刷新；配置修改即时生效并广播给在线玩家。</div></div>' +
+      '</div>';
+    // 5 秒轮询只就地改数字：整块 innerHTML 重建会把曲线开关、区间选择与画布一起冲掉
     const load = function () {
       if (view !== 'overview') return;
       adminApi('GET', '/api/admin/overview?token=' + encodeURIComponent(token)).then(function (r) {
         if (!r.ok || view !== 'overview') return;
         const d = r.data;
+        const set = function (k, v) {
+          const el = document.querySelector('#ov-body [data-stat="' + k + '"]');
+          if (el && String(el.textContent) !== String(v)) el.textContent = v;
+        };
+        set('online', d.online);
+        set('fishingCount', d.fishingCount);
+        set('userCount', d.userCount);
+        set('listings', d.listings);
+        set('activeTrades', d.activeTrades);
+        set('spots', d.groundCount + ' / ' + d.spotCount);
         const lvName = (worldCfg && worldCfg.notifyLevels && worldCfg.notifyLevels[d.notifyLevel]) || d.notifyLevel;
-        // 请求往返期间页面可能已被重绘（例如刚切到别的页签又切回来）——元素不在就跳过
-        const ovBody = $('ov-body');
-        if (!ovBody) return;
-        ovBody.innerHTML =
-          '<div class="stat-grid">' +
-          '<div class="stat"><div class="v">' + d.online + '</div><div class="k">在线玩家</div></div>' +
-          '<div class="stat"><div class="v">' + d.fishingCount + '</div><div class="k">正在钓鱼</div></div>' +
-          '<div class="stat"><div class="v">' + d.userCount + '</div><div class="k">注册账号</div></div>' +
-          '<div class="stat"><div class="v">' + d.listings + '</div><div class="k">市集挂单</div></div>' +
-          '<div class="stat"><div class="v">' + d.activeTrades + '</div><div class="k">进行中交易</div></div>' +
-          '<div class="stat"><div class="v">' + d.groundCount + ' / ' + d.spotCount + '</div><div class="k">钓场 / 钓点</div></div>' +
-          '</div>' +
-          '<div class="panel"><h3>当前生效配置</h3>' +
-          '<div class="kv">通知等级：<code>' + esc(d.notifyLevel) + '</code> — ' + esc(lvName) + '<br>' +
-          '上钩公式：<code>' + esc(d.biteFormula) + '</code></div>' +
-          '<div class="hint" style="margin-top:8px">统计每 5 秒自动刷新；配置修改即时生效并广播给在线玩家。</div></div>';
+        const cfg = $('ov-cfg');
+        if (cfg) {
+          cfg.innerHTML = '通知等级：<code>' + esc(d.notifyLevel) + '</code> — ' + esc(lvName) + '<br>' +
+            '上钩公式：<code>' + esc(d.biteFormula) + '</code>';
+        }
       });
+      if (Date.now() - heatAt > HEAT_REFRESH_MS) heatLoad();   // 曲线按 20 秒节流刷新
     };
+    wireHeatPanel();
     load();
+    heatLoad();
     stopOverviewTimer();
     timer = setInterval(load, 5000);
   }
@@ -1318,10 +1662,187 @@ window.Admin = (function () {
   // ================================
   // 市集管理
   // ================================
+  // ---- 后台批量上架（活跃市场）----
+  // 以某个账号的「名头」一次挂出一批现造的鱼 / 材料 / 宝匣 / 组件实例，用来把空市集填活。
+  // 组件走 data.js 的 genComponent（与钓鱼掉落同一条路径）→ 池内底材 + 自然区间数值，即「正常配件」。
+  // 面板参数存 localStorage：管理员会反复用同一套参数补货，不必每次重填。
+  // 物品清单统一走 GameData.allItems()（带 kind 标签）：GameData.FISH 是**按 id 索引的对象**、
+  // MATERIALS / CHESTS 才是数组，直接 .map 会抛「不是函数」把面板整块打空。
+  const BULK_KINDS = [
+    { id: 'fish', label: '🐟 鱼类' },
+    { id: 'material', label: '🧵 材料' },
+    { id: 'chest', label: '🎁 宝匣' },
+    { id: 'component', label: '🔧 组件底材' },
+  ];
+  function bulkItemsOf(kind) {
+    if (kind === 'component') {
+      return (typeof GameData !== 'undefined' ? GameData.COMPONENT_BASES : []).map(function (b) { return { id: b.id, name: b.name }; });
+    }
+    if (typeof GameData === 'undefined' || !GameData.allItems) return [];
+    return GameData.allItems().filter(function (i) { return i.kind === kind; }).map(function (i) { return { id: i.id, name: i.name }; });
+  }
+  const BULK_QUALITIES = [['common', '普通'], ['rare', '稀有'], ['epic', '史诗'], ['mythic', '神话']];
+  let blCfg = null;
+  function bulkCfg() {
+    if (blCfg) return blCfg;
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('fishing_admin_bulk') || 'null'); } catch (e) {}
+    blCfg = Object.assign({
+      seller: '', hours: 24, mulMin: 1, mulMax: 1, qtyMin: 1, qtyMax: 1,
+      counts: { fish: 0, material: 0, chest: 0, component: 200 },
+      picks: { fish: [], material: [], chest: [], component: [] },
+      part: '', quality: { common: 3, rare: 2, epic: 1, mythic: 0 }, affixMin: 1, affixMax: 0,
+    }, saved || {});
+    return blCfg;
+  }
+  function bulkSave() { try { localStorage.setItem('fishing_admin_bulk', JSON.stringify(bulkCfg())); } catch (e) {} }
+  function bulkPanelHtml() {
+    const c = bulkCfg();
+    const nums = function (id, val, min, max, step) {
+      return '<input id="' + id + '" class="ipt mk-num" type="number" min="' + min + '" max="' + max + '"' +
+        (step ? ' step="' + step + '"' : '') + ' value="' + esc(val) + '" />';
+    };
+    return '<div class="panel mk-bulk">' +
+      '<h3>🎪 后台批量上架 <span class="hint">以某个账号的名头挂出一批服务器现造的物品（不扣背包、不收上架费、不受每人 40 单限制）</span></h3>' +
+      '<div class="bl-row">' +
+      '<label>卖家名头</label><select id="bl-seller" class="ipt"><option value="">加载账号…</option></select>' +
+      '<label>时长</label><select id="bl-hours" class="ipt">' +
+      [6, 12, 24].map(function (h) { return '<option value="' + h + '"' + (c.hours === h ? ' selected' : '') + '>' + h + ' 小时</option>'; }).join('') +
+      '</select>' +
+      '<label>价格倍率</label>' + nums('bl-mulmin', c.mulMin, 0.1, 10, 0.05) + '<span class="hint">~</span>' + nums('bl-mulmax', c.mulMax, 0.1, 10, 0.05) +
+      '<span class="hint">（现价的倍数，1 = 原价；组件按品质固定价）</span>' +
+      '</div>' +
+      '<div class="bl-grid">' +
+      BULK_KINDS.map(function (k) {
+        const items = bulkItemsOf(k.id);
+        const picked = (c.picks && c.picks[k.id]) || [];
+        return '<div class="bl-card"><div class="bl-head"><span>' + k.label + '</span>' +
+          nums('bl-c-' + k.id, (c.counts && c.counts[k.id]) || 0, 0, 500) + '<span class="hint">条</span></div>' +
+          '<select id="bl-p-' + k.id + '" class="ipt bl-pick" multiple size="4">' +
+          items.map(function (it) { return '<option value="' + esc(it.id) + '"' + (picked.indexOf(it.id) >= 0 ? ' selected' : '') + '>' + esc(it.name) + '</option>'; }).join('') +
+          '</select><div class="hint">不选 = 该类全部随机</div></div>';
+      }).join('') +
+      '</div>' +
+      '<div class="bl-row">' +
+      '<label>组件部位</label><select id="bl-part" class="ipt"><option value="">全部部位</option>' +
+      (typeof GameData !== 'undefined' ? GameData.ROD_PARTS.filter(function (p) { return !p.isCharm; }) : []).map(function (p) {
+        return '<option value="' + p.key + '"' + (c.part === p.key ? ' selected' : '') + '>' + esc(p.name) + '</option>';
+      }).join('') + '</select>' +
+      '<label>品质权重</label>' +
+      BULK_QUALITIES.map(function (kv) { return '<span class="bl-q"><span>' + kv[1] + '</span>' + nums('bl-q-' + kv[0], (c.quality && c.quality[kv[0]] != null) ? c.quality[kv[0]] : 0, 0, 99) + '</span>'; }).join('') +
+      '<label>词条数</label>' + nums('bl-affmin', c.affixMin, 1, 4) + '<span class="hint">~</span>' + nums('bl-affmax', c.affixMax, 0, 4) +
+      '<span class="hint">（0 = 该品质上限，1~4）</span>' +
+      '<label>每单数量</label>' + nums('bl-qmin', c.qtyMin, 1, 999) + '<span class="hint">~</span>' + nums('bl-qmax', c.qtyMax, 1, 999) +
+      '<span class="hint">（组件每单固定 1 件）</span>' +
+      '</div>' +
+      '<div class="bl-row bl-foot">' +
+      '<button id="bl-preview" class="btn mini">预览 8 条</button>' +
+      '<button id="bl-go" class="btn primary">开始批量上架</button>' +
+      '<span id="bl-state" class="hint">先点「预览」看看生成结果，再上架。单次最多 500 条（条数越多玩家端市集列表越长，建议单次 ≤ 200）；过期或被退回时直接清除，不退回背包。</span>' +
+      '</div>' +
+      '<div id="bl-prev" class="hint"></div>' +
+      '</div>';
+  }
+  function bulkReadForm() {
+    const c = bulkCfg();
+    const val = function (id) { const el = $(id); return el ? el.value : ''; };
+    const num = function (id, def) { const n = Number(val(id)); return isFinite(n) ? n : def; };
+    c.hours = Number(val('bl-hours')) || 24;
+    c.mulMin = num('bl-mulmin', 1); c.mulMax = num('bl-mulmax', 1);
+    c.qtyMin = num('bl-qmin', 1); c.qtyMax = num('bl-qmax', 1);
+    c.affixMin = num('bl-affmin', 1); c.affixMax = num('bl-affmax', 0);
+    c.part = val('bl-part');
+    c.seller = val('bl-seller');
+    c.sellerName = '';
+    const sel = $('bl-seller');
+    if (sel && sel.selectedIndex >= 0 && sel.options[sel.selectedIndex]) c.sellerName = sel.options[sel.selectedIndex].getAttribute('data-name') || '';
+    c.counts = {}; c.picks = {}; c.quality = {};
+    BULK_KINDS.forEach(function (k) {
+      c.counts[k.id] = Math.max(0, num('bl-c-' + k.id, 0));
+      const ps = $('bl-p-' + k.id);
+      c.picks[k.id] = ps ? Array.prototype.filter.call(ps.options, function (o) { return o.selected; }).map(function (o) { return o.value; }) : [];
+    });
+    BULK_QUALITIES.forEach(function (kv) { c.quality[kv[0]] = Math.max(0, num('bl-q-' + kv[0], 0)); });
+    bulkSave();
+    return c;
+  }
+  function bulkPayload(dryRun) {
+    const c = bulkReadForm();
+    return {
+      token: token, seller: c.seller, hours: c.hours, dryRun: !!dryRun,
+      counts: c.counts, picks: c.picks, part: c.part, quality: c.quality,
+      affixMin: c.affixMin, affixMax: c.affixMax, qtyMin: c.qtyMin, qtyMax: c.qtyMax,
+      mulMin: c.mulMin, mulMax: c.mulMax,
+    };
+  }
+  // 预览与上架共用一段渲染：样例 + 各类条数 + 总价值
+  function bulkReport(d) {
+    const kindName = { fish: '鱼类', material: '材料', chest: '宝匣', component: '组件' };
+    const by = d.byKind || {};
+    return '共 <b>' + d.count + '</b> 条（' + Object.keys(by).map(function (k) { return kindName[k] + ' ' + by[k] + ' 条'; }).join(' · ') +
+      '）· 时长 ' + d.hours + ' 小时 · 价格倍率 ' + esc(String(d.mul)) + ' · 定价总额约 <b>' + d.totalValue + '</b>💰<br>' +
+      (d.samples || []).map(function (s) {
+        return '· ' + esc(s.name) + ' ×' + s.qty + ' @ ' + s.price + '💰' + (s.quality ? '（' + s.quality + (s.affixN ? ' · ' + s.affixN + ' 词条' : '') + '）' : '');
+      }).join('<br>');
+  }
+  function bulkSetState(msg, err) {
+    const el = $('bl-state');
+    if (el) { el.innerHTML = msg; el.style.color = err ? 'var(--bad)' : ''; }
+  }
+  function wireBulkPanel() {
+    // 账号名头下拉：管理员排前面（会显示成市集里的「卖家」名）
+    adminApi('GET', '/api/admin/users?token=' + encodeURIComponent(token)).then(function (r) {
+      if (!r.ok || view !== 'market') return;
+      const sel = $('bl-seller');
+      if (!sel) return;
+      const c = bulkCfg();
+      const rows = (r.data.users || []).slice().sort(function (x, y) {
+        return (y.admin ? 1 : 0) - (x.admin ? 1 : 0) || (y.coins || 0) - (x.coins || 0);
+      });
+      sel.innerHTML = rows.map(function (u) {
+        return '<option value="' + esc(u.key) + '" data-name="' + esc(u.name || u.key) + '"' +
+          ((c.seller === u.key || (!c.seller && u.key === r.data.me)) ? ' selected' : '') + '>' +
+          esc(u.name || u.key) + '（' + esc(u.key) + '）' + (u.admin ? ' · 管理员' : '') + '</option>';
+      }).join('') || '<option value="">没有账号</option>';
+    });
+    const prev = $('bl-preview');
+    if (prev) prev.addEventListener('click', function () {
+      bulkSetState('生成中…');
+      const box = $('bl-prev');
+      adminApi('POST', '/api/admin/market/bulk', bulkPayload(true)).then(function (r) {
+        if (!r.ok) { bulkSetState('预览失败：' + esc((r.data && r.data.error) || '未知错误'), true); if (box) box.innerHTML = ''; return; }
+        bulkSetState('预览（未写入）：' + bulkReport(r.data));
+        if (box) box.innerHTML = '';
+      });
+    });
+    const go = $('bl-go');
+    if (go) go.addEventListener('click', function () {
+      const c = bulkReadForm();
+      const total = Object.keys(c.counts).reduce(function (s, k) { return s + c.counts[k]; }, 0);
+      if (!c.seller) { bulkSetState('请先选择卖家账号', true); return; }
+      if (total <= 0) { bulkSetState('请至少给一类物品设置条数', true); return; }
+      // 注意：confirmModalLocal 会对文案做 esc()，这里只传纯文本（不能带标签）
+      confirmModalLocal('以「' + (c.sellerName || c.seller) + '」的名头批量上架 ' + total + ' 条物品？\n' +
+        '时长 ' + c.hours + ' 小时 · 价格倍率 ' + c.mulMin + '~' + c.mulMax + '\n' +
+        '不收上架费；过期或被退回时直接清除（物品是现造的，不退回背包）。').then(function (ok) {
+        if (!ok) return;
+        bulkSetState('上架中…');
+        go.disabled = true;
+        adminApi('POST', '/api/admin/market/bulk', bulkPayload(false)).then(function (r) {
+          go.disabled = false;
+          if (!r.ok) { bulkSetState('上架失败：' + esc((r.data && r.data.error) || '未知错误'), true); return; }
+          toast('已挂出 ' + r.data.created + ' 条（卖家：' + (r.data.seller && r.data.seller.name) + '）');
+          bulkSetState('上架完成：' + bulkReport(r.data));
+          refreshMarket();
+        });
+      });
+    });
+  }
   function renderMarket() {
     const main = $('main');
     main.innerHTML = '<h2>💱 开放市集管理</h2>' +
       '<div class="hint" style="margin-bottom:12px">「退回」将挂单物品退回卖家背包（上架费不退，与过期规则一致），卖家在线时会收到通知。</div>' +
+      bulkPanelHtml() +
       '<div class="mk-filters">' +
       '<input id="mk-search" class="ipt mk-search" placeholder="🔍 搜索物品 / 卖家 / 账号…" />' +
       '<select id="mk-kind" class="ipt mk-kind"><option value="all">全部类型</option><option value="fish">🐟 鱼类</option><option value="material">🧵 材料</option><option value="component">🔧 组件</option></select>' +
@@ -1352,6 +1873,7 @@ window.Admin = (function () {
     $('mk-amax').addEventListener('input', function () { mkAffixMax = this.value; drawMarket(); });
     $('mk-sort').addEventListener('change', function () { mkSort.key = this.value; drawMarket(); });
     $('mk-dir').addEventListener('change', function () { mkSort.dir = this.value; drawMarket(); });
+    wireBulkPanel();
     return refreshMarket();
   }
   function filteredListings() {

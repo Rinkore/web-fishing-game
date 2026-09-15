@@ -121,6 +121,28 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .stat .v { font-size: 24px; font-weight: 700; }
 .stat .k { font-size: 12px; color: var(--txt-dim); margin-top: 2px; }
 
+/* ---- 概览·服务器热力图 ---- */
+.hm-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 8px; }
+.hm-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.hm-bar .hm-group:last-child { margin-left: auto; }
+.hm-rng.on, .hm-md.on { background: var(--acc2); border-color: var(--acc2); color: #fff; }
+.hm-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; }
+.hm-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--txt-dim); cursor: pointer; user-select: none; }
+.hm-item input { accent-color: var(--acc); cursor: pointer; }
+.hm-item.off { opacity: 0.42; }
+.hm-item.off .hm-chip { opacity: 0.4; }
+.hm-chip { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
+.hm-wrap { position: relative; }
+#ov-chart { display: block; width: 100%; cursor: crosshair; }
+.hm-tip {
+  position: absolute; display: none; pointer-events: none; z-index: 5;
+  background: rgba(16, 20, 28, 0.95); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 9px; font-size: 12px; line-height: 1.6; white-space: nowrap;
+}
+.hm-tip.show { display: block; }
+.hm-tip .hm-tip-t { color: var(--txt-dim); margin-bottom: 2px; }
+.hm-tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+
 /* ---- 渔场编辑器 ---- */
 .ground-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .gcard {
@@ -162,6 +184,24 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mk-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .mk-filters .mk-search { flex: 1; min-width: 180px; max-width: 340px; }
 .mk-filters .mk-kind { width: auto; flex: none; }
+
+/* ---- 市集管理 · 后台批量上架 ---- */
+.mk-bulk { margin-bottom: 12px; }
+.mk-bulk .bl-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.mk-bulk .bl-row > label { font-size: 12px; color: var(--txt-dim); flex: none; }
+.mk-bulk .bl-row .ipt { width: auto; min-width: 72px; }
+.mk-bulk #bl-seller { min-width: 200px; }
+.mk-bulk .bl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 8px 0; }
+.mk-bulk .bl-card { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--bg2); }
+.mk-bulk .bl-head { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 6px; }
+.mk-bulk .bl-head .mk-num { width: 68px; }
+.mk-bulk .bl-pick { width: 100%; height: 78px; padding: 2px; }
+.mk-bulk .bl-card .hint { font-size: 11px; margin-top: 4px; }
+.mk-bulk .bl-q { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--txt-dim); }
+.mk-bulk .bl-q .ipt { width: 56px; }
+.mk-bulk .bl-foot { align-items: center; }
+.mk-bulk #bl-state { margin-left: 4px; line-height: 1.6; }
+.mk-bulk #bl-prev { margin-top: 6px; line-height: 1.7; }
 
 /* 通用确认子窗口（管理后台） */
 .modal-overlay { position: fixed; inset: 0; z-index: 90; background: rgba(6,10,16,.66); display: flex; align-items: center; justify-content: center; }
