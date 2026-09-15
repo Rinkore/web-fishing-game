@@ -236,6 +236,46 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     cliB.destroy();
     if (A.listeners) A.listeners.forEach(l => { try { l.destroy(); } catch (e) {} });
 
+    // —— v0.11.6：离线钓点记忆 + 重连自动续钓 ——
+    // 断线（服务端更新强刷 / 掉线 / 重启）时钓点写进账号存档；同一 token 重新建连即自动接着钓；
+    // 只有玩家主动收竿（/api/fishing/stop）才清除记录。
+    section('离线钓点记忆 + 重连续钓');
+    const regR = await POST('http://localhost:' + PORT + '/api/register', { username: 'resume_u', password: 'abcd1234', name: '续钓玩家', qq: '10031' });
+    const tokR = regR.data && regR.data.token;
+    check('续钓用例：注册账号', !!tokR, JSON.stringify(regR.data));
+    const sinkR = [];
+    const cliR = sse(tokR, sinkR);
+    await waitFor(() => sinkR.some(m => m.type === 'init'), { timeout: 6000 });
+    const startR = await POST('http://localhost:' + PORT + '/api/fishing/start', { token: tokR, groundId: 'stillwater', spotId: 'dock' });
+    check('续钓用例：开始钓鱼成功', !!(startR.data && startR.data.ok), JSON.stringify(startR.data));
+
+    // 直接断开连接（模拟掉线 / 服务端更新后的强刷）：钓点应留在存档里
+    cliR.destroy();
+    await sleep(300);
+    const sinkR2 = [];
+    const cliR2 = sse(tokR, sinkR2);
+    await waitFor(() => sinkR2.some(m => m.type === 'init'), { timeout: 6000 });
+    const init2 = sinkR2.find(m => m.type === 'init');
+    const me2 = init2 && (init2.players || []).find(p => p.id === 'resume_u');
+    check('断线重连后自动接着钓鱼（presence 已是钓鱼中 + 原钓点）',
+      !!me2 && me2.status === 'fishing' && me2.groundId === 'stillwater' && me2.spotId === 'dock', JSON.stringify(me2));
+    check('重连 init 带回钓速明细（前端不必再发一次 start 请求）',
+      !!(init2 && init2.resumedFishing && init2.resumedFishing.interval > 0), JSON.stringify(init2 && init2.resumedFishing));
+
+    // 主动收竿 = 放弃钓点：之后再连回来不应自动开钓
+    await POST('http://localhost:' + PORT + '/api/fishing/stop', { token: tokR });
+    cliR2.destroy();
+    await sleep(300);
+    const sinkR3 = [];
+    const cliR3 = sse(tokR, sinkR3);
+    await waitFor(() => sinkR3.some(m => m.type === 'init'), { timeout: 6000 });
+    const init3 = sinkR3.find(m => m.type === 'init');
+    const me3 = init3 && (init3.players || []).find(p => p.id === 'resume_u');
+    check('主动收竿后重连不再自动续钓（处于未出发状态）',
+      !!me3 && me3.status === 'idle' && !(init3 && init3.resumedFishing), JSON.stringify(me3));
+    cliR3.destroy();
+    await sleep(200);
+
   } catch (e) {
     console.log('TEST ERROR: ' + e.message + '\n' + e.stack);
     fail++;

@@ -416,6 +416,32 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       check('账号管理有搜索框', await pa.evaluate(() => !!document.getElementById('mgr-q')));
       const rowsAll = await pa.$$eval('#mgr-list tbody tr', els => els.length);
       check('账号列表渲染出全部账号（3 个）', rowsAll === 3, String(rowsAll));
+      // v0.11.6：「账号授权」页并入账号管理，管理员开关就长在列表里
+      const navTexts = await pa.$$eval('.nav-item', els => els.map(e => e.textContent));
+      check('侧栏不再有「账号授权」独立页（已并入账号管理）', !navTexts.some(t => /账号授权/.test(t)), JSON.stringify(navTexts));
+      const switchN = await pa.$$eval('#mgr-list input[type=checkbox][data-admin]', els => els.length);
+      check('账号管理页含管理员授权开关（每个账号一个）', switchN === 3, String(switchN));
+      check('自己那一行的管理员开关禁用（不能撤销自己的权限）',
+        await pa.evaluate(() => !!document.querySelector('#mgr-list input[type=checkbox][data-admin][disabled]')));
+      // 勾选 → 授予管理员权限（随后取消，恢复初始状态不干扰后续用例）
+      await pa.evaluate(() => {
+        const cb = document.querySelector('#mgr-list input[type=checkbox][data-admin="aui_player"]');
+        cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      const granted = await waitFor(async () => {
+        const us = (await get('/api/admin/users?token=' + adminLogin.data.token)).data.users;
+        return !!(us.find(u => u.key === 'aui_player') || {}).admin;
+      }, { timeout: 6000 }).catch(() => false);
+      check('在账号管理页勾选开关即授予管理员权限', granted === true, String(granted));
+      await pa.evaluate(() => {
+        const cb = document.querySelector('#mgr-list input[type=checkbox][data-admin="aui_player"]');
+        cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      const revoked = await waitFor(async () => {
+        const us = (await get('/api/admin/users?token=' + adminLogin.data.token)).data.users;
+        return !(us.find(u => u.key === 'aui_player') || {}).admin;
+      }, { timeout: 6000 }).catch(() => false);
+      check('再次取消勾选即收回管理员权限', revoked === true, String(revoked));
       // 搜索：输入 QQ 片段即过滤
       await pa.evaluate(() => { const q = document.getElementById('mgr-q'); q.value = '10023'; q.dispatchEvent(new Event('input', { bubbles: true })); });
       const rowsQQ = await pa.$$eval('#mgr-list tbody tr', els => els.length);

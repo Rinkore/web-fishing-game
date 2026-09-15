@@ -1050,13 +1050,13 @@ function fishTick(key) {
   if (!p || !p.fishing) return;
   const rec = users[key];
   const found = spotOf(p.fishing.groundId, p.fishing.spotId);
-  if (!found) { stopFishingSession(key); return; }
+  if (!found) { stopFishingSession(key, { forget: true }); return; }
   const eff = mergedEffOf(rec.bd, found.spot);
   // 上钩判断：钓点独立上鱼率优先，否则用全服公式；落空则本竿无收获，定时器继续下一竿
   if (Math.random() * 100 >= biteProbabilityOf(eff, intervalFor(rec, found.spot), found.spot)) return;
   doServerCatch(rec, key, found.ground, found.spot, eff, false);
 }
-function startFishingSession(key, groundId, spotId) {
+function startFishingSession(key, groundId, spotId, opts) {
   const p = players.get(key);
   if (!p) return { error: '请先进入游戏（建立实时连接）' };
   const found = spotOf(groundId, spotId);
@@ -1069,15 +1069,52 @@ function startFishingSession(key, groundId, spotId) {
   p.status = 'fishing'; p.groundId = groundId; p.spotId = spotId;
   const interval = intervalFor(users[key], found.spot);
   fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
-  sendPlayersAll();
+  rememberFishingSpot(key, groundId, spotId);
+  // opts.silent：重连续钓时由 /events 一次性下发 init，无需再单独广播一次 presence
+  if (!(opts && opts.silent)) sendPlayersAll();
   return { interval: interval };
 }
-function stopFishingSession(key) {
+
+// ---- 离线钓点（重连自动续钓）----
+// 记下「上次没主动收竿的钓点」并落盘：断线 / 顶号 / 服务器重启都不丢，
+// 客户端重连（含服务端更新后的自动强刷）即据此接着钓。
+// 只有玩家主动离开钓点才清除（点当前钓点取消 → /api/fishing/stop）。
+function rememberFishingSpot(key, groundId, spotId) {
+  const rec = users[key];
+  if (!rec) return;
+  const last = rec.lastFishing;
+  if (last && last.groundId === groundId && last.spotId === spotId) return; // 值没变就别写盘
+  rec.lastFishing = { groundId: groundId, spotId: spotId, at: Date.now() };
+  saveAccount(key);
+}
+function forgetFishingSpot(key) {
+  const rec = users[key];
+  if (!rec || !rec.lastFishing) return;
+  delete rec.lastFishing;
+  saveAccount(key);
+}
+// 建连时续钓：钓点被删除 / 钓场被锁定或限时关窗 → 直接忘掉，不反复重试。
+// 返回 { interval, castInfo } 供 init 下发（前端就不必再发一次 start 请求）。
+function resumeFishingSpot(key) {
+  const rec = users[key];
+  const last = rec && rec.lastFishing;
+  if (!last) return null;
+  const found = spotOf(last.groundId, last.spotId);
+  if (!found || found.ground.locked) { forgetFishingSpot(key); return null; }
+  const r = startFishingSession(key, last.groundId, last.spotId, { silent: true });
+  if (r.error) { forgetFishingSpot(key); return null; }
+  return { interval: r.interval, castInfo: castInfoOf(rec, found.spot) };
+}
+
+// opts.forget：玩家主动收竿/离开钓点 → 忘掉离线钓点。
+// 断线、顶号、关服等被动路径不传该标志，钓点保留给下次重连续钓。
+function stopFishingSession(key, opts) {
   const t = fishingTimers.get(key);
   if (t) clearInterval(t);
   fishingTimers.delete(key);
   const p = players.get(key);
   if (p) { p.fishing = null; p.status = 'idle'; p.groundId = null; p.spotId = null; p.recent = null; }
+  if (opts && opts.forget) forgetFishingSpot(key);
   sendPlayersAll();
 }
 
@@ -2255,6 +2292,8 @@ const server = http.createServer(function (req, res) {
     const rec = users[key];
     const existing = players.get(id);
     players.set(id, { id: id, name: rec.name, status: 'idle', groundId: null, spotId: null, recent: null, fishing: null });
+    // 重连自动续钓：账号里还记着「上次没主动收竿的钓点」就接着钓（服务器更新强刷 / 掉线 / 重启都走这里）
+    const resumed = resumeFishingSpot(id);
     res.write('data: ' + JSON.stringify({
       type: 'init', you: id, players: Array.from(players.values()), feed: feed,
       shop: shopSnapshot(), market: world.listings, records: world.bigRecords, small: world.smallRecords,
@@ -2266,6 +2305,8 @@ const server = http.createServer(function (req, res) {
       // 服务器版本：客户端据此判断自己是不是旧前端。重启换版本后 SSE 会自动重连，
       // 这条 init 就是「服务器已更新」的最快信号（比定时轮询快得多）。
       version: D.VERSION,
+      // 续钓成功时一并带回钓速明细，前端不必再发一次 start 请求（顶栏立刻显示正确钓速）
+      resumedFishing: resumed,
     }) + '\n\n');
     sendPlayersAll();
     const hb = setInterval(function () { try { res.write(': ping\n\n'); } catch (e) {} }, 25000);
@@ -2274,17 +2315,18 @@ const server = http.createServer(function (req, res) {
       const wasTracked = clientOwners.get(res) === id;
       clients.delete(res); clientOwners.delete(res);
       if (!wasTracked) return; // 该连接已被顶号流程接管，跳过清理
-      stopFishingSession(id); // 断线即停竿：钓鱼循环是服务器权威的，人走竿收
+      // 同一账号可能同时挂着多条实时连接（强刷时新旧连接短暂重叠、多标签页）：
+      // 只有全部断开才算掉线——否则新连接刚续上的钓会被旧连接的清理逻辑掐掉。
       const stillLive = Array.from(clientOwners.values()).some(function (k) { return k === id; });
-      if (!stillLive) {
-        if (players.has(id)) { players.delete(id); sendPlayersAll(); }
-        // 玩家掉线：其进行中的交易自动取消
-        const t = tradeOfPlayer(id);
-        if (t) {
-          t.cancelled = true; t.closed = true;
-          broadcastTrade(t);
-          trades.delete(t.id);
-        }
+      if (stillLive) return;
+      stopFishingSession(id); // 断线即停竿：钓鱼循环是服务器权威的（钓点保留，重连自动续钓）
+      if (players.has(id)) { players.delete(id); sendPlayersAll(); }
+      // 玩家掉线：其进行中的交易自动取消
+      const t = tradeOfPlayer(id);
+      if (t) {
+        t.cancelled = true; t.closed = true;
+        broadcastTrade(t);
+        trades.delete(t.id);
       }
     });
     return;
@@ -2484,7 +2526,7 @@ const server = http.createServer(function (req, res) {
       let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
       const key = d.token && sessionGet(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
-      stopFishingSession(key);
+      stopFishingSession(key, { forget: true }); // 玩家主动收竿：忘掉离线钓点，重连不再自动续钓
       apiResp(res, 200, { ok: true });
     });
     return;

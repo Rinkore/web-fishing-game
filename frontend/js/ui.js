@@ -3189,9 +3189,10 @@ window.UI = (function () {
   }
 
   // 组件分类：按「底材名」分组、可展开；展开后逐件显示属性与操作（单独出售/上架）。
-  // 分组键 = 底材 + 品质 + 词条类型集合（不含具体数值）；组内按具体数值排列。
-  // 这样同底材同品质、词条种类相同（数值不同）的实例归为一组，便于比较取舍。
-  // 组件列表：一级按「底材名」分组（可点击展开/折叠），展开后逐件列出实例（属性 + 单独出售/上架）。
+  // 组间顺序按「部位（竿身→线组→钩→饵→卷线器→配件→饰品）→ 底材名」固定排列：
+  // 两个排序键都只由分组身份决定、不含任何具体实例，所以出售组件不会让分组换位。
+  // （旧实现的排序读「组内第一个遇到的实例」的品质与名字，售出那件就会让整组重新排序。）
+  // 组头的品质取组内最高品质、词条标签取组内类型并集，混品质的同底材组也能如实反映内容。
   // 当筛选后只剩一个分组时自动展开，避免多余的点击。
   function renderComponentGroups(list, keys, st, unitPrice, itemValue, doSell) {
     const groups = {};   // baseId → { rep, items: [{id, meta}] }
@@ -3206,13 +3207,43 @@ window.UI = (function () {
       groups[gk] = groups[gk] || { rep: meta, items: [] };
       groups[gk].items.push({ id: id, meta: meta });
     });
+    // 组头汇总（只看组身份与当前内容，不依赖某个代表件）
+    function groupQuality(g) {
+      let best = 'common', bestO = 0;
+      g.items.forEach(function (it) {
+        const o = (it.meta && D.QUALITY_ORDER[it.meta.quality]) || 0;
+        if (o > bestO) { bestO = o; best = it.meta.quality; }
+      });
+      return best;
+    }
+    function groupTypes(g) {
+      const seen = [], order = D.AFFIX_TYPES || [];
+      g.items.forEach(function (it) {
+        ((it.meta && it.meta.affixes) || []).forEach(function (a) { if (seen.indexOf(a.type) < 0) seen.push(a.type); });
+      });
+      // 按固定词缀顺序展示：实例先后变化时标签不会跟着跳
+      seen.sort(function (a, b) { const ia = order.indexOf(a), ib = order.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+      return seen.map(function (t) { return D.AFFIX_LABEL[t] || t; }).join(' · ');
+    }
+    function groupTagMeta(g) {
+      let bt = null, full = null;
+      g.items.forEach(function (it) {
+        if (!it.meta || it.meta.kind !== 'component') return;
+        if (it.meta.breakthrough) bt = it.meta;
+        else if (it.meta.isFull && !full) full = it.meta;
+      });
+      return bt || full || g.rep;
+    }
+    const partIndex = {};
+    (D.ROD_PARTS || []).forEach(function (p, i) { partIndex[p.key] = i; });
     const groupKeys = Object.keys(groups).sort(function (a, b) {
       const ga = groups[a], gb = groups[b];
-      if (!ga.rep) return 1;
+      if (!ga.rep) return 1;   // 旧版通用组件固定垫底
       if (!gb.rep) return -1;
-      const q = (D.QUALITY_ORDER[gb.rep.quality] || 0) - (D.QUALITY_ORDER[ga.rep.quality] || 0);
-      if (q) return q;
-      return ga.rep.name.localeCompare(gb.rep.name);
+      const pa = partIndex[ga.rep.part], pb = partIndex[gb.rep.part];
+      const d = (pa == null ? 99 : pa) - (pb == null ? 99 : pb);
+      if (d) return d;
+      return ga.rep.baseName.localeCompare(gb.rep.baseName, 'zh');
     });
     const onlyOne = groupKeys.length === 1;
 
@@ -3222,7 +3253,7 @@ window.UI = (function () {
       const isOpen = onlyOne || !!invOpen[gk];
       // 组标题：底材名（品质色）+ 词条类型摘要 + 件数；点击整行展开/折叠
       const head = el('div', 'inv-group-head clickable' + (isOpen ? ' open' : ''));
-      const types = g.rep ? g.rep.affixes.map(function (a) { return D.AFFIX_LABEL[a.type] || a.type; }).join(' · ') : '旧版通用组件';
+      const types = g.rep ? groupTypes(g) : '旧版通用组件';
       const priceRange = (function () {
         const ps = g.items.map(function (it) { return unitPrice(it.id); });
         const lo = Math.min.apply(null, ps), hi = Math.max.apply(null, ps);
@@ -3231,9 +3262,9 @@ window.UI = (function () {
       const lockCnt = g.items.reduce(function (n, it) { return n + (rodLockCount(it.id) > 0 ? 1 : 0); }, 0);
       head.setAttribute('data-group', gk); // 出售后就地更新组头计数用
       head.innerHTML = '<span class="caret">' + (isOpen ? '▾' : '▸') + '</span>' +
-        '<span class="' + qualityClass(g.rep || { kind: 'component', quality: 'common' }) + '">' + esc(g.rep ? g.rep.baseName : '旧版组件') + '</span>' +
+        '<span class="' + qualityClass(g.rep ? { kind: 'component', quality: groupQuality(g), isFull: g.items.some(function (it) { return it.meta && it.meta.isFull; }) } : null) + '">' + esc(g.rep ? g.rep.baseName : '旧版组件') + '</span>' +
         (lockCnt ? '<span class="rod-lock" title="该组有组件被钓竿占用（已锁定，不可单独交易）">🔒 ' + lockCnt + ' 种</span>' : '') +
-        itemTag(g.rep) +
+        itemTag(groupTagMeta(g)) +
         '<span class="inv-group-tag">' + esc(types) + '</span>' +
         '<span class="inv-group-price">' + priceRange + '</span>' +
         '<span class="inv-group-cnt">共 ' + totalCnt + ' 个 / ' + g.items.length + ' 种</span>';
@@ -3916,7 +3947,7 @@ window.UI = (function () {
       const inner = box.querySelector('.spot-detail');
       const pool = (sp.pool || []).slice().sort(function (a, b) { return (b.weight || 0) - (a.weight || 0); });
       const total = pool.reduce(function (s, e) { return s + Math.max(0, e.weight || 0); }, 0);
-      let html = '<div class="cd-line">' + (g.locked ? '🔒 钓场锁定中' : '🎣 可垂钓') +
+      let html = '<div class="cd-line">' + (g.locked ? '🔒 尚未开放（后台锁定 / 限时未开窗）' : '✅ 已解锁 · 可前往垂钓') +
         (sp.biteRate != null && sp.biteRate !== '' ? ' · 上鱼率 ' + esc(String(sp.biteRate)) + '%（钓点独立）' : '') +
         (sp.intervalMs ? ' · 抛竿间隔 ' + esc(String(sp.intervalMs)) + 'ms（钓点独立）' : '') + '</div>';
       if (sp.buffs && sp.buffs.length) {
@@ -4975,12 +5006,14 @@ window.UI = (function () {
       D.GROUNDS.forEach(function (g) {
         (g.spots || []).forEach(function (sp) {
           const pool = sp.pool || [];
-          const cell = el('div', 'codex-cell k-spots' + (g.locked ? ' locked' : ''));
+          // 可前往的钓点（服务端未锁定）在图鉴里点亮为「已解锁」；锁定的钓场保持压暗的锁态
+          const canGo = !g.locked;
+          const cell = el('div', 'codex-cell k-spots ' + (canGo ? 'unlocked' : 'locked'));
           cell.innerHTML =
             '<img class="cx-icon spot-icon" src="assets/spot/' + esc(sp.id) + '.png" alt="" draggable="false">' +
-            '<div class="cx-name">' + esc(g.name + ' · ' + sp.name) + '</div>' +
+            '<div class="cx-name' + (canGo ? '' : ' locked-name') + '">' + esc(g.name + ' · ' + sp.name) + '</div>' +
             '<div class="cx-meta">' + (pool.length ? '产出 ' + pool.length + ' 项' : '未配置掉落池') + '</div>' +
-            '<div class="cx-meta muted">' + (g.locked ? '🔒 锁定中' : '🎣 可垂钓') + '</div>' +
+            '<div class="cx-meta locked-line">' + (canGo ? '✅ 已解锁 · 可前往垂钓' : '🔒 尚未开放') + '</div>' +
             ((sp.buffs && sp.buffs.length) ? '<div class="cx-meta cx-spots">⚡ 增益 ' + sp.buffs.length + ' 项</div>' : '') +
             '<div class="cx-meta cx-spots">🎯 点看产出概率</div>';
           cell.title = '点击查看该钓点的实时产出概率（与后台掉落池同步）';

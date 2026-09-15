@@ -256,8 +256,14 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       return { same: !!old && rows.indexOf(old) === 1, newest: rows.length ? rows[0].textContent.slice(0, 20) : '' };
     });
     check('新渔获插到最前、旧日志行保持原节点（旧行不重画）', logKeep.same === true, JSON.stringify(logKeep));
-    check('底部水波带独立合成层（页面重绘不带走它）', await p1.evaluate(() =>
-      getComputedStyle(document.body, '::after').willChange === 'background-position'));
+    // v0.11.6：底部滚动的斜纹网格动态层已删除（body::after 去掉，页面不再有一条持续滚动的底纹）
+    const wavesGone = await p1.evaluate(() => {
+      const cs = getComputedStyle(document.body, '::after');
+      return { content: cs.content, anim: cs.animationName, h: cs.height, src: (window.getComputedStyle(document.body, '::before') || {}).content };
+    });
+    check('底部滚动网格动态层已删除（body::after 无内容、无动画）',
+      (wavesGone.content === 'none' || wavesGone.content === '') && !/px-waves/.test(wavesGone.anim),
+      JSON.stringify(wavesGone));
     // 切换账号：渔获日志应被清空（回归：曾残留上一个账号的日志）
     const switchLog = await p1.evaluate(() => {
       const S = window.Engine.state;
@@ -1025,6 +1031,68 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       JSON.stringify(grpAfter));
     check('组头件数随出售就地更新（不整页重建也能对上）',
       sellTotal === grpBefore.total - 1, JSON.stringify({ before: grpBefore.total, after: sellTotal }));
+
+    // —— v0.11.6：出售不再让组件分类重新排序 ——
+    // 组间顺序 = 「部位 → 底材名」，两个键都只由分组身份（baseId）决定、不含任何具体实例；
+    // 旧实现的排序读「组内第一个遇到的实例」的品质与名字，售出那件（或整叠售罄）就会让整组换位。
+    const orderRule = await p1.evaluate(() => {
+      const D = window.GameData;
+      const partIdx = {};
+      D.ROD_PARTS.forEach((p, i) => { partIdx[p.key] = i; });
+      const heads = Array.from(document.querySelectorAll('.inv-group-head')).map(h => h.getAttribute('data-group'));
+      const expect = heads.slice().sort((a, b) => {
+        const ba = D.componentBase(a), bb = D.componentBase(b);
+        if (!ba) return 1;
+        if (!bb) return -1;
+        const pa = partIdx[ba.part] == null ? 99 : partIdx[ba.part];
+        const pb = partIdx[bb.part] == null ? 99 : partIdx[bb.part];
+        return (pa - pb) || ba.name.localeCompare(bb.name, 'zh');
+      });
+      return { heads: heads, expect: expect };
+    });
+    check('组件分组顺序 = 部位 → 底材名（与实例无关的固定顺序）',
+      orderRule.heads.length > 0 && JSON.stringify(orderRule.heads) === JSON.stringify(orderRule.expect),
+      JSON.stringify(orderRule.heads.slice(0, 6)));
+
+    // 同底材不同品质仍归一组；卖掉组里品质最高的那一件（旧实现中它就是组头代表件）
+    const compIds2 = [
+      D_DATA.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 20 }, { type: 'size', value: -2 }]),
+      D_DATA.instanceId('rod_bamboo', 'common', [{ type: 'speed', value: 5 }]),
+    ];
+    for (const cid of compIds2) await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: cid } });
+    await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('组件')); if (b) b.click(); });
+    await sleep(500);
+    const ordBefore = await p1.evaluate(() => Array.from(document.querySelectorAll('.inv-group-head')).map(h => h.getAttribute('data-group')));
+    const bambooGk = await p1.evaluate(() => {
+      const h = Array.from(document.querySelectorAll('.inv-group-head')).find(x => /竹制短竿/.test(x.textContent));
+      if (!h) return null;
+      const gk = h.getAttribute('data-group');
+      if (!h.classList.contains('open')) h.click();
+      return gk;
+    });
+    check('同底材混品质仍归一个分组（组头不随代表件漂移）', !!bambooGk, JSON.stringify(ordBefore));
+    await sleep(450);
+    const soldEpicId = await p1.evaluate((args) => {
+      const row = document.querySelector('.inv-comp-row[data-id="' + args.id + '"]');
+      if (!row) return null;
+      const b = Array.from(row.querySelectorAll('button')).find(x => x.textContent.trim() === '出售 1');
+      if (!b) return null;
+      b.click();
+      return args.id;
+    }, { id: compIds2[0], gk: bambooGk });
+    const epicRowGone = await untilGet(async () => await p1.evaluate((id) => !document.querySelector('.inv-comp-row[data-id="' + id + '"]'), compIds2[0]), v => v === true, 8000);
+    check('卖掉组内品质最高的那件（旧实现的组头代表件）', !!soldEpicId && epicRowGone === true, JSON.stringify({ sold: soldEpicId, gone: epicRowGone }));
+    const ordAfter = await p1.evaluate(() => Array.from(document.querySelectorAll('.inv-group-head')).map(h => h.getAttribute('data-group')));
+    check('出售后其余组件分组顺序原样不变（不再重排）',
+      JSON.stringify(ordAfter) === JSON.stringify(ordBefore),
+      JSON.stringify({ before: ordBefore, after: ordAfter }));
+    const headColorStable = await p1.evaluate((gk) => {
+      const h = document.querySelector('.inv-group-head[data-group="' + gk + '"]');
+      const nameEl = h && h.querySelector('span:not(.caret):not(.inv-group-tag):not(.inv-group-price):not(.inv-group-cnt)');
+      return { cls: nameEl ? nameEl.className : '', text: h ? h.textContent.replace(/\s+/g, ' ').trim() : '' };
+    }, bambooGk);
+    check('组头仍指向同一底材（品质色由组内最高品质决定，不因售卖而错位）',
+      /竹制短竿/.test(headColorStable.text) && /q-/.test(headColorStable.cls), JSON.stringify(headColorStable));
     if (fishState0.active && fishState0.g) {
       await p1.evaluate(async (st0) => { await window.Engine.startFishing(st0.g, st0.s); }, fishState0);
       await sleep(300);
@@ -1178,6 +1246,28 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const spotCells = await p1.$$('.codex-cell.k-spots');
     check('图鉴新增「钓点」分类（9 个钓点卡片）', spotCells.length === 9, String(spotCells.length));
     check('钓点视图不显示品级倒序按钮', (await p1.$$('.codex-sort')).length === 0, String((await p1.$$('.codex-sort')).length));
+    // v0.11.6：可前往的钓点＝已解锁（点亮）；锁定的钓场（后台锁定 / 限时未开窗）保持压暗锁态
+    const spotState = await p1.evaluate(() => {
+      const cells = Array.from(document.querySelectorAll('.codex-cell.k-spots'));
+      const unlocked = cells.filter(c => c.classList.contains('unlocked'));
+      const locked = cells.filter(c => c.classList.contains('locked'));
+      // 已解锁：卡片内容不再被「未解锁压暗」那条通用规则压暗（opacity 恒为 1）
+      const lit = unlocked.length ? Number(getComputedStyle(unlocked[0]).opacity) : -1;
+      const child = unlocked.length ? Number(getComputedStyle(unlocked[0].querySelector('.cx-meta')).opacity) : -1;
+      return {
+        total: cells.length, unlocked: unlocked.length, locked: locked.length, lit: lit, child: child,
+        unlockedText: unlocked.length ? unlocked[0].textContent : '',
+        lockedText: locked.length ? locked[0].textContent : '',
+        bothClasses: cells.some(c => c.classList.contains('unlocked') && c.classList.contains('locked')),
+      };
+    });
+    check('钓点卡片区分已解锁 / 未开放（两类互斥且覆盖全部卡片）',
+      spotState.unlocked + spotState.locked === spotState.total && spotState.bothClasses === false,
+      JSON.stringify(spotState));
+    check('已解锁钓点点亮（不透明度 1，跳出未解锁压暗规则）',
+      spotState.unlocked >= 1 && spotState.lit === 1 && spotState.child === 1, JSON.stringify(spotState));
+    check('已解锁钓点标注「已解锁 · 可前往垂钓」', /已解锁 · 可前往垂钓/.test(spotState.unlockedText), spotState.unlockedText.slice(0, 60));
+    check('锁定钓场标注「尚未开放」', spotState.locked === 0 || /尚未开放/.test(spotState.lockedText), spotState.lockedText.slice(0, 60));
     // 点开第一个钓点（静水湖·老旧码头）→ 概率与 /api/grounds 的目录一致
     await p1.evaluate(() => { const c = document.querySelector('.codex-cell.k-spots'); if (c) c.click(); });
     await waitFor(async () => (await p1.$$('.spot-detail .spot-pool-row')).length >= 1, { timeout: 6000 }).catch(() => false);

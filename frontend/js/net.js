@@ -346,6 +346,12 @@ window.Net = (function () {
           S.records = m.records || {};
           if (m.small) S.smallRecords = m.small;
           S.groundCounts = m.grounds || {};
+          // 服务器重连自动续钓（上次没主动收竿）：直接带回钓速明细，不必再发一次 start 请求。
+          // presence 里的 status 已是 fishing，syncSelfFromPresence 会把界面切回钓鱼态。
+          if (m.resumedFishing) {
+            S.castInfo = m.resumedFishing.castInfo || S.castInfo || null;
+            if (m.resumedFishing.interval) S.fishingInterval = m.resumedFishing.interval;
+          }
           // 钓场目录（含管理后台的掉落池/增益/锁定覆盖）：原位替换 data.js 的默认值，
           // 保证图鉴产地与渔场页展示与实际掉落一致
           if (m.groundCfg) applyGroundCfg(m.groundCfg);

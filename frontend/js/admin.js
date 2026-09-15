@@ -1,7 +1,7 @@
 /*
  * 钓鱼后台管理 - 页面逻辑（零依赖，与游戏前端共用后端 /api/admin/*）
  * 登录：游戏账号 + admin 标志（服务器无管理员时首个登录自动引导）。
- * 功能页：概览 / 账号授权 / 渔场钓点（掉落池权重实时百分比 + 增益）/ 市集退回 / 上钩公式 / 通知等级。
+ * 功能页：概览 / 账号管理（含管理员授权）/ 渔场钓点（掉落池权重实时百分比 + 增益）/ 市集退回 / 上钩公式 / 通知等级。
  */
 window.Admin = (function () {
   'use strict';
@@ -11,7 +11,6 @@ window.Admin = (function () {
   let me = null;
   let view = 'overview';
   let worldCfg = null;          // /api/admin/world 结果（grounds + catalog + 设置）
-  let usersList = null;         // /api/admin/users 结果
   let listings = [];            // 市集挂单
   let mkSearch = '';            // 市集管理搜索
   let mkKind = 'all';           // 市集管理类型筛选
@@ -124,7 +123,7 @@ window.Admin = (function () {
     $('who').textContent = '';
   }
   function logout(msg) {
-    token = null; me = null; worldCfg = null; usersList = null;
+    token = null; me = null; worldCfg = null;
     try { localStorage.removeItem('fishing_admin_token'); } catch (e) {}
     stopOverviewTimer();
     showLogin(msg);
@@ -158,8 +157,7 @@ window.Admin = (function () {
   // ================================
   const NAV = [
     { id: 'overview', name: '📊 概览' },
-    { id: 'accounts', name: '👥 账号授权' },
-    { id: 'accountmgr', name: '🔑 账号管理' },
+    { id: 'accountmgr', name: '👥 账号管理' },
     { id: 'grounds', name: '🌊 渔场钓点' },
     { id: 'market', name: '💱 市集管理' },
     { id: 'component', name: '🧩 组件生成' },
@@ -193,7 +191,6 @@ window.Admin = (function () {
     stopUpdateTimer();
     renderNav();
     if (v === 'overview') return renderOverview();
-    if (v === 'accounts') return renderAccounts();
     if (v === 'accountmgr') return renderAccountMgr();
     if (v === 'grounds') return renderGrounds();
     if (v === 'market') return renderMarket();
@@ -361,49 +358,8 @@ window.Admin = (function () {
   }
 
   // ================================
-  // 账号授权
-  // ================================
-  function renderAccounts() {
-    const main = $('main');
-    main.innerHTML = '<h2>👥 账号与管理员授权</h2>' +
-      '<div class="hint" style="margin-bottom:12px">开启「管理员」后，该账号即可打开管理后台（admin.html）。不能撤销自己的管理员权限。</div>' +
-      '<div id="acc-body" class="panel">加载中…</div>';
-    adminApi('GET', '/api/admin/users?token=' + encodeURIComponent(token)).then(function (r) {
-      if (!r.ok || view !== 'accounts') return;
-      usersList = r.data;
-      const rows = usersList.users.map(function (u) {
-        const self = u.key === usersList.me;
-        return '<tr>' +
-          '<td><b>' + esc(u.name) + '</b> <span class="hint">' + esc(u.username) + (self ? '（你）' : '') + '</span></td>' +
-          '<td class="num">' + u.coins + '</td>' +
-          '<td class="num">' + u.catchCount + '</td>' +
-          '<td>' + (u.online ? '<span class="tag on">在线' + (u.fishing ? ' · 钓鱼中' : '') + '</span>' : '<span class="tag">离线</span>') + '</td>' +
-          '<td>' + fmtTime(u.createdAt) + '</td>' +
-          '<td><label class="switch"><input type="checkbox" data-key="' + esc(u.key) + '"' + (u.admin ? ' checked' : '') + (self ? ' disabled title="不能撤销自己的权限"' : '') + '><span class="sl"></span></label></td>' +
-          '</tr>';
-      }).join('');
-      $('acc-body').innerHTML = '<table class="tbl"><thead><tr>' +
-        '<th>账号</th><th class="num">金币</th><th class="num">捕获数</th><th>状态</th><th>注册时间</th><th>管理员</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table>';
-      $('acc-body').querySelectorAll('input[type=checkbox]').forEach(function (cb) {
-        cb.onchange = function () {
-          const key = cb.getAttribute('data-key');
-          const want = cb.checked;
-          cb.disabled = true;
-          adminApi('POST', '/api/admin/users/setadmin', { token: token, target: key, admin: want }).then(function (r) {
-            cb.disabled = selfOf(key);
-            if (!r.ok) { cb.checked = !want; toast(r.data.error || '操作失败', true); return; }
-            toast(want ? '已授予管理员权限' : '已收回管理员权限');
-            if (r.ok && want) loadWorldCfg(); // 目录可能变化，预取
-          });
-        };
-        function selfOf(k) { return k === usersList.me; }
-      });
-    });
-  }
-
-  // ================================
-  // 账号管理（列表形式：改密码 / 改显示名 / 调整金币 / 删除 / 快照编辑背包）
+  // 账号管理（列表形式：改密码 / 改显示名 / 调整金币 / 管理员授权 / 删除 / 快照编辑背包）
+  // 管理员授权原来是独立一页（「账号授权」），v0.11.6 起并入本页开关列，两页列表本就读同一份数据。
   // ================================
   // 账号管理：搜索与排序状态（模块级，切页/重绘间保留）
   let mgrQuery = '';
@@ -412,8 +368,8 @@ window.Admin = (function () {
   let mgrMeKey = '';
   function renderAccountMgr() {
     const main = $('main');
-    main.innerHTML = '<h2>🔑 账号管理</h2>' +
-      '<div class="hint" style="margin-bottom:12px">与「账号授权」同款列表；可改密码 / 显示名 / 金币，查看并编辑玩家快照（金币与背包），或删除账号（需二次确认）。修改密码会使其所有登录会话失效。点击表头可排序。</div>' +
+    main.innerHTML = '<h2>👥 账号管理</h2>' +
+      '<div class="hint" style="margin-bottom:12px">可改密码 / 显示名 / 金币，开关「管理员」授权（开启后该账号即可打开 admin.html，<b>不能撤销自己的权限</b>），查看并编辑玩家快照（金币与背包），或删除账号（需二次确认）。修改密码会使其所有登录会话失效。点击表头可排序。</div>' +
       '<div class="mgr-row" style="margin-bottom:10px">' +
       '<label>🔍 搜索</label>' +
       '<span style="position:relative;display:inline-block;vertical-align:middle">' +
@@ -477,6 +433,7 @@ window.Admin = (function () {
       catchCount: function (a, b) { return (a.catchCount || 0) - (b.catchCount || 0); },
       online: function (a, b) { return (a.online ? 1 : 0) - (b.online ? 1 : 0); },
       createdAt: function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); },
+      admin: function (a, b) { return (a.admin ? 1 : 0) - (b.admin ? 1 : 0); },
     };
     const fn = cmp[mgrSort.key] || cmp.createdAt;
     rows = rows.slice().sort(fn);
@@ -490,8 +447,9 @@ window.Admin = (function () {
         (u.qq ? '<div class="hint">QQ：' + esc(u.qq) + '</div>' : '') + '</td>' +
         '<td class="num">' + u.coins + '</td>' +
         '<td class="num">' + u.catchCount + '</td>' +
-        '<td>' + (u.online ? '<span class="tag on">在线</span>' : '<span class="tag">离线</span>') + '</td>' +
+        '<td>' + (u.online ? '<span class="tag on">在线' + (u.fishing ? ' · 钓鱼中' : '') + '</span>' : '<span class="tag">离线</span>') + '</td>' +
         '<td>' + fmtTime(u.createdAt) + '</td>' +
+        '<td><label class="switch"><input type="checkbox" data-admin="' + esc(u.key) + '"' + (u.admin ? ' checked' : '') + (self ? ' disabled title="不能撤销自己的权限"' : '') + '><span class="sl"></span></label></td>' +
         '<td class="mgr-acts">' +
         '<button class="btn mini" data-edit="' + esc(u.key) + '">编辑</button>' +
         '<button class="btn mini" data-snap="' + esc(u.key) + '">快照</button>' +
@@ -500,13 +458,14 @@ window.Admin = (function () {
     }).join('');
     $('mgr-list').innerHTML =
       '<div class="hint" style="margin-bottom:8px">共 ' + mgrRows.length + ' 个账号' + (q ? '，匹配 ' + rows.length + ' 个' : '') +
-      '；当前排序：' + ({ name: '显示名', coins: '金币', catchCount: '捕获数', online: '状态', createdAt: '注册时间' }[mgrSort.key] || mgrSort.key) + (mgrSort.dir < 0 ? ' ↓' : ' ↑') + '</div>' +
+      '；当前排序：' + ({ name: '显示名', coins: '金币', catchCount: '捕获数', online: '状态', createdAt: '注册时间', admin: '管理员' }[mgrSort.key] || mgrSort.key) + (mgrSort.dir < 0 ? ' ↓' : ' ↑') + '</div>' +
       '<table class="tbl"><thead><tr>' +
       '<th class="sortable" data-sort="name">账号' + arrow('name') + '</th>' +
       '<th class="num sortable" data-sort="coins">金币' + arrow('coins') + '</th>' +
       '<th class="num sortable" data-sort="catchCount">捕获数' + arrow('catchCount') + '</th>' +
       '<th class="sortable" data-sort="online">状态' + arrow('online') + '</th>' +
       '<th class="sortable" data-sort="createdAt">注册时间' + arrow('createdAt') + '</th>' +
+      '<th class="sortable" data-sort="admin">管理员' + arrow('admin') + '</th>' +
       '<th>操作</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table>';
     $('mgr-list').querySelectorAll('th.sortable').forEach(function (th) {
@@ -521,6 +480,22 @@ window.Admin = (function () {
     $('mgr-list').querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { openMgrEdit(b.getAttribute('data-edit')); }; });
     $('mgr-list').querySelectorAll('[data-snap]').forEach(function (b) { b.onclick = function () { openMgrSnapshot(b.getAttribute('data-snap')); }; });
     $('mgr-list').querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { confirmDeleteUser(b.getAttribute('data-del')); }; });
+    // 管理员授权开关（原「账号授权」页的功能，v0.11.6 并入本页）
+    $('mgr-list').querySelectorAll('input[type=checkbox][data-admin]').forEach(function (cb) {
+      cb.onchange = function () {
+        const key = cb.getAttribute('data-admin');
+        const want = cb.checked;
+        cb.disabled = true;
+        adminApi('POST', '/api/admin/users/setadmin', { token: token, target: key, admin: want }).then(function (r) {
+          cb.disabled = (key === meKey); // 自己那一行保持禁用：不能撤销自己的管理员权限
+          if (!r.ok) { cb.checked = !want; toast(r.data.error || '操作失败', true); return; }
+          const row = mgrRows.find(function (u) { return u.key === key; });
+          if (row) row.admin = want;
+          toast(want ? '已授予管理员权限' : '已收回管理员权限');
+          if (want) loadWorldCfg(); // 目录可能变化，预取
+        });
+      };
+    });
   }
   // 编辑密码 / 显示名 / 金币
   function openMgrEdit(key) {

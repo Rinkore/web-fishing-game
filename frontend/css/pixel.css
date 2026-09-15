@@ -38,18 +38,6 @@ body {
     linear-gradient(180deg, #0c1f3a 0%, var(--px-bg) 55%, #060f1e 100%) fixed;
   text-rendering: optimizeSpeed;
 }
-/* 底部动态水波（纯 CSS，双层不同速度形成视差）
-   will-change 把这一层提到自己的合成层：页面重绘/重排时它不再跟着整屏重画，
-   否则上鱼之类的界面刷新会让这条条纹带闪一下。 */
-body::after {
-  content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 110px;
-  pointer-events: none; z-index: 0; opacity: .8;
-  background:
-    repeating-linear-gradient(135deg, rgba(62, 201, 240, .07) 0 14px, transparent 14px 28px),
-    repeating-linear-gradient(-135deg, rgba(52, 224, 192, .05) 0 20px, transparent 20px 40px);
-  animation: px-waves 7s linear infinite;
-  will-change: background-position;
-}
 @keyframes px-waves {
   from { background-position: 0 0, 0 0; }
   to { background-position: 56px 0, -80px 0; }
@@ -205,6 +193,18 @@ input:disabled, select:disabled, textarea:disabled { color: var(--px-input-off) 
 .codex-cell:not(.got) .cx-icon { animation: none; filter: grayscale(.55) brightness(.75); }
 .codex-cell:not(.got) > * { opacity: .55; }
 .codex-cell .cx-icon.spot-icon { animation: none; }
+/* 图鉴 · 钓点：可前往的钓点＝已解锁，整卡点亮（跳出上面「未解锁压暗」那条通用规则）；
+   锁定的钓场（后台锁定 / 限时未开窗）保持灰暗 + 灰色贴图，一眼分清「能去」与「还不能去」。 */
+.codex-cell.k-spots.unlocked {
+  background: rgba(52, 224, 192, .10);
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px rgba(52, 224, 192, .18), 4px 4px 0 var(--px-shadow) !important;
+}
+.codex-cell.k-spots.unlocked > * { opacity: 1; }
+.codex-cell.k-spots.unlocked .cx-icon { filter: none; }
+.codex-cell.k-spots.unlocked .cx-name { color: var(--accent); text-shadow: 0 0 8px rgba(52, 224, 192, .35), 2px 2px 0 rgba(0, 0, 0, .5); }
+.codex-cell.k-spots.locked .cx-icon { filter: grayscale(1) brightness(.55); }
+.codex-cell.k-spots.locked .locked-line { color: var(--px-gold); }
 @keyframes px-swim {
   0%, 100% { transform: translateX(-4px) rotate(-2deg); }
   50% { transform: translateX(4px) rotate(2deg); }
@@ -350,7 +350,6 @@ input:disabled, select:disabled, textarea:disabled { color: var(--px-input-off) 
 /* ---------- 手机端微调 ---------- */
 @media (max-width: 640px) {
   .px-scene { height: 120px; }
-  body::after { height: 60px; }
 }
 
 /* ---------- 像素世界地图 ---------- */
