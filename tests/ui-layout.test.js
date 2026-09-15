@@ -1362,23 +1362,21 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       const r2 = await fetch('/api/admin/spot/buffs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: reg.token, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 15 }] }) }).then(r => r.json()).catch(() => null);
       return { ok: !!(r2 && r2.ok), why: r2 && r2.error };
     });
-    // 等 groundcfg 广播后重绘钓鱼页（增益标签出现即说明已重绘）
+    // 等 groundcfg 广播后重绘钓鱼页（增益栏出现即说明已重绘）
     await clickNav(p1, '钓鱼');
-    const buffItems = await untilGet(() => p1.$$eval('.pn-bufftip',
+    const buffItems = await untilGet(() => p1.$$eval('.pb-chip',
       els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim())), arr => !!(arr && arr.length), 8000);
     check('有增益的钓点显示 ⚡ 标记', (await p1.$$('.px-node.buffed .pn-buff')).length >= 1, JSON.stringify(spotMarkInfo));
-    // 增益直接显示在地图钓点名牌下，不需要鼠标悬浮
-    check('地图上直接列出钓点增益（钓速+15%）',
+    // 增益数值列在地图下方的增益一览栏（地图节点保持干净，不依赖悬浮提示）
+    check('增益一览直接列出钓点增益（钓速+15%）',
       buffItems.some(t => t.indexOf('钓速+15%') >= 0), JSON.stringify(buffItems));
     const buffMarkOk = await p1.evaluate(() => {
-      const tip = document.querySelector('.pn-bufftip');
-      if (!tip) return false;
-      const node = tip.closest('.px-node');
-      return !!(node && node.querySelector('.pn-buff') && node.querySelector('.pn-name') && /老旧码头/.test(node.textContent));
+      const chip = document.querySelector('.pb-chip');
+      return !!(chip && chip.querySelector('b') && chip.querySelector('i') && /老旧码头/.test(chip.textContent));
     });
-    check('增益节点含 ⚡ 标记与钓点名', buffMarkOk === true, String(buffMarkOk));
-    const noBuffTips = await p1.$$eval('.px-node:not(.buffed) .pn-bufftip', els => els.length);
-    check('没有增益的钓点不显示增益标签', noBuffTips === 0, String(noBuffTips));
+    check('增益一览条目含钓场·钓点名与增益值', buffMarkOk === true, String(buffMarkOk));
+    const noBuffMarks = await p1.$$eval('.px-node:not(.buffed) .pn-buff', els => els.length);
+    check('没有增益的钓点不显示 ⚡ 标记', noBuffMarks === 0, String(noBuffMarks));
     const noNativeTip = await p1.$$eval('.px-node', els => els.filter(e => e.hasAttribute('title')).length);
     check('钓点节点不依赖原生 title 悬浮提示', noNativeTip === 0, String(noNativeTip));
 
@@ -1461,7 +1459,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('钓点')); if (b) b.click(); });
     await sleep(300);
     const spotCells = await p1.$$('.codex-cell.k-spots');
-    check('图鉴新增「钓点」分类（9 个钓点卡片）', spotCells.length === 9, String(spotCells.length));
+    check('图鉴新增「钓点」分类（9 个钓点卡片 + 1 张锁定活动钓场卡）', spotCells.length === 10, String(spotCells.length));
     check('钓点视图不显示品级倒序按钮', (await p1.$$('.codex-sort')).length === 0, String((await p1.$$('.codex-sort')).length));
     // v0.11.6：可前往的钓点＝已解锁（点亮）；锁定的钓场（后台锁定 / 限时未开窗）保持压暗锁态
     const spotState = await p1.evaluate(() => {

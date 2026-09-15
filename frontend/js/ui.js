@@ -896,11 +896,7 @@ window.UI = (function () {
         node.innerHTML = (locked ? '<span class="pn-lock">🔒</span>' : '<span class="pn-bob"></span>') +
           '<span class="pn-name">' + esc(sp.name) + (locked ? '<span class="pn-soon">（暂未开放）</span>' : '') +
           (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
-          // 增益常驻可见（不依赖悬浮提示）：增益钓点名牌下直接列出效果
-          (buffed ? '<span class="pn-bufftip">⚡ ' + sp.buffs.map(function (b) {
-            return esc(affixName(b.type) + (b.value > 0 ? '+' : '') + b.value + '%');
-          }).join(' ') + '</span>' : '') +
-          (here ? '<img class="pn-fisher" src="assets/ui/fisherman.png" alt="">' : '');
+          (here ? '<img class="pn-fisher" src="assets/ui/fisher_hold.png" alt="">' : '');
         map.appendChild(node);
       });
     });
@@ -919,6 +915,17 @@ window.UI = (function () {
       chooseSpot(t);
     });
     left.appendChild(map);
+    // 甩杆动画（纯视觉）：侠客后摆→前挥→入水。换钓点/开始钓鱼时播一次；
+    // 上鱼广播重绘时位置没变就不重播（lastFisherSpotKey 记忆）。
+    const hereKey = st.player.groundId && st.player.spotId ? st.player.groundId + '/' + st.player.spotId : null;
+    const fisherImg = map.querySelector('.pn-fisher');
+    if (fisherImg && hereKey && lastFisherSpotKey !== hereKey) {
+      const seq = ['assets/ui/fisher_a.png', 'assets/ui/fisher_b.png', 'assets/ui/fisher_hold.png'];
+      fisherImg.src = seq[0];
+      setTimeout(function () { if (fisherImg.isConnected) fisherImg.src = seq[1]; }, 150);
+      setTimeout(function () { if (fisherImg.isConnected) fisherImg.src = seq[2]; }, 320);
+    }
+    lastFisherSpotKey = hereKey;
     }
     // 钓场状态卡（地图外）：图标 + 名称 + 类型 + 实时人数/锁定状态
     const groundsBar = el('div', 'px-grounds');
@@ -946,7 +953,9 @@ window.UI = (function () {
       const buffBar = el('div', 'px-buffbar');
       buffBar.appendChild(el('span', 'pb-title', '⚡ 增益钓点'));
       buffed.forEach(function (e) {
-        const chip = el('button', 'pb-chip');
+        const chip = el('button', 'pb-chip' +
+          // 当前正在垂钓的钓点是增益钓点时，同步高亮
+          (st.player.groundId === e.g.id && st.player.spotId === e.sp.id ? ' on' : ''));
         chip.setAttribute('data-g', e.g.id);
         chip.setAttribute('data-s', e.sp.id);
         chip.innerHTML = '<b>' + esc(e.g.name + '·' + e.sp.name) + '</b>' +
@@ -1212,8 +1221,8 @@ window.UI = (function () {
       '<button class="mini modal-close">✕ 关闭</button></div>' +
       '<div class="modal-body">' +
       '<div class="bde-note">检索 7 个部位的可用组件（含当前已装的那件），按<b>优先级</b>选出总属性最高的组合：' +
-      '先让第 1 项最大，再在其中让第 2 项最大……「下限 / 上限」填数值即作为硬性目标，' +
-      '配不出来会提示「最高只能到多少」。滑块 = 该属性的目标下限。</div>' +
+      '先让第 1 项最大，再在其中让第 2 项最大……<b>下限 / 上限</b>各有一个滑块（数字框可精填，留空 = 不限），' +
+      '配不出来会提示「最高只能到多少」。下限滑块拖动时实时显示其他属性的可达上限。</div>' +
       '<div class="ab-rows"></div>' +
       '<div class="ab-actions"><button class="mini ab-reset">重置目标</button>' +
       '<button class="mini primary-mini ab-apply">一键装配</button>' +
@@ -1279,32 +1288,77 @@ window.UI = (function () {
         maxInp.type = 'number'; maxInp.placeholder = '上限';
         maxInp.value = abMax[t] === '' ? '' : abMax[t];
         maxInp.title = '目标上限：配装不超过该值（留空 = 不限）';
-        const slider = el('input', 'ab-range');
-        slider.type = 'range'; slider.min = '0'; slider.step = '1';
-        slider.value = String(Number(abMin[t]) || 0);
-        slider.title = '拖动 = 设定该属性的目标下限，并实时看其他属性还能配到多高';
+        // 同轨双滑块：下限（青柄）与上限（金柄）共用一条轨道，中间高亮为目标区间；
+        // 拖动时互相推挤，保证下限 ≤ 上限
+        const sliderMin = el('input', 'ab-range ab-range-min');
+        sliderMin.type = 'range'; sliderMin.min = '0'; sliderMin.step = '1';
+        sliderMin.value = String(Number(abMin[t]) || 0);
+        sliderMin.title = '下限手柄：拖动 = 设定该属性的目标下限，并实时看其他属性还能配到多高';
+        const sliderMax = el('input', 'ab-range ab-range-max');
+        sliderMax.type = 'range'; sliderMax.min = '0'; sliderMax.step = '1';
+        sliderMax.value = String(Number(abMax[t]) || 0);
+        sliderMax.title = '上限手柄：拖动 = 设定该属性的目标上限（拖到最右 = 不限）';
+        const dualFill = el('span', 'ab-dual-fill');
+        const dual = el('span', 'ab-dual');
+        dual.appendChild(el('span', 'ab-dual-track'));
+        dual.appendChild(dualFill);
+        dual.appendChild(sliderMin);
+        dual.appendChild(sliderMax);
         const peekEl = el('span', 'ab-peek');
-        slider.addEventListener('input', function () {
-          abMin[t] = slider.value;
-          if (document.activeElement !== minInp) minInp.value = slider.value;
+        function syncRow() {
+          minInp.value = abMin[t] === '' ? '' : abMin[t];
+          maxInp.value = abMax[t] === '' ? '' : abMax[t];
+          sliderMin.value = String(Math.min(Number(abMin[t]) || 0, Number(sliderMin.max) || 0));
+          const smaxCap = Number(sliderMax.max) || 0;
+          sliderMax.value = String(abMax[t] === '' || abMax[t] == null ? smaxCap : Math.min(Number(abMax[t]), smaxCap));
+          syncFill();
+        }
+        function syncFill() {
+          const cap = Number(sliderMax.max) || 0;
+          if (cap <= 0) { dualFill.style.left = '0%'; dualFill.style.width = '0%'; return; }
+          const a = Math.min(Number(sliderMin.value), Number(sliderMax.value)) / cap * 100;
+          const b = Math.max(Number(sliderMin.value), Number(sliderMax.value)) / cap * 100;
+          dualFill.style.left = a + '%';
+          dualFill.style.width = Math.max(0, b - a) + '%';
+        }
+        sliderMin.addEventListener('input', function () {
+          const v = Number(sliderMin.value) || 0;
+          abMin[t] = String(v);
+          if (abMax[t] !== '' && abMax[t] != null && Number(abMax[t]) < v) abMax[t] = String(v);  // 推挤上限
+          syncRow();
+          abRefresh();
+        });
+        sliderMax.addEventListener('input', function () {
+          const v = Number(sliderMax.value) || 0;
+          const atCap = v >= (Number(sliderMax.max) || 0);
+          abMax[t] = atCap ? '' : String(v);   // 拖到最右 = 不限
+          if (!atCap && abMin[t] !== '' && abMin[t] != null && Number(abMin[t]) > v) abMin[t] = String(v);  // 推挤下限
+          syncRow();
           abRefresh();
         });
         minInp.addEventListener('change', function () {
           // 不夹到 0：属性本身可以为负（如龙骨巨竿的钓速 -18~-8），下限也能负数
           abMin[t] = (minInp.value === '' ? '' : String(Math.round(Number(minInp.value) || 0)));
-          if (document.activeElement !== minInp) minInp.value = abMin[t];
+          if (abMin[t] !== '' && abMax[t] !== '' && abMax[t] != null && Number(abMax[t]) < Number(abMin[t])) abMax[t] = abMin[t];
+          syncRow();
           abRefresh();
         });
         maxInp.addEventListener('change', function () {
           abMax[t] = (maxInp.value === '' ? '' : String(Math.round(Number(maxInp.value) || 0)));
+          if (abMax[t] !== '' && abMin[t] !== '' && abMin[t] != null && Number(abMin[t]) > Number(abMax[t])) abMin[t] = abMax[t];
+          syncRow();
           abRefresh();
         });
-        row.appendChild(minInp);
-        row.appendChild(slider);
-        row.appendChild(maxInp);
+        const minGrp = el('span', 'ab-slider-grp');
+        minGrp.appendChild(el('i', 'ab-grp-tag', '下限'));
+        minGrp.appendChild(minInp);
+        minGrp.appendChild(dual);
+        minGrp.appendChild(maxInp);
+        minGrp.appendChild(el('i', 'ab-grp-tag max', '上限'));
+        row.appendChild(minGrp);
         row.appendChild(peekEl);
         rowsBox.appendChild(row);
-        abRefs.push({ t: t, row: row, minInp: minInp, slider: slider, peek: peekEl });
+        abRefs.push({ t: t, row: row, minInp: minInp, maxInp: maxInp, sliderMin: sliderMin, sliderMax: sliderMax, syncFill: syncFill, peek: peekEl });
       });
     }
 
@@ -1325,11 +1379,17 @@ window.UI = (function () {
         const ceil = Math.max(0, Math.ceil(Number(abPeek[r.t]) || 0));
         const hasTarget = abMin[r.t] !== '' && abMin[r.t] != null;
         r.row.classList.toggle('on', !!abEnabled[r.t]);
+        const cap = Math.max(ceil, Number(abMin[r.t]) || 0, Number(abMax[r.t]) || 0, 10);
         // 正在拖动的滑块不写回值/上界，否则会和手指抢位置
-        if (document.activeElement !== r.slider) {
-          r.slider.max = String(Math.max(ceil, Number(r.slider.value) || 0, 10));
-          r.slider.value = String(Math.min(Number(abMin[r.t]) || 0, Number(r.slider.max)));
+        if (document.activeElement !== r.sliderMin) {
+          r.sliderMin.max = String(cap);
+          r.sliderMin.value = String(Math.min(Number(abMin[r.t]) || 0, cap));
         }
+        if (document.activeElement !== r.sliderMax) {
+          r.sliderMax.max = String(cap);
+          r.sliderMax.value = String(abMax[r.t] === '' || abMax[r.t] == null ? cap : Math.min(Number(abMax[r.t]), cap));
+        }
+        if (r.syncFill) r.syncFill();
         const over = hasTarget && Number(abMin[r.t]) > (Number(abPeek[r.t]) || 0);
         r.peek.textContent = '可达 ' + abSigned(Number(abPeek[r.t]) || 0) + (over ? ' · 低于目标' : '');
         r.peek.classList.toggle('over', over);
@@ -4542,6 +4602,7 @@ window.UI = (function () {
   // 当前分类（模块级：重绘间保留）；详情改为子窗口，无需记录展开项
   let codexCategory = 'all';
   let mapTab = 'nearshore'; // 钓鱼页地图页签：nearshore 近岸 / voyage 出海预告
+  let lastFisherSpotKey = null; // 甩杆动画记忆：同一钓点重绘不重复播放
   let codexSortRarity = false;
 
   // 图鉴详情浮层：完整信息 + 全部产地（点击卡片开合；未解锁也可查看获取信息）
@@ -5696,7 +5757,7 @@ window.UI = (function () {
 
     // 分类页签（与背包一致；数量为各类条目数）
     const tabs = el('div', 'inv-cats');
-    const spotTotal = D.GROUNDS.reduce(function (n, g) { return n + (g.spots || []).length; }, 0);
+    const spotTotal = D.GROUNDS.reduce(function (n, g) { return n + (g.spots || []).length + ((g.spots || []).length ? 0 : 1); }, 0);
     [['all', '📦 全部', items.length], ['fish', '🐟 鱼类', fishItems.length],
      ['material', '🧵 材料', items.filter(function (i) { return i.kind === 'material'; }).length],
      ['component', '🔧 组件', items.filter(function (i) { return i.kind === 'component'; }).length],
@@ -5735,6 +5796,17 @@ window.UI = (function () {
           cell.addEventListener('click', function () { openSpotDetail(g.id, sp.id); });
           grid.appendChild(cell);
         });
+        // 无钓点的锁定活动钓场（如霜月冰湖）：钓场卡占位 + 钓场图标，让玩家在图鉴里看得到它
+        if (!(g.spots || []).length) {
+          const cell = el('div', 'codex-cell k-spots locked');
+          cell.innerHTML =
+            '<img class="cx-icon spot-icon" src="assets/ground/' + esc(g.id) + '.png" alt="" draggable="false">' +
+            '<div class="cx-name locked-name">' + esc(g.name) + '</div>' +
+            '<div class="cx-meta">限时活动钓场</div>' +
+            '<div class="cx-meta locked-line">🔒 尚未开放</div>' +
+            '<div class="cx-meta cx-spots">' + esc(g.desc || '') + '</div>';
+          grid.appendChild(cell);
+        }
       });
       panel.appendChild(grid);
       main.appendChild(panel);
