@@ -529,11 +529,15 @@ window.UI = (function () {
     }
     chips.push({ cls: ' meta-btn coins', tip: '金币余额', view: '', html: '<span class="meta-txt">💰 ' + p.coins + '</span>' });
     const status = $('player-status');
-    status.innerHTML = chips.map(function (c) {
+    const chipsHtml = chips.map(function (c) {
       // 保留原有 .meta 类（顶栏配色与像素主题都挂在它上面），再叠加 .meta-btn 表示可点击
       const cls = ('meta ' + c.cls).replace(/[ 	]+/g, ' ').trim();
       return '<button class="' + cls + '" data-view="' + esc(c.view || '') + '" title="' + esc(c.tip || '') + '">' + c.html + '</button>';
     }).join('');
+    // 数值没变就不重建：上鱼等高频广播会顺带刷顶栏，重复 innerHTML 会让整条顶栏跟着闪一下
+    if (status.getAttribute('data-sig') === chipsHtml) return;
+    status.setAttribute('data-sig', chipsHtml);
+    status.innerHTML = chipsHtml;
     status.querySelectorAll('[data-view]').forEach(function (b) {
       b.addEventListener('click', function () {
         const v = b.getAttribute('data-view');
@@ -634,9 +638,61 @@ window.UI = (function () {
     return speedTag + (parts.length ? '（' + parts.join(' · ') + '）' : '（无加成）') + biteTag;
   }
 
+  // 渔获日志行的键：时间戳 + 品名 + 尺寸 + 稀有度（用于增量插入时判断哪几行是新的）
+  function logKey(e) {
+    const it = (e && e.item) || {};
+    return [e && e.t, it.name, it.size, it.rarity].join('|');
+  }
+  function logRowHtml(e) {
+    const meta = e.item || {};
+    return timeStr(e.t) + ' · 钓到 <span class="' + qualityClass(meta) + '">' + esc(meta.name) +
+      '</span>' + (meta.size ? ' <span class="muted">' + meta.size + 'cm</span>' : '') +
+      (meta.rarity === 'rare' ? ' ✨稀有' : meta.rarity === 'epic' ? ' 💎史诗' : '');
+  }
+  // 钓场卡片文案（地图外那一排）：构建与增量刷新共用，保证两处一致
+  function groundCardText(g, cnt) {
+    return g.locked ? '🔒 活动钓场 · 即将开放'
+      : (g.type === 'normal' ? '普通钓场' : '活动钓场') + ' · 👥 ' + cnt + ' 人';
+  }
+  // 左栏底部状态条文案（在钓鱼 / 未钓鱼）
+  function fishStateHtml(st) {
+    if (!st.fishing.active) {
+      return '<span class="dot idle"></span> 未在钓鱼<span class="state-hint">点击任意垂钓点即可开始自动钓鱼</span>';
+    }
+    const g = D.GROUNDS.find(function (x) { return x.id === st.player.groundId; });
+    const sp = g && g.spots.find(function (x) { return x.id === st.player.spotId; });
+    return '<span class="dot on"></span> 自动钓鱼中 · ' + esc(g ? g.name : '') + (sp ? '·' + esc(sp.name) : '') +
+      '<span class="state-hint">' + esc(castText()) + ' · 再点当前钓点可取消</span>';
+  }
+  // 同钓点玩家列表的内容签名：只有玩家/状态/近期渔获真的变了才重建这几行
+  function peepSig(here) {
+    return here.map(function (b) {
+      return b.id + ',' + b.status + ',' + (b.recent || '') + ',' + (b.color || '');
+    }).join(';');
+  }
+  // 钓鱼页结构签名：地图页签 / 钓点与增益 / 所点与所在钓点 / 是否在钓鱼。
+  // 人数、渔获、金币等高频变化的**不进签名**——它们走 patchFishingLive() 原地更新；
+  // 否则每次上鱼都整页重建，地图节点、水面动画、渔获日志会被重建而闪动（动画从头播）。
+  function fishingSig(st) {
+    const parts = [mapTab, st.selected.groundId || '', st.selected.spotId || '',
+      st.player.groundId || '', st.player.spotId || '', st.fishing.active ? 1 : 0];
+    D.GROUNDS.forEach(function (g) {
+      parts.push(g.id + ':' + g.name + ':' + (g.locked ? 'L' : '') + ':' + g.type);
+      (g.spots || []).forEach(function (sp) {
+        parts.push(sp.id + ':' + sp.name + ':' + (Array.isArray(sp.pos) ? sp.pos.join(',') : '') + ':' +
+          (sp.buffs || []).map(function (b) { return b.type + b.value; }).join('+'));
+      });
+    });
+    return parts.join('|');
+  }
+
   function renderFishing() {
     const main = $('main');
     const st = S();
+    const sig = fishingSig(st);
+    const host = main.querySelector('.fish-select');
+    // 结构没变（只是上鱼 / 人数 / 钓速变化）→ 原地增量更新，整页 DOM 与动画都不动
+    if (host && host.getAttribute('data-sig') === sig) { patchFishingLive(st); return; }
     main.innerHTML = '';
 
     // 左：像素世界地图（钓场为区域、钓点为可点节点；点击节点=选择钓点，逻辑不变）
@@ -768,10 +824,11 @@ window.UI = (function () {
     D.GROUNDS.forEach(function (g) {
       const cnt = (st.groundCounts && st.groundCounts[g.id]) || 0;
       const card = el('div', 'px-region g-card' + (g.locked ? ' locked' : ''));
+      card.setAttribute('data-g', g.id); // 增量刷新按钓场找卡片更新人数
       card.innerHTML = '<img class="pg-icon" src="assets/ground/' + esc(g.id) + '.png" alt="" draggable="false"' +
         ' onerror="this.style.display=\'none\'">' +
         '<div class="pg-info"><b>' + esc(g.name) + '</b>' +
-        '<span>' + (g.locked ? '🔒 活动钓场 · 即将开放' : (g.type === 'normal' ? '普通钓场' : '活动钓场') + ' · 👥 ' + cnt + ' 人') + '</span></div>';
+        '<span>' + esc(groundCardText(g, cnt)) + '</span></div>';
       groundsBar.appendChild(card);
     });
     left.appendChild(groundsBar);
@@ -808,16 +865,10 @@ window.UI = (function () {
 
     const ctrl = el('div', 'fish-ctrl');
     const stateBar = el('div', 'fish-state' + (st.fishing.active ? ' on' : ''));
-    if (st.fishing.active) {
-      const g = D.GROUNDS.find(function (x) { return x.id === st.player.groundId; });
-      const sp = g && g.spots.find(function (x) { return x.id === st.player.spotId; });
-      stateBar.innerHTML = '<span class="dot on"></span> 自动钓鱼中 · ' + esc(g ? g.name : '') + (sp ? '·' + esc(sp.name) : '') +
-        '<span class="state-hint">' + esc(castText()) + ' · 再点当前钓点可取消</span>';
-    } else {
-      stateBar.innerHTML = '<span class="dot idle"></span> 未在钓鱼<span class="state-hint">点击任意垂钓点即可开始自动钓鱼</span>';
-    }
+    stateBar.innerHTML = fishStateHtml(st);
     ctrl.appendChild(stateBar);
     left.appendChild(ctrl);
+    left.setAttribute('data-sig', sig); // 增量刷新靠它判断结构是否变化
     main.appendChild(left);
 
     // 右：渔场实况（顶部为装饰性垂钓场景：水面/浮漂/游鱼动画，active 时浮漂跳动，无逻辑）
@@ -845,6 +896,7 @@ window.UI = (function () {
       const peepHead = el('div', 'peeps-head', '同钓点 ' + here.length + ' 人' + (here.length > 5 ? '（可下滑查看全部）' : ''));
       right.appendChild(peepHead);
       const peeps = el('div', 'peeps scroll5');
+      peeps.setAttribute('data-sig', peepSig(here)); // 内容没变就不重建这几行
       if (here.length === 0) peeps.appendChild(el('div', 'hint', '暂无同一钓点的玩家。'));
       here.forEach(function (b) { peeps.appendChild(peepCard(b)); });
       right.appendChild(peeps);
@@ -857,15 +909,75 @@ window.UI = (function () {
     const log = el('div', 'catch-log');
     if (st.log.length === 0) log.appendChild(el('div', 'hint', '还没有渔获，去抛竿吧。'));
     st.log.slice(0, 25).forEach(function (e) {
-      const meta = e.item || {};
-      log.appendChild(el('div', 'log-line', timeStr(e.t) + ' · 钓到 <span class="' + qualityClass(meta) + '">' + esc(meta.name) +
-        '</span>' + (meta.size ? ' <span class="muted">' + meta.size + 'cm</span>' : '') +
-        (meta.rarity === 'rare' ? ' ✨稀有' : meta.rarity === 'epic' ? ' 💎史诗' : '')));
+      const row = el('div', 'log-line', logRowHtml(e));
+      row.setAttribute('data-k', logKey(e));
+      log.appendChild(row);
     });
     right.appendChild(log);
     right.appendChild(el('div', 'hint', '完整渔获记录已同步到 📜 日志 · 🐟 渔获（可在那里按时间线回看）'));
 
     main.appendChild(right);
+  }
+
+  // 钓鱼页高频增量刷新：只改动「真的会变」的内容（钓场人数 / 实况玩家 / 渔获日志 / 状态条），
+  // 地图节点、水面场景、日志旧行都原地保留 —— 上鱼不再整页重建，画面不闪、动画也不用从头播。
+  function patchFishingLive(st) {
+    const main = $('main');
+    if (!main) return;
+    // ① 钓场状态卡的人数
+    D.GROUNDS.forEach(function (g) {
+      const card = main.querySelector('.px-grounds .g-card[data-g="' + g.id + '"]');
+      const span = card && card.querySelector('.pg-info span');
+      if (!span) return;
+      const text = groundCardText(g, (st.groundCounts && st.groundCounts[g.id]) || 0);
+      if (span.textContent !== text) span.textContent = text;
+    });
+    // ② 左栏状态条：钓速 / 上鱼率会随后台配置（castcfg）变化
+    const stateBar = main.querySelector('.fish-state');
+    if (stateBar) {
+      const html = fishStateHtml(st);
+      if (stateBar.innerHTML !== html) stateBar.innerHTML = html; // 内容没变就不碰 DOM，免得打断动画
+    }
+    // ③ 右栏实况：同钓点玩家列表（玩家 / 状态 / 近期渔获变化时才重建这几行）
+    const peeps = main.querySelector('.fish-live .peeps');
+    if (peeps && st.player.groundId) {
+      const here = E().playersAtSpot(st.player.groundId, st.player.spotId);
+      const sig = peepSig(here);
+      if (peeps.getAttribute('data-sig') !== sig) {
+        peeps.setAttribute('data-sig', sig);
+        peeps.innerHTML = '';
+        if (here.length === 0) peeps.appendChild(el('div', 'hint', '暂无同一钓点的玩家。'));
+        here.forEach(function (b) { peeps.appendChild(peepCard(b)); });
+        const head = main.querySelector('.peeps-head');
+        if (head) head.textContent = '同钓点 ' + here.length + ' 人' + (here.length > 5 ? '（可下滑查看全部）' : '');
+      }
+    }
+    // ④ 渔获日志：只把新渔获插到最前面，旧行原地不动（滚动位置自然保持，也不再整列重播入场动画）
+    const log = main.querySelector('.fish-live .catch-log');
+    if (log) {
+      const keys = st.log.slice(0, 25).map(logKey);
+      const rendered = Array.prototype.map.call(log.querySelectorAll('.log-line'), function (r) { return r.getAttribute('data-k'); });
+      let fresh = keys;
+      if (rendered.length) {
+        const at = keys.indexOf(rendered[0]);
+        if (at >= 0) fresh = keys.slice(0, at);        // 旧首行之前的都是新渔获
+        else { log.innerHTML = ''; fresh = keys; }     // 旧行对不上（换账号 / 日志清空）→ 整列重画
+      }
+      if (fresh.length) {
+        const hint = log.querySelector('.hint');
+        if (hint) hint.remove();
+        for (let i = fresh.length - 1; i >= 0; i--) {
+          const row = el('div', 'log-line', logRowHtml(st.log[i]));
+          row.setAttribute('data-k', fresh[i]);
+          log.insertBefore(row, log.firstChild);
+        }
+        const rows = log.querySelectorAll('.log-line');   // 超出 25 条的旧行移除
+        for (let i = rows.length - 1; i >= 25; i--) rows[i].remove();
+      }
+      if (!log.querySelector('.log-line') && !log.querySelector('.hint')) {
+        log.appendChild(el('div', 'hint', '还没有渔获，去抛竿吧。'));
+      }
+    }
   }
 
   // 背包区块（钓鱼页与商店页共用）
@@ -983,6 +1095,10 @@ window.UI = (function () {
     const mode = o.mode === 'pick' ? 'pick' : 'equip';
     const wantPart = o.part || null;
     bdEquipPart = wantPart;
+    // 每次打开都从「全部部位 / 全部属性」开始：筛选是模块级状态，若跨弹窗残留，
+    // 换一个部位打开时列表会被上一个弹窗的部位/词条筛选整个滤空（表现为「组件都不见了」）。
+    bdEquipFilterPart = '';
+    bdEquipFilter = 'all';
     compPickCtx = (mode === 'pick') ? {
       title: o.title || '选择组件',
       note: o.note || '',
@@ -1076,7 +1192,8 @@ window.UI = (function () {
 
       const ctr = el('div', 'bde-controls');
       // 部位筛选：仅在「未限定部位的选择模式」（工坊选主件）里出现
-      if (pick && !pick.part) {
+      const partFilterOn = !!(pick && !pick.part);   // 装备模式已按部位锁定，不能再套用上一个弹窗的部位筛选
+      if (partFilterOn) {
         ctr.appendChild(el('span', 'bf-sort-label', '部位'));
         [['', '全部']].concat(D.ROD_PARTS.map(function (p) { return [p.key, p.name]; })).forEach(function (kv) {
           const b = el('button', 'bf-cat' + (bdEquipFilterPart === kv[0] ? ' on' : ''), kv[1]);
@@ -1121,7 +1238,7 @@ window.UI = (function () {
 
       // 组件卡片
       let list = owned.filter(function (o2) {
-        if (bdEquipFilterPart && o2.c.part !== bdEquipFilterPart) return false;
+        if (partFilterOn && bdEquipFilterPart && o2.c.part !== bdEquipFilterPart) return false;
         return bdEquipFilter === 'all' || o2.c.affixes.some(function (a) { return a.type === bdEquipFilter; });
       });
       const rank = { mythic: 4, epic: 3, rare: 2, common: 1 };
@@ -1138,7 +1255,17 @@ window.UI = (function () {
       });
       const grid2 = el('div', 'bde-grid');
       if (!list.length) {
-        grid2.appendChild(el('div', 'hint', '没有符合筛选条件的组件。'));
+        // 有可用组件却被筛空时给出可操作提示：避免看起来像「组件不见了」（回归：跨弹窗残留的筛选）
+        const tags = [];
+        if (partFilterOn && bdEquipFilterPart) tags.push(partNameOf(bdEquipFilterPart));
+        if (bdEquipFilter !== 'all') tags.push(affixName(bdEquipFilter));
+        if (owned.length && tags.length) {
+          grid2.appendChild(el('div', 'hint', '有 ' + owned.length + ' 件可用组件，但都被当前筛选（' +
+            esc(tags.join(' / ')) + '）过滤掉了 —— 点「' + (partFilterOn && bdEquipFilterPart ? '全部' : '全部属性') +
+            '」即可看到它们。'));
+        } else {
+          grid2.appendChild(el('div', 'hint', '没有符合筛选条件的组件。'));
+        }
       } else {
         list.forEach(function (o2) {
           const c = o2.c;
@@ -1524,6 +1651,10 @@ window.UI = (function () {
   // onListed：可选回调，上架成功后调用（装备子窗口用它回到原界面继续挑选）
   // rodInfo：整根钓竿模式（{rodSlot, name, affixes, price, count}）——数量固定 1，组件随竿卖出
   function openListModal(id, onListed, rodInfo) {
+    const st0 = S();
+    const isRod0 = !!(rodInfo && rodInfo.rodSlot != null);
+    // 悬空引用检测：物品可能刚被卖掉 / 熔炼掉 / 交易走，不能再挂单（否则填完参数才被服务器拒绝）
+    if (!isRod0 && !(st0.inventory[id] > 0)) { toast('背包里已经没有「' + itemMeta(id).name + '」了'); return; }
     listModalId = id;
     const st = S();
     const meta = itemMeta(id);
@@ -2054,6 +2185,7 @@ window.UI = (function () {
   let buyAffixMax = '';       // 该词条的最大数值（含），空 = 不限
   let buyOnlyComponents = true; // 词条筛选仅在组件上生效，此开关便于混合搜索
   let marketFilterActive = false; // 市集筛选控件获得焦点时暂停广播重绘（防止下拉框被刷新关闭）
+  let marketHistCache = null;     // 历史订单缓存：资产广播重绘时先画旧数据，避免闪「加载中…」
   // 一个挂单是否满足「词条类型 + 数值区间」筛选。非组件挂单：仅在筛选为 all 时通过。
   function listingMatchesAffix(l) {
     if (buyAffixType === 'all' && buyAffixMin === '' && buyAffixMax === '') return true;
@@ -2183,13 +2315,12 @@ window.UI = (function () {
       colMain.appendChild(el('div', 'hint', '提示：下架取回物品，但上架费不退。'));
     } else if (marketTab === 'history') {
       // 历史订单：我的市集成交（买入 + 卖出）
-      const hist = el('div', 'market-history', '加载中…');
+      // 结果缓存一份：本页会随资产广播（上鱼 / 售出）重绘，若每次都清空再请求，
+      // 列表会先闪成「加载中…」再重排——缓存后立刻用旧数据画出，请求回来再原地替换。
+      const hist = el('div', 'market-history');
       colMain.appendChild(hist);
-      window.Net.marketHistory().then(function (r) {
-        if (marketTab !== 'history') return; // 已切走
-        if (!r || !r.ok) { hist.textContent = (r && r.data && r.data.error) || '加载失败'; return; }
+      function drawHist(trades) {
         hist.innerHTML = '';
-        const trades = r.data.trades || [];
         if (!trades.length) {
           hist.appendChild(el('div', 'hint', '暂无历史订单。在「购买市场」成交后会在这里记录（买入与卖出都算）。'));
           return;
@@ -2206,6 +2337,16 @@ window.UI = (function () {
             '<span class="unit-price">' + timeStr(t.t) + '</span>';
           hist.appendChild(row);
         });
+      }
+      if (marketHistCache) drawHist(marketHistCache); else hist.textContent = '加载中…';
+      window.Net.marketHistory().then(function (r) {
+        if (marketTab !== 'history') return; // 已切走
+        if (!r || !r.ok) {
+          if (!marketHistCache) hist.textContent = (r && r.data && r.data.error) || '加载失败';
+          return;
+        }
+        marketHistCache = r.data.trades || [];
+        drawHist(marketHistCache);
       });
     } else {
       // 购买市场：其他玩家的挂单 + 分类筛选 + 搜索
@@ -2418,6 +2559,17 @@ window.UI = (function () {
     };
     syncFoot();
     return box;
+  }
+  // 市集：纯资产广播（上鱼 / 售出 / 交易只改背包与金币）只重画右栏「我的背包（上架）」，
+  // 左栏的挂单列表 / 历史订单原样保留——否则每次上鱼都会把历史订单整列重建并重新请求，画面闪一下。
+  function patchMarketAssets() {
+    const main = $('main');
+    const st = S();
+    if (!main) return false;
+    const host = main.querySelector('.mkt-sell');
+    if (!host) return false;
+    host.replaceWith(marketSellPanel(st));
+    return true;
   }
   // 一键上架子窗口：统一时长 + 价格倍率（或各物品现价），逐件挂单并汇总结果
   function openBatchListModal(ids) {
@@ -3077,6 +3229,7 @@ window.UI = (function () {
         return lo === hi ? (lo + '💰') : (lo + ' ~ ' + hi + '💰');
       })();
       const lockCnt = g.items.reduce(function (n, it) { return n + (rodLockCount(it.id) > 0 ? 1 : 0); }, 0);
+      head.setAttribute('data-group', gk); // 出售后就地更新组头计数用
       head.innerHTML = '<span class="caret">' + (isOpen ? '▾' : '▸') + '</span>' +
         '<span class="' + qualityClass(g.rep || { kind: 'component', quality: 'common' }) + '">' + esc(g.rep ? g.rep.baseName : '旧版组件') + '</span>' +
         (lockCnt ? '<span class="rod-lock" title="该组有组件被钓竿占用（已锁定，不可单独交易）">🔒 ' + lockCnt + ' 种</span>' : '') +
@@ -3100,6 +3253,8 @@ window.UI = (function () {
       g.items.forEach(function (it) {
         const meta = it.meta;
         const row = el('div', 'inv-row inv-page-row inv-comp-row indented');
+        row.setAttribute('data-id', it.id);        // 出售后就地更新这一行（不整页重建）
+        row.setAttribute('data-group', gk);        // 组头计数同步用
         const affHtml = (meta.affixes || []).map(function (a) {
           const rng = affixRangeIn(meta, a);
           const rngTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
@@ -3132,6 +3287,100 @@ window.UI = (function () {
     });
   }
 
+  // 出售后只更新受影响的行（数量 / 小计；售罄则移除该行，空组连组头一起去掉），
+  // 并同步右栏概览与分类计数——不整页重建：展开的组件分组、列表顺序、滚动位置全部保持
+  //（此前整页重绘会让列表按新价格重排，还可能把展开的配件栏收起来）。
+  // 返回 false 表示没找到对应行（例如被筛选隐藏）→ 调用方退回整页重绘兜底。
+  function patchInventoryRow(id) {
+    const st = S();
+    const row = document.querySelector('.inv-page-row[data-id="' + id + '"]');
+    if (!row) return false;
+    const cnt = st.inventory[id] || 0;
+    if (cnt > 0) {
+      const c = row.querySelector('.cnt');
+      if (c) c.textContent = '×' + cnt;
+      const sub = row.querySelector('.subtotal');
+      if (sub) sub.textContent = '小计 ' + (unitPriceOf(id) * cnt) + '💰';
+    } else {
+      const gk = row.getAttribute('data-group');
+      row.remove();
+      if (gk) {
+        const rest = document.querySelectorAll('.inv-page-row[data-group="' + gk + '"]');
+        const head = document.querySelector('.inv-group-head[data-group="' + gk + '"]');
+        if (head) {
+          if (!rest.length) head.remove();
+          else {
+            let total = 0;
+            rest.forEach(function (r) { total += (st.inventory[r.getAttribute('data-id')] || 0); });
+            const box = head.querySelector('.inv-group-cnt');
+            if (box) box.textContent = '共 ' + total + ' 个 / ' + rest.length + ' 种';
+          }
+        }
+      }
+    }
+    // 分类计数 / 右栏概览：按服务器权威的 inventory 重算
+    const kinds = { fish: 0, material: 0, chest: 0, component: 0 };
+    let kindsAll = 0, totalCnt = 0, totalValue = 0;
+    Object.keys(st.inventory).forEach(function (k) {
+      if ((st.inventory[k] || 0) <= 0) return;
+      kindsAll++;
+      totalCnt += st.inventory[k];
+      totalValue += itemMeta(k).price * st.inventory[k];
+      const kk = itemMeta(k).kind;
+      if (kinds[kk] != null) kinds[kk]++;
+    });
+    const tabsEl = document.querySelector('.inv-page-tabs');
+    if (tabsEl) {
+      const labels = ['📦 全部', '🐟 鱼类', '🧵 材料', '🎁 宝匣', '🔧 组件'];
+      const nums = [kindsAll, kinds.fish, kinds.material, kinds.chest, kinds.component];
+      tabsEl.querySelectorAll('.inv-cat').forEach(function (b, i) {
+        if (labels[i]) b.textContent = labels[i] + ' ' + nums[i];
+      });
+    }
+    const boxes = document.querySelectorAll('.col-side .codex-summary .cs-box b');
+    if (boxes.length === 3) {
+      boxes[0].textContent = kindsAll;
+      boxes[1].textContent = totalCnt;
+      boxes[2].textContent = totalValue;
+    }
+    const bd = document.querySelector('.col-side .inv-breakdown');
+    if (bd) {
+      bd.innerHTML = [['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['chest', '🎁 宝匣'], ['component', '🔧 组件']]
+        .filter(function (kv) { return kinds[kv[0]]; })
+        .map(function (kv) { return '<div class="inv-kind-line">' + kv[1] + '　' + kinds[kv[0]] + ' 种</div>'; }).join('');
+    }
+    return true;
+  }
+
+  // 背包：行情广播（出售会改变动态收购价）只更新行内价格，不整页重建——
+  // 否则每次出售都按新价格重排列表、还可能把展开的组件分组收起来（用户反馈的问题来源）。
+  // 返回 false 表示当前不在背包页（或被筛选隐藏的项对不上，交给调用方兜底）。
+  function patchInventoryPrices() {
+    const main = $('main');
+    const st = S();
+    if (!main || !main.querySelector('.inv-page-tabs')) return false;
+    const price = function (id) { return unitPriceOf(id); };
+    main.querySelectorAll('.inv-page-row[data-id]').forEach(function (row) {
+      const id = row.getAttribute('data-id');
+      if ((st.inventory[id] || 0) <= 0) return;
+      const up = row.querySelector('.unit-price');
+      if (up) up.textContent = '现价 ' + price(id) + '💰';
+      const sub = row.querySelector('.subtotal');
+      if (sub) sub.textContent = '小计 ' + (price(id) * st.inventory[id]) + '💰';
+    });
+    // 组件分组头的价格区间同样随行情变
+    main.querySelectorAll('.inv-group-head[data-group]').forEach(function (head) {
+      const box = head.querySelector('.inv-group-price');
+      if (!box) return;
+      const rows = main.querySelectorAll('.inv-page-row[data-group="' + head.getAttribute('data-group') + '"]');
+      const ps = Array.prototype.map.call(rows, function (r) { return price(r.getAttribute('data-id')); });
+      if (!ps.length) return;
+      const lo = Math.min.apply(null, ps), hi = Math.max.apply(null, ps);
+      box.textContent = lo === hi ? (lo + '💰') : (lo + ' ~ ' + hi + '💰');
+    });
+    return true;
+  }
+
   function renderInventory() {
     const main = $('main');
     const st = S();
@@ -3147,10 +3396,16 @@ window.UI = (function () {
     function unitPrice(id) { const s = st.shop && st.shop[id]; return s ? s.price : itemMeta(id).price; }
     function itemValue(id) { return unitPrice(id) * st.inventory[id]; }
     function doSell(id, qty) {
-      call(window.Net.sell(id, qty), function (r) { return '售出 ' + itemMeta(id).name + ' ×' + qty + '，获得 💰' + r.data.gain; })
-        .then(function (r) {
-          if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderView(); }
-        });
+      // 不走 call()：那个辅助函数内部会 refreshAll()（无 scope → 整页重建），
+      // 出售后列表会按新价格重排、展开的组件分组也可能被收起。这里只提示 + 就地更新那一行。
+      Promise.resolve(window.Net.sell(id, qty)).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.data && r.data.error) || '操作失败'); return; }
+        toast('售出 ' + itemMeta(id).name + ' ×' + qty + '，获得 💰' + r.data.gain);
+        const st2 = S();
+        st2.player.coins = r.data.coins; st2.inventory = r.data.inventory; st2.shop = r.data.shop;
+        renderTopbar();
+        if (!patchInventoryRow(id)) renderView();   // 行不在了（例如被筛选隐藏）才退回整页重绘
+      }).catch(function () { toast('网络错误'); });
     }
     function listFee(price, qty) { return Math.ceil(price * qty * 0.01); }
 
@@ -3160,7 +3415,7 @@ window.UI = (function () {
       const k = itemMeta(id).kind;
       if (kindCount[k] != null) kindCount[k] += 1;
     });
-    const tabs = el('div', 'inv-cats');
+    const tabs = el('div', 'inv-cats inv-page-tabs');
     [['all', '📦 全部', Object.keys(st.inventory).length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['chest', '🎁 宝匣', kindCount.chest], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
       const b = el('button', 'inv-cat' + (invCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
       b.addEventListener('click', function () { if (invCategory !== kv[0]) { invCategory = kv[0]; renderView(); } });
@@ -3205,6 +3460,7 @@ window.UI = (function () {
         const cnt = st.inventory[id];
         const kindName = meta.kind === 'fish' ? '鱼' : meta.kind === 'material' ? '材料' : meta.kind === 'chest' ? '宝匣' : meta.kind === 'component' ? '组件' : '物品';
         const row = el('div', 'inv-row inv-page-row');
+        row.setAttribute('data-id', id);           // 出售后就地更新这一行（不整页重建）
         row.innerHTML =
           '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
           '<span class="kind-tag">' + kindName + '</span>' +
@@ -3962,6 +4218,19 @@ window.UI = (function () {
   let wsRelics = 0;             // 残片保留：投入的沉船宝匣残片片数（0 ~ smeltCfg.retainMaxRelic）
   let wsRecast = '';            // 重铸选中的组件签名
 
+  // 选中的组件实例是否还在背包里（被熔炼 / 重铸消耗、出售、上架、交易后就不在了）
+  function wsAlive(id) { return !!(id && D.componentOf(id) && (S().inventory[id] || 0) > 0); }
+  // 清掉指向「已不存在的组件」的选中项：否则工坊会停在「卡片还是旧组件、点熔炼/重铸却报错」的悬空状态。
+  // 装备到钓竿上的组件不在背包里，同样按不可选处理（与选择列表的口径一致）。
+  function wsPruneStale() {
+    if (wsMain && !wsAlive(wsMain)) { wsMain = ''; wsMainAffix = ''; wsRelics = 0; }
+    if (wsSub && !wsAlive(wsSub)) { wsSub = ''; wsSubAffix = ''; }
+    if (wsRecast && !wsAlive(wsRecast)) wsRecast = '';
+    // 主件换了部位（或已失效）后，原副件必须与主件同部位，否则清掉
+    const a = D.componentOf(wsMain), b = D.componentOf(wsSub);
+    if (wsSub && (!b || !a || a.part !== b.part)) { wsSub = ''; wsSubAffix = ''; }
+  }
+
   // 背包里可作为素材的组件实例（按价格降序，稳定展示）
   function wsComponents() {
     const st = S();
@@ -4122,6 +4391,7 @@ window.UI = (function () {
   function renderWorkshop() {
     const main = $('main');
     const st = S();
+    wsPruneStale(); // 选中的组件若已被消耗 / 出售（悬空引用），先清掉再渲染
     main.innerHTML = '';
     const panel = el('div', 'panel wide ws-panel');
     panel.innerHTML = '<h2>⚒ 工坊 <span class="subtitle">熔炼 · 用副件改写主件的词条 ｜ 重铸 · 用残片重 roll 宝匣神话件</span></h2>' +
@@ -4154,7 +4424,7 @@ window.UI = (function () {
       ? '<h3>🛡 残片保留（可选）<span class="hint">成功后按概率保留下主件的池外（突破）词缀，每片残片 ' + rt.per +
         '%，' + rt.max + ' 片即必中</span></h3>' +
         '<label class="ws-pearl"><input type="checkbox" id="ws-relic-on"' + (rt.qty > 0 ? ' checked' : '') + ' /> ' +
-        '🛡 放入 <b>沉船宝匣残片</b>（持有 ' + rt.have + '）· 不影响熔炼成功率与花费</label>' +
+        '🛡 放入 <b>沉船宝匣残片</b>（持有 <span data-have="relic">' + rt.have + '</span>）· 不影响熔炼成功率与花费</label>' +
         '<div class="ws-relic-row" id="ws-relic-row"' + (rt.qty > 0 ? '' : ' style="display:none"') + '>' +
         '<span class="wrl-label">投入片数</span>' +
         '<input class="ipt ws-relic-qty" id="ws-relic-qty" type="number" min="0" max="' + rt.cap + '" value="' + rt.qty + '"' + (rt.cap <= 0 ? ' disabled' : '') + ' />' +
@@ -4187,7 +4457,7 @@ window.UI = (function () {
         return mats.map(function (m) {
           const have = st.inventory[m.id] || 0;
           const qty = wsMats[m.id] || 0;
-          return '<label class="ws-mat' + (have <= 0 ? ' none' : '') + '">' +
+          return '<label class="ws-mat' + (have <= 0 ? ' none' : '') + '" data-mat="' + esc(m.id) + '">' +
             '<span class="wm-name">' + esc(m.name) + '</span>' +
             '<span class="wm-aff">→ ' + esc(m.affixName || m.affix) + '</span>' +
             '<span class="wm-have">持有 ' + have + '</span>' +
@@ -4197,7 +4467,7 @@ window.UI = (function () {
         }).join('');
       })() + '</div>' +
       '<label class="ws-pearl"><input type="checkbox" id="ws-pearl"' + (wsPearl ? ' checked' : '') + ' /> ' +
-      '🐚 加入龙宫宝珠（持有 ' + (st.inventory[D.SMELT_PEARL] || 0) + '）· roll 两次取靠近区间边界的值</label>' +
+      '🐚 加入龙宫宝珠（持有 <span data-have="' + esc(D.SMELT_PEARL) + '">' + (st.inventory[D.SMELT_PEARL] || 0) + '</span>）· roll 两次取靠近区间边界的值</label>' +
       retainRow +
       '<div class="ws-preview" id="ws-preview"></div>' +
       '<button class="primary big" id="ws-go">开始熔炼</button>';
@@ -4356,18 +4626,18 @@ window.UI = (function () {
       '</div>' +
       '<div class="ws-col"><h3>🧾 重铸材料（自动识别）</h3>' +
       '<div class="ws-mat-grid" id="ws-recast-mats">' +
-      '<label class="ws-mat' + (info.relicHave >= info.relicNeed ? '' : ' none') + '">' +
+      '<label class="ws-mat' + (info.relicHave >= info.relicNeed ? '' : ' none') + '" data-mat="' + esc(info.relicId) + '" data-need="' + info.relicNeed + '">' +
       '<span class="wm-name">' + esc(info.relicName) + '</span>' +
       '<span class="wm-aff">→ 重铸全部词条</span>' +
       '<span class="wm-have">持有 ' + info.relicHave + '</span>' +
       '<span class="wm-unit">需要 ' + info.relicNeed + '</span></label>' +
       (info.gold > 0 ? '<label class="ws-mat' + ((st.player.coins || 0) >= info.gold ? '' : ' none') +
-        '"><span class="wm-name">金币</span><span class="wm-aff">→ 手续费</span>' +
+        '" data-mat="@coins" data-need="' + info.gold + '"><span class="wm-name">金币</span><span class="wm-aff">→ 手续费</span>' +
         '<span class="wm-have">持有 ' + Math.round(st.player.coins || 0) + '</span>' +
         '<span class="wm-unit">需要 ' + info.gold + '</span></label>' : '') +
       '</div>' +
       '<div class="ws-preview">' +
-      '<div class="ws-line">' + (eligible
+      '<div class="ws-line" id="ws-recast-state">' + (eligible
         ? (enough ? '<b class="ok">材料充足</b>' : '<b class="err">材料不足</b>') +
           '：' + esc(info.relicName) + ' ×' + info.relicNeed + (info.gold > 0 ? ' + 💰' + info.gold : '') +
           ' · 重 roll ' + eligible.affixes.length + ' 条词条的数值'
@@ -4390,6 +4660,53 @@ window.UI = (function () {
       });
     });
     if ($('ws-recast-go')) $('ws-recast-go').addEventListener('click', function () { wsDoRecast(); });
+  }
+
+  // 重铸页的「材料充足 / 不足」与按钮禁用态：资产变化后原地更新（.none 与「持有」数字由 wsPatchAssets 处理）
+  function wsRecastPatchState() {
+    const st = S();
+    const info = wsRecastInfo();
+    const comp = wsRecast ? D.componentOf(wsRecast) : null;
+    const eligible = comp && D.canRecast(comp) ? comp : null;
+    const enough = info.relicHave >= info.relicNeed && (st.player.coins || 0) >= info.gold;
+    const line = $('ws-recast-state');
+    if (line) {
+      const html = eligible
+        ? (enough ? '<b class="ok">材料充足</b>' : '<b class="err">材料不足</b>') +
+          '：' + esc(info.relicName) + ' ×' + info.relicNeed + (info.gold > 0 ? ' + 💰' + info.gold : '') +
+          ' · 重 roll ' + eligible.affixes.length + ' 条词条的数值'
+        : '<span class="muted">先放入一件待重铸的组件</span>';
+      if (line.innerHTML !== html) line.innerHTML = html;
+    }
+    const go = $('ws-recast-go');
+    if (go) go.disabled = !(eligible && enough);
+  }
+
+  // 工坊：纯资产广播（上鱼 / 售出 / 交易只改背包与金币）不整页重建——
+  // 只更新「持有 N」数字与下方预览，输入框的焦点、光标与已填份数全部保留
+  //（此前每次上鱼都整页重画，正在填的份数会被重建冲掉）。返回 false 表示当前不在工坊页。
+  function wsPatchAssets() {
+    const main = $('main');
+    const st = S();
+    if (!main || !main.querySelector('.ws-panel')) return false;
+    const have = function (id) {
+      return id === '@coins' ? Math.round(st.player.coins || 0) : ((st.inventory && st.inventory[id]) || 0);
+    };
+    main.querySelectorAll('.ws-mat[data-mat]').forEach(function (lab) {
+      const n = have(lab.getAttribute('data-mat'));
+      const box = lab.querySelector('.wm-have');
+      if (box && box.textContent !== '持有 ' + n) box.textContent = '持有 ' + n;
+      const need = Number(lab.getAttribute('data-need')) || 0;
+      lab.classList.toggle('none', need > 0 ? n < need : n <= 0);
+      const qty = lab.querySelector('.ws-mat-qty');   // 持有量归零时禁用投料框（与首次渲染一致）
+      if (qty && qty.disabled !== (n <= 0)) qty.disabled = n <= 0;
+    });
+    main.querySelectorAll('[data-have]').forEach(function (sp) {
+      const n = String(have(sp.getAttribute('data-have')));
+      if (sp.textContent !== n) sp.textContent = n;
+    });
+    if (wsTab === 'recast') wsRecastPatchState(); else wsRefreshPreview();
+    return true;
   }
   function wsDoRecast() {
     const info = wsRecastInfo();
@@ -5016,7 +5333,7 @@ window.UI = (function () {
   // 重绘前记录可滚动容器位置，重绘后恢复。
   // SSE 广播（他人上鱼/新纪录）会触发整页重绘，若不保留滚动位置，
   // 浏览中的渔获日志 / 渔获记录 / 动态列表会被 innerHTML 重建并拽回顶部。
-  const SCROLL_SELECTORS = ['.content', '.catch-log', '.feed', '.codex-detail', '.trade-lists', '.tp-rows', '.bulk-rows', '.log-page'];
+  const SCROLL_SELECTORS = ['.content', '.catch-log', '.feed', '.codex-detail', '.trade-lists', '.tp-rows', '.bulk-rows', '.log-page', '.market-history'];
   function captureScroll() {
     const saved = [];
     SCROLL_SELECTORS.forEach(function (sel) {
@@ -5208,6 +5525,13 @@ window.UI = (function () {
     mall: ['assets', 'mall'],
     workshop: ['assets', 'smeltcfg', 'workshop'],
   };
+  // 主区内是否有输入控件正被编辑（数字框 / 文本 / 下拉 / 可编辑元素）
+  function mainInputFocused() {
+    const a = document.activeElement;
+    const main = $('main');
+    if (!a || !main || a === main || !main.contains(a)) return false;
+    return /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName) || a.isContentEditable === true;
+  }
   function refreshAll(scope) {
     if (scope === 'all') scope = null; // init 全量刷新
     if (shopModalId && scope === 'shop') fillShopModal(shopModalId); // 弹窗数据静默刷新
@@ -5231,6 +5555,28 @@ window.UI = (function () {
     }
     // 市集筛选控件（词条下拉/数值输入）获得焦点时暂停重绘：否则广播会重建 DOM 导致下拉框被关闭。
     if (currentView === 'market' && marketFilterActive && scope && scope !== 'all') {
+      renderTopbar(); renderNav();
+      return;
+    }
+    // 工坊：纯资产广播（上鱼 / 售出只改背包与金币）原地更新「持有」数字与预览，
+    // 不整页重建——正在填的投料份数、输入焦点与光标都不受影响。
+    if (currentView === 'workshop' && scope === 'assets' && wsPatchAssets()) {
+      renderTopbar(); renderNav();
+      return;
+    }
+    // 市集：同上，只重画右栏上架面板，左栏挂单 / 历史订单不重建（不再闪「加载中…」）
+    if (currentView === 'market' && scope === 'assets' && !marketFilterActive && patchMarketAssets()) {
+      renderTopbar(); renderNav();
+      return;
+    }
+    // 背包：行情 / 经济参数广播只刷行内价格，不整页重建（售出会改动态价 → 重排 + 收起展开栏）
+    if (currentView === 'inventory' && (scope === 'shop' || scope === 'pricecfg') && !invFocus && patchInventoryPrices()) {
+      renderTopbar(); renderNav();
+      return;
+    }
+    // 主区内任何输入控件获得焦点时（工坊份数 / 商城数量 / 自动售出 / 筛选框…）不重建主区：
+    // 广播只刷顶栏与导航，用户正在输入的内容不会被冲掉。交易页除外（有自己的草稿机制）。
+    if (scope && currentView !== 'trade' && mainInputFocused()) {
       renderTopbar(); renderNav();
       return;
     }

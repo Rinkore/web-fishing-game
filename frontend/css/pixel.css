@@ -23,6 +23,11 @@
   --px-gold: #ffd23e;
   --px-sky: #123055;
   --px-font: 'FusionPixel', "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 输入框文字：亮色字 + 弱化 placeholder / 禁用态（深底上半透明的默认色几乎读不出来） */
+  --px-input: #e9f6ff;
+  --px-placeholder: rgba(180, 208, 235, .5);
+  --px-input-off: rgba(170, 198, 226, .45);
+  --px-caret: #34e0c0;
 }
 
 /* ---------- 全局字体与背景 ---------- */
@@ -33,7 +38,9 @@ body {
     linear-gradient(180deg, #0c1f3a 0%, var(--px-bg) 55%, #060f1e 100%) fixed;
   text-rendering: optimizeSpeed;
 }
-/* 底部动态水波（纯 CSS，双层不同速度形成视差） */
+/* 底部动态水波（纯 CSS，双层不同速度形成视差）
+   will-change 把这一层提到自己的合成层：页面重绘/重排时它不再跟着整屏重画，
+   否则上鱼之类的界面刷新会让这条条纹带闪一下。 */
 body::after {
   content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 110px;
   pointer-events: none; z-index: 0; opacity: .8;
@@ -41,6 +48,7 @@ body::after {
     repeating-linear-gradient(135deg, rgba(62, 201, 240, .07) 0 14px, transparent 14px 28px),
     repeating-linear-gradient(-135deg, rgba(52, 224, 192, .05) 0 20px, transparent 20px 40px);
   animation: px-waves 7s linear infinite;
+  will-change: background-position;
 }
 @keyframes px-waves {
   from { background-position: 0 0, 0 0; }
@@ -56,6 +64,7 @@ body::before {
     radial-gradient(3px 3px at 63% 86%, rgba(52, 224, 192, .45), transparent 4px),
     radial-gradient(2px 2px at 86% 94%, rgba(62, 201, 240, .35), transparent 3px);
   animation: px-bubbles 9s ease-in infinite;
+  will-change: background-position;
 }
 @keyframes px-bubbles {
   0% { background-position: 0 0, 0 0, 0 0, 0 0; }
@@ -170,7 +179,20 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
   border: 3px solid var(--px-line) !important; border-radius: 3px !important;
   background: rgba(0, 0, 0, .35) !important;
   box-shadow: inset 0 2px 0 rgba(0, 0, 0, .35);
+  /* 输入文字统一亮色：深底 + 半透明黑底上，浏览器默认的近黑色几乎看不清
+     （工坊投料份数、钓竿改名、市集筛选、商城数量等）。
+     color-scheme 让 number 的上下箭头也走深色方案，不再白底黑三角。 */
+  color: var(--px-input) !important;
+  caret-color: var(--px-caret);
+  color-scheme: dark;
 }
+/* 输入框内留白：此前 .ipt / 裸 input 没有 padding，文字紧贴描边（改名弹窗最明显） */
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
+select, textarea, .ipt {
+  padding: 5px 8px;
+}
+input::placeholder, textarea::placeholder { color: var(--px-placeholder) !important; }
+input:disabled, select:disabled, textarea:disabled { color: var(--px-input-off) !important; }
 .auth-input:focus, .ipt:focus, input:focus, select:focus {
   outline: none; border-color: var(--accent) !important;
   box-shadow: inset 0 2px 0 rgba(0, 0, 0, .35), 0 0 10px rgba(52, 224, 192, .4);

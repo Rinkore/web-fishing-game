@@ -27,7 +27,7 @@ window.Engine = (function () {
     rodLocked: {},              // 被钓竿占用的组件实例件数（背包/交易显示锁定标记）
     inventory: {},              // 服务器权威，SSE assets 整体同步
     bd: buildDefaultBD(),       // 服务器权威，登录/装备时同步
-    bdEffects: { speed: 0, big: 0, rare: 0, material: 0, size: 0, double: 0 },
+    bdEffects: { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 },
     log: [],                    // 我的渔获日志（服务器 catch 推送，最新在前）
     feed: [],                   // 全服动态（服务器广播）
     players: [],                // 在线玩家（服务器广播）
@@ -112,8 +112,11 @@ window.Engine = (function () {
   }
 
   // 词缀汇总（展示用：与服务器共用同一份组件目录计算；权威值在服务器）
+  // 键集 = 组件词缀全集（speed/skill/rare/material/size/double），与 backend 的 affixTotals 对齐：
+  // 旧版这里写的是已废弃的 big 而没有 skill，导致**「技巧」词缀的加成整条不显示**（其余词缀正常）。
   function refreshEffects() {
-    const eff = { speed: 0, big: 0, rare: 0, material: 0, size: 0, double: 0 };
+    const eff = {};
+    (D.AFFIX_TYPES || ['speed', 'skill', 'rare', 'material', 'size', 'double']).forEach(function (t) { eff[t] = 0; });
     D.ROD_PARTS.forEach(function (part) {
       const comp = D.componentOf(state.bd[part.key] && state.bd[part.key].compId);
       if (!comp) return;
