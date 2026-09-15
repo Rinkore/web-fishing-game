@@ -88,6 +88,18 @@ function copyDirSync(src, dst) {
 })();
 
 
+// ---- 进程级异常兜底 ----
+// 服务端是所有玩家的单点：任何未捕获异常（定时器回调 / socket 事件里抛的 TypeError）都会让
+// Node 直接退出，全服同时掉线且必须人工重启。这里记录堆栈后**保持存活**：抛错的那一次操作
+// 会丢失（例如某一竿未结算），但其余玩家、在线连接与世界数据不受影响——
+// 取舍是「局部丢一次结算」优于「全服下线等重启」。修复 1/2 已从源头堵住已知的两类抛错。
+process.on('uncaughtException', function (e) {
+  console.error('[uncaughtException] ' + ((e && e.stack) || e));
+});
+process.on('unhandledRejection', function (e) {
+  console.error('[unhandledRejection] ' + ((e && e.stack) || e));
+});
+
 // ---- 静态托管（前后端分离）----
 // 默认自动托管 ../frontend（存在时）；STATIC_DIR=none 关闭；STATIC_DIR=路径 指定其他前端目录。
 const STATIC_DIR = (process.env.STATIC_DIR === 'none') ? null
@@ -1068,7 +1080,7 @@ function startFishingSession(key, groundId, spotId, opts) {
   p.fishing = { groundId: groundId, spotId: spotId };
   p.status = 'fishing'; p.groundId = groundId; p.spotId = spotId;
   const interval = intervalFor(users[key], found.spot);
-  fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
+  fishingTimers.set(key, setInterval(function () { try { fishTick(key); } catch (e) { console.error('[fishTick] ' + key + ' 抛错（跳过本竿，服务继续）: ' + ((e && e.stack) || e)); } }, interval));
   rememberFishingSpot(key, groundId, spotId);
   // opts.silent：重连续钓时由 /events 一次性下发 init，无需再单独广播一次 presence
   if (!(opts && opts.silent)) sendPlayersAll();
@@ -1126,7 +1138,7 @@ function restartFishingAt(groundId, spotId) {
     if (old) clearInterval(old);
     const found = spotOf(groundId, spotId);
     const interval = intervalFor(users[key], found && found.spot);
-    fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
+    fishingTimers.set(key, setInterval(function () { try { fishTick(key); } catch (e) { console.error('[fishTick] ' + key + ' 抛错（跳过本竿，服务继续）: ' + ((e && e.stack) || e)); } }, interval));
   });
 }
 
@@ -1139,7 +1151,7 @@ function restartAllFishing() {
     const old = fishingTimers.get(key);
     if (old) clearInterval(old);
     const interval = intervalFor(users[key], found.spot);
-    fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
+    fishingTimers.set(key, setInterval(function () { try { fishTick(key); } catch (e) { console.error('[fishTick] ' + key + ' 抛错（跳过本竿，服务继续）: ' + ((e && e.stack) || e)); } }, interval));
   });
 }
 
@@ -2075,6 +2087,15 @@ function sendTo(key, obj) {
 }
 function sendPlayers() { broadcast({ type: 'players', players: Array.from(players.values()) }); }
 function readBody(req, cb) { let b = ''; req.on('data', function (c) { b += c; if (b.length > 1e6) req.destroy(); }); req.on('end', function () { cb(b); }); }
+// 安全解析请求体：JSON.parse('null') 是「成功」的（返回 null），而只 catch 语法错误的代码
+// 紧接着读 d.token / d.username 就会抛 TypeError —— 未捕获异常会直接终止整个服务端进程，
+// 表现为「所有玩家同一秒掉线且必须人工重启」。这里统一收口：只接受对象（数组也算对象，
+// 保持既有宽松度），null 与裸数字/字符串一律按格式错误处理。
+function bodyObj(body) {
+  let d;
+  try { d = JSON.parse(body); } catch (e) { return null; }
+  return (d !== null && typeof d === 'object') ? d : null;
+}
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -2083,7 +2104,7 @@ const CORS_HEADERS = {
 };
 function apiResp(res, status, obj) { res.writeHead(status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, CORS_HEADERS)); res.end(JSON.stringify(obj)); }
 function auth(req, res, body, cb) {
-  let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+  let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
   const key = d.token && sessionGet(d.token);
   if (!key) return apiResp(res, 401, { error: '未登录' });
   cb(d, key);
@@ -2132,7 +2153,7 @@ function sweepExpiredListings() {
     broadcastMarket();
   }
 }
-setInterval(function () { sweepExpiredListings(); }, 30 * 1000).unref();
+setInterval(function () { try { sweepExpiredListings(); } catch (e) { console.error('[sweepExpiredListings] ' + ((e && e.stack) || e)); } }, 30 * 1000).unref();
 function broadcastRecords() { broadcast({ type: 'records', records: world.bigRecords, small: world.smallRecords }); }
 
 function groundCounts() {
@@ -2189,7 +2210,7 @@ const server = http.createServer(function (req, res) {
   // ---- 注册 ----
   if (p === '/api/register' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '请求格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '请求格式错误' });
       const username = (d.username || '').trim();
       const password = d.password || '';
       const name = (d.name || '').trim() || username;
@@ -2214,7 +2235,7 @@ const server = http.createServer(function (req, res) {
   // ---- 登录 ----
   if (p === '/api/login' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '请求格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '请求格式错误' });
       const key = (d.username || '').trim().toLowerCase();
       const rec = users[key];
       if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) return apiResp(res, 401, { error: '用户名或密码错误' });
@@ -2228,7 +2249,7 @@ const server = http.createServer(function (req, res) {
   // ---- 登出：使该 token 失效并断开实时连接 ----
   if (p === '/api/logout' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { d = {}; }
+      let d = bodyObj(body); if (!d) d = {}; // 解析失败或不是对象：当空请求处理
       const token = d.token || u.query.token;
       const key = token && sessionGet(token);
       if (key) {
@@ -2265,7 +2286,7 @@ const server = http.createServer(function (req, res) {
   // ---- 保存显示名（资产/背包/配置一律由服务器维护，不再接受客户端上报） ----
   if (p === '/api/profile' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const key = d.token && sessionGet(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
       const rec = users[key];
@@ -2335,7 +2356,7 @@ const server = http.createServer(function (req, res) {
   // ---- 开始钓鱼（服务器权威循环：掷骰/入库/广播都在服务端，前端只收结果） ----
   if (p === '/api/fishing/start' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const key = d.token && sessionGet(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
       const r = startFishingSession(key, d.groundId, d.spotId);
@@ -2523,7 +2544,7 @@ const server = http.createServer(function (req, res) {
   // ---- 停止钓鱼 ----
   if (p === '/api/fishing/stop' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const key = d.token && sessionGet(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
       stopFishingSession(key, { forget: true }); // 玩家主动收竿：忘掉离线钓点，重连不再自动续钓
@@ -2535,7 +2556,7 @@ const server = http.createServer(function (req, res) {
   // ---- 钓竿配置：装备/卸下组件（服务器校验部位与组件目录，掷骰加成由此生效） ----
   if (p === '/api/bd/set' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       auth(req, res, body, function (d, key) {
         const rec = users[key];
         const part = D.ROD_PARTS.find(function (x) { return x.key === d.part; });
@@ -2567,7 +2588,7 @@ const server = http.createServer(function (req, res) {
           if (old) clearInterval(old);
           const found = spotOf(pl.fishing.groundId, pl.fishing.spotId);
           interval = intervalFor(rec, found && found.spot);
-          fishingTimers.set(key, setInterval(function () { fishTick(key); }, interval));
+          fishingTimers.set(key, setInterval(function () { try { fishTick(key); } catch (e) { console.error('[fishTick] ' + key + ' 抛错（跳过本竿，服务继续）: ' + ((e && e.stack) || e)); } }, interval));
         }
         // 钓速明细随装备变化即时更新（含当前钓点的增益）
         // 卸下配件 = 把这根已保存的钓竿拆开，它在槽位里的那份配置随之取消。
@@ -2599,7 +2620,7 @@ const server = http.createServer(function (req, res) {
   // ---- 开发/测试辅助：仅 FISHING_DEV=1 时存在；正常部署（run.bat）不开启 ----
   if (process.env.FISHING_DEV === '1' && p === '/api/dev/catch' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       auth(req, res, body, function (d, key) {
         const rec = users[key];
         let itemId = d.item && d.item.id;
@@ -2677,7 +2698,7 @@ const server = http.createServer(function (req, res) {
   // 仅测试：模拟 n 次双钓判定，返回追加条数分布（验证 P=A/(A+100) 与最多 3 条）
   if (process.env.FISHING_DEV === '1' && p === '/api/dev/doublecount' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       auth(req, res, body, function (d, key) {
         const A = Number(d.A) || 0;
         const n = Math.max(1, Math.min(200000, Number(d.n) || 1));
@@ -2700,7 +2721,7 @@ const server = http.createServer(function (req, res) {
   // 仅测试：直接掷一次体型（验证体型加成无固定上限）
   if (process.env.FISHING_DEV === '1' && p === '/api/dev/rollsize' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       auth(req, res, body, function (d, key) {
         const range = Array.isArray(d.range) && d.range.length === 2 ? d.range : [150, 400];
         const eff = { size: Number(d.size) || 0 };
@@ -2717,7 +2738,7 @@ const server = http.createServer(function (req, res) {
   }
   if (process.env.FISHING_DEV === '1' && p === '/api/dev/seed' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       auth(req, res, body, function (d, key) {
         const rec = users[key];
         if (d.inventory) {
@@ -3092,7 +3113,7 @@ const server = http.createServer(function (req, res) {
   }
   if (p === '/api/autosell' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       auth(req, res, body, function (d, key) {
         const rec = users[key];
         const scope = String(d.scope || '');
@@ -3544,7 +3565,7 @@ const server = http.createServer(function (req, res) {
   // ---- 管理后台登录（复用游戏账号密码；不顶号：不影响同一账号的游戏会话） ----
   if (p === '/api/admin/login' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const key = (d.username || '').trim().toLowerCase();
       const rec = users[key];
       if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) return apiResp(res, 401, { error: '用户名或密码错误' });
@@ -3611,7 +3632,7 @@ const server = http.createServer(function (req, res) {
   // 发布横幅：content + duration(秒)，可选 repeat(播放轮数，默认 1)
   if (p === '/api/admin/banner/add' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const content = String(d.content || '').trim().slice(0, 200);
@@ -3635,7 +3656,7 @@ const server = http.createServer(function (req, res) {
   }
   if (p === '/api/admin/banner/remove' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const before = (world.banners || []).length;
@@ -3650,7 +3671,7 @@ const server = http.createServer(function (req, res) {
   // 调整队列顺序：把某条上移/下移（dir=up|down）
   if (p === '/api/admin/banner/move' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const list = (world.banners || []).slice().sort(function (x, y) { return (x.seq || 0) - (y.seq || 0); });
@@ -3670,7 +3691,7 @@ const server = http.createServer(function (req, res) {
   // 图标闪烁配置
   if (p === '/api/admin/banner/cfg' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       world.bannerCfg = Object.assign({ blink: false, blinkTitle: '📢 有新公告', noticeColor: '' }, world.bannerCfg || {});
@@ -3690,7 +3711,7 @@ const server = http.createServer(function (req, res) {
   // 修改已发布横幅（颜色 / 内容 / 时长）
   if (p === '/api/admin/banner/update' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const bn = (world.banners || []).find(function (x) { return x.id === d.id; });
@@ -3734,7 +3755,7 @@ const server = http.createServer(function (req, res) {
   // 停止滚播：广播 bannerStop，客户端立即中止正在播/待播的同 id 横幅（不删除队列条目）
   if (p === '/api/admin/banner/stop' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const id = String(d.id || '');
@@ -3748,7 +3769,7 @@ const server = http.createServer(function (req, res) {
   // 清空整个横幅队列：广播 banner（空列表）+ 停止所有滚播
   if (p === '/api/admin/banner/clear' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const ids = (world.banners || []).map(function (b) { return b.id; });
@@ -3780,7 +3801,7 @@ const server = http.createServer(function (req, res) {
   // ---- 反馈配置：CD 时长（小时）与清空 CD 费用（金币） ----
   if (p === '/api/admin/feedback/cfg' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       world.feedbackCfg = Object.assign({}, world.feedbackCfg || {});
@@ -3805,7 +3826,7 @@ const server = http.createServer(function (req, res) {
   // ---- 反馈状态：管理员标记（已提交 / 已受理 / 已完成） ----
   if (p === '/api/admin/feedback/status' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       if (!FEEDBACK_STATUSES[d.status]) return apiResp(res, 400, { error: '未知的反馈状态' });
@@ -3824,7 +3845,7 @@ const server = http.createServer(function (req, res) {
   // ---- 反馈奖励：给提交反馈的玩家发金币（可附备注），并通知玩家 ----
   if (p === '/api/admin/feedback/reward' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const coins = Math.floor(Number(d.coins));
@@ -3871,7 +3892,7 @@ const server = http.createServer(function (req, res) {
   // ---- 设置/撤销账号的管理员权限（不能撤销自己，避免把自己锁在后台外） ----
   if (p === '/api/admin/users/setadmin' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const target = String(d.target || '').toLowerCase();
@@ -3889,7 +3910,7 @@ const server = http.createServer(function (req, res) {
   // ---- 删除账号（管理员；需二次确认——前端传 confirm: true） ----
   if (p === '/api/admin/users/delete' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const target = String(d.target || '').toLowerCase();
@@ -3925,7 +3946,7 @@ const server = http.createServer(function (req, res) {
   // ---- 账号快照编辑：直接设置金币与背包（管理员） ----
   if (p === '/api/admin/users/snapshot' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const target = String(d.target || '').toLowerCase();
@@ -3958,7 +3979,7 @@ const server = http.createServer(function (req, res) {
   // ---- 账号管理：改密码 / 改显示名 / 调整金币（管理员） ----
   if (p === '/api/admin/users/update' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const target = String(d.target || '').toLowerCase();
@@ -4090,7 +4111,7 @@ const server = http.createServer(function (req, res) {
   // ---- 组件生成配置：品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则 ----
   if (p === '/api/admin/component/config' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const cfg = {};
@@ -4186,7 +4207,7 @@ const server = http.createServer(function (req, res) {
   // ---- 组件生成配置：恢复默认 ----
   if (p === '/api/admin/component/reset' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       world.componentCfg = D.setComponentCfg(null);
@@ -4199,7 +4220,7 @@ const server = http.createServer(function (req, res) {
   // ---- 组件掉落实测（按当前配置采样，给管理后台预览概率分布） ----
   if (p === '/api/admin/component/simulate' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const n = Math.max(1, Math.min(200000, Number(d.n) || 20000));
@@ -4226,7 +4247,7 @@ const server = http.createServer(function (req, res) {
   // ---- 鱼类体型 roll 模型：保存（默认正态；影响全服上鱼体型与大小鱼榜，即时生效） ----
   if (p === '/api/admin/fish/config' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       if (d.sizeModel == null) return apiResp(res, 400, { error: '缺少 sizeModel' });
@@ -4241,7 +4262,7 @@ const server = http.createServer(function (req, res) {
   // ---- 鱼类体型 roll 模型：恢复默认（正态） ----
   if (p === '/api/admin/fish/reset' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       world.fishCfg = D.setFishCfg(null);
@@ -4255,7 +4276,7 @@ const server = http.createServer(function (req, res) {
   // 否则返回全鱼种归一化位置的直方图。可选 sizeBonus 预览体型词缀加成后的分布（如 +55）。
   if (p === '/api/admin/fish/simulate' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const n = Math.max(1, Math.min(200000, Number(d.n) || 20000));
@@ -4301,7 +4322,7 @@ const server = http.createServer(function (req, res) {
   // ---- 钓点掉落池（种类 + 权重；保存后全服即时生效并广播游戏端） ----
   if (p === '/api/admin/spot/pool' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const found = spotOf(d.groundId, d.spotId);
@@ -4318,7 +4339,7 @@ const server = http.createServer(function (req, res) {
   // ---- 钓点增益（数值 + 类别；钓速增益即时重启受影响玩家的钓鱼循环） ----
   if (p === '/api/admin/spot/buffs' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const found = spotOf(d.groundId, d.spotId);
@@ -4336,7 +4357,7 @@ const server = http.createServer(function (req, res) {
   // ---- 掉落池一键填充预设：返回条目列表（前端填入草稿，仍走原「保存掉落池」流程）----
   if (p === '/api/admin/pool/preset' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const preset = String(d.preset || 'economy');
@@ -4348,7 +4369,7 @@ const server = http.createServer(function (req, res) {
   // ---- 新建渔场（可选一键填充首个钓点 / 限时窗口） ----
   if (p === '/api/admin/ground/add' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const id = String(d.id || '').trim().toLowerCase();
@@ -4384,7 +4405,7 @@ const server = http.createServer(function (req, res) {
   // ---- 新建钓点（归属任意渔场；可一键填充掉落池） ----
   if (p === '/api/admin/spot/add' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const g = D.GROUNDS.find(function (x) { return x.id === d.groundId; });
@@ -4416,7 +4437,7 @@ const server = http.createServer(function (req, res) {
   // ---- 删除渔场（内置渔场记录删除可恢复；自定义渔场直接移除） ----
   if (p === '/api/admin/ground/remove' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const g = D.GROUNDS.find(function (x) { return x.id === d.groundId; });
@@ -4441,7 +4462,7 @@ const server = http.createServer(function (req, res) {
   // ---- 删除钓点（内置钓点记录删除可恢复；自定义钓点直接移除） ----
   if (p === '/api/admin/spot/remove' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const found = spotOf(d.groundId, d.spotId);
@@ -4477,7 +4498,7 @@ const server = http.createServer(function (req, res) {
   // ---- 恢复被删除的内置渔场 / 钓点 ----
   if (p === '/api/admin/ground/restore' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const cfg = world.groundCfg = world.groundCfg || {};
@@ -4507,7 +4528,7 @@ const server = http.createServer(function (req, res) {
   // ---- 修改渔场信息：名称/描述/类型/限时窗口/手动锁定 ----
   if (p === '/api/admin/ground/update' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const g = D.GROUNDS.find(function (x) { return x.id === d.groundId; });
@@ -4549,7 +4570,7 @@ const server = http.createServer(function (req, res) {
   // ---- 钓点独立上鱼率 / 速率（留空 = 用全服默认：上鱼率用公式，速率按基础间隔+钓速计算） ----
   if (p === '/api/admin/spot/rate' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const found = spotOf(d.groundId, d.spotId);
@@ -4583,7 +4604,7 @@ const server = http.createServer(function (req, res) {
   // ---- 钓点在世界地图上的位置（后台拖动设置；pos = [x%, y%]，null/缺失 = 恢复该钓点的出厂坐标） ----
   if (p === '/api/admin/spot/pos' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const g = D.GROUNDS.find(function (x) { return x.id === d.groundId; });
@@ -4606,7 +4627,7 @@ const server = http.createServer(function (req, res) {
   // ---- 钓场开放/锁定（锁定时立即停掉该场所有钓鱼循环） ----
   if (p === '/api/admin/ground/lock' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const g = D.GROUNDS.find(function (x) { return x.id === d.groundId; });
@@ -4632,7 +4653,7 @@ const server = http.createServer(function (req, res) {
   // ---- 市集：退回挂单（物品退回卖家，上架费不退——与过期规则一致） ----
   if (p === '/api/admin/market/return' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       sweepExpiredListings();
@@ -4658,7 +4679,7 @@ const server = http.createServer(function (req, res) {
   // 保存后：玩家端商城的商品、价格、限购与下次刷新时间立即同步（broadcast mallcfg）。
   if (p === '/api/admin/mall/config' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const cur = mallCfgOf();
@@ -4684,7 +4705,7 @@ const server = http.createServer(function (req, res) {
   // ---- 工坊熔炼配置：成功率 / 投料系数 / 金币花费 ----
   if (p === '/api/admin/smelt/config' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const RANGES = {
@@ -4739,7 +4760,7 @@ const server = http.createServer(function (req, res) {
   // scale：相对原始贴图的百分比（50 ~ 500，默认 175）；x/y：像素偏移（-400 ~ 400）
   if (p === '/api/admin/records/config' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       if (d.reset) {
@@ -4777,7 +4798,7 @@ const server = http.createServer(function (req, res) {
   // ---- 版本更新：发布 60 秒通知横幅，随后自动切换（dryRun 只走流程不真的拉起新版本/退出） ----
   if (p === '/api/admin/update/start' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       if (updateTask) return apiResp(res, 400, { error: '已有一个更新任务在进行中（可先取消）' });
@@ -4793,7 +4814,7 @@ const server = http.createServer(function (req, res) {
   // ---- 版本更新：取消（横幅立即撤回） ----
   if (p === '/api/admin/update/cancel' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       if (!updateTask) return apiResp(res, 400, { error: '当前没有进行中的更新任务' });
@@ -4808,7 +4829,7 @@ const server = http.createServer(function (req, res) {
   // ---- 设置：通知等级 / 上钩公式（validateOnly=true 只校验不保存；evalVars 附带试算） ----
   if (p === '/api/admin/settings' && req.method === 'POST') {
     readBody(req, function (body) {
-      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const out = { ok: true };

@@ -389,6 +389,68 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     cliA.destroy(); cliB.destroy();
     A.listeners.forEach(l => { try { l.destroy(); } catch (e) {} });
 
+    // —— v0.11.7：畸形请求体不再打崩整个服务端 ——
+    // 回归背景：JSON.parse('null') 是**成功**的（返回 null），此前只 catch 语法错误的解析代码
+    // 紧接着读 d.token / d.username 就抛 TypeError → 未捕获 → 进程退出 → 所有玩家同一秒掉线
+    // 且必须人工重启。本段就是那次崩溃的最小复现：灌完畸形请求后服务端必须还活着。
+    section('进程健壮性 · 畸形请求体');
+    function rawReq(method, u, raw) {
+      return new Promise(res => {
+        const p = url.parse(u);
+        const data = raw == null ? null : String(raw);
+        const h = { 'Content-Type': 'application/json' };
+        if (data) h['Content-Length'] = Buffer.byteLength(data);
+        const r = http.request({ hostname: p.hostname, port: p.port, path: p.path, method, headers: h }, rs => {
+          let d = ''; rs.on('data', c => d += c);
+          rs.on('end', () => res({ status: rs.statusCode, text: d }));
+        });
+        r.on('error', e => res({ status: 0, text: 'ERR ' + e.message }));
+        if (data) r.write(data);
+        r.end();
+      });
+    }
+    const BASE = 'http://localhost:' + PORT;
+    // 覆盖两类解析路径：走 auth() 的（31 个）与自行解析的（register/login/profile/fishing/*/autosell/admin-login）
+    const nullTargets = [
+      '/api/sell', '/api/market/list', '/api/market/buy', '/api/bd/set', '/api/chest/open',
+      '/api/mall/buy', '/api/workshop/smelt', '/api/autosell', '/api/subscribe', '/api/profile',
+      '/api/fishing/start', '/api/fishing/stop', '/api/rod/slot/buy',
+      '/api/login', '/api/register', '/api/admin/login',
+    ];
+    const nullBad = [];
+    for (const p of nullTargets) {
+      const r = await rawReq('POST', BASE + p, 'null');
+      if (r.status !== 400) nullBad.push(p + '→' + r.status);
+    }
+    check('POST body=null 一律 400（16 个端点，含 auth 与自行解析两条路径）', nullBad.length === 0, nullBad.join(', '));
+    const primBad = [];
+    for (const raw of ['1', '"x"', 'true', '3.14']) {
+      const r = await rawReq('POST', BASE + '/api/sell', raw);
+      if (r.status !== 400) primBad.push(raw + '→' + r.status);
+    }
+    check('POST body=裸标量 一律 400（同样会让读字段抛错）', primBad.length === 0, primBad.join(', '));
+    // 核心断言：进程还活着，且仍能正常服务真实请求
+    const aliveAfter = await GET(BASE + '/api/version');
+    check('灌完畸形请求后服务端仍存活', aliveAfter.status === 200 && !!aliveAfter.data.version,
+      JSON.stringify(aliveAfter.data).slice(0, 90));
+    const tokA2 = (await POST(BASE + '/api/login', { username: 'fix_a', password: 'pass1234' })).data.token;
+    const realAfter = await POST(BASE + '/api/fishing/stop', { token: tokA2 });
+    check('畸形请求后正常请求照常处理（登录 + 业务接口 200）', realAfter.status === 200 && realAfter.data.ok === true,
+      JSON.stringify(realAfter.data));
+    // 源码级守护（防止以后被重构掉）
+    const srvSrc = fs.readFileSync(path.join(ROOT, 'backend', 'server.js'), 'utf8');
+    const bodyObjBody = (srvSrc.match(/function bodyObj[\s\S]*?\n\}/) || [''])[0];
+    check('请求体统一走 bodyObj 校验（无裸 JSON.parse(body)）',
+      /function bodyObj\(body\)/.test(srvSrc) && (srvSrc.split('JSON.parse(body)').length - 1) === (bodyObjBody.split('JSON.parse(body)').length - 1),
+      'guard=' + /function bodyObj\(body\)/.test(srvSrc));
+    check('钓鱼循环全部带自愈保护',
+      (srvSrc.match(/try \{ fishTick\(key\); \}/g) || []).length === (srvSrc.match(/fishTick\(key\);/g) || []).length &&
+      (srvSrc.match(/fishTick\(key\);/g) || []).length >= 4,
+      (srvSrc.match(/try \{ fishTick\(key\); \}/g) || []).length + '/' + (srvSrc.match(/fishTick\(key\);/g) || []).length);
+    check('市集清扫与进程级异常兜底就位',
+      /try \{ sweepExpiredListings\(\); \}/.test(srvSrc) &&
+      /process\.on\('uncaughtException'/.test(srvSrc) && /process\.on\('unhandledRejection'/.test(srvSrc));
+
   } catch (e) {
     console.log('TEST ERROR: ' + e.message + '\n' + e.stack);
     fail++;
