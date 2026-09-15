@@ -53,10 +53,7 @@ body {
    calc 里减去的 64px 是顶栏高度，--banner-h 是顶部横幅把页面下移的量（横幅出现时侧栏可用高度同步减少）。 */
 @media (min-width: 641px) {
   .sidebar { max-height: calc(100vh - 64px - var(--banner-h, 0px)); }
-  .nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
-  .nav::-webkit-scrollbar { width: 6px; }
-  .nav::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .18); border-radius: 3px; }
-  .nav::-webkit-scrollbar-track { background: transparent; }
+  .nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
   .side-foot { flex: none; }
 }
 .nav-item {
@@ -570,6 +567,17 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .ws-mat .ws-mat-qty { width: 66px; }
 .ws-mat .wm-unit { color: var(--muted); }
 .ws-pearl { display: block; font-size: 13px; margin-bottom: 10px; }
+/* 残片保留（海王遗匣神话主件）：勾选框 + 片数 + 实时保留概率 */
+.ws-relic-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px;
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 0 0 10px;
+  background: rgba(255, 255, 255, .03); max-width: 560px;
+}
+.ws-relic-row .wrl-label { color: var(--muted); }
+.ws-relic-row .ws-relic-qty { width: 66px; }
+.ws-relic-row .wrl-unit { color: var(--muted); }
+.ws-relic-row .wrl-chance { color: var(--accent2); font-weight: 600; margin-left: auto; }
+.wrl-affs { margin: -4px 0 10px; }
 .ws-preview {
   border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 12px;
   background: rgba(255, 255, 255, .03); font-size: 13px;
@@ -726,6 +734,8 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
     background: rgba(8, 22, 38, .97); backdrop-filter: blur(10px);
     border-right: none; border-top: 1px solid var(--line);
     -webkit-overflow-scrolling: touch;
+    /* 底部标签栏横向滚动条同样走主题色（细、半透明底） */
+    scrollbar-width: thin; scrollbar-color: var(--px-line, #2c4f74) transparent;
   }
   .nav { flex-direction: row; gap: 2px; flex-wrap: nowrap; }
   .nav-item {
@@ -1202,9 +1212,17 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 
 /* ================= 实况列表（最多 5 条可下滑）+ 市集一键上架 ================= */
 .peeps-head { font-size: 12px; color: var(--muted); margin: 2px 0 6px; }
+/* 列表内滚动条同样走主题色（细、透明底），不再用默认灰白 */
+.peeps.scroll5, .mkt-sell-list { scrollbar-width: thin; scrollbar-color: var(--px-line, #2c4f74) transparent; }
 .peeps.scroll5 { max-height: 430px; overflow-y: auto; padding-right: 4px; }
-.peeps.scroll5::-webkit-scrollbar { width: 8px; }
-.peeps.scroll5::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 4px; }
+.peeps.scroll5::-webkit-scrollbar, .mkt-sell-list::-webkit-scrollbar { width: 8px; }
+.peeps.scroll5::-webkit-scrollbar-track, .mkt-sell-list::-webkit-scrollbar-track { background: transparent; }
+.peeps.scroll5::-webkit-scrollbar-thumb, .mkt-sell-list::-webkit-scrollbar-thumb {
+  background: var(--px-line, #2c4f74); border: 2px solid transparent; background-clip: content-box;
+}
+.peeps.scroll5::-webkit-scrollbar-thumb:hover, .mkt-sell-list::-webkit-scrollbar-thumb:hover {
+  background: var(--px-line-hi, #48709c); background-clip: content-box;
+}
 
 .mkt-sell .mkt-cats { margin: 6px 0 8px; }
 .mkt-sell-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
@@ -1322,13 +1340,23 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .px-node .pn-lock { font-size: 15px; line-height: 1; filter: drop-shadow(1px 1px 0 rgba(0,0,0,.6)); }
 .px-node .pn-soon { color: #9fb8cc; font-size: 10px; margin-left: 3px; }
 
-/* ---- 侧栏「更多」折叠组（低频入口：图鉴 / 记录 / 反馈 / 日志）---- */
-.nav-more { color: var(--muted); }
-.nav-more:hover { color: var(--text); }
-.nav-more .nav-more-cnt {
-  margin-left: auto; font-size: 11px; padding: 0 6px; border-radius: 8px;
-  background: rgba(255, 255, 255, .08); border: 1px solid var(--line);
+/* ---- 侧栏导航滚动条：贴合像素主题（细、深蓝描边滑道 + 主题色滑块）----
+   导航项目前 14 项 + 后台入口，一屏放不下时导航区自己滚动；
+   滚动条做成主题配色而不是浏览器默认灰白，且在无滚动时不可见。 */
+.nav { scrollbar-width: thin; scrollbar-color: var(--px-line, #2c4f74) transparent; }
+.nav::-webkit-scrollbar { width: 8px; }
+.nav::-webkit-scrollbar-track { background: transparent; }
+.nav::-webkit-scrollbar-thumb {
+  background: var(--px-line, #2c4f74);
+  border: 2px solid transparent; border-radius: 0; background-clip: content-box;
 }
-.nav-more.active-group { color: var(--accent2); }
-.nav-group { display: flex; flex-direction: column; gap: 4px; padding-left: 8px; border-left: 2px solid var(--line); margin-left: 6px; }
-.nav-group .nav-item { font-size: 13px; padding: 8px 10px; }
+.nav::-webkit-scrollbar-thumb:hover { background: var(--px-line-hi, #48709c); background-clip: content-box; }
+.nav::-webkit-scrollbar-corner { background: transparent; }
+/* 窄屏（≤880px 起）侧栏改为横向标签栏，横向滚动条同样细 + 主题色 */
+.sidebar { scrollbar-width: thin; scrollbar-color: var(--px-line, #2c4f74) transparent; }
+.sidebar::-webkit-scrollbar { width: 6px; height: 6px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--px-line, #2c4f74); border-radius: 0; }
+.sidebar::-webkit-scrollbar-thumb:hover { background: var(--px-line-hi, #48709c); }
+.sidebar::-webkit-scrollbar-corner { background: transparent; }
+.nav::-webkit-scrollbar-corner { background: transparent; }

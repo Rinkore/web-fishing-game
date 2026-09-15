@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.11.2';
+  const VERSION = 'v0.11.3';
   const BUILD = '2026-09-15';
 
   // ---- 渔获定义 ----
@@ -644,6 +644,9 @@
   //   若不在池内（把副件独有的词缀熔到主件上）则按「池外词缀区间」roll，与宝匣突破件同一套规则。
   // 投料（可选）：从**主件自己的词缀池**里再补一条主件尚未拥有的词缀并 roll 值；投料越多，补缀成功率越高。
   // 龙宫宝珠（可选）：roll 值改为掷两次取靠近区间边界的那次（与海王遗匣同一规则，见 rollAffixValueBoundary）。
+  // 残片保留（可选，v0.11.3 新增，只对海王遗匣产出的神话主件）：投入至多 10 片沉船宝匣残片，
+  //   成功时按概率把主件的池外（突破）词缀原值保留到结果上，见 smeltExtraAffixesOf / smeltRetainChance。
+  // 失败（v0.11.3 起）：副件与投料熔毁、残片烧掉、金币花掉，**主件被熔掉选中的那条词条**（其余词条与品质保留）。
   // 熔炼花费金币：材料越多越贵。全部参数由管理后台「⚒ 工坊配置」覆盖（world.smeltCfg）。
   //
   // 材料即「词缀定向器」：每种材料只对应一个词缀类型，投料量最大的那种材料决定要补的词缀
@@ -662,7 +665,7 @@
   function smeltMaterialIds() { return Object.keys(SMELT_MATERIAL_AFFIX); }
 
   const SMELT_DEFAULTS = {
-    baseRate: 50,              // 熔炼基础成功率（%）：失败 = 副件/材料被熔毁，主件不变
+    baseRate: 50,              // 熔炼基础成功率（%）：失败 = 副件/材料被熔毁、主件失去选中的那条词条
     failPerMaterial: -2,       // 每份材料对**失败率**的加成（%点）：负数 = 投料越多越不易失败
     extraRatePerMaterial: 8,   // 每份材料对「新增词缀」成功率的加成（%点）
     extraRatePearl: 0,         // 龙宫宝珠对「新增词缀」成功率的加成（%点）
@@ -679,6 +682,9 @@
     recastRelic: 10,           // 每次重铸消耗的沉船宝匣残片
     recastGold: 0,             // 每次重铸消耗的金币（0 = 只收残片）
     recastMinValue: 0,         // 重铸是否强制「至少不比原来差」：0 = 完全重 roll，1 = 每条取更高值
+    // ---- 残片保留（海王遗匣产出的神话主件专用）----
+    retainPerRelic: 10,        // 每片沉船宝匣残片提供的「保留池外词缀」概率（%）：10 片 = 100%
+    retainMaxRelic: 10,        // 单次熔炼最多可投入的残片数
   };
   let smeltCfg = Object.assign({}, SMELT_DEFAULTS);
   function defaultSmeltCfg() { return Object.assign({}, SMELT_DEFAULTS); }
@@ -692,6 +698,8 @@
     });
     d.maxMaterials = Math.max(0, Math.min(99, Math.floor(d.maxMaterials)));
     d.maxTypes = Math.max(0, Math.min(8, Math.floor(d.maxTypes)));
+    d.retainPerRelic = Math.max(0, Math.min(100, d.retainPerRelic));
+    d.retainMaxRelic = Math.max(0, Math.min(99, Math.floor(d.retainMaxRelic)));
     smeltCfg = d;
     return smeltCfg;
   }
@@ -748,6 +756,28 @@
     const have = {};
     (currentTypes || []).forEach(function (t) { have[t] = 1; });
     return base.pool.filter(function (p) { return !have[p.type]; }).map(function (p) { return p.type; });
+  }
+
+  // ---- 熔炼 · 残片保留（只对海王遗匣产出的神话主件开放）----
+  // 熔炼成功后主件的词条会被改写成「主件选中 + 副件搬入」（+ 可选补缀），主件原有的**池外词缀**
+  // （宝匣突破件补足的、底材词缀池里本来没有的那些）会随之消失。投入沉船宝匣残片后，
+  // 成功时按概率把这些池外词缀**按原值**追加回熔炼结果：
+  //   概率 = 投入片数 × retainPerRelic%（默认每片 10%，10 片即 100%），上限 100%。
+  //   残片不参与投料计算 —— 既不影响熔炼成功率/补缀成功率，也不改变金币花费（只消耗残片本身）。
+  //   只有主件确实带池外词缀时才有意义（没有可保留的词条时服务器会直接拒绝，避免白烧残片）。
+  function smeltExtraAffixesOf(baseId, affixes) {
+    const base = BASE_MAP[baseId];
+    if (!base) return [];
+    const poolTypes = {};
+    base.pool.forEach(function (p) { poolTypes[p.type] = 1; });
+    return (affixes || []).filter(function (a) { return !poolTypes[a.type]; })
+      .map(function (a) { return { type: a.type, value: a.value }; });
+  }
+  // 投入 n 片残片时的保留概率（%）：夹在 [0, 100]，保留一位小数
+  function smeltRetainChance(relics) {
+    const n = Math.max(0, Math.min(smeltCfg.retainMaxRelic, Math.floor(Number(relics) || 0)));
+    const per = Number(smeltCfg.retainPerRelic) || 0;
+    return Math.max(0, Math.min(100, Math.round(n * per * 10) / 10));
   }
 
   // ---- 重铸（海王遗匣产出的神话件）----
@@ -1063,8 +1093,8 @@
 
   // ---- 导航配置 ----
   // implemented=false 的入口为占位符，点击不可跳转。
-  // 侧栏导航：group='more' 的条目默认收进「更多」折叠组（低频入口），
-  // 高频入口常驻可见 —— 菜单项继续增加也不必滚动侧栏。
+  // 侧栏导航：全部入口**平铺常驻**（不再有「更多」折叠组），顺序即展示顺序；
+  // 菜单项多到一屏放不下时，导航区自己滚动（样式见 style.css 的 .nav）。
   const NAV = [
     { id: 'fishing', name: '钓鱼', icon: '🎣', implemented: true },
     { id: 'bd', name: '钓竿配置', icon: '🎯', implemented: true },
@@ -1076,10 +1106,10 @@
     { id: 'market', name: '开放市集', icon: '💱', implemented: true },
     { id: 'trade', name: '在线交易', icon: '🤝', implemented: true },
     { id: 'mall', name: '商城', icon: '🛒', implemented: true },
-    { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true, group: 'more' },
-    { id: 'records', name: '渔获记录', icon: '🏆', implemented: true, group: 'more' },
-    { id: 'feedback', name: '反馈意见', icon: '📮', implemented: true, group: 'more' },
-    { id: 'logs', name: '日志', icon: '📜', implemented: true, group: 'more' },
+    { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true },
+    { id: 'records', name: '渔获记录', icon: '🏆', implemented: true },
+    { id: 'feedback', name: '反馈意见', icon: '📮', implemented: true },
+    { id: 'logs', name: '日志', icon: '📜', implemented: true },
   ];
 
   // ---- 物品索引（供 UI / 引擎统一查询） ----
@@ -1141,6 +1171,7 @@
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds,
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
+    smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,
     RECAST_QUALITY: RECAST_QUALITY, canRecast: canRecast, recastAffixes: recastAffixes,
     MALL_DEFAULTS: MALL_DEFAULTS, defaultMallCfg: defaultMallCfg,
     parseRefreshTime: parseRefreshTime, mallCycleOf: mallCycleOf,

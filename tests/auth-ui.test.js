@@ -122,16 +122,17 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(600);
     check('点击登录后遮罩隐藏（进入游戏）', $('auth').style.display === 'none', 'display=' + $('auth').style.display);
     check('点击登录后无报错信息', !$('auth-msg').textContent, 'msg=' + $('auth-msg').textContent);
-    // 高频入口常驻；低频入口（图鉴/记录/反馈/日志）默认收在「更多」折叠组里
-    check('登录后已渲染导航（10 个高频入口 + 更多折叠组）',
-      w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 11,
+    // v0.11.3 起侧栏取消「更多」折叠组：14 个入口全部平铺常驻（低频入口也直接可见）
+    check('登录后已渲染全部导航（14 个入口，无折叠组）',
+      w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 14,
       'got ' + w.document.querySelectorAll('#nav .nav-item:not(.locked)').length);
-    check('「更多」组默认收起', w.document.querySelectorAll('#nav .nav-group').length === 0,
-      'got ' + w.document.querySelectorAll('#nav .nav-group').length);
-    w.document.querySelector('.nav-more').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-    check('展开后低频入口出现（共 14 个入口）',
-      w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 15 &&
-      w.document.querySelectorAll('#nav .nav-group .nav-item').length === 4,
+    check('没有折叠组按钮与折叠组容器',
+      w.document.querySelectorAll('#nav .nav-more').length === 0 && w.document.querySelectorAll('#nav .nav-group').length === 0,
+      'more=' + w.document.querySelectorAll('#nav .nav-more').length + ' group=' + w.document.querySelectorAll('#nav .nav-group').length);
+    check('低频入口（图鉴/记录/反馈/日志）直接可见',
+      w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 14 &&
+      /鱼类图鉴/.test(w.document.getElementById('nav').textContent) &&
+      /日志/.test(w.document.getElementById('nav').textContent),
       'got ' + w.document.querySelectorAll('#nav .nav-item:not(.locked)').length);
     check('无未实现入口：商城与工坊都已开放（不再有锁定占位）', w.document.querySelectorAll('#nav .nav-item.locked').length === 0, 'got ' + w.document.querySelectorAll('#nav .nav-item.locked').length);
     check('登录后顶栏显示玩家名', $('player-status').textContent.includes('界面测试'), $('player-status').textContent);

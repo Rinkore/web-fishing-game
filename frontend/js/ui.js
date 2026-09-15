@@ -449,29 +449,14 @@ window.UI = (function () {
   }
 
   // ---- 侧边导航 ----
-  // 内容签名： 当前视图 / 折叠展开态 / 钓鱼徽标 / 交易徽标 / 订阅红标 任一变化才重建。
+  // 内容签名： 当前视图 / 钓鱼徽标 / 交易徽标 / 订阅红标 任一变化才重建。
   // 否则每次广播都会 innerHTML 重建导航，悬停高亮与过渡动画被打断（左侧闪烁）。
-  // 结构：高频入口常驻 + 低频入口收进「更多」折叠组（NAV 里 group==='more' 的条目），
-  // 因此菜单项再多也不需要滚动侧栏；窗口很矮时导航区仍保留滚动兜底。
-  const NAV_MORE_KEY = 'fishing_nav_more_open';
-  let navMoreOpen = (function () {
-    try { return localStorage.getItem(NAV_MORE_KEY) === '1'; } catch (e) { return false; }
-  })();
-  function setNavMore(open) {
-    navMoreOpen = !!open;
-    try { localStorage.setItem(NAV_MORE_KEY, navMoreOpen ? '1' : '0'); } catch (e) {}
-    navSig = null;   // 强制重建
-    renderNav();
-  }
-  // 「更多」组里有当前视图时强制展开：刷新/分享链接后不会看不到自己在哪
-  function navMoreHasActive() {
-    return D.NAV.some(function (x) { return x.group === 'more' && x.id === currentView; });
-  }
+  // 结构：全部入口平铺常驻（v0.11.3 起取消「更多」折叠组）——菜单一眼看全，
+  // 一屏放不下时导航区自己滚动（滚动条样式与像素主题一致，见 style.css 的 .nav）。
   let navSig = null;
   function renderNav() {
     const st = S();
-    const moreOpen = navMoreOpen || navMoreHasActive();
-    const sig = [currentView, moreOpen ? 1 : 0, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0,
+    const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0,
       st.me && st.me.admin ? 1 : 0, subUnseen].join('|');
     if (sig === navSig) return;
     navSig = sig;
@@ -502,23 +487,7 @@ window.UI = (function () {
       });
       return b;
     };
-    const primary = D.NAV.filter(function (x) { return x.group !== 'more'; });
-    const extra = D.NAV.filter(function (x) { return x.group === 'more'; });
-    primary.forEach(function (item) { nav.appendChild(makeItem(item)); });
-    if (extra.length) {
-      const more = el('button', 'nav-item nav-more' + (moreOpen ? ' open' : '') + (navMoreHasActive() ? ' active-group' : ''));
-      more.innerHTML = '<span class="nav-icon">' + (moreOpen ? '▾' : '▸') + '</span>' +
-        '<span>' + (moreOpen ? '收起' : '更多') + '</span>' +
-        '<span class="nav-more-cnt">' + extra.length + '</span>';
-      more.title = moreOpen ? '收起低频入口（图鉴 / 记录 / 反馈 / 日志）' : '展开低频入口（图鉴 / 记录 / 反馈 / 日志）';
-      more.addEventListener('click', function () { setNavMore(!moreOpen); });
-      nav.appendChild(more);
-      if (moreOpen) {
-        const box = el('div', 'nav-group');
-        extra.forEach(function (item) { box.appendChild(makeItem(item)); });
-        nav.appendChild(box);
-      }
-    }
+    D.NAV.forEach(function (item) { nav.appendChild(makeItem(item)); });
     // 管理员：侧边栏底部加后台入口（新标签打开，admin.html 与游戏同源托管）
     if (st.me && st.me.admin) {
       const a = el('a', 'nav-item admin-link');
@@ -3982,12 +3951,15 @@ window.UI = (function () {
   //   副件那条若不在主件词缀池内，按「池外词缀区间」取值——等于把副件独有的词缀搬到主件上。
   //   可选投料：从主件自己的词缀池里再补一条主件没有的词缀（投料越多越容易成功，也越贵）。
   //   可选龙宫宝珠：roll 值改为掷两次取靠近区间边界的那次（与海王遗匣同一规则）。
-  //   失败：副件与材料被熔毁、金币花掉，主件保持原样。
+  //   可选残片保留（v0.11.3，仅海王遗匣产出的神话主件）：投至多 10 片沉船宝匣残片，成功时按概率
+  //     （每片 10%，10 片必中）把主件的池外（突破）词缀原值保留到结果上；残片不计入投料 → 不改成功率与花费。
+  //   失败（v0.11.3 起）：副件 / 投料 / 残片熔毁、金币花掉，主件被熔掉**选中的那条词条**（其余词条与品质保留）。
   // 重铸：把宝匣产出的**神话**组件放进去，用沉船宝匣残片重 roll 全部词条的数值（类型与条数不变）。
   //   成功率和花费都由后台「⚒ 工坊配置」决定，服务器权威。
   let wsTab = 'smelt';          // 'smelt' | 'recast'
   let wsMain = '', wsSub = '', wsMainAffix = '', wsSubAffix = '', wsPearl = false;
   let wsMats = {};              // { 材料id: 份数 }（投料草稿，重绘间保留）
+  let wsRelics = 0;             // 残片保留：投入的沉船宝匣残片片数（0 ~ smeltCfg.retainMaxRelic）
   let wsRecast = '';            // 重铸选中的组件签名
 
   // 背包里可作为素材的组件实例（按价格降序，稳定展示）
@@ -4031,6 +4003,21 @@ window.UI = (function () {
       '<div class="ws-affs">' + affs + '</div>' +
       '<div class="hint">' + (which === 'main' ? '点击选择主件保留的词条' : '点击选择从副件搬到主件的词条') + '</div></div>';
   }
+  // 残片保留信息（只对海王遗匣产出的神话主件开放，判据与「重铸」一致 = 神话品质）
+  //   eligible：主件是神话件且**确实带池外（突破）词缀**——没有可保留的词条时投入残片没有意义
+  //   cap：还能投入几片（后台上限与背包持有量取小）；qty：当前草稿夹紧后的片数
+  function wsRetainInfo(comp) {
+    const cfg = D.getSmeltCfg();
+    const max = Math.max(0, Math.floor(Number(cfg.retainMaxRelic) || 0));
+    const per = Math.max(0, Number(cfg.retainPerRelic) || 0);
+    const meta = comp && comp.meta;
+    const affixes = meta ? D.smeltExtraAffixesOf(meta.baseId, meta.affixes) : [];
+    const eligible = !!(meta && D.canRecast(meta) && affixes.length > 0);
+    const have = S().inventory.relic || 0;
+    const cap = Math.max(0, Math.min(max, have));
+    const qty = eligible ? Math.max(0, Math.min(cap, Math.floor(wsRelics) || 0)) : 0;
+    return { eligible: eligible, max: max, per: per, affixes: affixes, have: have, cap: cap, qty: qty, chance: D.smeltRetainChance(qty) };
+  }
   function wsPlan() {
     const comps = wsComponents();
     const mainC = comps.find(function (c) { return c.id === wsMain; });
@@ -4041,6 +4028,7 @@ window.UI = (function () {
     const pearl = !!wsPearl && (S().inventory[D.SMELT_PEARL] || 0) > 0;
     const rates = D.smeltRatesOf(load, pearl);
     const gold = D.smeltGoldOf(load, pearl);
+    const retain = wsRetainInfo(mainC);
     let error = '';
     if (!mainC) error = '请选择主组件';
     else if (!subC) error = '请选择副组件';
@@ -4059,6 +4047,7 @@ window.UI = (function () {
       ok: !error, error: error, main: mainC, sub: subC, materials: mats, load: load,
       pearl: pearl, rates: rates, gold: gold, extraType: load.total > 0 ? load.dominant : null,
       rollBoundary: pearl && (D.getSmeltCfg().pearlRollTwice !== false),
+      retain: retain,
     };
   }
   function wsRefreshPreview() {
@@ -4077,17 +4066,28 @@ window.UI = (function () {
       ? '<div class="ws-line">补缀：<b>' + esc(D.AFFIX_LABEL[p.extraType] || p.extraType) + '</b>（投料 ' + p.load.total +
         ' 份）· 成功率 <b>' + p.rates.extraRate + '%</b></div>'
       : '<div class="ws-line muted">未投料：熔炼后主件只有选中的两条词条</div>';
+    // 残片保留：只在主件是海王遗匣神话件（且带池外词缀）时出现
+    const rt = p.retain;
+    const retainLine = rt.eligible
+      ? '<div class="ws-line">🛡 残片保留 <b>' + rt.qty + '</b> / ' + rt.max + ' 片（持有 ' + rt.have + '）' +
+        ' · 保留池外词缀概率 <b class="ok">' + rt.chance + '%</b>' +
+        '<span class="hint">（每片 ' + rt.per + '%，成功后保留下面的词条原值；残片不计入投料，不影响成功率与花费）</span></div>' +
+        '<div class="ws-line muted">可保留的池外词缀：' +
+        rt.affixes.map(function (a) { return esc(affixText(a)); }).join(' · ') + '</div>'
+      : '';
     panel.innerHTML =
       '<div class="ws-line">熔炼成功率 <b class="ok">' + p.rates.rate + '%</b>' +
       ' · 失败率 <b class="err">' + p.rates.failRate + '%</b>' +
-      '（失败只损失副件与材料，主件不变）</div>' +
-      extra +
+      '（失败损失副件 / 投料 / 残片，且主件被熔掉选中的那条词条）</div>' +
+      extra + retainLine +
       '<div class="ws-line">花费 <b class="' + (canGold ? '' : 'err') + '">' + p.gold + '💰</b>' +
+      (rt.qty > 0 ? ' · 另有 ' + rt.qty + ' 片沉船宝匣残片' : '') +
       (p.pearl ? ' · 已加入龙宫宝珠：' + (p.rollBoundary ? 'roll 两次取靠近区间边界的值' : '（后台已关闭边界取值）') : '') + '</div>' +
       '<div class="ws-line muted">熔炼后主件词缀：' +
       [(D.AFFIX_LABEL[wsMainAffix] || wsMainAffix), (D.AFFIX_LABEL[wsSubAffix] || wsSubAffix)]
         .concat(p.extraType ? [D.AFFIX_LABEL[p.extraType] || p.extraType] : [])
-        .map(function (t) { return esc(t); }).join(' + ') + '（数值重新 roll）</div>';
+        .concat(rt.qty > 0 ? rt.affixes.map(function (a) { return D.AFFIX_LABEL[a.type] || a.type; }) : [])
+        .map(function (t) { return esc(t); }).join(' + ') + '（数值重新 roll' + (rt.qty > 0 ? '；池外词缀按原值保留' : '') + '）</div>';
     if (go) go.disabled = false;
   }
   // 打开组件选择子页面（与钓竿配置「装备组件」同一个子页面）
@@ -4108,6 +4108,8 @@ window.UI = (function () {
           const before = D.componentOf(wsMain);
           const after = D.componentOf(id);
           wsMain = id; wsMainAffix = '';
+          // 主件换了，残片保留的目标词缀也可能换人：片数草稿清零，避免带着上一件的片数过夜
+          wsRelics = 0;
           // 主件换部位后，原副件若不同部位就不再合法：直接清掉，避免提交时才报错
           if (before && after && before.part !== after.part) { wsSub = ''; wsSubAffix = ''; }
         } else {
@@ -4146,10 +4148,34 @@ window.UI = (function () {
     }
     const mainC = comps.find(function (c) { return c.id === wsMain; }) || null;
     const subC = comps.find(function (c) { return c.id === wsSub; }) || null;
+    const rt = wsRetainInfo(mainC);
+    // 残片保留：只在主件是「海王遗匣产出的神话件 + 带池外词缀」时出现（否则显一行灰字说明为何没有）
+    const retainRow = rt.eligible
+      ? '<h3>🛡 残片保留（可选）<span class="hint">成功后按概率保留下主件的池外（突破）词缀，每片残片 ' + rt.per +
+        '%，' + rt.max + ' 片即必中</span></h3>' +
+        '<label class="ws-pearl"><input type="checkbox" id="ws-relic-on"' + (rt.qty > 0 ? ' checked' : '') + ' /> ' +
+        '🛡 放入 <b>沉船宝匣残片</b>（持有 ' + rt.have + '）· 不影响熔炼成功率与花费</label>' +
+        '<div class="ws-relic-row" id="ws-relic-row"' + (rt.qty > 0 ? '' : ' style="display:none"') + '>' +
+        '<span class="wrl-label">投入片数</span>' +
+        '<input class="ipt ws-relic-qty" id="ws-relic-qty" type="number" min="0" max="' + rt.cap + '" value="' + rt.qty + '"' + (rt.cap <= 0 ? ' disabled' : '') + ' />' +
+        '<span class="wrl-unit">/ ' + rt.max + ' 片</span>' +
+        '<span class="wrl-chance" id="ws-relic-chance">保留概率 ' + rt.chance + '%</span>' +
+        '</div>' +
+        '<div class="hint wrl-affs">可保留的池外词缀：' + rt.affixes.map(function (a) { return esc(affixText(a)); }).join(' · ') + '</div>'
+      : (mainC
+        ? '<h3>🛡 残片保留<span class="hint">' +
+          (D.canRecast(mainC.meta)
+            ? '未启用：该主件没有池外（突破）词缀，投入残片没有可保留的词条'
+            : '未启用：只有海王遗匣产出的神话主件才能投入残片') +
+          '</span></h3>'
+        : '');
     body.innerHTML =
       '<div class="ws-help">放两件<b>同部位</b>的组件：<b>主件</b>保留、<b>副件</b>熔毁。各选一条词条后熔炼，主件的词条就变成这两条并重新 roll 数值——' +
       '把副件独有的词缀熔到主件上，是除宝匣之外唯一能跨出词缀池边界的途径。投料可为熔炼后的主件再补一条它还没有的词缀；' +
-      '加入<b>龙宫宝珠</b>可让每个词条 roll 两次、取更靠近区间边界的那次。失败时副件与材料熔毁、金币花掉，主件保持原样。</div>' +
+      '加入<b>龙宫宝珠</b>可让每个词条 roll 两次、取更靠近区间边界的那次。主件是<b>海王遗匣</b>产出的神话件时，' +
+      '还可投入<b>沉船宝匣残片</b>（至多 ' + Math.max(0, Math.floor(Number(D.getSmeltCfg().retainMaxRelic) || 0)) +
+      ' 片，每片 ' + (Number(D.getSmeltCfg().retainPerRelic) || 0) + '%）在成功时保留它的池外突破词缀，残片不影响成功率。' +
+      '失败时副件 / 投料 / 残片熔毁、金币花掉，<b>主件被熔掉选中的那条词条</b>（其余词条与品质保留）。</div>' +
       '<div class="ws-grid">' +
       wsCompCardHtml('main', mainC, '点上方按钮打开组件选择窗口（与钓竿配置的「装备组件」同一个子页面）') +
       wsCompCardHtml('sub', subC, mainC ? '副件必须与主件同部位（' + esc(partNameOf(mainC.part)) + '）' : '先选主件，再选同部位的副件') +
@@ -4172,6 +4198,7 @@ window.UI = (function () {
       })() + '</div>' +
       '<label class="ws-pearl"><input type="checkbox" id="ws-pearl"' + (wsPearl ? ' checked' : '') + ' /> ' +
       '🐚 加入龙宫宝珠（持有 ' + (st.inventory[D.SMELT_PEARL] || 0) + '）· roll 两次取靠近区间边界的值</label>' +
+      retainRow +
       '<div class="ws-preview" id="ws-preview"></div>' +
       '<button class="primary big" id="ws-go">开始熔炼</button>';
 
@@ -4195,6 +4222,21 @@ window.UI = (function () {
       });
     });
     $('ws-pearl').addEventListener('change', function () { wsPearl = this.checked; wsRefreshPreview(); });
+    if ($('ws-relic-on')) {
+      // 勾选 = 放入残片（默认填满上限），取消勾选 = 不投入；片数输入即时夹紧到「后台上限 ∩ 持有量」
+      $('ws-relic-on').addEventListener('change', function () {
+        wsRelics = this.checked ? rt.cap : 0;
+        renderView();
+      });
+      if ($('ws-relic-qty')) {
+        $('ws-relic-qty').addEventListener('input', function () {
+          wsRelics = Math.max(0, Math.min(rt.cap, Math.floor(Number(this.value) || 0)));
+          const box = $('ws-relic-chance');
+          if (box) box.textContent = '保留概率 ' + D.smeltRetainChance(wsRelics) + '%';
+          wsRefreshPreview();
+        });
+      }
+    }
     $('ws-go').addEventListener('click', function () { wsDoSmelt(); });
     wsRefreshPreview();
   }
@@ -4204,23 +4246,26 @@ window.UI = (function () {
     if (!p.ok) { toast(p.error); return; }
     confirmModal({
       title: '⚒ 确认熔炼',
-      okText: '开始熔炼（' + p.gold + '💰）',
+      okText: '开始熔炼（' + p.gold + '💰' + (p.retain.qty > 0 ? ' + ' + p.retain.qty + ' 残片' : '') + '）',
       html: '主件 <b>' + esc(p.main.meta.name) + '</b> 保留「' + esc(D.AFFIX_LABEL[wsMainAffix] || wsMainAffix) + '」，' +
         '并把副件「' + esc(D.AFFIX_LABEL[wsSubAffix] || wsSubAffix) + '」熔入；<br/>' +
-        '副件 <b>' + esc(p.sub.meta.name) + '</b> 与 ' + p.load.total + ' 份材料将被熔毁，花费 <b>' + p.gold + '💰</b>。<br/>' +
+        '副件 <b>' + esc(p.sub.meta.name) + '</b> 与 ' + p.load.total + ' 份材料将被熔毁，花费 <b>' + p.gold + '💰</b>。' +
+        (p.retain.qty > 0 ? '<br/>另投入 <b>' + p.retain.qty + '</b> 片沉船宝匣残片：成功后 <b>' + p.retain.chance +
+          '%</b> 概率保留池外（突破）词缀（' + p.retain.affixes.map(function (a) { return esc(D.AFFIX_LABEL[a.type] || a.type); }).join(' / ') +
+          '）；残片不改变成功率与花费。' : '') + '<br/>' +
         '熔炼成功率 <b>' + p.rates.rate + '%</b>' + (p.extraType ? '，补缀成功率 <b>' + p.rates.extraRate + '%</b>' : '') +
-        (p.pearl ? '，使用 🐚 龙宫宝珠' : '') + '。<br/>失败只损失副件与材料，主件保持原样。',
+        (p.pearl ? '，使用 🐚 龙宫宝珠' : '') + '。<br/>失败损失副件 / 投料 / 残片，且主件被熔掉选中的那条词条（其余词条保留）。',
     }).then(function (ok) {
       if (!ok) return;
       Promise.resolve(window.Net.smelt({
         mainId: wsMain, subId: wsSub, mainAffix: wsMainAffix, subAffix: wsSubAffix,
-        materials: p.materials, pearl: p.pearl,
+        materials: p.materials, pearl: p.pearl, relics: p.retain.qty,
       })).then(function (r) {
         if (!r || !r.ok) { toast((r && r.data && r.data.error) || '熔炼失败'); return; }
         const st = S();
         st.player.coins = r.data.coins;
         st.inventory = r.data.inventory;
-        wsMats = {}; wsPearl = false;
+        wsMats = {}; wsPearl = false; wsRelics = 0;
         wsMain = ''; wsSub = ''; wsMainAffix = ''; wsSubAffix = '';
         renderTopbar(); renderView();
         wsShowResult(r.data);
@@ -4233,18 +4278,30 @@ window.UI = (function () {
     const inner = d.success
       ? (d.item
         ? chestItemCardHtml(d.item) +
-          '<div class="cr-note">' + (d.item.hasExtra
-            ? '★ 标记的词缀不在「' + esc(d.item.baseName) + '」的词缀池内——这是从副件熔入的池外词缀。'
-            : '') + (d.extraType ? (d.extraOk ? ' 已补缀：' + esc(D.AFFIX_LABEL[d.extraType] || d.extraType) : ' 补缀未成功（本次没有新增词缀）') : '') + '</div>'
+          // 卡片里已经解释过 ★ 标记（池外词缀）；这里只说本次熔炼自身的结算：
+          // 补缀是否成功、残片保留是否命中（保留命中的词条会标成「宝匣突破件补足的额外词缀」）
+          '<div class="cr-note">' +
+          (d.extraType ? (d.extraOk ? '已补缀：' + esc(D.AFFIX_LABEL[d.extraType] || d.extraType) + '。' : '补缀未成功（本次没有新增词缀）。') : '') +
+          (d.relics > 0
+            ? (d.retainOk
+              ? ' 🛡 残片保留命中（' + d.relics + ' 片 / ' + d.retainChance + '%）：池外词缀 ' +
+                (d.retained || []).map(function (a) { return esc(affixText(a)); }).join(' / ') + ' 已按原值保留。'
+              : ' 🛡 残片保留未命中（' + d.relics + ' 片 / ' + d.retainChance + '%）：池外词缀本次丢失，残片已消耗。')
+            : '') + '</div>'
         : '')
-      : '<div class="cr-fail">💥 熔炼失败：副件与材料已熔毁，主件保持原样。</div>';
+      : '<div class="cr-fail">💥 熔炼失败：副件 / 投料 / 残片已熔毁，主件被熔掉选中的那条词条。</div>' +
+        (d.mainAfter
+          ? '<div class="hint" style="margin:6px 0 2px">熔毁的是「' + esc(D.AFFIX_LABEL[d.removedAffix] || d.removedAffix) +
+            '」，主件剩余词条与品质保留：</div>' + chestItemCardHtml(d.mainAfter)
+          : '');
     box.innerHTML = '<div class="modal-head"><span class="modal-title">' +
       (d.success ? '⚒ 熔炼成功' : '⚒ 熔炼失败') + '</span>' +
       '<button class="mini modal-close">✕ 关闭</button></div>' +
       '<div class="modal-body">' + inner +
       '<div class="hint" style="margin-top:6px">成功率 ' + d.rate + '%' +
       (d.extraType ? ' · 补缀成功率 ' + d.extraRate + '%' : '') +
-      ' · 花费 ' + d.gold + '💰' + (d.pearl ? ' · 使用龙宫宝珠' : '') + '</div>' +
+      ' · 花费 ' + d.gold + '💰' + (d.pearl ? ' · 使用龙宫宝珠' : '') +
+      (d.relics > 0 ? ' · 残片 ' + d.relics + ' 片（保留概率 ' + d.retainChance + '%）' : '') + '</div>' +
       '<div class="cf-actions"><button class="mini primary-mini cr-ok">知道了</button></div></div>';
     overlay.appendChild(box);
     document.body.appendChild(overlay);

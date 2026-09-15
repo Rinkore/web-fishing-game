@@ -6,7 +6,8 @@
  *   ③ 龙宫宝珠归入材料
  *   ④ 商城（每日限购 + 刷新时间 + 后台配置）
  *   ⑤ 宝匣：合成成本后台可改 + 突破件 roll 两次取边界值
- *   ⑥ 工坊熔炼（双件词条改写 / 投料补缀 / 龙宫宝珠 / 成功率与花费 / 后台配置）
+ *   ⑥ 工坊熔炼（双件词条改写 / 投料补缀 / 龙宫宝珠 / 成功率与花费 / 后台配置 / 残片保留 /
+ *      失败结算改为「主件失去选中词条」）
  *   ⑦ 钓点地图坐标后台可改（拖动保存）
  *   ⑧ 服务端优雅版本更新（候选脚本 / 60 秒通知 / 5 秒后切换 / 取消 / 路径安全）
  *   ⑨ 存档修复脚本 tools/fix-save-v011.js
@@ -354,17 +355,146 @@ function startServer() {
   await seed({ [mainComp]: 1, [subComp]: 1 }, 10);
   const smeltPoor = await POST(BASE + '/api/workshop/smelt', { token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill' });
   check('金币不足被拒', smeltPoor.status === 400 && /金币不足/.test(smeltPoor.data.error || ''), JSON.stringify(smeltPoor.data));
-  // —— 失败分支：成功率设为 0 → 副件熔毁、主件保持原样 ——
+  // —— 失败分支：成功率设为 0 → 副件熔毁、主件被熔掉选中的那条词条（v0.11.3）——
   await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 0, failPerMaterial: 0, rateMin: 0 });
   await seed({ [mainComp]: 1, [subComp]: 1 }, 200000);
   const smeltFail = await POST(BASE + '/api/workshop/smelt', {
     token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill',
   });
   check('熔炼失败（成功率 0）', smeltFail.status === 200 && smeltFail.data.success === false, JSON.stringify(smeltFail.data).slice(0, 140));
-  check('失败后副件熔毁、主件原样退回背包',
-    smeltFail.data.inventory[mainComp] === 1 && smeltFail.data.inventory[subComp] === undefined && !smeltFail.data.item,
+  // mainComp = 竹制短竿 epic [speed+12, size+3]；失败后 speed 被熔掉，只剩 size+3 的那件退回背包
+  const mainLeftId = D.instanceId('rod_bamboo', 'epic', [{ type: 'size', value: 3 }]);
+  check('失败后副件熔毁、主件被熔掉选中的词条（其余词条原值保留）',
+    smeltFail.data.inventory[mainLeftId] === 1 && smeltFail.data.inventory[mainComp] === undefined &&
+    smeltFail.data.inventory[subComp] === undefined && !smeltFail.data.item,
     JSON.stringify(smeltFail.data.inventory));
+  check('失败结果回传受损主件与被熔词条',
+    !!smeltFail.data.mainAfter && smeltFail.data.mainAfter.id === mainLeftId &&
+    smeltFail.data.removedAffix === 'speed' &&
+    smeltFail.data.mainAfter.affixes.length === 1 && smeltFail.data.mainAfter.affixes[0].type === 'size',
+    JSON.stringify({ m: smeltFail.data.mainAfter && smeltFail.data.mainAfter.id, r: smeltFail.data.removedAffix }));
   check('失败仍扣金币', smeltFail.data.coins === 195000, String(smeltFail.data.coins));
+  // 单条词条的主件：失败后只剩底材本体（0 词条实例仍可展示/出售）
+  const oneAffix = D.instanceId('hook_barb', 'rare', [{ type: 'skill', value: 4 }]);
+  const oneSub = D.instanceId('hook_swallow', 'rare', [{ type: 'speed', value: 9 }]);
+  await seed({ [oneAffix]: 1, [oneSub]: 1 }, 200000);
+  const smeltFailOne = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: oneAffix, subId: oneSub, mainAffix: 'skill', subAffix: 'speed',
+  });
+  const bareId = 'hook_barb#rare#';
+  check('主件只有一条词条时失败 → 变成 0 词条的底材本体（不销毁）',
+    smeltFailOne.status === 200 && smeltFailOne.data.success === false &&
+    smeltFailOne.data.inventory[bareId] === 1 && !smeltFailOne.data.inventory[oneAffix],
+    JSON.stringify(smeltFailOne.data.inventory));
+
+  // ==========================================================================
+  section('⑥d 工坊熔炼 · 残片保留（海王遗匣神话主件）');
+  // 主件：竹制短竿 神话 4 词条（池内 speed/size + 池外 rare/double）——海王遗匣突破件的形态
+  const mythicMain = D.instanceId('rod_bamboo', 'mythic', [
+    { type: 'speed', value: 12 }, { type: 'size', value: 3 }, { type: 'rare', value: 5 }, { type: 'double', value: 9 },
+  ]);
+  const mythicSub = D.instanceId('rod_dragonbone', 'epic', [{ type: 'skill', value: 10 }, { type: 'size', value: 8 }]);
+  // 池外词缀只认「不在底材池内」的：speed/size 在池内，rare/double 在池外（顺序按实例规范化后）
+  const sortAff = list => JSON.stringify(list.slice().sort((a, b) => a.type < b.type ? -1 : 1));
+  check('数据层：池外（突破）词缀识别正确',
+    sortAff(D.smeltExtraAffixesOf('rod_bamboo', D.componentOf(mythicMain).affixes)) ===
+      sortAff([{ type: 'rare', value: 5 }, { type: 'double', value: 9 }]),
+    JSON.stringify(D.smeltExtraAffixesOf('rod_bamboo', D.componentOf(mythicMain).affixes)));
+  check('数据层：保留概率 = 片数 × 每片概率，10 片封顶 100%',
+    D.smeltRetainChance(0) === 0 && D.smeltRetainChance(3) === 30 && D.smeltRetainChance(10) === 100 &&
+    D.smeltRetainChance(99) === 100, [0, 3, 10, 99].map(n => D.smeltRetainChance(n)).join(','));
+  const wsR = await GET(BASE + '/api/workshop?token=' + encodeURIComponent(TOKP));
+  check('工坊接口下发残片保留参数（每片 10% / 上限 10 片）',
+    !!wsR.data.retain && wsR.data.retain.per === 10 && wsR.data.retain.max === 10 && wsR.data.retain.relicId === 'relic',
+    JSON.stringify(wsR.data.retain));
+  // 成功率与花费不受残片影响：用「50% 基础成功率 + 0 投料影响」这组未被夹紧的配置对比
+  //（只比数值，不断言本次掷骰结果 —— 成败是随机的）
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 50, failPerMaterial: 0, rateMin: 5, rateMax: 99, goldBase: 5000, goldPerMaterial: 900 });
+  await seed({ [mythicMain]: 1, [mythicSub]: 1, rope: 20 }, 200000);
+  const smeltNoRelic = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mythicMain, subId: mythicSub, mainAffix: 'speed', subAffix: 'skill', materials: [{ id: 'rope', qty: 4 }],
+  });
+  await seed({ [mythicMain]: 1, [mythicSub]: 1, rope: 20, relic: 10 }, 200000);
+  const smeltRelic = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mythicMain, subId: mythicSub, mainAffix: 'speed', subAffix: 'skill', materials: [{ id: 'rope', qty: 4 }], relics: 10,
+  });
+  check('投入残片不改变成功率（也不改变补缀率与金币花费）',
+    smeltRelic.status === 200 && smeltRelic.data.rate === smeltNoRelic.data.rate &&
+    smeltRelic.data.extraRate === smeltNoRelic.data.extraRate && smeltRelic.data.gold === smeltNoRelic.data.gold &&
+    smeltRelic.data.load.total === 4,
+    JSON.stringify({ r1: smeltNoRelic.data.rate, r2: smeltRelic.data.rate, g1: smeltNoRelic.data.gold, g2: smeltRelic.data.gold }));
+  check('残片不计入投料份数（load.total 与不带残片一致）',
+    smeltRelic.data.load.total === 4 && smeltRelic.data.load.dominant === 'size',
+    JSON.stringify(smeltRelic.data.load));
+  check('10 片残片 → 保留概率 100%（必中）',
+    smeltRelic.data.relics === 10 && smeltRelic.data.retainChance === 100, JSON.stringify({ n: smeltRelic.data.relics, c: smeltRelic.data.retainChance }));
+  // 保留结算断言：成功率设为 100% 必成功，才能确定性地检查「按原值保留池外词缀」
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 100, rateMax: 100, failPerMaterial: 0 });
+  await seed({ [mythicMain]: 1, [mythicSub]: 1, rope: 20, relic: 10 }, 200000);
+  const smeltRetain = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mythicMain, subId: mythicSub, mainAffix: 'speed', subAffix: 'skill', materials: [{ id: 'rope', qty: 4 }], relics: 10,
+  });
+  check('成功时保留池外（突破）词缀（按原值）',
+    smeltRetain.status === 200 && smeltRetain.data.success === true && smeltRetain.data.retainOk === true &&
+    sortAff(smeltRetain.data.retained) === sortAff([{ type: 'rare', value: 5 }, { type: 'double', value: 9 }]),
+    JSON.stringify(smeltRetain.data.retained));
+  check('保留后的主件 = 选中 2 条 + 补缀 1 条 + 保留的 2 条池外词缀（按类型去重）',
+    !!smeltRetain.data.item && smeltRetain.data.item.affixes.length === 5 &&
+    smeltRetain.data.item.affixes.filter(a => a.extra).length === 3 &&
+    smeltRetain.data.item.affixes.some(a => a.type === 'rare' && a.value === 5) &&
+    smeltRetain.data.item.affixes.some(a => a.type === 'double' && a.value === 9),
+    JSON.stringify(smeltRetain.data.item && smeltRetain.data.item.affixes));
+  check('保留不影响品质（熔炼结果仍是神话件，可继续重铸）',
+    !!smeltRetain.data.item && smeltRetain.data.item.quality === 'mythic' && D.canRecast(smeltRetain.data.item),
+    JSON.stringify({ q: smeltRetain.data.item && smeltRetain.data.item.quality }));
+  check('残片按片数消耗（10 片全扣）',
+    smeltRetain.data.inventory.relic === undefined, JSON.stringify({ relic: smeltRetain.data.inventory.relic }));
+  // 失败时残片同样烧掉（与投料/副件一致）
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 0, failPerMaterial: 0, rateMin: 0 });
+  await seed({ [mythicMain]: 1, [mythicSub]: 1, relic: 4 }, 200000);
+  const smeltRelicFail = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mythicMain, subId: mythicSub, mainAffix: 'speed', subAffix: 'skill', relics: 4,
+  });
+  check('失败时残片也消耗（4 片全烧，主件掉一条词条）',
+    smeltRelicFail.status === 200 && smeltRelicFail.data.success === false &&
+    smeltRelicFail.data.inventory.relic === undefined && smeltRelicFail.data.removedAffix === 'speed' &&
+    !!smeltRelicFail.data.mainAfter && smeltRelicFail.data.mainAfter.affixes.length === 3,
+    JSON.stringify({ inv: smeltRelicFail.data.inventory, m: smeltRelicFail.data.mainAfter && smeltRelicFail.data.mainAfter.id }));
+  // —— 校验类拒绝 ——
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 100, rateMax: 100, failPerMaterial: 0 });
+  await seed({ [mainComp]: 1, [subComp]: 1, relic: 20 }, 200000);
+  const relicNonMythic = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill', relics: 3,
+  });
+  check('非神话主件投入残片被拒（只有海王遗匣产出可保留）',
+    relicNonMythic.status === 400 && /海王遗匣/.test(relicNonMythic.data.error || ''), JSON.stringify(relicNonMythic.data));
+  // 神话但没有池外词缀的主件（底材池内词条）→ 没有可保留的词条
+  const mythicPoolOnly = D.instanceId('rod_bamboo', 'mythic', [{ type: 'speed', value: 12 }, { type: 'size', value: 3 }]);
+  await seed({ [mythicPoolOnly]: 1, [mythicSub]: 1, relic: 20 }, 200000);
+  const relicNoExtra = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mythicPoolOnly, subId: mythicSub, mainAffix: 'speed', subAffix: 'skill', relics: 3,
+  });
+  check('神话主件但没有池外词缀时投入残片被拒',
+    relicNoExtra.status === 400 && /没有池外/.test(relicNoExtra.data.error || ''), JSON.stringify(relicNoExtra.data));
+  await seed({ [mythicMain]: 1, [mythicSub]: 1, relic: 2 }, 200000);
+  const relicTooMany = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mythicMain, subId: mythicSub, mainAffix: 'speed', subAffix: 'skill', relics: 11,
+  });
+  check('残片超过单次上限被拒（最多 10 片）',
+    relicTooMany.status === 400 && /最多投入 10 片/.test(relicTooMany.data.error || ''), JSON.stringify(relicTooMany.data));
+  await seed({ [mythicMain]: 1, [mythicSub]: 1, relic: 2 }, 200000);
+  const relicShort = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mythicMain, subId: mythicSub, mainAffix: 'speed', subAffix: 'skill', relics: 5,
+  });
+  check('残片不足被拒',
+    relicShort.status === 400 && /残片不足/.test(relicShort.data.error || ''), JSON.stringify(relicShort.data));
+  // 残片保留参数后台可调
+  const retainCfg = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, retainPerRelic: 25, retainMaxRelic: 4 });
+  check('后台可调残片保留参数（每片 25% / 上限 4 片）',
+    retainCfg.status === 200 && retainCfg.data.smeltCfg.retainPerRelic === 25 && retainCfg.data.smeltCfg.retainMaxRelic === 4,
+    JSON.stringify(retainCfg.data.smeltCfg));
+  const retainCfgBad = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, retainPerRelic: 500 });
+  check('残片保留参数越界被拒 400', retainCfgBad.status === 400, JSON.stringify(retainCfgBad.data));
   // 后台配置
   check('非管理员改熔炼参数 403', (await POST(BASE + '/api/admin/smelt/config', { token: TOKP, baseRate: 50 })).status === 403);
   const smeltReset = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, reset: true });

@@ -313,3 +313,13 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 }
 /* 商城配置：价格/限购输入框紧凑 */
 .ml-tbl .ipt { max-width: 140px; }
+
+/* ---------- 滚动条：与后台深色主题一致（深底 + 蓝灰滑块，细） ----------
+   后台页面只加载本文件，与游戏端（style.css/pixel.css）各写一份；
+   标准属性（Firefox / Chrome 121+）与 Webkit 伪元素两套写法都给出。 */
+:root { scrollbar-color: var(--line) var(--bg); scrollbar-width: thin; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--bg); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #3a465e; }
+::-webkit-scrollbar-corner { background: var(--bg); }

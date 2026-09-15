@@ -397,7 +397,8 @@ function mallView(rec) {
 
 // ---- 工坊 · 熔炼 ----
 // 全部成功率 / 花费 / 投料上限由 D.getSmeltCfg()（管理后台可调）决定，
-// 掷骰与结算都在服务器：客户端只发「主件 / 副件 / 各自选中的词条 / 投料 / 是否用龙宫宝珠」。
+// 掷骰与结算都在服务器：客户端只发「主件 / 副件 / 各自选中的词条 / 投料 / 是否用龙宫宝珠 / 投入几片残片」。
+// 失败结算（v0.11.3 起）：副件、投料、残片、金币照旧损失，且**主件被熔掉选中的那条词条**（其余词条与品质保留）。
 const SMELT_RATE_PRECISION = 10;
 function smeltCfgOf() { return D.getSmeltCfg(); }
 // 主件熔炼后的词缀取值区间：词缀在主件池内 → 用主件区间；不在池内（从副件搬过来的）→ 用池外区间
@@ -474,9 +475,31 @@ function planSmelt(rec, d) {
   for (const e of matList) {
     if (!invHas(rec, e.id, e.qty)) return { error: '材料不足：' + itemName(e.id) + ' 需要 ' + e.qty + ' 个，当前 ' + invCountOf(rec, e.id) + ' 个' };
   }
-  // 实际消耗清单 = 投料 + 龙宫宝珠（宝珠不计入份数，但要扣件与计费）
+  // 实际消耗清单 = 投料 + 龙宫宝珠（宝珠不计入份数，但要扣件与计费）+ 残片（不计入份数）
   const consume = matList.slice();
   if (pearl) consume.push({ id: D.SMELT_PEARL, qty: 1 });
+  // 残片保留（只对海王遗匣产出的神话主件）：残片**不参与投料计算**，所以既不改变成功率/补缀率，
+  // 也不改变金币花费，只消耗残片本身 —— 这就是「加入残片不降低熔炼成功率」的落地方式。
+  // 判据与「重铸」同一套：神话品质 = 宝匣产出的身份（见 planRecast 注释）。
+  const relicId = 'relic';
+  const relicMax = Math.max(0, Math.min(99, Math.floor(Number(cfg.retainMaxRelic) || 0)));
+  const relicQty = Math.min(relicMax, Math.max(0, Math.floor(Number(d.relics) || 0)));
+  const extraAffixes = D.smeltExtraAffixesOf(mainMeta.baseId, mainMeta.affixes);
+  if (relicQty > 0) {
+    if (!D.canRecast(mainMeta)) {
+      return { error: '只有海王遗匣产出的神话主件才能加入' + itemName(relicId) + '（当前：' + mainMeta.qualityName + '品质）' };
+    }
+    if (Math.floor(Number(d.relics) || 0) > relicMax) {
+      return { error: itemName(relicId) + '单次最多投入 ' + relicMax + ' 片（当前 ' + Math.floor(Number(d.relics)) + ' 片）' };
+    }
+    if (!extraAffixes.length) {
+      return { error: '该主件没有池外（突破）词缀，投入' + itemName(relicId) + '没有可保留的词条' };
+    }
+    if (!invHas(rec, relicId, relicQty)) {
+      return { error: itemName(relicId) + '不足（需 ' + relicQty + ' 片，当前 ' + invCountOf(rec, relicId) + ' 片）' };
+    }
+    consume.push({ id: relicId, qty: relicQty });
+  }
   const load = D.smeltLoadOf(matList);
   // 补缀目标：投料主词缀必须还在主件池里、且熔炼后的主件没有它
   const afterTypes = [mainAffix.type, subAffix.type];
@@ -496,6 +519,8 @@ function planSmelt(rec, d) {
     mainAffix: mainAffix, subAffix: subAffix, materials: matList, consume: consume, load: load,
     pearl: pearl, extraType: extraType, rates: rates, gold: gold,
     rollBoundary: !!(pearl && cfg.pearlRollTwice),
+    relicId: relicId, relics: relicQty, extraAffixes: extraAffixes,
+    retainChance: D.smeltRetainChance(relicQty),
   };
 }
 // 某账号在某档位上的「连续未突破」计数（惰性读取，0 表示没有记录）
@@ -2862,9 +2887,17 @@ const server = http.createServer(function (req, res) {
         gold: Math.max(0, Math.floor(Number(cfg.recastGold) || 0)),
         minValue: !!cfg.recastMinValue,
       },
+      // 熔炼 · 残片保留（海王遗匣产出的神话主件专享）：片数上限与每片概率由后台「⚒ 工坊配置」决定
+      retain: {
+        quality: D.RECAST_QUALITY, qualityName: (D.QUALITY[D.RECAST_QUALITY] || {}).name || D.RECAST_QUALITY,
+        relicId: 'relic', relicName: itemName('relic'),
+        max: Math.max(0, Math.floor(Number(cfg.retainMaxRelic) || 0)),
+        per: Math.max(0, Number(cfg.retainPerRelic) || 0),
+        relicHave: invCountOf(rec, 'relic'),
+      },
     });
   }
-  // ---- 工坊 · 熔炼：执行（服务器掷骰；失败只损失副件与材料，主件保持原样） ----
+  // ---- 工坊 · 熔炼：执行（服务器掷骰；失败损失副件 / 投料 / 残片，且主件被熔掉选中的那条词条） ----
   if (p === '/api/workshop/smelt' && req.method === 'POST') {
     readBody(req, function (body) {
       auth(req, res, body, function (d, key) {
@@ -2874,11 +2907,12 @@ const server = http.createServer(function (req, res) {
         const base = D.componentBase(plan.mainMeta.baseId);
         const useBoundary = plan.rollBoundary;
         const success = Math.random() * 100 < plan.rates.rate;
-        // 资源先扣（成功与否都消耗：副件被熔毁、材料烧掉、金币花掉）
+        // 资源先扣（成功与否都消耗：副件被熔毁、材料烧掉、残片烧掉、金币花掉）
         rec.coins -= plan.gold;
         invAdd(rec, plan.subId, -1);
         plan.consume.forEach(function (e) { invAdd(rec, e.id, -1 * e.qty); });
-        let result = null, extraOk = false;
+        let result = null, extraOk = false, retainOk = false, mainAfter = null;
+        const retained = [];
         if (success) {
           const affixes = [];
           affixes.push({ type: plan.mainAffix.type, value: smeltRoll(smeltRangeFor(base, plan.mainAffix.type), useBoundary) });
@@ -2887,10 +2921,33 @@ const server = http.createServer(function (req, res) {
             extraOk = Math.random() * 100 < plan.rates.extraRate;
             if (extraOk) affixes.push({ type: plan.extraType, value: smeltRoll(smeltRangeFor(base, plan.extraType), useBoundary) });
           }
+          // 残片保留：掷一次，命中则把主件的池外（突破）词缀按原值追加回结果。
+          // 与选中/补缀词条同类型的不再重复追加（同一件组件里同类型词条只该有一条）。
+          if (plan.relics > 0) {
+            retainOk = Math.random() * 100 < plan.retainChance;
+            if (retainOk) {
+              const have = {};
+              affixes.forEach(function (a) { have[a.type] = 1; });
+              plan.extraAffixes.forEach(function (a) {
+                if (have[a.type]) return;
+                have[a.type] = 1;
+                affixes.push({ type: a.type, value: a.value });
+                retained.push({ type: a.type, value: a.value });
+              });
+            }
+          }
           invAdd(rec, plan.mainId, -1);
           const newId = D.instanceId(base.id, plan.mainMeta.quality, affixes);
           invAdd(rec, newId, 1);
           result = D.componentOf(newId);
+        } else {
+          // 失败不再「主件原样」：主件被熔掉**选中的那条词条**，其余词条与品质保留（v0.11.3 起）
+          invAdd(rec, plan.mainId, -1);
+          const left = plan.mainMeta.affixes.filter(function (a) { return a.type !== plan.mainAffix.type; })
+            .map(function (a) { return { type: a.type, value: a.value }; });
+          const leftId = D.instanceId(base.id, plan.mainMeta.quality, left);
+          invAdd(rec, leftId, 1);
+          mainAfter = D.componentOf(leftId);
         }
         try { syncActiveRodSlot(rec); } catch (e) {}
         saveAccount(key);
@@ -2900,6 +2957,9 @@ const server = http.createServer(function (req, res) {
           rate: plan.rates.rate, extraRate: plan.rates.extraRate, gold: plan.gold,
           pearl: plan.pearl, rollBoundary: useBoundary,
           load: plan.load, extraType: plan.extraType,
+          relics: plan.relics, relicId: plan.relicId, retainChance: plan.retainChance,
+          retainOk: retainOk, retained: retained, mainAfter: mainAfter,
+          removedAffix: success ? null : plan.mainAffix.type,
           mainId: plan.mainId, subId: plan.subId, item: result,
           coins: rec.coins, inventory: rec.inventory,
         });
@@ -4571,11 +4631,13 @@ const server = http.createServer(function (req, res) {
         goldBase: [0, 100000000], goldPerMaterial: [0, 10000000], goldPearl: [0, 100000000],
         maxMaterials: [0, 99], maxTypes: [0, 8],
         recastRelic: [0, 9999], recastGold: [0, 100000000],
+        retainPerRelic: [0, 100], retainMaxRelic: [0, 99],
       };
       const LABEL = {
         baseRate: '熔炼基础成功率', failPerMaterial: '每份材料对失败率的影响', extraRatePerMaterial: '每份材料的补缀成功率加成',
         extraRatePearl: '龙宫宝珠的补缀成功率加成', extraRateMax: '补缀成功率上限', rateMin: '熔炼成功率下限', rateMax: '熔炼成功率上限',
         goldBase: '基础金币花费', goldPerMaterial: '每份材料金币', goldPearl: '龙宫宝珠金币', maxMaterials: '单次最大投料份数', maxTypes: '单次最大投料种类', recastRelic: '重铸所需残片', recastGold: '重铸所需金币',
+        retainPerRelic: '每片残片的保留概率', retainMaxRelic: '单次最大投入残片',
       };
       const patch = {};
       let err = null;
@@ -4584,7 +4646,7 @@ const server = http.createServer(function (req, res) {
         const v = Number(d[k]);
         const r = RANGES[k];
         if (!isFinite(v) || v < r[0] || v > r[1]) { err = LABEL[k] + '需在 ' + r[0] + ' - ' + r[1] + ' 之间'; return; }
-        patch[k] = (k === 'failPerMaterial' || k === 'extraRatePerMaterial') ? Math.round(v * 10) / 10 : Math.round(v);
+        patch[k] = (k === 'failPerMaterial' || k === 'extraRatePerMaterial' || k === 'retainPerRelic') ? Math.round(v * 10) / 10 : Math.round(v);
       });
       if (d.pearlRollTwice != null) patch.pearlRollTwice = !!d.pearlRollTwice;
       if (d.recastMinValue != null) patch.recastMinValue = (d.recastMinValue === true || d.recastMinValue === 1 || d.recastMinValue === '1') ? 1 : 0;

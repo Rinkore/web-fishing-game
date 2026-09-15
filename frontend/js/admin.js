@@ -1796,6 +1796,12 @@ window.Admin = (function () {
       (SC.recastMinValue ? ' checked' : '') + '></span>' +
       '<span class="hint">勾选 = 重铸时每条词条取新旧里更好的那个（不会把好数值洗坏）</span>' +
       '</div>' +
+      '<h3>🛡 熔炼 · 残片保留（海王遗匣产出的神话主件专享）</h3>' +
+      '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      F('retainPerRelic', '每片残片保留概率 %', '默认 10（10 片即 100% 保留池外词缀）', '0.1') +
+      F('retainMaxRelic', '单次最多投入残片', '默认 10') +
+      '<span class="hint">投入残片不计入投料：不改变熔炼成功率 / 补缀率 / 金币花费，只消耗残片本身</span>' +
+      '</div>' +
       '<div class="mgr-row" style="margin-top:10px"><button class="btn primary" id="ws-cfg-save">保存熔炼参数</button>' +
       '<button class="btn" id="ws-cfg-reset">恢复默认</button><span id="ws-cfg-state" class="hint" style="margin-left:10px"></span></div>' +
       '<h3>🧵 材料 → 词缀对照（只读）</h3>' +
@@ -1825,6 +1831,8 @@ window.Admin = (function () {
         recastRelic: $('ws-cfg-recastRelic').value,
         recastGold: $('ws-cfg-recastGold').value,
         recastMinValue: $('ws-cfg-recastMinValue').checked,
+        retainPerRelic: $('ws-cfg-retainPerRelic').value,
+        retainMaxRelic: $('ws-cfg-retainMaxRelic').value,
       }).then(function (r) {
         if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
         worldCfg = null;

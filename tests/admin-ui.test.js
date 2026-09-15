@@ -75,14 +75,9 @@ async function login(page, token) {
   await untilSel(page, '.nav-item', 10000);   // 等主界面渲染，替代固定 sleep
 }
 const clickNav = async (page, name) => {
-  // 玩家侧栏的低频入口（图鉴/记录/反馈/日志）默认收在「更多」折叠组里：找不到就先展开
+  // v0.11.3 起侧栏取消「更多」折叠组：全部入口平铺常驻，直接找即可
   await page.evaluate(n => {
-    const find = () => Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
-    let b = find();
-    if (!b) {
-      const more = document.querySelector('.nav-more');
-      if (more) { more.click(); b = find(); }
-    }
+    const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
     if (b) b.click();
   }, name);
   await waitFor(async () => {
@@ -757,22 +752,29 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       check('拖动后的坐标已保存并同步到玩家端目录（x≈30）',
         !!dockNow && Array.isArray(dockNow.pos) && Math.abs(dockNow.pos[0] - 30) < 0.8, JSON.stringify(dockNow && dockNow.pos));
 
-      // —— 工坊配置：熔炼参数可改 ——
+      // —— 工坊配置：熔炼参数可改（含 v0.11.3 的残片保留参数） ——
       await clickAdminNav('工坊配置', '#ws-cfg-baseRate');
       const wsCfgView = await pa.evaluate(() => ({
         base: (document.getElementById('ws-cfg-baseRate') || {}).value,
         mats: document.querySelectorAll('#ws-body .ch-ar-wrap .ch-fix').length,
         save: !!document.getElementById('ws-cfg-save'),
+        retainPer: (document.getElementById('ws-cfg-retainPerRelic') || {}).value,
+        retainMax: (document.getElementById('ws-cfg-retainMaxRelic') || {}).value,
       }));
       check('工坊配置页渲染熔炼参数与材料对照', wsCfgView.base === '50' && wsCfgView.mats >= 7 && wsCfgView.save, JSON.stringify(wsCfgView));
+      check('工坊配置页含残片保留参数（每片 10% / 上限 10 片）',
+        wsCfgView.retainPer === '10' && wsCfgView.retainMax === '10', JSON.stringify(wsCfgView));
       await pa.evaluate(() => {
         document.getElementById('ws-cfg-baseRate').value = '66';
+        document.getElementById('ws-cfg-retainMaxRelic').value = '6';
         document.getElementById('ws-cfg-save').click();
       });
       const smeltApplied = await untilGet(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data,
         d => !!d && !!d.smeltCfg && d.smeltCfg.baseRate === 66, 8000);
       check('保存熔炼参数立即生效（基础成功率 66%）', !!(smeltApplied.smeltCfg && smeltApplied.smeltCfg.baseRate === 66),
         JSON.stringify(smeltApplied.smeltCfg));
+      check('残片保留上限一并保存（10 → 6 片）', smeltApplied.smeltCfg.retainMaxRelic === 6, JSON.stringify(smeltApplied.smeltCfg));
+      await post('/api/admin/smelt/config', { token: adminLogin.data.token, retainMaxRelic: 10 });   // 还原，避免影响后续用例
 
       // —— 商城配置：刷新时间 + 商品编辑 ——
       await clickAdminNav('商城配置', '#ml-rt');

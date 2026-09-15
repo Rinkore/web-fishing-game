@@ -87,14 +87,10 @@ async function login(page, token) {
   await sleep(700);
 }
 const clickNav = async (page, name) => {
-  // 低频入口默认收在「更多」折叠组里：找不到就先展开再点
+  // v0.11.3 起侧栏取消「更多」折叠组：全部入口平铺常驻，直接找即可
   const clicked = await page.evaluate(n => {
     const find = () => Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
-    let b = find();
-    if (!b) {
-      const more = document.querySelector('.nav-more');
-      if (more) { more.click(); b = find(); }
-    }
+    const b = find();
     if (!b) return false;
     b.click();
     return true;
@@ -159,19 +155,49 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await login(p2, tokB);
 
     section('新增页面渲染');
-    // 高频入口常驻 + 低频入口收在「更多」折叠组里（展开后共 14 项）
-    check('高频导航常驻可见（10 项 + 更多折叠组）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 11,
+    // v0.11.3 起取消侧栏「更多」折叠组：14 个入口全部平铺常驻（管理员 +1 后台入口）
+    check('侧栏 14 个入口全部常驻可见（无折叠组）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 14,
       String((await p1.$$('#nav .nav-item:not(.locked)')).length));
-    check('「更多」折叠组默认收起（低频入口需展开才显示）', (await p1.$$('#nav .nav-group')).length === 0);
-    await p1.evaluate(() => { const m = document.querySelector('.nav-more'); if (m) m.click(); });
-    await untilSel(p1, '.nav-group', 4000);
-    check('展开「更多」后全部 14 个入口可见', (await p1.$$('#nav .nav-item:not(.locked)')).length === 15,
-      String((await p1.$$('#nav .nav-item:not(.locked)')).length));
-    check('折叠组内是图鉴/记录/反馈/日志', await p1.evaluate(() => {
-      const t = Array.from(document.querySelectorAll('.nav-group .nav-item')).map(n => n.textContent);
+    check('不再有「更多」折叠组与折叠组容器', (await p1.$$('#nav .nav-more')).length === 0 && (await p1.$$('#nav .nav-group')).length === 0);
+    check('低频入口（图鉴/记录/反馈/日志）直接可见且顺序不变', await p1.evaluate(() => {
+      const t = Array.from(document.querySelectorAll('#nav .nav-item')).map(n => n.textContent)
+        .filter(x => /图鉴|记录|反馈|日志/.test(x));
       return t.length === 4 && /图鉴/.test(t[0]) && /记录/.test(t[1]) && /反馈/.test(t[2]) && /日志/.test(t[3]);
     }));
     check('无占位锁定入口（商城与工坊均已开放）', (await p1.$$('#nav .nav-item.locked')).length === 0);
+    // 滚动条贴合像素主题：不与主题同色的灰白滚动条 = 回归
+    check('侧栏滚动条走主题色（#2c4f74 主题蓝 + 细）', await p1.evaluate(() => {
+      const nav = document.getElementById('nav');
+      const cs = getComputedStyle(nav);
+      const thumb = getComputedStyle(nav, '::-webkit-scrollbar-thumb');
+      return /44, 79, 116/.test(cs.scrollbarColor) && cs.scrollbarWidth === 'thin' &&
+        /44, 79, 116/.test(thumb.backgroundColor) && getComputedStyle(nav, '::-webkit-scrollbar-track').backgroundColor === 'rgba(0, 0, 0, 0)';
+    }));
+    check('全局滚动条同样主题化（标准属性，Firefox/新 Chrome 生效）', await p1.evaluate(() => {
+      const cs = getComputedStyle(document.documentElement);
+      return /44, 79, 116/.test(cs.scrollbarColor) && cs.scrollbarWidth === 'thin';
+    }));
+    // 矮窗口（1000×560）：14 项放不下时导航区自己滚动，底部提示仍可见
+    const pShort = await ctx.newPage();
+    await pShort.setViewportSize({ width: 1000, height: 560 });
+    await login(pShort, tokS);
+    const shortScroll = await pShort.evaluate(() => {
+      const nav = document.getElementById('nav');
+      const before = nav.scrollTop;
+      nav.scrollTop = nav.scrollHeight;
+      const foot = document.querySelector('.side-foot');
+      const items = nav.querySelectorAll('.nav-item');
+      return {
+        canScroll: nav.scrollHeight > nav.clientHeight + 1,
+        moved: nav.scrollTop > before,
+        footVisible: !!foot && foot.getBoundingClientRect().bottom <= window.innerHeight + 1,
+        lastVisible: items.length > 0 && items[items.length - 1].getBoundingClientRect().bottom <= window.innerHeight + 1,
+      };
+    });
+    check('矮窗口下侧栏导航区自己滚动（页面不被撑高）',
+      shortScroll.canScroll && shortScroll.moved && shortScroll.lastVisible && shortScroll.footVisible,
+      JSON.stringify(shortScroll));
+    await pShort.close();
 
     // —— 钓鱼页：已移除背包，渔获日志与左栏底部对齐 ——
     await clickNav(p1, '钓鱼');
@@ -1583,10 +1609,11 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('主件选择子页面 = 钓竿配置的组件子页面（标题/筛选/排序/卡片同款）',
         /选择主组件/.test(picker1.title) && picker1.cards >= 2 && picker1.filters.some(t => /全部属性/.test(t)) &&
         picker1.filters.some(t => /稀有度/.test(t)), JSON.stringify(picker1));
-      // 选一件当主件（挑名字里带「竹制短竿」的那张卡）
+      // 选一件当主件（挑名字里带「竹制短竿」的那张卡；神话件排在最前 → 顺手用来验证残片保留入口）
       await p1.evaluate(() => {
         const cards = Array.from(document.querySelectorAll('.bd-equip-modal .bec-card'));
-        const card = cards.find(c => c.textContent.includes('竹制短竿')) || cards[0];
+        const card = cards.find(c => c.textContent.includes('竹制短竿') && /神话/.test(c.textContent)) ||
+          cards.find(c => c.textContent.includes('竹制短竿')) || cards[0];
         card.querySelector('.bec-acts button').click();
       });
       await untilGet(async () => await p1.textContent('.ws-col .ws-pick-name'), t => /竹制短竿/.test(t || ''), 4000);
@@ -1620,6 +1647,37 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('选定词条后出现成功率与花费预览',
         /熔炼成功率\s*\d+(\.\d+)?%/.test(wsPrev || '') && /💰/.test(wsPrev || ''), String(wsPrev).slice(0, 80));
       check('基础成功率 50%（无投料）', /熔炼成功率\s*50%/.test(wsPrev || ''), String(wsPrev).slice(0, 60));
+
+      // —— v0.11.3：神话主件的「残片保留」入口（勾选后拉满片数 → 保留概率 100%） ——
+      const relicRow0 = await p1.evaluate(() => ({
+        row: !!document.getElementById('ws-relic-row'),
+        on: !!(document.getElementById('ws-relic-on') || {}).checked,
+        affs: (document.querySelector('.wrl-affs') || {}).textContent || '',
+      }));
+      check('神话（海王遗匣）主件出现 🛡 残片保留入口，并列出可保留的池外词缀',
+        relicRow0.row && relicRow0.on === false && /技巧|稀有概率/.test(relicRow0.affs), JSON.stringify(relicRow0));
+      await p1.click('#ws-relic-on');
+      const relicRow1 = await untilGet(async () => await p1.evaluate(() => ({
+        qty: (document.getElementById('ws-relic-qty') || {}).value,
+        max: (document.getElementById('ws-relic-qty') || {}).max,
+        chance: (document.getElementById('ws-relic-chance') || {}).textContent || '',
+        prev: (document.getElementById('ws-preview') || {}).textContent || '',
+      })), o => /保留概率/.test(o.chance), 4000);
+      check('勾选残片后拉满片数（10 片）并即时算出保留概率 100%',
+        relicRow1.qty === '10' && relicRow1.max === '10' && /100%/.test(relicRow1.chance) && /不影响成功率/.test(relicRow1.prev),
+        JSON.stringify({ q: relicRow1.qty, m: relicRow1.max, c: relicRow1.chance }));
+      check('预览提示残片不改变成功率（熔炼成功率仍为 50%）', /熔炼成功率\s*50%/.test(relicRow1.prev), String(relicRow1.prev).slice(0, 90));
+      await p1.click('#ws-relic-on');
+      const relicRow2 = await untilGet(async () => await p1.evaluate(() => {
+        const row = document.getElementById('ws-relic-row');
+        return {
+          hidden: !row || row.offsetParent === null || getComputedStyle(row).display === 'none',
+          on: !!(document.getElementById('ws-relic-on') || {}).checked,
+          rowExists: !!row,
+        };
+      }), o => o.on === false, 4000);
+      check('取消勾选后片数输入收起（不投入残片，入口仍在）',
+        relicRow2.hidden === true && relicRow2.on === false && relicRow2.rowExists === true, JSON.stringify(relicRow2));
 
       // —— 重铸页：放入组件后自动列出所需材料 ——
       await p1.click('[data-wstab="recast"]');

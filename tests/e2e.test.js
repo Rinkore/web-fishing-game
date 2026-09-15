@@ -122,10 +122,10 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('底材（模板）不可直接出售，组件实例可出售', !D.isSellable('rod_bamboo') && D.isSellable(D.instanceId('rod_bamboo', 'common', [{ type: 'speed', value: 10 }])));
   check('导航已实现入口 14 个（钓鱼/钓竿配置/渔场/背包/宝匣/工坊/商店/市集/交易/商城/图鉴/大鱼榜/反馈/日志）', D.NAV.filter(n => n.implemented).length === 14, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
   check('骨架屏已全部落地：无未实现占位入口（商城与工坊均已开放）', D.NAV.filter(n => !n.implemented).length === 0, 'got ' + D.NAV.filter(n => !n.implemented).map(n => n.id).join(','));
-  check('侧栏折叠分组：低频入口带 group=more（图鉴/记录/反馈/日志），高频入口常驻',
-    D.NAV.filter(n => n.group === 'more').map(n => n.id).join(',') === 'codex,records,feedback,logs' &&
-    D.NAV.filter(n => n.group !== 'more').length === 10,
-    JSON.stringify(D.NAV.filter(n => n.group === 'more').map(n => n.id)));
+  check('侧栏取消折叠组：14 个入口平铺常驻，NAV 里不再有 group 标记',
+    D.NAV.length === 14 && D.NAV.every(n => n.group === undefined) &&
+    D.NAV.slice(-4).map(n => n.id).join(',') === 'codex,records,feedback,logs',
+    JSON.stringify(D.NAV.map(n => n.group)));
   check('「收藏」占位已替换为「日志」功能入口', !D.NAV.some(n => n.id === 'collect') && !!D.NAV.find(n => n.id === 'logs' && n.implemented));
   check('共享目录暴露版本号', typeof D.VERSION === 'string' && /^v\d/.test(D.VERSION), String(D.VERSION));
   // roll=0 拒绝：0 值词条无意义，roll 到 0 重 roll 一次；仍为 0 时落到区间内最近 ±1
