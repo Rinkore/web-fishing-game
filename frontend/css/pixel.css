@@ -187,8 +187,8 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
   0%, 100% { transform: translateX(-4px) rotate(-2deg); }
   50% { transform: translateX(4px) rotate(2deg); }
 }
-/* 已解锁稀有/大鱼卡片：呼吸金光 */
-.codex-cell.got .cx-name.r-big, .codex-cell.got .cx-name.r-rare {
+/* 已解锁稀有/史诗卡片：呼吸金光 */
+.codex-cell.got .cx-name.r-rare, .codex-cell.got .cx-name.r-epic, .codex-cell.got .cx-name.r-big {
   animation: px-rare-glow 2.2s ease-in-out infinite;
 }
 @keyframes px-rare-glow {
@@ -377,10 +377,10 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
 }
 .pn-buff { margin-left: 5px; color: var(--px-gold); }
 
-/* 已选中的钓点：名牌高亮 */
+/* 已选中的钓点：名牌金框 —— 与增益钓点（.buffed）同一套金色：选定钓点后框体即变黄 */
 .px-node.on .pn-name {
-  border-color: var(--accent); color: var(--accent);
-  box-shadow: 0 0 10px rgba(52, 224, 192, .45);
+  border-color: rgba(255, 210, 62, .65); color: var(--px-gold);
+  box-shadow: 0 0 10px rgba(255, 210, 62, .45);
 }
 /* 增益钓点：名牌金框 + 浮漂金光 */
 .px-node.buffed .pn-name { border-color: rgba(255, 210, 62, .65); }
@@ -394,9 +394,10 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
   animation: px-here-pulse 1.8s ease-out infinite;
 }
 .px-node.here .pn-bob { animation: px-bob-live 1.6s ease-in-out infinite; }
+/* 正在垂钓的钓点：与选中/增益同为金色框（色值保持一致，只靠更强的光晕与脉冲圈区分状态） */
 .px-node.here .pn-name {
-  border-color: var(--px-gold); color: var(--px-gold);
-  box-shadow: 0 0 12px rgba(255, 210, 62, .5);
+  border-color: rgba(255, 210, 62, .65); color: var(--px-gold);
+  box-shadow: 0 0 12px rgba(255, 210, 62, .55);
 }
 @keyframes px-here-pulse {
   0% { transform: translateX(-50%) scale(.5); opacity: 1; }
@@ -514,8 +515,8 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
 /* ---------- 各页面贴图 ---------- */
 /* 宝匣合成卡片 */
 .cc-icon { display: block; width: 88px; height: 62px; object-fit: contain; margin: 0 auto 8px; image-rendering: pixelated; }
-/* 渔获记录 */
-.rh-icon { display: block; width: 140px; height: 84px; object-fit: contain; margin: 4px auto 8px; image-rendering: pixelated; }
+/* 渔获记录（全场最大鱼图标 140×84 → 放大到 175%：245×147，作为页面视觉重心） */
+.rh-icon { display: block; width: 245px; height: 147px; object-fit: contain; margin: 4px auto 8px; image-rendering: pixelated; }
 .rc-icon { display: block; width: 72px; height: 44px; object-fit: contain; margin: 0 auto 6px; image-rendering: pixelated; }
 .rc-icon.dim { filter: grayscale(.7) brightness(.7); opacity: .6; }
 .record-cell { display: flex; flex-direction: column; }

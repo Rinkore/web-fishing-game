@@ -120,8 +120,8 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   })());
   check('组件实例规范化：词条乱序仍得同签名', D.instanceId('rod_bamboo', 'rare', [{ type: 'size', value: -3 }, { type: 'speed', value: 12 }]) === D.instanceId('rod_bamboo', 'rare', [{ type: 'speed', value: 12 }, { type: 'size', value: -3 }]));
   check('底材（模板）不可直接出售，组件实例可出售', !D.isSellable('rod_bamboo') && D.isSellable(D.instanceId('rod_bamboo', 'common', [{ type: 'speed', value: 10 }])));
-  check('导航已实现入口 12 个（钓鱼/钓竿配置/渔场/背包/宝匣/商店/市集/交易/图鉴/大鱼榜/反馈/日志）', D.NAV.filter(n => n.implemented).length === 12, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
-  check('导航未实现占位入口 1 个（商城）', D.NAV.filter(n => !n.implemented).length === 1 && D.NAV.find(n => !n.implemented).id === 'mall', 'got ' + D.NAV.filter(n => !n.implemented).map(n => n.id).join(','));
+  check('导航已实现入口 14 个（钓鱼/钓竿配置/渔场/背包/宝匣/工坊/商店/市集/交易/商城/图鉴/大鱼榜/反馈/日志）', D.NAV.filter(n => n.implemented).length === 14, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
+  check('骨架屏已全部落地：无未实现占位入口（商城与工坊均已开放）', D.NAV.filter(n => !n.implemented).length === 0, 'got ' + D.NAV.filter(n => !n.implemented).map(n => n.id).join(','));
   check('「收藏」占位已替换为「日志」功能入口', !D.NAV.some(n => n.id === 'collect') && !!D.NAV.find(n => n.id === 'logs' && n.implemented));
   check('共享目录暴露版本号', typeof D.VERSION === 'string' && /^v\d/.test(D.VERSION), String(D.VERSION));
   // roll=0 拒绝：0 值词条无意义，roll 到 0 重 roll 一次；仍为 0 时落到区间内最近 ±1
@@ -284,7 +284,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   section('钓速词缀即时调整服务器循环');
   // 组件安装 = 消耗道具：先经 dev 接口发放组件实例入包（实例签名 = 底材#品质#词条）
   const reelInst = D.instanceId('reel_electric', 'common', [{ type: 'speed', value: 25 }]);   // reel_electric#common#spd+25
-  const hookInst = D.instanceId('hook_steel', 'rare', [{ type: 'big', value: 8 }, { type: 'speed', value: -5 }]);
+  const hookInst = D.instanceId('hook_steel', 'rare', [{ type: 'skill', value: 8 }, { type: 'speed', value: -5 }]);
   check('dev 发放电动卷线器实例', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: reelInst }, ground: '静水湖', spot: '老旧码头' })).status === 200);
   check('dev 发放精钢鱼钩实例', (await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: hookInst }, ground: '静水湖', spot: '老旧码头' })).status === 200);
   check('未持有组件时装备被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: D.instanceId('rod_carbon', 'rare', [{ type: 'speed', value: 20 }, { type: 'material', value: -10 }]) })).status === 400);
@@ -298,7 +298,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('组件与部位不匹配被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: reelInst })).status === 400);
   check('未知部位被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'nope', compId: null })).status === 400);
   const bdH = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: hookInst });
-  check('装备精钢鱼钩（大鱼+8%；钓速=电动25+钩-5=20，负词条生效）', bdH.status === 200 && bdH.data.effects.big === 8 && bdH.data.effects.speed === 20, JSON.stringify(bdH.data.effects));
+  check('装备精钢鱼钩（技巧+8%；钓速=电动25+钩-5=20，负词条生效）', bdH.status === 200 && bdH.data.effects.skill === 8 && bdH.data.effects.speed === 20, JSON.stringify(bdH.data.effects));
 
   section('组件订阅提醒：条件匹配 + 定向推送 subalert');
   // 停止 A 的自动钓鱼，避免随机掉落干扰判定（本段只经 dev 接口注入组件）
@@ -529,7 +529,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('钓竿章节重新登录（前章重启过服务器）', !!tokA && !!tokB);
   await POST('http://localhost:' + P1 + '/api/dev/seed', { token: tokA, coins: 6000000 });
   const rodInst1 = D.instanceId('rod_carbon', 'rare', [{ type: 'speed', value: 18 }, { type: 'material', value: -8 }, { type: 'size', value: 3 }]);
-  const rodInst2 = D.instanceId('reel_turbo', 'rare', [{ type: 'speed', value: 30 }, { type: 'big', value: -8 }]);
+  const rodInst2 = D.instanceId('reel_turbo', 'rare', [{ type: 'speed', value: 30 }, { type: 'skill', value: -8 }]);
   for (const id of [rodInst1, rodInst2]) await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'component', id: id } });
   await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: rodInst1 });
   await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: rodInst2 });

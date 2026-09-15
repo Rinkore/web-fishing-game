@@ -118,7 +118,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
     await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, koi: 2, lure: 4 }, coins: 2400 });
     // 给卖家发一个带负词条的组件实例（用于验证装备后负词条显示为红色）
-    const NEG_COMP = D_DATA.instanceId('reel_turbo', 'rare', [{ type: 'speed', value: 30 }, { type: 'big', value: -8 }]);
+    const NEG_COMP = D_DATA.instanceId('reel_turbo', 'rare', [{ type: 'speed', value: 30 }, { type: 'skill', value: -8 }]);
     await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: NEG_COMP } });
     const catches = [
       { id: 'koi', name: '黄金锦鲤', rarity: 'rare', size: 88.5 },
@@ -150,8 +150,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await login(p2, tokB);
 
     section('新增页面渲染');
-    check('登录后 12 个已实现入口可见', (await p1.$$('#nav .nav-item:not(.locked)')).length === 12);
-    check('1 个占位入口锁定（商城）', (await p1.$$('#nav .nav-item.locked')).length === 1);
+    check('登录后 14 个已实现入口可见（含工坊与商城）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 14);
+    check('无占位锁定入口（商城与工坊均已开放）', (await p1.$$('#nav .nav-item.locked')).length === 0);
 
     // —— 钓鱼页：已移除背包，渔获日志与左栏底部对齐 ——
     await clickNav(p1, '钓鱼');
@@ -286,7 +286,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('分类筛选后只列该类物品（鱼类行可勾选）', catFiltered.rows >= 1, JSON.stringify(catFiltered));
       // —— 组件行显示词条（便于挑选要挂单的组件；含数值区间）——
       // 先注入一件确定性的双词条组件，避免依赖此前用例留下的背包状态
-      const AFF_COMP = D_DATA.instanceId('reel_turbo', 'epic', [{ type: 'speed', value: 35 }, { type: 'big', value: -9 }]);
+      const AFF_COMP = D_DATA.instanceId('reel_turbo', 'epic', [{ type: 'speed', value: 35 }, { type: 'skill', value: -9 }]);
       await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: AFF_COMP } });
       let compAff = { rows: 0, withAff: 0, text: '', hasRange: false, hasName: false };
       const affOk = await waitFor(async () => {
@@ -399,7 +399,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       const bagInsts = [
         D_DATA.instanceId('rod_carbon', 'rare', [{ type: 'speed', value: 18 }, { type: 'material', value: -8 }, { type: 'size', value: 3 }]),
         D_DATA.instanceId('rod_carbon', 'common', [{ type: 'speed', value: 20 }]),
-        D_DATA.instanceId('reel_turbo', 'rare', [{ type: 'speed', value: 30 }, { type: 'big', value: -8 }]),
+        D_DATA.instanceId('reel_turbo', 'rare', [{ type: 'speed', value: 30 }, { type: 'skill', value: -8 }]),
         D_DATA.instanceId('charm_jade', 'rare', [{ type: 'size', value: 21 }, { type: 'speed', value: -5 }]),
       ];
       for (const id of bagInsts) await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: id } });
@@ -773,8 +773,9 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     // —— 自动售出管理栏（右栏）+ 双向排序 ——
     check('商店有自动售出管理栏（右栏）', (await p1.$$('#shop-as-panel')).length === 1);
     const asRows = await p1.$$('#as-list .as-row');
-    check('右栏逐鱼设置列表覆盖全部鱼类（41）', asRows.length === 41, String(asRows.length));
-    check('逐鱼行带「设置」入口', (await p1.$$('#as-list .as-row button')).length === 41, String((await p1.$$('#as-list .as-row button')).length));
+    // 鱼类 40 种（龙宫宝珠 v0.11 起归入材料，不再算鱼）
+    check('右栏逐鱼设置列表覆盖全部鱼类（40）', asRows.length === 40, String(asRows.length));
+    check('逐鱼行带「设置」入口', (await p1.$$('#as-list .as-row button')).length === 40, String((await p1.$$('#as-list .as-row button')).length));
     // 双向排序：点「价格」降序（首卡最高），再点同键反向为升序（首卡最低）
     const cardPrices = () => p1.$$eval('#shop-panel .shop-grid .shop-card', els => els.map(e => {
       const m = /💰\s*(\d+)/.exec(e.querySelector('.sc-price').textContent);
@@ -903,8 +904,10 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await clickNav(p1, '鱼类图鉴');
     const cells = await p1.$$('.codex-cell');
     const got = await p1.$$('.codex-cell.got');
-    check('图鉴渲染全部条目', cells.length === 75, String(cells.length));
-    // 品质配色规范：普通白/稀有黄/史诗紫；大鱼金色+👑（.r-big::before，CSS 渲染）；图鉴不再显示「满词条」
+    // 条目数 = 40 鱼 + 7 材料 + 30 组件底材（宝匣不是钓获物，不入图鉴）
+    check('图鉴渲染全部条目', cells.length === 77, String(cells.length));
+    // v0.11 品质规范：只有 普通/稀有/史诗/神话 四种，「大鱼」不再是品质也不再带皇冠前缀；
+    // 图鉴不再按「是否拥有满词条」改色或加后缀。
     const colorCheck = await p1.evaluate(() => {
       const names = Array.from(document.querySelectorAll('.codex-cell .cx-name'));
       return {
@@ -914,7 +917,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
         tag: names.filter(n => n.querySelector('.full-tag')).length,
       };
     });
-    check('大鱼条目用大鱼配色（金色 + 皇冠前缀）', colorCheck.big === true, JSON.stringify(colorCheck));
+    check('渔获不再有「大鱼」配色条目（品质只有普通/稀有/史诗/神话）', colorCheck.big === false, JSON.stringify(colorCheck));
     check('稀有条目用稀有配色（黄）', colorCheck.rare === true, JSON.stringify(colorCheck));
     check('图鉴不再因满词条改金色', colorCheck.full === false, JSON.stringify(colorCheck));
     check('图鉴卡片不再显示「满词条」后缀', colorCheck.tag === 0, JSON.stringify(colorCheck.tag));
@@ -1468,6 +1471,9 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
     // —— 横幅不遮挡顶栏与内容 ——
     section('横幅遮挡 · 双轨排队 · 公告颜色');
+    // 跑马灯靠 CSS 动画 + animationend 推进队列：浏览器会**节流后台标签页的动画**，
+    // 被抢到后台时会整段卡住（等待超时）。测横幅前先把玩家页拿到前台，消除这层环境噪声。
+    await p1.bringToFront();
     await p1.evaluate(() => window.UI.resetBanners && window.UI.resetBanners());
     await sleep(300);
     // 纪录轨：先播 A；再入队 B → 不打断 A（排队），A 播完后接上 B
@@ -1506,6 +1512,129 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       await post('/api/admin/banner/clear', { token: adminLoginB.data.token });
     } else {
       check('管理员登录可用（横幅双轨前置）', false, JSON.stringify(adminLoginB.data));
+    }
+
+    // ===================== v0.11：工坊 / 商城 / 地图选中 / 纪录图标 / 更新横幅 =====================
+    section('v0.11 新页面与新视觉');
+    {
+      const adminLogin2 = await post('/api/admin/login', { username: 'lay_seller', password: 'abcd1234' });
+      const tokAdmin = adminLogin2.data && adminLogin2.data.token;
+
+      // —— 工坊：熔炼页渲染（主/副组件下拉 + 词条胶囊 + 投料行 + 预览） ——
+      const wsMain = D_DATA.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 12 }, { type: 'size', value: 3 }]);
+      const wsSub = D_DATA.instanceId('hook_ghost', 'epic', [{ type: 'skill', value: 10 }, { type: 'rare', value: -5 }, { type: 'size', value: 5 }]);
+      // 注意顺序：dev/seed 是「整体替换背包」，必须放在 dev/catch 之前
+      await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, rope: 6 }, coins: 200000 });
+      await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsMain } });
+      await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: wsSub } });
+      await clickNav(p1, '工坊');
+      await untilSel(p1, '.ws-mat', 8000);
+      const wsView = await p1.evaluate(() => ({
+        mainOpts: (document.getElementById('ws-main') || { options: [] }).options.length,
+        mats: document.querySelectorAll('.ws-mat').length,
+        pearl: !!document.getElementById('ws-pearl'),
+        go: !!document.getElementById('ws-go'),
+      }));
+      check('工坊熔炼页渲染（主/副组件下拉 + 投料行 + 宝珠选项 + 熔炼按钮）',
+        wsView.mainOpts >= 3 && wsView.mats >= 6 && wsView.pearl && wsView.go, JSON.stringify(wsView));
+      await p1.selectOption('#ws-main', wsMain);
+      await p1.selectOption('#ws-sub', wsSub);
+      await untilSel(p1, '#ws-main-affs .ws-aff', 4000);
+      await p1.click('#ws-main-affs .ws-aff[data-type="speed"]');
+      await p1.click('#ws-sub-affs .ws-aff[data-type="skill"]');
+      const wsPrev = await untilGet(async () => await p1.textContent('#ws-preview'), t => /熔炼成功率/.test(t || ''), 4000);
+      check('选定词条后出现成功率与花费预览',
+        /熔炼成功率\s*\d+(\.\d+)?%/.test(wsPrev || '') && /💰/.test(wsPrev || ''), String(wsPrev).slice(0, 80));
+      check('基础成功率 50%（无投料）', /熔炼成功率\s*50%/.test(wsPrev || ''), String(wsPrev).slice(0, 60));
+
+      // —— 商城：商品卡 + 限购文案 + 购买 ——
+      await clickNav(p1, '商城');
+      await untilSel(p1, '.mall-card', 8000);
+      const mallView = await p1.evaluate(() => ({
+        cards: document.querySelectorAll('.mall-card').length,
+        bar: (document.querySelector('.mall-bar') || {}).textContent || '',
+        limit: (document.querySelector('.mc-limit') || {}).textContent || '',
+      }));
+      check('商城页渲染商品卡', mallView.cards >= 3, JSON.stringify(mallView.cards));
+      check('商城顶部显示刷新时间与金币', /限购刷新时间/.test(mallView.bar) && /💰/.test(mallView.bar), mallView.bar.slice(0, 80));
+      check('商品卡显示每日限购剩余', /限购/.test(mallView.limit), mallView.limit);
+      await p1.click('.mall-card .mc-acts button');
+      await untilSel(p1, '.modal-box', 4000);
+      await p1.click('.modal-box .cf-ok');
+      const bought = await waitFor(async () => {
+        const mv = (await get('/api/mall?token=' + tokS)).data;
+        return !!mv && mv.items.some(x => x.bought > 0);
+      }, { timeout: 8000 }).catch(() => false);
+      check('商城购买成功（服务器记入限购计数）', bought === true, String(bought));
+
+      // —— 钓鱼页：选中钓点的框体变黄（与增益钓点同一套金色） ——
+      if (tokAdmin) {
+        await post('/api/admin/spot/buffs', { token: tokAdmin, groundId: 'stillwater', spotId: 'reed', buffs: [{ type: 'speed', value: 20 }] });
+      }
+      await clickNav(p1, '钓鱼');
+      await untilSel(p1, '.px-node', 8000);
+      const idleVsBuffed = await p1.evaluate(() => {
+        const buffed = document.querySelector('.px-node.buffed .pn-name');
+        const idle = document.querySelector('.px-node:not(.buffed):not(.on) .pn-name');
+        return { buffed: buffed ? getComputedStyle(buffed).borderColor : null, idle: idle ? getComputedStyle(idle).borderColor : null };
+      });
+      check('普通钓点不是金色边框（增益钓点才是）',
+        !!idleVsBuffed.buffed && idleVsBuffed.idle !== idleVsBuffed.buffed, JSON.stringify(idleVsBuffed));
+      await p1.evaluate(() => {
+        const n = Array.from(document.querySelectorAll('.px-node')).find(x => x.getAttribute('data-g') && !x.classList.contains('buffed'));
+        n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      });
+      await untilSel(p1, '.px-node.on', 6000);
+      const selColor = await p1.evaluate(() => {
+        const sel = document.querySelector('.px-node.on .pn-name');
+        const buffed = document.querySelector('.px-node.buffed .pn-name');
+        return {
+          sel: sel ? getComputedStyle(sel).borderColor : null,
+          buffed: buffed ? getComputedStyle(buffed).borderColor : null,
+        };
+      });
+      check('玩家选定钓点后框体变黄，且与增益钓点同色',
+        !!selColor.sel && !!selColor.buffed && selColor.sel === selColor.buffed, JSON.stringify(selColor));
+      await p1.evaluate(() => {
+        const n = Array.from(document.querySelectorAll('.px-node')).find(x => x.classList.contains('on'));
+        if (n) n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      });
+      await sleep(200);
+
+      // —— 渔获记录：全场最大鱼图标放大到 175%（140×84 → 245×147） ——
+      await clickNav(p1, '渔获记录');
+      await untilSel(p1, '.rh-icon', 8000);
+      const rhSize = await p1.evaluate(() => {
+        const cs = getComputedStyle(document.querySelector('.rh-icon'));
+        return { w: Math.round(parseFloat(cs.width)), h: Math.round(parseFloat(cs.height)) };
+      });
+      check('全场最大鱼图标为原来的 175%（245×147）', rhSize.w === 245 && rhSize.h === 147, JSON.stringify(rhSize));
+      check('纪录页不再出现「大鱼」品质配色（r-big）', (await p1.$$('.content .r-big')).length === 0);
+
+      // —— 版本更新横幅：发布 → 60 秒倒计时横幅 → 取消后撤回 ——
+      if (tokAdmin) {
+        const upStart = await post('/api/admin/update/start', { token: tokAdmin, bat: 'run.bat', note: 'UI 验证', dryRun: true });
+        check('发布更新成功（演练）', upStart.status === 200 && !!upStart.data.update, JSON.stringify(upStart.data).slice(0, 100));
+        const shown = await waitFor(async () => (await p1.$$('#update-banner.show')).length === 1, { timeout: 8000 }).catch(() => false);
+        check('全服出现更新通知横幅', shown === true, String(shown));
+        const upBox = await p1.evaluate(() => {
+          const u = document.getElementById('update-banner');
+          const tb = document.querySelector('.topbar').getBoundingClientRect();
+          return {
+            text: (u.textContent || '').slice(0, 80),
+            bottom: Math.round(u.getBoundingClientRect().bottom),
+            topbarTop: Math.round(tb.top),
+            pad: getComputedStyle(document.body).paddingTop,
+          };
+        });
+        check('横幅文案含倒计时与脚本名', /秒后重启/.test(upBox.text) && /run\.bat/.test(upBox.text), upBox.text);
+        check('更新横幅不遮挡顶栏（页面下移）', upBox.topbarTop >= upBox.bottom - 1 && parseInt(upBox.pad, 10) >= 44, JSON.stringify(upBox));
+        await post('/api/admin/update/cancel', { token: tokAdmin });
+        const gone = await waitFor(async () => (await p1.$$('#update-banner.show')).length === 0, { timeout: 8000 }).catch(() => false);
+        check('取消更新后横幅撤回', gone === true, String(gone));
+      } else {
+        check('管理员登录可用（版本更新前置）', false, JSON.stringify(adminLogin2.data));
+      }
     }
 
     // 管理后台各页场景（组件生成 / 渔场钓点 / 公式 / 鱼类体型 / 横幅 / 闪烁 / 反馈）

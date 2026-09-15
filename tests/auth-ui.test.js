@@ -122,8 +122,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(600);
     check('点击登录后遮罩隐藏（进入游戏）', $('auth').style.display === 'none', 'display=' + $('auth').style.display);
     check('点击登录后无报错信息', !$('auth-msg').textContent, 'msg=' + $('auth-msg').textContent);
-    check('登录后已渲染导航（12 个已实现入口可见）', w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 12, 'got ' + w.document.querySelectorAll('#nav .nav-item:not(.locked)').length);
-    check('未实现入口仍为锁定占位（仅商城，不可跳转）', w.document.querySelectorAll('#nav .nav-item.locked').length === 1, 'got ' + w.document.querySelectorAll('#nav .nav-item.locked').length);
+    check('登录后已渲染导航（14 个已实现入口可见）', w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 14, 'got ' + w.document.querySelectorAll('#nav .nav-item:not(.locked)').length);
+    check('无未实现入口：商城与工坊都已开放（不再有锁定占位）', w.document.querySelectorAll('#nav .nav-item.locked').length === 0, 'got ' + w.document.querySelectorAll('#nav .nav-item.locked').length);
     check('登录后顶栏显示玩家名', $('player-status').textContent.includes('界面测试'), $('player-status').textContent);
     check('登录后 token 已写入 localStorage', !!w.localStorage.getItem('fishing_token'));
 

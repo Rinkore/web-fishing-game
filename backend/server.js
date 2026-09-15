@@ -23,6 +23,7 @@ const os = require('os');
 const path = require('path');
 const url = require('url');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 
 const PORT = process.env.PORT || 9000;
 const ROOT = __dirname;
@@ -142,19 +143,332 @@ let users = {};
 
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
 // biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
-const BITE_FORMULA_DEFAULT = '90';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {} };
+// 默认公式：基础 90% + 「技巧」词缀（技巧是上钩率公式里的一个变量，钩率提示一律不写死在代码里）。
+// 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
+const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null };
 
 // ---- 宝匣（沉船打捞）----
 // 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
 // 这里只放运行期可调项：突破保底次数（0 = 关闭）。改动即生效并落盘 config.json。
 const CHEST_PITY_MAX = 50;
+// 合成成本上限：残片 / 金币（防止手改配置文件把成本写到天文数字后前端输入框溢出）
+const CHEST_COST_RELIC_MAX = 9999;
+const CHEST_COST_COINS_MAX = 100000000;
 function chestCfgOf() {
   const c = world.chestCfg || {};
   const raw = Number(c.pityN);
   return {
     // 0 / 空 / 非法 / 越界一律按「关闭」处理，绝不让脏值把保底放大到无意义
     pityN: (isFinite(raw) && raw >= 1 && raw <= CHEST_PITY_MAX) ? Math.floor(raw) : 0,
+    // 成本覆盖（只列被改过的档位；未列为出厂值）
+    costs: D.chestCostOverrides(),
+  };
+}
+// 把后台保存的宝匣成本套用到共享目录（启动时与每次保存后都必须调用一次）
+function applyChestCostCfg() { return D.applyChestCosts(world.chestCfg && world.chestCfg.costs); }
+
+// ---- 服务端版本更新（优雅热更）----
+// 流程：管理员在后台选一个「新版本启动用的 run.bat」→ 立即向全服播报 60 秒更新通知（倒计时横幅）→
+//       横幅结束 5 秒后：启动新版本（独立进程，脱离当前进程）并关闭当前版本。
+// 让出端口的顺序很关键：先 server.close() 停止监听（端口立即释放），再拉起新版本，最后退出进程——
+// 否则新旧两个实例会抢同一个端口，新版本直接 EADDRINUSE 起不来。
+const UPDATE_BANNER_MS = 60 * 1000; // 更新通知横幅时长（60 秒）
+const UPDATE_GRACE_MS = 5 * 1000;   // 横幅结束后再等 5 秒才真正切换
+const UPDATE_EXIT_DELAY_MS = 1500;  // 拉起新版本后留给旧进程的收尾时间（让在途响应写完）
+const UPDATE_SCAN_DEPTH = 2;        // .bat 搜索深度（项目根为 0，允许 releases/xxx/run.bat 这类一层子目录）
+const UPDATE_MAX_BAT = 60;
+let updateTask = null;              // 当前更新任务（内存态：服务器重启即作废）
+
+// 项目根目录：backend/ 的上一级（.bat 模板与版本目录都放在这里）
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+// 候选启动脚本：项目根的 *.bat + 浅层子目录里的 run.bat / *.bat（如 releases/v0.11.0/run.bat）
+function listBatCandidates() {
+  const out = [];
+  function scan(dir, depth) {
+    if (out.length >= UPDATE_MAX_BAT) return;
+    let ents = [];
+    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    ents.forEach(function (ent) {
+      if (out.length >= UPDATE_MAX_BAT) return;
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (depth <= 0) return;
+        if (ent.name === 'node_modules' || ent.name === '.git' || ent.name.charAt(0) === '.') return;
+        scan(full, depth - 1);
+        return;
+      }
+      if (!/\.bat$/i.test(ent.name)) return;
+      let st = null;
+      try { st = fs.statSync(full); } catch (e) { return; }
+      out.push({
+        path: path.relative(PROJECT_ROOT, full).replace(/\\/g, '/'),
+        name: ent.name,
+        dir: path.relative(PROJECT_ROOT, dir).replace(/\\/g, '/') || '.',
+        size: st.size, mtime: st.mtimeMs,
+      });
+    });
+  }
+  scan(PROJECT_ROOT, UPDATE_SCAN_DEPTH);
+  // run.bat 排在最前（最常见的更新方式），其余按修改时间倒序
+  return out.sort(function (a, b) {
+    const ra = /run\.bat$/i.test(a.name) ? 1 : 0, rb = /run\.bat$/i.test(b.name) ? 1 : 0;
+    return rb - ra || b.mtime - a.mtime;
+  });
+}
+// 相对路径 → 绝对路径（必须落在项目目录内、且是 .bat，杜绝路径穿越）
+function resolveBatPath(rel) {
+  const r = String(rel == null ? '' : rel).trim().replace(/\\/g, '/');
+  if (!r || !/\.bat$/i.test(r)) return { error: '请选择一个 .bat 启动脚本' };
+  const full = path.resolve(PROJECT_ROOT, r);
+  if (full !== PROJECT_ROOT && !full.startsWith(PROJECT_ROOT + path.sep)) return { error: '脚本必须位于项目目录内' };
+  let st = null;
+  try { st = fs.statSync(full); } catch (e) { return { error: '脚本不存在：' + r }; }
+  if (!st.isFile()) return { error: '脚本不是文件：' + r };
+  return { ok: true, full: full, rel: path.relative(PROJECT_ROOT, full).replace(/\\/g, '/') };
+}
+function updateStateView() {
+  if (!updateTask) return null;
+  return {
+    active: true, phase: updateTask.phase, bat: updateTask.bat, note: updateTask.note || '',
+    by: updateTask.by || '', startedAt: updateTask.startedAt,
+    endAt: updateTask.endAt, fireAt: updateTask.fireAt, bannerMs: UPDATE_BANNER_MS, graceMs: UPDATE_GRACE_MS,
+    dryRun: !!updateTask.dryRun,
+  };
+}
+function broadcastUpdate() { broadcast({ type: 'update', update: updateStateView() }); }
+function clearUpdateTask() {
+  if (!updateTask) return;
+  (updateTask.timers || []).forEach(function (t) { clearTimeout(t); });
+  updateTask = null;
+}
+// 启动新版本并关闭当前版本（真机行为）
+function performUpdate() {
+  if (!updateTask) return;
+  const bat = updateTask.bat;
+  const full = updateTask.full;
+  updateTask.phase = 'restarting';
+  broadcastUpdate();
+  console.log('[update] 正在切换到新版本：' + bat);
+  // 1) 停钓 + 停止监听：立刻释放端口，保证新版本能 bind
+  try { players.forEach(function (p, key) { stopFishingSession(key); }); } catch (e) {}
+  try { server.close(); } catch (e) {}
+  // 2) 拉起新版本（独立窗口、脱离当前进程，旧进程退出不会连带杀掉它）
+  if (!updateTask.dryRun) {
+    try {
+      const child = spawn('cmd.exe', ['/c', 'start', '', full], {
+        cwd: path.dirname(full), detached: true, stdio: 'ignore', windowsHide: false,
+      });
+      child.unref();
+    } catch (e) {
+      console.error('[update] 启动新版本失败：' + e.message);
+      updateTask.phase = 'failed';
+      updateTask.error = e.message;
+      broadcastUpdate();
+      return;
+    }
+  }
+  // 3) 关闭当前版本
+  setTimeout(function () {
+    console.log('[update] 旧版本进程退出');
+    if (updateTask) updateTask.phase = 'done';
+    try { if (typeof process.exit === 'function') process.exit(0); } catch (e) {}
+  }, updateTask.dryRun ? 0 : UPDATE_EXIT_DELAY_MS).unref();
+}
+function startUpdateTask(opts) {
+  clearUpdateTask();
+  const now = Date.now();
+  const endAt = now + UPDATE_BANNER_MS;
+  updateTask = {
+    bat: opts.bat, full: opts.full, note: opts.note || '', by: opts.by || '',
+    startedAt: now, endAt: endAt, fireAt: endAt + UPDATE_GRACE_MS,
+    phase: 'banner', dryRun: !!opts.dryRun, timers: [],
+  };
+  updateTask.timers.push(setTimeout(function () {
+    if (!updateTask) return;
+    updateTask.phase = 'grace';
+    broadcastUpdate();
+  }, UPDATE_BANNER_MS));
+  updateTask.timers.push(setTimeout(function () { performUpdate(); }, UPDATE_BANNER_MS + UPDATE_GRACE_MS));
+  broadcastUpdate();
+  return updateTask;
+}
+
+// ---- 商城（每日限购）----
+// 商品校验上限：避免手改配置/接口把价格与限购写到溢出的量级
+const MALL_PRICE_MAX = 100000000;
+const MALL_LIMIT_MAX = 9999;
+const MALL_MAX_ITEMS = 200;
+// 官方金币直购：商品 / 金币价 / 每日限购数 / 刷新时间全部由管理后台配置（world.mallCfg）。
+// 限购按「刷新时间」划分周期：rec.mall = { key: 周期开始日, bought: { 物品id: 已购数 } }，
+// 惰性重置——读到时 key 与当前周期不一致就当没买过，不需要任何定时器。
+const MALL_MAX_QTY = 99; // 单次购买上限（与商店/宝匣一致，避免误点清空金币）
+function mallItemView(e) {
+  const id = String((e && e.id) || '');
+  if (!id) return null;
+  const it = D.itemOf(id);
+  if (!it || it.kind === 'unknown') return null;
+  const price = Math.max(0, Math.floor(Number(e.price) || 0));
+  const limit = Math.max(0, Math.floor(Number(e.limit) || 0)); // 0 = 不限购
+  return { id: id, name: it.name, kind: it.kind, rarity: it.rarity || 'common', price: price, limit: limit };
+}
+function mallCfgOf() {
+  const c = (world.mallCfg && typeof world.mallCfg === 'object') ? world.mallCfg : {};
+  const dft = D.defaultMallCfg();
+  const raw = Array.isArray(c.items) ? c.items : dft.items;
+  const items = [];
+  const seen = {};
+  raw.forEach(function (e) {
+    const v = mallItemView(e);
+    if (!v || seen[v.id]) return;
+    seen[v.id] = 1;
+    items.push(v);
+  });
+  const rt = D.parseRefreshTime(c.refreshTime) ? String(c.refreshTime) : dft.refreshTime;
+  return { refreshTime: rt, items: items };
+}
+// 后台保存的商品列表校验（物品有效性 / 价格与限购范围 / 去重）
+function validateMallItems(list) {
+  if (!Array.isArray(list)) return { error: '商品列表格式错误' };
+  if (list.length > MALL_MAX_ITEMS) return { error: '商品最多 ' + MALL_MAX_ITEMS + ' 项' };
+  const out = [], seen = {};
+  for (const e of list) {
+    const id = String((e && e.id) || '').trim();
+    if (!id) return { error: '商品物品不能为空' };
+    if (seen[id]) return { error: '商品重复：' + id };
+    const it = D.itemOf(id);
+    if (!it || it.kind === 'unknown') return { error: '未知物品：' + id };
+    if (it.kind === 'rod') return { error: '整根钓竿不能上商城（请用组件实例或材料）' };
+    const rawPrice = Number((e && e.price));
+    const price = Math.floor(rawPrice);
+    if (!isFinite(rawPrice) || price < 0 || price > MALL_PRICE_MAX) return { error: '「' + it.name + '」金币价需为 0 - ' + MALL_PRICE_MAX + ' 的整数' };
+    const rawLimit = Number((e && e.limit) || 0);
+    const limit = Math.floor(rawLimit);
+    if (!isFinite(rawLimit) || limit < 0 || limit > MALL_LIMIT_MAX) return { error: '「' + it.name + '」每日限购需为 0 - ' + MALL_LIMIT_MAX + '（0 = 不限购）' };
+    seen[id] = 1;
+    out.push({ id: id, price: price, limit: limit });
+  }
+  return { ok: true, items: out };
+}
+// 某账号在当前周期内已购数量（惰性重置：周期变了就返回空表）
+function mallBoughtOf(rec, cycleKey) {
+  const m = rec && rec.mall;
+  if (!m || m.key !== cycleKey) return {};
+  return (m.bought && typeof m.bought === 'object') ? m.bought : {};
+}
+function mallView(rec) {
+  const cfg = mallCfgOf();
+  const cyc = D.mallCycleOf(cfg.refreshTime, Date.now());
+  const bought = mallBoughtOf(rec, cyc.key);
+  const items = cfg.items.map(function (it) {
+    const n = Math.max(0, Math.floor(Number(bought[it.id]) || 0));
+    const remain = it.limit > 0 ? Math.max(0, it.limit - n) : null;
+    return {
+      id: it.id, name: it.name, kind: it.kind, rarity: it.rarity, price: it.price, limit: it.limit,
+      bought: n, remain: remain, soldOut: remain === 0,
+      have: invCountOf(rec, it.id),
+    };
+  });
+  return {
+    ok: true, refreshTime: cfg.refreshTime, cycleKey: cyc.key,
+    nextRefreshAt: cyc.nextAt, coins: rec.coins || 0, items: items,
+  };
+}
+
+// ---- 工坊 · 熔炼 ----
+// 全部成功率 / 花费 / 投料上限由 D.getSmeltCfg()（管理后台可调）决定，
+// 掷骰与结算都在服务器：客户端只发「主件 / 副件 / 各自选中的词条 / 投料 / 是否用龙宫宝珠」。
+const SMELT_RATE_PRECISION = 10;
+function smeltCfgOf() { return D.getSmeltCfg(); }
+// 主件熔炼后的词缀取值区间：词缀在主件池内 → 用主件区间；不在池内（从副件搬过来的）→ 用池外区间
+function smeltRangeFor(base, type) {
+  const slot = base.pool.find(function (p) { return p.type === type; });
+  if (slot) return D.affixRangeOf(base.id, slot);
+  return D.extraAffixRangeOf(type);
+}
+// 一次熔炼取值的 roll（宝珠开启时掷两次取靠近区间边界的那次）
+function smeltRoll(range, useBoundary) {
+  const model = (D.getComponentCfg && D.getComponentCfg().rollModel) || 'linear';
+  return useBoundary
+    ? D.rollAffixValueBoundary(range[0], range[1], model)
+    : D.rollAffixValue(range[0], range[1], model);
+}
+// 校验一次熔炼请求（不改状态，纯校验 + 计算），返回 { error } 或完整方案
+function planSmelt(rec, d) {
+  const cfg = smeltCfgOf();
+  const mainId = String(d.mainId || '');
+  const subId = String(d.subId || '');
+  const mainMeta = D.componentOf(mainId);
+  const subMeta = D.componentOf(subId);
+  if (!mainMeta || !D.isInstance(mainId)) return { error: '主组件必须是已生成的组件实例' };
+  if (!subMeta || !D.isInstance(subId)) return { error: '副组件必须是已生成的组件实例' };
+  const needMain = mainId === subId ? 2 : 1;
+  if (!invHas(rec, mainId, needMain)) {
+    const lock = rodLockError(rec, mainId, needMain);
+    if (lock) return { error: lock };
+    return { error: mainId === subId ? '主副组件相同，背包里需要 2 件' : '背包中没有该主组件' };
+  }
+  if (mainId !== subId && !invHas(rec, subId, 1)) {
+    const lock = rodLockError(rec, subId, 1);
+    if (lock) return { error: lock };
+    return { error: '背包中没有该副组件' };
+  }
+  const mainAffix = mainMeta.affixes.find(function (a) { return a.type === d.mainAffix; });
+  const subAffix = subMeta.affixes.find(function (a) { return a.type === d.subAffix; });
+  if (!mainAffix) return { error: '请选择主组件上的一条词条' };
+  if (!subAffix) return { error: '请选择副组件上的一条词条' };
+  if (mainAffix.type === subAffix.type) {
+    return { error: '主副选中的词条类型不能相同（熔炼后两条词条会合成同一条）' };
+  }
+  // 投料：素材校验（份数 / 种类 / 库存）与主词缀合法性
+  const maxM = cfg.maxMaterials;
+  const list = Array.isArray(d.materials) ? d.materials : [];
+  const matList = [];
+  let pearl = !!d.pearl;              // 龙宫宝珠：布尔开关（前端勾选）或写进 materials 都接受
+  let pearlQty = 0;
+  let total = 0;
+  const types = {};
+  for (const e of list) {
+    const id = String((e && e.id) || '');
+    const qty = Math.floor(Number(e && e.qty) || 0);
+    if (!id || qty <= 0) continue;
+    if (id === D.SMELT_PEARL) { pearl = true; pearlQty += qty; continue; }  // 催化剂：不计入投料份数
+    if (!D.smeltMaterialAffix(id)) return { error: '「' + itemName(id) + '」不是熔炼材料' };
+    matList.push({ id: id, qty: qty });
+    types[D.smeltMaterialAffix(id)] = 1;
+    total += qty;
+  }
+  if (pearlQty > 1) return { error: '龙宫宝珠一次最多投入 1 个' };
+  if (total > maxM) return { error: '投料最多 ' + maxM + ' 份（当前 ' + total + ' 份）' };
+  if (Object.keys(types).length > cfg.maxTypes) return { error: '投料最多 ' + cfg.maxTypes + ' 种（当前 ' + Object.keys(types).length + ' 种）' };
+  if (pearl && !invHas(rec, D.SMELT_PEARL, 1)) {
+    return { error: '没有' + itemName(D.SMELT_PEARL) + '（加入宝珠可让词条 roll 两次取靠近区间边界的值）' };
+  }
+  for (const e of matList) {
+    if (!invHas(rec, e.id, e.qty)) return { error: '材料不足：' + itemName(e.id) + ' 需要 ' + e.qty + ' 个，当前 ' + invCountOf(rec, e.id) + ' 个' };
+  }
+  // 实际消耗清单 = 投料 + 龙宫宝珠（宝珠不计入份数，但要扣件与计费）
+  const consume = matList.slice();
+  if (pearl) consume.push({ id: D.SMELT_PEARL, qty: 1 });
+  const load = D.smeltLoadOf(matList);
+  // 补缀目标：投料主词缀必须还在主件池里、且熔炼后的主件没有它
+  const afterTypes = [mainAffix.type, subAffix.type];
+  let extraType = null;
+  if (load.total > 0) {
+    extraType = load.dominant;
+    const addable = D.smeltAddableAffixes(mainMeta.baseId, afterTypes);
+    if (!extraType || addable.indexOf(extraType) < 0) {
+      return { error: '投料对应的词缀「' + (D.AFFIX_LABEL[extraType] || extraType || '?') + '」无法加入该主件（主件词缀池里已经没有可补的该类词缀）' };
+    }
+  }
+  const rates = D.smeltRatesOf(load, pearl);
+  const gold = D.smeltGoldOf(load, pearl);
+  if ((rec.coins || 0) < gold) return { error: '金币不足（需 ' + gold + '，当前 ' + Math.round(rec.coins || 0) + '）' };
+  return {
+    ok: true, cfg: cfg, mainId: mainId, subId: subId, mainMeta: mainMeta, subMeta: subMeta,
+    mainAffix: mainAffix, subAffix: subAffix, materials: matList, consume: consume, load: load,
+    pearl: pearl, extraType: extraType, rates: rates, gold: gold,
+    rollBoundary: !!(pearl && cfg.pearlRollTwice),
   };
 }
 // 某账号在某档位上的「连续未突破」计数（惰性读取，0 表示没有记录）
@@ -352,8 +666,10 @@ function effectiveSpeed(eff) {
   return Math.max(0, Math.min(castSpeedCap(), raw));
 }
 
+// 钓竿词缀合计。键集 = 组件词缀（speed/skill/rare/material/size/double）+ 只可能来自钓点增益的 big
+// （「大鱼概率」在 v0.11 从组件词缀改为「技巧」，但钓点增益仍保留大鱼概率这一类）。
 function bdEffectsOf(bd) {
-  const eff = { speed: 0, big: 0, rare: 0, material: 0, size: 0, double: 0 };
+  const eff = { speed: 0, skill: 0, big: 0, rare: 0, material: 0, size: 0, double: 0 };
   D.ROD_PARTS.forEach(function (part) {
     const comp = D.componentOf(bd && bd[part.key] && bd[part.key].compId);
     if (!comp) return;
@@ -574,9 +890,9 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     broadcast({ type: 'feed', entry: entry });
   }
 
-  // 近期渔获（大鱼/稀有/组件）：更新 presence 并广播给所有人
+  // 近期渔获（非普通渔获/组件）：更新 presence 并广播给所有人
   const p = players.get(key);
-  if (p && visible && (item.rarity === 'big' || item.rarity === 'rare' || item.kind === 'component')) {
+  if (p && visible && (item.kind === 'component' || (item.kind === 'fish' && item.rarity !== 'common'))) {
     p.recent = item.size ? (item.name + ' ' + item.size + 'cm') : item.name;
     sendPlayersAll();
   }
@@ -689,13 +1005,16 @@ function restartAllFishing() {
 
 // ---- 上钩判断公式（管理员可编辑 · 递归下降解析，不用 eval）----
 // 每次抛竿掷骰时求值：结果 = 本次上钩概率（%）；未上钩则该竿无收获（定时器继续下一竿）。
-// 可用变量：speed/big/rare/material/size/double（钓竿词缀 + 钓点增益，%）与 interval（抛竿间隔 ms）。
+// 可用变量：speed/skill/rare/material/size/double（钓竿词缀 + 钓点增益，%）与 interval（抛竿间隔 ms）。
+//   skill = 「技巧」词缀合计，是提升上钩率的主参数——**钩率提示只由这里的公式决定**，
+//   代码里不写死「技巧 = +X% 上钩率」这类文案，后台随时可以改公式（默认 clamp(90 + skill,0,100)）。
+//   big = 旧「大鱼概率」变量，v0.11 起组件不再产出该词缀；保留只为让历史保存过的公式仍能解析（恒为 0）。
 // 可用函数：min max floor ceil round abs clamp(x,lo,hi)。
 const BITE_FUNCS = {
   min: Math.min, max: Math.max, floor: Math.floor, ceil: Math.ceil, round: Math.round, abs: Math.abs,
   clamp: function (x, lo, hi) { return Math.min(hi, Math.max(lo, x)); },
 };
-const BITE_VAR_NAMES = ['speed', 'big', 'rare', 'material', 'size', 'double', 'interval'];
+const BITE_VAR_NAMES = ['speed', 'skill', 'big', 'rare', 'material', 'size', 'double', 'interval'];
 // 解析器：每个语法节点返回 function(vars) -> number 的闭包；编译期即校验变量/函数名与语法
 function compileFormula(src) {
   const s = String(src == null ? '' : src).trim();
@@ -785,7 +1104,7 @@ function biteProbabilityOf(eff, interval, spot) {
   if (!biteCompiledFn) return 100; // 公式无效时保底必上钩（正常保存路径已校验，不会走到）
   let p;
   try {
-    p = biteCompiledFn({ speed: eff.speed || 0, big: eff.big || 0, rare: eff.rare || 0, material: eff.material || 0, size: eff.size || 0, double: eff.double || 0, interval: interval || 0 });
+    p = biteCompiledFn({ speed: eff.speed || 0, skill: eff.skill || 0, big: eff.big || 0, rare: eff.rare || 0, material: eff.material || 0, size: eff.size || 0, double: eff.double || 0, interval: interval || 0 });
   } catch (e) { return 100; }
   if (!isFinite(p)) p = p > 0 ? 100 : 0;
   return Math.min(100, Math.max(0, p));
@@ -794,7 +1113,7 @@ function biteProbabilityOf(eff, interval, spot) {
 // ---- 全服动态通知等级（管理员可调；只影响广播的 feed，钓者自己的 catch 推送不受影响）----
 const NOTIFY_LEVELS = {
   all: '全部渔获（默认）',
-  uncommon: '仅非普通：大鱼 / 稀有鱼 / 组件',
+  uncommon: '仅非普通：稀有鱼 / 史诗鱼 / 组件',
   offrange: '仅体型超出基准范围的鱼（超出该鱼基准 [最小,最大] 体型）',
   records: '仅破纪录时（全服最大 / 最小纪录）',
   none: '关闭：不向全服推送任何渔获动态',
@@ -811,7 +1130,7 @@ function feedVisible(item, isRecord) {
   if (lv === 'all') return true;
   if (lv === 'none') return false;
   if (lv === 'records') return !!isRecord;
-  if (lv === 'uncommon') return item.kind === 'component' || (item.kind === 'fish' && item.rarity !== 'common');
+  if (lv === 'uncommon') return item.kind === 'component' || (item.kind === 'fish' && item.rarity !== 'common'); // 稀有/史诗渔获（旧「大鱼」已并入稀有与史诗）
   if (lv === 'offrange') {
     if (item.kind !== 'fish' || item.size == null) return false;
     const r = baseRangeOf(item.id);
@@ -877,7 +1196,7 @@ const BUFF_VALUE_MAX = 100;
 // 收敛一份增益列表：丢掉未知类别，数值夹到 [MIN, MAX]（历史配置里可能存着超限值）
 function clampSpotBuffs(list) {
   if (!Array.isArray(list)) return [];
-  return list.filter(function (b) { return b && D.AFFIX_LABEL[b.type]; }).map(function (b) {
+  return list.filter(function (b) { return b && D.BUFF_LABEL[b.type]; }).map(function (b) {
     const v = Math.round((Number(b.value) || 0) * 10) / 10;
     return { type: b.type, value: Math.max(BUFF_VALUE_MIN, Math.min(BUFF_VALUE_MAX, v)) };
   });
@@ -887,7 +1206,7 @@ function validateBuffList(list) {
   const out = [];
   for (const b of list) {
     const type = String((b && b.type) || '');
-    if (!D.AFFIX_LABEL[type]) return { error: '未知增益类别：' + type };
+    if (!D.BUFF_LABEL[type]) return { error: '未知增益类别：' + type };
     const value = Number(b && b.value);
     if (!isFinite(value) || value < BUFF_VALUE_MIN || value > BUFF_VALUE_MAX) {
       return { error: '增益数值需在 ' + BUFF_VALUE_MIN + ' 到 ' + BUFF_VALUE_MAX + ' 之间' };
@@ -958,6 +1277,15 @@ function parseWindow(from, to) {
   if (f && t && f >= t) return { error: '开始时间必须早于结束时间' };
   return { openFrom: f, openTo: t };
 }
+// 钓点在地图上的位置：地图宽高的百分比 [x, y]（后台「渔场钓点」页可拖动设置）。
+// 夹到 2 ~ 98：拖到边缘时仍留出节点自身的宽度，避免图标被裁掉或点不到。
+function normalizeSpotPos(v) {
+  if (!Array.isArray(v) || v.length !== 2) return null;
+  const x = Number(v[0]), y = Number(v[1]);
+  if (!isFinite(x) || !isFinite(y)) return null;
+  const cl = function (n) { return Math.round(Math.max(2, Math.min(98, n)) * 10) / 10; };
+  return [cl(x), cl(y)];
+}
 // 从快照重建 D.GROUNDS（每次配置变更后调用；幂等）
 function applyGroundCfg() {
   const cfg = world.groundCfg || {};
@@ -1003,6 +1331,16 @@ function applyGroundCfg() {
     if (cfg.spots[k].buffs) sp.buffs = clampSpotBuffs(cfg.spots[k].buffs);
     if (cfg.spots[k].biteRate != null && cfg.spots[k].biteRate !== '') sp.biteRate = Number(cfg.spots[k].biteRate);
     if (cfg.spots[k].intervalMs != null && cfg.spots[k].intervalMs !== '') sp.intervalMs = Math.round(Number(cfg.spots[k].intervalMs));
+  });
+  // 4.5) 钓点在地图上的位置（后台拖动设置）：{ 'gid:sid': [x%, y%] }
+  // 内置钓点在 data.js 里带默认 pos；这里只覆盖被后台改过的那些，未改动的沿用默认。
+  Object.keys(cfg.spotPos || {}).forEach(function (k) {
+    const parts = k.split(':');
+    const g = next.find(function (x) { return x.id === parts[0]; });
+    const sp = g && g.spots.find(function (x) { return x.id === parts[1]; });
+    if (!sp) return;
+    const pos = normalizeSpotPos(cfg.spotPos[k]);
+    if (pos) sp.pos = pos;
   });
   // 5) 渔场级覆盖：名称/描述/类型/手动锁定/限时窗口（窗口外自动锁定）
   const now = Date.now();
@@ -1062,6 +1400,25 @@ function saveSpotCfg(groundId, spotId, patch) {
   if (patch.intervalMs !== undefined) { if (patch.intervalMs == null) delete cur.intervalMs; else cur.intervalMs = patch.intervalMs; }
   world.groundCfg.spots[k] = cur;
   saveConfig();
+}
+// 保存钓点在（世界）地图上的坐标；同一渔场一次性保存整组，避免拖动多次写盘
+function saveSpotPositions(groundId, list) {
+  world.groundCfg = world.groundCfg || {};
+  world.groundCfg.spotPos = world.groundCfg.spotPos || {};
+  let changed = 0;
+  (Array.isArray(list) ? list : []).forEach(function (e) {
+    const sid = String((e && e.spotId) || '');
+    if (!sid) return;
+    const key = groundId + ':' + sid;
+    const pos = normalizeSpotPos(e && e.pos);
+    if (!pos) { if (world.groundCfg.spotPos[key]) { delete world.groundCfg.spotPos[key]; changed++; } return; }
+    const cur = world.groundCfg.spotPos[key];
+    if (!cur || cur[0] !== pos[0] || cur[1] !== pos[1]) { world.groundCfg.spotPos[key] = pos; changed++; }
+  });
+  if (changed) saveConfig();
+  applyGroundCfg();
+  broadcastGroundcfg();
+  return changed;
 }
 // 钓场配置变化：向游戏端广播整份目录（图鉴产地/渔场页即时同步）
 function broadcastGroundcfg() { broadcast({ type: 'groundcfg', grounds: groundsWithDrop() }); }
@@ -1420,7 +1777,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 function loadMarket() { loadDomain(MARKET_FILE, MARKET_KEYS); }
@@ -1480,6 +1837,21 @@ loadSessions(); // 重启后恢复登录态（客户端可自动登录，见 ses
         }
       });
     }
+    // 钓竿槽位：整根钓竿的每个配件也要一起升级，否则「拆回背包 / 市集整竿」会把旧签名带出去
+    if (Array.isArray(rec.rodSlots)) {
+      rec.rodSlots.forEach(function (sl) {
+        if (!sl || !sl.bd) return;
+        Object.keys(sl.bd).forEach(function (part) {
+          const slot = sl.bd[part];
+          if (!slot || !slot.compId) return;
+          const comp = D.componentOf(slot.compId);
+          if (comp && (comp.id !== slot.compId || slot.name !== comp.name)) {
+            slot.compId = comp.id; slot.name = comp.name; slot.affixes = comp.affixes; slot.rare = comp.quality;
+            accountsDirty = true;
+          }
+        });
+      });
+    }
   });
   (world.listings || []).forEach(function (l) {
     const nid = D.normalizeItemId(l.id);
@@ -1497,8 +1869,13 @@ loadSessions(); // 重启后恢复登录态（客户端可自动登录，见 ses
   if (accountsDirty || marketDirty || econDirty) console.log('[migrate] legacy component ids → v0.8 instance signatures');
 })();
 
-// 套用管理后台保存的钓场/钓点配置覆盖（掉落池 / 增益 / 锁定状态）
+// 套用管理后台保存的钓场/钓点配置覆盖（掉落池 / 增益 / 锁定状态 / 地图坐标）
 applyGroundCfg();
+// 套用管理后台保存的宝匣成本覆盖（残片 / 金币）：宝匣目录是前后端共用的一份，改在这里即全站生效
+applyChestCostCfg();
+// 套用工坊熔炼参数与商城配置（管理后台可调；缺省回退出厂默认）
+if (D.setSmeltCfg) D.setSmeltCfg(world.smeltCfg);
+if (!world.mallCfg) world.mallCfg = D.defaultMallCfg();
 // 套用管理后台保存的组件生成配置（品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则）
 if (D.setComponentCfg) D.setComponentCfg(world.componentCfg);
 // 套用管理后台保存的鱼类体型 roll 模型（默认正态；影响所有上鱼体型与大小鱼榜）
@@ -2359,6 +2736,105 @@ const server = http.createServer(function (req, res) {
     });
     return;
   }
+  // ---- 商城（每日限购）：读取当前周期商品与限购余额 ----
+  if (p === '/api/mall' && req.method === 'GET') {
+    const key = u.query.token && sessionGet(u.query.token);
+    if (!key) return apiResp(res, 401, { error: '未登录' });
+    return apiResp(res, 200, mallView(users[key]));
+  }
+  // ---- 商城：购买（服务器权威：校验限购 / 金币 / 商品有效性，成功后入包广播） ----
+  if (p === '/api/mall/buy' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const view = mallView(rec);
+        const item = view.items.find(function (x) { return x.id === String(d.id || ''); });
+        if (!item) return apiResp(res, 400, { error: '该商品不在商城中' });
+        let qty = Math.floor(Number(d.qty) || 1);
+        if (!isFinite(qty) || qty < 1) qty = 1;
+        if (qty > MALL_MAX_QTY) qty = MALL_MAX_QTY;
+        if (item.limit > 0 && item.remain != null && qty > item.remain) {
+          return apiResp(res, 400, { error: '超过今日限购（剩余 ' + item.remain + ' 件）' });
+        }
+        const cost = item.price * qty;
+        if ((rec.coins || 0) < cost) return apiResp(res, 400, { error: '金币不足（需 ' + cost + '，当前 ' + Math.round(rec.coins || 0) + '）' });
+        rec.coins -= cost;
+        invAdd(rec, item.id, qty);
+        const cyc = D.mallCycleOf(view.refreshTime, Date.now());
+        const bought = mallBoughtOf(rec, cyc.key);
+        rec.mall = { key: cyc.key, bought: Object.assign({}, bought) };
+        rec.mall.bought[item.id] = (rec.mall.bought[item.id] || 0) + qty;
+        saveAccount(key);
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        const next = mallView(rec);
+        apiResp(res, 200, {
+          ok: true, id: item.id, name: item.name, qty: qty, cost: cost, coins: rec.coins,
+          inventory: rec.inventory, mall: next,
+        });
+      });
+    });
+    return;
+  }
+  // ---- 工坊 · 熔炼：读取参数（材料→词缀对照 / 成功率与花费系数） ----
+  if (p === '/api/workshop' && req.method === 'GET') {
+    const key = u.query.token && sessionGet(u.query.token);
+    if (!key) return apiResp(res, 401, { error: '未登录' });
+    const rec = users[key];
+    const cfg = smeltCfgOf();
+    const materials = D.smeltMaterialIds().map(function (id) {
+      const it = D.itemOf(id);
+      return { id: id, name: it.name, rarity: it.rarity, affix: D.smeltMaterialAffix(id), affixName: D.AFFIX_LABEL[D.smeltMaterialAffix(id)] || '' };
+    });
+    const pearlMeta = D.itemOf(D.SMELT_PEARL);
+    return apiResp(res, 200, {
+      ok: true, cfg: cfg, materials: materials,
+      pearl: { id: D.SMELT_PEARL, name: pearlMeta.name, rarity: pearlMeta.rarity },
+      affixLabel: D.AFFIX_LABEL, coins: rec.coins || 0,
+    });
+  }
+  // ---- 工坊 · 熔炼：执行（服务器掷骰；失败只损失副件与材料，主件保持原样） ----
+  if (p === '/api/workshop/smelt' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const plan = planSmelt(rec, d);
+        if (plan.error) return apiResp(res, 400, { error: plan.error });
+        const base = D.componentBase(plan.mainMeta.baseId);
+        const useBoundary = plan.rollBoundary;
+        const success = Math.random() * 100 < plan.rates.rate;
+        // 资源先扣（成功与否都消耗：副件被熔毁、材料烧掉、金币花掉）
+        rec.coins -= plan.gold;
+        invAdd(rec, plan.subId, -1);
+        plan.consume.forEach(function (e) { invAdd(rec, e.id, -1 * e.qty); });
+        let result = null, extraOk = false;
+        if (success) {
+          const affixes = [];
+          affixes.push({ type: plan.mainAffix.type, value: smeltRoll(smeltRangeFor(base, plan.mainAffix.type), useBoundary) });
+          affixes.push({ type: plan.subAffix.type, value: smeltRoll(smeltRangeFor(base, plan.subAffix.type), useBoundary) });
+          if (plan.extraType) {
+            extraOk = Math.random() * 100 < plan.rates.extraRate;
+            if (extraOk) affixes.push({ type: plan.extraType, value: smeltRoll(smeltRangeFor(base, plan.extraType), useBoundary) });
+          }
+          invAdd(rec, plan.mainId, -1);
+          const newId = D.instanceId(base.id, plan.mainMeta.quality, affixes);
+          invAdd(rec, newId, 1);
+          result = D.componentOf(newId);
+        }
+        try { syncActiveRodSlot(rec); } catch (e) {}
+        saveAccount(key);
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        apiResp(res, 200, {
+          ok: true, success: success, extraOk: extraOk,
+          rate: plan.rates.rate, extraRate: plan.rates.extraRate, gold: plan.gold,
+          pearl: plan.pearl, rollBoundary: useBoundary,
+          load: plan.load, extraType: plan.extraType,
+          mainId: plan.mainId, subId: plan.subId, item: result,
+          coins: rec.coins, inventory: rec.inventory,
+        });
+      });
+    });
+    return;
+  }
   if (p === '/api/sell' && req.method === 'POST') {
     readBody(req, function (body) {
       auth(req, res, body, function (d, key) {
@@ -2706,8 +3182,12 @@ const server = http.createServer(function (req, res) {
       // 经济参数（商店文案与容量提示用；改动经 pricecfg 广播同步）
       priceCfg: priceCfg(),
       dropCfg: dropCfg(),
-      // 宝匣配置（突破保底次数）：宝匣页据此显示保底进度
+      // 宝匣配置（突破保底次数 + 各档位合成成本）：宝匣页据此显示成本与保底进度
       chestCfg: chestCfgOf(),
+      // 工坊熔炼参数（成功率/花费系数）：工坊页据此展示预览；改动经 smeltcfg 广播同步
+      smeltCfg: smeltCfgOf(),
+      // 版本更新进行中（60 秒通知横幅）：后连进来的客户端也能看到倒计时
+      update: updateStateView(),
     });
   }
   // ---- 钓场目录（公开只读；含管理后台保存的掉落池/增益/锁定覆盖） ----
@@ -3322,8 +3802,9 @@ const server = http.createServer(function (req, res) {
     return apiResp(res, 200, {
       ok: true,
       grounds: D.GROUNDS,
-      catalog: { fish: fish, materials: D.MATERIALS, components: D.COMPONENT_BASES },
-      affixTypes: D.AFFIX_LABEL,
+      catalog: { fish: fish, materials: D.MATERIALS, components: D.COMPONENT_BASES, chests: D.CHESTS },
+      affixTypes: D.AFFIX_LABEL,        // 组件词缀（6 类，「技巧」在此）
+      buffTypes: D.BUFF_LABEL,          // 钓点增益（比组件词缀多一类「大鱼概率」）
       quality: D.QUALITY,
       notifyLevel: world.notifyLevel || 'all',
       notifyLevels: NOTIFY_LEVELS,
@@ -3354,10 +3835,29 @@ const server = http.createServer(function (req, res) {
       chestPityMax: CHEST_PITY_MAX,
       chests: (D.CHESTS || []).map(function (c) {
         return { id: c.id, name: c.name, rarity: c.rarity, mode: c.mode, costRelic: c.costRelic, costCoins: c.costCoins,
+          baseRelic: D.CHEST_BASE_COSTS[c.id] ? D.CHEST_BASE_COSTS[c.id].costRelic : c.costRelic,
+          baseCoins: D.CHEST_BASE_COSTS[c.id] ? D.CHEST_BASE_COSTS[c.id].costCoins : c.costCoins,
           hasExtra: !!c.extra, hitCount: c.hitCount, missCount: c.missCount, chance: c.chance };
       }),
+      chestCostMax: { relic: CHEST_COST_RELIC_MAX, coins: CHEST_COST_COINS_MAX },
       extraAffixRanges: (D.getComponentCfg && D.getComponentCfg().extraAffixRanges) || {},
       extraAffixDefaults: D.DEFAULT_EXTRA_AFFIX_RANGES,
+      // ---- 工坊熔炼（成功率 / 花费 / 投料上限；材料→词缀对照只读展示） ----
+      smeltCfg: smeltCfgOf(),
+      smeltDefaults: D.defaultSmeltCfg(),
+      smeltMaterials: D.smeltMaterialIds().map(function (id) {
+        const it = D.itemOf(id);
+        return { id: id, name: it.name, rarity: it.rarity, affix: D.smeltMaterialAffix(id), affixName: D.AFFIX_LABEL[D.smeltMaterialAffix(id)] || '' };
+      }),
+      smeltPearl: { id: D.SMELT_PEARL, name: itemName(D.SMELT_PEARL) },
+      // ---- 商城（每日限购）：商品 + 刷新时间 ----
+      mallCfg: mallCfgOf(),
+      mallDefaults: D.defaultMallCfg(),
+      // ---- 版本更新：候选 .bat 与当前任务 ----
+      updateBats: listBatCandidates(),
+      updateState: updateStateView(),
+      updateBannerMs: UPDATE_BANNER_MS,
+      updateGraceMs: UPDATE_GRACE_MS,
     });
   }
   // ---- 组件生成配置：品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则 ----
@@ -3850,6 +4350,29 @@ const server = http.createServer(function (req, res) {
     });
     return;
   }
+  // ---- 钓点在世界地图上的位置（后台拖动设置；pos = [x%, y%]，null/缺失 = 恢复该钓点的出厂坐标） ----
+  if (p === '/api/admin/spot/pos' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const g = D.GROUNDS.find(function (x) { return x.id === d.groundId; });
+      if (!g) return apiResp(res, 404, { error: '钓场不存在' });
+      const list = Array.isArray(d.list) ? d.list : [{ spotId: d.spotId, pos: d.pos }];
+      const bad = list.some(function (e) {
+        return e && e.pos != null && !normalizeSpotPos(e.pos);
+      });
+      if (bad) return apiResp(res, 400, { error: '坐标格式错误（需 [x, y]，0-100 的百分比）' });
+      const changed = saveSpotPositions(g.id, list);
+      apiResp(res, 200, {
+        ok: true, changed: changed,
+        spots: (D.GROUNDS.find(function (x) { return x.id === g.id; }).spots || []).map(function (s) {
+          return { id: s.id, name: s.name, pos: s.pos || null };
+        }),
+      });
+    });
+    return;
+  }
   // ---- 钓场开放/锁定（锁定时立即停掉该场所有钓鱼循环） ----
   if (p === '/api/admin/ground/lock' && req.method === 'POST') {
     readBody(req, function (body) {
@@ -3898,6 +4421,114 @@ const server = http.createServer(function (req, res) {
       saveMarket();
       broadcastMarket();
       apiResp(res, 200, { ok: true, returned: { lid: l.lid, id: l.id, name: l.name, qty: l.qty, seller: l.seller } });
+    });
+    return;
+  }
+  // ---- 商城配置：商品（物品 / 金币价 / 每日限购）+ 限购刷新时间 ----
+  // 保存后：玩家端商城的商品、价格、限购与下次刷新时间立即同步（broadcast mallcfg）。
+  if (p === '/api/admin/mall/config' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const cur = mallCfgOf();
+      const next = { refreshTime: cur.refreshTime, items: cur.items };
+      if (d.refreshTime != null && d.refreshTime !== '') {
+        if (!D.parseRefreshTime(d.refreshTime)) return apiResp(res, 400, { error: '刷新时间格式应为 HH:MM（如 04:00）' });
+        next.refreshTime = String(d.refreshTime).trim();
+      }
+      if (d.items != null) {
+        const v = validateMallItems(d.items);
+        if (v.error) return apiResp(res, 400, { error: v.error });
+        next.items = v.items;
+      }
+      if (d.reset) next.items = D.defaultMallCfg().items;
+      world.mallCfg = { refreshTime: next.refreshTime, items: next.items.map(function (e) { return { id: e.id, price: e.price, limit: e.limit }; }) };
+      saveConfig();
+      broadcast({ type: 'mallcfg' });
+      econLog(a.name, '商城配置：' + world.mallCfg.items.length + ' 件商品，限购刷新 ' + world.mallCfg.refreshTime);
+      apiResp(res, 200, { ok: true, mallCfg: mallCfgOf() });
+    });
+    return;
+  }
+  // ---- 工坊熔炼配置：成功率 / 投料系数 / 金币花费 ----
+  if (p === '/api/admin/smelt/config' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const RANGES = {
+        baseRate: [0, 100], failPerMaterial: [-50, 50], extraRatePerMaterial: [0, 100], extraRatePearl: [0, 100],
+        extraRateMax: [0, 100], rateMin: [0, 100], rateMax: [0, 100],
+        goldBase: [0, 100000000], goldPerMaterial: [0, 10000000], goldPearl: [0, 100000000],
+        maxMaterials: [0, 99], maxTypes: [0, 8],
+      };
+      const LABEL = {
+        baseRate: '熔炼基础成功率', failPerMaterial: '每份材料对失败率的影响', extraRatePerMaterial: '每份材料的补缀成功率加成',
+        extraRatePearl: '龙宫宝珠的补缀成功率加成', extraRateMax: '补缀成功率上限', rateMin: '熔炼成功率下限', rateMax: '熔炼成功率上限',
+        goldBase: '基础金币花费', goldPerMaterial: '每份材料金币', goldPearl: '龙宫宝珠金币', maxMaterials: '单次最大投料份数', maxTypes: '单次最大投料种类',
+      };
+      const patch = {};
+      let err = null;
+      Object.keys(RANGES).forEach(function (k) {
+        if (err || d[k] == null || d[k] === '') return;
+        const v = Number(d[k]);
+        const r = RANGES[k];
+        if (!isFinite(v) || v < r[0] || v > r[1]) { err = LABEL[k] + '需在 ' + r[0] + ' - ' + r[1] + ' 之间'; return; }
+        patch[k] = (k === 'failPerMaterial' || k === 'extraRatePerMaterial') ? Math.round(v * 10) / 10 : Math.round(v);
+      });
+      if (d.pearlRollTwice != null) patch.pearlRollTwice = !!d.pearlRollTwice;
+      if (err) return apiResp(res, 400, { error: err });
+      if (d.reset) {
+        world.smeltCfg = D.setSmeltCfg(null);
+      } else {
+        const merged = Object.assign({}, D.getSmeltCfg(), patch);
+        if (merged.rateMin > merged.rateMax) return apiResp(res, 400, { error: '熔炼成功率下限不能大于上限' });
+        if (merged.baseRate > merged.rateMax) merged.baseRate = merged.rateMax;
+        if (merged.baseRate < merged.rateMin) merged.baseRate = merged.rateMin;
+        world.smeltCfg = D.setSmeltCfg(merged);
+      }
+      saveConfig();
+      broadcast({ type: 'smeltcfg', smeltCfg: smeltCfgOf() });
+      econLog(a.name, '熔炼配置：基础成功率 ' + world.smeltCfg.baseRate + '%');
+      apiResp(res, 200, { ok: true, smeltCfg: smeltCfgOf() });
+    });
+    return;
+  }
+  // ---- 版本更新：候选启动脚本（.bat） ----
+  if (p === '/api/admin/update/list' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    return apiResp(res, 200, { ok: true, bats: listBatCandidates(), root: PROJECT_ROOT, bannerMs: UPDATE_BANNER_MS, graceMs: UPDATE_GRACE_MS, current: updateStateView() });
+  }
+  // ---- 版本更新：发布 60 秒通知横幅，随后自动切换（dryRun 只走流程不真的拉起新版本/退出） ----
+  if (p === '/api/admin/update/start' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      if (updateTask) return apiResp(res, 400, { error: '已有一个更新任务在进行中（可先取消）' });
+      const r = resolveBatPath(d.bat);
+      if (r.error) return apiResp(res, 400, { error: r.error });
+      const note = String(d.note || '').trim().slice(0, 120);
+      const task = startUpdateTask({ bat: r.rel, full: r.full, note: note, by: a.name, dryRun: !!d.dryRun });
+      econLog(a.name, '发布版本更新：' + r.rel + '（通知 ' + Math.round(UPDATE_BANNER_MS / 1000) + ' 秒后切换）');
+      apiResp(res, 200, { ok: true, update: updateStateView(), task: { bat: task.bat, dryRun: task.dryRun } });
+    });
+    return;
+  }
+  // ---- 版本更新：取消（横幅立即撤回） ----
+  if (p === '/api/admin/update/cancel' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d; try { d = JSON.parse(body); } catch (e) { return apiResp(res, 400, { error: '格式错误' }); }
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      if (!updateTask) return apiResp(res, 400, { error: '当前没有进行中的更新任务' });
+      if (updateTask.phase === 'restarting') return apiResp(res, 400, { error: '已经在切换中，无法取消' });
+      clearUpdateTask();
+      broadcastUpdate();
+      econLog(a.name, '取消版本更新');
+      apiResp(res, 200, { ok: true, update: null });
     });
     return;
   }
@@ -4117,21 +4748,62 @@ const server = http.createServer(function (req, res) {
         }
         if (!d.validateOnly && (d.resetPriceCfg || d.priceCfg != null || d.resetDropCfg || d.dropCfg != null || d.priceOv != null)) { saveConfig(); saveEconomy(); }
       }
-      // ---- 宝匣配置：突破保底次数（0 = 关闭；1~50 = 连续 N-1 次未突破后第 N 次必出）----
+      // ---- 宝匣配置：突破保底次数（0 = 关闭）+ 各档位合成成本（残片 / 金币）----
+      // 成本覆盖存 world.chestCfg.costs，保存后立即套用到共享目录 D.CHESTS，
+      // 玩家端 /api/chest 与合成校验读到的都是同一份有效成本（无需重启）。
       if (d.chestCfg != null) {
         if (typeof d.chestCfg !== 'object') return apiResp(res, 400, { error: 'chestCfg 格式错误' });
-        const raw = Number(d.chestCfg.pityN);
-        if (d.chestCfg.pityN != null && d.chestCfg.pityN !== '') {
-          if (!isFinite(raw) || raw < 0 || raw > CHEST_PITY_MAX) {
-            return apiResp(res, 400, { error: '突破保底次数需在 0 - ' + CHEST_PITY_MAX + ' 之间（0 = 关闭）' });
+        const cur = Object.assign({}, world.chestCfg || {});
+        if (d.chestCfg.pityN !== undefined) {
+          const raw = Number(d.chestCfg.pityN);
+          if (d.chestCfg.pityN != null && d.chestCfg.pityN !== '') {
+            if (!isFinite(raw) || raw < 0 || raw > CHEST_PITY_MAX) {
+              return apiResp(res, 400, { error: '突破保底次数需在 0 - ' + CHEST_PITY_MAX + ' 之间（0 = 关闭）' });
+            }
+            cur.pityN = Math.floor(raw);
+          } else {
+            cur.pityN = 0; // 留空 = 关闭保底
           }
-          if (!d.validateOnly) world.chestCfg = { pityN: Math.floor(raw) };
-        } else if (!d.validateOnly) {
-          world.chestCfg = {}; // 留空 = 关闭保底
+        }
+        if (d.chestCfg.costs !== undefined) {
+          if (d.chestCfg.costs != null && typeof d.chestCfg.costs !== 'object') {
+            return apiResp(res, 400, { error: '宝匣成本格式错误' });
+          }
+          const src = d.chestCfg.costs || {};
+          const costs = {};
+          let err = null;
+          Object.keys(src).forEach(function (cid) {
+            if (err) return;
+            const ch = D.chestOf(cid);
+            if (!ch) return;
+            const o = src[cid] || {};
+            const out2 = {};
+            if (o.costRelic !== undefined && o.costRelic !== '') {
+              const v = Number(o.costRelic);
+              if (!isFinite(v) || v < 0 || v > CHEST_COST_RELIC_MAX || Math.floor(v) !== v) {
+                err = '「' + ch.name + '」所需残片需为 0 - ' + CHEST_COST_RELIC_MAX + ' 的整数';
+                return;
+              }
+              out2.costRelic = v;
+            }
+            if (o.costCoins !== undefined && o.costCoins !== '') {
+              const v = Number(o.costCoins);
+              if (!isFinite(v) || v < 0 || v > CHEST_COST_COINS_MAX || Math.floor(v) !== v) {
+                err = '「' + ch.name + '」所需金币需为 0 - ' + CHEST_COST_COINS_MAX + ' 的整数';
+                return;
+              }
+              out2.costCoins = v;
+            }
+            if (Object.keys(out2).length) costs[cid] = out2;
+          });
+          if (err) return apiResp(res, 400, { error: err });
+          cur.costs = Object.keys(costs).length ? costs : null;
         }
         if (!d.validateOnly) {
+          world.chestCfg = cur;
+          applyChestCostCfg();
           saveConfig();
-          // 通知在线玩家刷新宝匣页的保底进度文案（无此广播则要重新进入页面才更新）
+          // 通知在线玩家刷新宝匣页的成本与保底进度文案（无此广播则要重新进入页面才更新）
           broadcast({ type: 'chestcfg', chestCfg: chestCfgOf() });
         }
         out.chestCfg = chestCfgOf();
@@ -4139,7 +4811,7 @@ const server = http.createServer(function (req, res) {
       if (d.evalVars && formulaSrc != null) {
         const c2 = compileFormula(formulaSrc);
         if (c2.ok) {
-          const vars = { speed: 0, big: 0, rare: 0, material: 0, size: 0, double: 0, interval: castBaseMs() };
+          const vars = { speed: 0, skill: 0, big: 0, rare: 0, material: 0, size: 0, double: 0, interval: castBaseMs() };
           Object.keys(d.evalVars).forEach(function (k) { if (k in vars) vars[k] = Number(d.evalVars[k]) || 0; });
           let prob = c2.fn(vars);
           if (!isFinite(prob)) prob = prob > 0 ? 100 : 0;

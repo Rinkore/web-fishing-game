@@ -23,6 +23,7 @@ window.Admin = (function () {
   // 渔场编辑器状态
   let selGround = null, selSpot = null;
   let poolDraft = [], buffsDraft = [], poolDirty = false, buffsDirty = false;
+  let posDraft = {};            // 钓点地图坐标草稿 { spotId: [x%, y%] }（拖动后未保存的值）
 
   // ---- API 基地址探测：同源（集成模式）→ :9000 → :8080（分离模式） ----
   let API_BASE = null;
@@ -74,6 +75,13 @@ window.Admin = (function () {
     t.textContent = msg; t.classList.toggle('err', !!err); t.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  }
+  // 异步回调里写状态提示：请求往返期间页面可能已经切走或重绘，元素不在就静默跳过
+  // （否则会抛 "Cannot set properties of null (setting 'innerHTML')"，测试里算页面错误）
+  function setHint(id, html) {
+    const el = $(id);
+    if (el) el.innerHTML = html;
+    return !!el;
   }
   function fmtTime(ts) { return ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '—'; }
   function remainText(expireAt) {
@@ -137,10 +145,13 @@ window.Admin = (function () {
     { id: 'fishsize', name: '🐟 鱼类体型' },
     { id: 'economy', name: '💰 经济参数' },
     { id: 'chest', name: '🎁 宝匣配置' },
+    { id: 'workshop', name: '⚒ 工坊配置' },
+    { id: 'mall', name: '🛒 商城配置' },
     { id: 'formula', name: '🧮 公式管理' },
     { id: 'notify', name: '🔔 通知等级' },
     { id: 'banner', name: '📢 横幅管理' },
     { id: 'feedback', name: '📮 反馈意见' },
+    { id: 'update', name: '🔄 版本更新' },
   ];
   function renderNav() {
     const nav = $('nav');
@@ -157,6 +168,7 @@ window.Admin = (function () {
     view = v;
     stopOverviewTimer();
     stopBannerTimer();
+    stopUpdateTimer();
     renderNav();
     if (v === 'overview') return renderOverview();
     if (v === 'accounts') return renderAccounts();
@@ -167,6 +179,9 @@ window.Admin = (function () {
     if (v === 'fishsize') return renderFishSize();
     if (v === 'economy') return renderEconomy();
     if (v === 'chest') return renderChest();
+    if (v === 'workshop') return renderWorkshop();
+    if (v === 'mall') return renderMall();
+    if (v === 'update') return renderUpdate();
     if (v === 'formula') return renderFormula();
     if (v === 'notify') return renderNotify();
     if (v === 'banner') return renderBanner();
@@ -299,7 +314,10 @@ window.Admin = (function () {
         if (!r.ok || view !== 'overview') return;
         const d = r.data;
         const lvName = (worldCfg && worldCfg.notifyLevels && worldCfg.notifyLevels[d.notifyLevel]) || d.notifyLevel;
-        $('ov-body').innerHTML =
+        // 请求往返期间页面可能已被重绘（例如刚切到别的页签又切回来）——元素不在就跳过
+        const ovBody = $('ov-body');
+        if (!ovBody) return;
+        ovBody.innerHTML =
           '<div class="stat-grid">' +
           '<div class="stat"><div class="v">' + d.online + '</div><div class="k">在线玩家</div></div>' +
           '<div class="stat"><div class="v">' + d.fishingCount + '</div><div class="k">正在钓鱼</div></div>' +
@@ -796,6 +814,7 @@ window.Admin = (function () {
       '<button class="btn mini" id="ns-add">＋ 新建钓点（一键填充）</button>' +
       (sp0Exists(g) ? '<button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button>' : '') +
       '</span></div>' +
+      '<div id="gd-map"></div>' +
       '<div id="ed-body"></div>' +
       '</div>';
     void presets;
@@ -804,7 +823,7 @@ window.Admin = (function () {
       c.onclick = function (ev) {
         if (ev.target && ev.target.getAttribute && (ev.target.getAttribute('data-lock') || ev.target.getAttribute('data-rmg'))) return;
         selGround = c.getAttribute('data-g'); selSpot = null;
-        poolDirty = buffsDirty = false;
+        poolDirty = buffsDirty = false; posDraft = {};
         drawGrounds(cfg);
       };
     });
@@ -858,7 +877,7 @@ window.Admin = (function () {
     body.querySelectorAll('.spot-tab').forEach(function (t) {
       t.onclick = function () {
         selSpot = t.getAttribute('data-s');
-        poolDirty = buffsDirty = false;
+        poolDirty = buffsDirty = false; posDraft = {};
         drawGrounds(cfg);
       };
     });
@@ -890,7 +909,7 @@ window.Admin = (function () {
     // 选中渔场的信息/限时窗口
     $('gi-save').onclick = function () {
       adminApi('POST', '/api/admin/ground/update', {
-        token: token, groundId: g.id,
+        token: token, groundId: selGround,
         name: $('gi-name').value.trim(), type: $('gi-type').value, desc: $('gi-desc').value.trim(),
       }).then(function (r) {
         if (!r.ok) { $('gi-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
@@ -901,7 +920,7 @@ window.Admin = (function () {
     };
     $('gi-window').onclick = function () {
       adminApi('POST', '/api/admin/ground/update', {
-        token: token, groundId: g.id,
+        token: token, groundId: selGround,
         openFrom: $('gi-from').value || null, openTo: $('gi-to').value || null,
       }).then(function (r) {
         if (!r.ok) { $('gi-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
@@ -910,7 +929,7 @@ window.Admin = (function () {
       });
     };
     $('gi-clearwin').onclick = function () {
-      adminApi('POST', '/api/admin/ground/update', { token: token, groundId: g.id, clearWindow: true }).then(function (r) {
+      adminApi('POST', '/api/admin/ground/update', { token: token, groundId: selGround, clearWindow: true }).then(function (r) {
         if (!r.ok) { toast(r.data.error || '操作失败', true); return; }
         toast('已清除限时窗口（恢复常驻）');
         loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
@@ -921,7 +940,7 @@ window.Admin = (function () {
       const name = $('ns-name').value.trim();
       if (!name) { toast('请填写新钓点名称', true); return; }
       const autoId = 'spot_' + Date.now().toString(36).slice(-5);
-      adminApi('POST', '/api/admin/spot/add', { token: token, groundId: g.id, id: autoId, name: name, preset: $('ns-preset').value, fill: true }).then(function (r) {
+      adminApi('POST', '/api/admin/spot/add', { token: token, groundId: selGround, id: autoId, name: name, preset: $('ns-preset').value, fill: true }).then(function (r) {
         if (!r.ok) { toast(r.data.error || '创建失败', true); return; }
         toast('钓点「' + name + '」已创建（掉落池已按预设填充）');
         selSpot = r.data.spot.id;
@@ -945,6 +964,7 @@ window.Admin = (function () {
       };
     }
 
+    drawSpotMap(g);
     const sp = g.spots.find(function (x) { return x.id === selSpot; });
     if (!sp) { $('ed-body').innerHTML = '<div class="hint">该渔场暂无钓点，可用上方「＋ 新建钓点」添加（自动填充掉落池）。</div>'; return; }
     // 草稿：首次进入或切换钓点时从服务器数据拷贝
@@ -953,6 +973,91 @@ window.Admin = (function () {
       buffsDraft = (sp.buffs || []).map(function (b) { return { type: b.type, value: b.value }; });
     }
     drawEditors(cfg, g, sp);
+  }
+  // ---- 钓点地图定位（拖动设置）----
+  // 玩家端「钓鱼」页的世界地图坐标与钓点数据一起下发（data.js 的 spot.pos，后台可覆盖）。
+  // 这里提供一张缩略世界地图：拖动节点 = 改坐标，坐标以地图宽高的百分比保存（2~98，防止拖出视野）。
+  // 草稿存在 posDraft（模块级），因此上鱼广播/切页重绘都不会丢掉尚未保存的拖动结果。
+  function drawSpotMap(g) {
+    const host = $('gd-map');
+    if (!host) return;
+    const spots = g.spots || [];
+    if (!spots.length) { host.innerHTML = ''; return; }
+    const posOf = function (sp) { return posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) || [50, 50]; };
+    host.innerHTML = '<h3>🗺 地图定位 — ' + esc(g.name) + '</h3>' +
+      '<div class="hint" style="margin-bottom:8px">直接拖动节点调整钓点在玩家端世界地图上的位置（坐标 = 地图宽高的百分比）。' +
+      '「恢复出厂」把该钓点退回 data.js 的默认坐标。改完点「保存坐标」立即对全服生效。</div>' +
+      '<div class="gd-map" id="gd-map-canvas">' +
+      '<img class="gd-map-img" src="assets/worldmap.png" alt="" draggable="false">' +
+      spots.map(function (sp) {
+        const p = posOf(sp);
+        return '<button class="gd-node" data-s="' + esc(sp.id) + '" style="left:' + p[0] + '%;top:' + p[1] + '%" title="拖动调整位置">' +
+          '<span class="gd-node-dot"></span><span class="gd-node-name">' + esc(sp.name) + '</span></button>';
+      }).join('') +
+      '</div>' +
+      '<div class="mgr-row" style="margin-top:8px"><button class="btn primary" id="gd-map-save">保存坐标</button>' +
+      '<button class="btn" id="gd-map-reset">全部恢复出厂坐标</button>' +
+      '<span id="gd-map-state" class="hint" style="margin-left:10px">拖动节点后记得保存</span></div>';
+
+    const canvas = $('gd-map-canvas');
+    let drag = null;
+    function setPos(node, sid, x, y) {
+      const nx = Math.max(2, Math.min(98, Math.round(x * 10) / 10));
+      const ny = Math.max(2, Math.min(98, Math.round(y * 10) / 10));
+      node.style.left = nx + '%';
+      node.style.top = ny + '%';
+      posDraft[sid] = [nx, ny];
+    }
+    canvas.querySelectorAll('.gd-node').forEach(function (node) {
+      node.addEventListener('pointerdown', function (ev) {
+        ev.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        drag = { node: node, sid: node.getAttribute('data-s'), rect: rect };
+        try { node.setPointerCapture(ev.pointerId); } catch (e) {}
+        node.classList.add('dragging');
+        onMove(ev);
+      });
+      node.addEventListener('pointermove', function (ev) { if (drag && drag.node === node) onMove(ev); });
+      node.addEventListener('pointerup', function (ev) {
+        if (!drag || drag.node !== node) return;
+        node.classList.remove('dragging');
+        try { node.releasePointerCapture(ev.pointerId); } catch (e) {}
+        drag = null;
+        $('gd-map-state').innerHTML = '<span style="color:var(--warn)">未保存：' + esc(node.getAttribute('data-s')) +
+          ' → ' + posDraft[node.getAttribute('data-s')].join(', ') + '</span>';
+      });
+      function onMove(ev) {
+        const r = drag.rect;
+        if (!r.width || !r.height) return;
+        setPos(node, drag.sid, ((ev.clientX - r.left) / r.width) * 100, ((ev.clientY - r.top) / r.height) * 100);
+      }
+    });
+    $('gd-map-save').onclick = function () {
+      const list = spots.map(function (sp) {
+        return { spotId: sp.id, pos: posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) };
+      }).filter(function (e) { return e.pos; });
+      adminApi('POST', '/api/admin/spot/pos', { token: token, groundId: g.id, list: list }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+        posDraft = {};
+        setHint('gd-map-state', '<span style="color:var(--ok)">已保存 ' + (r.data.changed || 0) + ' 处坐标，玩家端地图立即生效</span>');
+        toast('钓点坐标已保存');
+      });
+    };
+    $('gd-map-reset').onclick = function () {
+      confirmModalLocal('把「' + g.name + '」的钓点坐标全部恢复为出厂值？').then(function (ok) {
+        if (!ok) return;
+        adminApi('POST', '/api/admin/spot/pos', {
+          token: token, groundId: g.id,
+          list: spots.map(function (sp) { return { spotId: sp.id, pos: null }; }),
+        }).then(function (r) {
+          if (!r.ok) { toast((r.data && r.data.error) || '操作失败', true); return; }
+          posDraft = {};
+          worldCfg = null;
+          toast('已恢复出厂坐标');
+          renderGrounds();
+        });
+      });
+    };
   }
   // 已删除项的名称提示（内置目录已不在 cfg.grounds 中，退回显示 id）
   function GROUND_NAME_HINT(cfg, id) {
@@ -1014,7 +1119,8 @@ window.Admin = (function () {
       '<button id="buff-save" class="btn primary">保存增益</button>' +
       '</div>';
 
-    const affixes = cfg.affixTypes;
+    // 钓点增益可选的类别 = buffTypes（组件 6 类 + 大鱼概率）；组件词缀表 affixTypes 不含大鱼概率
+    const affixes = cfg.buffTypes || cfg.affixTypes;
     const buffNote = {
       speed: '钓速：该钓点抛竿速率的最终乘算（× (1-数值/100)），不与钓竿词缀/全服加成相加', big: '大鱼概率：放大「大鱼」条目权重',
       rare: '稀有概率：放大「稀有」条目权重', material: '材料概率：放大材料条目权重',
@@ -1367,20 +1473,30 @@ window.Admin = (function () {
     const chests = cfg.chests || [];
     const AR = cfg.extraAffixRanges || {};
     const AD = cfg.extraAffixDefaults || {};
-    const LABEL = { speed: '钓速', big: '大鱼概率', rare: '稀有概率', material: '材料概率', size: '体型', double: '双钓概率' };
+    // 词缀名称取服务器下发的组件词缀表（含「技巧」；钓点增益另有一类「大鱼概率」，不属于组件词缀）
+    const LABEL = cfg.affixTypes || {};
     const MODE = { random: '基底随机', part: '自选部位', base: '自选底材' };
+    const CM = (cfg.chestCostMax) || { relic: 9999, coins: 100000000 };
     const row = function (c) {
-      return '<tr><td><b>' + esc(c.name) + '</b></td><td>' + esc(MODE[c.mode] || c.mode) + '</td>' +
-        '<td>' + c.costRelic + ' 个</td><td>💰' + c.costCoins + '</td>' +
+      const changed = c.costRelic !== c.baseRelic || c.costCoins !== c.baseCoins;
+      return '<tr><td><b>' + esc(c.name) + '</b>' + (changed ? ' <span class="tag on">已改</span>' : '') + '</td>' +
+        '<td>' + esc(MODE[c.mode] || c.mode) + '</td>' +
+        '<td class="num"><input class="ipt mk-num ch-cost" data-cid="' + esc(c.id) + '" data-k="costRelic" type="number" min="0" max="' + CM.relic + '" step="1" value="' + c.costRelic + '"></td>' +
+        '<td class="num"><input class="ipt mk-num ch-cost" data-cid="' + esc(c.id) + '" data-k="costCoins" type="number" min="0" max="' + CM.coins + '" step="1" value="' + c.costCoins + '"></td>' +
         '<td>' + (c.hasExtra
           ? '神话 · 50% 突破（' + c.missCount + '~' + c.hitCount + ' 条）'
           : (c.id === 'chest_abyss' ? '史诗 · 满词条' : '稀有 / 史诗')) + '</td></tr>';
     };
     body.innerHTML =
-      '<h3 style="margin-top:0">📦 档位一览（只读）</h3>' +
+      '<h3 style="margin-top:0">📦 档位与合成成本（残片 / 金币可直接改）</h3>' +
       '<table class="tbl"><thead><tr><th>档位</th><th>基底</th><th class="num">残片</th><th class="num">金币</th><th>产出</th></tr></thead><tbody>' +
       chests.map(row).join('') + '</tbody></table>' +
-      '<div class="hint" style="margin-top:6px">改动档位配方请编辑 <code>data.js</code> 的 <code>CHESTS</code> 后发版（与组件底材/词缀池同一份目录，前后端共用）。</div>' +
+      '<div class="mgr-row" style="margin-top:8px"><button class="btn primary" id="ch-cost-save">保存成本</button>' +
+      '<button class="btn" id="ch-cost-reset">恢复出厂成本</button>' +
+      '<span id="ch-cost-state" class="hint" style="margin-left:10px">出厂值：' +
+      chests.map(function (c) { return esc(c.name) + ' ' + c.baseRelic + ' 残片/💰' + c.baseCoins; }).join('｜') + '</span></div>' +
+      '<div class="hint" style="margin-top:6px">改动会立即同步到玩家端「🎁 宝匣合成」页与合成校验（无需重启）。' +
+      '档位模式 / 品质权重 / 词条数等结构性配方仍写在 <code>data.js</code> 的 <code>CHESTS</code>，随版本发布。</div>' +
 
       '<h3>⚡ 突破保底</h3>' +
       '<div class="hint" style="margin-bottom:8px">「海王遗匣」的破突判定为 50% 掷骰。设 N 后：连续 N−1 次未突破，第 N 次必出突破件（命中即清零）。<b>0 = 关闭</b>。</div>' +
@@ -1427,6 +1543,35 @@ window.Admin = (function () {
         toast('已关闭宝匣保底');
       });
     };
+    // 合成成本（残片 / 金币）：一次提交全部档位，留空/为 0 按 0 处理（0 = 免费）
+    $('ch-cost-save').onclick = function () {
+      const costs = {};
+      body.querySelectorAll('.ch-cost').forEach(function (inp) {
+        const cid = inp.getAttribute('data-cid'), k = inp.getAttribute('data-k');
+        const v = Math.floor(Number(inp.value));
+        if (!isFinite(v) || v < 0) { costs[cid] = costs[cid] || {}; return; }
+        costs[cid] = costs[cid] || {};
+        costs[cid][k] = v;
+      });
+      adminApi('POST', '/api/admin/settings', { token: token, chestCfg: { costs: costs } }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+        worldCfg = null;
+        setHint('ch-cost-state', '<span style="color:var(--ok)">已保存，立即生效（玩家端宝匣页同步更新）</span>');
+        toast('宝匣合成成本已保存');
+        renderChest();
+      });
+    };
+    $('ch-cost-reset').onclick = function () {
+      confirmModalLocal('把四档宝匣的合成成本恢复为出厂值？').then(function (ok) {
+        if (!ok) return;
+        adminApi('POST', '/api/admin/settings', { token: token, chestCfg: { costs: {} } }).then(function (r) {
+          if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+          worldCfg = null;
+          toast('已恢复出厂成本');
+          renderChest();
+        });
+      });
+    };
     $('ch-ar-save').onclick = function () {
       const out = {};
       Object.keys(AD).forEach(function (t) {
@@ -1452,6 +1597,299 @@ window.Admin = (function () {
         toast('池外词缀区间已恢复默认');
       });
     };
+  }
+
+  // ================================
+  // 商城配置（每日限购）
+  // ================================
+  // 商品 = 物品 id + 金币价 + 每日限购（0 = 不限购）；限购按「刷新时间 HH:MM」划分周期，
+  // 跨过刷新点即重置。物品从目录下拉选（鱼 / 材料 / 宝匣），也可直接填组件实例签名。
+  let mallDraft = null;
+  function mallCatalog(cfg) {
+    const out = [];
+    const cat = cfg.catalog || {};
+    (cat.fish || []).forEach(function (f) { out.push({ id: f.id, name: f.name }); });
+    (cat.materials || []).forEach(function (m) { out.push({ id: m.id, name: m.name }); });
+    (cat.chests || []).forEach(function (c) { out.push({ id: c.id, name: c.name }); });
+    return out;
+  }
+  function renderMall() {
+    const main = $('main');
+    main.innerHTML = '<h2>🛒 商城配置</h2>' +
+      '<div class="hint" style="margin-bottom:12px">玩家端「🛒 商城」页的金币直购商品：每件商品可设金币价与<b>每日限购</b>（0 = 不限购）。' +
+      '限购按「刷新时间」划分周期——到点即重置为满额。保存后立即同步给在线玩家。</div>' +
+      '<div id="ml-body" class="panel">加载中…</div>';
+    loadWorldCfg(true).then(function (cfg) {
+      if (!cfg || view !== 'mall') return;
+      drawMall(cfg);
+    });
+  }
+  function drawMall(cfg) {
+    const body = $('ml-body');
+    if (!body) return;
+    const M = cfg.mallCfg || { refreshTime: '04:00', items: [] };
+    const DEF = cfg.mallDefaults || { refreshTime: '04:00', items: [] };
+    if (!mallDraft) mallDraft = (M.items || []).map(function (e) { return { id: e.id, price: e.price, limit: e.limit }; });
+    const cat = mallCatalog(cfg);
+    const nameOf = function (id) {
+      const it = window.GameData ? window.GameData.itemOf(id) : null;
+      return it ? it.name : id;
+    };
+    const rows = mallDraft.map(function (e, i) {
+      return '<tr>' +
+        '<td>' + esc(nameOf(e.id)) + ' <span class="hint">' + esc(e.id) + '</span></td>' +
+        '<td class="num"><input class="ipt mk-num ml-price" data-i="' + i + '" type="number" min="0" step="1" value="' + e.price + '"></td>' +
+        '<td class="num"><input class="ipt mk-num ml-limit" data-i="' + i + '" type="number" min="0" max="9999" step="1" value="' + e.limit + '"></td>' +
+        '<td><button class="btn mini danger" data-ml-rm="' + i + '">移除</button></td></tr>';
+    }).join('');
+    body.innerHTML =
+      '<h3 style="margin-top:0">🕓 限购刷新时间</h3>' +
+      '<div class="mgr-row"><span class="ch-fix"><label>每日刷新</label>' +
+      '<input id="ml-rt" class="ipt mk-num" type="time" value="' + esc(M.refreshTime) + '"></span>' +
+      '<span class="hint">服务器本地时间；到点后所有玩家的每日限购重置。默认 ' + esc(DEF.refreshTime) + '。</span></div>' +
+      '<h3>📦 商品列表（' + mallDraft.length + ' 件）</h3>' +
+      '<table class="tbl ml-tbl"><thead><tr><th>物品</th><th class="num">金币价</th><th class="num">每日限购</th><th></th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="4" class="hint">还没有商品，用下方「添加商品」上架。</td></tr>') + '</tbody></table>' +
+      '<div class="mgr-row" style="margin-top:10px">' +
+      '<select id="ml-add-id" class="ipt" style="max-width:280px">' +
+      cat.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('') +
+      '</select>' +
+      '<input id="ml-add-custom" class="ipt" placeholder="自定义物品 id（如组件实例签名）" style="max-width:260px">' +
+      '<input id="ml-add-price" class="ipt mk-num" type="number" min="0" placeholder="金币价" style="max-width:120px">' +
+      '<input id="ml-add-limit" class="ipt mk-num" type="number" min="0" max="9999" placeholder="每日限购" value="1" style="max-width:120px">' +
+      '<button class="btn" id="ml-add">＋ 添加商品</button></div>' +
+      '<div class="mgr-row" style="margin-top:10px"><button class="btn primary" id="ml-save">保存商城配置</button>' +
+      '<button class="btn" id="ml-reset">恢复默认商品</button>' +
+      '<span id="ml-state" class="hint" style="margin-left:10px"></span></div>';
+
+    body.querySelectorAll('.ml-price').forEach(function (inp) {
+      inp.onchange = function () { mallDraft[Number(inp.getAttribute('data-i'))].price = Math.max(0, Math.floor(Number(inp.value) || 0)); };
+    });
+    body.querySelectorAll('.ml-limit').forEach(function (inp) {
+      inp.onchange = function () { mallDraft[Number(inp.getAttribute('data-i'))].limit = Math.max(0, Math.floor(Number(inp.value) || 0)); };
+    });
+    body.querySelectorAll('[data-ml-rm]').forEach(function (b) {
+      b.onclick = function () { mallDraft.splice(Number(b.getAttribute('data-ml-rm')), 1); drawMall(cfg); };
+    });
+    $('ml-add').onclick = function () {
+      const id = ($('ml-add-id').value || $('ml-add-custom').value).trim();
+      if (!id) { toast('请选择或填写物品 id', true); return; }
+      if (mallDraft.some(function (e) { return e.id === id; })) { toast('该物品已在商品列表中', true); return; }
+      const price = Math.max(0, Math.floor(Number($('ml-add-price').value) || 0));
+      const limit = Math.max(0, Math.floor(Number($('ml-add-limit').value) || 0));
+      mallDraft.push({ id: id, price: price, limit: limit });
+      drawMall(cfg);
+    };
+    $('ml-save').onclick = function () {
+      adminApi('POST', '/api/admin/mall/config', { token: token, refreshTime: $('ml-rt').value || '04:00', items: mallDraft })
+        .then(function (r) {
+          if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+          worldCfg = null;
+          mallDraft = null;
+          const C = r.data.mallCfg || {};
+          setHint('ml-state', '<span style="color:var(--ok)">已保存：' + (C.items || []).length + ' 件商品，刷新时间 ' + esc(C.refreshTime || '') + '</span>');
+          toast('商城配置已保存，立即生效');
+        });
+    };
+    $('ml-reset').onclick = function () {
+      confirmModalLocal('把商城商品恢复为出厂默认列表？').then(function (ok) {
+        if (!ok) return;
+        adminApi('POST', '/api/admin/mall/config', { token: token, reset: true }).then(function (r) {
+          if (!r.ok) { toast((r.data && r.data.error) || '操作失败', true); return; }
+          worldCfg = null; mallDraft = null;
+          toast('已恢复默认商品');
+          renderMall();
+        });
+      });
+    };
+  }
+
+  // ================================
+  // 工坊配置（熔炼参数）
+  // ================================
+  function renderWorkshop() {
+    const main = $('main');
+    main.innerHTML = '<h2>⚒ 工坊配置（熔炼）</h2>' +
+      '<div class="hint" style="margin-bottom:12px">熔炼的成功率与花费系数。玩家端「⚒ 工坊」页的预览与实际掷骰都用这套参数（服务器权威）。</div>' +
+      '<div id="ws-body" class="panel">加载中…</div>';
+    loadWorldCfg(true).then(function (cfg) {
+      if (!cfg || view !== 'workshop') return;
+      drawWorkshop(cfg);
+    });
+  }
+  function drawWorkshop(cfg) {
+    const body = $('ws-body');
+    if (!body) return;
+    const SC = cfg.smeltCfg || {};
+    const DEF = cfg.smeltDefaults || {};
+    const mats = cfg.smeltMaterials || [];
+    const F = function (k, label, hint, step) {
+      return '<span class="ch-fix"><label>' + esc(label) + '</label>' +
+        '<input id="ws-cfg-' + k + '" class="ipt mk-num" type="number" step="' + (step || '1') + '" value="' + (SC[k] != null ? SC[k] : '') + '"></span>' +
+        '<span class="hint">' + esc(hint || ('默认 ' + DEF[k])) + '</span>';
+    };
+    body.innerHTML =
+      '<h3 style="margin-top:0">🎯 熔炼成功率</h3>' +
+      '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      F('baseRate', '基础成功率 %', '默认 50') +
+      F('failPerMaterial', '每份材料对失败率的影响', '负数 = 投料越多越不易失败（默认 -2）', '0.1') +
+      F('rateMin', '成功率下限', '默认 5') + F('rateMax', '成功率上限', '默认 99') +
+      '</div>' +
+      '<h3>✨ 补缀（新增词缀）成功率</h3>' +
+      '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      F('extraRatePerMaterial', '每份材料加成 %', '默认 8', '0.1') +
+      F('extraRatePearl', '龙宫宝珠加成 %', '默认 0', '0.1') +
+      F('extraRateMax', '补缀成功率上限', '默认 95') +
+      '</div>' +
+      '<h3>💰 金币花费</h3>' +
+      '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      F('goldBase', '基础花费', '默认 5000') +
+      F('goldPerMaterial', '每份材料花费', '默认 900') +
+      F('goldPearl', '龙宫宝珠花费', '默认 20000') +
+      '</div>' +
+      '<h3>📦 投料上限</h3>' +
+      '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      F('maxMaterials', '单次最多投料份数', '默认 20') +
+      F('maxTypes', '单次最多投料种类', '默认 4') +
+      '<span class="ch-fix"><label>龙宫宝珠边界取值</label><input type="checkbox" id="ws-cfg-pearlRollTwice"' +
+      (SC.pearlRollTwice !== false ? ' checked' : '') + '></span>' +
+      '<span class="hint">勾选 = 投入龙宫宝珠时每个词条 roll 两次、取靠近区间边界的那次</span>' +
+      '</div>' +
+      '<div class="mgr-row" style="margin-top:10px"><button class="btn primary" id="ws-cfg-save">保存熔炼参数</button>' +
+      '<button class="btn" id="ws-cfg-reset">恢复默认</button><span id="ws-cfg-state" class="hint" style="margin-left:10px"></span></div>' +
+      '<h3>🧵 材料 → 词缀对照（只读）</h3>' +
+      '<div class="hint" style="margin-bottom:6px">投料份数最多的那种材料决定熔炼后补的词缀；龙宫宝珠是催化剂（不指向词缀）。</div>' +
+      '<div class="ch-ar-wrap">' + mats.map(function (m) {
+        return '<span class="ch-fix"><label class="hint">' + esc(m.name) + '</label><span class="tag">' + esc(m.affixName) + '</span>' +
+          '<span class="hint">(' + esc(m.rarity) + ')</span></span>';
+      }).join('') +
+      '<span class="ch-fix"><label class="hint">' + esc((cfg.smeltPearl || {}).name || '龙宫宝珠') + '</label><span class="tag">催化剂</span></span></div>';
+
+    $('ws-cfg-save').onclick = function () {
+      adminApi('POST', '/api/admin/smelt/config', {
+        token: token,
+        baseRate: $('ws-cfg-baseRate').value,
+        failPerMaterial: $('ws-cfg-failPerMaterial').value,
+        rateMin: $('ws-cfg-rateMin').value,
+        rateMax: $('ws-cfg-rateMax').value,
+        extraRatePerMaterial: $('ws-cfg-extraRatePerMaterial').value,
+        extraRatePearl: $('ws-cfg-extraRatePearl').value,
+        extraRateMax: $('ws-cfg-extraRateMax').value,
+        goldBase: $('ws-cfg-goldBase').value,
+        goldPerMaterial: $('ws-cfg-goldPerMaterial').value,
+        goldPearl: $('ws-cfg-goldPearl').value,
+        maxMaterials: $('ws-cfg-maxMaterials').value,
+        maxTypes: $('ws-cfg-maxTypes').value,
+        pearlRollTwice: $('ws-cfg-pearlRollTwice').checked,
+      }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+        worldCfg = null;
+        setHint('ws-cfg-state', '<span style="color:var(--ok)">已保存：基础成功率 ' + ((r.data.smeltCfg || {}).baseRate) + '%，立即生效</span>');
+        toast('熔炼参数已保存');
+      });
+    };
+    $('ws-cfg-reset').onclick = function () {
+      adminApi('POST', '/api/admin/smelt/config', { token: token, reset: true }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '操作失败', true); return; }
+        worldCfg = null;
+        toast('已恢复默认熔炼参数');
+        renderWorkshop();
+      });
+    };
+  }
+
+  // ================================
+  // 版本更新（优雅热更）
+  // ================================
+  // 流程：选一个「新版本启动用的 run.bat」→ 全服播报 60 秒更新通知横幅 → 横幅结束 5 秒后
+  //       服务器启动新版本并关闭当前版本。倒计时期间可取消（横幅立刻撤回）。
+  let updateTimer = null;
+  function stopUpdateTimer() { if (updateTimer) { clearInterval(updateTimer); updateTimer = null; } }
+  function renderUpdate() {
+    stopUpdateTimer();
+    const main = $('main');
+    main.innerHTML = '<h2>🔄 版本更新</h2>' +
+      '<div class="hint" style="margin-bottom:12px">选择新版本要运行的 <code>.bat</code> 启动脚本并发布更新：' +
+      '全服会先看到 <b>60 秒</b>更新通知横幅（带倒计时），横幅结束后 <b>5 秒</b>服务器启动新版本并关闭当前版本。' +
+      '玩家页面在服务器重启后会自动重连，无需手动刷新。</div>' +
+      '<div id="up-body" class="panel">加载中…</div>';
+    loadWorldCfg(true).then(function () {
+      if (view !== 'update') return;
+      adminApi('GET', '/api/admin/update/list?token=' + encodeURIComponent(token)).then(function (r) {
+        if (view !== 'update') return;
+        if (!r.ok) { $('up-body').textContent = (r.data && r.data.error) || '读取失败'; return; }
+        drawUpdate(r.data);
+      });
+    });
+  }
+  function drawUpdate(d) {
+    const body = $('up-body');
+    if (!body) return;
+    const bats = d.bats || [];
+    const bannerSec = Math.round((d.bannerMs || 60000) / 1000);
+    body.innerHTML =
+      '<h3 style="margin-top:0">📄 启动脚本（项目目录：' + esc(d.root || '') + '）</h3>' +
+      (bats.length
+        ? '<div class="mgr-row" style="flex-wrap:wrap"><span class="ch-fix"><label>新版本 .bat</label>' +
+          '<select id="up-bat" class="ipt" style="min-width:320px">' +
+          bats.map(function (b) { return '<option value="' + esc(b.path) + '">' + esc(b.path) + '</option>'; }).join('') +
+          '</select></span>' +
+          '<span class="ch-fix"><label>备注（可选）</label><input id="up-note" class="ipt" maxlength="120" placeholder="如：v0.11.1 修复公告" style="min-width:220px"></span></div>' +
+          '<div class="mgr-row"><button class="btn primary" id="up-start">发布更新（通知 ' + bannerSec + ' 秒后切换）</button>' +
+          '<button class="btn" id="up-cancel" style="margin-left:8px">取消更新</button>' +
+          '<span id="up-state" class="hint" style="margin-left:10px"></span></div>' +
+          '<div class="hint" style="margin-top:6px">脚本路径必须是项目目录内的 .bat。' +
+          '把新版本解压到 <code>releases/版本号/</code> 后，下拉里会直接出现它的 <code>run.bat</code>。</div>'
+        : '<div class="hint">项目目录里没有找到任何 .bat 启动脚本（可把新版本放到 <code>releases/版本号/run.bat</code>）。</div>') +
+      '<div id="up-live" style="margin-top:12px"></div>';
+    if ($('up-start')) $('up-start').onclick = function () { startUpdate(false); };
+    if ($('up-cancel')) $('up-cancel').onclick = function () { cancelUpdate(); };
+    drawUpdateLive(d.current);
+    // 常驻轮询：本页停留期间每 2 秒同步一次任务状态。
+    // 不这样做的话，「打开页面时没有任务、之后由另一个人发布」就永远看不到倒计时；
+    // 离开本页由 switchView 的 stopUpdateTimer 收尾。
+    updateTimer = setInterval(function () {
+      if (view !== 'update') { stopUpdateTimer(); return; }
+      adminApi('GET', '/api/admin/update/list?token=' + encodeURIComponent(token)).then(function (r) {
+        if (view !== 'update' || !r.ok) return;
+        drawUpdateLive(r.data.current);
+      });
+    }, 2000);
+  }
+  function drawUpdateLive(cur) {
+    const host = $('up-live');
+    if (!host) return;   // 页面可能已切走：元素不在就什么都不做（切回来会重新拉取）
+    if (!cur || !cur.active) { host.innerHTML = '<div class="hint">当前没有进行中的更新任务。</div>'; return; }
+    const left = Math.max(0, Math.round((cur.endAt - Date.now()) / 1000));
+    const fire = Math.max(0, Math.round((cur.fireAt - Date.now()) / 1000));
+    const phase = cur.phase === 'restarting' ? '正在切换（启动新版本 + 关闭当前版本）'
+      : cur.phase === 'grace' ? '通知已结束，即将切换' : '通知横幅播报中';
+    host.innerHTML = '<div class="gd-removed"><b>进行中：' + esc(phase) + '</b><br/>' +
+      '脚本：<code>' + esc(cur.bat) + '</code>' + (cur.note ? '（' + esc(cur.note) + '）' : '') + '<br/>' +
+      '通知剩余 <b>' + left + '</b> 秒 · 距切换 <b>' + fire + '</b> 秒' +
+      (cur.dryRun ? '<br/><span class="hint">（演练模式：到点也不会真的拉起新版本 / 退出进程）</span>' : '') +
+      '</div>';
+  }
+  function startUpdate(dryRun) {
+    const bat = $('up-bat') ? $('up-bat').value : '';
+    if (!bat) { toast('请选择启动脚本', true); return; }
+    const note = $('up-note') ? $('up-note').value.trim() : '';
+    confirmModalLocal('发布更新并切换到「' + bat + '」？\n\n全服会立刻出现 60 秒更新通知横幅，横幅结束后 5 秒服务器启动新版本并关闭当前版本。' +
+      (dryRun ? '\n\n（演练模式：不会真的切换）' : '')).then(function (ok) {
+      if (!ok) return;
+      adminApi('POST', '/api/admin/update/start', { token: token, bat: bat, note: note, dryRun: !!dryRun }).then(function (r) {
+        if (!r.ok) { toast((r.data && r.data.error) || '发布失败', true); return; }
+        toast('已发布更新通知，' + Math.round(((r.data.update || {}).bannerMs || 60000) / 1000) + ' 秒后自动切换');
+        renderUpdate();
+      });
+    });
+  }
+  function cancelUpdate() {
+    adminApi('POST', '/api/admin/update/cancel', { token: token }).then(function (r) {
+      if (!r.ok) { toast((r.data && r.data.error) || '取消失败', true); return; }
+      toast('已取消更新，横幅已撤回');
+      renderUpdate();
+    });
   }
 
   function renderFormula() {

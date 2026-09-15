@@ -90,13 +90,20 @@ window.Net = (function () {
     if (ui && ui.forceLogout) ui.forceLogout(msg);
   }
 
-  // 顺带同步服务器的组件生成配置 / 抛竿间隔与全服钓速 / 经济参数（展示与本地 roll 保持一致）
+  // 顺带同步服务器的组件生成配置 / 抛竿间隔与全服钓速 / 经济参数 / 熔炼参数 / 更新通知
+  // （展示与本地预览保持一致：例如工坊的成功率与花费预览必须和服务器算的同一套系数）
   function applyServerCfg(d) {
     if (!d) return;
     if (d.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(d.componentCfg);
     if (d.castCfg) state().castCfg = d.castCfg;
     if (d.priceCfg) state().priceCfg = d.priceCfg;
     if (d.dropCfg) state().dropCfg = d.dropCfg;
+    if (d.smeltCfg && window.GameData.setSmeltCfg) {
+      window.GameData.setSmeltCfg(d.smeltCfg);
+      state().smeltCfg = window.GameData.getSmeltCfg();
+    }
+    state().update = d.update || null;
+    if (window.UI && window.UI.onUpdate) window.UI.onUpdate(state().update);
   }
   function guardVersion() {
     if (!localVersion()) return Promise.resolve(false);
@@ -224,6 +231,27 @@ window.Net = (function () {
   const chestCraft = (chestId, qty) => authed('/api/chest/craft', { chestId: chestId, qty: qty || 1 });
   // sel：自选目标（mode='part' 传 {part}；mode='base' 传 {baseId}；mode='random' 不传）
   const chestOpen = (chestId, sel) => authed('/api/chest/open', Object.assign({ chestId: chestId }, sel || {}));
+  // 商城（每日限购）：拉取当前周期商品与限购余额 / 购买
+  const fetchMall = () => apiFetch('GET', '/api/mall?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
+    if (r && r.ok) {
+      state().mall = r.data;
+      if (r.data.coins != null) state().player.coins = r.data.coins;
+      if (window.UI) window.UI.refreshAll('mall');
+    }
+    return r;
+  });
+  const mallBuy = (id, qty) => authed('/api/mall/buy', { id: id, qty: qty || 1 });
+  // 工坊：熔炼参数（材料→词缀对照 / 成功率与花费系数）
+  const fetchWorkshop = () => apiFetch('GET', '/api/workshop?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
+    if (r && r.ok) {
+      state().workshop = r.data;
+      if (r.data.coins != null) state().player.coins = r.data.coins;
+      if (window.UI) window.UI.refreshAll('workshop');
+    }
+    return r;
+  });
+  // 熔炼：payload = { mainId, subId, mainAffix, subAffix, materials:[{id,qty}], pearl }
+  const smelt = (payload) => authed('/api/workshop/smelt', payload || {});
   const sell = (id, qty) => authed('/api/sell', { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', hours ? { id: id, qty: qty, price: price, hours: hours } : { id: id, qty: qty, price: price });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
@@ -339,9 +367,26 @@ window.Net = (function () {
             });
           }
         } else if (m.type === 'chestcfg') {
-          // 后台改了宝匣保底次数：就地更新（宝匣页显示保底进度，不用重新进页面）
-          S.chest = Object.assign({}, S.chest || {}, { pityN: (m.chestCfg || {}).pityN || 0 });
+          // 后台改了宝匣保底次数 / 合成成本：就地更新（宝匣页显示成本与保底进度，不用重新进页面）
+          S.chest = Object.assign({}, S.chest || {}, {
+            pityN: (m.chestCfg || {}).pityN || 0,
+            costs: (m.chestCfg || {}).costs || {},
+          });
           if (ui) ui.refreshAll('chestcfg');
+        } else if (m.type === 'mallcfg') {
+          // 后台改了商城商品/限购刷新时间：重新拉取当前周期视图
+          window.Net.fetchMall();
+        } else if (m.type === 'smeltcfg') {
+          // 后台改了熔炼参数：更新预览用的系数
+          if (m.smeltCfg) {
+            S.smeltCfg = m.smeltCfg;
+            if (window.GameData.setSmeltCfg) window.GameData.setSmeltCfg(m.smeltCfg);
+          }
+          if (ui) ui.refreshAll('smeltcfg');
+        } else if (m.type === 'update') {
+          // 服务端版本更新：60 秒通知横幅 + 倒计时（横幅结束 5 秒后服务器会切到新版本）
+          S.update = m.update || null;
+          if (ui && ui.onUpdate) ui.onUpdate(S.update);
         } else if (m.type === 'bannerStop') {
           if (ui && ui.onBannerStop) ui.onBannerStop(m.id);
         } else if (m.type === 'bitecfg') {
@@ -389,7 +434,7 @@ window.Net = (function () {
             if (ui && ui.addLog) {
               const it = m.entry.item || {};
               ui.addLog('catch', '钓到 ' + (it.name || '?') + (it.size ? ' ' + it.size + 'cm' : '') +
-                (it.rarity === 'big' ? ' 🐟大鱼' : it.rarity === 'rare' ? ' ✨稀有' : '') +
+                (it.rarity === 'rare' ? ' ✨稀有' : it.rarity === 'epic' ? ' 💎史诗' : '') +
                 (m.entry.ground ? '（' + m.entry.ground + (m.entry.spot ? '·' + m.entry.spot : '') + '）' : ''));
             }
           }
@@ -453,6 +498,7 @@ window.Net = (function () {
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
     fetchFeedback: fetchFeedback,
     fetchChest: fetchChest, chestCraft: chestCraft, chestOpen: chestOpen,
+    fetchMall: fetchMall, mallBuy: mallBuy, fetchWorkshop: fetchWorkshop, smelt: smelt,
     fetchBanners: fetchBanners, fetchGrounds: fetchGrounds,
     bannerPlaying: bannerPlaying,
     feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,

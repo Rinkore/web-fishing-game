@@ -139,7 +139,8 @@ function waitReady() {
   section('2. 掉落池与增益编辑');
   const w0 = await GET(B + '/api/admin/world?token=' + TOKA);
   check('world 返回 4 钓场 + 9 钓点', w0.status === 200 && w0.data.grounds.length === 4 && w0.data.grounds.reduce((n, g) => n + g.spots.length, 0) === 9);
-  check('目录含 41 种鱼 + 4 种材料', w0.data.catalog.fish.length === 41 && w0.data.catalog.materials.length === 4);
+  // 40 种鱼（龙宫宝珠改为材料）+ 7 种材料（新增潮汐砂 / 龙鳞碎屑）
+  check('目录含 40 种鱼 + 7 种材料', w0.data.catalog.fish.length === 40 && w0.data.catalog.materials.length === 7, JSON.stringify({ fish: w0.data.catalog.fish.length, mat: w0.data.catalog.materials.length }));
   check(' frostmoon 默认锁定', w0.data.grounds.find(g => g.id === 'frostmoon').locked === true);
 
   const setPool = (groundId, spotId, pool, tok) => POST(B + '/api/admin/spot/pool', { token: tok || TOKA, groundId: groundId, spotId: spotId, pool: pool });
@@ -466,8 +467,8 @@ function waitReady() {
   // 定制配件：管理员按「底材 × 品质 × 任意词条数值」生成组件实例直接入包（后台定制给予）。
   // 实例编码与前端共用 data.js 的 instanceId；服务端按实例规则校验，词缀类型不合法会被拒。
   const DData = require(path.join(ROOT, 'frontend', 'js', 'data.js'));
-  const cusId = DData.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 50 }, { type: 'big', value: 30 }]);
-  check('定制配件实例可编码（base#品质#词条）', /^rod_bamboo#epic#spd\+50,big\+30$/.test(cusId), cusId);
+  const cusId = DData.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 50 }, { type: 'skill', value: 30 }]);
+  check('定制配件实例可编码（base#品质#词条）', /^rod_bamboo#epic#spd\+50,skl\+30$/.test(cusId), cusId);
   const cusGive = await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', inventory: { crucian: 4, [cusId]: 2 } });
   check('定制配件可写入玩家背包', cusGive.status === 200, JSON.stringify(cusGive.data).slice(0, 100));
   const cusSnap = await GET(B + '/api/admin/users/snapshot?token=' + TOKA + '&key=adm_p2');
@@ -675,7 +676,7 @@ function waitReady() {
     && Math.abs(we0.data.priceCfg.saleDivisor - 0.0075) < 1e-9, JSON.stringify(we0.data.priceCfg));
   check('经济参数默认值下发到 world.priceDefaults', we0.data.priceDefaults && we0.data.priceDefaults.floorPct === 40);
   check('产出倍率默认全 100', we0.data.dropCfg.global === 100 && we0.data.dropCfg.material === 100, JSON.stringify(we0.data.dropCfg));
-  check('经济目录覆盖全部经济物品（41 鱼 + 4 材料 = 45）', (we0.data.economyCatalog || []).length === 45, String((we0.data.economyCatalog || []).length));
+  check('经济目录覆盖全部经济物品（40 鱼 + 7 材料 = 47）', (we0.data.economyCatalog || []).length === 47, String((we0.data.economyCatalog || []).length));
   check('/api/version 下发 priceCfg（前端商店文案用）', (await GET(B + '/api/version')).data.priceCfg.floorPct === 40);
   // 范围校验（越界一律 400）
   check('地板价越界被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { floorPct: 5 } })).status === 400);

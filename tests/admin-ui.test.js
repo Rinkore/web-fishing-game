@@ -168,8 +168,11 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       check('新建渔场实时进入全服目录（含 1 个钓点）', !!newG && newG.spots.length === 1, JSON.stringify((newG ? [newG.id] : [])));
       check('新钓点按「稀有秘境」预设一键填充（13 条）', !!newG && newG.spots[0].pool.length === 13, newG ? String(newG.spots[0].pool.length) : 'none');
       check('新渔场默认开放可钓', !!newG && newG.locked === false);
-      // 限时窗口：设成已过期 → 自动锁定（先等该渔场的资料表单渲染出来）
+      // 限时窗口：设成已过期 → 自动锁定。
+      // 先等资料表单真正渲染成「刚建好的这个渔场」再操作（表单值是当前选中渔场的名称）——
+      // 新建渔场后页面会有一次异步重绘，过早点击会把改动写到上一个渔场上（曾导致本段随机失败）。
       await untilSel(pa, '#gi-from', 6000);
+      await untilGet(async () => (await pa.inputValue('#gi-name')), v => v === 'QA 测试湾', 6000);
       await pa.evaluate(() => {
         const f = d => d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + 'T' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
         document.getElementById('gi-from').value = f(new Date(Date.now() - 3600 * 1000));
@@ -316,7 +319,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       });
       check('鱼类体型页三模型可选（linear/normal/skew）', fishPage.cards.join(',') === 'linear,normal,skew' && fishPage.hasSave, JSON.stringify(fishPage));
       check('鱼类体型页默认选中正态', fishPage.sel === 'normal', String(fishPage.sel));
-      check('目标鱼下拉含全部鱼种（41 + 全部鱼种项）', fishPage.opts === 42, String(fishPage.opts));
+      check('目标鱼下拉含全部鱼种（40 + 全部鱼种项）', fishPage.opts === 41, String(fishPage.opts));
       await pa.evaluate(() => { const c = document.querySelector('.radio-card[data-fm="skew"]'); if (c) c.click(); });
       const barsOk = await waitFor(async () => (await pa.evaluate(() => document.querySelectorAll('#fish-chart div[title]').length)) === 20, { timeout: 10000 }).catch(() => false);
       check('切换模型后渲染 20 桶分布直方图', barsOk === true, String(barsOk));
@@ -356,7 +359,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
         listRows: document.querySelectorAll('#eco-list .eco-ov-set').length,
       }));
       check('经济参数页渲染（保存/恢复/7 项价格字段/预设/品质层/单品列表）',
-        ecoPage.hasSave && ecoPage.hasReset && ecoPage.presets >= 4 && ecoPage.tiers === 3 && ecoPage.listRows === 45, JSON.stringify(ecoPage));
+        ecoPage.hasSave && ecoPage.hasReset && ecoPage.presets >= 4 && ecoPage.tiers === 3 && ecoPage.listRows === 47, JSON.stringify(ecoPage));
       check('默认值回填（地板 40 / 回升 60 分钟）', ecoPage.floor === '40' && ecoPage.tau === '60', JSON.stringify(ecoPage));
       check('容量试算行显示件/小时与毕业等效', /件\/h/.test(ecoPage.cap || '') && /毕业玩家/.test(ecoPage.cap || ''), (ecoPage.cap || '').slice(0, 120));
       // 预设「推荐（15 分钟）」填入表单（不自动保存）
@@ -657,6 +660,156 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       const qwIds = await pa.$$eval('#comp-body input[id^="qw-"]', els => els.map(e => e.id));
       check('组件生成页品质权重无 mythic（神话不可由钓鱼掉落）',
         qwIds.length === 3 && !qwIds.some(id => /mythic/.test(id)), qwIds.join(','));
+
+      // ===================== v0.11：宝匣成本 / 钓点拖动定位 / 工坊 / 商城 / 版本更新 =====================
+      section('v0.11 后台新页面');
+      // 本段包含「等待页面自身定时器刷新」的检查（版本更新倒计时）：
+      // Chrome 会节流后台标签页的定时器，先把后台页拿到前台再测，避免误判。
+      await pa.bringToFront();
+
+      // —— 宝匣配置：四档成本可直接编辑 ——
+      await clickAdminNav('宝匣配置', '#ch-pity');
+      const chCost = await pa.evaluate(() => ({
+        inputs: document.querySelectorAll('.ch-cost').length,
+        save: !!document.getElementById('ch-cost-save'),
+      }));
+      check('宝匣配置页渲染成本输入框（4 档 × 残片/金币 = 8 个）', chCost.inputs === 8 && chCost.save, JSON.stringify(chCost));
+      await pa.evaluate(() => {
+        document.querySelector('.ch-cost[data-cid="chest_wreck"][data-k="costRelic"]').value = '4';
+        document.querySelector('.ch-cost[data-cid="chest_wreck"][data-k="costCoins"]').value = '1200';
+        document.getElementById('ch-cost-save').click();
+      });
+      const costApplied = await untilGet(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data, d => {
+        const c = d && (d.chests || []).find(x => x.id === 'chest_wreck');
+        return !!c && c.costRelic === 4 && c.costCoins === 1200;
+      }, 8000);
+      check('保存后成本立即生效（沉船宝匣 4 残片 / 1200 金币）',
+        (function () { const c = (costApplied.chests || []).find(x => x.id === 'chest_wreck'); return !!c && c.costRelic === 4 && c.costCoins === 1200; })(),
+        JSON.stringify((costApplied.chests || []).find(x => x.id === 'chest_wreck')));
+      await untilSel(pa, '#ch-cost-reset', 6000);   // 保存后页面会重绘一次，等按钮回到 DOM
+      await pa.evaluate(() => document.getElementById('ch-cost-reset').click());
+      await untilSel(pa, '.cf-yes', 5000);          // 后台用的是 .cf-yes / .cf-no 子窗口按钮
+      await pa.click('.cf-yes');
+      const costReset = await untilGet(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data, d => {
+        const c = d && (d.chests || []).find(x => x.id === 'chest_wreck');
+        return !!c && c.costRelic === 8;
+      }, 8000);
+      check('恢复出厂成本生效（沉船宝匣回到 8 残片）',
+        (function () { const c = (costReset.chests || []).find(x => x.id === 'chest_wreck'); return !!c && c.costRelic === 8; })(),
+        JSON.stringify((costReset.chests || []).find(x => x.id === 'chest_wreck')));
+
+      // —— 渔场钓点：地图定位支持拖动 ——
+      await clickAdminNav('渔场钓点', '#gd-map-canvas');
+      // 明确选中「静水湖」再测拖动：地图面板只画**当前选中渔场**的钓点，
+      // 前面用例可能把选中项留在了没有钓点的渔场上（例如活动场占位）。
+      await untilSel(pa, '.gcard[data-g="stillwater"]', 8000);
+      await pa.evaluate(() => { const c = document.querySelector('.gcard[data-g="stillwater"]'); if (c) c.click(); });
+      await untilSel(pa, '.gd-node', 12000);
+      const mapReady = await waitFor(async () => (await pa.$$('.gd-node')).length >= 3, { timeout: 15000, interval: 400 }).catch(() => false);
+      check('地图定位面板渲染全部钓点节点', mapReady === true, String((await pa.$$('.gd-node')).length));
+      const beforePos = await pa.evaluate(() => {
+        const n = document.querySelector('.gd-node');
+        return n ? { sid: n.getAttribute('data-s'), left: n.style.left, top: n.style.top } : null;
+      });
+      const mapBox = await pa.evaluate(() => {
+        const r = document.getElementById('gd-map-canvas').getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, h: r.height };
+      });
+      const nb = await pa.evaluate(() => {
+        const r = document.querySelector('.gd-node').getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      });
+      await pa.mouse.move(nb.x, nb.y);
+      await pa.mouse.down();
+      await pa.mouse.move(mapBox.x + mapBox.w * 0.3, mapBox.y + mapBox.h * 0.25, { steps: 8 });
+      await pa.mouse.up();
+      const draggedPos = await pa.evaluate(() => {
+        const n = document.querySelector('.gd-node');
+        return { sid: n.getAttribute('data-s'), left: n.style.left, top: n.style.top };
+      });
+      check('拖动节点改变了地图坐标',
+        draggedPos.left !== beforePos.left || draggedPos.top !== beforePos.top,
+        JSON.stringify({ before: beforePos, after: draggedPos }));
+      await pa.evaluate(() => document.getElementById('gd-map-save').click());
+      const posSaved = await untilGet(async () => (await get('/api/grounds')).data, d => {
+        const g = d && (d.grounds || []).find(x => x.id === 'stillwater');
+        const sp = g && g.spots.find(s => s.id === 'dock');
+        return !!sp && Array.isArray(sp.pos) && Math.abs(sp.pos[0] - 30) < 0.8;
+      }, 8000);
+      const dockNow = ((posSaved.grounds || []).find(g => g.id === 'stillwater') || { spots: [] }).spots.find(s => s.id === 'dock');
+      check('拖动后的坐标已保存并同步到玩家端目录（x≈30）',
+        !!dockNow && Array.isArray(dockNow.pos) && Math.abs(dockNow.pos[0] - 30) < 0.8, JSON.stringify(dockNow && dockNow.pos));
+
+      // —— 工坊配置：熔炼参数可改 ——
+      await clickAdminNav('工坊配置', '#ws-cfg-baseRate');
+      const wsCfgView = await pa.evaluate(() => ({
+        base: (document.getElementById('ws-cfg-baseRate') || {}).value,
+        mats: document.querySelectorAll('#ws-body .ch-ar-wrap .ch-fix').length,
+        save: !!document.getElementById('ws-cfg-save'),
+      }));
+      check('工坊配置页渲染熔炼参数与材料对照', wsCfgView.base === '50' && wsCfgView.mats >= 7 && wsCfgView.save, JSON.stringify(wsCfgView));
+      await pa.evaluate(() => {
+        document.getElementById('ws-cfg-baseRate').value = '66';
+        document.getElementById('ws-cfg-save').click();
+      });
+      const smeltApplied = await untilGet(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data,
+        d => !!d && !!d.smeltCfg && d.smeltCfg.baseRate === 66, 8000);
+      check('保存熔炼参数立即生效（基础成功率 66%）', !!(smeltApplied.smeltCfg && smeltApplied.smeltCfg.baseRate === 66),
+        JSON.stringify(smeltApplied.smeltCfg));
+
+      // —— 商城配置：刷新时间 + 商品编辑 ——
+      await clickAdminNav('商城配置', '#ml-rt');
+      const mlView = await pa.evaluate(() => ({
+        rt: (document.getElementById('ml-rt') || {}).value,
+        rows: document.querySelectorAll('#ml-body tbody tr').length,
+        add: !!document.getElementById('ml-add'),
+        save: !!document.getElementById('ml-save'),
+      }));
+      check('商城配置页渲染刷新时间与商品列表',
+        /^\d{2}:\d{2}$/.test(mlView.rt || '') && mlView.rows >= 5 && mlView.add && mlView.save, JSON.stringify(mlView));
+      // 用不在出厂列表里的物品（黄金锦鲤）新增一行：出厂列表已含潮汐砂，重复添加会被前端拦下
+      await pa.evaluate(() => {
+        document.getElementById('ml-add-id').value = 'koi';
+        document.getElementById('ml-add-price').value = '888';
+        document.getElementById('ml-add-limit').value = '2';
+        document.getElementById('ml-add').click();
+      });
+      await untilGet(async () => (await pa.$$eval('#ml-body .ml-price', els => els.length)), n => n >= 7, 5000);
+      await pa.evaluate(() => {
+        document.getElementById('ml-rt').value = '06:30';
+        document.getElementById('ml-save').click();
+      });
+      const mallSaved = await untilGet(async () => (await get('/api/admin/world?token=' + adminLogin.data.token)).data,
+        d => !!d && !!d.mallCfg && d.mallCfg.refreshTime === '06:30', 8000);
+      check('保存商城配置（刷新时间 06:30 + 新增商品 黄金锦鲤×888 限购 2）',
+        !!(mallSaved.mallCfg) && mallSaved.mallCfg.refreshTime === '06:30' &&
+        mallSaved.mallCfg.items.some(x => x.id === 'koi' && x.price === 888 && x.limit === 2),
+        JSON.stringify(mallSaved.mallCfg && mallSaved.mallCfg.items.slice(-2)));
+
+      // —— 版本更新：候选脚本 + 发布（演练）→ 在线面板 → 取消 ——
+      await clickAdminNav('版本更新', '#up-bat');
+      const upView = await pa.evaluate(() => ({
+        opts: Array.from((document.getElementById('up-bat') || { options: [] }).options).map(o => o.value),
+        start: !!document.getElementById('up-start'),
+        cancel: !!document.getElementById('up-cancel'),
+      }));
+      check('版本更新页列出项目内的 .bat 启动脚本',
+        upView.opts.length > 0 && upView.opts.some(p => /run\.bat$/.test(p)), JSON.stringify(upView.opts));
+      const upStart = await post('/api/admin/update/start', { token: adminLogin.data.token, bat: 'run.bat', note: '后台页验证', dryRun: true });
+      check('发布更新（演练）成功', upStart.status === 200, JSON.stringify(upStart.data).slice(0, 120));
+      // 重新进入本页：页面会立刻从服务器拉一次状态，倒计时面板必须显示「进行中」。
+      // 刻意用「重新进页」而不是「等页面的 2 秒轮询」——轮询在后台标签页里会被浏览器节流，
+      // 属于浏览器行为而非功能问题；重新进页是管理员真实会做的动作，且不依赖定时器投递。
+      await clickAdminNav('概览', '.ov-card, #ov-body, .content');
+      await clickAdminNav('版本更新', '#up-bat');
+      const liveText = await untilGet(async () => (await pa.textContent('#up-live')), t => /进行中/.test(t || ''), 8000);
+      check('后台显示进行中的更新任务（倒计时）', /进行中/.test(liveText || '') && /通知剩余/.test(liveText || ''), String(liveText).slice(0, 80));
+      await pa.evaluate(() => document.getElementById('up-cancel').click());
+      await clickAdminNav('概览', '.ov-card, #ov-body, .content');
+      await clickAdminNav('版本更新', '#up-bat');
+      const liveGone = await untilGet(async () => (await pa.textContent('#up-live')), t => /没有进行中/.test(t || ''), 8000);
+      check('取消后后台显示无进行中任务', /没有进行中/.test(liveGone || ''), String(liveGone).slice(0, 60));
+
       await pa.evaluate(() => { const b = document.querySelector('.nav-item'); if (b) b.click(); });
 
       check('后台全程无页面错误', adminErrs.length === castErrs, adminErrs.slice(castErrs).join(' | '));

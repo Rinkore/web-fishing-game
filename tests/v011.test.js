@@ -1,0 +1,523 @@
+/*
+ * v0.11 新增功能端到端测试（纯 HTTP + 数据目录断言，可独立运行）
+ * 覆盖：
+ *   ① 品质系统纠正（四种品质 / 大鱼不再是品质 / 渔获归入稀有与史诗）
+ *   ② 技巧词缀（大鱼概率 → 技巧，作为上钩率公式变量参与计算）
+ *   ③ 龙宫宝珠归入材料
+ *   ④ 商城（每日限购 + 刷新时间 + 后台配置）
+ *   ⑤ 宝匣：合成成本后台可改 + 突破件 roll 两次取边界值
+ *   ⑥ 工坊熔炼（双件词条改写 / 投料补缀 / 龙宫宝珠 / 成功率与花费 / 后台配置）
+ *   ⑦ 钓点地图坐标后台可改（拖动保存）
+ *   ⑧ 服务端优雅版本更新（候选脚本 / 60 秒通知 / 5 秒后切换 / 取消 / 路径安全）
+ *   ⑨ 存档修复脚本 tools/fix-save-v011.js
+ * 运行： node tests/v011.test.js
+ */
+'use strict';
+const { spawn, spawnSync } = require('child_process');
+const http = require('http');
+const url = require('url');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { waitHttp, waitFor } = require('./_util.js');
+
+const ROOT = path.join(__dirname, '..');
+const NODE = process.execPath;
+const PORT = 8186;
+const BASE = 'http://localhost:' + PORT;
+const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-v011-test-'));
+const D = require(path.join(ROOT, 'frontend', 'js', 'data.js'));
+
+let pass = 0, fail = 0;
+const failed = [];
+function check(name, cond, extra) {
+  if (cond) { pass++; console.log('  PASS  ' + name); }
+  else { fail++; failed.push(name); console.log('  FAIL  ' + name + (extra ? '  -> ' + extra : '')); }
+}
+function section(t) { console.log('\n=== ' + t + ' ==='); }
+function killTree(p) { try { spawnSync('taskkill', ['/F', '/T', '/PID', String(p.pid)], { stdio: 'ignore' }); } catch (e) {} }
+
+function req(method, u, body) {
+  return new Promise((resolve) => {
+    const p = url.parse(u);
+    const data = body ? JSON.stringify(body) : null;
+    const headers = { 'Content-Type': 'application/json' };
+    if (data) headers['Content-Length'] = Buffer.byteLength(data);
+    const r = http.request({ hostname: p.hostname, port: p.port, path: p.path, method, headers }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        let j = null; try { j = JSON.parse(d); } catch (e) {}
+        resolve({ status: res.statusCode, data: j, text: d });
+      });
+    });
+    r.on('error', () => resolve({ status: 0, data: null, text: '' }));
+    if (data) r.write(data);
+    r.end();
+  });
+}
+const GET = u => req('GET', u), POST = (u, b) => req('POST', u, b);
+
+let srv = null;
+function startServer() {
+  srv = spawn(NODE, [path.join('backend', 'server.js')], {
+    cwd: ROOT,
+    env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  srv.stdout.on('data', () => {});
+  srv.stderr.on('data', () => {});
+  return waitHttp(BASE + '/api/version', { timeout: 20000 });
+}
+
+(async () => {
+  const ready = await startServer();
+  if (!ready) { console.log('服务器未就绪，测试中止'); killTree(srv); process.exit(1); }
+  console.log('服务器就绪：' + BASE);
+
+  // ---- 账号：首个登录后台的账号自动成为管理员 ----
+  section('账号准备');
+  await POST(BASE + '/api/register', { username: 'v_admin', password: 'v123456', name: '版本管理员', qq: '99001' });
+  const lgA = await POST(BASE + '/api/admin/login', { username: 'v_admin', password: 'v123456' });
+  const TOKA = lgA.data && lgA.data.token;
+  check('管理员登录', lgA.status === 200 && !!TOKA, JSON.stringify(lgA.data));
+  await POST(BASE + '/api/register', { username: 'v_player', password: 'v123456', name: '测试玩家', qq: '99002' });
+  const lgP = await POST(BASE + '/api/login', { username: 'v_player', password: 'v123456' });
+  const TOKP = lgP.data && lgP.data.token;
+  check('玩家登录', lgP.status === 200 && !!TOKP);
+  async function seed(inv, coins) { return POST(BASE + '/api/dev/seed', { token: TOKP, inventory: inv || {}, coins: coins == null ? 5000000 : coins }); }
+
+  // ==========================================================================
+  section('① 品质系统：只有 普通/稀有/史诗/神话 四种，大鱼不再是品质');
+  const qKeys = Object.keys(D.QUALITY);
+  check('品质共四种且顺序为 普通/稀有/史诗/神话',
+    qKeys.length === 4 && qKeys.join(',') === 'common,rare,epic,mythic', qKeys.join(','));
+  check('品质名称正确', qKeys.every(k => /^[普通稀有史诗神话]+$/.test(D.QUALITY[k].name)), JSON.stringify(qKeys.map(k => D.QUALITY[k].name)));
+  const allFish = [];
+  ['common', 'big', 'rare'].forEach(t => D.FISH[t].forEach(f => allFish.push({ tier: t, f: f })));
+  const rarities = {};
+  allFish.forEach(x => { rarities[x.f.rarity] = (rarities[x.f.rarity] || 0) + 1; });
+  check('没有任何渔获的 rarity 是 big（大鱼不再是品质）', !rarities.big, JSON.stringify(rarities));
+  check('渔获品质只落在 普通/稀有/史诗', Object.keys(rarities).every(r => ['common', 'rare', 'epic'].includes(r)), JSON.stringify(rarities));
+  const bigTier = D.FISH.big;
+  check('原「大鱼」档位已拆为 稀有 与 史诗',
+    bigTier.some(f => f.rarity === 'rare') && bigTier.some(f => f.rarity === 'epic'),
+    JSON.stringify(bigTier.map(f => f.id + ':' + f.rarity)));
+  check('价值 ≥200 的大型鱼为史诗，其余为稀有',
+    bigTier.every(f => (f.price >= 200 ? f.rarity === 'epic' : f.rarity === 'rare')),
+    JSON.stringify(bigTier.filter(f => (f.price >= 200) !== (f.rarity === 'epic')).map(f => f.id)));
+  // 品质价格倍率表兜底也要覆盖新品质（老的 big 兜底键必须还在，避免旧存档物品算不出价）
+  check('稀有度兜底价表含四种品质', ['common', 'rare', 'epic', 'mythic'].every(k => D.RARITY_PRICE[k] > 0), JSON.stringify(D.RARITY_PRICE));
+
+  // ==========================================================================
+  section('② 技巧词缀：替换大鱼概率，参与上钩率公式');
+  const poolTypes = new Set();
+  D.COMPONENT_BASES.forEach(b => b.pool.forEach(p => poolTypes.add(p.type)));
+  check('组件词缀池里不再有 big 类型', !poolTypes.has('big'), Array.from(poolTypes).join(','));
+  check('组件词缀池含 技巧(skill)', poolTypes.has('skill'), Array.from(poolTypes).join(','));
+  check('词缀标签：技巧 存在且没有 大鱼概率',
+    D.AFFIX_LABEL.skill === '技巧' && !D.AFFIX_LABEL.big, JSON.stringify(D.AFFIX_LABEL));
+  check('钓点增益仍可选「大鱼概率」（增益独立于组件词缀）', D.BUFF_LABEL.big === '大鱼概率', JSON.stringify(D.BUFF_LABEL));
+  check('技巧短码为 skl，且旧码 big 解析为技巧',
+    D.AFFIX_CODES.skill === 'skl' && D.typeOfCode('big') === 'skill' && D.codeOf('big') === 'skl',
+    JSON.stringify({ code: D.AFFIX_CODES.skill, legacy: D.typeOfCode('big') }));
+  const legacyInstId = 'reel_turbo#rare#big-8,spd+30';
+  // 整竿标识（rodset:）里的每个配件也要一起规范化：否则存档里的钓竿槽位会带着旧码继续流传
+  check('整竿标识内的旧签名同步规范化（big → skl）',
+    D.normalizeItemId('rodset:rod=rod_carbon#common#spd+22;reel=reel_turbo#rare#spd+37,big-5') ===
+      'rodset:rod=rod_carbon#common#spd+22;reel=reel_turbo#rare#spd+37,skl-5',
+    D.normalizeItemId('rodset:rod=rod_carbon#common#spd+22;reel=reel_turbo#rare#spd+37,big-5'));
+  check('旧签名中的 big 短码被识别为技巧并规范化为 skl',
+    D.instanceMeta(legacyInstId).affixes.some(a => a.type === 'skill' && a.value === -8) &&
+    D.normalizeItemId(legacyInstId) === 'reel_turbo#rare#spd+30,skl-8', D.normalizeItemId(legacyInstId));
+  const w0 = await GET(BASE + '/api/admin/world?token=' + encodeURIComponent(TOKA));
+  check('默认上钩公式含技巧变量', /skill/.test(w0.data.biteFormula || ''), w0.data.biteFormula);
+  const evalR = await POST(BASE + '/api/admin/settings', { token: TOKA, biteFormula: 'clamp(50 + skill * 2, 0, 100)', validateOnly: true, evalVars: { skill: 10 } });
+  check('公式试算：技巧 10 → 70%', evalR.status === 200 && evalR.data.prob === 70, JSON.stringify(evalR.data));
+  check('保存技巧公式成功', (await POST(BASE + '/api/admin/settings', { token: TOKA, biteFormula: 'clamp(50 + skill * 2, 0, 100)' })).status === 200);
+  // 技巧词缀实际提升上钩率：bd/set 会回传服务器算出的 castInfo（含按当前公式得出的上鱼率），
+  // 因此不必真开钓鱼循环即可断言「技巧 = 上钩率公式的一个参数」。
+  const skillComp = D.instanceId('rod_dragonbone', 'rare', [{ type: 'skill', value: 10 }, { type: 'size', value: 8 }]);
+  await seed({ [skillComp]: 1 }, 5000000);
+  const bdOff = await POST(BASE + '/api/bd/set', { token: TOKP, part: 'rod', compId: null });
+  const rate0 = bdOff.data.castInfo && bdOff.data.castInfo.biteRate;
+  const bdEff = await POST(BASE + '/api/bd/set', { token: TOKP, part: 'rod', compId: skillComp });
+  const rate1 = bdEff.data.castInfo && bdEff.data.castInfo.biteRate;
+  check('词缀汇总里是 skill 而非 big', bdEff.data.effects.skill === 10 && !bdEff.data.effects.big, JSON.stringify(bdEff.data.effects));
+  check('技巧词缀按公式提升上钩率（无技巧 50% → 技巧 10 为 70%）', rate0 === 50 && rate1 === 70,
+    JSON.stringify({ rate0: rate0, rate1: rate1 }));
+  check('钓竿不再通过 eff.big 影响大型鱼掉落权重（big 只由钓点增益提供）',
+    !bdEff.data.effects.big, JSON.stringify(bdEff.data.effects));
+  // 恢复默认公式与空装配，避免影响后续用例
+  await POST(BASE + '/api/admin/settings', { token: TOKA, biteFormula: 'clamp(90 + skill, 0, 100)' });
+  await POST(BASE + '/api/bd/set', { token: TOKP, part: 'rod', compId: null });
+
+  // ==========================================================================
+  section('③ 龙宫宝珠归入材料');
+  const dpearl = D.itemOf('dragonpearl');
+  check('龙宫宝珠类型为材料', dpearl.kind === 'material', JSON.stringify(dpearl));
+  check('龙宫宝珠不再出现在渔获档位里', !['common', 'big', 'rare'].some(t => D.FISH[t].some(f => f.id === 'dragonpearl')));
+  check('礁石区掉落池把它记为材料', (function () {
+    const g = D.GROUNDS.find(x => x.id === 'sunset');
+    const sp = g && g.spots.find(x => x.id === 'reef');
+    return !!sp && sp.pool.some(e => e.pick === 'material:dragonpearl');
+  })());
+  check('钓点索引把宝珠归到材料类', D.spotsOf('dragonpearl').length > 0, JSON.stringify(D.spotsOf('dragonpearl')));
+
+  // ==========================================================================
+  section('④ 商城：每日限购 + 刷新时间 + 后台配置');
+  const mall0 = await GET(BASE + '/api/mall?token=' + encodeURIComponent(TOKP));
+  check('读取商城成功', mall0.status === 200 && Array.isArray(mall0.data.items) && mall0.data.items.length > 0, JSON.stringify(mall0.data).slice(0, 120));
+  check('商城带限购刷新时间与下次刷新时间点',
+    /^\d{1,2}:\d{2}$/.test(mall0.data.refreshTime) && mall0.data.nextRefreshAt > Date.now(), JSON.stringify(mall0.data.refreshTime));
+  const baitItem = mall0.data.items.find(x => x.id === 'bait_pack');
+  check('默认商品含诱饵包并带每日限购', !!baitItem && baitItem.limit > 0 && baitItem.remain === baitItem.limit, JSON.stringify(baitItem));
+  check('未登录读商城 401', (await GET(BASE + '/api/mall')).status === 401);
+  await seed({}, 100000);
+  const buyMall = await POST(BASE + '/api/mall/buy', { token: TOKP, id: 'bait_pack', qty: 3 });
+  check('购买商城商品成功（扣金币 + 入包）',
+    buyMall.status === 200 && buyMall.data.cost === baitItem.price * 3 && buyMall.data.inventory.bait_pack === 3,
+    JSON.stringify(buyMall.data).slice(0, 160));
+  const buyMore = await POST(BASE + '/api/mall/buy', { token: TOKP, id: 'bait_pack', qty: baitItem.limit });
+  check('超过每日限购被拒 400', buyMore.status === 400 && /限购/.test(buyMore.data.error || ''), JSON.stringify(buyMore.data));
+  const buyRest = await POST(BASE + '/api/mall/buy', { token: TOKP, id: 'bait_pack', qty: baitItem.limit - 3 });
+  check('买满限购成功', buyRest.status === 200, JSON.stringify(buyRest.data).slice(0, 120));
+  check('买满后限购剩余为 0', (buyRest.data.mall.items.find(x => x.id === 'bait_pack') || {}).remain === 0);
+  check('买满后再买被拒', (await POST(BASE + '/api/mall/buy', { token: TOKP, id: 'bait_pack', qty: 1 })).status === 400);
+  check('金币不足时被拒', (await seed({}, 10)) && (await POST(BASE + '/api/mall/buy', { token: TOKP, id: 'bait_pack', qty: 1 })).status === 400);
+  const mallBadAdmin = await POST(BASE + '/api/admin/mall/config', { token: TOKP, items: [] });
+  check('非管理员改商城配置 403', mallBadAdmin.status === 403);
+  const mallSet = await POST(BASE + '/api/admin/mall/config', {
+    token: TOKA, refreshTime: '04:00',
+    items: [{ id: 'tide_sand', price: 111, limit: 2 }, { id: 'rope', price: 22, limit: 0 }],
+  });
+  check('后台保存商城商品成功', mallSet.status === 200 && mallSet.data.mallCfg.items.length === 2, JSON.stringify(mallSet.data).slice(0, 140));
+  const mall1 = await GET(BASE + '/api/mall?token=' + encodeURIComponent(TOKP));
+  check('玩家端立即看到新商品与价格',
+    mall1.data.items.length === 2 && mall1.data.items[0].price === 111 && mall1.data.items[1].limit === 0,
+    JSON.stringify(mall1.data.items));
+  check('不限购商品 remain 为 null', mall1.data.items.find(x => x.id === 'rope').remain === null);
+  check('非法物品被拒 400', (await POST(BASE + '/api/admin/mall/config', { token: TOKA, items: [{ id: 'no_such', price: 1, limit: 1 }] })).status === 400);
+  check('非法刷新时间被拒 400', (await POST(BASE + '/api/admin/mall/config', { token: TOKA, refreshTime: '25:99' })).status === 400);
+  check('负价格被拒 400', (await POST(BASE + '/api/admin/mall/config', { token: TOKA, items: [{ id: 'rope', price: -5, limit: 1 }] })).status === 400);
+  // 限购按「刷新时间」划分周期：改刷新时间让当前周期翻页 → 已购计数重置
+  await seed({}, 1000000);
+  await POST(BASE + '/api/admin/mall/config', { token: TOKA, refreshTime: '04:00', items: [{ id: 'rope', price: 10, limit: 2 }] });
+  await POST(BASE + '/api/mall/buy', { token: TOKP, id: 'rope', qty: 2 });
+  const mallFull = await GET(BASE + '/api/mall?token=' + encodeURIComponent(TOKP));
+  check('限购已用满', mallFull.data.items[0].remain === 0, JSON.stringify(mallFull.data.items[0]));
+  // 把刷新时间改到「今天稍后」→ 当前周期起点退回昨天 → 周期键变化 → 计数清零
+  const later = new Date(Date.now() + 3 * 3600 * 1000);
+  const hhmm = ('0' + later.getHours()).slice(-2) + ':' + ('0' + later.getMinutes()).slice(-2);
+  await POST(BASE + '/api/admin/mall/config', { token: TOKA, refreshTime: hhmm, items: [{ id: 'rope', price: 10, limit: 2 }] });
+  const mallReset = await GET(BASE + '/api/mall?token=' + encodeURIComponent(TOKP));
+  check('跨过刷新时间点后限购自动重置', mallReset.data.items[0].bought === 0 && mallReset.data.items[0].remain === 2,
+    JSON.stringify({ refreshTime: mallReset.data.refreshTime, item: mallReset.data.items[0] }));
+
+  // ==========================================================================
+  section('⑤ 宝匣：合成成本可改 + 突破件边界取值');
+  const chestAdmin0 = await GET(BASE + '/api/admin/world?token=' + encodeURIComponent(TOKA));
+  const kingRow = (chestAdmin0.data.chests || []).find(c => c.id === 'chest_king');
+  check('后台读到四档宝匣与出厂成本', !!kingRow && kingRow.costRelic === 100 && kingRow.costCoins === 300000 && kingRow.baseRelic === 100,
+    JSON.stringify(kingRow));
+  const setCost = await POST(BASE + '/api/admin/settings', {
+    token: TOKA, chestCfg: { costs: { chest_king: { costRelic: 3, costCoins: 500 } } },
+  });
+  check('保存宝匣成本成功', setCost.status === 200 && setCost.data.chestCfg.costs.chest_king.costRelic === 3, JSON.stringify(setCost.data.chestCfg));
+  const chestView = await GET(BASE + '/api/chest?token=' + encodeURIComponent(TOKP));
+  const kingView = chestView.data.chests.find(c => c.id === 'chest_king');
+  check('玩家端立即看到新成本', kingView.costRelic === 3 && kingView.costCoins === 500, JSON.stringify(kingView));
+  await seed({ relic: 3 }, 100000);
+  const craft1 = await POST(BASE + '/api/chest/craft', { token: TOKP, chestId: 'chest_king', qty: 1 });
+  check('按新成本合成（扣 3 残片 / 500 金币）',
+    craft1.status === 200 && craft1.data.inventory.relic === undefined && craft1.data.inventory.chest_king === 1,
+    JSON.stringify(craft1.data.inventory));
+  const coinsAfter = craft1.data.coins;
+  check('合成扣款正确（100000 - 500）', coinsAfter === 99500, String(coinsAfter));
+  check('成本非法值被拒 400', (await POST(BASE + '/api/admin/settings', { token: TOKA, chestCfg: { costs: { chest_king: { costRelic: -1 } } } })).status === 400);
+  check('未知档位被忽略（不报错、不写入）', (await POST(BASE + '/api/admin/settings', { token: TOKA, chestCfg: { costs: { no_chest: { costRelic: 5 } } } })).status === 200);
+  const resetCost = await POST(BASE + '/api/admin/settings', { token: TOKA, chestCfg: { costs: {} } });
+  check('恢复出厂成本', resetCost.status === 200 && !resetCost.data.chestCfg.costs.chest_king, JSON.stringify(resetCost.data.chestCfg));
+  const chestView2 = await GET(BASE + '/api/chest?token=' + encodeURIComponent(TOKP));
+  check('出厂成本已恢复（100 / 300000）',
+    chestView2.data.chests.find(c => c.id === 'chest_king').costRelic === 100);
+  // —— 突破件 roll 两次取靠近区间边界的值 ——
+  check('边界取值：区间 [-1,8] 取 -1 与 6 → -1', D.nearerBoundaryOf(-1, 6, -1, 8) === -1);
+  check('边界取值：区间 [-1,8] 取 4 与 8 → 8', D.nearerBoundaryOf(4, 8, -1, 8) === 8);
+  check('边界取值：并列时取第一次（确定性）', D.nearerBoundaryOf(-1, 8, -1, 8) === -1);
+  (function () {
+    // 统计验证「取更靠近边界」：边界取值法的**平均离最近边界的距离**应明显小于普通 roll
+    // （普通 roll 在 [0,10] 上的平均距离是 2.5，实测约 2.6；边界取值法约 1.8，比例 ≈ 0.70）
+    const N = 4000, R = [0, 10];
+    let distB = 0, distP = 0, nearB = 0, nearP = 0;
+    for (let i = 0; i < N; i++) {
+      const b = D.rollAffixValueBoundary(R[0], R[1], 'linear');
+      const p = D.rollAffixValue(R[0], R[1], 'linear');
+      distB += Math.min(b - R[0], R[1] - b);
+      distP += Math.min(p - R[0], R[1] - p);
+      if (b <= 2 || b >= 8) nearB++;
+      if (p <= 2 || p >= 8) nearP++;
+    }
+    check('边界取值的平均离边界距离显著更小（约 0.7 倍）',
+      distB / N < distP / N * 0.85, JSON.stringify({ boundary: distB / N, plain: distP / N }));
+    check('贴近两端的比例更高', nearB / N > nearP / N * 1.3, JSON.stringify({ boundary: nearB / N, plain: nearP / N }));
+  })();
+  // 真实开箱：突破件（神话）词条值也走边界取值
+  await seed({ chest_king: 8, relic: 20 }, 2000000);
+  const openRes = [];
+  for (let i = 0; i < 6; i++) {
+    const r = await POST(BASE + '/api/chest/open', { token: TOKP, chestId: 'chest_king', baseId: 'rod_bamboo' });
+    if (r.status === 200 && r.data.item) openRes.push(r.data.item);
+  }
+  check('海王遗匣开箱产出神话件', openRes.length === 6 && openRes.every(m => m.quality === 'mythic'), String(openRes.length));
+  check('突破件补满 4 条、未突破补满 3 条',
+    openRes.every(m => m.breakthrough ? m.affixes.length === 4 : m.affixes.length === 3),
+    JSON.stringify(openRes.map(m => ({ bt: m.breakthrough, n: m.affixes.length }))));
+
+  // ==========================================================================
+  section('⑥ 工坊熔炼');
+  const mainComp = D.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 12 }, { type: 'size', value: 3 }]);
+  const subComp = D.instanceId('hook_ghost', 'epic', [{ type: 'skill', value: 10 }, { type: 'rare', value: -5 }, { type: 'size', value: 5 }]);
+  const ws0 = await GET(BASE + '/api/workshop?token=' + encodeURIComponent(TOKP));
+  check('读取工坊参数成功', ws0.status === 200 && !!ws0.data.cfg && Array.isArray(ws0.data.materials), JSON.stringify(ws0.data).slice(0, 100));
+  check('材料→词缀对照：潮汐砂=钓速、龙鳞碎屑=双钓、反光假饵=技巧',
+    ws0.data.materials.find(m => m.id === 'tide_sand').affix === 'speed' &&
+    ws0.data.materials.find(m => m.id === 'dragon_scale').affix === 'double' &&
+    ws0.data.materials.find(m => m.id === 'lure').affix === 'skill',
+    JSON.stringify(ws0.data.materials));
+  check('已有材料也分配了词缀（诱饵包/耐磨绳/残片）',
+    ws0.data.materials.find(m => m.id === 'bait_pack').affix === 'rare' &&
+    ws0.data.materials.find(m => m.id === 'rope').affix === 'size' &&
+    ws0.data.materials.find(m => m.id === 'relic').affix === 'material',
+    JSON.stringify(ws0.data.materials.map(m => m.id + ':' + m.affix)));
+  check('新材料品质更高（潮汐砂 稀有 / 龙鳞碎屑 史诗）',
+    ws0.data.materials.find(m => m.id === 'tide_sand').rarity === 'rare' &&
+    ws0.data.materials.find(m => m.id === 'dragon_scale').rarity === 'epic',
+    JSON.stringify(ws0.data.materials.map(m => m.id + ':' + m.rarity)));
+  check('未登录读工坊 401', (await GET(BASE + '/api/workshop')).status === 401);
+  // 把成功率设为必定成功、补缀必定成功，便于断言结果
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 100, rateMax: 100, failPerMaterial: 0, extraRatePerMaterial: 100, extraRateMax: 100 });
+  await seed({ [mainComp]: 1, [subComp]: 1 }, 200000);
+  const smelt1 = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill', materials: [], pearl: false,
+  });
+  check('熔炼成功（无投料）', smelt1.status === 200 && smelt1.data.success === true, JSON.stringify(smelt1.data).slice(0, 140));
+  const item1 = smelt1.data.item;
+  check('熔炼后主件只剩选中的两条词条', !!item1 && item1.affixes.length === 2 &&
+    item1.affixes.some(a => a.type === 'speed') && item1.affixes.some(a => a.type === 'skill'),
+    JSON.stringify(item1 && item1.affixes));
+  check('副件的词缀被搬到主件（池外，按池外区间取值）',
+    !!item1 && item1.affixes.find(a => a.type === 'skill').extra === true,
+    JSON.stringify(item1 && item1.affixes));
+  check('主件底材与品质保持不变', !!item1 && item1.baseId === 'rod_bamboo' && item1.quality === 'epic', JSON.stringify(item1 && { b: item1.baseId, q: item1.quality }));
+  check('副件与主件都被消耗、新件入包',
+    smelt1.data.inventory[subComp] === undefined && smelt1.data.inventory[mainComp] === undefined && smelt1.data.inventory[item1.id] === 1,
+    JSON.stringify(smelt1.data.inventory));
+  check('熔炼花费金币（基础 5000）', smelt1.data.gold === 5000 && smelt1.data.coins === 195000, JSON.stringify({ g: smelt1.data.gold, c: smelt1.data.coins }));
+  // 投料 → 补一条主件池内的词缀（rod_bamboo 池 = 钓速 / 体型；选中的是 钓速 + 技巧 → 可补 体型）
+  await seed({ [mainComp]: 1, [subComp]: 1, rope: 6, dragonpearl: 1 }, 200000);
+  const smelt2 = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill', materials: [{ id: 'rope', qty: 4 }], pearl: true,
+  });
+  check('投料熔炼成功且补缀成功', smelt2.status === 200 && smelt2.data.success && smelt2.data.extraOk === true, JSON.stringify(smelt2.data).slice(0, 140));
+  check('补的词缀来自主件词缀池（体型）', smelt2.data.extraType === 'size' && smelt2.data.item.affixes.some(a => a.type === 'size'),
+    JSON.stringify(smelt2.data.item && smelt2.data.item.affixes));
+  check('投料越多花费越高（4 份材料 + 宝珠）', smelt2.data.gold === 5000 + 4 * 900 + 20000, String(smelt2.data.gold));
+  check('龙宫宝珠启用边界取值', smelt2.data.pearl === true && smelt2.data.rollBoundary === true, JSON.stringify({ p: smelt2.data.pearl, b: smelt2.data.rollBoundary }));
+  check('材料与宝珠被消耗',
+    (smelt2.data.inventory.rope || 0) === 2 && smelt2.data.inventory.dragonpearl === undefined,
+    JSON.stringify(smelt2.data.inventory));
+  // 校验类错误
+  await seed({ [mainComp]: 1, [subComp]: 1, rope: 2 }, 200000);
+  check('主副选中同类型词条被拒', (await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'size', subAffix: 'size',
+  })).status === 400);
+  // 潮汐砂 → 钓速；但这件主件熔炼后已经有钓速（选中的就是它），池内无处可补 → 必须被拒
+  await seed({ [mainComp]: 1, [subComp]: 1, tide_sand: 3 }, 200000);
+  const smeltBadMat = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill', materials: [{ id: 'tide_sand', qty: 2 }],
+  });
+  check('材料方向不可补缀时被拒（主件池里没有该词缀）',
+    smeltBadMat.status === 400 && /无法加入|没有可补/.test(smeltBadMat.data.error || ''), JSON.stringify(smeltBadMat.data));
+  check('缺少副件被拒', (await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mainComp, subId: D.instanceId('hook_barb', 'common', [{ type: 'size', value: 2 }]), mainAffix: 'speed', subAffix: 'size',
+  })).status === 400);
+  await seed({ [mainComp]: 1, [subComp]: 1 }, 10);
+  const smeltPoor = await POST(BASE + '/api/workshop/smelt', { token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill' });
+  check('金币不足被拒', smeltPoor.status === 400 && /金币不足/.test(smeltPoor.data.error || ''), JSON.stringify(smeltPoor.data));
+  // —— 失败分支：成功率设为 0 → 副件熔毁、主件保持原样 ——
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 0, failPerMaterial: 0, rateMin: 0 });
+  await seed({ [mainComp]: 1, [subComp]: 1 }, 200000);
+  const smeltFail = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mainComp, subId: subComp, mainAffix: 'speed', subAffix: 'skill',
+  });
+  check('熔炼失败（成功率 0）', smeltFail.status === 200 && smeltFail.data.success === false, JSON.stringify(smeltFail.data).slice(0, 140));
+  check('失败后副件熔毁、主件原样退回背包',
+    smeltFail.data.inventory[mainComp] === 1 && smeltFail.data.inventory[subComp] === undefined && !smeltFail.data.item,
+    JSON.stringify(smeltFail.data.inventory));
+  check('失败仍扣金币', smeltFail.data.coins === 195000, String(smeltFail.data.coins));
+  // 后台配置
+  check('非管理员改熔炼参数 403', (await POST(BASE + '/api/admin/smelt/config', { token: TOKP, baseRate: 50 })).status === 403);
+  const smeltReset = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, reset: true });
+  check('恢复默认熔炼参数（基础 50% / 投料 -2 失败率）',
+    smeltReset.status === 200 && smeltReset.data.smeltCfg.baseRate === 50 && smeltReset.data.smeltCfg.failPerMaterial === -2,
+    JSON.stringify(smeltReset.data.smeltCfg));
+  const smeltBad = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 500 });
+  check('熔炼参数越界被拒 400', smeltBad.status === 400, JSON.stringify(smeltBad.data));
+
+  // ==========================================================================
+  section('⑦ 钓点地图坐标（后台可改）');
+  const grounds0 = await GET(BASE + '/api/grounds');
+  const dockPos = grounds0.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock').pos;
+  check('内置钓点带出厂坐标', Array.isArray(dockPos) && dockPos.length === 2, JSON.stringify(dockPos));
+  check('非管理员改坐标 403', (await POST(BASE + '/api/admin/spot/pos', { token: TOKP, groundId: 'stillwater', list: [{ spotId: 'dock', pos: [10, 10] }] })).status === 403);
+  const setPos = await POST(BASE + '/api/admin/spot/pos', { token: TOKA, groundId: 'stillwater', list: [{ spotId: 'dock', pos: [12.5, 34.5] }] });
+  check('保存钓点坐标成功', setPos.status === 200 && setPos.data.changed === 1, JSON.stringify(setPos.data).slice(0, 120));
+  const grounds1 = await GET(BASE + '/api/grounds');
+  const dockPos1 = grounds1.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock').pos;
+  check('玩家端目录立即更新（且只改这一个钓点）',
+    dockPos1[0] === 12.5 && dockPos1[1] === 34.5 &&
+    grounds1.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'reef' || s.id === 'reed').pos[0] === grounds0.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'reed').pos[0],
+    JSON.stringify(dockPos1));
+  await POST(BASE + '/api/admin/spot/pos', { token: TOKA, groundId: 'stillwater', list: [{ spotId: 'dock', pos: [-50, 500] }] });
+  const dockClamp = (await GET(BASE + '/api/grounds')).data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock').pos;
+  check('越界坐标被夹到 2~98', dockClamp[0] === 2 && dockClamp[1] === 98, JSON.stringify(dockClamp));
+  check('非法坐标格式被拒 400', (await POST(BASE + '/api/admin/spot/pos', { token: TOKA, groundId: 'stillwater', list: [{ spotId: 'dock', pos: ['a', 'b'] }] })).status === 400);
+  await POST(BASE + '/api/admin/spot/pos', { token: TOKA, groundId: 'stillwater', list: [{ spotId: 'dock', pos: null }] });
+  const dockReset = (await GET(BASE + '/api/grounds')).data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock').pos;
+  check('pos=null 恢复出厂坐标', dockReset[0] === 69 && dockReset[1] === 30, JSON.stringify(dockReset));
+
+  // ==========================================================================
+  section('⑧ 服务端优雅版本更新');
+  const upList = await GET(BASE + '/api/admin/update/list?token=' + encodeURIComponent(TOKA));
+  check('后台可列出候选 .bat', upList.status === 200 && (upList.data.bats || []).length > 0 && upList.data.bats.some(b => /run\.bat$/.test(b.path)),
+    JSON.stringify((upList.data.bats || []).map(b => b.path)));
+  check('通知横幅与宽限时长下发（60 秒 / 5 秒）', upList.data.bannerMs === 60000 && upList.data.graceMs === 5000,
+    JSON.stringify({ b: upList.data.bannerMs, g: upList.data.graceMs }));
+  check('非管理员读更新列表 403', (await GET(BASE + '/api/admin/update/list?token=' + encodeURIComponent(TOKP))).status === 403);
+  check('路径穿越被拒（../evil.bat）', (await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: '../evil.bat', dryRun: true })).status === 400);
+  check('非 .bat 被拒', (await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: 'backend/server.js', dryRun: true })).status === 400);
+  check('不存在的脚本被拒', (await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: 'nope.bat', dryRun: true })).status === 400);
+  const upStart = await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: 'run.bat', note: '测试更新', dryRun: true });
+  check('发布更新成功（演练模式）', upStart.status === 200 && upStart.data.update && upStart.data.update.active === true,
+    JSON.stringify(upStart.data).slice(0, 160));
+  check('切换时间点 = 横幅结束 + 5 秒', upStart.data.update.fireAt - upStart.data.update.endAt === 5000,
+    JSON.stringify({ e: upStart.data.update.endAt, f: upStart.data.update.fireAt }));
+  const verNow = await GET(BASE + '/api/version');
+  check('版本接口下发更新中状态（后连进来的玩家也能看到倒计时）',
+    !!verNow.data.update && verNow.data.update.active === true && verNow.data.update.bat === 'run.bat',
+    JSON.stringify(verNow.data.update));
+  check('重复发布被拒 400', (await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: 'run.bat', dryRun: true })).status === 400);
+  const upCancel = await POST(BASE + '/api/admin/update/cancel', { token: TOKA });
+  check('取消更新成功', upCancel.status === 200 && upCancel.data.update === null, JSON.stringify(upCancel.data));
+  check('取消后版本接口不再下发更新状态', !(await GET(BASE + '/api/version')).data.update);
+  check('无任务时取消被拒 400', (await POST(BASE + '/api/admin/update/cancel', { token: TOKA })).status === 400);
+
+  // ==========================================================================
+  section('⑨ 存档修复脚本');
+  const FIX_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-fix-test-'));
+  fs.mkdirSync(path.join(FIX_DIR, 'accounts'), { recursive: true });
+  fs.writeFileSync(path.join(FIX_DIR, 'accounts', 'old.json'), JSON.stringify({
+    username: 'old', name: '老存档', coins: 5,
+    inventory: { 'reel_turbo#rare#big-8,spd+30': 2, crucian: 1 },
+    bd: { rod: { compId: 'rod_dragonbone#epic#size+8,big+10,spd-12', name: '旧名', affixes: [], rare: 'big' } },
+    rodSlots: [null, { name: '旧竿', bd: { hook: { compId: 'hook_steel#rare#big+8,spd-5', name: 'x', affixes: [], rare: 'big' } } }],
+  }, null, 2));
+  fs.writeFileSync(path.join(FIX_DIR, 'market.json'), JSON.stringify({ listingSeq: 2, listings: [{ lid: 1, seller: 'old', id: 'reel_turbo#rare#big-8,spd+30', name: '旧', qty: 1, price: 9 }] }));
+  fs.writeFileSync(path.join(FIX_DIR, 'economy.json'), JSON.stringify({ shopSales: { crucian: { m: 1 }, ghost: { m: 1 } }, priceLog: { ghost: [] }, tradeLog: {} }));
+  const fixRun = spawnSync(NODE, [path.join('tools', 'fix-save-v011.js'), '--data', FIX_DIR, '--no-backup'], { cwd: ROOT, encoding: 'utf8' });
+  check('修复脚本零错误退出', fixRun.status === 0, String(fixRun.status) + ' ' + (fixRun.stderr || '').slice(0, 200));
+  const fixedAcc = JSON.parse(fs.readFileSync(path.join(FIX_DIR, 'accounts', 'old.json'), 'utf8'));
+  check('背包里的旧签名已改为 skl 规范形',
+    !!fixedAcc.inventory['reel_turbo#rare#spd+30,skl-8'] && fixedAcc.inventory['reel_turbo#rare#big-8,spd+30'] === undefined,
+    JSON.stringify(fixedAcc.inventory));
+  check('装配与钓竿槽位一起修复并刷新名称/品质',
+    fixedAcc.bd.rod.compId === 'rod_dragonbone#epic#skl+10,size+8,spd-12' && fixedAcc.bd.rod.rare === 'epic' &&
+    fixedAcc.rodSlots[1].bd.hook.compId === 'hook_steel#rare#skl+8,spd-5',
+    JSON.stringify({ bd: fixedAcc.bd.rod, slot: fixedAcc.rodSlots[1].bd.hook.compId }));
+  const fixedMarket = JSON.parse(fs.readFileSync(path.join(FIX_DIR, 'market.json'), 'utf8'));
+  check('市集挂单 id 已规范化', fixedMarket.listings[0].id === 'reel_turbo#rare#spd+30,skl-8', fixedMarket.listings[0].id);
+  const fixedEco = JSON.parse(fs.readFileSync(path.join(FIX_DIR, 'economy.json'), 'utf8'));
+  check('经济域清理失效键', !fixedEco.shopSales.ghost && !fixedEco.priceLog.ghost && !!fixedEco.shopSales.crucian);
+  const fixAgain = spawnSync(NODE, [path.join('tools', 'fix-save-v011.js'), '--data', FIX_DIR, '--no-backup'], { cwd: ROOT, encoding: 'utf8' });
+  check('脚本幂等（二次运行报告无需修复）', fixAgain.status === 0 && /无需修复/.test(fixAgain.stdout), (fixAgain.stdout || '').slice(-120));
+  const dryRunOut = spawnSync(NODE, [path.join('tools', 'fix-save-v011.js'), '--data', FIX_DIR, '--dry-run'], { cwd: ROOT, encoding: 'utf8' });
+  check('--dry-run 不写盘（演练提示）', dryRunOut.status === 0 && /演练/.test(dryRunOut.stdout), (dryRunOut.stdout || '').slice(0, 80));
+
+  // ==========================================================================
+  section('⑨b 启动迁移：钓竿槽位 / 整竿挂单里的旧签名');
+  {
+    // 直接往数据目录里放一份「旧版存档」（含钓竿槽位与整竿挂单），重启服务器后应由启动迁移规范化
+    const migKey = 'v_legacy';
+    const legacyPart = 'reel_turbo#rare#spd+37,big-5';
+    const legacyRod = 'rodset:reel=' + legacyPart;
+    fs.writeFileSync(path.join(TMP_DATA, 'accounts', migKey + '.json'), JSON.stringify({
+      username: migKey, name: '旧存档', salt: 'x', pass: 'y', coins: 10,
+      inventory: { [legacyPart]: 2, crucian: 1 },
+      bd: {},
+      rodSlots: [null, { name: '旧竿', bd: { reel: { compId: legacyPart, name: '旧', affixes: [], rare: 'rare' } } }],
+    }, null, 2));
+    // market.json 可能还没落盘（没人动过市集）：按需创建
+    const mkPath = path.join(TMP_DATA, 'market.json');
+    const mk = fs.existsSync(mkPath) ? JSON.parse(fs.readFileSync(mkPath, 'utf8')) : { listingSeq: 1, listings: [] };
+    mk.listings = (mk.listings || []).concat([{ lid: 9001, seller: migKey, sellerName: '旧存档', id: legacyRod, name: '整根钓竿（1 件）', qty: 1, price: 100, t: Date.now(), expireAt: Date.now() + 3600000, hours: 6 }]);
+    fs.writeFileSync(mkPath, JSON.stringify(mk, null, 2));
+    killTree(srv); srv = null;
+    await new Promise(r => setTimeout(r, 400));
+    check('重启（加载旧存档）成功', await startServer());
+    const migAcc = JSON.parse(fs.readFileSync(path.join(TMP_DATA, 'accounts', migKey + '.json'), 'utf8'));
+    check('启动迁移规范化了背包键', !!migAcc.inventory['reel_turbo#rare#spd+37,skl-5'] && !migAcc.inventory[legacyPart],
+      JSON.stringify(Object.keys(migAcc.inventory)));
+    check('启动迁移规范化了钓竿槽位里的配件',
+      !!(migAcc.rodSlots && migAcc.rodSlots[1] && migAcc.rodSlots[1].bd && migAcc.rodSlots[1].bd.reel &&
+         migAcc.rodSlots[1].bd.reel.compId === 'reel_turbo#rare#spd+37,skl-5'),
+      JSON.stringify(migAcc.rodSlots && migAcc.rodSlots[1]));
+    const mkAfter = JSON.parse(fs.readFileSync(mkPath, 'utf8'));
+    const rodListing = (mkAfter.listings || []).find(function (l) { return l.lid === 9001; });
+    check('启动迁移规范化了整竿挂单（含内部配件签名）',
+      !!rodListing && rodListing.id === 'rodset:reel=reel_turbo#rare#spd+37,skl-5', rodListing && rodListing.id);
+    fs.unlinkSync(path.join(TMP_DATA, 'accounts', migKey + '.json'));
+    const mkClean = JSON.parse(fs.readFileSync(mkPath, 'utf8'));
+    mkClean.listings = (mkClean.listings || []).filter(function (l) { return l.lid !== 9001; });
+    fs.writeFileSync(mkPath, JSON.stringify(mkClean, null, 2));
+  }
+
+  // ==========================================================================
+  section('⑩ 重启后配置持久化');
+  killTree(srv);
+  srv = null;
+  await waitFor(function () { return !srv && true; }, { timeout: 1000 });
+  await new Promise(r => setTimeout(r, 400));
+  const ok2 = await startServer();
+  check('服务器重启成功', ok2);
+  const lgP2 = await POST(BASE + '/api/login', { username: 'v_player', password: 'v123456' });
+  const TOKP2 = lgP2.data && lgP2.data.token;
+  const mallAfter = await GET(BASE + '/api/mall?token=' + encodeURIComponent(TOKP2));
+  check('商城配置持久化（自定义商品与刷新时间仍在）',
+    mallAfter.data.items.length === 1 && mallAfter.data.items[0].id === 'rope' && /^\d{1,2}:\d{2}$/.test(mallAfter.data.refreshTime),
+    JSON.stringify(mallAfter.data).slice(0, 140));
+  const wsAfter = await GET(BASE + '/api/workshop?token=' + encodeURIComponent(TOKP2));
+  check('熔炼参数持久化（恢复默认后的 50% / -2）',
+    wsAfter.data.cfg.baseRate === 50 && wsAfter.data.cfg.failPerMaterial === -2, JSON.stringify(wsAfter.data.cfg));
+  const groundsAfter = await GET(BASE + '/api/grounds');
+  check('钓点坐标持久化（dock 已恢复出厂 69,30）',
+    groundsAfter.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock').pos[0] === 69,
+    JSON.stringify(groundsAfter.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock').pos));
+  const chestAfter = await GET(BASE + '/api/chest?token=' + encodeURIComponent(TOKP2));
+  check('宝匣成本持久化（恢复出厂 100 / 300000）',
+    chestAfter.data.chests.find(c => c.id === 'chest_king').costRelic === 100);
+
+  // ---- 收尾 ----
+  killTree(srv);
+  console.log('\n============================');
+  console.log('v0.11 测试汇总：通过 ' + pass + ' 项，失败 ' + fail + ' 项');
+  if (fail) { console.log('失败项：'); failed.forEach(f => console.log('  - ' + f)); }
+  console.log(fail ? 'V011 TESTS FAILED' : 'V011 TESTS PASS');
+  console.log('============================');
+  try { fs.rmSync(TMP_DATA, { recursive: true, force: true }); } catch (e) {}
+  try { fs.rmSync(FIX_DIR, { recursive: true, force: true }); } catch (e) {}
+  process.exit(fail ? 1 : 0);
+})().catch(function (e) {
+  console.error('测试异常：', e);
+  if (srv) killTree(srv);
+  process.exit(1);
+});

@@ -21,11 +21,15 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.10.4';
+  const VERSION = 'v0.11.0';
   const BUILD = '2026-09-15';
 
   // ---- 渔获定义 ----
-  // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于大鱼记录
+  // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。
+  // 三个数组是**掉落档**（决定掉落池分组与产出倍率），rarity 才是**品质**：
+  //   品质只有 普通 common / 稀有 rare / 史诗 epic / 神话 mythic 四种（见 QUALITY）。
+  //   「大鱼」曾经被误当成第四种品质（金色 + 👑），v0.11 起修正：
+  //   大型鱼按价值分别归入 稀有（120~180）与 史诗（210+），不再有独立配色与皇冠标记。
   const FISH = {
     common: [
       { id: 'crucian', name: '鲫鱼', rarity: 'common', price: 8, size: [10, 35] },
@@ -46,20 +50,20 @@
       { id: 'blackcarp', name: '青鱼', rarity: 'common', price: 20, size: [40, 100] },
     ],
     big: [
-      { id: 'catfish', name: '巨型鲶鱼', rarity: 'big', price: 120, size: [80, 220] },
-      { id: 'bass', name: '湖王鲈鱼', rarity: 'big', price: 150, size: [60, 180] },
-      { id: 'tuna', name: '黄金枪鱼', rarity: 'big', price: 260, size: [120, 320] },
-      { id: 'sturgeon', name: '远古巨鲟', rarity: 'big', price: 320, size: [150, 400] },
-      { id: 'mandarin', name: '鳜鱼', rarity: 'big', price: 140, size: [35, 90] },
-      { id: 'blackbass', name: '大口黑鲈', rarity: 'big', price: 160, size: [45, 130] },
-      { id: 'seabass', name: '海鲈', rarity: 'big', price: 170, size: [55, 140] },
-      { id: 'yellowcheek', name: '鳡鱼', rarity: 'big', price: 180, size: [70, 170] },
-      { id: 'mackerel', name: '马鲛鱼', rarity: 'big', price: 210, size: [55, 160] },
-      { id: 'grouper', name: '石斑鱼', rarity: 'big', price: 230, size: [45, 150] },
-      { id: 'cobia', name: '军曹鱼', rarity: 'big', price: 250, size: [90, 200] },
-      { id: 'rubysnapper', name: '金目鲷', rarity: 'big', price: 280, size: [55, 140] },
-      { id: 'sunfish', name: '翻车鱼', rarity: 'big', price: 300, size: [150, 300] },
-      { id: 'arapaima', name: '巨骨舌鱼', rarity: 'big', price: 350, size: [180, 330] },
+      { id: 'catfish', name: '巨型鲶鱼', rarity: 'rare', price: 120, size: [80, 220] },
+      { id: 'bass', name: '湖王鲈鱼', rarity: 'rare', price: 150, size: [60, 180] },
+      { id: 'tuna', name: '黄金枪鱼', rarity: 'epic', price: 260, size: [120, 320] },
+      { id: 'sturgeon', name: '远古巨鲟', rarity: 'epic', price: 320, size: [150, 400] },
+      { id: 'mandarin', name: '鳜鱼', rarity: 'rare', price: 140, size: [35, 90] },
+      { id: 'blackbass', name: '大口黑鲈', rarity: 'rare', price: 160, size: [45, 130] },
+      { id: 'seabass', name: '海鲈', rarity: 'rare', price: 170, size: [55, 140] },
+      { id: 'yellowcheek', name: '鳡鱼', rarity: 'rare', price: 180, size: [70, 170] },
+      { id: 'mackerel', name: '马鲛鱼', rarity: 'epic', price: 210, size: [55, 160] },
+      { id: 'grouper', name: '石斑鱼', rarity: 'epic', price: 230, size: [45, 150] },
+      { id: 'cobia', name: '军曹鱼', rarity: 'epic', price: 250, size: [90, 200] },
+      { id: 'rubysnapper', name: '金目鲷', rarity: 'epic', price: 280, size: [55, 140] },
+      { id: 'sunfish', name: '翻车鱼', rarity: 'epic', price: 300, size: [150, 300] },
+      { id: 'arapaima', name: '巨骨舌鱼', rarity: 'epic', price: 350, size: [180, 330] },
     ],
     rare: [
       { id: 'koi', name: '黄金锦鲤', rarity: 'rare', price: 400, size: [40, 110] },
@@ -72,19 +76,24 @@
       { id: 'dragonfish', name: '深海龙鱼', rarity: 'rare', price: 500, size: [50, 120] },
       { id: 'swordfish', name: '剑鱼', rarity: 'rare', price: 520, size: [180, 380] },
       { id: 'bluefin', name: '蓝鳍金枪鱼', rarity: 'rare', price: 560, size: [130, 300] },
-      { id: 'dragonpearl', name: '龙宫宝珠', rarity: 'rare', price: 600, size: [5, 30] },
     ],
   };
 
+  // 材料：既是钓获掉落物，也是工坊熔炼的消耗品（见 SMELT_MATERIALS）。
+  // 龙宫宝珠 v0.11 起归入材料（此前被错误地登记成鱼）：它是熔炼与宝匣体系里的催化剂，
+  // 不作为渔获进图鉴/纪录/自动售出，也不会被「钓到鱼」类统计计入。
   const MATERIALS = [
     { id: 'bait_pack', name: '诱饵包', rarity: 'common', price: 5, size: null },
     { id: 'rope', name: '耐磨绳', rarity: 'common', price: 4, size: null },
     { id: 'lure', name: '反光假饵', rarity: 'common', price: 7, size: null },
     { id: 'relic', name: '沉船宝匣残片', rarity: 'rare', price: 380, size: null },
+    { id: 'tide_sand', name: '潮汐砂', rarity: 'rare', price: 260, size: null },
+    { id: 'dragon_scale', name: '龙鳞碎屑', rarity: 'epic', price: 720, size: null },
+    { id: 'dragonpearl', name: '龙宫宝珠', rarity: 'epic', price: 600, size: null },
   ];
 
   // 稀有度基准价倍率（无独立 price 时兜底；仅用于渔获/材料）
-  const RARITY_PRICE = { common: 10, big: 150, rare: 350 };
+  const RARITY_PRICE = { common: 10, rare: 350, epic: 600, mythic: 1200 };
 
   // ---- 钓竿部位框架（含饰品栏位） ----
   // 每个部位默认安装一个“标准”组件，默认无词缀、无效果。
@@ -99,18 +108,29 @@
   ];
 
   // ---- 词缀类型（engine 计算效果、UI 展示共用） ----
+  // 组件词缀共 6 类；其中「技巧」曾叫「大鱼概率」（v0.11 改名并改语义）：
+  //   旧「大鱼概率」词缀直接提高大型鱼掉落权重，与钓点增益/产出倍率重复且无法表达钓技；
+  //   新「技巧」是**上钩率公式的一个变量**（skill），钩率由后台公式决定，代码里不写死任何提示。
   const AFFIX_LABEL = {
-    speed: '钓速', big: '大鱼概率', rare: '稀有概率',
+    speed: '钓速', skill: '技巧', rare: '稀有概率',
     material: '材料概率', size: '体型', double: '双钓概率',
   };
-  // 效果代码（实例签名里用的短码）
+  // 钓点增益比组件词缀**多一类**「大鱼概率」：增益是钓场/钓点级别的产出倍率，
+  // 不参与组件池（避免再次与技巧语义混淆），但后台仍可给钓点加「大鱼概率 +30%」。
+  const BUFF_LABEL = Object.assign({}, AFFIX_LABEL, { big: '大鱼概率' });
+  // 效果代码（实例签名里用的短码）；legacy 别名让旧存档（code=big）仍可解析
   const AFFIX_CODES = {
-    speed: 'spd', big: 'big', rare: 'rare', material: 'mat', size: 'size', double: 'dbl',
+    speed: 'spd', skill: 'skl', rare: 'rare', material: 'mat', size: 'size', double: 'dbl',
   };
+  const LEGACY_CODE_ALIAS = { big: 'skill' }; // 旧「大鱼概率」词缀 → 「技巧」
   const CODE_TO_TYPE = {};
   Object.keys(AFFIX_CODES).forEach(function (t) { CODE_TO_TYPE[AFFIX_CODES[t]] = t; });
-  // 全部词缀类型（固定顺序；池外补足时按此顺序取候选，保证签名跨端一致）
-  const AFFIX_TYPES = Object.keys(AFFIX_CODES);
+  Object.keys(LEGACY_CODE_ALIAS).forEach(function (c) { CODE_TO_TYPE[c] = LEGACY_CODE_ALIAS[c]; });
+  // 实例签名里可出现的全部短码（新码 + 旧别名），供解析用
+  const AFFIX_CODE_RE = new RegExp('^(' + Object.keys(CODE_TO_TYPE).join('|') + ')([+-]?\\d+)$');
+  // 组件词缀类型全集（固定顺序；池外补足时按此顺序取候选，保证签名跨端一致）
+  // 刻意用显式数组而不是 Object.keys：顺序稳定，且不会因为给 BUFF_LABEL 加键而混进组件池。
+  const AFFIX_TYPES = ['speed', 'skill', 'rare', 'material', 'size', 'double'];
 
   // ---- 池外词缀默认数值区间 ----
   // 「海王遗匣」的突破件会在底材词缀池之外补足词缀（见 genBreakthrough）。
@@ -121,7 +141,7 @@
   // 可被管理后台覆盖（componentCfg.extraAffixRanges）。
   const DEFAULT_EXTRA_AFFIX_RANGES = {
     speed:    [4, 10],
-    big:      [2, 6],
+    skill:    [2, 6],
     rare:     [1, 4],
     material: [8, 16],
     size:     [4, 10],
@@ -129,9 +149,11 @@
   };
 
   // ---- 品质（== 组件的“稀有度”概念，统一称为品质） ----
+  // 全站只有这四种品质：普通 / 稀有 / 史诗 / 神话（渔获与组件共用同一套命名与配色）。
   // cap = 该品质最多可拥有的词缀条数；mult = 实例基准价倍率；cls = 展示配色。
-  // 配色规范（前后端同一套 CSS 类，定义在 style.css）：普通=灰蓝 #cbd5e1 / 稀有=黄 / 史诗=紫。
-  // 大鱼是渔获的档位而非品质，统一金色 + 👑 皇冠前缀（.r-big::before）；
+  // 配色规范（前后端同一套 CSS 类，定义在 style.css）：普通=灰蓝 #cbd5e1 / 稀有=黄 / 史诗=紫 / 神话=彩虹。
+  // v0.11 修正：此前把渔获的「大鱼」档位当成第五种品质（金色 + 👑），现已移除——
+  // 大型鱼按价值归入 稀有/史诗，全站品质只剩这四种。
   // 组件实例的「满词条」金色强调只出现在背包/市集/装备弹窗，图鉴按品质正常显示。
   // 神话 = 宝匣专属品质（只能由「海王遗匣」产出）：cap 4 使「池内优先 + 池外补足到 4 条」成为可能，
   // 也使唯一 4 条池底材（海王徽记）第一次能真正抽满。配色用彩虹渐变，与已占用的灰蓝/黄/紫/金区分。
@@ -156,6 +178,8 @@
   //   minAffixes:     词条数下限（再受品质上限与底材池长约束）
   //   forceMax:       true = 词条填满该底材池（min(池长, 品质上限)）
   //   extra:          true = 允许池外补足（突破件，见 genBreakthrough）
+  // 配方数值（costRelic/costCoins/chance/hitCount…）是**出厂默认**；管理后台改过的成本
+  // 落在 world.chestCfg.costs，启动/保存时经 applyChestCosts() 覆盖到这份目录上（前后端同一份）。
   const CHESTS = [
     { id: 'chest_wreck', name: '沉船宝匣', rarity: 'rare',
       desc: '沉船里的随机打捞件，至少 2 条词缀。',
@@ -178,9 +202,39 @@
   // 宝匣基准价 = 金币成本 + 残片机会成本（仅用于展示与市集参考；宝匣不可卖给系统商店）
   const RELIC_PRICE = (MATERIALS.find(function (m) { return m.id === 'relic'; }) || {}).price || 380;
   const CHEST_MAP = {};
-  CHESTS.forEach(function (c) { c.price = c.costCoins + c.costRelic * RELIC_PRICE; CHEST_MAP[c.id] = c; });
+  function chestPrice(c) { return c.costCoins + c.costRelic * RELIC_PRICE; }
+  CHESTS.forEach(function (c) { c.price = chestPrice(c); CHEST_MAP[c.id] = c; });
   function chestOf(id) { return CHEST_MAP[id] || null; }
   function isChest(id) { return !!(id && CHEST_MAP[id]); }
+  // 出厂配方快照：后台改成本时以它为基准重算，避免「改两次把默认值也覆盖掉」
+  const CHEST_BASE_COSTS = {};
+  CHESTS.forEach(function (c) { CHEST_BASE_COSTS[c.id] = { costRelic: c.costRelic, costCoins: c.costCoins }; });
+  // 套用管理后台的宝匣成本覆盖（原地改 CHESTS，保证前后端读到的都是同一份有效配方）
+  // costs: { [chestId]: { costRelic?, costCoins? } }；非法/缺省项回退出厂值。
+  function applyChestCosts(costs) {
+    const src = costs && typeof costs === 'object' ? costs : {};
+    CHESTS.forEach(function (c) {
+      const base = CHEST_BASE_COSTS[c.id];
+      const ov = src[c.id] || {};
+      const relic = Number(ov.costRelic);
+      const coins = Number(ov.costCoins);
+      c.costRelic = (isFinite(relic) && relic >= 0) ? Math.floor(relic) : base.costRelic;
+      c.costCoins = (isFinite(coins) && coins >= 0) ? Math.floor(coins) : base.costCoins;
+      c.price = chestPrice(c);
+    });
+    return CHESTS;
+  }
+  // 当前生效的宝匣成本（后台表单回显用；只列被覆盖过的档位）
+  function chestCostOverrides() {
+    const out = {};
+    CHESTS.forEach(function (c) {
+      const base = CHEST_BASE_COSTS[c.id];
+      if (c.costRelic !== base.costRelic || c.costCoins !== base.costCoins) {
+        out[c.id] = { costRelic: c.costRelic, costCoins: c.costCoins };
+      }
+    });
+    return out;
+  }
 
   // ---- 组件底材目录（钓竿配置核心） ----
   // pool：底材可拥有的全部词缀（type + 数值区间 [min,max]）；实例从中抽取并 roll 数值。
@@ -195,7 +249,7 @@
     { id: 'rod_carbon', name: '碳素长竿', part: 'rod', price: 150, pool: [
       { type: 'speed', min: 14, max: 22 }, { type: 'material', min: -14, max: -4 }, { type: 'size', min: -6, max: 6 } ] },
     { id: 'rod_dragonbone', name: '龙骨巨竿', part: 'rod', price: 260, pool: [
-      { type: 'big', min: 8, max: 14 }, { type: 'size', min: 4, max: 12 }, { type: 'speed', min: -18, max: -8 } ] },
+      { type: 'skill', min: 8, max: 14 }, { type: 'size', min: 4, max: 12 }, { type: 'speed', min: -18, max: -8 } ] },
     // 线组
     { id: 'line_nylon', name: '尼龙线组', part: 'line', price: 45, pool: [
       { type: 'material', min: 15, max: 28 }, { type: 'size', min: -6, max: 4 } ] },
@@ -204,16 +258,16 @@
     { id: 'line_titan', name: '钛芯线', part: 'line', price: 170, pool: [
       { type: 'size', min: 10, max: 18 }, { type: 'speed', min: -9, max: -2 } ] },
     { id: 'line_dragon', name: '龙筋线', part: 'line', price: 250, pool: [
-      { type: 'big', min: 4, max: 8 }, { type: 'rare', min: 3, max: 6 }, { type: 'speed', min: -14, max: -6 } ] },
+      { type: 'skill', min: 4, max: 8 }, { type: 'rare', min: 3, max: 6 }, { type: 'speed', min: -14, max: -6 } ] },
     // 钩
     { id: 'hook_barb', name: '倒刺钩', part: 'hook', price: 50, pool: [
-      { type: 'big', min: 3, max: 6 }, { type: 'size', min: -4, max: 3 } ] },
+      { type: 'skill', min: 3, max: 6 }, { type: 'size', min: -4, max: 3 } ] },
     { id: 'hook_swallow', name: '血燕钩', part: 'hook', price: 70, pool: [
       { type: 'speed', min: 8, max: 15 }, { type: 'size', min: -12, max: -4 } ] },
     { id: 'hook_steel', name: '精钢鱼钩', part: 'hook', price: 150, pool: [
-      { type: 'big', min: 6, max: 10 }, { type: 'speed', min: -8, max: -2 } ] },
+      { type: 'skill', min: 6, max: 10 }, { type: 'speed', min: -8, max: -2 } ] },
     { id: 'hook_ghost', name: '千钩·鬼牙', part: 'hook', price: 245, pool: [
-      { type: 'big', min: 8, max: 12 }, { type: 'rare', min: -9, max: -3 }, { type: 'size', min: 3, max: 9 } ] },
+      { type: 'skill', min: 8, max: 12 }, { type: 'rare', min: -9, max: -3 }, { type: 'size', min: 3, max: 9 } ] },
     // 饵
     { id: 'bait_corn', name: '浓香饵料', part: 'bait', price: 40, pool: [
       { type: 'rare', min: 1, max: 3 }, { type: 'speed', min: 4, max: 9 } ] },
@@ -222,16 +276,16 @@
     { id: 'bait_secret', name: '秘制香饵', part: 'bait', price: 165, pool: [
       { type: 'rare', min: 4, max: 8 }, { type: 'material', min: -14, max: -5 } ] },
     { id: 'bait_bionic', name: '仿生拟饵', part: 'bait', price: 175, pool: [
-      { type: 'big', min: 4, max: 8 }, { type: 'rare', min: 2, max: 5 }, { type: 'material', min: -18, max: -9 } ] },
+      { type: 'skill', min: 4, max: 8 }, { type: 'rare', min: 2, max: 5 }, { type: 'material', min: -18, max: -9 } ] },
     // 卷线器
     { id: 'reel_smooth', name: '顺滑卷线器', part: 'reel', price: 55, pool: [
       { type: 'speed', min: 8, max: 13 }, { type: 'material', min: -5, max: 3 } ] },
     { id: 'reel_magnetic', name: '磁力刹车卷线器', part: 'reel', price: 160, pool: [
       { type: 'speed', min: 12, max: 18 }, { type: 'material', min: -14, max: -5 } ] },
     { id: 'reel_electric', name: '电动卷线器', part: 'reel', price: 240, pool: [
-      { type: 'speed', min: 20, max: 28 }, { type: 'big', min: -6, max: 2 } ] },
+      { type: 'speed', min: 20, max: 28 }, { type: 'skill', min: -6, max: 2 } ] },
     { id: 'reel_turbo', name: '涡轮卷线器', part: 'reel', price: 270, pool: [
-      { type: 'speed', min: 28, max: 38 }, { type: 'big', min: -12, max: -4 } ] },
+      { type: 'speed', min: 28, max: 38 }, { type: 'skill', min: -12, max: -4 } ] },
     // 配件
     { id: 'acc_net', name: '鱼护网袋', part: 'accessory', price: 60, pool: [
       { type: 'double', min: 7, max: 12 }, { type: 'speed', min: -4, max: 3 } ] },
@@ -240,7 +294,7 @@
     { id: 'acc_scoop', name: '自动抄网', part: 'accessory', price: 165, pool: [
       { type: 'double', min: 12, max: 18 }, { type: 'material', min: -8, max: -2 } ] },
     { id: 'acc_sonar', name: '智能探鱼器', part: 'accessory', price: 255, pool: [
-      { type: 'big', min: 5, max: 9 }, { type: 'rare', min: 3, max: 6 }, { type: 'speed', min: -10, max: -3 } ] },
+      { type: 'skill', min: 5, max: 9 }, { type: 'rare', min: 3, max: 6 }, { type: 'speed', min: -10, max: -3 } ] },
     { id: 'acc_radar', name: '深海声呐雷达', part: 'accessory', price: 300, pool: [
       { type: 'rare', min: 5, max: 9 }, { type: 'size', min: 8, max: 14 }, { type: 'speed', min: -14, max: -6 } ] },
     // 饰品
@@ -249,9 +303,9 @@
     { id: 'charm_jade', name: '翡翠鲤玉', part: 'charm', price: 155, pool: [
       { type: 'size', min: 15, max: 24 }, { type: 'speed', min: -12, max: -4 } ] },
     { id: 'charm_gold', name: '金鳞坠饰', part: 'charm', price: 250, pool: [
-      { type: 'big', min: 3, max: 6 }, { type: 'rare', min: 2, max: 5 }, { type: 'speed', min: 6, max: 12 } ] },
+      { type: 'skill', min: 3, max: 6 }, { type: 'rare', min: 2, max: 5 }, { type: 'speed', min: 6, max: 12 } ] },
     { id: 'charm_trident', name: '海王徽记', part: 'charm', price: 290, pool: [
-      { type: 'big', min: 6, max: 10 }, { type: 'rare', min: 4, max: 8 }, { type: 'double', min: 8, max: 14 }, { type: 'speed', min: -16, max: -8 } ] },
+      { type: 'skill', min: 6, max: 10 }, { type: 'rare', min: 4, max: 8 }, { type: 'double', min: 8, max: 14 }, { type: 'speed', min: -16, max: -8 } ] },
   ];
   const BASE_MAP = {};
   COMPONENT_BASES.forEach(function (b) { b.pool = b.pool.map(function (a) { return { type: a.type, min: a.min, max: a.max }; }); BASE_MAP[b.id] = b; });
@@ -260,7 +314,13 @@
   // ---- 实例签名 ----
   // 格式：baseId#quality#code+value,code+value…（无词缀时第三段为空）
   const INSTANCE_SEP = '#';
-  function codeOf(type) { return AFFIX_CODES[type] || type; }
+  // 词缀类型 → 短码。旧类型名（如已改名的 big）也映射到当前短码，
+  // 保证任何调用方构造出的实例签名都是**规范形**，不会写出非标准的 id。
+  function codeOf(type) {
+    if (AFFIX_CODES[type]) return AFFIX_CODES[type];
+    const alias = LEGACY_CODE_ALIAS[type];
+    return (alias && AFFIX_CODES[alias]) || type;
+  }
   function typeOfCode(code) { return CODE_TO_TYPE[code] || code; }
   function affixToken(a) { return codeOf(a.type) + (a.value >= 0 ? '+' : '') + a.value; }
   // 按底材池顺序规范化词缀，保证同内容 → 同签名
@@ -288,7 +348,8 @@
     const affixes = [];
     if (parts[2]) {
       for (const tok of parts[2].split(',')) {
-        const m = /^(spd|big|rare|mat|size|dbl)([+-]?\d+)$/.exec(tok);
+        // 短码表含旧别名 big（→ skill）：v0.10 及更早的存档仍可解析，见 normalizeItemId 的规范化
+        const m = AFFIX_CODE_RE.exec(tok);
         if (!m) return null;
         affixes.push({ type: typeOfCode(m[1]), value: parseInt(m[2], 10) });
       }
@@ -515,9 +576,27 @@
     });
     return instanceMeta(instanceId(base.id, q.key, picked));
   }
+  // ---- 边界偏向 roll（「海王遗匣」与工坊熔炼共用）----
+  // 每个词条 roll 两次，取**离区间边界更近**的那次，例如区间 [-1, 8]：
+  //   roll 出 -1 与 6 → 取 -1（|−1−(−1)|=0 ＜ |6−8|=2）；roll 出 4 与 8 → 取 8（0 ＜ 4）。
+  // 效果是「极值更容易出现」，即词缀更容易 roll 到两端的高价值/高代价位置；
+  // 区间跨越 0 时边界仍是两端（-1 一侧与 8 一侧），不会因为「绝对值大」而偏向某一侧。
+  function nearerBoundaryOf(a, b, min, max) {
+    const da = Math.min(Math.abs(a - min), Math.abs(a - max));
+    const db = Math.min(Math.abs(b - min), Math.abs(b - max));
+    return db < da ? b : a; // 并列时取第一次（保持可复现的确定性）
+  }
+  function rollAffixValueBoundary(min, max, model) {
+    if (max <= min) return min;
+    const a = rollAffixValue(min, max, model);
+    const b = rollAffixValue(min, max, model);
+    return nearerBoundaryOf(a, b, min, max);
+  }
+
   // 宝匣突破件（「海王遗匣」专属）：品质锁定神话，词缀可越过底材池边界。
   // 规则：掷一次 chance（默认 50%）——中则目标 hitCount（默认 4 条），未中则 missCount（默认 3 条）；
   //       池内词缀全取，不足目标的部分从「池外词缀」补足（不重复、不与池内类型重复、数值恒为正）。
+  // 数值：每个词条 roll 两次取靠近区间边界的那次（见 rollAffixValueBoundary）。
   // 特例：池长已够最高目标的底材（全游戏只有 4 条池的海王徽记）直接满池、不掷骰也不补池外——
   //       否则「未中」分支会把它 4 条池里弃掉 1 条，让最贵的宝匣产出降级件。
   function genBreakthrough(baseId, opt) {
@@ -531,7 +610,7 @@
     const target = Math.max(base.pool.length, Math.min(QUALITY.mythic.cap, hit ? hitN : missN));
     const picked = base.pool.map(function (a) {
       const rng = affixRangeOf(base.id, a);
-      return { type: a.type, value: rollAffixValue(rng[0], rng[1], componentCfg.rollModel) };
+      return { type: a.type, value: rollAffixValueBoundary(rng[0], rng[1], componentCfg.rollModel) };
     });
     let need = target - picked.length;
     if (need > 0) {
@@ -541,7 +620,7 @@
       for (let i = cands.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
       cands.slice(0, need).forEach(function (t) {
         const rng = extraAffixRangeOf(t);
-        picked.push({ type: t, value: rollAffixValue(rng[0], rng[1], componentCfg.rollModel) });
+        picked.push({ type: t, value: rollAffixValueBoundary(rng[0], rng[1], componentCfg.rollModel) });
       });
     }
     return instanceMeta(instanceId(base.id, QUALITY.mythic.key, picked));
@@ -557,6 +636,155 @@
   function rollComponent() {
     const base = COMPONENT_BASES[Math.floor(Math.random() * COMPONENT_BASES.length)];
     return genComponent(base.id, rollComponentQuality());
+  }
+
+  // ---- 工坊 · 熔炼 ----
+  // 玩家放两件组件（主 / 副），各选一条词条，熔炼后**主件的词条就是选中的那两条**（重新 roll 数值）：
+  //   主件选中的那条 → 在原底材区间内重 roll；副件选中的那条 → 该词缀若在主件词缀池内按主件区间 roll，
+  //   若不在池内（把副件独有的词缀熔到主件上）则按「池外词缀区间」roll，与宝匣突破件同一套规则。
+  // 投料（可选）：从**主件自己的词缀池**里再补一条主件尚未拥有的词缀并 roll 值；投料越多，补缀成功率越高。
+  // 龙宫宝珠（可选）：roll 值改为掷两次取靠近区间边界的那次（与海王遗匣同一规则，见 rollAffixValueBoundary）。
+  // 熔炼花费金币：材料越多越贵。全部参数由管理后台「⚒ 工坊配置」覆盖（world.smeltCfg）。
+  //
+  // 材料即「词缀定向器」：每种材料只对应一个词缀类型，投料量最大的那种材料决定要补的词缀
+  // （并列时按本表顺序取先出现的）。龙宫宝珠不是定向材料，而是催化剂，单列。
+  const SMELT_MATERIAL_AFFIX = {
+    lure: 'skill',        // 反光假饵   → 技巧
+    bait_pack: 'rare',    // 诱饵包     → 稀有概率
+    rope: 'size',         // 耐磨绳     → 体型
+    relic: 'material',    // 沉船宝匣残片 → 材料概率
+    tide_sand: 'speed',   // 潮汐砂     → 钓速（新材料）
+    dragon_scale: 'double', // 龙鳞碎屑 → 双钓（新材料）
+  };
+  const SMELT_PEARL = 'dragonpearl'; // 龙宫宝珠：催化剂（roll 两次取边界值）
+  // 只投料想补的词缀：主件池里必须还有该词缀、且主件当前没有它，否则该材料对这次熔炼无意义。
+  function smeltMaterialAffix(id) { return SMELT_MATERIAL_AFFIX[id] || null; }
+  function smeltMaterialIds() { return Object.keys(SMELT_MATERIAL_AFFIX); }
+
+  const SMELT_DEFAULTS = {
+    baseRate: 50,              // 熔炼基础成功率（%）：失败 = 副件/材料被熔毁，主件不变
+    failPerMaterial: -2,       // 每份材料对**失败率**的加成（%点）：负数 = 投料越多越不易失败
+    extraRatePerMaterial: 8,   // 每份材料对「新增词缀」成功率的加成（%点）
+    extraRatePearl: 0,         // 龙宫宝珠对「新增词缀」成功率的加成（%点）
+    extraRateMax: 95,          // 新增词缀成功率上限（%）
+    rateMin: 5,                // 熔炼成功率下限（%）
+    rateMax: 99,               // 熔炼成功率上限（%）
+    goldBase: 5000,            // 基础金币花费
+    goldPerMaterial: 900,      // 每份材料追加金币
+    goldPearl: 20000,          // 龙宫宝珠追加金币
+    maxMaterials: 20,          // 单次最多投料份数
+    maxTypes: 4,               // 单次最多投料种类
+    pearlRollTwice: true,      // 龙宫宝珠是否启用「掷两次取边界值」
+  };
+  let smeltCfg = Object.assign({}, SMELT_DEFAULTS);
+  function defaultSmeltCfg() { return Object.assign({}, SMELT_DEFAULTS); }
+  function setSmeltCfg(cfg) {
+    const d = defaultSmeltCfg();
+    const c = (cfg && typeof cfg === 'object') ? cfg : {};
+    Object.keys(d).forEach(function (k) {
+      if (c[k] === undefined || c[k] === null || c[k] === '') return;
+      const v = (typeof d[k] === 'boolean') ? !!c[k] : Number(c[k]);
+      if (typeof d[k] === 'boolean' ? true : isFinite(v)) d[k] = v;
+    });
+    d.maxMaterials = Math.max(0, Math.min(99, Math.floor(d.maxMaterials)));
+    d.maxTypes = Math.max(0, Math.min(8, Math.floor(d.maxTypes)));
+    smeltCfg = d;
+    return smeltCfg;
+  }
+  function getSmeltCfg() { return smeltCfg; }
+
+  // 投料清单 [{ id, qty }] → 汇总（总份数 / 各词缀份数 / 主词缀 = 投料量最大的那个）
+  function smeltLoadOf(list) {
+    const byAffix = {};
+    let total = 0, pearl = 0;
+    const order = smeltMaterialIds();
+    (Array.isArray(list) ? list : []).forEach(function (e) {
+      const id = String((e && e.id) || '');
+      const qty = Math.max(0, Math.floor(Number(e && e.qty) || 0));
+      if (!qty) return;
+      if (id === SMELT_PEARL) { pearl += qty; return; }
+      const affix = SMELT_MATERIAL_AFFIX[id];
+      if (!affix) return;
+      byAffix[affix] = (byAffix[affix] || 0) + qty;
+      total += qty;
+    });
+    let dominant = null, best = 0;
+    order.forEach(function (id) {
+      const affix = SMELT_MATERIAL_AFFIX[id];
+      const n = byAffix[affix] || 0;
+      if (n > best) { best = n; dominant = affix; }
+    });
+    return { total: total, pearl: pearl, byAffix: byAffix, dominant: dominant, types: Object.keys(byAffix).length };
+  }
+  // 成功率：熔炼成功率受投料影响（默认投料越多越不易失败）；补缀成功率随投料单调上升
+  function smeltRatesOf(load, hasPearl) {
+    const c = smeltCfg;
+    const total = Math.max(0, Number(load && load.total) || 0);
+    const pearl = hasPearl != null ? !!hasPearl : !!(load && load.pearl > 0);
+    const raw = c.baseRate + c.failPerMaterial * total;
+    const rate = Math.max(c.rateMin, Math.min(c.rateMax, raw));
+    const extraRaw = c.extraRatePerMaterial * total + (pearl ? c.extraRatePearl : 0);
+    const extraRate = Math.max(0, Math.min(c.extraRateMax, extraRaw));
+    return {
+      rate: Math.round(rate * 10) / 10,
+      extraRate: Math.round(extraRate * 10) / 10,
+      failRate: Math.round((100 - rate) * 10) / 10,
+    };
+  }
+  function smeltGoldOf(load, hasPearl) {
+    const c = smeltCfg;
+    const total = Math.max(0, Number(load && load.total) || 0);
+    const pearl = hasPearl != null ? !!hasPearl : !!(load && load.pearl > 0);
+    return Math.max(0, Math.round(c.goldBase + c.goldPerMaterial * total + (pearl ? c.goldPearl : 0)));
+  }
+  // 某件主件本次熔炼可补的词缀候选（主件池内、且主件当前没有的词缀）
+  function smeltAddableAffixes(baseId, currentTypes) {
+    const base = BASE_MAP[baseId];
+    if (!base) return [];
+    const have = {};
+    (currentTypes || []).forEach(function (t) { have[t] = 1; });
+    return base.pool.filter(function (p) { return !have[p.type]; }).map(function (p) { return p.type; });
+  }
+
+  // ---- 商城（每日限购）----
+  // 金币直购官方商品，每件商品有「每日限购」；限购按**刷新时间**（服务器本地时区的 HH:MM）
+  // 划分周期，跨过刷新点即重置。刷新时间与商品（物品 / 金币价 / 限购数）都由管理后台配置。
+  const MALL_DEFAULTS = {
+    refreshTime: '04:00',
+    items: [
+      { id: 'bait_pack', price: 40, limit: 20 },
+      { id: 'lure', price: 60, limit: 20 },
+      { id: 'rope', price: 35, limit: 20 },
+      { id: 'tide_sand', price: 2600, limit: 3 },
+      { id: 'dragon_scale', price: 7200, limit: 1 },
+      { id: 'relic', price: 3800, limit: 3 },
+    ],
+  };
+  function defaultMallCfg() {
+    return { refreshTime: MALL_DEFAULTS.refreshTime, items: MALL_DEFAULTS.items.map(function (e) { return Object.assign({}, e); }) };
+  }
+  // 「HH:MM」→ { h, min }；非法返回 null
+  function parseRefreshTime(s) {
+    const m = /^\s*(\d{1,2})\s*:\s*(\d{1,2})\s*$/.exec(String(s == null ? '' : s));
+    if (!m) return null;
+    const h = Number(m[1]), min = Number(m[2]);
+    if (!(h >= 0 && h <= 23) || !(min >= 0 && min <= 59)) return null;
+    return { h: h, min: min };
+  }
+  // 当前限购周期：key = 本周期开始那天的日期串；nextAt = 下次刷新时间戳
+  function mallCycleOf(refreshTime, now) {
+    const t = parseRefreshTime(refreshTime) || parseRefreshTime(MALL_DEFAULTS.refreshTime);
+    const at = isFinite(now) ? Number(now) : Date.now();
+    const d = new Date(at);
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), t.h, t.min, 0, 0);
+    if (start.getTime() > at) start.setDate(start.getDate() - 1);
+    const next = new Date(start.getTime());
+    next.setDate(next.getDate() + 1);
+    function p(n) { return ('0' + n).slice(-2); }
+    return {
+      key: start.getFullYear() + '-' + p(start.getMonth() + 1) + '-' + p(start.getDate()),
+      startAt: start.getTime(), nextAt: next.getTime(), refreshTime: t.h + ':' + p(t.min),
+    };
   }
 
   // ---- 整根钓竿（rodset：part=compId;part=compId…）----
@@ -660,11 +888,28 @@
     const quality = affixes.length >= 3 ? 'epic' : (affixes.length === 2 ? 'rare' : 'common');
     return instanceId(base.id, quality, affixes);
   }
-  // 任意 id 规范化：实例签名原样返回；旧组件 id 升级为实例签名；其余（鱼/材料）不变
+  // 整竿标识规范化：把每个部位的组件实例 id 也换成规范签名。
+  // 少了这一步，存档里「钓竿槽位 / 市集上的整竿」会带着旧短码（如 big-5）继续流传：
+  // 拆回背包时写进去的是旧键，之后装备（用规范键查背包）就会查不到，表现为「背包里明明有却装不上」。
+  function normalizeRodSetId(id) {
+    const parts = rodPartsOf(id);
+    if (!parts) return id;
+    const next = {};
+    Object.keys(parts).forEach(function (k) { next[k] = normalizeItemId(parts[k]); });
+    return rodSetId(next) || id;
+  }
+  // 任意 id 规范化：实例签名 / 整竿标识 → 规范形（词缀顺序与短码统一，含 v0.11 的 big→skl 改名）；
+  // 旧组件 id 升级为实例签名；其余（鱼/材料/宝匣）不变。
   function normalizeItemId(id) {
     if (id == null) return id;
     const s = String(id);
-    if (instanceOf(s)) return s;
+    if (isRodSet(s)) return normalizeRodSetId(s);
+    const inst = instanceOf(s);
+    if (inst) {
+      // 规范化：旧短码（big）与乱序词缀都会被改写成当前的标准签名，因此旧存档在启动迁移时自动升级
+      const canon = instanceId(inst.baseId, inst.quality, inst.affixes);
+      return canon === s ? s : canon;
+    }
     if (s === 'comp_generic') return s;
     const up = legacyToInstance(s);
     return up || s;
@@ -674,8 +919,9 @@
   function componentOf(id) {
     if (id == null) return null;
     const s = String(id);
-    const inst = instanceMeta(s);
-    if (inst) return inst;
+    // 实例签名先规范化（旧短码 / 乱序词条 → 标准签名），返回的 comp.id 因此永远是规范形：
+    // 服务端用它做背包键与槽位存档，客户端传来的非标准 id 不会造成「背包里明明有却查不到」。
+    if (instanceOf(s)) return instanceMeta(normalizeItemId(s));
     const up = normalizeItemId(s);
     if (up !== s) return instanceMeta(up);
     return null;
@@ -698,18 +944,18 @@
       id: 'stillwater', name: '静水湖', type: 'normal',
       desc: '风平浪静的淡水湖，适合日常稳定产出。',
       spots: [
-        { id: 'dock', name: '老旧码头', pool: [
+        { id: 'dock', name: '老旧码头', pos: [69, 30], pool: [
           p('fish', 'crucian', 30), p('fish', 'white', 16), p('fish', 'carp', 18),
           p('fish', 'minnow', 12), p('fish', 'bream', 8),
           p('fish', 'catfish', 4), p('fish', 'bass', 3), p('fish', 'koi', 1),
           p('material', 'bait_pack', 10), p('component', '', 6),
         ] },
-        { id: 'reed', name: '芦苇浅滩', pool: [
+        { id: 'reed', name: '芦苇浅滩', pos: [68, 60], pool: [
           p('fish', 'grass', 24), p('fish', 'white', 18), p('fish', 'crucian', 12),
           p('fish', 'minnow', 12), p('fish', 'loach', 10), p('fish', 'yellowcat', 8),
           p('material', 'rope', 12), p('component', '', 7),
         ] },
-        { id: 'deep', name: '深水区', pool: [
+        { id: 'deep', name: '深水区', pos: [74, 48], pool: [
           p('fish', 'carp', 22), p('fish', 'bighead', 14), p('fish', 'silvercarp', 12),
           p('fish', 'blackcarp', 8), p('fish', 'catfish', 6), p('fish', 'bass', 6),
           p('fish', 'sturgeon', 2), p('fish', 'arapaima', 2),
@@ -722,18 +968,18 @@
       id: 'rapids', name: '急流河', type: 'normal',
       desc: '水流湍急的河流，大鱼概率略高。',
       spots: [
-        { id: 'shoal', name: '石滩', pool: [
+        { id: 'shoal', name: '石滩', pos: [77, 34], pool: [
           p('fish', 'white', 24), p('fish', 'riverperch', 18), p('fish', 'culter', 14),
           p('fish', 'crucian', 10), p('fish', 'blackbass', 5),
           p('material', 'rope', 12), p('component', '', 7),
         ] },
-        { id: 'eddy', name: '回水湾', pool: [
+        { id: 'eddy', name: '回水湾', pos: [58, 42], pool: [
           p('fish', 'carp', 24), p('fish', 'crucian', 20), p('fish', 'yellowcat', 12),
           p('fish', 'grass', 10), p('fish', 'culter', 6), p('fish', 'mandarin', 5),
           p('fish', 'arowana', 1),
           p('material', 'bait_pack', 11), p('component', '', 6),
         ] },
-        { id: 'fall', name: '瀑布潭', pool: [
+        { id: 'fall', name: '瀑布潭', pos: [83, 20], pool: [
           p('fish', 'carp', 12), p('fish', 'bass', 8), p('fish', 'yellowcheek', 6),
           p('fish', 'catfish', 4), p('fish', 'mandarin', 3), p('fish', 'sturgeon', 2),
           p('fish', 'ghostray', 1),
@@ -745,22 +991,22 @@
       id: 'sunset', name: '落日海湾', type: 'normal',
       desc: '咸淡水交界的海湾，稀有渔获倾向更高。',
       spots: [
-        { id: 'beach', name: '沙滩', pool: [
+        { id: 'beach', name: '沙滩', pos: [42, 71], pool: [
           p('fish', 'tilapia', 22), p('fish', 'sardine', 18), p('fish', 'croaker', 14),
           p('fish', 'sunfish', 5), p('fish', 'pearl', 2),
           p('material', 'bait_pack', 12), p('component', '', 7),
         ] },
-        { id: 'pier', name: '防波堤', pool: [
+        { id: 'pier', name: '防波堤', pos: [35, 30], pool: [
           p('fish', 'seabass', 10), p('fish', 'tuna', 8), p('fish', 'mackerel', 8),
           p('fish', 'cobia', 6), p('fish', 'bluefin', 3), p('fish', 'swordfish', 2),
           p('fish', 'pearl', 2),
           p('material', 'lure', 11), p('component', '', 7),
         ] },
-        { id: 'reef', name: '礁石区', pool: [
+        { id: 'reef', name: '礁石区', pos: [18, 78], pool: [
           p('fish', 'tuna', 10), p('fish', 'grouper', 9), p('fish', 'rubysnapper', 7),
           p('fish', 'seabass', 4), p('fish', 'sturgeon', 3), p('fish', 'pearl', 3),
           p('fish', 'dragonfish', 2), p('fish', 'amberlobster', 2),
-          p('material', 'relic', 1), p('fish', 'dragonpearl', 1),
+          p('material', 'relic', 1), p('material', 'dragonpearl', 1),
           p('material', 'rope', 10), p('component', '', 7),
         ] },
       ],
@@ -797,10 +1043,11 @@
     { id: 'ground', name: '渔场动态', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
     { id: 'chest', name: '宝匣合成', icon: '🎁', implemented: true },
+    { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
     { id: 'shop', name: '系统商店', icon: '🏪', implemented: true },
     { id: 'market', name: '开放市集', icon: '💱', implemented: true },
     { id: 'trade', name: '在线交易', icon: '🤝', implemented: true },
-    { id: 'mall', name: '商城', icon: '🛒', implemented: false },
+    { id: 'mall', name: '商城', icon: '🛒', implemented: true },
     { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true },
     { id: 'records', name: '渔获记录', icon: '🏆', implemented: true },
     { id: 'feedback', name: '反馈意见', icon: '📮', implemented: true },
@@ -856,13 +1103,22 @@
     VERSION: VERSION, BUILD: BUILD,
     FISH: FISH, MATERIALS: MATERIALS, RARITY_PRICE: RARITY_PRICE,
     ROD_PARTS: ROD_PARTS,
-    AFFIX_LABEL: AFFIX_LABEL, AFFIX_CODES: AFFIX_CODES, AFFIX_TYPES: AFFIX_TYPES,
+    AFFIX_LABEL: AFFIX_LABEL, BUFF_LABEL: BUFF_LABEL, AFFIX_CODES: AFFIX_CODES, AFFIX_TYPES: AFFIX_TYPES,
     QUALITY: QUALITY, QUALITY_ORDER: QUALITY_ORDER,
     CHESTS: CHESTS, chestOf: chestOf, isChest: isChest, rollChestQuality: rollChestQuality,
     genBreakthrough: genBreakthrough, RELIC_PRICE: RELIC_PRICE,
+    CHEST_BASE_COSTS: CHEST_BASE_COSTS, applyChestCosts: applyChestCosts, chestCostOverrides: chestCostOverrides,
+    rollAffixValueBoundary: rollAffixValueBoundary, nearerBoundaryOf: nearerBoundaryOf,
+    SMELT_MATERIAL_AFFIX: SMELT_MATERIAL_AFFIX, SMELT_PEARL: SMELT_PEARL,
+    SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
+    smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds,
+    smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
+    MALL_DEFAULTS: MALL_DEFAULTS, defaultMallCfg: defaultMallCfg,
+    parseRefreshTime: parseRefreshTime, mallCycleOf: mallCycleOf,
     DEFAULT_EXTRA_AFFIX_RANGES: DEFAULT_EXTRA_AFFIX_RANGES, extraAffixRangeOf: extraAffixRangeOf,
     COMPONENT_BASES: COMPONENT_BASES, componentBase: componentBase,
     instanceId: instanceId, instanceOf: instanceOf, isInstance: isInstance,
+    codeOf: codeOf, typeOfCode: typeOfCode,
     genComponent: genComponent, rollComponent: rollComponent, rollComponentQuality: rollComponentQuality,
     setComponentCfg: setComponentCfg, getComponentCfg: getComponentCfg, defaultComponentCfg: defaultComponentCfg,
     setFishCfg: setFishCfg, getFishCfg: getFishCfg, defaultFishCfg: defaultFishCfg,
@@ -871,6 +1127,7 @@
     adjectiveOf: adjectiveOf, instanceMeta: instanceMeta, componentOf: componentOf,
     legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,
     ROD_SET_PREFIX: ROD_SET_PREFIX, isRodSet: isRodSet, rodPartsOf: rodPartsOf, rodSetId: rodSetId, rodMeta: rodMeta,
+    normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
     GROUNDS: GROUNDS, NAV: NAV,
     allItems: allItems, itemOf: itemOf, itemName: itemName, isSellable: isSellable,
