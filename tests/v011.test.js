@@ -898,6 +898,72 @@ function startServer() {
   const verAfter = await GET(BASE + '/api/version');
   check('纪录贴图设置持久化（恢复默认 175%）', verAfter.data.recordsCfg.scale === 175, JSON.stringify(verAfter.data.recordsCfg));
 
+  // ==========================================================================
+  section('⑪ 自动配装求解器（纯函数：前端与浏览器共用同一份）');
+  const AB = (base, q, affs) => D.instanceId(base, q, affs);
+  // 竿身两件：A 钓速 20；B 钓速 10 + 双钓 8（双钓更好、钓速更差）
+  const abA = AB('rod_bamboo', 'common', [{ type: 'speed', value: 20 }]);
+  const abB = AB('rod_bamboo', 'common', [{ type: 'speed', value: 10 }, { type: 'double', value: 8 }]);
+  // 钩两件：C 双钓 12；D 技巧 9
+  const abC = AB('hook_barb', 'common', [{ type: 'double', value: 12 }]);
+  const abD = AB('hook_barb', 'common', [{ type: 'skill', value: 9 }]);
+  const abCand = () => ({ rod: [abA, abB], hook: [abC, abD] });
+  const abPlan = (o) => D.autoBuildPlan(Object.assign({ parts: ['rod', 'hook'], candidates: abCand() }, o));
+
+  const p1 = abPlan({ order: ['speed', 'double'] });
+  check('优先级：钓速优先 → 竿身取钓速最高的那件',
+    p1.picks.rod === abA && p1.vec.speed === 20, JSON.stringify({ p: p1.picks, v: p1.vec }));
+  const p2 = abPlan({ order: ['double', 'speed'] });
+  check('优先级：双钓优先 → 竿身换成「钓速 10 + 双钓 8」那件',
+    p2.picks.rod === abB && p2.vec.double === 20 && p2.vec.speed === 10, JSON.stringify({ p: p2.picks, v: p2.vec }));
+  check('总属性 = 各部位逐项求和（双钓 8 + 12）', p2.vec.double === 20, JSON.stringify(p2.vec));
+  const p3 = abPlan({ order: ['double', 'speed'], min: { speed: 20 } });
+  check('目标下限生效：钓速 ≥ 20 时双钓让位（钓速 20 / 双钓 12）',
+    p3.vec.speed === 20 && p3.vec.double === 12 && !Object.keys(p3.miss).length, JSON.stringify(p3.vec));
+  const p4 = abPlan({ order: ['double', 'speed'], min: { speed: 99 } });
+  check('目标配不出来时如实回报（relaxed=all + miss + 把该属性尽量做高）',
+    p4.relaxed === 'all' && p4.miss.speed === 20 && p4.vec.speed === 20,
+    JSON.stringify({ r: p4.relaxed, m: p4.miss, v: p4.vec }));
+  check('目标上限生效（钓速 ≤ 10 → 只能选钓速 10 的那件）',
+    abPlan({ order: ['speed', 'double'], max: { speed: 10 } }).vec.speed === 10, '');
+  const p6 = abPlan({ order: ['speed', 'double'], max: { speed: 10 }, min: { speed: 20 } });
+  check('上下限冲突 → 放宽上限并标注 relaxed=max（先保下限）',
+    p6.relaxed === 'max' && p6.vec.speed === 20, JSON.stringify({ r: p6.relaxed, v: p6.vec }));
+  check('未勾选的属性不参与目标比较',
+    abPlan({ order: ['speed', 'double'], enabled: { speed: true, double: false } }).picks.rod === abA, '');
+  check('可达上限探针：钓速 ≥ 20 约束下双钓最高 12',
+    D.autoBuildPeek({ parts: ['rod', 'hook'], candidates: abCand(), min: { speed: 20 } }, 'double') === 12, '');
+  check('可达上限探针：不限目标时钓速最高 20',
+    D.autoBuildPeek({ parts: ['rod', 'hook'], candidates: abCand() }, 'speed') === 20, '');
+  check('部位不匹配 / 非法候选 id 被忽略（只留下合法的那件）', (function () {
+    const r = D.autoBuildPlan({ parts: ['rod'], candidates: { rod: [abC, 'null#common#spd+5', 'bogus', abA] } });
+    return r.picks.rod === abA && r.vec.double === 0;
+  })(), '');
+  check('属性完全相同的两件只算一次（同向量去重）', (function () {
+    const dup = AB('rod_bamboo', 'common', [{ type: 'speed', value: 20 }]);
+    const r = D.autoBuildPlan({ parts: ['rod'], candidates: { rod: [abA, dup] } });
+    return r.vec.speed === 20 && r.picks.rod === abA;
+  })(), '');
+  const abBig = (function () {
+    const cands = {};
+    D.ROD_PARTS.forEach(function (p) {
+      const base = D.COMPONENT_BASES.find(b => b.part === p.key).id;
+      const arr = [];
+      for (let i = 0; i < 60; i++) {
+        arr.push(D.instanceId(base, 'epic', [
+          { type: D.AFFIX_TYPES[i % 6], value: 1 + (i % 17) },
+          { type: D.AFFIX_TYPES[(i + 3) % 6], value: (i % 5) - 2 },
+        ]));
+      }
+      cands[p.key] = arr;
+    });
+    const t0 = Date.now();
+    const r = D.autoBuildPlan({ candidates: cands, order: ['speed', 'double', 'skill', 'rare', 'material', 'size'] });
+    return { ms: Date.now() - t0, ok: !!(r && r.picks && Object.keys(r.picks).length === 7) };
+  })();
+  check('7 部位 × 60 候选（420 件）也能在 1.5 秒内求解',
+    abBig.ok && abBig.ms < 1500, JSON.stringify(abBig));
+
   // ---- 收尾 ----
   killTree(srv);
   console.log('\n============================');

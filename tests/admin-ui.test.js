@@ -292,6 +292,9 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       check('批量上架落到服务器（+6 条）', mkAfterBulk.length >= mkN0 + 6, mkN0 + ' -> ' + mkAfterBulk.length);
       check('挂单挂在所选账号名头下', mkAfterBulk.filter(l => l.seller === 'aui_admin').length >= 6,
         JSON.stringify(mkAfterBulk.filter(l => l.seller === 'aui_admin').slice(0, 2)));
+      // 就地刷新是异步的（列表随广播/回包重画）：并行跑测试时单次读数会偶发抢在重画之前，
+      // 这里先轮询到行数到位再断言（原先单次读取曾误报过一条）。
+      await waitFor(async () => (await pa.$$('#mk-body tbody tr')).length >= 6, { timeout: 8000, interval: 100 }).catch(() => {});
       check('上架后列表就地刷新出这些挂单', (await pa.$$('#mk-body tbody tr')).length >= 6, String((await pa.$$('#mk-body tbody tr')).length));
       check('面板参数写进 localStorage（下次进来不用重填）', await pa.evaluate(() => {
         try { return JSON.parse(localStorage.getItem('fishing_admin_bulk') || '{}').counts.component === 6; } catch (e) { return false; }

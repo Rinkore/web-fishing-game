@@ -1018,6 +1018,9 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .bf-search:focus { border-color: var(--accent); }
 .bf-sort { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
 .bf-sort-label { margin-right: 2px; }
+/* 市集「组件」分类的二级筛选行（部位）：整行独占一行，样式与背包 .inv-subrow 同款 */
+.bf-subrow { flex: 1 0 100%; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.bf-subrow .sub-label { flex: none; min-width: 32px; font-size: 12px; color: var(--muted); }
 
 /* ---- 钓竿配置 ---- */
 .r-epic { color: #c084fc; font-weight: 600; }
@@ -1192,6 +1195,51 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .bde-current .bec-tip { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .bec-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .bec-acts button { flex: 1 1 auto; }
+
+/* ---- 自动配装（配装器）：入口条 + 优先级/目标行 + 方案对比 ---- */
+.bd-auto-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.bd-auto-bar .hint { font-size: 12px; color: var(--muted); }
+.ab-modal { width: 760px; }
+.ab-modal .modal-body { max-height: 76vh; }
+.ab-rows { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 12px; }
+.ab-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+  border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.02);
+}
+.ab-row.on { border-color: rgba(56,189,248,.45); }
+.ab-row .ab-idx { width: 12px; flex: none; text-align: center; font-size: 11px; color: var(--muted); }
+.ab-row .ab-mv { padding: 1px 5px; font-size: 11px; line-height: 1.2; }
+.ab-row .ab-en { flex: none; min-width: 96px; display: inline-flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; }
+.ab-row .ab-num {
+  flex: none; width: 62px; background: rgba(255,255,255,.05); border: 1px solid var(--line);
+  color: var(--text); border-radius: 6px; padding: 3px 6px; font-size: 12px;
+}
+.ab-row .ab-range { flex: 1 1 120px; min-width: 96px; accent-color: var(--accent2); }
+.ab-row .ab-peek { flex: none; min-width: 96px; text-align: right; font-size: 11px; color: var(--muted); }
+.ab-row .ab-peek.over { color: var(--danger); }
+.ab-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.ab-actions .ab-hint { font-size: 12px; color: var(--muted); }
+.ab-actions .primary-mini[disabled] { opacity: .5; cursor: not-allowed; }
+.ab-res h4 { margin: 10px 0 4px; font-size: 13px; color: var(--accent2); }
+.ab-res .ab-hint { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.ab-plan-row, .ab-diff-row {
+  display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0;
+  border-bottom: 1px dashed rgba(255,255,255,.06);
+}
+.ab-plan-row.keep { opacity: .72; }
+.abp-part { flex: none; width: 62px; color: var(--muted); }
+.abp-cur { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.abp-new { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.abp-arrow { flex: none; color: var(--accent2); }
+.abp-tag, .abd-tag { flex: none; font-size: 11px; color: var(--muted); }
+.abp-tag { width: 34px; text-align: right; }
+.abd-name { flex: none; width: 84px; }
+.abd-cur, .abd-new { flex: none; width: 62px; }
+.abd-new.up { color: var(--accent); }
+.abd-new.down { color: var(--danger); }
+.abd-delta { flex: none; width: 52px; color: var(--muted); }
+.ab-warn { margin-top: 8px; font-size: 12px; line-height: 1.6; color: #fbbf24; }
+.ab-ok { margin-top: 8px; font-size: 12px; color: var(--accent); }
 
 /* 顶部状态栏的钓速（基础值 + 实际值）：与其它 meta 区分，弱强调 */
 #player-status .meta.cast { color: var(--accent); border-left: 1px solid var(--line); padding-left: 10px; }
