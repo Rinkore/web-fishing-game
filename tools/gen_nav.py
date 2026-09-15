@@ -117,9 +117,20 @@ def i_logs(cv):
     cv.fill(4, 12, 12, 13, hex2rgb('#c9a86a'))
     cv.line(6, 6, 10, 6, hex2rgb('#7d5e33')); cv.line(6, 8, 10, 8, hex2rgb('#7d5e33')); cv.line(6, 10, 8, 10, hex2rgb('#7d5e33'))
 
+def i_workshop(cv):
+    """工坊：熔炉 + 火苗"""
+    cv.fill(4, 7, 12, 13, hex2rgb('#6a6470'))        # 炉体
+    cv.fill(5, 8, 11, 12, hex2rgb('#3a3440'))
+    cv.fill(6, 9, 10, 12, hex2rgb('#ff9a4a'))        # 炉火
+    cv.fill(7, 10, 9, 12, hex2rgb('#ffd23e'))
+    cv.fill(6, 3, 10, 7, hex2rgb('#8a8494'))         # 烟囱
+    cv.set(7, 2, hex2rgb('#c8c4cc')); cv.set(9, 1, hex2rgb('#c8c4cc'))  # 烟
+    cv.set(13, 11, hex2rgb('#9aa4ae'))               # 旁边工具
+    cv.line(13, 11, 14, 13, hex2rgb('#9aa4ae'))
+
 ICONS = {
     'fishing': i_fishing, 'bd': i_bd, 'ground': i_ground, 'inventory': i_inventory,
-    'chest': i_chest, 'shop': i_shop, 'market': i_market, 'trade': i_trade,
+    'chest': i_chest, 'workshop': i_workshop, 'shop': i_shop, 'market': i_market, 'trade': i_trade,
     'mall': i_mall, 'codex': i_codex, 'records': i_records, 'feedback': i_feedback,
     'logs': i_logs,
 }

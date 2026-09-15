@@ -408,7 +408,31 @@ COMPONENTS = {
     'charm_trident':  c_charm_trident,
 }
 
-MATERIALS = {'bait_pack': m_bait_pack, 'rope': m_rope, 'lure': m_lure, 'relic': m_relic}
+def m_tide_sand(cv):
+    """潮汐砂：金沙堆 + 潮水痕 + 闪光颗粒"""
+    sand, dark = hex2rgb('#e0c88f'), hex2rgb('#c9a86a')
+    cv.ellipse(14, 19, 10, 6, sand)
+    cv.ellipse(14, 16, 6, 4, shade(sand, 1.1))
+    for x, y in [(8, 18), (12, 21), (17, 19), (20, 21), (14, 22)]:
+        cv.set(x, y, dark)
+    tide = hex2rgb('#3ec9f0')
+    for x in range(4, 25, 3):                      # 潮水波痕
+        cv.set(x, 24, tide); cv.set(x + 1, 24, tide)
+    spark(cv, 8, 12, '#fff2c8'); spark(cv, 20, 14, '#fff2c8')
+
+def m_dragon_scale(cv):
+    """龙鳞碎屑：青金鳞片 + 冰裂纹 + 微光"""
+    c, dark = hex2rgb('#3ec6a8'), hex2rgb('#1e8a74')
+    cv.poly([(14, 4), (22, 12), (18, 24), (8, 22), (6, 10)], c)   # 主鳞
+    cv.poly([(14, 8), (19, 13), (16, 21), (10, 20), (9, 12)], dark)
+    cv.line(9, 12, 16, 21, hex2rgb('#aef0e0'))     # 鳞纹
+    cv.line(10, 15, 18, 15, hex2rgb('#aef0e0'))
+    cv.poly([(22, 20), (26, 23), (22, 26)], shade(c, .8))          # 碎屑
+    cv.poly([(4, 22), (7, 24), (5, 26)], shade(c, .8))
+    spark(cv, 23, 8, '#c8f8ec'); spark(cv, 5, 7, '#c8f8ec')
+
+MATERIALS = {'bait_pack': m_bait_pack, 'rope': m_rope, 'lure': m_lure, 'relic': m_relic,
+             'tide_sand': m_tide_sand, 'dragon_scale': m_dragon_scale}
 
 # ---------- 宝匣（沉船打捞四档，逐级华丽） ----------
 def chest_base(cv, wood, band, glow=None):

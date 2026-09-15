@@ -25,3 +25,6 @@ __pycache__/
 
 # ---- 鎵撳寘浜х墿 ----
 dist/
+
+# 更新器用 GitHub token（私有仓库查 Release 用，绝不入库）
+tools/.github-token

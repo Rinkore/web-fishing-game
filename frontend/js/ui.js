@@ -924,7 +924,9 @@ window.UI = (function () {
     const groundsBar = el('div', 'px-grounds');
     D.GROUNDS.forEach(function (g) {
       const cnt = (st.groundCounts && st.groundCounts[g.id]) || 0;
-      const card = el('div', 'px-region g-card' + (g.locked ? ' locked' : ''));
+      // 当前选中/正在垂钓的钓场：金色边框标注
+      const onGround = st.selected.groundId === g.id || st.player.groundId === g.id;
+      const card = el('div', 'px-region g-card' + (g.locked ? ' locked' : '') + (onGround ? ' on' : ''));
       card.setAttribute('data-g', g.id); // 增量刷新按钓场找卡片更新人数
       card.innerHTML = '<img class="pg-icon" src="assets/ground/' + esc(g.id) + '.png" alt="" draggable="false"' +
         ' onerror="this.style.display=\'none\'">' +

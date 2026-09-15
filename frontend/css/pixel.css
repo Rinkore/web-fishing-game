@@ -641,3 +641,11 @@ input:disabled, select:disabled, textarea:disabled { color: var(--px-input-off) 
 }
 .pb-chip b { color: var(--px-gold); font-weight: 600; }
 .pb-chip i { font-style: normal; color: var(--accent2); }
+
+/* 钓场状态卡：当前选中/正在垂钓的钓场金色边框 */
+.px-region.g-card.on {
+  border-color: var(--px-gold);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .06), 4px 4px 0 var(--px-shadow),
+    0 0 14px rgba(255, 210, 62, .4);
+}
+.px-region.g-card.on .pg-info b { color: var(--px-gold); }
