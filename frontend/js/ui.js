@@ -3331,7 +3331,12 @@ window.UI = (function () {
     box.querySelector('.modal-close').addEventListener('click', function () { closeOverlays(); });
 
     const inner = box.querySelector('.codex-detail');
+    const cdIconSrc = it.kind === 'fish' ? 'assets/fish/' + esc(it.id) + '.png'
+      : (it.kind === 'material' || it.kind === 'component') ? 'assets/item/' + esc(it.id) + '.png'
+      : null;
+    const cdIcon = cdIconSrc ? '<img class="cd-icon" src="' + cdIconSrc + '" alt="" draggable="false">' : '';
     inner.innerHTML =
+      cdIcon +
       '<div class="cd-title ' + qualityClass(it) + '">' + esc(it.name) + '</div>' +
       (rec
         ? '<div class="cd-line">已钓 <b>' + rec.count + '</b> 次 · 首获 ' + timeStr(rec.first) + '</div>'
@@ -3734,6 +3739,7 @@ window.UI = (function () {
           const pool = sp.pool || [];
           const cell = el('div', 'codex-cell k-spots' + (g.locked ? ' locked' : ''));
           cell.innerHTML =
+            '<img class="cx-icon spot-icon" src="assets/spot/' + esc(sp.id) + '.png" alt="" draggable="false">' +
             '<div class="cx-name">' + esc(g.name + ' · ' + sp.name) + '</div>' +
             '<div class="cx-meta">' + (pool.length ? '产出 ' + pool.length + ' 项' : '未配置掉落池') + '</div>' +
             '<div class="cx-meta muted">' + (g.locked ? '🔒 锁定中' : '🎣 可垂钓') + '</div>' +
@@ -3767,8 +3773,14 @@ window.UI = (function () {
           }).join(' · ') + '</div>'
         : null;
       const nameCls = rec ? qualityClass(it) : 'locked-name';
+      // 条目贴图：鱼 assets/fish/，材料与组件底材 assets/item/（像素 PNG，透明底）
+      const iconSrc = it.kind === 'fish' ? 'assets/fish/' + esc(it.id) + '.png'
+        : (it.kind === 'material' || it.kind === 'component') ? 'assets/item/' + esc(it.id) + '.png'
+        : null;
+      const iconHtml = iconSrc ? '<img class="cx-icon" src="' + iconSrc + '" alt="" draggable="false">' : '';
       // 统一五行骨架：全部卡片结构一致、高度对齐
       cell.innerHTML =
+        iconHtml +
         '<div class="cx-name ' + nameCls + '">' + esc(it.name) + '</div>' +
         '<div class="cx-meta">' + (rec ? '已获得 ' + rec.count + ' 次' : '未解锁') + '</div>' +
         '<div class="cx-meta muted">' + (rec ? '首获 ' + timeStr(rec.first) : qualityName(it) + ' · ' + (it.price || 0) + '💰') + '</div>' +

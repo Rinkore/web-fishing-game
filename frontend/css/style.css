@@ -457,6 +457,10 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .codex-cell.got { background: rgba(255,255,255,.05); border-color: var(--accent2); }
 .cx-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
 .cx-name.locked-name { color: var(--muted); }
+/* 鱼类贴图：像素画，禁用平滑放大 */
+.cx-icon { width: 84px; height: 50px; object-fit: contain; align-self: center; margin-bottom: 8px; image-rendering: pixelated; }
+/* 钓点图标为方形场景图 */
+.cx-icon.spot-icon { width: 72px; height: 72px; }
 .cx-meta { font-size: 11px; color: var(--text); }
 .cx-meta.muted { color: var(--muted); }
 
@@ -826,6 +830,8 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 
 /* ---- 图鉴详情浮层 ---- */
 .codex-cell { position: relative; }
+/* 详情弹窗顶部贴图 */
+.cd-icon { display: block; width: 132px; height: 78px; object-fit: contain; margin: 0 auto 10px; image-rendering: pixelated; }
 .codex-grid { align-items: stretch; } /* 等高：让卡片撑满等高行 */
 .codex-cell .cx-spots { margin-top: auto; } /* 产地行贴底，等高时不显突兀 */
 .codex-cell.got { cursor: pointer; }
