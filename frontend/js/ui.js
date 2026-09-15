@@ -1176,6 +1176,280 @@ window.UI = (function () {
     });
   }
 
+  // ---- 钓竿自动配装（配装器） ----
+  // 从背包（含当前已装的那件）检索 7 个部位的候选组件，按「属性优先级 + 目标区间」求最优组合。
+  // 求解全部在 GameData.autoBuildPlan / autoBuildPeek（纯函数、可单测）里，这里只做渲染与交互。
+  // 面板每行的滑块 = 该属性的目标下限（拖动即「钓速定到多少」），右侧「可达」列由 autoBuildPeek
+  // 现算：把它排到首位、在其余属性的目标区间下求最大值 —— 就是「其他属性还能配到多高」。
+  const AB_PRIO_DEFAULT = ['speed', 'double', 'skill', 'rare', 'material', 'size'];
+  let abOrder = AB_PRIO_DEFAULT.slice();
+  let abEnabled = {};
+  let abMin = {}, abMax = {};
+  D.AFFIX_TYPES.forEach(function (t) { abEnabled[t] = true; abMin[t] = ''; abMax[t] = ''; });
+  let abRefs = [];       // 行内元素引用：就地刷新，避免整块重建时打断拖动与输入
+  let abPlan = null;     // 最近一次求解结果
+  let abPeek = {};       // 各属性的可达上限
+  let abBusy = false;    // 正在装配（防止连点重复提交）
+  function abLabel(t) { const kv = BD_AFFIXES.find(function (x) { return x[0] === t; }); return kv ? kv[1] : t; }
+  function abSigned(v) { return (v > 0 ? '+' : '') + v + '%'; }
+  // 候选 = 背包里数量 >0 的组件 + 当前已装的那件（已装件不在背包里，但它也是「可选方案」之一）
+  function abCandidateMap(st) {
+    const m = {};
+    D.ROD_PARTS.forEach(function (p) {
+      const list = [];
+      const cur = st.bd && st.bd[p.key] && st.bd[p.key].compId;
+      if (cur) list.push(cur);
+      Object.keys(st.inventory).forEach(function (id) { if (st.inventory[id] > 0) list.push(id); });
+      m[p.key] = list;
+    });
+    return m;
+  }
+  function autoBuildOpen() {
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    const overlay = buildOverlay(function () { closeOverlays(); });
+    const box = el('div', 'modal-box shop-modal ab-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">🧠 自动配装 · 从背包检索最优组合</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body">' +
+      '<div class="bde-note">检索 7 个部位的可用组件（含当前已装的那件），按<b>优先级</b>选出总属性最高的组合：' +
+      '先让第 1 项最大，再在其中让第 2 项最大……「下限 / 上限」填数值即作为硬性目标，' +
+      '配不出来会提示「最高只能到多少」。滑块 = 该属性的目标下限。</div>' +
+      '<div class="ab-rows"></div>' +
+      '<div class="ab-actions"><button class="mini ab-reset">重置目标</button>' +
+      '<button class="mini primary-mini ab-apply">一键装配</button>' +
+      '<span class="ab-hint ab-apply-hint"></span></div>' +
+      '<div class="ab-res"></div></div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const rowsBox = box.querySelector('.ab-rows');
+    const resBox = box.querySelector('.ab-res');
+    const applyBtn = box.querySelector('.ab-apply');
+    const applyHint = box.querySelector('.ab-apply-hint');
+    box.querySelector('.modal-close').addEventListener('click', function () { closeOverlays(); });
+
+    // 本地 st.bd 可能不是服务端的当前装配（整竿上架 / 收起 / 别处改动后本地那份没刷新），
+    // 拿旧装配当「已装」会把方案值算错（计划里含着其实没装上的配件）。所以打开面板、
+    // 以及每次一键装配之前，都先向服务器要一份权威快照再求解 —— 与全项目「服务器权威」一致。
+    function syncProfile(next) {
+      const mk = window.Net.getMe && window.Net.getMe();
+      if (!mk || !mk.token) { if (next) next(); return; }
+      window.Net.fetchMe(mk.token).then(function (r) {
+        if (r && r.ok && r.data) { E().applyProfile(r.data); renderTopbar(); renderView(); }
+        if (next) next(); else abRefresh();
+      }).catch(function () { if (next) next(); else abRefresh(); });
+    }
+
+    // 每行：[序号 ↑↓] [勾选 属性名] [下限] [滑块] [上限] [可达 X]
+    function buildRows() {
+      abRefs = [];
+      rowsBox.innerHTML = '';
+      abOrder.forEach(function (t, i) {
+        const row = el('div', 'ab-row');
+        row.appendChild(el('span', 'ab-idx', String(i + 1)));
+        const up = el('button', 'mini ab-mv', '↑');
+        up.title = '提高优先级：排在上面的属性先被最大化';
+        const dn = el('button', 'mini ab-mv', '↓');
+        dn.title = '降低优先级';
+        up.addEventListener('click', function () {
+          if (i <= 0) return;
+          abOrder.splice(i, 1); abOrder.splice(i - 1, 0, t);
+          buildRows(); abRefresh();
+        });
+        dn.addEventListener('click', function () {
+          if (i >= abOrder.length - 1) return;
+          abOrder.splice(i, 1); abOrder.splice(i + 1, 0, t);
+          buildRows(); abRefresh();
+        });
+        row.appendChild(up);
+        row.appendChild(dn);
+        const cb = el('input');
+        cb.type = 'checkbox';
+        cb.checked = !!abEnabled[t];
+        cb.title = '取消勾选 = 该属性不参与目标（仍会显示数值对比）';
+        cb.addEventListener('change', function () { abEnabled[t] = cb.checked; abRefresh(); });
+        const lab = el('label', 'ab-en');
+        lab.appendChild(cb);
+        lab.appendChild(el('span', null, abLabel(t)));
+        row.appendChild(lab);
+        const minInp = el('input', 'ab-num');
+        minInp.type = 'number'; minInp.placeholder = '下限';
+        minInp.value = abMin[t] === '' ? '' : abMin[t];
+        minInp.title = '目标下限：配装必须不低于该值（留空 = 不限）';
+        const maxInp = el('input', 'ab-num');
+        maxInp.type = 'number'; maxInp.placeholder = '上限';
+        maxInp.value = abMax[t] === '' ? '' : abMax[t];
+        maxInp.title = '目标上限：配装不超过该值（留空 = 不限）';
+        const slider = el('input', 'ab-range');
+        slider.type = 'range'; slider.min = '0'; slider.step = '1';
+        slider.value = String(Number(abMin[t]) || 0);
+        slider.title = '拖动 = 设定该属性的目标下限，并实时看其他属性还能配到多高';
+        const peekEl = el('span', 'ab-peek');
+        slider.addEventListener('input', function () {
+          abMin[t] = slider.value;
+          if (document.activeElement !== minInp) minInp.value = slider.value;
+          abRefresh();
+        });
+        minInp.addEventListener('change', function () {
+          // 不夹到 0：属性本身可以为负（如龙骨巨竿的钓速 -18~-8），下限也能负数
+          abMin[t] = (minInp.value === '' ? '' : String(Math.round(Number(minInp.value) || 0)));
+          if (document.activeElement !== minInp) minInp.value = abMin[t];
+          abRefresh();
+        });
+        maxInp.addEventListener('change', function () {
+          abMax[t] = (maxInp.value === '' ? '' : String(Math.round(Number(maxInp.value) || 0)));
+          abRefresh();
+        });
+        row.appendChild(minInp);
+        row.appendChild(slider);
+        row.appendChild(maxInp);
+        row.appendChild(peekEl);
+        rowsBox.appendChild(row);
+        abRefs.push({ t: t, row: row, minInp: minInp, slider: slider, peek: peekEl });
+      });
+    }
+
+    function abRefresh() {
+      const st = S();
+      const cfg = {
+        parts: D.ROD_PARTS.map(function (p) { return p.key; }),
+        candidates: abCandidateMap(st),
+        order: abOrder, enabled: abEnabled, min: abMin, max: abMax,
+      };
+      const peekCfg = {};
+      for (const k in cfg) peekCfg[k] = cfg[k];
+      peekCfg.maxStates = 80;         // 探针只求一个上界，前沿小一点更快
+      abPeek = {};
+      D.AFFIX_TYPES.forEach(function (t) { abPeek[t] = D.autoBuildPeek(peekCfg, t); });
+      abPlan = D.autoBuildPlan(cfg);
+      abRefs.forEach(function (r) {
+        const ceil = Math.max(0, Math.ceil(Number(abPeek[r.t]) || 0));
+        const hasTarget = abMin[r.t] !== '' && abMin[r.t] != null;
+        r.row.classList.toggle('on', !!abEnabled[r.t]);
+        // 正在拖动的滑块不写回值/上界，否则会和手指抢位置
+        if (document.activeElement !== r.slider) {
+          r.slider.max = String(Math.max(ceil, Number(r.slider.value) || 0, 10));
+          r.slider.value = String(Math.min(Number(abMin[r.t]) || 0, Number(r.slider.max)));
+        }
+        const over = hasTarget && Number(abMin[r.t]) > (Number(abPeek[r.t]) || 0);
+        r.peek.textContent = '可达 ' + abSigned(Number(abPeek[r.t]) || 0) + (over ? ' · 低于目标' : '');
+        r.peek.classList.toggle('over', over);
+      });
+      renderResult(st);
+    }
+
+    function renderResult(st) {
+      const p = abPlan;
+      const cur = E().bdEffects();
+      let changes = 0;
+      let html = '<h4>推荐组合</h4><div class="ab-hint">优先级：' + esc((p.order || []).map(abLabel).join(' › ') || '（未启用属性）') + '</div>';
+      D.ROD_PARTS.forEach(function (part) {
+        const id = p.picks[part.key];
+        const curId = st.bd[part.key] && st.bd[part.key].compId;
+        const keep = !!id && id === curId;
+        if (id && !keep) changes++;
+        const meta = id ? itemMeta(id) : null;
+        html += '<div class="ab-plan-row' + (keep ? ' keep' : '') + '">' +
+          '<span class="abp-part">' + esc(part.name) + '</span>' +
+          '<span class="abp-cur">' + esc(curId ? itemMeta(curId).name : part.default.name) + '</span>' +
+          '<span class="abp-arrow">→</span>' +
+          '<span class="abp-new ' + (meta ? qualityClass(meta) : '') + '">' + esc(meta ? meta.name : '（无可用组件 · 保持空置）') + '</span>' +
+          '<span class="abp-tag">' + (keep ? '已装' : (id ? '替换' : '')) + '</span></div>';
+      });
+      html += '<h4>属性对比</h4>';
+      const missed = [];
+      D.AFFIX_TYPES.forEach(function (t) {
+        const c0 = cur[t] || 0, c1 = p.vec[t] || 0;
+        const d = c1 - c0;
+        const tgt = (abMin[t] !== '' && abMin[t] != null) ? Number(abMin[t]) : null;
+        const bad = tgt != null && c1 < tgt;
+        if (bad) missed.push(t);
+        html += '<div class="ab-diff-row">' +
+          '<span class="abd-name">' + esc(abLabel(t)) + '</span>' +
+          '<span class="abd-cur">' + abSigned(c0) + '</span>' +
+          '<span class="abp-arrow">→</span>' +
+          '<span class="abd-new ' + (d > 0 ? 'up' : (d < 0 ? 'down' : '')) + '">' + abSigned(c1) + '</span>' +
+          '<span class="abd-delta">' + (d ? ((d > 0 ? '+' : '') + d) : '—') + '</span>' +
+          '<span class="abd-tag">' + (tgt != null ? ('目标 ≥ ' + tgt + (bad ? ' ✗' : ' ✓')) : '') + '</span></div>';
+      });
+      if (missed.length) {
+        html += '<div class="ab-warn">⚠ 目标配不出来：' + missed.map(function (t) {
+          return esc(abLabel(t)) + ' 要求 ≥ ' + esc(String(abMin[t])) + '，现有组件最高只能到 ' + abSigned(Number(abPeek[t]) || 0);
+        }).join('；') + '。可放宽目标，或先去市集收更好的组件。</div>';
+      } else if (p.relaxed === 'max') {
+        html += '<div class="ab-warn">⚠ 上下限互相冲突，已忽略上限求最优组合。</div>';
+      } else if (!changes) {
+        html += '<div class="ab-ok">✅ 当前装配已经是该优先级下能配到的最优组合。</div>';
+      } else {
+        html += '<div class="ab-ok">✅ 按当前优先级与目标，共 ' + changes + ' 件可以换得更好。</div>';
+      }
+      resBox.innerHTML = html;
+      applyBtn.disabled = !changes;
+      applyBtn.textContent = changes ? ('一键装配（换 ' + changes + ' 件）') : '无需改动';
+      applyHint.textContent = changes ? '' : '（改优先级或目标可换方案）';
+    }
+
+    // 逐个部位调用 /api/bd/set（服务器权威：校验部位匹配、背包持有、锁定与钓速即时生效）。
+    // 每个部位各装各的，换下的组件原样退回背包，所以顺序执行不会互相干扰。
+    function doApply() {
+      const st = S();
+      const todo = [];
+      D.ROD_PARTS.forEach(function (part) {
+        const id = abPlan && abPlan.picks[part.key];
+        const curId = st.bd[part.key] && st.bd[part.key].compId;
+        if (id && id !== curId) todo.push({ key: part.key, name: part.name, id: id, cur: curId });
+      });
+      if (!todo.length) { abBusy = false; toast('当前装配已经是最优组合，无需改动'); return; }
+      let i = 0, done = 0;
+      applyBtn.disabled = true;
+      function step() {
+        if (i >= todo.length) {
+          abBusy = false;
+          E().refreshEffects();
+          renderTopbar(); renderView();
+          abRefresh();
+          toast('自动配装完成：已装 ' + done + ' 件，加成已在服务器生效');
+          return;
+        }
+        const x = todo[i++];
+        applyHint.textContent = '装配中 ' + i + '/' + todo.length + '…';
+        window.Net.bdSet(x.key, x.id).then(function (r) {
+          if (!r || !r.ok) {
+            abBusy = false;
+            toast((r && r.data && r.data.error) || '装配失败，已中止（前面的改动保留）');
+            E().refreshEffects();
+            renderTopbar(); renderView(); abRefresh();
+            return;
+          }
+          const st2 = S();
+          st2.bd = r.data.bd;
+          if (r.data.inventory) st2.inventory = r.data.inventory;
+          if (r.data.castInfo) { st2.castInfo = r.data.castInfo; st2.fishingInterval = r.data.castInfo.interval; }
+          if (r.data.rodSlots) st2.rodSlots = r.data.rodSlots;
+          if (r.data.rodLocked) st2.rodLocked = r.data.rodLocked;
+          if (r.data.rodActiveSlot !== undefined) st2.rodActiveSlot = r.data.rodActiveSlot;
+          done++;
+          step();
+        }).catch(function () { abBusy = false; toast('网络错误，装配已中止'); });
+      }
+      step();
+    }
+
+    box.querySelector('.ab-reset').addEventListener('click', function () {
+      D.AFFIX_TYPES.forEach(function (t) { abMin[t] = ''; abMax[t] = ''; abEnabled[t] = true; });
+      abOrder = AB_PRIO_DEFAULT.slice();
+      buildRows(); abRefresh();
+    });
+    // 装配前先对齐服务器装配（本地可能持有旧装配），再按最新方案落库；busy 防连点重复装配
+    applyBtn.addEventListener('click', function () {
+      if (abBusy) return;
+      abBusy = true;
+      syncProfile(doApply);
+    });
+    buildRows();
+    abRefresh();      // 先用本地快照画一版（不等网络）
+    syncProfile();    // 再对齐服务器后重绘
+  }
+
   // 组件选择子窗口（模块级状态：筛选/排序在重绘间保留）
   // 两种模式共用同一个子页面：
   //   equip —— 钓竿配置页「装备组件」：顶部显示当前已装备组件用于对比，卡片操作是「装备 / 出售 / 上架」
@@ -1603,6 +1877,17 @@ window.UI = (function () {
     });
     if (!any) strip.appendChild(el('span', 'eff-chip none', '暂无加成 · 装备组件后生效'));
     panel.appendChild(strip);
+
+    // 配装器入口：从背包检索各部位候选件，按属性优先级与目标区间求最优组合，可一键装配
+    const autoBar = el('div', 'bd-auto-bar');
+    const abBtn = el('button', 'primary ab-open-btn', '🧠 自动配装 · 配装器');
+    abBtn.title = '从背包检索 7 个部位的组件，按优先级（如先钓速、再双钓）求总属性最高的组合；' +
+      '可设目标下限/上限，并用滑块反查「钓速定到多少时其他属性还能到多少」';
+    abBtn.addEventListener('click', autoBuildOpen);
+    autoBar.appendChild(abBtn);
+    autoBar.appendChild(el('span', 'hint',
+      '一键把 7 个部位换成目标属性最高的组合 · 可拖优先级与目标值 · 只换配件、不会自动卸下'));
+    panel.appendChild(autoBar);
 
     const grid = el('div', 'bd-grid');
     D.ROD_PARTS.forEach(function (part) {
@@ -2295,6 +2580,7 @@ window.UI = (function () {
   // 当前页签与购买市场筛选状态（模块级：重绘间保留）
   let marketTab = 'buy';
   let buyCategory = 'all';
+  let buyPart = 'all';        // 「组件」分类下的二级筛选：部位（口径与背包一致：meta.part）
   let buySearch = '';
   let buySearchFocus = false;
   let buySort = { key: 'time', dir: 'desc' };
@@ -2490,9 +2776,33 @@ window.UI = (function () {
       inp.placeholder = '🔍 搜索物品或卖家…';
       inp.value = buySearch;
       const list = el('div', 'market-list');
+      // 「组件」分类下的二级筛选：按部位（竿身/线组/钩/饵/卷线器/配件/饰品栏位）缩小范围。
+      // 判定口径与背包「物品明细」完全一致（itemMeta(id).part），挂单不存属性快照，靠 id 反解。
+      if (buyCategory === 'component') {
+        const comps = othersAll.filter(function (l) { return itemMeta(l.id).kind === 'component'; });
+        const partCount = {};
+        comps.forEach(function (l) { const p = itemMeta(l.id).part || ''; partCount[p] = (partCount[p] || 0) + 1; });
+        const partRow = el('div', 'bf-subrow');
+        partRow.appendChild(el('span', 'sub-label', '部位'));
+        [['all', '全部', comps.length]].concat(D.ROD_PARTS.map(function (p) {
+          return [p.key, p.name, partCount[p.key] || 0];
+        })).forEach(function (kv) {
+          if (kv[0] !== 'all' && !kv[2]) return;   // 没有该部位挂单就不显示，保持紧凑（同背包）
+          const b = el('button', 'inv-cat sub' + (buyPart === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
+          b.addEventListener('click', function () { if (buyPart !== kv[0]) { buyPart = kv[0]; renderView(); } });
+          partRow.appendChild(b);
+        });
+        filters.appendChild(partRow);
+      }
       function refreshList() {
         const q = buySearch.trim().toLowerCase();
         let others = othersAll.filter(function (l) { return buyCategory === 'all' || itemMeta(l.id).kind === buyCategory; });
+        if (buyCategory === 'component' && buyPart !== 'all') {
+          others = others.filter(function (l) {
+            const m = itemMeta(l.id);
+            return m.kind === 'component' && (m.part || '') === buyPart;
+          });
+        }
         if (q) others = others.filter(function (l) {
           return l.name.toLowerCase().indexOf(q) >= 0 || (l.sellerName || '').toLowerCase().indexOf(q) >= 0;
         });
@@ -2528,7 +2838,7 @@ window.UI = (function () {
           return;
         }
         others.forEach(function (l) { list.appendChild(marketRow(l, st, me)); });
-        if (q || buyCategory !== 'all' || buySort.key !== 'time' || affixFilterActive()) list.appendChild(el('div', 'hint', '匹配 ' + others.length + ' 条挂单。'));
+        if (q || buyCategory !== 'all' || buyPart !== 'all' || buySort.key !== 'time' || affixFilterActive()) list.appendChild(el('div', 'hint', '匹配 ' + others.length + ' 条挂单。'));
       }
       inp.addEventListener('input', function () { buySearch = inp.value; refreshList(); });
       inp.addEventListener('focus', function () { buySearchFocus = true; marketFilterActive = true; });

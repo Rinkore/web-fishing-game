@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.11.10';
+  const VERSION = 'v0.11.11';
   const BUILD = '2026-09-16';
 
   // ---- 渔获定义 ----
@@ -932,6 +932,152 @@
     };
   }
 
+  // ---- 自动配装：从候选件里求「总属性最优」的组合 ----
+  // 总属性 = 各部位词条的**逐项求和**，而每个部位彼此独立（一件组件只能装在自己的部位），
+  // 所以「每部位挑 1 件」可以逐部位做 DP，每步只留一个帕累托前沿：
+  //   X 支配 Y ⇔ X 每个属性都 ≥ Y —— 补上同样的剩余部位后仍逐项 ≥，字典序也必然 ≥，
+  //   因此剪掉 Y 不会丢掉任何最优解（只有前沿超过上限时的截断是启发式近似）。
+  // 目标 = 按 order（优先级，前 = 优先）的字典序最大；min/max 是各属性的硬性目标区间，
+  // 配不出来时依次放宽「上限 → 下限」，并在返回值里如实标出放宽了什么 / 差多少。
+  const AUTO_BUILD_STATES = 160;   // 每步前沿上限（防止极端背包把组合数打爆）
+  const AUTO_BUILD_CANDS = 24;     // 单部位候选上限（先帕累托剪枝，再按字典序截断）
+  function autoBuildZero() {
+    const v = {};
+    AFFIX_TYPES.forEach(function (t) { v[t] = 0; });
+    return v;
+  }
+  // 组件（instanceMeta / 存档里的 { affixes }）→ 属性向量
+  function autoBuildVec(comp) {
+    const v = autoBuildZero();
+    if (comp && comp.affixes) comp.affixes.forEach(function (a) { if (v[a.type] != null) v[a.type] += Number(a.value) || 0; });
+    return v;
+  }
+  function autoBuildAdd(a, b) {
+    const v = {};
+    AFFIX_TYPES.forEach(function (t) { v[t] = (a[t] || 0) + (b[t] || 0); });
+    return v;
+  }
+  function autoBuildDom(x, y) {          // y 是否被 x 逐项压制（含相等）
+    for (let i = 0; i < AFFIX_TYPES.length; i++) { const t = AFFIX_TYPES[i]; if (x[t] < y[t]) return false; }
+    return true;
+  }
+  // cfg: { parts?:[部位…], candidates:{ 部位:[组件id…] }, order:[词条…], enabled:{词条:bool},
+  //        min:{词条:数值}, max:{词条:数值}, maxStates? }
+  // → { vec, picks:{部位:组件id|null}, order, relaxed:null|'max'|'all', miss:{词条:实际值} }
+  function autoBuildPlan(cfg) {
+    cfg = cfg || {};
+    const enabled = cfg.enabled || null;   // null = 全部属性参与
+    let prio = (cfg.order && cfg.order.length ? cfg.order : AFFIX_TYPES).filter(function (t) {
+      return AFFIX_TYPES.indexOf(t) >= 0 && (!enabled || enabled[t]);
+    });
+    if (!prio.length) prio = AFFIX_TYPES.slice();   // 一个属性都没启用 → 退回全属性，避免没有优化目标
+    const mins = cfg.min || {}, maxs = cfg.max || {};
+    const maxStates = Math.max(1, Number(cfg.maxStates) || AUTO_BUILD_STATES);
+    const bound = function (src, t) { return src[t] != null && src[t] !== '' && isFinite(Number(src[t])); };
+    const minKeys = AFFIX_TYPES.filter(function (t) { return bound(mins, t); });
+    const maxKeys = AFFIX_TYPES.filter(function (t) { return bound(maxs, t); });
+
+    function lexOrd(order, a, b) {
+      for (let i = 0; i < order.length; i++) { const t = order[i], d = a[t] - b[t]; if (d) return d; }
+      let s = 0;   // 优先级全平：比词条净收益，避免挑出「净负收益」或结果不稳定
+      for (let i = 0; i < AFFIX_TYPES.length; i++) { const t = AFFIX_TYPES[i]; s += (a[t] || 0) - (b[t] || 0); }
+      return s;
+    }
+    function lex(a, b) { return lexOrd(prio, a, b); }
+
+    const cand = {};
+    (cfg.parts && cfg.parts.length ? cfg.parts : ROD_PARTS.map(function (p) { return p.key; })).forEach(function (key) {
+      const list = [], seen = {};
+      ((cfg.candidates && cfg.candidates[key]) || []).forEach(function (id) {
+        const c = componentOf(id);
+        if (!c || c.part !== key) return;      // 部位不符 / 旧格式件：不参与配装
+        const vec = autoBuildVec(c);
+        const sig = AFFIX_TYPES.map(function (t) { return vec[t]; }).join(',');
+        if (seen[sig]) return;                 // 属性完全一样的两件等价，留一件即可
+        seen[sig] = 1;
+        list.push({ id: c.id, vec: vec });
+      });
+      list.sort(function (a, b) { return lex(b.vec, a.vec) || (a.id < b.id ? -1 : 1); });
+      const keep = [];
+      list.forEach(function (it) {              // 单部位内被逐项压制的件永远不可能被选
+        for (let i = 0; i < keep.length; i++) if (autoBuildDom(keep[i].vec, it.vec)) return;
+        keep.push(it);
+      });
+      cand[key] = keep.slice(0, AUTO_BUILD_CANDS);
+    });
+
+    let frontier = [{ vec: autoBuildZero(), picks: {} }];
+    Object.keys(cand).forEach(function (key) {
+      const list = cand[key];
+      if (!list.length) { frontier.forEach(function (s) { s.picks[key] = null; }); return; }   // 该部位没得挑：保持原样
+      const next = [];
+      frontier.forEach(function (s) {
+        list.forEach(function (c) {
+          const picks = {};
+          for (const k in s.picks) picks[k] = s.picks[k];
+          picks[key] = c.id;
+          next.push({ vec: autoBuildAdd(s.vec, c.vec), picks: picks });
+        });
+      });
+      next.sort(function (a, b) { return lex(b.vec, a.vec); });
+      const keep = [];
+      for (let i = 0; i < next.length && keep.length < maxStates; i++) {
+        let dom = false;
+        for (let j = 0; j < keep.length; j++) if (autoBuildDom(keep[j].vec, next[i].vec)) { dom = true; break; }
+        if (!dom) keep.push(next[i]);
+      }
+      frontier = keep;
+    });
+
+    function fit(s, keys, dir) {
+      for (let i = 0; i < keys.length; i++) {
+        const t = keys[i];
+        if (dir === 'min' ? s.vec[t] < Number(mins[t]) : s.vec[t] > Number(maxs[t])) return false;
+      }
+      return true;
+    }
+    function pick(useMin, useMax) {
+      let best = null;
+      frontier.forEach(function (s) {
+        if (!fit(s, useMin, 'min') || !fit(s, useMax, 'max')) return;
+        if (!best || lex(s.vec, best.vec) > 0) best = s;
+      });
+      return best;
+    }
+    let relaxed = null;
+    let res = pick(minKeys, maxKeys);
+    if (!res) { relaxed = 'max'; res = pick(minKeys, []); }        // 上下限冲突：先放弃上限
+    if (!res) {
+      // 下限也配不出来：改成「先把没达成的目标尽量做高，再按原优先级排」，
+      // 免得展示一个「钓速只有 10」的推荐组合、而面板上明明写着钓速最高能到 20。
+      relaxed = 'all';
+      const ord2 = minKeys.concat(prio.filter(function (t) { return minKeys.indexOf(t) < 0; }));
+      let best = null;
+      frontier.forEach(function (s) { if (!best || lexOrd(ord2, s.vec, best.vec) > 0) best = s; });
+      res = best || { vec: autoBuildZero(), picks: {} };
+    }
+    const miss = {};
+    minKeys.forEach(function (t) { if (res.vec[t] < Number(mins[t])) miss[t] = res.vec[t]; });
+    return { vec: res.vec, picks: res.picks, order: prio, relaxed: relaxed, miss: miss };
+  }
+  // 单属性「可达上限」探针：把它排到优先级首位、去掉它自己的目标区间，
+  // 在其余属性的目标区间约束下求它的最大值 —— 滑块上「这个属性最高能到多少」就是它。
+  function autoBuildPeek(cfg, type) {
+    if (AFFIX_TYPES.indexOf(type) < 0) return null;
+    const c2 = {};
+    for (const k in cfg) c2[k] = cfg[k];
+    c2.order = [type].concat(AFFIX_TYPES.filter(function (t) { return t !== type; }));
+    c2.enabled = null;
+    const mn = {}, mx = {};
+    AFFIX_TYPES.forEach(function (t) {
+      if (t === type) return;
+      if (cfg.min && cfg.min[t] != null && cfg.min[t] !== '') mn[t] = cfg.min[t];
+      if (cfg.max && cfg.max[t] != null && cfg.max[t] !== '') mx[t] = cfg.max[t];
+    });
+    c2.min = mn; c2.max = mx;
+    return autoBuildPlan(c2).vec[type];
+  }
+
   // 旧存档兼容：框架版掉落的通用组件（无效果、不可装备、可出售）
   const LEGACY_COMPONENT = { id: 'comp_generic', name: '钓竿组件（默认）', part: null, rarity: 'common', price: 40, affixes: [] };
 
@@ -1229,6 +1375,7 @@
     adjectiveOf: adjectiveOf, instanceMeta: instanceMeta, componentOf: componentOf,
     legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,
     ROD_SET_PREFIX: ROD_SET_PREFIX, isRodSet: isRodSet, rodPartsOf: rodPartsOf, rodSetId: rodSetId, rodMeta: rodMeta,
+    autoBuildPlan: autoBuildPlan, autoBuildPeek: autoBuildPeek, autoBuildVec: autoBuildVec,
     normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
     GROUNDS: GROUNDS, NAV: NAV,

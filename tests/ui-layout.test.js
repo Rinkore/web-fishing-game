@@ -2543,6 +2543,200 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       } else {
         check('管理员登录可用（版本更新前置）', false, JSON.stringify(adminLogin2.data));
       }
+
+      // ================= v0.11.11：市集组件部位筛选 + 钓竿自动配装 =================
+      // —— 市集「组件」分类下的「部位」二级筛选（与背包物品明细同一套口径）——
+      // 「购买市场」只列**别人**的挂单，所以这两单必须挂在 tokB 名下才看得到。
+      section('市集组件部位筛选（真实 Chrome）');
+      const mkRod = D_DATA.instanceId('rod_bamboo', 'rare', [{ type: 'speed', value: 15 }, { type: 'double', value: 4 }]);
+      const mkHook = D_DATA.instanceId('hook_barb', 'rare', [{ type: 'double', value: 6 }, { type: 'size', value: 3 }]);
+      await post('/api/dev/catch', { token: tokB, item: { kind: 'component', id: mkRod } });
+      await post('/api/dev/catch', { token: tokB, item: { kind: 'component', id: mkHook } });
+      const mkL1 = await post('/api/market/list', { token: tokB, id: mkRod, qty: 1, price: 800, hours: 6 });
+      const mkL2 = await post('/api/market/list', { token: tokB, id: mkHook, qty: 1, price: 700, hours: 6 });
+      check('前置：两件不同部位组件挂单成功（另一账号挂的）',
+        mkL1.status === 200 && mkL2.status === 200, JSON.stringify(mkL1.data).slice(0, 140));
+      await clickNav(p1, '开放市集');
+      // 前面的用例可能把市集停在我的挂单页签，这里显式切回「购买市场」
+      await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('购买市场')); if (b) b.click(); });
+      await sleep(300);
+      await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.bf-cat')).find(x => x.textContent.trim().indexOf('组件') === 0); if (b) b.click(); });
+      const mkSub = await untilGet(async () => await p1.evaluate(() => {
+        const row = document.querySelector('.bf-subrow');
+        if (!row) return null;
+        return {
+          label: (row.querySelector('.sub-label') || {}).textContent || '',
+          chips: Array.from(row.querySelectorAll('button')).map(b => b.textContent.trim()),
+        };
+      }), v => !!v, 6000);
+      check('市集「组件」分类出现「部位」二级筛选行', !!mkSub && mkSub.label === '部位', JSON.stringify(mkSub));
+      check('部位行按在售挂单数列出部位（竿身 / 钩）',
+        !!mkSub && mkSub.chips.some(t => /^竿身 \d+$/.test(t)) && mkSub.chips.some(t => /^钩 \d+$/.test(t)),
+        JSON.stringify(mkSub && mkSub.chips));
+      await p1.evaluate(() => {
+        const row = document.querySelector('.bf-subrow');
+        const b = Array.from(row.querySelectorAll('button')).find(x => x.textContent.trim().indexOf('竿身') === 0);
+        if (b) b.click();
+      });
+      const mkFilt = await untilGet(async () => await p1.evaluate(() => ({
+        on: (document.querySelector('.bf-subrow button.on') || {}).textContent || '',
+        rows: Array.from(document.querySelectorAll('.mk-row .mk-name')).map(n => n.textContent.replace(/\s+/g, ' ')),
+      })), v => v && /^竿身/.test(v.on) && v.rows.some(t => t.indexOf('竹制短竿') >= 0), 6000);
+      check('点「竿身」只剩竿身组件挂单（钩被筛掉）',
+        mkFilt.rows.some(t => t.indexOf('竹制短竿') >= 0) && !mkFilt.rows.some(t => t.indexOf('倒刺钩') >= 0),
+        JSON.stringify(mkFilt).slice(0, 220));
+      // 清理：回到「全部」并下架这两单，避免影响别的用例的挂单计数
+      await p1.evaluate(() => {
+        const row = document.querySelector('.bf-subrow');
+        const b = Array.from(row.querySelectorAll('button')).find(x => x.textContent.trim().indexOf('全部') === 0);
+        if (b) b.click();
+      });
+      await sleep(200);
+      await post('/api/market/cancel', { token: tokB, lid: mkL1.data.listing.lid });
+      await post('/api/market/cancel', { token: tokB, lid: mkL2.data.listing.lid });
+
+      // —— 钓竿自动配装：优先级 / 目标区间 / 可达上限 / 一键装配 ——
+      section('钓竿自动配装（真实 Chrome）');
+      const abA = D_DATA.instanceId('rod_bamboo', 'common', [{ type: 'speed', value: 20 }]);
+      const abB = D_DATA.instanceId('rod_bamboo', 'common', [{ type: 'speed', value: 10 }, { type: 'double', value: 8 }]);
+      const abC = D_DATA.instanceId('hook_barb', 'common', [{ type: 'double', value: 12 }]);
+      const abD = D_DATA.instanceId('hook_barb', 'common', [{ type: 'skill', value: 9 }]);
+      for (const id of [abA, abB, abC, abD]) await post('/api/dev/catch', { token: tokS, item: { kind: 'component', id: id } });
+      await clickNav(p1, '钓竿配置');
+      await untilSel(p1, '.bd-auto-bar .ab-open-btn', 6000);
+      check('钓竿配置页出现「自动配装」入口', (await p1.$$('.bd-auto-bar .ab-open-btn')).length === 1, '');
+      await p1.click('.bd-auto-bar .ab-open-btn');
+      await untilSel(p1, '.ab-modal .ab-row', 6000);
+      const ab0 = await p1.evaluate(() => ({
+        rows: document.querySelectorAll('.ab-modal .ab-row').length,
+        first: ((document.querySelector('.ab-modal .ab-row .ab-en') || {}).textContent || '').trim(),
+        planRows: document.querySelectorAll('.ab-modal .ab-plan-row').length,
+        diffRows: document.querySelectorAll('.ab-modal .ab-diff-row').length,
+        peeks: Array.from(document.querySelectorAll('.ab-modal .ab-peek')).map(n => n.textContent),
+      }));
+      check('面板列出 6 个属性优先级行（默认钓速优先）',
+        ab0.rows === 6 && /钓速/.test(ab0.first), JSON.stringify(ab0).slice(0, 180));
+      check('面板列出 7 个部位的推荐 + 6 项属性对比',
+        ab0.planRows === 7 && ab0.diffRows === 6, JSON.stringify({ p: ab0.planRows, d: ab0.diffRows }));
+      check('每行显示该属性的「可达」上限',
+        ab0.peeks.length === 6 && ab0.peeks.every(t => /可达/.test(t)), JSON.stringify(ab0.peeks).slice(0, 200));
+
+      // 面板打开时会向服务器对齐装配（本地 bd 可能是旧的：整竿上架/收起后本地没跟着刷新）
+      const AB_PART_KEYS = ['rod', 'line', 'hook', 'bait', 'reel', 'accessory', 'charm'];
+      const bdSig = (bd) => AB_PART_KEYS.map(k => (bd && bd[k] && bd[k].compId) || '-').join('|');
+      const srvBd = ((await get('/api/me?token=' + encodeURIComponent(tokS))).data || {}).bd || {};
+      const cliSig = await untilGet(
+        async () => await p1.evaluate(keys => keys.map(k => (window.Engine.state.bd[k] && window.Engine.state.bd[k].compId) || '-').join('|'), AB_PART_KEYS),
+        v => v === bdSig(srvBd), 8000);
+      check('打开配装器时把本地装配对齐到服务器（旧装配会被纠正）',
+        cliSig === bdSig(srvBd), cliSig + ' vs ' + bdSig(srvBd));
+
+      // 面板读数：属性对比顺序 = AFFIX_TYPES（speed/skill/rare/material/size/double）
+      const AB_IDX = { speed: 0, skill: 1, rare: 2, material: 3, size: 4, double: 5 };
+      const readAb = () => p1.evaluate(() => {
+        const num = (node) => { const m = /(-?\d+)/.exec((node || {}).textContent || ''); return m ? Number(m[1]) : 0; };
+        const diffs = Array.from(document.querySelectorAll('.ab-modal .ab-diff-row')).map(r => ({
+          now: num(r.querySelector('.abd-cur')), next: num(r.querySelector('.abd-new')),
+        }));
+        const plan = Array.from(document.querySelectorAll('.ab-modal .ab-plan-row')).map(r => ({
+          part: ((r.querySelector('.abp-part') || {}).textContent || '').trim(),
+          next: ((r.querySelector('.abp-new') || {}).textContent || '').trim(),
+          tag: ((r.querySelector('.abp-tag') || {}).textContent || '').trim(),
+        }));
+        const btn = document.querySelector('.ab-modal .ab-apply') || {};
+        const peekRow = document.querySelectorAll('.ab-modal .ab-row')[1] || document.querySelector('.ab-modal .ab-row');
+        return {
+          diffs: diffs, plan: plan,
+          prio: ((document.querySelector('.ab-modal .ab-res .ab-hint') || {}).textContent || '').trim(),
+          warn: ((document.querySelector('.ab-modal .ab-warn') || {}).textContent || '').trim(),
+          btn: btn.textContent || '', disabled: !!btn.disabled,
+          peekCls: (peekRow.querySelector('.ab-peek') || {}).className || '',
+        };
+      });
+      const abV0 = await readAb();
+      const S0 = abV0.diffs[AB_IDX.speed].next, D0 = abV0.diffs[AB_IDX.double].next;
+      check('默认（钓速优先）方案把钓速做到 ≥ 20（含刚发的钓速 20 那件）',
+        S0 >= 20 && abV0.plan.length === 7, JSON.stringify({ S0: S0, D0: D0 }));
+      // 双钓抬到优先级第 1 位 → 双钓只能更高、钓速只能更低（字典序最优的必然性质）
+      await p1.evaluate(() => {
+        const row = document.querySelectorAll('.ab-modal .ab-row')[0];
+        row.querySelectorAll('.ab-mv')[1].click();   // ↓
+      });
+      const abV1 = await readAb();
+      check('优先级调整：双钓升到第 1 位（面板提示同步）',
+        /^优先级：🎣 双钓/.test(abV1.prio), abV1.prio.slice(0, 80));
+      check('双钓优先后：双钓不降、钓速不升',
+        abV1.diffs[AB_IDX.double].next >= D0 && abV1.diffs[AB_IDX.speed].next <= S0,
+        JSON.stringify({ D1: abV1.diffs[AB_IDX.double].next, S1: abV1.diffs[AB_IDX.speed].next, D0: D0, S0: S0 }));
+      // 把「钓速下限」设成默认方案的值 → 在双钓优先下也必须保住钓速，双钓回到该约束下的最优
+      await p1.evaluate((s0) => {
+        const row = document.querySelectorAll('.ab-modal .ab-row')[1];   // 钓速已降到第 2 行
+        const inp = row.querySelectorAll('.ab-num')[0];
+        inp.value = String(s0);
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      }, S0);
+      const abV2 = await readAb();
+      check('目标区间生效：钓速 ≥ ' + S0 + ' 时双钓正好是 ' + D0,
+        abV2.diffs[AB_IDX.speed].next === S0 && abV2.diffs[AB_IDX.double].next === D0,
+        JSON.stringify({ s: abV2.diffs[AB_IDX.speed].next, d: abV2.diffs[AB_IDX.double].next }));
+      check('目标达成时不告警', !abV2.warn, abV2.warn.slice(0, 80));
+      // 目标设成配不出来的值 → 如实告知「最高只能到多少」，该行标红
+      await p1.evaluate(() => {
+        const row = document.querySelectorAll('.ab-modal .ab-row')[1];
+        const inp = row.querySelectorAll('.ab-num')[0];
+        inp.value = '9999';
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      const abV3 = await readAb();
+      check('目标过高时如实告警（最高只能到多少）', /最高只能到/.test(abV3.warn), abV3.warn.slice(0, 120));
+      check('该行的「可达」列标红提示低于目标', /over/.test(abV3.peekCls), abV3.peekCls);
+      await p1.click('.ab-modal .ab-reset');
+      const abV4 = await readAb();
+      check('重置目标后回到默认方案（钓速优先、无告警）',
+        !abV4.warn && abV4.diffs[AB_IDX.speed].next === S0 && abV4.diffs[AB_IDX.double].next === D0,
+        JSON.stringify({ s: abV4.diffs[AB_IDX.speed].next, d: abV4.diffs[AB_IDX.double].next }));
+
+      // 一键装配：以服务器 /api/me 为准核对面板给出的「方案后」每一笔加成
+      const wantEff = {};
+      D_DATA.AFFIX_TYPES.forEach((t, i) => { wantEff[t] = abV4.diffs[i].next; });
+      // 包一层 bdSet，记录装配请求序列（失败时用来定位是哪个部位卡住）
+      await p1.evaluate(() => {
+        window.__bdCalls = [];
+        const orig = window.Net.bdSet;
+        window.Net.bdSet = function (part, compId) {
+          const pr = orig.call(window.Net, part, compId);
+          pr.then(
+            r => window.__bdCalls.push(part + '=' + (r && r.ok ? 'ok' : JSON.stringify(r && r.data))),
+            () => window.__bdCalls.push(part + '=reject'));
+          return pr;
+        };
+      });
+      const clientBd = () => p1.evaluate(() => window.Engine.state.bd);
+      await p1.click('.ab-modal .ab-apply');
+      const meFinal = await untilGet(async () => {
+        const r = await get('/api/me?token=' + encodeURIComponent(tokS));
+        if (r.status !== 200 || !r.data || !r.data.bd) return null;
+        const eff = {};
+        D_DATA.AFFIX_TYPES.forEach(t => { eff[t] = 0; });
+        D_DATA.ROD_PARTS.forEach(p => {
+          const c = D_DATA.componentOf(r.data.bd[p.key] && r.data.bd[p.key].compId);
+          if (c) c.affixes.forEach(a => { if (eff[a.type] != null) eff[a.type] += a.value; });
+        });
+        return { ok: D_DATA.AFFIX_TYPES.every(t => eff[t] === wantEff[t]), eff: eff };
+      }, v => v && v.ok, 15000);
+      const meRaw = await get('/api/me?token=' + encodeURIComponent(tokS));
+      const compIds = (bd) => { const o = {}; if (bd) AB_PART_KEYS.forEach(k => { o[k] = bd[k] && bd[k].compId; }); return o; };
+      check('一键装配后服务器真实加成 = 面板给出的方案值',
+        !!(meFinal && meFinal.ok),
+        JSON.stringify(meFinal && meFinal.eff) + ' vs ' + JSON.stringify(wantEff) +
+        ' · 对比 ' + JSON.stringify(abV4.diffs) +
+        ' · 请求 ' + JSON.stringify(await p1.evaluate(() => window.__bdCalls || [])) +
+        ' · 推荐 ' + JSON.stringify(abV4.plan) +
+        ' · 服务器bd ' + JSON.stringify(compIds(meRaw.data && meRaw.data.bd)) +
+        ' · 客户端bd ' + JSON.stringify(compIds(await p1.evaluate(() => window.Engine.state.bd))));
+      const abV5 = await untilGet(async () => await readAb(), v => v && v.disabled, 8000);
+      check('装配完成后按钮变为「无需改动」（方案已落到服务器）',
+        abV5.disabled === true && /无需改动/.test(abV5.btn), JSON.stringify({ b: abV5.btn, d: abV5.disabled }));
     }
 
     // 管理后台各页场景（组件生成 / 渔场钓点 / 公式 / 鱼类体型 / 横幅 / 闪烁 / 反馈）
