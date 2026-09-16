@@ -155,8 +155,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await login(p2, tokB);
 
     section('新增页面渲染');
-    // v0.11.3 起取消侧栏「更多」折叠组：14 个入口全部平铺常驻（管理员 +1 后台入口）
-    check('侧栏 14 个入口全部常驻可见（无折叠组）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 14,
+    // v0.11.3 起取消侧栏「更多」折叠组：13 个入口全部平铺常驻（管理员 +1 后台入口；宝匣已并入工坊开箱）
+    check('侧栏 13 个入口全部常驻可见（无折叠组）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 13,
       String((await p1.$$('#nav .nav-item:not(.locked)')).length));
     check('不再有「更多」折叠组与折叠组容器', (await p1.$$('#nav .nav-more')).length === 0 && (await p1.$$('#nav .nav-group')).length === 0);
     check('低频入口（图鉴/记录/反馈/日志）直接可见且顺序不变', await p1.evaluate(() => {
@@ -1338,7 +1338,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await p1.evaluate(() => { const r = document.querySelector('.inv-page-row.clickable'); if (r) r.click(); });
     const chestDetail = await untilGet(readDetail, o => !!o, 4000);
     check('宝匣简介写明合成消耗、产出品质与来源',
-      !!chestDetail && /宝匣合成/.test(chestDetail.txt) && /消耗/.test(chestDetail.txt) &&
+      !!chestDetail && /开箱|宝匣/.test(chestDetail.txt) && /消耗/.test(chestDetail.txt) &&
       /产出品质/.test(chestDetail.txt) && /残片/.test(chestDetail.txt) && /来源/.test(chestDetail.txt),
       JSON.stringify(chestDetail).slice(0, 240));
     await closeDetail();

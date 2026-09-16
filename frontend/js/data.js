@@ -418,9 +418,10 @@
     const base = BASE_MAP[inst.baseId];
     const q = QUALITY[inst.quality];
     const poolLen = base.pool.length;
-    // 词缀条数上限：正常件 = min(品质上限, 池长)；突破件（池外补足）会超出该值，
-    // 取实际条数与上限的较大者，否则会出现「4/2 词条」这种自相矛盾的显示。
-    const maxN = Math.max(inst.affixes.length, Math.min(q.cap, poolLen));
+    // 词缀条数上限：**始终跟随品质**（普通 1 / 稀有 2 / 史诗 3 / 神话 4），不受底材池长影响。
+    // 生成时 roll 出的只是实际词条数（1..min(池长, 品质上限)），最大词条数是品质属性；
+    // 突破件（史诗品质抽到 4 条）因此显示「4/3 词条」，正好体现「越过品质上限」的突破语义。
+    const maxN = q.cap;
     // full = 池内全满（沿用旧语义）；突破件同样满足（它的池内部分是全满的）
     const full = inst.affixes.length >= poolLen && poolLen <= q.cap;
     // 词缀对象附带 extra 标记：该词缀不在底材词缀池内（来自宝匣池外补足或工坊催化补缀）；
@@ -1365,7 +1366,7 @@
     { id: 'bd', name: '钓竿配置', icon: '🎯', implemented: true },
     { id: 'ground', name: '渔场动态', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
-    { id: 'chest', name: '宝匣合成', icon: '🎁', implemented: true },
+    // 「宝匣合成」不再是独立页面：并入「工坊」页（熔炼/重铸同款页签切换），改名「开箱」，见 ui.js 的 renderWorkshop。
     { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
     // 「系统商店」「开放市集」不再是独立页面：合并进「商城」页（工坊熔炼/重铸同款页签切换），
     // 系统商店改名「收购」、开放市集改名「市集」，见 ui.js 的 renderMall。

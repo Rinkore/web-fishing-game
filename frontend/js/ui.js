@@ -3328,7 +3328,7 @@ window.UI = (function () {
   let invSubRar = 'all';
   let invPart = 'all';
   let invAffixType = 'all';
-  let invAffixCount = 'all';   // 组件词条数量筛选：all / 0(无词条) / 1 / 2 / 3p(3条+)
+  let invAffixCount = 'all';   // 组件词条数量筛选：all / 0(无词条) / 1 / 2 / 3 / 4 / 4p(4条+)
   let invAffixMin = '';
   let invAffixMax = '';
   let invOpen = {};          // 组件按底材名分组的展开状态（{ baseId: true }）
@@ -3790,7 +3790,7 @@ window.UI = (function () {
       // 二级：词条数量 + 词条类型 + 数值范围
       const affRow = el('div', 'inv-subrow');
       // 词条数量筛选（放在「词条类型」筛选左侧，与部位 / 词条类型叠加生效）
-      const countOpts = [['all', '全部'], ['0', '无词条'], ['1', '1条'], ['2', '2条'], ['3p', '3条+']];
+      const countOpts = [['all', '全部'], ['0', '无词条'], ['1', '1条'], ['2', '2条'], ['3', '3条'], ['4', '4条'], ['4p', '4条+']];
       const countWrap = el('span', 'aff-count-wrap');
       countWrap.appendChild(el('span', 'sub-label', '词条数'));
       countOpts.forEach(function (kv) {
@@ -4117,7 +4117,7 @@ window.UI = (function () {
       const aff = D.smeltMaterialAffix(it.id);
       if (aff) {
         return '熔炼投料 → 定向补「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀' +
-          (it.id === 'relic' ? '；另用于宝匣合成、残片保留与重铸。' : '。');
+          (it.id === 'relic' ? '；另用于合成宝匣、工坊残片保留与重铸。' : '。');
       }
       return qualityName(it) + '材料 · 可在系统商店出售，或挂到开放市集。';
     }
@@ -4129,7 +4129,7 @@ window.UI = (function () {
     const out = [];
     if (it.kind === 'chest') {
       const c = it.chest || {};
-      out.push('开启：在「🎁 宝匣合成」页消耗 <b>' + (c.costRelic || 0) + '</b> 片沉船宝匣残片 + <b>' + (c.costCoins || 0) + '</b>💰 开箱');
+      out.push('开启：在「⚒ 工坊 · 开箱」页消耗 <b>' + (c.costRelic || 0) + '</b> 片沉船宝匣残片 + <b>' + (c.costCoins || 0) + '</b>💰 开箱');
       out.push('选材：' + (c.mode === 'part' ? '自选部位' : c.mode === 'base' ? '自选底材' : '随机部位'));
       const w = Object.keys(c.qualityWeights || {}).map(function (k) {
         return (D.QUALITY[k] ? D.QUALITY[k].name : k) + ' ' + c.qualityWeights[k] + '%';
@@ -4181,7 +4181,7 @@ window.UI = (function () {
       '<div class="cd-sub">🧭 用途</div><ul class="cd-uses">' +
       itemUses(it).map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ul>';
     if (it.kind === 'chest') {
-      html += '<div class="cd-sub">📦 来源</div><div class="cd-line muted">在「🎁 宝匣合成」页用沉船宝匣残片 + 金币合成；残片来自钓鱼掉落与商城。</div>';
+      html += '<div class="cd-sub">📦 来源</div><div class="cd-line muted">在「⚒ 工坊 · 开箱」页用沉船宝匣残片 + 金币合成；残片来自钓鱼掉落与商城。</div>';
     } else if (spots.length) {
       html += '<div class="cd-sub">📍 产出地点（全部 ' + spots.length + ' 处）</div><div class="cd-spots">' +
         spots.map(function (s) { return '<div class="cd-spot">🎣 ' + esc(s) + '</div>'; }).join('') + '</div>';
@@ -4317,7 +4317,9 @@ window.UI = (function () {
           if (invAffixCount === '0' && n !== 0) return false;
           if (invAffixCount === '1' && n !== 1) return false;
           if (invAffixCount === '2' && n !== 2) return false;
-          if (invAffixCount === '3p' && n < 3) return false;
+          if (invAffixCount === '3' && n !== 3) return false;
+          if (invAffixCount === '4' && n !== 4) return false;
+          if (invAffixCount === '4p' && n < 4) return false;
         }
         if (invAffixType === 'all' && invAffixMin === '' && invAffixMax === '') return true;
         if (!m.affixes) return false;
@@ -4366,8 +4368,8 @@ window.UI = (function () {
           acts.appendChild(sellAll);
         } else {
           const goChest = el('button', 'mini', '去开箱');
-          goChest.title = '宝匣只能在「宝匣合成」页开箱；系统商店不收购宝匣';
-          goChest.addEventListener('click', function () { currentView = 'chest'; renderNav(); renderView(); loadViewData('chest'); });
+          goChest.title = '宝匣只能在「⚒ 工坊 · 开箱」页开箱；系统商店不收购宝匣';
+          goChest.addEventListener('click', function () { currentView = 'workshop'; wsTab = 'open'; renderNav(); renderView(); loadViewData('workshop'); });
           acts.appendChild(goChest);
         }
         const lb = el('button', 'mini', '上架');
@@ -4951,8 +4953,8 @@ window.UI = (function () {
     draw();
   }
 
-  // ---- 宝匣合成（沉船打捞）----
-  // 四档梯度，每一档消除一层随机（档位定义见 data.js 的 CHESTS）：
+  // ---- 工坊 · 开箱（原「宝匣合成」独立页，v0.12.x 并入工坊）----
+  // 内容不变：四档梯度，每一档消除一层随机（档位定义见 data.js 的 CHESTS）：
   //   Ⅰ 基底随机 → Ⅱ 自选部位 → Ⅲ 自选底材 + 满词条 → Ⅳ 自选底材 + 神话（50% 突破词缀池边界）
   // 合成 = 残片 × costRelic + 金币 costCoins → 宝匣入包；开箱 = 服务器权威掷骰 → 组件实例。
   // 宝匣可市集交易但不可卖给系统商店；残片来自礁石区（可用「材料概率」词缀提高产出）。
@@ -5113,16 +5115,15 @@ window.UI = (function () {
       doOpen(chest.mode === 'part' ? { part: v } : { baseId: v });
     });
   }
-  function renderChest() {
-    const main = $('main');
+  // 工坊「开箱」页签：渲染进 ws-body（原 renderChest 渲染整个 main，并入工坊后只画页签内容区）
+  function wsRenderOpen(body) {
     const st = S();
     const info = st.chest;
-    main.innerHTML = '';
-    const panel = el('div', 'panel wide');
-    panel.innerHTML = '<h2>🎁 宝匣合成 <span class="subtitle">沉船打捞 · 残片换确定性：每一档消除一层随机</span></h2>';
+    body.innerHTML = '';
+    body.appendChild(el('div', 'ws-open-head',
+      '<h2>🎁 开箱 <span class="subtitle">沉船打捞 · 残片换确定性：每一档消除一层随机</span></h2>'));
     if (!info) {
-      panel.appendChild(el('div', 'hint', '宝匣数据加载中…（若长时间无响应请刷新页面）'));
-      main.appendChild(panel);
+      body.appendChild(el('div', 'hint', '宝匣数据加载中…（若长时间无响应请刷新页面）'));
       return;
     }
     // 残片与宝匣持有量以背包为权威（SSE assets 会持续刷新），不用服务端快照里可能已过期的 have
@@ -5130,9 +5131,9 @@ window.UI = (function () {
     const relicHave = invNow.relic || 0;
     const coins = st.player.coins || 0;
     const pityN = info.pityN || 0;
-    panel.appendChild(el('div', 'chest-bar',
-      '<span class="cb-item">' + esc(info.relicName || '沉船宝匣残片') + ' ×<b>' + relicHave + '</b></span>' +
-      '<span class="cb-item">💰 <b>' + coins + '</b></span>' +
+    body.appendChild(el('div', 'chest-bar',
+      '<span class="cb-item">' + esc(info.relicName || '沉船宝匣残片') + ' ×<b data-have="relic">' + relicHave + '</b></span>' +
+      '<span class="cb-item">💰 <b data-have="@coins">' + coins + '</b></span>' +
       '<span class="cb-item hint">残片来自「落日海湾 · 礁石区」，钓竿的「材料概率」词缀可提高产出</span>' +
       (pityN > 0 ? '<span class="cb-item hint">突破保底：连续 ' + (pityN - 1) + ' 次未突破后必出</span>' : '')));
 
@@ -5151,7 +5152,7 @@ window.UI = (function () {
       card.innerHTML =
         '<img class="cc-icon" src="assets/item/' + esc(chest.id) + '.png" alt="" draggable="false">' +
         '<div class="cc-head"><span class="cc-name ' + (D.QUALITY[chest.rarity] ? D.QUALITY[chest.rarity].cls : '') + '">' + esc(chest.name) + '</span>' +
-          '<span class="cc-have">持有 ×' + have + '</span></div>' +
+          '<span class="cc-have">持有 ×<span data-have="' + esc(chest.id) + '">' + have + '</span></span></div>' +
         '<div class="cc-desc">' + esc(chest.desc) + '</div>' +
         '<div class="cc-plan">' + esc(chestPlanText(chest)) + '</div>' +
         '<div class="cc-cost">消耗：' + esc(info.relicName || '残片') + ' ×<b>' + chest.costRelic + '</b>' +
@@ -5182,10 +5183,9 @@ window.UI = (function () {
       acts.appendChild(b2);
       grid.appendChild(card);
     });
-    panel.appendChild(grid);
-    panel.appendChild(el('div', 'hint',
+    body.appendChild(grid);
+    body.appendChild(el('div', 'hint',
       '宝匣可到「开放市集」出售或与玩家交易（系统商店不收购）。开箱产出的组件直接进背包，可装备 / 出售 / 上架。'));
-    main.appendChild(panel);
   }
   function craftChest(chest, qty) {
     const st = S();
@@ -5213,7 +5213,7 @@ window.UI = (function () {
   //   失败（v0.11.3 起）：副件 / 投料 / 残片熔毁、金币花掉，主件被熔掉**选中的那条词条**（其余词条与品质保留）。
   // 重铸：把宝匣产出的**神话**组件放进去，用沉船宝匣残片重 roll 全部词条的数值（类型与条数不变）。
   //   成功率和花费都由后台「⚒ 工坊配置」决定，服务器权威。
-  let wsTab = 'smelt';          // 'smelt' | 'recast'
+  let wsTab = 'smelt';          // 'open' | 'smelt' | 'recast'（'open' = 原宝匣合成页并入的开箱页签）
   let wsMain = '', wsSub = '', wsMainAffix = '', wsSubAffix = '', wsPearl = false;
   let wsMats = {};              // { 材料id: 份数 }（投料草稿，重绘间保留）
   let wsRelics = 0;             // 残片保留：投入的沉船宝匣残片片数（0 ~ smeltCfg.retainMaxRelic）
@@ -5476,7 +5476,7 @@ window.UI = (function () {
     const panel = el('div', 'panel wide ws-panel');
     panel.innerHTML = '<h2>⚒ 工坊</h2>' +
       '<div class="inv-cats ws-tabs">' +
-      [['smelt', '🔥 熔炼'], ['recast', '♻ 重铸']].map(function (kv) {
+      [['open', '🎁 开箱'], ['smelt', '🔥 熔炼'], ['recast', '♻ 重铸']].map(function (kv) {
         return '<button class="inv-cat' + (wsTab === kv[0] ? ' on' : '') + '" data-wstab="' + kv[0] + '">' + kv[1] + '</button>';
       }).join('') + '</div>';
     const body = el('div', 'ws-body');
@@ -5487,6 +5487,7 @@ window.UI = (function () {
       b.addEventListener('click', function () { const t = b.getAttribute('data-wstab'); if (t !== wsTab) { wsTab = t; renderView(); } });
     });
     if (wsTab === 'recast') return wsRenderRecast(body);
+    if (wsTab === 'open') return wsRenderOpen(body);
     wsRenderSmelt(body);
   }
   function wsRenderSmelt(body) {
@@ -6465,10 +6466,10 @@ window.UI = (function () {
   function loadViewData(view) {
     if (!window.Net) return;
     if (view === 'shop' || view === 'inventory') window.Net.fetchShop();
-    else if (view === 'chest') window.Net.fetchChest();
     // 商城 = 限购 + 收购 + 市集 三合一：进页把三份数据都拉齐，页签切换不再单独请求
     else if (view === 'mall') { window.Net.fetchMall(); window.Net.fetchShop(); window.Net.fetchMarket(); }
-    else if (view === 'workshop') window.Net.fetchWorkshop();
+    // 工坊 = 开箱（原宝匣合成页）+ 熔炼 + 重铸 三合一：进页把宝匣数据也拉齐
+    else if (view === 'workshop') { window.Net.fetchWorkshop(); window.Net.fetchChest(); }
     else if (view === 'market') window.Net.fetchMarket();
     else if (view === 'codex') window.Net.fetchCodex();
     else if (view === 'records') window.Net.fetchRecords();
@@ -6508,7 +6509,6 @@ window.UI = (function () {
     else if (currentView === 'bd') renderBD();
     else if (currentView === 'ground') renderGround();
     else if (currentView === 'inventory') renderInventory();
-    else if (currentView === 'chest') renderChest();
     else if (currentView === 'workshop') renderWorkshop();
     else if (currentView === 'mall') renderMall();
     else if (currentView === 'shop') renderShop();
@@ -6659,10 +6659,6 @@ window.UI = (function () {
     bd: [],                                             // 钓竿配置：只随操作重绘（展示数据不受广播影响）
     ground: ['players', 'grounds', 'feed', 'groundcfg'],
     inventory: ['assets', 'shop', 'pricecfg'],
-    // 宝匣页：随资产（残片/金币/宝匣数量）、后台宝匣配置广播更新；
-    // 末位 'chest' 是视图自身 id —— fetchChest 完成后用 refreshAll('chest') 触发重绘，
-    // 少了它就会命中「scope 不在列表内 → 不重绘」，页面永远停在「加载中」。
-    chest: ['assets', 'chestcfg', 'chest'],
     shop: ['assets', 'shop', 'pricecfg'],
     market: ['assets', 'market'],
     // trade：独立页面已删除（入口在渔场动态玩家卡片，子窗口自行响应 trade 广播）
@@ -6674,8 +6670,10 @@ window.UI = (function () {
     // 触发重绘；少了它就会命中「scope 不在列表内 → 不重绘」，页面永远停在「加载中…」。
     // mall 三合一（限购/收购/市集）：三份数据源的广播都要能重绘本页
     mall: ['assets', 'mall', 'shop', 'market', 'pricecfg'],
-    // componentcfg（后台改池外/突破区间）也要重绘：工坊补缀与副件搬词的预览区间都取自它
-    workshop: ['assets', 'smeltcfg', 'componentcfg', 'workshop'],
+    // componentcfg（后台改池外/突破区间）也要重绘：工坊补缀与副件搬词的预览区间都取自它。
+    // 工坊三合一（开箱/熔炼/重铸）：宝匣数据源的广播（chestcfg 后台配置 / chest 数据到达 /
+    // 资产变化中的宝匣数量）也要能重绘本页——fetchChest 完成后 refreshAll('chest') 命中 'chest' scope。
+    workshop: ['assets', 'smeltcfg', 'componentcfg', 'workshop', 'chestcfg', 'chest'],
   };
   // 主区内是否有输入控件正被编辑（数字框 / 文本 / 下拉 / 可编辑元素）
   function mainInputFocused() {
