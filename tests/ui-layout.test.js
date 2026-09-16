@@ -108,6 +108,23 @@ const clickNav = async (page, name) => {
   }, { timeout: 6000 }).catch(() => {});
 };
 
+// 商城页签直达（v0.12.2 起「系统商店 / 开放市集」并入「商城」：收购 = 原系统商店，市集 = 原开放市集）
+const clickMallTab = async (page, tab) => {
+  await clickNav(page, '商城');
+  await page.evaluate(t => {
+    const b = Array.from(document.querySelectorAll('[data-malltab]')).find(x => x.getAttribute('data-malltab') === t);
+    if (b && !b.classList.contains('on')) b.click();
+  }, tab);
+  await waitFor(async () => {
+    try {
+      return await page.evaluate(t => {
+        const b = document.querySelector('[data-malltab="' + t + '"]');
+        return !!b && b.classList.contains('on') && !!document.getElementById('main').children.length;
+      }, tab);
+    } catch (e) { return false; }
+  }, { timeout: 6000 }).catch(() => {});
+};
+
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
 
@@ -381,13 +398,13 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const overlap = sceneChk.line && sceneChk.bob ? sceneChk.line.bottom - sceneChk.bob.top : -1;
     check('钓线接到漂尾（浮漂跳动时也不脱开）', overlap >= 1 && overlap <= 12, '重叠 ' + overlap + 'px');
 
-    // —— 系统商店 ——
-    await clickNav(p1, '系统商店');
+    // —— 商城 · 收购（原独立「系统商店」，v0.12.2 起并入商城页签）——
+    await clickMallTab(p1, 'shop');
     // 商店卡片由 fetchShop 异步填充：并行负载下点击返回时数据可能刚到一半，轮询到再断言
     await waitFor(async () => (await p1.$$('.shop-card')).length >= 15, { timeout: 8000 }).catch(() => {});
-    check('系统商店渲染出价格卡片', (await p1.$$('.shop-card')).length >= 15, String((await p1.$$('.shop-card')).length));
+    check('收购页渲染出价格卡片', (await p1.$$('.shop-card')).length >= 15, String((await p1.$$('.shop-card')).length));
     check('商店卡片显示动态价格与百分比', /当前 \d+%/.test(await p1.textContent('.sc-pct')));
-    check('系统商店页已移除背包模块', (await p1.$$('.inventory, .col-side')).length === 0);
+    check('收购页已移除背包模块', (await p1.$$('.inventory, .col-side')).length === 0);
     // 商店头部文案跟随后台经济参数（默认 每件 -0.75% / 60 分钟 / 2 倍）
     const shopSub = await p1.textContent('#shop-sub');
     check('商店头部文案由经济参数生成（-0.75% / 1 小时 / 2 倍）',
@@ -469,9 +486,24 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
       // —— 市集一键上架（简易分类 + 多选）· 实况滑动栏 · 日志渔获分列 ——
       section('市集一键上架（真实 Chrome）');
-      await clickNav(p1, '开放市集');
+      await clickMallTab(p1, 'market');
       await waitFor(async () => (await p1.$$('.mkt-cats .inv-cat')).length >= 4, { timeout: 8000 }).catch(() => {});
       check('市集右栏「我的背包」有简易分类', (await p1.$$('.mkt-cats .inv-cat')).length >= 4, String((await p1.$$('.mkt-cats .inv-cat')).length));
+      // 市集两栏几何：商品列表必须在左侧宽列、我的背包在右侧窄列，且两栏在同一行。
+      // 回归点：页签 div 也是 .panel.two-col 的栅格子项，一旦它占掉「第 2 行第 1 列」，
+      // col-main 会被挤进 340px 侧栏列、col-side 被顶到下一行 —— 表现为挂单越多、左半边空白越大。
+      const mktCols = await p1.evaluate(() => {
+        const box = s => { const e = document.querySelector('.panel.two-col ' + s); if (!e) return null; const b = e.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width) }; };
+        return {
+          main: box('.col-main'), side: box('.col-side'),
+          mainHasList: !!document.querySelector('.panel.two-col .col-main .market-list'),
+          sideHasSell: !!document.querySelector('.panel.two-col .col-side .mkt-sell'),
+        };
+      });
+      check('市集两栏归位（商品在左宽列 / 背包在右窄列 / 两栏同行）',
+        mktCols.main && mktCols.side && mktCols.main.x < mktCols.side.x && mktCols.main.w > mktCols.side.w &&
+        mktCols.main.y === mktCols.side.y && mktCols.mainHasList && mktCols.sideHasSell,
+        JSON.stringify(mktCols));
       await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.mkt-cats .inv-cat')).find(x => x.textContent.includes('鱼类')); if (b) b.click(); });
       await sleep(500);
       const catFiltered = await p1.evaluate(() => ({
@@ -831,7 +863,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('上架前置：重新存档到槽位 1', reSave.status === 200 && !!reSave.data.rodSlots[1], JSON.stringify(reSave.data).slice(0, 120));
       const rodList = await post('/api/market/list', { token: tokS, rodSlot: 1, price: 7777, hours: 6 });
       check('整竿上架成功（前置）', rodList.status === 200, JSON.stringify(rodList.data).slice(0, 140));
-      await clickNav(p1, '开放市集');
+      await clickMallTab(p1, 'market');
       await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('我的挂单')); if (b) b.click(); });
       await waitFor(async () => (await p1.$$('.mk-row')).length >= 1, { timeout: 8000 }).catch(() => {});
       await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.bf-cat')).find(x => x.textContent.includes('钓竿')); if (b) b.click(); });
@@ -951,7 +983,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await waitFor(async () => (await p1.$$('.modal-overlay')).length === 0, { timeout: 3000 }).catch(() => {});
 
     // —— 开放市集 ——
-    await clickNav(p1, '开放市集');
+    await clickMallTab(p1, 'market');
     // 购买市场默认只显示他人的挂单（本用例两条挂单均属卖家自己 → 0 行），切到「我的挂单」查看
     const mineTab = await p1.$$('.inv-cat');
     await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('我的挂单')); if (b) b.click(); });
@@ -1035,7 +1067,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(200);
 
     // —— 系统商店：出售数量控制条（全局生效） ——
-    await clickNav(p1, '系统商店');
+    await clickMallTab(p1, 'shop');
     check('商店有出售数量控制条', (await p1.$$('.shop-qtybar')).length === 1);
     check('数量控制条含加减与输入框', (await p1.$$('.shop-qtybar .sqb-btn')).length === 2 && (await p1.$$('.shop-qtybar .sqb-num')).length === 1);
     await p1.fill('.shop-qtybar .sqb-num', '3');
@@ -1074,7 +1106,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       String((await p1.$$('#shop-panel .shop-grid .shop-card')).length));
     // 切页再回来，数量应保留（全局生效直到被修改）
     await clickNav(p1, '背包');
-    await clickNav(p1, '系统商店');
+    await clickMallTab(p1, 'shop');
     const qtyKept = await p1.inputValue('.shop-qtybar .sqb-num');
     check('出售数量跨页面保留（全局生效）', qtyKept === '3', qtyKept);
 
@@ -2554,7 +2586,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       const mkL2 = await post('/api/market/list', { token: tokB, id: mkHook, qty: 1, price: 700, hours: 6 });
       check('前置：两件不同部位组件挂单成功（另一账号挂的）',
         mkL1.status === 200 && mkL2.status === 200, JSON.stringify(mkL1.data).slice(0, 140));
-      await clickNav(p1, '开放市集');
+      await clickMallTab(p1, 'market');
       // 前面的用例可能把市集停在我的挂单页签，这里显式切回「购买市场」
       await p1.evaluate(() => { const b = Array.from(document.querySelectorAll('.inv-cat')).find(x => x.textContent.includes('购买市场')); if (b) b.click(); });
       await sleep(300);

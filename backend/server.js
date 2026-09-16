@@ -5885,4 +5885,44 @@ server.listen(PORT, function () {
   if (STATIC_DIR) console.log('   集成模式：前端已托管 → http://localhost:' + PORT + '/  （' + STATIC_DIR + '）');
   else console.log('   纯 API 模式：未托管静态前端（前后端分离部署）');
   console.log('   注册/登录后可开始；多开浏览器标签 = 多真实玩家。');
+  console.log('   💾 关闭服务器：在本窗口输入 q 再回车（先存档再退出）；Ctrl+C 同样先存档。');
+  console.log('      直接叉掉窗口 = 进程被强杀，最后一笔数据可能来不及落盘。');
 });
+
+// ---- 优雅停服：控制台指令 / Ctrl+C 先落盘再退出 ----
+// 直接叉掉 cmd 窗口走的是 TerminateProcess，'exit' 钩子不执行：账号是「脏标记 + 1s 定时批量」、
+// 会话是 2s 防抖，两者都可能丢掉最后一笔。这里给一个显式入口：账号、世界域、会话全部同步写盘后再退出。
+function gracefulShutdown(why) {
+  console.log('\n💾 正在保存数据（' + why + '）…');
+  try {
+    if (accountFlushTimer) { clearTimeout(accountFlushTimer); accountFlushTimer = null; }
+    dirtyAccounts.clear();
+    const keys = Object.keys(users);
+    keys.forEach(function (k) { const rec = users[k]; if (rec) writeJson(accountFile(k), rec); });
+    console.log('   ✔ 账号 ' + keys.length + ' 个');
+  } catch (e) { console.error('   ✘ 账号保存失败：' + ((e && e.message) || e)); }
+  try { saveWorld(); console.log('   ✔ 市集 / 记录 / 经济 / 配置 / 反馈 / 统计'); }
+  catch (e) { console.error('   ✘ 世界数据保存失败：' + ((e && e.message) || e)); }
+  try {
+    if (sessionsFlushTimer) { clearTimeout(sessionsFlushTimer); sessionsFlushTimer = null; }
+    sessionsDirty = false;
+    saveSessionsNow();
+    console.log('   ✔ 会话 ' + sessions.size + ' 条');
+  } catch (e) { console.error('   ✘ 会话保存失败：' + ((e && e.message) || e)); }
+  console.log('✅ 已保存，服务器关闭 —— 现在可以安全关掉这个窗口了。\n');
+  process.exit(0);
+}
+// 输入 q / quit / exit / save / stop 回车即存档退出；Ctrl+C / SIGTERM 走同一条路径。
+// stdin 被关掉（以服务方式启动）时安静跳过，不影响正常跑。
+(function bindExitKeys() {
+  if (!process.stdin || typeof process.stdin.on !== 'function') return;
+  try { process.stdin.setEncoding('utf8'); } catch (e) {}
+  process.stdin.on('data', function (buf) {
+    const cmd = String(buf).trim().toLowerCase();
+    if (['q', 'quit', 'exit', 'save', 'stop'].indexOf(cmd) >= 0) gracefulShutdown('控制台输入 ' + cmd);
+  });
+  process.stdin.on('error', function () {});
+  process.on('SIGINT', function () { gracefulShutdown('Ctrl+C'); });
+  process.on('SIGTERM', function () { gracefulShutdown('SIGTERM'); });
+  try { process.stdin.resume(); } catch (e) {}
+})();
