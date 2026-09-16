@@ -141,6 +141,18 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
     JSON.stringify(D.NAV.map(n => n.group)));
   check('「收藏」占位已替换为「日志」功能入口', !D.NAV.some(n => n.id === 'collect') && !!D.NAV.find(n => n.id === 'logs' && n.implemented));
   check('共享目录暴露版本号', typeof D.VERSION === 'string' && /^v\d/.test(D.VERSION), String(D.VERSION));
+  // 文档口径守卫：发版时最容易漏掉的就是 README 标题与玩家手册尾注的版本号
+  // （v0.13.3 实测漏过一次：代码与 Release 都到新版，README 标题还停在 v0.13.1）。
+  check('README 标题版本 = 共享目录版本', (function () {
+    const md = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+    const m = /^#\s*钓鱼网站\s*(v[\d.]+)/m.exec(md);
+    return !!m && m[1] === D.VERSION;
+  })(), String(D.VERSION));
+  check('玩家手册（GUIDE.md）尾注版本 = 共享目录版本', (function () {
+    const md = fs.readFileSync(path.join(ROOT, 'GUIDE.md'), 'utf8');
+    const m = /版本对应\s*(v[\d.]+)/.exec(md);
+    return !!m && m[1] === D.VERSION;
+  })(), String(D.VERSION));
   // roll=0 拒绝：0 值词条无意义，roll 到 0 重 roll 一次；仍为 0 时落到区间内最近 ±1
   check('词条 roll 不产生 0 值（跨 0 区间 3000 次抽样）', (function () {
     for (let i = 0; i < 3000; i++) if (D.rollAffixValue(-5, 5, 'linear') === 0) return false;
