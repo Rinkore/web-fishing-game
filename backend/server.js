@@ -1835,7 +1835,13 @@ function autoSellHit(rec, id, rule) {
   return (pctOk || priceOk) ? { price: price, base: base, by: pctOk ? '基准' : '价格' } : null;
 }
 // 可卖余量：可用量（v0.13.6 起大型/巨型为预留量，自动售出只动普通量）− 最少保留量
-function autoSellExcess(rec, id, rule) { return invAvailOf(rec, id) - autoSellKeepOf(rule); }
+// v0.14.0：账号开了「体型档」开关后，可卖余量改用**持有总量**（＝可用量 + 大型/巨型预留量），
+// 也就是档位鱼也参与自动售出（成交时走各自通道、含 +50% / +150% 加成）。
+function autoSellTierOn(rec) { return !!(rec && rec.autoSell && rec.autoSell.tier); }
+function autoSellExcess(rec, id, rule) {
+  const pool = autoSellTierOn(rec) ? invCountOf(rec, id) : invAvailOf(rec, id);
+  return pool - autoSellKeepOf(rule);
+}
 // 打包计划（v0.13.9 口径）：打包阈值对「已启用物品的合计」判定，不再逐件判定。
 //   可入账余量 = 可用量 − 保留量（> 0 才有意义），价格达标的记入 pool；
 //   pool ≥ batch 才打包成交一次，成交时这些物品各自的余量一起结算（一次推送，省往返）。
@@ -1879,13 +1885,33 @@ function autoSellCheck(key) {
   if (plan.pool < batch) return null;                    // 合计没攒够一包 → 不成交（省带宽的关键）
   const sold = [];
   plan.list.forEach(function (x) {
-    const id = x.id, qty = x.excess, rule = x.rule;
+    const id = x.id, rule = x.rule;
     const unit = unitPriceOf(id);
-    const gain = unit * qty;
-    invAdd(rec, id, -qty);
-    rec.coins += gain;
-    if (ECO_PRICE[id]) registerSale(id, qty, rec.name + '·自动', unit);
-    sold.push({ id: id, name: itemName(id), qty: qty, unit: unit, gain: gain, by: x.hit.by, keep: autoSellKeepOf(rule) });
+    // v0.14.0：可能要卖的量分成普通量与档位量两截——普通通道先卖，
+    // 档位量按「大型 → 巨型」的顺序动用（加成更高的巨型留到最后，玩家想留大鱼更划算）。
+    let need = x.excess;
+    const parts = [];
+    const fromNormal = Math.min(need, invAvailOf(rec, id));
+    if (fromNormal > 0) { need -= fromNormal; parts.push({ tier: null, qty: fromNormal }); }
+    ['L', 'G'].forEach(function (t) {
+      if (need <= 0) return;
+      const bf = rec.bigfish && rec.bigfish[id];
+      const have = (bf && bf[t]) || 0;
+      const q = Math.min(need, have);
+      if (q > 0) { need -= q; parts.push({ tier: t, qty: q }); }
+    });
+    let gainOfItem = 0, bonusOfItem = 0;
+    parts.forEach(function (pt) {
+      const bonus = pt.tier ? Math.round(unit * pt.qty * SIZE_TIER_BONUS[pt.tier]) : 0;
+      invAdd(rec, id, -pt.qty);
+      if (pt.tier) bigfishDropOf(rec, id, pt.tier, pt.qty);
+      rec.coins += unit * pt.qty + bonus;
+      gainOfItem += unit * pt.qty + bonus;
+      bonusOfItem += bonus;
+      if (ECO_PRICE[id]) registerSale(id, pt.qty, rec.name + '·自动', unit);
+    });
+    if (!gainOfItem) return;
+    sold.push({ id: id, name: itemName(id), qty: x.excess, unit: unit, gain: gainOfItem, bonus: bonusOfItem, by: x.hit.by, keep: autoSellKeepOf(rule) });
   });
   if (!sold.length) return null;
   saveAccount(key); saveEconomy(); broadcastShop();
@@ -1894,7 +1920,7 @@ function autoSellCheck(key) {
   // 玩家反馈那样太长、横幅要占两行。（明细仍可从商城 → 收购 → 自动售出清单里看到。）
   sendTo(key, { type: 'notice', msg: '🤖 自动售出 ' + sold.map(function (x) { return x.name + '×' + x.qty; }).join('、') +
     '，+ ' + total + '💰' });
-  sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
+  sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount, bigfish: rec.bigfish || null });
   return sold;
 }
 // v0.13.8 存量迁移：旧结构 { all, fish:{id:{...}} } → { items:{ id:{ on, ... } } }。
@@ -1934,6 +1960,11 @@ function listingCapOf(rec) {
   return (isFinite(n) && n >= 0) ? n : DEFAULT_LISTING_CAP;
 }
 const LIST_FEE_RATES = { 6: 0.01, 12: 0.03, 24: 0.05 };
+// v0.14.0：鱼类暂时不许上市集（临时开关；前端 frontend/js/ui.js 有同名常量，恢复时两边一起改）。
+// 已有挂单不受影响（照常可买 / 可下架），只拦新上架。
+// 运维/测试逃生口：环境变量 MARKET_FISH_LIST=1 可恢复（既有回归套件里大量用例拿鱼当「方便的上架素材」，
+// 那些套件在自己的 spawn env 里带这个变量；线上不要带）。
+const MARKET_FISH_LIST = process.env.MARKET_FISH_LIST === '1';
 const LISTING_TTL_MS_ENV = Number(process.env.LISTING_TTL_MS) || 0; // 测试用固定 TTL
 
 // ---- 动态收购价（服务器权威 · 单乘数模型 · 参数全程可调）----
@@ -4077,13 +4108,25 @@ const server = http.createServer(function (req, res) {
     const key = u.query.token && sessionGet(u.query.token);
     if (!key) return apiResp(res, 401, { error: '未登录' });
     const rec = users[key];
-    return apiResp(res, 200, { ok: true, items: autoSellItems(rec) || {}, batch: autoSellBatchOf(), plan: autoSellPlanView(rec) });
+    return apiResp(res, 200, { ok: true, items: autoSellItems(rec) || {}, batch: autoSellBatchOf(), tier: autoSellTierOn(rec), plan: autoSellPlanView(rec) });
   }
   if (p === '/api/autosell' && req.method === 'POST') {
     readBody(req, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       auth(req, res, body, function (d, key) {
         const rec = users[key];
+        // v0.14.0：「体型档」开关（全账号一个，不属于任何单件规则）——开了之后自动售出也会卖掉
+        // 大型/巨型鱼（走各自通道、含加成）。单独一个请求：只带 tier，不带 id/bulk。
+        if (d.tier !== undefined && d.bulk == null && d.id == null && d.scope == null) {
+          rec.autoSell = rec.autoSell || { items: {} };
+          if (!rec.autoSell.items) rec.autoSell.items = {};
+          rec.autoSell.tier = !!d.tier;
+          saveAccount(key);
+          const soldT = (function () { try { return autoSellCheck(key); } catch (e) { return null; } })();
+          return apiResp(res, 200, { ok: true, tier: rec.autoSell.tier, items: rec.autoSell.items || {}, batch: autoSellBatchOf(),
+            plan: autoSellPlanView(rec), sold: soldT || null, coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec),
+            bigfish: rec.bigfish || {}, shop: shopSnapshot() });
+        }
         const cleanPos = function (v, max) {
           if (v == null || v === '') return null;
           const n = Math.floor(Number(v));
@@ -4170,6 +4213,12 @@ const server = http.createServer(function (req, res) {
           qty = Math.max(1, Math.floor(Number(d.qty) || 1));
         }
         if (!sellableOf(id)) return apiResp(res, 400, { error: '该物品不可上架' });
+        // v0.14.0：**暂时屏蔽鱼类的市集上架**（体型档改版期间，渔获改由系统收购 + 档位按钮出售）。
+        // 这是一个开关式的临时限制：把 MARKET_FISH_LIST 改回 true 即恢复，前后端各一处（见 ui.js 同名常量）。
+        // 只拦「新上架」：已有挂单照常可买 / 可下架，不受影响。
+        if (!MARKET_FISH_LIST && D.itemOf(id).kind === 'fish') {
+          return apiResp(res, 400, { error: '鱼类暂时不能在市集上架（改版中：渔获请直接在商城·收购出售，大型/巨型鱼可按档位出售拿加成）' });
+        }
         if (rodFrom < 0) {
           const rodLock = rodLockError(rec, id, qty);
           if (rodLock) return apiResp(res, 400, { error: rodLock });

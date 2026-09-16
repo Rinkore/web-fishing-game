@@ -100,7 +100,7 @@ function start(dataDir) {
   killPortOccupant(PORT);
   return spawn(NODE, ['backend/server.js'], {
     cwd: ROOT,
-    env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: dataDir }),
+    env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', MARKET_FISH_LIST: '1', FISHING_DATA_DIR: dataDir }),
   });
 }
 function waitReady() {

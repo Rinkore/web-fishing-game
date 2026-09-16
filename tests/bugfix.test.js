@@ -137,7 +137,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 (async () => {
   console.log('缺陷回归测试（5 个上报问题）');
   killPortOccupant(PORT);
-  const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }) });
+  const srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', MARKET_FISH_LIST: '1', FISHING_DATA_DIR: TMP_DATA }) });
   await waitHttp('http://localhost:' + PORT + '/shop', { timeout: 20000 });
 
   try {

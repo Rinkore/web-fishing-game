@@ -105,7 +105,7 @@ function start(port) {
   // FISHING_DATA_DIR：测试数据写入临时目录，不触碰真实 backend/data
   // AUTOSELL_BATCH=1：自动售出按「每次结算」跑，便于逐条验证规则本身（打包行为在 v0138 套件覆盖）
   killPortOccupant(port);
-  return spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(port), FISHING_DEV: '1', AUTOSELL_BATCH: '1', FISHING_DATA_DIR: TMP_DATA }) });
+  return spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(port), FISHING_DEV: '1', AUTOSELL_BATCH: '1', MARKET_FISH_LIST: '1', FISHING_DATA_DIR: TMP_DATA }) });
 }
 
 // 静态数据：直接 require UMD 版 data.js（前后端共用同一文件，后端 require 即所得）
@@ -512,7 +512,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   section('6. 挂单上限（40）与过期退回');
   await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
-  srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(8103), FISHING_DEV: '1', LISTING_TTL_MS: '1500', FISHING_DATA_DIR: TMP_DATA }) });
+  srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(8103), FISHING_DEV: '1', MARKET_FISH_LIST: '1', LISTING_TTL_MS: '1500', FISHING_DATA_DIR: TMP_DATA }) });
   await sleep(800);
   const lgA6 = await POST('http://localhost:8103/api/login', { username: 'tester_a', password: 'pass1234' });
   check('补充库存 45 条鲫鱼', (await POST('http://localhost:8103/api/dev/seed', { token: lgA6.data.token, inventory: { crucian: 45 } })).status === 200);

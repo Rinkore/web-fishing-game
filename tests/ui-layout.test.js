@@ -130,7 +130,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
 (async () => {
   killPortOccupant(PORT);
-  const srv = spawn(process.execPath, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }) });
+  const srv = spawn(process.execPath, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', MARKET_FISH_LIST: '1', FISHING_DATA_DIR: TMP_DATA }) });
   await waitHttp('http://localhost:' + PORT + '/shop', { timeout: 20000 });
   let browser;
   try {
@@ -156,6 +156,11 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await post('/api/market/list', { token: tokS, id: 'crucian', qty: 5, price: 26 });
     await sleep(80);
     await post('/api/market/list', { token: tokS, id: 'carp', qty: 3, price: 44 });
+    // v0.14.0：鱼类暂时不能上市集 → 右栏「我的背包（上架）」里只剩非鱼类。
+    // 补几件材料当填充素材：上架列表仍要有足够行数（「滚动位置保持 / 广播不重建」那几条用例的前提）。
+    for (const mid of ['bait_pack', 'rope', 'lure', 'relic', 'tide_sand', 'dragon_scale', 'dragonpearl']) {
+      await post('/api/dev/catch', { token: tokS, item: { kind: 'material', id: mid } });
+    }
     // 一个组件实例挂单（用于市集词条筛选验证）；买家持有一个带 钓速+20 的组件
     const compId = D_DATA.instanceId('reel_electric', 'common', [{ type: 'speed', value: 20 }]);
     await post('/api/dev/catch', { token: tokB, item: { kind: 'component', id: compId } });
@@ -543,6 +548,9 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       const scrollKeep = await p1.evaluate(() => {
         const list = document.querySelector('.mkt-sell-list');
         if (!list) return { ok: false };
+        // v0.14.0：鱼类不再进上架列表，行数比从前少；把容器压矮以保留「滚动位置保持」这条用例的前提，
+        // 免得它变成「得靠背包里恰好有十几件东西才跑得动」的隐性依赖
+        list.style.maxHeight = '60px';
         const scrollable = list.scrollHeight > list.clientHeight;
         list.scrollTop = 100;
         const before = list.scrollTop;
@@ -1043,8 +1051,10 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       return { rows: box ? box.querySelectorAll('.hist-line').length : 0, loading: box ? /加载中/.test(box.textContent) : true };
     });
     check('历史订单渲染出成交记录（且不卡在「加载中…」）', histProbe.rows >= 1 && histProbe.loading === false, JSON.stringify(histProbe));
-    await post('/api/dev/catch', { token: tokS, item: { kind: 'fish', id: 'minnow', rarity: 'common', name: '麦穗鱼', size: 21 }, ground: '静水湖', spot: '芦苇浅滩' });
     // 资产广播到达的信号：右栏「我的背包（上架）」内容变化（它会被原地重画）
+    // v0.14.0：鱼类不再进上架列表，这里改用材料触发资产广播——本条验证的是
+    // 「资产广播 → 右栏上架面板原地刷新」，与物品类别无关（上鱼那条路径在别处另有覆盖）
+    await post('/api/dev/catch', { token: tokS, item: { kind: 'material', id: 'rope' } });
     const sellRefreshed = await waitFor(async () => await p1.evaluate(() => {
       const pr = window.__mkProbe || {};
       const now = (document.querySelector('.mkt-sell') || {}).textContent;

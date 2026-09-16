@@ -355,6 +355,12 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .shop-autosell .sa-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
 .shop-autosell .sa-head b { color: var(--big); }
 .sa-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+/* v0.14.0：自动售出的「体型档」开关（默认关＝大鱼留着，开了才一起卖） */
+.sa-tier-switch { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); cursor: pointer; margin-top: 8px; }
+.sa-tier-switch input { cursor: pointer; }
+/* v0.14.0：不可用的占位标记（背包 / 市集「上架暂停」这类临时屏蔽的入口） */
+.mini.mk-off { display: inline-flex; align-items: center; opacity: .5; cursor: not-allowed; border: 1px dashed var(--line); }
+.mk-off-hint { border-left: 2px solid rgba(251,191,36,.5); padding-left: 8px; margin: 6px 0; }
 .sa-switch { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
 .sa-fld { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); font-size: 13px; }
 .sa-fld .ipt { width: 90px; }
@@ -453,6 +459,19 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
   background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.35);
 }
 .bulk-est b { color: var(--big); }
+/* v0.14.0：批量出售窗口的三条通道（一般 / 大型 / 巨型）各一行：档位名 + 加成 + 可卖量 + 数量 + 滑块 */
+.bs-chans { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+.bs-chan { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: rgba(255,255,255,.02); }
+.bs-chan-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.bs-chan-name { font-weight: 600; }
+.bs-chan-name b { color: var(--big); }
+.bs-chan-name.t-large { color: #c9d1d9; }
+.bs-chan-name.t-giant { color: #ffd24a; }
+.bs-chan-have, .bs-chan-unit { font-size: 11px; color: var(--muted); }
+.bs-chan-unit { margin-left: auto; }
+.bs-chan .bs-range { width: 100%; }
+.bs-chan-est { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.bs-chan-est b { color: var(--big); }
 .sd-title { color: var(--accent2); font-weight: 600; margin-bottom: 6px; font-size: 13px; }
 .sd-vol { margin-bottom: 10px; color: var(--muted); }
 .sd-vol b { color: var(--big); }
@@ -460,9 +479,18 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
   display: flex; align-items: flex-end; gap: 1px; height: 130px; padding: 4px;
   background: rgba(255,255,255,.03); border-radius: 6px; margin-bottom: 4px;
 }
-.sd-spark i { flex: 1; min-width: 1px; border-radius: 1px 1px 0 0; }
+.sd-spark i { flex: 1; min-width: 1px; border-radius: 1px 1px 0 0; cursor: crosshair; }
 .sd-spark i.up { background: linear-gradient(180deg, #f87171, rgba(248,113,113,.3)); }
 .sd-spark i.down { background: linear-gradient(180deg, var(--accent2), rgba(56,189,248,.25)); }
+/* v0.14.0：走势图数值刻度（价格 / 时间）——左侧价格刻度、下方起止时间与基准价 */
+.sd-chart { display: flex; gap: 6px; align-items: stretch; }
+.sd-chart .sd-yaxis {
+  display: flex; flex-direction: column; justify-content: space-between; flex: none;
+  font-size: 10px; color: var(--muted); text-align: right; min-width: 46px;
+}
+.sd-chart .sd-spark { flex: 1 1 auto; }
+.sd-xaxis { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--muted); margin: 0 0 6px; }
+.sd-xaxis .sd-xmid { color: var(--accent2); }
 .sd-legend { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
 .sd-sub { color: var(--accent2); font-weight: 600; margin: 12px 0 6px; font-size: 12px; }
 .sd-trades { display: flex; flex-direction: column; gap: 3px; max-height: 150px; overflow: auto; }
@@ -473,6 +501,19 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .sd-line .sd-down { color: var(--accent2); }
 .sc-pct { font-size: 11px; color: var(--muted); margin: 6px 0 10px; }
 .shop-card .mini { width: 100%; text-align: center; }
+
+/* v0.14.0：收购卡片的体型档小按钮（大型 +50% / 巨型 +150%）
+   配色沿用背包档位标签（银=大型 / 金=巨型）；没量的档位置灰（.locked），与主按钮同一套观感 */
+.sc-tiers { display: flex; gap: 6px; margin-top: 6px; }
+.sc-tiers .sc-tier-btn {
+  flex: 1 1 0; width: auto; min-width: 0; padding: 3px 4px; font-size: 11px; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sc-tiers .sc-tier-btn.tier-large { border-color: rgba(201,209,217,.45); color: #c9d1d9; }
+.sc-tiers .sc-tier-btn.tier-giant { border-color: rgba(245,158,11,.5); color: #ffd24a; font-weight: 700; }
+.sc-tiers .sc-tier-btn.tier-large:hover:not(:disabled) { background: rgba(201,209,217,.14); }
+.sc-tiers .sc-tier-btn.tier-giant:hover:not(:disabled) { background: rgba(245,158,11,.16); }
+.sc-tiers .sc-tier-btn.locked { opacity: .45; cursor: not-allowed; }
 
 /* ---- 开放市集 ---- */
 .market-list { display: flex; flex-direction: column; gap: 8px; }
@@ -949,15 +990,19 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 /* ---- 背包分页 ---- */
 .inv-page { display: flex; flex-direction: column; gap: 6px; }
 .inv-page-row { flex-wrap: wrap; }
-.inv-page-row .kind-tag {
+.inv-page-row .kind-tag, .bulk-row-item .kind-tag {
   font-size: 10px; padding: 1px 7px; border-radius: 20px;
   background: rgba(56,189,248,.14); color: var(--accent2); flex: none;
 }
-/* v0.13.7 体型档标签配色（一般/大型/巨型）：铜色=一般、银色=大型、金色=巨型 */
-.inv-page-row .kind-tag.tag-normal { background: rgba(205,127,50,.16); color: #e0995c; border: 1px solid rgba(205,127,50,.45); }
-.inv-page-row .kind-tag.tag-large { background: rgba(201,209,217,.14); color: #c9d1d9; border: 1px solid rgba(201,209,217,.4); }
-.inv-page-row .kind-tag.tag-giant { background: rgba(245,158,11,.16); color: #ffd24a; border: 1px solid rgba(245,158,11,.5); font-weight: 700; }
+/* v0.13.7 体型档标签配色（一般/大型/巨型）：铜色=一般、银色=大型、金色=巨型
+   v0.13.10 一键出售预览也按「一般/大型/巨型」分行，复用同一套标签（.bulk-row-item .kind-tag） */
+.inv-page-row .kind-tag.tag-normal, .bulk-row-item .kind-tag.tag-normal { background: rgba(205,127,50,.16); color: #e0995c; border: 1px solid rgba(205,127,50,.45); }
+.inv-page-row .kind-tag.tag-large, .bulk-row-item .kind-tag.tag-large { background: rgba(201,209,217,.14); color: #c9d1d9; border: 1px solid rgba(201,209,217,.4); }
+.inv-page-row .kind-tag.tag-giant, .bulk-row-item .kind-tag.tag-giant { background: rgba(245,158,11,.16); color: #ffd24a; border: 1px solid rgba(245,158,11,.5); font-weight: 700; }
 .inv-tier-row { border-style: dashed; }
+/* 体型档行（加成通道）在预览列表里单独一块：虚线分隔 + 略淡的底，与「一般」行区分 */
+.bulk-row-item.bulk-tier-row { border-bottom-style: dashed; }
+.bulk-row-item .bk-name .kind-tag { margin-left: 6px; vertical-align: 1px; }
 .inv-page-row .unit-price { color: var(--muted); font-size: 12px; }
 .inv-page-row .subtotal { color: var(--big); font-size: 12px; }
 /* 一般行的「总 ×N」：这条鱼在背包里的总量（含大型/巨型预留），与档位行分开显示 */

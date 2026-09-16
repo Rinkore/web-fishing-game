@@ -451,7 +451,9 @@ async function main() {
     JSON.stringify(await p1.$$eval('#bulk-filters select', els => els.map(e => e.id))));
   // 体型档通道：选中大型后，行内数量 = 大型预留量、单价含 +50%
   await POST('/api/dev/catch', { token: tok, item: { id: 'carp', kind: 'fish', rarity: 'common', size: 999 } });   // 巨型鲤鱼
-  await POST('/api/dev/catch', { token: tok, item: { id: 'crucian', kind: 'fish', rarity: 'common', size: 400 } }); // 大型鲫鱼
+  await POST('/api/dev/catch', { token: tok, item: { id: 'crucian', kind: 'fish', rarity: 'common', size: 400 } }); // 鲫鱼档位预留（400 > 35×1.8，实为巨型）
+  // v0.13.10：再种一条「一般量」鲫鱼 —— 同一条鱼既有一般量又有档位预留，用来验证列表按通道成行
+  await POST('/api/dev/catch', { token: tok, item: { id: 'crucian', kind: 'fish', rarity: 'common' } });
   await sleep(600);
   await p1.selectOption('#bulk-cat', 'fish');
   await until(() => p1.evaluate(() => !!document.getElementById('bulk-tier')), v => v === true, 8000);
@@ -462,17 +464,79 @@ async function main() {
     have: (e.querySelector('.bk-have') || {}).textContent || '',
     unit: (e.querySelector('.bk-unit') || {}).textContent || '',
     qty: (e.querySelector('.bk-qty') || {}).value,
+    checked: !!e.querySelector('input[type=checkbox]').checked,
   })));
   check('体型档「巨型」只列带巨型预留的鱼（鲤鱼 + 鲫鱼）',
     rowsG.length === 2 && rowsG.every(r => r.have.indexOf('巨型') === 0), JSON.stringify(rowsG));
   check('行内展示档位与数量（巨型 1）', /巨型 1/.test(rowsG[0].have) && rowsG[0].qty === '1', JSON.stringify(rowsG[0]));
   check('单价含 +150% 加成（基准 ×2.5 取整）', Number(rowsG[0].unit.replace(/\D/g, '')) > 0, JSON.stringify(rowsG[0]));
+  // v0.13.10：体型筛选补「一般」，且列表按「一般 / 大型 / 巨型」成行
+  check('体型档行默认不勾选（打开预览即全选会误卖加成鱼）', rowsG.every(r => r.checked === false), JSON.stringify(rowsG));
+  await p1.selectOption('#bulk-tier', 'N');
+  await until(async () => (await p1.$$eval('#bulk-rows .bulk-row-item', els => els.length)) > 0, v => v === true, 8000);
+  const rowsN = await p1.$$eval('#bulk-rows .bulk-row-item', els => els.map(e => ({
+    have: (e.querySelector('.bk-have') || {}).textContent || '',
+    checked: !!e.querySelector('input[type=checkbox]').checked,
+  })));
+  check('体型筛选「一般」只列普通量行（不混入大型/巨型行）',
+    rowsN.length > 0 && rowsN.every(r => r.have.indexOf('持有') === 0), JSON.stringify(rowsN.slice(0, 3)));
+  check('一般行默认勾选', rowsN.every(r => r.checked === true), JSON.stringify(rowsN.slice(0, 3)));
   await p1.selectOption('#bulk-tier', 'all');
   await sleep(300);
-  const rowsAll = await p1.$$eval('#bulk-rows .bulk-row-item', els => els.map(e => (e.querySelector('.bk-have') || {}).textContent || ''));
-  check('切回全部体型 → 数量按普通可用量（持有）显示', rowsAll.every(t => t.indexOf('持有') === 0), JSON.stringify(rowsAll.slice(0, 3)));
+  const rowsAll = await p1.$$eval('#bulk-rows .bulk-row-item', els => els.map(e => ({
+    have: (e.querySelector('.bk-have') || {}).textContent || '',
+    checked: !!e.querySelector('input[type=checkbox]').checked,
+  })));
+  check('「全部体型」同时列出一般行与体型档行',
+    rowsAll.some(r => r.have.indexOf('持有') === 0) && rowsAll.some(r => r.have.indexOf('巨型') === 0),
+    JSON.stringify(rowsAll.map(r => r.have).slice(0, 6)));
+  check('一般行在前、体型档行在后（加成鱼单独成组）',
+    rowsAll.length > 0 && rowsAll[0].have.indexOf('持有') === 0, JSON.stringify(rowsAll.map(r => r.have).slice(0, 6)));
   await p1.evaluate(() => { const c = document.querySelector('.bulk-sell-modal .cf-cancel'); if (c) c.click(); });
   await sleep(200);
+
+  // v0.13.10：背包体型档筛选补「一般」，且筛选按「行」生效（选一般只看一般行、选巨型只看巨型行）
+  section('背包体型档筛选：一般 / 大型 / 巨型 按行互斥显示');
+  await clickNav(p1, '背包');
+  await until(() => p1.evaluate(() => !!document.querySelector('#main .inv-page')), v => v === true, 15000);
+  const clickTier = (label) => p1.evaluate(l => {
+    const rows = Array.from(document.querySelectorAll('#main .inv-subrow'));
+    const row = rows.find(r => { const s = r.querySelector('.sub-label'); return s && s.textContent.includes('体型档'); });
+    if (!row) return false;
+    const b = Array.from(row.querySelectorAll('.inv-cat')).find(x => x.textContent.trim().indexOf(l) === 0);
+    if (b) { b.click(); return true; }
+    return false;
+  }, label);
+  await clickInvCat('鱼类');
+  await until(() => p1.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('#main .inv-subrow'));
+    return rows.some(r => { const s = r.querySelector('.sub-label'); return s && s.textContent.includes('体型档'); });
+  }), v => v === true, 8000);
+  const tierChips = await p1.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('#main .inv-subrow'));
+    const row = rows.find(r => { const s = r.querySelector('.sub-label'); return s && s.textContent.includes('体型档'); });
+    return row ? Array.from(row.querySelectorAll('.inv-cat')).map(b => b.textContent.trim()) : [];
+  });
+  check('体型档筛选有「一般」（全部 / 一般 / 大型 / 巨型）',
+    tierChips.length === 4 && ['全部', '一般', '大型', '巨型'].every((t, i) => tierChips[i].indexOf(t) === 0),
+    JSON.stringify(tierChips));
+  await clickTier('一般');
+  await sleep(300);
+  const invGeneral = await p1.$$eval('#main .inv-page-row', els => els.map(e => ({
+    tag: (e.querySelector('.kind-tag') || {}).textContent || '',
+    tier: e.classList.contains('inv-tier-row'),
+  })));
+  check('选「一般」只列一般量行（没有体型档行）',
+    invGeneral.length > 0 && invGeneral.every(r => r.tier === false && r.tag === '一般'), JSON.stringify(invGeneral));
+  await clickTier('巨型');
+  await sleep(300);
+  const invGiant = await p1.$$eval('#main .inv-page-row', els => els.map(e => ({
+    tag: (e.querySelector('.kind-tag') || {}).textContent || '',
+    tier: e.classList.contains('inv-tier-row'),
+  })));
+  check('选「巨型」只列巨型档行（没有一般行）',
+    invGiant.length > 0 && invGiant.every(r => r.tier === true && r.tag === '巨型'), JSON.stringify(invGiant));
+  await clickTier('全部');
 
   section('交易窗口：筛选与背包同口径 + 关闭即取消交易');
   // 乙向甲发起交易 → 甲的窗口自动弹出（与线上同一条路径）
@@ -541,7 +605,9 @@ async function main() {
   });
   check('前置：鲫鱼卡片存在', await p1.evaluate(() => !!window.__cx));
   await POST('/api/dev/catch', { token: tok, item: { id: 'crucian', kind: 'fish', rarity: 'common' } });
-  await sleep(1600);   // 广播有 1 秒批量窗口
+  // 广播有 1 秒批量窗口：轮询等它到达再断言。此前写死 sleep(1600)——机器一忙就假失败
+  // （同一份代码单跑稳定过、并行跑偶发红），换成「条件满足即刻返回」。
+  await until(() => p1.evaluate(() => !!window.__cx && window.__cx.querySelector('.cx-meta').textContent !== window.__cxBefore), v => v === true, 10000);
   check('上鱼后卡片仍是同一个 DOM 节点（未重建 → 动画不重头播）',
     await p1.evaluate(() => !!window.__cx && window.__cx === document.querySelector('#main .codex-cell[data-cxid="crucian"]')));
   check('卡片上的「已获得次数」就地更新',
