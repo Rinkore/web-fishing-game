@@ -960,6 +960,8 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .inv-tier-row { border-style: dashed; }
 .inv-page-row .unit-price { color: var(--muted); font-size: 12px; }
 .inv-page-row .subtotal { color: var(--big); font-size: 12px; }
+/* 一般行的「总 ×N」：这条鱼在背包里的总量（含大型/巨型预留），与档位行分开显示 */
+.inv-page-row .inv-total { color: var(--muted); font-size: 11px; opacity: .85; }
 .inv-page + .hint { margin-top: 12px; }
 /* 背包组件分组（按词条组合 + 数值范围分类） */
 .inv-group-head {

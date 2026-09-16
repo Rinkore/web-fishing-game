@@ -17,6 +17,9 @@ window.UI = (function () {
   // 惰性获取：避免加载顺序问题
   function E() { return window.Engine; }
   function S() { return window.Engine.state; }
+  // 库存快照统一入口（v0.13.9）：带 invRev 的完整快照只在「不旧于已应用版本」时才生效。
+  // 直接 `st.inventory = r.data.inventory` 会让先发后到的旧响应盖掉刚获得的物品（连开宝匣丢配件的根因）。
+  function applyInvFrom(d) { return !!(d && d.inventory && window.Engine.applyInv(d.inventory, d.invRev)); }
 
   let currentView = 'fishing';
 
@@ -1151,43 +1154,6 @@ window.UI = (function () {
     if (scene && scene.getAttribute('data-pool') !== scenePoolOf(st).sig) fillSceneFish(scene, st, true);
   }
 
-  // 背包区块（钓鱼页与商店页共用）
-  function inventoryBlock(opts) {
-    opts = opts || {};
-    const st = S();
-    const wrap = el('div', 'inventory');
-    const keys = Object.keys(st.inventory);
-    if (keys.length === 0) { wrap.appendChild(el('div', 'hint', '背包空空如也。')); return wrap; }
-    // 按单价排序（数量变化不会导致行位置跳动，修"出售后物品换位"）
-    keys.sort(function (a, b) {
-      const pa = (st.shop && st.shop[a] ? st.shop[a].price : itemMeta(a).price) || 0;
-      const pb = (st.shop && st.shop[b] ? st.shop[b].price : itemMeta(b).price) || 0;
-      return pb - pa || (a < b ? -1 : 1);
-    });
-    keys.forEach(function (k) {
-      const meta = itemMeta(k);
-      const shopP = st.shop && st.shop[k];
-      const row = el('div', 'inv-row');
-      row.innerHTML = '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
-        '<span class="cnt">×' + st.inventory[k] + '</span>';
-      const acts = el('span', 'inv-acts');
-      if (opts.onSell) {
-        const sellUnit = shopP ? shopP.price : meta.price;
-        const sb = el('button', 'mini primary-mini', '出售 ' + sellUnit + '💰');
-        sb.title = '按当前系统收购价出售 1 个';
-        sb.addEventListener('click', function () { opts.onSell(k); });
-        acts.appendChild(sb);
-      }
-      const lb = el('button', 'mini', '上架');
-      lb.title = '挂到开放市集（选择时长，支付对应上架费，下架不退）';
-      lb.addEventListener('click', function () { openListModal(k); });
-      acts.appendChild(lb);
-      row.appendChild(acts);
-      wrap.appendChild(row);
-    });
-    return wrap;
-  }
-
   function peepCard(b) {
     const st = S();
     const isSelf = st.me && b.id === st.me.id;
@@ -1235,7 +1201,7 @@ window.UI = (function () {
     call(window.Net.bdSet(partKey, compId || null), null).then(function (r) {
       if (r && r.ok) {
         S().bd = r.data.bd;
-        if (r.data.inventory) S().inventory = r.data.inventory;
+        if (r.data.inventory) applyInvFrom(r.data);
         if (r.data.castInfo) { S().castInfo = r.data.castInfo; S().fishingInterval = r.data.castInfo.interval; }
         if (r.data.rodSlots) S().rodSlots = r.data.rodSlots;
         if (r.data.rodLocked) S().rodLocked = r.data.rodLocked;
@@ -1574,7 +1540,7 @@ window.UI = (function () {
           }
           const st2 = S();
           st2.bd = r.data.bd;
-          if (r.data.inventory) st2.inventory = r.data.inventory;
+          if (r.data.inventory) applyInvFrom(r.data);
           if (r.data.castInfo) { st2.castInfo = r.data.castInfo; st2.fishingInterval = r.data.castInfo.interval; }
           if (r.data.rodSlots) st2.rodSlots = r.data.rodSlots;
           if (r.data.rodLocked) st2.rodLocked = r.data.rodLocked;
@@ -1663,7 +1629,7 @@ window.UI = (function () {
       call(window.Net.sell(id, 1), function (r) { return '售出 ' + meta.name + ' ×1，获得 💰' + r.data.gain; })
         .then(function (r) {
           if (r && r.ok) {
-            st.inventory = r.data.inventory; st.player.coins = r.data.coins; st.shop = r.data.shop;
+            applyInvFrom(r.data); st.player.coins = r.data.coins; st.shop = r.data.shop;
             renderTopbar();
             if (bdEquipPart || compPickCtx) renderBody();
           }
@@ -1915,7 +1881,7 @@ window.UI = (function () {
             promptModal({ title: '保存钓竿到槽位 ' + (i + 1), numeric: false, value: st.rodName || '', okText: '保存', html: '<div class="cf-hint">给这根钓竿起个名字（最多 12 字）。保存后它占用该槽位，配件被锁定，可随时改名或切换。</div>' }).then(function (name) {
               if (name == null) return;
               call(window.Net.rodSave(i, name), '已占用槽位 ' + (i + 1) + '（配件已锁定，可继续使用）').then(function (r) {
-                if (r && r.ok) { st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodActiveSlot = r.data.rodActiveSlot; st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked; if (r.data.inventory) st.inventory = r.data.inventory; E().refreshEffects(); renderTopbar(); renderView(); }
+                if (r && r.ok) { st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodActiveSlot = r.data.rodActiveSlot; st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked; if (r.data.inventory) applyInvFrom(r.data); E().refreshEffects(); renderTopbar(); renderView(); }
               });
             });
           });
@@ -1936,7 +1902,7 @@ window.UI = (function () {
             call(window.Net.rodUse(i), '已切换到「' + (sl.name || ('槽位 ' + (i + 1))) + '」').then(function (r) {
               if (r && r.ok) {
                 st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodActiveSlot = r.data.rodActiveSlot; st.rodSlots = r.data.rodSlots;
-                st.rodLocked = r.data.rodLocked || {}; if (r.data.inventory) st.inventory = r.data.inventory;
+                st.rodLocked = r.data.rodLocked || {}; if (r.data.inventory) applyInvFrom(r.data);
                 if (r.data.castInfo) { st.castInfo = r.data.castInfo; st.fishingInterval = r.data.castInfo.interval; }
                 if (r.data.returned) toast('原散件装配已退回背包 ×' + r.data.returned);
                 E().refreshEffects(); renderTopbar(); renderView();
@@ -1971,7 +1937,7 @@ window.UI = (function () {
                 if (r && r.ok) {
                   st.bd = r.data.bd; st.rodName = r.data.rodName; st.rodActiveSlot = r.data.rodActiveSlot;
                   st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked || {};
-                  if (r.data.inventory) st.inventory = r.data.inventory;
+                  if (r.data.inventory) applyInvFrom(r.data);
                   if (r.data.castInfo) { st.castInfo = r.data.castInfo; st.fishingInterval = r.data.castInfo.interval; }
                   E().refreshEffects(); renderTopbar(); renderView();
                 }
@@ -1991,7 +1957,7 @@ window.UI = (function () {
               if (r && r.ok) {
                 st.rodSlots = r.data.rodSlots; st.rodLocked = r.data.rodLocked || {};
                 if (r.data.rodActiveSlot !== undefined) st.rodActiveSlot = r.data.rodActiveSlot;
-                if (r.data.inventory) st.inventory = r.data.inventory;
+                if (r.data.inventory) applyInvFrom(r.data);
                 renderTopbar(); renderView();
               }
             });
@@ -2490,15 +2456,22 @@ window.UI = (function () {
   // onListed：可选回调，上架成功后调用（装备子窗口用它回到原界面继续挑选）
   // rodInfo：整根钓竿模式（{rodSlot, name, affixes, price, count}）——数量固定 1，组件随竿卖出
   function openListModal(id, onListed, rodInfo) {
-    const st0 = S();
     const isRod0 = !!(rodInfo && rodInfo.rodSlot != null);
     // 悬空引用检测：物品可能刚被卖掉 / 熔炼掉 / 交易走，不能再挂单（否则填完参数才被服务器拒绝）
-    if (!isRod0 && !(st0.inventory[id] > 0)) { toast('背包里已经没有「' + itemMeta(id).name + '」了'); return; }
+    if (!isRod0 && availCountOf(id) <= 0) {
+      const total0 = S().inventory[id] || 0;
+      toast(total0 > 0
+        ? '「' + itemMeta(id).name + '」的可上架数量为 0（' + reservedCountOf(id) + ' 条是大型/巨型预留，普通通道不能上架）'
+        : '背包里已经没有「' + itemMeta(id).name + '」了');
+      return;
+    }
     listModalId = id;
     const st = S();
     const meta = itemMeta(id);
     const isRod = !!(rodInfo && rodInfo.rodSlot != null);
-    const have = isRod ? 1 : (st.inventory[id] || 0);
+    // v0.13.9：上架走普通通道，服务端按可用量校验 —— 数量上限必须用可用量（此前用总量，必然被拒）
+    const total = isRod ? 1 : (st.inventory[id] || 0);
+    const have = isRod ? 1 : availCountOf(id);
     // 挂单上限提示（上限由后台按账号设置：默认 40，0 = 不限；后台批量上架也会占用这个额度）
     const capRaw = Number(st && st.me ? st.me.listingCap : NaN);
     const myCap = isFinite(capRaw) && capRaw > 0 ? capRaw : 0;
@@ -2516,9 +2489,10 @@ window.UI = (function () {
     overlay.addEventListener('click', function (ev) { if (ev.target === overlay) closeListModal(); });
     const box = el('div', 'modal-box shop-modal');
     box.innerHTML =
-      '<div class="modal-head"><span class="modal-title">🏷️ 上架 ' + esc(isRod ? (rodInfo.name ? rodInfo.name + ' · 整根钓竿' : '整根钓竿') : meta.name) + (isRod ? '（' + rodInfo.count + ' 件组件）' : '（持有 ' + have + '）') + '</span><button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-head"><span class="modal-title">🏷️ 上架 ' + esc(isRod ? (rodInfo.name ? rodInfo.name + ' · 整根钓竿' : '整根钓竿') : meta.name) + (isRod ? '（' + rodInfo.count + ' 件组件）' : '（可用 ' + have + (total > have ? ' / 持有 ' + total : '') + '）') + '</span><button class="mini modal-close">✕ 关闭</button></div>' +
       '<div class="modal-body">' +
       (isRod ? '<div class="lm-rod">' + rodAffixBadges(rodInfo.affixes) + '</div><div class="hint" style="margin-bottom:8px">整根钓竿按 1 件整体出售，组件随竿交给买家（买家收到的是背包中的组件，可自行组装）。</div>' : '') +
+      (!isRod && total > have ? '<div class="hint" style="margin-bottom:8px">其中 <b>' + (total - have) + '</b> 条是大型/巨型预留，普通上架动不了（要卖请到背包按体型档行出售）。</div>' : '') +
       '<div class="lm-trend" id="list-trend">价格走势加载中…</div>' +
       '<div class="lm-row"><label>出售数量</label><input type="number" id="list-qty" class="bulk-select" min="1" max="' + have + '" value="1"' + (isRod ? ' disabled' : '') + ' /></div>' +
       '<div class="lm-row"><label>单价（💰）</label><input type="number" id="list-price" class="bulk-select" min="1" value="' + Math.max(1, Math.round((isRod ? (rodInfo.price || meta.price) : (st.shop && st.shop[id] ? st.shop[id].price : meta.price)) * (isRod ? 1 : 2))) + '" /></div>' +
@@ -2569,7 +2543,7 @@ window.UI = (function () {
       }).then(function (r) {
         if (r && r.ok) {
           closeListModal();
-          if (r.data.inventory) st.inventory = r.data.inventory;
+          if (r.data.inventory) applyInvFrom(r.data);
           st.player.coins = r.data.coins;
           if (r.data.rodSlots) st.rodSlots = r.data.rodSlots;
           renderTopbar(); renderView();
@@ -2857,12 +2831,12 @@ window.UI = (function () {
     box.innerHTML = on.map(function (id) {
       const meta = itemMeta(id);
       const r = items[id];
-      const keep = autoSellKeep(r);
-      const avail = Math.max(0, (st.inventory[id] || 0) - keep);
+      const excess = autoSellExcessOf(id, r);
+      const ok = !!autoSellHitOf(id, r);
       return '<div class="as-mini-row">' +
         '<span class="as-mini-name ' + rarityClass(meta.rarity) + '">' + esc(meta.name) + '</span>' +
         '<span class="as-mini-rule">' + esc(autoRuleText(id)) + '</span>' +
-        '<span class="as-mini-avail">' + (avail > 0 ? ('可卖' + avail + (avail < batch ? '（差' + (batch - avail) + '）' : '（可打包）')) : '—') + '</span>' +
+        '<span class="as-mini-avail">' + (excess > 0 ? ('可卖' + excess + (ok ? '' : '·未达标')) : '—') + '</span>' +
         '</div>';
     }).join('');
   }
@@ -2894,7 +2868,8 @@ window.UI = (function () {
       '<button class="mini modal-close">✕ 关闭</button></div>' +
       '<div class="modal-body">' +
       '<div class="hint" style="margin-bottom:8px">勾选即启用该物品的自动售出；取消勾选只是停用（价格线 / 保留量留着）。' +
-      '可卖余量（持有 − 保留）攒够 <b>' + autoSellBatch() + '</b> 条才打包成交一次，一次推送结算全部物品。</div>' +
+      '可卖余量 = 可用量（持有 − 大型/巨型预留）− 保留量；<b>所有已勾选物品的可卖余量合计</b>攒够 <b>' + autoSellBatch() + '</b> 条才打包成交一次，' +
+      '成交时价格达标的物品一起结算（一次推送）。价格未达标的余量不计入合计，也不会卖。</div>' +
       '<div class="asl-filters">' +
       '<input id="asl-search" class="ipt" placeholder="搜索名称 / ID" value="' + esc(asListQ) + '" style="width:200px">' +
       '<button class="inv-cat sub' + (asListCat === 'all' ? ' on' : '') + '" data-aslcat="all">全部</button>' +
@@ -2935,7 +2910,7 @@ window.UI = (function () {
       if (kind === 'material' && risky.length) { confirmMaterialAutoSell(risky, run); return; }
       if (body.minPct !== '' || body.minPrice !== '') { run(); return; }
       confirmModal({ title: '批量设置自动售出', danger: true, okText: '确定应用',
-        html: '两条价格线都留空 = <b>不看价格</b>，可卖余量攒够 <b>' + autoSellBatch() + '</b> 条就整批卖出。<br>确定应用到' + label + '？' })
+        html: '两条价格线都留空 = <b>不看价格</b>，可卖余量计入合计、攒够 <b>' + autoSellBatch() + '</b> 条就整批卖出。<br>确定应用到' + label + '？' })
         .then(function (ok) { if (ok) run(); });
     };
     box.querySelector('#asl-apply-fish').onclick = function () { applyBulk('fish', '全部鱼'); };
@@ -2969,25 +2944,29 @@ window.UI = (function () {
     const cntEl = document.getElementById('asl-count');
     if (cntEl) {
       const onIds = Object.keys(items).filter(function (id) { return items[id] && items[id].on; });
-      cntEl.textContent = '已启用 ' + onIds.length + ' 项 · 本页 ' + rows.length + ' 项';
+      const plan = autoSellPlan();
+      cntEl.textContent = '已启用 ' + onIds.length + ' 项 · 本页 ' + rows.length + ' 项 · 可卖合计 ' + plan.pool + ' / 阈值 ' + batch +
+        (plan.pool >= batch ? '（已够一包）' : '（还差 ' + (batch - plan.pool) + '）') +
+        (plan.blocked ? ' · 价格未达标 ' + plan.blocked + ' 条不计入' : '');
     }
     if (!rows.length) { box.innerHTML = '<div class="hint">没有匹配的渔获或材料。</div>'; return; }
     box.innerHTML = rows.map(function (o) {
       const r = items[o.id];
       const on = !!(r && r.on);
-      const keep = r ? autoSellKeep(r) : 0;
-      const avail = Math.max(0, o.have - keep);
+      const excess = r ? autoSellExcessOf(o.id, r) : 0;
+      const ok = !r || !!autoSellHitOf(o.id, r);
       const pct = o.s.base ? Math.round(o.s.price / o.s.base * 100) : 100;
       const summary = autoRuleText(o.id) || '不看价格';
       const status = !r ? '未设置'
         : (!on ? '已停用 · ' + summary
-          : summary + (avail > 0 ? ' · 可卖' + avail + (avail < batch ? '（差' + (batch - avail) + ' 条成包）' : '（可打包）') : ''));
+          : summary + (excess > 0 ? (' · 可卖' + excess + (ok ? '' : '（价格未达标，不计入打包）')) : ''));
       const protect = materialNeedsProtect(o.id) ? '<span class="asl-guard" title="稀有及以上品质材料：启用前会二次确认">⚠️ 保护</span>' : '';
       return '<div class="as-row' + (on ? ' on' : '') + '">' +
         '<input class="as-chk" type="checkbox" data-ason="' + esc(o.id) + '"' + (on ? ' checked' : '') +
           ' title="' + (r ? '勾选 / 取消即启用 / 停用（价格线与保留量保留）' : '点一下先设置规则') + '">' +
         '<span class="as-name ' + rarityClass(o.meta.rarity) + '">' + esc(o.meta.name) + protect + '</span>' +
-        '<span class="as-meta">💰' + o.s.price + ' · ' + pct + '% · 持有' + o.have + '</span>' +
+        '<span class="as-meta">💰' + o.s.price + ' · ' + pct + '% · 持有' + o.have +
+          (reservedCountOf(o.id) > 0 ? '（可用 ' + availCountOf(o.id) + '）' : '') + '</span>' +
         '<span class="as-rule">' + esc(status) + '</span>' +
         '<button class="mini' + (r ? ' primary-mini' : '') + '" data-as="' + esc(o.id) + '" title="设置「' + esc(o.meta.name) + '」的价格线与保留数量">设置</button></div>';
     }).join('');
@@ -3018,7 +2997,7 @@ window.UI = (function () {
     shopAuto.loaded = true;
     shopAuto.items = (r.data && r.data.items) || {};
     if (r.data && r.data.batch) shopAuto.batch = Number(r.data.batch) || shopAuto.batch;
-    if (r.data && r.data.inventory) S().inventory = r.data.inventory;
+    if (r.data && r.data.inventory) applyInvFrom(r.data);
     if (r.data && r.data.coins != null) S().player.coins = r.data.coins;
     if (msg) toast(msg + (r.data && r.data.sold ? '；已达标并打包售出 ' + r.data.sold.length + ' 项' : ''));
     fillAutoSellList(); renderShopSide(); renderShopGrid(); renderTopbar();
@@ -3077,6 +3056,7 @@ window.UI = (function () {
     grid.innerHTML = '';
     entries.forEach(function (o) {
       const id = o.id, s = o.s, meta = o.meta, have = o.have;
+      const avail = availCountOf(id);   // 普通通道可出售量（持有 − 大型/巨型预留）
       const ratio = s.base ? s.price / s.base : 1;
       const pct = Math.round(ratio * 100);
       const cls = ratio < 0.75 ? 'low' : ratio < 0.95 ? 'mid' : 'high';
@@ -3090,16 +3070,19 @@ window.UI = (function () {
         '<span class="sc-kind">' + esc(qualityName(meta)) + '</span>' + autoTag + '</div>' +
         '<div class="sc-price ' + cls + '">💰 ' + s.price + '<span class="base">基准 ' + s.base + '</span></div>' +
         '<div class="sc-bar"><i class="up" style="width:' + upPct + '%"></i><i style="width:' + fillPct + '%"></i></div>' +
-        '<div class="sc-pct">当前 ' + pct + '% · 持有 ' + have + ' · 今日售出 ' + (s.soldToday || 0) + '</div>';
+        '<div class="sc-pct">当前 ' + pct + '% · 持有 ' + have + (avail < have ? '（可用 ' + avail + '）' : '') + ' · 今日售出 ' + (s.soldToday || 0) + '</div>';
       card.title = '点击查看价格走势与交易量';
-      const sellN = Math.min(sellQty, have);
-      const btn = el('button', 'mini' + (have > 0 ? ' primary-mini' : ' locked'), have > 0 ? ('出售 ' + sellN + ' 个') : '无库存');
+      // v0.13.9：收购走普通通道（服务端按可用量校验），按钮与夹紧必须用可用量，
+      // 否则「持有 3（全是大型/巨型预留）」的鱼点出售必然收到 400「数量不足」。
+      const sellN = Math.min(sellQty, avail);
+      const btn = el('button', 'mini' + (avail > 0 ? ' primary-mini' : ' locked'), avail > 0 ? ('出售 ' + sellN + ' 个') : (have > 0 ? '仅体型档可卖' : '无库存'));
+      if (avail <= 0 && have > 0) btn.title = '这些鱼都是大型/巨型预留，普通通道卖不了：请到背包按「大型 / 巨型」行出售（有额外金币加成）';
       btn.addEventListener('click', function (ev) {
         ev.stopPropagation();
-        if (!(st.inventory[id] > 0)) return;
-        const n = Math.min(sellQty, st.inventory[id]);
+        if (!(availCountOf(id) > 0)) { toast(have > 0 ? '这条鱼都是大型/巨型预留，请到背包按体型档行出售' : '背包里没有可出售的数量', true); return; }
+        const n = Math.min(sellQty, availCountOf(id));
         call(window.Net.sell(id, n), function (r) { return '售出 ' + meta.name + ' ×' + n + '，获得 💰' + r.data.gain + '（单价 ' + r.data.unit + '）'; })
-          .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderShop(); } });
+          .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; applyInvFrom(r.data); st.shop = r.data.shop; if (r.data.bigfish !== undefined) st.bigfish = r.data.bigfish || {}; renderTopbar(); renderShop(); } });
       });
       card.appendChild(btn);
       card.addEventListener('click', function () { openShopModal(id); });
@@ -3118,6 +3101,40 @@ window.UI = (function () {
   }
   function autoSellRule(id) { return (shopAuto.items || {})[id] || null; }
   function autoSellKeep(rule) { return Math.max(0, Math.floor(Number(rule && rule.keep)) || 0); }
+  // 可卖余量：可用量（持有 − 大型/巨型预留）− 保留量。与服务端 autoSellExcess 同口径
+  function autoSellExcessOf(id, rule) {
+    const r = rule === undefined ? autoSellRule(id) : rule;
+    return Math.max(0, availCountOf(id) - autoSellKeep(r));
+  }
+  // 价格线判定（服务端 autoSellHit 的前端镜像：浮动接受值允许提前成交，最低钳到 1）
+  function autoSellHitOf(id, rule) {
+    const r = rule === undefined ? autoSellRule(id) : rule;
+    if (!r) return null;
+    const s = S().shop && S().shop[id];
+    const base = s ? (s.base || 0) : 0;
+    const price = unitPriceOf(id);
+    const pctLine = r.minPct != null ? Math.max(1, r.minPct - (Number(r.slackPct) || 0)) : null;
+    const priceLine = r.minPrice != null ? Math.max(1, r.minPrice - (Number(r.slackPrice) || 0)) : null;
+    if (pctLine == null && priceLine == null) return { price: price, base: base, by: '无条件' };
+    const pctOk = pctLine != null && base > 0 && price >= base * pctLine / 100;
+    const priceOk = priceLine != null && price >= priceLine;
+    return (pctOk || priceOk) ? { price: price, base: base, by: pctOk ? '基准' : '价格' } : null;
+  }
+  // 打包计划（与服务端 autoSellPlan 同口径）：只把**价格达标**的余量计入合计——
+  // 价格未达标的余量永远卖不掉，若计入就会把合计顶在阈值之上，变成每上一条鱼推一次。
+  function autoSellPlan() {
+    const items = shopAuto.items || {};
+    const out = { pool: 0, blocked: 0, ready: 0, online: 0, per: {} };
+    Object.keys(items).forEach(function (id) {
+      if (!hasAutoRule(id, itemMeta(id).kind)) return;
+      out.online++;
+      const excess = autoSellExcessOf(id, items[id]);
+      if (excess <= 0) return;
+      if (!autoSellHitOf(id, items[id])) { out.blocked += excess; out.per[id] = { excess: excess, ok: false }; return; }
+      out.pool += excess; out.ready++; out.per[id] = { excess: excess, ok: true };
+    });
+    return out;
+  }
   function hasAutoRule(id, kind) {
     if (kind !== 'fish' && kind !== 'material') return false;
     const r = autoSellRule(id);
@@ -3140,7 +3157,10 @@ window.UI = (function () {
     if (!on.length) return '未启用：勾选渔获或材料即可自动出售';
     const fish = on.filter(function (id) { return itemMeta(id).kind === 'fish'; }).length;
     const mat = on.filter(function (id) { return itemMeta(id).kind === 'material'; }).length;
-    return '已启用 ' + on.length + ' 项（渔获 ' + fish + ' / 材料 ' + mat + '）· 攒够 ' + autoSellBatch() + ' 条打包成交';
+    const plan = autoSellPlan();
+    const batch = autoSellBatch();
+    return '已启用 ' + on.length + ' 项（渔获 ' + fish + ' / 材料 ' + mat + '）· 可卖合计 ' + plan.pool + ' / 阈值 ' + batch +
+      (plan.pool >= batch ? '（已够一包）' : '（还差 ' + (batch - plan.pool) + '）');
   }
   // 单物品自动售出设置弹窗
   function openShopAutoModal(id) {
@@ -3155,14 +3175,16 @@ window.UI = (function () {
     const box = el('div', 'modal-box confirm-modal');
     box.innerHTML = '<div class="modal-head"><span class="modal-title">🤖 自动售出 · ' + esc(meta.name) + '</span></div>' +
       '<div class="modal-body">' +
-      '<div class="hint" style="margin-bottom:8px">可卖余量（持有 ' + have + ' − 保留）攒够 <b>' + batch + '</b> 条、且达到价格线时，按系统行情整批卖出。</div>' +
+      '<div class="hint" style="margin-bottom:8px">可卖余量 = 可用量 − 保留量；可用量 = 持有 ' + have +
+      (reservedCountOf(id) > 0 ? ' − 大型/巨型预留 ' + reservedCountOf(id) : '') +
+      '。它与其它已启用物品的可卖余量<b>合计</b>攒够 <b>' + batch + '</b> 条、且本物品达到价格线时，按系统行情一起打包卖出。</div>' +
       '<label class="sa-switch"><input type="checkbox" id="as-on"' + (!cur || cur.on ? ' checked' : '') + '><span>启用「' + esc(meta.name) + '」自动售出</span></label>' +
       '<div class="mgr-row"><label>基准 ≥</label><input id="as-pct" class="ipt mk-num" type="number" min="1" value="' + (cur && cur.minPct != null ? cur.minPct : '') + '" placeholder="留空=不看" /><span class="hint">%（基准价的百分比）</span></div>' +
       '<div class="mgr-row"><label>价格 ≥</label><input id="as-price" class="ipt mk-num" type="number" min="1" value="' + (cur && cur.minPrice != null ? cur.minPrice : '') + '" placeholder="留空=不看" /><span class="hint">💰（绝对价格）</span></div>' +
       '<div class="mgr-row"><label>浮动</label><input id="as-slack-pct" class="ipt mk-num" type="number" min="0" value="' + (cur && cur.slackPct != null ? cur.slackPct : 0) + '" /><span class="hint">%（百分比线提前量）</span>' +
       '<input id="as-slack-price" class="ipt mk-num" type="number" min="0" value="' + (cur && cur.slackPrice != null ? cur.slackPrice : 0) + '" /><span class="hint">💰（价格线提前量）</span></div>' +
       '<div class="mgr-row"><label>保留数量</label><input id="as-keep" class="ipt mk-num" type="number" min="0" value="' + autoSellKeep(cur) + '" /><span class="hint">个（最少留下不卖，只卖超出的部分）</span></div>' +
-      '<div class="hint" style="margin:6px 0">价格线两条都留空 = 不看价格：可卖余量攒够一包就卖（材料常用，如「留 100 个诱饵包，多的卖掉」）。浮动 = 行情回落到「阈值 − 浮动」即成交，避免错过。</div>' +
+      '<div class="hint" style="margin:6px 0">价格线两条都留空 = 不看价格：可卖余量计入合计，合计攒够一包就卖（材料常用，如「留 100 个诱饵包，多的卖掉」）。浮动 = 行情回落到「阈值 − 浮动」即成交，避免错过。</div>' +
       '<div class="cf-actions"><button class="btn mini cf-no">取消</button>' +
       '<button class="btn mini danger" id="as-clear">清除规则</button>' +
       '<button class="btn primary" id="as-save">保存</button></div>' +
@@ -3275,7 +3297,7 @@ window.UI = (function () {
       const cb = el('button', 'mini', '下架');
       cb.title = '下架取回物品（上架费不退）';
       cb.addEventListener('click', function () {
-        call(window.Net.marketCancel(l.lid), '已下架，物品退回背包（上架费不退）').then(function (r) { if (r && r.ok) { st.inventory = r.data.inventory; renderTopbar(); renderView(); } });
+        call(window.Net.marketCancel(l.lid), '已下架，物品退回背包（上架费不退）').then(function (r) { if (r && r.ok) { applyInvFrom(r.data); renderTopbar(); renderView(); } });
       });
       acts.appendChild(cb);
     } else {
@@ -3299,7 +3321,7 @@ window.UI = (function () {
             if (!ok) return;
             call(window.Net.marketBuy(l.lid, n), '购买成功：' + l.name + ' ×' + n).then(function (r) {
               if (r && r.ok) {
-                st.player.coins = r.data.coins; st.inventory = r.data.inventory;
+                st.player.coins = r.data.coins; applyInvFrom(r.data);
                 if (r.data.rodSlots) { st.rodSlots = r.data.rodSlots; }
                 renderTopbar(); renderView();
               }
@@ -3585,7 +3607,7 @@ window.UI = (function () {
       '<span class="mkt-sell-name ' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
       '<span class="mkt-lock">' + rodLockBadge(id) + '</span>' + mktSellAffHtml(meta) +
       '</span>' +
-      '<span class="cnt">×' + st.inventory[id] + '</span>' +
+      '<span class="cnt">×' + availCountOf(id) + '</span>' + (reservedCountOf(id) > 0 ? '<span class="cnt inv-total" title="背包总量（含大型/巨型预留）">总 ×' + (st.inventory[id] || 0) + '</span>' : '') +
       '<span class="unit-price">' + unitPriceOf(id) + '💰</span>';
     row.querySelector('input[type=checkbox]').addEventListener('change', function (e) {
       if (e.target.checked) mktSellPick[id] = true; else delete mktSellPick[id];
@@ -3692,7 +3714,7 @@ window.UI = (function () {
       if (row) {
         delete rows[id];
         const cnt = row.querySelector('.cnt');
-        const cntTxt = '×' + st.inventory[id];
+        const cntTxt = '×' + availCountOf(id);   // v0.13.9：与上架校验同口径（可用量）
         if (cnt && cnt.textContent !== cntTxt) cnt.textContent = cntTxt;
         const up = row.querySelector('.unit-price');
         const upTxt = unitPriceOf(id) + '💰';
@@ -3713,17 +3735,23 @@ window.UI = (function () {
     return true;
   }
   // 一键上架子窗口：统一时长 + 价格倍率（或各物品现价），逐件挂单并汇总结果
-  function openBatchListModal(ids) {
+  function openBatchListModal(rawIds) {
     const st = S();
+    // v0.13.9：上架走普通通道，只按**可用量**上架（持有 − 大型/巨型预留）——
+    // 与 /api/market/list 的校验同口径；可用量为 0 的（纯预留 / 已卖光）不列进来。
+    const ids = (rawIds || []).filter(function (id) { return availCountOf(id) > 0; });
+    if (!ids.length) { toast('选中的物品没有可上架数量（可能都是大型/巨型预留）', true); return; }
     closeOverlays();
     const overlay = buildOverlay(function () { closeOverlays(); });
     const box = el('div', 'modal-box shop-modal batch-list-modal');
     let hours = 6;
     const rowsHtml = ids.map(function (id) {
       const meta = itemMeta(id);
-      const qty = st.inventory[id] || 0;
+      const qty = availCountOf(id);
+      const totalHeld = st.inventory[id] || 0;
       return '<div class="bl-row"><span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
-        '<span class="cnt">×' + qty + '</span><span class="bl-unit" data-id="' + esc(id) + '">' + unitPriceOf(id) + '💰</span></div>';
+        '<span class="cnt">×' + qty + '</span>' + (totalHeld > qty ? '<span class="cnt inv-total" title="背包总量（含大型/巨型预留）">总 ×' + totalHeld + '</span>' : '') +
+        '<span class="bl-unit" data-id="' + esc(id) + '">' + unitPriceOf(id) + '💰</span></div>';
     }).join('');
     box.innerHTML = '<div class="modal-head"><span class="modal-title">⚡ 一键上架（' + ids.length + ' 种）</span>' +
       '<button class="mini modal-close">✕ 关闭</button></div>' +
@@ -3737,7 +3765,7 @@ window.UI = (function () {
       '<div class="bl-rows">' + rowsHtml + '</div>' +
       '<div class="bulk-est" id="bl-est">—</div>' +
       '<button class="primary" id="bl-go">确认一键上架</button>' +
-      '<div class="hint" style="margin-top:8px">每种按「全部持有数量」上架；上架费 = 定价总额 × 时长费率，下架/过期不退。</div>' +
+      '<div class="hint" style="margin-top:8px">每种按「可用数量」（持有 − 大型/巨型预留）上架；上架费 = 定价总额 × 时长费率，下架/过期不退。</div>' +
       '</div>';
     overlay.appendChild(box);
     document.body.appendChild(overlay);
@@ -3748,7 +3776,7 @@ window.UI = (function () {
       const rate = { 6: 0.01, 12: 0.03, 24: 0.05 }[hours];
       let total = 0, fee = 0;
       ids.forEach(function (id) {
-        const qty = st.inventory[id] || 0;
+        const qty = availCountOf(id);
         const price = Math.max(1, Math.round(unitPriceOf(id) * mult));
         total += price * qty;
         fee += Math.ceil(price * qty * rate);
@@ -3776,13 +3804,13 @@ window.UI = (function () {
       let ok = 0, fail = 0, failMsg = '', chain = Promise.resolve();
       ids.forEach(function (id) {
         chain = chain.then(function () {
-          const qty = st.inventory[id] || 0;
+          const qty = availCountOf(id);
           if (qty <= 0) return null;
           const price = Math.max(1, Math.round(unitPriceOf(id) * mult));
           return window.Net.marketList(id, qty, price, hours).then(function (r) {
             if (r && r.ok) {
               ok++;
-              st.player.coins = r.data.coins; st.inventory = r.data.inventory;
+              st.player.coins = r.data.coins; applyInvFrom(r.data);
             } else {
               fail++;
               if (!failMsg) failMsg = (r && r.data && r.data.error) || '失败';
@@ -3888,7 +3916,7 @@ window.UI = (function () {
     // 自动售出 / 其它页面卖掉，列表里还是旧数量，确认时逐条被服务器拒掉（表现是「已完成 0 件」）。
     window.Net.fetchMe().then(function (r) {
       if (r && r.ok && r.data) {
-        if (r.data.inventory) st.inventory = r.data.inventory;
+        if (r.data.inventory) applyInvFrom(r.data);
         if (r.data.bigfish !== undefined) st.bigfish = r.data.bigfish || {};
         if (r.data.coins != null) st.player.coins = r.data.coins;
       }
@@ -4084,7 +4112,7 @@ window.UI = (function () {
       });
       refreshEst();
     }
-    box.querySelector('#bulk-all').addEventListener('click', function () { cands.forEach(function (id) { bulkSel[id] = st.inventory[id] || 0; }); buildRows(); refreshEst(); });
+    box.querySelector('#bulk-all').addEventListener('click', function () { cands.forEach(function (id) { bulkSel[id] = bulkMaxQtyOf(id); }); buildRows(); refreshEst(); });
     box.querySelector('#bulk-none').addEventListener('click', function () { bulkSel = {}; buildRows(); refreshEst(); });
     box.querySelector('#bulk-invert').addEventListener('click', function () {
       const inv = {};
@@ -4122,7 +4150,7 @@ window.UI = (function () {
         return window.Net.sell(it.id, qty, tier === 'all' ? null : tier).then(function (r) {
           if (r && r.ok) {
             gain += r.data.gain; sold += qty;
-            st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop;
+            st.player.coins = r.data.coins; applyInvFrom(r.data); st.shop = r.data.shop;
             if (r.data.bigfish !== undefined) st.bigfish = r.data.bigfish || {};  // 预留计数同步（此前被丢掉）
           } else {
             skipped++;
@@ -4198,7 +4226,7 @@ window.UI = (function () {
         if (!ok) return;
         closeBatchSell();
         call(window.Net.sell(id, q), function (r) { return '售出 ' + meta.name + ' ×' + q + '，获得 💰' + r.data.gain; })
-          .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; st.inventory = r.data.inventory; st.shop = r.data.shop; renderTopbar(); renderView(); } });
+          .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; applyInvFrom(r.data); st.shop = r.data.shop; renderTopbar(); renderView(); } });
       });
     });
 
@@ -4630,12 +4658,17 @@ window.UI = (function () {
     const st = S();
     const row = document.querySelector('.inv-page-row[data-id="' + id + '"]');
     if (!row) return false;
-    const cnt = st.inventory[id] || 0;
+    const meta = itemMeta(id);
+    const total = st.inventory[id] || 0;
+    // v0.13.9：一般行代表「普通量」，与 renderInventory / 服务端校验同口径（鱼类扣掉大型/巨型预留）
+    const cnt = meta.kind === 'fish' ? Math.min(total, availCountOf(id)) : total;
     if (cnt > 0) {
       const c = row.querySelector('.cnt');
       if (c) c.textContent = '×' + cnt;
       const sub = row.querySelector('.subtotal');
       if (sub) sub.textContent = '小计 ' + (unitPriceOf(id) * cnt) + '💰';
+      const tot = row.querySelector('.inv-total');
+      if (tot) tot.textContent = '总 ×' + total;
     } else {
       const gk = row.getAttribute('data-group');
       row.remove();
@@ -4655,7 +4688,7 @@ window.UI = (function () {
     }
     // 分类计数 / 右栏概览：按服务器权威的 inventory 重算
     const kinds = { fish: 0, material: 0, chest: 0, component: 0 };
-    let kindsAll = 0, totalCnt = 0, totalValue = 0;
+    let kindsAll = 0, totalCnt = 0, totalValue = 0, totalReserved = 0;
     Object.keys(st.inventory).forEach(function (k) {
       if ((st.inventory[k] || 0) <= 0) return;
       kindsAll++;
@@ -4663,6 +4696,7 @@ window.UI = (function () {
       totalValue += itemMeta(k).price * st.inventory[k];
       const kk = itemMeta(k).kind;
       if (kinds[kk] != null) kinds[kk]++;
+      if (kk === 'fish') totalReserved += reservedCountOf(k);
     });
     const tabsEl = document.querySelector('.inv-page-tabs');
     if (tabsEl) {
@@ -4677,6 +4711,12 @@ window.UI = (function () {
       boxes[0].textContent = kindsAll;
       boxes[1].textContent = totalCnt;
       boxes[2].textContent = totalValue;
+    }
+    const rsv = document.querySelector('.col-side .inv-reserved');
+    if (rsv) {
+      rsv.innerHTML = totalReserved > 0
+        ? '其中大型/巨型预留 <b>' + totalReserved + '</b> 件（共 ' + (totalCnt - totalReserved) + ' 件普通量可在本页出售 / 上架 / 交易）'
+        : '';
     }
     const bd = document.querySelector('.col-side .inv-breakdown');
     if (bd) {
@@ -4802,6 +4842,7 @@ window.UI = (function () {
       '<div class="cd-line">' + esc(itemKindName(it)) + ' · ' + esc(qualityName(it)) + ' · 基准价 ' + (it.price || 0) + '💰' +
       (shopP ? ' · 现价 <b>' + shopP.price + '💰</b>' : '') + '</div>' +
       '<div class="cd-line">背包持有 <b>×' + (st.inventory[id] || 0) + '</b>' +
+      (reservedCountOf(id) > 0 ? '（其中大型/巨型预留 ' + reservedCountOf(id) + '，可出售/上架/交易 ' + availCountOf(id) + '）' : '') +
       (it.size ? ' · 体型 ' + it.size[0] + '~' + it.size[1] + ' cm' : '') + '</div>' +
       (rec && it.kind !== 'chest'
         ? '<div class="cd-line muted">图鉴：' + (it.kind === 'fish' ? '已钓 ' : '已获得 ') + rec.count + ' 次（首获 ' + timeStr(rec.first) + '）' +
@@ -4866,7 +4907,8 @@ window.UI = (function () {
       tip.innerHTML = itemIconHtml(it, 'it-icon') +
         '<div class="it-name ' + qualityClass(it) + '">' + esc(it.name) + '</div>' +
         '<div class="it-line">' + esc(itemKindName(it)) + ' · ' + esc(qualityName(it)) + ' · ' +
-        (shopP ? '现价 ' + shopP.price + '💰' : '基准价 ' + (it.price || 0) + '💰') + ' · 持有 ×' + (st.inventory[id] || 0) + '</div>' +
+        (shopP ? '现价 ' + shopP.price + '💰' : '基准价 ' + (it.price || 0) + '💰') + ' · 持有 ×' + (st.inventory[id] || 0) +
+        (reservedCountOf(id) > 0 ? '（可用 ' + availCountOf(id) + '）' : '') + '</div>' +
         '<div class="it-desc">' + esc(itemBriefText(it)) + '</div>' +
         '<div class="it-hint">点击查看完整简介</div>';
       itemTipId = id;
@@ -4892,6 +4934,9 @@ window.UI = (function () {
   function renderInventory() {
     const main = $('main');
     const st = S();
+    // v0.13.9：只认「持有 > 0」的条目——服务端 invAdd 减到 0 会删键，但管理后台快照 /
+    // 开发种子接口可能留下 0 件键；全量渲染与 patchInventoryRow 必须同口径，否则同一页两套数字。
+    const invKeys = Object.keys(st.inventory).filter(function (id) { return (st.inventory[id] || 0) > 0; });
     // 进入背包即视为已读订阅提醒（清红标与图标闪烁）
     clearSubAlerts(false);
     // v0.13.8：子筛选只在「点开的大分类」下显示，切分类时把该分类用不到的筛选归一清零——
@@ -4921,7 +4966,7 @@ window.UI = (function () {
         toast('售出 ' + itemMeta(id).name + ' ×' + qty + (tier ? '（' + (tier === 'G' ? '巨型' : '大型') + '）' : '') +
           '，获得 💰' + r.data.gain + (r.data.bonus ? '（含体型加成 +' + r.data.bonus + '💰）' : ''));
         const st2 = S();
-        st2.player.coins = r.data.coins; st2.inventory = r.data.inventory; st2.shop = r.data.shop;
+        st2.player.coins = r.data.coins; applyInvFrom(r.data); st2.shop = r.data.shop;
         if (r.data.bigfish !== undefined) st2.bigfish = r.data.bigfish || {};
         renderTopbar();
         if (tier || !patchInventoryRow(id)) renderView();   // 档位行/行不在了（例如被筛选隐藏）才退回整页重绘
@@ -4931,12 +4976,12 @@ window.UI = (function () {
 
     // 分类页签（重绘间保留当前选择）
     const kindCount = { fish: 0, material: 0, chest: 0, component: 0 };
-    Object.keys(st.inventory).forEach(function (id) {
+    invKeys.forEach(function (id) {
       const k = itemMeta(id).kind;
       if (kindCount[k] != null) kindCount[k] += 1;
     });
     const tabs = el('div', 'inv-cats inv-page-tabs');
-    [['all', '📦 全部', Object.keys(st.inventory).length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['chest', '🎁 宝匣', kindCount.chest], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
+    [['all', '📦 全部', invKeys.length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['chest', '🎁 宝匣', kindCount.chest], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
       const b = el('button', 'inv-cat' + (invCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
       b.addEventListener('click', function () { if (invCategory !== kv[0]) { invCategory = kv[0]; renderView(); } });
       tabs.appendChild(b);
@@ -4947,7 +4992,7 @@ window.UI = (function () {
     colMain.appendChild(tabs);
     colMain.appendChild(renderInvSubFilters(st)); // 子分类行（品质 / 部位 / 词条+数值）
     const list = el('div', 'inv-page');
-    let keys = Object.keys(st.inventory);
+    let keys = invKeys.slice();
     if (invCategory !== 'all') keys = keys.filter(function (id) { return itemMeta(id).kind === invCategory; });
     if (invCategory === 'component') {
       // 组件：一级按部位、二级按词条+数值范围筛选；列表按底材名分组可展开
@@ -4995,41 +5040,49 @@ window.UI = (function () {
       keys.sort(function (a, b) { return unitPrice(b) - unitPrice(a) || (a < b ? -1 : 1); });
       keys.forEach(function (id) {
         const meta = itemMeta(id);
-        const cnt = st.inventory[id];
-        const kindName = meta.kind === 'fish' ? '一般' : meta.kind === 'material' ? '材料' : meta.kind === 'chest' ? '宝匣' : meta.kind === 'component' ? '组件' : '物品';
-        const row = el('div', 'inv-row inv-page-row');
-        row.setAttribute('data-id', id);           // 出售后就地更新这一行（不整页重建）
-        row.innerHTML =
-          '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
-          '<span class="kind-tag' + (meta.kind === 'fish' ? ' tag-normal' : '') + '">' + kindName + '</span>' +
-          rodLockBadge(id) +
-          '<span class="cnt">×' + cnt + '</span>' +
-          '<span class="unit-price">现价 ' + unitPrice(id) + '💰</span>' +
-          '<span class="subtotal">小计 ' + itemValue(id) + '💰</span>';
-        const acts = el('span', 'inv-acts');
-        // 宝匣只能市集交易（系统商店不收购），所以不出售按钮，只给「上架」+ 前往开箱页
-        if (meta.kind !== 'chest') {
-          const sellBtn = el('button', 'mini primary-mini', '出售 1');
-          sellBtn.title = '按当前系统收购价出售 1 个';
-          sellBtn.addEventListener('click', function () { doSell(id, 1); });
-          acts.appendChild(sellBtn);
-          const sellAll = el('button', 'mini', '批量出售');
-          sellAll.title = '打开批量出售子窗口：可填数量或用滑块，并查看价格趋势';
-          sellAll.addEventListener('click', function () { openBatchSellModal(id); });
-          acts.appendChild(sellAll);
-        } else {
-          const goChest = el('button', 'mini', '去开箱');
-          goChest.title = '宝匣只能在「⚒ 工坊 · 开箱」页开箱；系统商店不收购宝匣';
-          goChest.addEventListener('click', function () { currentView = 'workshop'; wsTab = 'open'; renderNav(); renderView(); loadViewData('workshop'); });
-          acts.appendChild(goChest);
+        const total = st.inventory[id];
+        // v0.13.9：一般行只代表「普通量」= 总量 − 大型/巨型预留（此前显示总量，与旁边档位行重复计数、
+        // 也与「出售 1 / 批量出售」的可用量校验口径不一致：全预留的鱼点出售必然被服务端拒）。
+        // 普通量为 0 的鱼不画这一行，只留下面的档位行。
+        const cnt = meta.kind === 'fish' ? availCountOf(id) : total;
+        // ⚠️ 普通量为 0 时**只跳过这一行**，不能 return —— 下面的体型档行还要照常渲染
+        if (cnt > 0) {
+          const kindName = meta.kind === 'fish' ? '一般' : meta.kind === 'material' ? '材料' : meta.kind === 'chest' ? '宝匣' : meta.kind === 'component' ? '组件' : '物品';
+          const row = el('div', 'inv-row inv-page-row');
+          row.setAttribute('data-id', id);           // 出售后就地更新这一行（不整页重建）
+          row.innerHTML =
+            '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
+            '<span class="kind-tag' + (meta.kind === 'fish' ? ' tag-normal' : '') + '">' + kindName + '</span>' +
+            rodLockBadge(id) +
+            '<span class="cnt">×' + cnt + '</span>' +
+            '<span class="unit-price">现价 ' + unitPrice(id) + '💰</span>' +
+            '<span class="subtotal">小计 ' + (unitPrice(id) * cnt) + '💰</span>' +
+            (meta.kind === 'fish' && total > cnt ? '<span class="inv-total" title="背包总量（含大型/巨型预留）">总 ×' + total + '</span>' : '');
+          const acts = el('span', 'inv-acts');
+          // 宝匣只能市集交易（系统商店不收购），所以不出售按钮，只给「上架」+ 前往开箱页
+          if (meta.kind !== 'chest') {
+            const sellBtn = el('button', 'mini primary-mini', '出售 1');
+            sellBtn.title = '按当前系统收购价出售 1 个';
+            sellBtn.addEventListener('click', function () { doSell(id, 1); });
+            acts.appendChild(sellBtn);
+            const sellAll = el('button', 'mini', '批量出售');
+            sellAll.title = '打开批量出售子窗口：可填数量或用滑块，并查看价格趋势';
+            sellAll.addEventListener('click', function () { openBatchSellModal(id); });
+            acts.appendChild(sellAll);
+          } else {
+            const goChest = el('button', 'mini', '去开箱');
+            goChest.title = '宝匣只能在「⚒ 工坊 · 开箱」页开箱；系统商店不收购宝匣';
+            goChest.addEventListener('click', function () { currentView = 'workshop'; wsTab = 'open'; renderNav(); renderView(); loadViewData('workshop'); });
+            acts.appendChild(goChest);
+          }
+          const lb = el('button', 'mini', '上架');
+          lb.title = '挂到开放市集（选择时长，支付对应上架费，下架不退）';
+          lb.addEventListener('click', function () { openListModal(id); });
+          acts.appendChild(lb);
+          row.appendChild(acts);
+          wireItemIntro(row, id);   // 悬停出简介浮标 + 点击开完整简介（鱼 / 材料 / 宝匣）
+          list.appendChild(row);
         }
-        const lb = el('button', 'mini', '上架');
-        lb.title = '挂到开放市集（选择时长，支付对应上架费，下架不退）';
-        lb.addEventListener('click', function () { openListModal(id); });
-        acts.appendChild(lb);
-        row.appendChild(acts);
-        wireItemIntro(row, id);   // 悬停出简介浮标 + 点击开完整简介（鱼 / 材料 / 宝匣）
-        list.appendChild(row);
         // v0.13.6：大型/巨型鱼单独存放——紧跟普通行之后各出一行带标签的独立行，出售走加成通道
         if (meta.kind === 'fish' && reservedOf(id) > 0) {
           [['L', '大型', 'tag-large'], ['G', '巨型', 'tag-giant']].forEach(function (tk) {
@@ -5062,18 +5115,24 @@ window.UI = (function () {
 
     const side = el('div', 'col-side');
     side.appendChild(el('h3', null, '📊 背包概览'));
-    const kinds = {}; let totalCnt = 0, totalValue = 0;
-    Object.keys(st.inventory).forEach(function (id) {
+    const kinds = {}; let totalCnt = 0, totalValue = 0, totalReserved = 0;
+    invKeys.forEach(function (id) {
       kinds[itemMeta(id).kind] = (kinds[itemMeta(id).kind] || 0) + 1;
       totalCnt += st.inventory[id];
       totalValue += itemMeta(id).price * st.inventory[id]; // 预估总价：按基准价，不随市场浮动
+      totalReserved += itemMeta(id).kind === 'fish' ? reservedOf(id) : 0;
     });
     const summary = el('div', 'codex-summary');
     summary.innerHTML =
-      '<div class="cs-box"><b>' + Object.keys(st.inventory).length + '</b><span>物品种类</span></div>' +
+      '<div class="cs-box"><b>' + invKeys.length + '</b><span>物品种类</span></div>' +
       '<div class="cs-box"><b>' + totalCnt + '</b><span>总件数</span></div>' +
       '<div class="cs-box"><b>' + totalValue + '</b><span>预估总价（基准）</span></div>';
     side.appendChild(summary);
+    // 大型/巨型鱼单独预留（普通出售 / 上架 / 交易动不了它们）——概览里明说，免得对不上列表数字
+    side.appendChild(el('div', 'hint inv-reserved',
+      totalReserved > 0
+        ? '其中大型/巨型预留 <b>' + totalReserved + '</b> 件（共 ' + (totalCnt - totalReserved) + ' 件普通量可在本页出售 / 上架 / 交易）'
+        : ''));
 
     // 一键出售（预览弹窗）+ 组件订阅提醒入口
     const bulk = el('div', 'bulk-sell');
@@ -5111,7 +5170,7 @@ window.UI = (function () {
         cb.title = '下架取回物品（上架费不退）';
         cb.addEventListener('click', function () {
           call(window.Net.marketCancel(l.lid), '已下架，物品退回背包（上架费不退）').then(function (r) {
-            if (r && r.ok) { st.inventory = r.data.inventory; renderTopbar(); renderView(); }
+            if (r && r.ok) { applyInvFrom(r.data); renderTopbar(); renderView(); }
           });
         });
         acts.appendChild(cb);
@@ -5161,18 +5220,19 @@ window.UI = (function () {
   let tradeDraft = { tid: null, sel: {} };
   let tradePickCat = 'all'; // 提供物品列表的分类页签（全部/鱼类/材料/宝匣/组件）
   // 提供物品列表的细分筛选（v0.13.8：与背包同一套口径与逻辑）——
-  // 点开大分类才出现对应细分：鱼类＝品质+体型档，材料/宝匣＝品质，组件＝品质+部位+词条。
-  let tradePickRar = 'all', tradePickTier = 'all', tradePickPart = 'all';
+  // 点开大分类才出现对应细分：材料/宝匣＝品质，组件＝品质+部位+词条。
+  // v0.13.9：鱼类不再有「体型档」行——大型/巨型预留走普通通道交易不了（服务端按可用量校验），
+  // 那个筛选只会列出选不中的鱼；鱼现在只有「品质」一行。
+  let tradePickRar = 'all', tradePickPart = 'all';
   let tradePickAffixCount = 'all', tradePickAffixType = 'all';
   let tradePickAffixMin = '', tradePickAffixMax = '';
   function tradePickAffixActive() { return tradePickAffixType !== 'all' || tradePickAffixMin !== '' || tradePickAffixMax !== ''; }
   function normalizeTradePickFilters() {
     if (tradePickCat === 'all') {
-      tradePickRar = 'all'; tradePickTier = 'all'; tradePickPart = 'all';
+      tradePickRar = 'all'; tradePickPart = 'all';
       tradePickAffixCount = 'all'; tradePickAffixType = 'all'; tradePickAffixMin = ''; tradePickAffixMax = '';
       return;
     }
-    if (tradePickCat !== 'fish') tradePickTier = 'all';
     if (tradePickCat !== 'component') {
       tradePickPart = 'all'; tradePickAffixCount = 'all'; tradePickAffixType = 'all';
       tradePickAffixMin = ''; tradePickAffixMax = '';
@@ -5181,8 +5241,10 @@ window.UI = (function () {
   }
   function tradePickMatch(id) {
     const m = itemMeta(id);
+    // v0.13.9：交易走普通通道（服务端按可用量校验）→ 可用量为 0 的（大型/巨型预留、已卖光）不可交易，
+    // 不出现在列表里；也因此不再提供「体型档」筛选（那个筛选只会列出交易不了的大鱼）。
+    if (availCountOf(id) <= 0) return false;
     if (tradePickCat !== 'all' && m.kind !== tradePickCat) return false;
-    if (tradePickCat === 'fish' && tradePickTier !== 'all' && reservedCountOf(id, tradePickTier) <= 0) return false;
     if (tradePickRar !== 'all' && m.rarity !== tradePickRar) return false;
     if (tradePickCat !== 'component') return true;
     if (tradePickPart !== 'all' && (m.part || '') !== tradePickPart) return false;
@@ -5203,7 +5265,7 @@ window.UI = (function () {
   function tradePickSubFilters() {
     const row = el('div', 'inv-subfilters tp-subfilters');
     if (tradePickCat === 'all') {
-      row.appendChild(el('div', 'hint', '点开上面的分类后再选细分：鱼类＝品质 / 体型档，材料与宝匣＝品质，组件＝部位 / 词条。'));
+      row.appendChild(el('div', 'hint', '点开上面的分类后再选细分：鱼类＝品质，材料与宝匣＝品质，组件＝部位 / 词条。'));
       return row;
     }
     const redraw = function () { if (tradeModalRedraw) tradeModalRedraw(); else renderView(); };
@@ -5212,6 +5274,7 @@ window.UI = (function () {
     const cnt = { all: 0 };
     keys.forEach(function (id) {
       if (itemMeta(id).kind !== tradePickCat) return;
+      if (availCountOf(id) <= 0) return;      // 与列表同口径：不可交易的不计数
       cnt.all += 1;
       const r = itemMeta(id).rarity;
       cnt[r] = (cnt[r] || 0) + 1;
@@ -5224,19 +5287,6 @@ window.UI = (function () {
       rarRow.appendChild(b);
     });
     row.appendChild(rarRow);
-    if (tradePickCat === 'fish') {
-      const tierRow = el('div', 'inv-subrow');
-      tierRow.appendChild(el('span', 'sub-label', '体型档'));
-      [['all', '全部'], ['L', '大型'], ['G', '巨型']].forEach(function (kv) {
-        const n = kv[0] === 'all' ? 0 : keys.reduce(function (s2, id) {
-          return itemMeta(id).kind === 'fish' ? s2 + reservedCountOf(id, kv[0]) : s2;
-        }, 0);
-        const b = el('button', 'inv-cat sub' + (tradePickTier === kv[0] ? ' on' : ''), kv[1] + ' ' + n);
-        b.addEventListener('click', function () { if (tradePickTier !== kv[0]) { tradePickTier = kv[0]; redraw(); } });
-        tierRow.appendChild(b);
-      });
-      row.appendChild(tierRow);
-    }
     if (tradePickCat === 'component') {
       const partRow = el('div', 'inv-subrow');
       partRow.appendChild(el('span', 'sub-label', '部位'));
@@ -5602,12 +5652,14 @@ window.UI = (function () {
   // 选择写入模块级草稿，重绘不丢失。点「更新我的提供」提交后，服务器让双方确认作废并进入 3s 冷却。
   function tradePicker(t, sel) {
     const st = S();
-    // 清理已不在背包中的草稿项（例如中途把物品卖掉了）
-    Object.keys(sel).forEach(function (id) { if (!(st.inventory[id] > 0)) delete sel[id]; });
+    // 清理已不在背包中 / 已不可交易的草稿项（例如中途把物品卖掉，或全剩大型/巨型预留）
+    Object.keys(sel).forEach(function (id) { if (!(st.inventory[id] > 0) || availCountOf(id) <= 0) delete sel[id]; });
     const box = el('div', 'trade-picker');
     box.innerHTML = '<div class="tp-head">选择我要提供的物品（改动会重置双方确认）</div>';
-    const allKeys = Object.keys(st.inventory);
-    if (allKeys.length === 0) { box.appendChild(el('div', 'hint', '背包为空，无法提供物品。')); return box; }
+    // v0.13.9：可提供的 = 可用量 > 0 的（大型/巨型预留与已卖光的不列出，服务端也会按可用量拒）
+    const allKeys = Object.keys(st.inventory).filter(function (id) { return availCountOf(id) > 0; });
+    if (allKeys.length === 0) { box.appendChild(el('div', 'hint', '背包里没有可交易的物品（大型/巨型预留的鱼走普通通道交易不了）。')); return box; }
+    const hiddenReserved = Object.keys(st.inventory).filter(function (id) { return (st.inventory[id] || 0) > 0 && availCountOf(id) <= 0; }).length;
 
     // 分类页签：与背包一致的「全部 / 鱼类 / 材料 / 组件」
     const kindCount = { fish: 0, material: 0, chest: 0, component: 0 };
@@ -5621,6 +5673,7 @@ window.UI = (function () {
     box.appendChild(tabs);
     normalizeTradePickFilters();
     box.appendChild(tradePickSubFilters());
+    if (hiddenReserved) box.appendChild(el('div', 'hint', '另有 ' + hiddenReserved + ' 种物品（大型/巨型预留或已售罄）不可交易，未列入。'));
 
     let keys = allKeys.filter(tradePickMatch);
     // 排序：组件在前（词条可比较），其余按现价降序；数量/勾选变化不改变行位置
@@ -5634,7 +5687,9 @@ window.UI = (function () {
     const rows = el('div', 'tp-rows');
     keys.forEach(function (id) {
       const meta = itemMeta(id);
-      const have = st.inventory[id];
+      // v0.13.9：交易也走普通通道（服务端按可用量校验），上限与夹紧都用可用量
+      const have = availCountOf(id);
+      const totalHeld = st.inventory[id] || 0;
       const checked = sel[id] != null && sel[id] > 0;
       const qty = checked ? Math.min(sel[id], have) : 1;
       const row = el('div', 'tp-row');
@@ -5648,7 +5703,7 @@ window.UI = (function () {
         : '';
       row.innerHTML = '<label class="tp-name"><input type="checkbox"' + (checked ? ' checked' : '') + ' /> <span class="' +
         qualityClass(meta) + '">' + esc(meta.name) + '</span>' + rodLockBadge(id) + '</label>' + affHtml +
-        '<span class="tp-have">持有 ' + have + '</span>' +
+        '<span class="tp-have">持有 ' + have + (totalHeld > have ? '（总 ' + totalHeld + '）' : '') + '</span>' +
         '<input class="tp-qty" type="number" min="1" max="' + have + '" value="' + qty + '"' + (checked ? '' : ' disabled') + ' />';
       if (meta.kind === 'component') {
         const dt = el('button', 'mini tp-attr', '属性');
@@ -5674,9 +5729,9 @@ window.UI = (function () {
     const apply = el('button', 'mini primary-mini', '更新我的提供');
     apply.addEventListener('click', function () {
       const items = Object.keys(sel)
-        .filter(function (id) { return (st.inventory[id] || 0) > 0; })
+        .filter(function (id) { return availCountOf(id) > 0; })
         .map(function (id) {
-          return { id: id, qty: Math.max(1, Math.min(st.inventory[id], sel[id])) };
+          return { id: id, qty: Math.max(1, Math.min(availCountOf(id), sel[id])) };
         });
       if (items.length === 0) {
         confirmModal({ title: '清空我的提供', html: '你还没有选择任何物品，确定要清空「我的提供」吗？', okText: '清空' }).then(function (ok) {
@@ -5903,7 +5958,10 @@ window.UI = (function () {
   function showChestResult(chest, data) {
     const meta = data.item;
     const st = S();
+    // 结果弹窗只保留一个：并发/连开的旧响应不该再叠一个窗在上层（也会让「再开一个」点错目标）
+    if (chestResultOverlay) { try { chestResultOverlay.remove(); } catch (e) {} chestResultOverlay = null; }
     const overlay = buildOverlay(null);
+    chestResultOverlay = overlay;
     const box = el('div', 'modal-box confirm-modal chest-result-modal');
     const pityN = data.pityN || 0;
     let pityLine = '';
@@ -5919,13 +5977,20 @@ window.UI = (function () {
       chestItemCardHtml(meta) +
       pityLine +
       '<div class="cf-actions">' +
-      '<button class="mini primary-mini cr-again">再开一个（持有 ' + (data.chests ? (data.chests.find(function (c) { return c.id === chest.id; }) || {}).have || 0 : 0) + '）</button>' +
+      '<button class="mini primary-mini cr-again">再开一个（持有 ' + ((st.inventory && st.inventory[chest.id]) || 0) + '）</button>' +
       '<button class="mini cr-ok">收下</button></div>' +
       '<div class="hint" style="margin-top:6px">开出的组件已进背包，可装备 / 出售 / 上架。</div>' +
       '</div>';
     overlay.appendChild(box);
     document.body.appendChild(overlay);
-    const close = function () { overlay.remove(); };
+    // 关闭时顺带重绘：开箱期间（有 .modal-overlay）广播只更新数据不重绘，关掉后要把工坊/顶栏的
+    // 持有数与背包同步一次，否则数字停在开箱前（看起来像「开了没进包」）
+    const close = function () {
+      overlay.remove();
+      if (chestResultOverlay === overlay) chestResultOverlay = null;
+      renderTopbar();
+      if (currentView === 'workshop') renderView();
+    };
     box.querySelector('.modal-close').addEventListener('click', close);
     box.querySelector('.cr-ok').addEventListener('click', close);
     if (overlay) overlay.addEventListener('click', function (ev) { if (ev.target === overlay) close(); });
@@ -5933,24 +5998,32 @@ window.UI = (function () {
       close();
       openChestModal(chest);
     });
-    void st;
   }
   // 开箱子窗口：自选目标（Ⅱ/Ⅲ/Ⅳ）+ 确认；Ⅰ 档直接开
+  // v0.13.9：开箱是「扣宝匣 + 得组件」的不可逆操作，响应里还带一份全量背包快照。
+  // 连点 / 双击会并发两笔请求，先发的旧快照后到就会把新开出的配件从界面上抹掉
+  //（用户报的「连续开箱丢配件」）——所以同一时刻只允许一笔在途，且结果弹窗只留一个。
+  let chestOpening = false;
+  let chestResultOverlay = null;
   function openChestModal(chest) {
     const st = S();
     const info = (st.chest && st.chest.chests || []).find(function (c) { return c.id === chest.id; }) || {};
-    const have = info.have || 0;
-    if (have <= 0) { toast('没有「' + chest.name + '」可开，请先合成'); return; }
+    // 持有一律以背包为准（st.chest 快照可能比一次开箱响应旧，会让「还有几箱」判断与实际不符）
+    const have = (st.inventory && st.inventory[chest.id] != null) ? st.inventory[chest.id] : (info.have || 0);
+    if (!(have > 0)) { toast('没有「' + chest.name + '」可开，请先合成'); renderView(); return; }
     const doOpen = function (sel) {
+      if (chestOpening) { toast('正在开箱，请稍候…'); return; }
+      chestOpening = true;
+      const release = function () { chestOpening = false; };
       Promise.resolve(window.Net.chestOpen(chest.id, sel)).then(function (r) {
         if (!r || !r.ok) { toast((r && r.data && r.data.error) || '开箱失败'); return null; }
         st.player.coins = r.data.coins;
-        st.inventory = r.data.inventory;
+        applyInvFrom(r.data);
         if (r.data.chests) st.chest = Object.assign({}, st.chest, { chests: r.data.chests });
         renderTopbar(); renderView();
         showChestResult(chest, r.data);
         return r;
-      }).catch(function () { toast('网络错误'); });
+      }).catch(function () { toast('网络错误'); }).then(release, release);
     };
     if (chest.mode === 'random') { doOpen({}); return; }
     const overlay = buildOverlay(null);
@@ -6070,7 +6143,7 @@ window.UI = (function () {
     Promise.resolve(window.Net.chestCraft(chest.id, qty)).then(function (r) {
       if (!r || !r.ok) { toast((r && r.data && r.data.error) || '合成失败'); return null; }
       st.player.coins = r.data.coins;
-      st.inventory = r.data.inventory;
+      applyInvFrom(r.data);
       if (r.data.chests) st.chest = Object.assign({}, st.chest, { chests: r.data.chests, relicHave: (r.data.inventory && r.data.inventory.relic) || 0 });
       toast('合成「' + chest.name + '」×' + qty + ' 成功');
       renderTopbar(); renderView();
@@ -6533,7 +6606,7 @@ window.UI = (function () {
         if (!r || !r.ok) { toast((r && r.data && r.data.error) || '熔炼失败'); return; }
         const st = S();
         st.player.coins = r.data.coins;
-        st.inventory = r.data.inventory;
+        applyInvFrom(r.data);
         wsMats = {}; wsPearl = false; wsRelics = 0;
         wsMain = ''; wsSub = ''; wsMainAffix = ''; wsSubAffix = '';
         renderTopbar(); renderView();
@@ -6736,7 +6809,7 @@ window.UI = (function () {
         if (!r || !r.ok) { toast((r && r.data && r.data.error) || '重铸失败'); return; }
         const st = S();
         st.player.coins = r.data.coins;
-        st.inventory = r.data.inventory;
+        applyInvFrom(r.data);
         wsRecast = r.data.id || '';
         renderTopbar(); renderView();
         wsShowRecastResult(comp, r.data);
@@ -6797,7 +6870,7 @@ window.UI = (function () {
         if (!r || !r.ok) { toast((r && r.data && r.data.error) || '购买失败'); return; }
         const s2 = S();
         s2.player.coins = r.data.coins;
-        s2.inventory = r.data.inventory;
+        applyInvFrom(r.data);
         if (r.data.mall) s2.mall = r.data.mall;
         toast('已购买 ' + r.data.name + ' ×' + r.data.qty + '（-' + r.data.cost + '💰）');
         renderTopbar(); renderView();
@@ -6885,7 +6958,7 @@ window.UI = (function () {
             Promise.resolve(window.Net.mallBuy(it.id, it.remain)).then(function (r) {
               if (!r || !r.ok) { toast((r && r.data && r.data.error) || '购买失败'); return; }
               const s2 = S();
-              s2.player.coins = r.data.coins; s2.inventory = r.data.inventory;
+              s2.player.coins = r.data.coins; applyInvFrom(r.data);
               if (r.data.mall) s2.mall = r.data.mall;
               toast('已购买 ' + r.data.name + ' ×' + r.data.qty + '（-' + r.data.cost + '💰）');
               renderTopbar(); renderView();

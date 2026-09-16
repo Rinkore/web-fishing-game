@@ -211,7 +211,13 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('A 收到 codexAdd 增量推送（图鉴解锁即时可见）',
       sinkA.some(m => m.type === 'codexAdd' && m.id === 'koi' && m.add === 1),
       JSON.stringify(sinkA.filter(m => m.type === 'codexAdd' || m.type === 'codex')));
-    check('A 收到 assets 定向推送（渔获入库）', sinkA.some(m => m.type === 'assets' && m.inventory && m.inventory.koi));
+    // v0.13.9：上鱼走 perf-8c 的**增量**推送（assets.invAdd），不再每竿发全量 inventory。
+    // （此前这条断言要求 assets 里带全量 inventory.koi —— 只在「活引用在 150ms 批量窗口里被后续
+    //   上鱼改写」时才偶然成立，套件并行、事件循环繁忙时才会绿；v0.13.9 把 SSE 库存载荷改成
+    //   入队即定版后，它就稳定不成立了。）
+    check('A 收到 assets 定向推送（渔获入库增量）',
+      sinkA.some(m => m.type === 'assets' && ((m.invAdd && m.invAdd.koi === 1) || (m.inventory && m.inventory.koi))),
+      JSON.stringify(sinkA.filter(m => m.type === 'assets').map(m => ({ inv: m.inventory ? Object.keys(m.inventory) : null, invAdd: m.invAdd })).slice(0, 3)));
 
     // /catch 不再整包覆盖库存，而是服务器侧累加
     const meA = await GET('http://localhost:' + PORT + '/api/me?token=' + tokA);

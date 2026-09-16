@@ -186,8 +186,10 @@ async function main() {
   await grant('minnow', 3);
   const multi = await asPost({ bulk: 'fish', minPrice: 1 });
   check('批量应用到全部鱼', multi.status === 200, JSON.stringify(multi.data && multi.data.error));
-  check('一次响应结算两项（carp + minnow，同一次扫描）',
-    !!(multi.data.sold && multi.data.sold.length === 2) &&
+  // v0.13.9：打包阈值改为对「已启用物品合计」判定 —— 上一节剩下的 2 条鲫鱼（保留量被批量应用重置为 0）
+  // 也会计入合计一起成交，所以这里是 3 项而不是 2 项（逐件口径下它 2 < 3 会被跳过）。
+  check('一次响应结算多物品（carp + minnow；含上一节剩余的鲫鱼，同一次扫描）',
+    !!(multi.data.sold && multi.data.sold.length >= 2) &&
     multi.data.sold.some(x => x.id === 'carp') && multi.data.sold.some(x => x.id === 'minnow'),
     JSON.stringify(multi.data.sold));
   const invAfter = await inv();

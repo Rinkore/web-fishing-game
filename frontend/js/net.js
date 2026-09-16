@@ -564,15 +564,21 @@ window.Net = (function () {
         } else if (m.type === 'assets') {
           // 服务器权威资产：金币/库存/图鉴整体替换，前端不持账本
           if (m.coins != null) S.player.coins = m.coins;
-          if (m.inventory) S.inventory = m.inventory;
-          // perf-8c：钓鱼热路径增量——只合并背包增量，避免每竿全量传输
-          if (m.invAdd) {
+          // v0.13.9：库存快照带 invRev（单调版本号），**旧快照必须丢弃**——HTTP 响应是当场序列化的
+          // 旧快照，SSE assets 是入队时刻定版（150ms 后发出）的新快照，两条通道到达顺序不保证；
+          // 直接赋值会让旧快照盖掉刚开箱得到的配件（用户报的「连开宝匣丢配件」就是这个）。
+          if (m.inventory) window.Engine.applyInv(m.inventory, m.invRev);
+          // perf-8c：钓鱼热路径增量——只合并背包增量，避免每竿全量传输。
+          // 增量与 bigAdd 同属一次状态推进：只判一次（判过就把 rev 抬到该值），
+          // 已包含在刚应用的快照里的增量其 rev 不会更大 → 整体跳过（否则同一件东西被计两次）
+          const deltaOk = window.Engine.acceptDelta(m.invRev);
+          if (m.invAdd && deltaOk) {
             const inv = S.inventory = S.inventory || {};
             for (const k in m.invAdd) { inv[k] = (inv[k] || 0) + m.invAdd[k]; if (inv[k] <= 0) delete inv[k]; }
           }
           // v0.13.6：大型/巨型预留计数（背包全量 / 钓鱼热路径增量两种拍子都处理）
           if (m.bigfish !== undefined) S.bigfish = m.bigfish || {};
-          if (m.bigAdd) {
+          if (m.bigAdd && deltaOk) {
             const bf = S.bigfish = S.bigfish || {};
             for (const k in m.bigAdd) {
               const e = bf[k] = bf[k] || { L: 0, G: 0 };
@@ -644,8 +650,9 @@ window.Net = (function () {
           const pl = S.player;
           const myKey = me ? String(me.id).toLowerCase() : null;
           const iAmA = !!(myKey && m.a && String(m.a.key).toLowerCase() === myKey);
-          if (m.a && myKey && String(m.a.key).toLowerCase() === myKey) { pl.coins = m.a.coins; S.inventory = m.a.inventory || S.inventory; }
-          if (m.b && myKey && String(m.b.key).toLowerCase() === myKey) { pl.coins = m.b.coins; S.inventory = m.b.inventory || S.inventory; }
+          // v0.13.9：交易结算也是库存快照，同样按 invRev 判新（旧包不覆盖新状态）
+          if (m.a && myKey && String(m.a.key).toLowerCase() === myKey) { pl.coins = m.a.coins; window.Engine.applyInv(m.a.inventory, m.a.invRev); }
+          if (m.b && myKey && String(m.b.key).toLowerCase() === myKey) { pl.coins = m.b.coins; window.Engine.applyInv(m.b.inventory, m.b.invRev); }
           S.trade = null;
           S.tradeFlash = '交易完成，物品已互换';
           if (ui && ui.addLog) {

@@ -29,6 +29,11 @@ window.Engine = (function () {
     rodActiveSlot: -1,          // 当前使用的槽位（-1 = 用的是散件装配）
     rodLocked: {},              // 被钓竿占用的组件实例件数（背包/交易显示锁定标记）
     inventory: {},              // 服务器权威，SSE assets 整体同步
+    // v0.13.9：库存快照的单调版本号（服务器 invRev）。HTTP 响应是「当场序列化」的旧快照，
+    // SSE assets 是「150ms 批处理后按活引用序列化」的新快照，两条通道到达顺序不保证——
+    // 旧快照后到会把刚开箱得到的配件从界面上抹掉（服务端其实没丢）。所有带 inventory 的
+    // 快照都必须经 applyInv() 判新，绝不直接赋值。
+    invRev: 0,
     bigfish: {},                // v0.13.6：大型/巨型鱼预留计数（服务器权威，背包标签行/筛选项用）
     bd: buildDefaultBD(),       // 服务器权威，登录/装备时同步
     bdEffects: { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 },
@@ -98,7 +103,9 @@ window.Engine = (function () {
     if (prevUser && nextUser && prevUser !== nextUser) resetTransient();
     state.player.name = profile.name || state.player.name;
     if (profile.coins != null) state.player.coins = profile.coins;
-    state.inventory = profile.inventory || {};
+    // 登录/读档：这是「本会话第一次拿到的快照」，直接采信并把版本号抬到它的 rev（切号时先归零）
+    if (prevUser && nextUser && prevUser !== nextUser) state.invRev = 0;
+    applyInv(profile.inventory || {}, profile.invRev);
     if (profile.bigfish !== undefined) state.bigfish = profile.bigfish || {};
     state.bd = (profile.bd && Object.keys(profile.bd).length) ? profile.bd : buildDefaultBD();
     state.codex = profile.codex || {};
@@ -214,8 +221,38 @@ window.Engine = (function () {
     load();
   }
 
+  // ---- 库存快照判新（v0.13.9）----
+  // 所有携带完整 inventory 的载荷（HTTP 响应 / SSE assets / 交易结算）都必须走这里，
+  // 绝不 `state.inventory = …` 直接赋值：旧快照会盖掉新状态（连开宝匣丢配件的根因）。
+  //   inv  —— 完整背包快照
+  //   rev  —— 服务器 invRev（缺省/非数字 = 老接口，按旧行为直接采信）
+  // 返回是否采纳。注意：invAdd / bigAdd 这类**增量**不推进 invRev（增量丢一包不该让版本跑到内容前面），
+  // 只有带 inventory 的完整快照参与比较。
+  function applyInv(inv, rev) {
+    if (!inv) return false;
+    const r = Number(rev);
+    const hasRev = rev != null && isFinite(r);
+    if (hasRev && r < (Number(state.invRev) || 0)) return false;   // 过期快照：丢弃
+    state.inventory = inv;
+    if (hasRev) state.invRev = r;
+    return true;
+  }
+
+  // 增量（invAdd / bigAdd）是否还要叠加：消息带 rev 时，只有「比已应用的更新」才算新增量。
+  // 服务端在入队那一刻给每条库存消息定版（快照内容与 rev 一起冻结），所以同批次里已经包含在
+  // 快照里的增量，其 rev 不会大于快照的 rev → 这里跳过，避免同一件东西被计两次。
+  // 不带 rev 的老消息（兼容）按旧行为直接叠加。
+  function acceptDelta(rev) {
+    const r = Number(rev);
+    if (rev == null || !isFinite(r)) return true;
+    if (r <= (Number(state.invRev) || 0)) return false;
+    state.invRev = r;
+    return true;
+  }
+
   return {
     state: state, init: init, save: save, applyProfile: applyProfile,
+    applyInv: applyInv, acceptDelta: acceptDelta,
     refreshEffects: refreshEffects, bdEffects: function () { return state.bdEffects; },
     startFishing: startFishing, stopFishing: stopFishing, resetTransient: resetTransient,
     resetPeeps: resetPeepsFor,   // 重连续钓等场景：按当前钓点即时重建「同钓点」列表

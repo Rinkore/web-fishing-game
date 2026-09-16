@@ -676,6 +676,31 @@ function bigfishOf(rec, id) {
   rec.bigfish = rec.bigfish || {};
   return rec.bigfish[id] || (rec.bigfish[id] = { L: 0, G: 0 });
 }
+// 预留计数减一档：减到 0 时把该物品（以及两档都为 0 时的条目）删掉，
+// 与 invAdd 的「减到 0 就删键」保持一致——否则背包里会堆积 {L:0,G:0} 残键（v0.13.9）
+function bigfishDropOf(rec, id, tier, qty) {
+  const bf = bigfishOf(rec, id);
+  bf[tier] = Math.max(0, (bf[tier] || 0) - qty);
+  if (!bf.L && !bf.G) delete rec.bigfish[id];
+  return bf;
+}
+// 按背包总量夹紧预留（管理后台直接覆写 inventory 后可能出现预留 > 持有）：
+// 超出部分从高到低削掉，返回被削掉的件数（0 = 没动）
+function bigfishClampTo(rec, id) {
+  const bf = rec.bigfish && rec.bigfish[id];
+  if (!bf) return;
+  let have = invCountOf(rec, id);
+  const take = function (t) {
+    const v = bf[t] || 0;
+    const keep = Math.max(0, Math.min(v, have));
+    have -= keep;
+    bf[t] = keep;
+    return v - keep;
+  };
+  const cut = take('G') + take('L');
+  if (!bf.L && !bf.G) delete rec.bigfish[id];
+  return cut;
+}
 // 大型/巨型预留数：占用背包里同名鱼的数量（普通通道不可动用）
 function bigReservedOf(rec, id) {
   const bf = rec.bigfish && rec.bigfish[id];
@@ -1811,38 +1836,64 @@ function autoSellHit(rec, id, rule) {
 }
 // 可卖余量：可用量（v0.13.6 起大型/巨型为预留量，自动售出只动普通量）− 最少保留量
 function autoSellExcess(rec, id, rule) { return invAvailOf(rec, id) - autoSellKeepOf(rule); }
-// 扫描启用中的物品并按系统行情卖出；只有「可卖余量 ≥ 打包阈值」且价格达标才成交，返回明细（无则 null）
-function autoSellCheck(key) {
-  const rec = users[key];
-  if (!rec) return null;
+// 打包计划（v0.13.9 口径）：打包阈值对「已启用物品的合计」判定，不再逐件判定。
+//   可入账余量 = 可用量 − 保留量（> 0 才有意义），价格达标的记入 pool；
+//   pool ≥ batch 才打包成交一次，成交时这些物品各自的余量一起结算（一次推送，省往返）。
+// ⚠️ 价格未达标的余量**不计入 pool**：否则它们会永远把合计顶在阈值之上，
+//    退化成「每上一条鱼就推一次」，把打包省带宽的意义抹掉（blocked 只用于界面提示）。
+function autoSellPlan(rec) {
   const items = autoSellItems(rec);
   if (!items) return null;
-  const batch = autoSellBatchOf();
-  const sold = [];
+  const list = [];
+  let pool = 0, blocked = 0;
   Object.keys(items).forEach(function (id) {
     const rule = items[id];
     if (!rule || !rule.on) return;
     if (!autoSellEligibleId(id)) return;
-    if (sold.some(function (x) { return x.id === id; })) return;
     const excess = autoSellExcess(rec, id, rule);
-    if (excess < batch) return;                          // 没攒够一包 → 不成交（省带宽的关键）
+    if (excess <= 0) return;
     const hit = autoSellHit(rec, id, rule);
-    if (!hit) return;
-    const qty = excess;
+    if (!hit) { blocked += excess; return; }
+    pool += excess;
+    list.push({ id: id, rule: rule, excess: excess, hit: hit });
+  });
+  return { list: list, pool: pool, blocked: blocked, batch: autoSellBatchOf() };
+}
+// 界面用视图：前端右栏 / 清单据此展示「合计可卖 / 还差多少 / 哪些因价格未达标不计入」
+function autoSellPlanView(rec) {
+  const p = autoSellPlan(rec);
+  if (!p) return { pool: 0, blocked: 0, batch: autoSellBatchOf(), ready: 0, items: {} };
+  const items = {};
+  p.list.forEach(function (x) {
+    items[x.id] = { excess: x.excess, keep: autoSellKeepOf(x.rule), by: x.hit.by };
+  });
+  return { pool: p.pool, blocked: p.blocked, batch: p.batch, ready: p.list.length, items: items };
+}
+// 扫描启用中的物品并按系统行情卖出；只有「已启用物品的可卖余量合计 ≥ 打包阈值」才成交，返回明细（无则 null）
+function autoSellCheck(key) {
+  const rec = users[key];
+  if (!rec) return null;
+  const plan = autoSellPlan(rec);
+  if (!plan || !plan.list.length) return null;
+  const batch = plan.batch;
+  if (plan.pool < batch) return null;                    // 合计没攒够一包 → 不成交（省带宽的关键）
+  const sold = [];
+  plan.list.forEach(function (x) {
+    const id = x.id, qty = x.excess, rule = x.rule;
     const unit = unitPriceOf(id);
     const gain = unit * qty;
     invAdd(rec, id, -qty);
     rec.coins += gain;
     if (ECO_PRICE[id]) registerSale(id, qty, rec.name + '·自动', unit);
-    sold.push({ id: id, name: itemName(id), qty: qty, unit: unit, gain: gain, by: hit.by, keep: autoSellKeepOf(rule) });
+    sold.push({ id: id, name: itemName(id), qty: qty, unit: unit, gain: gain, by: x.hit.by, keep: autoSellKeepOf(rule) });
   });
   if (!sold.length) return null;
   saveAccount(key); saveEconomy(); broadcastShop();
   const total = sold.reduce(function (s, x) { return s + x.gain; }, 0);
   const byText = sold[0].by === '无条件' ? '规则命中' : sold[0].by + '线达标';
   sendTo(key, { type: 'notice', msg: '🤖 自动售出 ' + sold.map(function (x) { return x.name + '×' + x.qty; }).join('、') +
-    '，+ ' + total + '💰（' + byText + '，打包 ' + batch + ' 条）' });
-  sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+    '，+ ' + total + '💰（' + byText + '，合计 ' + plan.pool + ' 条达打包阈值 ' + batch + '）' });
+  sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
   return sold;
 }
 // v0.13.8 存量迁移：旧结构 { all, fish:{id:{...}} } → { items:{ id:{ on, ... } } }。
@@ -2209,8 +2260,64 @@ function armStatsSampler() {
 }
 
 // ---- 落盘原语（同步写、整文件重写；单账号/单域粒度） ----
+// v0.13.9：写失败不再「静默丢一份数据」——失败的文件重新放回脏集合（dirtyFiles），
+// 到点后重试整份写入。账号文件持有的就是内存里的活对象，重试时写的是最新状态。
+// 重试有上限（SAVE_RETRY_MAX），避免磁盘满 / 权限错误时无限循环刷盘刷日志。
+const SAVE_RETRY_MAX = 5;          // 同一文件连续写失败的重试上限
+const SAVE_RETRY_MS = 3000;        // 下次重试（flush 脏文件）的间隔
+const dirtyFiles = new Map();      // fp -> { obj, n }：写失败待重试的文件（n = 连续失败次数）
+let dirtyFileTimer = null;
+let processExiting = false;        // 退出钩子里不再排队重试（定时器已不会执行）
 function readJson(fp) { try { return JSON.parse(fs.readFileSync(fp, 'utf8') || 'null'); } catch (e) { return null; } }
-function writeJson(fp, obj) { try { fs.writeFileSync(fp, JSON.stringify(obj, null, 2)); } catch (e) { console.error('[save] ' + fp + ' 写入失败：' + e.message); } }
+function writeJson(fp, obj) {
+  try {
+    fs.writeFileSync(fp, JSON.stringify(obj, null, 2));
+    dirtyFiles.delete(fp);         // 写成功：清掉该文件的失败计数与待重试数据
+    return true;
+  } catch (e) {
+    console.error('[save] ' + fp + ' 写入失败：' + e.message);
+    markFileDirty(fp, obj);
+    return false;
+  }
+}
+function markFileDirty(fp, obj) {
+  if (processExiting) return;
+  const n = ((dirtyFiles.get(fp) || {}).n || 0) + 1;
+  if (n > SAVE_RETRY_MAX) {
+    dirtyFiles.delete(fp);
+    console.error('[save] ' + fp + ' 已连续失败 ' + SAVE_RETRY_MAX + ' 次，放弃本轮重试（内存数据仍在，下次改动会再触发落盘）');
+    return;
+  }
+  dirtyFiles.set(fp, { obj: obj, n: n });
+  if (!dirtyFileTimer) {
+    dirtyFileTimer = setTimeout(flushDirtyFiles, SAVE_RETRY_MS);
+    if (dirtyFileTimer.unref) dirtyFileTimer.unref();
+  }
+}
+function flushDirtyFiles(finalAttempt) {
+  dirtyFileTimer = null;
+  if (!dirtyFiles.size) return;
+  Array.from(dirtyFiles.entries()).forEach(function (pair) {
+    const fp = pair[0], ent = pair[1];
+    if (dirtyFiles.get(fp) !== ent) return;   // 期间已被写成功 / 被新数据替换
+    try {
+      fs.writeFileSync(fp, JSON.stringify(ent.obj, null, 2));
+      dirtyFiles.delete(fp);
+    } catch (e) {
+      console.error('[save] ' + fp + ' 第 ' + ent.n + ' 次重试写入失败：' + e.message);
+      if (ent.n >= SAVE_RETRY_MAX) {
+        dirtyFiles.delete(fp);
+        console.error('[save] ' + fp + ' 已达重试上限 ' + SAVE_RETRY_MAX + '，放弃本轮重试');
+      } else {
+        ent.n++;
+      }
+    }
+  });
+  if (!finalAttempt && dirtyFiles.size) {
+    dirtyFileTimer = setTimeout(flushDirtyFiles, SAVE_RETRY_MS);
+    if (dirtyFileTimer.unref) dirtyFileTimer.unref();
+  }
+}
 function safeKey(k) { return String(k).replace(/[^a-zA-Z0-9_.-]/g, '_'); } // 账号 key 已是小写字母数字下划线，这里再兜底
 function accountFile(key) { return path.join(ACCOUNTS_DIR, safeKey(key) + '.json'); }
 
@@ -2245,21 +2352,33 @@ function saveAccount(key) {
   dirtyAccounts.add(key);
   if (!accountFlushTimer) accountFlushTimer = setTimeout(flushAccounts, 1000);
 }
+// v0.13.9：库存快照版本号 invRev 只用于「同一会话内的快照新鲜度比较」，不落盘
+// （每个账号文件都多一个字段没有收益）。落盘时去掉该字段，读档后 rev 自然从 0 重新开始。
+// 注意：这里必须返回浅拷贝——写失败时排队重试的就是这个对象，若直接把 rec 交出去，
+// 重试时会把「后来才自增的 invRev」写进存档。
+function accountSaveView(rec) {
+  const out = Object.assign({}, rec);
+  delete out.invRev;
+  return out;
+}
+function writeAccountFile(key, rec) { return writeJson(accountFile(key), accountSaveView(rec)); }
 function flushAccounts() {
-  accountFlushTimer = null;
+  if (accountFlushTimer) { clearTimeout(accountFlushTimer); accountFlushTimer = null; }
   const keys = Array.from(dirtyAccounts);
   dirtyAccounts.clear();
-  keys.forEach(function (k) { const rec = users[k]; if (rec) writeJson(accountFile(k), rec); });
+  keys.forEach(function (k) { const rec = users[k]; if (rec) writeAccountFile(k, rec); });
 }
 function saveAllAccounts() {
   Object.keys(users).forEach(saveAccount);
 }
 process.on('exit', function () {
+  processExiting = true;   // 退出时不再排队重试（定时器不会执行了），写失败只留日志
   if (accountFlushTimer) { clearTimeout(accountFlushTimer); accountFlushTimer = null; }
   if (dirtyAccounts.size) {
     const ks = Array.from(dirtyAccounts); dirtyAccounts.clear();
-    ks.forEach(function (k) { const rec = users[k]; if (rec) { try { writeJson(accountFile(k), rec); } catch (e) {} } });
+    ks.forEach(function (k) { const rec = users[k]; if (rec) { try { writeAccountFile(k, rec); } catch (e) {} } });
   }
+  if (dirtyFiles.size) { try { flushDirtyFiles(true); } catch (e) {} }   // 退出前最后试一次待重试的文件
   if (sessionsDirty) { try { saveSessionsNow(); } catch (e) {} }
   if (recordsFlushTimer) { clearTimeout(recordsFlushTimer); recordsFlushTimer = null; try { saveRecords(); } catch (e) {} }
 });
@@ -2512,6 +2631,7 @@ function profileOf(key) {
   return {
     username: rec.username, name: rec.name, coins: rec.coins, qq: rec.qq || '',
     inventory: rec.inventory || {}, bd: rec.bd || {},
+    invRev: invRevOf(rec),   // 库存快照版本号：客户端据此丢弃过期快照（v0.13.9）
     bigfish: rec.bigfish || null,
     codex: rec.codex || {}, catchCount: rec.catchCount || 0,
     admin: !!rec.admin,
@@ -2644,7 +2764,21 @@ const pendingTo = new Map(); // key -> [events]
 let sendToTimer = null;
 function sendTo(key, obj) {
   // v0.13.6：背包全量同步顺带带上大型/巨型预留计数（前端仓库标签行与筛选项的数据源）
-  if (obj.type === 'assets' && obj.inventory && users[key]) obj.bigfish = users[key].bigfish || null;
+  // v0.13.9：库存相关载荷一律在**入队这一刻**定版（内容 + rev 一起冻结）：
+  //   · 此前 inventory / bigfish 存的是 rec 的活引用，150ms 后才序列化 → 消息内容比它标注的时刻更新，
+  //     于是「同批次里排在后面的 invAdd 增量」会把已经包含在快照里的那件东西**再加一次**
+  //     （前端表现为数字比服务端多；v0.13.9 的界面回归就是这么抓到的）。
+  //   · 增量（invAdd/bigAdd）也盖上 rev：客户端只在 rev 比已应用的更新时才叠加，避免重复计入。
+  if (obj.type === 'assets' && users[key]) {
+    const rec = users[key];
+    if (obj.inventory) {
+      obj.inventory = Object.assign({}, obj.inventory);
+      // bigfish 是 {id:{L,G}}：外层浅拷贝还不够，内层计数是就地自增的 → 两层都要拷
+      const bf = rec.bigfish;
+      obj.bigfish = bf ? Object.keys(bf).reduce(function (o, id) { o[id] = { L: bf[id].L || 0, G: bf[id].G || 0 }; return o; }, {}) : null;
+    }
+    obj.invRev = invRevOf(rec);
+  }
   let arr = pendingTo.get(key);
   if (!arr) { arr = []; pendingTo.set(key, arr); }
   arr.push(obj);
@@ -2742,7 +2876,13 @@ function auth(req, res, body, cb) {
   if (!key) return apiResp(res, 401, { error: '未登录' });
   cb(d, key);
 }
-function invAdd(rec, id, qty) { rec.inventory = rec.inventory || {}; rec.inventory[id] = (rec.inventory[id] || 0) + qty; if (rec.inventory[id] <= 0) delete rec.inventory[id]; }
+// v0.13.9 库存快照版本号：invRev 随每次库存写入自增（只活在内存里，不落盘，读档后从 0 开始）。
+// 客户端把它当作「快照新鲜度」，只接受 rev 更大的 inventory 全量快照——避免 HTTP 响应
+// （apiResp 当场序列化，较旧）与 SSE assets（150ms 批处理里按活引用串行化，较新）
+// 两条通道乱序到达时，旧快照把刚开出的配件从界面抹掉。
+function invRevOf(rec) { return (rec && rec.invRev) || 0; }
+function bumpInvRev(rec) { if (rec) rec.invRev = (rec.invRev || 0) + 1; }
+function invAdd(rec, id, qty) { rec.inventory = rec.inventory || {}; rec.inventory[id] = (rec.inventory[id] || 0) + qty; if (rec.inventory[id] <= 0) delete rec.inventory[id]; bumpInvRev(rec); }
 function invHas(rec, id, qty) { return (rec.inventory && rec.inventory[id] || 0) >= qty; }
 function invCountOf(rec, id) { return (rec.inventory && rec.inventory[id]) || 0; }
 
@@ -2773,7 +2913,7 @@ function sweepExpiredListings() {
         if (D.isRodSet(l.id)) deliverRodBack(seller, l.id, l.name);
         else invAdd(seller, l.id, l.qty);
         sellers[l.seller] = 1;
-        sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory });
+        sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory, invRev: invRevOf(seller) });
         sendTo(l.seller, { type: 'notice', msg: '挂单过期：' + l.name + ' ×' + l.qty + ' 已退回背包（上架费不退）' });
       }
       changed = true;
@@ -3141,7 +3281,7 @@ const server = http.createServer(function (req, res) {
         rec.rodSlotsCount = rodSlotCountOf(rec) + 1;
         rodSlotsOf(rec);
         saveAccount(key);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, { ok: true, coins: rec.coins, price: price, rodSlotsCount: rec.rodSlotsCount, nextRodSlotPrice: nextRodSlotPrice(rec), rodSlots: rodSlotView(rec) });
       });
     });
@@ -3174,10 +3314,10 @@ const server = http.createServer(function (req, res) {
         saveAccount(key);
         const found = null;
         void found;
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, {
           ok: true, slot: slot, bd: rec.bd, rodName: rec.rodName, rodActiveSlot: rec.rodActiveSlot,
-          inventory: rec.inventory, rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
+          inventory: rec.inventory, invRev: invRevOf(rec), rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
         });
       });
     });
@@ -3233,10 +3373,10 @@ const server = http.createServer(function (req, res) {
         const pNow = players.get(key);
         const atSpot = (pNow && pNow.fishing) ? spotOf(pNow.fishing.groundId, pNow.fishing.spotId) : null;
         if (atSpot) restartFishingAt(atSpot.ground.id, atSpot.spot.id);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, {
           ok: true, bd: rec.bd, rodName: rec.rodName, rodActiveSlot: rec.rodActiveSlot, returned: returned,
-          inventory: rec.inventory, rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
+          inventory: rec.inventory, invRev: invRevOf(rec), rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
           interval: atSpot ? intervalFor(rec, atSpot.spot) : null,
           castInfo: atSpot ? castInfoOf(rec, atSpot.spot) : null,
         });
@@ -3264,10 +3404,10 @@ const server = http.createServer(function (req, res) {
         const pNow = players.get(key);
         const atSpot = (pNow && pNow.fishing) ? spotOf(pNow.fishing.groundId, pNow.fishing.spotId) : null;
         if (atSpot) restartFishingAt(atSpot.ground.id, atSpot.spot.id);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, {
           ok: true, returned: returned, fromSlot: as, bd: rec.bd, rodName: rec.rodName, rodActiveSlot: -1,
-          inventory: rec.inventory, rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
+          inventory: rec.inventory, invRev: invRevOf(rec), rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
           interval: atSpot ? intervalFor(rec, atSpot.spot) : null,
           castInfo: atSpot ? castInfoOf(rec, atSpot.spot) : null,
         });
@@ -3293,10 +3433,10 @@ const server = http.createServer(function (req, res) {
         }
         slots[slot] = null;
         saveAccount(key);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, {
           ok: true, returned: back, wasActive: isActive, rodActiveSlot: rec.rodActiveSlot,
-          rodSlots: rodSlotView(rec), inventory: rec.inventory, rodLocked: rodUsageOf(rec),
+          rodSlots: rodSlotView(rec), inventory: rec.inventory, invRev: invRevOf(rec), rodLocked: rodUsageOf(rec),
         });
       });
     });
@@ -3341,7 +3481,7 @@ const server = http.createServer(function (req, res) {
         };
         if (comp) invAdd(rec, comp.id, -1);
         saveAccount(key);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         // 钓速变化即时生效：正在钓鱼则按新间隔重启循环
         const pl = players.get(key);
         let interval = null;
@@ -3370,7 +3510,7 @@ const server = http.createServer(function (req, res) {
         saveAccount(key);
         const pNow = players.get(key);
         const atSpot = (pNow && pNow.fishing) ? spotOf(pNow.fishing.groundId, pNow.fishing.spotId) : null;
-        apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval, inventory: rec.inventory,
+        apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval, inventory: rec.inventory, invRev: invRevOf(rec),
           rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
           rodActiveSlot: rodActiveSlotOf(rec), releasedSlot: releasedSlot, releasedName: releasedName,
           castInfo: castInfoOf(rec, atSpot && atSpot.spot) });
@@ -3527,13 +3667,23 @@ const server = http.createServer(function (req, res) {
         const rec = users[key];
         if (d.inventory) {
           const next = {};
-          Object.keys(d.inventory).forEach(function (id) { const nid = D.normalizeItemId(id); next[nid] = (next[nid] || 0) + Number(d.inventory[id] || 0); });
+          // 与管理员快照同口径：过滤 0 / 负数 / 非数字，避免造出「0 件键」（前端会把它当一种物品画出来）
+          Object.keys(d.inventory).forEach(function (id) {
+            const q = Math.floor(Number(d.inventory[id]));
+            if (!isFinite(q) || q <= 0) return;
+            const nid = D.normalizeItemId(id);
+            next[nid] = (next[nid] || 0) + q;
+          });
           rec.inventory = next;
+          bumpInvRev(rec); // 整体覆写背包：同样要让 rev 前进，否则前端会拿旧 rev 的快照覆盖回去（v0.13.9）
         }
         if (d.bigfish !== undefined) rec.bigfish = d.bigfish || null; // v0.13.6：测试可直接种体型档预留
+        // 覆写背包/预留后夹一次：预留量不得超过持有量（否则会出现「可用量为负 → 钳 0」的假状态，
+        // 前端算出的可卖/可上架数字会和实际对不上）
+        Object.keys(rec.bigfish || {}).forEach(function (id) { bigfishClampTo(rec, id); });
         if (d.coins != null) rec.coins = d.coins;
         saveAccount(key);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, { ok: true });
       });
     });
@@ -3625,10 +3775,13 @@ const server = http.createServer(function (req, res) {
         invAdd(rec, chest.id, qty);
         rec.coins -= needCoins;
         saveAccount(key);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        // v0.13.9：合成宝匣与开箱一样是「付费换物」的不可逆操作，立刻落盘——1s 防抖窗口内
+        // 进程被强杀会连扣掉的残片/金币带新合成的宝匣一起丢，玩家看到的就是「凭空少了一批东西」。
+        flushAccounts();
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, {
           ok: true, chestId: chest.id, qty: qty, coins: rec.coins,
-          inventory: rec.inventory, chests: chestViewList(rec),
+          inventory: rec.inventory, invRev: invRevOf(rec), chests: chestViewList(rec),
         });
       });
     });
@@ -3668,7 +3821,10 @@ const server = http.createServer(function (req, res) {
         if (item.breakthrough) delete rec.chestPity[chest.id];
         else rec.chestPity[chest.id] = before + 1;
         saveAccount(key);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        // v0.13.9：开箱成功立刻落盘（不等 1s 防抖窗口）——玩家刚开出的配件在界面里已经爆出，
+        // 若此时进程被强杀而整批账号还没写盘，重启后配件就「消失」了（线上反馈的丢件现象之一）。
+        flushAccounts();
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         // 突破件全服播报（复用纪录横幅轨）：稀有度足够高，是免费的内容运营素材
         if (item.breakthrough) {
           broadcast({
@@ -3679,7 +3835,7 @@ const server = http.createServer(function (req, res) {
         }
         apiResp(res, 200, {
           ok: true, chestId: chest.id, chestName: chest.name, item: item, coins: rec.coins,
-          inventory: rec.inventory, forced: forced,
+          inventory: rec.inventory, invRev: invRevOf(rec), forced: forced,
           pityNow: chestPityOf(rec, chest.id), pityNeed: (chest.extra && cfg.pityN > 0) ? Math.max(0, cfg.pityN - chestPityOf(rec, chest.id)) : 0,
           chests: chestViewList(rec),
         });
@@ -3716,11 +3872,11 @@ const server = http.createServer(function (req, res) {
         rec.mall = { key: cyc.key, bought: Object.assign({}, bought) };
         rec.mall.bought[item.id] = (rec.mall.bought[item.id] || 0) + qty;
         saveAccount(key);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         const next = mallView(rec);
         apiResp(res, 200, {
           ok: true, id: item.id, name: item.name, qty: qty, cost: cost, coins: rec.coins,
-          inventory: rec.inventory, mall: next,
+          inventory: rec.inventory, invRev: invRevOf(rec), mall: next,
         });
       });
     });
@@ -3825,7 +3981,7 @@ const server = http.createServer(function (req, res) {
         }
         try { syncActiveRodSlot(rec); } catch (e) {}
         saveAccount(key);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, {
           ok: true, success: success, extraOk: extraOk,
           rate: plan.rates.rate, extraRate: plan.rates.extraRate, gold: plan.gold,
@@ -3837,7 +3993,7 @@ const server = http.createServer(function (req, res) {
           protectAffix: !success && !!plan.protectAffix,
           removedAffix: (success || plan.protectAffix) ? null : plan.mainAffix.type,
           mainId: plan.mainId, subId: plan.subId, item: result,
-          coins: rec.coins, inventory: rec.inventory,
+          coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec),
         });
       });
     });
@@ -3861,13 +4017,13 @@ const server = http.createServer(function (req, res) {
         invAdd(rec, newId, 1);
         try { syncActiveRodSlot(rec); } catch (e) {}
         saveAccount(key);
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, {
           ok: true, changed: newId !== plan.meta.id,
           before: before, item: D.componentOf(newId), id: newId,
           gold: plan.gold, relicNeed: plan.relicNeed,
           materials: [{ id: plan.relicId, name: itemName(plan.relicId), need: plan.relicNeed, have: invCountOf(rec, plan.relicId) }],
-          coins: rec.coins, inventory: rec.inventory,
+          coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec),
         });
       });
     });
@@ -3899,16 +4055,13 @@ const server = http.createServer(function (req, res) {
         const bonus = tier ? Math.round(unit * qty * SIZE_TIER_BONUS[tier]) : 0;
         const gain = unit * qty + bonus;
         invAdd(rec, id, -qty);
-        if (tier) {
-          const bf = bigfishOf(rec, id);
-          bf[tier] = Math.max(0, (bf[tier] || 0) - qty);
-        }
+        if (tier) bigfishDropOf(rec, id, tier, qty);
         rec.coins += gain;
         // 仅经济物品（渔获/材料）影响供需乘数与价格历史；组件固定价，只加金币
         if (ECO_PRICE[id]) registerSale(id, qty, rec.name, unit);
         saveAccount(key); saveEconomy();
         broadcastShop();
-        apiResp(res, 200, { ok: true, unit: unit, bonus: bonus, gain: gain, coins: rec.coins, inventory: rec.inventory, bigfish: rec.bigfish || {}, shop: shopSnapshot() });
+        apiResp(res, 200, { ok: true, unit: unit, bonus: bonus, gain: gain, coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), bigfish: rec.bigfish || {}, shop: shopSnapshot() });
       });
     });
     return;
@@ -3923,7 +4076,7 @@ const server = http.createServer(function (req, res) {
     const key = u.query.token && sessionGet(u.query.token);
     if (!key) return apiResp(res, 401, { error: '未登录' });
     const rec = users[key];
-    return apiResp(res, 200, { ok: true, items: autoSellItems(rec) || {}, batch: autoSellBatchOf() });
+    return apiResp(res, 200, { ok: true, items: autoSellItems(rec) || {}, batch: autoSellBatchOf(), plan: autoSellPlanView(rec) });
   }
   if (p === '/api/autosell' && req.method === 'POST') {
     readBody(req, function (body) {
@@ -3990,8 +4143,8 @@ const server = http.createServer(function (req, res) {
         });
         saveAccount(key);
         const sold = (function () { try { return autoSellCheck(key); } catch (e) { return null; } })();
-        apiResp(res, 200, { ok: true, items: rec.autoSell.items || {}, batch: autoSellBatchOf(),
-          sold: sold || null, coins: rec.coins, inventory: rec.inventory, shop: shopSnapshot() });
+        apiResp(res, 200, { ok: true, items: rec.autoSell.items || {}, batch: autoSellBatchOf(), plan: autoSellPlanView(rec),
+          sold: sold || null, coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), shop: shopSnapshot() });
       });
     });
     return;
@@ -4045,7 +4198,7 @@ const server = http.createServer(function (req, res) {
         world.listings.push(listing);
         saveAccount(key); saveMarket();
         broadcastMarket();
-        apiResp(res, 200, { ok: true, listing: listing, inventory: rec.inventory, fee: fee, coins: rec.coins, rodSlots: rodSlotView(rec) });
+        apiResp(res, 200, { ok: true, listing: listing, inventory: rec.inventory, invRev: invRevOf(rec), fee: fee, coins: rec.coins, rodSlots: rodSlotView(rec) });
       });
     });
     return;
@@ -4100,10 +4253,10 @@ const server = http.createServer(function (req, res) {
         sendTo(key, Object.assign({ role: 'buy', other: l.sellerName }, mktEvent));
         // 卖家可能不在当前页面，必须主动推送权威资产，否则收不到钱
         if (seller && l.seller !== key) {
-          sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory });
+          sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory, invRev: invRevOf(seller) });
           sendTo(l.seller, Object.assign({ role: 'sell', other: rec.name, coins: seller.coins }, mktEvent));
         }
-        apiResp(res, 200, { ok: true, qty: qty, total: total, tax: tax, coins: rec.coins, inventory: rec.inventory });
+        apiResp(res, 200, { ok: true, qty: qty, total: total, tax: tax, coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec) });
       });
     });
     return;
@@ -4129,7 +4282,7 @@ const server = http.createServer(function (req, res) {
         world.listings.splice(idx, 1);
         saveAccount(key); saveMarket();
         broadcastMarket();
-        apiResp(res, 200, { ok: true, inventory: rec.inventory });
+        apiResp(res, 200, { ok: true, inventory: rec.inventory, invRev: invRevOf(rec) });
       });
     });
     return;
@@ -4225,9 +4378,10 @@ const server = http.createServer(function (req, res) {
         // 双方都确认 → 执行交换
         if (t.aOk && t.bOk) {
           const ra = users[t.a.key], rb = users[t.b.key];
-          // 二次校验，防并发
-          const okA = t.aItems.every(function (it) { return invHas(ra, it.id, it.qty); });
-          const okB = t.bItems.every(function (it) { return invHas(rb, it.id, it.qty); });
+          // 二次校验，防并发。⚠️ 必须用可用量（总量 − 大型/巨型预留）：与 /api/trade/set 同一口径，
+          // 否则「设好交易后把普通量卖掉」会让这里的总量校验继续通过，把预留的大鱼交易出去（v0.13.9）
+          const okA = t.aItems.every(function (it) { return invAvailOf(ra, it.id) >= it.qty; });
+          const okB = t.bItems.every(function (it) { return invAvailOf(rb, it.id) >= it.qty; });
           if (!okA || !okB) {
             t.aOk = false; t.bOk = false; t.cooldownUntil = Date.now() + TRADE_COOLDOWN; t.reason = '物品不足，确认已重置';
             broadcastTrade(t);
@@ -4242,7 +4396,7 @@ const server = http.createServer(function (req, res) {
           // 通知双方最新库存；aItems/bItems 一并下发，客户端据此把「给出/获得」写进交易日志
           broadcast({ type: 'tradeDone', tradeId: t.id,
             aItems: t.aItems, bItems: t.bItems, aName: t.a.name, bName: t.b.name,
-            a: { key: t.a.key, inventory: ra.inventory, coins: ra.coins }, b: { key: t.b.key, inventory: rb.inventory, coins: rb.coins } });
+            a: { key: t.a.key, inventory: ra.inventory, coins: ra.coins, invRev: invRevOf(ra) }, b: { key: t.b.key, inventory: rb.inventory, coins: rb.coins, invRev: invRevOf(rb) } });
           return apiResp(res, 200, { ok: true, done: true });
         }
         broadcastTrade(t);
@@ -4384,7 +4538,7 @@ const server = http.createServer(function (req, res) {
         rec.coins -= cost;
         world.feedbackMeta[key] = Object.assign({}, world.feedbackMeta[key] || {}, { nextAt: 0 });
         saveAccount(key); saveFeedback();
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
         apiResp(res, 200, { ok: true, coins: rec.coins, status: feedbackStatusOf(key) });
       });
     });
@@ -4795,7 +4949,7 @@ const server = http.createServer(function (req, res) {
       saveFeedback();
       // 实时通知 + 资产同步（在线时立刻到账，离线则下次登录已带上）
       sendTo(item.key, { type: 'notice', msg: '🎁 管理员奖励了你的反馈：+' + coins + ' 金币' + (item.reward.note ? '（' + item.reward.note + '）' : '') });
-      sendTo(item.key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+      sendTo(item.key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
       apiResp(res, 200, { ok: true, id: item.id, reward: item.reward, playerCoins: rec.coins });
     });
     return;
@@ -4875,7 +5029,7 @@ const server = http.createServer(function (req, res) {
     if (!rec) return apiResp(res, 404, { error: '账号不存在' });
     return apiResp(res, 200, {
       ok: true, key: target, name: rec.name, username: rec.username, qq: rec.qq || '',
-      coins: rec.coins || 0, inventory: rec.inventory || {},
+      coins: rec.coins || 0, inventory: rec.inventory || {}, invRev: invRevOf(rec),
       catchCount: rec.catchCount || 0, admin: !!rec.admin,
     });
   }
@@ -4899,6 +5053,9 @@ const server = http.createServer(function (req, res) {
           next[id] = (next[id] || 0) + qty;
         }
         rec.inventory = next;
+        bumpInvRev(rec); // 后台整体覆写背包：rev 必须前进（v0.13.9）
+        // 预留量可能超出新的持有量（后台只编辑了 inventory）：夹回持有量，避免出现「预留 > 持有」（v0.13.9）
+        Object.keys(rec.bigfish || {}).forEach(function (id) { bigfishClampTo(rec, id); });
       }
       if (d.coins != null) {
         const c = Math.floor(Number(d.coins));
@@ -4906,9 +5063,9 @@ const server = http.createServer(function (req, res) {
         rec.coins = c;
       }
       saveAccount(target);
-      sendTo(target, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+      sendTo(target, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
       sendTo(target, { type: 'notice', msg: '管理员更新了你的资产快照' });
-      apiResp(res, 200, { ok: true, key: target, coins: rec.coins, inventory: rec.inventory });
+      apiResp(res, 200, { ok: true, key: target, coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec) });
     });
     return;
   }
@@ -4958,7 +5115,7 @@ const server = http.createServer(function (req, res) {
       // 若该账号在线，推送最新资产/名称
       const pl = players.get(target);
       if (pl) { pl.name = rec.name; sendPlayersAll(); }
-      sendTo(target, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+      sendTo(target, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
       sendTo(target, { type: 'notice', msg: '管理员修改了你的账号信息：' + changed.join(' / ') });
       apiResp(res, 200, { ok: true, target: target, changed: changed, name: rec.name, coins: rec.coins, listingCap: listingCapOf(rec), capSet: rec.listingCap != null });
     });
@@ -5639,7 +5796,7 @@ const server = http.createServer(function (req, res) {
         if (D.isRodSet(l.id)) deliverRodBack(seller, l.id, l.name);
         else invAdd(seller, l.id, l.qty);
         saveAccount(l.seller);
-        sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory });
+        sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory, invRev: invRevOf(seller) });
         sendTo(l.seller, { type: 'notice', msg: '管理员退回了你的挂单：' + l.name + ' ×' + l.qty + '（上架费不退）' });
       }
       saveMarket();
@@ -6302,7 +6459,7 @@ function gracefulShutdown(why) {
     if (accountFlushTimer) { clearTimeout(accountFlushTimer); accountFlushTimer = null; }
     dirtyAccounts.clear();
     const keys = Object.keys(users);
-    keys.forEach(function (k) { const rec = users[k]; if (rec) writeJson(accountFile(k), rec); });
+    keys.forEach(function (k) { const rec = users[k]; if (rec) writeAccountFile(k, rec); });
     console.log('   ✔ 账号 ' + keys.length + ' 个');
   } catch (e) { console.error('   ✘ 账号保存失败：' + ((e && e.message) || e)); }
   try { saveWorld(); console.log('   ✔ 市集 / 记录 / 经济 / 配置 / 反馈 / 统计'); }

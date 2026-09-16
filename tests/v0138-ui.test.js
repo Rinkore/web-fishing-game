@@ -500,13 +500,14 @@ async function main() {
   // 默认「全部」不显示细分
   const tpSubs = () => p1.$$eval('.tp-subfilters .inv-subrow', els => els.map(e => ((e.querySelector('.sub-label') || {}).textContent || '').trim()));
   check('默认不显示细分筛选行（先点开大分类）', (await tpSubs()).length === 0, JSON.stringify(await tpSubs()));
-  // 选「鱼类」→ 品质 + 体型档
+  // 选「鱼类」→ 只有品质（v0.13.9：交易走普通通道，可用量为 0 的大鱼交易不了，
+  // 原来的「体型档」筛选只会列出选不中的鱼，已移除）
   await p1.evaluate(() => {
     const b = Array.from(document.querySelectorAll('.tp-cats .inv-cat')).find(x => x.textContent.includes('鱼类'));
     if (b) b.click();
   });
-  await until(async () => (await tpSubs()).length === 2, v => v === true, 8000);
-  check('交易窗口选鱼类 → 品质 + 体型档', JSON.stringify(await tpSubs()) === '["品质","体型档"]', JSON.stringify(await tpSubs()));
+  await until(async () => (await tpSubs()).length === 1, v => v === true, 8000);
+  check('交易窗口选鱼类 → 只有品质（体型档筛选已在 v0.13.9 移除）', JSON.stringify(await tpSubs()) === '["品质"]', JSON.stringify(await tpSubs()));
   const tpChips = await p1.$$eval('.tp-subfilters .inv-subrow .inv-cat', els => els.map(e => e.textContent.trim()));
   check('交易窗口的鱼类品质档不含神话', !tpChips.some(t => t.indexOf('神话') === 0), JSON.stringify(tpChips));
   // 选「材料」→ 只有品质
