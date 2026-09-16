@@ -239,6 +239,7 @@ window.Net = (function () {
       if (r && r.ok) {
         const d = r.data;
         state()[o.target || 'playersPage'] = { page: d.page, pages: d.pages, total: d.total, list: d.players || [] };
+        if (o.target === 'peepsPage') state().peepsLoading = false;   // 拉到了就撤掉「同步中」
         if (d.totalOnline != null) state().onlineTotal = d.totalOnline;
         if (window.UI) window.UI.refreshAll(o.target === 'peepsPage' ? 'fishing' : 'players');
       }
@@ -383,11 +384,27 @@ window.Net = (function () {
           S.market = m.market || [];
           fetchRecords();
           S.groundCounts = m.grounds || {};
-          // 服务器重连自动续钓（上次没主动收竿）：直接带回钓速明细，不必再发一次 start 请求。
-          // presence 里的 status 已是 fishing，syncSelfFromPresence 会把界面切回钓鱼态。
+          // 服务器重连自动续钓（上次没主动收竿）：直接带回钓速明细与钓点，
+          // 前端不必再发一次 start 请求。钓点必须在这里就地写回展示状态：
+          // perf-9 起 presence 只推给登记过列表视口的连接，钓鱼页不登记视口，
+          // 等 players/playersPage 会让界面一直停在「不在任何钓点」
+          // （渔获照进日志 → 「在钓，但不知道在哪钓」）。
           if (m.resumedFishing) {
             S.castInfo = m.resumedFishing.castInfo || S.castInfo || null;
             if (m.resumedFishing.interval) S.fishingInterval = m.resumedFishing.interval;
+            if (m.resumedFishing.groundId) {
+              S.player.status = 'fishing';
+              S.player.groundId = m.resumedFishing.groundId;
+              S.player.spotId = m.resumedFishing.spotId || null;
+              S.fishing.active = true;
+              // selected 同步：bitecfg / castcfg / groundcfg 广播靠它重新拉取钓速明细
+              S.selected = { groundId: m.resumedFishing.groundId, spotId: m.resumedFishing.spotId || null };
+              // 同钓点列表直接按这个钓点拉一次（本地即时，不等 5s 轮询；推送节奏不变）
+              if (window.Engine && window.Engine.resetPeeps) {
+                window.Engine.resetPeeps();
+                window.Engine.loadPeeps(m.resumedFishing.groundId, m.resumedFishing.spotId || null);
+              }
+            }
           }
           // 钓场目录（含管理后台的掉落池/增益/锁定覆盖）：原位替换 data.js 的默认值，
           // 保证图鉴产地与渔场页展示与实际掉落一致

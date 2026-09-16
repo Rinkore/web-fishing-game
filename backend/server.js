@@ -687,10 +687,10 @@ function effectiveSpeed(eff) {
   return Math.max(0, Math.min(castSpeedCap(), raw));
 }
 
-// 钓竿词缀合计。键集 = 组件词缀（speed/skill/rare/material/size/double）+ 只可能来自钓点增益的 big
-// （「大鱼概率」在 v0.11 从组件词缀改为「技巧」，但钓点增益仍保留大鱼概率这一类）。
+// 钓竿词缀合计。键集 = 组件词缀（speed/skill/rare/material/size/double）——
+// 钓点增益用的也是同一套类别（v0.13.3 起删掉了曾多出来的「大鱼概率」）。
 function bdEffectsOf(bd) {
-  const eff = { speed: 0, skill: 0, big: 0, rare: 0, material: 0, size: 0, double: 0 };
+  const eff = { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 };
   D.ROD_PARTS.forEach(function (part) {
     const comp = D.componentOf(bd && bd[part.key] && bd[part.key].compId);
     if (!comp) return;
@@ -754,7 +754,7 @@ function castInfoOf(rec, spot) {
   };
 }
 
-// 钓点增益并入总加成（管理员在后台为钓场/钓点配置，类别同词缀：speed/big/rare/material/size/double）
+// 钓点增益并入总加成（管理员在后台为钓场/钓点配置，类别与组件词缀同一套：speed/skill/rare/material/size/double）
 // 说明：这里的 speed 合计只用于「公式变量」与其它加成；抛竿间隔走 intervalFor()，
 // 其中钓点钓速是最终乘算（不与钓竿词缀/全服加成相加）。
 function mergedEffOf(bd, spot) {
@@ -800,7 +800,7 @@ function componentCommonProb() {
 // 大鱼/稀有/材料加成：按类别放大掉落池权重；后台「产出倍率」dropCfg 同层叠加（全局 × 分类，组件只吃全局）
 // v0.13：普通品质条目（普通鱼 / 材料 / 组件的普通品质部分）额外乘以稀有度系数 K/(K+R)。
 function boostPoolOf(pool, eff) {
-  const hasBoost = !!(eff.big || eff.rare || eff.material);
+  const hasBoost = !!(eff.rare || eff.material);
   const commonMult = rareMultOf(eff);
   if (!hasBoost && dropCfgIsDefault() && commonMult >= 1) return pool;
   const dc = dropCfg();
@@ -812,7 +812,7 @@ function boostPoolOf(pool, eff) {
     let mult = dc.global / 100;
     if (type === 'fish') {
       const tier = D.fishTierOf(id);
-      if (tier === 'big') mult *= (dc.big / 100) * (1 + eff.big / 100);
+      if (tier === 'big') mult *= dc.big / 100;   // 大鱼档只看后台产出倍率（dc.big，即「大鱼季」），增益里没有大鱼概率这一类
       else if (tier === 'rare') mult *= (dc.rare / 100) * (1 + eff.rare / 100);
       else mult *= dc.common / 100 * cm;
     } else if (type === 'material') mult *= (dc.material / 100) * (1 + eff.material / 100) * cm;
@@ -1083,7 +1083,9 @@ function forgetFishingSpot(key) {
   saveAccount(key);
 }
 // 建连时续钓：钓点被删除 / 钓场被锁定或限时关窗 → 直接忘掉，不反复重试。
-// 返回 { interval, castInfo } 供 init 下发（前端就不必再发一次 start 请求）。
+// 返回 { interval, castInfo, groundId, spotId } 供 init 下发：钓点必须一起带回，
+// 前端才能把「我在哪钓鱼」直接写回展示状态（perf-9 后 presence 只发给登记过列表
+// 视口的连接，钓鱼页不登记，等 presence 会一直显示「不在任何钓点」）。
 function resumeFishingSpot(key) {
   const rec = users[key];
   const last = rec && rec.lastFishing;
@@ -1092,7 +1094,8 @@ function resumeFishingSpot(key) {
   if (!found || found.ground.locked) { forgetFishingSpot(key); return null; }
   const r = startFishingSession(key, last.groundId, last.spotId, { silent: true });
   if (r.error) { forgetFishingSpot(key); return null; }
-  return { interval: r.interval, castInfo: castInfoOf(rec, found.spot) };
+  return { interval: r.interval, castInfo: castInfoOf(rec, found.spot),
+    groundId: last.groundId, spotId: last.spotId };
 }
 
 // opts.forget：玩家主动收竿/离开钓点 → 忘掉离线钓点。
@@ -1137,7 +1140,8 @@ function restartAllFishing() {
 // 可用变量：speed/skill/rare/material/size/double（钓竿词缀 + 钓点增益，%）与 interval（抛竿间隔 ms）。
 //   skill = 「技巧」词缀合计，是提升上钩率的主参数——**钩率提示只由这里的公式决定**，
 //   代码里不写死「技巧 = +X% 上钩率」这类文案，后台随时可以改公式（默认 clamp(90 + skill,0,100)）。
-//   big = 旧「大鱼概率」变量，v0.11 起组件不再产出该词缀；保留只为让历史保存过的公式仍能解析（恒为 0）。
+//   big = 旧「大鱼概率」变量，v0.11 起组件不再产出、v0.13.3 起增益也没有这一类了；
+//         变量名仍然接受（历史保存过的公式不能因为删变量而失效），取值恒为 0。
 // 可用函数：min max floor ceil round abs clamp(x,lo,hi)。
 const BITE_FUNCS = {
   min: Math.min, max: Math.max, floor: Math.floor, ceil: Math.ceil, round: Math.round, abs: Math.abs,
@@ -1233,7 +1237,8 @@ function biteProbabilityOf(eff, interval, spot) {
   if (!biteCompiledFn) return 100; // 公式无效时保底必上钩（正常保存路径已校验，不会走到）
   let p;
   try {
-    p = biteCompiledFn({ speed: eff.speed || 0, skill: eff.skill || 0, big: eff.big || 0, rare: eff.rare || 0, material: eff.material || 0, size: eff.size || 0, double: eff.double || 0, interval: interval || 0 });
+    // big 恒为 0：变量名保留只为历史公式能继续解析（见 BITE_VAR_NAMES 注释）
+    p = biteCompiledFn({ speed: eff.speed || 0, skill: eff.skill || 0, big: 0, rare: eff.rare || 0, material: eff.material || 0, size: eff.size || 0, double: eff.double || 0, interval: interval || 0 });
   } catch (e) { return 100; }
   if (!isFinite(p)) p = p > 0 ? 100 : 0;
   return Math.min(100, Math.max(0, p));
@@ -1325,7 +1330,7 @@ const BUFF_VALUE_MAX = 100;
 // 收敛一份增益列表：丢掉未知类别，数值夹到 [MIN, MAX]（历史配置里可能存着超限值）
 function clampSpotBuffs(list) {
   if (!Array.isArray(list)) return [];
-  return list.filter(function (b) { return b && D.BUFF_LABEL[b.type]; }).map(function (b) {
+  return list.filter(function (b) { return b && D.AFFIX_LABEL[b.type]; }).map(function (b) {
     const v = Math.round((Number(b.value) || 0) * 10) / 10;
     return { type: b.type, value: Math.max(BUFF_VALUE_MIN, Math.min(BUFF_VALUE_MAX, v)) };
   });
@@ -1335,7 +1340,7 @@ function validateBuffList(list) {
   const out = [];
   for (const b of list) {
     const type = String((b && b.type) || '');
-    if (!D.BUFF_LABEL[type]) return { error: '未知增益类别：' + type };
+    if (!D.AFFIX_LABEL[type]) return { error: '未知增益类别：' + type };
     const value = Number(b && b.value);
     if (!isFinite(value) || value < BUFF_VALUE_MIN || value > BUFF_VALUE_MAX) {
       return { error: '增益数值需在 ' + BUFF_VALUE_MIN + ' 到 ' + BUFF_VALUE_MAX + ' 之间' };
@@ -2088,7 +2093,28 @@ function loadRecords() { loadDomain(RECORDS_FILE, RECORDS_KEYS); }
 function saveRecords() { saveDomain(RECORDS_FILE, RECORDS_KEYS); }
 function loadEconomy() { loadDomain(ECONOMY_FILE, ECONOMY_KEYS); }
 function saveEconomy() { saveDomain(ECONOMY_FILE, ECONOMY_KEYS); }
-function loadConfig() { loadDomain(CONFIG_FILE, CONFIG_KEYS); }
+function loadConfig() {
+  loadDomain(CONFIG_FILE, CONFIG_KEYS);
+  // 存量修复：v0.13.3 删掉了「大鱼概率」增益类别 —— 旧存档里可能还留着 { type:'big' } 的增益。
+  // 载入时统一剔除并回写，免得后台增益列表/配置文件里残留一个永远不生效的类别。
+  let fixed = 0;
+  const gc = world.groundCfg || {};
+  const stripBig = function (sp) {
+    if (!sp || !Array.isArray(sp.buffs)) return;
+    const keep = sp.buffs.filter(function (b) { return b && D.AFFIX_LABEL[b.type]; });
+    if (keep.length === sp.buffs.length) return;
+    sp.buffs = keep;
+    fixed++;
+  };
+  Object.keys(gc.spots || {}).forEach(function (k) { stripBig(gc.spots[k]); });
+  (Array.isArray(gc.custom) ? gc.custom : []).forEach(function (cg) {
+    (cg.spots || []).forEach(stripBig);
+  });
+  Object.keys(gc.customSpots || {}).forEach(function (gid) {
+    (gc.customSpots[gid] || []).forEach(stripBig);
+  });
+  if (fixed) { saveConfig(); console.log('[config] 已清理 ' + fixed + ' 处无效增益类别（大鱼概率）'); }
+}
 function saveConfig() { saveDomain(CONFIG_FILE, CONFIG_KEYS); }
 // ---- 按在线人数自动调节全服动态通知等级（管理后台可配，带迟滞+防抖）----
 // world.autoNotify = { on, rules:[{min, level}...]（min 降序生效）, hysteresisPct, holdCount }
@@ -4636,8 +4662,7 @@ const server = http.createServer(function (req, res) {
       ok: true,
       grounds: D.GROUNDS,
       catalog: { fish: fish, materials: D.MATERIALS, components: D.COMPONENT_BASES, chests: D.CHESTS },
-      affixTypes: D.AFFIX_LABEL,        // 组件词缀（6 类，「技巧」在此）
-      buffTypes: D.BUFF_LABEL,          // 钓点增益（比组件词缀多一类「大鱼概率」）
+      affixTypes: D.AFFIX_LABEL,        // 组件词缀（6 类，「技巧」在此）；钓点增益用同一套类别
       quality: D.QUALITY,
       notifyLevel: world.notifyLevel || 'all',
       notifyLevels: NOTIFY_LEVELS,
@@ -5854,7 +5879,7 @@ const server = http.createServer(function (req, res) {
       if (d.evalVars && formulaSrc != null) {
         const c2 = compileFormula(formulaSrc);
         if (c2.ok) {
-          const vars = { speed: 0, skill: 0, big: 0, rare: 0, material: 0, size: 0, double: 0, interval: castBaseMs() };
+          const vars = { speed: 0, skill: 0, big: 0, rare: 0, material: 0, size: 0, double: 0, interval: castBaseMs() };  // big 恒 0（兼容旧公式）
           Object.keys(d.evalVars).forEach(function (k) { if (k in vars) vars[k] = Number(d.evalVars[k]) || 0; });
           let prob = c2.fn(vars);
           if (!isFinite(prob)) prob = prob > 0 ? 100 : 0;

@@ -2726,6 +2726,63 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
         !abV4.warn && abV4.diffs[AB_IDX.speed].next === S0 && abV4.diffs[AB_IDX.double].next === D0,
         JSON.stringify({ s: abV4.diffs[AB_IDX.speed].next, d: abV4.diffs[AB_IDX.double].next }));
 
+      // —— 目标上限 + 可达区间实时联动（回归：上面设了上限，下面仍按最高值显示）——
+      // 每行轨道两端 = 该属性当前的可达区间；调一项属性，其余行的区间/手柄位置要跟着重算。
+      const readTracks = () => p1.evaluate(() => Array.from(document.querySelectorAll('.ab-modal .ab-row')).map(r => {
+        const s = r.querySelectorAll('.ab-range');
+        return {
+          min: Number(s[0].min), max: Number(s[0].max), lo: Number(s[0].value), hi: Number(s[1].value),
+          peek: ((r.querySelector('.ab-peek') || {}).textContent || '').trim(),
+        };
+      }));
+      const setTarget = (rowIdx, boxIdx, val) => p1.evaluate(([ri, bi, v]) => {
+        const row = document.querySelectorAll('.ab-modal .ab-row')[ri];
+        const inp = row.querySelectorAll('.ab-num')[bi];
+        inp.value = String(v);
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      }, [rowIdx, boxIdx, val]);
+      const readPeekNum = (txt) => {
+        const m = /可达\s*([-+]?\d+)%~([-+]?\d+)%/.exec(txt || '');
+        return m ? { lo: Number(m[1]), hi: Number(m[2]) } : null;
+      };
+      const tr0 = await readTracks();
+      check('每行「可达」显示为区间（下限 ~ 上限）',
+        tr0.length === 6 && tr0.every(r => !!readPeekNum(r.peek)), JSON.stringify(tr0.map(r => r.peek)));
+      check('滑块轨道两端 = 该行的可达区间（手柄位置随之同步）',
+        tr0.every(r => {
+          const p = readPeekNum(r.peek);
+          return !!p && r.min === p.lo && r.max === Math.max(p.hi, p.lo + 1, 10);
+        }), JSON.stringify(tr0));
+      // 给钓速设一个「可达区间之内」的上限：方案里的钓速必须跟着被压下来
+      const spd0 = readPeekNum(tr0[0].peek);
+      const capV = spd0.lo + Math.max(1, Math.round((spd0.hi - spd0.lo) * 0.4));
+      const dbl0 = readPeekNum(tr0[1].peek);
+      await setTarget(0, 1, capV);
+      const abCapView = await readAb();
+      const tr1 = await readTracks();
+      const dbl1 = readPeekNum(tr1[1].peek);
+      check('设了钓速上限后，下方方案里的钓速不再超过上限',
+        abCapView.diffs[AB_IDX.speed].next <= capV,
+        JSON.stringify({ cap: capV, s: abCapView.diffs[AB_IDX.speed].next, peek: tr0[0].peek }));
+      check('调一项属性会重新检索其余属性的可达上下限（双钓区间随之重算）',
+        !!dbl1 && dbl1.hi >= dbl1.lo && dbl1.lo >= dbl0.lo,
+        JSON.stringify({ before: dbl0, after: dbl1 }));
+      check('其余行的滑块位置同步到新区间（轨道下端 = 新可达下限）',
+        tr1.every(r => {
+          const p = readPeekNum(r.peek);
+          return !!p && r.min === p.lo;
+        }), JSON.stringify(tr1));
+      // 上限压到可达下限以下 → 如实说明为什么配不出来（而不是悄悄按最高值来）
+      await setTarget(0, 1, readPeekNum(tr1[0].peek).lo - 5);
+      const abTooLow = await readAb();
+      check('上限低于可达下限时明确提示（不再只说「冲突」）',
+        /可达下限|最高只能到/.test(abTooLow.warn), abTooLow.warn.slice(0, 140));
+      await p1.click('.ab-modal .ab-reset');
+      const abV4b = await readAb();
+      check('本段用例收尾：重置后回到默认方案',
+        !abV4b.warn && abV4b.diffs[AB_IDX.speed].next === S0,
+        JSON.stringify({ s: abV4b.diffs[AB_IDX.speed].next, warn: abV4b.warn.slice(0, 80) }));
+
       // 一键装配：以服务器 /api/me 为准核对面板给出的「方案后」每一笔加成
       const wantEff = {};
       D_DATA.AFFIX_TYPES.forEach((t, i) => { wantEff[t] = abV4.diffs[i].next; });

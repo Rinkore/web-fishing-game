@@ -31,6 +31,9 @@ window.Engine = (function () {
     log: [],                    // 我的渔获日志（服务器 catch 推送，最新在前）
     feed: [],                   // 全服动态（服务器广播）
     players: [],                // 在线玩家（服务器广播）
+    peepsPage: { page: 1, pages: 1, total: 0, list: [] },  // 同钓点玩家（按当前钓点分页拉取）
+    peepsLoading: false,        // 同钓点列表正在拉取（切钓点后本地先清空，不等 5s 轮询）
+    peepsGround: '',            // 列表当前对应的钓点 key（变了才重建）
     shop: {},                   // 系统商店价格（服务器）
     market: [],                 // 市集挂单（服务器）
     records: {},                // 全服大鱼榜（服务器）
@@ -133,6 +136,25 @@ window.Engine = (function () {
     state.player.spotId = null;
     state.player.recent = null;
     state.selected = { groundId: null, spotId: null };
+    state.peepsPage = { page: 1, pages: 1, total: 0, list: [] };
+    state.peepsLoading = false;
+    state.peepsGround = '';
+  }
+
+  // 切钓点时「同钓点」列表本地即时重建：旧列表是上一个钓点的人，只等 5s 轮询的话，
+  // 会一直挂在新钓点下面（「所在」已经变了，「同钓点 N 人」和卡片还是旧的）。
+  // 这里立刻清空并标成「同步中」——服务器推送节奏不变，只是本地不再等它。
+  function resetPeepsFor(groundId, spotId) {
+    state.peepsGround = (groundId ? groundId + '/' + (spotId || '') : '');
+    state.peepsPage = { page: 1, pages: 1, total: 0, list: [] };
+    state.peepView = { size: 20, q: '', page: 1 };
+    state.peepsLoading = true;
+  }
+  // 立刻按该钓点拉一次分页（切点成功之后调；拉到了 net.js 会撤掉「同步中」）
+  function loadPeepsFor(groundId, spotId) {
+    if (window.Net && window.Net.fetchPlayersPage) {
+      window.Net.fetchPlayersPage({ target: 'peepsPage', page: 1, size: 20, q: '', ground: groundId, spot: spotId });
+    }
   }
 
   // ---- 钓鱼：只发指令。循环与渔获由服务器驱动，经 SSE 'catch'/'assets' 推送 ----
@@ -145,12 +167,17 @@ window.Engine = (function () {
     state.player.status = 'fishing';
     state.fishing.active = true;
     if (!window.Net) return Promise.resolve({ ok: false, msg: '网络层未就绪' });
+    const key = groundId + '/' + (spotId || '');
+    if (state.peepsGround !== key) resetPeepsFor(groundId, spotId);   // 换钓点（或首次开始）才重建列表
     return window.Net.fishingStart(groundId, spotId).then(function (r) {
       if (r && r.ok) {
         // 注意：网络层返回 { ok, status, data }，业务字段都在 data 里
         const d = r.data || {};
         state.fishingInterval = d.interval || state.fishingInterval;
         state.castInfo = d.castInfo || state.castInfo || null; // 钓速明细（基础值/词缀/钓点增益/全服加成/实际间隔）
+        // 名单必须在「开始成功」之后再拉：抢先拉会拿到切点前的旧名单（新钓点 0 人），
+        // 界面要空等下一次 5s 轮询才出现人。
+        if (state.peepsGround === key) loadPeepsFor(groundId, spotId);
         save();
         return { ok: true };
       }
@@ -186,6 +213,8 @@ window.Engine = (function () {
     state: state, init: init, save: save, applyProfile: applyProfile,
     refreshEffects: refreshEffects, bdEffects: function () { return state.bdEffects; },
     startFishing: startFishing, stopFishing: stopFishing, resetTransient: resetTransient,
+    resetPeeps: resetPeepsFor,   // 重连续钓等场景：按当前钓点即时重建「同钓点」列表
+    loadPeeps: loadPeepsFor,     // 按当前钓点立刻拉一次分页（推送节奏不变）
     resolveSpot: resolveSpot, playersAtSpot: playersAtSpot,
     buildDefaultBD: buildDefaultBD,
   };

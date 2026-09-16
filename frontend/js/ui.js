@@ -27,8 +27,8 @@ window.UI = (function () {
     if (html != null) e.innerHTML = html;
     return e;
   }
-  // 词缀/增益名称：组件词缀走 AFFIX_LABEL，钓点增益多一类「大鱼概率」走 BUFF_LABEL
-  function affixName(type) { return (D.AFFIX_LABEL[type]) || (D.BUFF_LABEL && D.BUFF_LABEL[type]) || type; }
+  // 词缀/增益名称：组件词缀与钓点增益同一套标签（v0.13.3 起不再有大鱼概率）
+  function affixName(type) { return D.AFFIX_LABEL[type] || type; }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
@@ -42,6 +42,11 @@ window.UI = (function () {
   function timeStr(t) {
     const d = new Date(t);
     return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2);
+  }
+  // 带日期的时刻（渔获记录这类长期留存的展示用）：纪录可能挂几个月，只给时分秒看不出是哪天
+  function dateTimeStr(t) {
+    const d = new Date(t);
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + ' ' + timeStr(t);
   }
   function itemMeta(id) { return D.itemOf ? D.itemOf(id) : { name: id, rarity: 'common', price: 10, kind: 'unknown' }; }
   // 现价：优先系统商店行情，无行情时退回基准价（模块级，供各视图与子窗口共用）
@@ -652,6 +657,12 @@ window.UI = (function () {
     return '<span class="dot on"></span> 自动钓鱼中 · ' + esc(g ? g.name : '') + (sp ? '·' + esc(sp.name) : '') +
       '<span class="state-hint">' + esc(castText()) + ' · 再点当前钓点可取消</span>';
   }
+  // 「同钓点 N 人」文案：构建与增量刷新共用（切钓点后本地会先标成同步中，不等 5s 轮询）
+  function peepsHeadText(st) {
+    if (st.peepsLoading) return '同钓点人数同步中…';
+    const pp = st.peepsPage || { total: 0 };
+    return '同钓点 ' + pp.total + ' 人' + (pp.total > 5 ? '（可下滑查看全部）' : '');
+  }
   // 同钓点玩家列表的内容签名：只有玩家/状态/近期渔获真的变了才重建这几行
   function peepSig(here) {
     return here.map(function (b) {
@@ -833,8 +844,11 @@ window.UI = (function () {
       }
       const wasFishing = st.fishing.active;
       st.selected = { groundId: gid, spotId: sid };
-      renderTopbar(); renderNav(); renderFishing(); // 乐观渲染，服务器拒绝时回滚
-      E().startFishing(gid, sid).then(function (r) {
+      // 先让状态层乐观更新（含 player.groundId 与「同钓点」列表清空）再渲染：
+      // 点下去的一瞬间本地就是新钓点，不必等服务器回包，也不必等 5s 轮询补同钓点列表。
+      const pr = E().startFishing(gid, sid);
+      renderTopbar(); renderNav(); renderFishing();
+      pr.then(function (r) {
         if (!r.ok) { toast(r.msg); st.selected = { groundId: null, spotId: null }; }
         else { toast((wasFishing ? '已切换钓点 · ' : '已开始自动钓鱼 · ') + castText()); }
         renderTopbar(); renderNav(); renderFishing();
@@ -993,11 +1007,10 @@ window.UI = (function () {
       // 只报所在位置；人数交给下面的「同钓点 N 人」（钓场级人数左侧钓场卡片已有 👥）
       right.appendChild(el('div', 'here-count', '所在：' + esc(gNow ? gNow.name : '') + (spNow ? '·' + esc(spNow.name) : '')));
       // 同屏最多 5 条，超出可下滑（不挤占下方的渔获日志入口）
-      const peepHead = el('div', 'peeps-head', '同钓点 ' + pp.total + ' 人' + (pp.total > 5 ? '（可下滑查看全部）' : ''));
-      right.appendChild(peepHead);
+      right.appendChild(el('div', 'peeps-head', peepsHeadText(st)));
       const peeps = el('div', 'peeps scroll5');
       peeps.setAttribute('data-sig', peepSig(here)); // 内容没变就不重建这几行
-      if (here.length === 0) peeps.appendChild(el('div', 'hint', '暂无同一钓点的玩家。'));
+      if (here.length === 0) peeps.appendChild(el('div', 'hint', st.peepsLoading ? '同钓点玩家同步中…' : '暂无同一钓点的玩家。'));
       here.forEach(function (b) { peeps.appendChild(peepCard(b)); });
       if (pp.pages > 1) {
         const pager = el('div', 'peep-pager');
@@ -1054,11 +1067,11 @@ window.UI = (function () {
     if (peeps && st.player.groundId) {
       const pp = st.peepsPage || { page: 1, pages: 1, total: 0, list: [] };
       const here = pp.list || [];
-      const sig = peepSig(here) + '|' + pp.page + '/' + pp.pages + '/' + pp.total;
+      const sig = peepSig(here) + '|' + pp.page + '/' + pp.pages + '/' + pp.total + '|' + (st.peepsLoading ? 'L' : '');
       if (peeps.getAttribute('data-sig') !== sig) {
         peeps.setAttribute('data-sig', sig);
         peeps.innerHTML = '';
-        if (here.length === 0) peeps.appendChild(el('div', 'hint', '暂无同一钓点的玩家。'));
+        if (here.length === 0) peeps.appendChild(el('div', 'hint', st.peepsLoading ? '同钓点玩家同步中…' : '暂无同一钓点的玩家。'));
         here.forEach(function (b) { peeps.appendChild(peepCard(b)); });
         if (pp.pages > 1) {
           const pager = el('div', 'peep-pager');
@@ -1072,7 +1085,7 @@ window.UI = (function () {
           peeps.appendChild(pager);
         }
         const head = main.querySelector('.peeps-head');
-        if (head) head.textContent = '同钓点 ' + pp.total + ' 人' + (pp.total > 5 ? '（可下滑查看全部）' : '');
+        if (head) head.textContent = peepsHeadText(st);
       }
     }
     // ④ 渔获日志：只把新渔获插到最前面，旧行原地不动（滚动位置自然保持，也不再整列重播入场动画）
@@ -1223,7 +1236,9 @@ window.UI = (function () {
   D.AFFIX_TYPES.forEach(function (t) { abEnabled[t] = true; abMin[t] = ''; abMax[t] = ''; });
   let abRefs = [];       // 行内元素引用：就地刷新，避免整块重建时打断拖动与输入
   let abPlan = null;     // 最近一次求解结果
-  let abPeek = {};       // 各属性的可达上限
+  let abPeek = {};       // 各属性的可达上限（其余属性的目标约束下最高能配到多少）
+  let abFloor = {};      // 各属性的可达下限（同一套约束下最低会到多少）—— 与 abPeek 一起构成「可达区间」
+  const AB_FLOOR_STATES = 48;   // 下限探针的前沿：只求一个端点，小前沿足够快
   let abBusy = false;    // 正在装配（防止连点重复提交）
   function abLabel(t) { const kv = BD_AFFIXES.find(function (x) { return x[0] === t; }); return kv ? kv[1] : t; }
   function abSigned(v) { return (v > 0 ? '+' : '') + v + '%'; }
@@ -1247,8 +1262,9 @@ window.UI = (function () {
       '<button class="mini modal-close">✕ 关闭</button></div>' +
       '<div class="modal-body">' +
       '<div class="bde-note">检索 7 个部位的可用组件（含当前已装的那件），按<b>优先级</b>选出总属性最高的组合：' +
-      '先让第 1 项最大，再在其中让第 2 项最大……<b>下限 / 上限</b>各有一个滑块（数字框可精填，留空 = 不限），' +
-      '配不出来会提示「最高只能到多少」。下限滑块拖动时实时显示其他属性的可达上限。</div>' +
+      '先让第 1 项最大，再在其中让第 2 项最大……<b>下限 / 上限</b>各有一个滑块（数字框可精填，拖到两端 = 不限），' +
+      '轨道两端就是该属性当前能落到的<b>可达区间</b>：改动任意一项属性，其余属性的区间与手柄位置都会实时重算；' +
+      '目标配不出来会提示「最高只能到多少」。</div>' +
       '<div class="ab-rows"></div>' +
       '<div class="ab-actions"><button class="mini ab-reset">重置目标</button>' +
       '<button class="mini primary-mini ab-apply">一键装配</button>' +
@@ -1316,13 +1332,13 @@ window.UI = (function () {
         maxInp.title = '目标上限：配装不超过该值（留空 = 不限）';
         // 同轨双滑块：下限（青柄）与上限（金柄）共用一条轨道，中间高亮为目标区间；
         // 拖动时互相推挤，保证下限 ≤ 上限
+        // 轨道两端 = 该属性在当前目标下的**可达区间**（abRefresh 按 abFloor/abPeek 现算）：
+        // 所以调任一行属性时，其余行的轨道范围与两个手柄位置都会跟着重算。
         const sliderMin = el('input', 'ab-range ab-range-min');
-        sliderMin.type = 'range'; sliderMin.min = '0'; sliderMin.step = '1';
-        sliderMin.value = String(Number(abMin[t]) || 0);
-        sliderMin.title = '下限手柄：拖动 = 设定该属性的目标下限，并实时看其他属性还能配到多高';
+        sliderMin.type = 'range'; sliderMin.step = '1';
+        sliderMin.title = '下限手柄：拖动 = 设定该属性的目标下限（拖到最左 = 不限），并实时看其他属性还能配到多少';
         const sliderMax = el('input', 'ab-range ab-range-max');
-        sliderMax.type = 'range'; sliderMax.min = '0'; sliderMax.step = '1';
-        sliderMax.value = String(Number(abMax[t]) || 0);
+        sliderMax.type = 'range'; sliderMax.step = '1';
         sliderMax.title = '上限手柄：拖动 = 设定该属性的目标上限（拖到最右 = 不限）';
         const dualFill = el('span', 'ab-dual-fill');
         const dual = el('span', 'ab-dual');
@@ -1331,26 +1347,32 @@ window.UI = (function () {
         dual.appendChild(sliderMin);
         dual.appendChild(sliderMax);
         const peekEl = el('span', 'ab-peek');
+        peekEl.title = '该属性在当前目标下能落到的区间（下限 ~ 上限）：改任意一项属性都会实时重算';
+        // 手柄位置 = 轨道 [base, cap] 内的归一化位置；目标留空（不限）= 停在对应端点
         function syncRow() {
           minInp.value = abMin[t] === '' ? '' : abMin[t];
           maxInp.value = abMax[t] === '' ? '' : abMax[t];
-          sliderMin.value = String(Math.min(Number(abMin[t]) || 0, Number(sliderMin.max) || 0));
-          const smaxCap = Number(sliderMax.max) || 0;
-          sliderMax.value = String(abMax[t] === '' || abMax[t] == null ? smaxCap : Math.min(Number(abMax[t]), smaxCap));
+          const base = Number(sliderMin.min) || 0, cap = Number(sliderMax.max) || 0;
+          sliderMin.value = String(abMin[t] === '' || abMin[t] == null
+            ? base : Math.min(Math.max(Number(abMin[t]) || 0, base), cap));
+          sliderMax.value = String(abMax[t] === '' || abMax[t] == null
+            ? cap : Math.min(Math.max(Number(abMax[t]) || 0, base), cap));
           syncFill();
         }
         function syncFill() {
-          const cap = Number(sliderMax.max) || 0;
-          if (cap <= 0) { dualFill.style.left = '0%'; dualFill.style.width = '0%'; return; }
-          const a = Math.min(Number(sliderMin.value), Number(sliderMax.value)) / cap * 100;
-          const b = Math.max(Number(sliderMin.value), Number(sliderMax.value)) / cap * 100;
-          dualFill.style.left = a + '%';
-          dualFill.style.width = Math.max(0, b - a) + '%';
+          const base = Number(sliderMin.min) || 0, cap = Number(sliderMax.max) || 0;
+          const span = cap - base;
+          if (span <= 0) { dualFill.style.left = '0%'; dualFill.style.width = '100%'; return; }
+          const a = (Number(sliderMin.value) - base) / span * 100;
+          const b = (Number(sliderMax.value) - base) / span * 100;
+          dualFill.style.left = Math.min(a, b) + '%';
+          dualFill.style.width = Math.abs(b - a) + '%';
         }
         sliderMin.addEventListener('input', function () {
           const v = Number(sliderMin.value) || 0;
-          abMin[t] = String(v);
-          if (abMax[t] !== '' && abMax[t] != null && Number(abMax[t]) < v) abMax[t] = String(v);  // 推挤上限
+          const base = Number(sliderMin.min) || 0;
+          abMin[t] = v <= base ? '' : String(v);   // 拖到最左（= 可达下限）= 不限，与上限拖到最右对称
+          if (abMin[t] !== '' && abMax[t] !== '' && abMax[t] != null && Number(abMax[t]) < v) abMax[t] = String(v);  // 推挤上限
           syncRow();
           abRefresh();
         });
@@ -1397,27 +1419,36 @@ window.UI = (function () {
       };
       const peekCfg = {};
       for (const k in cfg) peekCfg[k] = cfg[k];
-      peekCfg.maxStates = 80;         // 探针只求一个上界，前沿小一点更快
-      abPeek = {};
-      D.AFFIX_TYPES.forEach(function (t) { abPeek[t] = D.autoBuildPeek(peekCfg, t); });
+      peekCfg.maxStates = 80;         // 探针只求一个端点，前沿小一点更快
+      abPeek = {}; abFloor = {};
+      D.AFFIX_TYPES.forEach(function (t) {
+        // 可达区间 = 「其余属性的目标」（含刚刚改动的那一项）约束下，本属性最高/最低能到多少。
+        // 上限探针复用同一套约束，所以调一项属性 → 其余属性的区间与手柄位置立刻跟着变。
+        abPeek[t] = D.autoBuildPeek(peekCfg, t);
+        abFloor[t] = D.autoBuildPeek(Object.assign({}, peekCfg, { maxStates: AB_FLOOR_STATES }), t, 'min');
+      });
       abPlan = D.autoBuildPlan(cfg);
       abRefs.forEach(function (r) {
-        const ceil = Math.max(0, Math.ceil(Number(abPeek[r.t]) || 0));
+        const hi = Math.ceil(Number(abPeek[r.t]) || 0);
+        const lo = Math.floor(Number(abFloor[r.t]) || 0);
         const hasTarget = abMin[r.t] !== '' && abMin[r.t] != null;
         r.row.classList.toggle('on', !!abEnabled[r.t]);
-        const cap = Math.max(ceil, Number(abMin[r.t]) || 0, Number(abMax[r.t]) || 0, 10);
-        // 正在拖动的滑块不写回值/上界，否则会和手指抢位置
-        if (document.activeElement !== r.sliderMin) {
-          r.sliderMin.max = String(cap);
-          r.sliderMin.value = String(Math.min(Number(abMin[r.t]) || 0, cap));
-        }
-        if (document.activeElement !== r.sliderMax) {
-          r.sliderMax.max = String(cap);
-          r.sliderMax.value = String(abMax[r.t] === '' || abMax[r.t] == null ? cap : Math.min(Number(abMax[r.t]), cap));
+        // 轨道 = 可达区间（下端就到可达下限）：手柄位置与「可达」读数都以它为准。
+        // 已填的目标仍放进轨道两端，否则刚填的数值会被手柄夹走、看不出来自己写了什么。
+        const base = lo;
+        const cap = Math.max(hi, base + 1, Number(abMin[r.t]) || 0, Number(abMax[r.t]) || 0, 10);
+        // 正在拖动的手柄不写值/不重设轨道，否则会和手指抢位置（拖完下一次刷新自动归位）
+        if (document.activeElement !== r.sliderMin && document.activeElement !== r.sliderMax) {
+          r.sliderMin.min = String(base); r.sliderMin.max = String(cap);
+          r.sliderMax.min = String(base); r.sliderMax.max = String(cap);
+          r.sliderMin.value = String(abMin[r.t] === '' || abMin[r.t] == null
+            ? base : Math.min(Math.max(Number(abMin[r.t]) || 0, base), cap));
+          r.sliderMax.value = String(abMax[r.t] === '' || abMax[r.t] == null
+            ? cap : Math.min(Math.max(Number(abMax[r.t]) || 0, base), cap));
         }
         if (r.syncFill) r.syncFill();
-        const over = hasTarget && Number(abMin[r.t]) > (Number(abPeek[r.t]) || 0);
-        r.peek.textContent = '可达 ' + abSigned(Number(abPeek[r.t]) || 0) + (over ? ' · 低于目标' : '');
+        const over = hasTarget && Number(abMin[r.t]) > hi;
+        r.peek.textContent = '可达 ' + abSigned(lo) + '~' + abSigned(hi) + (over ? ' · 低于目标' : '');
         r.peek.classList.toggle('over', over);
       });
       renderResult(st);
@@ -1462,7 +1493,16 @@ window.UI = (function () {
           return esc(abLabel(t)) + ' 要求 ≥ ' + esc(String(abMin[t])) + '，现有组件最高只能到 ' + abSigned(Number(abPeek[t]) || 0);
         }).join('；') + '。可放宽目标，或先去市集收更好的组件。</div>';
       } else if (p.relaxed === 'max') {
-        html += '<div class="ab-warn">⚠ 上下限互相冲突，已忽略上限求最优组合。</div>';
+        // 上限压得比「可达下限」还低（组件自带的最低值都超了）→ 说明白为什么忽略它；
+        // 只是上下限互相矛盾（下限 > 上限）时才用通用文案。
+        const tight = D.AFFIX_TYPES.filter(function (t) {
+          return abMax[t] !== '' && abMax[t] != null && Number(abFloor[t]) > Number(abMax[t]);
+        });
+        html += tight.length
+          ? '<div class="ab-warn">⚠ 上限设得比可达下限还低：' + tight.map(function (t) {
+            return esc(abLabel(t)) + ' 最低也只能到 ' + abSigned(Number(abFloor[t]) || 0);
+          }).join('；') + '，已忽略该上限。</div>'
+          : '<div class="ab-warn">⚠ 上下限互相冲突，已忽略上限求最优组合。</div>';
       } else if (!changes) {
         html += '<div class="ab-ok">✅ 当前装配已经是该优先级下能配到的最优组合。</div>';
       } else {
@@ -6152,7 +6192,7 @@ window.UI = (function () {
           '<span class="top10-rank">' + medal + '</span>' +
           '<span class="top10-size' + (small ? ' sf' : '') + '">' + t.size + '<span class="u">cm</span></span>' +
           '<span class="top10-who">' + esc(t.who) + '</span>' +
-          '<span class="top10-time">' + timeStr(t.t) + '</span>'));
+          '<span class="top10-time">' + dateTimeStr(t.t) + '</span>'));
       });
       body.appendChild(el('div', 'sd-legend', '共收录 ' + top.length + ' 条（每位玩家仅保留最好一条）· 每次捕获自动更新'));
     });
@@ -6186,7 +6226,7 @@ window.UI = (function () {
         '<div class="rh-crown">👑 全场最大</div>' +
         '<div class="rh-name ' + rarityClass(topMeta.rarity) + '">' + esc(top.name) + '</div>' +
         '<div class="rh-size">' + top.size + '<span class="u">cm</span></div>' +
-        '<div class="rh-who">纪录保持者：' + esc(top.who) + ' · ' + timeStr(top.t) + '</div>';
+        '<div class="rh-who">纪录保持者：' + esc(top.who) + ' · ' + dateTimeStr(top.t) + '</div>';
       panel.appendChild(hero);
     } else {
       panel.appendChild(el('div', 'hint', '还没有渔获纪录。钓到一条鱼就会生成它的最大/最小纪录。'));
@@ -6208,7 +6248,7 @@ window.UI = (function () {
           '<img class="rc-icon" src="assets/fish/' + esc(e.f.id) + '.png" alt="" draggable="false">' +
           '<div class="rc-name ' + rarityClass(e.f.rarity) + '">' + esc(e.f.name) + '</div>' +
           '<div class="rc-size">' + e.rec.size + '<span class="u">cm</span></div>' +
-          '<div class="rc-who">' + esc(e.rec.who) + ' · ' + timeStr(e.rec.t) + '</div>' +
+          '<div class="rc-who">' + esc(e.rec.who) + ' · ' + dateTimeStr(e.rec.t) + '</div>' +
           '<div class="rc-hint">点击查看前十大</div>';
         cell.title = '点击查看该鱼全服前十大捕获';
         cell.addEventListener('click', function () { openRecordsModal(e.f.id); });
@@ -6238,7 +6278,7 @@ window.UI = (function () {
           '<img class="rc-icon" src="assets/fish/' + esc(r.id) + '.png" alt="" draggable="false">' +
           '<div class="rc-name ' + rarityClass(meta.rarity) + '">' + esc(r.name) + '</div>' +
           '<div class="rc-size sf-size">' + r.size + '<span class="u">cm</span></div>' +
-          '<div class="rc-who">' + esc(r.who) + ' · ' + timeStr(r.t) + '</div>' +
+          '<div class="rc-who">' + esc(r.who) + ' · ' + dateTimeStr(r.t) + '</div>' +
           '<div class="rc-hint">点击查看前十小</div>';
         cell.title = '点击查看该鱼全服前十小捕获';
         cell.addEventListener('click', function () { openRecordsModal(r.id, 'small'); });

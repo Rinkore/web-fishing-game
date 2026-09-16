@@ -1529,10 +1529,10 @@ window.Admin = (function () {
       '<button id="buff-save" class="btn primary">保存增益</button>' +
       '</div>';
 
-    // 钓点增益可选的类别 = buffTypes（组件 6 类 + 大鱼概率）；组件词缀表 affixTypes 不含大鱼概率
-    const affixes = cfg.buffTypes || cfg.affixTypes;
+    // 钓点增益可选的类别 = 组件词缀表 affixTypes（v0.13.3 起两者同一套：不再多一类「大鱼概率」）
+    const affixes = cfg.affixTypes || {};
     const buffNote = {
-      speed: '钓速：该钓点抛竿速率的最终乘算（× (1-数值/100)），不与钓竿词缀/全服加成相加', big: '大鱼概率：放大「大鱼」条目权重',
+      speed: '钓速：该钓点抛竿速率的最终乘算（× (1-数值/100)），不与钓竿词缀/全服加成相加',
       rare: '稀有度：降低普通品质物品的权重（普通品质权重 × K/(K+R)，K 见「🧮 公式管理」）', material: '材料概率：放大材料条目权重',
       size: '体型：放大捕获体型（不与钓竿词缀的体型上限相冲，按百分比放大结果）', double: '双钓概率：触发后立即再结算一竿',
     };
@@ -2082,7 +2082,6 @@ window.Admin = (function () {
     ['size', '体型加成 %'],
     ['double', '双钓叠加值 A（概率按 A/(A+100) 换算）'],
     ['interval', '当前抛竿间隔 ms'],
-    ['big', '（旧版遗留）大鱼概率加成 %：v0.11 起组件不再产出该词缀，恒为 0，保留仅为兼容历史公式'],
   ];
   // 🎁 宝匣配置：档位一览（只读，配方写在 data.js 的 CHESTS）+ 突破保底次数 + 池外词缀区间
   function renderChest() {

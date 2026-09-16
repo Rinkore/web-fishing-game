@@ -117,7 +117,10 @@ function startServer() {
   check('组件词缀池含 技巧(skill)', poolTypes.has('skill'), Array.from(poolTypes).join(','));
   check('词缀标签：技巧 存在且没有 大鱼概率',
     D.AFFIX_LABEL.skill === '技巧' && !D.AFFIX_LABEL.big, JSON.stringify(D.AFFIX_LABEL));
-  check('钓点增益仍可选「大鱼概率」（增益独立于组件词缀）', D.BUFF_LABEL.big === '大鱼概率', JSON.stringify(D.BUFF_LABEL));
+  // v0.13.3：钓点增益类别 = 组件词缀同一套，「大鱼概率」不再单独存在（服务端仍拒绝未知类别）
+  check('词缀标签表里没有 大鱼概率（增益与组件同表）',
+    !Object.keys(D.AFFIX_LABEL).some(k => D.AFFIX_LABEL[k] === '大鱼概率') && !D.BUFF_LABEL,
+    JSON.stringify(D.AFFIX_LABEL));
   check('技巧短码为 skl，且旧码 big 解析为技巧',
     D.AFFIX_CODES.skill === 'skl' && D.typeOfCode('big') === 'skill' && D.codeOf('big') === 'skl',
     JSON.stringify({ code: D.AFFIX_CODES.skill, legacy: D.typeOfCode('big') }));
@@ -992,6 +995,50 @@ function startServer() {
   })();
   check('7 部位 × 60 候选（420 件）也能在 1.5 秒内求解',
     abBig.ok && abBig.ms < 1500, JSON.stringify(abBig));
+
+  // —— 目标上限在大背包下必须被遵守 + 可达区间（下限/上限探针）——
+  // 回归：前沿按优先级字典序截断时，被截掉的尾巴恰好是「上限以内的最优解」，
+  // solve 于是退回「放弃上限取最大」——面板上就是「上面设了钓速上限，下面仍按最高钓速显示」。
+  const AB_ORD = ['speed', 'double', 'skill', 'rare', 'material', 'size'];
+  const abCapCands = (function () {
+    const cands = {};
+    D.ROD_PARTS.forEach(function (p) {
+      const base = D.COMPONENT_BASES.find(b => b.part === p.key).id;
+      const arr = [];
+      for (let i = 0; i < 60; i++) {
+        arr.push(D.instanceId(base, 'epic', [
+          { type: D.AFFIX_TYPES[i % 6], value: 10 + (i % 17) },
+          { type: D.AFFIX_TYPES[(i + 3) % 6], value: (i % 5) - 2 },
+        ]));
+      }
+      cands[p.key] = arr;
+    });
+    return cands;
+  })();
+  const abFree = D.autoBuildPlan({ candidates: abCapCands, order: AB_ORD });
+  const abCapV = Math.max(1, Math.round(abFree.vec.speed * 0.6));
+  const abCapSol = D.autoBuildPlan({ candidates: abCapCands, order: AB_ORD, max: { speed: abCapV } });
+  check('大背包下目标上限被遵守（不再退回最高钓速）',
+    abCapSol.relaxed === null && abCapSol.vec.speed <= abCapV && abCapSol.vec.speed > 0,
+    JSON.stringify({ cap: abCapV, v: abCapSol.vec.speed, relaxed: abCapSol.relaxed }));
+  check('上限以内仍贴着上限求最优（不是掉到极值）',
+    abCapSol.vec.speed >= abCapV * 0.8, JSON.stringify({ cap: abCapV, v: abCapSol.vec.speed }));
+  const abRngFree = D.autoBuildRange({ candidates: abCapCands, order: AB_ORD }, 'speed');
+  const abRngCap = D.autoBuildRange({ candidates: abCapCands, order: AB_ORD, max: { speed: abCapV } }, 'skill');
+  check('可达区间 = {下限, 上限}，无约束时包住最优解',
+    !!abRngFree && abRngFree.max >= abRngFree.min && abRngFree.min <= abFree.vec.speed && abFree.vec.speed <= abRngFree.max,
+    JSON.stringify({ r: abRngFree, v: abFree.vec.speed }));
+  check('其余属性设了目标时，可达区间随之收紧但仍合法',
+    !!abRngCap && abRngCap.max >= abRngCap.min && abRngCap.max > 0, JSON.stringify(abRngCap));
+  check('上限低于可达下限时如实回报 relaxed=max（不假装配得出来）', (function () {
+    const r = D.autoBuildPlan({ candidates: abCapCands, order: AB_ORD, max: { speed: abRngFree.min - 5 } });
+    return r.relaxed === 'max';
+  })(), '');
+  check('可达区间探针不会拖慢一次面板刷新（6 属性 ×2 端点 < 1.2 秒）', (function () {
+    const t0 = Date.now();
+    D.AFFIX_TYPES.forEach(function (t) { D.autoBuildRange({ candidates: abCapCands, order: AB_ORD, maxStates: 80 }, t); });
+    return Date.now() - t0 < 1200;
+  })(), '');
 
   // ---- 收尾 ----
   await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）

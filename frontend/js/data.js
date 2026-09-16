@@ -21,8 +21,8 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.13.2';
-  const BUILD = '2026-09-16';
+  const VERSION = 'v0.13.3';
+  const BUILD = '2026-09-17';
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。
@@ -117,14 +117,15 @@
     speed: '钓速', skill: '技巧', rare: '稀有度',
     material: '材料概率', size: '体型', double: '双钓概率',
   };
-  // 钓点增益比组件词缀**多一类**「大鱼概率」：增益是钓场/钓点级别的产出倍率，
-  // 不参与组件池（避免再次与技巧语义混淆），但后台仍可给钓点加「大鱼概率 +30%」。
-  const BUFF_LABEL = Object.assign({}, AFFIX_LABEL, { big: '大鱼概率' });
-  // 效果代码（实例签名里用的短码）；legacy 别名让旧存档（code=big）仍可解析
+  // 钓点增益的类别 = 组件词缀**同一套**（speed/skill/rare/material/size/double）。
+  // v0.13.3 删掉了这里曾经多出来的一类「大鱼概率」（big）：它只放大「大鱼」档掉落权重，
+  // 与产出倍率（后台「大鱼季」的 dc.big）和「技巧」的语义都重叠，实际没人用，
+  // 还让「大鱼」一词同时指鱼档位和增益类别。旧配置里残留的 { type:'big' } 由服务端载入时剔除。
   const AFFIX_CODES = {
     speed: 'spd', skill: 'skl', rare: 'rare', material: 'mat', size: 'size', double: 'dbl',
   };
-  const LEGACY_CODE_ALIAS = { big: 'skill' }; // 旧「大鱼概率」词缀 → 「技巧」
+  // 旧存档兼容：组件实例签名里出现过的大鱼概率短码仍按「技巧」解析（v0.11 起组件不再产出该词缀）
+  const LEGACY_CODE_ALIAS = { big: 'skill' };
   const CODE_TO_TYPE = {};
   Object.keys(AFFIX_CODES).forEach(function (t) { CODE_TO_TYPE[AFFIX_CODES[t]] = t; });
   Object.keys(LEGACY_CODE_ALIAS).forEach(function (c) { CODE_TO_TYPE[c] = LEGACY_CODE_ALIAS[c]; });
@@ -133,7 +134,7 @@
   // 记录这条词缀的数值当初是按哪个范围 roll 的——熔炼/重铸重 roll 时按它自己的范围，而不是底材池的区间。
   const AFFIX_CODE_RE = new RegExp('^(' + Object.keys(CODE_TO_TYPE).join('|') + ')([+-]?\\d+)(?:@([A-Za-z0-9_]+))?$');
   // 组件词缀类型全集（固定顺序；池外补足时按此顺序取候选，保证签名跨端一致）
-  // 刻意用显式数组而不是 Object.keys：顺序稳定，且不会因为给 BUFF_LABEL 加键而混进组件池。
+  // 刻意用显式数组而不是 Object.keys：顺序稳定，也不受 AFFIX_LABEL 将来加键影响。
   const AFFIX_TYPES = ['speed', 'skill', 'rare', 'material', 'size', 'double'];
 
   // ---- 池外词缀默认数值区间 ----
@@ -1301,7 +1302,7 @@
     return true;
   }
   // cfg: { parts?:[部位…], candidates:{ 部位:[组件id…] }, order:[词条…], enabled:{词条:bool},
-  //        min:{词条:数值}, max:{词条:数值}, maxStates? }
+  //        min:{词条:数值}, max:{词条:数值}, dir:{词条:'min'|'max'}, maxStates? }
   // → { vec, picks:{部位:组件id|null}, order, relaxed:null|'max'|'all', miss:{词条:实际值} }
   function autoBuildPlan(cfg) {
     cfg = cfg || {};
@@ -1311,13 +1312,17 @@
     });
     if (!prio.length) prio = AFFIX_TYPES.slice();   // 一个属性都没启用 → 退回全属性，避免没有优化目标
     const mins = cfg.min || {}, maxs = cfg.max || {};
+    const dirs = cfg.dir || {};            // 该词条按「越小越好」排序（求可达下限的探针用）
     const maxStates = Math.max(1, Number(cfg.maxStates) || AUTO_BUILD_STATES);
     const bound = function (src, t) { return src[t] != null && src[t] !== '' && isFinite(Number(src[t])); };
     const minKeys = AFFIX_TYPES.filter(function (t) { return bound(mins, t); });
     const maxKeys = AFFIX_TYPES.filter(function (t) { return bound(maxs, t); });
 
     function lexOrd(order, a, b) {
-      for (let i = 0; i < order.length; i++) { const t = order[i], d = a[t] - b[t]; if (d) return d; }
+      for (let i = 0; i < order.length; i++) {
+        const t = order[i], d = dirs[t] === 'min' ? (b[t] - a[t]) : (a[t] - b[t]);
+        if (d) return d;
+      }
       let s = 0;   // 优先级全平：比词条净收益，避免挑出「净负收益」或结果不稳定
       for (let i = 0; i < AFFIX_TYPES.length; i++) { const t = AFFIX_TYPES[i]; s += (a[t] || 0) - (b[t] || 0); }
       return s;
@@ -1358,13 +1363,41 @@
           next.push({ vec: autoBuildAdd(s.vec, c.vec), picks: picks });
         });
       });
-      next.sort(function (a, b) { return lex(b.vec, a.vec); });
+      // 截断排序：**已越过目标上限的状态排在后面**（同组内仍按优先级字典序）。
+      // 上游部位只会把属性继续推高，越了上限基本回不来；若按优先级截断，尾巴上被截掉的
+      // 恰恰是「上限以内的最优解」，solve 就只能在「放弃上限取最大」或「退到极值」之间二选一。
+      // 先把上限以内的状态排前面，截断才截得住「上限以内的最优解」。
+      const overCap = function (v) {
+        for (let i = 0; i < maxKeys.length; i++) { const t = maxKeys[i]; if (v[t] > Number(maxs[t])) return true; }
+        return false;
+      };
+      next.sort(function (a, b) {
+        const fa = overCap(a.vec) ? 1 : 0, fb = overCap(b.vec) ? 1 : 0;
+        return fa - fb || lex(b.vec, a.vec);
+      });
+      // 字典序前缀 + **每个属性的最小/最大状态各留一个**。
+      // 只留前缀是不够的：前缀按优先级从高到低截，被截掉的尾巴恰好是「目标属性很低、
+      // 其余属性上代价大」的那批状态 —— 而目标上限（钓速 ≤ 82）只能靠它们满足。
+      // 截断丢掉它们时，solve 会退回「放弃上限取最大」，面板上就表现为
+      // 「上面设了上限，下面还是按最高钓速显示」。逐属性留极值可以保证：
+      // 归纳到最后一层，每个属性的全局最小/最大都一定还在前沿里，上限/下限就不会被悄悄吃掉。
+      const slot = Math.max(1, maxStates - AFFIX_TYPES.length * 2);
       const keep = [];
-      for (let i = 0; i < next.length && keep.length < maxStates; i++) {
+      for (let i = 0; i < next.length && keep.length < slot; i++) {
         let dom = false;
         for (let j = 0; j < keep.length; j++) if (autoBuildDom(keep[j].vec, next[i].vec)) { dom = true; break; }
         if (!dom) keep.push(next[i]);
       }
+      AFFIX_TYPES.forEach(function (t) {
+        let lo = null, hi = null;
+        for (let i = 0; i < next.length; i++) {
+          const s = next[i];
+          if (!lo || s.vec[t] < lo.vec[t]) lo = s;
+          if (!hi || s.vec[t] > hi.vec[t]) hi = s;
+        }
+        if (lo && keep.indexOf(lo) < 0) keep.push(lo);
+        if (hi && hi !== lo && keep.indexOf(hi) < 0) keep.push(hi);
+      });
       frontier = keep;
     });
 
@@ -1399,14 +1432,16 @@
     minKeys.forEach(function (t) { if (res.vec[t] < Number(mins[t])) miss[t] = res.vec[t]; });
     return { vec: res.vec, picks: res.picks, order: prio, relaxed: relaxed, miss: miss };
   }
-  // 单属性「可达上限」探针：把它排到优先级首位、去掉它自己的目标区间，
-  // 在其余属性的目标区间约束下求它的最大值 —— 滑块上「这个属性最高能到多少」就是它。
-  function autoBuildPeek(cfg, type) {
+  // 单属性「可达」探针：把它排到优先级首位、去掉它自己的目标区间，
+  // 在其余属性的目标区间约束下求它的最大值（dir='max'，默认）或最小值（dir='min'）。
+  // 滑块轨道两端就是这两个值：调一项属性 → 其余属性的可达区间随之重算。
+  function autoBuildPeek(cfg, type, dir) {
     if (AFFIX_TYPES.indexOf(type) < 0) return null;
     const c2 = {};
     for (const k in cfg) c2[k] = cfg[k];
     c2.order = [type].concat(AFFIX_TYPES.filter(function (t) { return t !== type; }));
     c2.enabled = null;
+    c2.dir = dir === 'min' ? (function () { const d = {}; d[type] = 'min'; return d; })() : null;
     const mn = {}, mx = {};
     AFFIX_TYPES.forEach(function (t) {
       if (t === type) return;
@@ -1415,6 +1450,12 @@
     });
     c2.min = mn; c2.max = mx;
     return autoBuildPlan(c2).vec[type];
+  }
+  // 该属性在当前目标（其余属性的下限/上限）约束下的可达区间：{ min, max }
+  function autoBuildRange(cfg, type) {
+    const max = autoBuildPeek(cfg, type, 'max');
+    if (max == null) return null;
+    return { min: autoBuildPeek(cfg, type, 'min'), max: max };
   }
 
   // 旧存档兼容：框架版掉落的通用组件（无效果、不可装备、可出售）
@@ -1686,7 +1727,7 @@
     VERSION: VERSION, BUILD: BUILD,
     FISH: FISH, MATERIALS: MATERIALS, RARITY_PRICE: RARITY_PRICE,
     ROD_PARTS: ROD_PARTS,
-    AFFIX_LABEL: AFFIX_LABEL, BUFF_LABEL: BUFF_LABEL, AFFIX_CODES: AFFIX_CODES, AFFIX_TYPES: AFFIX_TYPES,
+    AFFIX_LABEL: AFFIX_LABEL, AFFIX_CODES: AFFIX_CODES, AFFIX_TYPES: AFFIX_TYPES,
     QUALITY: QUALITY, QUALITY_ORDER: QUALITY_ORDER,
     CHESTS: CHESTS, chestOf: chestOf, isChest: isChest, rollChestQuality: rollChestQuality,
     genBreakthrough: genBreakthrough, RELIC_PRICE: RELIC_PRICE,
@@ -1721,6 +1762,7 @@
     legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,
     ROD_SET_PREFIX: ROD_SET_PREFIX, isRodSet: isRodSet, rodPartsOf: rodPartsOf, rodSetId: rodSetId, rodMeta: rodMeta,
     autoBuildPlan: autoBuildPlan, autoBuildPeek: autoBuildPeek, autoBuildVec: autoBuildVec,
+    autoBuildRange: autoBuildRange,
     normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
     GROUNDS: GROUNDS, NAV: NAV,

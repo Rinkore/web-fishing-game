@@ -269,11 +269,28 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const cliR2 = sse(tokR, sinkR2);
     await waitFor(() => sinkR2.some(m => m.type === 'init'), { timeout: 6000 });
     const init2 = sinkR2.find(m => m.type === 'init');
-    const me2 = init2 && (init2.players || []).find(p => p.id === 'resume_u');
-    check('断线重连后自动接着钓鱼（presence 已是钓鱼中 + 原钓点）',
-      !!me2 && me2.status === 'fishing' && me2.groundId === 'stillwater' && me2.spotId === 'dock', JSON.stringify(me2));
+    // perf-9 起 init 不再携带 players（presence 改成「登记过列表视口才推」的分页推送，
+    // 钓鱼页不登记视口），所以续钓钓点必须由 init 自己带回：resumedFishing.groundId/spotId。
+    check('断线重连后自动接着钓鱼（init 带回原钓点）',
+      !!(init2 && init2.resumedFishing && init2.resumedFishing.groundId === 'stillwater' &&
+        init2.resumedFishing.spotId === 'dock'), JSON.stringify(init2 && init2.resumedFishing));
     check('重连 init 带回钓速明细（前端不必再发一次 start 请求）',
       !!(init2 && init2.resumedFishing && init2.resumedFishing.interval > 0), JSON.stringify(init2 && init2.resumedFishing));
+
+    // 回归：重连/刷新后钓鱼页必须显示「连回原来的钓点」。曾因只等 presence 同步
+    // （钓鱼页收不到）而停在「当前不在任何钓点」，渔获却照旧进日志。
+    const R = await openPage(tokR);
+    const rw = R.w;
+    const resumedShown = await waitFor(function () {
+      const hc = rw.document.querySelector('.here-count');
+      const fsEl = rw.document.querySelector('.fish-state');
+      return !!hc && hc.textContent.includes('静水湖') && hc.textContent.includes('老旧码头') &&
+        !!fsEl && fsEl.textContent.includes('自动钓鱼中');
+    }, { timeout: 6000 });
+    check('重连后页面显示连回原钓点（不是「不在任何钓点」）', resumedShown === true,
+      (rw.document.querySelector('.here-count') || {}).textContent + ' || ' +
+      (rw.document.querySelector('.fish-state') || {}).textContent);
+    if (R.listeners) R.listeners.forEach(l => { try { l.destroy(); } catch (e) {} });
 
     // 主动收竿 = 放弃钓点：之后再连回来不应自动开钓
     await POST('http://localhost:' + PORT + '/api/fishing/stop', { token: tokR });
@@ -283,9 +300,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const cliR3 = sse(tokR, sinkR3);
     await waitFor(() => sinkR3.some(m => m.type === 'init'), { timeout: 6000 });
     const init3 = sinkR3.find(m => m.type === 'init');
-    const me3 = init3 && (init3.players || []).find(p => p.id === 'resume_u');
-    check('主动收竿后重连不再自动续钓（处于未出发状态）',
-      !!me3 && me3.status === 'idle' && !(init3 && init3.resumedFishing), JSON.stringify(me3));
+    check('主动收竿后重连不再自动续钓（服务器不再下发续钓信息）',
+      !!(init3 && !init3.resumedFishing), JSON.stringify(init3 && init3.resumedFishing));
     cliR3.destroy();
     await sleep(200);
 
