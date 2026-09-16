@@ -540,6 +540,11 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .cs-box span { font-size: 12px; color: var(--muted); }
 .codex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; grid-auto-rows: 1fr; }
 .codex-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.02); display: flex; flex-direction: column; }
+/* v0.13.6 图鉴框体品质：按已钓到的最高体型档——普通=铜 / 大型=银 / 巨型=金 */
+.codex-cell.tier-bronze { border-color: #b87333; box-shadow: inset 0 0 0 1px rgba(184,115,51,.35); }
+.codex-cell.tier-silver { border-color: #c9d1d9; box-shadow: inset 0 0 0 1px rgba(201,209,217,.40); }
+.codex-cell.tier-gold { border-color: #ffd700; box-shadow: inset 0 0 0 1px rgba(255,215,0,.45), 0 0 10px rgba(255,215,0,.22); }
+.cx-tier { color: #ffd24a; font-weight: 600; }
 /* 未解锁卡片只压暗自身内容（详情现已移到子窗口，不再是卡片子节点） */
 .codex-cell:not(.got) > * { opacity: .5; }
 .codex-cell.got { background: rgba(255,255,255,.05); border-color: var(--accent2); }
@@ -943,6 +948,10 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
   font-size: 10px; padding: 1px 7px; border-radius: 20px;
   background: rgba(56,189,248,.14); color: var(--accent2); flex: none;
 }
+/* v0.13.6 体型档标签（大型/巨型单独存放行）：银色=大型、金色=巨型 */
+.inv-page-row .kind-tag.tag-large { background: rgba(201,209,217,.14); color: #c9d1d9; border: 1px solid rgba(201,209,217,.4); }
+.inv-page-row .kind-tag.tag-giant { background: rgba(245,158,11,.16); color: #ffd24a; border: 1px solid rgba(245,158,11,.5); font-weight: 700; }
+.inv-tier-row { border-style: dashed; }
 .inv-page-row .unit-price { color: var(--muted); font-size: 12px; }
 .inv-page-row .subtotal { color: var(--big); font-size: 12px; }
 .inv-page + .hint { margin-top: 12px; }

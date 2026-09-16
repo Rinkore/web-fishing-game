@@ -295,7 +295,8 @@ window.Net = (function () {
   const smelt = (payload) => authed('/api/workshop/smelt', payload || {});
   // 重铸：用残片重 roll 宝匣神话件的全部词条数值
   const recast = (id) => authed('/api/workshop/recast', { id: id });
-  const sell = (id, qty) => authed('/api/sell', { id: id, qty: qty });
+  // v0.13.6：tier='L'|'G' → 按大型/巨型通道出售（额外金币加成）
+  const sell = (id, qty, tier) => authed('/api/sell', tier ? { id: id, qty: qty, tier: tier } : { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', hours ? { id: id, qty: qty, price: price, hours: hours } : { id: id, qty: qty, price: price });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
   const marketBuy = (lid, qty) => authed('/api/market/buy', qty ? { lid: lid, qty: qty } : { lid: lid });
@@ -426,6 +427,7 @@ window.Net = (function () {
           S.trade = m.trade || null;
           if (m.codex) S.codex = m.codex;
           if (m.catchCount != null) S.catchCount = m.catchCount;
+          if (m.bigfish !== undefined) S.bigfish = m.bigfish || {};   // v0.13.6：大型/巨型预留计数
           if (ui) ui.refreshAll('all');
         } else if (m.type === 'players') {
           S.players = m.players || [];
@@ -554,6 +556,16 @@ window.Net = (function () {
             const inv = S.inventory = S.inventory || {};
             for (const k in m.invAdd) { inv[k] = (inv[k] || 0) + m.invAdd[k]; if (inv[k] <= 0) delete inv[k]; }
           }
+          // v0.13.6：大型/巨型预留计数（背包全量 / 钓鱼热路径增量两种拍子都处理）
+          if (m.bigfish !== undefined) S.bigfish = m.bigfish || {};
+          if (m.bigAdd) {
+            const bf = S.bigfish = S.bigfish || {};
+            for (const k in m.bigAdd) {
+              const e = bf[k] = bf[k] || { L: 0, G: 0 };
+              if (m.bigAdd[k].L) e.L = (e.L || 0) + m.bigAdd[k].L;
+              if (m.bigAdd[k].G) e.G = (e.G || 0) + m.bigAdd[k].G;
+            }
+          }
           if (m.codex) S.codex = m.codex;
           if (m.catchCount != null) S.catchCount = m.catchCount;
           if (ui) ui.refreshAll('assets');
@@ -564,6 +576,9 @@ window.Net = (function () {
           const nx = { count: (cur.count || 0) + (m.add || 1), first: cur.first || Date.now() };
           if (m.mx != null) nx.max = m.mx; else if (cur.max != null) nx.max = cur.max;
           if (m.mn != null) nx.min = m.mn; else if (cur.min != null) nx.min = cur.min;
+          // v0.13.6：图鉴最高体型档（G > L，只升不降；服务器侧已保证不降，这里同样兜底）
+          if (m.tier) { if (m.tier === 'G' || cur.tier !== 'G') nx.tier = m.tier; else nx.tier = cur.tier; }
+          else if (cur.tier) nx.tier = cur.tier;
           S.codex[m.id] = nx;
           if (m.catchCount != null) S.catchCount = m.catchCount;
           if (ui) ui.refreshAll('codex');
@@ -579,8 +594,9 @@ window.Net = (function () {
             // 渔获同时记入「📜 日志 · 🐟 渔获」分列（本地按账号保留）
             if (ui && ui.addLog) {
               const it = m.entry.item || {};
-              ui.addLog('catch', '钓到 ' + (it.name || '?') + (it.size ? ' ' + it.size + 'cm' : '') +
-                (it.rarity === 'rare' ? ' ✨稀有' : it.rarity === 'epic' ? ' 💎史诗' : '') +
+            ui.addLog('catch', '钓到 ' + (it.name || '?') + (it.size ? ' ' + it.size + 'cm' : '') +
+              (it.tier === 'G' ? ' 🥇巨型' : it.tier === 'L' ? ' 🥈大型' : '') +
+              (it.rarity === 'rare' ? ' ✨稀有' : it.rarity === 'epic' ? ' 💎史诗' : '') +
                 (m.entry.ground ? '（' + m.entry.ground + (m.entry.spot ? '·' + m.entry.spot : '') + '）' : ''));
             }
           }

@@ -657,6 +657,33 @@ D.allItems().forEach(function (it) {
   if (it.kind === 'fish') FISH_ID_SET[it.id] = 1;
 });
 
+// ---- 体型档（v0.13.6）：上钩时按渔获长度与鱼种默认最大体型（size[1]）判定 ----
+//   超出默认最大值 0~80% → 大型（L）；超出 80% 以上 → 巨型（G）。
+//   大型/巨型鱼在背包中「单独存放」（账号 bigfish 预留计数，普通出售/上架/交易不可动用），
+//   售出时按售出当时的系统收购价额外加金币：大型 +50%、巨型 +150%（不新增收购项，行情照常记账）。
+const FISH_SIZE_MAX = {};
+D.allItems().forEach(function (it) { if (it.kind === 'fish' && it.size) FISH_SIZE_MAX[it.id] = it.size[1]; });
+const SIZE_TIER_BONUS = { L: 0.5, G: 1.5 };   // 售出额外金币比例（按单件收购价）
+function sizeTierOf(id, size) {
+  const max = FISH_SIZE_MAX[id];
+  if (!max || !(size > 0)) return null;
+  if (size > max * 1.8) return 'G';
+  if (size > max) return 'L';
+  return null;
+}
+function tierNameOf(t) { return t === 'G' ? '巨型' : t === 'L' ? '大型' : ''; }
+function bigfishOf(rec, id) {
+  rec.bigfish = rec.bigfish || {};
+  return rec.bigfish[id] || (rec.bigfish[id] = { L: 0, G: 0 });
+}
+// 大型/巨型预留数：占用背包里同名鱼的数量（普通通道不可动用）
+function bigReservedOf(rec, id) {
+  const bf = rec.bigfish && rec.bigfish[id];
+  return bf ? ((bf.L || 0) + (bf.G || 0)) : 0;
+}
+// 「普通」可用量 = 背包总量 − 大型/巨型预留（出售/上架/交易的普通通道都按这个数校验）
+function invAvailOf(rec, id) { return Math.max(0, invCountOf(rec, id) - bigReservedOf(rec, id)); }
+
 // ---- 服务端游戏引擎（钓鱼循环 / 掷骰 / 词缀加成：唯一权威，前端仅展示） ----
 // 抛竿间隔：基础值 + 最短值 + 全服钓速加成/上限均可由管理后台配置（world.castCfg，落盘 config.json）。
 // 钓速（词缀 + 钓点增益 + 全服加成）只影响「抛竿间隔」：间隔 = 基础 × (1 - 有效钓速/100)，不低于最短值；
@@ -911,13 +938,16 @@ function slimFeedEntry(e) {
   const it = e.item || {};
   return {
     t: e.t, who: e.who, ground: e.ground, spot: e.spot, size: e.size, record: e.record,
-    item: { id: it.id, name: it.name, kind: it.kind, rarity: it.rarity, size: it.size, quality: it.quality },
+    item: { id: it.id, name: it.name, kind: it.kind, rarity: it.rarity, size: it.size, quality: it.quality, tier: it.tier },
   };
 }
 function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   const item = resolveItemAt(spot, eff);
   if (!item) return;
   invAdd(rec, item.id, 1);
+  // v0.13.6 体型档：超出鱼种默认最大体型 → 大型/巨型，单独预留计数（背包标签行/筛选项的数据源）
+  const sizeTier = sizeTierOf(item.id, item.size);
+  if (sizeTier) bigfishOf(rec, item.id)[sizeTier] += 1;
   rec.codex = rec.codex || {};
   rec.catchCount = (rec.catchCount || 0) + 1;
   // 图鉴按「底材」登记（组件实例归入其底材条目），渔获/材料按自身 id 登记
@@ -929,7 +959,10 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     if (cx.max == null || item.size > cx.max) cx.max = item.size;
     if (cx.min == null || item.size < cx.min) cx.min = item.size;
   }
+  // 图鉴最高体型档：普通=铜 / 大型=银 / 巨型=金（只升不降）
+  if (sizeTier && cx.tier !== 'G') cx.tier = sizeTier;
   rec.codex[codexId] = cx;
+  if (sizeTier) item.tier = sizeTier; // 渔获日志/动态条目带档位标记
 
   let recordEvent = null;
   let smallEvent = false;
@@ -1001,9 +1034,12 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   // 重复出现），机器人钓上千条后每竿 ~20KB，是 5000 人时 ~1.2Gbps 带宽的主要来源。
   // 改为 codexAdd 只发新条目、assets 只发金币+背包增量；全量替换保留给登录/交易/商店等低频路径。
   sendTo(key, { type: 'catch', entry: entry });
-  sendTo(key, { type: 'codexAdd', id: codexId, name: itemName(codexId), add: 1, mx: cx.max, mn: cx.min, catchCount: rec.catchCount });
+  sendTo(key, { type: 'codexAdd', id: codexId, name: itemName(codexId), add: 1, mx: cx.max, mn: cx.min, tier: cx.tier || null, catchCount: rec.catchCount });
   const invDelta = {}; invDelta[item.id] = 1;
-  sendTo(key, { type: 'assets', coins: rec.coins, catchCount: rec.catchCount, invAdd: invDelta });
+  // bigAdd：大型/巨型预留增量（与背包增量同拍下发，前端合并进 bigfish）
+  let bigDelta = null;
+  if (sizeTier) { bigDelta = {}; bigDelta[item.id] = {}; bigDelta[item.id][sizeTier] = 1; }
+  sendTo(key, { type: 'assets', coins: rec.coins, catchCount: rec.catchCount, invAdd: invDelta, bigAdd: bigDelta });
   // 组件订阅提醒：命中玩家订阅条件时定向推送（双钓追加的组件同样逐条判定）
   maybeSendSubAlert(rec, key, item);
   // 双钓：见 doubleCountOf。基础上钩 1 条，按双钓概率连续追加，最多 3 条。
@@ -1645,7 +1681,7 @@ function autoSellCheck(key) {
   const sold = [];
   Object.keys(rec.inventory || {}).forEach(function (id) {
     if (!FISH_ID_SET[id]) return;                       // 仅渔获
-    const have = (rec.inventory[id] || 0);
+    const have = invAvailOf(rec, id);                   // v0.13.6：大型/巨型单独预留，自动售出只动普通量
     if (have <= 0 || sold.some(function (x) { return x.id === id; })) return;
     const hit = autoSellHit(rec, id);
     if (!hit) return;
@@ -2281,6 +2317,7 @@ function profileOf(key) {
   return {
     username: rec.username, name: rec.name, coins: rec.coins, qq: rec.qq || '',
     inventory: rec.inventory || {}, bd: rec.bd || {},
+    bigfish: rec.bigfish || null,
     codex: rec.codex || {}, catchCount: rec.catchCount || 0,
     admin: !!rec.admin,
     listingCap: listingCapOf(rec),
@@ -2411,6 +2448,8 @@ const COALESCE_TYPES = { players: 1, playersDelta: 1, grounds: 1, records: 1, sh
 const pendingTo = new Map(); // key -> [events]
 let sendToTimer = null;
 function sendTo(key, obj) {
+  // v0.13.6：背包全量同步顺带带上大型/巨型预留计数（前端仓库标签行与筛选项的数据源）
+  if (obj.type === 'assets' && obj.inventory && users[key]) obj.bigfish = users[key].bigfish || null;
   let arr = pendingTo.get(key);
   if (!arr) { arr = []; pendingTo.set(key, arr); }
   arr.push(obj);
@@ -2842,6 +2881,7 @@ const server = http.createServer(function (req, res) {
       // 否则前端会一直用 data.js 里的硬编码默认值，导致图鉴产地与实际掉落不符。
       groundCfg: D.GROUNDS,
       codex: rec.codex || {}, catchCount: rec.catchCount || 0,
+      bigfish: rec.bigfish || null,   // v0.13.6：大型/巨型预留计数（背包标签行/筛选）
       // 服务器版本：客户端据此判断自己是不是旧前端。重启换版本后 SSE 会自动重连，
       // 这条 init 就是「服务器已更新」的最快信号（比定时轮询快得多）。
       version: D.VERSION,
@@ -3148,6 +3188,10 @@ const server = http.createServer(function (req, res) {
         itemId = D.normalizeItemId(itemId);
         const itemMeta = D.itemOf(itemId);
         invAdd(rec, itemId, 1);
+        // v0.13.6：与线上一致——先按体型判档（大型/巨型预留 + 图鉴最高档）
+        const rawSize0 = d.item && d.item.size != null ? d.item.size : d.size;
+        const devTier = sizeTierOf(itemId, Number(rawSize0));
+        if (devTier) bigfishOf(rec, itemId)[devTier] += 1;
         rec.codex = rec.codex || {};
         rec.catchCount = (rec.catchCount || 0) + 1;
         const codexId = itemMeta.kind === 'component' ? (itemMeta.baseId || itemId) : itemId;
@@ -3158,6 +3202,7 @@ const server = http.createServer(function (req, res) {
           if (cx.max == null || dSize > cx.max) cx.max = dSize;
           if (cx.min == null || dSize < cx.min) cx.min = dSize;
         }
+        if (devTier && cx.tier !== 'G') cx.tier = devTier;
         rec.codex[codexId] = cx;
         let recordEvent = null;
         let smallEventDev = false;
@@ -3187,7 +3232,7 @@ const server = http.createServer(function (req, res) {
           const dTopS = upsertTopRanked((world.topSmall[itemId] = world.topSmall[itemId] || []), { size: rsize, who: rec.name, t: Date.now() }, true);
           if (dTopS.changed) topSmallRankDev = dTopS.rank;
         }
-        const entry = { t: Date.now(), who: rec.name, item: Object.assign({}, d.item, { id: itemId }, isFinite(size) && size > 0 ? { size: Math.round(size * 10) / 10 } : {}), ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
+        const entry = { t: Date.now(), who: rec.name, item: Object.assign({}, d.item, { id: itemId }, isFinite(size) && size > 0 ? { size: Math.round(size * 10) / 10 } : {}, devTier ? { tier: devTier } : {}), ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
         feed.unshift(entry); if (feed.length > 60) feed.pop();
         // perf-8：与线上一致——通知等级过滤 + 瘦身（原来这里漏了 feedVisible 过滤）
         if (feedVisible(entry.item, !!(recordEvent || smallEventDev))) broadcast({ type: 'feed', entry: slimFeedEntry(entry) });
@@ -3205,13 +3250,15 @@ const server = http.createServer(function (req, res) {
         if (recordEvent && feedVisible(entry.item, true)) broadcast({ type: 'feed', entry: slimFeedEntry({ t: Date.now(), who: rec.name, item: entry.item, ground: entry.ground, spot: entry.spot, size: entry.size, record: true }) });
         // 与线上一致：定向推送本条渔获（perf-8c 增量：codexAdd + assets 只发金币/背包增量）
         sendTo(key, { type: 'catch', entry: entry });
-        sendTo(key, { type: 'codexAdd', id: codexId, name: itemName(codexId), add: 1, mx: cx.max, mn: cx.min, catchCount: rec.catchCount });
+        sendTo(key, { type: 'codexAdd', id: codexId, name: itemName(codexId), add: 1, mx: cx.max, mn: cx.min, tier: cx.tier || null, catchCount: rec.catchCount });
         const devInvDelta = {}; devInvDelta[itemId] = 1;
-        sendTo(key, { type: 'assets', coins: rec.coins, catchCount: rec.catchCount, invAdd: devInvDelta });
+        let devBigDelta = null;
+        if (devTier) { devBigDelta = {}; devBigDelta[itemId] = {}; devBigDelta[itemId][devTier] = 1; }
+        sendTo(key, { type: 'assets', coins: rec.coins, catchCount: rec.catchCount, invAdd: devInvDelta, bigAdd: devBigDelta });
         maybeSendSubAlert(rec, key, itemMeta);
         // 与线上一致：模拟的是一次真实上鱼 → 若满足玩家的自动售出规则，同样立即卖出
         try { autoSellCheck(key); } catch (e) {}
-        apiResp(res, 200, { ok: true, codex: cx, record: recordEvent });
+        apiResp(res, 200, { ok: true, codex: cx, tier: devTier || null, bigfish: rec.bigfish || {}, record: recordEvent });
       });
     });
     return;
@@ -3267,6 +3314,7 @@ const server = http.createServer(function (req, res) {
           Object.keys(d.inventory).forEach(function (id) { const nid = D.normalizeItemId(id); next[nid] = (next[nid] || 0) + Number(d.inventory[id] || 0); });
           rec.inventory = next;
         }
+        if (d.bigfish !== undefined) rec.bigfish = d.bigfish || null; // v0.13.6：测试可直接种体型档预留
         if (d.coins != null) rec.coins = d.coins;
         saveAccount(key);
         sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
@@ -3614,21 +3662,37 @@ const server = http.createServer(function (req, res) {
       auth(req, res, body, function (d, key) {
         const rec = users[key];
         const id = d.id; const qty = Math.max(1, Math.floor(Number(d.qty) || 1));
+        // v0.13.6：tier='L'|'G' → 按「大型/巨型」通道出售（单独预留量，售出额外金币加成）
+        const tier = (d.tier === 'L' || d.tier === 'G') ? d.tier : null;
         if (D.isRodSet(id)) return apiResp(res, 400, { error: '整根钓竿请在「商城 → 市集」上架出售（收购不收整竿）' });
         if (D.isChest(id)) return apiResp(res, 400, { error: '宝匣请在「商城 → 市集」交易（收购不收宝匣）' });
         if (!sellableOf(id)) return apiResp(res, 400, { error: '该物品无法出售' });
+        if (tier && !FISH_ID_SET[id]) return apiResp(res, 400, { error: '只有渔获有体型档' });
         const rodLock = rodLockError(rec, id, qty);
         if (rodLock) return apiResp(res, 400, { error: rodLock });
-        if (!invHas(rec, id, qty)) return apiResp(res, 400, { error: '数量不足' });
+        if (tier) {
+          const bf = rec.bigfish && rec.bigfish[id];
+          if (!bf || (bf[tier] || 0) < qty) return apiResp(res, 400, { error: tierNameOf(tier) + '鱼数量不足' });
+          if (!invHas(rec, id, qty)) return apiResp(res, 400, { error: '数量不足' });
+        } else {
+          // 普通通道：大型/巨型鱼单独预留，不随普通出售/上架动用
+          if (invAvailOf(rec, id) < qty) return apiResp(res, 400, { error: '数量不足' });
+        }
         const unit = unitPriceOf(id);
-        const gain = unit * qty;
+        // 额外金币：大型 +50% / 巨型 +150%（按售出当时收购价；不新增收购项、不影响供需记账）
+        const bonus = tier ? Math.round(unit * qty * SIZE_TIER_BONUS[tier]) : 0;
+        const gain = unit * qty + bonus;
         invAdd(rec, id, -qty);
+        if (tier) {
+          const bf = bigfishOf(rec, id);
+          bf[tier] = Math.max(0, (bf[tier] || 0) - qty);
+        }
         rec.coins += gain;
         // 仅经济物品（渔获/材料）影响供需乘数与价格历史；组件固定价，只加金币
         if (ECO_PRICE[id]) registerSale(id, qty, rec.name, unit);
         saveAccount(key); saveEconomy();
         broadcastShop();
-        apiResp(res, 200, { ok: true, unit: unit, gain: gain, coins: rec.coins, inventory: rec.inventory, shop: shopSnapshot() });
+        apiResp(res, 200, { ok: true, unit: unit, bonus: bonus, gain: gain, coins: rec.coins, inventory: rec.inventory, bigfish: rec.bigfish || {}, shop: shopSnapshot() });
       });
     });
     return;
@@ -3708,7 +3772,8 @@ const server = http.createServer(function (req, res) {
         if (rodFrom < 0) {
           const rodLock = rodLockError(rec, id, qty);
           if (rodLock) return apiResp(res, 400, { error: rodLock });
-          if (!invHas(rec, id, qty)) return apiResp(res, 400, { error: '数量不足' });
+          // v0.13.6：大型/巨型鱼单独预留，普通上架不可动用
+          if (invAvailOf(rec, id) < qty) return apiResp(res, 400, { error: '数量不足（大型/巨型鱼为预留量，请在背包标签行单独出售）' });
         }
         sweepExpiredListings();
         const myCount = world.listings.filter(function (l) { return l.seller === key; }).length;
@@ -3887,7 +3952,7 @@ const server = http.createServer(function (req, res) {
         for (const it of items) {
           const id = D.normalizeItemId(it.id); const qty = Math.max(0, Math.floor(Number(it.qty) || 0));
           if (!id || D.isRodSet(id) || !sellableOf(id) || qty <= 0) continue;
-          if (!invHas(rec, id, qty)) return apiResp(res, 400, { error: '你没有足够的 ' + itemName(id) });
+          if (invAvailOf(rec, id) < qty) return apiResp(res, 400, { error: '你没有足够的 ' + itemName(id) });
           norm.push({ id: id, qty: qty });
         }
         if (side === 'a') t.aItems = norm; else t.bItems = norm;

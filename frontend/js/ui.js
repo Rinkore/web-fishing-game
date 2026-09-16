@@ -51,6 +51,14 @@ window.UI = (function () {
   function itemMeta(id) { return D.itemOf ? D.itemOf(id) : { name: id, rarity: 'common', price: 10, kind: 'unknown' }; }
   // 现价：优先系统商店行情，无行情时退回基准价（模块级，供各视图与子窗口共用）
   function unitPriceOf(id) { const s = S().shop && S().shop[id]; return s ? s.price : itemMeta(id).price; }
+  // v0.13.6：某种鱼的大型/巨型预留计数（模块级；无预留返回 0 / 传 tier 只看该档）
+  function reservedCountOf(id, tier) {
+    const bf = S().bigfish && S().bigfish[id];
+    if (!bf) return 0;
+    return tier ? (bf[tier] || 0) : ((bf.L || 0) + (bf.G || 0));
+  }
+  // 「普通」可用量 = 背包总量 − 大型/巨型预留（批量出售 / 上架弹窗的输入上限用它，服务器同样校验）
+  function availCountOf(id) { return Math.max(0, (S().inventory[id] || 0) - reservedCountOf(id)); }
   // ---- 组件展示辅助 ----
   // 品质配色类（配色规范：普通=灰蓝 / 稀有=蓝 / 史诗=金 / 神话=彩虹，见 style.css 的 .q-*/.r-* 与 data.js QUALITY 注释）：
   // 组件满词条在背包/市集/装备弹窗额外高亮；渔获用的是同一套品质（稀有/史诗），不再有「大鱼」档位配色与皇冠前缀。
@@ -3620,6 +3628,8 @@ window.UI = (function () {
   // 子分类筛选（随分类页签切换显示）：
   //   鱼类/材料 → 品质；组件 → 一级「部位」 + 二级「词条 + 数值范围」
   let invSubRar = 'all';
+  // v0.13.6：体型档筛选（鱼类页签）—— all / L(大型) / G(巨型)，只显示带该档标签的行
+  let invTier = 'all';
   let invPart = 'all';
   let invAffixType = 'all';
   let invAffixCount = 'all';   // 组件词条数量筛选：all / 0(无词条) / 1 / 2 / 3 / 4p(4条及以上)
@@ -3672,7 +3682,7 @@ window.UI = (function () {
     const cands = bulkCandidates();
     if (rebuild) bulkSel = {};
     Object.keys(bulkSel).forEach(function (id) { if (cands.indexOf(id) < 0) delete bulkSel[id]; });
-    cands.forEach(function (id) { if (bulkSel[id] == null) bulkSel[id] = st.inventory[id] || 0; });
+    cands.forEach(function (id) { if (bulkSel[id] == null) bulkSel[id] = Math.min(st.inventory[id] || 0, availCountOf(id)); });
     closeOverlays();
     const overlay = buildOverlay(function () { closeOverlays(); bulkFocus = false; });
     const box = el('div', 'modal-box shop-modal bulk-sell-modal');
@@ -3864,7 +3874,8 @@ window.UI = (function () {
   function openBatchSellModal(id) {
     const st = S();
     const meta = itemMeta(id);
-    const have = st.inventory[id] || 0;
+    // v0.13.6：大型/巨型鱼单独预留，批量出售只针对普通量
+    const have = availCountOf(id);
     if (have <= 0) { toast('没有可出售的物品'); return; }
     batchSellId = id;
     closeOverlays();
@@ -4152,6 +4163,27 @@ window.UI = (function () {
         rarRow.appendChild(b);
       });
       row.appendChild(rarRow);
+      // v0.13.6：体型档筛选（只在「🐟 鱼类」页签出现）——大型/巨型在背包中单独成行
+      if (invCategory === 'fish') {
+        const tc = { all: 0, L: 0, G: 0 };
+        invKeys.forEach(function (id) {
+          if (itemMeta(id).kind !== 'fish') return;
+          tc.all += 1;
+          const bf = st.bigfish && st.bigfish[id];
+          if (bf && (bf.L || 0) > 0) tc.L += 1;
+          if (bf && (bf.G || 0) > 0) tc.G += 1;
+        });
+        const tierRow = el('div', 'inv-subrow');
+        tierRow.appendChild(el('span', 'sub-label', '体型档'));
+        [['all', '全部'], ['L', '大型'], ['G', '巨型']].forEach(function (kv) {
+          const b = el('button', 'inv-cat sub' + (invTier === kv[0] ? ' on' : ''), kv[1] + ' ' + (tc[kv[0]] || 0));
+          b.title = kv[0] === 'all' ? '显示全部鱼（含大型/巨型标签行）'
+            : '只显示带' + kv[1] + '标签的鱼（超出默认最大体型' + (kv[0] === 'G' ? '80% 以上' : ' 0~80%') + '）';
+          b.addEventListener('click', function () { if (invTier !== kv[0]) { invTier = kv[0]; renderView(); } });
+          tierRow.appendChild(b);
+        });
+        row.appendChild(tierRow);
+      }
     }
     return row;
   }
@@ -4567,16 +4599,25 @@ window.UI = (function () {
     // 现价优先（服务器动态价），无行情时退回基准价
     function unitPrice(id) { const s = st.shop && st.shop[id]; return s ? s.price : itemMeta(id).price; }
     function itemValue(id) { return unitPrice(id) * st.inventory[id]; }
-    function doSell(id, qty) {
+    // v0.13.6：某种鱼的大型/巨型预留计数（无则 0）
+    function reservedOf(id, tier) {
+      const bf = st.bigfish && st.bigfish[id];
+      if (!bf) return 0;
+      return tier ? (bf[tier] || 0) : ((bf.L || 0) + (bf.G || 0));
+    }
+    function tierBonus(id, tier, n) { return Math.round(unitPrice(id) * (n || 1) * (tier === 'G' ? 1.5 : 0.5)); }
+    function doSell(id, qty, tier) {
       // 不走 call()：那个辅助函数内部会 refreshAll()（无 scope → 整页重建），
       // 出售后列表会按新价格重排、展开的组件分组也可能被收起。这里只提示 + 就地更新那一行。
-      Promise.resolve(window.Net.sell(id, qty)).then(function (r) {
+      Promise.resolve(window.Net.sell(id, qty, tier)).then(function (r) {
         if (!r || !r.ok) { toast((r && r.data && r.data.error) || '操作失败'); return; }
-        toast('售出 ' + itemMeta(id).name + ' ×' + qty + '，获得 💰' + r.data.gain);
+        toast('售出 ' + itemMeta(id).name + ' ×' + qty + (tier ? '（' + (tier === 'G' ? '巨型' : '大型') + '）' : '') +
+          '，获得 💰' + r.data.gain + (r.data.bonus ? '（含体型加成 +' + r.data.bonus + '💰）' : ''));
         const st2 = S();
         st2.player.coins = r.data.coins; st2.inventory = r.data.inventory; st2.shop = r.data.shop;
+        if (r.data.bigfish !== undefined) st2.bigfish = r.data.bigfish || {};
         renderTopbar();
-        if (!patchInventoryRow(id)) renderView();   // 行不在了（例如被筛选隐藏）才退回整页重绘
+        if (tier || !patchInventoryRow(id)) renderView();   // 档位行/行不在了（例如被筛选隐藏）才退回整页重绘
       }).catch(function () { toast('网络错误'); });
     }
     function listFee(price, qty) { return Math.ceil(price * qty * 0.01); }
@@ -4626,6 +4667,14 @@ window.UI = (function () {
     } else if (invSubRar !== 'all') {
       keys = keys.filter(function (id) { return itemMeta(id).rarity === invSubRar; });
     }
+    // v0.13.6：体型档筛选——只显示带【大型】/【巨型】标签的鱼
+    if (invTier !== 'all' && invCategory !== 'component') {
+      keys = keys.filter(function (id) {
+        const meta0 = itemMeta(id);
+        if (meta0.kind !== 'fish') return false;
+        return reservedOf(id, invTier) > 0;
+      });
+    }
     if (keys.length === 0) {
       list.appendChild(el('div', 'hint', Object.keys(st.inventory).length === 0
         ? '背包空空如也。去「钓鱼」页选个钓点抛竿，渔获会自动入包。'
@@ -4672,6 +4721,30 @@ window.UI = (function () {
         row.appendChild(acts);
         wireItemIntro(row, id);   // 悬停出简介浮标 + 点击开完整简介（鱼 / 材料 / 宝匣）
         list.appendChild(row);
+        // v0.13.6：大型/巨型鱼单独存放——紧跟普通行之后各出一行带标签的独立行，出售走加成通道
+        if (meta.kind === 'fish' && reservedOf(id) > 0) {
+          [['L', '【大型】', 'tag-large'], ['G', '【巨型】', 'tag-giant']].forEach(function (tk) {
+            const t = tk[0], n = reservedOf(id, t);
+            if (n <= 0) return;
+            const bonus = tierBonus(id, t, 1);
+            const trow = el('div', 'inv-row inv-page-row inv-tier-row');
+            trow.setAttribute('data-id', id + '@' + t);
+            trow.innerHTML =
+              '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
+              '<span class="kind-tag ' + tk[2] + '">' + tk[1] + '</span>' +
+              '<span class="cnt">×' + n + '</span>' +
+              '<span class="unit-price">现价 ' + unitPrice(id) + '💰 +' + bonus + '💰</span>' +
+              '<span class="subtotal">小计 ' + (unitPrice(id) * n + tierBonus(id, t, n)) + '💰</span>';
+            const tact = el('span', 'inv-acts');
+            const tsb = el('button', 'mini primary-mini', '出售 1');
+            tsb.title = '出售' + (t === 'G' ? '巨型' : '大型') + '（额外 +' + (t === 'G' ? '150' : '50') + '% 金币加成）';
+            tsb.addEventListener('click', function () { doSell(id, 1, t); });
+            tact.appendChild(tsb);
+            trow.appendChild(tact);
+            wireItemIntro(trow, id);
+            list.appendChild(trow);
+          });
+        }
       });
     }
     colMain.appendChild(list);
@@ -5212,6 +5285,7 @@ window.UI = (function () {
       '<div class="cd-line">' + (base ? '组件底材' : '稀有度') + '：' + rarityName + ' · 基准价 ' + (it.price || 0) + '💰</div>' +
       (it.size ? '<div class="cd-line">体型 ' + it.size[0] + '-' + it.size[1] + ' cm</div>' : (base ? '' : '<div class="cd-line">材料 / 组件</div>')) +
       (rec && rec.max != null ? '<div class="cd-line">我钓到过：最大 <b>' + rec.max + '</b> cm · 最小 <b>' + rec.min + '</b> cm</div>' : '') +
+      (rec && it.kind === 'fish' ? '<div class="cd-line">最高体型档位：<b>' + (rec.tier === 'G' ? '🥇 巨型（金框）' : rec.tier === 'L' ? '🥈 大型（银框）' : '🥉 普通（铜框）') + '</b><span class="muted"> · 超出默认最大体型 0~80% 为大型，80% 以上为巨型</span></div>' : '') +
       (rec && rec.max == null && it.size ? '<div class="cd-line muted">个人体型极值将在下次钓到后开始记录</div>' : '');
     if (base) {
       const cap = D.QUALITY.epic.cap;
@@ -6469,7 +6543,12 @@ window.UI = (function () {
       : baseList;
     shown.forEach(function (it) {
       const rec = caught[it.id];
-      const cell = el('div', 'codex-cell' + (rec ? ' got' : '') + ' k-' + it.kind);
+      // v0.13.6：图鉴框体品质按已钓到的最高体型档——普通=铜 / 大型=银 / 巨型=金
+      const tierCls = rec ? (rec.tier === 'G' ? ' tier-gold' : rec.tier === 'L' ? ' tier-silver' : ' tier-bronze') : '';
+      const tierLine = (rec && it.kind === 'fish')
+        ? '<div class="cx-meta cx-tier">' + (rec.tier === 'G' ? '🥇 巨型 · 金框' : rec.tier === 'L' ? '🥈 大型 · 银框' : '🥉 普通 · 铜框') + '</div>'
+        : '';
+      const cell = el('div', 'codex-cell' + (rec ? ' got' + tierCls : '') + ' k-' + it.kind);
       const spots = D.spotsOf(it.id);
       const base = it.kind === 'component' ? D.componentBase(it.id) : null;
       // 组件底材卡：展示可拥有的全部词缀与数值范围。

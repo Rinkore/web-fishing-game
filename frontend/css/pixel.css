@@ -196,6 +196,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ---------- 图鉴：游动与闪光 ---------- */
 .codex-cell { transition: transform .12s, filter .12s !important; }
+/* v0.13.6 图鉴框体品质：普通=铜 / 大型=银 / 巨型=金（像素主题下加硬阴影偏移） */
+.codex-cell.tier-bronze { border-color: #b87333 !important; box-shadow: 4px 4px 0 rgba(184,115,51,.35) !important; }
+.codex-cell.tier-silver { border-color: #c9d1d9 !important; box-shadow: 4px 4px 0 rgba(201,209,217,.35) !important; }
+.codex-cell.tier-gold { border-color: #ffd700 !important; box-shadow: 4px 4px 0 rgba(255,215,0,.4), 0 0 12px rgba(255,215,0,.3) !important; }
+.codex-cell .cx-tier { color: var(--px-gold); font-weight: 700; }
 .codex-cell.got:hover { transform: translate(-2px, -3px); }
 .codex-cell .cx-icon { animation: px-swim 3.6s ease-in-out infinite; transform-origin: center; }
 .codex-cell:not(.got) .cx-icon { animation: none; filter: grayscale(.55) brightness(.75); }

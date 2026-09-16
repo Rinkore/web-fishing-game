@@ -26,6 +26,7 @@ window.Engine = (function () {
     rodActiveSlot: -1,          // 当前使用的槽位（-1 = 用的是散件装配）
     rodLocked: {},              // 被钓竿占用的组件实例件数（背包/交易显示锁定标记）
     inventory: {},              // 服务器权威，SSE assets 整体同步
+    bigfish: {},                // v0.13.6：大型/巨型鱼预留计数（服务器权威，背包标签行/筛选项用）
     bd: buildDefaultBD(),       // 服务器权威，登录/装备时同步
     bdEffects: { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 },
     log: [],                    // 我的渔获日志（服务器 catch 推送，最新在前）
@@ -95,6 +96,7 @@ window.Engine = (function () {
     state.player.name = profile.name || state.player.name;
     if (profile.coins != null) state.player.coins = profile.coins;
     state.inventory = profile.inventory || {};
+    if (profile.bigfish !== undefined) state.bigfish = profile.bigfish || {};
     state.bd = (profile.bd && Object.keys(profile.bd).length) ? profile.bd : buildDefaultBD();
     state.codex = profile.codex || {};
     state.catchCount = profile.catchCount || 0;

@@ -712,12 +712,17 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('单鱼规则保存即触发（鲫鱼达标售出）', asSet.status === 200 && !!asSet.data.sold && asSet.data.sold.some(x => x.id === 'crucian'),
     JSON.stringify(asSet.data.sold || null));
   const asInv1 = (await GET(B1 + '/api/me?token=' + tokA)).data.inventory;
-  check('鲫鱼清空且鲤鱼不受影响（单鱼规则只卖目标鱼）', !(asInv1.crucian > 0) && (asInv1.carp || 0) >= 1, JSON.stringify({ c: asInv1.crucian, k: asInv1.carp }));
+  // v0.13.6：大型/巨型鲫鱼为预留量，不参与自动售出 → 断言改为「普通鲫鱼清空（背包 = 预留数）」
+  const meAs1 = (await GET(B1 + '/api/me?token=' + tokA)).data;
+  const reservedC1 = meAs1.bigfish && meAs1.bigfish.crucian ? ((meAs1.bigfish.crucian.L || 0) + (meAs1.bigfish.crucian.G || 0)) : 0;
+  check('鲫鱼清空且鲤鱼不受影响（单鱼规则只卖目标鱼）', (asInv1.crucian || 0) === reservedC1 && (asInv1.carp || 0) >= 1, JSON.stringify({ c: asInv1.crucian, r: reservedC1, k: asInv1.carp }));
   check('售出金额入账（金币增加）', (await GET(B1 + '/api/me?token=' + tokA)).data.coins > asCoins0);
   // 钓到即卖：dev/catch 与线上同链路 → 新钓的鲫鱼立即被售出
   await grant('crucian');
   const asInv2 = (await GET(B1 + '/api/me?token=' + tokA)).data.inventory;
-  check('钓到即卖（新钓的鲫鱼立即按规则售出）', !(asInv2.crucian > 0), JSON.stringify({ c: asInv2.crucian }));
+  const meAs2 = (await GET(B1 + '/api/me?token=' + tokA)).data;
+  const reservedC2 = meAs2.bigfish && meAs2.bigfish.crucian ? ((meAs2.bigfish.crucian.L || 0) + (meAs2.bigfish.crucian.G || 0)) : 0;
+  check('钓到即卖（新钓的鲫鱼立即按规则售出）', (asInv2.crucian || 0) === reservedC2, JSON.stringify({ c: asInv2.crucian, r: reservedC2 }));
   // 全部鱼规则 → 鲤鱼也卖；材料不受影响（规则仅渔获）
   await POST(B1 + '/api/dev/catch', { token: tokA, item: { kind: 'material', id: 'rope', rarity: 'common' } });
   const asAll = await POST(B1 + '/api/autosell', { token: tokA, scope: 'all', minPct: 1 });
