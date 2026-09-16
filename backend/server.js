@@ -1890,9 +1890,10 @@ function autoSellCheck(key) {
   if (!sold.length) return null;
   saveAccount(key); saveEconomy(); broadcastShop();
   const total = sold.reduce(function (s, x) { return s + x.gain; }, 0);
-  const byText = sold[0].by === '无条件' ? '规则命中' : sold[0].by + '线达标';
+  // v0.13.10：播报只留「卖了什么、进账多少」——括号里的细则（规则命中 / 合计与阈值）不再展示，
+  // 玩家反馈那样太长、横幅要占两行。（明细仍可从商城 → 收购 → 自动售出清单里看到。）
   sendTo(key, { type: 'notice', msg: '🤖 自动售出 ' + sold.map(function (x) { return x.name + '×' + x.qty; }).join('、') +
-    '，+ ' + total + '💰（' + byText + '，合计 ' + plan.pool + ' 条达打包阈值 ' + batch + '）' });
+    '，+ ' + total + '💰' });
   sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
   return sold;
 }

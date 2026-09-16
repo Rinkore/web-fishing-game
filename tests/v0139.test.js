@@ -137,6 +137,11 @@ async function main() {
   check('自动售出推送的 assets 带 invRev（客户端据此丢弃过期快照）',
     sseAssets.length > 0 && sseAssets.every(m => typeof m.invRev === 'number'),
     JSON.stringify(sseAssets.slice(0, 2)));
+  // v0.13.9 补：播报只留「卖了什么 + 进账多少」，括号里的细则（规则命中 / 合计与阈值）不再下发
+  const asNotices = sseMsgs.filter(m => m && m.type === 'notice' && /自动售出/.test(String(m.msg || '')));
+  check('自动售出播报不含括号细则（横幅不再占两行）',
+    asNotices.length > 0 && asNotices.every(m => String(m.msg).indexOf('（') < 0),
+    JSON.stringify(asNotices.map(m => m.msg).slice(0, 2)));
   try { sse.destroy(); } catch (e) {}
 
   section('价格未达标的余量不计入合计');

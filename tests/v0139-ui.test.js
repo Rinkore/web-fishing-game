@@ -270,6 +270,60 @@ async function main() {
   check('卡片标出可用量（持有 1（可用 0））', !!cardInfo && /可用 0/.test(cardInfo.line), JSON.stringify(cardInfo));
   check('按钮变为「仅体型档可卖」（点下去也不会再被服务端拒）', !!cardInfo && /仅体型档可卖/.test(cardInfo.btn), JSON.stringify(cardInfo));
 
+  // ---------------- 本地实时刷新（出售不等回包） ----------------
+  section('出售改本地实时刷新：点击当场就减，回包再对账');
+  await POST('/api/dev/seed', { token: tok, inventory: { crucian: 3 }, bigfish: {} });
+  await sleep(800);
+  await clickNav(p1, '背包');
+  await until(() => p1.evaluate(() => !!document.querySelector('#main .inv-page-row[data-id="crucian"]')), v => v === true, 15000);
+  await sleep(300);
+  // 同一同步块里连点两次「出售 1」：fetch 是异步的，服务器不可能在这之前回包 ——
+  // 所以此刻 DOM 已经减到 ×1 就证明「本地先扣」，而不是等服务器刷新率。
+  const localBag = await p1.evaluate(() => {
+    const row = document.querySelector('#main .inv-page-row[data-id="crucian"]');
+    const btn = Array.from(row.querySelectorAll('button')).find(b => b.textContent.trim() === '出售 1');
+    const coinsBefore = document.querySelector('.meta-btn.coins .meta-txt').textContent;
+    btn.click(); btn.click();
+    const now = document.querySelector('#main .inv-page-row[data-id="crucian"]');
+    return { cnt: now ? (now.querySelector('.cnt') || {}).textContent : '(行已消失)',
+      coinsBefore: coinsBefore, coinsNow: document.querySelector('.meta-btn.coins .meta-txt').textContent };
+  });
+  check('连点两次后当场显示 ×1（本地实时扣减，未等回包）', localBag.cnt === '×1', JSON.stringify(localBag));
+  check('顶栏金币当场变化（含在途预估收入）', localBag.coinsNow !== localBag.coinsBefore, JSON.stringify(localBag));
+  await sleep(1500);
+  const srvBag = await meOf();
+  check('回包对账后：客户端背包 === 服务端背包', normInv(JSON.parse(await clientInv(p1))) === normInv(srvBag.inventory),
+    'srv=' + normInv(srvBag.inventory) + ' | cli=' + normInv(JSON.parse(await clientInv(p1))));
+  check('回包对账后：顶栏金币 = 服务端金币',
+    String(await p1.evaluate(() => document.querySelector('.meta-btn.coins .meta-txt').textContent)).indexOf(String(srvBag.coins)) >= 0,
+    srvBag.coins + ' vs ' + (await p1.evaluate(() => document.querySelector('.meta-btn.coins .meta-txt').textContent)));
+
+  section('收购卡片：出售就地刷数字，行情广播不整页重建');
+  await POST('/api/dev/seed', { token: tok, inventory: { crucian: 3, carp: 2 }, bigfish: {} });
+  await sleep(800);
+  await openShop(p1);
+  await until(() => p1.evaluate(() => !!document.querySelector('#shop-panel .shop-card[data-id="crucian"]')), v => v === true, 15000);
+  await sleep(300);
+  const localShop = await p1.evaluate(() => {
+    const card = document.querySelector('#shop-panel .shop-card[data-id="crucian"]');
+    window.__card = card;   // 记下节点身份：整页重建会换掉它
+    const btn = Array.from(card.querySelectorAll('button')).find(b => /出售/.test(b.textContent));
+    const before = card.querySelector('.sc-pct').textContent;
+    btn.click();   // 同一同步块里读结果
+    return { before: before, after: card.querySelector('.sc-pct').textContent, btn: btn.textContent.trim() };
+  });
+  check('点击后卡片当场改数字（不等回包）', localShop.after !== localShop.before, JSON.stringify(localShop));
+  await sleep(1600);
+  const shopState = await p1.evaluate(() => {
+    const card = document.querySelector('#shop-panel .shop-card[data-id="crucian"]');
+    return { sameCard: window.__card === card, txt: card ? card.querySelector('.sc-pct').textContent : '' };
+  });
+  check('出售 + 行情广播之后卡片仍是同一个 DOM 节点（收购页不再整页重建）',
+    shopState.sameCard === true, JSON.stringify(shopState));
+  const srvShop = await meOf();
+  check('收购页出售后：客户端背包 === 服务端背包', normInv(JSON.parse(await clientInv(p1))) === normInv(srvShop.inventory),
+    'srv=' + normInv(srvShop.inventory) + ' | cli=' + normInv(JSON.parse(await clientInv(p1))));
+
   // ---------------- 自动售出清单合计文案 ----------------
   section('自动售出清单：按「已勾选物品合计」展示');
   await POST('/api/autosell', { token: tok, bulk: 'all', remove: true });

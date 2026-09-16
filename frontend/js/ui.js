@@ -21,6 +21,82 @@ window.UI = (function () {
   // 直接 `st.inventory = r.data.inventory` 会让先发后到的旧响应盖掉刚获得的物品（连开宝匣丢配件的根因）。
   function applyInvFrom(d) { return !!(d && d.inventory && window.Engine.applyInv(d.inventory, d.invRev)); }
 
+  // ---- 在途出售账本（v0.13.10：出售改本地实时刷新 + 回包对账）----
+  // 点「出售」时**先本地扣显示量、加金币、就地更新那一行**，不等服务器回包（此前要等整个
+  // 往返才动数字，玩家感觉「跟服务器刷新率挂钩」）。回包后以服务器权威值（inventory / coins /
+  // shop / bigfish）对账，并撤掉这条在途记录；服务器拒单就只撤记录——界面自动回到真实值。
+  // 关键不变量：**显示量 = 服务器可用量 − 在途出售量（下限 0）**，所以连点也不会卖出超过持有量；
+  // 任何一次重绘（SSE 广播 / 切页签）都走同一套显示口径，在途期间不会「跳回旧数字」。
+  const pendingSells = [];   // [{ id, tier, qty, est }]，tier 为 null = 普通通道
+  function tierCn(t) { return t === 'G' ? '巨型' : '大型'; }
+  // 在途出售量：tier 给了就只算该体型档，没给只算普通通道（两者互不影响，因为预留量是分开计的）
+  function pendingQtyOf(id, tier) {
+    const want = tier || null;
+    let n = 0;
+    pendingSells.forEach(function (e) { if (e.id === id && (e.tier || null) === want) n += e.qty; });
+    return n;
+  }
+  // 显示用「可用量」/「某档预留量」= 服务器值 − 在途量
+  function shownAvailOf(id) { return Math.max(0, availCountOf(id) - pendingQtyOf(id, null)); }
+  function shownReservedOf(id, tier) { return Math.max(0, reservedCountOf(id, tier) - pendingQtyOf(id, tier)); }
+  // 顶栏金币 = 服务器值 + 在途出售的预估收入（回包后按服务器权威值替换，误差自然收敛）
+  function shownCoinsOf() {
+    let extra = 0;
+    pendingSells.forEach(function (e) { extra += e.est; });
+    return (S().player.coins || 0) + extra;
+  }
+  // 出售已上架/预留的档位单价（与服务端 SIZE_TIER_BONUS 一致：大型 +50% / 巨型 +150%）
+  function shownUnitOf(id, tier) {
+    const u = unitPriceOf(id);
+    return tier ? u + Math.round(u * (tier === 'G' ? 1.5 : 0.5)) : u;
+  }
+  // 本地实时出售：立刻扣显示量 + 加币 + 就地补丁，回包对账保无误。o = { id, qty, tier, unit, onLocal, onSync }
+  function sellNow(o) {
+    const id = o.id, tier = o.tier || null, qty = Math.max(1, Math.floor(o.qty) || 1);
+    const st = S();
+    const shown = tier ? shownReservedOf(id, tier) : shownAvailOf(id);
+    if (shown < qty) { toast(tier ? (tierCn(tier) + '鱼可出售数量不足') : '可出售数量不足（可能已自动售出或只剩预留量）', true); return Promise.resolve(null); }
+    const unit = o.unit != null ? o.unit : unitPriceOf(id);
+    const entry = { id: id, tier: tier, qty: qty, est: Math.round(unit * qty * (tier === 'G' ? 2.5 : tier ? 1.5 : 1)) };
+    pendingSells.push(entry);
+    renderTopbar();               // 金币立刻响应点击
+    if (o.onLocal) o.onLocal();   // 那一行 / 那张卡立即按新数量重画
+    const finish = function (r, netErr) {
+      const i = pendingSells.indexOf(entry);
+      if (i >= 0) pendingSells.splice(i, 1);
+      if (r && r.ok) {
+        // 对账：服务器权威值直接采纳（含行情快照，出售会压价）
+        st.player.coins = r.data.coins;
+        applyInvFrom(r.data);
+        st.shop = r.data.shop;
+        if (r.data.bigfish !== undefined) st.bigfish = r.data.bigfish || {};
+        toast('售出 ' + itemMeta(id).name + ' ×' + qty + (tier ? '（' + tierCn(tier) + '）' : '') +
+          '，获得 💰' + r.data.gain + (r.data.bonus ? '（含体型加成 +' + r.data.bonus + '💰）' : ''));
+      } else {
+        toast((r && r.data && r.data.error) || (netErr ? '网络错误' : '出售失败'), true);
+      }
+      renderTopbar();
+      // 请求结果未知（超时 / 断线）：服务端可能**已经**卖掉这件物品 —— 光撤在途记录会让本地数字虚高，
+      // 所以向服务器要一次权威状态（inventory / coins / bigfish）再校准（「售出时刷新保证无误」这一半）。
+      if (!r && netErr) {
+        Promise.resolve(window.Net.fetchMe()).then(function (m) {
+          if (m && m.ok && m.data) {
+            if (m.data.coins != null) st.player.coins = m.data.coins;
+            applyInvFrom(m.data);
+            if (m.data.bigfish !== undefined) st.bigfish = m.data.bigfish || {};
+            renderTopbar();
+          }
+          if (o.onSync) o.onSync();
+        }).catch(function () { if (o.onSync) o.onSync(); });
+        return r;
+      }
+      if (o.onSync) o.onSync();
+      return r;
+    };
+    return Promise.resolve(window.Net.sell(id, qty, tier)).then(function (r) { return finish(r, false); })
+      .catch(function () { return finish(null, true); });
+  }
+
   let currentView = 'fishing';
 
   function $(id) { return document.getElementById(id); }
@@ -554,7 +630,7 @@ window.UI = (function () {
     if (!connOk()) {
       chips.push({ cls: ' meta-btn conn-off', tip: '与服务器的实时连接已断开，正在自动重连；期间显示的数据可能不是最新。服务器若已更新，重连后会自动刷新到新版本。', view: '', html: '<span class="meta-txt">⚠ 连接断开 · 重连中</span>' });
     }
-    chips.push({ cls: ' meta-btn coins', tip: '金币余额 · 点击打开商城', view: 'mall', html: '<span class="meta-txt">💰 ' + p.coins + '</span>' });
+    chips.push({ cls: ' meta-btn coins', tip: '金币余额 · 点击打开商城', view: 'mall', html: '<span class="meta-txt">💰 ' + shownCoinsOf() + '</span>' });
     const status = $('player-status');
     const chipsHtml = chips.map(function (c) {
       // 保留原有 .meta 类（顶栏配色与像素主题都挂在它上面），再叠加 .meta-btn 表示可点击
@@ -3027,6 +3103,72 @@ window.UI = (function () {
     });
   }
 
+  // 商品网格的条目（筛选 + 排序）：初始化渲染与就地补丁共用同一套口径，
+  // 否则「补丁」和「重建」会得出两套数字（本项目踩过的老坑）。
+  function shopGridEntries(st) {
+    let entries = Object.keys(st.shop || {}).map(function (id) {
+      return { id: id, s: st.shop[id], meta: itemMeta(id), have: st.inventory[id] || 0 };
+    });
+    if (shopCat !== 'all') entries = entries.filter(function (o) { return o.meta.kind === shopCat; });
+    if (shopOwnedOnly) entries = entries.filter(function (o) { return o.have > 0; });
+    if (shopAutoOnly) entries = entries.filter(function (o) { return hasAutoRule(o.id, o.meta.kind); });
+    const sdir = shopSortDir === 'asc' ? -1 : 1; // 基础比较式 (y-x) 已是降序，升序时才翻转
+    if (shopSort === 'price') entries.sort(function (x, y) { return (y.s.price - x.s.price) * sdir; });
+    if (shopSort === 'pct') entries.sort(function (x, y) { return ((y.s.price / (y.s.base || 1)) - (x.s.price / (x.s.base || 1))) * sdir; });
+    if (shopSort === 'have') entries.sort(function (x, y) { return (y.have - x.have) * sdir; });
+    return entries;
+  }
+  // 收购卡片：就地补丁（现价 / 持有·可用 / 出售按钮）。出售后不等回包先按账本改，
+  // 行情广播到达时也只刷数字——列表不重排、滚动位置与正在点的卡片都不会被顶走。
+  function patchShopCard(id) {
+    const card = document.querySelector('#shop-panel .shop-card[data-id="' + id + '"]');
+    if (!card) return false;
+    const st = S();
+    const s = st.shop && st.shop[id];
+    if (!s) return false;
+    const have = st.inventory[id] || 0;
+    const avail = shownAvailOf(id);          // 显示量 = 服务器可用量 − 在途出售量
+    const ratio = s.base ? s.price / s.base : 1;
+    const pct = Math.round(ratio * 100);
+    const priceEl = card.querySelector('.sc-price');
+    if (priceEl) {
+      priceEl.className = 'sc-price ' + (ratio < 0.75 ? 'low' : ratio < 0.95 ? 'mid' : 'high');
+      priceEl.innerHTML = '💰 ' + s.price + '<span class="base">基准 ' + s.base + '</span>';
+    }
+    const bars = card.querySelectorAll('.sc-bar i');
+    if (bars.length === 2) {
+      bars[0].style.width = (pct > 100 ? Math.min(100, pct - 100) : 0) + '%';
+      bars[1].style.width = Math.max(6, Math.min(100, pct)) + '%';
+    }
+    const pctEl = card.querySelector('.sc-pct');
+    if (pctEl) {
+      pctEl.textContent = '当前 ' + pct + '% · 持有 ' + have +
+        (avail < have ? '（可用 ' + avail + '）' : '') + ' · 今日售出 ' + (s.soldToday || 0);
+    }
+    const btn = card.querySelector('.mini');
+    if (btn) {
+      btn.textContent = avail > 0 ? ('出售 ' + Math.min(sellQty, avail) + ' 个') : (have > 0 ? '仅体型档可卖' : '无库存');
+      btn.classList.toggle('primary-mini', avail > 0);
+      btn.classList.toggle('locked', avail <= 0);
+      if (avail <= 0 && have > 0) btn.title = '这些鱼都是大型/巨型预留，普通通道卖不了：请到背包按「大型 / 巨型」行出售（有额外金币加成）';
+      else btn.removeAttribute('title');
+    }
+    return true;
+  }
+  // 整片卡片补丁：只有当页面上这批卡片正好等于「当前筛选/排序的结果」时才就地刷，
+  // 否则交回整页重建（例如刚钓到新鱼种、筛选项变了、某项已卖光被「只看持有」筛掉）。
+  function patchShopCards() {
+    const grid = document.querySelector('#shop-panel .shop-grid');
+    if (!grid) return false;
+    const ids = shopGridEntries(S()).map(function (o) { return o.id; });
+    const dom = Array.prototype.map.call(grid.querySelectorAll('.shop-card[data-id]'), function (c) { return c.getAttribute('data-id'); });
+    if (dom.length !== ids.length) return false;
+    const want = {};
+    ids.forEach(function (i) { want[i] = 1; });
+    if (dom.some(function (i) { return !want[i]; })) return false;
+    ids.forEach(function (i) { patchShopCard(i); });
+    return true;
+  }
   // 商品网格 + 筛选状态（广播只刷新这一块；面板/筛选栏输入不受影响）
   function renderShopGrid() {
     const st = S();
@@ -3043,24 +3185,16 @@ window.UI = (function () {
         b.textContent = base + (k === shopSort ? (shopSortDir === 'desc' ? ' ↓' : ' ↑') : '');
       }
     });
-    let entries = Object.keys(st.shop || {}).map(function (id) {
-      return { id: id, s: st.shop[id], meta: itemMeta(id), have: st.inventory[id] || 0 };
-    });
-    if (shopCat !== 'all') entries = entries.filter(function (o) { return o.meta.kind === shopCat; });
-    if (shopOwnedOnly) entries = entries.filter(function (o) { return o.have > 0; });
-    if (shopAutoOnly) entries = entries.filter(function (o) { return hasAutoRule(o.id, o.meta.kind); });
-    const sdir = shopSortDir === 'asc' ? -1 : 1; // 基础比较式 (y-x) 已是降序，升序时才翻转
-    if (shopSort === 'price') entries.sort(function (x, y) { return (y.s.price - x.s.price) * sdir; });
-    if (shopSort === 'pct') entries.sort(function (x, y) { return ((y.s.price / (y.s.base || 1)) - (x.s.price / (x.s.base || 1))) * sdir; });
-    if (shopSort === 'have') entries.sort(function (x, y) { return (y.have - x.have) * sdir; });
+    const entries = shopGridEntries(st);
     grid.innerHTML = '';
     entries.forEach(function (o) {
       const id = o.id, s = o.s, meta = o.meta, have = o.have;
-      const avail = availCountOf(id);   // 普通通道可出售量（持有 − 大型/巨型预留）
+      const avail = shownAvailOf(id);   // 显示量：普通通道可出售量（持有 − 大型/巨型预留）− 在途出售量
       const ratio = s.base ? s.price / s.base : 1;
       const pct = Math.round(ratio * 100);
       const cls = ratio < 0.75 ? 'low' : ratio < 0.95 ? 'mid' : 'high';
       const card = el('div', 'shop-card' + (hasAutoRule(id, meta.kind) ? ' has-auto' : ''));
+      card.setAttribute('data-id', id);   // 就地补丁用（见 patchShopCard / patchShopCards）
       const fillPct = Math.max(6, Math.min(100, pct));
       const upPct = pct > 100 ? Math.min(100, pct - 100) : 0;
       const autoTag = hasAutoRule(id, meta.kind)
@@ -3074,15 +3208,21 @@ window.UI = (function () {
       card.title = '点击查看价格走势与交易量';
       // v0.13.9：收购走普通通道（服务端按可用量校验），按钮与夹紧必须用可用量，
       // 否则「持有 3（全是大型/巨型预留）」的鱼点出售必然收到 400「数量不足」。
+      // v0.13.10：点击后走 sellNow —— 本地立刻扣显示量与加币，**不等服务器回包**（回包再对账）。
       const sellN = Math.min(sellQty, avail);
       const btn = el('button', 'mini' + (avail > 0 ? ' primary-mini' : ' locked'), avail > 0 ? ('出售 ' + sellN + ' 个') : (have > 0 ? '仅体型档可卖' : '无库存'));
       if (avail <= 0 && have > 0) btn.title = '这些鱼都是大型/巨型预留，普通通道卖不了：请到背包按「大型 / 巨型」行出售（有额外金币加成）';
       btn.addEventListener('click', function (ev) {
         ev.stopPropagation();
-        if (!(availCountOf(id) > 0)) { toast(have > 0 ? '这条鱼都是大型/巨型预留，请到背包按体型档行出售' : '背包里没有可出售的数量', true); return; }
-        const n = Math.min(sellQty, availCountOf(id));
-        call(window.Net.sell(id, n), function (r) { return '售出 ' + meta.name + ' ×' + n + '，获得 💰' + r.data.gain + '（单价 ' + r.data.unit + '）'; })
-          .then(function (r) { if (r && r.ok) { st.player.coins = r.data.coins; applyInvFrom(r.data); st.shop = r.data.shop; if (r.data.bigfish !== undefined) st.bigfish = r.data.bigfish || {}; renderTopbar(); renderShop(); } });
+        const now = shownAvailOf(id);
+        if (!(now > 0)) { toast(have > 0 ? '这条鱼都是大型/巨型预留，请到背包按体型档行出售' : '背包里没有可出售的数量', true); return; }
+        sellNow({
+          id: id, qty: Math.min(sellQty, now), unit: s.price,
+          onLocal: function () { patchShopCard(id); },
+          // 回包对账：卡片还在就就地校准；卡不在（例如已卖光被「只看持有」筛掉）且仍停在收购页才整页重建
+          // （renderShop 直接往 #main 画收购页，切走了还调用会把当前页盖掉）
+          onSync: function () { if (!patchShopCard(id) && inShopView()) renderShop(); },
+        });
       });
       card.appendChild(btn);
       card.addEventListener('click', function () { openShopModal(id); });
@@ -4661,7 +4801,8 @@ window.UI = (function () {
     const meta = itemMeta(id);
     const total = st.inventory[id] || 0;
     // v0.13.9：一般行代表「普通量」，与 renderInventory / 服务端校验同口径（鱼类扣掉大型/巨型预留）
-    const cnt = meta.kind === 'fish' ? Math.min(total, availCountOf(id)) : total;
+    // v0.13.10：再扣掉「在途出售量」——出售后不必等回包，那一行当场就变（回包对账后仍是这个口径）
+    const cnt = meta.kind === 'fish' ? Math.min(total, shownAvailOf(id)) : total;
     if (cnt > 0) {
       const c = row.querySelector('.cnt');
       if (c) c.textContent = '×' + cnt;
@@ -4670,6 +4811,7 @@ window.UI = (function () {
       const tot = row.querySelector('.inv-total');
       if (tot) tot.textContent = '总 ×' + total;
     } else {
+      // 普通量归零 → 去掉一般行（与 renderInventory 同口径：鱼若还有预留量，下面的档位行仍在）
       const gk = row.getAttribute('data-group');
       row.remove();
       if (gk) {
@@ -4725,6 +4867,29 @@ window.UI = (function () {
         .map(function (kv) { return '<div class="inv-kind-line">' + kv[1] + '　' + kinds[kv[0]] + ' 种</div>'; }).join('');
     }
     return true;
+  }
+
+  // 体型档行（大型 / 巨型）的就地补丁：数量按「服务器预留量 − 在途出售量」，归零就把这一行去掉。
+  // 返回 false 表示行不在（被筛选隐藏 / 已经没有预留），调用方兜底整页重绘。
+  function patchInventoryTierRow(id, tier) {
+    const row = document.querySelector('.inv-tier-row[data-id="' + id + '@' + tier + '"]');
+    if (!row) return false;
+    const n = shownReservedOf(id, tier);
+    if (n <= 0) { row.remove(); return true; }
+    const u = unitPriceOf(id);
+    const bonus = function (q) { return Math.round(u * q * (tier === 'G' ? 1.5 : 0.5)); };
+    const c = row.querySelector('.cnt');
+    if (c) c.textContent = '×' + n;
+    const up = row.querySelector('.unit-price');
+    if (up) up.textContent = '现价 ' + u + '💰 +' + bonus(1) + '💰';
+    const sub = row.querySelector('.subtotal');
+    if (sub) sub.textContent = '小计 ' + (u * n + bonus(n)) + '💰';
+    return true;
+  }
+  // 出售后就地校准：优先补丁那一行，行不在了（例如刚被卖掉 / 被筛选隐藏）才整页重绘
+  function patchRowOrView(id, tier) {
+    if (tier) { if (!patchInventoryTierRow(id, tier)) renderView(); return; }
+    if (!patchInventoryRow(id)) renderView();
   }
 
   // 背包：行情广播（出售会改变动态收购价）只更新行内价格，不整页重建——
@@ -4959,18 +5124,13 @@ window.UI = (function () {
     }
     function tierBonus(id, tier, n) { return Math.round(unitPrice(id) * (n || 1) * (tier === 'G' ? 1.5 : 0.5)); }
     function doSell(id, qty, tier) {
-      // 不走 call()：那个辅助函数内部会 refreshAll()（无 scope → 整页重建），
-      // 出售后列表会按新价格重排、展开的组件分组也可能被收起。这里只提示 + 就地更新那一行。
-      Promise.resolve(window.Net.sell(id, qty, tier)).then(function (r) {
-        if (!r || !r.ok) { toast((r && r.data && r.data.error) || '操作失败'); return; }
-        toast('售出 ' + itemMeta(id).name + ' ×' + qty + (tier ? '（' + (tier === 'G' ? '巨型' : '大型') + '）' : '') +
-          '，获得 💰' + r.data.gain + (r.data.bonus ? '（含体型加成 +' + r.data.bonus + '💰）' : ''));
-        const st2 = S();
-        st2.player.coins = r.data.coins; applyInvFrom(r.data); st2.shop = r.data.shop;
-        if (r.data.bigfish !== undefined) st2.bigfish = r.data.bigfish || {};
-        renderTopbar();
-        if (tier || !patchInventoryRow(id)) renderView();   // 档位行/行不在了（例如被筛选隐藏）才退回整页重绘
-      }).catch(function () { toast('网络错误'); });
+      // v0.13.10 本地实时刷新：点击当场按账本扣显示量 + 加金币 + 就地补丁，**不等服务器回包**；
+      // 回包后按服务器权威值对账（库存 / 金币 / 行情）并撤掉在途记录 —— 见顶部 sellNow()。
+      return sellNow({
+        id: id, qty: qty, tier: tier,
+        onLocal: function () { patchRowOrView(id, tier); },
+        onSync: function () { patchRowOrView(id, tier); },
+      });
     }
     function listFee(price, qty) { return Math.ceil(price * qty * 0.01); }
 
@@ -5044,7 +5204,7 @@ window.UI = (function () {
         // v0.13.9：一般行只代表「普通量」= 总量 − 大型/巨型预留（此前显示总量，与旁边档位行重复计数、
         // 也与「出售 1 / 批量出售」的可用量校验口径不一致：全预留的鱼点出售必然被服务端拒）。
         // 普通量为 0 的鱼不画这一行，只留下面的档位行。
-        const cnt = meta.kind === 'fish' ? availCountOf(id) : total;
+        const cnt = meta.kind === 'fish' ? Math.min(total, shownAvailOf(id)) : total;
         // ⚠️ 普通量为 0 时**只跳过这一行**，不能 return —— 下面的体型档行还要照常渲染
         if (cnt > 0) {
           const kindName = meta.kind === 'fish' ? '一般' : meta.kind === 'material' ? '材料' : meta.kind === 'chest' ? '宝匣' : meta.kind === 'component' ? '组件' : '物品';
@@ -5086,7 +5246,7 @@ window.UI = (function () {
         // v0.13.6：大型/巨型鱼单独存放——紧跟普通行之后各出一行带标签的独立行，出售走加成通道
         if (meta.kind === 'fish' && reservedOf(id) > 0) {
           [['L', '大型', 'tag-large'], ['G', '巨型', 'tag-giant']].forEach(function (tk) {
-            const t = tk[0], n = reservedOf(id, t);
+            const t = tk[0], n = shownReservedOf(id, t);   // 显示量 = 服务器预留量 − 在途出售量
             if (n <= 0) return;
             const bonus = tierBonus(id, t, 1);
             const trow = el('div', 'inv-row inv-page-row inv-tier-row');
@@ -7878,6 +8038,13 @@ window.UI = (function () {
     }
     // 背包：行情 / 经济参数广播只刷行内价格，不整页重建（售出会改动态价 → 重排 + 收起展开栏）
     if (currentView === 'inventory' && (scope === 'shop' || scope === 'pricecfg') && !invFocus && patchInventoryPrices()) {
+      renderTopbar(); renderNav();
+      return;
+    }
+    // 商城·收购：行情 / 资产广播只就地刷卡片数字（现价、持有·可用、出售按钮），不整页重建——
+    // 出售会压价，整页重建会按新价格重排、把滚动位置和正在点的卡片顶走（与背包 / 市集同一套做法）。
+    // 自动售出规则变了不在这里刷（卡片右上角的 🤖 标记也要跟着变，交给整页重建）。
+    if (inShopView() && (scope === 'shop' || scope === 'assets' || scope === 'pricecfg') && !mainInputFocused() && patchShopCards()) {
       renderTopbar(); renderNav();
       return;
     }
