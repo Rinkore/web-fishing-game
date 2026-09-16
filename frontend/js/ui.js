@@ -4667,7 +4667,7 @@ window.UI = (function () {
     } else if (invSubRar !== 'all') {
       keys = keys.filter(function (id) { return itemMeta(id).rarity === invSubRar; });
     }
-    // v0.13.6：体型档筛选——只显示带【大型】/【巨型】标签的鱼
+    // v0.13.6：体型档筛选——只显示带「大型」/「巨型」标签的鱼
     if (invTier !== 'all' && invCategory !== 'component') {
       keys = keys.filter(function (id) {
         const meta0 = itemMeta(id);
@@ -4687,12 +4687,12 @@ window.UI = (function () {
       keys.forEach(function (id) {
         const meta = itemMeta(id);
         const cnt = st.inventory[id];
-        const kindName = meta.kind === 'fish' ? '鱼' : meta.kind === 'material' ? '材料' : meta.kind === 'chest' ? '宝匣' : meta.kind === 'component' ? '组件' : '物品';
+        const kindName = meta.kind === 'fish' ? '一般' : meta.kind === 'material' ? '材料' : meta.kind === 'chest' ? '宝匣' : meta.kind === 'component' ? '组件' : '物品';
         const row = el('div', 'inv-row inv-page-row');
         row.setAttribute('data-id', id);           // 出售后就地更新这一行（不整页重建）
         row.innerHTML =
           '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
-          '<span class="kind-tag">' + kindName + '</span>' +
+          '<span class="kind-tag' + (meta.kind === 'fish' ? ' tag-normal' : '') + '">' + kindName + '</span>' +
           rodLockBadge(id) +
           '<span class="cnt">×' + cnt + '</span>' +
           '<span class="unit-price">现价 ' + unitPrice(id) + '💰</span>' +
@@ -4723,7 +4723,7 @@ window.UI = (function () {
         list.appendChild(row);
         // v0.13.6：大型/巨型鱼单独存放——紧跟普通行之后各出一行带标签的独立行，出售走加成通道
         if (meta.kind === 'fish' && reservedOf(id) > 0) {
-          [['L', '【大型】', 'tag-large'], ['G', '【巨型】', 'tag-giant']].forEach(function (tk) {
+          [['L', '大型', 'tag-large'], ['G', '巨型', 'tag-giant']].forEach(function (tk) {
             const t = tk[0], n = reservedOf(id, t);
             if (n <= 0) return;
             const bonus = tierBonus(id, t, 1);

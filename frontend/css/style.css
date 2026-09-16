@@ -948,7 +948,8 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
   font-size: 10px; padding: 1px 7px; border-radius: 20px;
   background: rgba(56,189,248,.14); color: var(--accent2); flex: none;
 }
-/* v0.13.6 体型档标签（大型/巨型单独存放行）：银色=大型、金色=巨型 */
+/* v0.13.7 体型档标签配色（一般/大型/巨型）：铜色=一般、银色=大型、金色=巨型 */
+.inv-page-row .kind-tag.tag-normal { background: rgba(205,127,50,.16); color: #e0995c; border: 1px solid rgba(205,127,50,.45); }
 .inv-page-row .kind-tag.tag-large { background: rgba(201,209,217,.14); color: #c9d1d9; border: 1px solid rgba(201,209,217,.4); }
 .inv-page-row .kind-tag.tag-giant { background: rgba(245,158,11,.16); color: #ffd24a; border: 1px solid rgba(245,158,11,.5); font-weight: 700; }
 .inv-tier-row { border-style: dashed; }
