@@ -1028,6 +1028,63 @@ function deleteRecords(fishId) {
   if (world.lastRec && hit(world.lastRec.id)) world.lastRec = null;
   return n;
 }
+// ---- 单条纪录的读写（v0.14.1 后台纪录管理）----
+// 取某个鱼种某个榜的**活引用**（日/周/总 × 最大/最小）：range='all' 用历史总榜，
+// day/week 用当前时间桶。返回 null = 该榜没有条目。调用方 splice 后自己收尾空容器。
+function boardListRef(range, id, small) {
+  if (range === 'all') {
+    const m = small ? world.topSmall : world.topCatches;
+    return (m && m[id]) || null;
+  }
+  const b = rankBuckets();
+  const key = range === 'week' ? weekKeyOf(Date.now()) : dayKeyOf(Date.now());
+  const cell = ((b[range] || {})[key] || {})[id];
+  if (!cell) return null;
+  return (small ? cell.small : cell.big) || null;
+}
+// 删掉一条后收尾：总榜空了删鱼种键；日/周桶该鱼种空了删格、桶空了删桶（与 deleteRecords 同口径）
+function dropEmptyBoard(range, id, small) {
+  if (range === 'all') {
+    const m = small ? world.topSmall : world.topCatches;
+    if (m && m[id] && !(m[id] || []).length) delete m[id];
+    return;
+  }
+  const b = rankBuckets();
+  const key = range === 'week' ? weekKeyOf(Date.now()) : dayKeyOf(Date.now());
+  const bucket = (b[range] || {})[key];
+  if (!bucket) return;
+  const cell = bucket[id];
+  if (cell && !(cell.big || []).length && !(cell.small || []).length) delete bucket[id];
+  if (!Object.keys(bucket).length) delete b[range][key];
+}
+// 按「钓者 + 尺寸」把一条渔获从该鱼种的**全部**榜单里抹掉（作弊 / 误录一条时用）：
+// 同一条渔获同时躺在日桶、周桶与历史总榜里，只删其中一个榜会留下另一半。命中该鱼的
+// 「最大 / 最小纪录」头衔时连头衔一起清（全场最大随之重算）。返回被清掉的条数。
+function purgeEntryEverywhere(id, who, size) {
+  const n = { boards: 0, big: 0, small: 0 };
+  const eq = function (x) { return !!x && String(x.who) === String(who) && Number(x.size) === Number(size); };
+  const strip = function (list) {
+    if (!Array.isArray(list)) return;
+    for (let i = list.length - 1; i >= 0; i--) if (eq(list[i])) { list.splice(i, 1); n.boards++; }
+  };
+  strip(world.topCatches && world.topCatches[id]);
+  strip(world.topSmall && world.topSmall[id]);
+  const b = rankBuckets();
+  ['day', 'week'].forEach(function (scope) {
+    Object.keys(b[scope] || {}).forEach(function (k) {
+      const bucket = b[scope][k];
+      const cell = bucket && bucket[id];
+      if (!cell) return;
+      strip(cell.big); strip(cell.small);
+      if (!(cell.big || []).length && !(cell.small || []).length) delete bucket[id];
+      if (!Object.keys(bucket).length) delete b[scope][k];
+    });
+  });
+  if (eq(world.bigRecords[id])) { delete world.bigRecords[id]; n.big = 1; }
+  if (eq(world.smallRecords[id])) { delete world.smallRecords[id]; n.small = 1; }
+  if (n.big && world.globalMax && world.globalMax.id === id) world.globalMax = recomputeGlobalMax();
+  return n;
+}
 // 榜单播报文案（全部鱼种 / 全部榜单）：按重要性取一条播报
 //   1 全场最大纪录被破 · 2 该鱼种最大/最小纪录 · 3 当日「最大」前十更新 · 4 当日「最小」前十更新
 //   （3/4 是**当日**榜：挤进今天的前十就播报，历史总榜只进记录页，不驱动横幅）
@@ -6147,6 +6204,45 @@ const server = http.createServer(function (req, res) {
       econLog(a.name, id ? ('删除渔获纪录：' + itemName(id)) : '删除全部渔获纪录');
       apiResp(res, 200, { ok: true, id: id || null, removed: removed,
         records: world.bigRecords, small: world.smallRecords, globalMax: world.globalMax || null, last: world.lastRec || null });
+    });
+    return;
+  }
+  // 删除榜上的**单条**纪录（v0.14.1）：id + range(day|week|all) + kind(big|small) + index，
+  // 客户端另带该条的 who/size/t，服务端先核对名次上还是不是它 —— 期间被别人的渔获挤走就 409
+  // 让人刷新重来，避免「列表看着是 A、实际删掉了 B」。可选 purge=1：把这条（同钓者 + 同尺寸）
+  // 从该鱼种的其它榜单与「最大/最小纪录」里一并抹掉（作弊的一条往往同时躺在日/周/总三个榜里）。
+  if (p === '/api/admin/records/delone' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const id = String(d.id || '');
+      if (!FISH_ID_SET[id]) return apiResp(res, 400, { error: '未知鱼类：' + id });
+      const range = d.range === 'week' ? 'week' : (d.range === 'all' ? 'all' : 'day');
+      const small = d.kind === 'small';
+      const index = parseInt(d.index, 10);
+      const list = boardListRef(range, id, small);
+      if (!list || !list.length) return apiResp(res, 404, { error: '该榜没有条目' });
+      if (!(index >= 0) || index >= list.length) return apiResp(res, 409, { error: '名次已变化，请刷新后重试' });
+      const cur = list[index];
+      if (d.t != null && (Number(cur.t) !== Number(d.t) || String(cur.who) !== String(d.who) || Number(cur.size) !== Number(d.size))) {
+        return apiResp(res, 409, { error: '该条已被更新，请刷新后重试' });
+      }
+      list.splice(index, 1);
+      dropEmptyBoard(range, id, small);
+      let purge = null;
+      if (d.purge) purge = purgeEntryEverywhere(id, cur.who, cur.size);
+      saveRecords();
+      markRecordsDirty();
+      broadcastRecords();
+      const label = rankLabelOf(range) + (small ? ' · 最小' : ' · 最大');
+      econLog(a.name, '删除纪录条目：' + itemName(id) + ' ' + label + ' 第 ' + (index + 1) + ' 名 ' +
+        cur.who + ' ' + cur.size + 'cm' + (purge && purge.boards ? '（并清理同条目 ' + purge.boards + ' 处）' : ''));
+      apiResp(res, 200, {
+        ok: true, id: id, range: range, kind: small ? 'small' : 'big', label: label,
+        removed: cur, purge: purge,
+        top: (boardListRef(range, id, small) || []).slice(),
+      });
     });
     return;
   }

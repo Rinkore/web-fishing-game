@@ -232,13 +232,15 @@ window.Admin = (function () {
   }
   function renderFeedback() {
     const main = $('main');
-    main.innerHTML = '<h2>📮 玩家反馈</h2><div class="hint" style="margin-bottom:12px">玩家提交的 Bug / 建议 / 平衡反馈，按时间倒序。</div>' +
-      '<div class="panel"><h3 style="margin-top:0">⚙ 反馈规则</h3>' +
-      '<div class="mgr-row"><label>CD 时长</label><input id="fbc-cd" class="ipt mk-num" type="number" min="0" max="8760" step="0.5" />' +
+    // 反馈规则折进 <details>：它是低频设置，常驻会白占半屏、把真正要看的反馈挤到下面。
+    main.innerHTML = '<h2>📮 玩家反馈</h2>' +
+      '<div class="hint" style="margin-bottom:10px">玩家提交的 Bug / 建议 / 平衡反馈，按时间倒序。改状态直接点下选框，奖励点 🎁。</div>' +
+      '<details class="fb-rules"><summary>⚙ 反馈规则<span class="hint" id="fbc-now"></span></summary>' +
+      '<div class="mgr-row" style="margin:10px 0 2px"><label>CD 时长</label><input id="fbc-cd" class="ipt mk-num" type="number" min="0" max="8760" step="0.5" />' +
       '<span class="hint">小时（0 = 不限制）</span>' +
       '<label class="hint" style="margin-left:12px">清空 CD 费用</label><input id="fbc-cost" class="ipt mk-num" type="number" min="0" step="1" />' +
       '<span class="hint">金币</span>' +
-      '<button class="btn primary" id="fbc-save">保存</button><span id="fbc-state" class="hint"></span></div></div>' +
+      '<button class="btn primary" id="fbc-save">保存</button><span id="fbc-state" class="hint"></span></div></details>' +
       '<div id="fb-body" class="panel">加载中…</div>';
     $('fbc-save').onclick = function () {
       const cdHours = Number($('fbc-cd').value);
@@ -257,7 +259,12 @@ window.Admin = (function () {
       const box = $('fb-body');
       if (!r.ok) { box.textContent = (r.data && r.data.error) || '加载失败'; return; }
       // 回填反馈规则
-      if (r.data.cfg) { $('fbc-cd').value = r.data.cfg.cdHours; $('fbc-cost').value = r.data.cfg.skipCost; }
+      if (r.data.cfg) {
+        $('fbc-cd').value = r.data.cfg.cdHours; $('fbc-cost').value = r.data.cfg.skipCost;
+        const now = $('fbc-now');
+        if (now) now.textContent = '当前：CD ' + (Number(r.data.cfg.cdHours) > 0 ? r.data.cfg.cdHours + ' 小时' : '不限') +
+          ' · 清空费用 ' + r.data.cfg.skipCost + ' 金币';
+      }
       const all = r.data.feedback || [];
       const KIND = { bug: '🐛 Bug', idea: '💡 建议', balance: '⚖️ 平衡', other: '💬 其他' };
       const STATUSES = r.data.statuses || { submitted: '已提交', accepted: '已受理', done: '已完成' };
@@ -268,40 +275,65 @@ window.Admin = (function () {
         if (fbFilterReward && !(f.reward && f.reward.coins)) return false;
         return true;
       });
-      const kindOpts = [['all', '全部类型']].concat(Object.keys(KIND).map(function (k) { return [k, KIND[k]]; }))
-        .map(function (kv) { return '<option value="' + kv[0] + '"' + (fbFilterKind === kv[0] ? ' selected' : '') + '>' + esc(kv[1]) + '</option>'; }).join('');
-      const stOpts = [['all', '全部状态']].concat(Object.keys(STATUSES).map(function (k) { return [k, STATUSES[k]]; }))
-        .map(function (kv) { return '<option value="' + kv[0] + '"' + (fbFilterStatus === kv[0] ? ' selected' : '') + '>' + esc(kv[1]) + '</option>'; }).join('');
-      const barHtml = '<div class="fb-admin-filters" style="margin-bottom:10px">' +
-        '<label class="hint">类型</label><select class="ipt" id="fba-kind" style="width:auto">' + kindOpts + '</select>' +
-        '<label class="hint" style="margin-left:10px">状态</label><select class="ipt" id="fba-status" style="width:auto">' + stOpts + '</select>' +
-        '<label class="hint" style="margin-left:10px"><input type="checkbox" id="fba-reward"' + (fbFilterReward ? ' checked' : '') + ' /> 仅未奖励</label>' +
-        '<span class="hint" style="margin-left:10px">匹配 ' + list.length + ' / ' + all.length + ' 条</span></div>';
+      const countBy = function (fn) { return all.filter(fn).length; };
+      const statusOf = function (f) { return f.status || 'submitted'; };
+      const isRewarded = function (f) { return !!(f.reward && f.reward.coins); };
+      const statHtml = '<div class="fb-stat">共 <b>' + all.length + '</b> 条' +
+        Object.keys(STATUSES).map(function (k) {
+          return '<span class="fb-stat-item"><i class="fb-dot ' + k + '"></i>' + esc(STATUSES[k]) + ' <b>' +
+            countBy(function (f) { return statusOf(f) === k; }) + '</b></span>';
+        }).join('') +
+        '<span class="fb-stat-item">🎁 已奖励 <b>' + countBy(isRewarded) + '</b></span>' +
+        (list.length === all.length ? '' : '<span class="fb-stat-item">筛选后 <b>' + list.length + '</b></span>') + '</div>';
+      // 筛选改 chips：状态 / 类型各一键，顺带把条数写在上面（原来两个下拉要点两下才知道剩几条）
+      const chip = function (key, active, label, n) {
+        return '<button class="fb-chip' + (active ? ' on' : '') + '" data-fbf="' + esc(key) + '">' + esc(label) +
+          (n == null ? '' : ' <span class="fb-chip-n">' + n + '</span>') + '</button>';
+      };
+      const barHtml = '<div class="fb-chips">' +
+        chip('kind:all', fbFilterKind === 'all', '全部类型', null) +
+        Object.keys(KIND).map(function (k) {
+          return chip('kind:' + k, fbFilterKind === k, KIND[k], countBy(function (f) { return (f.kind || 'other') === k; }));
+        }).join('') +
+        '<span class="fb-sep"></span>' +
+        chip('st:all', fbFilterStatus === 'all', '全部状态', null) +
+        Object.keys(STATUSES).map(function (k) {
+          return chip('st:' + k, fbFilterStatus === k, STATUSES[k], countBy(function (f) { return statusOf(f) === k; }));
+        }).join('') +
+        '<span class="fb-sep"></span>' +
+        chip('reward:no', fbFilterReward, '🎁 仅未奖励', countBy(function (f) { return !isRewarded(f); })) +
+        '</div>';
       if (!all.length) { box.innerHTML = '<div class="hint">暂无反馈。</div>'; return; }
-      box.innerHTML = barHtml + (list.length ? list.map(function (f) {
+      box.innerHTML = statHtml + barHtml + (list.length ? list.map(function (f) {
         const dt = new Date(f.t);
         const ts = dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2) + ' ' +
           ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2);
-        const cur = f.status || 'submitted';
+        const cur = statusOf(f);
         const opts = Object.keys(STATUSES).map(function (k) {
           return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' + esc(STATUSES[k]) + '</option>';
         }).join('');
         const rw = f.reward;
-        return '<div class="fb-admin-item">' +
-          '<div class="fb-admin-head"><span class="fb-tag">' + esc(KIND[f.kind] || f.kind || '其他') + '</span>' +
-          '<span class="fb-admin-who">' + esc(f.name || f.key) + '</span>' +
-          '<span class="fb-status ' + cur + '">' + esc(STATUSES[cur] || cur) + '</span>' +
-          (rw && rw.coins ? '<span class="fb-reward">🎁 已奖励 +' + rw.coins + '💰' + (rw.note ? '（' + esc(rw.note) + '）' : '') + '</span>' : '') +
-          '<span class="fb-admin-time">' + ts + (f.version ? ' · ' + esc(f.version) : '') + '</span></div>' +
-          '<div class="fb-admin-text">' + esc(f.text) + '</div>' +
-          '<div class="fb-admin-foot"><label class="hint">状态</label>' +
-          '<select class="ipt fb-status-sel" data-id="' + esc(f.id) + '" style="width:auto">' + opts + '</select>' +
-          '<button class="btn mini primary" data-reward="' + esc(f.id) + '" data-who="' + esc(f.name || f.key) + '">🎁 奖励金币</button>' +
+        return '<div class="fb-card">' +
+          '<div class="fb-card-head"><span class="fb-kind ' + esc(f.kind || 'other') + '">' + esc(KIND[f.kind] || f.kind || '其他') + '</span>' +
+          '<span class="fb-who">' + esc(f.name || f.key) + '</span>' +
+          '<span class="fb-time">' + ts + (f.version ? ' · ' + esc(f.version) : '') + '</span>' +
+          '<span class="fb-tail"><span class="fb-status ' + cur + '">' + esc(STATUSES[cur] || cur) + '</span>' +
+          (rw && rw.coins ? '<span class="fb-reward">🎁 +' + rw.coins + '💰' + (rw.note ? '（' + esc(rw.note) + '）' : '') + '</span>' : '') +
+          '</span></div>' +
+          '<div class="fb-text">' + esc(f.text) + '</div>' +
+          '<div class="fb-acts"><select class="ipt fb-status-sel" data-id="' + esc(f.id) + '" title="改处理状态">' + opts + '</select>' +
+          '<button class="btn mini primary" data-reward="' + esc(f.id) + '" data-who="' + esc(f.name || f.key) + '">🪙 奖励金币</button>' +
           (f.statusBy ? '<span class="hint">由 ' + esc(f.statusBy) + ' 更新</span>' : '') + '</div></div>';
       }).join('') : '<div class="hint">没有符合筛选条件的反馈。</div>');
-      $('fba-kind').onchange = function () { fbFilterKind = $('fba-kind').value; renderFeedback(); };
-      $('fba-status').onchange = function () { fbFilterStatus = $('fba-status').value; renderFeedback(); };
-      $('fba-reward').onchange = function () { fbFilterReward = $('fba-reward').checked; renderFeedback(); };
+      box.querySelectorAll('[data-fbf]').forEach(function (b) {
+        b.onclick = function () {
+          const k = b.getAttribute('data-fbf');
+          if (k === 'reward:no') fbFilterReward = !fbFilterReward;
+          else if (k.indexOf('kind:') === 0) fbFilterKind = k.slice(5);
+          else if (k.indexOf('st:') === 0) fbFilterStatus = k.slice(3);
+          renderFeedback();
+        };
+      });
       box.querySelectorAll('[data-reward]').forEach(function (b) {
         b.onclick = function () { rewardFeedback(b.getAttribute('data-reward'), b.getAttribute('data-who')); };
       });
@@ -2684,8 +2716,8 @@ window.Admin = (function () {
       '<div class="rc-preview-wrap"><img id="rc-preview" class="rh-icon" src="assets/fish/' + RECORDS_PREVIEW_FISH + '.png" alt="" draggable="false"></div>' +
       '<div class="hint" id="rc-preview-txt"></div></div>' +
       '<h3 style="margin-top:18px">🗑 纪录管理</h3>' +
-      '<div class="hint" style="margin-bottom:6px">删除某个鱼种的捕获纪录（最大 / 最小 / 前十大 / 前十小 / 日榜周榜一并清除），或清空全部鱼种。' +
-      '只动纪录，不动玩家背包与图鉴；删除后玩家端记录页即时刷新。</div>' +
+      '<div class="hint" style="margin-bottom:6px">点鱼名展开该鱼种的 <b>日 / 周 / 总榜</b>，按名次单独删掉某一条；' +
+      '「删除该鱼种全部」才会连它的最大 / 最小纪录一起清。只动纪录，不动玩家背包与图鉴；删除后玩家端记录页即时刷新。</div>' +
       '<div class="mgr-row"><label class="hint">搜索</label><input id="rc-del-search" class="ipt" placeholder="鱼名 / ID" style="width:200px">' +
       '<span class="hint" id="rc-del-count"></span>' +
       '<button class="btn danger" id="rc-del-all" style="margin-left:auto">清空全部纪录</button></div>' +
@@ -2726,34 +2758,111 @@ window.Admin = (function () {
     };
     sync();
 
-    // ---- 纪录管理（v0.13.8）：按鱼种删除 / 清空全部 ----
-    // 删掉的是捕获纪录本身（最大 / 最小 / 前十大 / 前十小 / 日榜周榜桶一起清），
-    // 不动玩家背包与图鉴；玩家端记录页收到 recordsDirty 后即时刷新。
+    // ---- 纪录管理（v0.14.1）：点鱼名展开日 / 周 / 总榜，按名次单独删 ----
+    // 单条删除只摘掉该榜上的这一条（服务端还会核对 who/size/t —— 期间被别人的渔获挤走就 409，
+    // 免得「列表看着是 A、实际删掉 B」）；要连「最大 / 最小纪录」一起清才走每行的「删除该鱼种全部」。
     let recDelFilter = '';
     let recDelRows = [];
+    let recOpenId = null;            // 当前展开的鱼种（手风琴：一次只展开一个，省得列表被撑散）
+    let recRange = 'day', recKind = 'big';
+    const RANGE_LABEL = { day: '日榜', week: '周榜', all: '总榜' };
+    // 该鱼的基准体型区间（data.js 的 size = [min,max]）：和玩家端记录页显示的是同一个口径
+    const recBaseOf = function (id) {
+      const fish = (worldCfg && worldCfg.catalog && worldCfg.catalog.fish) || [];
+      const f = fish.find(function (x) { return x.id === id; });
+      return (f && f.size) ? f.size : null;
+    };
+    const pctText = function (size, base) {
+      if (!base || !(size > 0)) return null;
+      const p = Math.round((size - base[1]) / base[1] * 1000) / 10;
+      return (p >= 0 ? '+' : '') + p + '%';
+    };
     const drawDelList = function () {
       const box = $('rc-del-list');
       if (!box) return;
       const q = (recDelFilter || '').trim().toLowerCase();
-      const rows = recDelRows
+      const all = recDelRows
         .filter(function (r) { return !q || r.name.toLowerCase().indexOf(q) >= 0 || r.id.indexOf(q) >= 0; })
         .sort(function (a, b) { return (b.big || 0) - (a.big || 0); });
-      if (!rows.length) {
+      if (!all.length) {
         box.innerHTML = '<div class="hint">' + (recDelRows.length ? '没有匹配的纪录。' : '当前没有任何渔获纪录。') + '</div>';
         return;
       }
-      box.innerHTML = '<div class="mgr-row" style="font-size:12px;color:var(--muted)"><span style="width:150px">鱼种</span>' +
-        '<span style="flex:1">最大 / 最小纪录</span><span>操作</span></div>' +
-        rows.map(function (r) {
-          return '<div class="mgr-row" data-rcrow="' + esc(r.id) + '">' +
-            '<span style="width:150px;font-weight:600">' + esc(r.name) + '</span>' +
-            '<span class="hint" style="flex:1">最大 ' + (r.big != null ? r.big + 'cm' : '—') +
-            ' · 最小 ' + (r.small != null ? r.small + 'cm' : '—') + '</span>' +
-            '<button class="btn mini danger" data-rcdel="' + esc(r.id) + '">删除</button></div>';
-        }).join('');
+      box.innerHTML = all.map(function (r) {
+        const open = recOpenId === r.id;
+        const base = recBaseOf(r.id);
+        return '<div class="rcm-item' + (open ? ' open' : '') + '">' +
+          '<div class="rcm-head" data-rcopen="' + esc(r.id) + '">' +
+          '<span class="rcm-caret">' + (open ? '▾' : '▸') + '</span>' +
+          '<span class="rcm-name">' + esc(r.name) + '</span>' +
+          (base ? '<span class="rcm-base">基准 ' + base[0] + '~' + base[1] + 'cm</span>' : '') +
+          '<span class="rcm-meta">最大 ' + (r.big != null ? r.big + 'cm' : '—') +
+          ' · 最小 ' + (r.small != null ? r.small + 'cm' : '—') + '</span>' +
+          '<span class="rcm-act"><button class="btn mini danger" data-rcdel="' + esc(r.id) + '">删除该鱼种全部</button></span>' +
+          '</div>' +
+          (open ? '<div class="rcm-board" data-rcboard="' + esc(r.id) + '">加载中…</div>' : '') +
+          '</div>';
+      }).join('');
+      box.querySelectorAll('[data-rcopen]').forEach(function (h) {
+        h.onclick = function (ev) {
+          if (ev.target && ev.target.closest && ev.target.closest('[data-rcdel]')) return;   // 点「全部删除」不该折叠
+          const id = h.getAttribute('data-rcopen');
+          recOpenId = (recOpenId === id) ? null : id;
+          drawDelList();
+          if (recOpenId) loadBoard(recOpenId);
+        };
+      });
       box.querySelectorAll('[data-rcdel]').forEach(function (b) {
         b.onclick = function () { confirmDelRecord(b.getAttribute('data-rcdel'), false); };
       });
+    };
+    // 展开区：范围（日/周/总）× 榜单（最大/最小）两排切换 + 名次行（带「超出基准 %」）
+    const boardBox = function () { return document.querySelector('[data-rcboard]'); };
+    const loadBoard = function (id) {
+      const box = boardBox();
+      if (!box) return;
+      box.innerHTML = '<div class="hint">加载中…</div>';
+      api('GET', '/api/records/top?id=' + encodeURIComponent(id) + '&range=' + recRange + (recKind === 'small' ? '&kind=small' : ''))
+        .then(function (r) {
+          if (recOpenId !== id) return;                       // 期间折叠了 / 换鱼种了
+          const b = boardBox();
+          if (!b) return;
+          const d = (r && r.data) || {};
+          const top = d.top || [];
+          const base = recBaseOf(id);
+          const tabs = '<div class="rcm-tabs">' +
+            '<span class="hint">范围</span>' +
+            ['day', 'week', 'all'].map(function (k) {
+              return '<button class="fb-chip' + (recRange === k ? ' on' : '') + '" data-rcrange="' + k + '">' + RANGE_LABEL[k] + '</button>';
+            }).join('') +
+            '<span class="rcm-label">' + esc(d.label || '') + '</span>' +
+            '<span class="fb-sep"></span><span class="hint">榜单</span>' +
+            [['big', '🐟 最大'], ['small', '🐠 最小']].map(function (kv) {
+              return '<button class="fb-chip' + (recKind === kv[0] ? ' on' : '') + '" data-rckind="' + kv[0] + '">' + kv[1] + '</button>';
+            }).join('') +
+            (base ? '<span class="rcm-base rcm-base-r">基准 ' + base[0] + '~' + base[1] + 'cm</span>' : '') +
+            '</div>';
+          const rowsHtml = top.length ? top.map(function (t, i) {
+            const pct = pctText(t.size, base);
+            return '<div class="rcm-row">' +
+              '<span class="rcm-rank">#' + (i + 1) + '</span>' +
+              '<span class="rcm-size">' + t.size + '<span class="rcm-u">cm</span></span>' +
+              (pct == null ? '' : '<span class="rcm-pct' + (pct.charAt(0) === '+' ? ' over' : '') + '">' + pct + '</span>') +
+              '<span class="rcm-who">' + esc(t.who) + '</span>' +
+              '<span class="rcm-time">' + fmtTime(t.t) + '</span>' +
+              '<button class="btn mini danger" data-rcmdel="' + i + '">删除</button></div>';
+          }).join('') : '<div class="hint">该榜暂无条目' + (recRange === 'day' ? '（今天还没有该鱼种的入榜渔获）' : '') + '。</div>';
+          b.innerHTML = tabs + rowsHtml;
+          b.querySelectorAll('[data-rcrange]').forEach(function (x) {
+            x.onclick = function () { recRange = x.getAttribute('data-rcrange'); loadBoard(id); };
+          });
+          b.querySelectorAll('[data-rckind]').forEach(function (x) {
+            x.onclick = function () { recKind = x.getAttribute('data-rckind'); loadBoard(id); };
+          });
+          b.querySelectorAll('[data-rcmdel]').forEach(function (x) {
+            x.onclick = function () { confirmDelEntry(id, parseInt(x.getAttribute('data-rcmdel'), 10), top); };
+          });
+        });
     };
     const loadRecList = function () {
       return api('GET', '/api/records').then(function (r) {
@@ -2770,25 +2879,65 @@ window.Admin = (function () {
             small: smalls[id] ? smalls[id].size : null,
           };
         });
+        if (recOpenId && !ids[recOpenId]) recOpenId = null;   // 展开的鱼种被清空了
         drawDelList();
+        if (recOpenId) loadBoard(recOpenId);
         const cnt = $('rc-del-count');
         if (cnt) cnt.textContent = recDelRows.length ? ('共 ' + recDelRows.length + ' 个鱼种有纪录') : '当前没有纪录';
       });
     };
-    const confirmDelRecord = function (id, all) {
+    const confirmModal = function (title, bodyHtml, okText) {
       document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
       const ov = document.createElement('div');
       ov.className = 'modal-overlay';
-      ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">' +
-        (all ? '清空全部渔获纪录' : '删除渔获纪录') + '</span></div>' +
-        '<div class="modal-body"><div class="cf-text">' +
-        (all ? '确定清空<b>全部</b>鱼种的捕获纪录？' : '确定删除 <b>' + esc(id) + '</b> 的捕获纪录？') +
-        '<br>最大 / 最小 / 前十大 / 前十小 / 日榜周榜都会一起清掉，玩家背包与图鉴不受影响。</div>' +
+      ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">' + title + '</span></div>' +
+        '<div class="modal-body"><div class="cf-text">' + bodyHtml + '</div>' +
         '<div class="cf-actions"><button class="btn mini cf-no">取消</button>' +
-        '<button class="btn danger" id="rc-del-ok">确认删除</button></div></div></div>';
+        '<button class="btn danger" id="rc-del-ok">' + okText + '</button></div></div></div>';
       document.body.appendChild(ov);
       ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
       ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
+      return ov;
+    };
+    // 单条删除：勾选可顺带清掉这条（同钓者 + 同尺寸）在其它榜单 / 纪录头衔里的影子
+    const confirmDelEntry = function (id, index, list) {
+      const t = (list || [])[index];
+      if (!t) return;
+      const name = (recDelRows.find(function (r) { return r.id === id; }) || {}).name || id;
+      const ov = confirmModal('删除这一条纪录',
+        '删除 <b>' + esc(name) + '</b> ' + RANGE_LABEL[recRange] + (recKind === 'small' ? ' · 最小' : ' · 最大') +
+        ' 第 <b>' + (index + 1) + '</b> 名：<b>' + esc(t.who) + ' ' + t.size + 'cm</b>（' + fmtTime(t.t) + '）' +
+        '<label class="rcm-chk"><input type="checkbox" id="rcm-purge" checked> 同时把这条（同钓者 + 同尺寸）从该鱼的其它榜单与「最大 / 最小纪录」里一并移除</label>' +
+        '<div class="hint">不勾 = 只摘掉这个榜上的这一条。玩家背包与图鉴不受影响。</div>',
+        '确认删除');
+      ov.querySelector('#rc-del-ok').onclick = function () {
+        const btn = ov.querySelector('#rc-del-ok');
+        const purge = ov.querySelector('#rcm-purge').checked;
+        btn.disabled = true; btn.textContent = '删除中…';
+        adminApi('POST', '/api/admin/records/delone', {
+          token: token, id: id, range: recRange, kind: recKind, index: index, purge: purge,
+          who: t.who, size: t.size, t: t.t,
+        }).then(function (r) {
+          ov.remove();
+          if (!r.ok) {
+            toast((r.data && r.data.error) || '删除失败', true);
+            loadBoard(id);                                   // 多半是名次变了：刷新给最新名次
+            return;
+          }
+          const pg = r.data.purge || {};
+          toast('已删除第 ' + (index + 1) + ' 名 ' + t.who + ' ' + t.size + 'cm' +
+            (purge ? '（另清 ' + (pg.boards || 0) + ' 处榜单条目' + ((pg.big || pg.small) ? ' + 纪录头衔' : '') + '）' : ''));
+          loadRecList();
+        });
+      };
+    };
+    const confirmDelRecord = function (id, all) {
+      const name = (recDelRows.find(function (r) { return r.id === id; }) || {}).name || id;
+      const ov = confirmModal(all ? '清空全部渔获纪录' : '删除该鱼种全部纪录',
+        (all ? '确定清空<b>全部</b>鱼种的捕获纪录？' : '确定删除 <b>' + esc(name) + '</b> 的<b>全部</b>捕获纪录？') +
+        '<br>最大 / 最小 / 前十大 / 前十小 / 日榜周榜都会一起清掉，玩家背包与图鉴不受影响。' +
+        '<div class="hint">只想删榜上的某一条，请展开该鱼种后逐条删。</div>',
+        '确认删除');
       ov.querySelector('#rc-del-ok').onclick = function () {
         const btn = ov.querySelector('#rc-del-ok');
         btn.disabled = true; btn.textContent = '删除中…';

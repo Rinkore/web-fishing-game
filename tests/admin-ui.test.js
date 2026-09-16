@@ -784,10 +784,10 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       // —— 反馈奖励（金币到账 + 记录 + 筛选）——
       section('管理后台 · 反馈奖励');
       await post('/api/feedback/submit', { token: tokB, text: 'QA 奖励测试反馈', kind: 'idea' });
-      await clickAdminNav('反馈意见', '.fb-admin-item');
+      await clickAdminNav('反馈意见', '.fb-card');
       const coinsBeforeRw = (await get('/api/me?token=' + tokB)).data.coins;
       await pa.evaluate(() => {
-        const row = Array.from(document.querySelectorAll('.fb-admin-item')).find(r => r.textContent.includes('QA 奖励测试反馈'));
+        const row = Array.from(document.querySelectorAll('.fb-card')).find(r => r.textContent.includes('QA 奖励测试反馈'));
         if (row) row.querySelector('[data-reward]').click();
       });
       await untilSel(pa, '.cf-val', 5000);
@@ -799,19 +799,24 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       const fbList2 = await get('/api/admin/feedback?token=' + adminLogin.data.token);
       const rwItem = (fbList2.data.feedback || []).find(f => f.text === 'QA 奖励测试反馈');
       check('反馈记录带奖励信息（金币 + 操作人）', !!(rwItem && rwItem.reward && rwItem.reward.coins === 1500 && rwItem.reward.by), JSON.stringify(rwItem && rwItem.reward));
-      await pa.evaluate(() => {
-        const sel = document.getElementById('fba-kind');
-        if (sel) { sel.value = 'bug'; sel.dispatchEvent(new Event('change')); }
-      });
-      // 奖励完成后列表会重绘一次（会重置筛选）：轮询中按需重设，直到筛选真正生效
-      const tagTexts = await untilGet(async () => {
+      // 类型筛选（v0.14.1 起改 chips）：按「建议」筛——列表里当前就有这条 idea，
+      // 断言「筛完非空且只剩建议」（旧写法筛 bug 时列表为空，[].every() 恒真 → 白过）
+      const kindTexts = await untilGet(async () => {
         await pa.evaluate(() => {
-          const sel = document.getElementById('fba-kind');
-          if (sel && sel.value !== 'bug') { sel.value = 'bug'; sel.dispatchEvent(new Event('change')); }
+          const b = Array.from(document.querySelectorAll('#fb-body .fb-chip')).find(x => x.getAttribute('data-fbf') === 'kind:idea');
+          if (b && !b.classList.contains('on')) b.click();
         });
-        return pa.$$eval('.fb-admin-item .fb-tag', els => els.map(e => e.textContent.trim()));
-      }, arr => !!(arr && arr.length && arr.every(t => t.indexOf('Bug') >= 0)), 8000);
-      check('后台反馈按类型筛选生效（仅剩 Bug）', tagTexts.every(t => t.indexOf('Bug') >= 0), tagTexts.join(','));
+        return pa.$$eval('#fb-body .fb-card .fb-kind', els => els.map(e => e.textContent.trim()));
+      }, arr => !!(arr && arr.length && arr.every(t => t.indexOf('建议') >= 0)), 8000);
+      check('后台反馈按类型筛选生效（仅剩建议）', kindTexts.length > 0 && kindTexts.every(t => t.indexOf('建议') >= 0), kindTexts.join(','));
+      const kindAll = await untilGet(async () => {
+        await pa.evaluate(() => {
+          const b = Array.from(document.querySelectorAll('#fb-body .fb-chip')).find(x => x.getAttribute('data-fbf') === 'kind:all');
+          if (b && !b.classList.contains('on')) b.click();
+        });
+        return pa.$$eval('#fb-body .fb-card', els => els.length);
+      }, n => n >= 1, 8000);
+      check('点回「全部类型」恢复列表', kindAll >= 1, String(kindAll));
       // 玩家端：我的反馈按状态筛选 + 奖励标记
       // p1 名下的账号要先有反馈记录，筛选控件与历史列表才渲染得出来
       await post('/api/feedback/submit', { token: tokP, text: 'QA 玩家侧筛选反馈', kind: 'bug' });

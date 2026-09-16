@@ -375,6 +375,71 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 /* 商城配置：价格/限购输入框紧凑 */
 .ml-tbl .ipt { max-width: 140px; }
 
+/* ---------- 反馈意见（v0.14.1 重排）----------
+   ⚠️ 后台只加载本文件：原来这里的 .fb-admin-* 样式写在游戏端 style.css 里，
+   后台根本取不到 → 反馈项是一条条裸文本挤在一起。改样式请只加在本文件。 */
+.fb-rules { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+.fb-rules > summary { cursor: pointer; font-size: 13px; color: var(--txt); }
+.fb-rules > summary .hint { margin-left: 10px; }
+.fb-stat { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  font-size: 12px; color: var(--txt-dim); padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+.fb-stat b { color: var(--txt); }
+.fb-stat-item { display: inline-flex; align-items: center; gap: 5px; }
+.fb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--txt-dim); }
+.fb-dot.submitted { background: var(--acc); }
+.fb-dot.accepted { background: var(--warn); }
+.fb-dot.done { background: var(--ok); }
+.fb-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.fb-chip {
+  font: inherit; font-size: 12px; cursor: pointer; color: var(--txt-dim);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 20px; padding: 3px 10px;
+}
+.fb-chip:hover { color: var(--txt); border-color: var(--acc2); }
+.fb-chip.on { color: var(--acc); border-color: var(--acc); background: rgba(77, 163, 255, .14); font-weight: 600; }
+.fb-chip-n { opacity: .7; }
+.fb-sep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; }
+.fb-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--panel2); }
+.fb-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; font-size: 12px; }
+.fb-kind { border-radius: 20px; padding: 1px 9px; background: rgba(77, 163, 255, .18); color: var(--acc); flex: none; }
+.fb-kind.idea { background: rgba(62, 207, 142, .16); color: var(--ok); }
+.fb-kind.balance { background: rgba(255, 180, 84, .16); color: var(--warn); }
+.fb-kind.other { background: rgba(255, 255, 255, .08); color: var(--txt-dim); }
+.fb-who { font-weight: 600; color: var(--txt); }
+.fb-time { color: var(--txt-dim); }
+.fb-tail { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+.fb-status { font-size: 11px; padding: 1px 8px; border-radius: 20px; background: rgba(255,255,255,.08); color: var(--txt-dim); }
+.fb-status.submitted { background: rgba(77,163,255,.16); color: var(--acc); }
+.fb-status.accepted { background: rgba(255,180,84,.18); color: var(--warn); }
+.fb-status.done { background: rgba(62,207,142,.18); color: var(--ok); }
+.fb-reward { font-size: 11px; color: var(--warn); border: 1px solid rgba(255,180,84,.5); border-radius: 20px; padding: 1px 8px; }
+.fb-text { font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.fb-acts { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.fb-acts .fb-status-sel { width: auto; flex: none; padding: 3px 6px; font-size: 12px; }
+
+/* ---------- 纪录管理（v0.14.1 展开式）---------- */
+.rcm-item { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; background: var(--panel2); }
+.rcm-item.open { border-color: var(--acc2); }
+.rcm-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; flex-wrap: wrap; }
+.rcm-head:hover { background: rgba(77, 163, 255, .06); }
+.rcm-caret { width: 12px; color: var(--txt-dim); flex: none; }
+.rcm-name { font-weight: 600; min-width: 110px; }
+.rcm-base { font-size: 11px; color: var(--txt-dim); }
+.rcm-base-r { margin-left: auto; }
+.rcm-meta { font-size: 12px; color: var(--txt-dim); flex: 1; }
+.rcm-act { flex: none; }
+.rcm-board { border-top: 1px solid var(--line); padding: 10px 12px; }
+.rcm-tabs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.rcm-label { font-size: 11px; color: var(--txt-dim); }
+.rcm-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 6px; background: rgba(255,255,255,.03); margin-bottom: 4px; font-size: 13px; }
+.rcm-rank { width: 34px; text-align: center; color: var(--warn); font-weight: 700; flex: none; }
+.rcm-size { width: 92px; font-weight: 700; flex: none; }
+.rcm-u { font-size: 11px; font-weight: 400; color: var(--txt-dim); }
+.rcm-pct { width: 62px; font-size: 11px; color: var(--txt-dim); flex: none; }
+.rcm-pct.over { color: var(--big); }
+.rcm-who { flex: 1; color: var(--acc); }
+.rcm-time { font-size: 11px; color: var(--txt-dim); flex: none; }
+.rcm-chk { display: block; margin: 8px 0 4px; }
+
 /* ---------- 滚动条：与后台深色主题一致（深底 + 蓝灰滑块，细） ----------
    后台页面只加载本文件，与游戏端（style.css/pixel.css）各写一份；
    标准属性（Firefox / Chrome 121+）与 Webkit 伪元素两套写法都给出。 */

@@ -7712,6 +7712,7 @@ window.UI = (function () {
         return;
       }
       const top = r.data.top || [];
+      const base = fishBaseOf(recTopFish);      // 该鱼基准区间：每条后面的百分比按它的上限算
       box.innerHTML = '';
       if (!top.length) {
         box.appendChild(el('div', 'hint', recTopRange === 'day' ? '今天还没有该鱼种的入榜渔获。' :
@@ -7721,18 +7722,40 @@ window.UI = (function () {
       top.forEach(function (t, i) {
         const rank = i + 1;
         const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '#' + rank;
+        const pct = fishBasePct(t.size, base);
         box.appendChild(el('div', 'top10-row',
           '<span class="top10-rank">' + medal + '</span>' +
           '<span class="top10-size' + (small ? ' sf' : '') + '">' + t.size + '<span class="u">cm</span></span>' +
+          (pct == null ? '' : '<span class="top10-pct" title="该鱼基准上限 ' + base[1] + 'cm：超过即大型，超过 80% 为巨型">（基准 ' + pct + '）</span>') +
           '<span class="top10-who">' + esc(t.who) + '</span>' +
           '<span class="top10-time">' + dateTimeStr(t.t) + '</span>'));
       });
-      box.appendChild(el('div', 'sd-legend', '共收录 ' + top.length + ' 条（每位玩家仅保留最好一条）· ' +
-        (recTopRange === 'all' ? '总榜为全服历史成绩' : '日/周榜按入榜时间滚动')));
+      box.appendChild(el('div', 'sd-legend', '共收录 ' + top.length + ' 条（每位玩家仅保留最好一条）' +
+        (base ? ' · 括号 = 超出该鱼基准上限 ' + base[1] + 'cm 的百分比（>0% 大型 · >80% 巨型）' : '') +
+        ' · ' + (recTopRange === 'all' ? '总榜为全服历史成绩' : '日/周榜按入榜时间滚动')));
     });
   }
   function closeRecordsModal() {
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+  }
+
+  // 鱼的基准体型（data.js 的 size = [min, max]）：记录页与排行榜弹窗共用同一口径。
+  // 大型 / 巨型判定就是拿 size[1] 当基准上限（服务端 sizeTierOf），所以标出来最有用。
+  function fishBaseOf(id) {
+    const m = itemMeta(id);
+    return (m && Array.isArray(m.size) && m.size.length === 2) ? m.size : null;
+  }
+  // 「基准 15~40cm」小字：挂在鱼名后面，省得为看一眼基准去翻图鉴
+  function fishBaseTag(id) {
+    const b = fishBaseOf(id);
+    return b ? '<span class="rc-base" title="该鱼基准体型区间（记录页与排行榜的百分比都按它的上限算）">基准 ' +
+      b[0] + '~' + b[1] + 'cm</span>' : '';
+  }
+  // 超出基准上限的百分比（+ = 比基准上限还大，>0 大型、>80 巨型；负数 = 比基准上限小）
+  function fishBasePct(size, base) {
+    if (!base || !(size > 0)) return null;
+    const p = Math.round((size - base[1]) / base[1] * 1000) / 10;
+    return (p >= 0 ? '+' : '') + p + '%';
   }
 
   function renderRecords() {
@@ -7769,7 +7792,7 @@ window.UI = (function () {
 
     // 分鱼类查看：每种鱼一个卡片，最大与最小合并在一起（大图＝最大纪录、小图＝最小纪录）
     panel.appendChild(el('h3', null, '🐟 分鱼类纪录（最大 / 最小）'));
-    panel.appendChild(el('div', 'hint', '每张卡同时给出该鱼的最大与最小纪录：上行＝最大、下行（蓝字）＝最小。点击卡片查看排行榜。'));
+    panel.appendChild(el('div', 'hint', '每张卡同时给出该鱼的最大与最小纪录：上行＝最大、下行（蓝字）＝最小；鱼名后的灰字是该鱼的基准体型。点击卡片查看排行榜。'));
     const withRec = [], without = [];
     D.allItems().filter(function (i) { return i.kind === 'fish'; }).forEach(function (f) {
       const big = st.records && st.records[f.id];
@@ -7784,7 +7807,7 @@ window.UI = (function () {
       if (!any) {
         cell.innerHTML =
           '<img class="rc-icon dim" src="assets/fish/' + esc(e.f.id) + '.png" alt="" draggable="false">' +
-          '<div class="rc-name locked-name">' + esc(e.f.name) + '</div>' +
+          '<div class="rc-name locked-name">' + esc(e.f.name) + fishBaseTag(e.f.id) + '</div>' +
           '<div class="rc-size muted">—</div>' +
           '<div class="rc-who">暂无纪录</div>';
         grid.appendChild(cell);
@@ -7792,7 +7815,7 @@ window.UI = (function () {
       }
       cell.innerHTML =
         '<img class="rc-icon" src="assets/fish/' + esc(e.f.id) + '.png" alt="" draggable="false">' +
-        '<div class="rc-name ' + rarityClass(e.f.rarity) + '">' + esc(e.f.name) + '</div>' +
+        '<div class="rc-name ' + rarityClass(e.f.rarity) + '">' + esc(e.f.name) + fishBaseTag(e.f.id) + '</div>' +
         '<div class="rc-size">' + (e.big ? e.big.size + '<span class="u">cm</span>' : '—') + '</div>' +
         '<div class="rc-who">' + (e.big ? esc(e.big.who) + ' · ' + dateTimeStr(e.big.t) : '暂无最大纪录') + '</div>' +
         '<div class="rc-size sf-size">' + (e.sm ? e.sm.size + '<span class="u">cm</span>' : '—') + '</div>' +

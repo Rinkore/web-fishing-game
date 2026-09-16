@@ -1063,6 +1063,9 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .top10-rank { width: 36px; text-align: center; font-weight: 700; color: var(--big); flex: none; }
 .top10-size { font-weight: 700; width: 90px; flex: none; }
 .top10-size .u { font-size: 11px; font-weight: 400; color: var(--muted); }
+/* v0.14.1：排行条目里的「（基准 +61.5%）」——淡色小字，超出基准上限的用蓝字强调 */
+.top10-pct { font-size: 11px; color: var(--muted); flex: none; width: 92px; }
+.top10-pct.sf, .top10-pct.over { color: var(--accent2); }
 .top10-who { flex: 1; color: var(--accent2); }
 .top10-time { color: var(--muted); font-size: 11px; flex: none; }
 .record-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
@@ -1090,6 +1093,8 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .rec-tabs .sub-label { font-size: 12px; color: var(--muted); margin-right: 2px; }
 .rc-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
 .rc-name.locked-name { color: var(--muted); font-weight: 400; }
+/* v0.14.1：鱼名后的基准体型小字（记录页）；排行榜弹窗里「超出基准 %」的淡色括号见 .top10-pct */
+.rc-base { font-size: 10px; font-weight: 400; color: var(--muted); margin-left: 5px; white-space: nowrap; }
 .rc-size { font-size: 20px; font-weight: 800; color: var(--big); }
 .rc-size.muted { color: var(--muted); font-weight: 400; }
 .rc-size .u { font-size: 11px; font-weight: 400; color: var(--muted); }
