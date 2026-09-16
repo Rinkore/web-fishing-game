@@ -172,7 +172,7 @@ let users = {};
 // 默认公式：基础 90% + 「技巧」词缀（技巧是上钩率公式里的一个变量，钩率提示一律不写死在代码里）。
 // 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
 const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
 
 // ---- 宝匣（沉船打捞）----
 // 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
@@ -193,132 +193,6 @@ function chestCfgOf() {
 }
 // 把后台保存的宝匣成本套用到共享目录（启动时与每次保存后都必须调用一次）
 function applyChestCostCfg() { return D.applyChestCosts(world.chestCfg && world.chestCfg.costs); }
-
-// ---- 服务端版本更新（优雅热更）----
-// 流程：管理员在后台选一个「新版本启动用的 run.bat」→ 立即向全服播报 60 秒更新通知（倒计时横幅）→
-//       横幅结束 5 秒后：启动新版本（独立进程，脱离当前进程）并关闭当前版本。
-// 让出端口的顺序很关键：先 server.close() 停止监听（端口立即释放），再拉起新版本，最后退出进程——
-// 否则新旧两个实例会抢同一个端口，新版本直接 EADDRINUSE 起不来。
-const UPDATE_BANNER_MS = 60 * 1000; // 更新通知横幅时长（60 秒）
-const UPDATE_GRACE_MS = 5 * 1000;   // 横幅结束后再等 5 秒才真正切换
-const UPDATE_EXIT_DELAY_MS = 1500;  // 拉起新版本后留给旧进程的收尾时间（让在途响应写完）
-const UPDATE_SCAN_DEPTH = 2;        // .bat 搜索深度（项目根为 0，允许 releases/xxx/run.bat 这类一层子目录）
-const UPDATE_MAX_BAT = 60;
-let updateTask = null;              // 当前更新任务（内存态：服务器重启即作废）
-
-// 项目根目录：backend/ 的上一级（.bat 模板与版本目录都放在这里）
-const PROJECT_ROOT = path.resolve(__dirname, '..');
-// 候选启动脚本：项目根的 *.bat + 浅层子目录里的 run.bat / *.bat（如 releases/v0.11.0/run.bat）
-function listBatCandidates() {
-  const out = [];
-  function scan(dir, depth) {
-    if (out.length >= UPDATE_MAX_BAT) return;
-    let ents = [];
-    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
-    ents.forEach(function (ent) {
-      if (out.length >= UPDATE_MAX_BAT) return;
-      const full = path.join(dir, ent.name);
-      if (ent.isDirectory()) {
-        if (depth <= 0) return;
-        if (ent.name === 'node_modules' || ent.name === '.git' || ent.name.charAt(0) === '.') return;
-        scan(full, depth - 1);
-        return;
-      }
-      if (!/\.bat$/i.test(ent.name)) return;
-      let st = null;
-      try { st = fs.statSync(full); } catch (e) { return; }
-      out.push({
-        path: path.relative(PROJECT_ROOT, full).replace(/\\/g, '/'),
-        name: ent.name,
-        dir: path.relative(PROJECT_ROOT, dir).replace(/\\/g, '/') || '.',
-        size: st.size, mtime: st.mtimeMs,
-      });
-    });
-  }
-  scan(PROJECT_ROOT, UPDATE_SCAN_DEPTH);
-  // run.bat 排在最前（最常见的更新方式），其余按修改时间倒序
-  return out.sort(function (a, b) {
-    const ra = /run\.bat$/i.test(a.name) ? 1 : 0, rb = /run\.bat$/i.test(b.name) ? 1 : 0;
-    return rb - ra || b.mtime - a.mtime;
-  });
-}
-// 相对路径 → 绝对路径（必须落在项目目录内、且是 .bat，杜绝路径穿越）
-function resolveBatPath(rel) {
-  const r = String(rel == null ? '' : rel).trim().replace(/\\/g, '/');
-  if (!r || !/\.bat$/i.test(r)) return { error: '请选择一个 .bat 启动脚本' };
-  const full = path.resolve(PROJECT_ROOT, r);
-  if (full !== PROJECT_ROOT && !full.startsWith(PROJECT_ROOT + path.sep)) return { error: '脚本必须位于项目目录内' };
-  let st = null;
-  try { st = fs.statSync(full); } catch (e) { return { error: '脚本不存在：' + r }; }
-  if (!st.isFile()) return { error: '脚本不是文件：' + r };
-  return { ok: true, full: full, rel: path.relative(PROJECT_ROOT, full).replace(/\\/g, '/') };
-}
-function updateStateView() {
-  if (!updateTask) return null;
-  return {
-    active: true, phase: updateTask.phase, bat: updateTask.bat, note: updateTask.note || '',
-    by: updateTask.by || '', startedAt: updateTask.startedAt,
-    endAt: updateTask.endAt, fireAt: updateTask.fireAt, bannerMs: UPDATE_BANNER_MS, graceMs: UPDATE_GRACE_MS,
-    dryRun: !!updateTask.dryRun,
-  };
-}
-function broadcastUpdate() { broadcast({ type: 'update', update: updateStateView() }); }
-function clearUpdateTask() {
-  if (!updateTask) return;
-  (updateTask.timers || []).forEach(function (t) { clearTimeout(t); });
-  updateTask = null;
-}
-// 启动新版本并关闭当前版本（真机行为）
-function performUpdate() {
-  if (!updateTask) return;
-  const bat = updateTask.bat;
-  const full = updateTask.full;
-  updateTask.phase = 'restarting';
-  broadcastUpdate();
-  console.log('[update] 正在切换到新版本：' + bat);
-  // 1) 停钓 + 停止监听：立刻释放端口，保证新版本能 bind
-  try { players.forEach(function (p, key) { stopFishingSession(key); }); } catch (e) {}
-  try { server.close(); } catch (e) {}
-  // 2) 拉起新版本（独立窗口、脱离当前进程，旧进程退出不会连带杀掉它）
-  if (!updateTask.dryRun) {
-    try {
-      const child = spawn('cmd.exe', ['/c', 'start', '', full], {
-        cwd: path.dirname(full), detached: true, stdio: 'ignore', windowsHide: false,
-      });
-      child.unref();
-    } catch (e) {
-      console.error('[update] 启动新版本失败：' + e.message);
-      updateTask.phase = 'failed';
-      updateTask.error = e.message;
-      broadcastUpdate();
-      return;
-    }
-  }
-  // 3) 关闭当前版本
-  setTimeout(function () {
-    console.log('[update] 旧版本进程退出');
-    if (updateTask) updateTask.phase = 'done';
-    try { if (typeof process.exit === 'function') process.exit(0); } catch (e) {}
-  }, updateTask.dryRun ? 0 : UPDATE_EXIT_DELAY_MS).unref();
-}
-function startUpdateTask(opts) {
-  clearUpdateTask();
-  const now = Date.now();
-  const endAt = now + UPDATE_BANNER_MS;
-  updateTask = {
-    bat: opts.bat, full: opts.full, note: opts.note || '', by: opts.by || '',
-    startedAt: now, endAt: endAt, fireAt: endAt + UPDATE_GRACE_MS,
-    phase: 'banner', dryRun: !!opts.dryRun, timers: [],
-  };
-  updateTask.timers.push(setTimeout(function () {
-    if (!updateTask) return;
-    updateTask.phase = 'grace';
-    broadcastUpdate();
-  }, UPDATE_BANNER_MS));
-  updateTask.timers.push(setTimeout(function () { performUpdate(); }, UPDATE_BANNER_MS + UPDATE_GRACE_MS));
-  broadcastUpdate();
-  return updateTask;
-}
 
 // ---- 渔获记录贴图（全场最大鱼图标的缩放 / 偏移）----
 // 玩家端「🎁 渔获记录」页顶部那张大贴图：scale 为相对原始尺寸的百分比，x/y 为像素偏移。
@@ -567,7 +441,14 @@ function planSmelt(rec, d) {
     pearl: pearl, extraType: extraType, rates: rates, gold: gold,
     rollBoundary: !!(pearl && cfg.pearlRollTwice),
     relicId: relicId, relics: relicQty, extraAffixes: extraAffixes,
-    retainChance: D.smeltRetainChance(relicQty),
+    // 只要投入了至少 1 片残片，失败时主组件**选中的那条词缀**就不会被熔毁（v0.13）。
+    // 这是残片新增的第二个作用（原本只有「成功时按概率保留池外突破词缀」）。
+    protectAffix: relicQty > 0,
+    retainChance: D.smeltRetainChance(relicQty, extraAffixes.length),
+    // 保留概率的说明值：主件突破词缀条数与每片概率（供前端展示公式与实际取值）
+    breakthrough: extraAffixes.length,
+    perRelic: D.retainChancePerRelic(extraAffixes.length),
+    retainFormula: String(cfg.retainFormula || ''),
     ranges: smeltRangesOf(mainMeta, subMeta, mainAffix.type, subAffix.type, extraType),
   };
 }
@@ -878,21 +759,59 @@ function mergedEffOf(bd, spot) {
   });
   return eff;
 }
+// 稀有度（rare 词缀）v0.13：不再放大稀有档渔获权重，改为**压低普通品质物品的权重**。
+// 系数 = K / (K + R)（R = 稀有度合计，K 后台可配，默认 2），只乘在「普通品质」条目上。
+// 作用对象是掉落池里的实际品质：普通鱼（tier=common）与组件条目（生成结果可能是任意品质，
+// 但只有真正 roll 出普通品质时才吃该系数——见 resolveItemAt 的组件分支）。
+function rareK() { return D.rareKOf({ k: world.rareK }); }
+function rareMultOf(eff) { return D.rareCommonMult(eff && eff.rare, rareK()); }
+// 掉落池条目是否属于「普通品质」：渔获看档位（tier=common），材料看其自身品质（rarity=common）。
+// 组件条目单独处理（品质在抽中之后才 roll，见 componentCommonProb）。
+function pickIsCommon(pick) {
+  const i = pick.indexOf(':');
+  const type = pick.slice(0, i), id = pick.slice(i + 1);
+  if (type === 'fish') return D.fishTierOf(id) === 'common';
+  if (type === 'material') {
+    const m = D.MATERIALS.find(function (x) { return x.id === id; });
+    return !!(m && m.rarity === 'common');
+  }
+  return false;
+}
+// 组件条目生成后可能是任意品质，且品质在「抽中之后」才 roll。为了让「普通品质权重 × mult」
+// 在期望意义上精确成立，组件条目的权重按「生成结果为普通的概率」缩放：
+//   有效系数 = P(普通) × mult + (1 − P(普通))
+// 这样普通件占比下降的幅度与其它普通条目一致，而史诗/神话部分完全不受影响。
+function componentCommonProb() {
+  const w = (D.getComponentCfg && D.getComponentCfg().qualityWeights) || null;
+  if (!w) return 0;
+  let total = 0, common = 0;
+  Object.keys(w).forEach(function (k) {
+    const v = Math.max(0, Number(w[k]) || 0);
+    total += v;
+    if (k === 'common') common += v;
+  });
+  return total > 0 ? common / total : 0;
+}
 // 大鱼/稀有/材料加成：按类别放大掉落池权重；后台「产出倍率」dropCfg 同层叠加（全局 × 分类，组件只吃全局）
+// v0.13：普通品质条目（普通鱼 / 材料 / 组件的普通品质部分）额外乘以稀有度系数 K/(K+R)。
 function boostPoolOf(pool, eff) {
   const hasBoost = !!(eff.big || eff.rare || eff.material);
-  if (!hasBoost && dropCfgIsDefault()) return pool;
+  const commonMult = rareMultOf(eff);
+  if (!hasBoost && dropCfgIsDefault() && commonMult >= 1) return pool;
   const dc = dropCfg();
+  const compMult = componentCommonProb() * commonMult + (1 - componentCommonProb());
   return pool.map(function (e) {
     const i = e.pick.indexOf(':');
     const type = e.pick.slice(0, i), id = e.pick.slice(i + 1);
+    const cm = pickIsCommon(e.pick) ? commonMult : 1;
     let mult = dc.global / 100;
     if (type === 'fish') {
       const tier = D.fishTierOf(id);
       if (tier === 'big') mult *= (dc.big / 100) * (1 + eff.big / 100);
       else if (tier === 'rare') mult *= (dc.rare / 100) * (1 + eff.rare / 100);
-      else mult *= dc.common / 100;
-    } else if (type === 'material') mult *= (dc.material / 100) * (1 + eff.material / 100);
+      else mult *= dc.common / 100 * cm;
+    } else if (type === 'material') mult *= (dc.material / 100) * (1 + eff.material / 100) * cm;
+    else if (type === 'component') mult *= compMult;
     return { pick: e.pick, weight: e.weight * mult };
   });
 }
@@ -2140,7 +2059,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
@@ -3537,12 +3456,16 @@ const server = http.createServer(function (req, res) {
         gold: Math.max(0, Math.floor(Number(cfg.recastGold) || 0)),
         minValue: !!cfg.recastMinValue,
       },
-      // 熔炼 · 残片保留（海王遗匣产出的神话主件专享）：片数上限与每片概率由后台「⚒ 工坊配置」决定
+      // 熔炼 · 残片保留（海王遗匣产出的神话主件专享）：片数上限与每片概率由后台「⚒ 工坊配置」决定。
+      // v0.13：每片概率由公式给出（默认 10 - breakthrough * 0.5，breakthrough = 主件突破词缀条数），
+      // 客户端拿到公式后按所选主件自己算每片/总概率；另附投入 1 片即保护的说明。
       retain: {
         quality: D.RECAST_QUALITY, qualityName: (D.QUALITY[D.RECAST_QUALITY] || {}).name || D.RECAST_QUALITY,
         relicId: 'relic', relicName: itemName('relic'),
         max: Math.max(0, Math.floor(Number(cfg.retainMaxRelic) || 0)),
-        per: Math.max(0, Number(cfg.retainPerRelic) || 0),
+        formula: String(cfg.retainFormula || ''),
+        per: D.retainChancePerRelic(0),
+        protectAffix: true,
         relicHave: invCountOf(rec, 'relic'),
       },
     });
@@ -3592,9 +3515,12 @@ const server = http.createServer(function (req, res) {
           invAdd(rec, newId, 1);
           result = D.componentOf(newId);
         } else {
-          // 失败不再「主件原样」：主件被熔掉**选中的那条词条**，其余词条与品质保留（v0.11.3 起）
+          // 失败不再「主件原样」：主件被熔掉**选中的那条词条**，其余词条与品质保留（v0.11.3 起）。
+          // v0.13：投入了至少 1 片残片时（plan.protectAffix），选中的词条**不会被熔毁**，
+          // 主件只失去副件与催化剂（其余词条原样保留，来源 src 一并带过）。
           invAdd(rec, plan.mainId, -1);
-          const left = plan.mainMeta.affixes.filter(function (a) { return a.type !== plan.mainAffix.type; })
+          const left = plan.mainMeta.affixes
+            .filter(function (a) { return plan.protectAffix || a.type !== plan.mainAffix.type; })
             .map(function (a) { return { type: a.type, value: a.value, src: a.src || null }; });
           const leftId = D.instanceId(base.id, plan.mainMeta.quality, left);
           invAdd(rec, leftId, 1);
@@ -3609,8 +3535,10 @@ const server = http.createServer(function (req, res) {
           pearl: plan.pearl, rollBoundary: useBoundary,
           load: plan.load, extraType: plan.extraType, ranges: plan.ranges,
           relics: plan.relics, relicId: plan.relicId, retainChance: plan.retainChance,
+          breakthrough: plan.breakthrough, perRelic: plan.perRelic, retainFormula: plan.retainFormula,
           retainOk: retainOk, retained: retained, mainAfter: mainAfter,
-          removedAffix: success ? null : plan.mainAffix.type,
+          protectAffix: !success && !!plan.protectAffix,
+          removedAffix: (success || plan.protectAffix) ? null : plan.mainAffix.type,
           mainId: plan.mainId, subId: plan.subId, item: result,
           coins: rec.coins, inventory: rec.inventory,
         });
@@ -4002,8 +3930,6 @@ const server = http.createServer(function (req, res) {
       smeltCfg: smeltCfgOf(),
       // 渔获记录贴图（全场最大鱼图标的缩放 / 偏移）：改动经 recordscfg 广播同步
       recordsCfg: recordsCfgOf(),
-      // 版本更新进行中（60 秒通知横幅）：后连进来的客户端也能看到倒计时
-      update: updateStateView(),
     });
   }
   // ---- 钓场目录（公开只读；含管理后台保存的掉落池/增益/锁定覆盖） ----
@@ -4711,6 +4637,21 @@ const server = http.createServer(function (req, res) {
       autoNotify: world.autoNotify || { on: false, rules: autoNotifyPreset('default'), hysteresisPct: 10, holdCount: 2 },
       onlineCount: players.size,
       biteFormula: world.biteFormula || BITE_FORMULA_DEFAULT,
+      // 稀有度（rare 词缀）：普通品质物品权重系数 K/(K+R) 的 K 值
+      rareK: rareK(), rareKDefault: D.RARE_K_DEFAULT,
+      // 材料催化词缀范围的一键预设（按部位 × 词缀 = 该部位包络）与各部位包络（校验约束提示用）
+      catalystPreset: D.catalystPreset(),
+      catalystEnvelopes: (function () {
+        const out = {};
+        D.COMPONENT_BASES.forEach(function (b) {
+          out[b.part] = out[b.part] || {};
+          b.pool.forEach(function (p) {
+            const env = D.catalystEnvelopeOf(b.part, p.type);
+            if (env) out[b.part][p.type] = env;
+          });
+        });
+        return out;
+      })(),
       doubleBase: Number(world.doubleBase) || 0,
       castBaseMs: castBaseMs(),
       castMinMs: castMinMs(),
@@ -4759,11 +4700,6 @@ const server = http.createServer(function (req, res) {
       recordsCfg: recordsCfgOf(),
       recordsDefaults: RECORDS_DEFAULTS,
       recordsLimits: { scaleMin: RECORDS_SCALE_MIN, scaleMax: RECORDS_SCALE_MAX, offsetMin: RECORDS_OFFSET_MIN, offsetMax: RECORDS_OFFSET_MAX },
-      // ---- 版本更新：候选 .bat 与当前任务 ----
-      updateBats: listBatCandidates(),
-      updateState: updateStateView(),
-      updateBannerMs: UPDATE_BANNER_MS,
-      updateGraceMs: UPDATE_GRACE_MS,
     });
   }
   // ---- 组件生成配置：品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则 ----
@@ -5413,6 +5349,83 @@ const server = http.createServer(function (req, res) {
     });
     return;
   }
+  // ---- 稀有度：真实钓点战利品表试算（后台「🧮 公式管理 → 稀有度」用）----
+  // 返回当前生效的钓点列表（含后台保存的掉落池覆盖），供下拉框选用实际存在的钓点。
+  if (p === '/api/admin/loot/spots' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    const list = [];
+    D.GROUNDS.forEach(function (g) {
+      (g.spots || []).forEach(function (s) {
+        list.push({ key: g.id + ':' + s.id, name: g.name + '·' + s.name, pool: (s.pool || []).length });
+      });
+    });
+    return apiResp(res, 200, { ok: true, spots: list, k: rareK() });
+  }
+  // 用真实钓点战利品表试算稀有度效果：稀有度 R 只压低「普通品质」条目权重（系数 K/(K+R)），
+  // 逐条给出前后占比，便于管理员直观看到稀有度的实际作用。
+  if (p === '/api/admin/loot/test' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const key = String(d.spotKey || '');
+      const ci = key.indexOf(':');
+      if (ci <= 0) return apiResp(res, 400, { error: '请选择一个钓点' });
+      const found = spotOf(key.slice(0, ci), key.slice(ci + 1));
+      if (!found || !found.spot) return apiResp(res, 400, { error: '钓点不存在：' + key });
+      // 基础权重 = 该钓点当前生效的掉落池（应用产出倍率，但不含玩家词缀，保证可复现）
+      const pool = boostPoolOf(found.spot.pool || [], {});
+      const R = Math.max(0, Number(d.rare) || 0);
+      const K = rareK();
+      const mult = D.rareCommonMult(R, K);
+      const compMult = componentCommonProb() * mult + (1 - componentCommonProb());
+      const isCommon = function (e) {
+        const i = e.pick.indexOf(':');
+        const type = e.pick.slice(0, i);
+        return type === 'component' ? false : pickIsCommon(e.pick); // 组件单独按 compMult 折算
+      };      const effOf = function (e) {
+        const i = e.pick.indexOf(':');
+        const type = e.pick.slice(0, i);
+        if (type === 'component') return compMult;
+        return isCommon(e) ? mult : 1;
+      };
+      const before = pool.reduce(function (s, e) { return s + e.weight; }, 0) || 1;
+      const after = pool.reduce(function (s, e) { return s + e.weight * effOf(e); }, 0) || 1;
+      let commonBefore = 0, commonAfter = 0;
+      const rows = pool.map(function (e) {
+        const i = e.pick.indexOf(':');
+        const type = e.pick.slice(0, i), id = e.pick.slice(i + 1);
+        const f = effOf(e);
+        const w2 = e.weight * f;
+        const p1 = e.weight / before * 100, p2 = w2 / after * 100;
+        if (type !== 'component' && isCommon(e)) { commonBefore += p1; commonAfter += p2; }
+        let name = id, quality = '普通';
+        if (type === 'fish') {
+          const tier = D.fishTierOf(id);
+          for (const t of ['common', 'big', 'rare']) {
+            const x = D.FISH[t].find(function (y) { return y.id === id; });
+            if (x) { name = x.name; quality = (D.QUALITY[x.rarity] || {}).name || x.rarity; break; }
+          }
+          void tier;
+        } else if (type === 'material') {
+          const x = D.MATERIALS.find(function (y) { return y.id === id; });
+          if (x) { name = x.name; quality = (D.QUALITY[x.rarity] || {}).name || x.rarity; }
+        } else if (type === 'component') {
+          name = '组件（随机底材）'; quality = '按品质权重';
+        }
+        return { pick: e.pick, name: name, quality: quality, common: f < 1, weight: Math.round(e.weight * 1000) / 1000, beforePct: Math.round(p1 * 100) / 100, afterPct: Math.round(p2 * 100) / 100 };
+      }).sort(function (x, y) { return y.beforePct - x.beforePct; });
+      return apiResp(res, 200, {
+        ok: true, k: K, rare: R, mult: Math.round(mult * 10000) / 10000,
+        spot: { key: key, name: found.ground.name + '·' + found.spot.name },
+        commonBefore: Math.round(commonBefore * 100) / 100,
+        commonAfter: Math.round(commonAfter * 100) / 100,
+        rows: rows,
+      });
+    });
+    return;
+  }
   // ---- 工坊熔炼配置：成功率 / 投料系数 / 金币花费 ----
   if (p === '/api/admin/smelt/config' && req.method === 'POST') {
     readBody(req, function (body) {
@@ -5425,14 +5438,14 @@ const server = http.createServer(function (req, res) {
         goldBase: [0, 100000000], goldPerMaterial: [0, 10000000], goldPearl: [0, 100000000],
         maxMaterials: [0, 99], maxTypes: [0, 8],
         recastRelic: [0, 9999], recastGold: [0, 100000000],
-        retainPerRelic: [0, 100], retainMaxRelic: [0, 99],
+        retainMaxRelic: [0, 99],
         addAffixCap: [1, 6],
       };
       const LABEL = {
         baseRate: '熔炼基础成功率', failPerMaterial: '每份材料对失败率的影响', extraRatePerMaterial: '每份材料的补缀成功率加成',
         extraRatePearl: '龙宫宝珠的补缀成功率加成', extraRateMax: '补缀成功率上限', rateMin: '熔炼成功率下限', rateMax: '熔炼成功率上限',
         goldBase: '基础金币花费', goldPerMaterial: '每份材料金币', goldPearl: '龙宫宝珠金币', maxMaterials: '单次最大投料份数', maxTypes: '单次最大投料种类', recastRelic: '重铸所需残片', recastGold: '重铸所需金币',
-        retainPerRelic: '每片残片的保留概率', retainMaxRelic: '单次最大投入残片',
+        retainMaxRelic: '单次最大投入残片',
         addAffixCap: '补缀后词条数上限',
       };
       const patch = {};
@@ -5442,17 +5455,47 @@ const server = http.createServer(function (req, res) {
         const v = Number(d[k]);
         const r = RANGES[k];
         if (!isFinite(v) || v < r[0] || v > r[1]) { err = LABEL[k] + '需在 ' + r[0] + ' - ' + r[1] + ' 之间'; return; }
-        patch[k] = (k === 'failPerMaterial' || k === 'extraRatePerMaterial' || k === 'retainPerRelic') ? Math.round(v * 10) / 10 : Math.round(v);
+        patch[k] = (k === 'failPerMaterial' || k === 'extraRatePerMaterial') ? Math.round(v * 10) / 10 : Math.round(v);
       });
+      // v0.13：残片保留概率改为公式控制（变量 breakthrough = 主件突破词缀条数，默认 10 - breakthrough * 0.5）
+      if (!err && d.retainFormula != null && String(d.retainFormula).trim() !== '') {
+        const fsrc = String(d.retainFormula).trim();
+        const c = D.compileExpr(fsrc, D.RETAIN_VAR_NAMES);
+        if (c.error) err = '保留概率公式无效：' + c.error + '（可用变量：' + D.RETAIN_VAR_NAMES.join('/') + '）';
+        else patch.retainFormula = fsrc;
+      }
       if (d.pearlRollTwice != null) patch.pearlRollTwice = !!d.pearlRollTwice;
       if (d.recastMinValue != null) patch.recastMinValue = (d.recastMinValue === true || d.recastMinValue === 1 || d.recastMinValue === '1') ? 1 : 0;
       // v0.11.5：词缀搬移与补缀的三项开关（副件区间 / 不受底材池限制 / 补缀按池外区间取值）
       if (d.subRangeFromSub != null) patch.subRangeFromSub = !!d.subRangeFromSub;
       if (d.addAnyAffix != null) patch.addAnyAffix = !!d.addAnyAffix;
       if (d.addAffixExtraRange != null) patch.addAffixExtraRange = !!d.addAffixExtraRange;
-      // v0.12.2：材料催化词缀范围（分组件部位设置，{ [part]: { [type]: [min, max] } }）；
-      // 合法性由 D.setSmeltCfg 统一校验（非法条目剔除），整表替换语义。
-      if (d.catalystRanges != null) patch.catalystRanges = d.catalystRanges;
+      // v0.12.2：材料催化词缀范围（分组件部位设置，{ [part]: { [type]: [min, max] } }）；整表替换语义。
+      // v0.13 硬约束：催化区间不得越出该部位的包络——上限不得高于该部位任一底材的最高值、
+      // 下限不得低于最低值（否则催化词缀会比该部位自然产出还强）。越界直接报错，不接受静默夹紧。
+      if (!err && d.catalystRanges != null) {
+        const crIn = (typeof d.catalystRanges === 'object' && d.catalystRanges) ? d.catalystRanges : {};
+        const bad = [];
+        Object.keys(crIn).forEach(function (part) {
+          const row = crIn[part];
+          if (!row || typeof row !== 'object') return;
+          Object.keys(row).forEach(function (t) {
+            const r = row[t];
+            if (!Array.isArray(r)) return;
+            const mn = Number(r[0]), mx = Number(r[1]);
+            if (!isFinite(mn) || !isFinite(mx)) { bad.push(partNameOf(part) + ' × ' + (D.AFFIX_LABEL[t] || t) + ' 不是有效数值'); return; }
+            if (mx < mn) { bad.push(partNameOf(part) + ' × ' + (D.AFFIX_LABEL[t] || t) + ' 的下限大于上限'); return; }
+            const env = D.catalystEnvelopeOf(part, t);
+            if (!env) { bad.push(partNameOf(part) + ' × ' + (D.AFFIX_LABEL[t] || t) + ' 不在该部位的词缀池内（请留空，运行时回退突破区间）'); return; }
+            if (mx > env[1] || mn < env[0]) {
+              bad.push(partNameOf(part) + ' × ' + (D.AFFIX_LABEL[t] || t) + ' 超出该部位允许范围 ' + env[0] + ' ~ ' + env[1] +
+                '（下限不得低于 ' + env[0] + '，上限不得高于 ' + env[1] + '），当前 ' + mn + ' ~ ' + mx);
+            }
+          });
+        });
+        if (bad.length) err = '催化词缀范围非法：' + bad.slice(0, 3).join('；') + (bad.length > 3 ? ' 等 ' + bad.length + ' 项' : '');
+        else patch.catalystRanges = crIn;
+      }
       if (err) return apiResp(res, 400, { error: err });
       if (d.reset) {
         world.smeltCfg = D.setSmeltCfg(null);
@@ -5503,43 +5546,6 @@ const server = http.createServer(function (req, res) {
     });
     return;
   }
-  // ---- 版本更新：候选启动脚本（.bat） ----
-  if (p === '/api/admin/update/list' && req.method === 'GET') {
-    const a = adminOf(u.query.token);
-    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
-    return apiResp(res, 200, { ok: true, bats: listBatCandidates(), root: PROJECT_ROOT, bannerMs: UPDATE_BANNER_MS, graceMs: UPDATE_GRACE_MS, current: updateStateView() });
-  }
-  // ---- 版本更新：发布 60 秒通知横幅，随后自动切换（dryRun 只走流程不真的拉起新版本/退出） ----
-  if (p === '/api/admin/update/start' && req.method === 'POST') {
-    readBody(req, function (body) {
-      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
-      const a = adminOf(d.token);
-      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
-      if (updateTask) return apiResp(res, 400, { error: '已有一个更新任务在进行中（可先取消）' });
-      const r = resolveBatPath(d.bat);
-      if (r.error) return apiResp(res, 400, { error: r.error });
-      const note = String(d.note || '').trim().slice(0, 120);
-      const task = startUpdateTask({ bat: r.rel, full: r.full, note: note, by: a.name, dryRun: !!d.dryRun });
-      econLog(a.name, '发布版本更新：' + r.rel + '（通知 ' + Math.round(UPDATE_BANNER_MS / 1000) + ' 秒后切换）');
-      apiResp(res, 200, { ok: true, update: updateStateView(), task: { bat: task.bat, dryRun: task.dryRun } });
-    });
-    return;
-  }
-  // ---- 版本更新：取消（横幅立即撤回） ----
-  if (p === '/api/admin/update/cancel' && req.method === 'POST') {
-    readBody(req, function (body) {
-      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
-      const a = adminOf(d.token);
-      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
-      if (!updateTask) return apiResp(res, 400, { error: '当前没有进行中的更新任务' });
-      if (updateTask.phase === 'restarting') return apiResp(res, 400, { error: '已经在切换中，无法取消' });
-      clearUpdateTask();
-      broadcastUpdate();
-      econLog(a.name, '取消版本更新');
-      apiResp(res, 200, { ok: true, update: null });
-    });
-    return;
-  }
   // ---- 设置：通知等级 / 上钩公式（validateOnly=true 只校验不保存；evalVars 附带试算） ----
   if (p === '/api/admin/settings' && req.method === 'POST') {
     readBody(req, function (body) {
@@ -5558,6 +5564,13 @@ const server = http.createServer(function (req, res) {
           broadcast({ type: 'bitecfg' }); // 通知玩家端刷新「当前上鱼率」显示
         }
         out.biteFormula = formulaSrc;
+      }
+      // 稀有度（rare 词缀）的 K 值：普通品质物品权重系数 = K/(K+R)。必须 > 0。
+      if (d.rareK != null && d.rareK !== '') {
+        const k = Number(d.rareK);
+        if (!isFinite(k) || k <= 0 || k > 100000) return apiResp(res, 400, { error: '稀有度的 K 值需在 0 以上（建议 0.1 - 100）' });
+        if (!d.validateOnly) world.rareK = Math.round(k * 1000) / 1000;
+        out.rareK = world.rareK;
       }
       if (d.notifyLevel != null) {
         if (!NOTIFY_LEVELS[d.notifyLevel]) return apiResp(res, 400, { error: '未知的通知等级' });

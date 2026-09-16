@@ -996,12 +996,15 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
         base: (document.getElementById('ws-cfg-baseRate') || {}).value,
         mats: document.querySelectorAll('#ws-body .ch-ar-wrap .ch-fix').length,
         save: !!document.getElementById('ws-cfg-save'),
-        retainPer: (document.getElementById('ws-cfg-retainPerRelic') || {}).value,
+        retainFormula: (document.getElementById('ws-cfg-retainFormula') || {}).value,
         retainMax: (document.getElementById('ws-cfg-retainMaxRelic') || {}).value,
+        hasPreset: !!document.getElementById('cat-preset'),
       }));
       check('工坊配置页渲染熔炼参数与材料对照', wsCfgView.base === '50' && wsCfgView.mats >= 7 && wsCfgView.save, JSON.stringify(wsCfgView));
-      check('工坊配置页含残片保留参数（每片 10% / 上限 10 片）',
-        wsCfgView.retainPer === '10' && wsCfgView.retainMax === '10', JSON.stringify(wsCfgView));
+      check('工坊配置页含残片保留公式（默认 10 - breakthrough * 0.5）与片数上限 10',
+        /10\s*-\s*breakthrough\s*\*\s*0\.5/.test(wsCfgView.retainFormula || '') && wsCfgView.retainMax === '10',
+        JSON.stringify(wsCfgView));
+      check('催化词缀范围带「一键预设」按钮', wsCfgView.hasPreset === true, JSON.stringify(wsCfgView));
       // —— v0.11.5：词缀搬移与补缀三项开关（副件区间 / 任意补缀 + 词条数上限 / 补缀按池外区间） ——
       const wsNewCfg = await pa.evaluate(() => ({
         subRange: !!(document.getElementById('ws-cfg-subRangeFromSub') || {}).checked,
@@ -1116,29 +1119,14 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       check('试算表单含技巧变量输入框，默认公式使用 skill',
         fxView.evalField === true && /skill/.test(fxView.defaultFormula), fxView.defaultFormula);
 
-      // —— 版本更新：候选脚本 + 发布（演练）→ 在线面板 → 取消 ——
-      await clickAdminNav('版本更新', '#up-bat');
-      const upView = await pa.evaluate(() => ({
-        opts: Array.from((document.getElementById('up-bat') || { options: [] }).options).map(o => o.value),
-        start: !!document.getElementById('up-start'),
-        cancel: !!document.getElementById('up-cancel'),
+      // —— v0.13：后台「版本更新」功能已整体移除（入口、横幅与接口） ——
+      const noUpd = await pa.evaluate(() => ({
+        navText: Array.from(document.querySelectorAll('.nav-item')).map(b => b.textContent || '').join('|'),
+        hasBat: !!document.getElementById('up-bat'),
+        hasLive: !!document.getElementById('up-live'),
       }));
-      check('版本更新页列出项目内的 .bat 启动脚本',
-        upView.opts.length > 0 && upView.opts.some(p => /run\.bat$/.test(p)), JSON.stringify(upView.opts));
-      const upStart = await post('/api/admin/update/start', { token: adminLogin.data.token, bat: 'run.bat', note: '后台页验证', dryRun: true });
-      check('发布更新（演练）成功', upStart.status === 200, JSON.stringify(upStart.data).slice(0, 120));
-      // 重新进入本页：页面会立刻从服务器拉一次状态，倒计时面板必须显示「进行中」。
-      // 刻意用「重新进页」而不是「等页面的 2 秒轮询」——轮询在后台标签页里会被浏览器节流，
-      // 属于浏览器行为而非功能问题；重新进页是管理员真实会做的动作，且不依赖定时器投递。
-      await clickAdminNav('概览', '.ov-card, #ov-body, .content');
-      await clickAdminNav('版本更新', '#up-bat');
-      const liveText = await untilGet(async () => (await pa.textContent('#up-live')), t => /进行中/.test(t || ''), 8000);
-      check('后台显示进行中的更新任务（倒计时）', /进行中/.test(liveText || '') && /通知剩余/.test(liveText || ''), String(liveText).slice(0, 80));
-      await pa.evaluate(() => document.getElementById('up-cancel').click());
-      await clickAdminNav('概览', '.ov-card, #ov-body, .content');
-      await clickAdminNav('版本更新', '#up-bat');
-      const liveGone = await untilGet(async () => (await pa.textContent('#up-live')), t => /没有进行中/.test(t || ''), 8000);
-      check('取消后后台显示无进行中任务', /没有进行中/.test(liveGone || ''), String(liveGone).slice(0, 60));
+      check('后台侧栏不再有「版本更新」入口',
+        !/版本更新/.test(noUpd.navText) && !noUpd.hasBat && !noUpd.hasLive, JSON.stringify(noUpd).slice(0, 160));
 
       await pa.evaluate(() => { const b = document.querySelector('.nav-item'); if (b) b.click(); });
 

@@ -12,14 +12,12 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🎣 钓鱼网站 <span class="ver" data-ver></span></div>
+    <div id="brand-logo" class="brand">🎣 钓鱼网站 <span class="ver" data-ver></span></div>
     <div id="player-status" class="player-status"></div>
     <button id="logout-btn" class="logout-btn" title="退出登录">退出登录</button>
   </header>
 
-  <!-- 顶部横幅三条独立轨道：版本更新倒计时（最高优先级，只在服务端升级时出现） +
-       纪录/最大鱼播报（按顺序排队） + 管理后台公告（可自定义颜色） -->
-  <div id="update-banner" class="update-banner" style="display:none"></div>
+  <!-- 顶部横幅两条独立轨道：纪录/最大鱼播报（按顺序排队） + 管理后台公告（可自定义颜色） -->
   <div id="record-banner" class="record-banner"></div>
   <div id="notice-banner" class="record-banner notice-banner"></div>
 

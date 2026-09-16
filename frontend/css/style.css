@@ -222,7 +222,9 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .gcb-num { font-size: 26px; font-weight: 800; line-height: 1; }
 .gcb-num .u { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 4px; }
 .ground-cols { display: grid; grid-template-columns: minmax(280px, 1fr) 1.6fr; gap: 20px; align-items: start; }
-.feed-big { max-height: 560px; min-height: 380px; }
+/* 最新动态：上限跟随视口高度（不再固定 560px），窗口矮时也不会把内容顶出屏幕。
+   减去顶栏与页面上下留白，并保留一个合理下限，避免高窗口下被压得过小。 */
+.feed-big { max-height: min(560px, calc(100vh - 320px)); min-height: min(380px, calc(100vh - 480px)); }
 .feed-big .feed-line { padding: 9px 12px; font-size: 13.5px; line-height: 1.5; }
 .feed-line.record { background: rgba(251,191,36,.14); border-left: 3px solid var(--big); }
 .sub { min-width: 0; }
@@ -284,6 +286,11 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
     -webkit-text-fill-color: transparent; color: transparent;
     text-decoration-color: rgba(192,132,252,.6); font-weight: 600;
   }
+  /* 池外词条里的子元素（数值区间 .aff-rng / .ws-aff-rng）显式重置文字填充色：
+     -webkit-text-fill-color 会继承，子元素若不重置就会一起变成透明而看不见。 */
+  .inst-aff.extra .aff-rng, .bec-aff.extra .aff-rng, .inst-aff.extra .ws-aff-rng, .bec-aff.extra .ws-aff-rng {
+    -webkit-text-fill-color: var(--muted); color: var(--muted);
+  }
 }
 /* 标签显式重置 -webkit-text-fill-color：否则嵌在 .q-mythic 里会被继承成透明而看不见 */
 .full-tag { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(255,210,74,.18); color: #ffd24a; -webkit-text-fill-color: #ffd24a; margin-left: 4px; }
@@ -300,7 +307,9 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .pool-line.capped { opacity: .55; }
 
 /* BD 视图 */
-.bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 6px; }
+/* 钓竿配置：与「最新动态」同样限制整页高度，防止内容把页面顶出屏幕。
+   槽位区自带滚动，页头/汇总保持可见。 */
+.bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 6px; max-height: calc(100vh - 300px); overflow: auto; }
 .bd-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
 .bd-cell.charm { border-color: var(--rare); }
 .bd-part { font-size: 13px; color: var(--muted); }
@@ -569,23 +578,6 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 body.banner-open { padding-top: var(--banner-h, 34px); }
 body.banner-open .topbar { top: var(--banner-h, 34px); }
 
-/* ---- 版本更新横幅（最高优先级轨道）：服务端升级通知 + 倒计时 ----
-   横幅结束后 5 秒服务器会启动新版本并关闭当前版本，所以这条提示必须在最上方，且不被公告队列阻塞。 */
-.update-banner {
-  position: fixed; left: 0; right: 0; top: 0; z-index: 70;
-  height: 0; overflow: hidden; pointer-events: none;
-  background: linear-gradient(90deg, #6d28d9, #2563eb 55%, #0ea5e9);
-  color: #f8fafc; font-weight: 700; transition: height .3s ease;
-}
-.update-banner.show { height: 44px; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0 12px; }
-.update-banner .ub-icon { font-size: 16px; }
-.update-banner .ub-text { font-size: 13px; }
-.update-banner .ub-count {
-  font-variant-numeric: tabular-nums; padding: 2px 10px; border-radius: 10px;
-  background: rgba(0, 0, 0, .3); font-size: 13px;
-}
-.update-banner .ub-hint { font-size: 11px; font-weight: 400; opacity: .85; }
-
 /* ---- 工坊 · 熔炼 ---- */
 .ws-panel .ws-help {
   font-size: 12px; color: var(--muted); line-height: 1.7; margin-bottom: 12px;
@@ -596,6 +588,11 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .ws-col h3 { margin: 0 0 8px; font-size: 14px; }
 .ws-select { width: 100%; margin-bottom: 8px; }
 .ws-affs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+/* 重铸页「已选中组件」的词条清单：一行一个（便于逐条核对要重 roll 的范围），
+   与熔炼页可点选的 .ws-affs 药丸列表区分开。 */
+.ws-affs-lines { display: block; }
+.ws-affs-lines .inst-aff { display: block; margin: 0 0 4px; }
+.ws-affs-lines .inst-aff:last-child { margin-bottom: 0; }
 .ws-aff {
   cursor: pointer; border: 1px solid var(--line); background: rgba(255, 255, 255, .04);
   color: var(--text); border-radius: 8px; padding: 5px 9px; font-size: 12px;
@@ -675,8 +672,6 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .mall-card .mc-acts { display: flex; gap: 6px; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
 @media (max-width: 640px) {
   .ws-grid { grid-template-columns: 1fr; }
-  .update-banner .ub-hint { display: none; }
-  .update-banner .ub-text { font-size: 12px; }
 }
 
 /* ---- 系统商店：出售数量控制条 ---- */
@@ -815,7 +810,6 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
     font-size: 9px; padding: 0 4px;
   }
   .nav-item { position: relative; }
-  .nav-item.admin-link { min-width: 60px; }
   .side-foot { display: none; }
 
   /* 内容区：单栏、紧凑内边距、底部留白 */
@@ -1109,9 +1103,10 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .pick-row .pick-aff { color: var(--accent2); font-size: 12px; flex: 1; min-width: 0; }
 .pick-row .cnt { color: var(--muted); font-size: 12px; flex: none; }
 
-/* 管理后台入口（仅管理员账号可见，由 ui.js 渲染） */
-.nav-item.admin-link { text-decoration: none; margin-top: 10px; color: var(--accent); border: 1px dashed var(--line); }
-.nav-item.admin-link:hover { border-color: var(--accent); background: var(--panel); }
+/* 左上角站点名：管理员账号可点击进入后台（由 ui.js 的 syncBrandAdmin 挂 .brand-admin）。
+   非管理员不加该类，因此保持默认光标、点击无效。 */
+.brand-admin { cursor: pointer; }
+.brand-admin:hover { text-shadow: 0 0 10px rgba(77,163,255,.55); }
 
 /* 负面词条（v0.7.0 取舍型组件）：红色展示。
    装备后词条行同时带 .on（正色）与 .aff-neg，需让 .aff-neg 在同等特异性下后置生效，
@@ -1431,7 +1426,12 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .chest-result .cr-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
 .chest-result .cr-meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .chest-result .cr-affs { display: flex; flex-wrap: wrap; gap: 6px; }
-.chest-result .cr-affs .inst-aff { background: rgba(255,255,255,.05); border-radius: 20px; padding: 2px 9px; }
+/* 词条药丸底色：**必须排除池外（突破/催化）词条** —— 池外词条的文字用 background-clip:text
+   的彩虹渐变填充（见文件上方的 .inst-aff.extra），而这里的 background 简写会把
+   background-clip 重置回 border-box，于是渐变不再裁到文字、而 -webkit-text-fill-color: transparent
+   仍然生效 → 文字整条透明，只有框选时才看得见（熔炼/重铸/开箱结果卡片的老 bug）。 */
+.chest-result .cr-affs .inst-aff:not(.extra) { background: rgba(255,255,255,.05); border-radius: 20px; padding: 2px 9px; }
+.chest-result .cr-affs .inst-aff.extra { padding: 2px 4px; }
 .chest-result .cr-note { font-size: 12px; color: #f0abfc; margin-top: 8px; }
 @media (max-width: 640px) {
   .chest-grid { grid-template-columns: 1fr; }

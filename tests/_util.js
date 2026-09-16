@@ -53,4 +53,11 @@ function waitPage(cond, opts) { return waitFor(cond, Object.assign({ timeout: 50
 // 轮询等待数值达标（如「等待累计到 N 条渔获」），避免「睡满 N 秒再看」
 function waitUntil(fn, opts) { return waitFor(fn, opts); }
 
-module.exports = { sleep, waitFor, waitHttp, waitPage, waitUntil };
+// killTree 前调用：等服务端把防抖中的落盘写完。
+// saveAccount → flushAccounts 是 1 秒防抖，saveSessions 是 2 秒防抖；taskkill /F 在 Windows 上
+// 杀不掉地捕获退出钩子，所以「改完存档立刻重启」的用例必须等过防抖窗口，
+// 否则重启后读到旧文件 / 会话丢失，表现为「重启后 xx 未保留」「未登录」这类假失败。
+const FLUSH_WAIT_MS = 2600;
+function flushWait() { return sleep(FLUSH_WAIT_MS); }
+
+module.exports = { sleep, waitFor, waitHttp, waitPage, waitUntil, flushWait, FLUSH_WAIT_MS };

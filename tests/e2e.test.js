@@ -7,7 +7,7 @@
 'use strict';
 const os = require('os');
 // 轮询等待工具（测试内部不依赖固定 sleep）：就绪即继续，超时才失败
-const { waitFor, waitHttp, waitPage } = require('./_util.js');
+const { waitFor, waitHttp, waitPage , flushWait } = require('./_util.js');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const url = require('url');
@@ -458,6 +458,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('A 断线后 B 在线列表移除 A', sinkB.some(m => m.type === 'players' && !m.players.some(p => p.id === 'tester_a')));
 
   cliB.destroy();
+  await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
   await sleep(500);
 
@@ -470,6 +471,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('重启后 inventory 持久化', me2.data && me2.data.inventory && me2.data.inventory.carp === 9);
   check('重启后钓竿配置持久化（ reel=电动卷线器, hook=精钢鱼钩）', !!(me2.data && me2.data.bd && me2.data.bd.reel && me2.data.bd.reel.compId === reelInst && me2.data.bd.hook && me2.data.bd.hook.compId === hookInst), JSON.stringify(me2.data && me2.data.bd));
   check('重启后显示名持久化', me2.data && me2.data.name === '测试甲改');
+  await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
 
   // ---------- 5. 市集历史订单 ----------
@@ -495,6 +497,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
 
   // ---------- 6. 挂单上限与过期退回 ----------
   section('6. 挂单上限（40）与过期退回');
+  await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
   srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(8103), FISHING_DEV: '1', LISTING_TTL_MS: '1500', FISHING_DATA_DIR: TMP_DATA }) });
   await sleep(800);
@@ -515,6 +518,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('可连续挂满 40 个挂单', capOk === 40, String(capOk));
   const overCap = await POST('http://localhost:8103/api/market/list', { token: lgA6.data.token, id: 'crucian', qty: 1, price: 1 });
   check('第 41 个挂单被拒 400（超上限）', overCap.status === 400 && /上限/.test(overCap.data.error || ''));
+  await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
 
   // ---------- 7. 静态服务与前端资源 ----------
@@ -532,6 +536,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('前端引入顺序正确 config->data->engine->net->ui', (function () { const t = idx.text; return t.indexOf('js/config.js') < t.indexOf('js/data.js') && t.indexOf('js/data.js') < t.indexOf('js/engine.js') && t.indexOf('js/engine.js') < t.indexOf('js/net.js') && t.indexOf('js/net.js') < t.indexOf('js/ui.js'); })());
   check('/data 目录被拦截 403', (await GET('http://localhost:' + P1 + '/data/users.json')).status === 403);
   check('已知未知路径返回 404', (await GET('http://localhost:' + P1 + '/nope-xyz')).status === 404);
+  await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
 
 
@@ -783,6 +788,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('播报文案随事件下发（不再只靠前端拼）', texts.length > 0 && texts.every(t => typeof t === 'string' && t.length > 4), JSON.stringify(texts).slice(0, 160));
   cliAnn.destroy();
 
+  await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
 
 
@@ -810,10 +816,12 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
     check('旧项目内数据已搬迁到文档目录', fs.existsSync(path.join(EXPECT_DATA, 'accounts', 'reloctest.json')));
     const relocVer = await GET('http://localhost:' + (P1 + 80) + '/api/version');
     check('搬迁后服务器正常启动并响应', relocVer.status === 200 && !!relocVer.data.version);
+    await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
     killTree(srv);
   } finally {
     // 复原：删掉测试造的旧目录，恢复原数据（即使上面抛错也保证执行）
 
+    await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
     killTree(srv);
     try { fs.rmSync(projData, { recursive: true, force: true }); } catch (e) {}
     if (projBackup) { try { copyDirSafe(projBackup, projData); } catch (e) {} }

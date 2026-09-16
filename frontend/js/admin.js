@@ -171,7 +171,6 @@ window.Admin = (function () {
     { id: 'banner', name: '📢 横幅管理' },
     { id: 'feedback', name: '📮 反馈意见' },
     { id: 'records', name: '🏆 纪录贴图' },
-    { id: 'update', name: '🔄 版本更新' },
   ];
   function renderNav() {
     const nav = $('nav');
@@ -188,7 +187,6 @@ window.Admin = (function () {
     view = v;
     stopOverviewTimer();
     stopBannerTimer();
-    stopUpdateTimer();
     renderNav();
     if (v === 'overview') return renderOverview();
     if (v === 'accountmgr') return renderAccountMgr();
@@ -201,7 +199,6 @@ window.Admin = (function () {
     if (v === 'workshop') return renderWorkshop();
     if (v === 'mall') return renderMall();
     if (v === 'records') return renderRecords();
-    if (v === 'update') return renderUpdate();
     if (v === 'formula') return renderFormula();
     if (v === 'notify') return renderNotify();
     if (v === 'banner') return renderBanner();
@@ -1536,7 +1533,7 @@ window.Admin = (function () {
     const affixes = cfg.buffTypes || cfg.affixTypes;
     const buffNote = {
       speed: '钓速：该钓点抛竿速率的最终乘算（× (1-数值/100)），不与钓竿词缀/全服加成相加', big: '大鱼概率：放大「大鱼」条目权重',
-      rare: '稀有概率：放大「稀有」条目权重', material: '材料概率：放大材料条目权重',
+      rare: '稀有度：降低普通品质物品的权重（普通品质权重 × K/(K+R)，K 见「🧮 公式管理」）', material: '材料概率：放大材料条目权重',
       size: '体型：放大捕获体型（不与钓竿词缀的体型上限相冲，按百分比放大结果）', double: '双钓概率：触发后立即再结算一竿',
     };
 
@@ -2080,7 +2077,7 @@ window.Admin = (function () {
   const BITE_VARS_DOC = [
     ['speed', '钓速加成 %（钓竿词缀 + 钓点增益）'],
     ['skill', '技巧加成 %（钓竿「技巧」词缀合计 · v0.11 新增，默认公式 90 + skill）'],
-    ['rare', '稀有概率加成 %'],
+    ['rare', '稀有度（原「稀有概率」）：生成战利品时按 K/(K+R) 降低普通品质物品权重，见下方「💎 稀有度」面板'],
     ['material', '材料概率加成 %'],
     ['size', '体型加成 %'],
     ['double', '双钓叠加值 A（概率按 A/(A+100) 换算）'],
@@ -2341,6 +2338,27 @@ window.Admin = (function () {
   // ================================
   // 工坊配置（熔炼参数）
   // ================================
+  // 残片保留概率公式：唯一可用变量是 breakthrough（主件上的突破词缀数量），
+  // 可用函数与上钩公式一致。这里只做本地预检（空 / 未知变量），最终由服务器权威校验。
+  const RETAIN_FORMULA_FN = ['min', 'max', 'floor', 'ceil', 'round', 'abs', 'clamp'];
+  function retainFormulaDefault() {
+    return (GameData.SMELT_DEFAULTS && GameData.SMELT_DEFAULTS.retainFormula) || '10 - breakthrough * 0.5';
+  }
+  function retainFormulaError(src) {
+    const s = String(src == null ? '' : src).trim();
+    if (!s) return '残片保留概率公式不能为空（默认 ' + retainFormulaDefault() + '）';
+    const ids = s.match(/[A-Za-z_$][A-Za-z0-9_$]*/g) || [];
+    const bad = [];
+    ids.forEach(function (id) {
+      if (id === 'breakthrough') return;
+      if (RETAIN_FORMULA_FN.indexOf(id) >= 0) return;
+      if (bad.indexOf(id) < 0) bad.push(id);
+    });
+    if (bad.length) {
+      return '残片保留概率公式含未知变量：' + bad.join('、') + '（可用变量只有 breakthrough；可用函数 ' + RETAIN_FORMULA_FN.join(' / ') + '）';
+    }
+    return null;
+  }
   function renderWorkshop() {
     const main = $('main');
     main.innerHTML = '<h2>⚒ 工坊配置（熔炼）</h2>' +
@@ -2357,6 +2375,46 @@ window.Admin = (function () {
     const SC = cfg.smeltCfg || {};
     const DEF = cfg.smeltDefaults || {};
     const mats = cfg.smeltMaterials || [];
+    // 催化词缀范围表格的公共数据：部位列 / 词缀行 / 每格允许范围（表格渲染与保存校验共用）
+    const catParts = [];
+    (GameData.COMPONENT_BASES || []).forEach(function (b) { if (catParts.indexOf(b.part) < 0) catParts.push(b.part); });
+    const catAffTypes = GameData.AFFIX_TYPES || [];
+    const catAffLabel = GameData.AFFIX_LABEL || {};
+    const catPartName = function (k) {
+      const p = (GameData.ROD_PARTS || []).find(function (x) { return x.key === k; });
+      return p ? p.name : k;
+    };
+    // 兜底：data.js 尚未提供 catalystEnvelopeOf 时，直接从底材池推导
+    // （取该部位所有带该词缀的底材区间的外包络：下限取最小、上限取最大）。
+    // 共享助手到位后一律以它为准，这里只保证旧版 data.js 下页面仍可用。
+    const catEnvelopeFallback = function (part, t) {
+      let lo = null, hi = null;
+      (GameData.COMPONENT_BASES || []).forEach(function (b) {
+        if (b.part !== part) return;
+        (b.pool || []).forEach(function (e) {
+          if (!e || e.type !== t) return;
+          const mn = Number(e.min), mx = Number(e.max);
+          if (!isFinite(mn) || !isFinite(mx)) return;
+          lo = lo == null ? mn : Math.min(lo, mn);
+          hi = hi == null ? mx : Math.max(hi, mx);
+        });
+      });
+      return lo != null && hi != null ? [lo, hi] : null;
+    };
+    // 允许范围（硬约束）：GameData.catalystEnvelopeOf(part,type) → [min,max] | null
+    // null = 该部位没有带该词缀的底材 → 该格恒回退池外（突破）区间，不允许填值。
+    const catEnvelope = function (part, t) {
+      try {
+        const e = GameData.catalystEnvelopeOf ? GameData.catalystEnvelopeOf(part, t) : null;
+        if (Array.isArray(e) && e.length === 2 && isFinite(Number(e[0])) && isFinite(Number(e[1]))) {
+          return [Number(e[0]), Number(e[1])];
+        }
+        if (typeof GameData.catalystEnvelopeOf !== 'function') return catEnvelopeFallback(part, t);
+        return null;
+      } catch (err) { return null; }
+    };
+    // 单元格的 id 前缀（保存校验里也用同一套拼法）
+    const catId = function (part, t, which) { return 'cat-' + part + '-' + t + '-' + which; };
     const F = function (k, label, hint, step) {
       return '<span class="ch-fix"><label>' + esc(label) + '</label>' +
         '<input id="ws-cfg-' + k + '" class="ipt mk-num" type="number" step="' + (step || '1') + '" value="' + (SC[k] != null ? SC[k] : '') + '"></span>' +
@@ -2366,7 +2424,7 @@ window.Admin = (function () {
       '<h3 style="margin-top:0">🎯 熔炼成功率</h3>' +
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
       F('baseRate', '基础成功率 %', '默认 50') +
-      F('failPerMaterial', '每份材料对失败率的影响', '负数 = 投料越多越不易失败（默认 -2）', '0.1') +
+      F('failPerMaterial', '每份材料对失败率的影响', '负数 = 催化剂越多越不易失败（默认 -2）', '0.1') +
       F('rateMin', '成功率下限', '默认 5') + F('rateMax', '成功率上限', '默认 99') +
       '</div>' +
       '<h3>✨ 补缀（新增词缀）成功率</h3>' +
@@ -2381,10 +2439,10 @@ window.Admin = (function () {
       F('goldPerMaterial', '每份材料花费', '默认 900') +
       F('goldPearl', '龙宫宝珠花费', '默认 20000') +
       '</div>' +
-      '<h3>📦 投料上限</h3>' +
+      '<h3>📦 催化剂上限</h3>' +
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
-      F('maxMaterials', '单次最多投料份数', '默认 20') +
-      F('maxTypes', '单次最多投料种类', '默认 4') +
+      F('maxMaterials', '单次最多催化剂份数', '默认 20') +
+      F('maxTypes', '单次最多催化剂种类', '默认 4') +
       '<span class="ch-fix"><label>龙宫宝珠边界取值</label><input type="checkbox" id="ws-cfg-pearlRollTwice"' +
       (SC.pearlRollTwice !== false ? ' checked' : '') + '></span>' +
       '<span class="hint">勾选 = 投入龙宫宝珠时每个词条 roll 两次、取靠近区间边界的那次</span>' +
@@ -2399,10 +2457,18 @@ window.Admin = (function () {
       '</div>' +
       '<h3>🛡 熔炼 · 残片保留（海王遗匣产出的神话主件专享）</h3>' +
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
-      F('retainPerRelic', '每片残片保留概率 %', '默认 10（10 片即 100% 保留池外词缀）', '0.1') +
+      '<span class="ch-fix"><label>每片残片保留概率 %（公式）</label>' +
+      '<input id="ws-cfg-retainFormula" class="ipt" spellcheck="false" type="text" style="width:220px" value="' +
+      esc(SC.retainFormula != null ? SC.retainFormula : retainFormulaDefault()) + '"></span>' +
+      '<span class="hint">默认 <code>' + esc(retainFormulaDefault()) + '</code>' +
+      '<button class="btn mini" id="ws-cfg-retainFormula-reset" style="margin-left:6px">恢复默认</button></span>' +
       F('retainMaxRelic', '单次最多投入残片', '默认 10') +
-      '<span class="hint">投入残片不计入投料：不改变熔炼成功率 / 补缀率 / 金币花费，只消耗残片本身</span>' +
       '</div>' +
+      '<div class="hint" style="margin-top:4px">公式按<b>每片投入的残片</b>求值，变量 <code>breakthrough</code> = 主件上的<b>突破词缀数量</b>；' +
+      '结果即该片残片的保留概率（%）。总保留概率 = 投入片数 × 单片概率，<b>上限 100%</b>。' +
+      '默认公式 <code>10 - breakthrough * 0.5</code>（每多一个突破词缀少 0.5 个百分点）。' +
+      '可用函数：<code>' + RETAIN_FORMULA_FN.join('</code> <code>') + '</code>。</div>' +
+      '<div class="hint">投入残片不计入催化剂：不改变熔炼成功率 / 补缀率 / 金币花费，只消耗残片本身</div>' +
       '<h3>🧬 词缀搬移与补缀（v0.11.5）</h3>' +
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
       '<span class="ch-fix"><label>副件连区间一起提供</label><input type="checkbox" id="ws-cfg-subRangeFromSub"' +
@@ -2417,13 +2483,13 @@ window.Admin = (function () {
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
       '<span class="ch-fix"><label>补缀按池外区间取值</label><input type="checkbox" id="ws-cfg-addAffixExtraRange"' +
       (SC.addAffixExtraRange !== false ? ' checked' : '') + '></span>' +
-      '<span class="hint">勾选 = 投料补的词缀按<b>池外（突破）区间</b>取值，与宝匣突破件同一套区间' +
+      '<span class="hint">勾选 = 催化剂补出的词缀按<b>池外（突破）区间</b>取值，与宝匣突破件同一套区间' +
       '（改「🎁 宝匣配置 → 🎲 池外词缀数值区间」即时生效）；取消 = 该词缀在主件池内时按主件区间</span>' +
       '</div>' +
       '<div class="mgr-row" style="margin-top:10px"><button class="btn primary" id="ws-cfg-save">保存熔炼参数</button>' +
       '<button class="btn" id="ws-cfg-reset">恢复默认</button><span id="ws-cfg-state" class="hint" style="margin-left:10px"></span></div>' +
       '<h3>🧵 材料 → 词缀对照</h3>' +
-      '<div class="hint" style="margin-bottom:6px">投料份数最多的那种材料决定熔炼后补的词缀；龙宫宝珠是催化剂（不指向词缀）。补上的词条数值范围在下方按部位设置。</div>' +
+      '<div class="hint" style="margin-bottom:6px">投入催化剂份数最多的那种材料决定熔炼后补的词缀；龙宫宝珠是通用催化剂（不指向词缀）。补上的词条数值范围在下方按部位设置。</div>' +
       '<div class="ch-ar-wrap">' + mats.map(function (m) {
         return '<span class="ch-fix"><label class="hint">' + esc(m.name) + '</label><span class="tag">' + esc(m.affixName) + '</span>' +
           '<span class="hint">(' + esc(m.rarity) + ')</span></span>';
@@ -2432,50 +2498,103 @@ window.Admin = (function () {
       (function () {
         // v0.12.2：材料催化词缀范围（分组件部位设置）。表格：行 = 词缀类型，列 = 组件部位；
         // 留空 = 该组合回退突破区间（🎁 宝匣配置 → 🎲 池外词缀数值区间）。
-        const partsList = [];
-        (GameData.COMPONENT_BASES || []).forEach(function (b) { if (partsList.indexOf(b.part) < 0) partsList.push(b.part); });
-        const partName = function (k) {
-          const p = (GameData.ROD_PARTS || []).find(function (x) { return x.key === k; });
-          return p ? p.name : k;
-        };
-        const affTypes = GameData.AFFIX_TYPES || [];
-        const affLabel = GameData.AFFIX_LABEL || {};
+        const partsList = catParts;
+        const partName = catPartName;
+        const affTypes = catAffTypes;
+        const affLabel = catAffLabel;
         const catr = SC.catalystRanges || {};
         const vOf = function (part, t, i) {
           const r = catr[part] && catr[part][t];
           return (Array.isArray(r) && r[i] != null) ? r[i] : '';
         };
-        return '<h3>🧪 材料催化词缀范围（分部位）</h3>' +
+        const cellHtml = function (pt, t) {
+          const env = catEnvelope(pt, t);
+          const mn = vOf(pt, t, 0), mx = vOf(pt, t, 1);
+          const label = partName(pt) + ' × ' + (affLabel[t] || t);
+          if (!env) {
+            // 该部位 × 该词缀无底材：整格禁用，提示回退池外（突破）区间
+            const fbTip = partName(pt) + ' 没有带「' + (affLabel[t] || t) + '」的底材：该格固定回退池外（突破）区间，不能填值';
+            return '<td style="padding:2px 4px;white-space:nowrap" class="cat-fallback" ' +
+              'title="' + esc(fbTip) + '">' +
+              '<span class="hint" style="font-size:11px">回退突破</span></td>';
+          }
+          const tip = label + '：允许范围 ' + env[0] + ' ~ ' + env[1] +
+            '（下限不得低于 ' + env[0] + '，上限不得超过 ' + env[1] + '）';
+          return '<td style="padding:2px 4px;white-space:nowrap" title="' + esc(tip) + '">' +
+            '<input id="' + catId(pt, t, 'min') + '" class="ipt mk-num cat-cell" type="number" step="0.1" style="width:60px" ' +
+            'min="' + env[0] + '" max="' + env[1] + '" placeholder="min" value="' + esc(mn) + '"> ~ ' +
+            '<input id="' + catId(pt, t, 'max') + '" class="ipt mk-num cat-cell" type="number" step="0.1" style="width:60px" ' +
+            'min="' + env[0] + '" max="' + env[1] + '" placeholder="max" value="' + esc(mx) + '">' +
+            '<span class="hint" style="font-size:11px">' + env[0] + '~' + env[1] + '</span></td>';
+        };
+        return '<h3>🧪 材料催化词缀范围（分部位）' +
+          '<button class="btn mini" id="cat-preset" style="margin-left:8px" ' +
+          'title="按推荐预设（GameData.catalystPreset）填充所有格子；不会自动保存，确认后再点保存">⚡ 一键预设</button></h3>' +
           '<div class="hint" style="margin-bottom:6px">材料催化成功赋予主件的词条（催化词缀）按<b>主件部位 + 词缀类型</b>取下表范围。' +
-          '留空 = 回退突破区间。保存后全服即时生效（玩家端熔炼预览同步）。</div>' +
+          '留空 = 回退突破区间。每格标注的 <b>允许范围</b> 是该部位底材的硬边界（下限 ≥、上限 ≤），超出会被拒绝；' +
+          '标「回退突破」的格子表示该部位没有这种底材，不能填值。保存后全服即时生效（玩家端熔炼预览同步）。</div>' +
           '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px">' +
           '<tr><th style="text-align:left;padding:4px 8px">词缀 \\ 部位</th>' +
           partsList.map(function (pt) { return '<th style="padding:4px 8px;white-space:nowrap">' + esc(partName(pt)) + '</th>'; }).join('') + '</tr>' +
           affTypes.map(function (t) {
             return '<tr><td style="padding:4px 8px;white-space:nowrap">' + esc(affLabel[t] || t) + '</td>' +
-              partsList.map(function (pt) {
-                return '<td style="padding:2px 4px;white-space:nowrap">' +
-                  '<input id="cat-' + esc(pt) + '-' + esc(t) + '-min" class="ipt mk-num" type="number" step="0.1" style="width:56px" value="' + vOf(pt, t, 0) + '" placeholder="min"> ~ ' +
-                  '<input id="cat-' + esc(pt) + '-' + esc(t) + '-max" class="ipt mk-num" type="number" step="0.1" style="width:56px" value="' + vOf(pt, t, 1) + '" placeholder="max">' +
-                  '</td>';
-              }).join('') + '</tr>';
+              partsList.map(function (pt) { return cellHtml(pt, t); }).join('') + '</tr>';
           }).join('') + '</table></div>';
       })();
 
+    // ⚡ 一键预设：按 GameData.catalystPreset() 填满所有格子（不保存，仍需手动点保存）
+    $('cat-preset').onclick = function () {
+      let preset = null;
+      try { preset = GameData.catalystPreset ? GameData.catalystPreset() : null; } catch (e) { preset = null; }
+      if (!preset || typeof preset !== 'object') { toast('预设不可用（GameData.catalystPreset 未就绪），请手动填写', true); return; }
+      let filled = 0, cleared = 0;
+      catAffTypes.forEach(function (t) {
+        catParts.forEach(function (pt) {
+          const mnEl = $(catId(pt, t, 'min')), mxEl = $(catId(pt, t, 'max'));
+          if (!mnEl || !mxEl) return;   // 回退突破的格子没有输入框
+          const r = preset[pt] && preset[pt][t];
+          if (Array.isArray(r) && r.length >= 2 && r[0] != null && r[1] != null) {
+            mnEl.value = String(r[0]); mxEl.value = String(r[1]); filled++;
+          } else {
+            mnEl.value = ''; mxEl.value = ''; cleared++;
+          }
+        });
+      });
+      toast('已按推荐预设填入 ' + filled + ' 组范围' + (cleared ? '，清空 ' + cleared + ' 组' : '') + '（尚未保存，确认后点「保存熔炼参数」）');
+    };
+    // 残片保留概率公式「恢复默认」：只改输入框，仍需点保存
+    $('ws-cfg-retainFormula-reset').onclick = function () { $('ws-cfg-retainFormula').value = retainFormulaDefault(); };
     $('ws-cfg-save').onclick = function () {
+      // 残片保留概率公式：本地预检（空 / 未知变量），服务器另有权威校验
+      const retainFormula = $('ws-cfg-retainFormula').value.trim();
+      const fxErr = retainFormulaError(retainFormula);
+      if (fxErr) { toast(fxErr, true); return; }
       // 材料催化词缀范围：从表格收集 { [part]: { [type]: [min, max] } }；min/max 任一留空 = 该组合清除（回退突破区间）
-      const catParts = [];
-      (GameData.COMPONENT_BASES || []).forEach(function (b) { if (catParts.indexOf(b.part) < 0) catParts.push(b.part); });
       const catalystRanges = {};
       let catErr = null;
-      (GameData.AFFIX_TYPES || []).forEach(function (t) {
+      catAffTypes.forEach(function (t) {
+        if (catErr) return;
         catParts.forEach(function (pt) {
-          const mnV = $('cat-' + pt + '-' + t + '-min') ? $('cat-' + pt + '-' + t + '-min').value.trim() : '';
-          const mxV = $('cat-' + pt + '-' + t + '-max') ? $('cat-' + pt + '-' + t + '-max').value.trim() : '';
+          if (catErr) return;
+          const mnEl = $(catId(pt, t, 'min')), mxEl = $(catId(pt, t, 'max'));
+          if (!mnEl || !mxEl) return;   // 无底材的格子（回退突破区间）没有输入框，跳过
+          const env = catEnvelope(pt, t);
+          if (!env) return;
+          const label = catPartName(pt) + ' × ' + (catAffLabel[t] || t);
+          const mnV = mnEl.value.trim(), mxV = mxEl.value.trim();
           if (mnV === '' && mxV === '') return;
           const mn = Number(mnV), mx = Number(mxV);
-          if (mnV === '' || mxV === '' || !isFinite(mn) || !isFinite(mx) || mx < mn) {
-            catErr = '催化词缀范围有未填完整的格子（' + t + ' @ ' + pt + '）：两个值都要填，且上限 ≥ 下限；不用请清空';
+          if (mnV === '' || mxV === '' || !isFinite(mn) || !isFinite(mx)) {
+            catErr = '催化词缀范围「' + label + '」填写不完整：两个值都要填，不用请清空';
+            return;
+          }
+          if (mx < mn) {
+            catErr = '催化词缀范围「' + label + '」上下限颠倒：下限 ' + mn + ' 不能大于上限 ' + mx;
+            return;
+          }
+          if (mn < env[0] || mx > env[1]) {
+            catErr = '催化词缀范围「' + label + '」超出该部位允许范围 ' + env[0] + ' ~ ' + env[1] +
+              '（下限不得低于 ' + env[0] + '，上限不得超过 ' + env[1] + '），当前 ' + mn + ' ~ ' + mx;
             return;
           }
           catalystRanges[pt] = catalystRanges[pt] || {};
@@ -2501,7 +2620,7 @@ window.Admin = (function () {
         recastRelic: $('ws-cfg-recastRelic').value,
         recastGold: $('ws-cfg-recastGold').value,
         recastMinValue: $('ws-cfg-recastMinValue').checked,
-        retainPerRelic: $('ws-cfg-retainPerRelic').value,
+        retainFormula: retainFormula,
         retainMaxRelic: $('ws-cfg-retainMaxRelic').value,
         subRangeFromSub: $('ws-cfg-subRangeFromSub').checked,
         addAnyAffix: $('ws-cfg-addAnyAffix').checked,
@@ -2534,7 +2653,6 @@ window.Admin = (function () {
     return '--rh-scale:' + (scale / 100).toFixed(4) + ';--rh-dx:' + x + 'px;--rh-dy:' + y + 'px';
   }
   function renderRecords() {
-    stopUpdateTimer();
     const main = $('main');
     main.innerHTML = '<h2>🏆 纪录贴图</h2>' +
       '<div class="hint" style="margin-bottom:12px">玩家端「渔获记录」页顶部「全场最大」那张大贴图：可调缩放（50 ~ 500%）与 xy 偏移（像素）。' +
@@ -2603,100 +2721,6 @@ window.Admin = (function () {
     sync();
   }
 
-  // ================================
-  // 版本更新（优雅热更）
-  // ================================
-  // 流程：选一个「新版本启动用的 run.bat」→ 全服播报 60 秒更新通知横幅 → 横幅结束 5 秒后
-  //       服务器启动新版本并关闭当前版本。倒计时期间可取消（横幅立刻撤回）。
-  let updateTimer = null;
-  function stopUpdateTimer() { if (updateTimer) { clearInterval(updateTimer); updateTimer = null; } }
-  function renderUpdate() {
-    stopUpdateTimer();
-    const main = $('main');
-    main.innerHTML = '<h2>🔄 版本更新</h2>' +
-      '<div class="hint" style="margin-bottom:12px">选择新版本要运行的 <code>.bat</code> 启动脚本并发布更新：' +
-      '全服会先看到 <b>60 秒</b>更新通知横幅（带倒计时），横幅结束后 <b>5 秒</b>服务器启动新版本并关闭当前版本。' +
-      '玩家页面在服务器重启后会自动重连，无需手动刷新。</div>' +
-      '<div id="up-body" class="panel">加载中…</div>';
-    loadWorldCfg(true).then(function () {
-      if (view !== 'update') return;
-      adminApi('GET', '/api/admin/update/list?token=' + encodeURIComponent(token)).then(function (r) {
-        if (view !== 'update') return;
-        if (!r.ok) { $('up-body').textContent = (r.data && r.data.error) || '读取失败'; return; }
-        drawUpdate(r.data);
-      });
-    });
-  }
-  function drawUpdate(d) {
-    const body = $('up-body');
-    if (!body) return;
-    const bats = d.bats || [];
-    const bannerSec = Math.round((d.bannerMs || 60000) / 1000);
-    body.innerHTML =
-      '<h3 style="margin-top:0">📄 启动脚本（项目目录：' + esc(d.root || '') + '）</h3>' +
-      (bats.length
-        ? '<div class="mgr-row" style="flex-wrap:wrap"><span class="ch-fix"><label>新版本 .bat</label>' +
-          '<select id="up-bat" class="ipt" style="min-width:320px">' +
-          bats.map(function (b) { return '<option value="' + esc(b.path) + '">' + esc(b.path) + '</option>'; }).join('') +
-          '</select></span>' +
-          '<span class="ch-fix"><label>备注（可选）</label><input id="up-note" class="ipt" maxlength="120" placeholder="如：v0.11.1 修复公告" style="min-width:220px"></span></div>' +
-          '<div class="mgr-row"><button class="btn primary" id="up-start">发布更新（通知 ' + bannerSec + ' 秒后切换）</button>' +
-          '<button class="btn" id="up-cancel" style="margin-left:8px">取消更新</button>' +
-          '<span id="up-state" class="hint" style="margin-left:10px"></span></div>' +
-          '<div class="hint" style="margin-top:6px">脚本路径必须是项目目录内的 .bat。' +
-          '把新版本解压到 <code>releases/版本号/</code> 后，下拉里会直接出现它的 <code>run.bat</code>。</div>'
-        : '<div class="hint">项目目录里没有找到任何 .bat 启动脚本（可把新版本放到 <code>releases/版本号/run.bat</code>）。</div>') +
-      '<div id="up-live" style="margin-top:12px"></div>';
-    if ($('up-start')) $('up-start').onclick = function () { startUpdate(false); };
-    if ($('up-cancel')) $('up-cancel').onclick = function () { cancelUpdate(); };
-    drawUpdateLive(d.current);
-    // 常驻轮询：本页停留期间每 2 秒同步一次任务状态。
-    // 不这样做的话，「打开页面时没有任务、之后由另一个人发布」就永远看不到倒计时；
-    // 离开本页由 switchView 的 stopUpdateTimer 收尾。
-    updateTimer = setInterval(function () {
-      if (view !== 'update') { stopUpdateTimer(); return; }
-      adminApi('GET', '/api/admin/update/list?token=' + encodeURIComponent(token)).then(function (r) {
-        if (view !== 'update' || !r.ok) return;
-        drawUpdateLive(r.data.current);
-      });
-    }, 2000);
-  }
-  function drawUpdateLive(cur) {
-    const host = $('up-live');
-    if (!host) return;   // 页面可能已切走：元素不在就什么都不做（切回来会重新拉取）
-    if (!cur || !cur.active) { host.innerHTML = '<div class="hint">当前没有进行中的更新任务。</div>'; return; }
-    const left = Math.max(0, Math.round((cur.endAt - Date.now()) / 1000));
-    const fire = Math.max(0, Math.round((cur.fireAt - Date.now()) / 1000));
-    const phase = cur.phase === 'restarting' ? '正在切换（启动新版本 + 关闭当前版本）'
-      : cur.phase === 'grace' ? '通知已结束，即将切换' : '通知横幅播报中';
-    host.innerHTML = '<div class="gd-removed"><b>进行中：' + esc(phase) + '</b><br/>' +
-      '脚本：<code>' + esc(cur.bat) + '</code>' + (cur.note ? '（' + esc(cur.note) + '）' : '') + '<br/>' +
-      '通知剩余 <b>' + left + '</b> 秒 · 距切换 <b>' + fire + '</b> 秒' +
-      (cur.dryRun ? '<br/><span class="hint">（演练模式：到点也不会真的拉起新版本 / 退出进程）</span>' : '') +
-      '</div>';
-  }
-  function startUpdate(dryRun) {
-    const bat = $('up-bat') ? $('up-bat').value : '';
-    if (!bat) { toast('请选择启动脚本', true); return; }
-    const note = $('up-note') ? $('up-note').value.trim() : '';
-    confirmModalLocal('发布更新并切换到「' + bat + '」？\n\n全服会立刻出现 60 秒更新通知横幅，横幅结束后 5 秒服务器启动新版本并关闭当前版本。' +
-      (dryRun ? '\n\n（演练模式：不会真的切换）' : '')).then(function (ok) {
-      if (!ok) return;
-      adminApi('POST', '/api/admin/update/start', { token: token, bat: bat, note: note, dryRun: !!dryRun }).then(function (r) {
-        if (!r.ok) { toast((r.data && r.data.error) || '发布失败', true); return; }
-        toast('已发布更新通知，' + Math.round(((r.data.update || {}).bannerMs || 60000) / 1000) + ' 秒后自动切换');
-        renderUpdate();
-      });
-    });
-  }
-  function cancelUpdate() {
-    adminApi('POST', '/api/admin/update/cancel', { token: token }).then(function (r) {
-      if (!r.ok) { toast((r.data && r.data.error) || '取消失败', true); return; }
-      toast('已取消更新，横幅已撤回');
-      renderUpdate();
-    });
-  }
-
   function renderFormula() {
     const main = $('main');
     main.innerHTML = '<h2>🧮 公式管理</h2>' +
@@ -2723,7 +2747,7 @@ window.Admin = (function () {
       BITE_VARS_DOC.map(function (v) { return '<code>' + v[0] + '</code> — ' + v[1] + '<br>'; }).join('') +
       '</div><h3>可用函数</h3><div class="kv"><code>min</code> <code>max</code> <code>floor</code> <code>ceil</code> <code>round</code> <code>abs</code> <code>clamp(x, lo, hi)</code><br>' +
       '示例：<code>clamp(90 + skill, 0, 100)</code>（默认：基础 90% + 技巧词缀） ／ <code>90</code>（平值 90% 上钩） ／ ' +
-      '<code>clamp(85 + rare + skill * 0.5, 50, 100)</code>（稀有与技巧各占一部分）</div></div>' +
+      '<code>clamp(85 + rare + skill * 0.5, 50, 100)</code>（稀有度与技巧各占一部分）</div></div>' +
       '<div class="panel" style="flex:1 1 100%;min-width:0">' +
       '<h3>🎣 双钓率</h3>' +
       '<div class="hint" style="margin-bottom:10px">叠加值 A（百分比点数）→ 单次追加概率 <code>P = A/(A+100) = 1 − 1/(1+A/100)</code>。' +
@@ -2754,10 +2778,30 @@ window.Admin = (function () {
       '<button id="cast-save" class="btn primary" style="margin-left:12px">保存</button><span id="cast-state" class="hint"></span>' +
       '<button id="cast-reset" class="btn mini" style="margin-left:8px">恢复默认</button></div>' +
       '<div id="cast-preview" class="hint"></div></div>' +
+      '<div class="panel" style="flex:1 1 100%;min-width:0">' +
+      '<h3>💎 稀有度（<code>rare</code>）</h3>' +
+      '<div class="hint" style="margin-bottom:10px">「稀有度」词缀（原名「稀有概率」，内部 id 仍为 <code>rare</code>）已改为' +
+      '<b>降低普通品质物品的权重</b>：生成战利品时，<b>普通品质</b>条目的权重 × <code>K/(K+R)</code>，' +
+      '其中 R 是该玩家的稀有度值、K 是下方的全局常数。非普通品质条目的权重不变。</div>' +
+      '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">K（默认 2）</label>' +
+      '<input id="rk-k" class="ipt mk-num" type="number" min="0.01" step="0.1" style="width:110px" value="2" />' +
+      '<span class="hint">必须 &gt; 0；K 越大 = 稀有度的效果越弱</span>' +
+      '<button id="rk-save" class="btn primary" style="margin-left:12px">保存</button><span id="rk-state" class="hint"></span></div>' +
+      '<h4 style="margin-bottom:4px">试算（本地换算，不发请求）</h4>' +
+      '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">稀有度 R</label>' +
+      '<input id="rk-r" class="ipt mk-num" type="number" step="0.5" style="width:110px" value="3" />' +
+      '<button id="rk-eval" class="btn" style="margin-left:12px">试算</button><span id="rk-out" class="hint"></span></div>' +
+      '<h4 style="margin-bottom:4px">钓点战利品表测试（服务器实际生效值）</h4>' +
+      '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">钓点</label>' +
+      '<select id="rk-spot" class="ipt" style="min-width:280px"></select>' +
+      '<button id="rk-test" class="btn primary" style="margin-left:12px">测试</button>' +
+      '<span class="hint">用上方「稀有度 R」的值</span></div>' +
+      '<div id="rk-table" class="hint"></div></div>' +
       '</div>';
     loadWorldCfg().then(function (cfg) {
       if (!cfg || view !== 'formula') return;
       $('fx-src').value = cfg.biteFormula || '';
+      if ($('rk-k')) $('rk-k').value = cfg.rareK != null ? cfg.rareK : 2;
       const dbInp = $('db-base');
       dbInp.value = Math.round((cfg.doubleBase || 0) * 100);
       function preview() {
@@ -2822,7 +2866,118 @@ window.Admin = (function () {
           toast('已恢复默认抛竿间隔与钓速');
         });
       };
+
     });
+    // ---- 💎 稀有度（K 值 + 本地试算 + 钓点战利品表实测）----
+    // 注意：这段放在 loadWorldCfg 之外，世界配置读取失败时本面板依然可用（K 输入框 HTML 里已默认 2）。
+    (function () {
+      const rkInp = $('rk-k');
+      if (!rkInp) return;
+      // 百分比格式化：最多 1 位小数，整数去掉尾随 .0（40.0% → 40%，37.5% 保留）
+      function pct1(v) {
+        const s = (Number(v) * 100).toFixed(1);
+        return (s.slice(-2) === '.0' ? s.slice(0, -2) : s) + '%';
+      }
+      // 本地乘数：mult = K/(K+R)；K 必须 > 0，且 K+R 必须 > 0（否则除零/负权重无意义）
+      function rkMult() {
+        const k = Number(rkInp.value);
+        const r = Number($('rk-r').value);
+        if (!isFinite(k) || k <= 0) return { err: 'K 必须是大于 0 的数字' };
+        if (!isFinite(r)) return { err: '稀有度 R 必须是数字' };
+        if (k + r <= 0) return { err: 'K + R 必须大于 0（当前 K=' + k + '，R=' + r + '）' };
+        return { k: k, r: r, mult: k / (k + r) };
+      }
+      $('rk-eval').onclick = function () {
+        const m = rkMult();
+        if (m.err) { $('rk-out').innerHTML = '<span class="err">' + esc(m.err) + '</span>'; return; }
+        $('rk-out').innerHTML = '普通品质物品权重 × <b>' + pct1(m.mult) + '</b>' +
+          '（K=' + m.k + '，R=' + m.r + '）';
+      };
+      $('rk-save').onclick = function () {
+        const k = Number(rkInp.value);
+        if (!isFinite(k) || k <= 0) {
+          $('rk-state').innerHTML = '<span class="err">K 必须是大于 0 的数字</span>';
+          toast('稀有度 K 值必须是大于 0 的数字', true);
+          return;
+        }
+        adminApi('POST', '/api/admin/settings', { token: token, rareK: k }).then(function (r) {
+          if (!r.ok) {
+            setHint('rk-state', '<span class="err">' + esc((r.data && r.data.error) || '保存失败') + '</span>');
+            toast((r.data && r.data.error) || '保存失败', true);
+            return;
+          }
+          const nk = r.data.rareK != null ? r.data.rareK : k;
+          rkInp.value = nk;
+          if (worldCfg) worldCfg.rareK = nk;
+          setHint('rk-state', '<span style="color:var(--ok)">已保存，立即生效</span>');
+          toast('稀有度 K 值已保存');
+        });
+      };
+      // 钓点列表：GET /api/admin/loot/spots（真实生效的钓点，灌进下拉）
+      $('rk-spot').innerHTML = '<option value="">加载中…</option>';
+      adminApi('GET', '/api/admin/loot/spots?token=' + encodeURIComponent(token)).then(function (r) {
+        if (view !== 'formula') return;
+        const sel = $('rk-spot');
+        if (!sel) return;
+        if (!r.ok) {
+          sel.innerHTML = '<option value="">（钓点列表读取失败）</option>';
+          setHint('rk-table', '<span class="err">' + esc((r.data && r.data.error) || '钓点列表读取失败') + '</span>');
+          return;
+        }
+        const spots = (r.data && r.data.spots) || [];
+        if (!spots.length) {
+          sel.innerHTML = '<option value="">（暂无可用钓点）</option>';
+          setHint('rk-table', '当前没有可用钓点，无法做战利品表测试。');
+          return;
+        }
+        sel.innerHTML = spots.map(function (s) {
+          return '<option value="' + esc(s.key) + '">' + esc(s.name || s.key) + '</option>';
+        }).join('');
+      });
+      // 实测：POST /api/admin/loot/test → 渲染前后权重对比表
+      $('rk-test').onclick = function () {
+        const sel = $('rk-spot');
+        const spotKey = sel ? sel.value : '';
+        if (!spotKey) { toast('请先选择钓点（列表为空或读取失败）', true); return; }
+        const m = rkMult();
+        if (m.err) { setHint('rk-table', '<span class="err">' + esc(m.err) + '</span>'); toast(m.err, true); return; }
+        setHint('rk-table', '测试中…');
+        adminApi('POST', '/api/admin/loot/test', { token: token, spotKey: spotKey, rare: m.r }).then(function (res) {
+          const host = $('rk-table');
+          if (!host) return;
+          if (!res.ok) {
+            host.innerHTML = '<span class="err">' + esc((res.data && res.data.error) || '测试失败') + '</span>';
+            return;
+          }
+          const d = res.data || {};
+          const rows = d.rows || [];
+          // 服务器可能下发小数（0.42）也可能下发已换算的百分数（42）：按最大值自适应，
+          // 全部 ≤ 1 才当作小数乘 100（真·百分比数据不可能整份都 ≤ 1，除非全部不足 1%）。
+          const rawPcts = [d.commonBefore, d.commonAfter].concat(rows.map(function (r) { return r.beforePct; }),
+            rows.map(function (r) { return r.afterPct; })).map(Number).filter(isFinite);
+          const pctScale = rawPcts.length && rawPcts.every(function (v) { return Math.abs(v) <= 1.0001; }) ? 100 : 1;
+          const pct = function (v) { return isFinite(Number(v)) ? (Number(v) * pctScale).toFixed(2) + '%' : '—'; };
+          const mult = Number(d.mult);
+          host.innerHTML =
+            '<div style="margin:6px 0">钓点：<b>' + esc((d.spot && d.spot.name) || spotKey) + '</b>　' +
+            'K=<b>' + esc(d.k) + '</b>　R=<b>' + esc(d.rare) + '</b>　' +
+            '普通品质权重乘数 <b>×' + (isFinite(mult) ? pct1(mult) : '—') + '</b>　' +
+            '普通品质总占比：<b>' + pct(d.commonBefore) + '</b> → <b>' + pct(d.commonAfter) + '</b></div>' +
+            (rows.length
+              ? '<div style="overflow-x:auto"><table class="tbl" style="font-size:12px"><thead><tr>' +
+                '<th>条目</th><th>品质</th><th class="num">权重</th><th class="num">前占比</th><th class="num">后占比</th>' +
+                '</tr></thead><tbody>' +
+                rows.map(function (r) {
+                  return '<tr><td>' + esc(r.name || r.pick || '—') + '</td>' +
+                    '<td>' + esc(r.quality || '—') + '</td>' +
+                    '<td class="num">' + esc(r.weight) + '</td>' +
+                    '<td class="num">' + pct(r.beforePct) + '</td>' +
+                    '<td class="num">' + pct(r.afterPct) + '</td></tr>';
+                }).join('') + '</tbody></table></div>'
+              : '<div class="hint">该钓点的战利品表为空。</div>');
+        });
+      };
+    })();
     $('fx-check').onclick = function () { saveFormula(true); };
     $('fx-save').onclick = function () { saveFormula(false); };
     $('fx-eval').onclick = function () {

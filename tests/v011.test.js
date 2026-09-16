@@ -20,7 +20,7 @@ const url = require('url');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { waitHttp, waitFor } = require('./_util.js');
+const { waitHttp, waitFor , flushWait } = require('./_util.js');
 
 const ROOT = path.join(__dirname, '..');
 const NODE = process.execPath;
@@ -416,12 +416,18 @@ function startServer() {
     sortAff(D.smeltExtraAffixesOf('rod_bamboo', D.componentOf(mythicMain).affixes)) ===
       sortAff([{ type: 'rare', value: 5 }, { type: 'double', value: 9 }]),
     JSON.stringify(D.smeltExtraAffixesOf('rod_bamboo', D.componentOf(mythicMain).affixes)));
-  check('数据层：保留概率 = 片数 × 每片概率，10 片封顶 100%',
-    D.smeltRetainChance(0) === 0 && D.smeltRetainChance(3) === 30 && D.smeltRetainChance(10) === 100 &&
-    D.smeltRetainChance(99) === 100, [0, 3, 10, 99].map(n => D.smeltRetainChance(n)).join(','));
+  // v0.13：每片概率改由公式给出（默认 10 - breakthrough * 0.5），总概率 = 片数 × 每片概率
+  check('数据层：保留概率 = 片数 × 每片公式值，10 片封顶 100%',
+    D.smeltRetainChance(0, 0) === 0 && D.smeltRetainChance(3, 0) === 30 && D.smeltRetainChance(10, 0) === 100 &&
+    D.smeltRetainChance(99, 0) === 100, [0, 3, 10, 99].map(n => D.smeltRetainChance(n, 0)).join(','));
+  check('数据层：默认公式 10 - breakthrough * 0.5（突破词缀越多每片越低）',
+    D.retainChancePerRelic(0) === 10 && D.retainChancePerRelic(2) === 9 && D.retainChancePerRelic(3) === 8.5 &&
+    D.smeltRetainChance(10, 2) === 90,
+    [0, 2, 3].map(n => D.retainChancePerRelic(n)).join(',') + ' / 10片2突破=' + D.smeltRetainChance(10, 2));
   const wsR = await GET(BASE + '/api/workshop?token=' + encodeURIComponent(TOKP));
-  check('工坊接口下发残片保留参数（每片 10% / 上限 10 片）',
-    !!wsR.data.retain && wsR.data.retain.per === 10 && wsR.data.retain.max === 10 && wsR.data.retain.relicId === 'relic',
+  check('工坊接口下发残片保留参数（公式 + 上限 10 片）',
+    !!wsR.data.retain && typeof wsR.data.retain.formula === 'string' && /breakthrough/.test(wsR.data.retain.formula) &&
+    wsR.data.retain.max === 10 && wsR.data.retain.relicId === 'relic',
     JSON.stringify(wsR.data.retain));
   // 成功率与花费不受残片影响：用「50% 基础成功率 + 0 投料影响」这组未被夹紧的配置对比
   //（只比数值，不断言本次掷骰结果 —— 成败是随机的）
@@ -442,10 +448,14 @@ function startServer() {
   check('残片不计入投料份数（load.total 与不带残片一致）',
     smeltRelic.data.load.total === 4 && smeltRelic.data.load.dominant === 'size',
     JSON.stringify(smeltRelic.data.load));
-  check('10 片残片 → 保留概率 100%（必中）',
-    smeltRelic.data.relics === 10 && smeltRelic.data.retainChance === 100, JSON.stringify({ n: smeltRelic.data.relics, c: smeltRelic.data.retainChance }));
-  // 保留结算断言：成功率设为 100% 必成功，才能确定性地检查「按原值保留池外词缀」
-  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 100, rateMax: 100, failPerMaterial: 0 });
+  // mythicMain 的底材池是 [钓速, 体型]，池外的 rare/double 即 2 条突破词缀
+  // → 默认公式每片 10 - 2*0.5 = 9%，10 片 = 90%（不再是固定 100%）
+  check('10 片残片 → 保留概率 = 10 × (10 - 2×0.5) = 90%',
+    smeltRelic.data.relics === 10 && smeltRelic.data.breakthrough === 2 &&
+    smeltRelic.data.perRelic === 9 && smeltRelic.data.retainChance === 90,
+    JSON.stringify({ n: smeltRelic.data.relics, c: smeltRelic.data.retainChance, bt: smeltRelic.data.breakthrough }));
+  // 保留结算断言：成功率设为 100% 必成功、公式设为常量 100 必保留，才能确定性检查「按原值保留池外词缀」
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 100, rateMax: 100, failPerMaterial: 0, retainFormula: '100' });
   await seed({ [mythicMain]: 1, [mythicSub]: 1, rope: 20, relic: 10 }, 200000);
   const smeltRetain = await POST(BASE + '/api/workshop/smelt', {
     token: TOKP, mainId: mythicMain, subId: mythicSub, mainAffix: 'speed', subAffix: 'skill', materials: [{ id: 'rope', qty: 4 }], relics: 10,
@@ -465,17 +475,30 @@ function startServer() {
     JSON.stringify({ q: smeltRetain.data.item && smeltRetain.data.item.quality }));
   check('残片按片数消耗（10 片全扣）',
     smeltRetain.data.inventory.relic === undefined, JSON.stringify({ relic: smeltRetain.data.inventory.relic }));
-  // 失败时残片同样烧掉（与投料/副件一致）
+  // 失败时残片同样烧掉（与投料/副件一致）；v0.13 起投入残片还会**保护主件选中的那条词条**
   await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 0, failPerMaterial: 0, rateMin: 0 });
   await seed({ [mythicMain]: 1, [mythicSub]: 1, relic: 4 }, 200000);
   const smeltRelicFail = await POST(BASE + '/api/workshop/smelt', {
     token: TOKP, mainId: mythicMain, subId: mythicSub, mainAffix: 'speed', subAffix: 'skill', relics: 4,
   });
-  check('失败时残片也消耗（4 片全烧，主件掉一条词条）',
+  check('失败时残片也消耗（4 片全烧）',
     smeltRelicFail.status === 200 && smeltRelicFail.data.success === false &&
-    smeltRelicFail.data.inventory.relic === undefined && smeltRelicFail.data.removedAffix === 'speed' &&
-    !!smeltRelicFail.data.mainAfter && smeltRelicFail.data.mainAfter.affixes.length === 3,
-    JSON.stringify({ inv: smeltRelicFail.data.inventory, m: smeltRelicFail.data.mainAfter && smeltRelicFail.data.mainAfter.id }));
+    smeltRelicFail.data.inventory.relic === undefined,
+    JSON.stringify({ inv: smeltRelicFail.data.inventory }));
+  check('投入残片后失败不再熔毁主件选中的词条（残片新增的保护效果）',
+    smeltRelicFail.data.protectAffix === true && smeltRelicFail.data.removedAffix === null &&
+    !!smeltRelicFail.data.mainAfter && smeltRelicFail.data.mainAfter.affixes.length === 4,
+    JSON.stringify({ p: smeltRelicFail.data.protectAffix, r: smeltRelicFail.data.removedAffix, n: smeltRelicFail.data.mainAfter && smeltRelicFail.data.mainAfter.affixes.length }));
+  // 未投入残片时仍照旧熔掉选中词条（保护只由残片提供）
+  await seed({ [mythicMain]: 1, [mythicSub]: 1 }, 200000);
+  const smeltNoRelicFail = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: mythicMain, subId: mythicSub, mainAffix: 'speed', subAffix: 'skill',
+  });
+  check('未投入残片时失败仍熔掉选中词条（保护效果专属于残片）',
+    smeltNoRelicFail.status === 200 && smeltNoRelicFail.data.success === false &&
+    smeltNoRelicFail.data.protectAffix === false && smeltNoRelicFail.data.removedAffix === 'speed' &&
+    !!smeltNoRelicFail.data.mainAfter && smeltNoRelicFail.data.mainAfter.affixes.length === 3,
+    JSON.stringify({ p: smeltNoRelicFail.data.protectAffix, r: smeltNoRelicFail.data.removedAffix, n: smeltNoRelicFail.data.mainAfter && smeltNoRelicFail.data.mainAfter.affixes.length }));
   // —— 校验类拒绝 ——
   await POST(BASE + '/api/admin/smelt/config', { token: TOKA, baseRate: 100, rateMax: 100, failPerMaterial: 0 });
   await seed({ [mainComp]: 1, [subComp]: 1, relic: 20 }, 200000);
@@ -504,13 +527,17 @@ function startServer() {
   });
   check('残片不足被拒',
     relicShort.status === 400 && /残片不足/.test(relicShort.data.error || ''), JSON.stringify(relicShort.data));
-  // 残片保留参数后台可调
-  const retainCfg = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, retainPerRelic: 25, retainMaxRelic: 4 });
-  check('后台可调残片保留参数（每片 25% / 上限 4 片）',
-    retainCfg.status === 200 && retainCfg.data.smeltCfg.retainPerRelic === 25 && retainCfg.data.smeltCfg.retainMaxRelic === 4,
-    JSON.stringify(retainCfg.data.smeltCfg));
-  const retainCfgBad = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, retainPerRelic: 500 });
-  check('残片保留参数越界被拒 400', retainCfgBad.status === 400, JSON.stringify(retainCfgBad.data));
+  // v0.13：残片保留参数改为「公式 + 上限」；公式可被后台改写（breakthrough = 主件突破词缀条数）
+  const retainCfg = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, retainFormula: '25 - breakthrough', retainMaxRelic: 4 });
+  check('后台可调残片保留参数（公式 25-breakthrough / 上限 4 片）',
+    retainCfg.status === 200 && retainCfg.data.smeltCfg.retainFormula === '25 - breakthrough' && retainCfg.data.smeltCfg.retainMaxRelic === 4,
+    JSON.stringify(retainCfg.data.smeltCfg && { f: retainCfg.data.smeltCfg.retainFormula, m: retainCfg.data.smeltCfg.retainMaxRelic }));
+  const retainCfgBad = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, retainFormula: '10 - nosuchvar * 2' });
+  check('保留概率公式引用未知变量被拒 400',
+    retainCfgBad.status === 400 && /未知变量/.test(retainCfgBad.data.error || ''), JSON.stringify(retainCfgBad.data));
+  const retainCfgBad2 = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, retainFormula: '10 -' });
+  check('保留概率公式语法错误被拒 400', retainCfgBad2.status === 400, JSON.stringify(retainCfgBad2.data));
+  await POST(BASE + '/api/admin/smelt/config', { token: TOKA, retainFormula: '10 - breakthrough * 0.5' });
   // 后台配置
   check('非管理员改熔炼参数 403', (await POST(BASE + '/api/admin/smelt/config', { token: TOKP, baseRate: 50 })).status === 403);
   const smeltReset = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, reset: true });
@@ -663,30 +690,16 @@ function startServer() {
   check('pos=null 恢复出厂坐标', dockReset[0] === 69 && dockReset[1] === 30, JSON.stringify(dockReset));
 
   // ==========================================================================
-  section('⑧ 服务端优雅版本更新');
-  const upList = await GET(BASE + '/api/admin/update/list?token=' + encodeURIComponent(TOKA));
-  check('后台可列出候选 .bat', upList.status === 200 && (upList.data.bats || []).length > 0 && upList.data.bats.some(b => /run\.bat$/.test(b.path)),
-    JSON.stringify((upList.data.bats || []).map(b => b.path)));
-  check('通知横幅与宽限时长下发（60 秒 / 5 秒）', upList.data.bannerMs === 60000 && upList.data.graceMs === 5000,
-    JSON.stringify({ b: upList.data.bannerMs, g: upList.data.graceMs }));
-  check('非管理员读更新列表 403', (await GET(BASE + '/api/admin/update/list?token=' + encodeURIComponent(TOKP))).status === 403);
-  check('路径穿越被拒（../evil.bat）', (await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: '../evil.bat', dryRun: true })).status === 400);
-  check('非 .bat 被拒', (await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: 'backend/server.js', dryRun: true })).status === 400);
-  check('不存在的脚本被拒', (await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: 'nope.bat', dryRun: true })).status === 400);
-  const upStart = await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: 'run.bat', note: '测试更新', dryRun: true });
-  check('发布更新成功（演练模式）', upStart.status === 200 && upStart.data.update && upStart.data.update.active === true,
-    JSON.stringify(upStart.data).slice(0, 160));
-  check('切换时间点 = 横幅结束 + 5 秒', upStart.data.update.fireAt - upStart.data.update.endAt === 5000,
-    JSON.stringify({ e: upStart.data.update.endAt, f: upStart.data.update.fireAt }));
-  const verNow = await GET(BASE + '/api/version');
-  check('版本接口下发更新中状态（后连进来的玩家也能看到倒计时）',
-    !!verNow.data.update && verNow.data.update.active === true && verNow.data.update.bat === 'run.bat',
-    JSON.stringify(verNow.data.update));
-  check('重复发布被拒 400', (await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: 'run.bat', dryRun: true })).status === 400);
-  const upCancel = await POST(BASE + '/api/admin/update/cancel', { token: TOKA });
-  check('取消更新成功', upCancel.status === 200 && upCancel.data.update === null, JSON.stringify(upCancel.data));
-  check('取消后版本接口不再下发更新状态', !(await GET(BASE + '/api/version')).data.update);
-  check('无任务时取消被拒 400', (await POST(BASE + '/api/admin/update/cancel', { token: TOKA })).status === 400);
+  // v0.13：原「服务端优雅版本更新」功能已整体删除（后台入口 + 前端横幅 + 服务端接口）
+  section('⑧ 版本更新功能已移除');
+  check('后台更新列表接口不存在（404）', (await GET(BASE + '/api/admin/update/list?token=' + encodeURIComponent(TOKA))).status === 404);
+  check('发布更新接口不存在（404）', (await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: 'run.bat', dryRun: true })).status === 404);
+  check('取消更新接口不存在（404）', (await POST(BASE + '/api/admin/update/cancel', { token: TOKA })).status === 404);
+  const worldNoUpd = await GET(BASE + '/api/admin/world?token=' + encodeURIComponent(TOKA));
+  check('后台 world 不再下发 updateBats / updateState',
+    worldNoUpd.data.updateBats === undefined && worldNoUpd.data.updateState === undefined,
+    JSON.stringify({ b: worldNoUpd.data.updateBats, s: worldNoUpd.data.updateState }));
+  check('版本接口不再下发更新中状态', (await GET(BASE + '/api/version')).data.update === undefined);
 
   // ==========================================================================
   section('⑨ 存档修复脚本');
@@ -737,10 +750,20 @@ function startServer() {
     const mk = fs.existsSync(mkPath) ? JSON.parse(fs.readFileSync(mkPath, 'utf8')) : { listingSeq: 1, listings: [] };
     mk.listings = (mk.listings || []).concat([{ lid: 9001, seller: migKey, sellerName: '旧存档', id: legacyRod, name: '整根钓竿（1 件）', qty: 1, price: 100, t: Date.now(), expireAt: Date.now() + 3600000, hours: 6 }]);
     fs.writeFileSync(mkPath, JSON.stringify(mk, null, 2));
+    await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
     killTree(srv); srv = null;
     await new Promise(r => setTimeout(r, 400));
     check('重启（加载旧存档）成功', await startServer());
-    const migAcc = JSON.parse(fs.readFileSync(path.join(TMP_DATA, 'accounts', migKey + '.json'), 'utf8'));
+    // 启动迁移只改内存 + 标记脏，真正写盘走 1 秒防抖（saveAccount → flushAccounts）；
+    // 这里轮询等待迁移结果落盘，而不是重启后立刻读文件（否则读到的还是迁移前的旧内容）。
+    const migAccPath = path.join(TMP_DATA, 'accounts', migKey + '.json');
+    await waitFor(function () {
+      try {
+        const a = JSON.parse(fs.readFileSync(migAccPath, 'utf8'));
+        return !!(a.inventory && a.inventory['reel_turbo#rare#spd+37,skl-5'] && !a.inventory[legacyPart]);
+      } catch (e) { return false; }
+    }, { timeout: 6000 });
+    const migAcc = JSON.parse(fs.readFileSync(migAccPath, 'utf8'));
     check('启动迁移规范化了背包键', !!migAcc.inventory['reel_turbo#rare#spd+37,skl-5'] && !migAcc.inventory[legacyPart],
       JSON.stringify(Object.keys(migAcc.inventory)));
     check('启动迁移规范化了钓竿槽位里的配件',
@@ -874,6 +897,7 @@ function startServer() {
 
   // ==========================================================================
   section('⑩ 重启后配置持久化');
+  await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
   srv = null;
   await waitFor(function () { return !srv && true; }, { timeout: 1000 });
@@ -966,6 +990,7 @@ function startServer() {
     abBig.ok && abBig.ms < 1500, JSON.stringify(abBig));
 
   // ---- 收尾 ----
+  await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
   console.log('\n============================');
   console.log('v0.11 测试汇总：通过 ' + pass + ' 项，失败 ' + fail + ' 项');

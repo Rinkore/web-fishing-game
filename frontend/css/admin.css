@@ -81,6 +81,11 @@ h3 { font-size: 14px; margin: 18px 0 10px; color: var(--txt); }
 }
 .ipt:focus { border-color: var(--acc2); }
 select.ipt option { background: var(--bg2); }
+/* 后台所有数字输入框不显示步进器（上下箭头）：后台表单字段密、列宽窄，
+   箭头既挤占输入宽度又容易误触改值；改值一律直接键入。 */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .btn {
   background: var(--panel2); border: 1px solid var(--line); color: var(--txt);
   border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: inherit;

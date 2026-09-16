@@ -107,7 +107,7 @@ window.Net = (function () {
     if (ui && ui.forceLogout) ui.forceLogout(msg);
   }
 
-  // 顺带同步服务器的组件生成配置 / 抛竿间隔与全服钓速 / 经济参数 / 熔炼参数 / 更新通知
+  // 顺带同步服务器的组件生成配置 / 抛竿间隔与全服钓速 / 经济参数 / 熔炼参数
   // （展示与本地预览保持一致：例如工坊的成功率与花费预览必须和服务器算的同一套系数）
   function applyServerCfg(d) {
     if (!d) return;
@@ -120,8 +120,6 @@ window.Net = (function () {
       state().smeltCfg = window.GameData.getSmeltCfg();
     }
     if (d.recordsCfg) state().recordsCfg = d.recordsCfg;
-    state().update = d.update || null;
-    if (window.UI && window.UI.onUpdate) window.UI.onUpdate(state().update);
   }
   function guardVersion() {
     if (!localVersion()) return Promise.resolve(false);
@@ -489,10 +487,6 @@ window.Net = (function () {
           // 后台改了「全场最大鱼」贴图的缩放/偏移：就地更新并重绘纪录页
           if (m.recordsCfg) S.recordsCfg = m.recordsCfg;
           if (ui) ui.refreshAll('records');
-        } else if (m.type === 'update') {
-          // 服务端版本更新：60 秒通知横幅 + 倒计时（横幅结束 5 秒后服务器会切到新版本）
-          S.update = m.update || null;
-          if (ui && ui.onUpdate) ui.onUpdate(S.update);
         } else if (m.type === 'bannerStop') {
           if (ui && ui.onBannerStop) ui.onBannerStop(m.id);
         } else if (m.type === 'bitecfg') {

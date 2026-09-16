@@ -184,6 +184,11 @@ select, textarea, .ipt {
 }
 input::placeholder, textarea::placeholder { color: var(--px-placeholder) !important; }
 input:disabled, select:disabled, textarea:disabled { color: var(--px-input-off) !important; }
+/* 数字输入框不再显示步进器（上下箭头）：像素风的 3px 描边里塞箭头很挤，且容易误触；
+   数量类输入（工坊催化剂份数 / 残片片数 / 出售与上架数量等）一律改用 +1/+5/清空 等按钮或直接键入。 */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .auth-input:focus, .ipt:focus, input:focus, select:focus {
   outline: none; border-color: var(--accent) !important;
   box-shadow: inset 0 2px 0 rgba(0, 0, 0, .35), 0 0 10px rgba(52, 224, 192, .4);

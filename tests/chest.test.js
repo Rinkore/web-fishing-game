@@ -14,7 +14,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 // 轮询等待工具（测试内部不依赖固定 sleep）：就绪即继续，超时才失败
-const { waitHttp } = require('./_util.js');
+const { waitHttp , flushWait } = require('./_util.js');
 
 const ROOT = path.join(__dirname, '..');
 const NODE = process.execPath;
@@ -375,6 +375,7 @@ let srv = null;
 
   // 配置持久化：重启后仍在
   section('配置持久化');
+  await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
   await new Promise(r => setTimeout(r, 600));
   srv = spawn(NODE, [path.join('backend', 'server.js')], {
@@ -397,6 +398,7 @@ let srv = null;
   console.log('宝匣测试小结：通过 ' + pass + ' 项，失败 ' + fail + ' 项');
   if (failed.length) { console.log('失败项：\n  - ' + failed.join('\n  - ')); }
   console.log('='.repeat(52));
+  await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
   killTree(srv);
   try { fs.rmSync(TMP_DATA, { recursive: true, force: true }); } catch (e) {}
   process.exit(fail === 0 ? 0 : 1);

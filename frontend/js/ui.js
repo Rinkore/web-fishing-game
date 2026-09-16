@@ -59,20 +59,28 @@ window.UI = (function () {
     return rarityClass(meta.rarity);
   }
   // 组件词缀 span 的起始标签：池外词缀（宝匣池外补足 / 工坊催化补缀的、本部位本来没有的词缀）额外加 extra 标记
-  // 池外词缀统一命名：宝匣产生的 = 突破词缀；工坊催化（投料补缀）产生的 = 催化词缀
+  // 池外词缀统一命名：宝匣产生的 = 突破词缀；工坊催化（催化剂补缀）产生的 = 催化词缀
   function extraAffixName(a) { return a && a.src === 'ct' ? '催化词缀' : '突破词缀'; }
   function extraAffixTitle(a) {
-    return a && a.src === 'ct' ? '催化词缀（工坊投料补缀产生）' : '突破词缀（宝匣池外补足产生）';
+    return a && a.src === 'ct' ? '催化词缀（工坊催化剂补缀产生）' : '突破词缀（宝匣池外补足产生）';
   }
   function affSpanOpen(a) {
     return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + (a.extra ? ' extra' : '') + '"' +
       (a.extra ? ' title="' + extraAffixTitle(a) + '"' : '') + '>';
   }
-  // 词缀数值区间 [min,max]；池内走底材区间，池外按词缀自己的范围来源（突破/催化），都没有则返回 null（不显示区间）
+  // 词缀数值区间 [min,max]；来源优先：熔炼搬来的副件区间 / 催化 / 突破按词缀自带来源取，
+  // 只有来源就是该底材本身（或没有来源）时才用底材区间；都没有则返回 null（不显示区间）
   function affixRangeIn(meta, a) {
+    if (!a) return null;
     const pool = ((meta && meta.pool) || []).find(function (p) { return p.type === a.type; });
+    // 词缀自带范围来源时按来源取区间（熔炼搬来的副件区间 / 催化 / 突破），与服务端 roll 口径一致；
+    // 只有来源就是该底材本身（或没有来源）时才用底材区间。
+    const src = a.src;
+    if (src && !(pool && src === meta.baseId) && D.affixSrcRangeOf) {
+      const r = D.affixSrcRangeOf(src, a.type, meta && meta.part);
+      if (r) return r;
+    }
     if (pool) return D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max];
-    if (a.extra && D.affixSrcRangeOf) return D.affixSrcRangeOf(a.src, a.type, meta && meta.part);
     return (a.extra && D.extraAffixRangeOf) ? D.extraAffixRangeOf(a.type) : null;
   }
   // 组件实例的状态标签：突破 > 满词条（突破件必然也满词条，但语义是「越过了词缀池边界」）
@@ -127,65 +135,20 @@ window.UI = (function () {
     return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#06202e' : '#f8fafc';
   }
   // 各轨道的可见高度累计 → 页面下移量（避免遮挡顶部状态栏）
-  // 轨道顺序（自上而下）：版本更新（update，最高优先级）→ 纪录 → 公告
-  const UPDATE_LANE_H = 44;
+  // 轨道顺序（自上而下）：纪录 → 公告
   function syncBannerOffset() {
-    const upd = $('update-banner'), rec = laneEl('record'), not = laneEl('notice');
-    const updOn = !!(upd && upd.classList.contains('show'));
+    const rec = laneEl('record'), not = laneEl('notice');
     const recOn = !!(rec && rec.classList.contains('show'));
     const notOn = !!(not && not.classList.contains('show'));
     let top = 0;
-    if (upd) upd.style.top = '0px';
-    if (updOn) top += UPDATE_LANE_H;
     if (rec) rec.style.top = top + 'px';
     if (recOn) top += BANNER_LANE_H;
     if (not) not.style.top = top + 'px';
-    const h = (updOn ? UPDATE_LANE_H : 0) + (recOn ? BANNER_LANE_H : 0) + (notOn ? BANNER_LANE_H : 0);
+    const h = (recOn ? BANNER_LANE_H : 0) + (notOn ? BANNER_LANE_H : 0);
     document.body.style.setProperty('--banner-h', h + 'px');
     document.body.classList.toggle('banner-open', h > 0);
   }
 
-  // ---- 版本更新横幅（服务端升级通知，60 秒倒计时后自动切换） ----
-  // 与公告轨无关：更新通知是时间敏感的运维事件，必须立刻显示、不能被排队等待。
-  let updateTimer = null;
-  let updateSig = '';   // 同一个更新任务只提示一次（/api/version 会周期性把状态带回来）
-  function renderUpdateBanner() {
-    const b = $('update-banner');
-    if (!b) return;
-    const u = S().update;
-    if (!u || !u.active) {
-      updateSig = '';
-      b.classList.remove('show');
-      b.innerHTML = '';
-      if (updateTimer) { clearInterval(updateTimer); updateTimer = null; }
-      syncBannerOffset();
-      return;
-    }
-    const bat = u.bat || 'run.bat';
-    function tick() {
-      const now = Date.now();
-      const left = Math.max(0, Math.round((u.endAt - now) / 1000));
-      const phaseTxt = u.phase === 'restarting' ? '正在切换到新版本…'
-        : (u.phase === 'grace' ? '更新通知已结束，5 秒后自动切换…' : '');
-      b.innerHTML = '<span class="ub-icon">🔄</span>' +
-        '<span class="ub-text">服务器即将更新到新版本（' + esc(bat) + '）' + (u.note ? '：' + esc(u.note) : '') + '</span>' +
-        (phaseTxt ? '<span class="ub-count">' + esc(phaseTxt) + '</span>'
-          : '<span class="ub-count">' + left + ' 秒后重启</span>') +
-        '<span class="ub-hint">届时请稍候，页面会自动重连</span>';
-    }
-    b.classList.add('show');
-    tick();
-    if (updateTimer) clearInterval(updateTimer);
-    updateTimer = setInterval(tick, 500);
-    syncBannerOffset();
-    const sig = bat + '@' + (u.startedAt || 0);
-    if (sig !== updateSig) {
-      updateSig = sig;
-      toast('🔔 服务器即将更新：' + bat + '（自动重启，请稍候）');
-      addLog('system', '🔄 服务器更新通知：' + bat + '，' + Math.round((u.endAt - Date.now()) / 1000) + ' 秒后自动重启切换版本');
-    }
-  }
-  function onUpdate() { renderUpdateBanner(); }
   // 播放单条（lane: 'record' | 'notice'；opts: { duration, id, color, onDone }）
   function playMarquee(lane, text, opts) {
     opts = opts || {};
@@ -496,21 +459,30 @@ window.UI = (function () {
       return b;
     };
     D.NAV.forEach(function (item) { nav.appendChild(makeItem(item)); });
-    // 管理员：侧边栏底部加后台入口（新标签打开，admin.html 与游戏同源托管）
-    if (st.me && st.me.admin) {
-      const a = el('a', 'nav-item admin-link');
-      a.href = 'admin.html';
-      a.target = '_blank';
-      a.rel = 'noopener';
-      a.innerHTML = '<span class="nav-icon">🛡</span><span>管理后台</span>';
-      nav.appendChild(a);
-    }
+  }
+
+  // 顶栏左上角品牌：管理员点击在新标签打开管理后台（admin.html 与游戏同源托管），普通玩家点击无反应。
+  // 只在 init 里绑定一次，避免 renderTopbar / renderNav 反复重建时叠加重复监听。
+  function wireBrand() {
+    const b = $('brand-logo');
+    if (!b) return;
+    b.addEventListener('click', function () {
+      const st = S();
+      if (st && st.me && st.me.admin) window.open('admin.html', '_blank', 'noopener');
+    });
+  }
+  // 管理员才挂 brand-admin（CSS 据此给出手型光标），普通玩家移除；幂等，可在每次渲染时调用
+  function syncBrandAdmin() {
+    const b = $('brand-logo');
+    if (!b) return;
+    b.classList.toggle('brand-admin', !!(S().me && S().me.admin));
   }
 
   // ---- 顶栏状态 ----
   function renderTopbar() {
     const p = S().player;
     const st = S();
+    syncBrandAdmin();   // 登录账号是管理员时给品牌挂 brand-admin（CSS 出光标）
     const statusText = p.status === 'fishing' ? '正在钓鱼' : (p.groundId ? '空闲' : '未出发');
     const loc = p.groundId
       ? (function () {
@@ -535,7 +507,7 @@ window.UI = (function () {
     if (!connOk()) {
       chips.push({ cls: ' meta-btn conn-off', tip: '与服务器的实时连接已断开，正在自动重连；期间显示的数据可能不是最新。服务器若已更新，重连后会自动刷新到新版本。', view: '', html: '<span class="meta-txt">⚠ 连接断开 · 重连中</span>' });
     }
-    chips.push({ cls: ' meta-btn coins', tip: '金币余额', view: '', html: '<span class="meta-txt">💰 ' + p.coins + '</span>' });
+    chips.push({ cls: ' meta-btn coins', tip: '金币余额 · 点击打开商城', view: 'mall', html: '<span class="meta-txt">💰 ' + p.coins + '</span>' });
     const status = $('player-status');
     const chipsHtml = chips.map(function (c) {
       // 保留原有 .meta 类（顶栏配色与像素主题都挂在它上面），再叠加 .meta-btn 表示可点击
@@ -3328,7 +3300,7 @@ window.UI = (function () {
   let invSubRar = 'all';
   let invPart = 'all';
   let invAffixType = 'all';
-  let invAffixCount = 'all';   // 组件词条数量筛选：all / 0(无词条) / 1 / 2 / 3 / 4 / 4p(4条+)
+  let invAffixCount = 'all';   // 组件词条数量筛选：all / 0(无词条) / 1 / 2 / 3 / 4p(4条及以上)
   let invAffixMin = '';
   let invAffixMax = '';
   let invOpen = {};          // 组件按底材名分组的展开状态（{ baseId: true }）
@@ -3737,8 +3709,8 @@ window.UI = (function () {
     const box = el('div', 'modal-box codex-modal comp-modal');
     const pool = meta.pool || [];
     const rowsHtml = (meta.affixes || []).map(function (a) {
-      const p = pool.find(function (x) { return x.type === a.type; });
-      const rng = p ? (D.affixRangeOf ? D.affixRangeOf(meta.baseId, p) : [p.min, p.max]) : null;
+      // 区间按词缀自带范围来源解析（熔炼搬来的副件区间 / 催化 / 突破同服务端口径）
+      const rng = affixRangeIn(meta, a);
       const q = rng ? Math.max(0, Math.min(100, Math.round(100 * (a.value - rng[0]) / Math.max(1, rng[1] - rng[0])))) : null;
       return '<div class="cm-aff-row"><span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + '">' + esc(affixText(a)) + '</span>' +
         (rng ? '<span class="aff-rng">区间 ' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%</span>' +
@@ -3790,7 +3762,7 @@ window.UI = (function () {
       // 二级：词条数量 + 词条类型 + 数值范围
       const affRow = el('div', 'inv-subrow');
       // 词条数量筛选（放在「词条类型」筛选左侧，与部位 / 词条类型叠加生效）
-      const countOpts = [['all', '全部'], ['0', '无词条'], ['1', '1条'], ['2', '2条'], ['3', '3条'], ['4', '4条'], ['4p', '4条+']];
+      const countOpts = [['all', '全部'], ['0', '无词条'], ['1', '1条'], ['2', '2条'], ['3', '3条'], ['4p', '4+条']];
       const countWrap = el('span', 'aff-count-wrap');
       countWrap.appendChild(el('span', 'sub-label', '词条数'));
       countOpts.forEach(function (kv) {
@@ -4116,7 +4088,7 @@ window.UI = (function () {
       if (it.id === D.SMELT_PEARL) return '熔炼催化剂：让熔炼的每条词条 roll 两次、取更靠近区间边界的那次。';
       const aff = D.smeltMaterialAffix(it.id);
       if (aff) {
-        return '熔炼投料 → 定向补「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀' +
+        return '熔炼催化剂 → 定向补「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀' +
           (it.id === 'relic' ? '；另用于合成宝匣、工坊残片保留与重铸。' : '。');
       }
       return qualityName(it) + '材料 · 可在系统商店出售，或挂到开放市集。';
@@ -4150,12 +4122,12 @@ window.UI = (function () {
       const aff = D.smeltMaterialAffix && D.smeltMaterialAffix(it.id);
       if (it.id === D.SMELT_PEARL) out.push('熔炼：作为催化剂（每件熔炼至多 1 个），让每条词条 roll 两次取更靠近边界的值');
       else if (aff) {
-        out.push('熔炼投料：对应「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀 —— 投得最多的那种材料决定补哪条，每份 ' +
+        out.push('熔炼催化剂：对应「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀 —— 投得最多的那种材料决定补哪条，每份 ' +
           (cfg.extraRatePerMaterial || 0) + '% 补缀率、失败率 ' + (cfg.failPerMaterial || 0) + '%');
       }
       if (it.id === 'relic') {
         out.push('宝匣：合成各档宝匣的主材料（' + (D.CHESTS || []).map(function (c) { return c.name + ' ' + c.costRelic + ' 片'; }).join(' · ') + '）');
-        out.push('熔炼：残片保留（每片 ' + (cfg.retainPerRelic || 0) + '% 概率按原值保留池外词缀）+ 重铸（洗词条数值）');
+        out.push('熔炼：残片保留（按后台公式 ' + (cfg.retainFormula || '?') + ' 计算每片保留池外词缀的概率）+ 重铸（洗词条数值）');
       }
       out.push('出售 / 挂单：系统商店 ' + (it.price || 0) + '💰，也可挂到开放市集');
     }
@@ -4318,7 +4290,6 @@ window.UI = (function () {
           if (invAffixCount === '1' && n !== 1) return false;
           if (invAffixCount === '2' && n !== 2) return false;
           if (invAffixCount === '3' && n !== 3) return false;
-          if (invAffixCount === '4' && n !== 4) return false;
           if (invAffixCount === '4p' && n < 4) return false;
         }
         if (invAffixType === 'all' && invAffixMin === '' && invAffixMax === '') return true;
@@ -4991,13 +4962,16 @@ window.UI = (function () {
     });
     return '<select class="bulk-select" id="chest-target">' + opts.join('') + '</select>';
   }
-  // 词缀后括号里的数值区间：池内取底材区间，池外按词缀自己的范围来源（突破/催化）
+  // 词缀后括号里的数值区间：来源优先（熔炼搬来的副件区间 / 催化 / 突破按词缀自带来源取），
+  // 只有来源就是该底材本身（或没有来源）时才用底材区间
   function chestAffixRange(meta, a) {
-    if (a.extra) {
-      const r = D.affixSrcRangeOf ? D.affixSrcRangeOf(a.src, a.type, meta && meta.part) : null;
-      return r ? rangeText({ min: r[0], max: r[1] }) : '';
-    }
+    if (!a) return '';
     const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
+    const src = a.src;
+    if (src && !(pool && src === meta.baseId) && D.affixSrcRangeOf) {
+      const r = D.affixSrcRangeOf(src, a.type, meta && meta.part);
+      if (r) return rangeText({ min: r[0], max: r[1] });
+    }
     if (!pool) return '';
     const rng = D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max];
     return rangeText({ min: rng[0], max: rng[1] });
@@ -5204,18 +5178,20 @@ window.UI = (function () {
   // 熔炼：主件 + 副件（**必须同部位**）各选一条词条 → 熔炼成功后主件的词条就是这两条，并重新 roll 数值；
   //   v0.11.5 起**副件连区间一起提供**：副件搬来的词缀按副件自己的底材区间取值（副件本身是突破件、
   //   该词缀在副件池外时按池外区间）；后台可关掉该行为，回退「主件池内按主件区间」的旧规则。
-  //   可选投料：补一条熔炼结果还没有的词缀——默认**不受主件底材池限制**（可取全部 6 类词缀里没有的那些），
+  //   可选催化剂（旧称投料）：补一条熔炼结果还没有的词缀——默认**不受主件底材池限制**（可取全部 6 类词缀里没有的那些），
   //   补缀后词条数上限默认 3（越过品质上限与池长）；补缀词缀默认按**池外（突破）区间**取值，
   //   与宝匣突破件同一套区间（后台「池外词缀数值区间」改动即时生效）。以上三项都可在后台「⚒ 工坊配置」调整。
   //   可选龙宫宝珠：roll 值改为掷两次取靠近区间边界的那次（与海王遗匣同一规则）。
   //   可选残片保留（v0.11.3，仅海王遗匣产出的神话主件）：投至多 10 片沉船宝匣残片，成功时按概率
-  //     （每片 10%，10 片必中）把主件的池外（突破）词缀原值保留到结果上；残片不计入投料 → 不改成功率与花费。
-  //   失败（v0.11.3 起）：副件 / 投料 / 残片熔毁、金币花掉，主件被熔掉**选中的那条词条**（其余词条与品质保留）。
+  //     （每片概率由后台公式按主件突破词缀条数算，默认 10 - 突破数×0.5，见 D.retainChancePerRelic）
+  //     把主件的池外（突破）词缀原值保留到结果上；残片不计入催化剂 → 不改成功率与花费。
+  //   失败（v0.11.3 起）：副件 / 催化剂 / 残片熔毁、金币花掉，主件被熔掉**选中的那条词条**（其余词条与品质保留）；
+  //     但若投入了残片，主件选中的词条在失败时也受保护（服务端回传 protectedAffix）。
   // 重铸：把宝匣产出的**神话**组件放进去，用沉船宝匣残片重 roll 全部词条的数值（类型与条数不变）。
   //   成功率和花费都由后台「⚒ 工坊配置」决定，服务器权威。
   let wsTab = 'smelt';          // 'open' | 'smelt' | 'recast'（'open' = 原宝匣合成页并入的开箱页签）
   let wsMain = '', wsSub = '', wsMainAffix = '', wsSubAffix = '', wsPearl = false;
-  let wsMats = {};              // { 材料id: 份数 }（投料草稿，重绘间保留）
+  let wsMats = {};              // { 材料id: 份数 }（催化剂草稿，重绘间保留）
   let wsRelics = 0;             // 残片保留：投入的沉船宝匣残片片数（0 ~ smeltCfg.retainMaxRelic）
   let wsRecast = '';            // 重铸选中的组件签名
 
@@ -5276,17 +5252,22 @@ window.UI = (function () {
   // 残片保留信息（只对海王遗匣产出的神话主件开放，判据与「重铸」一致 = 神话品质）
   //   eligible：主件是神话件且**确实带池外（突破）词缀**——没有可保留的词条时投入残片没有意义
   //   cap：还能投入几片（后台上限与背包持有量取小）；qty：当前草稿夹紧后的片数
+  //   bt：主件的池外（突破）词缀条数 —— 每片保留概率由后台公式算（默认 10 - bt×0.5），突破越多越难保留
   function wsRetainInfo(comp) {
     const cfg = D.getSmeltCfg();
     const max = Math.max(0, Math.floor(Number(cfg.retainMaxRelic) || 0));
-    const per = Math.max(0, Number(cfg.retainPerRelic) || 0);
     const meta = comp && comp.meta;
     const affixes = meta ? D.smeltExtraAffixesOf(meta.baseId, meta.affixes) : [];
     const eligible = !!(meta && D.canRecast(meta) && affixes.length > 0);
+    const bt = affixes.length;
+    const per = D.retainChancePerRelic(bt);
     const have = S().inventory.relic || 0;
     const cap = Math.max(0, Math.min(max, have));
     const qty = eligible ? Math.max(0, Math.min(cap, Math.floor(wsRelics) || 0)) : 0;
-    return { eligible: eligible, max: max, per: per, affixes: affixes, have: have, cap: cap, qty: qty, chance: D.smeltRetainChance(qty) };
+    return {
+      eligible: eligible, max: max, per: per, bt: bt, formula: cfg.retainFormula || '', affixes: affixes,
+      have: have, cap: cap, qty: qty, chance: D.smeltRetainChance(qty, bt),
+    };
   }
   function wsPlan() {
     const cfg = D.getSmeltCfg();
@@ -5310,13 +5291,13 @@ window.UI = (function () {
     else if (!wsSubAffix) error = '请选择副件上要搬运的词条';
     else if (wsMainAffix === wsSubAffix) error = '主副选中的词条类型不能相同';
     else if (load.total > Number(cfg.maxMaterials)) {
-      error = '投料最多 ' + cfg.maxMaterials + ' 份（当前 ' + load.total + ' 份），请减少份数';
+      error = '催化剂最多 ' + cfg.maxMaterials + ' 份（当前 ' + load.total + ' 份），请减少份数';
     } else if (Object.keys(load.byAffix).length > Number(cfg.maxTypes)) {
-      error = '投料最多 ' + cfg.maxTypes + ' 种（当前 ' + Object.keys(load.byAffix).length + ' 种），请清空多余材料';
+      error = '催化剂最多 ' + cfg.maxTypes + ' 种（当前 ' + Object.keys(load.byAffix).length + ' 种），请清空多余材料';
     } else if (load.total > 0) {
       const addable = D.smeltAddableAffixes(mainC.meta.baseId, [wsMainAffix, wsSubAffix]);
       if (addable.indexOf(load.dominant) < 0) {
-        error = '投料对应「' + (D.AFFIX_LABEL[load.dominant] || load.dominant) + '」，但熔炼结果里已经有这条词缀了';
+        error = '催化剂对应「' + (D.AFFIX_LABEL[load.dominant] || load.dominant) + '」，但熔炼结果里已经有这条词缀了';
       } else if (2 + 1 > addCap) {
         error = '补缀后词条数会超过上限（' + addCap + ' 条），可在后台「⚒ 工坊配置」调整';
       }
@@ -5361,9 +5342,9 @@ window.UI = (function () {
     return '<li>' + esc(D.AFFIX_LABEL[type] || type) + '：<span class="muted">' + esc(wsRangeNote(re, kind)) +
       '</span> <b>' + esc(rangeText({ min: re.range[0], max: re.range[1] })) + '%</b></li>';
   }
-  // 投料区按规则过滤（服务端 smelt 校验的同一套判据，见 data.js 的 smeltAddableAffixes）：
+  // 催化剂区按规则过滤（服务端 smelt 校验的同一套判据，见 data.js 的 smeltAddableAffixes）：
   //   主副各选一条词条后，熔炼结果就是这两条 → 只有「结果里还没有」的词缀才补得进去，其余材料直接不显示；
-  //   顺带按上限判断（补缀后 2+1 条不得超过 addAffixCap），超限时整个投料区都不可用。
+  //   顺带按上限判断（补缀后 2+1 条不得超过 addAffixCap），超限时整个催化剂区都不可用。
   //   两条词条没选完时规则未定，仍然全列出来，免得还没选就被藏掉选项。
   // 被隐藏的材料连同已填份数一起清掉：否则会留下「看不见却仍在投」的份数，到熔炼时才报错。
   function wsFitMaterials() {
@@ -5388,7 +5369,7 @@ window.UI = (function () {
     });
     if (note) {
       note.textContent = !known ? ''
-        : (!capOk ? '⚠ 当前补缀上限为 ' + D.smeltAddAffixCap() + ' 条，主副两条词条已占满，本次投料补不进任何词缀（可在后台「⚒ 工坊配置」调整）'
+        : (!capOk ? '⚠ 当前补缀上限为 ' + D.smeltAddAffixCap() + ' 条，主副两条词条已占满，本次催化剂补不进任何词缀（可在后台「⚒ 工坊配置」调整）'
           : (hidden ? '已按所选词条过滤：只显示这次补得进去的材料（' + hidden + ' 种材料对应的词缀已经在熔炼结果里）' : ''));
     }
   }
@@ -5407,24 +5388,27 @@ window.UI = (function () {
     }
     const rr = p.ranges || {};
     const extra = p.extraType
-      ? '<div class="ws-line">补缀：<b>' + esc(D.AFFIX_LABEL[p.extraType] || p.extraType) + '</b>（投料 ' + p.load.total +
+      ? '<div class="ws-line">补缀：<b>' + esc(D.AFFIX_LABEL[p.extraType] || p.extraType) + '</b>（催化剂 ' + p.load.total +
         ' 份）· 成功率 <b>' + p.rates.extraRate + '%</b>' +
         (rr.add ? ' · ' + esc(wsRangeNote(rr.add, 'add')) + ' <b>' + esc(rangeText({ min: rr.add.range[0], max: rr.add.range[1] })) + '%</b>' : '') +
         '</div>'
-      : '<div class="ws-line muted">未投料：熔炼后主件只有选中的两条词条</div>';
+      : '<div class="ws-line muted">未投入催化剂：熔炼后主件只有选中的两条词条</div>';
     // 残片保留：只在主件是海王遗匣神话件（且带池外词缀）时出现
+    //   每片概率与总概率都由后台公式按主件的突破词缀条数算（突破越多越难保留），这里把条数一起点出来
     const rt = p.retain;
     const retainLine = rt.eligible
       ? '<div class="ws-line">🛡 残片保留 <b>' + rt.qty + '</b> / ' + rt.max + ' 片（持有 ' + rt.have + '）' +
         ' · 保留池外词缀概率 <b class="ok">' + rt.chance + '%</b>' +
-        '<span class="hint">（每片 ' + rt.per + '%，成功后保留下面的词条原值；残片不计入投料，不影响成功率与花费）</span></div>' +
+        '<span class="hint">（主件 ' + rt.bt + ' 条突破词缀 → 每片 ' + rt.per + '%' +
+        (rt.formula ? '，公式：' + esc(rt.formula) : '') + '；成功后保留下面的词条原值；' +
+        '残片不计入催化剂，不影响成功率与花费）</span></div>' +
         '<div class="ws-line muted">可保留的池外词缀：' +
         rt.affixes.map(function (a) { return esc(affixText(a)); }).join(' · ') + '</div>'
       : '';
     panel.innerHTML =
       '<div class="ws-line">熔炼成功率 <b class="ok">' + p.rates.rate + '%</b>' +
       ' · 失败率 <b class="err">' + p.rates.failRate + '%</b>' +
-      '（失败损失副件 / 投料 / 残片，且主件被熔掉选中的那条词条）</div>' +
+      '（失败损失副件 / 催化剂 / 残片，且主件被熔掉选中的那条词条）</div>' +
       extra + retainLine +
       '<div class="ws-line">花费 <b class="' + (canGold ? '' : 'err') + '">' + p.gold + '💰</b>' +
       (rt.qty > 0 ? ' · 另有 ' + rt.qty + ' 片沉船宝匣残片' : '') +
@@ -5502,8 +5486,9 @@ window.UI = (function () {
     const rt = wsRetainInfo(mainC);
     // 残片保留：只在主件是「海王遗匣产出的神话件 + 带池外词缀」时出现（否则显一行灰字说明为何没有）
     const retainRow = rt.eligible
-      ? '<h3>🛡 残片保留（可选）<span class="hint">成功后按概率保留下主件的池外词缀（突破/催化），每片残片 ' + rt.per +
-        '%，' + rt.max + ' 片即必中</span></h3>' +
+      ? '<h3>🛡 残片保留（可选）<span class="hint">成功后按概率保留下主件的池外词缀（突破/催化）；' +
+        '主件 ' + rt.bt + ' 条突破词缀 → 每片残片 ' + rt.per + '%' +
+        (rt.formula ? '（公式：' + esc(rt.formula) + '）' : '') + '，最多投入 ' + rt.max + ' 片</span></h3>' +
         '<label class="ws-pearl"><input type="checkbox" id="ws-relic-on"' + (rt.qty > 0 ? ' checked' : '') + ' /> ' +
         '🛡 放入 <b>沉船宝匣残片</b>（持有 <span data-have="relic">' + rt.have + '</span>）· 不影响熔炼成功率与花费</label>' +
         '<div class="ws-relic-row" id="ws-relic-row"' + (rt.qty > 0 ? '' : ' style="display:none"') + '>' +
@@ -5523,13 +5508,13 @@ window.UI = (function () {
     body.innerHTML =
       '<div class="ws-help">词缀分<b>池内词缀</b>与<b>池外词缀</b>两类：池外词缀目前有<b>突破词缀</b>（宝匣开出）和<b>催化词缀</b>（材料催化产生）。' +
       '熔炼：放两件<b>同部位</b>组件——<b>主件保留、副件熔毁</b>，各选一条词条熔成两条并重 roll 数值（副件词条连区间一起熔入）。' +
-      '投料可为主件再补一条词缀，按<b>池外</b>区间取值；主件是海王遗匣神话件时，残片可在成功时保留其<b>突破词缀</b>。' +
+      '催化剂可为主件再补一条词缀，按<b>池外</b>区间取值；主件是海王遗匣神话件时，残片可在成功时保留其<b>突破词缀</b>。' +
       '加入龙宫宝珠可 roll 两次、取更靠区间边界的值。</div>' +
       '<div class="ws-grid">' +
       wsCompCardHtml('main', mainC, '点上方按钮打开组件选择窗口（与钓竿配置的「装备组件」同一个子页面）') +
       wsCompCardHtml('sub', subC, mainC ? '副件必须与主件同部位（' + esc(partNameOf(mainC.part)) + '）' : '先选主件，再选同部位的副件') +
       '</div>' +
-      '<h3>🧵 投料（可选）<span class="hint">每种材料对应一个词缀；投料份数最多的那种材料决定要补的词缀' +
+      '<h3>🧵 催化剂（可选）<span class="hint">每种材料对应一个词缀；催化剂份数最多的那种材料决定要补的词缀' +
       '（可补熔炼结果还没有的<b>任意</b>词缀，数值按催化区间取值）</span></h3>' +
       '<div class="ws-mat-grid" id="ws-mats">' + (function () {
         const mats = (st.workshop && st.workshop.materials) || [];
@@ -5547,8 +5532,7 @@ window.UI = (function () {
             '<span class="wm-quick">' +
             '<button type="button" class="mini wm-q" data-q="1">+1</button>' +
             '<button type="button" class="mini wm-q" data-q="5">+5</button>' +
-            '<button type="button" class="mini wm-q" data-q="all" title="投入全部持有量（不超过持有数）">全部</button>' +
-            '<button type="button" class="mini wm-q" data-q="0">清空</button>' +
+            '<button type="button" class="mini wm-q" data-q="0" title="清空该材料的份数">清空</button>' +
             '</span></label>';
         }).join('');
       })() + '</div>' +
@@ -5578,7 +5562,7 @@ window.UI = (function () {
         wsRefreshPreview();
       });
     });
-    // 投料快捷份数按钮：+1 / +5 / 全部 / 清空（大量投料不用再手打数字）
+    // 催化剂快捷份数按钮：+1 / +5 / 清空（大量投入不用再手打数字）
     body.querySelectorAll('.wm-q').forEach(function (b) {
       b.addEventListener('click', function (ev) {
         ev.preventDefault(); ev.stopPropagation(); // 在 <label> 里，别让点击穿透到输入框
@@ -5588,8 +5572,10 @@ window.UI = (function () {
         const inp = row.querySelector('.ws-mat-qty');
         const have = S().inventory[id] || 0;
         const q = b.getAttribute('data-q');
-        let v = q === 'all' ? have : (Number(q) || 0) + (Number(wsMats[id]) || 0);
-        v = Math.max(0, Math.min(have, Math.floor(v)));
+        const cur = Number(wsMats[id]) || 0;
+        // 清空（data-q="0"）：直接归零，不再叠加当前份数；+1 / +5 在现有份数上累加。
+        // 注意 Number('0') || 0 === 0，旧写法会让「清空」变成「不动」，这里单独判 q。
+        const v = q === '0' ? 0 : Math.max(0, Math.min(have, Math.floor(cur + (Number(q) || 0))));
         if (v > 0) wsMats[id] = v; else delete wsMats[id];
         if (inp) inp.value = v;
         wsRefreshPreview();
@@ -5606,7 +5592,7 @@ window.UI = (function () {
         $('ws-relic-qty').addEventListener('input', function () {
           wsRelics = Math.max(0, Math.min(rt.cap, Math.floor(Number(this.value) || 0)));
           const box = $('ws-relic-chance');
-          if (box) box.textContent = '保留概率 ' + D.smeltRetainChance(wsRelics) + '%';
+          if (box) box.textContent = '保留概率 ' + D.smeltRetainChance(wsRelics, rt.bt) + '%';
           wsRefreshPreview();
         });
       }
@@ -5628,7 +5614,7 @@ window.UI = (function () {
           '%</b> 概率保留池外（突破）词缀（' + p.retain.affixes.map(function (a) { return esc(D.AFFIX_LABEL[a.type] || a.type); }).join(' / ') +
           '）；残片不改变成功率与花费。' : '') + '<br/>' +
         '熔炼成功率 <b>' + p.rates.rate + '%</b>' + (p.extraType ? '，补缀成功率 <b>' + p.rates.extraRate + '%</b>' : '') +
-        (p.pearl ? '，使用 🐚 龙宫宝珠' : '') + '。<br/>失败损失副件 / 投料 / 残片，且主件被熔掉选中的那条词条（其余词条保留）。',
+        (p.pearl ? '，使用 🐚 龙宫宝珠' : '') + '。<br/>失败损失副件 / 催化剂 / 残片，且主件被熔掉选中的那条词条（其余词条保留）。',
     }).then(function (ok) {
       if (!ok) return;
       Promise.resolve(window.Net.smelt({
@@ -5663,8 +5649,13 @@ window.UI = (function () {
               : ' 🛡 残片保留未命中（' + d.relics + ' 片 / ' + d.retainChance + '%）：池外词缀本次丢失，残片已消耗。')
             : '') + '</div>'
         : '')
-      : '<div class="cr-fail">💥 熔炼失败：副件 / 投料 / 残片已熔毁，主件被熔掉选中的那条词条。</div>' +
-        (d.mainAfter
+      : '<div class="cr-fail">💥 熔炼失败：副件 / 催化剂 / 残片已熔毁' +
+        (d.protectedAffix ? '；主件选中的词条已被残片保护。' : '，主件被熔掉选中的那条词条。') + '</div>' +
+        // 投入残片且失败：protectedAffix = true 表示主件选中的词条因残片保护而未被熔毁
+        (d.protectedAffix
+          ? '<div class="hint" style="margin:6px 0 2px">🛡 投入残片：主组件选中的词条在失败时已被保护（未被熔毁）</div>'
+          : '') +
+        (!d.protectedAffix && d.mainAfter
           ? '<div class="hint" style="margin:6px 0 2px">熔毁的是「' + esc(D.AFFIX_LABEL[d.removedAffix] || d.removedAffix) +
             '」，主件剩余词条与品质保留：</div>' + chestItemCardHtml(d.mainAfter)
           : '');
@@ -5727,10 +5718,10 @@ window.UI = (function () {
           '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
           '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + ' 词条 · 基准价 ' + eligible.price + '💰</span>' +
           '<span class="ws-pick-change">更换</span></button>' +
-          '<div class="ws-affs">' + eligible.affixes.map(function (a) {
+          '<div class="ws-affs ws-affs-lines">' + eligible.affixes.map(function (a) {
             const rng = affixRangeIn(eligible, a);
             return affSpanOpen(a) + esc(affixText(a)) +
-              (rng ? '<span class="ws-aff-rng">' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%</span>' : '') + '</span>';
+              (rng ? '<span class="ws-aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '') + '</span>';
           }).join('') + '</div>'
         : '<button class="ws-pick empty" data-recast-pick="1">＋ 点击选择组件</button>' +
           '<div class="hint">只有' + esc(info.qualityName) + '品质（宝匣产出）的组件可以重铸；背包里没有符合条件的组件时会列不出来。</div>') +
@@ -5809,7 +5800,7 @@ window.UI = (function () {
       if (box && box.textContent !== '持有 ' + n) box.textContent = '持有 ' + n;
       const need = Number(lab.getAttribute('data-need')) || 0;
       lab.classList.toggle('none', need > 0 ? n < need : n <= 0);
-      const qty = lab.querySelector('.ws-mat-qty');   // 持有量归零时禁用投料框（与首次渲染一致）
+      const qty = lab.querySelector('.ws-mat-qty');   // 持有量归零时禁用催化剂输入框（与首次渲染一致）
       if (qty && qty.disabled !== (n <= 0)) qty.disabled = n <= 0;
     });
     main.querySelectorAll('[data-have]').forEach(function (sp) {
@@ -6579,7 +6570,7 @@ window.UI = (function () {
     $('auth-submit').textContent = reg ? '注册' : '登录';
     $('auth-msg').textContent = '';
   }
-  function showAuth() { $('auth').style.display = 'flex'; }
+  function showAuth() { $('auth').style.display = 'flex'; syncBrandAdmin(); }
   // 顶号/会话失效：回到登录界面并提示原因
   function forceLogout(msg) {
     currentView = 'fishing';
@@ -6732,7 +6723,7 @@ window.UI = (function () {
       return;
     }
     // 工坊：纯资产广播（上鱼 / 售出只改背包与金币）原地更新「持有」数字与预览，
-    // 不整页重建——正在填的投料份数、输入焦点与光标都不受影响。
+    // 不整页重建——正在填的催化剂份数、输入焦点与光标都不受影响。
     if (currentView === 'workshop' && scope === 'assets' && wsPatchAssets()) {
       renderTopbar(); renderNav();
       return;
@@ -6760,6 +6751,7 @@ window.UI = (function () {
 
   function init() {
     wireAuth();
+    wireBrand();   // 顶栏品牌 → 管理后台（仅管理员；只绑一次）
     // 启动前先做版本守卫：服务器版本与本地前端不一致时带缓存参数强刷（避免旧缓存进不去新版页面）
     const boot = (window.Net && window.Net.guardVersion) ? window.Net.guardVersion() : Promise.resolve(false);
     boot.then(function (reloading) {
@@ -6820,7 +6812,7 @@ window.UI = (function () {
   return {
     init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
     toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners, onBannerStop: onBannerStop,
-    addLog: addLog, onSubAlert: onSubAlert, resetBanners: resetBanners, onUpdate: onUpdate,
+    addLog: addLog, onSubAlert: onSubAlert, resetBanners: resetBanners,
     renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,
     onConnChange: onConnChange,
     getView: function () { return currentView; },

@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.12.4';
+  const VERSION = 'v0.13.0';
   const BUILD = '2026-09-16';
 
   // ---- 渔获定义 ----
@@ -111,8 +111,10 @@
   // 组件词缀共 6 类；其中「技巧」曾叫「大鱼概率」（v0.11 改名并改语义）：
   //   旧「大鱼概率」词缀直接提高大型鱼掉落权重，与钓点增益/产出倍率重复且无法表达钓技；
   //   新「技巧」是**上钩率公式的一个变量**（skill），钩率由后台公式决定，代码里不写死任何提示。
+  // 注：`rare` 曾叫「稀有概率」（放大稀有档渔获权重），v0.13 改名「稀有度」并改成
+  // 「压低普通品质物品权重」——生成战利品时普通品质条目的权重乘以 K/(K+R)（R = 稀有度，K 后台可配）。
   const AFFIX_LABEL = {
-    speed: '钓速', skill: '技巧', rare: '稀有概率',
+    speed: '钓速', skill: '技巧', rare: '稀有度',
     material: '材料概率', size: '体型', double: '双钓概率',
   };
   // 钓点增益比组件词缀**多一类**「大鱼概率」：增益是钓场/钓点级别的产出倍率，
@@ -326,9 +328,13 @@
   function typeOfCode(code) { return CODE_TO_TYPE[code] || code; }
   // 词缀 token：code+value，范围来源不是底材本身时追加 @src（src = 底材id / 'bt' / 'ct'）。
   // 池内词缀省略 @（默认来源 = 所属底材），保证普通组件签名与旧版完全一致、无需迁移。
+  // srcExplicit === false 表示 src 是**解析时推断**出来的（旧 token 没有 @）：推断结果只用于
+  // 「按谁的区间 roll 值」，绝不写回签名 —— 否则「数值超出本底材区间」的旧件会被改写成带 @src 的
+  // 另一个字符串，破坏「规范签名是稳定的（instanceOf→instanceId 幂等）」这一前提，
+  // 导致按字符串比较 id 的地方（自动配装、槽位、市集挂单）认不出同一件组件。
   function affixToken(a, baseId) {
     let t = codeOf(a.type) + (a.value >= 0 ? '+' : '') + a.value;
-    if (a.src && a.src !== baseId) t += '@' + a.src;
+    if (a.src && a.src !== baseId && a.srcExplicit !== false) t += '@' + a.src;
     return t;
   }
   // 按底材池顺序规范化词缀，保证同内容 → 同签名
@@ -360,17 +366,41 @@
         const m = AFFIX_CODE_RE.exec(tok);
         if (!m) return null;
         const type = typeOfCode(m[1]);
-        // 范围来源：token 显式携带 @src 时直接用；旧 token（无 @）按底材池推断——
-        // 池内 = 底材本身，池外 = 突破（'bt'），与旧版取值口径一致，解析即完成迁移。
-        affixes.push({ type: type, value: parseInt(m[2], 10), src: m[3] || inferAffixSrc(base, type) });
+        const value = parseInt(m[2], 10);
+        // 范围来源：token 显式携带 @src 时直接用（srcExplicit = true，参与签名）；
+        // 旧 token（无 @）按底材池 + 数值**推断**（srcExplicit = false）——推断结果只影响取值区间，
+        // 不会被写回签名，见 affixToken 的注释。
+        if (m[3]) affixes.push({ type: type, value: value, src: m[3], srcExplicit: true });
+        else affixes.push({ type: type, value: value, src: inferAffixSrc(base, type, value), srcExplicit: false });
       }
     }
     return { baseId: base.id, quality: parts[1], affixes: affixes };
   }
-  // 旧词缀（无 @src token）的范围来源推断：该类型在底材池内 → 底材本身；否则 → 突破区间
-  function inferAffixSrc(base, type) {
-    if (base && base.pool.some(function (p) { return p.type === type; })) return base.id;
-    return 'bt';
+  // 旧词缀（无 @src token）的范围来源推断。v0.13 起把**数值**也纳入判据，修复「熔炼把副件词缀
+  // 搬进主件、但存档里没记来源」的旧件：这类词缀的数值往往落在主件底材区间之外，而旧版只看
+  // 「词缀类型是否在池内」就判定为底材，导致它后续重铸/重 roll 时仍按主件的区间取值。
+  //   类型不在池内            → 'bt'（池外，突破区间）
+  //   数值落在底材区间内      → 底材本身（正常池内词缀，行为不变）
+  //   数值在底材区间之外      → 找同部位里区间能容纳它的底材（即当初搬来它的附件），命中就用那个
+  //                              底材的区间；找不到容得下它的底材时维持底材本身，避免把一条本来
+  //                              合法的数值改判到更差的区间上。
+  function inferAffixSrc(base, type, value) {
+    if (!base) return 'bt';
+    const slot = base.pool.find(function (p) { return p.type === type; });
+    if (!slot) return 'bt';
+    if (value == null) return base.id;
+    const v = Number(value);
+    if (!isFinite(v)) return base.id;
+    const own = affixRangeOf(base.id, slot);
+    if (v >= own[0] && v <= own[1]) return base.id;
+    for (const b of COMPONENT_BASES) {
+      if (b.part !== base.part || b.id === base.id) continue;
+      const s = b.pool.find(function (p) { return p.type === type; });
+      if (!s) continue;
+      const r = affixRangeOf(b.id, s);
+      if (v >= r[0] && v <= r[1]) return b.id;
+    }
+    return base.id;
   }
   function isInstance(id) { return instanceOf(id) !== null; }
 
@@ -657,6 +687,90 @@
     return genComponent(base.id, rollComponentQuality());
   }
 
+  // ---- 通用公式求值器（前后端共用；递归下降解析，不使用 eval）----
+  // 支持 + - * / % 、括号、一元正负号、数字字面量、变量与函数调用。
+  // varNames 给出允许出现的变量名（其余标识符一律编译报错），函数固定为下面这一组。
+  // 返回 { ok: true, fn(vars) } 或 { error }；fn 只做纯算术，调用方负责夹紧取值范围。
+  const EXPR_FUNCS = {
+    min: Math.min, max: Math.max, floor: Math.floor, ceil: Math.ceil, round: Math.round, abs: Math.abs,
+    clamp: function (x, lo, hi) { return Math.min(hi, Math.max(lo, x)); },
+  };
+  function compileExpr(src, varNames) {
+    const s = String(src == null ? '' : src).trim();
+    const vars = Array.isArray(varNames) ? varNames : [];
+    if (!s) return { error: '公式不能为空' };
+    let i = 0;
+    function ws() { while (i < s.length && /\s/.test(s[i])) i++; }
+    function parseExpr() {
+      let f = parseTerm();
+      for (;;) {
+        ws();
+        if (s[i] === '+') { i++; const a = f, b = parseTerm(); f = function (v) { return a(v) + b(v); }; }
+        else if (s[i] === '-') { i++; const a = f, b = parseTerm(); f = function (v) { return a(v) - b(v); }; }
+        else return f;
+      }
+    }
+    function parseTerm() {
+      let f = parseFactor();
+      for (;;) {
+        ws();
+        if (s[i] === '*') { i++; const a = f, b = parseFactor(); f = function (v) { return a(v) * b(v); }; }
+        else if (s[i] === '/') { i++; const a = f, b = parseFactor(); f = function (v) { return a(v) / b(v); }; }
+        else if (s[i] === '%') { i++; const a = f, b = parseFactor(); f = function (v) { return a(v) % b(v); }; }
+        else return f;
+      }
+    }
+    function parseFactor() {
+      ws();
+      if (s[i] === '-') { i++; const a = parseFactor(); return function (v) { return -a(v); }; }
+      if (s[i] === '+') { i++; return parseFactor(); }
+      if (s[i] === '(') {
+        i++;
+        const a = parseExpr();
+        ws();
+        if (s[i] !== ')') throw new Error('缺少右括号');
+        i++;
+        return a;
+      }
+      const num = /^[0-9]*\.?[0-9]+/.exec(s.slice(i));
+      if (num) { i += num[0].length; const n = parseFloat(num[0]); return function () { return n; }; }
+      const idm = /^[A-Za-z_][A-Za-z0-9_]*/.exec(s.slice(i));
+      if (!idm) throw new Error('第 ' + (i + 1) + ' 个字符无法识别');
+      const name = idm[0];
+      i += name.length;
+      ws();
+      if (s[i] === '(') {
+        const fn = EXPR_FUNCS[name];
+        if (!fn) throw new Error('未知函数：' + name);
+        i++;
+        const args = [];
+        ws();
+        if (s[i] !== ')') {
+          for (;;) {
+            args.push(parseExpr());
+            ws();
+            if (s[i] === ',') { i++; ws(); continue; }
+            break;
+          }
+        }
+        if (s[i] !== ')') throw new Error('函数 ' + name + ' 缺少右括号');
+        i++;
+        return function (v) { return fn.apply(null, args.map(function (a) { return a(v); })); };
+      }
+      if (vars.indexOf(name) < 0) throw new Error('未知变量：' + name);
+      return function (v) { return Number(v[name]) || 0; };
+    }
+    try {
+      const f = parseExpr();
+      ws();
+      if (i < s.length) throw new Error('第 ' + (i + 1) + ' 个字符起有多余内容');
+      const probe = {};
+      vars.forEach(function (n) { probe[n] = 1; });
+      if (!isFinite(f(probe))) throw new Error('公式结果不是有限数');
+      return { ok: true, fn: f };
+    } catch (e) { return { error: e.message || '公式无效' }; }
+  }
+
   // ---- 工坊 · 熔炼 ----
   // 玩家放两件组件（主 / 副），各选一条词条，熔炼后**主件的词条就是选中的那两条**（重新 roll 数值）：
   //   主件选中的那条 → 在原底材区间内重 roll（突破件的池外词缀则按「池外词缀区间」）。
@@ -677,7 +791,7 @@
   // （并列时按本表顺序取先出现的）。龙宫宝珠不是定向材料，而是催化剂，单列。
   const SMELT_MATERIAL_AFFIX = {
     lure: 'skill',        // 反光假饵   → 技巧
-    bait_pack: 'rare',    // 诱饵包     → 稀有概率
+    bait_pack: 'rare',    // 诱饵包     → 稀有度
     rope: 'size',         // 耐磨绳     → 体型
     relic: 'material',    // 沉船宝匣残片 → 材料概率
     tide_sand: 'speed',   // 潮汐砂     → 钓速（新材料）
@@ -707,7 +821,10 @@
     recastGold: 0,             // 每次重铸消耗的金币（0 = 只收残片）
     recastMinValue: 0,         // 重铸是否强制「至少不比原来差」：0 = 完全重 roll，1 = 每条取更高值
     // ---- 残片保留（海王遗匣产出的神话主件专用）----
-    retainPerRelic: 10,        // 每片沉船宝匣残片提供的「保留池外词缀」概率（%）：10 片 = 100%
+    // v0.13：每片残片的保留概率改为**公式控制**（后台「⚒ 工坊配置」可改），而不是固定 10%。
+    // 公式变量 breakthrough = 主组件身上的突破词缀条数；默认 10 - breakthrough * 0.5，
+    // 即突破词缀越多、每片能保留的概率越低（保底仍随片数线性累加到 100%）。
+    retainFormula: '10 - breakthrough * 0.5',
     retainMaxRelic: 10,        // 单次熔炼最多可投入的残片数
     // ---- 词缀搬移与补缀（v0.11.5 新增，均可在后台「⚒ 工坊配置」里改）----
     subRangeFromSub: true,     // 副件搬来的词缀按**副件自己的区间**取值（关闭 = 旧行为：主件池内按主件区间，否则池外区间）
@@ -720,22 +837,29 @@
     catalystRanges: {},
   };
   let smeltCfg = Object.assign({}, SMELT_DEFAULTS);
+  // 保留概率公式可用的变量（当前只有突破词缀条数）
+  const RETAIN_VAR_NAMES = ['breakthrough'];
   function defaultSmeltCfg() { return Object.assign({}, SMELT_DEFAULTS); }
   function setSmeltCfg(cfg) {
     const d = defaultSmeltCfg();
     const c = (cfg && typeof cfg === 'object') ? cfg : {};
     Object.keys(d).forEach(function (k) {
       if (c[k] === undefined || c[k] === null || c[k] === '') return;
+      // 字符串型配置（保留概率公式）单独处理：数值化会把公式吃掉
+      if (typeof d[k] === 'string') { d[k] = String(c[k]); return; }
       const v = (typeof d[k] === 'boolean') ? !!c[k] : Number(c[k]);
       if (typeof d[k] === 'boolean' ? true : isFinite(v)) d[k] = v;
     });
     d.maxMaterials = Math.max(0, Math.min(99, Math.floor(d.maxMaterials)));
     d.maxTypes = Math.max(0, Math.min(8, Math.floor(d.maxTypes)));
-    d.retainPerRelic = Math.max(0, Math.min(100, d.retainPerRelic));
     d.retainMaxRelic = Math.max(0, Math.min(99, Math.floor(d.retainMaxRelic)));
+    // 保留概率公式：无法编译时回退出厂默认（服务器保存路径已先做严格校验，这里只是兜底）
+    if (!compileExpr(d.retainFormula, RETAIN_VAR_NAMES).ok) d.retainFormula = SMELT_DEFAULTS.retainFormula;
     // 补缀词条数上限：1 条（等于禁止补缀）~ 6 条（词缀类型全集）；非数字回退出厂默认 3
     d.addAffixCap = Math.max(1, Math.min(AFFIX_TYPES.length, Math.floor(Number(d.addAffixCap) || SMELT_DEFAULTS.addAffixCap)));
-    // 材料催化词缀范围：{ [part]: { [type]: [min, max] } }，逐项校验（非法/缺省条目剔除，全部清空 = 回退突破区间）
+    // 材料催化词缀范围：{ [part]: { [type]: [min, max] } }，逐项校验（非法/缺省条目剔除，全部清空 = 回退突破区间）。
+    // 同时把区间夹进该部位的包络：催化上限不得高于该部位最高值、下限不得低于最低值
+    // （越界条目按包络截断，保证运行时永远拿不到比该部位自然产出更强的催化区间）。
     const crIn = c.catalystRanges;
     const crOut = {};
     if (crIn && typeof crIn === 'object') {
@@ -746,7 +870,12 @@
         AFFIX_TYPES.forEach(function (t) {
           const r = row[t];
           const mn = Array.isArray(r) ? Number(r[0]) : NaN, mx = Array.isArray(r) ? Number(r[1]) : NaN;
-          if (isFinite(mn) && isFinite(mx) && mx >= mn) okRow[t] = [Math.round(mn * 10) / 10, Math.round(mx * 10) / 10];
+          if (!isFinite(mn) || !isFinite(mx) || mx < mn) return;
+          const env = catalystEnvelopeOf(part, t);
+          let lo = mn, hi = mx;
+          if (env) { lo = Math.max(env[0], Math.min(env[1], mn)); hi = Math.max(env[0], Math.min(env[1], mx)); }
+          if (hi < lo) hi = lo;
+          okRow[t] = [Math.round(lo * 10) / 10, Math.round(hi * 10) / 10];
         });
         if (Object.keys(okRow).length) crOut[part] = okRow;
       });
@@ -850,6 +979,40 @@
     if (Array.isArray(r) && r.length === 2 && isFinite(r[0]) && isFinite(r[1]) && r[1] >= r[0]) return r;
     return null;
   }
+  // 某部位某词缀的「催化区间包络」= 该部位所有底材里含有该词缀的那些区间的并集 [min, max]。
+  // 后台配置催化区间时用它做硬约束：催化区间不得超出该部位的上下限
+  // （上限不得高于该部位任一底材的最高值，下限不得低于最低值），否则催化词缀会比
+  // 该部位的自然产出还强，破坏「催化 = 定向但不越界」的设定。
+  // 该部位没有任何底材含此词缀（该词缀对本部位本就是池外/突破词缀）时返回 null。
+  function catalystEnvelopeOf(part, type) {
+    let lo = null, hi = null;
+    COMPONENT_BASES.forEach(function (b) {
+      if (b.part !== part) return;
+      const slot = b.pool.find(function (p) { return p.type === type; });
+      if (!slot) return;
+      const r = affixRangeOf(b.id, slot);
+      lo = (lo == null) ? r[0] : Math.min(lo, r[0]);
+      hi = (hi == null) ? r[1] : Math.max(hi, r[1]);
+    });
+    return lo == null ? null : [lo, hi];
+  }
+  // 一键预设：每个部位 × 词缀类型给出一份「等于该部位包络」的推荐催化区间。
+  // 取包络本身 = 催化词缀数值与「该部位最好的那件底材」同区间，是能配出的最强仍不越界的值；
+  // 无包络（该词缀对本部位是池外）的组合不出现，交由后台留空 → 运行时回退突破区间。
+  function catalystPreset() {
+    const out = {};
+    const parts = [];
+    COMPONENT_BASES.forEach(function (b) { if (parts.indexOf(b.part) < 0) parts.push(b.part); });
+    parts.forEach(function (part) {
+      const row = {};
+      AFFIX_TYPES.forEach(function (t) {
+        const env = catalystEnvelopeOf(part, t);
+        if (env) row[t] = [env[0], env[1]];
+      });
+      if (Object.keys(row).length) out[part] = row;
+    });
+    return out;
+  }
   function smeltRangeEx(mainBaseId, subBaseId, kind, type, opts) {
     const o = opts || {};
     const mainBase = BASE_MAP[mainBaseId] || null;
@@ -895,11 +1058,26 @@
     return (affixes || []).filter(function (a) { return !poolTypes[a.type]; })
       .map(function (a) { return { type: a.type, value: a.value, src: a.src || null }; });
   }
-  // 投入 n 片残片时的保留概率（%）：夹在 [0, 100]，保留一位小数
-  function smeltRetainChance(relics) {
+  // 投入 n 片残片时的总保留概率（%）：夹在 [0, 100]，保留一位小数。
+  // 总概率 = 片数 × 每片概率（每片概率由公式给出，见 retainChancePerRelic）。
+  //   breakthrough = 主组件身上的突破词缀条数（默认公式里唯一的变量）。
+  // 第二参数省略时按 0 计算（兼容只传片数的旧调用），但服务器与前端都会显式传突破词缀数。
+  function smeltRetainChance(relics, breakthrough) {
     const n = Math.max(0, Math.min(smeltCfg.retainMaxRelic, Math.floor(Number(relics) || 0)));
-    const per = Number(smeltCfg.retainPerRelic) || 0;
+    const per = retainChancePerRelic(breakthrough);
     return Math.max(0, Math.min(100, Math.round(n * per * 10) / 10));
+  }
+  // 每片残片的保留概率（%）：由后台公式给出（默认 10 - breakthrough * 0.5），夹在 [0, 100] 并保留一位小数。
+  // 公式不可用时回退出厂公式，保证任何存档/配置下都有确定的概率。
+  function retainChancePerRelic(breakthrough) {
+    const bt = Math.max(0, Math.floor(Number(breakthrough) || 0));
+    const src = String(smeltCfg.retainFormula || SMELT_DEFAULTS.retainFormula);
+    const c = compileExpr(src, RETAIN_VAR_NAMES);
+    const fn = c.ok ? c.fn : (compileExpr(SMELT_DEFAULTS.retainFormula, RETAIN_VAR_NAMES).fn);
+    let v;
+    try { v = Number(fn({ breakthrough: bt })); } catch (e) { v = 0; }
+    if (!isFinite(v)) v = 0;
+    return Math.max(0, Math.min(100, Math.round(v * 10) / 10));
   }
 
   // ---- 重铸（海王遗匣产出的神话件）----
@@ -920,6 +1098,25 @@
       // 数值越大越好（负词缀同理：-5 优于 -12），所以「更好」= Math.max
       return { type: a.type, value: keepBetter ? Math.max(v, a.value) : v, src: a.src || null };
     });
+  }
+
+  // ---- 稀有度（rare 词缀）----
+  // v0.13 起 `rare` 的语义从「放大稀有档渔获权重」改为「压低普通品质物品权重」：
+  // 生成战利品时，普通品质（quality=common）的掉落条目权重乘以 K / (K + R)，
+  //   R = 玩家的稀有度合计（钓竿各部位 rare 词缀 + 钓点增益），K = 后台可配的常数（默认 2）。
+  // R = 0 时系数为 1（无影响）；R 越大普通物品越少，稀有产出占比自然上升。
+  // 注：只作用于「普通品质」条目的权重，不直接放大稀有/史诗条目，因此不会与产出倍率重复。
+  const RARE_K_DEFAULT = 2;
+  function rareKOf(rareCfg) {
+    const k = Number(rareCfg && rareCfg.k != null ? rareCfg.k : rareCfg);
+    return (isFinite(k) && k > 0) ? k : RARE_K_DEFAULT;
+  }
+  // 稀有度对普通品质权重的系数：K / (K + R)。R ≤ 0 时恒为 1；下限 0（R 极大时普通物品近乎消失）。
+  function rareCommonMult(rareValue, k) {
+    const K = rareKOf(k);
+    const R = Number(rareValue);
+    if (!isFinite(R) || R <= 0) return 1;
+    return Math.max(0, K / (K + R));
   }
 
   // ---- 商城（每日限购）----
@@ -1439,6 +1636,10 @@
     smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,
     affixSrcRangeOf: affixSrcRangeOf, catalystRangeOf: catalystRangeOf,
     smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,
+    retainChancePerRelic: retainChancePerRelic, RETAIN_VAR_NAMES: RETAIN_VAR_NAMES,
+    compileExpr: compileExpr, EXPR_FUNCS: EXPR_FUNCS,
+    catalystEnvelopeOf: catalystEnvelopeOf, catalystPreset: catalystPreset,
+    RARE_K_DEFAULT: RARE_K_DEFAULT, rareKOf: rareKOf, rareCommonMult: rareCommonMult,
     RECAST_QUALITY: RECAST_QUALITY, canRecast: canRecast, recastAffixes: recastAffixes,
     MALL_DEFAULTS: MALL_DEFAULTS, defaultMallCfg: defaultMallCfg,
     parseRefreshTime: parseRefreshTime, mallCycleOf: mallCycleOf,
