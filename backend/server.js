@@ -4862,10 +4862,20 @@ const server = http.createServer(function (req, res) {
       const cDist = { common: { 1: 0, 2: 0, 3: 0 }, rare: { 1: 0, 2: 0, 3: 0 }, epic: { 1: 0, 2: 0, 3: 0 } };
       const vals = {};
       let zeroAffixes = 0; // 0 值词条计数（roll=0 已被拒绝重 roll，正常应恒为 0）
+      // v0.13.5：修饰词规则的**实际命中分布**——每条规则被第一条命中抢到的比例，一眼看出
+      // 「哪条规则从来轮不到」（被上面的规则盖住）以及命名是否过于泛滥；带 1~2 个示例件。
+      const ruleHits = {};
+      let fullCount = 0, extraCount = 0;
       for (let i = 0; i < n; i++) {
         const c = D.rollComponent();
         qDist[c.quality] = (qDist[c.quality] || 0) + 1;
         cDist[c.quality][c.affixes.length] = (cDist[c.quality][c.affixes.length] || 0) + 1;
+        if (c.isFull) fullCount++;
+        if (c.hasExtra) extraCount++;
+        const key = c.adjective || '（无修饰词）';
+        const hit = ruleHits[key] || (ruleHits[key] = { count: 0, samples: [] });
+        hit.count++;
+        if (hit.samples.length < 2) hit.samples.push(c.name + ' · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条');
         c.affixes.forEach(function (af) {
           if (af.value === 0) zeroAffixes++;
           vals[af.type] = vals[af.type] || { sum: 0, n: 0, min: 1e9, max: -1e9 };
@@ -4874,7 +4884,8 @@ const server = http.createServer(function (req, res) {
       }
       const affixStats = {};
       Object.keys(vals).forEach(function (t) { affixStats[t] = { mean: Math.round((vals[t].sum / vals[t].n) * 10) / 10, min: vals[t].min, max: vals[t].max }; });
-      apiResp(res, 200, { ok: true, n: n, quality: qDist, count: cDist, affix: affixStats, zeroAffixes: zeroAffixes });
+      apiResp(res, 200, { ok: true, n: n, quality: qDist, count: cDist, affix: affixStats, zeroAffixes: zeroAffixes,
+        rules: ruleHits, fullCount: fullCount, extraCount: extraCount });
     });
     return;
   }

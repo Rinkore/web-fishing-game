@@ -348,6 +348,20 @@ window.Net = (function () {
     if (S.fishing.active) { S.selected = { groundId: mine.groundId, spotId: mine.spotId }; }
   }
 
+  // feed 去重：同一条渔获可能既在 init 快照（feed 数组）里、又在那 1 秒社交批量窗口里到达
+  // （连接恰好在窗口内建立时）——不去重的话动态流会重复一行。key 与 ui.js 的 feedKey 同构。
+  function feedKeyOf(e) {
+    const it = (e && e.item) || {};
+    return [e && e.t, e && e.who, e && e.ground, e && e.spot, it.id, e && e.size].join('|');
+  }
+  function feedDup(e) {
+    if (!e) return true;
+    const k = feedKeyOf(e);
+    const arr = state().feed || [];
+    for (let i = 0; i < arr.length; i++) { if (feedKeyOf(arr[i]) === k) return true; }
+    return false;
+  }
+
   function connectStream() {
     const u = API_BASE + '/events?token=' + encodeURIComponent(me.token);
     const seenLogBanners = {}; // 本连接内已入日志的公告 id（重连后重播不重复记录）
@@ -612,15 +626,18 @@ window.Net = (function () {
           }
           if (ui) ui.refreshAll('trade');
         } else if (m.type === 'feed') {
-          S.feed.unshift(m.entry);
-          if (S.feed.length > 60) S.feed.pop();
-          if (ui) ui.refreshAll('feed');
+          if (!feedDup(m.entry)) {
+            S.feed.unshift(m.entry);
+            if (S.feed.length > 60) S.feed.pop();
+            if (ui) ui.refreshAll('feed');
+          }
         } else if (m.type === 'feedBatch') {
           // perf-8：服务器同窗口合并的多条 feed（list 按旧→新排序，逐条 unshift 后最新在最前）
           const fb = m.list || [];
-          for (let i = 0; i < fb.length; i++) S.feed.unshift(fb[i]);
+          let added = 0;
+          for (let i = 0; i < fb.length; i++) { if (!feedDup(fb[i])) { S.feed.unshift(fb[i]); added++; } }
           if (S.feed.length > 60) S.feed.length = 60;
-          if (ui) ui.refreshAll('feed');
+          if (added && ui) ui.refreshAll('feed');
         } else if (m.type === 'groundcfg') {
           // 管理后台修改了钓场/钓点配置：原位替换 GROUNDS 内容（保持数组引用），
           // 渔场页/图鉴产地/钓场锁定状态随即与服务器一致

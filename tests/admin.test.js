@@ -446,6 +446,21 @@ function waitReady() {
   check('品质概率已生效', JSON.stringify(ccSet.data.componentCfg.qualityWeights) === JSON.stringify({ common: 0, rare: 0, epic: 1 }));
   check('数值区间已生效', JSON.stringify(ccSet.data.componentCfg.affixRanges.rod_bamboo.speed) === '[88,88]');
   check('修饰词规则已生效', ccSet.data.componentCfg.adjectiveRules[0].name === '测试极品');
+  // v0.13.5：修饰词规则可带词条数区间，试算要回报每条规则的命中分布（含示例件）
+  const ccSet2 = await POST(B + '/api/admin/component/config', {
+    token: TOKA, adjectiveRules: [{ name: '恰好三条', minAffixes: 3, maxAffixes: 3 }, { name: '兜底款' }],
+  });
+  check('规则可带词条数区间并回读', ccSet2.status === 200 &&
+    ccSet2.data.componentCfg.adjectiveRules[0].minAffixes === 3 && ccSet2.data.componentCfg.adjectiveRules[0].maxAffixes === 3,
+    JSON.stringify(ccSet2.data.componentCfg.adjectiveRules));
+  const sim2 = await POST(B + '/api/admin/component/simulate', { token: TOKA, n: 2000 });
+  const simNames = Object.keys(sim2.data.rules || {});
+  check('试算回报修饰词命中分布', sim2.status === 200 && simNames.indexOf('恰好三条') >= 0, JSON.stringify(simNames));
+  check('命中分布带示例组件名与条数', /词条$/.test(((sim2.data.rules['恰好三条'] || {}).samples || [''])[0]),
+    JSON.stringify(sim2.data.rules && sim2.data.rules['恰好三条']));
+  check('每件组件都被某条规则命名（分布合计 = 样本数）',
+    simNames.reduce(function (s, k) { return s + sim2.data.rules[k].count; }, 0) === 2000, JSON.stringify(sim2.data.rules));
+  check('试算回报满词条（池内全满）占比', sim2.data.fullCount > 0 && sim2.data.fullCount <= 2000, String(sim2.data.fullCount));
   check('非法数值区间（max<min）被过滤而非报错', (await POST(B + '/api/admin/component/config', { token: TOKA, affixRanges: { rod_bamboo: { speed: [5, 1] } } })).status === 200);
   const sim = await POST(B + '/api/admin/component/simulate', { token: TOKA, n: 1000 });
   check('组件试算接口可用', sim.status === 200 && sim.data.quality.epic === 1000, JSON.stringify(sim.data.quality));

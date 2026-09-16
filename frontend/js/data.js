@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.13.4';
+  const VERSION = 'v0.13.5';
   const BUILD = '2026-09-16';   // 构建日期（仅 /api/version 暴露，界面不展示）；v0.13.3 误写成 09-17，这里按机器实际日期回落
 
   // ---- 渔获定义 ----
@@ -406,9 +406,17 @@
   function isInstance(id) { return instanceOf(id) !== null; }
 
   // ---- 修饰词：由词缀组合推导（如「完美的 竹制短竿」）----
-  // 规则可被管理后台覆盖：按顺序取第一条命中的规则。
+  // 规则可被管理后台覆盖：**自上而下取第一条命中**，顺序有意义（后台可上下移动调整优先级）。
   // 规则字段：name 修饰词；full 是否必须满词条；noNeg 是否必须无负词条；
   //          netMin/netMax 词条净收益区间；minAffixes/maxAffixes 词条数区间。
+  // 「满词条」口径（v0.13.5 修正）：**该底材的词缀池全中**（n ≥ 池长）。
+  //   与界面显示的「n/池长 词条」是同一根轴：分子达到分母 = 满词条；池外补出来的多余词条
+  //   （工坊补缀 / 宝匣突破件）会让分子超过分母，正好就是「越过词缀池边界」的突破语义。
+  //   旧版本界面的分母写的是**品质词条上限**（普通 1 / 稀有 2 / 史诗 3 / 神话 4），于是池长 2 的
+  //   底材（电动卷线器等）在史诗下抽满池时显示「2/3」、却挂着「饱满的 + 满词条」——玩家反馈
+  //   「饱满的词缀，可词条数不是满词条」；本版把分母统一成池长，前缀与计数不再打架。
+  //   （没有改成「按品质上限」判定满词条：普通品质上限 1，而普通件占掉落六成，那样六成组件
+  //     都会变成金色满词条，「满词条」这个稀有标记就没意义了。）
   const DEFAULT_ADJECTIVE_RULES = [
     { name: '完美的', full: true, noNeg: true },
     { name: '饱满的', full: true },
@@ -425,14 +433,26 @@
     if (rule.maxAffixes != null && ctx.n > rule.maxAffixes) return false;
     return true;
   }
+  // 词条数的三个上限（供界面/后台解释「满词条」到底按哪个算）：
+  //   poolLen     底材词缀池长 —— 满词条 / 界面分母用的就是它
+  //   cap         品质词条上限（普通 1 / 稀有 2 / 史诗 3 / 神话 4）—— 自然抽条数的上限
+  //   naturalMax  min(池长, 品质上限) —— 自然掉落的实际上限（补缀/突破可越过）
+  function affixCeilingOf(baseId, quality) {
+    const base = BASE_MAP[baseId];
+    const cap = (QUALITY[quality] || QUALITY.common).cap;
+    const poolLen = base ? base.pool.length : 0;
+    return { poolLen: poolLen, cap: cap, naturalMax: Math.min(poolLen, cap) };
+  }
   function adjectiveOf(affixes, base, quality) {
     const cap = (QUALITY[quality] || QUALITY.common).cap;
     const poolLen = base ? base.pool.length : (affixes ? affixes.length : 0);
-    const maxN = Math.min(cap, poolLen);
     const list = affixes || [];
     const ctx = {
       n: list.length,
-      full: !!(list.length >= poolLen && poolLen > 0 && poolLen <= cap && maxN > 0),
+      // 满词条 = 池内全中（池长为 0 时无从谈起，恒 false）；池外词条让它超过池长，仍算满
+      full: !!(poolLen > 0 && list.length >= poolLen),
+      // 附带上限信息，后台试算/摘要里可直接展示口径
+      poolLen: poolLen, cap: cap, naturalMax: Math.min(cap, poolLen),
       noNeg: !list.some(function (a) { return a.value < 0; }),
       net: list.reduce(function (s, a) { return s + a.value; }, 0),
     };
@@ -449,12 +469,16 @@
     const base = BASE_MAP[inst.baseId];
     const q = QUALITY[inst.quality];
     const poolLen = base.pool.length;
-    // 词缀条数上限：**始终跟随品质**（普通 1 / 稀有 2 / 史诗 3 / 神话 4），不受底材池长影响。
-    // 生成时 roll 出的只是实际词条数（1..min(池长, 品质上限)），最大词条数是品质属性；
-    // 突破件（史诗品质抽到 4 条）因此显示「4/3 词条」，正好体现「越过品质上限」的突破语义。
-    const maxN = q.cap;
-    // full = 池内全满（沿用旧语义）；突破件同样满足（它的池内部分是全满的）
-    const full = inst.affixes.length >= poolLen && poolLen <= q.cap;
+    // 词条数**分母 = 该底材的词缀池长**（v0.13.5 起，与「满词条」判据同一根轴）：
+    //   界面显示「n/池长 词条」，分子达到分母就是满词条；池外补出的多余词条（工坊补缀 /
+    //   宝匣突破件）会让分子超过分母，读作「越过词缀池边界」，与「突破」标签语义一致。
+    //   旧版分母用的是品质上限（普通 1 / 稀有 2 / 史诗 3 / 神话 4），与满词条判据（池长）打架：
+    //   池长 2 的底材在史诗下抽满池显示「2/3」却挂着「饱满的 / 满词条」，玩家反馈过这个矛盾。
+    const maxN = poolLen;
+    // full = 满词条 = 池内全中（池外词条照算满）；池长为 0 的旧版/聚合条目恒 false
+    const full = poolLen > 0 && inst.affixes.length >= poolLen;
+    // qualityCap 另存一份：后台/提示里要说明「自然掉落上限 = min(池长, 品质上限)，补缀可越过」
+    const qualityCap = q.cap;
     // 词缀对象附带 extra 标记：该词缀不在底材词缀池内（池外词缀）；
     // src = 范围来源（底材id / 'bt' 突破 / 'ct' 催化），供重 roll 取区间与识别「池外词缀的来源」用；
     // srcExplicit = 该来源是**签名字面记录的**（@src）还是解析时按数值推断的 ——
@@ -477,7 +501,7 @@
       id: id, kind: 'component', baseId: base.id, baseName: base.name, part: base.part,
       quality: inst.quality, qualityName: q.name, qualityCls: q.cls,
       rarity: inst.quality, rarityName: q.name,
-      affixes: affixes, pool: base.pool, maxAffixes: maxN,
+      affixes: affixes, pool: base.pool, maxAffixes: maxN, qualityCap: qualityCap,
       full: full, isFull: full, hasExtra: hasExtra, breakthrough: breakthrough,
       adjective: adjective,
       name: adjective + ' ' + base.name,
@@ -1758,7 +1782,7 @@
     setFishCfg: setFishCfg, getFishCfg: getFishCfg, defaultFishCfg: defaultFishCfg,
     ROLL_MODELS: ROLL_MODELS, rollRatio: rollRatio,
     affixRangeOf: affixRangeOf, rollAffixValue: rollAffixValue, weightedKey: weightedKey,
-    adjectiveOf: adjectiveOf, instanceMeta: instanceMeta, componentOf: componentOf,
+    adjectiveOf: adjectiveOf, affixCeilingOf: affixCeilingOf, instanceMeta: instanceMeta, componentOf: componentOf,
     legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,
     ROD_SET_PREFIX: ROD_SET_PREFIX, isRodSet: isRodSet, rodPartsOf: rodPartsOf, rodSetId: rodSetId, rodMeta: rodMeta,
     autoBuildPlan: autoBuildPlan, autoBuildPeek: autoBuildPeek, autoBuildVec: autoBuildVec,

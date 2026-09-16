@@ -2114,7 +2114,7 @@ window.Admin = (function () {
         '<td class="num"><input class="ipt mk-num ch-cost" data-cid="' + esc(c.id) + '" data-k="costCoins" type="number" min="0" max="' + CM.coins + '" step="1" value="' + c.costCoins + '"></td>' +
         '<td>' + (c.hasExtra
           ? '神话 · 50% 突破（' + c.missCount + '~' + c.hitCount + ' 条）'
-          : (c.id === 'chest_abyss' ? '史诗 · 满词条' : '稀有 / 史诗')) + '</td></tr>';
+          : (c.id === 'chest_abyss' ? '史诗 · 满词条（填满该底材词缀池）' : '稀有 / 史诗')) + '</td></tr>';
     };
     body.innerHTML =
       '<h3 style="margin-top:0">📦 档位与合成成本（残片 / 金币可直接改）</h3>' +
@@ -3164,8 +3164,12 @@ window.Admin = (function () {
       '<div class="cmp-row"><label class="radio-card' + ((cfg.rollModel || 'linear') === 'linear' ? ' sel' : '') + '" data-rm="linear"><input type="radio" name="rm" value="linear"' + ((cfg.rollModel || 'linear') === 'linear' ? ' checked' : '') + '><div><b>线性（均匀）</b><span>区间内等概率取值</span></div></label>' +
       '<label class="radio-card' + (cfg.rollModel === 'normal' ? ' sel' : '') + '" data-rm="normal"><input type="radio" name="rm" value="normal"' + (cfg.rollModel === 'normal' ? ' checked' : '') + '><div><b>正态</b><span>靠近区间中值概率更高</span></div></label>' +
       '<label class="radio-card' + (cfg.rollModel === 'skew' ? ' sel' : '') + '" data-rm="skew"><input type="radio" name="rm" value="skew"' + (cfg.rollModel === 'skew' ? ' checked' : '') + '><div><b>偏态</b><span>偏向低值（更常见低 roll）</span></div></label></div>' +
-      '<h3>修饰词规则（自上而下取第一条命中；留空字段表示不限制）</h3>' +
-      '<div class="hint" style="margin-bottom:8px">条件：满词条 / 无负词条 / 净收益区间 / 词条数区间。例如「满词条+无负」→ 完美的。</div>' +
+      '<h3>修饰词规则 <span class="hint">自上而下取第一条命中 —— 顺序就是优先级</span></h3>' +
+      '<div class="hint" style="margin-bottom:8px">' +
+      '「满词条」= <b>该底材的词缀池全中</b>（显示成「n/池长 词条」的分子达到分母）。' +
+      '池外补出的额外词条（工坊补缀 / 宝匣突破件）会让分子超过分母，读作「越过词缀池边界」。<br>' +
+      '每个条件都留空 = 不限制；一行里填多个条件 = 同时满足（并且）。示例：勾「满词条」+ 勾「无负词条」→ 完美的。' +
+      '</div>' +
       '<div id="adj-rows">' + rules.map(adjRuleRow).join('') + '</div>' +
       '<button class="btn mini" id="adj-add">＋ 添加规则</button>' +
       '<h3 style="margin-top:20px">底材词缀数值范围</h3>' +
@@ -3193,13 +3197,43 @@ window.Admin = (function () {
         c.classList.add('sel'); c.querySelector('input').checked = true;
       };
     });
-    function bindAdjRemove() {
-      body.querySelectorAll('.adj-del').forEach(function (b) { b.onclick = function () { b.closest('.adj-row').remove(); }; });
+    function bindAdjRows() {
+      const rows = Array.prototype.slice.call(body.querySelectorAll('#adj-rows .adj-row'));
+      rows.forEach(function (row, i) {
+        const idx = row.querySelector('.adj-idx');
+        if (idx) idx.textContent = String(i + 1);
+        const up = row.querySelector('.adj-up'), down = row.querySelector('.adj-down'), del = row.querySelector('.adj-del');
+        if (up) up.disabled = i === 0;
+        if (down) down.disabled = i === rows.length - 1;
+        if (up) up.onclick = function () { const p = row.previousElementSibling; if (p) { p.before(row); bindAdjRows(); } };
+        if (down) down.onclick = function () { const nx = row.nextElementSibling; if (nx) { nx.after(row); bindAdjRows(); } };
+        if (del) del.onclick = function () { row.remove(); bindAdjRows(); };
+        row.querySelectorAll('input').forEach(function (inp) { inp.oninput = function () { adjPreview(row); }; inp.onchange = function () { adjPreview(row); }; });
+        adjPreview(row);
+      });
+    }
+    // 每行右侧的「自然语言」摘要：填了什么条件、会显示成什么词，改一个字段立刻跟着变
+    function adjPreview(row) {
+      const box = row.querySelector('.adj-preview');
+      if (!box) return;
+      const name = (row.querySelector('.adj-name').value || '').trim() || '（未命名）';
+      const conds = [];
+      const f = function (k) { const e2 = row.querySelector('input[data-f="' + k + '"]'); return e2 ? e2 : null; };
+      if (f('full') && f('full').checked) conds.push('满词条（池内全满）');
+      if (f('noNeg') && f('noNeg').checked) conds.push('无负词条');
+      const rng = function (a, b, lab, unit) {
+        const va = f(a) ? f(a).value : '', vb = f(b) ? f(b).value : '';
+        if (va === '' && vb === '') return;
+        conds.push(lab + ' ' + (va === '' ? '不限' : va) + ' ~ ' + (vb === '' ? '不限' : vb) + (unit || ''));
+      };
+      rng('netMin', 'netMax', '词条净收益');
+      rng('minAffixes', 'maxAffixes', '词条数');
+      box.textContent = (conds.length ? '当 ' + conds.join(' 且 ') : '无条件（兜底）') + ' → 显示「' + name + '」';
     }
     body.querySelector('#adj-add').onclick = function () {
-      const box = $('adj-rows'); const wrap = document.createElement('div'); wrap.innerHTML = adjRuleRow({ name: '' }); box.appendChild(wrap.firstChild); bindAdjRemove();
+      const box = $('adj-rows'); const wrap = document.createElement('div'); wrap.innerHTML = adjRuleRow({ name: '' }); box.appendChild(wrap.firstChild); bindAdjRows();
     };
-    bindAdjRemove();
+    bindAdjRows();
     $('cmp-save').onclick = saveComponent;
     $('cmp-reset').onclick = function () {
       adminApi('POST', '/api/admin/component/reset', { token: token }).then(function (r) {
@@ -3211,23 +3245,48 @@ window.Admin = (function () {
       adminApi('POST', '/api/admin/component/simulate', { token: token, n: 20000 }).then(function (r) {
         if (!r.ok) { $('cmp-sim-out').textContent = r.data.error || '试算失败'; return; }
         const d = r.data;
-        const qp = Object.keys(d.quality).map(function (k) { return k + ' ' + (d.quality[k] / d.n * 100).toFixed(1) + '%'; }).join(' / ');
-        $('cmp-sim-out').innerHTML = '品质分布：' + qp + '　|　' + Object.keys(d.affix).map(function (t) { return t + ' 均值 ' + d.affix[t].mean; }).join('，');
+        const pct = function (c) { return (c / d.n * 100).toFixed(1) + '%'; };
+        const qp = Object.keys(d.quality).map(function (k) { return k + ' ' + pct(d.quality[k]); }).join(' / ');
+        // 修饰词规则的命中分布：一眼看出哪条规则从来轮不到（被上面的规则盖住），以及命名是否泛滥
+        const ruleNames = Object.keys(d.rules || {});
+        const maxHit = ruleNames.reduce(function (m, k) { return Math.max(m, d.rules[k].count); }, 1);
+        const ruleHtml = ruleNames.length
+          ? '<div style="margin-top:6px"><b>修饰词命中分布</b>（按已保存的规则试算）：<table class="tbl" style="margin-top:4px"><thead><tr><th>修饰词</th><th>占比</th><th>示例组件</th></tr></thead><tbody>' +
+            ruleNames.sort(function (a, b) { return d.rules[b].count - d.rules[a].count; }).map(function (k) {
+              const hit = d.rules[k];
+              const bar = Math.round(hit.count / maxHit * 100);
+              return '<tr><td>' + esc(k) + '</td><td class="num">' + pct(hit.count) +
+                ' <span class="adj-bar" style="width:' + bar + '%"></span></td><td class="hint">' + esc(hit.samples.join('　/　')) + '</td></tr>';
+            }).join('') + '</tbody></table>' +
+            '<div class="hint" style="margin-top:4px">满词条（池内全满）' + pct(d.fullCount) + '　·　含池外词条件 ' + pct(d.extraCount) +
+            '　·　「（无修饰词）」= 一条规则都没命中，组件只显示底材名</div></div>'
+          : '';
+        $('cmp-sim-out').innerHTML = '品质分布：' + qp + '　|　' + Object.keys(d.affix).map(function (t) { return t + ' 均值 ' + d.affix[t].mean; }).join('，') +
+          ruleHtml;
       });
     };
   }
   function adjRuleRow(r) {
     r = r || {};
-    function chk(k, lab) { return '<label class="adj-chk"><input type="checkbox" data-f="' + k + '"' + (r[k] ? ' checked' : '') + '> ' + lab + '</label>'; }
+    function chk(k, lab, tip) { return '<label class="adj-chk"' + (tip ? ' title="' + esc(tip) + '"' : '') + '><input type="checkbox" data-f="' + k + '"' + (r[k] ? ' checked' : '') + '> ' + lab + '</label>'; }
     function num(k, ph) { return '<input class="ipt cmp-num" type="number" data-f="' + k + '" value="' + (r[k] != null ? r[k] : '') + '" placeholder="' + ph + '">'; }
     return '<div class="adj-row">' +
+      '<div class="adj-head">' +
+      '<span class="adj-idx">1</span>' +
       '<input class="ipt adj-name" data-f="name" value="' + esc(r.name || '') + '" placeholder="修饰词（如 完美的）">' +
-      chk('full', '满词条') + chk('noNeg', '无负词条') +
-      '<span class="adj-num">净收益≥' + num('netMin', '不限') + '</span>' +
-      '<span class="adj-num">≤' + num('netMax', '不限') + '</span>' +
-      '<span class="adj-num">词条数≥' + num('minAffixes', '-') + '</span>' +
-      '<span class="adj-num">≤' + num('maxAffixes', '-') + '</span>' +
-      '<button class="btn mini danger adj-del">删除</button></div>';
+      '<span class="adj-acts">' +
+      '<button class="btn mini adj-up" title="上移（提高优先级）">↑</button>' +
+      '<button class="btn mini adj-down" title="下移（降低优先级）">↓</button>' +
+      '<button class="btn mini danger adj-del">删除</button></span>' +
+      '</div>' +
+      '<div class="adj-cond">' +
+      chk('full', '满词条', '该底材的词缀池全中：界面显示的「n/池长 词条」分子到达分母')
+      + chk('noNeg', '无负词条', '词条里没有负数值（-x%）') +
+      '<span class="adj-num">词条净收益 ' + num('netMin', '不限') + ' ~ ' + num('netMax', '不限') + '</span>' +
+      '<span class="adj-num">词条数 ' + num('minAffixes', '不限') + ' ~ ' + num('maxAffixes', '不限') + '</span>' +
+      '<span class="adj-preview"></span>' +
+      '</div>' +
+      '</div>';
   }
   function saveComponent() {
     const cbody = $('comp-body');

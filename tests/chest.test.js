@@ -214,8 +214,10 @@ let srv = null;
     else badCount++;
     // 突破标记必须与「条数越过史诗 3 条上限」一致
     if (!!it.breakthrough !== (it.affixes.length > D.QUALITY.epic.cap)) btOk = false;
-    // maxAffixes 不得小于实际条数（否则前端会显示「4/3 词条」）
-    if (it.maxAffixes < it.affixes.length) btOk = false;
+    // v0.13.5：界面分母 = 该底材词缀池长（竹制短竿池长 2）→ 突破件显示「3/2、4/2 词条」，
+    // 分子超过分母就是「越过词缀池边界」；同时池内部分必然全中，所以满词条标记也为真。
+    if (it.maxAffixes !== D.componentBase(it.baseId).pool.length) btOk = false;
+    if (it.isFull !== true) btOk = false;
     const types = {};
     it.affixes.forEach(function (a) {
       if (types[a.type]) extraDup++;
@@ -235,7 +237,7 @@ let srv = null;
   check('Ⅳ档必定神话', notMythic === 0, 'notMythic=' + notMythic);
   check('Ⅳ档条数只出现 3 或 4', badCount === 0, 'bad=' + badCount);
   check('Ⅳ档 3/4 条都出现（50% 掷骰生效）', c3 > 0 && c4 > 0, '3条=' + c3 + ' 4条=' + c4);
-  check('突破标记 = 条数越过史诗 3 条上限', btOk);
+  check('突破标记 / 分母=池长 / 满词条标记 三者一致', btOk);
   check('词缀类型不重复', extraDup === 0, String(extraDup));
   check('池外词缀恒为正且类型合法', extraBad === 0, extraSample);
 

@@ -900,6 +900,53 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       check('组件生成页品质权重无 mythic（神话不可由钓鱼掉落）',
         qwIds.length === 3 && !qwIds.some(id => /mythic/.test(id)), qwIds.join(','));
 
+      // v0.13.5：修饰词规则面板要「一眼看懂」——逐字段标签 / 上下移序 / 自然语言摘要 / 试算命中分布
+      const adjUi = await pa.evaluate(() => {
+        const rows = Array.prototype.slice.call(document.querySelectorAll('#adj-rows .adj-row'));
+        return {
+          rows: rows.length,
+          idx: rows.map(r => (r.querySelector('.adj-idx') || {}).textContent),
+          labels: rows.map(r => r.querySelector('.adj-cond').textContent.replace(/\s+/g, ' ').trim()),
+          previews: rows.map(r => (r.querySelector('.adj-preview') || {}).textContent),
+          hasUpDown: rows.every(r => !!r.querySelector('.adj-up') && !!r.querySelector('.adj-down')),
+          firstUpDisabled: !!(rows[0] && rows[0].querySelector('.adj-up').disabled),
+          fieldLabels: Array.prototype.slice.call(document.querySelectorAll('#adj-rows .adj-num')).map(n => n.textContent.replace(/\s+/g, ' ').trim()),
+          headHint: document.querySelector('#comp-body').textContent.indexOf('词缀池全中') >= 0,
+        };
+      });
+      check('规则行按顺序编号（1..N）', adjUi.rows === 5 && adjUi.idx.join(',') === '1,2,3,4,5', JSON.stringify(adjUi.idx));
+      check('每个数值框都有独立字段标签（净收益 / 词条数 各带区间）',
+        adjUi.fieldLabels.filter(t => /词条净收益/.test(t)).length === 5 &&
+        adjUi.fieldLabels.filter(t => /词条数/.test(t)).length === 5, JSON.stringify(adjUi.fieldLabels.slice(0, 4)));
+      check('勾选项带条件说明（满词条 / 无负词条）',
+        adjUi.labels.every(t => /满词条/.test(t) && /无负词条/.test(t)), JSON.stringify(adjUi.labels.slice(0, 2)));
+      check('每行有自然语言摘要（当…→ 显示「…」）',
+        adjUi.previews.length === 5 && adjUi.previews.every(t => /→ 显示「/.test(t)), JSON.stringify(adjUi.previews.slice(0, 3)));
+      check('每行有上移 / 下移（第一条的上移禁用）', adjUi.hasUpDown === true && adjUi.firstUpDisabled === true);
+      check('面板顶部说明「满词条 = 词缀池全中」口径', adjUi.headHint === true);
+      // 下移第 1 条 → 顺序真的换了（行号重排 + 第一条的上移重新启用）
+      await pa.evaluate(() => document.querySelector('#adj-rows .adj-row .adj-down').click());
+      const reordered = await pa.evaluate(() => {
+        const rows = Array.prototype.slice.call(document.querySelectorAll('#adj-rows .adj-row'));
+        return {
+          names: rows.map(r => r.querySelector('.adj-name').value),
+          idx: rows.map(r => r.querySelector('.adj-idx').textContent),
+          firstUpDisabled: rows[0].querySelector('.adj-up').disabled,
+        };
+      });
+      check('下移第 1 条 → 顺序调整且行号重排',
+        reordered.names[0] === '饱满的' && reordered.names[1] === '完美的' && reordered.idx[0] === '1' && reordered.firstUpDisabled === true,
+        JSON.stringify(reordered));
+      await pa.evaluate(() => document.querySelector('#adj-rows .adj-row .adj-up').click());  // 还原顺序
+      // 试算：命中分布（含示例件）直接可读
+      await pa.evaluate(() => { document.getElementById('cmp-sim').click(); });
+      await waitFor(async () => /修饰词命中分布/.test(await pa.textContent('#cmp-sim-out')),
+        { timeout: 20000, interval: 100 }).catch(() => {});
+      const simOut = await pa.textContent('#cmp-sim-out');
+      check('试算输出修饰词命中分布（占比 + 示例组件）',
+        /修饰词命中分布/.test(simOut) && /%/.test(simOut) && /词条/.test(simOut), String(simOut).slice(0, 200));
+      check('试算输出满词条（池内全满）占比', /满词条（池内全满）/.test(simOut), String(simOut).slice(0, 200));
+
       // ===================== v0.11：宝匣成本 / 钓点拖动定位 / 工坊 / 商城 / 版本更新 =====================
       section('v0.11 后台新页面');
       // 本段包含「等待页面自身定时器刷新」的检查（版本更新倒计时）：

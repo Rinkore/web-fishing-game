@@ -1184,16 +1184,11 @@ window.UI = (function () {
     const st = S();
     const isSelf = st.me && b.id === st.me.id;
     const color = b.color || colorFor(b.name || '?');
-    const g = D.GROUNDS.find(function (x) { return x.id === b.groundId; });
-    const sp = g && g.spots.find(function (x) { return x.id === b.spotId; });
-    const recent = b.recent; // 近期渔获由服务器 presence 维护，前端只展示
     const card = el('div', 'peep' + (isSelf ? ' self' : ''));
+    // 信息块单独成函数（peepInfoHtml）：广播只重写这一块，右部按钮原地不动
     card.innerHTML =
       '<span class="avatar" style="background:' + color + '">' + esc((b.name || '?').slice(0, 1)) + '</span>' +
-      '<div class="peep-info"><div class="peep-name">' + esc(b.name || '玩家') + (isSelf ? '（你）' : '') +
-      ' <span class="dot ' + (b.status === 'fishing' ? 'on' : 'idle') + '"></span></div>' +
-      '<div class="peep-loc">' + (g ? esc(g.name) : '未出发') + (sp ? '·' + esc(sp.name) : '') + '</div>' +
-      (recent ? '<div class="peep-recent">近期：' + esc(recent) + '</div>' : '') + '</div>';
+      '<div class="peep-info">' + peepInfoHtml(b) + '</div>';
     // 卡片右部操作区：交易（弹出子窗口）+ 查看（钓竿组件构成）
     if (!isSelf) {
       const acts = el('div', 'peep-acts');
@@ -2095,9 +2090,249 @@ window.UI = (function () {
   let peepSearchTimer = null;
   let peepComposing = false;   // 中文输入法合成中：这一小段时间挂起重绘，否则候选词会被打断
 
+  // ---- 数据广播的就地更新工具（渔场动态 / 以后新增页面共用） ----
+  // 就地更新带 key 的列表：已有节点原地改内容，保住节点身份、事件与**父容器的滚动位置**；
+  // 只有「新增 / 删除 / 换序」才真的插删 DOM。广播到达时必须走这条路——整块重建会把
+  // 用户滚到的位置、正在点的那一行、输入法候选一起冲掉。
+  // update 返回新节点 = 该行必须换节点（结构变了），调用方按返回值继续用。
+  function patchList(container, items, keyOf, create, update) {
+    const have = Object.create(null);
+    Array.prototype.slice.call(container.childNodes).forEach(function (n) {
+      const k = n.getAttribute ? n.getAttribute('data-key') : null;
+      if (k != null) have[k] = n;
+    });
+    const keep = Object.create(null);
+    let prev = null;
+    items.forEach(function (it) {
+      const k = String(keyOf(it));
+      keep[k] = 1;
+      let node = have[k];
+      if (node) node = update(node, it) || node;
+      else { node = create(it); node.setAttribute('data-key', k); }
+      const want = prev ? prev.nextSibling : container.firstChild;
+      if (node !== want) container.insertBefore(node, want);
+      prev = node;
+    });
+    Object.keys(have).forEach(function (k) { if (!keep[k]) container.removeChild(have[k]); });
+  }
+
+  // 视口登记：只在进入本页/翻页/搜索/切换钓场时发一次（playersPage 推送引发的更新不重复登记），
+  // 之后服务器每秒只推当前页玩家状态
+  function peepViewSigOf(page) {
+    return [page || 1, PEEP_PAGE_SIZE, peepSearchQ, groundFilterId || ''].join('|');
+  }
+  function gotoPeepPage(n) {
+    peepSearchQ = peepSearchQ || '';
+    renderGround._lastViewSig = peepViewSigOf(n);   // 乐观登记：fetch 回来若被服务端夹页，syncPeepView 会再登记一次
+    window.Net.fetchPlayersPage({ page: n, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
+    window.Net.setPlayersView({ page: n, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
+  }
+  function syncPeepView() {
+    const page = (S().playersPage && S().playersPage.page) || 1;
+    const sig = peepViewSigOf(page);
+    if (renderGround._lastViewSig === sig) return;
+    renderGround._lastViewSig = sig;
+    window.Net.setPlayersView({ page: page, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
+  }
+
+  // 地图概览：只改人数与状态类，节点原地保留（正在点的那张卡片不会被广播换掉）
+  const TOTAL_GC = { id: '__total__', total: true };
+  function gcBuffCount(g) { return (g.spots || []).filter(function (sp) { return sp.buffs && sp.buffs.length; }).length; }
+  function paintGroundCountBox(box, g) {
+    const c = g.total ? (S().onlineTotal || 0) : ((S().groundCounts && S().groundCounts[g.id]) || 0);
+    const num = box.querySelector('.gcb-n');
+    if (num && num.textContent !== String(c)) num.textContent = c;
+    const cls = 'gc-box' + (g.total ? ' total' : '') + (g.locked ? ' locked' : '') +
+      (g.total ? '' : (c > 0 ? ' live' : '')) +
+      ((g.total ? !groundFilterId : groundFilterId === g.id) ? ' sel' : '') +
+      (gcBuffCount(g) ? ' has-buff' : '');
+    if (box.className !== cls) box.className = cls;
+  }
+  function groundCountBox(g) {
+    const box = el('div', 'gc-box');
+    box.setAttribute('data-gid', g.id);
+    if (g.total) {
+      box.innerHTML = '<div class="gcb-name">🌐 全服在线</div><div class="gcb-num"><span class="gcb-n">0</span><span class="u">人</span></div>';
+      box.title = '点击返回全服动态';
+      box.addEventListener('click', function () { if (groundFilterId) { groundFilterId = null; gotoPeepPage(1); renderView(); } });
+    } else {
+      const buffCount = gcBuffCount(g);
+      box.innerHTML = '<div class="gcb-name">' + esc(g.name) + (buffCount ? ' <span class="spot-buff-mark" title="有 ' + buffCount + ' 个钓点带增益">⚡</span>' : '') + '</div>' +
+        '<div class="gcb-num"><span class="gcb-n">0</span><span class="u">人</span></div>' +
+        (g.locked ? '' : '<div class="gcb-hint">' + (buffCount ? '⚡ ' + buffCount + ' 个钓点有增益' : '点击查看') + '</div>');
+      if (!g.locked) {
+        box.title = '点击查看「' + g.name + '」的动态' + (buffCount ? '（⚡ ' + buffCount + ' 个钓点有增益）' : '');
+        box.addEventListener('click', function () { groundFilterId = (groundFilterId === g.id) ? null : g.id; gotoPeepPage(1); renderView(); });
+      }
+    }
+    paintGroundCountBox(box, g);
+    return box;
+  }
+  function fillGroundCounts(panel) {
+    const host = panel.querySelector('[data-region="gcounts"]');
+    if (!host) return;
+    const items = D.GROUNDS.concat([TOTAL_GC]);
+    patchList(host, items, function (g) { return g.id; },
+      function (g) { return groundCountBox(g); },
+      function (node, g) { paintGroundCountBox(node, g); });
+  }
+
+  // 玩家卡片的信息块（名字 / 在线状态点 / 位置 / 近期渔获）：与卡片骨架分开，
+  // 广播只重写这一块，右部的「🤝 交易 / 🔍 查看」按钮原地不动。
+  function peepInfoHtml(b) {
+    const st = S();
+    const isSelf = st.me && b.id === st.me.id;
+    const g = D.GROUNDS.find(function (x) { return x.id === b.groundId; });
+    const sp = g && g.spots.find(function (x) { return x.id === b.spotId; });
+    const recent = b.recent; // 近期渔获由服务器 presence 维护，前端只展示
+    return '<div class="peep-name">' + esc(b.name || '玩家') + (isSelf ? '（你）' : '') +
+      ' <span class="dot ' + (b.status === 'fishing' ? 'on' : 'idle') + '"></span></div>' +
+      '<div class="peep-loc">' + (g ? esc(g.name) : '未出发') + (sp ? '·' + esc(sp.name) : '') + '</div>' +
+      (recent ? '<div class="peep-recent">近期：' + esc(recent) + '</div>' : '');
+  }
+  function updatePeepCard(card, b) {
+    const info = card.querySelector('.peep-info');
+    if (!info) return null;
+    const isSelf = !!(S().me && b.id === S().me.id);
+    // 「是不是自己」变了（登录 / 切换账号）会增减右部按钮块，这种情况只能换整张卡
+    if (!isSelf !== !!card.querySelector('.peep-acts')) return peepCard(b);
+    const html = peepInfoHtml(b);
+    if (info.innerHTML !== html) info.innerHTML = html;
+    if (card.classList.contains('self') !== isSelf) card.classList.toggle('self', isSelf);
+    return null;
+  }
+  // 玩家列表：按 id 就地增删改。搜索 / 翻页只是换整页内容，容器与滚动条仍不重建。
+  function fillPeepList(panel) {
+    const host = panel.querySelector('[data-region="peeps"]');
+    if (!host) return;
+    const vp = S().playersPage || { page: 1, pages: 1, total: 0, list: [] };
+    const list = vp.list || [];
+    const hintText = vp.total || peepSearchQ ? '没有匹配的玩家。' : (groundFilterId ? '该地图暂无玩家。' : '暂无在线玩家。');
+    const items = list.length ? list : [{ id: '__hint__', hint: hintText }];
+    patchList(host, items, function (b) { return b.id; },
+      function (b) { return b.hint ? el('div', 'hint', b.hint) : peepCard(b); },
+      function (node, b) {
+        if (b.hint) { if (node.textContent !== b.hint) node.textContent = b.hint; return null; }
+        return updatePeepCard(node, b);
+      });
+  }
+  function fillPeepHeadFoot(panel) {
+    const vp = S().playersPage || { page: 1, pages: 1, total: 0, list: [] };
+    const head = panel.querySelector('[data-region="peep-head"]');
+    if (head) {
+      const t = '👥 ' + (groundFilterId ? '本地图在线玩家（' + vp.total + '）'
+        : '在线玩家（' + vp.total + ' / 全服 ' + (S().onlineTotal || 0) + '）');
+      if (head.textContent !== t) head.textContent = t;
+    }
+    const foot = panel.querySelector('[data-region="peep-foot"]');
+    if (foot) {
+      const t = vp.pages > 1
+        ? '本页 ' + vp.list.length + ' 人 · 列表可下滑查看 · 共 ' + vp.pages + ' 页（每页 ' + PEEP_PAGE_SIZE + ' 人）'
+        : '共 ' + vp.list.length + ' 人' + (vp.list.length > 6 ? ' · 列表可下滑查看' : '');
+      if (foot.textContent !== t) foot.textContent = t;
+    }
+    const pager = panel.querySelector('[data-region="peep-pager"]');
+    if (pager) {
+      const prev = pager.querySelector('[data-pg="prev"]');
+      const next = pager.querySelector('[data-pg="next"]');
+      const label = pager.querySelector('.muted');
+      if (prev) prev.disabled = vp.page <= 1;
+      if (next) next.disabled = vp.page >= vp.pages;
+      if (label) label.textContent = ' 第 ' + vp.page + ' / ' + vp.pages + ' 页 ';
+    }
+    syncPeepView();
+  }
+
+  // 动态流：上鱼只往头部插新行（旧行原地不动）→ 用户滚下去看历史时不会被弹回顶部，
+  // 也没有「每钓一条鱼重建 60 个 DOM 节点」的开销。过滤/换钓场对不上时才整块重铺。
+  function feedKey(e) {
+    const it = e.item || {};
+    return [e.t, e.who, e.ground, e.spot, it.id, e.size].join('|');
+  }
+  function feedLineNode(e) {
+    const meta = e.item || {};
+    const line = el('div', 'feed-line' + (e.record ? ' record' : ''));
+    line.innerHTML = '<span class="ftime">' + timeStr(e.t) + '</span> <b>' + esc(e.who) + '</b> 在 ' +
+      esc(e.ground) + '·' + esc(e.spot) + ' 钓到 <span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
+      (e.size ? ' <span class="muted">' + e.size + 'cm</span>' : '') +
+      (e.record ? ' 🏆刷新纪录' : meta.rarity === 'epic' ? ' 💎史诗' : meta.rarity === 'rare' ? ' ✨稀有' : meta.kind === 'component' ? ' 🔧组件' : '');
+    return line;
+  }
+  function fillGroundFeed(panel) {
+    const host = panel.querySelector('[data-region="gfeed"]');
+    if (!host) return;
+    const st = S();
+    const filterGround = groundFilterId ? D.GROUNDS.find(function (g) { return g.id === groundFilterId; }) : null;
+    const all = st.feed || [];
+    const shown = (filterGround ? all.filter(function (e) { return e.ground === filterGround.name; }) : all).slice(0, 60);
+    const keys = shown.map(feedKey);
+    const old = host._feedKeys;
+    // 旧序列一定是新序列「从某一位起」的连续前缀（feed 只从头部插入）→ 前面多出来的就是新渔获
+    let head = -1;
+    if (old && old.length) {
+      for (let i = 0; i < keys.length && head < 0; i++) {
+        if (keys[i] !== old[0]) continue;
+        const n = Math.min(old.length, keys.length - i);
+        let ok = true;
+        for (let j = 0; j < n; j++) { if (keys[i + j] !== old[j]) { ok = false; break; } }
+        if (ok) head = i;
+      }
+    }
+    if (head < 0) {
+      host.innerHTML = '';
+      if (!shown.length) host.appendChild(el('div', 'hint', filterGround ? '该地图暂无动态，等待大家上鱼……' : '暂无动态，等待大家上鱼……'));
+      shown.forEach(function (e) { host.appendChild(feedLineNode(e)); });
+    } else if (head > 0) {
+      const hint = host.querySelector('.hint');
+      if (hint) hint.remove();
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < head; i++) frag.appendChild(feedLineNode(shown[i]));
+      host.insertBefore(frag, host.firstChild);
+    }
+    // 尾部只留与 S.feed 同样多的行（客户端 feed 上限 60）
+    let lines = host.querySelectorAll('.feed-line').length;
+    while (lines > shown.length && host.lastChild) { host.removeChild(host.lastChild); lines--; }
+    host._feedKeys = keys;
+  }
+
+  // 结构签名：只有它变了才允许重建骨架——换钓场 / 翻页 / 改搜索词 / 后台改渔场配置。
+  // 上鱼播报、玩家状态、地图人数都不在里面，所以它们永远走不到重建那条路。
+  function groundCfgSig() {
+    const parts = [];
+    D.GROUNDS.forEach(function (g) {
+      parts.push(g.id + ':' + g.name + ':' + (g.locked ? 'L' : '') + ':' + (g.type || ''));
+      (g.spots || []).forEach(function (sp) {
+        parts.push(sp.id + ':' + sp.name + ':' + (sp.buffs || []).map(function (b) { return b.type + b.value; }).join('+'));
+      });
+    });
+    return parts.join('|');
+  }
+  function groundSig(st) {
+    const vp = st.playersPage || {};
+    return [groundFilterId || '', vp.page || 1, peepSearchQ, groundCfgSig()].join('|');
+  }
+
+  // 数据广播（上鱼 feed / 玩家状态 players / 地图人数 grounds）到达时的就地更新入口：
+  // 只改内容，不重建骨架（.peeps 的滚动位置与搜索框的焦点都在这里面被保住）。
+  function groundLivePatch() {
+    const main = $('main');
+    const panel = main && main.querySelector('.ground-panel');
+    if (!panel) return false;
+    fillGroundCounts(panel);
+    fillPeepList(panel);
+    fillPeepHeadFoot(panel);
+    fillGroundFeed(panel);
+    return true;
+  }
+
   function renderGround() {
     const main = $('main');
     const st = S();
+    const sig = groundSig(st);
+    const host = main.querySelector('.ground-panel');
+    // 结构没变（只是上鱼 / 玩家状态 / 人数变化）→ 就地增量更新：
+    // 这个面板带搜索框、分页与独立滚动条，整页重建会把滚动位置与正在读的列表一起冲掉。
+    if (host && host.getAttribute('data-sig') === sig) { groundLivePatch(); return; }
     // 重建前先把「搜索框是否正被编辑 / 光标在哪 / 打到一半的字」记下来：
     // main.innerHTML='' 会把聚焦元素一并删除并触发它的 blur，所以「用户自己点走了」和
     // 「我们自己把它删了」只能靠重建前的 activeElement 区分，光靠 focus/blur 事件分不清。
@@ -2109,6 +2344,7 @@ window.UI = (function () {
     }
     main.innerHTML = '';
     const panel = el('div', 'panel wide ground-panel');
+    panel.setAttribute('data-sig', sig);   // 下次广播到达时按它判断「能不能就地更新」
     const filterGround = groundFilterId ? D.GROUNDS.find(function (g) { return g.id === groundFilterId; }) : null;
     panel.innerHTML = '<h2>🌊 渔场动态 ' + (filterGround ? '· ' + esc(filterGround.name) : '（全服实时）') + '</h2>';
     if (groundFilterId) {
@@ -2117,42 +2353,18 @@ window.UI = (function () {
       panel.appendChild(back);
     }
 
-    // 地图概览：点击进入单地图动态
+    // 地图概览：点击进入单地图动态（人数变化走 fillGroundCounts 就地更新，不重建卡片）
     const counts = el('div', 'ground-counts');
-    D.GROUNDS.forEach(function (g) {
-      const c = (st.groundCounts && st.groundCounts[g.id]) || 0;
-      const buffCount = (g.spots || []).filter(function (sp) { return sp.buffs && sp.buffs.length; }).length;
-      const box = el('div', 'gc-box' + (g.locked ? ' locked' : '') + (c > 0 ? ' live' : '') + (groundFilterId === g.id ? ' sel' : '') + (buffCount ? ' has-buff' : ''));
-      box.innerHTML = '<div class="gcb-name">' + esc(g.name) + (buffCount ? ' <span class="spot-buff-mark" title="有 ' + buffCount + ' 个钓点带增益">⚡</span>' : '') + '</div>' +
-        '<div class="gcb-num">' + c + '<span class="u">人</span></div>' +
-        (g.locked ? '' : '<div class="gcb-hint">' + (buffCount ? '⚡ ' + buffCount + ' 个钓点有增益' : '点击查看') + '</div>');
-      if (!g.locked) {
-        box.title = '点击查看「' + g.name + '」的动态' + (buffCount ? '（⚡ ' + buffCount + ' 个钓点有增益）' : '');
-        box.addEventListener('click', function () { groundFilterId = (groundFilterId === g.id) ? null : g.id; gotoPeepPage(1); renderView(); });
-      }
-      counts.appendChild(box);
-    });
-    const totalBox = el('div', 'gc-box total' + (groundFilterId ? '' : ' sel'));
-    totalBox.innerHTML = '<div class="gcb-name">🌐 全服在线</div><div class="gcb-num">' + (st.onlineTotal || 0) + '<span class="u">人</span></div>';
-    totalBox.title = '点击返回全服动态';
-    totalBox.addEventListener('click', function () { if (groundFilterId) { groundFilterId = null; gotoPeepPage(1); renderView(); } });
-    counts.appendChild(totalBox);
+    counts.setAttribute('data-region', 'gcounts');
     panel.appendChild(counts);
 
     // perf-9：玩家列表改为服务端分页（一次只渲染一页，不超过页面高度）+ 搜索；
     // 当前页玩家的状态更新由服务器按视口每秒推送（playersPage），不再全量下发在线列表。
-    const vp = st.playersPage || { page: 1, pages: 1, total: 0, list: [] };
-    const feedShown = groundFilterId ? st.feed.filter(function (e) { return e.ground === filterGround.name; }) : st.feed;
-
-    function gotoPeepPage(n) {
-      peepSearchQ = peepSearchQ || '';
-      window.Net.fetchPlayersPage({ page: n, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
-      window.Net.setPlayersView({ page: n, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
-    }
-
     const cols = el('div', 'ground-cols');
     const left = el('div', 'sub');
-    left.appendChild(el('h3', null, '👥 ' + (groundFilterId ? '本地图在线玩家（' + vp.total + '）' : '在线玩家（' + vp.total + ' / 全服 ' + (st.onlineTotal || 0) + '）')));
+    const head = el('h3');
+    head.setAttribute('data-region', 'peep-head');
+    left.appendChild(head);
     const searchBar = el('div', 'peep-search');
     const searchInput = el('input', 'peep-search-input');
     searchInput.type = 'text';
@@ -2161,7 +2373,7 @@ window.UI = (function () {
     // 注意：这里不挂 focus/blur 维护「是否聚焦」——重建删掉聚焦元素时浏览器也会发 blur，
     // 那会把标记清成 false，导致下面的焦点还回逻辑失效（打字打到一半就断）。
     // 是否还回焦点一律以 renderGround 开头记录的 searchHadFocus 为准。
-    // 记住光标：列表每秒都会被 playersPage 重建，重建后要把焦点与光标还回原位
+    // 记住光标：只有结构重建（换钓场/翻页）才会走到这里，数据广播已改成就地更新，不碰输入框
     function rememberCaret() { try { peepSearchCaret = searchInput.selectionStart || 0; } catch (e) {} }
     // 输入即筛选（与后台「账号管理」一致，不再需要回车）：防抖 250ms 后按新关键词重取第一页
     function applyPeepSearch() {
@@ -2195,49 +2407,39 @@ window.UI = (function () {
     left.appendChild(searchBar);
     // 限高滚动：只铺一页，超出的下滑查看，避免在线人数多时把整页拉长
     const list = el('div', 'peeps scroll5');
-    if (!vp.list.length) list.appendChild(el('div', 'hint', vp.total || peepSearchQ ? '没有匹配的玩家。' : (groundFilterId ? '该地图暂无玩家。' : '暂无在线玩家。')));
-    vp.list.forEach(function (b) { list.appendChild(peepCard(b)); });
+    list.setAttribute('data-region', 'peeps');
     left.appendChild(list);
-    left.appendChild(el('div', 'peeps-head', vp.pages > 1
-      ? '本页 ' + vp.list.length + ' 人 · 列表可下滑查看 · 共 ' + vp.pages + ' 页（每页 ' + PEEP_PAGE_SIZE + ' 人）'
-      : '共 ' + vp.list.length + ' 人' + (vp.list.length > 6 ? ' · 列表可下滑查看' : '')));
+    const foot = el('div', 'peeps-head');
+    foot.setAttribute('data-region', 'peep-foot');
+    left.appendChild(foot);
     const pager = el('div', 'peep-pager');
+    pager.setAttribute('data-region', 'peep-pager');
     const prevBtn = el('button', 'mini', '‹ 上一页');
-    prevBtn.disabled = vp.page <= 1;
-    prevBtn.addEventListener('click', function () { gotoPeepPage(vp.page - 1); });
+    prevBtn.setAttribute('data-pg', 'prev');
+    // 页码现读：就地更新后这里的快照会过期，闭包里绝不能存页码
+    prevBtn.addEventListener('click', function () { gotoPeepPage(((S().playersPage || {}).page || 1) - 1); });
     pager.appendChild(prevBtn);
-    pager.appendChild(el('span', 'muted', ' 第 ' + vp.page + ' / ' + vp.pages + ' 页 '));
+    pager.appendChild(el('span', 'muted', ''));
     const nextBtn = el('button', 'mini', '下一页 ›');
-    nextBtn.disabled = vp.page >= vp.pages;
-    nextBtn.addEventListener('click', function () { gotoPeepPage(vp.page + 1); });
+    nextBtn.setAttribute('data-pg', 'next');
+    nextBtn.addEventListener('click', function () { gotoPeepPage(((S().playersPage || {}).page || 1) + 1); });
     pager.appendChild(nextBtn);
     left.appendChild(pager);
     cols.appendChild(left);
-    // 视口登记：只在进入本页/翻页/搜索/切换钓场时发一次（playersPage 推送引发的
-    // 重绘不会重复登记），之后服务器每秒只推当前页玩家状态
-    const viewSig = [vp.page, PEEP_PAGE_SIZE, peepSearchQ, groundFilterId || ''].join('|');
-    if (renderGround._lastViewSig !== viewSig) {
-      renderGround._lastViewSig = viewSig;
-      window.Net.setPlayersView({ page: vp.page, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
-    }
 
     const right = el('div', 'sub');
     right.appendChild(el('h3', null, '📡 最新动态' + (groundFilterId ? ' · ' + esc(filterGround.name) : '')));
     const feed = el('div', 'feed feed-big');
-    if (feedShown.length === 0) feed.appendChild(el('div', 'hint', groundFilterId ? '该地图暂无动态，等待大家上鱼……' : '暂无动态，等待大家上鱼……'));
-    feedShown.slice(0, 60).forEach(function (e) {
-      const meta = e.item || {};
-      const line = el('div', 'feed-line' + (e.record ? ' record' : ''));
-      line.innerHTML = '<span class="ftime">' + timeStr(e.t) + '</span> <b>' + esc(e.who) + '</b> 在 ' +
-        esc(e.ground) + '·' + esc(e.spot) + ' 钓到 <span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
-        (e.size ? ' <span class="muted">' + e.size + 'cm</span>' : '') +
-        (e.record ? ' 🏆刷新纪录' : meta.rarity === 'epic' ? ' 💎史诗' : meta.rarity === 'rare' ? ' ✨稀有' : meta.kind === 'component' ? ' 🔧组件' : '');
-      feed.appendChild(line);
-    });
+    feed.setAttribute('data-region', 'gfeed');
     right.appendChild(feed);
     cols.appendChild(right);
     panel.appendChild(cols);
     main.appendChild(panel);
+    // 首次铺内容：与广播触发的就地更新共用同一套填充函数，两条路渲染出的 DOM 必须一样
+    fillGroundCounts(panel);
+    fillPeepList(panel);
+    fillPeepHeadFoot(panel);   // 顺带做视口登记（含去重）
+    fillGroundFeed(panel);
     // 焦点还回搜索框必须放在**面板挂进文档之后**：对游离节点调 focus() 是空操作，
     // 放前面会让焦点直接掉到 body，下一个字就打不进去了。
     if (searchHadFocus) {
@@ -6865,6 +7067,24 @@ window.UI = (function () {
   // 刷新主视图。每个视图只关心与自己相关的广播类型（scope）：
   // 无关广播（如他人的渔获 feed/players）只更新顶栏/导航，不重绘主区——
   // 否则只要有人上鱼，钓竿配置/背包等页面的组件卡片都会跟着整页闪烁重绘。
+  //
+  // ⚠️ 底层刷新纪律（加新页面 / 加新广播前先读这一段，别再重犯）：
+  //  1) 广播只有两类：**数据广播**（上鱼 feed/catch、资产 assets、玩家状态 players/playersPage、
+  //     地图人数 grounds、市集 market、商店 shop/pricecfg、宝匣 chest…）与**结构广播**
+  //     （后台改配置：groundcfg/castcfg/smeltcfg/componentcfg/chestcfg/mall，以及视图自身完成
+  //     拉取后的自绘 scope）。
+  //  2) **数据广播永远不许重建页面骨架**。带本地交互状态的容器（搜索框、分页、展开/收起、
+  //     勾选、独立滚动条）必须走就地更新：`main.innerHTML=''` 会把滚动位置、焦点、输入法候选、
+  //     正在点的那一行一起冲掉，用户报过多次（交易弹窗「东西太多拉下去直接弹回去」、
+  //     渔场动态玩家列表「上鱼播报一来就刷回顶部」）。
+  //  3) 就地更新的标准姿势（照抄即可）：
+  //     a. 给页面根节点写 `data-sig` 结构签名（renderGround 的 groundSig / renderFishing 的
+  //        fishingSig）：签名只包含「会改变 DOM 结构」的量——当前页/页码/搜索词/后台配置，
+  //        **绝不包含**次数、人数、渔获、滚动等纯数据；
+  //     b. 渲染函数开头 `if (host && host.getAttribute('data-sig') === sig) { 就地更新; return; }`，
+  //        只有签名变了才 main.innerHTML='' 重建；
+  //     c. 列表用 patchList() 按 key 复用节点，只改文本/class，不重造行；填充函数必须被
+  //        「首次铺」和「广播更新」两条路共用，避免两条路渲染出不同的 DOM。
   const VIEW_SCOPES = {
     fishing: ['players', 'grounds', 'catch', 'assets', 'groundcfg', 'castcfg'], // 实况/日志/钓速随广播更新
     bd: [],                                             // 钓竿配置：只随操作重绘（展示数据不受广播影响）
