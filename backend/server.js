@@ -3780,10 +3780,16 @@ const server = http.createServer(function (req, res) {
         if (world.marketLog.length > 300) world.marketLog.splice(0, world.marketLog.length - 300);
         saveEconomy();
         broadcastMarket();
+        // 市集成交同时进「📜 日志 · ✅ 交易」：买卖双方各推一条（含物品 id，客户端据此解析词条数值）。
+        // 不能只推 notice：notice 会落进「系统」分类，市集成交属于交易流水。
+        const mktEvent = { type: 'mktTrade', t: Date.now(), id: l.id, name: l.name, qty: qty,
+          price: l.price, total: total, tax: tax, sellerGain: sellerGain,
+          buyer: key, buyerName: rec.name, seller: l.seller, sellerName: l.sellerName };
+        sendTo(key, Object.assign({ role: 'buy', other: l.sellerName }, mktEvent));
         // 卖家可能不在当前页面，必须主动推送权威资产，否则收不到钱
-        if (seller) {
+        if (seller && l.seller !== key) {
           sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory });
-          sendTo(l.seller, { type: 'notice', msg: '市集售出：' + l.name + ' ×' + qty + '，入账 💰' + sellerGain + '（已扣 10% 税 ' + tax + '）' });
+          sendTo(l.seller, Object.assign({ role: 'sell', other: rec.name, coins: seller.coins }, mktEvent));
         }
         apiResp(res, 200, { ok: true, qty: qty, total: total, tax: tax, coins: rec.coins, inventory: rec.inventory });
       });
@@ -3921,8 +3927,10 @@ const server = http.createServer(function (req, res) {
           saveAccount(t.a.key); saveAccount(t.b.key);
           broadcastTrade(t);
           trades.delete(t.id);
-          // 通知双方最新库存
-          broadcast({ type: 'tradeDone', tradeId: t.id, a: { key: t.a.key, inventory: ra.inventory, coins: ra.coins }, b: { key: t.b.key, inventory: rb.inventory, coins: rb.coins } });
+          // 通知双方最新库存；aItems/bItems 一并下发，客户端据此把「给出/获得」写进交易日志
+          broadcast({ type: 'tradeDone', tradeId: t.id,
+            aItems: t.aItems, bItems: t.bItems, aName: t.a.name, bName: t.b.name,
+            a: { key: t.a.key, inventory: ra.inventory, coins: ra.coins }, b: { key: t.b.key, inventory: rb.inventory, coins: rb.coins } });
           return apiResp(res, 200, { ok: true, done: true });
         }
         broadcastTrade(t);

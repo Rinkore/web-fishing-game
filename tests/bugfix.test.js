@@ -172,7 +172,11 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('钓到鱼后大鱼榜写入纪录', !!koi, JSON.stringify(recAfter.data.records));
     check('纪录体型正确 95.5cm', !!koi && koi.size === 95.5, JSON.stringify(koi));
     check('纪录保持者 = 钓到者显示名', !!koi && koi.who === '甲玩家', JSON.stringify(koi));
-    check('B 收到 records 广播', sinkB.some(m => m.type === 'records' && m.records.koi && m.records.koi.size === 95.5));
+    // perf-8c 起破纪录不再全量广播 records（榜单全量传输太贵）：改为 recordsDirty 版本号 +
+    // 客户端按需重拉 /api/records，且有 1s 防抖 —— 必须轮询等它到达，不能睡固定 300ms
+    const gotRecordsDirty = await waitFor(() => sinkB.some(m => m.type === 'recordsDirty'), { timeout: 3000 });
+    check('B 收到 recordsDirty 通知（破纪录后按需重拉榜单）', gotRecordsDirty,
+      JSON.stringify(sinkB.map(m => m.type).slice(-6)));
 
     // 更小的鱼不覆盖纪录
     await POST('http://localhost:' + PORT + '/api/dev/catch', { token: tokB, size: 30, item: { kind: 'fish', rarity: 'rare', id: 'koi', name: '黄金锦鲤', size: 30 }, ground: '静水湖', spot: '深水区' });
@@ -203,7 +207,10 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('图鉴已解锁「耐磨绳」', !!(cx1.data.codex && cx1.data.codex.rope));
     check('累计渔获计数 > 0', cx1.data.catchCount > 0);
     check('B 的图鉴已解锁（各自独立）', (await GET('http://localhost:' + PORT + '/api/codex?token=' + tokB)).data.codex.koi.count === 2);
-    check('A 收到 codex 定向推送', sinkA.some(m => m.type === 'codex' && m.codex && m.codex.koi));
+    // perf-8c：图鉴热路径改为 codexAdd 增量（原 codex 全量每竿重发整个图鉴）
+    check('A 收到 codexAdd 增量推送（图鉴解锁即时可见）',
+      sinkA.some(m => m.type === 'codexAdd' && m.id === 'koi' && m.add === 1),
+      JSON.stringify(sinkA.filter(m => m.type === 'codexAdd' || m.type === 'codex')));
     check('A 收到 assets 定向推送（渔获入库）', sinkA.some(m => m.type === 'assets' && m.inventory && m.inventory.koi));
 
     // /catch 不再整包覆盖库存，而是服务器侧累加
@@ -236,7 +243,11 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const sellerAfter1 = (await GET('http://localhost:' + PORT + '/api/me?token=' + tokA)).data;
     check('卖家收到货款（498 → 552，货款 54 = 60 − 10% 税 6）', sellerAfter1.coins === 552, String(sellerAfter1.coins));
     check('卖家收到 assets 定向推送（带最新金币）', sinkA.some(m => m.type === 'assets' && m.coins === 552), JSON.stringify(sinkA.filter(m => m.type === 'assets').slice(-1)));
-    check('卖家收到售出通知 notice', sinkA.some(m => m.type === 'notice' && /售出/.test(m.msg || '')));
+    // v0.13.4：市集成交改为推送 mktTrade（买卖双方各一条）而不是通用 notice——
+    // notice 只能落进「系统」日志，市集成交流水应当进「交易」分类。
+    check('卖家收到成交推送（mktTrade role=sell，含物品 id 与到账金额）',
+      sinkA.some(m => m.type === 'mktTrade' && m.role === 'sell' && m.id === 'crucian' && m.qty === 3 && m.sellerGain === 54),
+      JSON.stringify(sinkA.filter(m => m.type === 'mktTrade')));
 
     const mk1 = await GET('http://localhost:' + PORT + '/api/records'); // 仅用于确保无异常
     void mk1;
@@ -283,6 +294,10 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     // ============================================================
     section('【问题 1】在线交易勾选被重置');
     // ============================================================
+    // v0.12 起「在线交易」独立页面已删除，交易整体搬进弹出子窗口（从渔场动态的玩家卡片进入，
+    // 或收到邀请时自动弹窗）。本段原来点导航入口，改弹窗后找不到入口 → 直接抛错中止整套，
+    // 于是这条**专门防「上鱼/广播刷新交易列表」的回归**自 v0.12 起从未执行，
+    // 用户报的「东西太多拉下去直接弹回去」就是这样溜回来的。这里按弹窗流程重写。
     // A 预置库存（鲫鱼 10、鲤鱼 5）用于交易选取
     await POST('http://localhost:' + PORT + '/api/dev/seed', { token: tokA, inventory: { crucian: 10, carp: 5 } });
 
@@ -291,22 +306,17 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('A 页面加载无异常', A.errs.length === 0, A.errs.join(' | '));
     check('A 自动登录成功', w.document.getElementById('auth').style.display === 'none');
 
-    // 进入在线交易页
-    const navTrade = navBtn(w, '在线交易');
-    check('存在「在线交易」入口', !!navTrade);
-    navTrade.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-    await sleep(200);
-    check('交易页显示其他在线玩家供邀请', w.document.querySelector('.invite-row') && w.document.querySelector('.invite-row').textContent.includes('乙玩家'),
-      w.document.getElementById('main').textContent.slice(0, 120));
-
-    // A 邀请 B，B 通过接口接受
-    const inv = await POST('http://localhost:' + PORT + '/api/trade/invite', { token: tokA, target: 'fix_b' });
+    // B 邀请 A：被邀请方（A）会随 trade 广播自动弹出交易子窗口，无需依赖玩家列表渲染
+    const inv = await POST('http://localhost:' + PORT + '/api/trade/invite', { token: tokB, target: 'fix_a' });
     check('发起交易邀请成功', inv.status === 200 && !!inv.data.tradeId, JSON.stringify(inv.data));
     const tid = inv.data.tradeId;
-    await POST('http://localhost:' + PORT + '/api/trade/respond', { token: tokB, tradeId: tid, accept: true });
-    await sleep(500);
+    await waitFor(() => !!w.document.querySelector('.trade-modal .trade-actions button'));
+    const okBtn = Array.from(w.document.querySelectorAll('.trade-actions button')).find(b => b.textContent.includes('接受'));
+    check('A 收到邀请后自动弹出交易窗口', !!okBtn);
+    okBtn.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await waitFor(() => !!w.document.querySelector('.tp-rows'), { timeout: 4000 });
 
-    check('A 进入交易界面（显示对方提供栏）', !!w.document.querySelector('.trade-sides'), w.document.getElementById('main').textContent.slice(0, 160));
+    check('A 进入交易界面（显示对方提供栏）', !!w.document.querySelector('.trade-sides'));
     check('A 看到物品选择器', !!w.document.querySelector('.trade-picker'));
 
     // —— 勾选物品 ——
@@ -329,9 +339,35 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('背景广播后勾选仍保持', row2 && row2.querySelector('input[type=checkbox]').checked === true);
     check('背景广播后数量仍为 2', row2 && row2.querySelector('input.tp-qty').value === '2');
 
+    // ①' 用户上报的「东西太多拉下去直接弹回去」：交易进行中，上鱼 / 卖出 / 市集成交会推 assets
+    //    广播，新渔获入图鉴还会推 codex——这类**纯数据广播**不得重建提供物品列表（重建 = 滚动
+    //    位置归零 + 正在填的数量框丢焦点）。用 DOM 节点身份作最强证据。
+    // jsdom 不模拟布局，scrollTop 恒为 0：装一个可读写的替身，才能验证「视口不被弹回顶部」
+    if (!w.__scrollTopPatched) {
+      const scrollStore = new WeakMap();
+      Object.defineProperty(w.HTMLElement.prototype, 'scrollTop', {
+        configurable: true,
+        get() { return scrollStore.get(this) || 0; },
+        set(v) { scrollStore.set(this, v); },
+      });
+      w.__scrollTopPatched = true;
+    }
+    const rowsBefore = w.document.querySelector('.tp-rows');
+    rowsBefore.scrollTop = 120; // 模拟用户滚到列表下方挑东西
+    w.UI.refreshAll('assets');
+    w.UI.refreshAll('codex');
+    await sleep(60);
+    check('交易进行中：资产 / 图鉴广播不重建提供物品列表（DOM 节点身份不变）',
+      w.document.querySelector('.tp-rows') === rowsBefore);
+    check('上鱼等广播后滚动位置不归零（不会被弹回顶部）', rowsBefore.scrollTop === 120, String(rowsBefore.scrollTop));
+    check('上鱼等广播后交易窗口仍在进行中', !!w.document.querySelector('.trade-picker') && !!w.document.querySelector('.trade-lock'));
+
     // ② 强制整页重绘（模拟交易状态更新）后勾选也必须保持 —— 覆盖草稿状态机制
     w.UI.refreshAll('trade');
     await sleep(60);
+    check('必须重建时视口也要还回去（重建后不滚回顶部）',
+      w.document.querySelector('.tp-rows') && w.document.querySelector('.tp-rows').scrollTop === 120,
+      String(w.document.querySelector('.tp-rows') && w.document.querySelector('.tp-rows').scrollTop));
     let row3 = tpRow(w, '鲫鱼');
     check('强制整页重绘后勾选仍保持（草稿状态跨重绘）', row3 && row3.querySelector('input[type=checkbox]').checked === true,
       row3 ? row3.outerHTML.slice(0, 140) : 'no row');
@@ -354,10 +390,10 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await sleep(600);
 
     const tMsg = sinkB.filter(m => m.type === 'trade' && m.trade.id === tid).slice(-1)[0];
-    const aItems = tMsg && tMsg.trade.aItems;
-    check('服务器已接收我方提供的物品', Array.isArray(aItems) && aItems.length === 2, JSON.stringify(aItems));
-    check('鲫鱼 ×2 已提交', !!aItems && aItems.some(i => i.id === 'crucian' && i.qty === 2), JSON.stringify(aItems));
-    check('鲤鱼 ×1 已提交', !!aItems && aItems.some(i => i.id === 'carp' && i.qty === 1), JSON.stringify(aItems));
+    const bItems = tMsg && tMsg.trade.bItems; // 本用例 A 是被邀请方（b 侧）
+    check('服务器已接收我方提供的物品', Array.isArray(bItems) && bItems.length === 2, JSON.stringify(bItems));
+    check('鲫鱼 ×2 已提交', !!bItems && bItems.some(i => i.id === 'crucian' && i.qty === 2), JSON.stringify(bItems));
+    check('鲤鱼 ×1 已提交', !!bItems && bItems.some(i => i.id === 'carp' && i.qty === 1), JSON.stringify(bItems));
     check('提交后「我的提供」栏展示物品', w.document.querySelector('.trade-side.mine .ts-list').textContent.includes('鲫鱼'));
 
     // 客户端不再持有失效的草稿（服务器已确认）
@@ -371,7 +407,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('A 确认成功', cf1.status === 200 && cf1.data.ok === true);
     await sleep(200);
     let tv = sinkB.filter(m => m.type === 'trade' && m.trade.id === tid).slice(-1)[0].trade;
-    check('A 已确认 aOk=true，交易未完成', tv.aOk === true && tv.bOk === false && !tv.done, JSON.stringify({ aOk: tv.aOk, bOk: tv.bOk, done: tv.done }));
+    // A 是被邀请方（b 侧），确认后 bOk=true
+    check('A 已确认 bOk=true，交易未完成', tv.bOk === true && tv.aOk === false && !tv.done, JSON.stringify({ aOk: tv.aOk, bOk: tv.bOk, done: tv.done }));
 
     // A 改动物品 → 双方确认作废 + 冷却
     const set2 = await POST('http://localhost:' + PORT + '/api/trade/set', { token: tokA, tradeId: tid, items: [{ id: 'crucian', qty: 3 }] });
@@ -381,6 +418,18 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     tv = sinkB.filter(m => m.type === 'trade' && m.trade.id === tid).slice(-1)[0].trade;
     check('任一方改动后双方确认被重置', tv.aOk === false && tv.bOk === false, JSON.stringify({ aOk: tv.aOk, bOk: tv.bOk }));
     check('冷却中确认被拒（429）', (await POST('http://localhost:' + PORT + '/api/trade/confirm', { token: tokA, tradeId: tid })).status === 429);
+
+    // 冷却倒计时与「冷却结束的那一刻」都不得重建列表：原来 500ms 定时器在冷却结束时
+    // 无条件整窗重绘，用户正滚到列表下方挑东西就会被弹回顶部。
+    const cdNode = w.document.querySelector('.trade-modal .tp-rows');
+    await sleep(1200); // 冷却 3s 内定时器已跑若干轮（原本每轮都可能重建）
+    check('冷却倒计时期间不重建提供物品列表（只改按钮文字）',
+      w.document.querySelector('.trade-modal .tp-rows') === cdNode);
+    await waitFor(() => /确认交易/.test((w.document.querySelector('.trade-actions button.primary') || {}).textContent || ''), { timeout: 6000 });
+    const cdBtn = w.document.querySelector('.trade-actions button.primary');
+    check('冷却结束后按钮就地恢复为可点的「确认交易」（不靠重建解锁）',
+      !!cdBtn && !/locked/.test(cdBtn.className), cdBtn ? cdBtn.className + '|' + cdBtn.textContent : 'no btn');
+    check('冷却结束不重建列表（节点身份不变）', w.document.querySelector('.trade-modal .tp-rows') === cdNode);
 
     // 等待冷却结束 → 双方确认 → 成交
     await sleep(3200);

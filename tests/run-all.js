@@ -26,7 +26,7 @@ const NODE = process.execPath;
 
 // 套件清单（端口互不相同，可安全并行）
 // admin-ui 是从 ui-layout 拆出的后台页面场景：拆开后两者并行跑，墙钟不再被单个套件卡住。
-const ALL_SUITES = ['e2e', 'auth-ui', 'fishing-interaction', 'bugfix', 'chest', 'v011', 'v013', 'ui-layout', 'admin', 'admin-ui'];
+const ALL_SUITES = ['e2e', 'auth-ui', 'fishing-interaction', 'bugfix', 'chest', 'v011', 'v013', 'v0134', 'ui-layout', 'admin', 'admin-ui'];
 const ONLY = (process.env.FISHING_TEST_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
 const SUITES = ONLY.length ? ALL_SUITES.filter(s => ONLY.indexOf(s) >= 0) : ALL_SUITES;
 

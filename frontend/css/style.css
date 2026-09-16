@@ -529,6 +529,9 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .trade-actions .primary { padding: 11px 22px; }
 .trade-actions .primary.done { background: rgba(45,212,191,.20); color: var(--accent); border: 1px solid var(--accent); }
 .trade-actions .primary.locked { background: rgba(255,255,255,.08); color: var(--muted); }
+/* 撤回邀请 / 关闭：窗口下方居中，红底（与右上角 ✕ 同一动作，见 ui.js tradeModalClose） */
+.trade-actions.center { justify-content: center; }
+.trade-actions.center .mini { padding: 9px 20px; }
 
 /* ---- 图鉴 ---- */
 .codex-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
@@ -1207,6 +1210,13 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .log-row .log-tag.log-record { border-color: var(--big); color: var(--big); }
 .log-row .log-tag.log-subscribe { border-color: var(--rare); color: var(--rare); }
 .log-row .log-msg { flex: 1; min-width: 0; word-break: break-word; }
+/* 交易 / 市集成交日志的物品明细：方向标签 + 物品名（品质配色）+ 部位 + 组件词条数值 */
+.log-msg .log-detail { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-top: 4px; font-size: 12px; }
+.log-detail .log-dir { flex: none; color: var(--muted); }
+.log-detail .log-item { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 3px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.03); }
+.log-detail .log-item-qty { color: var(--muted); }
+.log-detail .log-item-part { color: var(--muted); }
+.log-detail .log-item-affs { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 2px; }
 .log-foot { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 
 @media (max-width: 640px) {

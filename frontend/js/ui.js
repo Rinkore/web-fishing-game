@@ -328,8 +328,13 @@ window.UI = (function () {
   }
 
   // ---- 日志：记录玩家收到的服务器消息（弹窗 / 公告 / 交易 / 纪录 / 订阅提醒）----
-  // 前端本地持久化（localStorage 按账号分开）上限 300 条，不占服务器存储。
+  // 前端本地持久化（localStorage 按账号分开），不占服务器存储。
+  // 保留策略（v0.13.4）：只有「渔获 / 系统」这两类**高频**日志各自动丢弃最旧的 300 条——挂机上鱼
+  // 会持续刷，不设上限会把交易/纪录流水挤出本地存储；「交易 / 纪录 / 订阅」是低频且需要长期回查的
+  // 流水，不自动删除，只受下面的本地总条数安全上限约束。
   const LOG_KEEP = 300;
+  const LOG_CAPPED = { catch: true, system: true };
+  const LOG_TOTAL_MAX = 2000;   // localStorage 体积兜底（正常玩不到这个量）
   const LOG_KINDS = { system: ['🖥', '系统'], trade: ['✅', '交易'], record: ['🏆', '纪录'], subscribe: ['🔔', '订阅'], catch: ['🐟', '渔获'] };
   let msgLog = [];
   let msgLogOwner = null;
@@ -347,11 +352,28 @@ window.UI = (function () {
     if (!k) return;
     try { localStorage.setItem(k, JSON.stringify(msgLog)); } catch (e) {}
   }
+  // 丢弃超量的旧日志：按类型各留 LOG_KEEP 条（只对 LOG_CAPPED 里的类型生效），
+  // 从最旧的一端（数组尾）往回扫，保证「交易 / 纪录 / 订阅」不会被自动清掉；
+  // 只有突破本地总量兜底上限时才连非上限类型一起从最旧删。
+  function trimLog() {
+    const over = {};
+    msgLog.forEach(function (e) { if (LOG_CAPPED[e.kind]) over[e.kind] = (over[e.kind] || 0) + 1; });
+    Object.keys(over).forEach(function (k) { over[k] = Math.max(0, over[k] - LOG_KEEP); });
+    for (let i = msgLog.length - 1; i >= 0; i--) {
+      const k = msgLog[i].kind;
+      if (over[k] > 0) { over[k]--; msgLog.splice(i, 1); }
+      else if (msgLog.length > LOG_TOTAL_MAX) { msgLog.splice(i, 1); }
+    }
+  }
   // 记一条服务器消息（同一账号跨页面/刷新保留；不重复登录时不会串号）
-  function addLog(kind, msg) {
+  // items（可选）：这条日志涉及的物品 [{ id, qty, dir }]，dir='got'|'gave'。
+  //   只存物品 id（组件实例签名），展示时再解析词条数值——日志数据因此与展示口径解耦。
+  function addLog(kind, msg, items) {
     loadLog();
-    msgLog.unshift({ t: Date.now(), kind: LOG_KINDS[kind] ? kind : 'system', msg: String(msg == null ? '' : msg) });
-    if (msgLog.length > LOG_KEEP) msgLog.length = LOG_KEEP;
+    const e = { t: Date.now(), kind: LOG_KINDS[kind] ? kind : 'system', msg: String(msg == null ? '' : msg) };
+    if (items && items.length) e.items = items.filter(function (it) { return it && it.id != null; });
+    msgLog.unshift(e);
+    trimLog();
     saveLog();
     if (currentView === 'logs') renderView();
   }
@@ -465,6 +487,7 @@ window.UI = (function () {
         }
         currentView = item.id;
         if (item.id === 'inventory') clearSubAlerts();
+        if (item.id !== 'ground') peepComposing = false; // 离开渔场页：搜索框已随 DOM 销毁，合成标记不能留成脏值
         renderNav();
         renderView();
         loadViewData(item.id);
@@ -2064,15 +2087,26 @@ window.UI = (function () {
   // ---- 渔场动态视图（全服概览 + 单地图点击查看） ----
   // 当前筛选的地图（null = 全服；模块级：重绘间保留）
   let groundFilterId = null;
-  // perf-9：玩家列表搜索/翻页状态（服务端分页，一次最多渲染一页，不超过页面高度）
-  const PEEP_PAGE_SIZE = 30;
-  let peepSearchQ = '';
+  // perf-9：玩家列表搜索/翻页状态（服务端分页，一次最多渲染一页；列表限高可下滑，避免页面被拉长）
+  const PEEP_PAGE_SIZE = 20;
+  let peepSearchQ = '';        // 已生效的关键词（服务端按它过滤）
+  let peepSearchDraft = '';    // 输入框里的原文：重绘很频繁，草稿必须留在状态里，否则打到一半的字会被重建冲掉
+  let peepSearchCaret = 0;     // 光标位置（重建后还回去）
   let peepSearchTimer = null;
-  let peepSearchFocus = false;
+  let peepComposing = false;   // 中文输入法合成中：这一小段时间挂起重绘，否则候选词会被打断
 
   function renderGround() {
     const main = $('main');
     const st = S();
+    // 重建前先把「搜索框是否正被编辑 / 光标在哪 / 打到一半的字」记下来：
+    // main.innerHTML='' 会把聚焦元素一并删除并触发它的 blur，所以「用户自己点走了」和
+    // 「我们自己把它删了」只能靠重建前的 activeElement 区分，光靠 focus/blur 事件分不清。
+    const focusEl = document.activeElement;
+    const searchHadFocus = !!(focusEl && focusEl.classList && focusEl.classList.contains('peep-search-input'));
+    if (searchHadFocus) {
+      peepSearchDraft = focusEl.value;
+      try { peepSearchCaret = focusEl.selectionStart || 0; } catch (e) {}
+    }
     main.innerHTML = '';
     const panel = el('div', 'panel wide ground-panel');
     const filterGround = groundFilterId ? D.GROUNDS.find(function (g) { return g.id === groundFilterId; }) : null;
@@ -2122,21 +2156,51 @@ window.UI = (function () {
     const searchBar = el('div', 'peep-search');
     const searchInput = el('input', 'peep-search-input');
     searchInput.type = 'text';
-    searchInput.placeholder = '🔍 搜索玩家名后回车…';
-    searchInput.value = peepSearchQ;
-    searchInput.addEventListener('focus', function () { peepSearchFocus = true; });
-    searchInput.addEventListener('blur', function () { peepSearchFocus = false; });
+    searchInput.placeholder = '🔍 输入玩家名即时筛选…';
+    searchInput.value = peepSearchDraft;   // 草稿而不是已生效词：多打一个字母不会因为中途重绘被吃掉
+    // 注意：这里不挂 focus/blur 维护「是否聚焦」——重建删掉聚焦元素时浏览器也会发 blur，
+    // 那会把标记清成 false，导致下面的焦点还回逻辑失效（打字打到一半就断）。
+    // 是否还回焦点一律以 renderGround 开头记录的 searchHadFocus 为准。
+    // 记住光标：列表每秒都会被 playersPage 重建，重建后要把焦点与光标还回原位
+    function rememberCaret() { try { peepSearchCaret = searchInput.selectionStart || 0; } catch (e) {} }
+    // 输入即筛选（与后台「账号管理」一致，不再需要回车）：防抖 250ms 后按新关键词重取第一页
+    function applyPeepSearch() {
+      const q = peepSearchDraft.trim();
+      if (q === peepSearchQ) return;
+      peepSearchQ = q;
+      gotoPeepPage(1);
+    }
+    searchInput.addEventListener('compositionstart', function () { peepComposing = true; });
+    searchInput.addEventListener('compositionend', function () {
+      peepComposing = false;
+      peepSearchDraft = searchInput.value; rememberCaret();
+      if (peepSearchTimer) clearTimeout(peepSearchTimer);
+      peepSearchTimer = setTimeout(applyPeepSearch, 250);
+    });
+    searchInput.addEventListener('input', function (ev) {
+      peepSearchDraft = searchInput.value; rememberCaret();
+      // 输入法合成中的中间态（拼音串）不触发请求，否则会按拼音去搜
+      if (peepComposing || ev.isComposing) return;
+      if (peepSearchTimer) clearTimeout(peepSearchTimer);
+      peepSearchTimer = setTimeout(applyPeepSearch, 250);
+    });
+    searchInput.addEventListener('keyup', rememberCaret);
     searchInput.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Enter') return;
-      peepSearchQ = searchInput.value.trim();
-      gotoPeepPage(1);
+      if (peepSearchTimer) { clearTimeout(peepSearchTimer); peepSearchTimer = null; }
+      peepSearchDraft = searchInput.value;
+      applyPeepSearch();
     });
     searchBar.appendChild(searchInput);
     left.appendChild(searchBar);
-    const list = el('div', 'peeps');
+    // 限高滚动：只铺一页，超出的下滑查看，避免在线人数多时把整页拉长
+    const list = el('div', 'peeps scroll5');
     if (!vp.list.length) list.appendChild(el('div', 'hint', vp.total || peepSearchQ ? '没有匹配的玩家。' : (groundFilterId ? '该地图暂无玩家。' : '暂无在线玩家。')));
     vp.list.forEach(function (b) { list.appendChild(peepCard(b)); });
     left.appendChild(list);
+    left.appendChild(el('div', 'peeps-head', vp.pages > 1
+      ? '本页 ' + vp.list.length + ' 人 · 列表可下滑查看 · 共 ' + vp.pages + ' 页（每页 ' + PEEP_PAGE_SIZE + ' 人）'
+      : '共 ' + vp.list.length + ' 人' + (vp.list.length > 6 ? ' · 列表可下滑查看' : '')));
     const pager = el('div', 'peep-pager');
     const prevBtn = el('button', 'mini', '‹ 上一页');
     prevBtn.disabled = vp.page <= 1;
@@ -2174,6 +2238,14 @@ window.UI = (function () {
     cols.appendChild(right);
     panel.appendChild(cols);
     main.appendChild(panel);
+    // 焦点还回搜索框必须放在**面板挂进文档之后**：对游离节点调 focus() 是空操作，
+    // 放前面会让焦点直接掉到 body，下一个字就打不进去了。
+    if (searchHadFocus) {
+      searchInput.focus();
+      try { searchInput.setSelectionRange(peepSearchCaret, peepSearchCaret); } catch (e) {}
+    } else {
+      peepComposing = false; // 合成中被打断（元素被删）时 compositionend 不会来，标记要能自愈
+    }
   }
 
   // ---- 系统商店视图 ----
@@ -4504,6 +4576,10 @@ window.UI = (function () {
   // （SSE 广播非常频繁）都会把用户刚勾选的物品清空。
   let tradeDraft = { tid: null, sel: {} };
   let tradePickCat = 'all'; // 提供物品列表的分类页签（全部/鱼类/材料/组件）
+  // 提供物品列表的视口与编辑态：必须在重绘间保留，否则任何一次重建（对方改动 / 手动刷新 / 冷却结束）
+  // 都会让列表滚回顶部、正在填的数量框丢焦点——背包几百行时用户报「东西太多拉下去直接弹回去」。
+  let tradePickScroll = 0;   // .tp-rows 的 scrollTop
+  let tradeQtyFocus = null;  // 正在编辑的数量框 { id, caret }（按物品 id 定位，重建后还回去）
 
   function draftFor(t) {
     if (tradeDraft.tid !== t.id) {
@@ -4526,16 +4602,42 @@ window.UI = (function () {
   let tradeModalTarget = null;      // 邀请已发出、会话尚未建立时的对象 { id, name }
   let tradeModalHadSession = false; // 子窗口存续期间出现过交易会话（用于识别会话结束）
   let lastIncomingTradeId = null;   // 最近一次自动弹窗展示过的邀请（避免重复弹）
+  let tradeCancelOnArrive = false;  // 「邀请刚发出、会话还没回来时点了关闭」：等 trade 广播到达立刻补一次撤回
 
-  function tradeModalClose() {
+  // 关闭交易子窗口。邀请尚未被接受时，关闭＝撤回邀请——只关窗口不发 /api/trade/cancel 的话，
+  // 服务端会话还挂着：对方仍会收到邀请，而自己因为「同一对玩家只能有一个活跃会话」再也发不出新邀请。
+  // 已进入交易（对方已接受）时关闭只是收起窗口，不替玩家取消：进行中的交易另有「取消交易」按钮。
+  function tradeModalClose(opts) {
+    const t = S().trade;
+    if (t && !t.accepted && window.Net && window.Net.tradeCancel && !(opts && opts.noCancel)) {
+      window.Net.tradeCancel(t.id);
+      toast('已撤回交易邀请');
+    } else if (!t && tradeModalTarget && !(opts && opts.noCancel)) {
+      // 会话还没回来的空窗期（邀请请求在途）：先记下意图，trade 广播到达时补撤回
+      tradeCancelOnArrive = true;
+    }
     if (tradeModalEl) { const m = tradeModalEl; tradeModalEl = null; m.remove(); }
     tradeModalRedraw = null;
     tradeModalTarget = null;
     tradeModalHadSession = false;
   }
+  // trade 广播到达时调用：补上「空窗期关闭」欠下的那次撤回。
+  // 只对**自己发起的**未接受邀请生效，否则会误撤后来收到的别人的邀请。
+  function settlePendingTradeCancel() {
+    if (!tradeCancelOnArrive) return;
+    const t = S().trade;
+    tradeCancelOnArrive = false;
+    const meKey = S().me && S().me.id != null ? String(S().me.id).toLowerCase() : null;
+    if (t && !t.accepted && meKey && t.a && t.a.key === meKey && window.Net && window.Net.tradeCancel) {
+      window.Net.tradeCancel(t.id);
+      toast('已撤回交易邀请');
+    }
+  }
 
   function openTradeModal(targetId, targetName) {
-    if (tradeModalEl) tradeModalClose();
+    // 换目标重开窗口时只收起旧窗口，不撤回：点别人的「交易」按钮时若手上正有一条**别人发来的**
+    // 未接受邀请，撤回等于替玩家拒了对方；撤回一律只由窗口里的按钮 / ✕ 触发。
+    if (tradeModalEl) tradeModalClose({ noCancel: true });
     closeOverlays(); // 关掉其它普通弹窗（组件属性等），避免叠层混乱
     const st = S();
     if (st.trade) {
@@ -4546,7 +4648,7 @@ window.UI = (function () {
       tradeModalTarget = { id: targetId, name: targetName || targetId };
       // 邀请失败（对方不在线 / 已有会话）时 call 会 toast 错误，这里把空窗口关掉
       call(window.Net.tradeInvite(targetId), null).then(function (r) {
-        if ((!r || !r.ok) && !S().trade) tradeModalClose();
+        if ((!r || !r.ok) && !S().trade) tradeModalClose({ noCancel: true }); // 邀请压根没建起来，别留下撤回意图
       });
     }
     const overlay = el('div', 'modal-overlay');
@@ -4554,13 +4656,15 @@ window.UI = (function () {
     overlay.addEventListener('click', function (ev) { if (ev.target === overlay) tradeModalClose(); });
     const box = el('div', 'modal-box trade-modal');
     box.innerHTML = '<div class="modal-head"><span class="modal-title">🤝 在线交易</span>' +
-      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<button class="mini modal-close" title="关闭窗口（邀请尚未被接受时会同时撤回邀请）">✕ 关闭</button></div>' +
       '<div class="modal-body"><div class="trade-modal-body"></div></div>';
     overlay.appendChild(box);
     document.body.appendChild(overlay);
     tradeModalEl = overlay;
-    box.querySelector('.modal-close').addEventListener('click', tradeModalClose);
+    box.querySelector('.modal-close').addEventListener('click', function () { tradeModalClose(); });
     tradeModalRedraw = drawTradeModal;
+    tradePickScroll = 0;  // 新窗口从列表顶部开始：沿用上一单的滚动位置会让人找不到刚才在看的东西
+    tradeQtyFocus = null;
     drawTradeModal();
   }
 
@@ -4568,6 +4672,16 @@ window.UI = (function () {
     if (!tradeModalEl || !tradeModalRedraw) return;
     const bodyEl = tradeModalEl.querySelector('.trade-modal-body');
     if (!bodyEl) return;
+    // 重建前记下提供物品列表的视口与正在编辑的数量框（列表会长到几百行，重建后不能把人弹回顶部）
+    const prevRowsEl = bodyEl.querySelector('.tp-rows');
+    if (prevRowsEl) tradePickScroll = prevRowsEl.scrollTop;
+    const ae = document.activeElement;
+    tradeQtyFocus = null;
+    if (ae && ae.classList && ae.classList.contains('tp-qty') && bodyEl.contains(ae)) {
+      const row = ae.closest ? ae.closest('.tp-row') : null;
+      const id = row && row.getAttribute('data-id');
+      if (id) { try { tradeQtyFocus = { id: id, caret: ae.selectionStart }; } catch (e) { tradeQtyFocus = { id: id, caret: null }; } }
+    }
     const st = S();
     const t = st.trade;
     // 无会话：等待邀请被接受，或会话刚结束
@@ -4584,9 +4698,10 @@ window.UI = (function () {
         bodyEl.innerHTML = '<div class="trade-wait"><div class="tw-ico tw-spin">⏳</div>' +
           '<b>等待对方同意中…</b>' +
           '<div class="hint">已向 ' + esc(tradeModalTarget.name) + ' 发出交易邀请，对方接受后进入交易。</div></div>';
-        const acts0 = el('div', 'trade-actions');
-        const cl0 = el('button', 'mini', '关闭窗口');
-        cl0.addEventListener('click', tradeModalClose);
+        const acts0 = el('div', 'trade-actions center');
+        const cl0 = el('button', 'mini danger-mini', '✕ 撤回邀请并关闭');
+        cl0.title = '关闭窗口会同时撤回这条交易邀请';
+        cl0.addEventListener('click', function () { tradeModalClose(); });
         acts0.appendChild(cl0);
         bodyEl.appendChild(acts0);
         return;
@@ -4612,12 +4727,13 @@ window.UI = (function () {
     if (!t.accepted) {
       const pend = el('div', 'trade-wait');
       if (meIsA) {
-        // 我是发起方：等待对方同意
+        // 我是发起方：等待对方同意。撤回按钮放在窗口下方居中并标红（与右上角 ✕ 同一动作）
         pend.innerHTML = '<div class="tw-ico tw-spin">⏳</div><b>等待对方同意中…</b>' +
           '<div class="hint">已向 ' + esc(otherName) + ' 发出交易邀请。</div>';
         bodyEl.appendChild(pend);
-        const acts = el('div', 'trade-actions');
-        const wd = el('button', 'mini', '撤回邀请');
+        const acts = el('div', 'trade-actions center');
+        const wd = el('button', 'mini danger-mini', '✕ 撤回邀请');
+        wd.title = '撤回后对方将不再看到这条邀请，可重新发起';
         wd.addEventListener('click', function () { call(window.Net.tradeCancel(t.id), '已撤回邀请'); });
         acts.appendChild(wd);
         bodyEl.appendChild(acts);
@@ -4626,10 +4742,10 @@ window.UI = (function () {
         pend.innerHTML = '<div class="tw-ico">📨</div><b>' + esc(otherName) + ' 邀请你进行交易</b>' +
           '<div class="hint">接受后双方各自放入物品，确认成交（双方免税）。</div>';
         bodyEl.appendChild(pend);
-        const acts = el('div', 'trade-actions');
+        const acts = el('div', 'trade-actions center');
         const ok = el('button', 'primary', '接受邀请');
         ok.addEventListener('click', function () { call(window.Net.tradeRespond(t.id, true), null).then(function (r) { if (r && r.ok) setTimeout(refreshAll, 200); }); });
-        const no = el('button', 'mini', '拒绝');
+        const no = el('button', 'mini danger-mini', '拒绝');
         no.addEventListener('click', function () { call(window.Net.tradeRespond(t.id, false), '已拒绝交易'); });
         acts.appendChild(ok); acts.appendChild(no);
         bodyEl.appendChild(acts);
@@ -4651,15 +4767,35 @@ window.UI = (function () {
     bodyEl.appendChild(sides);
     const acts = el('div', 'trade-actions');
     const confirmBtn = el('button', 'primary' + (myOk ? ' done' : '') + (cd > 0 ? ' locked' : ''), myOk ? '✔ 已确认' : (cd > 0 ? '冷却中 ' + Math.ceil(cd / 1000) + 's' : '确认交易'));
-    if (!myOk && cd <= 0) {
-      confirmBtn.addEventListener('click', function () {
-        call(window.Net.tradeConfirm(t.id), null).then(function (r) { if (r && r.ok) setTimeout(refreshAll, 200); });
-      });
-    }
+    // 无条件绑定点击：「能不能点」在点击时按最新状态判断（构建时的 myOk / cd 只决定外观）。
+    // 冷却结束后不再重建弹窗（见 initApp 里的冷却定时器），所以不能靠重建来"解锁"按钮。
+    confirmBtn.addEventListener('click', function () {
+      const cur = S().trade;
+      if (!cur || cur.id !== t.id) return;                              // 已换会话 / 已结束
+      if ((meIsA ? cur.aOk : cur.bOk) || Math.max(0, (cur.cooldownUntil || 0) - Date.now()) > 0) return; // 已确认 / 冷却中
+      call(window.Net.tradeConfirm(t.id), null).then(function (r) { if (r && r.ok) setTimeout(refreshAll, 200); });
+    });
     const cancelBtn = el('button', 'mini', '取消交易');
     cancelBtn.addEventListener('click', function () { call(window.Net.tradeCancel(t.id), '交易已取消'); });
     acts.appendChild(confirmBtn); acts.appendChild(cancelBtn);
     bodyEl.appendChild(acts);
+    // 视口与焦点还原必须放在**挂进文档之后**（对游离节点设 scrollTop / focus 都是空操作）
+    const nextRows = bodyEl.querySelector('.tp-rows');
+    if (nextRows) nextRows.scrollTop = tradePickScroll;
+    if (tradeQtyFocus) {
+      const all = bodyEl.querySelectorAll('.tp-row');
+      for (let i = 0; i < all.length; i++) {
+        if (all[i].getAttribute('data-id') !== tradeQtyFocus.id) continue;
+        const q = all[i].querySelector('input.tp-qty');
+        // 该项已被取消勾选 / 库存清零（框被禁用）时不再抢焦点，避免把焦点丢到一个不可编辑的框里
+        if (q && !q.disabled) {
+          q.focus();
+          if (tradeQtyFocus.caret != null) { try { q.setSelectionRange(tradeQtyFocus.caret, tradeQtyFocus.caret); } catch (e) {} }
+        }
+        break;
+      }
+      tradeQtyFocus = null;
+    }
   }
 
   // ---- 查看其他玩家的钓竿组件构成（渔场动态玩家卡片「🔍 查看」按钮） ----
@@ -4762,7 +4898,7 @@ window.UI = (function () {
     const tabs = el('div', 'inv-cats tp-cats');
     [['all', '📦 全部', allKeys.length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['chest', '🎁 宝匣', kindCount.chest], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
       const b = el('button', 'inv-cat' + (tradePickCat === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
-      b.addEventListener('click', function () { if (tradePickCat !== kv[0]) { tradePickCat = kv[0]; if (tradeModalRedraw) tradeModalRedraw(); else renderView(); } });
+      b.addEventListener('click', function () { if (tradePickCat !== kv[0]) { tradePickCat = kv[0]; tradePickScroll = 0; tradeQtyFocus = null; if (tradeModalRedraw) tradeModalRedraw(); else renderView(); } });
       tabs.appendChild(b);
     });
     box.appendChild(tabs);
@@ -4784,6 +4920,7 @@ window.UI = (function () {
       const checked = sel[id] != null && sel[id] > 0;
       const qty = checked ? Math.min(sel[id], have) : 1;
       const row = el('div', 'tp-row');
+      row.setAttribute('data-id', id); // 重建后按它找回正在编辑的数量框（见 drawTradeModal）
       const affHtml = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
         ? '<div class="mk-aff">' + meta.affixes.map(function (a) {
             const rng = affixRangeIn(meta, a);
@@ -6448,15 +6585,45 @@ window.UI = (function () {
   }
 
   // ---- 日志视图：记录玩家收到的服务器消息弹窗 ----
-  // 来源：notice 提示、公告横幅、交易完成、破纪录播报、组件订阅提醒、顶号下线。
+  // 来源：notice 提示、公告横幅、交易完成、市集成交、破纪录播报、组件订阅提醒、顶号下线。
   // 数据为前端本地持久化（按账号），过滤页签与背包分类一致。
+  // 日志明细行（交易/市集成交流水用）：物品名按品质配色，组件再列出部位与词条数值。
+  // 词条数值不在日志里存——物品 id 就是组件实例签名（baseId#quality#code+value），展示时解析即可。
+  function logItemsHtml(items) {
+    if (!items || !items.length) return '';
+    const dirs = { got: [], gave: [] };
+    items.forEach(function (it) { (it.dir === 'gave' ? dirs.gave : dirs.got).push(it); });
+    const dirLabel = { got: '获得', gave: '给出' };
+    return ['got', 'gave'].filter(function (d) { return dirs[d].length; }).map(function (d) {
+      const list = dirs[d].map(function (it) {
+        const meta = itemMeta(it.id);
+        const part = (meta.kind === 'component' && meta.part) ? partCatName(meta.part) : '';
+        const affs = (meta.kind === 'component' && meta.affixes && meta.affixes.length)
+          ? '<span class="log-item-affs">' + meta.affixes.map(function (a) {
+              return affSpanOpen(a) + esc(affixText(a)) + '</span>';
+            }).join('') + '</span>'
+          : '';
+        return '<span class="log-item">' +
+          '<span class="' + qualityClass(meta) + '">' + esc(meta.name || it.id) + '</span>' +
+          (it.qty > 1 ? '<span class="log-item-qty"> ×' + it.qty + '</span>' : '') +
+          (part ? '<span class="log-item-part">' + esc(part) + '</span>' : '') + affs + '</span>';
+      }).join('');
+      return '<div class="log-detail"><span class="log-dir">' + dirLabel[d] + '</span>' + list + '</div>';
+    }).join('');
+  }
+  // 部位 key → 中文名（组件日志明细里标出「钓竿 / 卷线器 / 鱼钩 / 饰品」）
+  function partCatName(key) {
+    const p = (D.ROD_PARTS || []).find(function (x) { return x.key === key; });
+    return p ? p.name : '';
+  }
   let logFilter = 'all';
   function renderLogs() {
     loadLog();
     const main = $('main');
     main.innerHTML = '';
     const panel = el('div', 'panel wide');
-    panel.innerHTML = '<h2>📜 日志 <span class="subtitle">渔获记录 · 公告 / 系统提示 / 交易 / 纪录 / 订阅提醒 · 本地按账号保留最近 ' + LOG_KEEP + ' 条</span></h2>';
+    panel.innerHTML = '<h2>📜 日志 <span class="subtitle">渔获记录 · 公告 / 系统提示 / 交易 / 纪录 / 订阅提醒 · ' +
+      '本地按账号保存：渔获与系统各留最近 ' + LOG_KEEP + ' 条，交易 / 纪录 / 订阅长期保留</span></h2>';
     const counts = { all: msgLog.length };
     Object.keys(LOG_KINDS).forEach(function (k) { counts[k] = msgLog.filter(function (e) { return e.kind === k; }).length; });
     const tabs = el('div', 'inv-cats');
@@ -6476,9 +6643,9 @@ window.UI = (function () {
       rows.forEach(function (e) {
         const kind = LOG_KINDS[e.kind] || LOG_KINDS.system;
         const row = el('div', 'log-row');
-        row.innerHTML = '<span class="log-time">' + timeStr(e.t) + '</span>' +
+        row.innerHTML = '<span class="log-time">' + dateTimeStr(e.t) + '</span>' +
           '<span class="log-tag log-' + e.kind + '">' + kind[0] + ' ' + kind[1] + '</span>' +
-          '<span class="log-msg">' + esc(e.msg) + '</span>';
+          '<span class="log-msg">' + esc(e.msg) + logItemsHtml(e.items) + '</span>';
         list.appendChild(row);
       });
     }
@@ -6720,18 +6887,29 @@ window.UI = (function () {
     workshop: ['assets', 'smeltcfg', 'componentcfg', 'workshop', 'chestcfg', 'chest'],
   };
   // 主区内是否有输入控件正被编辑（数字框 / 文本 / 下拉 / 可编辑元素）
+  // 例外：渔场页的玩家搜索框。它靠「重建后还回焦点与光标」保证输入不丢（见 renderGround），
+  // 若在这里也算「正在编辑」，搜索结果会被这道闸挡住、列表永远不刷新。
   function mainInputFocused() {
     const a = document.activeElement;
     const main = $('main');
     if (!a || !main || a === main || !main.contains(a)) return false;
+    if (a.classList && a.classList.contains('peep-search-input')) return false;
     return /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName) || a.isContentEditable === true;
   }
   function refreshAll(scope) {
     if (scope === 'all') scope = null; // init 全量刷新
+    if (scope === 'trade' || !scope) settlePendingTradeCancel(); // 「关闭时邀请还在途」欠下的撤回，会话一落地就补上
     if (shopModalId && scope === 'shop') fillShopModal(shopModalId); // 弹窗数据静默刷新
     // 交易子窗口：打开时 trade/assets 广播只重绘窗口内容，不打断背后页面
     if (tradeModalRedraw && (!scope || scope === 'trade' || scope === 'assets' || scope === 'codex')) {
       renderTopbar(); renderNav();
+      // v0.13.4：交易进行中（双方已进入选物品阶段）时，**纯数据广播**（上鱼 / 售出 / 市集成交 /
+      // 图鉴新增）不再重建窗口内容。否则每钓到一条鱼都会 bodyEl.innerHTML = '' 重建整个弹窗：
+      // 提供物品列表滚回顶部、正在填的数量框被冲掉、刚滚下去勾的行跳走（用户报「东西太多拉下去
+      // 直接弹回去」）。这与主交易页既有设计一致（见 tradeLockOn / tradeLockBar）——锁定期间的
+      // 库存变化由锁定条上的「🔄 刷新列表」手动同步。
+      // 'trade' scope 必须放行：对方增删物品、双方确认状态都靠它更新。
+      if (tradeLockOn() && scope && scope !== 'trade') return;
       tradeModalRedraw();
       return;
     }
@@ -6765,8 +6943,10 @@ window.UI = (function () {
       renderTopbar(); renderNav();
       return;
     }
-    // perf-9：渔场页玩家搜索框获得焦点时暂停重绘（playersPage 每秒推送会重建 DOM 冲掉输入）
-    if (currentView === 'ground' && peepSearchFocus && scope && scope !== 'all') {
+    // perf-9 / v0.13.4：渔场页玩家搜索框在**输入法合成中**才暂停重绘。
+    // 之前是「获得焦点就暂停」，结果回车搜索后列表永远刷不出来（重绘被自己挡掉）；
+    // 现在改成重绘后把焦点与光标还回搜索框（见 renderGround），搜索即时生效。
+    if (currentView === 'ground' && peepComposing && scope && scope !== 'all') {
       renderTopbar(); renderNav();
       return;
     }
@@ -6821,8 +7001,9 @@ window.UI = (function () {
       if (!t) { cdLast = 0; return; }
       const cd = Math.max(0, (t.cooldownUntil || 0) - Date.now());
       if (cd > 0 || cdLast > 0) {
-        // 锁定中只改倒计时文字，不重建（否则会刷新正在挑选的物品列表）
-        if (cd > 0 && tradeLockOn()) updateTradeCountdown(cd);
+        // 冷却中 / 刚结束都只改倒计时文字与按钮锁定态，不重建：重建会把用户正在挑的物品列表刷掉。
+        // 按钮的点击处理内部会重新判断冷却是否已过（见 drawTradeModal），所以不需要重建来「解锁」。
+        if (tradeLockOn()) updateTradeCountdown(cd);
         else tradeModalRedraw();
       }
       cdLast = cd;

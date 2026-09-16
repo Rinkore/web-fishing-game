@@ -576,6 +576,19 @@ window.Net = (function () {
         } else if (m.type === 'notice') {
           if (ui && ui.toast) ui.toast(m.msg || '');
           if (ui && ui.addLog) ui.addLog('system', m.msg || '');
+        } else if (m.type === 'mktTrade') {
+          // 市集成交：落进「📜 日志 · ✅ 交易」（原来只发 notice，会混进「系统」分类）。
+          // 买家侧不 toast：发起购买的响应里已经有「购买成功」提示；卖家不在页面上也要能看到入账。
+          if (ui && ui.addLog) {
+            const isSell = m.role === 'sell';
+            const qtyTxt = m.qty > 1 ? ' ×' + m.qty : '';
+            ui.addLog('trade',
+              (isSell ? '💱 市集售出给 ' : '🛒 市集买入自 ') + (m.other || '') + '：' + (m.name || '') + qtyTxt +
+              (isSell ? '，到账 💰' + m.sellerGain + '（已扣 10% 税 ' + m.tax + '）' : '，支出 💰' + m.total),
+              [{ id: m.id, qty: m.qty, dir: isSell ? 'gave' : 'got' }]);
+            if (isSell && ui.toast) ui.toast('市集售出：' + (m.name || '') + qtyTxt + '，入账 💰' + m.sellerGain);
+          }
+          if (ui) ui.refreshAll('assets');
         } else if (m.type === 'trade') {
           S.trade = (m.trade && !m.trade.done && !m.trade.cancelled) ? m.trade : null;
           S.tradeLastEvent = m.trade;
@@ -583,11 +596,20 @@ window.Net = (function () {
         } else if (m.type === 'tradeDone') {
           const pl = S.player;
           const myKey = me ? String(me.id).toLowerCase() : null;
+          const iAmA = !!(myKey && m.a && String(m.a.key).toLowerCase() === myKey);
           if (m.a && myKey && String(m.a.key).toLowerCase() === myKey) { pl.coins = m.a.coins; S.inventory = m.a.inventory || S.inventory; }
           if (m.b && myKey && String(m.b.key).toLowerCase() === myKey) { pl.coins = m.b.coins; S.inventory = m.b.inventory || S.inventory; }
           S.trade = null;
           S.tradeFlash = '交易完成，物品已互换';
-          if (ui && ui.addLog) ui.addLog('trade', '✅ 交易完成，物品已互换');
+          if (ui && ui.addLog) {
+            // 交易日志带双方物品：词条数值由 UI 按物品 id（实例签名）解析，这里只存 id 与数量
+            const other = iAmA ? (m.bName || '对方') : (m.aName || '对方');
+            const gave = (iAmA ? m.aItems : m.bItems) || [];
+            const got = (iAmA ? m.bItems : m.aItems) || [];
+            ui.addLog('trade', '✅ 与 ' + other + ' 交易完成',
+              gave.map(function (it) { return { id: it.id, qty: it.qty, dir: 'gave' }; })
+                .concat(got.map(function (it) { return { id: it.id, qty: it.qty, dir: 'got' }; })));
+          }
           if (ui) ui.refreshAll('trade');
         } else if (m.type === 'feed') {
           S.feed.unshift(m.entry);
