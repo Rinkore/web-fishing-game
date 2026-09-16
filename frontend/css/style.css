@@ -1020,14 +1020,21 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .top10-time { color: var(--muted); font-size: 11px; flex: none; }
 .record-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
 .record-cell.none { opacity: .5; }
-/* v0.13.8 最大/最小合并：同一鱼图左右并排，左大右小一眼区分（大图＝最大纪录、小图＝最小纪录） */
-.rc-pair { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
-.rc-half { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
-.rc-half b { font-size: 10px; font-weight: 600; color: var(--muted); }
-.rc-half.max b { color: var(--big); }
-.rc-half.min b { color: var(--accent2); }
-.rc-half.max .rc-icon { transform: scale(1); }
-.rc-half.min .rc-icon { transform: scale(.62); }
+/* v0.13.8 最大/最小合并记录卡：一张鱼图 + 上下两行信息（最大在上、最小在下） */
+.rc-size.sf-size { color: var(--accent2) !important; }
+/* 右栏「自动售出一览」：只列已启用的物品与规则摘要（逐项控制在清单子窗口里） */
+.sa-enabled { margin-top: 8px; }
+.as-mini-row { display: flex; gap: 6px; align-items: baseline; font-size: 12px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+.as-mini-name { font-weight: 600; flex: none; }
+.as-mini-rule { color: var(--big); flex: 1; }
+.as-mini-avail { color: var(--muted); flex: none; }
+/* 自动售出清单子窗口 */
+.as-list-modal .modal-body { max-height: 76vh; overflow: auto; }
+.asl-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.asl-bulk { border: 1px solid rgba(251,191,36,.28); background: rgba(251,191,36,.05); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+.asl-bulk .sa-fld .ipt { width: 78px; }
+.asl-bulk .sa-row { margin-top: 6px; gap: 6px; }
+.asl-guard { font-size: 10px; color: var(--big); margin-left: 4px; }
 /* 记录页顶部「最新播报」：与横幅播报同源，加一道高亮边框区分于旧的「全场最大」 */
 .record-hero.live { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(45,212,191,.25) inset; }
 .record-hero .rh-text { width: 100%; font-size: 13px; color: var(--accent2); margin-top: 4px; }

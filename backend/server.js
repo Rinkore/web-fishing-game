@@ -899,13 +899,15 @@ function upsertTop(list, entry, keepSmall) {
   list.sort(function (a, b) { return keepSmall ? a.size - b.size : b.size - a.size; });
   if (list.length > 10) list.length = 10;
 }
-// 前十榜更新判定：返回 { changed, rank }（changed = 该玩家新进榜或成绩被刷新）
+// 前十榜更新判定：返回 { changed, rank, full }（changed = 该玩家新进榜或成绩被刷新；
+// full = 入榜前榜单已经满员——「挤进已有榜单」才算真正的榜位变动，空榜第一次上榜不算）
 function upsertTopRanked(list, entry, keepSmall) {
   const prev = list.find(function (x) { return x.who === entry.who; }) || null;
+  const wasFull = list.length >= 10;
   upsertTop(list, entry, keepSmall);
   const changed = !prev || (keepSmall ? entry.size < prev.size : entry.size > prev.size);
   const rank = list.findIndex(function (x) { return x.who === entry.who; }) + 1;
-  return { changed: changed, rank: rank, top: keepSmall ? 'small' : 'big' };
+  return { changed: changed, rank: rank, full: wasFull, top: keepSmall ? 'small' : 'big' };
 }
 
 // ---- 日榜 / 周榜分桶（v0.13.8）----
@@ -935,19 +937,30 @@ function pruneRanks() {
   const cutW = weekKeyOf(Date.now() - RANK_KEEP_WEEKS * 7 * 86400000);
   Object.keys(b.week).forEach(function (k) { if (k < cutW) delete b.week[k]; });
 }
-// 入桶：同一条渔获同时写进日桶与周桶（各留前十最大 / 前十小）
+// 入桶：同一条渔获同时写进日桶与周桶（各留前十最大 / 前十小）。
+// 返回**当日**两个榜的名次信息（v0.13.8：横幅的前十播报按「每日前十」口径 ——
+// 历史前十太难进、横幅几乎不出声；当日榜人人有机会，且与记录页默认的日榜一致）。
 function rankPut(fishId, size, who, ts) {
   const b = rankBuckets();
-  [[b.day, dayKeyOf(ts)], [b.week, weekKeyOf(ts)]].forEach(function (kv) {
-    const scope = kv[0];
-    const bucket = (scope[kv[1]] = scope[kv[1]] || {});
-    const cell = (bucket[fishId] = bucket[fishId] || { big: [], small: [] });
-    if (!Array.isArray(cell.big)) cell.big = [];
-    if (!Array.isArray(cell.small)) cell.small = [];
-    upsertTopRanked(cell.big, { size: size, who: who, t: ts }, false);
-    upsertTopRanked(cell.small, { size: size, who: who, t: ts }, true);
-  });
+  const dayKey = dayKeyOf(ts);
+  const dayBucket = (b.day[dayKey] = b.day[dayKey] || {});
+  const cell = (dayBucket[fishId] = dayBucket[fishId] || { big: [], small: [] });
+  if (!Array.isArray(cell.big)) cell.big = [];
+  if (!Array.isArray(cell.small)) cell.small = [];
+  const bigRes = upsertTopRanked(cell.big, { size: size, who: who, t: ts }, false);
+  const smallRes = upsertTopRanked(cell.small, { size: size, who: who, t: ts }, true);
+  // 周桶（记录页「周榜」用；只存不播报）
+  const wkBucket = (b.week[weekKeyOf(ts)] = b.week[weekKeyOf(ts)] || {});
+  const wcell = (wkBucket[fishId] = wkBucket[fishId] || { big: [], small: [] });
+  if (!Array.isArray(wcell.big)) wcell.big = [];
+  if (!Array.isArray(wcell.small)) wcell.small = [];
+  upsertTopRanked(wcell.big, { size: size, who: who, t: ts }, false);
+  upsertTopRanked(wcell.small, { size: size, who: who, t: ts }, true);
   pruneRanks();
+  return {
+    big: (bigRes.changed && bigRes.full) ? bigRes.rank : 0,
+    small: (smallRes.changed && smallRes.full) ? smallRes.rank : 0,
+  };
 }
 // 取某个时间桶的榜（range='day'|'week'）；无该鱼种记录时返回空数组
 function rankListOf(range, fishId, small) {
@@ -991,13 +1004,14 @@ function deleteRecords(fishId) {
   return n;
 }
 // 榜单播报文案（全部鱼种 / 全部榜单）：按重要性取一条播报
-//   1 全场最大纪录被破 · 2 该鱼种最大/最小纪录 · 3 前十大更新 · 4 前十小更新
+//   1 全场最大纪录被破 · 2 该鱼种最大/最小纪录 · 3 当日「最大」前十更新 · 4 当日「最小」前十更新
+//   （3/4 是**当日**榜：挤进今天的前十就播报，历史总榜只进记录页，不驱动横幅）
 function boardAnnouncement(o) {
   if (o.globalMax) return { level: 1, text: '🎉 全场最大纪录被破！' + o.who + ' 钓到 ' + o.name + ' ' + o.size + 'cm' };
   if (o.record) return { level: 2, text: '🏆 ' + o.name + ' 全服最大纪录刷新：' + o.who + ' ' + o.size + 'cm' };
   if (o.small) return { level: 2, text: '🏆 ' + o.name + ' 全服最小纪录刷新：' + o.who + ' ' + o.size + 'cm' };
-  if (o.topBig) return { level: 3, text: '📊 ' + o.name + ' 前十大更新：' + o.who + ' ' + o.size + 'cm（第 ' + o.topBig + ' 名）' };
-  if (o.topSmall) return { level: 4, text: '📊 ' + o.name + ' 前十小更新：' + o.who + ' ' + o.size + 'cm（第 ' + o.topSmall + ' 名）' };
+  if (o.topBig) return { level: 3, text: '📊 ' + o.name + ' 今日前十大更新：' + o.who + ' ' + o.size + 'cm（第 ' + o.topBig + ' 名）' };
+  if (o.topSmall) return { level: 4, text: '📊 ' + o.name + ' 今日前十小更新：' + o.who + ' ' + o.size + 'cm（第 ' + o.topSmall + ' 名）' };
   return null;
 }
 // 上鱼通告横幅等级（bannerCfg.catchLevel，横幅管理页可配）：
@@ -1050,7 +1064,7 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   let recordEvent = null;
   let smallEvent = false;
   let globalRecord = null; // 全场最大纪录被破（用于顶部横幅）
-  let topBigRank = 0, topSmallRank = 0; // 本次进入/刷新的前十榜名次（>0 表示榜单有更新）
+  let topBigRank = 0, topSmallRank = 0; // 当日榜名次（>0 = 挤进今天的前十，用于横幅播报）
   if (FISH_ID_SET[item.id] && item.size != null && item.size > 0) {
     const size = Math.round(item.size * 10) / 10;
     const cur = world.bigRecords[item.id];
@@ -1064,22 +1078,22 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
       world.globalMax = { id: item.id, name: itemName(item.id), size: size, who: rec.name, t: Date.now() };
       globalRecord = world.globalMax;
     }
-    // 全服前十大捕获（记录页点开查看；每人只保留一条最大）——榜单有更新即播报
+    // 全服前十大捕获（历史总榜，记录页「总榜」用）——只记榜不驱动横幅（横幅走当日榜，见下）
     const top = (world.topCatches[item.id] = world.topCatches[item.id] || []);
-    const topRes = upsertTopRanked(top, { size: size, who: rec.name, t: Date.now() }, false);
-    if (topRes.changed) topBigRank = topRes.rank;
+    upsertTopRanked(top, { size: size, who: rec.name, t: Date.now() }, false);
     // 全服最小纪录
     const sm = world.smallRecords[item.id];
     if (!sm || size < sm.size) {
       world.smallRecords[item.id] = { id: item.id, name: itemName(item.id), size: size, who: rec.name, t: Date.now() };
       smallEvent = true;
     }
-    // 全服前十小捕获（每人只保留一条最小）——同样播报
+    // 全服前十小捕获（历史总榜，同上）
     const topS = (world.topSmall[item.id] = world.topSmall[item.id] || []);
-    const topSRes = upsertTopRanked(topS, { size: size, who: rec.name, t: Date.now() }, true);
-    if (topSRes.changed) topSmallRank = topSRes.rank;
-    // v0.13.8：日榜/周榜分桶——每次有效渔获都写（内存廉价），落盘走 2 秒防抖 saveRecordsSoon
-    rankPut(item.id, size, rec.name, Date.now());
+    upsertTopRanked(topS, { size: size, who: rec.name, t: Date.now() }, true);
+    // v0.13.8：日/周榜分桶，并取**当日**前十名次用于横幅播报（历史前十太难进 → 横幅几乎不出声）
+    const dayRank = rankPut(item.id, size, rec.name, Date.now());
+    topBigRank = dayRank.big;
+    topSmallRank = dayRank.small;
     saveRecordsSoon();
   }
 
@@ -3412,15 +3426,18 @@ const server = http.createServer(function (req, res) {
             globalRecordDev = world.globalMax;
           }
           const dTop = upsertTopRanked((world.topCatches[itemId] = world.topCatches[itemId] || []), { size: rsize, who: rec.name, t: Date.now() }, false);
-          if (dTop.changed) topBigRankDev = dTop.rank;
+          void dTop;   // 历史总榜只记榜；横幅播报走当日榜（见下 rankPut）
           const smD = world.smallRecords[itemId];
           if (!smD || rsize < smD.size) {
             world.smallRecords[itemId] = { id: itemId, name: itemName(itemId), size: rsize, who: rec.name, t: Date.now() };
             smallEventDev = true;
           }
           const dTopS = upsertTopRanked((world.topSmall[itemId] = world.topSmall[itemId] || []), { size: rsize, who: rec.name, t: Date.now() }, true);
-          if (dTopS.changed) topSmallRankDev = dTopS.rank;
-          rankPut(itemId, rsize, rec.name, Date.now());   // v0.13.8：日榜/周榜分桶（与线上同一路径）
+          void dTopS;   // 同上：历史总榜不驱动横幅
+          // v0.13.8：日/周榜分桶（与线上同一路径），当日名次驱动横幅播报
+          const dayRankDev = rankPut(itemId, rsize, rec.name, Date.now());
+          topBigRankDev = dayRankDev.big;
+          topSmallRankDev = dayRankDev.small;
           saveRecordsSoon();
         }
         const entry = { t: Date.now(), who: rec.name, item: Object.assign({}, d.item, { id: itemId }, isFinite(size) && size > 0 ? { size: Math.round(size * 10) / 10 } : {}, devTier ? { tier: devTier } : {}), ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };

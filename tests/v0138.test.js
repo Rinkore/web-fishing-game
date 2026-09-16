@@ -54,6 +54,30 @@ function req(method, u, body) {
 const GET = u => req('GET', u), POST = (u, b) => req('POST', u, b);
 const B = 'http://localhost:' + PORT;
 
+// 最小 SSE 监听（抓横幅播报：globalRecord 一类全服广播）
+function sseListen(tok, sink) {
+  const r = http.request({ hostname: 'localhost', port: PORT, path: '/events?token=' + encodeURIComponent(tok), method: 'GET' }, res => {
+    let buf = '';
+    res.on('data', c => {
+      buf += c.toString();
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+        const line = chunk.split('\n').find(l => l.startsWith('data: '));
+        if (!line) continue;
+        try {
+          const m = JSON.parse(line.slice(6));
+          if (m && m.type === 'batch' && Array.isArray(m.list)) m.list.forEach(x => sink.push(x));
+          else sink.push(m);
+        } catch (e) {}
+      }
+    });
+  });
+  r.on('error', () => {});
+  r.end();
+  return r;
+}
+
 let srv = null;
 function startServer() {
   const p = spawn(NODE, [path.join('backend', 'server.js')], {
@@ -191,6 +215,44 @@ async function main() {
   check('负浮动被拒 400', (await asPost({ id: 'carp', minPrice: 10, slackPrice: -1 })).status === 400);
   check('超范围阈值被拒 400', (await asPost({ id: 'carp', minPct: 1000001 })).status === 400);
   check('未登录访问 GET 被拒 401', (await GET(B + '/api/autosell')).status === 401);
+
+  // ---------------- 每日前十滚动播报 ----------------
+  section('每日前十滚动播报：填满当日前十后才开始播报');
+  const ann = [];
+  const watcher = await POST(B + '/api/register', { username: 'v138_watch', password: 'as123456', name: '旁观者', qq: '38110' });
+  const watchTok = watcher.data && watcher.data.token;
+  const sse = sseListen(watchTok, ann);
+  await new Promise(r => setTimeout(r, 800));
+  check('旁观者 SSE 连接就绪（收到 init）', ann.some(m => m.type === 'init'),
+    'ann=' + ann.length + ' tok=' + String(watchTok).slice(0, 8) + ' types=' + JSON.stringify(ann.map(m => m.type).slice(0, 5)));
+  // 10 个账号各钓一条鲫鱼把「当日榜」填满（尺寸递减，最后一条刚好挤满前十）
+  for (let i = 0; i < 10; i++) {
+    const rr = await POST(B + '/api/register', { username: 'v138_fill' + i, password: 'as123456', name: '填榜' + i, qq: '3812' + i });
+    await POST(B + '/api/dev/catch', { token: rr.data.token, item: { id: 'crucian', kind: 'fish', rarity: 'common', size: 200 - i } });
+  }
+  await new Promise(r => setTimeout(r, 1600));   // 广播有 1 秒批量窗口，等它 flush
+  const bigBanner = ann.filter(m => m.type === 'globalRecord');
+  check('横幅通道可用（纪录刷新照常播报）',
+    bigBanner.some(m => /纪录刷新|全场最大纪录被破/.test((m.record || {}).text || '')), JSON.stringify(bigBanner.slice(0, 2).map(m => (m.record || {}).text)));
+  check('当日榜没满之前不播「今日前十大」',
+    !bigBanner.some(m => /今日前十大|今日前十小/.test((m.record || {}).text || '')),
+    JSON.stringify(bigBanner.map(m => (m.record || {}).text)));
+  // 第 11 条：尺寸挤进第 2 名 → 当日前十「已满 → 被改动」才播报
+  const newcomer = await POST(B + '/api/register', { username: 'v138_new', password: 'as123456', name: '新面孔', qq: '38130' });
+  check('第 11 位玩家注册成功', !!(newcomer.data && newcomer.data.token), JSON.stringify(newcomer.data));
+  await POST(B + '/api/dev/catch', { token: newcomer.data.token, item: { id: 'crucian', kind: 'fish', rarity: 'common', size: 199.5 } });
+  await new Promise(r => setTimeout(r, 1600));
+  const daily = ann.filter(m => m.type === 'globalRecord' && /今日前十大/.test((m.record || {}).text || ''));
+  check('挤进当日榜前十即播报（文案带「今日」与名次）',
+    daily.length === 1 && /第 2 名/.test(daily[0].record.text), JSON.stringify(daily.map(m => m.record.text)));
+  const dayTop = await GET(B + '/api/records/top?id=crucian&range=day');
+  check('当日榜恰好 10 条（每人一条最好成绩）', (dayTop.data.top || []).length === 10, String((dayTop.data.top || []).length));
+  check('新纪录排在当日榜第 2（榜首仍是 200cm）',
+    (dayTop.data.top || [])[0].size === 200 && (dayTop.data.top || [])[1].size === 199.5,
+    JSON.stringify((dayTop.data.top || []).slice(0, 3)));
+  const allTop = await GET(B + '/api/records/top?id=crucian&range=all');
+  check('总榜与日榜口径分开（总榜仍是历史前十）', (allTop.data.top || []).length === 10 && allTop.data.range === 'all', String((allTop.data.top || []).length));
+  try { sse.destroy(); } catch (e) {}
 
   // ---------------- 旧存档迁移 ----------------
   section('旧存档迁移（{all, fish} → {items}，重启后落盘）');

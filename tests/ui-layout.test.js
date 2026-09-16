@@ -1076,18 +1076,22 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const sellLabels = await p1.$$eval('.shop-card .mini', els => els.map(e => e.textContent));
     check('出售按钮按设定数量显示', sellLabels.some(t => /出售 \d+ 个/.test(t)), JSON.stringify(sellLabels.slice(0, 3)));
 
-    // —— 自动售出管理栏（右栏）+ 双向排序 ——
+    // —— 自动售出：右栏入口 + 清单子窗口（v0.13.8 起逐项控制都在子窗口里）——
     check('商店有自动售出管理栏（右栏）', (await p1.$$('#shop-as-panel')).length === 1);
-    const asRows = await p1.$$('#as-list .as-row');
+    check('右栏有「打开自动售出清单」入口', (await p1.$$('#sa-open-list')).length === 1);
+    await p1.evaluate(() => document.getElementById('sa-open-list').click());
+    await untilSel(p1, '#asl-list .as-row', 15000);
+    const asRows = await p1.$$('#asl-list .as-row');
     // 鱼类 40 种（龙宫宝珠 v0.11 起归入材料，不再算鱼）+ 材料 7 种（v0.13.8 起材料也可自动售出）
-    check('右栏自动售出列表覆盖全部渔获与材料（40 + 7 = 47）', asRows.length === 47, String(asRows.length));
-    check('列表按渔获 / 材料分组', (await p1.$$('#as-list .as-group')).length === 2, String((await p1.$$('#as-list .as-group')).length));
+    check('清单覆盖全部渔获与材料（40 + 7 = 47）', asRows.length === 47, String(asRows.length));
     check('逐项行带勾选框与「设置」入口',
-      (await p1.$$('#as-list .as-row .as-chk')).length === 47 && (await p1.$$('#as-list .as-row button')).length === 47,
-      String((await p1.$$('#as-list .as-row button')).length));
-    const bulkBtnIds = await p1.$$eval('#shop-as-panel .btn', els => els.map(e => e.id));
+      (await p1.$$('#asl-list .as-row .as-chk')).length === 47 && (await p1.$$('#asl-list .as-row button')).length === 47,
+      String((await p1.$$('#asl-list .as-row button')).length));
+    check('清单有分类页签（全部 / 渔获 / 材料）', (await p1.$$('#as-list-modal [data-aslcat]')).length === 3,
+      String((await p1.$$('#as-list-modal [data-aslcat]')).length));
+    const bulkBtnIds = await p1.$$eval('#as-list-modal .btn', els => els.map(e => e.id));
     check('批量应用按钮齐备（全部鱼 / 全部材料 / 全部停用 / 清空）',
-      ['sa-apply-fish', 'sa-apply-mat', 'sa-off-all', 'sa-clear-all'].every(id => bulkBtnIds.indexOf(id) >= 0),
+      ['asl-apply-fish', 'asl-apply-mat', 'asl-off-all', 'asl-clear-all'].every(id => bulkBtnIds.indexOf(id) >= 0),
       JSON.stringify(bulkBtnIds));
     // 双向排序：点「价格」降序（首卡最高），再点同键反向为升序（首卡最低）
     const cardPrices = () => p1.$$eval('#shop-panel .shop-grid .shop-card', els => els.map(e => {
@@ -1103,12 +1107,24 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('再点「价格」反向为升序', ascP.length >= 30 && ascP.every((v, i) => i === 0 || v >= ascP[i - 1]), JSON.stringify(ascP.slice(0, 6)));
     check('排序按钮显示升序箭头', /价格 ↑/.test(await p1.evaluate(() => { const b = document.querySelector('.bf-cat[data-ss="price"]'); return b ? b.textContent : ''; })));
     // 输入框不再被行情广播清空（回归：上鱼/售出会触发 shop 广播重绘，但只刷网格）
-    await p1.evaluate(() => { document.getElementById('sa-pct').value = '175'; });
+    await p1.evaluate(() => {
+      const s = document.getElementById('asl-search');
+      s.value = '鲫'; s.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     await post('/api/dev/catch', { token: tokS, item: { kind: 'fish', id: 'crucian', rarity: 'common' } });
     await post('/api/sell', { token: tokS, id: 'crucian', qty: 1 });   // 触发 broadcastShop
     await sleep(500);
-    check('行情广播后自动售出输入不被清空', await p1.evaluate(() => document.getElementById('sa-pct').value) === '175',
-      await p1.evaluate(() => document.getElementById('sa-pct').value));
+    // 广播只就地刷新清单列表，筛选框与批量输入框不被重建（旧版这里是「输入框被整页重建冲掉」的回归点）
+    check('行情广播后清单搜索框内容不被清空', await p1.evaluate(() => document.getElementById('asl-search').value) === '鲫',
+      await p1.evaluate(() => document.getElementById('asl-search').value));
+    check('行情广播后清单列表仍在', (await p1.$$('#asl-list .as-row')).length >= 1, String((await p1.$$('#asl-list .as-row')).length));
+    await p1.evaluate(() => {
+      const s = document.getElementById('asl-search');
+      s.value = ''; s.dispatchEvent(new Event('input', { bubbles: true }));
+      const c = document.querySelector('#as-list-modal .modal-close');
+      if (c) c.click();
+    });
+    await sleep(200);
     check('行情广播后商品网格仍正常渲染', (await p1.$$('#shop-panel .shop-grid .shop-card')).length >= 30,
       String((await p1.$$('#shop-panel .shop-grid .shop-card')).length));
     // 切页再回来，数量应保留（全局生效直到被修改）

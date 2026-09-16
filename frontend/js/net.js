@@ -595,7 +595,10 @@ window.Net = (function () {
           else if (cur.tier) nx.tier = cur.tier;
           S.codex[m.id] = nx;
           if (m.catchCount != null) S.catchCount = m.catchCount;
-          if (ui) ui.refreshAll('codex');
+          // v0.13.8：上鱼走就地补丁（只改这张卡的文字与档位框），**不重建整页**——
+          // 整页重建会让图鉴里所有鱼的游动动画（px-swim）从头播放，看起来就是「一上鱼整页闪一下」。
+          // 新收录的物种（卡片还不存在）才回落到整页重建。
+          if (ui) { if (!ui.patchCodexCell || !ui.patchCodexCell(m.id)) ui.refreshAll('codex'); }
         } else if (m.type === 'codex') {
           S.codex = m.codex || {};
           if (m.catchCount != null) S.catchCount = m.catchCount;
