@@ -311,12 +311,15 @@ function smeltCfgOf() { return D.getSmeltCfg(); }
 function smeltRangesOf(mainMeta, subMeta, mainType, subType, addType) {
   const mainAffix = mainMeta.affixes.find(function (a) { return a.type === mainType; });
   const subAffix = subMeta.affixes.find(function (a) { return a.type === subType; });
-  const main = D.smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'main', mainType, { part: mainMeta.part, src: mainAffix && mainAffix.src });
-  const sub = D.smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'sub', subType, { part: mainMeta.part, src: subAffix && subAffix.src });
+  // srcExplicit 一并传入：来源是**签名字面记录**的（真的出自宝匣/催化）才允许写回新签名；
+  // 解析时按数值推断出来的来源只是「按谁的区间 roll」的参考，不能据此宣称它是突破词缀。
+  const main = D.smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'main', mainType, { part: mainMeta.part, src: mainAffix && mainAffix.src, srcExplicit: mainAffix && mainAffix.srcExplicit });
+  const sub = D.smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'sub', subType, { part: mainMeta.part, src: subAffix && subAffix.src, srcExplicit: subAffix && subAffix.srcExplicit });
   const add = addType ? D.smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'add', addType, { part: mainMeta.part }) : null;
   return {
     main: main.range, sub: sub.range, add: add ? add.range : null,
     mainSrc: main.src, subSrc: sub.src, addSrc: add ? add.src : null,
+    mainExplicit: main.explicit, subExplicit: sub.explicit, addExplicit: add ? add.explicit : false,
   };
 }
 // 一次熔炼取值的 roll（宝珠开启时掷两次取靠近区间边界的那次）
@@ -405,7 +408,7 @@ function planSmelt(rec, d) {
       return { error: itemName(relicId) + '单次最多投入 ' + relicMax + ' 片（当前 ' + Math.floor(Number(d.relics)) + ' 片）' };
     }
     if (!extraAffixes.length) {
-      return { error: '该主件没有池外（突破）词缀，投入' + itemName(relicId) + '没有可保留的词条' };
+      return { error: '该主件没有池外词缀，投入' + itemName(relicId) + '没有可保留的词条' };
     }
     if (!invHas(rec, relicId, relicQty)) {
       return { error: itemName(relicId) + '不足（需 ' + relicQty + ' 片，当前 ' + invCountOf(rec, relicId) + ' 片）' };
@@ -442,12 +445,14 @@ function planSmelt(rec, d) {
     rollBoundary: !!(pearl && cfg.pearlRollTwice),
     relicId: relicId, relics: relicQty, extraAffixes: extraAffixes,
     // 只要投入了至少 1 片残片，失败时主组件**选中的那条词缀**就不会被熔毁（v0.13）。
-    // 这是残片新增的第二个作用（原本只有「成功时按概率保留池外突破词缀」）。
+    // 这是残片新增的第二个作用（原本只有「成功时按概率保留池外词缀」）。
     protectAffix: relicQty > 0,
-    retainChance: D.smeltRetainChance(relicQty, extraAffixes.length),
-    // 保留概率的说明值：主件突破词缀条数与每片概率（供前端展示公式与实际取值）
-    breakthrough: extraAffixes.length,
-    perRelic: D.retainChancePerRelic(extraAffixes.length),
+    // 保留概率的说明值：主件**突破词缀**条数与每片概率（供前端展示公式与实际取值）。
+    // breakthrough 只数真正的突破词缀（src='bt'，海王遗匣池外补足），不含附件搬来的普通池外
+    // 词缀与催化词缀 —— 否则搬一条词缀进来就会把保留概率无端压低。
+    breakthrough: D.breakthroughCountOf(mainMeta.affixes),
+    retainChance: D.smeltRetainChance(relicQty, D.breakthroughCountOf(mainMeta.affixes)),
+    perRelic: D.retainChancePerRelic(D.breakthroughCountOf(mainMeta.affixes)),
     retainFormula: String(cfg.retainFormula || ''),
     ranges: smeltRangesOf(mainMeta, subMeta, mainAffix.type, subAffix.type, extraType),
   };
@@ -3489,13 +3494,15 @@ const server = http.createServer(function (req, res) {
         if (success) {
           const rr = plan.ranges;   // 三条词缀各自的取值区间与范围来源（主件 / 副件 / 补缀，见 smeltRangesOf）
           const affixes = [];
-          affixes.push({ type: plan.mainAffix.type, value: smeltRoll(rr.main, useBoundary), src: rr.mainSrc });
-          affixes.push({ type: plan.subAffix.type, value: smeltRoll(rr.sub, useBoundary), src: rr.subSrc });
+          // 主/副件搬来的词缀：来源可证（mainExplicit/subExplicit）才写回签名，否则只用于取值区间。
+          // 补缀词缀一律是催化词缀（addSrc = 'ct'），可写回。
+          affixes.push({ type: plan.mainAffix.type, value: smeltRoll(rr.main, useBoundary), src: rr.mainSrc, srcExplicit: rr.mainExplicit });
+          affixes.push({ type: plan.subAffix.type, value: smeltRoll(rr.sub, useBoundary), src: rr.subSrc, srcExplicit: rr.subExplicit });
           if (plan.extraType) {
             extraOk = Math.random() * 100 < plan.rates.extraRate;
-            if (extraOk) affixes.push({ type: plan.extraType, value: smeltRoll(rr.add, useBoundary), src: rr.addSrc });
+            if (extraOk) affixes.push({ type: plan.extraType, value: smeltRoll(rr.add, useBoundary), src: rr.addSrc, srcExplicit: rr.addExplicit });
           }
-          // 残片保留：掷一次，命中则把主件的池外（突破）词缀按原值追加回结果（范围来源一并保留）。
+          // 残片保留：掷一次，命中则把主件的池外词缀按原值追加回结果（范围来源与来源可信度一并保留）。
           // 与选中/补缀词条同类型的不再重复追加（同一件组件里同类型词条只该有一条）。
           if (plan.relics > 0) {
             retainOk = Math.random() * 100 < plan.retainChance;
@@ -3505,8 +3512,8 @@ const server = http.createServer(function (req, res) {
               plan.extraAffixes.forEach(function (a) {
                 if (have[a.type]) return;
                 have[a.type] = 1;
-                affixes.push({ type: a.type, value: a.value, src: a.src || null });
-                retained.push({ type: a.type, value: a.value, src: a.src || null });
+                affixes.push({ type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit });
+                retained.push({ type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit });
               });
             }
           }
@@ -3517,11 +3524,11 @@ const server = http.createServer(function (req, res) {
         } else {
           // 失败不再「主件原样」：主件被熔掉**选中的那条词条**，其余词条与品质保留（v0.11.3 起）。
           // v0.13：投入了至少 1 片残片时（plan.protectAffix），选中的词条**不会被熔毁**，
-          // 主件只失去副件与催化剂（其余词条原样保留，来源 src 一并带过）。
+          // 主件只失去副件与催化剂（其余词条原样保留，来源 src 与来源可信度 srcExplicit 一并带过）。
           invAdd(rec, plan.mainId, -1);
           const left = plan.mainMeta.affixes
             .filter(function (a) { return plan.protectAffix || a.type !== plan.mainAffix.type; })
-            .map(function (a) { return { type: a.type, value: a.value, src: a.src || null }; });
+            .map(function (a) { return { type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit }; });
           const leftId = D.instanceId(base.id, plan.mainMeta.quality, left);
           invAdd(rec, leftId, 1);
           mainAfter = D.componentOf(leftId);

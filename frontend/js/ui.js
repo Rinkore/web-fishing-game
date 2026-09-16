@@ -58,15 +58,23 @@ window.UI = (function () {
     }
     return rarityClass(meta.rarity);
   }
-  // 组件词缀 span 的起始标签：池外词缀（宝匣池外补足 / 工坊催化补缀的、本部位本来没有的词缀）额外加 extra 标记
-  // 池外词缀统一命名：宝匣产生的 = 突破词缀；工坊催化（催化剂补缀）产生的 = 催化词缀
-  function extraAffixName(a) { return a && a.src === 'ct' ? '催化词缀' : '突破词缀'; }
-  function extraAffixTitle(a) {
-    return a && a.src === 'ct' ? '催化词缀（工坊催化剂补缀产生）' : '突破词缀（宝匣池外补足产生）';
+  // 组件词缀 span 的起始标签：池外词缀（本底材词缀池里没有的词缀）额外加 extra 标记。
+  // 池外词缀再按**真实来源**分三类，各自一个 class，配色/下划线区别见 style.css：
+  //   突破词缀（.bt）：只有海王遗匣在池外补足才产生
+  //   催化词缀（.ct）：工坊熔炼投入催化剂补缀产生
+  //   普通池外词缀（.ex）：熔炼从附件（副件）搬来，或来源无法证实（后台定制件 / 旧存档）
+  // 判据由 data.js 的 affixKindOf 统一给出（不能只看「不在池内」就当作突破词缀）。
+  function affixKind(a) { return (D.affixKindOf ? D.affixKindOf(a) : (a && a.extra ? 'extra' : 'pool')); }
+  function affixKindCls(a) {
+    const k = affixKind(a);
+    return k === 'breakthrough' ? ' bt' : (k === 'catalyst' ? ' ct' : (k === 'extra' ? ' ex' : ''));
   }
+  function extraAffixName(a) { return D.extraKindName ? D.extraKindName(a) : '池外词缀'; }
+  function extraAffixTitle(a) { return D.extraKindDesc ? D.extraKindDesc(a) : '池外词缀'; }
   function affSpanOpen(a) {
-    return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + (a.extra ? ' extra' : '') + '"' +
-      (a.extra ? ' title="' + extraAffixTitle(a) + '"' : '') + '>';
+    const extra = !!(a && a.extra);
+    return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + (extra ? ' extra' : '') + affixKindCls(a) + '"' +
+      (extra ? ' title="' + extraAffixTitle(a) + '"' : '') + '>';
   }
   // 词缀数值区间 [min,max]；来源优先：熔炼搬来的副件区间 / 催化 / 突破按词缀自带来源取，
   // 只有来源就是该底材本身（或没有来源）时才用底材区间；都没有则返回 null（不显示区间）
@@ -1731,7 +1739,7 @@ window.UI = (function () {
             '<div class="bec-name"><img class="bec-icon" src="assets/item/' + esc(c.baseId || '') + '.png" alt="" draggable="false">' +
             '<span class="' + qualityClass(c) + '">' + esc(c.name) + itemTag(c) + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
             '<div class="inst-meta">' + (partKey ? '' : esc(partNameOf(c.part)) + ' · ') + esc(qualityName(c)) + '品质 · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条</div>' +
-            c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + (a.extra ? ' extra' : '') + '">' + esc(affixText(a)) + '</div>'; }).join('') +
+            c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + (a.extra ? ' extra' : '') + affixKindCls(a) + '">' + esc(affixText(a)) + '</div>'; }).join('') +
             '<div class="bec-meta">持有 ×' + o2.n + '</div>';
           const acts = el('div', 'bec-acts');
           if (pick) {
@@ -4111,7 +4119,7 @@ window.UI = (function () {
       else if (c.hitCount) {
         out.push('词条数：' + (c.chance != null ? Math.round(c.chance * 100) + '% 概率 ' : '') + c.hitCount + ' 条' +
           (c.chance != null ? ' / ' + Math.round((1 - c.chance) * 100) + '% 概率 ' + c.missCount + ' 条' : '') +
-          (c.extra ? '（多出的那条是突破词缀）' : ''));
+          (c.extra ? '（多出的那条是池外词缀：海王遗匣产生的是突破词缀）' : ''));
       } else if (c.minAffixes) out.push('词条数：至少 ' + c.minAffixes + ' 条');
       out.push('交易：收购不收宝匣，只能挂到商城的市集页');
     } else if (it.kind === 'fish') {
@@ -4127,7 +4135,7 @@ window.UI = (function () {
       }
       if (it.id === 'relic') {
         out.push('宝匣：合成各档宝匣的主材料（' + (D.CHESTS || []).map(function (c) { return c.name + ' ' + c.costRelic + ' 片'; }).join(' · ') + '）');
-        out.push('熔炼：残片保留（按后台公式 ' + (cfg.retainFormula || '?') + ' 计算每片保留池外词缀的概率）+ 重铸（洗词条数值）');
+        out.push('熔炼：残片保留（按后台公式 ' + (cfg.retainFormula || '?') + ' 计算每片保留池外词缀的概率；公式变量 breakthrough 只数突破词缀）+ 重铸（洗词条数值）');
       }
       out.push('出售 / 挂单：系统商店 ' + (it.price || 0) + '💰，也可挂到开放市集');
     }
@@ -4991,8 +4999,8 @@ window.UI = (function () {
           (rng ? '<span class="aff-rng">（' + esc(rng) + '%）</span>' : '') + '</span>';
       }).join('') + '</div>' +
       (extras.length
-        ? '<div class="cr-note">★ 标记的词缀不在「' + esc(meta.baseName) + '」的词缀池内——这是' +
-          esc(extraAffixName(extras[0])) + '（悬停词条可看来源说明）。</div>'
+        ? '<div class="cr-note">★ 标记的词缀不在「' + esc(meta.baseName) + '」的词缀池内（池外词缀）；' +
+          '本件含' + esc(extraAffixName(extras[0])) + '（悬停词条可看来源说明）。</div>'
         : (meta.breakthrough ? '' : '')) +
       '</div>';
   }
@@ -5184,7 +5192,7 @@ window.UI = (function () {
   //   可选龙宫宝珠：roll 值改为掷两次取靠近区间边界的那次（与海王遗匣同一规则）。
   //   可选残片保留（v0.11.3，仅海王遗匣产出的神话主件）：投至多 10 片沉船宝匣残片，成功时按概率
   //     （每片概率由后台公式按主件突破词缀条数算，默认 10 - 突破数×0.5，见 D.retainChancePerRelic）
-  //     把主件的池外（突破）词缀原值保留到结果上；残片不计入催化剂 → 不改成功率与花费。
+  //     把主件的池外词缀按原值保留到结果上（突破/催化/附件搬来的都算）；残片不计入催化剂 → 不改成功率与花费。
   //   失败（v0.11.3 起）：副件 / 催化剂 / 残片熔毁、金币花掉，主件被熔掉**选中的那条词条**（其余词条与品质保留）；
   //     但若投入了残片，主件选中的词条在失败时也受保护（服务端回传 protectedAffix）。
   // 重铸：把宝匣产出的**神话**组件放进去，用沉船宝匣残片重 roll 全部词条的数值（类型与条数不变）。
@@ -5234,7 +5242,7 @@ window.UI = (function () {
     const affs = comp.meta.affixes.map(function (a) {
       const rng = affixRangeIn(comp.meta, a);
       const rtxt = rng ? rangeText({ min: rng[0], max: rng[1] }) : '';
-      return '<button class="ws-aff' + (a.value < 0 ? ' neg' : '') + (a.extra ? ' extra' : '') +
+      return '<button class="ws-aff' + (a.value < 0 ? ' neg' : '') + (a.extra ? ' extra' : '') + affixKindCls(a) +
         ((which === 'main' ? wsMainAffix : wsSubAffix) === a.type ? ' on' : '') +
         '" data-which="' + which + '" data-type="' + esc(a.type) + '">' + esc(affixText(a)) +
         (rtxt ? '<span class="ws-aff-rng">' + esc(rtxt) + '%</span>' : '') + '</button>';
@@ -5250,9 +5258,10 @@ window.UI = (function () {
       '<div class="hint">' + (which === 'main' ? '点击选择主件保留的词条' : '点击选择从副件搬到主件的词条') + '</div></div>';
   }
   // 残片保留信息（只对海王遗匣产出的神话主件开放，判据与「重铸」一致 = 神话品质）
-  //   eligible：主件是神话件且**确实带池外（突破）词缀**——没有可保留的词条时投入残片没有意义
+  //   eligible：主件是神话件且**确实带池外词缀**（突破/催化/附件搬来的都算）——没有可保留的词条时投入残片没有意义
   //   cap：还能投入几片（后台上限与背包持有量取小）；qty：当前草稿夹紧后的片数
-  //   bt：主件的池外（突破）词缀条数 —— 每片保留概率由后台公式算（默认 10 - bt×0.5），突破越多越难保留
+  //   bt：主件的**突破词缀**条数（只数 src='bt' 的海王遗匣池外词缀）—— 每片保留概率由后台公式算
+  //       （默认 10 - bt×0.5），突破越多越难保留；附件搬来的普通池外词缀与催化词缀不参与该公式
   function wsRetainInfo(comp) {
     const cfg = D.getSmeltCfg();
     const max = Math.max(0, Math.floor(Number(cfg.retainMaxRelic) || 0));
@@ -5399,7 +5408,8 @@ window.UI = (function () {
     const retainLine = rt.eligible
       ? '<div class="ws-line">🛡 残片保留 <b>' + rt.qty + '</b> / ' + rt.max + ' 片（持有 ' + rt.have + '）' +
         ' · 保留池外词缀概率 <b class="ok">' + rt.chance + '%</b>' +
-        '<span class="hint">（主件 ' + rt.bt + ' 条突破词缀 → 每片 ' + rt.per + '%' +
+        '<span class="hint">（主件 ' + rt.bt + ' 条突破词缀' +
+        (rt.affixes.length > rt.bt ? '（池外词缀共 ' + rt.affixes.length + ' 条）' : '') + ' → 每片 ' + rt.per + '%' +
         (rt.formula ? '，公式：' + esc(rt.formula) : '') + '；成功后保留下面的词条原值；' +
         '残片不计入催化剂，不影响成功率与花费）</span></div>' +
         '<div class="ws-line muted">可保留的池外词缀：' +
@@ -5486,8 +5496,9 @@ window.UI = (function () {
     const rt = wsRetainInfo(mainC);
     // 残片保留：只在主件是「海王遗匣产出的神话件 + 带池外词缀」时出现（否则显一行灰字说明为何没有）
     const retainRow = rt.eligible
-      ? '<h3>🛡 残片保留（可选）<span class="hint">成功后按概率保留下主件的池外词缀（突破/催化）；' +
-        '主件 ' + rt.bt + ' 条突破词缀 → 每片残片 ' + rt.per + '%' +
+      ? '<h3>🛡 残片保留（可选）<span class="hint">成功后按概率保留下主件的池外词缀（突破/催化/附件搬来的）；' +
+        '主件 ' + rt.bt + ' 条突破词缀' + (rt.affixes.length > rt.bt ? '（池外词缀共 ' + rt.affixes.length + ' 条）' : '') +
+        ' → 每片残片 ' + rt.per + '%' +
         (rt.formula ? '（公式：' + esc(rt.formula) + '）' : '') + '，最多投入 ' + rt.max + ' 片</span></h3>' +
         '<label class="ws-pearl"><input type="checkbox" id="ws-relic-on"' + (rt.qty > 0 ? ' checked' : '') + ' /> ' +
         '🛡 放入 <b>沉船宝匣残片</b>（持有 <span data-have="relic">' + rt.have + '</span>）· 不影响熔炼成功率与花费</label>' +
@@ -5501,15 +5512,17 @@ window.UI = (function () {
       : (mainC
         ? '<h3>🛡 残片保留<span class="hint">' +
           (D.canRecast(mainC.meta)
-            ? '未启用：该主件没有池外（突破）词缀，投入残片没有可保留的词条'
+            ? '未启用：该主件没有池外词缀，投入残片没有可保留的词条'
             : '未启用：只有海王遗匣产出的神话主件才能投入残片') +
           '</span></h3>'
         : '');
     body.innerHTML =
-      '<div class="ws-help">词缀分<b>池内词缀</b>与<b>池外词缀</b>两类：池外词缀目前有<b>突破词缀</b>（宝匣开出）和<b>催化词缀</b>（材料催化产生）。' +
+      '<div class="ws-help">词缀分<b>池内</b>与<b>池外</b>：池外词缀 = 本底材词缀池里没有的词缀，按来源分三种——' +
+      '<b>突破词缀</b>（只有海王遗匣在池外补足才产生）、<b>催化词缀</b>（投入催化剂补缀产生）、' +
+      '<b>普通池外词缀</b>（熔炼从附件搬来的词缀）。' +
       '熔炼：放两件<b>同部位</b>组件——<b>主件保留、副件熔毁</b>，各选一条词条熔成两条并重 roll 数值（副件词条连区间一起熔入）。' +
-      '催化剂可为主件再补一条词缀，按<b>池外</b>区间取值；主件是海王遗匣神话件时，残片可在成功时保留其<b>突破词缀</b>。' +
-      '加入龙宫宝珠可 roll 两次、取更靠区间边界的值。</div>' +
+      '催化剂可为主件再补一条词缀，按<b>催化</b>区间取值；主件是海王遗匣神话件时，残片可在成功时保留其<b>池外词缀</b>' +
+      '（公式变量 breakthrough 只数突破词缀）。加入龙宫宝珠可 roll 两次、取更靠区间边界的值。</div>' +
       '<div class="ws-grid">' +
       wsCompCardHtml('main', mainC, '点上方按钮打开组件选择窗口（与钓竿配置的「装备组件」同一个子页面）') +
       wsCompCardHtml('sub', subC, mainC ? '副件必须与主件同部位（' + esc(partNameOf(mainC.part)) + '）' : '先选主件，再选同部位的副件') +
@@ -5611,7 +5624,7 @@ window.UI = (function () {
         '并把副件「' + esc(D.AFFIX_LABEL[wsSubAffix] || wsSubAffix) + '」熔入；<br/>' +
         '副件 <b>' + esc(p.sub.meta.name) + '</b> 与 ' + p.load.total + ' 份材料将被熔毁，花费 <b>' + p.gold + '💰</b>。' +
         (p.retain.qty > 0 ? '<br/>另投入 <b>' + p.retain.qty + '</b> 片沉船宝匣残片：成功后 <b>' + p.retain.chance +
-          '%</b> 概率保留池外（突破）词缀（' + p.retain.affixes.map(function (a) { return esc(D.AFFIX_LABEL[a.type] || a.type); }).join(' / ') +
+          '%</b> 概率保留池外词缀（' + p.retain.affixes.map(function (a) { return esc(D.AFFIX_LABEL[a.type] || a.type); }).join(' / ') +
           '）；残片不改变成功率与花费。' : '') + '<br/>' +
         '熔炼成功率 <b>' + p.rates.rate + '%</b>' + (p.extraType ? '，补缀成功率 <b>' + p.rates.extraRate + '%</b>' : '') +
         (p.pearl ? '，使用 🐚 龙宫宝珠' : '') + '。<br/>失败损失副件 / 催化剂 / 残片，且主件被熔掉选中的那条词条（其余词条保留）。',
@@ -5639,7 +5652,7 @@ window.UI = (function () {
       ? (d.item
         ? chestItemCardHtml(d.item) +
           // 卡片里已经解释过 ★ 标记（池外词缀）；这里只说本次熔炼自身的结算：
-          // 补缀是否成功、残片保留是否命中（保留命中的词条会标成「宝匣突破件补足的额外词缀」）
+          // 补缀是否成功、残片保留是否命中（补缀得来的词缀是催化词缀，不再是「突破词缀」）
           '<div class="cr-note">' +
           (d.extraType ? (d.extraOk ? '已补缀：' + esc(D.AFFIX_LABEL[d.extraType] || d.extraType) + '。' : '补缀未成功（本次没有新增词缀）。') : '') +
           (d.relics > 0
@@ -5845,7 +5858,7 @@ window.UI = (function () {
         '<span class="rc-old">' + (b.value == null ? '—' : (b.value > 0 ? '+' : '') + b.value) + '</span>' +
         '<span class="rc-arrow">→</span>' +
         '<span class="rc-new ' + (up ? 'up' : (same ? 'same' : 'down')) + '">' + (a.value > 0 ? '+' : '') + a.value + '</span>' +
-        (a.extra ? '<span class="aff-extra-tag">池外</span>' : '') + '</div>';
+        (a.extra ? '<span class="aff-extra-tag ' + (affixKind(a) === 'breakthrough' ? 'bt' : (affixKind(a) === 'catalyst' ? 'ct' : 'ex')) + '">' + esc(extraAffixName(a)) + '</span>' : '') + '</div>';
     }).join('');
     box.innerHTML = '<div class="modal-head"><span class="modal-title">♻ 重铸完成</span>' +
       '<button class="mini modal-close">✕ 关闭</button></div>' +

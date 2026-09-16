@@ -8,7 +8,8 @@
  *   ⑤ 残片新增效果：投入 ≥1 片时，熔炼失败不熔毁主件选中的词条
  *   ⑥ 熔炼搬来的附件词缀范围被带走：后续重铸仍按附件区间取值（不是结果底材的区间）
  *   ⑦ 旧存档迁移：无 @src 的旧件按数值回填真实范围来源
- *   ⑧ 后台「版本更新」功能已整体移除
+ *   ⑧ 池外词缀的来源识别：突破 / 催化 / 普通池外三分（不得把附件词缀当作突破词缀）
+ *   ⑨ 后台「版本更新」功能已整体移除
  * 运行： node tests/v013.test.js
  */
 'use strict';
@@ -275,7 +276,91 @@ function startServer() {
     JSON.stringify(D.componentOf('rod_bamboo#mythic#spd+12,dbl+7').affixes));
 
   // ==========================================================================
-  section('⑧ 后台「版本更新」功能已整体移除');
+  section('⑧ 池外词缀的来源识别：突破 / 催化 / 普通池外三分');
+  // 池外词缀 = 该类型不在所属底材的词缀池内。它按**真实来源**再分三类：
+  //   突破词缀：只有海王遗匣在池外补足才产生（src='bt'）
+  //   催化词缀：工坊投入催化剂补缀产生（src='ct'）
+  //   普通池外词缀：熔炼从附件（副件）搬来（src=附件底材 id），或来源无法证实
+  // 关键回归：**不能只看「不在词缀池内」就当作突破词缀**。
+  check('数据层：分类函数已导出', typeof D.affixKindOf === 'function' && typeof D.extraKindName === 'function' && typeof D.breakthroughCountOf === 'function',
+    JSON.stringify({ k: typeof D.affixKindOf, n: typeof D.extraKindName, b: typeof D.breakthroughCountOf }));
+  // 熔炼搬来的附件词缀：范围来源记的是附件底材（在附件池内 = 可证），不是突破
+  const movedMeta = D.componentOf('rod_bamboo#mythic#spd+12,skl+10@rod_dragonbone');
+  const movedSk = movedMeta.affixes.find(a => a.type === 'skill');
+  check('熔炼搬来的附件词缀 → 普通池外（不是突破词缀）',
+    D.affixKindOf(movedSk) === 'extra' && D.extraKindName(movedSk) === '池外词缀' && movedSk.src === 'rod_dragonbone',
+    JSON.stringify({ kind: D.affixKindOf(movedSk), name: D.extraKindName(movedSk), src: movedSk.src }));
+  check('突破计数不含附件搬来的词缀', D.breakthroughCountOf(movedMeta.affixes) === 0, String(D.breakthroughCountOf(movedMeta.affixes)));
+  // 海王遗匣突破件：src='bt' 且经签名字面记录 → 突破词缀
+  const btItem = D.genBreakthrough('rod_bamboo', { hitCount: 4, chance: 1 });
+  const btExtras = btItem.affixes.filter(a => a.extra);
+  check('海王遗匣池外补足的词缀 → 突破词缀',
+    btExtras.length > 0 && btExtras.every(a => D.affixKindOf(a) === 'breakthrough' && D.extraKindName(a) === '突破词缀'),
+    JSON.stringify(btExtras.map(a => ({ t: a.type, k: D.affixKindOf(a), src: a.src }))));
+  check('突破计数 = 突破词缀条数', D.breakthroughCountOf(btItem.affixes) === btExtras.length,
+    JSON.stringify({ n: D.breakthroughCountOf(btItem.affixes), extra: btExtras.length }));
+  // 催化剂补缀：未配置催化区间时来源仍记 'ct'（催化词缀），且取值回退池外区间
+  const addSpec = D.smeltRangeEx('rod_bamboo', 'rod_dragonbone', 'add', 'skill', { part: 'rod' });
+  check('催化剂补缀的来源一律是催化（未配置催化区间时亦然）', addSpec.src === 'ct', JSON.stringify(addSpec));
+  check('催化未配置区间时取值仍回退池外区间（与旧版一致）',
+    JSON.stringify(addSpec.range) === JSON.stringify(D.extraAffixRangeOf('skill')), JSON.stringify(addSpec.range));
+  check('催化词缀识别为催化',
+    D.affixKindOf({ extra: true, src: 'ct', srcExplicit: true, type: 'skill' }) === 'catalyst' &&
+    D.extraKindName({ extra: true, src: 'ct', srcExplicit: true, type: 'skill' }) === '催化词缀');
+  // 来源无法证实的池外词缀（后台定制 / 旧存档）：不冒充突破
+  const cusMeta = D.componentOf('rod_bamboo#mythic#spd+12,dbl+9');
+  check('来源无法证实的池外词缀 → 普通池外（不冒充突破）',
+    D.affixKindOf(cusMeta.affixes.find(a => a.type === 'double')) === 'extra',
+    JSON.stringify(cusMeta.affixes));
+  check('池内词缀 kind = pool', D.affixKindOf(movedMeta.affixes.find(a => a.type === 'speed')) === 'pool');
+  // 后台显式关闭「副件区间」时（旧行为），副件搬来的池外词缀的取值范围回退池外区间，
+  // 但身份上仍不得宣称突破（explicit=false → 不写回签名 → 识别为普通池外词缀）
+  const legacyRange = (function () {
+    const bak = D.getSmeltCfg().subRangeFromSub;
+    D.setSmeltCfg({ subRangeFromSub: false });
+    const spec = D.smeltRangeEx('rod_bamboo', 'rod_dragonbone', 'sub', 'skill', { part: 'rod', src: 'rod_dragonbone', srcExplicit: true });
+    D.setSmeltCfg({ subRangeFromSub: bak });
+    return spec;
+  })();
+  check('旧行为（关闭副件区间）下副件词缀不冒充突破词缀',
+    legacyRange.src === 'bt' && legacyRange.explicit === false &&
+    JSON.stringify(legacyRange.range) === JSON.stringify(D.extraAffixRangeOf('skill')),
+    JSON.stringify(legacyRange));
+  // 端到端：熔炼搬词的结果必须记附件底材、不得变成 @bt
+  await cfg({ baseRate: 100, rateMax: 100, failPerMaterial: 0, catalystRanges: {} });
+  const kindMain = D.instanceId('rod_bamboo', 'mythic', [{ type: 'speed', value: 12 }, { type: 'size', value: 3 }]);
+  const kindSub = D.instanceId('rod_dragonbone', 'epic', [{ type: 'skill', value: 10 }, { type: 'size', value: 8 }]);
+  await seed({ [kindMain]: 1, [kindSub]: 1 }, 200000);
+  const kindMelt = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: kindMain, subId: kindSub, mainAffix: 'speed', subAffix: 'skill',
+  });
+  const kindSk = kindMelt.data.item && kindMelt.data.item.affixes.find(a => a.type === 'skill');
+  check('端到端：熔炼搬词结果记附件底材而非 @bt，且识别为普通池外',
+    kindMelt.status === 200 && !!kindSk && kindSk.src === 'rod_dragonbone' &&
+    !/@bt/.test(kindMelt.data.item.id) && D.affixKindOf(kindSk) === 'extra',
+    JSON.stringify({ id: kindMelt.data.item && kindMelt.data.item.id, kind: kindSk && D.affixKindOf(kindSk) }));
+  check('端到端：该次熔炼的 breakthrough 不把附件词缀算进去（=0）',
+    kindMelt.data.breakthrough === 0, String(kindMelt.data.breakthrough));
+  // 端到端：催化剂补缀产出催化词缀
+  await seed({ [kindMain]: 1, [kindSub]: 1, lure: 8 }, 200000);
+  const kindCat = await POST(BASE + '/api/workshop/smelt', {
+    token: TOKP, mainId: kindMain, subId: kindSub, mainAffix: 'speed', subAffix: 'size', materials: [{ id: 'lure', qty: 4 }],
+  });
+  const kindCatAff = kindCat.data.item && kindCat.data.item.affixes.find(a => a.type === 'skill');
+  check('端到端：催化剂补缀产出催化词缀（不是突破词缀）',
+    kindCat.data.extraOk === true && !!kindCatAff && D.affixKindOf(kindCatAff) === 'catalyst',
+    JSON.stringify({ t: kindCat.data.extraType, k: kindCatAff && D.affixKindOf(kindCatAff), src: kindCatAff && kindCatAff.src }));
+  // 签名稳定性：推断出来的来源绝不写回签名（否则会固化成「突破词缀」）
+  [['rod_bamboo#common#spd+20', '池内超范围（推断）'],
+   ['rod_dragonbone#mythic#spd+12,skl+10', '推断出附件来源'],
+   ['rod_bamboo#mythic#spd+12,skl+10@rod_dragonbone', '显式附件来源'],
+   ['rod_bamboo#mythic#spd+12,dbl+9@bt', '显式突破']].forEach(function (pair) {
+    const n1 = D.normalizeItemId(pair[0]), n2 = D.normalizeItemId(n1);
+    check('签名幂等且不把推断来源写回：' + pair[1], n1 === n2 && !/@rod_carbon|@rod_bamboo/.test(n1), pair[0] + ' -> ' + n1);
+  });
+
+  // ==========================================================================
+  section('⑨ 后台「版本更新」功能已整体移除');
   check('更新列表接口 404', (await GET(BASE + '/api/admin/update/list?token=' + encodeURIComponent(TOKA))).status === 404);
   check('发布更新接口 404', (await POST(BASE + '/api/admin/update/start', { token: TOKA, bat: 'run.bat', dryRun: true })).status === 404);
   check('取消更新接口 404', (await POST(BASE + '/api/admin/update/cancel', { token: TOKA })).status === 404);

@@ -2816,9 +2816,11 @@ window.Admin = (function () {
       $('db-save').onclick = function () {
         const b = Math.max(0, Math.min(100, Number(dbInp.value) || 0)) / 100;
         adminApi('POST', '/api/admin/settings', { token: token, doubleBase: b }).then(function (r) {
-          if (!r.ok) { $('db-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+          const st = $('db-state');
+          if (!st) return; // 回包晚于切页：面板已不在，跳过 DOM 写入
+          if (!r.ok) { st.innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
           if (worldCfg) worldCfg.doubleBase = r.data.doubleBase;
-          $('db-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
+          st.innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
           toast('基础双钓率已保存');
         });
       };
@@ -2837,7 +2839,8 @@ window.Admin = (function () {
           const ms = Math.max(min, Math.round(base * (1 - eff / 100)));
           return '玩家钓速 ' + sp + '%→有效 ' + Math.round(eff) + '%→' + (ms / 1000).toFixed(2) + 's';
         }).join('　');
-        $('cast-preview').innerHTML = '实际间隔预览：' + samples;
+        const pv = $('cast-preview');
+        if (pv) pv.innerHTML = '实际间隔预览：' + samples;
       }
       [cbInp, cmInp, cboInp, ccpInp].forEach(function (n) { n.addEventListener('input', castPreview); });
       castPreview();
@@ -2848,21 +2851,27 @@ window.Admin = (function () {
           castSpeedBonus: Number(cboInp.value), castSpeedCap: Number(ccpInp.value),
         };
         adminApi('POST', '/api/admin/settings', body).then(function (r) {
-          if (!r.ok) { $('cast-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
-          $('cast-base').value = r.data.castBaseMs; $('cast-min').value = r.data.castMinMs;
-          $('cast-bonus').value = r.data.castSpeedBonus; $('cast-cap').value = r.data.castSpeedCap;
+          // 异步回包可能晚于「管理员切走本页」：面板已被重建/移除时不能再写 DOM，
+          // 否则 $('cast-*') 取到 null 直接抛错（会污染后台全程无页面错误的断言）。
+          const st = $('cast-state');
+          if (!st) return;
+          if (!r.ok) { st.innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+          cbInp.value = r.data.castBaseMs; cmInp.value = r.data.castMinMs;
+          cboInp.value = r.data.castSpeedBonus; ccpInp.value = r.data.castSpeedCap;
           castPreview();
-          $('cast-state').innerHTML = '<span style="color:var(--ok)">已保存，在线玩家循环已按新间隔重启</span>';
+          st.innerHTML = '<span style="color:var(--ok)">已保存，在线玩家循环已按新间隔重启</span>';
           toast('抛竿间隔与钓速已保存');
         });
       };
       $('cast-reset').onclick = function () {
         adminApi('POST', '/api/admin/settings', { token: token, castBaseMs: cdft.baseMs, castMinMs: cdft.minMs, resetCastSpeed: true }).then(function (r) {
-          if (!r.ok) { $('cast-state').innerHTML = '<span class="err">' + esc(r.data.error || '重置失败') + '</span>'; return; }
-          $('cast-base').value = r.data.castBaseMs; $('cast-min').value = r.data.castMinMs;
-          $('cast-bonus').value = r.data.castSpeedBonus; $('cast-cap').value = r.data.castSpeedCap;
+          const st = $('cast-state');
+          if (!st) return;
+          if (!r.ok) { st.innerHTML = '<span class="err">' + esc(r.data.error || '重置失败') + '</span>'; return; }
+          cbInp.value = r.data.castBaseMs; cmInp.value = r.data.castMinMs;
+          cboInp.value = r.data.castSpeedBonus; ccpInp.value = r.data.castSpeedCap;
           castPreview();
-          $('cast-state').innerHTML = '<span style="color:var(--ok)">已恢复默认</span>';
+          st.innerHTML = '<span style="color:var(--ok)">已恢复默认</span>';
           toast('已恢复默认抛竿间隔与钓速');
         });
       };

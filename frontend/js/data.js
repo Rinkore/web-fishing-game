@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.13.0';
+  const VERSION = 'v0.13.1';
   const BUILD = '2026-09-16';
 
   // ---- 渔获定义 ----
@@ -454,12 +454,17 @@
     const maxN = q.cap;
     // full = 池内全满（沿用旧语义）；突破件同样满足（它的池内部分是全满的）
     const full = inst.affixes.length >= poolLen && poolLen <= q.cap;
-    // 词缀对象附带 extra 标记：该词缀不在底材词缀池内（来自宝匣池外补足或工坊催化补缀）；
-    // src = 范围来源（底材id / 'bt' 突破 / 'ct' 催化），供显示「突破词缀/催化词缀」与重 roll 取区间用。
+    // 词缀对象附带 extra 标记：该词缀不在底材词缀池内（池外词缀）；
+    // src = 范围来源（底材id / 'bt' 突破 / 'ct' 催化），供重 roll 取区间与识别「池外词缀的来源」用；
+    // srcExplicit = 该来源是**签名字面记录的**（@src）还是解析时按数值推断的 ——
+    //   只有前者能证明它出自宝匣，后者不能，见 affixKindOf。
     const poolTypes = {};
     base.pool.forEach(function (p) { poolTypes[p.type] = 1; });
     const affixes = inst.affixes.map(function (a) {
-      return { type: a.type, value: a.value, extra: !poolTypes[a.type], src: a.src || null };
+      return {
+        type: a.type, value: a.value, extra: !poolTypes[a.type], src: a.src || null,
+        srcExplicit: a.srcExplicit !== false && !!a.src,
+      };
     });
     // hasExtra = 含池外词缀（2 条池底材即使「未中」也必然含 1 条，占比很高，只用于逐条标注）
     // breakthrough = 词条数突破史诗的 3 条上限，即真正抽到 4 条（突破件识别的唯一判据）。
@@ -479,6 +484,31 @@
       size: null,
     };
   }
+
+  // ---- 池外词缀的「来源类型」识别 ----
+  // 池外词缀（extra）= 该类型词缀不在所属底材的词缀池内。它按**真实来源**再分三类：
+  //   breakthrough 突破词缀：只有「海王遗匣」在词缀池外补足时才会产生（src = 'bt'）
+  //   catalyst     催化词缀：工坊熔炼投入催化剂（材料）补缀产生（src = 'ct'）
+  //   extra        普通池外词缀：熔炼从附件（副件）搬来的词缀（src = 附件底材 id），
+  //                             以及后台定制件 / 旧存档等**来源无法证实**的池外词缀
+  // 判据要点：**不能仅凭「不在词缀池内」就断言是突破词缀** —— 熔炼搬词搬来的同样在池外，
+  // 但它只是普通池外词缀。因此这里以「词缀自带且经签名字面记录（srcExplicit）的来源」为准：
+  // 只有显式记着 @bt 的才叫突破词缀；解析时推断出来的来源无法证明它出自宝匣，一律按普通池外处理。
+  function affixKindOf(a) {
+    if (!a || !a.extra) return 'pool';
+    if (!a.srcExplicit) return 'extra';
+    if (a.src === 'ct') return 'catalyst';
+    if (a.src === 'bt') return 'breakthrough';
+    return 'extra';
+  }
+  const EXTRA_KIND_NAME = { breakthrough: '突破词缀', catalyst: '催化词缀', extra: '池外词缀' };
+  const EXTRA_KIND_DESC = {
+    breakthrough: '突破词缀（海王遗匣在词缀池外补足产生）',
+    catalyst: '催化词缀（工坊熔炼投入催化剂补缀产生）',
+    extra: '池外词缀（熔炼从附件搬来，或来源无法证实的池外词缀）',
+  };
+  function extraKindName(a) { return EXTRA_KIND_NAME[affixKindOf(a)] || '池外词缀'; }
+  function extraKindDesc(a) { return EXTRA_KIND_DESC[affixKindOf(a)] || EXTRA_KIND_DESC.extra; }
 
   // ---- 组件生成：先定品质，再抽词条，最后 roll 数值 ----
   // 生成参数可被管理后台覆盖（品质概率 / 词条数量概率 / 数值 roll 模型 / 底材词缀数值范围）。
@@ -1013,6 +1043,13 @@
     });
     return out;
   }
+  // 返回 { range, src, explicit }：
+  //   explicit = 该来源是否**可证并可写回签名**。可证有两种情形：
+  //     (a) 词缀所属组件的签名里字面记录了来源（o.srcExplicit === true，如 @bt / @ct / @附件底材）；
+  //     (b) 该词缀类型就在**提供它的那件组件自己的词缀池内** —— 此时它的区间按定义就是那件底材的
+  //         池区间，来源为该底材是确定事实，不需要推断。
+  //   反之（不在池内、签名也没记来源）只能靠数值猜测，explicit = false：调用方不得把该 src
+  //   写进新签名，否则会把「猜出来的来源」固化成「突破词缀」这种身份断言。
   function smeltRangeEx(mainBaseId, subBaseId, kind, type, opts) {
     const o = opts || {};
     const mainBase = BASE_MAP[mainBaseId] || null;
@@ -1023,20 +1060,37 @@
     // 未显式传 src 时的缺省推断（兼容旧调用 / 防御）：main 按主件池、sub 按副件池、池外 → 突破
     const fallbackSrc = kind === 'sub' ? (subHas ? subBaseId : 'bt') : (mainHas ? mainBaseId : 'bt');
     const src = o.src || fallbackSrc;
+    // 来源可证性：签名显式记录，或该类型就在对应底材的词缀池内（池内 ⇒ 区间按定义来自该底材）
+    const provable = (o.src == null)
+      ? true
+      : (o.srcExplicit === true || (kind === 'sub' ? (subHas && src === subBaseId) : (mainHas && src === mainBaseId)));
     if (kind === 'main' || kind === 'sub') {
       if (kind === 'sub' && smeltCfg.subRangeFromSub === false) {
-        // 旧行为：主件池内按主件区间，否则突破区间
-        return mainHas ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId } : { range: extraAffixRangeOf(type), src: 'bt' };
+        // 旧行为（后台显式关闭「副件区间」时才走）：主件池内按主件区间，否则按池外区间。
+        // 池外这一支的**取值范围**保持旧行为，但身份上不能宣称突破 —— 这条词缀是副件搬来的，
+        // 不是海王遗匣产出，所以 explicit = false（不写回签名，识别为「普通池外词缀」）。
+        return mainHas
+          ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId, explicit: true }
+          : { range: extraAffixRangeOf(type), src: 'bt', explicit: false };
       }
-      return { range: affixSrcRangeOf(src, type, part), src: src };
+      return { range: affixSrcRangeOf(src, type, part), src: src, explicit: provable };
     }
     if (kind === 'add') {
+      // 投料补缀 = **催化剂产生的词缀**：来源一律记 'ct'（催化词缀），与是否给该部位/该词缀
+      // 配置了「材料催化词缀范围」无关 —— 有配置就按催化区间取值，没配置时
+      // affixSrcRangeOf('ct', …) 会自动回退到池外（突破）区间，取值范围与旧版完全一致，
+      // 区别只在「词缀身份」不再被误认成突破词缀。
       const cr = catalystRangeOf(part, type);
-      if (cr) return { range: cr, src: 'ct' };
-      if (smeltCfg.addAffixExtraRange !== false) return { range: extraAffixRangeOf(type), src: 'bt' };
-      return mainHas ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId } : { range: extraAffixRangeOf(type), src: 'bt' };
+      if (cr) return { range: cr, src: 'ct', explicit: true };
+      if (smeltCfg.addAffixExtraRange !== false) return { range: extraAffixRangeOf(type), src: 'ct', explicit: true };
+      return mainHas
+        ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId, explicit: true }
+        : { range: extraAffixRangeOf(type), src: 'ct', explicit: true };
     }
-    return mainHas ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId } : { range: extraAffixRangeOf(type), src: 'bt' };
+    // 防御性兜底（未知 kind，生产代码不会走到）：取值保持池外区间，但不敢断言是突破词缀
+    return mainHas
+      ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId, explicit: true }
+      : { range: extraAffixRangeOf(type), src: 'bt', explicit: false };
   }
   function smeltRangeOf(mainBaseId, subBaseId, kind, type, opts) {
     return smeltRangeEx(mainBaseId, subBaseId, kind, type, opts).range;
@@ -1044,19 +1098,26 @@
 
   // ---- 熔炼 · 残片保留（只对海王遗匣产出的神话主件开放）----
   // 熔炼成功后主件的词条会被改写成「主件选中 + 副件搬入」（+ 可选补缀），主件原有的**池外词缀**
-  // （宝匣突破件补足的、底材词缀池里本来没有的那些）会随之消失。投入沉船宝匣残片后，
-  // 成功时按概率把这些池外词缀**按原值**追加回熔炼结果：
-  //   概率 = 投入片数 × retainPerRelic%（默认每片 10%，10 片即 100%），上限 100%。
+  // （底材词缀池里本来没有的那些）会随之消失。投入沉船宝匣残片后，成功时按概率把这些池外词缀
+  // **按原值**追加回熔炼结果：
+  //   概率 = 投入片数 × 每片概率（默认每片 10 - breakthrough×0.5%，见 retainChancePerRelic），上限 100%。
   //   残片不参与投料计算 —— 既不影响熔炼成功率/补缀成功率，也不改变金币花费（只消耗残片本身）。
   //   只有主件确实带池外词缀时才有意义（没有可保留的词条时服务器会直接拒绝，避免白烧残片）。
+  //   「每片概率」公式的 breakthrough 变量取**突破词缀（src='bt'）条数**：一件组件身上往往还有
+  //   附件搬来的普通池外词缀与催化词缀，它们不算「突破」，不该把保留概率拉低（见 affixKindOf）。
   function smeltExtraAffixesOf(baseId, affixes) {
     const base = BASE_MAP[baseId];
     if (!base) return [];
     const poolTypes = {};
     base.pool.forEach(function (p) { poolTypes[p.type] = 1; });
-    // 保留时连范围来源（src）一起带回：残片保留是「按原值追加」，来源不变
+    // 保留时连范围来源（src）一起带回：残片保留是「按原值追加」，来源不变。
+    // srcExplicit 一并保留：保留下来的词缀要保持原本的身份（突破/催化/普通池外）。
     return (affixes || []).filter(function (a) { return !poolTypes[a.type]; })
-      .map(function (a) { return { type: a.type, value: a.value, src: a.src || null }; });
+      .map(function (a) { return { type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit }; });
+  }
+  // 主件身上「突破词缀」的条数（残片保留概率公式的 breakthrough 变量）
+  function breakthroughCountOf(affixes) {
+    return (affixes || []).filter(function (a) { return affixKindOf(a) === 'breakthrough'; }).length;
   }
   // 投入 n 片残片时的总保留概率（%）：夹在 [0, 100]，保留一位小数。
   // 总概率 = 片数 × 每片概率（每片概率由公式给出，见 retainChancePerRelic）。
@@ -1096,7 +1157,9 @@
       const rng = affixSrcRangeOf(a.src, a.type, base.part);
       const v = rollAffixValue(rng[0], rng[1], componentCfg.rollModel);
       // 数值越大越好（负词缀同理：-5 优于 -12），所以「更好」= Math.max
-      return { type: a.type, value: keepBetter ? Math.max(v, a.value) : v, src: a.src || null };
+      // srcExplicit 一并带过：重铸只改数值、不改词缀身份（突破/催化/普通池外）。
+      // 丢了它会把「解析时推断出来的来源」当成事实写回签名，导致同一件组件重铸后签名变化。
+      return { type: a.type, value: keepBetter ? Math.max(v, a.value) : v, src: a.src || null, srcExplicit: a.srcExplicit };
     });
   }
 
@@ -1636,6 +1699,8 @@
     smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,
     affixSrcRangeOf: affixSrcRangeOf, catalystRangeOf: catalystRangeOf,
     smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,
+    breakthroughCountOf: breakthroughCountOf,
+    affixKindOf: affixKindOf, extraKindName: extraKindName, extraKindDesc: extraKindDesc,
     retainChancePerRelic: retainChancePerRelic, RETAIN_VAR_NAMES: RETAIN_VAR_NAMES,
     compileExpr: compileExpr, EXPR_FUNCS: EXPR_FUNCS,
     catalystEnvelopeOf: catalystEnvelopeOf, catalystPreset: catalystPreset,

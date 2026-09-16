@@ -274,24 +274,38 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .inst-aff { font-size: 12px; margin: 2px 0; }
 .inst-aff.neg { color: var(--danger); }
 .inst-aff.pos { color: var(--accent); }
-/* 池外词缀（宝匣突破件补足的、该底材词缀池里本没有的词缀）：点线下划线区分。
+/* 池外词缀 = 该底材词缀池里本没有的词缀。它按**真实来源**分三种，分别用不同视觉区分
+   （身份由 data.js 的 affixKindOf 判定，ui.js 挂上 .bt / .ct / .ex）：
+     .bt 突破词缀（海王遗匣池外补足）：与神话品质同款彩虹渐变字，最醒目
+     .ct 催化词缀（工坊投料催化剂补缀）：青色渐变字
+     .ex 普通池外词缀（熔炼从附件搬来 / 后台定制 / 旧存档）：蓝紫色实色字，最朴素
+   三者都带点线下划线，底色深浅由各自的渐变或颜色体现。
    背包/市集/交易/开箱结果用 .inst-aff 行，装备弹窗用 .bec-aff 行，两处都要能标出来。 */
 .inst-aff.extra, .bec-aff.extra { text-decoration: underline dotted; text-underline-offset: 3px; }
-/* 池外词缀（宝匣突破件补足 / 工坊催化补缀的、本部位词缀池里没有的词缀）：
-   与神话品质同款彩虹渐变字，一眼区分“本池词缀”，观感方向与 .q-mythic 完全一致 */
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
-  .inst-aff.extra, .bec-aff.extra {
+  /* 突破词缀：彩虹渐变（与 .q-mythic 同一道） */
+  .inst-aff.extra.bt, .bec-aff.extra.bt {
     background: linear-gradient(90deg, #f87171, #fbbf24, #4ade80, #38bdf8, #c084fc);
     -webkit-background-clip: text; background-clip: text;
     -webkit-text-fill-color: transparent; color: transparent;
     text-decoration-color: rgba(192,132,252,.6); font-weight: 600;
   }
+  /* 催化词缀：青色渐变 */
+  .inst-aff.extra.ct, .bec-aff.extra.ct {
+    background: linear-gradient(90deg, #2dd4bf, #38bdf8, #22d3ee);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+    text-decoration-color: rgba(45,212,191,.6); font-weight: 600;
+  }
   /* 池外词条里的子元素（数值区间 .aff-rng / .ws-aff-rng）显式重置文字填充色：
      -webkit-text-fill-color 会继承，子元素若不重置就会一起变成透明而看不见。 */
-  .inst-aff.extra .aff-rng, .bec-aff.extra .aff-rng, .inst-aff.extra .ws-aff-rng, .bec-aff.extra .ws-aff-rng {
+  .inst-aff.extra.bt .aff-rng, .bec-aff.extra.bt .aff-rng, .inst-aff.extra.bt .ws-aff-rng, .bec-aff.extra.bt .ws-aff-rng,
+  .inst-aff.extra.ct .aff-rng, .bec-aff.extra.ct .aff-rng, .inst-aff.extra.ct .ws-aff-rng, .bec-aff.extra.ct .ws-aff-rng {
     -webkit-text-fill-color: var(--muted); color: var(--muted);
   }
 }
+/* 普通池外词缀：实色蓝紫 + 点线，不用渐变字（避免与「突破」混淆） */
+.inst-aff.extra.ex, .bec-aff.extra.ex { color: #a78bfa; font-weight: 600; text-decoration-color: rgba(167,139,250,.6); }
 /* 标签显式重置 -webkit-text-fill-color：否则嵌在 .q-mythic 里会被继承成透明而看不见 */
 .full-tag { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(255,210,74,.18); color: #ffd24a; -webkit-text-fill-color: #ffd24a; margin-left: 4px; }
 /* 「突破」标签：词条数越过史诗 3 条上限（即真正抽到 4 条）。
@@ -1453,6 +1467,10 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .ws-pick .ws-pick-meta { color: var(--muted); font-size: 11px; }
 .ws-pick .ws-pick-change { margin-left: auto; color: var(--accent2); font-size: 11px; flex: none; }
 .ws-aff.extra { border-style: dotted; }
+/* 池外词缀药丸的边框色按来源区分（与文字渐变/实色同一套配色）：突破=紫、催化=青、普通池外=蓝紫 */
+.ws-aff.extra.bt { border-color: rgba(192,132,252,.55); }
+.ws-aff.extra.ct { border-color: rgba(45,212,191,.55); }
+.ws-aff.extra.ex { border-color: rgba(167,139,250,.55); }
 .rc-diff { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 13px; }
 .rc-line { display: flex; align-items: center; gap: 8px; }
 .rc-line .rc-old { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -1462,6 +1480,10 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .rc-line .rc-new.down { color: var(--danger); }
 .rc-line .rc-new.same { color: var(--muted); }
 .aff-extra-tag { font-size: 10px; color: var(--accent2); border: 1px solid var(--accent2); border-radius: 6px; padding: 0 4px; }
+/* 重铸对照表里的「池外词缀」标签：按来源着色（突破=紫 / 催化=青 / 普通池外=蓝紫） */
+.aff-extra-tag.bt { color: #c084fc; border-color: rgba(192,132,252,.6); }
+.aff-extra-tag.ct { color: #2dd4bf; border-color: rgba(45,212,191,.6); }
+.aff-extra-tag.ex { color: #a78bfa; border-color: rgba(167,139,250,.6); }
 
 /* ---- 顶栏状态块（可点击跳转）---- */
 .player-status .meta-btn {

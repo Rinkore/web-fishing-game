@@ -404,9 +404,13 @@ function startServer() {
 
   // ==========================================================================
   section('⑥d 工坊熔炼 · 残片保留（海王遗匣神话主件）');
-  // 主件：竹制短竿 神话 4 词条（池内 speed/size + 池外 rare/double）——海王遗匣突破件的形态
+  // 主件：竹制短竿 神话 4 词条（池内 speed/size + 池外 rare/double）——海王遗匣突破件的形态。
+  // 池外那两条要按真实宝匣产物标 src='bt'：v0.13 起「是不是突破词缀」以来源为依据
+  // （见 D.affixKindOf），没有 @bt 标记的池外词缀会被判为「普通池外词缀/来源未证实」，
+  // 不再计入残片保留公式的 breakthrough。
   const mythicMain = D.instanceId('rod_bamboo', 'mythic', [
-    { type: 'speed', value: 12 }, { type: 'size', value: 3 }, { type: 'rare', value: 5 }, { type: 'double', value: 9 },
+    { type: 'speed', value: 12 }, { type: 'size', value: 3 },
+    { type: 'rare', value: 5, src: 'bt' }, { type: 'double', value: 9, src: 'bt' },
   ]);
   const mythicSub = D.instanceId('rod_dragonbone', 'epic', [{ type: 'skill', value: 10 }, { type: 'size', value: 8 }]);
   // 池外词缀只认「不在底材池内」的：speed/size 在池内，rare/double 在池外（顺序按实例规范化后）
