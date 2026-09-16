@@ -2983,7 +2983,7 @@ window.UI = (function () {
         });
         list.innerHTML = '';
         if (!others.length) {
-          list.appendChild(el('div', 'hint', othersAll.length ? '没有符合条件的挂单。' : '市场暂无其他玩家的挂单。你可以在右侧「我的背包」里上架物品。'));
+          list.appendChild(el('div', 'hint', othersAll.length ? '没有符合条件的挂单。' : '市集未上架商品（您上架的商品在我的挂单查看）'));
           return;
         }
         others.forEach(function (l) { list.appendChild(marketRow(l, st, me)); });
@@ -3055,7 +3055,6 @@ window.UI = (function () {
     panel.appendChild(colMain);
 
     const side = el('div', 'col-side');
-    side.appendChild(el('h3', null, '🎒 我的背包'));
     side.appendChild(el('div', 'hint', '「上架」把你的物品挂到市集（收定价总额 1% 上架费，下架不退）；成交另收 10% 税（卖家承担）。'));
     side.appendChild(keepSell || marketSellPanel(st));
     panel.appendChild(side);
@@ -3329,6 +3328,7 @@ window.UI = (function () {
   let invSubRar = 'all';
   let invPart = 'all';
   let invAffixType = 'all';
+  let invAffixCount = 'all';   // 组件词条数量筛选：all / 0(无词条) / 1 / 2 / 3p(3条+)
   let invAffixMin = '';
   let invAffixMax = '';
   let invOpen = {};          // 组件按底材名分组的展开状态（{ baseId: true }）
@@ -3787,9 +3787,19 @@ window.UI = (function () {
       });
       row.appendChild(partsRow);
 
-      // 二级：词条类型 + 数值范围
+      // 二级：词条数量 + 词条类型 + 数值范围
       const affRow = el('div', 'inv-subrow');
-      affRow.appendChild(el('span', 'sub-label', '词条'));
+      // 词条数量筛选（放在「词条类型」筛选左侧，与部位 / 词条类型叠加生效）
+      const countOpts = [['all', '全部'], ['0', '无词条'], ['1', '1条'], ['2', '2条'], ['3p', '3条+']];
+      const countWrap = el('span', 'aff-count-wrap');
+      countWrap.appendChild(el('span', 'sub-label', '词条数'));
+      countOpts.forEach(function (kv) {
+        const b = el('button', 'inv-cat sub' + (invAffixCount === kv[0] ? ' on' : ''), kv[1]);
+        b.addEventListener('click', function () { if (invAffixCount !== kv[0]) { invAffixCount = kv[0]; renderView(); } });
+        countWrap.appendChild(b);
+      });
+      affRow.appendChild(countWrap);
+      affRow.appendChild(el('span', 'sub-label', '类型'));
       const sel = el('select', 'bulk-select sub-sel');
       [['all', '全部词条']].concat(BD_AFFIXES.map(function (kv) { return [kv[0], kv[1]]; })).forEach(function (kv) {
         const o = el('option', null, kv[1]); o.value = kv[0]; sel.appendChild(o);
@@ -3832,10 +3842,11 @@ window.UI = (function () {
       affRow.appendChild(col);
       row.appendChild(affRow);
     } else {
-      // 鱼/材料（含全部）：品质筛选
-      const cnt = { all: invKeys.length };
+      // 鱼/材料（含全部）：品质筛选；「全部」计数与各项同口径，只统计当前分类下的物品
+      const cnt = { all: 0 };
       invKeys.forEach(function (id) {
         if (invCategory !== 'all' && itemMeta(id).kind !== invCategory) return;
+        cnt.all += 1;
         const r = itemMeta(id).rarity;
         cnt[r] = (cnt[r] || 0) + 1;
       });
@@ -4301,6 +4312,13 @@ window.UI = (function () {
       keys = keys.filter(function (id) {
         const m = itemMeta(id);
         if (invPart !== 'all' && (m.part || '') !== invPart) return false;
+        if (invAffixCount !== 'all') {
+          const n = (m.affixes || []).length;
+          if (invAffixCount === '0' && n !== 0) return false;
+          if (invAffixCount === '1' && n !== 1) return false;
+          if (invAffixCount === '2' && n !== 2) return false;
+          if (invAffixCount === '3p' && n < 3) return false;
+        }
         if (invAffixType === 'all' && invAffixMin === '' && invAffixMax === '') return true;
         if (!m.affixes) return false;
         return m.affixes.some(function (a) {
@@ -4639,7 +4657,7 @@ window.UI = (function () {
       if (!body) return;
       if (!r || !r.ok) { body.innerHTML = '<div class="hint">' + esc((r && r.data && r.data.error) || '无法获取对方钓竿信息') + '</div>'; return; }
       const d = r.data || {};
-      const rows = D.ROD_PARTS.map(function (p) {
+      const partCards = D.ROD_PARTS.map(function (p) {
         const slot = (d.bd || {})[p.key];
         const comp = slot && slot.compId ? (D.componentOf ? D.componentOf(slot.compId) : null) : null;
         const meta = comp || (slot ? { name: slot.name, quality: slot.rare, affixes: slot.affixes || [] } : null);
@@ -4652,9 +4670,28 @@ window.UI = (function () {
         return '<div class="rod-part-row"><div class="rp-part">' + esc(p.name) + (slot && slot.isCharm ? ' · 饰品' : '') + '</div>' +
           '<div class="rp-comp">' + nameHtml + '</div><div class="rp-affs">' + affHtml + '</div></div>';
       }).join('');
+      // 钓竿属性总和：把各部位组件词缀按类型求和（与钓竿配置页 eff-strip 同格式 / 同类名）
+      const total = {};
+      D.ROD_PARTS.forEach(function (p) {
+        const slot = (d.bd || {})[p.key];
+        const meta = slot && slot.compId ? (D.componentOf ? D.componentOf(slot.compId) : null) : null;
+        const affs = (meta && meta.affixes) || (slot ? (slot.affixes || []) : []);
+        (affs || []).forEach(function (a) { if (a && a.type != null) total[a.type] = (total[a.type] || 0) + (Number(a.value) || 0); });
+      });
+      const effDefs = [['speed', '⚡ 钓速'], ['skill', '🎯 技巧'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓']];
+      let anyTotal = false;
+      const totalChips = effDefs.map(function (kv) {
+        const v = total[kv[0]];
+        if (!v) return '';
+        anyTotal = true;
+        return '<span class="eff-chip' + (v < 0 ? ' eff-neg' : '') + '">' + kv[1] + ' ' + (v > 0 ? '+' : '') + v + '%</span>';
+      }).join('');
       body.innerHTML = '<div class="rod-view">' +
         (d.rodName ? '<div class="rod-view-name">竿名 <b>' + esc(d.rodName) + '</b></div>' : '') +
-        rows + '</div>';
+        (anyTotal ? '<div class="eff-strip rod-total">' + totalChips + '</div>'
+          : '<div class="eff-strip rod-total"><span class="eff-chip none">暂无加成 · 未装备组件</span></div>') +
+        '<div class="rod-parts">' + partCards + '</div>' +
+        '</div>';
     });
   }
 
@@ -5437,7 +5474,7 @@ window.UI = (function () {
     wsPruneStale(); // 选中的组件若已被消耗 / 出售（悬空引用），先清掉再渲染
     main.innerHTML = '';
     const panel = el('div', 'panel wide ws-panel');
-    panel.innerHTML = '<h2>⚒ 工坊 <span class="subtitle">熔炼 · 用副件改写主件的词条 ｜ 重铸 · 用残片重 roll 宝匣神话件</span></h2>' +
+    panel.innerHTML = '<h2>⚒ 工坊</h2>' +
       '<div class="inv-cats ws-tabs">' +
       [['smelt', '🔥 熔炼'], ['recast', '♻ 重铸']].map(function (kv) {
         return '<button class="inv-cat' + (wsTab === kv[0] ? ' on' : '') + '" data-wstab="' + kv[0] + '">' + kv[1] + '</button>';
@@ -5483,16 +5520,10 @@ window.UI = (function () {
           '</span></h3>'
         : '');
     body.innerHTML =
-      '<div class="ws-help">放两件<b>同部位</b>的组件：<b>主件</b>保留、<b>副件</b>熔毁。各选一条词条后熔炼，主件的词条就变成这两条并重新 roll 数值——' +
-      '每条词条都<b>按它自己的范围来源</b>取值（副件连词缀带区间一起提供；突破词缀按突破区间、催化词缀按催化区间），' +
-      '把副件独有的词缀熔到主件上，是除宝匣之外唯一能跨出词缀池边界的途径。' +
-      '投料可为熔炼后的主件再补一条它还没有的词缀（<b>不受该底材词缀池限制</b>，最多补到 ' +
-      Math.max(1, Math.floor(Number(D.getSmeltCfg().addAffixCap) || 3)) + ' 条，数值按<b>催化区间</b>取值——' +
-      '后台「⚒ 工坊配置」可为每个部位单独设置，未设置的部位回退突破区间）；' +
-      '加入<b>龙宫宝珠</b>可让每个词条 roll 两次、取更靠近区间边界的那次。主件是<b>海王遗匣</b>产出的神话件时，' +
-      '还可投入<b>沉船宝匣残片</b>（至多 ' + Math.max(0, Math.floor(Number(D.getSmeltCfg().retainMaxRelic) || 0)) +
-      ' 片，每片 ' + (Number(D.getSmeltCfg().retainPerRelic) || 0) + '%）在成功时保留它的池外突破词缀，残片不影响成功率。' +
-      '失败时副件 / 投料 / 残片熔毁、金币花掉，<b>主件被熔掉选中的那条词条</b>（其余词条与品质保留）。</div>' +
+      '<div class="ws-help">词缀分<b>池内词缀</b>与<b>池外词缀</b>两类：池外词缀目前有<b>突破词缀</b>（宝匣开出）和<b>催化词缀</b>（材料催化产生）。' +
+      '熔炼：放两件<b>同部位</b>组件——<b>主件保留、副件熔毁</b>，各选一条词条熔成两条并重 roll 数值（副件词条连区间一起熔入）。' +
+      '投料可为主件再补一条词缀，按<b>池外</b>区间取值；主件是海王遗匣神话件时，残片可在成功时保留其<b>突破词缀</b>。' +
+      '加入龙宫宝珠可 roll 两次、取更靠区间边界的值。</div>' +
       '<div class="ws-grid">' +
       wsCompCardHtml('main', mainC, '点上方按钮打开组件选择窗口（与钓竿配置的「装备组件」同一个子页面）') +
       wsCompCardHtml('sub', subC, mainC ? '副件必须与主件同部位（' + esc(partNameOf(mainC.part)) + '）' : '先选主件，再选同部位的副件') +

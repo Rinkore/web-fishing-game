@@ -166,7 +166,7 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .peep { display: flex; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.03); }
 .peep.self { border-color: var(--accent); }
 /* 玩家卡片右部操作区：交易 / 查看（入口合并自原「在线交易」独立页） */
-.peep-acts { margin-left: auto; display: flex; flex-direction: column; gap: 6px; flex: none; }
+.peep-acts { margin-left: auto; display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; flex: none; }
 .peep-acts .mini { white-space: nowrap; }
 
 /* ---- 交易子窗口（原「在线交易」独立页） ---- */
@@ -184,7 +184,8 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .rod-modal .modal-body { max-height: 70vh; overflow: auto; }
 .rod-view-name { margin-bottom: 10px; font-size: 13px; color: var(--muted); }
 .rod-view-name b { color: var(--text); }
-.rod-part-row { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: rgba(255,255,255,.03); }
+.rod-parts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.rod-part-row { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: rgba(255,255,255,.03); flex: 1 1 180px; min-width: 160px; max-width: 260px; }
 .rp-part { font-size: 11px; color: var(--muted); }
 .rp-comp { font-size: 14px; font-weight: 700; margin: 2px 0; }
 .rp-affs { font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
@@ -243,13 +244,13 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 /* 稀有度配色（品质只有四种：普通 / 稀有 / 史诗 / 神话；「大鱼」不再是品质，
    旧的 .r-big 只作兜底——万一手改存档里还留着 rarity='big'，按稀有色显示且不再带 👑 前缀） */
 .r-common { color: var(--common); }
-.r-big { color: var(--rare); font-weight: 600; }
-.r-rare { color: var(--rare); font-weight: 600; }
+.r-big { color: var(--rare) !important; font-weight: 600; }
+.r-rare { color: var(--rare) !important; font-weight: 600; }
 /* 史诗配色见下方 .r-epic（与组件品质 .q-epic 同色） */
 
 /* 组件品质配色（普通=白 / 稀有=蓝 / 史诗=金） */
 .q-common { color: var(--common); }
-.q-rare { color: var(--rare); font-weight: 600; }
+.q-rare { color: var(--rare) !important; font-weight: 600; }
 .q-epic { color: #ffd24a; font-weight: 600; }
 .q-full { color: #ffd24a !important; font-weight: 700; text-shadow: 0 0 8px rgba(255,210,74,.45); }
 .bd-comp.q-full, .bec-name .q-full, .cx-name .q-full { text-shadow: 0 0 8px rgba(255,210,74,.5); }
@@ -274,6 +275,16 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 /* 池外词缀（宝匣突破件补足的、该底材词缀池里本没有的词缀）：点线下划线区分。
    背包/市集/交易/开箱结果用 .inst-aff 行，装备弹窗用 .bec-aff 行，两处都要能标出来。 */
 .inst-aff.extra, .bec-aff.extra { text-decoration: underline dotted; text-underline-offset: 3px; }
+/* 池外词缀（宝匣突破件补足 / 工坊催化补缀的、本部位词缀池里没有的词缀）：
+   与神话品质同款彩虹渐变字，一眼区分“本池词缀”，观感方向与 .q-mythic 完全一致 */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .inst-aff.extra, .bec-aff.extra {
+    background: linear-gradient(90deg, #f87171, #fbbf24, #4ade80, #38bdf8, #c084fc);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+    text-decoration-color: rgba(192,132,252,.6); font-weight: 600;
+  }
+}
 /* 标签显式重置 -webkit-text-fill-color：否则嵌在 .q-mythic 里会被继承成透明而看不见 */
 .full-tag { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(255,210,74,.18); color: #ffd24a; -webkit-text-fill-color: #ffd24a; margin-left: 4px; }
 /* 「突破」标签：词条数越过史诗 3 条上限（即真正抽到 4 条）。
@@ -376,6 +387,13 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .confirm-modal .cf-row { margin-bottom: 14px; }
 .confirm-modal .cf-input { width: 100%; }
 .confirm-modal .cf-actions { display: flex; justify-content: flex-end; gap: 10px; }
+/* ---- 资产快照子窗口：限高 + 内部滚动 + 搜索 ---- */
+.snap-modal { width: 560px; max-width: 92vw; max-height: 88vh; display: flex; flex-direction: column; }
+.snap-modal .modal-head { flex: none; }
+.snap-modal .modal-body { flex: 1 1 auto; overflow: auto; max-height: none; }
+.snap-search-row { margin: 4px 0 8px; }
+.snap-search-row .ipt { width: 100%; }
+.snap-inv { max-height: 40vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 .mini.danger-mini { background: rgba(248,113,113,.16); border-color: var(--danger); color: var(--danger); font-weight: 600; }
 .mini.danger-mini:hover { background: rgba(248,113,113,.28); }
 

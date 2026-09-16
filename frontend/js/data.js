@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.12.2';
+  const VERSION = 'v0.12.3';
   const BUILD = '2026-09-16';
 
   // ---- 渔获定义 ----
@@ -196,7 +196,7 @@
       costRelic: 45, costCoins: 90000, mode: 'base',
       qualityWeights: { epic: 100 }, forceMax: true },
     { id: 'chest_king', name: '海王遗匣', rarity: 'mythic',
-      desc: '自选底材，必定神话：50% 概率突破词缀池边界，多出一条该部位本没有的词缀。',
+      desc: '自选底材，必定神话：50% 概率突破词缀池边界，获得一条<b>突破词缀</b>（该部位本没有的词缀）。',
       costRelic: 100, costCoins: 300000, mode: 'base',
       qualityWeights: { mythic: 100 }, extra: true,
       hitCount: 4, missCount: 3, chance: 0.5 },

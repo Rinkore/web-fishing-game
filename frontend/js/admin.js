@@ -922,6 +922,7 @@ window.Admin = (function () {
         '<div class="modal-body">' +
         '<div class="mgr-row"><label>金币</label><input id="snap-coins" class="ipt" type="number" min="0" value="' + d.coins + '" /></div>' +
         '<div class="hint" style="margin:10px 0 6px">背包（直接编辑每行的数量，0 或留空 = 移除）</div>' +
+        '<div class="mgr-row snap-search-row"><input id="snap-search" class="ipt" type="text" placeholder="搜索背包物品（名称 / 物品ID，不区分大小写）" /></div>' +
         '<div id="snap-inv" class="snap-inv"></div>' +
         '<div class="mgr-row" style="margin-top:10px"><label>新增物品</label>' +
         '<select id="snap-add-id" class="ipt" style="min-width:240px">' + itemOptions + '</select>' +
@@ -943,16 +944,30 @@ window.Admin = (function () {
       ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
       ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
       const invBox = ov.querySelector('#snap-inv');
+      const searchBox = ov.querySelector('#snap-search');
       function drawInv(inv) {
         const keys = Object.keys(inv);
         if (!keys.length) { invBox.innerHTML = '<div class="hint">背包为空</div>'; return; }
         invBox.innerHTML = keys.map(function (id) {
           const meta = (typeof GameData !== 'undefined' && GameData.itemOf) ? GameData.itemOf(id) : null;
           const nm = meta ? meta.name : id;
-          return '<div class="mgr-row snap-line"><label title="' + esc(id) + '">' + esc(nm) + '<div class="hint">' + esc(id) + '</div></label>' +
+          return '<div class="mgr-row snap-line" data-sid="' + esc(id) + '"><label title="' + esc(id) + '">' + esc(nm) + '<div class="hint">' + esc(id) + '</div></label>' +
             '<input class="ipt mk-num" type="number" min="0" data-inv="' + esc(id) + '" value="' + inv[id] + '" /></div>';
         }).join('');
+        filterInv();
       }
+      // 实时过滤背包条目：按物品名 / 物品ID 不区分大小写匹配（仅影响显示，不改动数据）
+      function filterInv() {
+        const kw = (searchBox.value || '').trim().toLowerCase();
+        invBox.querySelectorAll('.snap-line').forEach(function (row) {
+          const id = (row.getAttribute('data-sid') || '').toLowerCase();
+          const meta = (window.GameData && GameData.itemOf) ? GameData.itemOf(id) : null;
+          const nm = (meta ? meta.name : id).toLowerCase();
+          const hit = !kw || id.indexOf(kw) >= 0 || nm.indexOf(kw) >= 0;
+          row.style.display = hit ? '' : 'none';
+        });
+      }
+      searchBox.addEventListener('input', filterInv);
       drawInv(d.inventory || {});
       // 统一的「往背包草稿加一件」：已有同 id 就叠加数量，否则追加一行
       function invAddDraft(id, qty) {
