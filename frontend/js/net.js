@@ -229,6 +229,30 @@ window.Net = (function () {
     if (r && r.ok) { state().records = r.data.records || {}; state().smallRecords = r.data.small || {}; if (window.UI) window.UI.refreshAll('records'); }
     return r;
   });
+  // perf-9：玩家列表分页 / 搜索（服务端分页）。target 区分存储槽：'playersPage'=渔场页玩家列表，'peepsPage'=同钓点列表
+  const fetchPlayersPage = (opts) => {
+    const o = opts || {};
+    const t = me ? me.token : '';
+    return apiFetch('GET', '/api/players/page?token=' + encodeURIComponent(t) +
+      '&page=' + (o.page || 1) + '&size=' + (o.size || 30) +
+      '&q=' + encodeURIComponent(o.q || '') +
+      (o.ground ? '&ground=' + encodeURIComponent(o.ground) : '') +
+      (o.spot ? '&spot=' + encodeURIComponent(o.spot) : '')).then(function (r) {
+      if (r && r.ok) {
+        const d = r.data;
+        state()[o.target || 'playersPage'] = { page: d.page, pages: d.pages, total: d.total, list: d.players || [] };
+        if (d.totalOnline != null) state().onlineTotal = d.totalOnline;
+        if (window.UI) window.UI.refreshAll(o.target === 'peepsPage' ? 'fishing' : 'players');
+      }
+      return r;
+    });
+  };
+  // 视口登记：告诉服务器当前正在看哪一页（之后每秒只推该页玩家状态）；clear=true 取消登记
+  const setPlayersView = (opts) => {
+    const o = opts || {};
+    return authed('/api/players/view', { page: o.page || 1, size: o.size || 30, q: o.q || '',
+      ground: o.ground || null, spot: o.spot || null, clear: !!o.clear });
+  };
   const fetchFeedback = () => apiFetch('GET', '/api/feedback?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
     if (r && r.ok) {
       state().feedback = { status: r.data.status, mine: r.data.mine || [] };
@@ -328,8 +352,18 @@ window.Net = (function () {
     const seenLogBanners = {}; // 本连接内已入日志的公告 id（重连后重播不重复记录）
     try {
       es = new EventSource(u);
+      // 性能修复(perf-5) 前端侧：服务器把同一时间窗内的多条事件合并成
+      // { type:'batch', list:[...] } 单条推送，这里解包后逐条走原有分发逻辑；
+      // 非 batch 消息保持原样，向后兼容。
       es.onmessage = function (ev) {
         let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+        if (m && m.type === 'batch' && Array.isArray(m.list)) {
+          for (let bi = 0; bi < m.list.length; bi++) handleServerEvent(m.list[bi]);
+          return;
+        }
+        handleServerEvent(m);
+      };
+      function handleServerEvent(m) {
         const S = state();
         const ui = window.UI;
         if (m.type === 'init') {
@@ -338,13 +372,16 @@ window.Net = (function () {
           if (reloadForVersion(m.version)) return;
           if (errTimer) { clearTimeout(errTimer); errTimer = null; }
           setConn(true);
-          S.players = m.players || [];
-          syncSelfFromPresence(S.players);
+          // perf-9：init 不再携带全量 players / records——玩家列表走分页 API，榜单走拉取制
+          S.players = [];
+          S.playersPage = { page: 1, pages: 1, total: 0, list: [] };
+          S.peepsPage = { page: 1, pages: 1, total: 0, list: [] };
+          S.onlineTotal = m.playersTotal || 0;
+          S.recordsVersion = m.recordsVersion || 0;
           S.feed = m.feed || [];
           S.shop = m.shop || {};
           S.market = m.market || [];
-          S.records = m.records || {};
-          if (m.small) S.smallRecords = m.small;
+          fetchRecords();
           S.groundCounts = m.grounds || {};
           // 服务器重连自动续钓（上次没主动收竿）：直接带回钓速明细，不必再发一次 start 请求。
           // presence 里的 status 已是 fishing，syncSelfFromPresence 会把界面切回钓鱼态。
@@ -363,10 +400,43 @@ window.Net = (function () {
           S.players = m.players || [];
           syncSelfFromPresence(S.players);
           if (ui) ui.refreshAll('players');
+        } else if (m.type === 'playersDelta') {
+          // 性能修复(perf-7) 前端侧：服务器改为增量推送在线玩家状态。
+          // full=true 为周期性全量纠偏；否则 upserts 覆盖/追加、removed 剔除。
+          if (m.full) {
+            S.players = m.upserts || [];
+          } else if (S.players && S.players.length) {
+            if (m.removed && m.removed.length) {
+              const rmSet = {};
+              (m.removed || []).forEach(function (id) { rmSet[id] = 1; });
+              S.players = S.players.filter(function (p) { return !rmSet[p.id]; });
+            }
+            (m.upserts || []).forEach(function (p) {
+              let found = false;
+              for (let pi = 0; pi < S.players.length; pi++) {
+                if (S.players[pi].id === p.id) { S.players[pi] = p; found = true; break; }
+              }
+              if (!found) S.players.push(p);
+            });
+          } else {
+            S.players = m.upserts || [];
+          }
+          syncSelfFromPresence(S.players);
+          if (ui) ui.refreshAll('players');
         } else if (m.type === 'grounds') {
           S.groundCounts = m.counts || {};
           S.onlineTotal = m.total || 0;
           if (ui) ui.refreshAll('grounds');
+        } else if (m.type === 'playersPage') {
+          // perf-9：当前视口页的玩家状态推送（≤页大小条；未登记视口的连接收不到）
+          S.playersPage = { page: m.page, pages: m.pages, total: m.total, list: m.players || [] };
+          syncSelfFromPresence(m.players || []);
+          if (ui) ui.refreshAll('players');
+        } else if (m.type === 'recordsDirty') {
+          // perf-9：榜单拉取制——只收 20 字节版本号，限频 5s 拉取
+          if (m.v != null) S.recordsVersion = m.v;
+          const rfNow = Date.now();
+          if (!S._recordsFetchAt || rfNow - S._recordsFetchAt > 5000) { S._recordsFetchAt = rfNow; fetchRecords(); }
         } else if (m.type === 'shop') {
           S.shop = m.shop || {};
           if (ui) ui.refreshAll('shop');
@@ -452,9 +522,24 @@ window.Net = (function () {
           // 服务器权威资产：金币/库存/图鉴整体替换，前端不持账本
           if (m.coins != null) S.player.coins = m.coins;
           if (m.inventory) S.inventory = m.inventory;
+          // perf-8c：钓鱼热路径增量——只合并背包增量，避免每竿全量传输
+          if (m.invAdd) {
+            const inv = S.inventory = S.inventory || {};
+            for (const k in m.invAdd) { inv[k] = (inv[k] || 0) + m.invAdd[k]; if (inv[k] <= 0) delete inv[k]; }
+          }
           if (m.codex) S.codex = m.codex;
           if (m.catchCount != null) S.catchCount = m.catchCount;
           if (ui) ui.refreshAll('assets');
+        } else if (m.type === 'codexAdd') {
+          // perf-8c：图鉴热路径增量——只合并新条目（原 codex 事件每竿全量发整个图鉴）
+          S.codex = S.codex || {};
+          const cur = S.codex[m.id] || {};
+          const nx = { count: (cur.count || 0) + (m.add || 1), first: cur.first || Date.now() };
+          if (m.mx != null) nx.max = m.mx; else if (cur.max != null) nx.max = cur.max;
+          if (m.mn != null) nx.min = m.mn; else if (cur.min != null) nx.min = cur.min;
+          S.codex[m.id] = nx;
+          if (m.catchCount != null) S.catchCount = m.catchCount;
+          if (ui) ui.refreshAll('codex');
         } else if (m.type === 'codex') {
           S.codex = m.codex || {};
           if (m.catchCount != null) S.catchCount = m.catchCount;
@@ -495,6 +580,12 @@ window.Net = (function () {
           S.feed.unshift(m.entry);
           if (S.feed.length > 60) S.feed.pop();
           if (ui) ui.refreshAll('feed');
+        } else if (m.type === 'feedBatch') {
+          // perf-8：服务器同窗口合并的多条 feed（list 按旧→新排序，逐条 unshift 后最新在最前）
+          const fb = m.list || [];
+          for (let i = 0; i < fb.length; i++) S.feed.unshift(fb[i]);
+          if (S.feed.length > 60) S.feed.length = 60;
+          if (ui) ui.refreshAll('feed');
         } else if (m.type === 'groundcfg') {
           // 管理后台修改了钓场/钓点配置：原位替换 GROUNDS 内容（保持数组引用），
           // 渔场页/图鉴产地/钓场锁定状态随即与服务器一致
@@ -505,7 +596,7 @@ window.Net = (function () {
           }
           if (ui) ui.refreshAll('groundcfg');
         }
-      };
+      }
       // 断线静默：EventSource 会自动重连。延迟几秒再置为「断开」，
       // 避免重连过程中的瞬时抖动把提示闪出来；收到 init 会立刻恢复为「已连接」。
       es.onerror = function () {
@@ -522,6 +613,15 @@ window.Net = (function () {
     list.forEach(function (g) { G.push(g); });
   }
 
+  // perf-9：同钓点玩家列表——钓鱼中每 5s 拉取当前钓点的分页数据（拉取制，不占推送带宽）
+  setInterval(function () {
+    const S = state();
+    if (!(S.fishing && S.fishing.active && S.player && S.player.groundId)) return;
+    const pv = S.peepView = S.peepView || { page: 1, size: 20, q: '' };
+    fetchPlayersPage({ target: 'peepsPage', page: pv.page, size: pv.size, q: pv.q,
+      ground: S.player.groundId, spot: S.player.spotId });
+  }, 5000);
+
   return {
     register: register, login: login, logout: logout, fetchMe: fetchMe, setAuth: setAuth,
     guardVersion: guardVersion, startVersionWatch: startVersionWatch,
@@ -530,6 +630,7 @@ window.Net = (function () {
     autoSellGet: autoSellGet, autoSellSet: autoSellSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
+    fetchPlayersPage: fetchPlayersPage, setPlayersView: setPlayersView,
     fetchFeedback: fetchFeedback,
     fetchChest: fetchChest, chestCraft: chestCraft, chestOpen: chestOpen,
     fetchMall: fetchMall, mallBuy: mallBuy, fetchWorkshop: fetchWorkshop, smelt: smelt, recast: recast,

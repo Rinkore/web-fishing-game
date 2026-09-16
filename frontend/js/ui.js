@@ -549,7 +549,7 @@ window.UI = (function () {
     });
   }
   // 顶栏在线数用小工具（避免每次手写）
-  const est = { get players() { return S().players.length; } };
+  const est = { get players() { return S().onlineTotal || S().players.length || 0; } };
   // 连接状态（由 net.js 的探测/SSE 维护）：断线时顶栏给提示，恢复后自动消失
   function connOk() { return !window.Net || !window.Net.connState || window.Net.connState(); }
   function onConnChange(ok) {
@@ -999,16 +999,29 @@ window.UI = (function () {
       right.appendChild(el('div', 'here-count', '当前不在任何钓点'));
       right.appendChild(el('div', 'hint', '点击左侧任意垂钓点即可开始自动钓鱼。'));
     } else {
-      const here = E().playersAtSpot(atGroundId, st.player.spotId);
+      // perf-9：同钓点列表改为服务端分页拉取（S.peepsPage，net.js 每 5s 拉取当前钓点）
+      const pp = st.peepsPage || { page: 1, pages: 1, total: 0, list: [] };
+      const here = pp.list || [];
       // 只报所在位置；人数交给下面的「同钓点 N 人」（钓场级人数左侧钓场卡片已有 👥）
       right.appendChild(el('div', 'here-count', '所在：' + esc(gNow ? gNow.name : '') + (spNow ? '·' + esc(spNow.name) : '')));
       // 同屏最多 5 条，超出可下滑（不挤占下方的渔获日志入口）
-      const peepHead = el('div', 'peeps-head', '同钓点 ' + here.length + ' 人' + (here.length > 5 ? '（可下滑查看全部）' : ''));
+      const peepHead = el('div', 'peeps-head', '同钓点 ' + pp.total + ' 人' + (pp.total > 5 ? '（可下滑查看全部）' : ''));
       right.appendChild(peepHead);
       const peeps = el('div', 'peeps scroll5');
       peeps.setAttribute('data-sig', peepSig(here)); // 内容没变就不重建这几行
       if (here.length === 0) peeps.appendChild(el('div', 'hint', '暂无同一钓点的玩家。'));
       here.forEach(function (b) { peeps.appendChild(peepCard(b)); });
+      if (pp.pages > 1) {
+        const pager = el('div', 'peep-pager');
+        const prev = el('button', 'mini', '‹'); prev.disabled = pp.page <= 1;
+        prev.addEventListener('click', function () { const pv = st.peepView = st.peepView || { size: 20, q: '' }; pv.page = pp.page - 1; });
+        pager.appendChild(prev);
+        pager.appendChild(el('span', 'muted', ' ' + pp.page + '/' + pp.pages + ' '));
+        const next = el('button', 'mini', '›'); next.disabled = pp.page >= pp.pages;
+        next.addEventListener('click', function () { const pv = st.peepView = st.peepView || { size: 20, q: '' }; pv.page = pp.page + 1; });
+        pager.appendChild(next);
+        peeps.appendChild(pager);
+      }
       right.appendChild(peeps);
     }
 
@@ -1048,18 +1061,30 @@ window.UI = (function () {
       const html = fishStateHtml(st);
       if (stateBar.innerHTML !== html) stateBar.innerHTML = html; // 内容没变就不碰 DOM，免得打断动画
     }
-    // ③ 右栏实况：同钓点玩家列表（玩家 / 状态 / 近期渔获变化时才重建这几行）
+    // ③ 右栏实况：同钓点玩家列表（perf-9 拉取制：S.peepsPage 由 net.js 每 5s 刷新）
     const peeps = main.querySelector('.fish-live .peeps');
     if (peeps && st.player.groundId) {
-      const here = E().playersAtSpot(st.player.groundId, st.player.spotId);
-      const sig = peepSig(here);
+      const pp = st.peepsPage || { page: 1, pages: 1, total: 0, list: [] };
+      const here = pp.list || [];
+      const sig = peepSig(here) + '|' + pp.page + '/' + pp.pages + '/' + pp.total;
       if (peeps.getAttribute('data-sig') !== sig) {
         peeps.setAttribute('data-sig', sig);
         peeps.innerHTML = '';
         if (here.length === 0) peeps.appendChild(el('div', 'hint', '暂无同一钓点的玩家。'));
         here.forEach(function (b) { peeps.appendChild(peepCard(b)); });
+        if (pp.pages > 1) {
+          const pager = el('div', 'peep-pager');
+          const prev = el('button', 'mini', '‹'); prev.disabled = pp.page <= 1;
+          prev.addEventListener('click', function () { const pv = st.peepView = st.peepView || { size: 20, q: '' }; pv.page = pp.page - 1; window.Net.fetchPlayersPage({ target: 'peepsPage', page: pv.page, size: pv.size, q: pv.q, ground: st.player.groundId, spot: st.player.spotId }); });
+          pager.appendChild(prev);
+          pager.appendChild(el('span', 'muted', ' ' + pp.page + '/' + pp.pages + ' '));
+          const next = el('button', 'mini', '›'); next.disabled = pp.page >= pp.pages;
+          next.addEventListener('click', function () { const pv = st.peepView = st.peepView || { size: 20, q: '' }; pv.page = pp.page + 1; window.Net.fetchPlayersPage({ target: 'peepsPage', page: pv.page, size: pv.size, q: pv.q, ground: st.player.groundId, spot: st.player.spotId }); });
+          pager.appendChild(next);
+          peeps.appendChild(pager);
+        }
         const head = main.querySelector('.peeps-head');
-        if (head) head.textContent = '同钓点 ' + here.length + ' 人' + (here.length > 5 ? '（可下滑查看全部）' : '');
+        if (head) head.textContent = '同钓点 ' + pp.total + ' 人' + (pp.total > 5 ? '（可下滑查看全部）' : '');
       }
     }
     // ④ 渔获日志：只把新渔获插到最前面，旧行原地不动（滚动位置自然保持，也不再整列重播入场动画）
@@ -1998,6 +2023,11 @@ window.UI = (function () {
   // ---- 渔场动态视图（全服概览 + 单地图点击查看） ----
   // 当前筛选的地图（null = 全服；模块级：重绘间保留）
   let groundFilterId = null;
+  // perf-9：玩家列表搜索/翻页状态（服务端分页，一次最多渲染一页，不超过页面高度）
+  const PEEP_PAGE_SIZE = 30;
+  let peepSearchQ = '';
+  let peepSearchTimer = null;
+  let peepSearchFocus = false;
 
   function renderGround() {
     const main = $('main');
@@ -2008,7 +2038,7 @@ window.UI = (function () {
     panel.innerHTML = '<h2>🌊 渔场动态 ' + (filterGround ? '· ' + esc(filterGround.name) : '（全服实时）') + '</h2>';
     if (groundFilterId) {
       const back = el('button', 'mini ground-back', '🌐 返回全服');
-      back.addEventListener('click', function () { groundFilterId = null; renderView(); });
+      back.addEventListener('click', function () { groundFilterId = null; gotoPeepPage(1); renderView(); });
       panel.appendChild(back);
     }
 
@@ -2022,33 +2052,69 @@ window.UI = (function () {
         '<div class="gcb-num">' + c + '<span class="u">人</span></div>' +
         (g.locked ? '' : '<div class="gcb-hint">' + (buffCount ? '⚡ ' + buffCount + ' 个钓点有增益' : '点击查看') + '</div>');
       if (!g.locked) {
-        box.title = '点击查看「' + g.name + '」的动态' + (buffCount ? '（' + buffCount + ' 个钓点带增益）' : '');
-        box.addEventListener('click', function () { groundFilterId = (groundFilterId === g.id) ? null : g.id; renderView(); });
+        box.title = '点击查看「' + g.name + '」的动态' + (buffCount ? '（⚡ ' + buffCount + ' 个钓点有增益）' : '');
+        box.addEventListener('click', function () { groundFilterId = (groundFilterId === g.id) ? null : g.id; gotoPeepPage(1); renderView(); });
       }
       counts.appendChild(box);
     });
     const totalBox = el('div', 'gc-box total' + (groundFilterId ? '' : ' sel'));
-    totalBox.innerHTML = '<div class="gcb-name">🌐 全服在线</div><div class="gcb-num">' + st.players.length + '<span class="u">人</span></div>';
+    totalBox.innerHTML = '<div class="gcb-name">🌐 全服在线</div><div class="gcb-num">' + (st.onlineTotal || 0) + '<span class="u">人</span></div>';
     totalBox.title = '点击返回全服动态';
-    totalBox.addEventListener('click', function () { if (groundFilterId) { groundFilterId = null; renderView(); } });
+    totalBox.addEventListener('click', function () { if (groundFilterId) { groundFilterId = null; gotoPeepPage(1); renderView(); } });
     counts.appendChild(totalBox);
     panel.appendChild(counts);
 
-    // 数据按所选地图过滤
-    const playersShown = groundFilterId ? st.players.filter(function (p) { return p.groundId === groundFilterId; }) : st.players;
+    // perf-9：玩家列表改为服务端分页（一次只渲染一页，不超过页面高度）+ 搜索；
+    // 当前页玩家的状态更新由服务器按视口每秒推送（playersPage），不再全量下发在线列表。
+    const vp = st.playersPage || { page: 1, pages: 1, total: 0, list: [] };
     const feedShown = groundFilterId ? st.feed.filter(function (e) { return e.ground === filterGround.name; }) : st.feed;
+
+    function gotoPeepPage(n) {
+      peepSearchQ = peepSearchQ || '';
+      window.Net.fetchPlayersPage({ page: n, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
+      window.Net.setPlayersView({ page: n, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
+    }
 
     const cols = el('div', 'ground-cols');
     const left = el('div', 'sub');
-    left.appendChild(el('h3', null, '👥 ' + (groundFilterId ? '本地图在线玩家（' + playersShown.length + '）' : '在线玩家（' + st.players.length + '）')));
+    left.appendChild(el('h3', null, '👥 ' + (groundFilterId ? '本地图在线玩家（' + vp.total + '）' : '在线玩家（' + vp.total + ' / 全服 ' + (st.onlineTotal || 0) + '）')));
+    const searchBar = el('div', 'peep-search');
+    const searchInput = el('input', 'peep-search-input');
+    searchInput.type = 'text';
+    searchInput.placeholder = '🔍 搜索玩家名后回车…';
+    searchInput.value = peepSearchQ;
+    searchInput.addEventListener('focus', function () { peepSearchFocus = true; });
+    searchInput.addEventListener('blur', function () { peepSearchFocus = false; });
+    searchInput.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter') return;
+      peepSearchQ = searchInput.value.trim();
+      gotoPeepPage(1);
+    });
+    searchBar.appendChild(searchInput);
+    left.appendChild(searchBar);
     const list = el('div', 'peeps');
-    if (playersShown.length === 0) list.appendChild(el('div', 'hint', groundFilterId ? '该地图暂无玩家。' : '暂无在线玩家。'));
-    playersShown.slice().sort(function (a, b) {
-      const ra = a.status === 'fishing' ? 0 : 1, rb = b.status === 'fishing' ? 0 : 1;
-      return ra - rb || String(a.name).localeCompare(String(b.name));
-    }).forEach(function (b) { list.appendChild(peepCard(b)); });
+    if (!vp.list.length) list.appendChild(el('div', 'hint', vp.total || peepSearchQ ? '没有匹配的玩家。' : (groundFilterId ? '该地图暂无玩家。' : '暂无在线玩家。')));
+    vp.list.forEach(function (b) { list.appendChild(peepCard(b)); });
     left.appendChild(list);
+    const pager = el('div', 'peep-pager');
+    const prevBtn = el('button', 'mini', '‹ 上一页');
+    prevBtn.disabled = vp.page <= 1;
+    prevBtn.addEventListener('click', function () { gotoPeepPage(vp.page - 1); });
+    pager.appendChild(prevBtn);
+    pager.appendChild(el('span', 'muted', ' 第 ' + vp.page + ' / ' + vp.pages + ' 页 '));
+    const nextBtn = el('button', 'mini', '下一页 ›');
+    nextBtn.disabled = vp.page >= vp.pages;
+    nextBtn.addEventListener('click', function () { gotoPeepPage(vp.page + 1); });
+    pager.appendChild(nextBtn);
+    left.appendChild(pager);
     cols.appendChild(left);
+    // 视口登记：只在进入本页/翻页/搜索/切换钓场时发一次（playersPage 推送引发的
+    // 重绘不会重复登记），之后服务器每秒只推当前页玩家状态
+    const viewSig = [vp.page, PEEP_PAGE_SIZE, peepSearchQ, groundFilterId || ''].join('|');
+    if (renderGround._lastViewSig !== viewSig) {
+      renderGround._lastViewSig = viewSig;
+      window.Net.setPlayersView({ page: vp.page, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
+    }
 
     const right = el('div', 'sub');
     right.appendChild(el('h3', null, '📡 最新动态' + (groundFilterId ? ' · ' + esc(filterGround.name) : '')));
@@ -4398,23 +4464,42 @@ window.UI = (function () {
     const t = st.trade;
     if (!t) {
       tradeDraft = { tid: null, sel: {} };
-      // 无交易：发起邀请 / 接收邀请
-      const onlines = st.players.filter(function (p) { return !st.me || p.id !== st.me.id; });
+      // perf-9：交易对象选择改为服务端分页 + 搜索（不再依赖全量在线列表）
       const box = el('div', 'trade-invite');
       box.appendChild(el('h3', null, '发起交易邀请'));
-      if (onlines.length === 0) {
-        box.appendChild(el('div', 'hint', '当前没有其他在线玩家。多开一个浏览器标签即可测试。'));
-      } else {
-        const row = el('div', 'invite-row');
-        onlines.forEach(function (p) {
-          const b = el('button', 'mini primary-mini', '邀请 ' + esc(p.name));
-          b.addEventListener('click', function () {
-            call(window.Net.tradeInvite(p.id), '邀请已发出，等待对方接受').then(function (r) { if (r && r.ok) setTimeout(refreshAll, 300); });
+      const tInput = el('input', 'peep-search-input');
+      tInput.type = 'text'; tInput.placeholder = '🔍 搜索玩家名后回车…';
+      box.appendChild(tInput);
+      const tList = el('div', 'invite-row');
+      const tPager = el('div', 'peep-pager');
+      box.appendChild(tList);
+      box.appendChild(tPager);
+      let tPage = 1;
+      function loadTradePage(q) {
+        window.Net.fetchPlayersPage({ page: tPage, size: 10, q: q || '', target: 'tradePicker' }).then(function () {
+          const tp = S().tradePicker || { page: 1, pages: 1, total: 0, list: [] };
+          tList.innerHTML = '';
+          if (!tp.list.length) { tList.appendChild(el('div', 'hint', '当前没有其他在线玩家。多开一个浏览器标签即可测试。')); return; }
+          tp.list.forEach(function (p) {
+            if (st.me && p.id === st.me.id) return;
+            const b = el('button', 'mini primary-mini', '邀请 ' + esc(p.name));
+            b.addEventListener('click', function () {
+              call(window.Net.tradeInvite(p.id), '邀请已发出，等待对方接受').then(function (r) { if (r && r.ok) setTimeout(refreshAll, 300); });
+            });
+            tList.appendChild(b);
           });
-          row.appendChild(b);
+          tPager.innerHTML = '';
+          const tPrev = el('button', 'mini', '‹ 上一页'); tPrev.disabled = tp.page <= 1;
+          tPrev.addEventListener('click', function () { tPage = tp.page - 1; loadTradePage(tInput.value.trim()); });
+          tPager.appendChild(tPrev);
+          tPager.appendChild(el('span', 'muted', ' 第 ' + tp.page + ' / ' + tp.pages + ' 页（共 ' + tp.total + ' 人）'));
+          const tNext = el('button', 'mini', '下一页 ›'); tNext.disabled = tp.page >= tp.pages;
+          tNext.addEventListener('click', function () { tPage = tp.page + 1; loadTradePage(tInput.value.trim()); });
+          tPager.appendChild(tNext);
         });
-        box.appendChild(row);
       }
+      tInput.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { tPage = 1; loadTradePage(tInput.value.trim()); } });
+      loadTradePage('');
       panel.appendChild(box);
       main.appendChild(panel);
       return;
@@ -4434,7 +4519,8 @@ window.UI = (function () {
 
     const head = el('div', 'trade-head');
     head.innerHTML = '<div class="th-with">交易对象：<b>' + esc(otherName) + '</b> <span class="live-check">' +
-      (st.players.some(function (p) { return p.id === otherKey; }) ? '在线' : '已离线') + '</span></div>' +
+      // perf-9：在线状态不再查全量玩家列表——能建立交易会话的账号必然在线
+      '<span class="muted">在线</span></div>' +
       '<div class="th-stage">' + (!t.accepted ? '等待对方接受邀请…' : (cd > 0 ? '确认已重置，冷却 ' + Math.ceil(cd / 1000) + 's' : '请双方放入物品并确认')) + '</div>';
     panel.appendChild(head);
     // 交易进行中：提示列表已锁定（新渔获不会自动刷新，可手动刷新）
@@ -6232,6 +6318,11 @@ window.UI = (function () {
   function renderView() {
     hideItemTip();   // 整页重绘会把行换掉（mouseleave 不一定触发），浮标先收起来
     const saved = captureScroll();
+    // perf-9：离开渔场动态页时取消玩家列表视口登记（服务器随即停止向本连接推送该页）
+    if (currentView !== 'ground' && renderGround._lastViewSig) {
+      renderGround._lastViewSig = null;
+      if (window.Net) window.Net.setPlayersView({ clear: true });
+    }
     if (currentView === 'fishing') renderFishing();
     else if (currentView === 'bd') renderBD();
     else if (currentView === 'ground') renderGround();
@@ -6430,6 +6521,11 @@ window.UI = (function () {
     }
     // 背包子筛选控件获得焦点时同样暂停重绘（避免输入被广播冲掉）
     if (currentView === 'inventory' && invFocus && scope && scope !== 'all') {
+      renderTopbar(); renderNav();
+      return;
+    }
+    // perf-9：渔场页玩家搜索框获得焦点时暂停重绘（playersPage 每秒推送会重建 DOM 冲掉输入）
+    if (currentView === 'ground' && peepSearchFocus && scope && scope !== 'all') {
       renderTopbar(); renderNav();
       return;
     }

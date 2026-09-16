@@ -59,7 +59,20 @@ function sse(token, sink) {
       let i; while ((i = buf.indexOf('\n\n')) >= 0) {
         const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
         const line = chunk.split('\n').find(l => l.startsWith('data: '));
-        if (line) { try { sink.push(JSON.parse(line.slice(6))); } catch (e) {} }
+        if (line) {
+          try {
+            const m = JSON.parse(line.slice(6));
+            // perf-5/8 批量协议：batch 解包逐条；feedBatch（钓场分区 feed）展开为 feed 事件
+            if (m && m.type === 'batch' && Array.isArray(m.list)) {
+              for (const it of m.list) {
+                if (it && it.type === 'feedBatch' && Array.isArray(it.list)) { for (const e2 of it.list) sink.push({ type: 'feed', entry: e2 }); }
+                else sink.push(it);
+              }
+            }
+            else if (m && m.type === 'feedBatch' && Array.isArray(m.list)) { for (const e2 of m.list) sink.push({ type: 'feed', entry: e2 }); }
+            else sink.push(m);
+          } catch (e) {}
+        }
       }
     });
   });

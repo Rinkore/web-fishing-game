@@ -118,7 +118,19 @@ const clients = new Set();   // SSE response 对象
 const SESSION_TTL_MS = 30 * 24 * 3600 * 1000; // 30 天未使用即失效，避免文件无限增长
 const sessions = new Map();
 function tokenHash(t) { return crypto.createHash('sha256').update(String(t)).digest('hex'); }
+// ---- 性能修复(perf-2)：会话落盘防抖 ----
+// 原实现每次登录/登出都同步重写整份 sessions.json（O(会话数)），高并发注册登录时放大 IO。
+// 现在合并到 2s 窗口批量落盘；紧急路径（会话过期清理）走同一管道。
+let sessionsDirty = false;
+let sessionsFlushTimer = null;
 function saveSessions() {
+  sessionsDirty = true;
+  if (!sessionsFlushTimer) sessionsFlushTimer = setTimeout(function () {
+    sessionsFlushTimer = null;
+    if (sessionsDirty) { sessionsDirty = false; saveSessionsNow(); }
+  }, 2000);
+}
+function saveSessionsNow() {
   const out = {};
   const now = Date.now();
   sessions.forEach(function (v, h) { if (v && v.exp > now) out[h] = { k: v.key, e: v.exp }; });
@@ -948,7 +960,30 @@ function boardAnnouncement(o) {
   if (o.topSmall) return { level: 4, text: '📊 ' + o.name + ' 前十小更新：' + o.who + ' ' + o.size + 'cm（第 ' + o.topSmall + ' 名）' };
   return null;
 }
+// 上鱼通告横幅等级（bannerCfg.catchLevel，横幅管理页可配）：
+//   gmax   = 仅全服最大最小（全场最大纪录被破）
+//   gmax10 = 全服最大最小 + 前十（大/小榜）
+//   fish   = 全服所有鱼类最大最小（每种鱼的最大/最小纪录）
+//   fish10 = 全服所有鱼类最大最小 + 前十（默认，原行为）
+function bannerCatchAllowed(level) {
+  const mode = (world.bannerCfg && world.bannerCfg.catchLevel) || 'fish10';
+  if (level === 1) return true;
+  if (mode === 'gmax') return false;
+  if (mode === 'gmax10') return level === 3 || level === 4;
+  if (mode === 'fish') return level === 2;
+  return true;
+}
 // 单竿结算：掷骰 → 入库（背包/图鉴）→ 大鱼榜 → 全服动态 → 定向推送权威资产
+// ---- perf-8：feed 广播瘦身 ----
+// item 全量（组件的词缀/底材/重量等）只有钓者本人需要；全服动态渲染只用到
+// name/rarity/size/kind/quality，瘦身可省 40-70% 单条字节。
+function slimFeedEntry(e) {
+  const it = e.item || {};
+  return {
+    t: e.t, who: e.who, ground: e.ground, spot: e.spot, size: e.size, record: e.record,
+    item: { id: it.id, name: it.name, kind: it.kind, rarity: it.rarity, size: it.size, quality: it.quality },
+  };
+}
 function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   const item = resolveItemAt(spot, eff);
   if (!item) return;
@@ -1004,14 +1039,20 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   const visible = feedVisible(item, recordEvent || smallEvent);
   if (visible) {
     feed.unshift(entry); if (feed.length > 60) feed.pop();
-    broadcast({ type: 'feed', entry: entry });
+    // perf-8：瘦身 + 钓场分区——词缀细节等 feed 渲染用不到，只推给本钓场的玩家
+    broadcast({ type: 'feed', entry: slimFeedEntry(entry) }, ground.id);
   }
 
   // 近期渔获（非普通渔获/组件）：更新 presence 并广播给所有人
   const p = players.get(key);
   if (p && visible && (item.kind === 'component' || (item.kind === 'fish' && item.rarity !== 'common'))) {
     p.recent = item.size ? (item.name + ' ' + item.size + 'cm') : item.name;
-    sendPlayersAll();
+    // perf-8d：recent 更新不再每竿都触发 presence 广播——高钓速下几乎每个玩家每秒
+    // 都有 recent 变化 → 每秒数千条 upsert 扇出给全部连接（3200 人实测 ~1.4Gbps 主源）。
+    // 改为每玩家 10 秒最多标记一次脏（「最近渔获」标签延迟 ≤10s 无感知）；
+    // 真实状态变化（开始/停止钓鱼、掉线、换钓点）仍走各自路径即时广播。
+    const nowMs = Date.now();
+    if (!p._recentBcastAt || nowMs - p._recentBcastAt > 10000) { p._recentBcastAt = nowMs; sendPlayersAll(); }
   }
   saveAccount(key);
   // 任意榜单更新（全场最大 / 该鱼种纪录 / 前十大 / 前十小）都向上方横幅播报（覆盖所有鱼种）
@@ -1019,16 +1060,20 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     who: rec.name, name: itemName(item.id), size: (item.size != null ? (Math.round(item.size * 10) / 10) : null),
     globalMax: !!globalRecord, record: !!recordEvent, small: !!smallEvent, topBig: topBigRank, topSmall: topSmallRank,
   });
-  if (board) broadcast({ type: 'globalRecord', record: Object.assign({}, globalRecord || { id: item.id, name: itemName(item.id), size: item.size, who: rec.name, t: Date.now() }, { text: board.text, level: board.level }) });
+  if (board && bannerCatchAllowed(board.level)) broadcast({ type: 'globalRecord', record: Object.assign({}, globalRecord || { id: item.id, name: itemName(item.id), size: item.size, who: rec.name, t: Date.now() }, { text: board.text, level: board.level }) });
   if (recordEvent || smallEvent || globalRecord) {
     saveRecords();
-    if (recordEvent || smallEvent) broadcastRecords();
-    if (recordEvent && feedVisible(item, true)) broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null, record: true } });
+    if (recordEvent || smallEvent) markRecordsDirty();
+    if (recordEvent && feedVisible(item, true)) broadcast({ type: 'feed', entry: slimFeedEntry({ t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null, record: true }) }, ground.id);
   }
   // 定向推送：本条渔获 + 图鉴条目 + 权威资产（前端不持账本）
+  // perf-8c：热路径增量推送——原来每竿全量发 codex + inventory（codex 还在两个事件里
+  // 重复出现），机器人钓上千条后每竿 ~20KB，是 5000 人时 ~1.2Gbps 带宽的主要来源。
+  // 改为 codexAdd 只发新条目、assets 只发金币+背包增量；全量替换保留给登录/交易/商店等低频路径。
   sendTo(key, { type: 'catch', entry: entry });
-  sendTo(key, { type: 'codex', codex: rec.codex, catchCount: rec.catchCount, entry: { id: codexId, name: itemName(codexId) } });
-  sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+  sendTo(key, { type: 'codexAdd', id: codexId, name: itemName(codexId), add: 1, mx: cx.max, mn: cx.min, catchCount: rec.catchCount });
+  const invDelta = {}; invDelta[item.id] = 1;
+  sendTo(key, { type: 'assets', coins: rec.coins, catchCount: rec.catchCount, invAdd: invDelta });
   // 组件订阅提醒：命中玩家订阅条件时定向推送（双钓追加的组件同样逐条判定）
   maybeSendSubAlert(rec, key, item);
   // 双钓：见 doubleCountOf。基础上钩 1 条，按双钓概率连续追加，最多 3 条。
@@ -2046,14 +2091,35 @@ function loadAccounts() {
     }
   }
 }
+// ---- 性能修复(perf-1)：账号写盘改为「脏标记 + 定时批量异步落盘」----
+// 原实现每竿捕获都同步 fs.writeFileSync 整份账号 JSON，高在线 + 高钓速时事件循环
+// 被同步 IO 塞满（实测 200 人即饱和、新玩家无法进入）。现在 saveAccount 只做内存标记，
+// 统一由 1s 定时器批量刷盘；进程退出前强制刷一次，保证数据不丢。
+const dirtyAccounts = new Set();
+let accountFlushTimer = null;
 function saveAccount(key) {
   const rec = users[key];
   if (!rec) return;
-  writeJson(accountFile(key), rec);
+  dirtyAccounts.add(key);
+  if (!accountFlushTimer) accountFlushTimer = setTimeout(flushAccounts, 1000);
+}
+function flushAccounts() {
+  accountFlushTimer = null;
+  const keys = Array.from(dirtyAccounts);
+  dirtyAccounts.clear();
+  keys.forEach(function (k) { const rec = users[k]; if (rec) writeJson(accountFile(k), rec); });
 }
 function saveAllAccounts() {
   Object.keys(users).forEach(saveAccount);
 }
+process.on('exit', function () {
+  if (accountFlushTimer) { clearTimeout(accountFlushTimer); accountFlushTimer = null; }
+  if (dirtyAccounts.size) {
+    const ks = Array.from(dirtyAccounts); dirtyAccounts.clear();
+    ks.forEach(function (k) { const rec = users[k]; if (rec) { try { writeJson(accountFile(k), rec); } catch (e) {} } });
+  }
+  if (sessionsDirty) { try { saveSessionsNow(); } catch (e) {} }
+});
 
 // ---- 世界域：市集 / 记录 / 经济 / 配置 各自一个文件 ----
 function loadDomain(file, keys) {
@@ -2068,7 +2134,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
@@ -2094,6 +2160,52 @@ function loadEconomy() { loadDomain(ECONOMY_FILE, ECONOMY_KEYS); }
 function saveEconomy() { saveDomain(ECONOMY_FILE, ECONOMY_KEYS); }
 function loadConfig() { loadDomain(CONFIG_FILE, CONFIG_KEYS); }
 function saveConfig() { saveDomain(CONFIG_FILE, CONFIG_KEYS); }
+// ---- 按在线人数自动调节全服动态通知等级（管理后台可配，带迟滞+防抖）----
+// world.autoNotify = { on, rules:[{min, level}...]（min 降序生效）, hysteresisPct, holdCount }
+// 防抖：人数在门槛附近波动时不会反复横跳——①切换需跨越带 hysteresisPct% 余量的门槛；
+// ②连续 holdCount 次评估（每 5s 一次）指向同一目标档才真正切换。
+const NOTIFY_ORDER = ['all', 'offrange', 'uncommon', 'records', 'none'];
+let autoNotifyStreak = 0;
+function autoNotifyPreset(name) {
+  if (name === 'relaxed') return [{ min: 1500, level: 'records' }, { min: 4000, level: 'none' }];
+  return [{ min: 800, level: 'uncommon' }, { min: 2000, level: 'records' }, { min: 4000, level: 'none' }]; // default
+}
+setInterval(function () {
+  try {
+    const an = world.autoNotify;
+    if (!an || !an.on || !Array.isArray(an.rules) || !an.rules.length) return;
+    const n = players.size;
+    const rules = an.rules.filter(function (r) { return r && NOTIFY_LEVELS[r.level]; })
+      .sort(function (a, b) { return (b.min || 0) - (a.min || 0); });
+    if (!rules.length) return;
+    let raw = rules[rules.length - 1].level; // 低于最低门槛 → 最宽松档
+    for (let i = 0; i < rules.length; i++) { if (n >= (rules[i].min || 0)) { raw = rules[i].level; break; } }
+    if (raw === world.notifyLevel) { autoNotifyStreak = 0; return; }
+    const curIdx = NOTIFY_ORDER.indexOf(world.notifyLevel), rawIdx = NOTIFY_ORDER.indexOf(raw);
+    if (curIdx < 0 || rawIdx < 0) return;
+    const h = Math.min(Math.max(Number(an.hysteresisPct) || 10, 0), 90) / 100;
+    let ok;
+    if (rawIdx > curIdx) {
+      // 升严格：目标档门槛需带正余量（人数明显高于门槛才切换）
+      let m = 0;
+      rules.forEach(function (r) { const li = NOTIFY_ORDER.indexOf(r.level); if (li > curIdx && li <= rawIdx && (r.min || 0) > m) m = r.min || 0; });
+      ok = m === 0 || n >= m * (1 + h);
+    } else {
+      // 降宽松：需低于进入当前严格档门槛的 (1 - h)（人数明显回落才切回）
+      let m = 0;
+      rules.forEach(function (r) { const li = NOTIFY_ORDER.indexOf(r.level); if (li > rawIdx && li <= curIdx && (r.min || 0) > m) m = r.min || 0; });
+      ok = m === 0 || n < m * (1 - h);
+    }
+    if (!ok) { autoNotifyStreak = 0; return; }
+    autoNotifyStreak++;
+    const hold = Math.min(Math.max(parseInt(an.holdCount, 10) || 2, 1), 12);
+    if (autoNotifyStreak < hold) return;
+    autoNotifyStreak = 0;
+    world.notifyLevel = raw;
+    saveConfig();
+    broadcast({ type: 'notice', msg: '📡 在线人数变化，全服动态通知等级已自动调整为「' + raw + '」' });
+  } catch (e) { console.error('[autoNotify] ' + ((e && e.stack) || e)); }
+}, 5000).unref();
 function loadFeedback() { loadDomain(FEEDBACK_FILE, FEEDBACK_KEYS); }
 function saveFeedback() { saveDomain(FEEDBACK_FILE, FEEDBACK_KEYS); }
 function loadStats() { loadDomain(STATS_FILE, STATS_KEYS); }
@@ -2238,13 +2350,177 @@ function adminOf(token) {
   return (rec && rec.admin) ? { key: key, rec: rec } : null;
 }
 
-function broadcast(obj) { const d = 'data: ' + JSON.stringify(obj) + '\n\n'; clients.forEach(function (r) { try { r.write(d); } catch (e) {} }); }
-// 定向推送：只发给某个账号名（key）的 SSE 连接
-function sendTo(key, obj) {
-  const d = 'data: ' + JSON.stringify(obj) + '\n\n';
-  clientOwners.forEach(function (ownerKey, res) { if (ownerKey === key) { try { res.write(d); } catch (e) {} } });
+// ---- 性能修复(perf-3+5)：SSE 批量合并推送 + 背压保护 ----
+// (a) 批量合并：同一时间窗内的多条事件合并成一条 {type:'batch', list:[...]} 推送，
+//     前端 net.js 已支持解包（向后兼容单条消息）。把「每竿 3-6 条事件 × N 连接」的
+//     小包洪水降为「每窗 1 条 × N 连接」的大包写出，实测降低一个数量级以上的
+//     socket 写次数——这是 500 人时 RTT 飙升、错误率 33% 的直接原因。
+// (b) 背压保护：慢客户端写缓冲超过 4MB 直接断开（close 清理逻辑回收），防内存膨胀。
+const SSE_MAX_BUFFER = 4 * 1024 * 1024;
+// 网络统计（压测观测用）：SSE 推送与 API 响应的累计字节/消息计数
+const netStats = { sseBytes: 0, sseMsgs: 0, sseWrites: 0, apiBytes: 0, apiReqs: 0, start: Date.now() };
+function sseWrite(res, d) {
+  try {
+    netStats.sseBytes += Buffer.byteLength(d);
+    if (res.writableLength > SSE_MAX_BUFFER) { try { res.end(); } catch (e) {} return; }
+    netStats.sseWrites++;
+    res.write(d);
+  } catch (e) {}
 }
-function sendPlayers() { broadcast({ type: 'players', players: Array.from(players.values()) }); }
+const pendingBcast = [];
+let bcastTimer = null;
+// perf-8：广播支持钓场分区（groundScope = groundId）——feed 事件只分发给正在
+// 该钓场钓鱼的玩家，扇出量直接除以钓场数；全局快照（players/grounds/records 等）不传 scope。
+function broadcast(obj, groundScope) {
+  pendingBcast.push({ o: obj, g: groundScope || null });
+  if (!bcastTimer) bcastTimer = setTimeout(flushBcast, 200);
+}
+function flushBcast() {
+  bcastTimer = null;
+  if (!pendingBcast.length) return;
+  netStats.sseMsgs++;
+  const raw = pendingBcast.splice(0, pendingBcast.length);
+  // 同窗口内「全量状态快照」类事件只保留最后一条（players/grounds/records/shop/market
+  // 都是完整快照，同窗口旧快照没有信息量）。缺了这一步，高钓速下每秒数百条 players
+  // 快照会被原样合并成几十 MB 的巨型 batch，瞬间打爆所有连接的写缓冲。
+  const lastIdx = {};
+  for (let i = 0; i < raw.length; i++) { const ev = raw[i]; if (!ev.g && COALESCE_TYPES[ev.o.type]) lastIdx[ev.o.type] = i; }
+  // 分区：feed/globalRecord（社交类，走 1s 慢窗口）vs 其他（200ms 快窗口）
+  // perf-8b：实测 5000 人时带宽 1.2Gbps 几乎全部来自 feed——30条/窗×5窗/s×逐客户端投递，
+  // 而人不可能读 150 行/秒的动态。社交事件改为 1 秒窗口：feed 每客户端 ≤10 条/秒、
+  // 纪录横幅 ≤3 条/秒，5000 人时 feed 带宽从 ~1.2Gbps 降到 ≤60Mbps。
+  const gList = [];
+  for (let i = 0; i < raw.length; i++) {
+    const ev = raw[i];
+    if (ev.o.type === 'feed') { queueFeed(ev.o.entry, ev.g); continue; }
+    if (ev.o.type === 'globalRecord') { queueBanner(ev.o); continue; }
+    if (!ev.g && (!COALESCE_TYPES[ev.o.type] || lastIdx[ev.o.type] === i)) gList.push(ev.o);
+  }
+  if (gList.length) {
+    const d = 'data: ' + JSON.stringify({ type: 'batch', list: gList }) + '\n\n';
+    clients.forEach(function (r) { sseWrite(r, d); });
+  }
+}
+// ---- perf-8b：feed / 纪录横幅专用 1 秒批量窗口 ----
+// feed 按钓场分桶（无 groundId 的进全局桶），每秒每桶最多 10 条，一条 feedBatch
+// 消息只序列化一次、只发给正在该钓场钓鱼的客户端；globalRecord 每秒最多 3 条。
+const pendingFeedGlobal = [];
+const pendingFeedGround = new Map(); // groundId -> [entry]
+const pendingBanners = [];
+let socialTimer = null;
+function queueFeed(entry, groundId) {
+  if (groundId) {
+    let arr = pendingFeedGround.get(groundId);
+    if (!arr) { arr = []; pendingFeedGround.set(groundId, arr); }
+    arr.push(entry);
+  } else {
+    pendingFeedGlobal.push(entry);
+  }
+  if (!socialTimer) socialTimer = setTimeout(flushSocial, 1000);
+}
+function queueBanner(obj) {
+  pendingBanners.push(obj);
+  if (!socialTimer) socialTimer = setTimeout(flushSocial, 1000);
+}
+function flushSocial() {
+  socialTimer = null;
+  if (pendingFeedGlobal.length) {
+    const list = pendingFeedGlobal.splice(0, pendingFeedGlobal.length).slice(-10);
+    const d = 'data: ' + JSON.stringify({ type: 'batch', list: list.map(function (e) { return { type: 'feed', entry: e }; }) }) + '\n\n';
+    clients.forEach(function (r) { sseWrite(r, d); });
+  }
+  if (pendingBanners.length) {
+    const list = pendingBanners.splice(0, pendingBanners.length).slice(-3);
+    const d = 'data: ' + JSON.stringify({ type: 'batch', list: list }) + '\n\n';
+    clients.forEach(function (r) { sseWrite(r, d); });
+  }
+  if (pendingFeedGround.size) {
+    const gs = Array.from(pendingFeedGround.entries());
+    pendingFeedGround.clear();
+    gs.forEach(function (pair) {
+      const gid = pair[0], entries = pair[1].slice(-10);
+      const d = 'data: ' + JSON.stringify({ type: 'batch', list: [{ type: 'feedBatch', list: entries }] }) + '\n\n';
+      clientOwners.forEach(function (ownerKey, res) {
+        const p = players.get(ownerKey);
+        if (p && p.groundId === gid) sseWrite(res, d);
+      });
+    });
+  }
+}
+const COALESCE_TYPES = { players: 1, playersDelta: 1, grounds: 1, records: 1, shop: 1, market: 1 };
+// 定向推送：只发给某个账号名（key）的 SSE 连接（同样按 150ms 窗口合并）
+const pendingTo = new Map(); // key -> [events]
+let sendToTimer = null;
+function sendTo(key, obj) {
+  let arr = pendingTo.get(key);
+  if (!arr) { arr = []; pendingTo.set(key, arr); }
+  arr.push(obj);
+  if (!sendToTimer) sendToTimer = setTimeout(flushSendTo, 150);
+}
+function flushSendTo() {
+  sendToTimer = null;
+  if (!pendingTo.size) return;
+  netStats.sseMsgs += pendingTo.size;
+  const entries = Array.from(pendingTo.entries());
+  pendingTo.clear();
+  entries.forEach(function (pair) {
+    const d = 'data: ' + JSON.stringify({ type: 'batch', list: pair[1] }) + '\n\n';
+    clientOwners.forEach(function (ownerKey, res) { if (ownerKey === pair[0]) sseWrite(res, d); });
+  });
+}
+// ---- perf-6+7：presence 节流 + 增量广播 ----
+// players 全量数组随在线人数线性增大（800 人 ≈ 150KB/条），而每次渔获都会触发
+// sendPlayersAll → 高钓速下全量快照 = 带宽与序列化量随人数平方爆炸（3200 人饱和的元凶）。
+// 现在：1s 节流 + 增量广播——只推「状态有变化的玩家」（upserts）与「掉线的玩家」(removed)；
+// 变更超过一半或每 30 个窗口自动回退一次全量（playersDelta.full）纠偏。
+// ---- perf-9：presence 按视口分页推送 ----
+// 玩家列表改为服务端分页（/api/players/page）：客户端通过 /api/players/view 登记
+// 当前页（页码/页大小/搜索词/钓场过滤），服务器每秒只把「该页玩家」的最新状态推给
+// 该连接（playersPage 事件，≤页大小条）；未登记视口的连接零 presence 流量。
+// 在线人数/钓场人数（grounds，几十字节）仍全量广播。
+let presenceDirty = false;
+let presenceThrottleTimer = null;
+const clientViews = new Map(); // SSE res -> { page, size, q, ground, spot }
+function sendPlayers() {
+  presenceDirty = true;
+  if (!presenceThrottleTimer) presenceThrottleTimer = setTimeout(flushPresence, 1000);
+}
+function playersSortedFiltered(q, ground, spot) {
+  const kw = (q || '').toLowerCase();
+  const out = [];
+  players.forEach(function (p) {
+    if (ground && p.groundId !== ground) return;
+    if (spot && p.spotId !== spot) return;
+    if (kw && String(p.name || '').toLowerCase().indexOf(kw) < 0) return;
+    out.push(p);
+  });
+  out.sort(function (a, b) {
+    const ra = a.status === 'fishing' ? 0 : 1, rb = b.status === 'fishing' ? 0 : 1;
+    return ra - rb || String(a.name).localeCompare(String(b.name));
+  });
+  return out;
+}
+function flushPresence() {
+  presenceThrottleTimer = null;
+  if (!presenceDirty) return;
+  presenceDirty = false;
+  if (clientViews.size) {
+    // 相同过滤参数的视口共享一次排序/过滤结果
+    const cache = new Map();
+    clientViews.forEach(function (view, res) {
+      const key = (view.q || '') + '|' + (view.ground || '') + '|' + (view.spot || '');
+      let all = cache.get(key);
+      if (!all) { all = playersSortedFiltered(view.q, view.ground, view.spot); cache.set(key, all); }
+      const size = Math.min(Math.max(view.size || 30, 5), 100);
+      const pages = Math.max(1, Math.ceil(all.length / size));
+      const page = Math.min(Math.max(view.page || 1, 1), pages);
+      const d = 'data: ' + JSON.stringify({ type: 'playersPage', page: page, pages: pages, total: all.length,
+        players: all.slice((page - 1) * size, page * size) }) + '\n\n';
+      sseWrite(res, d);
+    });
+  }
+  broadcast({ type: 'grounds', counts: groundCounts(), total: players.size });
+}
 function readBody(req, cb) { let b = ''; req.on('data', function (c) { b += c; if (b.length > 1e6) req.destroy(); }); req.on('end', function () { cb(b); }); }
 // 安全解析请求体：JSON.parse('null') 是「成功」的（返回 null），而只 catch 语法错误的代码
 // 紧接着读 d.token / d.username 就会抛 TypeError —— 未捕获异常会直接终止整个服务端进程，
@@ -2261,7 +2537,12 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Max-Age': '86400',
 };
-function apiResp(res, status, obj) { res.writeHead(status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, CORS_HEADERS)); res.end(JSON.stringify(obj)); }
+function apiResp(res, status, obj) {
+  const body = JSON.stringify(obj);
+  netStats.apiBytes += Buffer.byteLength(body); netStats.apiReqs++;
+  res.writeHead(status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, CORS_HEADERS));
+  res.end(body);
+}
 function auth(req, res, body, cb) {
   let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
   const key = d.token && sessionGet(d.token);
@@ -2315,6 +2596,18 @@ function sweepExpiredListings() {
   }
 }
 setInterval(function () { try { sweepExpiredListings(); } catch (e) { console.error('[sweepExpiredListings] ' + ((e && e.stack) || e)); } }, 30 * 1000).unref();
+// perf-9：榜单改拉取制——records 全量快照（大鱼榜+小鱼榜，50-100KB）原来每窗口都可能
+// 广播给全部连接，高负载下破纪录事件不断 → 5次/秒 × N客户端 × 50KB = 数 Gbps。
+// 现在只推 20 字节的 recordsDirty 版本号，客户端打开榜单页/收到通知时拉取 /api/records。
+function markRecordsDirty() {
+  world.recordsVersion = (world.recordsVersion || 0) + 1;
+  if (recordsDirtyTimer) return;
+  recordsDirtyTimer = setTimeout(function () {
+    recordsDirtyTimer = null;
+    broadcast({ type: 'recordsDirty', v: world.recordsVersion || 0 });
+  }, 1000);
+}
+let recordsDirtyTimer = null;
 
 // ================================================================
 // ---- 后台批量上架（活跃市场）：按配置现造一批可上架物品 ----
@@ -2425,6 +2718,7 @@ function groundCounts() {
   return map;
 }
 function broadcastGrounds() { broadcast({ type: 'grounds', counts: groundCounts(), total: players.size }); }
+// perf-4 的独立节流已被 perf-5/6 取代：sendPlayersAll 走 presence 1s 节流 + 批量广播队列
 function sendPlayersAll() { sendPlayers(); broadcastGrounds(); }
 
 // ---- 交易转发：只推给交易的两位参与者 ----
@@ -2524,7 +2818,7 @@ const server = http.createServer(function (req, res) {
           const doomed = [];
           clientOwners.forEach(function (ownerKey, res) { if (ownerKey === key) doomed.push(res); });
           doomed.forEach(function (res) {
-            clients.delete(res); clientOwners.delete(res);
+            clients.delete(res); clientOwners.delete(res); clientViews.delete(res);
             try { res.write('data: ' + JSON.stringify({ type: 'kicked', msg: '你已登出' }) + '\n\n'); } catch (e) {}
             try { res.end(); } catch (e) {}
           });
@@ -2579,8 +2873,11 @@ const server = http.createServer(function (req, res) {
     // 重连自动续钓：账号里还记着「上次没主动收竿的钓点」就接着钓（服务器更新强刷 / 掉线 / 重启都走这里）
     const resumed = resumeFishingSpot(id);
     res.write('data: ' + JSON.stringify({
-      type: 'init', you: id, players: Array.from(players.values()), feed: feed,
-      shop: shopSnapshot(), market: world.listings, records: world.bigRecords, small: world.smallRecords,
+      type: 'init', you: id, feed: feed,
+      // perf-9：init 不再携带全量 players（5000 人时 868KB）与全量 records（50-100KB）——
+      // 玩家列表走分页 API（/api/players/page），榜单走拉取制（/api/records）。
+      playersTotal: players.size, recordsVersion: world.recordsVersion || 0,
+      shop: shopSnapshot(), market: world.listings,
       grounds: groundCounts(), trade: myTradeView(id),
       // 钓场目录（含管理后台保存的掉落池/增益/锁定覆盖）：新客户端连接时同步，
       // 否则前端会一直用 data.js 里的硬编码默认值，导致图鉴产地与实际掉落不符。
@@ -2597,7 +2894,7 @@ const server = http.createServer(function (req, res) {
     req.on('close', function () {
       clearInterval(hb);
       const wasTracked = clientOwners.get(res) === id;
-      clients.delete(res); clientOwners.delete(res);
+      clients.delete(res); clientOwners.delete(res); clientViews.delete(res);
       if (!wasTracked) return; // 该连接已被顶号流程接管，跳过清理
       // 同一账号可能同时挂着多条实时连接（强刷时新旧连接短暂重叠、多标签页）：
       // 只有全部断开才算掉线——否则新连接刚续上的钓会被旧连接的清理逻辑掐掉。
@@ -2933,23 +3230,25 @@ const server = http.createServer(function (req, res) {
         }
         const entry = { t: Date.now(), who: rec.name, item: Object.assign({}, d.item, { id: itemId }, isFinite(size) && size > 0 ? { size: Math.round(size * 10) / 10 } : {}), ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
         feed.unshift(entry); if (feed.length > 60) feed.pop();
-        broadcast({ type: 'feed', entry: entry });
+        // perf-8：与线上一致——通知等级过滤 + 瘦身（原来这里漏了 feedVisible 过滤）
+        if (feedVisible(entry.item, !!(recordEvent || smallEventDev))) broadcast({ type: 'feed', entry: slimFeedEntry(entry) });
         saveAccount(key);
         // 与线上一致：任意榜单更新都播报
         const boardDev = boardAnnouncement({
           who: rec.name, name: itemName(itemId), size: (isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null),
           globalMax: !!globalRecordDev, record: !!recordEvent, small: smallEventDev, topBig: topBigRankDev, topSmall: topSmallRankDev,
         });
-        if (boardDev) broadcast({ type: 'globalRecord', record: Object.assign({}, globalRecordDev || { id: itemId, name: itemName(itemId), size: size, who: rec.name, t: Date.now() }, { text: boardDev.text, level: boardDev.level }) });
+        if (boardDev && bannerCatchAllowed(boardDev.level)) broadcast({ type: 'globalRecord', record: Object.assign({}, globalRecordDev || { id: itemId, name: itemName(itemId), size: size, who: rec.name, t: Date.now() }, { text: boardDev.text, level: boardDev.level }) });
         if (recordEvent || smallEventDev || globalRecordDev) {
           saveRecords();
-          if (recordEvent || smallEventDev) broadcastRecords();
+          if (recordEvent || smallEventDev) markRecordsDirty();
         }
-        if (recordEvent) broadcast({ type: 'feed', entry: { t: Date.now(), who: rec.name, item: entry.item, ground: entry.ground, spot: entry.spot, size: entry.size, record: true } });
-        // 与线上一致：定向推送本条渔获，主界面渔获日志才能随上鱼滚动刷新
+        if (recordEvent && feedVisible(entry.item, true)) broadcast({ type: 'feed', entry: slimFeedEntry({ t: Date.now(), who: rec.name, item: entry.item, ground: entry.ground, spot: entry.spot, size: entry.size, record: true }) });
+        // 与线上一致：定向推送本条渔获（perf-8c 增量：codexAdd + assets 只发金币/背包增量）
         sendTo(key, { type: 'catch', entry: entry });
-        sendTo(key, { type: 'codex', codex: rec.codex, catchCount: rec.catchCount, entry: { id: codexId, name: itemName(codexId) } });
-        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
+        sendTo(key, { type: 'codexAdd', id: codexId, name: itemName(codexId), add: 1, mx: cx.max, mn: cx.min, catchCount: rec.catchCount });
+        const devInvDelta = {}; devInvDelta[itemId] = 1;
+        sendTo(key, { type: 'assets', coins: rec.coins, catchCount: rec.catchCount, invAdd: devInvDelta });
         maybeSendSubAlert(rec, key, itemMeta);
         // 与线上一致：模拟的是一次真实上鱼 → 若满足玩家的自动售出规则，同样立即卖出
         try { autoSellCheck(key); } catch (e) {}
@@ -3850,6 +4149,43 @@ const server = http.createServer(function (req, res) {
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
     return apiResp(res, 200, { ok: true, username: a.rec.username, name: a.rec.name });
   }
+  // ---- 带宽统计查询（压测观测） ----
+  if (p === '/api/admin/netstats' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    return apiResp(res, 200, Object.assign({ ok: true, uptimeSec: Math.round((Date.now() - netStats.start) / 1000) }, netStats));
+  }
+  // ---- perf-9：玩家列表分页 / 搜索 ----
+  if (p === '/api/players/page' && req.method === 'GET') {
+    const key = u.query.token && sessionGet(u.query.token);
+    if (!key) return apiResp(res, 401, { error: '未登录' });
+    const size = Math.min(Math.max(parseInt(u.query.size, 10) || 30, 5), 100);
+    const all = playersSortedFiltered(String(u.query.q || '').slice(0, 40), u.query.ground || null, u.query.spot || null);
+    const pages = Math.max(1, Math.ceil(all.length / size));
+    const page = Math.min(Math.max(parseInt(u.query.page, 10) || 1, 1), pages);
+    return apiResp(res, 200, { ok: true, page: page, pages: pages, size: size, total: all.length,
+      totalOnline: players.size, players: all.slice((page - 1) * size, page * size) });
+  }
+  // 视口登记：客户端告诉服务器自己当前正在看玩家列表的哪一页（含搜索词/钓场过滤），
+  // 之后每秒只推该页玩家的最新状态（playersPage）；clear=true 取消登记（零 presence 流量）。
+  if (p === '/api/players/view' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const key = d.token && sessionGet(d.token);
+      if (!key) return apiResp(res, 401, { error: '未登录' });
+      let hit = 0;
+      clientOwners.forEach(function (ownerKey, sres) {
+        if (ownerKey !== key) return;
+        hit++;
+        if (d.clear) clientViews.delete(sres);
+        else clientViews.set(sres, { page: parseInt(d.page, 10) || 1, size: parseInt(d.size, 10) || 30,
+          q: String(d.q || '').slice(0, 40), ground: d.ground || null, spot: d.spot || null });
+      });
+      if (hit && !d.clear) sendPlayers(); // 立即触发一次该页推送
+      return apiResp(res, 200, { ok: true, pushed: hit });
+    });
+    return;
+  }
   // ---- 概览统计 ----
   if (p === '/api/admin/overview' && req.method === 'GET') {
     const a = adminOf(u.query.token);
@@ -3973,6 +4309,11 @@ const server = http.createServer(function (req, res) {
         world.bannerCfg.noticeColor = nc;
       }
       if (d.blinkTitle != null) world.bannerCfg.blinkTitle = String(d.blinkTitle).slice(0, 40);
+      // perf-9：上鱼通告横幅等级（gmax/gmax10/fish/fish10，见 bannerCatchAllowed）
+      if (d.catchLevel != null) {
+        if (!['gmax', 'gmax10', 'fish', 'fish10'].includes(d.catchLevel)) return apiResp(res, 400, { error: '未知的上鱼通告横幅等级' });
+        world.bannerCfg.catchLevel = d.catchLevel;
+      }
       saveConfig();
       broadcast({ type: 'banner', banners: world.banners || [], cfg: world.bannerCfg });
       apiResp(res, 200, { ok: true, cfg: world.bannerCfg });
@@ -4342,6 +4683,8 @@ const server = http.createServer(function (req, res) {
       quality: D.QUALITY,
       notifyLevel: world.notifyLevel || 'all',
       notifyLevels: NOTIFY_LEVELS,
+      autoNotify: world.autoNotify || { on: false, rules: autoNotifyPreset('default'), hysteresisPct: 10, holdCount: 2 },
+      onlineCount: players.size,
       biteFormula: world.biteFormula || BITE_FORMULA_DEFAULT,
       doubleBase: Number(world.doubleBase) || 0,
       castBaseMs: castBaseMs(),
@@ -5192,6 +5535,21 @@ const server = http.createServer(function (req, res) {
         if (!NOTIFY_LEVELS[d.notifyLevel]) return apiResp(res, 400, { error: '未知的通知等级' });
         if (!d.validateOnly) world.notifyLevel = d.notifyLevel;
         out.notifyLevel = d.notifyLevel;
+      }
+      // 按人数自动调节通知等级：{on, preset?('default'|'relaxed'), rules?, hysteresisPct?, holdCount?}
+      if (d.autoNotify != null && typeof d.autoNotify === 'object' && !d.validateOnly) {
+        const anIn = d.autoNotify;
+        world.autoNotify = world.autoNotify || { on: false, rules: autoNotifyPreset('default'), hysteresisPct: 10, holdCount: 2 };
+        if (anIn.on != null) world.autoNotify.on = !!anIn.on;
+        if (anIn.preset) world.autoNotify.rules = autoNotifyPreset(anIn.preset === 'relaxed' ? 'relaxed' : 'default');
+        else if (Array.isArray(anIn.rules)) {
+          world.autoNotify.rules = anIn.rules.slice(0, 10).map(function (r) {
+            return { min: Math.max(0, parseInt(r && r.min, 10) || 0), level: NOTIFY_LEVELS[r && r.level] ? r.level : 'uncommon' };
+          });
+        }
+        if (anIn.hysteresisPct != null) world.autoNotify.hysteresisPct = Math.min(Math.max(parseInt(anIn.hysteresisPct, 10) || 10, 0), 90);
+        if (anIn.holdCount != null) world.autoNotify.holdCount = Math.min(Math.max(parseInt(anIn.holdCount, 10) || 2, 1), 12);
+        out.autoNotify = world.autoNotify;
       }
       // 基础双钓率 B（0..1）：叠加词缀双钓率 P 得最终双钓概率 1-(1-B)(1-P)
       if (d.doubleBase != null) {

@@ -2801,14 +2801,34 @@ window.Admin = (function () {
     });
   }
   function drawNotify(cfg) {
-    const body = $('nt-body');
+    const an = cfg.autoNotify || { on: false, rules: [], hysteresisPct: 10, holdCount: 2 };
+    const rulesRows = (an.rules || []).map(function (r, i) {
+      return '<div class="mgr-row an-rule" data-i="' + i + '"><label>人数 ≥</label>' +
+        '<input class="ipt an-min" type="number" min="0" step="50" value="' + (r.min || 0) + '" />' +
+        '<select class="ipt an-level">' +
+        Object.keys(cfg.notifyLevels).map(function (k) { return '<option value="' + k + '"' + (r.level === k ? ' selected' : '') + '>' + k + '</option>'; }).join('') +
+        '</select><button class="btn mini danger an-del">删除</button></div>';
+    }).join('') || '<div class="hint">暂无规则——人数低于最低门槛时使用最宽松档。</div>';
     body.innerHTML = Object.keys(cfg.notifyLevels).map(function (k) {
       return '<label class="radio-card' + (cfg.notifyLevel === k ? ' sel' : '') + '" data-lv="' + k + '">' +
         '<input type="radio" name="ntlv" value="' + k + '"' + (cfg.notifyLevel === k ? ' checked' : '') + '>' +
         '<div><b>' + esc(k) + ' — ' + esc(cfg.notifyLevels[k]) + '</b><span>' + esc(NOTIFY_HINT[k] || '') + '</span></div>' +
         '</label>';
     }).join('') +
-      '<div class="editor-foot"><button id="nt-save" class="btn primary">保存通知等级</button><span id="nt-state" class="hint"></span></div>';
+      '<div class="editor-foot"><button id="nt-save" class="btn primary">保存通知等级</button><span id="nt-state" class="hint"></span></div>' +
+      // perf-9：按人数自动调节（预设 + 迟滞 + 防抖）
+      '<div class="panel" style="margin-top:16px"><h3 style="margin-top:0">🤖 按在线人数自动调节</h3>' +
+      '<div class="hint" style="margin-bottom:8px">开启后服务器每 5 秒按在线人数自动切换上面的通知等级。防抖：切换需跨越带迟滞余量的门槛（默认 ±10%）并连续 ' + esc(an.holdCount || 2) + ' 次评估（每 5s 一次）保持一致，人数在门槛附近波动不会反复横跳。手动保存通知等级会自动关闭自动调节。</div>' +
+      '<div class="mgr-row"><label>启用</label><label class="switch"><input type="checkbox" id="an-on"' + (an.on ? ' checked' : '') + '><span class="sl"></span></label>' +
+      '<label class="hint">预设</label><select id="an-preset" class="ipt">' +
+      '<option value="">— 选择预设 —</option><option value="default">标准（800 uncommon / 2000 records / 4000 none）</option>' +
+      '<option value="relaxed">宽松（1500 records / 4000 none）</option></select>' +
+      '<label class="hint">迟滞 %</label><input id="an-hyst" class="ipt" type="number" min="0" max="90" value="' + (an.hysteresisPct != null ? an.hysteresisPct : 10) + '" />' +
+      '<label class="hint">保持次数</label><input id="an-hold" class="ipt" type="number" min="1" max="12" value="' + (an.holdCount || 2) + '" />' +
+      '</div>' +
+      '<div id="an-rules">' + rulesRows + '</div>' +
+      '<div class="editor-foot"><button id="an-add" class="btn mini">＋ 加一条规则</button>' +
+      '<button id="an-save" class="btn primary">保存自动调节</button><span id="an-state" class="hint"></span></div></div>';
     body.querySelectorAll('.radio-card').forEach(function (c) {
       c.onclick = function () {
         body.querySelectorAll('.radio-card').forEach(function (x) { x.classList.remove('sel'); });
@@ -2819,11 +2839,51 @@ window.Admin = (function () {
     $('nt-save').onclick = function () {
       const sel = body.querySelector('input[name=ntlv]:checked');
       if (!sel) return;
-      adminApi('POST', '/api/admin/settings', { token: token, notifyLevel: sel.value }).then(function (r) {
+      // perf-9：手动指定通知等级时自动关闭「按人数自动调节」，否则 5s 内会被自动档覆盖
+      adminApi('POST', '/api/admin/settings', { token: token, notifyLevel: sel.value, autoNotify: { on: false } }).then(function (r) {
         if (!r.ok) { $('nt-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
         if (worldCfg) worldCfg.notifyLevel = r.data.notifyLevel;
         $('nt-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
         toast('通知等级已保存：' + sel.value);
+      });
+    };
+    // ---- 自动调节面板逻辑 ----
+    const anState = { on: an.on };
+    const anOn = $('an-on');
+    if (anOn) anOn.addEventListener('change', function () { anState.on = anOn.checked; });
+    const rulesWrap = $('an-rules');
+    $('an-add').onclick = function () {
+      const row = document.createElement('div');
+      row.className = 'mgr-row an-rule';
+      row.innerHTML = '<label>人数 ≥</label><input class="ipt an-min" type="number" min="0" step="50" value="1000" />' +
+        '<select class="ipt an-level">' +
+        Object.keys(cfg.notifyLevels).map(function (k) { return '<option value="' + k + '">' + k + '</option>'; }).join('') +
+        '</select><button class="btn mini danger an-del">删除</button>';
+      row.querySelector('.an-del').onclick = function () { row.remove(); };
+      rulesWrap.querySelector('div.hint') && rulesWrap.querySelector('div.hint').remove();
+      rulesWrap.appendChild(row);
+    };
+    rulesWrap.querySelectorAll('.an-del').forEach(function (b) { b.onclick = function () { b.closest('.an-rule').remove(); }; });
+    $('an-save').onclick = function () {
+      const rules = Array.prototype.map.call(rulesWrap.querySelectorAll('.an-rule'), function (row) {
+        return { min: Number(row.querySelector('.an-min').value) || 0, level: row.querySelector('.an-level').value };
+      });
+      const presetSel = $('an-preset');
+      const payload = {
+        token: token,
+        autoNotify: {
+          on: $('an-on').checked,
+          hysteresisPct: Number($('an-hyst').value) || 0,
+          holdCount: Number($('an-hold').value) || 2,
+          rules: rules,
+        },
+      };
+      if (presetSel && presetSel.value) payload.autoNotify.preset = presetSel.value;
+      adminApi('POST', '/api/admin/settings', payload).then(function (r) {
+        if (!r.ok) { $('an-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+        if (worldCfg) worldCfg.autoNotify = r.data.autoNotify;
+        $('an-state').innerHTML = '<span style="color:var(--ok)">已保存（当前在线 ' + esc(String(worldCfg && worldCfg.onlineCount || '—')) + ' 人，每 5s 评估一次）</span>';
+        toast('自动调节已保存');
       });
     };
   }
@@ -3382,6 +3442,17 @@ window.Admin = (function () {
       '<label class="hint" style="margin-left:12px">公告默认颜色</label>' +
       '<input id="bn-notice-color" class="ipt bn-color-input" type="color" value="#38bdf8" title="未单独设置颜色的公告使用该颜色" />' +
       '<button class="btn mini" id="bn-notice-color-clear">用默认渐变</button></div></div>' +
+      '<div class="panel"><h3 style="margin-top:0">🎣 上鱼通告横幅等级</h3>' +
+      '<div class="hint" style="margin-bottom:8px">控制哪些「破纪录」事件会触发全服滚动横幅。等级从宽到严：gmax（仅全场最大）→ gmax10（全场最大 + 前十榜）→ fish（所有鱼类的全服最大/最小）→ fish10（所有鱼类的最大/最小 + 前十榜，默认）。</div>' +
+      '<div class="mgr-row"><label>通告等级</label>' +
+      '<select id="bn-catch-level" class="ipt">' +
+      '<option value="gmax">gmax — 仅全服最大最小</option>' +
+      '<option value="gmax10">gmax10 — 全服最大最小前十</option>' +
+      '<option value="fish">fish — 全服所有鱼类最大最小</option>' +
+      '<option value="fish10">fish10 — 全服所有鱼类最大最小前十</option>' +
+      '</select>' +
+      '<button class="btn primary" id="bn-catch-save">保存通告等级</button>' +
+      '<span id="bn-catch-state" class="hint"></span></div></div>' +
       '<div class="panel"><div class="mgr-row"><label>内容</label><input id="bn-content" class="ipt" maxlength="200" placeholder="公告内容（最多 200 字）" />' +
       '<label class="hint">时长</label><input id="bn-dur" class="ipt mk-num" type="number" min="1" max="3600" step="0.5" value="10" />' +
       '<span class="hint">秒</span>' +
@@ -3431,6 +3502,18 @@ window.Admin = (function () {
         toast($('bn-blink').checked ? '已开启图标闪烁（与横幅无关，立即对在线玩家生效）' : '已关闭图标闪烁');
         const stEl = $('bn-blink-state');
         if (stEl) stEl.innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
+      });
+    };
+    // perf-9：保存上鱼通告横幅等级
+    const clSelEl = $('bn-catch-level');
+    if (clSelEl) clSelEl.addEventListener('change', function () { clSelEl.dataset.dirty = '1'; });
+    const clSave = $('bn-catch-save');
+    if (clSave) clSave.onclick = function () {
+      adminApi('POST', '/api/admin/banner/cfg', { token: token, catchLevel: $('bn-catch-level').value }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
+        const s = $('bn-catch-state');
+        if (s) s.innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
+        toast('上鱼通告横幅等级已保存：' + $('bn-catch-level').value);
       });
     };
     $('bn-clear').onclick = function () {
@@ -3520,6 +3603,9 @@ window.Admin = (function () {
       }
       const stEl = $('bn-blink-state');
       if (stEl) stEl.textContent = (r.data.cfg && r.data.cfg.blink) ? '当前：已开启' : '当前：已关闭';
+      // perf-9：上鱼通告横幅等级回显
+      const clSel = $('bn-catch-level');
+      if (clSel && !clSel.dataset.dirty) clSel.value = (r.data.cfg && r.data.cfg.catchLevel) || 'fish10';
       drawBannerLive(r.data);
       const box = $('bn-list');
       if (!bs.length) { box.innerHTML = '<div class="hint">队列为空。</div>'; return; }

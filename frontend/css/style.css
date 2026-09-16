@@ -158,6 +158,11 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 
 .here-count { font-size: 13px; color: var(--accent); margin-bottom: 10px; }
 .peeps { display: flex; flex-direction: column; gap: 8px; }
+/* perf-9：玩家列表分页/搜索控件 */
+.peep-search { margin-bottom: 4px; }
+.peep-search-input { width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.04); color: var(--txt, inherit); font-size: 13px; }
+.peep-pager { display: flex; align-items: center; gap: 8px; justify-content: center; padding-top: 4px; }
+.peep-pager .mini:disabled { opacity: .4; cursor: default; }
 .peep { display: flex; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.03); }
 .peep.self { border-color: var(--accent); }
 .avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #042; font-weight: 700; flex: none; }
