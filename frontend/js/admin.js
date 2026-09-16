@@ -2682,7 +2682,14 @@ window.Admin = (function () {
       '<h3>预览</h3>' +
       '<div class="gd-removed" style="text-align:center">' +
       '<div class="rc-preview-wrap"><img id="rc-preview" class="rh-icon" src="assets/fish/' + RECORDS_PREVIEW_FISH + '.png" alt="" draggable="false"></div>' +
-      '<div class="hint" id="rc-preview-txt"></div></div>';
+      '<div class="hint" id="rc-preview-txt"></div></div>' +
+      '<h3 style="margin-top:18px">🗑 纪录管理</h3>' +
+      '<div class="hint" style="margin-bottom:6px">删除某个鱼种的捕获纪录（最大 / 最小 / 前十大 / 前十小 / 日榜周榜一并清除），或清空全部鱼种。' +
+      '只动纪录，不动玩家背包与图鉴；删除后玩家端记录页即时刷新。</div>' +
+      '<div class="mgr-row"><label class="hint">搜索</label><input id="rc-del-search" class="ipt" placeholder="鱼名 / ID" style="width:200px">' +
+      '<span class="hint" id="rc-del-count"></span>' +
+      '<button class="btn danger" id="rc-del-all" style="margin-left:auto">清空全部纪录</button></div>' +
+      '<div id="rc-del-list">…</div>';
 
     const sync = function () {
       const sc = Math.round(Number($('rc-scale-num').value) || DEF.scale);
@@ -2718,6 +2725,87 @@ window.Admin = (function () {
       });
     };
     sync();
+
+    // ---- 纪录管理（v0.13.8）：按鱼种删除 / 清空全部 ----
+    // 删掉的是捕获纪录本身（最大 / 最小 / 前十大 / 前十小 / 日榜周榜桶一起清），
+    // 不动玩家背包与图鉴；玩家端记录页收到 recordsDirty 后即时刷新。
+    let recDelFilter = '';
+    let recDelRows = [];
+    const drawDelList = function () {
+      const box = $('rc-del-list');
+      if (!box) return;
+      const q = (recDelFilter || '').trim().toLowerCase();
+      const rows = recDelRows
+        .filter(function (r) { return !q || r.name.toLowerCase().indexOf(q) >= 0 || r.id.indexOf(q) >= 0; })
+        .sort(function (a, b) { return (b.big || 0) - (a.big || 0); });
+      if (!rows.length) {
+        box.innerHTML = '<div class="hint">' + (recDelRows.length ? '没有匹配的纪录。' : '当前没有任何渔获纪录。') + '</div>';
+        return;
+      }
+      box.innerHTML = '<div class="mgr-row" style="font-size:12px;color:var(--muted)"><span style="width:150px">鱼种</span>' +
+        '<span style="flex:1">最大 / 最小纪录</span><span>操作</span></div>' +
+        rows.map(function (r) {
+          return '<div class="mgr-row" data-rcrow="' + esc(r.id) + '">' +
+            '<span style="width:150px;font-weight:600">' + esc(r.name) + '</span>' +
+            '<span class="hint" style="flex:1">最大 ' + (r.big != null ? r.big + 'cm' : '—') +
+            ' · 最小 ' + (r.small != null ? r.small + 'cm' : '—') + '</span>' +
+            '<button class="btn mini danger" data-rcdel="' + esc(r.id) + '">删除</button></div>';
+        }).join('');
+      box.querySelectorAll('[data-rcdel]').forEach(function (b) {
+        b.onclick = function () { confirmDelRecord(b.getAttribute('data-rcdel'), false); };
+      });
+    };
+    const loadRecList = function () {
+      return api('GET', '/api/records').then(function (r) {
+        const recs = (r && r.data && r.data.records) || {};
+        const smalls = (r && r.data && r.data.small) || {};
+        const ids = {};
+        Object.keys(recs).forEach(function (id) { ids[id] = 1; });
+        Object.keys(smalls).forEach(function (id) { ids[id] = 1; });
+        recDelRows = Object.keys(ids).map(function (id) {
+          return {
+            id: id,
+            name: (recs[id] && recs[id].name) || (smalls[id] && smalls[id].name) || id,
+            big: recs[id] ? recs[id].size : null,
+            small: smalls[id] ? smalls[id].size : null,
+          };
+        });
+        drawDelList();
+        const cnt = $('rc-del-count');
+        if (cnt) cnt.textContent = recDelRows.length ? ('共 ' + recDelRows.length + ' 个鱼种有纪录') : '当前没有纪录';
+      });
+    };
+    const confirmDelRecord = function (id, all) {
+      document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+      const ov = document.createElement('div');
+      ov.className = 'modal-overlay';
+      ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">' +
+        (all ? '清空全部渔获纪录' : '删除渔获纪录') + '</span></div>' +
+        '<div class="modal-body"><div class="cf-text">' +
+        (all ? '确定清空<b>全部</b>鱼种的捕获纪录？' : '确定删除 <b>' + esc(id) + '</b> 的捕获纪录？') +
+        '<br>最大 / 最小 / 前十大 / 前十小 / 日榜周榜都会一起清掉，玩家背包与图鉴不受影响。</div>' +
+        '<div class="cf-actions"><button class="btn mini cf-no">取消</button>' +
+        '<button class="btn danger" id="rc-del-ok">确认删除</button></div></div></div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+      ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
+      ov.querySelector('#rc-del-ok').onclick = function () {
+        const btn = ov.querySelector('#rc-del-ok');
+        btn.disabled = true; btn.textContent = '删除中…';
+        adminApi('POST', '/api/admin/records/delete', { token: token, id: all ? '' : id }).then(function (r) {
+          ov.remove();
+          if (!r.ok) { toast((r.data && r.data.error) || '删除失败', true); return; }
+          const rm = r.data.removed || {};
+          toast('已删除：最大 ' + (rm.big || 0) + ' / 最小 ' + (rm.small || 0) + ' / 榜单 ' +
+            ((rm.top || 0) + (rm.topSmall || 0)) + ' 条');
+          loadRecList();
+        });
+      };
+    };
+    $('rc-del-all').onclick = function () { confirmDelRecord('', true); };
+    const delSearch = $('rc-del-search');
+    if (delSearch) delSearch.oninput = function () { recDelFilter = this.value; drawDelList(); };
+    loadRecList();
   }
 
   function renderFormula() {
@@ -3514,6 +3602,7 @@ window.Admin = (function () {
     const D = cfg.priceDefaults || {};
     const DC = cfg.dropCfg || {};
     const DD = cfg.dropDefaults || {};
+    const ASC = cfg.autoSellCfg || {};
     const tiers = P.tiers || {};
     const trow = function (key, name) {
       const t = tiers[key] || null;
@@ -3562,6 +3651,12 @@ window.Admin = (function () {
       '<div class="mgr-row"><button class="btn mini" data-dpreset="daily">日常 ×1</button><button class="btn mini" data-dpreset="event">活动 ×2</button><button class="btn mini" data-dpreset="big">大鱼季（大鱼 ×2）</button>' +
       '<button class="btn primary" id="dc-save" style="margin-left:10px">保存产出倍率</button>' +
       '<button class="btn danger" id="dc-reset">恢复默认</button><span id="dc-state" class="hint"></span></div>' +
+      '<div class="mgr-row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">' +
+      '<h3 style="margin:0">🤖 自动出售打包阈值</h3></div>' +
+      '<div class="hint" style="margin-bottom:6px">玩家的自动售出规则现在是「攒够一包才成交一次」：可卖余量（持有 − 保留数量）≥ 此值且价格达标时整批卖出，一次推送结算全部物品。设 1 = 退回「钓到即逐条卖」。</div>' +
+      '<div class="mgr-row"><label style="width:110px">打包阈值</label><input id="as-batch" class="ipt mk-num" type="number" min="1" max="10000" step="10" value="' + (ASC.batch != null ? ASC.batch : 100) + '" style="width:100px">' +
+      '<span class="hint">条（1-10000，默认 ' + (ASC.def != null ? ASC.def : 100) + '）</span>' +
+      '<button class="btn primary" id="as-batch-save" style="margin-left:10px">保存打包阈值</button><span id="as-batch-state" class="hint"></span></div>' +
       '<h3 style="margin-top:18px">🎯 单品干预（覆盖基准价 / 锁定乘数；分钟留空 = 永久）</h3>' +
       '<div class="mgr-row"><label class="hint">搜索</label><input id="eco-search" class="ipt" placeholder="鱼名 / ID" value="' + esc(ecoSearch) + '" style="width:200px">' +
       '<span class="hint" id="eco-count"></span></div>' +
@@ -3648,6 +3743,16 @@ window.Admin = (function () {
       adminApi('POST', '/api/admin/settings', { token: token, resetDropCfg: true }).then(function (r) {
         if (!r.ok) { $('dc-state').innerHTML = '<span class="err">' + esc(r.data.error || '恢复失败') + '</span>'; return; }
         toast('产出倍率已恢复默认');
+        worldCfg = null;
+        loadWorldCfg(true).then(function (c2) { if (c2 && view === 'economy') drawEconomy(c2); });
+      });
+    };
+    // 自动出售打包阈值：全服生效，改小之后在线玩家可能立刻够一包（服务端保存时就地跑一遍）
+    $('as-batch-save').onclick = function () {
+      const b = Number($('as-batch').value);
+      adminApi('POST', '/api/admin/settings', { token: token, autoSellCfg: { batch: b } }).then(function (r) {
+        if (!r.ok) { $('as-batch-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
+        toast('打包阈值已设为 ' + ((r.data.autoSellCfg || {}).batch || b) + ' 条，立即生效');
         worldCfg = null;
         loadWorldCfg(true).then(function (c2) { if (c2 && view === 'economy') drawEconomy(c2); });
       });

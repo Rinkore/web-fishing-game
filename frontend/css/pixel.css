@@ -200,6 +200,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .codex-cell.tier-bronze { border-color: #b87333 !important; box-shadow: 4px 4px 0 rgba(184,115,51,.35) !important; }
 .codex-cell.tier-silver { border-color: #c9d1d9 !important; box-shadow: 4px 4px 0 rgba(201,209,217,.35) !important; }
 .codex-cell.tier-gold { border-color: #ffd700 !important; box-shadow: 4px 4px 0 rgba(255,215,0,.4), 0 0 12px rgba(255,215,0,.3) !important; }
+/* v0.13.8 材料/组件没有体型档：改用与「图鉴 · 钓点」一致的青绿高亮边框（必须写在这里，pixel 的 !important 会吃掉 style.css） */
+.codex-cell.k-nosize { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(52, 224, 192, .18), 4px 4px 0 var(--px-shadow) !important; }
 .codex-cell .cx-tier { color: var(--px-gold); font-weight: 700; }
 .codex-cell.got:hover { transform: translate(-2px, -3px); }
 .codex-cell .cx-icon { animation: px-swim 3.6s ease-in-out infinite; transform-origin: center; }

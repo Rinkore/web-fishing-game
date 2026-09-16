@@ -1079,9 +1079,16 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     // —— 自动售出管理栏（右栏）+ 双向排序 ——
     check('商店有自动售出管理栏（右栏）', (await p1.$$('#shop-as-panel')).length === 1);
     const asRows = await p1.$$('#as-list .as-row');
-    // 鱼类 40 种（龙宫宝珠 v0.11 起归入材料，不再算鱼）
-    check('右栏逐鱼设置列表覆盖全部鱼类（40）', asRows.length === 40, String(asRows.length));
-    check('逐鱼行带「设置」入口', (await p1.$$('#as-list .as-row button')).length === 40, String((await p1.$$('#as-list .as-row button')).length));
+    // 鱼类 40 种（龙宫宝珠 v0.11 起归入材料，不再算鱼）+ 材料 7 种（v0.13.8 起材料也可自动售出）
+    check('右栏自动售出列表覆盖全部渔获与材料（40 + 7 = 47）', asRows.length === 47, String(asRows.length));
+    check('列表按渔获 / 材料分组', (await p1.$$('#as-list .as-group')).length === 2, String((await p1.$$('#as-list .as-group')).length));
+    check('逐项行带勾选框与「设置」入口',
+      (await p1.$$('#as-list .as-row .as-chk')).length === 47 && (await p1.$$('#as-list .as-row button')).length === 47,
+      String((await p1.$$('#as-list .as-row button')).length));
+    const bulkBtnIds = await p1.$$eval('#shop-as-panel .btn', els => els.map(e => e.id));
+    check('批量应用按钮齐备（全部鱼 / 全部材料 / 全部停用 / 清空）',
+      ['sa-apply-fish', 'sa-apply-mat', 'sa-off-all', 'sa-clear-all'].every(id => bulkBtnIds.indexOf(id) >= 0),
+      JSON.stringify(bulkBtnIds));
     // 双向排序：点「价格」降序（首卡最高），再点同键反向为升序（首卡最低）
     const cardPrices = () => p1.$$eval('#shop-panel .shop-grid .shop-card', els => els.map(e => {
       const m = /💰\s*(\d+)/.exec(e.querySelector('.sc-price').textContent);

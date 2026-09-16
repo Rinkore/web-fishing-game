@@ -103,8 +103,9 @@ function killPortOccupant(port) {
 function start(port) {
   // FISHING_DEV=1：开放 /api/dev/*（确定性回归用）；正常部署（run.bat）不开启
   // FISHING_DATA_DIR：测试数据写入临时目录，不触碰真实 backend/data
+  // AUTOSELL_BATCH=1：自动售出按「每次结算」跑，便于逐条验证规则本身（打包行为在 v0138 套件覆盖）
   killPortOccupant(port);
-  return spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(port), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }) });
+  return spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(port), FISHING_DEV: '1', AUTOSELL_BATCH: '1', FISHING_DATA_DIR: TMP_DATA }) });
 }
 
 // 静态数据：直接 require UMD 版 data.js（前后端共用同一文件，后端 require 即所得）
@@ -698,7 +699,9 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
     && regSave2.data.rodSlots[freeSlot] && regSave2.data.rodSlots[freeSlot].name === '回归·配置二',
     JSON.stringify(regSave2.data.rodSlots && regSave2.data.rodSlots[freeSlot]));
 
-  section('自动售出（玩家规则：单鱼优先 / 钓到即卖 / 仅渔获 / 阈值不达标不卖）');
+  section('自动售出（逐物品规则：只卖指定物品 / 保留数量 / 材料可卖 / 阈值不达标不卖）');
+  // 本机服务器以 AUTOSELL_BATCH=1 启动：每次上鱼即结算，便于逐条验证规则本身；
+  // 「攒够一包才成交」的打包行为与全局阈值在 v0138 套件里单独覆盖。
   const B1 = 'http://localhost:' + P1;
   const grant = function (id, extra) {
     return POST(B1 + '/api/dev/catch', { token: tokA, item: Object.assign({ kind: 'fish', id: id, rarity: 'common' }, extra || {}) });
@@ -707,58 +710,82 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const asInv0 = (await GET(B1 + '/api/me?token=' + tokA)).data.inventory;
   check('前置：背包有鲫鱼与鲤鱼', (asInv0.crucian || 0) >= 1 && (asInv0.carp || 0) >= 1, JSON.stringify({ c: asInv0.crucian, k: asInv0.carp }));
   const asCoins0 = (await GET(B1 + '/api/me?token=' + tokA)).data.coins;
-  // 单鱼规则：minPct=1（价格的 1% 下限兜底 40% 也达标）→ 保存即触发
-  const asSet = await POST(B1 + '/api/autosell', { token: tokA, scope: 'crucian', minPct: 1 });
-  check('单鱼规则保存即触发（鲫鱼达标售出）', asSet.status === 200 && !!asSet.data.sold && asSet.data.sold.some(x => x.id === 'crucian'),
+  // 单物品规则：minPct=1（价格的 1% 下限兜底 40% 也达标）→ 保存即触发
+  const asSet = await POST(B1 + '/api/autosell', { token: tokA, id: 'crucian', minPct: 1 });
+  check('单物品规则保存即触发（鲫鱼达标售出）', asSet.status === 200 && !!asSet.data.sold && asSet.data.sold.some(x => x.id === 'crucian'),
     JSON.stringify(asSet.data.sold || null));
+  check('规则与打包阈值随响应下发（逐物品结构 / batch=1）',
+    !!(asSet.data.items && asSet.data.items.crucian && asSet.data.items.crucian.on) && asSet.data.batch === 1,
+    JSON.stringify({ items: asSet.data.items, batch: asSet.data.batch }));
   const asInv1 = (await GET(B1 + '/api/me?token=' + tokA)).data.inventory;
   // v0.13.6：大型/巨型鲫鱼为预留量，不参与自动售出 → 断言改为「普通鲫鱼清空（背包 = 预留数）」
   const meAs1 = (await GET(B1 + '/api/me?token=' + tokA)).data;
   const reservedC1 = meAs1.bigfish && meAs1.bigfish.crucian ? ((meAs1.bigfish.crucian.L || 0) + (meAs1.bigfish.crucian.G || 0)) : 0;
-  check('鲫鱼清空且鲤鱼不受影响（单鱼规则只卖目标鱼）', (asInv1.crucian || 0) === reservedC1 && (asInv1.carp || 0) >= 1, JSON.stringify({ c: asInv1.crucian, r: reservedC1, k: asInv1.carp }));
+  check('鲫鱼清空且鲤鱼不受影响（规则只作用于指定物品）', (asInv1.crucian || 0) === reservedC1 && (asInv1.carp || 0) >= 1, JSON.stringify({ c: asInv1.crucian, r: reservedC1, k: asInv1.carp }));
   check('售出金额入账（金币增加）', (await GET(B1 + '/api/me?token=' + tokA)).data.coins > asCoins0);
-  // 钓到即卖：dev/catch 与线上同链路 → 新钓的鲫鱼立即被售出
+  // 钓到即卖（阈值达标时每竿结算）
   await grant('crucian');
   const asInv2 = (await GET(B1 + '/api/me?token=' + tokA)).data.inventory;
   const meAs2 = (await GET(B1 + '/api/me?token=' + tokA)).data;
   const reservedC2 = meAs2.bigfish && meAs2.bigfish.crucian ? ((meAs2.bigfish.crucian.L || 0) + (meAs2.bigfish.crucian.G || 0)) : 0;
-  check('钓到即卖（新钓的鲫鱼立即按规则售出）', (asInv2.crucian || 0) === reservedC2, JSON.stringify({ c: asInv2.crucian, r: reservedC2 }));
-  // 全部鱼规则 → 鲤鱼也卖；材料不受影响（规则仅渔获）
-  await POST(B1 + '/api/dev/catch', { token: tokA, item: { kind: 'material', id: 'rope', rarity: 'common' } });
-  const asAll = await POST(B1 + '/api/autosell', { token: tokA, scope: 'all', minPct: 1 });
-  check('全部鱼规则保存即触发（鲤鱼售出）', asAll.status === 200 && !!asAll.data.sold && asAll.data.sold.some(x => x.id === 'carp'),
+  check('达标后新钓的鲫鱼立即售出', (asInv2.crucian || 0) === reservedC2, JSON.stringify({ c: asInv2.crucian, r: reservedC2 }));
+  // 保留数量：诱饵包留 1 个，只卖超出的部分（价格线留空 = 不看价格）
+  await POST(B1 + '/api/dev/catch', { token: tokA, item: { kind: 'material', id: 'bait_pack', rarity: 'common' } });
+  await POST(B1 + '/api/dev/catch', { token: tokA, item: { kind: 'material', id: 'bait_pack', rarity: 'common' } });
+  await POST(B1 + '/api/dev/catch', { token: tokA, item: { kind: 'material', id: 'bait_pack', rarity: 'common' } });
+  const asKeep = await POST(B1 + '/api/autosell', { token: tokA, id: 'bait_pack', minPct: '', minPrice: '', keep: 1 });
+  const asInvKeep = (await GET(B1 + '/api/me?token=' + tokA)).data.inventory;
+  check('材料可参与自动售出（诱饵包售出 2 个）',
+    asKeep.status === 200 && !!asKeep.data.sold && asKeep.data.sold[0].id === 'bait_pack' && asKeep.data.sold[0].qty === 2,
+    JSON.stringify(asKeep.data.sold || null));
+  check('保留数量生效（留 1 个，只卖超出部分）', (asInvKeep.bait_pack || 0) === 1, JSON.stringify({ b: asInvKeep.bait_pack }));
+  check('不看价格（两条线留空）也能成交', !!(asKeep.data.items.bait_pack && asKeep.data.items.bait_pack.minPct == null && asKeep.data.items.bait_pack.keep === 1),
+    JSON.stringify(asKeep.data.items.bait_pack));
+  // 批量：应用到全部鱼（鲤鱼也卖）
+  const asAll = await POST(B1 + '/api/autosell', { token: tokA, bulk: 'fish', minPct: 1 });
+  check('批量应用到全部鱼（鲤鱼售出）', asAll.status === 200 && !!asAll.data.sold && asAll.data.sold.some(x => x.id === 'carp'),
     JSON.stringify(asAll.data.sold || null));
-  const asInv3 = (await GET(B1 + '/api/me?token=' + tokA)).data.inventory;
-  check('材料不被自动售出（规则仅渔获）', (asInv3.rope || 0) >= 1, JSON.stringify({ p: asInv3.rope }));
+  check('批量只覆盖鱼类（材料规则原样保留）', !!asAll.data.items.bait_pack && !!asAll.data.items.carp, JSON.stringify(Object.keys(asAll.data.items).length));
+  // 就地开关：只传 on，不动已有阈值
+  const asOff = await POST(B1 + '/api/autosell', { token: tokA, id: 'crucian', on: false });
+  check('就地停用只改开关、阈值保留', asOff.status === 200 && asOff.data.items.crucian.on === false && asOff.data.items.crucian.minPct === 1,
+    JSON.stringify(asOff.data.items.crucian));
+  await grant('crucian');
+  check('停用后新钓的鲫鱼留在背包', ((await GET(B1 + '/api/me?token=' + tokA)).data.inventory.crucian || 0) > reservedC2,
+    JSON.stringify((await GET(B1 + '/api/me?token=' + tokA)).data.inventory.crucian));
+  await POST(B1 + '/api/autosell', { token: tokA, id: 'crucian', on: true });
   // 阈值不达标不卖：minPct=100000%（价格上限 2 倍基准，永不达标）
-  check('超范围阈值被拒 400', (await POST(B1 + '/api/autosell', { token: tokA, scope: 'all', minPct: 1000001 })).status === 400);
-  await POST(B1 + '/api/autosell', { token: tokA, scope: 'all', minPct: 100000 });
+  check('超范围阈值被拒 400', (await POST(B1 + '/api/autosell', { token: tokA, bulk: 'fish', minPct: 1000001 })).status === 400);
+  await POST(B1 + '/api/autosell', { token: tokA, bulk: 'fish', minPct: 100000 });
   await grant('carp');
   const asInv4 = (await GET(B1 + '/api/me?token=' + tokA)).data.inventory;
   check('未达标不卖（阈值 100000% 永不触发）', (asInv4.carp || 0) >= 1, JSON.stringify({ k: asInv4.carp }));
   // 浮动接受值（slack）：行情在阈值附近回落时，达到「阈值 − 浮动」即卖出。
   // 用 minPrice=10亿（永不达标）+ 等量浮动（有效线=1💰，必达标）做确定性验证。
-  await POST(B1 + '/api/autosell', { token: tokA, scope: 'all', minPrice: 1000000000 });
+  await POST(B1 + '/api/autosell', { token: tokA, bulk: 'fish', minPrice: 1000000000 });
   await grant('carp');
   const asNoSlack = (await GET(B1 + '/api/me?token=' + tokA)).data.inventory;
   check('无浮动：价格远低于阈值不卖', (asNoSlack.carp || 0) >= 1, JSON.stringify({ k: asNoSlack.carp }));
-  const asSlack = await POST(B1 + '/api/autosell', { token: tokA, scope: 'all', minPrice: 1000000000, slackPrice: 999999999 });
-  check('浮动随规则保存（slackPrice）', asSlack.status === 200 && asSlack.data.all && asSlack.data.all.slackPrice === 999999999,
-    JSON.stringify(asSlack.data.all));
+  const asSlack = await POST(B1 + '/api/autosell', { token: tokA, bulk: 'fish', minPrice: 1000000000, slackPrice: 999999999 });
+  check('浮动随规则保存（slackPrice）', asSlack.status === 200 && asSlack.data.items.carp && asSlack.data.items.carp.slackPrice === 999999999,
+    JSON.stringify(asSlack.data.items.carp));
   check('带浮动后立即成交（阈值−浮动=1💰 必达标）', !((await GET(B1 + '/api/me?token=' + tokA)).data.inventory.carp > 0),
     JSON.stringify((await GET(B1 + '/api/me?token=' + tokA)).data.inventory));
-  check('负浮动被拒 400', (await POST(B1 + '/api/autosell', { token: tokA, scope: 'all', minPrice: 100, slackPrice: -1 })).status === 400);
-  // 清除与校验
-  check('未知鱼类 scope 被拒 400', (await POST(B1 + '/api/autosell', { token: tokA, scope: 'shark', minPct: 1 })).status === 400);
-  check('非正数阈值被拒 400', (await POST(B1 + '/api/autosell', { token: tokA, scope: 'all', minPct: -5 })).status === 400);
-  const asClear = await POST(B1 + '/api/autosell', { token: tokA, scope: 'all', minPct: null, minPrice: null });
-  check('清除全部鱼规则', asClear.status === 200 && !asClear.data.all);
-  await POST(B1 + '/api/autosell', { token: tokA, scope: 'crucian', minPct: null, minPrice: null });
-  const asCleared = await GET(B1 + '/api/autosell?token=' + tokA);
-  check('规则全部清空', asCleared.status === 200 && !asCleared.data.all && Object.keys(asCleared.data.fish).length === 0,
-    JSON.stringify(asCleared.data));
+  check('负浮动被拒 400', (await POST(B1 + '/api/autosell', { token: tokA, bulk: 'fish', minPrice: 100, slackPrice: -1 })).status === 400);
+  check('负保留数量被拒 400', (await POST(B1 + '/api/autosell', { token: tokA, id: 'carp', keep: -1 })).status === 400);
+  // 校验：只有渔获与材料能自动售出（组件、宝匣、未知 id 一律拒绝）
+  check('未知物品被拒 400', (await POST(B1 + '/api/autosell', { token: tokA, id: 'shark', minPct: 1 })).status === 400);
+  check('组件不可自动售出 400', (await POST(B1 + '/api/autosell', { token: tokA, id: 'comp_generic', minPct: 1 })).status === 400);
+  check('宝匣不可自动售出 400', (await POST(B1 + '/api/autosell', { token: tokA, id: 'chest_wreck', minPct: 1 })).status === 400);
+  check('未知批量范围被拒 400', (await POST(B1 + '/api/autosell', { token: tokA, bulk: 'chest', minPct: 1 })).status === 400);
+  check('非正数阈值被拒 400', (await POST(B1 + '/api/autosell', { token: tokA, bulk: 'fish', minPct: -5 })).status === 400);
+  // 清除：单件删除 / 整批清空
+  const asRmOne = await POST(B1 + '/api/autosell', { token: tokA, id: 'bait_pack', remove: true });
+  check('单件清除规则', asRmOne.status === 200 && !asRmOne.data.items.bait_pack, JSON.stringify(Object.keys(asRmOne.data.items)));
+  const asClear = await POST(B1 + '/api/autosell', { token: tokA, bulk: 'all', remove: true });
+  check('清空全部规则', asClear.status === 200 && Object.keys(asClear.data.items).length === 0, JSON.stringify(asClear.data.items));
   await grant('crucian');
-  check('清除后不再触发（鲫鱼留在背包）', ((await GET(B1 + '/api/me?token=' + tokA)).data.inventory.crucian || 0) >= 1);
+  check('清除后不再触发（鲫鱼留在背包）', ((await GET(B1 + '/api/me?token=' + tokA)).data.inventory.crucian || 0) > reservedC2);
 
   section('榜单更新播报（任意榜单 / 所有鱼种）');
   // 重启过服务器：旧 SSE 连接已失效，这里新建一条订阅（用新 token）

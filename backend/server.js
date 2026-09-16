@@ -172,7 +172,7 @@ let users = {};
 // 默认公式：基础 90% + 「技巧」词缀（技巧是上钩率公式里的一个变量，钩率提示一律不写死在代码里）。
 // 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
 const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
 
 // ---- 宝匣（沉船打捞）----
 // 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
@@ -907,6 +907,89 @@ function upsertTopRanked(list, entry, keepSmall) {
   const rank = list.findIndex(function (x) { return x.who === entry.who; }) + 1;
   return { changed: changed, rank: rank, top: keepSmall ? 'small' : 'big' };
 }
+
+// ---- 日榜 / 周榜分桶（v0.13.8）----
+// 记录页的排行榜支持「日榜 / 周榜 / 总榜」：总榜沿用 topCatches / topSmall（全服历史前十），
+// 日榜与周榜按时间桶现算——每次入榜的渔获同时写进「当天」与「本周」两个桶，桶内各留前十。
+// 桶按时间滚动淘汰（日 8 天 / 周 5 周），所以文件体积有上界，不会随运营时长无限膨胀。
+const RANK_KEEP_DAYS = 8, RANK_KEEP_WEEKS = 5, RANK_MAX = 10;
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+function dayKeyOf(ts) { const d = new Date(ts); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+// 周键 = 该周周一的日期（周一为一周起点，字符串排序即时间排序）
+function weekKeyOf(ts) {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return dayKeyOf(d.getTime());
+}
+function rankBuckets() {
+  if (!world.rank || typeof world.rank !== 'object') world.rank = { day: {}, week: {} };
+  if (!world.rank.day) world.rank.day = {};
+  if (!world.rank.week) world.rank.week = {};
+  return world.rank;
+}
+function pruneRanks() {
+  const b = rankBuckets();
+  const cutD = dayKeyOf(Date.now() - RANK_KEEP_DAYS * 86400000);
+  Object.keys(b.day).forEach(function (k) { if (k < cutD) delete b.day[k]; });
+  const cutW = weekKeyOf(Date.now() - RANK_KEEP_WEEKS * 7 * 86400000);
+  Object.keys(b.week).forEach(function (k) { if (k < cutW) delete b.week[k]; });
+}
+// 入桶：同一条渔获同时写进日桶与周桶（各留前十最大 / 前十小）
+function rankPut(fishId, size, who, ts) {
+  const b = rankBuckets();
+  [[b.day, dayKeyOf(ts)], [b.week, weekKeyOf(ts)]].forEach(function (kv) {
+    const scope = kv[0];
+    const bucket = (scope[kv[1]] = scope[kv[1]] || {});
+    const cell = (bucket[fishId] = bucket[fishId] || { big: [], small: [] });
+    if (!Array.isArray(cell.big)) cell.big = [];
+    if (!Array.isArray(cell.small)) cell.small = [];
+    upsertTopRanked(cell.big, { size: size, who: who, t: ts }, false);
+    upsertTopRanked(cell.small, { size: size, who: who, t: ts }, true);
+  });
+  pruneRanks();
+}
+// 取某个时间桶的榜（range='day'|'week'）；无该鱼种记录时返回空数组
+function rankListOf(range, fishId, small) {
+  const b = rankBuckets();
+  const key = range === 'day' ? dayKeyOf(Date.now()) : weekKeyOf(Date.now());
+  const bucket = (b[range] || {})[key] || {};
+  const cell = bucket[fishId];
+  if (!cell) return [];
+  return (small ? cell.small : cell.big) || [];
+}
+function rankLabelOf(range) {
+  const now = Date.now();
+  return range === 'day' ? ('日榜 · ' + dayKeyOf(now)) : (range === 'week' ? ('周榜 · ' + weekKeyOf(now) + ' 当周') : '总榜 · 历史前十');
+}
+// 全场最大：删纪录后需要重算（不存缓存，直接从各鱼种最大纪录里取最高）
+function recomputeGlobalMax() {
+  let best = null;
+  const m = world.bigRecords || {};
+  Object.keys(m).forEach(function (id) { const r = m[id]; if (r && (!best || r.size > best.size)) best = r; });
+  return best;
+}
+// 删除某个鱼种（或全部）的纪录：最大 / 最小 / 前十大 / 前十小 / 日周榜桶，并同步全场最大与最新播报
+function deleteRecords(fishId) {
+  const all = !fishId;
+  const n = { big: 0, small: 0, top: 0, topSmall: 0, rank: 0 };
+  const hit = function (id) { return all || id === fishId; };
+  if (world.bigRecords) Object.keys(world.bigRecords).forEach(function (id) { if (hit(id)) { delete world.bigRecords[id]; n.big++; } });
+  if (world.smallRecords) Object.keys(world.smallRecords).forEach(function (id) { if (hit(id)) { delete world.smallRecords[id]; n.small++; } });
+  if (world.topCatches) Object.keys(world.topCatches).forEach(function (id) { if (hit(id)) { delete world.topCatches[id]; n.top++; } });
+  if (world.topSmall) Object.keys(world.topSmall).forEach(function (id) { if (hit(id)) { delete world.topSmall[id]; n.topSmall++; } });
+  const b = rankBuckets();
+  ['day', 'week'].forEach(function (scope) {
+    Object.keys(b[scope]).forEach(function (k) {
+      const bucket = b[scope][k];
+      Object.keys(bucket).forEach(function (id) { if (hit(id)) { delete bucket[id]; n.rank++; } });
+      if (!Object.keys(bucket).length) delete b[scope][k];
+    });
+  });
+  if (!world.globalMax || hit(world.globalMax.id)) world.globalMax = recomputeGlobalMax();
+  if (world.lastRec && hit(world.lastRec.id)) world.lastRec = null;
+  return n;
+}
 // 榜单播报文案（全部鱼种 / 全部榜单）：按重要性取一条播报
 //   1 全场最大纪录被破 · 2 该鱼种最大/最小纪录 · 3 前十大更新 · 4 前十小更新
 function boardAnnouncement(o) {
@@ -995,6 +1078,9 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     const topS = (world.topSmall[item.id] = world.topSmall[item.id] || []);
     const topSRes = upsertTopRanked(topS, { size: size, who: rec.name, t: Date.now() }, true);
     if (topSRes.changed) topSmallRank = topSRes.rank;
+    // v0.13.8：日榜/周榜分桶——每次有效渔获都写（内存廉价），落盘走 2 秒防抖 saveRecordsSoon
+    rankPut(item.id, size, rec.name, Date.now());
+    saveRecordsSoon();
   }
 
   const entry = { t: Date.now(), who: rec.name, item: item, ground: ground.name, spot: spot.name, size: item.size || null };
@@ -1024,6 +1110,16 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     globalMax: !!globalRecord, record: !!recordEvent, small: !!smallEvent, topBig: topBigRank, topSmall: topSmallRank,
   });
   if (board && bannerCatchAllowed(board.level)) broadcast({ type: 'globalRecord', record: Object.assign({}, globalRecord || { id: item.id, name: itemName(item.id), size: item.size, who: rec.name, t: Date.now() }, { text: board.text, level: board.level }) });
+  if (board) {
+    // v0.13.8：记录页顶部展示「当前最新播报的鱼」——横幅那条播报同步存一份，
+    // 随 /api/records 下发（recordsDirty 广播会触发前端重新拉取，无需刷新页面）。
+    world.lastRec = {
+      id: item.id, name: itemName(item.id),
+      size: (item.size != null ? (Math.round(item.size * 10) / 10) : null),
+      who: rec.name, t: Date.now(), level: board.level, text: board.text, global: !!globalRecord,
+    };
+    markRecordsDirty();
+  }
   if (recordEvent || smallEvent || globalRecord) {
     saveRecords();
     if (recordEvent || smallEvent) markRecordsDirty();
@@ -1650,56 +1746,117 @@ function sellableOf(id) { return D.isSellable(id) || id === 'comp_generic'; }
 // 单件成交价：经济物品随供需浮动；组件实例与旧通用组件为固定价
 function unitPriceOf(id) { return ECO_PRICE[id] ? currentPrice(id) : (D.itemOf(id).price || 10); }
 
-// ---- 自动售出（玩家自助规则，仅渔获；规则存在账号上）----
-// rec.autoSell = { all: {minPct,minPrice}|null, fish: { <鱼id>: {minPct,minPrice} } }
-// 单鱼规则优先于「全部鱼」；minPct=基准价的百分比线，minPrice=绝对价格线，两线任一达到即卖。
-// 触发时机：钓到鱼入包后 / 每分钟价格采样（价格回升越过阈值）/ 登录时。
+// ---- 自动售出（玩家自助规则，规则存在账号上）----
+// v0.13.8 重做：由「钓到即按价格线全量卖出」改为「按件启用 + 保留量 + 攒够一包再卖」。
+// 规则模型： rec.autoSell = { items: { <物品id>: { on, minPct, minPrice, slackPct, slackPrice, keep } } }
+//   · on       —— 该物品是否参与自动售出（关掉只停用，阈值原样保留）
+//   · minPct   —— 基准价百分比线（150 = 基准的 150%）；minPrice —— 绝对价格线；
+//                 两条都空 = 不看价格，只看保留量与打包阈值（材料常用的「留够就卖多余的」）
+//   · keep     —— 最少保留数量：可用量里先扣掉 keep，只有超出的部分会被卖
+// 可参与的物品 = 渔获 + 材料（组件/宝匣/钓竿不参与，它们走市集）。
+// 打包（带宽）：可卖余量 = 可用量 − keep，攒够全服阈值（world.autoSellCfg.batch，后台可调）
+// 才成交一次；命中即整批卖出，一次推送包含全部物品——省掉逐条上鱼的 notice/assets 往返。
+// 触发时机：钓到入包后 / 每分钟价格采样（价格回升越过阈值）/ 登录读档 / 规则保存 / 后台模拟上鱼。
 // 出售走与手动 /api/sell 完全相同的经济路径（单乘数下压、今日售出、交易流水），行情一致。
-function autoSellRuleOf(rec, id) {
-  const a = rec.autoSell || {};
-  const own = (a.fish || {})[id];
-  if (own) return own;
-  return a.all || null;
+const AUTO_SELL_BATCH_DEFAULT = 100; // 默认打包阈值（条）
+const AUTO_SELL_BATCH_MAX = 10000;
+const AUTOSELL_BATCH_ENV = parseInt(process.env.AUTOSELL_BATCH, 10) || 0; // 测试/运维固定阈值（优先于后台配置）
+function autoSellBatchOf() {
+  if (AUTOSELL_BATCH_ENV >= 1) return Math.min(AUTOSELL_BATCH_ENV, AUTO_SELL_BATCH_MAX);
+  const v = parseInt(world.autoSellCfg && world.autoSellCfg.batch, 10);
+  return (isFinite(v) && v >= 1 && v <= AUTO_SELL_BATCH_MAX) ? v : AUTO_SELL_BATCH_DEFAULT;
 }
-function autoSellHit(rec, id) {
-  const rule = autoSellRuleOf(rec, id);
-  if (!rule) return null;
+function autoSellCfgOf() { return { batch: autoSellBatchOf(), def: AUTO_SELL_BATCH_DEFAULT, max: AUTO_SELL_BATCH_MAX }; }
+// 可参与自动售出的物品：渔获与材料（其余类别不可）
+function autoSellEligibleId(id) {
+  const k = D.itemOf(id).kind;
+  return k === 'fish' || k === 'material';
+}
+function autoSellIdsOfKind(kind) {
+  return D.allItems().filter(function (it) { return it.kind === kind; }).map(function (it) { return it.id; });
+}
+function autoSellItems(rec) { return (rec && rec.autoSell && rec.autoSell.items) || null; }
+function autoSellRuleOf(rec, id) { const t = autoSellItems(rec); return (t && t[id]) || null; }
+function autoSellKeepOf(rule) {
+  const n = Math.floor(Number(rule && rule.keep));
+  return (isFinite(n) && n > 0) ? n : 0;
+}
+// 价格线判定：浮动接受值（slack）允许在「阈值 − 浮动」提前成交，避免行情在阈值附近回落时错过；
+// 有效线最低钳到 1（百分比 1% / 价格 1💰），填多大浮动都不会变成无条件卖出。
+function autoSellHit(rec, id, rule) {
+  const r = rule || autoSellRuleOf(rec, id);
+  if (!r) return null;
   const base = basePrice(id);
   const price = currentPrice(id);
-  // 浮动接受值（slack）：行情在阈值附近回落时，允许提前「阈值 − 浮动」成交，避免错过；
-  // 有效线最低钳到 1（百分比 1% / 价格 1💰），用户填多大浮动都不会变成无条件卖出。
-  const pctLine = rule.minPct != null ? Math.max(1, rule.minPct - (Number(rule.slackPct) || 0)) : null;
-  const priceLine = rule.minPrice != null ? Math.max(1, rule.minPrice - (Number(rule.slackPrice) || 0)) : null;
+  const pctLine = r.minPct != null ? Math.max(1, r.minPct - (Number(r.slackPct) || 0)) : null;
+  const priceLine = r.minPrice != null ? Math.max(1, r.minPrice - (Number(r.slackPrice) || 0)) : null;
+  if (pctLine == null && priceLine == null) return { price: price, base: base, by: '无条件' };
   const pctOk = pctLine != null && base > 0 && price >= base * pctLine / 100;
   const priceOk = priceLine != null && price >= priceLine;
   return (pctOk || priceOk) ? { price: price, base: base, by: pctOk ? '基准' : '价格' } : null;
 }
-// 扫描背包里满足规则的鱼并按系统行情卖出；返回本次售出明细（无则 null）
+// 可卖余量：可用量（v0.13.6 起大型/巨型为预留量，自动售出只动普通量）− 最少保留量
+function autoSellExcess(rec, id, rule) { return invAvailOf(rec, id) - autoSellKeepOf(rule); }
+// 扫描启用中的物品并按系统行情卖出；只有「可卖余量 ≥ 打包阈值」且价格达标才成交，返回明细（无则 null）
 function autoSellCheck(key) {
   const rec = users[key];
-  if (!rec || !rec.autoSell) return null;
+  if (!rec) return null;
+  const items = autoSellItems(rec);
+  if (!items) return null;
+  const batch = autoSellBatchOf();
   const sold = [];
-  Object.keys(rec.inventory || {}).forEach(function (id) {
-    if (!FISH_ID_SET[id]) return;                       // 仅渔获
-    const have = invAvailOf(rec, id);                   // v0.13.6：大型/巨型单独预留，自动售出只动普通量
-    if (have <= 0 || sold.some(function (x) { return x.id === id; })) return;
-    const hit = autoSellHit(rec, id);
+  Object.keys(items).forEach(function (id) {
+    const rule = items[id];
+    if (!rule || !rule.on) return;
+    if (!autoSellEligibleId(id)) return;
+    if (sold.some(function (x) { return x.id === id; })) return;
+    const excess = autoSellExcess(rec, id, rule);
+    if (excess < batch) return;                          // 没攒够一包 → 不成交（省带宽的关键）
+    const hit = autoSellHit(rec, id, rule);
     if (!hit) return;
-    const qty = have;
+    const qty = excess;
     const unit = unitPriceOf(id);
     const gain = unit * qty;
     invAdd(rec, id, -qty);
     rec.coins += gain;
     if (ECO_PRICE[id]) registerSale(id, qty, rec.name + '·自动', unit);
-    sold.push({ id: id, name: itemName(id), qty: qty, unit: unit, gain: gain, by: hit.by });
+    sold.push({ id: id, name: itemName(id), qty: qty, unit: unit, gain: gain, by: hit.by, keep: autoSellKeepOf(rule) });
   });
   if (!sold.length) return null;
   saveAccount(key); saveEconomy(); broadcastShop();
   const total = sold.reduce(function (s, x) { return s + x.gain; }, 0);
+  const byText = sold[0].by === '无条件' ? '规则命中' : sold[0].by + '线达标';
   sendTo(key, { type: 'notice', msg: '🤖 自动售出 ' + sold.map(function (x) { return x.name + '×' + x.qty; }).join('、') +
-    '，+ ' + total + '💰（' + sold[0].by + '线达标）' });
+    '，+ ' + total + '💰（' + byText + '，打包 ' + batch + ' 条）' });
   sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, codex: rec.codex, catchCount: rec.catchCount });
   return sold;
+}
+// v0.13.8 存量迁移：旧结构 { all, fish:{id:{...}} } → { items:{ id:{ on, ... } } }。
+// 旧的「全部鱼」通配规则展开成逐鱼规则（阈值原样继承、保留量 0），保证老玩家的规则不丢。
+function migrateAutoSell() {
+  let n = 0;
+  Object.keys(users).forEach(function (k) {
+    const rec = users[k];
+    const a = rec && rec.autoSell;
+    if (!a || a.items) return;
+    const items = {};
+    const put = function (id, r) {
+      items[id] = {
+        on: true,
+        minPct: r.minPct != null ? r.minPct : null,
+        minPrice: r.minPrice != null ? r.minPrice : null,
+        slackPct: Number(r.slackPct) || 0,
+        slackPrice: Number(r.slackPrice) || 0,
+        keep: 0,
+      };
+    };
+    Object.keys(a.fish || {}).forEach(function (id) { if (autoSellEligibleId(id)) put(id, a.fish[id]); });
+    if (a.all) autoSellIdsOfKind('fish').forEach(function (id) { if (!items[id]) put(id, a.all); });
+    rec.autoSell = { items: items };
+    saveAccount(k);
+    n++;
+  });
+  if (n) console.log('[migrate] 自动售出规则升级为逐物品结构（' + n + ' 个账号；旧「全部鱼」规则已展开到各鱼种）');
 }
 
 // ---- 市集挂单规则：同时挂单上限默认每人 40 个（账号可用 listingCap 单独覆盖，0 = 不限）；
@@ -2090,6 +2247,7 @@ process.on('exit', function () {
     ks.forEach(function (k) { const rec = users[k]; if (rec) { try { writeJson(accountFile(k), rec); } catch (e) {} } });
   }
   if (sessionsDirty) { try { saveSessionsNow(); } catch (e) {} }
+  if (recordsFlushTimer) { clearTimeout(recordsFlushTimer); recordsFlushTimer = null; try { saveRecords(); } catch (e) {} }
 });
 
 // ---- 世界域：市集 / 记录 / 经济 / 配置 各自一个文件 ----
@@ -2103,9 +2261,9 @@ function saveDomain(file, keys) {
   writeJson(file, out);
 }
 const MARKET_KEYS = ['listingSeq', 'listings'];
-const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax'];
+const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax', 'rank', 'lastRec'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK'];
+const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
@@ -2125,7 +2283,29 @@ function loadMarket() {
   if (fixed) saveMarket();
 }
 function saveMarket() { saveDomain(MARKET_FILE, MARKET_KEYS); }
-function loadRecords() { loadDomain(RECORDS_FILE, RECORDS_KEYS); }
+function loadRecords() {
+  loadDomain(RECORDS_FILE, RECORDS_KEYS);
+  // v0.13.8 存量修复：渔获记录里只该有渔获。历史上被改判成别的分类的物品（如龙宫宝珠：
+  // v0.11 起从「鱼」划归「材料」）会残留在记录页的最大/最小/前十榜里，载入时统一剔除并回写。
+  let n = 0;
+  ['bigRecords', 'smallRecords', 'topCatches', 'topSmall'].forEach(function (k) {
+    const m = world[k];
+    if (!m || typeof m !== 'object') return;
+    Object.keys(m).forEach(function (id) { if (!FISH_ID_SET[id]) { delete m[id]; n++; } });
+  });
+  const b = rankBuckets();
+  ['day', 'week'].forEach(function (scope) {
+    Object.keys(b[scope]).forEach(function (day) {
+      const bucket = b[scope][day];
+      Object.keys(bucket).forEach(function (id) { if (!FISH_ID_SET[id]) { delete bucket[id]; n++; } });
+      if (!Object.keys(bucket).length) delete b[scope][day];
+    });
+  });
+  if (world.globalMax && !FISH_ID_SET[world.globalMax.id]) { world.globalMax = recomputeGlobalMax(); n++; }
+  if (world.lastRec && !FISH_ID_SET[world.lastRec.id]) { world.lastRec = null; n++; }
+  pruneRanks();
+  if (n) { saveRecords(); console.log('[records] 已清理 ' + n + ' 条非渔获残留纪录（分类变动的历史物品）'); }
+}
 function saveRecords() { saveDomain(RECORDS_FILE, RECORDS_KEYS); }
 function loadEconomy() { loadDomain(ECONOMY_FILE, ECONOMY_KEYS); }
 function saveEconomy() { saveDomain(ECONOMY_FILE, ECONOMY_KEYS); }
@@ -2222,6 +2402,7 @@ function loadWorld() {
   void hasDomain;
 }
 loadUsers();
+migrateAutoSell(); // v0.13.8 自动售出重做：旧 {all,fish} 结构升级为逐物品 {items}
 loadWorld();
 armStatsSampler();   // 统计采样基于 loadWorld 后的历史样本，必须排在其后
 loadSessions(); // 重启后恢复登录态（客户端可自动登录，见 sessionGet 注释）
@@ -2606,6 +2787,14 @@ function markRecordsDirty() {
   }, 1000);
 }
 let recordsDirtyTimer = null;
+// 榜单桶（日/周）每次渔获都会写内存，落盘不能再走「每竿一次同步写」——
+// 与账号落盘同款防抖：2 秒静默后一次性写盘；进程退出前强制刷一次（见 process.on('exit')）。
+let recordsFlushTimer = null;
+function saveRecordsSoon() {
+  if (recordsFlushTimer) return;
+  recordsFlushTimer = setTimeout(function () { recordsFlushTimer = null; try { saveRecords(); } catch (e) {} }, 2000);
+  if (recordsFlushTimer.unref) recordsFlushTimer.unref();
+}
 
 // ================================================================
 // ---- 后台批量上架（活跃市场）：按配置现造一批可上架物品 ----
@@ -2708,7 +2897,7 @@ function bulkListPlan(d) {
   const mul = mulMin === mulMax ? String(mulMin) : (mulMin + '~' + mulMax);
   return { items: items, hours: hours, mul: mul, byKind: byKind };
 }
-function broadcastRecords() { broadcast({ type: 'records', records: world.bigRecords, small: world.smallRecords }); }
+function broadcastRecords() { broadcast({ type: 'records', records: world.bigRecords, small: world.smallRecords, last: world.lastRec || null }); }
 
 function groundCounts() {
   const map = {};
@@ -3231,6 +3420,8 @@ const server = http.createServer(function (req, res) {
           }
           const dTopS = upsertTopRanked((world.topSmall[itemId] = world.topSmall[itemId] || []), { size: rsize, who: rec.name, t: Date.now() }, true);
           if (dTopS.changed) topSmallRankDev = dTopS.rank;
+          rankPut(itemId, rsize, rec.name, Date.now());   // v0.13.8：日榜/周榜分桶（与线上同一路径）
+          saveRecordsSoon();
         }
         const entry = { t: Date.now(), who: rec.name, item: Object.assign({}, d.item, { id: itemId }, isFinite(size) && size > 0 ? { size: Math.round(size * 10) / 10 } : {}, devTier ? { tier: devTier } : {}), ground: d.ground, spot: d.spot, size: isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null };
         feed.unshift(entry); if (feed.length > 60) feed.pop();
@@ -3243,6 +3434,14 @@ const server = http.createServer(function (req, res) {
           globalMax: !!globalRecordDev, record: !!recordEvent, small: smallEventDev, topBig: topBigRankDev, topSmall: topSmallRankDev,
         });
         if (boardDev && bannerCatchAllowed(boardDev.level)) broadcast({ type: 'globalRecord', record: Object.assign({}, globalRecordDev || { id: itemId, name: itemName(itemId), size: size, who: rec.name, t: Date.now() }, { text: boardDev.text, level: boardDev.level }) });
+        if (boardDev) {
+          // 与线上一致：记录页顶部的「最新播报」同步更新
+          world.lastRec = {
+            id: itemId, name: itemName(itemId), size: (isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null),
+            who: rec.name, t: Date.now(), level: boardDev.level, text: boardDev.text, global: !!globalRecordDev,
+          };
+          markRecordsDirty();
+        }
         if (recordEvent || smallEventDev || globalRecordDev) {
           saveRecords();
           if (recordEvent || smallEventDev) markRecordsDirty();
@@ -3698,28 +3897,29 @@ const server = http.createServer(function (req, res) {
     return;
   }
 
-  // ---- 自动售出规则：读取 / 设置（玩家自助，仅渔获） ----
-  // 规则：scope='all' 为全部鱼；scope=鱼id 为单鱼（优先于全部鱼）。
-  // minPct=基准价百分比线（如 150 = 基准的 150%），minPrice=绝对价格线；两线任一达到即卖，都空 = 清除该规则。
+  // ---- 自动售出规则：读取 / 设置（玩家自助） ----
+  // v0.13.8 重做：按物品（渔获 / 材料）逐条启用，支持最少保留数量与批量设置。
+  // 规则项：{ on, minPct, minPrice, slackPct, slackPrice, keep }；两条价格线都空 = 不看价格。
+  // 请求：单件 { id, ... }；批量 { bulk: 'fish'|'material'|'all', ... }；只传 on = 就地开关（不动阈值）；
+  //       remove:true = 删除该件（或该批）规则。空值（'' / null）表示该线不参与判定。
   if (p === '/api/autosell' && req.method === 'GET') {
     const key = u.query.token && sessionGet(u.query.token);
     if (!key) return apiResp(res, 401, { error: '未登录' });
     const rec = users[key];
-    return apiResp(res, 200, { ok: true, all: (rec.autoSell && rec.autoSell.all) || null, fish: (rec.autoSell && rec.autoSell.fish) || {} });
+    return apiResp(res, 200, { ok: true, items: autoSellItems(rec) || {}, batch: autoSellBatchOf() });
   }
   if (p === '/api/autosell' && req.method === 'POST') {
     readBody(req, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       auth(req, res, body, function (d, key) {
         const rec = users[key];
-        const scope = String(d.scope || '');
-        const clean = function (v, max) {
+        const cleanPos = function (v, max) {
           if (v == null || v === '') return null;
           const n = Math.floor(Number(v));
           return (isFinite(n) && n > 0 && n <= max) ? n : NaN;
         };
-        const minPct = clean(d.minPct, 1000000);
-        const minPrice = clean(d.minPrice, 1e9);
+        const minPct = cleanPos(d.minPct, 1000000);
+        const minPrice = cleanPos(d.minPrice, 1e9);
         // 浮动接受值：允许 0（不浮动）；为非负数
         const cleanSlack = function (v, max) {
           if (v == null || v === '') return 0;
@@ -3728,22 +3928,52 @@ const server = http.createServer(function (req, res) {
         };
         const slackPct = cleanSlack(d.slackPct, 1000000);
         const slackPrice = cleanSlack(d.slackPrice, 1e9);
-        if (isNaN(minPct) || isNaN(minPrice) || isNaN(slackPct) || isNaN(slackPrice)) {
-          return apiResp(res, 400, { error: '阈值需为正整数，浮动需为非负数' });
+        // 最少保留数量：允许 0（不保留）
+        const cleanKeep = function (v) {
+          if (v == null || v === '') return 0;
+          const n = Math.floor(Number(v));
+          return (isFinite(n) && n >= 0 && n <= 1e9) ? n : NaN;
+        };
+        const keep = cleanKeep(d.keep);
+        if (isNaN(minPct) || isNaN(minPrice) || isNaN(slackPct) || isNaN(slackPrice) || isNaN(keep)) {
+          return apiResp(res, 400, { error: '阈值需为正整数，浮动与保留数量需为非负数' });
         }
-        rec.autoSell = rec.autoSell || { fish: {} };
-        if (!rec.autoSell.fish) rec.autoSell.fish = {};
-        if (scope === 'all') {
-          if (minPct == null && minPrice == null) delete rec.autoSell.all;
-          else rec.autoSell.all = { minPct: minPct, minPrice: minPrice, slackPct: slackPct, slackPrice: slackPrice };
+        const bulk = d.bulk != null && d.bulk !== '' ? String(d.bulk) : null;
+        let ids;
+        if (bulk) {
+          if (bulk === 'all') ids = autoSellIdsOfKind('fish').concat(autoSellIdsOfKind('material'));
+          else if (bulk === 'fish' || bulk === 'material') ids = autoSellIdsOfKind(bulk);
+          else return apiResp(res, 400, { error: '未知批量范围：' + bulk });
         } else {
-          if (!FISH_ID_SET[scope]) return apiResp(res, 400, { error: '未知鱼类：' + scope });
-          if (minPct == null && minPrice == null) delete rec.autoSell.fish[scope];
-          else rec.autoSell.fish[scope] = { minPct: minPct, minPrice: minPrice, slackPct: slackPct, slackPrice: slackPrice };
+          const id = (d.id != null && d.id !== '') ? String(d.id) : (d.scope != null ? String(d.scope) : '');
+          if (!id) return apiResp(res, 400, { error: '缺少物品 id' });
+          if (!autoSellEligibleId(id)) return apiResp(res, 400, { error: '该物品不能自动售出（仅渔获与材料）：' + id });
+          ids = [id];
         }
+        // 只传了 on（或 remove）：就地开关，不动已有阈值——界面上的勾选框走这条路径
+        const toggleOnly = d.minPct === undefined && d.minPrice === undefined &&
+          d.slackPct === undefined && d.slackPrice === undefined && d.keep === undefined;
+        rec.autoSell = rec.autoSell || { items: {} };
+        if (!rec.autoSell.items) rec.autoSell.items = {};
+        const tb = rec.autoSell.items;
+        ids.forEach(function (id) {
+          if (d.remove) { delete tb[id]; return; }
+          if (toggleOnly) {
+            const prev = tb[id];
+            if (!prev) return;                                  // 没有配置过就没有可开关的
+            prev.on = d.on != null ? !!d.on : !prev.on;
+            return;
+          }
+          tb[id] = {
+            on: d.on != null ? !!d.on : true,
+            minPct: minPct, minPrice: minPrice,
+            slackPct: slackPct, slackPrice: slackPrice,
+            keep: keep,
+          };
+        });
         saveAccount(key);
         const sold = (function () { try { return autoSellCheck(key); } catch (e) { return null; } })();
-        apiResp(res, 200, { ok: true, all: rec.autoSell.all || null, fish: rec.autoSell.fish || {},
+        apiResp(res, 200, { ok: true, items: rec.autoSell.items || {}, batch: autoSellBatchOf(),
           sold: sold || null, coins: rec.coins, inventory: rec.inventory, shop: shopSnapshot() });
       });
     });
@@ -4030,6 +4260,8 @@ const server = http.createServer(function (req, res) {
       // 经济参数（商店文案与容量提示用；改动经 pricecfg 广播同步）
       priceCfg: priceCfg(),
       dropCfg: dropCfg(),
+      // 自动售出打包阈值（全服，后台可调；改动经 autosellcfg 广播同步）
+      autoSellCfg: autoSellCfgOf(),
       // 宝匣配置（突破保底次数 + 各档位合成成本）：宝匣页据此显示成本与保底进度
       chestCfg: chestCfgOf(),
       // 工坊熔炼参数（成功率/花费系数）：工坊页据此展示预览；改动经 smeltcfg 广播同步
@@ -4150,15 +4382,26 @@ const server = http.createServer(function (req, res) {
     return apiResp(res, 200, { codex: rec.codex || {}, catchCount: rec.catchCount || 0 });
   }
   if (p === '/api/records' && req.method === 'GET') {
-    return apiResp(res, 200, { records: world.bigRecords, small: world.smallRecords, globalMax: world.globalMax || null });
+    return apiResp(res, 200, {
+      records: world.bigRecords, small: world.smallRecords, globalMax: world.globalMax || null,
+      // v0.13.8：记录页顶部展示「当前最新播报的鱼」（没有播报过时为 null，前端回退到全场最大）
+      last: world.lastRec || null,
+      rankLabel: { day: rankLabelOf('day'), week: rankLabelOf('week'), all: rankLabelOf('all') },
+    });
   }
-  // 某种鱼的全服前十大捕获记录 / 前十小（公开只读；kind=small 取小鱼榜）
+  // 某种鱼的捕获榜（公开只读）：range=day|week|all（默认 all）；kind=small 取小鱼榜
   if (p === '/api/records/top' && req.method === 'GET') {
     const fid = u.query.id;
     if (!FISH_ID_SET[fid]) return apiResp(res, 404, { error: '未知鱼类' });
     const small = String(u.query.kind || '') === 'small';
-    const list = small ? ((world.topSmall && world.topSmall[fid]) || []) : ((world.topCatches && world.topCatches[fid]) || []);
-    return apiResp(res, 200, { id: fid, name: itemName(fid), kind: small ? 'small' : 'big', top: list });
+    const range = (u.query.range === 'day' || u.query.range === 'week') ? u.query.range : 'all';
+    const list = range === 'all'
+      ? (small ? ((world.topSmall && world.topSmall[fid]) || []) : ((world.topCatches && world.topCatches[fid]) || []))
+      : rankListOf(range, fid, small);
+    return apiResp(res, 200, {
+      id: fid, name: itemName(fid), kind: small ? 'small' : 'big', range: range,
+      label: rankLabelOf(range), top: list,
+    });
   }
 
   // ================================================================
@@ -4776,6 +5019,8 @@ const server = http.createServer(function (req, res) {
       priceDefaults: PRICE_DEFAULTS,
       dropCfg: dropCfg(),
       dropDefaults: DROP_DEFAULTS,
+      // ---- 自动售出打包阈值（全服）----
+      autoSellCfg: autoSellCfgOf(),
       economyCatalog: economyCatalog,
       economyLog: (world.economyLog || []).slice(-40),
       // ---- 宝匣配置 ----
@@ -5663,6 +5908,24 @@ const server = http.createServer(function (req, res) {
     return;
   }
   // ---- 设置：通知等级 / 上钩公式（validateOnly=true 只校验不保存；evalVars 附带试算） ----
+  // ---- 渔获纪录管理：删除某个鱼种 / 全部的捕获纪录（最大、最小、前十大、前十小、日周榜）（管理员）----
+  if (p === '/api/admin/records/delete' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const id = (d.id != null && d.id !== '') ? String(d.id) : '';
+      if (id && !FISH_ID_SET[id]) return apiResp(res, 400, { error: '未知鱼类：' + id });
+      const removed = deleteRecords(id || null);
+      saveRecords();
+      markRecordsDirty();
+      broadcastRecords();
+      econLog(a.name, id ? ('删除渔获纪录：' + itemName(id)) : '删除全部渔获纪录');
+      apiResp(res, 200, { ok: true, id: id || null, removed: removed,
+        records: world.bigRecords, small: world.smallRecords, globalMax: world.globalMax || null, last: world.lastRec || null });
+    });
+    return;
+  }
   if (p === '/api/admin/settings' && req.method === 'POST') {
     readBody(req, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
@@ -5714,6 +5977,21 @@ const server = http.createServer(function (req, res) {
         if (!isFinite(b) || b < 0 || b > 1) return apiResp(res, 400, { error: '基础双钓率需在 0 - 1 之间' });
         if (!d.validateOnly) world.doubleBase = b;
         out.doubleBase = b;
+      }
+      // 自动售出打包阈值：可卖余量攒够这个条数才成交一次（省掉逐条上鱼的收发包）
+      if (d.autoSellCfg != null && d.autoSellCfg !== '' && typeof d.autoSellCfg === 'object') {
+        const b = parseInt(d.autoSellCfg.batch, 10);
+        if (!isFinite(b) || b < 1 || b > AUTO_SELL_BATCH_MAX) {
+          return apiResp(res, 400, { error: '自动售出打包阈值需在 1 - ' + AUTO_SELL_BATCH_MAX + ' 之间' });
+        }
+        if (!d.validateOnly) {
+          world.autoSellCfg = { batch: b };
+          // 阈值调低后，在线玩家可能立刻够一包 → 就地跑一遍
+          players.forEach(function (p, k) { try { autoSellCheck(k); } catch (e) {} });
+          broadcast({ type: 'autosellcfg', autoSellCfg: autoSellCfgOf() });
+          econLog(a.name, '自动出售打包阈值：' + b + ' 条');
+        }
+        out.autoSellCfg = autoSellCfgOf();
       }
       // 抛竿间隔与全服钓速：基础值 / 最短值 / 全服钓速加成 / 有效钓速上限
       // 保存后广播并重启所有在线钓鱼循环（钓速只影响间隔，上钩率由公式决定）

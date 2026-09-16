@@ -129,9 +129,11 @@ if (fs.existsSync(ACCOUNTS_DIR)) {
     if (!acc || typeof acc !== 'object') return;
     report.accounts++;
     let dirty = false;
-    if (acc.autoSell && acc.autoSell.fish && acc.autoSell.fish[PEARL_ID]) {
-      delete acc.autoSell.fish[PEARL_ID];
-      if (!Object.keys(acc.autoSell.fish).length) delete acc.autoSell.fish;
+    // v0.13.8 起自动售出是逐物品结构 { items: { id: {...} } }（旧结构 { all, fish } 由服务端载入时迁移）
+    const bag = acc.autoSell && (acc.autoSell.items || acc.autoSell.fish);
+    if (bag && bag[PEARL_ID]) {
+      delete bag[PEARL_ID];
+      if (!Object.keys(bag).length) { delete acc.autoSell.items; delete acc.autoSell.fish; }
       report.autoSell++;
       dirty = true;
     }

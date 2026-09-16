@@ -369,8 +369,11 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .shop-colmain { flex: 1; min-width: 0; }
 .shop-colside { width: 340px; flex: none; border-left: 1px solid var(--line); padding-left: 16px; }
 .as-list { max-height: 520px; overflow: auto; }
+.as-group { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 8px 0 2px; font-weight: 600; color: var(--muted); font-size: 12px; }
+.as-group .as-count { font-weight: 500; }
 .as-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px dashed var(--line); font-size: 13px; }
 .as-row.on { background: rgba(251,191,36,.07); border-radius: 6px; }
+.as-row .as-chk { flex: none; cursor: pointer; }
 .as-row .as-name { font-weight: 600; min-width: 76px; }
 .as-row .as-meta { color: var(--muted); font-size: 12px; flex: 1; }
 .as-row .as-rule { color: var(--big); font-size: 12px; text-align: right; }
@@ -544,6 +547,8 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .codex-cell.tier-bronze { border-color: #b87333; box-shadow: inset 0 0 0 1px rgba(184,115,51,.35); }
 .codex-cell.tier-silver { border-color: #c9d1d9; box-shadow: inset 0 0 0 1px rgba(201,209,217,.40); }
 .codex-cell.tier-gold { border-color: #ffd700; box-shadow: inset 0 0 0 1px rgba(255,215,0,.45), 0 0 10px rgba(255,215,0,.22); }
+/* v0.13.8 材料/组件没有体型档，用「图鉴 · 钓点」同款高亮边框（青绿 + 外发光） */
+.codex-cell.k-nosize { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(52,224,192,.18); }
 .cx-tier { color: #ffd24a; font-weight: 600; }
 /* 未解锁卡片只压暗自身内容（详情现已移到子窗口，不再是卡片子节点） */
 .codex-cell:not(.got) > * { opacity: .5; }
@@ -1015,6 +1020,20 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .top10-time { color: var(--muted); font-size: 11px; flex: none; }
 .record-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
 .record-cell.none { opacity: .5; }
+/* v0.13.8 最大/最小合并：同一鱼图左右并排，左大右小一眼区分（大图＝最大纪录、小图＝最小纪录） */
+.rc-pair { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
+.rc-half { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.rc-half b { font-size: 10px; font-weight: 600; color: var(--muted); }
+.rc-half.max b { color: var(--big); }
+.rc-half.min b { color: var(--accent2); }
+.rc-half.max .rc-icon { transform: scale(1); }
+.rc-half.min .rc-icon { transform: scale(.62); }
+/* 记录页顶部「最新播报」：与横幅播报同源，加一道高亮边框区分于旧的「全场最大」 */
+.record-hero.live { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(45,212,191,.25) inset; }
+.record-hero .rh-text { width: 100%; font-size: 13px; color: var(--accent2); margin-top: 4px; }
+/* 排行榜弹窗的范围 / 榜单切换行 */
+.rec-tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.rec-tabs .sub-label { font-size: 12px; color: var(--muted); margin-right: 2px; }
 .rc-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
 .rc-name.locked-name { color: var(--muted); font-weight: 400; }
 .rc-size { font-size: 20px; font-weight: 800; color: var(--big); }

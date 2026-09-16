@@ -56,7 +56,7 @@ let srv = null;
 function startServer() {
   const p = spawn(NODE, [path.join('backend', 'server.js')], {
     cwd: ROOT,
-    env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }),
+    env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', AUTOSELL_BATCH: '1', FISHING_DATA_DIR: TMP_DATA }),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   p.stdout.on('data', () => {});
@@ -152,7 +152,7 @@ function startServer() {
   check('普通上架预留鱼 → 400', mOver.status === 400, JSON.stringify(mOver.data));
 
   // 自动售出跳过预留：规则 minPrice=1（现价必达标）→ 只卖普通量
-  const asSet = await POST(B + '/api/autosell', authed('/api/autosell', { scope: 'all', minPrice: 1 }));
+  const asSet = await POST(B + '/api/autosell', authed('/api/autosell', { bulk: 'fish', minPrice: 1 }));
   check('设置自动售出规则 200', asSet.status === 200, JSON.stringify(asSet.data));
   await POST(B + '/api/dev/catch', authed('/api/dev/catch', { item: { id: 'carp', size: 50 } })); // 普通鲤鱼 → 立即被自动售出
   const me3 = await GET(B + '/api/me?token=' + TOK);
@@ -160,7 +160,7 @@ function startServer() {
     me3.data && me3.data.bigfish && me3.data.bigfish.carp.L === 2 && me3.data.bigfish.carp.G === 1,
     JSON.stringify(me3.data && me3.data.bigfish));
   check('自动售出后背包 = 预留总量（3）', me3.data && (me3.data.inventory.carp || 0) === 3, JSON.stringify(me3.data && me3.data.inventory));
-  await POST(B + '/api/autosell', authed('/api/autosell', { scope: 'all', minPrice: '' })); // 清规则
+  await POST(B + '/api/autosell', authed('/api/autosell', { bulk: 'all', remove: true })); // 清规则
 
   // ---- 持久化：重启后预留与图鉴档仍在 ----
   section('存档持久化（重启）');

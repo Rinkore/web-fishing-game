@@ -18,6 +18,9 @@ window.Engine = (function () {
     castCfg: null,              // 后台抛竿间隔/全服钓速配置（/api/version 与 castcfg 广播同步）
     priceCfg: null,             // 后台经济参数（价格模型；/api/version 与 pricecfg 广播同步）
     dropCfg: null,              // 后台产出倍率（全局+分类；同上）
+    autoSellCfg: null,          // 自动售出打包阈值（/api/version 与 autosellcfg 广播同步）
+    recordsLast: null,          // 记录页顶部「最新播报的鱼」（/api/records 的 last）
+    recordsRankLabel: null,     // 榜单范围文案（日/周/总，服务端现算）
     rodName: '',                // 当前钓竿命名
     rodSlots: [],               // 钓竿槽位（含已保存钓竿：name/parts/affixes）
     rodSlotsCount: 1,           // 已购买槽位数（首个免费）

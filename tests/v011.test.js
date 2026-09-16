@@ -878,7 +878,7 @@ function startServer() {
     fs.writeFileSync(path.join(CLEAN_DIR, 'accounts', 'p.json'), JSON.stringify({
       username: 'p', coins: 1,
       codex: { dragonpearl: { count: 3, first: 1 }, tuna: { count: 1 } },
-      autoSell: { fish: { dragonpearl: { minPct: 150 }, tuna: { minPrice: 100 } } },
+      autoSell: { items: { dragonpearl: { on: true, minPct: 150, keep: 0 }, tuna: { on: true, minPrice: 100, keep: 0 } } },
     }, null, 2));
     const dry = spawnSync(NODE, [path.join('tools', 'clean-dragonpearl.js'), '--data', CLEAN_DIR, '--dry-run'], { cwd: ROOT, encoding: 'utf8' });
     check('清理脚本 --dry-run 不写盘', dry.status === 0 && /演练/.test(dry.stdout), (dry.stdout || '').slice(-80));
@@ -894,7 +894,7 @@ function startServer() {
       !!rec.globalMax && rec.globalMax.id === 'tuna' && rec.globalMax.size === 300, JSON.stringify(rec.globalMax));
     const acc = JSON.parse(fs.readFileSync(path.join(CLEAN_DIR, 'accounts', 'p.json'), 'utf8'));
     check('自动售出里的龙宫宝珠规则被清掉、其它规则保留',
-      !(acc.autoSell.fish || {}).dragonpearl && !!acc.autoSell.fish.tuna, JSON.stringify(acc.autoSell));
+      !(acc.autoSell.items || {}).dragonpearl && !!acc.autoSell.items.tuna, JSON.stringify(acc.autoSell));
     check('图鉴条目默认保留（--codex 才删）', !!acc.codex.dragonpearl, JSON.stringify(Object.keys(acc.codex)));
     const run2 = spawnSync(NODE, [path.join('tools', 'clean-dragonpearl.js'), '--data', CLEAN_DIR, '--no-backup', '--codex'], { cwd: ROOT, encoding: 'utf8' });
     const acc2 = JSON.parse(fs.readFileSync(path.join(CLEAN_DIR, 'accounts', 'p.json'), 'utf8'));

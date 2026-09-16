@@ -115,6 +115,7 @@ window.Net = (function () {
     if (d.castCfg) state().castCfg = d.castCfg;
     if (d.priceCfg) state().priceCfg = d.priceCfg;
     if (d.dropCfg) state().dropCfg = d.dropCfg;
+    if (d.autoSellCfg) state().autoSellCfg = d.autoSellCfg;
     if (d.smeltCfg && window.GameData.setSmeltCfg) {
       window.GameData.setSmeltCfg(d.smeltCfg);
       state().smeltCfg = window.GameData.getSmeltCfg();
@@ -180,15 +181,17 @@ window.Net = (function () {
   const fishingStart = (groundId, spotId) => authed('/api/fishing/start', { groundId: groundId, spotId: spotId });
   const fishingStop = () => authed('/api/fishing/stop', {});
   const bdSet = (part, compId) => authed('/api/bd/set', { part: part, compId: compId });
-  // 自动售出规则（玩家自助，仅渔获）：scope='all' 全部鱼；scope=鱼id 单鱼（优先于全部鱼）
+  // 自动售出规则（玩家自助）：单件 { id, ... } / 批量 { bulk:'fish'|'material'|'all', ... }；
+  // 只传 { id, on } = 就地开关（不动阈值）；remove:true 删除规则
   const autoSellGet = () => apiFetch('GET', '/api/autosell?token=' + encodeURIComponent(me ? me.token : ''));
-  const autoSellSet = (scope, minPct, minPrice, slackPct, slackPrice) => authed('/api/autosell', { scope: scope, minPct: minPct, minPrice: minPrice, slackPct: slackPct, slackPrice: slackPrice });
+  const autoSellSet = (payload) => authed('/api/autosell', payload || {});
   // 公开只读：商品价格历史采样 + 交易量
   const shopHistory = (id) => apiFetch('GET', '/api/shop/history?id=' + encodeURIComponent(id));
   // 我的历史订单（市集成交：买入 + 卖出）
   const marketHistory = () => apiFetch('GET', '/api/market/history?token=' + encodeURIComponent(me ? me.token : ''));
   // 某种鱼的全服前十大捕获记录（公开只读）
-  const recordsTop = (id, kind) => apiFetch('GET', '/api/records/top?id=' + encodeURIComponent(id) + (kind ? '&kind=' + encodeURIComponent(kind) : ''));
+  const recordsTop = (id, kind, range) => apiFetch('GET', '/api/records/top?id=' + encodeURIComponent(id) +
+    (kind ? '&kind=' + encodeURIComponent(kind) : '') + (range ? '&range=' + encodeURIComponent(range) : ''));
   // 横幅队列（公开只读；服务器管理后台发布）
   const fetchBanners = () => apiFetch('GET', '/api/banner').then(function (r) {
     if (r && r.ok) {
@@ -224,7 +227,13 @@ window.Net = (function () {
     return r;
   });
   const fetchRecords = () => apiFetch('GET', '/api/records').then(function (r) {
-    if (r && r.ok) { state().records = r.data.records || {}; state().smallRecords = r.data.small || {}; if (window.UI) window.UI.refreshAll('records'); }
+    if (r && r.ok) {
+      state().records = r.data.records || {};
+      state().smallRecords = r.data.small || {};
+      state().recordsLast = r.data.last || null;                  // 顶部「最新播报的鱼」
+      state().recordsRankLabel = r.data.rankLabel || null;        // 日/周/总榜的文案
+      if (window.UI) window.UI.refreshAll('records');
+    }
     return r;
   });
   // perf-9：玩家列表分页 / 搜索（服务端分页）。target 区分存储槽：'playersPage'=渔场页玩家列表，'peepsPage'=同钓点列表
@@ -479,6 +488,7 @@ window.Net = (function () {
         } else if (m.type === 'records') {
           S.records = m.records || {};
           if (m.small) S.smallRecords = m.small;
+          if (m.last !== undefined) S.recordsLast = m.last || null;
           if (ui) ui.refreshAll('records');
         } else if (m.type === 'globalRecord') {
           if (ui && ui.showRecordBanner && m.record) ui.showRecordBanner(m.record);
@@ -545,6 +555,10 @@ window.Net = (function () {
           if (m.priceCfg) S.priceCfg = m.priceCfg;
           if (m.dropCfg) S.dropCfg = m.dropCfg;
           if (ui && ui.refreshAll) ui.refreshAll('pricecfg');
+        } else if (m.type === 'autosellcfg') {
+          // 管理员调整自动售出打包阈值：商店右栏的说明与保留量提示随重绘更新
+          if (m.autoSellCfg) S.autoSellCfg = m.autoSellCfg;
+          if (ui && ui.refreshAll) ui.refreshAll('autosellcfg');
         } else if (m.type === 'subalert') {
           if (ui && ui.onSubAlert) ui.onSubAlert(m.item || {});
         } else if (m.type === 'assets') {
