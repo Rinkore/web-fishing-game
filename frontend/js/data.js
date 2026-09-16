@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.12.0';
+  const VERSION = 'v0.12.1';
   const BUILD = '2026-09-16';
 
   // ---- 渔获定义 ----
@@ -151,7 +151,7 @@
   // ---- 品质（== 组件的“稀有度”概念，统一称为品质） ----
   // 全站只有这四种品质：普通 / 稀有 / 史诗 / 神话（渔获与组件共用同一套命名与配色）。
   // cap = 该品质最多可拥有的词缀条数；mult = 实例基准价倍率；cls = 展示配色。
-  // 配色规范（前后端同一套 CSS 类，定义在 style.css）：普通=灰蓝 #cbd5e1 / 稀有=黄 / 史诗=紫 / 神话=彩虹。
+  // 配色规范（前后端同一套 CSS 类，定义在 style.css）：普通=灰蓝 #cbd5e1 / 稀有=蓝 #38bdf8 / 史诗=金 #ffd24a / 神话=彩虹。
   // v0.11 修正：此前把渔获的「大鱼」档位当成第五种品质（金色 + 👑），现已移除——
   // 大型鱼按价值归入 稀有/史诗，全站品质只剩这四种。
   // 组件实例的「满词条」金色强调只出现在背包/市集/装备弹窗，图鉴按品质正常显示。
@@ -1291,7 +1291,8 @@
     { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
     { id: 'shop', name: '系统商店', icon: '🏪', implemented: true },
     { id: 'market', name: '开放市集', icon: '💱', implemented: true },
-    { id: 'trade', name: '在线交易', icon: '🤝', implemented: true },
+    // 「在线交易」不再是独立页面：入口合并到 渔场动态 → 在线玩家列表 的玩家卡片
+    // （卡片右部「交易」按钮弹出子窗口），见 ui.js 的 openTradeModal。
     { id: 'mall', name: '商城', icon: '🛒', implemented: true },
     { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true },
     { id: 'records', name: '渔获记录', icon: '🏆', implemented: true },

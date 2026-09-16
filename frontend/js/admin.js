@@ -2801,6 +2801,10 @@ window.Admin = (function () {
     });
   }
   function drawNotify(cfg) {
+    // fix：这里必须取 renderNotify 创建的 #nt-body 容器——
+    // 之前直接引用了不存在的 body 变量，drawNotify 一执行就抛 ReferenceError，
+    // promise 静默失败，页面永远停在「加载中…」。
+    const body = $('nt-body');
     const an = cfg.autoNotify || { on: false, rules: [], hysteresisPct: 10, holdCount: 2 };
     const rulesRows = (an.rules || []).map(function (r, i) {
       return '<div class="mgr-row an-rule" data-i="' + i + '"><label>人数 ≥</label>' +

@@ -47,8 +47,8 @@ window.UI = (function () {
   // 现价：优先系统商店行情，无行情时退回基准价（模块级，供各视图与子窗口共用）
   function unitPriceOf(id) { const s = S().shop && S().shop[id]; return s ? s.price : itemMeta(id).price; }
   // ---- 组件展示辅助 ----
-  // 品质配色类（配色规范：普通=灰蓝 / 稀有=黄 / 史诗=紫 / 神话=彩虹，见 style.css 的 .q-*/.r-* 与 data.js QUALITY 注释）：
-  // 组件满词条在背包/市集/装备弹窗升为金色；渔获用的是同一套品质（稀有/史诗），不再有「大鱼」档位配色与皇冠前缀。
+  // 品质配色类（配色规范：普通=灰蓝 / 稀有=蓝 / 史诗=金 / 神话=彩虹，见 style.css 的 .q-*/.r-* 与 data.js QUALITY 注释）：
+  // 组件满词条在背包/市集/装备弹窗额外高亮；渔获用的是同一套品质（稀有/史诗），不再有「大鱼」档位配色与皇冠前缀。
   function qualityClass(meta) {
     if (!meta) return 'r-common';
     if (meta.kind === 'component' && meta.quality) {
@@ -389,7 +389,8 @@ window.UI = (function () {
   // 关闭已有弹窗：用统一的 overlay 结构，样式与全局子窗口一致。
   function closeOverlays() {
     spotDetailRedraw = null; // 钓点详情弹窗的重绘钩子随弹窗一起移除
-    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    // data-keep 的 overlay（交易子窗口）不被普通弹窗关闭——组件属性/确认框会叠在它上面打开
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { if (!m.dataset.keep) m.remove(); });
   }
   function buildOverlay(onCancel) {
     const overlay = el('div', 'modal-overlay');
@@ -1170,6 +1171,19 @@ window.UI = (function () {
       ' <span class="dot ' + (b.status === 'fishing' ? 'on' : 'idle') + '"></span></div>' +
       '<div class="peep-loc">' + (g ? esc(g.name) : '未出发') + (sp ? '·' + esc(sp.name) : '') + '</div>' +
       (recent ? '<div class="peep-recent">近期：' + esc(recent) + '</div>' : '') + '</div>';
+    // 卡片右部操作区：交易（弹出子窗口）+ 查看（钓竿组件构成）
+    if (!isSelf) {
+      const acts = el('div', 'peep-acts');
+      const tb = el('button', 'mini primary-mini', '🤝 交易');
+      tb.title = '与 ' + (b.name || '该玩家') + ' 进行在线交易';
+      tb.addEventListener('click', function (ev) { ev.stopPropagation(); openTradeModal(b.id, b.name); });
+      const vb = el('button', 'mini', '🔍 查看');
+      vb.title = '查看 ' + (b.name || '该玩家') + ' 当前使用的钓竿组件构成';
+      vb.addEventListener('click', function (ev) { ev.stopPropagation(); openRodModal(b.id, b.name); });
+      acts.appendChild(tb);
+      acts.appendChild(vb);
+      card.appendChild(acts);
+    }
     return card;
   }
 
@@ -4420,7 +4434,11 @@ window.UI = (function () {
     bar.innerHTML = '<span>🔒 交易进行中：背包内容已锁定，新渔获 / 广播不会刷新此列表</span>';
     const rf = el('button', 'mini', '🔄 刷新列表');
     rf.title = '按当前库存重建列表（已勾选的提供项保留）';
-    rf.addEventListener('click', function () { renderTopbar(); renderView(); toast('列表已按当前库存刷新'); });
+    rf.addEventListener('click', function () {
+      renderTopbar();
+      if (tradeModalRedraw) tradeModalRedraw(); else renderView(); // 交易子窗口打开时只重绘窗口
+      toast('列表已按当前库存刷新');
+    });
     bar.appendChild(rf);
     return bar;
   }
@@ -4452,60 +4470,86 @@ window.UI = (function () {
     return tradeDraft.sel;
   }
 
-  function renderTrade() {
-    const main = $('main');
+  // ---- 交易子窗口（v0.12：独立「在线交易」页面已删除）----
+  // 入口合并到 渔场动态 → 在线玩家列表 的玩家卡片右部「🤝 交易」按钮，交易 UI 整体
+  // 搬进弹出子窗口。会话建立前显示「等待对方同意中…」，会话状态由 trade 广播驱动重绘。
+  let tradeModalEl = null;          // 当前交易子窗口 overlay
+  let tradeModalRedraw = null;      // 子窗口重绘钩子（trade 广播到达时调用）
+  let tradeModalTarget = null;      // 邀请已发出、会话尚未建立时的对象 { id, name }
+  let tradeModalHadSession = false; // 子窗口存续期间出现过交易会话（用于识别会话结束）
+  let lastIncomingTradeId = null;   // 最近一次自动弹窗展示过的邀请（避免重复弹）
+
+  function tradeModalClose() {
+    if (tradeModalEl) { const m = tradeModalEl; tradeModalEl = null; m.remove(); }
+    tradeModalRedraw = null;
+    tradeModalTarget = null;
+    tradeModalHadSession = false;
+  }
+
+  function openTradeModal(targetId, targetName) {
+    if (tradeModalEl) tradeModalClose();
+    closeOverlays(); // 关掉其它普通弹窗（组件属性等），避免叠层混乱
     const st = S();
-    main.innerHTML = '';
-    const panel = el('div', 'panel wide');
-    panel.innerHTML = '<h2>🤝 在线交易 <span class="subtitle">以物易物 · 双方确认后成交 · 双方免税</span></h2>';
+    if (st.trade) {
+      // 已有会话（可能就是与该玩家的）→ 直接展示会话
+      tradeModalTarget = null;
+      tradeModalHadSession = true;
+    } else if (targetId != null) {
+      tradeModalTarget = { id: targetId, name: targetName || targetId };
+      // 邀请失败（对方不在线 / 已有会话）时 call 会 toast 错误，这里把空窗口关掉
+      call(window.Net.tradeInvite(targetId), null).then(function (r) {
+        if ((!r || !r.ok) && !S().trade) tradeModalClose();
+      });
+    }
+    const overlay = el('div', 'modal-overlay');
+    overlay.dataset.keep = '1'; // 组件属性 / 确认框要能叠在交易窗口上（见 closeOverlays）
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) tradeModalClose(); });
+    const box = el('div', 'modal-box trade-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">🤝 在线交易</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body"><div class="trade-modal-body"></div></div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    tradeModalEl = overlay;
+    box.querySelector('.modal-close').addEventListener('click', tradeModalClose);
+    tradeModalRedraw = drawTradeModal;
+    drawTradeModal();
+  }
 
-    if (st.tradeFlash) { panel.appendChild(el('div', 'trade-flash', '✅ ' + esc(st.tradeFlash))); st.tradeFlash = null; }
-
+  function drawTradeModal() {
+    if (!tradeModalEl || !tradeModalRedraw) return;
+    const bodyEl = tradeModalEl.querySelector('.trade-modal-body');
+    if (!bodyEl) return;
+    const st = S();
     const t = st.trade;
+    // 无会话：等待邀请被接受，或会话刚结束
     if (!t) {
-      tradeDraft = { tid: null, sel: {} };
-      // perf-9：交易对象选择改为服务端分页 + 搜索（不再依赖全量在线列表）
-      const box = el('div', 'trade-invite');
-      box.appendChild(el('h3', null, '发起交易邀请'));
-      const tInput = el('input', 'peep-search-input');
-      tInput.type = 'text'; tInput.placeholder = '🔍 搜索玩家名后回车…';
-      box.appendChild(tInput);
-      const tList = el('div', 'invite-row');
-      const tPager = el('div', 'peep-pager');
-      box.appendChild(tList);
-      box.appendChild(tPager);
-      let tPage = 1;
-      function loadTradePage(q) {
-        window.Net.fetchPlayersPage({ page: tPage, size: 10, q: q || '', target: 'tradePicker' }).then(function () {
-          const tp = S().tradePicker || { page: 1, pages: 1, total: 0, list: [] };
-          tList.innerHTML = '';
-          if (!tp.list.length) { tList.appendChild(el('div', 'hint', '当前没有其他在线玩家。多开一个浏览器标签即可测试。')); return; }
-          tp.list.forEach(function (p) {
-            if (st.me && p.id === st.me.id) return;
-            const b = el('button', 'mini primary-mini', '邀请 ' + esc(p.name));
-            b.addEventListener('click', function () {
-              call(window.Net.tradeInvite(p.id), '邀请已发出，等待对方接受').then(function (r) { if (r && r.ok) setTimeout(refreshAll, 300); });
-            });
-            tList.appendChild(b);
-          });
-          tPager.innerHTML = '';
-          const tPrev = el('button', 'mini', '‹ 上一页'); tPrev.disabled = tp.page <= 1;
-          tPrev.addEventListener('click', function () { tPage = tp.page - 1; loadTradePage(tInput.value.trim()); });
-          tPager.appendChild(tPrev);
-          tPager.appendChild(el('span', 'muted', ' 第 ' + tp.page + ' / ' + tp.pages + ' 页（共 ' + tp.total + ' 人）'));
-          const tNext = el('button', 'mini', '下一页 ›'); tNext.disabled = tp.page >= tp.pages;
-          tNext.addEventListener('click', function () { tPage = tp.page + 1; loadTradePage(tInput.value.trim()); });
-          tPager.appendChild(tNext);
-        });
+      if (tradeModalHadSession) {
+        bodyEl.innerHTML = '<div class="trade-wait"><div class="tw-ico">✅</div><b>交易已结束</b>' +
+          (st.tradeFlash ? '<div class="hint">' + esc(st.tradeFlash) + '</div>' : '') + '</div>';
+        if (st.tradeFlash) { toast(st.tradeFlash); st.tradeFlash = null; }
+        setTimeout(function () { if (tradeModalEl && !S().trade) tradeModalClose(); }, 1500);
+        return;
       }
-      tInput.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { tPage = 1; loadTradePage(tInput.value.trim()); } });
-      loadTradePage('');
-      panel.appendChild(box);
-      main.appendChild(panel);
+      if (tradeModalTarget) {
+        // 在玩家接受交易前：等待对方同意中…
+        bodyEl.innerHTML = '<div class="trade-wait"><div class="tw-ico tw-spin">⏳</div>' +
+          '<b>等待对方同意中…</b>' +
+          '<div class="hint">已向 ' + esc(tradeModalTarget.name) + ' 发出交易邀请，对方接受后进入交易。</div></div>';
+        const acts0 = el('div', 'trade-actions');
+        const cl0 = el('button', 'mini', '关闭窗口');
+        cl0.addEventListener('click', tradeModalClose);
+        acts0.appendChild(cl0);
+        bodyEl.appendChild(acts0);
+        return;
+      }
+      bodyEl.innerHTML = '<div class="trade-wait"><div class="tw-ico">🤝</div><b>没有进行中的交易</b>' +
+        '<div class="hint">在「渔场动态 → 在线玩家」里点击玩家卡片右部的「🤝 交易」按钮发起交易。</div></div>';
       return;
     }
-
-    // 有交易：先确定双方身份（key 均为小写，比对时做大小写免疫），再按阶段渲染
+    tradeModalHadSession = true;
+    tradeModalTarget = null;
+    // 先确定双方身份（key 均为小写，比对时做大小写免疫），再按阶段渲染
     const meKey = st.me && st.me.id != null ? String(st.me.id).toLowerCase() : null;
     const meIsA = !!(meKey && t.a.key === meKey);
     const myItems = meIsA ? t.aItems : t.bItems;
@@ -4513,55 +4557,96 @@ window.UI = (function () {
     const myOk = meIsA ? t.aOk : t.bOk;
     const otherOk = meIsA ? t.bOk : t.aOk;
     const otherName = meIsA ? t.b.name : t.a.name;
-    const otherKey = meIsA ? t.b.key : t.a.key;
     const cd = Math.max(0, (t.cooldownUntil || 0) - Date.now());
     const sel = draftFor(t);
-
-    const head = el('div', 'trade-head');
-    head.innerHTML = '<div class="th-with">交易对象：<b>' + esc(otherName) + '</b> <span class="live-check">' +
-      // perf-9：在线状态不再查全量玩家列表——能建立交易会话的账号必然在线
-      '<span class="muted">在线</span></div>' +
-      '<div class="th-stage">' + (!t.accepted ? '等待对方接受邀请…' : (cd > 0 ? '确认已重置，冷却 ' + Math.ceil(cd / 1000) + 's' : '请双方放入物品并确认')) + '</div>';
-    panel.appendChild(head);
-    // 交易进行中：提示列表已锁定（新渔获不会自动刷新，可手动刷新）
-    if (tradeLockOn()) panel.appendChild(tradeLockBar());
+    bodyEl.innerHTML = '';
 
     if (!t.accepted) {
-      const acts = el('div', 'trade-actions');
+      const pend = el('div', 'trade-wait');
       if (meIsA) {
-        // 我是发起方：只能等待或撤回，不应看到「接受邀请」
+        // 我是发起方：等待对方同意
+        pend.innerHTML = '<div class="tw-ico tw-spin">⏳</div><b>等待对方同意中…</b>' +
+          '<div class="hint">已向 ' + esc(otherName) + ' 发出交易邀请。</div>';
+        bodyEl.appendChild(pend);
+        const acts = el('div', 'trade-actions');
         const wd = el('button', 'mini', '撤回邀请');
         wd.addEventListener('click', function () { call(window.Net.tradeCancel(t.id), '已撤回邀请'); });
         acts.appendChild(wd);
+        bodyEl.appendChild(acts);
       } else {
+        // 我是被邀请方：接受 / 拒绝
+        pend.innerHTML = '<div class="tw-ico">📨</div><b>' + esc(otherName) + ' 邀请你进行交易</b>' +
+          '<div class="hint">接受后双方各自放入物品，确认成交（双方免税）。</div>';
+        bodyEl.appendChild(pend);
+        const acts = el('div', 'trade-actions');
         const ok = el('button', 'primary', '接受邀请');
         ok.addEventListener('click', function () { call(window.Net.tradeRespond(t.id, true), null).then(function (r) { if (r && r.ok) setTimeout(refreshAll, 200); }); });
         const no = el('button', 'mini', '拒绝');
         no.addEventListener('click', function () { call(window.Net.tradeRespond(t.id, false), '已拒绝交易'); });
         acts.appendChild(ok); acts.appendChild(no);
+        bodyEl.appendChild(acts);
       }
-      panel.appendChild(acts);
-    } else {
-      const sides = el('div', 'trade-sides');
-      sides.appendChild(tradeSide('我的提供', myItems, myOk, true));
-      sides.appendChild(tradeSide(otherName + ' 的提供', otherItems, otherOk, false));
-      sides.appendChild(tradePicker(t, sel));
-      panel.appendChild(sides);
-
-      const acts = el('div', 'trade-actions');
-      const confirmBtn = el('button', 'primary' + (myOk ? ' done' : '') + (cd > 0 ? ' locked' : ''), myOk ? '✔ 已确认' : (cd > 0 ? '冷却中 ' + Math.ceil(cd / 1000) + 's' : '确认交易'));
-      if (!myOk && cd <= 0) {
-        confirmBtn.addEventListener('click', function () {
-          call(window.Net.tradeConfirm(t.id), null).then(function (r) { if (r && r.ok) setTimeout(refreshAll, 200); });
-        });
-      }
-      const cancelBtn = el('button', 'mini', '取消交易');
-      cancelBtn.addEventListener('click', function () { call(window.Net.tradeCancel(t.id), '交易已取消'); });
-      acts.appendChild(confirmBtn); acts.appendChild(cancelBtn);
-      panel.appendChild(acts);
+      return;
     }
 
-    main.appendChild(panel);
+    // 会话进行中：头部 + 锁定条 + 双方提供栏 + 物品选择器 + 操作按钮
+    const head = el('div', 'trade-head');
+    head.innerHTML = '<div class="th-with">交易对象：<b>' + esc(otherName) + '</b> ' +
+      '<span class="live-check"><span class="muted">在线</span></span></div>' +
+      '<div class="th-stage">' + (cd > 0 ? '确认已重置，冷却 ' + Math.ceil(cd / 1000) + 's' : '请双方放入物品并确认') + '</div>';
+    bodyEl.appendChild(head);
+    if (tradeLockOn()) bodyEl.appendChild(tradeLockBar());
+    const sides = el('div', 'trade-sides');
+    sides.appendChild(tradeSide('我的提供', myItems, myOk, true));
+    sides.appendChild(tradeSide(otherName + ' 的提供', otherItems, otherOk, false));
+    sides.appendChild(tradePicker(t, sel));
+    bodyEl.appendChild(sides);
+    const acts = el('div', 'trade-actions');
+    const confirmBtn = el('button', 'primary' + (myOk ? ' done' : '') + (cd > 0 ? ' locked' : ''), myOk ? '✔ 已确认' : (cd > 0 ? '冷却中 ' + Math.ceil(cd / 1000) + 's' : '确认交易'));
+    if (!myOk && cd <= 0) {
+      confirmBtn.addEventListener('click', function () {
+        call(window.Net.tradeConfirm(t.id), null).then(function (r) { if (r && r.ok) setTimeout(refreshAll, 200); });
+      });
+    }
+    const cancelBtn = el('button', 'mini', '取消交易');
+    cancelBtn.addEventListener('click', function () { call(window.Net.tradeCancel(t.id), '交易已取消'); });
+    acts.appendChild(confirmBtn); acts.appendChild(cancelBtn);
+    bodyEl.appendChild(acts);
+  }
+
+  // ---- 查看其他玩家的钓竿组件构成（渔场动态玩家卡片「🔍 查看」按钮） ----
+  function openRodModal(targetId, targetName) {
+    closeOverlays();
+    const overlay = buildOverlay(function () { closeOverlays(); });
+    const box = el('div', 'modal-box rod-modal');
+    box.innerHTML = '<div class="modal-head"><span class="modal-title">🎣 ' + esc(targetName || '玩家') + ' 的钓竿</span>' +
+      '<button class="mini modal-close">✕ 关闭</button></div>' +
+      '<div class="modal-body"><div class="hint">加载中…</div></div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.querySelector('.modal-close').addEventListener('click', closeOverlays);
+    call(window.Net.fetchPlayerRod(targetId), null).then(function (r) {
+      const body = box.querySelector('.modal-body');
+      if (!body) return;
+      if (!r || !r.ok) { body.innerHTML = '<div class="hint">' + esc((r && r.data && r.data.error) || '无法获取对方钓竿信息') + '</div>'; return; }
+      const d = r.data || {};
+      const rows = D.ROD_PARTS.map(function (p) {
+        const slot = (d.bd || {})[p.key];
+        const comp = slot && slot.compId ? (D.componentOf ? D.componentOf(slot.compId) : null) : null;
+        const meta = comp || (slot ? { name: slot.name, quality: slot.rare, affixes: slot.affixes || [] } : null);
+        const nameHtml = slot && slot.compId
+          ? '<span class="' + qualityClass(meta) + '">' + esc((meta && meta.name) || slot.name || slot.compId) + '</span>' + itemTag(meta)
+          : '<span class="muted">（未装配）</span>';
+        const affHtml = (meta && meta.affixes && meta.affixes.length)
+          ? meta.affixes.map(function (a) { return affSpanOpen(a) + esc(affixText(a)) + '</span>'; }).join(' ')
+          : '<span class="muted">无词条</span>';
+        return '<div class="rod-part-row"><div class="rp-part">' + esc(p.name) + (slot && slot.isCharm ? ' · 饰品' : '') + '</div>' +
+          '<div class="rp-comp">' + nameHtml + '</div><div class="rp-affs">' + affHtml + '</div></div>';
+      }).join('');
+      body.innerHTML = '<div class="rod-view">' +
+        (d.rodName ? '<div class="rod-view-name">竿名 <b>' + esc(d.rodName) + '</b></div>' : '') +
+        rows + '</div>';
+    });
   }
 
   // 交易双方可见的「提供」栏：除名称/数量外，展示物品信息——
@@ -4610,7 +4695,7 @@ window.UI = (function () {
     const tabs = el('div', 'inv-cats tp-cats');
     [['all', '📦 全部', allKeys.length], ['fish', '🐟 鱼类', kindCount.fish], ['material', '🧵 材料', kindCount.material], ['chest', '🎁 宝匣', kindCount.chest], ['component', '🔧 组件', kindCount.component]].forEach(function (kv) {
       const b = el('button', 'inv-cat' + (tradePickCat === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
-      b.addEventListener('click', function () { if (tradePickCat !== kv[0]) { tradePickCat = kv[0]; renderView(); } });
+      b.addEventListener('click', function () { if (tradePickCat !== kv[0]) { tradePickCat = kv[0]; if (tradeModalRedraw) tradeModalRedraw(); else renderView(); } });
       tabs.appendChild(b);
     });
     box.appendChild(tabs);
@@ -6332,7 +6417,6 @@ window.UI = (function () {
     else if (currentView === 'mall') renderMall();
     else if (currentView === 'shop') renderShop();
     else if (currentView === 'market') renderMarket();
-    else if (currentView === 'trade') renderTrade();
     else if (currentView === 'codex') renderCodex();
     else if (currentView === 'records') renderRecords();
     else if (currentView === 'feedback') renderFeedback();
@@ -6485,7 +6569,7 @@ window.UI = (function () {
     chest: ['assets', 'chestcfg', 'chest'],
     shop: ['assets', 'shop', 'pricecfg'],
     market: ['assets', 'market'],
-    trade: ['trade', 'assets', 'codex'],
+    // trade：独立页面已删除（入口在渔场动态玩家卡片，子窗口自行响应 trade 广播）
     codex: ['codex', 'groundcfg'],
     records: ['records'],
     feedback: ['feedback'],                              // 反馈页：fetchFeedback 到达后重绘（CD/费用随服务器下发）
@@ -6506,6 +6590,24 @@ window.UI = (function () {
   function refreshAll(scope) {
     if (scope === 'all') scope = null; // init 全量刷新
     if (shopModalId && scope === 'shop') fillShopModal(shopModalId); // 弹窗数据静默刷新
+    // 交易子窗口：打开时 trade/assets 广播只重绘窗口内容，不打断背后页面
+    if (tradeModalRedraw && (!scope || scope === 'trade' || scope === 'assets' || scope === 'codex')) {
+      renderTopbar(); renderNav();
+      tradeModalRedraw();
+      return;
+    }
+    // 收到交易邀请（我是被邀请方）且交易子窗口未打开 → 自动弹出（替代原「在线交易」页入口，每个邀请只弹一次）
+    if (!tradeModalRedraw) {
+      const t0 = S().trade;
+      if (t0 && !t0.accepted && !t0.done && !t0.cancelled && t0.id !== lastIncomingTradeId) {
+        const meKey0 = S().me && S().me.id != null ? String(S().me.id).toLowerCase() : null;
+        if (meKey0 && t0.a && t0.b && t0.b.key === meKey0) {
+          lastIncomingTradeId = t0.id;
+          openTradeModal(null, t0.a && t0.a.name);
+          toast('收到 ' + ((t0.a && t0.a.name) || '对方') + ' 的交易邀请');
+        }
+      }
+    }
     // 钓点详情弹窗：后台改掉落池 / 增益（groundcfg 广播）时保持弹窗与最新配置同步
     if (scope === 'groundcfg' && spotDetailRedraw) { spotDetailRedraw(); }
     // 一键出售 / 订阅弹窗内的筛选控件获得焦点时暂停重绘（避免下拉框被广播冲掉）
@@ -6571,17 +6673,17 @@ window.UI = (function () {
     }).catch(function () { initApp(); });
   }
   function initApp() {
-    // 交易页冷却倒计时：仅在冷却期间重绘，冷却结束后补一次
+    // 交易冷却倒计时：交易子窗口打开时，仅在冷却期间更新倒计时文字，冷却结束后补一次重绘
     let cdLast = 0;
     setInterval(function () {
-      if (currentView !== 'trade') { cdLast = 0; return; }
+      if (!tradeModalRedraw) { cdLast = 0; return; }
       const t = S().trade;
       if (!t) { cdLast = 0; return; }
       const cd = Math.max(0, (t.cooldownUntil || 0) - Date.now());
       if (cd > 0 || cdLast > 0) {
-        // 锁定中只改倒计时文字，不整页重建（否则会刷新正在挑选的物品列表）
+        // 锁定中只改倒计时文字，不重建（否则会刷新正在挑选的物品列表）
         if (cd > 0 && tradeLockOn()) updateTradeCountdown(cd);
-        else { renderTopbar(); renderView(); }
+        else tradeModalRedraw();
       }
       cdLast = cd;
     }, 500);

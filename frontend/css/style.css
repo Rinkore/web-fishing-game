@@ -10,7 +10,7 @@
   --accent2: #38bdf8;
   --common: #cbd5e1;
   --big: #fbbf24;
-  --rare: #facc15;
+  --rare: #38bdf8;
   --danger: #f87171;
   --radius: 12px;
 }
@@ -165,6 +165,29 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .peep-pager .mini:disabled { opacity: .4; cursor: default; }
 .peep { display: flex; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.03); }
 .peep.self { border-color: var(--accent); }
+/* 玩家卡片右部操作区：交易 / 查看（入口合并自原「在线交易」独立页） */
+.peep-acts { margin-left: auto; display: flex; flex-direction: column; gap: 6px; flex: none; }
+.peep-acts .mini { white-space: nowrap; }
+
+/* ---- 交易子窗口（原「在线交易」独立页） ---- */
+.trade-modal { width: min(920px, 94vw); }
+.trade-modal .modal-body { max-height: 72vh; overflow: auto; }
+.trade-wait { text-align: center; padding: 34px 12px 20px; }
+.trade-wait .tw-ico { font-size: 34px; line-height: 1; margin-bottom: 12px; }
+.trade-wait b { font-size: 15px; }
+.trade-wait .hint { margin-top: 8px; }
+.tw-spin { animation: twPulse 1.2s ease-in-out infinite; display: inline-block; }
+@keyframes twPulse { 0%, 100% { transform: scale(1); opacity: .65; } 50% { transform: scale(1.18); opacity: 1; } }
+
+/* ---- 查看他人钓竿组件构成子窗口 ---- */
+.rod-modal { width: min(520px, 92vw); }
+.rod-modal .modal-body { max-height: 70vh; overflow: auto; }
+.rod-view-name { margin-bottom: 10px; font-size: 13px; color: var(--muted); }
+.rod-view-name b { color: var(--text); }
+.rod-part-row { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: rgba(255,255,255,.03); }
+.rp-part { font-size: 11px; color: var(--muted); }
+.rp-comp { font-size: 14px; font-weight: 700; margin: 2px 0; }
+.rp-affs { font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #042; font-weight: 700; flex: none; }
 .peep-info { font-size: 13px; }
 .peep-name { font-weight: 600; }
@@ -224,10 +247,10 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .r-rare { color: var(--rare); font-weight: 600; }
 /* 史诗配色见下方 .r-epic（与组件品质 .q-epic 同色） */
 
-/* 组件品质配色（普通=白 / 稀有=黄 / 史诗=紫；满词条额外升为金色） */
+/* 组件品质配色（普通=白 / 稀有=蓝 / 史诗=金） */
 .q-common { color: var(--common); }
 .q-rare { color: var(--rare); font-weight: 600; }
-.q-epic { color: #c084fc; font-weight: 600; }
+.q-epic { color: #ffd24a; font-weight: 600; }
 .q-full { color: #ffd24a !important; font-weight: 700; text-shadow: 0 0 8px rgba(255,210,74,.45); }
 .bd-comp.q-full, .bec-name .q-full, .cx-name .q-full { text-shadow: 0 0 8px rgba(255,210,74,.5); }
 /* 神话（宝匣专属品质）：灰蓝/黄/紫/金都已被占用，改用彩虹渐变，一眼和所有既有档位区分。
@@ -253,10 +276,13 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .inst-aff.extra, .bec-aff.extra { text-decoration: underline dotted; text-underline-offset: 3px; }
 /* 标签显式重置 -webkit-text-fill-color：否则嵌在 .q-mythic 里会被继承成透明而看不见 */
 .full-tag { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(255,210,74,.18); color: #ffd24a; -webkit-text-fill-color: #ffd24a; margin-left: 4px; }
-/* 「突破」标签：词条数越过史诗 3 条上限（即真正抽到 4 条） */
+/* 「突破」标签：词条数越过史诗 3 条上限（即真正抽到 4 条）。
+   颜色与海王遗匣神话品质一致（同一道彩虹渐变字），一眼看出是宝匣突破件。 */
 .bt-tag {
-  background: linear-gradient(90deg, rgba(248,113,113,.28), rgba(192,132,252,.28));
-  color: #f0abfc; -webkit-text-fill-color: #f0abfc; border: 1px solid rgba(240,171,252,.45);
+  background: linear-gradient(90deg, #f87171, #fbbf24, #4ade80, #38bdf8, #c084fc);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: #c084fc;
+  font-weight: 700; border: 1px solid rgba(192,132,252,.45);
 }
 .pool-line { font-size: 12px; margin: 2px 0; color: var(--text); }
 .pool-line .rng { color: var(--muted); }
@@ -1028,7 +1054,7 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .bf-subrow .sub-label { flex: none; min-width: 32px; font-size: 12px; color: var(--muted); }
 
 /* ---- 钓竿配置 ---- */
-.r-epic { color: #c084fc; font-weight: 600; }
+.r-epic { color: #ffd24a; font-weight: 600; }
 .eff-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .eff-chip {
   font-size: 12px; padding: 4px 12px; border-radius: 20px;

@@ -305,6 +305,8 @@ window.Net = (function () {
   const feedbackSubmit = (text, kind) => authed('/api/feedback/submit', { text: text, kind: kind });
   const feedbackSkip = () => authed('/api/feedback/skip', {});
   const tradeInvite = (target) => authed('/api/trade/invite', { target: target });
+  // 查看其他玩家当前装备的钓竿组件构成（渔场动态玩家卡片「查看」按钮）
+  const fetchPlayerRod = (target) => authed('/api/players/rod', { target: target });
   const tradeRespond = (tradeId, accept) => authed('/api/trade/respond', { tradeId: tradeId, accept: accept });
   const tradeSet = (tradeId, items) => authed('/api/trade/set', { tradeId: tradeId, items: items });
   const tradeConfirm = (tradeId) => authed('/api/trade/confirm', { tradeId: tradeId });
@@ -640,6 +642,7 @@ window.Net = (function () {
     fetchSubscribe: fetchSubscribe, subscribeSave: subscribeSave,
     sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,
+    fetchPlayerRod: fetchPlayerRod,
     rodBuySlot: rodBuySlot, rodSave: rodSave, rodName: rodName, rodRename: rodRename,
     rodUse: rodUse, rodDelete: rodDelete, rodStow: rodStow, marketListRod: marketListRod,
     tradeConfirm: tradeConfirm, tradeCancel: tradeCancel,

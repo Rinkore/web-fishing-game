@@ -4186,6 +4186,22 @@ const server = http.createServer(function (req, res) {
     });
     return;
   }
+  // ---- 查看其他玩家当前装备的钓竿组件构成（渔场动态玩家卡片「查看」按钮） ----
+  // 只读接口：返回对方的 bd 槽位（compId/name/affixes/quality），不含背包与金币等隐私数据。
+  if (p === '/api/players/rod' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const key = d.token && sessionGet(d.token);
+      if (!key) return apiResp(res, 401, { error: '未登录' });
+      const target = String(d.target || '').toLowerCase();
+      const rec = users[target];
+      if (!rec) return apiResp(res, 404, { error: '玩家不存在' });
+      if (!players.has(target)) return apiResp(res, 400, { error: '对方不在线' });
+      // 装备弹窗需要组件目录元数据（品质/词条区间），只发槽位与组件实例 id，前端自己查目录
+      apiResp(res, 200, { ok: true, name: rec.name, rodName: rec.rodName || '', bd: rec.bd || {} });
+    });
+    return;
+  }
   // ---- 概览统计 ----
   if (p === '/api/admin/overview' && req.method === 'GET') {
     const a = adminOf(u.query.token);
