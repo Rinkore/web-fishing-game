@@ -410,7 +410,8 @@ function startServer() {
   ]);
   const mythicSub = D.instanceId('rod_dragonbone', 'epic', [{ type: 'skill', value: 10 }, { type: 'size', value: 8 }]);
   // 池外词缀只认「不在底材池内」的：speed/size 在池内，rare/double 在池外（顺序按实例规范化后）
-  const sortAff = list => JSON.stringify(list.slice().sort((a, b) => a.type < b.type ? -1 : 1));
+  // v0.12.2 起词缀对象带范围来源 src（池外 = 'bt'），断言只比 type+value
+  const sortAff = list => JSON.stringify(list.map(a => ({ type: a.type, value: a.value })).sort((a, b) => a.type < b.type ? -1 : 1));
   check('数据层：池外（突破）词缀识别正确',
     sortAff(D.smeltExtraAffixesOf('rod_bamboo', D.componentOf(mythicMain).affixes)) ===
       sortAff([{ type: 'rare', value: 5 }, { type: 'double', value: 9 }]),

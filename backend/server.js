@@ -427,16 +427,22 @@ function mallView(rec) {
 // 失败结算（v0.11.3 起）：副件、投料、残片、金币照旧损失，且**主件被熔掉选中的那条词条**（其余词条与品质保留）。
 const SMELT_RATE_PRECISION = 10;
 function smeltCfgOf() { return D.getSmeltCfg(); }
-// 熔炼每条词缀的取值区间由 data.js 的 smeltRangeOf 统一给出（服务器掷骰与前端预览同一份口径）：
-//   主件选中的那条 → 主件区间（突破件的池外词缀 → 池外区间）；
-//   副件搬来的那条 → 默认**副件区间**（v0.11.5 起，副件连区间一起提供），后台可切回「主件区间」；
-//   投料补缀的那条 → 默认**池外（突破）区间**（与宝匣突破件一致，随后台「池外词缀数值区间」改动即时生效）。
+// 熔炼每条词缀的取值区间由 data.js 的 smeltRangeEx 统一给出（服务器掷骰与前端预览同一份口径）。
+// v0.12.2 重构：词缀自带「范围来源」（src = 底材id / 'bt' 突破 / 'ct' 催化），roll 一律按
+// **词缀带来的范围**取值，而不是结果底材的池区间——修复熔炼/重铸把范围错变成底材区间的 bug：
+//   主件选中的那条 → 按它自己的范围来源；
+//   副件搬来的那条 → 按它自己的范围来源（副件连区间一起提供；后台关掉 subRangeFromSub 回退旧行为）；
+//   投料补缀的那条 → 主件部位配置了「材料催化词缀范围」→ 催化区间；否则突破区间（后台开关可回退旧行为）。
+// 返回值同时带出三条词缀的范围来源（mainSrc/subSrc/addSrc），掷骰结果据此记录 src。
 function smeltRangesOf(mainMeta, subMeta, mainType, subType, addType) {
-  const mid = mainMeta && mainMeta.baseId, sid = subMeta && subMeta.baseId;
+  const mainAffix = mainMeta.affixes.find(function (a) { return a.type === mainType; });
+  const subAffix = subMeta.affixes.find(function (a) { return a.type === subType; });
+  const main = D.smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'main', mainType, { part: mainMeta.part, src: mainAffix && mainAffix.src });
+  const sub = D.smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'sub', subType, { part: mainMeta.part, src: subAffix && subAffix.src });
+  const add = addType ? D.smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'add', addType, { part: mainMeta.part }) : null;
   return {
-    main: D.smeltRangeOf(mid, sid, 'main', mainType),
-    sub: D.smeltRangeOf(mid, sid, 'sub', subType),
-    add: addType ? D.smeltRangeOf(mid, sid, 'add', addType) : null,
+    main: main.range, sub: sub.range, add: add ? add.range : null,
+    mainSrc: main.src, subSrc: sub.src, addSrc: add ? add.src : null,
   };
 }
 // 一次熔炼取值的 roll（宝珠开启时掷两次取靠近区间边界的那次）
@@ -2234,6 +2240,9 @@ loadWorld();
 armStatsSampler();   // 统计采样基于 loadWorld 后的历史样本，必须排在其后
 loadSessions(); // 重启后恢复登录态（客户端可自动登录，见 sessionGet 注释）
 // v0.8 组件实例化迁移：旧编码组件 id（`部位_code值_…`）→ 实例签名；背包/钓竿配置/挂单原位换新。
+// v0.12.2 词缀范围来源迁移：旧实例签名（词缀 token 无 @src）解析时按底材池推断来源
+// （池内 = 底材、池外 = 突破'bt'），normalizeItemId 重写为带 @src 的新签名——普通组件签名不变，
+// 只有带池外词缀的宝匣件 / 熔炼件 id 会变化，同样在背包 / 钓竿配置 / 挂单原位换新。
 // 同时清理经济域里遗留的组件键（组件实例改走固定价，不再进入供需/价格历史）。
 (function migrateLegacyComponentIds() {
   let accountsDirty = false, marketDirty = false, econDirty = false;
@@ -2287,7 +2296,7 @@ loadSessions(); // 重启后恢复登录态（客户端可自动登录，见 ses
   if (accountsDirty) saveAllAccounts();
   if (marketDirty) saveMarket();
   if (econDirty) saveEconomy();
-  if (accountsDirty || marketDirty || econDirty) console.log('[migrate] legacy component ids → v0.8 instance signatures');
+  if (accountsDirty || marketDirty || econDirty) console.log('[migrate] component ids → v0.12.2 instance signatures (affix range source)');
 })();
 
 // 套用管理后台保存的钓场/钓点配置覆盖（掉落池 / 增益 / 锁定状态 / 地图坐标）
@@ -3555,15 +3564,15 @@ const server = http.createServer(function (req, res) {
         let result = null, extraOk = false, retainOk = false, mainAfter = null;
         const retained = [];
         if (success) {
-          const rr = plan.ranges;   // 三条词缀各自的取值区间（主件 / 副件 / 补缀，见 smeltRangesOf）
+          const rr = plan.ranges;   // 三条词缀各自的取值区间与范围来源（主件 / 副件 / 补缀，见 smeltRangesOf）
           const affixes = [];
-          affixes.push({ type: plan.mainAffix.type, value: smeltRoll(rr.main, useBoundary) });
-          affixes.push({ type: plan.subAffix.type, value: smeltRoll(rr.sub, useBoundary) });
+          affixes.push({ type: plan.mainAffix.type, value: smeltRoll(rr.main, useBoundary), src: rr.mainSrc });
+          affixes.push({ type: plan.subAffix.type, value: smeltRoll(rr.sub, useBoundary), src: rr.subSrc });
           if (plan.extraType) {
             extraOk = Math.random() * 100 < plan.rates.extraRate;
-            if (extraOk) affixes.push({ type: plan.extraType, value: smeltRoll(rr.add, useBoundary) });
+            if (extraOk) affixes.push({ type: plan.extraType, value: smeltRoll(rr.add, useBoundary), src: rr.addSrc });
           }
-          // 残片保留：掷一次，命中则把主件的池外（突破）词缀按原值追加回结果。
+          // 残片保留：掷一次，命中则把主件的池外（突破）词缀按原值追加回结果（范围来源一并保留）。
           // 与选中/补缀词条同类型的不再重复追加（同一件组件里同类型词条只该有一条）。
           if (plan.relics > 0) {
             retainOk = Math.random() * 100 < plan.retainChance;
@@ -3573,8 +3582,8 @@ const server = http.createServer(function (req, res) {
               plan.extraAffixes.forEach(function (a) {
                 if (have[a.type]) return;
                 have[a.type] = 1;
-                affixes.push({ type: a.type, value: a.value });
-                retained.push({ type: a.type, value: a.value });
+                affixes.push({ type: a.type, value: a.value, src: a.src || null });
+                retained.push({ type: a.type, value: a.value, src: a.src || null });
               });
             }
           }
@@ -3586,7 +3595,7 @@ const server = http.createServer(function (req, res) {
           // 失败不再「主件原样」：主件被熔掉**选中的那条词条**，其余词条与品质保留（v0.11.3 起）
           invAdd(rec, plan.mainId, -1);
           const left = plan.mainMeta.affixes.filter(function (a) { return a.type !== plan.mainAffix.type; })
-            .map(function (a) { return { type: a.type, value: a.value }; });
+            .map(function (a) { return { type: a.type, value: a.value, src: a.src || null }; });
           const leftId = D.instanceId(base.id, plan.mainMeta.quality, left);
           invAdd(rec, leftId, 1);
           mainAfter = D.componentOf(leftId);
@@ -3644,8 +3653,8 @@ const server = http.createServer(function (req, res) {
       auth(req, res, body, function (d, key) {
         const rec = users[key];
         const id = d.id; const qty = Math.max(1, Math.floor(Number(d.qty) || 1));
-        if (D.isRodSet(id)) return apiResp(res, 400, { error: '整根钓竿请到「开放市集」出售（系统商店不收购）' });
-        if (D.isChest(id)) return apiResp(res, 400, { error: '宝匣请到「开放市集」出售（系统商店不收购）' });
+        if (D.isRodSet(id)) return apiResp(res, 400, { error: '整根钓竿请在「商城 → 市集」上架出售（收购不收整竿）' });
+        if (D.isChest(id)) return apiResp(res, 400, { error: '宝匣请在「商城 → 市集」交易（收购不收宝匣）' });
         if (!sellableOf(id)) return apiResp(res, 400, { error: '该物品无法出售' });
         const rodLock = rodLockError(rec, id, qty);
         if (rodLock) return apiResp(res, 400, { error: rodLock });
@@ -5366,7 +5375,7 @@ const server = http.createServer(function (req, res) {
       saveMarket();
       broadcastMarket();
       if (created.length) {
-        sendTo(sellerKey, { type: 'notice', msg: '管理员以你的名头在开放市集上架了 ' + created.length + ' 件物品（' + plan.hours + ' 小时）' });
+        sendTo(sellerKey, { type: 'notice', msg: '管理员以你的名头在市集上架了 ' + created.length + ' 件物品（' + plan.hours + ' 小时）' });
       }
       apiResp(res, 200, {
         ok: true, created: created.length, hours: plan.hours, mul: plan.mul, byKind: plan.byKind,
@@ -5441,6 +5450,9 @@ const server = http.createServer(function (req, res) {
       if (d.subRangeFromSub != null) patch.subRangeFromSub = !!d.subRangeFromSub;
       if (d.addAnyAffix != null) patch.addAnyAffix = !!d.addAnyAffix;
       if (d.addAffixExtraRange != null) patch.addAffixExtraRange = !!d.addAffixExtraRange;
+      // v0.12.2：材料催化词缀范围（分组件部位设置，{ [part]: { [type]: [min, max] } }）；
+      // 合法性由 D.setSmeltCfg 统一校验（非法条目剔除），整表替换语义。
+      if (d.catalystRanges != null) patch.catalystRanges = d.catalystRanges;
       if (err) return apiResp(res, 400, { error: err });
       if (d.reset) {
         world.smeltCfg = D.setSmeltCfg(null);

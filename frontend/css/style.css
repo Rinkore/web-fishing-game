@@ -592,7 +592,7 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .ws-aff.on.neg .ws-aff-rng { color: rgba(53, 13, 13, .72); }
 .ws-aff.neg { color: var(--danger); }
 .ws-aff .ws-aff-rng { color: var(--muted); font-size: 10px; margin-left: 5px; }
-.ws-mat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; margin: 8px 0 12px; }
+.ws-mat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; margin: 8px 0 12px; }
 .ws-mat {
   display: flex; align-items: center; gap: 6px; font-size: 12px;
   border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: rgba(255, 255, 255, .03);
@@ -603,6 +603,9 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .ws-mat .wm-have { color: var(--muted); }
 .ws-mat .ws-mat-qty { width: 66px; }
 .ws-mat .wm-unit { color: var(--muted); }
+/* 投料快捷份数按钮：+1 / +5 / 全部 / 清空 */
+.ws-mat .wm-quick { display: inline-flex; gap: 4px; }
+.ws-mat .wm-quick .mini { padding: 2px 7px; font-size: 11px; line-height: 1.4; }
 .ws-pearl { display: block; font-size: 13px; margin-bottom: 10px; }
 /* 残片保留（海王遗匣神话主件）：勾选框 + 片数 + 实时保留概率 */
 .ws-relic-row {

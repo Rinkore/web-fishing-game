@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.12.1';
+  const VERSION = 'v0.12.2';
   const BUILD = '2026-09-16';
 
   // ---- 渔获定义 ----
@@ -126,8 +126,10 @@
   const CODE_TO_TYPE = {};
   Object.keys(AFFIX_CODES).forEach(function (t) { CODE_TO_TYPE[AFFIX_CODES[t]] = t; });
   Object.keys(LEGACY_CODE_ALIAS).forEach(function (c) { CODE_TO_TYPE[c] = LEGACY_CODE_ALIAS[c]; });
-  // 实例签名里可出现的全部短码（新码 + 旧别名），供解析用
-  const AFFIX_CODE_RE = new RegExp('^(' + Object.keys(CODE_TO_TYPE).join('|') + ')([+-]?\\d+)$');
+  // 实例签名里可出现的全部短码（新码 + 旧别名），供解析用。
+  // v0.12.2 起词缀 token 允许带「范围来源」后缀 @src（src = 底材id / 'bt' 突破 / 'ct' 催化），
+  // 记录这条词缀的数值当初是按哪个范围 roll 的——熔炼/重铸重 roll 时按它自己的范围，而不是底材池的区间。
+  const AFFIX_CODE_RE = new RegExp('^(' + Object.keys(CODE_TO_TYPE).join('|') + ')([+-]?\\d+)(?:@([A-Za-z0-9_]+))?$');
   // 组件词缀类型全集（固定顺序；池外补足时按此顺序取候选，保证签名跨端一致）
   // 刻意用显式数组而不是 Object.keys：顺序稳定，且不会因为给 BUFF_LABEL 加键而混进组件池。
   const AFFIX_TYPES = ['speed', 'skill', 'rare', 'material', 'size', 'double'];
@@ -322,7 +324,13 @@
     return (alias && AFFIX_CODES[alias]) || type;
   }
   function typeOfCode(code) { return CODE_TO_TYPE[code] || code; }
-  function affixToken(a) { return codeOf(a.type) + (a.value >= 0 ? '+' : '') + a.value; }
+  // 词缀 token：code+value，范围来源不是底材本身时追加 @src（src = 底材id / 'bt' / 'ct'）。
+  // 池内词缀省略 @（默认来源 = 所属底材），保证普通组件签名与旧版完全一致、无需迁移。
+  function affixToken(a, baseId) {
+    let t = codeOf(a.type) + (a.value >= 0 ? '+' : '') + a.value;
+    if (a.src && a.src !== baseId) t += '@' + a.src;
+    return t;
+  }
   // 按底材池顺序规范化词缀，保证同内容 → 同签名
   function orderAffixes(base, affixes) {
     const idx = {};
@@ -335,7 +343,7 @@
   function instanceId(baseId, quality, affixes) {
     const base = BASE_MAP[baseId];
     const ordered = orderAffixes(base, affixes || []);
-    return baseId + INSTANCE_SEP + quality + INSTANCE_SEP + ordered.map(affixToken).join(',');
+    return baseId + INSTANCE_SEP + quality + INSTANCE_SEP + ordered.map(function (a) { return affixToken(a, baseId); }).join(',');
   }
   function instanceOf(id) {
     const s = String(id);
@@ -351,10 +359,18 @@
         // 短码表含旧别名 big（→ skill）：v0.10 及更早的存档仍可解析，见 normalizeItemId 的规范化
         const m = AFFIX_CODE_RE.exec(tok);
         if (!m) return null;
-        affixes.push({ type: typeOfCode(m[1]), value: parseInt(m[2], 10) });
+        const type = typeOfCode(m[1]);
+        // 范围来源：token 显式携带 @src 时直接用；旧 token（无 @）按底材池推断——
+        // 池内 = 底材本身，池外 = 突破（'bt'），与旧版取值口径一致，解析即完成迁移。
+        affixes.push({ type: type, value: parseInt(m[2], 10), src: m[3] || inferAffixSrc(base, type) });
       }
     }
     return { baseId: base.id, quality: parts[1], affixes: affixes };
+  }
+  // 旧词缀（无 @src token）的范围来源推断：该类型在底材池内 → 底材本身；否则 → 突破区间
+  function inferAffixSrc(base, type) {
+    if (base && base.pool.some(function (p) { return p.type === type; })) return base.id;
+    return 'bt';
   }
   function isInstance(id) { return instanceOf(id) !== null; }
 
@@ -407,11 +423,12 @@
     const maxN = Math.max(inst.affixes.length, Math.min(q.cap, poolLen));
     // full = 池内全满（沿用旧语义）；突破件同样满足（它的池内部分是全满的）
     const full = inst.affixes.length >= poolLen && poolLen <= q.cap;
-    // 词缀对象附带 extra 标记：该词缀不在底材词缀池内（只可能来自宝匣的池外补足）
+    // 词缀对象附带 extra 标记：该词缀不在底材词缀池内（来自宝匣池外补足或工坊催化补缀）；
+    // src = 范围来源（底材id / 'bt' 突破 / 'ct' 催化），供显示「突破词缀/催化词缀」与重 roll 取区间用。
     const poolTypes = {};
     base.pool.forEach(function (p) { poolTypes[p.type] = 1; });
     const affixes = inst.affixes.map(function (a) {
-      return { type: a.type, value: a.value, extra: !poolTypes[a.type] };
+      return { type: a.type, value: a.value, extra: !poolTypes[a.type], src: a.src || null };
     });
     // hasExtra = 含池外词缀（2 条池底材即使「未中」也必然含 1 条，占比很高，只用于逐条标注）
     // breakthrough = 词条数突破史诗的 3 条上限，即真正抽到 4 条（突破件识别的唯一判据）。
@@ -620,7 +637,8 @@
       for (let i = cands.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
       cands.slice(0, need).forEach(function (t) {
         const rng = extraAffixRangeOf(t);
-        picked.push({ type: t, value: rollAffixValueBoundary(rng[0], rng[1], componentCfg.rollModel) });
+        // 池外补足的词缀记录范围来源 = 'bt'（突破）：熔炼/重铸重 roll 时仍按突破区间取值
+        picked.push({ type: t, value: rollAffixValueBoundary(rng[0], rng[1], componentCfg.rollModel), src: 'bt' });
       });
     }
     return instanceMeta(instanceId(base.id, QUALITY.mythic.key, picked));
@@ -695,6 +713,10 @@
     addAnyAffix: true,         // 补缀不再受主件底材词缀池限制：可取任意尚未拥有的词缀
     addAffixCap: 3,            // 补缀后主件允许的词条数上限（默认 3 = 主 + 副 + 补缀，可越过品质上限与池长）
     addAffixExtraRange: true,  // 补缀词缀按**池外（突破）区间**取值，与宝匣突破件同一套区间（随后台改动即时生效）
+    // ---- 材料催化词缀范围（v0.12.2 新增，后台「⚒ 工坊配置 → 材料 → 词缀对照」按部位设置）----
+    // { [部位]: { [词缀类型]: [min, max] } }：材料催化成功赋予的词条按主件部位 + 词缀类型取该范围；
+    // 未配置的组合回退突破区间。催化产生的词缀范围来源记为 'ct'（显示为「催化词缀」）。
+    catalystRanges: {},
   };
   let smeltCfg = Object.assign({}, SMELT_DEFAULTS);
   function defaultSmeltCfg() { return Object.assign({}, SMELT_DEFAULTS); }
@@ -712,6 +734,23 @@
     d.retainMaxRelic = Math.max(0, Math.min(99, Math.floor(d.retainMaxRelic)));
     // 补缀词条数上限：1 条（等于禁止补缀）~ 6 条（词缀类型全集）；非数字回退出厂默认 3
     d.addAffixCap = Math.max(1, Math.min(AFFIX_TYPES.length, Math.floor(Number(d.addAffixCap) || SMELT_DEFAULTS.addAffixCap)));
+    // 材料催化词缀范围：{ [part]: { [type]: [min, max] } }，逐项校验（非法/缺省条目剔除，全部清空 = 回退突破区间）
+    const crIn = c.catalystRanges;
+    const crOut = {};
+    if (crIn && typeof crIn === 'object') {
+      Object.keys(crIn).forEach(function (part) {
+        const row = crIn[part];
+        if (!row || typeof row !== 'object') return;
+        const okRow = {};
+        AFFIX_TYPES.forEach(function (t) {
+          const r = row[t];
+          const mn = Array.isArray(r) ? Number(r[0]) : NaN, mx = Array.isArray(r) ? Number(r[1]) : NaN;
+          if (isFinite(mn) && isFinite(mx) && mx >= mn) okRow[t] = [Math.round(mn * 10) / 10, Math.round(mx * 10) / 10];
+        });
+        if (Object.keys(okRow).length) crOut[part] = okRow;
+      });
+    }
+    d.catalystRanges = crOut;
     smeltCfg = d;
     return smeltCfg;
   }
@@ -776,27 +815,67 @@
   // 补缀（投料新增词缀）后允许的词条数上限：默认 3（主 + 副 + 补缀），可越过品质上限与底材池长
   function smeltAddAffixCap() { return smeltCfg.addAffixCap; }
 
-  // 熔炼取值区间（服务器掷骰与前端展示共用）：
-  //   kind = 'main' → 主件选中的那条：在主件池内按主件区间，否则（突破件的池外词缀）按池外区间
-  //   kind = 'sub'  → 副件搬来的那条：默认按**副件区间**（副件池内 → 副件底材区间；副件池外 → 池外区间）；
-  //                   subRangeFromSub 关闭时回退旧行为（主件池内 → 主件区间；否则池外区间）
-  //   kind = 'add'  → 投料补缀的那条：默认按**池外（突破）区间**（与宝匣突破件一致，随后台改动即时生效）；
-  //                   addAffixExtraRange 关闭时回退旧行为（主件池内 → 主件区间；否则池外区间）
-  function smeltRangeOf(mainBaseId, subBaseId, kind, type) {
+  // 熔炼取值区间（服务器掷骰与前端展示共用）。v0.12.2 重构：词缀自带「范围来源」（见 affixToken），
+  // roll 一律按**词缀带来的范围**取值，而不是「结果底材的池区间」——修复熔炼/重铸把范围错变成底材区间的 bug：
+  //   kind = 'main' → 主件选中的那条：按它自己的 src（解析时已按池内/池外推断，见 instanceOf）
+  //   kind = 'sub'  → 副件搬来的那条：默认按它自己的 src（副件连区间一起提供）；
+  //                   subRangeFromSub 关闭时回退旧行为（主件池内 → 主件区间；否则突破区间）
+  //   kind = 'add'  → 投料补缀的那条：主件部位配置了「材料催化词缀范围」→ 催化区间（src='ct'）；
+  //                   否则 addAffixExtraRange 开启 → 突破区间（src='bt'）；关闭回退旧行为
+  // 返回 { range, src }；smeltRangeOf 保留为只取区间的兼容入口。
+  function poolRangeOf(baseId, type) {
+    const b = BASE_MAP[baseId];
+    if (!b) return null;
+    const slot = b.pool.find(function (p) { return p.type === type; });
+    return slot ? affixRangeOf(b.id, slot) : null;
+  }
+  // 范围来源 → 取值区间：
+  //   src = 底材id → 该底材池内该词缀的区间（含后台 affixRanges 覆盖）
+  //   src = 'bt'   → 突破区间（宝匣池外词缀，后台「池外词缀数值区间」）
+  //   src = 'ct'   → 催化区间（工坊投料补缀，后台「材料催化词缀范围」按部位配置；未配置回退突破区间）
+  function affixSrcRangeOf(src, type, part) {
+    if (src === 'ct') return catalystRangeOf(part, type) || extraAffixRangeOf(type);
+    if (src && src !== 'bt' && BASE_MAP[src]) {
+      const r = poolRangeOf(src, type);
+      if (r) return r;
+    }
+    return extraAffixRangeOf(type);
+  }
+  // 材料催化词缀范围（工坊投料补缀用）：{ [部位]: { [词缀类型]: [min, max] } }，后台「⚒ 工坊配置」可配；
+  // 该部位该词缀未配置时返回 null（调用方回退突破区间）。
+  function catalystRangeOf(part, type) {
+    const tbl = smeltCfg.catalystRanges && smeltCfg.catalystRanges[part];
+    const r = tbl && tbl[type];
+    if (Array.isArray(r) && r.length === 2 && isFinite(r[0]) && isFinite(r[1]) && r[1] >= r[0]) return r;
+    return null;
+  }
+  function smeltRangeEx(mainBaseId, subBaseId, kind, type, opts) {
+    const o = opts || {};
     const mainBase = BASE_MAP[mainBaseId] || null;
     const subBase = BASE_MAP[subBaseId] || null;
-    function poolRangeOf(base) {
-      if (!base) return null;
-      const slot = base.pool.find(function (p) { return p.type === type; });
-      return slot ? affixRangeOf(base.id, slot) : null;
+    const part = o.part || (mainBase && mainBase.part) || null;
+    const mainHas = !!(mainBase && mainBase.pool.some(function (p) { return p.type === type; }));
+    const subHas = !!(subBase && subBase.pool.some(function (p) { return p.type === type; }));
+    // 未显式传 src 时的缺省推断（兼容旧调用 / 防御）：main 按主件池、sub 按副件池、池外 → 突破
+    const fallbackSrc = kind === 'sub' ? (subHas ? subBaseId : 'bt') : (mainHas ? mainBaseId : 'bt');
+    const src = o.src || fallbackSrc;
+    if (kind === 'main' || kind === 'sub') {
+      if (kind === 'sub' && smeltCfg.subRangeFromSub === false) {
+        // 旧行为：主件池内按主件区间，否则突破区间
+        return mainHas ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId } : { range: extraAffixRangeOf(type), src: 'bt' };
+      }
+      return { range: affixSrcRangeOf(src, type, part), src: src };
     }
-    if (kind === 'sub' && smeltCfg.subRangeFromSub !== false) {
-      return poolRangeOf(subBase) || extraAffixRangeOf(type);
+    if (kind === 'add') {
+      const cr = catalystRangeOf(part, type);
+      if (cr) return { range: cr, src: 'ct' };
+      if (smeltCfg.addAffixExtraRange !== false) return { range: extraAffixRangeOf(type), src: 'bt' };
+      return mainHas ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId } : { range: extraAffixRangeOf(type), src: 'bt' };
     }
-    if (kind === 'add' && smeltCfg.addAffixExtraRange !== false) {
-      return extraAffixRangeOf(type);
-    }
-    return poolRangeOf(mainBase) || extraAffixRangeOf(type);
+    return mainHas ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId } : { range: extraAffixRangeOf(type), src: 'bt' };
+  }
+  function smeltRangeOf(mainBaseId, subBaseId, kind, type, opts) {
+    return smeltRangeEx(mainBaseId, subBaseId, kind, type, opts).range;
   }
 
   // ---- 熔炼 · 残片保留（只对海王遗匣产出的神话主件开放）----
@@ -811,8 +890,9 @@
     if (!base) return [];
     const poolTypes = {};
     base.pool.forEach(function (p) { poolTypes[p.type] = 1; });
+    // 保留时连范围来源（src）一起带回：残片保留是「按原值追加」，来源不变
     return (affixes || []).filter(function (a) { return !poolTypes[a.type]; })
-      .map(function (a) { return { type: a.type, value: a.value }; });
+      .map(function (a) { return { type: a.type, value: a.value, src: a.src || null }; });
   }
   // 投入 n 片残片时的保留概率（%）：夹在 [0, 100]，保留一位小数
   function smeltRetainChance(relics) {
@@ -826,20 +906,18 @@
   // 所以神话品质就是「宝匣产出的组件」这一身份标识；工坊熔炼保留主件品质，熔出来的神话件同样可重铸。
   const RECAST_QUALITY = 'mythic';
   function canRecast(meta) { return !!(meta && meta.kind === 'component' && meta.quality === RECAST_QUALITY); }
-  // 重铸取值：保持词缀**类型与条数不变**，按当前 roll 模型重新取值
-  // （池内词缀用底材区间，池外词缀用「池外词缀区间」——与突破件生成同一套区间）
+  // 重铸取值：保持词缀**类型与条数不变**，按当前 roll 模型重新取值。
+  // v0.12.2 修复：每条词条按**它自己的范围来源**（a.src：底材区间 / 突破区间 / 催化区间）重 roll，
+  // 不再「词缀类型在底材池里就按底材区间」——修复重铸把范围错变成该底材范围的 bug。
   function recastAffixes(baseId, affixes) {
     const base = BASE_MAP[baseId];
     if (!base) return null;
-    const poolTypes = {};
-    base.pool.forEach(function (p) { poolTypes[p.type] = 1; });
     const keepBetter = !!smeltCfg.recastMinValue; // 开启后「至少不比原来差」：取重 roll 与原值里更好的那个
     return (affixes || []).map(function (a) {
-      const slot = poolTypes[a.type] ? base.pool.find(function (p) { return p.type === a.type; }) : null;
-      const rng = slot ? affixRangeOf(baseId, slot) : extraAffixRangeOf(a.type);
+      const rng = affixSrcRangeOf(a.src, a.type, base.part);
       const v = rollAffixValue(rng[0], rng[1], componentCfg.rollModel);
       // 数值越大越好（负词缀同理：-5 优于 -12），所以「更好」= Math.max
-      return { type: a.type, value: keepBetter ? Math.max(v, a.value) : v };
+      return { type: a.type, value: keepBetter ? Math.max(v, a.value) : v, src: a.src || null };
     });
   }
 
@@ -1289,10 +1367,8 @@
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
     { id: 'chest', name: '宝匣合成', icon: '🎁', implemented: true },
     { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
-    { id: 'shop', name: '系统商店', icon: '🏪', implemented: true },
-    { id: 'market', name: '开放市集', icon: '💱', implemented: true },
-    // 「在线交易」不再是独立页面：入口合并到 渔场动态 → 在线玩家列表 的玩家卡片
-    // （卡片右部「交易」按钮弹出子窗口），见 ui.js 的 openTradeModal。
+    // 「系统商店」「开放市集」不再是独立页面：合并进「商城」页（工坊熔炼/重铸同款页签切换），
+    // 系统商店改名「收购」、开放市集改名「市集」，见 ui.js 的 renderMall。
     { id: 'mall', name: '商城', icon: '🛒', implemented: true },
     { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true },
     { id: 'records', name: '渔获记录', icon: '🏆', implemented: true },
@@ -1359,7 +1435,8 @@
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds,
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
-    smeltRangeOf: smeltRangeOf, smeltAddAffixCap: smeltAddAffixCap,
+    smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,
+    affixSrcRangeOf: affixSrcRangeOf, catalystRangeOf: catalystRangeOf,
     smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,
     RECAST_QUALITY: RECAST_QUALITY, canRecast: canRecast, recastAffixes: recastAffixes,
     MALL_DEFAULTS: MALL_DEFAULTS, defaultMallCfg: defaultMallCfg,

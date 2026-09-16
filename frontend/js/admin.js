@@ -2407,15 +2407,67 @@ window.Admin = (function () {
       '</div>' +
       '<div class="mgr-row" style="margin-top:10px"><button class="btn primary" id="ws-cfg-save">保存熔炼参数</button>' +
       '<button class="btn" id="ws-cfg-reset">恢复默认</button><span id="ws-cfg-state" class="hint" style="margin-left:10px"></span></div>' +
-      '<h3>🧵 材料 → 词缀对照（只读）</h3>' +
-      '<div class="hint" style="margin-bottom:6px">投料份数最多的那种材料决定熔炼后补的词缀；龙宫宝珠是催化剂（不指向词缀）。</div>' +
+      '<h3>🧵 材料 → 词缀对照</h3>' +
+      '<div class="hint" style="margin-bottom:6px">投料份数最多的那种材料决定熔炼后补的词缀；龙宫宝珠是催化剂（不指向词缀）。补上的词条数值范围在下方按部位设置。</div>' +
       '<div class="ch-ar-wrap">' + mats.map(function (m) {
         return '<span class="ch-fix"><label class="hint">' + esc(m.name) + '</label><span class="tag">' + esc(m.affixName) + '</span>' +
           '<span class="hint">(' + esc(m.rarity) + ')</span></span>';
       }).join('') +
-      '<span class="ch-fix"><label class="hint">' + esc((cfg.smeltPearl || {}).name || '龙宫宝珠') + '</label><span class="tag">催化剂</span></span></div>';
+      '<span class="ch-fix"><label class="hint">' + esc((cfg.smeltPearl || {}).name || '龙宫宝珠') + '</label><span class="tag">催化剂</span></span></div>' +
+      (function () {
+        // v0.12.2：材料催化词缀范围（分组件部位设置）。表格：行 = 词缀类型，列 = 组件部位；
+        // 留空 = 该组合回退突破区间（🎁 宝匣配置 → 🎲 池外词缀数值区间）。
+        const partsList = [];
+        (GameData.COMPONENT_BASES || []).forEach(function (b) { if (partsList.indexOf(b.part) < 0) partsList.push(b.part); });
+        const partName = function (k) {
+          const p = (GameData.ROD_PARTS || []).find(function (x) { return x.key === k; });
+          return p ? p.name : k;
+        };
+        const affTypes = GameData.AFFIX_TYPES || [];
+        const affLabel = GameData.AFFIX_LABEL || {};
+        const catr = SC.catalystRanges || {};
+        const vOf = function (part, t, i) {
+          const r = catr[part] && catr[part][t];
+          return (Array.isArray(r) && r[i] != null) ? r[i] : '';
+        };
+        return '<h3>🧪 材料催化词缀范围（分部位）</h3>' +
+          '<div class="hint" style="margin-bottom:6px">材料催化成功赋予主件的词条（催化词缀）按<b>主件部位 + 词缀类型</b>取下表范围。' +
+          '留空 = 回退突破区间。保存后全服即时生效（玩家端熔炼预览同步）。</div>' +
+          '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px">' +
+          '<tr><th style="text-align:left;padding:4px 8px">词缀 \\ 部位</th>' +
+          partsList.map(function (pt) { return '<th style="padding:4px 8px;white-space:nowrap">' + esc(partName(pt)) + '</th>'; }).join('') + '</tr>' +
+          affTypes.map(function (t) {
+            return '<tr><td style="padding:4px 8px;white-space:nowrap">' + esc(affLabel[t] || t) + '</td>' +
+              partsList.map(function (pt) {
+                return '<td style="padding:2px 4px;white-space:nowrap">' +
+                  '<input id="cat-' + esc(pt) + '-' + esc(t) + '-min" class="ipt mk-num" type="number" step="0.1" style="width:56px" value="' + vOf(pt, t, 0) + '" placeholder="min"> ~ ' +
+                  '<input id="cat-' + esc(pt) + '-' + esc(t) + '-max" class="ipt mk-num" type="number" step="0.1" style="width:56px" value="' + vOf(pt, t, 1) + '" placeholder="max">' +
+                  '</td>';
+              }).join('') + '</tr>';
+          }).join('') + '</table></div>';
+      })();
 
     $('ws-cfg-save').onclick = function () {
+      // 材料催化词缀范围：从表格收集 { [part]: { [type]: [min, max] } }；min/max 任一留空 = 该组合清除（回退突破区间）
+      const catParts = [];
+      (GameData.COMPONENT_BASES || []).forEach(function (b) { if (catParts.indexOf(b.part) < 0) catParts.push(b.part); });
+      const catalystRanges = {};
+      let catErr = null;
+      (GameData.AFFIX_TYPES || []).forEach(function (t) {
+        catParts.forEach(function (pt) {
+          const mnV = $('cat-' + pt + '-' + t + '-min') ? $('cat-' + pt + '-' + t + '-min').value.trim() : '';
+          const mxV = $('cat-' + pt + '-' + t + '-max') ? $('cat-' + pt + '-' + t + '-max').value.trim() : '';
+          if (mnV === '' && mxV === '') return;
+          const mn = Number(mnV), mx = Number(mxV);
+          if (mnV === '' || mxV === '' || !isFinite(mn) || !isFinite(mx) || mx < mn) {
+            catErr = '催化词缀范围有未填完整的格子（' + t + ' @ ' + pt + '）：两个值都要填，且上限 ≥ 下限；不用请清空';
+            return;
+          }
+          catalystRanges[pt] = catalystRanges[pt] || {};
+          catalystRanges[pt][t] = [mn, mx];
+        });
+      });
+      if (catErr) { toast(catErr, true); return; }
       adminApi('POST', '/api/admin/smelt/config', {
         token: token,
         baseRate: $('ws-cfg-baseRate').value,
@@ -2440,6 +2492,7 @@ window.Admin = (function () {
         addAnyAffix: $('ws-cfg-addAnyAffix').checked,
         addAffixCap: $('ws-cfg-addAffixCap').value,
         addAffixExtraRange: $('ws-cfg-addAffixExtraRange').checked,
+        catalystRanges: catalystRanges,
       }).then(function (r) {
         if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
         worldCfg = null;

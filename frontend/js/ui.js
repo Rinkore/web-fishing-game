@@ -58,14 +58,21 @@ window.UI = (function () {
     }
     return rarityClass(meta.rarity);
   }
-  // 组件词缀 span 的起始标签：池外词缀（宝匣突破件补足的、本部位本来没有的词缀）额外加 extra 标记
-  function affSpanOpen(a) {
-    return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + (a.extra ? ' extra' : '') + '">';
+  // 组件词缀 span 的起始标签：池外词缀（宝匣池外补足 / 工坊催化补缀的、本部位本来没有的词缀）额外加 extra 标记
+  // 池外词缀统一命名：宝匣产生的 = 突破词缀；工坊催化（投料补缀）产生的 = 催化词缀
+  function extraAffixName(a) { return a && a.src === 'ct' ? '催化词缀' : '突破词缀'; }
+  function extraAffixTitle(a) {
+    return a && a.src === 'ct' ? '催化词缀（工坊投料补缀产生）' : '突破词缀（宝匣池外补足产生）';
   }
-  // 词缀数值区间 [min,max]；池内走底材区间、池外走「池外词缀区间」表，都没有则返回 null（不显示区间）
+  function affSpanOpen(a) {
+    return '<span class="inst-aff ' + (a.value < 0 ? 'neg' : 'pos') + (a.extra ? ' extra' : '') + '"' +
+      (a.extra ? ' title="' + extraAffixTitle(a) + '"' : '') + '>';
+  }
+  // 词缀数值区间 [min,max]；池内走底材区间，池外按词缀自己的范围来源（突破/催化），都没有则返回 null（不显示区间）
   function affixRangeIn(meta, a) {
     const pool = ((meta && meta.pool) || []).find(function (p) { return p.type === a.type; });
     if (pool) return D.affixRangeOf ? D.affixRangeOf(meta.baseId, pool) : [pool.min, pool.max];
+    if (a.extra && D.affixSrcRangeOf) return D.affixSrcRangeOf(a.src, a.type, meta && meta.part);
     return (a.extra && D.extraAffixRangeOf) ? D.extraAffixRangeOf(a.type) : null;
   }
   // 组件实例的状态标签：突破 > 满词条（突破件必然也满词条，但语义是「越过了词缀池边界」）
@@ -2422,7 +2429,7 @@ window.UI = (function () {
       main.appendChild(p0);
       window.Net.autoSellGet().then(function (r) {
         if (r && r.ok) { shopAuto.loaded = true; shopAuto.all = r.data.all; shopAuto.fish = r.data.fish || {}; }
-        if (currentView === 'shop') renderShop();
+        if (inShopView()) renderShop();
       }).catch(function () {});
       return;
     }
@@ -2431,7 +2438,8 @@ window.UI = (function () {
     if (!document.querySelector('#shop-panel .shop-grid')) {
       const panel = el('div', 'panel wide');
       panel.id = 'shop-panel';
-      panel.innerHTML = '<h2>🏪 系统商店 <span class="subtitle" id="shop-sub">' + shopSubtitle() + '</span></h2>';
+      panel.innerHTML = '<h2>🪙 收购 <span class="subtitle" id="shop-sub">' + shopSubtitle() + '</span></h2>' + mallTabsHtml('shop');
+      bindMallTabs(panel);
       const cols = el('div', 'shop-cols');
       const colMain = el('div', 'shop-colmain');
 
@@ -2838,7 +2846,8 @@ window.UI = (function () {
     const prevScroll = prevList ? prevList.scrollTop : 0;
     main.innerHTML = '';
     const panel = el('div', 'panel wide two-col');
-    panel.innerHTML = '<h2>💱 开放市集 <span class="subtitle">购买 / 我的挂单 / 历史订单 分页管理 · 成交收 10% 税（卖家承担）</span></h2>';
+    panel.innerHTML = '<h2>💱 市集 <span class="subtitle">购买 / 我的挂单 / 历史订单 分页管理 · 成交收 10% 税（卖家承担）</span></h2>' + mallTabsHtml('market');
+    bindMallTabs(panel);
 
     const colMain = el('div', 'col-main');
     const market = st.market || [];
@@ -4119,12 +4128,12 @@ window.UI = (function () {
       else if (c.hitCount) {
         out.push('词条数：' + (c.chance != null ? Math.round(c.chance * 100) + '% 概率 ' : '') + c.hitCount + ' 条' +
           (c.chance != null ? ' / ' + Math.round((1 - c.chance) * 100) + '% 概率 ' + c.missCount + ' 条' : '') +
-          (c.extra ? '（多出的那条是池外突破词缀）' : ''));
+          (c.extra ? '（多出的那条是突破词缀）' : ''));
       } else if (c.minAffixes) out.push('词条数：至少 ' + c.minAffixes + ' 条');
-      out.push('交易：系统商店不收购宝匣，只能挂到开放市集');
+      out.push('交易：收购不收宝匣，只能挂到商城的市集页');
     } else if (it.kind === 'fish') {
-      out.push('出售：系统商店按现价动态收购（卖出越多价越低）');
-      out.push('挂单：开放市集上架付定价总额 1% 上架费，成交另收 10% 税');
+      out.push('出售：商城「收购」页按现价动态出售（卖出越多价越低）');
+      out.push('挂单：商城「市集」页上架付定价总额 1% 上架费，成交另收 10% 税');
       out.push('记录：计入「📖 鱼类图鉴」与「🏆 渔获记录」的大小鱼榜');
     } else {
       const aff = D.smeltMaterialAffix && D.smeltMaterialAffix(it.id);
@@ -4943,10 +4952,10 @@ window.UI = (function () {
     });
     return '<select class="bulk-select" id="chest-target">' + opts.join('') + '</select>';
   }
-  // 词缀后括号里的数值区间：池内取底材区间，池外取「池外词缀区间」表
+  // 词缀后括号里的数值区间：池内取底材区间，池外按词缀自己的范围来源（突破/催化）
   function chestAffixRange(meta, a) {
     if (a.extra) {
-      const r = D.extraAffixRangeOf ? D.extraAffixRangeOf(a.type) : null;
+      const r = D.affixSrcRangeOf ? D.affixSrcRangeOf(a.src, a.type, meta && meta.part) : null;
       return r ? rangeText({ min: r[0], max: r[1] }) : '';
     }
     const pool = (meta.pool || []).find(function (p) { return p.type === a.type; });
@@ -4969,7 +4978,8 @@ window.UI = (function () {
           (rng ? '<span class="aff-rng">（' + esc(rng) + '%）</span>' : '') + '</span>';
       }).join('') + '</div>' +
       (extras.length
-        ? '<div class="cr-note">★ 标记的词缀不在「' + esc(meta.baseName) + '」的词缀池内——这是宝匣突破件补足的额外词缀。</div>'
+        ? '<div class="cr-note">★ 标记的词缀不在「' + esc(meta.baseName) + '」的词缀池内——这是' +
+          esc(extraAffixName(extras[0])) + '（悬停词条可看来源说明）。</div>'
         : (meta.breakthrough ? '' : '')) +
       '</div>';
   }
@@ -5242,6 +5252,7 @@ window.UI = (function () {
     return { eligible: eligible, max: max, per: per, affixes: affixes, have: have, cap: cap, qty: qty, chance: D.smeltRetainChance(qty) };
   }
   function wsPlan() {
+    const cfg = D.getSmeltCfg();
     const comps = wsComponents();
     const mainC = comps.find(function (c) { return c.id === wsMain; });
     const subC = comps.find(function (c) { return c.id === wsSub; });
@@ -5261,7 +5272,11 @@ window.UI = (function () {
     } else if (!wsMainAffix) error = '请选择主件上要保留的词条';
     else if (!wsSubAffix) error = '请选择副件上要搬运的词条';
     else if (wsMainAffix === wsSubAffix) error = '主副选中的词条类型不能相同';
-    else if (load.total > 0) {
+    else if (load.total > Number(cfg.maxMaterials)) {
+      error = '投料最多 ' + cfg.maxMaterials + ' 份（当前 ' + load.total + ' 份），请减少份数';
+    } else if (Object.keys(load.byAffix).length > Number(cfg.maxTypes)) {
+      error = '投料最多 ' + cfg.maxTypes + ' 种（当前 ' + Object.keys(load.byAffix).length + ' 种），请清空多余材料';
+    } else if (load.total > 0) {
       const addable = D.smeltAddableAffixes(mainC.meta.baseId, [wsMainAffix, wsSubAffix]);
       if (addable.indexOf(load.dominant) < 0) {
         error = '投料对应「' + (D.AFFIX_LABEL[load.dominant] || load.dominant) + '」，但熔炼结果里已经有这条词缀了';
@@ -5269,13 +5284,17 @@ window.UI = (function () {
         error = '补缀后词条数会超过上限（' + addCap + ' 条），可在后台「⚒ 工坊配置」调整';
       }
     }
-    // 预览里要点出的三条词缀区间（与服务端掷骰同一份口径，见 data.js 的 smeltRangeOf）
+    // 预览里要点出的三条词缀区间（与服务端掷骰同一份口径，见 data.js 的 smeltRangeEx）。
+    // v0.12.2：按词缀自己的范围来源取区间（副件那条按副件带来的区间、补缀按催化/突破区间）。
     const mid = mainC ? mainC.meta.baseId : null, sid = subC ? subC.meta.baseId : null;
     const extraType = load.total > 0 ? load.dominant : null;
+    const mPart = mainC ? mainC.meta.part : null;
+    const mainAff = mainC && wsMainAffix ? mainC.meta.affixes.find(function (a) { return a.type === wsMainAffix; }) : null;
+    const subAff = subC && wsSubAffix ? subC.meta.affixes.find(function (a) { return a.type === wsSubAffix; }) : null;
     const ranges = (mainC && subC) ? {
-      main: wsMainAffix ? D.smeltRangeOf(mid, sid, 'main', wsMainAffix) : null,
-      sub: wsSubAffix ? D.smeltRangeOf(mid, sid, 'sub', wsSubAffix) : null,
-      add: extraType ? D.smeltRangeOf(mid, sid, 'add', extraType) : null,
+      main: wsMainAffix ? D.smeltRangeEx(mid, sid, 'main', wsMainAffix, { part: mPart, src: mainAff && mainAff.src }) : null,
+      sub: wsSubAffix ? D.smeltRangeEx(mid, sid, 'sub', wsSubAffix, { part: mPart, src: subAff && subAff.src }) : null,
+      add: extraType ? D.smeltRangeEx(mid, sid, 'add', extraType, { part: mPart }) : null,
     } : null;
     return {
       ok: !error, error: error, main: mainC, sub: subC, materials: mats, load: load,
@@ -5284,28 +5303,26 @@ window.UI = (function () {
       retain: retain,
     };
   }
-  // 取值区间的来源说明（与 D.smeltRangeOf 同一套判断，只用于界面上标注「这条词缀按谁的区间 roll」）
-  function wsRangeNote(kind, type) {
-    const cfg = D.getSmeltCfg();
+  // 取值区间的来源说明（与 D.smeltRangeEx 同一套口径，只用于界面上标注「这条词缀按谁的区间 roll」）
+  // re = { range, src }：src = 底材id / 'bt' 突破区间 / 'ct' 催化区间
+  function wsRangeNote(re, kind) {
+    if (!re) return '';
+    const src = re.src;
+    if (src === 'bt') return '突破区间';
+    if (src === 'ct') return '催化区间';
     const main = D.componentOf(wsMain), sub = D.componentOf(wsSub);
-    const inPool = function (meta) {
-      return !!(meta && (meta.pool || []).some(function (p) { return p.type === type; }));
-    };
-    if (kind === 'sub') {
-      if (cfg.subRangeFromSub !== false) return inPool(sub) ? '副件区间' : '池外区间';
-      return inPool(main) ? '主件区间' : '池外区间';
+    if (src && D.componentBase(src)) {
+      if (main && src === main.baseId) return '主件区间';
+      if (sub && src === sub.baseId) return '副件区间';
+      return '来源底材区间';
     }
-    if (kind === 'add') {
-      if (cfg.addAffixExtraRange !== false) return '池外区间';
-      return inPool(main) ? '主件区间' : '池外区间';
-    }
-    return inPool(main) ? '主件区间' : '池外区间';
+    return kind === 'main' ? '主件区间' : '突破区间';
   }
   // 「词缀：来源区间 +a ~ +b%」一行（熔炼结果预览用）
-  function wsAffixRangeLine(kind, type, range) {
-    if (!type || !range) return '';
-    return '<li>' + esc(D.AFFIX_LABEL[type] || type) + '：<span class="muted">' + esc(wsRangeNote(kind, type)) +
-      '</span> <b>' + esc(rangeText({ min: range[0], max: range[1] })) + '%</b></li>';
+  function wsAffixRangeLine(kind, type, re) {
+    if (!type || !re || !re.range) return '';
+    return '<li>' + esc(D.AFFIX_LABEL[type] || type) + '：<span class="muted">' + esc(wsRangeNote(re, kind)) +
+      '</span> <b>' + esc(rangeText({ min: re.range[0], max: re.range[1] })) + '%</b></li>';
   }
   // 投料区按规则过滤（服务端 smelt 校验的同一套判据，见 data.js 的 smeltAddableAffixes）：
   //   主副各选一条词条后，熔炼结果就是这两条 → 只有「结果里还没有」的词缀才补得进去，其余材料直接不显示；
@@ -5355,7 +5372,7 @@ window.UI = (function () {
     const extra = p.extraType
       ? '<div class="ws-line">补缀：<b>' + esc(D.AFFIX_LABEL[p.extraType] || p.extraType) + '</b>（投料 ' + p.load.total +
         ' 份）· 成功率 <b>' + p.rates.extraRate + '%</b>' +
-        (rr.add ? ' · ' + esc(wsRangeNote('add', p.extraType)) + ' <b>' + esc(rangeText({ min: rr.add[0], max: rr.add[1] })) + '%</b>' : '') +
+        (rr.add ? ' · ' + esc(wsRangeNote(rr.add, 'add')) + ' <b>' + esc(rangeText({ min: rr.add.range[0], max: rr.add.range[1] })) + '%</b>' : '') +
         '</div>'
       : '<div class="ws-line muted">未投料：熔炼后主件只有选中的两条词条</div>';
     // 残片保留：只在主件是海王遗匣神话件（且带池外词缀）时出现
@@ -5447,7 +5464,7 @@ window.UI = (function () {
     const rt = wsRetainInfo(mainC);
     // 残片保留：只在主件是「海王遗匣产出的神话件 + 带池外词缀」时出现（否则显一行灰字说明为何没有）
     const retainRow = rt.eligible
-      ? '<h3>🛡 残片保留（可选）<span class="hint">成功后按概率保留下主件的池外（突破）词缀，每片残片 ' + rt.per +
+      ? '<h3>🛡 残片保留（可选）<span class="hint">成功后按概率保留下主件的池外词缀（突破/催化），每片残片 ' + rt.per +
         '%，' + rt.max + ' 片即必中</span></h3>' +
         '<label class="ws-pearl"><input type="checkbox" id="ws-relic-on"' + (rt.qty > 0 ? ' checked' : '') + ' /> ' +
         '🛡 放入 <b>沉船宝匣残片</b>（持有 <span data-have="relic">' + rt.have + '</span>）· 不影响熔炼成功率与花费</label>' +
@@ -5467,9 +5484,11 @@ window.UI = (function () {
         : '');
     body.innerHTML =
       '<div class="ws-help">放两件<b>同部位</b>的组件：<b>主件</b>保留、<b>副件</b>熔毁。各选一条词条后熔炼，主件的词条就变成这两条并重新 roll 数值——' +
-      '副件<b>连词缀带区间一起提供</b>（副件那条按副件自己的区间取值），把副件独有的词缀熔到主件上，是除宝匣之外唯一能跨出词缀池边界的途径。' +
+      '每条词条都<b>按它自己的范围来源</b>取值（副件连词缀带区间一起提供；突破词缀按突破区间、催化词缀按催化区间），' +
+      '把副件独有的词缀熔到主件上，是除宝匣之外唯一能跨出词缀池边界的途径。' +
       '投料可为熔炼后的主件再补一条它还没有的词缀（<b>不受该底材词缀池限制</b>，最多补到 ' +
-      Math.max(1, Math.floor(Number(D.getSmeltCfg().addAffixCap) || 3)) + ' 条，数值按<b>池外（突破）区间</b>取值）；' +
+      Math.max(1, Math.floor(Number(D.getSmeltCfg().addAffixCap) || 3)) + ' 条，数值按<b>催化区间</b>取值——' +
+      '后台「⚒ 工坊配置」可为每个部位单独设置，未设置的部位回退突破区间）；' +
       '加入<b>龙宫宝珠</b>可让每个词条 roll 两次、取更靠近区间边界的那次。主件是<b>海王遗匣</b>产出的神话件时，' +
       '还可投入<b>沉船宝匣残片</b>（至多 ' + Math.max(0, Math.floor(Number(D.getSmeltCfg().retainMaxRelic) || 0)) +
       ' 片，每片 ' + (Number(D.getSmeltCfg().retainPerRelic) || 0) + '%）在成功时保留它的池外突破词缀，残片不影响成功率。' +
@@ -5479,7 +5498,7 @@ window.UI = (function () {
       wsCompCardHtml('sub', subC, mainC ? '副件必须与主件同部位（' + esc(partNameOf(mainC.part)) + '）' : '先选主件，再选同部位的副件') +
       '</div>' +
       '<h3>🧵 投料（可选）<span class="hint">每种材料对应一个词缀；投料份数最多的那种材料决定要补的词缀' +
-      '（可补熔炼结果还没有的<b>任意</b>词缀，数值按池外区间取值）</span></h3>' +
+      '（可补熔炼结果还没有的<b>任意</b>词缀，数值按催化区间取值）</span></h3>' +
       '<div class="ws-mat-grid" id="ws-mats">' + (function () {
         const mats = (st.workshop && st.workshop.materials) || [];
         if (!mats.length) return '<div class="hint">加载中…</div>';
@@ -5492,7 +5511,13 @@ window.UI = (function () {
             '<span class="wm-have">持有 ' + have + '</span>' +
             '<input class="ipt ws-mat-qty" type="number" min="0" max="99" data-mat="' + esc(m.id) + '" value="' + qty + '"' +
             (have <= 0 ? ' disabled' : '') + ' />' +
-            '<span class="wm-unit">份</span></label>';
+            '<span class="wm-unit">份</span>' +
+            '<span class="wm-quick">' +
+            '<button type="button" class="mini wm-q" data-q="1">+1</button>' +
+            '<button type="button" class="mini wm-q" data-q="5">+5</button>' +
+            '<button type="button" class="mini wm-q" data-q="all" title="投入全部持有量（不超过持有数）">全部</button>' +
+            '<button type="button" class="mini wm-q" data-q="0">清空</button>' +
+            '</span></label>';
         }).join('');
       })() + '</div>' +
       '<div class="hint" id="ws-mats-note"></div>' +
@@ -5518,6 +5543,23 @@ window.UI = (function () {
         const id = inp.getAttribute('data-mat');
         const v = Math.max(0, Math.min(99, Math.floor(Number(inp.value) || 0)));
         if (v > 0) wsMats[id] = v; else delete wsMats[id];
+        wsRefreshPreview();
+      });
+    });
+    // 投料快捷份数按钮：+1 / +5 / 全部 / 清空（大量投料不用再手打数字）
+    body.querySelectorAll('.wm-q').forEach(function (b) {
+      b.addEventListener('click', function (ev) {
+        ev.preventDefault(); ev.stopPropagation(); // 在 <label> 里，别让点击穿透到输入框
+        const row = b.closest('.ws-mat');
+        const id = row && row.getAttribute('data-mat');
+        if (!id) return;
+        const inp = row.querySelector('.ws-mat-qty');
+        const have = S().inventory[id] || 0;
+        const q = b.getAttribute('data-q');
+        let v = q === 'all' ? have : (Number(q) || 0) + (Number(wsMats[id]) || 0);
+        v = Math.max(0, Math.min(have, Math.floor(v)));
+        if (v > 0) wsMats[id] = v; else delete wsMats[id];
+        if (inp) inp.value = v;
         wsRefreshPreview();
       });
     });
@@ -5602,11 +5644,12 @@ window.UI = (function () {
       (d.extraType ? ' · 补缀成功率 ' + d.extraRate + '%' : '') +
       ' · 花费 ' + d.gold + '💰' + (d.pearl ? ' · 使用龙宫宝珠' : '') +
       (d.relics > 0 ? ' · 残片 ' + d.relics + ' 片（保留概率 ' + d.retainChance + '%）' : '') + '</div>' +
-      // 本次熔炼三条词缀各自用的取值区间（副件那条按副件区间 —— v0.11.5 起副件连区间一起提供）
+      // 本次熔炼三条词缀各自用的取值区间与范围来源（副件那条按它带来的区间 —— v0.12.2 词缀自带范围来源）
       (d.ranges && d.ranges.main && d.ranges.sub
         ? '<div class="hint" style="margin-top:2px">取值区间：主件 ' + esc(rangeText({ min: d.ranges.main[0], max: d.ranges.main[1] })) + '%' +
           ' · 副件 ' + esc(rangeText({ min: d.ranges.sub[0], max: d.ranges.sub[1] })) + '%' +
-          (d.ranges.add ? ' · 补缀（池外）' + esc(rangeText({ min: d.ranges.add[0], max: d.ranges.add[1] })) + '%' : '') + '</div>'
+          (d.ranges.add ? ' · 补缀（' + esc(d.ranges.addSrc === 'ct' ? '催化区间' : '突破区间') + '）' +
+            esc(rangeText({ min: d.ranges.add[0], max: d.ranges.add[1] })) + '%' : '') + '</div>'
         : '') +
       '<div class="cf-actions"><button class="mini primary-mini cr-ok">知道了</button></div></div>';
     overlay.appendChild(box);
@@ -5829,12 +5872,33 @@ window.UI = (function () {
       }).catch(function () { toast('网络错误'); });
     });
   }
+  // ---- 商城：限购 / 收购（原系统商店）/ 市集（原开放市集）三合一 ----
+  // 采用工坊「熔炼 / 重铸」同款页签切换（.inv-cats.ws-tabs）；原两个独立页面已从 NAV 移除。
+  let mallTab = 'mall';         // 'mall' 限购 | 'shop' 收购 | 'market' 市集
+  function mallTabsHtml(active) {
+    return '<div class="inv-cats ws-tabs">' +
+      [['mall', '🛒 限购'], ['shop', '🪙 收购'], ['market', '💱 市集']].map(function (kv) {
+        return '<button class="inv-cat' + (active === kv[0] ? ' on' : '') + '" data-malltab="' + kv[0] + '">' + kv[1] + '</button>';
+      }).join('') + '</div>';
+  }
+  function bindMallTabs(panel) {
+    if (!panel) return;
+    panel.querySelectorAll('[data-malltab]').forEach(function (b) {
+      b.addEventListener('click', function () { const t = b.getAttribute('data-malltab'); if (t !== mallTab) { mallTab = t; renderView(); } });
+    });
+  }
+  // 「商城页里的收购 / 市集」判定：广播刷新与骨架判断要用（旧视图 id 已并入 mall）
+  function inShopView() { return currentView === 'mall' && mallTab === 'shop'; }
+  function inMarketView() { return currentView === 'mall' && mallTab === 'market'; }
   function renderMall() {
+    if (mallTab === 'shop') return renderShop();
+    if (mallTab === 'market') return renderMarket();
     const main = $('main');
     const st = S();
     main.innerHTML = '';
     const panel = el('div', 'panel wide');
-    panel.innerHTML = '<h2>🛒 商城 <span class="subtitle">每日限购 · 金币直购</span></h2>';
+    panel.innerHTML = '<h2>🛒 商城 <span class="subtitle">限购 · 金币直购 ｜ 收购 · 卖出换钱 ｜ 市集 · 玩家交易</span></h2>' + mallTabsHtml('mall');
+    bindMallTabs(panel);
     const mall = st.mall;
     if (!mall || !mall.items) {
       panel.appendChild(el('div', 'hint', '正在读取商城…若长时间无内容，请刷新页面。'));
@@ -6371,7 +6435,8 @@ window.UI = (function () {
     if (!window.Net) return;
     if (view === 'shop' || view === 'inventory') window.Net.fetchShop();
     else if (view === 'chest') window.Net.fetchChest();
-    else if (view === 'mall') window.Net.fetchMall();
+    // 商城 = 限购 + 收购 + 市集 三合一：进页把三份数据都拉齐，页签切换不再单独请求
+    else if (view === 'mall') { window.Net.fetchMall(); window.Net.fetchShop(); window.Net.fetchMarket(); }
     else if (view === 'workshop') window.Net.fetchWorkshop();
     else if (view === 'market') window.Net.fetchMarket();
     else if (view === 'codex') window.Net.fetchCodex();
@@ -6576,7 +6641,8 @@ window.UI = (function () {
     logs: [],                                            // 日志页：仅在收到消息（addLog）或本地操作时重绘
     // 商城/工坊：末位是视图自身 id——fetchMall / fetchWorkshop 完成后用 refreshAll('mall'|'workshop')
     // 触发重绘；少了它就会命中「scope 不在列表内 → 不重绘」，页面永远停在「加载中…」。
-    mall: ['assets', 'mall'],
+    // mall 三合一（限购/收购/市集）：三份数据源的广播都要能重绘本页
+    mall: ['assets', 'mall', 'shop', 'market', 'pricecfg'],
     // componentcfg（后台改池外/突破区间）也要重绘：工坊补缀与副件搬词的预览区间都取自它
     workshop: ['assets', 'smeltcfg', 'componentcfg', 'workshop'],
   };
@@ -6632,7 +6698,7 @@ window.UI = (function () {
       return;
     }
     // 市集筛选控件（词条下拉/数值输入）获得焦点时暂停重绘：否则广播会重建 DOM 导致下拉框被关闭。
-    if (currentView === 'market' && marketFilterActive && scope && scope !== 'all') {
+    if (inMarketView() && marketFilterActive && scope && scope !== 'all') {
       renderTopbar(); renderNav();
       return;
     }
@@ -6643,7 +6709,7 @@ window.UI = (function () {
       return;
     }
     // 市集：同上，只重画右栏上架面板，左栏挂单 / 历史订单不重建（不再闪「加载中…」）
-    if (currentView === 'market' && scope === 'assets' && !marketFilterActive && patchMarketAssets()) {
+    if (inMarketView() && scope === 'assets' && !marketFilterActive && patchMarketAssets()) {
       renderTopbar(); renderNav();
       return;
     }

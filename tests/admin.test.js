@@ -634,7 +634,9 @@ function waitReady() {
   const cusGive = await POST(B + '/api/admin/users/snapshot', { token: TOKA, target: 'adm_p2', inventory: { crucian: 4, [cusId]: 2 } });
   check('定制配件可写入玩家背包', cusGive.status === 200, JSON.stringify(cusGive.data).slice(0, 100));
   const cusSnap = await GET(B + '/api/admin/users/snapshot?token=' + TOKA + '&key=adm_p2');
-  check('定制配件已入包（数量 2）', cusSnap.data.inventory[cusId] === 2, JSON.stringify(cusSnap.data.inventory));
+  // v0.12.2：skill 不在竹制短竿池内 → 启动/写入规范化会把范围来源（@bt）补进签名
+  const cusIdNorm = DData.normalizeItemId(cusId);
+  check('定制配件已入包（数量 2，键为带范围来源的规范化签名）', cusSnap.data.inventory[cusIdNorm] === 2, JSON.stringify(cusSnap.data.inventory));
   const meta = DData.instanceMeta(cusId);
   check('定制配件可被前端解析出名称与词条', !!meta && meta.name.indexOf('竹制短竿') >= 0 && meta.affixes.length === 2,
     JSON.stringify(meta && { name: meta.name, n: meta.affixes.length }));
@@ -659,7 +661,7 @@ function waitReady() {
   check('超品质条数上限的定制件按「突破」呈现',
     cusFreeMeta.breakthrough === true && cusFreeMeta.affixes.length > DData.QUALITY.mythic.cap,
     JSON.stringify({ n: cusFreeMeta.affixes.length, cap: DData.QUALITY.mythic.cap, bt: cusFreeMeta.breakthrough }));
-  check('定制件已入包且键为规范化实例签名', cusFreeSnap.data.inventory[cusFreeId] === 1, JSON.stringify(Object.keys(cusFreeSnap.data.inventory)));
+  check('定制件已入包且键为规范化实例签名', cusFreeSnap.data.inventory[DData.normalizeItemId(cusFreeId)] === 1, JSON.stringify(Object.keys(cusFreeSnap.data.inventory)));
   check('非管理员读快照被拒 403', (await GET(B + '/api/admin/users/snapshot?token=' + TK2 + '&key=adm_p2')).status === 403);
 
   // 删除账号（二次确认）
