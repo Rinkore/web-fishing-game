@@ -34,6 +34,11 @@ window.Engine = (function () {
     // 旧快照后到会把刚开箱得到的配件从界面上抹掉（服务端其实没丢）。所有带 inventory 的
     // 快照都必须经 applyInv() 判新，绝不直接赋值。
     invRev: 0,
+    // v0.16.2：增量（invAdd / bigAdd）**自己的**水位。原先增量与快照共用 invRev，导致「只带 invAdd 的
+    // 钓鱼增量」把水位抬到 R+1 之后，紧随其后的权威快照（rev=R，例如 /api/sell 的回包）被 applyInv
+    // 当成过期丢掉 —— 金币照涨、背包不更新，玩家看到「竿身卖掉了但数量没减、再卖报数量不足」。
+    // 现在：增量只能推进 deltaRev，快照只能推进 invRev，两条水位互不否决。
+    deltaRev: 0,
     bigfish: {},                // v0.13.6：大型/巨型鱼预留计数（服务器权威，背包标签行/筛选项用）
     bd: buildDefaultBD(),       // 服务器权威，登录/装备时同步
     bdEffects: { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 },
@@ -104,7 +109,7 @@ window.Engine = (function () {
     state.player.name = profile.name || state.player.name;
     if (profile.coins != null) state.player.coins = profile.coins;
     // 登录/读档：这是「本会话第一次拿到的快照」，直接采信并把版本号抬到它的 rev（切号时先归零）
-    if (prevUser && nextUser && prevUser !== nextUser) state.invRev = 0;
+    if (prevUser && nextUser && prevUser !== nextUser) { state.invRev = 0; state.deltaRev = 0; }
     applyInv(profile.inventory || {}, profile.invRev);
     if (profile.bigfish !== undefined) state.bigfish = profile.bigfish || {};
     state.bd = (profile.bd && Object.keys(profile.bd).length) ? profile.bd : buildDefaultBD();
@@ -242,11 +247,15 @@ window.Engine = (function () {
   // 服务端在入队那一刻给每条库存消息定版（快照内容与 rev 一起冻结），所以同批次里已经包含在
   // 快照里的增量，其 rev 不会大于快照的 rev → 这里跳过，避免同一件东西被计两次。
   // 不带 rev 的老消息（兼容）按旧行为直接叠加。
+  // v0.16.2：**增量只推进 deltaRev，不再动 invRev**。判重看两条水位的较大者：
+  //   比已应用的快照旧 → 那条快照已经包含它；比已应用的增量旧 → 重复包。两种都跳过。
+  //   反过来说，增量从此**没有能力否决**后面的权威快照（这正是「卖掉的竿身还在」的根因）。
   function acceptDelta(rev) {
     const r = Number(rev);
     if (rev == null || !isFinite(r)) return true;
-    if (r <= (Number(state.invRev) || 0)) return false;
-    state.invRev = r;
+    const seen = Math.max(Number(state.invRev) || 0, Number(state.deltaRev) || 0);
+    if (r <= seen) return false;
+    state.deltaRev = r;
     return true;
   }
 

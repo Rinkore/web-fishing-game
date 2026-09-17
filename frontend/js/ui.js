@@ -56,6 +56,25 @@ window.UI = (function () {
   // 库存快照统一入口（v0.13.9）：带 invRev 的完整快照只在「不旧于已应用版本」时才生效。
   // 直接 `st.inventory = r.data.inventory` 会让先发后到的旧响应盖掉刚获得的物品（连开宝匣丢配件的根因）。
   function applyInvFrom(d) { return !!(d && d.inventory && window.Engine.applyInv(d.inventory, d.invRev)); }
+  // v0.16.2：快照被 applyInv 判旧丢弃时的兜底——向服务器要一次权威资产再校准。
+  // 出售回包就走在「回包结果未知 / 快照被判旧」这条路上：不补这一手，界面会停在
+  // 「金币涨了、卖掉的竿身还在背包里，再卖报数量不足」的假象上（玩家反馈的那条）。
+  // 注意 fetchMe 必须显式带 token（它只认 query token，不吃 X-Auth-Token）。
+  function refetchMeSoon() {
+    const me = window.Net.getMe && window.Net.getMe();
+    const tok = me && me.token;
+    if (!tok) return Promise.resolve(null);
+    return Promise.resolve(window.Net.fetchMe(tok)).then(function (m) {
+      if (m && m.ok && m.data) {
+        const st = S();
+        if (m.data.coins != null) st.player.coins = m.data.coins;
+        applyInvFrom(m.data);
+        if (m.data.bigfish !== undefined) st.bigfish = m.data.bigfish || {};
+        renderTopbar();
+      }
+      return m;
+    }).catch(function () { return null; });
+  }
 
   // v0.14.0：**鱼类暂时不许上市集**（临时开关，true = 恢复；后端 backend/server.js 有同名常量 MARKET_FISH_LIST，
   // 两边要一起改）。改版期间渔获只走系统收购：背包行 / 市集「我的背包」都不再给鱼类出「上架」入口，
@@ -109,7 +128,10 @@ window.UI = (function () {
       if (r && r.ok) {
         // 对账：服务器权威值直接采纳（含行情快照，出售会压价）
         st.player.coins = r.data.coins;
-        applyInvFrom(r.data);
+        // v0.16.2：回包快照可能被 applyInv 判为「旧」（钓鱼增量刚把水位抬高）——
+        // 这时金币已经涨了、库存却还是旧的，必须立刻向服务器要一次权威状态兜底，
+        // 否则就是玩家反馈的「卖掉了但数量没减 / 再卖报数量不足」。
+        if (!applyInvFrom(r.data)) refetchMeSoon();
         st.shop = r.data.shop;
         if (r.data.bigfish !== undefined) st.bigfish = r.data.bigfish || {};
         toast('售出 ' + itemMeta(id).name + ' ×' + qty + (tier ? '（' + tierCn(tier) + '）' : '') +
@@ -118,18 +140,14 @@ window.UI = (function () {
         toast((r && r.data && r.data.error) || (netErr ? '网络错误' : '出售失败'), true);
       }
       renderTopbar();
-      // 请求结果未知（超时 / 断线）：服务端可能**已经**卖掉这件物品 —— 光撤在途记录会让本地数字虚高，
-      // 所以向服务器要一次权威状态（inventory / coins / bigfish）再校准（「售出时刷新保证无误」这一半）。
-      if (!r && netErr) {
-        Promise.resolve(window.Net.fetchMe()).then(function (m) {
-          if (m && m.ok && m.data) {
-            if (m.data.coins != null) st.player.coins = m.data.coins;
-            applyInvFrom(m.data);
-            if (m.data.bigfish !== undefined) st.bigfish = m.data.bigfish || {};
-            renderTopbar();
-          }
+      // 请求结果未知（超时 / 断线）或服务端明确拒绝：本地数字都可能已经不准，
+      // 向服务器要一次权威状态（inventory / coins / bigfish）再校准。
+      // v0.16.2：条件从「!r && netErr」放宽——apiOnce 网络错误是 resolve({ok:false,status:0})，
+      // 旧条件永远不成立，这段校准其实是死代码（顺带修掉 fetchMe 漏传 token 的 401）。
+      if (!r || !r.ok || r.status === 0 || r.timedOut) {
+        Promise.resolve(refetchMeSoon()).then(function () {
           if (o.onSync) o.onSync();
-        }).catch(function () { if (o.onSync) o.onSync(); });
+        });
         return r;
       }
       if (o.onSync) o.onSync();
@@ -4388,7 +4406,9 @@ window.UI = (function () {
     bulkSel = {};
     // v0.13.8：预览前先跟服务端对齐一次背包。此前用本地缓存开预览，若期间背包已被
     // 自动售出 / 其它页面卖掉，列表里还是旧数量，确认时逐条被服务器拒掉（表现是「已完成 0 件」）。
-    window.Net.fetchMe().then(function (r) {
+    // v0.16.2：fetchMe 必须带 token（它只认 query token）——原来漏传，这里其实一直 401。
+    const meTok = (window.Net.getMe && window.Net.getMe()) ? window.Net.getMe().token : '';
+    window.Net.fetchMe(meTok).then(function (r) {
       if (r && r.ok && r.data) {
         if (r.data.inventory) applyInvFrom(r.data);
         if (r.data.bigfish !== undefined) st.bigfish = r.data.bigfish || {};
@@ -5134,12 +5154,15 @@ window.UI = (function () {
           const rngTag = rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '';
           return affSpanOpen(a) + esc(affixText(a)) + rngTag + '</span>';
         }).join('');
+        // v0.16.2：组件行也走「显示量」口径（总持有 − 在途出售），与鱼类一致：
+        // 点「出售 1」当场减数、卖光当场消失，不必等回包（原来只对鱼生效，组件点了毫无反馈）
+        const shownCnt = Math.min(st.inventory[it.id] || 0, shownAvailOf(it.id));
         row.innerHTML =
           '<span class="inv-comp-affs">' + affHtml + '</span>' +
           rodLockBadge(it.id) +
-          '<span class="cnt">×' + st.inventory[it.id] + '</span>' +
+          '<span class="cnt">×' + shownCnt + '</span>' +
           '<span class="unit-price">现价 ' + unitPrice(it.id) + '💰</span>' +
-          '<span class="subtotal">小计 ' + itemValue(it.id) + '💰</span>';
+          '<span class="subtotal">小计 ' + (unitPrice(it.id) * shownCnt) + '💰</span>';
         const acts = el('span', 'inv-acts');
         const dt = el('button', 'mini', '属性');
         dt.title = '查看组件词条与数值区间';
@@ -5185,7 +5208,8 @@ window.UI = (function () {
     const total = st.inventory[id] || 0;
     // v0.13.9：一般行代表「普通量」，与 renderInventory / 服务端校验同口径（鱼类扣掉大型/巨型预留）
     // v0.13.10：再扣掉「在途出售量」——出售后不必等回包，那一行当场就变（回包对账后仍是这个口径）
-    const cnt = meta.kind === 'fish' ? Math.min(total, shownAvailOf(id)) : total;
+    // v0.16.2：组件行也按这个口径（原来只有鱼类扣在途量，组件卖了当场没反应）
+    const cnt = Math.min(total, shownAvailOf(id));
     if (cnt > 0) {
       const c = row.querySelector('.cnt');
       if (c) c.textContent = '×' + cnt;
@@ -5272,9 +5296,15 @@ window.UI = (function () {
     if (!host || host.getAttribute('data-sig') !== invSigOf(st)) return false;
     main.querySelectorAll('.inv-page-row[data-id]').forEach(function (row) {
       const key = row.getAttribute('data-id');
-      const i = key.indexOf('@');
-      if (i < 0) patchInventoryRow(key);
-      else patchInventoryTierRow(key.slice(0, i), key.slice(i + 1));
+      // v0.16.2：档位行必须按**类名**判断，不能从 id 里切 '@' —— 组件实例签名的词条 token 带
+      // @src（如 rod_carbon#mythic#rare+3@bt,skl+4@bt），会被误判成档位行，于是那一行永远补不上
+      // （patchInventoryTierRow 找不到 .inv-tier-row 却照样返回 true，连 renderView 兜底都被跳过）。
+      if (row.classList.contains('inv-tier-row')) {
+        const i = key.indexOf('@');
+        patchInventoryTierRow(key.slice(0, i), key.slice(i + 1));
+      } else {
+        patchInventoryRow(key);
+      }
     });
     patchInventoryNumbers(st);          // 页签计数 + 右栏概览（总件数 / 预估总价 / 预留量）
     patchInventoryGroupHeads(st);       // 组件分组头：共 X 个 / Y 种
@@ -5639,7 +5669,10 @@ window.UI = (function () {
     const plan = G || invComponentGroups(invFilteredComponentKeys(st));
     const g = plan.groups[gk];
     if (!g) return '';
-    const totalCnt = g.items.reduce(function (n, it) { return n + (st.inventory[it.id] || 0); }, 0);
+    // v0.16.2：组头件数同样按「显示量」统计（组件也能在途出售，卖光当场归零）
+    const totalCnt = g.items.reduce(function (n, it) {
+      return n + Math.min(st.inventory[it.id] || 0, shownAvailOf(it.id));
+    }, 0);
     const types = g.rep ? plan.groupTypes(g) : '旧版通用组件';
     const priceRange = (function () {
       // 注意：这里在模块作用域，只能用模块级的 unitPriceOf（renderInventory 里的 unitPrice 是局部同名函数）
@@ -5716,7 +5749,8 @@ window.UI = (function () {
     plan.keys.forEach(function (id) {
       const meta = itemMeta(id);
       const total = st.inventory[id] || 0;
-      const cnt = meta.kind === 'fish' ? Math.min(total, shownAvailOf(id)) : total;
+      // v0.16.2：与 renderInventory / patchInventoryRow 同口径（组件也扣在途出售量）
+      const cnt = Math.min(total, shownAvailOf(id));
       if (cnt > 0 && (plan.tierShown === 'all' || plan.tierShown === 'N')) out.push(id);
       if (meta.kind === 'fish') {
         ['L', 'G'].forEach(function (t) {

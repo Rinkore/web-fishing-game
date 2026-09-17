@@ -4483,6 +4483,10 @@ const server = http.createServer(function (req, res) {
         if (ECO_PRICE[id]) registerSale(id, qty, rec.name, unit);
         saveAccount(key); saveEconomy();
         broadcastShop();
+        // v0.16.2：卖出后除了 HTTP 回包，再推一条**带 inventory 的权威快照**。
+        // 回包是「当场序列化」的，若客户端此刻已经收到更新的钓鱼增量，回包会被判旧丢弃
+        // （表现：金币涨了、卖掉的竿身还在背包里，再卖报「数量不足」）。多标签页 / 多设备也一并受益。
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), bigfish: rec.bigfish || {} });
         apiResp(res, 200, { ok: true, unit: unit, bonus: bonus, gain: gain, coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), bigfish: rec.bigfish || {}, shop: shopSnapshot() });
       });
     });

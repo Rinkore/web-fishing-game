@@ -243,6 +243,109 @@ async function main() {
   check('点「卸下」后回到空槽（待重铸组件已清空）',
     await p1.evaluate(() => !!document.querySelector('.ws-pick.empty[data-recast-pick]')));
 
+  // ---------------- 出售竿身不残留（玩家反馈：卖掉了但数量不减 / 再卖报数量不足） ----------------
+  section('出售竿身：当场减数 / 卖光消失 / 与服务器对账（invRev 双水位）');
+  const RODPART = 'rod_bamboo#common#spd+14';
+  const RODPART_BT = 'rod_carbon#mythic#rare+3@bt,skl+4@bt';   // 词条带 @src：旧实现会把这种行误判成档位行
+  await POST('/api/dev/catch', { token: tok, item: { kind: 'component', id: RODPART } });
+  await POST('/api/dev/catch', { token: tok, item: { kind: 'component', id: RODPART_BT } });
+  // 让页面拿到最新库存（背包页不会自动重拉 /api/me）
+  await p1.evaluate(async () => {
+    const t = window.Net.getMe().token;
+    const m = await window.Net.fetchMe(t);
+    if (m && m.ok && m.data) window.Engine.applyInv(m.data.inventory || {}, m.data.invRev);
+  });
+  await clickNav(p1, '背包');
+  await until(() => p1.evaluate(() => !!document.querySelector('.inv-page-tabs')), v => v === true, 20000);
+  await p1.evaluate(() => {
+    const b = Array.from(document.querySelectorAll('.inv-page-tabs .inv-cat')).find(x => /组件/.test(x.textContent || ''));
+    if (b) b.click();
+  });
+  // 组件按底材分组、默认折叠：先展开两根竿身所在的组
+  await p1.evaluate(() => {
+    ['rod_bamboo', 'rod_carbon'].forEach(function (g) {
+      const h = document.querySelector('.inv-group-head[data-group="' + g + '"]');
+      if (h && !h.classList.contains('open')) h.click();
+    });
+  });
+  await until(() => p1.evaluate(k => !!document.querySelector('.inv-page-row[data-id="' + k + '"]'), RODPART), v => v === true, 20000);
+  const rodBefore = await p1.evaluate(k => {
+    const row = document.querySelector('.inv-page-row[data-id="' + k + '"]');
+    return {
+      cnt: row ? ((row.querySelector('.cnt') || {}).textContent || '') : null,
+      hasSell: !!row && !!Array.from(row.querySelectorAll('button')).find(b => /出售 1/.test(b.textContent)),
+    };
+  }, RODPART);
+  check('竿身行已渲染（×1 且有「出售 1」）', rodBefore.cnt === '×1' && rodBefore.hasSell === true, JSON.stringify(rodBefore));
+  await p1.evaluate(k => {
+    const row = document.querySelector('.inv-page-row[data-id="' + k + '"]');
+    const b = row && Array.from(row.querySelectorAll('button')).find(x => /出售 1/.test(x.textContent));
+    if (b) b.click();
+  }, RODPART);
+  await until(async () => !(((await GET('/api/me?token=' + tok)).data.inventory) || {})[RODPART], v => v === true, 15000);
+  await until(() => p1.evaluate(k => !document.querySelector('.inv-page-row[data-id="' + k + '"]'), RODPART), v => v === true, 15000);
+  const rodAfter = await p1.evaluate(k => ({
+    row: !!document.querySelector('.inv-page-row[data-id="' + k + '"]'),
+    local: (window.Engine.state.inventory || {})[k] || 0,
+  }), RODPART);
+  check('卖光后那一行从背包消失（不再纯占格子）', rodAfter.row === false, JSON.stringify(rodAfter));
+  check('本地库存归零（不再「已经卖掉了却还在」）', rodAfter.local === 0, JSON.stringify(rodAfter));
+  await clickNav(p1, '背包');
+  await until(() => p1.evaluate(() => !!document.querySelector('.inv-page-tabs')), v => v === true, 15000);
+  check('重开背包页那一行也不会复活',
+    await p1.evaluate(k => !document.querySelector('.inv-page-row[data-id="' + k + '"]'), RODPART));
+  // 词条带 @src 的组件行（竿身高发）必须能命中**在途账本 + 就地补丁**：
+  // 旧的「从 id 里切 @」会把它当成体型档行 → patchInventoryTierRow 找不到行，那一行永远补不上。
+  await POST('/api/dev/catch', { token: tok, item: { kind: 'component', id: RODPART_BT } });   // 1 → 2 件
+  await p1.evaluate(async () => {
+    const t = window.Net.getMe().token;
+    const m = await window.Net.fetchMe(t);
+    if (m && m.ok && m.data) window.Engine.applyInv(m.data.inventory || {}, m.data.invRev);
+  });
+  await clickNav(p1, '背包');
+  await until(() => p1.evaluate(() => !!document.querySelector('.inv-page-tabs')), v => v === true, 15000);
+  await p1.evaluate(() => {
+    ['rod_bamboo', 'rod_carbon'].forEach(function (g) {
+      const h = document.querySelector('.inv-group-head[data-group="' + g + '"]');
+      if (h && !h.classList.contains('open')) h.click();
+    });
+  });
+  await until(() => p1.evaluate(k => {
+    const row = document.querySelector('.inv-page-row[data-id="' + k + '"]');
+    return !!row && ((row.querySelector('.cnt') || {}).textContent || '') === '×2';
+  }, RODPART_BT), v => v === true, 20000);
+  // 点「出售 1」当场减数（同一个同步块里读完 DOM：在途账本 + 就地补丁都要命中这一行）
+  const instant = await p1.evaluate(k => {
+    const row = document.querySelector('.inv-page-row[data-id="' + k + '"]');
+    const b = row && Array.from(row.querySelectorAll('button')).find(x => /出售 1/.test(x.textContent));
+    if (b) b.click();
+    const after = document.querySelector('.inv-page-row[data-id="' + k + '"]');
+    return after ? ((after.querySelector('.cnt') || {}).textContent || '') : null;
+  }, RODPART_BT);
+  check('带 @src 的组件行点出售当场减数（×2 → ×1）', instant === '×1', String(instant));
+  await until(async () => (((await GET('/api/me?token=' + tok)).data.inventory) || {})[RODPART_BT] === 1, v => v === true, 15000);
+  check('服务端确实只剩 1 件（与界面一致）',
+    (((await GET('/api/me?token=' + tok)).data.inventory) || {})[RODPART_BT] === 1);
+  // 再卖一件：行消失
+  await p1.evaluate(k => {
+    const row = document.querySelector('.inv-page-row[data-id="' + k + '"]');
+    const b = row && Array.from(row.querySelectorAll('button')).find(x => /出售 1/.test(x.textContent));
+    if (b) b.click();
+  }, RODPART_BT);
+  await until(() => p1.evaluate(k => !document.querySelector('.inv-page-row[data-id="' + k + '"]'), RODPART_BT), v => v === true, 15000);
+  check('第二件卖光后行也消失', await p1.evaluate(k => !document.querySelector('.inv-page-row[data-id="' + k + '"]'), RODPART_BT));
+  // invRev 双水位：只带 invAdd 的增量不得否决紧随其后的权威快照
+  const wm = await p1.evaluate(() => {
+    const E = window.Engine;
+    const base = Number(E.state.invRev) || 0;
+    const snapRev = base + 5;
+    const deltaOk = E.acceptDelta(snapRev + 1);          // 钓鱼增量（服务端盖了更高的 rev、但没人带 inventory）
+    const snapOk = E.applyInv({ crucian: 1 }, snapRev);  // 紧随其后的权威快照（rev 比增量低 1）
+    return { deltaOk: deltaOk, snapOk: snapOk, hasCrucian: !!(E.state.inventory || {}).crucian, invRev: E.state.invRev, deltaRev: E.state.deltaRev };
+  });
+  check('增量不再否决权威快照（invRev / deltaRev 拆成两条水位）',
+    wm.deltaOk === true && wm.snapOk === true && wm.hasCrucian === true, JSON.stringify(wm));
+
   // ---------------- 后台：资产快照（全部物品 + 搜索 + 改词条） ----------------
   section('后台资产快照：全部物品 / 物品搜索 / 组件改词条');
   const pa = await ctx.newPage();
