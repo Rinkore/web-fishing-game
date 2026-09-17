@@ -336,6 +336,10 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .snap-cfg-row { padding: 8px 10px; border: 1px solid var(--line, #2a3548); border-radius: 8px; background: rgba(45, 212, 191, .05); }
 .snap-cfg-row .mk-num { flex: 0 0 84px; }
 .snap-cfg-row .hint { margin: 0; }
+/* v0.16.2：账号列表分页条（账号上百时一页铺不完；翻页后 gotoMgrPage 会把列表滚回可视区） */
+.mgr-pager { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.mgr-pager .hint { margin: 0; }
+.mgr-pager #mgr-jump { width: 70px; flex: none; }
 /* v0.16.2：存档回档列表里的两步确认（点「回档到这份」后原地变成确认/取消） */
 .snap-line .roll-armed { display: inline-flex; gap: 6px; flex: none; }
 /* v0.16.2：背包件「改词条」载入定制配件区后，正在修改的提示 */

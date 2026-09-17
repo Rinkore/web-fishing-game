@@ -486,6 +486,92 @@ async function main() {
   const coinsAfter = (await GET('/api/me?token=' + tok)).data.coins;
   check('确认后真的回档（金币回到快照时点 500000）', coinsAfter === 500000, String(coinsAfter));
 
+  // ---------------- 后台：账号管理分页 ----------------
+  section('账号管理：每页 n 条（可调）+ 翻页，搜索与排序照旧');
+  for (const u of ['v162ui_p1', 'v162ui_p2', 'v162ui_p3', 'v162ui_p4']) {
+    await POST('/api/register', { username: u, password: 'abcd1234', name: u, qq: '43' + u.slice(-1) + '01' });
+  }
+  await clickNav(pa, '账号管理');
+  await until(() => pa.evaluate(() => !!document.querySelector('#mgr-ps') && document.querySelectorAll('#mgr-list tbody tr').length >= 5), v => v === true, 20000);
+  const mgrAll = await pa.evaluate(() => ({
+    rows: document.querySelectorAll('#mgr-list tbody tr').length,
+    hint: (document.querySelector('#mgr-list .hint') || {}).textContent || '',
+    hasPager: !!document.querySelector('.mgr-pager'),
+  }));
+  check('默认每页 50 条：5 个账号一页放得下', mgrAll.rows === 5 && /每页 50 条/.test(mgrAll.hint) && mgrAll.hasPager === true, JSON.stringify(mgrAll));
+  // 页长调成 2
+  await pa.evaluate(() => {
+    const p = document.getElementById('mgr-ps');
+    p.value = '2';
+    p.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await until(() => pa.evaluate(() => document.querySelectorAll('#mgr-list tbody tr').length === 2), v => v === true, 10000);
+  const pg1 = await pa.evaluate(() => ({
+    rows: document.querySelectorAll('#mgr-list tbody tr').length,
+    page: (document.querySelector('.mgr-pager .hint') || {}).textContent || '',
+    firstDisabled: !!document.querySelector('.mgr-pager [data-mgrpage="1"]').disabled,
+    keys: Array.from(document.querySelectorAll('#mgr-list tbody tr')).map(r => ((r.querySelector('b') || {}).textContent || '')),
+  }));
+  check('每页 2 条：第 1 页只渲染 2 行', pg1.rows === 2, JSON.stringify(pg1));
+  check('分页条给出页码与匹配数（第 1 / 3 页 · 匹配 5 条）', /第 1 \/ 3 页/.test(pg1.page) && /匹配 5 条/.test(pg1.page), pg1.page);
+  check('第 1 页「首页 / 上一页」禁用', pg1.firstDisabled === true);
+  await pa.evaluate(() => { document.querySelector('.mgr-pager [data-mgrpage="2"]').click(); });
+  await until(() => pa.evaluate(() => /第 2 \/ 3 页/.test((document.querySelector('.mgr-pager .hint') || {}).textContent || '')), v => v === true, 10000);
+  const pg2 = await pa.evaluate(() => ({
+    rows: document.querySelectorAll('#mgr-list tbody tr').length,
+    keys: Array.from(document.querySelectorAll('#mgr-list tbody tr')).map(r => ((r.querySelector('b') || {}).textContent || '')),
+    prevDisabled: !!document.querySelector('.mgr-pager [data-mgrpage="1"]').disabled,
+  }));
+  check('翻到第 2 页：行集与第 1 页不重叠', pg2.rows === 2 && pg2.keys.every(k => pg1.keys.indexOf(k) < 0), JSON.stringify(pg2));
+  check('第 2 页「上一页」可用', pg2.prevDisabled === false);
+  await pa.evaluate(() => { document.querySelector('.mgr-pager [data-mgrpage="3"]').click(); });
+  await until(() => pa.evaluate(() => document.querySelectorAll('#mgr-list tbody tr').length === 1), v => v === true, 10000);
+  const pg3 = await pa.evaluate(() => ({
+    rows: document.querySelectorAll('#mgr-list tbody tr').length,
+    nextDisabled: !!document.querySelector('.mgr-pager [data-mgrpage="4"]').disabled,
+  }));
+  check('末页只剩 1 条且「下一页」禁用', pg3.rows === 1 && pg3.nextDisabled === true, JSON.stringify(pg3));
+  await pa.evaluate(() => {
+    const i = document.getElementById('mgr-jump');
+    i.value = '1';
+    document.getElementById('mgr-jump-go').click();
+  });
+  await until(() => pa.evaluate(() => /第 1 \/ 3 页/.test((document.querySelector('.mgr-pager .hint') || {}).textContent || '')), v => v === true, 10000);
+  check('「跳转」输入框可用（跳回第 1 页）',
+    await pa.evaluate(() => /第 1 \/ 3 页/.test((document.querySelector('.mgr-pager .hint') || {}).textContent || '')));
+  // 搜索仍作用在全量上，且改关键词回第 1 页、分页跟着重算
+  await pa.evaluate(() => {
+    const q = document.getElementById('mgr-q');
+    q.value = 'v162ui_p';
+    q.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await until(() => pa.evaluate(() => /匹配 4 个/.test((document.querySelector('#mgr-list .hint') || {}).textContent || '')), v => v === true, 10000);
+  const sq = await pa.evaluate(() => ({
+    hint: (document.querySelector('#mgr-list .hint') || {}).textContent || '',
+    page: (document.querySelector('.mgr-pager .hint') || {}).textContent || '',
+    rows: document.querySelectorAll('#mgr-list tbody tr').length,
+    nextBtn: (document.querySelector('.mgr-pager [data-mgrpage="2"]') || {}).textContent || '',
+  }));
+  check('搜索照旧过滤全量并回到第 1 页（匹配 4 个 → 2 页）',
+    /匹配 4 个/.test(sq.hint) && /第 1 \/ 2 页/.test(sq.page) && sq.rows === 2, JSON.stringify(sq));
+  check('搜索后分页重算（出现「下一页」）', /下一页/.test(sq.nextBtn), sq.nextBtn);
+  // 排序照旧
+  await pa.evaluate(() => {
+    const q = document.getElementById('mgr-q');
+    q.value = '';
+    q.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await until(() => pa.evaluate(() => /第 1 \/ 3 页/.test((document.querySelector('.mgr-pager .hint') || {}).textContent || '')), v => v === true, 10000);
+  const sorted = await pa.evaluate(() => {
+    document.querySelector('#mgr-list th[data-sort="coins"]').click();
+    const th = document.querySelector('#mgr-list th[data-sort="coins"]');
+    return {
+      arrow: (th || {}).textContent || '',
+      firstCoins: Number((document.querySelector('#mgr-list tbody tr td.num') || {}).textContent || 0),
+    };
+  });
+  check('点表头排序照旧生效（金币列 ▼ 且首行是金币最高的）', /▼/.test(sorted.arrow) && sorted.firstCoins > 0, JSON.stringify(sorted));
+
   check('玩家与后台页面都没有 JS 报错', errs.length === 0, errs.join(' | '));
 
   await browser.close();

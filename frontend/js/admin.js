@@ -904,6 +904,27 @@ window.Admin = (function () {
   let mgrQuery = '';
   let mgrSort = { key: 'createdAt', dir: 'desc' };
   let mgrRows = [];
+  // v0.16.2：账号列表分页——账号多了以后一页铺到看不完（实测 127 个），改成每页 n 条、可翻页。
+  // 每页条数在搜索框旁调（0 或留空 = 全部），并按本地记忆保存，下次打开还是你习惯的页长。
+  let mgrPage = 1;
+  const MGR_PS_DEFAULT = 50;
+  let mgrPageSize = (function () {
+    try {
+      const raw = localStorage.getItem('fishing_admin_mgr_pagesize');
+      // ⚠️ 必须先判 null/''：Number(null) === 0，会把「没存过」误当成「0 = 全部」，默认分页就失效了
+      if (raw == null || raw === '') return MGR_PS_DEFAULT;
+      const v = Number(raw);
+      return (isFinite(v) && v >= 0) ? Math.min(1000, Math.floor(v)) : MGR_PS_DEFAULT;
+    } catch (e) { return MGR_PS_DEFAULT; }
+  })();
+  function saveMgrPageSize() { try { localStorage.setItem('fishing_admin_mgr_pagesize', String(mgrPageSize)); } catch (e) {} }
+  // 翻页统一入口：改页 → 重画 → 把列表滚回可视区（表格很长，不滚会以为「点了没反应」）
+  function gotoMgrPage(n) {
+    mgrPage = Math.max(1, Math.floor(Number(n) || 1));
+    drawMgrList();
+    const box = $('mgr-list');
+    if (box && box.scrollIntoView) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
   let mgrMeKey = '';
   function renderAccountMgr() {
     const main = $('main');
@@ -915,6 +936,10 @@ window.Admin = (function () {
       '<input id="mgr-q" class="ipt" style="width:300px" placeholder="账号 ID / 显示名 / QQ 号" value="' + esc(mgrQuery) + '" autocomplete="off" />' +
       '<div id="mgr-sug" class="mgr-sug"></div></span>' +
       '<button class="btn mini" id="mgr-q-clear">清空</button>' +
+      '<label>每页</label>' +
+      '<input id="mgr-ps" class="ipt mk-num" type="number" min="0" max="1000" step="10" title="每页显示多少个账号；留空或 0 = 全部" value="' +
+      (mgrPageSize > 0 ? mgrPageSize : '') + '" />' +
+      '<span class="hint">个（0 或留空 = 全部；按浏览器记住）</span>' +
       '<span class="hint">输入即过滤；点联想项直接定位到该账号</span></div>' +
       '<div id="snap-cfg-row" class="mgr-row snap-cfg-row">' +
       '<label>🗄 存档快照</label>' +
@@ -929,11 +954,21 @@ window.Admin = (function () {
       '<span class="hint" id="snap-cfg-state">读取中…</span></div>' +
       '<div id="mgr-list" class="panel">加载中…</div>';
     const q = $('mgr-q');
-    q.oninput = function () { mgrQuery = q.value; drawMgrList(); drawMgrSug(); };
+    // 搜索是「全量过滤后再分页」：改关键词一律回到第 1 页，否则可能停在一个空页上
+    q.oninput = function () { mgrQuery = q.value; mgrPage = 1; drawMgrList(); drawMgrSug(); };
     q.onfocus = function () { drawMgrSug(); };
     // 延迟隐藏，让「点联想项」的 click 先于 blur 生效
     q.onblur = function () { setTimeout(function () { const b = $('mgr-sug'); if (b) b.style.display = 'none'; }, 180); };
-    $('mgr-q-clear').onclick = function () { mgrQuery = ''; q.value = ''; drawMgrList(); drawMgrSug(); };
+    $('mgr-q-clear').onclick = function () { mgrQuery = ''; q.value = ''; mgrPage = 1; drawMgrList(); drawMgrSug(); };
+    const ps = $('mgr-ps');
+    if (ps) ps.onchange = function () {
+      const v = Math.floor(Number(ps.value));
+      mgrPageSize = (isFinite(v) && v > 0) ? Math.min(1000, v) : 0;   // 0 / 留空 / 非法 = 全部
+      ps.value = mgrPageSize > 0 ? mgrPageSize : '';
+      saveMgrPageSize();
+      mgrPage = 1;
+      drawMgrList();
+    };
     wireSnapCfg();
     loadSnapCfg();
     loadMgrList();
@@ -1027,7 +1062,16 @@ window.Admin = (function () {
     if (mgrSort.dir < 0) rows.reverse();
     const meKey = mgrMeKey;
     const arrow = function (k) { return mgrSort.key === k ? (mgrSort.dir < 0 ? ' ▼' : ' ▲') : ''; };
-    const body = rows.map(function (u) {
+    // v0.16.2：分页。过滤 + 排序始终作用在**整个账号集**上，再切出当前页
+    // （所以翻页不会改变匹配结果，搜索与排序照旧在全量上生效）。
+    const matched = rows.length;
+    const size = mgrPageSize > 0 ? mgrPageSize : Math.max(1, matched);
+    const pages = Math.max(1, Math.ceil(matched / size));
+    if (mgrPage > pages) mgrPage = pages;
+    if (mgrPage < 1) mgrPage = 1;
+    const from = (mgrPage - 1) * size;
+    const pageRows = rows.slice(from, from + size);
+    const body = pageRows.map(function (u) {
       const self = u.key === meKey;
       return '<tr>' +
         '<td><b>' + esc(u.name) + '</b> <span class="hint">' + esc(u.username) + (self ? '（你）' : '') + '</span>' +
@@ -1055,7 +1099,9 @@ window.Admin = (function () {
         '</td></tr>';
     }).join('');
     $('mgr-list').innerHTML =
-      '<div class="hint" style="margin-bottom:8px">共 ' + mgrRows.length + ' 个账号' + (q ? '，匹配 ' + rows.length + ' 个' : '') +
+      '<div class="hint" style="margin-bottom:8px">共 ' + mgrRows.length + ' 个账号' + (q ? '，匹配 ' + matched + ' 个' : '') +
+      ' · 第 <b>' + mgrPage + '</b> / ' + pages + ' 页' + (mgrPageSize > 0 ? '（每页 ' + size + ' 条）' : '（全部一页）') +
+      (matched ? '，本页 ' + (from + 1) + '–' + (from + pageRows.length) + ' 条' : '') +
       '；当前排序：' + ({ name: '显示名', coins: '金币', catchCount: '捕获数', online: '状态', createdAt: '注册时间', admin: '管理员' }[mgrSort.key] || mgrSort.key) + (mgrSort.dir < 0 ? ' ↓' : ' ↑') + '</div>' +
       '<table class="tbl"><thead><tr>' +
       '<th class="sortable" data-sort="name">账号' + arrow('name') + '</th>' +
@@ -1066,7 +1112,16 @@ window.Admin = (function () {
       '<th class="sortable" data-sort="admin">管理员' + arrow('admin') + '</th>' +
       '<th>挂单上限</th>' +
       '<th>操作</th>' +
-      '</tr></thead><tbody>' + body + '</tbody></table>';
+      '</tr></thead><tbody>' + body + '</tbody></table>' +
+      '<div class="mgr-pager">' +
+      '<button class="btn mini" data-mgrpage="1"' + (mgrPage <= 1 ? ' disabled' : '') + '>« 首页</button>' +
+      '<button class="btn mini" data-mgrpage="' + (mgrPage - 1) + '"' + (mgrPage <= 1 ? ' disabled' : '') + '>‹ 上一页</button>' +
+      '<span class="hint">第 <b>' + mgrPage + '</b> / ' + pages + ' 页 · 匹配 ' + matched + ' 条</span>' +
+      '<button class="btn mini" data-mgrpage="' + (mgrPage + 1) + '"' + (mgrPage >= pages ? ' disabled' : '') + '>下一页 ›</button>' +
+      '<button class="btn mini" data-mgrpage="' + pages + '"' + (mgrPage >= pages ? ' disabled' : '') + '>末页 »</button>' +
+      '<input id="mgr-jump" class="ipt mk-num" type="number" min="1" max="' + pages + '" placeholder="页" title="跳到第几页" />' +
+      '<button class="btn mini" id="mgr-jump-go">跳转</button>' +
+      '</div>';
     $('mgr-list').querySelectorAll('th.sortable').forEach(function (th) {
       th.style.cursor = 'pointer';
       th.onclick = function () {
@@ -1076,6 +1131,15 @@ window.Admin = (function () {
         drawMgrList();
       };
     });
+    $('mgr-list').querySelectorAll('[data-mgrpage]').forEach(function (b) {
+      b.onclick = function () { gotoMgrPage(Number(b.getAttribute('data-mgrpage'))); };
+    });
+    const jumpGo = $('mgr-jump-go'), jumpInp = $('mgr-jump');
+    if (jumpGo && jumpInp) {
+      const doJump = function () { gotoMgrPage(Number(jumpInp.value) || 1); };
+      jumpGo.onclick = doJump;
+      jumpInp.onkeydown = function (e) { if (e.key === 'Enter') doJump(); };
+    }
     $('mgr-list').querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { openMgrEdit(b.getAttribute('data-edit')); }; });
     $('mgr-list').querySelectorAll('[data-snap]').forEach(function (b) { b.onclick = function () { openMgrSnapshot(b.getAttribute('data-snap')); }; });
     $('mgr-list').querySelectorAll('[data-snaps]').forEach(function (b) { b.onclick = function () { openMgrSnapshots(b.getAttribute('data-snaps')); }; });
