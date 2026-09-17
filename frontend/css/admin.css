@@ -319,7 +319,15 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .mgr-row .ipt { flex: 1; min-width: 120px; }
 .mgr-foot { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
 .mgr-acts { display: flex; gap: 6px; flex-wrap: wrap; }
-.snap-modal { width: 620px; max-width: 94vw; }
+/* v0.16.2：资产快照弹窗——内容比以前多得多，必须限高 + 内部滚动，否则在 1080p 上会高过屏幕、
+   底部「应用到背包 / 保存快照」被切掉。宽屏把「背包」与「新增物品 + 定制配件」摆成两栏，
+   窄屏自动回落单栏（.snap-col 的 flex-basis 撑不下就换行）。 */
+.snap-modal { width: min(1080px, 94vw); max-width: 94vw; max-height: 90vh; display: flex; flex-direction: column; }
+.snap-modal .modal-body { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.snap-cols { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; overflow: auto; flex: 1 1 auto; min-height: 0; }
+.snap-col { flex: 1 1 380px; min-width: 300px; }
+.snap-cols .snap-inv { max-height: 46vh; }
+.snap-actions { flex: none; border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
 .snap-inv { max-height: 320px; overflow: auto; }
 .snap-line label { width: 220px; }
 .snap-line .mk-num { flex: 0 0 90px; }

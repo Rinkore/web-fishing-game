@@ -167,6 +167,19 @@ async function main() {
   check('两处概率标签都等于熔炼成功率', smelt.rows[0].prob === '成 ' + smelt.rate + '%' && smelt.rows[1].prob === '成 ' + smelt.rate + '%',
     JSON.stringify({ p0: smelt.rows[0].prob, p1: smelt.rows[1].prob, rate: smelt.rate }));
   check('熔炼槽位有「卸下」按钮（主件 / 副件各一个）', smelt.hasUnload >= 2, String(smelt.hasUnload));
+  // 排版：概率标签与「词条 n / 池长」都该贴着左边的文字，不能被顶到行尾（v0.16.2 修正）
+  const hugging = await p1.evaluate(() => {
+    const li = document.querySelector('.ws-res-affs li');
+    const chip = document.querySelector('.ws-res-affs .ws-aff-prob');
+    const card = document.querySelector('.ws-result-card');
+    const nums = document.querySelector('.ws-result-nums');
+    const gapOf = (outer, inner) => (outer && inner) ? Math.round(outer.getBoundingClientRect().right - inner.getBoundingClientRect().right) : null;
+    return { chipTail: gapOf(li, chip), numsTail: gapOf(card, nums), chipLeft: chip ? Math.round(chip.getBoundingClientRect().left) : null, liLeft: li ? Math.round(li.getBoundingClientRect().left) : null };
+  });
+  check('每条词缀的概率标签贴着左边文字（没被推到行尾）',
+    hugging.chipTail != null && hugging.chipTail >= 60, JSON.stringify(hugging));
+  check('结果卡的「词条 n / 池长」也贴着底材名（没被推到卡最右）',
+    hugging.numsTail != null && hugging.numsTail >= 60, JSON.stringify(hugging));
 
   // 补缀：投一份材料 → 补缀新增那条的概率 = 熔炼 × 补缀，完全成功跟着变
   // 材料行按规则过滤（补不了的那些加 .hide），持有为 0 的输入框是 disabled —— 只挑真正投得进去的那一行
@@ -264,6 +277,30 @@ async function main() {
   });
   check('新增物品分组覆盖全部物品（含宝匣）', !!snapUi && snapUi.groups.join(',') === '鱼,材料,宝匣,组件（底材）', JSON.stringify(snapUi && snapUi.groups));
   check('新增物品带搜索框', !!snapUi && snapUi.hasSearch === true);
+  // 排版：弹窗必须限高（不超出屏幕）+ 内部可滚动 + 宽屏两栏并排 + 底部操作栏始终在视口内
+  const layout = await pa.evaluate(() => {
+    const modal = document.querySelector('.snap-modal');
+    const cols = Array.from(document.querySelectorAll('.snap-cols .snap-col'));
+    const box = document.querySelector('.snap-cols');
+    const acts = document.querySelector('.snap-actions');
+    const r = modal ? modal.getBoundingClientRect() : null;
+    const a = acts ? acts.getBoundingClientRect() : null;
+    return {
+      modalH: r ? Math.round(r.height) : null,
+      vh: window.innerHeight,
+      cols: cols.length,
+      sideBySide: cols.length === 2 && Math.abs(cols[0].getBoundingClientRect().top - cols[1].getBoundingClientRect().top) < 4 &&
+        cols[1].getBoundingClientRect().left > cols[0].getBoundingClientRect().left + 100,
+      scrollable: box ? getComputedStyle(box).overflowY : '',
+      bodyScroll: box ? box.scrollHeight > box.clientHeight + 4 : false,
+      waitCloseY: box ? cols[1].getBoundingClientRect().top : null,
+      actsVisible: !!a && a.bottom <= window.innerHeight + 1 && a.top >= 0,
+    };
+  });
+  check('资产快照弹窗不超出屏幕（高度 ≤ 视口）', layout.modalH != null && layout.modalH <= layout.vh, JSON.stringify({ h: layout.modalH, vh: layout.vh }));
+  check('弹窗内容区可上下滚动', layout.scrollable === 'auto', JSON.stringify({ overflowY: layout.scrollable }));
+  check('宽屏把功能摆成两栏（背包 / 新增与定制）', layout.sideBySide === true, JSON.stringify({ cols: layout.cols, side: layout.sideBySide }));
+  check('底部「保存快照」操作栏始终在视口内可见', layout.actsVisible === true, JSON.stringify(layout));
   // 搜索过滤
   const filtered = await pa.evaluate(() => {
     const s = document.getElementById('snap-add-search');

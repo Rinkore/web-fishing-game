@@ -1301,10 +1301,14 @@ window.Admin = (function () {
       ov.className = 'modal-overlay';
       ov.innerHTML = '<div class="modal-box confirm-modal snap-modal"><div class="modal-head"><span class="modal-title">资产快照 · ' + esc(d.name) + '（' + esc(key) + '）</span></div>' +
         '<div class="modal-body">' +
+        '<div class="snap-cols">' +
+        '<div class="snap-col">' +
         '<div class="mgr-row"><label>金币</label><input id="snap-coins" class="ipt" type="number" min="0" value="' + d.coins + '" /></div>' +
-        '<div class="hint" style="margin:10px 0 6px">背包（直接编辑每行的数量，0 或留空 = 移除）</div>' +
+        '<div class="hint" style="margin:10px 0 6px">背包（直接编辑每行的数量，0 或留空 = 移除；组件可点「改词条」）</div>' +
         '<div class="mgr-row snap-search-row"><input id="snap-search" class="ipt" type="text" placeholder="搜索背包物品（名称 / 物品ID，不区分大小写）" /></div>' +
         '<div id="snap-inv" class="snap-inv"></div>' +
+        '</div>' +
+        '<div class="snap-col">' +
         '<div class="mgr-row" style="margin-top:10px"><label>新增物品</label>' +
         '<input id="snap-add-search" class="ipt" type="text" placeholder="搜索物品（名称 / ID）" style="max-width:190px" />' +
         '<select id="snap-add-id" class="ipt" style="min-width:240px">' + itemOptions + '</select>' +
@@ -1322,7 +1326,9 @@ window.Admin = (function () {
         '<button class="btn mini primary" id="cus-add">添加到背包</button>' +
         '<button class="btn mini" id="cus-edit-cancel" style="display:none" title="放弃对原件的修改">取消修改</button>' +
         '<span class="hint" id="cus-edit-hint"></span></div>' +
-        '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn primary" id="snap-save">保存快照</button></div>' +
+        '</div>' +   // /snap-col（右栏：新增物品 + 定制配件）
+        '</div>' +   // /snap-cols
+        '<div class="cf-actions snap-actions"><button class="btn mini cf-no">取消</button><button class="btn primary" id="snap-save">保存快照</button></div>' +
         '</div></div>';
       document.body.appendChild(ov);
       ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });

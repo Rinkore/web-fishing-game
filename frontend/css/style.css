@@ -760,9 +760,10 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .ws-res-affs { list-style: none; margin: 2px 0 6px; padding: 0; font-size: 13px; }
 .ws-res-affs li { margin-bottom: 2px; display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
 .ws-res-affs .muted { color: var(--muted); }
-/* v0.16.2：每条词缀**后面**标出它最终落成的概率（保留 / 副件搬入 = 熔炼成功率，补缀新增 = 两者相乘） */
+/* v0.16.2：每条词缀**后面**标出它最终落成的概率（保留 / 副件搬入 = 熔炼成功率，补缀新增 = 两者相乘）
+   注意别用 margin-left:auto 把它推到行尾——要贴着左边那条词缀的文字（v0.16.2 修正） */
 .ws-aff-prob {
-  margin-left: auto; flex: none; font-size: 12px; font-weight: 700;
+  flex: none; font-size: 12px; font-weight: 700;
   color: var(--accent); background: rgba(45, 212, 191, .14);
   border: 1px solid rgba(45, 212, 191, .35); border-radius: 4px; padding: 0 6px;
 }
@@ -1674,7 +1675,8 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .ws-result-icon { width: 34px; height: 34px; image-rendering: pixelated; flex: none; }
 .ws-result-main { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .ws-result-tag { font-size: 11px; color: var(--muted); }
-.ws-result-nums { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; }
+/* v0.16.2：词条数与「品质 / 底材不变」跟着左侧的底材名走（原来用 margin-left:auto 顶到最右，看着跟内容脱节） */
+.ws-result-nums { display: flex; flex-direction: column; align-items: flex-start; }
 .ws-result-n { font-size: 12px; }
 .ws-result-note { font-size: 11px; color: var(--muted); }
 .ws-res-affs .ws-src-tag {
