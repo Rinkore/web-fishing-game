@@ -4093,6 +4093,8 @@ window.UI = (function () {
   // ---- 背包视图（独立分页：分类明细 + 出售/上架 + 汇总 + 我的挂单） ----
   // 当前分类（模块级：重绘间保留）
   let invCategory = 'all';
+  let invSearch = '', invPage = 1, invFilterSig = '';
+  const INV_PAGE_SIZE = 12;
   // 子分类筛选（随分类页签切换显示）：
   //   鱼类/材料 → 品质；组件 → 一级「部位」 + 二级「词条 + 数值范围」
   let invSubRar = 'all';
@@ -5138,6 +5140,10 @@ window.UI = (function () {
   }
   // 出售后就地校准：优先补丁那一行，行不在了（例如刚被卖掉 / 被筛选隐藏）才整页重绘
   function patchRowOrView(id, tier) {
+    if (currentView === 'inventory') {
+      const host = document.querySelector('.inv-page');
+      if (host && host.getAttribute('data-sig') !== invSigOf(S())) { renderView(); return; }
+    }
     if (tier) { if (!patchInventoryTierRow(id, tier)) renderView(); return; }
     if (!patchInventoryRow(id)) renderView();
   }
@@ -5393,7 +5399,20 @@ window.UI = (function () {
     }
     // 按单价排序：出售/获得不改变行位置（排序与数量无关）
     if (invCategory !== 'component') keys.sort(function (a, b) { return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1); });
-    return { keys: keys, tierShown: tierShown };
+    const query = invSearch.trim().toLocaleLowerCase();
+    if (query) keys = keys.filter(function (id) {
+      const m = itemMeta(id);
+      const text = [m.name, m.baseName, partNameOf(m.part), qualityName(m)]
+        .concat((m.affixes || []).map(affixText)).join(' ').toLocaleLowerCase();
+      return query.split(/\s+/).every(function (word) { return text.indexOf(word) >= 0; });
+    });
+    const filterSig = JSON.stringify([invCategory, invSubRar, invTier, invPart,
+      invAffixCount, invAffixType, invAffixMin, invAffixMax, query]);
+    if (filterSig !== invFilterSig) { invPage = 1; invFilterSig = filterSig; }
+    const total = keys.length, pages = Math.max(1, Math.ceil(total / INV_PAGE_SIZE));
+    invPage = Math.max(1, Math.min(invPage, pages));
+    return { keys: keys.slice((invPage - 1) * INV_PAGE_SIZE, invPage * INV_PAGE_SIZE),
+      tierShown: tierShown, total: total, pages: pages };
   }
   // 行计划：每行一个键（一般行 = 物品 id；体型档行 = id@档位），与行内 data-id 完全一致
   function invRowsPlan(plan, st) {
@@ -5414,7 +5433,7 @@ window.UI = (function () {
   function invSigOf(st) {
     const plan = invListPlan(st);
     return 'inv|' + invCategory + '|' + invSubRar + '|' + invTier + '|' + invPart + '|' + invAffixCount + '|' +
-      invAffixType + '|' + invAffixMin + '|' + invAffixMax + '|' + invRowsPlan(plan, st).join(',') + '|' + myListingSig(st);
+      invAffixType + '|' + invAffixMin + '|' + invAffixMax + '|' + invSearch + '|' + invPage + '|' + plan.total + '|' + invRowsPlan(plan, st).join(',') + '|' + myListingSig(st);
   }
   // 我的挂单结构（下架 / 被买走后要重建这一块）：只在挂单本身变化时才让签名变
   function myListingSig(st) {
@@ -5435,8 +5454,8 @@ window.UI = (function () {
     // 否则会留下「神话 / 大型」这类对当前分类不存在的筛选，界面上一片空列表且无处可清。
     normalizeInvFilters();
     main.innerHTML = '';
-    const panel = el('div', 'panel wide two-col');
-    panel.innerHTML = '<h2>🎒 背包 <span class="subtitle">分类 → 点开大分类后再选细分（鱼类＝品质/体型档；材料与宝匣＝品质；组件＝部位 + 词条数值）· 组件按底材名分组可展开 · 逐件出售/上架</span></h2>';
+    const panel = el('div', 'panel wide two-col inventory-panel');
+    panel.innerHTML = '<h2>🎒 背包 <span class="subtitle">搜索名称、部位或词条 · 每页 12 项 · 组件分组仅统计本页 · 逐件出售/上架</span></h2>';
     // 交易进行中：背包内容锁定（新渔获不会自动刷新列表，避免交易选物品时被冲掉）
     if (tradeLockOn()) panel.appendChild(tradeLockBar());
 
@@ -5477,6 +5496,21 @@ window.UI = (function () {
     const colMain = el('div', 'col-main');
     colMain.appendChild(el('h3', null, '📦 物品明细'));
     colMain.appendChild(tabs);
+    const searchForm = el('form', 'inv-search');
+    const searchInput = el('input', 'ipt');
+    searchInput.type = 'search'; searchInput.value = invSearch;
+    searchInput.placeholder = '搜索名称、部位、品质或词条';
+    searchInput.setAttribute('aria-label', '搜索背包');
+    const searchButton = el('button', 'mini primary-mini', '搜索');
+    searchButton.type = 'submit';
+    const clearSearch = el('button', 'mini', '清空');
+    clearSearch.type = 'button';
+    searchForm.appendChild(searchInput); searchForm.appendChild(searchButton); searchForm.appendChild(clearSearch);
+    searchForm.addEventListener('submit', function (ev) {
+      ev.preventDefault(); invSearch = searchInput.value.trim(); invPage = 1; renderView();
+    });
+    clearSearch.addEventListener('click', function () { invSearch = ''; invPage = 1; renderView(); });
+    colMain.appendChild(searchForm);
     colMain.appendChild(renderInvSubFilters(st)); // 子分类行（品质 / 部位 / 词条+数值）
     const list = el('div', 'inv-page');
     // 行计划（筛选 / 排序）与结构签名：就地补丁（patchInventoryLive）按同一个签名判断能否不重建
@@ -5578,6 +5612,16 @@ window.UI = (function () {
       });
     }
     colMain.appendChild(list);
+    const pager = el('div', 'inv-pagination');
+    const previous = el('button', 'mini', '上一页');
+    const next = el('button', 'mini', '下一页');
+    previous.disabled = invPage <= 1; next.disabled = invPage >= plan.pages;
+    previous.addEventListener('click', function () { invPage--; renderView(); });
+    next.addEventListener('click', function () { invPage++; renderView(); });
+    const pageInfo = el('span', 'inv-page-info', '第 ' + invPage + ' / ' + plan.pages + ' 页 · 共 ' + plan.total + ' 项');
+    pageInfo.setAttribute('aria-live', 'polite');
+    pager.appendChild(previous); pager.appendChild(pageInfo); pager.appendChild(next);
+    colMain.appendChild(pager);
     colMain.appendChild(el('div', 'hint', '提示：出售走系统商店动态收购价（售出越多价越低）；「上架」挂到开放市集等玩家购买，需支付定价总额 1% 上架费（下架不退），成交另收 10% 税（卖家承担）。'));
     panel.appendChild(colMain);
 

@@ -989,6 +989,15 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 
 /* ---- 背包分页 ---- */
 .inv-page { display: flex; flex-direction: column; gap: 6px; }
+.inventory-panel .inv-page { max-height: 60vh; max-height: 60dvh; overflow-y: auto; min-width: 0; scrollbar-gutter: stable; }
+.inv-search, .inv-pagination { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.inv-search input { flex: 1 1 180px; min-width: 0; max-width: 100%; font-size: 16px; }
+.inv-pagination { justify-content: center; }
+.inv-pagination button:disabled { opacity: .4; cursor: default; }
+.inventory-panel .inv-group-head { flex-wrap: wrap; }
+.inventory-panel .inv-page-row > span, .inventory-panel .inv-group-head > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.inventory-panel .inv-comp-affs .inst-aff { white-space: normal; overflow-wrap: anywhere; }
+.inventory-panel .inv-acts { flex-wrap: wrap; }
 .inv-page-row { flex-wrap: wrap; }
 .inv-page-row .kind-tag, .bulk-row-item .kind-tag {
   font-size: 10px; padding: 1px 7px; border-radius: 20px;

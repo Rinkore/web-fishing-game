@@ -180,7 +180,7 @@ window.PxScene = (function () {
         cv: cv, ctx: ctx,
         world: document.createElement('canvas'), wctx: null,
         pid: null, sc: null, ox: 0, tox: 0, t: 0, last: 0, raf: 0,
-        pointer: false,
+        pointer: false, sizeDirty: true, visible: true,
       };
       inst.wctx = inst.world.getContext('2d');
       if (!inst.wctx) { inst.dead = true; return; }
@@ -189,6 +189,21 @@ window.PxScene = (function () {
         if (r.width > 0) { inst.tox = ((ev.clientX - r.left) / r.width - 0.5) * 2; inst.pointer = true; }
       });
       el.addEventListener('pointerleave', function () { inst.pointer = false; });
+    }
+    if (inst.dead) return;
+    if (!inst.observing) {
+      inst.observing = true;
+      inst.sizeDirty = true;
+      if (typeof ResizeObserver !== 'undefined') {
+        inst.ro = new ResizeObserver(function () { inst.sizeDirty = true; });
+        inst.ro.observe(el);
+      }
+      if (typeof IntersectionObserver !== 'undefined') {
+        inst.io = new IntersectionObserver(function (entries) {
+          inst.visible = entries[entries.length - 1].isIntersecting;
+        });
+        inst.io.observe(el);
+      }
     }
     setGround(inst, groundId);
     if (!inst.raf) { inst.last = performance.now(); inst.raf = requestAnimationFrame(function f(now) { frame(el, inst, now); }); }
@@ -212,7 +227,7 @@ window.PxScene = (function () {
     const im = new Image();
     const rec = { ready: false, pid: inst.pid, el: im };
     im.onload = function () { rec.ready = true; };
-    im.onerror = function () { inst.img = null; };
+    im.onerror = function () { if (inst.img === rec) inst.img = null; };
     im.src = P.img;
     inst.img = rec;
   }
@@ -224,23 +239,46 @@ window.PxScene = (function () {
 
   function resize(inst) {
     const box = inst.cv.parentNode.getBoundingClientRect();
+    inst.sizeDirty = false;
     const H = 144;                                       // 缓冲高度：像素颗粒度的来源
     const W = clamp(Math.round(H * (box.width / Math.max(box.height, 1))), 180, 560);
-    inst.cv.width = W; inst.cv.height = H;
-    inst.world.width = W; inst.world.height = H;
+    // 比较最终缓冲尺寸：达到上下限后不能按未截断的宽高比反复重建。
+    if (inst.sc && inst.cv.width === W && inst.cv.height === H && inst.scenePid === inst.pid) return;
+    if (inst.cv.width !== W || inst.cv.height !== H) {
+      inst.cv.width = W; inst.cv.height = H;
+      inst.world.width = W; inst.world.height = H;
+    }
+    inst.scenePid = inst.pid;
     inst.sc = buildScene(inst.pid || FALLBACK, W, H);
+    const P = inst.sc.P, wl = inst.sc.wl;
+    inst.skyGradient = inst.wctx.createLinearGradient(0, 0, 0, wl);
+    P.sky.forEach(function (c, i) { inst.skyGradient.addColorStop(i / (P.sky.length - 1), c); });
+    inst.waterGradients = [1, 0.5].map(function (k) {
+      const grad = inst.ctx.createLinearGradient(0, wl, 0, H);
+      grad.addColorStop(0, rgba(P.water.top, 0.45 * k));
+      grad.addColorStop(1, rgba(P.water.bottom, 0.82 * k));
+      return grad;
+    });
   }
 
   function frame(el, inst, now) {
-    if (!el.isConnected) { inst.raf = 0; return; }       // 页面重绘移除节点后自动停帧
+    if (!el.isConnected) {
+      inst.raf = 0;
+      if (inst.ro) inst.ro.disconnect();
+      if (inst.io) inst.io.disconnect();
+      inst.observing = false;
+      inst.visible = true;
+      return;
+    }
     inst.raf = requestAnimationFrame(function f(n) { frame(el, inst, n); });
+    // 不可见时只保留生命周期检查，停止绘图与粒子计算。
+    if (document.hidden || !inst.visible) { inst.last = now; return; }
     const dt = clamp((now - inst.last) / 1000, 0, 0.05);
     inst.last = now; inst.t += dt;
     const t = inst.t;
 
     // 尺寸跟随面板（布局变化 / 首次挂载时 box 为 0 的补偿）
-    const box = el.getBoundingClientRect();
-    if (box.width > 0 && Math.abs(inst.cv.width / inst.cv.height - box.width / Math.max(box.height, 1)) > 0.08) resize(inst);
+    if (inst.sizeDirty || !inst.ro) resize(inst);
     const W = inst.cv.width, H = inst.cv.height, sc = inst.sc, P = sc.P, wl = sc.wl;
 
     // 视差：指针优先，无指针时缓慢自动漂移
@@ -266,9 +304,7 @@ window.PxScene = (function () {
     }
     if (!imgOk) {
     // 天空
-    const grad = g.createLinearGradient(0, 0, 0, wl);
-    P.sky.forEach(function (c, i) { grad.addColorStop(i / (P.sky.length - 1), c); });
-    g.fillStyle = grad; g.fillRect(0, 0, W, wl + 1);
+    g.fillStyle = inst.skyGradient; g.fillRect(0, 0, W, wl + 1);
 
     // 星星（明灭）
     if (sc.stars.length) {
@@ -379,11 +415,7 @@ window.PxScene = (function () {
       c.drawImage(inst.world, 0, src, W, 1, shift, y, W, 1);
     }
     // 水色罩层：让倒影沉入各渔场自己的水色（手绘底图时罩层减淡，保留图里的倒影色彩）
-    const tintK = imgOk ? 0.5 : 1;
-    const wg = c.createLinearGradient(0, wl, 0, H);
-    wg.addColorStop(0, rgba(P.water.top, 0.45 * tintK));
-    wg.addColorStop(1, rgba(P.water.bottom, 0.82 * tintK));
-    c.fillStyle = wg; c.fillRect(0, wl, W, H - wl);
+    c.fillStyle = inst.waterGradients[imgOk ? 1 : 0]; c.fillRect(0, wl, W, H - wl);
     // 水面高光碎波：几条流动的亮线
     for (let i = 0; i < 5; i++) {
       const yy = wl + 2 + ((i * 7 + t * 3 * spd) % (H - wl - 3));
