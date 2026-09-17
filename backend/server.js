@@ -18,6 +18,7 @@
  */
 'use strict';
 const http = require('http');
+const Features = require('../frontend/js/features.js');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -1272,6 +1273,7 @@ function doubleExtraOf(A) {
   return extra;
 }
 function fishTick(key) {
+  if (Features.blocked(world.features, 'fishing.cast')) return;
   const p = players.get(key);
   if (!p || !p.fishing) return;
   const rec = users[key];
@@ -1283,6 +1285,7 @@ function fishTick(key) {
   doServerCatch(rec, key, found.ground, found.spot, eff, false);
 }
 function startFishingSession(key, groundId, spotId, opts) {
+  if (Features.blocked(world.features, 'fishing.cast')) return { error: Features.message(world.features, 'fishing.cast') };
   const p = players.get(key);
   if (!p) return { error: '请先进入游戏（建立实时连接）' };
   const found = spotOf(groundId, spotId);
@@ -1514,6 +1517,7 @@ function feedVisible(item, isRecord) {
 // 新组件入包时由服务端判定并定向推送 subalert（背包红标 / 浏览器图标闪烁由前端处理）。
 // 结构：{ on, baseId, quality, affixType, min, max, badge, blink }；条件留空 = 不限制。
 function subCfgOf(rec) {
+  if (Features.blocked(world.features, 'inventory.subscribe')) return null;
   const cfg = rec && rec.subNotify;
   return (cfg && typeof cfg === 'object' && cfg.on) ? cfg : null;
 }
@@ -1943,6 +1947,7 @@ function autoSellPlanView(rec) {
 }
 // 扫描启用中的物品并按系统行情卖出；只有「已启用物品的可卖余量合计 ≥ 打包阈值」才成交，返回明细（无则 null）
 function autoSellCheck(key) {
+  if (Features.blocked(world.features, 'mall.autosell') || Features.blocked(world.features, 'mall.sell')) return;
   const rec = users[key];
   if (!rec) return null;
   const plan = autoSellPlan(rec);
@@ -2494,7 +2499,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax', 'rank', 'lastRec'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg'];
+const CONFIG_KEYS = ['features', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
@@ -2727,7 +2732,7 @@ function newToken() { return crypto.randomBytes(16).toString('hex'); }
 function profileOf(key) {
   const rec = users[key];
   return {
-    username: rec.username, name: rec.name, coins: rec.coins, qq: rec.qq || '',
+    features: world.features || {}, username: rec.username, name: rec.name, coins: rec.coins, qq: rec.qq || '',
     inventory: rec.inventory || {}, bd: rec.bd || {},
     invRev: invRevOf(rec),   // 库存快照版本号：客户端据此丢弃过期快照（v0.13.9）
     bigfish: rec.bigfish || null,
@@ -2946,7 +2951,7 @@ function flushPresence() {
   }
   broadcast({ type: 'grounds', counts: groundCounts(), total: players.size });
 }
-function readBody(req, cb) { let b = ''; req.on('data', function (c) { b += c; if (b.length > 1e6) req.destroy(); }); req.on('end', function () { cb(b); }); }
+function readBody(req, cb) { let b = ''; req.on('data', function (c) { b += c; if (b.length > 1e6) req.destroy(); }); req.on('end', function () { if (!req.featureAllowed || req.featureAllowed()) cb(b); }); }
 // 安全解析请求体：JSON.parse('null') 是「成功」的（返回 null），而只 catch 语法错误的代码
 // 紧接着读 d.token / d.username 就会抛 TypeError —— 未捕获异常会直接终止整个服务端进程，
 // 表现为「所有玩家同一秒掉线且必须人工重启」。这里统一收口：只接受对象（数组也算对象，
@@ -3202,6 +3207,38 @@ const server = http.createServer(function (req, res) {
   }
   const u = url.parse(req.url, true);
   const p = u.pathname;
+  req.featureAllowed = function () {
+    const feature = Features.route(req.method, p);
+    if (!Features.blocked(world.features, feature)) return true;
+    apiResp(res, 423, { error: Features.message(world.features, feature), code: 'FEATURE_LOCKED', feature: feature });
+    return false;
+  };
+  if (!req.featureAllowed()) { req.resume(); return; }
+  if (p === '/api/features' && req.method === 'GET') return apiResp(res, 200, { features: world.features || {} });
+  if (p === '/api/admin/features' && req.method === 'GET') {
+    if (!adminOf(u.query.token)) return apiResp(res, 403, { error: '需要管理员权限' });
+    return apiResp(res, 200, { features: world.features || {}, groups: Features.groups });
+  }
+  if (p === '/api/admin/features' && req.method === 'POST') {
+    return readBody(req, function (body) {
+      const d = bodyObj(body);
+      if (!d) return apiResp(res, 400, { error: '请求格式错误' });
+      if (!adminOf(d.token)) return apiResp(res, 403, { error: '需要管理员权限' });
+      if (!d.features || typeof d.features !== 'object' || Array.isArray(d.features)) return apiResp(res, 400, { error: '功能配置格式错误' });
+      const keys = Object.keys(d.features);
+      if (keys.some(function (key) { return !Features.byId[key] || typeof d.features[key] !== 'boolean'; })) return apiResp(res, 400, { error: '未知功能或开关值不是布尔值' });
+      world.features = Object.assign({}, world.features || {}, d.features);
+      saveConfig();
+      if (Features.blocked(world.features, 'fishing.cast')) {
+        Array.from(fishingTimers.keys()).forEach(function (key) { stopFishingSession(key, { forget: true }); });
+      }
+      if (Features.blocked(world.features, 'ground.trade')) {
+        trades.forEach(function (t, id) { if (!t.done && !t.cancelled) { t.cancelled = true; t.closed = true; broadcastTrade(t); trades.delete(id); } });
+      }
+      broadcast({ type: 'features', features: world.features });
+      return apiResp(res, 200, { ok: true, features: world.features });
+    });
+  }
 
   // ---- 注册 ----
   if (p === '/api/register' && req.method === 'POST') {
@@ -3312,7 +3349,7 @@ const server = http.createServer(function (req, res) {
     // 重连自动续钓：账号里还记着「上次没主动收竿的钓点」就接着钓（服务器更新强刷 / 掉线 / 重启都走这里）
     const resumed = resumeFishingSpot(id);
     res.write('data: ' + JSON.stringify({
-      type: 'init', you: id, feed: feed,
+      type: 'init', you: id, feed: feed, features: world.features || {},
       // perf-9：init 不再携带全量 players（5000 人时 868KB）与全量 records（50-100KB）——
       // 玩家列表走分页 API（/api/players/page），榜单走拉取制（/api/records）。
       playersTotal: players.size, recordsVersion: world.recordsVersion || 0,
@@ -4539,7 +4576,7 @@ const server = http.createServer(function (req, res) {
   // ---- 版本信息（公开只读）：前端启动时比对，版本不一致则强制刷新以清掉旧缓存 ----
   if (p === '/api/version' && req.method === 'GET') {
     return apiResp(res, 200, {
-      version: D.VERSION, build: D.BUILD,
+      version: D.VERSION, build: D.BUILD, features: world.features || {},
       componentCfg: D.getComponentCfg ? D.getComponentCfg() : null,
       fishCfg: D.getFishCfg ? D.getFishCfg() : null,
       // 抛竿间隔与全服钓速配置：前端据此展示「后台基础值 + 实际钓速」（改动经 castcfg 广播同步）

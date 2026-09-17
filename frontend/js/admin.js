@@ -157,6 +157,7 @@ window.Admin = (function () {
   // ================================
   const NAV = [
     { id: 'overview', name: '📊 概览' },
+    { id: 'features', name: '🔒 功能开关' },
     { id: 'accountmgr', name: '👥 账号管理' },
     { id: 'grounds', name: '🌊 渔场钓点' },
     { id: 'market', name: '💱 市集管理' },
@@ -183,12 +184,49 @@ window.Admin = (function () {
       nav.appendChild(b);
     });
   }
+  function renderFeatures() {
+    const main = $('main');
+    main.innerHTML = '<h2>🔒 玩家功能开关</h2><div class="hint">勾选为开放。关闭主页面会同时停用下属操作，子项设置会保留。出售开关适用于所有入口；关闭出售也暂停自动售出。停止钓鱼、取消交易、撤回挂单始终允许。角色外观与自动配装为本地界面功能。</div><div id="feature-editor">加载中…</div>';
+    adminApi('GET', '/api/admin/features?token=' + encodeURIComponent(token)).then(function (r) {
+      if (view !== 'features') return;
+      const host = $('feature-editor');
+      if (!r || !r.ok) { host.textContent = '加载失败，请重新进入本页'; return; }
+      const draft = Object.assign({}, r.data.features);
+      host.innerHTML = r.data.groups.map(function (g) {
+        return '<section class="panel feature-group"><h3><label><input type="checkbox" data-feature-key="' + g.id + '"' + (draft[g.id] !== false ? ' checked' : '') + '> ' + esc(g.name) + '（整页）</label></h3><div class="feature-children">' + g.children.map(function (a) {
+          return '<label><input type="checkbox" data-feature-key="' + a.id + '"' + (draft[a.id] !== false ? ' checked' : '') + '> ' + esc(a.name) + '</label>';
+        }).join('') + '</div><div class="hint feature-inherited"></div></section>';
+      }).join('') + '<button class="btn primary" id="features-save">保存功能开关</button><span id="features-result" role="status"></span>';
+      function sync() {
+        host.querySelectorAll('.feature-group').forEach(function (group) {
+          const parent = group.querySelector('h3 input');
+          group.querySelector('.feature-inherited').textContent = parent.checked ? '' : '整页已关闭，下属操作当前均不可用（保留各项设置）';
+        });
+      }
+      host.querySelectorAll('[data-feature-key]').forEach(function (input) {
+        input.addEventListener('change', function () { draft[input.dataset.featureKey] = input.checked; $('features-result').textContent = ' 有未保存的修改'; sync(); });
+      });
+      sync();
+      $('features-save').onclick = function () {
+        const button = this; button.disabled = true;
+        const changes = {};
+        Object.keys(draft).forEach(function (key) { if (draft[key] !== r.data.features[key]) changes[key] = draft[key]; });
+        adminApi('POST', '/api/admin/features', { token: token, features: changes }).then(function (saved) {
+          button.disabled = false;
+          if (view !== 'features') return;
+          if (!saved || !saved.ok) { $('features-result').textContent = ' 保存失败：' + ((saved && saved.data && saved.data.error) || '请重试'); return; }
+          toast('功能开关已保存，在线玩家已同步'); renderFeatures();
+        });
+      };
+    });
+  }
   function switchView(v) {
     view = v;
     stopOverviewTimer();
     stopBannerTimer();
     renderNav();
     if (v === 'overview') return renderOverview();
+    if (v === 'features') return renderFeatures();
     if (v === 'accountmgr') return renderAccountMgr();
     if (v === 'grounds') return renderGrounds();
     if (v === 'market') return renderMarket();

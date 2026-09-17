@@ -1629,3 +1629,6 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .sidebar::-webkit-scrollbar-thumb:hover { background: var(--px-line-hi, #48709c); }
 .sidebar::-webkit-scrollbar-corner { background: transparent; }
 .nav::-webkit-scrollbar-corner { background: transparent; }
+
+.feature-locked { opacity: .5; cursor: not-allowed !important; }
+.feature-closed { padding: 32px; text-align: center; }

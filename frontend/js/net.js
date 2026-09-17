@@ -59,6 +59,12 @@ window.Net = (function () {
     });
   }
   function apiFetch(method, u, body) {
+    const F = window.GameFeatures, feature = F && F.route(method, u);
+    if (F && F.blocked(state().features, feature)) {
+      const error = F.message(state().features, feature);
+      if (window.UI) window.UI.toast(error);
+      return Promise.resolve({ ok: false, status: 423, data: { error: error, code: 'FEATURE_LOCKED' } });
+    }
     return detectBase().then(function () {
       return apiOnce(method, u, body).then(function (r) {
         if (r && r.timedOut && method === 'GET') return apiOnce(method, u, body);
@@ -111,6 +117,7 @@ window.Net = (function () {
   // （展示与本地预览保持一致：例如工坊的成功率与花费预览必须和服务器算的同一套系数）
   function applyServerCfg(d) {
     if (!d) return;
+    if (d.features) state().features = d.features;
     if (d.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(d.componentCfg);
     if (d.castCfg) state().castCfg = d.castCfg;
     if (d.priceCfg) state().priceCfg = d.priceCfg;
@@ -391,7 +398,11 @@ window.Net = (function () {
       function handleServerEvent(m) {
         const S = state();
         const ui = window.UI;
-        if (m.type === 'init') {
+        if (m.type === 'features') {
+          S.features = m.features || {};
+          if (ui && ui.onFeatures) ui.onFeatures();
+        } else if (m.type === 'init') {
+          S.features = m.features || {};
           // 服务器重启换版本后 SSE 会自动重连并带回新版本号：这是「热更新」最快的一条路径
           // （通常几秒内），比定时轮询快得多。刷新后本条连接自然被替换，无需额外处理。
           if (reloadForVersion(m.version)) return;

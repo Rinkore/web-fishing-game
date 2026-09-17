@@ -449,3 +449,7 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 ::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--bg); border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #3a465e; }
 ::-webkit-scrollbar-corner { background: var(--bg); }
+
+.feature-group { margin: 12px 0; }
+.feature-children { display:flex; flex-wrap:wrap; gap:12px 24px; }
+.feature-group label { display:inline-flex; align-items:center; gap:8px; min-height:36px; }

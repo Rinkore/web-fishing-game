@@ -1,0 +1,51 @@
+/* Browser zoom reduces the CSS viewport; size layouts by available space. */
+.layout, .content, .content > *, .ground-cols > * { min-width: 0; }
+.content { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.topbar { flex-shrink: 0; }
+.modal-overlay .modal-box {
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  display: flex; flex-direction: column; overflow: auto;
+}
+.modal-head { flex-shrink: 0; gap: 10px; }
+.modal-title { min-width: 0; overflow-wrap: anywhere; }
+.modal-close { flex-shrink: 0; }
+.modal-body { min-height: 0; }
+
+@media (min-width: 641px) {
+  .topbar { flex-wrap: wrap; gap: 8px 16px; }
+  .brand, .logout-btn { flex: 0 0 auto; }
+  .player-status { flex: 1 1 480px; min-width: 0; flex-wrap: wrap; gap: 6px; }
+  .player-status .meta { max-width: 100%; overflow-wrap: anywhere; }
+  .sidebar { flex-shrink: 0; }
+  .auth-overlay { overflow-y: auto; padding: 12px; }
+  .auth-card { max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .px-grounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .px-region.g-card .pg-info span { white-space: normal; }
+  .px-map-tabs { flex-wrap: wrap; }
+}
+
+@media (min-width: 881px) and (max-width: 1280px) {
+  .sidebar { width: 190px; }
+  .content, .ground-cols { grid-template-columns: minmax(0, 1fr); }
+  .panel.two-col { grid-template-columns: minmax(0, 1fr); }
+  .panel.two-col .col-side {
+    border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 16px;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 880px) {
+  .layout { flex-direction: column; }
+  .sidebar {
+    flex: 0 0 auto; width: 100%; max-height: none;
+    padding: 6px 10px 10px; overflow-x: auto; overflow-y: hidden;
+    border-right: 0 !important; overscroll-behavior-x: contain;
+  }
+  .nav { flex: 0 0 auto; width: max-content; flex-direction: row; overflow: visible; gap: 4px; }
+  .nav-item { flex: 0 0 auto; flex-direction: column; white-space: nowrap; min-width: 76px; gap: 4px; padding: 6px 8px; font-size: 12px; }
+  .nav-item .nav-badge { margin: 0; }
+  .content, .ground-cols { grid-template-columns: minmax(0, 1fr); }
+  .px-grounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .px-region.g-card .pg-info span { white-space: normal; }
+}
+

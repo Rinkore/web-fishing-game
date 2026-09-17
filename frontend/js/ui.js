@@ -15,6 +15,34 @@ window.UI = (function () {
     for (let i = 0; i < nodes.length; i++) nodes[i].textContent = v;
   })();
   // 惰性获取：避免加载顺序问题
+  function featureBlocked(id) { return window.GameFeatures && window.GameFeatures.blocked(S().features, id); }
+  function featureGuard(id) {
+    if (!featureBlocked(id)) return true;
+    toast(window.GameFeatures.message(S().features, id)); return false;
+  }
+  function markFeature(button, id) {
+    button.setAttribute('data-feature', id);
+    if (featureBlocked(id)) {
+      button.setAttribute('aria-disabled', 'true'); button.classList.add('feature-locked');
+      button.title = window.GameFeatures.message(S().features, id);
+    }
+    return button;
+  }
+  document.addEventListener('click', function (ev) {
+    const target = ev.target.closest && ev.target.closest('[data-feature]');
+    if (target && !featureGuard(target.getAttribute('data-feature'))) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+  }, true);
+  function applyFeatureControls() {
+    const selectors = { '#ws-go': 'workshop.smelt', '#ws-recast-go': 'workshop.recast', '.sub-entry': 'inventory.subscribe', '.ab-open-btn': 'bd.autobuild', '#sa-open-list': 'mall.autosell', '#sa-tier': 'mall.autosell' };
+    Object.keys(selectors).forEach(function (selector) { document.querySelectorAll(selector).forEach(function (b) { markFeature(b, selectors[selector]); }); });
+  }
+  function onFeatures() {
+    closeOverlays();
+    invFocus = false; bulkFocus = false;
+    if (featureBlocked('ground.trade') && tradeModalRedraw) tradeModalClose({ noCancel: true });
+    if (featureBlocked('fishing.cast')) { S().fishing.active = false; S().player.status = 'idle'; S().player.groundId = null; S().player.spotId = null; }
+    navSig = null; renderNav(); renderTopbar(); renderView();
+  }
   function E() { return window.Engine; }
   function S() { return window.Engine.state; }
   // 库存快照统一入口（v0.13.9）：带 invRev 的完整快照只在「不旧于已应用版本」时才生效。
@@ -57,6 +85,7 @@ window.UI = (function () {
   }
   // 本地实时出售：立刻扣显示量 + 加币 + 就地补丁，回包对账保无误。o = { id, qty, tier, unit, onLocal, onSync }
   function sellNow(o) {
+    if (!featureGuard('mall.sell')) return Promise.resolve({ ok: false });
     const id = o.id, tier = o.tier || null, qty = Math.max(1, Math.floor(o.qty) || 1);
     const st = S();
     const shown = tier ? shownReservedOf(id, tier) : shownAvailOf(id);
@@ -555,13 +584,15 @@ window.UI = (function () {
   function renderNav() {
     const st = S();
     const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0,
-      st.me && st.me.admin ? 1 : 0, subUnseen].join('|');
+      st.me && st.me.admin ? 1 : 0, subUnseen, JSON.stringify(st.features || {})].join('|');
     if (sig === navSig) return;
     navSig = sig;
     const nav = $('nav');
     nav.innerHTML = '';
     const makeItem = function (item) {
       const b = el('button', 'nav-item' + (item.id === currentView ? ' active' : '') + (item.implemented ? '' : ' locked'));
+      if (item.id === currentView) b.setAttribute('aria-current', 'page');
+      markFeature(b, item.id);
       let badge = '';
       if (item.id === 'fishing' && S().fishing.active) badge = '<span class="nav-badge on">钓</span>';
       if (item.id === 'trade' && S().trade) badge = '<span class="nav-badge alert">!</span>';
@@ -570,6 +601,7 @@ window.UI = (function () {
       // 像素导航图标（assets/nav/<id>.png，由 tools/gen_nav.py 生成）；emoji 作为降级兜底
       const navIcon = '<span class="nav-icon"><img class="nav-ico" src="assets/nav/' + esc(item.id) +
         '.png" alt="" draggable="false" onerror="this.outerHTML=\'' + item.icon + '\'"></span>';
+      if (featureBlocked(item.id)) badge += '<span class="nav-badge">🔒</span>';
       b.innerHTML = navIcon + '<span>' + esc(item.name) + '</span>' + badge +
         (item.implemented ? '' : '<span class="lock">🔒</span>');
       b.addEventListener('click', function () {
@@ -587,7 +619,23 @@ window.UI = (function () {
       return b;
     };
     D.NAV.forEach(function (item) { nav.appendChild(makeItem(item)); });
+    revealActiveNav();
   }
+  function revealActiveNav() {
+    const nav = $('nav');
+    if (nav && window.matchMedia && window.matchMedia('(max-width: 880px)').matches) {
+      const active = nav.querySelector('.active'), sidebar = nav.parentElement;
+      if (active && sidebar) {
+        const a = active.getBoundingClientRect(), s = sidebar.getBoundingClientRect();
+        sidebar.scrollLeft += a.left - s.left - (s.width - a.width) / 2;
+      }
+    }
+  }
+  let navResizeFrame = 0;
+  window.addEventListener('resize', function () {
+    if (navResizeFrame) return;
+    navResizeFrame = requestAnimationFrame(function () { navResizeFrame = 0; revealActiveNav(); });
+  });
 
   // 顶栏左上角品牌：管理员点击在新标签打开管理后台（admin.html 与游戏同源托管），普通玩家点击无反应。
   // 只在 init 里绑定一次，避免 renderTopbar / renderNav 反复重建时叠加重复监听。
@@ -902,6 +950,7 @@ window.UI = (function () {
   }
 
   function renderFishing() {
+    if (featureBlocked('fishing')) return renderView();
     const main = $('main');
     const st = S();
     const sig = fishingSig(st);
@@ -1254,6 +1303,7 @@ window.UI = (function () {
     if (!isSelf) {
       const acts = el('div', 'peep-acts');
       const tb = el('button', 'mini primary-mini', '🤝 交易');
+      markFeature(tb, 'ground.trade');
       tb.title = '与 ' + (b.name || '该玩家') + ' 进行在线交易';
       tb.addEventListener('click', function (ev) { ev.stopPropagation(); openTradeModal(b.id, b.name); });
       const vb = el('button', 'mini', '🔍 查看');
@@ -1334,6 +1384,7 @@ window.UI = (function () {
     return m;
   }
   function autoBuildOpen() {
+    if (!featureGuard('bd.autobuild')) return;
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
     const overlay = buildOverlay(function () { closeOverlays(); });
     const box = el('div', 'modal-box shop-modal ab-modal');
@@ -1872,6 +1923,7 @@ window.UI = (function () {
           } else {
             const isOn = !!cur0 && cur0.id === o2.id;
             const use = el('button', 'mini primary-mini', isOn ? '已装备' : '装备');
+            markFeature(use, 'bd.equip');
             if (isOn) { use.disabled = true; use.classList.add('locked'); }
             use.addEventListener('click', function () {
               closeBdEquipModal();
@@ -1880,11 +1932,13 @@ window.UI = (function () {
             acts.appendChild(use);
             // 直接出售（组件固定价，无需等行情）
             const sellBtn = el('button', 'mini', '出售 1');
+            markFeature(sellBtn, 'mall.sell');
             sellBtn.title = '按系统固定价出售 1 个（组件不随市场浮动）';
             sellBtn.addEventListener('click', function () { sellFromEquip(o2.id); });
             acts.appendChild(sellBtn);
             // 上架：复用市集「上架」子窗口（数量/单价/时长/费率/走势一致）
             const listBtn = el('button', 'mini', '上架');
+            markFeature(listBtn, 'mall.list');
             listBtn.title = '挂到开放市集（与市集「上架」同一子窗口：数量 / 单价 / 时长 / 费率）';
             listBtn.addEventListener('click', function () {
               openListModal(o2.id, function () { openBdEquipModal(partKey); });
@@ -1943,6 +1997,7 @@ window.UI = (function () {
         if (price != null) {
           const isAdmin = !!(st.me && st.me.admin);
           const b = el('button', 'mini primary-mini' + ((st.player.coins || 0) < price ? ' locked' : ''), '购买');
+          markFeature(b, 'bd.slots');
           b.title = '购买后用金币解锁该槽位，可保存并快速切换钓竿';
           b.addEventListener('click', function () {
             if ((st.player.coins || 0) < price) { toast('金币不足（需 ' + price + '）'); return; }
@@ -1961,6 +2016,7 @@ window.UI = (function () {
           card.appendChild(el('div', 'hint', '当前钓竿已占用槽位 ' + (activeSlot + 1) + '（可直接改名）'));
         } else {
           const b = el('button', 'mini', '保存当前钓竿');
+          markFeature(b, 'bd.save');
           b.title = '把当前装配的钓竿整体放进该槽位（配件随之锁定），仍可继续使用与改名';
           b.addEventListener('click', function () {
             const parts = Object.keys(st.bd || {}).filter(function (k) { return st.bd[k] && st.bd[k].compId; });
@@ -2007,6 +2063,7 @@ window.UI = (function () {
         });
         acts.appendChild(rn);
         const sell = el('button', 'mini', '上架');
+        markFeature(sell, 'mall.list');
         sell.title = '把整根钓竿挂到开放市集（组件随竿一起卖出）';
         sell.addEventListener('click', function () { openListModal(sl.rodId, null, { rodSlot: i, name: sl.name, affixes: sl.affixes, price: sl.price, count: sl.count }); });
         acts.appendChild(sell);
@@ -2125,6 +2182,7 @@ window.UI = (function () {
       });
       if (owns.length) {
         const btn = el('button', 'mini primary-mini', '装备组件');
+        markFeature(btn, 'bd.equip');
         btn.addEventListener('click', function () { openBdEquipModal(part.key); });
         acts.appendChild(btn);
       } else {
@@ -2800,6 +2858,7 @@ window.UI = (function () {
   }
 
   function renderShop() {
+    if (featureBlocked('mall')) return renderView();
     const st = S();
     const main = $('main');
     // 首次进店：先拉自动售出规则，避免面板显示成「未设置」
@@ -2912,7 +2971,9 @@ window.UI = (function () {
 
       // —— 事件绑定（骨架一次，随骨架存活）——
       asPanel.querySelector('#sa-open-list').onclick = function () { openAutoSellListModal(); };
+      markFeature(asPanel.querySelector('#sa-open-list'), 'mall.autosell');
       const tierSw = asPanel.querySelector('#sa-tier');
+      if (tierSw) markFeature(tierSw, 'mall.autosell');
       if (tierSw) {
         tierSw.addEventListener('change', function () {
           const next = !!tierSw.checked;
@@ -2974,6 +3035,7 @@ window.UI = (function () {
     }).filter(function (o) { return o.meta.kind === 'fish' || o.meta.kind === 'material'; });
   }
   function openAutoSellListModal() {
+    if (!featureGuard('mall.autosell')) return;
     closeOverlays();
     const overlay = buildOverlay(function () { closeOverlays(); asListFocus = false; });
     const box = el('div', 'modal-box shop-modal as-list-modal');
@@ -3222,6 +3284,7 @@ window.UI = (function () {
       btn.textContent = avail > 0 ? ('出售 ' + Math.min(sellQty, avail) + ' 个') : (have > 0 ? '仅体型档可卖' : '无库存');
       btn.classList.toggle('primary-mini', avail > 0);
       btn.classList.toggle('locked', avail <= 0);
+      markFeature(btn, 'mall.sell');
       if (avail <= 0 && have > 0) btn.title = '这些鱼都是大型/巨型预留，普通通道卖不了：请到背包按「大型 / 巨型」行出售（有额外金币加成）';
       else btn.removeAttribute('title');
     }
@@ -3314,6 +3377,7 @@ window.UI = (function () {
         const t = tk[0];
         const info = shopTierInfo(id, t);
         const tb = el('button', 'mini sc-tier-btn tier-' + (t === 'G' ? 'giant' : 'large') + (info.n > 0 ? '' : ' locked'), info.text);
+        markFeature(tb, 'mall.sell');
         tb.setAttribute('data-tier', t);
         tb.disabled = info.n <= 0;
         tb.title = info.title;
@@ -3544,6 +3608,7 @@ window.UI = (function () {
       acts.appendChild(cb);
     } else {
       const bb = el('button', 'mini primary-mini', '购买');
+      markFeature(bb, 'mall.marketbuy');
       bb.addEventListener('click', function () {
         // 支持自定义数量：默认 1，最多本挂单剩余数量（子窗口输入，不用浏览器 prompt）
         promptModal({
@@ -3873,6 +3938,7 @@ window.UI = (function () {
       acts.appendChild(off);
     } else {
       const b1 = el('button', 'mini', '上架');
+      markFeature(b1, 'mall.list');
       b1.title = '单个上架（自定义数量/单价/时长）';
       b1.addEventListener('click', function () { openListModal(id); });
       acts.appendChild(b1);
@@ -4983,13 +5049,16 @@ window.UI = (function () {
         dt.addEventListener('click', function () { openComponentDetail(it.id); });
         acts.appendChild(dt);
         const sb = el('button', 'mini primary-mini', '出售 1');
+        markFeature(sb, 'mall.sell');
         sb.title = '单独出售这 1 件（系统固定价）';
         sb.addEventListener('click', function () { doSell(it.id, 1); });
         acts.appendChild(sb);
         const sa = el('button', 'mini', '批量出售');
+        markFeature(sa, 'mall.sell');
         sa.addEventListener('click', function () { openBatchSellModal(it.id); });
         acts.appendChild(sa);
         const lb = el('button', 'mini', '上架');
+        markFeature(lb, 'mall.list');
         lb.addEventListener('click', function () { openListModal(it.id); });
         acts.appendChild(lb);
         row.appendChild(acts);
@@ -5549,10 +5618,12 @@ window.UI = (function () {
           // 宝匣只能市集交易（系统商店不收购），所以不出售按钮，只给「上架」+ 前往开箱页
           if (meta.kind !== 'chest') {
             const sellBtn = el('button', 'mini primary-mini', '出售 1');
+            markFeature(sellBtn, 'mall.sell');
             sellBtn.title = '按当前系统收购价出售 1 个';
             sellBtn.addEventListener('click', function () { doSell(id, 1); });
             acts.appendChild(sellBtn);
             const sellAll = el('button', 'mini', '批量出售');
+            markFeature(sellAll, 'mall.sell');
             sellAll.title = '打开批量出售子窗口：可填数量或用滑块，并查看价格趋势';
             sellAll.addEventListener('click', function () { openBatchSellModal(id); });
             acts.appendChild(sellAll);
@@ -5569,6 +5640,7 @@ window.UI = (function () {
             acts.appendChild(off);
           } else {
             const lb = el('button', 'mini', '上架');
+            markFeature(lb, 'mall.list');
             lb.title = '挂到开放市集（选择时长，支付对应上架费，下架不退）';
             lb.addEventListener('click', function () { openListModal(id); });
             acts.appendChild(lb);
@@ -5595,12 +5667,14 @@ window.UI = (function () {
               '<span class="subtotal">小计 ' + (unitPrice(id) * n + tierBonus(id, t, n)) + '💰</span>';
             const tact = el('span', 'inv-acts');
             const tsb = el('button', 'mini primary-mini', '出售 1');
+            markFeature(tsb, 'mall.sell');
             tsb.title = '出售' + (t === 'G' ? '巨型' : '大型') + '（额外 +' + (t === 'G' ? '150' : '50') + '% 金币加成）';
             tsb.addEventListener('click', function () { doSell(id, 1, t); });
             tact.appendChild(tsb);
             // v0.14.0：批量出售入口也放到档位行上——「一般量为 0、只剩预留」的鱼本来一个入口都没有，
             // 只能一条一条点（批量窗口里三档都能填数量，见 openBatchSellModal）
             const tall = el('button', 'mini', '批量出售');
+            markFeature(tall, 'mall.sell');
             tall.title = '打开批量出售窗口：一般 / 大型 / 巨型 三档都能填数量，一次结算';
             tall.addEventListener('click', function () { openBatchSellModal(id); });
             tact.appendChild(tall);
@@ -5649,6 +5723,7 @@ window.UI = (function () {
     // 一键出售（预览弹窗）+ 组件订阅提醒入口
     const bulk = el('div', 'bulk-sell');
     const bbtn = el('button', 'primary big', '⚡ 一键出售（预览）');
+    markFeature(bbtn, 'mall.sell');
     bbtn.title = '打开预览子窗口：筛选后可逐项勾选与调整数量，确认后才会出售';
     bbtn.addEventListener('click', openBulkSellModal);
     bulk.appendChild(bbtn);
@@ -6345,9 +6420,11 @@ window.UI = (function () {
         '<b>' + d[1] + '</b>' + (d[2] ? '' : '<i>敬请期待</i>');
       card.addEventListener('click', function () {
         if (!d[2]) { toast('「' + d[1] + '」后续版本加入'); return; }
+        if (!featureGuard('character.companion')) return;
         char2Save({ dog: d[0] });
         renderView();
       });
+      markFeature(card, 'character.companion');
       dogs.appendChild(card);
     });
     wrap.appendChild(dogs);
@@ -6361,9 +6438,11 @@ window.UI = (function () {
         '<b>' + b[1] + (b[2] ? '' : ' 🔒') + '</b><i>' + b[3] + '</i>';
       card.addEventListener('click', function () {
         if (!b[2]) { toast('「' + b[1] + '」即将在商城上架'); return; }
+        if (!featureGuard('character.boat')) return;
         char2Save({ boat: b[0] });
         renderView();
       });
+      markFeature(card, 'character.boat');
       boats.appendChild(card);
     });
     wrap.appendChild(boats);
@@ -6730,12 +6809,14 @@ window.UI = (function () {
         '<div class="cc-acts"></div>';
       const acts = card.querySelector('.cc-acts');
       const b1 = el('button', 'mini primary-mini', '合成 ×1');
+      markFeature(b1, 'workshop.craft');
       b1.disabled = maxN < 1;
       b1.title = maxN < 1 ? '残片或金币不足' : '消耗 ' + chest.costRelic + ' 残片 + ' + chest.costCoins + ' 金币';
       b1.addEventListener('click', function () { craftChest(chest, 1); });
       acts.appendChild(b1);
       if (maxN > 1) {
         const bAll = el('button', 'mini', '合成最多 ×' + maxN);
+        markFeature(bAll, 'workshop.craft');
         bAll.title = '消耗 ' + (chest.costRelic * maxN) + ' 残片 + ' + (chest.costCoins * maxN) + ' 金币';
         bAll.addEventListener('click', function () {
           confirmModal({ title: '批量合成', okText: '合成 ×' + maxN,
@@ -6746,6 +6827,7 @@ window.UI = (function () {
         acts.appendChild(bAll);
       }
       const b2 = el('button', 'mini', '开箱');
+      markFeature(b2, 'workshop.open');
       b2.disabled = have < 1;
       b2.title = have < 1 ? '先合成宝匣' : '消耗 1 个「' + chest.name + '」开箱';
       b2.addEventListener('click', function () { openChestModal(chest); });
@@ -7583,6 +7665,7 @@ window.UI = (function () {
         '<div class="mc-have hint">持有 ' + (it.have || 0) + '</div>';
       const acts = el('div', 'mc-acts');
       const b1 = el('button', 'mini primary-mini', soldOut ? '今日已售罄' : '购买');
+      markFeature(b1, 'mall.buy');
       b1.disabled = soldOut || (st.player.coins || 0) < it.price;
       b1.title = soldOut ? '今日限购已用完，等刷新后重置'
         : ((st.player.coins || 0) < it.price ? '金币不足' : '购买（可选择数量）');
@@ -7590,6 +7673,7 @@ window.UI = (function () {
       acts.appendChild(b1);
       if (it.limit > 1 && !soldOut) {
         const bAll = el('button', 'mini', '买满 ×' + it.remain);
+        markFeature(bAll, 'mall.buy');
         bAll.title = '一次买完今日剩余限购（' + (it.price * it.remain) + '💰）';
         bAll.disabled = (st.player.coins || 0) < it.price * it.remain;
         bAll.addEventListener('click', function () {
@@ -8040,6 +8124,7 @@ window.UI = (function () {
       const canPay = (st.player.coins || 0) >= cost;
       banner.innerHTML = '⏳ 冷却中 · 剩余 <b>' + fmtRemain(status.remainingMs) + '</b>';
       const skip = el('button', 'mini primary-mini' + (canPay ? '' : ' locked'), '💸 花 ' + cost + ' 金币立即结束 CD');
+      markFeature(skip, 'feedback.skip');
       skip.addEventListener('click', function () {
         if (!canPay) { toast('金币不足（需 ' + cost + '）'); return; }
         confirmModal({ title: '结束反馈冷却', html: '花费 <b>' + cost + '</b> 金币立即结束反馈冷却？', okText: '确认支付' }).then(function (ok) {
@@ -8069,6 +8154,7 @@ window.UI = (function () {
     ta.addEventListener('input', function () { cnt.textContent = ta.value.length + ' / 1000'; });
     form.appendChild(cnt);
     const submit = el('button', 'primary big' + (status.ready ? '' : ' locked'), status.ready ? '提交反馈' : '冷却中…');
+    markFeature(submit, 'feedback.submit');
     submit.disabled = !status.ready;
     submit.addEventListener('click', function () {
       const text = ta.value.trim();
@@ -8268,6 +8354,13 @@ window.UI = (function () {
   }
 
   function renderView() {
+    const pageId = currentView === 'shop' || currentView === 'market' ? 'mall' : currentView;
+    if (featureBlocked(pageId)) {
+      const main = $('main'); main.innerHTML = '';
+      const panel = el('div', 'panel wide feature-closed');
+      panel.textContent = '🔒 ' + window.GameFeatures.message(S().features, pageId);
+      main.appendChild(panel); return;
+    }
     hideItemTip();   // 整页重绘会把行换掉（mouseleave 不一定触发），浮标先收起来
     const saved = captureScroll();
     // perf-9：离开渔场动态页时取消玩家列表视口登记（服务器随即停止向本连接推送该页）
@@ -8291,6 +8384,13 @@ window.UI = (function () {
     else {
       const navItem = D.NAV.find(function (x) { return x.id === currentView; });
       renderPlaceholder(navItem ? navItem.name : '未开放');
+    }
+    applyFeatureControls();
+    const group = window.GameFeatures && window.GameFeatures.byId[pageId];
+    const locked = group && group.children && group.children.filter(function (a) { return featureBlocked(a.id); });
+    if (locked && locked.length) {
+      const panel = document.querySelector('#main .panel');
+      if (panel) { const notice = el('div', 'hint feature-notice'); notice.textContent = '🔒 暂停开放：' + locked.map(function (a) { return a.name; }).join('、'); panel.insertBefore(notice, panel.firstChild); }
     }
     restoreScroll(saved);
   }
@@ -8403,6 +8503,7 @@ window.UI = (function () {
   }
   function startGame(token, profile) {
     window.Engine.applyProfile(profile);
+    S().features = (profile && profile.features) || {};
     const st = S();
     st.codex = (profile && profile.codex) || {};
     st.catchCount = (profile && profile.catchCount) || 0;
@@ -8420,7 +8521,7 @@ window.UI = (function () {
     // 主动拉取钓场目录：兜底确保后进入/刷新的玩家也拿到含增益的最新目录（钓点 ⚡ 标记）
     if (window.Net.fetchGrounds) window.Net.fetchGrounds();
   }
-  function onFishingTick() { if (currentView === 'fishing') { renderTopbar(); renderFishing(); } }
+  function onFishingTick() { if (featureBlocked('fishing')) return; if (currentView === 'fishing') { renderTopbar(); renderFishing(); } }
 
   // 刷新主视图。每个视图只关心与自己相关的广播类型（scope）：
   // 无关广播（如他人的渔获 feed/players）只更新顶栏/导航，不重绘主区——
@@ -8475,6 +8576,7 @@ window.UI = (function () {
     return /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName) || a.isContentEditable === true;
   }
   function refreshAll(scope) {
+    if (featureBlocked(currentView)) { renderTopbar(); renderNav(); renderView(); return; }
     if (scope === 'all') scope = null; // init 全量刷新
     if (scope === 'trade' || !scope) settlePendingTradeCancel(); // 「关闭时邀请还在途」欠下的撤回，会话一落地就补上
     if (shopModalId && scope === 'shop') fillShopModal(shopModalId); // 弹窗数据静默刷新
@@ -8641,7 +8743,7 @@ window.UI = (function () {
   }
 
   return {
-    init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
+    onFeatures: onFeatures, init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
     patchCodexCell: patchCodexCell,
     toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners, onBannerStop: onBannerStop,
     addLog: addLog, onSubAlert: onSubAlert, resetBanners: resetBanners,
