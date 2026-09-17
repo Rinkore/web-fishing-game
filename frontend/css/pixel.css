@@ -235,7 +235,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ---------- 钓鱼场景（装饰性，由 ui.js 插入） ---------- */
 .px-scene {
-  position: relative; height: 150px; margin: -4px -4px 12px;
+  position: relative; height: 190px; margin: -4px -4px 12px;
   border: 3px solid var(--px-line); border-radius: 4px; overflow: hidden;
   background: linear-gradient(180deg, #16385f 0%, #123055 45%, #0c2340 100%);
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, .08), 4px 4px 0 var(--px-shadow);
@@ -245,6 +245,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   --bob-w: 20px;
   --bob-h: 26px;
 }
+/* PxScene 画布场景层（js/scene.js）：铺满场景容器、像素化放大；
+   挂载后隐藏旧的 CSS 渐变水面，画布里的倒影水面接管；浮漂/钓线/游鱼/水花保持在画布之上 */
+.px-scene-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; z-index: 0; }
+.px-scene-hd .px-scene-water { display: none; }
+.px-scene-hd .px-scene-line, .px-scene-hd .px-scene-bobber, .px-scene-hd .px-fish { z-index: 2; }
+.px-scene-hd[data-active="1"]::after { z-index: 2; }
 .px-scene-water {
   position: absolute; left: 0; right: 0; bottom: 0; height: 62%;
   background:
@@ -307,9 +313,15 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    所以「只在鱼游到画面边上时换鱼」的定时器换鱼时不会看到鱼半路消失。 */
 .px-fish {
   position: absolute; height: auto;
-  image-rendering: pixelated; opacity: .5; filter: brightness(.55);
+  image-rendering: pixelated; opacity: .5; filter: var(--fishfilter, brightness(.55));
   pointer-events: none;
 }
+/* 游鱼融入各渔场水色：压暗 + 向水色偏移（剪影化处理，对标 Cast n Chill 的水下鱼影）。
+   data-ground 由 ui.js 随钓点写入，换渔场即换色调，贴图本身不变 */
+.px-scene[data-ground="stillwater"] { --fishfilter: brightness(.30) sepia(.9) hue-rotate(240deg) saturate(.9); }
+.px-scene[data-ground="rapids"]     { --fishfilter: brightness(.32) sepia(.9) hue-rotate(150deg) saturate(.8); }
+.px-scene[data-ground="sunset"]     { --fishfilter: brightness(.30) sepia(.9) hue-rotate(300deg) saturate(.85); }
+.px-scene[data-ground="frostmoon"]  { --fishfilter: brightness(.38) sepia(.8) hue-rotate(185deg) saturate(.7); }
 .px-fish.swim-l { animation: px-swim-left linear infinite; }
 .px-fish.swim-r { animation: px-swim-right linear infinite; }
 @keyframes px-swim-left {
@@ -720,3 +732,47 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   box-shadow: 0 0 12px rgba(255, 210, 62, .5), 0 4px 0 var(--px-shadow) !important;
 }
 .pb-chip.on b { color: #fff2c8; }
+
+/* ---------- 角色页（展示台 + 搭配区） ---------- */
+.char-view h3 { margin: 14px 0 8px; }
+.char-stage {
+  position: relative; width: 100%; aspect-ratio: 9 / 4; overflow: hidden;
+  border: 3px solid var(--px-line); border-radius: 4px;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .08), 4px 4px 0 var(--px-shadow);
+  background: #14102a;
+}
+.char-stage img { position: absolute; image-rendering: pixelated; pointer-events: none; }
+.cs-bg { inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cs-dock { left: -2%; bottom: -14%; width: 55%; }
+.cs-dog { left: 20%; bottom: 41%; height: 26%; }
+.cs-boat { right: 4%; bottom: 12%; width: 34%; }
+
+/* 外观三层 */
+.char-sec { display: flex; flex-direction: column; gap: 6px; }
+.char-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cr-label { width: 40px; opacity: .75; font-size: 12px; }
+.cr-chip {
+  font: inherit; font-size: 12px; padding: 3px 12px; cursor: pointer;
+  color: inherit; background: var(--bg2, rgba(255, 255, 255, .06));
+  border: 2px solid transparent; border-radius: 4px;
+}
+.cr-chip:hover { border-color: var(--px-line); }
+.cr-chip.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .12); }
+
+/* 同伴 / 船卡片 */
+.char-cards { display: flex; gap: 8px; flex-wrap: wrap; }
+.cc-card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  width: 96px; padding: 8px 6px; font: inherit; color: inherit; cursor: pointer;
+  background: var(--bg2, rgba(255, 255, 255, .06));
+  border: 2px solid transparent; border-radius: 4px;
+}
+.cc-card.wide { width: 132px; }
+.cc-card img { width: 72px; height: 56px; object-fit: contain; image-rendering: pixelated; }
+.cc-card.wide img { width: 110px; }
+.cc-card b { font-size: 12px; }
+.cc-card i { font-style: normal; font-size: 10px; opacity: .6; text-align: center; }
+.cc-card .cc-lock { font-size: 26px; line-height: 56px; opacity: .5; }
+.cc-card:hover { border-color: var(--px-line); }
+.cc-card.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .1); }
+.cc-card.locked { opacity: .62; }

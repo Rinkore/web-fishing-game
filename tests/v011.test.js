@@ -694,7 +694,7 @@ function startServer() {
   check('非法坐标格式被拒 400', (await POST(BASE + '/api/admin/spot/pos', { token: TOKA, groundId: 'stillwater', list: [{ spotId: 'dock', pos: ['a', 'b'] }] })).status === 400);
   await POST(BASE + '/api/admin/spot/pos', { token: TOKA, groundId: 'stillwater', list: [{ spotId: 'dock', pos: null }] });
   const dockReset = (await GET(BASE + '/api/grounds')).data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock').pos;
-  check('pos=null 恢复出厂坐标', dockReset[0] === 69 && dockReset[1] === 30, JSON.stringify(dockReset));
+  check('pos=null 恢复出厂坐标', dockReset[0] === 61 && dockReset[1] === 34, JSON.stringify(dockReset));
 
   // ==========================================================================
   // v0.13：原「服务端优雅版本更新」功能已整体删除（后台入口 + 前端横幅 + 服务端接口）
@@ -921,8 +921,8 @@ function startServer() {
   check('熔炼参数持久化（恢复默认后的 50% / -2）',
     wsAfter.data.cfg.baseRate === 50 && wsAfter.data.cfg.failPerMaterial === -2, JSON.stringify(wsAfter.data.cfg));
   const groundsAfter = await GET(BASE + '/api/grounds');
-  check('钓点坐标持久化（dock 已恢复出厂 69,30）',
-    groundsAfter.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock').pos[0] === 69,
+  check('钓点坐标持久化（dock 已恢复出厂 61,34）',
+    groundsAfter.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock').pos[0] === 61,
     JSON.stringify(groundsAfter.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock').pos));
   const chestAfter = await GET(BASE + '/api/chest?token=' + encodeURIComponent(TOKP2));
   check('宝匣成本持久化（恢复出厂 100 / 300000）',

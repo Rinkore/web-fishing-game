@@ -925,7 +925,7 @@ window.UI = (function () {
     // 权威坐标来自钓点数据的 sp.pos（data.js 出厂值 + 管理后台拖动覆盖，见后台「渔场钓点 · 地图定位」）；
     // 这里的表只作为**兜底**：自定义钓点（后台新建、没有坐标）时仍能落在合理位置。
     const MAP_LAYOUT = {
-      stillwater: { dock: [69, 30], reed: [68, 60], deep: [74, 48], label: [74, 72] },
+      stillwater: { dock: [61, 34], reed: [68, 60], deep: [74, 48], label: [74, 72] },
       rapids: { shoal: [77, 34], eddy: [58, 42], fall: [83, 20], label: [50, 48] },
       sunset: { beach: [42, 71], pier: [35, 30], reef: [18, 78], label: [20, 28] },
       frostmoon: { label: [67, 11] },
@@ -1013,7 +1013,7 @@ window.UI = (function () {
         node.innerHTML = (locked ? '<span class="pn-lock">🔒</span>' : '<span class="pn-bob"></span>') +
           '<span class="pn-name">' + esc(sp.name) + (locked ? '<span class="pn-soon">（暂未开放）</span>' : '') +
           (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
-          (here ? '<img class="pn-fisher" src="assets/ui/fisher_hold.png" alt="">' : '');
+          (here ? '<img class="pn-fisher" src="' + charSrc('hold') + '" alt="">' : '');
         map.appendChild(node);
       });
     });
@@ -1037,7 +1037,7 @@ window.UI = (function () {
     const hereKey = st.player.groundId && st.player.spotId ? st.player.groundId + '/' + st.player.spotId : null;
     const fisherImg = map.querySelector('.pn-fisher');
     if (fisherImg && hereKey && lastFisherSpotKey !== hereKey) {
-      const seq = ['assets/ui/fisher_a.png', 'assets/ui/fisher_b.png', 'assets/ui/fisher_hold.png'];
+      const seq = [charSrc('a'), charSrc('b'), charSrc('hold')];
       fisherImg.src = seq[0];
       setTimeout(function () { if (fisherImg.isConnected) fisherImg.src = seq[1]; }, 150);
       setTimeout(function () { if (fisherImg.isConnected) fisherImg.src = seq[2]; }, 320);
@@ -1100,14 +1100,17 @@ window.UI = (function () {
     left.setAttribute('data-sig', sig); // 增量刷新靠它判断结构是否变化
     main.appendChild(left);
 
-    // 右：渔场实况（顶部为装饰性垂钓场景：水面 / 钓线 / 浮漂 / 游鱼动画，active 时浮漂跳动，无逻辑）
+    // 右：渔场实况（顶部为装饰性垂钓场景：水面 / 游鱼动画，无逻辑）
     const right = el('div', 'panel fish-live');
     right.innerHTML = '<h2>🌊 渔场实况</h2>';
     const scene = el('div', 'px-scene');
     scene.setAttribute('data-active', st.fishing.active ? '1' : '0');
-    scene.innerHTML = '<div class="px-scene-water"></div><div class="px-scene-line"></div>' +
-      '<div class="px-scene-bobber"></div>';
+    scene.innerHTML = '<div class="px-scene-water"></div>';
     fillSceneFish(scene, st, true);   // 游鱼：当前钓点会出现的鱼里随机取（换钓点 / 改掉落池时重掷）
+    // Canvas 场景层（js/scene.js）：山景 / 星空 / 水面倒影 / 粒子，按所在渔场换配色
+    if (window.PxScene) window.PxScene.mount(scene, st.player.groundId || st.selected.groundId);
+    // 游鱼水色：写入当前渔场 key，CSS 按渔场把鱼调成水下剪影色（见 pixel.css --fishfilter）
+    scene.setAttribute('data-ground', st.player.groundId || st.selected.groundId || 'stillwater');
     right.appendChild(scene);
     const atGroundId = st.player.groundId;
     const gNow = atGroundId ? D.GROUNDS.find(function (x) { return x.id === atGroundId; }) : null;
@@ -1233,6 +1236,9 @@ window.UI = (function () {
     // 平时只由定时器换单条，所以这里不能无条件重掷，否则每次上鱼鱼都会跳一下。
     const scene = main.querySelector('.fish-live .px-scene');
     if (scene && scene.getAttribute('data-pool') !== scenePoolOf(st).sig) fillSceneFish(scene, st, true);
+    // 换钓点后场景配色跟随渔场（结构没变时整页不重绘，这里原地更新）
+    if (scene && window.PxScene) window.PxScene.update(scene, st.player.groundId || st.selected.groundId);
+    if (scene) scene.setAttribute('data-ground', st.player.groundId || st.selected.groundId || 'stillwater');
   }
 
   function peepCard(b) {
@@ -6213,6 +6219,112 @@ window.UI = (function () {
   let codexCategory = 'all';
   let mapTab = 'nearshore'; // 钓鱼页地图页签：nearshore 近岸 / voyage 出海预告
   let lastFisherSpotKey = null; // 甩杆动画记忆：同一钓点重绘不重复播放
+
+  // ---- 角色模块：钓鱼小人皮肤可更换（本地偏好，后续可升级进服务器存档）----
+  // 贴图由 assets/ui/fisher_{a,b,hold}.png 换色重制，剪影与地图甩杆小人完全一致，
+  // 地图节点 / 实况场景 / 甩杆三帧全部走 charSrc()，换装即时生效。
+  const CHARS = [
+    { id: 'classic', name: '云游侠客' },
+    { id: 'teal',    name: '青衫客' },
+    { id: 'red',     name: '赤焰渔郎' },
+    { id: 'ink',     name: '墨衣钓叟' },
+    { id: 'amber',   name: '金秋蓑翁' },
+  ];
+  const CHAR_KEY = 'fishing_char_v1';
+  function charId() {
+    try {
+      const v = localStorage.getItem(CHAR_KEY);
+      if (v && CHARS.some(function (c) { return c.id === v; })) return v;
+    } catch (e) { /* 忽略 */ }
+    return 'classic';
+  }
+  function charSrc(pose) { return 'assets/ui/chars/' + charId() + '_' + pose + '.png'; }
+
+  // ---- 角色系统（v2）：人 + 狗 + 船的展示与搭配（本地偏好，后续可升级服务器存档）----
+  // 贴图为官方 angler 风格生成后像素化（assets/ui/char/），外观 = 帽子×服装×肤色 48 组合预渲染，
+  // 选哪套就换哪张图，无需运行时叠加。同伴与船先开放基础款，其余占位（后续接商城/掉落）。
+  const CHAR2_KEY = 'fishing_char_v2';
+  const CHAR2_DEF = { hat: 'orange', outfit: 'green', skin: 'light', dog: 'golden', boat: 'wood' };
+  const CHAR2_HATS = [['orange', '橙线帽'], ['teal', '青线帽'], ['red', '红线帽'], ['cream', '米线帽']];
+  const CHAR2_OUTFITS = [['green', '苔绿工装'], ['yellow', '雨黄工装'], ['red', '砖红工装'], ['blue', '海蓝工装']];
+  const CHAR2_SKINS = [['light', '浅麦'], ['tan', '小麦'], ['dark', '深麦']];
+  const CHAR2_DOGS = [
+    // 官方同伴图标（unpack.wiki 游戏资源，统一化调色后接入），全部可选
+    ['golden', '金毛', true], ['corgi', '柯基', true], ['malamute', '阿拉斯加', true],
+    ['basset', '巴吉度', true], ['shepherd', '德牧', true], ['dachshund', '腊肠', true],
+    ['bernese', '伯恩山', true], ['mainecoon', '缅因猫', true],
+  ];
+  // 船贴图为 Cast n Chill 官方图标（unpack.wiki 游戏资源），名称沿用官方中文译名
+  const CHAR2_BOATS = [
+    ['wood', '池塘划手', true, '初始船只'],
+    ['leaky', '破水桶', false, '💰200 · 湖泊 · 商城即将上架'],
+    ['loon', '追鹅者', false, '💰1000 · 湖泊 · 商城即将上架'],
+    ['rambler', '海岸漫步者', false, '💰5000 · 湖泊 · 商城即将上架'],
+    ['snowwolf', '雪狼 XT1', false, '💰2000 · 海洋 · 商城即将上架'],
+  ];
+  function char2() {
+    try {
+      const raw = localStorage.getItem(CHAR2_KEY);
+      if (raw) return Object.assign({}, CHAR2_DEF, JSON.parse(raw));
+    } catch (e) { /* 忽略 */ }
+    return Object.assign({}, CHAR2_DEF);
+  }
+  function char2Save(patch) {
+    const s = Object.assign(char2(), patch);
+    try { localStorage.setItem(CHAR2_KEY, JSON.stringify(s)); } catch (e) { /* 忽略 */ }
+    return s;
+  }
+  function anglerSrc(s) { return 'assets/ui/char/angler_' + s.hat + '_' + s.outfit + '_' + s.skin + '.png'; }
+
+  function renderCharacter() {
+    const main = $('main');
+    main.innerHTML = '';
+    const st = char2();
+    const wrap = el('div', 'panel char-view');
+    wrap.innerHTML = '<h2>🧍 角色</h2>';
+    // 展示台：静水湖黄昏背景 + 木码头 + 船 + 同伴狗（人物外观模块暂缓，贴图保留在 assets/ui/char/）
+    const stage = el('div', 'char-stage');
+    stage.innerHTML =
+      '<img class="cs-bg" src="assets/scene/stillwater.png" alt="" draggable="false">' +
+      '<img class="cs-dock" src="assets/ui/char/dock.png" alt="" draggable="false">' +
+      '<img class="cs-boat" src="assets/ui/char/boat_' + st.boat + '.png" alt="" draggable="false">' +
+      '<img class="cs-dog" src="assets/ui/char/dog_' + st.dog + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">';
+    wrap.appendChild(stage);
+    // 同伴
+    wrap.appendChild(el('h3', null, '🐶 同伴'));
+    const dogs = el('div', 'char-cards');
+    CHAR2_DOGS.forEach(function (d) {
+      const card = el('button', 'cc-card' + (st.dog === d[0] ? ' on' : '') + (d[2] ? '' : ' locked'));
+      card.innerHTML = (d[2]
+        ? '<img src="assets/ui/char/dog_' + d[0] + '.png" alt="" draggable="false">'
+        : '<span class="cc-lock">🔒</span>') +
+        '<b>' + d[1] + '</b>' + (d[2] ? '' : '<i>敬请期待</i>');
+      card.addEventListener('click', function () {
+        if (!d[2]) { toast('「' + d[1] + '」后续版本加入'); return; }
+        char2Save({ dog: d[0] });
+        renderView();
+      });
+      dogs.appendChild(card);
+    });
+    wrap.appendChild(dogs);
+    // 船
+    wrap.appendChild(el('h3', null, '⛵ 船'));
+    const boats = el('div', 'char-cards');
+    CHAR2_BOATS.forEach(function (b) {
+      const card = el('button', 'cc-card wide' + (st.boat === b[0] ? ' on' : '') + (b[2] ? '' : ' locked'));
+      card.innerHTML = '<img src="assets/ui/char/boat_' + b[0] + '.png" alt="" draggable="false"' +
+        ' onerror="this.outerHTML=\'<span class=cc-lock>🔒</span>\'">' +
+        '<b>' + b[1] + (b[2] ? '' : ' 🔒') + '</b><i>' + b[3] + '</i>';
+      card.addEventListener('click', function () {
+        if (!b[2]) { toast('「' + b[1] + '」即将在商城上架'); return; }
+        char2Save({ boat: b[0] });
+        renderView();
+      });
+      boats.appendChild(card);
+    });
+    wrap.appendChild(boats);
+    main.appendChild(wrap);
+  }
   let codexSortRarity = false;
 
   // 图鉴详情浮层：完整信息 + 全部产地（点击卡片开合；未解锁也可查看获取信息）
@@ -8120,6 +8232,7 @@ window.UI = (function () {
       if (window.Net) window.Net.setPlayersView({ clear: true });
     }
     if (currentView === 'fishing') renderFishing();
+    else if (currentView === 'character') renderCharacter();
     else if (currentView === 'bd') renderBD();
     else if (currentView === 'ground') renderGround();
     else if (currentView === 'inventory') renderInventory();

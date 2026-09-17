@@ -21,8 +21,8 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.14.1';
-  const BUILD = '2026-09-17';   // 构建日期（仅 /api/version 暴露，界面不展示）；v0.13.3 误写成 09-17，这里按机器实际日期回落
+  const VERSION = 'v0.14.2';
+  const BUILD = '2026-09-17';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。
@@ -1591,7 +1591,7 @@
       id: 'stillwater', name: '静水湖', type: 'normal',
       desc: '风平浪静的淡水湖，适合日常稳定产出。',
       spots: [
-        { id: 'dock', name: '老旧码头', pos: [69, 30], pool: [
+        { id: 'dock', name: '老旧码头', pos: [61, 34], pool: [
           p('fish', 'crucian', 30), p('fish', 'white', 16), p('fish', 'carp', 18),
           p('fish', 'minnow', 12), p('fish', 'bream', 8),
           p('fish', 'catfish', 4), p('fish', 'bass', 3), p('fish', 'koi', 1),
@@ -1688,6 +1688,7 @@
   // 菜单项多到一屏放不下时，导航区自己滚动（样式见 style.css 的 .nav）。
   const NAV = [
     { id: 'fishing', name: '钓鱼', icon: '🎣', implemented: true },
+    { id: 'character', name: '角色', icon: '🧍', implemented: true },
     { id: 'bd', name: '钓竿配置', icon: '🎯', implemented: true },
     { id: 'ground', name: '渔场动态', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },

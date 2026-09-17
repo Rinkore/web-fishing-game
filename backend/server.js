@@ -25,7 +25,16 @@ const url = require('url');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 
-const PORT = process.env.PORT || 9000;
+// 端口优先级：PORT 环境变量 > --port=xxxx / --port xxxx 命令行参数 > 默认 9000
+const _portArg = (function () {
+  for (let i = 0; i < process.argv.length; i++) {
+    const a = process.argv[i];
+    if (a.indexOf('--port=') === 0) return a.split('=')[1];
+    if (a === '--port' && process.argv[i + 1]) return process.argv[i + 1];
+  }
+  return null;
+})();
+const PORT = process.env.PORT || _portArg || 9000;
 const ROOT = __dirname;
 // ---- 数据目录 ----
 // 默认存到用户「文档」目录（Windows: %USERPROFILE%\Documents\web-fishing-game），
