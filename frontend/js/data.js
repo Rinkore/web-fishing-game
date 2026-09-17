@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.16.2';
+  const VERSION = 'v0.16.3';
   const BUILD = '2026-09-18';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -875,7 +875,8 @@
     // 基础消耗 recastPearl 颗宝珠 = 重 roll 全部词条；
     // 额外投入宝珠可把重铸目标指定为某一条词条，第 n 条额外消耗 n 颗（见 recastPearlExtra）。
     recastPearl: 1,            // 每次重铸的基础宝珠消耗（重 roll 全部词条）
-    recastGold: 0,             // 每次重铸消耗的金币（0 = 只收宝珠）
+    recastGold: 0,             // 重铸**每颗宝珠**的金币（v0.16.3：不再是每次的固定价；0 = 只收宝珠）
+                               //   总手续费 = 消耗的宝珠数 × 这个值，见 recastGoldFor()
     recastMinValue: 0,         // 重铸是否强制「至少不比原来差」：0 = 完全重 roll，1 = 每条取更高值
     // ---- 残片保留（海王遗匣产出的神话主件专用）----
     // v0.13：每片残片的保留概率改为**公式控制**（后台「⚒ 工坊配置」可改），而不是固定 10%。
@@ -1213,6 +1214,12 @@
   function recastPearlNeed(idx, base) {
     const b = Math.max(0, Math.floor(Number(base) || 0));
     return b + recastPearlExtra(idx);
+  }
+  // 重铸手续费（v0.16.3）：**按消耗的宝珠数计**，每颗 recastGold 金币 —— 不再是每次一个固定价。
+  // 指定第 n 条词条会多花 n 颗宝珠，手续费也就跟着涨（0 = 只收宝珠）。
+  function recastGoldFor(pearls) {
+    const n = Math.max(0, Math.floor(Number(pearls) || 0));
+    return Math.max(0, Math.round((smeltCfg.recastGold || 0) * n));
   }
   // 重铸取值：保持词缀**类型与条数不变**，按当前 roll 模型重新取值。
   // v0.12.2 修复：每条词条按**它自己的范围来源**（a.src：底材区间 / 突破区间 / 催化区间）重 roll，
@@ -1822,7 +1829,7 @@
     catalystEnvelopeOf: catalystEnvelopeOf, catalystPreset: catalystPreset,
     RARE_K_DEFAULT: RARE_K_DEFAULT, rareKOf: rareKOf, rareCommonMult: rareCommonMult,
     RECAST_QUALITY: RECAST_QUALITY, canRecast: canRecast, recastAffixes: recastAffixes,
-    recastPearlExtra: recastPearlExtra, recastPearlNeed: recastPearlNeed,
+    recastPearlExtra: recastPearlExtra, recastPearlNeed: recastPearlNeed, recastGoldFor: recastGoldFor,
     MALL_DEFAULTS: MALL_DEFAULTS, defaultMallCfg: defaultMallCfg,
     parseRefreshTime: parseRefreshTime, mallCycleOf: mallCycleOf,
     DEFAULT_EXTRA_AFFIX_RANGES: DEFAULT_EXTRA_AFFIX_RANGES, extraAffixRangeOf: extraAffixRangeOf,

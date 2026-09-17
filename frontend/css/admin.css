@@ -336,6 +336,10 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .snap-cfg-row { padding: 8px 10px; border: 1px solid var(--line, #2a3548); border-radius: 8px; background: rgba(45, 212, 191, .05); }
 .snap-cfg-row .mk-num { flex: 0 0 84px; }
 .snap-cfg-row .hint { margin: 0; }
+/* v0.16.3：资产快照里的钓竿装配行 —— 部位名 + 当前件说明 + 换件下拉 + 改词条 */
+.snap-bd-row { padding: 4px 0; border-bottom: 1px dashed var(--line, #2a3548); }
+.snap-bd-row > label { width: 210px; }
+.snap-bd-row .hint { margin: 0; }
 /* v0.16.2：账号列表分页条（账号上百时一页铺不完；翻页后 gotoMgrPage 会把列表滚回可视区） */
 .mgr-pager { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .mgr-pager .hint { margin: 0; }

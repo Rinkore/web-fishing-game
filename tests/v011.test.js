@@ -831,7 +831,8 @@ function startServer() {
       setRc.status === 200 && setRc.data.smeltCfg.recastPearl === 4 && setRc.data.smeltCfg.recastMinValue === 1,
       JSON.stringify(setRc.data.smeltCfg));
     const ws3 = await GET(BASE + '/api/workshop?token=' + encodeURIComponent(TOKP));
-    check('玩家端看到新重铸花费', ws3.data.recast.pearlBase === 4 && ws3.data.recast.gold === 100 && ws3.data.recast.minValue === true,
+    check('玩家端看到新重铸花费（v0.16.3：这里是**每颗宝珠**的金币）',
+      ws3.data.recast.pearlBase === 4 && ws3.data.recast.goldPerPearl === 100 && ws3.data.recast.minValue === true,
       JSON.stringify(ws3.data.recast));
     // 金币不足：先把宝珠补够（否则会先报宝珠不足），再把金币压到阈值以下
     await seed({ [after.id]: 1, dragonpearl: 10 }, 50);

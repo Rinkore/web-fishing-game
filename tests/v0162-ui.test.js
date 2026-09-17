@@ -542,6 +542,65 @@ async function main() {
   check('保存后服务端背包里是新品质的实例（词条与数量跟着走）',
     !invAfter[MAIN] && invAfter[newId] === 2, JSON.stringify(Object.keys(invAfter).filter(k => /reel_electric/.test(k))));
 
+  // ---------------- 后台：钓竿装配（看见装了什么 + 单独改，玩家端跟着变） ----------------
+  section('后台：钓竿装配（看装了什么 + 单独改属性 + 同步到玩家端）');
+  const RODeq = 'rod_fiberglass#epic#size+6,skl+9';   // 用服务端的规范形态（词缀按 code 排序）
+  await POST('/api/dev/catch', { token: tok, item: { kind: 'component', id: RODeq } });
+  const eqRes = await POST('/api/bd/set', { token: tok, part: 'rod', compId: RODeq });
+  check('前置：玩家竿身已装上测试组件', eqRes.status === 200 && eqRes.data.bd.rod.compId === RODeq,
+    JSON.stringify(eqRes.data && eqRes.data.bd && eqRes.data.bd.rod));
+  await until(() => pa.evaluate(() => !!document.querySelector('[data-snap="v162ui_a"]')), v => v === true, 15000);
+  await pa.evaluate(() => { const b = document.querySelector('[data-snap="v162ui_a"]'); if (b) b.click(); });
+  await until(() => pa.evaluate(() => !!document.querySelector('#snap-bd [data-bdsel="rod"]')), v => v === true, 15000);
+  const bdUi = await pa.evaluate(() => {
+    const rodSel = document.querySelector('#snap-bd [data-bdsel="rod"]');
+    return {
+      parts: document.querySelectorAll('#snap-bd .snap-bd-row').length,
+      rodVal: rodSel ? rodSel.value : null,
+      rodText: (document.querySelector('#snap-bd [data-bdcur="rod"]') || {}).textContent || '',
+      opts: rodSel ? Array.from(rodSel.options).map(o => o.textContent.trim()).slice(0, 8) : [],
+      hasEdit: !!document.querySelector('#snap-bd [data-bdedit="rod"]'),
+    };
+  });
+  check('钓竿装配区列出 7 个部位', bdUi.parts === 7, String(bdUi.parts));
+  check('竿身那行显示当前件（名字 · 品质 · 词条）并选中它',
+    bdUi.rodVal === RODeq && /玻璃钢/.test(bdUi.rodText) && /史诗/.test(bdUi.rodText), JSON.stringify(bdUi));
+  check('候选里能选「标准件（卸下）」与背包中该部位的组件',
+    /标准件/.test(bdUi.opts[0] || '') && bdUi.opts.some(t => /玻璃钢/.test(t)), JSON.stringify(bdUi.opts));
+  check('每行都有「改词条」', bdUi.hasEdit === true);
+  await pa.evaluate(() => { const b = document.querySelector('#snap-bd [data-bdedit="rod"]'); if (b) b.click(); });
+  await until(() => pa.evaluate(() => /装回该部位|装到该部位/.test((document.getElementById('cus-edit-hint') || {}).textContent || '')), v => v === true, 8000);
+  const bdEdit = await pa.evaluate(() => ({
+    hint: (document.getElementById('cus-edit-hint') || {}).textContent || '',
+    btn: (document.getElementById('cus-add') || {}).textContent || '',
+    quality: (document.getElementById('cus-quality') || {}).value,
+  }));
+  check('「改词条」把装配件载入定制配件区（品质是它的现值，按钮提示装回该部位）',
+    /装回该部位/.test(bdEdit.hint) && /装到该部位/.test(bdEdit.btn) && bdEdit.quality === 'epic', JSON.stringify(bdEdit));
+  await pa.evaluate(() => {
+    const q = document.getElementById('cus-quality');
+    q.value = 'rare';
+    q.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await pa.evaluate(() => { const b = document.getElementById('cus-add'); if (b) b.click(); });
+  // 期望 id 用页面里同一套编码器算：突破词条的签名会带 @bt 之类的来源标记，手拼会漏
+  const newRodId = await pa.evaluate((oldId) => {
+    const inst = GameData.instanceOf(oldId);
+    const affixes = (inst.affixes || []).map(function (a) { return { type: a.type, value: a.value, src: a.src }; });
+    return GameData.instanceId(inst.baseId, 'rare', affixes);
+  }, RODeq);
+  check('期望的新实例（同底材 / 稀有 / 词条原样）与原件不同', !!newRodId && newRodId !== RODeq, String(newRodId));
+  await until(() => pa.evaluate(k => (document.querySelector('#snap-bd [data-bdsel="rod"]') || {}).value === k, newRodId), v => v === true, 8000);
+  check('应用后该部位指向改好的新实例',
+    await pa.evaluate(k => (document.querySelector('#snap-bd [data-bdsel="rod"]') || {}).value === k, newRodId));
+  await pa.evaluate(() => { const b = document.getElementById('snap-save'); if (b) b.click(); });
+  await until(async () => ((((await GET('/api/me?token=' + tok)).data.bd || {}).rod || {}).compId === newRodId), v => v === true, 15000);
+  check('保存后服务端该部位就是新实例',
+    ((((await GET('/api/me?token=' + tok)).data.bd || {}).rod || {}).compId === newRodId));
+  await until(() => p1.evaluate(k => ((((window.Engine.state.bd || {}).rod) || {}).compId || '') === k, newRodId), v => v === true, 15000);
+  check('玩家端页面也同步到新装配（assets 广播带上 bd）',
+    await p1.evaluate(k => ((((window.Engine.state.bd || {}).rod) || {}).compId || '') === k, newRodId));
+
   // ---------------- 后台：存档回档 ----------------
   section('后台存档回档：列表 + 两步确认');
   await pa.evaluate(() => { const b = document.querySelector('[data-snaps="v162ui_a"]'); if (b) b.click(); });

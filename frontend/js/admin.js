@@ -1378,6 +1378,8 @@ window.Admin = (function () {
         '<select id="snap-add-id" class="ipt" style="min-width:240px">' + itemOptions + '</select>' +
         '<input id="snap-add-qty" class="ipt mk-num" type="number" min="1" value="1" />' +
         '<button class="btn mini" id="snap-add">添加</button></div>' +
+        '<div class="hint" style="margin:14px 0 6px">🎣 钓竿装配（每个部位现在装的是哪件；换件不必先进背包，「卸下」= 换回标准件）</div>' +
+        '<div id="snap-bd"></div>' +
         '<div class="hint" style="margin:14px 0 6px">🔧 定制配件（自选底材 / 品质 / 词条数值，生成后直接放进背包）</div>' +
         '<div class="mgr-row"><label>底材</label><select id="cus-base" class="ipt" style="min-width:240px"></select>' +
         '<label>品质</label><select id="cus-quality" class="ipt"></select></div>' +
@@ -1436,11 +1438,12 @@ window.Admin = (function () {
       function invAddDraft(id, qty) {
         if (!id) return false;
         const inputs = ov.querySelectorAll('[data-inv]');
-        for (const inp of inputs) { if (inp.getAttribute('data-inv') === id) { inp.value = (Number(inp.value) || 0) + qty; return true; } }
+        for (const inp of inputs) { if (inp.getAttribute('data-inv') === id) { inp.value = (Number(inp.value) || 0) + qty; if (bdBox) drawBd(); return true; } }
         const cur = {};
         inputs.forEach(function (inp) { cur[inp.getAttribute('data-inv')] = Number(inp.value) || 0; });
         cur[id] = qty;
         drawInv(cur);
+        if (bdBox) drawBd();   // v0.16.3：背包草稿变了 → 钓竿装配的候选列表跟着重算
         return true;
       }
       function itemNameOf(id) {
@@ -1482,6 +1485,9 @@ window.Admin = (function () {
       }).join('');
       let cusList = [];
       let cusEditFrom = '';   // 非空 = 正在改背包里这件实例（「应用修改」会替换它）
+      let cusEditPart = '';   // v0.16.3：非空 = 正在改「钓竿某部位」上装的那件（应用后装回该部位）
+      let bdBox = null;       // v0.16.3：钓竿装配区容器（装配区建好后由 drawBd 填充）
+      let bdDraft = {};       // v0.16.3：钓竿装配草稿 { 部位: { compId } }（初始值来自 rec.bd）
       function cusBase() { return bases.find(function (b) { return b.id === bSel.value; }) || null; }
       // 某类词条对当前底材的「自然区间」：底材池内 → 该底材区间（含后台覆盖）；池外 → 池外（突破）区间
       function cusRange(b, type) {
@@ -1562,19 +1568,27 @@ window.Admin = (function () {
         drawCus();
       };
       // 改词条模式：把「添加到背包」切成「应用修改（替换原件）」，并在旁边给出正在改哪一件
-      function setCusEditMode(id) {
+      function setCusEditMode(id, partKey) {
         cusEditFrom = id || '';
+        cusEditPart = (id && partKey) ? partKey : '';
         const btn = ov.querySelector('#cus-add');
         const cancel = ov.querySelector('#cus-edit-cancel');
         const hint = ov.querySelector('#cus-edit-hint');
-        if (btn) btn.textContent = cusEditFrom ? '✅ 应用修改（替换原件）' : '添加到背包';
+        if (btn) btn.textContent = cusEditFrom ? (cusEditPart ? '✅ 应用修改（装到该部位）' : '✅ 应用修改（替换原件）') : '添加到背包';
         if (cancel) cancel.style.display = cusEditFrom ? '' : 'none';
         if (hint) hint.innerHTML = cusEditFrom
-          ? '正在修改：<b>' + esc(cusEditFrom) + '</b>（底材 / 品质 / 词条 / 数量都可改；改完点左边按钮替换，同 id 就只改数量）'
+          ? (cusEditPart
+            ? '正在修改：<b>' + esc(cusEditFrom) + '</b>（装在「' + esc(bdPartName(cusEditPart)) + '」上；改完点左边按钮装回该部位）'
+            : '正在修改：<b>' + esc(cusEditFrom) + '</b>（底材 / 品质 / 词条 / 数量都可改；改完点左边按钮替换，同 id 就只改数量）')
           : '';
       }
+      function bdPartName(key) {
+        const p = ((window.GameData && GameData.ROD_PARTS) || []).find(function (x) { return x.key === key; });
+        return (p && p.name) || key;
+      }
       // 把背包里的一件组件实例载入定制配件区（品质、词条与数值都是它的现值）
-      function loadInstanceIntoCustom(id) {
+      // v0.16.3：partKey 非空 = 这件是「钓竿某部位」上装着的，应用后装回该部位（不写进背包）
+      function loadInstanceIntoCustom(id, partKey) {
         const inst = (window.GameData && GameData.instanceOf) ? GameData.instanceOf(id) : null;
         if (!inst) { toast('只有组件（带品质与词条）能改词条', true); return; }
         bSel.value = inst.baseId;
@@ -1583,8 +1597,8 @@ window.Admin = (function () {
         drawCus();
         const inp = ov.querySelector('[data-inv="' + id + '"]');
         ov.querySelector('#cus-qty').value = inp ? (Number(inp.value) || 1) : 1;
-        setCusEditMode(id);
-        toast('已载入「' + (GameData.itemOf(id).name || id) + '」：改完点「应用修改」替换原件');
+        setCusEditMode(id, partKey);
+        toast('已载入「' + (GameData.itemOf(id).name || id) + '」：改完点「应用修改」' + (partKey ? '装回该部位' : '替换原件'));
       }
       if (ov.querySelector('#cus-edit-cancel')) {
         ov.querySelector('#cus-edit-cancel').onclick = function () { setCusEditMode(''); toast('已取消修改（原件未变）'); };
@@ -1594,6 +1608,15 @@ window.Admin = (function () {
         const meta = (window.GameData && GameData.instanceMeta) ? GameData.instanceMeta(id) : null;
         if (!meta) { toast('无法生成该配件：词条类型与底材不匹配', true); return; }
         const qty = Math.max(1, Number(ov.querySelector('#cus-qty').value) || 1);
+        if (cusEditPart) {
+          // v0.16.3：改的是「钓竿某部位」上的那件 → 直接把新实例装回该部位（不写背包草稿）
+          const partKey = cusEditPart;
+          bdDraft[partKey] = { compId: id };
+          drawBd();
+          setCusEditMode('');
+          toast('已把「' + meta.name + '」装到' + bdPartName(partKey) + '（点「保存快照」后生效）');
+          return;
+        }
         if (cusEditFrom) {
           const from = cusEditFrom;
           const inp = ov.querySelector('[data-inv="' + from + '"]');
@@ -1613,15 +1636,91 @@ window.Admin = (function () {
       };
       drawCus();
 
+      // ---- v0.16.3：钓竿装配编辑 ----
+      // 每个部位一行：当前件（名字 · 品质 · 词条）+「换成」下拉（背包草稿里该部位的组件 / 标准件）+「改词条」。
+      // 「改词条」把该件载入下面的定制配件区，应用后直接把新实例装到这个部位上（不写进背包草稿）。
+      const bdParts = (window.GameData && GameData.ROD_PARTS) || [];
+      bdBox = ov.querySelector('#snap-bd');
+      // 装配草稿：{ 部位: { compId } }，初始值来自服务端返回的 rec.bd
+      bdParts.forEach(function (p) {
+        const cur = (d.bd && d.bd[p.key]) ? d.bd[p.key] : null;
+        bdDraft[p.key] = { compId: (cur && cur.compId) || null };
+      });
+      function bdDraftInv() {
+        const inv = {};
+        ov.querySelectorAll('[data-inv]').forEach(function (inp) {
+          const q = Math.floor(Number(inp.value) || 0);
+          if (q > 0) inv[inp.getAttribute('data-inv')] = q;
+        });
+        return inv;
+      }
+      function bdOptionsFor(partKey, selected) {
+        const inv = bdDraftInv();
+        const opts = ['<option value=""' + (selected ? '' : ' selected') + '>标准件（卸下）</option>'];
+        Object.keys(inv).forEach(function (id) {
+          const c = (window.GameData && GameData.componentOf) ? GameData.componentOf(id) : null;
+          if (!c || c.part !== partKey) return;
+          opts.push('<option value="' + esc(id) + '"' + (id === selected ? ' selected' : '') + '>' +
+            esc(GameData.itemOf(id).name || id) + ' ×' + inv[id] + '</option>');
+        });
+        // 当前装着、但背包草稿里没有的那件（例如刚用定制配件换上）也要留在列表里，否则一保存就被卸掉
+        if (selected && !inv[selected] && window.GameData && GameData.componentOf(selected)) {
+          opts.push('<option value="' + esc(selected) + '" selected>【当前】' + esc(GameData.itemOf(selected).name || selected) + '</option>');
+        }
+        return opts.join('');
+      }
+      function bdRowText(partKey) {
+        const id = (bdDraft[partKey] || {}).compId;
+        if (!id) return '<span class="muted">标准' + esc(bdPartName(partKey)) + ' · 无加成</span>';
+        const c = (window.GameData && GameData.componentOf) ? GameData.componentOf(id) : null;
+        if (!c) return esc(id);
+        const aff = (c.affixes || []).map(function (a) {
+          return esc((affLabel[a.type] || a.type) + (a.value > 0 ? '+' : '') + a.value);
+        }).join(' / ');
+        return esc(c.name) + ' · ' + esc(c.qualityName || '') +
+          (aff ? ' <span class="hint">（' + aff + '）</span>' : '') +
+          ' <span class="hint">' + esc(id) + '</span>';
+      }
+      function drawBd() {
+        if (!bdBox) return;
+        bdBox.innerHTML = bdParts.map(function (p) {
+          const sel = (bdDraft[p.key] || {}).compId || '';
+          return '<div class="mgr-row snap-bd-row" data-part="' + esc(p.key) + '">' +
+            '<label>' + esc(p.name) + '<div class="hint" data-bdcur="' + esc(p.key) + '">' + bdRowText(p.key) + '</div></label>' +
+            '<select class="ipt" data-bdsel="' + esc(p.key) + '">' + bdOptionsFor(p.key, sel) + '</select>' +
+            '<button class="btn mini" data-bdedit="' + esc(p.key) + '" title="把该件载入下方定制配件区，改完装回这个部位">改词条</button>' +
+            '</div>';
+        }).join('');
+        bdBox.querySelectorAll('[data-bdsel]').forEach(function (s) {
+          s.onchange = function () {
+            const partKey = s.getAttribute('data-bdsel');
+            bdDraft[partKey] = { compId: s.value || null };
+            const cur = bdBox.querySelector('[data-bdcur="' + partKey + '"]');
+            if (cur) cur.innerHTML = bdRowText(partKey);
+          };
+        });
+        bdBox.querySelectorAll('[data-bdedit]').forEach(function (b) {
+          b.onclick = function () {
+            const partKey = b.getAttribute('data-bdedit');
+            const id = (bdDraft[partKey] || {}).compId;
+            if (!id) { toast('这个部位现在是标准件：先挑一件装上，再改它的词条', true); return; }
+            loadInstanceIntoCustom(id, partKey);
+          };
+        });
+      }
+      drawBd();
       ov.querySelector('#snap-save').onclick = function () {
         const inv = {};
         ov.querySelectorAll('[data-inv]').forEach(function (inp) {
           const q = Math.floor(Number(inp.value) || 0);
           if (q > 0) inv[inp.getAttribute('data-inv')] = q;
         });
-        adminApi('POST', '/api/admin/users/snapshot', { token: token, target: key, coins: Number(ov.querySelector('#snap-coins').value) || 0, inventory: inv }).then(function (rr) {
+        // 钓竿装配：只提交「当前装的是哪件」（compId 或 null = 标准件）
+        const bd = {};
+        bdParts.forEach(function (p) { bd[p.key] = { compId: (bdDraft[p.key] || {}).compId || null }; });
+        adminApi('POST', '/api/admin/users/snapshot', { token: token, target: key, coins: Number(ov.querySelector('#snap-coins').value) || 0, inventory: inv, bd: bd }).then(function (rr) {
           if (!rr.ok) { toast(rr.data.error || '保存失败', true); return; }
-          toast('快照已保存'); ov.remove(); loadMgrList();
+          toast('快照已保存（含钓竿装配）'); ov.remove(); loadMgrList();
         });
       };
     });
@@ -3031,7 +3130,7 @@ window.Admin = (function () {
       '<h3>♻ 重铸（宝匣神话件重 roll 词条数值 · v0.16.0 改用龙宫宝珠）</h3>' +
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
       F('recastPearl', '基础消耗（龙宫宝珠）', '默认 1 颗 = 重 roll 全部词条') +
-      F('recastGold', '每次消耗金币', '默认 0（只收宝珠）') +
+      F('recastGold', '每颗宝珠的金币', '按消耗的宝珠数计：4 颗 × 10000 = 40000；默认 0（只收宝珠）') +
       '<span class="ch-fix"><label>至少不比原来差</label><input type="checkbox" id="ws-cfg-recastMinValue"' +
       (SC.recastMinValue ? ' checked' : '') + '></span>' +
       '<span class="hint">勾选 = 重铸时每条词条取新旧里更好的那个（不会把好数值洗坏）<br>' +

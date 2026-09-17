@@ -507,7 +507,8 @@ function planRecast(rec, id, affixIdx) {
   }
   const pearlExtra = D.recastPearlExtra(target);
   const pearlNeed = pearlBase + pearlExtra;
-  const goldNeed = Math.max(0, Math.floor(Number(cfg.recastGold) || 0));
+  // v0.16.3：手续费按**消耗的宝珠数**计（后台配的是每颗宝珠的金币），不是每次一个固定价
+  const goldNeed = D.recastGoldFor(pearlNeed);
   const pearlHave = invCountOf(rec, pearlId);
   if (pearlHave < pearlNeed) {
     return { error: itemName(pearlId) + '不足（需 ' + pearlNeed + ' 颗' +
@@ -4317,13 +4318,14 @@ const server = http.createServer(function (req, res) {
       pearl: { id: D.SMELT_PEARL, name: pearlMeta.name, rarity: pearlMeta.rarity },
       affixLabel: D.AFFIX_LABEL, coins: rec.coins || 0,
       // 重铸（v0.16.0）：材料为龙宫宝珠——基础消耗重 roll 全部词条，
-      // 额外投入宝珠可指定单条词条（第 n 条 = 额外 n 颗）；数量与金币由后台「⚒ 工坊配置」决定。
+      // 额外投入宝珠可指定单条词条（第 n 条 = 额外 n 颗）；由后台「⚒ 工坊配置」决定。
+      // v0.16.3：金币改成**每颗宝珠的单价**（goldPerPearl），总手续费 = 宝珠数 × 单价（见 D.recastGoldFor）。
       recast: {
         quality: D.RECAST_QUALITY, qualityName: (D.QUALITY[D.RECAST_QUALITY] || {}).name || D.RECAST_QUALITY,
         pearlId: D.SMELT_PEARL, pearlName: pearlMeta.name,
         pearlBase: Math.max(0, Math.floor(Number(cfg.recastPearl) || 0)),
         pearlHave: invCountOf(rec, D.SMELT_PEARL),
-        gold: Math.max(0, Math.floor(Number(cfg.recastGold) || 0)),
+        goldPerPearl: Math.max(0, Math.floor(Number(cfg.recastGold) || 0)),
         minValue: !!cfg.recastMinValue,
       },
       // 熔炼 · 残片保留（海王遗匣产出的神话主件专享）：片数上限与每片概率由后台「⚒ 工坊配置」决定。
@@ -5681,6 +5683,9 @@ function lootPreviewRows(spot, rareVal) {
       ok: true, key: target, name: rec.name, username: rec.username, qq: rec.qq || '',
       coins: rec.coins || 0, inventory: rec.inventory || {}, invRev: invRevOf(rec),
       catchCount: rec.catchCount || 0, admin: !!rec.admin,
+      // v0.16.3：后台「资产快照」里可以直接看/改这套钓竿装配（每个部位装了什么）
+      bd: rec.bd || {}, rodName: rec.rodName || '',
+      effects: bdEffectsOf(rec.bd), interval: intervalFor(rec, null),
     });
   }
   // ---- 账号快照编辑：直接设置金币与背包（管理员） ----
@@ -5712,10 +5717,38 @@ function lootPreviewRows(spot, rareVal) {
         if (!isFinite(c) || c < 0 || c > 1e12) return apiResp(res, 400, { error: '金币数无效' });
         rec.coins = c;
       }
+      // v0.16.3：钓竿装配（后台可单独改某个部位装了什么）。只写 rec.bd，不动背包：
+      // 换下来的那件本来就不在背包里（装配时已扣），清空/换件等于把它留在“装备位”上；
+      // 校验只要求「是该部位合法的组件实例」，允许管理员直接把定制件装上（背包里没有也能装，
+      // 与后台「给任意物品」的权限一致；真要退回背包，玩家端卸下时会 invAdd 回去）。
+      if (d.bd != null) {
+        if (typeof d.bd !== 'object') return apiResp(res, 400, { error: '钓竿配置格式错误' });
+        const nextBd = Object.assign({}, rec.bd || {});
+        for (const partKey of Object.keys(d.bd)) {
+          const part = D.ROD_PARTS.find(function (x) { return x.key === partKey; });
+          if (!part) return apiResp(res, 400, { error: '未知部位：' + partKey });
+          const raw = d.bd[partKey];
+          const rawId = (raw && typeof raw === 'object') ? raw.compId : raw;
+          const compId = (rawId == null || rawId === '') ? null : D.normalizeItemId(String(rawId));
+          if (!compId) {
+            nextBd[partKey] = { compId: null, name: part.default.name, affixes: [], rare: null, isCharm: !!part.isCharm };
+            continue;
+          }
+          const comp = D.componentOf(compId);
+          if (!comp) return apiResp(res, 400, { error: '未知组件：' + rawId });
+          if (comp.part !== partKey) return apiResp(res, 400, { error: '「' + comp.name + '」不是' + part.name });
+          nextBd[partKey] = { compId: comp.id, name: comp.name, affixes: comp.affixes, rare: comp.quality, isCharm: !!part.isCharm };
+        }
+        rec.bd = nextBd;
+      }
       saveAccount(target);
-      sendTo(target, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
+      sendTo(target, {
+        type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec),
+        codex: rec.codex, catchCount: rec.catchCount,
+        bd: rec.bd || {}, rodLocked: rec.rodLocked || {},
+      });
       sendTo(target, { type: 'notice', msg: '管理员更新了你的资产快照' });
-      apiResp(res, 200, { ok: true, key: target, coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec) });
+      apiResp(res, 200, { ok: true, key: target, coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), bd: rec.bd || {} });
     });
     return;
   }
@@ -6752,7 +6785,7 @@ function lootPreviewRows(spot, rareVal) {
         baseRate: '熔炼基础成功率', failPerMaterial: '每份材料对失败率的影响', extraRatePerMaterial: '每份材料的补缀成功率加成',
         extraRatePearl: '龙宫宝珠的补缀成功率加成', extraRateMax: '补缀成功率上限', rateMin: '熔炼成功率下限', rateMax: '熔炼成功率上限',
         goldBase: '基础金币花费', goldPerMaterial: '每份材料金币', goldPearl: '龙宫宝珠金币', maxMaterials: '单次最大投料份数', maxTypes: '单次最大投料种类',
-        recastPearl: '重铸基础消耗（龙宫宝珠）', recastGold: '重铸所需金币',
+        recastPearl: '重铸基础消耗（龙宫宝珠）', recastGold: '重铸每颗宝珠的金币',
         retainMaxRelic: '单次最大投入残片',
         addAffixCap: '补缀后词条数上限',
       };

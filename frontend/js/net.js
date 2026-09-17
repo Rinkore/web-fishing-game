@@ -663,6 +663,9 @@ window.Net = (function () {
           }
           if (m.codex) S.codex = m.codex;
           if (m.catchCount != null) S.catchCount = m.catchCount;
+          // v0.16.3：管理员改钓竿装配时也走这条路 —— 带上 bd 就同步装配与词缀加成
+          if (m.bd) { S.bd = m.bd; window.Engine.refreshEffects(); }
+          if (m.rodLocked) S.rodLocked = m.rodLocked;
           if (ui) ui.refreshAll('assets');
         } else if (m.type === 'codexAdd') {
           // perf-8c：图鉴热路径增量——只合并新条目（原 codex 事件每竿全量发整个图鉴）

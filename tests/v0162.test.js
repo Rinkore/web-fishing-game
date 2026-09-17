@@ -160,6 +160,52 @@ async function main() {
   const svBad = await POST('/api/admin/users/snapshot', { token: AT, target: 'v162b', inventory: { 'not_a_real_item_id': 1 } });
   check('未知物品仍被挡（400）', svBad.status === 400, JSON.stringify(svBad.data));
 
+  // ---------------- 重铸手续费：按消耗的宝珠数计（v0.16.3） ----------------
+  section('重铸手续费：每颗宝珠 × 后台单价（不是每次固定价）');
+  check('纯函数：4 颗 × 10000 = 40000', (function () {
+    D.setSmeltCfg({ recastGold: 10000 });
+    const a = D.recastGoldFor(4);
+    D.setSmeltCfg(null);
+    return a === 40000 && D.recastGoldFor(0) === 0;
+  })());
+  await POST('/api/admin/smelt/config', { token: AT, recastGold: 1000, recastPearl: 1 });
+  const wsNow = await GET('/api/workshop?token=' + tokB);
+  check('/api/workshop 下发的是「每颗宝珠的单价」',
+    !!wsNow.data.recast && wsNow.data.recast.goldPerPearl === 1000 && wsNow.data.recast.pearlBase === 1,
+    JSON.stringify(wsNow.data.recast));
+  // 一件神话件（3 条词条）+ 宝珠；先只给 100 金币，指定第 3 条 → 共 4 颗 → 手续费 4000
+  const MYTH = 'reel_electric#mythic#spd+10,skl+3,size+8';
+  await POST('/api/dev/seed', { token: tokB, inventory: { [MYTH]: 1, dragonpearl: 10 }, coins: 100 });
+  const poor = await POST('/api/workshop/recast', { token: tokB, id: MYTH, affixIndex: 2 });
+  check('金币不足时按「4 颗 × 1000 = 4000」拦下', poor.status === 400 && /4000/.test(poor.data.error || ''), JSON.stringify(poor.data));
+  await POST('/api/admin/users/update', { token: AT, target: 'v162b', coins: 5000 });
+  const okCast = await POST('/api/workshop/recast', { token: tokB, id: MYTH, affixIndex: 2 });
+  check('材料够时成交：宝珠 4 颗 + 手续费 4000',
+    okCast.status === 200 && okCast.data.pearlNeed === 4 && okCast.data.gold === 4000,
+    JSON.stringify(okCast.data && { p: okCast.data.pearlNeed, g: okCast.data.gold }));
+  check('金币按 4000 扣（5000 → 1000）', okCast.data.coins === 1000, String(okCast.data.coins));
+  check('宝珠按 4 颗扣（10 → 6）', okCast.data.inventory.dragonpearl === 6, JSON.stringify(okCast.data.inventory));
+  await POST('/api/admin/smelt/config', { token: AT, recastGold: 0 });   // 还原：只收宝珠
+
+  // ---------------- 后台改钓竿装配（v0.16.3） ----------------
+  section('后台：直接改玩家某个部位装的是哪件（含非法件拦住）');
+  const RODCOMP = 'rod_bamboo#common#spd+14';
+  const BADPART = 'reel_electric#common#spd+14';   // 卷线器，装到竿身必须被拒
+  await POST('/api/dev/seed', { token: tokB, inventory: { [RODCOMP]: 1, [BADPART]: 1 }, coins: 100 });
+  const snapBd = await GET('/api/admin/users/snapshot?token=' + AT + '&key=v162b');
+  check('快照接口下发 bd（后端能看见玩家装了什么）', !!snapBd.data.bd, JSON.stringify(snapBd.data.bd));
+  const setRod = await POST('/api/admin/users/snapshot', { token: AT, target: 'v162b', bd: { rod: { compId: RODCOMP } } });
+  check('装上竿身组件成功', setRod.status === 200 && setRod.data.bd.rod.compId === RODCOMP, JSON.stringify(setRod.data && setRod.data.bd && setRod.data.bd.rod));
+  const meRod = await GET('/api/me?token=' + tokB);
+  check('玩家端 /api/me 也看到这件装配', meRod.data.bd && meRod.data.bd.rod && meRod.data.bd.rod.compId === RODCOMP,
+    JSON.stringify(meRod.data.bd && meRod.data.bd.rod));
+  const badRod = await POST('/api/admin/users/snapshot', { token: AT, target: 'v162b', bd: { rod: { compId: BADPART } } });
+  check('部位不匹配的组件被拦（400 不是竿身）', badRod.status === 400 && /不是/.test(badRod.data.error || ''), JSON.stringify(badRod.data));
+  const badPart = await POST('/api/admin/users/snapshot', { token: AT, target: 'v162b', bd: { nosuchpart: { compId: null } } });
+  check('未知部位被拦（400）', badPart.status === 400, JSON.stringify(badPart.data));
+  const clearRod = await POST('/api/admin/users/snapshot', { token: AT, target: 'v162b', bd: { rod: { compId: null } } });
+  check('卸下后回到标准件', clearRod.status === 200 && clearRod.data.bd.rod.compId === null, JSON.stringify(clearRod.data && clearRod.data.bd && clearRod.data.bd.rod));
+
   killTree(srv);
   await sleep(300);
   console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');

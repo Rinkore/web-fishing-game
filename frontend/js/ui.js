@@ -7910,14 +7910,16 @@ window.UI = (function () {
       pearlName: r.pearlName || itemMeta(pearlId).name || '龙宫宝珠',
       pearlBase: r.pearlBase != null ? r.pearlBase : (cfg.recastPearl != null ? cfg.recastPearl : 1),
       pearlHave: S().inventory[pearlId] || 0,
-      gold: r.gold != null ? r.gold : (cfg.recastGold || 0),
+      // v0.16.3：这里是**每颗宝珠的单价**；本次总手续费 = 宝珠数 × 它，在 wsRecastCost 里算
+      goldPerPearl: r.goldPerPearl != null ? r.goldPerPearl : (cfg.recastGold || 0),
       minValue: r.minValue != null ? !!r.minValue : !!cfg.recastMinValue,
     };
   }
-  // 当前重铸的总消耗：基础 + 指定词条的额外宝珠（第 n 条 = n 颗）
+  // 当前重铸的总消耗：基础 + 指定词条的额外宝珠（第 n 条 = n 颗），手续费按宝珠数计
   function wsRecastCost(info) {
     const extra = recastPearlExtra(wsRecastTarget);
-    return { extra: extra, pearl: info.pearlBase + extra };
+    const pearl = info.pearlBase + extra;
+    return { extra: extra, pearl: pearl, gold: D.recastGoldFor(pearl) };
   }
   function wsRenderRecast(body) {
     const st = S();
@@ -7925,7 +7927,7 @@ window.UI = (function () {
     const comp = wsRecast ? D.componentOf(wsRecast) : null;
     const eligible = comp && D.canRecast(comp) ? comp : null;
     const cost = wsRecastCost(info);
-    const enough = info.pearlHave >= cost.pearl && (st.player.coins || 0) >= info.gold;
+    const enough = info.pearlHave >= cost.pearl && (st.player.coins || 0) >= cost.gold;
     body.innerHTML =
       '<div class="ws-help">重铸只针对<b>宝匣产出的神话组件</b>（海王遗匣的产出，含突破件）：' +
       '保持词条类型与条数不变，按当前 roll 模型重新掷数值。消耗 <b>' + esc(info.pearlName) + '</b>：' +
@@ -7965,17 +7967,17 @@ window.UI = (function () {
       '<span class="wm-aff">' + (wsRecastTarget >= 0 ? '→ 指定第 ' + (wsRecastTarget + 1) + ' 条词条' : '→ 重铸全部词条') + '</span>' +
       '<span class="wm-have">持有 ' + info.pearlHave + '</span>' +
       '<span class="wm-unit">需要 ' + cost.pearl + '</span></label>' +
-      (info.gold > 0 ? '<label class="ws-mat' + ((st.player.coins || 0) >= info.gold ? '' : ' none') +
-        '" data-mat="@coins" data-need="' + info.gold + '"><span class="wm-name">金币</span><span class="wm-aff">→ 手续费</span>' +
+      (cost.gold > 0 ? '<label class="ws-mat' + ((st.player.coins || 0) >= cost.gold ? '' : ' none') +
+        '" data-mat="@coins" data-need="' + cost.gold + '"><span class="wm-name">金币</span><span class="wm-aff">→ 手续费</span>' +
         '<span class="wm-have">持有 ' + Math.round(st.player.coins || 0) + '</span>' +
-        '<span class="wm-unit">需要 ' + info.gold + '</span></label>' : '') +
+        '<span class="wm-unit">需要 ' + cost.gold + '</span></label>' : '') +
       '</div>' +
       (cost.extra > 0 ? '<div class="ws-line muted">基础 ' + info.pearlBase + ' 颗 + 指定第 ' + (wsRecastTarget + 1) +
         ' 条 ' + cost.extra + ' 颗 = <b>' + cost.pearl + ' 颗</b>（第 n 条词条额外要 n 颗）</div>' : '') +
       '<div class="ws-preview">' +
       '<div class="ws-line" id="ws-recast-state">' + (eligible
         ? (enough ? '<b class="ok">材料充足</b>' : '<b class="err">材料不足</b>') +
-          '：' + esc(info.pearlName) + ' ×' + cost.pearl + (info.gold > 0 ? ' + 💰' + info.gold : '') +
+          '：' + esc(info.pearlName) + ' ×' + cost.pearl + (cost.gold > 0 ? ' + 💰' + cost.gold : '') +
           ' · ' + (wsRecastTarget >= 0
             ? '只重掷第 ' + (wsRecastTarget + 1) + ' 条（' + esc(affixText(eligible.affixes[wsRecastTarget])) + '）'
             : '重 roll 全部 ' + eligible.affixes.length + ' 条词条的数值')
@@ -7983,7 +7985,7 @@ window.UI = (function () {
       '<div class="ws-line muted">重铸不改变品质 / 底材 / 词条类型与条数，也不会失败——只有数值会变。</div>' +
       '</div>' +
       '<button class="primary big" id="ws-recast-go"' + (eligible && enough ? '' : ' disabled') + '>开始重铸（' +
-      cost.pearl + ' 颗' + esc(info.pearlName) + (info.gold > 0 ? ' + ' + info.gold + '💰' : '') + '）</button>' +
+      cost.pearl + ' 颗' + esc(info.pearlName) + (cost.gold > 0 ? ' + ' + cost.gold + '💰' : '') + '）</button>' +
       '</div></div>';
     body.querySelectorAll('[data-recast-pick]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -8017,12 +8019,12 @@ window.UI = (function () {
     const comp = wsRecast ? D.componentOf(wsRecast) : null;
     const eligible = comp && D.canRecast(comp) ? comp : null;
     const cost = wsRecastCost(info);
-    const enough = info.pearlHave >= cost.pearl && (st.player.coins || 0) >= info.gold;
+    const enough = info.pearlHave >= cost.pearl && (st.player.coins || 0) >= cost.gold;
     const line = $('ws-recast-state');
     if (line) {
       const html = eligible
         ? (enough ? '<b class="ok">材料充足</b>' : '<b class="err">材料不足</b>') +
-          '：' + esc(info.pearlName) + ' ×' + cost.pearl + (info.gold > 0 ? ' + 💰' + info.gold : '') +
+          '：' + esc(info.pearlName) + ' ×' + cost.pearl + (cost.gold > 0 ? ' + 💰' + cost.gold : '') +
           ' · ' + (wsRecastTarget >= 0
             ? '只重掷第 ' + (wsRecastTarget + 1) + ' 条（' + esc(affixText(eligible.affixes[wsRecastTarget])) + '）'
             : '重 roll 全部 ' + eligible.affixes.length + ' 条词条的数值')
@@ -8071,7 +8073,7 @@ window.UI = (function () {
       okText: '开始重铸（' + cost.pearl + ' 颗）',
       html: '重铸 <b>' + esc(comp.name) + '</b>？<br/>消耗 <b>' + esc(info.pearlName) + ' ×' + cost.pearl + '</b>' +
         (cost.extra > 0 ? '（基础 ' + info.pearlBase + ' + 指定词条 ' + cost.extra + '）' : '') +
-        (info.gold > 0 ? ' + 💰' + info.gold : '') + '。<br/>' +
+        (cost.gold > 0 ? ' + 💰' + cost.gold : '') + '。<br/>' +
         (target >= 0
           ? '只重掷 <b>' + esc(targetText) + '</b> 的数值，其余 ' + (comp.affixes.length - 1) + ' 条原样保留'
           : '全部 ' + comp.affixes.length + ' 条词条会重新掷数值') +
