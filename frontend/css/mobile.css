@@ -37,6 +37,10 @@
   .panel h2 { font-size: 16px; }
   .panel h2 .subtitle { line-height: 1.6; }
   .px-map-tabs { flex-wrap: wrap; gap: 6px; }
+  /* 紧密排列时，按钮的透明部分不能遮住相邻钓点的名牌。 */
+  .px-node { pointer-events: none; }
+  .px-node .pn-bob, .px-node .pn-name, .px-node .pn-lock { pointer-events: auto; touch-action: manipulation; }
+  .px-node.here { z-index: 3; }
   .px-grounds { grid-template-columns: minmax(0, 1fr); }
   .px-region.g-card .pg-info span { white-space: normal; overflow-wrap: anywhere; }
   .mini, .inv-cat, .inv-cat.sub, .spot-btn, .primary, .cr-chip { min-height: 44px; }

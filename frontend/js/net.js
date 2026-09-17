@@ -661,6 +661,9 @@ window.Net = (function () {
           const pl = S.player;
           const myKey = me ? String(me.id).toLowerCase() : null;
           const iAmA = !!(myKey && m.a && String(m.a.key).toLowerCase() === myKey);
+          const iAmB = !!(myKey && m.b && String(m.b.key).toLowerCase() === myKey);
+          // 兼容旧服务器的全服广播：无关结算不能写日志或清除自己的交易。
+          if (!iAmA && !iAmB) return;
           // v0.13.9：交易结算也是库存快照，同样按 invRev 判新（旧包不覆盖新状态）
           if (m.a && myKey && String(m.a.key).toLowerCase() === myKey) { pl.coins = m.a.coins; window.Engine.applyInv(m.a.inventory, m.a.invRev); }
           if (m.b && myKey && String(m.b.key).toLowerCase() === myKey) { pl.coins = m.b.coins; window.Engine.applyInv(m.b.inventory, m.b.invRev); }

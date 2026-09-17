@@ -4547,9 +4547,11 @@ const server = http.createServer(function (req, res) {
           broadcastTrade(t);
           trades.delete(t.id);
           // 通知双方最新库存；aItems/bItems 一并下发，客户端据此把「给出/获得」写进交易日志
-          broadcast({ type: 'tradeDone', tradeId: t.id,
+          const settlement = { type: 'tradeDone', tradeId: t.id,
             aItems: t.aItems, bItems: t.bItems, aName: t.a.name, bName: t.b.name,
-            a: { key: t.a.key, inventory: ra.inventory, coins: ra.coins, invRev: invRevOf(ra) }, b: { key: t.b.key, inventory: rb.inventory, coins: rb.coins, invRev: invRevOf(rb) } });
+            a: { key: t.a.key, inventory: Object.assign({}, ra.inventory), coins: ra.coins, invRev: invRevOf(ra) }, b: { key: t.b.key, inventory: Object.assign({}, rb.inventory), coins: rb.coins, invRev: invRevOf(rb) } };
+          sendTo(t.a.key, settlement);
+          sendTo(t.b.key, settlement);
           return apiResp(res, 200, { ok: true, done: true });
         }
         broadcastTrade(t);

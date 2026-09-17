@@ -989,9 +989,22 @@ window.UI = (function () {
     const mapImg = mapTab === 'voyage' ? 'assets/voyagemap.png' : 'assets/worldmap.png';
     map.innerHTML = '<img class="px-map-img" src="' + mapImg + '" alt="" draggable="false">';
     // 钓点选择（定义提前到分支外，增益一览等地图外控件也要用）：
-    // 主路径用 pointerdown（上鱼广播会整页重绘，若在 mouseup 前重绘则 click 会丢失，
-    // 表现为「切换钓点被上鱼卡住」；pointerdown 一定发生在存活 DOM 上）。
-    let lastSpotPointerTs = 0;
+    // 鼠标在按下时处理，避免广播重绘丢失 mouseup；触摸/笔只在 click 时处理，
+    // 防止按下后重绘导致合成 click 再次进入新节点（开始后立刻退出），也允许滑动取消点击。
+    function bindSpotInput(target, resolve) {
+      target.addEventListener('pointerdown', function (ev) {
+        lastSpotPointerType = ev.pointerType;
+        if (ev.pointerType !== 'mouse' || ev.button !== 0) return;
+        const node = resolve(ev);
+        if (node) chooseSpot(node);
+      });
+      target.addEventListener('click', function (ev) {
+        // detail=0 是键盘/辅助技术激活；鼠标真实点击已由 pointerdown 处理。
+        if (ev.detail !== 0 && lastSpotPointerType === 'mouse') return;
+        const node = resolve(ev);
+        if (node) chooseSpot(node);
+      });
+    }
     function chooseSpot(t) {
       const gid = t.getAttribute('data-g');
       const sid = t.getAttribute('data-s');
@@ -1066,19 +1079,9 @@ window.UI = (function () {
         map.appendChild(node);
       });
     });
-    // 同时保留 click 以支持键盘激活，并用时间戳避免同一次操作被处理两次。
-    map.addEventListener('pointerdown', function (ev) {
+    bindSpotInput(map, function (ev) {
       const t = ev.target && ev.target.closest ? ev.target.closest('.px-node') : null;
-      if (!t || !t.getAttribute('data-g')) return;
-      lastSpotPointerTs = Date.now();
-      chooseSpot(t);
-    });
-    map.addEventListener('click', function (ev) {
-      // pointerdown 已处理（鼠标/触摸）；这里只兜底键盘激活
-      if (Date.now() - lastSpotPointerTs < 700) return;
-      const t = ev.target && ev.target.closest ? ev.target.closest('.px-node') : null;
-      if (!t || !t.getAttribute('data-g')) return;
-      chooseSpot(t);
+      return t && t.getAttribute('data-g') ? t : null;
     });
     left.appendChild(map);
     // 甩杆动画（纯视觉）：侠客后摆→前挥→入水。换钓点/开始钓鱼时播一次；
@@ -1128,7 +1131,7 @@ window.UI = (function () {
           e.sp.buffs.map(function (b) {
             return '<i>' + esc(affixName(b.type) + (b.value > 0 ? '+' : '') + b.value + '%') + '</i>';
           }).join('');
-        chip.addEventListener('pointerdown', function () { chooseSpot(chip); });
+        bindSpotInput(chip, function () { return chip; });
         buffBar.appendChild(chip);
       });
       left.appendChild(buffBar);
@@ -6336,6 +6339,7 @@ window.UI = (function () {
   // ---- 鱼类图鉴视图 ----
   // 当前分类（模块级：重绘间保留）；详情改为子窗口，无需记录展开项
   let codexCategory = 'all';
+  let lastSpotPointerType = ''; // 跨重绘保留，兼容不提供 click.pointerType 的浏览器
   let mapTab = 'nearshore'; // 钓鱼页地图页签：nearshore 近岸 / voyage 出海预告
   let lastFisherSpotKey = null; // 甩杆动画记忆：同一钓点重绘不重复播放
 
