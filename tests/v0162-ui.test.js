@@ -601,6 +601,35 @@ async function main() {
   check('玩家端页面也同步到新装配（assets 广播带上 bd）',
     await p1.evaluate(k => ((((window.Engine.state.bd || {}).rod) || {}).compId || '') === k, newRodId));
 
+  // ---------------- 查看他人钓竿弹窗：词条列不能被裁（v0.16.3 排版） ----------------
+  section('查看他人钓竿弹窗：一行一个部位，词条列必须可换行、不裁字');
+  // 「查看」按钮只对**别人**显示，这里按同一套结构与样式表量一次：
+  // 旧样式是 520px 窄弹窗 + 词条列 nowrap/ellipsis → scrollWidth 必然大于 clientWidth（截图中被裁成半截）
+  const rodCss = await p1.evaluate(() => {
+    const box = document.createElement('div');
+    box.className = 'modal-box rod-modal';
+    box.style.position = 'absolute';
+    box.style.left = '-9999px';
+    box.innerHTML = '<div class="modal-body"><div class="rod-view"><div class="rod-table">' +
+      '<div class="rod-tr"><span class="rt-part">竿身</span><span class="rt-comp">饱满的 龙骨巨竿</span>' +
+      '<span class="rt-affs"><span class="inst-aff">+18% 技巧（+8 ~ +14%）</span>' +
+      '<span class="inst-aff">+11% 体型（+15 ~ +24%）</span><span class="inst-aff">+9% 钓速（−16 ~ +12%）</span>' +
+      '</span></div></div></div></div>';
+    document.body.appendChild(box);
+    const aff = box.querySelector('.rt-affs');
+    const out = {
+      width: Math.round(box.getBoundingClientRect().width),
+      wrap: getComputedStyle(aff).whiteSpace,
+      clipped: aff.scrollWidth > aff.clientWidth + 1,
+      scrollW: aff.scrollWidth, clientW: aff.clientWidth,
+    };
+    box.remove();
+    return out;
+  });
+  check('钓竿弹窗放宽（≥ 700px，词条列放得下）', rodCss.width >= 700, JSON.stringify(rodCss));
+  check('词条列可换行且一行都没被裁（scrollWidth ≤ clientWidth）',
+    rodCss.wrap === 'normal' && rodCss.clipped === false, JSON.stringify(rodCss));
+
   // ---------------- 后台：存档回档 ----------------
   section('后台存档回档：列表 + 两步确认');
   await pa.evaluate(() => { const b = document.querySelector('[data-snaps="v162ui_a"]'); if (b) b.click(); });

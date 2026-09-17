@@ -207,24 +207,27 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 @keyframes twPulse { 0%, 100% { transform: scale(1); opacity: .65; } 50% { transform: scale(1.18); opacity: 1; } }
 
 /* ---- 查看他人钓竿组件构成子窗口 ---- */
-.rod-modal { width: min(520px, 92vw); }
+/* v0.16.0：520px 太窄，一行一个部位的词条列被裁得只剩半截（v0.16.3 放宽到 820px） */
+.rod-modal { width: min(820px, 94vw); }
 .rod-modal .modal-body { max-height: 70vh; overflow: auto; }
 .rod-view-name { margin-bottom: 10px; font-size: 13px; color: var(--muted); }
 .rod-view-name b { color: var(--text); }
 .rod-parts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 /* v0.16.0：竿体「一行一个部位」表（查看他人钓竿 / 市集整竿挂单共用）。
-   部位名固定宽、组件次要、词条占满剩余并单行省略——7 个部位一屏读完，不再一行行堆高。 */
+   部位名固定宽、组件次要、词条占满剩余；7 个部位一屏读完。
+   v0.16.3：词条列改为**可换行**（原来 nowrap + 省略号，弹窗一窄就把词条裁成半截，
+   看不出装了什么），行高按需长到两行，绝不裁字。 */
 .rod-table { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
 .rod-tr {
-  display: grid; grid-template-columns: 92px minmax(120px, 1fr) minmax(0, 2.2fr);
+  display: grid; grid-template-columns: 92px minmax(130px, 1.1fr) minmax(0, 2fr);
   gap: 8px; align-items: baseline; font-size: 12px;
   border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; background: rgba(255,255,255,.03);
 }
 .rod-tr .rt-part { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .rod-tr .rt-comp { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rod-tr .rt-affs {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  display: block; color: var(--text);
+  min-width: 0; display: block; color: var(--text);
+  white-space: normal; overflow-wrap: anywhere;
 }
 .rod-tr .rt-affs .inst-aff { margin-right: 8px; }
 .rod-tr .rt-affs .aff-rng { color: var(--muted); }
