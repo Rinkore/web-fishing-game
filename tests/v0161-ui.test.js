@@ -229,4 +229,4 @@ async function main() {
   if (failed.length) console.log('失败明细：\n' + failed.map(x => '  - ' + x).join('\n'));
   process.exit(fail ? 1 : 0);
 }
-main().catch(e => { console.error(e); try { killTree(srv); } catch (x) {} process.exit(1); });
+main().catch(async e => { console.error(e); try { killTree(srv); } catch (x) {} try { if (browser) await browser.close(); } catch (x) {} process.exit(1); });
