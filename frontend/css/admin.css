@@ -68,6 +68,74 @@ a { color: var(--acc); }
 h2 { font-size: 17px; margin-bottom: 14px; }
 h3 { font-size: 14px; margin: 18px 0 10px; color: var(--txt); }
 .hint { font-size: 12px; color: var(--txt-dim); line-height: 1.7; }
+/* ---- 公式管理页 · 模拟钓竿（v0.16.0 页面中心）---- */
+.sim-panel { border-color: rgba(45,212,191,.35); }
+.sim-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .sim-grid { grid-template-columns: 1fr; } }
+.sim-rods { display: flex; flex-direction: column; gap: 6px; }
+.sim-aff { display: grid; grid-template-columns: 96px minmax(0, 1fr) 84px 16px; gap: 8px; align-items: center; font-size: 13px; }
+.sim-aff label { color: var(--txt-dim); }
+.sim-aff input[type="range"] { width: 100%; }
+.sim-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sim-side { min-width: 0; }
+.sim-cells { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.sim-cell {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.03);
+}
+.sim-cell .sc-label { font-size: 11px; color: var(--txt-dim); }
+.sim-cell b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.sim-cell .sc-hint { font-size: 11px; color: var(--txt-dim); }
+.sim-loot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 2px 14px; }
+.sim-loot-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 62px 14px 66px; gap: 6px; align-items: baseline;
+  font-size: 12px; padding: 2px 0; border-bottom: 1px dashed rgba(255,255,255,.06);
+}
+.sim-loot-row .sl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sim-loot-row .sl-before { color: var(--txt-dim); text-align: right; font-variant-numeric: tabular-nums; }
+.sim-loot-row .sl-arrow { color: var(--txt-dim); text-align: center; }
+.sim-loot-row .sl-after { text-align: right; font-variant-numeric: tabular-nums; }
+.sim-loot-row .sl-after.up { color: #34d399; }
+.sim-loot-row .sl-after.down { color: var(--danger, #e84a3a); }
+/* 概览热力图：钓场 / 钓点筛选（v0.16.0） */
+.hm-filter-label { font-size: 12px; color: var(--txt-dim); margin: 0 4px 0 8px; }
+.hm-sel { min-width: 130px; padding: 4px 8px; }
+/* ---- 功能开关页（v0.16.0 卡片式布局）---- */
+.feat-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; margin-bottom: 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.03);
+}
+.feat-bar .feat-search { flex: 1 1 200px; min-width: 160px; }
+.feat-sum { font-size: 12px; color: var(--txt-dim); }
+.feat-bypass { font-size: 12px; }
+.feat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; align-items: start; }
+.feat-grid .feature-group h3 { margin: 0 0 8px; }
+.feat-page { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.feat-page .feat-state {
+  margin-left: auto; font-size: 11px; font-style: normal; color: var(--ok, #3ecf8e);
+  border: 1px solid rgba(62,207,142,.5); border-radius: 6px; padding: 0 6px;
+}
+.feature-group.off { opacity: .72; }
+.feature-group.off .feat-page .feat-state { color: var(--danger, #e84a3a); border-color: rgba(232,74,58,.5); }
+.feature-children { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.feat-chip {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  font-size: 12px; padding: 3px 9px; border-radius: 14px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.03);
+}
+.feat-chip.off { opacity: .55; text-decoration: line-through; }
+/* ---- 后台安全页（v0.16.0）---- */
+.tag.banned { color: var(--danger, #e84a3a); border-color: rgba(232,74,58,.5); }
+.sec-log { display: flex; flex-direction: column; gap: 2px; max-height: 420px; overflow: auto; }
+.sec-log-row {
+  display: grid; grid-template-columns: 150px 120px 130px 120px minmax(0, 1fr); gap: 8px;
+  font-size: 12px; padding: 3px 6px; border-bottom: 1px dashed rgba(255,255,255,.06);
+}
+.sec-log-row .sl-time { color: var(--txt-dim); font-variant-numeric: tabular-nums; }
+.sec-log-row .sl-act { color: var(--acc, #3ecf8e); }
+.sec-log-row .sl-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) { .sec-log-row { grid-template-columns: 1fr; } }
 
 /* ---- 通用组件 ---- */
 .panel {
@@ -389,6 +457,7 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .fb-dot.submitted { background: var(--acc); }
 .fb-dot.accepted { background: var(--warn); }
 .fb-dot.done { background: var(--ok); }
+.fb-dot.rejected { background: var(--danger, #e84a3a); }   /* v0.16.0：已拒绝 */
 .fb-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .fb-chip {
   font: inherit; font-size: 12px; cursor: pointer; color: var(--txt-dim);
@@ -411,6 +480,7 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .fb-status.submitted { background: rgba(77,163,255,.16); color: var(--acc); }
 .fb-status.accepted { background: rgba(255,180,84,.18); color: var(--warn); }
 .fb-status.done { background: rgba(62,207,142,.18); color: var(--ok); }
+.fb-status.rejected { background: rgba(232,74,58,.18); color: var(--danger, #e84a3a); }
 .fb-reward { font-size: 11px; color: var(--warn); border: 1px solid rgba(255,180,84,.5); border-radius: 20px; padding: 1px 8px; }
 .fb-text { font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 .fb-acts { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }

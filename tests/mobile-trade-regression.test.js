@@ -5,6 +5,14 @@ const { spawn } = require('child_process');
 const { chromium } = require('playwright-core');
 const { waitHttp } = require('./_util');
 const base = 'http://localhost:8298';
+// 与 run-all.js 的汇总口径对齐：统计断言条数，最后打印「通过 N 项，失败 0 项」
+// （此前只打印一句话，run-all 解析不到小结会把通过判成失败）
+let checks = 0;
+['ok', 'equal', 'deepEqual', 'strictEqual', 'notEqual'].forEach(k => {
+  const f = assert[k];
+  if (typeof f !== 'function') return;
+  assert[k] = function () { checks++; return f.apply(this, arguments); };
+});
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-touch-trade-'));
 let server, browser;
 async function api(route, body) {
@@ -66,7 +74,7 @@ async function api(route, body) {
  assert.equal(await pages[2].evaluate(()=>Engine.state.trade.id),'unrelated-active-trade','unrelated settlement preserves ongoing trade');
  assert.equal(await pages[2].evaluate(()=>JSON.parse(localStorage.getItem('fishing_log_'+Engine.state.me.id)||'[]').filter(e=>e.kind==='trade').length),0);
  assert.deepEqual(errors,[]);
- console.log('Mobile input and three-player trade regressions passed');
+ console.log('通过 ' + checks + ' 项，失败 0 项（手机输入 + 三人交易回归）');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{
  if(browser)await browser.close();
  if(server)await new Promise(resolve=>{server.once('exit',resolve);server.stdin.end('q\n');});

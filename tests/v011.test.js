@@ -788,25 +788,25 @@ function startServer() {
   }
 
   // ==========================================================================
-  section('⑥b 工坊 · 重铸（沉船宝匣残片重 roll 神话件词条）');
+  section('⑥b 工坊 · 重铸（龙宫宝珠重 roll 神话件词条；v0.16.0 起支持指定单条词条）');
   {
     const myth = D.instanceId('rod_bamboo', 'mythic', [{ type: 'speed', value: 9 }, { type: 'size', value: 3 }, { type: 'skill', value: 4 }, { type: 'rare', value: 2 }]);
     const epicComp = D.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 9 }, { type: 'size', value: 3 }]);
     await seed({}, 100000);
     const ws2 = await GET(BASE + '/api/workshop?token=' + encodeURIComponent(TOKP));
-    check('工坊接口下发重铸参数（材料自动识别：只列残片）',
-      !!ws2.data.recast && ws2.data.recast.relicId === 'relic' && ws2.data.recast.relicNeed === 10 && ws2.data.recast.quality === 'mythic',
+    check('工坊接口下发重铸参数（材料自动识别：龙宫宝珠 · 基础 1 颗）',
+      !!ws2.data.recast && ws2.data.recast.pearlId === 'dragonpearl' && ws2.data.recast.pearlBase === 1 && ws2.data.recast.quality === 'mythic',
       JSON.stringify(ws2.data.recast));
     check('非神话组件不可重铸', (await (async function () {
-      await seed({ [epicComp]: 1, relic: 50 }, 100000);
+      await seed({ [epicComp]: 1, dragonpearl: 50 }, 100000);
       return POST(BASE + '/api/workshop/recast', { token: TOKP, id: epicComp });
     })()).status === 400);
-    // 残片不足 → 拒绝
-    await seed({ [myth]: 1, relic: 3 }, 100000);
+    // 宝珠不足 → 拒绝
+    await seed({ [myth]: 1, dragonpearl: 0 }, 100000);
     const poor = await POST(BASE + '/api/workshop/recast', { token: TOKP, id: myth });
-    check('残片不足被拒', poor.status === 400 && /残片不足/.test(poor.data.error || ''), JSON.stringify(poor.data));
-    // 正常重铸：词条类型与条数不变、数值重 roll、扣 10 残片
-    await seed({ [myth]: 1, relic: 12 }, 100000);
+    check('龙宫宝珠不足被拒', poor.status === 400 && /龙宫宝珠不足/.test(poor.data.error || ''), JSON.stringify(poor.data));
+    // 正常重铸：词条类型与条数不变、数值重 roll、扣 1 颗龙宫宝珠
+    await seed({ [myth]: 1, dragonpearl: 12 }, 100000);
     const before = D.componentOf(myth);
     const rc = await POST(BASE + '/api/workshop/recast', { token: TOKP, id: myth });
     check('重铸成功', rc.status === 200 && !!rc.data.item, JSON.stringify(rc.data).slice(0, 140));
@@ -816,7 +816,7 @@ function startServer() {
       after.affixes.length === before.affixes.length &&
       after.affixes.every(function (a, i) { return a.type === before.affixes[i].type; }),
       JSON.stringify({ before: before.affixes, after: after.affixes }));
-    check('重铸消耗残片（12 → 2）', rc.data.inventory.relic === 2, JSON.stringify(rc.data.inventory));
+    check('重铸消耗龙宫宝珠（12 → 11）', rc.data.inventory.dragonpearl === 11, JSON.stringify(rc.data.inventory));
     check('重铸消耗旧件、产出新件',
       rc.data.inventory[myth] === undefined && rc.data.inventory[after.id] === 1, JSON.stringify(rc.data.inventory));
     check('重铸返回前后对照', Array.isArray(rc.data.before) && rc.data.before.length === before.affixes.length,
@@ -825,18 +825,33 @@ function startServer() {
     const skillAff = after.affixes.find(function (a) { return a.type === 'skill'; });
     check('重铸后池外词缀仍落在池外区间内', !!skillAff && skillAff.value >= 2 && skillAff.value <= 6, JSON.stringify(skillAff));
     // 后台可改重铸参数
-    check('非管理员改重铸参数 403', (await POST(BASE + '/api/admin/smelt/config', { token: TOKP, recastRelic: 5 })).status === 403);
-    const setRc = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, recastRelic: 4, recastGold: 100, recastMinValue: 1 });
-    check('保存重铸参数（4 残片 + 100 金币 + 保底不降级）',
-      setRc.status === 200 && setRc.data.smeltCfg.recastRelic === 4 && setRc.data.smeltCfg.recastMinValue === 1,
+    check('非管理员改重铸参数 403', (await POST(BASE + '/api/admin/smelt/config', { token: TOKP, recastPearl: 5 })).status === 403);
+    const setRc = await POST(BASE + '/api/admin/smelt/config', { token: TOKA, recastPearl: 4, recastGold: 100, recastMinValue: 1 });
+    check('保存重铸参数（基础 4 颗宝珠 + 100 金币 + 保底不降级）',
+      setRc.status === 200 && setRc.data.smeltCfg.recastPearl === 4 && setRc.data.smeltCfg.recastMinValue === 1,
       JSON.stringify(setRc.data.smeltCfg));
     const ws3 = await GET(BASE + '/api/workshop?token=' + encodeURIComponent(TOKP));
-    check('玩家端看到新重铸花费', ws3.data.recast.relicNeed === 4 && ws3.data.recast.gold === 100 && ws3.data.recast.minValue === true,
+    check('玩家端看到新重铸花费', ws3.data.recast.pearlBase === 4 && ws3.data.recast.gold === 100 && ws3.data.recast.minValue === true,
       JSON.stringify(ws3.data.recast));
-    // 金币不足：先把残片补够（否则会先报残片不足），再把金币压到阈值以下
-    await seed({ [after.id]: 1, relic: 10 }, 50);
+    // 金币不足：先把宝珠补够（否则会先报宝珠不足），再把金币压到阈值以下
+    await seed({ [after.id]: 1, dragonpearl: 10 }, 50);
     const gc = await POST(BASE + '/api/workshop/recast', { token: TOKP, id: after.id });
     check('金币不足时被拒', gc.status === 400 && /金币不足/.test(gc.data.error || ''), JSON.stringify(gc.data));
+    // v0.16.0 新玩法：额外投入宝珠把重铸**指定到某一条词条**——第 n 条额外 n 颗，且只有那一条会变
+    await seed({ [after.id]: 1, dragonpearl: 10 }, 100000);
+    const targetBefore = (D.componentOf(after.id).affixes || []).map(function (a) { return a.value; });
+    const rcT = await POST(BASE + '/api/workshop/recast', { token: TOKP, id: after.id, affixIndex: 1 });
+    // 此时后台把基础消耗改成了 4（上一段用例），所以总消耗 = 4 + 第 2 条的额外 2 = 6
+    check('指定第 2 条词条重铸：消耗 = 基础 + 额外 2 颗（第 n 条额外 n 颗）',
+      rcT.status === 200 && rcT.data.pearlExtra === 2 && rcT.data.pearlNeed === rcT.data.pearlBase + 2 && rcT.data.target === 1,
+      JSON.stringify({ status: rcT.status, err: rcT.data.error, base: rcT.data.pearlBase, need: rcT.data.pearlNeed, target: rcT.data.target }));
+    check('指定重铸后只有第 2 条数值变化，其余原样保留',
+      !!rcT.data.item && rcT.data.item.affixes.every(function (a, i) { return i === 1 || a.value === targetBefore[i]; }),
+      JSON.stringify({ before: targetBefore, after: rcT.data.item && rcT.data.item.affixes.map(function (a) { return a.value; }) }));
+    check('指定重铸的越界下标被拒 400',
+      (await POST(BASE + '/api/workshop/recast', { token: TOKP, id: rcT.data.id, affixIndex: 9 })).status === 400);
+    check('指定重铸按总消耗扣宝珠（10 → 10 - 总消耗）',
+      rcT.data.inventory.dragonpearl === 10 - rcT.data.pearlNeed, JSON.stringify(rcT.data.inventory));
     // 恢复默认，避免影响后续用例
     await POST(BASE + '/api/admin/smelt/config', { token: TOKA, reset: true });
   }

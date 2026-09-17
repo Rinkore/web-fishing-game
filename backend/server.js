@@ -67,6 +67,8 @@ const ECONOMY_FILE = path.join(DATA_DIR, 'economy.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
 const STATS_FILE = path.join(DATA_DIR, 'stats.json');
+const ADMIN_FILE = path.join(DATA_DIR, 'admin.json');   // v0.16.0：管理操作审计日志
+const ADMIN_KEYS = ['adminLog'];                        // admin.json 里持久化的键（审计日志）
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 // 旧版单文件（仅用于首次自动迁移）
 const LEGACY_USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -474,11 +476,14 @@ function partNameOf(key) {
   return p ? p.name : String(key || '?');
 }
 // ---- 工坊 · 重铸 ----
-// 用「沉船宝匣残片」给**宝匣产出的神话件**重 roll 全部词条数值（词条类型与条数不变）。
+// 用「龙宫宝珠」给**宝匣产出的神话件**重 roll 词条数值（词条类型与条数不变）。
 // 只允许神话品质：全游戏只有海王遗匣产出神话件（后台掉落权重刻意不含 mythic），
 // 因此神话品质就是「宝匣产出」这一身份的判据；工坊熔炼保留主件品质，熔出来的神话件同样可重铸。
-// 花费与「是否保底不降级」由后台「⚒ 工坊配置」决定（默认 10 残片 + 0 金币，完全重 roll）。
-function planRecast(rec, id) {
+// v0.16.0 改版：
+//   · 材料从沉船宝匣残片改为龙宫宝珠，基础消耗由后台「⚒ 工坊配置」的「重铸基础消耗」决定（默认 1 颗）；
+//   · 额外投入宝珠可把重铸**指定到某一条词条**：第 n 条词条额外消耗 n 颗宝珠（选中的那条才重 roll，
+//     其余词条原样保留）；不指定时重 roll 全部词条（旧行为）。
+function planRecast(rec, id, affixIdx) {
   const cfg = smeltCfgOf();
   const meta = D.componentOf(id);
   if (!meta || !D.isInstance(id)) return { error: '请选择一件已生成的组件' };
@@ -489,17 +494,31 @@ function planRecast(rec, id) {
     const lock = rodLockError(rec, meta.id, 1);
     return { error: lock || '背包中没有该组件' };
   }
-  const relicId = 'relic';
-  const relicNeed = Math.max(0, Math.floor(Number(cfg.recastRelic) || 0));
+  const pearlId = D.SMELT_PEARL;
+  const pearlBase = Math.max(0, Math.floor(Number(cfg.recastPearl) || 0));
+  // 目标词条：非数字 / 负数 / 越界 → 视为「不指定」，避免把脏参数静默当成第 1 条
+  let target = -1;
+  if (affixIdx != null && affixIdx !== '' && affixIdx !== false) {
+    const t = Math.floor(Number(affixIdx));
+    if (!isFinite(t)) return { error: '指定的词条无效' };
+    if (t < 0) return { error: '指定的词条无效' };
+    if (t >= (meta.affixes || []).length) return { error: '指定的词条不存在（该组件只有 ' + meta.affixes.length + ' 条词条）' };
+    target = t;
+  }
+  const pearlExtra = D.recastPearlExtra(target);
+  const pearlNeed = pearlBase + pearlExtra;
   const goldNeed = Math.max(0, Math.floor(Number(cfg.recastGold) || 0));
-  const relicHave = invCountOf(rec, relicId);
-  if (relicHave < relicNeed) {
-    return { error: itemName(relicId) + '不足（需 ' + relicNeed + ' 个，当前 ' + relicHave + ' 个）' };
+  const pearlHave = invCountOf(rec, pearlId);
+  if (pearlHave < pearlNeed) {
+    return { error: itemName(pearlId) + '不足（需 ' + pearlNeed + ' 颗' +
+      (pearlExtra > 0 ? '：基础 ' + pearlBase + ' + 指定第 ' + (target + 1) + ' 条词条 ' + pearlExtra : '') +
+      '，当前 ' + pearlHave + ' 颗）' };
   }
   if ((rec.coins || 0) < goldNeed) return { error: '金币不足（需 ' + goldNeed + '，当前 ' + Math.round(rec.coins || 0) + '）' };
   return {
-    ok: true, cfg: cfg, meta: meta, relicId: relicId, relicNeed: relicNeed, relicHave: relicHave,
-    gold: goldNeed, materials: [{ id: relicId, name: itemName(relicId), need: relicNeed, have: relicHave }],
+    ok: true, cfg: cfg, meta: meta, target: target,
+    pearlId: pearlId, pearlBase: pearlBase, pearlExtra: pearlExtra, pearlNeed: pearlNeed, pearlHave: pearlHave,
+    gold: goldNeed, materials: [{ id: pearlId, name: itemName(pearlId), need: pearlNeed, have: pearlHave }],
   };
 }
 
@@ -524,7 +543,8 @@ function feedbackSkipCost() {
   return (isFinite(c) && c >= 0) ? Math.floor(c) : FEEDBACK_SKIP_COST_DEFAULT;
 }
 // 反馈状态标识（玩家可见；管理员可改）
-const FEEDBACK_STATUSES = { submitted: '已提交', accepted: '已受理', done: '已完成' };
+// v0.16.0：新增「已拒绝」状态（不采纳的反馈，可附说明；不发放奖励）
+const FEEDBACK_STATUSES = { submitted: '已提交', accepted: '已受理', done: '已完成', rejected: '已拒绝' };
 
 // ---- 钓竿存档 / 槽位 ----
 // 槽位上限 8 根；第 1 个槽位免费（即当前装备的这根），之后按 ROD_SLOT_PRICES 顺序购买。
@@ -1215,7 +1235,7 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     who: rec.name, name: itemName(item.id), size: (item.size != null ? (Math.round(item.size * 10) / 10) : null),
     globalMax: !!globalRecord, record: !!recordEvent, small: !!smallEvent, topBig: topBigRank, topSmall: topSmallRank,
   });
-  if (board && bannerCatchAllowed(board.level)) broadcast({ type: 'globalRecord', record: Object.assign({}, globalRecord || { id: item.id, name: itemName(item.id), size: item.size, who: rec.name, t: Date.now() }, { text: board.text, level: board.level }) });
+  if (board && bannerCatchAllowed(board.level)) broadcast({ type: 'globalRecord', record: Object.assign({}, globalRecord || { id: item.id, name: itemName(item.id), size: item.size, who: rec.name, t: Date.now() }, { key: key, text: board.text, level: board.level }) });
   if (board) {
     // v0.13.8：记录页顶部展示「当前最新播报的鱼」——横幅那条播报同步存一份，
     // 随 /api/records 下发（recordsDirty 广播会触发前端重新拉取，无需刷新页面）。
@@ -2240,7 +2260,19 @@ armPriceSampler();
 // ================================================================
 function statsLive() {
   let fishing = 0;
-  players.forEach(function (pl) { if (pl.status === 'fishing') fishing++; });
+  // v0.16.0：概览热力图支持按钓场 / 钓点筛选，所以采样时按钓场与钓点分别统计**正在钓鱼的人数**。
+  // 只记非零项，样本很小（多数时刻只有几个钓点有人）。
+  const grounds = {}, spots = {};
+  players.forEach(function (pl) {
+    if (pl.status !== 'fishing') return;
+    fishing++;
+    if (!pl.groundId) return;
+    grounds[pl.groundId] = (grounds[pl.groundId] || 0) + 1;
+    if (pl.spotId) {
+      const sk = pl.groundId + ':' + pl.spotId;
+      spots[sk] = (spots[sk] || 0) + 1;
+    }
+  });
   let activeTrades = 0;
   trades.forEach(function (t) { if (!t.done && !t.cancelled) activeTrades++; });
   return {
@@ -2250,6 +2282,8 @@ function statsLive() {
     listings: world.listings.length,
     trades: activeTrades,
     users: Object.keys(users).length,
+    grounds: grounds,
+    spots: spots,
   };
 }
 let statsDirty = 0;
@@ -2267,10 +2301,14 @@ function statsSample() {
   let h = hour[hour.length - 1];
   const rolled = !h || h.t !== hT;
   if (rolled) {
-    h = { t: hT, n: 0, oSum: 0, oMax: 0, fSum: 0, lSum: 0, trSum: 0, uLast: 0 };
+    h = { t: hT, n: 0, oSum: 0, oMax: 0, fSum: 0, lSum: 0, trSum: 0, uLast: 0, gSum: {}, sSum: {} };
     hour.push(h);
     if (hour.length > HEAT_STATS.hour) hour.splice(0, hour.length - HEAT_STATS.hour);
   }
+  // 按钓场 / 钓点的钓鱼人数：小时桶里累加，长区间（7/30 天）也能按钓点出曲线
+  h.gSum = h.gSum || {}; h.sSum = h.sSum || {};
+  Object.keys(s.grounds || {}).forEach(function (k) { h.gSum[k] = (h.gSum[k] || 0) + s.grounds[k]; });
+  Object.keys(s.spots || {}).forEach(function (k) { h.sSum[k] = (h.sSum[k] || 0) + s.spots[k]; });
   h.n++; h.oSum += s.online; h.oMax = Math.max(h.oMax, s.online);
   h.fSum += s.fishing; h.lSum += s.listings; h.trSum += s.trades; h.uLast = s.users;
   if (s.online > ((world.statPeak && world.statPeak.online) || 0)) world.statPeak = { online: s.online, t: s.t };
@@ -2290,28 +2328,42 @@ const STATS_RANGES = {
   '30d': { span: 30 * 86400000, step: 6 * 3600000, src: 'hour' },
 };
 // 区间曲线 + 星期×小时热力格（热力格取最近 28 天的小时样本，按服务器本地时间落格）
-function statsReport(range) {
+// filter：{ ground: 钓场 id, spot: '钓场:钓点' } —— 两者都空 = 全服口径（原有行为）。
+// 带筛选时，曲线与热力格改用「该钓场 / 该钓点当前正在钓鱼的人数」，其余全局指标仍在 points 里返回。
+function statsReport(range, filter) {
   const rf = STATS_RANGES[range] ? range : '24h';
   const R = STATS_RANGES[rf];
+  const fGround = (filter && filter.ground) ? String(filter.ground) : '';
+  const fSpot = (filter && filter.spot) ? String(filter.spot) : '';
+  const areaOf = function (grounds, spots) {
+    if (fSpot) return (spots && spots[fSpot]) || 0;
+    if (fGround) return (grounds && grounds[fGround]) || 0;
+    return null;
+  };
   const now = Date.now();
   const from = now - R.span;
   const acc = {};
-  const put = function (t, o, oMax, f, l, tr, u) {
+  const put = function (t, o, oMax, f, l, tr, u, area) {
     const key = Math.floor(t / R.step) * R.step;
-    const b = acc[key] || (acc[key] = { t: key, n: 0, oSum: 0, oMax: 0, fSum: 0, lSum: 0, trSum: 0, uLast: 0 });
+    const b = acc[key] || (acc[key] = { t: key, n: 0, oSum: 0, oMax: 0, fSum: 0, lSum: 0, trSum: 0, uLast: 0, aSum: 0, aN: 0 });
     b.n++; b.oSum += o; b.oMax = Math.max(b.oMax, oMax); b.fSum += f; b.lSum += l; b.trSum += tr; b.uLast = u;
+    if (area != null) { b.aSum += area; b.aN++; }
   };
   if (R.src === 'min') {
     (world.statMin || []).forEach(function (s) {
-      if (s.t >= from) put(s.t, s.online, s.online, s.fishing, s.listings, s.trades, s.users);
+      if (s.t < from) return;
+      put(s.t, s.online, s.online, s.fishing, s.listings, s.trades, s.users, areaOf(s.grounds, s.spots));
     });
   } else {
     (world.statHour || []).forEach(function (h) {
-      if (h.t >= from && h.n) put(h.t, h.oSum / h.n, h.oMax, h.fSum / h.n, h.lSum / h.n, h.trSum / h.n, h.uLast);
+      if (h.t < from || !h.n) return;
+      const area = fSpot ? ((h.sSum && h.sSum[fSpot]) || 0) / h.n
+        : (fGround ? ((h.gSum && h.gSum[fGround]) || 0) / h.n : null);
+      put(h.t, h.oSum / h.n, h.oMax, h.fSum / h.n, h.lSum / h.n, h.trSum / h.n, h.uLast, area);
     });
   }
   const live = statsLive();
-  put(live.t, live.online, live.online, live.fishing, live.listings, live.trades, live.users); // 曲线始终连到「现在」
+  put(live.t, live.online, live.online, live.fishing, live.listings, live.trades, live.users, areaOf(live.grounds, live.spots)); // 曲线始终连到「现在」
   const r1 = function (v) { return Math.round(v * 10) / 10; };
   const points = Object.keys(acc).map(function (k) { return acc[k]; })
     .sort(function (x, y) { return x.t - y.t; })
@@ -2321,6 +2373,8 @@ function statsReport(range) {
         online: r1(b.oSum / b.n), onlineMax: b.oMax,
         fishing: r1(b.fSum / b.n), listings: r1(b.lSum / b.n),
         trades: r1(b.trSum / b.n), users: b.uLast,
+        // 筛选口径下的「本钓场 / 本钓点钓鱼人数」（未筛选时为 null）
+        area: b.aN ? r1(b.aSum / b.aN) : (fSpot || fGround ? 0 : null),
       };
     });
   const grid = [], cnt = [];
@@ -2332,7 +2386,15 @@ function statsReport(range) {
     const d = new Date(s.t);
     const wd = (d.getDay() + 6) % 7;   // 周一 = 0
     const hh = d.getHours();
-    grid[wd][hh] += (s.n ? (s.oSum / s.n) : s.online) || 0;
+    if (fSpot || fGround) {
+      // 筛选口径：热力格画「该钓点 / 钓场在星期×小时的钓鱼人数均值」
+      const area = s.n
+        ? (fSpot ? ((s.sSum && s.sSum[fSpot]) || 0) / s.n : ((s.gSum && s.gSum[fGround]) || 0) / s.n)
+        : areaOf(s.grounds, s.spots);
+      grid[wd][hh] += area || 0;
+    } else {
+      grid[wd][hh] += (s.n ? (s.oSum / s.n) : s.online) || 0;
+    }
     cnt[wd][hh] += 1;
   });
   let heatMax = 0;
@@ -2348,7 +2410,12 @@ function statsReport(range) {
   return {
     range: rf, step: R.step, span: R.span, from: from, now: now,
     points: points, heat: heat, heatN: cnt, heatMax: heatMax, heatDays: heatDays,
+    filter: { ground: fGround, spot: fSpot, areaLabel: fSpot || fGround ? '该钓点钓鱼人数' : '' },
     peak: world.statPeak || { online: 0, t: 0 }, live: live,
+    // 概览筛选下拉用的钓场 / 钓点目录（含人数为 0 的，便于随时切换）
+    grounds: D.GROUNDS.map(function (g) {
+      return { id: g.id, name: g.name, spots: (g.spots || []).map(function (sp) { return { id: sp.id, name: sp.name, key: g.id + ':' + sp.id }; }) };
+    }),
     samples: { min: (world.statMin || []).length, hour: (world.statHour || []).length },
   };
 }
@@ -2634,7 +2701,7 @@ function loadWorld() {
       return;
     }
   }
-  loadMarket(); loadRecords(); loadEconomy(); loadConfig(); loadFeedback(); loadStats();
+  loadMarket(); loadRecords(); loadEconomy(); loadConfig(); loadFeedback(); loadStats(); loadAdminLog();
   void hasDomain;
 }
 loadUsers();
@@ -2762,6 +2829,95 @@ function adminOf(token) {
   const key = token && sessionGet(token);
   const rec = key && users[key];
   return (rec && rec.admin) ? { key: key, rec: rec } : null;
+}
+
+// ================================================================
+// ---- 后台安全（v0.16.0）----
+// 1) 管理操作审计：所有写操作都记一条（谁 / 什么时候 / 对谁 / 做了什么），落盘 admin.json；
+// 2) 异常登录防护：同「账号 + IP」10 分钟内连续失败 5 次 → 锁定 5 分钟（只挡登录，不影响在线玩家）；
+// 3) 封禁：按账号封任意时长（支持永久），封禁立即踢掉在线会话与实时连接。
+// 敏感操作的二次确认在后台界面侧（confirmModalLocal），这里只保证服务端一定会校验权限。
+// ================================================================
+function saveAdminLog() { saveDomain(ADMIN_FILE, ADMIN_KEYS); }
+function loadAdminLog() { loadDomain(ADMIN_FILE, ADMIN_KEYS); }
+function audit(a, action, target, detail) {
+  try {
+    const list = world.adminLog || (world.adminLog = []);
+    list.push({
+      t: Date.now(),
+      key: (a && a.key) || '',
+      name: (a && a.rec && a.rec.name) || '',
+      action: String(action || ''),
+      target: String(target || ''),
+      detail: String(detail == null ? '' : detail).slice(0, 200),
+    });
+    if (list.length > 500) list.splice(0, list.length - 500);
+    saveAdminLog();
+  } catch (e) { console.error('[audit] ' + ((e && e.stack) || e)); }
+}
+// ---- 异常登录防护 ----
+const LOGIN_MAX_FAILS = 5;                 // 连续失败次数上限
+const LOGIN_WINDOW_MS = 10 * 60 * 1000;    // 统计窗口
+const LOGIN_LOCK_MS = 5 * 60 * 1000;       // 锁定时长
+const loginGuard = new Map();              // ident -> { fails:[t…], until }
+function clientIpOf(req) {
+  try {
+    const fwd = req.headers && req.headers['x-forwarded-for'];
+    if (fwd) return String(fwd).split(',')[0].trim();
+    return (req.socket && req.socket.remoteAddress) || 'unknown';
+  } catch (e) { return 'unknown'; }
+}
+function loginIdent(req, username) { return String(username || '').toLowerCase() + '|' + clientIpOf(req); }
+function loginLockRemain(ident) {
+  const g = loginGuard.get(ident);
+  if (!g || !g.until) return 0;
+  const rem = g.until - Date.now();
+  if (rem <= 0) { loginGuard.delete(ident); return 0; }
+  return rem;
+}
+function loginFail(ident) {
+  const now = Date.now();
+  const g = loginGuard.get(ident) || { fails: [], until: 0 };
+  g.fails = (g.fails || []).filter(function (t) { return now - t < LOGIN_WINDOW_MS; });
+  g.fails.push(now);
+  if (g.fails.length >= LOGIN_MAX_FAILS) { g.until = now + LOGIN_LOCK_MS; g.fails = []; }
+  loginGuard.set(ident, g);
+}
+function loginOk(ident) { loginGuard.delete(ident); }
+function loginGuardSnapshot() {
+  const out = [];
+  loginGuard.forEach(function (g, ident) {
+    const rem = g.until ? Math.max(0, g.until - Date.now()) : 0;
+    if (!rem) return;
+    const parts = String(ident).split('|');
+    out.push({ user: parts[0], ip: parts.slice(1).join('|'), remainMs: rem });
+  });
+  return out.sort(function (a, b) { return b.remainMs - a.remainMs; });
+}
+// ---- 封禁 ----
+function banInfoOf(rec) {
+  if (!rec || !rec.banUntil) return { banned: false, until: 0, permanent: false, remainMs: 0, reason: '' };
+  const permanent = rec.banUntil < 0;
+  const remain = permanent ? 0 : Math.max(0, rec.banUntil - Date.now());
+  if (!permanent && remain <= 0) return { banned: false, until: 0, permanent: false, remainMs: 0, reason: '' };
+  return { banned: true, until: rec.banUntil, permanent: permanent, remainMs: remain, reason: rec.banReason || '' };
+}
+function banTextOf(info) {
+  if (!info.banned) return '';
+  const when = info.permanent ? '永久封禁' : ('解封时间 ' + new Date(info.until).toLocaleString() +
+    '（剩余 ' + Math.max(1, Math.ceil(info.remainMs / 3600000)) + ' 小时）');
+  return when + (info.reason ? ' · 原因：' + info.reason : '');
+}
+// 封禁生效：踢掉在线会话与实时连接（下一句是「服务器权威」——客户端无法绕过）
+function applyBan(key) {
+  kickUserSessions(key);
+  const doomed = [];
+  clientOwners.forEach(function (ownerKey, res) { if (ownerKey === key) doomed.push(res); });
+  doomed.forEach(function (res) {
+    clients.delete(res); clientOwners.delete(res); clientViews.delete(res);
+    try { res.write('data: ' + JSON.stringify({ type: 'kicked', msg: '账号已被封禁，请联系管理员' }) + '\n\n'); } catch (e) {}
+    try { res.end(); } catch (e) {}
+  });
 }
 
 // ---- 性能修复(perf-3+5)：SSE 批量合并推送 + 背压保护 ----
@@ -3207,9 +3363,18 @@ const server = http.createServer(function (req, res) {
   }
   const u = url.parse(req.url, true);
   const p = u.pathname;
+  // 管理员穿透：开启后，带管理员身份的请求可以继续使用「已关闭」的功能（玩家端照常受限）。
+  // 客户端在每个请求上都带 X-Auth-Token（见 net.js），因此这里不必先解析请求体。
+  function adminBypassAllowed(req, u) {
+    if (!world.features || world.features.adminBypass !== true) return false;
+    const tok = (req.headers && req.headers['x-auth-token']) || (u && u.query && u.query.token) || '';
+    const key = tok ? sessionGet(tok) : null;
+    return !!(key && users[key] && users[key].admin);
+  }
   req.featureAllowed = function () {
     const feature = Features.route(req.method, p);
     if (!Features.blocked(world.features, feature)) return true;
+    if (adminBypassAllowed(req, u)) return true;   // v0.16.0：管理员可进入已关闭功能
     apiResp(res, 423, { error: Features.message(world.features, feature), code: 'FEATURE_LOCKED', feature: feature });
     return false;
   };
@@ -3226,7 +3391,11 @@ const server = http.createServer(function (req, res) {
       if (!adminOf(d.token)) return apiResp(res, 403, { error: '需要管理员权限' });
       if (!d.features || typeof d.features !== 'object' || Array.isArray(d.features)) return apiResp(res, 400, { error: '功能配置格式错误' });
       const keys = Object.keys(d.features);
-      if (keys.some(function (key) { return !Features.byId[key] || typeof d.features[key] !== 'boolean'; })) return apiResp(res, 400, { error: '未知功能或开关值不是布尔值' });
+      // adminBypass 是「开关的开关」（v0.16.0）：不在功能目录里，但同样必须是布尔值
+      if (keys.some(function (key) {
+        if (typeof d.features[key] !== 'boolean') return true;
+        return key === 'adminBypass' ? false : !Features.byId[key];
+      })) return apiResp(res, 400, { error: '未知功能或开关值不是布尔值' });
       world.features = Object.assign({}, world.features || {}, d.features);
       saveConfig();
       if (Features.blocked(world.features, 'fishing.cast')) {
@@ -3270,8 +3439,18 @@ const server = http.createServer(function (req, res) {
     readBody(req, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '请求格式错误' });
       const key = (d.username || '').trim().toLowerCase();
+      // v0.16.0：异常登录防护——同账号 + 同 IP 连续失败达上限后锁定一段时间
+      const ident = loginIdent(req, key);
+      const lockMs = loginLockRemain(ident);
+      if (lockMs > 0) return apiResp(res, 429, { error: '登录失败次数过多，请 ' + Math.ceil(lockMs / 60000) + ' 分钟后再试' });
       const rec = users[key];
-      if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) return apiResp(res, 401, { error: '用户名或密码错误' });
+      if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) {
+        loginFail(ident);
+        return apiResp(res, 401, { error: '用户名或密码错误' });
+      }
+      const ban = banInfoOf(rec);
+      if (ban.banned) return apiResp(res, 403, { error: '账号已被封禁：' + banTextOf(ban) });
+      loginOk(ident);
       kickUserSessions(key); // 顶号：同账号旧会话全部失效
       const token = newToken(); sessionSet(token, key);
       apiResp(res, 200, { token: token, profile: profileOf(key) });
@@ -3312,6 +3491,9 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/me' && req.method === 'GET') {
     const key = u.query.token && sessionGet(u.query.token);
     if (!key) return apiResp(res, 401, { error: '未登录或会话失效' });
+    // 封禁中：会话立即失效（管理员封禁时已踢过一次；这里兜住「封禁期间仍拿着旧 token」的情况）
+    const ban = banInfoOf(users[key]);
+    if (ban.banned) { sessionDelete(u.query.token); return apiResp(res, 403, { error: '账号已被封禁：' + banTextOf(ban), code: 'BANNED' }); }
     try { autoSellCheck(key); } catch (e) {}  // 读档即触发：离线期间价格回升越过阈值的情况
     return apiResp(res, 200, profileOf(key));
   }
@@ -3337,6 +3519,13 @@ const server = http.createServer(function (req, res) {
     res.write('retry: 3000\n\n');
     if (!key) {
       res.write('data: ' + JSON.stringify({ type: 'kicked', msg: '登录已失效，请重新登录' }) + '\n\n');
+      res.end();
+      return;
+    }
+    // 封禁中的账号不允许建立实时连接（在线玩家被踢后，浏览器自动重连也会在这里被挡下）
+    const ban0 = banInfoOf(users[key]);
+    if (ban0.banned) {
+      res.write('data: ' + JSON.stringify({ type: 'kicked', msg: '账号已被封禁：' + banTextOf(ban0) }) + '\n\n');
       res.end();
       return;
     }
@@ -3367,7 +3556,15 @@ const server = http.createServer(function (req, res) {
       resumedFishing: resumed,
     }) + '\n\n');
     sendPlayersAll();
-    const hb = setInterval(function () { try { res.write(': ping\n\n'); } catch (e) {} }, 25000);
+    // 心跳：v0.16.0 起同时发一条注释与一条**真消息**——注释能保活代理，但前端看不见，
+    // 因此客户端无法分辨「连接还活着」和「连接假死（readyState 仍是 OPEN 却收不到数据）」。
+    // data 版 ping 让前端可以做心跳看门狗，切后台回来时能立刻判断要不要重连。
+    const hb = setInterval(function () {
+      try {
+        res.write(': ping\n\n');
+        res.write('data: ' + JSON.stringify({ type: 'ping', t: Date.now() }) + '\n\n');
+      } catch (e) {}
+    }, 25000);
     req.on('close', function () {
       clearInterval(hb);
       const wasTracked = clientOwners.get(res) === id;
@@ -3725,7 +3922,7 @@ const server = http.createServer(function (req, res) {
           who: rec.name, name: itemName(itemId), size: (isFinite(size) && size > 0 ? Math.round(size * 10) / 10 : null),
           globalMax: !!globalRecordDev, record: !!recordEvent, small: smallEventDev, topBig: topBigRankDev, topSmall: topSmallRankDev,
         });
-        if (boardDev && bannerCatchAllowed(boardDev.level)) broadcast({ type: 'globalRecord', record: Object.assign({}, globalRecordDev || { id: itemId, name: itemName(itemId), size: size, who: rec.name, t: Date.now() }, { text: boardDev.text, level: boardDev.level }) });
+        if (boardDev && bannerCatchAllowed(boardDev.level)) broadcast({ type: 'globalRecord', record: Object.assign({}, globalRecordDev || { id: itemId, name: itemName(itemId), size: size, who: rec.name, t: Date.now() }, { key: key, text: boardDev.text, level: boardDev.level }) });
         if (boardDev) {
           // 与线上一致：记录页顶部的「最新播报」同步更新
           world.lastRec = {
@@ -3964,7 +4161,7 @@ const server = http.createServer(function (req, res) {
         if (item.breakthrough) {
           broadcast({
             type: 'globalRecord',
-            record: { level: 2, who: rec.name, name: item.name, t: Date.now(),
+            record: { level: 2, key: key, who: rec.name, name: item.name, t: Date.now(),
               text: '🎁 ' + rec.name + ' 从「' + chest.name + '」打捞出神话突破件：' + item.name + '（4 词条）' },
           });
         }
@@ -4032,13 +4229,13 @@ const server = http.createServer(function (req, res) {
       ok: true, cfg: cfg, materials: materials,
       pearl: { id: D.SMELT_PEARL, name: pearlMeta.name, rarity: pearlMeta.rarity },
       affixLabel: D.AFFIX_LABEL, coins: rec.coins || 0,
-      // 重铸：默认只收「沉船宝匣残片」，数量与金币由后台「⚒ 工坊配置」决定；
-      // 客户端据此在放入组件后自动列出所需材料（目前只有残片这一种）。
+      // 重铸（v0.16.0）：材料为龙宫宝珠——基础消耗重 roll 全部词条，
+      // 额外投入宝珠可指定单条词条（第 n 条 = 额外 n 颗）；数量与金币由后台「⚒ 工坊配置」决定。
       recast: {
         quality: D.RECAST_QUALITY, qualityName: (D.QUALITY[D.RECAST_QUALITY] || {}).name || D.RECAST_QUALITY,
-        relicId: 'relic', relicName: itemName('relic'),
-        relicNeed: Math.max(0, Math.floor(Number(cfg.recastRelic) || 0)),
-        relicHave: invCountOf(rec, 'relic'),
+        pearlId: D.SMELT_PEARL, pearlName: pearlMeta.name,
+        pearlBase: Math.max(0, Math.floor(Number(cfg.recastPearl) || 0)),
+        pearlHave: invCountOf(rec, D.SMELT_PEARL),
         gold: Math.max(0, Math.floor(Number(cfg.recastGold) || 0)),
         minValue: !!cfg.recastMinValue,
       },
@@ -4134,18 +4331,19 @@ const server = http.createServer(function (req, res) {
     });
     return;
   }
-  // ---- 工坊 · 重铸：用残片重 roll 神话件的全部词条数值（服务器掷骰） ----
+  // ---- 工坊 · 重铸：用龙宫宝珠重 roll 神话件词条数值（服务器掷骰） ----
+  // 带 affixIndex = 指定单条词条（额外消耗 = 第几条就几颗）；不带 = 重 roll 全部词条。
   if (p === '/api/workshop/recast' && req.method === 'POST') {
     readBody(req, function (body) {
       auth(req, res, body, function (d, key) {
         const rec = users[key];
-        const plan = planRecast(rec, d.id);
+        const plan = planRecast(rec, d.id, d.affixIndex);
         if (plan.error) return apiResp(res, 400, { error: plan.error });
-        const rolled = D.recastAffixes(plan.meta.baseId, plan.meta.affixes);
+        const rolled = D.recastAffixes(plan.meta.baseId, plan.meta.affixes, plan.target >= 0 ? plan.target : undefined);
         if (!rolled || !rolled.length) return apiResp(res, 400, { error: '该组件没有可重铸的词条' });
         const before = plan.meta.affixes.map(function (a) { return { type: a.type, value: a.value }; });
         // 先扣材料与金币，再换件（新旧签名相同时也要走一遍「扣一件、加一件」）
-        invAdd(rec, plan.relicId, -plan.relicNeed);
+        invAdd(rec, plan.pearlId, -plan.pearlNeed);
         if (plan.gold) rec.coins -= plan.gold;
         invAdd(rec, plan.meta.id, -1);
         const newId = D.instanceId(plan.meta.baseId, plan.meta.quality, rolled);
@@ -4156,8 +4354,10 @@ const server = http.createServer(function (req, res) {
         apiResp(res, 200, {
           ok: true, changed: newId !== plan.meta.id,
           before: before, item: D.componentOf(newId), id: newId,
-          gold: plan.gold, relicNeed: plan.relicNeed,
-          materials: [{ id: plan.relicId, name: itemName(plan.relicId), need: plan.relicNeed, have: invCountOf(rec, plan.relicId) }],
+          target: plan.target,
+          gold: plan.gold, pearlBase: plan.pearlBase, pearlExtra: plan.pearlExtra, pearlNeed: plan.pearlNeed,
+          pearlId: plan.pearlId, pearlName: itemName(plan.pearlId),
+          materials: [{ id: plan.pearlId, name: itemName(plan.pearlId), need: plan.pearlNeed, have: invCountOf(rec, plan.pearlId) }],
           coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec),
         });
       });
@@ -4409,7 +4609,14 @@ const server = http.createServer(function (req, res) {
           sendTo(l.seller, { type: 'assets', coins: seller.coins, inventory: seller.inventory, invRev: invRevOf(seller) });
           sendTo(l.seller, Object.assign({ role: 'sell', other: rec.name, coins: seller.coins }, mktEvent));
         }
-        apiResp(res, 200, { ok: true, qty: qty, total: total, tax: tax, coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec) });
+        // v0.16.0：整竿成交也要把槽位状态一并回给买家 —— 否则买到的钓竿要等下一次 /api/me（重登）
+        // 才会出现在「钓鱼 · 钓竿」的栏位里，界面上表现为「买了但栏位没变」。
+        apiResp(res, 200, {
+          ok: true, qty: qty, total: total, tax: tax, coins: rec.coins,
+          inventory: rec.inventory, invRev: invRevOf(rec),
+          rodSlots: rodSlotView(rec), rodSlotsCount: rodSlotCountOf(rec), rodActiveSlot: rodActiveSlotOf(rec),
+          rodLocked: rodUsageOf(rec), rodName: rec.rodName || '', nextRodSlotPrice: nextRodSlotPrice(rec),
+        });
       });
     });
     return;
@@ -4435,7 +4642,12 @@ const server = http.createServer(function (req, res) {
         world.listings.splice(idx, 1);
         saveAccount(key); saveMarket();
         broadcastMarket();
-        apiResp(res, 200, { ok: true, inventory: rec.inventory, invRev: invRevOf(rec) });
+        // 整竿下架会回到槽位：把槽位状态一并带回，界面当场就能看到（与市集购买同一口径）
+        apiResp(res, 200, {
+          ok: true, inventory: rec.inventory, invRev: invRevOf(rec),
+          rodSlots: rodSlotView(rec), rodSlotsCount: rodSlotCountOf(rec), rodActiveSlot: rodActiveSlotOf(rec),
+          rodLocked: rodUsageOf(rec), nextRodSlotPrice: nextRodSlotPrice(rec),
+        });
       });
     });
     return;
@@ -4731,17 +4943,124 @@ const server = http.createServer(function (req, res) {
   }
 
   // ================================================================
-  // ---- 管理后台 API（/api/admin/*）：账号须带 admin 标志 ----
+// ---- 管理后台 API（/api/admin/*）：账号须带 admin 标志 ----
+  // 后台写操作统一审计（v0.16.0）：所有 /api/admin/* 的 POST 都先经这里记一条审计（谁 / 何时 / 对谁 / 做了什么），
+  // 再交给端点自己的处理逻辑。走一层薄包装而不是逐个端点手写，是为了避免漏项——
+  // 新增后台接口时只要沿用 adminAuditedBody 就自动进审计。未带管理员身份的请求照旧由端点返回 403（不入审计）。
+  function adminAuditedBody(req, path, cb) {
+    return readBody(req, function (body) {
+      try {
+        const d = bodyObj(body);
+        const a = d && adminOf(d.token);
+        if (a) {
+          const target = String((d && (d.target || d.key || d.user || d.username || d.id)) || '');
+          const parts = [];
+          ['admin', 'hours', 'reason', 'coins', 'note', 'status', 'amount', 'qty', 'price', 'name', 'gid', 'sid', 'cid', 'range', 'spotKey', 'validateOnly'].forEach(function (k) {
+            if (d && d[k] !== undefined && (typeof d[k] !== 'object' || d[k] === null)) parts.push(k + '=' + String(d[k]).slice(0, 40));
+          });
+          if (d && d.features && typeof d.features === 'object') {
+            const off = Object.keys(d.features).filter(function (k) { return d.features[k] === false; });
+            const on = Object.keys(d.features).filter(function (k) { return d.features[k] === true; });
+            parts.push('功能开关：关闭 ' + off.length + ' 项' + (on.length ? ' / 开启 ' + on.length + ' 项' : ''));
+          }
+          if (d && d.confirm === true) parts.push('已二次确认');
+          audit(a, String(path || '').replace('/api/admin/', ''), target, parts.join(' '));
+        }
+      } catch (e) {}
+      cb(body);
+    });
+  }
+  // ---- 后台 · 模拟钓竿（v0.16.0）----
+// 把管理员填的「词缀合计」装到一根**合成钓竿**上，再走线上同一套 castInfoOf / 掉落池换算，
+// 用来预览「任意词条组合 × 任意钓点」的实际结果（间隔 / 上鱼率 / 双钓 / 每小时期望 / 产出分布）。
+// 合成钓竿只存在于这次请求里：不落盘、不碰任何真实账号，也不会被当成作弊路径。
+function syntheticRodOf(totals) {
+  const types = Object.keys(totals || {}).filter(function (t) {
+    return D.AFFIX_LABEL[t] != null && Math.abs(Number(totals[t]) || 0) > 0;
+  });
+  const byPart = {};
+  types.forEach(function (t) {
+    // 每类词缀挑一个「词缀池里确实有这一类」的底材：保证合成组件与真实生成规则同形
+    const base = D.COMPONENT_BASES.find(function (b) {
+      return (b.pool || []).some(function (p) { return p.type === t; });
+    });
+    if (!base) return;
+    (byPart[base.part] = byPart[base.part] || []).push({ type: t, value: Number(totals[t]) || 0, baseId: base.id });
+  });
+  const bd = {};
+  Object.keys(byPart).forEach(function (part) {
+    const list = byPart[part].slice(0, 4);   // 神话品质最多 4 条词缀
+    const id = D.instanceId(list[0].baseId, 'mythic', list.map(function (x) { return { type: x.type, value: x.value }; }));
+    bd[part] = { compId: id };
+  });
+  return bd;
+}
+function simulateRod(rec0, spot, totals) {
+  const rec = { bd: rec0 };
+  const info = castInfoOf(rec, spot);
+  const eff = mergedEffOf(rec.bd, spot);
+  const interval = info.interval;
+  const bite = info.biteRate;                    // %
+  const A = Math.max(0, Number(eff.double) || 0);
+  const pDouble = A / (A + 100);
+  const base = Math.max(0, Math.min(1, Number(world.doubleBase) || 0));
+  const P = 1 - (1 - base) * (1 - pDouble);
+  const perCast = 1 + P + P * P;                 // 期望上钩条数（最多 3 条）
+  const castsPerHour = interval > 0 ? 3600000 / interval : 0;
+  const fishPerHour = castsPerHour * (bite / 100) * perCast;
+  return { info: info, eff: eff, interval: interval, bite: bite, doubleP: P * 100,
+    perCast: perCast, castsPerHour: castsPerHour, fishPerHour: fishPerHour,
+    totals: totals };
+}
+// 产出分布（与 /api/admin/loot/test 同一套权重换算），供模拟钓竿一并展示
+function lootPreviewRows(spot, rareVal) {
+  const pool = boostPoolOf((spot && spot.pool) || [], {});
+  const mult = D.rareCommonMult(Math.max(0, Number(rareVal) || 0), rareK());
+  const compMult = componentCommonProb() * mult + (1 - componentCommonProb());
+  const effOf = function (e) {
+    const i = e.pick.indexOf(':');
+    return e.pick.slice(0, i) === 'component' ? compMult : (pickIsCommon(e.pick) ? mult : 1);
+  };
+  const before = pool.reduce(function (s, e) { return s + e.weight; }, 0) || 1;
+  const after = pool.reduce(function (s, e) { return s + e.weight * effOf(e); }, 0) || 1;
+  return pool.map(function (e) {
+    const i = e.pick.indexOf(':');
+    const type = e.pick.slice(0, i), id = e.pick.slice(i + 1);
+    let name = id, quality = '普通';
+    if (type === 'fish') {
+      for (const t of ['common', 'big', 'rare']) {
+        const x = D.FISH[t].find(function (y) { return y.id === id; });
+        if (x) { name = x.name; quality = (D.QUALITY[x.rarity] || {}).name || x.rarity; break; }
+      }
+    } else if (type === 'material') {
+      const x = D.MATERIALS.find(function (y) { return y.id === id; });
+      if (x) { name = x.name; quality = (D.QUALITY[x.rarity] || {}).name || x.rarity; }
+    } else if (type === 'component') {
+      name = '组件'; quality = '随机';
+    }
+    return { pick: e.pick, type: type, id: id, name: name, quality: quality,
+      beforePct: e.weight / before * 100, afterPct: e.weight * effOf(e) / after * 100 };
+  }).sort(function (a, b) { return b.afterPct - a.afterPct; });
+}
   // 引导：服务器上没有任何管理员时，第一个通过后台登录的账号自动成为管理员。
   // ================================================================
 
   // ---- 管理后台登录（复用游戏账号密码；不顶号：不影响同一账号的游戏会话） ----
   if (p === '/api/admin/login' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const key = (d.username || '').trim().toLowerCase();
+      const ident = loginIdent(req, 'admin:' + key);
+      const lockMs = loginLockRemain(ident);
+      if (lockMs > 0) return apiResp(res, 429, { error: '登录失败次数过多，请 ' + Math.ceil(lockMs / 60000) + ' 分钟后再试' });
       const rec = users[key];
-      if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) return apiResp(res, 401, { error: '用户名或密码错误' });
+      if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) {
+        loginFail(ident);
+        return apiResp(res, 401, { error: '用户名或密码错误' });
+      }
+      const ban = banInfoOf(rec);
+      if (ban.banned) return apiResp(res, 403, { error: '账号已被封禁：' + banTextOf(ban) });
+      loginOk(ident);
       if (!rec.admin) {
         if (anyAdminExists()) return apiResp(res, 403, { error: '该账号没有管理员权限' });
         rec.admin = true;
@@ -4779,7 +5098,7 @@ const server = http.createServer(function (req, res) {
   // 视口登记：客户端告诉服务器自己当前正在看玩家列表的哪一页（含搜索词/钓场过滤），
   // 之后每秒只推该页玩家的最新状态（playersPage）；clear=true 取消登记（零 presence 流量）。
   if (p === '/api/players/view' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const key = d.token && sessionGet(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
@@ -4799,7 +5118,7 @@ const server = http.createServer(function (req, res) {
   // ---- 查看其他玩家当前装备的钓竿组件构成（渔场动态玩家卡片「查看」按钮） ----
   // 只读接口：返回对方的 bd 槽位（compId/name/affixes/quality），不含背包与金币等隐私数据。
   if (p === '/api/players/rod' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const key = d.token && sessionGet(d.token);
       if (!key) return apiResp(res, 401, { error: '未登录' });
@@ -4837,7 +5156,8 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/admin/stats' && req.method === 'GET') {
     const a = adminOf(u.query.token);
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
-    return apiResp(res, 200, Object.assign({ ok: true }, statsReport(u.query.range)));
+        // v0.16.0：概览热力图可按钓场 / 钓点筛选（ground=钓场 id，spot=钓场:钓点）
+        return apiResp(res, 200, Object.assign({ ok: true }, statsReport(u.query.range, { ground: u.query.ground, spot: u.query.spot })));
   }
   // ================================================================
   // ---- 横幅（管理后台发布，队列播放） ----
@@ -4864,7 +5184,7 @@ const server = http.createServer(function (req, res) {
   }
   // 发布横幅：content + duration(秒)，可选 repeat(播放轮数，默认 1)
   if (p === '/api/admin/banner/add' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -4888,7 +5208,7 @@ const server = http.createServer(function (req, res) {
     return;
   }
   if (p === '/api/admin/banner/remove' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -4903,7 +5223,7 @@ const server = http.createServer(function (req, res) {
   }
   // 调整队列顺序：把某条上移/下移（dir=up|down）
   if (p === '/api/admin/banner/move' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -4923,7 +5243,7 @@ const server = http.createServer(function (req, res) {
   }
   // 图标闪烁配置
   if (p === '/api/admin/banner/cfg' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -4948,7 +5268,7 @@ const server = http.createServer(function (req, res) {
   }
   // 修改已发布横幅（颜色 / 内容 / 时长）
   if (p === '/api/admin/banner/update' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -4977,7 +5297,7 @@ const server = http.createServer(function (req, res) {
   }
   // 客户端上报「正在滚播这条横幅」（前端在横幅开始播放时调用；仅用于后台查看滚播人数）
   if (p === '/api/banner/playing' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       auth(req, res, body, function (d, key) {
         const id = String(d.id || '');
         const bn = (world.banners || []).find(function (x) { return x.id === id; });
@@ -4992,7 +5312,7 @@ const server = http.createServer(function (req, res) {
   }
   // 停止滚播：广播 bannerStop，客户端立即中止正在播/待播的同 id 横幅（不删除队列条目）
   if (p === '/api/admin/banner/stop' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5006,7 +5326,7 @@ const server = http.createServer(function (req, res) {
   }
   // 清空整个横幅队列：广播 banner（空列表）+ 停止所有滚播
   if (p === '/api/admin/banner/clear' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5038,7 +5358,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 反馈配置：CD 时长（小时）与清空 CD 费用（金币） ----
   if (p === '/api/admin/feedback/cfg' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5063,7 +5383,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 反馈状态：管理员标记（已提交 / 已受理 / 已完成） ----
   if (p === '/api/admin/feedback/status' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5080,9 +5400,31 @@ const server = http.createServer(function (req, res) {
     });
     return;
   }
+  // ---- 删除反馈（v0.16.0）：管理员可单条删除；玩家端同步移除（在线时立刻刷新） ----
+  if (p === '/api/admin/feedback/del' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const id = String(d.id || '');
+      const list = world.feedback || [];
+      const idx = list.findIndex(function (f) { return f.id === id; });
+      if (idx < 0) return apiResp(res, 404, { error: '反馈不存在' });
+      const item = list[idx];
+      list.splice(idx, 1);
+      saveFeedback();
+      // 通知提交者：他的历史列表里那条要消失（在线时立即刷新）
+      if (item.key) {
+        sendTo(item.key, { type: 'notice', msg: '你的一条反馈已被管理员删除' });
+        sendTo(item.key, { type: 'feedback' });
+      }
+      apiResp(res, 200, { ok: true, id: id, total: list.length });
+    });
+    return;
+  }
   // ---- 反馈奖励：给提交反馈的玩家发金币（可附备注），并通知玩家 ----
   if (p === '/api/admin/feedback/reward' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5122,6 +5464,7 @@ const server = http.createServer(function (req, res) {
     const list = Object.keys(users).map(function (k) {
       const r = users[k];
       const pl = players.get(k);
+      const ban = banInfoOf(r);
       return {
         key: k, username: r.username, name: r.name, qq: r.qq || '',
         admin: !!r.admin, coins: r.coins || 0,
@@ -5130,13 +5473,16 @@ const server = http.createServer(function (req, res) {
         online: !!pl,
         fishing: (pl && pl.fishing) || null,
         createdAt: r.createdAt || null,
+        // v0.16.0：封禁状态（账号管理页显示「已封禁」并给解封入口）
+        banned: ban.banned, banPermanent: ban.permanent, banUntil: ban.until,
+        banRemainMs: ban.remainMs, banReason: ban.reason, banBy: r.banBy || '',
       };
     }).sort(function (x, y) { return (y.createdAt || 0) - (x.createdAt || 0); });
     return apiResp(res, 200, { ok: true, users: list, me: a.key });
   }
   // ---- 设置/撤销账号的管理员权限（不能撤销自己，避免把自己锁在后台外） ----
   if (p === '/api/admin/users/setadmin' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5153,8 +5499,66 @@ const server = http.createServer(function (req, res) {
     return;
   }
   // ---- 删除账号（管理员；需二次确认——前端传 confirm: true） ----
+  // ---- 封禁 / 解封（v0.16.0；任意时长，hours <= 0 视为自定义，负数 = 永久） ----
+  // 入参：{ target, hours, reason, confirm }
+  //   hours > 0   = 封禁 N 小时（支持小数）
+  //   hours === 0 = 解封
+  //   hours < 0   = 永久封禁
+  // 封禁立即踢掉该账号的全部会话与实时连接，并在登录、/api/me、SSE 三处设卡。
+  if (p === '/api/admin/users/ban' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const target = String(d.target || '').toLowerCase();
+      const rec = users[target];
+      if (!rec) return apiResp(res, 404, { error: '账号不存在' });
+      if (target === a.key) return apiResp(res, 400, { error: '不能封禁自己的账号' });
+      const hours = Number(d.hours);
+      if (!isFinite(hours)) return apiResp(res, 400, { error: '封禁时长无效' });
+      if (Math.abs(hours) > 24 * 3650) return apiResp(res, 400, { error: '封禁时长过大（上限 3650 天）' });
+      if (d.confirm !== true) return apiResp(res, 400, { error: '需要二次确认' });
+      const reason = String(d.reason || '').trim().slice(0, 60);
+      if (hours > 0) {
+        rec.banUntil = Date.now() + Math.round(hours * 3600000);
+        rec.banReason = reason;
+        rec.banAt = Date.now();
+        rec.banBy = a.rec.name;
+      } else if (hours < 0) {
+        rec.banUntil = -1;                 // 负数 = 永久
+        rec.banReason = reason;
+        rec.banAt = Date.now();
+        rec.banBy = a.rec.name;
+      } else {
+        delete rec.banUntil; delete rec.banReason; delete rec.banAt; delete rec.banBy;
+      }
+      saveAccount(target);
+      const info = banInfoOf(rec);
+      if (info.banned) applyBan(target);
+      apiResp(res, 200, {
+        ok: true, target: target, banned: info.banned, permanent: info.permanent,
+        until: info.until, remainMs: info.remainMs, reason: info.reason,
+      });
+    });
+    return;
+  }
+  // ---- 后台安全面板数据：审计日志 + 当前锁定中的异常登录 + 封禁名单 ----
+  if (p === '/api/admin/security' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    const log = (world.adminLog || []).slice(-300).reverse();
+    const banned = Object.keys(users).filter(function (k) { return banInfoOf(users[k]).banned; }).map(function (k) {
+      const info = banInfoOf(users[k]);
+      return { key: k, name: users[k].name, username: users[k].username, permanent: info.permanent,
+        until: info.until, remainMs: info.remainMs, reason: info.reason, banBy: users[k].banBy || '', banAt: users[k].banAt || 0 };
+    }).sort(function (x, y) { return y.banAt - x.banAt; });
+    return apiResp(res, 200, {
+      ok: true, log: log, banned: banned, lockouts: loginGuardSnapshot(),
+      rules: { maxFails: LOGIN_MAX_FAILS, windowMin: Math.round(LOGIN_WINDOW_MS / 60000), lockMin: Math.round(LOGIN_LOCK_MS / 60000) },
+    });
+  }
   if (p === '/api/admin/users/delete' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5190,7 +5594,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 账号快照编辑：直接设置金币与背包（管理员） ----
   if (p === '/api/admin/users/snapshot' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5226,7 +5630,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 账号管理：改密码 / 改显示名 / 调整金币（管理员） ----
   if (p === '/api/admin/users/update' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5383,7 +5787,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 组件生成配置：品质概率 / 词条数概率 / roll 模型 / 数值区间 / 修饰词规则 ----
   if (p === '/api/admin/component/config' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5479,7 +5883,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 组件生成配置：恢复默认 ----
   if (p === '/api/admin/component/reset' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5492,7 +5896,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 组件掉落实测（按当前配置采样，给管理后台预览概率分布） ----
   if (p === '/api/admin/component/simulate' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5530,7 +5934,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 鱼类体型 roll 模型：保存（默认正态；影响全服上鱼体型与大小鱼榜，即时生效） ----
   if (p === '/api/admin/fish/config' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5545,7 +5949,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 鱼类体型 roll 模型：恢复默认（正态） ----
   if (p === '/api/admin/fish/reset' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5559,7 +5963,7 @@ const server = http.createServer(function (req, res) {
   // 可选 model 试算尚未保存的模型；可选 fishId 指定单条鱼（返回 cm 统计）；
   // 否则返回全鱼种归一化位置的直方图。可选 sizeBonus 预览体型词缀加成后的分布（如 +55）。
   if (p === '/api/admin/fish/simulate' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5605,7 +6009,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 钓点掉落池（种类 + 权重；保存后全服即时生效并广播游戏端） ----
   if (p === '/api/admin/spot/pool' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5622,7 +6026,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 钓点增益（数值 + 类别；钓速增益即时重启受影响玩家的钓鱼循环） ----
   if (p === '/api/admin/spot/buffs' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5640,7 +6044,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 掉落池一键填充预设：返回条目列表（前端填入草稿，仍走原「保存掉落池」流程）----
   if (p === '/api/admin/pool/preset' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5652,7 +6056,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 新建渔场（可选一键填充首个钓点 / 限时窗口） ----
   if (p === '/api/admin/ground/add' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5688,7 +6092,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 新建钓点（归属任意渔场；可一键填充掉落池） ----
   if (p === '/api/admin/spot/add' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5720,7 +6124,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 删除渔场（内置渔场记录删除可恢复；自定义渔场直接移除） ----
   if (p === '/api/admin/ground/remove' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5745,7 +6149,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 删除钓点（内置钓点记录删除可恢复；自定义钓点直接移除） ----
   if (p === '/api/admin/spot/remove' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5781,7 +6185,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 恢复被删除的内置渔场 / 钓点 ----
   if (p === '/api/admin/ground/restore' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5811,7 +6215,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 修改渔场信息：名称/描述/类型/限时窗口/手动锁定 ----
   if (p === '/api/admin/ground/update' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5853,7 +6257,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 钓点独立上鱼率 / 速率（留空 = 用全服默认：上鱼率用公式，速率按基础间隔+钓速计算） ----
   if (p === '/api/admin/spot/rate' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5887,7 +6291,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 钓点在世界地图上的位置（后台拖动设置；pos = [x%, y%]，null/缺失 = 恢复该钓点的出厂坐标） ----
   if (p === '/api/admin/spot/pos' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5910,7 +6314,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 钓场开放/锁定（锁定时立即停掉该场所有钓鱼循环） ----
   if (p === '/api/admin/ground/lock' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5936,7 +6340,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 市集：退回挂单（物品退回卖家，上架费不退——与过期规则一致） ----
   if (p === '/api/admin/market/return' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5966,7 +6370,7 @@ const server = http.createServer(function (req, res) {
   // 过期或被退回时直接清除（见 sweepExpiredListings / market/return）。
   // dryRun=true 只生成样例与统计，不写任何数据（前端「预览」用）。
   if (p === '/api/admin/market/bulk' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -6015,7 +6419,7 @@ const server = http.createServer(function (req, res) {
   // ---- 商城配置：商品（物品 / 金币价 / 每日限购）+ 限购刷新时间 ----
   // 保存后：玩家端商城的商品、价格、限购与下次刷新时间立即同步（broadcast mallcfg）。
   if (p === '/api/admin/mall/config' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -6054,8 +6458,52 @@ const server = http.createServer(function (req, res) {
   }
   // 用真实钓点战利品表试算稀有度效果：稀有度 R 只压低「普通品质」条目权重（系数 K/(K+R)），
   // 逐条给出前后占比，便于管理员直观看到稀有度的实际作用。
+  // ---- 后台 · 模拟钓竿试算（v0.16.0 新增；公式管理页的中心面板）----
+  // 入参：{ totals:{speed,skill,rare,material,size,double}, spotKey }；spotKey 可留空 = 站在岸边空钓点。
+  if (p === '/api/admin/simulate' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const totals = {};
+      D.AFFIX_TYPES.forEach(function (t) {
+        const v = Number(d.totals && d.totals[t]);
+        totals[t] = isFinite(v) ? Math.round(v * 10) / 10 : 0;
+      });
+      let found = null;
+      const key = String(d.spotKey || '');
+      if (key) {
+        const ci = key.indexOf(':');
+        if (ci <= 0) return apiResp(res, 400, { error: '钓点参数格式错误' });
+        found = spotOf(key.slice(0, ci), key.slice(ci + 1));
+        if (!found || !found.spot) return apiResp(res, 400, { error: '钓点不存在：' + key });
+      }
+      const sim = simulateRod(syntheticRodOf(totals), found ? found.spot : null, totals);
+      const loot = found ? lootPreviewRows(found.spot, sim.eff.rare) : [];
+      return apiResp(res, 200, {
+        ok: true,
+        spot: found ? { groundId: found.ground.id, groundName: found.ground.name, spotId: found.spot.id, spotName: found.spot.name,
+          buffs: found.spot.buffs || [], biteRateOverride: spotBiteRateOf(found.spot), intervalOverride: (found.spot.intervalMs != null && found.spot.intervalMs !== '') ? Number(found.spot.intervalMs) : null } : null,
+        cast: {
+          baseMs: sim.info.baseMs, minMs: sim.info.minMs, globalBonus: sim.info.globalBonus, cap: sim.info.cap,
+          affixSpeed: totals.speed, buffSpeed: sim.info.buffSpeed, effSpeed: sim.info.effSpeed,
+          interval: sim.interval, castsPerHour: Math.round(sim.castsPerHour * 10) / 10,
+        },
+        bite: { rate: sim.bite, override: sim.info.biteOverride, formula: String(world.biteFormula || '') },
+        rod: sim.totals,
+        merged: sim.eff,
+        double: { A: Math.max(0, Number(sim.eff.double) || 0), base: Math.max(0, Math.min(1, Number(world.doubleBase) || 0)),
+          p: sim.doubleP, perCast: sim.perCast },
+        expect: { castsPerHour: Math.round(sim.castsPerHour * 10) / 10, fishPerCast: Math.round(sim.perCast * 1000) / 1000,
+          fishPerHour: Math.round(sim.fishPerHour * 10) / 10 },
+        loot: loot,
+        affixLabel: D.AFFIX_LABEL,
+      });
+    });
+    return;
+  }
   if (p === '/api/admin/loot/test' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -6118,7 +6566,7 @@ const server = http.createServer(function (req, res) {
   }
   // ---- 工坊熔炼配置：成功率 / 投料系数 / 金币花费 ----
   if (p === '/api/admin/smelt/config' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -6127,14 +6575,15 @@ const server = http.createServer(function (req, res) {
         extraRateMax: [0, 100], rateMin: [0, 100], rateMax: [0, 100],
         goldBase: [0, 100000000], goldPerMaterial: [0, 10000000], goldPearl: [0, 100000000],
         maxMaterials: [0, 99], maxTypes: [0, 8],
-        recastRelic: [0, 9999], recastGold: [0, 100000000],
+        recastPearl: [0, 999], recastGold: [0, 100000000],
         retainMaxRelic: [0, 99],
         addAffixCap: [1, 6],
       };
       const LABEL = {
         baseRate: '熔炼基础成功率', failPerMaterial: '每份材料对失败率的影响', extraRatePerMaterial: '每份材料的补缀成功率加成',
         extraRatePearl: '龙宫宝珠的补缀成功率加成', extraRateMax: '补缀成功率上限', rateMin: '熔炼成功率下限', rateMax: '熔炼成功率上限',
-        goldBase: '基础金币花费', goldPerMaterial: '每份材料金币', goldPearl: '龙宫宝珠金币', maxMaterials: '单次最大投料份数', maxTypes: '单次最大投料种类', recastRelic: '重铸所需残片', recastGold: '重铸所需金币',
+        goldBase: '基础金币花费', goldPerMaterial: '每份材料金币', goldPearl: '龙宫宝珠金币', maxMaterials: '单次最大投料份数', maxTypes: '单次最大投料种类',
+        recastPearl: '重铸基础消耗（龙宫宝珠）', recastGold: '重铸所需金币',
         retainMaxRelic: '单次最大投入残片',
         addAffixCap: '补缀后词条数上限',
       };
@@ -6206,7 +6655,7 @@ const server = http.createServer(function (req, res) {
   // ---- 渔获记录贴图：全场最大鱼图标的缩放与偏移（玩家端即时生效）----
   // scale：相对原始贴图的百分比（50 ~ 500，默认 175）；x/y：像素偏移（-400 ~ 400）
   if (p === '/api/admin/records/config' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -6239,7 +6688,7 @@ const server = http.createServer(function (req, res) {
   // ---- 设置：通知等级 / 上钩公式（validateOnly=true 只校验不保存；evalVars 附带试算） ----
   // ---- 渔获纪录管理：删除某个鱼种 / 全部的捕获纪录（最大、最小、前十大、前十小、日周榜）（管理员）----
   if (p === '/api/admin/records/delete' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -6260,7 +6709,7 @@ const server = http.createServer(function (req, res) {
   // 让人刷新重来，避免「列表看着是 A、实际删掉了 B」。可选 purge=1：把这条（同钓者 + 同尺寸）
   // 从该鱼种的其它榜单与「最大/最小纪录」里一并抹掉（作弊的一条往往同时躺在日/周/总三个榜里）。
   if (p === '/api/admin/records/delone' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -6295,7 +6744,7 @@ const server = http.createServer(function (req, res) {
     return;
   }
   if (p === '/api/admin/settings' && req.method === 'POST') {
-    readBody(req, function (body) {
+    adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });

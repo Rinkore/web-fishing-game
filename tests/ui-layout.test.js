@@ -713,7 +713,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('按部位筛选后只保留该部位的底材分组', partFiltered.heads >= 1 && !/卷线器/.test(partFiltered.text) && !/鲤玉/.test(partFiltered.text), JSON.stringify(partFiltered).slice(0, 140));
       check('筛选后仅一组时自动展开（省一次点击）', (await p1.$$('.inv-comp-row')).length >= 1, String((await p1.$$('.inv-comp-row')).length));
       // 词条数值筛选
-      await p1.selectOption('.inv-subrow select', 'speed');
+      // v0.16.0：组件子筛选新增了「底材」下拉，这里按类名精确选「词条类型」
+      await p1.selectOption('.inv-subrow select.aff-type-sel', 'speed');
       await sleep(300);
       await p1.fill('.inv-subrow .aff-num', '19');
       await p1.evaluate(() => { const n = document.querySelectorAll('.inv-subrow .aff-num')[0]; n.dispatchEvent(new Event('change', { bubbles: true })); });

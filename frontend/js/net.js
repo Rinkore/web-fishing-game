@@ -11,6 +11,9 @@ window.Net = (function () {
   let me = null;
   let es = null;
   let errTimer = null;   // SSE 断线确认定时器（见 connectStream 的 onerror）
+  let lastMsgAt = 0;     // 最近一次收到服务器消息的时刻（含心跳 ping）：判断连接是否「假活着」
+  let hbTimer = null;    // 心跳看门狗（可见时每 10s 检查一次）
+  let reconnecting = false;
 
   // ---- API 基地址（前后端分离）----
   // config.js 的 API_BASE：'auto'（默认）/ '' 同源 / 显式地址。
@@ -40,6 +43,9 @@ window.Net = (function () {
   function apiOnce(method, u, body) {
     return new Promise(function (resolve) {
       const opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+      // v0.16.0：所有请求都带上会话 token 头——服务端据此判断「管理员穿透已关闭功能」，
+      // 而不必为了这个判断提前解析请求体。
+      if (me && me.token) opts.headers['X-Auth-Token'] = me.token;
       if (body) opts.body = JSON.stringify(body);
       let ctrl = null, timer = null;
       if (typeof AbortController !== 'undefined') {
@@ -60,7 +66,10 @@ window.Net = (function () {
   }
   function apiFetch(method, u, body) {
     const F = window.GameFeatures, feature = F && F.route(method, u);
-    if (F && F.blocked(state().features, feature)) {
+    // 与 ui.js 的 featureBlocked 同口径：管理员穿透开启时，管理员本人的请求不再被本地拦下
+    const st0 = state();
+    const bypass = (st0.features && st0.features.adminBypass === true) && !!(st0.me && st0.me.admin);
+    if (F && !bypass && F.blocked(state().features, feature)) {
       const error = F.message(state().features, feature);
       if (window.UI) window.UI.toast(error);
       return Promise.resolve({ ok: false, status: 423, data: { error: error, code: 'FEATURE_LOCKED' } });
@@ -176,8 +185,47 @@ window.Net = (function () {
   function startVersionWatch() {
     if (verTimer) return;
     verTimer = setInterval(function () { probeServer(); }, VERSION_POLL_MS);
-    // 后台标签页里定时器会被节流到分钟级甚至更久，切回前台时补一次，让「回到页面」即时可用
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) probeServer(); });
+    // 后台标签页里定时器会被节流到分钟级甚至更久，切回前台时补一次，让「回到页面」即时可用。
+    // v0.16.0 起：回到前台 / 重建页面（bfcache）/ 网络恢复 / 窗口聚焦时，除了探测还要**主动重建 SSE**——
+    // 手机切后台、PC 长时间切走后，浏览器常把 SSE 连接留成「半死」状态（readyState 还是 OPEN，
+    // 却再也收不到任何数据），只靠 EventSource 自己重连会一直等到下一次 onerror，表现为「挂在后台回来就掉线」。
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return;
+      probeServer();
+      resumeStreamIfStale();
+    });
+    window.addEventListener('pageshow', function () { probeServer(); resumeStreamIfStale(); });
+    window.addEventListener('online', function () { probeServer(); resumeStreamIfStale(true); });
+    window.addEventListener('focus', function () { if (!connOk) resumeStreamIfStale(true); });
+    if (!hbTimer) hbTimer = setInterval(checkStreamHealth, 10000);
+  }
+  // SSE 是否「还活着」：超过 2.5 个心跳周期（服务器 25s 一次 ping）没收到任何消息 = 假死
+  const STREAM_STALE_MS = 70000;
+  function streamStale() {
+    if (!es) return true;
+    if (es.readyState !== 1) return true;          // 0=CONNECTING / 2=CLOSED
+    if (!lastMsgAt) return false;                  // 刚建立、还没收到任何消息：给一点时间
+    return (Date.now() - lastMsgAt) > STREAM_STALE_MS;
+  }
+  function checkStreamHealth() {
+    if (!me || !me.token) return;
+    if (document.hidden) return;                   // 页面不可见时不动它（省流量、也避免和浏览器节流打架）
+    if (streamStale()) { setConn(false); resumeStreamIfStale(true); }
+  }
+  // 重建 SSE：先断开旧连接再重连（避免出现两条连接互相顶号）。
+  // force=false 时只在「确实掉线 / 假死」才重建。
+  function resumeStreamIfStale(force) {
+    if (!me || !me.token || reconnecting) return false;
+    if (!force && !streamStale()) return false;
+    reconnecting = true;
+    try { if (es) es.close(); } catch (e) {}
+    es = null;
+    if (errTimer) { clearTimeout(errTimer); errTimer = null; }
+    setTimeout(function () {
+      reconnecting = false;
+      connectStream();
+    }, 120);
+    return true;
   }
 
   // ---- 业务指令（自动带 token；结果一律以服务器响应/SSE 推送为准） ----
@@ -310,7 +358,9 @@ window.Net = (function () {
   // 熔炼：payload = { mainId, subId, mainAffix, subAffix, materials:[{id,qty}], pearl }
   const smelt = (payload) => authed('/api/workshop/smelt', payload || {});
   // 重铸：用残片重 roll 宝匣神话件的全部词条数值
-  const recast = (id) => authed('/api/workshop/recast', { id: id });
+  // affixIndex 可选：指定只重铸第几条词条（0 基下标）；不传 = 重 roll 全部词条
+  const recast = (id, affixIndex) => authed('/api/workshop/recast',
+    (affixIndex == null || affixIndex < 0) ? { id: id } : { id: id, affixIndex: affixIndex });
   // v0.13.6：tier='L'|'G' → 按大型/巨型通道出售（额外金币加成）
   const sell = (id, qty, tier) => authed('/api/sell', tier ? { id: id, qty: qty, tier: tier } : { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', hours ? { id: id, qty: qty, price: price, hours: hours } : { id: id, qty: qty, price: price });
@@ -384,10 +434,13 @@ window.Net = (function () {
     const seenLogBanners = {}; // 本连接内已入日志的公告 id（重连后重播不重复记录）
     try {
       es = new EventSource(u);
+      lastMsgAt = Date.now();
+      es.onopen = function () { lastMsgAt = Date.now(); setConn(true); };
       // 性能修复(perf-5) 前端侧：服务器把同一时间窗内的多条事件合并成
       // { type:'batch', list:[...] } 单条推送，这里解包后逐条走原有分发逻辑；
       // 非 batch 消息保持原样，向后兼容。
       es.onmessage = function (ev) {
+        lastMsgAt = Date.now();   // 心跳看门狗据此判断连接是否假死
         let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
         if (m && m.type === 'batch' && Array.isArray(m.list)) {
           for (let bi = 0; bi < m.list.length; bi++) handleServerEvent(m.list[bi]);
@@ -401,6 +454,9 @@ window.Net = (function () {
         if (m.type === 'features') {
           S.features = m.features || {};
           if (ui && ui.onFeatures) ui.onFeatures();
+        } else if (m.type === 'ping') {
+          // v0.16.0：服务器每 25 秒推一条**真消息**心跳（原先是 `: ping` 注释，前端看不到）。
+          // 只用于「连接是否假死」的判定（见 checkStreamHealth），不触发任何界面重绘。
         } else if (m.type === 'init') {
           S.features = m.features || {};
           // 服务器重启换版本后 SSE 会自动重连并带回新版本号：这是「热更新」最快的一条路径
@@ -503,7 +559,15 @@ window.Net = (function () {
           if (ui) ui.refreshAll('records');
         } else if (m.type === 'globalRecord') {
           if (ui && ui.showRecordBanner && m.record) ui.showRecordBanner(m.record);
-          if (ui && ui.addLog && m.record) ui.addLog('record', m.record.text || ('🎉 全场最大纪录被破：' + m.record.who + ' 钓到 ' + m.record.name + ' ' + m.record.size + 'cm'));
+          // v0.16.0：榜单横幅是**全服**播报，但「日志 · 纪录」只记自己产生的记录——
+          // 之前别人破纪录也会写进我的日志，翻起来全是别人的成绩。
+          if (ui && ui.addLog && m.record) {
+            const meKey = S.me && S.me.id != null ? String(S.me.id).toLowerCase() : null;
+            const mine = m.record.key != null
+              ? String(m.record.key).toLowerCase() === meKey
+              : (!!S.me && !!m.record.who && m.record.who === S.me.name);
+            if (mine) ui.addLog('record', m.record.text || ('🎉 全场最大纪录被破：' + m.record.who + ' 钓到 ' + m.record.name + ' ' + m.record.size + 'cm'));
+          }
         } else if (m.type === 'banner') {
           S.banners = m.banners || [];
           S.bannerCfg = m.cfg || {};

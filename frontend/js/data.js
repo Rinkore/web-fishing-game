@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.15.0';
+  const VERSION = 'v0.16.0';
   const BUILD = '2026-09-18';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -871,9 +871,11 @@
     maxMaterials: 20,          // 单次最多投料份数
     maxTypes: 4,               // 单次最多投料种类
     pearlRollTwice: true,      // 龙宫宝珠是否启用「掷两次取边界值」
-    // ---- 重铸（用沉船宝匣残片给宝匣产出的神话件重 roll 全部词条数值）----
-    recastRelic: 10,           // 每次重铸消耗的沉船宝匣残片
-    recastGold: 0,             // 每次重铸消耗的金币（0 = 只收残片）
+    // ---- 重铸（v0.16.0 改版：材料改为龙宫宝珠，并支持「指定单条词条」）----
+    // 基础消耗 recastPearl 颗宝珠 = 重 roll 全部词条；
+    // 额外投入宝珠可把重铸目标指定为某一条词条，第 n 条额外消耗 n 颗（见 recastPearlExtra）。
+    recastPearl: 1,            // 每次重铸的基础宝珠消耗（重 roll 全部词条）
+    recastGold: 0,             // 每次重铸消耗的金币（0 = 只收宝珠）
     recastMinValue: 0,         // 重铸是否强制「至少不比原来差」：0 = 完全重 roll，1 = 每条取更高值
     // ---- 残片保留（海王遗匣产出的神话主件专用）----
     // v0.13：每片残片的保留概率改为**公式控制**（后台「⚒ 工坊配置」可改），而不是固定 10%。
@@ -1171,14 +1173,29 @@
   // 所以神话品质就是「宝匣产出的组件」这一身份标识；工坊熔炼保留主件品质，熔出来的神话件同样可重铸。
   const RECAST_QUALITY = 'mythic';
   function canRecast(meta) { return !!(meta && meta.kind === 'component' && meta.quality === RECAST_QUALITY); }
+  // 重铸·指定词条的额外宝珠数量：第 1 条额外 1 颗、第 2 条额外 2 颗……（1-based = 索引 + 1）。
+  // 传 null / undefined / 负数 = 不指定（重 roll 全部词条），额外消耗为 0。
+  function recastPearlExtra(idx) {
+    const i = Math.floor(Number(idx));
+    return (isFinite(i) && i >= 0) ? i + 1 : 0;
+  }
+  // 重铸总消耗 = 后台配置的基础消耗 + 指定词条的额外消耗
+  function recastPearlNeed(idx, base) {
+    const b = Math.max(0, Math.floor(Number(base) || 0));
+    return b + recastPearlExtra(idx);
+  }
   // 重铸取值：保持词缀**类型与条数不变**，按当前 roll 模型重新取值。
   // v0.12.2 修复：每条词条按**它自己的范围来源**（a.src：底材区间 / 突破区间 / 催化区间）重 roll，
   // 不再「词缀类型在底材池里就按底材区间」——修复重铸把范围错变成该底材范围的 bug。
-  function recastAffixes(baseId, affixes) {
+  // v0.16.0：targetIdx 传入词条下标时**只重 roll 那一条**（其余原样保留），即「重铸目标指定为某一条词条」。
+  function recastAffixes(baseId, affixes, targetIdx) {
     const base = BASE_MAP[baseId];
     if (!base) return null;
     const keepBetter = !!smeltCfg.recastMinValue; // 开启后「至少不比原来差」：取重 roll 与原值里更好的那个
-    return (affixes || []).map(function (a) {
+    const only = Math.floor(Number(targetIdx));
+    const hasTarget = isFinite(only) && only >= 0;
+    return (affixes || []).map(function (a, i) {
+      if (hasTarget && i !== only) return { type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit };
       const rng = affixSrcRangeOf(a.src, a.type, base.part);
       const v = rollAffixValue(rng[0], rng[1], componentCfg.rollModel);
       // 数值越大越好（负词缀同理：-5 优于 -12），所以「更好」= Math.max
@@ -1774,6 +1791,7 @@
     catalystEnvelopeOf: catalystEnvelopeOf, catalystPreset: catalystPreset,
     RARE_K_DEFAULT: RARE_K_DEFAULT, rareKOf: rareKOf, rareCommonMult: rareCommonMult,
     RECAST_QUALITY: RECAST_QUALITY, canRecast: canRecast, recastAffixes: recastAffixes,
+    recastPearlExtra: recastPearlExtra, recastPearlNeed: recastPearlNeed,
     MALL_DEFAULTS: MALL_DEFAULTS, defaultMallCfg: defaultMallCfg,
     parseRefreshTime: parseRefreshTime, mallCycleOf: mallCycleOf,
     DEFAULT_EXTRA_AFFIX_RANGES: DEFAULT_EXTRA_AFFIX_RANGES, extraAffixRangeOf: extraAffixRangeOf,

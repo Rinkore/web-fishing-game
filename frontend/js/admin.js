@@ -159,6 +159,7 @@ window.Admin = (function () {
     { id: 'overview', name: '📊 概览' },
     { id: 'features', name: '🔒 功能开关' },
     { id: 'accountmgr', name: '👥 账号管理' },
+    { id: 'security', name: '🛡 安全' },   // v0.16.0：封禁名单 + 管理操作审计 + 异常登录
     { id: 'grounds', name: '🌊 渔场钓点' },
     { id: 'market', name: '💱 市集管理' },
     { id: 'component', name: '🧩 组件生成' },
@@ -186,7 +187,21 @@ window.Admin = (function () {
   }
   function renderFeatures() {
     const main = $('main');
-    main.innerHTML = '<h2>🔒 玩家功能开关</h2><div class="hint">勾选为开放。关闭主页面会同时停用下属操作，子项设置会保留。出售开关适用于所有入口；关闭出售也暂停自动售出。停止钓鱼、取消交易、撤回挂单始终允许。角色外观与自动配装为本地界面功能。</div><div id="feature-editor">加载中…</div>';
+    main.innerHTML = '<h2>🔒 玩家功能开关</h2>' +
+      '<div class="hint" style="margin-bottom:10px">勾选为开放。关闭主页面会同时停用下属操作，子项设置会保留。' +
+      '出售开关适用于所有入口；关闭出售也暂停自动售出。停止钓鱼、取消交易、撤回挂单始终允许。' +
+      '角色外观与自动配装为本地界面功能。</div>' +
+      '<div class="feat-bar">' +
+      '<label class="chk feat-bypass" title="开启后，带管理员身份的操作不受这些开关限制（玩家端照常受限），便于维护期自测">' +
+      '<input type="checkbox" id="feat-admin-bypass"> 允许管理员进入已关闭功能</label>' +
+      '<span class="feat-sum" id="feat-sum"></span>' +
+      '<input class="ipt feat-search" id="feat-search" placeholder="搜索功能 / 页面…" />' +
+      '<button class="btn mini" id="feat-open-all">全部开启</button>' +
+      '<button class="btn mini" id="feat-close-all">全部关闭</button>' +
+      '<button class="btn primary" id="features-save">保存功能开关</button>' +
+      '<span id="features-result" role="status"></span>' +
+      '</div>' +
+      '<div id="feature-editor" class="feat-grid">加载中…</div>';
     adminApi('GET', '/api/admin/features?token=' + encodeURIComponent(token)).then(function (r) {
       if (view !== 'features') return;
       const host = $('feature-editor');
@@ -194,14 +209,29 @@ window.Admin = (function () {
       const draft = Object.assign({}, r.data.features);
       const groupNameOf = {};
       r.data.groups.forEach(function (g) { groupNameOf[g.id] = g.name; });
+      const bypassBox = $('feat-admin-bypass');
+      if (bypassBox) bypassBox.checked = r.data.features.adminBypass === true;
+      // 卡片式布局：一个页面一张卡（页签页跟主页面并排），子项做成可点的胶囊，整页一眼扫完
       host.innerHTML = r.data.groups.map(function (g) {
-        return '<section class="panel feature-group"' + (g.parent ? ' data-parent="' + g.parent + '"' : '') + '><h3><label><input type="checkbox" data-feature-key="' + g.id + '"' + (draft[g.id] !== false ? ' checked' : '') + '> ' + esc(g.name) + '（整页）</label></h3><div class="feature-children">' + g.children.map(function (a) {
-          return '<label><input type="checkbox" data-feature-key="' + a.id + '"' + (draft[a.id] !== false ? ' checked' : '') + '> ' + esc(a.name) + '</label>';
-        }).join('') + '</div><div class="hint feature-inherited"></div></section>';
-      }).join('') + '<button class="btn primary" id="features-save">保存功能开关</button><span id="features-result" role="status"></span>';
+        const on = draft[g.id] !== false;
+        return '<section class="panel feature-group' + (on ? '' : ' off') + '"' +
+          (g.parent ? ' data-parent="' + g.parent + '"' : '') + ' data-name="' + esc(g.name) + '">' +
+          '<h3><label class="feat-page"><input type="checkbox" data-feature-key="' + g.id + '"' + (on ? ' checked' : '') + '>' +
+          '<span>' + esc(g.name) + '</span><i class="feat-state">' + (on ? '开放' : '已关闭') + '</i></label></h3>' +
+          (g.children.length
+            ? '<div class="feature-children">' + g.children.map(function (a) {
+              const con = draft[a.id] !== false;
+              return '<label class="feat-chip' + (con ? '' : ' off') + '"><input type="checkbox" data-feature-key="' + a.id + '"' +
+                (con ? ' checked' : '') + '><span>' + esc(a.name) + '</span></label>';
+            }).join('') + '</div>'
+            : '<div class="hint">（该页没有可单独关闭的单项）</div>') +
+          '<div class="hint feature-inherited"></div></section>';
+      }).join('');
       function sync() {
+        let on = 0, total = 0;
         host.querySelectorAll('.feature-group').forEach(function (group) {
           const parent = group.querySelector('h3 input');
+          total++; if (parent.checked) on++;
           const lines = [];
           if (!parent.checked) lines.push('整页已关闭，下属操作当前均不可用（保留各项设置）');
           // 页签页（钓竿 / 记录）跟着主页面走：主页面一关，页签同样进不去
@@ -209,16 +239,51 @@ window.Admin = (function () {
           const pBox = pId ? host.querySelector('[data-feature-key="' + pId + '"]') : null;
           if (pBox && !pBox.checked) lines.push('主页面「' + (groupNameOf[pId] || pId) + '」已关闭，本页签当前不可用');
           group.querySelector('.feature-inherited').textContent = lines.join(' ');
+          group.classList.toggle('off', !parent.checked);
+          const tag = group.querySelector('.feat-state');
+          if (tag) tag.textContent = parent.checked ? '开放' : '已关闭';
+          group.querySelectorAll('.feat-chip').forEach(function (chip) {
+            const cb = chip.querySelector('input');
+            chip.classList.toggle('off', !cb.checked);
+          });
         });
+        const sum = $('feat-sum');
+        if (sum) sum.textContent = '已开放 ' + on + ' / ' + total + ' 个页面';
       }
       host.querySelectorAll('[data-feature-key]').forEach(function (input) {
         input.addEventListener('change', function () { draft[input.dataset.featureKey] = input.checked; $('features-result').textContent = ' 有未保存的修改'; sync(); });
       });
+      if (bypassBox) bypassBox.addEventListener('change', function () { $('features-result').textContent = ' 有未保存的修改'; });
+      // 搜索：按页面名 / 子项名过滤卡片
+      const search = $('feat-search');
+      if (search) {
+        search.addEventListener('input', function () {
+          const q = search.value.trim().toLowerCase();
+          host.querySelectorAll('.feature-group').forEach(function (group) {
+            const txt = group.textContent.toLowerCase();
+            group.style.display = (!q || txt.indexOf(q) >= 0) ? '' : 'none';
+          });
+        });
+      }
+      const setAll = function (v) {
+        host.querySelectorAll('[data-feature-key]').forEach(function (input) { input.checked = v; draft[input.dataset.featureKey] = v; });
+        $('features-result').textContent = ' 有未保存的修改';
+        sync();
+      };
+      if ($('feat-open-all')) $('feat-open-all').addEventListener('click', function () { setAll(true); });
+      if ($('feat-close-all')) {
+        $('feat-close-all').addEventListener('click', function () {
+          confirmModalLocal('确定把「所有页面与单项操作」都设为关闭吗？保存后所有玩家将无法钓鱼、交易与买卖。' +
+            '（已开启管理员穿透时，管理员本人仍可操作。）').then(function (ok) { if (ok) setAll(false); });
+        });
+      }
       sync();
       $('features-save').onclick = function () {
         const button = this; button.disabled = true;
         const changes = {};
         Object.keys(draft).forEach(function (key) { if (draft[key] !== r.data.features[key]) changes[key] = draft[key]; });
+        if (bypassBox) changes.adminBypass = bypassBox.checked;
+        if (!Object.keys(changes).length) { button.disabled = false; $('features-result').textContent = ' 没有修改'; return; }
         adminApi('POST', '/api/admin/features', { token: token, features: changes }).then(function (saved) {
           button.disabled = false;
           if (view !== 'features') return;
@@ -236,6 +301,7 @@ window.Admin = (function () {
     if (v === 'overview') return renderOverview();
     if (v === 'features') return renderFeatures();
     if (v === 'accountmgr') return renderAccountMgr();
+    if (v === 'security') return renderSecurity();
     if (v === 'grounds') return renderGrounds();
     if (v === 'market') return renderMarket();
     if (v === 'component') return renderComponent();
@@ -369,6 +435,7 @@ window.Admin = (function () {
           '<div class="fb-text">' + esc(f.text) + '</div>' +
           '<div class="fb-acts"><select class="ipt fb-status-sel" data-id="' + esc(f.id) + '" title="改处理状态">' + opts + '</select>' +
           '<button class="btn mini primary" data-reward="' + esc(f.id) + '" data-who="' + esc(f.name || f.key) + '">🪙 奖励金币</button>' +
+          '<button class="btn mini danger" data-fbdel="' + esc(f.id) + '">🗑 删除</button>' +
           (f.statusBy ? '<span class="hint">由 ' + esc(f.statusBy) + ' 更新</span>' : '') + '</div></div>';
       }).join('') : '<div class="hint">没有符合筛选条件的反馈。</div>');
       box.querySelectorAll('[data-fbf]').forEach(function (b) {
@@ -382,6 +449,21 @@ window.Admin = (function () {
       });
       box.querySelectorAll('[data-reward]').forEach(function (b) {
         b.onclick = function () { rewardFeedback(b.getAttribute('data-reward'), b.getAttribute('data-who')); };
+      });
+      // 删除单条反馈（v0.16.0）：二次确认 → 服务端删除 → 提交者在线时同步移除
+      box.querySelectorAll('[data-fbdel]').forEach(function (b) {
+        b.onclick = function () {
+          const id = b.getAttribute('data-fbdel');
+          const row = all.find(function (f) { return f.id === id; }) || {};
+          confirmModalLocal('删除这条反馈？\n\n' + String(row.text || '').slice(0, 80) +
+            '\n\n删除后不可恢复；提交者的历史列表里也会消失。').then(function (ok) {
+            if (!ok) return;
+            adminApi('POST', '/api/admin/feedback/del', { token: token, id: id }).then(function (rr) {
+              if (!rr.ok) { toast((rr.data && rr.data.error) || '删除失败', true); return; }
+              toast('已删除该条反馈'); renderFeedback();
+            });
+          });
+        };
       });
       box.querySelectorAll('.fb-status-sel').forEach(function (sel) {
         sel.onchange = function () {
@@ -421,6 +503,7 @@ window.Admin = (function () {
   let heatAt = 0;                  // 上次拉取时间
   let heatHover = -1;              // 曲线：悬停的数据点下标（-1 = 无）
   let heatCell = null;             // 热力格：悬停的 [星期, 小时]
+  let heatFilter = { ground: '', spot: '' };   // v0.16.0：按钓场 / 钓点筛选（空 = 全服）
   let heatDraws = 0;               // 绘制计数（写到 canvas.dataset.draw，测试与排查用）
   // 画布按容器宽度与 DPR 重建，返回绘图上下文
   function heatCanvas(hh) {
@@ -472,7 +555,11 @@ window.Admin = (function () {
       heatDraws++; c.cv.dataset.draw = String(heatDraws);
       return;
     }
-    const vis = HEAT_SERIES.filter(function (s) { return heatOn[s.id]; });
+    // 筛选口径（选了钓场 / 钓点）：只画一条「该钓点钓鱼人数」曲线，其余全局曲线不再混淆视听
+    const filtered = !!(data.filter && (data.filter.ground || data.filter.spot));
+    const vis = filtered
+      ? [{ id: 'area', name: data.filter.areaLabel || '该区域钓鱼人数', color: '#3ecf8e' }]
+      : HEAT_SERIES.filter(function (s) { return heatOn[s.id]; });
     let vmax = 1;
     pts.forEach(function (p) {
       vis.forEach(function (s) { const v = Number(p[s.id]) || 0; if (v > vmax) vmax = v; });
@@ -642,16 +729,21 @@ window.Admin = (function () {
       return;
     }
     const stepTxt = d.step >= 3600000 ? (d.step / 3600000) + ' 小时' : (d.step / 60000) + ' 分钟';
+    const fTxt = (d.filter && (d.filter.ground || d.filter.spot))
+      ? ' · 筛选口径：' + (d.filter.spot ? '钓点 ' + d.filter.spot.replace(':', '·') : '钓场 ' + d.filter.ground) + '（只统计该区域的钓鱼人数）'
+      : '';
     hint.textContent = rangeName + '区间：' + d.points.length + ' 个采样桶（每桶 ' + stepTxt + '，桶内取均值；峰值线取桶内最高）' +
       ' · 采样 分钟 ' + d.samples.min + ' / 小时 ' + d.samples.hour + ' 条 · 历史峰值 ' + peak + ' 人' + peakAt +
-      ' · 每 ' + Math.round(HEAT_REFRESH_MS / 1000) + ' 秒刷新';
+      fTxt + ' · 每 ' + Math.round(HEAT_REFRESH_MS / 1000) + ' 秒刷新';
   }
   function heatLoad() {
     if (view !== 'overview') return;
-    return adminApi('GET', '/api/admin/stats?range=' + heatRange + '&token=' + encodeURIComponent(token)).then(function (r) {
+    const q = '&ground=' + encodeURIComponent(heatFilter.ground || '') + '&spot=' + encodeURIComponent(heatFilter.spot || '');
+    return adminApi('GET', '/api/admin/stats?range=' + heatRange + q + '&token=' + encodeURIComponent(token)).then(function (r) {
       if (!r.ok || view !== 'overview') return;
       heatData = r.data;
       heatAt = Date.now();
+      heatFillFilters(r.data);
       const peakEl = document.querySelector('[data-stat="peak"]');
       if (peakEl) {
         peakEl.textContent = (r.data.peak && r.data.peak.online) || 0;
@@ -660,6 +752,31 @@ window.Admin = (function () {
       heatDraw();
       heatHint();
     });
+  }
+  // 填充钓场 / 钓点筛选下拉（保持已选值；钓点列表跟随钓场变化）
+  function heatFillFilters(d) {
+    const gSel = $('ov-filter-ground'), sSel = $('ov-filter-spot');
+    if (!gSel || !sSel || !d || !d.grounds) return;
+    if (gSel.options.length <= 1) {
+      d.grounds.forEach(function (g) {
+        const o = document.createElement('option'); o.textContent = g.name; o.value = g.id; gSel.appendChild(o);
+      });
+    }
+    gSel.value = heatFilter.ground || '';
+    // 钓点下拉：按当前钓场过滤（未选钓场 = 全部钓点）
+    const cur = heatFilter.spot;
+    sSel.innerHTML = '<option value="">全部钓点</option>';
+    d.grounds.forEach(function (g) {
+      if (heatFilter.ground && g.id !== heatFilter.ground) return;
+      g.spots.forEach(function (sp) {
+        const o = document.createElement('option');
+        o.textContent = (heatFilter.ground ? '' : g.name + '·') + sp.name;
+        o.value = sp.key;
+        sSel.appendChild(o);
+      });
+    });
+    if (cur && !Array.from(sSel.options).some(function (o) { return o.value === cur; })) heatFilter.spot = '';
+    sSel.value = heatFilter.spot || '';
   }
   function heatPanelHtml() {
     return '<div class="panel">' +
@@ -672,6 +789,9 @@ window.Admin = (function () {
       '<button class="btn mini hm-md' + (heatMode === 'line' ? ' on' : '') + '" data-mode="line">📈 曲线</button>' +
       '<button class="btn mini hm-md' + (heatMode === 'heat' ? ' on' : '') + '" data-mode="heat">🌡️ 星期 × 小时热力格</button>' +
       '</span>' +
+      // v0.16.0：按钓场 / 钓点筛选（只看某个钓点在同一时段的拥挤程度）
+      '<span class="hm-group"><label class="hm-filter-label">钓场</label><select id="ov-filter-ground" class="ipt hm-sel"><option value="">全服</option></select>' +
+      '<label class="hm-filter-label">钓点</label><select id="ov-filter-spot" class="ipt hm-sel"><option value="">全部钓点</option></select></span>' +
       '</div>' +
       '<div class="hm-legend" id="ov-legend">' + HEAT_SERIES.map(function (s) {
         return '<label class="hm-item' + (heatOn[s.id] ? '' : ' off') + '" data-series="' + s.id + '">' +
@@ -866,7 +986,9 @@ window.Admin = (function () {
         (u.qq ? '<div class="hint">QQ：' + esc(u.qq) + '</div>' : '') + '</td>' +
         '<td class="num">' + u.coins + '</td>' +
         '<td class="num">' + u.catchCount + '</td>' +
-        '<td>' + (u.online ? '<span class="tag on">在线' + (u.fishing ? ' · 钓鱼中' : '') + '</span>' : '<span class="tag">离线</span>') + '</td>' +
+        '<td>' + (u.online ? '<span class="tag on">在线' + (u.fishing ? ' · 钓鱼中' : '') + '</span>' : '<span class="tag">离线</span>') +
+        (u.banned ? '<div><span class="tag banned" title="' + esc((u.banReason ? '原因：' + u.banReason + ' · ' : '') + (u.banBy ? '操作人：' + u.banBy : '')) + '">' +
+          (u.banPermanent ? '已封禁 · 永久' : '已封禁 · 剩 ' + Math.max(1, Math.ceil((u.banRemainMs || 0) / 3600000)) + ' 小时') + '</span></div>' : '') + '</td>' +
         '<td>' + fmtTime(u.createdAt) + '</td>' +
         '<td><label class="switch"><input type="checkbox" data-admin="' + esc(u.key) + '"' + (u.admin ? ' checked' : '') + (self ? ' disabled title="不能撤销自己的权限"' : '') + '><span class="sl"></span></label></td>' +
         '<td class="mgr-cap">' +
@@ -877,6 +999,9 @@ window.Admin = (function () {
         '<td class="mgr-acts">' +
         '<button class="btn mini" data-edit="' + esc(u.key) + '">编辑</button>' +
         '<button class="btn mini" data-snap="' + esc(u.key) + '">快照</button>' +
+        (u.banned
+          ? '<button class="btn mini" data-unban="' + esc(u.key) + '"' + (self ? ' disabled title="不能操作自己"' : '') + '>解封</button>'
+          : '<button class="btn mini danger" data-ban="' + esc(u.key) + '"' + (self ? ' disabled title="不能封禁自己"' : '') + '>封禁</button>') +
         '<button class="btn mini danger" data-del="' + esc(u.key) + '"' + (self ? ' disabled title="不能删除自己"' : '') + '>删除</button>' +
         '</td></tr>';
     }).join('');
@@ -904,6 +1029,19 @@ window.Admin = (function () {
     });
     $('mgr-list').querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { openMgrEdit(b.getAttribute('data-edit')); }; });
     $('mgr-list').querySelectorAll('[data-snap]').forEach(function (b) { b.onclick = function () { openMgrSnapshot(b.getAttribute('data-snap')); }; });
+    $('mgr-list').querySelectorAll('[data-ban]').forEach(function (b) { b.onclick = function () { openBanDialog(b.getAttribute('data-ban')); }; });
+    $('mgr-list').querySelectorAll('[data-unban]').forEach(function (b) {
+      b.onclick = function () {
+        const key = b.getAttribute('data-unban');
+        confirmModalLocal('解除「' + key + '」的封禁？对方即可重新登录。').then(function (ok) {
+          if (!ok) return;
+          adminApi('POST', '/api/admin/users/ban', { token: token, target: key, hours: 0, confirm: true }).then(function (r) {
+            if (!r.ok) { toast((r.data && r.data.error) || '解封失败', true); return; }
+            toast('已解封「' + key + '」'); loadMgrList();
+          });
+        });
+      };
+    });
     $('mgr-list').querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { confirmDeleteUser(b.getAttribute('data-del')); }; });
     // 挂单上限：改完即存（留空 = 清掉自定义值、回默认 40；0 = 不限）
     $('mgr-list').querySelectorAll('input[data-cap]').forEach(function (inp) {
@@ -945,6 +1083,117 @@ window.Admin = (function () {
     });
   }
   // 编辑密码 / 显示名 / 金币
+  // ================================
+  // 后台安全（v0.16.0）：封禁名单 / 异常登录锁定 / 管理操作审计
+  // ================================
+  function renderSecurity() {
+    const main = $('main');
+    main.innerHTML = '<h2>🛡 后台安全</h2>' +
+      '<div class="hint" style="margin-bottom:12px">这一页把「谁被封了、谁在被爆破、管理员都改过什么」放一起。' +
+      '封禁与解封在「👥 账号管理」那一行也能操作；本页只做查看与解封。' +
+      '<b>敏感操作（删除账号 / 封禁 / 关闭全部功能 / 批量上架 / 退回挂单）都需要二次确认</b>，' +
+      '每次后台写操作都会记进下面的审计日志（落盘 admin.json）。</div>' +
+      '<div id="sec-body" class="panel">加载中…</div>';
+    loadSecurity();
+  }
+  function loadSecurity() {
+    adminApi('GET', '/api/admin/security?token=' + encodeURIComponent(token)).then(function (r) {
+      if (view !== 'security') return;
+      const host = $('sec-body');
+      if (!host) return;
+      if (!r.ok) { host.textContent = '读取失败：' + ((r.data && r.data.error) || '请重试'); return; }
+      const d = r.data || {};
+      const banned = d.banned || [];
+      const locks = d.lockouts || [];
+      const log = d.log || [];
+      const fmtRemain = function (ms) {
+        const m = Math.ceil(ms / 60000);
+        return m >= 60 ? (Math.round(m / 6) / 10) + ' 小时' : m + ' 分钟';
+      };
+      host.innerHTML =
+        '<h3>🚫 封禁名单（' + banned.length + '）</h3>' +
+        (banned.length
+          ? '<table class="tbl"><thead><tr><th>账号</th><th>时长</th><th>原因</th><th>操作人</th><th>操作</th></tr></thead><tbody>' +
+            banned.map(function (b) {
+              return '<tr><td><b>' + esc(b.name) + '</b> <span class="hint">' + esc(b.username) + '</span></td>' +
+                '<td>' + (b.permanent ? '永久' : '剩 ' + fmtRemain(b.remainMs)) + '</td>' +
+                '<td>' + esc(b.reason || '—') + '</td>' +
+                '<td>' + esc(b.banBy || '—') + '<div class="hint">' + (b.banAt ? new Date(b.banAt).toLocaleString() : '') + '</div></td>' +
+                '<td><button class="btn mini" data-sec-unban="' + esc(b.key) + '">解封</button></td></tr>';
+            }).join('') + '</tbody></table>'
+          : '<div class="hint">当前没有封禁中的账号。</div>') +
+        '<h3 style="margin-top:16px">⏳ 异常登录锁定（' + locks.length + '）</h3>' +
+        '<div class="hint" style="margin-bottom:6px">同一「账号 + IP」在 ' + (d.rules ? d.rules.windowMin : 10) + ' 分钟内连续失败 ' +
+        (d.rules ? d.rules.maxFails : 5) + ' 次即锁定 ' + (d.rules ? d.rules.lockMin : 5) + ' 分钟（只挡登录，不影响在线玩家）。</div>' +
+        (locks.length
+          ? '<table class="tbl"><thead><tr><th>账号</th><th>来源 IP</th><th>剩余锁定</th></tr></thead><tbody>' +
+            locks.map(function (l) {
+              return '<tr><td>' + esc(l.user) + '</td><td>' + esc(l.ip) + '</td><td>' + fmtRemain(l.remainMs) + '</td></tr>';
+            }).join('') + '</tbody></table>'
+          : '<div class="hint">当前没有被锁定的登录来源。</div>') +
+        '<h3 style="margin-top:16px">📜 管理操作审计（最近 ' + log.length + ' 条）</h3>' +
+        (log.length
+          ? '<div class="sec-log">' + log.map(function (x) {
+              return '<div class="sec-log-row"><span class="sl-time">' + new Date(x.t).toLocaleString() + '</span>' +
+                '<span class="sl-who">' + esc(x.name || x.key) + '</span>' +
+                '<span class="sl-act">' + esc(x.action) + '</span>' +
+                '<span class="sl-target">' + esc(x.target || '—') + '</span>' +
+                '<span class="sl-detail hint">' + esc(x.detail || '') + '</span></div>';
+            }).join('') + '</div>'
+          : '<div class="hint">还没有记录。任意后台写操作（改配置 / 发奖励 / 封禁…）都会出现在这里。</div>');
+      host.querySelectorAll('[data-sec-unban]').forEach(function (b) {
+        b.onclick = function () {
+          const key = b.getAttribute('data-sec-unban');
+          confirmModalLocal('解除「' + key + '」的封禁？').then(function (ok) {
+            if (!ok) return;
+            adminApi('POST', '/api/admin/users/ban', { token: token, target: key, hours: 0, confirm: true }).then(function (res) {
+              if (!res.ok) { toast((res.data && res.data.error) || '解封失败', true); return; }
+              toast('已解封「' + key + '」'); loadSecurity();
+            });
+          });
+        };
+      });
+    });
+  }
+  // 封禁对话框（v0.16.0）：时长可选常用档位，也可自己填任意小时数；负数 = 永久
+  function openBanDialog(key) {
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay';
+    ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">封禁账号 ' + esc(key) + '</span></div>' +
+      '<div class="modal-body mgr-form">' +
+      '<div class="hint" style="margin-bottom:8px">封禁会立即踢掉该账号的全部会话与实时连接；封禁期间无法登录、无法连接。' +
+      '时长可填任意小时数（支持小数），<b>负数 = 永久封禁</b>。</div>' +
+      '<div class="mgr-row"><label>常用时长</label><span>' +
+      [['1', '1 小时'], ['6', '6 小时'], ['24', '1 天'], ['72', '3 天'], ['720', '30 天'], ['-1', '永久']].map(function (kv) {
+        return '<button class="btn mini ban-preset" data-h="' + kv[0] + '" style="margin-right:6px">' + kv[1] + '</button>';
+      }).join('') + '</span></div>' +
+      '<div class="mgr-row"><label>时长（小时）</label><input id="ban-hours" class="ipt" type="number" step="0.5" value="24" style="width:160px" /></div>' +
+      '<div class="mgr-row"><label>原因（可选）</label><input id="ban-reason" class="ipt" maxlength="60" placeholder="会显示给对方看" style="width:320px" /></div>' +
+      '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn danger" id="ban-go">确认封禁</button></div>' +
+      '<span id="ban-msg" class="hint"></span>' +
+      '</div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+    ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
+    ov.querySelectorAll('.ban-preset').forEach(function (b) {
+      b.onclick = function () { ov.querySelector('#ban-hours').value = b.getAttribute('data-h'); };
+    });
+    ov.querySelector('#ban-go').onclick = function () {
+      const hours = Number(ov.querySelector('#ban-hours').value);
+      const reason = ov.querySelector('#ban-reason').value.trim();
+      if (!isFinite(hours) || hours === 0) { ov.querySelector('#ban-msg').textContent = '请填写非 0 的时长（小时）；负数表示永久'; return; }
+      const human = hours < 0 ? '永久封禁' : ('封禁 ' + hours + ' 小时');
+      confirmModalLocal('确认对「' + key + '」执行 ' + human + '？' + (reason ? '\n原因：' + reason : '') +
+        '\n封禁后该账号会立刻掉线，且无法登录。').then(function (ok) {
+        if (!ok) return;
+        adminApi('POST', '/api/admin/users/ban', { token: token, target: key, hours: hours, reason: reason, confirm: true }).then(function (r) {
+          if (!r.ok) { ov.querySelector('#ban-msg').textContent = (r.data && r.data.error) || '封禁失败'; return; }
+          toast('已' + human + '「' + key + '」'); ov.remove(); loadMgrList();
+        });
+      });
+    };
+  }
   function openMgrEdit(key) {
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
     const ov = document.createElement('div');
@@ -2524,13 +2773,15 @@ window.Admin = (function () {
       (SC.pearlRollTwice !== false ? ' checked' : '') + '></span>' +
       '<span class="hint">勾选 = 投入龙宫宝珠时每个词条 roll 两次、取靠近区间边界的那次</span>' +
       '</div>' +
-      '<h3>♻ 重铸（宝匣神话件重 roll 词条数值）</h3>' +
+      '<h3>♻ 重铸（宝匣神话件重 roll 词条数值 · v0.16.0 改用龙宫宝珠）</h3>' +
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
-      F('recastRelic', '每次消耗残片', '默认 10（材料目前只有沉船宝匣残片）') +
-      F('recastGold', '每次消耗金币', '默认 0（只收残片）') +
+      F('recastPearl', '基础消耗（龙宫宝珠）', '默认 1 颗 = 重 roll 全部词条') +
+      F('recastGold', '每次消耗金币', '默认 0（只收宝珠）') +
       '<span class="ch-fix"><label>至少不比原来差</label><input type="checkbox" id="ws-cfg-recastMinValue"' +
       (SC.recastMinValue ? ' checked' : '') + '></span>' +
-      '<span class="hint">勾选 = 重铸时每条词条取新旧里更好的那个（不会把好数值洗坏）</span>' +
+      '<span class="hint">勾选 = 重铸时每条词条取新旧里更好的那个（不会把好数值洗坏）<br>' +
+      '额外投入宝珠可把重铸<b>指定到某一条词条</b>：第 n 条额外消耗 n 颗（第 1 条 +1、第 2 条 +2…），' +
+      '此时只有那一条的数值会变，其余原样保留。</span>' +
       '</div>' +
       '<h3>🛡 熔炼 · 残片保留（海王遗匣产出的神话主件专享）</h3>' +
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
@@ -2694,7 +2945,7 @@ window.Admin = (function () {
         maxMaterials: $('ws-cfg-maxMaterials').value,
         maxTypes: $('ws-cfg-maxTypes').value,
         pearlRollTwice: $('ws-cfg-pearlRollTwice').checked,
-        recastRelic: $('ws-cfg-recastRelic').value,
+        recastPearl: $('ws-cfg-recastPearl').value,
         recastGold: $('ws-cfg-recastGold').value,
         recastMinValue: $('ws-cfg-recastMinValue').checked,
         retainFormula: retainFormula,
@@ -3003,10 +3254,159 @@ window.Admin = (function () {
     loadRecList();
   }
 
+  // ---- 模拟钓竿（公式管理页中心，v0.16.0）----
+  // 滑杆 ↔ 数字框联动、预设、选钓点、POST /api/admin/simulate 试算并渲染结果与产出分布。
+  const SIM_AFFIXES = ['speed', 'skill', 'rare', 'material', 'size', 'double'];
+  const SIM_PRESETS = {
+    none: { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 },
+    mid: { speed: 40, skill: 10, rare: 0, material: 0, size: 0, double: 30 },
+    max: { speed: 80, skill: 20, rare: 0, material: 0, size: 0, double: 100 },
+    record: { speed: 0, skill: 0, rare: 20, material: 0, size: 100, double: 0 },
+  };
+  function simTotals() {
+    const out = {};
+    SIM_AFFIXES.forEach(function (t) { out[t] = Number(($('sim-' + t) || {}).value) || 0; });
+    return out;
+  }
+  function simSetTotals(v) {
+    SIM_AFFIXES.forEach(function (t) {
+      const n = Number(v && v[t]) || 0;
+      if ($('sim-' + t)) $('sim-' + t).value = String(n);
+      if ($('sim-r-' + t)) $('sim-r-' + t).value = String(n);
+    });
+    // 钓场 / 钓点筛选（v0.16.0）：切换即按新口径重拉数据
+    const gSel = $('ov-filter-ground'), sSel = $('ov-filter-spot');
+    if (gSel) {
+      gSel.addEventListener('change', function () {
+        heatFilter.ground = gSel.value || '';
+        heatFilter.spot = '';        // 换钓场后原钓点可能不属于它，直接清空
+        heatHover = -1; heatCell = null;
+        heatLoad();
+      });
+    }
+    if (sSel) {
+      sSel.addEventListener('change', function () {
+        heatFilter.spot = sSel.value || '';
+        heatHover = -1; heatCell = null;
+        heatLoad();
+      });
+    }
+  }
+  function wireSimulator() {
+    if (!$('sim-go')) return;
+    SIM_AFFIXES.forEach(function (t) {
+      const num = $('sim-' + t), rng = $('sim-r-' + t);
+      if (!num || !rng) return;
+      rng.addEventListener('input', function () { num.value = rng.value; });
+      num.addEventListener('input', function () {
+        const v = Math.max(Number(num.min) || -999, Math.min(Number(num.max) || 999, Number(num.value) || 0));
+        rng.value = String(v);
+      });
+    });
+    document.querySelectorAll('[data-sim-preset]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        simSetTotals(SIM_PRESETS[b.getAttribute('data-sim-preset')] || SIM_PRESETS.none);
+        simRun();
+      });
+    });
+    adminApi('GET', '/api/admin/loot/spots?token=' + encodeURIComponent(token)).then(function (r) {
+      const sel = $('sim-spot');
+      if (!sel || view !== 'formula') return;
+      const list = (r && r.ok && r.data && r.data.spots) || [];
+      sel.innerHTML = '<option value="">（不选钓点：只看公式本身）</option>' + list.map(function (s) {
+        return '<option value="' + esc(s.key) + '">' + esc(s.name) + '（' + s.pool + ' 项产出）</option>';
+      }).join('');
+      if (list.length) sel.value = list[0].key;
+    });
+    $('sim-go').addEventListener('click', simRun);
+    $('sim-vars').addEventListener('click', function () {
+      const t = simTotals();
+      SIM_AFFIXES.forEach(function (k) { if ($('fxv-' + k)) $('fxv-' + k).value = String(t[k]); });
+      toast('已把模拟钓竿的词条值填入下方「试算（用下面的变量值求概率）」');
+    });
+    simRun();
+  }
+  function simRun() {
+    const out = $('sim-out');
+    if (!out) return;
+    out.innerHTML = '试算中…';
+    const sel = $('sim-spot');
+    adminApi('POST', '/api/admin/simulate', { token: token, totals: simTotals(), spotKey: sel ? sel.value : '' }).then(function (r) {
+      if (view !== 'formula' || !$('sim-out')) return;
+      if (!r || !r.ok) { $('sim-out').innerHTML = '<span class="err">' + esc((r && r.data && r.data.error) || '试算失败') + '</span>'; return; }
+      const d = r.data || {};
+      const L = d.affixLabel || {};
+      const cell = function (label, value, hint) {
+        return '<div class="sim-cell"><span class="sc-label">' + label + '</span><b>' + value + '</b>' +
+          (hint ? '<span class="sc-hint">' + hint + '</span>' : '') + '</div>';
+      };
+      const chips = SIM_AFFIXES.filter(function (t) { return (d.merged && d.merged[t]); }).map(function (t) {
+        const v = d.merged[t];
+        return '<span class="eff-chip' + (v < 0 ? ' eff-neg' : '') + '">' + (L[t] || t) + ' ' + (v > 0 ? '+' : '') + v + '%</span>';
+      }).join('') || '<span class="eff-chip none">无词条加成</span>';
+      $('sim-out').innerHTML =
+        '<div class="sim-cells">' +
+        cell('抛竿间隔', (d.cast.interval / 1000).toFixed(2) + ' 秒', '基础 ' + d.cast.baseMs + 'ms · 最短 ' + d.cast.minMs + 'ms') +
+        cell('每小时抛竿', d.expect.castsPerHour, '有效钓速 ' + d.cast.effSpeed + '%（上限 ' + d.cast.cap + '%）') +
+        cell('上鱼率', d.bite.rate + '%', d.bite.override ? '钓点独立配置' : '全服公式') +
+        cell('双钓概率', d.double.p.toFixed(1) + '%', '叠加 A=' + d.double.A + ' · 基础 B=' + Math.round(d.double.base * 100) + '%') +
+        cell('每竿期望', d.expect.fishPerCast + ' 条', '1 + P + P²（最多 3 条）') +
+        cell('每小时期望', d.expect.fishPerHour + ' 条', '上鱼率 × 抛竿数 × 每竿期望') +
+        '</div>' +
+        '<div class="eff-strip" style="margin:8px 0 0">' + chips + '</div>' +
+        (d.spot ? '<div class="hint" style="margin-top:6px">钓点：<b>' + esc(d.spot.groundName + '·' + d.spot.spotName) + '</b>' +
+          ((d.spot.buffs || []).length ? ' · 钓点增益 ' + d.spot.buffs.map(function (b) { return esc((L[b.type] || b.type) + ' ' + (b.value > 0 ? '+' : '') + b.value + '%'); }).join('、') : '') +
+          (d.spot.biteRateOverride != null ? ' · 独立上鱼率 ' + d.spot.biteRateOverride + '%' : '') +
+          (d.spot.intervalOverride != null ? ' · 独立间隔 ' + d.spot.intervalOverride + 'ms' : '') + '</div>'
+          : '<div class="hint" style="margin-top:6px">未选钓点：只按公式与钓竿词缀计算（不含钓点增益与钓点独立配置）。</div>');
+      const loot = d.loot || [];
+      $('sim-loot').innerHTML = loot.length
+        ? '<h4 style="margin:10px 0 4px">📦 该钓点产出分布（稀有度 ' + Math.round(Number(d.merged && d.merged.rare) || 0) + ' 生效后）</h4>' +
+          '<div class="sim-loot-grid">' + loot.slice(0, 16).map(function (x) {
+            const up = x.afterPct - x.beforePct;
+            return '<div class="sim-loot-row"><span class="sl-name">' + esc(x.name) +
+              '<span class="hint"> ' + esc(x.quality) + '</span></span>' +
+              '<span class="sl-before">' + x.beforePct.toFixed(2) + '%</span>' +
+              '<span class="sl-arrow">→</span>' +
+              '<span class="sl-after' + (up > 0.001 ? ' up' : (up < -0.001 ? ' down' : '')) + '">' + x.afterPct.toFixed(2) + '%</span></div>';
+          }).join('') + '</div>'
+        : '';
+    });
+  }
   function renderFormula() {
     const main = $('main');
     main.innerHTML = '<h2>🧮 公式管理</h2>' +
-      '<div class="hint" style="margin-bottom:12px">集中管理上钩概率公式与双钓率。修改保存后对全服立即生效。</div>' +
+      '<div class="hint" style="margin-bottom:12px">以<b>模拟钓竿</b>为中心：先在这里把任意词条组合与钓点试算一遍，' +
+      '再看下方各项参数。本页所有修改保存后对全服立即生效。</div>' +
+      // ---- v0.16.0：模拟钓竿（页面中心）----
+      '<div class="panel sim-panel">' +
+      '<h3>🎣 模拟钓竿 <span class="hint">把任意词条组合装到一根虚拟钓竿上，选一个钓点即可看到真实结果（不写存档、不影响线上玩家）</span></h3>' +
+      '<div class="sim-grid">' +
+      '<div class="sim-rods">' +
+      [['speed', '⚡ 钓速', -100, 200], ['skill', '🎯 技巧', -100, 200], ['rare', '✨ 稀有度', -50, 100],
+        ['material', '🧵 材料概率', -50, 200], ['size', '📏 体型', -100, 300], ['double', '🎣 双钓', 0, 200]]
+        .map(function (a) {
+          return '<div class="sim-aff"><label for="sim-' + a[0] + '">' + a[1] + '</label>' +
+            '<input type="range" id="sim-r-' + a[0] + '" min="' + a[2] + '" max="' + a[3] + '" step="1" value="0">' +
+            '<input type="number" id="sim-' + a[0] + '" class="ipt mk-num" min="' + a[2] + '" max="' + a[3] + '" step="1" value="0"><span class="hint">%</span></div>';
+        }).join('') +
+      '<div class="sim-presets">' +
+      '<button class="btn mini" data-sim-preset="none">空竿</button>' +
+      '<button class="btn mini" data-sim-preset="mid">中档（钓速 40 / 技巧 10 / 双钓 30）</button>' +
+      '<button class="btn mini" data-sim-preset="max">满配（钓速 80 / 技巧 20 / 双钓 100）</button>' +
+      '<button class="btn mini" data-sim-preset="record">冲纪录（体型 100 / 稀有度 20）</button>' +
+      '</div>' +
+      '</div>' +
+      '<div class="sim-side">' +
+      '<div class="pool-row"><label for="sim-spot" style="width:56px;color:var(--txt-dim);font-size:13px">钓点</label>' +
+      '<select id="sim-spot" class="ipt" style="min-width:240px"></select>' +
+      '<button id="sim-go" class="btn primary" style="margin-left:8px">试算</button>' +
+      '<button id="sim-vars" class="btn mini" style="margin-left:6px">填入变量试算</button></div>' +
+      '<div id="sim-out" class="sim-out hint">选好词条与钓点后点「试算」。</div>' +
+      '</div>' +
+      '</div>' +
+      '<div id="sim-loot" class="sim-loot"></div>' +
+      '</div>' +
       '<div class="formula-box">' +
       '<div class="panel">' +
       '<h3>公式</h3>' +
@@ -3082,6 +3482,7 @@ window.Admin = (function () {
       '</div>';
     loadWorldCfg().then(function (cfg) {
       if (!cfg || view !== 'formula') return;
+      wireSimulator();   // 模拟钓竿（v0.16.0 页面中心）：控件已在 DOM 里，这里做联动与试算
       $('fx-src').value = cfg.biteFormula || '';
       if ($('rk-k')) $('rk-k').value = cfg.rareK != null ? cfg.rareK : 2;
       const dbInp = $('db-base');

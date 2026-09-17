@@ -231,7 +231,7 @@ function startServer() {
   // 熔炼搬来的「技巧」在竹制短竿池外：若后续重铸按结果底材区间（池外→突破 2~6）就是旧 bug。
   const mMain = D.instanceId('rod_bamboo', 'mythic', [{ type: 'speed', value: 12 }, { type: 'size', value: 3 }]);
   const mSub = D.instanceId('rod_dragonbone', 'epic', [{ type: 'skill', value: 10 }, { type: 'size', value: 8 }]);
-  await cfg({ baseRate: 100, rateMax: 100, failPerMaterial: 0, recastRelic: 0, recastGold: 0, recastMinValue: 0 });
+  await cfg({ baseRate: 100, rateMax: 100, failPerMaterial: 0, recastPearl: 1, recastGold: 0, recastMinValue: 0 });
   await seed({ [mMain]: 1, [mSub]: 1 }, 200000);
   const mMelt = await POST(BASE + '/api/workshop/smelt', {
     token: TOKP, mainId: mMain, subId: mSub, mainAffix: 'speed', subAffix: 'skill',
@@ -247,7 +247,7 @@ function startServer() {
   // 后续重铸：必须一直落在副件区间，而不是结果底材的池外（突破）区间
   let cur = mItem.id, vals = [];
   for (let i = 0; i < 40; i++) {
-    await seed({ [cur]: 1, relic: 400 }, 200000);
+    await seed({ [cur]: 1, dragonpearl: 400 }, 200000);   // v0.16.0：重铸材料改为龙宫宝珠
     const rc = await POST(BASE + '/api/workshop/recast', { token: TOKP, id: cur });
     if (rc.status !== 200) break;
     vals.push(rc.data.item.affixes.find(a => a.type === 'skill').value);
