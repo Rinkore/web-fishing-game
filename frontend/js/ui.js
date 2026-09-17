@@ -7285,12 +7285,20 @@ window.UI = (function () {
     return out;
   }
   // 主/副件卡片（点击打开与「装备组件」同一个组件选择子页面）
+  // 「卸下」：清空该槽位（纯草稿操作，组件本身一直在背包里）。
+  //   主件卸下会连带清掉副件与已选词条（副件依赖主件部位）；催化剂份数保留——玩家通常只是想换一件。
+  function wsUnload(which) {
+    if (which === 'main') { wsMain = ''; wsMainAffix = ''; wsSub = ''; wsSubAffix = ''; }
+    else if (which === 'sub') { wsSub = ''; wsSubAffix = ''; }
+    else if (which === 'recast') { wsRecast = ''; wsRecastTarget = -1; }
+    renderView();
+  }
   function wsCompCardHtml(which, comp, hint) {
     const title = which === 'main' ? '主组件（保留）' : '副组件（熔毁）';
     const icon = which === 'main' ? '🔧' : '🔥';
     if (!comp) {
       return '<div class="ws-col"><h3>' + icon + ' ' + title + '</h3>' +
-        '<button class="ws-pick empty" data-pick="' + which + '">＋ 点击选择组件</button>' +
+        '<div class="ws-pick-row"><button class="ws-pick empty" data-pick="' + which + '">＋ 点击选择组件</button></div>' +
         '<div class="hint">' + esc(hint) + '</div></div>';
     }
     const affs = comp.meta.affixes.map(function (a) {
@@ -7302,12 +7310,16 @@ window.UI = (function () {
         (rtxt ? '<span class="ws-aff-rng">' + esc(rtxt) + '%</span>' : '') + '</button>';
     }).join('');
     return '<div class="ws-col"><h3>' + icon + ' ' + title + '</h3>' +
+      '<div class="ws-pick-row">' +
       '<button class="ws-pick chosen" data-pick="' + which + '">' +
       '<img class="ws-pick-icon" src="assets/item/' + esc(comp.meta.baseId) + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
       '<span class="ws-pick-name ' + qualityClass(comp.meta) + '">' + esc(comp.meta.name) + '</span>' +
       itemTag(comp.meta) +
       '<span class="ws-pick-meta">' + esc(partNameOf(comp.meta.part)) + ' · ' + esc(comp.meta.qualityName) + ' · 持有 ×' + comp.count + '</span>' +
       '<span class="ws-pick-change">更换</span></button>' +
+      '<button class="mini ws-unload" data-unload="' + which + '" title="' +
+      (which === 'main' ? '清空主件（副件与已选词条会一并清掉）' : '清空副件') + '">卸下</button>' +
+      '</div>' +
       '<div class="ws-affs">' + affs + '</div>' +
       '<div class="hint">' + (which === 'main' ? '点击选择主件保留的词条' : '点击选择从副件搬到主件的词条') + '</div></div>';
   }
@@ -7402,7 +7414,7 @@ window.UI = (function () {
   // 「词缀：来源区间 +a ~ +b%」一行（熔炼结果预览用）
   // 预览里的一条词缀：来源标签 + 当前值 → 预计区间 + 区间口径。
   // v0.16.0：补上「当前值 → 预计值」的对照（原来只给区间，看不出这条会变好还是变坏）。
-  function wsAffixRangeLine(kind, type, re, cur) {
+  function wsAffixRangeLine(kind, type, re, cur, prob) {
     if (!type || !re || !re.range) return '';
     const tag = kind === 'main' ? '<span class="ws-src-tag main">保留</span>'
       : kind === 'sub' ? '<span class="ws-src-tag sub">副件搬入</span>'
@@ -7410,9 +7422,13 @@ window.UI = (function () {
     const curTxt = (cur != null && isFinite(cur))
       ? '<span class="ws-cur">' + (cur > 0 ? '+' : '') + cur + '%</span><span class="ws-arrow">→</span>'
       : '';
+    // 这条词缀最终落成的概率（保留 / 副件搬入 = 熔炼成功率；补缀新增 = 熔炼成功 × 补缀命中）
+    const probTxt = (prob != null && isFinite(prob))
+      ? '<span class="ws-aff-prob" title="这条词缀最终出现在主件上的概率">成 ' + prob + '%</span>'
+      : '';
     return '<li>' + tag + esc(D.AFFIX_LABEL[type] || type) + '：' + curTxt +
       '<b>' + esc(rangeText({ min: re.range[0], max: re.range[1] })) + '%</b>' +
-      '<span class="muted">（' + esc(wsRangeNote(re, kind)) + '）</span></li>';
+      '<span class="muted">（' + esc(wsRangeNote(re, kind)) + '）</span>' + probTxt + '</li>';
   }
   // 熔炼结果预览卡：底材与品质不变，可以看到熔完主件还剩几条词条、是否越过词缀池边界。
   function wsResultCardHtml(p) {
@@ -7478,6 +7494,12 @@ window.UI = (function () {
       return;
     }
     const rr = p.ranges || {};
+    // 完全成功 = 所有词缀都落成：熔炼成功（有补缀时还要补缀命中）。逐条词缀的概率见下面的预览列表。
+    const pr = D.smeltSuccessProbs(p.rates, !!p.extraType);
+    const fullLine = '<div class="ws-line">完全成功概率 <b class="ws-full-prob">' + pr.full + '%</b>' +
+      '<span class="hint">（熔炼成功 ' + p.rates.rate + '%' +
+      (p.extraType ? ' × 补缀命中 ' + p.rates.extraRate + '%' : '') +
+      '；逐条词缀的概率见下面每条后面）</span></div>';
     const extra = p.extraType
       ? '<div class="ws-line">补缀：<b>' + esc(D.AFFIX_LABEL[p.extraType] || p.extraType) + '</b>（催化剂 ' + p.load.total +
         ' 份）· 成功率 <b>' + p.rates.extraRate + '%</b>' +
@@ -7501,7 +7523,7 @@ window.UI = (function () {
       '<div class="ws-line">熔炼成功率 <b class="ok">' + p.rates.rate + '%</b>' +
       ' · 失败率 <b class="err">' + p.rates.failRate + '%</b>' +
       '（失败损失副件 / 催化剂 / 残片，且主件被熔掉选中的那条词条）</div>' +
-      extra + retainLine +
+      fullLine + extra + retainLine +
       '<div class="ws-line">花费 <b class="' + (canGold ? '' : 'err') + '">' + p.gold + '💰</b>' +
       (rt.qty > 0 ? ' · 另有 ' + rt.qty + ' 片沉船宝匣残片' : '') +
       (p.pearl ? ' · 已加入龙宫宝珠：' + (p.rollBoundary ? 'roll 两次取靠近区间边界的值' : '（后台已关闭边界取值）') : '') + '</div>' +
@@ -7510,11 +7532,11 @@ window.UI = (function () {
       '<ul class="ws-res-affs">' +
       wsAffixRangeLine('main', wsMainAffix, rr.main, (p.main && p.main.meta ? (function () {
         const a = (p.main.meta.affixes || []).find(function (x) { return x.type === wsMainAffix; }); return a ? a.value : null;
-      })() : null)) +
+      })() : null), pr.keep) +
       wsAffixRangeLine('sub', wsSubAffix, rr.sub, (p.sub && p.sub.meta ? (function () {
         const a = (p.sub.meta.affixes || []).find(function (x) { return x.type === wsSubAffix; }); return a ? a.value : null;
-      })() : null)) +
-      wsAffixRangeLine('add', p.extraType, rr.add) +
+      })() : null), pr.keep) +
+      wsAffixRangeLine('add', p.extraType, rr.add, null, pr.add) +
       (rt.qty > 0 ? '<li>🛡 ' + rt.affixes.map(function (a) { return esc(D.AFFIX_LABEL[a.type] || a.type); }).join(' + ') +
         '：<span class="muted">保留原值</span></li>' : '') +
       '</ul>';
@@ -7647,6 +7669,9 @@ window.UI = (function () {
     body.querySelectorAll('[data-pick]').forEach(function (b) {
       b.addEventListener('click', function () { wsOpenPicker(b.getAttribute('data-pick')); });
     });
+    body.querySelectorAll('[data-unload]').forEach(function (b) {
+      b.addEventListener('click', function () { wsUnload(b.getAttribute('data-unload')); });
+    });
     body.querySelectorAll('.ws-aff').forEach(function (b) {
       b.addEventListener('click', function () {
         const which = b.getAttribute('data-which'), type = b.getAttribute('data-type');
@@ -7715,7 +7740,9 @@ window.UI = (function () {
           '%</b> 概率保留池外词缀（' + p.retain.affixes.map(function (a) { return esc(D.AFFIX_LABEL[a.type] || a.type); }).join(' / ') +
           '）；残片不改变成功率与花费。' : '') + '<br/>' +
         '熔炼成功率 <b>' + p.rates.rate + '%</b>' + (p.extraType ? '，补缀成功率 <b>' + p.rates.extraRate + '%</b>' : '') +
-        (p.pearl ? '，使用 🐚 龙宫宝珠' : '') + '。<br/>失败损失副件 / 催化剂 / 残片，且主件被熔掉选中的那条词条（其余词条保留）。',
+        (p.pearl ? '，使用 🐚 龙宫宝珠' : '') + '。<br/>失败损失副件 / 催化剂 / 残片，且主件被熔掉选中的那条词条（其余词条保留）。' +
+        '<br/>完全成功概率 <b class="ws-full-prob">' + D.smeltSuccessProbs(p.rates, !!p.extraType).full + '%</b>' +
+        '（' + (p.extraType ? '熔炼成功 且 补缀命中' : '熔炼成功') + '）',
     }).then(function (ok) {
       if (!ok) return;
       Promise.resolve(window.Net.smelt({
@@ -7826,11 +7853,12 @@ window.UI = (function () {
       '<div class="ws-grid">' +
       '<div class="ws-col"><h3>♻ 待重铸组件（' + esc(info.qualityName) + '品质）</h3>' +
       (eligible
-        ? '<button class="ws-pick chosen" data-recast-pick="1">' +
+        ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-recast-pick="1">' +
           '<img class="ws-pick-icon" src="assets/item/' + esc(eligible.baseId) + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
           '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
           '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + ' 词条 · 基准价 ' + eligible.price + '💰</span>' +
           '<span class="ws-pick-change">更换</span></button>' +
+          '<button class="mini ws-unload" data-unload="recast" title="清空待重铸组件（同时取消词条指定）">卸下</button></div>' +
           '<div class="hint">点一行 = 把重铸指定到那条词条（再点一次取消指定）</div>' +
           '<div class="rc-pick-list">' + eligible.affixes.map(function (a, i) {
             const rng = affixRangeIn(eligible, a);
@@ -7892,6 +7920,9 @@ window.UI = (function () {
         wsRecastTarget = (wsRecastTarget === i) ? -1 : i;
         renderView();
       });
+    });
+    body.querySelectorAll('[data-unload]').forEach(function (b) {
+      b.addEventListener('click', function () { wsUnload(b.getAttribute('data-unload')); });
     });
     if ($('ws-recast-go')) $('ws-recast-go').addEventListener('click', function () { wsDoRecast(); });
   }

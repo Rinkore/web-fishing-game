@@ -758,8 +758,23 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .ws-line b.err, .err { color: var(--danger); }
 /* 熔炼结果预览：逐条列出「词缀 · 取值区间来源 · 区间」，与服务器掷骰同一份口径 */
 .ws-res-affs { list-style: none; margin: 2px 0 6px; padding: 0; font-size: 13px; }
-.ws-res-affs li { margin-bottom: 2px; }
+.ws-res-affs li { margin-bottom: 2px; display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
 .ws-res-affs .muted { color: var(--muted); }
+/* v0.16.2：每条词缀**后面**标出它最终落成的概率（保留 / 副件搬入 = 熔炼成功率，补缀新增 = 两者相乘） */
+.ws-aff-prob {
+  margin-left: auto; flex: none; font-size: 12px; font-weight: 700;
+  color: var(--accent); background: rgba(45, 212, 191, .14);
+  border: 1px solid rgba(45, 212, 191, .35); border-radius: 4px; padding: 0 6px;
+}
+/* v0.16.2：熔炼汇总里的「完全成功概率」——单独高亮，一眼能看到 */
+.ws-full-prob {
+  font-size: 15px; color: var(--accent); background: rgba(45, 212, 191, .14);
+  border: 1px solid rgba(45, 212, 191, .45); border-radius: 4px; padding: 1px 8px;
+}
+/* v0.16.2：熔炼 / 重铸槽位行——「更换」旁新增「卸下」（清空槽位），两者同一行 */
+.ws-pick-row { display: flex; align-items: stretch; gap: 6px; }
+.ws-pick-row .ws-pick { flex: 1 1 auto; min-width: 0; }
+.ws-pick-row .ws-unload { align-self: center; flex: 0 0 auto; white-space: nowrap; }
 /* 投料里「这次补不了」的材料（该词缀已经在熔炼结果里 / 补缀超上限）直接不显示，
    份数也会一并清掉，见 ui.js 的 wsFitMaterials */
 .ws-mat.hide { display: none; }

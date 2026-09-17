@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.16.1';
+  const VERSION = 'v0.16.2';
   const BUILD = '2026-09-18';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -943,6 +943,25 @@
   }
   function getSmeltCfg() { return smeltCfg; }
 
+  // ---- 玩家存档快照（后台可配：多久存一份、保留最近几份）----
+  // 服务端按 intervalMin 定时给每个账号留一份存档副本，超出 keep 份就丢最旧的；
+  // 后台「账号管理」可把某个账号回档到其中任意一份。
+  const SNAPSHOT_DEFAULTS = { enabled: true, intervalMin: 30, keep: 5 };
+  let snapshotCfg = Object.assign({}, SNAPSHOT_DEFAULTS);
+  function defaultSnapshotCfg() { return Object.assign({}, SNAPSHOT_DEFAULTS); }
+  function setSnapshotCfg(cfg) {
+    const d = defaultSnapshotCfg();
+    const c = (cfg && typeof cfg === 'object') ? cfg : {};
+    if (c.enabled !== undefined && c.enabled !== null) d.enabled = !!c.enabled;
+    const iv = Math.floor(Number(c.intervalMin));
+    if (isFinite(iv)) d.intervalMin = Math.max(1, Math.min(1440, iv));
+    const kp = Math.floor(Number(c.keep));
+    if (isFinite(kp)) d.keep = Math.max(1, Math.min(50, kp));
+    snapshotCfg = d;
+    return snapshotCfg;
+  }
+  function getSnapshotCfg() { return snapshotCfg; }
+
   // 投料清单 [{ id, qty }] → 汇总（总份数 / 各词缀份数 / 主词缀 = 投料量最大的那个）
   function smeltLoadOf(list) {
     const byAffix = {};
@@ -980,6 +999,17 @@
       extraRate: Math.round(extraRate * 10) / 10,
       failRate: Math.round((100 - rate) * 10) / 10,
     };
+  }
+  // 熔炼里每一条词缀的「落成概率」：保留 / 副件搬入 只需熔炼成功；补缀新增还要补缀掷骰命中
+  // （服务端两次掷骰相互独立，都在熔炼成功之后）。完全成功 = 词缀全部落成，界面要单独高亮。
+  function smeltSuccessProbs(rates, hasExtra) {
+    const clamp = function (v) { return Math.max(0, Math.min(100, Number(v) || 0)); };
+    const round1 = function (v) { return Math.round(v * 10) / 10; };
+    const rate = clamp(rates && rates.rate);
+    const extra = clamp(rates && rates.extraRate);
+    const keep = round1(rate);
+    const add = round1(rate * extra / 100);
+    return { keep: keep, add: add, full: hasExtra ? add : keep };
   }
   function smeltGoldOf(load, hasPearl) {
     const c = smeltCfg;
@@ -1779,8 +1809,9 @@
     rollAffixValueBoundary: rollAffixValueBoundary, nearerBoundaryOf: nearerBoundaryOf,
     SMELT_MATERIAL_AFFIX: SMELT_MATERIAL_AFFIX, SMELT_PEARL: SMELT_PEARL,
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
+    SNAPSHOT_DEFAULTS: SNAPSHOT_DEFAULTS, defaultSnapshotCfg: defaultSnapshotCfg, setSnapshotCfg: setSnapshotCfg, getSnapshotCfg: getSnapshotCfg,
     smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds,
-    smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
+    smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltSuccessProbs: smeltSuccessProbs, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
     smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,
     affixSrcRangeOf: affixSrcRangeOf, catalystRangeOf: catalystRangeOf,
     smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,

@@ -184,7 +184,7 @@ let users = {};
 // 默认公式：基础 90% + 「技巧」词缀（技巧是上钩率公式里的一个变量，钩率提示一律不写死在代码里）。
 // 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
 const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, snapshotCfg: null, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
 
 // ---- 宝匣（沉船打捞）----
 // 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
@@ -2553,6 +2553,90 @@ process.on('exit', function () {
   if (recordsFlushTimer) { clearTimeout(recordsFlushTimer); recordsFlushTimer = null; try { saveRecords(); } catch (e) {} }
 });
 
+// ================================================================
+// ---- 玩家存档快照（后台可配：多久存一份 / 保留几份；支持单人回档）----
+// 目录 DATA_DIR/snapshots/<safeKey>/<时间戳>.json —— 与 accounts/ 分开，避免被 loadAccounts 误读。
+// 内容 = accountSaveView 的深拷贝（不带内存专用的 invRev）；回档只覆盖「资产」字段，
+// 密码 / 权限 / 封禁 / 挂单上限这些身份类字段一律保留当前值。
+const SNAPSHOT_DIR = path.join(DATA_DIR, 'snapshots');
+try { fs.mkdirSync(SNAPSHOT_DIR, { recursive: true }); } catch (e) {}
+const SNAP_KEEP_MAX = 50;   // 保留份数上限（与 data.js setSnapshotCfg 的夹取口径一致）
+function snapshotCfgOf() { return (world && world.snapshotCfg) ? world.snapshotCfg : D.defaultSnapshotCfg(); }
+function snapshotDirOf(key) { return path.join(SNAPSHOT_DIR, safeKey(key)); }
+function listSnapshotFiles(key) {
+  let names = [];
+  try { names = fs.readdirSync(snapshotDirOf(key)).filter(function (n) { return /\.json$/.test(n); }); } catch (e) { return []; }
+  // 文件名是「时间戳[-序号].json」，字典序即时间序
+  return names.sort().map(function (n) { return { name: n, file: path.join(snapshotDirOf(key), n), ts: Number(n.split('.')[0].split('-')[0]) || 0 }; });
+}
+function pruneSnapshots(key, keep) {
+  const list = listSnapshotFiles(key);
+  const k = Math.max(1, Math.min(SNAP_KEEP_MAX, Math.floor(Number(keep) || SNAP_KEEP_MAX)));
+  if (list.length <= k) return 0;
+  const drop = list.slice(0, list.length - k);
+  drop.forEach(function (s) { try { fs.unlinkSync(s.file); } catch (e) {} });
+  return drop.length;
+}
+// 给一个账号存一份快照（内存视图深拷贝；同一毫秒重复调用加后缀避免互相覆盖）
+function writeUserSnapshot(key) {
+  const rec = users[key];
+  if (!rec) return null;
+  const dir = snapshotDirOf(key);
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+  const ts = Date.now();
+  let file = path.join(dir, ts + '.json');
+  if (fs.existsSync(file)) file = path.join(dir, ts + '-1.json');
+  const view = JSON.parse(JSON.stringify(accountSaveView(rec)));
+  writeJson(file, view);
+  pruneSnapshots(key, snapshotCfgOf().keep);
+  return file;
+}
+// 全服快照：先 flushAccounts 把脏账号落盘，保证快照与账号文件口径一致
+function takeAllSnapshots() {
+  flushAccounts();
+  let n = 0;
+  Object.keys(users).forEach(function (k) { try { if (writeUserSnapshot(k)) n++; } catch (e) {} });
+  return n;
+}
+let snapshotTimer = null;
+function armSnapshotTimer() {
+  if (snapshotTimer) { clearInterval(snapshotTimer); snapshotTimer = null; }
+  const cfg = snapshotCfgOf();
+  if (!cfg.enabled) return;
+  const min = Math.max(1, Math.floor(Number(cfg.intervalMin) || 30));
+  snapshotTimer = setInterval(function () {
+    try { takeAllSnapshots(); } catch (e) { console.log('[snapshot] 快照失败: ' + e.message); }
+  }, min * 60000);
+  snapshotTimer.unref();
+}
+// 快照摘要（后台列表用，不必把整份存档发给前端）
+function snapshotSummary(view) {
+  const inv = (view && view.inventory) || {};
+  const ids = Object.keys(inv);
+  let total = 0;
+  ids.forEach(function (id) { total += Math.max(0, Math.floor(Number(inv[id]) || 0)); });
+  return {
+    coins: Math.max(0, Math.floor(Number(view && view.coins) || 0)),
+    kinds: ids.length, total: total,
+    rodSlots: Object.keys((view && view.rodSlots) || {}).length,
+    catchCount: Math.max(0, Math.floor(Number(view && view.catchCount) || 0)),
+  };
+}
+// 回档覆盖的资产字段（profileOf 里属于「玩家资产」的那批）
+const SNAPSHOT_ASSET_KEYS = ['coins', 'inventory', 'bigfish', 'codex', 'catchCount', 'bd', 'rodSlots', 'rodActiveSlot', 'rodName', 'autoSell', 'subNotify'];
+function applySnapshot(rec, view) {
+  SNAPSHOT_ASSET_KEYS.forEach(function (k) {
+    if (view[k] === undefined) delete rec[k];
+    else rec[k] = JSON.parse(JSON.stringify(view[k]));
+  });
+  rec.inventory = rec.inventory || {};
+  rec.codex = rec.codex || {};
+  rec.catchCount = Math.max(0, Math.floor(Number(rec.catchCount) || 0));
+  bumpInvRev(rec);   // 整体替换资产：版本号必须前进（与后台快照编辑同口径）
+  Object.keys(rec.inventory).forEach(function (id) { bigfishClampTo(rec, id); });
+  return rec;
+}
+
 // ---- 世界域：市集 / 记录 / 经济 / 配置 各自一个文件 ----
 function loadDomain(file, keys) {
   const data = readJson(file);
@@ -2566,7 +2650,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax', 'rank', 'lastRec'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['features', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg'];
+const CONFIG_KEYS = ['features', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg', 'snapshotCfg'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
@@ -2707,6 +2791,9 @@ function loadWorld() {
 loadUsers();
 migrateAutoSell(); // v0.13.8 自动售出重做：旧 {all,fish} 结构升级为逐物品 {items}
 loadWorld();
+// 存档快照：把持久化的配置灌进共享目录（data.js 的 getSnapshotCfg 供后台表单回显），再挂定时器
+world.snapshotCfg = D.setSnapshotCfg(world.snapshotCfg);
+armSnapshotTimer();
 armStatsSampler();   // 统计采样基于 loadWorld 后的历史样本，必须排在其后
 loadSessions(); // 重启后恢复登录态（客户端可自动登录，见 sessionGet 注释）
 // v0.8 组件实例化迁移：旧编码组件 id（`部位_code值_…`）→ 实例签名；背包/钓竿配置/挂单原位换新。
@@ -4955,7 +5042,7 @@ const server = http.createServer(function (req, res) {
         if (a) {
           const target = String((d && (d.target || d.key || d.user || d.username || d.id)) || '');
           const parts = [];
-          ['admin', 'hours', 'reason', 'coins', 'note', 'status', 'amount', 'qty', 'price', 'name', 'gid', 'sid', 'cid', 'range', 'spotKey', 'validateOnly'].forEach(function (k) {
+          ['admin', 'hours', 'reason', 'coins', 'note', 'status', 'amount', 'qty', 'price', 'name', 'gid', 'sid', 'cid', 'range', 'spotKey', 'validateOnly', 'snap'].forEach(function (k) {
             if (d && d[k] !== undefined && (typeof d[k] !== 'object' || d[k] === null)) parts.push(k + '=' + String(d[k]).slice(0, 40));
           });
           if (d && d.features && typeof d.features === 'object') {
@@ -5628,6 +5715,83 @@ function lootPreviewRows(spot, rareVal) {
     });
     return;
   }
+  // ---- 存档快照：列出某个账号的历史快照（管理员） ----
+  if (p === '/api/admin/users/snapshots' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    const target = String(u.query.key || '').toLowerCase();
+    if (!users[target]) return apiResp(res, 404, { error: '账号不存在' });
+    const cfg = snapshotCfgOf();
+    // 新的在前：回档列表从最近的往下看最顺手
+    const list = listSnapshotFiles(target).reverse().map(function (s) {
+      const view = readJson(s.file) || {};
+      let size = 0;
+      try { size = fs.statSync(s.file).size; } catch (e) {}
+      return Object.assign({ name: s.name, ts: s.ts, size: size }, snapshotSummary(view));
+    });
+    return apiResp(res, 200, { ok: true, key: target, cfg: cfg, count: list.length, snapshots: list });
+  }
+  // ---- 存档快照：立即备份（给了 target 就只备这一个，否则全服）（管理员） ----
+  if (p === '/api/admin/users/snapshot-now' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      const d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const target = String(d.target || '').toLowerCase();
+      let n = 0;
+      if (target) {
+        if (!users[target]) return apiResp(res, 404, { error: '账号不存在' });
+        if (writeUserSnapshot(target)) n = 1;
+      } else {
+        n = takeAllSnapshots();
+      }
+      return apiResp(res, 200, { ok: true, key: target || null, count: n, keep: snapshotCfgOf().keep });
+    });
+    return;
+  }
+  // ---- 存档快照：把某个账号回档到指定快照（管理员） ----
+  if (p === '/api/admin/users/rollback' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      const d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const target = String(d.target || '').toLowerCase();
+      const rec = users[target];
+      if (!rec) return apiResp(res, 404, { error: '账号不存在' });
+      if (d.confirm !== true) return apiResp(res, 400, { error: '回档需要二次确认' });
+      const snap = String(d.snap || '');
+      if (!/^[0-9]{6,}(-[0-9]{1,3})?\.json$/.test(snap)) return apiResp(res, 400, { error: '快照名无效' });
+      const view = readJson(path.join(snapshotDirOf(target), snap));
+      if (!view || typeof view !== 'object') return apiResp(res, 404, { error: '快照不存在或已损坏' });
+      // 回档前先留一份「回档前」的快照：点错还能退回来
+      writeUserSnapshot(target);
+      applySnapshot(rec, view);
+      saveAccount(target);
+      sendTo(target, {
+        type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec),
+        codex: rec.codex, catchCount: rec.catchCount, bigfish: rec.bigfish || {},
+      });
+      const ts = Number(snap.split('.')[0].split('-')[0]);
+      sendTo(target, { type: 'notice', msg: '管理员把你的存档回档到了 ' + new Date(ts).toLocaleString('zh-CN') });
+      return apiResp(res, 200, { ok: true, key: target, snap: snap, coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec) });
+    });
+    return;
+  }
+  // ---- 存档快照：保存策略（间隔分钟 / 保留份数 / 是否启用）（管理员） ----
+  if (p === '/api/admin/snapshot/config' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      const d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const patch = (d.cfg && typeof d.cfg === 'object') ? d.cfg : {};
+      const merged = D.setSnapshotCfg(d.reset === true ? null : Object.assign({}, world.snapshotCfg || {}, patch));
+      world.snapshotCfg = merged;
+      saveConfig();
+      armSnapshotTimer();   // 间隔/开关变了要重挂（与价格采样器同一套写法）
+      return apiResp(res, 200, { ok: true, cfg: merged });
+    });
+    return;
+  }
   // ---- 账号管理：改密码 / 改显示名 / 调整金币（管理员） ----
   if (p === '/api/admin/users/update' && req.method === 'POST') {
     adminAuditedBody(req, p, function (body) {
@@ -5720,6 +5884,7 @@ function lootPreviewRows(spot, rareVal) {
       biteFormula: world.biteFormula || BITE_FORMULA_DEFAULT,
       // 稀有度（rare 词缀）：普通品质物品权重系数 K/(K+R) 的 K 值
       rareK: rareK(), rareKDefault: D.RARE_K_DEFAULT,
+      snapshotCfg: snapshotCfgOf(),
       // 材料催化词缀范围的一键预设（按部位 × 词缀 = 该部位包络）与各部位包络（校验约束提示用）
       catalystPreset: D.catalystPreset(),
       catalystEnvelopes: (function () {

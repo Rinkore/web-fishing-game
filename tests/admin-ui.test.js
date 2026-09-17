@@ -657,7 +657,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
           hasCus: !!document.getElementById('cus-base') && !!document.getElementById('cus-preview'),
         };
       });
-      check('新增物品为名称下拉（鱼/材料/组件分组）', snapUi.groups.join(',') === '鱼,材料,组件（底材）' && snapUi.opts >= 75, JSON.stringify(snapUi.groups));
+      // v0.16.2：分组补上「宝匣」——原先只列了鱼 / 材料 / 组件，宝匣（kind='chest'）被漏掉
+      check('新增物品为名称下拉（鱼/材料/宝匣/组件分组）', snapUi.groups.join(',') === '鱼,材料,宝匣,组件（底材）' && snapUi.opts >= 75, JSON.stringify(snapUi.groups));
       check('背包行显示物品名而非裸 ID', /鲫鱼|黄金锦鲤|耐磨绳/.test(snapUi.rowText), snapUi.rowText);
       check('定制配件区已渲染', snapUi.hasCus === true, JSON.stringify(snapUi.hasCus));
       // 定制配件：选底材 → 加词条 → 预览生成名字 → 加入草稿

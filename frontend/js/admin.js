@@ -916,6 +916,17 @@ window.Admin = (function () {
       '<div id="mgr-sug" class="mgr-sug"></div></span>' +
       '<button class="btn mini" id="mgr-q-clear">清空</button>' +
       '<span class="hint">输入即过滤；点联想项直接定位到该账号</span></div>' +
+      '<div id="snap-cfg-row" class="mgr-row snap-cfg-row">' +
+      '<label>🗄 存档快照</label>' +
+      '<label class="switch"><input type="checkbox" id="snap-cfg-on" title="关闭后不再自动备份（仍可手动备份）"><span class="sl"></span></label>' +
+      '<span class="hint">每</span>' +
+      '<input id="snap-cfg-min" class="ipt mk-num" type="number" min="1" max="1440" title="自动备份间隔（分钟）" />' +
+      '<span class="hint">分钟存一份 · 每人保留最近</span>' +
+      '<input id="snap-cfg-keep" class="ipt mk-num" type="number" min="1" max="50" title="每人保留最近几份" />' +
+      '<span class="hint">份</span>' +
+      '<button class="btn mini primary" id="snap-cfg-save">保存策略</button>' +
+      '<button class="btn mini" id="snap-cfg-now">立即备份全部</button>' +
+      '<span class="hint" id="snap-cfg-state">读取中…</span></div>' +
       '<div id="mgr-list" class="panel">加载中…</div>';
     const q = $('mgr-q');
     q.oninput = function () { mgrQuery = q.value; drawMgrList(); drawMgrSug(); };
@@ -923,7 +934,44 @@ window.Admin = (function () {
     // 延迟隐藏，让「点联想项」的 click 先于 blur 生效
     q.onblur = function () { setTimeout(function () { const b = $('mgr-sug'); if (b) b.style.display = 'none'; }, 180); };
     $('mgr-q-clear').onclick = function () { mgrQuery = ''; q.value = ''; drawMgrList(); drawMgrSug(); };
+    wireSnapCfg();
+    loadSnapCfg();
     loadMgrList();
+  }
+  // ---- 存档快照策略（全局）：间隔分钟 / 保留份数 / 是否启用 ----
+  // 服务端按这套参数定时给每个账号留一份存档副本，超出份数丢最旧的；改完立即重挂定时器。
+  function loadSnapCfg() {
+    loadWorldCfg().then(function (cfg) {
+      const c = (cfg && cfg.snapshotCfg) || { enabled: true, intervalMin: 30, keep: 5 };
+      const on = $('snap-cfg-on'), min = $('snap-cfg-min'), keep = $('snap-cfg-keep'), st = $('snap-cfg-state');
+      if (!on) return;   // 已切走页面
+      on.checked = !!c.enabled; min.value = c.intervalMin; keep.value = c.keep;
+      st.innerHTML = c.enabled
+        ? ('当前：每 <b>' + c.intervalMin + '</b> 分钟存一份，每人保留最近 <b>' + c.keep + '</b> 份')
+        : '当前：<b class="err">自动存档已关闭</b>（仍可手动备份 / 回档）';
+    });
+  }
+  function wireSnapCfg() {
+    const save = $('snap-cfg-save'), now = $('snap-cfg-now');
+    if (save) save.onclick = function () {
+      adminApi('POST', '/api/admin/snapshot/config', {
+        token: token,
+        cfg: { enabled: $('snap-cfg-on').checked, intervalMin: Number($('snap-cfg-min').value) || 30, keep: Number($('snap-cfg-keep').value) || 5 },
+      }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
+        worldCfg = null;   // 其它页面下次重新拉
+        toast('存档策略已保存：每 ' + r.data.cfg.intervalMin + ' 分钟 / 保留最近 ' + r.data.cfg.keep + ' 份');
+        loadSnapCfg();
+      });
+    };
+    if (now) now.onclick = function () {
+      now.disabled = true;
+      adminApi('POST', '/api/admin/users/snapshot-now', { token: token }).then(function (r) {
+        now.disabled = false;
+        if (!r.ok) { toast(r.data.error || '备份失败', true); return; }
+        toast('已为 ' + r.data.count + ' 个账号各存一份快照');
+      });
+    };
   }
   function loadMgrList() {
     adminApi('GET', '/api/admin/users?token=' + encodeURIComponent(token)).then(function (r) {
@@ -999,6 +1047,7 @@ window.Admin = (function () {
         '<td class="mgr-acts">' +
         '<button class="btn mini" data-edit="' + esc(u.key) + '">编辑</button>' +
         '<button class="btn mini" data-snap="' + esc(u.key) + '">快照</button>' +
+        '<button class="btn mini" data-snaps="' + esc(u.key) + '" title="查看这个账号的历史存档，可回档到任意一份">存档/回档</button>' +
         (u.banned
           ? '<button class="btn mini" data-unban="' + esc(u.key) + '"' + (self ? ' disabled title="不能操作自己"' : '') + '>解封</button>'
           : '<button class="btn mini danger" data-ban="' + esc(u.key) + '"' + (self ? ' disabled title="不能封禁自己"' : '') + '>封禁</button>') +
@@ -1029,6 +1078,7 @@ window.Admin = (function () {
     });
     $('mgr-list').querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { openMgrEdit(b.getAttribute('data-edit')); }; });
     $('mgr-list').querySelectorAll('[data-snap]').forEach(function (b) { b.onclick = function () { openMgrSnapshot(b.getAttribute('data-snap')); }; });
+    $('mgr-list').querySelectorAll('[data-snaps]').forEach(function (b) { b.onclick = function () { openMgrSnapshots(b.getAttribute('data-snaps')); }; });
     $('mgr-list').querySelectorAll('[data-ban]').forEach(function (b) { b.onclick = function () { openBanDialog(b.getAttribute('data-ban')); }; });
     $('mgr-list').querySelectorAll('[data-unban]').forEach(function (b) {
       b.onclick = function () {
@@ -1232,13 +1282,20 @@ window.Admin = (function () {
       const d = r.data;
       // 物品目录（鱼/材料/组件底材）来自前端共享数据，新增物品改为按名称选择
       const hasData = (typeof GameData !== 'undefined' && !!GameData.allItems);
-      const byKind = { fish: [], material: [], component: [] };
+      // 物品目录覆盖**全部物品**（鱼 / 材料 / 宝匣 / 组件底材）；组件实例走「定制配件」或物品行的「改词条」
+      const byKind = { fish: [], material: [], chest: [], component: [] };
       (hasData ? GameData.allItems() : []).forEach(function (it) { (byKind[it.kind] || (byKind[it.kind] = [])).push(it); });
       const opt = function (it) { return '<option value="' + esc(it.id) + '">' + esc(it.name) + '（' + esc(it.id) + '）</option>'; };
       const grp = function (label, arr) { return arr.length ? '<optgroup label="' + label + '">' + arr.map(opt).join('') + '</optgroup>' : ''; };
-      const itemOptions = hasData
-        ? (grp('鱼', byKind.fish) + grp('材料', byKind.material) + grp('组件（底材）', byKind.component))
-        : '<option value="">（数据目录未加载，请手动输入 ID）</option>';
+      // 新增物品按关键词过滤（名称 / ID，不区分大小写），命中的按分类分组列出
+      const addOptionsHtml = function (kw) {
+        if (!hasData) return '<option value="">（数据目录未加载，请手动输入 ID）</option>';
+        const k = String(kw || '').trim().toLowerCase();
+        const hit = function (it) { return !k || String(it.id).toLowerCase().indexOf(k) >= 0 || String(it.name).toLowerCase().indexOf(k) >= 0; };
+        return grp('鱼', byKind.fish.filter(hit)) + grp('材料', byKind.material.filter(hit)) +
+          grp('宝匣', byKind.chest.filter(hit)) + grp('组件（底材）', byKind.component.filter(hit));
+      };
+      const itemOptions = addOptionsHtml('');
       document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
       const ov = document.createElement('div');
       ov.className = 'modal-overlay';
@@ -1249,6 +1306,7 @@ window.Admin = (function () {
         '<div class="mgr-row snap-search-row"><input id="snap-search" class="ipt" type="text" placeholder="搜索背包物品（名称 / 物品ID，不区分大小写）" /></div>' +
         '<div id="snap-inv" class="snap-inv"></div>' +
         '<div class="mgr-row" style="margin-top:10px"><label>新增物品</label>' +
+        '<input id="snap-add-search" class="ipt" type="text" placeholder="搜索物品（名称 / ID）" style="max-width:190px" />' +
         '<select id="snap-add-id" class="ipt" style="min-width:240px">' + itemOptions + '</select>' +
         '<input id="snap-add-qty" class="ipt mk-num" type="number" min="1" value="1" />' +
         '<button class="btn mini" id="snap-add">添加</button></div>' +
@@ -1261,7 +1319,9 @@ window.Admin = (function () {
         '<div class="hint" id="cus-preview" style="margin-top:6px"></div>' +
         '<div class="mgr-row" style="margin-top:6px"><label>数量</label>' +
         '<input id="cus-qty" class="ipt mk-num" type="number" min="1" value="1" />' +
-        '<button class="btn mini primary" id="cus-add">添加到背包</button></div>' +
+        '<button class="btn mini primary" id="cus-add">添加到背包</button>' +
+        '<button class="btn mini" id="cus-edit-cancel" style="display:none" title="放弃对原件的修改">取消修改</button>' +
+        '<span class="hint" id="cus-edit-hint"></span></div>' +
         '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn primary" id="snap-save">保存快照</button></div>' +
         '</div></div>';
       document.body.appendChild(ov);
@@ -1275,8 +1335,12 @@ window.Admin = (function () {
         invBox.innerHTML = keys.map(function (id) {
           const meta = (typeof GameData !== 'undefined' && GameData.itemOf) ? GameData.itemOf(id) : null;
           const nm = meta ? meta.name : id;
+          // 组件实例（带品质 / 词条）可以改词条与属性：载入下方「定制配件」区改完替换原件
+          const isInst = !!(window.GameData && GameData.instanceOf && GameData.instanceOf(id));
           return '<div class="mgr-row snap-line" data-sid="' + esc(id) + '"><label title="' + esc(id) + '">' + esc(nm) + '<div class="hint">' + esc(id) + '</div></label>' +
-            '<input class="ipt mk-num" type="number" min="0" data-inv="' + esc(id) + '" value="' + inv[id] + '" /></div>';
+            '<input class="ipt mk-num" type="number" min="0" data-inv="' + esc(id) + '" value="' + inv[id] + '" />' +
+            (isInst ? '<button class="btn mini" data-itemedit="' + esc(id) + '" title="改这件组件的品质 / 词条（数量直接改左边的框）">改词条</button>' : '') +
+            '</div>';
         }).join('');
         filterInv();
       }
@@ -1292,6 +1356,11 @@ window.Admin = (function () {
         });
       }
       searchBox.addEventListener('input', filterInv);
+      // 「改词条」：把该组件实例载入下方「定制配件」区，改完点「应用修改」替换原件（数量也可直接改）
+      invBox.addEventListener('click', function (e) {
+        const b = (e.target && e.target.closest) ? e.target.closest('[data-itemedit]') : null;
+        if (b) loadInstanceIntoCustom(b.getAttribute('data-itemedit'));
+      });
       drawInv(d.inventory || {});
       // 统一的「往背包草稿加一件」：已有同 id 就叠加数量，否则追加一行
       function invAddDraft(id, qty) {
@@ -1316,6 +1385,14 @@ window.Admin = (function () {
         invAddDraft(id, qty);
         toast('已加入草稿：' + itemNameOf(id) + ' × ' + qty);
       };
+      // 新增物品的搜索框：过滤下拉里的可选项（保留原选中项，避免过滤时把目标改掉）
+      const addSearch = ov.querySelector('#snap-add-search');
+      const addSel = ov.querySelector('#snap-add-id');
+      if (addSearch && addSel) addSearch.addEventListener('input', function () {
+        const keep = addSel.value;
+        addSel.innerHTML = addOptionsHtml(addSearch.value);
+        for (const o of addSel.options) { if (o.value === keep) { addSel.value = keep; break; } }
+      });
       // —— 定制配件：底材 × 品质 × 词条 → 组件实例。id 用 GameData.instanceId 生成（与游戏同一套编码），
       // 服务端按实例规则校验后入包。
       // 定制件刻意**不受底材词缀池与自然区间限制**：6 类词条都能选（不在该底材池里的按池外区间显示、
@@ -1334,6 +1411,7 @@ window.Admin = (function () {
         return '<option value="' + k + '">' + esc(qDef[k].name) + '</option>';
       }).join('');
       let cusList = [];
+      let cusEditFrom = '';   // 非空 = 正在改背包里这件实例（「应用修改」会替换它）
       function cusBase() { return bases.find(function (b) { return b.id === bSel.value; }) || null; }
       // 某类词条对当前底材的「自然区间」：底材池内 → 该底材区间（含后台覆盖）；池外 → 池外（突破）区间
       function cusRange(b, type) {
@@ -1413,11 +1491,53 @@ window.Admin = (function () {
         cusList.push({ type: next, value: cusRange(b, next).min });
         drawCus();
       };
+      // 改词条模式：把「添加到背包」切成「应用修改（替换原件）」，并在旁边给出正在改哪一件
+      function setCusEditMode(id) {
+        cusEditFrom = id || '';
+        const btn = ov.querySelector('#cus-add');
+        const cancel = ov.querySelector('#cus-edit-cancel');
+        const hint = ov.querySelector('#cus-edit-hint');
+        if (btn) btn.textContent = cusEditFrom ? '✅ 应用修改（替换原件）' : '添加到背包';
+        if (cancel) cancel.style.display = cusEditFrom ? '' : 'none';
+        if (hint) hint.innerHTML = cusEditFrom
+          ? '正在修改：<b>' + esc(cusEditFrom) + '</b>（底材 / 品质 / 词条 / 数量都可改；改完点左边按钮替换，同 id 就只改数量）'
+          : '';
+      }
+      // 把背包里的一件组件实例载入定制配件区（品质、词条与数值都是它的现值）
+      function loadInstanceIntoCustom(id) {
+        const inst = (window.GameData && GameData.instanceOf) ? GameData.instanceOf(id) : null;
+        if (!inst) { toast('只有组件（带品质与词条）能改词条', true); return; }
+        bSel.value = inst.baseId;
+        ov.querySelector('#cus-quality').value = inst.quality;
+        cusList = (inst.affixes || []).map(function (a) { return { type: a.type, value: a.value, src: a.src }; });
+        drawCus();
+        const inp = ov.querySelector('[data-inv="' + id + '"]');
+        ov.querySelector('#cus-qty').value = inp ? (Number(inp.value) || 1) : 1;
+        setCusEditMode(id);
+        toast('已载入「' + (GameData.itemOf(id).name || id) + '」：改完点「应用修改」替换原件');
+      }
+      if (ov.querySelector('#cus-edit-cancel')) {
+        ov.querySelector('#cus-edit-cancel').onclick = function () { setCusEditMode(''); toast('已取消修改（原件未变）'); };
+      }
       ov.querySelector('#cus-add').onclick = function () {
         const id = cusId();
         const meta = (window.GameData && GameData.instanceMeta) ? GameData.instanceMeta(id) : null;
         if (!meta) { toast('无法生成该配件：词条类型与底材不匹配', true); return; }
         const qty = Math.max(1, Number(ov.querySelector('#cus-qty').value) || 1);
+        if (cusEditFrom) {
+          const from = cusEditFrom;
+          const inp = ov.querySelector('[data-inv="' + from + '"]');
+          if (id === from) {
+            if (inp) inp.value = qty;
+            toast('已更新数量：' + meta.name + ' × ' + qty);
+          } else {
+            if (inp) inp.value = 0;   // 原件记 0 件 = 保存时移除
+            invAddDraft(id, qty);
+            toast('已替换为：' + meta.name + ' × ' + qty);
+          }
+          setCusEditMode('');
+          return;
+        }
         invAddDraft(id, qty);
         toast('已加入草稿：' + meta.name + ' × ' + qty);
       };
@@ -1434,6 +1554,71 @@ window.Admin = (function () {
           toast('快照已保存'); ov.remove(); loadMgrList();
         });
       };
+    });
+  }
+  // 存档回档：列出某个账号的历史快照（新→旧），可回档到任意一份，也可立即补一份。
+  // 回档是破坏性操作：行内两步确认（点「回档到这份」→ 再点「确认回档」），服务端另有 confirm 校验。
+  function openMgrSnapshots(key) {
+    adminApi('GET', '/api/admin/users/snapshots?token=' + encodeURIComponent(token) + '&key=' + encodeURIComponent(key)).then(function (r) {
+      if (!r.ok) { toast(r.data.error || '读取存档列表失败', true); return; }
+      const d = r.data;
+      document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+      const ov = document.createElement('div');
+      ov.className = 'modal-overlay';
+      const rows = d.snapshots.length ? d.snapshots.map(function (s, i) {
+        const when = new Date(s.ts).toLocaleString('zh-CN');
+        return '<div class="mgr-row snap-line" data-snapname="' + esc(s.name) + '">' +
+          '<label>' + esc(when) + '<div class="hint">' + esc(s.name) + ' · ' + Math.max(1, Math.round(s.size / 1024)) + ' KB</div></label>' +
+          '<span class="hint">💰 ' + s.coins + ' · ' + s.kinds + ' 种 / ' + s.total + ' 件' +
+          (s.rodSlots ? ' · 钓竿槽位 ' + s.rodSlots : '') + ' · 捕获 ' + s.catchCount + '</span>' +
+          '<button class="btn mini' + (i === 0 ? ' primary' : '') + '" data-roll="' + esc(s.name) + '">回档到这份</button>' +
+          '</div>';
+      }).join('') : '<div class="hint">还没有存档快照。点上面的「立即备份」或等定时任务跑一次。</div>';
+      ov.innerHTML = '<div class="modal-box confirm-modal snap-modal"><div class="modal-head"><span class="modal-title">存档回档 · ' + esc(key) + '</span></div>' +
+        '<div class="modal-body">' +
+        '<div class="hint" style="margin-bottom:8px">策略：' +
+        (d.cfg.enabled ? '每 ' + d.cfg.intervalMin + ' 分钟自动存一份，每人保留最近 ' + d.cfg.keep + ' 份' : '自动存档已关闭（仍可手动备份）') +
+        '；该账号现有 <b>' + d.count + '</b> 份。<br/>回档只覆盖<b>资产</b>（金币 / 背包 / 图鉴 / 钓竿槽位 / 捕获数），' +
+        '密码、管理员权限、封禁状态与挂单上限保持不变；回档前会自动留一份「回档前」的快照，点错了能退回来。</div>' +
+        '<div class="mgr-row"><button class="btn mini" id="roll-now">立即为这个账号存一份</button>' +
+        '<span class="hint">存放在数据目录的 snapshots / ' + esc(key) + ' 下</span></div>' +
+        '<div id="roll-list">' + rows + '</div>' +
+        '<div class="cf-actions"><button class="btn mini cf-no">关闭</button></div>' +
+        '</div></div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+      ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
+      ov.querySelector('#roll-now').onclick = function () {
+        ov.querySelector('#roll-now').disabled = true;
+        adminApi('POST', '/api/admin/users/snapshot-now', { token: token, target: key }).then(function (rr) {
+          if (!rr.ok) { toast(rr.data.error || '备份失败', true); return; }
+          toast('已为 ' + key + ' 存一份快照');
+          ov.remove(); openMgrSnapshots(key);
+        });
+      };
+      ov.querySelectorAll('[data-roll]').forEach(function (b) {
+        b.onclick = function () {
+          const name = b.getAttribute('data-roll');
+          const line = b.parentNode;
+          line.querySelectorAll('.roll-armed').forEach(function (x) { x.remove(); });
+          b.style.display = 'none';
+          const act = document.createElement('span');
+          act.className = 'roll-armed';
+          act.innerHTML = '<button class="btn mini danger" data-roll-go>确认回档</button>' +
+            '<button class="btn mini" data-roll-no>取消</button>';
+          line.appendChild(act);
+          act.querySelector('[data-roll-no]').onclick = function () { act.remove(); b.style.display = ''; };
+          act.querySelector('[data-roll-go]').onclick = function () {
+            const go = act.querySelector('[data-roll-go]');
+            go.disabled = true;
+            adminApi('POST', '/api/admin/users/rollback', { token: token, target: key, snap: name, confirm: true }).then(function (rr) {
+              if (!rr.ok) { go.disabled = false; toast(rr.data.error || '回档失败', true); return; }
+              toast('已回档：金币 ' + rr.data.coins + ' · 物品种类 ' + Object.keys(rr.data.inventory || {}).length);
+              ov.remove(); loadMgrList();
+            });
+          };
+        };
+      });
     });
   }
   // 删除账号（二次确认）
