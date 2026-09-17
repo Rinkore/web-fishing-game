@@ -123,15 +123,16 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('点击登录后遮罩隐藏（进入游戏）', $('auth').style.display === 'none', 'display=' + $('auth').style.display);
     check('点击登录后无报错信息', !$('auth-msg').textContent, 'msg=' + $('auth-msg').textContent);
     // v0.11.3 起侧栏取消「更多」折叠组：13 个入口全部平铺常驻（低频入口也直接可见；宝匣已并入工坊开箱）
-    check('登录后已渲染全部导航（13 个入口，无折叠组）',
-      w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 13,
+    check('登录后已渲染全部导航（9 个入口，无折叠组）',
+      w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 9,
       'got ' + w.document.querySelectorAll('#nav .nav-item:not(.locked)').length);
     check('没有折叠组按钮与折叠组容器',
       w.document.querySelectorAll('#nav .nav-more').length === 0 && w.document.querySelectorAll('#nav .nav-group').length === 0,
       'more=' + w.document.querySelectorAll('#nav .nav-more').length + ' group=' + w.document.querySelectorAll('#nav .nav-group').length);
-    check('低频入口（图鉴/记录/反馈/日志）直接可见',
-      w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 13 &&
-      /鱼类图鉴/.test(w.document.getElementById('nav').textContent) &&
+    check('低频入口（图鉴/反馈/日志）直接可见',
+      w.document.querySelectorAll('#nav .nav-item:not(.locked)').length === 9 &&
+      /图鉴/.test(w.document.getElementById('nav').textContent) &&
+      /反馈/.test(w.document.getElementById('nav').textContent) &&
       /日志/.test(w.document.getElementById('nav').textContent),
       'got ' + w.document.querySelectorAll('#nav .nav-item:not(.locked)').length);
     check('无未实现入口：商城与工坊都已开放（不再有锁定占位）', w.document.querySelectorAll('#nav .nav-item.locked').length === 0, 'got ' + w.document.querySelectorAll('#nav .nav-item.locked').length);

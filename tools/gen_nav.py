@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""导航栏像素图标 13 个（16x16 x3 = 48px，透明底）。"""
+"""导航栏像素图标（16x16 x3 = 48px，透明底）。与 frontend/js/data.js 的 NAV 入口一一对应。"""
 import os, math
 from PIL import Image
 from gen_fish import Canvas, hex2rgb, shade
 
-ROOT = r"C:\Users\qxl\web-fishing-game\frontend\assets\nav"
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend', 'assets', 'nav')
 os.makedirs(ROOT, exist_ok=True)
 CELL, W, H = 3, 16, 16
 
@@ -22,6 +22,20 @@ def i_fishing(cv):
     cv.tri(12, 9, 12, 11, 14, 10, hex2rgb('#3ec9f0'))
     cv.fill(7, 9, 8, 10, (20, 24, 30))
 
+def i_character(cv):
+    """角色：戴帽渔夫 + 脚边同伴"""
+    cv.fill(3, 4, 12, 4, hex2rgb('#2f7f9e'))          # 帽檐
+    cv.fill(5, 2, 10, 3, hex2rgb('#3ea6c9'))          # 帽顶
+    cv.fill(6, 5, 9, 7, hex2rgb('#f0c89a'))           # 脸
+    cv.set(7, 6, (30, 34, 40)); cv.set(9, 6, (30, 34, 40))
+    cv.fill(5, 8, 10, 12, hex2rgb('#2f7f9e'))         # 身体
+    cv.line(5, 9, 3, 11, hex2rgb('#2f7f9e'))          # 手臂
+    cv.fill(6, 13, 7, 14, hex2rgb('#3a4a58'))         # 腿
+    cv.fill(8, 13, 9, 14, hex2rgb('#3a4a58'))
+    cv.line(10, 10, 14, 2, hex2rgb('#8a6a42'))        # 钓竿
+    cv.line(14, 2, 14, 6, hex2rgb('#c8d4dc'))         # 钓线
+    cv.fill(1, 12, 3, 13, hex2rgb('#c9963e'))         # 同伴（小狗）
+    cv.set(1, 11, hex2rgb('#e0b25e'))
 def i_bd(cv):
     """钓竿配置：扳手"""
     cv.line(3, 13, 11, 5, hex2rgb('#9aa4ae'), thick=2)
@@ -129,7 +143,7 @@ def i_workshop(cv):
     cv.line(13, 11, 14, 13, hex2rgb('#9aa4ae'))
 
 ICONS = {
-    'fishing': i_fishing, 'bd': i_bd, 'ground': i_ground, 'inventory': i_inventory,
+    'fishing': i_fishing, 'character': i_character, 'bd': i_bd, 'ground': i_ground, 'inventory': i_inventory,
     'chest': i_chest, 'workshop': i_workshop, 'shop': i_shop, 'market': i_market, 'trade': i_trade,
     'mall': i_mall, 'codex': i_codex, 'records': i_records, 'feedback': i_feedback,
     'logs': i_logs,

@@ -158,6 +158,17 @@ button.primary.big { font-size: 16px; padding: 14px; }
 button.primary:disabled, button.locked { cursor: not-allowed; }
 button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 1px dashed var(--line); }
 .hint { font-size: 12px; color: var(--muted); }
+/* 页面级说明行：紧跟在标题 / 页签下方，统一各页「这一页怎么用」的口径。
+   与 .ws-help 视觉同源（左侧竖线 + 淡底），避免每页各写一套样式。 */
+.page-help {
+  font-size: 12px; line-height: 1.7; color: var(--muted);
+  border-left: 3px solid var(--accent2); padding: 6px 10px; margin: 0 0 12px;
+  background: rgba(255, 255, 255, .03); border-radius: 6px;
+}
+.section-tabs { margin-bottom: 10px; }
+.section-tabs .inv-cat { font-weight: 600; }
+/* 页内的分类筛选（背包分类 / 图鉴分类 / 日志分类 / 市集分页）：比页签低一级，字号略小 */
+.sub-cats .inv-cat { font-size: 12px; padding: 4px 11px; }
 
 .here-count { font-size: 13px; color: var(--accent); margin-bottom: 10px; }
 .peeps { display: flex; flex-direction: column; gap: 8px; }

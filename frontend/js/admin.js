@@ -170,7 +170,7 @@ window.Admin = (function () {
     { id: 'formula', name: '🧮 公式管理' },
     { id: 'notify', name: '🔔 通知等级' },
     { id: 'banner', name: '📢 横幅管理' },
-    { id: 'feedback', name: '📮 反馈意见' },
+    { id: 'feedback', name: '📮 反馈' },
     { id: 'records', name: '🏆 纪录贴图' },
   ];
   function renderNav() {
@@ -192,15 +192,23 @@ window.Admin = (function () {
       const host = $('feature-editor');
       if (!r || !r.ok) { host.textContent = '加载失败，请重新进入本页'; return; }
       const draft = Object.assign({}, r.data.features);
+      const groupNameOf = {};
+      r.data.groups.forEach(function (g) { groupNameOf[g.id] = g.name; });
       host.innerHTML = r.data.groups.map(function (g) {
-        return '<section class="panel feature-group"><h3><label><input type="checkbox" data-feature-key="' + g.id + '"' + (draft[g.id] !== false ? ' checked' : '') + '> ' + esc(g.name) + '（整页）</label></h3><div class="feature-children">' + g.children.map(function (a) {
+        return '<section class="panel feature-group"' + (g.parent ? ' data-parent="' + g.parent + '"' : '') + '><h3><label><input type="checkbox" data-feature-key="' + g.id + '"' + (draft[g.id] !== false ? ' checked' : '') + '> ' + esc(g.name) + '（整页）</label></h3><div class="feature-children">' + g.children.map(function (a) {
           return '<label><input type="checkbox" data-feature-key="' + a.id + '"' + (draft[a.id] !== false ? ' checked' : '') + '> ' + esc(a.name) + '</label>';
         }).join('') + '</div><div class="hint feature-inherited"></div></section>';
       }).join('') + '<button class="btn primary" id="features-save">保存功能开关</button><span id="features-result" role="status"></span>';
       function sync() {
         host.querySelectorAll('.feature-group').forEach(function (group) {
           const parent = group.querySelector('h3 input');
-          group.querySelector('.feature-inherited').textContent = parent.checked ? '' : '整页已关闭，下属操作当前均不可用（保留各项设置）';
+          const lines = [];
+          if (!parent.checked) lines.push('整页已关闭，下属操作当前均不可用（保留各项设置）');
+          // 页签页（钓竿 / 记录）跟着主页面走：主页面一关，页签同样进不去
+          const pId = group.getAttribute('data-parent');
+          const pBox = pId ? host.querySelector('[data-feature-key="' + pId + '"]') : null;
+          if (pBox && !pBox.checked) lines.push('主页面「' + (groupNameOf[pId] || pId) + '」已关闭，本页签当前不可用');
+          group.querySelector('.feature-inherited').textContent = lines.join(' ');
         });
       }
       host.querySelectorAll('[data-feature-key]').forEach(function (input) {
@@ -2724,7 +2732,7 @@ window.Admin = (function () {
   function renderRecords() {
     const main = $('main');
     main.innerHTML = '<h2>🏆 纪录贴图</h2>' +
-      '<div class="hint" style="margin-bottom:12px">玩家端「渔获记录」页顶部「全场最大」那张大贴图：可调缩放（50 ~ 500%）与 xy 偏移（像素）。' +
+      '<div class="hint" style="margin-bottom:12px">玩家端「图鉴 · 记录」页顶部「全场最大」那张大贴图：可调缩放（50 ~ 500%）与 xy 偏移（像素）。' +
       '保存后立即对全服生效（在线玩家的纪录页会即时重绘）。</div>' +
       '<div id="rc-body" class="panel">加载中…</div>';
     loadWorldCfg(true).then(function (cfg) {

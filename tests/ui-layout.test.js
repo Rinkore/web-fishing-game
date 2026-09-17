@@ -9,6 +9,8 @@
 const { chromium } = require('playwright-core');
 // 轮询等待工具（测试内部不依赖固定 sleep）：就绪即继续，超时才失败
 const { waitFor, waitHttp, waitPage } = require('./_util.js');
+// 侧栏入口适配（旧名字 → 新入口 + 页签）
+const { clickAppNav } = require('./_nav.js');
 const os = require('os');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
@@ -88,14 +90,9 @@ async function login(page, token) {
 }
 const clickNav = async (page, name) => {
   // v0.11.3 起侧栏取消「更多」折叠组：全部入口平铺常驻，直接找即可
-  const clicked = await page.evaluate(n => {
-    const find = () => Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
-    const b = find();
-    if (!b) return false;
-    b.click();
-    return true;
-  }, name);
-  if (!clicked) { console.log('  [clickNav] 未找到入口：' + name); }
+  // v0.15.0 起钓竿配置 / 渔获记录 / 系统商店 / 开放市集 并入「钓鱼」「图鉴」「商城」页签：
+  // 这里统一折算成「入口 + 页签」，老用例的旧名字（钓竿配置 / 渔获记录 …）照旧可用。
+  const target = await clickAppNav(page, name);
   // 轮询到目标页变为 active 且主区已渲染（替代固定 sleep）
   await waitFor(async () => {
     try {
@@ -103,7 +100,7 @@ const clickNav = async (page, name) => {
         const act = document.querySelector('.nav-item.active');
         const main = document.getElementById('main');
         return !!act && act.textContent.includes(n) && !!main && main.children.length > 0;
-      }, name);
+      }, target.nav);
     } catch (e) { return false; }
   }, { timeout: 6000 }).catch(() => {});
 };
@@ -177,14 +174,16 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await login(p2, tokB);
 
     section('新增页面渲染');
-    // v0.11.3 起取消侧栏「更多」折叠组：13 个入口全部平铺常驻（管理员 +1 后台入口；宝匣已并入工坊开箱）
-    check('侧栏 13 个入口全部常驻可见（无折叠组）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 13,
+    // v0.11.3 起取消侧栏「更多」折叠组；v0.15.0 起按「一个入口一族功能」重组为 9 个入口
+    // （钓竿并入钓鱼、记录并入图鉴、收购/市集并入商城、开箱并入工坊、宝匣与交易也有各自归属）
+    check('侧栏 9 个入口全部常驻可见（无折叠组）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 9,
       String((await p1.$$('#nav .nav-item:not(.locked)')).length));
     check('不再有「更多」折叠组与折叠组容器', (await p1.$$('#nav .nav-more')).length === 0 && (await p1.$$('#nav .nav-group')).length === 0);
-    check('低频入口（图鉴/记录/反馈/日志）直接可见且顺序不变', await p1.evaluate(() => {
+    check('低频入口（图鉴/反馈/日志）直接可见且顺序不变', await p1.evaluate(() => {
       const t = Array.from(document.querySelectorAll('#nav .nav-item')).map(n => n.textContent)
         .filter(x => /图鉴|记录|反馈|日志/.test(x));
-      return t.length === 4 && /图鉴/.test(t[0]) && /记录/.test(t[1]) && /反馈/.test(t[2]) && /日志/.test(t[3]);
+      // 「记录」已并入图鉴（页内页签），侧栏不再单独出现
+      return t.length === 3 && /图鉴/.test(t[0]) && /反馈/.test(t[1]) && /日志/.test(t[2]);
     }));
     check('无占位锁定入口（商城与工坊均已开放）', (await p1.$$('#nav .nav-item.locked')).length === 0);
     // 滚动条贴合像素主题：不与主题同色的灰白滚动条 = 回归
@@ -1383,9 +1382,9 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await untilSel(p1, '.inv-page-row.clickable', 5000);
     await p1.evaluate(() => { const r = document.querySelector('.inv-page-row.clickable'); if (r) r.click(); });
     const fishDetail = await untilGet(readDetail, o => !!o, 4000);
-    check('鱼类简介含体型、产地与「记入图鉴 / 渔获记录」用途',
+    check('鱼类简介含体型、产地与「记入图鉴 / 记录」用途',
       !!fishDetail && /体型 \d+~\d+ cm/.test(fishDetail.txt) && fishDetail.spots >= 1 &&
-      /渔获记录/.test(fishDetail.txt) && /挂单/.test(fishDetail.txt), JSON.stringify(fishDetail).slice(0, 220));
+      /图鉴/.test(fishDetail.txt) && /记录/.test(fishDetail.txt) && /挂单/.test(fishDetail.txt), JSON.stringify(fishDetail).slice(0, 220));
     await closeDetail();
     // 材料：简介要说清熔炼用途（投料对应词缀 / 催化剂）；先确保背包里有材料（前面几节可能已卖掉）
     await post('/api/dev/catch', { token: tokS, item: { kind: 'material', id: 'rope' } });
@@ -1889,7 +1888,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       const content2 = document.querySelector('.content');
       return { ok: true, scrollable: content2.scrollHeight > content2.clientHeight, before: before, after: content2 ? content2.scrollTop : -1 };
     });
-    check('渔获记录页可滚动', scrollInfo.ok && scrollInfo.scrollable && scrollInfo.before > 0, JSON.stringify(scrollInfo));
+    check('记录页可滚动', scrollInfo.ok && scrollInfo.scrollable && scrollInfo.before > 0, JSON.stringify(scrollInfo));
     check('重绘后滚动位置保持（不回滚到顶部）', scrollInfo.ok && scrollInfo.after === scrollInfo.before, JSON.stringify(scrollInfo));
 
     // —— 反馈意见页 ——
@@ -2516,21 +2515,23 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
           await new Promise(r => setTimeout(r, 250));
           const active = document.querySelector('.nav-item.active');
           out[expect] = active ? (active.textContent.includes(expect) ? 'ok' : active.textContent) : 'none';
+          const tab = document.querySelector('#main .section-tabs .inv-cat.on');
+          out[expect + 'Tab'] = tab ? tab.textContent.trim() : '';
           return 'ok';
         };
         // 状态 → 钓鱼
         await clickChip(/状态：/, '钓鱼');
         // 位置 → 钓鱼
         await clickChip(/位置：/, '钓鱼');
-        // 抛竿间隔 → 钓竿配置
-        await clickChip(/🎣.*s 一竿/, '钓竿配置');
-        // 在线人数 → 渔场动态
-        await clickChip(/在线：/, '渔场动态');
+        // 抛竿间隔 → 钓鱼页（钓竿页签）；顶栏高亮的是入口「钓鱼」
+        await clickChip(/🎣.*s 一竿/, '钓鱼');
+        // 在线人数 → 社交页
+        await clickChip(/在线：/, '社交');
         return out;
       });
       check('点击「状态」跳到钓鱼页', topbarNav['钓鱼'] === 'ok', JSON.stringify(topbarNav));
-      check('点击「抛竿间隔」跳到钓竿配置页', topbarNav['钓竿配置'] === 'ok', JSON.stringify(topbarNav));
-      check('点击「在线人数」跳到渔场动态页', topbarNav['渔场动态'] === 'ok', JSON.stringify(topbarNav));
+      check('点击「抛竿间隔」跳到钓鱼页 · 钓竿页签', topbarNav['钓鱼'] === 'ok' && /钓竿/.test(topbarNav['钓鱼' + 'Tab'] || ''), JSON.stringify(topbarNav));
+      check('点击「在线人数」跳到社交页', topbarNav['社交'] === 'ok', JSON.stringify(topbarNav));
       check('顶栏状态块是按钮（整块可点）',
         (await p1.$$('#player-status button.meta-btn')).length >= 4, String((await p1.$$('#player-status button.meta-btn')).length));
 

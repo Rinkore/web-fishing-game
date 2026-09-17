@@ -11,6 +11,8 @@
 'use strict';
 const { chromium } = require('playwright-core');
 const { waitFor, waitHttp } = require('./_util.js');
+// 玩家端侧栏入口适配层（v0.15.0 起旧名字折算成「入口 + 页签」）
+const { clickAppNav } = require('./_nav.js');
 const os = require('os');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
@@ -76,17 +78,14 @@ async function login(page, token) {
 }
 const clickNav = async (page, name) => {
   // v0.11.3 起侧栏取消「更多」折叠组：全部入口平铺常驻，直接找即可
-  await page.evaluate(n => {
-    const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
-    if (b) b.click();
-  }, name);
+  const target = await clickAppNav(page, name);
   await waitFor(async () => {
     try {
       return await page.evaluate(n => {
         const act = document.querySelector('.nav-item.active');
         const main = document.getElementById('main');
         return !!act && act.textContent.includes(n) && !!main && main.children.length > 0;
-      }, name);
+      }, target.nav);
     } catch (e) { return false; }
   }, { timeout: 6000 }).catch(() => {});
 };
@@ -784,7 +783,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       // —— 反馈奖励（金币到账 + 记录 + 筛选）——
       section('管理后台 · 反馈奖励');
       await post('/api/feedback/submit', { token: tokB, text: 'QA 奖励测试反馈', kind: 'idea' });
-      await clickAdminNav('反馈意见', '.fb-card');
+      await clickAdminNav('反馈', '.fb-card');   // v0.15.0：后台「反馈意见」页签更名「反馈」
       const coinsBeforeRw = (await get('/api/me?token=' + tokB)).data.coins;
       await pa.evaluate(() => {
         const row = Array.from(document.querySelectorAll('.fb-card')).find(r => r.textContent.includes('QA 奖励测试反馈'));
@@ -821,6 +820,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       // p1 名下的账号要先有反馈记录，筛选控件与历史列表才渲染得出来
       await post('/api/feedback/submit', { token: tokP, text: 'QA 玩家侧筛选反馈', kind: 'bug' });
       await clickNav(p1, '反馈意见');
+      // v0.15.0：反馈页分成「✍ 提交 / 📜 我的反馈」两个页签，历史列表在后者
+      await p1.evaluate(() => { const b = document.querySelector('#main [data-sectiontab="mine"]'); if (b) b.click(); });
       await untilSel(p1, '.fb-history .fb-item', 8000);
       const pFilter = await p1.evaluate(() => {
         const sels = Array.from(document.querySelectorAll('.fb-filters select'));
@@ -838,6 +839,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-admin-ui-'));
       });
       // 奖励对象是买家（tokB → p2），在买家页面验证奖励标记
       await clickNav(p2, '反馈意见');
+      await p2.evaluate(() => { const b = document.querySelector('#main [data-sectiontab="mine"]'); if (b) b.click(); });
       await untilSel(p2, '.fb-history .fb-item', 8000);
       const rwShown = await p2.evaluate(() => {
         const row = Array.from(document.querySelectorAll('.fb-history .fb-item')).find(r => r.textContent.includes('奖励'));

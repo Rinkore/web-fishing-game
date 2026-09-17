@@ -11,6 +11,8 @@
  */
 'use strict';
 const { chromium } = require('playwright-core');
+// 侧栏入口适配层：旧入口名（钓竿配置 / 渔获记录 / 系统商店 / 开放市集）折算出「入口 + 页签」
+const { clickAppNav } = require('./_nav.js');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const fs = require('fs');
@@ -73,14 +75,12 @@ async function login(page, token) {
   await sleep(800);
 }
 async function clickNav(page, name) {
-  await page.evaluate(n => {
-    const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
-    if (b) b.click();
-  }, name);
+  // v0.15.0 起旧入口（钓竿配置 / 渔获记录 …）折算成「新入口 + 页签」
+  const target = await clickAppNav(page, name);
   await untilGet(() => page.evaluate(n => {
     const a = document.querySelector('.nav-item.active');
     return !!a && a.textContent.includes(n) && !!document.getElementById('main').children.length;
-  }, name), v => v === true, 6000);
+  }, target.nav), v => v === true, 6000);
 }
 
 let srv = null, browser = null;

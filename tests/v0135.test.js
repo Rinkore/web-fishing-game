@@ -12,6 +12,8 @@
  */
 'use strict';
 const { chromium } = require('playwright-core');
+// 侧栏入口适配层：旧入口名（钓竿配置 / 渔获记录 / 系统商店 / 开放市集）折算出「入口 + 页签」
+const { clickAppNav } = require('./_nav.js');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const fs = require('fs');
@@ -73,18 +75,16 @@ async function login(page, token) {
   await sleep(800);
 }
 async function clickNav(page, name) {
+  // v0.15.0 起钓竿配置 / 渔获记录 / 系统商店 / 开放市集 并入页签：名字统一经 _nav.js 折算成「入口 + 页签」
+  const target = await clickAppNav(page, name);
   // 并行跑多个套件时页面首次渲染更慢：先等导航项出现再点，点完等它变成 active
   await untilGet(() => page.evaluate(n => {
     return Array.from(document.querySelectorAll('.nav-item')).some(x => x.textContent.includes(n));
-  }, name), v => v === true, 30000);
-  await page.evaluate(n => {
-    const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n));
-    if (b) b.click();
-  }, name);
+  }, target.nav), v => v === true, 30000);
   await untilGet(() => page.evaluate(n => {
     const a = document.querySelector('.nav-item.active');
     return a ? a.textContent.includes(n) : false;
-  }, name), v => v === true, 15000);
+  }, target.nav), v => v === true, 15000);
   await untilGet(() => page.evaluate(() => !!document.querySelector('.ground-panel')), v => v === true, 20000);
 }
 
@@ -334,8 +334,11 @@ function openSse(token) {
   await pA.evaluate(() => { window.__panelOld = document.querySelector('.ground-panel'); });
   await pA.click('.ground-panel .gc-box[data-gid="stillwater"]');
   const filtered = await untilGet(() => pA.evaluate(() => {
-    const h = document.querySelector('.ground-panel h2');
-    return { h: h ? h.textContent : '', rebuilt: document.querySelector('.ground-panel') !== window.__panelOld };
+    // v0.15.0：面板标题固定为「🌊 社交 + 用途副标题」，钓场名移到下面的 h3，
+    // 所以单地图态要看 h3（或返回按钮）而不是 h2。
+    const h = document.querySelector('.ground-panel h3');
+    const back = !!document.querySelector('.ground-panel .ground-back');
+    return { h: h ? h.textContent : '', back: back, rebuilt: document.querySelector('.ground-panel') !== window.__panelOld };
   }), v => v && /静水湖/.test(v.h), 8000);
   check('点钓场卡片 → 切到单地图动态（结构真的变了）', !!filtered && /静水湖/.test(filtered.h), JSON.stringify(filtered));
   check('结构变化会重建骨架（没有被签名闸误挡）', !!filtered && filtered.rebuilt === true, JSON.stringify(filtered));

@@ -5,16 +5,27 @@
   'use strict';
   const groups = [
     ['fishing', '钓鱼', [['cast', '抛竿与自动钓鱼']]],
-    ['character', '角色', [['companion', '更换同伴'], ['boat', '更换船型']]],
-    ['bd', '钓竿配置', [['equip', '装备组件'], ['slots', '购买槽位'], ['save', '保存与管理钓竿'], ['autobuild', '自动配装']]],
-    ['ground', '渔场动态', [['trade', '玩家交易']]],
+    // 侧栏入口与页面是多对一：钓竿 / 记录分别是「钓鱼」「图鉴」页里的页签，
+    // 这里仍保留独立 id —— 管理员可以只关掉某一个页签，关闭主页面会连带它一起关。
+    ['bd', '钓竿（钓鱼页签）', [['equip', '装备组件'], ['slots', '购买槽位'], ['save', '保存与管理钓竿'], ['autobuild', '自动配装']]],
+    ['character', '角色', [['companion', '选择同伴'], ['boat', '选择船型']]],
+    ['ground', '社交', [['trade', '玩家交易']]],
     ['inventory', '背包', [['subscribe', '组件订阅提醒']]],
     ['workshop', '工坊', [['craft', '合成宝匣'], ['open', '开启宝匣'], ['smelt', '熔炼'], ['recast', '重铸']]],
     ['mall', '商城', [['buy', '限购商品购买'], ['sell', '出售物品（含背包入口）'], ['autosell', '自动售出'], ['list', '市集上架'], ['marketbuy', '市集购买']]],
-    ['codex', '鱼类图鉴', []], ['records', '渔获记录', []],
-    ['feedback', '反馈意见', [['submit', '提交反馈'], ['skip', '付费跳过冷却']]],
+    ['codex', '图鉴', []],
+    ['records', '记录（图鉴页签）', []],
+    ['feedback', '反馈', [['submit', '提交反馈'], ['skip', '付费跳过冷却']]],
     ['logs', '日志', []],
-  ].map(function (g) { return { id: g[0], name: g[1], children: g[2].map(function (a) { return { id: g[0] + '.' + a[0], name: a[1], parent: g[0] }; }) }; });
+  ].map(function (g) {
+    // 页签页与主页面共用一个侧栏入口：主页面关闭时，页签也必须跟着关闭，
+    // 否则会出现「侧栏入口锁着、页签却能继续用」的漏口（这正是 parent 链的作用）。
+    const PAGE_PARENT = { bd: 'fishing', records: 'codex' };
+    return {
+      id: g[0], name: g[1], parent: PAGE_PARENT[g[0]] || null,
+      children: g[2].map(function (a) { return { id: g[0] + '.' + a[0], name: a[1], parent: g[0] }; }),
+    };
+  });
   const entries = [];
   groups.forEach(function (g) { entries.push(g); entries.push.apply(entries, g.children); });
   const byId = Object.create(null);

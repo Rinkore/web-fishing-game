@@ -21,8 +21,8 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.14.5';
-  const BUILD = '2026-09-17';   // 构建日期（仅 /api/version 暴露，界面不展示）
+  const VERSION = 'v0.15.0';
+  const BUILD = '2026-09-18';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。
@@ -1686,20 +1686,22 @@
   // implemented=false 的入口为占位符，点击不可跳转。
   // 侧栏导航：全部入口**平铺常驻**（不再有「更多」折叠组），顺序即展示顺序；
   // 菜单项多到一屏放不下时，导航区自己滚动（样式见 style.css 的 .nav）。
+  // v0.15.0 起一个入口承载一族功能，主页面内的子功能一律用页内页签切换：
+  //   「钓鱼」= 🎣 钓鱼 / 🎯 钓竿（原「钓竿配置」入口），见 ui.js 的 renderFishing / renderBD；
+  //   「图鉴」= 📖 图鉴 / 🏆 记录（原「渔获记录」入口），见 ui.js 的 renderCodex / renderRecords。
+  //   页签页的功能开关 id 仍是 bd / records（见 features.js），旧 view id 由 navigateView 兜底兼容。
   const NAV = [
     { id: 'fishing', name: '钓鱼', icon: '🎣', implemented: true },
     { id: 'character', name: '角色', icon: '🧍', implemented: true },
-    { id: 'bd', name: '钓竿配置', icon: '🎯', implemented: true },
-    { id: 'ground', name: '渔场动态', icon: '🌊', implemented: true },
+    { id: 'ground', name: '社交', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
     // 「宝匣合成」不再是独立页面：并入「工坊」页（熔炼/重铸同款页签切换），改名「开箱」，见 ui.js 的 renderWorkshop。
     { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
     // 「系统商店」「开放市集」不再是独立页面：合并进「商城」页（工坊熔炼/重铸同款页签切换），
     // 系统商店改名「收购」、开放市集改名「市集」，见 ui.js 的 renderMall。
     { id: 'mall', name: '商城', icon: '🛒', implemented: true },
-    { id: 'codex', name: '鱼类图鉴', icon: '📖', implemented: true },
-    { id: 'records', name: '渔获记录', icon: '🏆', implemented: true },
-    { id: 'feedback', name: '反馈意见', icon: '📮', implemented: true },
+    { id: 'codex', name: '图鉴', icon: '📖', implemented: true },
+    { id: 'feedback', name: '反馈', icon: '📮', implemented: true },
     { id: 'logs', name: '日志', icon: '📜', implemented: true },
   ];
 

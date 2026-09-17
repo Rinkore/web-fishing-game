@@ -11,6 +11,8 @@
  */
 'use strict';
 const { chromium } = require('playwright-core');
+// 侧栏入口适配层：旧入口名（钓竿配置 / 渔获记录 / 系统商店 / 开放市集）折算出「入口 + 页签」
+const { clickAppNav } = require('./_nav.js');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 const fs = require('fs');
@@ -61,8 +63,9 @@ const FISH = 'crucian';                       // 鲫鱼：基准 [10,35]cm → 5
 const catchFish = (token, size) => POST('/api/dev/catch', { token: token, item: { id: FISH, kind: 'fish', rarity: 'common', size: size } });
 const boardOf = async range => ((await GET('/api/records/top?id=' + FISH + '&range=' + (range || 'day'))).data || {}).top || [];
 async function clickNav(page, name) {
-  await until(() => page.evaluate(n => Array.from(document.querySelectorAll('.nav-item')).some(x => x.textContent.includes(n)), name), v => v === true, 30000);
-  await page.evaluate(n => { const b = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes(n)); if (b) b.click(); }, name);
+  // v0.15.0 起旧入口（钓竿配置 / 渔获记录 …）折算成「新入口 + 页内页签」
+  const target = await clickAppNav(page, name);
+  await until(() => page.evaluate(n => Array.from(document.querySelectorAll('.nav-item')).some(x => x.textContent.includes(n)), target.nav), v => v === true, 30000);
 }
 
 let srv = null, browser = null;
