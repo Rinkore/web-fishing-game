@@ -631,6 +631,15 @@ window.UI = (function () {
     if (view === 'records') { currentView = 'codex'; codexMainTab = 'records'; return; }
     currentView = view;
   }
+  // 侧栏入口一律回到该页的**主页签**：合并页会记住上次停留的页签（如「钓鱼 · 钓竿」），
+  // 从侧栏再点进来时若不复位，看起来就像没切过去。顶栏快捷入口与外部 setView 不走这里，
+  // 仍可用 navigateView('bd' / 'records') 直达指定页签。
+  function resetSectionTab(view) {
+    if (view === 'fishing') fishingTab = 'fishing';
+    else if (view === 'codex') codexMainTab = 'codex';
+    else if (view === 'character') charTab = 'companion';
+    else if (view === 'feedback') fbTab = 'submit';
+  }
   // 当前实际展示的页面 id（= 功能开关 id = 广播 scope 键）：
   // 合并页按「当前页签」折算回原页面 id，功能锁定、广播重绘范围都以它为准。
   function pageIdOf() {
@@ -671,6 +680,7 @@ window.UI = (function () {
           toast('「' + item.name + '」功能尚未开放（框架占位）');
           return; // 未完成功能：不可跳转
         }
+        resetSectionTab(item.id);
         navigateView(item.id);
         if (item.id === 'inventory') clearSubAlerts();
         if (item.id !== 'ground') peepComposing = false; // 离开渔场页：搜索框已随 DOM 销毁，合成标记不能留成脏值
@@ -1033,7 +1043,6 @@ window.UI = (function () {
     const left = el('div', 'panel fish-select');
     left.innerHTML = pageHead('🎣', '钓鱼', '选钓点即自动垂钓 · 配装与存档在「钓竿」页签') +
       sectionTabsHtml('fishing', 'fishing', [['fishing', '🎣 钓鱼'], ['rod', '🎯 钓竿']]) +
-      pageHelp('点地图上的浮漂选钓点，服务器随即自动抛竿收竿；再点同一个钓点收竿。') +
       '<h3>🗺 世界地图 · 选择钓点</h3>';
     bindSectionTabs(left, 'fishing');
     const tabBar = el('div', 'px-map-tabs');
@@ -4895,6 +4904,9 @@ window.UI = (function () {
   // 品质档按「该分类真实存在的档位」渲染，避免出现「神话 0」这种永远点不出东西的按钮。
   const RAR_ORDER = [['common', '普通'], ['rare', '稀有'], ['epic', '史诗'], ['mythic', '神话']];
   function raritiesOfKind(kind) {
+    // 组件是「实例化」物品：品质在生成时按权重掷出（普通 / 稀有 / 史诗），宝匣突破件与重铸件是神话；
+    // 目录里的 30 个底材条目只承担词缀池展示、rarity 恒为 common，照它算会只剩「普通」一档。
+    if (kind === 'component') return RAR_ORDER.slice();
     const set = {};
     D.allItems().forEach(function (it) { if (it.kind === kind) set[it.rarity] = 1; });
     return RAR_ORDER.filter(function (kv) { return set[kv[0]]; });
@@ -5744,8 +5756,7 @@ window.UI = (function () {
     normalizeInvFilters();
     main.innerHTML = '';
     const panel = el('div', 'panel wide two-col inventory-panel');
-    panel.innerHTML = pageHead('🎒', '背包', '渔获 / 材料 / 宝匣 / 组件分类存放；出售、上架与订阅都在这里') +
-      pageHelp('上方页签切换分类，每页 12 项；搜索框支持名称、部位、品质与词条，点物品可看简介与用途。');
+    panel.innerHTML = pageHead('🎒', '背包', '渔获 / 材料 / 宝匣 / 组件分类存放；出售、上架与订阅都在这里');
     // 交易进行中：背包内容锁定（新渔获不会自动刷新列表，避免交易选物品时被冲掉）
     if (tradeLockOn()) panel.appendChild(tradeLockBar());
 
