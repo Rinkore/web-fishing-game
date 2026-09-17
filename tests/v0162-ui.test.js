@@ -345,6 +345,87 @@ async function main() {
   });
   check('增量不再否决权威快照（invRev / deltaRev 拆成两条水位）',
     wm.deltaOk === true && wm.snapOk === true && wm.hasCrucian === true, JSON.stringify(wm));
+  // 探针为了造出「快照比增量旧」把本地水位抬到了虚构的高值 —— 收尾必须归位并重新同步，
+  // 否则后续真实快照会被判旧丢弃，后面几段的库存断言全都读不到东西（踩过一次）。
+  await p1.evaluate(async () => {
+    window.Engine.state.invRev = 0;
+    window.Engine.state.deltaRev = 0;
+    const t = window.Net.getMe().token;
+    const m = await window.Net.fetchMe(t);
+    if (m && m.ok && m.data) {
+      window.Engine.applyInv(m.data.inventory || {}, m.data.invRev);
+      if (m.data.coins != null) window.Engine.state.player.coins = m.data.coins;
+    }
+  });
+
+  // ---------------- 装备 / 卸下：本地即时响应 + 与服务器对齐（玩家反馈「卸下后背包不显示」） ----------------
+  section('装备与卸下组件：本地立刻改库存，再跟服务器对齐');
+  const RODPART2 = 'rod_dragonbone#common#spd+20';   // 选一个本套件从未展开过的底材，好验证「自动展开」
+  await POST('/api/dev/catch', { token: tok, item: { kind: 'component', id: RODPART2 } });
+  await p1.evaluate(async () => {
+    const t = window.Net.getMe().token;
+    const m = await window.Net.fetchMe(t);
+    if (m && m.ok && m.data) window.Engine.applyInv(m.data.inventory || {}, m.data.invRev);
+  });
+  // 进「钓鱼 · 钓竿」页签，找到竿身那一格
+  await clickNav(p1, '钓竿配置');
+  await until(() => p1.evaluate(() => !!document.querySelector('.bd-cell')), v => v === true, 20000);
+  await until(() => p1.evaluate(() => Array.from(document.querySelectorAll('.bd-cell'))
+    .some(c => /竿身/.test((c.querySelector('.bd-part') || {}).textContent || '') &&
+      !!Array.from(c.querySelectorAll('button')).find(b => /装备组件/.test(b.textContent)))), v => v === true, 20000);
+  const beforeEquip = await p1.evaluate(k => ({ local: (window.Engine.state.inventory || {})[k] || 0 }), RODPART2);
+  check('前置：背包里有这件竿身组件（本地 = 1）', beforeEquip.local === 1, JSON.stringify(beforeEquip));
+  // 装备：点「装备组件」→ 选择器里挑竹制短竿
+  await p1.evaluate(() => {
+    const cell = Array.from(document.querySelectorAll('.bd-cell')).find(c => /竿身/.test((c.querySelector('.bd-part') || {}).textContent || ''));
+    const b = cell && Array.from(cell.querySelectorAll('button')).find(x => /装备组件/.test(x.textContent));
+    if (b) b.click();
+  });
+  await until(() => p1.evaluate(() => !!document.querySelector('.bec-card')), v => v === true, 15000);
+  const pickedRod = await pickCard(p1, '龙骨巨竿');
+  check('在装备选择器里选中该组件', !!pickedRod, pickedRod);
+  await until(() => p1.evaluate(k => (window.Engine.state.inventory || {})[k] === undefined, RODPART2), v => v === true, 15000);
+  const afterEquip = await p1.evaluate(k => ({
+    local: (window.Engine.state.inventory || {})[k] || 0,
+    shown: (() => {
+      const cell = Array.from(document.querySelectorAll('.bd-cell')).find(c => /竿身/.test((c.querySelector('.bd-part') || {}).textContent || ''));
+      return cell ? ((cell.querySelector('.bd-comp') || {}).textContent || '') : '';
+    })(),
+  }), RODPART2);
+  check('装备后本地库存当场减掉那件（不等回包）', afterEquip.local === 0, JSON.stringify(afterEquip));
+  check('钓竿页当场显示已装备的底材名', /龙骨巨竿/.test(afterEquip.shown), afterEquip.shown);
+  await until(async () => (((await GET('/api/me?token=' + tok)).data.inventory) || {})[RODPART2] === undefined, v => v === true, 15000);
+  check('服务端也确实扣掉了（前端与后端对齐）', (((await GET('/api/me?token=' + tok)).data.inventory) || {})[RODPART2] === undefined);
+  // 卸下：同一个同步块里读本地库存，必须**已经**回到 1（本地即时响应）
+  const instantOff = await p1.evaluate(k => {
+    const cell = Array.from(document.querySelectorAll('.bd-cell')).find(c => /竿身/.test((c.querySelector('.bd-part') || {}).textContent || ''));
+    const off = cell && Array.from(cell.querySelectorAll('button')).find(b => b.textContent.trim() === '卸下');
+    if (!off) return { clicked: false };
+    off.click();
+    // ⚠️ 点击的处理函数里会 renderView() 重建 #main，上面抓到的 cell 已经是游离节点 —— 必须重新查询
+    const fresh = Array.from(document.querySelectorAll('.bd-cell')).find(c => /竿身/.test((c.querySelector('.bd-part') || {}).textContent || ''));
+    return {
+      clicked: true,
+      local: (window.Engine.state.inventory || {})[k] || 0,
+      bd: ((window.Engine.state.bd || {}).rod || {}).compId || null,
+      shown: fresh ? ((fresh.querySelector('.bd-comp') || {}).textContent || '') : '',
+    };
+  }, RODPART2);
+  check('点「卸下」的同一个同步块里，本地库存已经回到 1（本地即时响应）',
+    instantOff.clicked === true && instantOff.local === 1, JSON.stringify(instantOff));
+  check('钓竿页当场恢复标准件（不等回包）', instantOff.bd === null && /标准/.test(instantOff.shown), JSON.stringify(instantOff));
+  await until(async () => (((await GET('/api/me?token=' + tok)).data.inventory) || {})[RODPART2] === 1, v => v === true, 15000);
+  check('服务端也把组件退回了背包（收发包对齐完成）',
+    (((await GET('/api/me?token=' + tok)).data.inventory) || {})[RODPART2] === 1);
+  // 卸下后进背包：那件组件应当**直接可见**（所在底材分组被自动展开）
+  await clickNav(p1, '背包');
+  await until(() => p1.evaluate(() => !!document.querySelector('.inv-page-tabs')), v => v === true, 15000);
+  await p1.evaluate(() => {
+    const b = Array.from(document.querySelectorAll('.inv-page-tabs .inv-cat')).find(x => /组件/.test(x.textContent || ''));
+    if (b) b.click();
+  });
+  await until(() => p1.evaluate(k => !!document.querySelector('.inv-page-row[data-id="' + k + '"]'), RODPART2), v => v === true, 15000);
+  check('卸下的组件在背包里直接可见（所在底材组已自动展开，不用再点一次）', true);
 
   // ---------------- 后台：资产快照（全部物品 + 搜索 + 改词条） ----------------
   section('后台资产快照：全部物品 / 物品搜索 / 组件改词条');

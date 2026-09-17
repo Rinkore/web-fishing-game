@@ -1438,7 +1438,50 @@ window.UI = (function () {
     doSetPart(partKey, compId);
   }
   function doSetPart(partKey, compId) {
-    call(window.Net.bdSet(partKey, compId || null), null).then(function (r) {
+    const st = S();
+    const part = (D.ROD_PARTS || []).find(function (p) { return p.key === partKey; });
+    const comp = compId ? D.componentOf(compId) : null;
+    if (compId && !comp) { toast('未知组件', true); return Promise.resolve(null); }
+    // ---- v0.16.2：本地即时响应（乐观更新）----
+    // 装备 / 卸下是敏感操作，但不能「等一个来回才在背包里看到那件组件」：玩家反馈过
+    // 「组件卸下之后背包不显示」——回包一旦被丢弃（判旧）或网络抖动，界面就永远停在错的库存上。
+    // 这里先按 /api/bd/set 的同一套语义在本地改一份（原装件退回背包、新装件扣 1），立刻重绘；
+    // 回包到达后用服务器权威值对齐，失败则撤回本地改动再拉一次权威状态。
+    const prevEntry = (st.bd && st.bd[partKey]) ? Object.assign({}, st.bd[partKey]) : null;
+    const prevId = (prevEntry && prevEntry.compId) ? prevEntry.compId : null;
+    if (compId && (st.inventory[compId] || 0) <= 0) { toast('背包里没有这件组件', true); return Promise.resolve(null); }
+    st.inventory = st.inventory || {};
+    if (prevId && prevId !== compId) st.inventory[prevId] = (st.inventory[prevId] || 0) + 1;
+    if (compId) {
+      st.inventory[compId] = (st.inventory[compId] || 0) - 1;
+      if (st.inventory[compId] <= 0) delete st.inventory[compId];
+    }
+    st.bd = st.bd || {};
+    st.bd[partKey] = comp
+      ? { compId: comp.id, name: comp.name, affixes: comp.affixes, rare: comp.quality, isCharm: !!(part && part.isCharm) }
+      : { compId: null, name: (part && part.default && part.default.name) || '标准件', affixes: [], rare: null, isCharm: !!(part && part.isCharm) };
+    // 卸下的那件在背包里是按底材分组、默认折叠的：顺手展开它，否则玩家进背包会以为「没退回来」
+    if (prevId && prevId !== compId) {
+      const prevComp = D.componentOf(prevId);
+      if (prevComp && prevComp.baseId) invOpen[prevComp.baseId] = true;
+      if (invPage !== 1) invPage = 1;   // 退回来的那件可能不在当前页
+    }
+    E().refreshEffects();
+    renderTopbar();
+    renderView();
+    toast(compId ? '已装备 ' + (comp ? comp.name : compId) + '（背包已即时扣 1 件）' : '已卸下组件（已即时退回背包）');
+    const revertLocal = function () {
+      if (prevEntry) st.bd[partKey] = prevEntry; else delete st.bd[partKey];
+      if (prevId && prevId !== compId) {
+        const h = (st.inventory[prevId] || 0) - 1;
+        if (h > 0) st.inventory[prevId] = h; else delete st.inventory[prevId];
+      }
+      if (compId) st.inventory[compId] = (st.inventory[compId] || 0) + 1;
+      E().refreshEffects();
+      renderTopbar();
+      renderView();
+    };
+    return call(window.Net.bdSet(partKey, compId || null), null).then(function (r) {
       if (r && r.ok) {
         S().bd = r.data.bd;
         if (r.data.inventory) applyInvFrom(r.data);
@@ -1452,7 +1495,13 @@ window.UI = (function () {
           (released >= 0 ? '，槽位 ' + (released + 1) + ' 的钓竿已取消' : '') + '，加成已在服务器生效');
         renderTopbar();
         renderView();
+      } else {
+        // 服务端拒绝（部位不匹配 / 背包没有 / 钓竿锁定…）：撤回本地乐观改动，并拉一次权威状态兜底
+        revertLocal();
+        toast((r && r.data && r.data.error) || '操作失败，已撤销', true);
+        refetchMeSoon();
       }
+      return r;
     });
   }
 
