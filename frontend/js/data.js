@@ -612,31 +612,35 @@
   function rollComponentQuality() {
     return weightedKey(componentCfg.qualityWeights, 'common');
   }
-  // 数值 roll 模型：取出 [0,1] 上的随机位置，供词缀数值与鱼类体型共用
-  function rollRatio(model) {
+  // 数值 roll 模型：取出 [0,1] 上的随机位置，供词缀数值与鱼类体型共用。
+  // rng 可注入：正式服务端默认仍用 Math.random；Wiki 批量模拟用带种子随机数保证可复现。
+  function rollRatioWithRng(model, rng) {
+    const rand = typeof rng === 'function' ? rng : Math.random;
     if (model === 'normal') {
       // 正态：均值居中、标准差取 1/6，截断在 [0,1]
-      const u1 = Math.random() || 1e-9, u2 = Math.random();
+      const u1 = rand() || 1e-9, u2 = rand();
       const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
       return Math.max(0, Math.min(1, 0.5 + z / 6));
     }
-    if (model === 'skew') return Math.pow(Math.random(), 2); // 偏态：偏向低值（平方分布）
-    return Math.random();
+    if (model === 'skew') return Math.pow(rand(), 2); // 偏态：偏向低值（平方分布）
+    return rand();
   }
+  function rollRatio(model) { return rollRatioWithRng(model, Math.random); }
   // 数值 roll：在 [min,max] 内按模型取值（整数）
   // 0 值词条无意义（+0% 加成）：roll 到 0 会被拒绝并重 roll 一次；
   // 若两次都为 0（区间跨越 0 时仍可能），落到区间内最近的 ±1，保证不产生 0 值词条。
-  function rollAffixValue(min, max, model) {
+  function rollAffixValueWithRng(min, max, model, rng) {
     if (max <= min) return min;
     const span = max - min;
     function draw() {
-      return min + Math.round(rollRatio(model) * span);
+      return min + Math.round(rollRatioWithRng(model, rng) * span);
     }
     let v = draw();
     if (v === 0) v = draw();
     if (v === 0) v = max > 0 ? 1 : (min < 0 ? -1 : 0);
     return v;
   }
+  function rollAffixValue(min, max, model) { return rollAffixValueWithRng(min, max, model, Math.random); }
   // 某底材某词缀的实际数值区间（管理后台可覆盖）
   function affixRangeOf(baseId, affix) {
     const ov = componentCfg.affixRanges && componentCfg.affixRanges[baseId];
@@ -689,11 +693,14 @@
     const db = Math.min(Math.abs(b - min), Math.abs(b - max));
     return db < da ? b : a; // 并列时取第一次（保持可复现的确定性）
   }
-  function rollAffixValueBoundary(min, max, model) {
+  function rollAffixValueBoundaryWithRng(min, max, model, rng) {
     if (max <= min) return min;
-    const a = rollAffixValue(min, max, model);
-    const b = rollAffixValue(min, max, model);
+    const a = rollAffixValueWithRng(min, max, model, rng);
+    const b = rollAffixValueWithRng(min, max, model, rng);
     return nearerBoundaryOf(a, b, min, max);
+  }
+  function rollAffixValueBoundary(min, max, model) {
+    return rollAffixValueBoundaryWithRng(min, max, model, Math.random);
   }
 
   // 宝匣突破件（「海王遗匣」专属）：品质锁定神话，词缀可越过底材池边界。
@@ -824,6 +831,128 @@
       if (!isFinite(f(probe))) throw new Error('公式结果不是有限数');
       return { ok: true, fn: f };
     } catch (e) { return { error: e.message || '公式无效' }; }
+  }
+
+  // ---- 抛竿 / 上鱼 / 双钓共享计算（服务端正式路径与 Wiki 模拟器共用） ----
+  // rules = { cast: {baseMs,minMs,speedBonus,speedCap}, biteFormula, doubleBase }
+  const SIM_VAR_NAMES = ['speed', 'skill', 'big', 'rare', 'material', 'size', 'double', 'interval'];
+  function simulationRulesOf(rules) {
+    const r = rules || {};
+    const c = r.cast || {};
+    const num = function (v, def, min, max) {
+      const n = Number(v);
+      return (isFinite(n) && n >= min && n <= max) ? n : def;
+    };
+    return {
+      cast: {
+        baseMs: num(c.baseMs, 3000, 200, 3600000),
+        minMs: num(c.minMs, 800, 100, 3600000),
+        speedBonus: num(c.speedBonus, 0, -100, 500),
+        speedCap: num(c.speedCap, 80, 0, 100),
+      },
+      biteFormula: r.biteFormula == null ? 'clamp(90 + skill, 0, 100)' : String(r.biteFormula),
+      doubleBase: num(r.doubleBase, 0, 0, 1),
+    };
+  }
+  function rodEffectsOf(bd) {
+    const eff = { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 };
+    ROD_PARTS.forEach(function (part) {
+      const comp = componentOf(bd && bd[part.key] && bd[part.key].compId);
+      if (!comp) return;
+      comp.affixes.forEach(function (a) { if (eff[a.type] != null) eff[a.type] += a.value; });
+    });
+    return eff;
+  }
+  function spotSpeedOf(spot) {
+    let v = 0;
+    ((spot && spot.buffs) || []).forEach(function (b) { if (b && b.type === 'speed') v += Number(b.value) || 0; });
+    return v;
+  }
+  function spotBiteRateOf(spot) {
+    const v = spot && spot.biteRate;
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return isFinite(n) ? Math.max(0, Math.min(100, n)) : null;
+  }
+  function effectiveSpeedOf(eff, cast) {
+    const raw = (Number(eff && eff.speed) || 0) + (Number(cast && cast.speedBonus) || 0);
+    const cap = Number(cast && cast.speedCap) || 80;
+    return Math.max(0, Math.min(cap, raw));
+  }
+  function castIntervalOf(bd, spot, rules) {
+    const r = simulationRulesOf(rules);
+    const fixed = spot && spot.intervalMs;
+    if (fixed != null && fixed !== '') {
+      const n = Number(fixed);
+      if (isFinite(n) && n >= 100) return Math.round(n);
+    }
+    const bdEff = rodEffectsOf(bd);
+    const rodMs = r.cast.baseMs * (1 - effectiveSpeedOf({ speed: bdEff.speed }, r.cast) / 100);
+    const spotPct = Math.max(-100, Math.min(95, spotSpeedOf(spot)));
+    const ms = rodMs * (1 - spotPct / 100);
+    return Math.max(r.cast.minMs, Math.round(ms));
+  }
+  function mergedEffectsOf(bd, spot) {
+    const eff = rodEffectsOf(bd);
+    ((spot && spot.buffs) || []).forEach(function (b) {
+      if (b && eff[b.type] != null) eff[b.type] += Number(b.value) || 0;
+    });
+    return eff;
+  }
+  function biteProbabilityOf(eff, interval, spot, formula) {
+    const override = spotBiteRateOf(spot);
+    if (override != null) return override;
+    const src = String(formula == null ? '' : formula).trim();
+    if (!src) return 100;
+    const c = compileExpr(src, SIM_VAR_NAMES);
+    if (!c.ok) return 100; // 与服务端历史保底行为一致；正常保存路径已校验。
+    let p;
+    try {
+      p = c.fn({ speed: eff.speed || 0, skill: eff.skill || 0, big: 0, rare: eff.rare || 0,
+        material: eff.material || 0, size: eff.size || 0, double: eff.double || 0, interval: interval || 0 });
+    } catch (e) { return 100; }
+    if (!isFinite(p)) p = p > 0 ? 100 : 0;
+    return Math.min(100, Math.max(0, p));
+  }
+  function castInfoOf(bd, spot, rules) {
+    const r = simulationRulesOf(rules);
+    const bdEff = rodEffectsOf(bd);
+    const eff = mergedEffectsOf(bd, spot);
+    const spotPct = spotSpeedOf(spot);
+    const rodEff = effectiveSpeedOf({ speed: bdEff.speed }, r.cast);
+    const interval = castIntervalOf(bd, spot, r);
+    const override = spotBiteRateOf(spot);
+    const biteRate = override != null ? override : Math.round(biteProbabilityOf(eff, interval, spot, r.biteFormula) * 10) / 10;
+    return {
+      baseMs: r.cast.baseMs, minMs: r.cast.minMs, globalBonus: r.cast.speedBonus, cap: r.cast.speedCap,
+      affixSpeed: bdEff.speed, buffSpeed: spotPct, rawSpeed: Math.round(rodEff * 10) / 10,
+      effSpeed: Math.round(rodEff * 10) / 10,
+      spotMult: Math.round((1 - Math.max(-100, Math.min(95, spotPct)) / 100) * 1000) / 1000,
+      intervalMs: spot && spot.intervalMs != null && spot.intervalMs !== '' ? Math.round(Number(spot.intervalMs)) : null,
+      interval: interval, biteRate: biteRate, biteOverride: override != null,
+    };
+  }
+  function doubleProbOf(A, doubleBase) {
+    const a = Math.max(0, Number(A) || 0);
+    let p = a / (a + 100);
+    const b = Math.max(0, Math.min(1, Number(doubleBase) || 0));
+    if (b > 0) p = 1 - (1 - b) * (1 - p);
+    return Math.max(0, Math.min(1, p));
+  }
+  function simulateRodPlan(bd, spot, rules) {
+    const r = simulationRulesOf(rules);
+    const info = castInfoOf(bd, spot, r);
+    const eff = mergedEffectsOf(bd, spot);
+    const interval = info.interval;
+    const bite = info.biteRate;
+    const A = Math.max(0, Number(eff.double) || 0);
+    const pDouble = A / (A + 100);
+    const P = 1 - (1 - r.doubleBase) * (1 - pDouble);
+    const perCast = 1 + P + P * P;
+    const castsPerHour = interval > 0 ? 3600000 / interval : 0;
+    const fishPerHour = castsPerHour * (bite / 100) * perCast;
+    return { info: info, eff: eff, interval: interval, bite: bite, doubleP: P * 100,
+      perCast: perCast, castsPerHour: castsPerHour, fishPerHour: fishPerHour };
   }
 
   // ---- 工坊 · 熔炼 ----
@@ -1813,7 +1942,10 @@
     CHESTS: CHESTS, chestOf: chestOf, isChest: isChest, rollChestQuality: rollChestQuality,
     genBreakthrough: genBreakthrough, RELIC_PRICE: RELIC_PRICE,
     CHEST_BASE_COSTS: CHEST_BASE_COSTS, applyChestCosts: applyChestCosts, chestCostOverrides: chestCostOverrides,
-    rollAffixValueBoundary: rollAffixValueBoundary, nearerBoundaryOf: nearerBoundaryOf,
+    rollAffixValueBoundary: rollAffixValueBoundary, rollAffixValueBoundaryWithRng: rollAffixValueBoundaryWithRng, rollAffixValueWithRng: rollAffixValueWithRng,
+    rodEffectsOf: rodEffectsOf, mergedEffectsOf: mergedEffectsOf, castInfoOf: castInfoOf, castIntervalOf: castIntervalOf,
+    effectiveSpeedOf: effectiveSpeedOf, spotSpeedOf: spotSpeedOf, spotBiteRateOf: spotBiteRateOf,
+    biteProbabilityOf: biteProbabilityOf, doubleProbOf: doubleProbOf, simulateRodPlan: simulateRodPlan,
     SMELT_MATERIAL_AFFIX: SMELT_MATERIAL_AFFIX, SMELT_PEARL: SMELT_PEARL,
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     SNAPSHOT_DEFAULTS: SNAPSHOT_DEFAULTS, defaultSnapshotCfg: defaultSnapshotCfg, setSnapshotCfg: setSnapshotCfg, getSnapshotCfg: getSnapshotCfg,

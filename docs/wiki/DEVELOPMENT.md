@@ -1,14 +1,14 @@
 # 游戏配套 Wiki 开发文档
 
-文档版本：0.4 · 更新日期：2026-09-18
+文档版本：0.5 · 更新日期：2026-09-18
 开发分支：`codex/wiki` · 游戏核对基线：`v0.17.0 / 97d3597`
-当前状态：完成需求、接口盘点与开发方案复审；Wiki 页面和模拟器尚未实现。
+当前状态：M1 服务端规则快照、共享计算与 `/wiki/` 验收页已实现；完整资料站和两个模拟器尚未实现。
 
 ## 1. 目标与范围
 
 为玩家提供无需登录即可访问的资料站，支持查询物品、了解玩法、阅读攻略，以及在不消耗游戏资产的情况下比较配装和模拟熔炼。
 
-已确认：首版包含资料查询、玩法攻略、配装模拟器、熔炼模拟器；两个模拟器不是后续可选项。当前分支只完成文档、接口盘点与方案复审，功能开发尚未开始。
+已确认：首版包含资料查询、玩法攻略、配装模拟器、熔炼模拟器；两个模拟器不是后续可选项。当前分支已完成 M1 服务端契约与共享计算，M2～M5 尚未开始。
 
 本文中的页面结构、数据格式、技术拆分和性能指标属于建议实施基线；后续调整应同步写入 [CHANGELOG.md](CHANGELOG.md)。游戏行为以对应版本的实际计算代码及配置为准，不直接把旧指南、代码注释或示例数字当成规则。
 
@@ -236,9 +236,9 @@ E(件数 | 上钩) = 1 + p + p²
 | `GET /events`（SSE） | 需要登录，`init` 与配置广播面向在线玩家 | Wiki 不依赖 SSE；使用公开规则接口轮询或 ETag 刷新 |
 | `GET /api/admin/world` | 管理员专用，含经济日志、后台完整配置等不适合公开的数据 | 不复用，不作为 Wiki 数据源 |
 | `POST /api/admin/simulate` | 已有服务端权威配装试算，但管理员专用 | 不暴露管理员凭据；后续只复用其内部 `simulateRod()` 逻辑，不复用这个管理端点 |
-| `frontend/js/data.js` | 后端与前端已共用；包含组件生成、词缀区间、熔炼概率、费用、催化范围和安全表达式工具 | 优先复用现有共享实现；必要时做实例化或显式传参，不先另建一套规则模块 |
+| `frontend/js/data.js` | 后端与前端已共用；包含组件生成、词缀区间、熔炼概率、费用、催化范围和安全表达式工具 | 已新增共享配装计算与可注入随机数；服务端正式路径委托同一实现，Wiki 后续直接复用 |
 
-因此 M1 不新增 `/api/wiki/rules`。推荐做法是扩展现有 `GET /api/version?profile=wiki`，并由一个服务端组装函数同时服务默认响应与 Wiki profile：
+因此 M1 不新增 `/api/wiki/rules`。当前实现已扩展现有 `GET /api/version?profile=wiki`，并由服务端组装函数同时服务默认响应与 Wiki profile：
 
 - 不带 profile 的现有响应保持轻量，兼容当前前端轮询；默认与 Wiki profile 都由同一个内部组装函数生成，不允许两处手拼同一配置。
 - `profile=wiki` 返回独立的 `snapshot` 对象，不重复展开默认响应字段；内容为公开目录、`groundsWithDrop()` 结果、公式与一致性元数据。
@@ -246,7 +246,7 @@ E(件数 | 上钩) = 1 + p + p²
 - `/api/features` 与 `/api/version` 重复，后续标记废弃并迁移调用方。
 - 服务端、游戏端和 Wiki 端不得各自拼装同一份规则；公开规则字段只允许一个权威组装函数。
 
-`profile=wiki` 需要补齐 `biteFormula`、`doubleBase`、`rareK`、公开目录、钓点有效权重、`rulesVersion`、`configRevision`、`configHash`、`generatedAt` 和 `sourceCommit`。响应外形固定为 `{ profile, version, snapshot }`，`snapshot` 使用第 5.3 节契约。响应使用 `Cache-Control: no-cache` 与 `ETag: snapshotId`；`sourceCommit` 由发布流程注入，不在生产机执行 Git 命令探测。若跨域部署，继续使用现有 `ALLOWED_ORIGINS` 白名单，不放宽为任意来源。
+`profile=wiki` 已返回 `biteFormula`、`doubleBase`、`rareK`、公开目录、钓点有效权重、`rulesVersion`、`configRevision`、`configHash`、`generatedAt` 和 `sourceCommit`。响应外形固定为 `{ profile, version, snapshot }`，`snapshot` 使用第 5.3 节契约。响应使用 `Cache-Control: no-cache` 与 `ETag: snapshotId`，并支持 `If-None-Match` 304；`sourceCommit` 由发布流程注入，不在生产机执行 Git 命令探测。若跨域部署，继续使用现有 `ALLOWED_ORIGINS` 白名单，不放宽为任意来源。
 
 ### 5.3 快照契约
 
@@ -283,7 +283,7 @@ simulateSmelt(plan, snapshot, rng) -> SmeltOutcome
 | 现有位置 | 已有能力 | 开发动作 |
 |---|---|---|
 | `frontend/js/data.js` | UMD 数据目录、组件实例与来源、工坊计算和安全表达式工具 | 与服务端共用；配置需改为实例隔离或显式快照传参，禁止模块级状态互相污染 |
-| `backend/server.js` 的配装/钓鱼函数 | `bdEffectsOf`、`intervalFor`、`castInfoOf`、`doubleProbOf`、`simulateRod` | 这些函数当前在服务端文件内，Wiki 不能复制一份；进入 M3 前只做最小迁移到现有共享 `data.js` 或窄共享文件，并让服务端正式路径改调同一实现 |
+| `backend/server.js` 的配装/钓鱼函数 | `bdEffectsOf`、`intervalFor`、`castInfoOf`、`doubleProbOf`、`simulateRod` | 已最小迁移到现有共享 `data.js`；服务端保留同名适配函数并调用同一实现，Wiki 不复制公式 |
 | `backend/server.js` 的工坊函数及路由 | `planSmelt`、`smeltRangesOf`、随机结果与结算 | 拆开规则计划、随机结果、资产事务；服务端与 Wiki 共用前两层，禁止把库存校验复制进 Wiki |
 | `backend/server.js` 的公开接口 | `/api/version` 已承载大部分公开配置，`/api/grounds` 已承载有效掉落权重，`/shop` 承载实时收购价 | 扩展现有 `/api/version?profile=wiki`，由单一组装函数复用 `groundsWithDrop()`；不新增平行规则接口，`/api/features` 后续标记重复，实时价格继续用 `/shop` |
 | `frontend/js/ui.js` | 组件选择与熔炼预览的交互参照 | 复用数据契约和视觉资产，不直接加载整个游戏界面与网络状态层 |
@@ -314,19 +314,15 @@ simulateSmelt(plan, snapshot, rng) -> SmeltOutcome
 建议沿用 Node.js 与原生 Web 技术，Wiki 独立静态构建；运行时无需游戏登录和数据库。文章在构建时生成 HTML，搜索索引本地生成，模拟器在浏览器运行。Markdown 渲染器如需引入第三方构建依赖，应固定版本并禁用原始 HTML。首版托管跟随游戏服务器，发布时需要把 `dist/wiki/` 产物复制或部署到游戏服务器可托管的 `/wiki/` 目录，并验证同源 API 可访问。
 
 ```text
-docs/wiki/                 # 开发文档与规划/开发日志（本次新增）
-wiki/                      # 以下均为后续建议目录
-  content/                 # 攻略、FAQ、玩家更新记录
-  src/                     # 页面模板、搜索、模拟器 UI、存储与分享
-  fixtures/                # 本地测试 fixture；生产不内嵌快照
-  presets/                 # 参考配装及示例熔炼方案
-  # 共享计算优先扩展现有 frontend/js/data.js；只有确需迁移服务端独有纯函数时才增加窄共享文件
-tools/wiki/                # 数据导出、内容检查、静态构建与预览
-tests/wiki/                # 规则一致性、契约、浏览器交互测试
-dist/wiki/                 # 构建产物，后续加入忽略规则
+docs/wiki/                 # 开发文档与规划/开发日志
+frontend/wiki/             # 同域托管入口；当前为 M1 验收页，后续放置构建产物
+frontend/js/data.js         # 服务端与 Wiki 共享的数据目录与计算规则
+tools/wiki/                # 后续：内容检查、静态构建与预览
+tests/wiki/                # Wiki 规则契约与一致性测试
+dist/wiki/                 # 后续构建产物，部署时复制到 frontend/wiki/
 ```
 
-拟增加命令（当前未提供）：`npm run wiki:fixture`、`wiki:check`、`wiki:build`、`wiki:serve`、`wiki:test`、`wiki:verify:server`。`wiki:build` 不要求正式服务端在线，也不内嵌生产快照；`wiki:verify:server` 必须连接指定服务端并校验 profile 契约、哈希和一致性样例。
+已提供 `npm run wiki:test`（纯 HTTP，启动临时数据目录与临时端口）。后续再提供 `wiki:fixture`、`wiki:check`、`wiki:build`、`wiki:serve`、`wiki:verify:server`。`wiki:build` 不要求正式服务端在线，也不内嵌生产快照；`wiki:verify:server` 必须连接指定服务端并校验 profile 契约、哈希和一致性样例。
 
 文章元数据至少包含 `id/title/category/aliases/tags/gameVersion/updatedAt/status/related`。站内交叉链接使用 ID 建立，构建时发现断链即失败；旧 ID 改名保留别名或重定向。
 
@@ -355,6 +351,8 @@ dist/wiki/                 # 构建产物，后续加入忽略规则
 | M5 首版验收 | 内容复核、兼容性、性能、规则同步、构建与发布说明 | W01～W08 均验收；线上规则快照、配置哈希和一致性验证通过后才标记首版可发布 |
 
 M2～M4 可按文件和模块边界组织开发，但 M1 的数据及规则契约应先稳定。资料页上线不代表包含两个模拟器的首版已经完成。
+
+当前实施状态：M0 完成；M1 服务端契约、共享计算、同域 `/wiki/` 验收页与规则一致性测试已完成。完整资料站、配装模拟器、熔炼模拟器、构建发布流程和最终验收尚未开始。
 
 ### 8.1 规则测试矩阵
 

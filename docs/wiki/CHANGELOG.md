@@ -75,6 +75,31 @@
 
 验证范围：文档更新与链接检查。未修改服务端、构建脚本或部署配置。
 
+## 2026-09-18 · M1 实现：服务端规则快照与共享计算（功能更新）
+
+状态：M1 服务端部分完成并通过专项回归；完整 Wiki 页面与两个模拟器尚未实现。
+
+- 扩展现有 `GET /api/version?profile=wiki`，返回独立 `snapshot`，不新增平行规则接口。
+- 快照包含公开目录、有效掉落权重、公式配置、规则版本、配置代数、配置哈希、服务器实例、生成时间与来源提交。
+- 默认 `/api/version` 保持原字段兼容，并使用 `no-cache`；Wiki profile 使用 `no-cache`、`ETag: snapshotId` 并支持 304。
+- `configHash` 使用规范化 JSON 计算，只覆盖目录、钓点、公式与规则配置；生成时间、快照 ID 与实时价格不参与哈希。
+- `wikiConfigRevision` 随 `config.json` 持久化，配置保存后递增；管理端修改功能开关会推进代数并改变哈希与 ETag。
+- `/shop` 增加 `Cache-Control: no-store`，供 Wiki 后续展示实时收购价，不与规则快照混淆。
+- `frontend/js/data.js` 新增共享配装计算、上鱼公式计算、双钓计算与可注入随机数；服务端正式路径改为委托同一实现，避免第二套公式。
+- 新增同域 `/wiki/` M1 验收页，展示规则快照元数据与目录规模，并实现 5 秒 ETag 轮询、10 秒失联禁用状态。
+- 静态服务支持目录路径自动读取 `index.html`，`/wiki` 自动 301 到 `/wiki/`，使同域入口可直接访问。
+- 新增 `tests/wiki/wiki.test.js` 并纳入 `tests/run-all.js`；提供 `npm run wiki:test`。
+
+验证：
+
+- `node tests/wiki/wiki.test.js`：通过 32 项，失败 0 项。
+- `FISHING_TEST_ONLY=wiki/wiki node tests/run-all.js`：通过 32 项，失败 0 项。
+- `node tests/admin.test.js`：通过 392 项，失败 0 项。
+- `node tests/security.test.js`：通过 192 项。
+- `node tests/transport-security.test.js`：通过 49 项。
+- `node --check backend/server.js`、`node --check frontend/js/data.js`、`node --check tests/wiki/wiki.test.js`、`node --check tests/run-all.js` 通过。
+- `node tests/e2e.test.js` 在注册阶段失败；该套件尚未适配当前注册防滥用的 challenge 流程，失败点发生在本次改动覆盖路径之前，不作为本次回归结论。
+
 ## 后续记录要求
 
 每条日志注明日期、变更类型（规划/文档/实现/修复/发布）、完成状态、适用版本与实际验证结果。实现后将验证证据写入对应条目，不回填成“规划当日已经实现”。
