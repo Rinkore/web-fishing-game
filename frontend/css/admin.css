@@ -547,3 +547,22 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .feature-group { margin: 12px 0; }
 .feature-children { display:flex; flex-wrap:wrap; gap:12px 24px; }
 .feature-group label { display:inline-flex; align-items:center; gap:8px; min-height:36px; }
+
+/* ---- Wiki 攻略热更新 ---- */
+.wiki-panel { display: flex; flex-direction: column; gap: 12px; }
+.wiki-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.wiki-card {
+  display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px;
+  min-height: 34px; padding: 7px 9px; border: 1px solid #27364b; border-radius: 8px;
+  background: #111827; color: #dbe7ff; font-size: 12px;
+}
+.wiki-card b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wiki-card span { color: #8ca3c6; white-space: nowrap; }
+.wiki-json {
+  width: 100%; min-height: 520px; resize: vertical; font-family: Consolas, "Courier New", monospace;
+  font-size: 12px; line-height: 1.5; white-space: pre; overflow-wrap: normal;
+}
+@media (max-width: 720px) {
+  .wiki-card { grid-template-columns: 1fr; }
+  .wiki-card span { white-space: normal; }
+}

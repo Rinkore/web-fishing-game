@@ -75,6 +75,9 @@ const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
 const STATS_FILE = path.join(DATA_DIR, 'stats.json');
 const ADMIN_FILE = path.join(DATA_DIR, 'admin.json');   // v0.16.0：管理操作审计日志
 const ADMIN_KEYS = ['adminLog'];                        // admin.json 里持久化的键（审计日志）
+// Wiki 正文（攻略与更新说明）：与游戏规则 config.json 分离，管理员保存攻略不推进规则配置代数。
+const WIKI_FILE = path.join(DATA_DIR, 'wiki.json');
+const WIKI_KEYS = ['wikiContent', 'wikiContentRevision', 'wikiContentUpdatedAt'];
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 // 旧版单文件（仅用于首次自动迁移）
 const LEGACY_USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -2447,6 +2450,103 @@ const CONFIG_KEYS = ['features', 'groundCfg', 'notifyLevel', 'autoNotify', 'bite
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
 const STATS_KEYS = ['statMin', 'statHour', 'statPeak'];
+const WIKI_CONTENT_FILE = path.join(__dirname, '..', 'frontend', 'wiki', 'content', 'content.json');
+function defaultWikiContent() {
+  const candidates = STATIC_DIR ? [path.join(STATIC_DIR, 'wiki', 'content', 'content.json'), WIKI_CONTENT_FILE] : [WIKI_CONTENT_FILE];
+  for (const file of candidates) {
+    try {
+      const data = readJson(file);
+      if (data && Array.isArray(data.guides) && data.guides.length && Array.isArray(data.updates)) return data;
+    } catch (e) {}
+  }
+  return { guides: [], updates: [] };
+}
+function loadWikiContent() { loadDomain(WIKI_FILE, WIKI_KEYS); }
+function saveWikiContent() { saveDomain(WIKI_FILE, WIKI_KEYS); }
+function wikiText(value, name, max, required) {
+  if (value === undefined || value === null || value === '') return required ? null : '';
+  if (typeof value !== 'string') return null;
+  const out = value.trim();
+  if (!out || out.length > max) return null;
+  return out;
+}
+function wikiStringList(value, name, maxItems, maxLen) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > maxItems) return null;
+  const out = [];
+  for (const item of value) {
+    if (typeof item !== 'string') return null;
+    const text = item.trim();
+    if (!text || text.length > maxLen) return null;
+    out.push(text);
+  }
+  return out;
+}
+function normalizeWikiContent(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return { ok: false, error: 'Wiki 内容必须是对象' };
+  if (!Array.isArray(input.guides) || !input.guides.length) return { ok: false, error: '至少需要一篇攻略' };
+  if (input.guides.length > 100) return { ok: false, error: '攻略数量超过上限 100' };
+  if (!Array.isArray(input.updates)) return { ok: false, error: '更新记录必须是数组' };
+  if (input.updates.length > 100) return { ok: false, error: '更新记录超过上限 100' };
+  const guides = [];
+  const ids = new Set();
+  for (const raw of input.guides) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: '攻略格式错误' };
+    const id = wikiText(raw.id, 'id', 80, true);
+    const title = wikiText(raw.title, 'title', 120, true);
+    const category = wikiText(raw.category, 'category', 40, true);
+    const summary = wikiText(raw.summary, 'summary', 300, true);
+    const status = wikiText(raw.status, 'status', 30, true) || '已发布';
+    const updatedAt = wikiText(raw.updatedAt, 'updatedAt', 10, true);
+    if (!id || !/^[a-z0-9][a-z0-9-]{1,79}$/.test(id)) return { ok: false, error: '攻略 ID 只能使用小写字母、数字和中划线' };
+    if (ids.has(id)) return { ok: false, error: '攻略 ID 重复：' + id };
+    if (!title || !category || !summary || !/^\d{4}-\d{2}-\d{2}$/.test(updatedAt || '')) return { ok: false, error: '攻略标题、分类、摘要或日期格式错误' };
+    if (!Array.isArray(raw.sections) || !raw.sections.length || raw.sections.length > 40) return { ok: false, error: '攻略段落数量必须在 1-40 之间' };
+    const aliases = wikiStringList(raw.aliases, 'aliases', 16, 40);
+    const tags = wikiStringList(raw.tags, 'tags', 16, 24);
+    if (!aliases || !tags) return { ok: false, error: '攻略别名或标签格式错误' };
+    const sections = [];
+    for (const sec of raw.sections) {
+      if (!sec || typeof sec !== 'object' || Array.isArray(sec)) return { ok: false, error: '攻略段落格式错误' };
+      const h = wikiText(sec.h, 'h', 100, true);
+      if (!h) return { ok: false, error: '攻略段落标题不能为空' };
+      if (sec.type === 'p' || sec.type === 'note') {
+        const text = wikiText(sec.text, 'text', 5000, true);
+        if (!text) return { ok: false, error: '攻略段落正文不能为空或过长' };
+        sections.push({ h: h, type: sec.type, text: text });
+      } else if (sec.type === 'ol' || sec.type === 'ul') {
+        const items = wikiStringList(sec.items, 'items', 30, 1500);
+        if (!items || !items.length) return { ok: false, error: '攻略列表不能为空或过长' };
+        sections.push({ h: h, type: sec.type, items: items });
+      } else return { ok: false, error: '未知攻略段落类型：' + sec.type };
+    }
+    ids.add(id);
+    guides.push({ id: id, title: title, category: category, aliases: aliases, tags: tags, status: status, updatedAt: updatedAt, summary: summary, sections: sections });
+  }
+  const updates = [];
+  for (const raw of input.updates) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: '更新记录格式错误' };
+    const date = wikiText(raw.date, 'date', 10, true);
+    const title = wikiText(raw.title, 'title', 120, true);
+    const summary = wikiText(raw.summary, 'summary', 500, true);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !title || !summary) return { ok: false, error: '更新记录日期、标题或摘要格式错误' };
+    updates.push({ date: date, title: title, summary: summary });
+  }
+  return { ok: true, value: { guides: guides, updates: updates } };
+}
+function wikiContentPayload() {
+  const custom = world.wikiContent;
+  const source = custom && Array.isArray(custom.guides) && Array.isArray(custom.updates) ? custom : defaultWikiContent();
+  return {
+    revision: Math.max(1, Math.floor(Number(world.wikiContentRevision) || 1)),
+    updatedAt: world.wikiContentUpdatedAt || null,
+    guides: source.guides || [],
+    updates: source.updates || []
+  };
+}
+function wikiContentEtag(payload) {
+  return '"wiki-content-' + crypto.createHash('sha256').update(stableJson(payload), 'utf8').digest('hex').slice(0, 24) + '"';
+}
 const HEAT_STATS = { min: 1440, hour: 720, gapMs: 60000, flushEvery: 10 };
 function loadMarket() {
   loadDomain(MARKET_FILE, MARKET_KEYS);
@@ -2695,7 +2795,7 @@ function loadWorld() {
       return;
     }
   }
-  loadMarket(); loadRecords(); loadEconomy(); loadConfig(); loadFeedback(); loadStats(); loadAdminLog();
+  loadMarket(); loadRecords(); loadEconomy(); loadConfig(); loadFeedback(); loadStats(); loadAdminLog(); loadWikiContent();
   void hasDomain;
 }
 loadUsers();
@@ -4871,6 +4971,34 @@ const server = http.createServer(function (req, res) {
     }
     return apiResp(res, 200, payload, { 'Cache-Control': 'no-cache' });
   }
+  // ---- Wiki 正文（公开只读；管理员保存后无需发版，前端轮询即可热更新） ----
+  if (p === '/api/wiki/content' && req.method === 'GET') {
+    const payload = wikiContentPayload();
+    const etag = wikiContentEtag(payload);
+    if (etagMatches(req.headers['if-none-match'], etag)) {
+      res.writeHead(304, { 'Cache-Control': 'no-cache', 'ETag': etag });
+      res.end();
+      return;
+    }
+    return apiResp(res, 200, payload, { 'Cache-Control': 'no-cache', 'ETag': etag });
+  }
+  if (p === '/api/admin/wiki/content' && req.method === 'POST') {
+    return adminAuditedBody(req, p, function (body) {
+      const d = bodyObj(body);
+      if (!d) return apiResp(res, 400, { error: '请求格式错误' });
+      if (!adminOf(d.token)) return apiResp(res, 403, { error: '需要管理员权限' });
+      let normalized;
+      if (d.reset === true) normalized = normalizeWikiContent(defaultWikiContent());
+      else normalized = normalizeWikiContent(d.content);
+      if (!normalized.ok) return apiResp(res, 400, { error: normalized.error });
+      world.wikiContent = normalized.value;
+      world.wikiContentRevision = Math.max(1, Math.floor(Number(world.wikiContentRevision) || 1)) + 1;
+      world.wikiContentUpdatedAt = new Date().toISOString();
+      saveWikiContent();
+      return apiResp(res, 200, wikiContentPayload());
+    });
+  }
+
   // ---- 钓场目录（公开只读；含管理后台保存的掉落池/增益/锁定覆盖） ----
   // 前端在进入游戏时主动拉取一次，作为 SSE init 之外的兜底，确保后进入/刷新的玩家也能拿到最新目录。
   // 产出倍率（dropCfg）非默认时下发「有效权重」，图鉴概率与实钓一致。

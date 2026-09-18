@@ -11,7 +11,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const SRC = path.join(ROOT, 'frontend', 'wiki');
 const REQUIRED = [
   'index.html', 'items/index.html', 'grounds/index.html', 'guides/index.html', 'updates/index.html', 'search/index.html',
-  'css/wiki.css', 'js/content.js', 'js/core.js', 'js/pages.js',
+  'css/wiki.css', 'content/content.json', 'js/content.js', 'js/core.js', 'js/pages.js',
   'tools/build.html', 'tools/build.js', 'tools/smelt.html', 'tools/smelt.js', 'tools/tool.css',
 ];
 
@@ -69,6 +69,28 @@ jsFiles.forEach(function (file) {
   const r = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
   if (r.status !== 0) fail(rel(file) + ' 语法错误：' + (r.stderr || '').trim());
 });
+
+const contentPath = path.join(SRC, 'content', 'content.json');
+try {
+  const content = JSON.parse(fs.readFileSync(contentPath, 'utf8'));
+  if (!Array.isArray(content.guides) || !content.guides.length) fail('Wiki 攻略内容不能为空');
+  if (!Array.isArray(content.updates)) fail('Wiki 更新记录必须是数组');
+  const ids = new Set();
+  content.guides.forEach(function (g) {
+    if (!g || typeof g !== 'object' || !/^[a-z0-9][a-z0-9-]{1,79}$/.test(g.id || '')) fail('攻略 ID 无效：' + (g && g.id));
+    if (ids.has(g.id)) fail('攻略 ID 重复：' + g.id);
+    ids.add(g.id);
+    if (!g.title || !g.category || !g.summary || !Array.isArray(g.sections) || !g.sections.length) fail('攻略结构不完整：' + (g.id || '?'));
+    g.sections.forEach(function (sec) {
+      if (!sec || !sec.h) fail('攻略段落缺少标题：' + (g.id || '?'));
+      if (!['p', 'note', 'ol', 'ul'].includes(sec.type)) fail('攻略段落类型未知：' + sec.type);
+      if ((sec.type === 'p' || sec.type === 'note') && !sec.text) fail('攻略段落缺少正文：' + (g.id || '?'));
+      if ((sec.type === 'ol' || sec.type === 'ul') && (!Array.isArray(sec.items) || !sec.items.length)) fail('攻略列表为空：' + (g.id || '?'));
+    });
+  });
+} catch (e) {
+  if (e instanceof SyntaxError) fail('content/content.json JSON 语法错误：' + e.message);
+}
 const serveFile = path.join(ROOT, 'frontend', 'serve.js');
 const serveCheck = spawnSync(process.execPath, ['--check', serveFile], { encoding: 'utf8' });
 if (serveCheck.status !== 0) fail('frontend/serve.js 语法错误：' + (serveCheck.stderr || '').trim());

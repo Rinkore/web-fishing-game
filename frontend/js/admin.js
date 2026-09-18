@@ -177,6 +177,7 @@ window.Admin = (function () {
     { id: 'formula', name: '🧮 公式管理' },
     { id: 'notify', name: '🔔 通知等级' },
     { id: 'banner', name: '📢 横幅管理' },
+    { id: 'wiki', name: '📚 Wiki攻略' },
     { id: 'feedback', name: '📮 反馈' },
     { id: 'records', name: '🏆 纪录贴图' },
   ];
@@ -299,6 +300,81 @@ window.Admin = (function () {
       };
     });
   }
+  // ================================
+  // Wiki 攻略热更新
+  // ================================
+  function renderWiki() {
+    const main = $('main');
+    main.innerHTML = '<h2>📚 Wiki 攻略热更新</h2>' +
+      '<div class="hint" style="margin-bottom:12px">编辑攻略 JSON 后保存，前端 Wiki 会在数秒内轮询到新版本，不需要重新发版。' +
+      '规则数值仍由服务端快照提供，正文里不要手写会漂移的完整数值表。</div>' +
+      '<div class="panel wiki-panel">' +
+      '<div class="mgr-row"><label>当前内容</label><span id="wiki-meta" class="hint">加载中…</span>' +
+      '<span style="flex:1"></span><button class="btn mini" id="wiki-refresh">刷新</button>' +
+      '<button class="btn mini" id="wiki-format">格式化</button>' +
+      '<button class="btn mini danger" id="wiki-reset">恢复内置</button>' +
+      '<button class="btn primary" id="wiki-save">保存并发布</button></div>' +
+      '<div id="wiki-list" class="wiki-list">加载中…</div>' +
+      '<textarea id="wiki-json" class="ipt wiki-json" spellcheck="false" aria-label="Wiki 内容 JSON"></textarea>' +
+      '<div id="wiki-msg" class="hint"></div></div>';
+    function draw(data) {
+      if (view !== 'wiki') return;
+      const meta = $('wiki-meta'), list = $('wiki-list'), editor = $('wiki-json');
+      if (!meta || !list || !editor) return;
+      const guides = data.guides || [], updates = data.updates || [];
+      meta.textContent = '版本 ' + (data.revision || 1) + ' · 攻略 ' + guides.length + ' 篇 · 更新记录 ' + updates.length + ' 条' +
+        (data.updatedAt ? ' · 保存于 ' + new Date(data.updatedAt).toLocaleString('zh-CN') : ' · 内置内容');
+      list.innerHTML = guides.map(function (g) {
+        return '<div class="wiki-card"><b>' + esc(g.title) + '</b><span>' + esc(g.category || '-') + '</span>' +
+          '<span>' + esc((g.sections || []).length) + ' 段</span><span>' + esc(g.updatedAt || '-') + '</span></div>';
+      }).join('') || '<div class="hint">暂无攻略。</div>';
+      editor.value = JSON.stringify({ guides: guides, updates: updates }, null, 2);
+      setHint('wiki-msg', '');
+    }
+    function load() {
+      adminApi('GET', '/api/wiki/content').then(function (r) {
+        if (view !== 'wiki') return;
+        if (!r.ok) { setHint('wiki-list', '加载失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
+        draw(r.data);
+      });
+    }
+    function parseEditor() {
+      const value = JSON.parse($('wiki-json').value);
+      if (!value || !Array.isArray(value.guides) || !Array.isArray(value.updates)) throw new Error('顶层必须包含 guides 和 updates 数组');
+      return value;
+    }
+    $('wiki-refresh').onclick = load;
+    $('wiki-format').onclick = function () {
+      try { $('wiki-json').value = JSON.stringify(parseEditor(), null, 2); setHint('wiki-msg', '已格式化；尚未保存。'); }
+      catch (e) { setHint('wiki-msg', 'JSON 格式错误：' + e.message); }
+    };
+    $('wiki-save').onclick = function () {
+      const button = this;
+      let content;
+      try { content = parseEditor(); }
+      catch (e) { setHint('wiki-msg', 'JSON 格式错误：' + e.message); return; }
+      button.disabled = true; button.textContent = '保存中…';
+      adminApi('POST', '/api/admin/wiki/content', { token: token, target: 'wiki-guides', content: content }).then(function (r) {
+        button.disabled = false; button.textContent = '保存并发布';
+        if (view !== 'wiki') return;
+        if (!r.ok) { setHint('wiki-msg', '保存失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
+        draw(r.data);
+        toast('Wiki 攻略已发布，前端将自动同步');
+      });
+    };
+    $('wiki-reset').onclick = function () {
+      confirmModalLocal('恢复内置攻略内容？当前线上攻略和更新记录会被替换。').then(function (ok) {
+        if (!ok) return;
+        adminApi('POST', '/api/admin/wiki/content', { token: token, target: 'wiki-guides', reset: true }).then(function (r) {
+          if (view !== 'wiki') return;
+          if (!r.ok) { setHint('wiki-msg', '恢复失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
+          draw(r.data);
+          toast('已恢复内置 Wiki 内容');
+        });
+      });
+    };
+    load();
+  }
   function switchView(v) {
     view = v;
     stopOverviewTimer();
@@ -320,6 +396,7 @@ window.Admin = (function () {
     if (v === 'formula') return renderFormula();
     if (v === 'notify') return renderNotify();
     if (v === 'banner') return renderBanner();
+    if (v === 'wiki') return renderWiki();
     if (v === 'feedback') return renderFeedback();
   }
 

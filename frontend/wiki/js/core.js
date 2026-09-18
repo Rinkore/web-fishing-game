@@ -2,7 +2,9 @@
 (function () {
   const state = {
     snapshot: null, etag: null, lastOk: 0, readyPromise: null,
-    readyResolve: null, readyReject: null, unavailable: false, listeners: []
+    readyResolve: null, readyReject: null, unavailable: false, listeners: [],
+    content: null, contentEtag: null, contentLastOk: 0, contentReadyPromise: null,
+    contentReadyResolve: null, contentReadyReject: null
   };
   const D = window.GameData;
 
@@ -82,6 +84,67 @@
     if (state.snapshot && !state.unavailable && state.lastOk && Date.now() - state.lastOk > 10000) {
       state.unavailable = true; emit();
     }
+  }
+  function validContent(data) {
+    return !!(data && Array.isArray(data.guides) && data.guides.length &&
+      Array.isArray(data.updates) && data.guides.every(function (g) {
+        return g && typeof g.id === 'string' && typeof g.title === 'string' &&
+          Array.isArray(g.sections) && g.sections.every(function (x) { return x && typeof x.h === 'string'; });
+      }));
+  }
+  function applyContent(data) {
+    if (!validContent(data)) throw new Error('Wiki 内容结构无效');
+    state.content = {
+      revision: Math.max(0, Math.floor(Number(data.revision) || 0)),
+      updatedAt: data.updatedAt || '',
+      guides: data.guides,
+      updates: data.updates
+    };
+    window.WikiContent = state.content;
+    state.contentLastOk = Date.now();
+    if (state.contentReadyResolve) {
+      state.contentReadyResolve(state.content);
+      state.contentReadyResolve = null; state.contentReadyReject = null;
+    }
+    state.contentReadyPromise = null;
+    emit();
+  }
+  async function loadFallbackContent() {
+    const res = await fetch('/wiki/content/content.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    applyContent(await res.json());
+  }
+  async function refreshContent() {
+    const headers = {};
+    if (state.contentEtag) headers['If-None-Match'] = state.contentEtag;
+    try {
+      const res = await fetch('/api/wiki/content', { headers: headers, cache: 'no-cache' });
+      if (res.status === 304) {
+        state.contentLastOk = Date.now(); return;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      state.contentEtag = res.headers.get('ETag');
+      applyContent(await res.json());
+    } catch (e) {
+      if (!state.content) {
+        try { await loadFallbackContent(); return; } catch (e2) {}
+      }
+      if (state.contentReadyReject) {
+        state.contentReadyReject(e);
+        state.contentReadyReject = null; state.contentReadyResolve = null;
+      }
+      state.contentReadyPromise = null;
+    }
+  }
+  function contentReady() {
+    if (state.content) return Promise.resolve(state.content);
+    if (!state.contentReadyPromise) {
+      state.contentReadyPromise = new Promise(function (resolve, reject) {
+        state.contentReadyResolve = resolve; state.contentReadyReject = reject;
+      });
+      refreshContent();
+    }
+    return state.contentReadyPromise;
   }
   function itemEntries(s) {
     const out = [];
@@ -256,19 +319,25 @@
   function init() {
     renderStatus();
     setInterval(refresh, 5000);
+    setInterval(refreshContent, 5000);
     setInterval(checkStale, 1000);
-    window.addEventListener('focus', refresh);
-    return ready();
+    window.addEventListener('focus', function () { refresh(); refreshContent(); });
+    return Promise.allSettled([ready(), contentReady()]).then(function (results) {
+      if (results[0].status === 'rejected') throw results[0].reason;
+      return state.snapshot;
+    });
   }
 
   window.Wiki = {
     get snapshot() { return state.snapshot; },
     get unavailable() { return state.unavailable; },
     get rulesConfig() { return state.snapshot ? state.snapshot.rulesConfig : null; },
+    get content() { return state.content; },
     get items() { return state.snapshot ? itemEntries(state.snapshot) : []; },
     get grounds() { return state.snapshot ? state.snapshot.grounds : []; },
     el: el, fmt: fmt, pct: pct, signed: signed,
-    validSnapshot: validSnapshot, applyRules: applyRules, refresh: refresh, ready: ready, rules: rules,
+    validSnapshot: validSnapshot, validContent: validContent, applyRules: applyRules,
+    refresh: refresh, refreshContent: refreshContent, ready: ready, contentReady: contentReady, rules: rules,
     search: search, searchIndex: searchIndex, itemEntries: itemEntries, groundEntries: groundEntries,
     itemUrl: itemUrl, spotUrl: spotUrl, imageFor: imageFor, occurrences: occurrences, shopPrice: shopPrice,
     storage: { available: localStorageAvailable, readJSON: readJSON, writeJSON: writeJSON, remove: removeStorage },

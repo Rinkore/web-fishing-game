@@ -117,11 +117,31 @@ async function main() {
   const shop = await request('/shop');
   check('/shop 复用为实时价且 no-store', shop.status === 200 && shop.headers['cache-control'] === 'no-store', JSON.stringify({ status: shop.status, cache: shop.headers['cache-control'] }));
 
+  const wikiContent = await request('/api/wiki/content');
+  check('Wiki 攻略接口返回内置内容', wikiContent.status === 200 && wikiContent.data.revision >= 1 && Array.isArray(wikiContent.data.guides) && wikiContent.data.guides.length > 0 && Array.isArray(wikiContent.data.updates), JSON.stringify({ status: wikiContent.status, revision: wikiContent.data && wikiContent.data.revision, guides: wikiContent.data && wikiContent.data.guides && wikiContent.data.guides.length }));
+  check('Wiki 攻略包含热更新后的关键攻略', wikiContent.data.guides.some(g => g.id === 'seven-part-reference-build' && g.sections.some(s => s.h === '实测成本样本')), JSON.stringify(wikiContent.data.guides && wikiContent.data.guides.map(g => g.id)));
+  check('Wiki 攻略接口使用 no-cache 与 ETag', String(wikiContent.headers['cache-control']).includes('no-cache') && !!wikiContent.headers.etag, JSON.stringify(wikiContent.headers));
+  const cachedWikiContent = await request('/api/wiki/content', { headers: { 'If-None-Match': wikiContent.headers.etag } });
+  check('Wiki 攻略 ETag 命中返回 304', cachedWikiContent.status === 304 && cachedWikiContent.headers.etag === wikiContent.headers.etag, JSON.stringify({ status: cachedWikiContent.status, etag: cachedWikiContent.headers.etag }));
+  check('未登录不能保存 Wiki 攻略', (await post('/api/admin/wiki/content', { content: wikiContent.data })).status === 403);
+
   // 管理端保存配置必须推进配置代数，并让规则哈希与 ETag 变化。
   check('测试管理员注册成功', (await registerAccount('wikiadmin')).status === 200);
   const otp = await provisionAdmin(srv, TMP_DATA, 'wikiadmin');
   const adminLogin = await post('/api/admin/login', { username: 'wikiadmin', password: 'wiki-test-1234', otp: otp });
   check('测试管理员登录成功', adminLogin.status === 200 && adminLogin.data.token, JSON.stringify(adminLogin.data || {}));
+  const invalidWikiSave = await post('/api/admin/wiki/content', { content: { guides: [], updates: [] } }, { Authorization: 'Bearer ' + adminLogin.data.token });
+  check('管理员提交空攻略被拒绝', invalidWikiSave.status === 400 && !!invalidWikiSave.data.error, JSON.stringify(invalidWikiSave.data || {}));
+  const hotContent = JSON.parse(JSON.stringify(wikiContent.data));
+  hotContent.guides[0].title = '热更新验证：' + hotContent.guides[0].title;
+  hotContent.updates.unshift({ date: '2026-09-18', title: '热更新验证', summary: '测试保存后立即生效。' });
+  const hotSave = await post('/api/admin/wiki/content', { target: 'wiki-guides', content: { guides: hotContent.guides, updates: hotContent.updates } }, { Authorization: 'Bearer ' + adminLogin.data.token });
+  check('管理员保存 Wiki 攻略成功', hotSave.status === 200 && hotSave.data.revision === wikiContent.data.revision + 1 && hotSave.data.guides[0].title === hotContent.guides[0].title, JSON.stringify(hotSave.data || { status: hotSave.status }));
+  const hotRead = await request('/api/wiki/content');
+  check('Wiki 攻略保存后公开接口立即可读', hotRead.status === 200 && hotRead.data.revision === hotSave.data.revision && hotRead.data.guides[0].title === hotContent.guides[0].title && hotRead.headers.etag !== wikiContent.headers.etag, JSON.stringify({ revision: hotRead.data && hotRead.data.revision }));
+  const savedWiki = JSON.parse(fs.readFileSync(path.join(TMP_DATA, 'wiki.json'), 'utf8'));
+  const savedConfigBeforeFeature = fs.existsSync(path.join(TMP_DATA, 'config.json')) ? JSON.parse(fs.readFileSync(path.join(TMP_DATA, 'config.json'), 'utf8')) : {};
+  check('Wiki 攻略独立落盘且不污染 config.json', savedWiki.wikiContentRevision === hotSave.data.revision && !Object.prototype.hasOwnProperty.call(savedConfigBeforeFeature, 'wikiContent'), JSON.stringify({ revision: savedWiki.wikiContentRevision, configKeys: Object.keys(savedConfigBeforeFeature) }));
   const featureSave = await post('/api/admin/features', { features: { mall: false } }, { Authorization: 'Bearer ' + adminLogin.data.token });
   check('管理端保存功能开关成功', featureSave.status === 200, JSON.stringify(featureSave.data || {}));
   const changed = await request('/api/version?profile=wiki');

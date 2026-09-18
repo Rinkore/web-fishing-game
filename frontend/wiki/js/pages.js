@@ -306,7 +306,8 @@ window.WikiPage = (function () {
       const c = card('攻略目录');
       const grid = W().el('div', 'grid cols-2');
       C().guides.forEach(function (x) { grid.append(guideCard(x)); });
-      c.append(grid, W().el('p', 'card-note', '攻略描述玩法结构；涉及当前数值时请以快照和模拟器结果为准。'));
+      c.append(grid, W().el('p', 'card-note', '攻略正文支持后台热更新；涉及当前数值时以快照和模拟器结果为准。'));
+      if (!C().guides.length) c.append(W().el('div', 'callout warn', '攻略内容正在同步，或当前服务端未返回可用攻略。'));
       main.append(pageHead('玩法与攻略', '新手、机制、工坊、经济与常见问题。'), c); return;
     }
     const c = card(g.title);
@@ -369,7 +370,9 @@ window.WikiPage = (function () {
   function init() {
     let lastKey = '', lastUnavailable = null;
     W().onChange(function (snapshot, unavailable) {
-      const key = snapshot ? snapshot.snapshotId : '';
+      const content = W().content;
+      const key = (snapshot ? snapshot.snapshotId : '') + '|content:' +
+        (content ? (content.revision || 0) + ':' + (content.updatedAt || '') : '');
       if (key === lastKey && unavailable === lastUnavailable) return;
       lastKey = key; lastUnavailable = unavailable; render();
     });

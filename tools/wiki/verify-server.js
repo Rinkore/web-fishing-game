@@ -36,6 +36,11 @@ async function main() {
   ok('/shop 返回 200 且 no-store', shopRes.status === 200 && /no-store/i.test(shopRes.headers.get('cache-control') || ''), shopRes.status + ' ' + shopRes.headers.get('cache-control'));
   const shop = await shopRes.json().catch(() => null);
   ok('/shop 返回实时价格目录', !!(shop && Object.keys(shop).length));
+
+  const contentRes = await fetch(BASE + '/api/wiki/content', { cache: 'no-store' });
+  const content = await contentRes.json().catch(() => null);
+  ok('/api/wiki/content 返回攻略内容', contentRes.status === 200 && !!(content && content.revision >= 1 && Array.isArray(content.guides) && content.guides.length && Array.isArray(content.updates)), contentRes.status + ' ' + (content && content.guides && content.guides.length));
+  ok('攻略内容使用 no-cache 与 ETag', /no-cache/i.test(contentRes.headers.get('cache-control') || '') && !!contentRes.headers.get('etag'), contentRes.headers.get('cache-control') + ' ' + contentRes.headers.get('etag'));
   if (failed) process.exit(1);
   console.log('PASS Wiki 服务端契约验证：' + BASE);
 }

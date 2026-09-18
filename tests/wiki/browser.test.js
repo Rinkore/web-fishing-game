@@ -9,6 +9,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { waitHttp } = require('../_util.js');
+const { provisionAdmin } = require('../_admin.js');
+const registrationProof = require('../_registration.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 const PORT = 8272;
@@ -92,7 +94,7 @@ async function main() {
     env: Object.assign({}, process.env, {
       PORT: String(PORT), FISHING_DATA_DIR: TMP_DATA, SOURCE_COMMIT: SOURCE_COMMIT,
     }),
-    stdio: ['ignore', 'ignore', 'pipe'],
+    stdio: ['pipe', 'ignore', 'pipe'],
   });
   const chromeFile = chromePath();
   check('找到 Chrome/Edge 可执行文件', !!chromeFile, chromeFile);
@@ -109,6 +111,12 @@ async function main() {
     check('首页显示规则可用与版本', homeText.includes('规则可用') && homeText.includes('v0.18.0'), homeText.slice(0, 200));
     check('首页无脚本异常', errors(home).length === 0, JSON.stringify(errors(home).slice(0, 2)));
     home.close();
+
+    const guides = await openPage('/wiki/guides/index.html');
+    const guidesText = await evaluate(guides, 'document.body.innerText');
+    check('攻略页渲染热更新内容目录', guidesText.includes('七部位五词条参考配装') && guidesText.includes('工坊止损'), guidesText.slice(0, 300));
+    check('攻略页无脚本异常', errors(guides).length === 0, JSON.stringify(errors(guides).slice(0, 2)));
+    guides.close();
 
     const items = await openPage('/wiki/items/index.html');
     const itemCount = await evaluate(items, 'document.querySelectorAll(".tile").length');
@@ -186,6 +194,49 @@ async function main() {
     check('熔炼批量完成并输出分布', smeltResult.batch.includes('100 次独立试验') && smeltResult.batch.includes('词缀数分布'), smeltResult.batch);
     check('熔炼模拟器无脚本异常', errors(smelt).length === 0);
     smelt.close();
+
+    async function postJson(pathname, body) {
+      const res = await fetch(BASE + pathname, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return { status: res.status, data: await res.json().catch(() => ({})) };
+    }
+    async function registerAdmin() {
+      const payload = { username: 'wikiadmin', password: 'wiki-test-1234', name: 'Wiki Admin', qq: '827200' };
+      let r = await postJson('/api/register', payload);
+      if (r.status === 200 && r.data && r.data.code === 'REGISTRATION_CHALLENGE') {
+        const challenge = await fetch(BASE + '/api/register/challenge').then(x => x.json());
+        r = await postJson('/api/register', Object.assign({}, payload, { proof: registrationProof.solve(challenge) }));
+      }
+      return r;
+    }
+    check('浏览器测试管理员注册成功', (await registerAdmin()).status === 200);
+    const otp = await provisionAdmin(server, TMP_DATA, 'wikiadmin');
+    const admin = await openPage('/admin.html');
+    const adminLogin = await evaluate(admin, `(async () => {
+      document.getElementById('login-user').value = 'wikiadmin';
+      document.getElementById('login-pass').value = 'wiki-test-1234';
+      document.getElementById('login-otp').value = '${otp}';
+      document.getElementById('login-btn').click();
+      await new Promise(r => setTimeout(r, 900));
+      return {
+        loginHidden: document.getElementById('login').style.display === 'none',
+        nav: Array.from(document.querySelectorAll('.nav-item')).map(x => x.textContent)
+      };
+    })()`);
+    check('管理后台登录并显示 Wiki 攻略入口', adminLogin.loginHidden && adminLogin.nav.some(x => x.includes('Wiki攻略')), JSON.stringify(adminLogin));
+    const adminWiki = await evaluate(admin, `(async () => {
+      const button = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes('Wiki攻略'));
+      if (button) button.click();
+      await new Promise(r => setTimeout(r, 500));
+      return {
+        title: document.querySelector('main h2') && document.querySelector('main h2').innerText,
+        meta: document.getElementById('wiki-meta') && document.getElementById('wiki-meta').innerText,
+        cards: document.querySelectorAll('.wiki-card').length,
+        json: document.getElementById('wiki-json') && document.getElementById('wiki-json').value.slice(0, 200)
+      };
+    })()`);
+    check('管理后台 Wiki 攻略编辑器可用', adminWiki.title && adminWiki.title.includes('Wiki 攻略热更新') && adminWiki.cards > 0 && adminWiki.json.includes('guides'), JSON.stringify(adminWiki));
+    check('管理后台 Wiki 页无脚本异常', errors(admin).filter(e => e.method === 'Runtime.exceptionThrown').length === 0, JSON.stringify(errors(admin).filter(e => e.method === 'Runtime.exceptionThrown').slice(0, 2)));
+    admin.close();
 
     for (const [name, url] of [
       ['首页 360px 无横向溢出', '/wiki/'],

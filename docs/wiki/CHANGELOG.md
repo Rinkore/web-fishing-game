@@ -134,6 +134,28 @@
 - 复核运行 `node tests/admin.test.js`（392 项通过）、`node tests/security.test.js`（192 项通过）和 `node tests/transport-security.test.js`（49 项通过）。
 - `node tests/e2e.test.js` 仍在注册 challenge 适配前失败，不作为本次验收结论。
 
+## 2026-09-18 · 攻略目录重写与后台热更新（功能更新）
+
+状态：本地实现与专项回归完成；生产部署和游戏 Release 未执行。
+
+- 重写攻略目录为 9 篇策略文章：新手首小时、产量优先级、钓点选择、七部位五词条参考、五词条工坊路线、工坊止损、资源循环、库存清理与常见问题。
+- 攻略正文加入一组实测七部位五词条样本：45 次熔炼、36 次成功、17 次高保留转移中 12 次保留成功，总消耗约 451,800 金币与 170 片残片；样本仅用于说明波动和预算，不作为保底承诺。
+- 新增 `frontend/wiki/content/content.json` 作为内置内容种子；`frontend/wiki/js/content.js` 只保留兜底容器，避免正文双来源漂移。
+- 新增公开 `GET /api/wiki/content`，返回攻略、更新记录、内容版本与更新时间，使用 no-cache、ETag 与 304。
+- 新增管理员 `POST /api/admin/wiki/content`，支持保存整份 JSON 或恢复内置内容；请求纳入管理员 MFA、管理审计和服务端结构校验。
+- 热更新内容独立保存到数据目录 `wiki.json`，不污染 `config.json`，也不推进规则快照配置代数。
+- Wiki 前端每 5 秒轮询攻略内容并在窗口回到前台刷新；接口不可用的静态开发环境回退读取内置 JSON。
+- 管理后台新增「📚 Wiki攻略」页：当前版本与文章列表、JSON 编辑、格式化、保存发布、恢复内置。
+- `wiki:check` 增加 JSON 结构、ID 唯一性和段落类型检查；`wiki:verify:server` 增加攻略内容接口检查。
+
+验证：
+
+- `npm run wiki:check`：通过，8 个页面、6 个脚本，并检查 `content/content.json`。
+- `npm run wiki:test`：通过 42 项，失败 0 项；覆盖攻略接口 ETag/304、未登录拒绝、空内容拒绝、管理员热更新、公开立即生效、独立落盘与不污染配置。
+- `npm run wiki:test:browser`：通过 30 项，失败 0 项；新增攻略页渲染热更新内容、管理后台登录并打开 Wiki 攻略编辑器，均无脚本异常。
+- `npm run wiki:verify:server`：本地临时服务通过 12 项，失败 0 项；包含攻略内容接口、no-cache 与 ETag。
+- `node --check backend/server.js`、`frontend/js/admin.js`、`frontend/wiki/js/core.js`、`frontend/wiki/js/pages.js`、`tools/wiki/check.js`、`tools/wiki/verify-server.js` 与 Wiki 测试脚本均通过。
+
 ## 后续记录要求
 
 每条日志注明日期、变更类型（规划/文档/实现/修复/发布）、完成状态、适用版本与实际验证结果。实现后将验证证据写入对应条目，不回填成“规划当日已经实现”。
