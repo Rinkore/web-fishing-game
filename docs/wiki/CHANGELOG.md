@@ -49,7 +49,8 @@
 
 状态：完成实现前文档复审，未修改服务端或 Wiki 功能代码。
 
-- 将文档版本提升到 0.3，明确当前仍处于规划与接口盘点阶段。
+- 将文档版本提升到 0.3，明确当前仍处于规划与接口盘点阶段；合入最新 `main`（`v0.17.0 / 97d3597`）并更新核对基线。
+- 复核 `v0.17.0` 相对 `v0.16.6` 的差异：`backend/server.js` 无变化，`frontend/js/data.js` 仅版本号变化，接口盘点结论继续适用。
 - 区分规则快照与实时经济状态：规则、目录和计算配置使用 `/api/version?profile=wiki`；实时收购价复用现有 `/shop`，不参与 `configHash`，并要求 no-store、5 秒刷新和 10 秒失联隐藏当前价。
 - 明确 `profile=wiki` 返回独立 `snapshot` 对象，响应外形为 `{ profile, version, snapshot }`；默认响应与 Wiki profile 必须共用同一个服务端组装函数，不允许两处手拼。
 - 明确缓存与新鲜度口径：`Cache-Control: no-cache`、`ETag: snapshotId`、5 秒轮询，连续 10 秒无法确认配置则禁用受影响计算。
