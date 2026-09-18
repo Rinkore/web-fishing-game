@@ -33,7 +33,9 @@ Start-Game-HTTPS.bat    :: 已安装 HTTPS 服务时使用：后端 9001，公�
 之后在每个游戏 Release 目录中双击 `Start-Game-HTTPS.bat`，访问 <https://ipv4.rinkore.com:9000>。
 启动器调用**当前 Release 目录**的 `run.bat`，后端使用 9001，并沿用 HTTPS 安装时指定的存档目录；
 请继续使用原 Windows 账号。更换版本前，在旧游戏窗口输入 `q` 保存停服。
-Caddy 开机自动启动，游戏仍需手动启动；公网 TCP 443 要持续开放用于证书续期。
+Caddy 开机自动启动，游戏仍需手动启动；新版安装包使用 Cloudflare DNS-01 自动申请和续期证书，
+无需开放公网 80/443，只需转发 TCP 9000。安装时输入仅限 `rinkore.com` 的 API Token，
+权限为 `Zone → DNS → Edit` 和 `Zone → Zone → Read`；域名记录保持“仅 DNS”（灰云）。
 HTTPS 启用后不要单独运行原 `run.bat`，否则会与代理争用 9000。
 
 **管理后台**：`admin.html`（集成 `:9000/admin.html` / 分离 `:5500/admin.html`），用游戏账号密码登录；
