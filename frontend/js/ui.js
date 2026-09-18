@@ -7379,7 +7379,7 @@ window.UI = (function () {
   // 「卸下」：清空该槽位（纯草稿操作，组件本身一直在背包里）。
   //   主件卸下会连带清掉副件与已选词条（副件依赖主件部位）；催化剂份数保留——玩家通常只是想换一件。
   function wsUnload(which) {
-    if (which === 'main') { wsMain = ''; wsMainAffix = ''; wsSub = ''; wsSubAffix = ''; }
+    if (which === 'main') { wsMain = ''; wsMainAffix = ''; wsSub = ''; wsSubAffix = ''; wsRelics = 0; }
     else if (which === 'sub') { wsSub = ''; wsSubAffix = ''; }
     else if (which === 'recast') { wsRecast = ''; wsRecastTarget = -1; }
     renderView();
@@ -7400,8 +7400,8 @@ window.UI = (function () {
         '<div class="ws-affs" role="group" aria-label="' + title + '词条">' + comp.meta.affixes.map(function (a) {
           return '<button class="ws-aff' + (selected === a.type ? ' on' : '') + (a.value < 0 ? ' neg' : '') +
             '" data-which="' + which + '" data-type="' + esc(a.type) + '" aria-pressed="' + (selected === a.type) + '">' +
-            '<span class="sm-choice" aria-hidden="true"></span><span>' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</span>' +
-            '<b>' + esc((a.value > 0 ? '+' : '') + a.value) + '%</b></button>';
+            '<span class="sm-choice" aria-hidden="true"></span>' + affSpanOpen(a) +
+            '<span>' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</span><b>' + esc((a.value > 0 ? '+' : '') + a.value) + '%</b></span></button>';
         }).join('') + '</div>'
       : '<button class="ws-pick empty" data-pick="' + which + '"' + (!isMain && !wsMain ? ' disabled' : '') +
         '><span class="sm-slot-plus" aria-hidden="true">＋</span>' + (!isMain && !wsMain ? '先选择主组件' : '选择' + title) + '</button>') + '</section>';
@@ -7481,19 +7481,19 @@ window.UI = (function () {
   // Keep unavailable materials visible with a reason; clamp the draft to current stock and rules.
 
   function wsFitMaterials() {
-    const meta = D.componentOf(wsMain);
-    const known = !!(meta && wsMainAffix && wsSubAffix);
+    const meta = D.componentOf(wsMain), known = !!(meta && wsMainAffix && wsSubAffix);
     const addable = known ? D.smeltAddableAffixes(meta.baseId, [wsMainAffix, wsSubAffix]) : [];
     const cfg = D.getSmeltCfg(), capOk = 3 <= D.smeltAddAffixCap();
     let removed = false;
-    document.querySelectorAll('.smelt-workbench .ws-mat[data-mat]').forEach(function (row) {
-      const id = row.getAttribute('data-mat'), aff = row.getAttribute('data-affix');
-      const fit = known && capOk && addable.indexOf(aff) >= 0;
+    D.smeltMaterialIds().forEach(function (id) {
+      const fit = known && capOk && addable.indexOf(D.smeltMaterialAffix(id)) >= 0;
       const have = S().inventory[id] || 0;
       const limit = Math.max(0, Math.min(have, Number(cfg.maxMaterials) || 0));
       const old = wsMats[id] || 0, qty = fit ? Math.min(old, limit) : 0;
       if (qty !== old) removed = true;
       if (qty) wsMats[id] = qty; else delete wsMats[id];
+      const row = document.querySelector('#ws-material-modal [data-mat="' + id + '"]');
+      if (!row) return;
       row.classList.toggle('unavailable', !fit || !have);
       row.classList.toggle('selected', qty > 0);
       const input = row.querySelector('input');
@@ -7507,6 +7507,48 @@ window.UI = (function () {
     });
     const note = $('ws-mats-note');
     if (note) note.textContent = removed ? '不适用或超出库存的材料已移除' : '';
+  }
+  function wsOpenMaterials() {
+    if (wsBusy) return;
+    closeOverlays();
+    const close = function () { overlay.remove(); wsRefreshPreview(); if ($('ws-material-open')) $('ws-material-open').focus(); };
+    const overlay = buildOverlay(close), box = el('div', 'modal-box sm-material-dialog');
+    box.id = 'ws-material-modal'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-labelledby', 'ws-material-title');
+    const cfg = D.getSmeltCfg();
+    box.innerHTML = '<div class="modal-head"><span class="modal-title" id="ws-material-title">选择催化剂</span>' +
+      '<button class="mini modal-close" aria-label="关闭催化剂选择">✕</button></div><div class="modal-body">' +
+      '<div class="sm-material-limit">最多 ' + cfg.maxMaterials + ' 份 / ' + cfg.maxTypes + ' 种 · 投入最多的材料决定新增词条</div>' +
+      '<div class="ws-mat-grid">' + D.smeltMaterialIds().map(function (id) {
+        const meta = D.itemOf(id), aff = D.smeltMaterialAffix(id);
+        return '<div class="ws-mat" data-mat="' + esc(id) + '" data-affix="' + esc(aff) + '"><img class="sm-material-icon" src="assets/item/' + esc(id) + '.png" alt="' + esc(meta.name) + '" />' +
+          '<div class="sm-mat-info"><strong class="wm-name">' + esc(meta.name) + '</strong><span class="wm-aff">' + esc(D.AFFIX_LABEL[aff] || aff) + '</span><small class="wm-have"></small></div>' +
+          '<div class="sm-counter"><button type="button" class="mini wm-q" data-q="-1" aria-label="减少' + esc(meta.name) + '">−</button>' +
+          '<input class="ipt ws-mat-qty" aria-label="' + esc(meta.name) + '份数" type="number" min="0" step="1" data-mat="' + esc(id) + '" value="' + (wsMats[id] || 0) + '" />' +
+          '<button type="button" class="mini wm-q" data-q="1" aria-label="增加' + esc(meta.name) + '">＋</button></div></div>';
+      }).join('') + '</div><div id="ws-mats-note" role="status"></div></div>' +
+      '<footer class="sm-material-footer"><div id="ws-material-feedback" role="status" aria-live="polite"></div><button class="mini primary-mini sm-material-done">完成</button></footer>';
+    overlay.appendChild(box); document.body.appendChild(overlay);
+    box.querySelector('.modal-close').onclick = close; box.querySelector('.sm-material-done').onclick = close;
+    box.querySelectorAll('.ws-mat-qty').forEach(function (inp) { inp.oninput = function () {
+      const cap = Math.max(0, Math.min(S().inventory[inp.dataset.mat] || 0, Number(D.getSmeltCfg().maxMaterials) || 0));
+      const qty = Math.max(0, Math.min(cap, Math.floor(Number(inp.value) || 0)));
+      inp.value = qty; if (qty) wsMats[inp.dataset.mat] = qty; else delete wsMats[inp.dataset.mat]; wsRefreshPreview();
+    }; });
+    box.querySelectorAll('.wm-q').forEach(function (b) { b.onclick = function () {
+      const input = b.closest('.ws-mat').querySelector('input');
+      input.value = Math.max(0, Number(input.value) + Number(b.dataset.q)); input.dispatchEvent(new Event('input'));
+    }; });
+    box.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); close(); }
+      if (ev.key === 'Tab') {
+        const nodes = Array.from(box.querySelectorAll('button:not(:disabled), input:not(:disabled)'));
+        const first = nodes[0], last = nodes[nodes.length - 1];
+        if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+        else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+      }
+    });
+    wsRefreshPreview(); box.querySelector('.modal-close').focus();
   }
 
   function wsFailureText(p) {
@@ -7551,7 +7593,12 @@ window.UI = (function () {
     const relicChance = $('ws-relic-chance');
     if (relicChance) relicChance.textContent = wsRelics ? '保留概率 ' + p.retain.chance + '% · 失败保护已启用' : '未投入';
     const summary = $('ws-material-summary');
-    if (summary) summary.textContent = p.load.total ? p.load.total + ' 份 · 新增' + (D.AFFIX_LABEL[p.extraType] || '') : '添加材料';
+    if (summary) summary.textContent = p.load.total ? p.load.total + ' 份 · 新增' + (D.AFFIX_LABEL[p.extraType] || '') + ' ↗' : '添加材料 ↗';
+    const images = $('ws-material-images');
+    const thumbs = p.materials.map(function (m) { return '<img src="assets/item/' + esc(m.id) + '.png" alt="' + esc(itemMeta(m.id).name) + '" />'; }).join('');
+    if (images && images.innerHTML !== thumbs) images.innerHTML = thumbs;
+    const feedback = $('ws-material-feedback');
+    if (feedback) feedback.textContent = !p.ok ? p.error : p.load.total ? '已选 ' + p.load.total + ' 份 · 新增命中 ' + p.rates.extraRate + '% · 熔炼成功 ' + p.rates.rate + '%' : '未投入催化剂';
     const announce = $('ws-step-feedback');
     const instruction = !p.main ? '选择主组件' : !p.sub ? '选择同部位副组件' : !wsMainAffix ? '选择主件保留词条'
       : !wsSubAffix ? '选择副件搬入词条' : !p.ok ? p.error : !canGold ? '金币不足，还差 ' + Math.ceil(p.gold - (S().player.coins || 0)) : '方案已就绪';
@@ -7654,22 +7701,14 @@ window.UI = (function () {
     const st = S(), comps = wsComponents();
     const mainC = comps.find(function (c) { return c.id === wsMain; }) || null;
     const subC = comps.find(function (c) { return c.id === wsSub; }) || null;
-    const rt = wsRetainInfo(mainC), cfg = D.getSmeltCfg();
+    const rt = wsRetainInfo(mainC);
     body.classList.add('smelt-workbench');
     body.innerHTML = '<fieldset class="sm-draft"' + (wsBusy ? ' disabled' : '') + '><legend class="sr-only">熔炼方案</legend>' +
       '<div class="sm-step-title"><h3>01 <span>选择组件与词条</span></h3><span id="ws-step-feedback" role="status" aria-live="polite"></span></div>' +
       '<div class="ws-grid">' + wsCompCardHtml('main', mainC) + wsCompCardHtml('sub', subC) + '</div>' +
       (!comps.length ? '<div class="sm-empty-inventory">暂无组件 <button class="mini" id="ws-find-components">去开箱</button></div>' : '') +
       '<div class="sm-step-title"><h3>02 <span>辅助材料</span></h3><span>可选</span></div>' +
-      '<details class="sm-materials"' + (Object.keys(wsMats).length ? ' open' : '') + '><summary><span>催化剂</span><span id="ws-material-summary">添加材料</span></summary>' +
-      '<div class="sm-material-limit">最多 ' + cfg.maxMaterials + ' 份 / ' + cfg.maxTypes + ' 种 · 投入最多的材料决定新增词条</div>' +
-      '<div class="ws-mat-grid" id="ws-mats">' + ((st.workshop && st.workshop.materials) || []).map(function (m) {
-        return '<div class="ws-mat" data-mat="' + esc(m.id) + '" data-affix="' + esc(m.affix || '') + '">' +
-          '<div class="sm-mat-info"><strong class="wm-name">' + esc(m.name) + '</strong><span class="wm-aff">' + esc(m.affixName || m.affix) + '</span><small class="wm-have"></small></div>' +
-          '<div class="sm-counter"><button type="button" class="mini wm-q" data-q="-1" aria-label="减少' + esc(m.name) + '">−</button>' +
-          '<input class="ipt ws-mat-qty" aria-label="' + esc(m.name) + '份数" type="number" min="0" step="1" data-mat="' + esc(m.id) + '" value="' + (wsMats[m.id] || 0) + '" />' +
-          '<button type="button" class="mini wm-q" data-q="1" aria-label="增加' + esc(m.name) + '">＋</button></div></div>';
-      }).join('') + '</div><div id="ws-mats-note" role="status"></div></details>' +
+      '<button type="button" class="sm-materials" id="ws-material-open" aria-haspopup="dialog"><span>催化剂</span><span id="ws-material-images"></span><span id="ws-material-summary">添加材料 ↗</span></button>' +
       '<div class="sm-options"><label class="sm-option ws-pearl"><img src="assets/item/' + esc(D.SMELT_PEARL) + '.png" alt="" />' +
       '<span><strong>龙宫宝珠</strong><small>持有 <span data-have="' + esc(D.SMELT_PEARL) + '">' + (st.inventory[D.SMELT_PEARL] || 0) + '</span></small><small id="ws-pearl-status"></small></span>' +
       '<input type="checkbox" id="ws-pearl"' + (wsPearl ? ' checked' : '') + ' /></label>' +
@@ -7686,15 +7725,7 @@ window.UI = (function () {
       if (b.dataset.which === 'main') wsMainAffix = b.dataset.type; else wsSubAffix = b.dataset.type;
       wsRefreshPreview();
     }; });
-    body.querySelectorAll('.ws-mat-qty').forEach(function (inp) { inp.oninput = function () {
-      const cap = Math.max(0, Math.min(S().inventory[inp.dataset.mat] || 0, Number(cfg.maxMaterials) || 0));
-      const qty = Math.max(0, Math.min(cap, Math.floor(Number(inp.value) || 0)));
-      inp.value = qty; if (qty) wsMats[inp.dataset.mat] = qty; else delete wsMats[inp.dataset.mat]; wsRefreshPreview();
-    }; });
-    body.querySelectorAll('.wm-q').forEach(function (b) { b.onclick = function () {
-      const input = b.closest('.ws-mat').querySelector('input');
-      input.value = Math.max(0, Number(input.value) + Number(b.dataset.q)); input.dispatchEvent(new Event('input'));
-    }; });
+    $('ws-material-open').onclick = wsOpenMaterials;
     $('ws-pearl').onchange = function () { wsPearl = this.checked; wsRefreshPreview(); };
     if ($('ws-relic-qty')) $('ws-relic-qty').oninput = function () { wsRelics = Math.max(0, Math.floor(Number(this.value) || 0)); wsRefreshPreview(); };
     if ($('ws-find-components')) $('ws-find-components').onclick = function () { wsTab = 'open'; renderView(); };
@@ -8856,6 +8887,7 @@ window.UI = (function () {
 
   function renderView() {
     const pageId = pageIdOf();
+    $('main').classList.toggle('smelt-page', currentView === 'workshop' && wsTab === 'smelt');
     if (featureBlocked(pageId)) {
       const main = $('main'); main.innerHTML = '';
       const panel = el('div', 'panel wide feature-closed');
@@ -9119,6 +9151,7 @@ window.UI = (function () {
     if (bulkFocus && scope && scope !== 'all') { renderTopbar(); renderNav(); return; }
     // 弹窗打开时（批量出售/订阅/组件属性等）不重绘背后的页面列表，避免广播把弹窗下的操作上下文冲掉
     if (document.querySelector('.modal-overlay') && currentView !== 'trade' && scope) {
+      if ($('ws-material-modal') && currentView === 'workshop' && scope === 'assets') wsRefreshPreview();
       return;
     }
     // 交易进行中：背包与交易页锁定（新渔获等广播只更新数据，不重绘列表；可点锁定条手动刷新）

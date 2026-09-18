@@ -34,7 +34,7 @@ async function run() {
   await page.evaluate(() => {
     document.querySelector('#auth').remove();
     const D = GameData, st = Engine.state;
-    window.fixtureMain = 'rod_dragonbone#mythic#spd+18,dbl+12@bt';
+    window.fixtureMain = 'rod_dragonbone#mythic#spd+18,dbl+12@bt,rare+4@ct';
     window.fixtureSub = 'rod_carbon#epic#skl+6,spd+10';
     st.player.coins = 200000;
     st.inventory = { [fixtureMain]: 1, [fixtureSub]: 1, dragonpearl: 3, relic: 10 };
@@ -53,6 +53,14 @@ async function run() {
     await card.locator('.bec-acts button:not([disabled])').first().click();
   }
   await pick('main', '龙骨'); await pick('sub', '碳素');
+  check('Relics default to zero on selection', await page.locator('#ws-relic-qty').inputValue() === '0');
+  const sourceColors = await page.evaluate(() => {
+    const bt = document.querySelector('.ws-aff .inst-aff.extra.bt'), ct = document.querySelector('.ws-aff .inst-aff.extra.ct');
+    return bt && ct && getComputedStyle(bt).backgroundImage !== 'none' && getComputedStyle(ct).backgroundImage !== 'none' && getComputedStyle(bt).backgroundImage !== getComputedStyle(ct).backgroundImage;
+  });
+  check('Breakthrough and catalyst keep their original distinct gradients', sourceColors);
+  await page.locator('.ws-aff[data-which="main"][data-type="double"]').click();
+  check('Selected affix retains its source gradient', await page.locator('.ws-aff.on .inst-aff.bt').evaluate(n => getComputedStyle(n).backgroundImage.includes('linear-gradient')));
   await page.locator('.ws-aff[data-which="main"][data-type="speed"]').click();
   check('Duplicate affix is visibly disabled', await page.locator('.ws-aff[data-which="sub"][data-type="speed"]').isDisabled());
   await page.locator('.ws-aff[data-which="sub"][data-type="skill"]').click();
@@ -60,7 +68,16 @@ async function run() {
   check('Preview has two result rows', await page.locator('.sm-result-aff').count() === 2);
   const baseRate = await page.evaluate(() => GameData.smeltRatesOf(GameData.smeltLoadOf([]), false).rate);
   check('Base probabilities use shared rules', (await page.locator('.ws-aff-prob').allTextContents()).every(s => s === '获得概率 ' + baseRate + '%'));
-  await page.locator('.sm-materials > summary').click();
+  await page.locator('#ws-material-open').click();
+  check('Catalysts open in an accessible dialog with loaded material images', await page.locator('#ws-material-modal').getAttribute('role') === 'dialog' && await page.locator('.sm-material-icon').evaluateAll(nodes => nodes.length === 6 && nodes.every(n => n.complete && n.naturalWidth > 0)));
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: path.join(SHOTS, 'fixed-catalyst-dialog.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  check('Material dialog fits mobile width with its completion button visible', await page.locator('#ws-material-modal').evaluate(n => {
+    const rect = n.getBoundingClientRect(), done = n.querySelector('.sm-material-done').getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= innerWidth + 1 && n.scrollWidth <= n.clientWidth + 1 && done.bottom <= innerHeight;
+  }));
+  await page.setViewportSize({ width: 1600, height: 1080 });
   const material = page.locator('.ws-mat[data-affix="material"] input');
   await material.fill('3');
   check('Catalyst adds a live preview row', await page.locator('.sm-result-aff').count() === 3);
@@ -72,13 +89,25 @@ async function run() {
   const inputHandle = await material.elementHandle(); await material.focus();
   await page.evaluate(() => { Engine.state.player.coins++; UI.refreshAll('assets'); });
   check('Asset updates preserve the live material input and focus', await inputHandle.evaluate(n => n.isConnected && document.activeElement === n));
+  await page.locator('.sm-material-done').click();
+  check('Closing material dialog keeps the selection and returns focus', await page.locator('#ws-material-images img').count() === 1 && await page.locator('#ws-material-open').evaluate(n => document.activeElement === n));
   await page.locator('#ws-relic-qty').fill('1');
   check('Relic changes failure outcome to protection', (await page.locator('.sm-risk').textContent()).includes('受残片保护'));
   await page.locator('#ws-pearl').check();
-  await page.locator('.sm-materials > summary').click();
   await page.evaluate(() => { document.querySelector('#main').scrollTop = 0; });
   fs.mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: path.join(SHOTS, 'implemented-desktop.png'), fullPage: true });
+  for (const [width, height] of [[1920,1080],[1600,900],[1366,768],[1280,720],[1024,768]]) {
+    await page.setViewportSize({ width, height });
+    const fit = await page.evaluate(() => {
+      const main = document.querySelector('#main'), preview = document.querySelector('#ws-preview'), go = document.querySelector('#ws-go');
+      return { page: main.scrollHeight <= main.clientHeight + 1, preview: preview.scrollHeight <= preview.clientHeight + 1, previewHeight: [preview.scrollHeight,preview.clientHeight],
+        bottom: go.getBoundingClientRect().bottom, limit: main.getBoundingClientRect().bottom };
+    });
+    console.log('Layout', width, height, fit);
+    if (width === 1366) await page.screenshot({ path: path.join(SHOTS, 'fixed-desktop-1366.png') });
+    check('Workbench fully visible without scrolling at ' + width + 'x' + height, fit.page && fit.preview && fit.bottom <= fit.limit);
+  }
   for (const width of [1280, 1024, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
     check('No horizontal overflow at ' + width, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('#main').scrollWidth <= document.querySelector('#main').clientWidth + 1));
@@ -110,7 +139,7 @@ async function run() {
   await pick('main', '龙骨'); await pick('sub', '碳素');
   await page.locator('.ws-aff[data-which="main"][data-type="speed"]').click();
   await page.locator('.ws-aff[data-which="sub"][data-type="skill"]').click();
-  await page.locator('.sm-materials > summary').click();
+  await page.locator('#ws-material-open').click();
   await material.fill('999');
   check('Material entry clamps to actual stock', await material.inputValue() === '12');
   await page.evaluate(() => {
@@ -118,9 +147,13 @@ async function run() {
     Engine.state.inventory[id] = 1; UI.refreshAll('assets');
   });
   check('Shrinking inventory clamps selected quantity', await material.inputValue() === '1');
+  await page.keyboard.press('Escape');
+  check('Escape closes material dialog', await page.locator('#ws-material-modal').count() === 0);
+  await page.locator('#ws-relic-qty').fill('2');
   await page.locator('[data-unload="main"]').click();
   check('Removing main clears both slots', await page.locator('.ws-pick.chosen').count() === 0);
   await pick('main', '龙骨'); await pick('sub', '碳素');
+  check('New main after removal resets relics to zero', await page.locator('#ws-relic-qty').inputValue() === '0');
   await page.locator('.ws-aff[data-which="main"][data-type="speed"]').click();
   await page.locator('.ws-aff[data-which="sub"][data-type="skill"]').click();
   await page.evaluate(() => { delete Engine.state.inventory[fixtureSub]; UI.refreshAll('assets'); });
