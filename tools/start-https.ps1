@@ -7,7 +7,7 @@ try {
         throw 'HTTPS is not installed. Run Install-HTTPS.bat from the HTTPS installation package as administrator first.'
     }
     $config = Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
-    if ($config.package -ne 'fishgame-https-9000-v1') { throw 'Invalid HTTPS installation marker. Reinstall the HTTPS package.' }
+    if ($config.package -notin @('fishgame-https-9000-v1', 'fishgame-https-9000-v2')) { throw 'Invalid HTTPS installation marker. Reinstall the HTTPS package.' }
     if (@(Get-NetTCPConnection -State Listen -LocalPort 9001 -ErrorAction SilentlyContinue).Count) {
         throw 'Port 9001 is already in use. Enter q in the old game console to save and stop it before starting this release.'
     }
