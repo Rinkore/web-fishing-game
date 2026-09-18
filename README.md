@@ -22,11 +22,19 @@ Node 内置 `http` 后端，游戏数值目录前后端共用一份（UMD）；�
 ```bat
 run.bat                 :: 集成模式：后端 9000，同时托管 frontend/
 start-frontend.bat      :: 分离模式：前端静态服务器 5500（与 run.bat 并用）
+Start-Game-HTTPS.bat    :: 已安装 HTTPS 服务时使用：后端 9001，公网 HTTPS 9000
 ```
 
 打开 <http://localhost:9000>（分离模式 <http://localhost:5500>），注册登录即可；
 **多开浏览器标签 = 多真实玩家**。非 Windows 直接 `node backend/server.js`。前端也可托管到任意
 静态服务器（`API_BASE=auto` 自动连同主机的 9000，或改 `frontend/js/config.js`）。
+
+**Windows HTTPS 启动**：先运行独立 HTTPS 安装包的 `Install-HTTPS.bat`，完成 Caddy 和免费证书配置。
+之后在每个游戏 Release 目录中双击 `Start-Game-HTTPS.bat`，访问 <https://ipv4.rinkore.com:9000>。
+启动器调用**当前 Release 目录**的 `run.bat`，后端使用 9001，并沿用 HTTPS 安装时指定的存档目录；
+请继续使用原 Windows 账号。更换版本前，在旧游戏窗口输入 `q` 保存停服。
+Caddy 开机自动启动，游戏仍需手动启动；公网 TCP 80 要持续开放用于证书续期。
+HTTPS 启用后不要单独运行原 `run.bat`，否则会与代理争用 9000。
 
 **管理后台**：`admin.html`（集成 `:9000/admin.html` / 分离 `:5500/admin.html`），用游戏账号密码登录；
 **服务器上没有任何管理员时，第一个登录后台的账号自动成为管理员**，此后由管理员在「账号管理」页开关授权。
@@ -318,6 +326,7 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH    测试依赖与浏览器位置
 ├── tools/                   # 贴图生成脚本（Python）与存档维护脚本（Node）
 ├── dist/                    # 打包 / 发版脚本与发布文案（不入库）
 ├── run.bat                  # 启动后端（集成模式，9000，同时托管前端）
+├── Start-Game-HTTPS.bat      # 已安装 HTTPS 服务后启动当前版本（后端 9001 → HTTPS 9000）
 └── start-frontend.bat       # 启动前端独立静态服务器（5500）
 ```
 
