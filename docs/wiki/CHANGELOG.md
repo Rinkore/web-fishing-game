@@ -156,6 +156,53 @@
 - `npm run wiki:verify:server`：本地临时服务通过 12 项，失败 0 项；包含攻略内容接口、no-cache 与 ETag。
 - `node --check backend/server.js`、`frontend/js/admin.js`、`frontend/wiki/js/core.js`、`frontend/wiki/js/pages.js`、`tools/wiki/check.js`、`tools/wiki/verify-server.js` 与 Wiki 测试脚本均通过。
 
+## 2026-09-19 · v0.19.0 用户攻略、审核与工具界面（功能更新）
+
+状态：本地实现与专项回归完成；生产部署和游戏 Release 未执行。
+
+- 官方内容与用户投稿彻底分离：
+  - 官方内容继续落在 `wiki.json`。
+  - 用户投稿独立落在 `wiki-guides.json`。
+  - 管理员保存或恢复官方内容不会覆盖、删除用户投稿。
+- 官方内容保存增加 `baseRevision` 乐观锁，过期保存返回 409，防止并发覆盖。
+- 新增 `GET /api/admin/wiki/content`，管理后台只编辑官方内容，不再把公开合并结果误当成官方 JSON。
+- 新增用户投稿接口：
+  - `POST /api/wiki/guides/submit`
+  - `GET /api/wiki/guides/session`
+  - `GET /api/wiki/guides/my`
+  - `POST /api/wiki/guides/delete`
+- 新增管理员审核接口：
+  - `GET /api/admin/wiki/guides`
+  - `POST /api/admin/wiki/guides/review`
+  - `POST /api/admin/wiki/guides/delete`
+- 公开 `GET /api/wiki/content` 只返回官方攻略与 `approved` 用户攻略；pending、rejected、deleted 不下发。
+- 用户投稿使用现有 Cookie/Authorization 会话与 CSRF 约束，不接受 URL/body token，也不接受客户端伪造作者、状态、审核字段。
+- 服务端严格校验标题、分类白名单、摘要、标签、段落结构、列表与 64 KB 单篇大小；前端全部使用纯文本渲染。
+- 投稿频率限制改为持久化计算：24 小时最多 3 篇、pending 最多 3 篇、两次提交至少间隔 10 分钟，重启后仍生效。
+- 管理员审核要求 `expectedStatus` 匹配当前状态，拒绝与删除必须填写原因，并记录审核人、审核时间与审计日志。
+- 玩家前端新增：
+  - `/wiki/guides/submit.html` 投稿表单
+  - 本地草稿
+  - `/wiki/guides/index.html?my=1` 我的攻略
+  - 官方 / 玩家 / 全部筛选
+  - approved 用户攻略搜索
+- 管理后台「📚 Wiki攻略」拆成官方内容编辑与用户投稿审核两个区域，不再要求管理员手改 JSON 审核投稿。
+- 新增官方攻略《新手避坑：最容易浪费资源的 9 个习惯》，更新记录改为玩家可理解的功能变化。
+- 配装与熔炼模拟器复用游戏工坊式双栏布局：
+  - 桌面左侧编辑、右侧常驻预览
+  - 1250px 以下自动单列
+  - 保留原有全部功能 ID 与计算逻辑
+- 游戏版本提升到 `v0.19.0`，构建日期更新为 2026-09-19。
+
+验证：
+
+- `npm run wiki:check`：通过，9 个页面、6 个脚本，并检查官方内容身份字段。
+- `npm run wiki:test`：通过 72 项，失败 0 项。
+- `npm run wiki:test:browser`：通过 46 项，失败 0 项。
+- `npm run wiki:build`：通过，构建 17 个文件到 `dist/wiki`。
+- `WIKI_SERVER_BASE=http://127.0.0.1:19000 npm run wiki:verify:server`：本地临时服务通过 12 项，失败 0 项。
+- 覆盖公开内容不泄露待审核/已拒绝投稿、未登录 401、非法字段拒绝、作者隔离、频率限制、并发审核冲突、管理员审计、官方与用户数据互不覆盖、重启持久化、浏览器提交表单、管理后台审核、搜索只包含公开攻略、双模拟器布局和 360px 无横向溢出。
+
 ## 后续记录要求
 
 每条日志注明日期、变更类型（规划/文档/实现/修复/发布）、完成状态、适用版本与实际验证结果。实现后将验证证据写入对应条目，不回填成“规划当日已经实现”。

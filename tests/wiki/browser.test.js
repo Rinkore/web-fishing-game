@@ -108,7 +108,7 @@ async function main() {
 
     const home = await openPage('/wiki/');
     const homeText = await evaluate(home, 'document.body.innerText');
-    check('首页显示规则可用与版本', homeText.includes('规则可用') && homeText.includes('v0.18.0'), homeText.slice(0, 200));
+    check('首页显示规则可用与版本', homeText.includes('规则可用') && homeText.includes('v0.19.0'), homeText.slice(0, 200));
     check('首页无脚本异常', errors(home).length === 0, JSON.stringify(errors(home).slice(0, 2)));
     home.close();
 
@@ -197,8 +197,17 @@ async function main() {
     grounds.close();
 
     const build = await openPage('/wiki/tools/build.html?ground=stillwater&spot=dock&base=rod_bamboo');
+    await build.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+    await sleep(200);
     const buildPreset = await evaluate(build, 'document.getElementById("current-result").innerText');
     check('配装链接预设底材与钓点', buildPreset.includes('钓速') && buildPreset.includes('8') && buildPreset.includes('2760 ms'), buildPreset);
+    const buildLayout = await evaluate(build, `(() => {
+      const workbench = document.querySelector('.wiki-tool-workbench');
+      const preview = document.querySelector('.wiki-tool-preview');
+      const style = getComputedStyle(workbench);
+      return { columns: style.gridTemplateColumns.split(' ').length, previewPosition: getComputedStyle(preview).position, hasSlots: !!document.getElementById('slots'), hasCompare: !!document.getElementById('compare-result') };
+    })()`);
+    check('配装模拟器使用工坊式双栏布局', buildLayout.columns === 2 && buildLayout.previewPosition === 'sticky' && buildLayout.hasSlots && buildLayout.hasCompare, JSON.stringify(buildLayout));
     const share = await evaluate(build, `(async () => {
       const root = document.querySelector('.slot-editor');
       root.querySelector('[data-add-affix]').click();
@@ -229,6 +238,15 @@ async function main() {
     build.close();
 
     const smelt = await openPage('/wiki/tools/smelt.html');
+    await smelt.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+    await sleep(200);
+    const smeltLayout = await evaluate(smelt, `(() => {
+      const workbench = document.querySelector('.wiki-tool-workbench');
+      const preview = document.querySelector('.wiki-tool-preview');
+      const style = getComputedStyle(workbench);
+      return { columns: style.gridTemplateColumns.split(' ').length, previewPosition: getComputedStyle(preview).position, hasMain: !!document.getElementById('main-editor'), hasSub: !!document.getElementById('sub-editor'), hasPreview: !!document.getElementById('preview') };
+    })()`);
+    check('熔炼模拟器使用工坊式双栏布局', smeltLayout.columns === 2 && smeltLayout.previewPosition === 'sticky' && smeltLayout.hasMain && smeltLayout.hasSub && smeltLayout.hasPreview, JSON.stringify(smeltLayout));
     const smeltResult = await evaluate(smelt, `(async () => {
       const input = document.querySelector('[data-material="bait_pack"]');
       input.value = '1';

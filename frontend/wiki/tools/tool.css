@@ -1,8 +1,34 @@
-.slot-editor { border:1px solid var(--line); border-radius:10px; padding:12px; margin:10px 0; background:#14212e; }
+.slot-editor { border:1px solid #344352; border-radius:10px; padding:12px; margin:10px 0; background:#151c25; }
 .slot-head { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; }
 .slot-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; margin-top:8px; }
 .affix-row { display:grid; grid-template-columns:1.3fr 100px 1fr 36px; gap:6px; margin-top:6px; }
 .result-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; }
 .result-item { border-left:3px solid var(--accent); padding-left:8px; }
 .positive { color:var(--ok); } .negative { color:var(--bad); }
-@media(max-width:640px){ .affix-row { grid-template-columns:1fr 80px; } }
+
+/* Wiki 工具复用游戏工坊的深海工作台布局；只做 Wiki 侧补齐，不复制整份 smelt.css。 */
+.wiki-tool-editor { display:grid; gap:18px; }
+.wiki-tool-editor .ws-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.wiki-tool-editor .toolbar { margin-top:10px; }
+.wiki-tool-editor input[type="number"] { min-width:100px; height:36px; padding:0 10px; border:1px solid var(--line); border-radius:7px; background:#0b131a; color:var(--text); }
+.wiki-tool-editor .slot-editor { margin:10px 0 0; }
+.wiki-tool-preview { position:sticky; top:16px; max-height:calc(100vh - 32px); overflow:auto; scrollbar-width:thin; }
+.wiki-preview-block { margin-top:16px; padding-top:14px; border-top:1px solid #344352; }
+.wiki-preview-block:first-of-type { margin-top:14px; }
+.wiki-preview-block h4 { margin:0 0 8px; color:#eef4f8; font-size:15px; }
+.wiki-preview-block table { width:100%; border-collapse:collapse; }
+.wiki-preview-block th, .wiki-preview-block td { padding:7px 8px; border-bottom:1px solid rgba(52,67,82,.75); text-align:left; }
+.wiki-preview-block th { color:var(--sm-muted); font-weight:600; }
+.wiki-preview-block .warning { color:#ffd18a; }
+.wiki-preview-block .positive { color:#a7f3d0; }
+
+@media (max-width:1250px) {
+  .wiki-tool-workbench { grid-template-columns:minmax(0,1fr); }
+  .wiki-tool-preview { position:static; max-height:none; overflow:visible; }
+}
+@media (max-width:640px) {
+  .wiki-tool-editor { gap:12px; }
+  .wiki-tool-editor .ws-grid { grid-template-columns:minmax(0,1fr); }
+  .affix-row { grid-template-columns:1fr 80px; }
+  .wiki-preview-block th, .wiki-preview-block td { padding:6px; font-size:12px; }
+}
