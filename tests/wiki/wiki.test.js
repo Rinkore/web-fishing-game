@@ -96,8 +96,23 @@ async function main() {
   check('/wiki 自动补齐尾斜杠', wikiRedirect.status === 301 && wikiRedirect.headers.location === '/wiki/', JSON.stringify({ status: wikiRedirect.status, location: wikiRedirect.headers.location }));
 
   const wikiPage = await request('/wiki/');
-  check('/wiki/ 同域托管 M1 验收页', wikiPage.status === 200 && /text\/html/.test(wikiPage.headers['content-type'] || '') && wikiPage.body.includes('wiki · 钓鱼网站') && wikiPage.body.includes('/api/version?profile=wiki'), JSON.stringify({ status: wikiPage.status, type: wikiPage.headers['content-type'] }));
+  check('/wiki/ 同域托管 M1 验收页', wikiPage.status === 200 && /text\/html/.test(wikiPage.headers['content-type'] || '') && wikiPage.body.includes('wiki · 钓鱼网站') && wikiPage.body.includes('/wiki/js/core.js'), JSON.stringify({ status: wikiPage.status, type: wikiPage.headers['content-type'] }));
   check('/wiki/ 静态页使用 no-cache', String(wikiPage.headers['cache-control']).includes('no-cache'), String(wikiPage.headers['cache-control']));
+
+  const corePages = [
+    ['/wiki/items/index.html', 'data-page="items"'],
+    ['/wiki/grounds/index.html', 'data-page="grounds"'],
+    ['/wiki/search/index.html', 'data-page="search"'],
+    ['/wiki/guides/index.html', 'data-page="guides"'],
+    ['/wiki/updates/index.html', 'data-page="updates"'],
+    ['/wiki/tools/build.html', 'id="current-result"'],
+    ['/wiki/tools/smelt.html', 'id="preview"'],
+  ];
+  const coreResults = await Promise.all(corePages.map(async function (row) {
+    const r = await request(row[0]);
+    return r.status === 200 && r.body.includes(row[1]) && r.body.includes('/wiki/js/core.js');
+  }));
+  check('资料站与两个模拟器页面均可同域访问', coreResults.every(Boolean), JSON.stringify(corePages.map(function (x, i) { return x[0] + ':' + coreResults[i]; })));
 
   const shop = await request('/shop');
   check('/shop 复用为实时价且 no-store', shop.status === 200 && shop.headers['cache-control'] === 'no-store', JSON.stringify({ status: shop.status, cache: shop.headers['cache-control'] }));

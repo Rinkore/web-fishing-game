@@ -1,14 +1,14 @@
 # 游戏配套 Wiki 开发文档
 
-文档版本：0.5 · 更新日期：2026-09-18
+文档版本：0.6 · 更新日期：2026-09-18
 开发分支：`codex/wiki` · 游戏核对基线：`v0.17.0 / 97d3597`
-当前状态：M1 服务端规则快照、共享计算与 `/wiki/` 验收页已实现；完整资料站和两个模拟器尚未实现。
+当前状态：M0～M4 已实现，M5 本地验收与构建流程已完成；生产部署和游戏 Release 尚未执行。
 
 ## 1. 目标与范围
 
 为玩家提供无需登录即可访问的资料站，支持查询物品、了解玩法、阅读攻略，以及在不消耗游戏资产的情况下比较配装和模拟熔炼。
 
-已确认：首版包含资料查询、玩法攻略、配装模拟器、熔炼模拟器；两个模拟器不是后续可选项。当前分支已完成 M1 服务端契约与共享计算，M2～M5 尚未开始。
+已确认：首版包含资料查询、玩法攻略、配装模拟器、熔炼模拟器；两个模拟器不是后续可选项。当前分支已完成资料站、两个模拟器、构建检查和本地验收；生产发布待单独执行。
 
 本文中的页面结构、数据格式、技术拆分和性能指标属于建议实施基线；后续调整应同步写入 [CHANGELOG.md](CHANGELOG.md)。游戏行为以对应版本的实际计算代码及配置为准，不直接把旧指南、代码注释或示例数字当成规则。
 
@@ -37,16 +37,16 @@
 
 建议使用可直接访问的静态页面路径，保证刷新、收藏和转发后仍可打开：
 
-| 路径示例（待实现） | 内容 |
+| 当前路径 | 内容 |
 |---|---|
 | `/wiki/` | 首页 |
-| `/wiki/search.html?q=残片` | 搜索结果 |
+| `/wiki/search/index.html?q=残片` | 搜索结果 |
 | `/wiki/items/index.html` | 图鉴列表 |
-| `/wiki/items/relic.html` | 单件物品详情，路径使用稳定 ID |
+| `/wiki/items/index.html?id=relic&type=material` | 单件物品详情，使用稳定 ID 查询参数 |
 | `/wiki/grounds/index.html` | 钓场、钓点列表 |
-| `/wiki/spots/<id>.html` | 钓点详情 |
-| `/wiki/affixes/<id>.html` | 词缀机制 |
-| `/wiki/guides/<slug>.html` | 攻略正文 |
+| `/wiki/grounds/index.html?ground=<id>&spot=<id>` | 钓点详情 |
+| `/wiki/items/index.html?id=affix:<type>` | 词缀机制 |
+| `/wiki/guides/index.html?slug=<slug>` | 攻略正文 |
 | `/wiki/tools/build.html` | 配装模拟器 |
 | `/wiki/tools/smelt.html` | 熔炼模拟器 |
 | `/wiki/updates/index.html` | 面向玩家的更新记录 |
@@ -91,6 +91,8 @@
 每篇攻略写明目标、前提、步骤、取舍、适用版本；“推荐”与“规则事实”明确区分。收益攻略说明价格、钓点和配置假设。
 
 ## 3. 配装模拟器
+
+当前实现：`/wiki/tools/build.html`，源码为 `frontend/wiki/tools/build.js`。
 
 ### 3.1 输入与编辑
 
@@ -151,6 +153,8 @@ E(件数 | 上钩) = 1 + p + p²
 - 浏览器存储不可用或配额不足时保留当前编辑状态，提示导出，不阻断计算。
 
 ## 4. 熔炼模拟器
+
+当前实现：`/wiki/tools/smelt.html`，源码为 `frontend/wiki/tools/smelt.js`。
 
 ### 4.1 操作区
 
@@ -282,7 +286,7 @@ simulateSmelt(plan, snapshot, rng) -> SmeltOutcome
 
 | 现有位置 | 已有能力 | 开发动作 |
 |---|---|---|
-| `frontend/js/data.js` | UMD 数据目录、组件实例与来源、工坊计算和安全表达式工具 | 与服务端共用；配置需改为实例隔离或显式快照传参，禁止模块级状态互相污染 |
+| `frontend/js/data.js` | UMD 数据目录、组件实例与来源、工坊计算和安全表达式工具 | 与服务端共用；当前页面一次只消费一个快照，计算函数显式传入规则，避免多快照并发污染 |
 | `backend/server.js` 的配装/钓鱼函数 | `bdEffectsOf`、`intervalFor`、`castInfoOf`、`doubleProbOf`、`simulateRod` | 已最小迁移到现有共享 `data.js`；服务端保留同名适配函数并调用同一实现，Wiki 不复制公式 |
 | `backend/server.js` 的工坊函数及路由 | `planSmelt`、`smeltRangesOf`、随机结果与结算 | 拆开规则计划、随机结果、资产事务；服务端与 Wiki 共用前两层，禁止把库存校验复制进 Wiki |
 | `backend/server.js` 的公开接口 | `/api/version` 已承载大部分公开配置，`/api/grounds` 已承载有效掉落权重，`/shop` 承载实时收购价 | 扩展现有 `/api/version?profile=wiki`，由单一组装函数复用 `groundsWithDrop()`；不新增平行规则接口，`/api/features` 后续标记重复，实时价格继续用 `/shop` |
@@ -322,7 +326,7 @@ tests/wiki/                # Wiki 规则契约与一致性测试
 dist/wiki/                 # 后续构建产物，部署时复制到 frontend/wiki/
 ```
 
-已提供 `npm run wiki:test`（纯 HTTP，启动临时数据目录与临时端口）。后续再提供 `wiki:fixture`、`wiki:check`、`wiki:build`、`wiki:serve`、`wiki:verify:server`。`wiki:build` 不要求正式服务端在线，也不内嵌生产快照；`wiki:verify:server` 必须连接指定服务端并校验 profile 契约、哈希和一致性样例。
+已提供 `npm run wiki:test`、`wiki:test:browser`、`wiki:check`、`wiki:build`、`wiki:serve` 和 `wiki:verify:server`。后续仅在需要本地离线内容样例时补充 `wiki:fixture`。`wiki:build` 不要求正式服务端在线，也不内嵌生产快照；`wiki:verify:server` 必须连接指定服务端并校验 profile 契约、哈希和一致性样例。
 
 文章元数据至少包含 `id/title/category/aliases/tags/gameVersion/updatedAt/status/related`。站内交叉链接使用 ID 建立，构建时发现断链即失败；旧 ID 改名保留别名或重定向。
 
@@ -352,7 +356,7 @@ dist/wiki/                 # 后续构建产物，部署时复制到 frontend/wi
 
 M2～M4 可按文件和模块边界组织开发，但 M1 的数据及规则契约应先稳定。资料页上线不代表包含两个模拟器的首版已经完成。
 
-当前实施状态：M0 完成；M1 服务端契约、共享计算、同域 `/wiki/` 验收页与规则一致性测试已完成。完整资料站、配装模拟器、熔炼模拟器、构建发布流程和最终验收尚未开始。
+当前实施状态：M0～M4 已完成；M5 已完成本地静态检查、构建、服务端契约验证、无头浏览器渲染与交互回归。生产部署、正式 `SOURCE_COMMIT` 注入和游戏 Release 未执行，不能声称已上线。
 
 ### 8.1 规则测试矩阵
 

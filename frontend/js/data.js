@@ -1328,6 +1328,168 @@
     return Math.max(0, Math.min(100, Math.round(v * 10) / 10));
   }
 
+
+  // ---- 熔炼方案与结果模拟（服务端正式路径与 Wiki 模拟器共用） ----
+  // d = { mainId, subId, mainAffix, subAffix, materials, relics }
+  // 这里只做纯规则校验与预览，不检查背包、金币或装备锁定；调用方负责资产校验与结算。
+  function smeltPlanOf(d) {
+    const cfg = getSmeltCfg();
+    const mainRaw = String((d && d.mainId) || '');
+    const subRaw = String((d && d.subId) || '');
+    const mainMeta = componentOf(mainRaw);
+    const subMeta = componentOf(subRaw);
+    const partName = function (key) {
+      const p = ROD_PARTS.find(function (x) { return x.key === key; });
+      return p ? p.name : String(key || '?');
+    };
+    const materialName = function (id) {
+      const m = MATERIALS.find(function (x) { return x.id === id; });
+      return m ? m.name : id;
+    };
+    if (!mainMeta || !isInstance(mainRaw)) return { error: '主组件必须是已生成的组件实例' };
+    if (!subMeta || !isInstance(subRaw)) return { error: '副组件必须是已生成的组件实例' };
+    if (mainMeta.part !== subMeta.part) {
+      return { error: '主件与副件必须是同一部位的组件（当前：' + partName(mainMeta.part) + ' / ' + partName(subMeta.part) + '）' };
+    }
+    const mainAffix = mainMeta.affixes.find(function (a) { return a.type === d.mainAffix; });
+    const subAffix = subMeta.affixes.find(function (a) { return a.type === d.subAffix; });
+    if (!mainAffix) return { error: '请选择主组件上的一条词条' };
+    if (!subAffix) return { error: '请选择副组件上的一条词条' };
+    if (mainAffix.type === subAffix.type) return { error: '主副选中的词条类型不能相同（熔炼后两条词条会合成同一条）' };
+
+    const maxM = Math.max(0, Math.floor(Number(cfg.maxMaterials) || 0));
+    const list = Array.isArray(d.materials) ? d.materials : [];
+    const matList = [];
+    let pearl = !!(d && d.pearl);
+    let pearlQty = 0;
+    let total = 0;
+    const types = {};
+    for (const e of list) {
+      const id = String((e && e.id) || '');
+      const qty = e && e.qty;
+      if (matList.some(function (x) { return x.id === id; })) return { error: '投料物品重复' };
+      if (id === SMELT_PEARL) { pearl = true; pearlQty += qty; continue; }
+      if (!smeltMaterialAffix(id)) return { error: '「' + materialName(id) + '」不是熔炼材料' };
+      matList.push({ id: id, qty: qty });
+      types[smeltMaterialAffix(id)] = 1;
+      total += Math.max(0, Math.floor(Number(qty) || 0));
+    }
+    if (pearlQty > 1) return { error: '龙宫宝珠一次最多投入 1 个' };
+    if (total > maxM) return { error: '投料最多 ' + maxM + ' 份（当前 ' + total + ' 份）' };
+    if (Object.keys(types).length > cfg.maxTypes) return { error: '投料最多 ' + cfg.maxTypes + ' 种（当前 ' + Object.keys(types).length + ' 种）' };
+
+    const consume = matList.slice();
+    if (pearl) consume.push({ id: SMELT_PEARL, qty: 1 });
+    const relicId = 'relic';
+    const relicMax = Math.max(0, Math.min(99, Math.floor(Number(cfg.retainMaxRelic) || 0)));
+    const relicQty = d && d.relics === undefined ? 0 : d.relics;
+    if (!isFinite(Number(relicQty)) || Number(relicQty) < 0 || Math.floor(Number(relicQty)) !== Number(relicQty)) {
+      return { error: '残片数量需为不小于 0 的整数' };
+    }
+    if (relicQty > relicMax) return { error: '残片超过单次投入上限' };
+    const extraAffixes = smeltExtraAffixesOf(mainMeta.baseId, mainMeta.affixes);
+    if (relicQty > 0) {
+      if (!canRecast(mainMeta)) {
+        return { error: '只有海王遗匣产出的神话主件才能加入' + materialName(relicId) + '（当前：' + mainMeta.qualityName + '品质）' };
+      }
+      if (!extraAffixes.length) return { error: '该主件没有池外词缀，投入' + materialName(relicId) + '没有可保留的词条' };
+      consume.push({ id: relicId, qty: relicQty });
+    }
+
+    const load = smeltLoadOf(matList);
+    const afterTypes = [mainAffix.type, subAffix.type];
+    let extraType = null;
+    if (load.total > 0) {
+      extraType = load.dominant;
+      const addable = smeltAddableAffixes(mainMeta.baseId, afterTypes);
+      if (!extraType || addable.indexOf(extraType) < 0) {
+        const already = extraType ? afterTypes.indexOf(extraType) >= 0 : false;
+        return { error: '投料对应的词缀「' + (AFFIX_LABEL[extraType] || extraType || '?') + '」无法补进该主件（' + (already ? '熔炼结果里已经有这条词缀了' : '主件词缀池里已经没有可补的该类词缀') + '）' };
+      }
+      if (afterTypes.length + 1 > smeltAddAffixCap()) {
+        return { error: '补缀后词条数会超过上限（当前 ' + afterTypes.length + ' 条 +1 > 上限 ' + smeltAddAffixCap() + ' 条，可在后台「⚒ 工坊配置」调整）' };
+      }
+    }
+    const rates = smeltRatesOf(load, pearl);
+    const gold = smeltGoldOf(load, pearl);
+    const rrMain = smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'main', mainAffix.type, { part: mainMeta.part, src: mainAffix.src, srcExplicit: mainAffix.srcExplicit });
+    const rrSub = smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'sub', subAffix.type, { part: mainMeta.part, src: subAffix.src, srcExplicit: subAffix.srcExplicit });
+    const rrAdd = extraType ? smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'add', extraType, { part: mainMeta.part }) : null;
+    const breakthrough = breakthroughCountOf(mainMeta.affixes);
+    return {
+      ok: true, cfg: cfg, mainId: mainMeta.id, subId: subMeta.id,
+      mainMeta: mainMeta, subMeta: subMeta, mainAffix: mainAffix, subAffix: subAffix,
+      materials: matList, consume: consume, load: load, pearl: pearl,
+      extraType: extraType, rates: rates, gold: gold,
+      rollBoundary: !!(pearl && cfg.pearlRollTwice),
+      relicId: relicId, relics: relicQty, extraAffixes: extraAffixes,
+      protectAffix: relicQty > 0, breakthrough: breakthrough,
+      retainChance: smeltRetainChance(relicQty, breakthrough),
+      perRelic: retainChancePerRelic(breakthrough),
+      retainFormula: String(cfg.retainFormula || ''),
+      ranges: {
+        main: rrMain.range, sub: rrSub.range, add: rrAdd ? rrAdd.range : null,
+        mainSrc: rrMain.src, subSrc: rrSub.src, addSrc: rrAdd ? rrAdd.src : null,
+        mainExplicit: rrMain.explicit, subExplicit: rrSub.explicit, addExplicit: rrAdd ? rrAdd.explicit : false,
+      },
+    };
+  }
+
+  function smeltRollWithRng(range, useBoundary, rng) {
+    const model = (getComponentCfg() || {}).rollModel || 'linear';
+    return useBoundary
+      ? rollAffixValueBoundaryWithRng(range[0], range[1], model, rng)
+      : rollAffixValueWithRng(range[0], range[1], model, rng);
+  }
+
+  // 模拟一次熔炼。不修改任何资产；服务端正式接口与 Wiki 模拟器都调用本函数。
+  // rng 可注入，默认 Math.random；Wiki 批量模拟使用带种子的随机数保证可复现。
+  function simulateSmeltPlan(plan, rng) {
+    const rand = typeof rng === 'function' ? rng : Math.random;
+    const p = plan || {};
+    const success = rand() * 100 < p.rates.rate;
+    let extraOk = false, retainOk = false;
+    const retained = [];
+    let resultId = null, result = null, mainAfterId = null, mainAfter = null;
+    if (success) {
+      const rr = p.ranges || {};
+      const affixes = [];
+      affixes.push({ type: p.mainAffix.type, value: smeltRollWithRng(rr.main, p.rollBoundary, rand), src: rr.mainSrc, srcExplicit: rr.mainExplicit });
+      affixes.push({ type: p.subAffix.type, value: smeltRollWithRng(rr.sub, p.rollBoundary, rand), src: rr.subSrc, srcExplicit: rr.subExplicit });
+      if (p.extraType) {
+        extraOk = rand() * 100 < p.rates.extraRate;
+        if (extraOk) affixes.push({ type: p.extraType, value: smeltRollWithRng(rr.add, p.rollBoundary, rand), src: rr.addSrc, srcExplicit: rr.addExplicit });
+      }
+      if (p.relics > 0) {
+        retainOk = rand() * 100 < p.retainChance;
+        if (retainOk) {
+          const have = {};
+          affixes.forEach(function (a) { have[a.type] = 1; });
+          (p.extraAffixes || []).forEach(function (a) {
+            if (have[a.type]) return;
+            have[a.type] = 1;
+            affixes.push({ type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit });
+            retained.push({ type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit });
+          });
+        }
+      }
+      resultId = instanceId(p.mainMeta.baseId, p.mainMeta.quality, affixes);
+      result = componentOf(resultId);
+    } else {
+      const left = (p.mainMeta && p.mainMeta.affixes || [])
+        .filter(function (a) { return p.protectAffix || a.type !== p.mainAffix.type; })
+        .map(function (a) { return { type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit }; });
+      mainAfterId = instanceId(p.mainMeta.baseId, p.mainMeta.quality, left);
+      mainAfter = componentOf(mainAfterId);
+    }
+    return {
+      success: success, extraOk: extraOk, retainOk: retainOk, retained: retained,
+      protectAffix: !success && !!p.protectAffix,
+      removedAffix: (success || p.protectAffix) ? null : p.mainAffix.type,
+      resultId: resultId, result: result, mainAfterId: mainAfterId, mainAfter: mainAfter,
+    };
+  }
+
   // ---- 重铸（海王遗匣产出的神话件）----
   // 允许重铸的品质：全游戏只有「海王遗匣」产出神话件（后台掉落权重刻意不含 mythic），
   // 所以神话品质就是「宝匣产出的组件」这一身份标识；工坊熔炼保留主件品质，熔出来的神话件同样可重铸。
@@ -1951,6 +2113,7 @@
     SNAPSHOT_DEFAULTS: SNAPSHOT_DEFAULTS, defaultSnapshotCfg: defaultSnapshotCfg, setSnapshotCfg: setSnapshotCfg, getSnapshotCfg: getSnapshotCfg,
     smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds,
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltSuccessProbs: smeltSuccessProbs, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
+    smeltPlanOf: smeltPlanOf, simulateSmeltPlan: simulateSmeltPlan, smeltRollWithRng: smeltRollWithRng,
     smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,
     affixSrcRangeOf: affixSrcRangeOf, catalystRangeOf: catalystRangeOf,
     smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,

@@ -100,6 +100,40 @@
 - `node --check backend/server.js`、`node --check frontend/js/data.js`、`node --check tests/wiki/wiki.test.js`、`node --check tests/run-all.js` 通过。
 - `node tests/e2e.test.js` 在注册阶段失败；该套件尚未适配当前注册防滥用的 challenge 流程，失败点发生在本次改动覆盖路径之前，不作为本次回归结论。
 
+## 2026-09-18 · M2～M5 实现：资料站、模拟器与构建验收（功能更新）
+
+状态：Wiki 功能开发与本地验收完成；生产部署和游戏 Release 未执行。
+
+- 新增 Wiki 资料站页面：首页、图鉴、钓场、搜索、攻略、更新与纠错。
+- 图鉴运行时渲染鱼类、材料、组件、宝匣与词缀；物品详情展示当前区间、获取地点和实时收购价读取入口。
+- 钓场页面展示开放状态、钓点数、增益、独立覆盖与当前有效掉落权重。
+- 全站搜索运行时合并服务端快照目录、钓点、词缀、攻略与工具入口。
+- 攻略与更新内容由 `frontend/wiki/js/content.js` 维护，不在正文中硬编码当前概率。
+- 新增配装模拟器 `/wiki/tools/build.html`：七部位编辑、品质与词缀来源、钓点选择、A/B 对比、本地保存、链接与方案码分享、自由试算标记、导入规则不匹配时阻断官方计算。
+- 配装模拟器支持从图鉴底材和钓点链接带入参数，并可读取熔炼产物。
+- 新增熔炼模拟器 `/wiki/tools/smelt.html`：主副件与词缀选择、投料、龙宫宝珠、保护残片、费用与概率预览、成功/失败分支、单次模拟、批量模拟、进度与取消。
+- 熔炼批量使用 mulberry32 带种子随机数，分片执行避免阻塞界面；产物可写入本地并由配装模拟器读取。
+- 两个模拟器均复用 `/wiki/js/core.js` 的规则快照客户端和 `frontend/js/data.js` 共享计算，不维护第二套公式。
+- 移除管理端保存上钩公式时对旧 `biteCompiledSrc` 缓存变量的残留引用；共享计算切换后公式保存与试算恢复通过。
+- 新增 `npm run wiki:check`、`wiki:build`、`wiki:serve`、`wiki:verify:server` 和 `wiki:test:browser`。
+- `wiki:check` 检查必需文件、本地链接和全部前端脚本语法；`wiki:build` 输出到 `dist/wiki`；`wiki:verify:server` 连接指定服务端验证 profile、ETag、304、钓点一致性和 `/shop` 缓存语义。
+- `frontend/serve.js` 支持目录路径自动读取 `index.html`，`wiki:serve` 可直接访问 `/wiki/`。
+
+验证：
+
+- `npm run wiki:check`：通过，8 个页面、6 个脚本（含 frontend/serve.js）。
+- `npm run wiki:build`：通过，构建 15 个文件到 `dist/wiki`。
+- `npm run wiki:test`：通过 33 项，失败 0 项。
+- `npm run wiki:test:browser`：通过 24 项，失败 0 项。
+- `FISHING_TEST_ONLY=wiki/wiki,wiki/browser node tests/run-all.js`：通过 57 项，失败 0 项。
+- `node --check` 覆盖仓库 90 个 JavaScript 文件，全部通过。
+- `WIKI_SERVER_BASE=http://127.0.0.1:19000 npm run wiki:verify:server`：通过 9 项。
+- `PORT=5510 npm run wiki:serve` 后请求 `/wiki/` 返回 200 与 Wiki 页面。
+- 新增 `tests/wiki/browser.test.js` 并纳入 `tests/run-all.js`；无头 Chrome 渲染首页、图鉴、钓场、搜索、攻略、更新、配装和熔炼页面，均无脚本异常；全站搜索 100 次平均耗时低于 100ms；360px 手机宽度下首页与两个模拟器无横向溢出；模拟请求失败后配装模拟器进入规则不可用并禁用计算。
+- 无头 Chrome 交互验证：图鉴渲染 86 个目录卡片；搜索“龙宫宝珠”返回结果；钓点详情展示 3 个静水湖钓点与有效产出；配装导入/导出方案码往返后钓速 50 计算 1500ms；熔炼 1 份诱饵包预览 48% / 8% / 3.8% / 5900 金币，批量 100 次完成；熔炼产物带入配装后词缀参与计算。
+- 复核运行 `node tests/admin.test.js`（392 项通过）、`node tests/security.test.js`（192 项通过）和 `node tests/transport-security.test.js`（49 项通过）。
+- `node tests/e2e.test.js` 仍在注册 challenge 适配前失败，不作为本次验收结论。
+
 ## 后续记录要求
 
 每条日志注明日期、变更类型（规划/文档/实现/修复/发布）、完成状态、适用版本与实际验证结果。实现后将验证证据写入对应条目，不回填成“规划当日已经实现”。

@@ -5,6 +5,11 @@
   "scripts": {
     "dev": "node backend/server.js",
     "start": "node backend/server.js",
-    "wiki:test": "node tests/wiki/wiki.test.js"
+    "wiki:test": "node tests/wiki/wiki.test.js",
+    "wiki:check": "node tools/wiki/check.js",
+    "wiki:build": "node tools/wiki/build.js",
+    "wiki:serve": "node frontend/serve.js",
+    "wiki:verify:server": "node tools/wiki/verify-server.js",
+    "wiki:test:browser": "node tests/wiki/browser.test.js"
   }
 }

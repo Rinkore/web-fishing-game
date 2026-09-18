@@ -19,7 +19,8 @@ const MIME = {
 const server = http.createServer(function (req, res) {
   let p;
   try { p = decodeURIComponent((req.url || '/').split('?')[0]); } catch (e) { res.writeHead(400); res.end('Bad request'); return; }
-  const rel = p === '/' ? '/index.html' : p;
+  let rel = p === '/' ? '/index.html' : p;
+  if (rel.endsWith('/')) rel += 'index.html'; // /wiki/ → /wiki/index.html
   const fp = path.normalize(path.join(ROOT, rel));
   if (fp !== ROOT && !fp.startsWith(ROOT + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
   fs.readFile(fp, function (err, data) {
