@@ -203,6 +203,73 @@
 - `WIKI_SERVER_BASE=http://127.0.0.1:19000 npm run wiki:verify:server`：本地临时服务通过 12 项，失败 0 项。
 - 覆盖公开内容不泄露待审核/已拒绝投稿、未登录 401、非法字段拒绝、作者隔离、频率限制、并发审核冲突、管理员审计、官方与用户数据互不覆盖、重启持久化、浏览器提交表单、管理后台审核、搜索只包含公开攻略、双模拟器布局和 360px 无横向溢出。
 
+## 2026-09-19 · 本地 Docker 测试环境（运维工具）
+
+状态：本地实现与容器烟测完成；生产部署未执行。
+
+- 新增 `docker-compose.wiki-test.yml`：
+  - 服务名 `wiki-test`
+  - 默认只绑定 `127.0.0.1:19000`
+  - 使用 named volume `web-fishing-wiki-test-data` 隔离测试数据
+  - 容器 root filesystem 只读，仅 `/data` 与 `/tmp` 可写
+  - 移除全部 Linux capabilities 并禁止提权
+  - 内置 `/api/version` 健康检查
+- 新增 `docker/wiki-test/Dockerfile`：
+  - 默认基础镜像 `node:22-alpine`
+  - 支持 `NODE_IMAGE` build arg 覆盖，便于受限镜像源环境复用已有 Node 镜像
+  - 注入 `SOURCE_COMMIT`
+  - 数据固定写入 `/data`
+- 新增 `tools/wiki/docker-test.ps1`：
+  - 自动读取当前 Git commit
+  - 支持自定义端口
+  - 支持 `-Follow` 前台运行
+  - 支持 `-NoBuild`
+  - 支持 `-Reset` 删除数据卷
+  - 本机缺少 `node:22-alpine` 时可自动复用已存在的 `web-fishing-node-runtime:local`
+- 新增 `docs/wiki/DOCKER_TEST.md`，覆盖启动、管理员初始化、投稿审核、数据持久化、重置和镜像受限时的处理。
+- `package.json` 新增：
+  - `wiki:docker`
+  - `wiki:docker:up`
+  - `wiki:docker:down`
+  - `wiki:docker:reset`
+  - `wiki:docker:logs`
+
+验证：
+
+- `docker compose -f docker-compose.wiki-test.yml config` 通过。
+- 本地容器构建并启动成功，健康检查为 `healthy`。
+- `/api/version?profile=wiki` 返回 `v0.19.0`，并带当前提交 `f515964...`。
+- `/api/wiki/content` 返回官方 10 篇攻略。
+- Docker 内注册普通玩家并提交攻略成功。
+- 待审核攻略未进入公开接口。
+- 通过容器控制台执行 `admin-init`，管理员 TOTP 初始化成功。
+- 管理员登录并审核通过投稿成功。
+- 审核通过后公开接口可见该用户攻略，作者名为 `Docker User`。
+- 容器重启后数据保留，用户 revision 与已通过投稿仍可读取。
+
+## 2026-09-19 · Wiki 主线版本同步与游戏化界面重构（功能更新）
+
+状态：本地实现与专项回归完成；生产部署和游戏 Release 未执行。
+
+- 新增 `tools/wiki/sync-versions.js`，从根目录 `VERSIONS.md` 生成 `frontend/wiki/content/versions.json`；`wiki:build` 自动同步，新增 `npm run wiki:sync` 手动同步，`wiki:check` 校验两份版本表一致。
+- 更新记录页改为「游戏版本演进 + Wiki 内容更新」：主线版本表最新在前；移除游戏版本、规则版本、配置代数、配置哈希、快照时间、当前规则、纠错入口与复制纠错模板。
+- Wiki 全站改为游戏顶栏 + 侧栏 + 内容区外壳，直接加载游戏 `style.css`、`pixel.css`、`responsive.css`、`mobile.css` 与 `smelt.css`，复用像素背景、窗口框、按钮、输入框和导航视觉。
+- 配装与熔炼模拟器改为工坊式编号步骤、`smelt-workbench` 双栏工作台、常驻预览面板；熔炼投料改为游戏材料卡片样式，主副件编辑、宝珠、残片与批量模拟使用同一视觉体系。
+- 首页重写为游戏化卡片目录，保留钓场、攻略、更新与两个模拟器；移除 Wiki 独立图鉴页、图鉴导航和物品/组件/词缀搜索索引，游戏内图鉴仍是唯一图鉴入口。
+- 游戏侧栏在「日志」下方新增「WIKI」入口，点击新标签打开 `/wiki/`，不中断当前钓鱼状态；新增 `assets/nav/wiki.png` 图标，并纳入 `tools/gen_nav.py` 生成清单。
+- 搜索保留钓场、钓点、攻略与工具，并修复钓点搜索结果图片使用组合 ID 导致的 404。
+- 同步更新 README、VERSIONS、GUIDE、Wiki 开发文档与相关测试口径。
+
+验证：
+
+- `npm run wiki:check`：通过，8 个页面、6 个脚本，并校验版本记录与 `VERSIONS.md` 一致。
+- `npm run wiki:test`：通过 73 项，失败 0 项。
+- `npm run wiki:test:browser`：通过 47 项，失败 0 项；覆盖更新页无规则诊断信息、主线版本表渲染、搜索、双模拟器工坊式双栏布局、交互、管理审核与 360px 无横向溢出。
+- `npm run wiki:build`：通过，自动同步 77 条版本记录并构建 17 个文件到 `dist/wiki`。
+- `node --check` 覆盖本次修改的前端 Wiki 脚本、游戏 `data.js` / `ui.js` 与相关测试脚本，均通过。
+- `node tests/e2e.test.js` 复跑时静态数据段通过（含导航 10 个入口与 README/GUIDE 版本），随后仍在既有注册 challenge 适配处失败，不能作为本次验收结论。
+- 本工作区未安装可选测试依赖 `jsdom` / `playwright-core`，`auth-ui` 与 `ui-layout` 单独执行无法启动；相关断言已同步为 10 个入口，待依赖可用后复测。
+
 ## 后续记录要求
 
 每条日志注明日期、变更类型（规划/文档/实现/修复/发布）、完成状态、适用版本与实际验证结果。实现后将验证证据写入对应条目，不回填成“规划当日已经实现”。

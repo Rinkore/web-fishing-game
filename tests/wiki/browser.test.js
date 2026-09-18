@@ -108,9 +108,16 @@ async function main() {
 
     const home = await openPage('/wiki/');
     const homeText = await evaluate(home, 'document.body.innerText');
-    check('首页显示规则可用与版本', homeText.includes('规则可用') && homeText.includes('v0.19.0'), homeText.slice(0, 200));
+    check('首页使用游戏化资料站外壳且不显示规则技术信息', homeText.includes('WIKI 资料中心') && homeText.includes('配装模拟器') && !homeText.includes('规则可用') && !homeText.includes('配置哈希'), homeText.slice(0, 300));
     check('首页无脚本异常', errors(home).length === 0, JSON.stringify(errors(home).slice(0, 2)));
     home.close();
+
+    const updates = await openPage('/wiki/updates/index.html');
+    const updatesText = await evaluate(updates, 'document.body.innerText');
+    check('更新记录同步主线版本演进', updatesText.includes('游戏版本演进') && updatesText.includes('v0.18.0') && updatesText.includes('v0.19.0'), updatesText.slice(0, 300));
+    check('更新记录不展示规则快照与纠错模板', !updatesText.includes('配置哈希') && !updatesText.includes('纠错入口') && !updatesText.includes('复制纠错模板'), updatesText.slice(0, 300));
+    check('更新记录无脚本异常', errors(updates).length === 0, JSON.stringify(errors(updates).slice(0, 2)));
+    updates.close();
 
     const guides = await openPage('/wiki/guides/index.html');
     const guidesText = await evaluate(guides, 'document.body.innerText');
@@ -176,18 +183,13 @@ async function main() {
     check('我的攻略接口返回浏览器投稿', !!(submittedGuide && submittedGuide.title === '浏览器投稿验证' && submittedGuide.status === 'pending'), JSON.stringify(submittedGuide || null));
     submit.close();
 
-    const items = await openPage('/wiki/items/index.html');
-    const itemCount = await evaluate(items, 'document.querySelectorAll(".tile").length');
-    check('图鉴运行时渲染目录卡片', itemCount >= 80, String(itemCount));
-    check('图鉴无脚本异常', errors(items).length === 0);
-    items.close();
 
-    const search = await openPage('/wiki/search/index.html?q=' + encodeURIComponent('龙宫宝珠'));
+    const search = await openPage('/wiki/search/index.html?q=' + encodeURIComponent('静水湖'));
     const searchText = await evaluate(search, 'document.body.innerText');
-    check('搜索“龙宫宝珠”返回结果', searchText.includes('龙宫宝珠'), searchText.slice(0, 300));
+    check('搜索“静水湖”返回钓场结果', searchText.includes('静水湖'), searchText.slice(0, 300));
     const searchMs = await evaluate(search, `(() => { const t = performance.now(); for (let i = 0; i < 100; i++) window.Wiki.search('龙宫宝珠', 'all'); return performance.now() - t; })()`);
     check('全站搜索 100 次平均耗时低于 100ms', searchMs / 100 < 100, (searchMs / 100).toFixed(2) + 'ms');
-    check('搜索无脚本异常', errors(search).length === 0);
+    check('搜索无脚本异常', errors(search).length === 0, JSON.stringify(errors(search).slice(0, 3)));
     search.close();
 
     const grounds = await openPage('/wiki/grounds/index.html?ground=stillwater');
@@ -202,8 +204,8 @@ async function main() {
     const buildPreset = await evaluate(build, 'document.getElementById("current-result").innerText');
     check('配装链接预设底材与钓点', buildPreset.includes('钓速') && buildPreset.includes('8') && buildPreset.includes('2760 ms'), buildPreset);
     const buildLayout = await evaluate(build, `(() => {
-      const workbench = document.querySelector('.wiki-tool-workbench');
-      const preview = document.querySelector('.wiki-tool-preview');
+      const workbench = document.querySelector('.smelt-workbench');
+      const preview = document.querySelector('.sm-preview-panel');
       const style = getComputedStyle(workbench);
       return { columns: style.gridTemplateColumns.split(' ').length, previewPosition: getComputedStyle(preview).position, hasSlots: !!document.getElementById('slots'), hasCompare: !!document.getElementById('compare-result') };
     })()`);
@@ -241,8 +243,8 @@ async function main() {
     await smelt.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await sleep(200);
     const smeltLayout = await evaluate(smelt, `(() => {
-      const workbench = document.querySelector('.wiki-tool-workbench');
-      const preview = document.querySelector('.wiki-tool-preview');
+      const workbench = document.querySelector('.smelt-workbench');
+      const preview = document.querySelector('.sm-preview-panel');
       const style = getComputedStyle(workbench);
       return { columns: style.gridTemplateColumns.split(' ').length, previewPosition: getComputedStyle(preview).position, hasMain: !!document.getElementById('main-editor'), hasSub: !!document.getElementById('sub-editor'), hasPreview: !!document.getElementById('preview') };
     })()`);

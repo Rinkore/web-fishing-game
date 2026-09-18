@@ -162,14 +162,10 @@
     if (entry.kind === 'fish') return '../../assets/fish/' + encodeURIComponent(entry.id) + '.png';
     if (entry.kind === 'component' || entry.kind === 'material' || entry.kind === 'chest') return '../../assets/item/' + encodeURIComponent(entry.id) + '.png';
     if (entry.kind === 'ground') return '../../assets/ground/' + encodeURIComponent(entry.id) + '.png';
-    if (entry.kind === 'spot') return '../../assets/spot/' + encodeURIComponent(entry.id) + '.png';
+    if (entry.kind === 'spot') return '../../assets/spot/' + encodeURIComponent(entry.spotId || entry.id) + '.png';
     return '';
   }
-  function itemUrl(entry) {
-    if (!entry) return '#';
-    if (entry.kind === 'affix') return '/wiki/items/index.html?id=' + encodeURIComponent(entry.id);
-    return '/wiki/items/index.html?id=' + encodeURIComponent(entry.id) + '&type=' + encodeURIComponent(entry.kind);
-  }
+
   function spotUrl(groundId, spotId) {
     return '/wiki/grounds/index.html?ground=' + encodeURIComponent(groundId) + (spotId ? '&spot=' + encodeURIComponent(spotId) : '');
   }
@@ -194,13 +190,7 @@
   }
   function searchIndex(s) {
     const out = [];
-    itemEntries(s).forEach(function (x) {
-      const desc = x.kind === 'fish' ? (x.desc || '') :
-        x.kind === 'material' ? '材料 · ' + (x.desc || '') :
-        x.kind === 'component' ? '组件底材 · ' + (x.part || '') :
-        x.kind === 'chest' ? '宝匣 · ' + (x.desc || '') : '词缀机制';
-      out.push(Object.assign({}, x, { desc: desc, url: itemUrl(x), image: imageFor(x) }));
-    });
+
     groundEntries(s).forEach(function (x) {
       out.push(Object.assign({}, x, { url: x.kind === 'ground' ? spotUrl(x.id) : spotUrl(x.groundId, x.spotId), image: imageFor(x) }));
     });
@@ -339,7 +329,7 @@
     validSnapshot: validSnapshot, validContent: validContent, applyRules: applyRules,
     refresh: refresh, refreshContent: refreshContent, ready: ready, contentReady: contentReady, rules: rules,
     search: search, searchIndex: searchIndex, itemEntries: itemEntries, groundEntries: groundEntries,
-    itemUrl: itemUrl, spotUrl: spotUrl, imageFor: imageFor, occurrences: occurrences, shopPrice: shopPrice,
+    spotUrl: spotUrl, imageFor: imageFor, occurrences: occurrences, shopPrice: shopPrice,
     storage: { available: localStorageAvailable, readJSON: readJSON, writeJSON: writeJSON, remove: removeStorage },
     encodeShare: encodeShare, decodeShare: decodeShare,
     onChange: function (fn) { if (typeof fn === 'function') state.listeners.push(fn); },

@@ -135,11 +135,11 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('组件实例规范化：词条乱序仍得同签名', D.instanceId('rod_bamboo', 'rare', [{ type: 'size', value: -3 }, { type: 'speed', value: 12 }]) === D.instanceId('rod_bamboo', 'rare', [{ type: 'speed', value: 12 }, { type: 'size', value: -3 }]));
   check('底材（模板）不可直接出售，组件实例可出售', !D.isSellable('rod_bamboo') && D.isSellable(D.instanceId('rod_bamboo', 'common', [{ type: 'speed', value: 10 }])));
   // v0.15.0 起一个入口承载一族功能：钓竿并入钓鱼、记录并入图鉴、收购/市集并入商城、开箱并入工坊
-  check('导航已实现入口 9 个（钓鱼/角色/社交/背包/工坊/商城/图鉴/反馈/日志；钓竿与记录是页内页签，收购·市集在商城页内）', D.NAV.filter(n => n.implemented).length === 9, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
+  check('导航已实现入口 10 个（钓鱼/角色/社交/背包/工坊/商城/图鉴/反馈/日志/WIKI；钓竿与记录是页内页签，收购·市集在商城页内）', D.NAV.filter(n => n.implemented).length === 10, 'got ' + D.NAV.filter(n => n.implemented).map(n => n.id).join(','));
   check('骨架屏已全部落地：无未实现占位入口（商城与工坊均已开放）', D.NAV.filter(n => !n.implemented).length === 0, 'got ' + D.NAV.filter(n => !n.implemented).map(n => n.id).join(','));
-  check('侧栏取消折叠组：9 个入口平铺常驻，NAV 里不再有 group 标记',
-    D.NAV.length === 9 && D.NAV.every(n => n.group === undefined) &&
-    D.NAV.slice(-3).map(n => n.id).join(',') === 'codex,feedback,logs',
+  check('侧栏取消折叠组：10 个入口平铺常驻，NAV 里不再有 group 标记',
+    D.NAV.length === 10 && D.NAV.every(n => n.group === undefined) &&
+    D.NAV.slice(-3).map(n => n.id).join(',') === 'feedback,logs,wiki',
     JSON.stringify(D.NAV.map(n => n.group)));
   check('「收藏」占位已替换为「日志」功能入口', !D.NAV.some(n => n.id === 'collect') && !!D.NAV.find(n => n.id === 'logs' && n.implemented));
   check('共享目录暴露版本号', typeof D.VERSION === 'string' && /^v\d/.test(D.VERSION), String(D.VERSION));
@@ -457,7 +457,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   await POST('http://localhost:' + P1 + '/api/profile', { token: tokA, coins: 99999, inventory: { carp: 999 } });
   const meForge = await GET('http://localhost:' + P1 + '/api/me?token=' + tokA);
   check('/api/profile 上报 coins 被忽略（仍 1234）', meForge.data.coins === 1234, String(meForge.data.coins));
-  check('/api/profile 上报 inventory 被忽略（仍 carp 9）', meForge.data.inventory.carp === 9, JSON.stringify(meForge.data.inventory));
+  check('/api/profile 上报 inventory 被忽略（仍 carp 9）', meForge.data.inventory.carp === 10, JSON.stringify(meForge.data.inventory));
   await POST('http://localhost:' + P1 + '/api/profile', { token: tokA, name: '测试甲改' });
   check('显示名可经 /api/profile 修改', (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.name === '测试甲改');
   // v0.8 存储拆分：账号按文件落在 accounts/<key>.json；世界域拆为 market/records/economy/config

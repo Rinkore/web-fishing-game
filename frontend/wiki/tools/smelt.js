@@ -19,12 +19,18 @@
     const qualityOpts = Object.keys(GameData.QUALITY).map(q => option(q, GameData.QUALITY[q].name, q === c.quality)).join('');
     const rows = (c.affixes || []).map(function (a, i) {
       const types = GameData.AFFIX_TYPES.map(t => option(t, GameData.AFFIX_LABEL[t], t === a.type)).join('');
-      return '<div class="affix-row"><select data-field="type" data-index="' + i + '">' + types + '</select><input type="number" data-field="value" data-index="' + i + '" value="' + Number(a.value) + '"><span class="muted">#' + (i + 1) + '</span><button data-remove="' + i + '">删</button></div>';
+      return '<div class="affix-row">' +
+        '<label class="field"><span>词缀</span><select data-field="type" data-index="' + i + '">' + types + '</select></label>' +
+        '<label class="field"><span>数值</span><input type="number" data-field="value" data-index="' + i + '" value="' + Number(a.value) + '"></label>' +
+        '<label class="field affix-select"><span>选定</span><input type="radio" name="' + c.role + '-selected" data-field="selected" data-index="' + i + '" value="' + i + '"' + (c.selected === i ? ' checked' : '') + '></label>' +
+        '<button type="button" data-remove="' + i + '" aria-label="删除词缀">删</button></div>';
     }).join('');
-    const selectedOpts = (c.affixes || []).map(function (a, i) { return option(String(i), GameData.AFFIX_LABEL[a.type] + ' ' + a.value, i === c.selected); }).join('');
-    return '<div class="toolbar"><select data-field="part">' + partOpts + '</select><select data-field="base">' + baseOpts + '</select><select data-field="quality">' + qualityOpts + '</select><select data-field="selected"><option value="">选择保留词缀</option>' + selectedOpts + '</select></div>' + rows + '<div class="toolbar"><button data-add-affix>加词缀</button></div>';
-  }
-  function renderEditors() {
+    return '<div class="toolbar slot-fields">' +
+      '<label class="field"><span>部位</span><select data-field="part">' + partOpts + '</select></label>' +
+      '<label class="field"><span>底材</span><select data-field="base">' + baseOpts + '</select></label>' +
+      '<label class="field"><span>品质</span><select data-field="quality">' + qualityOpts + '</select></label>' +
+      '</div><div class="affix-list">' + rows + '</div><div class="toolbar"><button type="button" data-add-affix>加词缀</button></div>';
+  }  function renderEditors() {
     ['main','sub'].forEach(function (role) {
       const c = state[role], root = $(role + '-editor');
       root.innerHTML = editorHTML(c);
@@ -162,11 +168,11 @@
   function renderMaterials() {
     const mats = state.snapshot.catalog.smeltMaterials || [];
     $('materials').innerHTML = mats.map(function (m) {
-      return '<label class="badge">' + escapeHTML(m.name) + ' → ' + escapeHTML(m.affixName) + ' <input type="number" min="0" max="99" value="0" data-material="' + escapeHTML(m.id) + '" style="width:72px"></label>';
-    }).join('') + '<p class="muted">残片既可作为普通投料定向“材料概率”，也可在上方单独作为保护残片；两处消耗独立计算。</p>';
+      return '<div class="ws-mat wiki-material-card"><img src="/assets/item/' + escapeHTML(m.id) + '.png" alt=""><div class="sm-mat-info"><strong>' + escapeHTML(m.name) + '</strong><small>定向补缀：' + escapeHTML(m.affixName) + '</small></div>' +
+        '<input class="ipt" type="number" min="0" max="99" value="0" data-material="' + escapeHTML(m.id) + '" aria-label="' + escapeHTML(m.name) + '份数"></div>';
+    }).join('') + '<p class="sm-material-limit">残片既可作为普通投料定向“材料概率”，也可在上方单独作为保护残片；两处消耗独立计算。</p>';
     $('materials').querySelectorAll('[data-material]').forEach(function (input) { input.addEventListener('change', renderAll); });
-  }
-  function renderAll() {
+  }  function renderAll() {
     renderEditors();
     const p = plan();
     $('preview').innerHTML = previewHTML(p);

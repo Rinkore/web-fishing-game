@@ -29,6 +29,8 @@ function count(dir) {
   return n;
 }
 
+const sync = spawnSync(process.execPath, [path.join(__dirname, 'sync-versions.js')], { stdio: 'inherit' });
+if (sync.status !== 0) process.exit(sync.status || 1);
 const check = spawnSync(process.execPath, [path.join(__dirname, 'check.js')], { stdio: 'inherit' });
 if (check.status !== 0) process.exit(check.status);
 fs.rmSync(DIST, { recursive: true, force: true });

@@ -10,8 +10,8 @@ const { spawnSync } = require('child_process');
 const ROOT = path.join(__dirname, '..', '..');
 const SRC = path.join(ROOT, 'frontend', 'wiki');
 const REQUIRED = [
-  'index.html', 'items/index.html', 'grounds/index.html', 'guides/index.html', 'guides/submit.html', 'updates/index.html', 'search/index.html',
-  'css/wiki.css', 'content/content.json', 'js/content.js', 'js/core.js', 'js/pages.js',
+  'index.html', 'grounds/index.html', 'guides/index.html', 'guides/submit.html', 'updates/index.html', 'search/index.html',
+  'css/wiki.css', 'content/content.json', 'content/versions.json', 'js/content.js', 'js/core.js', 'js/pages.js',
   'tools/build.html', 'tools/build.js', 'tools/smelt.html', 'tools/smelt.js', 'tools/tool.css',
 ];
 
@@ -25,6 +25,12 @@ function walk(dir, out) {
   return out;
 }
 function rel(p) { return path.relative(SRC, p).replace(/\\/g, '/'); }
+function parseVersions(markdown) {
+  return markdown.split(/\r?\n/).map(function (line) {
+    const m = /^\|\s*(v[0-9][0-9.]*)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$/.exec(line);
+    return m ? { version: m[1], date: m[2], summary: m[3].replace(/\*\*/g, '') } : null;
+  }).filter(Boolean);
+}
 function fail(message) { console.error('FAIL ' + message); process.exitCode = 1; }
 function attr(source, name) {
   const re = new RegExp(name + '=["\']([^"\']+)["\']', 'ig');
@@ -69,6 +75,17 @@ jsFiles.forEach(function (file) {
   const r = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
   if (r.status !== 0) fail(rel(file) + ' 语法错误：' + (r.stderr || '').trim());
 });
+
+const versionsPath = path.join(SRC, 'content', 'versions.json');
+try {
+  const versionData = JSON.parse(fs.readFileSync(versionsPath, 'utf8'));
+  const expected = parseVersions(fs.readFileSync(path.join(ROOT, 'VERSIONS.md'), 'utf8'));
+  if (!Array.isArray(versionData.versions) || JSON.stringify(versionData.versions) !== JSON.stringify(expected)) {
+    fail('frontend/wiki/content/versions.json 与 VERSIONS.md 不同步，请运行 node tools/wiki/sync-versions.js');
+  }
+} catch (e) {
+  fail('版本记录 JSON 读取失败：' + e.message);
+}
 
 const contentPath = path.join(SRC, 'content', 'content.json');
 try {

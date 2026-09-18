@@ -1,34 +1,33 @@
-.slot-editor { border:1px solid #344352; border-radius:10px; padding:12px; margin:10px 0; background:#151c25; }
+/* Wiki 工具页：在游戏 smelt.css 基础上，仅补配装编辑器没有的表单布局。 */
+.slot-editor { border: 2px solid var(--px-line, #2c4f74); border-radius: 4px; padding: 11px; margin: 10px 0; background: rgba(6,16,30,.68); }
 .slot-head { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; }
-.slot-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; margin-top:8px; }
-.affix-row { display:grid; grid-template-columns:1.3fr 100px 1fr 36px; gap:6px; margin-top:6px; }
-.result-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; }
+.slot-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(175px,1fr)); gap:8px; margin-top:8px; }
+.affix-row { display:grid; grid-template-columns:1.25fr 82px 1.1fr 38px; gap:6px; margin-top:6px; align-items:center; }
+.affix-row button { min-height:34px; }
+.result-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:8px; }
 .result-item { border-left:3px solid var(--accent); padding-left:8px; }
-.positive { color:var(--ok); } .negative { color:var(--bad); }
+.positive { color:var(--wiki-ok,#a7f3d0); }
+.negative { color:var(--wiki-bad,#ffb4b4); }
 
-/* Wiki 工具复用游戏工坊的深海工作台布局；只做 Wiki 侧补齐，不复制整份 smelt.css。 */
-.wiki-tool-editor { display:grid; gap:18px; }
-.wiki-tool-editor .ws-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
-.wiki-tool-editor .toolbar { margin-top:10px; }
-.wiki-tool-editor input[type="number"] { min-width:100px; height:36px; padding:0 10px; border:1px solid var(--line); border-radius:7px; background:#0b131a; color:var(--text); }
-.wiki-tool-editor .slot-editor { margin:10px 0 0; }
-.wiki-tool-preview { position:sticky; top:16px; max-height:calc(100vh - 32px); overflow:auto; scrollbar-width:thin; }
-.wiki-preview-block { margin-top:16px; padding-top:14px; border-top:1px solid #344352; }
-.wiki-preview-block:first-of-type { margin-top:14px; }
-.wiki-preview-block h4 { margin:0 0 8px; color:#eef4f8; font-size:15px; }
+.wiki-material-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px; margin:8px 0 12px; }
+.wiki-material-card { display:grid; grid-template-columns:48px minmax(0,1fr) 78px; align-items:center; gap:10px; }
+.wiki-material-card img { width:48px; height:48px; object-fit:contain; image-rendering:pixelated; }
+.wiki-material-card .ipt { width:100%; min-width:0; text-align:right; }
+.sm-material-limit { color:#adbdcd; font-size:12px; margin:0; }
 .wiki-preview-block table { width:100%; border-collapse:collapse; }
-.wiki-preview-block th, .wiki-preview-block td { padding:7px 8px; border-bottom:1px solid rgba(52,67,82,.75); text-align:left; }
-.wiki-preview-block th { color:var(--sm-muted); font-weight:600; }
+.wiki-preview-block th, .wiki-preview-block td { padding:7px 8px; border-bottom:1px solid rgba(44,79,116,.75); text-align:left; font-size:13px; }
+.wiki-preview-block th { color:#b8d4ea; font-weight:600; }
 .wiki-preview-block .warning { color:#ffd18a; }
 .wiki-preview-block .positive { color:#a7f3d0; }
 
-@media (max-width:1250px) {
-  .wiki-tool-workbench { grid-template-columns:minmax(0,1fr); }
-  .wiki-tool-preview { position:static; max-height:none; overflow:visible; }
-}
 @media (max-width:640px) {
-  .wiki-tool-editor { gap:12px; }
-  .wiki-tool-editor .ws-grid { grid-template-columns:minmax(0,1fr); }
-  .affix-row { grid-template-columns:1fr 80px; }
+  .wiki-material-grid { grid-template-columns:minmax(0,1fr); }
+  .wiki-material-card { grid-template-columns:44px minmax(0,1fr); }
+  .wiki-material-card img { width:44px; height:44px; }
+  .wiki-material-card .ipt { grid-column:1 / -1; text-align:left; }
+  .slot-editor { padding:8px; }
+  .affix-row { grid-template-columns:1fr 76px; }
+  .affix-row .field:nth-child(3) { grid-column:1/-1; }
+  .affix-row button { grid-column:2; grid-row:1; }
   .wiki-preview-block th, .wiki-preview-block td { padding:6px; font-size:12px; }
 }

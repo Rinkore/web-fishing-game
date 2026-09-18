@@ -7,9 +7,15 @@
     "start": "node backend/server.js",
     "wiki:test": "node tests/wiki/wiki.test.js",
     "wiki:check": "node tools/wiki/check.js",
+    "wiki:sync": "node tools/wiki/sync-versions.js",
     "wiki:build": "node tools/wiki/build.js",
     "wiki:serve": "node frontend/serve.js",
     "wiki:verify:server": "node tools/wiki/verify-server.js",
-    "wiki:test:browser": "node tests/wiki/browser.test.js"
+    "wiki:test:browser": "node tests/wiki/browser.test.js",
+    "wiki:docker": "docker compose -f docker-compose.wiki-test.yml up --build",
+    "wiki:docker:up": "docker compose -f docker-compose.wiki-test.yml up -d --build",
+    "wiki:docker:down": "docker compose -f docker-compose.wiki-test.yml down",
+    "wiki:docker:reset": "docker compose -f docker-compose.wiki-test.yml down -v --remove-orphans",
+    "wiki:docker:logs": "docker compose -f docker-compose.wiki-test.yml logs -f wiki-test"
   }
 }
