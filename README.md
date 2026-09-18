@@ -21,7 +21,7 @@ Node 内置 `http` 后端，游戏数值目录前后端共用一份（UMD）；�
 
 Wiki 显示名称为 `wiki`，由游戏服务器同域托管 `/wiki/`，包含资料查询、玩法攻略、**配装模拟器与熔炼模拟器**。
 详细范围、数据同步方案、计算规则和验收标准见 [Wiki 开发文档](docs/wiki/DEVELOPMENT.md)，进展见 [Wiki 规划与开发日志](docs/wiki/CHANGELOG.md)。可运行 `npm run wiki:test`、`wiki:test:browser`、`wiki:check`、`wiki:build` 和 `wiki:verify:server` 执行专项回归。正式 Wiki 的数据与公式必须来自正式服务端快照并与服务端共用规则实现，不能伪造或滞后。
-Wiki 资料站、配装模拟器、熔炼模拟器、构建检查和本地验收已实现；正式运行时需通过 `SOURCE_COMMIT` 注入完整提交 SHA。
+Wiki 资料站、配装模拟器、熔炼模拟器、构建检查和本地验收已实现；Release 包内置 `SOURCE_COMMIT.txt`，服务端也可用 `SOURCE_COMMIT` 环境变量显式注入完整提交 SHA。
 
 ## 快速开始
 

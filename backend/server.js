@@ -2517,7 +2517,13 @@ const WIKI_RULES_VERSION = 1;
 const SERVER_INSTANCE_ID = crypto.randomBytes(8).toString('hex');
 
 function sourceCommitOf() {
-  const v = String(process.env.SOURCE_COMMIT || '').trim().toLowerCase();
+  // 发布包内置 SOURCE_COMMIT.txt；开发仓库没有该文件，必须显式注入环境变量。
+  // 环境变量优先，便于部署方覆盖；两者都必须是完整 40 位 SHA，防止把短哈希伪装成可验证来源。
+  let v = String(process.env.SOURCE_COMMIT || '').trim();
+  if (!v) {
+    try { v = fs.readFileSync(path.join(ROOT, '..', 'SOURCE_COMMIT.txt'), 'utf8').trim(); } catch (e) { v = ''; }
+  }
+  v = v.toLowerCase();
   return /^[0-9a-f]{40}$/.test(v) ? v : null;
 }
 // 规范化 JSON：对象键排序、数组顺序保留、undefined 跳过。configHash 必须不受对象插入顺序影响。
