@@ -566,3 +566,15 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
   .wiki-card { grid-template-columns: 1fr; }
   .wiki-card span { white-space: normal; }
 }
+
+/* ---- Wiki 官方内容与投稿审核 ---- */
+.wiki-review-card { border:1px solid #27364b; border-radius:10px; padding:12px; margin:10px 0; background:#111827; }
+.wiki-review-card header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.wiki-review-meta { display:flex; flex-wrap:wrap; gap:10px; color:#8ca3c6; font-size:12px; margin-top:6px; }
+.wiki-review-body { max-height:320px; overflow:auto; border-top:1px solid #27364b; margin-top:10px; padding-top:8px; }
+.wiki-review-body h4 { margin:10px 0 5px; }
+.wiki-review-body section { margin-bottom:10px; }
+.wiki-review-acts { display:flex; gap:8px; margin-top:10px; }
+.wiki-status { padding:2px 8px; border-radius:999px; font-size:12px; background:#27364b; color:#dbe7ff; }
+.wiki-status.approved { background:#14532d; color:#bbf7d0; }
+.wiki-status.rejected { background:#7f1d1d; color:#fecaca; }

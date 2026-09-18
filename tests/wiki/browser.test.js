@@ -118,6 +118,64 @@ async function main() {
     check('攻略页无脚本异常', errors(guides).length === 0, JSON.stringify(errors(guides).slice(0, 2)));
     guides.close();
 
+    // 用户投稿：先在浏览器上下文登录，再走真实提交表单。
+    const userRegister = await postJson('/api/register', { username: 'wikiuser', password: 'wiki-test-1234', name: 'Wiki User', qq: '827201' });
+    check('浏览器测试投稿用户注册成功', userRegister.status === 200, JSON.stringify(userRegister.data || {}));
+    const loginPage = await openPage('/wiki/');
+    const browserLogin = await evaluate(loginPage, `(async () => {
+      const res = await fetch('/api/login', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'FishGame', 'X-Session-Mode': 'cookie' },
+        body: JSON.stringify({ username: 'wikiuser', password: 'wiki-test-1234' })
+      });
+      return { status: res.status, data: await res.json().catch(() => ({})) };
+    })()`);
+    check('浏览器上下文登录投稿用户成功', browserLogin.status === 200, JSON.stringify(browserLogin));
+    loginPage.close();
+
+    const loggedInGuides = await openPage('/wiki/guides/index.html');
+    const loggedInGuidesText = await evaluate(loggedInGuides, 'document.body.innerText');
+    check('已登录攻略页显示投稿入口', loggedInGuidesText.includes('贡献攻略') && loggedInGuidesText.includes('我的攻略'), loggedInGuidesText.slice(0, 400));
+    check('已登录攻略页无脚本异常', errors(loggedInGuides).length === 0, JSON.stringify(errors(loggedInGuides).slice(0, 2)));
+    loggedInGuides.close();
+
+    const submit = await openPage('/wiki/guides/submit.html');
+    await evaluate(submit, `(async () => {
+      const form = document.querySelector('.guide-form');
+      const title = form.querySelector('input');
+      const category = form.querySelector('select');
+      const summary = form.querySelector('textarea');
+      const tags = Array.from(form.querySelectorAll('input'))[1];
+      const sectionTitle = form.querySelector('.guide-section-head input');
+      const sectionText = form.querySelector('.guide-section textarea');
+      title.value = '浏览器投稿验证';
+      category.value = '心得分享';
+      summary.value = '一篇通过真实表单提交的验证攻略。';
+      tags.value = '浏览器, 验证';
+      sectionTitle.value = '思路';
+      sectionText.value = '先用模拟器确认收益，再投入材料。';
+      [title, summary, tags, sectionTitle, sectionText].forEach(x => x.dispatchEvent(new Event('input', { bubbles: true })));
+      category.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 100));
+      form.requestSubmit();
+      return true;
+    })()`);
+    let submitState = null;
+    for (let i = 0; i < 20; i++) {
+      await sleep(200);
+      submitState = await evaluate(submit, `({ url: location.href, text: document.body.innerText, status: document.querySelector('.status-line') && document.querySelector('.status-line').innerText })`);
+      if (submitState.text.includes('待审核')) break;
+    }
+    check('投稿表单提交成功并进入我的攻略', submitState.url.includes('/wiki/guides/index.html?my=1') && submitState.text.includes('待审核'), JSON.stringify(submitState));
+    check('投稿页面无脚本异常', errors(submit).filter(e => e.method === 'Runtime.exceptionThrown').length === 0, JSON.stringify(errors(submit).filter(e => e.method === 'Runtime.exceptionThrown').slice(0, 2)));
+    const submittedGuide = await evaluate(submit, `(async () => {
+      const res = await fetch('/api/wiki/guides/my', { credentials: 'same-origin' });
+      const data = await res.json();
+      return data.guides && data.guides[0];
+    })()`);
+    check('我的攻略接口返回浏览器投稿', !!(submittedGuide && submittedGuide.title === '浏览器投稿验证' && submittedGuide.status === 'pending'), JSON.stringify(submittedGuide || null));
+    submit.close();
+
     const items = await openPage('/wiki/items/index.html');
     const itemCount = await evaluate(items, 'document.querySelectorAll(".tile").length');
     check('图鉴运行时渲染目录卡片', itemCount >= 80, String(itemCount));
@@ -195,8 +253,8 @@ async function main() {
     check('熔炼模拟器无脚本异常', errors(smelt).length === 0);
     smelt.close();
 
-    async function postJson(pathname, body) {
-      const res = await fetch(BASE + pathname, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    async function postJson(pathname, body, headers) {
+      const res = await fetch(BASE + pathname, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers || {}), body: JSON.stringify(body) });
       return { status: res.status, data: await res.json().catch(() => ({})) };
     }
     async function registerAdmin() {
@@ -234,14 +292,37 @@ async function main() {
         json: document.getElementById('wiki-json') && document.getElementById('wiki-json').value.slice(0, 200)
       };
     })()`);
-    check('管理后台 Wiki 攻略编辑器可用', adminWiki.title && adminWiki.title.includes('Wiki 攻略热更新') && adminWiki.cards > 0 && adminWiki.json.includes('guides'), JSON.stringify(adminWiki));
+    check('管理后台 Wiki 官方编辑器可用', adminWiki.title && adminWiki.title.includes('Wiki 攻略管理') && adminWiki.cards > 0 && adminWiki.json.includes('guides'), JSON.stringify(adminWiki));
     check('管理后台 Wiki 页无脚本异常', errors(admin).filter(e => e.method === 'Runtime.exceptionThrown').length === 0, JSON.stringify(errors(admin).filter(e => e.method === 'Runtime.exceptionThrown').slice(0, 2)));
+    const adminReviewVisible = await evaluate(admin, `document.getElementById('wiki-review-list').innerText`);
+    check('管理后台显示待审核投稿', adminReviewVisible.includes('浏览器投稿验证') && adminReviewVisible.includes('待审核'), adminReviewVisible.slice(0, 300));
+
+    const review = await evaluate(admin, `(async () => {
+      const res = await fetch('/api/admin/wiki/guides/review', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'FishGame', 'X-Session-Mode': 'cookie' },
+        body: JSON.stringify({ id: '${submittedGuide.id}', action: 'approve', expectedStatus: 'pending', note: '' })
+      });
+      return { status: res.status, data: await res.json().catch(() => ({})) };
+    })()`);
+    check('管理员通过浏览器投稿成功', review.status === 200 && review.data.guide && review.data.guide.status === 'approved', JSON.stringify(review || {}));
+    const publicAfterReview = await openPage('/wiki/guides/index.html');
+    const publicAfterReviewText = await evaluate(publicAfterReview, 'document.body.innerText');
+    check('审核通过后玩家投稿公开可见', publicAfterReviewText.includes('浏览器投稿验证') && publicAfterReviewText.includes('Wiki User'), publicAfterReviewText.slice(0, 500));
+    check('公开攻略页审核后无脚本异常', errors(publicAfterReview).length === 0, JSON.stringify(errors(publicAfterReview).slice(0, 2)));
+    publicAfterReview.close();
+    const userSearch = await openPage('/wiki/search/index.html?q=' + encodeURIComponent('浏览器投稿验证'));
+    const userSearchText = await evaluate(userSearch, 'document.body.innerText');
+    check('全站搜索包含已通过玩家投稿', userSearchText.includes('浏览器投稿验证'), userSearchText.slice(0, 300));
+    check('玩家投稿搜索无脚本异常', errors(userSearch).length === 0, JSON.stringify(errors(userSearch).slice(0, 2)));
+    userSearch.close();
     admin.close();
 
     for (const [name, url] of [
       ['首页 360px 无横向溢出', '/wiki/'],
       ['配装模拟器 360px 无横向溢出', '/wiki/tools/build.html?ground=stillwater&spot=dock&base=rod_bamboo'],
       ['熔炼模拟器 360px 无横向溢出', '/wiki/tools/smelt.html'],
+      ['投稿页 360px 无横向溢出', '/wiki/guides/submit.html'],
     ]) {
       const mobile = await openPage(url);
       await mobile.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 740, deviceScaleFactor: 2, mobile: true });

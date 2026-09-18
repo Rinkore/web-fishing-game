@@ -183,7 +183,7 @@
   }
   function guideEntries() {
     return (window.WikiContent ? window.WikiContent.guides : []).map(function (g) {
-      return { id: g.id, name: g.title, kind: 'guide', type: 'guide', desc: g.summary, aliases: g.aliases || [], tags: g.tags || [], rarity: null };
+      return { id: g.id, name: g.title, kind: 'guide', type: 'guide', desc: g.summary + (g.authorName ? ' · 作者 ' + g.authorName : ''), aliases: g.aliases || [], tags: g.tags || [], rarity: null };
     });
   }
   function toolEntries() {

@@ -10,7 +10,7 @@ const { spawnSync } = require('child_process');
 const ROOT = path.join(__dirname, '..', '..');
 const SRC = path.join(ROOT, 'frontend', 'wiki');
 const REQUIRED = [
-  'index.html', 'items/index.html', 'grounds/index.html', 'guides/index.html', 'updates/index.html', 'search/index.html',
+  'index.html', 'items/index.html', 'grounds/index.html', 'guides/index.html', 'guides/submit.html', 'updates/index.html', 'search/index.html',
   'css/wiki.css', 'content/content.json', 'js/content.js', 'js/core.js', 'js/pages.js',
   'tools/build.html', 'tools/build.js', 'tools/smelt.html', 'tools/smelt.js', 'tools/tool.css',
 ];
@@ -80,6 +80,7 @@ try {
     if (!g || typeof g !== 'object' || !/^[a-z0-9][a-z0-9-]{1,79}$/.test(g.id || '')) fail('攻略 ID 无效：' + (g && g.id));
     if (ids.has(g.id)) fail('攻略 ID 重复：' + g.id);
     ids.add(g.id);
+    if (g.kind !== 'official' || g.status !== 'published') fail('官方攻略身份字段错误：' + (g.id || '?'));
     if (!g.title || !g.category || !g.summary || !Array.isArray(g.sections) || !g.sections.length) fail('攻略结构不完整：' + (g.id || '?'));
     g.sections.forEach(function (sec) {
       if (!sec || !sec.h) fail('攻略段落缺少标题：' + (g.id || '?'));

@@ -3,6 +3,46 @@ window.WikiPage = (function () {
   const W = () => window.Wiki;
   const C = () => window.WikiContent;
   function qs(name) { return new URLSearchParams(location.search).get(name) || ''; }
+  const WIKI_GUIDE_CATEGORIES = ['新手入门', '机制说明', '进阶策略', '工坊指南', '经济交易', '配装攻略', '心得分享'];
+  let guideFilter = 'all';
+  let myWiki = { loading: true, authenticated: false, guides: [], limits: null, error: '' };
+  async function wikiApi(method, path, body) {
+    const opts = { method: method, credentials: 'same-origin', headers: { 'X-Requested-With': 'FishGame', 'X-Session-Mode': 'cookie' } };
+    if (body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(path, opts);
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    return { ok: res.ok, status: res.status, data: data || {} };
+  }
+  async function refreshMyWikiGuides() {
+    if (myWiki.loading && myWiki.inFlight) return myWiki.inFlight;
+    myWiki.loading = true; myWiki.error = '';
+    myWiki.inFlight = wikiApi('GET', '/api/wiki/guides/session').then(async function (session) {
+      if (!session.ok) throw new Error((session.data && session.data.error) || ('HTTP ' + session.status));
+      if (!session.data.authenticated) {
+        myWiki.authenticated = false; myWiki.guides = []; myWiki.limits = null;
+        return;
+      }
+      const r = await wikiApi('GET', '/api/wiki/guides/my');
+      if (!r.ok) throw new Error((r.data && r.data.error) || ('HTTP ' + r.status));
+      myWiki.authenticated = true;
+      myWiki.guides = r.data.guides || [];
+      myWiki.limits = r.data.limits || null;
+    }).then(function () {
+      myWiki.inFlight = null;
+      myWiki.loading = false;
+      const page = document.body.dataset.page;
+      if (page === 'guides' || page === 'guides-submit') render();
+    }).catch(function (e) {
+      myWiki.inFlight = null; myWiki.loading = false; myWiki.error = '网络错误，请稍后重试。';
+      const page = document.body.dataset.page;
+      if (page === 'guides' || page === 'guides-submit') render();
+    });
+    return myWiki.inFlight;
+  }
   function setNavCurrent() {
     const page = document.body.dataset.page || '';
     document.querySelectorAll('.main-nav a').forEach(function (a) {
@@ -295,23 +335,94 @@ window.WikiPage = (function () {
 
   function guideCard(g) {
     const a = W().el('a', 'tile'); a.href = '/wiki/guides/index.html?slug=' + encodeURIComponent(g.id);
-    a.append(W().el('h3', 'tile-title', g.title), W().el('p', 'tile-desc', g.category + ' · ' + g.summary));
+    const meta = g.kind === 'user' ? '玩家投稿 · ' + (g.authorName || '玩家') : '官方攻略';
+    a.append(W().el('h3', 'tile-title', g.title), W().el('p', 'tile-desc', meta + ' · ' + g.category + ' · ' + g.summary));
     return a;
+  }
+  function guideStatusLabel(status) {
+    return status === 'pending' ? '待审核' : status === 'approved' ? '已通过' : status === 'rejected' ? '已拒绝' : status || '-';
+  }
+  function renderGuideActions() {
+    const box = W().el('div', 'toolbar guide-actions');
+    const link = W().el('a', 'button primary', '📝 贡献攻略'); link.href = '/wiki/guides/submit.html';
+    const mine = W().el('a', 'button', '我的攻略'); mine.href = '/wiki/guides/index.html?my=1';
+    if (myWiki.loading) box.append(W().el('span', 'status-line', '登录状态检查中…'));
+    else if (myWiki.authenticated) box.append(link, mine);
+    else {
+      const login = W().el('span', 'status-line', '登录游戏后可提交玩家攻略。');
+      box.append(login);
+    }
+    return box;
+  }
+  function renderGuideFilter() {
+    const box = W().el('div', 'toolbar guide-filter');
+    [['all','全部'],['official','官方'],['user','玩家']].forEach(function (x) {
+      const b = W().el('button', guideFilter === x[0] ? 'primary' : null, x[1]);
+      b.type = 'button';
+      b.addEventListener('click', function () { guideFilter = x[0]; render(); });
+      box.append(b);
+    });
+    return box;
+  }
+  function renderMyGuides() {
+    const c = card('我的攻略');
+    if (myWiki.loading) { c.append(W().el('p', 'status-line', '加载中…')); return c; }
+    if (myWiki.error) { c.append(W().el('div', 'callout warn', myWiki.error)); return c; }
+    if (!myWiki.authenticated) { c.append(W().el('div', 'callout warn', '请先登录游戏后再查看我的攻略。')); return c; }
+    if (!myWiki.guides.length) { c.append(empty('你还没有提交过攻略。')); return c; }
+    const list = W().el('div', 'guide-my-list');
+    myWiki.guides.forEach(function (g) {
+      const row = W().el('article', 'guide-my-item');
+      const head = W().el('div', 'guide-my-head');
+      head.append(W().el('b', null, g.title), W().el('span', 'guide-status ' + g.status, guideStatusLabel(g.status)));
+      row.append(head, W().el('p', 'item-sub', g.category + ' · 提交于 ' + new Date(g.submittedAt).toLocaleString('zh-CN')));
+      if (g.reviewedAt) row.append(W().el('p', 'item-sub', '审核于 ' + new Date(g.reviewedAt).toLocaleString('zh-CN')));
+      if (g.status === 'rejected' && g.reviewNote) row.append(W().el('div', 'callout warn', '拒绝原因：' + g.reviewNote));
+      row.append(W().el('p', null, g.summary));
+      if (g.status === 'pending') {
+        const del = W().el('button', 'danger', '删除待审核攻略');
+        del.type = 'button';
+        del.addEventListener('click', async function () {
+          del.disabled = true; del.textContent = '删除中…';
+          const r = await wikiApi('POST', '/api/wiki/guides/delete', { id: g.id });
+          if (!r.ok) { del.disabled = false; del.textContent = '删除失败，请重试'; return; }
+          await refreshMyWikiGuides(); render();
+        });
+        row.append(del);
+      }
+      list.append(row);
+    });
+    c.append(list);
+    if (myWiki.limits) {
+      c.append(W().el('p', 'card-note', '最近 24 小时已提交 ' + (myWiki.limits.submittedIn24h || 0) + ' / 3 篇 · 待审核 ' + (myWiki.limits.pending || 0) + ' / 3 篇' +
+        (myWiki.limits.nextAllowedAt ? ' · 下次可提交：' + new Date(myWiki.limits.nextAllowedAt).toLocaleString('zh-CN') : '')));
+    }
+    return c;
   }
   function renderGuides() {
     const main = document.getElementById('main'); main.textContent = '';
     const slug = qs('slug');
     const g = C().guides.find(function (x) { return x.id === slug; });
     if (!g) {
+      if (qs('my') === '1') {
+        main.append(pageHead('我的攻略', '查看投稿状态和审核结果。'), renderGuideActions(), renderMyGuides());
+        return;
+      }
       const c = card('攻略目录');
       const grid = W().el('div', 'grid cols-2');
-      C().guides.forEach(function (x) { grid.append(guideCard(x)); });
-      c.append(grid, W().el('p', 'card-note', '攻略正文支持后台热更新；涉及当前数值时以快照和模拟器结果为准。'));
+      let rows = C().guides || [];
+      if (guideFilter === 'official') rows = rows.filter(function (x) { return x.kind !== 'user'; });
+      if (guideFilter === 'user') rows = rows.filter(function (x) { return x.kind === 'user'; });
+      rows.forEach(function (x) { grid.append(guideCard(x)); });
+      c.append(renderGuideFilter(), grid, W().el('p', 'card-note', '官方攻略支持后台热更新；玩家攻略需审核通过后展示。涉及当前数值时以快照和模拟器结果为准。'));
+      if (!rows.length) c.append(empty('当前筛选下暂无攻略。'));
       if (!C().guides.length) c.append(W().el('div', 'callout warn', '攻略内容正在同步，或当前服务端未返回可用攻略。'));
-      main.append(pageHead('玩法与攻略', '新手、机制、工坊、经济与常见问题。'), c); return;
+      main.append(pageHead('玩法与攻略', '新手、机制、工坊、经济、配装与玩家心得。'), renderGuideActions(), c);
+      return;
     }
     const c = card(g.title);
-    c.append(W().el('p', 'item-sub', g.category + ' · 更新于 ' + g.updatedAt + ' · ' + g.status));
+    const source = g.kind === 'user' ? '玩家投稿 · ' + (g.authorName || '玩家') : '官方攻略';
+    c.append(W().el('p', 'item-sub', source + ' · ' + g.category + ' · 更新于 ' + new Date(g.updatedAt || '').toLocaleDateString('zh-CN')));
     const article = W().el('div', 'article');
     (g.sections || []).forEach(function (s) {
       article.append(W().el('h2', null, s.h));
@@ -331,6 +442,131 @@ window.WikiPage = (function () {
     });
     related.append(rg);
     main.append(pageHead(g.title, g.summary), c, related);
+  }
+  function guideDraftValue() {
+    let value = W().storage.readJSON('wiki_guide_draft', null);
+    if (!value || typeof value !== 'object') {
+      value = { title: '', category: '心得分享', summary: '', tags: '', sections: [{ h: '', type: 'p', text: '', items: '' }] };
+    }
+    if (!Array.isArray(value.sections) || !value.sections.length) value.sections = [{ h: '', type: 'p', text: '', items: '' }];
+    return value;
+  }
+  function normalizeGuideDraft(draft) {
+    const sections = (draft.sections || []).map(function (s) {
+      return {
+        h: String(s.h || ''),
+        type: ['p', 'note', 'ol', 'ul'].includes(s.type) ? s.type : 'p',
+        text: String(s.text || ''),
+        items: String(s.items || '')
+      };
+    });
+    return {
+      title: String(draft.title || ''), category: WIKI_GUIDE_CATEGORIES.includes(draft.category) ? draft.category : '心得分享',
+      summary: String(draft.summary || ''), tags: String(draft.tags || ''), sections: sections
+    };
+  }
+  function guideDraftPayload(draft) {
+    return {
+      title: draft.title.trim(),
+      category: draft.category,
+      summary: draft.summary.trim(),
+      tags: draft.tags.split(/[,，\s]+/).map(x => x.trim()).filter(Boolean),
+      sections: draft.sections.map(function (s) {
+        if (s.type === 'ol' || s.type === 'ul') return { h: s.h.trim(), type: s.type, items: s.items.split(/\n+/).map(x => x.trim()).filter(Boolean) };
+        return { h: s.h.trim(), type: s.type, text: s.text.trim() };
+      })
+    };
+  }
+  function renderGuideSubmit() {
+    const main = document.getElementById('main'); main.textContent = '';
+    if (myWiki.loading) {
+      main.append(pageHead('贡献攻略', '检查登录状态中…'), W().el('p', 'status-line', '请稍候…'));
+      return;
+    }
+    if (!myWiki.authenticated) {
+      main.append(pageHead('贡献攻略', '登录后提交你的钓鱼心得。'), W().el('div', 'callout warn', '请先登录游戏，再打开本页提交攻略。'));
+      return;
+    }
+    if (myWiki.error) {
+      main.append(pageHead('贡献攻略', '登录状态读取失败。'), W().el('div', 'callout warn', myWiki.error));
+      return;
+    }
+    const draft = normalizeGuideDraft(guideDraftValue());
+    const c = card('攻略内容');
+    const form = W().el('form', 'guide-form');
+    function field(labelText, input) {
+      const wrap = W().el('label', 'field');
+      wrap.append(W().el('span', 'field-label', labelText), input);
+      return wrap;
+    }
+    const title = W().el('input'); title.className = 'ipt'; title.value = draft.title; title.maxLength = 120;
+    const category = W().el('select'); category.className = 'ipt';
+    WIKI_GUIDE_CATEGORIES.forEach(function (x) { const o = W().el('option', null, x); o.value = x; category.append(o); });
+    category.value = draft.category;
+    const summary = W().el('textarea'); summary.className = 'ipt'; summary.rows = 3; summary.maxLength = 300; summary.value = draft.summary;
+    const tags = W().el('input'); tags.className = 'ipt'; tags.value = draft.tags; tags.placeholder = '用逗号分隔，例如：新手, 材料';
+    form.append(field('标题', title), field('分类', category), field('摘要', summary), field('标签', tags));
+    const sectionBox = W().el('div', 'guide-sections');
+    function drawSections() {
+      sectionBox.textContent = '';
+      draft.sections.forEach(function (s, i) {
+        const box = W().el('article', 'guide-section');
+        const head = W().el('div', 'guide-section-head');
+        const h = W().el('input'); h.className = 'ipt'; h.value = s.h; h.placeholder = '段落标题'; h.maxLength = 100;
+        const type = W().el('select'); type.className = 'ipt';
+        [['p','普通段落'],['note','提示'],['ol','有序列表'],['ul','无序列表']].forEach(function (x) { const o = W().el('option', null, x[1]); o.value = x[0]; type.append(o); });
+        type.value = s.type;
+        h.addEventListener('input', function () { s.h = h.value; save(); });
+        type.addEventListener('change', function () { s.type = type.value; save(); drawSections(); });
+        const remove = W().el('button', 'danger mini', '删除段落'); remove.type = 'button';
+        remove.addEventListener('click', function () { draft.sections.splice(i, 1); save(); drawSections(); });
+        head.append(h, type, remove);
+        box.append(head);
+        if (s.type === 'ol' || s.type === 'ul') {
+          const items = W().el('textarea'); items.className = 'ipt'; items.rows = 5; items.value = s.items; items.placeholder = '每行一个列表项';
+          items.addEventListener('input', function () { s.items = items.value; save(); });
+          box.append(items);
+        } else {
+          const text = W().el('textarea'); text.className = 'ipt'; text.rows = 5; text.value = s.text;
+          text.addEventListener('input', function () { s.text = text.value; save(); });
+          box.append(text);
+        }
+        sectionBox.append(box);
+      });
+    }
+    function save() { W().storage.writeJSON('wiki_guide_draft', draft); }
+    title.addEventListener('input', function () { draft.title = title.value; save(); });
+    category.addEventListener('change', function () { draft.category = category.value; save(); });
+    summary.addEventListener('input', function () { draft.summary = summary.value; save(); });
+    tags.addEventListener('input', function () { draft.tags = tags.value; save(); });
+    const addSection = W().el('button', null, '添加段落'); addSection.type = 'button';
+    addSection.addEventListener('click', function () { draft.sections.push({ h: '', type: 'p', text: '', items: '' }); save(); drawSections(); });
+    form.append(sectionBox, addSection);
+    const status = W().el('p', 'status-line');
+    const submit = W().el('button', 'primary', '提交审核'); submit.type = 'submit';
+    const clear = W().el('button', 'danger', '清空草稿'); clear.type = 'button';
+    clear.addEventListener('click', function () {
+      draft.title = ''; draft.category = '心得分享'; draft.summary = ''; draft.tags = ''; draft.sections = [{ h: '', type: 'p', text: '', items: '' }];
+      save(); render();
+    });
+    form.append(submit, clear, status);
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const payload = guideDraftPayload(draft);
+      if (!payload.title || !payload.summary || !payload.sections.length || payload.sections.some(s => !s.h || ((s.type === 'p' || s.type === 'note') ? !s.text : !(s.items || []).length))) {
+        status.textContent = '请完整填写标题、摘要和每段内容。';
+        return;
+      }
+      submit.disabled = true; submit.textContent = '提交中…'; status.textContent = '';
+      const r = await wikiApi('POST', '/api/wiki/guides/submit', payload);
+      submit.disabled = false; submit.textContent = '提交审核';
+      if (!r.ok) { status.textContent = (r.data && r.data.error) || ('提交失败：HTTP ' + r.status); return; }
+      W().storage.remove('wiki_guide_draft');
+      location.href = '/wiki/guides/index.html?my=1';
+    });
+    drawSections();
+    c.append(form);
+    main.append(pageHead('贡献攻略', '提交后由管理员审核，通过后所有玩家可见。'), c);
   }
   function renderUpdates() {
     const main = document.getElementById('main'); main.textContent = '';
@@ -365,10 +601,12 @@ window.WikiPage = (function () {
     else if (page === 'items') renderItems();
     else if (page === 'grounds') renderGrounds();
     else if (page === 'guides') renderGuides();
+    else if (page === 'guides-submit') renderGuideSubmit();
     else if (page === 'updates') renderUpdates();
   }
   function init() {
     let lastKey = '', lastUnavailable = null;
+    if (['guides', 'guides-submit'].includes(document.body.dataset.page || '')) refreshMyWikiGuides();
     W().onChange(function (snapshot, unavailable) {
       const content = W().content;
       const key = (snapshot ? snapshot.snapshotId : '') + '|content:' +

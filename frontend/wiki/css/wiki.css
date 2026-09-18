@@ -222,3 +222,20 @@ code { color: #b8e0ff; }
   th, td { padding: 8px; }
   .table-wrap table { min-width: 620px; }
 }
+
+/* ---- 攻略投稿与我的攻略 ---- */
+.guide-actions { margin: 12px 0; }
+.guide-filter { margin-bottom: 12px; }
+.guide-my-list { display: grid; gap: 10px; }
+.guide-my-item { padding: 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: rgba(15,25,34,.68); }
+.guide-my-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.guide-status { padding: 2px 8px; border-radius: 999px; font-size: 12px; background: rgba(104,214,255,.12); color: #c9edff; }
+.guide-status.pending { background: rgba(255,209,102,.14); color: #ffe6a3; }
+.guide-status.approved { background: rgba(52,211,153,.14); color: #a7f3d0; }
+.guide-status.rejected { background: rgba(248,113,113,.14); color: #fecaca; }
+.guide-form { display: grid; gap: 12px; }
+.guide-form .field { display: grid; gap: 6px; }
+.field-label { color: var(--muted); font-size: 13px; }
+.guide-sections { display: grid; gap: 10px; }
+.guide-section { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: rgba(15,25,34,.6); }
+.guide-section-head { display: grid; grid-template-columns: minmax(0,1fr) 130px auto; gap: 8px; align-items: center; }

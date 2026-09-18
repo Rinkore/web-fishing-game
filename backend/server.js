@@ -78,6 +78,8 @@ const ADMIN_KEYS = ['adminLog'];                        // admin.json 里持久�
 // Wiki 正文（攻略与更新说明）：与游戏规则 config.json 分离，管理员保存攻略不推进规则配置代数。
 const WIKI_FILE = path.join(DATA_DIR, 'wiki.json');
 const WIKI_KEYS = ['wikiContent', 'wikiContentRevision', 'wikiContentUpdatedAt'];
+const WIKI_GUIDES_FILE = path.join(DATA_DIR, 'wiki-guides.json');
+const WIKI_GUIDES_KEYS = ['wikiUserGuides', 'wikiUserGuidesRevision'];
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 // 旧版单文件（仅用于首次自动迁移）
 const LEGACY_USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -193,7 +195,7 @@ let users = {};
 // 默认公式：基础 90% + 「技巧」词缀（技巧是上钩率公式里的一个变量，钩率提示一律不写死在代码里）。
 // 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
 const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, snapshotCfg: null, wikiConfigRevision: 1, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, snapshotCfg: null, wikiConfigRevision: 1, wikiUserGuides: [], wikiUserGuidesRevision: 1, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
 
 // ---- 宝匣（沉船打捞）----
 // 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
@@ -2451,6 +2453,7 @@ const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
 const STATS_KEYS = ['statMin', 'statHour', 'statPeak'];
 const WIKI_CONTENT_FILE = path.join(__dirname, '..', 'frontend', 'wiki', 'content', 'content.json');
+const WIKI_GUIDE_CATEGORIES = ['新手入门', '机制说明', '进阶策略', '工坊指南', '经济交易', '配装攻略', '心得分享'];
 function defaultWikiContent() {
   const candidates = STATIC_DIR ? [path.join(STATIC_DIR, 'wiki', 'content', 'content.json'), WIKI_CONTENT_FILE] : [WIKI_CONTENT_FILE];
   for (const file of candidates) {
@@ -2463,14 +2466,16 @@ function defaultWikiContent() {
 }
 function loadWikiContent() { loadDomain(WIKI_FILE, WIKI_KEYS); }
 function saveWikiContent() { saveDomain(WIKI_FILE, WIKI_KEYS); }
-function wikiText(value, name, max, required) {
+function loadWikiUserGuides() { loadDomain(WIKI_GUIDES_FILE, WIKI_GUIDES_KEYS); }
+function saveWikiUserGuides() { saveDomain(WIKI_GUIDES_FILE, WIKI_GUIDES_KEYS); }
+function wikiText(value, max, required) {
   if (value === undefined || value === null || value === '') return required ? null : '';
   if (typeof value !== 'string') return null;
   const out = value.trim();
   if (!out || out.length > max) return null;
   return out;
 }
-function wikiStringList(value, name, maxItems, maxLen) {
+function wikiStringList(value, maxItems, maxLen) {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length > maxItems) return null;
   const out = [];
@@ -2482,70 +2487,161 @@ function wikiStringList(value, name, maxItems, maxLen) {
   }
   return out;
 }
+function normalizeWikiSections(raw, options) {
+  if (!Array.isArray(raw) || !raw.length || raw.length > options.maxSections) {
+    return { error: '攻略段落数量必须在 1-' + options.maxSections + ' 之间' };
+  }
+  const sections = [];
+  for (const sec of raw) {
+    if (!sec || typeof sec !== 'object' || Array.isArray(sec)) return { error: '攻略段落格式错误' };
+    const h = wikiText(sec.h, options.maxHeading, true);
+    if (!h) return { error: '攻略段落标题不能为空或过长' };
+    if (sec.type === 'p' || sec.type === 'note') {
+      const text = wikiText(sec.text, options.maxText, true);
+      if (!text) return { error: '攻略段落正文不能为空或过长' };
+      sections.push({ h: h, type: sec.type, text: text });
+    } else if (sec.type === 'ol' || sec.type === 'ul') {
+      const items = wikiStringList(sec.items, options.maxItems, options.maxItem);
+      if (!items || !items.length) return { error: '攻略列表不能为空或过长' };
+      sections.push({ h: h, type: sec.type, items: items });
+    } else return { error: '未知攻略段落类型：' + sec.type };
+  }
+  return { value: sections };
+}
+const WIKI_OFFICIAL_SECTION_LIMITS = { maxSections: 40, maxHeading: 100, maxText: 5000, maxItems: 30, maxItem: 1500 };
+const WIKI_USER_SECTION_LIMITS = { maxSections: 20, maxHeading: 100, maxText: 4000, maxItems: 20, maxItem: 1200 };
 function normalizeWikiContent(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return { ok: false, error: 'Wiki 内容必须是对象' };
-  if (!Array.isArray(input.guides) || !input.guides.length) return { ok: false, error: '至少需要一篇攻略' };
-  if (input.guides.length > 100) return { ok: false, error: '攻略数量超过上限 100' };
+  if (!Array.isArray(input.guides) || !input.guides.length) return { ok: false, error: '至少需要一篇官方攻略' };
+  if (input.guides.length > 100) return { ok: false, error: '官方攻略数量超过上限 100' };
   if (!Array.isArray(input.updates)) return { ok: false, error: '更新记录必须是数组' };
   if (input.updates.length > 100) return { ok: false, error: '更新记录超过上限 100' };
   const guides = [];
   const ids = new Set();
   for (const raw of input.guides) {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: '攻略格式错误' };
-    const id = wikiText(raw.id, 'id', 80, true);
-    const title = wikiText(raw.title, 'title', 120, true);
-    const category = wikiText(raw.category, 'category', 40, true);
-    const summary = wikiText(raw.summary, 'summary', 300, true);
-    const status = wikiText(raw.status, 'status', 30, true) || '已发布';
-    const updatedAt = wikiText(raw.updatedAt, 'updatedAt', 10, true);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: '官方攻略格式错误' };
+    if (raw.author != null || raw.authorKey != null || raw.submittedAt != null) return { ok: false, error: '官方攻略不能包含用户投稿字段' };
+    const id = wikiText(raw.id, 80, true);
+    const title = wikiText(raw.title, 120, true);
+    const category = wikiText(raw.category, 40, true);
+    const summary = wikiText(raw.summary, 300, true);
+    const updatedAt = wikiText(raw.updatedAt, 10, true);
     if (!id || !/^[a-z0-9][a-z0-9-]{1,79}$/.test(id)) return { ok: false, error: '攻略 ID 只能使用小写字母、数字和中划线' };
     if (ids.has(id)) return { ok: false, error: '攻略 ID 重复：' + id };
     if (!title || !category || !summary || !/^\d{4}-\d{2}-\d{2}$/.test(updatedAt || '')) return { ok: false, error: '攻略标题、分类、摘要或日期格式错误' };
-    if (!Array.isArray(raw.sections) || !raw.sections.length || raw.sections.length > 40) return { ok: false, error: '攻略段落数量必须在 1-40 之间' };
-    const aliases = wikiStringList(raw.aliases, 'aliases', 16, 40);
-    const tags = wikiStringList(raw.tags, 'tags', 16, 24);
+    const aliases = wikiStringList(raw.aliases, 16, 40);
+    const tags = wikiStringList(raw.tags, 16, 24);
     if (!aliases || !tags) return { ok: false, error: '攻略别名或标签格式错误' };
-    const sections = [];
-    for (const sec of raw.sections) {
-      if (!sec || typeof sec !== 'object' || Array.isArray(sec)) return { ok: false, error: '攻略段落格式错误' };
-      const h = wikiText(sec.h, 'h', 100, true);
-      if (!h) return { ok: false, error: '攻略段落标题不能为空' };
-      if (sec.type === 'p' || sec.type === 'note') {
-        const text = wikiText(sec.text, 'text', 5000, true);
-        if (!text) return { ok: false, error: '攻略段落正文不能为空或过长' };
-        sections.push({ h: h, type: sec.type, text: text });
-      } else if (sec.type === 'ol' || sec.type === 'ul') {
-        const items = wikiStringList(sec.items, 'items', 30, 1500);
-        if (!items || !items.length) return { ok: false, error: '攻略列表不能为空或过长' };
-        sections.push({ h: h, type: sec.type, items: items });
-      } else return { ok: false, error: '未知攻略段落类型：' + sec.type };
-    }
+    const sections = normalizeWikiSections(raw.sections, WIKI_OFFICIAL_SECTION_LIMITS);
+    if (sections.error) return { ok: false, error: sections.error };
     ids.add(id);
-    guides.push({ id: id, title: title, category: category, aliases: aliases, tags: tags, status: status, updatedAt: updatedAt, summary: summary, sections: sections });
+    guides.push({ id: id, kind: 'official', status: 'published', title: title, category: category, aliases: aliases, tags: tags, updatedAt: updatedAt, summary: summary, sections: sections.value });
   }
   const updates = [];
   for (const raw of input.updates) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: '更新记录格式错误' };
-    const date = wikiText(raw.date, 'date', 10, true);
-    const title = wikiText(raw.title, 'title', 120, true);
-    const summary = wikiText(raw.summary, 'summary', 500, true);
+    const date = wikiText(raw.date, 10, true);
+    const title = wikiText(raw.title, 120, true);
+    const summary = wikiText(raw.summary, 500, true);
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !title || !summary) return { ok: false, error: '更新记录日期、标题或摘要格式错误' };
     updates.push({ date: date, title: title, summary: summary });
   }
   return { ok: true, value: { guides: guides, updates: updates } };
 }
-function wikiContentPayload() {
+function normalizeWikiUserGuide(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return { ok: false, error: '攻略投稿必须是对象' };
+  if (input.id != null || input.kind != null || input.status != null || input.author != null || input.authorKey != null || input.authorName != null || input.submittedAt != null) {
+    return { ok: false, error: '投稿中不能包含系统字段' };
+  }
+  try {
+    if (Buffer.byteLength(stableJson(input), 'utf8') > 64 * 1024) return { ok: false, error: '单篇攻略不能超过 64 KB' };
+  } catch (e) { return { ok: false, error: '攻略格式错误' }; }
+  const title = wikiText(input.title, 120, true);
+  const category = wikiText(input.category, 40, true);
+  const summary = wikiText(input.summary, 300, true);
+  if (!title || !category || !summary) return { ok: false, error: '标题、分类或摘要格式错误' };
+  if (!WIKI_GUIDE_CATEGORIES.includes(category)) return { ok: false, error: '未知攻略分类：' + category };
+  const tags = wikiStringList(input.tags, 6, 24);
+  if (!tags) return { ok: false, error: '标签格式错误' };
+  const sections = normalizeWikiSections(input.sections, WIKI_USER_SECTION_LIMITS);
+  if (sections.error) return { ok: false, error: sections.error };
+  return { ok: true, value: { title: title, category: category, summary: summary, tags: tags, sections: sections.value } };
+}
+function wikiOfficialContent() {
   const custom = world.wikiContent;
-  const source = custom && Array.isArray(custom.guides) && Array.isArray(custom.updates) ? custom : defaultWikiContent();
+  const source = custom && Array.isArray(custom.guides) && custom.guides.length && Array.isArray(custom.updates) ? custom : defaultWikiContent();
+  return source;
+}
+function wikiOfficialRevision() { return Math.max(1, Math.floor(Number(world.wikiContentRevision) || 1)); }
+function wikiUserGuides() { return Array.isArray(world.wikiUserGuides) ? world.wikiUserGuides : []; }
+function wikiUserGuidesRevision() { return Math.max(1, Math.floor(Number(world.wikiUserGuidesRevision) || 1)); }
+function publicWikiUserGuide(g) {
   return {
-    revision: Math.max(1, Math.floor(Number(world.wikiContentRevision) || 1)),
+    id: g.id, kind: 'user', status: 'approved', title: g.title, category: g.category,
+    summary: g.summary, sections: g.sections || [], tags: g.tags || [], aliases: [],
+    authorName: g.authorName || '', submittedAt: g.submittedAt, updatedAt: g.reviewedAt || g.submittedAt
+  };
+}
+function wikiOfficialPayload() {
+  const source = wikiOfficialContent();
+  return {
+    revision: wikiOfficialRevision(), officialRevision: wikiOfficialRevision(),
+    userRevision: wikiUserGuidesRevision(), updatedAt: world.wikiContentUpdatedAt || null,
+    guides: source.guides || [], updates: source.updates || []
+  };
+}
+function wikiContentPayload() {
+  const source = wikiOfficialContent();
+  const approved = wikiUserGuides().filter(function (g) { return g && g.status === 'approved' && !g.deletedAt; }).map(publicWikiUserGuide);
+  const officialRevision = wikiOfficialRevision();
+  const userRevision = wikiUserGuidesRevision();
+  return {
+    revision: 'official:' + officialRevision + ':user:' + userRevision,
+    officialRevision: officialRevision, userRevision: userRevision,
     updatedAt: world.wikiContentUpdatedAt || null,
-    guides: source.guides || [],
+    guides: (source.guides || []).concat(approved),
     updates: source.updates || []
   };
 }
 function wikiContentEtag(payload) {
   return '"wiki-content-' + crypto.createHash('sha256').update(stableJson(payload), 'utf8').digest('hex').slice(0, 24) + '"';
+}
+function wikiUserGuideLimits(key) {
+  const now = Date.now();
+  const mine = wikiUserGuides().filter(function (g) { return g && g.authorKey === key && !g.deletedAt; });
+  const submittedIn24h = mine.filter(function (g) { return new Date(g.submittedAt).getTime() > now - 24 * 3600 * 1000; }).length;
+  const pending = mine.filter(function (g) { return g.status === 'pending'; }).length;
+  let nextAllowedAt = null;
+  mine.forEach(function (g) {
+    const at = new Date(g.submittedAt).getTime() + 10 * 60 * 1000;
+    if (at > now && (!nextAllowedAt || at < nextAllowedAt)) nextAllowedAt = new Date(at).toISOString();
+  });
+  return { submittedIn24h: submittedIn24h, pending: pending, nextAllowedAt: nextAllowedAt };
+}
+function newWikiUserGuideId() {
+  const official = new Set((wikiOfficialContent().guides || []).map(function (g) { return g && g.id; }));
+  const users = new Set(wikiUserGuides().map(function (g) { return g && g.id; }));
+  for (let i = 0; i < 100; i++) {
+    const id = 'ug_' + crypto.randomBytes(6).toString('hex');
+    if (!official.has(id) && !users.has(id)) return id;
+  }
+  return 'ug_' + crypto.randomBytes(12).toString('hex');
+}
+function wikiUserGuideAdminView(g) {
+  return {
+    id: g.id, title: g.title, category: g.category, summary: g.summary,
+    sections: g.sections || [], tags: g.tags || [], status: g.status,
+    authorName: g.authorName || '', submittedAt: g.submittedAt,
+    reviewedAt: g.reviewedAt || null, reviewedBy: g.reviewedBy || '',
+    reviewNote: g.reviewNote || ''
+  };
+}
+function wikiUserGuideMyView(g) {
+  return {
+    id: g.id, title: g.title, category: g.category, summary: g.summary,
+    sections: g.sections || [], tags: g.tags || [], status: g.status,
+    submittedAt: g.submittedAt, reviewedAt: g.reviewedAt || null, reviewNote: g.reviewNote || ''
+  };
 }
 const HEAT_STATS = { min: 1440, hour: 720, gapMs: 60000, flushEvery: 10 };
 function loadMarket() {
@@ -2795,7 +2891,7 @@ function loadWorld() {
       return;
     }
   }
-  loadMarket(); loadRecords(); loadEconomy(); loadConfig(); loadFeedback(); loadStats(); loadAdminLog(); loadWikiContent();
+  loadMarket(); loadRecords(); loadEconomy(); loadConfig(); loadFeedback(); loadStats(); loadAdminLog(); loadWikiContent(); loadWikiUserGuides();
   void hasDomain;
 }
 loadUsers();
@@ -4982,20 +5078,140 @@ const server = http.createServer(function (req, res) {
     }
     return apiResp(res, 200, payload, { 'Cache-Control': 'no-cache', 'ETag': etag });
   }
+  if (p === '/api/admin/wiki/content' && req.method === 'GET') {
+    if (!adminOf(req.authToken)) return apiResp(res, 403, { error: '需要管理员权限' });
+    const payload = wikiOfficialPayload();
+    const etag = wikiContentEtag(payload);
+    if (etagMatches(req.headers['if-none-match'], etag)) {
+      res.writeHead(304, { 'Cache-Control': 'no-cache', 'ETag': etag });
+      res.end();
+      return;
+    }
+    return apiResp(res, 200, payload, { 'Cache-Control': 'no-cache', 'ETag': etag });
+  }
   if (p === '/api/admin/wiki/content' && req.method === 'POST') {
     return adminAuditedBody(req, p, function (body) {
       const d = bodyObj(body);
       if (!d) return apiResp(res, 400, { error: '请求格式错误' });
-      if (!adminOf(d.token)) return apiResp(res, 403, { error: '需要管理员权限' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const baseRevision = Math.floor(Number(d.baseRevision));
+      if (!isFinite(baseRevision) || baseRevision !== wikiOfficialRevision()) {
+        return apiResp(res, 409, { error: 'Wiki 内容已被其他人修改，请刷新后重试', currentRevision: wikiOfficialRevision() });
+      }
       let normalized;
       if (d.reset === true) normalized = normalizeWikiContent(defaultWikiContent());
       else normalized = normalizeWikiContent(d.content);
       if (!normalized.ok) return apiResp(res, 400, { error: normalized.error });
       world.wikiContent = normalized.value;
-      world.wikiContentRevision = Math.max(1, Math.floor(Number(world.wikiContentRevision) || 1)) + 1;
+      world.wikiContentRevision = wikiOfficialRevision() + 1;
       world.wikiContentUpdatedAt = new Date().toISOString();
       saveWikiContent();
-      return apiResp(res, 200, wikiContentPayload());
+      audit(a, 'wiki_content_save', 'official', 'revision=' + wikiOfficialRevision());
+      return apiResp(res, 200, wikiOfficialPayload());
+    });
+  }
+
+  // ---- Wiki 用户投稿：提交 / 我的攻略 / 删除待审核 ----
+  if (p === '/api/wiki/guides/submit' && req.method === 'POST') {
+    return readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const normalized = normalizeWikiUserGuide(d);
+        if (!normalized.ok) return apiResp(res, 400, { error: normalized.error });
+        const limits = wikiUserGuideLimits(key);
+        if (limits.submittedIn24h >= 3) return apiResp(res, 429, { error: '24 小时内最多提交 3 篇攻略', limits: limits });
+        if (limits.pending >= 3) return apiResp(res, 429, { error: '待审核攻略最多 3 篇', limits: limits });
+        if (limits.nextAllowedAt) return apiResp(res, 429, { error: '提交过于频繁，请稍后再试', limits: limits });
+        const now = new Date().toISOString();
+        const guide = Object.assign({}, normalized.value, {
+          id: newWikiUserGuideId(), kind: 'user', status: 'pending',
+          authorKey: key, authorName: users[key].name || users[key].username || key,
+          submittedAt: now, reviewedAt: null, reviewedBy: null, reviewNote: ''
+        });
+        world.wikiUserGuides = wikiUserGuides().concat([guide]);
+        world.wikiUserGuidesRevision = wikiUserGuidesRevision() + 1;
+        saveWikiUserGuides();
+        return apiResp(res, 200, { ok: true, guideId: guide.id, status: guide.status, limits: wikiUserGuideLimits(key) });
+      });
+    });
+  }
+  if (p === '/api/wiki/guides/session' && req.method === 'GET') {
+    const key = req.authToken && sessionGet(req.authToken);
+    return apiResp(res, 200, { ok: true, authenticated: !!key });
+  }
+  if (p === '/api/wiki/guides/my' && req.method === 'GET') {
+    const key = req.authToken && sessionGet(req.authToken);
+    if (!key) return apiResp(res, 401, { error: '未登录或会话失效' });
+    const guides = wikiUserGuides().filter(function (g) { return g && g.authorKey === key && !g.deletedAt; }).map(wikiUserGuideMyView);
+    return apiResp(res, 200, { ok: true, guides: guides, limits: wikiUserGuideLimits(key) });
+  }
+  if (p === '/api/wiki/guides/delete' && req.method === 'POST') {
+    return readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const guide = wikiUserGuides().find(function (g) { return g && g.id === String(d.id || '') && !g.deletedAt; });
+        if (!guide || guide.authorKey !== key) return apiResp(res, 404, { error: '攻略不存在' });
+        if (guide.status !== 'pending') return apiResp(res, 400, { error: '只有待审核攻略可以由作者删除' });
+        guide.deletedAt = new Date().toISOString();
+        guide.deletedBy = key;
+        world.wikiUserGuidesRevision = wikiUserGuidesRevision() + 1;
+        saveWikiUserGuides();
+        return apiResp(res, 200, { ok: true, limits: wikiUserGuideLimits(key) });
+      });
+    });
+  }
+  if (p === '/api/admin/wiki/guides' && req.method === 'GET') {
+    const a = adminOf(req.authToken);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    const status = String(u.query.status || 'pending');
+    if (['pending', 'approved', 'rejected', 'all'].indexOf(status) < 0) return apiResp(res, 400, { error: '未知审核状态' });
+    const all = wikiUserGuides().filter(function (g) { return g && !g.deletedAt; });
+    const guides = (status === 'all' ? all : all.filter(function (g) { return g.status === status; })).map(wikiUserGuideAdminView);
+    return apiResp(res, 200, {
+      ok: true, status: status, revision: wikiUserGuidesRevision(), guides: guides,
+      counts: { pending: all.filter(g => g.status === 'pending').length, approved: all.filter(g => g.status === 'approved').length, rejected: all.filter(g => g.status === 'rejected').length }
+    });
+  }
+  if (p === '/api/admin/wiki/guides/review' && req.method === 'POST') {
+    return adminAuditedBody(req, p, function (body) {
+      const d = bodyObj(body);
+      if (!d) return apiResp(res, 400, { error: '请求格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const guide = wikiUserGuides().find(function (g) { return g && g.id === String(d.id || '') && !g.deletedAt; });
+      if (!guide) return apiResp(res, 404, { error: '攻略不存在' });
+      const expectedStatus = String(d.expectedStatus || '');
+      if (expectedStatus !== guide.status) return apiResp(res, 409, { error: '攻略状态已变化，请刷新后重试', currentStatus: guide.status });
+      const action = String(d.action || '');
+      if (action !== 'approve' && action !== 'reject') return apiResp(res, 400, { error: '审核动作必须是 approve 或 reject' });
+      const note = wikiText(d.note, 500, action === 'reject');
+      if (note === null) return apiResp(res, 400, { error: action === 'reject' ? '拒绝原因不能为空或过长' : '审核备注过长' });
+      guide.status = action === 'approve' ? 'approved' : 'rejected';
+      guide.reviewedAt = new Date().toISOString();
+      guide.reviewedBy = a.key;
+      guide.reviewNote = note || '';
+      world.wikiUserGuidesRevision = wikiUserGuidesRevision() + 1;
+      saveWikiUserGuides();
+      audit(a, action === 'approve' ? 'wiki_guide_approve' : 'wiki_guide_reject', guide.id, '作者=' + guide.authorName + (note ? ' 备注=' + note.slice(0, 80) : ''));
+      return apiResp(res, 200, { ok: true, guide: wikiUserGuideAdminView(guide), revision: wikiUserGuidesRevision() });
+    });
+  }
+  if (p === '/api/admin/wiki/guides/delete' && req.method === 'POST') {
+    return adminAuditedBody(req, p, function (body) {
+      const d = bodyObj(body);
+      if (!d) return apiResp(res, 400, { error: '请求格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const guide = wikiUserGuides().find(function (g) { return g && g.id === String(d.id || '') && !g.deletedAt; });
+      if (!guide) return apiResp(res, 404, { error: '攻略不存在' });
+      const reason = wikiText(d.reason, 500, true);
+      if (!reason) return apiResp(res, 400, { error: '删除原因不能为空或过长' });
+      guide.deletedAt = new Date().toISOString();
+      guide.deletedBy = a.key;
+      guide.deleteReason = reason;
+      world.wikiUserGuidesRevision = wikiUserGuidesRevision() + 1;
+      saveWikiUserGuides();
+      audit(a, 'wiki_guide_delete', guide.id, '作者=' + guide.authorName + ' 原因=' + reason.slice(0, 80));
+      return apiResp(res, 200, { ok: true, revision: wikiUserGuidesRevision() });
     });
   }
 
