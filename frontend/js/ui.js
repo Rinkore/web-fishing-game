@@ -7343,6 +7343,7 @@ window.UI = (function () {
   let wsTab = 'smelt';          // 'open' | 'smelt' | 'recast'（'open' = 原宝匣合成页并入的开箱页签）
   let wsMain = '', wsSub = '', wsMainAffix = '', wsSubAffix = '', wsPearl = false;
   let wsMats = {};              // { 材料id: 份数 }（催化剂草稿，重绘间保留）
+  let wsBusy = false;
   let wsRelics = 0;             // 残片保留：投入的沉船宝匣残片片数（0 ~ smeltCfg.retainMaxRelic）
   let wsRecast = '';            // 重铸选中的组件签名
   let wsRecastTarget = -1;      // 重铸指定的词条下标（-1 = 不指定，重 roll 全部词条）
@@ -7383,44 +7384,35 @@ window.UI = (function () {
     else if (which === 'recast') { wsRecast = ''; wsRecastTarget = -1; }
     renderView();
   }
-  function wsCompCardHtml(which, comp, hint) {
-    const title = which === 'main' ? '主组件（保留）' : '副组件（熔毁）';
-    const icon = which === 'main' ? '🔧' : '🔥';
-    if (!comp) {
-      return '<div class="ws-col"><h3>' + icon + ' ' + title + '</h3>' +
-        '<div class="ws-pick-row"><button class="ws-pick empty" data-pick="' + which + '">＋ 点击选择组件</button></div>' +
-        '<div class="hint">' + esc(hint) + '</div></div>';
-    }
-    const affs = comp.meta.affixes.map(function (a) {
-      const rng = affixRangeIn(comp.meta, a);
-      const rtxt = rng ? rangeText({ min: rng[0], max: rng[1] }) : '';
-      return '<button class="ws-aff' + (a.value < 0 ? ' neg' : '') + (a.extra ? ' extra' : '') + affixKindCls(a) +
-        ((which === 'main' ? wsMainAffix : wsSubAffix) === a.type ? ' on' : '') +
-        '" data-which="' + which + '" data-type="' + esc(a.type) + '">' + esc(affixText(a)) +
-        (rtxt ? '<span class="ws-aff-rng">' + esc(rtxt) + '%</span>' : '') + '</button>';
-    }).join('');
-    return '<div class="ws-col"><h3>' + icon + ' ' + title + '</h3>' +
-      '<div class="ws-pick-row">' +
-      '<button class="ws-pick chosen" data-pick="' + which + '">' +
-      '<img class="ws-pick-icon" src="assets/item/' + esc(comp.meta.baseId) + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
-      '<span class="ws-pick-name ' + qualityClass(comp.meta) + '">' + esc(comp.meta.name) + '</span>' +
-      itemTag(comp.meta) +
-      '<span class="ws-pick-meta">' + esc(partNameOf(comp.meta.part)) + ' · ' + esc(comp.meta.qualityName) + ' · 持有 ×' + comp.count + '</span>' +
-      '<span class="ws-pick-change">更换</span></button>' +
-      '<button class="mini ws-unload" data-unload="' + which + '" title="' +
-      (which === 'main' ? '清空主件（副件与已选词条会一并清掉）' : '清空副件') + '">卸下</button>' +
-      '</div>' +
-      '<div class="ws-affs">' + affs + '</div>' +
-      '<div class="hint">' + (which === 'main' ? '点击选择主件保留的词条' : '点击选择从副件搬到主件的词条') + '</div></div>';
+
+  function wsCompCardHtml(which, comp) {
+    const isMain = which === 'main', selected = isMain ? wsMainAffix : wsSubAffix;
+    const title = isMain ? '主组件' : '副组件';
+    return '<section class="ws-col" data-slot="' + which + '"><header class="sm-slot-head"><h3>' + title + '</h3>' +
+      '<span class="sm-badge">' + (isMain ? '保留底材' : '熔炼后消耗') + '</span></header>' +
+      (comp ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-pick="' + which + '">' +
+        '<img class="ws-pick-icon" src="assets/item/' + esc(comp.meta.baseId) + '.png" alt="" />' +
+        '<span class="sm-item-copy"><strong class="ws-pick-name ' + qualityClass(comp.meta) + '">' + esc(comp.meta.name) + '</strong>' +
+        '<span class="ws-pick-meta">' + esc(partNameOf(comp.meta.part)) + ' · ' + esc(comp.meta.qualityName) + '</span>' +
+        '<span class="ws-pick-change">更换 ↗</span></span></button>' +
+        '<button class="mini ws-unload" data-unload="' + which + '" aria-label="移除' + title + '">移除</button></div>' +
+        '<div class="sm-slot-hint" data-slot-hint="' + which + '">' + (isMain ? '选择保留词条' : '选择搬入词条') + '</div>' +
+        '<div class="ws-affs" role="group" aria-label="' + title + '词条">' + comp.meta.affixes.map(function (a) {
+          return '<button class="ws-aff' + (selected === a.type ? ' on' : '') + (a.value < 0 ? ' neg' : '') +
+            '" data-which="' + which + '" data-type="' + esc(a.type) + '" aria-pressed="' + (selected === a.type) + '">' +
+            '<span class="sm-choice" aria-hidden="true"></span><span>' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</span>' +
+            '<b>' + esc((a.value > 0 ? '+' : '') + a.value) + '%</b></button>';
+        }).join('') + '</div>'
+      : '<button class="ws-pick empty" data-pick="' + which + '"' + (!isMain && !wsMain ? ' disabled' : '') +
+        '><span class="sm-slot-plus" aria-hidden="true">＋</span>' + (!isMain && !wsMain ? '先选择主组件' : '选择' + title) + '</button>') + '</section>';
   }
   // 残片保留信息（只对海王遗匣产出的神话主件开放，判据与「重铸」一致 = 神话品质）
   //   eligible：主件是神话件且**确实带池外词缀**（突破/催化/附件搬来的都算）——没有可保留的词条时投入残片没有意义
   //   cap：还能投入几片（后台上限与背包持有量取小）；qty：当前草稿夹紧后的片数
-  //   bt：主件的**突破词缀**条数（只数 src='bt' 的海王遗匣池外词缀）—— 每片保留概率由后台公式算
-  //       （默认 10 - bt×0.5），突破越多越难保留；附件搬来的普通池外词缀与催化词缀不参与该公式
+  //   bt：与服务端 planSmelt 一致，使用 smeltExtraAffixesOf 返回的全部池外词缀条数。
   function wsRetainInfo(comp) {
     const cfg = D.getSmeltCfg();
-    const max = Math.max(0, Math.floor(Number(cfg.retainMaxRelic) || 0));
+    const max = Math.max(0, Math.min(99, Math.floor(Number(cfg.retainMaxRelic) || 0)));
     const meta = comp && comp.meta;
     const affixes = meta ? D.smeltExtraAffixesOf(meta.baseId, meta.affixes) : [];
     const eligible = !!(meta && D.canRecast(meta) && affixes.length > 0);
@@ -7464,7 +7456,7 @@ window.UI = (function () {
       if (addable.indexOf(load.dominant) < 0) {
         error = '催化剂对应「' + (D.AFFIX_LABEL[load.dominant] || load.dominant) + '」，但熔炼结果里已经有这条词缀了';
       } else if (2 + 1 > addCap) {
-        error = '补缀后词条数会超过上限（' + addCap + ' 条），可在后台「⚒ 工坊配置」调整';
+        error = '本次词条数已达上限（' + addCap + ' 条）';
       }
     }
     // 预览里要点出的三条词缀区间（与服务端掷骰同一份口径，见 data.js 的 smeltRangeEx）。
@@ -7475,8 +7467,8 @@ window.UI = (function () {
     const mainAff = mainC && wsMainAffix ? mainC.meta.affixes.find(function (a) { return a.type === wsMainAffix; }) : null;
     const subAff = subC && wsSubAffix ? subC.meta.affixes.find(function (a) { return a.type === wsSubAffix; }) : null;
     const ranges = (mainC && subC) ? {
-      main: wsMainAffix ? D.smeltRangeEx(mid, sid, 'main', wsMainAffix, { part: mPart, src: mainAff && mainAff.src }) : null,
-      sub: wsSubAffix ? D.smeltRangeEx(mid, sid, 'sub', wsSubAffix, { part: mPart, src: subAff && subAff.src }) : null,
+      main: wsMainAffix ? D.smeltRangeEx(mid, sid, 'main', wsMainAffix, { part: mPart, src: mainAff && mainAff.src, srcExplicit: mainAff && mainAff.srcExplicit }) : null,
+      sub: wsSubAffix ? D.smeltRangeEx(mid, sid, 'sub', wsSubAffix, { part: mPart, src: subAff && subAff.src, srcExplicit: subAff && subAff.srcExplicit }) : null,
       add: extraType ? D.smeltRangeEx(mid, sid, 'add', extraType, { part: mPart }) : null,
     } : null;
     return {
@@ -7486,151 +7478,124 @@ window.UI = (function () {
       retain: retain,
     };
   }
-  // 取值区间的来源说明（与 D.smeltRangeEx 同一套口径，只用于界面上标注「这条词缀按谁的区间 roll」）
-  // re = { range, src }：src = 底材id / 'bt' 突破区间 / 'ct' 催化区间
-  function wsRangeNote(re, kind) {
-    if (!re) return '';
-    const src = re.src;
-    if (src === 'bt') return '突破区间';
-    if (src === 'ct') return '催化区间';
-    const main = D.componentOf(wsMain), sub = D.componentOf(wsSub);
-    if (src && D.componentBase(src)) {
-      if (main && src === main.baseId) return '主件区间';
-      if (sub && src === sub.baseId) return '副件区间';
-      return '来源底材区间';
-    }
-    return kind === 'main' ? '主件区间' : '突破区间';
-  }
-  // 「词缀：来源区间 +a ~ +b%」一行（熔炼结果预览用）
-  // 预览里的一条词缀：来源标签 + 当前值 → 预计区间 + 区间口径。
-  // v0.16.0：补上「当前值 → 预计值」的对照（原来只给区间，看不出这条会变好还是变坏）。
-  function wsAffixRangeLine(kind, type, re, cur, prob) {
-    if (!type || !re || !re.range) return '';
-    const tag = kind === 'main' ? '<span class="ws-src-tag main">保留</span>'
-      : kind === 'sub' ? '<span class="ws-src-tag sub">副件搬入</span>'
-        : '<span class="ws-src-tag add">补缀新增</span>';
-    const curTxt = (cur != null && isFinite(cur))
-      ? '<span class="ws-cur">' + (cur > 0 ? '+' : '') + cur + '%</span><span class="ws-arrow">→</span>'
-      : '';
-    // 这条词缀最终落成的概率（保留 / 副件搬入 = 熔炼成功率；补缀新增 = 熔炼成功 × 补缀命中）
-    const probTxt = (prob != null && isFinite(prob))
-      ? '<span class="ws-aff-prob" title="这条词缀最终出现在主件上的概率">成 ' + prob + '%</span>'
-      : '';
-    return '<li>' + tag + esc(D.AFFIX_LABEL[type] || type) + '：' + curTxt +
-      '<b>' + esc(rangeText({ min: re.range[0], max: re.range[1] })) + '%</b>' +
-      '<span class="muted">（' + esc(wsRangeNote(re, kind)) + '）</span>' + probTxt + '</li>';
-  }
-  // 熔炼结果预览卡：底材与品质不变，可以看到熔完主件还剩几条词条、是否越过词缀池边界。
-  function wsResultCardHtml(p) {
-    if (!p || !p.main) return '';
-    const m = p.main.meta;
-    const base = D.componentBase(m.baseId);
-    const poolLen = (base && base.pool) ? base.pool.length : 0;
-    const n = 2 + (p.extraType ? 1 : 0);
-    const full = poolLen > 0 && n >= poolLen;
-    return '<div class="ws-result-card">' +
-      '<img class="ws-result-icon" src="assets/item/' + esc(m.baseId) + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
-      '<div class="ws-result-main">' +
-      '<span class="' + qualityClass(m) + '">' + esc(m.baseName || m.name) + '</span>' +
-      '<span class="ws-result-tag">' + esc(m.qualityName || '') + '</span>' +
-      '</div>' +
-      '<div class="ws-result-nums">' +
-      '<span class="ws-result-n">词条 <b>' + n + (poolLen ? ' / ' + poolLen : '') + '</b>' + (full ? ' · 满词条' : '') + '</span>' +
-      '<span class="ws-result-note">品质 / 底材不变' + (p.pearl ? ' · 龙宫宝珠掷两次取边界' : '') + '</span>' +
-      '</div></div>';
-  }
-  // 催化剂区按规则过滤（服务端 smelt 校验的同一套判据，见 data.js 的 smeltAddableAffixes）：
-  //   主副各选一条词条后，熔炼结果就是这两条 → 只有「结果里还没有」的词缀才补得进去，其余材料直接不显示；
-  //   顺带按上限判断（补缀后 2+1 条不得超过 addAffixCap），超限时整个催化剂区都不可用。
-  //   两条词条没选完时规则未定，仍然全列出来，免得还没选就被藏掉选项。
-  // 被隐藏的材料连同已填份数一起清掉：否则会留下「看不见却仍在投」的份数，到熔炼时才报错。
+  // Keep unavailable materials visible with a reason; clamp the draft to current stock and rules.
+
   function wsFitMaterials() {
-    const comps = wsComponents();
-    const mainC = comps.find(function (c) { return c.id === wsMain; });
-    const known = !!(mainC && wsMainAffix && wsSubAffix);
-    const addable = known ? D.smeltAddableAffixes(mainC.meta.baseId, [wsMainAffix, wsSubAffix]) : [];
-    const capOk = 2 + 1 <= D.smeltAddAffixCap();
-    const note = $('ws-mats-note');
-    let hidden = 0;
-    document.querySelectorAll('.ws-mat[data-mat]').forEach(function (row) {
-      const aff = row.getAttribute('data-affix');
-      const fit = !known || (capOk && !!aff && addable.indexOf(aff) >= 0);
-      row.classList.toggle('hide', !fit);
-      if (fit) return;
-      hidden++;
-      const id = row.getAttribute('data-mat');
-      if (!wsMats[id]) return;
-      delete wsMats[id];
-      const inp = row.querySelector('.ws-mat-qty');
-      if (inp) inp.value = '0';
+    const meta = D.componentOf(wsMain);
+    const known = !!(meta && wsMainAffix && wsSubAffix);
+    const addable = known ? D.smeltAddableAffixes(meta.baseId, [wsMainAffix, wsSubAffix]) : [];
+    const cfg = D.getSmeltCfg(), capOk = 3 <= D.smeltAddAffixCap();
+    let removed = false;
+    document.querySelectorAll('.smelt-workbench .ws-mat[data-mat]').forEach(function (row) {
+      const id = row.getAttribute('data-mat'), aff = row.getAttribute('data-affix');
+      const fit = known && capOk && addable.indexOf(aff) >= 0;
+      const have = S().inventory[id] || 0;
+      const limit = Math.max(0, Math.min(have, Number(cfg.maxMaterials) || 0));
+      const old = wsMats[id] || 0, qty = fit ? Math.min(old, limit) : 0;
+      if (qty !== old) removed = true;
+      if (qty) wsMats[id] = qty; else delete wsMats[id];
+      row.classList.toggle('unavailable', !fit || !have);
+      row.classList.toggle('selected', qty > 0);
+      const input = row.querySelector('input');
+      input.disabled = !fit || !have; input.max = limit;
+      if (Number(input.value) !== qty) input.value = qty;
+      row.querySelectorAll('button').forEach(function (b) {
+        b.disabled = !fit || !have || (b.dataset.q === '-1' ? qty <= 0 : qty >= limit);
+      });
+      row.querySelector('.wm-have').textContent = !known ? '先选两条词条' : !capOk ? '词条数已达上限'
+        : !fit ? '该词条无法新增' : !have ? '库存不足' : '持有 ' + have;
     });
-    if (note) {
-      note.textContent = !known ? ''
-        : (!capOk ? '⚠ 当前补缀上限为 ' + D.smeltAddAffixCap() + ' 条，主副两条词条已占满，本次催化剂补不进任何词缀（可在后台「⚒ 工坊配置」调整）'
-          : (hidden ? '已按所选词条过滤：只显示这次补得进去的材料（' + hidden + ' 种材料对应的词缀已经在熔炼结果里）' : ''));
-    }
+    const note = $('ws-mats-note');
+    if (note) note.textContent = removed ? '不适用或超出库存的材料已移除' : '';
+  }
+
+  function wsFailureText(p) {
+    return p.retain.qty > 0 ? '失败时：主件词条受残片保护。' : '失败时：主件失去选中的词条，其余词条保留。';
   }
   function wsRefreshPreview() {
     const panel = $('ws-preview');
     if (!panel) return;
-    wsFitMaterials();                 // 先按规则把补不进去的材料剔掉，再算方案
-    const p = wsPlan();
-    const st = S();
-    const canGold = (st.player.coins || 0) >= p.gold;
-    const go = $('ws-go');
-    if (!p.ok) {
-      panel.innerHTML = '<div class="ws-line err">⚠ ' + esc(p.error) + '</div>';
-      if (go) go.disabled = true;
-      return;
+    if ((wsMain && !wsAlive(wsMain)) || (wsSub && !wsAlive(wsSub))) {
+      wsPruneStale(); renderWorkshop(); return;
     }
-    const rr = p.ranges || {};
-    // 完全成功 = 所有词缀都落成：熔炼成功（有补缀时还要补缀命中）。逐条词缀的概率见下面的预览列表。
-    const pr = D.smeltSuccessProbs(p.rates, !!p.extraType);
-    const fullLine = '<div class="ws-line">完全成功概率 <b class="ws-full-prob">' + pr.full + '%</b>' +
-      '<span class="hint">（熔炼成功 ' + p.rates.rate + '%' +
-      (p.extraType ? ' × 补缀命中 ' + p.rates.extraRate + '%' : '') +
-      '；逐条词缀的概率见下面每条后面）</span></div>';
-    const extra = p.extraType
-      ? '<div class="ws-line">补缀：<b>' + esc(D.AFFIX_LABEL[p.extraType] || p.extraType) + '</b>（催化剂 ' + p.load.total +
-        ' 份）· 成功率 <b>' + p.rates.extraRate + '%</b>' +
-        (rr.add ? ' · ' + esc(wsRangeNote(rr.add, 'add')) + ' <b>' + esc(rangeText({ min: rr.add.range[0], max: rr.add.range[1] })) + '%</b>' : '') +
-        '</div>'
-      : '<div class="ws-line muted">未投入催化剂：熔炼后主件只有选中的两条词条</div>';
-    // 残片保留：只在主件是海王遗匣神话件（且带池外词缀）时出现
-    //   每片概率与总概率都由后台公式按主件的突破词缀条数算（突破越多越难保留），这里把条数一起点出来
-    const rt = p.retain;
-    const retainLine = rt.eligible
-      ? '<div class="ws-line">🛡 残片保留 <b>' + rt.qty + '</b> / ' + rt.max + ' 片（持有 ' + rt.have + '）' +
-        ' · 保留池外词缀概率 <b class="ok">' + rt.chance + '%</b>' +
-        '<span class="hint">（主件 ' + rt.bt + ' 条突破词缀' +
-        (rt.affixes.length > rt.bt ? '（池外词缀共 ' + rt.affixes.length + ' 条）' : '') + ' → 每片 ' + rt.per + '%' +
-        (rt.formula ? '，公式：' + esc(rt.formula) : '') + '；成功后保留下面的词条原值；' +
-        '残片不计入催化剂，不影响成功率与花费）</span></div>' +
-        '<div class="ws-line muted">可保留的池外词缀：' +
-        rt.affixes.map(function (a) { return esc(affixText(a)); }).join(' · ') + '</div>'
-      : '';
-    panel.innerHTML =
-      '<div class="ws-line">熔炼成功率 <b class="ok">' + p.rates.rate + '%</b>' +
-      ' · 失败率 <b class="err">' + p.rates.failRate + '%</b>' +
-      '（失败损失副件 / 催化剂 / 残片，且主件被熔掉选中的那条词条）</div>' +
-      fullLine + extra + retainLine +
-      '<div class="ws-line">花费 <b class="' + (canGold ? '' : 'err') + '">' + p.gold + '💰</b>' +
-      (rt.qty > 0 ? ' · 另有 ' + rt.qty + ' 片沉船宝匣残片' : '') +
-      (p.pearl ? ' · 已加入龙宫宝珠：' + (p.rollBoundary ? 'roll 两次取靠近区间边界的值' : '（后台已关闭边界取值）') : '') + '</div>' +
-      '<div class="ws-line muted">熔炼后主件词缀（数值重新 roll' + (rt.qty > 0 ? '；池外词缀按原值保留' : '') + '）：</div>' +
-      wsResultCardHtml(p) +
-      '<ul class="ws-res-affs">' +
-      wsAffixRangeLine('main', wsMainAffix, rr.main, (p.main && p.main.meta ? (function () {
-        const a = (p.main.meta.affixes || []).find(function (x) { return x.type === wsMainAffix; }); return a ? a.value : null;
-      })() : null), pr.keep) +
-      wsAffixRangeLine('sub', wsSubAffix, rr.sub, (p.sub && p.sub.meta ? (function () {
-        const a = (p.sub.meta.affixes || []).find(function (x) { return x.type === wsSubAffix; }); return a ? a.value : null;
-      })() : null), pr.keep) +
-      wsAffixRangeLine('add', p.extraType, rr.add, null, pr.add) +
-      (rt.qty > 0 ? '<li>🛡 ' + rt.affixes.map(function (a) { return esc(D.AFFIX_LABEL[a.type] || a.type); }).join(' + ') +
-        '：<span class="muted">保留原值</span></li>' : '') +
-      '</ul>';
-    if (go) go.disabled = false;
+    wsFitMaterials();
+    const p = wsPlan(), canGold = (S().player.coins || 0) >= p.gold;
+    const go = $('ws-go');
+    document.querySelectorAll('.smelt-workbench .ws-aff').forEach(function (b) {
+      const main = b.dataset.which === 'main', selected = main ? wsMainAffix : wsSubAffix;
+      const clash = b.dataset.type === (main ? wsSubAffix : wsMainAffix);
+      b.disabled = clash; b.classList.toggle('on', selected === b.dataset.type);
+      b.setAttribute('aria-pressed', String(selected === b.dataset.type));
+      b.setAttribute('aria-label', (D.AFFIX_LABEL[b.dataset.type] || b.dataset.type) + (clash ? '，另一组件已选择同类词条' : ''));
+    });
+    ['main', 'sub'].forEach(function (which) {
+      const hint = document.querySelector('[data-slot-hint="' + which + '"]');
+      const chosen = which === 'main' ? wsMainAffix : wsSubAffix;
+      if (hint) hint.textContent = chosen ? '✓ ' + (which === 'main' ? '保留 ' : '搬入 ') + (D.AFFIX_LABEL[chosen] || chosen)
+        : which === 'main' ? '选择保留词条' : '选择搬入词条 · 同类不可重复';
+      const card = document.querySelector('[data-slot="' + which + '"]');
+      if (card) card.classList.toggle('complete', !!chosen);
+    });
+    const pearl = $('ws-pearl'), havePearl = S().inventory[D.SMELT_PEARL] || 0;
+    if (pearl) { pearl.disabled = !havePearl || wsBusy; pearl.checked = p.pearl; }
+    if (!havePearl) wsPearl = false;
+    const pearlStatus = $('ws-pearl-status');
+    if (pearlStatus) pearlStatus.textContent = !havePearl ? '库存不足' : p.pearl
+      ? (p.rollBoundary ? '已启用 · 掷两次取边界' : '已加入 · 边界取值未启用') : '未加入';
+    const relicQty = $('ws-relic-qty');
+    wsRelics = p.retain.qty;
+    if (relicQty) {
+      relicQty.max = p.retain.cap; relicQty.disabled = !p.retain.cap || wsBusy;
+      if (Number(relicQty.value) !== wsRelics) relicQty.value = wsRelics;
+    }
+    const relicChance = $('ws-relic-chance');
+    if (relicChance) relicChance.textContent = wsRelics ? '保留概率 ' + p.retain.chance + '% · 失败保护已启用' : '未投入';
+    const summary = $('ws-material-summary');
+    if (summary) summary.textContent = p.load.total ? p.load.total + ' 份 · 新增' + (D.AFFIX_LABEL[p.extraType] || '') : '添加材料';
+    const announce = $('ws-step-feedback');
+    const instruction = !p.main ? '选择主组件' : !p.sub ? '选择同部位副组件' : !wsMainAffix ? '选择主件保留词条'
+      : !wsSubAffix ? '选择副件搬入词条' : !p.ok ? p.error : !canGold ? '金币不足，还差 ' + Math.ceil(p.gold - (S().player.coins || 0)) : '方案已就绪';
+    if (announce && announce.textContent !== instruction) announce.textContent = instruction;
+    if (go) { go.disabled = !p.ok || !canGold || wsBusy; go.textContent = wsBusy ? '熔炼中…' : p.ok && canGold ? '确认方案 · 开始熔炼' : instruction; }
+    const rr = p.ranges || {}, pr = D.smeltSuccessProbs(p.rates, !!p.extraType);
+    function affRow(kind, type, range, current, probability) {
+      if (!type || !range) return '';
+      const name = D.AFFIX_LABEL[type] || type;
+      return '<li class="sm-result-aff ' + kind + '"><div><strong>' + esc(name) + '</strong><span class="ws-src-tag ' + kind + '">' +
+        (kind === 'main' ? '主件保留' : kind === 'sub' ? '副件搬入' : '催化新增') + '</span>' +
+        '<span class="ws-aff-prob">获得概率 ' + probability + '%</span></div><div class="sm-range">' +
+        '<span class="ws-cur">当前 ' + (current == null ? '无' : (current > 0 ? '+' : '') + current + '%') + '</span>' +
+        '<span aria-hidden="true">→</span><b>' + esc(rangeText({ min: range.range[0], max: range.range[1] })) + '%</b></div></li>';
+    }
+    function current(comp, type) { const a = comp && comp.meta.affixes.find(function (a) { return a.type === type; }); return a ? a.value : null; }
+    const retained = p.retain.qty > 0 ? p.retain.affixes.filter(function (a) { return a.type !== wsMainAffix && a.type !== wsSubAffix; }) : [];
+    const resultCard = p.main ? '<div class="ws-result-card"><img class="ws-result-icon" src="assets/item/' + esc(p.main.meta.baseId) + '.png" alt="" />' +
+      '<div><strong class="' + qualityClass(p.main.meta) + '">' + esc(p.main.meta.baseName || p.main.meta.name) + '</strong>' +
+      '<span>' + esc(p.main.meta.qualityName) + ' · ' + esc(partNameOf(p.main.meta.part)) + '</span><small>底材与品质不变</small></div></div>'
+      : '<div class="sm-result-empty"><span aria-hidden="true">◇</span>选入主件后，产物在这里预览</div>';
+    const html = resultCard + (p.ok ? '<ul class="ws-res-affs">' +
+      affRow('main', wsMainAffix, rr.main, current(p.main, wsMainAffix), pr.keep) +
+      affRow('sub', wsSubAffix, rr.sub, current(p.sub, wsSubAffix), pr.keep) +
+      affRow('add', p.extraType, rr.add, null, pr.add) + '</ul>' +
+      (retained.length ? '<details class="sm-retained"><summary>残片保留 · ' + retained.length + ' 类额外词条</summary>' +
+        retained.map(function (a) { return '<div>' + esc(affixText(a)) + ' · ' + (a.type === p.extraType ? '未新增同类词条时可保留' : '原值保留') + '</div>'; }).join('') +
+        '<div>熔炼成功后，保留判定概率 ' + p.retain.chance + '%</div></details>' : '') +
+      '<div class="sm-probabilities"><div><span>熔炼成功</span><b>' + p.rates.rate + '%</b></div><div><span>' +
+      (p.extraType ? '三条全部获得' : '两条全部获得') + '</span><b class="ws-full-prob">' + pr.full + '%</b></div><div><span>失败</span><b>' + p.rates.failRate + '%</b></div></div>' +
+      '<div class="sm-risk">' + wsFailureText(p) + '</div>' +
+      '<details class="sm-details"><summary>数值与消耗</summary><p>词条数值重新随机生成。' +
+      (p.pearl ? (p.rollBoundary ? '宝珠已启用：掷两次取靠近边界的值。' : '当前配置未启用宝珠边界取值。') : '') + '</p>' +
+      '<p>成功后，仅生成预览中的词条；其余原词条不保留。</p>' +
+      '<p>无论成功或失败，均消耗副件、所投材料' + (p.pearl ? '、宝珠' : '') + (p.retain.qty ? '、残片' : '') + '与金币。</p></details>'
+      : '<div class="sm-preview-pending">' + esc(instruction) + '</div>') +
+      '<div class="sm-cost"><span>本次花费</span><b class="' + (canGold ? '' : 'err') + '">' + (p.main && p.sub ? p.gold.toLocaleString() + ' 金币' : '—') + '</b></div>' +
+      (p.retain.qty ? '<div class="sm-extra-cost">残片 ×' + p.retain.qty + '</div>' : '');
+    // Asset broadcasts must not repeatedly rebuild or close a player's expanded explanation.
+    if (panel._smHtml !== html) {
+      const open = Array.from(panel.querySelectorAll('details[open]')).map(function (x) { return x.className; });
+      panel.innerHTML = html; panel._smHtml = html;
+      panel.querySelectorAll('details').forEach(function (x) { x.open = open.indexOf(x.className) >= 0; });
+    }
   }
   // 打开组件选择子页面（与钓竿页「装备组件」同一个子页面）
   function wsOpenPicker(which) {
@@ -7667,7 +7632,7 @@ window.UI = (function () {
     wsPruneStale(); // 选中的组件若已被消耗 / 出售（悬空引用），先清掉再渲染
     main.innerHTML = '';
     const panel = el('div', 'panel wide ws-panel');
-    panel.innerHTML = pageHead('⚒', '工坊', '开箱得组件 · 熔炼换词缀 · 重铸洗数值') +
+    panel.innerHTML = pageHead('⚒', '工坊', wsTab === 'smelt' ? '' : '开箱得组件 · 熔炼换词缀 · 重铸洗数值') +
       '<div class="inv-cats ws-tabs section-tabs" role="tablist">' +
       [['open', '🎁 开箱'], ['smelt', '🔥 熔炼'], ['recast', '♻ 重铸']].map(function (kv) {
         return '<button class="inv-cat' + (wsTab === kv[0] ? ' on' : '') + '" data-wstab="' + kv[0] +
@@ -7684,170 +7649,97 @@ window.UI = (function () {
     if (wsTab === 'open') return wsRenderOpen(body);
     wsRenderSmelt(body);
   }
+
   function wsRenderSmelt(body) {
-    const st = S();
-    const comps = wsComponents();
-    if (!comps.length) {
-      body.innerHTML = '<div class="ws-help">背包里还没有可熔炼的组件实例。钓竿组件来自钓鱼掉落、宝匣开箱或市集购买。</div>';
-      return;
-    }
+    const st = S(), comps = wsComponents();
     const mainC = comps.find(function (c) { return c.id === wsMain; }) || null;
     const subC = comps.find(function (c) { return c.id === wsSub; }) || null;
-    const rt = wsRetainInfo(mainC);
-    // 残片保留：只在主件是「海王遗匣产出的神话件 + 带池外词缀」时出现（否则显一行灰字说明为何没有）
-    const retainRow = rt.eligible
-      ? '<h3>🛡 残片保留（可选）<span class="hint">成功后按概率保留下主件的池外词缀（突破/催化/附件搬来的）；' +
-        '主件 ' + rt.bt + ' 条突破词缀' + (rt.affixes.length > rt.bt ? '（池外词缀共 ' + rt.affixes.length + ' 条）' : '') +
-        ' → 每片残片 ' + rt.per + '%' +
-        (rt.formula ? '（公式：' + esc(rt.formula) + '）' : '') + '，最多投入 ' + rt.max + ' 片</span></h3>' +
-        '<label class="ws-pearl"><input type="checkbox" id="ws-relic-on"' + (rt.qty > 0 ? ' checked' : '') + ' /> ' +
-        '🛡 放入 <b>沉船宝匣残片</b>（持有 <span data-have="relic">' + rt.have + '</span>）· 不影响熔炼成功率与花费</label>' +
-        '<div class="ws-relic-row" id="ws-relic-row"' + (rt.qty > 0 ? '' : ' style="display:none"') + '>' +
-        '<span class="wrl-label">投入片数</span>' +
-        '<input class="ipt ws-relic-qty" id="ws-relic-qty" type="number" min="0" max="' + rt.cap + '" value="' + rt.qty + '"' + (rt.cap <= 0 ? ' disabled' : '') + ' />' +
-        '<span class="wrl-unit">/ ' + rt.max + ' 片</span>' +
-        '<span class="wrl-chance" id="ws-relic-chance">保留概率 ' + rt.chance + '%</span>' +
-        '</div>' +
-        '<div class="hint wrl-affs">可保留的池外词缀：' + rt.affixes.map(function (a) { return esc(affixText(a)); }).join(' · ') + '</div>'
-      : (mainC
-        ? '<h3>🛡 残片保留<span class="hint">' +
-          (D.canRecast(mainC.meta)
-            ? '未启用：该主件没有池外词缀，投入残片没有可保留的词条'
-            : '未启用：只有海王遗匣产出的神话主件才能投入残片') +
-          '</span></h3>'
-        : '');
-    body.innerHTML =
-      pageHelp('两件<b>同部位</b>组件：主件保留、副件熔毁，各选一条词条熔成主件的新词缀（副件词条连区间一起熔入）；' +
-      '成功率与花费随投料变化，失败只丢你选中的那条词条。词缀分<b>池内</b>与<b>池外</b>：池外词缀 = 本底材词缀池里没有的词缀，按来源分三种——' +
-      '<b>突破词缀</b>（只有海王遗匣在池外补足才产生）、<b>催化词缀</b>（投入催化剂补缀产生）、' +
-      '<b>普通池外词缀</b>（熔炼从附件搬来的词缀）。' +
-      '催化剂可为主件再补一条词缀，按<b>催化</b>区间取值；主件是海王遗匣神话件时，残片可在成功时保留其<b>池外词缀</b>' +
-      '（公式变量 breakthrough 只数突破词缀）。加入龙宫宝珠可 roll 两次、取更靠区间边界的值。') +
-      '<div class="ws-grid">' +
-      wsCompCardHtml('main', mainC, '点上方按钮打开组件选择窗口（与钓竿页「装备组件」同一个子页面）') +
-      wsCompCardHtml('sub', subC, mainC ? '副件必须与主件同部位（' + esc(partNameOf(mainC.part)) + '）' : '先选主件，再选同部位的副件') +
-      '</div>' +
-      '<h3>🧵 催化剂（可选）<span class="hint">每种材料对应一个词缀；催化剂份数最多的那种材料决定要补的词缀' +
-      '（可补熔炼结果还没有的<b>任意</b>词缀，数值按催化区间取值）</span></h3>' +
-      '<div class="ws-mat-grid" id="ws-mats">' + (function () {
-        const mats = (st.workshop && st.workshop.materials) || [];
-        if (!mats.length) return '<div class="hint">加载中…</div>';
-        return mats.map(function (m) {
-          const have = st.inventory[m.id] || 0;
-          const qty = wsMats[m.id] || 0;
-          return '<label class="ws-mat' + (have <= 0 ? ' none' : '') + '" data-mat="' + esc(m.id) + '" data-affix="' + esc(m.affix || '') + '">' +
-            '<span class="wm-name">' + esc(m.name) + '</span>' +
-            '<span class="wm-aff">→ ' + esc(m.affixName || m.affix) + '</span>' +
-            '<span class="wm-have">持有 ' + have + '</span>' +
-            '<input class="ipt ws-mat-qty" type="number" min="0" max="99" data-mat="' + esc(m.id) + '" value="' + qty + '"' +
-            (have <= 0 ? ' disabled' : '') + ' />' +
-            '<span class="wm-unit">份</span>' +
-            '<span class="wm-quick">' +
-            '<button type="button" class="mini wm-q" data-q="1">+1</button>' +
-            '<button type="button" class="mini wm-q" data-q="5">+5</button>' +
-            '<button type="button" class="mini wm-q" data-q="0" title="清空该材料的份数">清空</button>' +
-            '</span></label>';
-        }).join('');
-      })() + '</div>' +
-      '<div class="hint" id="ws-mats-note"></div>' +
-      '<label class="ws-pearl"><input type="checkbox" id="ws-pearl"' + (wsPearl ? ' checked' : '') + ' /> ' +
-      '🐚 加入龙宫宝珠（持有 <span data-have="' + esc(D.SMELT_PEARL) + '">' + (st.inventory[D.SMELT_PEARL] || 0) + '</span>）· roll 两次取靠近区间边界的值</label>' +
-      retainRow +
-      '<div class="ws-preview" id="ws-preview"></div>' +
-      '<button class="primary big" id="ws-go">开始熔炼</button>';
-
-    body.querySelectorAll('[data-pick]').forEach(function (b) {
-      b.addEventListener('click', function () { wsOpenPicker(b.getAttribute('data-pick')); });
-    });
-    body.querySelectorAll('[data-unload]').forEach(function (b) {
-      b.addEventListener('click', function () { wsUnload(b.getAttribute('data-unload')); });
-    });
-    body.querySelectorAll('.ws-aff').forEach(function (b) {
-      b.addEventListener('click', function () {
-        const which = b.getAttribute('data-which'), type = b.getAttribute('data-type');
-        if (which === 'main') wsMainAffix = type; else wsSubAffix = type;
-        body.querySelectorAll('.ws-aff[data-which="' + which + '"]').forEach(function (x) { x.classList.toggle('on', x === b); });
-        wsRefreshPreview();
-      });
-    });
-    body.querySelectorAll('.ws-mat-qty').forEach(function (inp) {
-      inp.addEventListener('input', function () {
-        const id = inp.getAttribute('data-mat');
-        const v = Math.max(0, Math.min(99, Math.floor(Number(inp.value) || 0)));
-        if (v > 0) wsMats[id] = v; else delete wsMats[id];
-        wsRefreshPreview();
-      });
-    });
-    // 催化剂快捷份数按钮：+1 / +5 / 清空（大量投入不用再手打数字）
-    body.querySelectorAll('.wm-q').forEach(function (b) {
-      b.addEventListener('click', function (ev) {
-        ev.preventDefault(); ev.stopPropagation(); // 在 <label> 里，别让点击穿透到输入框
-        const row = b.closest('.ws-mat');
-        const id = row && row.getAttribute('data-mat');
-        if (!id) return;
-        const inp = row.querySelector('.ws-mat-qty');
-        const have = S().inventory[id] || 0;
-        const q = b.getAttribute('data-q');
-        const cur = Number(wsMats[id]) || 0;
-        // 清空（data-q="0"）：直接归零，不再叠加当前份数；+1 / +5 在现有份数上累加。
-        // 注意 Number('0') || 0 === 0，旧写法会让「清空」变成「不动」，这里单独判 q。
-        const v = q === '0' ? 0 : Math.max(0, Math.min(have, Math.floor(cur + (Number(q) || 0))));
-        if (v > 0) wsMats[id] = v; else delete wsMats[id];
-        if (inp) inp.value = v;
-        wsRefreshPreview();
-      });
-    });
-    $('ws-pearl').addEventListener('change', function () { wsPearl = this.checked; wsRefreshPreview(); });
-    if ($('ws-relic-on')) {
-      // 勾选 = 放入残片（默认填满上限），取消勾选 = 不投入；片数输入即时夹紧到「后台上限 ∩ 持有量」
-      $('ws-relic-on').addEventListener('change', function () {
-        wsRelics = this.checked ? rt.cap : 0;
-        renderView();
-      });
-      if ($('ws-relic-qty')) {
-        $('ws-relic-qty').addEventListener('input', function () {
-          wsRelics = Math.max(0, Math.min(rt.cap, Math.floor(Number(this.value) || 0)));
-          const box = $('ws-relic-chance');
-          if (box) box.textContent = '保留概率 ' + D.smeltRetainChance(wsRelics, rt.bt) + '%';
-          wsRefreshPreview();
-        });
-      }
-    }
-    $('ws-go').addEventListener('click', function () { wsDoSmelt(); });
+    const rt = wsRetainInfo(mainC), cfg = D.getSmeltCfg();
+    body.classList.add('smelt-workbench');
+    body.innerHTML = '<fieldset class="sm-draft"' + (wsBusy ? ' disabled' : '') + '><legend class="sr-only">熔炼方案</legend>' +
+      '<div class="sm-step-title"><h3>01 <span>选择组件与词条</span></h3><span id="ws-step-feedback" role="status" aria-live="polite"></span></div>' +
+      '<div class="ws-grid">' + wsCompCardHtml('main', mainC) + wsCompCardHtml('sub', subC) + '</div>' +
+      (!comps.length ? '<div class="sm-empty-inventory">暂无组件 <button class="mini" id="ws-find-components">去开箱</button></div>' : '') +
+      '<div class="sm-step-title"><h3>02 <span>辅助材料</span></h3><span>可选</span></div>' +
+      '<details class="sm-materials"' + (Object.keys(wsMats).length ? ' open' : '') + '><summary><span>催化剂</span><span id="ws-material-summary">添加材料</span></summary>' +
+      '<div class="sm-material-limit">最多 ' + cfg.maxMaterials + ' 份 / ' + cfg.maxTypes + ' 种 · 投入最多的材料决定新增词条</div>' +
+      '<div class="ws-mat-grid" id="ws-mats">' + ((st.workshop && st.workshop.materials) || []).map(function (m) {
+        return '<div class="ws-mat" data-mat="' + esc(m.id) + '" data-affix="' + esc(m.affix || '') + '">' +
+          '<div class="sm-mat-info"><strong class="wm-name">' + esc(m.name) + '</strong><span class="wm-aff">' + esc(m.affixName || m.affix) + '</span><small class="wm-have"></small></div>' +
+          '<div class="sm-counter"><button type="button" class="mini wm-q" data-q="-1" aria-label="减少' + esc(m.name) + '">−</button>' +
+          '<input class="ipt ws-mat-qty" aria-label="' + esc(m.name) + '份数" type="number" min="0" step="1" data-mat="' + esc(m.id) + '" value="' + (wsMats[m.id] || 0) + '" />' +
+          '<button type="button" class="mini wm-q" data-q="1" aria-label="增加' + esc(m.name) + '">＋</button></div></div>';
+      }).join('') + '</div><div id="ws-mats-note" role="status"></div></details>' +
+      '<div class="sm-options"><label class="sm-option ws-pearl"><img src="assets/item/' + esc(D.SMELT_PEARL) + '.png" alt="" />' +
+      '<span><strong>龙宫宝珠</strong><small>持有 <span data-have="' + esc(D.SMELT_PEARL) + '">' + (st.inventory[D.SMELT_PEARL] || 0) + '</span></small><small id="ws-pearl-status"></small></span>' +
+      '<input type="checkbox" id="ws-pearl"' + (wsPearl ? ' checked' : '') + ' /></label>' +
+      '<div class="sm-option"><img src="assets/item/relic.png" alt="" /><div class="sm-relic-copy"><strong>残片保留</strong>' +
+      (rt.eligible ? '<small>持有 <span data-have="relic">' + rt.have + '</span> · 最多 ' + rt.max + ' 片</small>' +
+        '<label class="sm-relic-input">投入 <input class="ipt ws-relic-qty" id="ws-relic-qty" aria-label="投入残片数" type="number" min="0" max="' + rt.cap + '" value="' + rt.qty + '" /> 片</label>' +
+        '<small id="ws-relic-chance"></small>' : '<small>' + (!mainC ? '先选主件' : !D.canRecast(mainC.meta) ? '需神话主件' : '没有可保留的额外词条') + '</small>') + '</div></div></div></fieldset>' +
+      '<aside class="sm-preview-panel" aria-label="产物预览"><header><h3>产物预览</h3><span>实时更新</span></header>' +
+      '<div id="ws-preview" class="ws-preview"></div><div id="ws-submit-error" role="alert"></div>' +
+      '<button class="primary big" id="ws-go" aria-describedby="ws-step-feedback">选择主组件</button></aside>';
+    body.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { wsOpenPicker(b.dataset.pick); }; });
+    body.querySelectorAll('[data-unload]').forEach(function (b) { b.onclick = function () { wsUnload(b.dataset.unload); }; });
+    body.querySelectorAll('.ws-aff').forEach(function (b) { b.onclick = function () {
+      if (b.dataset.which === 'main') wsMainAffix = b.dataset.type; else wsSubAffix = b.dataset.type;
+      wsRefreshPreview();
+    }; });
+    body.querySelectorAll('.ws-mat-qty').forEach(function (inp) { inp.oninput = function () {
+      const cap = Math.max(0, Math.min(S().inventory[inp.dataset.mat] || 0, Number(cfg.maxMaterials) || 0));
+      const qty = Math.max(0, Math.min(cap, Math.floor(Number(inp.value) || 0)));
+      inp.value = qty; if (qty) wsMats[inp.dataset.mat] = qty; else delete wsMats[inp.dataset.mat]; wsRefreshPreview();
+    }; });
+    body.querySelectorAll('.wm-q').forEach(function (b) { b.onclick = function () {
+      const input = b.closest('.ws-mat').querySelector('input');
+      input.value = Math.max(0, Number(input.value) + Number(b.dataset.q)); input.dispatchEvent(new Event('input'));
+    }; });
+    $('ws-pearl').onchange = function () { wsPearl = this.checked; wsRefreshPreview(); };
+    if ($('ws-relic-qty')) $('ws-relic-qty').oninput = function () { wsRelics = Math.max(0, Math.floor(Number(this.value) || 0)); wsRefreshPreview(); };
+    if ($('ws-find-components')) $('ws-find-components').onclick = function () { wsTab = 'open'; renderView(); };
+    $('ws-go').onclick = wsDoSmelt;
     wsRefreshPreview();
   }
   // 熔炼执行（二次确认 → 服务器掷骰 → 结果子窗口）
+
   function wsDoSmelt() {
+    if (wsBusy || !featureGuard('workshop.smelt')) return;
     const p = wsPlan();
-    if (!p.ok) { toast(p.error); return; }
+    if (!p.ok || (S().player.coins || 0) < p.gold) { wsRefreshPreview(); return; }
+    if ($('ws-submit-error')) $('ws-submit-error').textContent = '';
+    // Freeze the reviewed draft: asset updates/navigation must not change the submitted ingredients.
+    const request = { mainId: wsMain, subId: wsSub, mainAffix: wsMainAffix, subAffix: wsSubAffix,
+      materials: p.materials, pearl: p.pearl, relics: p.retain.qty };
+    wsBusy = true;
+    const draft = document.querySelector('.sm-draft'); if (draft) draft.disabled = true;
+    wsRefreshPreview();
     confirmModal({
-      title: '⚒ 确认熔炼',
-      okText: '开始熔炼（' + p.gold + '💰' + (p.retain.qty > 0 ? ' + ' + p.retain.qty + ' 残片' : '') + '）',
-      html: '主件 <b>' + esc(p.main.meta.name) + '</b> 保留「' + esc(D.AFFIX_LABEL[wsMainAffix] || wsMainAffix) + '」，' +
-        '并把副件「' + esc(D.AFFIX_LABEL[wsSubAffix] || wsSubAffix) + '」熔入；<br/>' +
-        '副件 <b>' + esc(p.sub.meta.name) + '</b> 与 ' + p.load.total + ' 份材料将被熔毁，花费 <b>' + p.gold + '💰</b>。' +
-        (p.retain.qty > 0 ? '<br/>另投入 <b>' + p.retain.qty + '</b> 片沉船宝匣残片：成功后 <b>' + p.retain.chance +
-          '%</b> 概率保留池外词缀（' + p.retain.affixes.map(function (a) { return esc(D.AFFIX_LABEL[a.type] || a.type); }).join(' / ') +
-          '）；残片不改变成功率与花费。' : '') + '<br/>' +
-        '熔炼成功率 <b>' + p.rates.rate + '%</b>' + (p.extraType ? '，补缀成功率 <b>' + p.rates.extraRate + '%</b>' : '') +
-        (p.pearl ? '，使用 🐚 龙宫宝珠' : '') + '。<br/>失败损失副件 / 催化剂 / 残片，且主件被熔掉选中的那条词条（其余词条保留）。' +
-        '<br/>完全成功概率 <b class="ws-full-prob">' + D.smeltSuccessProbs(p.rates, !!p.extraType).full + '%</b>' +
-        '（' + (p.extraType ? '熔炼成功 且 补缀命中' : '熔炼成功') + '）',
+      title: '确认熔炼', okText: '消耗 ' + p.gold + ' 金币 · 熔炼',
+      html: '<div class="sm-confirm"><p><b>' + esc(p.main.meta.name) + '</b> ← ' + esc(D.AFFIX_LABEL[wsSubAffix] || wsSubAffix) + '</p>' +
+        '<p>必定消耗：' + esc(p.sub.meta.name) + ' ×1' + p.materials.map(function (m) { return '、' + esc(itemMeta(m.id).name) + ' ×' + m.qty; }).join('') +
+      (p.pearl ? '、龙宫宝珠 ×1' : '') + (p.retain.qty ? '、残片 ×' + p.retain.qty : '') + '。</p>' +
+        '<p>熔炼成功 <b>' + p.rates.rate + '%</b>' + (p.extraType ? ' · 三条全部获得 <b>' + D.smeltSuccessProbs(p.rates, true).full + '%</b>' : '') + '</p>' +
+        '<p>成功后仅保留预览中的词条，数值重新随机生成。</p>' +
+        '<p class="sm-risk">' + wsFailureText(p) + '</p></div>',
     }).then(function (ok) {
       if (!ok) return;
-      Promise.resolve(window.Net.smelt({
-        mainId: wsMain, subId: wsSub, mainAffix: wsMainAffix, subAffix: wsSubAffix,
-        materials: p.materials, pearl: p.pearl, relics: p.retain.qty,
-      })).then(function (r) {
-        if (!r || !r.ok) { toast((r && r.data && r.data.error) || '熔炼失败'); return; }
-        const st = S();
-        st.player.coins = r.data.coins;
-        applyInvFrom(r.data);
+      if (!featureGuard('workshop.smelt')) return;
+      return Promise.resolve(window.Net.smelt(request)).then(function (r) {
+        if (!r || !r.ok) throw new Error((r && r.data && r.data.error) || '熔炼未完成，请重试');
+        S().player.coins = r.data.coins; applyInvFrom(r.data);
         wsMats = {}; wsPearl = false; wsRelics = 0;
         wsMain = ''; wsSub = ''; wsMainAffix = ''; wsSubAffix = '';
-        renderTopbar(); renderView();
-        wsShowResult(r.data);
-      }).catch(function () { toast('网络错误'); });
+        renderTopbar(); renderView(); wsShowResult(r.data);
+      });
+    }).catch(function (err) {
+      const target = $('ws-submit-error');
+      if (target) target.textContent = err.message || '网络错误，请检查后重试';
+      else toast(err.message || '网络错误');
+    }).finally(function () {
+      wsBusy = false;
+      const draft = document.querySelector('.sm-draft'); if (draft) draft.disabled = false;
+      wsRefreshPreview();
     });
   }
   function wsShowResult(d) {
@@ -7868,12 +7760,12 @@ window.UI = (function () {
             : '') + '</div>'
         : '')
       : '<div class="cr-fail">💥 熔炼失败：副件 / 催化剂 / 残片已熔毁' +
-        (d.protectedAffix ? '；主件选中的词条已被残片保护。' : '，主件被熔掉选中的那条词条。') + '</div>' +
+        (d.protectAffix ? '；主件选中的词条已被残片保护。' : '，主件被熔掉选中的那条词条。') + '</div>' +
         // 投入残片且失败：protectedAffix = true 表示主件选中的词条因残片保护而未被熔毁
-        (d.protectedAffix
+        (d.protectAffix
           ? '<div class="hint" style="margin:6px 0 2px">🛡 投入残片：主组件选中的词条在失败时已被保护（未被熔毁）</div>'
           : '') +
-        (!d.protectedAffix && d.mainAfter
+        (!d.protectAffix && d.mainAfter
           ? '<div class="hint" style="margin:6px 0 2px">熔毁的是「' + esc(D.AFFIX_LABEL[d.removedAffix] || d.removedAffix) +
             '」，主件剩余词条与品质保留：</div>' + chestItemCardHtml(d.mainAfter)
           : '');
