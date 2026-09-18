@@ -547,3 +547,14 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .feature-group { margin: 12px 0; }
 .feature-children { display:flex; flex-wrap:wrap; gap:12px 24px; }
 .feature-group label { display:inline-flex; align-items:center; gap:8px; min-height:36px; }
+
+/* ---------- 钓点管理（v0.19.0：钓点平铺列表，替代原钓场卡片） ---------- */
+.spot-rows { display: flex; flex-direction: column; gap: 6px; }
+.spot-row {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; cursor: pointer;
+  border: 1px solid var(--line, rgba(255, 255, 255, .15)); border-radius: 6px;
+}
+.spot-row:hover { border-color: var(--acc2); }
+.spot-row.sel { border-color: var(--acc); background: var(--panel2); }
+.spot-row.locked { opacity: .55; }
+.spot-row .gi { flex: 1; font-size: 12px; color: var(--txt-dim); }

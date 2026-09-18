@@ -85,6 +85,20 @@ window.PxScene = (function () {
       water: { top: '#1d3a5c', bottom: '#081426', streak: '#a8d4f0', amp: 0.8, speed: 0.8 },
       particle: 'snow',
     },
+    // 远洋：深夜深海 + 密星 + 荧光浮游（v0.19.0 出海；临时海域 sea:* 也映射到这份配色）
+    ocean: {
+      sky: ['#04091c', '#0a1830', '#12294a', '#1c3d63'],
+      stars: { n: 70, color: '#cfe4ff' },
+      moon: { x: 0.32, y: 0.16, r: 7, color: '#e8f2ff', glow: '#8fb8e8' },
+      ridges: [
+        { base: 0.28, amp: 0.05, color: '#0e2440', snow: null, depth: 0.15, seed: 1212 },
+        { base: 0.33, amp: 0.03, color: '#0a1c33', snow: null, depth: 0.32, seed: 1313 },
+      ],
+      shore: { color: '#061225', depth: 0.6 },
+      trees: { kind: 'none', n: 0, colors: [], depth: 0, seed: 1414 },
+      water: { top: '#0f2f52', bottom: '#030b1a', streak: '#9fd8ff', amp: 1.6, speed: 1.6 },
+      particle: 'sparkle',
+    },
   };
   const FALLBACK = 'stillwater';
 
@@ -211,7 +225,9 @@ window.PxScene = (function () {
 
   function setGround(inst, groundId) {
     if (inst.dead) return;
-    const pid = (groundId && PALETTES[groundId]) ? groundId : FALLBACK;
+    // v0.19.0：临时海域（sea:* 前缀）与远洋共用深海配色
+    let pid = FALLBACK;
+    if (groundId) pid = groundId.indexOf('sea:') === 0 ? 'ocean' : (PALETTES[groundId] ? groundId : FALLBACK);
     if (inst.pid === pid) return;
     inst.pid = pid;
     resize(inst);

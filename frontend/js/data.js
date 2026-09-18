@@ -21,8 +21,8 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.18.0';
-  const BUILD = '2026-09-18';   // 构建日期（仅 /api/version 暴露，界面不展示）
+  const VERSION = 'v0.19.0';
+  const BUILD = '2026-09-19';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。
@@ -48,6 +48,10 @@
       { id: 'riverperch', name: '河鲈', rarity: 'common', price: 12, size: [15, 40] },
       { id: 'culter', name: '翘嘴鲌', rarity: 'common', price: 18, size: [25, 60] },
       { id: 'blackcarp', name: '青鱼', rarity: 'common', price: 20, size: [40, 100] },
+      { id: 'mullet', name: '鲻鱼', rarity: 'common', price: 9, size: [12, 35] },
+      { id: 'jackmack', name: '竹荚鱼', rarity: 'common', price: 10, size: [12, 30] },
+      { id: 'squid', name: '小鱿鱼', rarity: 'common', price: 12, size: [10, 30] },
+      { id: 'octo', name: '小章鱼', rarity: 'common', price: 14, size: [10, 35] },
     ],
     big: [
       { id: 'catfish', name: '巨型鲶鱼', rarity: 'rare', price: 120, size: [80, 220] },
@@ -64,6 +68,10 @@
       { id: 'rubysnapper', name: '金目鲷', rarity: 'epic', price: 280, size: [55, 140] },
       { id: 'sunfish', name: '翻车鱼', rarity: 'epic', price: 300, size: [150, 300] },
       { id: 'arapaima', name: '巨骨舌鱼', rarity: 'epic', price: 350, size: [180, 330] },
+      { id: 'mahimahi', name: '鬼头刀', rarity: 'rare', price: 200, size: [70, 160] },
+      { id: 'amberjack', name: '鰤鱼', rarity: 'rare', price: 190, size: [60, 150] },
+      { id: 'halibut', name: '大比目鱼', rarity: 'epic', price: 270, size: [80, 200] },
+      { id: 'giantquid', name: '巨型鱿鱼', rarity: 'epic', price: 330, size: [150, 400] },
     ],
     rare: [
       { id: 'koi', name: '黄金锦鲤', rarity: 'rare', price: 400, size: [40, 110] },
@@ -76,6 +84,9 @@
       { id: 'dragonfish', name: '深海龙鱼', rarity: 'rare', price: 500, size: [50, 120] },
       { id: 'swordfish', name: '剑鱼', rarity: 'rare', price: 520, size: [180, 380] },
       { id: 'bluefin', name: '蓝鳍金枪鱼', rarity: 'rare', price: 560, size: [130, 300] },
+      { id: 'coelacanth', name: '腔棘鱼', rarity: 'rare', price: 600, size: [100, 220] },
+      { id: 'megamouth', name: '巨口鲨', rarity: 'rare', price: 700, size: [250, 500] },
+      { id: 'leviathan', name: '海王·利维坦', rarity: 'rare', price: 900, size: [300, 800] },
     ],
   };
 
@@ -90,6 +101,9 @@
     { id: 'tide_sand', name: '潮汐砂', rarity: 'rare', price: 260, size: null },
     { id: 'dragon_scale', name: '龙鳞碎屑', rarity: 'epic', price: 720, size: null },
     { id: 'dragonpearl', name: '龙宫宝珠', rarity: 'epic', price: 600, size: null },
+    // v0.19.0 远洋：海图碎片（远洋掉落 / 随机事件，3 片合成 1 张未知海图）与深海鳞片（船升级材料）
+    { id: 'chartfrag', name: '海图碎片', rarity: 'rare', price: 120, size: null },
+    { id: 'deepscale', name: '深海鳞片', rarity: 'rare', price: 180, size: null },
   ];
 
   // 稀有度基准价倍率（无独立 price 时兜底；仅用于渔获/材料）
@@ -1931,84 +1945,159 @@
   // pool 条目：{ pick: 'fish:<id>' | 'material:<id>' | 'component', weight }
   function p(type, id, weight) { return { pick: type + ':' + id, weight: weight }; }
 
+  // v0.19.0 世界地图重构：取消「钓场」分层，钓点直接铺在世界地图上。
+  // 兼容说明：服务端 / 存档仍以「钓场」为内部容器（presence、续钓、广播都按 groundId 走），
+  // 这里只输出唯一一个**隐式钓场 'map'**，玩家端看到的就是一张地图 + 一组钓点。
+  // 钓点字段：pos = 地图宽高百分比；map: 'voyage' = 只出现在「⛵ 出海」图页签（缺省 = 近岸图）；
+  //   minShip = 船级门槛（服务端权威校验）；locked = 暂未开放（后台可解）；buffs = 钓点增益。
   const GROUNDS = [
     {
-      id: 'stillwater', name: '静水湖', type: 'normal',
-      desc: '风平浪静的淡水湖，适合日常稳定产出。',
+      id: 'map', name: '世界地图', type: 'normal',
+      desc: '钓点直接分布在世界地图与出海图上；后台可增删改、按玩家规模一键布点。',
       spots: [
-        { id: 'dock', name: '老旧码头', pos: [61, 34], pool: [
-          p('fish', 'crucian', 30), p('fish', 'white', 16), p('fish', 'carp', 18),
-          p('fish', 'minnow', 12), p('fish', 'bream', 8),
-          p('fish', 'catfish', 4), p('fish', 'bass', 3), p('fish', 'koi', 1),
-          p('material', 'bait_pack', 10), p('component', '', 6),
+        // —— 近岸图（assets/worldmap.png，坐标与图中实景一一对应）——
+        // 新手淡水：湖畔老码头 / 芦苇荡   进阶淡水：湖心深水 / 落瀑潭   活动：霜月冰窟
+        // 海边：月牙沙滩(新手海) / 河口浅滩(咸淡交界) / 灯塔礁(海中大物) / 沉船残骸(稀有+宝珠) / 村港码头(海图碎片)
+        { id: 'dock', name: '湖畔老码头', pos: [62, 47], pool: [
+          p('fish', 'crucian', 30), p('fish', 'white', 18), p('fish', 'minnow', 12), p('fish', 'carp', 15), p('fish', 'loach', 8),
+          p('material', 'bait_pack', 12), p('component', '', 6),
         ] },
-        { id: 'reed', name: '芦苇浅滩', pos: [68, 60], pool: [
-          p('fish', 'grass', 24), p('fish', 'white', 18), p('fish', 'crucian', 12),
-          p('fish', 'minnow', 12), p('fish', 'loach', 10), p('fish', 'yellowcat', 8),
-          p('material', 'rope', 12), p('component', '', 7),
+        { id: 'reed', name: '芦苇荡', pos: [67, 56], pool: [
+          p('fish', 'grass', 26), p('fish', 'bream', 14), p('fish', 'yellowcat', 16), p('fish', 'loach', 10), p('fish', 'crucian', 10),
+          p('fish', 'koi', 1),
+          p('material', 'rope', 14), p('component', '', 7),
         ] },
-        { id: 'deep', name: '深水区', pos: [74, 48], pool: [
-          p('fish', 'carp', 22), p('fish', 'bighead', 14), p('fish', 'silvercarp', 12),
-          p('fish', 'blackcarp', 8), p('fish', 'catfish', 6), p('fish', 'bass', 6),
-          p('fish', 'sturgeon', 2), p('fish', 'arapaima', 2),
-          p('fish', 'voltaiceel', 1), p('fish', 'moonkoi', 1),
+        { id: 'deep', name: '湖心深水', pos: [74, 40], pool: [
+          p('fish', 'silvercarp', 12), p('fish', 'bighead', 14), p('fish', 'blackcarp', 12),
+          p('fish', 'catfish', 8), p('fish', 'bass', 8), p('fish', 'sturgeon', 3), p('fish', 'arapaima', 3),
+          p('fish', 'voltaiceel', 2), p('fish', 'moonkoi', 2),
           p('material', 'lure', 10), p('component', '', 6),
         ] },
-      ],
-    },
-    {
-      id: 'rapids', name: '急流河', type: 'normal',
-      desc: '水流湍急的河流，大鱼概率略高。',
-      spots: [
-        { id: 'shoal', name: '石滩', pos: [77, 34], pool: [
-          p('fish', 'white', 24), p('fish', 'riverperch', 18), p('fish', 'culter', 14),
-          p('fish', 'crucian', 10), p('fish', 'blackbass', 5),
-          p('material', 'rope', 12), p('component', '', 7),
-        ] },
-        { id: 'eddy', name: '回水湾', pos: [58, 42], pool: [
-          p('fish', 'carp', 24), p('fish', 'crucian', 20), p('fish', 'yellowcat', 12),
-          p('fish', 'grass', 10), p('fish', 'culter', 6), p('fish', 'mandarin', 5),
-          p('fish', 'arowana', 1),
-          p('material', 'bait_pack', 11), p('component', '', 6),
-        ] },
-        { id: 'fall', name: '瀑布潭', pos: [83, 20], pool: [
-          p('fish', 'carp', 12), p('fish', 'bass', 8), p('fish', 'yellowcheek', 6),
-          p('fish', 'catfish', 4), p('fish', 'mandarin', 3), p('fish', 'sturgeon', 2),
-          p('fish', 'ghostray', 1),
+        { id: 'falls', name: '落瀑潭', pos: [82, 25], pool: [
+          p('fish', 'catfish', 8), p('fish', 'yellowcheek', 8), p('fish', 'sturgeon', 4), p('fish', 'arapaima', 3),
+          p('fish', 'ghostray', 2), p('fish', 'voltaiceel', 2), p('fish', 'moonkoi', 2),
           p('material', 'lure', 10), p('component', '', 7),
         ] },
-      ],
-    },
-    {
-      id: 'sunset', name: '落日海湾', type: 'normal',
-      desc: '咸淡水交界的海湾，稀有渔获倾向更高。',
-      spots: [
-        { id: 'beach', name: '沙滩', pos: [42, 71], pool: [
-          p('fish', 'tilapia', 22), p('fish', 'sardine', 18), p('fish', 'croaker', 14),
-          p('fish', 'sunfish', 5), p('fish', 'pearl', 2),
+        { id: 'ice', name: '霜月冰窟', pos: [64, 9], locked: true, pool: [
+          p('fish', 'white', 14), p('fish', 'crucian', 10), p('fish', 'voltaiceel', 6), p('fish', 'moonkoi', 4), p('fish', 'ghostray', 3),
+          p('material', 'lure', 8), p('component', '', 7),
+        ] },
+        { id: 'beach', name: '月牙沙滩', pos: [44, 68], pool: [
+          p('fish', 'sardine', 24), p('fish', 'croaker', 18), p('fish', 'tilapia', 12), p('fish', 'mullet', 10), p('fish', 'jackmack', 8),
+          p('fish', 'pearl', 2),
           p('material', 'bait_pack', 12), p('component', '', 7),
         ] },
-        { id: 'pier', name: '防波堤', pos: [35, 30], pool: [
-          p('fish', 'seabass', 10), p('fish', 'tuna', 8), p('fish', 'mackerel', 8),
-          p('fish', 'cobia', 6), p('fish', 'bluefin', 3), p('fish', 'swordfish', 2),
-          p('fish', 'pearl', 2),
+        { id: 'estuary', name: '河口浅滩', pos: [48, 49], pool: [
+          p('fish', 'crucian', 22), p('fish', 'white', 16), p('fish', 'riverperch', 14), p('fish', 'culter', 12), p('fish', 'yellowcat', 10), p('fish', 'loach', 8),
+          p('material', 'bait_pack', 10), p('component', '', 7),
+        ] },
+        { id: 'lighthouse', name: '灯塔礁', pos: [33, 20], pool: [
+          p('fish', 'seabass', 14), p('fish', 'mackerel', 12), p('fish', 'tuna', 10), p('fish', 'cobia', 8),
+          p('fish', 'swordfish', 4), p('fish', 'bluefin', 3),
           p('material', 'lure', 11), p('component', '', 7),
         ] },
-        { id: 'reef', name: '礁石区', pos: [18, 78], pool: [
-          p('fish', 'tuna', 10), p('fish', 'grouper', 9), p('fish', 'rubysnapper', 7),
-          p('fish', 'seabass', 4), p('fish', 'sturgeon', 3), p('fish', 'pearl', 3),
-          p('fish', 'dragonfish', 2), p('fish', 'amberlobster', 2),
-          p('material', 'relic', 1), p('material', 'dragonpearl', 1),
-          p('material', 'rope', 10), p('component', '', 7),
+        { id: 'wreck', name: '沉船残骸', pos: [15, 74], pool: [
+          p('fish', 'grouper', 10), p('fish', 'rubysnapper', 8), p('fish', 'sunfish', 6), p('fish', 'amberlobster', 4),
+          p('fish', 'pearl', 4), p('fish', 'dragonfish', 3),
+          p('material', 'relic', 2), p('material', 'dragonpearl', 1), p('material', 'rope', 8), p('component', '', 7),
+        ] },
+        { id: 'harbor', name: '村港码头', pos: [74, 87], pool: [
+          p('fish', 'sardine', 18), p('fish', 'croaker', 14), p('fish', 'mullet', 12), p('fish', 'jackmack', 12), p('fish', 'squid', 10), p('fish', 'octo', 8),
+          p('fish', 'mahimahi', 4),
+          p('material', 'chartfrag', 2), p('material', 'bait_pack', 9), p('component', '', 6),
+        ] },
+        // —— 出海图（assets/voyagemap.png）：乘船才能下竿，越深需要越高级的船 ——
+        { id: 'shore', name: '近海渔场', map: 'voyage', pos: [26, 73], minShip: 1, pool: [
+          p('fish', 'mullet', 18), p('fish', 'jackmack', 16), p('fish', 'squid', 13), p('fish', 'octo', 9), p('fish', 'sardine', 10),
+          p('fish', 'mahimahi', 4), p('fish', 'amberjack', 4),
+          p('material', 'chartfrag', 2), p('material', 'bait_pack', 9), p('component', '', 6),
+        ] },
+        { id: 'reef', name: '深海鱼礁', map: 'voyage', pos: [62, 44], minShip: 3, buffs: [{ type: 'skill', value: -5 }], pool: [
+          p('fish', 'mahimahi', 9), p('fish', 'amberjack', 9), p('fish', 'halibut', 8), p('fish', 'giantquid', 7),
+          p('fish', 'grouper', 4), p('fish', 'sunfish', 3),
+          p('material', 'deepscale', 5), p('material', 'chartfrag', 3), p('material', 'lure', 8), p('component', '', 7),
+        ] },
+        { id: 'trench', name: '海沟裂谷', map: 'voyage', pos: [85, 26], minShip: 4, buffs: [{ type: 'skill', value: -10 }, { type: 'rare', value: 20 }], pool: [
+          p('fish', 'giantquid', 8), p('fish', 'halibut', 6), p('fish', 'coelacanth', 4), p('fish', 'megamouth', 3),
+          p('fish', 'leviathan', 1), p('fish', 'ghostray', 2), p('fish', 'dragonfish', 3),
+          p('material', 'deepscale', 6), p('material', 'chartfrag', 4), p('material', 'relic', 2),
+          p('material', 'rope', 6), p('component', '', 7),
         ] },
       ],
     },
-    {
-      id: 'frostmoon', name: '霜月冰湖', type: 'event', locked: true,
-      desc: '限时活动钓场，提供特殊产出（即将开放）。',
-      spots: [],
-    },
   ];
+
+  // ---- 远洋船系统（v0.19.0，前后端同一份配置）----
+  // 船级 1~5：门槛不是等级/经验系统，而是「出海经验 + 金币 + 深海鳞片」三重条件（服务端权威校验）。
+  const SHIP = {
+    levels: [
+      { lv: 1, name: '木划艇' }, { lv: 2, name: '近海帆船' }, { lv: 3, name: '远洋货轮' },
+      { lv: 4, name: '深潜潜艇' }, { lv: 5, name: '海王座舰' },
+    ],
+    xpNeed: [0, 40, 120, 280, 560],
+    upCoins: [0, 20000, 80000, 200000, 500000],
+    upScale: [0, 5, 15, 40, 90],
+  };
+  // 随机海域（方案 E）：未知海图出航后的临时海域配置。mood 决定掉落倾向与钓点增益。
+  const SEA = {
+    chartCost: 3,          // 合成 1 张未知海图需要的海图碎片
+    zoneTtlMs: 2 * 3600 * 1000,  // 临时海域存续 2 小时，到期沉没
+    zoneMax: 3,            // 同时最多存在 3 片临时海域
+    names: ['迷雾海盆', '珊瑚深渊', '沉星海域', '鲸落平原', '翡翠环礁', '风暴湾', '幽蓝裂隙', '珍珠环礁'],
+    moods: [
+      { id: 'rich', name: '富矿海域', w: 20, buffs: [{ type: 'double', value: 12 }], rareBias: 2 },
+      { id: 'normal', name: '寻常海域', w: 60, buffs: [{ type: 'double', value: 5 }], rareBias: 1 },
+      { id: 'deadly', name: '凶险海域', w: 20, buffs: [{ type: 'skill', value: -8 }, { type: 'rare', value: 25 }], rareBias: 3 },
+    ],
+    // 海上随机事件（远洋/临时海域，每竿掷骰，单位 %）：风暴=渔获脱钩、漂流宝箱=海图碎片、鱼群=同款+1。
+    // bountyDouble = 漂流宝箱额外多 1 片的概率。三项之和建议 ≤ 30，超出会明显侵蚀正常产出。
+    events: { storm: 5, bounty: 6, school: 6, bountyDouble: 30 },
+  };
+  // 出厂快照：后台「远洋配置」恢复出厂 = 重放快照。applySeaCfg 先还原再叠加，保证幂等。
+  const SHIP_DEFAULT = JSON.parse(JSON.stringify(SHIP));
+  const SEA_DEFAULT = JSON.parse(JSON.stringify(SEA));
+  // 后台运行期覆盖（server.js 保存的 world.seaCfg / 玩家端 /api/sea 下发的 cfg 都走这里）。
+  // cfg = null / {} → 完整恢复出厂。非法值回退出厂值（与 applyChestCosts 同思路）。
+  function applySeaCfg(cfg) {
+    SHIP.levels = JSON.parse(JSON.stringify(SHIP_DEFAULT.levels));
+    SHIP.xpNeed = SHIP_DEFAULT.xpNeed.slice();
+    SHIP.upCoins = SHIP_DEFAULT.upCoins.slice();
+    SHIP.upScale = SHIP_DEFAULT.upScale.slice();
+    SEA.chartCost = SEA_DEFAULT.chartCost;
+    SEA.zoneTtlMs = SEA_DEFAULT.zoneTtlMs;
+    SEA.zoneMax = SEA_DEFAULT.zoneMax;
+    SEA.events = JSON.parse(JSON.stringify(SEA_DEFAULT.events));
+    cfg = cfg && typeof cfg === 'object' ? cfg : {};
+    const int = function (v, min, max, dflt) {
+      v = Math.floor(Number(v));
+      if (!isFinite(v)) return dflt;
+      return Math.min(max, Math.max(min, v));
+    };
+    if (cfg.ship && typeof cfg.ship === 'object') {
+      const s = cfg.ship;
+      if (Array.isArray(s.names) && s.names.length === SHIP.levels.length) {
+        s.names.forEach(function (n, i) { if (n != null && String(n).trim() !== '') SHIP.levels[i].name = String(n).trim().slice(0, 12); });
+      }
+      ['xpNeed', 'upCoins', 'upScale'].forEach(function (k) {
+        if (Array.isArray(s[k]) && s[k].length === SHIP[k].length) {
+          s[k].forEach(function (v, i) { SHIP[k][i] = int(v, 0, 1e10, SHIP[k][i]); });
+        }
+      });
+    }
+    if (cfg.sea && typeof cfg.sea === 'object') {
+      const c = cfg.sea;
+      if (c.chartCost != null) SEA.chartCost = int(c.chartCost, 1, 999, SEA.chartCost);
+      if (c.zoneTtlMin != null) SEA.zoneTtlMs = int(c.zoneTtlMin, 5, 1440, SEA.zoneTtlMs / 60000) * 60000;
+      if (c.zoneMax != null) SEA.zoneMax = int(c.zoneMax, 1, 10, SEA.zoneMax);
+      if (c.events && typeof c.events === 'object') {
+        ['storm', 'bounty', 'school'].forEach(function (k) {
+          if (c.events[k] != null) SEA.events[k] = int(c.events[k], 0, 50, SEA.events[k]);
+        });
+        if (c.events.bountyDouble != null) SEA.events.bountyDouble = int(c.events.bountyDouble, 0, 100, SEA.events.bountyDouble);
+      }
+    }
+    return { ship: SHIP, sea: SEA };
+  }
 
   // 物品产出地点索引：id -> ['钓场·钓点', ...]（图鉴展示用）
   // 鱼类/材料按各自掉落池匹配；组件来自通用组件掉落点（'component:' 条目）
@@ -2020,7 +2109,8 @@
     GROUNDS.forEach(function (g) {
       g.spots.forEach(function (sp) {
         sp.pool.forEach(function (e) {
-          if (e.pick === pick) out.push(g.name + '·' + sp.name);
+          // 隐式世界地图（'map'）不作为前缀：产地直接显示钓点名（如「芦苇荡」）
+          if (e.pick === pick) out.push(g.id === 'map' ? sp.name : g.name + '·' + sp.name);
         });
       });
     });
@@ -2037,6 +2127,7 @@
   //   页签页的功能开关 id 仍是 bd / records（见 features.js），旧 view id 由 navigateView 兜底兼容。
   const NAV = [
     { id: 'fishing', name: '钓鱼', icon: '🎣', implemented: true },
+    { id: 'sea', name: '远洋', icon: '⛵', implemented: true },
     { id: 'character', name: '角色', icon: '🧍', implemented: true },
     { id: 'ground', name: '社交', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
@@ -2143,7 +2234,7 @@
     autoBuildRange: autoBuildRange,
     normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
-    GROUNDS: GROUNDS, NAV: NAV,
+    GROUNDS: GROUNDS, NAV: NAV, SHIP: SHIP, SEA: SEA, applySeaCfg: applySeaCfg,
     allItems: allItems, itemOf: itemOf, itemName: itemName, isSellable: isSellable,
   };
 });

@@ -190,7 +190,7 @@ let users = {};
 // 默认公式：基础 90% + 「技巧」词缀（技巧是上钩率公式里的一个变量，钩率提示一律不写死在代码里）。
 // 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
 const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, snapshotCfg: null, wikiConfigRevision: 1, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, seaCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, snapshotCfg: null, wikiConfigRevision: 1, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
 
 // ---- 宝匣（沉船打捞）----
 // 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
@@ -749,8 +749,87 @@ function resolveItemAt(spot, eff) {
   if (type === 'component') return D.rollComponent();
   return null;
 }
+// ---- 远洋（出海）：船级 / 未知海图临时海域（v0.19.0）----
+// 临时海域是**账号私有**的：groundId 形如 'sea:<账号key>:<zid>'——把归属编码进 id，
+// spotOf 不需要额外参数就能解析（fishTick / presence 等十几处调用点零改动），
+// feed 的钓场分区广播（ground.id 全服唯一）也自动只推给海域主人。
+function shipOf(rec) {
+  rec.ship = rec.ship || { lv: 1, xp: 0 };
+  if (!(rec.ship.lv >= 1)) rec.ship.lv = 1;
+  if (!(rec.ship.xp >= 0)) rec.ship.xp = 0;
+  return rec.ship;
+}
+function seaStateOf(rec) {
+  rec.sea = rec.sea || { charts: 0, zones: [] };
+  if (!Array.isArray(rec.sea.zones)) rec.sea.zones = [];
+  if (!(rec.sea.charts >= 0)) rec.sea.charts = 0;
+  return rec.sea;
+}
+// 惰性沉没：访问时清掉过期海域。正在里面钓鱼的玩家不用赶——fishTick 下一竿
+// 发现钓点消失会自己 stopFishingSession(forget)。
+function purgeSeaZones(rec, key) {
+  const sea = seaStateOf(rec);
+  const now = Date.now();
+  const dead = sea.zones.filter(function (z) { return !z.expire || z.expire <= now; });
+  if (dead.length) {
+    sea.zones = sea.zones.filter(function (z) { return z.expire && z.expire > now; });
+    saveAccount(key);
+    dead.forEach(function (z) { sendTo(key, { type: 'notice', msg: '🌊 临时海域「' + z.name + '」已沉回海底。' }); });
+  }
+  return sea.zones;
+}
+function zoneGroundOf(key, z) {
+  return { id: 'sea:' + key + ':' + z.id, name: z.name, type: 'ocean', zone: true, spots: z.spots };
+}
+// 远洋判定：静态远洋渔场在目录里 type 仍是 'normal'（e2e 钓场分型计数依赖它），
+// 靠 id 识别；临时海域（zoneGroundOf）type 才是 'ocean'。两条路径在此收敛。
+function isOceanGround(g) { return !!g && (g.id === 'ocean' || g.type === 'ocean'); }
+// 临时海域生成：钓点池从海鱼模板随机抽 5~7 种 + 保底海图碎片/组件；心情决定增益与稀有档权重。
+// 只组合 data.js 里已有的鱼种与掉落格式，不引入新公式。
+const SEA_FISH_TEMPL = [
+  ['mullet', 20], ['jackmack', 18], ['squid', 13], ['octo', 9], ['sardine', 12], ['croaker', 10],
+  ['seabass', 6], ['mackerel', 7], ['tuna', 5], ['mahimahi', 5], ['amberjack', 5],
+  ['halibut', 4], ['giantquid', 4], ['cobia', 3], ['sunfish', 3], ['bluefin', 2],
+  ['coelacanth', 2], ['megamouth', 1], ['leviathan', 1],
+];
+function seaMoodRoll() {
+  let total = 0;
+  D.SEA.moods.forEach(function (m) { total += m.w; });
+  let r = Math.random() * total;
+  for (const m of D.SEA.moods) { r -= m.w; if (r <= 0) return m; }
+  return D.SEA.moods[1];
+}
+function genVoyageZone() {
+  const mood = seaMoodRoll();
+  const name = D.SEA.names[Math.floor(Math.random() * D.SEA.names.length)];
+  const spots = [];
+  for (let i = 0; i < 2; i++) {
+    const shuffled = SEA_FISH_TEMPL.slice().sort(function () { return Math.random() - 0.5; });
+    const pool = shuffled.slice(0, 5 + Math.floor(Math.random() * 3)).map(function (e) {
+      const tier = D.fishTierOf(e[0]);
+      return { pick: 'fish:' + e[0], weight: e[1] * (tier === 'rare' ? mood.rareBias : 1) };
+    });
+    pool.push({ pick: 'material:chartfrag', weight: 2 });
+    pool.push({ pick: 'component', weight: 6 });
+    spots.push({ id: 'z' + (i + 1), name: '渔场 · ' + ['甲', '乙'][i], pool: pool, buffs: mood.buffs });
+  }
+  return {
+    id: 'z' + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36),
+    name: name, mood: mood.id, expire: Date.now() + D.SEA.zoneTtlMs, spots: spots,
+  };
+}
 function spotOf(groundId, spotId) {
-  const g = D.GROUNDS.find(function (x) { return x.id === groundId; });
+  let g = null;
+  const gid = String(groundId || '');
+  if (gid.indexOf('sea:') === 0) {
+    const ci = gid.indexOf(':', 4);
+    const owner = gid.slice(4, ci), zid = gid.slice(ci + 1);
+    const ownerRec = users[owner];
+    const z = ownerRec && purgeSeaZones(ownerRec, owner).find(function (x) { return x.id === zid; });
+    if (z) g = zoneGroundOf(owner, z);
+  } else {
+    g = D.GROUNDS.find(function (x) { return x.id === groundId; });
+  }
   if (!g) return null;
   const s = g.spots.find(function (x) { return x.id === spotId; }) || null;
   return s ? { ground: g, spot: s } : null;
@@ -902,6 +981,40 @@ function dropEmptyBoard(range, id, small) {
   if (cell && !(cell.big || []).length && !(cell.small || []).length) delete bucket[id];
   if (!Object.keys(bucket).length) delete b[range][key];
 }
+// v0.19.0：远洋配置校验（后台 settings 的 seaCfg 分支）。空对象 = 恢复出厂，放行。
+function validateSeaCfg(sc) {
+  if (sc === null || sc === undefined) return null;
+  if (typeof sc !== 'object' || Array.isArray(sc)) return '远洋配置格式错误';
+  if (!Object.keys(sc).length) return null;
+  if (sc.ship !== undefined) {
+    if (!sc.ship || typeof sc.ship !== 'object' || Array.isArray(sc.ship)) return '远洋·船配置格式错误';
+    const s = sc.ship;
+    if (s.names !== undefined && (!Array.isArray(s.names) || s.names.length !== 5 ||
+      s.names.some(function (n) { return n != null && String(n).length > 12; }))) return '船名需为 5 个、每个 ≤12 字';
+    for (const k of ['xpNeed', 'upCoins', 'upScale']) {
+      if (s[k] === undefined) continue;
+      if (!Array.isArray(s[k]) || s[k].length !== 5 || s[k].some(function (v) { return !isFinite(Number(v)) || Number(v) < 0 || Number(v) > 1e10; })) {
+        return '船升级表（' + k + '）需为 5 个 0 ~ 100 亿的数值';
+      }
+    }
+  }
+  if (sc.sea !== undefined) {
+    if (!sc.sea || typeof sc.sea !== 'object' || Array.isArray(sc.sea)) return '远洋·海域配置格式错误';
+    const c = sc.sea;
+    const inRange = function (v, min, max) { const n = Number(v); return isFinite(n) && n >= min && n <= max; };
+    if (c.chartCost !== undefined && !inRange(c.chartCost, 1, 999)) return '海图成本需在 1 - 999';
+    if (c.zoneTtlMin !== undefined && !inRange(c.zoneTtlMin, 5, 1440)) return '海域存续需在 5 分钟 - 24 小时';
+    if (c.zoneMax !== undefined && !inRange(c.zoneMax, 1, 10)) return '海域上限需在 1 - 10';
+    if (c.events !== undefined) {
+      if (!c.events || typeof c.events !== 'object' || Array.isArray(c.events)) return '事件概率格式错误';
+      for (const k of ['storm', 'bounty', 'school']) {
+        if (c.events[k] !== undefined && !inRange(c.events[k], 0, 50)) return '事件概率（' + k + '）需在 0 - 50%';
+      }
+      if (c.events.bountyDouble !== undefined && !inRange(c.events.bountyDouble, 0, 100)) return '宝箱双倍概率需在 0 - 100%';
+    }
+  }
+  return null;
+}
 // 按「钓者 + 尺寸」把一条渔获从该鱼种的**全部**榜单里抹掉（作弊 / 误录一条时用）：
 // 同一条渔获同时躺在日桶、周桶与历史总榜里，只删其中一个榜会留下另一半。命中该鱼的
 // 「最大 / 最小纪录」头衔时连头衔一起清（全场最大随之重算）。返回被清掉的条数。
@@ -968,6 +1081,12 @@ function slimFeedEntry(e) {
 function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   const item = resolveItemAt(spot, eff);
   if (!item) return;
+  // v0.19.0 远洋随机事件：风暴直接脱钩（本竿无渔获）。事件只改本竿结果，
+  // 不碰上钩/掉落/体型等共享公式 → Wiki 模拟器口径不受影响。概率走后台「远洋配置」。
+  if (isOceanGround(ground) && Math.random() * 100 < ((D.SEA.events && D.SEA.events.storm) || 0)) {
+    sendTo(key, { type: 'notice', msg: '⛈ 风暴袭来，' + rec.name + ' 本竿渔获脱钩而逃！' });
+    return;
+  }
   invAdd(rec, item.id, 1);
   // v0.13.6 体型档：超出鱼种默认最大体型 → 大型/巨型，单独预留计数（背包标签行/筛选项的数据源）
   const sizeTier = sizeTierOf(item.id, item.size);
@@ -987,6 +1106,39 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   if (sizeTier && cx.tier !== 'G') cx.tier = sizeTier;
   rec.codex[codexId] = cx;
   if (sizeTier) item.tier = sizeTier; // 渔获日志/动态条目带档位标记
+
+  // v0.19.0 远洋：出海经验 + 漂流宝箱 / 鱼群事件（附加收益在下方 invDelta 同一拍下发）。
+  // 事件概率走后台「远洋配置」（D.SEA.events，%）；「经验攒够」提示只发一次（升过级才重置）。
+  let seaInvExtra = null, seaCodexExtra = 0, seaNote = null;
+  if (isOceanGround(ground)) {
+    const ship = shipOf(rec);
+    ship.xp += 1;
+    const seaState = seaStateOf(rec);
+    const xpNeed = D.SHIP.xpNeed[ship.lv];
+    if (ship.lv < 5 && xpNeed && ship.xp >= xpNeed && !seaState.xpNotified) {
+      seaState.xpNotified = true;
+      seaNote = '⭐ 船的出海经验已攒够，可到「⛵ 远洋」升级成 ' + D.SHIP.levels[ship.lv].name + '！';
+    }
+    const EV = D.SEA.events || {};
+    const er = Math.random() * 100;
+    const stormP = EV.storm || 0, bountyP = EV.bounty || 0, schoolP = EV.school || 0;
+    if (er < bountyP) {       // 📦 漂流宝箱：海图碎片（偶尔双倍）
+      const n = 1 + (Math.random() * 100 < (EV.bountyDouble || 0) ? 1 : 0);
+      seaInvExtra = { id: 'chartfrag', n: n };
+      seaNote = (seaNote ? seaNote + ' ' : '') + '📦 捞到漂流宝箱：海图碎片 ×' + n + '！';
+    } else if (er < bountyP + schoolP) {   // 🐟 鱼群：同款渔获再 +1
+      seaInvExtra = { id: item.id, n: 1 };
+      seaCodexExtra = 1;
+      seaNote = (seaNote ? seaNote + ' ' : '') + '🐟 撞进鱼群！' + itemName(item.id) + ' 再 +1！';
+    }
+    if (seaInvExtra) {
+      invAdd(rec, seaInvExtra.id, seaInvExtra.n);
+      if (seaInvExtra.id === item.id) {
+        if (sizeTier) bigfishOf(rec, item.id)[sizeTier] += seaInvExtra.n;
+        cx.count += seaInvExtra.n;
+      }
+    }
+  }
 
   let recordEvent = null;
   let smallEvent = false;
@@ -1071,11 +1223,16 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   // 重复出现），机器人钓上千条后每竿 ~20KB，是 5000 人时 ~1.2Gbps 带宽的主要来源。
   // 改为 codexAdd 只发新条目、assets 只发金币+背包增量；全量替换保留给登录/交易/商店等低频路径。
   sendTo(key, { type: 'catch', entry: entry });
-  sendTo(key, { type: 'codexAdd', id: codexId, name: itemName(codexId), add: 1, mx: cx.max, mn: cx.min, tier: cx.tier || null, catchCount: rec.catchCount });
+  sendTo(key, { type: 'codexAdd', id: codexId, name: itemName(codexId), add: 1 + seaCodexExtra, mx: cx.max, mn: cx.min, tier: cx.tier || null, catchCount: rec.catchCount });
   const invDelta = {}; invDelta[item.id] = 1;
+  if (seaInvExtra) invDelta[seaInvExtra.id] = (invDelta[seaInvExtra.id] || 0) + seaInvExtra.n;
   // bigAdd：大型/巨型预留增量（与背包增量同拍下发，前端合并进 bigfish）
   let bigDelta = null;
-  if (sizeTier) { bigDelta = {}; bigDelta[item.id] = {}; bigDelta[item.id][sizeTier] = 1; }
+  if (sizeTier) {
+    bigDelta = {}; bigDelta[item.id] = {}; bigDelta[item.id][sizeTier] = 1;
+    if (seaInvExtra && seaInvExtra.id === item.id) bigDelta[item.id][sizeTier] += seaInvExtra.n;
+  }
+  if (seaNote) sendTo(key, { type: 'notice', msg: seaNote });
   sendTo(key, { type: 'assets', coins: rec.coins, catchCount: rec.catchCount, invAdd: invDelta, bigAdd: bigDelta });
   // 组件订阅提醒：命中玩家订阅条件时定向推送（双钓追加的组件同样逐条判定）
   maybeSendSubAlert(rec, key, item);
@@ -1120,6 +1277,21 @@ function startFishingSession(key, groundId, spotId, opts) {
   const found = spotOf(groundId, spotId);
   if (!found) return { error: '钓点不存在' };
   if (found.ground.locked) return { error: '该钓场尚未开放' };
+  // v0.19.0 钓点级锁定（世界地图上单个钓点临时关闭，如活动钓点未开）
+  if (found.spot.locked) return { error: '该钓点尚未开放' };
+  // v0.19.0 远洋：临时海域只有主人能下竿（id 内嵌归属，防冒用）；钓点船级门槛全图生效
+  //（v0.19.0 重构后远洋钓点直接挂在世界地图钓场下，不再按 ground type 识别）
+  const gid = String(groundId || '');
+  if (gid.indexOf('sea:') === 0) {
+    const owner = gid.slice(4, gid.indexOf(':', 4));
+    if (owner !== key) return { error: '这不是你的临时海域' };
+  } else if (found.spot.minShip) {
+    const ship = shipOf(users[key]);
+    if (ship.lv < found.spot.minShip) {
+      return { error: '船级不足：「' + found.spot.name + '」需要 ' + found.spot.minShip +
+        ' 级船（' + D.SHIP.levels[found.spot.minShip - 1].name + '），先到「⛵ 远洋」升级' };
+    }
+  }
   // 定时器单独存放：presence 对象会被 JSON 广播，Node Timer 有循环引用不能挂上去
   const prev = fishingTimers.get(key);
   if (prev) clearInterval(prev);
@@ -1502,11 +1674,15 @@ function applyGroundCfg() {
   Object.keys(cfg.customSpots || {}).forEach(function (gid) {
     const g = next.find(function (x) { return x.id === gid; });
     if (!g) return;
-    (cfg.customSpots[gid] || []).forEach(function (sp) {
-      if (removedS[gid + ':' + sp.id]) return;
-      if (g.spots.some(function (x) { return x.id === sp.id; })) return;
-      g.spots.push({ id: sp.id, name: sp.name, pool: JSON.parse(JSON.stringify(sp.pool || [])), buffs: clampSpotBuffs(sp.buffs) });
-    });
+      (cfg.customSpots[gid] || []).forEach(function (sp) {
+        if (removedS[gid + ':' + sp.id]) return;
+        if (g.spots.some(function (x) { return x.id === sp.id; })) return;
+        const copy = { id: sp.id, name: sp.name, pool: JSON.parse(JSON.stringify(sp.pool || [])), buffs: clampSpotBuffs(sp.buffs) };
+        // 世界地图钓点可自带图页签（map:'voyage'）与船级门槛（后台新建钓点时下发）
+        if (sp.map) copy.map = sp.map;
+        if (sp.minShip) copy.minShip = sp.minShip;
+        g.spots.push(copy);
+      });
   });
   // 4) 钓点级覆盖（掉落池 / 增益）
   Object.keys(cfg.spots || {}).forEach(function (k) {
@@ -1518,6 +1694,7 @@ function applyGroundCfg() {
     if (cfg.spots[k].buffs) sp.buffs = clampSpotBuffs(cfg.spots[k].buffs);
     if (cfg.spots[k].biteRate != null && cfg.spots[k].biteRate !== '') sp.biteRate = Number(cfg.spots[k].biteRate);
     if (cfg.spots[k].intervalMs != null && cfg.spots[k].intervalMs !== '') sp.intervalMs = Math.round(Number(cfg.spots[k].intervalMs));
+    if (cfg.spots[k].locked != null) sp.locked = !!cfg.spots[k].locked;
   });
   // 4.5) 钓点在地图上的位置（后台拖动设置）：{ 'gid:sid': [x%, y%] }
   // 内置钓点在 data.js 里带默认 pos；这里只覆盖被后台改过的那些，未改动的沿用默认。
@@ -1556,6 +1733,16 @@ function stopFishingAtGrounds(ids) {
   keys.forEach(function (key) { stopFishingSession(key); });
   if (keys.length) sendPlayersAll();
 }
+// 只停「某个钓点」上钓鱼的玩家（钓点被删除 / 单点锁定时用；世界地图是单一钓场，
+// 按 groundId 停会把整张地图的人都踢下竿）
+function stopFishingAtSpot(groundId, spotId) {
+  const keys = [];
+  players.forEach(function (p, key) {
+    if (p.fishing && p.fishing.groundId === groundId && p.fishing.spotId === spotId) keys.push(key);
+  });
+  keys.forEach(function (key) { stopFishingSession(key); });
+  if (keys.length) sendPlayersAll();
+}
 // 限时渔场到点开/关：定时重算并广播（只在状态变化时推）
 let groundLockState = {};
 function sweepLimitedGrounds() {
@@ -1585,6 +1772,7 @@ function saveSpotCfg(groundId, spotId, patch) {
   if (patch.buffs) cur.buffs = patch.buffs;
   if (patch.biteRate !== undefined) { if (patch.biteRate == null) delete cur.biteRate; else cur.biteRate = patch.biteRate; }
   if (patch.intervalMs !== undefined) { if (patch.intervalMs == null) delete cur.intervalMs; else cur.intervalMs = patch.intervalMs; }
+  if (patch.locked !== undefined) { if (patch.locked == null) delete cur.locked; else cur.locked = !!patch.locked; }
   world.groundCfg.spots[k] = cur;
   saveConfig();
 }
@@ -2442,7 +2630,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax', 'rank', 'lastRec'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['features', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg', 'snapshotCfg', 'wikiConfigRevision'];
+const CONFIG_KEYS = ['features', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'seaCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg', 'snapshotCfg', 'wikiConfigRevision'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
@@ -2770,6 +2958,8 @@ loadSessions(); // 重启后恢复登录态（客户端可自动登录，见 ses
 applyGroundCfg();
 // 套用管理后台保存的宝匣成本覆盖（残片 / 金币）：宝匣目录是前后端共用的一份，改在这里即全站生效
 applyChestCostCfg();
+// v0.19.0：套用远洋配置覆盖（船级表 / 海图 / 临时海域 / 事件概率），与宝匣同思路
+D.applySeaCfg(world.seaCfg);
 // 套用工坊熔炼参数与商城配置（管理后台可调；缺省回退出厂默认）
 if (D.setSmeltCfg) D.setSmeltCfg(world.smeltCfg);
 if (!world.mallCfg) world.mallCfg = D.defaultMallCfg();
@@ -3693,6 +3883,104 @@ const server = http.createServer(function (req, res) {
   }
 
   // ---- 开始钓鱼（服务器权威循环：掷骰/入库/广播都在服务端，前端只收结果） ----
+  // ---- 远洋（出海）：查询 / 船升级 / 海图合成 / 出航（v0.19.0）----
+  // charts（未知海图）存在 rec.sea 里而不是背包：它是「船票」性质的凭据，不可交易不可出售。
+  function seaViewOf(rec, key) {
+    const ship = shipOf(rec);
+    const sea = seaStateOf(rec);
+    const zones = purgeSeaZones(rec, key);
+    const xpNeed = ship.lv < 5 ? D.SHIP.xpNeed[ship.lv] : null;
+    return {
+      ship: { lv: ship.lv, xp: ship.xp, name: D.SHIP.levels[ship.lv - 1].name,
+        xpNeed: xpNeed, xpOk: xpNeed != null && ship.xp >= xpNeed,
+        upCoins: D.SHIP.upCoins[ship.lv] || 0, upScale: D.SHIP.upScale[ship.lv] || 0, max: ship.lv >= 5 },
+      chartfrag: invCountOf(rec, 'chartfrag'),
+      deepscale: invCountOf(rec, 'deepscale'),
+      charts: sea.charts, chartCost: D.SEA.chartCost,
+      zones: zones.map(function (z) {
+        return { groundId: 'sea:' + key + ':' + z.id, id: z.id, name: z.name, mood: z.mood, expire: z.expire,
+          spots: (z.spots || []).map(function (s) {
+            return { id: s.id, name: s.name, buffs: s.buffs || [], pool: s.pool || [] };
+          }) };
+      }),
+      coins: rec.coins,
+      // 玩家端 applySeaCfg 后展示与校验同口径（后台改完 8 秒内随 /api/sea 轮询生效）
+      cfg: {
+        ship: { names: D.SHIP.levels.map(function (l) { return l.name; }), xpNeed: D.SHIP.xpNeed, upCoins: D.SHIP.upCoins, upScale: D.SHIP.upScale },
+        sea: { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events },
+      },
+    };
+  }
+  if (p === '/api/sea' && req.method === 'GET') {
+    const key = u.query.token && sessionGet(u.query.token);
+    if (!key) return apiResp(res, 401, { error: '未登录' });
+    const rec = users[key];
+    return apiResp(res, 200, seaViewOf(rec, key));
+  }
+  if (p === '/api/sea/ship/up' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const ship = shipOf(rec);
+        if (ship.lv >= 5) return apiResp(res, 400, { error: '船已是最高级（海王座舰）' });
+        const xpNeed = D.SHIP.xpNeed[ship.lv];
+        if (ship.xp < xpNeed) return apiResp(res, 400, { error: '出海经验不足（' + ship.xp + '/' + xpNeed + '），先去远洋多钓几竿' });
+        const costCoins = D.SHIP.upCoins[ship.lv], costScale = D.SHIP.upScale[ship.lv];
+        if ((rec.coins || 0) < costCoins) return apiResp(res, 400, { error: '金币不足（需 ' + costCoins + '）' });
+        if (!invHas(rec, 'deepscale', costScale)) {
+          return apiResp(res, 400, { error: '深海鳞片不足（需 ' + costScale + '，当前 ' + invCountOf(rec, 'deepscale') + '）' });
+        }
+        rec.coins -= costCoins;
+        invAdd(rec, 'deepscale', -costScale);
+        ship.lv += 1;
+        if (rec.sea) delete rec.sea.xpNotified; // 升级后重新武装「经验攒够」提示
+        saveAccount(key); flushAccounts();
+        sendTo(key, { type: 'notice', msg: '⛵ 船已升级：' + D.SHIP.levels[ship.lv - 1].name + '！更深的远洋钓点已解锁。' });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec) });
+        apiResp(res, 200, { ok: true, sea: seaViewOf(rec, key) });
+      });
+    });
+    return;
+  }
+  if (p === '/api/sea/chart' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const need = D.SEA.chartCost;
+        if (!invHas(rec, 'chartfrag', need)) {
+          return apiResp(res, 400, { error: '海图碎片不足（需 ' + need + ' 张，当前 ' + invCountOf(rec, 'chartfrag') + ' 张）' });
+        }
+        invAdd(rec, 'chartfrag', -need);
+        seaStateOf(rec).charts += 1;
+        saveAccount(key); flushAccounts();
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec) });
+        apiResp(res, 200, { ok: true, sea: seaViewOf(rec, key) });
+      });
+    });
+    return;
+  }
+  if (p === '/api/sea/voyage' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const sea = seaStateOf(rec);
+        purgeSeaZones(rec, key);
+        if (sea.charts < 1) return apiResp(res, 400, { error: '没有「未知海图」（' + D.SEA.chartCost + ' 张海图碎片合成 1 张）' });
+        if (sea.zones.length >= D.SEA.zoneMax) return apiResp(res, 400, { error: '已有 ' + D.SEA.zoneMax + ' 片临时海域未沉没，等它们到期后再出航' });
+        sea.charts -= 1;
+        const z = genVoyageZone();
+        sea.zones.push(z);
+        saveAccount(key); flushAccounts();
+        sendTo(key, { type: 'notice', msg: '⛵ 出航成功！发现临时海域「' + z.name + '」（2 小时后沉没）。' });
+        apiResp(res, 200, {
+          ok: true, zone: { groundId: 'sea:' + key + ':' + z.id, id: z.id, name: z.name, mood: z.mood, expire: z.expire,
+            spots: z.spots.map(function (s) { return { id: s.id, name: s.name, buffs: s.buffs || [] }; }) },
+          sea: seaViewOf(rec, key),
+        });
+      });
+    });
+    return;
+  }
   if (p === '/api/fishing/start' && req.method === 'POST') {
     readBody(req, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
@@ -4097,6 +4385,18 @@ const server = http.createServer(function (req, res) {
     });
     return;
   }
+  // 仅测试环境：为指定账号直接铸造管理员会话（本地功能板自用，正式部署无此端点）
+  if (process.env.FISHING_DEV === '1' && p === '/api/dev/admin-login' && req.method === 'POST') {
+    readBody(req, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const key = String(d.username || '').trim().toLowerCase();
+      if (!users[key]) return apiResp(res, 404, { error: '账号不存在' });
+      const token = newToken(); sessionSet(token, key, true);
+      Transport.setCookie(req, res, token, true, false);
+      apiResp(res, 200, { ok: true, token: token });
+    });
+    return;
+  }
   if (process.env.FISHING_DEV === '1' && p === '/api/dev/seed' && req.method === 'POST') {
     readBody(req, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
@@ -4115,6 +4415,13 @@ const server = http.createServer(function (req, res) {
           bumpInvRev(rec); // 整体覆写背包：同样要让 rev 前进，否则前端会拿旧 rev 的快照覆盖回去（v0.13.9）
         }
         if (d.bigfish !== undefined) rec.bigfish = d.bigfish || null; // v0.13.6：测试可直接种体型档预留
+        // v0.19.0：测试可直接种船级/经验与远洋海图、临时海域（zones 允许带过去 expire，验证惰性沉没）
+        if (d.ship && typeof d.ship === 'object') {
+          rec.ship = { lv: Math.max(1, Math.min(5, Math.floor(Number(d.ship.lv) || 1))), xp: Math.max(0, Math.floor(Number(d.ship.xp) || 0)) };
+        }
+        if (d.sea && typeof d.sea === 'object') {
+          rec.sea = { charts: Math.max(0, Math.floor(Number(d.sea.charts) || 0)), zones: Array.isArray(d.sea.zones) ? d.sea.zones : [] };
+        }
         // 覆写背包/预留后夹一次：预留量不得超过持有量（否则会出现「可用量为负 → 钳 0」的假状态，
         // 前端算出的可卖/可上架数字会和实际对不上）
         Object.keys(rec.bigfish || {}).forEach(function (id) { bigfishClampTo(rec, id); });
@@ -5843,6 +6150,8 @@ function lootPreviewRows(spot, rareVal) {
   if (p === '/api/admin/world' && req.method === 'GET') {
     const a = adminOf(u.query.token);
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    const seaNow = { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events };
+    const worldPayload = { seaCfg: world.seaCfg || {}, ship: D.SHIP, sea: seaNow };
     const fish = [];
     ['common', 'big', 'rare'].forEach(function (tier) {
       D.FISH[tier].forEach(function (f) { fish.push({ id: f.id, name: f.name, rarity: f.rarity, tier: tier, price: f.price, size: f.size || null }); });
@@ -5926,6 +6235,10 @@ function lootPreviewRows(spot, rareVal) {
           hasExtra: !!c.extra, hitCount: c.hitCount, missCount: c.missCount, chance: c.chance };
       }),
       chestCostMax: { relic: CHEST_COST_RELIC_MAX, coins: CHEST_COST_COINS_MAX },
+      // ---- 远洋（v0.19.0）：已保存覆盖 + 当前生效值（面板展示/编辑用） ----
+      seaCfg: world.seaCfg || {},
+      ship: D.SHIP,
+      sea: { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events },
       extraAffixRanges: (D.getComponentCfg && D.getComponentCfg().extraAffixRanges) || {},
       extraAffixDefaults: D.DEFAULT_EXTRA_AFFIX_RANGES,
       // ---- 工坊熔炼（成功率 / 花费 / 投料上限；材料→词缀对照只读展示） ----
@@ -6267,6 +6580,10 @@ function lootPreviewRows(spot, rareVal) {
       const preset = POOL_PRESETS[d.preset] ? d.preset : 'economy';
       const fill = d.fill !== false;
       const entry = { id: id, name: name, pool: fill ? defaultPoolPreset(preset) : [], buffs: [] };
+      // 世界地图钓点：可指定所属图页签（'voyage' = 出海图）与船级门槛
+      if (d.map === 'voyage') entry.map = 'voyage';
+      const ms = Math.round(Number(d.minShip));
+      if (isFinite(ms) && ms > 0) entry.minShip = Math.min(5, ms);
       const cfg = world.groundCfg = world.groundCfg || {};
       const cg = (cfg.custom || []).find(function (x) { return x.id === g.id; });
       if (cg) { cg.spots = cg.spots || []; cg.spots.push(entry); }
@@ -6337,7 +6654,7 @@ function lootPreviewRows(spot, rareVal) {
       }
       saveConfig();
       applyGroundCfg();
-      stopFishingAtGrounds([found.ground.id]);
+      stopFishingAtSpot(found.ground.id, found.spot.id);
       broadcastGroundcfg();
       apiResp(res, 200, { ok: true, removed: key, restorable: !custom });
     });
@@ -6495,6 +6812,32 @@ function lootPreviewRows(spot, rareVal) {
         });
       }
       apiResp(res, 200, { ok: true, groundId: g.id, locked: g.locked });
+    });
+    return;
+  }
+  // ---- 钓点锁定/解锁（世界地图单点临时关闭；锁定时只停该钓点的钓鱼循环） ----
+  if (p === '/api/admin/spot/lock' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const found = spotOf(d.groundId, d.spotId);
+      if (!found) return apiResp(res, 404, { error: '钓点不存在' });
+      saveSpotCfg(found.ground.id, found.spot.id, { locked: !!d.locked });
+      applyGroundCfg();
+      broadcastGroundcfg();
+      if (d.locked) {
+        const hit = [];
+        players.forEach(function (pl, key) {
+          if (pl.fishing && pl.fishing.groundId === found.ground.id && pl.fishing.spotId === found.spot.id) hit.push(key);
+        });
+        stopFishingAtSpot(found.ground.id, found.spot.id);
+        hit.forEach(function (key) {
+          sendTo(key, { type: 'notice', msg: '钓点「' + found.spot.name + '」已被管理员关闭，钓鱼已停止' });
+        });
+      }
+      const sp = spotOf(found.ground.id, found.spot.id).spot;
+      apiResp(res, 200, { ok: true, spotId: sp.id, locked: !!sp.locked });
     });
     return;
   }
@@ -6953,6 +7296,19 @@ function lootPreviewRows(spot, rareVal) {
         if (!isFinite(b) || b < 0 || b > 1) return apiResp(res, 400, { error: '基础双钓率需在 0 - 1 之间' });
         if (!d.validateOnly) world.doubleBase = b;
         out.doubleBase = b;
+      }
+      // v0.19.0 远洋配置：船级表（名称/经验/金币/鳞片）+ 海图成本 + 临时海域 + 事件概率。
+      // 传 {} = 恢复出厂。非法值整体拒绝（不静默修正），与经济参数同纪律。
+      if (d.seaCfg !== undefined) {
+        const err = validateSeaCfg(d.seaCfg);
+        if (err) return apiResp(res, 400, { error: err });
+        if (!d.validateOnly) {
+          world.seaCfg = (d.seaCfg && Object.keys(d.seaCfg).length) ? d.seaCfg : {};
+          D.applySeaCfg(world.seaCfg);
+          econLog(a.name, '远洋配置已更新' + (Object.keys(world.seaCfg).length ? '' : '（恢复出厂）'));
+          broadcast({ type: 'notice', msg: '⛵ 远洋配置已更新，玩家端随下次远洋页/出航生效。' });
+        }
+        out.seaCfg = world.seaCfg;
       }
       // 自动售出打包阈值：可卖余量攒够这个条数才成交一次（省掉逐条上鱼的收发包）
       if (d.autoSellCfg != null && d.autoSellCfg !== '' && typeof d.autoSellCfg === 'object') {

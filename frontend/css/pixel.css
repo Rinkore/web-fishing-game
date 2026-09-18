@@ -776,3 +776,16 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .cc-card:hover { border-color: var(--px-line); }
 .cc-card.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .1); }
 .cc-card.locked { opacity: .62; }
+
+/* ---------- 角色页 · 场景背景（v0.19.0：原钓鱼页渔场实况画布挪至此，纯装饰） ---------- */
+/* 不设 z-index：靠 DOM 顺序叠在 cs-bg 之上、码头/船/同伴之下；Canvas 挂不上时 cs-bg 兜底 */
+.cs-scene { position: absolute; inset: 0; }
+.char-bgs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+.cb-title { opacity: .75; font-size: 12px; }
+.cb-chip {
+  font: inherit; font-size: 12px; padding: 3px 12px; cursor: pointer;
+  color: inherit; background: var(--bg2, rgba(255, 255, 255, .06));
+  border: 2px solid transparent; border-radius: 4px;
+}
+.cb-chip:hover { border-color: var(--px-line); }
+.cb-chip.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .12); }

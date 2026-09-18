@@ -913,11 +913,6 @@ window.UI = (function () {
       '</span>' + (meta.size ? ' <span class="muted">' + meta.size + 'cm</span>' : '') +
       (meta.rarity === 'rare' ? ' ✨稀有' : meta.rarity === 'epic' ? ' 💎史诗' : '');
   }
-  // 钓场卡片文案（地图外那一排）：构建与增量刷新共用，保证两处一致
-  function groundCardText(g, cnt) {
-    return g.locked ? '🔒 活动钓场 · 即将开放'
-      : (g.type === 'normal' ? '普通钓场' : '活动钓场') + ' · 👥 ' + cnt + ' 人';
-  }
   // 左栏底部状态条文案（在钓鱼 / 未钓鱼）
   function fishStateHtml(st) {
     if (!st.fishing.active) {
@@ -925,7 +920,9 @@ window.UI = (function () {
     }
     const g = D.GROUNDS.find(function (x) { return x.id === st.player.groundId; });
     const sp = g && g.spots.find(function (x) { return x.id === st.player.spotId; });
-    return '<span class="dot on"></span> 自动钓鱼中 · ' + esc(g ? g.name : '') + (sp ? '·' + esc(sp.name) : '') +
+    // 隐式世界地图（'map'）不进文案：只报钓点名
+    const where = sp ? (g.id === 'map' ? '' : esc(g.name) + '·') + esc(sp.name) : esc(g ? g.name : '');
+    return '<span class="dot on"></span> 自动钓鱼中 · ' + where +
       '<span class="state-hint">' + esc(castText()) + ' · 再点当前钓点可取消</span>';
   }
   // 「同钓点 N 人」文案：构建与增量刷新共用（切钓点后本地会先标成同步中，不等 5s 轮询）
@@ -956,107 +953,6 @@ window.UI = (function () {
     return parts.join('|');
   }
 
-  // ---- 渔场实况 · 游鱼（装饰动画，无逻辑） ----
-  // 鱼群 = 当前钓点掉落池里的鱼（不在钓点则取当前所选钓场全部钓点），按掉落权重随机，
-  // 每条按自身常见体型缩放；贴图鱼头朝左，向左游不翻转、向右游镜像。
-  // 定时换鱼只挑已经游到画面边上的那条，半路上不换，免得鱼凭空消失。
-  const SCENE_LANES = 4;                       // 同屏游鱼条数
-  const SCENE_LANE_BOTTOM = [4, 11, 19, 27];   // 各条泳道离底百分比（越靠下的泳道越近、越清楚）
-  let scenePool = [];                          // [{ id, weight, px }] 当前可能出现的鱼
-  function scenePickId(e) {                    // 'fish:crucian' → 'crucian'（非鱼返回 ''）
-    const s = e && e.pick;
-    return (typeof s === 'string' && s.slice(0, 5) === 'fish:') ? s.slice(5) : '';
-  }
-  // 常见体型（cm）→ 贴图宽度 px：麦穗鱼 30 出头，巨鲟 70 上下
-  function sceneFishPx(id) {
-    const sz = D.itemOf(id).size;
-    const mid = (Array.isArray(sz) && sz.length >= 2) ? (sz[0] + sz[1]) / 2 : 40;
-    return Math.round(26 + 50 * Math.sqrt(Math.max(0, Math.min(1, mid / 320))));
-  }
-  // 当前实况该出现哪些鱼 + 池子签名（签名变了就重掷，见 patchFishingLive ⑤）
-  function scenePoolOf(st) {
-    const atG = st.player.groundId, atS = st.player.spotId;
-    const gid = atG || st.selected.groundId;
-    const g = gid ? D.GROUNDS.find(function (x) { return x.id === gid; }) : null;
-    const sp = (g && atG) ? (g.spots || []).find(function (x) { return x.id === atS; }) : null;
-    const pools = !g ? [] : (sp ? [sp.pool || []] : (g.spots || []).map(function (x) { return x.pool || []; }));
-    const list = [], at = {};
-    let sig = g ? g.id + (sp ? ':' + sp.id : '') : '';
-    pools.forEach(function (pool) {
-      (pool || []).forEach(function (e) {
-        const id = scenePickId(e), w = Math.max(0, e.weight || 0);
-        sig += '|' + id + ':' + w;
-        if (!id) return;
-        if (at[id] == null) { at[id] = list.length; list.push({ id: id, weight: w, px: sceneFishPx(id) }); }
-        else if (list[at[id]].weight < w) list[at[id]].weight = w;   // 同一条鱼被重复配置时取较大权重
-      });
-    });
-    if (!list.length) {   // 没配掉落池 / 不在任何钓场：回落默认淡水鱼，画面不留空
-      sig = 'default';
-      ['crucian', 'carp', 'white'].forEach(function (id) { list.push({ id: id, weight: 1, px: sceneFishPx(id) }); });
-    }
-    return { sig: sig, list: list };
-  }
-  // 按掉落权重随机取一条鱼（权重全为 0 时退化为等概率）
-  function sceneFishPick() {
-    let total = 0;
-    scenePool.forEach(function (f) { total += f.weight; });
-    if (total <= 0) return scenePool[Math.floor(Math.random() * scenePool.length)];
-    let r = Math.random() * total;
-    for (let i = 0; i < scenePool.length; i++) {
-      r -= scenePool[i].weight;
-      if (r <= 0) return scenePool[i];
-    }
-    return scenePool[scenePool.length - 1];
-  }
-  // 造一条游鱼：鱼种 / 朝向 / 泳道 / 速度都随机。
-  // spread=true 时用负延迟把开局这几条错开（一上来就分布在水里），false 时从画面外游入（换鱼用）。
-  function sceneFishEl(lane, spread) {
-    const f = sceneFishPick();
-    const right = Math.random() < .5;                          // 向右游？
-    const dur = (12 + Math.random() * 8) * (.7 + f.px / 90);   // 大鱼游得慢些
-    const img = el('img', 'px-fish ' + (right ? 'swim-r' : 'swim-l'));
-    img.src = 'assets/fish/' + f.id + '.png';
-    img.alt = '';
-    img.draggable = false;
-    img.setAttribute('data-lane', lane);
-    img.setAttribute('data-fish', f.id);
-    img.style.width = f.px + 'px';
-    img.style.setProperty('--fw', f.px + 'px');                // 出画位置按鱼宽算（见 pixel.css）
-    img.style.setProperty('--fo', (0.58 - lane * 0.08).toFixed(2));  // 越靠下的泳道越近、越清楚
-    img.style.bottom = (SCENE_LANE_BOTTOM[lane] + (Math.random() * 4 - 2)).toFixed(1) + '%';
-    img.style.animationDuration = dur.toFixed(1) + 's';
-    img.style.animationDelay = (spread ? -Math.random() * dur : 0).toFixed(1) + 's';
-    img.onerror = function () { img.style.display = 'none'; };  // 缺贴图时不留破图
-    return img;
-  }
-  // 铺满场景游鱼（首次渲染、换钓点、后台改过掉落池时重掷整批）
-  function fillSceneFish(scene, st, spread) {
-    const p = scenePoolOf(st);
-    scenePool = p.list;
-    scene.setAttribute('data-pool', p.sig);
-    Array.prototype.forEach.call(scene.querySelectorAll('.px-fish'), function (im) { im.remove(); });
-    for (let i = 0; i < SCENE_LANES; i++) scene.appendChild(sceneFishEl(i, spread));
-  }
-  // 换掉一条已经游到画面边上的鱼（露出来的部分不超过自身 2/5，首尾 6% 又正好淡出到看不见）。
-  // 判定量的是实际几何而不是动画进度：进度值与屏幕上真正画出来的位置差着几帧，
-  // 按进度换会在窄面板里把还露着一大截的鱼换掉。
-  function rollSceneFish(scene) {
-    if (!scenePool.length) return;
-    const box = scene.getBoundingClientRect();
-    const fishes = scene.querySelectorAll('.px-fish');
-    const out = [];
-    Array.prototype.forEach.call(fishes, function (im, i) {
-      const r = im.getBoundingClientRect();
-      const vis = Math.min(r.right, box.right) - Math.max(r.left, box.left);   // 与画面重叠的宽度
-      if (vis <= r.width * .4) out.push(i);
-    });
-    if (!out.length) return;
-    const i = out[Math.floor(Math.random() * out.length)];
-    const old = fishes[i];
-    old.parentNode.replaceChild(sceneFishEl(i, false), old);
-  }
-
   function renderFishing() {
     if (featureBlocked('fishing')) return renderView();
     const main = $('main');
@@ -1075,27 +971,23 @@ window.UI = (function () {
       '<h3>🗺 世界地图 · 选择钓点</h3>';
     bindSectionTabs(left, 'fishing');
     const tabBar = el('div', 'px-map-tabs');
-    [['nearshore', '🏞 近岸'], ['voyage', '⛵ 出海 · 未来']].forEach(function (kv) {
+    [['nearshore', '🏞 近岸'], ['voyage', '⛵ 出海']].forEach(function (kv) {
       const tb = el('button', 'px-map-tab' + (mapTab === kv[0] ? ' on' : ''), kv[1]);
       tb.addEventListener('click', function () { if (mapTab !== kv[0]) { mapTab = kv[0]; renderView(); } });
       tabBar.appendChild(tb);
     });
     left.appendChild(tabBar);
     // 地图节点坐标（地图宽高的百分比）：与 assets/worldmap.png 中场景对应。
-    // 权威坐标来自钓点数据的 sp.pos（data.js 出厂值 + 管理后台拖动覆盖，见后台「渔场钓点 · 地图定位」）；
-    // 这里的表只作为**兜底**：自定义钓点（后台新建、没有坐标）时仍能落在合理位置。
+    // 权威坐标来自钓点数据的 sp.pos（data.js 出厂值 + 管理后台拖动覆盖，见后台「钓点管理 · 地图定位」）；
+    // 这里的表只作为**兜底**：后台新建、没有坐标的钓点围绕地图中心环形排布。
     const MAP_LAYOUT = {
-      stillwater: { dock: [61, 34], reed: [68, 60], deep: [74, 48], label: [74, 72] },
-      rapids: { shoal: [77, 34], eddy: [58, 42], fall: [83, 20], label: [50, 48] },
-      sunset: { beach: [42, 71], pier: [35, 30], reef: [18, 78], label: [20, 28] },
-      frostmoon: { label: [67, 11] },
+      map: {
+        dock: [62, 47], reed: [67, 56], deep: [74, 40], falls: [82, 25], ice: [64, 9],
+        beach: [44, 68], estuary: [48, 49], lighthouse: [33, 20], wreck: [15, 74], harbor: [74, 87],
+        shore: [26, 73], reef: [62, 44], trench: [85, 26],
+      },
     };
-    // 出海预告图的锁定节点
-    const VOYAGE_NODES = [
-      { pos: [26, 73], name: '母港 · 起程', tip: '出海航线的起点' },
-      { pos: [62, 44], name: '雾中群岛 · 未知钓场', tip: '敬请期待' },
-      { pos: [85, 26], name: '远海群岛 · 未知钓场', tip: '敬请期待' },
-    ];
+    // 出海图的钓点坐标：远洋钓场用 data.js 出厂 pos；临时海域由注入时的环绕逻辑定位
     const map = el('div', 'px-map');
     const mapImg = mapTab === 'voyage' ? 'assets/voyagemap.png' : 'assets/worldmap.png';
     map.innerHTML = '<img class="px-map-img" src="' + mapImg + '" alt="" draggable="false">';
@@ -1122,6 +1014,13 @@ window.UI = (function () {
       // 未开放的钓场：只提示，不进入选择流程（服务器同样会拒绝）
       const gT = D.GROUNDS.find(function (x) { return x.id === gid; });
       if (gT && gT.locked) { toast('「' + gT.name + '」暂未开放' + (gT.openFrom ? '（限时钓场，未到开放时间）' : '（活动钓场）')); return; }
+      // v0.19.0：钓点级锁定 / 远洋船级门槛本地预检（服务端 startFishingSession 同样校验）
+      const spT = gT && gT.spots ? gT.spots.find(function (x) { return x.id === sid; }) : null;
+      if (spT && spT.locked) { toast('「' + spT.name + '」暂未开放'); return; }
+      if (spT && spT.minShip && (!seaInfo || !seaInfo.ship)) { toast('⛵ 出海钓点需要先到「⛵ 远洋」登记船籍'); return; }
+      if (spT && spT.minShip && seaInfo.ship.lv < spT.minShip) {
+        toast('⛵ 船级不足：「' + spT.name + '」需要 ' + spT.minShip + ' 级船，先到「⛵ 远洋」升级'); return;
+      }
       const atSame = st.fishing.active && st.player.groundId === gid && st.player.spotId === sid;
       if (atSame) {
         E().stopFishing();
@@ -1143,20 +1042,43 @@ window.UI = (function () {
       });
     }
     if (mapTab === 'voyage') {
-      // 出海预告：全部锁定，点按只提示
-      const vl = el('div', 'px-region locked', '航线规划中 · 未来版本开放');
-      vl.style.left = '55%'; vl.style.top = '90%';
-      map.appendChild(vl);
-      // 未开放的钓点统一用 🔒 图标 + 名字后缀（暂未开放）：一眼看出「这里现在钓不了」
-      VOYAGE_NODES.forEach(function (n) {
-        const node = el('button', 'px-node locked');
-        node.style.left = n.pos[0] + '%';
-        node.style.top = n.pos[1] + '%';
-        node.innerHTML = '<span class="pn-lock">🔒</span><span class="pn-name">' + esc(n.name) +
-          '<span class="pn-soon">（暂未开放）</span></span>';
-        node.title = n.tip;
-        node.addEventListener('pointerdown', function () { toast('「出海」航线仍在规划中，未来版本开放'); });
-        map.appendChild(node);
+      // v0.19.0 出海图做实：世界地图的出海钓点（船级门槛锁定）+ 临时海域节点（账号私有，服务端下发）。
+      // 复用近岸同一套节点渲染与 chooseSpot 流程，只是底图与钓点集合不同。
+      ensureSea();
+      const shipLv = (seaInfo && seaInfo.ship) ? seaInfo.ship.lv : 1;
+      D.GROUNDS.filter(function (g) { return g.zone || g.id === 'map'; }).forEach(function (g) {
+        const lay = MAP_LAYOUT[g.id] || {};
+        const isMap = !g.zone;
+        (g.spots || []).forEach(function (sp, spIdx) {
+          if (isMap && sp.map !== 'voyage') return; // 世界地图的近岸钓点不出现在出海图
+          let pos = (Array.isArray(sp.pos) && sp.pos.length === 2) ? sp.pos : lay[sp.id];
+          if (!pos) {
+            const base = lay.label || [50, 50];
+            const ang = -90 + spIdx * 60;
+            pos = [base[0] + 9 * Math.cos(ang * Math.PI / 180), base[1] + 9 * Math.sin(ang * Math.PI / 180)];
+          }
+          const need = sp.minShip || 1;
+          const locked = !!sp.locked || (isMap && shipLv < need);
+          const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
+          const here = st.player.groundId === g.id && st.player.spotId === sp.id;
+          const buffed = sp.buffs && sp.buffs.length > 0;
+          const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : '') + (locked ? ' locked' : ''));
+          node.setAttribute('data-g', g.id);
+          node.setAttribute('data-s', sp.id);
+          node.style.left = pos[0] + '%';
+          node.style.top = pos[1] + '%';
+          node.innerHTML = (locked ? '<span class="pn-lock">🔒</span>' : '<span class="pn-bob"></span>') +
+            '<span class="pn-name">' + esc(sp.name) +
+            (sp.locked ? '<span class="pn-soon">（暂未开放）</span>'
+              : (locked ? '<span class="pn-soon">（需 ' + need + ' 级船）</span>' : '')) +
+            (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
+            (here ? '<img class="pn-fisher" src="' + charSrc('hold') + '" alt="">' : '');
+          map.appendChild(node);
+        });
+      });
+      bindSpotInput(map, function (ev) {
+        const t = ev.target && ev.target.closest ? ev.target.closest('.px-node') : null;
+        return t && t.getAttribute('data-g') ? t : null;
       });
       left.appendChild(map);
     } else {
@@ -1164,9 +1086,11 @@ window.UI = (function () {
     map.innerHTML += '<img class="px-bird b1" src="assets/ui/bird.png" alt="">' +
       '<img class="px-bird b2" src="assets/ui/bird.png" alt="">';
     D.GROUNDS.forEach(function (g) {
+      if (g.zone) return; // 临时海域只出现在「⛵ 出海」图上
       const lay = MAP_LAYOUT[g.id] || {};
-      // 未预置坐标的钓点（例如冰湖活动场开启后后台新配的钓点）：围绕区域锚点环状排列
+      // 未预置坐标的钓点（后台新建、还没在后台拖过位置）：围绕地图中心环状排列
       (g.spots || []).forEach(function (sp, spIdx) {
+        if (sp.map === 'voyage') return; // 出海钓点只出现在「⛵ 出海」图上
         let pos = (Array.isArray(sp.pos) && sp.pos.length === 2) ? sp.pos : lay[sp.id];
         if (!pos) {
           const base = lay.label || [50, 50];
@@ -1176,8 +1100,8 @@ window.UI = (function () {
         const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
         const here = st.player.groundId === g.id && st.player.spotId === sp.id;
         const buffed = sp.buffs && sp.buffs.length > 0;
-        // 锁定的钓场（活动场未开窗 / 后台手动锁定）：节点画成 🔒 并标注「暂未开放」，点击只提示
-        const locked = !!g.locked;
+        // 锁定（钓场未开 / 后台单独锁点）：节点画成 🔒 并标注「暂未开放」，点击只提示
+        const locked = !!g.locked || !!sp.locked;
         const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : '') + (locked ? ' locked' : ''));
         node.setAttribute('data-g', g.id);
         node.setAttribute('data-s', sp.id);
@@ -1207,21 +1131,6 @@ window.UI = (function () {
     }
     lastFisherSpotKey = hereKey;
     }
-    // 钓场状态卡（地图外）：图标 + 名称 + 类型 + 实时人数/锁定状态
-    const groundsBar = el('div', 'px-grounds');
-    D.GROUNDS.forEach(function (g) {
-      const cnt = (st.groundCounts && st.groundCounts[g.id]) || 0;
-      // 当前选中/正在垂钓的钓场：金色边框标注
-      const onGround = st.selected.groundId === g.id || st.player.groundId === g.id;
-      const card = el('div', 'px-region g-card' + (g.locked ? ' locked' : '') + (onGround ? ' on' : ''));
-      card.setAttribute('data-g', g.id); // 增量刷新按钓场找卡片更新人数
-      card.innerHTML = '<img class="pg-icon" src="assets/ground/' + esc(g.id) + '.png" alt="" draggable="false"' +
-        ' onerror="this.style.display=\'none\'">' +
-        '<div class="pg-info"><b>' + esc(g.name) + '</b>' +
-        '<span>' + esc(groundCardText(g, cnt)) + '</span></div>';
-      groundsBar.appendChild(card);
-    });
-    left.appendChild(groundsBar);
     // 增益钓点一览：列出当前所有带增益的钓点（与地图节点 ⚡ 同源），点击直达该钓点
     const buffed = [];
     D.GROUNDS.forEach(function (g) {
@@ -1238,7 +1147,7 @@ window.UI = (function () {
           (st.player.groundId === e.g.id && st.player.spotId === e.sp.id ? ' on' : ''));
         chip.setAttribute('data-g', e.g.id);
         chip.setAttribute('data-s', e.sp.id);
-        chip.innerHTML = '<b>' + esc(e.g.name + '·' + e.sp.name) + '</b>' +
+        chip.innerHTML = '<b>' + esc(e.g.id === 'map' ? e.sp.name : e.g.name + '·' + e.sp.name) + '</b>' +
           e.sp.buffs.map(function (b) {
             return '<i>' + esc(affixName(b.type) + (b.value > 0 ? '+' : '') + b.value + '%') + '</i>';
           }).join('');
@@ -1252,7 +1161,7 @@ window.UI = (function () {
     legend.innerHTML = '<span><i class="lg-bob"></i> 钓点</span>' +
       '<span><i class="lg-ring"></i> 当前垂钓位置</span>' +
       '<span><i class="lg-buff">⚡</i> 有增益的钓点</span>' +
-      '<span>🔒 未开放钓场</span>';
+      '<span>🔒 未开放钓点</span>';
     left.appendChild(legend);
 
     const ctrl = el('div', 'fish-ctrl');
@@ -1263,18 +1172,9 @@ window.UI = (function () {
     left.setAttribute('data-sig', sig); // 增量刷新靠它判断结构是否变化
     main.appendChild(left);
 
-    // 右：渔场实况（顶部为装饰性垂钓场景：水面 / 游鱼动画，无逻辑）
+    // 右：钓点概况（v0.19.0：原「渔场实况」的场景画布挪去「🧍 角色」页当可选背景，这里只留信息）
     const right = el('div', 'panel fish-live');
-    right.innerHTML = pageHead('🌊', '渔场实况', '当前钓点画面 · 同钓点玩家 · 我的渔获日志');
-    const scene = el('div', 'px-scene');
-    scene.setAttribute('data-active', st.fishing.active ? '1' : '0');
-    scene.innerHTML = '<div class="px-scene-water"></div>';
-    fillSceneFish(scene, st, true);   // 游鱼：当前钓点会出现的鱼里随机取（换钓点 / 改掉落池时重掷）
-    // Canvas 场景层（js/scene.js）：山景 / 星空 / 水面倒影 / 粒子，按所在渔场换配色
-    if (window.PxScene) window.PxScene.mount(scene, st.player.groundId || st.selected.groundId);
-    // 游鱼水色：写入当前渔场 key，CSS 按渔场把鱼调成水下剪影色（见 pixel.css --fishfilter）
-    scene.setAttribute('data-ground', st.player.groundId || st.selected.groundId || 'stillwater');
-    right.appendChild(scene);
+    right.innerHTML = pageHead('📍', '钓点概况', '所在钓点 · 同钓点玩家 · 我的渔获日志');
     const atGroundId = st.player.groundId;
     const gNow = atGroundId ? D.GROUNDS.find(function (x) { return x.id === atGroundId; }) : null;
     const spNow = gNow && gNow.spots.find(function (x) { return x.id === st.player.spotId; });
@@ -1285,8 +1185,9 @@ window.UI = (function () {
       // perf-9：同钓点列表改为服务端分页拉取（S.peepsPage，net.js 每 5s 拉取当前钓点）
       const pp = st.peepsPage || { page: 1, pages: 1, total: 0, list: [] };
       const here = pp.list || [];
-      // 只报所在位置；人数交给下面的「同钓点 N 人」（钓场级人数左侧钓场卡片已有 👥）
-      right.appendChild(el('div', 'here-count', '所在：' + esc(gNow ? gNow.name : '') + (spNow ? '·' + esc(spNow.name) : '')));
+      // 只报所在位置；人数交给下面的「同钓点 N 人」
+      right.appendChild(el('div', 'here-count', '所在：' +
+        esc(spNow ? (atGroundId === 'map' ? '' : (gNow ? gNow.name + '·' : '')) + spNow.name : (gNow ? gNow.name : '未知'))));
       // 同屏最多 5 条，超出可下滑（不挤占下方的渔获日志入口）
       right.appendChild(el('div', 'peeps-head', peepsHeadText(st)));
       const peeps = el('div', 'peeps scroll5');
@@ -1324,26 +1225,18 @@ window.UI = (function () {
     main.appendChild(right);
   }
 
-  // 钓鱼页高频增量刷新：只改动「真的会变」的内容（钓场人数 / 实况玩家 / 渔获日志 / 状态条），
-  // 地图节点、水面场景、日志旧行都原地保留 —— 上鱼不再整页重建，画面不闪、动画也不用从头播。
+  // 钓鱼页高频增量刷新：只改动「真的会变」的内容（同钓点玩家 / 渔获日志 / 状态条），
+  // 地图节点、日志旧行都原地保留 —— 上鱼不再整页重建，画面不闪、动画也不用从头播。
   function patchFishingLive(st) {
     const main = $('main');
     if (!main) return;
-    // ① 钓场状态卡的人数
-    D.GROUNDS.forEach(function (g) {
-      const card = main.querySelector('.px-grounds .g-card[data-g="' + g.id + '"]');
-      const span = card && card.querySelector('.pg-info span');
-      if (!span) return;
-      const text = groundCardText(g, (st.groundCounts && st.groundCounts[g.id]) || 0);
-      if (span.textContent !== text) span.textContent = text;
-    });
-    // ② 左栏状态条：钓速 / 上鱼率会随后台配置（castcfg）变化
+    // ① 左栏状态条：钓速 / 上鱼率会随后台配置（castcfg）变化
     const stateBar = main.querySelector('.fish-state');
     if (stateBar) {
       const html = fishStateHtml(st);
       if (stateBar.innerHTML !== html) stateBar.innerHTML = html; // 内容没变就不碰 DOM，免得打断动画
     }
-    // ③ 右栏实况：同钓点玩家列表（perf-9 拉取制：S.peepsPage 由 net.js 每 5s 刷新）
+    // ③ 右栏：同钓点玩家列表（perf-9 拉取制：S.peepsPage 由 net.js 每 5s 刷新）
     const peeps = main.querySelector('.fish-live .peeps');
     if (peeps && st.player.groundId) {
       const pp = st.peepsPage || { page: 1, pages: 1, total: 0, list: [] };
@@ -1369,8 +1262,7 @@ window.UI = (function () {
         if (head) head.textContent = peepsHeadText(st);
       }
     }
-    // ④ 渔获日志：只把新渔获插到最前面，旧行原地不动（滚动位置自然保持，也不再整列重播入场动画）
-    const log = main.querySelector('.fish-live .catch-log');
+    // ④ 渔获日志：只把新渔获插到最前面，旧行原地不动（滚动位置自然保持，也不再整列重播入场动画）    const log = main.querySelector('.fish-live .catch-log');
     if (log) {
       const keys = st.log.slice(0, 25).map(logKey);
       const rendered = Array.prototype.map.call(log.querySelectorAll('.log-line'), function (r) { return r.getAttribute('data-k'); });
@@ -1395,13 +1287,6 @@ window.UI = (function () {
         log.appendChild(el('div', 'hint', '还没有渔获，去抛竿吧。'));
       }
     }
-    // ⑤ 实况场景游鱼：钓点或掉落池变了（换钓点 / 后台改配置）→ 按新池子重掷整批；
-    // 平时只由定时器换单条，所以这里不能无条件重掷，否则每次上鱼鱼都会跳一下。
-    const scene = main.querySelector('.fish-live .px-scene');
-    if (scene && scene.getAttribute('data-pool') !== scenePoolOf(st).sig) fillSceneFish(scene, st, true);
-    // 换钓点后场景配色跟随渔场（结构没变时整页不重绘，这里原地更新）
-    if (scene && window.PxScene) window.PxScene.update(scene, st.player.groundId || st.selected.groundId);
-    if (scene) scene.setAttribute('data-ground', st.player.groundId || st.selected.groundId || 'stillwater');
   }
 
   function peepCard(b) {
@@ -6839,7 +6724,7 @@ window.UI = (function () {
   // 贴图为官方 angler 风格生成后像素化（assets/ui/char/），外观 = 帽子×服装×肤色 48 组合预渲染，
   // 选哪套就换哪张图，无需运行时叠加。同伴与船先开放基础款，其余占位（后续接商城/掉落）。
   const CHAR2_KEY = 'fishing_char_v2';
-  const CHAR2_DEF = { hat: 'orange', outfit: 'green', skin: 'light', dog: 'golden', boat: 'wood' };
+  const CHAR2_DEF = { hat: 'orange', outfit: 'green', skin: 'light', dog: 'golden', boat: 'wood', bg: 'stillwater' };
   const CHAR2_HATS = [['orange', '橙线帽'], ['teal', '青线帽'], ['red', '红线帽'], ['cream', '米线帽']];
   const CHAR2_OUTFITS = [['green', '苔绿工装'], ['yellow', '雨黄工装'], ['red', '砖红工装'], ['blue', '海蓝工装']];
   const CHAR2_SKINS = [['light', '浅麦'], ['tan', '小麦'], ['dark', '深麦']];
@@ -6864,6 +6749,11 @@ window.UI = (function () {
     } catch (e) { /* 忽略 */ }
     return Object.assign({}, CHAR2_DEF);
   }
+  // 展示台可选场景背景（v0.19.0：原钓鱼页「渔场实况」画布挪到角色页，纯装饰不做钓点逻辑）
+  const CHAR2_BGS = [
+    ['stillwater', '静水湖'], ['rapids', '溪谷清晨'], ['sunset', '落日海湾'],
+    ['frostmoon', '霜月冰湖'], ['ocean', '远洋深夜'],
+  ];
   function char2Save(patch) {
     const s = Object.assign(char2(), patch);
     try { localStorage.setItem(CHAR2_KEY, JSON.stringify(s)); } catch (e) { /* 忽略 */ }
@@ -6873,23 +6763,46 @@ window.UI = (function () {
 
   function renderCharacter() {
     const main = $('main');
+    const st0 = char2();
+    // 结构签名：页签 / 同伴 / 船 / 背景都没变就不重建 —— 广播触发的重绘不会重启场景画布
+    const sig = 'char|' + charTab + '|' + st0.dog + '|' + st0.boat + '|' + (st0.bg || 'stillwater');
+    const prevWrap = main.querySelector('.char-view');
+    if (prevWrap && prevWrap.getAttribute('data-sig') === sig) return;
     main.innerHTML = '';
-    const st = char2();
+    const st = st0;
     const wrap = el('div', 'panel char-view');
     wrap.innerHTML = pageHead('🧍', '角色', '同伴与船型只改外观，不影响钓竿加成与背包') +
       sectionTabsHtml('character', charTab, [['companion', '🐶 同伴'], ['boat', '⛵ 船型']]) +
       pageHelp(charTab === 'boat'
         ? '点船型卡片即换上；锁定的船型后续在商城上架。'
-        : '点同伴卡片即换上（随钓手出现在渔场实况里）。');
+        : '点同伴卡片即换上（随钓手出现在世界地图上）；场景背景只改展示台画面。');
+    wrap.setAttribute('data-sig', sig);
     bindSectionTabs(wrap, 'character');
-    // 展示台：静水湖黄昏背景 + 木码头 + 船 + 同伴狗（人物外观模块暂缓，贴图保留在 assets/ui/char/）
+    // 展示台：场景背景（原渔场实况画布）+ 木码头 + 船 + 同伴狗（人物外观模块暂缓，贴图保留在 assets/ui/char/）
+    // cs-bg 静态图兜底：无 Canvas 环境（jsdom 测试 / 老浏览器）画布挂不上时仍有画面
     const stage = el('div', 'char-stage');
     stage.innerHTML =
       '<img class="cs-bg" src="assets/scene/stillwater.png" alt="" draggable="false">' +
+      '<div class="cs-scene"></div>' +
       '<img class="cs-dock" src="assets/ui/char/dock.png" alt="" draggable="false">' +
       '<img class="cs-boat" src="assets/ui/char/boat_' + st.boat + '.png" alt="" draggable="false">' +
       '<img class="cs-dog" src="assets/ui/char/dog_' + st.dog + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">';
+    if (window.PxScene) window.PxScene.mount(stage.querySelector('.cs-scene'), st.bg || 'stillwater');
     wrap.appendChild(stage);
+    // 场景背景选择：纯装饰（不做钓点/钓鱼逻辑），本地偏好保存
+    const bgRow = el('div', 'char-bgs');
+    bgRow.appendChild(el('span', 'cb-title', '🖼 场景背景'));
+    CHAR2_BGS.forEach(function (b) {
+      const chip = el('button', 'cb-chip' + ((st.bg || 'stillwater') === b[0] ? ' on' : ''), b[1]);
+      chip.addEventListener('click', function () {
+        if (!featureGuard('character')) return;
+        char2Save({ bg: b[0] });
+        renderView();
+      });
+      markFeature(chip, 'character');
+      bgRow.appendChild(chip);
+    });
+    wrap.appendChild(bgRow);
     // 展示台是两张卡片的共用预览，下面的卡片列表按页签只画一张，避免来回滚动
     if (charTab === 'boat') {
       wrap.appendChild(el('h3', null, '⛵ 船型'));
@@ -8896,6 +8809,148 @@ window.UI = (function () {
     });
   }
 
+  // ---- 远洋视图（v0.19.0：船系统 + 未知海图随机海域）----
+  let seaInfo = null, seaLoading = false, seaInfoAt = 0;
+  // 30 秒节流：进页/重绘时按需拉取，动作回包直接用服务器下发的最新状态
+  function ensureSea(force) {
+    if (seaLoading) return;
+    if (!force && seaInfo && Date.now() - seaInfoAt < 8000) return;
+    if (!window.Net || !window.Net.seaGet) return;
+    seaLoading = true;
+    window.Net.seaGet().then(function (r) {
+      seaLoading = false;
+      if (r && r.ok && r.data) {
+        seaInfo = r.data; seaInfoAt = Date.now();
+        if (r.data.cfg && window.D && D.applySeaCfg) D.applySeaCfg(r.data.cfg); // 后台改完随轮询生效
+        syncSeaGrounds(); renderView();
+      }
+    });
+  }
+  function zoneMoodName(id) { const m = D.SEA.moods.find(function (x) { return x.id === id; }); return m ? m.name : '未知海域'; }
+  function seaCountdown(expire) {
+    const m = Math.max(0, Math.floor((expire - Date.now()) / 60000));
+    return m >= 60 ? Math.floor(m / 60) + ' 小时 ' + (m % 60) + ' 分' : m + ' 分钟';
+  }
+  // 把临时海域注入 D.GROUNDS：地图节点 / 钓场状态卡 / 同钓点玩家列表 / presence 全部复用现有逻辑。
+  // 每次整页重绘前重灌一次（fetchGrounds 等路径重建目录后也能自愈）。
+  function syncSeaGrounds() {
+    for (let i = D.GROUNDS.length - 1; i >= 0; i--) if (D.GROUNDS[i].zone) D.GROUNDS.splice(i, 1);
+    if (!seaInfo || !seaInfo.zones) return;
+    seaInfo.zones.forEach(function (z, zi) {
+      const base = zi === 0 ? [45, 58] : [72, 30];
+      D.GROUNDS.push({
+        id: z.groundId, name: z.name, type: 'ocean', zone: true,
+        desc: zoneMoodName(z.mood) + ' · ' + seaCountdown(z.expire) + ' 后沉没',
+        spots: (z.spots || []).map(function (s, si) {
+          return { id: s.id, name: s.name, pos: [base[0] + (si === 0 ? -9 : 9), base[1] + (si === 0 ? -4 : 6)], buffs: s.buffs, pool: s.pool || [] };
+        }),
+      });
+    });
+  }
+  function renderSea() {
+    // 不能传 force：强刷会让「渲染→拉取→再渲染」成环，页面每秒重绘一次（按钮永远点不中）。
+    // 8 秒节流在 ensureSea 内部（过短会在广播重绘时频繁打接口，过长则升级材料攒够后按钮迟迟不亮）；动作回包各自直接更新 seaInfo，无需依赖这里的刷新。
+    ensureSea();
+    const main = $('main'); main.innerHTML = '';
+    const wrap = el('div', 'panel wide');
+    wrap.innerHTML = pageHead('⛵', '远洋', '乘船出海 · 深海钓点按船级解锁 · 未知海图发现随机海域');
+    main.appendChild(wrap);
+    const d = seaInfo;
+    if (!d) { wrap.appendChild(el('div', 'hint', '正在读取远洋状态……')); return; }
+    // ① 船
+    const ship = d.ship;
+    const pShip = el('div', 'panel');
+    pShip.innerHTML = '<h3>🚤 我的船 · ' + esc(ship.name) + '（' + ship.lv + '/5 级）</h3>';
+    if (ship.max) {
+      pShip.innerHTML += '<div class="hint">已满级：全部远洋钓点与深海海域开放。</div>';
+    } else {
+      pShip.innerHTML += '<div class="hint">升级条件：出海经验 <b>' + ship.xp + '/' + ship.xpNeed + '</b>' +
+        (ship.xpOk ? ' ✅' : '（远洋每竿渔获 +1）') + ' · 金币 <b>' + ship.upCoins + '</b>（持有 ' + d.coins + '）' +
+        ' · 深海鳞片 <b>×' + ship.upScale + '</b>（持有 ' + d.deepscale + '）</div>' +
+        '<div class="sa-row"><button class="btn primary" id="sea-ship-up"' + (ship.xpOk ? '' : ' disabled') + '>⬆ 升级到 ' + esc(D.SHIP.levels[ship.lv].name) + '</button></div>';
+    }
+    wrap.appendChild(pShip);
+    // ② 海图
+    const pChart = el('div', 'panel');
+    pChart.innerHTML = '<h3>🗺 海图工台</h3>' +
+      '<div class="hint">海图碎片 <b>' + d.chartfrag + '</b>/' + d.chartCost + '（远洋钓点掉落 + 漂流宝箱）· 未知海图 <b>' + d.charts + '</b> 张</div>' +
+      '<div class="sa-row"><button class="btn primary" id="sea-chart-craft"' + (d.chartfrag >= d.chartCost ? '' : ' disabled') + '>🧩 合成未知海图（' + d.chartCost + ' 碎片 → 1 张）</button>' +
+      '<button class="btn primary" id="sea-voyage"' + (d.charts >= 1 ? '' : ' disabled') + '>⛵ 出航（消耗 1 张海图）</button></div>' +
+      '<div class="hint">出航会发现一片只属于你的<b>临时海域</b>（2 小时后沉没）：富矿海域双钓↑、凶险海域技巧↓但稀有度↑，钓点池完全随机。</div>';
+    wrap.appendChild(pChart);
+    // ③ 临时海域
+    const pZone = el('div', 'panel');
+    pZone.innerHTML = '<h3>🌊 我的临时海域（' + (d.zones || []).length + '/' + D.SEA.zoneMax + '）</h3>';
+    if (!(d.zones || []).length) {
+      pZone.innerHTML += '<div class="hint">还没有临时海域。合成海图后点「出航」试试。</div>';
+    }
+    (d.zones || []).forEach(function (z) {
+      const row = el('div', 'sa-row');
+      row.style.margin = '6px 0';
+      row.innerHTML = '<b>' + esc(z.name) + '</b>（' + zoneMoodName(z.mood) + ' · 剩 ' + seaCountdown(z.expire) + '） ' +
+        (z.spots || []).map(function (s) { return esc(s.name); }).join(' / ');
+      (z.spots || []).forEach(function (s) {
+        const b = el('button', 'btn mini primary', '去「' + s.name + '」下竿');
+        b.style.marginLeft = '8px';
+        b.onclick = function () { goSeaFishing(z.groundId, s.id, z.name + '·' + s.name); };
+        row.appendChild(b);
+      });
+      pZone.appendChild(row);
+    });
+    wrap.appendChild(pZone);
+    // ④ 说明
+    const pHelp = el('div', 'panel');
+    pHelp.innerHTML = '<h3>ℹ 玩法说明</h3>' +
+      '<div class="hint">· 远洋钓点在「🎣 钓鱼」地图的「⛵ 出海」页签：深海鱼礁需 3 级船、海沟裂谷需 4 级船。<br>' +
+      '· 远洋随机事件：⛈ 风暴（渔获脱钩）/ 📦 漂流宝箱（海图碎片）/ 🐟 鱼群（同款 +1）。<br>' +
+      '· 出海经验只升不降；经验+金币+深海鳞片三条件都满足后升级按钮才亮。<br>' +
+      '· 临时海域 2 小时沉没，同时最多 ' + D.SEA.zoneMax + ' 片；只有自己能下竿，图鉴与纪录照常收录。</div>';
+    wrap.appendChild(pHelp);
+    const up = wrap.querySelector('#sea-ship-up');
+    if (up) up.onclick = function () {
+      up.disabled = true;
+      window.Net.seaShipUp().then(function (r) {
+        if (r && r.ok && r.data && r.data.sea) { seaInfo = r.data.sea; seaInfoAt = Date.now(); syncSeaGrounds(); toast('⛵ 船升级成功！'); }
+        else toast((r && r.data && r.data.error) || '升级失败');
+        renderView();
+      });
+    };
+    const cc = wrap.querySelector('#sea-chart-craft');
+    if (cc) cc.onclick = function () {
+      cc.disabled = true;
+      window.Net.seaChart().then(function (r) {
+        if (r && r.ok && r.data && r.data.sea) { seaInfo = r.data.sea; seaInfoAt = Date.now(); toast('🧩 已合成 1 张未知海图'); }
+        else toast((r && r.data && r.data.error) || '合成失败');
+        renderView();
+      });
+    };
+    const vg = wrap.querySelector('#sea-voyage');
+    if (vg) vg.onclick = function () {
+      vg.disabled = true;
+      window.Net.seaVoyage().then(function (r) {
+        if (r && r.ok && r.data && r.data.sea) {
+          seaInfo = r.data.sea; seaInfoAt = Date.now(); syncSeaGrounds();
+          toast('⛵ 出航成功：发现「' + (r.data.zone ? r.data.zone.name : '') + '」！');
+        } else toast((r && r.data && r.data.error) || '出航失败');
+        renderView();
+      });
+    };
+  }
+  // 从「远洋」页直达临时海域下竿：复用地图 chooseSpot 的乐观更新 + 回包对账流程
+  function goSeaFishing(gid, sid, label) {
+    navigateView('fishing');
+    mapTab = 'voyage';
+    const wasFishing = S().fishing.active;
+    S().selected = { groundId: gid, spotId: sid };
+    const pr = E().startFishing(gid, sid);
+    renderTopbar(); renderNav(); renderFishing();
+    pr.then(function (r) {
+      if (!r.ok) toast(r.msg);
+      else toast((wasFishing ? '已切换钓点 · ' : '已开始自动钓鱼 · ') + label, 'routine');
+      renderTopbar(); renderNav(); renderFishing();
+    });
+  }
+
   function renderView() {
     const pageId = pageIdOf();
     $('main').classList.toggle('smelt-page', currentView === 'workshop' && wsTab === 'smelt');
@@ -8906,6 +8961,7 @@ window.UI = (function () {
       main.appendChild(panel); return;
     }
     hideItemTip();   // 整页重绘会把行换掉（mouseleave 不一定触发），浮标先收起来
+    syncSeaGrounds(); // v0.19.0：临时海域重灌进 D.GROUNDS（其他路径重建目录后也能自愈）
     const saved = captureScroll();
     // perf-9：离开社交页时取消玩家列表视口登记（服务器随即停止向本连接推送该页）
     if (currentView !== 'ground' && renderGround._lastViewSig) {
@@ -8914,6 +8970,7 @@ window.UI = (function () {
     }
     // 合并页按当前页签分发（钓鱼 / 钓竿、图鉴 / 记录）；旧 view id 保留分支以便外部平滑迁移
     if (currentView === 'fishing') { if (fishingTab === 'rod') renderBD(); else renderFishing(); }
+    else if (currentView === 'sea') renderSea();
     else if (currentView === 'character') renderCharacter();
     else if (currentView === 'bd') renderBD();
     else if (currentView === 'ground') renderGround();
@@ -9270,13 +9327,7 @@ window.UI = (function () {
       if (rem > 0 || fbLast > 0) renderView();
       fbLast = rem;
     }, 1000);
-    // 渔场实况游鱼：每秒看有没有鱼游到画面边上（露不到 1/4 且正在淡出），
-    // 有就换成同钓点掉落池里的另一条 —— 平均几秒换一条，画面保持实时变化且不会半路跳鱼
-    setInterval(function () {
-      if (currentView !== 'fishing') return;
-      const scene = document.querySelector('.fish-live .px-scene');
-      if (scene) rollSceneFish(scene);
-    }, 1000);
+    // 渔场实况场景已挪到「🧍 角色」页当可选背景（v0.19.0），钓鱼页不再有游鱼定时器
     let token = 'cookie';
     try { localStorage.removeItem('fishing_token'); } catch (e) {}
     if (token) {

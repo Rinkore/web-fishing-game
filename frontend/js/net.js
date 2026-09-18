@@ -260,6 +260,11 @@ window.Net = (function () {
   const fishingStart = (groundId, spotId) => authed('/api/fishing/start', { groundId: groundId, spotId: spotId });
   const fishingStop = () => authed('/api/fishing/stop', {});
   const bdSet = (part, compId) => authed('/api/bd/set', { part: part, compId: compId });
+  // 远洋（出海）：船 / 海图 / 临时海域（v0.19.0）
+  const seaGet = () => apiFetch('GET', '/api/sea?token=' + encodeURIComponent(me ? me.token : ''));
+  const seaShipUp = () => authed('/api/sea/ship/up', {});
+  const seaChart = () => authed('/api/sea/chart', {});
+  const seaVoyage = () => authed('/api/sea/voyage', {});
   // 自动售出规则（玩家自助）：单件 { id, ... } / 批量 { bulk:'fish'|'material'|'all', ... }；
   // 只传 { id, on } = 就地开关（不动阈值）；remove:true 删除规则
   const autoSellGet = () => apiFetch('GET', '/api/autosell?token=' + encodeURIComponent(me ? me.token : ''));
@@ -846,6 +851,7 @@ window.Net = (function () {
     guardVersion: guardVersion, startVersionWatch: startVersionWatch,
     probeServer: probeServer, connState: connState, reloadForVersion: reloadForVersion,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
+    seaGet: seaGet, seaShipUp: seaShipUp, seaChart: seaChart, seaVoyage: seaVoyage,
     autoSellGet: autoSellGet, autoSellSet: autoSellSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
