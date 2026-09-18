@@ -106,7 +106,7 @@ async function main() {
 
     const home = await openPage('/wiki/');
     const homeText = await evaluate(home, 'document.body.innerText');
-    check('首页显示规则可用与版本', homeText.includes('规则可用') && homeText.includes('v0.17.0'), homeText.slice(0, 200));
+    check('首页显示规则可用与版本', homeText.includes('规则可用') && homeText.includes('v0.18.0'), homeText.slice(0, 200));
     check('首页无脚本异常', errors(home).length === 0, JSON.stringify(errors(home).slice(0, 2)));
     home.close();
 
