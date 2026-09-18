@@ -612,31 +612,35 @@
   function rollComponentQuality() {
     return weightedKey(componentCfg.qualityWeights, 'common');
   }
-  // 数值 roll 模型：取出 [0,1] 上的随机位置，供词缀数值与鱼类体型共用
-  function rollRatio(model) {
+  // 数值 roll 模型：取出 [0,1] 上的随机位置，供词缀数值与鱼类体型共用。
+  // rng 可注入：正式服务端默认仍用 Math.random；Wiki 批量模拟用带种子随机数保证可复现。
+  function rollRatioWithRng(model, rng) {
+    const rand = typeof rng === 'function' ? rng : Math.random;
     if (model === 'normal') {
       // 正态：均值居中、标准差取 1/6，截断在 [0,1]
-      const u1 = Math.random() || 1e-9, u2 = Math.random();
+      const u1 = rand() || 1e-9, u2 = rand();
       const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
       return Math.max(0, Math.min(1, 0.5 + z / 6));
     }
-    if (model === 'skew') return Math.pow(Math.random(), 2); // 偏态：偏向低值（平方分布）
-    return Math.random();
+    if (model === 'skew') return Math.pow(rand(), 2); // 偏态：偏向低值（平方分布）
+    return rand();
   }
+  function rollRatio(model) { return rollRatioWithRng(model, Math.random); }
   // 数值 roll：在 [min,max] 内按模型取值（整数）
   // 0 值词条无意义（+0% 加成）：roll 到 0 会被拒绝并重 roll 一次；
   // 若两次都为 0（区间跨越 0 时仍可能），落到区间内最近的 ±1，保证不产生 0 值词条。
-  function rollAffixValue(min, max, model) {
+  function rollAffixValueWithRng(min, max, model, rng) {
     if (max <= min) return min;
     const span = max - min;
     function draw() {
-      return min + Math.round(rollRatio(model) * span);
+      return min + Math.round(rollRatioWithRng(model, rng) * span);
     }
     let v = draw();
     if (v === 0) v = draw();
     if (v === 0) v = max > 0 ? 1 : (min < 0 ? -1 : 0);
     return v;
   }
+  function rollAffixValue(min, max, model) { return rollAffixValueWithRng(min, max, model, Math.random); }
   // 某底材某词缀的实际数值区间（管理后台可覆盖）
   function affixRangeOf(baseId, affix) {
     const ov = componentCfg.affixRanges && componentCfg.affixRanges[baseId];
@@ -689,11 +693,14 @@
     const db = Math.min(Math.abs(b - min), Math.abs(b - max));
     return db < da ? b : a; // 并列时取第一次（保持可复现的确定性）
   }
-  function rollAffixValueBoundary(min, max, model) {
+  function rollAffixValueBoundaryWithRng(min, max, model, rng) {
     if (max <= min) return min;
-    const a = rollAffixValue(min, max, model);
-    const b = rollAffixValue(min, max, model);
+    const a = rollAffixValueWithRng(min, max, model, rng);
+    const b = rollAffixValueWithRng(min, max, model, rng);
     return nearerBoundaryOf(a, b, min, max);
+  }
+  function rollAffixValueBoundary(min, max, model) {
+    return rollAffixValueBoundaryWithRng(min, max, model, Math.random);
   }
 
   // 宝匣突破件（「海王遗匣」专属）：品质锁定神话，词缀可越过底材池边界。
@@ -824,6 +831,128 @@
       if (!isFinite(f(probe))) throw new Error('公式结果不是有限数');
       return { ok: true, fn: f };
     } catch (e) { return { error: e.message || '公式无效' }; }
+  }
+
+  // ---- 抛竿 / 上鱼 / 双钓共享计算（服务端正式路径与 Wiki 模拟器共用） ----
+  // rules = { cast: {baseMs,minMs,speedBonus,speedCap}, biteFormula, doubleBase }
+  const SIM_VAR_NAMES = ['speed', 'skill', 'big', 'rare', 'material', 'size', 'double', 'interval'];
+  function simulationRulesOf(rules) {
+    const r = rules || {};
+    const c = r.cast || {};
+    const num = function (v, def, min, max) {
+      const n = Number(v);
+      return (isFinite(n) && n >= min && n <= max) ? n : def;
+    };
+    return {
+      cast: {
+        baseMs: num(c.baseMs, 3000, 200, 3600000),
+        minMs: num(c.minMs, 800, 100, 3600000),
+        speedBonus: num(c.speedBonus, 0, -100, 500),
+        speedCap: num(c.speedCap, 80, 0, 100),
+      },
+      biteFormula: r.biteFormula == null ? 'clamp(90 + skill, 0, 100)' : String(r.biteFormula),
+      doubleBase: num(r.doubleBase, 0, 0, 1),
+    };
+  }
+  function rodEffectsOf(bd) {
+    const eff = { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 };
+    ROD_PARTS.forEach(function (part) {
+      const comp = componentOf(bd && bd[part.key] && bd[part.key].compId);
+      if (!comp) return;
+      comp.affixes.forEach(function (a) { if (eff[a.type] != null) eff[a.type] += a.value; });
+    });
+    return eff;
+  }
+  function spotSpeedOf(spot) {
+    let v = 0;
+    ((spot && spot.buffs) || []).forEach(function (b) { if (b && b.type === 'speed') v += Number(b.value) || 0; });
+    return v;
+  }
+  function spotBiteRateOf(spot) {
+    const v = spot && spot.biteRate;
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return isFinite(n) ? Math.max(0, Math.min(100, n)) : null;
+  }
+  function effectiveSpeedOf(eff, cast) {
+    const raw = (Number(eff && eff.speed) || 0) + (Number(cast && cast.speedBonus) || 0);
+    const cap = Number(cast && cast.speedCap) || 80;
+    return Math.max(0, Math.min(cap, raw));
+  }
+  function castIntervalOf(bd, spot, rules) {
+    const r = simulationRulesOf(rules);
+    const fixed = spot && spot.intervalMs;
+    if (fixed != null && fixed !== '') {
+      const n = Number(fixed);
+      if (isFinite(n) && n >= 100) return Math.round(n);
+    }
+    const bdEff = rodEffectsOf(bd);
+    const rodMs = r.cast.baseMs * (1 - effectiveSpeedOf({ speed: bdEff.speed }, r.cast) / 100);
+    const spotPct = Math.max(-100, Math.min(95, spotSpeedOf(spot)));
+    const ms = rodMs * (1 - spotPct / 100);
+    return Math.max(r.cast.minMs, Math.round(ms));
+  }
+  function mergedEffectsOf(bd, spot) {
+    const eff = rodEffectsOf(bd);
+    ((spot && spot.buffs) || []).forEach(function (b) {
+      if (b && eff[b.type] != null) eff[b.type] += Number(b.value) || 0;
+    });
+    return eff;
+  }
+  function biteProbabilityOf(eff, interval, spot, formula) {
+    const override = spotBiteRateOf(spot);
+    if (override != null) return override;
+    const src = String(formula == null ? '' : formula).trim();
+    if (!src) return 100;
+    const c = compileExpr(src, SIM_VAR_NAMES);
+    if (!c.ok) return 100; // 与服务端历史保底行为一致；正常保存路径已校验。
+    let p;
+    try {
+      p = c.fn({ speed: eff.speed || 0, skill: eff.skill || 0, big: 0, rare: eff.rare || 0,
+        material: eff.material || 0, size: eff.size || 0, double: eff.double || 0, interval: interval || 0 });
+    } catch (e) { return 100; }
+    if (!isFinite(p)) p = p > 0 ? 100 : 0;
+    return Math.min(100, Math.max(0, p));
+  }
+  function castInfoOf(bd, spot, rules) {
+    const r = simulationRulesOf(rules);
+    const bdEff = rodEffectsOf(bd);
+    const eff = mergedEffectsOf(bd, spot);
+    const spotPct = spotSpeedOf(spot);
+    const rodEff = effectiveSpeedOf({ speed: bdEff.speed }, r.cast);
+    const interval = castIntervalOf(bd, spot, r);
+    const override = spotBiteRateOf(spot);
+    const biteRate = override != null ? override : Math.round(biteProbabilityOf(eff, interval, spot, r.biteFormula) * 10) / 10;
+    return {
+      baseMs: r.cast.baseMs, minMs: r.cast.minMs, globalBonus: r.cast.speedBonus, cap: r.cast.speedCap,
+      affixSpeed: bdEff.speed, buffSpeed: spotPct, rawSpeed: Math.round(rodEff * 10) / 10,
+      effSpeed: Math.round(rodEff * 10) / 10,
+      spotMult: Math.round((1 - Math.max(-100, Math.min(95, spotPct)) / 100) * 1000) / 1000,
+      intervalMs: spot && spot.intervalMs != null && spot.intervalMs !== '' ? Math.round(Number(spot.intervalMs)) : null,
+      interval: interval, biteRate: biteRate, biteOverride: override != null,
+    };
+  }
+  function doubleProbOf(A, doubleBase) {
+    const a = Math.max(0, Number(A) || 0);
+    let p = a / (a + 100);
+    const b = Math.max(0, Math.min(1, Number(doubleBase) || 0));
+    if (b > 0) p = 1 - (1 - b) * (1 - p);
+    return Math.max(0, Math.min(1, p));
+  }
+  function simulateRodPlan(bd, spot, rules) {
+    const r = simulationRulesOf(rules);
+    const info = castInfoOf(bd, spot, r);
+    const eff = mergedEffectsOf(bd, spot);
+    const interval = info.interval;
+    const bite = info.biteRate;
+    const A = Math.max(0, Number(eff.double) || 0);
+    const pDouble = A / (A + 100);
+    const P = 1 - (1 - r.doubleBase) * (1 - pDouble);
+    const perCast = 1 + P + P * P;
+    const castsPerHour = interval > 0 ? 3600000 / interval : 0;
+    const fishPerHour = castsPerHour * (bite / 100) * perCast;
+    return { info: info, eff: eff, interval: interval, bite: bite, doubleP: P * 100,
+      perCast: perCast, castsPerHour: castsPerHour, fishPerHour: fishPerHour };
   }
 
   // ---- 工坊 · 熔炼 ----
@@ -1197,6 +1326,168 @@
     try { v = Number(fn({ breakthrough: bt })); } catch (e) { v = 0; }
     if (!isFinite(v)) v = 0;
     return Math.max(0, Math.min(100, Math.round(v * 10) / 10));
+  }
+
+
+  // ---- 熔炼方案与结果模拟（服务端正式路径与 Wiki 模拟器共用） ----
+  // d = { mainId, subId, mainAffix, subAffix, materials, relics }
+  // 这里只做纯规则校验与预览，不检查背包、金币或装备锁定；调用方负责资产校验与结算。
+  function smeltPlanOf(d) {
+    const cfg = getSmeltCfg();
+    const mainRaw = String((d && d.mainId) || '');
+    const subRaw = String((d && d.subId) || '');
+    const mainMeta = componentOf(mainRaw);
+    const subMeta = componentOf(subRaw);
+    const partName = function (key) {
+      const p = ROD_PARTS.find(function (x) { return x.key === key; });
+      return p ? p.name : String(key || '?');
+    };
+    const materialName = function (id) {
+      const m = MATERIALS.find(function (x) { return x.id === id; });
+      return m ? m.name : id;
+    };
+    if (!mainMeta || !isInstance(mainRaw)) return { error: '主组件必须是已生成的组件实例' };
+    if (!subMeta || !isInstance(subRaw)) return { error: '副组件必须是已生成的组件实例' };
+    if (mainMeta.part !== subMeta.part) {
+      return { error: '主件与副件必须是同一部位的组件（当前：' + partName(mainMeta.part) + ' / ' + partName(subMeta.part) + '）' };
+    }
+    const mainAffix = mainMeta.affixes.find(function (a) { return a.type === d.mainAffix; });
+    const subAffix = subMeta.affixes.find(function (a) { return a.type === d.subAffix; });
+    if (!mainAffix) return { error: '请选择主组件上的一条词条' };
+    if (!subAffix) return { error: '请选择副组件上的一条词条' };
+    if (mainAffix.type === subAffix.type) return { error: '主副选中的词条类型不能相同（熔炼后两条词条会合成同一条）' };
+
+    const maxM = Math.max(0, Math.floor(Number(cfg.maxMaterials) || 0));
+    const list = Array.isArray(d.materials) ? d.materials : [];
+    const matList = [];
+    let pearl = !!(d && d.pearl);
+    let pearlQty = 0;
+    let total = 0;
+    const types = {};
+    for (const e of list) {
+      const id = String((e && e.id) || '');
+      const qty = e && e.qty;
+      if (matList.some(function (x) { return x.id === id; })) return { error: '投料物品重复' };
+      if (id === SMELT_PEARL) { pearl = true; pearlQty += qty; continue; }
+      if (!smeltMaterialAffix(id)) return { error: '「' + materialName(id) + '」不是熔炼材料' };
+      matList.push({ id: id, qty: qty });
+      types[smeltMaterialAffix(id)] = 1;
+      total += Math.max(0, Math.floor(Number(qty) || 0));
+    }
+    if (pearlQty > 1) return { error: '龙宫宝珠一次最多投入 1 个' };
+    if (total > maxM) return { error: '投料最多 ' + maxM + ' 份（当前 ' + total + ' 份）' };
+    if (Object.keys(types).length > cfg.maxTypes) return { error: '投料最多 ' + cfg.maxTypes + ' 种（当前 ' + Object.keys(types).length + ' 种）' };
+
+    const consume = matList.slice();
+    if (pearl) consume.push({ id: SMELT_PEARL, qty: 1 });
+    const relicId = 'relic';
+    const relicMax = Math.max(0, Math.min(99, Math.floor(Number(cfg.retainMaxRelic) || 0)));
+    const relicQty = d && d.relics === undefined ? 0 : d.relics;
+    if (!isFinite(Number(relicQty)) || Number(relicQty) < 0 || Math.floor(Number(relicQty)) !== Number(relicQty)) {
+      return { error: '残片数量需为不小于 0 的整数' };
+    }
+    if (relicQty > relicMax) return { error: '残片超过单次投入上限' };
+    const extraAffixes = smeltExtraAffixesOf(mainMeta.baseId, mainMeta.affixes);
+    if (relicQty > 0) {
+      if (!canRecast(mainMeta)) {
+        return { error: '只有海王遗匣产出的神话主件才能加入' + materialName(relicId) + '（当前：' + mainMeta.qualityName + '品质）' };
+      }
+      if (!extraAffixes.length) return { error: '该主件没有池外词缀，投入' + materialName(relicId) + '没有可保留的词条' };
+      consume.push({ id: relicId, qty: relicQty });
+    }
+
+    const load = smeltLoadOf(matList);
+    const afterTypes = [mainAffix.type, subAffix.type];
+    let extraType = null;
+    if (load.total > 0) {
+      extraType = load.dominant;
+      const addable = smeltAddableAffixes(mainMeta.baseId, afterTypes);
+      if (!extraType || addable.indexOf(extraType) < 0) {
+        const already = extraType ? afterTypes.indexOf(extraType) >= 0 : false;
+        return { error: '投料对应的词缀「' + (AFFIX_LABEL[extraType] || extraType || '?') + '」无法补进该主件（' + (already ? '熔炼结果里已经有这条词缀了' : '主件词缀池里已经没有可补的该类词缀') + '）' };
+      }
+      if (afterTypes.length + 1 > smeltAddAffixCap()) {
+        return { error: '补缀后词条数会超过上限（当前 ' + afterTypes.length + ' 条 +1 > 上限 ' + smeltAddAffixCap() + ' 条，可在后台「⚒ 工坊配置」调整）' };
+      }
+    }
+    const rates = smeltRatesOf(load, pearl);
+    const gold = smeltGoldOf(load, pearl);
+    const rrMain = smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'main', mainAffix.type, { part: mainMeta.part, src: mainAffix.src, srcExplicit: mainAffix.srcExplicit });
+    const rrSub = smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'sub', subAffix.type, { part: mainMeta.part, src: subAffix.src, srcExplicit: subAffix.srcExplicit });
+    const rrAdd = extraType ? smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'add', extraType, { part: mainMeta.part }) : null;
+    const breakthrough = breakthroughCountOf(mainMeta.affixes);
+    return {
+      ok: true, cfg: cfg, mainId: mainMeta.id, subId: subMeta.id,
+      mainMeta: mainMeta, subMeta: subMeta, mainAffix: mainAffix, subAffix: subAffix,
+      materials: matList, consume: consume, load: load, pearl: pearl,
+      extraType: extraType, rates: rates, gold: gold,
+      rollBoundary: !!(pearl && cfg.pearlRollTwice),
+      relicId: relicId, relics: relicQty, extraAffixes: extraAffixes,
+      protectAffix: relicQty > 0, breakthrough: breakthrough,
+      retainChance: smeltRetainChance(relicQty, breakthrough),
+      perRelic: retainChancePerRelic(breakthrough),
+      retainFormula: String(cfg.retainFormula || ''),
+      ranges: {
+        main: rrMain.range, sub: rrSub.range, add: rrAdd ? rrAdd.range : null,
+        mainSrc: rrMain.src, subSrc: rrSub.src, addSrc: rrAdd ? rrAdd.src : null,
+        mainExplicit: rrMain.explicit, subExplicit: rrSub.explicit, addExplicit: rrAdd ? rrAdd.explicit : false,
+      },
+    };
+  }
+
+  function smeltRollWithRng(range, useBoundary, rng) {
+    const model = (getComponentCfg() || {}).rollModel || 'linear';
+    return useBoundary
+      ? rollAffixValueBoundaryWithRng(range[0], range[1], model, rng)
+      : rollAffixValueWithRng(range[0], range[1], model, rng);
+  }
+
+  // 模拟一次熔炼。不修改任何资产；服务端正式接口与 Wiki 模拟器都调用本函数。
+  // rng 可注入，默认 Math.random；Wiki 批量模拟使用带种子的随机数保证可复现。
+  function simulateSmeltPlan(plan, rng) {
+    const rand = typeof rng === 'function' ? rng : Math.random;
+    const p = plan || {};
+    const success = rand() * 100 < p.rates.rate;
+    let extraOk = false, retainOk = false;
+    const retained = [];
+    let resultId = null, result = null, mainAfterId = null, mainAfter = null;
+    if (success) {
+      const rr = p.ranges || {};
+      const affixes = [];
+      affixes.push({ type: p.mainAffix.type, value: smeltRollWithRng(rr.main, p.rollBoundary, rand), src: rr.mainSrc, srcExplicit: rr.mainExplicit });
+      affixes.push({ type: p.subAffix.type, value: smeltRollWithRng(rr.sub, p.rollBoundary, rand), src: rr.subSrc, srcExplicit: rr.subExplicit });
+      if (p.extraType) {
+        extraOk = rand() * 100 < p.rates.extraRate;
+        if (extraOk) affixes.push({ type: p.extraType, value: smeltRollWithRng(rr.add, p.rollBoundary, rand), src: rr.addSrc, srcExplicit: rr.addExplicit });
+      }
+      if (p.relics > 0) {
+        retainOk = rand() * 100 < p.retainChance;
+        if (retainOk) {
+          const have = {};
+          affixes.forEach(function (a) { have[a.type] = 1; });
+          (p.extraAffixes || []).forEach(function (a) {
+            if (have[a.type]) return;
+            have[a.type] = 1;
+            affixes.push({ type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit });
+            retained.push({ type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit });
+          });
+        }
+      }
+      resultId = instanceId(p.mainMeta.baseId, p.mainMeta.quality, affixes);
+      result = componentOf(resultId);
+    } else {
+      const left = (p.mainMeta && p.mainMeta.affixes || [])
+        .filter(function (a) { return p.protectAffix || a.type !== p.mainAffix.type; })
+        .map(function (a) { return { type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit }; });
+      mainAfterId = instanceId(p.mainMeta.baseId, p.mainMeta.quality, left);
+      mainAfter = componentOf(mainAfterId);
+    }
+    return {
+      success: success, extraOk: extraOk, retainOk: retainOk, retained: retained,
+      protectAffix: !success && !!p.protectAffix,
+      removedAffix: (success || p.protectAffix) ? null : p.mainAffix.type,
+      resultId: resultId, result: result, mainAfterId: mainAfterId, mainAfter: mainAfter,
+    };
   }
 
   // ---- 重铸（海王遗匣产出的神话件）----
@@ -1813,12 +2104,16 @@
     CHESTS: CHESTS, chestOf: chestOf, isChest: isChest, rollChestQuality: rollChestQuality,
     genBreakthrough: genBreakthrough, RELIC_PRICE: RELIC_PRICE,
     CHEST_BASE_COSTS: CHEST_BASE_COSTS, applyChestCosts: applyChestCosts, chestCostOverrides: chestCostOverrides,
-    rollAffixValueBoundary: rollAffixValueBoundary, nearerBoundaryOf: nearerBoundaryOf,
+    rollAffixValueBoundary: rollAffixValueBoundary, rollAffixValueBoundaryWithRng: rollAffixValueBoundaryWithRng, rollAffixValueWithRng: rollAffixValueWithRng,
+    rodEffectsOf: rodEffectsOf, mergedEffectsOf: mergedEffectsOf, castInfoOf: castInfoOf, castIntervalOf: castIntervalOf,
+    effectiveSpeedOf: effectiveSpeedOf, spotSpeedOf: spotSpeedOf, spotBiteRateOf: spotBiteRateOf,
+    biteProbabilityOf: biteProbabilityOf, doubleProbOf: doubleProbOf, simulateRodPlan: simulateRodPlan,
     SMELT_MATERIAL_AFFIX: SMELT_MATERIAL_AFFIX, SMELT_PEARL: SMELT_PEARL,
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     SNAPSHOT_DEFAULTS: SNAPSHOT_DEFAULTS, defaultSnapshotCfg: defaultSnapshotCfg, setSnapshotCfg: setSnapshotCfg, getSnapshotCfg: getSnapshotCfg,
     smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds,
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltSuccessProbs: smeltSuccessProbs, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
+    smeltPlanOf: smeltPlanOf, simulateSmeltPlan: simulateSmeltPlan, smeltRollWithRng: smeltRollWithRng,
     smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,
     affixSrcRangeOf: affixSrcRangeOf, catalystRangeOf: catalystRangeOf,
     smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,

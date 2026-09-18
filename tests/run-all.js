@@ -28,6 +28,8 @@ const NODE = process.execPath;
 // admin-ui 是从 ui-layout 拆出的后台页面场景：拆开后两者并行跑，墙钟不再被单个套件卡住。
 const ALL_SUITES = ['e2e', 'auth-ui', 'fishing-interaction', 'bugfix', 'chest', 'v011', 'v013', 'v0134', 'v0135', 'v0136', 'v0138', 'v0138-ui', 'v0139', 'v0139-ui', 'v0140', 'v0140-ui', 'v0141', 'v0141-ui', 'v0161-ui', 'v0162', 'v0162-ui', 'scene-performance', 'inventory-pagination', 'mobile-layout', 'settings', 'mobile-trade-regression', 'desktop-zoom', 'features', 'ui-layout', 'admin', 'admin-ui'];
 ALL_SUITES.push('smelt-workbench');
+ALL_SUITES.push('wiki/wiki');
+ALL_SUITES.push('wiki/browser');
 const ONLY = (process.env.FISHING_TEST_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
 const SUITES = ONLY.length ? ALL_SUITES.filter(s => ONLY.indexOf(s) >= 0) : ALL_SUITES;
 
