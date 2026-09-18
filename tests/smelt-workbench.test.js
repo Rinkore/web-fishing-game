@@ -168,6 +168,6 @@ async function run() {
   await page.waitForFunction(() => document.querySelector('.chest-result-modal .modal-title')?.textContent.includes('熔炼成功'));
   check('Successful response opens result and resets draft', await page.locator('.cr-ok').isVisible() && await page.locator('.ws-pick.chosen').count() === 0);
   check('No page errors', errors.length === 0);
-  console.log('\n' + count + ' checks passed.');
+  console.log('通过 ' + count + ' 项，失败 0 项');
 }
 run().catch(e => { console.error(e); process.exitCode = 1; }).finally(async () => { if (browser) await browser.close(); srv.close(); });
