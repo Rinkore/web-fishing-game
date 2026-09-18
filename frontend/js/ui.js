@@ -271,7 +271,8 @@ window.UI = (function () {
 
   // ---- Toast ----
   let toastTimer = null;
-  function toast(msg) {
+  function toast(msg, kind) {
+    if (kind === 'routine' && window.PlayerSettings && window.PlayerSettings.get().tips === 'brief') return;
     const t = $('toast');
     if (!t) return;
     t.textContent = msg;
@@ -304,7 +305,7 @@ window.UI = (function () {
   // 轨道顺序（自上而下）：纪录 → 公告
   function syncBannerOffset() {
     const rec = laneEl('record'), not = laneEl('notice');
-    const recOn = !!(rec && rec.classList.contains('show'));
+    const recOn = !!(rec && rec.classList.contains('show') && (!window.PlayerSettings || window.PlayerSettings.get().records));
     const notOn = !!(not && not.classList.contains('show'));
     let top = 0;
     if (rec) rec.style.top = top + 'px';
@@ -372,7 +373,7 @@ window.UI = (function () {
   // 纪录 / 最大鱼播报：入纪录轨队列，按顺序播放（不再插播打断）
   const RECORD_QUEUE_MAX = 4; // 待播上限：超过则丢最旧的（新消息优先，避免积压成长队）
   function showRecordBanner(rec) {
-    if (!rec) return;
+    if (!rec || (window.PlayerSettings && !window.PlayerSettings.get().records)) return;
     const text = rec.text || ('🎉 全场最大纪录被破！' + rec.who + ' 钓到 ' + rec.name + ' ' + rec.size + 'cm');
     const q = lanes.record.queue;
     if (q.some(function (x) { return x.text === text; })) return; // 同文案不重复排队
@@ -380,6 +381,16 @@ window.UI = (function () {
     while (q.length > RECORD_QUEUE_MAX) q.shift();
     pumpLane('record');
   }
+  window.addEventListener('playersettingschange', function () {
+    if (!window.PlayerSettings || window.PlayerSettings.get().records) return;
+    const st = lanes.record;
+    st.queue = [];
+    if (st.timer) clearTimeout(st.timer);
+    st.timer = null; st.finish = null; st.playing = false; st.current = null; st.runId++;
+    const b = laneEl('record');
+    if (b) { b.classList.remove('show'); b.innerHTML = ''; }
+    syncBannerOffset();
+  });
   // 调试/测试用：清空两条轨道的队列并中止当前播放
   function resetBanners() {
     ['record', 'notice'].forEach(function (ln) {
@@ -1115,7 +1126,7 @@ window.UI = (function () {
       if (atSame) {
         E().stopFishing();
         st.selected = { groundId: null, spotId: null };
-        toast('已取消钓鱼，离开钓点');
+        toast('已取消钓鱼，离开钓点', 'routine');
         renderTopbar(); renderNav(); renderFishing();
         return;
       }
@@ -1127,7 +1138,7 @@ window.UI = (function () {
       renderTopbar(); renderNav(); renderFishing();
       pr.then(function (r) {
         if (!r.ok) { toast(r.msg); st.selected = { groundId: null, spotId: null }; }
-        else { toast((wasFishing ? '已切换钓点 · ' : '已开始自动钓鱼 · ') + castText()); }
+        else { toast((wasFishing ? '已切换钓点 · ' : '已开始自动钓鱼 · ') + castText(), 'routine'); }
         renderTopbar(); renderNav(); renderFishing();
       });
     }
@@ -1469,7 +1480,7 @@ window.UI = (function () {
     E().refreshEffects();
     renderTopbar();
     renderView();
-    toast(compId ? '已装备 ' + (comp ? comp.name : compId) + '（背包已即时扣 1 件）' : '已卸下组件（已即时退回背包）');
+    toast(compId ? '已装备 ' + (comp ? comp.name : compId) + '（背包已即时扣 1 件）' : '已卸下组件（已即时退回背包）', 'routine');
     const revertLocal = function () {
       if (prevEntry) st.bd[partKey] = prevEntry; else delete st.bd[partKey];
       if (prevId && prevId !== compId) {
@@ -6113,7 +6124,7 @@ window.UI = (function () {
     rf.addEventListener('click', function () {
       renderTopbar();
       if (tradeModalRedraw) tradeModalRedraw(); else renderView(); // 交易子窗口打开时只重绘窗口
-      toast('列表已按当前库存刷新');
+      toast('列表已按当前库存刷新', 'routine');
     });
     bar.appendChild(rf);
     return bar;

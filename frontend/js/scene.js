@@ -273,9 +273,17 @@ window.PxScene = (function () {
     inst.raf = requestAnimationFrame(function f(n) { frame(el, inst, n); });
     // 不可见时只保留生命周期检查，停止绘图与粒子计算。
     if (document.hidden || !inst.visible) { inst.last = now; return; }
-    const dt = clamp((now - inst.last) / 1000, 0, 0.05);
+    const motion = window.PlayerSettings ? window.PlayerSettings.motion() : 'full';
+    const imageReady = !!(inst.img && inst.img.ready);
+    // Static mode redraws only for size, ground, image or preference changes.
+    if (motion === 'off' && inst.staticDrawn && !inst.sizeDirty && inst.motion === motion && inst.drawPid === inst.pid && inst.imageReady === imageReady) {
+      inst.last = now; return;
+    }
+    if (motion === 'reduced' && inst.motion === motion && !inst.sizeDirty && now - (inst.drawTime || 0) < 1000 / 20) return;
+    inst.drawTime = now; inst.motion = motion; inst.drawPid = inst.pid; inst.imageReady = imageReady; inst.staticDrawn = true;
+    const dt = motion === 'off' ? 0 : clamp((now - inst.last) / 1000, 0, 0.05);
     inst.last = now; inst.t += dt;
-    const t = inst.t;
+    const t = motion === 'off' ? 0 : inst.t;
 
     // 尺寸跟随面板（布局变化 / 首次挂载时 box 为 0 的补偿）
     if (inst.sizeDirty || !inst.ro) resize(inst);
@@ -284,6 +292,7 @@ window.PxScene = (function () {
     // 视差：指针优先，无指针时缓慢自动漂移
     if (!inst.pointer) inst.tox = Math.sin(t * 0.07) * 0.35;
     inst.ox += (inst.tox - inst.ox) * Math.min(1, dt * 3);
+    if (motion !== 'full') inst.ox = 0;
     const ox = inst.ox;
 
     const g = inst.wctx;                                  // 世界（水面以上）画进离屏
@@ -426,7 +435,7 @@ window.PxScene = (function () {
     }
 
     // 粒子（倒影之上，不入水）
-    sc.particles.forEach(function (p) {
+    if (motion === 'full') sc.particles.forEach(function (p) {
       stepParticle(p, P.particle, W, H, wl, dt, t);
       let col = '#ffffff', a = 1;
       if (P.particle === 'snow') { col = '#e8f2fc'; a = 0.5 + 0.5 * p.sp / 1.2; }

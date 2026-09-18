@@ -1,0 +1,33 @@
+.topbar-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.topbar-actions button { min-height: 40px; white-space: nowrap; margin: 0; }
+#settings-dialog { color: #e9f6ff; background: #0f243c; border: 2px solid #48709c; border-radius: 12px; padding: 0; width: min(540px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); box-sizing: border-box; box-shadow: 0 16px 64px #0009; }
+#settings-dialog::backdrop { background: #020b18b8; }
+.settings-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid #2c4f74; }
+.settings-head h2 { margin: 0; font-size: 20px; }
+.settings-close { flex-shrink: 0; }
+.settings-body { padding: 0 16px 16px; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid #2c4f74; }
+.settings-row > span { min-width: 0; }
+.settings-row small { display: block; font-size: 13px; color: #a8c1d8; margin-top: 6px; line-height: 1.6; }
+.settings-row select { width: 150px; max-width: 48%; flex-shrink: 0; min-height: 44px; }
+.settings-row input[type=checkbox] { width: 24px; height: 24px; flex-shrink: 0; accent-color: #34e0c0; }
+#settings-status { font-size: 13px; line-height: 1.7; color: #a8d9cd; min-height: 2em; }
+#settings-reset-confirm { padding: 12px; margin-top: 12px; background: #19354c; border-radius: 6px; }
+#settings-dialog button { min-height: 44px; }
+#settings-dialog :focus-visible, #settings-btn:focus-visible { outline: 2px solid #34e0c0; outline-offset: 3px; }
+html[data-font=clear] { --px-font: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+html[data-text-size=large] body { font-size: 16px; }
+html[data-text-size=large] :is(button, input, select, textarea, p, label, td, th, .hint, .meta, .nav-item, .log-line, .settings-row small, #settings-status) { font-size: 16px !important; }
+html[data-records=false] #record-banner { display: none !important; }
+/* Target decoration only: marquee queues and gameplay progress keep working. */
+html:is([data-motion=reduced], [data-motion=off]) :is(.px-scene, .px-node, .auth-card, .codex-cell, .cd-icon, .nav-item)::before,
+html:is([data-motion=reduced], [data-motion=off]) :is(.px-scene, .px-node, .auth-card, .codex-cell, .cd-icon, .nav-item)::after,
+html:is([data-motion=reduced], [data-motion=off]) :is(.px-scene *, .px-node *, .cx-icon, .cd-icon, .log-line, .rec-row, .modal-box, .toast) { animation: none !important; }
+html[data-motion=off] :is(.px-scene *, .px-node *) { transition: none !important; }
+@media (max-width: 640px) {
+  .topbar-actions { grid-column: 2; grid-row: 1; gap: 4px; }
+  .topbar-actions button { padding: 6px 8px; min-height: 44px; }
+  .topbar .brand { overflow-wrap: anywhere; }
+  #settings-dialog { max-height: calc(100dvh - 24px); }
+  .settings-row { gap: 10px; }
+}

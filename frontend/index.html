@@ -12,12 +12,17 @@
   <link rel="stylesheet" href="css/responsive.css" />
   <link rel="stylesheet" href="css/mobile.css" />
   <link rel="stylesheet" href="css/smelt.css" />
+  <link rel="stylesheet" href="css/settings.css" />
+  <script src="js/settings.js" defer></script>
 </head>
 <body>
   <header class="topbar">
     <div id="brand-logo" class="brand">🎣 钓鱼网站 <span class="ver" data-ver></span></div>
     <div id="player-status" class="player-status"></div>
-    <button id="logout-btn" class="logout-btn" title="退出登录">退出登录</button>
+    <div class="topbar-actions">
+      <button id="settings-btn" type="button" aria-haspopup="dialog" aria-controls="settings-dialog">⚙ 设置</button>
+      <button id="logout-btn" class="logout-btn" title="退出登录">退出登录</button>
+    </div>
   </header>
 
   <!-- 顶部横幅两条独立轨道：纪录/最大鱼播报（按顺序排队） + 管理后台公告（可自定义颜色） -->

@@ -14,9 +14,16 @@ let checks = 0;
   assert[k] = function () { checks++; return f.apply(this, arguments); };
 });
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-touch-trade-'));
+async function pageApi(page, route, body) {
+ const r = await page.evaluate(async ({ route, body }) => {
+  const res = await fetch('/api/' + route, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'FishGame', 'X-Session-Mode': 'cookie' }, body: JSON.stringify(body) });
+  return { status: res.status, data: await res.json() };
+ }, { route, body });
+ assert.equal(r.status, 200, route + ': ' + JSON.stringify(r.data)); return r.data;
+}
 let server, browser;
 async function api(route, body) {
- const r = await fetch(base + '/api/' + route, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const headers = {'Content-Type':'application/json'}; const payload = body ? { ...body } : body; if (payload && payload.token) { headers.Authorization = 'Bearer ' + payload.token; delete payload.token; } const r = await fetch(base + '/api/' + route, {method:'POST',headers,body:JSON.stringify(payload)});
  const result = await r.json(); assert.equal(r.status,200,route + ': ' + JSON.stringify(result)); return result;
 }
 (async()=>{
@@ -25,11 +32,11 @@ async function api(route, body) {
  browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  const pages=[], tokens=[], errors=[];
  for(let i=0;i<3;i++) {
-  const token=(await api('register',{username:'touchtrade'+i,password:'test1234',qq:'123456'})).token; tokens.push(token);
+  const token=(await api('register',{username:'touchtrade'+i,password:'test1234-secure',qq:'123456'})).token; tokens.push(token);
   const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});pages.push(page);
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>{const Native=window.EventSource;window.EventSource=class extends Native {constructor(...a){super(...a);window.testStream=this;window.testEvents=[];this.addEventListener('message',ev=>{const m=JSON.parse(ev.data);testEvents.push(...(m.type==='batch'?m.list:[m]));});}};});
-  await page.goto(base);await page.evaluate(t=>localStorage.setItem('fishing_token',t),token);await page.reload();
+  await page.goto(base);tokens[i] = await page.evaluate(async ({u,p})=>{const r=await Net.login(u,p);if(!r.ok)throw new Error(r.data&&r.data.error||'login failed');Net.setAuth(r.data.token,r.data.profile);document.getElementById("auth").remove();return r.data.token;},{u:'touchtrade'+i,p:'test1234-secure'});
   await page.waitForFunction(()=>Engine.state.me&&window.testEvents.some(m=>m.type==='init'));
  }
  const page=pages[0], spot='.px-node[data-g="rapids"][data-s="shoal"]';
@@ -57,12 +64,12 @@ async function api(route, body) {
  await page.locator(dock).dispatchEvent('pointerdown',{pointerType:'touch',button:0});
  await page.locator(dock).dispatchEvent('pointercancel',{pointerType:'touch'});
  assert.equal(await page.evaluate(()=>Engine.state.fishing.active),false,'cancelled touch does not fish');
- await api('dev/seed',{token:tokens[0],inventory:{crucian:5},coins:1000});
- const tradeId=(await api('trade/invite',{token:tokens[0],target:'touchtrade1'})).tradeId;
- await api('trade/respond',{token:tokens[1],tradeId,accept:true});
- await api('trade/set',{token:tokens[0],tradeId,items:[{id:'crucian',qty:2}]});
+ await pageApi(pages[0],'dev/seed',{inventory:{crucian:5},coins:1000});
+ const tradeId=(await pageApi(pages[0],'trade/invite',{target:'touchtrade1'})).tradeId;
+ await pageApi(pages[1],'trade/respond',{tradeId,accept:true});
+ await pageApi(pages[0],'trade/set',{tradeId,items:[{id:'crucian',qty:2}]});
  await pages[2].evaluate(()=>{Engine.state.trade={id:'unrelated-active-trade'};});
- await api('trade/confirm',{token:tokens[0],tradeId});await api('trade/confirm',{token:tokens[1],tradeId});
+ await pageApi(pages[0],'trade/confirm',{tradeId});await pageApi(pages[1],'trade/confirm',{tradeId});
  for(const p of pages.slice(0,2))await p.waitForFunction(()=>testEvents.some(m=>m.type==='tradeDone'));
  await pages[2].waitForTimeout(350);
  assert.equal(await pages[2].evaluate(()=>testEvents.some(m=>m.type==='tradeDone')),false,'outsider receives no trade settlement');
