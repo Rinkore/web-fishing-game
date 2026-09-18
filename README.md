@@ -18,7 +18,7 @@ Node 内置 `http` 后端，游戏数值目录前后端共用一份（UMD）；�
 ## 配套 Wiki 开发规划
 
 `codex/wiki` 分支用于配套资料站开发。首版规划包含资料查询、玩法攻略、**配装模拟器与熔炼模拟器**。
-详细范围、数据同步方案、计算规则和验收标准见 [Wiki 开发文档](docs/wiki/DEVELOPMENT.md)，进展见 [Wiki 规划与开发日志](docs/wiki/CHANGELOG.md)。
+详细范围、数据同步方案、计算规则和验收标准见 [Wiki 开发文档](docs/wiki/DEVELOPMENT.md)，进展见 [Wiki 规划与开发日志](docs/wiki/CHANGELOG.md)。正式 Wiki 的数据与公式必须来自正式服务端快照并与服务端共用规则实现，不能伪造或滞后。
 当前仅完成开发文档，Wiki 功能尚未实现；本次文档更新不改变游戏版本号。
 
 ## 快速开始

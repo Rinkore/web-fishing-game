@@ -6,7 +6,7 @@
 ## 未发布规划 · 配套 Wiki
 
 2026-09-18：在 `codex/wiki` 分支记录 Wiki 首版开发方案，包含资料查询、玩法攻略、配装模拟器与熔炼模拟器。
-本条为文档与规划更新，功能尚未实现，不新增游戏版本。详见 [开发文档](docs/wiki/DEVELOPMENT.md) 与 [规划和开发日志](docs/wiki/CHANGELOG.md)。
+本条为文档与规划更新，功能尚未实现，不新增游戏版本。正式 Wiki 的数据与计算规则必须与正式服务端快照及共享规则实现一致，不能伪造或滞后。详见 [开发文档](docs/wiki/DEVELOPMENT.md) 与 [规划和开发日志](docs/wiki/CHANGELOG.md)。
 
 ## 全版本一览
 
