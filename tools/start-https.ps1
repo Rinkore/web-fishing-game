@@ -12,6 +12,10 @@ try {
         throw 'Port 9001 is already in use. Enter q in the old game console to save and stop it before starting this release.'
     }
     $env:PORT = '9001'
+    $env:BIND_HOST = '127.0.0.1'
+    # Only the local Caddy proxy may supply client addresses.
+    $env:TRUSTED_PROXY_IPS = '127.0.0.1,::1'
+    $env:REQUIRE_HTTPS = '1'
     if ($config.dataDir) { $env:FISHING_DATA_DIR = $config.dataDir }
     $gameDir = Split-Path $PSScriptRoot -Parent
     Set-Location -LiteralPath $gameDir

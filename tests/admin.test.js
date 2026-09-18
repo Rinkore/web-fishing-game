@@ -14,6 +14,7 @@ const os = require('os');
 const path = require('path');
 // 轮询等待工具（测试内部不依赖固定 sleep）：就绪即继续，超时才失败
 const { waitFor, waitHttp, waitPage } = require('./_util.js');
+const { provisionAdmin } = require('./_admin.js');
 
 const ROOT = path.join(__dirname, '..');
 const NODE = process.execPath;
@@ -37,9 +38,14 @@ function killTree(p) { try { spawnSync('taskkill', ['/F', '/T', '/PID', String(p
 
 function req(method, u, body) {
   return new Promise((resolve) => {
-    const p = url.parse(u);
+    const parsed = new URL(u);
+    const token = body && body.token || parsed.searchParams.get('token');
+    parsed.searchParams.delete('token');
+    if (body) { body = { ...body }; delete body.token; }
+    const p = url.parse(parsed.href);
     const data = body ? JSON.stringify(body) : null;
     const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = 'Bearer ' + token;
     if (data) headers['Content-Length'] = Buffer.byteLength(data);
     const r = http.request({ hostname: p.hostname, port: p.port, path: p.path, method, headers }, res => {
       let d = ''; res.on('data', c => d += c);
@@ -53,13 +59,30 @@ function req(method, u, body) {
     r.end();
   });
 }
-const GET = u => req('GET', u);
-const POST = (u, b) => req('POST', u, b);
+// Existing management assertions inspect the entire fixture, explicitly walking bounded pages.
+const GET = async u => {
+  const result = await req('GET', u);
+  if (u.endsWith('/api/market') && result.status === 200) {
+    for (let page = 2; page <= result.data.pages; page++) {
+      const next = await req('GET', u + '?page=' + page);
+      result.data.listings.push(...next.data.listings);
+    }
+  }
+  return result;
+};
+const POST = async (u, b) => {
+  const result = await req('POST', u, b);
+  if (result.data && result.data.code === 'REGISTRATION_CHALLENGE') {
+    const challenge = await req('GET', B + '/api/register/challenge');
+    return req('POST', u, { ...b, proof: require('./_registration').solve(challenge.data) });
+  }
+  return result;
+};
 const B = 'http://localhost:' + PORT;
 
 // SSE：把事件推入 sink（附带接收时间）
 function sse(tok, sink) {
-  const r = http.get(B + '/events?token=' + tok, res => {
+  const r = http.get(B + '/events', { headers: { Authorization: 'Bearer ' + tok } }, res => {
     let buf = '';
     res.on('data', c => {
       buf += c.toString();
@@ -100,7 +123,7 @@ function start(dataDir) {
   killPortOccupant(PORT);
   return spawn(NODE, ['backend/server.js'], {
     cwd: ROOT,
-    env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', MARKET_FISH_LIST: '1', FISHING_DATA_DIR: dataDir }),
+    env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', MARKET_FISH_LIST: '1', FISHING_DATA_DIR: dataDir, REGISTER_IP_HOURLY: '100' }),
   });
 }
 function waitReady() {
@@ -117,33 +140,38 @@ function waitReady() {
   section('1. 管理员引导与授权');
   check('错误密码登录被拒 401', (await POST(B + '/api/admin/login', { username: 'nobody', password: 'x' })).status === 401);
 
-  const rg1 = await POST(B + '/api/register', { username: 'adm_root', password: 'pass1234', name: ' Root', qq: '10004' });
+  const rg1 = await POST(B + '/api/register', { username: 'adm_root', password: 'test-secure-pass1234', name: ' Root', qq: '10004' });
   check('管理员候选账号注册成功', rg1.status === 200);
-  const la = await POST(B + '/api/admin/login', { username: 'adm_root', password: 'pass1234' });
-  check('服务器无管理员时首个登录自动成为管理员（引导）', la.status === 200 && la.data.admin === true);
+  check('公开登录不能初始化管理员', (await POST(B + '/api/admin/login', { username: 'adm_root', password: 'test-secure-pass1234' })).status === 403);
+  const otp = await provisionAdmin(srv, TMP_DATA, 'adm_root');
+  const la = await POST(B + '/api/admin/login', { username: 'adm_root', password: 'test-secure-pass1234', otp });
+  check('本机初始化并验证 TOTP 后登录管理员', la.status === 200 && la.data.admin === true);
   const TOKA = la.data.token;
   check('session 校验通过', (await GET(B + '/api/admin/session?token=' + TOKA)).status === 200);
   const meRoot = await GET(B + '/api/me?token=' + TOKA);
   check('资料接口带 admin 标志', meRoot.data.admin === true, JSON.stringify(meRoot.data));
 
-  await POST(B + '/api/register', { username: 'adm_p1', password: 'pass1234', name: '玩家一号', qq: '10005' });
-  await POST(B + '/api/register', { username: 'adm_p2', password: 'pass1234', name: '玩家二号', qq: '10006' });
-  const lp1 = await POST(B + '/api/login', { username: 'adm_p1', password: 'pass1234' });
-  const lp2 = await POST(B + '/api/login', { username: 'adm_p2', password: 'pass1234' });
-  const TK1 = lp1.data.token, TK2 = lp2.data.token;
+  await POST(B + '/api/register', { username: 'adm_p1', password: 'test-secure-pass1234', name: '玩家一号', qq: '10005' });
+  await POST(B + '/api/register', { username: 'adm_p2', password: 'test-secure-pass1234', name: '玩家二号', qq: '10006' });
+  const lp1 = await POST(B + '/api/login', { username: 'adm_p1', password: 'test-secure-pass1234' });
+  const lp2 = await POST(B + '/api/login', { username: 'adm_p2', password: 'test-secure-pass1234' });
+  let TK1 = lp1.data.token, TK2 = lp2.data.token;
 
-  const ldenied = await POST(B + '/api/admin/login', { username: 'adm_p1', password: 'pass1234' });
+  const ldenied = await POST(B + '/api/admin/login', { username: 'adm_p1', password: 'test-secure-pass1234' });
   check('已有管理员时普通账号登录后台被拒 403', ldenied.status === 403);
   check('普通账号 token 访问管理 API 被拒 403', (await GET(B + '/api/admin/overview?token=' + TK1)).status === 403);
   check('伪造 token 被拒 403', (await GET(B + '/api/admin/overview?token=fake')).status === 403);
 
   check('授予 adm_p1 管理员', (await POST(B + '/api/admin/users/setadmin', { token: TOKA, target: 'adm_p1', admin: true })).status === 200);
+  check('授权不提升旧会话权限', (await GET(B + '/api/admin/session?token=' + TK1)).status === 403);
+  TK1 = (await POST(B + '/api/admin/login', { username: 'adm_p1', password: 'test-secure-pass1234', otp: await provisionAdmin(srv, TMP_DATA, 'adm_p1') })).data.token;
   check('被授权账号 session 通过', (await GET(B + '/api/admin/session?token=' + TK1)).status === 200);
   check('不能撤销自己的管理员', (await POST(B + '/api/admin/users/setadmin', { token: TK1, target: 'adm_p1', admin: false })).status === 400);
   check('撤销 adm_p2 之前无需授权 403', (await GET(B + '/api/admin/session?token=' + TK2)).status === 403);
   check('授予再撤销 adm_p2', (await POST(B + '/api/admin/users/setadmin', { token: TOKA, target: 'adm_p2', admin: true })).status === 200
     && (await POST(B + '/api/admin/users/setadmin', { token: TOKA, target: 'adm_p2', admin: false })).status === 200);
   check('撤销后 session 被拒', (await GET(B + '/api/admin/session?token=' + TK2)).status === 403);
+  TK2 = (await POST(B + '/api/login', { username: 'adm_p2', password: 'test-secure-pass1234' })).data.token;
 
   // 玩家二号建立实时连接（后续钓鱼/锁定/公式/通知场景都要在线）
   const sink2 = [];
@@ -241,7 +269,7 @@ function waitReady() {
   check('批量上架成功（20+4+3+2=29 条）', bulk.status === 200 && bulk.data.created === 29, JSON.stringify(bulk.data).slice(0, 150));
   const mkBulk = (await GET(B + '/api/market')).data.listings.filter(l => l.seller === 'adm_p2');
   check('市集出现这 29 条（挂在该账号名头下）', mkBulk.length === 29 && mkBulk.every(l => l.sellerName === '玩家二号'), JSON.stringify({ n: mkBulk.length, name: mkBulk[0] && mkBulk[0].sellerName }));
-  check('挂单带后台标记 src=admin', mkBulk.every(l => l.src === 'admin'));
+  check('公开挂单不泄露内部来源标记', mkBulk.every(l => l.src === undefined));
   const kindOf = l => D_DATA.itemOf(l.id).kind;
   check('四类物品都按条数挂出', ['component', 'fish', 'material', 'chest'].every(k => mkBulk.filter(l => kindOf(l) === k).length === ({ component: 20, fish: 4, material: 3, chest: 2 })[k]),
     JSON.stringify({ component: mkBulk.filter(l => kindOf(l) === 'component').length, fish: mkBulk.filter(l => kindOf(l) === 'fish').length, material: mkBulk.filter(l => kindOf(l) === 'material').length, chest: mkBulk.filter(l => kindOf(l) === 'chest').length }));
@@ -297,7 +325,7 @@ function waitReady() {
   // 回归：批量上架曾把 seller 写成账号的原始大小写用户名（如 Wj1752），而成交/下架/退单/删号
   // 全按账号 key（小写）查 —— 结果是挂单看得见、卖出去却不进账、也不出现在它的历史订单里。
   section('4c. 后台批量上架 · 名头含大写字母');
-  const rgCase = await POST(B + '/api/register', { username: 'CaseHead9', password: 'pass1234', name: '大小写名头', qq: '10084' });
+  const rgCase = await POST(B + '/api/register', { username: 'CaseHead9', password: 'test-secure-pass1234', name: '大小写名头', qq: '10084' });
   check('新建含大写字母的账号（CaseHead9）', rgCase.status === 200, JSON.stringify(rgCase.data).slice(0, 100));
   const TKC = rgCase.data.token;
   const KEYC = 'casehead9';
@@ -498,7 +526,7 @@ function waitReady() {
 
   // ---------- 9d. 反馈状态 ----------
   section('9d. 反馈状态');
-  const rgFb = await POST(B + '/api/register', { username: 'fb_stater', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  const rgFb = await POST(B + '/api/register', { username: 'fb_stater', password: 'test-secure-pass1234', confirmPassword: 'test-secure-pass1234', qq: '123456' });
   const fbSubmit = await POST(B + '/api/feedback/submit', { token: rgFb.data.token, text: '状态测试反馈' });
   check('新反馈状态为已提交（submitted）', fbSubmit.data.entry.status === 'submitted');
   const fbAdminList = await GET(B + '/api/admin/feedback?token=' + TOKA);
@@ -520,7 +548,7 @@ function waitReady() {
   check('非管理员改规则被拒 403', (await POST(B + '/api/admin/feedback/cfg', { token: TK2, cdHours: 1 })).status === 403);
   check('设置 CD=2h / 费用=500', (await POST(B + '/api/admin/feedback/cfg', { token: TOKA, cdHours: 2, skipCost: 500 })).status === 200);
   // 玩家端状态应反映新规则
-  const rgFb2 = await POST(B + '/api/register', { username: 'fb_ruler', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  const rgFb2 = await POST(B + '/api/register', { username: 'fb_ruler', password: 'test-secure-pass1234', confirmPassword: 'test-secure-pass1234', qq: '123456' });
   const stNew = (await GET(B + '/api/feedback?token=' + rgFb2.data.token)).data.status;
   check('玩家端 status 返回新规则', stNew.skipCost === 500 && stNew.cdHours === 2, JSON.stringify(stNew));
   // 提交后 CD 约 2 小时
@@ -626,10 +654,10 @@ function waitReady() {
   check('调整金币成功', upCoins.status === 200 && upCoins.data.coins === 8888);
   check('负金币被拒 400', (await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p2', coins: -5 })).status === 400);
   // 改密码：旧密码失效、新密码可登录、旧会话被顶
-  const upPw = await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p2', password: 'newpass99' });
+  const upPw = await POST(B + '/api/admin/users/update', { token: TOKA, target: 'adm_p2', password: 'new-secure-pass99' });
   check('修改密码成功', upPw.status === 200 && upPw.data.changed.indexOf('密码') >= 0);
   check('旧密码登录失败 401', (await POST(B + '/api/login', { username: 'adm_p2', password: 'pass5678' })).status === 401);
-  const reLogin = await POST(B + '/api/login', { username: 'adm_p2', password: 'newpass99' });
+  const reLogin = await POST(B + '/api/login', { username: 'adm_p2', password: 'new-secure-pass99' });
   check('新密码可登录', reLogin.status === 200 && !!reLogin.data.token);
   check('改密后显示名已持久应用', reLogin.data.profile.name === '改名后的二号');
   check('改密后金币已应用', reLogin.data.profile.coins === 8888);
@@ -680,19 +708,19 @@ function waitReady() {
   check('非管理员读快照被拒 403', (await GET(B + '/api/admin/users/snapshot?token=' + TK2 + '&key=adm_p2')).status === 403);
 
   // 删除账号（二次确认）
-  const rgDel = await POST(B + '/api/register', { username: 'del_me', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  const rgDel = await POST(B + '/api/register', { username: 'del_me', password: 'test-secure-pass1234', confirmPassword: 'test-secure-pass1234', qq: '123456' });
   check('待删除账号注册成功', rgDel.status === 200);
   check('删除需二次确认（缺 confirm 被拒 400）', (await POST(B + '/api/admin/users/delete', { token: TOKA, target: 'del_me' })).status === 400);
   check('不能删除自己', (await POST(B + '/api/admin/users/delete', { token: TOKA, target: 'adm_root', confirm: true })).status === 400);
   check('确认后删除成功', (await POST(B + '/api/admin/users/delete', { token: TOKA, target: 'del_me', confirm: true })).status === 200);
-  check('删除后账号无法登录', (await POST(B + '/api/login', { username: 'del_me', password: 'pass1234' })).status === 401);
+  check('删除后账号无法登录', (await POST(B + '/api/login', { username: 'del_me', password: 'test-secure-pass1234' })).status === 401);
   check('删除后不在账号列表', !(await GET(B + '/api/admin/users?token=' + TOKA)).data.users.some(u => u.key === 'del_me'));
 
 
   // ---------- 11a. 全服钓速（钓速只影响抛竿间隔） ----------
   section('11a. 全服钓速与默认上钩率');
   // 第 10 节改过 adm_p2 密码，旧 token 已失效：重新登录并建立实时连接（后续断言依赖）
-  const lp2b = await POST(B + '/api/login', { username: 'adm_p2', password: 'newpass99' });
+  const lp2b = await POST(B + '/api/login', { username: 'adm_p2', password: 'new-secure-pass99' });
   const TK2B = lp2b.data.token;
   const sink2b = [];
   const es2b = sse(TK2B, sink2b);
@@ -849,7 +877,7 @@ function waitReady() {
   // ---------- 11d. 反馈奖励 ----------
   section('11d. 反馈奖励');
   // 用全新账号（adm_p2 在第 7 节已提交过反馈，24h CD 会挡住第二次）
-  const rgRw = await POST(B + '/api/register', { username: 'qa_reward', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  const rgRw = await POST(B + '/api/register', { username: 'qa_reward', password: 'test-secure-pass1234', confirmPassword: 'test-secure-pass1234', qq: '123456' });
   const TKR = rgRw.data.token;
   const fbSub11 = await POST(B + '/api/feedback/submit', { token: TKR, text: 'QA 奖励反馈' });
   check('玩家提交反馈（奖励前置）', fbSub11.status === 200 && !!fbSub11.data.entry.id);
@@ -867,7 +895,7 @@ function waitReady() {
   // ---------- 11f. 经济参数（价格模型全程可调） ----------
   section('11f. 经济参数（价格模型全程可调）');
   // 独立账号做抛售测试（背包用后台快照直接设定，确定性好）
-  const rgEco = await POST(B + '/api/register', { username: 'qa_econ', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  const rgEco = await POST(B + '/api/register', { username: 'qa_econ', password: 'test-secure-pass1234', confirmPassword: 'test-secure-pass1234', qq: '123456' });
   const TKE = rgEco.data.token;
   const we0 = await GET(B + '/api/admin/world?token=' + TOKA);
   check('经济参数默认值（地板40 / 天花板200 / 回升60分 / 下压0.0075）',
@@ -944,7 +972,8 @@ function waitReady() {
   killTree(srv);
   srv = start(TMP_DATA);
   check('重启成功', await waitReady());
-  const la2 = await POST(B + '/api/admin/login', { username: 'adm_root', password: 'pass1234' });
+  const rootSecret = JSON.parse(fs.readFileSync(path.join(TMP_DATA, 'accounts/adm_root.json'))).adminTotpSecret;
+  const la2 = await POST(B + '/api/admin/login', { username: 'adm_root', password: 'test-secure-pass1234', otp: require('../backend/security').totp(rootSecret) });
   check('管理员标志持久化（重启后可登录）', la2.status === 200);
   const TOKA2 = la2.data.token;
   // 会话落盘：重启后旧 token 依然有效 → 客户端带着本地 token 自动登录、SSE 自动重连，
@@ -957,8 +986,8 @@ function waitReady() {
   const sessRaw = fs.readFileSync(path.join(TMP_DATA, 'sessions.json'), 'utf8');
   check('会话文件不落原始 token（只存 SHA-256）', !!sessRaw && !sessRaw.includes(TOKA) && !sessRaw.includes(TOKA2), 'len=' + sessRaw.length);
   check('会话文件含账号与过期时间', /"k"\s*:\s*"adm_root"/.test(sessRaw) && /"e"\s*:\s*\d{10,}/.test(sessRaw), sessRaw.slice(0, 120));
-  // 注意：adm_p2 的密码在「8. 账号管理」中已被改为 newpass99
-  check('普通账号仍无权限（adm_p2 已被撤销）', (await POST(B + '/api/admin/login', { username: 'adm_p2', password: 'newpass99' })).status === 403);
+  // 注意：adm_p2 的密码在「8. 账号管理」中已被改为 new-secure-pass99
+  check('普通账号仍无权限（adm_p2 已被撤销）', (await POST(B + '/api/admin/login', { username: 'adm_p2', password: 'new-secure-pass99' })).status === 403);
   const w2 = await GET(B + '/api/admin/world?token=' + TOKA2);
   const dock2 = w2.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock');
   check('掉落池覆盖重启后仍在', dock2.pool.length === 1 && dock2.pool[0].pick === 'fish:crucian');

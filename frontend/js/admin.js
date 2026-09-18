@@ -1,6 +1,6 @@
 /*
  * 钓鱼后台管理 - 页面逻辑（零依赖，与游戏前端共用后端 /api/admin/*）
- * 登录：游戏账号 + admin 标志（服务器无管理员时首个登录自动引导）。
+ * 登录：管理员账号 + 验证器动态验证码（仅本机控制台可初始化）。
  * 功能页：概览 / 账号管理（含管理员授权）/ 渔场钓点（掉落池权重实时百分比 + 增益）/ 市集退回 / 上钩公式 / 通知等级。
  */
 window.Admin = (function () {
@@ -11,6 +11,7 @@ window.Admin = (function () {
   let me = null;
   let view = 'overview';
   let worldCfg = null;          // /api/admin/world 结果（grounds + catalog + 设置）
+  let mkPage = 1, mkInfo = null, mkSequence = 0, mkFilterTimer;
   let listings = [];            // 市集挂单
   let mkSearch = '';            // 市集管理搜索
   let mkKind = 'all';           // 市集管理类型筛选
@@ -52,7 +53,11 @@ window.Admin = (function () {
   // 超时后中断连接并按网络错误处理，GET 再自动重试一次，页面可自愈。
   const API_TIMEOUT_MS = 8000;
   function apiOnce(method, path, body) {
-    const opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+    const requestUrl = new URL(path, location.href);
+    requestUrl.searchParams.delete('token');
+    path = requestUrl.pathname + requestUrl.search;
+    if (body) { body = Object.assign({}, body); delete body.token; }
+    const opts = { method: method, credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'FishGame', 'X-Session-Mode': 'cookie' } };
     if (body) opts.body = JSON.stringify(body);
     let ctrl = null, timer = null;
     if (typeof AbortController !== 'undefined') {
@@ -123,6 +128,7 @@ window.Admin = (function () {
     $('who').textContent = '';
   }
   function logout(msg) {
+    api('POST', '/api/admin/logout', {}).catch(function () {});
     token = null; me = null; worldCfg = null;
     try { localStorage.removeItem('fishing_admin_token'); } catch (e) {}
     stopOverviewTimer();
@@ -140,14 +146,14 @@ window.Admin = (function () {
     if (!user || !pass) { $('login-msg').textContent = '请填写用户名和密码'; return; }
     const btn = $('login-btn');
     btn.disabled = true; btn.textContent = '登录中…';
-    api('POST', '/api/admin/login', { username: user, password: pass }).then(function (r) {
+    api('POST', '/api/admin/login', { username: user, password: pass, otp: $('login-otp').value.trim() }).then(function (r) {
       btn.disabled = false; btn.textContent = '登录管理后台';
       if (!r.ok) {
         $('login-msg').textContent = (r.data && r.data.error) || '登录失败';
         return;
       }
       token = r.data.token; me = { username: r.data.username, name: r.data.name };
-      try { localStorage.setItem('fishing_admin_token', token); } catch (e) {}
+      try { localStorage.removeItem('fishing_admin_token'); } catch (e) {}
       enter();
     });
   }
@@ -1207,10 +1213,23 @@ window.Admin = (function () {
       '封禁与解封在「👥 账号管理」那一行也能操作；本页只做查看与解封。' +
       '<b>敏感操作（删除账号 / 封禁 / 关闭全部功能 / 批量上架 / 退回挂单）都需要二次确认</b>，' +
       '每次后台写操作都会记进下面的审计日志（落盘 admin.json）。</div>' +
+      '<div id="sec-registration" class="panel">注册防护统计加载中…</div>' +
       '<div id="sec-body" class="panel">加载中…</div>';
     loadSecurity();
   }
   function loadSecurity() {
+    adminApi('GET', '/api/admin/registration/stats').then(function (r) {
+      if (view !== 'security' || !$('sec-registration')) return;
+      if (!r.ok) { $('sec-registration').textContent = '注册防护统计读取失败'; return; }
+      const c = r.data.counters, limits = r.data.limits;
+      $('sec-registration').innerHTML = '<h3>注册防滥用' + (r.data.attention ? ' · 已发现异常请求' : '') + '</h3>' +
+        '<div>注册尝试 ' + c.attempts + ' · 成功 ' + c.created + ' · 触发验证 ' + c.challenged +
+        ' · 账号冲突 ' + c.duplicate + ' · 配额拦截 ' + c.limited + '</div>' +
+        '<div class="hint">统计自本次服务启动（' + esc(new Date(r.data.startedAt).toLocaleString()) + '）。每小时全站最多 ' + limits.globalHourly +
+        ' 次、每来源 ' + limits.ipHourly + ' 次、每用户名 ' + limits.usernameHourly + ' 次有效格式注册尝试；验证重试也计数。</div>' +
+        '<button id="sec-reg-refresh" class="btn">刷新安全统计</button>';
+      $('sec-reg-refresh').onclick = loadSecurity;
+    });
     adminApi('GET', '/api/admin/security?token=' + encodeURIComponent(token)).then(function (r) {
       if (view !== 'security') return;
       const host = $('sec-body');
@@ -1314,7 +1333,7 @@ window.Admin = (function () {
     ov.className = 'modal-overlay';
     ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">编辑账号 ' + esc(key) + '</span></div>' +
       '<div class="modal-body mgr-form">' +
-      '<div class="mgr-row"><label>新密码</label><input id="mgr-pass" class="ipt" type="text" placeholder="留空则不修改（至少 4 位）" /></div>' +
+      '<div class="mgr-row"><label>新密码</label><input id="mgr-pass" class="ipt" type="text" placeholder="留空则不修改（新密码至少 12 位）" /></div>' +
       '<div class="mgr-row"><label>显示名</label><input id="mgr-name" class="ipt" placeholder="留空则不修改" /></div>' +
       '<div class="mgr-row"><label>金币</label><input id="mgr-coins" class="ipt" type="number" min="0" placeholder="留空则不修改" /></div>' +
       '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn primary" id="mgr-save">保存修改</button></div>' +
@@ -2610,7 +2629,7 @@ window.Admin = (function () {
       '<select id="mk-sort" class="ipt mk-kind"><option value="time">排序：时间</option><option value="price">排序：价格</option><option value="qty">排序：数量</option></select>' +
       '<select id="mk-dir" class="ipt mk-kind"><option value="desc">降序</option><option value="asc">升序</option></select>' +
       '<span id="mk-count" class="hint"></span></div>' +
-      '<div id="mk-body" class="panel">加载中…</div>';
+      '<div id="mk-pages" class="hint"></div><div id="mk-body" class="panel">加载中…</div>';
     // 词条选项来自共享目录
     const affSel = $('mk-aff');
     if (typeof GameData !== 'undefined' && GameData.AFFIX_LABEL) {
@@ -2621,56 +2640,23 @@ window.Admin = (function () {
     $('mk-search').value = mkSearch; $('mk-kind').value = mkKind;
     affSel.value = mkAffix; $('mk-amin').value = mkAffixMin; $('mk-amax').value = mkAffixMax;
     $('mk-sort').value = mkSort.key; $('mk-dir').value = mkSort.dir;
-    $('mk-search').addEventListener('input', function () { mkSearch = this.value; drawMarket(); });
-    $('mk-kind').addEventListener('change', function () { mkKind = this.value; drawMarket(); });
-    affSel.addEventListener('change', function () { mkAffix = this.value; drawMarket(); });
-    $('mk-amin').addEventListener('input', function () { mkAffixMin = this.value; drawMarket(); });
-    $('mk-amax').addEventListener('input', function () { mkAffixMax = this.value; drawMarket(); });
-    $('mk-sort').addEventListener('change', function () { mkSort.key = this.value; drawMarket(); });
-    $('mk-dir').addEventListener('change', function () { mkSort.dir = this.value; drawMarket(); });
+    $('mk-search').addEventListener('input', function () { mkSearch = this.value; scheduleMarket(); });
+    $('mk-kind').addEventListener('change', function () { mkKind = this.value; scheduleMarket(); });
+    affSel.addEventListener('change', function () { mkAffix = this.value; scheduleMarket(); });
+    $('mk-amin').addEventListener('input', function () { mkAffixMin = this.value; scheduleMarket(); });
+    $('mk-amax').addEventListener('input', function () { mkAffixMax = this.value; scheduleMarket(); });
+    $('mk-sort').addEventListener('change', function () { mkSort.key = this.value; scheduleMarket(); });
+    $('mk-dir').addEventListener('change', function () { mkSort.dir = this.value; scheduleMarket(); });
     wireBulkPanel();
     return refreshMarket();
   }
-  function filteredListings() {
-    const q = mkSearch.trim().toLowerCase();
-    let out = listings.filter(function (l) {
-      if (mkKind !== 'all') {
-        const meta = (typeof GameData !== 'undefined' && GameData.itemOf) ? GameData.itemOf(l.id) : null;
-        if (!meta || meta.kind !== mkKind) return false;
-      }
-      if (q) {
-        const hay = (l.name + ' ' + (l.sellerName || '') + ' ' + l.seller).toLowerCase();
-        if (hay.indexOf(q) < 0) return false;
-      }
-      if (mkAffix !== 'all' || mkAffixMin !== '' || mkAffixMax !== '') {
-        const meta = (typeof GameData !== 'undefined' && GameData.itemOf) ? GameData.itemOf(l.id) : null;
-        if (!meta || meta.kind !== 'component' || !meta.affixes) return false;
-        const ok = meta.affixes.some(function (a) {
-          if (mkAffix !== 'all' && a.type !== mkAffix) return false;
-          if (mkAffixMin !== '' && a.value < Number(mkAffixMin)) return false;
-          if (mkAffixMax !== '' && a.value > Number(mkAffixMax)) return false;
-          return true;
-        });
-        if (!ok) return false;
-      }
-      return true;
-    });
-    const dir = mkSort.dir === 'asc' ? 1 : -1;
-    out.sort(function (a, b) {
-      let d;
-      if (mkSort.key === 'price') d = a.price - b.price;
-      else if (mkSort.key === 'qty') d = a.qty - b.qty;
-      else d = a.t - b.t;
-      return d * dir || (b.t - a.t);
-    });
-    return out;
-  }
+  function filteredListings() { return listings; }
   function drawMarket() {
     const body = $('mk-body');
     if (!body) return;
     const cnt = $('mk-count');
     const shown = filteredListings();
-    if (cnt) cnt.textContent = '显示 ' + shown.length + ' / ' + listings.length + ' 条挂单';
+    if (cnt) cnt.textContent = '显示 ' + shown.length + ' / ' + ((mkInfo || {}).total || 0) + ' 条挂单';
     if (!listings.length) { body.innerHTML = '<div class="hint">当前没有挂单。</div>'; return; }
     if (!shown.length) { body.innerHTML = '<div class="hint">没有符合条件的挂单。</div>'; return; }
     body.innerHTML = '<table class="tbl"><thead><tr>' +
@@ -2742,10 +2728,25 @@ window.Admin = (function () {
       inp.focus(); inp.select();
     });
   }
+  function scheduleMarket() {
+    mkPage = 1; clearTimeout(mkFilterTimer);
+    mkFilterTimer = setTimeout(refreshMarket, 250);
+  }
   function refreshMarket() {
-    return api('GET', '/api/market').then(function (r) {
-      if (!r.ok || view !== 'market') return;
-      listings = r.data.listings || [];
+    const seq = ++mkSequence;
+    const params = { page: mkPage, size: 30, scope: 'all', q: mkSearch, kind: mkKind, affix: mkAffix,
+      min: mkAffixMin, max: mkAffixMax, sort: mkSort.key, dir: mkSort.dir };
+    return api('GET', '/api/market?' + new URLSearchParams(params)).then(function (r) {
+      if (view !== 'market' || seq !== mkSequence) return;
+      if (!r.ok) { setHint('mk-body', esc((r.data && r.data.error) || '加载失败')); return; }
+      listings = r.data.listings || []; mkInfo = r.data; mkPage = r.data.page;
+      const pager = $('mk-pages');
+      if (pager) {
+        pager.innerHTML = '<button id="mk-prev" class="btn">上一页</button> 第 ' + mkInfo.page + ' / ' + mkInfo.pages + ' 页 <button id="mk-next" class="btn">下一页</button>';
+        $('mk-prev').disabled = mkPage <= 1; $('mk-next').disabled = mkPage >= mkInfo.pages;
+        $('mk-prev').onclick = function () { mkPage--; refreshMarket(); };
+        $('mk-next').onclick = function () { mkPage++; refreshMarket(); };
+      }
       drawMarket();
     });
   }
@@ -5001,10 +5002,11 @@ window.Admin = (function () {
   function init() {
     $('login-btn').onclick = doLogin;
     $('login-pass').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+    $('login-otp').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
     $('login-user').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
     $('logout-btn').onclick = function () { logout(); };
-    let saved = null;
-    try { saved = localStorage.getItem('fishing_admin_token'); } catch (e) {}
+    let saved = 'cookie';
+    try { localStorage.removeItem('fishing_admin_token'); } catch (e) {}
     if (saved) {
       api('GET', '/api/admin/session?token=' + encodeURIComponent(saved)).then(function (r) {
         if (r.ok) { token = saved; me = { username: r.data.username, name: r.data.name }; enter(); }

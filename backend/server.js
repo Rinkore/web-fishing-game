@@ -1,23 +1,27 @@
 /*
  * 网页钓鱼小游戏 - 多人服务器（零第三方依赖 · 全部处理逻辑在服务端）
  * 架构：前端仅展示；钓鱼循环/掷骰/词缀加成/资产结算/钓竿配置全部由本服务器权威执行。
- *   - 账号系统：注册 / 登录 / 会话（token）；密码 salt+sha256，落盘 backend/data/users.json
+ *   - 账号系统：注册 / 登录 / Cookie / Bearer 会话；新密码使用 scrypt，存档在用户文档目录
  *   - 钓鱼循环：POST /api/fishing/start|stop；服务器定时器掷骰，经 SSE 定向推送渔获与权威资产
  *   - 钓竿配置：POST /api/bd/set（校验组件目录），钓速变化即时重置钓鱼循环
  *   - 实时联机：GET /events (SSE) 广播在线玩家、渔场人数、动态、市集、交易
  *   - 系统商店 / 开放市集 / 在线交易 / 图鉴 / 大鱼榜
- *   - 管理后台：/api/admin/*（账号 admin 标志鉴权；服务器无管理员时首个登录后台的账号自动引导）
+ *   - 管理后台：/api/admin/*（账号 admin 标志鉴权；管理员只能在本机控制台初始化，后台登录需要 TOTP）
  *     配套页面 frontend/admin.html（5500 分离模式 / 9000 集成模式均可打开）
  *     功能：账号管理员授权 / 钓场钓点掉落池与增益 / 市集退回挂单 / 上钩判断公式 / 全服动态通知等级
  * 游戏数值目录：与前端共用 frontend/js/data.js（UMD，单一来源）
  * 运行： node backend/server.js   （默认端口 9000，可用 PORT 环境变量覆盖）
  * 前后端分离：
- *   - 本服务是纯 API + SSE，跨域已放行（CORS *），前端可部署到任意静态服务器；
+ *   - 本服务是纯 API + SSE，跨域仅接受 ALLOWED_ORIGINS 精确白名单，推荐同源部署；
  *   - 默认集成模式：若 ../frontend/index.html 存在则一并托管，单命令即可跑全栈；
  *   - STATIC_DIR 环境变量可指定其他前端目录，STATIC_DIR=none 强制纯 API 模式。
  */
 'use strict';
 const http = require('http');
+const Security = require('./security');
+const Transport = require('./transport-security');
+const MarketPage = require('./market-page');
+const Registration = require('./registration-guard');
 const Features = require('../frontend/js/features.js');
 const fs = require('fs');
 const os = require('os');
@@ -36,6 +40,8 @@ const _portArg = (function () {
   return null;
 })();
 const PORT = process.env.PORT || _portArg || 9000;
+// 9001 is exclusively for the same-host HTTPS proxy, regardless of BIND_HOST.
+const BIND_HOST = Number(PORT) === 9001 ? '127.0.0.1' : (process.env.BIND_HOST || undefined);
 const ROOT = __dirname;
 // ---- 数据目录 ----
 // 默认存到用户「文档」目录（Windows: %USERPROFILE%\Documents\web-fishing-game），
@@ -127,7 +133,7 @@ const clients = new Set();   // SSE response 对象
 // 会话：tokenHash -> { key, exp }。**落盘只存 token 的 SHA-256**，文件泄露不等于拿到可用凭据。
 // 落盘的意义：服务器重启（升级 / 崩溃）后登录态仍在，客户端带着本地 token 自动登录、
 // SSE 自动重连，不必让玩家重新输密码——配合前端的版本强刷就是「无感热更新」。
-const SESSION_TTL_MS = 30 * 24 * 3600 * 1000; // 30 天未使用即失效，避免文件无限增长
+const SESSION_TTL_MS = Transport.GAME_TTL; // 游戏会话固定 24 小时；管理会话固定 30 分钟
 const sessions = new Map();
 function tokenHash(t) { return crypto.createHash('sha256').update(String(t)).digest('hex'); }
 // ---- 性能修复(perf-2)：会话落盘防抖 ----
@@ -145,7 +151,7 @@ function saveSessions() {
 function saveSessionsNow() {
   const out = {};
   const now = Date.now();
-  sessions.forEach(function (v, h) { if (v && v.exp > now) out[h] = { k: v.key, e: v.exp }; });
+  sessions.forEach(function (v, h) { if (v && v.exp > now) out[h] = { k: v.key, e: v.exp, m: v.adminMfa === true, v: 2 }; });
   writeJson(SESSIONS_FILE, { tokens: out });
 }
 function loadSessions() {
@@ -154,22 +160,22 @@ function loadSessions() {
   const tokens = (data && data.tokens) || {};
   Object.keys(tokens).forEach(function (h) {
     const v = tokens[h];
-    if (!v || !v.k || !(v.e > now)) return; // 过期的不载入
-    sessions.set(h, { key: v.k, exp: v.e });
+    if (!v || v.v !== 2 || !v.k || !(v.e > now)) return; // 旧长期会话与过期会话不载入
+    sessions.set(h, { key: v.k, exp: Math.min(v.e, Date.now() + (v.m === true ? Transport.ADMIN_TTL : SESSION_TTL_MS)), adminMfa: v.m === true });
   });
 }
-function sessionSet(token, key) {
-  sessions.set(tokenHash(token), { key: key, exp: Date.now() + SESSION_TTL_MS });
+function sessionSet(token, key, adminMfa = false) {
+  sessions.set(tokenHash(token), { key: key, adminMfa: adminMfa, exp: Date.now() + (adminMfa ? Transport.ADMIN_TTL : SESSION_TTL_MS) });
   saveSessions();
 }
 function sessionGet(token) {
-  if (!token) return null;
+  if (typeof token !== 'string' || !token || token.length > 256) return null;
   const h = tokenHash(token);
   const v = sessions.get(h);
   if (!v) return null;
   if (!(v.exp > Date.now())) { sessions.delete(h); saveSessions(); return null; }
   // 滑动续期：剩余不足一半时才写盘，避免每次请求都落一次文件
-  if (v.exp - Date.now() < SESSION_TTL_MS / 2) { v.exp = Date.now() + SESSION_TTL_MS; saveSessions(); }
+  // Sessions have a fixed lifetime; admin sessions must reauthenticate after 30 minutes.
   return v.key;
 }
 function sessionDelete(token) {
@@ -385,8 +391,8 @@ function planSmelt(rec, d) {
   const types = {};
   for (const e of list) {
     const id = String((e && e.id) || '');
-    const qty = Math.floor(Number(e && e.qty) || 0);
-    if (!id || qty <= 0) continue;
+    const qty = e.qty;
+    if (matList.some(x => x.id === id)) return { error: '投料物品重复' };
     if (id === D.SMELT_PEARL) { pearl = true; pearlQty += qty; continue; }  // 催化剂：不计入投料份数
     if (!D.smeltMaterialAffix(id)) return { error: '「' + itemName(id) + '」不是熔炼材料' };
     matList.push({ id: id, qty: qty });
@@ -410,7 +416,8 @@ function planSmelt(rec, d) {
   // 判据与「重铸」同一套：神话品质 = 宝匣产出的身份（见 planRecast 注释）。
   const relicId = 'relic';
   const relicMax = Math.max(0, Math.min(99, Math.floor(Number(cfg.retainMaxRelic) || 0)));
-  const relicQty = Math.min(relicMax, Math.max(0, Math.floor(Number(d.relics) || 0)));
+  const relicQty = d.relics === undefined ? 0 : d.relics;
+  if (relicQty > relicMax) return { error: '残片超过单次投入上限' };
   const extraAffixes = D.smeltExtraAffixesOf(mainMeta.baseId, mainMeta.affixes);
   if (relicQty > 0) {
     if (!D.canRecast(mainMeta)) {
@@ -2882,7 +2889,13 @@ if (D.setFishCfg) D.setFishCfg(world.fishCfg);
   });
 })();
 
-function hashPw(pw, salt) { return crypto.createHash('sha256').update(salt + ':' + pw).digest('hex'); }
+async function verifyPassword(rec, password, key) {
+  if (!await Transport.verifyPassword(rec, password)) return false;
+  if (!rec.pwHash.startsWith('scrypt$v1$')) {
+    rec.pwHash = await Transport.hashPassword(password); delete rec.salt; saveAccount(key);
+  }
+  return true;
+}
 function newToken() { return crypto.randomBytes(16).toString('hex'); }
 function profileOf(key) {
   const rec = users[key];
@@ -2916,7 +2929,8 @@ function anyAdminExists() {
 function adminOf(token) {
   const key = token && sessionGet(token);
   const rec = key && users[key];
-  return (rec && rec.admin) ? { key: key, rec: rec } : null;
+  const session = key && sessions.get(tokenHash(token));
+  return (rec && rec.admin && session && session.adminMfa === true) ? { key: key, rec: rec } : null;
 }
 
 // ================================================================
@@ -2948,13 +2962,14 @@ const LOGIN_MAX_FAILS = 5;                 // 连续失败次数上限
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;    // 统计窗口
 const LOGIN_LOCK_MS = 5 * 60 * 1000;       // 锁定时长
 const loginGuard = new Map();              // ident -> { fails:[t…], until }
-function clientIpOf(req) {
-  try {
-    const fwd = req.headers && req.headers['x-forwarded-for'];
-    if (fwd) return String(fwd).split(',')[0].trim();
-    return (req.socket && req.socket.remoteAddress) || 'unknown';
-  } catch (e) { return 'unknown'; }
-}
+setInterval(function () {
+  const now = Date.now();
+  for (const [key, g] of loginGuard) {
+    g.fails = g.fails.filter(t => now - t < LOGIN_WINDOW_MS);
+    if (g.until <= now && !g.fails.length) loginGuard.delete(key);
+  }
+}, 60000).unref();
+function clientIpOf(req) { return Security.clientIp(req); }
 function loginIdent(req, username) { return String(username || '').toLowerCase() + '|' + clientIpOf(req); }
 function loginLockRemain(ident) {
   const g = loginGuard.get(ident);
@@ -2970,6 +2985,13 @@ function loginFail(ident) {
   g.fails.push(now);
   if (g.fails.length >= LOGIN_MAX_FAILS) { g.until = now + LOGIN_LOCK_MS; g.fails = []; }
   loginGuard.set(ident, g);
+}
+function loginFailureResponse(res, ident, error) {
+  const count = ((loginGuard.get(ident) || {}).fails || []).length;
+  loginFail(ident);
+  setTimeout(function () {
+    if (!res.destroyed && !res.writableEnded) apiResp(res, 401, { error });
+  }, Math.min(1000, 100 * Math.pow(2, count)));
 }
 function loginOk(ident) { loginGuard.delete(ident); }
 function loginGuardSnapshot() {
@@ -3195,26 +3217,61 @@ function flushPresence() {
   }
   broadcast({ type: 'grounds', counts: groundCounts(), total: players.size });
 }
-function readBody(req, cb) { let b = ''; req.on('data', function (c) { b += c; if (b.length > 1e6) req.destroy(); }); req.on('end', function () { if (!req.featureAllowed || req.featureAllowed()) cb(b); }); }
+function readBody(req, cb) {
+  const res = req.securityResponse;
+  let chunks = [], bytes = 0, done = false;
+  const timer = setTimeout(() => fail(408, '请求体读取超时'), 10000);
+  function fail(status, error) {
+    if (done) return;
+    done = true; clearTimeout(timer); chunks = [];
+    if (!res.headersSent) { res.setHeader('Connection', 'close'); apiResp(res, status, { error }); }
+    else res.destroy();
+    req.resume();
+  }
+  req.on('data', function (c) {
+    if (done) return;
+    bytes += c.length;
+    if (bytes > 1e6) return fail(413, '请求体过大');
+    chunks.push(c);
+  });
+  req.on('aborted', () => { done = true; clearTimeout(timer); chunks = []; });
+  req.on('error', () => fail(400, '请求读取失败'));
+  res.on('close', () => { done = true; clearTimeout(timer); chunks = []; });
+  req.on('end', function () {
+    if (done) return;
+    clearTimeout(timer);
+    try {
+      const body = Buffer.concat(chunks).toString('utf8'); chunks = [];
+      const data = bodyObj(body);
+      Security.validate(url.parse(req.url).pathname, data);
+      // Only transport credentials authenticate; query/body tokens are never accepted.
+      if (Object.prototype.hasOwnProperty.call(data, 'token')) throw new Security.ValidationError('请使用 Authorization 请求头或会话 Cookie');
+      data.token = req.authToken;
+      if (!req.featureAllowed || req.featureAllowed()) {
+        Promise.resolve(cb(JSON.stringify(data))).then(() => { done = true; }, e => {
+          if (!(e instanceof Security.ValidationError)) console.error('[request]', e.stack || e);
+          fail(e instanceof Security.ValidationError ? 400 : 500, e instanceof Security.ValidationError ? e.message : '服务器处理失败');
+        });
+      } else done = true;
+    } catch (e) {
+      if (!(e instanceof Security.ValidationError)) console.error('[request]', e.stack || e);
+      fail(e instanceof Security.ValidationError ? 400 : 500, e instanceof Security.ValidationError ? e.message : '服务器处理失败');
+    }
+  });
+}
 // 安全解析请求体：JSON.parse('null') 是「成功」的（返回 null），而只 catch 语法错误的代码
 // 紧接着读 d.token / d.username 就会抛 TypeError —— 未捕获异常会直接终止整个服务端进程，
-// 表现为「所有玩家同一秒掉线且必须人工重启」。这里统一收口：只接受对象（数组也算对象，
-// 保持既有宽松度），null 与裸数字/字符串一律按格式错误处理。
+// 这里统一收口：只接受普通 JSON 对象；数组、null 与裸数字/字符串均拒绝。
 function bodyObj(body) {
   let d;
   try { d = JSON.parse(body); } catch (e) { return null; }
-  return (d !== null && typeof d === 'object') ? d : null;
+  return (d !== null && typeof d === 'object' && !Array.isArray(d)) ? d : null;
 }
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Max-Age': '86400',
-};
+
 function apiResp(res, status, obj) {
   const body = JSON.stringify(obj);
   netStats.apiBytes += Buffer.byteLength(body); netStats.apiReqs++;
-  res.writeHead(status, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, CORS_HEADERS));
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(body);
 }
 function auth(req, res, body, cb) {
@@ -3243,7 +3300,29 @@ function shopSnapshot() {
   return out;
 }
 function broadcastShop() { broadcast({ type: 'shop', shop: shopSnapshot() }); }
-function broadcastMarket() { broadcast({ type: 'market', listings: world.listings }); }
+let marketRevision = 0;
+let lastMarket = new Map(world.listings.map(l => [l.lid, JSON.stringify(MarketPage.publicListing(l))]));
+let marketDeltaTimer = null;
+function broadcastMarket() {
+  if (!marketDeltaTimer) marketDeltaTimer = setTimeout(flushMarketDelta, 100);
+}
+function flushMarketDelta() {
+  marketDeltaTimer = null;
+  const next = new Map(), upsert = [], removed = [];
+  for (const l of world.listings) {
+    const row = MarketPage.publicListing(l), encoded = JSON.stringify(row);
+    next.set(l.lid, encoded);
+    if (lastMarket.get(l.lid) !== encoded) upsert.push(row);
+  }
+  for (const lid of lastMarket.keys()) if (!next.has(lid)) removed.push(lid);
+  lastMarket = next;
+  if (!upsert.length && !removed.length) return;
+  marketRevision++;
+  const ev = { type: 'marketDelta', revision: marketRevision, total: world.listings.length };
+  if (upsert.length + removed.length > 100) ev.reset = true;
+  else { ev.upsert = upsert; ev.removed = removed; }
+  broadcast(ev);
+}
 
 // 过期挂单清扫：物品退回卖家（上架费不退），广播市集变化
 function sweepExpiredListings() {
@@ -3443,21 +3522,33 @@ const MIME = {
 };
 
 const server = http.createServer(function (req, res) {
+  req.securityResponse = res;
+  try {
+  if (!Transport.headers(req, res)) { req.resume(); return apiResp(res, 403, { error: '不允许的请求来源' }); }
+  if (process.env.REQUIRE_HTTPS === '1' && !Transport.secure(req)) { req.resume(); return apiResp(res, 426, { error: '请通过 HTTPS 访问' }); }
+  if (req.method === 'POST' && !Transport.csrf(req)) { req.resume(); return apiResp(res, 403, { error: '请求来源验证失败' }); }
   // ---- CORS 预检（分离部署时，浏览器对跨域 POST 会先发 OPTIONS） ----
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, CORS_HEADERS);
+    res.writeHead(204);
     res.end();
     return;
   }
   const u = url.parse(req.url, true);
   const p = u.pathname;
+  if (Object.prototype.hasOwnProperty.call(u.query, 'token')) { req.resume(); return apiResp(res, 400, { error: 'URL 不允许携带会话凭据' }); }
+  req.authToken = Transport.token(req, p.startsWith('/api/admin/'));
+  u.query.token = req.authToken;
+  if (p === '/api/admin/logout' && req.method === 'POST') {
+    sessionDelete(req.authToken); Transport.setCookie(req, res, '', true, true);
+    req.resume(); return apiResp(res, 200, { ok: true });
+  }
+  if (!Security.authRate(req, p)) { req.resume(); res.setHeader('Retry-After', '60'); return apiResp(res, 429, { error: '请求过于频繁，请稍后重试' }); }
   // 管理员穿透：开启后，带管理员身份的请求可以继续使用「已关闭」的功能（玩家端照常受限）。
   // 客户端在每个请求上都带 X-Auth-Token（见 net.js），因此这里不必先解析请求体。
   function adminBypassAllowed(req, u) {
     if (!world.features || world.features.adminBypass !== true) return false;
-    const tok = (req.headers && req.headers['x-auth-token']) || (u && u.query && u.query.token) || '';
-    const key = tok ? sessionGet(tok) : null;
-    return !!(key && users[key] && users[key].admin);
+    const tok = req.authToken || '';
+    return !!adminOf(tok);
   }
   req.featureAllowed = function () {
     const feature = Features.route(req.method, p);
@@ -3497,51 +3588,69 @@ const server = http.createServer(function (req, res) {
     });
   }
 
+  if (p === '/api/register/challenge' && req.method === 'GET') {
+    const challenge = Registration.issue(req);
+    return apiResp(res, challenge ? 200 : 429, challenge || { error: '请求过于频繁' });
+  }
+  if (p === '/api/admin/registration/stats' && req.method === 'GET') {
+    if (!adminOf(req.authToken)) return apiResp(res, 403, { error: '需要管理员权限' });
+    return apiResp(res, 200, Registration.snapshot());
+  }
   // ---- 注册 ----
   if (p === '/api/register' && req.method === 'POST') {
-    readBody(req, function (body) {
+    readBody(req, async function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '请求格式错误' });
       const username = (d.username || '').trim();
       const password = d.password || '';
       const name = (d.name || '').trim() || username;
       if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) return apiResp(res, 400, { error: '用户名需为 3-20 位字母/数字/下划线' });
-      if (password.length < 4) return apiResp(res, 400, { error: '密码至少 4 位' });
+      Transport.passwordPolicy(password);
       if (d.confirmPassword != null && String(d.confirmPassword) !== password) return apiResp(res, 400, { error: '两次输入的密码不一致' });
       // QQ 号必填：5-12 位数字
       const qq = String(d.qq == null ? '' : d.qq).trim();
       if (!qq) return apiResp(res, 400, { error: '请填写 QQ 号' });
       if (!/^[0-9]{5,12}$/.test(qq)) return apiResp(res, 400, { error: 'QQ 号需为 5-12 位数字' });
       const key = username.toLowerCase();
-      if (users[key]) return apiResp(res, 409, { error: '用户名已存在' });
-      const salt = crypto.randomBytes(8).toString('hex');
-      users[key] = { username: username, salt: salt, pwHash: hashPw(password, salt), name: name, qq: qq, coins: 500, inventory: {}, bd: {}, codex: {}, catchCount: 0, createdAt: Date.now() };
+      const guard = Registration.begin(req, key);
+      if (guard.status) return apiResp(res, guard.status, { error: guard.error });
+      if (guard.challenge && !Registration.consume(req, d.proof)) {
+        Registration.metrics.challenged++;
+        return apiResp(res, 403, { error: '请完成注册验证后重试', code: 'REGISTRATION_CHALLENGE' });
+      }
+      const pwHash = await Transport.hashPassword(password);
+      if (users[key]) {
+        Registration.metrics.duplicate++; Registration.metrics.rejected++;
+        return apiResp(res, 409, { error: '注册未完成，请更换账号或稍后再试' });
+      }
+      Registration.metrics.created++;
+      users[key] = { username: username, pwHash: pwHash, name: name, qq: qq, coins: 500, inventory: {}, bd: {}, codex: {}, catchCount: 0, createdAt: Date.now() };
       saveAccount(key);
       const token = newToken(); sessionSet(token, key);
-      apiResp(res, 200, { token: token, profile: profileOf(key) });
+      apiResp(res, 200, { token: Transport.loginToken(req, res, token, false), profile: profileOf(key) });
     });
     return;
   }
 
   // ---- 登录 ----
   if (p === '/api/login' && req.method === 'POST') {
-    readBody(req, function (body) {
+    readBody(req, async function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '请求格式错误' });
       const key = (d.username || '').trim().toLowerCase();
       // v0.16.0：异常登录防护——同账号 + 同 IP 连续失败达上限后锁定一段时间
       const ident = loginIdent(req, key);
+      if (!Security.rate('account:' + key, 30, 60000)) return apiResp(res, 429, { error: '账号尝试过于频繁，请稍后重试' });
       const lockMs = loginLockRemain(ident);
       if (lockMs > 0) return apiResp(res, 429, { error: '登录失败次数过多，请 ' + Math.ceil(lockMs / 60000) + ' 分钟后再试' });
       const rec = users[key];
-      if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) {
-        loginFail(ident);
-        return apiResp(res, 401, { error: '用户名或密码错误' });
+      if (!rec || !await verifyPassword(rec, d.password, key)) {
+        return loginFailureResponse(res, ident, '用户名或密码错误');
       }
       const ban = banInfoOf(rec);
       if (ban.banned) return apiResp(res, 403, { error: '账号已被封禁：' + banTextOf(ban) });
       loginOk(ident);
       kickUserSessions(key); // 顶号：同账号旧会话全部失效
       const token = newToken(); sessionSet(token, key);
-      apiResp(res, 200, { token: token, profile: profileOf(key) });
+      apiResp(res, 200, { token: Transport.loginToken(req, res, token, false), profile: profileOf(key) });
     });
     return;
   }
@@ -3550,7 +3659,8 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/logout' && req.method === 'POST') {
     readBody(req, function (body) {
       let d = bodyObj(body); if (!d) d = {}; // 解析失败或不是对象：当空请求处理
-      const token = d.token || u.query.token;
+      const token = req.authToken;
+      Transport.setCookie(req, res, '', false, true);
       const key = token && sessionGet(token);
       if (key) {
         sessionDelete(token);
@@ -3603,7 +3713,7 @@ const server = http.createServer(function (req, res) {
   // ---- SSE 事件流（需登录） ----
   if (p === '/events' && req.method === 'GET') {
     const key = u.query.token && sessionGet(u.query.token);
-    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'Connection': 'keep-alive' });
     res.write('retry: 3000\n\n');
     if (!key) {
       res.write('data: ' + JSON.stringify({ type: 'kicked', msg: '登录已失效，请重新登录' }) + '\n\n');
@@ -3630,7 +3740,7 @@ const server = http.createServer(function (req, res) {
       // perf-9：init 不再携带全量 players（5000 人时 868KB）与全量 records（50-100KB）——
       // 玩家列表走分页 API（/api/players/page），榜单走拉取制（/api/records）。
       playersTotal: players.size, recordsVersion: world.recordsVersion || 0,
-      shop: shopSnapshot(), market: world.listings,
+      shop: shopSnapshot(), marketRevision: marketRevision, marketTotal: world.listings.length,
       grounds: groundCounts(), trade: myTradeView(id),
       // 钓场目录（含管理后台保存的掉落池/增益/锁定覆盖）：新客户端连接时同步，
       // 否则前端会一直用 data.js 里的硬编码默认值，导致图鉴产地与实际掉落不符。
@@ -3649,6 +3759,11 @@ const server = http.createServer(function (req, res) {
     // data 版 ping 让前端可以做心跳看门狗，切后台回来时能立刻判断要不要重连。
     const hb = setInterval(function () {
       try {
+        if (!sessionGet(req.authToken)) {
+          clearInterval(hb);
+          res.end('data: ' + JSON.stringify({ type: 'kicked', msg: '会话已过期，请重新登录' }) + '\n\n');
+          return;
+        }
         res.write(': ping\n\n');
         res.write('data: ' + JSON.stringify({ type: 'ping', t: Date.now() }) + '\n\n');
       } catch (e) {}
@@ -4117,7 +4232,7 @@ const server = http.createServer(function (req, res) {
   // 市集挂单快照（公开只读；前端进入市集页时按需拉取）
   if (p === '/api/market' && req.method === 'GET') {
     sweepExpiredListings();
-    return apiResp(res, 200, { listings: world.listings });
+    return apiResp(res, 200, MarketPage.page(world.listings, u.query, sessionGet(req.authToken), marketRevision));
   }
   // ---- 商品价格历史与交易量（公开只读；points 为每分钟一次的价格采样；仅经济物品） ----
   if (p === '/api/shop/history' && req.method === 'GET') {
@@ -4182,9 +4297,7 @@ const server = http.createServer(function (req, res) {
         const rec = users[key];
         const chest = D.chestOf(String(d.chestId || ''));
         if (!chest) return apiResp(res, 400, { error: '未知的宝匣' });
-        let qty = Math.floor(Number(d.qty) || 1);
-        if (!isFinite(qty) || qty < 1) qty = 1;
-        if (qty > 99) qty = 99; // 单次批量上限：避免误点把残片一次清光
+        const qty = d.qty === undefined ? 1 : d.qty; // 单次批量上限：避免误点把残片一次清光
         const needRelic = chest.costRelic * qty;
         const needCoins = chest.costCoins * qty;
         if (!invHas(rec, 'relic', needRelic)) {
@@ -4277,9 +4390,8 @@ const server = http.createServer(function (req, res) {
         const view = mallView(rec);
         const item = view.items.find(function (x) { return x.id === String(d.id || ''); });
         if (!item) return apiResp(res, 400, { error: '该商品不在商城中' });
-        let qty = Math.floor(Number(d.qty) || 1);
-        if (!isFinite(qty) || qty < 1) qty = 1;
-        if (qty > MALL_MAX_QTY) qty = MALL_MAX_QTY;
+        const qty = d.qty === undefined ? 1 : d.qty;
+        if (qty > MALL_MAX_QTY) return apiResp(res, 400, { error: '超过单次购买上限' });
         if (item.limit > 0 && item.remain != null && qty > item.remain) {
           return apiResp(res, 400, { error: '超过今日限购（剩余 ' + item.remain + ' 件）' });
         }
@@ -4457,7 +4569,7 @@ const server = http.createServer(function (req, res) {
     readBody(req, function (body) {
       auth(req, res, body, function (d, key) {
         const rec = users[key];
-        const id = d.id; const qty = Math.max(1, Math.floor(Number(d.qty) || 1));
+        const id = d.id; const qty = d.qty === undefined ? 1 : d.qty;
         // v0.13.6：tier='L'|'G' → 按「大型/巨型」通道出售（单独预留量，售出额外金币加成）
         const tier = (d.tier === 'L' || d.tier === 'G') ? d.tier : null;
         if (D.isRodSet(id)) return apiResp(res, 400, { error: '整根钓竿请在「商城 → 市集」上架出售（收购不收整竿）' });
@@ -4595,18 +4707,18 @@ const server = http.createServer(function (req, res) {
     readBody(req, function (body) {
       auth(req, res, body, function (d, key) {
         const rec = users[key];
-        const price = Math.max(1, Math.floor(Number(d.price) || 0));
+        const price = d.price;
         // 整根钓竿上架：来源是钓竿槽位（整体卖出，组件随挂单走）
         let id = null, qty = 1, rodFrom = -1;
         if (d.rodSlot != null) {
-          rodFrom = Math.floor(Number(d.rodSlot));
+          rodFrom = d.rodSlot;
           const sl = rodSlotsOf(rec)[rodFrom];
           if (!sl) return apiResp(res, 400, { error: '该槽位没有已保存的钓竿' });
           id = D.rodSetId(rodPartsOfBd(sl.bd));
           if (!id) return apiResp(res, 400, { error: '该钓竿没有装配任何组件' });
         } else {
           id = D.normalizeItemId(d.id);
-          qty = Math.max(1, Math.floor(Number(d.qty) || 1));
+          qty = d.qty === undefined ? 1 : d.qty;
         }
         if (!sellableOf(id)) return apiResp(res, 400, { error: '该物品不可上架' });
         // v0.14.0：**暂时屏蔽鱼类的市集上架**（体型档改版期间，渔获改由系统收购 + 档位按钮出售）。
@@ -4625,7 +4737,7 @@ const server = http.createServer(function (req, res) {
         const myCount = world.listings.filter(function (l) { return l.seller === key; }).length;
         const myCap = listingCapOf(rec);
         if (myCap > 0 && myCount >= myCap) return apiResp(res, 400, { error: '挂单数量已达上限（同时最多 ' + myCap + ' 个，可在市集下架后再上架）' });
-        const hours = [6, 12, 24].indexOf(Number(d.hours)) >= 0 ? Number(d.hours) : 6;
+        const hours = d.hours === undefined ? 6 : d.hours;
         const feeRate = LIST_FEE_RATES[hours];
         const fee = Math.ceil(price * qty * feeRate); // 上架费：定价总额 × 时长费率，下架不退
         if (rec.coins < fee) return apiResp(res, 400, { error: '金币不足（需上架费 ' + fee + '）' });
@@ -4659,9 +4771,8 @@ const server = http.createServer(function (req, res) {
         const l = world.listings[idx];
         if (l.seller === key) return apiResp(res, 400, { error: '不能购买自己的挂单' });
         // 支持部分购买：qty 缺省 = 整单
-        let qty = Math.floor(Number(d.qty));
-        if (!isFinite(qty) || qty <= 0) qty = l.qty;
-        qty = Math.min(qty, l.qty);
+        const qty = d.qty === undefined ? l.qty : d.qty;
+        if (qty > l.qty) return apiResp(res, 400, { error: '购买数量超过挂单数量' });
         const total = l.price * qty;
         if (rec.coins < total) return apiResp(res, 400, { error: '金币不足（需 ' + total + '）' });
         const tax = Math.ceil(total * 0.10);          // 10% 交易税（由卖家承担）
@@ -4803,13 +4914,15 @@ const server = http.createServer(function (req, res) {
         const side = t.a.key === key ? 'a' : (t.b.key === key ? 'b' : null);
         if (!side) return apiResp(res, 403, { error: '无权操作' });
         if (!t.accepted) return apiResp(res, 400, { error: '对方尚未接受邀请' });
-        const items = Array.isArray(d.items) ? d.items : [];
+        const items = d.items;
         // 校验物品与数量
         const rec = users[key];
         const norm = [];
+        const seen = new Set();
         for (const it of items) {
-          const id = D.normalizeItemId(it.id); const qty = Math.max(0, Math.floor(Number(it.qty) || 0));
-          if (!id || D.isRodSet(id) || !sellableOf(id) || qty <= 0) continue;
+          const id = D.normalizeItemId(it.id); const qty = it.qty;
+          if (!id || D.isRodSet(id) || !sellableOf(id) || seen.has(id)) return apiResp(res, 400, { error: '交易物品非法或重复' });
+          seen.add(id);
           if (invAvailOf(rec, id) < qty) return apiResp(res, 400, { error: '你没有足够的 ' + itemName(id) });
           norm.push({ id: id, qty: qty });
         }
@@ -5060,7 +5173,7 @@ const server = http.createServer(function (req, res) {
           audit(a, String(path || '').replace('/api/admin/', ''), target, parts.join(' '));
         }
       } catch (e) {}
-      cb(body);
+      return cb(body);
     });
   }
   // ---- 后台 · 模拟钓竿（v0.16.0）----
@@ -5140,28 +5253,25 @@ function lootPreviewRows(spot, rareVal) {
 
   // ---- 管理后台登录（复用游戏账号密码；不顶号：不影响同一账号的游戏会话） ----
   if (p === '/api/admin/login' && req.method === 'POST') {
-    adminAuditedBody(req, p, function (body) {
+    adminAuditedBody(req, p, async function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const key = (d.username || '').trim().toLowerCase();
       const ident = loginIdent(req, 'admin:' + key);
+      if (!Security.rate('account:' + key, 30, 60000)) return apiResp(res, 429, { error: '账号尝试过于频繁，请稍后重试' });
       const lockMs = loginLockRemain(ident);
       if (lockMs > 0) return apiResp(res, 429, { error: '登录失败次数过多，请 ' + Math.ceil(lockMs / 60000) + ' 分钟后再试' });
       const rec = users[key];
-      if (!rec || rec.pwHash !== hashPw(d.password || '', rec.salt)) {
-        loginFail(ident);
-        return apiResp(res, 401, { error: '用户名或密码错误' });
+      if (!rec || !await verifyPassword(rec, d.password, key)) {
+        return loginFailureResponse(res, ident, '用户名或密码错误');
       }
       const ban = banInfoOf(rec);
       if (ban.banned) return apiResp(res, 403, { error: '账号已被封禁：' + banTextOf(ban) });
-      loginOk(ident);
-      if (!rec.admin) {
-        if (anyAdminExists()) return apiResp(res, 403, { error: '该账号没有管理员权限' });
-        rec.admin = true;
-        saveAccount(key);
-        console.log('🛡 管理员引导：服务器尚无管理员，账号 "' + rec.name + '" 已自动成为管理员');
-      }
-      const token = newToken(); sessionSet(token, key);
-      apiResp(res, 200, { ok: true, token: token, username: rec.username, name: rec.name, admin: true });
+      if (!rec.admin) return apiResp(res, 403, { error: '该账号没有管理员权限' });
+      if (!rec.adminTotpSecret) return apiResp(res, 403, { error: '请在服务器控制台配置管理员验证器', code: 'MFA_SETUP_REQUIRED' });
+      if (!Security.verifyTotp(rec, d.otp)) return loginFailureResponse(res, ident, '动态验证码无效或已使用');
+      saveAccount(key); flushAccounts(); loginOk(ident);
+      const token = newToken(); sessionSet(token, key, true);
+      apiResp(res, 200, { ok: true, token: Transport.loginToken(req, res, token, true), username: rec.username, name: rec.name, admin: true });
     });
     return;
   }
@@ -5582,8 +5692,11 @@ function lootPreviewRows(spot, rareVal) {
       const target = String(d.target || '').toLowerCase();
       const rec = users[target];
       if (!rec) return apiResp(res, 404, { error: '账号不存在' });
-      const want = !!d.admin;
+      if (typeof d.admin !== 'boolean') return apiResp(res, 400, { error: '权限必须为布尔值' });
+      const want = d.admin;
+      if (!want && rec.admin && Object.values(users).filter(r => r.admin).length <= 1) return apiResp(res, 400, { error: '不能撤销最后一位管理员' });
       if (target === a.key && !want) return apiResp(res, 400, { error: '不能撤销自己的管理员权限' });
+      if (rec.admin !== want) kickUserSessions(target);
       rec.admin = want;
       saveAccount(target);
       sendTo(target, { type: 'notice', msg: want ? '🛡 你已获得管理员权限，可打开管理后台（/admin.html）' : '你的管理员权限已被收回' });
@@ -5657,6 +5770,7 @@ function lootPreviewRows(spot, rareVal) {
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       const target = String(d.target || '').toLowerCase();
       if (!target || !users[target]) return apiResp(res, 404, { error: '账号不存在' });
+      if (users[target].admin && Object.values(users).filter(r => r.admin).length <= 1) return apiResp(res, 400, { error: '不能删除最后一位管理员' });
       if (target === a.key) return apiResp(res, 400, { error: '不能删除自己的账号' });
       if (d.confirm !== true) return apiResp(res, 400, { error: '需要二次确认' });
       // 踢下线、清理该账号的挂单与交易
@@ -5831,7 +5945,7 @@ function lootPreviewRows(spot, rareVal) {
   }
   // ---- 账号管理：改密码 / 改显示名 / 调整金币（管理员） ----
   if (p === '/api/admin/users/update' && req.method === 'POST') {
-    adminAuditedBody(req, p, function (body) {
+    adminAuditedBody(req, p, async function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
@@ -5841,9 +5955,8 @@ function lootPreviewRows(spot, rareVal) {
       const changed = [];
       if (d.password != null && String(d.password) !== '') {
         const pw = String(d.password);
-        if (pw.length < 4) return apiResp(res, 400, { error: '密码至少 4 位' });
-        rec.salt = crypto.randomBytes(8).toString('hex');
-        rec.pwHash = hashPw(pw, rec.salt);
+        Transport.passwordPolicy(d.password);
+        rec.pwHash = await Transport.hashPassword(pw); delete rec.salt;
         changed.push('密码');
         // 改密后使该账号所有旧会话失效（强制重新登录），并断开实时连接
         kickUserSessions(target);
@@ -7284,9 +7397,17 @@ function lootPreviewRows(spot, rareVal) {
     res.writeHead(200, { 'Content-Type': MIME[path.extname(fp)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(data);
   });
+  } catch (e) {
+    console.error('[request]', e.stack || e);
+    if (!res.headersSent) apiResp(res, e instanceof Security.ValidationError ? 400 : 500, { error: e instanceof Security.ValidationError ? e.message : '服务器处理失败' }); else res.destroy();
+  }
 });
 
-server.listen(PORT, function () {
+server.requestTimeout = 15000;
+server.headersTimeout = 10000;
+server.keepAliveTimeout = 5000;
+server.maxRequestsPerSocket = 1000;
+server.listen(PORT, BIND_HOST, function () {
   console.log('🎣 钓鱼 API 服务器已启动: http://localhost:' + PORT);
   if (STATIC_DIR) console.log('   集成模式：前端已托管 → http://localhost:' + PORT + '/  （' + STATIC_DIR + '）');
   else console.log('   纯 API 模式：未托管静态前端（前后端分离部署）');
@@ -7325,6 +7446,21 @@ function gracefulShutdown(why) {
   try { process.stdin.setEncoding('utf8'); } catch (e) {}
   process.stdin.on('data', function (buf) {
     const cmd = String(buf).trim().toLowerCase();
+    const match = /^(admin-init|admin-totp) ([a-z0-9_]{3,20})$/.exec(cmd);
+    if (match) {
+      const rec = users[match[2]];
+      if (!rec) return console.log('账号不存在，请先注册游戏账号');
+      if (match[1] === 'admin-init') {
+        if (anyAdminExists()) return console.log('已有管理员，不能再次初始化');
+        rec.admin = true;
+      } else if (!rec.admin) return console.log('该账号不是管理员');
+      rec.adminTotpSecret = crypto.randomBytes(20).toString('hex'); rec.adminTotpStep = 0;
+      kickUserSessions(match[2]); saveAccount(match[2]); flushAccounts();
+      const secret = Security.base32(Buffer.from(rec.adminTotpSecret, 'hex'));
+      console.log('仅在本机显示：请将以下密钥加入验证器，切勿分享：' + secret);
+      console.log('otpauth://totp/FishGame:' + match[2] + '?secret=' + secret + '&issuer=FishGame');
+      return;
+    }
     if (['q', 'quit', 'exit', 'save', 'stop'].indexOf(cmd) >= 0) gracefulShutdown('控制台输入 ' + cmd);
   });
   process.stdin.on('error', function () {});

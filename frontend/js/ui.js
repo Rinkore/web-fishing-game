@@ -2807,9 +2807,7 @@ window.UI = (function () {
     const myCap = isFinite(capRaw) && capRaw > 0 ? capRaw : 0;
     let capHint = '';
     if (myCap) {
-      const used = (st.market || []).filter(function (l) {
-        return st.me && st.me.id != null && String(l.seller).toLowerCase() === String(st.me.id).toLowerCase();
-      }).length;
+      const used = (st.marketMinePage || st.marketPage || {}).mineCount || 0;
       const full = used >= myCap;
       capHint = '<div class="hint" style="margin-top:6px' + (full ? ';color:var(--bad)' : '') + '">你的挂单 ' + used + ' / 上限 ' + myCap +
         (full ? '（已达上限，先下架一些再上架）' : '') + '</div>';
@@ -3718,6 +3716,25 @@ window.UI = (function () {
   // ---- 开放市集视图 ----
   // 当前页签与购买市场筛选状态（模块级：重绘间保留）
   let marketTab = 'buy';
+  let marketPageIndex = 1, marketFilterKey = '', marketPending = '', marketError = '', marketRefreshTimer;
+  function onMarketChanged() {
+    if (marketRefreshTimer) return;
+    marketRefreshTimer = setTimeout(function () {
+      marketRefreshTimer = null;
+      if (currentView === 'inventory') window.Net.fetchMyMarket((S().marketMinePage || {}).page || 1);
+      if (inMarketView() || currentView === 'market') { S().marketQuery = null; renderView(); }
+    }, 250);
+  }
+  function marketPager(parent, info, change) {
+    if (!info) return;
+    const bar = el('div', 'inv-pages');
+    const previous = el('button', 'mini', '上一页'), next = el('button', 'mini', '下一页');
+    previous.disabled = info.page <= 1; next.disabled = info.page >= info.pages;
+    previous.onclick = function () { change(info.page - 1); };
+    next.onclick = function () { change(info.page + 1); };
+    bar.appendChild(previous); bar.appendChild(el('span', 'hint', '第 ' + info.page + ' / ' + info.pages + ' 页 · 共 ' + info.total + ' 条')); bar.appendChild(next);
+    parent.appendChild(bar);
+  }
   let buyCategory = 'all';
   let buyPart = 'all';        // 「组件」分类下的二级筛选：部位（口径与背包一致：meta.part）
   let buySearch = '';
@@ -3826,8 +3843,27 @@ window.UI = (function () {
 
   function renderMarket() {
     const main = $('main');
+    const focusedFilter = main.contains(document.activeElement) ? document.activeElement.getAttribute('data-market-filter') : null;
     const st = S();
     const me = st.me;
+    const filter = { scope: marketTab === 'mine' ? 'mine' : 'others', kind: marketTab === 'mine' ? 'all' : buyCategory,
+      part: buyPart, q: marketTab === 'mine' ? '' : buySearch, sort: buySort.key, dir: buySort.dir,
+      affix: marketTab === 'mine' ? 'all' : buyAffixType, min: marketTab === 'mine' ? '' : buyAffixMin, max: marketTab === 'mine' ? '' : buyAffixMax };
+    const filterKey = JSON.stringify(filter);
+    if (filterKey !== marketFilterKey) { marketPageIndex = 1; marketFilterKey = filterKey; marketError = ''; }
+    const query = Object.assign({ scope: 'others', page: marketPageIndex, size: 30 }, filter);
+    const queryKey = JSON.stringify(query);
+    const loaded = st.marketQuery === queryKey;
+    if (marketTab !== 'history' && !loaded && marketPending !== queryKey && !marketError) {
+      marketPending = queryKey;
+      window.Net.fetchMarket(query).then(function (result) {
+        if (marketPending !== queryKey) return;
+        marketPending = '';
+        if (!result || !result.ok) marketError = (result && result.data && result.data.error) || '市集加载失败';
+        if (inMarketView() || currentView === 'market') renderView();
+      });
+    }
+    const pageInfo = loaded ? st.marketPage : null;
     // 右栏「我的背包（上架）」优先复用已有节点（别人挂单 / 成交的广播会整页重建市集）：
     // 重建右栏会把滚动位置、勾选焦点与鼠标悬停全丢掉，多选上架时列表被弹回顶部、点击落空。
     const prevSell = main.querySelector('.mkt-sell');
@@ -3842,12 +3878,13 @@ window.UI = (function () {
       '玩家之间的挂单买卖：上架费按 6 / 12 / 24 小时收 1% / 3% / 5%（下架不退），成交再收 10% 税（卖家承担）。右栏可直接从背包上架。'));
 
     const colMain = el('div', 'col-main');
-    const market = st.market || [];
-    const mineCount = market.filter(function (l) { return me && me.id != null && String(l.seller).toLowerCase() === String(me.id).toLowerCase(); }).length;
+    const market = loaded ? (st.market || []) : [];
+    const countsInfo = st.marketPage || st.marketMinePage || {};
+    const mineCount = countsInfo.mineCount || 0;
     // 挂单上限（后台按账号设；0 = 不限）：顶满时在页签上直接标出来，免得反复被服务器拒绝
     const myCap = me && Number(me.listingCap) > 0 ? Number(me.listingCap) : 0;
     const tabs = el('div', 'inv-cats sub-cats');
-    [['buy', '🛒 购买市场', market.length - mineCount], ['mine', '🏷️ 我的挂单', mineCount], ['history', '📜 历史订单', null]].forEach(function (kv) {
+    [['buy', '🛒 购买市场', Math.max(0, (countsInfo.marketTotal || 0) - mineCount)], ['mine', '🏷️ 我的挂单', mineCount], ['history', '📜 历史订单', null]].forEach(function (kv) {
       const label = kv[1] + (kv[2] != null ? ' ' + kv[2] : '') + (kv[0] === 'mine' && myCap ? ' / ' + myCap : '');
       const b = el('button', 'inv-cat' + (marketTab === kv[0] ? ' on' : ''), label);
       if (kv[0] === 'mine' && myCap && mineCount >= myCap) b.title = '挂单已达上限 ' + myCap + '，下架后才能再上架';
@@ -3855,6 +3892,11 @@ window.UI = (function () {
       tabs.appendChild(b);
     });
     colMain.appendChild(tabs);
+    if (marketTab !== 'history' && !loaded) {
+      colMain.appendChild(el('div', 'hint', marketError || '加载中…'));
+      if (marketError) { const retry = el('button', 'mini', '重试'); retry.onclick = function () { marketError = ''; renderView(); }; colMain.appendChild(retry); }
+    }
+    if (marketTab !== 'history') marketPager(colMain, pageInfo, function (page) { marketPageIndex = page; marketError = ''; renderView(); });
 
     if (marketTab === 'mine') {
       // 我的挂单：管理（下架）
@@ -3908,7 +3950,7 @@ window.UI = (function () {
       const othersAll = market.filter(function (l) { return !(me && l.seller === me.id); });
       const filters = el('div', 'buy-filters');
       [['all', '全部'], ['fish', '鱼'], ['material', '材料'], ['component', '组件'], ['rod', '🎣 钓竿']].forEach(function (kv) {
-        const n = kv[0] === 'all' ? othersAll.length : othersAll.filter(function (l) { return itemMeta(l.id).kind === kv[0]; }).length;
+        const n = ((pageInfo || {}).counts || {})[kv[0]] || 0;
         const b = el('button', 'bf-cat' + (buyCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + n);
         b.addEventListener('click', function () { if (buyCategory !== kv[0]) { buyCategory = kv[0]; renderView(); } });
         filters.appendChild(b);
@@ -3921,11 +3963,10 @@ window.UI = (function () {
       // 判定口径与背包「物品明细」完全一致（itemMeta(id).part），挂单不存属性快照，靠 id 反解。
       if (buyCategory === 'component') {
         const comps = othersAll.filter(function (l) { return itemMeta(l.id).kind === 'component'; });
-        const partCount = {};
-        comps.forEach(function (l) { const p = itemMeta(l.id).part || ''; partCount[p] = (partCount[p] || 0) + 1; });
+        const partCount = (pageInfo || {}).parts || {};
         const partRow = el('div', 'bf-subrow');
         partRow.appendChild(el('span', 'sub-label', '部位'));
-        [['all', '全部', comps.length]].concat(D.ROD_PARTS.map(function (p) {
+        [['all', '全部', (((pageInfo || {}).counts || {}).component || 0)]].concat(D.ROD_PARTS.map(function (p) {
           return [p.key, p.name, partCount[p.key] || 0];
         })).forEach(function (kv) {
           if (kv[0] !== 'all' && !kv[2]) return;   // 没有该部位挂单就不显示，保持紧凑（同背包）
@@ -3936,52 +3977,13 @@ window.UI = (function () {
         filters.appendChild(partRow);
       }
       function refreshList() {
-        const q = buySearch.trim().toLowerCase();
-        let others = othersAll.filter(function (l) { return buyCategory === 'all' || itemMeta(l.id).kind === buyCategory; });
-        if (buyCategory === 'component' && buyPart !== 'all') {
-          others = others.filter(function (l) {
-            const m = itemMeta(l.id);
-            return m.kind === 'component' && (m.part || '') === buyPart;
-          });
-        }
-        if (q) others = others.filter(function (l) {
-          return l.name.toLowerCase().indexOf(q) >= 0 || (l.sellerName || '').toLowerCase().indexOf(q) >= 0;
-        });
-        if (affixFilterActive()) others = others.filter(listingMatchesAffix);
-        others.sort(function (a, b) {
-          if (buySort.key === 'price') {
-            const d = buySort.dir === 'asc' ? a.price - b.price : b.price - a.price;
-            return d || b.t - a.t;
-          }
-          if (buySort.key === 'qty') {
-            const d = buySort.dir === 'asc' ? a.qty - b.qty : b.qty - a.qty;
-            return d || b.t - a.t;
-          }
-          if (buySort.key === 'affix') {
-            // 词条值排序：选中词条类型时用该词条数值，否则用全部词条合计（组件与整竿都适用）
-            const av = function (id) {
-              const m = itemMeta(id);
-              if (!m.affixes || !m.affixes.length) return -1e9;
-              if (buyAffixType !== 'all') {
-                const hit = m.affixes.find(function (x) { return x.type === buyAffixType; });
-                return hit ? hit.value : -1e9;
-              }
-              return m.affixes.reduce(function (s2, x) { return s2 + x.value; }, 0);
-            };
-            const d = buySort.dir === 'asc' ? av(a.id) - av(b.id) : av(b.id) - av(a.id);
-            return d || b.t - a.t;
-          }
-          return b.t - a.t; // 默认：最新上架在前
-        });
         list.innerHTML = '';
-        if (!others.length) {
-          list.appendChild(el('div', 'hint', othersAll.length ? '没有符合条件的挂单。' : '市集未上架商品（您上架的商品在我的挂单查看）'));
-          return;
-        }
-        others.forEach(function (l) { list.appendChild(marketRow(l, st, me)); });
-        if (q || buyCategory !== 'all' || buyPart !== 'all' || buySort.key !== 'time' || affixFilterActive()) list.appendChild(el('div', 'hint', '匹配 ' + others.length + ' 条挂单。'));
+        if (loaded && !othersAll.length) list.appendChild(el('div', 'hint', '没有符合条件的挂单。'));
+        othersAll.forEach(function (l) { list.appendChild(marketRow(l, st, me)); });
       }
-      inp.addEventListener('input', function () { buySearch = inp.value; refreshList(); });
+      let searchTimer;
+      inp.setAttribute('data-market-filter', 'search');
+      inp.addEventListener('input', function () { buySearch = inp.value; clearTimeout(searchTimer); searchTimer = setTimeout(function () { renderView(); }, 300); });
       inp.addEventListener('focus', function () { buySearchFocus = true; marketFilterActive = true; });
       inp.addEventListener('blur', function () { buySearchFocus = false; marketFilterActive = false; });
       filters.appendChild(inp);
@@ -4003,7 +4005,8 @@ window.UI = (function () {
       minInp.type = 'number'; minInp.placeholder = '最小值'; minInp.value = buyAffixMin;
       const maxInp = el('input', 'aff-num');
       maxInp.type = 'number'; maxInp.placeholder = '最大值'; maxInp.value = buyAffixMax;
-      function onNum() { buyAffixMin = minInp.value; buyAffixMax = maxInp.value; refreshList(); }
+      minInp.setAttribute('data-market-filter', 'min'); maxInp.setAttribute('data-market-filter', 'max');
+      function onNum() { buyAffixMin = minInp.value; buyAffixMax = maxInp.value; clearTimeout(searchTimer); searchTimer = setTimeout(function () { renderView(); }, 400); }
       function focusOn() { marketFilterActive = true; }
       function blurOff() { marketFilterActive = false; }
       minInp.addEventListener('input', onNum);
@@ -4040,8 +4043,6 @@ window.UI = (function () {
       colMain.appendChild(filters);
       colMain.appendChild(list);
       refreshList();
-      // 广播重绘后恢复搜索框焦点与光标位置
-      if (buySearchFocus) { inp.focus(); const v = inp.value; inp.setSelectionRange(v.length, v.length); }
       colMain.appendChild(el('div', 'hint', '提示：买到的物品可拿去系统商店出售赚差价；市集成交收 10% 税（由卖家承担）。'));
     }
     panel.appendChild(colMain);
@@ -4052,6 +4053,10 @@ window.UI = (function () {
     panel.appendChild(side);
 
     main.appendChild(panel);
+    if (focusedFilter) {
+      const restored = panel.querySelector('[data-market-filter="' + focusedFilter + '"]');
+      if (restored) { restored.focus(); if (restored.type !== 'number') restored.setSelectionRange(restored.value.length, restored.value.length); }
+    }
     if (keepSell) {
       patchMarketAssets();   // 复用旧节点后按最新背包补齐行（增删 / 数量 / 现价 / 分类计数）
       const l = keepSell.querySelector('.mkt-sell-list');
@@ -5822,7 +5827,8 @@ window.UI = (function () {
   // 我的挂单结构（下架 / 被买走后要重建这一块）：只在挂单本身变化时才让签名变
   function myListingSig(st) {
     const me = st.me && st.me.id != null ? String(st.me.id).toLowerCase() : '';
-    return (st.market || []).filter(function (l) { return me && String(l.seller).toLowerCase() === me; })
+    const page = st.marketMinePage || {};
+    return [page.page, page.pages, page.total].join(':') + '|' + (st.marketMine || []).filter(function (l) { return me && String(l.seller).toLowerCase() === me; })
       .map(function (l) { return l.lid + ':' + l.qty + ':' + l.price; }).sort().join(',');
   }
 
@@ -6060,9 +6066,10 @@ window.UI = (function () {
     side.appendChild(breakdown);
 
     // 我的挂单（可下架；上架费不退）
-    const mine = (st.market || []).filter(function (l) { return st.me && st.me.id != null && String(l.seller).toLowerCase() === String(st.me.id).toLowerCase(); })
+    const mine = (st.marketMine || []).filter(function (l) { return st.me && st.me.id != null && String(l.seller).toLowerCase() === String(st.me.id).toLowerCase(); })
       .sort(function (a, b) { return b.t - a.t; });
-    side.appendChild(el('h3', null, '🏷️ 我的挂单（' + mine.length + '）'));
+    side.appendChild(el('h3', null, '🏷️ 我的挂单（' + ((st.marketMinePage || {}).total || 0) + '）'));
+    marketPager(side, st.marketMinePage, function (page) { window.Net.fetchMyMarket(page); });
     const ml = el('div', 'my-listings');
     if (!mine.length) {
       ml.appendChild(el('div', 'hint', '暂无在售挂单。在左侧物品行点「上架」挂到开放市集。'));
@@ -8923,11 +8930,12 @@ window.UI = (function () {
   function loadViewData(view) {
     if (!window.Net) return;
     if (view === 'shop' || view === 'inventory') window.Net.fetchShop();
+    if (view === 'inventory') window.Net.fetchMyMarket();
     // 商城 = 限购 + 收购 + 市集 三合一：进页把三份数据都拉齐，页签切换不再单独请求
-    else if (view === 'mall') { window.Net.fetchMall(); window.Net.fetchShop(); window.Net.fetchMarket(); }
+    else if (view === 'mall') { window.Net.fetchMall(); window.Net.fetchShop(); window.Net.fetchMyMarket(); }
     // 工坊 = 开箱（原宝匣合成页）+ 熔炼 + 重铸 三合一：进页把宝匣数据也拉齐
     else if (view === 'workshop') { window.Net.fetchWorkshop(); window.Net.fetchChest(); }
-    else if (view === 'market') window.Net.fetchMarket();
+    else if (view === 'market') { S().marketQuery = null; }
     else if (view === 'codex') window.Net.fetchCodex();
     else if (view === 'records') window.Net.fetchRecords();
     else if (view === 'feedback') window.Net.fetchFeedback();
@@ -9096,7 +9104,7 @@ window.UI = (function () {
         return;
       }
       if (!r.data || !r.data.token) { authMsg('服务器返回异常，请重试'); return; }
-      try { localStorage.setItem('fishing_token', r.data.token); } catch (e) {}
+      try { localStorage.removeItem('fishing_token'); } catch (e) {}
       startGame(r.data.token, r.data.profile);
     }).catch(function (e) {
       btn.disabled = false; btn.textContent = oldLabel;
@@ -9333,8 +9341,8 @@ window.UI = (function () {
       const scene = document.querySelector('.fish-live .px-scene');
       if (scene) rollSceneFish(scene);
     }, 1000);
-    let token = null;
-    try { token = localStorage.getItem('fishing_token'); } catch (e) {}
+    let token = 'cookie';
+    try { localStorage.removeItem('fishing_token'); } catch (e) {}
     if (token) {
       Promise.resolve()
         .then(function () { return window.Net.fetchMe(token); })
@@ -9352,7 +9360,7 @@ window.UI = (function () {
   }
 
   return {
-    onFeatures: onFeatures, init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
+    onMarketChanged: onMarketChanged, onFeatures: onFeatures, init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
     patchCodexCell: patchCodexCell,
     toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners, onBannerStop: onBannerStop,
     addLog: addLog, onSubAlert: onSubAlert, resetBanners: resetBanners,

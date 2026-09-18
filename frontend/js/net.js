@@ -42,10 +42,12 @@ window.Net = (function () {
   const API_TIMEOUT_MS = 8000;
   function apiOnce(method, u, body) {
     return new Promise(function (resolve) {
-      const opts = { method: method, headers: { 'Content-Type': 'application/json' } };
-      // v0.16.0：所有请求都带上会话 token 头——服务端据此判断「管理员穿透已关闭功能」，
-      // 而不必为了这个判断提前解析请求体。
-      if (me && me.token) opts.headers['X-Auth-Token'] = me.token;
+      // Keep legacy call sites' state marker out of URLs and JSON; only HttpOnly cookies authenticate.
+      const requestUrl = new URL(u, location.href);
+      requestUrl.searchParams.delete('token');
+      u = requestUrl.pathname + requestUrl.search;
+      if (body) { body = Object.assign({}, body); delete body.token; }
+      const opts = { method: method, credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'FishGame', 'X-Session-Mode': 'cookie' } };
       if (body) opts.body = JSON.stringify(body);
       let ctrl = null, timer = null;
       if (typeof AbortController !== 'undefined') {
@@ -83,7 +85,29 @@ window.Net = (function () {
   }
 
   function register(username, password, name, qq, confirmPassword) {
-    return apiFetch('POST', '/api/register', { username: username, password: password, name: name, qq: qq, confirmPassword: confirmPassword });
+    const body = { username: username, password: password, name: name, qq: qq, confirmPassword: confirmPassword };
+    return apiFetch('POST', '/api/register', body).then(function (r) {
+      if (!r || !r.data || r.data.code !== 'REGISTRATION_CHALLENGE') return r;
+      if (window.UI) window.UI.toast('正在验证注册请求，请稍候…');
+      return apiFetch('GET', '/api/register/challenge').then(function (challenge) {
+        if (!challenge.ok) return challenge;
+        return new Promise(function (resolve) {
+          let worker, timer;
+          function finish(value) { clearTimeout(timer); if (worker) worker.terminate(); resolve(value); }
+          try {
+            worker = new Worker('js/registration-proof.js');
+            timer = setTimeout(function () { finish({ ok: false, data: { error: '注册验证超时，请稍后再试' } }); }, 95000);
+            worker.onerror = function () { finish({ ok: false, data: { error: '浏览器无法完成注册验证，请使用 HTTPS 或稍后重试' } }); };
+            worker.onmessage = function (e) {
+              if (e.data.error) return finish({ ok: false, data: e.data });
+              worker.terminate(); clearTimeout(timer);
+              apiFetch('POST', '/api/register', Object.assign({}, body, { proof: e.data })).then(resolve);
+            };
+            worker.postMessage(challenge.data);
+          } catch (e) { finish({ ok: false, data: { error: '浏览器不支持注册验证' } }); }
+        });
+      });
+    });
   }
   function login(username, password) { return apiFetch('POST', '/api/login', { username: username, password: password }); }
   function logout() { return authed('/api/logout', {}); }
@@ -273,10 +297,28 @@ window.Net = (function () {
     if (r && r.ok) { state().shop = r.data; if (window.UI) window.UI.refreshAll('shop'); }
     return r;
   });
-  const fetchMarket = () => apiFetch('GET', '/api/market').then(function (r) {
-    if (r && r.ok) { state().market = r.data.listings || []; if (window.UI) window.UI.refreshAll('market'); }
-    return r;
-  });
+  let marketRequest = 0, mineRequest = 0;
+  function fetchMarket(options) {
+    const query = Object.assign({ scope: 'others', page: 1, size: 30 }, options || {});
+    const sequence = ++marketRequest;
+    return apiFetch('GET', '/api/market?' + new URLSearchParams(query)).then(function (r) {
+      if (r && r.ok && sequence === marketRequest) {
+        state().market = r.data.listings || []; state().marketPage = r.data;
+        state().marketQuery = r.data.revision < (state().marketRevision || 0) ? null : JSON.stringify(query);
+      }
+      return r;
+    });
+  }
+  function fetchMyMarket(page) {
+    const sequence = ++mineRequest;
+    return apiFetch('GET', '/api/market?' + new URLSearchParams({ scope: 'mine', page: page || 1, size: 30 })).then(function (r) {
+      if (r && r.ok && sequence === mineRequest) {
+        state().marketMine = r.data.listings || []; state().marketMinePage = r.data;
+        if (window.UI) window.UI.refreshAll('market');
+      }
+      return r;
+    });
+  }
   const fetchCodex = () => apiFetch('GET', '/api/codex?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
     if (r && r.ok) { state().codex = r.data.codex || {}; state().catchCount = r.data.catchCount || 0; if (window.UI) window.UI.refreshAll('codex'); }
     return r;
@@ -333,7 +375,7 @@ window.Net = (function () {
     }
     return r;
   });
-  const chestCraft = (chestId, qty) => authed('/api/chest/craft', { chestId: chestId, qty: qty || 1 });
+  const chestCraft = (chestId, qty) => authed('/api/chest/craft', { chestId: chestId, qty: qty === undefined ? 1 : qty });
   // sel：自选目标（mode='part' 传 {part}；mode='base' 传 {baseId}；mode='random' 不传）
   const chestOpen = (chestId, sel) => authed('/api/chest/open', Object.assign({ chestId: chestId }, sel || {}));
   // 商城（每日限购）：拉取当前周期商品与限购余额 / 购买
@@ -345,7 +387,7 @@ window.Net = (function () {
     }
     return r;
   });
-  const mallBuy = (id, qty) => authed('/api/mall/buy', { id: id, qty: qty || 1 });
+  const mallBuy = (id, qty) => authed('/api/mall/buy', { id: id, qty: qty === undefined ? 1 : qty });
   // 工坊：熔炼参数（材料→词缀对照 / 成功率与花费系数）
   const fetchWorkshop = () => apiFetch('GET', '/api/workshop?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
     if (r && r.ok) {
@@ -363,9 +405,9 @@ window.Net = (function () {
     (affixIndex == null || affixIndex < 0) ? { id: id } : { id: id, affixIndex: affixIndex });
   // v0.13.6：tier='L'|'G' → 按大型/巨型通道出售（额外金币加成）
   const sell = (id, qty, tier) => authed('/api/sell', tier ? { id: id, qty: qty, tier: tier } : { id: id, qty: qty });
-  const marketList = (id, qty, price, hours) => authed('/api/market/list', hours ? { id: id, qty: qty, price: price, hours: hours } : { id: id, qty: qty, price: price });
+  const marketList = (id, qty, price, hours) => authed('/api/market/list', { id: id, qty: qty, price: price, hours: hours });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
-  const marketBuy = (lid, qty) => authed('/api/market/buy', qty ? { lid: lid, qty: qty } : { lid: lid });
+  const marketBuy = (lid, qty) => authed('/api/market/buy', { lid: lid, qty: qty });
   const marketCancel = (lid) => authed('/api/market/cancel', { lid: lid });
   const feedbackStatus = () => apiFetch('GET', '/api/feedback?token=' + encodeURIComponent(me ? me.token : ''));
   const feedbackSubmit = (text, kind) => authed('/api/feedback/submit', { text: text, kind: kind });
@@ -430,10 +472,10 @@ window.Net = (function () {
   }
 
   function connectStream() {
-    const u = API_BASE + '/events?token=' + encodeURIComponent(me.token);
+    const u = API_BASE + '/events';
     const seenLogBanners = {}; // 本连接内已入日志的公告 id（重连后重播不重复记录）
     try {
-      es = new EventSource(u);
+      es = new EventSource(u, { withCredentials: true });
       lastMsgAt = Date.now();
       es.onopen = function () { lastMsgAt = Date.now(); setConn(true); };
       // 性能修复(perf-5) 前端侧：服务器把同一时间窗内的多条事件合并成
@@ -472,7 +514,9 @@ window.Net = (function () {
           S.recordsVersion = m.recordsVersion || 0;
           S.feed = m.feed || [];
           S.shop = m.shop || {};
-          S.market = m.market || [];
+          S.market = []; S.marketQuery = null;
+          S.marketRevision = m.marketRevision || 0;
+          if (ui && ui.onMarketChanged) ui.onMarketChanged();
           fetchRecords();
           S.groundCounts = m.grounds || {};
           // 服务器重连自动续钓（上次没主动收竿）：直接带回钓速明细与钓点，
@@ -549,9 +593,11 @@ window.Net = (function () {
         } else if (m.type === 'shop') {
           S.shop = m.shop || {};
           if (ui) ui.refreshAll('shop');
-        } else if (m.type === 'market') {
-          S.market = m.listings || [];
-          if (ui) ui.refreshAll('market');
+        } else if (m.type === 'marketDelta') {
+          if (m.revision > (S.marketRevision || 0)) {
+            S.marketRevision = m.revision; S.marketQuery = null;
+            if (ui && ui.onMarketChanged) ui.onMarketChanged();
+          }
         } else if (m.type === 'records') {
           S.records = m.records || {};
           if (m.small) S.smallRecords = m.small;
@@ -811,7 +857,7 @@ window.Net = (function () {
     bannerPlaying: bannerPlaying,
     feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,
     fetchSubscribe: fetchSubscribe, subscribeSave: subscribeSave,
-    sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel,
+    sell: sell, marketList: marketList, marketBuy: marketBuy, marketCancel: marketCancel, fetchMyMarket: fetchMyMarket,
     tradeInvite: tradeInvite, tradeRespond: tradeRespond, tradeSet: tradeSet,
     fetchPlayerRod: fetchPlayerRod,
     rodBuySlot: rodBuySlot, rodSave: rodSave, rodName: rodName, rodRename: rodRename,
