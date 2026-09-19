@@ -409,7 +409,7 @@ window.Net = (function () {
   // affixIndex 可选：指定只重铸第几条词条（0 基下标）；不传 = 重 roll 全部词条
   const recast = (id, affixIndex) => authed('/api/workshop/recast',
     (affixIndex == null || affixIndex < 0) ? { id: id } : { id: id, affixIndex: affixIndex });
-  const forge = (id, materialId) => authed('/api/workshop/forge', { id: id, materialId: materialId });
+  const forge = (id, materialId, pearl) => authed('/api/workshop/forge', { id: id, materialId: materialId, pearl: !!pearl });
   // v0.13.6：tier='L'|'G' → 按大型/巨型通道出售（额外金币加成）
   const sell = (id, qty, tier) => authed('/api/sell', tier ? { id: id, qty: qty, tier: tier } : { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', { id: id, qty: qty, price: price, hours: hours });

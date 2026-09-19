@@ -141,7 +141,8 @@ async function main() {
   check('资料站与两个模拟器页面均可同域访问', coreResults.every(Boolean), JSON.stringify(corePages.map(function (x, i) { return x[0] + ':' + coreResults[i]; })));
 
   const versions = await request('/wiki/content/versions.json');
-  check('版本记录静态文件可访问并与主线同步', versions.status === 200 && versions.data.count === 79 && versions.data.versions.some(v => v.version === 'v0.20.0'), JSON.stringify({ status: versions.status, count: versions.data && versions.data.count }));
+  const sourceVersions = fs.readFileSync(path.join(ROOT, 'VERSIONS.md'), 'utf8').match(/^\|\s*v[0-9][0-9.]*\s*\|/gm) || [];
+  check('版本记录静态文件可访问并与主线同步', versions.status === 200 && versions.data.count === sourceVersions.length && versions.data.versions.some(v => v.version === require(path.join(ROOT, 'frontend/js/data.js')).VERSION), JSON.stringify({ status: versions.status, count: versions.data && versions.data.count }));
 
   const shop = await request('/shop');
   check('/shop 复用为实时价且 no-store', shop.status === 200 && shop.headers['cache-control'] === 'no-store', JSON.stringify({ status: shop.status, cache: shop.headers['cache-control'] }));

@@ -415,8 +415,9 @@ function planRecast(rec, id, affixIdx) {
 
 // ---- 工坊 · 锻造 ----
 // 用一件催化剂材料，为尚未达到品质词条上限、且未拥有该催化词缀的组件补一条催化词缀。
-// 催化区间与熔炼补缀共用 catalystRangeFor（已统一下调为原宽度的 90%）。
-function planForge(rec, id, materialId) {
+// 催化区间按后台比例缩减；可消耗一颗宝珠恢复完整区间并记录 ct_full 来源。
+function planForge(rec, id, materialId, pearl) {
+  if (pearl != null && typeof pearl !== 'boolean') return { error: '宝珠选项必须为布尔值' };
   const meta = D.componentOf(id);
   if (!meta || !D.isInstance(id)) return { error: '请选择一件已生成的组件' };
   if (!invHas(rec, meta.id, 1)) {
@@ -434,16 +435,18 @@ function planForge(rec, id, materialId) {
   }
   if (!D.getSmeltCfg().forgeAnyAffix && !D.COMPONENT_BASES.find(function (b) { return b.id === meta.baseId; }).pool.some(function (a) { return a.type === type; })) return { error: '当前锻造不允许新增该底材的池外词条' };
   if (!invHas(rec, mat, 1)) return { error: itemName(mat) + '不足（需 1 个）' };
-  const range = D.catalystRangeFor(meta.part, type);
+  if (pearl && !invHas(rec, D.SMELT_PEARL, 1)) return { error: itemName(D.SMELT_PEARL) + '不足（需 1 个）' };
+  const range = D.catalystRangeFor(meta.part, type, !!pearl);
   if (!range) return { error: '该部位没有可用的催化区间' };
   const model = (D.getComponentCfg && D.getComponentCfg().rollModel) || 'linear';
   const value = D.rollAffixValue(range[0], range[1], model);
   const affixes = (meta.affixes || []).map(function (a) {
     return { type: a.type, value: a.value, src: a.src, srcExplicit: a.srcExplicit };
   });
-  affixes.push({ type: type, value: value, src: 'ct', srcExplicit: true });
+  const src = pearl ? 'ct_full' : 'ct';
+  affixes.push({ type: type, value: value, src: src, srcExplicit: true });
   const newId = D.instanceId(meta.baseId, meta.quality, affixes);
-  return { ok: true, meta: meta, materialId: mat, type: type, value: value, range: range, newId: newId };
+  return { ok: true, meta: meta, materialId: mat, type: type, value: value, range: range, newId: newId, pearl: !!pearl, src: src };
 }
 
 function chestPityOf(rec, chestId) {
@@ -5127,9 +5130,10 @@ const server = http.createServer(function (req, res) {
     readBody(req, function (body) {
       auth(req, res, body, function (d, key) {
         const rec = users[key];
-        const plan = planForge(rec, d.id, d.materialId);
+        const plan = planForge(rec, d.id, d.materialId, d.pearl);
         if (plan.error) return apiResp(res, 400, { error: plan.error });
         invAdd(rec, plan.materialId, -1);
+        if (plan.pearl) invAdd(rec, D.SMELT_PEARL, -1);
         invAdd(rec, plan.meta.id, -1);
         invAdd(rec, plan.newId, 1);
         try { syncActiveRodSlot(rec); } catch (e) {}
@@ -5138,7 +5142,8 @@ const server = http.createServer(function (req, res) {
         apiResp(res, 200, {
           ok: true, changed: true, id: plan.newId, item: D.componentOf(plan.newId),
           material: { id: plan.materialId, name: itemName(plan.materialId), need: 1, have: invCountOf(rec, plan.materialId) },
-          affix: { type: plan.type, name: D.AFFIX_LABEL[plan.type] || plan.type, value: plan.value, min: plan.range[0], max: plan.range[1], src: 'ct' },
+          pearl: plan.pearl,
+          affix: { type: plan.type, name: D.AFFIX_LABEL[plan.type] || plan.type, value: plan.value, min: plan.range[0], max: plan.range[1], src: plan.src },
           coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec),
         });
       });

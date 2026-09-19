@@ -13,7 +13,7 @@ const TARGET = path.join(ROOT, 'frontend', 'wiki', 'content', 'versions.json');
 
 function parseVersions(markdown) {
   return markdown.split(/\r?\n/).map(function (line) {
-    const m = /^\|\s*(v[0-9][0-9.]*)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$/.exec(line);
+    const m = /^\|\s*(v[0-9][0-9.]*)\s*\|\s*([^|]+?)\s*\|\s*(.+?)\s*\|\s*$/.exec(line);
     return m ? { version: m[1], date: m[2], summary: m[3].replace(/\*\*/g, '') } : null;
   }).filter(Boolean);
 }

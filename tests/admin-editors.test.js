@@ -106,6 +106,17 @@ async function main() {
   await postT('/api/admin/smelt/config', {forgeAnyAffix:true}, AT);
   const forged = await postT('/api/workshop/forge', {id:forgeId,materialId:outsideMat}, PT);
   check('Server allows outside affix when enabled', forged.status === 200 && forged.data.item.affixes.some(a => a.type === DATA.smeltMaterialAffix(outsideMat)));
+  await postT('/api/dev/seed', {inventory:{[forgeId]:3,[outsideMat]:3,dragonpearl:1}}, PT);
+  const full = DATA.catalystRangeFor(forgeBase.part, DATA.smeltMaterialAffix(outsideMat), true);
+  const protectedForge = await postT('/api/workshop/forge', {id:forgeId,materialId:outsideMat,pearl:true}, PT);
+  check('Pearl restores full range and is consumed exactly once', protectedForge.status === 200 && protectedForge.data.affix.min === full[0] && protectedForge.data.affix.max === full[1] && !protectedForge.data.inventory.dragonpearl && protectedForge.data.inventory[outsideMat] === 2 && protectedForge.data.inventory[forgeId] === 2);
+  const added = protectedForge.data.item.affixes.find(a => a.type === DATA.smeltMaterialAffix(outsideMat));
+  check('Protected catalyst source survives instance serialization', added.src === 'ct_full' && JSON.stringify(DATA.affixSrcRangeOf(added.src, added.type, forgeBase.part)) === JSON.stringify(full));
+  check('Smelting keeps the protected catalyst range', JSON.stringify(DATA.smeltRangeEx(forgeBase.id, forgeBase.id, 'main', added.type, {part:forgeBase.part,src:added.src,srcExplicit:true}).range) === JSON.stringify(full));
+  check('Missing pearl rejects forging', (await postT('/api/workshop/forge', {id:forgeId,materialId:outsideMat,pearl:true}, PT)).status === 400);
+  check('Invalid pearl value rejected', (await postT('/api/workshop/forge', {id:forgeId,materialId:outsideMat,pearl:'true'}, PT)).status === 400);
+  const normalForge = await postT('/api/workshop/forge', {id:forgeId,materialId:outsideMat,pearl:false}, PT);
+  check('Rejected forge consumed no ingredients; normal forge still uses reduced range', normalForge.status === 200 && normalForge.data.inventory[forgeId] === 1 && normalForge.data.inventory[outsideMat] === 1 && normalForge.data.affix.src === 'ct' && normalForge.data.affix.min === DATA.catalystRangeFor(forgeBase.part, added.type)[0] && normalForge.data.affix.max === DATA.catalystRangeFor(forgeBase.part, added.type)[1]);
   await postT('/api/admin/smelt/config', {forgeAnyAffix:false}, AT);
   const recipe = { sellers: [admUser, seller2], counts: { material: 6 }, picks: { material: [DATA.MATERIALS[0].id] }, hours: 24, qtyMin: 1, qtyMax: 1, mulMin: 1, mulMax: 1 };
   check('Unknown seller rejected', (await postT('/api/admin/market/bulk', { ...recipe, sellers: ['missing'] }, AT)).status === 400);
@@ -177,6 +188,10 @@ async function main() {
   check('Smart configuration removed', await page.locator('#ac-layout').count() === 0);
   check('Ground map is visible alongside spot list', await page.locator('#gd-map').evaluate(n => n.getBoundingClientRect().top < 300));
   check('Ground editor uses two columns', await page.locator('#gd-body').evaluate(n => getComputedStyle(n).gridTemplateColumns.split(' ').length === 2));
+  check('Map appears before and above loot groups', await page.locator('#gd-map').evaluate(n => {
+    const loot = document.querySelector('.gd-loot-groups');
+    return !!(n.compareDocumentPosition(loot) & Node.DOCUMENT_POSITION_FOLLOWING) && n.getBoundingClientRect().bottom <= loot.getBoundingClientRect().top;
+  }));
   await page.screenshot({path:path.join(shots,'grounds.png')});
   await page.locator('#nav button').filter({hasText:'市集管理'}).click();
   await page.locator('#bl-seller-add').click();
@@ -187,8 +202,9 @@ async function main() {
   await page.locator('#nav button').filter({hasText:'鱼类体型'}).click();
   await page.locator('[data-fish-weight="4"]').fill('20');
   check('Numeric editor updates slider', await page.locator('[data-fish-range="4"]').inputValue() === '20');
-  await page.locator('[data-fish-range="4"]').fill('30');
-  check('Slider updates numeric editor', await page.locator('[data-fish-weight="4"]').inputValue() === '30');
+  await page.locator('[data-fish-range="4"]').fill('25');
+  check('Fish sliders reach full at 25', await page.locator('[data-fish-range]').evaluateAll(nodes => nodes.length === 10 && nodes.every(n => n.max === '25')));
+  check('Slider updates numeric editor', await page.locator('[data-fish-weight="4"]').inputValue() === '25');
   await page.locator('.fish-percent-preview').waitFor();
   check('Preview groups percentages into ten bins', await page.locator('.fish-percent-preview > span').count() === 10);
   await page.screenshot({path:path.join(shots,'fishsize.png')});

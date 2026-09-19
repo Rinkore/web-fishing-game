@@ -216,12 +216,14 @@ async function run() {
   await page.evaluate(() => {
     Engine.state.inventory[fixtureSub] = 1;
     GameData.smeltMaterialIds().forEach(id => Engine.state.inventory[id] = 3);
-    Net.forge = async (id, material) => {
+    Engine.state.inventory.dragonpearl = 1;
+    Net.forge = async (id, material, pearl) => {
+      window.forgePearl = pearl;
       window.forgeCalls = (window.forgeCalls || 0) + 1;
       const D = GameData, comp = D.componentOf(id), type = D.smeltMaterialAffix(material);
-      const affix = { type, value: 5, src: 'ct' };
+      const affix = { type, value: 5, src: pearl ? 'ct_full' : 'ct' };
       return { ok: true, data: { item: D.componentOf(D.instanceId(comp.baseId, comp.quality, comp.affixes.concat(affix))),
-        material: { name: D.itemName(material) }, affix } };
+        material: { name: D.itemName(material) }, affix, pearl } };
     };
   });
   await page.locator('[data-wstab="forge"]').click();
@@ -236,7 +238,14 @@ async function run() {
   check('Forge selector fits mobile', await page.locator('#ws-forge-material-modal').evaluate(n => n.scrollWidth <= n.clientWidth + 1));
   await page.screenshot({ path: path.join(SHOTS, 'forge-material-mobile.png'), animations: 'disabled' });
   await page.locator('.sm-material-done').click();
+  await page.locator('#ws-forge-pearl').click();
+  check('Forge pearl is selected and explains full-range protection', await page.locator('#ws-forge-pearl').getAttribute('aria-pressed') === 'true' && (await page.locator('#ws-forge-pearl').textContent()).includes('完整数值范围'));
+  await page.evaluate(() => { Engine.state.inventory.dragonpearl = 0; UI.refreshAll('assets'); });
+  check('Losing pearl stock clears and disables protection', await page.locator('#ws-forge-pearl').isDisabled() && await page.locator('#ws-forge-pearl').getAttribute('aria-pressed') === 'false');
+  await page.evaluate(() => { Engine.state.inventory.dragonpearl = 1; UI.refreshAll('assets'); });
+  await page.locator('#ws-forge-pearl').click();
   await page.locator('#ws-forge-go').click();
+  check('Forge request and result include consumed pearl', await page.evaluate(() => forgePearl === true) && (await page.locator('.sm-result-dialog').textContent()).includes('龙宫宝珠 ×1'));
   check('Forge success opens result with new affix and retained originals', (await page.locator('.sm-result-dialog').textContent()).includes('新增词条') && await page.locator('.sm-result-dialog .sm-outcome-row').count() === 3);
   check('Forge submits only once', await page.evaluate(() => forgeCalls === 1));
   check('Result fits mobile width', await page.locator('.sm-result-dialog').evaluate(n => n.scrollWidth <= n.clientWidth + 1));

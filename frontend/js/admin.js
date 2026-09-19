@@ -2226,8 +2226,9 @@ window.Admin = (function () {
       '<button class="btn mini" id="ns-add">＋ 新建钓点（一键填充）</button>' +
       (g.spots.length ? '<button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button>' : '') +
       '</div></div>' +
+      '<div class="panel gd-location"><div id="gd-map"></div><div id="ed-body"></div></div>' +
       // —— 战利品组（可整组放进掉落池） ——
-      '<div class="panel">' +
+      '<div class="panel gd-loot-groups">' +
       '<h3 style="margin-top:0">🧺 战利品组（' + ((cfg.lootGroups || []).length) + '）</h3>' +
       '<div class="hint" style="margin-bottom:8px">战利品组可以<b>整组</b>放进钓点掉落池：先按池内权重选中整组，再按组内权重抽到具体条目。' +
       '「默认权重」只是新建/加入钓点时的建议值，真正生效的是它在各钓点池子里的条目权重（可以逐点微调）。</div>' +
@@ -2237,9 +2238,7 @@ window.Admin = (function () {
       '<input id="lg-weight" class="ipt mk-num" type="number" min="0" max="1000000" step="1" value="10" style="width:96px" title="组在掉落池里的默认权重" />' +
       '<button class="btn mini" id="lg-add">＋ 新建战利品组</button>' +
       '<span id="lg-state" class="hint"></span></div>' +
-      '<div id="lg-edit"></div></div>' +
-      // —— 地图定位 + 选中钓点编辑 ——
-      '<div class="panel"><div id="gd-map"></div><div id="ed-body"></div></div>';
+      '<div id="lg-edit"></div></div>';
 
     // —— 钓点列表：选中 / 锁定 / 恢复 ——
     body.querySelectorAll('.spot-row').forEach(function (row) {
@@ -4878,10 +4877,10 @@ window.Admin = (function () {
           '<input type="radio" name="fm" value="' + m.k + '"' + (m.k === pick ? ' checked' : '') + '>' +
           '<div><b>' + m.name + '</b><span>' + m.desc + '</span></div></label>';
       }).join('') + '</div>' +
-      '<div class="fish-distribution"><p class="hint">按基准体型区间每10%分组。拖动滑块或修改权重后切换为自定义分布；发生概率按总权重归一化。</p><div class="fish-weight-grid">' +
+      '<div class="fish-distribution"><p class="hint">按基准体型区间每10%分组。滑条以25为满格，更高权重可直接输入。拖动滑块或修改权重后切换为自定义分布；发生概率按总权重归一化。</p><div class="fish-weight-grid">' +
       weights.map(function (v, i) {
         return '<label class="fish-weight"><strong>' + (i * 10) + '–' + ((i + 1) * 10) + '%体型</strong>' +
-          '<input type="range" min="0" max="100" step="0.1" data-fish-range="' + i + '" value="' + v + '" aria-label="分组' + (i + 1) + '权重滑块">' +
+          '<input type="range" min="0" max="25" step="0.1" data-fish-range="' + i + '" value="' + v + '" aria-label="分组' + (i + 1) + '权重滑块">' +
           '<input class="ipt" type="number" min="0" max="100" step="0.1" data-fish-weight="' + i + '" value="' + v + '" aria-label="分组' + (i + 1) + '权重"><span data-fish-pct="' + i + '"></span></label>';
       }).join('') + '</div></div>' +
       '<h3 style="margin-top:20px">分布预览</h3>' +

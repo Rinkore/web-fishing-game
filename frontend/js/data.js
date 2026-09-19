@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.20.1';
+  const VERSION = 'v0.20.2';
   const BUILD = '2026-09-19';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -536,7 +536,7 @@
   function affixKindOf(a) {
     if (!a || !a.extra) return 'pool';
     if (!a.srcExplicit) return 'extra';
-    if (a.src === 'ct') return 'catalyst';
+    if (a.src === 'ct' || a.src === 'ct_full') return 'catalyst';
     if (a.src === 'bt') return 'breakthrough';
     return 'extra';
   }
@@ -1235,7 +1235,9 @@
   //   src = 底材id → 该底材池内该词缀的区间（含后台 affixRanges 覆盖）
   //   src = 'bt'   → 突破区间（宝匣池外词缀，后台「池外词缀数值区间」）
   //   src = 'ct'   → 催化区间（工坊投料补缀，后台「材料催化词缀范围」按部位配置；未配置回退突破区间）
+  //   src = 'ct_full' → 宝珠护持的完整催化区间，熔炼搬运与重铸保持该来源。
   function affixSrcRangeOf(src, type, part) {
+    if (src === 'ct_full') return catalystRangeFor(part, type, true);
     if (src === 'ct') return catalystRangeFor(part, type);
     if (src && src !== 'bt' && BASE_MAP[src]) {
       const r = poolRangeOf(src, type);
@@ -1245,16 +1247,18 @@
   }
   // 材料催化词缀范围（工坊投料补缀用）：{ [部位]: { [词缀类型]: [min, max] } }，后台「⚒ 工坊配置」可配；
   // 该部位该词缀未配置时返回 null（调用方回退突破区间）。
-  function catalystRangeOf(part, type) {
+  function catalystRangeOf(part, type, fullRange) {
     const tbl = smeltCfg.catalystRanges && smeltCfg.catalystRanges[part];
     const r = tbl && tbl[type];
     if (Array.isArray(r) && r.length === 2 && isFinite(r[0]) && isFinite(r[1]) && r[1] >= r[0]) {
-      return scaleCatalystRange(r);
+      return fullRange ? r.slice() : scaleCatalystRange(r);
     }
     return null;
   }
-  function catalystRangeFor(part, type) {
-    return catalystRangeOf(part, type) || scaleCatalystRange(catalystEnvelopeOf(part, type) || extraAffixRangeOf(type));
+  function catalystRangeFor(part, type, fullRange) {
+    const configured = catalystRangeOf(part, type, fullRange);
+    const fallback = catalystEnvelopeOf(part, type) || extraAffixRangeOf(type);
+    return configured || (fullRange ? fallback.slice() : scaleCatalystRange(fallback));
   }
   // 某部位某词缀的「催化区间包络」= 该部位所有底材里含有该词缀的那些区间的并集 [min, max]。
   // 后台配置催化区间时用它做硬约束：催化区间不得超出该部位的上下限

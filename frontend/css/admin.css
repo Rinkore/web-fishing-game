@@ -615,7 +615,7 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 #gd-body > .gd-recovery { grid-column: 1 / -1; }
 #gd-body > .gd-recovery:empty { display: none; }
 #gd-body > .panel { min-width: 0; margin: 0; }
-#gd-body > .panel:last-child { grid-column: 2; grid-row: 2 / span 2; }
+#gd-body > .gd-location { grid-column: 2; grid-row: 1; }
 #gd-body .mgr-row { flex-wrap: wrap; }
 #gd-body .pool-row { display: flex; flex-wrap: wrap; }
 #gd-body .pool-row .c-item { flex: 1 1 160px; min-width: 0; }
@@ -637,8 +637,8 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .feat-grid .feature-group .feature-children { flex-wrap: wrap; min-width: 0; }
 .feat-grid .feature-inherited:empty { display: none; }
 #gd-body > .panel:nth-child(2) { grid-column: 1; grid-row: 1; }
-#gd-body > .panel:nth-child(3) { grid-column: 1; grid-row: 2; }
-#gd-body > .panel:last-child { grid-column: 2; grid-row: 1 / span 2; }
+#gd-body > .gd-location { grid-column: 2; grid-row: 1; }
+#gd-body > .gd-loot-groups { grid-column: 1 / -1; grid-row: 2; }
 #gd-body > .gd-recovery { grid-row: 3; }
 #gd-body .spot-rows { max-height: 420px; overflow-y: auto; }
 @media (max-width: 1100px) {

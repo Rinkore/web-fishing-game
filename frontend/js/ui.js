@@ -5459,7 +5459,7 @@ window.UI = (function () {
         (spots.length ? ' · 见于 ' + spots[0] + (spots.length > 1 ? ' 等 ' + spots.length + ' 处' : '') : '');
     }
     if (it.kind === 'material') {
-      if (it.id === D.SMELT_PEARL) return '熔炼催化剂：让熔炼的每条词条 roll 两次、取更靠近区间边界的那次。';
+      if (it.id === D.SMELT_PEARL) return '熔炼时让每条词条掷两次取更靠近区间边界的值；锻造时可用于宝珠护持，恢复催化词条的完整数值范围。';
       const aff = D.smeltMaterialAffix(it.id);
       if (aff) {
         return '熔炼催化剂 → 定向补「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀' +
@@ -5494,7 +5494,10 @@ window.UI = (function () {
       out.push('记录：计入「📖 图鉴」与「🏆 记录」的大小鱼榜');
     } else {
       const aff = D.smeltMaterialAffix && D.smeltMaterialAffix(it.id);
-      if (it.id === D.SMELT_PEARL) out.push('熔炼：作为催化剂（每件熔炼至多 1 个），让每条词条 roll 两次取更靠近边界的值');
+      if (it.id === D.SMELT_PEARL) {
+        out.push('熔炼：每次至多消耗 1 颗，让每条词条掷两次取更靠近边界的值');
+        out.push('锻造 · 宝珠护持：消耗 1 颗，恢复催化词条的完整数值范围');
+      }
       else if (aff) {
         out.push('熔炼催化剂：对应「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀 —— 投得最多的那种材料决定补哪条，每份 ' +
           (cfg.extraRatePerMaterial || 0) + '% 补缀率、失败率 ' + (cfg.failPerMaterial || 0) + '%');
@@ -7417,6 +7420,7 @@ window.UI = (function () {
   let wsRecastTarget = -1;      // 重铸指定的词条下标（-1 = 不指定，重 roll 全部词条）
   let wsForge = '';             // 锻造选中的组件签名
   let wsForgeMat = '';          // 锻造选中的催化剂材料 id
+  let wsForgePearl = false;     // 消耗宝珠，使用未缩减的催化区间
 
   // 选中的组件实例是否还在背包里（被熔炼 / 重铸消耗、出售、上架、交易后就不在了）
   function wsAlive(id) { return !!(id && D.componentOf(id) && (S().inventory[id] || 0) > 0); }
@@ -7453,7 +7457,7 @@ window.UI = (function () {
     if (which === 'main') { wsMain = ''; wsMainAffix = ''; wsSub = ''; wsSubAffix = ''; wsRelics = 0; }
     else if (which === 'sub') { wsSub = ''; wsSubAffix = ''; }
     else if (which === 'recast') { wsRecast = ''; wsRecastTarget = -1; }
-    else if (which === 'forge') { wsForge = ''; wsForgeMat = ''; }
+    else if (which === 'forge') { wsForge = ''; wsForgeMat = ''; wsForgePearl = false; }
     renderView();
   }
 
@@ -8143,11 +8147,13 @@ window.UI = (function () {
 
   function wsRenderForge(body) {
     const st = S();
+    const pearlHave = st.inventory[D.SMELT_PEARL] || 0;
+    if (!pearlHave) wsForgePearl = false;
     const comp = wsForge ? D.componentOf(wsForge) : null;
     const cap = comp ? (((D.QUALITY[comp.quality] || {}).cap) || 0) : 0;
     const eligible = comp && cap > 0 && (comp.affixes || []).length < cap ? comp : null;
     const chosenType = wsForgeMat ? D.smeltMaterialAffix(wsForgeMat) : '';
-    const range = eligible && chosenType ? D.catalystRangeFor(eligible.part, chosenType) : null;
+    const range = eligible && chosenType ? D.catalystRangeFor(eligible.part, chosenType, wsForgePearl) : null;
     const have = wsForgeMat ? (st.inventory[wsForgeMat] || 0) : 0;
     const already = eligible && chosenType && (eligible.affixes || []).some(function (a) { return a.type === chosenType; });
     const forgeAllowed = !eligible || D.getSmeltCfg().forgeAnyAffix || D.COMPONENT_BASES.find(function (b) { return b.id === eligible.baseId; }).pool.some(function (a) { return a.type === chosenType; });
@@ -8170,7 +8176,13 @@ window.UI = (function () {
       '<button type="button" class="sm-materials" id="ws-forge-material-open" aria-haspopup="dialog">' +
       (wsForgeMat ? '<img class="sm-material-icon" src="assets/item/' + esc(wsForgeMat) + '.png" alt="" />' : '') +
       '<span class="sm-item-copy"><strong>' + (wsForgeMat ? esc(D.itemName(wsForgeMat)) : '选择催化剂') +
-      '</strong><small>' + (wsForgeMat ? '持有 ' + have + ' · 消耗 1 个 · 点击更换' : '查看材料库存与可新增词条') + '</small></span><span>→</span></button></fieldset>' +
+      '</strong><small>' + (wsForgeMat ? '持有 ' + have + ' · 消耗 1 个 · 点击更换' : '查看材料库存与可新增词条') + '</small></span><span>→</span></button>' +
+      '<div class="sm-step-title"><h3>03 <span>辅助材料</span></h3><span>可选</span></div>' +
+      '<button type="button" id="ws-forge-pearl" class="sm-option ws-pearl' + (wsForgePearl ? ' selected' : '') +
+      '" aria-pressed="' + wsForgePearl + '"' + (!pearlHave || wsBusy ? ' disabled' : '') + '>' +
+      '<img src="assets/item/' + esc(D.SMELT_PEARL) + '.png" alt=""><span><strong>龙宫宝珠</strong>' +
+      '<small>宝珠护持</small><small>消耗 1 颗龙宫宝珠，恢复催化词条的完整数值范围</small>' +
+      '<small>持有 ' + pearlHave + ' · ' + (wsForgePearl ? '已启用 · 本次消耗 1 颗' : '未启用') + '</small></span></button></fieldset>' +
       '<aside class="sm-preview-panel" aria-label="锻造预览"><header><h3>锻造预览</h3><span>催化剂词条</span></header>' +
       '<div class="ws-preview"><div class="ws-line" id="ws-forge-state">' +
       (!eligible ? '<span class="muted">先选择一件词条未达上限的组件</span>'
@@ -8193,11 +8205,12 @@ window.UI = (function () {
             const ccap = (((D.QUALITY[c.quality] || {}).cap) || 0);
             return ccap > 0 && (c.affixes || []).length < ccap;
           },
-          onPick: function (id) { wsForge = id; wsForgeMat = ''; renderView(); },
+          onPick: function (id) { wsForge = id; wsForgeMat = ''; wsForgePearl = false; renderView(); },
         });
       });
     });
     $('ws-forge-material-open').onclick = wsOpenForgeMaterials;
+    $('ws-forge-pearl').onclick = function () { wsForgePearl = !wsForgePearl; renderView(); $('ws-forge-pearl').focus(); };
     body.querySelectorAll('[data-unload]').forEach(function (b) {
       b.addEventListener('click', function () { wsUnload(b.getAttribute('data-unload')); });
     });
@@ -8206,7 +8219,7 @@ window.UI = (function () {
       wsBusy = true;
       const before = comp;
       renderView();
-      window.Net.forge(wsForge, wsForgeMat).then(function (r) {
+      window.Net.forge(wsForge, wsForgeMat, wsForgePearl).then(function (r) {
         wsBusy = false;
         if (!r || !r.ok) { toast((r && r.data && r.data.error) || '锻造失败', true); renderView(); return; }
         if (r.data.inventory) applyInvFrom(r.data);
@@ -8215,9 +8228,9 @@ window.UI = (function () {
           const old = before.affixes.find(function (x) { return x.type === a.type; });
           return wsResultRow(old ? affixText(old) : '催化剂 · ' + r.data.material.name, a, old ? '原值保留' : '锻造成功 · 新增词条');
         }).join('');
-        wsForge = ''; wsForgeMat = '';
+        wsForge = ''; wsForgeMat = ''; wsForgePearl = false;
         renderTopbar(); renderView();
-        wsResultDialog('⚒ 锻造成功', r.data.item, rows, '<p class="hint">消耗 ' + esc(r.data.material.name) + ' ×1</p>');
+        wsResultDialog('⚒ 锻造成功', r.data.item, rows, '<p class="hint">消耗 ' + esc(r.data.material.name) + ' ×1' + (r.data.pearl ? '、龙宫宝珠 ×1' : '') + '</p>');
       }).catch(function () {
         wsBusy = false; renderView();
         if ($('ws-submit-error')) $('ws-submit-error').textContent = '网络错误，请检查背包后重试';
@@ -8252,6 +8265,8 @@ window.UI = (function () {
   // 只更新「持有 N」数字与下方预览，输入框的焦点、光标与已填份数全部保留
   //（此前每次上鱼都整页重画，正在填的份数会被重建冲掉）。返回 false 表示当前不在工坊页。
   function wsPatchAssets() {
+    // Forge has its own ingredient state; rebuild it when inventories change.
+    if (wsTab === 'forge') return false;
     const main = $('main');
     const st = S();
     if (!main || !main.querySelector('.ws-panel')) return false;

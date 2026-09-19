@@ -17,7 +17,7 @@
     const source = GameData.componentBase(src);
     if (source && base && source.part === base.part && source.pool.some(a => a.type === type)) return GameData.affixRangeOf(src, source.pool.find(a => a.type === type));
     if (base && base.pool.some(a => a.type === type) && (!src || src === baseId)) return GameData.affixRangeOf(baseId, base.pool.find(a => a.type === type));
-    if (src === 'ct') return GameData.catalystRangeFor(base && base.part, type);
+    if (src === 'ct' || src === 'ct_full') return GameData.catalystRangeFor(base && base.part, type, src === 'ct_full');
     return GameData.extraAffixRangeOf(type);
   }
   function slotFromImported(part, value) {
@@ -112,7 +112,7 @@
       const qOpts = Object.keys(GameData.QUALITY).map(q => option(q, GameData.QUALITY[q].name, q === s.quality)).join('');
       const affixRows = (s.affixes || []).map(function (a, idx) {
         const typeOpts = GameData.AFFIX_TYPES.map(t => option(t, GameData.AFFIX_LABEL[t], t === a.type)).join('');
-        const srcOpts = option('', '底材 / 自然', !a.src) + option('bt', '突破', a.src === 'bt') + option('ct', '催化', a.src === 'ct') + bases.map(b => option(b.id, b.name + (a.src === b.id && a.srcExplicit === false ? '（推断）' : ''), a.src === b.id)).join('');
+        const srcOpts = option('', '底材 / 自然', !a.src) + option('bt', '突破', a.src === 'bt') + option('ct', '催化', a.src === 'ct') + option('ct_full', '宝珠催化', a.src === 'ct_full') + bases.map(b => option(b.id, b.name + (a.src === b.id && a.srcExplicit === false ? '（推断）' : ''), a.src === b.id)).join('');
         return '<div class="affix-row" data-affix="' + idx + '"><select data-field="type">' + typeOpts + '</select><input type="number" data-field="value" value="' + Number(a.value) + '"><select data-field="src">' + srcOpts + '</select><button type="button" class="tool-remove" aria-label="移除词条" data-remove="' + idx + '">×</button></div>';
       }).join('');
       return '<section class="slot-editor" data-part="' + p.key + '"><div class="slot-head"><strong>' + escapeHTML(p.name) + '</strong><button data-add-affix>＋ 添加词条</button></div><div class="slot-fields"><select data-field="base">' + baseOpts + '</select><select data-field="quality">' + qOpts + '</select></div>' + affixRows + '</section>';
