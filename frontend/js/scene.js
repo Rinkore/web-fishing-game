@@ -1,15 +1,15 @@
 /*
- * 网页钓鱼小游戏 - 渔场实况场景层（PxScene）
+ * 网页钓鱼小游戏 - 场景背景层（PxScene）
  * 零依赖 Canvas 渲染器：为钓鱼页 .px-scene 绘制代码生成的像素风场景 ——
  * 天空渐变 / 星空 / 月亮(太阳·极光) / 多层山脊视差 / 岸线树影 / 水面倒影(正弦波纹) / 氛围粒子。
  * 低分辨率离屏缓冲 + image-rendering:pixelated 放大，天然像素画质感；
- * 换渔场只换调色板与地形种子，正式美术图就绪后可整体替换本层而不动游戏逻辑。
+ * 换背景只换调色板与地形种子，正式美术图就绪后可整体替换本层而不动游戏逻辑。
  */
 window.PxScene = (function () {
   'use strict';
 
   // ---------- 工具 ----------
-  function mulberry32(seed) {           // 地形生成要稳定：同一渔场每次进入长得一样
+  function mulberry32(seed) {           // 地形生成要稳定：同一背景每次进入长得一样
     let a = seed >>> 0;
     return function () {
       a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -24,7 +24,7 @@ window.PxScene = (function () {
   }
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
-  // ---------- 各渔场调色板 ----------
+  // ---------- 各背景调色板 ----------
   // waterline：水面线（从顶部算起的高度比例），与 .px-scene-water 的 62% 水位一致
   const WATERLINE = 0.38;
   const PALETTES = {
@@ -88,7 +88,7 @@ window.PxScene = (function () {
   };
   const FALLBACK = 'stillwater';
 
-  // ---------- 场景构建（每个 渔场×尺寸 缓存一份） ----------
+  // ---------- 场景构建（每个 背景×尺寸 缓存一份） ----------
   function buildScene(pid, W, H) {
     const P = PALETTES[pid] || PALETTES[FALLBACK];
     const wl = Math.round(H * WATERLINE);
@@ -164,7 +164,7 @@ window.PxScene = (function () {
   }
 
   // ---------- 挂载与渲染 ----------
-  function mount(el, groundId) {
+  function mount(el, sceneId) {
     if (!el) return;
     // jsdom（测试环境）没有 Canvas：getContext 会抛 jsdomError，整层直接不挂
     if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) return;
@@ -205,20 +205,20 @@ window.PxScene = (function () {
         inst.io.observe(el);
       }
     }
-    setGround(inst, groundId);
+    setScene(inst, sceneId);
     if (!inst.raf) { inst.last = performance.now(); inst.raf = requestAnimationFrame(function f(now) { frame(el, inst, now); }); }
   }
 
-  function setGround(inst, groundId) {
+  function setScene(inst, sceneId) {
     if (inst.dead) return;
-    const pid = (groundId && PALETTES[groundId]) ? groundId : FALLBACK;
+    const pid = (sceneId && PALETTES[sceneId]) ? sceneId : FALLBACK;
     if (inst.pid === pid) return;
     inst.pid = pid;
     resize(inst);
     loadImageFor(inst);
   }
 
-  // 手绘场景底图（assets/scene/<渔场>.png）：有图就用图替代程序化山水，
+  // 手绘场景底图（assets/scene/<背景>.png）：有图就用图替代程序化山水，
   // 水面倒影 / 波纹 / 粒子 / 视差继续实时演算；图加载失败自动回退程序化场景
   function loadImageFor(inst) {
     const P = PALETTES[inst.pid] || PALETTES[FALLBACK];
@@ -232,9 +232,9 @@ window.PxScene = (function () {
     inst.img = rec;
   }
 
-  function update(el, groundId) {
-    if (!el || !el.__pxscene) { mount(el, groundId); return; }
-    setGround(el.__pxscene, groundId);
+  function update(el, sceneId) {
+    if (!el || !el.__pxscene) { mount(el, sceneId); return; }
+    setScene(el.__pxscene, sceneId);
   }
 
   function resize(inst) {
@@ -423,7 +423,7 @@ window.PxScene = (function () {
         + Math.sin(y * 0.17 - t * 1.3 * spd) * amp * 0.6;
       c.drawImage(inst.world, 0, src, W, 1, shift, y, W, 1);
     }
-    // 水色罩层：让倒影沉入各渔场自己的水色（手绘底图时罩层减淡，保留图里的倒影色彩）
+    // 水色罩层：让倒影沉入各背景自己的水色（手绘底图时罩层减淡，保留图里的倒影色彩）
     c.fillStyle = inst.waterGradients[imgOk ? 1 : 0]; c.fillRect(0, wl, W, H - wl);
     // 水面高光碎波：几条流动的亮线
     for (let i = 0; i < 5; i++) {

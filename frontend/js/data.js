@@ -1,7 +1,7 @@
 /*
  * 网页钓鱼小游戏 - 静态数据（前后端共享，单一来源）
  * 浏览器经 <script> 加载挂到 window.GameData；后端 require 得到同一对象（UMD）。
- * 钓场 / 钓点 / 渔获 / 组件底材与词缀池 / 品质定义只有这一份，服务器掷骰与前端展示共用。
+ * 钓点 / 渔获 / 组件底材与词缀池 / 品质定义只有这一份，服务器掷骰与前端展示共用。
  *
  * 组件模型（v0.8 大改）：
  *   底材（base）—— 组件模板，定义部位、基准价与「可拥有词缀池」（每条词缀含数值区间）。
@@ -21,8 +21,8 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.17.0';
-  const BUILD = '2026-09-18';   // 构建日期（仅 /api/version 暴露，界面不展示）
+  const VERSION = 'v0.18.0';
+  const BUILD = '2026-09-19';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。
@@ -1635,105 +1635,90 @@
     return null;
   }
 
-  // ---- 钓场 ----
-  // 普通钓场常驻；活动钓场为 locked 占位。
+  // ---- 钓点（世界地图扁平目录）----
+  // v0.18：取消「渔场 → 钓点」两级玩法层级。玩家只选择地图上的具体钓点。
   // pool 条目：{ pick: 'fish:<id>' | 'material:<id>' | 'component', weight }
   function p(type, id, weight) { return { pick: type + ':' + id, weight: weight }; }
 
-  const GROUNDS = [
-    {
-      id: 'stillwater', name: '静水湖', type: 'normal',
-      desc: '风平浪静的淡水湖，适合日常稳定产出。',
-      spots: [
-        { id: 'dock', name: '老旧码头', pos: [61, 34], pool: [
-          p('fish', 'crucian', 30), p('fish', 'white', 16), p('fish', 'carp', 18),
-          p('fish', 'minnow', 12), p('fish', 'bream', 8),
-          p('fish', 'catfish', 4), p('fish', 'bass', 3), p('fish', 'koi', 1),
-          p('material', 'bait_pack', 10), p('component', '', 6),
-        ] },
-        { id: 'reed', name: '芦苇浅滩', pos: [68, 60], pool: [
-          p('fish', 'grass', 24), p('fish', 'white', 18), p('fish', 'crucian', 12),
-          p('fish', 'minnow', 12), p('fish', 'loach', 10), p('fish', 'yellowcat', 8),
-          p('material', 'rope', 12), p('component', '', 7),
-        ] },
-        { id: 'deep', name: '深水区', pos: [74, 48], pool: [
-          p('fish', 'carp', 22), p('fish', 'bighead', 14), p('fish', 'silvercarp', 12),
-          p('fish', 'blackcarp', 8), p('fish', 'catfish', 6), p('fish', 'bass', 6),
-          p('fish', 'sturgeon', 2), p('fish', 'arapaima', 2),
-          p('fish', 'voltaiceel', 1), p('fish', 'moonkoi', 1),
-          p('material', 'lure', 10), p('component', '', 6),
-        ] },
-      ],
-    },
-    {
-      id: 'rapids', name: '急流河', type: 'normal',
-      desc: '水流湍急的河流，大鱼概率略高。',
-      spots: [
-        { id: 'shoal', name: '石滩', pos: [77, 34], pool: [
-          p('fish', 'white', 24), p('fish', 'riverperch', 18), p('fish', 'culter', 14),
-          p('fish', 'crucian', 10), p('fish', 'blackbass', 5),
-          p('material', 'rope', 12), p('component', '', 7),
-        ] },
-        { id: 'eddy', name: '回水湾', pos: [58, 42], pool: [
-          p('fish', 'carp', 24), p('fish', 'crucian', 20), p('fish', 'yellowcat', 12),
-          p('fish', 'grass', 10), p('fish', 'culter', 6), p('fish', 'mandarin', 5),
-          p('fish', 'arowana', 1),
-          p('material', 'bait_pack', 11), p('component', '', 6),
-        ] },
-        { id: 'fall', name: '瀑布潭', pos: [83, 20], pool: [
-          p('fish', 'carp', 12), p('fish', 'bass', 8), p('fish', 'yellowcheek', 6),
-          p('fish', 'catfish', 4), p('fish', 'mandarin', 3), p('fish', 'sturgeon', 2),
-          p('fish', 'ghostray', 1),
-          p('material', 'lure', 10), p('component', '', 7),
-        ] },
-      ],
-    },
-    {
-      id: 'sunset', name: '落日海湾', type: 'normal',
-      desc: '咸淡水交界的海湾，稀有渔获倾向更高。',
-      spots: [
-        { id: 'beach', name: '沙滩', pos: [42, 71], pool: [
-          p('fish', 'tilapia', 22), p('fish', 'sardine', 18), p('fish', 'croaker', 14),
-          p('fish', 'sunfish', 5), p('fish', 'pearl', 2),
-          p('material', 'bait_pack', 12), p('component', '', 7),
-        ] },
-        { id: 'pier', name: '防波堤', pos: [35, 30], pool: [
-          p('fish', 'seabass', 10), p('fish', 'tuna', 8), p('fish', 'mackerel', 8),
-          p('fish', 'cobia', 6), p('fish', 'bluefin', 3), p('fish', 'swordfish', 2),
-          p('fish', 'pearl', 2),
-          p('material', 'lure', 11), p('component', '', 7),
-        ] },
-        { id: 'reef', name: '礁石区', pos: [18, 78], pool: [
-          p('fish', 'tuna', 10), p('fish', 'grouper', 9), p('fish', 'rubysnapper', 7),
-          p('fish', 'seabass', 4), p('fish', 'sturgeon', 3), p('fish', 'pearl', 3),
-          p('fish', 'dragonfish', 2), p('fish', 'amberlobster', 2),
-          p('material', 'relic', 1), p('material', 'dragonpearl', 1),
-          p('material', 'rope', 10), p('component', '', 7),
-        ] },
-      ],
-    },
-    {
-      id: 'frostmoon', name: '霜月冰湖', type: 'event', locked: true,
-      desc: '限时活动钓场，提供特殊产出（即将开放）。',
-      spots: [],
-    },
+  const SPOTS = [
+    { id: 'morning_dock', name: '晨雾木栈', pos: [61, 34], icon: 'dock', desc: '木栈新手点；诱饵包', pool: [
+      p('fish', 'crucian', 28), p('fish', 'white', 18), p('fish', 'carp', 14),
+      p('fish', 'minnow', 12), p('fish', 'bream', 8), p('fish', 'koi', 2),
+      p('material', 'bait_pack', 10), p('component', '', 8),
+    ] },
+    { id: 'reed_shallows', name: '芦苇浅滩', pos: [68, 61], icon: 'reed', desc: '芦苇纤维；耐磨绳', pool: [
+      p('fish', 'grass', 24), p('fish', 'white', 16), p('fish', 'crucian', 12),
+      p('fish', 'loach', 12), p('fish', 'yellowcat', 10), p('fish', 'bream', 6),
+      p('material', 'rope', 12), p('component', '', 8),
+    ] },
+    { id: 'lake_light_pool', name: '湖心光潭', pos: [74, 48], icon: 'deep', desc: '深湖反光；反光假饵', pool: [
+      p('fish', 'carp', 20), p('fish', 'bighead', 14), p('fish', 'silvercarp', 12),
+      p('fish', 'blackcarp', 10), p('fish', 'bass', 8), p('fish', 'catfish', 6),
+      p('fish', 'sturgeon', 4), p('fish', 'arapaima', 3), p('fish', 'moonkoi', 2),
+      p('fish', 'voltaiceel', 1), p('material', 'lure', 10), p('component', '', 10),
+    ] },
+    { id: 'snow_fall_pool', name: '雪瀑寒潭', pos: [83, 20], icon: 'fall', desc: '瀑布寒潭；反光假饵', pool: [
+      p('fish', 'riverperch', 18), p('fish', 'culter', 14), p('fish', 'carp', 10),
+      p('fish', 'yellowcheek', 8), p('fish', 'mandarin', 8), p('fish', 'blackbass', 6),
+      p('fish', 'catfish', 5), p('fish', 'sturgeon', 5), p('fish', 'white', 2),
+      p('fish', 'ghostray', 2), p('material', 'lure', 12), p('component', '', 10),
+    ] },
+    { id: 'white_stone_rapids', name: '白石急滩', pos: [77, 34], icon: 'shoal', desc: '乱石急流；耐磨绳', pool: [
+      p('fish', 'white', 20), p('fish', 'riverperch', 16), p('fish', 'culter', 14),
+      p('fish', 'crucian', 8), p('fish', 'minnow', 8), p('fish', 'blackbass', 8),
+      p('fish', 'yellowcheek', 6), p('material', 'rope', 12), p('component', '', 8),
+    ] },
+    { id: 'stone_bridge_eddy', name: '石桥回水湾', pos: [69, 47], icon: 'eddy', desc: '桥下缓流；诱饵包', pool: [
+      p('fish', 'carp', 20), p('fish', 'crucian', 16), p('fish', 'yellowcat', 12),
+      p('fish', 'grass', 10), p('fish', 'culter', 8), p('fish', 'white', 6),
+      p('fish', 'bream', 6), p('fish', 'arowana', 2),
+      p('material', 'bait_pack', 12), p('component', '', 8),
+    ] },
+    { id: 'estuary_tide_shoal', name: '河口潮汐沙洲', pos: [62, 54], icon: 'beach', desc: '咸淡水交界；潮汐砂', pool: [
+      p('fish', 'tilapia', 20), p('fish', 'sardine', 16), p('fish', 'croaker', 14),
+      p('fish', 'white', 10), p('fish', 'bream', 7), p('fish', 'seabass', 8),
+      p('fish', 'pearl', 3), p('material', 'tide_sand', 14), p('component', '', 8),
+    ] },
+    { id: 'golden_sand_bay', name: '金沙湾', pos: [42, 71], icon: 'beach', desc: '沙滩补给；诱饵包', pool: [
+      p('fish', 'tilapia', 21), p('fish', 'sardine', 18), p('fish', 'croaker', 14),
+      p('fish', 'white', 10), p('fish', 'bream', 10), p('fish', 'sunfish', 4),
+      p('fish', 'pearl', 3), p('material', 'bait_pack', 12), p('component', '', 8),
+    ] },
+    { id: 'lighthouse_breakwater', name: '灯塔防波堤', pos: [35, 30], icon: 'pier', desc: '灯塔外海；反光假饵', pool: [
+      p('fish', 'seabass', 14), p('fish', 'croaker', 12), p('fish', 'sardine', 12),
+      p('fish', 'mackerel', 12), p('fish', 'tuna', 10), p('fish', 'cobia', 8),
+      p('fish', 'bluefin', 4), p('fish', 'swordfish', 3), p('fish', 'pearl', 3),
+      p('material', 'lure', 14), p('component', '', 8),
+    ] },
+    { id: 'tide_atoll', name: '潮汐环礁', pos: [25, 55], icon: 'reef', desc: '环礁潮池；潮汐砂', pool: [
+      p('fish', 'tilapia', 12), p('fish', 'sardine', 14), p('fish', 'croaker', 12),
+      p('fish', 'white', 8), p('fish', 'bream', 8), p('fish', 'seabass', 12),
+      p('fish', 'mackerel', 8), p('fish', 'cobia', 6), p('fish', 'sunfish', 3),
+      p('fish', 'pearl', 3), p('material', 'tide_sand', 14),
+    ] },
+    { id: 'dragon_ridge_trench', name: '龙脊海沟', pos: [12, 37], icon: 'deep', desc: '终局深海；龙鳞与宝珠', pool: [
+      p('fish', 'grouper', 12), p('fish', 'rubysnapper', 10), p('fish', 'tuna', 10),
+      p('fish', 'mackerel', 8), p('fish', 'cobia', 8), p('fish', 'seabass', 6),
+      p('fish', 'sunfish', 4), p('fish', 'dragonfish', 8), p('fish', 'swordfish', 5),
+      p('fish', 'bluefin', 4), p('fish', 'sturgeon', 6), p('fish', 'arapaima', 4),
+      p('material', 'dragon_scale', 8), p('material', 'dragonpearl', 2), p('component', '', 5),
+    ] },
+    { id: 'shipwreck_reef', name: '沉船残礁', pos: [18, 79], icon: 'reef', desc: '终局残骸；沉船残片', pool: [
+      p('fish', 'grouper', 12), p('fish', 'rubysnapper', 10), p('fish', 'tuna', 10),
+      p('fish', 'mackerel', 8), p('fish', 'cobia', 8), p('fish', 'seabass', 6),
+      p('fish', 'sunfish', 4), p('fish', 'dragonfish', 6), p('fish', 'swordfish', 4),
+      p('fish', 'bluefin', 4), p('material', 'relic', 8), p('material', 'rope', 8),
+      p('component', '', 12),
+    ] },
   ];
-
-  // 物品产出地点索引：id -> ['钓场·钓点', ...]（图鉴展示用）
-  // 鱼类/材料按各自掉落池匹配；组件来自通用组件掉落点（'component:' 条目）
+  // 物品产出地点索引：id -> ['钓点', ...]（图鉴展示用）
   function spotsOf(id) {
     const item = itemOf(id);
     const type = item.kind === 'fish' ? 'fish' : item.kind === 'material' ? 'material' : 'component';
     const pick = type + ':' + (type === 'component' ? '' : id);
-    const out = [];
-    GROUNDS.forEach(function (g) {
-      g.spots.forEach(function (sp) {
-        sp.pool.forEach(function (e) {
-          if (e.pick === pick) out.push(g.name + '·' + sp.name);
-        });
-      });
-    });
-    return out;
+    return SPOTS.filter(function (sp) {
+      return sp.pool.some(function (e) { return e.pick === pick; });
+    }).map(function (sp) { return sp.name; });
   }
 
   // ---- 导航配置 ----
@@ -1848,7 +1833,7 @@
     autoBuildRange: autoBuildRange,
     normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
-    GROUNDS: GROUNDS, NAV: NAV,
+    SPOTS: SPOTS, NAV: NAV,
     allItems: allItems, itemOf: itemOf, itemName: itemName, isSellable: isSellable,
   };
 });

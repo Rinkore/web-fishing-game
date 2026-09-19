@@ -43,6 +43,11 @@
   .px-node.here { z-index: 3; }
   .px-grounds { grid-template-columns: minmax(0, 1fr); }
   .px-region.g-card .pg-info span { white-space: normal; overflow-wrap: anywhere; }
+  .live-buffs { grid-template-columns: minmax(0, 1fr); }
+  .live-buff-row { align-items: flex-start; flex-direction: column; }
+  .live-buff-row > span { justify-content: flex-start; }
+  .peep { flex-wrap: wrap; }
+  .peep-acts { width: 100%; margin-left: 0; }
   .mini, .inv-cat, .inv-cat.sub, .spot-btn, .primary, .cr-chip { min-height: 44px; }
   input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea { font-size: 16px; max-width: 100%; }
   .inv-search input { flex-basis: 100%; min-height: 44px; }

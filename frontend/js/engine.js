@@ -11,7 +11,7 @@ window.Engine = (function () {
 
   const state = {
     me: null,                   // 本机玩家连接身份（由 Net 赋值）
-    player: { name: '你', status: 'idle', groundId: null, spotId: null, coins: 500, recent: null },
+    player: { name: '你', status: 'idle', spotId: null, coins: 500, recent: null },
     fishing: { active: false },
     fishingInterval: 3000,      // 服务器返回的实际钓速（展示用）
     castInfo: null,             // 钓速明细：后台基础值 + 词缀/钓点增益/全服加成 + 实际间隔
@@ -47,12 +47,12 @@ window.Engine = (function () {
     players: [],                // 在线玩家（服务器广播）
     peepsPage: { page: 1, pages: 1, total: 0, list: [] },  // 同钓点玩家（按当前钓点分页拉取）
     peepsLoading: false,        // 同钓点列表正在拉取（切钓点后本地先清空，不等 5s 轮询）
-    peepsGround: '',            // 列表当前对应的钓点 key（变了才重建）
+    peepsSpot: '',               // 列表当前对应的钓点 ID（变了才重建）
     shop: {},                   // 系统商店价格（服务器）
     market: [],                 // 市集挂单（服务器）
     records: {},                // 全服大鱼榜（服务器）
     smallRecords: {},           // 全服小鱼纪录（服务器）
-    groundCounts: {},           // 各渔场人数（服务器）
+    spotCounts: {},             // 各钓点人数（服务器）
     onlineTotal: 0,
     trade: null, tradeLastEvent: null, tradeFlash: null,
     codex: {},                  // 个人图鉴（服务器）
@@ -66,7 +66,7 @@ window.Engine = (function () {
     update: null,               // 服务端版本更新通知：null 或 { phase, bat, endAt, fireAt, … }
     banners: [],                // 横幅队列（服务器）
     bannerCfg: {},              // 横幅配置（图标闪烁等）
-    selected: { groundId: null, spotId: null },
+    selected: { spotId: null },
   };
 
   function buildDefaultBD() {
@@ -86,7 +86,7 @@ window.Engine = (function () {
       const raw = localStorage.getItem(SAVE_KEY);
       if (!raw) return;
       const snap = JSON.parse(raw);
-      if (snap && snap.selected) state.selected = snap.selected;
+      if (snap && snap.selected && D.SPOTS.some(function (x) { return x.id === snap.selected.spotId; })) state.selected = { spotId: snap.selected.spotId };
     } catch (e) { /* 忽略 */ }
   }
 
@@ -122,13 +122,12 @@ window.Engine = (function () {
     state.log = [];
     state.fishing = { active: false };
     state.player.status = 'idle';
-    state.player.groundId = null;
     state.player.spotId = null;
     state.player.recent = null;
     state.trade = null;
     state.tradeLastEvent = null;
     state.tradeFlash = null;
-    state.selected = { groundId: null, spotId: null };
+    state.selected = { spotId: null };
   }
 
   // 词缀汇总（展示用：与服务器共用同一份组件目录计算；权威值在服务器）
@@ -149,44 +148,41 @@ window.Engine = (function () {
   function revertLocalFishing() {
     state.player.status = 'idle';
     state.fishing.active = false;
-    state.player.groundId = null;
     state.player.spotId = null;
     state.player.recent = null;
-    state.selected = { groundId: null, spotId: null };
+    state.selected = { spotId: null };
     state.peepsPage = { page: 1, pages: 1, total: 0, list: [] };
     state.peepsLoading = false;
-    state.peepsGround = '';
+    state.peepsSpot = '';
   }
 
   // 切钓点时「同钓点」列表本地即时重建：旧列表是上一个钓点的人，只等 5s 轮询的话，
   // 会一直挂在新钓点下面（「所在」已经变了，「同钓点 N 人」和卡片还是旧的）。
   // 这里立刻清空并标成「同步中」——服务器推送节奏不变，只是本地不再等它。
-  function resetPeepsFor(groundId, spotId) {
-    state.peepsGround = (groundId ? groundId + '/' + (spotId || '') : '');
+  function resetPeepsFor(spotId) {
+    state.peepsSpot = spotId || '';
     state.peepsPage = { page: 1, pages: 1, total: 0, list: [] };
-    state.peepView = { size: 20, q: '', page: 1 };
+    state.peepView = { size: 100, q: '', page: 1 };
     state.peepsLoading = true;
   }
   // 立刻按该钓点拉一次分页（切点成功之后调；拉到了 net.js 会撤掉「同步中」）
-  function loadPeepsFor(groundId, spotId) {
+  function loadPeepsFor(spotId) {
     if (window.Net && window.Net.fetchPlayersPage) {
-      window.Net.fetchPlayersPage({ target: 'peepsPage', page: 1, size: 20, q: '', ground: groundId, spot: spotId });
+      window.Net.fetchPlayersPage({ target: 'peepsPage', page: 1, size: 100, q: '', spot: spotId });
     }
   }
 
   // ---- 钓鱼：只发指令。循环与渔获由服务器驱动，经 SSE 'catch'/'assets' 推送 ----
-  function startFishing(groundId, spotId) {
-    if (!resolveSpot(groundId, spotId)) return Promise.resolve({ ok: false, msg: '请先选择有效的钓鱼点与垂钓点。' });
+  function startFishing(spotId) {
+    if (!resolveSpot(spotId)) return Promise.resolve({ ok: false, msg: '请先选择有效的钓鱼点。' });
     // 乐观更新 UI，服务器拒绝时回滚
-    state.selected = { groundId: groundId, spotId: spotId };
-    state.player.groundId = groundId;
+    state.selected = { spotId: spotId };
     state.player.spotId = spotId;
     state.player.status = 'fishing';
     state.fishing.active = true;
     if (!window.Net) return Promise.resolve({ ok: false, msg: '网络层未就绪' });
-    const key = groundId + '/' + (spotId || '');
-    if (state.peepsGround !== key) resetPeepsFor(groundId, spotId);   // 换钓点（或首次开始）才重建列表
-    return window.Net.fishingStart(groundId, spotId).then(function (r) {
+    if (state.peepsSpot !== spotId) resetPeepsFor(spotId);   // 换钓点（或首次开始）才重建列表
+    return window.Net.fishingStart(spotId).then(function (r) {
       if (r && r.ok) {
         // 注意：网络层返回 { ok, status, data }，业务字段都在 data 里
         const d = r.data || {};
@@ -194,7 +190,7 @@ window.Engine = (function () {
         state.castInfo = d.castInfo || state.castInfo || null; // 钓速明细（基础值/词缀/钓点增益/全服加成/实际间隔）
         // 名单必须在「开始成功」之后再拉：抢先拉会拿到切点前的旧名单（新钓点 0 人），
         // 界面要空等下一次 5s 轮询才出现人。
-        if (state.peepsGround === key) loadPeepsFor(groundId, spotId);
+        if (state.peepsSpot === spotId) loadPeepsFor(spotId);
         save();
         return { ok: true };
       }
@@ -210,16 +206,13 @@ window.Engine = (function () {
     save();
   }
 
-  function resolveSpot(groundId, spotId) {
-    const g = D.GROUNDS.find(function (x) { return x.id === groundId; });
-    if (!g) return null;
-    return g.spots.find(function (x) { return x.id === spotId; }) || null;
+  function resolveSpot(spotId) {
+    return D.SPOTS.find(function (x) { return x.id === spotId; }) || null;
   }
 
-  // 同一钓点的在线玩家（含自己）：钓场与钓点都相同才算「同钓点」。
-  // 旧版只按钓场过滤，同钓场不同钓点的人也会被列进「同钓点」面板。
-  function playersAtSpot(groundId, spotId) {
-    return state.players.filter(function (b) { return b.groundId === groundId && b.spotId === spotId; });
+  // 同一钓点的在线玩家（含自己）。
+  function playersAtSpot(spotId) {
+    return state.players.filter(function (b) { return b.spotId === spotId; });
   }
 
   function init() {

@@ -1,7 +1,7 @@
 /*
  * 钓鱼后台管理 - 页面逻辑（零依赖，与游戏前端共用后端 /api/admin/*）
  * 登录：管理员账号 + 验证器动态验证码（仅本机控制台可初始化）。
- * 功能页：概览 / 账号管理（含管理员授权）/ 渔场钓点（掉落池权重实时百分比 + 增益）/ 市集退回 / 上钩公式 / 通知等级。
+ * 功能页：概览 / 账号管理（含管理员授权）/ 钓点管理（掉落池权重实时百分比 + 增益）/ 市集退回 / 上钩公式 / 通知等级。
  */
 window.Admin = (function () {
   'use strict';
@@ -10,7 +10,7 @@ window.Admin = (function () {
   let token = null;
   let me = null;
   let view = 'overview';
-  let worldCfg = null;          // /api/admin/world 结果（grounds + catalog + 设置）
+  let worldCfg = null;          // /api/admin/world 结果（spots + catalog + 设置）
   let mkPage = 1, mkInfo = null, mkSequence = 0, mkFilterTimer;
   let listings = [];            // 市集挂单
   let mkSearch = '';            // 市集管理搜索
@@ -20,8 +20,8 @@ window.Admin = (function () {
   let mkSort = { key: 'time', dir: 'desc' };
   let timer = null;             // 概览自动刷新
   let bannerTimer = null;       // 横幅滚播面板自动刷新
-  // 渔场编辑器状态
-  let selGround = null, selSpot = null;
+  // 钓点编辑器状态
+  let selSpot = null;
   let poolDraft = [], buffsDraft = [], poolDirty = false, buffsDirty = false;
   let posDraft = {};            // 钓点地图坐标草稿 { spotId: [x%, y%] }（拖动后未保存的值）
 
@@ -166,7 +166,7 @@ window.Admin = (function () {
     { id: 'features', name: '🔒 功能开关' },
     { id: 'accountmgr', name: '👥 账号管理' },
     { id: 'security', name: '🛡 安全' },   // v0.16.0：封禁名单 + 管理操作审计 + 异常登录
-    { id: 'grounds', name: '🌊 渔场钓点' },
+    { id: 'spots', name: '📍 钓点管理' },
     { id: 'market', name: '💱 市集管理' },
     { id: 'component', name: '🧩 组件生成' },
     { id: 'fishsize', name: '🐟 鱼类体型' },
@@ -308,7 +308,7 @@ window.Admin = (function () {
     if (v === 'features') return renderFeatures();
     if (v === 'accountmgr') return renderAccountMgr();
     if (v === 'security') return renderSecurity();
-    if (v === 'grounds') return renderGrounds();
+    if (v === 'spots') return renderSpots();
     if (v === 'market') return renderMarket();
     if (v === 'component') return renderComponent();
     if (v === 'fishsize') return renderFishSize();
@@ -509,7 +509,7 @@ window.Admin = (function () {
   let heatAt = 0;                  // 上次拉取时间
   let heatHover = -1;              // 曲线：悬停的数据点下标（-1 = 无）
   let heatCell = null;             // 热力格：悬停的 [星期, 小时]
-  let heatFilter = { ground: '', spot: '' };   // v0.16.0：按钓场 / 钓点筛选（空 = 全服）
+  let heatFilter = { spot: '' };          // v0.18：按钓点筛选（空 = 全服）
   let heatDraws = 0;               // 绘制计数（写到 canvas.dataset.draw，测试与排查用）
   // 画布按容器宽度与 DPR 重建，返回绘图上下文
   function heatCanvas(hh) {
@@ -561,8 +561,8 @@ window.Admin = (function () {
       heatDraws++; c.cv.dataset.draw = String(heatDraws);
       return;
     }
-    // 筛选口径（选了钓场 / 钓点）：只画一条「该钓点钓鱼人数」曲线，其余全局曲线不再混淆视听
-    const filtered = !!(data.filter && (data.filter.ground || data.filter.spot));
+    // 筛选口径（选了钓点）：只画一条「该钓点钓鱼人数」曲线，其余全局曲线不再混淆视听
+    const filtered = !!(data.filter && data.filter.spot);
     const vis = filtered
       ? [{ id: 'area', name: data.filter.areaLabel || '该区域钓鱼人数', color: '#3ecf8e' }]
       : HEAT_SERIES.filter(function (s) { return heatOn[s.id]; });
@@ -735,8 +735,8 @@ window.Admin = (function () {
       return;
     }
     const stepTxt = d.step >= 3600000 ? (d.step / 3600000) + ' 小时' : (d.step / 60000) + ' 分钟';
-    const fTxt = (d.filter && (d.filter.ground || d.filter.spot))
-      ? ' · 筛选口径：' + (d.filter.spot ? '钓点 ' + d.filter.spot.replace(':', '·') : '钓场 ' + d.filter.ground) + '（只统计该区域的钓鱼人数）'
+    const fTxt = (d.filter && d.filter.spot)
+      ? ' · 筛选口径：钓点 ' + d.filter.spot + '（只统计该钓点的钓鱼人数）'
       : '';
     hint.textContent = rangeName + '区间：' + d.points.length + ' 个采样桶（每桶 ' + stepTxt + '，桶内取均值；峰值线取桶内最高）' +
       ' · 采样 分钟 ' + d.samples.min + ' / 小时 ' + d.samples.hour + ' 条 · 历史峰值 ' + peak + ' 人' + peakAt +
@@ -744,7 +744,7 @@ window.Admin = (function () {
   }
   function heatLoad() {
     if (view !== 'overview') return;
-    const q = '&ground=' + encodeURIComponent(heatFilter.ground || '') + '&spot=' + encodeURIComponent(heatFilter.spot || '');
+    const q = '&spot=' + encodeURIComponent(heatFilter.spot || '');
     return adminApi('GET', '/api/admin/stats?range=' + heatRange + q + '&token=' + encodeURIComponent(token)).then(function (r) {
       if (!r.ok || view !== 'overview') return;
       heatData = r.data;
@@ -759,27 +759,16 @@ window.Admin = (function () {
       heatHint();
     });
   }
-  // 填充钓场 / 钓点筛选下拉（保持已选值；钓点列表跟随钓场变化）
+  // 填充钓点筛选下拉（保持已选值）
   function heatFillFilters(d) {
-    const gSel = $('ov-filter-ground'), sSel = $('ov-filter-spot');
-    if (!gSel || !sSel || !d || !d.grounds) return;
-    if (gSel.options.length <= 1) {
-      d.grounds.forEach(function (g) {
-        const o = document.createElement('option'); o.textContent = g.name; o.value = g.id; gSel.appendChild(o);
-      });
-    }
-    gSel.value = heatFilter.ground || '';
-    // 钓点下拉：按当前钓场过滤（未选钓场 = 全部钓点）
+    const sSel = $('ov-filter-spot');
+    if (!sSel || !d || !d.spots) return;
     const cur = heatFilter.spot;
     sSel.innerHTML = '<option value="">全部钓点</option>';
-    d.grounds.forEach(function (g) {
-      if (heatFilter.ground && g.id !== heatFilter.ground) return;
-      g.spots.forEach(function (sp) {
-        const o = document.createElement('option');
-        o.textContent = (heatFilter.ground ? '' : g.name + '·') + sp.name;
-        o.value = sp.key;
-        sSel.appendChild(o);
-      });
+    d.spots.forEach(function (sp) {
+      const o = document.createElement('option');
+      o.textContent = sp.name; o.value = sp.key || sp.id;
+      sSel.appendChild(o);
     });
     if (cur && !Array.from(sSel.options).some(function (o) { return o.value === cur; })) heatFilter.spot = '';
     sSel.value = heatFilter.spot || '';
@@ -795,9 +784,8 @@ window.Admin = (function () {
       '<button class="btn mini hm-md' + (heatMode === 'line' ? ' on' : '') + '" data-mode="line">📈 曲线</button>' +
       '<button class="btn mini hm-md' + (heatMode === 'heat' ? ' on' : '') + '" data-mode="heat">🌡️ 星期 × 小时热力格</button>' +
       '</span>' +
-      // v0.16.0：按钓场 / 钓点筛选（只看某个钓点在同一时段的拥挤程度）
-      '<span class="hm-group"><label class="hm-filter-label">钓场</label><select id="ov-filter-ground" class="ipt hm-sel"><option value="">全服</option></select>' +
-      '<label class="hm-filter-label">钓点</label><select id="ov-filter-spot" class="ipt hm-sel"><option value="">全部钓点</option></select></span>' +
+      // v0.18：按钓点筛选（只看某个钓点在同一时段的拥挤程度）
+      '<span class="hm-group"><label class="hm-filter-label">钓点</label><select id="ov-filter-spot" class="ipt hm-sel"><option value="">全部钓点</option></select></span>' +
       '</div>' +
       '<div class="hm-legend" id="ov-legend">' + HEAT_SERIES.map(function (s) {
         return '<label class="hm-item' + (heatOn[s.id] ? '' : ' off') + '" data-series="' + s.id + '">' +
@@ -827,6 +815,14 @@ window.Admin = (function () {
         heatHint();
       });
     });
+    const spotSel = $('ov-filter-spot');
+    if (spotSel) {
+      spotSel.addEventListener('change', function () {
+        heatFilter.spot = spotSel.value || '';
+        heatHover = -1; heatCell = null;
+        heatLoad();
+      });
+    }
     document.querySelectorAll('#ov-legend .hm-item').forEach(function (lab) {
       const cb = lab.querySelector('input');
       cb.addEventListener('change', function () {
@@ -862,7 +858,7 @@ window.Admin = (function () {
       '<div class="stat"><div class="v" data-stat="userCount">–</div><div class="k">注册账号</div></div>' +
       '<div class="stat"><div class="v" data-stat="listings">–</div><div class="k">市集挂单</div></div>' +
       '<div class="stat"><div class="v" data-stat="activeTrades">–</div><div class="k">进行中交易</div></div>' +
-      '<div class="stat"><div class="v" data-stat="spots">–</div><div class="k">钓场 / 钓点</div></div>' +
+      '<div class="stat"><div class="v" data-stat="spots">–</div><div class="k">钓点</div></div>' +
       '<div class="stat"><div class="v" data-stat="peak">–</div><div class="k">历史峰值在线</div></div>' +
       '</div>' +
       heatPanelHtml() +
@@ -885,7 +881,7 @@ window.Admin = (function () {
         set('userCount', d.userCount);
         set('listings', d.listings);
         set('activeTrades', d.activeTrades);
-        set('spots', d.groundCount + ' / ' + d.spotCount);
+        set('spots', d.spotCount);
         const lvName = (worldCfg && worldCfg.notifyLevels && worldCfg.notifyLevels[d.notifyLevel]) || d.notifyLevel;
         const cfg = $('ov-cfg');
         if (cfg) {
@@ -1830,7 +1826,7 @@ window.Admin = (function () {
   }
 
   // ================================
-  // 渔场钓点编辑器
+  // 钓点管理（扁平目录，无渔场层级）
   // ================================
   function loadWorldCfg(force) {
     if (worldCfg && !force) return Promise.resolve(worldCfg);
@@ -1839,283 +1835,130 @@ window.Admin = (function () {
       return worldCfg;
     });
   }
-  function renderGrounds() {
+  function renderSpots() {
     const main = $('main');
-    main.innerHTML = '<h2>🌊 渔场与钓点管理</h2>' +
-      '<div class="hint" style="margin-bottom:12px">选择钓场与钓点后编辑掉落池（权重实时换算百分比）与增益。保存后全服即时生效，正在钓鱼的玩家下一竿即按新配置掷骰。</div>' +
+    main.innerHTML = '<h2>📍 钓点管理</h2>' +
+      '<div class="hint" style="margin-bottom:12px">选择钓点后编辑掉落池、增益、独立速率与地图坐标。保存后全服即时生效，正在钓鱼的玩家下一竿即按新配置掷骰。</div>' +
       '<div id="gd-body">加载中…</div>';
     loadWorldCfg(true).then(function (cfg) {
-      if (!cfg || view !== 'grounds') return;
-      if (!selGround || !cfg.grounds.some(function (g) { return g.id === selGround; })) {
-        selGround = cfg.grounds.length ? cfg.grounds[0].id : null;
-        selSpot = null;
+      if (!cfg || view !== 'spots') return;
+      if (!selSpot || !cfg.spots.some(function (s) { return s.id === selSpot; })) {
+        selSpot = cfg.spots.length ? cfg.spots[0].id : null;
       }
-      drawGrounds(cfg);
+      drawSpots(cfg);
     });
   }
-  function drawGrounds(cfg) {
-    const g = cfg.grounds.find(function (x) { return x.id === selGround; });
-    if (!g) return;
-    if (!selSpot || !g.spots.some(function (s) { return s.id === selSpot; })) selSpot = g.spots.length ? g.spots[0].id : null;
+  function drawSpots(cfg) {
+    const sp = cfg.spots.find(function (x) { return x.id === selSpot; });
     const body = $('gd-body');
-    // 拉数据期间页面可能已被切走或重绘（例如快速来回切页签）：容器不在就什么都不做
     if (!body) return;
+    if (!sp) {
+      body.innerHTML = '<div class="hint">暂无钓点，可用下方表单新建。</div>';
+      return;
+    }
     const presets = cfg.poolPresets || {};
     const presetOpts = Object.keys(presets).map(function (k) {
       return '<option value="' + k + '">' + esc(presets[k].name) + '</option>';
     }).join('');
-    const removedG = cfg.removedGrounds || [];
-    const removedS = cfg.removedSpots || [];
+    const removed = cfg.removedSpots || [];
     body.innerHTML =
-      // —— 新建渔场（支持一键填充 + 限时窗口）——
       '<div class="panel gd-new">' +
-      '<h3 style="margin-top:0">➕ 新建渔场</h3>' +
-      '<div class="mgr-row"><label>ID</label><input id="ng-id" class="ipt gi-id" placeholder="如 coral_bay（小写字母/数字/下划线）" />' +
-      '<label class="hint">名称</label><input id="ng-name" class="ipt gi-name" placeholder="如 珊瑚湾" maxlength="20" />' +
-      '<label class="hint">类型</label><select id="ng-type" class="ipt gi-type"><option value="normal">普通钓场</option><option value="event">活动钓场</option></select>' +
-      '<label class="hint">首个钓点</label><input id="ng-spot" class="ipt gi-name" value="主钓点" maxlength="20" /></div>' +
-      '<div class="mgr-row"><label>简介</label><input id="ng-desc" class="ipt gi-desc" placeholder="一句话描述（可选）" maxlength="80" />' +
-      '<label class="hint">一键填充</label><select id="ng-preset" class="ipt gi-type">' + presetOpts + '</select>' +
-      '<label class="hint" title="创建首个钓点时就按预设填好掉落池，之后仍可在下方逐条调整">填充掉落池</label>' +
-      '<input type="checkbox" id="ng-fill" checked /></div>' +
-      '<div class="mgr-row"><label>限时开放</label><input id="ng-from" class="ipt gi-time" type="datetime-local" />' +
-      '<span class="hint">~</span><input id="ng-to" class="ipt gi-time" type="datetime-local" />' +
-      '<span class="hint">留空 = 常驻开放；到点自动开/关并广播</span>' +
-      '<button class="btn primary" id="ng-create">创建渔场</button><span id="ng-state" class="hint"></span></div>' +
-      ((removedG.length || removedS.length)
-        ? '<div class="gd-removed"><b>已删除（可恢复）</b>：' +
-          removedG.map(function (id) {
-            const base = GROUND_NAME_HINT(cfg, id);
-            return '<span class="gd-chip">🌊 ' + esc(base) + ' <button class="btn mini" data-rstg="' + esc(id) + '">恢复</button></span>';
-          }).join('') +
-          removedS.map(function (key) {
-            const parts = key.split(':');
-            return '<span class="gd-chip">🎣 ' + esc(GROUND_NAME_HINT(cfg, parts[0])) + ' · ' + esc(parts[1]) + ' <button class="btn mini" data-rsts="' + esc(key) + '">恢复</button></span>';
-          }).join('') + '</div>'
-        : '') +
+      '<h3 style="margin-top:0">➕ 新建钓点</h3>' +
+      '<div class="mgr-row"><label>ID</label><input id="ns-id" class="ipt gi-id" placeholder="如 night_reef（小写字母/数字/下划线）" />' +
+      '<label class="hint">名称</label><input id="ns-name" class="ipt gi-name" placeholder="如 夜光礁湖" maxlength="20" />' +
+      '<label class="hint">简介</label><input id="ns-desc" class="ipt gi-desc" placeholder="一句话描述（可选）" maxlength="80" /></div>' +
+      '<div class="mgr-row"><label>预设</label><select id="ns-preset" class="ipt gi-type">' + presetOpts + '</select>' +
+      '<label class="hint">填充掉落池</label><input type="checkbox" id="ns-fill" checked />' +
+      '<label class="hint">初始坐标</label><input id="ns-x" class="ipt mk-num" type="number" min="2" max="98" step="0.1" value="50" /><span class="hint">%</span>' +
+      '<input id="ns-y" class="ipt mk-num" type="number" min="2" max="98" step="0.1" value="50" /><span class="hint">%</span>' +
+      '<button class="btn primary" id="ns-add">创建钓点</button><span id="ns-state" class="hint"></span></div>' +
+      (removed.length ? '<div class="gd-removed"><b>已删除（可恢复）</b>：' + removed.map(function (id) {
+        return '<span class="gd-chip">🎣 ' + esc(SPOT_NAME_HINT(id)) + ' <button class="btn mini" data-rsts="' + esc(id) + '">恢复</button></span>';
+      }).join('') + '</div>' : '') +
       '</div>' +
-      // —— 渔场卡片 ——
-      '<div class="ground-tabs">' + cfg.grounds.map(function (gr) {
-        const limited = !!(gr.openFrom || gr.openTo);
-        const badge = (gr.custom ? '<span class="gd-badge custom">自定义</span>' : '') +
-          (limited ? '<span class="gd-badge limited" title="限时渔场">⏰ 限时</span>' : '');
-        return '<div class="gcard' + (gr.id === selGround ? ' sel' : '') + (gr.locked ? ' locked' : '') + '" data-g="' + esc(gr.id) + '">' +
-          '<b>' + esc(gr.name) + (gr.locked ? ' 🔒' : '') + badge + '</b>' +
-          '<span class="gi">' + esc(gr.desc) + '</span>' +
-          '<div style="margin-top:6px"><button class="btn mini" data-lock="' + esc(gr.id) + '">' + (gr.locked ? '解锁钓场' : '锁定钓场') + '</button>' +
-          '<button class="btn mini danger" data-rmg="' + esc(gr.id) + '">删除</button></div>' +
-          '</div>';
-      }).join('') + '</div>' +
-      '<div class="panel">' +
-      // —— 选中渔场的信息编辑 + 钓点管理 ——
-      '<div class="mgr-row gd-info"><label>名称</label><input id="gi-name" class="ipt gi-name" value="' + esc(g.name) + '" maxlength="20" />' +
-      '<label class="hint">类型</label><select id="gi-type" class="ipt gi-type"><option value="normal"' + (g.type !== 'event' ? ' selected' : '') + '>普通钓场</option><option value="event"' + (g.type === 'event' ? ' selected' : '') + '>活动钓场</option></select>' +
-      '<label class="hint">简介</label><input id="gi-desc" class="ipt gi-desc" value="' + esc(g.desc || '') + '" maxlength="80" />' +
-      '<button class="btn primary" id="gi-save">保存信息</button><span id="gi-state" class="hint"></span></div>' +
-      '<div class="mgr-row gd-info"><label>限时开放</label><input id="gi-from" class="ipt gi-time" type="datetime-local" value="' + esc(toLocalInput(g.openFrom)) + '" />' +
-      '<span class="hint">~</span><input id="gi-to" class="ipt gi-time" type="datetime-local" value="' + esc(toLocalInput(g.openTo)) + '" />' +
-      '<button class="btn" id="gi-window">保存限时</button><button class="btn mini" id="gi-clearwin">清除限时</button>' +
-      '<span class="hint">窗口外自动锁定（含手动锁定叠加）</span></div>' +
-      '<div class="spot-tabs">' + g.spots.map(function (s) {
+      '<div class="spot-tabs">' + cfg.spots.map(function (s) {
         return '<button class="spot-tab' + (s.id === selSpot ? ' on' : '') + '" data-s="' + esc(s.id) + '">' + esc(s.name) + '</button>';
       }).join('') +
-      '<span class="gd-spot-acts"><input id="ns-name" class="ipt gi-name" placeholder="新钓点名称" maxlength="20" />' +
-      '<select id="ns-preset" class="ipt gi-type">' + presetOpts + '</select>' +
-      '<button class="btn mini" id="ns-add">＋ 新建钓点（一键填充）</button>' +
-      (sp0Exists(g) ? '<button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button>' : '') +
-      '</span></div>' +
-      '<div id="gd-map"></div>' +
-      '<div id="ed-body"></div>' +
-      '</div>';
-    void presets;
+      '<span class="gd-spot-acts"><button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button></span></div>' +
+      '<div id="gd-map"></div><div id="ed-body"></div>';
 
-    body.querySelectorAll('.gcard').forEach(function (c) {
-      c.onclick = function (ev) {
-        if (ev.target && ev.target.getAttribute && (ev.target.getAttribute('data-lock') || ev.target.getAttribute('data-rmg'))) return;
-        selGround = c.getAttribute('data-g'); selSpot = null;
-        poolDirty = buffsDirty = false; posDraft = {};
-        drawGrounds(cfg);
-      };
-    });
-    body.querySelectorAll('[data-lock]').forEach(function (b) {
-      b.onclick = function () {
-        const gid = b.getAttribute('data-lock');
-        const gr = cfg.grounds.find(function (x) { return x.id === gid; });
-        adminApi('POST', '/api/admin/ground/lock', { token: token, groundId: gid, locked: !gr.locked }).then(function (r) {
-          if (!r.ok) { toast(r.data.error || '操作失败', true); return; }
-          toast(gr.locked ? '钓场已解锁' : '钓场已锁定（该场钓鱼已停止）');
-          loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
-        });
-      };
-    });
-    // 删除渔场（内置渔场可恢复；自定义直接移除）
-    body.querySelectorAll('[data-rmg]').forEach(function (b) {
-      b.onclick = function () {
-        const gid = b.getAttribute('data-rmg');
-        const gr = cfg.grounds.find(function (x) { return x.id === gid; });
-        confirmModalLocal('删除渔场「' + (gr ? gr.name : gid) + '」？该场正在钓鱼的玩家会被停止' + (gr && gr.custom ? '（自定义渔场删除后不可恢复）' : '（内置渔场可在上方「已删除」中恢复）')).then(function (ok) {
-          if (!ok) return;
-          adminApi('POST', '/api/admin/ground/remove', { token: token, groundId: gid }).then(function (r) {
-            if (!r.ok) { toast(r.data.error || '删除失败', true); return; }
-            toast('渔场已删除' + (r.data.restorable ? '（可恢复）' : ''));
-            if (selGround === gid) selGround = null;
-            loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
-          });
-        });
-      };
-    });
-    body.querySelectorAll('[data-rstg]').forEach(function (b) {
-      b.onclick = function () {
-        adminApi('POST', '/api/admin/ground/restore', { token: token, groundId: b.getAttribute('data-rstg') }).then(function (r) {
-          if (!r.ok) { toast(r.data.error || '恢复失败', true); return; }
-          toast('渔场已恢复');
-          loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
-        });
-      };
-    });
-    body.querySelectorAll('[data-rsts]').forEach(function (b) {
-      b.onclick = function () {
-        const key = b.getAttribute('data-rsts');
-        const parts = key.split(':');
-        adminApi('POST', '/api/admin/ground/restore', { token: token, groundId: parts[0], spotId: parts[1] }).then(function (r) {
-          if (!r.ok) { toast(r.data.error || '恢复失败', true); return; }
-          toast('钓点已恢复');
-          loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
-        });
-      };
-    });
     body.querySelectorAll('.spot-tab').forEach(function (t) {
       t.onclick = function () {
         selSpot = t.getAttribute('data-s');
         poolDirty = buffsDirty = false; posDraft = {};
-        drawGrounds(cfg);
+        drawSpots(cfg);
       };
     });
-    // 新建渔场
-    $('ng-create').onclick = function () {
-      const bodyNow = {
-        token: token,
-        id: $('ng-id').value.trim(),
-        name: $('ng-name').value.trim(),
-        type: $('ng-type').value,
-        desc: $('ng-desc').value.trim(),
-        spotId: 'main',
-        spotName: $('ng-spot').value.trim() || '主钓点',
-        preset: $('ng-preset').value,
-        fill: $('ng-fill').checked,
-        openFrom: $('ng-from').value || null,
-        openTo: $('ng-to').value || null,
-      };
-      if (!bodyNow.id) { $('ng-state').innerHTML = '<span class="err">请填写渔场 ID</span>'; return; }
-      if (!bodyNow.name) { $('ng-state').innerHTML = '<span class="err">请填写渔场名称</span>'; return; }
-      adminApi('POST', '/api/admin/ground/add', bodyNow).then(function (r) {
-        if (!r.ok) { $('ng-state').innerHTML = '<span class="err">' + esc(r.data.error || '创建失败') + '</span>'; return; }
-        toast('渔场已创建' + (bodyNow.fill ? '（已按预设填充掉落池）' : ''));
-        selGround = bodyNow.id; selSpot = 'main';
-        poolDirty = buffsDirty = false;
-        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
-      });
-    };
-    // 选中渔场的信息/限时窗口
-    $('gi-save').onclick = function () {
-      adminApi('POST', '/api/admin/ground/update', {
-        token: token, groundId: selGround,
-        name: $('gi-name').value.trim(), type: $('gi-type').value, desc: $('gi-desc').value.trim(),
-      }).then(function (r) {
-        if (!r.ok) { $('gi-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
-        $('gi-state').innerHTML = '<span style="color:var(--ok)">已保存</span>';
-        toast('渔场信息已更新');
-        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
-      });
-    };
-    $('gi-window').onclick = function () {
-      adminApi('POST', '/api/admin/ground/update', {
-        token: token, groundId: selGround,
-        openFrom: $('gi-from').value || null, openTo: $('gi-to').value || null,
-      }).then(function (r) {
-        if (!r.ok) { $('gi-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
-        toast('限时窗口已保存，到点自动开/关');
-        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
-      });
-    };
-    $('gi-clearwin').onclick = function () {
-      adminApi('POST', '/api/admin/ground/update', { token: token, groundId: selGround, clearWindow: true }).then(function (r) {
-        if (!r.ok) { toast(r.data.error || '操作失败', true); return; }
-        toast('已清除限时窗口（恢复常驻）');
-        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
-      });
-    };
-    // 新建钓点（一键填充）
-    $('ns-add').onclick = function () {
-      const name = $('ns-name').value.trim();
-      if (!name) { toast('请填写新钓点名称', true); return; }
-      const autoId = 'spot_' + Date.now().toString(36).slice(-5);
-      adminApi('POST', '/api/admin/spot/add', { token: token, groundId: selGround, id: autoId, name: name, preset: $('ns-preset').value, fill: true }).then(function (r) {
-        if (!r.ok) { toast(r.data.error || '创建失败', true); return; }
-        toast('钓点「' + name + '」已创建（掉落池已按预设填充）');
-        selSpot = r.data.spot.id;
-        poolDirty = buffsDirty = false;
-        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
-      });
-    };
-    if ($('ns-del')) {
-      $('ns-del').onclick = function () {
-        const spNow = g.spots.find(function (x) { return x.id === selSpot; });
-        if (!spNow) return;
-        confirmModalLocal('删除钓点「' + spNow.name + '」？在该点钓鱼的玩家会被停止' + (g.custom ? '（自定义渔场内的钓点删除后不可恢复）' : '（内置钓点可在「已删除」中恢复）')).then(function (ok) {
-          if (!ok) return;
-          adminApi('POST', '/api/admin/spot/remove', { token: token, groundId: g.id, spotId: spNow.id }).then(function (r) {
-            if (!r.ok) { toast(r.data.error || '删除失败', true); return; }
-            toast('钓点已删除' + (r.data.restorable ? '（可恢复）' : ''));
-            selSpot = null;
-            loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
-          });
+    body.querySelectorAll('[data-rsts]').forEach(function (b) {
+      b.onclick = function () {
+        adminApi('POST', '/api/admin/spot/restore', { token: token, spotId: b.getAttribute('data-rsts') }).then(function (r) {
+          if (!r.ok) { toast(r.data.error || '恢复失败', true); return; }
+          toast('钓点已恢复');
+          loadWorldCfg(true).then(function (c2) { if (view === 'spots' && c2) drawSpots(c2); });
         });
       };
-    }
-
-    drawSpotMap(g);
-    const sp = g.spots.find(function (x) { return x.id === selSpot; });
-    if (!sp) { $('ed-body').innerHTML = '<div class="hint">该渔场暂无钓点，可用上方「＋ 新建钓点」添加（自动填充掉落池）。</div>'; return; }
-    // 草稿：首次进入或切换钓点时从服务器数据拷贝
+    });
+    $('ns-add').onclick = function () {
+      const id = $('ns-id').value.trim(), name = $('ns-name').value.trim();
+      if (!id) { $('ns-state').innerHTML = '<span class="err">请填写钓点 ID</span>'; return; }
+      if (!name) { $('ns-state').innerHTML = '<span class="err">请填写钓点名称</span>'; return; }
+      adminApi('POST', '/api/admin/spot/add', {
+        token: token, id: id, name: name, desc: $('ns-desc').value.trim(),
+        preset: $('ns-preset').value, fill: $('ns-fill').checked,
+        pos: [Number($('ns-x').value) || 50, Number($('ns-y').value) || 50],
+      }).then(function (r) {
+        if (!r.ok) { $('ns-state').innerHTML = '<span class="err">' + esc(r.data.error || '创建失败') + '</span>'; return; }
+        $('ns-state').innerHTML = '<span style="color:var(--ok)">已创建</span>';
+        toast('钓点「' + name + '」已创建');
+        selSpot = id; poolDirty = buffsDirty = false; posDraft = {};
+        loadWorldCfg(true).then(function (c2) { if (view === 'spots' && c2) drawSpots(c2); });
+      });
+    };
+    $('ns-del').onclick = function () {
+      const now = cfg.spots.find(function (x) { return x.id === selSpot; });
+      if (!now) return;
+      confirmModalLocal('删除钓点「' + now.name + '」？在该点钓鱼的玩家会被停止。').then(function (ok) {
+        if (!ok) return;
+        adminApi('POST', '/api/admin/spot/remove', { token: token, spotId: now.id }).then(function (r) {
+          if (!r.ok) { toast(r.data.error || '删除失败', true); return; }
+          toast('钓点已删除' + (r.data.restorable ? '（可恢复）' : ''));
+          selSpot = null; poolDirty = buffsDirty = false; posDraft = {};
+          loadWorldCfg(true).then(function (c2) { if (view === 'spots' && c2) drawSpots(c2); });
+        });
+      });
+    };
+    drawSpotMap(cfg.spots);
     if (!poolDirty && !buffsDirty) {
       poolDraft = (sp.pool || []).map(function (e) { return poolToRow(e.pick, e.weight); });
       buffsDraft = (sp.buffs || []).map(function (b) { return { type: b.type, value: b.value }; });
     }
-    drawEditors(cfg, g, sp);
+    drawEditors(cfg, sp);
   }
   // ---- 钓点地图定位（拖动设置）----
-  // 玩家端「钓鱼」页的世界地图坐标与钓点数据一起下发（data.js 的 spot.pos，后台可覆盖）。
-  // 这里提供一张缩略世界地图：拖动节点 = 改坐标，坐标以地图宽高的百分比保存（2~98，防止拖出视野）。
-  // 草稿存在 posDraft（模块级），因此上鱼广播/切页重绘都不会丢掉尚未保存的拖动结果。
-  function drawSpotMap(g) {
+  // 坐标按地图宽高百分比保存；草稿存在 posDraft，切页/广播重绘不会丢。
+  function drawSpotMap(spots) {
     const host = $('gd-map');
     if (!host) return;
-    const spots = g.spots || [];
     if (!spots.length) { host.innerHTML = ''; return; }
     const posOf = function (sp) { return posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) || [50, 50]; };
-    host.innerHTML = '<h3>🗺 地图定位 — ' + esc(g.name) + '</h3>' +
-      '<div class="hint" style="margin-bottom:8px">直接拖动节点调整钓点在玩家端世界地图上的位置（坐标 = 地图宽高的百分比）。' +
-      '「恢复出厂」把该钓点退回 data.js 的默认坐标。改完点「保存坐标」立即对全服生效。</div>' +
+    host.innerHTML = '<h3>🗺 地图定位</h3>' +
+      '<div class="hint" style="margin-bottom:8px">直接拖动节点调整钓点在玩家端世界地图上的位置（坐标 = 地图宽高的百分比）。「恢复出厂」把钓点退回 data.js 的默认坐标。</div>' +
       '<div class="gd-map" id="gd-map-canvas">' +
       '<img class="gd-map-img" src="assets/worldmap.png" alt="" draggable="false">' +
       spots.map(function (sp) {
         const p = posOf(sp);
         return '<button class="gd-node" data-s="' + esc(sp.id) + '" style="left:' + p[0] + '%;top:' + p[1] + '%" title="拖动调整位置">' +
           '<span class="gd-node-dot"></span><span class="gd-node-name">' + esc(sp.name) + '</span></button>';
-      }).join('') +
-      '</div>' +
+      }).join('') + '</div>' +
       '<div class="mgr-row" style="margin-top:8px"><button class="btn primary" id="gd-map-save">保存坐标</button>' +
       '<button class="btn" id="gd-map-reset">全部恢复出厂坐标</button>' +
       '<span id="gd-map-state" class="hint" style="margin-left:10px">拖动节点后记得保存</span></div>';
-
     const canvas = $('gd-map-canvas');
     let drag = null;
     function setPos(node, sid, x, y) {
       const nx = Math.max(2, Math.min(98, Math.round(x * 10) / 10));
       const ny = Math.max(2, Math.min(98, Math.round(y * 10) / 10));
-      node.style.left = nx + '%';
-      node.style.top = ny + '%';
+      node.style.left = nx + '%'; node.style.top = ny + '%';
       posDraft[sid] = [nx, ny];
     }
     canvas.querySelectorAll('.gd-node').forEach(function (node) {
@@ -2128,13 +1971,12 @@ window.Admin = (function () {
         onMove(ev);
       });
       node.addEventListener('pointermove', function (ev) { if (drag && drag.node === node) onMove(ev); });
-      node.addEventListener('pointerup', function (ev) {
+      node.addEventListener('pointerup', function () {
         if (!drag || drag.node !== node) return;
         node.classList.remove('dragging');
-        try { node.releasePointerCapture(ev.pointerId); } catch (e) {}
+        try { node.releasePointerCapture(drag.pointerId || 0); } catch (e) {}
         drag = null;
-        $('gd-map-state').innerHTML = '<span style="color:var(--warn)">未保存：' + esc(node.getAttribute('data-s')) +
-          ' → ' + posDraft[node.getAttribute('data-s')].join(', ') + '</span>';
+        $('gd-map-state').innerHTML = '<span style="color:var(--warn)">有未保存的坐标改动</span>';
       });
       function onMove(ev) {
         const r = drag.rect;
@@ -2146,7 +1988,7 @@ window.Admin = (function () {
       const list = spots.map(function (sp) {
         return { spotId: sp.id, pos: posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) };
       }).filter(function (e) { return e.pos; });
-      adminApi('POST', '/api/admin/spot/pos', { token: token, groundId: g.id, list: list }).then(function (r) {
+      adminApi('POST', '/api/admin/spot/pos', { token: token, list: list }).then(function (r) {
         if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
         posDraft = {};
         setHint('gd-map-state', '<span style="color:var(--ok)">已保存 ' + (r.data.changed || 0) + ' 处坐标，玩家端地图立即生效</span>');
@@ -2154,27 +1996,24 @@ window.Admin = (function () {
       });
     };
     $('gd-map-reset').onclick = function () {
-      confirmModalLocal('把「' + g.name + '」的钓点坐标全部恢复为出厂值？').then(function (ok) {
+      confirmModalLocal('把全部钓点坐标恢复为出厂值？').then(function (ok) {
         if (!ok) return;
         adminApi('POST', '/api/admin/spot/pos', {
-          token: token, groundId: g.id,
-          list: spots.map(function (sp) { return { spotId: sp.id, pos: null }; }),
+          token: token, list: spots.map(function (sp) { return { spotId: sp.id, pos: null }; }),
         }).then(function (r) {
           if (!r.ok) { toast((r.data && r.data.error) || '操作失败', true); return; }
-          posDraft = {};
-          worldCfg = null;
+          posDraft = {}; worldCfg = null;
           toast('已恢复出厂坐标');
-          renderGrounds();
+          renderSpots();
         });
       });
     };
   }
-  // 已删除项的名称提示（内置目录已不在 cfg.grounds 中，退回显示 id）
-  function GROUND_NAME_HINT(cfg, id) {
-    const g = cfg.grounds.find(function (x) { return x.id === id; });
-    return g ? g.name : id;
+  // 已删除内置钓点的名称提示（运行时目录不在其中，退回本地静态目录）
+  function SPOT_NAME_HINT(id) {
+    const sp = (window.GameData && window.GameData.SPOTS || []).find(function (x) { return x.id === id; });
+    return sp ? sp.name : id;
   }
-  function sp0Exists(g) { return !!(g && g.spots && g.spots.length); }
   // 毫秒时间戳 → datetime-local 输入值（本地时区）
   function toLocalInput(ms) {
     if (!ms) return '';
@@ -2190,14 +2029,14 @@ window.Admin = (function () {
   }
   function rowToPick(r) { return r.type === 'component' ? 'component:' : r.type + ':' + r.id; }
 
-  function drawEditors(cfg, g, sp) {
+  function drawEditors(cfg, sp) {
     const ed = $('ed-body');
     const presetOpts2 = Object.keys(cfg.poolPresets || {}).map(function (k) {
       return '<option value="' + k + '">' + esc(cfg.poolPresets[k].name) + '</option>';
     }).join('');
     const rateBite = sp.biteRate != null && sp.biteRate !== '' ? sp.biteRate : '';
     const rateMs = sp.intervalMs != null && sp.intervalMs !== '' ? sp.intervalMs : '';
-    ed.innerHTML = '<h3>🎯 钓点独立上鱼率 / 速率 — ' + esc(g.name) + ' · ' + esc(sp.name) + '</h3>' +
+    ed.innerHTML = '<h3>🎯 钓点独立上鱼率 / 速率 — ' + esc(sp.name) + '</h3>' +
       '<div class="hint" style="margin-bottom:8px">留空 = 使用全服默认：上鱼率走「公式管理」的上钩公式，抛竿间隔按「基础间隔 + 钓速」计算。' +
       '上鱼率填 100 表示该钓点必上钩；间隔填写后该钓点固定按此间隔抛竿（玩家钓速不再影响）。</div>' +
       '<div class="mgr-row"><label>上鱼率</label>' +
@@ -2209,7 +2048,7 @@ window.Admin = (function () {
       '<button class="btn primary" id="sr-save">保存</button>' +
       '<button class="btn mini" id="sr-clear">恢复默认</button>' +
       '<span id="sr-state" class="hint"></span></div>' +
-      '<h3>🎣 掉落池 — ' + esc(g.name) + ' · ' + esc(sp.name) + '</h3>' +
+      '<h3>🎣 掉落池 — ' + esc(sp.name) + '</h3>' +
       '<div id="pool-rows"></div>' +
       '<div class="editor-foot">' +
       '<button id="pool-add" class="btn mini">＋ 添加条目</button>' +
@@ -2339,7 +2178,7 @@ window.Admin = (function () {
     function saveSpotRate(clear) {
       const biteRaw = $('sr-bite').value.trim();
       const msRaw = $('sr-ms').value.trim();
-      const payload = { token: token, groundId: g.id, spotId: sp.id };
+      const payload = { token: token, spotId: sp.id };
       if (clear) { payload.biteRate = ''; payload.intervalMs = ''; }
       else {
         if (biteRaw !== '') {
@@ -2360,7 +2199,7 @@ window.Admin = (function () {
         parts.push(r.data.intervalMs != null ? ('间隔 ' + r.data.intervalMs + 'ms') : '间隔=按钓速计算');
         $('sr-state').innerHTML = '<span style="color:var(--ok)">已保存：' + esc(parts.join(' · ')) + '</span>';
         toast('钓点速率已保存，正在该钓点钓鱼的玩家立即生效');
-        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c); });
+        loadWorldCfg(true).then(function (c) { if (view === 'spots' && c) drawSpots(c); });
       });
     }
     $('sr-save').onclick = function () { saveSpotRate(false); };
@@ -2382,19 +2221,19 @@ window.Admin = (function () {
     };
     $('buff-add').onclick = function () { buffsDraft.push({ type: 'speed', value: 10 }); buffsDirty = true; drawBuffs(); };
     $('pool-save').onclick = function () {
-      adminApi('POST', '/api/admin/spot/pool', { token: token, groundId: g.id, spotId: sp.id, pool: poolDraft.map(function (r) { return { pick: rowToPick(r), weight: Number(r.weight) || 0 }; }) }).then(function (r) {
+      adminApi('POST', '/api/admin/spot/pool', { token: token, spotId: sp.id, pool: poolDraft.map(function (r) { return { pick: rowToPick(r), weight: Number(r.weight) || 0 }; }) }).then(function (r) {
         if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
         poolDirty = false;
         toast('掉落池已保存，全服即时生效');
-        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c); }); // 重新拉取，避免用保存前的缓存重绘
+        loadWorldCfg(true).then(function (c) { if (view === 'spots' && c) drawSpots(c); }); // 重新拉取，避免用保存前的缓存重绘
       });
     };
     $('buff-save').onclick = function () {
-      adminApi('POST', '/api/admin/spot/buffs', { token: token, groundId: g.id, spotId: sp.id, buffs: buffsDraft.map(function (b) { return { type: b.type, value: Number(b.value) || 0 }; }) }).then(function (r) {
+      adminApi('POST', '/api/admin/spot/buffs', { token: token, spotId: sp.id, buffs: buffsDraft.map(function (b) { return { type: b.type, value: Number(b.value) || 0 }; }) }).then(function (r) {
         if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
         buffsDirty = false;
         toast('增益已保存，正在该钓点钓鱼的玩家立即按新加成循环');
-        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c); });
+        loadWorldCfg(true).then(function (c) { if (view === 'spots' && c) drawSpots(c); });
       });
     };
   }
@@ -3629,23 +3468,6 @@ window.Admin = (function () {
       if ($('sim-' + t)) $('sim-' + t).value = String(n);
       if ($('sim-r-' + t)) $('sim-r-' + t).value = String(n);
     });
-    // 钓场 / 钓点筛选（v0.16.0）：切换即按新口径重拉数据
-    const gSel = $('ov-filter-ground'), sSel = $('ov-filter-spot');
-    if (gSel) {
-      gSel.addEventListener('change', function () {
-        heatFilter.ground = gSel.value || '';
-        heatFilter.spot = '';        // 换钓场后原钓点可能不属于它，直接清空
-        heatHover = -1; heatCell = null;
-        heatLoad();
-      });
-    }
-    if (sSel) {
-      sSel.addEventListener('change', function () {
-        heatFilter.spot = sSel.value || '';
-        heatHover = -1; heatCell = null;
-        heatLoad();
-      });
-    }
   }
   function wireSimulator() {
     if (!$('sim-go')) return;
@@ -3709,7 +3531,7 @@ window.Admin = (function () {
         cell('每小时期望', d.expect.fishPerHour + ' 条', '上鱼率 × 抛竿数 × 每竿期望') +
         '</div>' +
         '<div class="eff-strip" style="margin:8px 0 0">' + chips + '</div>' +
-        (d.spot ? '<div class="hint" style="margin-top:6px">钓点：<b>' + esc(d.spot.groundName + '·' + d.spot.spotName) + '</b>' +
+        (d.spot ? '<div class="hint" style="margin-top:6px">钓点：<b>' + esc(d.spot.spotName) + '</b>' +
           ((d.spot.buffs || []).length ? ' · 钓点增益 ' + d.spot.buffs.map(function (b) { return esc((L[b.type] || b.type) + ' ' + (b.value > 0 ? '+' : '') + b.value + '%'); }).join('、') : '') +
           (d.spot.biteRateOverride != null ? ' · 独立上鱼率 ' + d.spot.biteRateOverride + '%' : '') +
           (d.spot.intervalOverride != null ? ' · 独立间隔 ' + d.spot.intervalOverride + 'ms' : '') + '</div>'

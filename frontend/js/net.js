@@ -257,7 +257,7 @@ window.Net = (function () {
     if (!me) return Promise.resolve({ ok: false, status: 401, data: { error: '未登录' } });
     return apiFetch('POST', path, Object.assign({ token: me.token }, body || {}));
   }
-  const fishingStart = (groundId, spotId) => authed('/api/fishing/start', { groundId: groundId, spotId: spotId });
+  const fishingStart = (spotId) => authed('/api/fishing/start', { spotId: spotId });
   const fishingStop = () => authed('/api/fishing/stop', {});
   const bdSet = (part, compId) => authed('/api/bd/set', { part: part, compId: compId });
   // 自动售出规则（玩家自助）：单件 { id, ... } / 批量 { bulk:'fish'|'material'|'all', ... }；
@@ -282,12 +282,12 @@ window.Net = (function () {
     }
     return r;
   });
-  // 钓场目录（公开只读）：进入游戏时主动拉取一次，作为 SSE init 的兜底，
+  // 钓点目录（公开只读）：进入游戏时主动拉取一次，作为 SSE init 的兜底，
   // 确保后进入或刷新过的玩家也能拿到含增益/掉落池覆盖的最新目录（钓点 ⚡ 标记等）。
-  const fetchGrounds = () => apiFetch('GET', '/api/grounds').then(function (r) {
-    if (r && r.ok && r.data && r.data.grounds) {
-      applyGroundCfg(r.data.grounds);
-      if (window.UI) window.UI.refreshAll('groundcfg');
+  const fetchSpots = () => apiFetch('GET', '/api/spots').then(function (r) {
+    if (r && r.ok && r.data && r.data.spots) {
+      applySpotCfg(r.data.spots);
+      if (window.UI) window.UI.refreshAll('spotcfg');
     }
     return r;
   });
@@ -333,14 +333,13 @@ window.Net = (function () {
     }
     return r;
   });
-  // perf-9：玩家列表分页 / 搜索（服务端分页）。target 区分存储槽：'playersPage'=渔场页玩家列表，'peepsPage'=同钓点列表
+  // perf-9：玩家列表分页 / 搜索（服务端分页）。target 区分存储槽：'playersPage'=社交页玩家列表，'peepsPage'=同钓点列表
   const fetchPlayersPage = (opts) => {
     const o = opts || {};
     const t = me ? me.token : '';
     return apiFetch('GET', '/api/players/page?token=' + encodeURIComponent(t) +
       '&page=' + (o.page || 1) + '&size=' + (o.size || 30) +
       '&q=' + encodeURIComponent(o.q || '') +
-      (o.ground ? '&ground=' + encodeURIComponent(o.ground) : '') +
       (o.spot ? '&spot=' + encodeURIComponent(o.spot) : '')).then(function (r) {
       if (r && r.ok) {
         const d = r.data;
@@ -356,7 +355,7 @@ window.Net = (function () {
   const setPlayersView = (opts) => {
     const o = opts || {};
     return authed('/api/players/view', { page: o.page || 1, size: o.size || 30, q: o.q || '',
-      ground: o.ground || null, spot: o.spot || null, clear: !!o.clear });
+      spot: o.spot || null, clear: !!o.clear });
   };
   const fetchFeedback = () => apiFetch('GET', '/api/feedback?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
     if (r && r.ok) {
@@ -413,7 +412,7 @@ window.Net = (function () {
   const feedbackSubmit = (text, kind) => authed('/api/feedback/submit', { text: text, kind: kind });
   const feedbackSkip = () => authed('/api/feedback/skip', {});
   const tradeInvite = (target) => authed('/api/trade/invite', { target: target });
-  // 查看其他玩家当前装备的钓竿组件构成（渔场动态玩家卡片「查看」按钮）
+  // 查看其他玩家当前装备的钓竿组件构成（社交页玩家卡片「查看」按钮）
   const fetchPlayerRod = (target) => authed('/api/players/rod', { target: target });
   const tradeRespond = (tradeId, accept) => authed('/api/trade/respond', { tradeId: tradeId, accept: accept });
   const tradeSet = (tradeId, items) => authed('/api/trade/set', { tradeId: tradeId, items: items });
@@ -444,24 +443,23 @@ window.Net = (function () {
     startVersionWatch();
   }
 
-  // 把服务器 presence 同步到本地展示状态（顶栏/渔场实况/状态条都以服务器为准）
+  // 把服务器 presence 同步到本地展示状态（顶栏/状态条都以服务器为准）
   function syncSelfFromPresence(list) {
     const mine = (list || []).find(function (p) { return me && p.id === me.id; });
     if (!mine) return;
     const S = state();
     S.player.status = mine.status || 'idle';
-    S.player.groundId = mine.groundId || null;
     S.player.spotId = mine.spotId || null;
     S.player.recent = mine.recent || null;
     S.fishing.active = mine.status === 'fishing';
-    if (S.fishing.active) { S.selected = { groundId: mine.groundId, spotId: mine.spotId }; }
+    if (S.fishing.active) { S.selected = { spotId: mine.spotId }; }
   }
 
   // feed 去重：同一条渔获可能既在 init 快照（feed 数组）里、又在那 1 秒社交批量窗口里到达
   // （连接恰好在窗口内建立时）——不去重的话动态流会重复一行。key 与 ui.js 的 feedKey 同构。
   function feedKeyOf(e) {
     const it = (e && e.item) || {};
-    return [e && e.t, e && e.who, e && e.ground, e && e.spot, it.id, e && e.size].join('|');
+    return [e && e.t, e && e.who, e && e.spot, it.id, e && e.size].join('|');
   }
   function feedDup(e) {
     if (!e) return true;
@@ -518,7 +516,7 @@ window.Net = (function () {
           S.marketRevision = m.marketRevision || 0;
           if (ui && ui.onMarketChanged) ui.onMarketChanged();
           fetchRecords();
-          S.groundCounts = m.grounds || {};
+          S.spotCounts = m.spotCounts || {};
           // 服务器重连自动续钓（上次没主动收竿）：直接带回钓速明细与钓点，
           // 前端不必再发一次 start 请求。钓点必须在这里就地写回展示状态：
           // perf-9 起 presence 只推给登记过列表视口的连接，钓鱼页不登记视口，
@@ -527,23 +525,22 @@ window.Net = (function () {
           if (m.resumedFishing) {
             S.castInfo = m.resumedFishing.castInfo || S.castInfo || null;
             if (m.resumedFishing.interval) S.fishingInterval = m.resumedFishing.interval;
-            if (m.resumedFishing.groundId) {
+            if (m.resumedFishing.spotId) {
               S.player.status = 'fishing';
-              S.player.groundId = m.resumedFishing.groundId;
-              S.player.spotId = m.resumedFishing.spotId || null;
+              S.player.spotId = m.resumedFishing.spotId;
               S.fishing.active = true;
-              // selected 同步：bitecfg / castcfg / groundcfg 广播靠它重新拉取钓速明细
-              S.selected = { groundId: m.resumedFishing.groundId, spotId: m.resumedFishing.spotId || null };
+              // selected 同步：bitecfg / castcfg / spotcfg 广播靠它重新拉取钓速明细
+              S.selected = { spotId: m.resumedFishing.spotId };
               // 同钓点列表直接按这个钓点拉一次（本地即时，不等 5s 轮询；推送节奏不变）
               if (window.Engine && window.Engine.resetPeeps) {
-                window.Engine.resetPeeps();
-                window.Engine.loadPeeps(m.resumedFishing.groundId, m.resumedFishing.spotId || null);
+                window.Engine.resetPeeps(m.resumedFishing.spotId);
+                window.Engine.loadPeeps(m.resumedFishing.spotId);
               }
             }
           }
-          // 钓场目录（含管理后台的掉落池/增益/锁定覆盖）：原位替换 data.js 的默认值，
-          // 保证图鉴产地与渔场页展示与实际掉落一致
-          if (m.groundCfg) applyGroundCfg(m.groundCfg);
+          // 钓点目录（含管理后台的掉落池/增益覆盖）：原位替换 data.js 的默认值，
+          // 保证图鉴产地与地图展示与实际掉落一致
+          if (m.spotCfg) applySpotCfg(m.spotCfg);
           S.trade = m.trade || null;
           if (m.codex) S.codex = m.codex;
           if (m.catchCount != null) S.catchCount = m.catchCount;
@@ -576,10 +573,10 @@ window.Net = (function () {
           }
           syncSelfFromPresence(S.players);
           if (ui) ui.refreshAll('players');
-        } else if (m.type === 'grounds') {
-          S.groundCounts = m.counts || {};
+        } else if (m.type === 'spotCounts') {
+          S.spotCounts = m.counts || {};
           S.onlineTotal = m.total || 0;
-          if (ui) ui.refreshAll('grounds');
+          if (ui) ui.refreshAll('spotCounts');
         } else if (m.type === 'playersPage') {
           // perf-9：当前视口页的玩家状态推送（≤页大小条；未登记视口的连接收不到）
           S.playersPage = { page: m.page, pages: m.pages, total: m.total, list: m.players || [] };
@@ -655,8 +652,8 @@ window.Net = (function () {
           if (ui && ui.onBannerStop) ui.onBannerStop(m.id);
         } else if (m.type === 'bitecfg') {
           // 后台改了上钩公式：正在钓鱼时重新拉取明细（含新上鱼率），否则直接重绘
-          if (S.fishing && S.fishing.active && S.selected && S.selected.groundId) {
-            window.Net.fishingStart(S.selected.groundId, S.selected.spotId);
+          if (S.fishing && S.fishing.active && S.selected && S.selected.spotId) {
+            window.Net.fishingStart(S.selected.spotId);
           } else if (ui && ui.refreshAll) {
             ui.refreshAll('castcfg');
           }
@@ -665,8 +662,8 @@ window.Net = (function () {
           S.castCfg = { baseMs: m.baseMs, minMs: m.minMs, speedBonus: m.speedBonus, speedCap: m.speedCap };
           // 清掉旧的 castInfo：界面立刻按新配置 + 本地词缀/增益重算（随后服务器回传的精确值覆盖）
           S.castInfo = null;
-          if (S.fishing && S.fishing.active && S.selected && S.selected.groundId) {
-            window.Net.fishingStart(S.selected.groundId, S.selected.spotId);
+          if (S.fishing && S.fishing.active && S.selected && S.selected.spotId) {
+            window.Net.fishingStart(S.selected.spotId);
           } else if (ui && ui.refreshAll) {
             ui.refreshAll('castcfg');
           }
@@ -744,7 +741,7 @@ window.Net = (function () {
             ui.addLog('catch', '钓到 ' + (it.name || '?') + (it.size ? ' ' + it.size + 'cm' : '') +
               (it.tier === 'G' ? ' 🥇巨型' : it.tier === 'L' ? ' 🥈大型' : '') +
               (it.rarity === 'rare' ? ' ✨稀有' : it.rarity === 'epic' ? ' 💎史诗' : '') +
-                (m.entry.ground ? '（' + m.entry.ground + (m.entry.spot ? '·' + m.entry.spot : '') + '）' : ''));
+                (m.entry.spot ? '（' + m.entry.spot + '）' : ''));
             }
           }
           if (ui) ui.refreshAll('catch');
@@ -805,15 +802,15 @@ window.Net = (function () {
           for (let i = 0; i < fb.length; i++) { if (!feedDup(fb[i])) { S.feed.unshift(fb[i]); added++; } }
           if (S.feed.length > 60) S.feed.length = 60;
           if (added && ui) ui.refreshAll('feed');
-        } else if (m.type === 'groundcfg') {
-          // 管理后台修改了钓场/钓点配置：原位替换 GROUNDS 内容（保持数组引用），
-          // 渔场页/图鉴产地/钓场锁定状态随即与服务器一致
-          applyGroundCfg(m.grounds);
+        } else if (m.type === 'spotcfg') {
+          // 管理后台修改了钓点配置：原位替换 SPOTS 内容（保持数组引用），
+          // 地图/图鉴产地/掉落概率随即与服务器一致
+          applySpotCfg(m.spots);
           // 钓点增益可能变了：正在钓鱼时顺带刷新实际钓速明细（服务器已按新增益重启循环）
-          if (S.fishing && S.fishing.active && S.selected && S.selected.groundId) {
-            window.Net.fishingStart(S.selected.groundId, S.selected.spotId);
+          if (S.fishing && S.fishing.active && S.selected && S.selected.spotId) {
+            window.Net.fishingStart(S.selected.spotId);
           }
-          if (ui) ui.refreshAll('groundcfg');
+          if (ui) ui.refreshAll('spotcfg');
         }
       }
       // 断线静默：EventSource 会自动重连。延迟几秒再置为「断开」，
@@ -824,21 +821,21 @@ window.Net = (function () {
       };
     } catch (e) { /* EventSource 不可用 */ }
   }
-  // 用服务器下发的钓场目录原位替换本地 GROUNDS（保持数组引用，spotsOf 等按引用读取即刻生效）
-  function applyGroundCfg(list) {
-    const G = window.GameData.GROUNDS;
-    if (!G || !Array.isArray(list)) return;
-    G.length = 0;
-    list.forEach(function (g) { G.push(g); });
+  // 用服务器下发的钓点目录原位替换本地 SPOTS（保持数组引用，spotsOf 等按引用读取即刻生效）
+  function applySpotCfg(list) {
+    const SP = window.GameData.SPOTS;
+    if (!SP || !Array.isArray(list)) return;
+    SP.length = 0;
+    list.forEach(function (sp) { SP.push(sp); });
   }
 
   // perf-9：同钓点玩家列表——钓鱼中每 5s 拉取当前钓点的分页数据（拉取制，不占推送带宽）
   setInterval(function () {
     const S = state();
-    if (!(S.fishing && S.fishing.active && S.player && S.player.groundId)) return;
-    const pv = S.peepView = S.peepView || { page: 1, size: 20, q: '' };
-    fetchPlayersPage({ target: 'peepsPage', page: pv.page, size: pv.size, q: pv.q,
-      ground: S.player.groundId, spot: S.player.spotId });
+    if (!(S.fishing && S.fishing.active && S.player && S.player.spotId)) return;
+    const pv = S.peepView = S.peepView || { page: 1, size: 100, q: '' };
+    if (pv.size < 100) pv.size = 100;
+    fetchPlayersPage({ target: 'peepsPage', page: pv.page, size: pv.size, q: pv.q, spot: S.player.spotId });
   }, 5000);
 
   return {
@@ -853,7 +850,7 @@ window.Net = (function () {
     fetchFeedback: fetchFeedback,
     fetchChest: fetchChest, chestCraft: chestCraft, chestOpen: chestOpen,
     fetchMall: fetchMall, mallBuy: mallBuy, fetchWorkshop: fetchWorkshop, smelt: smelt, recast: recast,
-    fetchBanners: fetchBanners, fetchGrounds: fetchGrounds,
+    fetchBanners: fetchBanners, fetchSpots: fetchSpots,
     bannerPlaying: bannerPlaying,
     feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,
     fetchSubscribe: fetchSubscribe, subscribeSave: subscribeSave,
