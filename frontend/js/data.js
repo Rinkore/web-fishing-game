@@ -2056,7 +2056,7 @@
           p('fish', 'mahimahi', 4),
           p('material', 'chartfrag', 2), p('material', 'bait_pack', 9), p('component', '', 6),
         ] },
-        // —— 远洋图（assets/voyagemap.png）：乘船才能下竿，越深需要越高级的船 ——
+        // —— 远洋图（voyage-map.js + voyage-map.css）：乘船才能下竿，越深需要越高级的船 ——
         { id: 'shore', name: '近海渔场', map: 'voyage', pos: [26, 73], minShip: 1, pool: [
           p('fish', 'mullet', 18), p('fish', 'jackmack', 16), p('fish', 'squid', 13), p('fish', 'octo', 9), p('fish', 'sardine', 10),
           p('fish', 'mahimahi', 4), p('fish', 'amberjack', 4),

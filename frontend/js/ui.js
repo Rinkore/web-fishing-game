@@ -1078,8 +1078,12 @@ window.UI = (function () {
     };
     // 远洋图的钓点坐标：远洋钓场用 data.js 出厂 pos；临时海域由注入时的环绕逻辑定位
     const map = el('div', 'px-map');
-    const mapImg = mapTab === 'voyage' ? 'assets/voyagemap.png' : 'assets/worldmap.png';
-    map.innerHTML = '<img class="px-map-img" src="' + mapImg + '" alt="" draggable="false">';
+    if (mapTab === 'voyage') {
+      map.classList.add('px-map-voyage');
+      map.appendChild(window.VoyageMap.create());
+    } else {
+      map.innerHTML = '<img class="px-map-img" src="assets/worldmap.png" alt="" draggable="false">';
+    }
     // 钓点选择（定义提前到分支外，增益一览等地图外控件也要用）：
     // 鼠标在按下时处理，避免广播重绘丢失 mouseup；触摸/笔只在 click 时处理，
     // 防止按下后重绘导致合成 click 再次进入新节点（开始后立刻退出），也允许滑动取消点击。
