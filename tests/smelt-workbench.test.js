@@ -53,7 +53,7 @@ async function run() {
     await card.locator('.bec-acts button:not([disabled])').first().click();
   }
   await pick('main', '龙骨'); await pick('sub', '碳素');
-  check('Relics default to zero on selection', await page.locator('#ws-relic-qty').inputValue() === '0');
+  check('Relics default to zero on selection', /已投入 0 \/ \d+ 片/.test(await page.locator('#ws-relic-count').textContent()));
   const sourceColors = await page.evaluate(() => {
     const bt = document.querySelector('.ws-aff .inst-aff.extra.bt'), ct = document.querySelector('.ws-aff .inst-aff.extra.ct');
     return bt && ct && getComputedStyle(bt).backgroundImage !== 'none' && getComputedStyle(ct).backgroundImage !== 'none' && getComputedStyle(bt).backgroundImage !== getComputedStyle(ct).backgroundImage;
@@ -68,8 +68,14 @@ async function run() {
   check('Preview has two result rows', await page.locator('.sm-result-aff').count() === 2);
   const baseRate = await page.evaluate(() => GameData.smeltRatesOf(GameData.smeltLoadOf([]), false).rate);
   check('Base probabilities use shared rules', (await page.locator('.ws-aff-prob').allTextContents()).every(s => s === '获得概率 ' + baseRate + '%'));
-  await page.locator('#ws-material-open').click();
+  await page.locator('#ws-material-open').click({ position: { x: 8, y: 8 } });
   check('Catalysts open in an accessible dialog with loaded material images', await page.locator('#ws-material-modal').getAttribute('role') === 'dialog' && await page.locator('.sm-material-icon').evaluateAll(nodes => nodes.length === 6 && nodes.every(n => n.complete && n.naturalWidth > 0)));
+  check('Catalyst dialog only offers material choice (no dose inputs)', await page.locator('#ws-material-modal input, #ws-material-modal .sm-counter').count() === 0);
+  await page.waitForTimeout(300);   // the modal entrance animation starts 14px low; measure the settled box
+  check('Catalyst dialog is centered on screen', await page.locator('#ws-material-modal').evaluate(n => {
+    const doc = document.documentElement, rect = n.getBoundingClientRect();
+    return Math.abs((rect.left + rect.right) / 2 - doc.clientWidth / 2) <= 2 && Math.abs((rect.top + rect.bottom) / 2 - doc.clientHeight / 2) <= 2;
+  }));
   fs.mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: path.join(SHOTS, 'fixed-catalyst-dialog.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -78,21 +84,39 @@ async function run() {
     return rect.left >= 0 && rect.right <= innerWidth + 1 && n.scrollWidth <= n.clientWidth + 1 && done.bottom <= innerHeight;
   }));
   await page.setViewportSize({ width: 1600, height: 1080 });
-  const material = page.locator('.ws-mat[data-affix="material"] input');
-  await material.fill('3');
-  check('Catalyst adds a live preview row', await page.locator('.sm-result-aff').count() === 3);
-  const probability = await page.evaluate(() => {
-    const input = document.querySelector('.ws-mat[data-affix="material"] input');
-    return GameData.smeltSuccessProbs(GameData.smeltRatesOf(GameData.smeltLoadOf([{ id: input.dataset.mat, qty: 3 }]), false), true).full;
-  });
+  check('Dose buttons stay disabled until a catalyst is picked', await page.locator('#ws-mat-minus1').isDisabled() && await page.locator('#ws-mat-plus1').isDisabled() && await page.locator('#ws-mat-plus5').isDisabled() && await page.locator('#ws-mat-clear').isDisabled());
+  const matCard = page.locator('.ws-mat[data-affix="material"]');
+  const matId = await matCard.getAttribute('data-mat');
+  await matCard.click();
+  check('Picking a catalyst highlights it and enables the main-page dose buttons', await matCard.getAttribute('aria-pressed') === 'true' && await page.locator('#ws-material-modal .ws-mat.selected').count() === 1 && await page.locator('#ws-mat-plus1').isEnabled() && await page.locator('#ws-mat-clear').isEnabled());
+  await page.keyboard.press('Escape');
+  check('Escape closes material dialog and returns focus', await page.locator('#ws-material-modal').count() === 0 && await page.locator('#ws-material-open').evaluate(n => document.activeElement === n));
+  await page.locator('#ws-mat-plus1').click(); await page.locator('#ws-mat-plus1').click(); await page.locator('#ws-mat-plus1').click();
+  check('Minus one steps the dose back', await page.locator('#ws-mat-minus1').isEnabled() && await page.locator('#ws-mat-plus1').isEnabled());
+  await page.locator('#ws-mat-minus1').click();
+  check('Dose drops to two after -1', (await page.locator('#ws-material-summary').textContent()).includes('×2'));
+  await page.locator('#ws-mat-plus1').click();
+  check('Main-page dose buttons feed the live preview', await page.locator('.sm-result-aff').count() === 3 && (await page.locator('#ws-material-summary').textContent()).includes('×3'));
+  const probability = await page.evaluate(() => GameData.smeltSuccessProbs(GameData.smeltRatesOf(GameData.smeltLoadOf([{ id: document.querySelector('#ws-material-images img').src.split('/').pop().replace('.png', ''), qty: 3 }]), false), true).full);
   check('Catalyst probability is success × extra chance', await page.locator('.sm-result-aff.add .ws-aff-prob').textContent() === '获得概率 ' + probability + '%');
-  const inputHandle = await material.elementHandle(); await material.focus();
+  const doseHandle = await page.locator('#ws-mat-plus1').elementHandle();
   await page.evaluate(() => { Engine.state.player.coins++; UI.refreshAll('assets'); });
-  check('Asset updates preserve the live material input and focus', await inputHandle.evaluate(n => n.isConnected && document.activeElement === n));
-  await page.locator('.sm-material-done').click();
-  check('Closing material dialog keeps the selection and returns focus', await page.locator('#ws-material-images img').count() === 1 && await page.locator('#ws-material-open').evaluate(n => document.activeElement === n));
-  await page.locator('#ws-relic-qty').fill('1');
+  check('Asset updates keep the smelt dose buttons alive', await doseHandle.evaluate(n => n.isConnected) && (await page.locator('#ws-material-summary').textContent()).includes('×3'));
+  await page.evaluate(id => { Engine.state.inventory[id] = 1; UI.refreshAll('assets'); }, matId);
+  check('Shrinking inventory clamps the selected dose', (await page.locator('#ws-material-summary').textContent()).includes('×1'));
+  await page.evaluate(id => { Engine.state.inventory[id] = 12; UI.refreshAll('assets'); }, matId);
+  await page.locator('#ws-mat-plus1').click(); await page.locator('#ws-mat-plus1').click();
+  check('Restocked dose is three again', (await page.locator('#ws-material-summary').textContent()).includes('×3'));
+  await page.locator('#ws-relic-plus1').click();
   check('Relic changes failure outcome to protection', (await page.locator('.sm-risk').textContent()).includes('受残片保护'));
+  await page.locator('#ws-relic-plus5').click(); await page.locator('#ws-relic-plus5').click();
+  check('Relic +5 clamps at the shard cap', /已投入 10 \/ 10 片/.test(await page.locator('#ws-relic-count').textContent()));
+  await page.locator('#ws-relic-clear').click();
+  check('Relic clear returns the dose to zero', /已投入 0 \/ 10 片/.test(await page.locator('#ws-relic-count').textContent()));
+  await page.locator('#ws-relic-plus1').click();
+  await page.locator('#ws-relic-minus1').click();
+  check('Relic -1 steps the shard dose back', /已投入 0 \/ 10 片/.test(await page.locator('#ws-relic-count').textContent()));
+  await page.locator('#ws-relic-plus1').click();
   await page.locator('#ws-pearl').check();
   await page.evaluate(() => { document.querySelector('#main').scrollTop = 0; });
   fs.mkdirSync(SHOTS, { recursive: true });
@@ -139,21 +163,23 @@ async function run() {
   await pick('main', '龙骨'); await pick('sub', '碳素');
   await page.locator('.ws-aff[data-which="main"][data-type="speed"]').click();
   await page.locator('.ws-aff[data-which="sub"][data-type="skill"]').click();
-  await page.locator('#ws-material-open').click();
-  await material.fill('999');
-  check('Material entry clamps to actual stock', await material.inputValue() === '12');
+  await page.locator('#ws-material-open').click({ position: { x: 8, y: 8 } });
+  await page.locator('.ws-mat[data-affix="material"]').click();
+  await page.keyboard.press('Escape');
+  await page.locator('#ws-mat-plus5').click(); await page.locator('#ws-mat-plus5').click(); await page.locator('#ws-mat-plus5').click();
+  check('Material dose clamps to actual stock', (await page.locator('#ws-material-summary').textContent()).includes('×12'));
   await page.evaluate(() => {
-    const id = document.querySelector('.ws-mat[data-affix="material"] input').dataset.mat;
+    const id = document.querySelector('#ws-material-images img').src.split('/').pop().replace('.png', '');
     Engine.state.inventory[id] = 1; UI.refreshAll('assets');
   });
-  check('Shrinking inventory clamps selected quantity', await material.inputValue() === '1');
-  await page.keyboard.press('Escape');
-  check('Escape closes material dialog', await page.locator('#ws-material-modal').count() === 0);
-  await page.locator('#ws-relic-qty').fill('2');
+  check('Shrinking inventory clamps selected quantity', (await page.locator('#ws-material-summary').textContent()).includes('×1'));
+  // 沉船宝匣残片本身就是「material」那条催化剂：刚才把它压到 1 片，这里补回库存再验残片按钮
+  await page.evaluate(() => { Engine.state.inventory.relic = 10; UI.refreshAll('assets'); });
+  await page.locator('#ws-relic-plus1').click(); await page.locator('#ws-relic-plus1').click();
   await page.locator('[data-unload="main"]').click();
   check('Removing main clears both slots', await page.locator('.ws-pick.chosen').count() === 0);
   await pick('main', '龙骨'); await pick('sub', '碳素');
-  check('New main after removal resets relics to zero', await page.locator('#ws-relic-qty').inputValue() === '0');
+  check('New main after removal resets relics to zero', /已投入 0 \/ 10 片/.test(await page.locator('#ws-relic-count').textContent()));
   await page.locator('.ws-aff[data-which="main"][data-type="speed"]').click();
   await page.locator('.ws-aff[data-which="sub"][data-type="skill"]').click();
   await page.evaluate(() => { delete Engine.state.inventory[fixtureSub]; UI.refreshAll('assets'); });

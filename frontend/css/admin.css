@@ -120,11 +120,18 @@ h3 { font-size: 14px; margin: 18px 0 10px; color: var(--txt); }
 .feature-group.off .feat-page .feat-state { color: var(--danger, #e84a3a); border-color: rgba(232,74,58,.5); }
 .feature-children { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .feat-chip {
-  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
-  font-size: 12px; padding: 3px 9px; border-radius: 14px;
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 12px; padding: 3px 5px 3px 9px; border-radius: 14px;
   border: 1px solid var(--line); background: rgba(255,255,255,.03);
 }
+.feat-chip > label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .feat-chip.off { opacity: .55; text-decoration: line-through; }
+.feat-move {
+  width: 20px; height: 20px; padding: 0; border: 0; border-radius: 10px;
+  background: rgba(255,255,255,.08); color: var(--txt-dim); cursor: pointer; line-height: 1;
+}
+.feat-move:hover:not(:disabled) { color: var(--txt); background: rgba(255,255,255,.15); }
+.feat-move:disabled { opacity: .25; cursor: default; }
 /* ---- 后台安全页（v0.16.0）---- */
 .tag.banned { color: var(--danger, #e84a3a); border-color: rgba(232,74,58,.5); }
 .sec-log { display: flex; flex-direction: column; gap: 2px; max-height: 420px; overflow: auto; }
@@ -558,3 +565,11 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .spot-row.sel { border-color: var(--acc); background: var(--panel2); }
 .spot-row.locked { opacity: .55; }
 .spot-row .gi { flex: 1; font-size: 12px; color: var(--txt-dim); }
+/* 战利品组列表：与钓点列表同一套卡片样式 */
+.lg-row {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; flex-wrap: wrap;
+  border: 1px solid var(--line, rgba(255, 255, 255, .15)); border-radius: 6px; margin-bottom: 6px;
+}
+.lg-row.sel { border-color: var(--acc); background: var(--panel2); }
+.lg-row .gi { flex: 1; min-width: 160px; font-size: 12px; color: var(--txt-dim); }
+.lg-edit { margin-top: 12px; border-color: var(--acc2); }

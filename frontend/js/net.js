@@ -151,6 +151,7 @@ window.Net = (function () {
   function applyServerCfg(d) {
     if (!d) return;
     if (d.features) state().features = d.features;
+    if (d.featureOrder) state().featureOrder = d.featureOrder;
     if (d.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(d.componentCfg);
     if (d.castCfg) state().castCfg = d.castCfg;
     if (d.priceCfg) state().priceCfg = d.priceCfg;
@@ -408,6 +409,7 @@ window.Net = (function () {
   // affixIndex 可选：指定只重铸第几条词条（0 基下标）；不传 = 重 roll 全部词条
   const recast = (id, affixIndex) => authed('/api/workshop/recast',
     (affixIndex == null || affixIndex < 0) ? { id: id } : { id: id, affixIndex: affixIndex });
+  const forge = (id, materialId) => authed('/api/workshop/forge', { id: id, materialId: materialId });
   // v0.13.6：tier='L'|'G' → 按大型/巨型通道出售（额外金币加成）
   const sell = (id, qty, tier) => authed('/api/sell', tier ? { id: id, qty: qty, tier: tier } : { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', { id: id, qty: qty, price: price, hours: hours });
@@ -500,12 +502,14 @@ window.Net = (function () {
         const ui = window.UI;
         if (m.type === 'features') {
           S.features = m.features || {};
+          S.featureOrder = m.featureOrder || {};
           if (ui && ui.onFeatures) ui.onFeatures();
         } else if (m.type === 'ping') {
           // v0.16.0：服务器每 25 秒推一条**真消息**心跳（原先是 `: ping` 注释，前端看不到）。
           // 只用于「连接是否假死」的判定（见 checkStreamHealth），不触发任何界面重绘。
         } else if (m.type === 'init') {
           S.features = m.features || {};
+          S.featureOrder = m.featureOrder || {};
           // 服务器重启换版本后 SSE 会自动重连并带回新版本号：这是「热更新」最快的一条路径
           // （通常几秒内），比定时轮询快得多。刷新后本条连接自然被替换，无需额外处理。
           if (reloadForVersion(m.version)) return;
@@ -861,7 +865,7 @@ window.Net = (function () {
     fetchPlayersPage: fetchPlayersPage, setPlayersView: setPlayersView,
     fetchFeedback: fetchFeedback,
     fetchChest: fetchChest, chestCraft: chestCraft, chestOpen: chestOpen,
-    fetchMall: fetchMall, mallBuy: mallBuy, fetchWorkshop: fetchWorkshop, smelt: smelt, recast: recast,
+    fetchMall: fetchMall, mallBuy: mallBuy, fetchWorkshop: fetchWorkshop, smelt: smelt, recast: recast, forge: forge,
     fetchBanners: fetchBanners, fetchGrounds: fetchGrounds,
     bannerPlaying: bannerPlaying,
     feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,

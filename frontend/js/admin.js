@@ -23,6 +23,7 @@ window.Admin = (function () {
   // 渔场编辑器状态
   let selGround = null, selSpot = null;
   let poolDraft = [], buffsDraft = [], poolDirty = false, buffsDirty = false;
+  let lgDraft = null, lgEditing = '';   // 战利品组草稿（{id,name,weight,items:[{type,id,weight}]}）与它对应的组 id
   let posDraft = {};            // 钓点地图坐标草稿 { spotId: [x%, y%] }（拖动后未保存的值）
 
   // ---- API 基地址探测：同源（集成模式）→ :9000 → :8080（分离模式） ----
@@ -216,20 +217,30 @@ window.Admin = (function () {
       const draft = Object.assign({}, r.data.features);
       const groupNameOf = {};
       r.data.groups.forEach(function (g) { groupNameOf[g.id] = g.name; });
+      const order = {};
+      r.data.groups.forEach(function (g) {
+        if (!g.children.length) return;
+        const ids = g.children.map(function (c) { return c.id; });
+        const saved = ((r.data.featureOrder || {})[g.id] || []).filter(function (id) { return ids.indexOf(id) >= 0; });
+        order[g.id] = saved.concat(ids.filter(function (id) { return saved.indexOf(id) < 0; }));
+      });
       const bypassBox = $('feat-admin-bypass');
       if (bypassBox) bypassBox.checked = r.data.features.adminBypass === true;
-      // 卡片式布局：一个页面一张卡（页签页跟主页面并排），子项做成可点的胶囊，整页一眼扫完
+      // 卡片式布局：一个页面一张卡；子项可单独开关并用上下箭头调整顺序。
       host.innerHTML = r.data.groups.map(function (g) {
         const on = draft[g.id] !== false;
+        const kids = g.children.length ? order[g.id].map(function (id) { return g.children.find(function (c) { return c.id === id; }); }).filter(Boolean) : [];
         return '<section class="panel feature-group' + (on ? '' : ' off') + '"' +
-          (g.parent ? ' data-parent="' + g.parent + '"' : '') + ' data-name="' + esc(g.name) + '">' +
+          (g.parent ? ' data-parent="' + g.parent + '"' : '') + ' data-name="' + esc(g.name) + '" data-order-group="' + esc(g.id) + '">' +
           '<h3><label class="feat-page"><input type="checkbox" data-feature-key="' + g.id + '"' + (on ? ' checked' : '') + '>' +
           '<span>' + esc(g.name) + '</span><i class="feat-state">' + (on ? '开放' : '已关闭') + '</i></label></h3>' +
-          (g.children.length
-            ? '<div class="feature-children">' + g.children.map(function (a) {
+          (kids.length
+            ? '<div class="feature-children">' + kids.map(function (a, idx) {
               const con = draft[a.id] !== false;
-              return '<label class="feat-chip' + (con ? '' : ' off') + '"><input type="checkbox" data-feature-key="' + a.id + '"' +
-                (con ? ' checked' : '') + '><span>' + esc(a.name) + '</span></label>';
+              return '<span class="feat-chip' + (con ? '' : ' off') + '" data-child-id="' + esc(a.id) + '">' +
+                '<label><input type="checkbox" data-feature-key="' + a.id + '"' + (con ? ' checked' : '') + '><span>' + esc(a.name) + '</span></label>' +
+                '<button class="feat-move" type="button" data-move="-1" title="上移"' + (idx === 0 ? ' disabled' : '') + '>↑</button>' +
+                '<button class="feat-move" type="button" data-move="1" title="下移"' + (idx === kids.length - 1 ? ' disabled' : '') + '>↓</button></span>';
             }).join('') + '</div>'
             : '<div class="hint">（该页没有可单独关闭的单项）</div>') +
           '<div class="hint feature-inherited"></div></section>';
@@ -257,6 +268,28 @@ window.Admin = (function () {
         const sum = $('feat-sum');
         if (sum) sum.textContent = '已开放 ' + on + ' / ' + total + ' 个页面';
       }
+      host.querySelectorAll('.feature-group[data-order-group]').forEach(function (group) {
+        const gid = group.getAttribute('data-order-group');
+        group.querySelectorAll('.feat-chip .feat-move').forEach(function (btn) {
+          btn.addEventListener('click', function (ev) {
+            ev.preventDefault(); ev.stopPropagation();
+            const chip = btn.closest('.feat-chip');
+            const ids = order[gid];
+            const idx = ids.indexOf(chip.getAttribute('data-child-id'));
+            const to = idx + Number(btn.getAttribute('data-move'));
+            if (idx < 0 || to < 0 || to >= ids.length) return;
+            const t = ids[idx]; ids[idx] = ids[to]; ids[to] = t;
+            const wrap = group.querySelector('.feature-children');
+            ids.forEach(function (id) { const n = wrap.querySelector('[data-child-id="' + id + '"]'); if (n) wrap.appendChild(n); });
+            wrap.querySelectorAll('.feat-chip').forEach(function (c, i) {
+              const up = c.querySelector('[data-move="-1"]'), down = c.querySelector('[data-move="1"]');
+              if (up) up.disabled = i === 0;
+              if (down) down.disabled = i === ids.length - 1;
+            });
+            $('features-result').textContent = ' 有未保存的修改';
+          });
+        });
+      });
       host.querySelectorAll('[data-feature-key]').forEach(function (input) {
         input.addEventListener('change', function () { draft[input.dataset.featureKey] = input.checked; $('features-result').textContent = ' 有未保存的修改'; sync(); });
       });
@@ -290,8 +323,8 @@ window.Admin = (function () {
         const changes = {};
         Object.keys(draft).forEach(function (key) { if (draft[key] !== r.data.features[key]) changes[key] = draft[key]; });
         if (bypassBox) changes.adminBypass = bypassBox.checked;
-        if (!Object.keys(changes).length) { button.disabled = false; $('features-result').textContent = ' 没有修改'; return; }
-        adminApi('POST', '/api/admin/features', { token: token, features: changes }).then(function (saved) {
+        if (!Object.keys(changes).length && JSON.stringify(order) === JSON.stringify(r.data.featureOrder || {})) { button.disabled = false; $('features-result').textContent = ' 没有修改'; return; }
+        adminApi('POST', '/api/admin/features', { token: token, features: changes, featureOrder: order }).then(function (saved) {
           button.disabled = false;
           if (view !== 'features') return;
           if (!saved || !saved.ok) { $('features-result').textContent = ' 保存失败：' + ((saved && saved.data && saved.data.error) || '请重试'); return; }
@@ -2031,6 +2064,18 @@ window.Admin = (function () {
       '<button class="btn mini" id="ns-add">＋ 新建钓点（一键填充）</button>' +
       (g.spots.length ? '<button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button>' : '') +
       '</div></div>' +
+      // —— 战利品组（可整组放进掉落池） ——
+      '<div class="panel">' +
+      '<h3 style="margin-top:0">🧺 战利品组（' + ((cfg.lootGroups || []).length) + '）</h3>' +
+      '<div class="hint" style="margin-bottom:8px">战利品组可以<b>整组</b>放进钓点掉落池：先按池内权重选中整组，再按组内权重抽到具体条目。' +
+      '「默认权重」只是新建/加入钓点时的建议值，真正生效的是它在各钓点池子里的条目权重（可以逐点微调）。</div>' +
+      '<div id="lg-list"></div>' +
+      '<div class="mgr-row" style="margin-top:10px">' +
+      '<input id="lg-name" class="ipt gi-name" placeholder="新战利品组名称" maxlength="20" />' +
+      '<input id="lg-weight" class="ipt mk-num" type="number" min="0" max="1000000" step="1" value="10" style="width:96px" title="组在掉落池里的默认权重" />' +
+      '<button class="btn mini" id="lg-add">＋ 新建战利品组</button>' +
+      '<span id="lg-state" class="hint"></span></div>' +
+      '<div id="lg-edit"></div></div>' +
       // —— 地图定位 + 选中钓点编辑 ——
       '<div class="panel"><div id="gd-map"></div><div id="ed-body"></div></div>';
 
@@ -2173,6 +2218,7 @@ window.Admin = (function () {
       };
     }
 
+    drawLootGroupManager(cfg);
     drawSpotMap(g);
     const sp = g.spots.find(function (x) { return x.id === selSpot; });
     if (!sp) { $('ed-body').innerHTML = '<div class="hint">该渔场暂无钓点，可用上方「＋ 新建钓点」添加（自动填充掉落池）。</div>'; return; }
@@ -2331,15 +2377,16 @@ window.Admin = (function () {
           '<option value="fish"' + (r.type === 'fish' ? ' selected' : '') + '>鱼</option>' +
           '<option value="material"' + (r.type === 'material' ? ' selected' : '') + '>材料</option>' +
           '<option value="component"' + (r.type === 'component' ? ' selected' : '') + '>组件</option>' +
+          '<option value="group"' + (r.type === 'group' ? ' selected' : '') + '>战利品组</option>' +
           '</select>' +
-          itemSelectHtml(r, idx) +
+          itemSelectHtml(cfg, r, idx) +
           '<input class="ipt c-w" type="number" min="0" step="1" value="' + esc(r.weight) + '" data-idx="' + idx + '" data-f="weight">' +
           '<div class="c-pct"><div class="pct-bar"><i data-bar="' + idx + '"></i></div><span class="pct-val" data-pct="' + idx + '"></span></div>' +
           '<button class="row-del" data-del="' + idx + '" title="删除">✕</button>' +
           '</div>';
       }).join('');
       wrap.querySelectorAll('select').forEach(function (sel) {
-        sel.onchange = function () { const r = poolDraft[+sel.getAttribute('data-idx')]; r[sel.getAttribute('data-f')] = sel.value; if (sel.getAttribute('data-f') === 'type') r.id = ''; poolDirty = true; drawPool(); };
+        sel.onchange = function () { const r = poolDraft[+sel.getAttribute('data-idx')]; r[sel.getAttribute('data-f')] = sel.value; if (sel.getAttribute('data-f') === 'type') r.id = ''; if (r.type === 'group' && sel.getAttribute('data-f') === 'id') { const group = (cfg.lootGroups || []).find(function (g) { return g.id === r.id; }); if (group) r.weight = group.weight; } poolDirty = true; drawPool(); };
       });
       wrap.querySelectorAll('input').forEach(function (inp) {
         inp.oninput = function () { poolDraft[+inp.getAttribute('data-idx')].weight = Number(inp.value) || 0; poolDirty = true; updatePcts(); };
@@ -2377,21 +2424,6 @@ window.Admin = (function () {
         });
       }
     }
-    function itemSelectHtml(r, idx) {
-      if (r.type === 'component') {
-        return '<select class="ipt c-item" disabled><option>组件（随机组件掉落）</option></select>';
-      }
-      const opts = r.type === 'fish' ? cfg.catalog.fish : cfg.catalog.materials;
-      const valid = opts.some(function (o) { return o.id === r.id; });
-      return '<select class="ipt c-item" data-idx="' + idx + '" data-f="id">' +
-        '<option value=""' + (!r.id || !valid ? ' selected' : '') + disabledAttr(!r.id || !valid) + '>— 选择 —</option>' +
-        opts.map(function (o) {
-          const extra = o.rarity && o.rarity !== 'common' ? '（' + (RARITY_NAME[o.rarity] || o.rarity) + '）' : '';
-          return '<option value="' + esc(o.id) + '"' + (r.id === o.id ? ' selected' : '') + '>' + esc(o.name) + extra + '</option>';
-        }).join('') +
-        '</select>';
-    }
-    function disabledAttr(d) { return d ? ' disabled' : ''; }
 
     function drawBuffs() {
       const wrap = $('buff-rows');
@@ -2483,6 +2515,197 @@ window.Admin = (function () {
         loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c, gdOverview); });
       });
     };
+  }
+
+    function itemSelectHtml(cfg, r, idx) {
+      if (r.type === 'component') {
+        return '<select class="ipt c-item" disabled><option>组件（随机组件掉落）</option></select>';
+      }
+      if (r.type === 'group') {
+        const groups = cfg.lootGroups || [];
+        if (!groups.length) return '<select class="ipt c-item" disabled><option>先去下面新建战利品组</option></select>';
+        return '<select class="ipt c-item" data-idx="' + idx + '" data-f="id">' +
+          '<option value=""' + (!r.id ? ' selected' : '') + '>— 选择战利品组 —</option>' +
+          groups.map(function (o) {
+            return '<option value="' + esc(o.id) + '"' + (r.id === o.id ? ' selected' : '') + '>' + esc(o.name) +
+              '（' + (o.items || []).length + ' 项 · 权重 ' + esc(o.weight) + '）</option>';
+          }).join('') + '</select>';
+      }
+      const opts = r.type === 'fish' ? cfg.catalog.fish : cfg.catalog.materials;
+      const valid = opts.some(function (o) { return o.id === r.id; });
+      return '<select class="ipt c-item" data-idx="' + idx + '" data-f="id">' +
+        '<option value=""' + (!r.id || !valid ? ' selected' : '') + disabledAttr(!r.id || !valid) + '>— 选择 —</option>' +
+        opts.map(function (o) {
+          const extra = o.rarity && o.rarity !== 'common' ? '（' + (RARITY_NAME[o.rarity] || o.rarity) + '）' : '';
+          return '<option value="' + esc(o.id) + '"' + (r.id === o.id ? ' selected' : '') + '>' + esc(o.name) + extra + '</option>';
+        }).join('') +
+        '</select>';
+    }
+    function disabledAttr(d) { return d ? ' disabled' : ''; }
+
+  function drawLootGroupManager(cfg) {
+    // ---- 战利品组：列表 / 新建 / 编辑 / 删除（整组可当作一条战利品放进掉落池） ----
+    function lgItemLabel(pick) {
+      const i = pick.indexOf(':');
+      const type = pick.slice(0, i), id = pick.slice(i + 1);
+      if (type === 'component') return '随机组件';
+      const opts = type === 'fish' ? cfg.catalog.fish : cfg.catalog.materials;
+      const f = (opts || []).find(function (o) { return o.id === id; });
+      return f ? f.name : id;
+    }
+    function lgNewId() {
+      const used = {};
+      (cfg.lootGroups || []).forEach(function (g) { used[g.id] = 1; });
+      let id = '';
+      do { id = 'lg' + Math.random().toString(36).slice(2, 8); } while (used[id]);
+      return id;
+    }
+    function lgPayload() {
+      return {
+        token: token,
+        group: {
+          id: lgEditing || lgNewId(), name: (lgDraft.name || '').trim(),
+          weight: Number(lgDraft.weight) || 0,
+          items: (lgDraft.items || []).map(function (r) { return { pick: rowToPick(r), weight: Number(r.weight) || 0 }; }),
+        },
+      };
+    }
+    function lgAfterSave(msg) {
+      lgDraft = null; lgEditing = '';
+      toast(msg);
+      loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c, gdOverview); });
+    }
+    function lgPost(payload, okMsg) {
+      return adminApi('POST', '/api/admin/loot/group', payload).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
+        if ($('lg-state')) $('lg-state').textContent = '';
+        lgAfterSave(okMsg);
+      });
+    }
+    function openLgEditor(id) {
+      const g = (cfg.lootGroups || []).find(function (x) { return x.id === id; });
+      if (!g) return;
+      lgEditing = g.id;
+      lgDraft = {
+        name: g.name, weight: Number(g.weight) || 0,
+        items: (g.items || []).map(function (e) { return poolToRow(e.pick, e.weight); }),
+      };
+      drawLootGroups();
+    }
+    function deleteLg(id) {
+      const g = (cfg.lootGroups || []).find(function (x) { return x.id === id; });
+      confirmModalLocal('删除战利品组「' + (g ? g.name : id) + '」？各钓点掉落池里指向它的条目会一并移除。').then(function (ok) {
+        if (!ok) return;
+        if (lgEditing === id) { lgDraft = null; lgEditing = ''; }
+        lgPost({ token: token, action: 'delete', id: id }, '战利品组已删除');
+      });
+    }
+    function drawLgRows() {
+      const wrap = $('lge-rows');
+      if (!wrap || !lgDraft) return;
+      if (!lgDraft.items.length) {
+        wrap.innerHTML = '<div class="hint" style="margin-bottom:8px">组内还没有条目，点下面「＋ 添加条目」。</div>';
+        return;
+      }
+      wrap.innerHTML = lgDraft.items.map(function (r, idx) {
+        return '<div class="pool-row">' +
+          '<select class="ipt c-type" data-idx="' + idx + '" data-f="type">' +
+          '<option value="fish"' + (r.type === 'fish' ? ' selected' : '') + '>鱼</option>' +
+          '<option value="material"' + (r.type === 'material' ? ' selected' : '') + '>材料</option>' +
+          '<option value="component"' + (r.type === 'component' ? ' selected' : '') + '>组件</option>' +
+          '</select>' +
+          itemSelectHtml(cfg, r, idx) +
+          '<input class="ipt c-w" type="number" min="0" step="1" value="' + esc(r.weight) + '" data-idx="' + idx + '" data-f="weight" title="组内权重（只决定这一项在本组里的占比）">' +
+          '<div class="c-pct"><div class="pct-bar"><i data-bar="' + idx + '"></i></div><span class="pct-val" data-pct="' + idx + '"></span></div>' +
+          '<button class="row-del" data-del="' + idx + '" title="删除">✕</button></div>';
+      }).join('');
+      wrap.querySelectorAll('select').forEach(function (sel) {
+        sel.onchange = function () {
+          const r = lgDraft.items[+sel.getAttribute('data-idx')];
+          r[sel.getAttribute('data-f')] = sel.value;
+          if (sel.getAttribute('data-f') === 'type') r.id = '';
+          drawLgRows();
+        };
+      });
+      wrap.querySelectorAll('input').forEach(function (inp) {
+        inp.oninput = function () { lgDraft.items[+inp.getAttribute('data-idx')].weight = Number(inp.value) || 0; updateLgPcts(); };
+      });
+      wrap.querySelectorAll('[data-del]').forEach(function (b) {
+        b.onclick = function () { lgDraft.items.splice(+b.getAttribute('data-del'), 1); drawLgRows(); };
+      });
+      updateLgPcts();
+      function updateLgPcts() {
+        const total = lgDraft.items.reduce(function (n, r) { return n + (Number(r.weight) || 0); }, 0);
+        const st = $('lge-state');
+        if (st) st.innerHTML = total > 0 ? '组内总权重 ' + (Math.round(total * 100) / 100) + ' · 下面是组内占比' : '<span class="err">组内总权重为 0</span>';
+        lgDraft.items.forEach(function (r, i) {
+          const pct = total > 0 ? (Number(r.weight) || 0) / total * 100 : 0;
+          const bar = wrap.querySelector('[data-bar="' + i + '"]'); if (bar) bar.style.width = Math.min(100, pct) + '%';
+          const pv = wrap.querySelector('[data-pct="' + i + '"]'); if (pv) pv.textContent = (Math.round(pct * 100) / 100) + '%';
+        });
+      }
+    }
+    function drawLgEdit() {
+      const wrap = $('lg-edit');
+      if (!wrap) return;
+      if (!lgDraft) { wrap.innerHTML = ''; return; }
+      wrap.innerHTML = '<div class="panel lg-edit"><h3 style="margin-top:0">🧺 编辑战利品组' + (lgEditing ? '' : '（新建）') + '</h3>' +
+        '<div class="mgr-row"><label>名称</label>' +
+        '<input id="lge-name" class="ipt gi-name" maxlength="20" placeholder="组名称" value="' + esc(lgDraft.name) + '" />' +
+        '<label class="hint">默认权重</label>' +
+        '<input id="lge-weight" class="ipt mk-num" type="number" min="0" max="1000000" step="1" style="width:96px" value="' + esc(lgDraft.weight) + '" />' +
+        '<span class="hint">加进钓点掉落池时的建议权重（可在池子里逐条改）</span></div>' +
+        '<div class="hint" style="margin:10px 0 6px">组内条目（只允许 鱼 / 材料 / 组件；权重只决定组内占比）：</div>' +
+        '<div id="lge-rows"></div>' +
+        '<div class="editor-foot"><button class="btn mini" id="lge-add">＋ 添加条目</button>' +
+        '<span id="lge-state" class="hint"></span><span style="flex:1"></span>' +
+        '<button class="btn mini" id="lge-cancel">取消</button>' +
+        '<button class="btn primary" id="lge-save">保存战利品组</button></div></div>';
+      const name = $('lge-name'), weight = $('lge-weight');
+      name.oninput = function () { lgDraft.name = name.value; };
+      weight.oninput = function () { lgDraft.weight = Number(weight.value) || 0; };
+      $('lge-add').onclick = function () { lgDraft.items.push({ type: 'fish', id: '', weight: 10 }); drawLgRows(); };
+      $('lge-cancel').onclick = function () { lgDraft = null; lgEditing = ''; drawLootGroups(); };
+      $('lge-save').onclick = function () {
+        const nm = (lgDraft.name || '').trim();
+        if (!nm) { toast('请先填组名称', true); name.focus(); return; }
+        if (!lgDraft.items.length) { toast('至少添加 1 个组内条目', true); return; }
+        const bad = lgDraft.items.find(function (r) { return r.type !== 'component' && !r.id; });
+        if (bad) { toast('有条目还没选具体物品', true); return; }
+        lgPost(lgPayload(), '战利品组已保存，全服即时生效');
+      };
+      drawLgRows();
+    }
+    function drawLootGroups() {
+      const list = $('lg-list');
+      if (!list) return;
+      const groups = cfg.lootGroups || [];
+      list.innerHTML = groups.length
+        ? groups.map(function (g) {
+          const items = g.items || [];
+          return '<div class="lg-row' + (lgDraft && lgEditing === g.id ? ' sel' : '') + '">' +
+            '<b>' + esc(g.name) + '</b>' +
+            '<span class="gi">' + items.length + ' 项产出 · 默认权重 ' + esc(g.weight) + ' · ' +
+            esc(items.slice(0, 6).map(function (it) { return lgItemLabel(it.pick); }).join('、')) + (items.length > 6 ? '…' : '') + '</span>' +
+            '<button class="btn mini" data-lge="' + esc(g.id) + '">' + (lgDraft && lgEditing === g.id ? '编辑中' : '编辑') + '</button>' +
+            '<button class="btn mini danger" data-lgd="' + esc(g.id) + '">删除</button></div>';
+        }).join('')
+        : '<div class="hint" style="margin-bottom:8px">还没有战利品组：先填名字与默认权重，点「＋ 新建战利品组」，再往里添加鱼 / 材料 / 组件。</div>';
+      list.querySelectorAll('[data-lge]').forEach(function (b) { b.onclick = function () { openLgEditor(b.getAttribute('data-lge')); }; });
+      list.querySelectorAll('[data-lgd]').forEach(function (b) { b.onclick = function () { deleteLg(b.getAttribute('data-lgd')); }; });
+      drawLgEdit();
+    }
+    $('lg-add').onclick = function () {
+      const nm = ($('lg-name').value || '').trim();
+      const w = Number($('lg-weight').value) || 0;
+      if (!nm) { toast('请先填战利品组名称', true); $('lg-name').focus(); return; }
+      if ((cfg.lootGroups || []).some(function (g) { return g.name === nm; })) { toast('已有同名战利品组', true); return; }
+      lgEditing = '';
+      lgDraft = { name: nm, weight: w, items: [{ type: 'fish', id: '', weight: 10 }] };
+      drawLootGroups();
+      if ($('lge-name')) $('lge-name').focus();
+    };
+    drawLootGroups();
   }
 
   // ================================

@@ -1,5 +1,7 @@
 .topbar-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-.topbar-actions button { min-height: 40px; white-space: nowrap; margin: 0; }
+.topbar-actions button, .topbar-actions .wiki-btn { min-height: 40px; white-space: nowrap; margin: 0; }
+.wiki-btn { display: inline-flex; align-items: center; justify-content: center; padding: 2px 12px; border: 2px solid var(--line); border-radius: 4px; background: var(--panel2, rgba(255,255,255,.06)); color: inherit; text-decoration: none; font: inherit; font-size: 13px; }
+.wiki-btn:hover { border-color: var(--accent2, #38bdf8); color: var(--accent2, #38bdf8); }
 #settings-dialog { color: #e9f6ff; background: #0f243c; border: 2px solid #48709c; border-radius: 12px; padding: 0; width: min(540px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); box-sizing: border-box; box-shadow: 0 16px 64px #0009; }
 #settings-dialog::backdrop { background: #020b18b8; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid #2c4f74; }
@@ -11,13 +13,42 @@
 .settings-row small { display: block; font-size: 13px; color: #a8c1d8; margin-top: 6px; line-height: 1.6; }
 .settings-row select { width: 150px; max-width: 48%; flex-shrink: 0; min-height: 44px; }
 .settings-row input[type=checkbox] { width: 24px; height: 24px; flex-shrink: 0; accent-color: #34e0c0; }
+/* 字号滑杆：拖动条下方按百分比排布刻度，金色为建议档位 */
+.settings-row-scale { flex-direction: column; align-items: stretch; }
+.settings-scale { display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: none; flex-shrink: 0; }
+.settings-scale output { align-self: flex-end; font-weight: 700; color: #7fe7d0; font-variant-numeric: tabular-nums; }
+.settings-scale input[type=range] { width: 100%; min-height: 30px; margin: 0; accent-color: #34e0c0; cursor: pointer; }
+.settings-scale-marks { position: relative; height: 32px; margin: 0 8px 4px; }
+.scale-mark { position: absolute; top: 0; transform: translateX(-50%); text-align: center; line-height: 1.25; white-space: nowrap; color: #7f9fbb; }
+.scale-mark.first { transform: none; text-align: left; }
+.scale-mark.last { transform: translateX(-100%); text-align: right; }
+.scale-mark b { display: block; font-size: 11px; }
+.scale-mark i { font-style: normal; font-size: 10px; opacity: .85; }
+.scale-mark::before { content: ""; position: absolute; top: -5px; left: 50%; width: 2px; height: 4px; background: currentColor; opacity: .45; }
+.scale-mark.first::before { left: 2px; }
+.scale-mark.last::before { left: auto; right: 2px; }
+.scale-mark.rec { color: #ffd479; }
+.scale-mark.rec b { font-weight: 700; }
 #settings-status { font-size: 13px; line-height: 1.7; color: #a8d9cd; min-height: 2em; }
 #settings-reset-confirm { padding: 12px; margin-top: 12px; background: #19354c; border-radius: 6px; }
 #settings-dialog button { min-height: 44px; }
 #settings-dialog :focus-visible, #settings-btn:focus-visible { outline: 2px solid #34e0c0; outline-offset: 3px; }
 html[data-font=clear] { --px-font: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
-html[data-text-size=large] body { font-size: 16px; }
-html[data-text-size=large] :is(button, input, select, textarea, p, label, td, th, .hint, .meta, .nav-item, .log-line, .settings-row small, #settings-status) { font-size: 16px !important; }
+/* 字号缩放：等效浏览器缩放，整页文字与界面元素同比放大；100% 时完全不介入 */
+html[data-text-scale]:not([data-text-scale="100"]) { zoom: var(--text-scale, 1); }
+/* vh / vw 不随 zoom 缩放，非 100% 时统一按比例换算，避免子窗口与滚动区超出屏幕 */
+html[data-text-scale]:not([data-text-scale="100"]) :is(#settings-dialog, .modal-box, .shop-modal, .snap-modal, .trade-modal, .rod-modal, .codex-modal, .as-list-modal, .bd-equip-modal, .ab-modal, .auth-card) {
+  max-height: calc((100dvh - 24px) / var(--text-scale, 1));
+}
+html[data-text-scale]:not([data-text-scale="100"]) :is(.trade-modal .modal-body, .rod-modal .modal-body, .codex-modal .modal-body, .as-list-modal .modal-body, .bd-equip-modal .modal-body, .ab-modal .modal-body) {
+  max-height: calc(72dvh / var(--text-scale, 1));
+}
+html[data-text-scale]:not([data-text-scale="100"]) :is(.snap-inv, .bulk-rows, .log-page, .inventory-panel .inv-page) {
+  max-height: calc(58dvh / var(--text-scale, 1));
+}
+html[data-text-scale]:not([data-text-scale="100"]) .sidebar { max-height: calc((100dvh - 64px - var(--banner-h, 0px)) / var(--text-scale, 1)); }
+html[data-text-scale]:not([data-text-scale="100"]) :is(.feed-big, .bd-grid) { max-height: calc((100dvh - 300px) / var(--text-scale, 1)); }
+
 html[data-records=false] #record-banner { display: none !important; }
 /* Target decoration only: marquee queues and gameplay progress keep working. */
 html:is([data-motion=reduced], [data-motion=off]) :is(.px-scene, .px-node, .auth-card, .codex-cell, .cd-icon, .nav-item)::before,
@@ -26,8 +57,10 @@ html:is([data-motion=reduced], [data-motion=off]) :is(.px-scene *, .px-node *, .
 html[data-motion=off] :is(.px-scene *, .px-node *) { transition: none !important; }
 @media (max-width: 640px) {
   .topbar-actions { grid-column: 2; grid-row: 1; gap: 4px; }
-  .topbar-actions button { padding: 6px 8px; min-height: 44px; }
+  .topbar-actions button, .topbar-actions .wiki-btn { padding: 6px 8px; min-height: 44px; }
   .topbar .brand { overflow-wrap: anywhere; }
   #settings-dialog { max-height: calc(100dvh - 24px); }
+  .settings-row-scale { flex-direction: column; align-items: stretch; gap: 8px; }
+  .settings-scale { width: 100%; max-width: none; }
   .settings-row { gap: 10px; }
 }

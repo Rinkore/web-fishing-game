@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.19.1';
+  const VERSION = 'v0.20.0';
   const BUILD = '2026-09-19';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -599,6 +599,20 @@
     if (Array.isArray(ov) && ov.length === 2 && isFinite(ov[0]) && isFinite(ov[1]) && ov[1] >= ov[0]) return ov;
     const dft = DEFAULT_EXTRA_AFFIX_RANGES[type];
     return dft || [1, 3];
+  }
+  // 催化词缀范围统一缩到原宽度的 90%，并保持整数与中心值不变。
+  function scaleCatalystRange(range) {
+    if (!Array.isArray(range) || range.length !== 2) return range;
+    const lo = Number(range[0]), hi = Number(range[1]);
+    if (!isFinite(lo) || !isFinite(hi) || hi < lo) return range;
+    const midpoint = (lo + hi) / 2;
+    const half = (hi - lo) * 0.45;
+    let nlo = Math.round(midpoint - half);
+    let nhi = Math.round(midpoint + half);
+    const sumNeed = Math.round(midpoint * 2);
+    nhi += sumNeed - (nlo + nhi);
+    if (nhi < nlo) { const t = nlo; nlo = nhi; nhi = t; }
+    return [nlo, nhi];
   }
   function getComponentCfg() { return componentCfg; }
 
@@ -1195,7 +1209,7 @@
   //   src = 'bt'   → 突破区间（宝匣池外词缀，后台「池外词缀数值区间」）
   //   src = 'ct'   → 催化区间（工坊投料补缀，后台「材料催化词缀范围」按部位配置；未配置回退突破区间）
   function affixSrcRangeOf(src, type, part) {
-    if (src === 'ct') return catalystRangeOf(part, type) || extraAffixRangeOf(type);
+    if (src === 'ct') return catalystRangeFor(part, type);
     if (src && src !== 'bt' && BASE_MAP[src]) {
       const r = poolRangeOf(src, type);
       if (r) return r;
@@ -1207,8 +1221,13 @@
   function catalystRangeOf(part, type) {
     const tbl = smeltCfg.catalystRanges && smeltCfg.catalystRanges[part];
     const r = tbl && tbl[type];
-    if (Array.isArray(r) && r.length === 2 && isFinite(r[0]) && isFinite(r[1]) && r[1] >= r[0]) return r;
+    if (Array.isArray(r) && r.length === 2 && isFinite(r[0]) && isFinite(r[1]) && r[1] >= r[0]) {
+      return scaleCatalystRange(r);
+    }
     return null;
+  }
+  function catalystRangeFor(part, type) {
+    return catalystRangeOf(part, type) || scaleCatalystRange(extraAffixRangeOf(type));
   }
   // 某部位某词缀的「催化区间包络」= 该部位所有底材里含有该词缀的那些区间的并集 [min, max]。
   // 后台配置催化区间时用它做硬约束：催化区间不得超出该部位的上下限
@@ -2206,7 +2225,7 @@
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltSuccessProbs: smeltSuccessProbs, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
     smeltPlanOf: smeltPlanOf, simulateSmeltPlan: simulateSmeltPlan, smeltRollWithRng: smeltRollWithRng,
     smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,
-    affixSrcRangeOf: affixSrcRangeOf, catalystRangeOf: catalystRangeOf,
+    affixSrcRangeOf: affixSrcRangeOf, catalystRangeOf: catalystRangeOf, catalystRangeFor: catalystRangeFor, scaleCatalystRange: scaleCatalystRange,
     smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,
     breakthroughCountOf: breakthroughCountOf,
     affixKindOf: affixKindOf, extraKindName: extraKindName, extraKindDesc: extraKindDesc,

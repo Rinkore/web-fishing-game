@@ -190,7 +190,7 @@ let users = {};
 // 默认公式：基础 90% + 「技巧」词缀（技巧是上钩率公式里的一个变量，钩率提示一律不写死在代码里）。
 // 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
 const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, priceOv: {}, economyLog: [], chestCfg: {}, seaCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, snapshotCfg: null, wikiConfigRevision: 1, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, featureOrder: {}, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, lootCfg: { groups: [] }, priceOv: {}, economyLog: [], chestCfg: {}, seaCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, snapshotCfg: null, wikiConfigRevision: 1, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
 
 // ---- 宝匣（沉船打捞）----
 // 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
@@ -404,6 +404,38 @@ function planRecast(rec, id, affixIdx) {
     pearlId: pearlId, pearlBase: pearlBase, pearlExtra: pearlExtra, pearlNeed: pearlNeed, pearlHave: pearlHave,
     gold: goldNeed, materials: [{ id: pearlId, name: itemName(pearlId), need: pearlNeed, have: pearlHave }],
   };
+}
+
+// ---- 工坊 · 锻造 ----
+// 用一件催化剂材料，为尚未达到品质词条上限、且未拥有该催化词缀的组件补一条催化词缀。
+// 催化区间与熔炼补缀共用 catalystRangeFor（已统一下调为原宽度的 90%）。
+function planForge(rec, id, materialId) {
+  const meta = D.componentOf(id);
+  if (!meta || !D.isInstance(id)) return { error: '请选择一件已生成的组件' };
+  if (!invHas(rec, meta.id, 1)) {
+    const lock = rodLockError(rec, meta.id, 1);
+    return { error: lock || '背包中没有该组件' };
+  }
+  const cap = ((D.QUALITY[meta.quality] || {}).cap) || 0;
+  if (!cap) return { error: '该组件品质不支持锻造' };
+  if ((meta.affixes || []).length >= cap) return { error: '该组件词条已达上限（' + cap + ' 条）' };
+  const mat = String(materialId || '');
+  const type = D.smeltMaterialAffix(mat);
+  if (!type) return { error: '请选择一种催化剂材料' };
+  if ((meta.affixes || []).some(function (a) { return a.type === type; })) {
+    return { error: '该组件已经拥有「' + (D.AFFIX_LABEL[type] || type) + '」词条' };
+  }
+  if (!invHas(rec, mat, 1)) return { error: itemName(mat) + '不足（需 1 个）' };
+  const range = D.catalystRangeFor(meta.part, type);
+  if (!range) return { error: '该部位没有可用的催化区间' };
+  const model = (D.getComponentCfg && D.getComponentCfg().rollModel) || 'linear';
+  const value = D.rollAffixValue(range[0], range[1], model);
+  const affixes = (meta.affixes || []).map(function (a) {
+    return { type: a.type, value: a.value, src: a.src, srcExplicit: a.srcExplicit };
+  });
+  affixes.push({ type: type, value: value, src: 'ct', srcExplicit: true });
+  const newId = D.instanceId(meta.baseId, meta.quality, affixes);
+  return { ok: true, meta: meta, materialId: mat, type: type, value: value, range: range, newId: newId };
 }
 
 function chestPityOf(rec, chestId) {
@@ -697,14 +729,21 @@ function componentCommonProb() {
 // 大鱼/稀有/材料加成：按类别放大掉落池权重；后台「产出倍率」dropCfg 同层叠加（全局 × 分类，组件只吃全局）
 // v0.13：普通品质条目（普通鱼 / 材料 / 组件的普通品质部分）额外乘以稀有度系数 K/(K+R)。
 function boostPoolOf(pool, eff) {
-  const hasBoost = !!(eff.rare || eff.material);
+  eff = Object.assign({ rare: 0, material: 0 }, eff);
+  const flat = (pool || []).filter(function (e) { return e && (e.pick.indexOf('group:') !== 0 || lootGroupById(e.pick.slice(6))); });
   const commonMult = rareMultOf(eff);
-  if (!hasBoost && dropCfgIsDefault() && commonMult >= 1) return pool;
+  // 组在外层使用独立权重；类别增益只影响组内二次抽取。
+  // 即使没有增益也保留层次，真正命中组后才进行第二次随机抽取。
   const dc = dropCfg();
   const compMult = componentCommonProb() * commonMult + (1 - componentCommonProb());
-  return pool.map(function (e) {
+  return flat.map(function (e) {
     const i = e.pick.indexOf(':');
     const type = e.pick.slice(0, i), id = e.pick.slice(i + 1);
+    if (type === 'group') {
+      const g = lootGroupById(id);
+      const items = boostPoolOf(g.items, eff);
+      return { pick: e.pick, weight: items.some(function (it) { return it.weight > 0; }) ? e.weight * dc.global / 100 : 0, group: g.id, groupName: g.name, items: items };
+    }
     const cm = pickIsCommon(e.pick) ? commonMult : 1;
     let mult = dc.global / 100;
     if (type === 'fish') {
@@ -714,14 +753,31 @@ function boostPoolOf(pool, eff) {
       else mult *= dc.common / 100 * cm;
     } else if (type === 'material') mult *= (dc.material / 100) * (1 + eff.material / 100) * cm;
     else if (type === 'component') mult *= compMult;
-    return { pick: e.pick, weight: e.weight * mult };
+    const row = { pick: e.pick, weight: e.weight * mult };
+    if (e.group) { row.group = e.group; row.groupName = e.groupName; }
+    return row;
   });
 }
 function weightedPickOf(pool) {
-  let total = 0; pool.forEach(function (e) { total += e.weight; });
+  const eligible = (pool || []).filter(function (e) { return Number.isFinite(e.weight) && e.weight > 0; });
+  const total = eligible.reduce(function (sum, e) { return sum + e.weight; }, 0);
+  if (!(total > 0)) return null;
   let r = Math.random() * total;
-  for (const e of pool) { r -= e.weight; if (r <= 0) return e.pick; }
-  return pool[pool.length - 1].pick;
+  let chosen = eligible[eligible.length - 1];
+  for (const e of eligible) { r -= e.weight; if (r < 0) { chosen = e; break; } }
+  return chosen.items ? weightedPickOf(chosen.items) : chosen.pick;
+}
+// 展开已计算增益的两层池，仅用于展示概率；组内条目之和始终等于外层组权重。
+function flattenLootPool(pool) {
+  const out = [];
+  (pool || []).forEach(function (e) {
+    if (!e.items) { out.push(e); return; }
+    const total = e.items.reduce(function (sum, it) { return sum + it.weight; }, 0);
+    e.items.forEach(function (it) {
+      out.push({ pick: it.pick, weight: total > 0 ? e.weight * it.weight / total : 0, group: e.group, groupName: e.groupName });
+    });
+  });
+  return out;
 }
 // 体型随机：按后台配置的 roll 模型在基准区间内取值（默认正态，中段最常见）；体型词缀按百分比放大/缩小结果。
 // 不再对加成结果设固定上限（旧版硬性封顶 range[1]*1.3，导致 +55% 体型也被压到 520cm）；
@@ -734,6 +790,7 @@ function rollSizeOf(range, eff, modelOverride) {
 }
 function resolveItemAt(spot, eff) {
   const pick = weightedPickOf(boostPoolOf(spot.pool, eff));
+  if (!pick) return null;
   const i = pick.indexOf(':');
   const type = pick.slice(0, i), id = pick.slice(i + 1);
   if (type === 'fish') {
@@ -837,7 +894,7 @@ function spotOf(groundId, spotId) {
 // ---- 排行榜工具 ----
 // 每个玩家在单个榜单上只保留一条记录（大鱼榜取其最大、小鱼榜取其最小），再排序取前 10。
 function upsertTop(list, entry, keepSmall) {
-  const i = list.findIndex(function (x) { return x.who === entry.who; });
+  const i = list.findIndex(function (x) { return (x.playerId && entry.playerId ? x.playerId === entry.playerId : x.who === entry.who); });
   if (i >= 0) {
     const worse = keepSmall ? entry.size >= list[i].size : entry.size <= list[i].size;
     if (worse) return; // 已有更优记录，忽略本次
@@ -851,11 +908,11 @@ function upsertTop(list, entry, keepSmall) {
 // 前十榜更新判定：返回 { changed, rank, full }（changed = 该玩家新进榜或成绩被刷新；
 // full = 入榜前榜单已经满员——「挤进已有榜单」才算真正的榜位变动，空榜第一次上榜不算）
 function upsertTopRanked(list, entry, keepSmall) {
-  const prev = list.find(function (x) { return x.who === entry.who; }) || null;
+  const prev = list.find(function (x) { return (x.playerId && entry.playerId ? x.playerId === entry.playerId : x.who === entry.who); }) || null;
   const wasFull = list.length >= 10;
   upsertTop(list, entry, keepSmall);
   const changed = !prev || (keepSmall ? entry.size < prev.size : entry.size > prev.size);
-  const rank = list.findIndex(function (x) { return x.who === entry.who; }) + 1;
+  const rank = list.findIndex(function (x) { return (x.playerId && entry.playerId ? x.playerId === entry.playerId : x.who === entry.who); }) + 1;
   return { changed: changed, rank: rank, full: wasFull, top: keepSmall ? 'small' : 'big' };
 }
 
@@ -889,22 +946,22 @@ function pruneRanks() {
 // 入桶：同一条渔获同时写进日桶与周桶（各留前十最大 / 前十小）。
 // 返回**当日**两个榜的名次信息（v0.13.8：横幅的前十播报按「每日前十」口径 ——
 // 历史前十太难进、横幅几乎不出声；当日榜人人有机会，且与记录页默认的日榜一致）。
-function rankPut(fishId, size, who, ts) {
+function rankPut(fishId, size, who, ts, playerId) {
   const b = rankBuckets();
   const dayKey = dayKeyOf(ts);
   const dayBucket = (b.day[dayKey] = b.day[dayKey] || {});
   const cell = (dayBucket[fishId] = dayBucket[fishId] || { big: [], small: [] });
   if (!Array.isArray(cell.big)) cell.big = [];
   if (!Array.isArray(cell.small)) cell.small = [];
-  const bigRes = upsertTopRanked(cell.big, { size: size, who: who, t: ts }, false);
-  const smallRes = upsertTopRanked(cell.small, { size: size, who: who, t: ts }, true);
+  const bigRes = upsertTopRanked(cell.big, { size: size, who: who, playerId: playerId, t: ts }, false);
+  const smallRes = upsertTopRanked(cell.small, { size: size, who: who, playerId: playerId, t: ts }, true);
   // 周桶（记录页「周榜」用；只存不播报）
   const wkBucket = (b.week[weekKeyOf(ts)] = b.week[weekKeyOf(ts)] || {});
   const wcell = (wkBucket[fishId] = wkBucket[fishId] || { big: [], small: [] });
   if (!Array.isArray(wcell.big)) wcell.big = [];
   if (!Array.isArray(wcell.small)) wcell.small = [];
-  upsertTopRanked(wcell.big, { size: size, who: who, t: ts }, false);
-  upsertTopRanked(wcell.small, { size: size, who: who, t: ts }, true);
+  upsertTopRanked(wcell.big, { size: size, who: who, playerId: playerId, t: ts }, false);
+  upsertTopRanked(wcell.small, { size: size, who: who, playerId: playerId, t: ts }, true);
   pruneRanks();
   return {
     big: (bigRes.changed && bigRes.full) ? bigRes.rank : 0,
@@ -1159,7 +1216,7 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     }
     // 全服前十大捕获（历史总榜，记录页「总榜」用）——只记榜不驱动横幅（横幅走当日榜，见下）
     const top = (world.topCatches[item.id] = world.topCatches[item.id] || []);
-    upsertTopRanked(top, { size: size, who: rec.name, t: Date.now() }, false);
+    upsertTopRanked(top, { size: size, who: rec.name, playerId: key, t: Date.now() }, false);
     // 全服最小纪录
     const sm = world.smallRecords[item.id];
     if (!sm || size < sm.size) {
@@ -1168,9 +1225,9 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
     }
     // 全服前十小捕获（历史总榜，同上）
     const topS = (world.topSmall[item.id] = world.topSmall[item.id] || []);
-    upsertTopRanked(topS, { size: size, who: rec.name, t: Date.now() }, true);
+    upsertTopRanked(topS, { size: size, who: rec.name, playerId: key, t: Date.now() }, true);
     // v0.13.8：日/周榜分桶，并取**当日**前十名次用于横幅播报（历史前十太难进 → 横幅几乎不出声）
-    const dayRank = rankPut(item.id, size, rec.name, Date.now());
+    const dayRank = rankPut(item.id, size, rec.name, Date.now(), key);
     topBigRank = dayRank.big;
     topSmallRank = dayRank.small;
     saveRecordsSoon();
@@ -1531,6 +1588,48 @@ function maybeSendSubAlert(rec, key, item) {
 
 // ---- 钓场/钓点管理配置（管理后台编辑；覆盖存 world.groundCfg，启动时套用到共享目录）----
 // spots 的 key 为 'groundId:spotId'；grounds 存 locked 等钓场级配置
+// ---- 战利品组（v0.20）----
+// 组 = { id, name, weight, items:[{pick,weight}] }。组可以**整组**作为一条战利品放进钓点掉落池
+// （pick = 'group:<id>'）：先按池内权重选中整组，再按组内权重抽到具体条目。
+// 实钓保留两层随机；预览在两层各自应用增益后再换算最终占比。
+// 组内条目只允许 鱼 / 材料 / 组件，不允许再嵌套战利品组（避免权重递归与不可预知的产出分布）。
+const LOOT_GROUP_ITEM_MAX = 50;
+function lootGroups() {
+  world.lootCfg = world.lootCfg || {};
+  if (!Array.isArray(world.lootCfg.groups)) world.lootCfg.groups = [];
+  return world.lootCfg.groups;
+}
+function lootGroupById(id) {
+  const key = String(id || '');
+  return lootGroups().find(function (g) { return g.id === key; }) || null;
+}
+function validateLootGroup(input) {
+  if (!input || typeof input !== 'object') return { error: '格式错误' };
+  const id = String(input.id || '').trim();
+  const name = String(input.name || '').trim();
+  if (!GROUND_ID_RE.test(id)) return { error: '组 ID 需为 2-24 位小写字母/数字/下划线，且以字母开头' };
+  if (!name || name.length > 20) return { error: '组名需 1-20 个字符' };
+  const weight = Number(input.weight);
+  if (!isFinite(weight) || weight < 0 || weight > 1000000) return { error: '组的权重需在 0 - 1000000 之间' };
+  const items = Array.isArray(input.items) ? input.items : [];
+  if (!items.length) return { error: '战利品组至少要有 1 个条目' };
+  if (items.length > LOOT_GROUP_ITEM_MAX) return { error: '战利品组最多 ' + LOOT_GROUP_ITEM_MAX + ' 个条目' };
+  const out = [];
+  for (const it of items) {
+    const pick = String((it && it.pick) || '');
+    const i = pick.indexOf(':');
+    const type = i >= 0 ? pick.slice(0, i) : '';
+    const iid = i >= 0 ? pick.slice(i + 1) : '';
+    const w = Number(it && it.weight);
+    if (type === 'fish') { if (!D.fishTierOf(iid)) return { error: '未知鱼类：' + (iid || pick) }; }
+    else if (type === 'material') { if (!D.MATERIALS.some(function (m) { return m.id === iid; })) return { error: '未知材料：' + (iid || pick) }; }
+    else if (type !== 'component') return { error: '战利品组只能放鱼 / 材料 / 组件：' + pick };
+    if (!isFinite(w) || w < 0 || w > 1000000) return { error: '组内权重需在 0 - 1000000 之间' };
+    out.push({ pick: type === 'component' ? 'component:' : pick, weight: w });
+  }
+  if (!out.some(function (e) { return e.weight > 0; })) return { error: '战利品组的总权重不能为 0' };
+  return { ok: true, group: { id: id, name: name, weight: weight, items: out } };
+}
 function validatePoolEntries(list) {
   if (!Array.isArray(list)) return { error: '掉落池格式错误' };
   if (!list.length) return { error: '掉落池不能为空（至少保留 1 个条目）' };
@@ -1543,10 +1642,12 @@ function validatePoolEntries(list) {
     const weight = Number(e && e.weight);
     if (type === 'fish') { if (!D.fishTierOf(id)) return { error: '未知鱼类：' + (id || pick) }; }
     else if (type === 'material') { if (!D.MATERIALS.some(function (m) { return m.id === id; })) return { error: '未知材料：' + (id || pick) }; }
+    else if (type === 'group') { if (!lootGroupById(id)) return { error: '未知战利品组：' + (id || pick) }; }
     else if (type !== 'component') return { error: '无效的掉落条目：' + pick };
     if (!isFinite(weight) || weight < 0 || weight > 1000000) return { error: '权重需在 0 - 1000000 之间' };
     out.push({ pick: type === 'component' ? 'component:' : pick, weight: weight });
   }
+  if (!out.some(function (e) { return e.weight > 0; })) return { error: '掉落池的总权重不能为 0' };
   return { ok: true, pool: out };
 }
 // 钓点增益数值范围：上限 100（曾允许到 1000，实测那个量级会让钓鱼循环异常频繁、拖垮服务器）
@@ -1611,10 +1712,10 @@ function defaultPoolPreset(preset) {
   function addMat(n, weight) {
     mats.slice(0, n).forEach(function (m) { out.push({ pick: 'material:' + m.id, weight: weight }); });
   }
-  if (preset === 'big') { addFish('common', 4, 6); addFish('big', 5, 8); addFish('rare', 2, 3); addMat(2, 5); out.push({ pick: 'component:', weight: 3 }); }
-  else if (preset === 'rare') { addFish('common', 3, 5); addFish('big', 3, 5); addFish('rare', 4, 6); addMat(2, 4); out.push({ pick: 'component:', weight: 4 }); }
-  else if (preset === 'material') { addFish('common', 4, 6); addFish('big', 2, 3); addMat(4, 12); out.push({ pick: 'component:', weight: 2 }); }
-  else { addFish('common', 8, 10); addFish('big', 2, 3); addMat(2, 6); out.push({ pick: 'component:', weight: 2 }); }
+  if (preset === 'big') { addFish('common', 4, 6); addFish('big', 5, 8); addFish('rare', 2, 3); addMat(2, 5); out.push({ pick: 'component:', weight: 1 }); }
+  else if (preset === 'rare') { addFish('common', 3, 5); addFish('big', 3, 5); addFish('rare', 4, 6); addMat(2, 4); out.push({ pick: 'component:', weight: 1 }); }
+  else if (preset === 'material') { addFish('common', 4, 6); addFish('big', 2, 3); addMat(4, 12); out.push({ pick: 'component:', weight: 1 }); }
+  else { addFish('common', 8, 10); addFish('big', 2, 3); addMat(2, 6); out.push({ pick: 'component:', weight: 1 }); }
   return out;
 }
 function removeListOf(kind) {
@@ -2098,27 +2199,10 @@ function dropCfgIsDefault() {
 }
 // 下发用钓场目录：产出倍率不为默认时，把有效权重换算后返回（图鉴/钓点详情与实钓概率一致；服务端落盘权重不受影响）
 function groundsWithDrop() {
-  if (dropCfgIsDefault()) return D.GROUNDS;
-  const dc = dropCfg();
   return D.GROUNDS.map(function (g) {
-    return Object.assign({}, g, {
-      spots: (g.spots || []).map(function (s) {
-        return Object.assign({}, s, {
-          pool: (s.pool || []).map(function (e) {
-            const i = e.pick.indexOf(':');
-            const type = e.pick.slice(0, i), id = e.pick.slice(i + 1);
-            let mult = dc.global / 100;
-            if (type === 'fish') {
-              const tier = D.fishTierOf(id);
-              if (tier === 'big') mult *= dc.big / 100;
-              else if (tier === 'rare') mult *= dc.rare / 100;
-              else mult *= dc.common / 100;
-            } else if (type === 'material') mult *= dc.material / 100;
-            return { pick: e.pick, weight: Math.round(e.weight * mult * 1000) / 1000 };
-          }),
-        });
-      }),
-    });
+    return Object.assign({}, g, { spots: (g.spots || []).map(function (s) {
+      return Object.assign({}, s, { pool: flattenLootPool(boostPoolOf(s.pool, {})) });
+    }) });
   });
 }
 // 品质层动态覆盖（普通/大鱼/稀有各自可覆盖 下压/回升；未覆盖 = 跟随全局）
@@ -2630,7 +2714,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax', 'rank', 'lastRec'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['features', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'chestCfg', 'seaCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg', 'snapshotCfg', 'wikiConfigRevision'];
+const CONFIG_KEYS = ['features', 'featureOrder', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'lootCfg', 'chestCfg', 'seaCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg', 'snapshotCfg', 'wikiConfigRevision'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
@@ -2726,7 +2810,7 @@ function stableJson(value) {
 }
 function publicVersionConfig() {
   return {
-    features: world.features || {},
+    features: world.features || {}, featureOrder: world.featureOrder || {},
     componentCfg: D.getComponentCfg ? D.getComponentCfg() : null,
     fishCfg: D.getFishCfg ? D.getFishCfg() : null,
     castCfg: { baseMs: castBaseMs(), minMs: castMinMs(), speedBonus: castSpeedBonus(), speedCap: castSpeedCap() },
@@ -2992,7 +3076,7 @@ function newToken() { return crypto.randomBytes(16).toString('hex'); }
 function profileOf(key) {
   const rec = users[key];
   return {
-    features: world.features || {}, username: rec.username, name: rec.name, coins: rec.coins, qq: rec.qq || '',
+    features: world.features || {}, featureOrder: world.featureOrder || {}, username: rec.username, name: rec.name, coins: rec.coins, qq: rec.qq || '',
     inventory: rec.inventory || {}, bd: rec.bd || {},
     invRev: invRevOf(rec),   // 库存快照版本号：客户端据此丢弃过期快照（v0.13.9）
     bigfish: rec.bigfish || null,
@@ -3273,6 +3357,20 @@ function sendPlayers() {
   presenceDirty = true;
   if (!presenceThrottleTimer) presenceThrottleTimer = setTimeout(flushPresence, 1000);
 }
+function socialPlayerView(p) {
+  let locationName = '';
+  const gid = String(p.groundId || '');
+  if (gid.indexOf('sea:') === 0) {
+    const ci = gid.indexOf(':', 4), owner = users[gid.slice(4, ci)];
+    const zone = owner && owner.sea && (owner.sea.zones || []).find(function (z) { return z.id === gid.slice(ci + 1) && z.expire > Date.now(); });
+    if (zone) locationName = zone.name;
+  } else {
+    const g = D.GROUNDS.find(function (g) { return g.id === gid; });
+    const sp = g && (g.spots || []).find(function (s) { return s.id === p.spotId; });
+    locationName = g ? (g.id === 'map' && sp ? sp.name : g.name) : '';
+  }
+  return Object.assign({}, p, { locationName: locationName || (gid ? '未知钓点' : '未出发') });
+}
 function playersSortedFiltered(q, ground, spot) {
   const kw = (q || '').toLowerCase();
   const out = [];
@@ -3303,7 +3401,7 @@ function flushPresence() {
       const pages = Math.max(1, Math.ceil(all.length / size));
       const page = Math.min(Math.max(view.page || 1, 1), pages);
       const d = 'data: ' + JSON.stringify({ type: 'playersPage', page: page, pages: pages, total: all.length,
-        players: all.slice((page - 1) * size, page * size) }) + '\n\n';
+        players: all.slice((page - 1) * size, page * size).map(socialPlayerView) }) + '\n\n';
       sseWrite(res, d);
     });
   }
@@ -3662,21 +3760,41 @@ const server = http.createServer(function (req, res) {
   if (p === '/api/features' && req.method === 'GET') return apiResp(res, 200, { features: world.features || {} });
   if (p === '/api/admin/features' && req.method === 'GET') {
     if (!adminOf(u.query.token)) return apiResp(res, 403, { error: '需要管理员权限' });
-    return apiResp(res, 200, { features: world.features || {}, groups: Features.groups });
+    return apiResp(res, 200, { features: world.features || {}, featureOrder: world.featureOrder || {}, groups: Features.groups });
   }
   if (p === '/api/admin/features' && req.method === 'POST') {
     return readBody(req, function (body) {
       const d = bodyObj(body);
       if (!d) return apiResp(res, 400, { error: '请求格式错误' });
       if (!adminOf(d.token)) return apiResp(res, 403, { error: '需要管理员权限' });
-      if (!d.features || typeof d.features !== 'object' || Array.isArray(d.features)) return apiResp(res, 400, { error: '功能配置格式错误' });
-      const keys = Object.keys(d.features);
-      // adminBypass 是「开关的开关」（v0.16.0）：不在功能目录里，但同样必须是布尔值
-      if (keys.some(function (key) {
-        if (typeof d.features[key] !== 'boolean') return true;
-        return key === 'adminBypass' ? false : !Features.byId[key];
-      })) return apiResp(res, 400, { error: '未知功能或开关值不是布尔值' });
-      world.features = Object.assign({}, world.features || {}, d.features);
+      if (d.features != null && (typeof d.features !== 'object' || Array.isArray(d.features))) return apiResp(res, 400, { error: '功能配置格式错误' });
+      if (d.features != null) {
+        const keys = Object.keys(d.features);
+        // adminBypass 是「开关的开关」（v0.16.0）：不在功能目录里，但同样必须是布尔值
+        if (keys.some(function (key) {
+          if (typeof d.features[key] !== 'boolean') return true;
+          return key === 'adminBypass' ? false : !Features.byId[key];
+        })) return apiResp(res, 400, { error: '未知功能或开关值不是布尔值' });
+        world.features = Object.assign({}, world.features || {}, d.features);
+      }
+      if (d.featureOrder != null) {
+        if (typeof d.featureOrder !== 'object' || Array.isArray(d.featureOrder)) return apiResp(res, 400, { error: '功能排序格式错误' });
+        const next = Object.assign({}, world.featureOrder || {});
+        for (const g of Features.groups) {
+          if (!g.children.length) continue;
+          const wanted = d.featureOrder[g.id];
+          if (wanted == null) continue;
+          if (!Array.isArray(wanted) || wanted.length !== g.children.length) return apiResp(res, 400, { error: '功能排序不完整：' + g.name });
+          const ids = g.children.map(function (c) { return c.id; });
+          const seen = {};
+          for (const id of wanted) {
+            if (ids.indexOf(id) < 0 || seen[id]) return apiResp(res, 400, { error: '功能排序包含未知或重复项：' + g.name });
+            seen[id] = 1;
+          }
+          next[g.id] = wanted.slice();
+        }
+        world.featureOrder = next;
+      }
       saveConfig();
       if (Features.blocked(world.features, 'fishing.cast')) {
         Array.from(fishingTimers.keys()).forEach(function (key) { stopFishingSession(key, { forget: true }); });
@@ -3684,8 +3802,8 @@ const server = http.createServer(function (req, res) {
       if (Features.blocked(world.features, 'ground.trade')) {
         trades.forEach(function (t, id) { if (!t.done && !t.cancelled) { t.cancelled = true; t.closed = true; broadcastTrade(t); trades.delete(id); } });
       }
-      broadcast({ type: 'features', features: world.features });
-      return apiResp(res, 200, { ok: true, features: world.features });
+      broadcast({ type: 'features', features: world.features, featureOrder: world.featureOrder || {} });
+      return apiResp(res, 200, { ok: true, features: world.features, featureOrder: world.featureOrder || {} });
     });
   }
 
@@ -3837,7 +3955,7 @@ const server = http.createServer(function (req, res) {
     // 重连自动续钓：账号里还记着「上次没主动收竿的钓点」就接着钓（服务器更新强刷 / 掉线 / 重启都走这里）
     const resumed = resumeFishingSpot(id);
     res.write('data: ' + JSON.stringify({
-      type: 'init', you: id, feed: feed, features: world.features || {},
+      type: 'init', you: id, feed: feed, features: world.features || {}, featureOrder: world.featureOrder || {},
       // perf-9：init 不再携带全量 players（5000 人时 868KB）与全量 records（50-100KB）——
       // 玩家列表走分页 API（/api/players/page），榜单走拉取制（/api/records）。
       playersTotal: players.size, recordsVersion: world.recordsVersion || 0,
@@ -4299,17 +4417,17 @@ const server = http.createServer(function (req, res) {
             world.globalMax = { id: itemId, name: itemName(itemId), size: rsize, who: rec.name, t: Date.now() };
             globalRecordDev = world.globalMax;
           }
-          const dTop = upsertTopRanked((world.topCatches[itemId] = world.topCatches[itemId] || []), { size: rsize, who: rec.name, t: Date.now() }, false);
+          const dTop = upsertTopRanked((world.topCatches[itemId] = world.topCatches[itemId] || []), { size: rsize, who: rec.name, playerId: key, t: Date.now() }, false);
           void dTop;   // 历史总榜只记榜；横幅播报走当日榜（见下 rankPut）
           const smD = world.smallRecords[itemId];
           if (!smD || rsize < smD.size) {
             world.smallRecords[itemId] = { id: itemId, name: itemName(itemId), size: rsize, who: rec.name, t: Date.now() };
             smallEventDev = true;
           }
-          const dTopS = upsertTopRanked((world.topSmall[itemId] = world.topSmall[itemId] || []), { size: rsize, who: rec.name, t: Date.now() }, true);
+          const dTopS = upsertTopRanked((world.topSmall[itemId] = world.topSmall[itemId] || []), { size: rsize, who: rec.name, playerId: key, t: Date.now() }, true);
           void dTopS;   // 同上：历史总榜不驱动横幅
           // v0.13.8：日/周榜分桶（与线上同一路径），当日名次驱动横幅播报
-          const dayRankDev = rankPut(itemId, rsize, rec.name, Date.now());
+          const dayRankDev = rankPut(itemId, rsize, rec.name, Date.now(), key);
           topBigRankDev = dayRankDev.big;
           topSmallRankDev = dayRankDev.small;
           saveRecordsSoon();
@@ -4705,6 +4823,29 @@ const server = http.createServer(function (req, res) {
           mainId: plan.mainId, subId: plan.subId,
           coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec),
         }, out));
+      });
+    });
+    return;
+  }
+  // ---- 工坊 · 锻造：用催化剂为未满词条的组件补一条催化词缀 ----
+  if (p === '/api/workshop/forge' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const plan = planForge(rec, d.id, d.materialId);
+        if (plan.error) return apiResp(res, 400, { error: plan.error });
+        invAdd(rec, plan.materialId, -1);
+        invAdd(rec, plan.meta.id, -1);
+        invAdd(rec, plan.newId, 1);
+        try { syncActiveRodSlot(rec); } catch (e) {}
+        saveAccount(key);
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
+        apiResp(res, 200, {
+          ok: true, changed: true, id: plan.newId, item: D.componentOf(plan.newId),
+          material: { id: plan.materialId, name: itemName(plan.materialId), need: 1, have: invCountOf(rec, plan.materialId) },
+          affix: { type: plan.type, name: D.AFFIX_LABEL[plan.type] || plan.type, value: plan.value, min: plan.range[0], max: plan.range[1], src: 'ct' },
+          coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec),
+        });
       });
     });
     return;
@@ -5315,9 +5456,14 @@ const server = http.createServer(function (req, res) {
     const list = range === 'all'
       ? (small ? ((world.topSmall && world.topSmall[fid]) || []) : ((world.topCatches && world.topCatches[fid]) || []))
       : rankListOf(range, fid, small);
+    const viewerKey = u.query.token && sessionGet(u.query.token);
+    const viewer = viewerKey && users[viewerKey];
+    const own = viewer && viewer.codex && viewer.codex[fid];
+    const legacySelf = viewer && list.some(function (entry) { return !entry.playerId; }) && Object.keys(users).filter(function (k) { return users[k].name === viewer.name; }).length === 1;
     return apiResp(res, 200, {
+      personal: own ? { min: own.min == null ? null : own.min, max: own.max == null ? null : own.max } : null,
       id: fid, name: itemName(fid), kind: small ? 'small' : 'big', range: range,
-      label: rankLabelOf(range), top: list,
+      label: rankLabelOf(range), top: list.map(function (entry) { return Object.assign({}, entry, { self: !!(viewer && (entry.playerId ? entry.playerId === viewerKey : legacySelf && entry.who === viewer.name)) }); }),
     });
   }
 
@@ -5381,16 +5527,11 @@ function simulateRod(rec0, spot, totals) {
 }
 // 产出分布（与 /api/admin/loot/test 同一套权重换算），供模拟钓竿一并展示。
 function lootPreviewRows(spot, rareVal) {
-  const pool = boostPoolOf((spot && spot.pool) || [], {});
-  const mult = D.rareCommonMult(Math.max(0, Number(rareVal) || 0), rareK());
-  const compMult = componentCommonProb() * mult + (1 - componentCommonProb());
-  const effOf = function (e) {
-    const i = e.pick.indexOf(':');
-    return e.pick.slice(0, i) === 'component' ? compMult : (pickIsCommon(e.pick) ? mult : 1);
-  };
+  const pool = flattenLootPool(boostPoolOf((spot && spot.pool) || [], {}));
+  const boosted = flattenLootPool(boostPoolOf((spot && spot.pool) || [], { rare: Math.max(0, Number(rareVal) || 0) }));
   const before = pool.reduce(function (s, e) { return s + e.weight; }, 0) || 1;
-  const after = pool.reduce(function (s, e) { return s + e.weight * effOf(e); }, 0) || 1;
-  return pool.map(function (e) {
+  const after = boosted.reduce(function (s, e) { return s + e.weight; }, 0) || 1;
+  return pool.map(function (e, index) {
     const i = e.pick.indexOf(':');
     const type = e.pick.slice(0, i), id = e.pick.slice(i + 1);
     let name = id, quality = '普通';
@@ -5405,8 +5546,8 @@ function lootPreviewRows(spot, rareVal) {
     } else if (type === 'component') {
       name = '组件'; quality = '随机';
     }
-    return { pick: e.pick, type: type, id: id, name: name, quality: quality,
-      beforePct: e.weight / before * 100, afterPct: e.weight * effOf(e) / after * 100 };
+    return { pick: e.pick, type: type, id: id, name: name, quality: quality, group: e.groupName || '',
+      beforePct: e.weight / before * 100, afterPct: boosted[index].weight / after * 100 };
   }).sort(function (a, b) { return b.afterPct - a.afterPct; });
 }
   // 引导：服务器上没有任何管理员时，第一个通过后台登录的账号自动成为管理员。
@@ -5457,7 +5598,7 @@ function lootPreviewRows(spot, rareVal) {
     const pages = Math.max(1, Math.ceil(all.length / size));
     const page = Math.min(Math.max(parseInt(u.query.page, 10) || 1, 1), pages);
     return apiResp(res, 200, { ok: true, page: page, pages: pages, size: size, total: all.length,
-      totalOnline: players.size, players: all.slice((page - 1) * size, page * size) });
+      totalOnline: players.size, players: all.slice((page - 1) * size, page * size).map(socialPlayerView) });
   }
   // 视口登记：客户端告诉服务器自己当前正在看玩家列表的哪一页（含搜索词/钓场过滤），
   // 之后每秒只推该页玩家的最新状态（playersPage）；clear=true 取消登记（零 presence 流量）。
@@ -6218,6 +6359,7 @@ function lootPreviewRows(spot, rareVal) {
       castSpeedCap: castSpeedCap(),
       castDefaults: { baseMs: CAST_BASE_DEFAULT, minMs: CAST_MIN_DEFAULT, speedBonus: CAST_SPEED_BONUS_DEFAULT, speedCap: CAST_SPEED_CAP_DEFAULT },
       poolPresets: POOL_PRESETS,
+      lootGroups: lootGroups(),
       removedGrounds: (world.groundCfg && world.groundCfg.removed && world.groundCfg.removed.grounds) || [],
       removedSpots: (world.groundCfg && world.groundCfg.removed && world.groundCfg.removed.spots) || [],
       componentCfg: D.getComponentCfg ? D.getComponentCfg() : null,
@@ -6503,6 +6645,52 @@ function lootPreviewRows(spot, rareVal) {
       saveSpotCfg(d.groundId, d.spotId, { pool: v.pool });
       broadcastGroundcfg();
       apiResp(res, 200, { ok: true, pool: v.pool });
+    });
+    return;
+  }
+  // ---- 战利品组（名字 + 组内条目 + 独立权重；可整组放进钓点掉落池） ----
+  if (p === '/api/admin/loot/groups' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    return apiResp(res, 200, { ok: true, groups: lootGroups() });
+  }
+  if (p === '/api/admin/loot/group' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const a = adminOf(d.token);
+      if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+      const list = lootGroups();
+      if (d.action === 'delete') {
+        const id = String(d.id || '');
+        const idx = list.findIndex(function (g) { return g.id === id; });
+        if (idx < 0) return apiResp(res, 404, { error: '战利品组不存在' });
+        const stranded = D.GROUNDS.some(function (g) { return (g.spots || []).some(function (s) {
+          return (s.pool || []).some(function (e) { return e.pick === 'group:' + id; }) &&
+            !(s.pool || []).some(function (e) { return e.pick !== 'group:' + id && e.weight > 0; });
+        }); });
+        if (stranded) return apiResp(res, 400, { error: '该组是部分钓点的唯一有效产出，请先调整这些钓点的掉落池' });
+        list.splice(idx, 1);
+        // 顺手清掉所有钓点池里指向该组的条目：删组后它们永远抽不中，留着只会在预览里显示成死条目
+        D.GROUNDS.forEach(function (g) {
+          (g.spots || []).forEach(function (s) {
+            if (!Array.isArray(s.pool)) return;
+            const keep = s.pool.filter(function (e) { return String((e && e.pick) || '') !== 'group:' + id; });
+            if (keep.length === s.pool.length) return;
+            s.pool = keep;
+            saveSpotCfg(g.id, s.id, { pool: keep });
+          });
+        });
+      } else {
+        const v = validateLootGroup(d.group);
+        if (v.error) return apiResp(res, 400, { error: v.error });
+        const idx = list.findIndex(function (g) { return g.id === v.group.id; });
+        const dup = list.some(function (g, i) { return i !== idx && g.name === v.group.name; });
+        if (dup) return apiResp(res, 400, { error: '已有同名战利品组：' + v.group.name });
+        if (idx >= 0) list[idx] = v.group; else list.push(v.group);
+      }
+      saveConfig();
+      broadcastGroundcfg();
+      apiResp(res, 200, { ok: true, groups: list });
     });
     return;
   }
@@ -7025,31 +7213,21 @@ function lootPreviewRows(spot, rareVal) {
       const found = spotOf(key.slice(0, ci), key.slice(ci + 1));
       if (!found || !found.spot) return apiResp(res, 400, { error: '钓点不存在：' + key });
       // 基础权重 = 该钓点当前生效的掉落池（应用产出倍率，但不含玩家词缀，保证可复现）
-      const pool = boostPoolOf(found.spot.pool || [], {});
+      const pool = flattenLootPool(boostPoolOf(found.spot.pool || [], {}));
       const R = Math.max(0, Number(d.rare) || 0);
       const K = rareK();
       const mult = D.rareCommonMult(R, K);
-      const compMult = componentCommonProb() * mult + (1 - componentCommonProb());
-      const isCommon = function (e) {
-        const i = e.pick.indexOf(':');
-        const type = e.pick.slice(0, i);
-        return type === 'component' ? false : pickIsCommon(e.pick); // 组件单独按 compMult 折算
-      };      const effOf = function (e) {
-        const i = e.pick.indexOf(':');
-        const type = e.pick.slice(0, i);
-        if (type === 'component') return compMult;
-        return isCommon(e) ? mult : 1;
-      };
-      const before = pool.reduce(function (s, e) { return s + e.weight; }, 0) || 1;
-      const after = pool.reduce(function (s, e) { return s + e.weight * effOf(e); }, 0) || 1;
+      const boosted = flattenLootPool(boostPoolOf(found.spot.pool || [], { rare: R }));
+      const before = pool.reduce(function (sum, e) { return sum + e.weight; }, 0) || 1;
+      const after = boosted.reduce(function (sum, e) { return sum + e.weight; }, 0) || 1;
       let commonBefore = 0, commonAfter = 0;
-      const rows = pool.map(function (e) {
+      const rows = pool.map(function (e, index) {
         const i = e.pick.indexOf(':');
         const type = e.pick.slice(0, i), id = e.pick.slice(i + 1);
-        const f = effOf(e);
-        const w2 = e.weight * f;
+        const w2 = boosted[index].weight;
+        const f = e.weight > 0 ? w2 / e.weight : 1;
         const p1 = e.weight / before * 100, p2 = w2 / after * 100;
-        if (type !== 'component' && isCommon(e)) { commonBefore += p1; commonAfter += p2; }
+        if (type !== 'component' && pickIsCommon(e.pick)) { commonBefore += p1; commonAfter += p2; }
         let name = id, quality = '普通';
         if (type === 'fish') {
           const tier = D.fishTierOf(id);
@@ -7064,7 +7242,7 @@ function lootPreviewRows(spot, rareVal) {
         } else if (type === 'component') {
           name = '组件（随机底材）'; quality = '按品质权重';
         }
-        return { pick: e.pick, name: name, quality: quality, common: f < 1, weight: Math.round(e.weight * 1000) / 1000, beforePct: Math.round(p1 * 100) / 100, afterPct: Math.round(p2 * 100) / 100 };
+        return { pick: e.pick, name: name, quality: quality, group: e.groupName || '', common: f < 1, weight: Math.round(e.weight * 1000) / 1000, beforePct: Math.round(p1 * 100) / 100, afterPct: Math.round(p2 * 100) / 100 };
       }).sort(function (x, y) { return y.beforePct - x.beforePct; });
       return apiResp(res, 200, {
         ok: true, k: K, rare: R, mult: Math.round(mult * 10000) / 10000,

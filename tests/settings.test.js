@@ -24,8 +24,10 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     await page.click('#settings-btn');
     check('Accessible modal opens and focuses close', await page.evaluate(() => document.querySelector('#settings-dialog').open && document.activeElement.className === 'settings-close'));
     await page.selectOption('[data-setting=font]', 'clear');
-    await page.selectOption('[data-setting=textSize]', 'large');
-    check('Clear font and larger controls take effect', await page.evaluate(() => !getComputedStyle(document.querySelector('#settings-btn')).fontFamily.includes('FusionPixel') && getComputedStyle(document.querySelector('[data-setting=font]')).fontSize === '16px'));
+    check('Clear font takes effect', await page.evaluate(() => !getComputedStyle(document.querySelector('#settings-btn')).fontFamily.includes('FusionPixel')));
+    check('Font-size slider marks the suggested stops', await page.locator('.scale-mark.rec').count() === 2 && (await page.locator('.settings-scale-marks').textContent()).includes('建议'));
+    await page.locator('[data-setting=textScale]').fill('115');
+    check('Dragging the font-size slider scales the page and shows the value', await page.evaluate(() => document.documentElement.dataset.textScale === '115' && getComputedStyle(document.documentElement).zoom === '1.15' && document.querySelector('#settings-scale-out').textContent === '115%'));
     await page.selectOption('[data-setting=motion]', 'off');
     await page.selectOption('[data-setting=tips]', 'brief');
     await page.evaluate(() => { UI.toast('ordinary', 'routine'); });
@@ -38,7 +40,7 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     await page.keyboard.press('Escape');
     check('Escape closes and restores focus', await page.evaluate(() => !document.querySelector('#settings-dialog').open && document.activeElement.id === 'settings-btn'));
     await load();
-    check('Preferences survive reload', await page.evaluate(() => PlayerSettings.get().font === 'clear' && PlayerSettings.get().textSize === 'large' && PlayerSettings.motion() === 'off' && !PlayerSettings.get().records));
+    check('Preferences survive reload', await page.evaluate(() => PlayerSettings.get().font === 'clear' && PlayerSettings.get().textScale === 115 && PlayerSettings.motion() === 'off' && !PlayerSettings.get().records));
     // Real canvas: static time stays fixed; animation resumes without remounting.
     await page.evaluate(() => { const el = document.createElement('div'); el.id = 'settings-scene'; el.style = 'position:fixed;left:0;top:150px;width:300px;height:160px'; document.body.appendChild(el); PxScene.mount(el, 'rapids'); });
     await page.waitForFunction(() => document.querySelector('#settings-scene').__pxscene.staticDrawn);
@@ -60,7 +62,7 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     await page.click('#settings-reset'); await page.click('#settings-reset-no');
     check('Cancel reset preserves choices', await page.evaluate(() => PlayerSettings.get().font === 'clear'));
     await page.click('#settings-reset'); await page.click('#settings-reset-yes');
-    check('Reset restores defaults', await page.evaluate(() => PlayerSettings.get().font === 'pixel' && PlayerSettings.get().records && PlayerSettings.get().motion === 'system'));
+    check('Reset restores defaults', await page.evaluate(() => PlayerSettings.get().font === 'pixel' && PlayerSettings.get().textScale === 100 && PlayerSettings.get().records && PlayerSettings.get().motion === 'system'));
     await page.evaluate(() => localStorage.setItem('fishing_preferences_v1', '{broken'));
     await load();
     check('Corrupt storage falls back safely', await page.evaluate(() => PlayerSettings.get().tips === 'all'));
