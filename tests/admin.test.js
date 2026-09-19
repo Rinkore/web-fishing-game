@@ -31,7 +31,7 @@ function check(name, cond, extra) {
 }
 function section(t) { console.log('\n=== ' + t + ' ==='); }
 // 按 id 找渔场（11e 用）
-function dockFind(grounds) { return (grounds || []).find(function (g) { return g.id === 'stillwater'; }); }
+function dockFind(grounds) { return (grounds || []).find(function (g) { return g.id === 'map'; }); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Windows 下 kill() 偶发不生效，用 taskkill 强制结束进程树
 function killTree(p) { try { spawnSync('taskkill', ['/F', '/T', '/PID', String(p.pid)], { stdio: 'ignore' }); } catch (e) {} }
@@ -181,26 +181,26 @@ function waitReady() {
   // ---------- 2. 渔场配置：掉落池 + 增益 ----------
   section('2. 掉落池与增益编辑');
   const w0 = await GET(B + '/api/admin/world?token=' + TOKA);
-  check('world 返回 4 钓场 + 9 钓点', w0.status === 200 && w0.data.grounds.length === 4 && w0.data.grounds.reduce((n, g) => n + g.spots.length, 0) === 9);
+  check('world 返回唯一隐式钓场 map + 13 钓点', w0.status === 200 && w0.data.grounds.length === 1 && w0.data.grounds[0].id === 'map' && w0.data.grounds[0].spots.length === 13);
   // 40 种鱼（龙宫宝珠改为材料）+ 7 种材料（新增潮汐砂 / 龙鳞碎屑）
-  check('目录含 40 种鱼 + 7 种材料', w0.data.catalog.fish.length === 40 && w0.data.catalog.materials.length === 7, JSON.stringify({ fish: w0.data.catalog.fish.length, mat: w0.data.catalog.materials.length }));
-  check(' frostmoon 默认锁定', w0.data.grounds.find(g => g.id === 'frostmoon').locked === true);
+  check('目录含 51 种鱼 + 9 种材料（v0.19.0 出海扩编后）', w0.data.catalog.fish.length === 51 && w0.data.catalog.materials.length === 9, JSON.stringify({ fish: w0.data.catalog.fish.length, mat: w0.data.catalog.materials.length }));
+  check('霜月冰窟默认锁定（钓点级）', w0.data.grounds[0].spots.find(s => s.id === 'ice').locked === true);
 
   const setPool = (groundId, spotId, pool, tok) => POST(B + '/api/admin/spot/pool', { token: tok || TOKA, groundId: groundId, spotId: spotId, pool: pool });
-  check('设置 dock 单一鲫鱼池', (await setPool('stillwater', 'dock', [{ pick: 'fish:crucian', weight: 100 }])).status === 200);
-  check('未知鱼类被拒 400', (await setPool('stillwater', 'dock', [{ pick: 'fish:shark', weight: 10 }])).status === 400);
-  check('空掉落池被拒 400', (await setPool('stillwater', 'dock', [])).status === 400);
-  check('负权重被拒 400', (await setPool('stillwater', 'dock', [{ pick: 'fish:crucian', weight: -5 }])).status === 400);
-  check('未知增益类别被拒 400', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'magic', value: 10 }] })).status === 400);
-  check('超范围增益值被拒 400', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 5000 }] })).status === 400);
+  check('设置 dock 单一鲫鱼池', (await setPool('map', 'dock', [{ pick: 'fish:crucian', weight: 100 }])).status === 200);
+  check('未知鱼类被拒 400', (await setPool('map', 'dock', [{ pick: 'fish:shark', weight: 10 }])).status === 400);
+  check('空掉落池被拒 400', (await setPool('map', 'dock', [])).status === 400);
+  check('负权重被拒 400', (await setPool('map', 'dock', [{ pick: 'fish:crucian', weight: -5 }])).status === 400);
+  check('未知增益类别被拒 400', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'map', spotId: 'dock', buffs: [{ type: 'magic', value: 10 }] })).status === 400);
+  check('超范围增益值被拒 400', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'map', spotId: 'dock', buffs: [{ type: 'speed', value: 5000 }] })).status === 400);
   // 上限 100：曾允许到 1000，实测该量级会把抛竿间隔压到异常小、拖垮服务器
-  const overBuff = await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 101 }] });
+  const overBuff = await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'map', spotId: 'dock', buffs: [{ type: 'speed', value: 101 }] });
   check('增益值 101 被拒 400（上限 100）', overBuff.status === 400 && /-100 到 100/.test(overBuff.data.error || ''), JSON.stringify(overBuff.data));
-  check('增益值上限 100 可保存', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 100 }] })).status === 200);
-  check('设置钓速增益 20%', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 20 }] })).status === 200);
+  check('增益值上限 100 可保存', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'map', spotId: 'dock', buffs: [{ type: 'speed', value: 100 }] })).status === 200);
+  check('设置钓速增益 20%', (await POST(B + '/api/admin/spot/buffs', { token: TOKA, groundId: 'map', spotId: 'dock', buffs: [{ type: 'speed', value: 20 }] })).status === 200);
 
   const w1 = await GET(B + '/api/admin/world?token=' + TOKA);
-  const dock = w1.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock');
+  const dock = w1.data.grounds[0].spots.find(s => s.id === 'dock');
   check('掉落池覆盖已生效（单一鲫鱼）', dock.pool.length === 1 && dock.pool[0].pick === 'fish:crucian');
   check('增益覆盖已生效（speed 20）', Array.isArray(dock.buffs) && dock.buffs[0].type === 'speed' && dock.buffs[0].value === 20);
 
@@ -211,7 +211,7 @@ function waitReady() {
   const sink1 = [];
   const es1 = sse(TK1, sink1);
   await sleep(400);
-  const fs1 = await POST(B + '/api/fishing/start', { token: TK1, groundId: 'stillwater', spotId: 'dock' });
+  const fs1 = await POST(B + '/api/fishing/start', { token: TK1, groundId: 'map', spotId: 'dock' });
   check('钓点增益改变抛竿间隔（3000×0.8=2400）', fs1.status === 200 && fs1.data.interval === 2400, JSON.stringify(fs1.data));
   await sleep(4000);
   const myCatch = sink1.filter(x => x.ev.type === 'catch' && x.ev.entry.who === '玩家一号');
@@ -222,15 +222,15 @@ function waitReady() {
 
   // ---------- 3. 钓场锁定 ----------
   section('3. 钓场锁定');
-  check('锁定急流河', (await POST(B + '/api/admin/ground/lock', { token: TOKA, groundId: 'rapids', locked: true })).status === 200);
-  const lockStart = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'rapids', spotId: 'shoal' });
+  check('锁定世界地图钓场', (await POST(B + '/api/admin/ground/lock', { token: TOKA, groundId: 'map', locked: true })).status === 200);
+  const lockStart = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
   check('锁定后开始钓鱼被拒', lockStart.status === 400 && /尚未开放/.test(lockStart.data.error || ''), JSON.stringify(lockStart.data));
-  check('解锁急流河', (await POST(B + '/api/admin/ground/lock', { token: TOKA, groundId: 'rapids', locked: false })).status === 200);
-  check('解锁后可正常开始', (await POST(B + '/api/fishing/start', { token: TK2, groundId: 'rapids', spotId: 'shoal' })).status === 200);
+  check('解锁世界地图钓场', (await POST(B + '/api/admin/ground/lock', { token: TOKA, groundId: 'map', locked: false })).status === 200);
+  check('解锁后可正常开始', (await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' })).status === 200);
   await POST(B + '/api/fishing/stop', { token: TK2 });
-  check('解锁霜月冰湖（无钓点）', (await POST(B + '/api/admin/ground/lock', { token: TOKA, groundId: 'frostmoon', locked: false })).status === 200);
-  check('无钓点钓场开始被拒（钓点不存在）', (await POST(B + '/api/fishing/start', { token: TK2, groundId: 'frostmoon', spotId: 'x' })).status === 400);
-  check('重新锁定霜月冰湖', (await POST(B + '/api/admin/ground/lock', { token: TOKA, groundId: 'frostmoon', locked: true })).status === 200);
+  check('解锁霜月冰窟（钓点级）', (await POST(B + '/api/admin/spot/lock', { token: TOKA, groundId: 'map', spotId: 'ice', locked: false })).status === 200);
+  check('不存在的钓点开始被拒（钓点不存在）', (await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'nonexist' })).status === 400);
+  check('重新锁定霜月冰窟', (await POST(B + '/api/admin/spot/lock', { token: TOKA, groundId: 'map', spotId: 'ice', locked: true })).status === 200);
 
   // ---------- 4. 市集退回 ----------
   section('4. 市集退回挂单');
@@ -382,7 +382,7 @@ function waitReady() {
   // 公式 0%：永远不上钩
   check('保存公式 0', (await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '0' })).status === 200);
   const marker0 = Date.now();
-  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
+  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
   await waitFor(() => false, { timeout: 7000 }); // 观察窗口：7 秒内不应有任何渔获
   check('公式 0 时 7 秒内零渔获', !sink2.some(x => x.ev.type === 'catch' && x.t > marker0));
   // 公式 100%：竿竿上钩
@@ -395,7 +395,7 @@ function waitReady() {
   section('6. 全服动态通知等级');
   const marker = Date.now();
   check('设为 uncommon（仅非普通）', (await POST(B + '/api/admin/settings', { token: TOKA, notifyLevel: 'uncommon' })).status === 200);
-  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
+  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
   await sleep(3800);
   await POST(B + '/api/fishing/stop', { token: TK2 });
   // 池子只有普通鲫鱼：uncommon 下不广播 feed，但钓者自己的 catch 一定到
@@ -406,14 +406,14 @@ function waitReady() {
 
   check('设为 all 后恢复广播', (await POST(B + '/api/admin/settings', { token: TOKA, notifyLevel: 'all' })).status === 200);
   const marker2 = Date.now();
-  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
+  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
   await sleep(3800);
   await POST(B + '/api/fishing/stop', { token: TK2 });
   check('all 下普通鱼重新进入动态', sink2.some(x => x.ev.type === 'feed' && x.ev.entry.who === '玩家二号' && x.t > marker2));
 
   check('设为 none（关闭动态）', (await POST(B + '/api/admin/settings', { token: TOKA, notifyLevel: 'none' })).status === 200);
   const marker3 = Date.now();
-  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
+  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
   await sleep(3800);
   await POST(B + '/api/fishing/stop', { token: TK2 });
   check('none 下钓者自己仍收到推送', sink2.some(x => x.ev.type === 'catch' && x.t > marker3));
@@ -502,8 +502,8 @@ function waitReady() {
   }
   // 钓场目录兜底接口：后进入/刷新的玩家可拿到含增益的最新目录
   const gPub = await GET(B + '/api/grounds');
-  check('GET /api/grounds 返回钓场目录', gPub.status === 200 && Array.isArray(gPub.data.grounds) && gPub.data.grounds.length === 4);
-  const gDock = gPub.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock');
+  check('GET /api/grounds 返回钓场目录', gPub.status === 200 && Array.isArray(gPub.data.grounds) && gPub.data.grounds.length === 1);
+  const gDock = gPub.data.grounds.find(g => g.id === 'map').spots.find(s => s.id === 'dock');
   check('/api/grounds 含钓点增益（⚡ 标记数据源）', Array.isArray(gDock.buffs) && gDock.buffs.length > 0, JSON.stringify(gDock.buffs));
 
   // ---------- 9c. 横幅队列 ----------
@@ -572,21 +572,21 @@ function waitReady() {
   check('validateOnly 只校验不落库', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 1234, validateOnly: true })).status === 200
     && (await GET(B + '/api/admin/world?token=' + TOKA)).data.castBaseMs === 3000);
   // 玩家二号在线开钓：基础 3000 → 4000ms 验证实际生效
-  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
+  await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
   const castSinkMark = sink2.length;
   check('设置基础 4000 / 最短 600 成功', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 4000, castMinMs: 600 })).status === 200);
   check('配置回读生效（4000 / 600）', (await GET(B + '/api/admin/world?token=' + TOKA)).data.castBaseMs === 4000);
   await sleep(400);
   check('间隔变更广播 castcfg 给游戏端', sink2.slice(castSinkMark).some(x => x.ev.type === 'castcfg' && x.ev.baseMs === 4000 && x.ev.minMs === 600),
     sink2.slice(castSinkMark).map(x => x.ev.type).join(','));
-  const reStart = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
+  const reStart = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
   check('按新基础间隔开钓（4000 × 0.8 钓点增益 = 3200ms）', reStart.data.interval === 3200, JSON.stringify(reStart.data));
   // 最短间隔限制：钓点 +20% 增益 + 组件 +25% = 45%，1000 × (1-0.45) = 550 → 应被 900ms 下限兜住
   const spdInst = 'reel_electric#common#spd+25';
   await POST(B + '/api/dev/catch', { token: TK2, item: { kind: 'component', id: spdInst } });
   await POST(B + '/api/bd/set', { token: TK2, part: 'reel', compId: spdInst });
   await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 1000, castMinMs: 900 });
-  const reStart2 = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
+  const reStart2 = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
   check('最短间隔兜住词缀+增益（1000 × 0.55 = 550 → 900ms）', reStart2.data.interval === 900, JSON.stringify(reStart2.data));
   // 恢复：卸下组件 + 默认间隔
   await POST(B + '/api/bd/set', { token: TK2, part: 'reel', compId: null });
@@ -741,12 +741,12 @@ function waitReady() {
   check('钓速上限超范围被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedCap: 150 })).status === 400);
   // dock 钓点在本文件第 2 节被加了 +20% 钓速增益；全服 +50% → 有效 70% → 3000 × 0.3 = 900ms
   check('设置全服钓速 +50% 成功', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 50 })).status === 200);
-  const spd1 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
+  const spd1 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'map', spotId: 'dock' });
   // 钓点钓速为最终乘算：3000 × (1-0.50) × (1-0.20) = 1200ms（旧的加算写法会得 900ms）
   check('全服钓速生效且钓点钓速乘算（3000×0.5×0.8=1200ms）', spd1.data.interval === 1200, JSON.stringify(spd1.data));
   // 上限截断：+200% 但上限 80% → 3000 × 0.2 = 600 → 最短间隔 800 兜底
   check('设置 +200% / 上限 80%', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 200, castSpeedCap: 80 })).status === 200);
-  const spd2 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
+  const spd2 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'map', spotId: 'dock' });
   check('钓速上限截断 + 最短间隔兜底（800ms）', spd2.data.interval === 800, JSON.stringify(spd2.data));
   await POST(B + '/api/fishing/stop', { token: TK2B });
   check('恢复默认钓速（0 / 80）', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 0, castSpeedCap: 80 })).status === 200);
@@ -754,7 +754,7 @@ function waitReady() {
   // ---------- 11b. 渔场与钓点增删（实时生效） ----------
   section('11b. 渔场与钓点增删 · 限时渔场 · 一键填充');
   check('非法渔场 ID 被拒 400', (await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'Bad-ID!', name: 'x' })).status === 400);
-  check('与内置渔场冲撞的 ID 被拒 400', (await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'stillwater', name: 'x' })).status === 400);
+  check('与内置钓场冲撞的 ID 被拒 400', (await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'map', name: 'x' })).status === 400);
   check('空名称被拒 400', (await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'qa_bay', name: '' })).status === 400);
   const gAdd = await POST(B + '/api/admin/ground/add', { token: TOKA, id: 'qa_bay', name: 'QA 湾', type: 'event', desc: '测试渔场', spotName: '浅滩', preset: 'big', fill: true });
   check('新建渔场成功且按「大物塘」预设填充（14 条）', gAdd.status === 200 && gAdd.data.ground.spots.length === 1 && gAdd.data.ground.spots[0].pool.length === 14, JSON.stringify(gAdd.data.ground && gAdd.data.ground.spots[0].pool.length));
@@ -779,31 +779,31 @@ function waitReady() {
   check('清除限时后可正常开钓（新渔场新钓点亮了）', openStart.status === 200 && openStart.data.interval > 0, JSON.stringify(openStart.data));
   await POST(B + '/api/fishing/stop', { token: TK2B });
   // 钓点增删
-  check('内置渔场新增钓点（一键填充材料工坊 11 条）', (await POST(B + '/api/admin/spot/add', { token: TOKA, groundId: 'stillwater', id: 'qa_spot', name: 'QA 钓点', preset: 'material', fill: true })).status === 200);
+  check('内置渔场新增钓点（一键填充材料工坊 11 条）', (await POST(B + '/api/admin/spot/add', { token: TOKA, groundId: 'map', id: 'qa_spot', name: 'QA 钓点', preset: 'material', fill: true })).status === 200);
   const grPub2 = await GET(B + '/api/grounds');
-  const stW = (grPub2.data.grounds || []).find(g => g.id === 'stillwater');
+  const stW = (grPub2.data.grounds || []).find(g => g.id === 'map');
   check('新钓点进入目录且池按预设填充', !!stW && stW.spots.some(s => s.id === 'qa_spot' && s.pool.length === 11));
-  check('同名钓点被拒 409', (await POST(B + '/api/admin/spot/add', { token: TOKA, groundId: 'stillwater', id: 'qa_spot', name: 'dup' })).status === 409);
-  check('钓点 ID 非法被拒 400', (await POST(B + '/api/admin/spot/add', { token: TOKA, groundId: 'stillwater', id: '9bad', name: 'x' })).status === 400);
-  check('删除自定义钓点', (await POST(B + '/api/admin/spot/remove', { token: TOKA, groundId: 'stillwater', spotId: 'qa_spot' })).status === 200);
+  check('同名钓点被拒 409', (await POST(B + '/api/admin/spot/add', { token: TOKA, groundId: 'map', id: 'qa_spot', name: 'dup' })).status === 409);
+  check('钓点 ID 非法被拒 400', (await POST(B + '/api/admin/spot/add', { token: TOKA, groundId: 'map', id: '9bad', name: 'x' })).status === 400);
+  check('删除自定义钓点', (await POST(B + '/api/admin/spot/remove', { token: TOKA, groundId: 'map', spotId: 'qa_spot' })).status === 200);
   const grPub3 = await GET(B + '/api/grounds');
-  check('删除后目录中不再有该钓点', !((grPub3.data.grounds || []).find(g => g.id === 'stillwater') || { spots: [] }).spots.some(s => s.id === 'qa_spot'));
+  check('删除后目录中不再有该钓点', !((grPub3.data.grounds || []).find(g => g.id === 'map') || { spots: [] }).spots.some(s => s.id === 'qa_spot'));
   // 内置钓点删除 → 可恢复
-  const stSpots = ((grPub3.data.grounds || []).find(g => g.id === 'stillwater') || { spots: [] }).spots;
+  const stSpots = ((grPub3.data.grounds || []).find(g => g.id === 'map') || { spots: [] }).spots;
   const victimSpot = stSpots[stSpots.length - 1].id;
-  check('删除内置钓点（标记可恢复）', (await POST(B + '/api/admin/spot/remove', { token: TOKA, groundId: 'stillwater', spotId: victimSpot })).status === 200);
-  check('恢复内置钓点', (await POST(B + '/api/admin/ground/restore', { token: TOKA, groundId: 'stillwater', spotId: victimSpot })).status === 200);
+  check('删除内置钓点（标记可恢复）', (await POST(B + '/api/admin/spot/remove', { token: TOKA, groundId: 'map', spotId: victimSpot })).status === 200);
+  check('恢复内置钓点', (await POST(B + '/api/admin/ground/restore', { token: TOKA, groundId: 'map', spotId: victimSpot })).status === 200);
   const grPub4 = await GET(B + '/api/grounds');
-  check('恢复后钓点回到目录', ((grPub4.data.grounds || []).find(g => g.id === 'stillwater') || { spots: [] }).spots.some(s => s.id === victimSpot));
-  check('恢复不存在的钓点被拒 404', (await POST(B + '/api/admin/ground/restore', { token: TOKA, groundId: 'stillwater', spotId: 'nope' })).status === 404);
+  check('恢复后钓点回到目录', ((grPub4.data.grounds || []).find(g => g.id === 'map') || { spots: [] }).spots.some(s => s.id === victimSpot));
+  check('恢复不存在的钓点被拒 404', (await POST(B + '/api/admin/ground/restore', { token: TOKA, groundId: 'map', spotId: 'nope' })).status === 404);
   // 渔场删除：自定义直接移除、内置可恢复
   check('删除自定义渔场', (await POST(B + '/api/admin/ground/remove', { token: TOKA, groundId: 'qa_bay' })).status === 200);
-  check('删除内置渔场（标记可恢复）', (await POST(B + '/api/admin/ground/remove', { token: TOKA, groundId: 'rapids' })).status === 200);
+  check('删除内置钓场（标记可恢复）', (await POST(B + '/api/admin/ground/remove', { token: TOKA, groundId: 'map' })).status === 200);
   const grPub5 = await GET(B + '/api/grounds');
-  check('删除后两个渔场都不在目录', !(grPub5.data.grounds || []).some(g => g.id === 'qa_bay' || g.id === 'rapids'), String((grPub5.data.grounds || []).length));
-  check('恢复内置渔场', (await POST(B + '/api/admin/ground/restore', { token: TOKA, groundId: 'rapids' })).status === 200);
+  check('删除后目录为空（qa_bay 与 map 都不在）', (grPub5.data.grounds || []).length === 0, String((grPub5.data.grounds || []).length));
+  check('恢复内置钓场', (await POST(B + '/api/admin/ground/restore', { token: TOKA, groundId: 'map' })).status === 200);
   const grPub6 = await GET(B + '/api/grounds');
-  check('恢复后内置渔场回到目录', (grPub6.data.grounds || []).some(g => g.id === 'rapids'));
+  check('恢复后内置钓场回到目录', (grPub6.data.grounds || []).some(g => g.id === 'map'));
   // 一键填充预设接口
   const pr = await POST(B + '/api/admin/pool/preset', { token: TOKA, preset: 'rare' });
   check('一键填充预设接口返回条目与说明', pr.status === 200 && pr.data.pool.length === 13 && !!pr.data.presets.rare);
@@ -812,16 +812,16 @@ function waitReady() {
 
   // ---------- 11e. 钓点独立上鱼率 / 速率（留空 = 全服默认） ----------
   section('11e. 钓点独立上鱼率 / 速率');
-  check('非法上鱼率被拒 400', (await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'stillwater', spotId: 'dock', biteRate: 120 })).status === 400);
-  check('非法间隔被拒 400', (await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'stillwater', spotId: 'dock', intervalMs: 10 })).status === 400);
-  check('非管理员被拒 403', (await POST(B + '/api/admin/spot/rate', { token: TK2B, groundId: 'stillwater', spotId: 'dock', biteRate: 50 })).status === 403);
-  check('不存在的钓点被拒 404', (await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'stillwater', spotId: 'nope', biteRate: 50 })).status === 404);
-  const sr1 = await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'stillwater', spotId: 'dock', biteRate: 100, intervalMs: 1500 });
+  check('非法上鱼率被拒 400', (await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'map', spotId: 'dock', biteRate: 120 })).status === 400);
+  check('非法间隔被拒 400', (await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'map', spotId: 'dock', intervalMs: 10 })).status === 400);
+  check('非管理员被拒 403', (await POST(B + '/api/admin/spot/rate', { token: TK2B, groundId: 'map', spotId: 'dock', biteRate: 50 })).status === 403);
+  check('不存在的钓点被拒 404', (await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'map', spotId: 'nope', biteRate: 50 })).status === 404);
+  const sr1 = await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'map', spotId: 'dock', biteRate: 100, intervalMs: 1500 });
   check('设置钓点独立上鱼率与间隔', sr1.status === 200 && sr1.data.biteRate === 100 && sr1.data.intervalMs === 1500, JSON.stringify(sr1.data));
   const srPub = await GET(B + '/api/grounds');
   const dockNow = (dockFind(srPub.data.grounds) || {}).spots.find(s => s.id === 'dock');
   check('钓点独立配置随目录下发（前端可见）', !!dockNow && dockNow.biteRate === 100 && dockNow.intervalMs === 1500, JSON.stringify(dockNow && { b: dockNow.biteRate, m: dockNow.intervalMs }));
-  const srStart = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
+  const srStart = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'map', spotId: 'dock' });
   check('钓点独立间隔生效（1500ms）', srStart.data.interval === 1500, JSON.stringify(srStart.data));
   check('castInfo 返回钓点独立上鱼率（100%）', !!(srStart.data.castInfo && srStart.data.castInfo.biteRate === 100 && srStart.data.castInfo.biteOverride === true), JSON.stringify(srStart.data.castInfo));
   const srMark = sink2b.length;
@@ -829,18 +829,18 @@ function waitReady() {
   check('上鱼率 100% 时每竿必上钩（9s 内 ≥2 条）', sink2b.slice(srMark).filter(x => x.ev.type === 'catch').length >= 2,
     String(sink2b.slice(srMark).filter(x => x.ev.type === 'catch').length));
   await POST(B + '/api/fishing/stop', { token: TK2B });
-  const srClear = await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'stillwater', spotId: 'dock', biteRate: '', intervalMs: '' });
+  const srClear = await POST(B + '/api/admin/spot/rate', { token: TOKA, groundId: 'map', spotId: 'dock', biteRate: '', intervalMs: '' });
   check('清除后恢复全服默认（返回 null）', srClear.status === 200 && srClear.data.biteRate == null && srClear.data.intervalMs == null, JSON.stringify(srClear.data));
   // 乘算证明：钓竿 +25% 与钓点 +20% → 3000×0.75×0.8 = 1800（加算会是 1650）
   const multInst = 'reel_electric#common#spd+25';
   await POST(B + '/api/dev/catch', { token: TK2B, item: { kind: 'component', id: multInst } });
   await POST(B + '/api/bd/set', { token: TK2B, part: 'reel', compId: multInst });
-  const multStart = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
+  const multStart = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'map', spotId: 'dock' });
   check('钓点钓速为最终乘算（3000×0.75×0.8=1800，非加算 1650）', multStart.data.interval === 1800, JSON.stringify(multStart.data));
   check('乘算明细随 castInfo 下发（spotMult 0.8）', !!(multStart.data.castInfo && multStart.data.castInfo.spotMult === 0.8 && multStart.data.castInfo.buffSpeed === 20), JSON.stringify(multStart.data.castInfo));
   await POST(B + '/api/bd/set', { token: TK2B, part: 'reel', compId: null });
   await POST(B + '/api/fishing/stop', { token: TK2B });
-  const srBack = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
+  const srBack = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'map', spotId: 'dock' });
   check('清除独立间隔后回到按钓速计算（2400ms）', srBack.data.interval === 2400, JSON.stringify(srBack.data));
   await POST(B + '/api/fishing/stop', { token: TK2B });
 
@@ -903,7 +903,7 @@ function waitReady() {
     && Math.abs(we0.data.priceCfg.saleDivisor - 0.0075) < 1e-9, JSON.stringify(we0.data.priceCfg));
   check('经济参数默认值下发到 world.priceDefaults', we0.data.priceDefaults && we0.data.priceDefaults.floorPct === 40);
   check('产出倍率默认全 100', we0.data.dropCfg.global === 100 && we0.data.dropCfg.material === 100, JSON.stringify(we0.data.dropCfg));
-  check('经济目录覆盖全部经济物品（40 鱼 + 7 材料 = 47）', (we0.data.economyCatalog || []).length === 47, String((we0.data.economyCatalog || []).length));
+  check('经济目录覆盖全部经济物品（51 鱼 + 9 材料 = 60）', (we0.data.economyCatalog || []).length === 60, String((we0.data.economyCatalog || []).length));
   check('/api/version 下发 priceCfg（前端商店文案用）', (await GET(B + '/api/version')).data.priceCfg.floorPct === 40);
   // 范围校验（越界一律 400）
   check('地板价越界被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, priceCfg: { floorPct: 5 } })).status === 400);
@@ -942,13 +942,13 @@ function waitReady() {
   // 产出倍率：大鱼 ×0 → 下发有效权重为 0（用未被其它用例改过池的 rapids:fall 断言）
   check('保存产出倍率（大鱼 0%）200', (await POST(B + '/api/admin/settings', { token: TOKA, dropCfg: { big: 0 } })).status === 200);
   const gEco = await GET(B + '/api/grounds');
-  const fallEco = gEco.data.grounds.find(g => g.id === 'rapids').spots.find(s => s.id === 'fall');
+  const fallEco = gEco.data.grounds.find(g => g.id === 'map').spots.find(s => s.id === 'falls');
   const wFish = id => (fallEco.pool.find(e => e.pick === 'fish:' + id) || {}).weight;
-  check('大鱼权重归零（fall 的 bass）', wFish('bass') === 0, JSON.stringify(fallEco.pool));
-  check('稀有鱼权重不受影响（fall 的 ghostray = 1）', wFish('ghostray') === 1, String(wFish('ghostray')));
-  check('材料权重不受影响（fall 的 lure = 10）', (fallEco.pool.find(e => e.pick === 'material:lure') || {}).weight === 10);
-  check('产出倍率改动不污染服务端原始权重', (await GET(B + '/api/admin/world?token=' + TOKA)).data.grounds.find(g => g.id === 'rapids').spots.find(s => s.id === 'fall')
-    .pool.find(e => e.pick === 'fish:bass').weight === 8);
+  check('大鱼权重归零（falls 的 catfish）', wFish('catfish') === 0, JSON.stringify(fallEco.pool));
+  check('稀有鱼权重不受影响（falls 的 ghostray = 2）', wFish('ghostray') === 2, String(wFish('ghostray')));
+  check('材料权重不受影响（falls 的 lure = 10）', (fallEco.pool.find(e => e.pick === 'material:lure') || {}).weight === 10);
+  check('产出倍率改动不污染服务端原始权重', (await GET(B + '/api/admin/world?token=' + TOKA)).data.grounds.find(g => g.id === 'map').spots.find(s => s.id === 'falls')
+    .pool.find(e => e.pick === 'fish:catfish').weight === 8);
   check('审计日志记录了经济改动', ((await GET(B + '/api/admin/world?token=' + TOKA)).data.economyLog || []).some(l => /价格参数|产出倍率|单品干预/.test(l.text)));
 
   // ---------- 持久化（重启服务器） ----------
@@ -966,7 +966,7 @@ function waitReady() {
   const cfgJson = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
   cfgJson.groundCfg = cfgJson.groundCfg || {};
   cfgJson.groundCfg.spots = cfgJson.groundCfg.spots || {};
-  cfgJson.groundCfg.spots['stillwater:deep'] = Object.assign({}, cfgJson.groundCfg.spots['stillwater:deep'],
+  cfgJson.groundCfg.spots['map:deep'] = Object.assign({}, cfgJson.groundCfg.spots['map:deep'],
     { buffs: [{ type: 'speed', value: 1000 }, { type: 'size', value: -400 }] });
   fs.writeFileSync(cfgPath, JSON.stringify(cfgJson));
   killTree(srv);
@@ -989,21 +989,21 @@ function waitReady() {
   // 注意：adm_p2 的密码在「8. 账号管理」中已被改为 new-secure-pass99
   check('普通账号仍无权限（adm_p2 已被撤销）', (await POST(B + '/api/admin/login', { username: 'adm_p2', password: 'new-secure-pass99' })).status === 403);
   const w2 = await GET(B + '/api/admin/world?token=' + TOKA2);
-  const dock2 = w2.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'dock');
+  const dock2 = w2.data.grounds.find(g => g.id === 'map').spots.find(s => s.id === 'dock');
   check('掉落池覆盖重启后仍在', dock2.pool.length === 1 && dock2.pool[0].pick === 'fish:crucian');
   check('增益重启后仍在', dock2.buffs && dock2.buffs[0].value === 20);
   check('上钩公式重启后仍在（100）', w2.data.biteFormula === '100');
   check('通知等级重启后仍在（none）', w2.data.notifyLevel === 'none');
-  check('钓场锁定重启后仍在（frostmoon 锁定）', w2.data.grounds.find(g => g.id === 'frostmoon').locked === true);
+  check('钓点锁定重启后仍在（ice 锁定）', w2.data.grounds[0].spots.find(s => s.id === 'ice').locked === true);
   check('基础双钓率重启后仍在（0.5）', w2.data.doubleBase === 0.5, String(w2.data.doubleBase));
   check('抛竿间隔重启后仍在（2500 / 700）', w2.data.castBaseMs === 2500 && w2.data.castMinMs === 700, JSON.stringify({ b: w2.data.castBaseMs, m: w2.data.castMinMs }));
   check('鱼类体型模型重启后仍在（skew）', w2.data.fishCfg && w2.data.fishCfg.sizeModel === 'skew', JSON.stringify(w2.data.fishCfg));
   check('经济参数重启后仍在（地板50 / 回升15分）', w2.data.priceCfg.floorPct === 50 && w2.data.priceCfg.riseTauMin === 15, JSON.stringify(w2.data.priceCfg));
   check('品质层覆盖重启后仍在（大鱼 3% / 30 分）', !!(w2.data.priceCfg.tiers && w2.data.priceCfg.tiers.big && w2.data.priceCfg.tiers.big.saleDivisor === 0.03));
   check('产出倍率重启后仍在（大鱼 0%）', w2.data.dropCfg.big === 0, JSON.stringify(w2.data.dropCfg));
-  check('产出倍率重启后仍下发有效权重（fall 大鱼为 0）', (await GET(B + '/api/grounds')).data.grounds.find(g => g.id === 'rapids').spots.find(s => s.id === 'fall')
-    .pool.find(e => e.pick === 'fish:bass').weight === 0);
-  const deepLegacy = w2.data.grounds.find(g => g.id === 'stillwater').spots.find(s => s.id === 'deep');
+  check('产出倍率重启后仍下发有效权重（falls 大鱼为 0）', (await GET(B + '/api/grounds')).data.grounds.find(g => g.id === 'map').spots.find(s => s.id === 'falls')
+    .pool.find(e => e.pick === 'fish:catfish').weight === 0);
+  const deepLegacy = w2.data.grounds.find(g => g.id === 'map').spots.find(s => s.id === 'deep');
   check('旧配置里超限的增益值被收敛到上限 100', deepLegacy.buffs.length === 2 && deepLegacy.buffs[0].value === 100 && deepLegacy.buffs[1].value === -100,
     JSON.stringify(deepLegacy.buffs));
   const keepG = (w2.data.grounds || []).find(g => g.id === 'qa_keep');

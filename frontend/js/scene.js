@@ -1,15 +1,15 @@
 /*
- * 网页钓鱼小游戏 - 场景背景层（PxScene）
+ * 网页钓鱼小游戏 - 渔场实况场景层（PxScene）
  * 零依赖 Canvas 渲染器：为钓鱼页 .px-scene 绘制代码生成的像素风场景 ——
  * 天空渐变 / 星空 / 月亮(太阳·极光) / 多层山脊视差 / 岸线树影 / 水面倒影(正弦波纹) / 氛围粒子。
  * 低分辨率离屏缓冲 + image-rendering:pixelated 放大，天然像素画质感；
- * 换背景只换调色板与地形种子，正式美术图就绪后可整体替换本层而不动游戏逻辑。
+ * 换渔场只换调色板与地形种子，正式美术图就绪后可整体替换本层而不动游戏逻辑。
  */
 window.PxScene = (function () {
   'use strict';
 
   // ---------- 工具 ----------
-  function mulberry32(seed) {           // 地形生成要稳定：同一背景每次进入长得一样
+  function mulberry32(seed) {           // 地形生成要稳定：同一渔场每次进入长得一样
     let a = seed >>> 0;
     return function () {
       a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -24,7 +24,7 @@ window.PxScene = (function () {
   }
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
-  // ---------- 各背景调色板 ----------
+  // ---------- 各渔场调色板 ----------
   // waterline：水面线（从顶部算起的高度比例），与 .px-scene-water 的 62% 水位一致
   const WATERLINE = 0.38;
   const PALETTES = {
@@ -85,10 +85,24 @@ window.PxScene = (function () {
       water: { top: '#1d3a5c', bottom: '#081426', streak: '#a8d4f0', amp: 0.8, speed: 0.8 },
       particle: 'snow',
     },
+    // 远洋：深夜深海 + 密星 + 荧光浮游（v0.19.0 出海；临时海域 sea:* 也映射到这份配色）
+    ocean: {
+      sky: ['#04091c', '#0a1830', '#12294a', '#1c3d63'],
+      stars: { n: 70, color: '#cfe4ff' },
+      moon: { x: 0.32, y: 0.16, r: 7, color: '#e8f2ff', glow: '#8fb8e8' },
+      ridges: [
+        { base: 0.28, amp: 0.05, color: '#0e2440', snow: null, depth: 0.15, seed: 1212 },
+        { base: 0.33, amp: 0.03, color: '#0a1c33', snow: null, depth: 0.32, seed: 1313 },
+      ],
+      shore: { color: '#061225', depth: 0.6 },
+      trees: { kind: 'none', n: 0, colors: [], depth: 0, seed: 1414 },
+      water: { top: '#0f2f52', bottom: '#030b1a', streak: '#9fd8ff', amp: 1.6, speed: 1.6 },
+      particle: 'sparkle',
+    },
   };
   const FALLBACK = 'stillwater';
 
-  // ---------- 场景构建（每个 背景×尺寸 缓存一份） ----------
+  // ---------- 场景构建（每个 渔场×尺寸 缓存一份） ----------
   function buildScene(pid, W, H) {
     const P = PALETTES[pid] || PALETTES[FALLBACK];
     const wl = Math.round(H * WATERLINE);
@@ -164,7 +178,7 @@ window.PxScene = (function () {
   }
 
   // ---------- 挂载与渲染 ----------
-  function mount(el, sceneId) {
+  function mount(el, groundId) {
     if (!el) return;
     // jsdom（测试环境）没有 Canvas：getContext 会抛 jsdomError，整层直接不挂
     if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) return;
@@ -205,20 +219,22 @@ window.PxScene = (function () {
         inst.io.observe(el);
       }
     }
-    setScene(inst, sceneId);
+    setGround(inst, groundId);
     if (!inst.raf) { inst.last = performance.now(); inst.raf = requestAnimationFrame(function f(now) { frame(el, inst, now); }); }
   }
 
-  function setScene(inst, sceneId) {
+  function setGround(inst, groundId) {
     if (inst.dead) return;
-    const pid = (sceneId && PALETTES[sceneId]) ? sceneId : FALLBACK;
+    // v0.19.0：临时海域（sea:* 前缀）与远洋共用深海配色
+    let pid = FALLBACK;
+    if (groundId) pid = groundId.indexOf('sea:') === 0 ? 'ocean' : (PALETTES[groundId] ? groundId : FALLBACK);
     if (inst.pid === pid) return;
     inst.pid = pid;
     resize(inst);
     loadImageFor(inst);
   }
 
-  // 手绘场景底图（assets/scene/<背景>.png）：有图就用图替代程序化山水，
+  // 手绘场景底图（assets/scene/<渔场>.png）：有图就用图替代程序化山水，
   // 水面倒影 / 波纹 / 粒子 / 视差继续实时演算；图加载失败自动回退程序化场景
   function loadImageFor(inst) {
     const P = PALETTES[inst.pid] || PALETTES[FALLBACK];
@@ -232,9 +248,9 @@ window.PxScene = (function () {
     inst.img = rec;
   }
 
-  function update(el, sceneId) {
-    if (!el || !el.__pxscene) { mount(el, sceneId); return; }
-    setScene(el.__pxscene, sceneId);
+  function update(el, groundId) {
+    if (!el || !el.__pxscene) { mount(el, groundId); return; }
+    setGround(el.__pxscene, groundId);
   }
 
   function resize(inst) {
@@ -423,7 +439,7 @@ window.PxScene = (function () {
         + Math.sin(y * 0.17 - t * 1.3 * spd) * amp * 0.6;
       c.drawImage(inst.world, 0, src, W, 1, shift, y, W, 1);
     }
-    // 水色罩层：让倒影沉入各背景自己的水色（手绘底图时罩层减淡，保留图里的倒影色彩）
+    // 水色罩层：让倒影沉入各渔场自己的水色（手绘底图时罩层减淡，保留图里的倒影色彩）
     c.fillStyle = inst.waterGradients[imgOk ? 1 : 0]; c.fillRect(0, wl, W, H - wl);
     // 水面高光碎波：几条流动的亮线
     for (let i = 0; i < 5; i++) {

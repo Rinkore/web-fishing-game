@@ -1,7 +1,7 @@
 /*
  * 网页钓鱼小游戏 - 静态数据（前后端共享，单一来源）
  * 浏览器经 <script> 加载挂到 window.GameData；后端 require 得到同一对象（UMD）。
- * 钓点 / 渔获 / 组件底材与词缀池 / 品质定义只有这一份，服务器掷骰与前端展示共用。
+ * 钓场 / 钓点 / 渔获 / 组件底材与词缀池 / 品质定义只有这一份，服务器掷骰与前端展示共用。
  *
  * 组件模型（v0.8 大改）：
  *   底材（base）—— 组件模板，定义部位、基准价与「可拥有词缀池」（每条词缀含数值区间）。
@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.18.0';
+  const VERSION = 'v0.19.0';
   const BUILD = '2026-09-19';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -48,6 +48,10 @@
       { id: 'riverperch', name: '河鲈', rarity: 'common', price: 12, size: [15, 40] },
       { id: 'culter', name: '翘嘴鲌', rarity: 'common', price: 18, size: [25, 60] },
       { id: 'blackcarp', name: '青鱼', rarity: 'common', price: 20, size: [40, 100] },
+      { id: 'mullet', name: '鲻鱼', rarity: 'common', price: 9, size: [12, 35] },
+      { id: 'jackmack', name: '竹荚鱼', rarity: 'common', price: 10, size: [12, 30] },
+      { id: 'squid', name: '小鱿鱼', rarity: 'common', price: 12, size: [10, 30] },
+      { id: 'octo', name: '小章鱼', rarity: 'common', price: 14, size: [10, 35] },
     ],
     big: [
       { id: 'catfish', name: '巨型鲶鱼', rarity: 'rare', price: 120, size: [80, 220] },
@@ -64,6 +68,10 @@
       { id: 'rubysnapper', name: '金目鲷', rarity: 'epic', price: 280, size: [55, 140] },
       { id: 'sunfish', name: '翻车鱼', rarity: 'epic', price: 300, size: [150, 300] },
       { id: 'arapaima', name: '巨骨舌鱼', rarity: 'epic', price: 350, size: [180, 330] },
+      { id: 'mahimahi', name: '鬼头刀', rarity: 'rare', price: 200, size: [70, 160] },
+      { id: 'amberjack', name: '鰤鱼', rarity: 'rare', price: 190, size: [60, 150] },
+      { id: 'halibut', name: '大比目鱼', rarity: 'epic', price: 270, size: [80, 200] },
+      { id: 'giantquid', name: '巨型鱿鱼', rarity: 'epic', price: 330, size: [150, 400] },
     ],
     rare: [
       { id: 'koi', name: '黄金锦鲤', rarity: 'rare', price: 400, size: [40, 110] },
@@ -76,6 +84,9 @@
       { id: 'dragonfish', name: '深海龙鱼', rarity: 'rare', price: 500, size: [50, 120] },
       { id: 'swordfish', name: '剑鱼', rarity: 'rare', price: 520, size: [180, 380] },
       { id: 'bluefin', name: '蓝鳍金枪鱼', rarity: 'rare', price: 560, size: [130, 300] },
+      { id: 'coelacanth', name: '腔棘鱼', rarity: 'rare', price: 600, size: [100, 220] },
+      { id: 'megamouth', name: '巨口鲨', rarity: 'rare', price: 700, size: [250, 500] },
+      { id: 'leviathan', name: '海王·利维坦', rarity: 'rare', price: 900, size: [300, 800] },
     ],
   };
 
@@ -90,6 +101,9 @@
     { id: 'tide_sand', name: '潮汐砂', rarity: 'rare', price: 260, size: null },
     { id: 'dragon_scale', name: '龙鳞碎屑', rarity: 'epic', price: 720, size: null },
     { id: 'dragonpearl', name: '龙宫宝珠', rarity: 'epic', price: 600, size: null },
+    // v0.19.0 远洋：海图碎片（远洋掉落 / 随机事件，3 片合成 1 张未知海图）与深海鳞片（船升级材料）
+    { id: 'chartfrag', name: '海图碎片', rarity: 'rare', price: 120, size: null },
+    { id: 'deepscale', name: '深海鳞片', rarity: 'rare', price: 180, size: null },
   ];
 
   // 稀有度基准价倍率（无独立 price 时兜底；仅用于渔获/材料）
@@ -612,31 +626,35 @@
   function rollComponentQuality() {
     return weightedKey(componentCfg.qualityWeights, 'common');
   }
-  // 数值 roll 模型：取出 [0,1] 上的随机位置，供词缀数值与鱼类体型共用
-  function rollRatio(model) {
+  // 数值 roll 模型：取出 [0,1] 上的随机位置，供词缀数值与鱼类体型共用。
+  // rng 可注入：正式服务端默认仍用 Math.random；Wiki 批量模拟用带种子随机数保证可复现。
+  function rollRatioWithRng(model, rng) {
+    const rand = typeof rng === 'function' ? rng : Math.random;
     if (model === 'normal') {
       // 正态：均值居中、标准差取 1/6，截断在 [0,1]
-      const u1 = Math.random() || 1e-9, u2 = Math.random();
+      const u1 = rand() || 1e-9, u2 = rand();
       const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
       return Math.max(0, Math.min(1, 0.5 + z / 6));
     }
-    if (model === 'skew') return Math.pow(Math.random(), 2); // 偏态：偏向低值（平方分布）
-    return Math.random();
+    if (model === 'skew') return Math.pow(rand(), 2); // 偏态：偏向低值（平方分布）
+    return rand();
   }
+  function rollRatio(model) { return rollRatioWithRng(model, Math.random); }
   // 数值 roll：在 [min,max] 内按模型取值（整数）
   // 0 值词条无意义（+0% 加成）：roll 到 0 会被拒绝并重 roll 一次；
   // 若两次都为 0（区间跨越 0 时仍可能），落到区间内最近的 ±1，保证不产生 0 值词条。
-  function rollAffixValue(min, max, model) {
+  function rollAffixValueWithRng(min, max, model, rng) {
     if (max <= min) return min;
     const span = max - min;
     function draw() {
-      return min + Math.round(rollRatio(model) * span);
+      return min + Math.round(rollRatioWithRng(model, rng) * span);
     }
     let v = draw();
     if (v === 0) v = draw();
     if (v === 0) v = max > 0 ? 1 : (min < 0 ? -1 : 0);
     return v;
   }
+  function rollAffixValue(min, max, model) { return rollAffixValueWithRng(min, max, model, Math.random); }
   // 某底材某词缀的实际数值区间（管理后台可覆盖）
   function affixRangeOf(baseId, affix) {
     const ov = componentCfg.affixRanges && componentCfg.affixRanges[baseId];
@@ -689,11 +707,14 @@
     const db = Math.min(Math.abs(b - min), Math.abs(b - max));
     return db < da ? b : a; // 并列时取第一次（保持可复现的确定性）
   }
-  function rollAffixValueBoundary(min, max, model) {
+  function rollAffixValueBoundaryWithRng(min, max, model, rng) {
     if (max <= min) return min;
-    const a = rollAffixValue(min, max, model);
-    const b = rollAffixValue(min, max, model);
+    const a = rollAffixValueWithRng(min, max, model, rng);
+    const b = rollAffixValueWithRng(min, max, model, rng);
     return nearerBoundaryOf(a, b, min, max);
+  }
+  function rollAffixValueBoundary(min, max, model) {
+    return rollAffixValueBoundaryWithRng(min, max, model, Math.random);
   }
 
   // 宝匣突破件（「海王遗匣」专属）：品质锁定神话，词缀可越过底材池边界。
@@ -824,6 +845,128 @@
       if (!isFinite(f(probe))) throw new Error('公式结果不是有限数');
       return { ok: true, fn: f };
     } catch (e) { return { error: e.message || '公式无效' }; }
+  }
+
+  // ---- 抛竿 / 上鱼 / 双钓共享计算（服务端正式路径与 Wiki 模拟器共用） ----
+  // rules = { cast: {baseMs,minMs,speedBonus,speedCap}, biteFormula, doubleBase }
+  const SIM_VAR_NAMES = ['speed', 'skill', 'big', 'rare', 'material', 'size', 'double', 'interval'];
+  function simulationRulesOf(rules) {
+    const r = rules || {};
+    const c = r.cast || {};
+    const num = function (v, def, min, max) {
+      const n = Number(v);
+      return (isFinite(n) && n >= min && n <= max) ? n : def;
+    };
+    return {
+      cast: {
+        baseMs: num(c.baseMs, 3000, 200, 3600000),
+        minMs: num(c.minMs, 800, 100, 3600000),
+        speedBonus: num(c.speedBonus, 0, -100, 500),
+        speedCap: num(c.speedCap, 80, 0, 100),
+      },
+      biteFormula: r.biteFormula == null ? 'clamp(90 + skill, 0, 100)' : String(r.biteFormula),
+      doubleBase: num(r.doubleBase, 0, 0, 1),
+    };
+  }
+  function rodEffectsOf(bd) {
+    const eff = { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 };
+    ROD_PARTS.forEach(function (part) {
+      const comp = componentOf(bd && bd[part.key] && bd[part.key].compId);
+      if (!comp) return;
+      comp.affixes.forEach(function (a) { if (eff[a.type] != null) eff[a.type] += a.value; });
+    });
+    return eff;
+  }
+  function spotSpeedOf(spot) {
+    let v = 0;
+    ((spot && spot.buffs) || []).forEach(function (b) { if (b && b.type === 'speed') v += Number(b.value) || 0; });
+    return v;
+  }
+  function spotBiteRateOf(spot) {
+    const v = spot && spot.biteRate;
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return isFinite(n) ? Math.max(0, Math.min(100, n)) : null;
+  }
+  function effectiveSpeedOf(eff, cast) {
+    const raw = (Number(eff && eff.speed) || 0) + (Number(cast && cast.speedBonus) || 0);
+    const cap = Number(cast && cast.speedCap) || 80;
+    return Math.max(0, Math.min(cap, raw));
+  }
+  function castIntervalOf(bd, spot, rules) {
+    const r = simulationRulesOf(rules);
+    const fixed = spot && spot.intervalMs;
+    if (fixed != null && fixed !== '') {
+      const n = Number(fixed);
+      if (isFinite(n) && n >= 100) return Math.round(n);
+    }
+    const bdEff = rodEffectsOf(bd);
+    const rodMs = r.cast.baseMs * (1 - effectiveSpeedOf({ speed: bdEff.speed }, r.cast) / 100);
+    const spotPct = Math.max(-100, Math.min(95, spotSpeedOf(spot)));
+    const ms = rodMs * (1 - spotPct / 100);
+    return Math.max(r.cast.minMs, Math.round(ms));
+  }
+  function mergedEffectsOf(bd, spot) {
+    const eff = rodEffectsOf(bd);
+    ((spot && spot.buffs) || []).forEach(function (b) {
+      if (b && eff[b.type] != null) eff[b.type] += Number(b.value) || 0;
+    });
+    return eff;
+  }
+  function biteProbabilityOf(eff, interval, spot, formula) {
+    const override = spotBiteRateOf(spot);
+    if (override != null) return override;
+    const src = String(formula == null ? '' : formula).trim();
+    if (!src) return 100;
+    const c = compileExpr(src, SIM_VAR_NAMES);
+    if (!c.ok) return 100; // 与服务端历史保底行为一致；正常保存路径已校验。
+    let p;
+    try {
+      p = c.fn({ speed: eff.speed || 0, skill: eff.skill || 0, big: 0, rare: eff.rare || 0,
+        material: eff.material || 0, size: eff.size || 0, double: eff.double || 0, interval: interval || 0 });
+    } catch (e) { return 100; }
+    if (!isFinite(p)) p = p > 0 ? 100 : 0;
+    return Math.min(100, Math.max(0, p));
+  }
+  function castInfoOf(bd, spot, rules) {
+    const r = simulationRulesOf(rules);
+    const bdEff = rodEffectsOf(bd);
+    const eff = mergedEffectsOf(bd, spot);
+    const spotPct = spotSpeedOf(spot);
+    const rodEff = effectiveSpeedOf({ speed: bdEff.speed }, r.cast);
+    const interval = castIntervalOf(bd, spot, r);
+    const override = spotBiteRateOf(spot);
+    const biteRate = override != null ? override : Math.round(biteProbabilityOf(eff, interval, spot, r.biteFormula) * 10) / 10;
+    return {
+      baseMs: r.cast.baseMs, minMs: r.cast.minMs, globalBonus: r.cast.speedBonus, cap: r.cast.speedCap,
+      affixSpeed: bdEff.speed, buffSpeed: spotPct, rawSpeed: Math.round(rodEff * 10) / 10,
+      effSpeed: Math.round(rodEff * 10) / 10,
+      spotMult: Math.round((1 - Math.max(-100, Math.min(95, spotPct)) / 100) * 1000) / 1000,
+      intervalMs: spot && spot.intervalMs != null && spot.intervalMs !== '' ? Math.round(Number(spot.intervalMs)) : null,
+      interval: interval, biteRate: biteRate, biteOverride: override != null,
+    };
+  }
+  function doubleProbOf(A, doubleBase) {
+    const a = Math.max(0, Number(A) || 0);
+    let p = a / (a + 100);
+    const b = Math.max(0, Math.min(1, Number(doubleBase) || 0));
+    if (b > 0) p = 1 - (1 - b) * (1 - p);
+    return Math.max(0, Math.min(1, p));
+  }
+  function simulateRodPlan(bd, spot, rules) {
+    const r = simulationRulesOf(rules);
+    const info = castInfoOf(bd, spot, r);
+    const eff = mergedEffectsOf(bd, spot);
+    const interval = info.interval;
+    const bite = info.biteRate;
+    const A = Math.max(0, Number(eff.double) || 0);
+    const pDouble = A / (A + 100);
+    const P = 1 - (1 - r.doubleBase) * (1 - pDouble);
+    const perCast = 1 + P + P * P;
+    const castsPerHour = interval > 0 ? 3600000 / interval : 0;
+    const fishPerHour = castsPerHour * (bite / 100) * perCast;
+    return { info: info, eff: eff, interval: interval, bite: bite, doubleP: P * 100,
+      perCast: perCast, castsPerHour: castsPerHour, fishPerHour: fishPerHour };
   }
 
   // ---- 工坊 · 熔炼 ----
@@ -1197,6 +1340,168 @@
     try { v = Number(fn({ breakthrough: bt })); } catch (e) { v = 0; }
     if (!isFinite(v)) v = 0;
     return Math.max(0, Math.min(100, Math.round(v * 10) / 10));
+  }
+
+
+  // ---- 熔炼方案与结果模拟（服务端正式路径与 Wiki 模拟器共用） ----
+  // d = { mainId, subId, mainAffix, subAffix, materials, relics }
+  // 这里只做纯规则校验与预览，不检查背包、金币或装备锁定；调用方负责资产校验与结算。
+  function smeltPlanOf(d) {
+    const cfg = getSmeltCfg();
+    const mainRaw = String((d && d.mainId) || '');
+    const subRaw = String((d && d.subId) || '');
+    const mainMeta = componentOf(mainRaw);
+    const subMeta = componentOf(subRaw);
+    const partName = function (key) {
+      const p = ROD_PARTS.find(function (x) { return x.key === key; });
+      return p ? p.name : String(key || '?');
+    };
+    const materialName = function (id) {
+      const m = MATERIALS.find(function (x) { return x.id === id; });
+      return m ? m.name : id;
+    };
+    if (!mainMeta || !isInstance(mainRaw)) return { error: '主组件必须是已生成的组件实例' };
+    if (!subMeta || !isInstance(subRaw)) return { error: '副组件必须是已生成的组件实例' };
+    if (mainMeta.part !== subMeta.part) {
+      return { error: '主件与副件必须是同一部位的组件（当前：' + partName(mainMeta.part) + ' / ' + partName(subMeta.part) + '）' };
+    }
+    const mainAffix = mainMeta.affixes.find(function (a) { return a.type === d.mainAffix; });
+    const subAffix = subMeta.affixes.find(function (a) { return a.type === d.subAffix; });
+    if (!mainAffix) return { error: '请选择主组件上的一条词条' };
+    if (!subAffix) return { error: '请选择副组件上的一条词条' };
+    if (mainAffix.type === subAffix.type) return { error: '主副选中的词条类型不能相同（熔炼后两条词条会合成同一条）' };
+
+    const maxM = Math.max(0, Math.floor(Number(cfg.maxMaterials) || 0));
+    const list = Array.isArray(d.materials) ? d.materials : [];
+    const matList = [];
+    let pearl = !!(d && d.pearl);
+    let pearlQty = 0;
+    let total = 0;
+    const types = {};
+    for (const e of list) {
+      const id = String((e && e.id) || '');
+      const qty = e && e.qty;
+      if (matList.some(function (x) { return x.id === id; })) return { error: '投料物品重复' };
+      if (id === SMELT_PEARL) { pearl = true; pearlQty += qty; continue; }
+      if (!smeltMaterialAffix(id)) return { error: '「' + materialName(id) + '」不是熔炼材料' };
+      matList.push({ id: id, qty: qty });
+      types[smeltMaterialAffix(id)] = 1;
+      total += Math.max(0, Math.floor(Number(qty) || 0));
+    }
+    if (pearlQty > 1) return { error: '龙宫宝珠一次最多投入 1 个' };
+    if (total > maxM) return { error: '投料最多 ' + maxM + ' 份（当前 ' + total + ' 份）' };
+    if (Object.keys(types).length > cfg.maxTypes) return { error: '投料最多 ' + cfg.maxTypes + ' 种（当前 ' + Object.keys(types).length + ' 种）' };
+
+    const consume = matList.slice();
+    if (pearl) consume.push({ id: SMELT_PEARL, qty: 1 });
+    const relicId = 'relic';
+    const relicMax = Math.max(0, Math.min(99, Math.floor(Number(cfg.retainMaxRelic) || 0)));
+    const relicQty = d && d.relics === undefined ? 0 : d.relics;
+    if (!isFinite(Number(relicQty)) || Number(relicQty) < 0 || Math.floor(Number(relicQty)) !== Number(relicQty)) {
+      return { error: '残片数量需为不小于 0 的整数' };
+    }
+    if (relicQty > relicMax) return { error: '残片超过单次投入上限' };
+    const extraAffixes = smeltExtraAffixesOf(mainMeta.baseId, mainMeta.affixes);
+    if (relicQty > 0) {
+      if (!canRecast(mainMeta)) {
+        return { error: '只有海王遗匣产出的神话主件才能加入' + materialName(relicId) + '（当前：' + mainMeta.qualityName + '品质）' };
+      }
+      if (!extraAffixes.length) return { error: '该主件没有池外词缀，投入' + materialName(relicId) + '没有可保留的词条' };
+      consume.push({ id: relicId, qty: relicQty });
+    }
+
+    const load = smeltLoadOf(matList);
+    const afterTypes = [mainAffix.type, subAffix.type];
+    let extraType = null;
+    if (load.total > 0) {
+      extraType = load.dominant;
+      const addable = smeltAddableAffixes(mainMeta.baseId, afterTypes);
+      if (!extraType || addable.indexOf(extraType) < 0) {
+        const already = extraType ? afterTypes.indexOf(extraType) >= 0 : false;
+        return { error: '投料对应的词缀「' + (AFFIX_LABEL[extraType] || extraType || '?') + '」无法补进该主件（' + (already ? '熔炼结果里已经有这条词缀了' : '主件词缀池里已经没有可补的该类词缀') + '）' };
+      }
+      if (afterTypes.length + 1 > smeltAddAffixCap()) {
+        return { error: '补缀后词条数会超过上限（当前 ' + afterTypes.length + ' 条 +1 > 上限 ' + smeltAddAffixCap() + ' 条，可在后台「⚒ 工坊配置」调整）' };
+      }
+    }
+    const rates = smeltRatesOf(load, pearl);
+    const gold = smeltGoldOf(load, pearl);
+    const rrMain = smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'main', mainAffix.type, { part: mainMeta.part, src: mainAffix.src, srcExplicit: mainAffix.srcExplicit });
+    const rrSub = smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'sub', subAffix.type, { part: mainMeta.part, src: subAffix.src, srcExplicit: subAffix.srcExplicit });
+    const rrAdd = extraType ? smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'add', extraType, { part: mainMeta.part }) : null;
+    const breakthrough = breakthroughCountOf(mainMeta.affixes);
+    return {
+      ok: true, cfg: cfg, mainId: mainMeta.id, subId: subMeta.id,
+      mainMeta: mainMeta, subMeta: subMeta, mainAffix: mainAffix, subAffix: subAffix,
+      materials: matList, consume: consume, load: load, pearl: pearl,
+      extraType: extraType, rates: rates, gold: gold,
+      rollBoundary: !!(pearl && cfg.pearlRollTwice),
+      relicId: relicId, relics: relicQty, extraAffixes: extraAffixes,
+      protectAffix: relicQty > 0, breakthrough: breakthrough,
+      retainChance: smeltRetainChance(relicQty, breakthrough),
+      perRelic: retainChancePerRelic(breakthrough),
+      retainFormula: String(cfg.retainFormula || ''),
+      ranges: {
+        main: rrMain.range, sub: rrSub.range, add: rrAdd ? rrAdd.range : null,
+        mainSrc: rrMain.src, subSrc: rrSub.src, addSrc: rrAdd ? rrAdd.src : null,
+        mainExplicit: rrMain.explicit, subExplicit: rrSub.explicit, addExplicit: rrAdd ? rrAdd.explicit : false,
+      },
+    };
+  }
+
+  function smeltRollWithRng(range, useBoundary, rng) {
+    const model = (getComponentCfg() || {}).rollModel || 'linear';
+    return useBoundary
+      ? rollAffixValueBoundaryWithRng(range[0], range[1], model, rng)
+      : rollAffixValueWithRng(range[0], range[1], model, rng);
+  }
+
+  // 模拟一次熔炼。不修改任何资产；服务端正式接口与 Wiki 模拟器都调用本函数。
+  // rng 可注入，默认 Math.random；Wiki 批量模拟使用带种子的随机数保证可复现。
+  function simulateSmeltPlan(plan, rng) {
+    const rand = typeof rng === 'function' ? rng : Math.random;
+    const p = plan || {};
+    const success = rand() * 100 < p.rates.rate;
+    let extraOk = false, retainOk = false;
+    const retained = [];
+    let resultId = null, result = null, mainAfterId = null, mainAfter = null;
+    if (success) {
+      const rr = p.ranges || {};
+      const affixes = [];
+      affixes.push({ type: p.mainAffix.type, value: smeltRollWithRng(rr.main, p.rollBoundary, rand), src: rr.mainSrc, srcExplicit: rr.mainExplicit });
+      affixes.push({ type: p.subAffix.type, value: smeltRollWithRng(rr.sub, p.rollBoundary, rand), src: rr.subSrc, srcExplicit: rr.subExplicit });
+      if (p.extraType) {
+        extraOk = rand() * 100 < p.rates.extraRate;
+        if (extraOk) affixes.push({ type: p.extraType, value: smeltRollWithRng(rr.add, p.rollBoundary, rand), src: rr.addSrc, srcExplicit: rr.addExplicit });
+      }
+      if (p.relics > 0) {
+        retainOk = rand() * 100 < p.retainChance;
+        if (retainOk) {
+          const have = {};
+          affixes.forEach(function (a) { have[a.type] = 1; });
+          (p.extraAffixes || []).forEach(function (a) {
+            if (have[a.type]) return;
+            have[a.type] = 1;
+            affixes.push({ type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit });
+            retained.push({ type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit });
+          });
+        }
+      }
+      resultId = instanceId(p.mainMeta.baseId, p.mainMeta.quality, affixes);
+      result = componentOf(resultId);
+    } else {
+      const left = (p.mainMeta && p.mainMeta.affixes || [])
+        .filter(function (a) { return p.protectAffix || a.type !== p.mainAffix.type; })
+        .map(function (a) { return { type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit }; });
+      mainAfterId = instanceId(p.mainMeta.baseId, p.mainMeta.quality, left);
+      mainAfter = componentOf(mainAfterId);
+    }
+    return {
+      success: success, extraOk: extraOk, retainOk: retainOk, retained: retained,
+      protectAffix: !success && !!p.protectAffix,
+      removedAffix: (success || p.protectAffix) ? null : p.mainAffix.type,
+      resultId: resultId, result: result, mainAfterId: mainAfterId, mainAfter: mainAfter,
+    };
   }
 
   // ---- 重铸（海王遗匣产出的神话件）----
@@ -1635,90 +1940,181 @@
     return null;
   }
 
-  // ---- 钓点（世界地图扁平目录）----
-  // v0.18：取消「渔场 → 钓点」两级玩法层级。玩家只选择地图上的具体钓点。
+  // ---- 钓场 ----
+  // 普通钓场常驻；活动钓场为 locked 占位。
   // pool 条目：{ pick: 'fish:<id>' | 'material:<id>' | 'component', weight }
   function p(type, id, weight) { return { pick: type + ':' + id, weight: weight }; }
 
-  const SPOTS = [
-    { id: 'morning_dock', name: '晨雾木栈', pos: [61, 34], icon: 'dock', desc: '木栈新手点；诱饵包', pool: [
-      p('fish', 'crucian', 28), p('fish', 'white', 18), p('fish', 'carp', 14),
-      p('fish', 'minnow', 12), p('fish', 'bream', 8), p('fish', 'koi', 2),
-      p('material', 'bait_pack', 10), p('component', '', 8),
-    ] },
-    { id: 'reed_shallows', name: '芦苇浅滩', pos: [68, 61], icon: 'reed', desc: '芦苇纤维；耐磨绳', pool: [
-      p('fish', 'grass', 24), p('fish', 'white', 16), p('fish', 'crucian', 12),
-      p('fish', 'loach', 12), p('fish', 'yellowcat', 10), p('fish', 'bream', 6),
-      p('material', 'rope', 12), p('component', '', 8),
-    ] },
-    { id: 'lake_light_pool', name: '湖心光潭', pos: [74, 48], icon: 'deep', desc: '深湖反光；反光假饵', pool: [
-      p('fish', 'carp', 20), p('fish', 'bighead', 14), p('fish', 'silvercarp', 12),
-      p('fish', 'blackcarp', 10), p('fish', 'bass', 8), p('fish', 'catfish', 6),
-      p('fish', 'sturgeon', 4), p('fish', 'arapaima', 3), p('fish', 'moonkoi', 2),
-      p('fish', 'voltaiceel', 1), p('material', 'lure', 10), p('component', '', 10),
-    ] },
-    { id: 'snow_fall_pool', name: '雪瀑寒潭', pos: [83, 20], icon: 'fall', desc: '瀑布寒潭；反光假饵', pool: [
-      p('fish', 'riverperch', 18), p('fish', 'culter', 14), p('fish', 'carp', 10),
-      p('fish', 'yellowcheek', 8), p('fish', 'mandarin', 8), p('fish', 'blackbass', 6),
-      p('fish', 'catfish', 5), p('fish', 'sturgeon', 5), p('fish', 'white', 2),
-      p('fish', 'ghostray', 2), p('material', 'lure', 12), p('component', '', 10),
-    ] },
-    { id: 'white_stone_rapids', name: '白石急滩', pos: [77, 34], icon: 'shoal', desc: '乱石急流；耐磨绳', pool: [
-      p('fish', 'white', 20), p('fish', 'riverperch', 16), p('fish', 'culter', 14),
-      p('fish', 'crucian', 8), p('fish', 'minnow', 8), p('fish', 'blackbass', 8),
-      p('fish', 'yellowcheek', 6), p('material', 'rope', 12), p('component', '', 8),
-    ] },
-    { id: 'stone_bridge_eddy', name: '石桥回水湾', pos: [69, 47], icon: 'eddy', desc: '桥下缓流；诱饵包', pool: [
-      p('fish', 'carp', 20), p('fish', 'crucian', 16), p('fish', 'yellowcat', 12),
-      p('fish', 'grass', 10), p('fish', 'culter', 8), p('fish', 'white', 6),
-      p('fish', 'bream', 6), p('fish', 'arowana', 2),
-      p('material', 'bait_pack', 12), p('component', '', 8),
-    ] },
-    { id: 'estuary_tide_shoal', name: '河口潮汐沙洲', pos: [62, 54], icon: 'beach', desc: '咸淡水交界；潮汐砂', pool: [
-      p('fish', 'tilapia', 20), p('fish', 'sardine', 16), p('fish', 'croaker', 14),
-      p('fish', 'white', 10), p('fish', 'bream', 7), p('fish', 'seabass', 8),
-      p('fish', 'pearl', 3), p('material', 'tide_sand', 14), p('component', '', 8),
-    ] },
-    { id: 'golden_sand_bay', name: '金沙湾', pos: [42, 71], icon: 'beach', desc: '沙滩补给；诱饵包', pool: [
-      p('fish', 'tilapia', 21), p('fish', 'sardine', 18), p('fish', 'croaker', 14),
-      p('fish', 'white', 10), p('fish', 'bream', 10), p('fish', 'sunfish', 4),
-      p('fish', 'pearl', 3), p('material', 'bait_pack', 12), p('component', '', 8),
-    ] },
-    { id: 'lighthouse_breakwater', name: '灯塔防波堤', pos: [35, 30], icon: 'pier', desc: '灯塔外海；反光假饵', pool: [
-      p('fish', 'seabass', 14), p('fish', 'croaker', 12), p('fish', 'sardine', 12),
-      p('fish', 'mackerel', 12), p('fish', 'tuna', 10), p('fish', 'cobia', 8),
-      p('fish', 'bluefin', 4), p('fish', 'swordfish', 3), p('fish', 'pearl', 3),
-      p('material', 'lure', 14), p('component', '', 8),
-    ] },
-    { id: 'tide_atoll', name: '潮汐环礁', pos: [25, 55], icon: 'reef', desc: '环礁潮池；潮汐砂', pool: [
-      p('fish', 'tilapia', 12), p('fish', 'sardine', 14), p('fish', 'croaker', 12),
-      p('fish', 'white', 8), p('fish', 'bream', 8), p('fish', 'seabass', 12),
-      p('fish', 'mackerel', 8), p('fish', 'cobia', 6), p('fish', 'sunfish', 3),
-      p('fish', 'pearl', 3), p('material', 'tide_sand', 14),
-    ] },
-    { id: 'dragon_ridge_trench', name: '龙脊海沟', pos: [12, 37], icon: 'deep', desc: '终局深海；龙鳞与宝珠', pool: [
-      p('fish', 'grouper', 12), p('fish', 'rubysnapper', 10), p('fish', 'tuna', 10),
-      p('fish', 'mackerel', 8), p('fish', 'cobia', 8), p('fish', 'seabass', 6),
-      p('fish', 'sunfish', 4), p('fish', 'dragonfish', 8), p('fish', 'swordfish', 5),
-      p('fish', 'bluefin', 4), p('fish', 'sturgeon', 6), p('fish', 'arapaima', 4),
-      p('material', 'dragon_scale', 8), p('material', 'dragonpearl', 2), p('component', '', 5),
-    ] },
-    { id: 'shipwreck_reef', name: '沉船残礁', pos: [18, 79], icon: 'reef', desc: '终局残骸；沉船残片', pool: [
-      p('fish', 'grouper', 12), p('fish', 'rubysnapper', 10), p('fish', 'tuna', 10),
-      p('fish', 'mackerel', 8), p('fish', 'cobia', 8), p('fish', 'seabass', 6),
-      p('fish', 'sunfish', 4), p('fish', 'dragonfish', 6), p('fish', 'swordfish', 4),
-      p('fish', 'bluefin', 4), p('material', 'relic', 8), p('material', 'rope', 8),
-      p('component', '', 12),
-    ] },
+  // v0.19.0 世界地图重构：取消「钓场」分层，钓点直接铺在世界地图上。
+  // 兼容说明：服务端 / 存档仍以「钓场」为内部容器（presence、续钓、广播都按 groundId 走），
+  // 这里只输出唯一一个**隐式钓场 'map'**，玩家端看到的就是一张地图 + 一组钓点。
+  // 钓点字段：pos = 地图宽高百分比；map: 'voyage' = 只出现在「⛵ 出海」图页签（缺省 = 近岸图）；
+  //   minShip = 船级门槛（服务端权威校验）；locked = 暂未开放（后台可解）；buffs = 钓点增益。
+  const GROUNDS = [
+    {
+      id: 'map', name: '世界地图', type: 'normal',
+      desc: '钓点直接分布在世界地图与出海图上；后台可增删改、按玩家规模一键布点。',
+      spots: [
+        // —— 近岸图（assets/worldmap.png，坐标与图中实景一一对应）——
+        // 新手淡水：湖畔老码头 / 芦苇荡   进阶淡水：湖心深水 / 落瀑潭   活动：霜月冰窟
+        // 海边：月牙沙滩(新手海) / 河口浅滩(咸淡交界) / 灯塔礁(海中大物) / 沉船残骸(稀有+宝珠) / 村港码头(海图碎片)
+        { id: 'dock', name: '湖畔老码头', pos: [62, 47], pool: [
+          p('fish', 'crucian', 30), p('fish', 'white', 18), p('fish', 'minnow', 12), p('fish', 'carp', 15), p('fish', 'loach', 8),
+          p('material', 'bait_pack', 12), p('component', '', 6),
+        ] },
+        { id: 'reed', name: '芦苇荡', pos: [67, 56], pool: [
+          p('fish', 'grass', 26), p('fish', 'bream', 14), p('fish', 'yellowcat', 16), p('fish', 'loach', 10), p('fish', 'crucian', 10),
+          p('fish', 'koi', 1),
+          p('material', 'rope', 14), p('component', '', 7),
+        ] },
+        { id: 'deep', name: '湖心深水', pos: [74, 40], pool: [
+          p('fish', 'silvercarp', 12), p('fish', 'bighead', 14), p('fish', 'blackcarp', 12),
+          p('fish', 'catfish', 8), p('fish', 'bass', 8), p('fish', 'sturgeon', 3), p('fish', 'arapaima', 3),
+          p('fish', 'voltaiceel', 2), p('fish', 'moonkoi', 2),
+          p('material', 'lure', 10), p('component', '', 6),
+        ] },
+        { id: 'falls', name: '落瀑潭', pos: [82, 25], pool: [
+          p('fish', 'catfish', 8), p('fish', 'yellowcheek', 8), p('fish', 'sturgeon', 4), p('fish', 'arapaima', 3),
+          p('fish', 'ghostray', 2), p('fish', 'voltaiceel', 2), p('fish', 'moonkoi', 2),
+          p('material', 'lure', 10), p('component', '', 7),
+        ] },
+        { id: 'ice', name: '霜月冰窟', pos: [64, 9], locked: true, pool: [
+          p('fish', 'white', 14), p('fish', 'crucian', 10), p('fish', 'voltaiceel', 6), p('fish', 'moonkoi', 4), p('fish', 'ghostray', 3),
+          p('material', 'lure', 8), p('component', '', 7),
+        ] },
+        { id: 'beach', name: '月牙沙滩', pos: [44, 68], pool: [
+          p('fish', 'sardine', 24), p('fish', 'croaker', 18), p('fish', 'tilapia', 12), p('fish', 'mullet', 10), p('fish', 'jackmack', 8),
+          p('fish', 'pearl', 2),
+          p('material', 'bait_pack', 12), p('component', '', 7),
+        ] },
+        { id: 'estuary', name: '河口浅滩', pos: [48, 49], pool: [
+          p('fish', 'crucian', 22), p('fish', 'white', 16), p('fish', 'riverperch', 14), p('fish', 'culter', 12), p('fish', 'yellowcat', 10), p('fish', 'loach', 8),
+          p('material', 'bait_pack', 10), p('component', '', 7),
+        ] },
+        { id: 'lighthouse', name: '灯塔礁', pos: [33, 20], pool: [
+          p('fish', 'seabass', 14), p('fish', 'mackerel', 12), p('fish', 'tuna', 10), p('fish', 'cobia', 8),
+          p('fish', 'swordfish', 4), p('fish', 'bluefin', 3),
+          p('material', 'lure', 11), p('component', '', 7),
+        ] },
+        { id: 'wreck', name: '沉船残骸', pos: [15, 74], pool: [
+          p('fish', 'grouper', 10), p('fish', 'rubysnapper', 8), p('fish', 'sunfish', 6), p('fish', 'amberlobster', 4),
+          p('fish', 'pearl', 4), p('fish', 'dragonfish', 3),
+          p('material', 'relic', 2), p('material', 'dragonpearl', 1), p('material', 'rope', 8), p('component', '', 7),
+        ] },
+        { id: 'harbor', name: '村港码头', pos: [74, 87], pool: [
+          p('fish', 'sardine', 18), p('fish', 'croaker', 14), p('fish', 'mullet', 12), p('fish', 'jackmack', 12), p('fish', 'squid', 10), p('fish', 'octo', 8),
+          p('fish', 'mahimahi', 4),
+          p('material', 'chartfrag', 2), p('material', 'bait_pack', 9), p('component', '', 6),
+        ] },
+        // —— 出海图（assets/voyagemap.png）：乘船才能下竿，越深需要越高级的船 ——
+        { id: 'shore', name: '近海渔场', map: 'voyage', pos: [26, 73], minShip: 1, pool: [
+          p('fish', 'mullet', 18), p('fish', 'jackmack', 16), p('fish', 'squid', 13), p('fish', 'octo', 9), p('fish', 'sardine', 10),
+          p('fish', 'mahimahi', 4), p('fish', 'amberjack', 4),
+          p('material', 'chartfrag', 2), p('material', 'bait_pack', 9), p('component', '', 6),
+        ] },
+        { id: 'reef', name: '深海鱼礁', map: 'voyage', pos: [62, 44], minShip: 3, buffs: [{ type: 'skill', value: -5 }], pool: [
+          p('fish', 'mahimahi', 9), p('fish', 'amberjack', 9), p('fish', 'halibut', 8), p('fish', 'giantquid', 7),
+          p('fish', 'grouper', 4), p('fish', 'sunfish', 3),
+          p('material', 'deepscale', 5), p('material', 'chartfrag', 3), p('material', 'lure', 8), p('component', '', 7),
+        ] },
+        { id: 'trench', name: '海沟裂谷', map: 'voyage', pos: [85, 26], minShip: 4, buffs: [{ type: 'skill', value: -10 }, { type: 'rare', value: 20 }], pool: [
+          p('fish', 'giantquid', 8), p('fish', 'halibut', 6), p('fish', 'coelacanth', 4), p('fish', 'megamouth', 3),
+          p('fish', 'leviathan', 1), p('fish', 'ghostray', 2), p('fish', 'dragonfish', 3),
+          p('material', 'deepscale', 6), p('material', 'chartfrag', 4), p('material', 'relic', 2),
+          p('material', 'rope', 6), p('component', '', 7),
+        ] },
+      ],
+    },
   ];
-  // 物品产出地点索引：id -> ['钓点', ...]（图鉴展示用）
+
+  // ---- 远洋船系统（v0.19.0，前后端同一份配置）----
+  // 船级 1~5：门槛不是等级/经验系统，而是「出海经验 + 金币 + 深海鳞片」三重条件（服务端权威校验）。
+  const SHIP = {
+    levels: [
+      { lv: 1, name: '木划艇' }, { lv: 2, name: '近海帆船' }, { lv: 3, name: '远洋货轮' },
+      { lv: 4, name: '深潜潜艇' }, { lv: 5, name: '海王座舰' },
+    ],
+    xpNeed: [0, 40, 120, 280, 560],
+    upCoins: [0, 20000, 80000, 200000, 500000],
+    upScale: [0, 5, 15, 40, 90],
+  };
+  // 随机海域（方案 E）：未知海图出航后的临时海域配置。mood 决定掉落倾向与钓点增益。
+  const SEA = {
+    chartCost: 3,          // 合成 1 张未知海图需要的海图碎片
+    zoneTtlMs: 2 * 3600 * 1000,  // 临时海域存续 2 小时，到期沉没
+    zoneMax: 3,            // 同时最多存在 3 片临时海域
+    names: ['迷雾海盆', '珊瑚深渊', '沉星海域', '鲸落平原', '翡翠环礁', '风暴湾', '幽蓝裂隙', '珍珠环礁'],
+    moods: [
+      { id: 'rich', name: '富矿海域', w: 20, buffs: [{ type: 'double', value: 12 }], rareBias: 2 },
+      { id: 'normal', name: '寻常海域', w: 60, buffs: [{ type: 'double', value: 5 }], rareBias: 1 },
+      { id: 'deadly', name: '凶险海域', w: 20, buffs: [{ type: 'skill', value: -8 }, { type: 'rare', value: 25 }], rareBias: 3 },
+    ],
+    // 海上随机事件（远洋/临时海域，每竿掷骰，单位 %）：风暴=渔获脱钩、漂流宝箱=海图碎片、鱼群=同款+1。
+    // bountyDouble = 漂流宝箱额外多 1 片的概率。三项之和建议 ≤ 30，超出会明显侵蚀正常产出。
+    events: { storm: 5, bounty: 6, school: 6, bountyDouble: 30 },
+  };
+  // 出厂快照：后台「远洋配置」恢复出厂 = 重放快照。applySeaCfg 先还原再叠加，保证幂等。
+  const SHIP_DEFAULT = JSON.parse(JSON.stringify(SHIP));
+  const SEA_DEFAULT = JSON.parse(JSON.stringify(SEA));
+  // 后台运行期覆盖（server.js 保存的 world.seaCfg / 玩家端 /api/sea 下发的 cfg 都走这里）。
+  // cfg = null / {} → 完整恢复出厂。非法值回退出厂值（与 applyChestCosts 同思路）。
+  function applySeaCfg(cfg) {
+    SHIP.levels = JSON.parse(JSON.stringify(SHIP_DEFAULT.levels));
+    SHIP.xpNeed = SHIP_DEFAULT.xpNeed.slice();
+    SHIP.upCoins = SHIP_DEFAULT.upCoins.slice();
+    SHIP.upScale = SHIP_DEFAULT.upScale.slice();
+    SEA.chartCost = SEA_DEFAULT.chartCost;
+    SEA.zoneTtlMs = SEA_DEFAULT.zoneTtlMs;
+    SEA.zoneMax = SEA_DEFAULT.zoneMax;
+    SEA.events = JSON.parse(JSON.stringify(SEA_DEFAULT.events));
+    cfg = cfg && typeof cfg === 'object' ? cfg : {};
+    const int = function (v, min, max, dflt) {
+      v = Math.floor(Number(v));
+      if (!isFinite(v)) return dflt;
+      return Math.min(max, Math.max(min, v));
+    };
+    if (cfg.ship && typeof cfg.ship === 'object') {
+      const s = cfg.ship;
+      if (Array.isArray(s.names) && s.names.length === SHIP.levels.length) {
+        s.names.forEach(function (n, i) { if (n != null && String(n).trim() !== '') SHIP.levels[i].name = String(n).trim().slice(0, 12); });
+      }
+      ['xpNeed', 'upCoins', 'upScale'].forEach(function (k) {
+        if (Array.isArray(s[k]) && s[k].length === SHIP[k].length) {
+          s[k].forEach(function (v, i) { SHIP[k][i] = int(v, 0, 1e10, SHIP[k][i]); });
+        }
+      });
+    }
+    if (cfg.sea && typeof cfg.sea === 'object') {
+      const c = cfg.sea;
+      if (c.chartCost != null) SEA.chartCost = int(c.chartCost, 1, 999, SEA.chartCost);
+      if (c.zoneTtlMin != null) SEA.zoneTtlMs = int(c.zoneTtlMin, 5, 1440, SEA.zoneTtlMs / 60000) * 60000;
+      if (c.zoneMax != null) SEA.zoneMax = int(c.zoneMax, 1, 10, SEA.zoneMax);
+      if (c.events && typeof c.events === 'object') {
+        ['storm', 'bounty', 'school'].forEach(function (k) {
+          if (c.events[k] != null) SEA.events[k] = int(c.events[k], 0, 50, SEA.events[k]);
+        });
+        if (c.events.bountyDouble != null) SEA.events.bountyDouble = int(c.events.bountyDouble, 0, 100, SEA.events.bountyDouble);
+      }
+    }
+    return { ship: SHIP, sea: SEA };
+  }
+
+  // 物品产出地点索引：id -> ['钓场·钓点', ...]（图鉴展示用）
+  // 鱼类/材料按各自掉落池匹配；组件来自通用组件掉落点（'component:' 条目）
   function spotsOf(id) {
     const item = itemOf(id);
     const type = item.kind === 'fish' ? 'fish' : item.kind === 'material' ? 'material' : 'component';
     const pick = type + ':' + (type === 'component' ? '' : id);
-    return SPOTS.filter(function (sp) {
-      return sp.pool.some(function (e) { return e.pick === pick; });
-    }).map(function (sp) { return sp.name; });
+    const out = [];
+    GROUNDS.forEach(function (g) {
+      g.spots.forEach(function (sp) {
+        sp.pool.forEach(function (e) {
+          // 隐式世界地图（'map'）不作为前缀：产地直接显示钓点名（如「芦苇荡」）
+          if (e.pick === pick) out.push(g.id === 'map' ? sp.name : g.name + '·' + sp.name);
+        });
+      });
+    });
+    return out;
   }
 
   // ---- 导航配置 ----
@@ -1731,6 +2127,7 @@
   //   页签页的功能开关 id 仍是 bd / records（见 features.js），旧 view id 由 navigateView 兜底兼容。
   const NAV = [
     { id: 'fishing', name: '钓鱼', icon: '🎣', implemented: true },
+    { id: 'sea', name: '远洋', icon: '⛵', implemented: true },
     { id: 'character', name: '角色', icon: '🧍', implemented: true },
     { id: 'ground', name: '社交', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
@@ -1798,12 +2195,16 @@
     CHESTS: CHESTS, chestOf: chestOf, isChest: isChest, rollChestQuality: rollChestQuality,
     genBreakthrough: genBreakthrough, RELIC_PRICE: RELIC_PRICE,
     CHEST_BASE_COSTS: CHEST_BASE_COSTS, applyChestCosts: applyChestCosts, chestCostOverrides: chestCostOverrides,
-    rollAffixValueBoundary: rollAffixValueBoundary, nearerBoundaryOf: nearerBoundaryOf,
+    rollAffixValueBoundary: rollAffixValueBoundary, rollAffixValueBoundaryWithRng: rollAffixValueBoundaryWithRng, rollAffixValueWithRng: rollAffixValueWithRng,
+    rodEffectsOf: rodEffectsOf, mergedEffectsOf: mergedEffectsOf, castInfoOf: castInfoOf, castIntervalOf: castIntervalOf,
+    effectiveSpeedOf: effectiveSpeedOf, spotSpeedOf: spotSpeedOf, spotBiteRateOf: spotBiteRateOf,
+    biteProbabilityOf: biteProbabilityOf, doubleProbOf: doubleProbOf, simulateRodPlan: simulateRodPlan,
     SMELT_MATERIAL_AFFIX: SMELT_MATERIAL_AFFIX, SMELT_PEARL: SMELT_PEARL,
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     SNAPSHOT_DEFAULTS: SNAPSHOT_DEFAULTS, defaultSnapshotCfg: defaultSnapshotCfg, setSnapshotCfg: setSnapshotCfg, getSnapshotCfg: getSnapshotCfg,
     smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds,
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltSuccessProbs: smeltSuccessProbs, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
+    smeltPlanOf: smeltPlanOf, simulateSmeltPlan: simulateSmeltPlan, smeltRollWithRng: smeltRollWithRng,
     smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,
     affixSrcRangeOf: affixSrcRangeOf, catalystRangeOf: catalystRangeOf,
     smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,
@@ -1833,7 +2234,7 @@
     autoBuildRange: autoBuildRange,
     normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
-    SPOTS: SPOTS, NAV: NAV,
+    GROUNDS: GROUNDS, NAV: NAV, SHIP: SHIP, SEA: SEA, applySeaCfg: applySeaCfg,
     allItems: allItems, itemOf: itemOf, itemName: itemName, isSellable: isSellable,
   };
 });

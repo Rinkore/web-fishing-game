@@ -316,12 +316,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   image-rendering: pixelated; opacity: .5; filter: var(--fishfilter, brightness(.55));
   pointer-events: none;
 }
-/* 游鱼融入各背景水色：压暗 + 向水色偏移（剪影化处理，对标 Cast n Chill 的水下鱼影）。
-   data-scene 由 ui.js 写入，换背景即换色调，贴图本身不变 */
-.px-scene[data-scene="stillwater"] { --fishfilter: brightness(.30) sepia(.9) hue-rotate(240deg) saturate(.9); }
-.px-scene[data-scene="rapids"]     { --fishfilter: brightness(.32) sepia(.9) hue-rotate(150deg) saturate(.8); }
-.px-scene[data-scene="sunset"]     { --fishfilter: brightness(.30) sepia(.9) hue-rotate(300deg) saturate(.85); }
-.px-scene[data-scene="frostmoon"]  { --fishfilter: brightness(.38) sepia(.8) hue-rotate(185deg) saturate(.7); }
+/* 游鱼融入各渔场水色：压暗 + 向水色偏移（剪影化处理，对标 Cast n Chill 的水下鱼影）。
+   data-ground 由 ui.js 随钓点写入，换渔场即换色调，贴图本身不变 */
+.px-scene[data-ground="stillwater"] { --fishfilter: brightness(.30) sepia(.9) hue-rotate(240deg) saturate(.9); }
+.px-scene[data-ground="rapids"]     { --fishfilter: brightness(.32) sepia(.9) hue-rotate(150deg) saturate(.8); }
+.px-scene[data-ground="sunset"]     { --fishfilter: brightness(.30) sepia(.9) hue-rotate(300deg) saturate(.85); }
+.px-scene[data-ground="frostmoon"]  { --fishfilter: brightness(.38) sepia(.8) hue-rotate(185deg) saturate(.7); }
 .px-fish.swim-l { animation: px-swim-left linear infinite; }
 .px-fish.swim-r { animation: px-swim-right linear infinite; }
 @keyframes px-swim-left {
@@ -777,15 +777,15 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .cc-card.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .1); }
 .cc-card.locked { opacity: .62; }
 
-/* 角色页：原渔场实况场景作为展示台背景（纯视觉，不承载钓鱼状态） */
-.char-stage .px-scene {
-  position: absolute; inset: 0; height: auto; margin: 0;
-  border: 0; border-radius: 0; box-shadow: none; background: none;
+/* ---------- 角色页 · 场景背景（v0.19.0：原钓鱼页渔场实况画布挪至此，纯装饰） ---------- */
+/* 不设 z-index：靠 DOM 顺序叠在 cs-bg 之上、码头/船/同伴之下；Canvas 挂不上时 cs-bg 兜底 */
+.cs-scene { position: absolute; inset: 0; }
+.char-bgs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+.cb-title { opacity: .75; font-size: 12px; }
+.cb-chip {
+  font: inherit; font-size: 12px; padding: 3px 12px; cursor: pointer;
+  color: inherit; background: var(--bg2, rgba(255, 255, 255, .06));
+  border: 2px solid transparent; border-radius: 4px;
 }
-.scene-card .scene-thumb {
-  display: block; width: 110px; height: 58px; border: 2px solid var(--px-line); border-radius: 3px;
-}
-.scene-card .scene-thumb.scene-stillwater { background: linear-gradient(180deg,#3a2c5c,#7a5588 55%,#4a3a78); }
-.scene-card .scene-thumb.scene-rapids { background: linear-gradient(180deg,#a8d4e2,#cfe8e4 55%,#3f7f8c); }
-.scene-card .scene-thumb.scene-sunset { background: linear-gradient(180deg,#4a2c62,#e8765a 60%,#c46a5e); }
-.scene-card .scene-thumb.scene-frostmoon { background: linear-gradient(180deg,#060f24,#1b3a5c 60%,#1d3a5c); }
+.cb-chip:hover { border-color: var(--px-line); }
+.cb-chip.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .12); }

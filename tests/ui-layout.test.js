@@ -176,7 +176,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     section('新增页面渲染');
     // v0.11.3 起取消侧栏「更多」折叠组；v0.15.0 起按「一个入口一族功能」重组为 9 个入口
     // （钓竿并入钓鱼、记录并入图鉴、收购/市集并入商城、开箱并入工坊、宝匣与交易也有各自归属）
-    check('侧栏 9 个入口全部常驻可见（无折叠组）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 9,
+    check('侧栏 10 个入口全部常驻可见（无折叠组，v0.19.0 加远洋）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 10,
       String((await p1.$$('#nav .nav-item:not(.locked)')).length));
     check('不再有「更多」折叠组与折叠组容器', (await p1.$$('#nav .nav-more')).length === 0 && (await p1.$$('#nav .nav-group')).length === 0);
     check('低频入口（图鉴/反馈/日志）直接可见且顺序不变', await p1.evaluate(() => {

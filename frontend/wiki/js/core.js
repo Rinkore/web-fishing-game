@@ -1,0 +1,279 @@
+'use strict';
+(function () {
+  const state = {
+    snapshot: null, etag: null, lastOk: 0, readyPromise: null,
+    readyResolve: null, readyReject: null, unavailable: false, listeners: []
+  };
+  const D = window.GameData;
+
+  function el(tag, className, text) {
+    const n = document.createElement(tag);
+    if (className) n.className = className;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function fmt(n, digits) {
+    const v = Number(n);
+    if (!isFinite(v)) return '-';
+    return v.toLocaleString('zh-CN', { maximumFractionDigits: digits == null ? 1 : digits });
+  }
+  function pct(n, digits) { return fmt(n, digits == null ? 2 : digits) + '%'; }
+  function signed(n) { const v = Number(n) || 0; return (v > 0 ? '+' : '') + fmt(v, 2); }
+  function validSnapshot(s) {
+    return !!(s && s.schemaVersion === 1 && s.gameVersion && s.rulesVersion === 1 && s.sourceKind === 'server' &&
+      /^[0-9a-f]{40}$/.test(s.sourceCommit || '') && s.serverInstanceId &&
+      Number(s.configRevision) >= 1 && /^[0-9a-f]{64}$/.test(s.configHash || '') &&
+      s.snapshotId && s.generatedAt && !isNaN(Date.parse(s.generatedAt)) &&
+      s.catalog && Array.isArray(s.catalog.fish) && Array.isArray(s.catalog.materials) &&
+      Array.isArray(s.catalog.components) && Array.isArray(s.catalog.chests) &&
+      Array.isArray(s.catalog.rodParts) && Array.isArray(s.grounds) && s.rulesConfig &&
+      s.rulesConfig.castCfg && typeof s.rulesConfig.biteFormula === 'string');
+  }
+  function applyRules(s) {
+    if (!D) throw new Error('共享规则模块未加载');
+    if (D.setComponentCfg) D.setComponentCfg(s.rulesConfig.componentCfg);
+    if (D.setSmeltCfg) D.setSmeltCfg(s.rulesConfig.smeltCfg);
+    if (D.setFishCfg) D.setFishCfg(s.rulesConfig.fishCfg);
+  }
+  function renderStatus() {
+    const node = document.querySelector('[data-rule-status]');
+    if (!node) return;
+    const s = state.snapshot;
+    node.classList.toggle('ok', !!s && !state.unavailable);
+    node.classList.toggle('bad', !s || state.unavailable);
+    const dot = node.querySelector('.rule-dot');
+    if (dot) dot.setAttribute('aria-hidden', 'true');
+    const text = node.querySelector('.rule-text');
+    if (!text) return;
+    if (state.unavailable || !s) text.textContent = '规则不可用：数值与模拟器已禁用，等待服务端确认。';
+    else text.textContent = '规则可用 · ' + s.gameVersion + ' · 配置 ' + s.configRevision + ' · ' + s.configHash.slice(0, 12) + ' · ' + new Date(s.generatedAt).toLocaleString('zh-CN');
+  }
+  function emit() {
+    renderStatus();
+    state.listeners.slice().forEach(function (fn) {
+      try { fn(state.snapshot, state.unavailable); } catch (e) { console.error(e); }
+    });
+  }
+  async function refresh() {
+    const headers = {};
+    if (state.etag) headers['If-None-Match'] = state.etag;
+    try {
+      const res = await fetch('/api/version?profile=wiki', { headers: headers, cache: 'no-cache' });
+      if (res.status === 304) {
+        state.lastOk = Date.now(); state.unavailable = false; emit(); return;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (!data || data.profile !== 'wiki' || !validSnapshot(data.snapshot)) throw new Error('规则快照结构无效');
+      state.etag = res.headers.get('ETag');
+      state.snapshot = data.snapshot;
+      applyRules(data.snapshot);
+      state.lastOk = Date.now(); state.unavailable = false;
+      if (state.readyResolve) { state.readyResolve(state.snapshot); state.readyResolve = null; state.readyReject = null; }
+      state.readyPromise = null;
+      emit();
+    } catch (e) {
+      state.unavailable = true; emit();
+      if (state.readyReject) { state.readyReject(e); state.readyReject = null; state.readyResolve = null; }
+      state.readyPromise = null;
+    }
+  }
+  function checkStale() {
+    if (state.snapshot && !state.unavailable && state.lastOk && Date.now() - state.lastOk > 10000) {
+      state.unavailable = true; emit();
+    }
+  }
+  function itemEntries(s) {
+    const out = [];
+    (s.catalog.fish || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'fish', type: 'fish' })); });
+    (s.catalog.materials || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'material', type: 'material' })); });
+    (s.catalog.components || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'component', type: 'component' })); });
+    (s.catalog.chests || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'chest', type: 'chest' })); });
+    Object.keys(s.catalog.affixes || {}).forEach(function (id) {
+      out.push({ id: 'affix:' + id, name: s.catalog.affixes[id], kind: 'affix', type: 'affix', rarity: null });
+    });
+    return out;
+  }
+  function imageFor(entry) {
+    if (!entry || !entry.id) return '';
+    if (entry.kind === 'fish') return '../../assets/fish/' + encodeURIComponent(entry.id) + '.png';
+    if (entry.kind === 'component' || entry.kind === 'material' || entry.kind === 'chest') return '../../assets/item/' + encodeURIComponent(entry.id) + '.png';
+    if (entry.kind === 'ground') return '../../assets/ground/' + encodeURIComponent(entry.id) + '.png';
+    if (entry.kind === 'spot') return '../../assets/spot/' + encodeURIComponent(entry.id) + '.png';
+    return '';
+  }
+  function itemUrl(entry) {
+    if (!entry) return '#';
+    if (entry.kind === 'affix') return '/wiki/items/index.html?id=' + encodeURIComponent(entry.id);
+    return '/wiki/items/index.html?id=' + encodeURIComponent(entry.id) + '&type=' + encodeURIComponent(entry.kind);
+  }
+  function spotUrl(groundId, spotId) {
+    return '/wiki/grounds/index.html?ground=' + encodeURIComponent(groundId) + (spotId ? '&spot=' + encodeURIComponent(spotId) : '');
+  }
+  function groundEntries(s) {
+    const out = [];
+    (s.grounds || []).forEach(function (g) {
+      out.push({ id: g.id, name: g.name, kind: 'ground', type: 'ground', desc: g.desc, rarity: null, ground: g });
+      (g.spots || []).forEach(function (sp) { out.push({ id: g.id + ':' + sp.id, name: g.name + ' · ' + sp.name, kind: 'spot', type: 'spot', desc: sp.desc || g.desc, rarity: null, groundId: g.id, spotId: sp.id }); });
+    });
+    return out;
+  }
+  function guideEntries() {
+    return (window.WikiContent ? window.WikiContent.guides : []).map(function (g) {
+      return { id: g.id, name: g.title, kind: 'guide', type: 'guide', desc: g.summary, aliases: g.aliases || [], tags: g.tags || [], rarity: null };
+    });
+  }
+  function toolEntries() {
+    return [
+      { id: 'build', name: '配装模拟器', kind: 'tool', type: 'tool', desc: '七部位编辑、钓点条件、双方案对比、保存与分享。', rarity: null },
+      { id: 'smelt', name: '熔炼模拟器', kind: 'tool', type: 'tool', desc: '主副件词缀、投料、宝珠、残片、概率和批量模拟。', rarity: null }
+    ];
+  }
+  function searchIndex(s) {
+    const out = [];
+    itemEntries(s).forEach(function (x) {
+      const desc = x.kind === 'fish' ? (x.desc || '') :
+        x.kind === 'material' ? '材料 · ' + (x.desc || '') :
+        x.kind === 'component' ? '组件底材 · ' + (x.part || '') :
+        x.kind === 'chest' ? '宝匣 · ' + (x.desc || '') : '词缀机制';
+      out.push(Object.assign({}, x, { desc: desc, url: itemUrl(x), image: imageFor(x) }));
+    });
+    groundEntries(s).forEach(function (x) {
+      out.push(Object.assign({}, x, { url: x.kind === 'ground' ? spotUrl(x.id) : spotUrl(x.groundId, x.spotId), image: imageFor(x) }));
+    });
+    guideEntries().forEach(function (x) { out.push(Object.assign({}, x, { url: '/wiki/guides/index.html?slug=' + encodeURIComponent(x.id) })); });
+    toolEntries().forEach(function (x) { out.push(Object.assign({}, x, { url: '/wiki/tools/' + x.id + '.html' })); });
+    return out.map(function (x) {
+      const hay = [x.name, x.id, x.kind, x.desc, (x.aliases || []).join(' '), (x.tags || []).join(' ')].join(' ').toLowerCase();
+      return Object.assign({}, x, { hay: hay });
+    });
+  }
+  function scoreEntry(x, q) {
+    const name = String(x.name || '').toLowerCase();
+    let score = 0;
+    if (name === q) score += 100;
+    else if (name.startsWith(q)) score += 60;
+    else if (name.indexOf(q) >= 0) score += 40;
+    if ((x.aliases || []).some(function (a) { return String(a).toLowerCase().indexOf(q) >= 0; })) score += 30;
+    if ((x.tags || []).join(' ').toLowerCase().indexOf(q) >= 0) score += 15;
+    if (String(x.id || '').toLowerCase().indexOf(q) >= 0) score += 8;
+    if (String(x.desc || '').toLowerCase().indexOf(q) >= 0) score += 5;
+    return score;
+  }
+  function search(query, type, limit) {
+    const s = state.snapshot;
+    if (!s) return [];
+    const qs = String(query || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!qs.length) return [];
+    const idx = searchIndex(s);
+    const rows = [];
+    idx.forEach(function (x) {
+      if (type && type !== 'all' && x.kind !== type) return;
+      let score = 0, ok = true;
+      qs.forEach(function (q) {
+        const sc = scoreEntry(x, q);
+        if (!sc || x.hay.indexOf(q) < 0) { ok = false; return; }
+        score += sc;
+      });
+      if (ok) rows.push({ entry: x, score: score });
+    });
+    rows.sort(function (a, b) { return b.score - a.score || String(a.entry.name).localeCompare(String(b.entry.name), 'zh-CN'); });
+    return rows.slice(0, limit || 80).map(function (r) { return r.entry; });
+  }
+  function occurrences(id, kind) {
+    const s = state.snapshot;
+    if (!s) return [];
+    const pick = kind === 'component' ? 'component:' : kind + ':' + id;
+    const out = [];
+    (s.grounds || []).forEach(function (g) {
+      (g.spots || []).forEach(function (sp) {
+        const total = (sp.pool || []).reduce(function (n, e) { return n + Math.max(0, Number(e.weight) || 0); }, 0);
+        (sp.pool || []).forEach(function (e) {
+          if (e.pick !== pick) return;
+          const w = Math.max(0, Number(e.weight) || 0);
+          out.push({ groundId: g.id, groundName: g.name, spotId: sp.id, spotName: sp.name, weight: w, percent: total > 0 ? w / total * 100 : 0 });
+        });
+      });
+    });
+    return out;
+  }
+  async function shopPrice(id) {
+    const res = await fetch('/shop', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    return data && data[id] ? Object.assign({ fetchedAt: new Date().toISOString() }, data[id]) : null;
+  }
+
+  function localStorageAvailable() {
+    try { window.localStorage.setItem('__wiki_test__', '1'); window.localStorage.removeItem('__wiki_test__'); return true; }
+    catch (e) { return false; }
+  }
+  function readJSON(key, fallback) {
+    if (!localStorageAvailable()) return fallback;
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw == null ? fallback : JSON.parse(raw);
+    } catch (e) { return fallback; }
+  }
+  function writeJSON(key, value) {
+    if (!localStorageAvailable()) return false;
+    try { window.localStorage.setItem(key, JSON.stringify(value)); return true; } catch (e) { return false; }
+  }
+  function removeStorage(key) {
+    if (!localStorageAvailable()) return false;
+    try { window.localStorage.removeItem(key); return true; } catch (e) { return false; }
+  }
+  function encodeShare(value) {
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    let binary = '';
+    bytes.forEach(function (b) { binary += String.fromCharCode(b); });
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function decodeShare(text) {
+    if (typeof text !== 'string' || !text || text.length > 96 * 1024) throw new Error('方案码为空或过长');
+    const normalized = text.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, function (c) { return c.charCodeAt(0); });
+    const json = new TextDecoder().decode(bytes);
+    if (json.length > 96 * 1024) throw new Error('解码后的方案过大');
+    return JSON.parse(json);
+  }
+  function rules() {
+    if (!state.snapshot || state.unavailable) throw new Error('当前规则快照不可用，禁止使用默认值计算。');
+    return state.snapshot;
+  }
+  function ready() {
+    if (state.snapshot && !state.unavailable) return Promise.resolve(state.snapshot);
+    if (!state.readyPromise) {
+      state.readyPromise = new Promise(function (resolve, reject) {
+        state.readyResolve = resolve; state.readyReject = reject;
+      });
+      refresh();
+    }
+    return state.readyPromise;
+  }
+  function init() {
+    renderStatus();
+    setInterval(refresh, 5000);
+    setInterval(checkStale, 1000);
+    window.addEventListener('focus', refresh);
+    return ready();
+  }
+
+  window.Wiki = {
+    get snapshot() { return state.snapshot; },
+    get unavailable() { return state.unavailable; },
+    get rulesConfig() { return state.snapshot ? state.snapshot.rulesConfig : null; },
+    get items() { return state.snapshot ? itemEntries(state.snapshot) : []; },
+    get grounds() { return state.snapshot ? state.snapshot.grounds : []; },
+    el: el, fmt: fmt, pct: pct, signed: signed,
+    validSnapshot: validSnapshot, applyRules: applyRules, refresh: refresh, ready: ready, rules: rules,
+    search: search, searchIndex: searchIndex, itemEntries: itemEntries, groundEntries: groundEntries,
+    itemUrl: itemUrl, spotUrl: spotUrl, imageFor: imageFor, occurrences: occurrences, shopPrice: shopPrice,
+    storage: { available: localStorageAvailable, readJSON: readJSON, writeJSON: writeJSON, remove: removeStorage },
+    encodeShare: encodeShare, decodeShare: decodeShare,
+    onChange: function (fn) { if (typeof fn === 'function') state.listeners.push(fn); },
+    init: init
+  };
+})();
