@@ -187,12 +187,54 @@ async function run() {
   await page.evaluate(() => { Engine.state.inventory[fixtureSub] = 1; UI.refreshAll('assets'); });
   await pick('sub', '碳素'); await page.locator('.ws-aff[data-which="sub"][data-type="skill"]').click();
   await page.evaluate(() => {
-    Net.smelt = async () => ({ ok: true, data: { success: true, item: GameData.componentOf(fixtureMain), rate: 100,
+    Net.smelt = async () => ({ ok: true, data: { success: true, result: GameData.componentOf('rod_dragonbone#mythic#spd+20,skl+8,dbl+12@bt'), rate: 100,
       gold: 100, coins: 199800, inventory: { [fixtureMain]: 1 }, invRev: 101 } });
   });
   await page.locator('#ws-go').click(); await page.locator('.confirm-modal .cf-actions button').last().click();
   await page.waitForFunction(() => document.querySelector('.chest-result-modal .modal-title')?.textContent.includes('熔炼成功'));
   check('Successful response opens result and resets draft', await page.locator('.cr-ok').isVisible() && await page.locator('.ws-pick.chosen').count() === 0);
+  check('Server result field renders the actual item', await page.locator('.sm-result-dialog .ws-result-card').count() === 1);
+  check('Lost affixes are explicit while rerolled types are distinguished', (await page.locator('.sm-result-dialog').textContent()).includes('类型保留 · 数值重掷') && (await page.locator('.sm-outcome-row.lost').textContent()).includes('稀有'));
+  check('Affix arrows explain actual outcomes', await page.locator('.sm-result-dialog .sm-outcome-arrow').count() >= 3);
+  await page.screenshot({ path: path.join(SHOTS, 'result-desktop.png'), animations: 'disabled' });
+  await page.locator('.cr-ok').click();
+  await page.evaluate(() => {
+    Engine.state.inventory[fixtureSub] = 1;
+    GameData.smeltMaterialIds().forEach(id => Engine.state.inventory[id] = 3);
+    Net.forge = async (id, material) => {
+      window.forgeCalls = (window.forgeCalls || 0) + 1;
+      const D = GameData, comp = D.componentOf(id), type = D.smeltMaterialAffix(material);
+      const affix = { type, value: 5, src: 'ct' };
+      return { ok: true, data: { item: D.componentOf(D.instanceId(comp.baseId, comp.quality, comp.affixes.concat(affix))),
+        material: { name: D.itemName(material) }, affix } };
+    };
+  });
+  await page.locator('[data-wstab="forge"]').click();
+  check('Forge materials live in a separate dialog', await page.locator('.forge-mat').count() === 0);
+  await page.locator('[data-forge-pick]').click();
+  await page.locator('.bec-card').filter({ hasText: '碳素' }).first().locator('.bec-acts button:not([disabled])').first().click();
+  await page.locator('#ws-forge-material-open').click();
+  check('Forge selector disables duplicate affixes', await page.locator('#ws-forge-material-modal .forge-mat:disabled').count() >= 2);
+  await page.locator('#ws-forge-material-modal .forge-mat:not([disabled])').first().click();
+  check('Forge selection is marked', await page.locator('#ws-forge-material-modal [aria-pressed="true"]').count() === 1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  check('Forge selector fits mobile', await page.locator('#ws-forge-material-modal').evaluate(n => n.scrollWidth <= n.clientWidth + 1));
+  await page.screenshot({ path: path.join(SHOTS, 'forge-material-mobile.png'), animations: 'disabled' });
+  await page.locator('.sm-material-done').click();
+  await page.locator('#ws-forge-go').click();
+  check('Forge success opens result with new affix and retained originals', (await page.locator('.sm-result-dialog').textContent()).includes('新增词条') && await page.locator('.sm-result-dialog .sm-outcome-row').count() === 3);
+  check('Forge submits only once', await page.evaluate(() => forgeCalls === 1));
+  check('Result fits mobile width', await page.locator('.sm-result-dialog').evaluate(n => n.scrollWidth <= n.clientWidth + 1));
+  await page.screenshot({ path: path.join(SHOTS, 'forge-result-mobile.png'), animations: 'disabled' });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { UI.setView('bd'); UI.renderView(); });
+  await page.locator('.ab-open-btn').click();
+  check('Auto build footer stays visible on mobile', await page.locator('.ab-apply').evaluate(n => n.getBoundingClientRect().bottom <= innerHeight));
+  check('Auto build rows fit mobile width', await page.locator('.ab-row').evaluateAll(nodes => nodes.length === 6 && nodes.every(n => n.scrollWidth <= n.clientWidth + 1)));
+  await page.screenshot({ path: path.join(SHOTS, 'autobuild-mobile.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  check('Auto build rows fit desktop width', await page.locator('.ab-row').evaluateAll(nodes => nodes.every(n => n.scrollWidth <= n.clientWidth + 1)));
+  await page.screenshot({ path: path.join(SHOTS, 'autobuild-desktop.png'), animations: 'disabled' });
   check('No page errors', errors.length === 0);
   console.log('通过 ' + count + ' 项，失败 0 项');
 }

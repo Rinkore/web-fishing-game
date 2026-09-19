@@ -3823,7 +3823,7 @@ const server = http.createServer(function (req, res) {
       const password = d.password || '';
       const name = (d.name || '').trim() || username;
       if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) return apiResp(res, 400, { error: '用户名需为 3-20 位字母/数字/下划线' });
-      Transport.passwordPolicy(password);
+      Transport.passwordPolicy(password, 8);
       if (d.confirmPassword != null && String(d.confirmPassword) !== password) return apiResp(res, 400, { error: '两次输入的密码不一致' });
       // QQ 号必填：5-12 位数字
       const qq = String(d.qq == null ? '' : d.qq).trim();
