@@ -1789,3 +1789,18 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
   .panel.two-col[data-order-first="mall.list"] > .col-side { border-left: 0; padding-left: 0; border-right: 1px solid var(--line); padding-right: 20px; }
   .shop-cols[data-order-first="mall.autosell"] > .shop-colside { border-left: 0; padding-left: 0; border-right: 1px solid var(--line); padding-right: 16px; }
 }
+#server-update-page {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #102532;
+  color: #edf5f5;
+  text-align: center;
+}
+#server-update-page .server-update-card { max-width: 520px; }
+#server-update-page h1 { font-size: clamp(24px, 5vw, 36px); margin: 0 0 24px; }
+#server-update-page p { line-height: 1.8; }
+#server-update-page .server-update-version { color: #91ddd2; font-size: 18px; }

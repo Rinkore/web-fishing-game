@@ -142,6 +142,7 @@ window.Admin = (function () {
     switchView(view || 'overview');
   }
   function doLogin() {
+    if ($('login-btn').disabled) return;
     const user = $('login-user').value.trim();
     const pass = $('login-pass').value;
     if (!user || !pass) { $('login-msg').textContent = '请填写用户名和密码'; return; }
@@ -725,7 +726,7 @@ window.Admin = (function () {
       const isRewarded = function (f) { return !!(f.reward && f.reward.coins); };
       const statHtml = '<div class="fb-stat">共 <b>' + all.length + '</b> 条' +
         Object.keys(STATUSES).map(function (k) {
-          return '<span class="fb-stat-item"><i class="fb-dot ' + k + '"></i>' + esc(STATUSES[k]) + ' <b>' +
+          return '<span class="fb-stat-item"><i class="fb-dot ' + k + '"></i>' + esc(STATUSES[k]) + ' <b data-fb-count="' + k + '">' +
             countBy(function (f) { return statusOf(f) === k; }) + '</b></span>';
         }).join('') +
         '<span class="fb-stat-item">🎁 已奖励 <b>' + countBy(isRewarded) + '</b></span>' +
@@ -800,10 +801,30 @@ window.Admin = (function () {
       });
       box.querySelectorAll('.fb-status-sel').forEach(function (sel) {
         sel.onchange = function () {
-          adminApi('POST', '/api/admin/feedback/status', { token: token, id: sel.getAttribute('data-id'), status: sel.value }).then(function (rr) {
-            if (!rr.ok) { toast(rr.data.error || '更新失败', true); return; }
-            toast('反馈状态已更新为：' + (STATUSES[sel.value] || sel.value));
-            renderFeedback();
+          const row = all.find(function (f) { return f.id === sel.getAttribute('data-id'); });
+          const previous = row ? statusOf(row) : 'submitted';
+          const next = sel.value;
+          sel.disabled = true;
+          adminApi('POST', '/api/admin/feedback/status', { token: token, id: sel.getAttribute('data-id'), status: next }).then(function (rr) {
+            sel.disabled = false;
+            if (!rr.ok) { sel.value = previous; toast((rr.data && rr.data.error) || '更新失败', true); return; }
+            if (row) row.status = next;
+            const card = sel.closest('.fb-card');
+            const badge = card && card.querySelector('.fb-status');
+            if (badge) { badge.className = 'fb-status ' + next; badge.textContent = STATUSES[next] || next; }
+            let author = card && card.querySelector('.fb-acts > .hint');
+            if (card && !author) { author = document.createElement('span'); author.className = 'hint'; card.querySelector('.fb-acts').appendChild(author); }
+            if (author) author.textContent = '由 ' + me.name + ' 更新';
+            Object.keys(STATUSES).forEach(function (k) {
+              const count = countBy(function (f) { return statusOf(f) === k; });
+              const stat = box.querySelector('[data-fb-count="' + k + '"]');
+              const chipCount = box.querySelector('[data-fbf="st:' + k + '"] .fb-chip-n');
+              if (stat) stat.textContent = count;
+              if (chipCount) chipCount.textContent = count;
+            });
+            toast('反馈状态已更新为：' + (STATUSES[next] || next));
+          }).catch(function () {
+            sel.disabled = false; sel.value = previous; toast('更新失败，请重试', true);
           });
         };
       });
@@ -3210,7 +3231,7 @@ window.Admin = (function () {
   // 上钩公式的可用变量（顺序与服务器 BITE_VAR_NAMES 一致，供文档与试算表单共用）
   // skill = v0.11 起由「技巧」词缀提供的变量，是新版提升上钩率的主参数；big 是旧版遗留变量（恒为 0）。
   const BITE_VARS_DOC = [
-    ['speed', '钓速加成 %（钓竿词缀 + 钓点增益）'],
+    ['speed', '钓竿词缀钓速 %（不含钓点增益和全服加成）'],
     ['skill', '技巧加成 %（钓竿「技巧」词缀合计 · v0.11 新增，默认公式 90 + skill）'],
     ['rare', '稀有度（原「稀有概率」）：生成战利品时按 K/(K+R) 降低普通品质物品权重，见下方「💎 稀有度」面板'],
     ['material', '材料概率加成 %'],
@@ -4254,8 +4275,8 @@ window.Admin = (function () {
       '<div id="db-preview" class="hint"></div></div>' +
       '<div class="panel" style="flex:1 1 100%;min-width:0">' +
       '<h3>🎣 抛竿间隔与全服钓速</h3>' +
-      '<div class="hint" style="margin-bottom:10px">服务端每隔该间隔自动抛一竿。<b>钓速只影响抛竿间隔</b>：间隔 = 基础 × (1 − 有效钓速/100)，不低于最短间隔；' +
-      '有效钓速 = 钓竿词缀 + 钓点增益 + <b>全服钓速加成</b>，并按<b>钓速上限</b>截断。上钩率由上方公式单独决定（默认平值 90%）。' +
+      '<div class="hint" style="margin-bottom:10px">服务端每隔该间隔自动抛一竿。间隔 = 基础 × (1 − 有效钓速/100) × <b>(1 − 钓点钓速/100)</b>，不低于最短间隔；' +
+      '有效钓速 = 钓竿词缀 + <b>全服钓速加成</b>，限制在 0 与<b>钓速上限</b>之间。钓点钓速是对间隔的总增减（范围 −100% 至 95%），独立乘算，不与词缀相加，也不进入上钩公式的 speed 变量。固定间隔钓点以固定值为准。上钩率由上方公式决定。' +
       '保存后正在钓鱼的玩家循环会立即按新间隔重启。</div>' +
       '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">基础间隔</label>' +
       '<input id="cast-base" class="ipt" type="number" min="200" max="60000" step="100" style="width:110px" />' +
@@ -5496,6 +5517,9 @@ window.Admin = (function () {
     $('login-btn').onclick = doLogin;
     $('login-pass').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
     $('login-otp').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+    $('login-otp').addEventListener('input', function () {
+      if (/^\d{6}$/.test(this.value.trim()) && $('login-user').value.trim() && $('login-pass').value) doLogin();
+    });
     $('login-user').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
     $('logout-btn').onclick = function () { logout(); };
     let saved = 'cookie';

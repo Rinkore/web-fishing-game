@@ -2326,6 +2326,9 @@ window.UI = (function () {
   // ---- 社交视图（全服概览 + 单地图点击查看） ----
   // 当前筛选的地图（null = 全服；模块级：重绘间保留）
   let groundFilterId = null;
+  let socialTab = 'online';
+  let friendSearchQ = '';
+  let friendSearchPage = 1;
   // perf-9：玩家列表搜索/翻页状态（服务端分页，一次最多渲染一页；列表限高可下滑，避免页面被拉长）
   const PEEP_PAGE_SIZE = 20;
   let peepSearchQ = '';        // 已生效的关键词（服务端按它过滤）
@@ -2604,7 +2607,108 @@ window.UI = (function () {
     return true;
   }
 
+  function socialTabs() {
+    const tabs = el('div', 'px-map-tabs');
+    [['online', '🌊 在线动态'], ['friends', '👥 好友']].forEach(function (entry) {
+      const button = el('button', 'px-map-tab' + (socialTab === entry[0] ? ' on' : ''), entry[1]);
+      button.addEventListener('click', function () {
+        if (socialTab === entry[0]) return;
+        socialTab = entry[0];
+        if (socialTab === 'friends') window.Net.setPlayersView({ clear: true });
+        else { renderGround._lastViewSig = null; gotoPeepPage(1); }
+        renderView();
+      });
+      tabs.appendChild(button);
+    });
+    return tabs;
+  }
+  function renderFriends() {
+    const main = $('main');
+    const owner = String(S().me && S().me.id || '');
+    let panel = main.querySelector('.friends-panel');
+    if (panel && panel._owner === owner) { panel._refresh(false); return; }
+    main.innerHTML = '';
+    panel = el('div', 'panel wide friends-panel');
+    panel._owner = owner;
+    panel.innerHTML = pageHead('👥', '好友', '保存常联系的钓友，查看好友在线状态') +
+      pageHelp('搜索在线玩家并添加到自己的好友列表；好友离线后仍会保留，可随时移除。');
+    panel.appendChild(socialTabs());
+    const cols = el('div', 'ground-cols');
+    const saved = el('div', 'sub'), search = el('div', 'sub');
+    const savedHead = el('h3', '', '我的好友');
+    const savedList = el('div', 'peeps');
+    saved.appendChild(savedHead); saved.appendChild(savedList);
+    search.appendChild(el('h3', '', '搜索在线玩家'));
+    const searchBar = el('form', 'peep-search');
+    const input = el('input', 'friend-search-input');
+    input.type = 'search'; input.placeholder = '输入玩家名搜索在线玩家'; input.value = friendSearchQ; input.maxLength = 40;
+    const submit = el('button', 'mini', '搜索'); submit.type = 'submit';
+    searchBar.appendChild(input); searchBar.appendChild(submit); search.appendChild(searchBar);
+    const results = el('div', 'peeps'); search.appendChild(results);
+    const pager = el('div', 'peep-pager');
+    const prev = el('button', 'mini', '上一页'), next = el('button', 'mini', '下一页'), label = el('span', 'muted');
+    prev.disabled = next.disabled = true;
+    pager.appendChild(prev); pager.appendChild(label); pager.appendChild(next); search.appendChild(pager);
+    cols.appendChild(saved); cols.appendChild(search); panel.appendChild(cols); main.appendChild(panel);
+    let requestId = 0, lastFetch = 0, pending = false;
+    function friendRow(player, isSaved) {
+      const row = el('div', 'peep');
+      const info = el('div', 'peep-info');
+      info.innerHTML = peepInfoHtml(player);
+      row.appendChild(info);
+      const action = el('button', 'mini', isSaved ? '移除好友' : player.friend ? '已添加' : '添加好友');
+      action.disabled = !isSaved && !!player.friend;
+      action.addEventListener('click', function () {
+        action.disabled = true;
+        window.Net.friendUpdate(player.id, isSaved ? 'remove' : 'add').then(function (r) {
+          if (!r || !r.ok) { action.disabled = false; toast(r && r.data && r.data.error || '操作失败，请重试', 'bad'); return; }
+          toast(isSaved ? '已移除好友' : '已添加好友');
+          panel._refresh(true);
+        });
+      });
+      row.appendChild(action);
+      row._friendAction = isSaved ? 'remove' : player.friend ? 'added' : 'add';
+      return row;
+    }
+    function fill(list, players, isSaved) {
+      const hint = list.querySelector('.hint'); if (hint) hint.remove();
+      patchList(list, players, function (p) { return p.id; }, function (p) { return friendRow(p, isSaved); }, function (row, p) {
+        const action = isSaved ? 'remove' : p.friend ? 'added' : 'add';
+        if (row._friendAction !== action) { const replacement = friendRow(p, isSaved); row.replaceWith(replacement); return replacement; }
+        const html = peepInfoHtml(p), info = row.querySelector('.peep-info');
+        if (info.innerHTML !== html) info.innerHTML = html;
+        return null;
+      });
+      if (!players.length) list.appendChild(el('div', 'hint', isSaved ? '还没有好友，搜索在线玩家添加吧。' : '没有匹配的在线玩家。'));
+    }
+    panel._refresh = function (force) {
+      if (!panel.isConnected || !force && (pending || Date.now() - lastFetch < 5000)) return;
+      const seq = ++requestId;
+      pending = true; lastFetch = Date.now();
+      window.Net.fetchFriends(friendSearchQ, friendSearchPage).then(function (r) {
+        if (seq !== requestId || !panel.isConnected || String(S().me && S().me.id || '') !== owner) return;
+        pending = false;
+        if (!r || !r.ok) { if (force) toast(r && r.data && r.data.error || '好友加载失败', 'bad'); return; }
+        const data = r.data;
+        friendSearchPage = data.page;
+        savedHead.textContent = '我的好友（' + data.friends.length + ' / 200）';
+        fill(savedList, data.friends, true); fill(results, data.players, false);
+        prev.disabled = data.page <= 1; next.disabled = data.page >= data.pages;
+        label.textContent = ' 第 ' + data.page + ' / ' + data.pages + ' 页 · ' + data.total + ' 人 ';
+      });
+    };
+    searchBar.addEventListener('submit', function (e) { e.preventDefault(); friendSearchQ = input.value.trim(); friendSearchPage = 1; panel._refresh(true); });
+    prev.addEventListener('click', function () { friendSearchPage--; panel._refresh(true); });
+    next.addEventListener('click', function () { friendSearchPage++; panel._refresh(true); });
+    panel._refresh(true);
+    // 好友可能处于岸边，没有渔获广播；独立轮询使离线/上线状态也能及时更新。
+    const refreshTimer = setInterval(function () {
+      if (!panel.isConnected) { clearInterval(refreshTimer); return; }
+      panel._refresh(false);
+    }, 5000);
+  }
   function renderGround() {
+    if (socialTab === 'friends') { renderFriends(); return; }
     const main = $('main');
     const st = S();
     const sig = groundSig(st);
@@ -2629,6 +2733,7 @@ window.UI = (function () {
     panel.innerHTML = pageHead('🌊', '社交', '在线玩家 · 按地图与钓点筛选 · 实时渔获；玩家之间可直接交易') +
       pageHelp('先选近岸 / 远洋，再点钓点卡片继续筛选；「全服在线」返回全服，点玩家卡片上的「🤝 交易」即可发起以物易物。') +
       '<h3>' + (filterSpot ? esc(filterSpot.sp.name) + ' · 实时动态' : mapName + '实时动态') + '</h3>';
+    panel.insertBefore(socialTabs(), panel.querySelector('h3'));
     if (groundFilterId) {
       const back = el('button', 'mini ground-back', '🌐 返回全服');
       back.addEventListener('click', function () { groundFilterId = null; gotoPeepPage(1); renderView(); });
@@ -3765,6 +3870,8 @@ window.UI = (function () {
     const mine = !!(me && me.id != null && String(l.seller).toLowerCase() === String(me.id).toLowerCase());
     const total = l.price * l.qty;
     const row = el('div', 'mk-row' + (mine ? ' mine' : ''));
+    row.dataset.listingId = String(l.lid);
+    row._listing = l;
     // 整根钓竿：与钓竿页同款展示——加成合计 + 一行一个部位（部位 · 组件 · 每条词条数值与区间）
     const rodHtml = (meta.kind === 'rod' && meta.parts)
       ? '<div class="mk-rod-wrap">' +
@@ -3817,20 +3924,23 @@ window.UI = (function () {
           const n = Math.max(1, Math.min(l.qty, Math.floor(Number(v) || 0)));
           if (!n) { toast('请输入有效的购买数量'); return; }
           const total = l.price * n;
+          if ((S().player.coins || 0) < total) { toast('金币不足，购买需要 ' + total + '💰'); return; }
           confirmModal({
             title: '确认购买',
             html: '花费 <b>💰' + total + '</b> 购买 <b>' + esc(l.name) + ' ×' + n + '</b>？',
             okText: '确定购买',
           }).then(function (ok) {
             if (!ok) return;
-            call(window.Net.marketBuy(l.lid, n), '购买成功：' + l.name + ' ×' + n).then(function (r) {
+            Promise.resolve(window.Net.marketBuy(l.lid, n)).then(function (r) {
+              if (!r || !r.ok) { toast((r && r.data && r.data.error) || '购买失败'); return; }
               if (r && r.ok) {
                 st.player.coins = r.data.coins; applyInvFrom(r.data);
                 // 整竿成交：服务端随回包带回槽位状态，当场写回（原来要等下一次 /api/me 才显示）
                 applyRodState(r.data);
-                renderTopbar(); renderView();
+                toast('购买成功：' + l.name + ' ×' + n);
+                renderTopbar(); patchMarketAssets(); onMarketChanged();
               }
-            });
+            }).catch(function () { toast('网络错误'); });
           });
         });
       });
@@ -3840,6 +3950,60 @@ window.UI = (function () {
     return row;
   }
 
+  function patchMarketListings(panel, st) {
+    const list = panel.querySelector('.col-main .market-list');
+    if (!list) return false;
+    const scroll = list.scrollTop;
+    const rows = new Map(Array.from(list.querySelectorAll('.mk-row')).map(function (row) { return [row.dataset.listingId, row]; }));
+    list.querySelectorAll(':scope > .hint').forEach(function (hint) { hint.remove(); });
+    (st.market || []).forEach(function (listing, index) {
+      let row = rows.get(String(listing.lid));
+      rows.delete(String(listing.lid));
+      if (row && row._listing.id === listing.id && row._listing.price === listing.price && itemMeta(listing.id).kind !== 'rod') {
+        Object.assign(row._listing, listing);
+        row.querySelector('.mk-name .qty').textContent = '×' + listing.qty;
+        row.querySelector('.mk-price .total').textContent = '合计 ' + (listing.qty * listing.price);
+      } else {
+        const fresh = marketRow(listing, st, st.me);
+        if (row) row.replaceWith(fresh);
+        row = fresh;
+      }
+      if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null);
+    });
+    rows.forEach(function (row) { row.remove(); });
+    if (!list.children.length) list.appendChild(el('div', 'hint', marketTab === 'mine' ? '你没有在售的挂单。' : '没有符合条件的挂单。'));
+    list.scrollTop = scroll;
+    const info = st.marketPage || {};
+    const pager = panel.querySelector('.col-main > .inv-pages');
+    if (pager) {
+      pager.querySelector('.hint').textContent = '第 ' + info.page + ' / ' + info.pages + ' 页 · 共 ' + info.total + ' 条';
+      const buttons = pager.querySelectorAll('button');
+      buttons[0].disabled = info.page <= 1; buttons[1].disabled = info.page >= info.pages;
+      buttons[0].onclick = function () { marketPageIndex = info.page - 1; renderView(); };
+      buttons[1].onclick = function () { marketPageIndex = info.page + 1; renderView(); };
+    }
+    panel.querySelectorAll('[data-market-count]').forEach(function (button) {
+      button.textContent = button.dataset.marketLabel + ' ' + (((info.counts || {})[button.dataset.marketCount]) || 0);
+    });
+    const partRow = panel.querySelector('.buy-filters .bf-subrow');
+    if (partRow) {
+      partRow.querySelectorAll('button').forEach(function (button) { button.remove(); });
+      [['all', '全部', (info.counts || {}).component || 0]].concat(D.ROD_PARTS.map(function (part) {
+        return [part.key, part.name, (info.parts || {})[part.key] || 0];
+      })).forEach(function (entry) {
+        if (entry[0] !== 'all' && !entry[2] && entry[0] !== buyPart) return;
+        const button = el('button', 'inv-cat sub' + (buyPart === entry[0] ? ' on' : ''), entry[1] + ' ' + entry[2]);
+        button.onclick = function () { if (buyPart !== entry[0]) { buyPart = entry[0]; renderView(); } };
+        partRow.appendChild(button);
+      });
+    }
+    panel.querySelectorAll('[data-market-tab]').forEach(function (button) {
+      const mine = button.dataset.marketTab === 'mine', cap = st.me && Number(st.me.listingCap) > 0 ? Number(st.me.listingCap) : 0;
+      button.textContent = (mine ? '🏷️ 我的挂单 ' : '🛒 购买市场 ') + (mine ? info.mineCount || 0 : Math.max(0, (info.marketTotal || 0) - (info.mineCount || 0))) + (mine && cap ? ' / ' + cap : '');
+    });
+    patchMarketAssets();
+    return true;
+  }
   function renderMarket() {
     const main = $('main');
     const focusedFilter = main.contains(document.activeElement) ? document.activeElement.getAttribute('data-market-filter') : null;
@@ -3863,6 +4027,10 @@ window.UI = (function () {
       });
     }
     const pageInfo = loaded ? st.marketPage : null;
+    const livePanel = main.querySelector('[data-market-query]');
+    if (marketTab !== 'history' && livePanel && livePanel.dataset.marketQuery === queryKey && !marketError) {
+      if (!loaded || patchMarketListings(livePanel, st)) return;
+    }
     // 右栏「我的背包（上架）」优先复用已有节点（别人挂单 / 成交的广播会整页重建市集）：
     // 重建右栏会把滚动位置、勾选焦点与鼠标悬停全丢掉，多选上架时列表被弹回顶部、点击落空。
     const prevSell = main.querySelector('.mkt-sell');
@@ -3871,6 +4039,7 @@ window.UI = (function () {
     const prevScroll = prevList ? prevList.scrollTop : 0;
     main.innerHTML = '';
     const panel = el('div', 'panel wide two-col');
+    if (loaded && marketTab !== 'history') panel.dataset.marketQuery = queryKey;
     panel.innerHTML = '<h2>💱 市集 <span class="subtitle">购买 / 我的挂单 / 历史订单 分页管理 · 成交收 10% 税（卖家承担）</span></h2>' + mallTabsHtml('market');
     bindMallTabs(panel);
     panel.appendChild(el('div', 'hint page-help',
@@ -3887,6 +4056,7 @@ window.UI = (function () {
     [['buy', '🛒 购买市场', Math.max(0, (countsInfo.marketTotal || 0) - mineCount)], ['mine', '🏷️ 我的挂单', mineCount], ['history', '📜 历史订单', null]].forEach(function (kv) {
       const label = kv[1] + (kv[2] != null ? ' ' + kv[2] : '') + (kv[0] === 'mine' && myCap ? ' / ' + myCap : '');
       const b = el('button', 'inv-cat' + (marketTab === kv[0] ? ' on' : ''), label);
+      if (kv[0] !== 'history') b.dataset.marketTab = kv[0];
       if (kv[0] === 'mine' && myCap && mineCount >= myCap) b.title = '挂单已达上限 ' + myCap + '，下架后才能再上架';
       b.addEventListener('click', function () { if (marketTab !== kv[0]) { marketTab = kv[0]; renderView(); } });
       tabs.appendChild(b);
@@ -3952,6 +4122,7 @@ window.UI = (function () {
       [['all', '全部'], ['fish', '鱼'], ['material', '材料'], ['component', '组件'], ['rod', '🎣 钓竿']].forEach(function (kv) {
         const n = ((pageInfo || {}).counts || {})[kv[0]] || 0;
         const b = el('button', 'bf-cat' + (buyCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + n);
+        b.dataset.marketCount = kv[0]; b.dataset.marketLabel = kv[1];
         b.addEventListener('click', function () { if (buyCategory !== kv[0]) { buyCategory = kv[0]; renderView(); } });
         filters.appendChild(b);
       });
@@ -7422,6 +7593,8 @@ window.UI = (function () {
   let wsRelics = 0;             // 残片保留：投入的沉船宝匣残片片数（0 ~ smeltCfg.retainMaxRelic）
   let wsRecast = '';            // 重铸选中的组件签名
   let wsRecastTarget = -1;      // 重铸指定的词条下标（-1 = 不指定，重 roll 全部词条）
+  let wsRecastQuiet = false;
+  try { wsRecastQuiet = localStorage.getItem('fish.recast.quiet') === '1'; } catch (_) {}
   let wsForge = '';             // 锻造选中的组件签名
   let wsForgeMat = '';          // 锻造选中的催化剂材料 id
   let wsForgePearl = false;     // 消耗宝珠，使用未缩减的催化区间
@@ -7629,9 +7802,12 @@ window.UI = (function () {
       '<div class="sm-material-limit">每种催化剂补一条对应词缀 · 份数在熔炼页面用 +1 / +5 / 清空 调整</div>' +
       '<div class="ws-mat-grid">' + D.smeltMaterialIds().map(function (id) {
         const meta = D.itemOf(id), aff = D.smeltMaterialAffix(id);
+        const main = D.componentOf(wsMain), sub = D.componentOf(wsSub);
+        const range = main ? D.smeltRangeOf(main.baseId, sub && sub.baseId, 'add', aff, { part: main.part }) : null;
+        const rangeLabel = range ? ' · ' + rangeText({ min: range[0], max: range[1] }) + '%' : ' · 选择主件后显示区间';
         return '<button type="button" class="ws-mat" data-mat="' + esc(id) + '" data-affix="' + esc(aff) + '" aria-pressed="false">' +
           '<img class="sm-material-icon" src="assets/item/' + esc(id) + '.png" alt="" />' +
-          '<span class="sm-mat-info"><strong class="wm-name">' + esc(meta.name) + '</strong><span class="wm-aff">' + esc(D.AFFIX_LABEL[aff] || aff) + '</span><small class="wm-have"></small></span></button>';
+          '<span class="sm-mat-info"><strong class="wm-name">' + esc(meta.name) + '</strong><span class="wm-aff">' + esc((D.AFFIX_LABEL[aff] || aff) + rangeLabel) + '</span><small class="wm-have"></small></span></button>';
       }).join('') + '</div><div id="ws-mats-note" role="status"></div></div>' +
       '<footer class="sm-material-footer"><div id="ws-material-feedback" role="status" aria-live="polite"></div><button class="mini primary-mini sm-material-done">完成</button></footer>';
     overlay.appendChild(box); document.body.appendChild(overlay);
@@ -8078,6 +8254,7 @@ window.UI = (function () {
             : '重 roll 全部 ' + eligible.affixes.length + ' 条词条的数值')
         : '<span class="muted">先放入一件待重铸的组件</span>') + '</div>' +
       '<div class="ws-line muted">重铸不改变品质 / 底材 / 词条类型与条数，也不会失败——只有数值会变。</div>' +
+      '<label class="ws-line"><input type="checkbox" id="ws-recast-quiet"' + (wsRecastQuiet ? ' checked' : '') + '> 不再弹出重铸成功页面</label>' +
       '</div>' +
       '<button class="primary big" id="ws-recast-go"' + (eligible && enough ? '' : ' disabled') + '>开始重铸（' +
       cost.pearl + ' 颗' + esc(info.pearlName) + (cost.gold > 0 ? ' + ' + cost.gold + '💰' : '') + '）</button>' +
@@ -8105,6 +8282,10 @@ window.UI = (function () {
       b.addEventListener('click', function () { wsUnload(b.getAttribute('data-unload')); });
     });
     if ($('ws-recast-go')) $('ws-recast-go').addEventListener('click', function () { wsDoRecast(); });
+    $('ws-recast-quiet').addEventListener('change', function () {
+      wsRecastQuiet = this.checked;
+      try { localStorage.setItem('fish.recast.quiet', wsRecastQuiet ? '1' : '0'); } catch (_) {}
+    });
   }
 
   function wsOpenForgeMaterials() {
@@ -8317,9 +8498,11 @@ window.UI = (function () {
         st.player.coins = r.data.coins;
         applyInvFrom(r.data);
         wsRecast = r.data.id || '';
-        wsRecastTarget = -1;
+        const after = D.componentOf(wsRecast);
+        wsRecastTarget = after && target < after.affixes.length ? target : -1;
         renderTopbar(); renderView();
-        wsShowRecastResult(comp, r.data, target);
+        if (wsRecastQuiet) toast(target >= 0 ? '重铸完成，已保留指定词条' : '重铸完成');
+        else wsShowRecastResult(comp, r.data, target);
       }).catch(function () { toast('网络错误'); });
     });
   }
@@ -8367,6 +8550,7 @@ window.UI = (function () {
   }
   function mallBuyFlow(item) {
     const st = S();
+    if ((st.player.coins || 0) < item.price) { toast('金币不足，购买需要 ' + item.price + '💰'); return; }
     const maxQty = item.remain == null ? 99 : Math.min(99, item.remain);
     if (maxQty <= 0) { toast('「' + item.name + '」今日已售罄，等限购刷新后再来'); return; }
     promptModal({
@@ -8378,6 +8562,7 @@ window.UI = (function () {
     }).then(function (v) {
       if (v == null) return;
       const qty = Math.max(1, Math.min(maxQty, Math.floor(v)));
+      if ((S().player.coins || 0) < item.price * qty) { toast('金币不足，购买需要 ' + (item.price * qty) + '💰'); return; }
       Promise.resolve(window.Net.mallBuy(item.id, qty)).then(function (r) {
         if (!r || !r.ok) { toast((r && r.data && r.data.error) || '购买失败'); return; }
         const s2 = S();
@@ -8426,11 +8611,11 @@ window.UI = (function () {
       const soldOut = it.remain === 0;
       const b1 = card.querySelector('.mc-acts button');
       if (b1) {
-        b1.disabled = soldOut || coins < it.price;
+        b1.disabled = soldOut;
         b1.title = soldOut ? '今日限购已用完，等刷新后重置' : (coins < it.price ? '金币不足' : '购买（可选择数量）');
       }
       const bAll = card.querySelectorAll('.mc-acts button')[1];
-      if (bAll) bAll.disabled = coins < it.price * it.remain;
+      if (bAll) bAll.disabled = soldOut;
     });
     return true;
   }
@@ -8480,7 +8665,7 @@ window.UI = (function () {
       const acts = el('div', 'mc-acts');
       const b1 = el('button', 'mini primary-mini', soldOut ? '今日已售罄' : '购买');
       markFeature(b1, 'mall.buy');
-      b1.disabled = soldOut || (st.player.coins || 0) < it.price;
+      b1.disabled = soldOut;
       b1.title = soldOut ? '今日限购已用完，等刷新后重置'
         : ((st.player.coins || 0) < it.price ? '金币不足' : '购买（可选择数量）');
       b1.addEventListener('click', function () { mallBuyFlow(it); });
@@ -8489,8 +8674,8 @@ window.UI = (function () {
         const bAll = el('button', 'mini', '买满 ×' + it.remain);
         markFeature(bAll, 'mall.buy');
         bAll.title = '一次买完今日剩余限购（' + (it.price * it.remain) + '💰）';
-        bAll.disabled = (st.player.coins || 0) < it.price * it.remain;
         bAll.addEventListener('click', function () {
+          if ((S().player.coins || 0) < it.price * it.remain) { toast('金币不足，买满需要 ' + (it.price * it.remain) + '💰'); return; }
           confirmModal({
             title: '一次买满', okText: '购买 ×' + it.remain,
             html: '购买 <b>' + esc(it.name) + ' ×' + it.remain + '</b>？<br/>花费 💰' + (it.price * it.remain) +

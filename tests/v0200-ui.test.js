@@ -47,7 +47,7 @@ async function loginPage(context, username) {
   const otp = await provisionAdmin(server, DIR, 'uiadmin');
   const admin = await context.newPage();
   await admin.goto(BASE + '/admin.html');
-  await admin.fill('#login-user', 'uiadmin'); await admin.fill('#login-pass', 'v0200-test-1234'); await admin.fill('#login-otp', otp); await admin.click('#login-btn');
+  await admin.fill('#login-user', 'uiadmin'); await admin.fill('#login-pass', 'v0200-test-1234'); await admin.fill('#login-otp', otp);
   await admin.locator('.nav-item').filter({ hasText: '钓点管理' }).click();
   await admin.locator('#lg-add').waitFor();
   check('后台正常登录并加载战利品组管理', true);

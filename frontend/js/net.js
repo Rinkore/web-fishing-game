@@ -166,7 +166,8 @@ window.Net = (function () {
   function guardVersion() {
     if (!localVersion()) return Promise.resolve(false);
     return apiFetch('GET', '/api/version').then(function (r) {
-      if (!r || !r.ok || !r.data || !r.data.version) return false;
+      if (!r || !r.ok || !r.data || !r.data.version) { setConn(false); return false; }
+      setConn(true);
       applyServerCfg(r.data);
       return reloadForVersion(r.data.version);
     }).catch(function () { return false; });
@@ -180,7 +181,32 @@ window.Net = (function () {
   let verTimer = null;
   let probeFails = 0;
   let connOk = true;
+  let updateTimer = null;
+  let updateProbePending = false;
+  function showUpdatePage(version) {
+    let panel = document.getElementById('server-update-page');
+    if (!panel) {
+      panel = document.createElement('section');
+      panel.id = 'server-update-page';
+      panel.setAttribute('role', 'alert');
+      panel.innerHTML = '<div class="server-update-card"><h1>服务器正在更新中</h1>' +
+        '<p class="server-update-version"></p><p>请稍候，恢复连接后将自动进入游戏。</p></div>';
+      document.body.appendChild(panel);
+    }
+    panel.querySelector('.server-update-version').textContent = '当前版本：' + (version || localVersion());
+    if (!updateTimer) updateTimer = setInterval(function () {
+      if (updateProbePending) return;
+      updateProbePending = true;
+      probeServer().finally(function () { updateProbePending = false; });
+    }, 3000);
+  }
+  function hideUpdatePage() {
+    const panel = document.getElementById('server-update-page');
+    if (panel) panel.remove();
+    if (updateTimer) { clearInterval(updateTimer); updateTimer = null; }
+  }
   function setConn(ok) {
+    if (ok) hideUpdatePage(); else showUpdatePage();
     if (connOk === ok) return;
     connOk = ok;
     if (window.UI && window.UI.onConnChange) window.UI.onConnChange(ok);
@@ -359,6 +385,8 @@ window.Net = (function () {
     });
   };
   // 视口登记：告诉服务器当前正在看哪一页（之后每秒只推该页玩家状态）；clear=true 取消登记
+  const fetchFriends = (q, page) => apiFetch('GET', '/api/friends?q=' + encodeURIComponent(q || '') + '&page=' + (page || 1));
+  const friendUpdate = (target, action) => authed('/api/friends', { target: target, action: action });
   const setPlayersView = (opts) => {
     const o = opts || {};
     return authed('/api/players/view', { page: o.page || 1, size: o.size || 30, q: o.q || '',
@@ -500,7 +528,10 @@ window.Net = (function () {
       function handleServerEvent(m) {
         const S = state();
         const ui = window.UI;
-        if (m.type === 'features') {
+        if (m.type === 'maintenance') {
+          setConn(false);
+          showUpdatePage(m.version);
+        } else if (m.type === 'features') {
           S.features = m.features || {};
           S.featureOrder = m.featureOrder || {};
           if (ui && ui.onFeatures) ui.onFeatures();
@@ -588,7 +619,7 @@ window.Net = (function () {
           if (ui) ui.refreshAll('players');
         } else if (m.type === 'grounds') {
           S.groundCounts = m.counts || {};
-          S.spotCounts = m.spotCounts || {};
+          if (m.spotCounts != null) S.spotCounts = m.spotCounts;
           S.onlineTotal = m.total || 0;
           if (ui) ui.refreshAll('grounds');
         } else if (m.type === 'playersPage') {
@@ -863,6 +894,7 @@ window.Net = (function () {
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
     fetchPlayersPage: fetchPlayersPage, setPlayersView: setPlayersView,
+    fetchFriends: fetchFriends, friendUpdate: friendUpdate,
     fetchFeedback: fetchFeedback,
     fetchChest: fetchChest, chestCraft: chestCraft, chestOpen: chestOpen,
     fetchMall: fetchMall, mallBuy: mallBuy, fetchWorkshop: fetchWorkshop, smelt: smelt, recast: recast, forge: forge,

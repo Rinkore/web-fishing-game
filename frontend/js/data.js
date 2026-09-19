@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.20.2';
+  const VERSION = 'v0.20.3';
   const BUILD = '2026-09-19';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -947,7 +947,8 @@
   function mergedEffectsOf(bd, spot) {
     const eff = rodEffectsOf(bd);
     ((spot && spot.buffs) || []).forEach(function (b) {
-      if (b && eff[b.type] != null) eff[b.type] += Number(b.value) || 0;
+      // 钓点钓速只在最终抛竿间隔乘算，不进入上钩公式的 speed 变量。
+      if (b && b.type !== 'speed' && eff[b.type] != null) eff[b.type] += Number(b.value) || 0;
     });
     return eff;
   }

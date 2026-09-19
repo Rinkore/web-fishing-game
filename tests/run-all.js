@@ -32,6 +32,8 @@ ALL_SUITES.push('v0190');
 ALL_SUITES.push('v0200-loot', 'v0200-ui');
 ALL_SUITES.push('wiki/wiki');
 ALL_SUITES.push('wiki/browser');
+ALL_SUITES.push('social-friends');
+ALL_SUITES.push('admin-interactions', 'workshop-market-regression', 'update-page');
 const ONLY = (process.env.FISHING_TEST_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
 const SUITES = ONLY.length ? ALL_SUITES.filter(s => ONLY.indexOf(s) >= 0) : ALL_SUITES;
 

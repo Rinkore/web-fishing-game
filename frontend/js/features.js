@@ -47,6 +47,7 @@
     '/api/market/list': 'mall.list', '/api/market/buy': 'mall.marketbuy',
     '/api/trade/invite': 'ground.trade', '/api/trade/respond': 'ground.trade',
     '/api/trade/set': 'ground.trade', '/api/trade/confirm': 'ground.trade',
+    '/api/friends': 'ground',
     '/api/subscribe': 'inventory.subscribe', '/api/feedback/submit': 'feedback.submit', '/api/feedback/skip': 'feedback.skip',
     '/api/sea/ship/up': 'sea.upgrade', '/api/sea/chart': 'sea.chart', '/api/sea/voyage': 'sea.voyage',
   };

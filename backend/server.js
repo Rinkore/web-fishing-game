@@ -668,8 +668,8 @@ function invAvailOf(rec, id) { return Math.max(0, invCountOf(rec, id) - bigReser
 
 // ---- 服务端游戏引擎（钓鱼循环 / 掷骰 / 词缀加成：唯一权威，前端仅展示） ----
 // 抛竿间隔：基础值 + 最短值 + 全服钓速加成/上限均可由管理后台配置（world.castCfg，落盘 config.json）。
-// 钓速（词缀 + 钓点增益 + 全服加成）只影响「抛竿间隔」：间隔 = 基础 × (1 - 有效钓速/100)，不低于最短值；
-// 上钩率由后台公式（biteFormula）单独决定，默认是平值 90%，不再随钓速变化（旧版默认公式把两者混在一起）。
+// 抛竿间隔 = 基础 × (1 - 有效钓速/100) × 钓点乘数，不低于最短值；有效钓速仅合计词缀与全服加成。
+// 上钩率由后台公式（biteFormula）决定；公式 speed 仅为钓竿词缀，钓点钓速只乘算最终间隔。
 const CAST_BASE_DEFAULT = 3000; // 基础抛竿间隔 ms
 const CAST_MIN_DEFAULT = 800;   // 抛竿间隔下限 ms
 const CAST_SPEED_BONUS_DEFAULT = 0;   // 全服钓速加成（百分比点，可为负）
@@ -3625,7 +3625,7 @@ function flushPresence() {
       sseWrite(res, d);
     });
   }
-  broadcast({ type: 'grounds', counts: groundCounts(), total: players.size });
+  broadcastGrounds();
 }
 function readBody(req, cb) {
   const res = req.securityResponse;
@@ -6063,6 +6063,46 @@ function lootPreviewRows(spot, rareVal) {
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
     return apiResp(res, 200, Object.assign({ ok: true, uptimeSec: Math.round((Date.now() - netStats.start) / 1000) }, netStats));
   }
+  // 好友保存于账号；添加仅记录到自己的列表，不改变对方的好友。
+  if (p === '/api/friends' && req.method === 'GET') {
+    const key = u.query.token && sessionGet(u.query.token);
+    if (!key || !users[key]) return apiResp(res, 401, { error: '未登录' });
+    const ids = Array.isArray(users[key].friends) ? users[key].friends : [];
+    const friends = ids.filter(function (id) { return Object.prototype.hasOwnProperty.call(users, id); }).map(function (id) {
+      const online = players.get(id);
+      return online ? Object.assign(socialPlayerView(online), { online: true })
+        : { id: id, name: users[id].name, online: false, status: 'offline', locationName: '离线' };
+    });
+    friends.sort(function (a, b) { return Number(b.online) - Number(a.online) || String(a.name).localeCompare(String(b.name)); });
+    const all = playersSortedFiltered(String(u.query.q || '').slice(0, 40)).filter(function (x) { return x.id !== key; });
+    const size = 30, pages = Math.max(1, Math.ceil(all.length / size));
+    const page = Math.min(Math.max(parseInt(u.query.page, 10) || 1, 1), pages);
+    return apiResp(res, 200, { ok: true, friends: friends, page: page, pages: pages, total: all.length,
+      players: all.slice((page - 1) * size, page * size).map(function (x) {
+        return Object.assign(socialPlayerView(x), { friend: ids.indexOf(x.id) >= 0 });
+      }) });
+  }
+  if (p === '/api/friends' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      const d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const key = d.token && sessionGet(d.token);
+      if (!key || !users[key]) return apiResp(res, 401, { error: '未登录' });
+      const target = String(d.target || '').toLowerCase();
+      if (d.action !== 'add' && d.action !== 'remove') return apiResp(res, 400, { error: '未知好友操作' });
+      if (!Object.prototype.hasOwnProperty.call(users, target)) return apiResp(res, 404, { error: '玩家不存在' });
+      if (target === key) return apiResp(res, 400, { error: '不能添加自己为好友' });
+      const rec = users[key];
+      const ids = Array.isArray(rec.friends) ? rec.friends : [];
+      if (d.action === 'add' && ids.indexOf(target) < 0) {
+        if (!players.has(target)) return apiResp(res, 400, { error: '对方已离线，请搜索在线玩家添加好友' });
+        if (ids.length >= 200) return apiResp(res, 400, { error: '好友数量已达上限（200）' });
+        rec.friends = ids.concat(target);
+      } else if (d.action === 'remove') rec.friends = ids.filter(function (id) { return id !== target; });
+      saveAccount(key);
+      return apiResp(res, 200, { ok: true });
+    });
+    return;
+  }
   // ---- perf-9：玩家列表分页 / 搜索 ----
   if (p === '/api/players/page' && req.method === 'GET') {
     const key = u.query.token && sessionGet(u.query.token);
@@ -8308,7 +8348,17 @@ server.listen(PORT, BIND_HOST, function () {
 // ---- 优雅停服：控制台指令 / Ctrl+C 先落盘再退出 ----
 // 直接叉掉 cmd 窗口走的是 TerminateProcess，'exit' 钩子不执行：账号是「脏标记 + 1s 定时批量」、
 // 会话是 2s 防抖，两者都可能丢掉最后一笔。这里给一个显式入口：账号、世界域、会话全部同步写盘后再退出。
+let shuttingDown = false;
 function gracefulShutdown(why) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  broadcast({ type: 'maintenance', version: D.VERSION });
+  flushBcast();
+  server.close();
+  // 先让通知写入客户端，再同步保存并退出，避免保存后仍运行钓鱼计时器。
+  setTimeout(function () { finishShutdown(why); }, 250);
+}
+function finishShutdown(why) {
   console.log('\n💾 正在保存数据（' + why + '）…');
   try {
     if (accountFlushTimer) { clearTimeout(accountFlushTimer); accountFlushTimer = null; }
