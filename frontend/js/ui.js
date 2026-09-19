@@ -160,7 +160,7 @@ window.UI = (function () {
   let currentView = 'fishing';
   // 与商城一致：相关功能共用一个导航入口，在页面内用一级页签切换。
   // 旧 view id 仍由 navigateView 接受，确保顶栏快捷入口与外部调用平滑迁移。
-  let fishingTab = 'fishing';   // fishing | rod
+  // 钓鱼页不再承载钓竿子页签；钓竿统一放在角色页。
   let codexMainTab = 'codex';   // codex | records
   let charTab = 'companion';    // companion | boat
   let fbTab = 'submit';         // submit | mine
@@ -633,7 +633,6 @@ window.UI = (function () {
   }
   // 页签（与商城「限购 / 收购 / 市集」同款）：scope 决定点选后写哪个页签状态
   const SECTION_STATE = {
-    fishing: function (v) { fishingTab = v; },
     codex: function (v) { codexMainTab = v; },
     character: function (v) { charTab = v; },
     feedback: function (v) { fbTab = v; },
@@ -656,7 +655,7 @@ window.UI = (function () {
     });
   }
   function navigateView(view) {
-    if (view === 'bd') { currentView = 'fishing'; fishingTab = 'rod'; return; }
+    if (view === 'bd') { currentView = 'character'; charTab = 'rod'; return; }
     if (view === 'records') { currentView = 'codex'; codexMainTab = 'records'; return; }
     currentView = view;
   }
@@ -664,15 +663,14 @@ window.UI = (function () {
   // 从侧栏再点进来时若不复位，看起来就像没切过去。顶栏快捷入口与外部 setView 不走这里，
   // 仍可用 navigateView('bd' / 'records') 直达指定页签。
   function resetSectionTab(view) {
-    if (view === 'fishing') fishingTab = 'fishing';
-    else if (view === 'codex') codexMainTab = 'codex';
+    if (view === 'codex') codexMainTab = 'codex';
     else if (view === 'character') charTab = 'companion';
     else if (view === 'feedback') fbTab = 'submit';
   }
   // 当前实际展示的页面 id（= 功能开关 id = 广播 scope 键）：
   // 合并页按「当前页签」折算回原页面 id，功能锁定、广播重绘范围都以它为准。
   function pageIdOf() {
-    if (currentView === 'fishing') return fishingTab === 'rod' ? 'bd' : 'fishing';
+    if (currentView === 'character' && charTab === 'rod') return 'bd';
     if (currentView === 'codex') return codexMainTab === 'records' ? 'records' : 'codex';
     return currentView === 'shop' || currentView === 'market' ? 'mall' : currentView;
   }
@@ -769,7 +767,7 @@ window.UI = (function () {
         })()
       : '—';
     // 顶栏状态块可点击跳转（判定以**框体**为准：整块都是按钮，点空白也算）
-    //   状态 / 位置 → 钓鱼页；抛竿间隔 → 钓竿页；在线人数 → 社交页；上鱼率 → 公式由后台控制，跳钓鱼页
+    //   状态 / 位置 → 钓鱼页；抛竿间隔 → 角色·钓竿；在线人数 → 社交页；上鱼率 → 公式由后台控制，跳钓鱼页
     const navTo = function (view, tip) {
       return { cls: ' meta-btn', tip: tip, view: view };
     };
@@ -777,7 +775,7 @@ window.UI = (function () {
       { cls: ' meta-btn', tip: '点击回到钓鱼页', view: 'fishing', html: '<span class="dot ' + (p.status === 'fishing' ? 'on' : 'idle') + '"></span>' +
         '<span class="pname">' + esc(p.name) + '</span><span class="meta-txt">状态：' + esc(statusText) + '</span>' },
     ];
-    if (castSpeedShort()) chips.push(Object.assign(navTo('bd', '点击打开「钓鱼 · 钓竿」页签（抛竿间隔由钓竿词缀 / 钓点增益 / 全服钓速共同决定）'), { html: '<span class="meta-txt">🎣 ' + esc(castSpeedShort()) + '</span>' }));
+    if (castSpeedShort()) chips.push(Object.assign(navTo('bd', '点击打开「角色 · 钓竿」页签（抛竿间隔由钓竿词缀 / 钓点增益 / 全服钓速共同决定）'), { html: '<span class="meta-txt">🎣 ' + esc(castSpeedShort()) + '</span>' }));
     if (biteRateShort()) chips.push(Object.assign(navTo('fishing', '上鱼率由后台「公式管理」的上钩公式决定；点击回到钓鱼页'), { html: '<span class="meta-txt">🐟 ' + esc(biteRateShort()) + '</span>' }));
     chips.push(Object.assign(navTo('fishing', '点击回到钓鱼页'), { html: '<span class="meta-txt">位置：' + esc(loc) + '</span>' }));
     chips.push(Object.assign(navTo('ground', '点击查看「社交」页（各钓场人数、在线玩家与实时动态）'), { html: '<span class="meta-txt">在线：' + est.players + ' 人</span>' }));
@@ -1013,14 +1011,12 @@ window.UI = (function () {
     main.innerHTML = '';
 
     // 左：像素世界地图（钓场为区域、钓点为可点节点；点击节点=选择钓点，逻辑不变）
-    // 多地图页签：近岸（现有地图，冰湖活动场也在此图上）/ 出海（未来航线新地图预告）
+    // 多地图页签：近岸 / 远洋
     const left = el('div', 'panel fish-select');
-    left.innerHTML = pageHead('🎣', '钓鱼', '选钓点即自动垂钓 · 配装与存档在「钓竿」页签') +
-      sectionTabsHtml('fishing', 'fishing', [['fishing', '🎣 钓鱼'], ['rod', '🎯 钓竿']]) +
+    left.innerHTML = pageHead('🎣', '钓鱼', '选钓点即自动垂钓 · 配装与存档在「角色 · 钓竿」页签') +
       '<h3>🗺 世界地图 · 选择钓点</h3>';
-    bindSectionTabs(left, 'fishing');
     const tabBar = el('div', 'px-map-tabs');
-    [['nearshore', '🏞 近岸'], ['voyage', '⛵ 出海']].forEach(function (kv) {
+    [['nearshore', '🏞 近岸'], ['voyage', '⛵ 远洋']].forEach(function (kv) {
       const tb = el('button', 'px-map-tab' + (mapTab === kv[0] ? ' on' : ''), kv[1]);
       tb.addEventListener('click', function () { if (mapTab !== kv[0]) { mapTab = kv[0]; renderView(); } });
       tabBar.appendChild(tb);
@@ -1036,7 +1032,7 @@ window.UI = (function () {
         shore: [26, 73], reef: [62, 44], trench: [85, 26],
       },
     };
-    // 出海图的钓点坐标：远洋钓场用 data.js 出厂 pos；临时海域由注入时的环绕逻辑定位
+    // 远洋图的钓点坐标：远洋钓场用 data.js 出厂 pos；临时海域由注入时的环绕逻辑定位
     const map = el('div', 'px-map');
     const mapImg = mapTab === 'voyage' ? 'assets/voyagemap.png' : 'assets/worldmap.png';
     map.innerHTML = '<img class="px-map-img" src="' + mapImg + '" alt="" draggable="false">';
@@ -1066,7 +1062,7 @@ window.UI = (function () {
       // v0.19.0：钓点级锁定 / 远洋船级门槛本地预检（服务端 startFishingSession 同样校验）
       const spT = gT && gT.spots ? gT.spots.find(function (x) { return x.id === sid; }) : null;
       if (spT && spT.locked) { toast('「' + spT.name + '」暂未开放'); return; }
-      if (spT && spT.minShip && (!seaInfo || !seaInfo.ship)) { toast('⛵ 出海钓点需要先到「⛵ 远洋」登记船籍'); return; }
+      if (spT && spT.minShip && (!seaInfo || !seaInfo.ship)) { toast('⛵ 远洋钓点需要先到「⛵ 远洋」登记船籍'); return; }
       if (spT && spT.minShip && seaInfo.ship.lv < spT.minShip) {
         toast('⛵ 船级不足：「' + spT.name + '」需要 ' + spT.minShip + ' 级船，先到「⛵ 远洋」升级'); return;
       }
@@ -1091,7 +1087,7 @@ window.UI = (function () {
       });
     }
     if (mapTab === 'voyage') {
-      // v0.19.0 出海图做实：世界地图的出海钓点（船级门槛锁定）+ 临时海域节点（账号私有，服务端下发）。
+      // v0.19.0 远洋图做实：远洋钓点（船级门槛锁定）+ 临时海域节点（账号私有，服务端下发）。
       // 复用近岸同一套节点渲染与 chooseSpot 流程，只是底图与钓点集合不同。
       ensureSea();
       const shipLv = (seaInfo && seaInfo.ship) ? seaInfo.ship.lv : 1;
@@ -1099,7 +1095,7 @@ window.UI = (function () {
         const lay = MAP_LAYOUT[g.id] || {};
         const isMap = !g.zone;
         (g.spots || []).forEach(function (sp, spIdx) {
-          if (isMap && sp.map !== 'voyage') return; // 世界地图的近岸钓点不出现在出海图
+          if (isMap && sp.map !== 'voyage') return; // 世界地图的近岸钓点不出现在远洋图
           let pos = (Array.isArray(sp.pos) && sp.pos.length === 2) ? sp.pos : lay[sp.id];
           if (!pos) {
             const base = lay.label || [50, 50];
@@ -1135,11 +1131,11 @@ window.UI = (function () {
     map.innerHTML += '<img class="px-bird b1" src="assets/ui/bird.png" alt="">' +
       '<img class="px-bird b2" src="assets/ui/bird.png" alt="">';
     D.GROUNDS.forEach(function (g) {
-      if (g.zone) return; // 临时海域只出现在「⛵ 出海」图上
+      if (g.zone) return; // 临时海域只出现在「⛵ 远洋」图上
       const lay = MAP_LAYOUT[g.id] || {};
       // 未预置坐标的钓点（后台新建、还没在后台拖过位置）：围绕地图中心环状排列
       (g.spots || []).forEach(function (sp, spIdx) {
-        if (sp.map === 'voyage') return; // 出海钓点只出现在「⛵ 出海」图上
+        if (sp.map === 'voyage') return; // 远洋钓点只出现在「⛵ 远洋」图上
         let pos = (Array.isArray(sp.pos) && sp.pos.length === 2) ? sp.pos : lay[sp.id];
         if (!pos) {
           const base = lay.label || [50, 50];
@@ -1317,7 +1313,7 @@ window.UI = (function () {
     return card;
   }
 
-  // ---- 钓竿页签视图（组件装备 + 词缀加成） ----
+  // ---- 角色 · 钓竿页签视图（组件装备 + 词缀加成） ----
   // 装备/卸下走服务器（/api/bd/set 校验目录并即时调整钓速）。
   // 安装 = 从背包取用 1 件组件；卸下（或换装）会把组件原样放回背包。
   function setPart(partKey, compId) {
@@ -1758,7 +1754,7 @@ window.UI = (function () {
 
   // 组件选择子窗口（模块级状态：筛选/排序在重绘间保留）
   // 两种模式共用同一个子页面：
-  //   equip —— 钓竿页签「装备组件」：顶部显示当前已装备组件用于对比，卡片操作是「装备 / 出售 / 上架」
+  //   equip —— 角色 · 钓竿页签「装备组件」：顶部显示当前已装备组件用于对比，卡片操作是「装备 / 出售 / 上架」
   //   pick  —— 工坊选主件/副件：顶部显示当前已选的组件，卡片操作只有「选择」，可限定部位
   let bdEquipPart = null;
   let compPickCtx = null;      // pick 模式的上下文 { title, note, part, pickLabel, exclude, getCurrent, onPick }
@@ -2188,16 +2184,8 @@ window.UI = (function () {
     return wrap;
   }
 
-  function renderBD() {
-    const main = $('main');
+  function renderBdContent(panel) {
     const st = S();
-    main.innerHTML = '';
-    const panel = el('div', 'panel wide');
-    panel.innerHTML = pageHead('🎣', '钓鱼', '选钓点即自动垂钓 · 配装与存档在「钓竿」页签') +
-      sectionTabsHtml('fishing', 'rod', [['fishing', '🎣 钓鱼'], ['rod', '🎯 钓竿']]) +
-      pageHelp('装上组件即可拿到词缀加成（正在钓鱼也会立即生效）。最多保存 8 套钓竿方案，随时一键切换。') +
-      '<h3>🎯 钓竿 · 配装与方案</h3>';
-    bindSectionTabs(panel, 'fishing');
     renderRodSlots(panel);
 
     // 加成总览（与 Engine 的钓鱼逻辑同源）
@@ -2270,6 +2258,16 @@ window.UI = (function () {
     panel.appendChild(el('div', 'note-block',
       '<b>组件怎么获得？</b>钓鱼时有概率钓到各部位组件（稀有/史诗更少见）。' +
       '<b>装备取用</b>：安装会从背包取用 1 件该组件，加成持续生效并在服务器实时结算（正在钓鱼时钓速也会立即调整）。'));
+  }
+
+  function renderBD() {
+    const main = $('main');
+    main.innerHTML = '';
+    const panel = el('div', 'panel wide char-view');
+    panel.innerHTML = pageHead('🧍', '角色', '钓竿配装与方案') +
+      pageHelp('装上组件即可拿到词缀加成（正在钓鱼也会立即生效）。最多保存 8 套钓竿方案，随时一键切换。') +
+      '<h3>🎯 钓竿 · 配装与方案</h3>';
+    renderBdContent(panel);
     main.appendChild(panel);
   }
 
@@ -2315,48 +2313,69 @@ window.UI = (function () {
   function peepViewSigOf(page) {
     return [page || 1, PEEP_PAGE_SIZE, peepSearchQ, groundFilterId || ''].join('|');
   }
+  function socialFilterQuery() {
+    const e = selectedSocialSpot();
+    return e ? { ground: e.g.id, spot: e.sp.id } : {};
+  }
   function gotoPeepPage(n) {
     peepSearchQ = peepSearchQ || '';
     renderGround._lastViewSig = peepViewSigOf(n);   // 乐观登记：fetch 回来若被服务端夹页，syncPeepView 会再登记一次
-    window.Net.fetchPlayersPage({ page: n, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
-    window.Net.setPlayersView({ page: n, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
+    window.Net.fetchPlayersPage(Object.assign({ page: n, size: PEEP_PAGE_SIZE, q: peepSearchQ }, socialFilterQuery()));
+    window.Net.setPlayersView(Object.assign({ page: n, size: PEEP_PAGE_SIZE, q: peepSearchQ }, socialFilterQuery()));
   }
   function syncPeepView() {
     const page = (S().playersPage && S().playersPage.page) || 1;
     const sig = peepViewSigOf(page);
     if (renderGround._lastViewSig === sig) return;
     renderGround._lastViewSig = sig;
-    window.Net.setPlayersView({ page: page, size: PEEP_PAGE_SIZE, q: peepSearchQ, ground: groundFilterId });
+    window.Net.setPlayersView(Object.assign({ page: page, size: PEEP_PAGE_SIZE, q: peepSearchQ }, socialFilterQuery()));
   }
 
   // 地图概览：只改人数与状态类，节点原地保留（正在点的那张卡片不会被广播换掉）
   const TOTAL_GC = { id: '__total__', total: true };
-  function gcBuffCount(g) { return (g.spots || []).filter(function (sp) { return sp.buffs && sp.buffs.length; }).length; }
+  function selectedSocialSpot() {
+    if (!groundFilterId) return null;
+    const parts = String(groundFilterId).split(':');
+    const g = D.GROUNDS.find(function (x) { return x.id === parts[0]; });
+    const sp = g && (g.spots || []).find(function (x) { return x.id === parts[1]; });
+    return g && sp ? { g: g, sp: sp, key: g.id + ':' + sp.id } : null;
+  }
+  function socialSpotItems() {
+    const out = [TOTAL_GC];
+    liveSpotsOfMap().forEach(function (e) {
+      out.push({ key: e.g.id + ':' + e.sp.id, g: e.g, sp: e.sp });
+    });
+    return out;
+  }
+  function gcBuffCount(item) { return item && item.sp && item.sp.buffs ? item.sp.buffs.length : 0; }
   function paintGroundCountBox(box, g) {
-    const c = g.total ? (S().onlineTotal || 0) : ((S().groundCounts && S().groundCounts[g.id]) || 0);
+    const spots = S().spotCounts || {};
+    const c = g.total ? (S().onlineTotal || 0) : (spots[g.key] || 0);
     const num = box.querySelector('.gcb-n');
     if (num && num.textContent !== String(c)) num.textContent = c;
-    const cls = 'gc-box' + (g.total ? ' total' : '') + (g.locked ? ' locked' : '') +
+    const locked = !g.total && g.sp && (g.sp.locked || (g.sp.minShip && (!seaInfo || !seaInfo.ship || seaInfo.ship.lv < g.sp.minShip)));
+    const cls = 'gc-box' + (g.total ? ' total' : '') + (locked ? ' locked' : '') +
       (g.total ? '' : (c > 0 ? ' live' : '')) +
-      ((g.total ? !groundFilterId : groundFilterId === g.id) ? ' sel' : '') +
+      ((g.total ? !groundFilterId : groundFilterId === g.key) ? ' sel' : '') +
       (gcBuffCount(g) ? ' has-buff' : '');
     if (box.className !== cls) box.className = cls;
   }
   function groundCountBox(g) {
     const box = el('div', 'gc-box');
-    box.setAttribute('data-gid', g.id);
+    box.setAttribute('data-gid', g.total ? '' : g.key);
     if (g.total) {
       box.innerHTML = '<div class="gcb-name">🌐 全服在线</div><div class="gcb-num"><span class="gcb-n">0</span><span class="u">人</span></div>';
       box.title = '点击返回全服动态';
       box.addEventListener('click', function () { if (groundFilterId) { groundFilterId = null; gotoPeepPage(1); renderView(); } });
     } else {
       const buffCount = gcBuffCount(g);
-      box.innerHTML = '<div class="gcb-name">' + esc(g.name) + (buffCount ? ' <span class="spot-buff-mark" title="有 ' + buffCount + ' 个钓点带增益">⚡</span>' : '') + '</div>' +
+      const locked = g.sp.locked || (g.sp.minShip && (!seaInfo || !seaInfo.ship || seaInfo.ship.lv < g.sp.minShip));
+      box.innerHTML = '<div class="gcb-name">' + esc(g.sp.name) + (buffCount ? ' <span class="spot-buff-mark" title="该钓点带增益">⚡</span>' : '') + '</div>' +
         '<div class="gcb-num"><span class="gcb-n">0</span><span class="u">人</span></div>' +
-        (g.locked ? '' : '<div class="gcb-hint">' + (buffCount ? '⚡ ' + buffCount + ' 个钓点有增益' : '点击查看') + '</div>');
-      if (!g.locked) {
-        box.title = '点击查看「' + g.name + '」的动态' + (buffCount ? '（⚡ ' + buffCount + ' 个钓点有增益）' : '');
-        box.addEventListener('click', function () { groundFilterId = (groundFilterId === g.id) ? null : g.id; gotoPeepPage(1); renderView(); });
+        (locked ? '<div class="gcb-hint">暂未开放</div>' : '<div class="gcb-hint">' + (buffCount ? '⚡ 该钓点有增益' : '点击筛选') + '</div>');
+      if (!locked) {
+        box.title = '点击只看「' + g.sp.name + '」的玩家与动态';
+        box.addEventListener('click', function () { groundFilterId = (groundFilterId === g.key) ? null : g.key; gotoPeepPage(1); renderView(); });
       }
     }
     paintGroundCountBox(box, g);
@@ -2365,8 +2384,8 @@ window.UI = (function () {
   function fillGroundCounts(panel) {
     const host = panel.querySelector('[data-region="gcounts"]');
     if (!host) return;
-    const items = D.GROUNDS.concat([TOTAL_GC]);
-    patchList(host, items, function (g) { return g.id; },
+    const items = socialSpotItems();
+    patchList(host, items, function (g) { return g.id || g.key; },
       function (g) { return groundCountBox(g); },
       function (node, g) { paintGroundCountBox(node, g); });
   }
@@ -2414,7 +2433,8 @@ window.UI = (function () {
     const vp = S().playersPage || { page: 1, pages: 1, total: 0, list: [] };
     const head = panel.querySelector('[data-region="peep-head"]');
     if (head) {
-      const t = '👥 ' + (groundFilterId ? '本地图在线玩家（' + vp.total + '）'
+      const sel = selectedSocialSpot();
+      const t = '👥 ' + (sel ? sel.sp.name + '（' + vp.total + '）'
         : '在线玩家（' + vp.total + ' / 全服 ' + (S().onlineTotal || 0) + '）');
       if (head.textContent !== t) head.textContent = t;
     }
@@ -2452,13 +2472,24 @@ window.UI = (function () {
       (e.record ? ' 🏆刷新纪录' : meta.rarity === 'epic' ? ' 💎史诗' : meta.rarity === 'rare' ? ' ✨稀有' : meta.kind === 'component' ? ' 🔧组件' : '');
     return line;
   }
+  function feedEntrySpot(e) {
+    const g = D.GROUNDS.find(function (x) { return x.name === e.ground; });
+    const sp = g && (g.spots || []).find(function (x) { return x.name === e.spot; });
+    if (!g || !sp) return null;
+    return { g: g, sp: sp, mapId: g.zone ? 'voyage' : (sp.map || 'nearshore') };
+  }
   function fillGroundFeed(panel) {
     const host = panel.querySelector('[data-region="gfeed"]');
     if (!host) return;
     const st = S();
-    const filterGround = groundFilterId ? D.GROUNDS.find(function (g) { return g.id === groundFilterId; }) : null;
+    const sel = selectedSocialSpot();
     const all = st.feed || [];
-    const shown = (filterGround ? all.filter(function (e) { return e.ground === filterGround.name; }) : all).slice(0, 60);
+    const shown = all.filter(function (e) {
+      const m = feedEntrySpot(e);
+      if (!m) return !sel;
+      if (sel) return m.g.id === sel.g.id && m.sp.id === sel.sp.id;
+      return m.mapId === mapTab;
+    }).slice(0, 60);
     const keys = shown.map(feedKey);
     const old = host._feedKeys;
     // 旧序列一定是新序列「从某一位起」的连续前缀（feed 只从头部插入）→ 前面多出来的就是新渔获
@@ -2474,7 +2505,7 @@ window.UI = (function () {
     }
     if (head < 0) {
       host.innerHTML = '';
-      if (!shown.length) host.appendChild(el('div', 'hint', filterGround ? '该地图暂无动态，等待大家上鱼……' : '暂无动态，等待大家上鱼……'));
+      if (!shown.length) host.appendChild(el('div', 'hint', sel ? '该钓点暂无动态，等待大家上鱼……' : '当前地图暂无动态，等待大家上鱼……'));
       shown.forEach(function (e) { host.appendChild(feedLineNode(e)); });
     } else if (head > 0) {
       const hint = host.querySelector('.hint');
@@ -2503,7 +2534,7 @@ window.UI = (function () {
   }
   function groundSig(st) {
     const vp = st.playersPage || {};
-    return [groundFilterId || '', vp.page || 1, peepSearchQ, groundCfgSig()].join('|');
+    return [mapTab, groundFilterId || '', vp.page || 1, peepSearchQ, groundCfgSig()].join('|');
   }
 
   // 数据广播（上鱼 feed / 玩家状态 players / 地图人数 grounds）到达时的就地更新入口：
@@ -2539,15 +2570,29 @@ window.UI = (function () {
     main.innerHTML = '';
     const panel = el('div', 'panel wide ground-panel');
     panel.setAttribute('data-sig', sig);   // 下次广播到达时按它判断「能不能就地更新」
-    const filterGround = groundFilterId ? D.GROUNDS.find(function (g) { return g.id === groundFilterId; }) : null;
-    panel.innerHTML = pageHead('🌊', '社交', '在线玩家 · 各钓场人数 · 实时渔获；玩家之间可直接交易') +
-      pageHelp('点钓场卡片只看该钓场，点「🌐 返回全服」看全体；点玩家卡片上的「🤝 交易」即可发起以物易物。') +
-      '<h3>' + (filterGround ? esc(filterGround.name) + ' · 实时动态' : '全服实时动态') + '</h3>';
+    const filterSpot = selectedSocialSpot();
+    const mapName = mapTab === 'voyage' ? '远洋' : '近岸';
+    panel.innerHTML = pageHead('🌊', '社交', '在线玩家 · 按地图与钓点筛选 · 实时渔获；玩家之间可直接交易') +
+      pageHelp('先选近岸 / 远洋，再点钓点卡片继续筛选；「全服在线」返回全服，点玩家卡片上的「🤝 交易」即可发起以物易物。') +
+      '<h3>' + (filterSpot ? esc(filterSpot.sp.name) + ' · 实时动态' : mapName + '实时动态') + '</h3>';
     if (groundFilterId) {
       const back = el('button', 'mini ground-back', '🌐 返回全服');
       back.addEventListener('click', function () { groundFilterId = null; gotoPeepPage(1); renderView(); });
       panel.appendChild(back);
     }
+    const mapBar = el('div', 'px-map-tabs social-map-tabs');
+    [['nearshore', '🏞 近岸'], ['voyage', '⛵ 远洋']].forEach(function (kv) {
+      const tb = el('button', 'px-map-tab' + (mapTab === kv[0] ? ' on' : ''), kv[1]);
+      tb.addEventListener('click', function () {
+        if (mapTab === kv[0]) return;
+        mapTab = kv[0];
+        groundFilterId = null;
+        gotoPeepPage(1);
+        renderView();
+      });
+      mapBar.appendChild(tb);
+    });
+    panel.appendChild(mapBar);
 
     // 地图概览：点击进入单地图动态（人数变化走 fillGroundCounts 就地更新，不重建卡片）
     const counts = el('div', 'ground-counts');
@@ -2624,7 +2669,7 @@ window.UI = (function () {
     cols.appendChild(left);
 
     const right = el('div', 'sub');
-    right.appendChild(el('h3', null, '📡 最新动态' + (groundFilterId ? ' · ' + esc(filterGround.name) : '')));
+    right.appendChild(el('h3', null, '📡 最新动态' + (filterSpot ? ' · ' + esc(filterSpot.sp.name) : ' · ' + mapName)));
     const feed = el('div', 'feed feed-big');
     feed.setAttribute('data-region', 'gfeed');
     right.appendChild(feed);
@@ -6699,7 +6744,7 @@ window.UI = (function () {
   // 当前分类（模块级：重绘间保留）；详情改为子窗口，无需记录展开项
   let codexCategory = 'all';
   let lastSpotPointerType = ''; // 跨重绘保留，兼容不提供 click.pointerType 的浏览器
-  let mapTab = 'nearshore'; // 钓鱼页地图页签：nearshore 近岸 / voyage 出海预告
+  let mapTab = 'nearshore'; // 共享地图页签：nearshore 近岸 / voyage 远洋
   let lastFisherSpotKey = null; // 甩杆动画记忆：同一钓点重绘不重复播放
 
   // ---- 角色模块：钓鱼小人皮肤可更换（本地偏好，后续可升级进服务器存档）----
@@ -6767,19 +6812,28 @@ window.UI = (function () {
     const main = $('main');
     const st0 = char2();
     // 结构签名：页签 / 同伴 / 船 / 背景都没变就不重建 —— 广播触发的重绘不会重启场景画布
-    const sig = 'char|' + charTab + '|' + st0.dog + '|' + st0.boat + '|' + (st0.bg || 'stillwater');
+    const sig = 'char|' + charTab + '|' + st0.dog + '|' + st0.boat + '|' + (st0.bg || 'stillwater') +
+      (charTab === 'rod' ? '|' + JSON.stringify(S().bd) + '|' + JSON.stringify(S().inventory) : '');
     const prevWrap = main.querySelector('.char-view');
     if (prevWrap && prevWrap.getAttribute('data-sig') === sig) return;
     main.innerHTML = '';
     const st = st0;
     const wrap = el('div', 'panel char-view');
-    wrap.innerHTML = pageHead('🧍', '角色', '同伴与船型只改外观，不影响钓竿加成与背包') +
-      sectionTabsHtml('character', charTab, [['companion', '🐶 同伴'], ['boat', '⛵ 船型']]) +
-      pageHelp(charTab === 'boat'
-        ? '点船型卡片即换上；锁定的船型后续在商城上架。'
-        : '点同伴卡片即换上（随钓手出现在世界地图上）；场景背景只改展示台画面。');
+    wrap.innerHTML = pageHead('🧍', '角色', '同伴、船型、钓竿配装与场景背景') +
+      sectionTabsHtml('character', charTab, [['companion', '🐶 同伴'], ['boat', '⛵ 船型'], ['rod', '🎯 钓竿']]) +
+      pageHelp(charTab === 'rod'
+        ? '装备组件并保存最多 8 套钓竿方案；正在钓鱼时换装也会立即生效。'
+        : (charTab === 'boat'
+          ? '点船型卡片即换上；锁定的船型后续在商城上架。'
+          : '点同伴卡片即换上（随钓手出现在世界地图上）；场景背景只改展示台画面。'));
     wrap.setAttribute('data-sig', sig);
     bindSectionTabs(wrap, 'character');
+    if (charTab === 'rod') {
+      wrap.appendChild(el('h3', null, '🎯 钓竿 · 配装与方案'));
+      renderBdContent(wrap);
+      main.appendChild(wrap);
+      return;
+    }
     // 展示台：场景背景（原渔场实况画布）+ 木码头 + 船 + 同伴狗（人物外观模块暂缓，贴图保留在 assets/ui/char/）
     // cs-bg 静态图兜底：无 Canvas 环境（jsdom 测试 / 老浏览器）画布挂不上时仍有画面
     const stage = el('div', 'char-stage');
@@ -6952,7 +7006,7 @@ window.UI = (function () {
       }
       html += '<div class="cd-sub">🎯 可钓物品与实时产出概率（' + pool.length + ' 项）</div>';
       if (!pool.length) {
-        html += '<div class="cd-line muted">该钓点尚未配置掉落池（可在后台「渔场钓点」配置）。</div>';
+        html += '<div class="cd-line muted">该钓点尚未配置掉落池（可在后台「钓点管理」配置）。</div>';
       } else {
         html += '<div class="spot-pool">';
         pool.forEach(function (e) {
@@ -6971,7 +7025,7 @@ window.UI = (function () {
             '<span class="hint">权重 ' + (e.weight || 0) + '</span></div>';
         });
         html += '</div>';
-        html += '<div class="cd-line muted">以上为基础权重占比（与后台「渔场钓点」配置一致，改动即时同步）；' +
+        html += '<div class="cd-line muted">以上为基础权重占比（与后台「钓点管理」配置一致，改动即时同步）；' +
           '钓竿的大鱼 / 稀有 / 材料词缀会在此基础上放大对应类别的权重。</div>';
       }
       inner.innerHTML = html;
@@ -8855,7 +8909,7 @@ window.UI = (function () {
     ensureSea();
     const main = $('main'); main.innerHTML = '';
     const wrap = el('div', 'panel wide');
-    wrap.innerHTML = pageHead('⛵', '远洋', '乘船出海 · 深海钓点按船级解锁 · 未知海图发现随机海域');
+    wrap.innerHTML = pageHead('⛵', '远洋', '乘船远洋 · 深海钓点按船级解锁 · 未知海图发现随机海域');
     main.appendChild(wrap);
     const d = seaInfo;
     if (!d) { wrap.appendChild(el('div', 'hint', '正在读取远洋状态……')); return; }
@@ -8866,7 +8920,7 @@ window.UI = (function () {
     if (ship.max) {
       pShip.innerHTML += '<div class="hint">已满级：全部远洋钓点与深海海域开放。</div>';
     } else {
-      pShip.innerHTML += '<div class="hint">升级条件：出海经验 <b>' + ship.xp + '/' + ship.xpNeed + '</b>' +
+      pShip.innerHTML += '<div class="hint">升级条件：远洋经验 <b>' + ship.xp + '/' + ship.xpNeed + '</b>' +
         (ship.xpOk ? ' ✅' : '（远洋每竿渔获 +1）') + ' · 金币 <b>' + ship.upCoins + '</b>（持有 ' + d.coins + '）' +
         ' · 深海鳞片 <b>×' + ship.upScale + '</b>（持有 ' + d.deepscale + '）</div>' +
         '<div class="sa-row"><button class="btn primary" id="sea-ship-up"' + (ship.xpOk ? '' : ' disabled') + '>⬆ 升级到 ' + esc(D.SHIP.levels[ship.lv].name) + '</button></div>';
@@ -8903,9 +8957,9 @@ window.UI = (function () {
     // ④ 说明
     const pHelp = el('div', 'panel');
     pHelp.innerHTML = '<h3>ℹ 玩法说明</h3>' +
-      '<div class="hint">· 远洋钓点在「🎣 钓鱼」地图的「⛵ 出海」页签：深海鱼礁需 3 级船、海沟裂谷需 4 级船。<br>' +
+      '<div class="hint">· 远洋钓点在「🎣 钓鱼」地图的「⛵ 远洋」页签：深海鱼礁需 3 级船、海沟裂谷需 4 级船。<br>' +
       '· 远洋随机事件：⛈ 风暴（渔获脱钩）/ 📦 漂流宝箱（海图碎片）/ 🐟 鱼群（同款 +1）。<br>' +
-      '· 出海经验只升不降；经验+金币+深海鳞片三条件都满足后升级按钮才亮。<br>' +
+      '· 远洋经验只升不降；经验+金币+深海鳞片三条件都满足后升级按钮才亮。<br>' +
       '· 临时海域 2 小时沉没，同时最多 ' + D.SEA.zoneMax + ' 片；只有自己能下竿，图鉴与纪录照常收录。</div>';
     wrap.appendChild(pHelp);
     const up = wrap.querySelector('#sea-ship-up');
@@ -8970,8 +9024,8 @@ window.UI = (function () {
       renderGround._lastViewSig = null;
       if (window.Net) window.Net.setPlayersView({ clear: true });
     }
-    // 合并页按当前页签分发（钓鱼 / 钓竿、图鉴 / 记录）；旧 view id 保留分支以便外部平滑迁移
-    if (currentView === 'fishing') { if (fishingTab === 'rod') renderBD(); else renderFishing(); }
+    // 合并页按当前页签分发（钓竿在角色页、记录在图鉴）；旧 view id 保留分支以便外部平滑迁移
+    if (currentView === 'fishing') renderFishing();
     else if (currentView === 'sea') renderSea();
     else if (currentView === 'character') renderCharacter();
     else if (currentView === 'bd') renderBD();
@@ -9125,12 +9179,12 @@ window.UI = (function () {
     // 主动拉取钓场目录：兜底确保后进入/刷新的玩家也拿到含增益的最新目录（钓点 ⚡ 标记）
     if (window.Net.fetchGrounds) window.Net.fetchGrounds();
   }
-  // 每秒的钓鱼循环回包：只在「钓鱼」页签刷新主区；停到「钓竿」页签时只刷顶栏，不夺回页面。
+  // 每秒的钓鱼循环回包：只在「钓鱼」页刷新主区；切到其他页时只刷顶栏，不夺回页面。
   function onFishingTick() {
     if (featureBlocked('fishing')) return;
     if (currentView !== 'fishing') return;
     renderTopbar();
-    if (fishingTab === 'fishing') renderFishing();
+    renderFishing();
   }
 
   // 刷新主视图。每个视图只关心与自己相关的广播类型（scope）：
@@ -9156,7 +9210,7 @@ window.UI = (function () {
   //        「首次铺」和「广播更新」两条路共用，避免两条路渲染出不同的 DOM。
   const VIEW_SCOPES = {
     fishing: ['players', 'grounds', 'catch', 'assets', 'groundcfg', 'castcfg'], // 实况/日志/钓速随广播更新
-    bd: [],                                             // 钓竿页签：只随操作重绘（展示数据不受广播影响）
+    bd: [],                                             // 角色 · 钓竿页签：只随操作重绘（展示数据不受广播影响）
     ground: ['players', 'grounds', 'feed', 'groundcfg'],
     inventory: ['assets', 'shop', 'pricecfg', 'autosellcfg'],
     shop: ['assets', 'shop', 'pricecfg', 'autosellcfg'],

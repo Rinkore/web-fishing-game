@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.19.0';
+  const VERSION = 'v0.19.1';
   const BUILD = '2026-09-19';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -1948,12 +1948,12 @@
   // v0.19.0 世界地图重构：取消「钓场」分层，钓点直接铺在世界地图上。
   // 兼容说明：服务端 / 存档仍以「钓场」为内部容器（presence、续钓、广播都按 groundId 走），
   // 这里只输出唯一一个**隐式钓场 'map'**，玩家端看到的就是一张地图 + 一组钓点。
-  // 钓点字段：pos = 地图宽高百分比；map: 'voyage' = 只出现在「⛵ 出海」图页签（缺省 = 近岸图）；
+  // 钓点字段：pos = 地图宽高百分比；map: 'voyage' = 只出现在「⛵ 远洋」图页签（缺省 = 近岸图）；
   //   minShip = 船级门槛（服务端权威校验）；locked = 暂未开放（后台可解）；buffs = 钓点增益。
   const GROUNDS = [
     {
       id: 'map', name: '世界地图', type: 'normal',
-      desc: '钓点直接分布在世界地图与出海图上；后台可增删改、按玩家规模一键布点。',
+      desc: '钓点直接分布在世界地图与远洋图上；后台可增删改、按玩家规模一键布点。',
       spots: [
         // —— 近岸图（assets/worldmap.png，坐标与图中实景一一对应）——
         // 新手淡水：湖畔老码头 / 芦苇荡   进阶淡水：湖心深水 / 落瀑潭   活动：霜月冰窟
@@ -2006,7 +2006,7 @@
           p('fish', 'mahimahi', 4),
           p('material', 'chartfrag', 2), p('material', 'bait_pack', 9), p('component', '', 6),
         ] },
-        // —— 出海图（assets/voyagemap.png）：乘船才能下竿，越深需要越高级的船 ——
+        // —— 远洋图（assets/voyagemap.png）：乘船才能下竿，越深需要越高级的船 ——
         { id: 'shore', name: '近海渔场', map: 'voyage', pos: [26, 73], minShip: 1, pool: [
           p('fish', 'mullet', 18), p('fish', 'jackmack', 16), p('fish', 'squid', 13), p('fish', 'octo', 9), p('fish', 'sardine', 10),
           p('fish', 'mahimahi', 4), p('fish', 'amberjack', 4),
@@ -2028,7 +2028,7 @@
   ];
 
   // ---- 远洋船系统（v0.19.0，前后端同一份配置）----
-  // 船级 1~5：门槛不是等级/经验系统，而是「出海经验 + 金币 + 深海鳞片」三重条件（服务端权威校验）。
+  // 船级 1~5：门槛不是等级/经验系统，而是「远洋经验 + 金币 + 深海鳞片」三重条件（服务端权威校验）。
   const SHIP = {
     levels: [
       { lv: 1, name: '木划艇' }, { lv: 2, name: '近海帆船' }, { lv: 3, name: '远洋货轮' },
@@ -2122,7 +2122,7 @@
   // 侧栏导航：全部入口**平铺常驻**（不再有「更多」折叠组），顺序即展示顺序；
   // 菜单项多到一屏放不下时，导航区自己滚动（样式见 style.css 的 .nav）。
   // v0.15.0 起一个入口承载一族功能，主页面内的子功能一律用页内页签切换：
-  //   「钓鱼」= 🎣 钓鱼 / 🎯 钓竿（原「钓竿配置」入口），见 ui.js 的 renderFishing / renderBD；
+  //   「钓鱼」= 🎣 钓鱼；「角色」= 同伴 / 船型 / 钓竿，钓竿见 ui.js 的 renderCharacter / renderBD；
   //   「图鉴」= 📖 图鉴 / 🏆 记录（原「渔获记录」入口），见 ui.js 的 renderCodex / renderRecords。
   //   页签页的功能开关 id 仍是 bd / records（见 features.js），旧 view id 由 navigateView 兜底兼容。
   const NAV = [

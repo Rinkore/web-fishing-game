@@ -1,7 +1,7 @@
 /*
  * 钓鱼后台管理 - 页面逻辑（零依赖，与游戏前端共用后端 /api/admin/*）
  * 登录：管理员账号 + 验证器动态验证码（仅本机控制台可初始化）。
- * 功能页：概览 / 账号管理（含管理员授权）/ 渔场钓点（掉落池权重实时百分比 + 增益）/ 市集退回 / 上钩公式 / 通知等级。
+ * 功能页：概览 / 账号管理（含管理员授权）/ 钓点管理（掉落池权重实时百分比 + 增益）/ 市集退回 / 上钩公式 / 通知等级。
  */
 window.Admin = (function () {
   'use strict';
@@ -306,7 +306,7 @@ window.Admin = (function () {
     const main = $('main');
     main.innerHTML = '<h2>⛵ 远洋配置</h2>' +
       '<div class="hint" style="margin-bottom:12px">远洋玩法（船升级 / 海图 / 临时海域 / 海上事件）的运行期参数，保存即生效并落盘；' +
-      '玩家端 ≤8 秒内同步。钓点掉落池在「🌊 渔场钓点」里按钓点单独编辑（远洋 3 钓点也在其中）。</div>' +
+      '玩家端 ≤8 秒内同步。钓点掉落池在「🎣 钓点管理」里按钓点单独编辑（远洋 3 钓点也在其中）。</div>' +
       '<div id="sea-body" class="panel">加载中…</div>';
     loadWorldCfg(true).then(function (cfg) {
       if (!cfg || view !== 'sea') return;
@@ -338,7 +338,7 @@ window.Admin = (function () {
     }
     body.innerHTML =
       '<h3 style="margin-top:0">🚤 船级表（1~5 级）</h3>' +
-      '<div class="hint" style="margin-bottom:8px">升级需「出海经验 ≥ 目标值 + 金币 + 深海鳞片」三条件同时满足；经验只在远洋/临时海域钓到东西时 +1，只升不降。</div>' +
+      '<div class="hint" style="margin-bottom:8px">升级需「远洋经验 ≥ 目标值 + 金币 + 深海鳞片」三条件同时满足；经验只在远洋/临时海域钓到东西时 +1，只升不降。</div>' +
       '<table class="tbl"><thead><tr><th>级</th><th>船名</th><th class="num">升到下一级所需经验</th><th class="num">升级金币</th><th class="num">升级鳞片</th></tr></thead><tbody>' +
       rows.join('') + '</tbody></table>' +
       '<h3>🗺 海图与临时海域</h3>' +
@@ -2014,7 +2014,7 @@ window.Admin = (function () {
         const pos = Array.isArray(s.pos) ? s.pos : null;
         return '<div class="spot-row' + (s.id === selSpot ? ' sel' : '') + (s.locked ? ' locked' : '') + '" data-s="' + esc(s.id) + '">' +
           '<b>' + esc(s.name) + '</b>' + (s.locked ? ' 🔒' : '') +
-          (s.map === 'voyage' ? ' <span class="gd-badge custom">出海图</span>' : '') +
+          (s.map === 'voyage' ? ' <span class="gd-badge custom">远洋图</span>' : '') +
           (s.minShip ? ' <span class="gd-badge limited" title="船级门槛">⛵ ' + s.minShip + ' 级船</span>' : '') +
           '<span class="gi">' + (pos ? '坐标 ' + pos[0] + ', ' + pos[1] : '未定位') +
           ' · 池 ' + (s.pool || []).length + ' 条' +
@@ -2026,7 +2026,7 @@ window.Admin = (function () {
       }).join('') + '</div>' +
       '<div class="mgr-row" style="margin-top:10px"><input id="ns-name" class="ipt gi-name" placeholder="新钓点名称" maxlength="20" />' +
       '<select id="ns-preset" class="ipt gi-type">' + presetOpts + '</select>' +
-      '<label class="hint">所属图</label><select id="ns-map" class="ipt gi-type"><option value="">近岸图</option><option value="voyage">出海图</option></select>' +
+      '<label class="hint">所属图</label><select id="ns-map" class="ipt gi-type"><option value="">近岸图</option><option value="voyage">远洋图</option></select>' +
       '<label class="hint">船级门槛</label><input id="ns-ship" class="ipt mk-num" type="number" min="0" max="5" step="1" placeholder="0=不限" style="width:70px" />' +
       '<button class="btn mini" id="ns-add">＋ 新建钓点（一键填充）</button>' +
       (g.spots.length ? '<button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button>' : '') +

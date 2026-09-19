@@ -3576,7 +3576,16 @@ function groundCounts() {
   players.forEach(function (p) { if (p.status === 'fishing' && p.groundId) map[p.groundId] = (map[p.groundId] || 0) + 1; });
   return map;
 }
-function broadcastGrounds() { broadcast({ type: 'grounds', counts: groundCounts(), total: players.size }); }
+function spotCounts() {
+  const map = {};
+  players.forEach(function (p) {
+    if (p.status !== 'fishing' || !p.groundId || !p.spotId) return;
+    const key = p.groundId + ':' + p.spotId;
+    map[key] = (map[key] || 0) + 1;
+  });
+  return map;
+}
+function broadcastGrounds() { broadcast({ type: 'grounds', counts: groundCounts(), spotCounts: spotCounts(), total: players.size }); }
 // perf-4 的独立节流已被 perf-5/6 取代：sendPlayersAll 走 presence 1s 节流 + 批量广播队列
 function sendPlayersAll() { sendPlayers(); broadcastGrounds(); }
 
@@ -3833,7 +3842,7 @@ const server = http.createServer(function (req, res) {
       // 玩家列表走分页 API（/api/players/page），榜单走拉取制（/api/records）。
       playersTotal: players.size, recordsVersion: world.recordsVersion || 0,
       shop: shopSnapshot(), marketRevision: marketRevision, marketTotal: world.listings.length,
-      grounds: groundCounts(), trade: myTradeView(id),
+      grounds: groundCounts(), spotCounts: spotCounts(), trade: myTradeView(id),
       // 钓场目录（含管理后台保存的掉落池/增益/锁定覆盖）：新客户端连接时同步，
       // 否则前端会一直用 data.js 里的硬编码默认值，导致图鉴产地与实际掉落不符。
       groundCfg: D.GROUNDS,

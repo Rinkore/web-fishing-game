@@ -52,7 +52,8 @@ window.Engine = (function () {
     market: [],                 // 市集挂单（服务器）
     records: {},                // 全服大鱼榜（服务器）
     smallRecords: {},           // 全服小鱼纪录（服务器）
-    groundCounts: {},           // 各渔场人数（服务器）
+    groundCounts: {},           // 内部容器人数（服务器）
+    spotCounts: {},             // 各钓点人数 key = groundId:spotId（服务器）
     onlineTotal: 0,
     trade: null, tradeLastEvent: null, tradeFlash: null,
     codex: {},                  // 个人图鉴（服务器）

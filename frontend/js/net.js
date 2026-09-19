@@ -524,6 +524,7 @@ window.Net = (function () {
           if (ui && ui.onMarketChanged) ui.onMarketChanged();
           fetchRecords();
           S.groundCounts = m.grounds || {};
+          S.spotCounts = m.spotCounts || {};
           // 服务器重连自动续钓（上次没主动收竿）：直接带回钓速明细与钓点，
           // 前端不必再发一次 start 请求。钓点必须在这里就地写回展示状态：
           // perf-9 起 presence 只推给登记过列表视口的连接，钓鱼页不登记视口，
@@ -583,6 +584,7 @@ window.Net = (function () {
           if (ui) ui.refreshAll('players');
         } else if (m.type === 'grounds') {
           S.groundCounts = m.counts || {};
+          S.spotCounts = m.spotCounts || {};
           S.onlineTotal = m.total || 0;
           if (ui) ui.refreshAll('grounds');
         } else if (m.type === 'playersPage') {
