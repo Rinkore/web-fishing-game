@@ -212,7 +212,7 @@ function waitReady() {
   const es1 = sse(TK1, sink1);
   await sleep(400);
   const fs1 = await POST(B + '/api/fishing/start', { token: TK1, groundId: 'stillwater', spotId: 'dock' });
-  check('钓点增益改变抛竿间隔（3000×0.8=2400）', fs1.status === 200 && fs1.data.interval === 2400, JSON.stringify(fs1.data));
+  check('钓点增益改变抛竿间隔（3000×0.8×船0.96×澜天赋0.98=2258）', fs1.status === 200 && fs1.data.interval === 2258, JSON.stringify(fs1.data));
   await sleep(4000);
   const myCatch = sink1.filter(x => x.ev.type === 'catch' && x.ev.entry.who === '玩家一号');
   check('4 秒内收到至少一条渔获推送', myCatch.length >= 1);
@@ -580,7 +580,7 @@ function waitReady() {
   check('间隔变更广播 castcfg 给游戏端', sink2.slice(castSinkMark).some(x => x.ev.type === 'castcfg' && x.ev.baseMs === 4000 && x.ev.minMs === 600),
     sink2.slice(castSinkMark).map(x => x.ev.type).join(','));
   const reStart = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'stillwater', spotId: 'dock' });
-  check('按新基础间隔开钓（4000 × 0.8 钓点增益 = 3200ms）', reStart.data.interval === 3200, JSON.stringify(reStart.data));
+  check('按新基础间隔开钓（4000 × 0.8 钓点增益 × 船0.96 × 澜天赋0.98 = 3011ms）', reStart.data.interval === 3011, JSON.stringify(reStart.data));
   // 最短间隔限制：钓点 +20% 增益 + 组件 +25% = 45%，1000 × (1-0.45) = 550 → 应被 900ms 下限兜住
   const spdInst = 'reel_electric#common#spd+25';
   await POST(B + '/api/dev/catch', { token: TK2, item: { kind: 'component', id: spdInst } });
@@ -743,7 +743,7 @@ function waitReady() {
   check('设置全服钓速 +50% 成功', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 50 })).status === 200);
   const spd1 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
   // 钓点钓速为最终乘算：3000 × (1-0.50) × (1-0.20) = 1200ms（旧的加算写法会得 900ms）
-  check('全服钓速生效且钓点钓速乘算（3000×0.5×0.8=1200ms）', spd1.data.interval === 1200, JSON.stringify(spd1.data));
+  check('全服钓速生效且钓点钓速乘算（3000×0.5×0.8×船0.96×澜天赋0.98=1129ms）', spd1.data.interval === 1129, JSON.stringify(spd1.data));
   // 上限截断：+200% 但上限 80% → 3000 × 0.2 = 600 → 最短间隔 800 兜底
   check('设置 +200% / 上限 80%', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 200, castSpeedCap: 80 })).status === 200);
   const spd2 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
@@ -836,12 +836,12 @@ function waitReady() {
   await POST(B + '/api/dev/catch', { token: TK2B, item: { kind: 'component', id: multInst } });
   await POST(B + '/api/bd/set', { token: TK2B, part: 'reel', compId: multInst });
   const multStart = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
-  check('钓点钓速为最终乘算（3000×0.75×0.8=1800，非加算 1650）', multStart.data.interval === 1800, JSON.stringify(multStart.data));
+  check('钓点钓速为最终乘算（3000×0.75×0.8×船0.96×澜天赋0.98=1693，非加算）', multStart.data.interval === 1693, JSON.stringify(multStart.data));
   check('乘算明细随 castInfo 下发（spotMult 0.8）', !!(multStart.data.castInfo && multStart.data.castInfo.spotMult === 0.8 && multStart.data.castInfo.buffSpeed === 20), JSON.stringify(multStart.data.castInfo));
   await POST(B + '/api/bd/set', { token: TK2B, part: 'reel', compId: null });
   await POST(B + '/api/fishing/stop', { token: TK2B });
   const srBack = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'stillwater', spotId: 'dock' });
-  check('清除独立间隔后回到按钓速计算（2400ms）', srBack.data.interval === 2400, JSON.stringify(srBack.data));
+  check('清除独立间隔后回到按钓速计算（3000×0.8×0.96×0.98=2258ms）', srBack.data.interval === 2258, JSON.stringify(srBack.data));
   await POST(B + '/api/fishing/stop', { token: TK2B });
 
   // ---------- 11c. 横幅滚播状态与停止 ----------

@@ -38,9 +38,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function req(method, u, body) {
   return new Promise(res => {
-    const p = url.parse(u); const data = body ? JSON.stringify(body) : null;
+    // 凭据只走传输层：body/query 里的 token 会被服务端 400 拒，提取到 Authorization 头
+    const parsed = new URL(u);
+    let token = parsed.searchParams.get('token') || '';
+    if (token) parsed.searchParams.delete('token');
+    let payload = body;
+    if (payload && payload.token) { token = payload.token; payload = Object.assign({}, payload); delete payload.token; }
+    const p = url.parse(parsed.href); const data = payload ? JSON.stringify(payload) : null;
     const h = { 'Content-Type': 'application/json' };
     if (data) h['Content-Length'] = Buffer.byteLength(data);
+    if (token) h.Authorization = 'Bearer ' + token;
     const r = http.request({ hostname: p.hostname, port: p.port, path: p.path, method, headers: h }, rs => {
       let d = ''; rs.on('data', c => d += c);
       rs.on('end', () => { let j = null; try { j = JSON.parse(d); } catch (e) {} res({ status: rs.statusCode, data: j, text: d }); });
@@ -50,10 +57,18 @@ function req(method, u, body) {
   });
 }
 const GET = u => req('GET', u);
-const POST = (u, b) => req('POST', u, b);
+// 注册防滥用：同 IP 第 4 次注册起要求一次性工作量证明，收到挑战先求解再带 proof 重试
+const POST = async (u, b) => {
+  const result = await req('POST', u, b);
+  if (result.data && result.data.code === 'REGISTRATION_CHALLENGE') {
+    const challenge = await req('GET', u.split('/api/')[0] + '/api/register/challenge');
+    return req('POST', u, Object.assign({}, b, { proof: require('./_registration').solve(challenge.data) }));
+  }
+  return result;
+};
 
 function sse(token, sink) {
-  const r = http.get('http://localhost:' + PORT + '/events?token=' + token, res => {
+  const r = http.get({ hostname: 'localhost', port: PORT, path: '/events', headers: { Authorization: 'Bearer ' + token } }, res => {
     let buf = '';
     res.on('data', c => {
       buf += c.toString();
@@ -88,16 +103,31 @@ async function openPage(token) {
   vc.on('jsdomError', e => errs.push('jsdomError: ' + e.message));
   const dom = new JSDOM(html, { url: 'http://localhost:' + PORT + '/', runScripts: 'dangerously', resources: 'usable', pretendToBeVisual: true, virtualConsole: vc });
   const w = dom.window;
+  // jsdom 无 matchMedia（v0.17.0 玩家设置模块 settings.js 顶层即调用），补一个恒不匹配的最小实现
+  w.matchMedia = w.matchMedia || function (q) { return { matches: false, media: q, addEventListener: function () {}, removeEventListener: function () {}, addListener: function () {}, removeListener: function () {} }; };
+  // 前端会话只认 Cookie（apiOnce 会剥掉 body/query 里的 token）：这里给 jsdom 页面
+  // 补一个最小 Cookie 罐，种子为测试通过 raw 接口拿到的会话 token（cookie 值即会话 token）。
+  const jar = {};
+  if (token) jar.fish_game = token;
+  const cookieHeader = () => Object.keys(jar).map(k => k + '=' + jar[k]).join('; ');
   w.fetch = function (u, opts) {
     const full = u.startsWith('http') ? u : ('http://localhost:' + PORT + u);
     return new Promise((resolve, reject) => {
       const p = url.parse(full);
       const body = opts && opts.body ? opts.body : null;
       const h = Object.assign({}, (opts && opts.headers) || {});
+      if (cookieHeader()) h.Cookie = cookieHeader();
       if (body) h['Content-Length'] = Buffer.byteLength(body);
       const r = http.request({ hostname: p.hostname, port: p.port, path: p.path, method: (opts && opts.method) || 'GET', headers: h }, rs => {
         let d = ''; rs.on('data', c => d += c);
-        rs.on('end', () => resolve({ ok: rs.statusCode >= 200 && rs.statusCode < 300, status: rs.statusCode, json: () => Promise.resolve(JSON.parse(d || '{}')) }));
+        rs.on('end', () => {
+          const sc = rs.headers['set-cookie'];
+          (Array.isArray(sc) ? sc : sc ? [sc] : []).forEach(c => {
+            const m = /^(fish_game|fish_admin)=([^;]*)/.exec(c);
+            if (m) { if (/Max-Age=0/.test(c)) delete jar[m[1]]; else jar[m[1]] = m[2]; }
+          });
+          resolve({ ok: rs.statusCode >= 200 && rs.statusCode < 300, status: rs.statusCode, json: () => Promise.resolve(JSON.parse(d || '{}')), text: () => Promise.resolve(d) });
+        });
       });
       r.on('error', reject);
       if (body) r.write(body); r.end();
@@ -107,7 +137,7 @@ async function openPage(token) {
   w.EventSource = function (u) {
     const self = this;
     this.onmessage = null; this.onerror = null;
-    const r = http.get('http://localhost:' + PORT + u, res => {
+    const r = http.get({ hostname: 'localhost', port: PORT, path: u, headers: cookieHeader() ? { Cookie: cookieHeader() } : {} }, res => {
       let buf = '';
       res.on('data', c => {
         buf += c.toString();
@@ -141,8 +171,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
   await waitHttp('http://localhost:' + PORT + '/shop', { timeout: 20000 });
 
   try {
-    const rA = await POST('http://localhost:' + PORT + '/api/register', { username: 'fix_a', password: 'pass1234', name: '甲玩家', qq: '10002' });
-    const rB = await POST('http://localhost:' + PORT + '/api/register', { username: 'fix_b', password: 'pass1234', name: '乙玩家', qq: '10003' });
+    const rA = await POST('http://localhost:' + PORT + '/api/register', { username: 'fix_a', password: 'FixPass123456', name: '甲玩家', qq: '10002' });
+    const rB = await POST('http://localhost:' + PORT + '/api/register', { username: 'fix_b', password: 'FixPass123456', name: '乙玩家', qq: '10003' });
     const tokA = rA.data.token, tokB = rB.data.token;
 
     // 监听双端广播
@@ -260,21 +290,21 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     // 挂单未被整单移除，剩余 7
     const mkList = await POST('http://localhost:' + PORT + '/api/market/list', { token: tokA, id: 'carp', qty: 1, price: 5 });
     const carpLid = mkList.data.listing.lid;
-    // 通过再次查询挂单列表（SSE market 快照）
-    await sleep(200);
-    const marketMsg = sinkB.filter(m => m.type === 'market').slice(-1)[0];
-    const crucianListing = marketMsg && marketMsg.listings.find(l => l.lid === lid);
-    check('部分购买后挂单仍在（剩余 7）', !!crucianListing && crucianListing.qty === 7, JSON.stringify(crucianListing));
+    // v0.16.4 起市集广播改为 marketDelta 增量（upsert/removed + revision），不再全量下发 listings；轮询等增量到达
+    const sawRemain7 = await waitFor(() => sinkB.some(m => m.type === 'marketDelta' && (m.upsert || []).some(l => l.lid === lid && l.qty === 7)), { timeout: 3000 });
+    check('部分购买后挂单仍在（剩余 7）', sawRemain7, JSON.stringify(sinkB.filter(m => m.type === 'marketDelta').slice(-2)));
     await POST('http://localhost:' + PORT + '/api/market/cancel', { token: tokA, lid: carpLid });
     const afterCancel = (await GET('http://localhost:' + PORT + '/api/me?token=' + tokA)).data;
     check('下架不退上架费（carp 挂单费 1，仍为 551）', afterCancel.coins === 551, String(afterCancel.coins));
 
-    // —— 购买数量超过剩余 → 夹取为剩余值 ——
+    // —— 购买数量超过剩余：服务端现在直接拒绝（旧行为是夹取为剩余值）——
     const over = await POST('http://localhost:' + PORT + '/api/market/buy', { token: tokB, lid: lid, qty: 999 });
-    check('购买数量超过剩余时夹取为剩余（7）', over.status === 200 && over.data.qty === 7, JSON.stringify(over.data));
-    await sleep(250);
-    const marketMsg2 = sinkB.filter(m => m.type === 'market').slice(-1)[0];
-    check('整单买走后挂单被移除', !marketMsg2.listings.some(l => l.lid === lid));
+    check('购买数量超过剩余被拒（400，不再夹取）', over.status === 400, JSON.stringify(over.data));
+    // 买走剩余 7 个 → 整单移除
+    const buyAll = await POST('http://localhost:' + PORT + '/api/market/buy', { token: tokB, lid: lid, qty: 7 });
+    check('整单买走剩余 7 个', buyAll.status === 200 && buyAll.data.qty === 7, JSON.stringify(buyAll.data));
+    const sawRemoved = await waitFor(() => sinkB.some(m => m.type === 'marketDelta' && (m.removed || []).indexOf(lid) >= 0), { timeout: 3000 });
+    check('整单买走后挂单被移除', sawRemoved, JSON.stringify(sinkB.filter(m => m.type === 'marketDelta').slice(-2)));
 
     const sellerAfter2 = (await GET('http://localhost:' + PORT + '/api/me?token=' + tokA)).data;
     check('卖家第二笔也收到钱（551 + 126 = 677，税 14）', sellerAfter2.coins === 677, String(sellerAfter2.coins));
@@ -501,7 +531,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const aliveAfter = await GET(BASE + '/api/version');
     check('灌完畸形请求后服务端仍存活', aliveAfter.status === 200 && !!aliveAfter.data.version,
       JSON.stringify(aliveAfter.data).slice(0, 90));
-    const tokA2 = (await POST(BASE + '/api/login', { username: 'fix_a', password: 'pass1234' })).data.token;
+    const tokA2 = (await POST(BASE + '/api/login', { username: 'fix_a', password: 'FixPass123456' })).data.token;
     const realAfter = await POST(BASE + '/api/fishing/stop', { token: tokA2 });
     check('畸形请求后正常请求照常处理（登录 + 业务接口 200）', realAfter.status === 200 && realAfter.data.ok === true,
       JSON.stringify(realAfter.data));

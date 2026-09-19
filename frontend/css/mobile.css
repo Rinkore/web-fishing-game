@@ -52,10 +52,26 @@
   .inventory-panel .inv-comp-row.indented { margin-left: 0; padding-left: 8px; }
   .inventory-panel .inv-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inventory-panel .inv-acts .mini { padding: 6px; }
+  .codex-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .codex-cell { min-width: 0; padding: 10px 8px; }
+  .codex-cell .cx-name { font-size: 13px; }
+  .codex-cell .cx-meta { font-size: 12px; line-height: 1.45; }
+  .cx-visual-fish { width: 132px; max-width: 100%; }
   .char-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cc-card, .cc-card.wide { width: 100%; min-width: 0; }
   .cc-card img, .cc-card.wide img { max-width: 100%; }
   .cc-card b, .cc-card i { overflow-wrap: anywhere; }
+  .char-stage { aspect-ratio: 3 / 2; }
+  .cs-dock { width: 70%; }
+  .cs-angler { right: 14%; bottom: 18%; width: 33%; height: 50%; }
+  .cs-boat { right: 1%; width: 54%; }
+  .cs-dog { left: 17%; bottom: 39%; height: 22%; }
+  .char-cards.angler-cards, .char-cards.boat-cards { grid-template-columns: minmax(0, 1fr); }
+  .cc-card.angler-card { min-height: 112px; }
+  .cc-card.boat-card { grid-template-columns: 108px minmax(0, 1fr); gap: 9px; }
+  .cc-card.boat-card .cc-art, .cc-card.boat-card img { width: 108px; }
+  .px-boat-route { grid-template-columns: auto minmax(0, 1fr); }
+  .px-boat-route em { grid-column: 2; justify-self: start; }
   .modal-overlay { padding: env(safe-area-inset-top, 0px) 0 0; }
   .modal-overlay .modal-box {
     display: flex; flex-direction: column; width: 100%; max-width: 100%;
@@ -74,6 +90,9 @@
 }
 
 @media (max-width: 360px) {
-  .shop-grid, .bd-grid { grid-template-columns: minmax(0, 1fr); }
+  .shop-grid, .bd-grid, .codex-grid { grid-template-columns: minmax(0, 1fr); }
   .char-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .char-cards.angler-cards, .char-cards.boat-cards { grid-template-columns: minmax(0, 1fr); }
+  .cc-card.boat-card { grid-template-columns: minmax(0, 1fr); }
+  .cc-card.boat-card .cc-art, .cc-card.boat-card img { width: 100%; }
 }

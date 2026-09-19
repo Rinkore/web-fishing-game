@@ -11,6 +11,7 @@ const { chromium } = require('playwright-core');
 const { waitFor, waitHttp, waitPage } = require('./_util.js');
 // 侧栏入口适配（旧名字 → 新入口 + 页签）
 const { clickAppNav } = require('./_nav.js');
+const { provisionAdmin } = require('./_admin.js');
 const os = require('os');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
@@ -20,6 +21,15 @@ const fs = require('fs');
 const ROOT = path.join(__dirname, '..');
 const PORT = 8171;
 const D_DATA = require(path.join(ROOT, 'frontend', 'js', 'data.js'));
+// v0.16.4 起管理员需 TOTP：用本地控制台 provision（admin-init）+ 动态码登录，缓存会话复用
+let adminTokCache = null;
+async function adminToken() {
+  if (adminTokCache) return adminTokCache;
+  const otp = await provisionAdmin(srv, TMP_DATA, 'lay_seller');
+  const r = await post('/api/admin/login', { username: 'lay_seller', password: 'LayoutPass1234', otp: otp });
+  adminTokCache = r.data && r.data.token;
+  return adminTokCache;
+}
 // 浏览器可执行文件：优先 CHROME_PATH 环境变量，否则用系统默认安装位置
 // 真实浏览器路径：优先 CHROME_PATH；否则自动探测 Chrome / Edge（本机只装了 Edge）
 const CHROME = process.env.CHROME_PATH || [
@@ -61,9 +71,30 @@ function killPortOccupant(port) {
 }
 
 function post(p, body) {
+  // 凭据只走传输层：body 里的 token 提升为 Authorization 头
+  let token = '';
+  let payload = body;
+  if (payload && payload.token) { token = payload.token; payload = Object.assign({}, payload); delete payload.token; }
+  const data = JSON.stringify(payload);
+  const headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  return rawPost(p, data, headers).then(function (result) {
+    // 注册防滥用挑战：自动求解一次性工作量证明后重试
+    if (result.data && result.data.code === 'REGISTRATION_CHALLENGE') {
+      return get('/api/register/challenge').then(function (c) {
+        const retry = Object.assign({}, payload, { proof: require('./_registration').solve(c.data) });
+        const d2 = JSON.stringify(retry);
+        const h2 = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(d2) };
+        if (token) h2.Authorization = 'Bearer ' + token;
+        return rawPost(p, d2, h2);
+      });
+    }
+    return result;
+  });
+}
+function rawPost(p, data, headers) {
   return new Promise(res => {
-    const data = JSON.stringify(body);
-    const r = http.request({ hostname: 'localhost', port: PORT, path: p, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, rs => {
+    const r = http.request({ hostname: 'localhost', port: PORT, path: p, method: 'POST', headers: headers }, rs => {
       let d = ''; rs.on('data', c => d += c);
       rs.on('end', () => { let j = null; try { j = JSON.parse(d); } catch (e) {} res({ status: rs.statusCode, data: j }); });
     });
@@ -73,7 +104,12 @@ function post(p, body) {
 }
 function get(p) {
   return new Promise(res => {
-    const r = http.request({ hostname: 'localhost', port: PORT, path: p, method: 'GET' }, rs => {
+    // query 里的 token 同样提升为 Authorization 头
+    const target = new URL(p, 'http://localhost:' + PORT);
+    const token = target.searchParams.get('token') || '';
+    if (token) target.searchParams.delete('token');
+    const headers = token ? { Authorization: 'Bearer ' + token } : {};
+    const r = http.request({ hostname: 'localhost', port: PORT, path: target.pathname + target.search, method: 'GET', headers: headers }, rs => {
       let d = ''; rs.on('data', c => d += c);
       rs.on('end', () => { let j = null; try { j = JSON.parse(d); } catch (e) {} res({ status: rs.statusCode, data: j }); });
     });
@@ -82,10 +118,11 @@ function get(p) {
   });
 }
 
+// v0.16.4 起会话是 HttpOnly Cookie：fish_game=<会话 token>；
+// 直接把注册拿到的 token 注入 Cookie（复用同一会话，避免多点登录互顶）。
 async function login(page, token) {
+  await page.context().addCookies([{ name: 'fish_game', value: token, url: 'http://localhost:' + PORT }]);
   await page.goto('http://localhost:' + PORT + '/', { waitUntil: 'load' });
-  await page.evaluate(t => localStorage.setItem('fishing_token', t), token);
-  await page.reload({ waitUntil: 'load' });
   await sleep(700);
 }
 const clickNav = async (page, name) => {
@@ -131,8 +168,8 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
   await waitHttp('http://localhost:' + PORT + '/shop', { timeout: 20000 });
   let browser;
   try {
-    const rs = await post('/api/register', { username: 'lay_seller', password: 'abcd1234', name: '布局卖家', qq: '10014' });
-    const rb = await post('/api/register', { username: 'lay_buyer', password: 'abcd1234', name: '布局买家', qq: '10015' });
+    const rs = await post('/api/register', { username: 'lay_seller', password: 'LayoutPass1234', name: '布局卖家', qq: '10014' });
+    const rb = await post('/api/register', { username: 'lay_buyer', password: 'LayoutPass1234', name: '布局买家', qq: '10015' });
     const tokS = rs.data.token, tokB = rb.data.token;
 
     await post('/api/dev/seed', { token: tokS, inventory: { crucian: 12, carp: 6, koi: 2, lure: 4 }, coins: 2400 });
@@ -1420,13 +1457,11 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('取消登出后子窗口关闭', (await p1.$$('.confirm-modal')).length === 0);
 
     // —— 钓点增益标记 ——
-    const spotMarkInfo = await p1.evaluate(async () => {
-      // 通过管理员接口给 dock 设置增益（测试服务器无管理员时首个登录的即为管理员）
-      const reg = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'lay_seller', password: 'abcd1234' }) }).then(r => r.json()).catch(() => null);
-      if (!reg || !reg.token) return { ok: false, why: 'no admin token' };
-      const r2 = await fetch('/api/admin/spot/buffs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: reg.token, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 15 }] }) }).then(r => r.json()).catch(() => null);
-      return { ok: !!(r2 && r2.ok), why: r2 && r2.error };
-    });
+    const admTok0 = await adminToken();
+    const spotMarkInfo = admTok0
+      ? await post('/api/admin/spot/buffs', { token: admTok0, groundId: 'stillwater', spotId: 'dock', buffs: [{ type: 'speed', value: 15 }] })
+        .then(r => ({ ok: r.status === 200, why: r.data && r.data.error }))
+      : { ok: false, why: 'no admin token' };
     // 等 groundcfg 广播后重绘钓鱼页（增益栏出现即说明已重绘）
     await clickNav(p1, '钓鱼');
     const buffItems = await untilGet(() => p1.$$eval('.pb-chip',
@@ -1477,6 +1512,42 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('图鉴卡片不再显示「满词条」后缀', colorCheck.tag === 0, JSON.stringify(colorCheck.tag));
     check('图鉴已解锁钓到的鱼', got.length >= 6, String(got.length) + ' 已解锁');
     check('图鉴汇总显示收集进度', /\d+ \/ \d+/.test(await p1.textContent('.codex-summary')));
+    const fishVisual = await p1.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('.codex-cell.k-fish'));
+      const first = cards[0] && cards[0].querySelector('.cx-visual-fish');
+      const r = first && first.getBoundingClientRect();
+      return {
+        cards: cards.length,
+        visuals: document.querySelectorAll('.codex-cell.k-fish .cx-visual-fish').length,
+        tierBadges: document.querySelectorAll('.codex-cell.k-fish.got .cx-tier-badge').length,
+        keyboard: cards.every(c => c.getAttribute('role') === 'button' && c.tabIndex === 0),
+        size: r ? [Math.round(r.width), Math.round(r.height)] : null,
+      };
+    });
+    check('鱼类卡统一使用像素展示窗', fishVisual.cards === 40 && fishVisual.visuals === 40 && fishVisual.size && fishVisual.size[1] === 78, JSON.stringify(fishVisual));
+    check('已解锁鱼显示体型档角标', fishVisual.tierBadges >= 1, JSON.stringify(fishVisual));
+    check('图鉴卡支持键盘打开详情', fishVisual.keyboard === true, JSON.stringify(fishVisual));
+    const latestDetail = await p1.evaluate(() => {
+      const cell0 = document.querySelector('.codex-cell.k-fish.got[data-cxid]');
+      if (!cell0) return null;
+      const id = cell0.dataset.cxid;
+      const old = Engine.state.codex[id];
+      const nextCount = (old.count || 0) + 7;
+      Engine.state.codex[id] = Object.assign({}, old, { count: nextCount, tier: 'G' });
+      UI.renderView(); // 结构不变，走 softRefreshCodex
+      const cell = document.querySelector('.codex-cell[data-cxid="' + id + '"]');
+      cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      const detail = document.querySelector('.codex-modal .codex-detail');
+      return {
+        text: detail ? detail.textContent.replace(/\s+/g, ' ') : '',
+        count: nextCount,
+        gold: cell.classList.contains('tier-gold'),
+        badge: (cell.querySelector('.cx-tier-badge') || {}).textContent || '',
+      };
+    });
+    check('图鉴软刷新后详情读取最新记录而非旧闭包', latestDetail && latestDetail.text.includes('已钓 ' + latestDetail.count + ' 次'), JSON.stringify(latestDetail));
+    check('图鉴软刷新同步体型框与角标', latestDetail && latestDetail.gold && /巨型/.test(latestDetail.badge), JSON.stringify(latestDetail));
+    await p1.evaluate(() => { const b = document.querySelector('.codex-modal .modal-close'); if (b) b.click(); });
     // 产地：卡片与详情窗显示的处数应与 GameData.spotsOf 一致（防止与服务端目录脱节）
     const spotCheck = await p1.evaluate(() => {
       const cells = Array.from(document.querySelectorAll('.codex-cell.k-fish'));
@@ -1493,10 +1564,15 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       return mismatch;
     });
     check('图鉴卡片产地处数与目录一致', spotCheck === null, JSON.stringify(spotCheck));
-    // 图鉴框体等高：所有卡片高度一致（对齐最高的那张）
-    const codexHeights = await p1.$$eval('.codex-cell', els => els.map(e => Math.round(e.getBoundingClientRect().height)));
-    const uniqH = Array.from(new Set(codexHeights));
-    check('图鉴所有卡片等高', uniqH.length === 1, JSON.stringify(uniqH.slice(0, 6)) + ' n=' + codexHeights.length);
+    // 每一行内仍等高，但鱼卡不再被其它行最高的组件词缀卡拖出大片空白。
+    const codexRows = await p1.$$eval('.codex-cell', els => {
+      const rows = {};
+      els.forEach(e => { const r = e.getBoundingClientRect(); const y = Math.round(r.top); (rows[y] ||= []).push(Math.round(r.height)); });
+      return Object.values(rows);
+    });
+    const rowAligned = codexRows.every(row => new Set(row).size === 1);
+    const distinctRowHeights = new Set(codexRows.map(row => row[0])).size;
+    check('图鉴同一行等高、不同内容行按需撑开', rowAligned && distinctRowHeights >= 2, JSON.stringify(codexRows.slice(0, 6)));
     check('组件图鉴卡展示底材词缀与数值范围', (await p1.$$('.codex-cell.k-component .cx-pool')).length > 0);
     // 图鉴详情改为子窗口
     await p1.evaluate(() => { const c = document.querySelector('.codex-cell'); if (c) c.click(); });
@@ -1568,13 +1644,13 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     });
     check('详情概率与服务器目录一致', pctMatch.n === pctMatch.expectN && pctMatch.bad.length === 0, JSON.stringify(pctMatch));
     // 与后台同步：改掉落池（管理员）→ SSE groundcfg → 打开中的详情自动刷新为单一 100%
-    const syncCheck = await p1.evaluate(async () => {
-      const login = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'lay_seller', password: 'abcd1234' }) }).then(r => r.json());
-      if (!login.token) return { ok: false, why: 'no admin token' };
+    const admTokSync = await adminToken();
+    const syncCheck = await p1.evaluate(async (admTok) => {
+      if (!admTok) return { ok: false, why: 'no admin token' };
       const gr = await fetch('/api/grounds').then(r => r.json());
       const sp = gr.grounds.find(x => x.id === 'stillwater').spots.find(x => x.id === 'dock');
       const old = sp.pool;
-      await fetch('/api/admin/spot/pool', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: login.token, groundId: 'stillwater', spotId: 'dock', pool: [{ pick: 'fish:crucian', weight: 100 }] }) });
+      await fetch('/api/admin/spot/pool', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + admTok }, body: JSON.stringify({ groundId: 'stillwater', spotId: 'dock', pool: [{ pick: 'fish:crucian', weight: 100 }] }) });
       for (let i = 0; i < 50; i++) {
         const now = await fetch('/api/grounds').then(r => r.json());
         const cur = now.grounds.find(x => x.id === 'stillwater').spots.find(x => x.id === 'dock');
@@ -1583,13 +1659,13 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       }
       const rows = Array.from(document.querySelectorAll('.spot-pool-row')).map(r => ({ pick: r.getAttribute('data-pick'), pct: Number(r.getAttribute('data-pct')) }));
       return { ok: true, rows: rows, old: old };
-    });
+    }, admTokSync);
     check('后台改掉落池后，打开中的钓点详情自动同步（鲫鱼 100%）',
       syncCheck.ok && syncCheck.rows.length === 1 && syncCheck.rows[0].pick === 'fish:crucian' && syncCheck.rows[0].pct === 100,
       JSON.stringify(syncCheck.rows));
     check('同步后弹窗仍开着（无需关闭重开）', (await p1.$$('.codex-modal')).length === 1, String((await p1.$$('.codex-modal')).length));
     // 恢复原掉落池，避免影响后续用例
-    const admT = (await post('/api/admin/login', { username: 'lay_seller', password: 'abcd1234' })).data.token;
+    const admT = await adminToken();
     check('管理端登录可用（恢复掉落池前置）', !!admT, String(!!admT));
     await post('/api/admin/spot/pool', { token: admT, groundId: 'stillwater', spotId: 'dock', pool: syncCheck.old });
     await p1.evaluate(() => { const b = document.querySelector('.codex-modal .modal-close'); if (b) b.click(); });
@@ -1600,24 +1676,32 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await clickNav(p1, '渔获记录');
     check('渔获记录渲染全场纪录卡片', (await p1.$$('.record-cell.with-rec')).length >= 6, String((await p1.$$('.record-cell.with-rec')).length));
     check('全场最大置顶显示 287.2cm（黄金枪鱼）', (await p1.textContent('.record-hero')).includes('287.2'));
-    const smallCells = await p1.$$('.record-cell.small-fish');
-    check('小鱼纪录渲染卡片', smallCells.length >= 1);
-    check('小鱼纪录卡片标注可点查看前十小', (await p1.textContent('.record-cell.small-fish')).includes('前十小'));
-    // 点小鱼卡片 → 弹出前十小弹窗
-    await p1.evaluate(() => { const c = document.querySelector('.record-cell.small-fish'); if (c) c.click(); });
-    await sleep(500);
-    check('点击小鱼纪录弹出前十小弹窗', (await p1.textContent('.modal-head .modal-title')).includes('前十小'));
+    // v0.18 起纪录卡合并：每张卡同时给最大（上行）与最小（下行蓝字 .sf-size）纪录
+    const smallCells = await p1.$$eval('.record-cell.with-rec .sf-size', els => els.map(e => e.textContent));
+    check('小鱼纪录并入卡片下行（最小纪录行）', smallCells.length >= 1 && smallCells.some(t => /\d/.test(t)), JSON.stringify(smallCells.slice(0, 3)));
+    check('纪录卡标注点击查看排行榜', (await p1.textContent('.record-cell.with-rec')).includes('排行榜'));
+    // 点卡片 → 排行榜弹窗；切到「最小」→ 升序
+    await p1.evaluate(() => { const c = document.querySelector('.record-cell.with-rec'); if (c) c.click(); });
+    await sleep(600);
+    check('点击纪录卡弹出排行榜弹窗', (await p1.textContent('.modal-head .modal-title')).includes('排行榜'));
+    await p1.evaluate(() => { const s = Array.from(document.querySelectorAll('#rt-kind button')).find(b => b.textContent.includes('最小')); if (s) s.click(); });
+    await sleep(700);
     const sfModal = await p1.evaluate(() => {
       const sizes = Array.from(document.querySelectorAll('#records-modal-body .top10-size')).map(e => parseFloat(e.textContent));
       return { sizes: sizes, sortedAsc: sizes.every((v, i) => i === 0 || sizes[i - 1] <= v) };
     });
-    check('前十小弹窗按体型升序排列', sfModal.sizes.length >= 1 && sfModal.sortedAsc, JSON.stringify(sfModal));
+    check('最小榜按体型升序排列', sfModal.sizes.length >= 1 && sfModal.sortedAsc, JSON.stringify(sfModal));
     await p1.evaluate(() => { const b = document.querySelector('.modal-close'); if (b) b.click(); });
     await sleep(200);
-    // 点大鱼卡片 → 弹出前十大
-    await p1.evaluate(() => { const c = document.querySelector('.record-cell.with-rec:not(.small-fish)'); if (c) c.click(); });
-    await sleep(500);
-    check('点击大鱼纪录弹出前十大弹窗', (await p1.textContent('.modal-head .modal-title')).includes('前十大'));
+    // 再点开一张卡：默认最大榜（日榜，降序）
+    await p1.evaluate(() => { const c = document.querySelector('.record-cell.with-rec'); if (c) c.click(); });
+    await sleep(700);
+    const bigModal = await p1.evaluate(() => ({
+      title: (document.querySelector('.modal-head .modal-title') || {}).textContent || '',
+      sizes: Array.from(document.querySelectorAll('#records-modal-body .top10-size')).map(e => parseFloat(e.textContent)),
+    }));
+    check('默认打开最大榜且降序', bigModal.title.includes('排行榜') && bigModal.sizes.length >= 1 &&
+      bigModal.sizes.every((v, i) => i === 0 || bigModal.sizes[i - 1] >= v), JSON.stringify(bigModal));
     await p1.evaluate(() => { const b = document.querySelector('.modal-close'); if (b) b.click(); });
     await sleep(200);
     // 破纪录横幅：调用 showRecordBanner 应出现 5 秒
@@ -1963,7 +2047,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     // 会话在服务端失效、且客户端没收到 SSE 通知（如 30 天过期 / 服务端清理）时，
     // 兜底探测应主动发现并回到登录页。这里只让 /api/me 返回 401 来隔离这条路径
     // （真实调用 /api/logout 会推 SSE 通知，走的是另一条分支）。
-    const rgLost = await post('/api/register', { username: 'lay_lost', password: 'abcd1234', qq: '10031' });
+    const rgLost = await post('/api/register', { username: 'lay_lost', password: 'LayoutPass1234', qq: '10031' });
     const pLost = await ctx.newPage();
     await login(pLost, rgLost.data.token);
     await pLost.evaluate(() => {
@@ -2068,9 +2152,9 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     const advanced = await waitFor(async () => /短纪录B/.test(await p1.textContent('#record-banner')), { timeout: 20000, interval: 400 }).catch(() => false);
     check('第一条播完后自动接上第二条（顺序播放）', advanced === true, String(advanced));
     // 公告轨：独立成行 + 自定义颜色
-    const adminLoginB = await post('/api/admin/login', { username: 'lay_seller', password: 'abcd1234' });
-    if (adminLoginB.data && adminLoginB.data.token) {
-      await post('/api/admin/banner/add', { token: adminLoginB.data.token, content: 'QA 公告·红色', duration: 8, color: '#ef4444' });
+    const adminTokB = await adminToken();
+    if (adminTokB) {
+      await post('/api/admin/banner/add', { token: adminTokB, content: 'QA 公告·红色', duration: 8, color: '#ef4444' });
       await waitFor(async () => (await p1.$$('#notice-banner.show')).length === 1, { timeout: 10000 }).catch(() => {});
       const lane2 = await p1.evaluate(() => {
         const not = document.getElementById('notice-banner');
@@ -2085,16 +2169,15 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
       check('公告使用独立轨道（与纪录轨互不干扰）', lane2.notShown === true, JSON.stringify(lane2));
       check('公告自定义颜色生效（#ef4444）', /239, 68, 68/.test(lane2.bg), String(lane2.bg));
       check('两条轨道都在顶部状态栏之上（整体下移不遮挡）', lane2.topbarTop >= lane2.notBottom - 1 && parseInt(lane2.bodyPad, 10) >= 34, JSON.stringify(lane2));
-      await post('/api/admin/banner/clear', { token: adminLoginB.data.token });
+      await post('/api/admin/banner/clear', { token: adminTokB });
     } else {
-      check('管理员登录可用（横幅双轨前置）', false, JSON.stringify(adminLoginB.data));
+      check('管理员登录可用（横幅双轨前置）', false, 'adminToken() 返回空');
     }
 
     // ===================== v0.11：工坊 / 商城 / 地图选中 / 纪录图标 / 更新横幅 =====================
     section('v0.11 新页面与新视觉');
     {
-      const adminLogin2 = await post('/api/admin/login', { username: 'lay_seller', password: 'abcd1234' });
-      const tokAdmin = adminLogin2.data && adminLogin2.data.token;
+      const tokAdmin = await adminToken();
 
       // —— 工坊：熔炼页渲染（主/副组件下拉 + 词条胶囊 + 投料行 + 预览） ——
       const wsMain = D_DATA.instanceId('rod_bamboo', 'epic', [{ type: 'speed', value: 12 }, { type: 'size', value: 3 }]);

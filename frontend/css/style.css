@@ -630,7 +630,7 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .cs-box { border: 1px solid var(--line); border-radius: 12px; padding: 14px; text-align: center; background: rgba(255,255,255,.03); }
 .cs-box b { display: block; font-size: 24px; font-weight: 800; color: var(--accent); }
 .cs-box span { font-size: 12px; color: var(--muted); }
-.codex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; grid-auto-rows: 1fr; }
+.codex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 10px; grid-auto-rows: auto; }
 .codex-cell { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.02); display: flex; flex-direction: column; }
 /* v0.13.6 图鉴框体品质：按已钓到的最高体型档——普通=铜 / 大型=银 / 巨型=金 */
 .codex-cell.tier-bronze { border-color: #b87333; box-shadow: inset 0 0 0 1px rgba(184,115,51,.35); }
@@ -639,15 +639,38 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 /* v0.13.8 材料/组件没有体型档，用「图鉴 · 钓点」同款高亮边框（青绿 + 外发光） */
 .codex-cell.k-nosize { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(52,224,192,.18); }
 .cx-tier { color: #ffd24a; font-weight: 600; }
-/* 未解锁卡片只压暗自身内容（详情现已移到子窗口，不再是卡片子节点） */
-.codex-cell:not(.got) > * { opacity: .5; }
+/* 未解锁卡片保留可辨识轮廓，以问号角标表达状态；不再对整卡叠两层透明度。 */
+.codex-cell:not(.got):not(.k-spots) { background: rgba(255,255,255,.015); }
+.codex-cell:not(.got):not(.k-spots) :is(.cx-name, .cx-meta) { opacity: .68; }
 .codex-cell.got { background: rgba(255,255,255,.05); border-color: var(--accent2); }
 .cx-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
 .cx-name.locked-name { color: var(--muted); }
-/* 鱼类贴图：像素画，禁用平滑放大 */
-.cx-icon { width: 84px; height: 50px; object-fit: contain; align-self: center; margin-bottom: 8px; image-rendering: pixelated; }
+/* 图鉴贴图统一展示窗：鱼图按 44×26 逻辑画布的 3 倍显示（132×78），像素栅格保持整数倍。 */
+.cx-visual {
+  position: relative; align-self: center; display: grid; place-items: center;
+  width: 78px; height: 78px; max-width: 100%; margin: 0 auto 9px; overflow: hidden;
+  border: 1px solid rgba(148, 196, 225, .22); border-radius: 7px;
+  background: linear-gradient(180deg, rgba(54, 104, 135, .16), rgba(8, 36, 58, .38));
+}
+.cx-visual-fish { width: 132px; height: 78px; }
+.cx-visual-fish::after {
+  content: ''; position: absolute; left: 5px; right: 5px; bottom: 13px; height: 1px;
+  background: repeating-linear-gradient(90deg, rgba(77, 195, 218, .4) 0 12px, transparent 12px 18px);
+  opacity: .5; pointer-events: none;
+}
+.cx-icon { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.cx-visual .cx-icon { position: relative; z-index: 1; box-sizing: border-box; padding: 5px 7px; }
+.cx-visual:not(.cx-visual-fish) .cx-icon { padding: 7px; }
+.cx-tier-badge, .cx-lock-badge {
+  position: absolute; z-index: 2; top: 4px; padding: 2px 5px; border-radius: 4px;
+  font-size: 9px; line-height: 1.2; font-weight: 700; pointer-events: none;
+  background: rgba(4, 16, 28, .82); border: 1px solid rgba(255,255,255,.18);
+}
+.cx-tier-badge { right: 4px; color: #fff2c8; }
+.cx-lock-badge { left: 4px; min-width: 11px; text-align: center; color: var(--muted); }
+.codex-cell:not(.got):not(.k-spots) .cx-icon { opacity: .74; filter: grayscale(.72) brightness(.84); }
 /* 钓点图标为方形场景图 */
-.cx-icon.spot-icon { width: 72px; height: 72px; }
+.cx-icon.spot-icon { width: 72px; height: 72px; align-self: center; margin-bottom: 8px; }
 .cx-meta { font-size: 11px; color: var(--text); }
 .cx-meta.muted { color: var(--muted); }
 
@@ -1177,12 +1200,14 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 
 /* ---- 图鉴详情浮层 ---- */
 .codex-cell { position: relative; }
-/* 详情弹窗顶部贴图 */
-.cd-icon { display: block; width: 132px; height: 78px; object-fit: contain; margin: 0 auto 10px; image-rendering: pixelated; }
+/* 详情弹窗顶部贴图：鱼沿用 132×78 标准画布，材料/组件保持方形。 */
+.cd-icon { display: block; width: 92px; height: 92px; object-fit: contain; margin: 0 auto 10px; image-rendering: pixelated; }
+.cd-icon.cd-icon-fish { width: 132px; height: 78px; }
 .codex-grid { align-items: stretch; } /* 等高：让卡片撑满等高行 */
 .codex-cell .cx-spots { margin-top: auto; } /* 产地行贴底，等高时不显突兀 */
-.codex-cell.got { cursor: pointer; }
-.codex-cell.got:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.codex-cell[role=button] { cursor: pointer; }
+.codex-cell[role=button]:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.codex-cell[role=button]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 /* 图鉴详情内容：现为子窗口（modal）内的普通内容块。
    注意：早期它是卡片内展开的浮层（position:absolute; top:100%），
    改为子窗口后必须重置定位，否则内容会被定位到窗口之外、子窗口看起来是空的。 */

@@ -15,6 +15,9 @@ const os = require('os');
 const path = require('path');
 // 轮询等待工具（测试内部不依赖固定 sleep）：就绪即继续，超时才失败
 const { waitHttp , flushWait } = require('./_util.js');
+// v0.16.4 起后台登录需要「本机控制台初始化管理员 + TOTP」，不再自动引导
+const { provisionAdmin } = require('./_admin.js');
+const { totp } = require('../backend/security');
 
 const ROOT = path.join(__dirname, '..');
 const NODE = process.execPath;
@@ -31,13 +34,29 @@ function check(name, cond, extra) {
 }
 function section(t) { console.log('\n=== ' + t + ' ==='); }
 function killTree(p) { try { spawnSync('taskkill', ['/F', '/T', '/PID', String(p.pid)], { stdio: 'ignore' }); } catch (e) {} }
+// 启动前清理端口占用：上次运行若在中途崩溃，残留的旧服务器会占住端口，
+// 导致所有请求打到「陈旧实例」上（表现为注册 409 / 账号文件缺失这类假失败）。
+function killPortOccupant(port) {
+  try {
+    spawnSync('powershell', ['-NoProfile', '-Command',
+      '(Get-NetTCPConnection -State Listen -LocalPort ' + port + ' -ErrorAction SilentlyContinue).OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }'],
+      { stdio: 'ignore' });
+  } catch (e) {}
+}
 
 function req(method, u, body) {
   return new Promise((resolve) => {
-    const p = url.parse(u);
-    const data = body ? JSON.stringify(body) : null;
+    // 凭据只走传输层：body/query 里的 token 会被服务端 400 拒，提取到 Authorization 头
+    const parsed = new URL(u);
+    let token = parsed.searchParams.get('token') || '';
+    if (token) parsed.searchParams.delete('token');
+    let payload = body;
+    if (payload && payload.token) { token = payload.token; payload = Object.assign({}, payload); delete payload.token; }
+    const p = url.parse(parsed.href);
+    const data = payload ? JSON.stringify(payload) : null;
     const headers = { 'Content-Type': 'application/json' };
     if (data) headers['Content-Length'] = Buffer.byteLength(data);
+    if (token) headers.Authorization = 'Bearer ' + token;
     const r = http.request({ hostname: p.hostname, port: p.port, path: p.path, method, headers }, res => {
       let d = ''; res.on('data', c => d += c);
       res.on('end', () => {
@@ -50,16 +69,47 @@ function req(method, u, body) {
     r.end();
   });
 }
-const GET = u => req('GET', u), POST = (u, b) => req('POST', u, b);
+const GET = u => req('GET', u);
+// 注册防滥用：同 IP 第 4 次注册起要求一次性工作量证明，收到挑战先求解再带 proof 重试
+const POST = async (u, b) => {
+  const result = await req('POST', u, b);
+  if (result.data && result.data.code === 'REGISTRATION_CHALLENGE') {
+    const challenge = await req('GET', u.split('/api/')[0] + '/api/register/challenge');
+    return req('POST', u, Object.assign({}, b, { proof: require('./_registration').solve(challenge.data) }));
+  }
+  return result;
+};
 const B = 'http://localhost:' + PORT;
+
+// TOTP 动态码每个 30s 步只能用一次（服务端记录 adminTotpStep 防重放）：
+// 连续两次后台登录落在同一步时第二次会被拒，这里保证单调推进到下一个未用过的步。
+let lastOtpStep = -1;
+async function freshOtp() {
+  const secret = JSON.parse(fs.readFileSync(path.join(TMP_DATA, 'accounts', 'ch_admin.json'))).adminTotpSecret;
+  for (;;) {
+    const step = Math.floor(Date.now() / 30000);
+    if (step > lastOtpStep) { lastOtpStep = step; return totp(secret, step); }
+    await new Promise(r => setTimeout(r, 250));
+  }
+}
+// 后台重新登录：TOTP 步进/边界偶发失配时换下一个步重试（最多 3 次）
+async function adminRelogin() {
+  let r = null;
+  for (let i = 0; i < 3; i++) {
+    r = await POST(B + '/api/admin/login', { username: 'ch_admin', password: 'ChestPass12345', otp: await freshOtp() });
+    if (r.status === 200 && r.data && r.data.token) return r;
+  }
+  return r;
+}
 
 let srv = null;
 
 (async () => {
+  killPortOccupant(PORT);
   srv = spawn(NODE, [path.join('backend', 'server.js')], {
     cwd: ROOT,
     env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }),
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
   srv.stdout.on('data', () => {});
   srv.stderr.on('data', d => console.error('[srv] ' + String(d).trim()));
@@ -68,14 +118,16 @@ let srv = null;
   if (!ready) { console.log('服务器未就绪，测试中止'); try { killTree(srv); } catch (e) {} process.exit(1); }
   console.log('服务器就绪：' + B);
 
-  // ---- 账号：首个登录后台的账号自动成为管理员 ----
+  // ---- 账号：管理员需本机控制台 admin-init 初始化 + TOTP 验证（v0.16.4 起不再自动引导） ----
   section('账号准备');
-  const rgA = await POST(B + '/api/register', { username: 'ch_admin', password: 'ch123456', name: '宝匣管理员', qq: '88001' });
+  const rgA = await POST(B + '/api/register', { username: 'ch_admin', password: 'ChestPass12345', name: '宝匣管理员', qq: '88001' });
   check('管理员账号注册', rgA.status === 200 && !!(rgA.data && rgA.data.token), JSON.stringify(rgA.data));
-  const lgA = await POST(B + '/api/admin/login', { username: 'ch_admin', password: 'ch123456' });
+  const otp0 = await provisionAdmin(srv, TMP_DATA, 'ch_admin');
+  lastOtpStep = Math.floor(Date.now() / 30000);
+  const lgA = await POST(B + '/api/admin/login', { username: 'ch_admin', password: 'ChestPass12345', otp: otp0 });
   const TOKA = lgA.data && lgA.data.token;
-  check('管理员登录（引导授权）', lgA.status === 200 && !!TOKA, JSON.stringify(lgA.data));
-  const rgP = await POST(B + '/api/register', { username: 'ch_player', password: 'ch123456', name: '捞宝人', qq: '88002' });
+  check('管理员登录（控制台初始化 + TOTP）', lgA.status === 200 && !!TOKA, JSON.stringify(lgA.data));
+  const rgP = await POST(B + '/api/register', { username: 'ch_player', password: 'ChestPass12345', name: '捞宝人', qq: '88002' });
   const TOKP = rgP.data && rgP.data.token;
   check('玩家账号注册', rgP.status === 200 && !!TOKP, JSON.stringify(rgP.data));
 
@@ -131,18 +183,18 @@ let srv = null;
   check('批量按 10 倍扣料', craft10.data.inventory.relic === 20 && craft10.data.coins === 20000,
     JSON.stringify({ relic: craft10.data.inventory.relic, coins: craft10.data.coins }));
 
+  // v0.16.4 起单次批量上限改由请求校验层强制执行（Security.validate：qty 必须是 1～99 的整数），
+  // 超出/为 0 一律 400 拒绝，不再服务端夹取或归一化。
   await seed({ relic: 100000 }, 10000000);
   const craftHuge = await POST(B + '/api/chest/craft', { token: TOKP, chestId: 'chest_wreck', qty: 9999 });
-  check('单次批量上限 99（防误点清空残片）',
-    craftHuge.data.inventory.chest_wreck === 99 && craftHuge.data.inventory.relic === 100000 - 99 * 8,
-    JSON.stringify({ chest: craftHuge.data.inventory.chest_wreck, relic: craftHuge.data.inventory.relic }));
+  check('单次批量上限 99（超出直接 400 拒绝，防误点清空残片）', craftHuge.status === 400, JSON.stringify(craftHuge.data));
+  check('超限拒绝后残片未被扣掉', (await GET(B + '/api/chest?token=' + TOKP)).data.relicHave === 100000);
 
   const craftBad = await POST(B + '/api/chest/craft', { token: TOKP, chestId: 'no_such_chest', qty: 1 });
   check('未知宝匣 400', craftBad.status === 400);
 
   const craftBadQty = await POST(B + '/api/chest/craft', { token: TOKP, chestId: 'chest_wreck', qty: 0 });
-  check('数量 0 → 按 1 处理', craftBadQty.status === 200 &&
-    craftBadQty.data.inventory.chest_wreck === craftHuge.data.inventory.chest_wreck + 1);
+  check('数量 0 → 400 拒绝（数量需为 1～99 的整数）', craftBadQty.status === 400, JSON.stringify(craftBadQty.data));
 
   // ---- 开箱：目标选择 ----
   section('开箱：目标选择');
@@ -329,7 +381,7 @@ let srv = null;
   check('挂单出现在市集列表且带名称', !!listed && listed.name === '沉船宝匣', JSON.stringify(listed && listed.name));
 
   // 市集买入宝匣 → 进背包且可开箱
-  const lgB = await POST(B + '/api/register', { username: 'ch_buyer', password: 'ch123456', name: '买家', qq: '88003' });
+  const lgB = await POST(B + '/api/register', { username: 'ch_buyer', password: 'ChestPass12345', name: '买家', qq: '88003' });
   const TOKB = lgB.data && lgB.data.token;
   check('买家账号注册', !!TOKB);
   await POST(B + '/api/dev/seed', { token: TOKB, inventory: {}, coins: 100000 });
@@ -342,7 +394,7 @@ let srv = null;
 
   // ---- 后台宝匣配置 ----
   section('后台宝匣配置');
-  const adminLogin = await POST(B + '/api/admin/login', { username: 'ch_admin', password: 'ch123456' });
+  const adminLogin = await adminRelogin();
   const TOKA2 = adminLogin.data && adminLogin.data.token;
   await POST(B + '/api/admin/settings', { token: TOKA2, chestCfg: { pityN: 4 } });
   const w0 = await GET(B + '/api/admin/world?token=' + TOKA2);
@@ -383,7 +435,7 @@ let srv = null;
   srv = spawn(NODE, [path.join('backend', 'server.js')], {
     cwd: ROOT,
     env: Object.assign({}, process.env, { PORT: String(PORT), FISHING_DEV: '1', FISHING_DATA_DIR: TMP_DATA }),
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
   srv.stdout.on('data', () => {});
   srv.stderr.on('data', () => {});
@@ -391,7 +443,7 @@ let srv = null;
   check('服务器重启就绪', ready2);
   const v2 = await GET(B + '/api/version');
   check('宝匣保底次数重启后保留（4）', v2.data.chestCfg.pityN === 4, JSON.stringify(v2.data.chestCfg));
-  const lgAgain = await POST(B + '/api/admin/login', { username: 'ch_admin', password: 'ch123456' });
+  const lgAgain = await adminRelogin();
   const w2 = await GET(B + '/api/admin/world?token=' + (lgAgain.data && lgAgain.data.token));
   check('后台配置重启后保留', w2.data.chestCfg && w2.data.chestCfg.pityN === 4, JSON.stringify(w2.data.chestCfg));
 

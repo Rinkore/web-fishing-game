@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """程序化生成像素鱼贴图（与精灵表风格一致：鱼头朝左、像素块、透明底）。
 输出到 frontend/assets/fish/<id>.png，仅生成 SHEET 里已有的 17 种之外的鱼。"""
-import os, math, random
+import argparse, os, math, random
+from pathlib import Path
 from PIL import Image
 
-OUT_DIR = r"C:\Users\qxl\web-fishing-game\frontend\assets\fish"
+OUT_DIR = str(Path(__file__).resolve().parents[1] / "frontend" / "assets" / "fish")
 CELL = 5                      # 1 逻辑像素 = 5 实际像素
 W, H = 44, 26                 # 逻辑画布
 SHEET_IDS = {"crucian","carp","grass","white","tilapia","minnow","sardine","croaker",
@@ -294,6 +295,45 @@ def gen_sunfish(cv):
     cv.fill(13, 10, 16, 13, (16, 20, 28)); cv.set(13, 10, (240, 240, 240))
     cv.set(12, 16, shade(c, .6))                        # 小口
 
+def gen_white(cv):
+    """白条：细长银身、完整叉尾与深色侧线，四周保留至少 2 格。"""
+    draw_fish(cv, '#aebbc7', belly='#e8eef2', fin='#7d8e9e', len_=28, height=6,
+              cx=20, cy=13, tail='fork', dorsal=True, pelvic=False, pectoral=True,
+              lateral='#526879', eye=.8, rand=71)
+    cv.fill(6, 12, 7, 13, hex2rgb('#4c6170'))            # 微翘小口
+
+def gen_sardine(cv):
+    """沙丁鱼：蓝背银腹，细鳍与叉尾均落在安全区内。"""
+    draw_fish(cv, '#3978a6', belly='#d9e5ec', fin='#285a82', len_=28, height=7,
+              cx=20, cy=13, tail='fork', dorsal=True, pelvic=True, pectoral=True,
+              lateral='#8fc4df', eye=.9, rand=73)
+    cv.line(9, 10, 29, 10, hex2rgb('#245174'))
+
+def gen_culter(cv):
+    """翘嘴鲌：银灰梭形、上翘吻、背鳍与完整深叉尾。"""
+    draw_fish(cv, '#a7b2bd', belly='#edf1f3', fin='#788795', len_=28, height=8,
+              cx=20, cy=13, tail='fork', dorsal=True, pelvic=True, pectoral=True,
+              lateral='#d7e0e5', eye=.9, rand=79)
+    jaw = hex2rgb('#697986')
+    cv.line(6, 13, 4, 11, jaw)
+    cv.line(4, 11, 7, 11, jaw)
+
+def gen_yellowcheek(cv):
+    """鳡鱼：修长掠食鱼体、金色颊斑，吻端和叉尾均不触边。"""
+    draw_fish(cv, '#87944f', belly='#d8d5a5', fin='#65713b', len_=28, height=8,
+              cx=20, cy=13, tail='fork', dorsal=True, pelvic=True, pectoral=True,
+              head_dark=.86, lateral='#b9b96f', eye=.9, rand=83)
+    cv.fill(8, 10, 12, 13, hex2rgb('#d8c35f'))           # 金黄颊部
+    cv.line(6, 14, 4, 14, hex2rgb('#596430'))            # 完整尖吻
+
+def gen_silvercarp(cv):
+    """鲢鱼：高背银身、浅腹与完整叉尾，避免旧图尾鳍裁断。"""
+    draw_fish(cv, '#aeb8b5', belly='#e6e9e3', fin='#7d8b87', len_=26, height=11,
+              cx=20, cy=13, tail='fork', dorsal=True, pelvic=True, pectoral=True,
+              lateral='#cbd2cc', eye=1, rand=89)
+    cv.line(11, 9, 11, 17, hex2rgb('#76827e'))            # 鳃盖
+    cv.fill(7, 13, 8, 14, hex2rgb('#6b7773'))             # 小口
+
 def gen_koi(cv, base='#e8e4da', patch='#e07830', patch2=None, patches=3, rand=5, glow=None):
     """锦鲤：base 底色 + 两块补丁色（黄金锦鲤 = 金底白斑橙斑）。"""
     c = hex2rgb(base); pc = hex2rgb(patch); p2 = hex2rgb(patch2) if patch2 else None
@@ -412,10 +452,11 @@ def build(fid):
     elif fid == 'mackerel':
         draw_fish(cv, '#3f6f8e', belly='#c9dbe4', len_=28, height=8, cx=21, cy=13,
                   tail='fork', stripes=5, eye=1, rand=43)
-    elif fid == 'yellowcheek':
-        draw_fish(cv, '#7d8a4a', belly='#d9d6a8', len_=30, height=7, cx=21, cy=13,
-                  tail='fork', head_dark=.85, eye=1, rand=47)
-        cv.fill(9, 10, 13, 13, hex2rgb('#d9c86a'))      # 颊部金黄
+    elif fid == 'yellowcheek': gen_yellowcheek(cv)
+    elif fid == 'silvercarp': gen_silvercarp(cv)
+    elif fid == 'culter': gen_culter(cv)
+    elif fid == 'sardine': gen_sardine(cv)
+    elif fid == 'white': gen_white(cv)
     elif fid == 'bluefin':
         draw_fish(cv, '#2e4f7e', belly='#dfe6ee', len_=26, height=10, cx=20, cy=13,
                   tail='fork', eye=1.1, rand=61)
@@ -437,10 +478,14 @@ def build(fid):
 
 ALL = ['loach','bream','catfish','grouper','cobia','rubysnapper','sturgeon','sunfish',
        'mandarin','arapaima','blackbass','mackerel','yellowcheek','bluefin','koi','swordfish',
-       'pearl','amberlobster','dragonpearl','voltaiceel','ghostray','arowana','moonkoi','dragonfish']
+       'pearl','amberlobster','voltaiceel','ghostray','arowana','moonkoi','dragonfish',
+       'culter','sardine','white','silvercarp']
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ids', nargs='+', choices=ALL, help='Only regenerate the listed fish ids')
+    args = parser.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
-    for fid in ALL:
+    for fid in (args.ids or ALL):
         size = build(fid).render(os.path.join(OUT_DIR, fid + '.png'))
         print(fid, size)

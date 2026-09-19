@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.17.0';
+  const VERSION = 'v0.19.0';
   const BUILD = '2026-09-18';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -1635,6 +1635,142 @@
     return null;
   }
 
+  // ---- 船只 ----
+  // 船只是账号外观的一部分，需要先用金币购买（price=0 免费）才能选用；
+  // 在适配的「内置」钓点会带来小幅专长加成。
+  // fitSpots 始终使用 groundId:spotId；服务端只对这份目录中列出的组合生效，
+  // 管理员后建的渔场 / 钓点不会因 ID 或名称相似而误吃到加成。
+  // 目录结构参考 Cast n Chill：图标 / 名称 / 价格 / 水域类型（water）。
+  const BOATS = [
+    {
+      id: 'marsh_skiff', name: '苇影平底舟', trait: '浅水巧取',
+      desc: '平底轻舟吃水浅，擅长贴近苇岸与沙洲，轻快搜寻漂流材料。',
+      asset: 'assets/ui/char/boat_marsh_skiff.png',
+      price: 0, water: '湖泊',
+      fitSpots: ['stillwater:dock', 'stillwater:reed', 'rapids:shoal', 'rapids:eddy', 'sunset:beach'],
+      buffs: [{ type: 'speed', value: 4 }, { type: 'material', value: 6 }],
+      available: true,
+    },
+    {
+      id: 'leaky_bucket', name: '补漏旧木船', trait: '新手过渡',
+      desc: '桶板拼成的旧船，船底总有点渗水，但划起来意外地稳当。',
+      asset: 'assets/ui/char/boat_leaky_bucket.png',
+      price: 200, water: '湖泊',
+      fitSpots: ['stillwater:dock', 'stillwater:reed', 'rapids:shoal'],
+      buffs: [{ type: 'speed', value: 2 }, { type: 'material', value: 2 }],
+      available: true,
+    },
+    {
+      id: 'tide_cutter', name: '潮脊稳舷艇', trait: '深水稳钓',
+      desc: '加固的高舷帮能压住深潮与碎浪，为瀑潭、防波堤和礁区留出稳定的溜鱼空间。',
+      asset: 'assets/ui/char/boat_tide_cutter.png',
+      price: 1000, water: '河流',
+      fitSpots: ['stillwater:deep', 'rapids:fall', 'sunset:pier', 'sunset:reef'],
+      buffs: [{ type: 'skill', value: 3 }, { type: 'size', value: 4 }],
+      available: true,
+    },
+    {
+      id: 'snow_wolf', name: '雪狼号', trait: '寒水猎手',
+      desc: '灰白涂装的破冰小艇，为霜月冰湖而生；眼下先在冷水深潭里试试爪牙。',
+      asset: 'assets/ui/char/boat_snow_wolf.png',
+      price: 2000, water: '冰湖',
+      fitSpots: ['stillwater:deep', 'rapids:fall', 'sunset:reef'],
+      buffs: [{ type: 'rare', value: 3 }, { type: 'speed', value: 2 }],
+      available: true,
+    },
+    {
+      id: 'coast_rambler', name: '沿岸漫游者', trait: '远洋巡游',
+      desc: '蓝白巡航艇配有宽敞甲板与竿架，能沿着海湾从容追逐大鱼汛。',
+      asset: 'assets/ui/char/boat_coast_rambler.png',
+      price: 5000, water: '海洋',
+      fitSpots: ['sunset:beach', 'sunset:pier', 'sunset:reef'],
+      buffs: [{ type: 'skill', value: 4 }, { type: 'size', value: 5 }],
+      available: true,
+    },
+  ];
+  const BOAT_MAP = Object.create(null);
+  BOATS.forEach(function (boat) { BOAT_MAP[boat.id] = boat; });
+  function boatOf(id) {
+    return typeof id === 'string' && Object.prototype.hasOwnProperty.call(BOAT_MAP, id) ? BOAT_MAP[id] : null;
+  }
+  function boatFits(boatId, groundId, spotId) {
+    const boat = boatOf(boatId);
+    return !!(boat && boat.fitSpots.indexOf(String(groundId) + ':' + String(spotId)) >= 0);
+  }
+  // 免费船（price=0）是注册即拥有的初始船队；付费船需通过 /api/appearance/boat/buy 解锁。
+  function freeBoatIds() { return BOATS.filter(function (b) { return !b.price; }).map(function (b) { return b.id; }); }
+
+  // ---- 同伴（纯本地外观，目录前后端共享） ----
+  // 品种 + 毛色变体的组织方式参考 Cast n Chill 同伴表：同一品种共用体型，变体换配色。
+  // 字段：{ id, name（毛色变体名）, breed（品种 id）, breedName（品种中文名） }
+  const COMPANIONS = [
+    { id: 'golden', name: '金色', breed: 'retriever', breedName: '金毛寻回犬' },
+    { id: 'retriever_red', name: '红色', breed: 'retriever', breedName: '金毛寻回犬' },
+    { id: 'retriever_cream', name: '米白', breed: 'retriever', breedName: '金毛寻回犬' },
+    { id: 'retriever_brown', name: '棕色', breed: 'retriever', breedName: '金毛寻回犬' },
+    { id: 'retriever_black', name: '黑色', breed: 'retriever', breedName: '金毛寻回犬' },
+    { id: 'corgi', name: '柯基', breed: 'corgi', breedName: '柯基' },
+    { id: 'malamute', name: '灰白', breed: 'malamute', breedName: '阿拉斯加' },
+    { id: 'malamute_red', name: '红白', breed: 'malamute', breedName: '阿拉斯加' },
+    { id: 'malamute_white', name: '纯白', breed: 'malamute', breedName: '阿拉斯加' },
+    { id: 'basset', name: '三色', breed: 'basset', breedName: '巴吉度' },
+    { id: 'basset_lemon', name: '柠檬色', breed: 'basset', breedName: '巴吉度' },
+    { id: 'shepherd', name: '德牧', breed: 'shepherd', breedName: '德国牧羊犬' },
+    { id: 'dachshund', name: '红色', breed: 'dachshund', breedName: '腊肠犬' },
+    { id: 'dachshund_cream', name: '奶油', breed: 'dachshund', breedName: '腊肠犬' },
+    { id: 'dachshund_tri', name: '三色', breed: 'dachshund', breedName: '腊肠犬' },
+    { id: 'bernese', name: '伯恩山', breed: 'bernese', breedName: '伯恩山犬' },
+    { id: 'mainecoon', name: '缅因猫', breed: 'mainecoon', breedName: '缅因猫' },
+    { id: 'saintbernard', name: '圣伯纳', breed: 'saintbernard', breedName: '圣伯纳犬' },
+  ];
+  const COMPANION_MAP = Object.create(null);
+  COMPANIONS.forEach(function (c) { COMPANION_MAP[c.id] = c; });
+  function companionOf(id) {
+    return typeof id === 'string' && Object.prototype.hasOwnProperty.call(COMPANION_MAP, id) ? COMPANION_MAP[id] : null;
+  }
+  function companionAsset(id) { return 'assets/ui/char/dog_' + id + '.png'; }
+  // 按品种分组的同伴列表（保持目录声明顺序），供角色页分组展示。
+  function companionBreeds() {
+    const order = [], byBreed = Object.create(null);
+    COMPANIONS.forEach(function (c) {
+      if (!byBreed[c.breed]) { byBreed[c.breed] = { breed: c.breed, breedName: c.breedName, list: [] }; order.push(byBreed[c.breed]); }
+      byBreed[c.breed].list.push(c);
+    });
+    return order;
+  }
+
+  // ---- 钓手 ----
+  // 元气骑士式角色面板：4 项属性（1~5）+ 被动天赋 + 解锁方式。
+  // passive 是与船只 buff 同通道的小幅常驻增益（服务端权威，见 server.js 的 anglerEffOf）。
+  // unlock：{ type:'free' } 注册即用；{ type:'coins', cost } 通过 /api/appearance/angler 付费解锁。
+  const ANGLERS = [
+    {
+      id: 'lan', name: '澜', look: '橙帽 · 青绿雨衣', desc: '活泼利落的近岸巡钓手',
+      stats: { 臂力: 3, 耐心: 3, 感知: 4, 幸运: 3 },
+      passive: { type: 'speed', value: 2 }, passiveText: '快手抛竿：抛竿间隔 -2%',
+      unlock: { type: 'free' },
+    },
+    {
+      id: 'mo', name: '墨', look: '米色斗笠 · 海军蓝外套 · 砖红围巾', desc: '沉静稳健的潮声观澜者',
+      stats: { 臂力: 3, 耐心: 5, 感知: 3, 幸运: 2 },
+      passive: { type: 'skill', value: 2 }, passiveText: '静观鱼讯：上钩率 +2%',
+      unlock: { type: 'free' },
+    },
+    {
+      id: 'li', name: '砾', look: '灰绿斗篷 · 矿石挂坠', desc: '在山涧与矿湖之间来回的拾荒钓手',
+      stats: { 臂力: 4, 耐心: 4, 感知: 2, 幸运: 3 },
+      passive: { type: 'material', value: 3 }, passiveText: '拾荒眼力：材料掉落 +3%',
+      unlock: { type: 'coins', cost: 3000 },
+    },
+  ];
+  const ANGLER_MAP = Object.create(null);
+  ANGLERS.forEach(function (a) { ANGLER_MAP[a.id] = a; });
+  function anglerOf(id) {
+    return typeof id === 'string' && Object.prototype.hasOwnProperty.call(ANGLER_MAP, id) ? ANGLER_MAP[id] : null;
+  }
+  function freeAnglerIds() { return ANGLERS.filter(function (a) { return a.unlock && a.unlock.type === 'free'; }).map(function (a) { return a.id; }); }
+  function anglerAsset(id, pose) { return 'assets/ui/chars/' + id + '_' + pose + '.png'; }
+
   // ---- 钓场 ----
   // 普通钓场常驻；活动钓场为 locked 占位。
   // pool 条目：{ pick: 'fish:<id>' | 'material:<id>' | 'component', weight }
@@ -1848,6 +1984,9 @@
     autoBuildRange: autoBuildRange,
     normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
+    BOATS: BOATS, boatOf: boatOf, boatFits: boatFits, freeBoatIds: freeBoatIds,
+    COMPANIONS: COMPANIONS, companionOf: companionOf, companionAsset: companionAsset, companionBreeds: companionBreeds,
+    ANGLERS: ANGLERS, anglerOf: anglerOf, freeAnglerIds: freeAnglerIds, anglerAsset: anglerAsset,
     GROUNDS: GROUNDS, NAV: NAV,
     allItems: allItems, itemOf: itemOf, itemName: itemName, isSellable: isSellable,
   };

@@ -162,7 +162,7 @@ window.UI = (function () {
   // 旧 view id 仍由 navigateView 接受，确保顶栏快捷入口与外部调用平滑迁移。
   let fishingTab = 'fishing';   // fishing | rod
   let codexMainTab = 'codex';   // codex | records
-  let charTab = 'companion';    // companion | boat
+  let charTab = 'angler';       // angler | companion | boat
   let fbTab = 'submit';         // submit | mine
 
   function $(id) { return document.getElementById(id); }
@@ -666,7 +666,7 @@ window.UI = (function () {
   function resetSectionTab(view) {
     if (view === 'fishing') fishingTab = 'fishing';
     else if (view === 'codex') codexMainTab = 'codex';
-    else if (view === 'character') charTab = 'companion';
+    else if (view === 'character') charTab = 'angler';
     else if (view === 'feedback') fbTab = 'submit';
   }
   // 当前实际展示的页面 id（= 功能开关 id = 广播 scope 键）：
@@ -850,6 +850,15 @@ window.UI = (function () {
     const spot = currentSpotOf();
     const spotPct = spotSpeedPct(spot);
     const clampedSpot = Math.max(-100, Math.min(95, spotPct));
+    const boat = currentBoat();
+    const boatMatched = !!(spot && boat && boatFitsSpot(boat, st.player.groundId || (st.selected && st.selected.groundId), spot.id));
+    const boatSpeed = boatMatched ? boatBuffValue(boat, 'speed') : 0;
+    const clampedBoat = Math.max(-100, Math.min(95, boatSpeed));
+    const boatMult = Math.round((1 - clampedBoat / 100) * 1000) / 1000;
+    // 钓手天赋钓速：常驻生效，与服务端 intervalFor 同位的最终乘算。
+    const angler = currentAngler();
+    const anglerSpeed = Math.max(-100, Math.min(95, (angler && angler.passive && angler.passive.type === 'speed') ? Number(angler.passive.value) || 0 : 0));
+    const anglerMult = Math.round((1 - anglerSpeed / 100) * 1000) / 1000;
     const globalBonus = Number(cfg.speedBonus) || 0;
     const cap = cfg.speedCap != null ? Number(cfg.speedCap) : 80;
     const minMs = cfg.minMs != null ? Number(cfg.minMs) : 800;
@@ -858,7 +867,7 @@ window.UI = (function () {
     const hasFixed = fixed != null && fixed !== '' && isFinite(Number(fixed));
     const interval = hasFixed
       ? Math.round(Math.max(100, Number(fixed)))
-      : Math.max(minMs, Math.round(cfg.baseMs * (1 - rodEff / 100) * (1 - clampedSpot / 100)));
+      : Math.max(minMs, Math.round(cfg.baseMs * (1 - rodEff / 100) * (1 - clampedSpot / 100) * boatMult * anglerMult));
     const spotBite = spot && spot.biteRate != null && spot.biteRate !== '' ? Number(spot.biteRate) : null;
     return {
       baseMs: cfg.baseMs, minMs: minMs, globalBonus: globalBonus, cap: cap,
@@ -868,7 +877,33 @@ window.UI = (function () {
       intervalMs: hasFixed ? Math.round(Number(fixed)) : null,
       interval: interval,
       biteRate: spotBite, biteOverride: spotBite != null,
+      boatId: boat ? boat.id : null, boatName: boat ? boat.name : '', boatMatched: boatMatched,
+      boatBuffs: boatMatched ? (boat.buffs || []).slice() : [], boatSpeed: boatSpeed,
+      boatSkill: boatMatched ? boatBuffValue(boat, 'skill') : 0,
+      boatMaterial: boatMatched ? boatBuffValue(boat, 'material') : 0,
+      boatSize: boatMatched ? boatBuffValue(boat, 'size') : 0,
+      boatMult: boatMult,
+      anglerId: angler ? angler.id : null, anglerName: angler ? angler.name : '',
+      anglerBuffs: angler && angler.passive ? [{ type: angler.passive.type, value: angler.passive.value }] : [],
+      anglerSpeed: anglerSpeed, anglerMult: anglerMult,
     };
+  }
+  // 船只明细：服务端 castInfo 是权威值；下面只把已下发的字段组成简洁文案。
+  function boatCastText(ci, compact) {
+    if (!ci || !ci.boatId) return '';
+    const boat = (D.boatOf && D.boatOf(ci.boatId)) || null;
+    const name = ci.boatName || (boat && boat.name) || ci.boatId;
+    if (!ci.boatMatched) return (compact ? '船' : '船型「') + name + (compact ? '未适航' : '」未适航');
+    const buffs = [];
+    const src = Array.isArray(ci.boatBuffs) && ci.boatBuffs.length ? ci.boatBuffs : [
+      { type: 'speed', value: ci.boatSpeed }, { type: 'skill', value: ci.boatSkill },
+      { type: 'material', value: ci.boatMaterial }, { type: 'size', value: ci.boatSize },
+    ];
+    src.forEach(function (b) {
+      const value = Number(b && b.value) || 0;
+      if (value) buffs.push(affixName(b.type) + (value > 0 ? '+' : '') + value + '%');
+    });
+    return (compact ? '船' + name + '适航' : '船型「' + name + '」适航') + (buffs.length ? '·' + buffs.join('/') : '');
   }
   // 简短文案：每 2.75s 一竿（基础 3.00s · 竿+25% · 点速×0.80）
   function castSpeedShort() {
@@ -878,6 +913,7 @@ window.UI = (function () {
     if (ci.intervalMs != null) parts.push('钓点固定间隔');
     if (ci.affixSpeed) parts.push('竿' + (ci.affixSpeed > 0 ? '+' : '') + ci.affixSpeed + '%');
     if (ci.buffSpeed) parts.push('点速×' + (ci.spotMult != null ? ci.spotMult.toFixed(2) : '1.00'));
+    if (ci.boatId) parts.push(boatCastText(ci, true));
     if (ci.globalBonus) parts.push('服' + (ci.globalBonus > 0 ? '+' : '') + ci.globalBonus + '%');
     const capTag = ci.rawSpeed > ci.effSpeed ? '，封顶 ' + ci.cap + '%' : '';
     return '每 ' + (ci.interval / 1000).toFixed(2) + 's 一竿（基础 ' + (ci.baseMs / 1000).toFixed(2) + 's'
@@ -898,6 +934,7 @@ window.UI = (function () {
     const parts = [];
     if (ci.affixSpeed) parts.push('钓竿 ' + (ci.affixSpeed > 0 ? '+' : '') + ci.affixSpeed + '%');
     if (ci.buffSpeed) parts.push('钓点 ×' + (ci.spotMult != null ? ci.spotMult.toFixed(2) : '1.00'));
+    if (ci.boatId) parts.push(boatCastText(ci, false));
     if (ci.globalBonus) parts.push('全服 +' + ci.globalBonus + '%');
     return speedTag + (parts.length ? '（' + parts.join(' · ') + '）' : '（无加成）') + biteTag;
   }
@@ -945,7 +982,8 @@ window.UI = (function () {
   // 否则每次上鱼都整页重建，地图节点、水面动画、渔获日志会被重建而闪动（动画从头播）。
   function fishingSig(st) {
     const parts = [mapTab, st.selected.groundId || '', st.selected.spotId || '',
-      st.player.groundId || '', st.player.spotId || '', st.fishing.active ? 1 : 0];
+      st.player.groundId || '', st.player.spotId || '', st.fishing.active ? 1 : 0,
+      (currentBoat() && currentBoat().id) || ''];
     D.GROUNDS.forEach(function (g) {
       parts.push(g.id + ':' + g.name + ':' + (g.locked ? 'L' : '') + ':' + g.type);
       (g.spots || []).forEach(function (sp) {
@@ -1061,6 +1099,7 @@ window.UI = (function () {
     if (featureBlocked('fishing')) return renderView();
     const main = $('main');
     const st = S();
+    const activeBoat = currentBoat();
     const sig = fishingSig(st);
     const host = main.querySelector('.fish-select');
     // 结构没变（只是上鱼 / 人数 / 钓速变化）→ 原地增量更新，整页 DOM 与动画都不动
@@ -1176,17 +1215,23 @@ window.UI = (function () {
         const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
         const here = st.player.groundId === g.id && st.player.spotId === sp.id;
         const buffed = sp.buffs && sp.buffs.length > 0;
+        const boatFit = !!(activeBoat && boatFitsSpot(activeBoat, g.id, sp.id));
         // 锁定的钓场（活动场未开窗 / 后台手动锁定）：节点画成 🔒 并标注「暂未开放」，点击只提示
         const locked = !!g.locked;
-        const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : '') + (locked ? ' locked' : ''));
+        const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : '') +
+          (boatFit ? ' boat-fit' : '') + (locked ? ' locked' : ''));
         node.setAttribute('data-g', g.id);
         node.setAttribute('data-s', sp.id);
         node.style.left = pos[0] + '%';
         node.style.top = pos[1] + '%';
         node.innerHTML = (locked ? '<span class="pn-lock">🔒</span>' : '<span class="pn-bob"></span>') +
           '<span class="pn-name">' + esc(sp.name) + (locked ? '<span class="pn-soon">（暂未开放）</span>' : '') +
-          (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
+          (buffed ? '<span class="pn-buff">⚡</span>' : '') +
+          (boatFit ? '<span class="pn-boat" title="' + esc(activeBoat.name + '适航') + '">⛵</span>' : '') + '</span>' +
           (here ? '<img class="pn-fisher" src="' + charSrc('hold') + '" alt="">' : '');
+        node.title = activeBoat ? (boatFit
+          ? activeBoat.name + '适航·' + boatBuffsText(activeBoat)
+          : activeBoat.name + '在此钓点不会触发船型加成') : '';
         map.appendChild(node);
       });
     });
@@ -1222,6 +1267,7 @@ window.UI = (function () {
       groundsBar.appendChild(card);
     });
     left.appendChild(groundsBar);
+    // 增益钓点一览优先展示（钓点自身增益是钓鱼决策信息）；船型适航摘要紧随其后。
     // 增益钓点一览：列出当前所有带增益的钓点（与地图节点 ⚡ 同源），点击直达该钓点
     const buffed = [];
     D.GROUNDS.forEach(function (g) {
@@ -1247,11 +1293,27 @@ window.UI = (function () {
       });
       left.appendChild(buffBar);
     }
+    // 当前船型的适航摘要：与地图上的 ⛵ 标记同源，点击可直达角色·船型。
+    if (activeBoat) {
+      const boatRoute = el('button', 'px-boat-route');
+      const fitHere = !!(st.player.groundId && boatFitsSpot(activeBoat, st.player.groundId, st.player.spotId));
+      boatRoute.innerHTML = '<span class="pbr-icon">⛵</span><span><b>' + esc(activeBoat.name) + '·' + esc(activeBoat.trait || '') + '</b>' +
+        '<i>' + esc(boatBuffsText(activeBoat)) + '·适航 ' + (activeBoat.fitSpots || []).length + ' 处</i></span>' +
+        (st.player.groundId ? '<em class="' + (fitHere ? 'on' : 'off') + '">' + (fitHere ? '当前适航' : '当前未适航') + '</em>' : '');
+      boatRoute.title = '点击前往「角色·船型」查看完整适配钓点';
+      boatRoute.addEventListener('click', function () {
+        if (!featureGuard('character.boat')) return;
+        currentView = 'character'; charTab = 'boat'; renderNav(); renderView();
+      });
+      markFeature(boatRoute, 'character.boat');
+      left.appendChild(boatRoute);
+    }
     // 图例：帮助首次进入的玩家看懂地图标记
     const legend = el('div', 'px-legend');
     legend.innerHTML = '<span><i class="lg-bob"></i> 钓点</span>' +
       '<span><i class="lg-ring"></i> 当前垂钓位置</span>' +
       '<span><i class="lg-buff">⚡</i> 有增益的钓点</span>' +
+      (activeBoat ? '<span><i class="lg-boat">⛵</i> ' + esc(activeBoat.name) + '适航</span>' : '') +
       '<span>🔒 未开放钓场</span>';
     left.appendChild(legend);
 
@@ -6815,52 +6877,78 @@ window.UI = (function () {
   let mapTab = 'nearshore'; // 钓鱼页地图页签：nearshore 近岸 / voyage 出海预告
   let lastFisherSpotKey = null; // 甩杆动画记忆：同一钓点重绘不重复播放
 
-  // ---- 角色模块：钓鱼小人皮肤可更换（本地偏好，后续可升级进服务器存档）----
-  // 贴图由 assets/ui/fisher_{a,b,hold}.png 换色重制，剪影与地图甩杆小人完全一致，
-  // 地图节点 / 实况场景 / 甩杆三帧全部走 charSrc()，换装即时生效。
-  const CHARS = [
-    { id: 'classic', name: '云游侠客' },
-    { id: 'teal',    name: '青衫客' },
-    { id: 'red',     name: '赤焰渔郎' },
-    { id: 'ink',     name: '墨衣钓叟' },
-    { id: 'amber',   name: '金秋蓑翁' },
-  ];
+  function codexTierMeta(rec) {
+    if (!rec) return null;
+    if (rec.tier === 'G') return { cls: 'tier-gold', text: '🥇 巨型' };
+    if (rec.tier === 'L') return { cls: 'tier-silver', text: '🥈 大型' };
+    return { cls: 'tier-bronze', text: '🥉 普通' };
+  }
+  function bindCodexAction(cell, label, action) {
+    cell.setAttribute('role', 'button');
+    cell.setAttribute('tabindex', '0');
+    cell.setAttribute('aria-label', label);
+    cell.addEventListener('click', action);
+    cell.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      ev.preventDefault();
+      action();
+    });
+  }
+
+  // ---- 角色模块：钓手账号存档（含付费解锁） + 同伴本地搭配 + 船型账号存档（含购买） ----
+  // 钓手四帧共用同一个 id：a / b / hold 用于地图甩杆，sit 用于角色展示台。
+  // 钓手目录在 data.js（ANGLERS：属性面板 / 被动天赋 / 解锁方式），选择经 /api/appearance/angler 落账号；
+  // CHAR_KEY 只作老版兼容与断网回退，不再是钓手的权威来源。
+  const CHARS = D.ANGLERS || [];
   const CHAR_KEY = 'fishing_char_v1';
-  function charId() {
+  const DEFAULT_ANGLER_ID = 'lan';
+  function charById(id) {
+    if (id && D.anglerOf) { const a = D.anglerOf(id); if (a) return a; }
+    return CHARS[0] || null;
+  }
+  function localCharId() {
     try {
       const v = localStorage.getItem(CHAR_KEY);
-      if (v && CHARS.some(function (c) { return c.id === v; })) return v;
+      if (v && D.anglerOf && D.anglerOf(v)) return v;
+      localStorage.setItem(CHAR_KEY, DEFAULT_ANGLER_ID);
     } catch (e) { /* 忽略 */ }
-    return 'classic';
+    return DEFAULT_ANGLER_ID;
   }
-  function charSrc(pose) { return 'assets/ui/chars/' + charId() + '_' + pose + '.png'; }
+  function currentAngler() {
+    const st = S();
+    const saved = st && st.appearance && st.appearance.anglerId;
+    return (saved && D.anglerOf && D.anglerOf(saved)) || charById(localCharId());
+  }
+  function charId() { const a = currentAngler(); return a ? a.id : DEFAULT_ANGLER_ID; }
+  function ownedAnglerIds() {
+    const st = S();
+    const list = st && st.appearance && Array.isArray(st.appearance.anglers) ? st.appearance.anglers : null;
+    if (list) return list;
+    return D.freeAnglerIds ? D.freeAnglerIds() : [DEFAULT_ANGLER_ID];
+  }
+  function charSrcFor(id, pose) { return 'assets/ui/chars/' + id + '_' + pose + '.png'; }
+  function charSrc(pose) { return charSrcFor(charId(), pose); }
+  function charSave(id) {
+    if (!(D.anglerOf && D.anglerOf(id))) return charId();
+    try { localStorage.setItem(CHAR_KEY, id); } catch (e) { /* 忽略 */ }
+    return id;
+  }
 
-  // ---- 角色系统（v2）：人 + 狗 + 船的展示与搭配（本地偏好，后续可升级服务器存档）----
-  // 贴图为官方 angler 风格生成后像素化（assets/ui/char/），外观 = 帽子×服装×肤色 48 组合预渲染，
-  // 选哪套就换哪张图，无需运行时叠加。同伴与船先开放基础款，其余占位（后续接商城/掉落）。
+  // 同伴仍是本地搭配（目录在 data.js，按品种分组）。船型改为 GameData.BOATS 单一目录 + 服务端 appearance 存档；
+  // CHAR2_KEY 只作老版兼容与断网回退，不再是船型的权威来源。
   const CHAR2_KEY = 'fishing_char_v2';
-  const CHAR2_DEF = { hat: 'orange', outfit: 'green', skin: 'light', dog: 'golden', boat: 'wood' };
-  const CHAR2_HATS = [['orange', '橙线帽'], ['teal', '青线帽'], ['red', '红线帽'], ['cream', '米线帽']];
-  const CHAR2_OUTFITS = [['green', '苔绿工装'], ['yellow', '雨黄工装'], ['red', '砖红工装'], ['blue', '海蓝工装']];
-  const CHAR2_SKINS = [['light', '浅麦'], ['tan', '小麦'], ['dark', '深麦']];
-  const CHAR2_DOGS = [
-    // 官方同伴图标（unpack.wiki 游戏资源，统一化调色后接入），全部可选
-    ['golden', '金毛', true], ['corgi', '柯基', true], ['malamute', '阿拉斯加', true],
-    ['basset', '巴吉度', true], ['shepherd', '德牧', true], ['dachshund', '腊肠', true],
-    ['bernese', '伯恩山', true], ['mainecoon', '缅因猫', true],
-  ];
-  // 船贴图为 Cast n Chill 官方图标（unpack.wiki 游戏资源），名称沿用官方中文译名
-  const CHAR2_BOATS = [
-    ['wood', '池塘划手', true, '初始船只'],
-    ['leaky', '破水桶', false, '💰200 · 湖泊 · 商城即将上架'],
-    ['loon', '追鹅者', false, '💰1000 · 湖泊 · 商城即将上架'],
-    ['rambler', '海岸漫步者', false, '💰5000 · 湖泊 · 商城即将上架'],
-    ['snowwolf', '雪狼 XT1', false, '💰2000 · 海洋 · 商城即将上架'],
-  ];
+  const DEFAULT_BOAT_ID = 'marsh_skiff';
+  const DEFAULT_COMPANION_ID = 'golden';
+  const CHAR2_DEF = { dog: DEFAULT_COMPANION_ID, boat: DEFAULT_BOAT_ID };
+  const LEGACY_BOAT_IDS = { wood: DEFAULT_BOAT_ID, leaky: 'leaky_bucket', loon: 'tide_cutter', rambler: 'coast_rambler', snowwolf: 'snow_wolf' };
+  function companionOf(id) { return D.companionOf ? D.companionOf(id) : null; }
   function char2() {
     try {
       const raw = localStorage.getItem(CHAR2_KEY);
-      if (raw) return Object.assign({}, CHAR2_DEF, JSON.parse(raw));
+      if (raw) {
+        const value = JSON.parse(raw);
+        if (value && typeof value === 'object' && !Array.isArray(value)) return Object.assign({}, CHAR2_DEF, value);
+      }
     } catch (e) { /* 忽略 */ }
     return Object.assign({}, CHAR2_DEF);
   }
@@ -6869,42 +6957,258 @@ window.UI = (function () {
     try { localStorage.setItem(CHAR2_KEY, JSON.stringify(s)); } catch (e) { /* 忽略 */ }
     return s;
   }
-  function anglerSrc(s) { return 'assets/ui/char/angler_' + s.hat + '_' + s.outfit + '_' + s.skin + '.png'; }
+  function boatOf(id) {
+    if (!id) return null;
+    if (D.boatOf) return D.boatOf(id);
+    return (D.BOATS || []).find(function (b) { return b.id === id; }) || null;
+  }
+  function migratedLocalBoatId() {
+    const pref = char2();
+    const old = pref.boat;
+    const next = boatOf(old) ? old : (LEGACY_BOAT_IDS[old] || DEFAULT_BOAT_ID);
+    const fallback = (D.BOATS || []).find(function (b) { return b.available !== false; }) || (D.BOATS || [])[0];
+    const valid = boatOf(next) ? next : (fallback && fallback.id);
+    if (valid && valid !== old) char2Save({ boat: valid });
+    return valid || DEFAULT_BOAT_ID;
+  }
+  function currentBoat() {
+    const st = S();
+    const saved = st && st.appearance && st.appearance.boatId;
+    return boatOf(saved) || boatOf(migratedLocalBoatId()) || boatOf(DEFAULT_BOAT_ID) || (D.BOATS || [])[0] || null;
+  }
+  function boatFitsSpot(boat, groundId, spotId) {
+    if (!boat || !groundId || !spotId) return false;
+    if (D.boatFits) return D.boatFits(boat.id, groundId, spotId);
+    return (boat.fitSpots || []).indexOf(String(groundId) + ':' + String(spotId)) >= 0;
+  }
+  function boatBuffValue(boat, type) {
+    let total = 0;
+    ((boat && boat.buffs) || []).forEach(function (b) { if (b && b.type === type) total += Number(b.value) || 0; });
+    return total;
+  }
+  function boatBuffsText(boat) {
+    const rows = ((boat && boat.buffs) || []).map(function (b) {
+      const v = Number(b.value) || 0;
+      return affixName(b.type) + (v > 0 ? '+' : '') + v + '%';
+    });
+    return rows.length ? rows.join(' · ') : '无额外加成';
+  }
+  function boatSpotLabels(boat) {
+    return ((boat && boat.fitSpots) || []).map(function (key) {
+      const p = String(key).split(':');
+      const g = D.GROUNDS.find(function (x) { return x.id === p[0]; });
+      const sp = g && (g.spots || []).find(function (x) { return x.id === p[1]; });
+      return g && sp ? g.name + '·' + sp.name : key;
+    });
+  }
+  function boatAsset(boat) {
+    const raw = boat && boat.asset;
+    if (!raw) return 'assets/ui/char/boat_' + ((boat && boat.id) || DEFAULT_BOAT_ID) + '.png';
+    if (/^(?:https?:|data:|blob:|\/)/.test(raw) || raw.indexOf('/') >= 0) return raw;
+    return 'assets/ui/char/' + raw;
+  }
+  function ownedBoatIds() {
+    const st = S();
+    const list = st && st.appearance && Array.isArray(st.appearance.boats) ? st.appearance.boats : null;
+    if (list) return list;
+    return (D.BOATS || []).filter(function (b) { return !b.price; }).map(function (b) { return b.id; });
+  }
+
+  let boatSetSeq = 0;
+  // 未拥有的船：先走购买接口（服务端权威扣金币），成功后自动换上。
+  function buyAndChooseBoat(boat) {
+    if (!window.Net || !window.Net.buyBoat) { toast('网络层未就绪，暂时无法购买船型', true); return; }
+    const st = S();
+    toast('正在购入「' + boat.name + '」…');
+    Promise.resolve(window.Net.buyBoat(boat.id)).then(function (r) {
+      if (r && r.ok) {
+        const d = r.data || {};
+        if (typeof d.coins === 'number') { st.player = st.player || {}; st.player.coins = d.coins; }
+        st.appearance = Object.assign({}, st.appearance || {}, d.appearance || {});
+        toast('已购入「' + boat.name + '」（-' + (Math.round(d.cost) || 0) + ' 金币）');
+        renderTopbar(); renderView();
+        chooseBoat(boat);
+      } else {
+        toast((r && r.data && r.data.error) || '购买失败，请稍后再试', true);
+      }
+    }).catch(function () { toast('购买失败，请稍后再试', true); });
+  }
+  function chooseBoat(boat) {
+    if (!boat || boat.available === false) { toast('「' + ((boat && boat.name) || '该船型') + '」尚未解锁'); return; }
+    if (!featureGuard('character.boat')) return;
+    if (ownedBoatIds().indexOf(boat.id) < 0) { buyAndChooseBoat(boat); return; }
+    const active = currentBoat();
+    if (active && active.id === boat.id) return;
+    if (!window.Net || !window.Net.setBoat) { toast('网络层未就绪，暂时无法保存船型', true); return; }
+    const st = S();
+    const prevAppearance = Object.assign({}, st.appearance || {}, { boatId: active ? active.id : DEFAULT_BOAT_ID });
+    const prevCastInfo = st.castInfo;
+    const seq = ++boatSetSeq;
+    st.appearance = Object.assign({}, st.appearance || {}, { boatId: boat.id });
+    st.castInfo = null; // 立即按新船型本地估算，回包后再用服务器明细对齐
+    char2Save({ boat: boat.id });
+    renderTopbar(); renderView();
+    Promise.resolve(window.Net.setBoat(boat.id)).then(function (r) {
+      if (seq !== boatSetSeq) return;
+      if (r && r.ok) {
+        const d = r.data || {};
+        st.appearance = Object.assign({}, st.appearance || {}, d.appearance || { boatId: boat.id });
+        if (d.castInfo) {
+          st.castInfo = d.castInfo;
+          if (d.castInfo.interval) st.fishingInterval = d.castInfo.interval;
+        }
+        char2Save({ boat: st.appearance.boatId || boat.id });
+        toast('已换上「' + boat.name + '」，适航钓点加成已同步');
+      } else {
+        st.appearance = prevAppearance; st.castInfo = prevCastInfo;
+        char2Save({ boat: prevAppearance.boatId });
+        toast((r && r.data && r.data.error) || '船型保存失败，已恢复原选择', true);
+      }
+      renderTopbar(); renderView();
+    }).catch(function () {
+      if (seq !== boatSetSeq) return;
+      st.appearance = prevAppearance; st.castInfo = prevCastInfo;
+      char2Save({ boat: prevAppearance.boatId });
+      toast('船型保存失败，已恢复原选择', true);
+      renderTopbar(); renderView();
+    });
+  }
+  let anglerSetSeq = 0;
+  // 钓手选择：已拥有直接切换；未拥有的付费钓手在同一请求内原子扣款解锁（服务端权威）。
+  function chooseAngler(a) {
+    if (!a) return;
+    if (!featureGuard('character.angler')) return;
+    const active = currentAngler();
+    const owned = ownedAnglerIds().indexOf(a.id) >= 0;
+    if (active && active.id === a.id && owned) return;
+    if (!window.Net || !window.Net.setAngler) { toast('网络层未就绪，暂时无法保存钓手', true); return; }
+    const st = S();
+    const prevAppearance = Object.assign({}, st.appearance || {}, { anglerId: active ? active.id : DEFAULT_ANGLER_ID });
+    const prevCastInfo = st.castInfo;
+    const seq = ++anglerSetSeq;
+    st.appearance = Object.assign({}, st.appearance || {}, { anglerId: a.id });
+    if (!owned) {
+      const owned0 = Array.isArray(st.appearance.anglers) ? st.appearance.anglers.slice() : ownedAnglerIds().slice();
+      if (owned0.indexOf(a.id) < 0) owned0.push(a.id);
+      st.appearance.anglers = owned0;
+    }
+    st.castInfo = null; // 天赋会影响钓速 / 词缀，回包后再用服务器明细对齐
+    charSave(a.id);
+    renderTopbar(); renderView();
+    Promise.resolve(window.Net.setAngler(a.id)).then(function (r) {
+      if (seq !== anglerSetSeq) return;
+      if (r && r.ok) {
+        const d = r.data || {};
+        st.appearance = Object.assign({}, st.appearance || {}, d.appearance || { anglerId: a.id });
+        if (typeof d.coins === 'number') { st.player = st.player || {}; st.player.coins = d.coins; }
+        if (d.castInfo) {
+          st.castInfo = d.castInfo;
+          if (d.castInfo.interval) st.fishingInterval = d.castInfo.interval;
+        }
+        charSave(st.appearance.anglerId || a.id);
+        toast(d.cost > 0
+          ? '已解锁并换上钓手「' + a.name + '」（-' + (Math.round(d.cost) || 0) + ' 金币）'
+          : '已选择钓手「' + a.name + '」');
+      } else {
+        st.appearance = prevAppearance; st.castInfo = prevCastInfo;
+        charSave(prevAppearance.anglerId);
+        toast((r && r.data && r.data.error) || '钓手保存失败，已恢复原选择', true);
+      }
+      renderTopbar(); renderView();
+    }).catch(function () {
+      if (seq !== anglerSetSeq) return;
+      st.appearance = prevAppearance; st.castInfo = prevCastInfo;
+      charSave(prevAppearance.anglerId);
+      toast('钓手保存失败，已恢复原选择', true);
+      renderTopbar(); renderView();
+    });
+  }
 
   function renderCharacter() {
     const main = $('main');
     main.innerHTML = '';
-    const st = char2();
+    let pref = char2();
+    if (!companionOf(pref.dog)) pref = char2Save({ dog: DEFAULT_COMPANION_ID });
+    const activeBoat = currentBoat();
+    const activeChar = charById(charId());
+    const activeBoatSrc = activeBoat ? boatAsset(activeBoat) : '';
     const wrap = el('div', 'panel char-view');
-    wrap.innerHTML = pageHead('🧍', '角色', '同伴与船型只改外观，不影响钓竿加成与背包') +
-      sectionTabsHtml('character', charTab, [['companion', '🐶 同伴'], ['boat', '⛵ 船型']]) +
-      pageHelp(charTab === 'boat'
-        ? '点船型卡片即换上；锁定的船型后续在商城上架。'
-        : '点同伴卡片即换上（随钓手出现在渔场实况里）。');
+    const help = charTab === 'boat'
+      ? '付费船点击卡片即可购买并换上；只有在卡片所列的适航钓点，其专长增益才会生效。'
+      : charTab === 'companion' ? '同伴按品种分组，点卡片即可换上，它会与钓手一起出现在展示台。'
+        : '钓手保存到账号，被动天赋常驻生效；付费钓手点击卡片即可解锁并换上。';
+    wrap.innerHTML = pageHead('🧍', '角色', '钓手天赋常驻生效，船型在适航钓点提供专长增益；同伴是展示台搭配') +
+      sectionTabsHtml('character', charTab, [['angler', '🎣 钓手'], ['companion', '🐶 同伴'], ['boat', '⛵ 船型']]) + pageHelp(help);
     bindSectionTabs(wrap, 'character');
-    // 展示台：静水湖黄昏背景 + 木码头 + 船 + 同伴狗（人物外观模块暂缓，贴图保留在 assets/ui/char/）
+    // 展示台始终预览当前钓手 / 同伴 / 船型的完整搭配。
     const stage = el('div', 'char-stage');
     stage.innerHTML =
       '<img class="cs-bg" src="assets/scene/stillwater.png" alt="" draggable="false">' +
       '<img class="cs-dock" src="assets/ui/char/dock.png" alt="" draggable="false">' +
-      '<img class="cs-boat" src="assets/ui/char/boat_' + st.boat + '.png" alt="" draggable="false">' +
-      '<img class="cs-dog" src="assets/ui/char/dog_' + st.dog + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">';
+      (activeBoat ? '<img class="cs-boat" src="' + esc(activeBoatSrc) + '" alt="' + esc(activeBoat.name) + '" draggable="false" onerror="this.style.display=\'none\'">' : '') +
+      '<img class="cs-angler" src="' + charSrc('sit') + '" alt="' + esc(activeChar.name) + '" draggable="false">' +
+      (activeBoat ? '<img class="cs-boat cs-boat-front" src="' + esc(activeBoatSrc) + '" alt="" aria-hidden="true" draggable="false" onerror="this.style.display=\'none\'">' : '') +
+      '<img class="cs-dog" src="assets/ui/char/dog_' + esc(pref.dog) + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">';
     wrap.appendChild(stage);
-    // 展示台是两张卡片的共用预览，下面的卡片列表按页签只画一张，避免来回滚动
+    const coinsNow = Math.round((S() && S().player && S().player.coins) || 0);
+    if (charTab === 'angler') {
+      wrap.appendChild(el('h3', null, '🎣 钓手'));
+      const anglers = el('div', 'char-cards angler-cards');
+      const ownedAnglers = ownedAnglerIds();
+      CHARS.forEach(function (c) {
+        const owned = ownedAnglers.indexOf(c.id) >= 0;
+        const unlock = c.unlock || { type: 'free' };
+        const cost = unlock.type === 'coins' ? Math.max(0, Number(unlock.cost) || 0) : 0;
+        const afford = coinsNow >= cost;
+        const card = el('button', 'cc-card angler-card' + (activeChar.id === c.id ? ' on' : '') + (owned ? '' : ' locked'));
+        card.setAttribute('aria-pressed', activeChar.id === c.id ? 'true' : 'false');
+        if (!owned) card.setAttribute('aria-disabled', 'true');
+        const stats = Object.keys(c.stats || {}).map(function (k) {
+          const v = Math.max(0, Math.min(5, Number(c.stats[k]) || 0));
+          let cells = '';
+          for (let i = 0; i < 5; i++) cells += '<i class="' + (i < v ? 'f' : '') + '"></i>';
+          return '<span class="stat-row"><em>' + esc(k) + '</em><span class="stat-cells">' + cells + '</span></span>';
+        }).join('');
+        card.innerHTML = '<span class="cc-art"><img src="' + charSrcFor(c.id, 'sit') + '" alt="' + esc(c.name) + '" draggable="false"></span>' +
+          '<span class="cc-copy"><b>' + esc(c.name) + (owned ? '' : ' 🔒') + '</b><i class="cc-trait">' + esc(c.look) + '</i><i>' + esc(c.desc) + '</i>' +
+          '<span class="cc-stats">' + stats + '</span>' +
+          '<i class="cc-passive">✨ ' + esc(c.passiveText || '无被动天赋') + '</i>' +
+          (owned ? '' : '<i class="cc-price' + (afford ? '' : ' short') + '">💰 ' + cost + ' 金币解锁' + (afford ? '（点击解锁）' : '（金币不足）') + '</i>') +
+          '</span>';
+        card.addEventListener('click', function () { chooseAngler(c); });
+        markFeature(card, 'character.angler');
+        anglers.appendChild(card);
+      });
+      wrap.appendChild(anglers);
+      main.appendChild(wrap);
+      return;
+    }
     if (charTab === 'boat') {
       wrap.appendChild(el('h3', null, '⛵ 船型'));
-      const boats = el('div', 'char-cards');
-      CHAR2_BOATS.forEach(function (b) {
-        const card = el('button', 'cc-card wide' + (st.boat === b[0] ? ' on' : '') + (b[2] ? '' : ' locked'));
-        card.innerHTML = '<img src="assets/ui/char/boat_' + b[0] + '.png" alt="" draggable="false"' +
-          ' onerror="this.outerHTML=\'<span class=cc-lock>🔒</span>\'">' +
-          '<b>' + b[1] + (b[2] ? '' : ' 🔒') + '</b><i>' + b[3] + '</i>';
-        card.addEventListener('click', function () {
-          if (!b[2]) { toast('「' + b[1] + '」即将在商城上架'); return; }
-          if (!featureGuard('character.boat')) return;
-          char2Save({ boat: b[0] });
-          renderView();
-        });
+      const boats = el('div', 'char-cards boat-cards');
+      const ownedBoats = ownedBoatIds();
+      (D.BOATS || []).forEach(function (b) {
+        const available = b.available !== false;
+        const owned = ownedBoats.indexOf(b.id) >= 0;
+        const price = Math.max(0, Number(b.price) || 0);
+        const afford = coinsNow >= price;
+        const card = el('button', 'cc-card wide boat-card' + (activeBoat && activeBoat.id === b.id ? ' on' : '') + (available ? '' : ' locked'));
+        card.setAttribute('aria-pressed', activeBoat && activeBoat.id === b.id ? 'true' : 'false');
+        if (!available) card.setAttribute('aria-disabled', 'true');
+        const fit = boatSpotLabels(b);
+        const priceRow = price > 0
+          ? (owned ? '<i class="cc-price owned">✅ 已购入</i>'
+            : '<i class="cc-price' + (afford ? '' : ' short') + '">💰 ' + price + ' 金币' + (afford ? '（点击购买）' : '（金币不足）') + '</i>')
+          : '<i class="cc-price owned">免费船型</i>';
+        card.innerHTML = '<span class="cc-art"><img src="' + esc(boatAsset(b)) + '" alt="' + esc(b.name) + '" draggable="false"' +
+          ' onerror="this.style.display=\'none\'"></span><span class="cc-copy">' +
+          '<span class="cc-kicker">' + esc(b.trait || '船型专长') + '</span>' +
+          (b.water ? '<span class="cc-water">' + esc(b.water) + '</span>' : '') +
+          '<b>' + esc(b.name) + (available ? '' : ' 🔒') + '</b>' +
+          '<i class="cc-desc">' + esc(b.desc || '') + '</i>' + priceRow +
+          '<i class="cc-fit">📍 ' + esc(fit.length ? fit.join('、') : '暂无适航钓点') + '</i>' +
+          '<i class="cc-buffs">⚡ 适航增益：' + esc(boatBuffsText(b)) + '</i></span>';
+        card.addEventListener('click', function () { chooseBoat(b); });
         markFeature(card, 'character.boat');
         boats.appendChild(card);
       });
@@ -6912,25 +7216,30 @@ window.UI = (function () {
       main.appendChild(wrap);
       return;
     }
-    // 同伴
+    // 同伴：按品种分组（参考 Cast n Chill 同伴表），变体换毛色。
     wrap.appendChild(el('h3', null, '🐶 同伴'));
-    const dogs = el('div', 'char-cards');
-    CHAR2_DOGS.forEach(function (d) {
-      const card = el('button', 'cc-card' + (st.dog === d[0] ? ' on' : '') + (d[2] ? '' : ' locked'));
-      card.innerHTML = (d[2]
-        ? '<img src="assets/ui/char/dog_' + d[0] + '.png" alt="" draggable="false">'
-        : '<span class="cc-lock">🔒</span>') +
-        '<b>' + d[1] + '</b>' + (d[2] ? '' : '<i>敬请期待</i>');
-      card.addEventListener('click', function () {
-        if (!d[2]) { toast('「' + d[1] + '」后续版本加入'); return; }
-        if (!featureGuard('character.companion')) return;
-        char2Save({ dog: d[0] });
-        renderView();
+    const groups = el('div', 'companion-groups');
+    (D.companionBreeds ? D.companionBreeds() : []).forEach(function (g) {
+      const group = el('section', 'breed-group');
+      group.appendChild(el('h4', 'breed-title', g.breedName + '（' + g.list.length + '）'));
+      const grid = el('div', 'char-cards companion-cards');
+      g.list.forEach(function (c) {
+        const card = el('button', 'cc-card' + (pref.dog === c.id ? ' on' : ''));
+        card.setAttribute('aria-pressed', pref.dog === c.id ? 'true' : 'false');
+        card.innerHTML = '<img src="' + esc(D.companionAsset(c.id)) + '" alt="" draggable="false"' +
+          ' onerror="this.style.display=\'none\'"><b>' + esc(c.name) + '</b><i>' + esc(c.breedName) + '</i>';
+        card.addEventListener('click', function () {
+          if (!featureGuard('character.companion')) return;
+          char2Save({ dog: c.id });
+          renderView();
+        });
+        markFeature(card, 'character.companion');
+        grid.appendChild(card);
       });
-      markFeature(card, 'character.companion');
-      dogs.appendChild(card);
+      group.appendChild(grid);
+      groups.appendChild(group);
     });
-    wrap.appendChild(dogs);
+    wrap.appendChild(groups);
     main.appendChild(wrap);
   }
   let codexSortRarity = false;
@@ -6955,13 +7264,13 @@ window.UI = (function () {
     const cdIconSrc = it.kind === 'fish' ? 'assets/fish/' + esc(it.id) + '.png'
       : (it.kind === 'material' || it.kind === 'component') ? 'assets/item/' + esc(it.id) + '.png'
       : null;
-    const cdIcon = cdIconSrc ? '<img class="cd-icon" src="' + cdIconSrc + '" alt="" draggable="false">' : '';
+    const cdIcon = cdIconSrc ? '<img class="cd-icon cd-icon-' + esc(it.kind) + '" src="' + cdIconSrc + '" alt="' + esc(it.name) + '" draggable="false">' : '';
     inner.innerHTML =
       cdIcon +
       '<div class="cd-title ' + qualityClass(it) + '">' + esc(it.name) + '</div>' +
       (rec
-        ? '<div class="cd-line">已钓 <b>' + rec.count + '</b> 次 · 首获 ' + timeStr(rec.first) + '</div>'
-        : '<div class="cd-line muted">未解锁 · 去产地垂钓即可解锁</div>') +
+        ? '<div class="cd-line">' + (it.kind === 'fish' ? '已钓 ' : '已获得 ') + '<b>' + rec.count + '</b> 次 · 首获 ' + timeStr(rec.first) + '</div>'
+        : '<div class="cd-line muted">未解锁 · ' + (it.kind === 'fish' ? '去产地垂钓即可解锁' : '获得该物品后解锁') + '</div>') +
       '<div class="cd-line">' + (base ? '组件底材' : '稀有度') + '：' + rarityName + ' · 基准价 ' + (it.price || 0) + '💰</div>' +
       (it.size ? '<div class="cd-line">体型 ' + it.size[0] + '-' + it.size[1] + ' cm</div>' : (base ? '' : '<div class="cd-line">材料 / 组件</div>')) +
       (rec && rec.max != null ? '<div class="cd-line">我钓到过：最大 <b>' + rec.max + '</b> cm · 最小 <b>' + rec.min + '</b> cm</div>' : '') +
@@ -8244,6 +8553,12 @@ window.UI = (function () {
     if (!codexSigCache || codexSigCache !== codexStructureSig()) return false;   // 结构变了交给整页重建
     const st = S();
     const caught = st.codex || {};
+    // 首次解锁时必须整页重建：除了文字，还要点亮卡片、恢复彩色贴图、绑定档位角标，
+    // 并同步「鱼类收集 / 图鉴条目」汇总。旧逻辑只改两行文字，导致新鱼仍是灰锁态。
+    const firstUnlock = Array.from(document.querySelectorAll('#main .codex-cell[data-cxid]')).some(function (cell) {
+      return !!caught[cell.getAttribute('data-cxid')] && !cell.classList.contains('got');
+    });
+    if (firstUnlock) return false;
     let n = 0;
     document.querySelectorAll('#main .codex-cell[data-cxid]').forEach(function (cell) {
       const id = cell.getAttribute('data-cxid');
@@ -8255,8 +8570,11 @@ window.UI = (function () {
       if (!cell.classList.contains('got')) cell.classList.add('got');
       const meta = itemMeta(id);
       if (meta.kind === 'fish') {
+        const tier = codexTierMeta(rec);
         cell.classList.remove('tier-bronze', 'tier-silver', 'tier-gold');
-        cell.classList.add(rec.tier === 'G' ? 'tier-gold' : rec.tier === 'L' ? 'tier-silver' : 'tier-bronze');
+        cell.classList.add(tier.cls);
+        const badge = cell.querySelector('.cx-tier-badge');
+        if (badge) badge.textContent = tier.text;
       }
       n++;
     });
@@ -8327,7 +8645,7 @@ window.UI = (function () {
             ((sp.buffs && sp.buffs.length) ? '<div class="cx-meta cx-spots">⚡ 增益 ' + sp.buffs.length + ' 项</div>' : '') +
             '<div class="cx-meta cx-spots">🎯 点看产出概率</div>';
           cell.title = '点击查看该钓点的实时产出概率（与后台掉落池同步）';
-          cell.addEventListener('click', function () { openSpotDetail(g.id, sp.id); });
+          bindCodexAction(cell, '查看' + g.name + '·' + sp.name + '的产出概率', function () { openSpotDetail(g.id, sp.id); });
           grid.appendChild(cell);
         });
         // 无钓点的锁定活动钓场（如霜月冰湖）：钓场卡占位 + 钓场图标，让玩家在图鉴里看得到它
@@ -8339,6 +8657,7 @@ window.UI = (function () {
             '<div class="cx-meta">限时活动钓场</div>' +
             '<div class="cx-meta locked-line">🔒 尚未开放</div>' +
             '<div class="cx-meta cx-spots">' + esc(g.desc || '') + '</div>';
+          cell.setAttribute('aria-label', g.name + '尚未开放');
           grid.appendChild(cell);
         }
       });
@@ -8356,11 +8675,8 @@ window.UI = (function () {
       // v0.13.6：图鉴框体品质按已钓到的最高体型档——普通=铜 / 大型=银 / 巨型=金
       // v0.13.8：只有渔获有体型档。材料/组件没有大小，不该被套上「普通=铜框」，
       // 改用与「图鉴 · 钓点」卡一致的高亮边框（k-nosize，见 style.css / pixel.css）。
-      const tierCls = !rec ? '' : (it.kind !== 'fish' ? ' k-nosize'
-        : (rec.tier === 'G' ? ' tier-gold' : rec.tier === 'L' ? ' tier-silver' : ' tier-bronze'));
-      const tierLine = (rec && it.kind === 'fish')
-        ? '<div class="cx-meta cx-tier">' + (rec.tier === 'G' ? '🥇 巨型 · 金框' : rec.tier === 'L' ? '🥈 大型 · 银框' : '🥉 普通 · 铜框') + '</div>'
-        : '';
+      const tier = (rec && it.kind === 'fish') ? codexTierMeta(rec) : null;
+      const tierCls = !rec ? '' : (it.kind !== 'fish' ? ' k-nosize' : ' ' + tier.cls);
       const cell = el('div', 'codex-cell' + (rec ? ' got' + tierCls : '') + ' k-' + it.kind);
       cell.setAttribute('data-cxid', it.id);   // 就地补丁用（上鱼只改这张卡的文字，不重建节点）
       const spots = D.spotsOf(it.id);
@@ -8378,7 +8694,13 @@ window.UI = (function () {
       const iconSrc = it.kind === 'fish' ? 'assets/fish/' + esc(it.id) + '.png'
         : (it.kind === 'material' || it.kind === 'component') ? 'assets/item/' + esc(it.id) + '.png'
         : null;
-      const iconHtml = iconSrc ? '<img class="cx-icon" src="' + iconSrc + '" alt="" draggable="false">' : '';
+      const iconHtml = iconSrc
+        ? '<div class="cx-visual cx-visual-' + esc(it.kind) + '">' +
+          '<img class="cx-icon" src="' + iconSrc + '" alt="' + esc(it.name) + '" draggable="false">' +
+          (tier ? '<span class="cx-tier-badge">' + tier.text + '</span>' : '') +
+          (!rec ? '<span class="cx-lock-badge" aria-hidden="true">?</span>' : '') +
+          '</div>'
+        : '';
       // 统一五行骨架：全部卡片结构一致、高度对齐
       cell.innerHTML =
         iconHtml +
@@ -8389,7 +8711,10 @@ window.UI = (function () {
                   : (poolHtml || '<div class="cx-meta muted">材料 / 组件</div>')) +
         (spots.length ? '<div class="cx-meta cx-spots">📍 产地 ' + spots.length + ' 处</div>' : '<div class="cx-meta muted">📍 —</div>');
       cell.title = '点击查看完整信息（子窗口）';
-      cell.addEventListener('click', function () { openCodexDetail(it, rec); });
+      bindCodexAction(cell, '查看' + it.name + (rec ? '的完整图鉴资料' : '的解锁线索'), function () {
+        // codexAdd 会替换记录对象；点击时读取最新状态，避免软刷新后详情仍显示旧次数/旧档位。
+        openCodexDetail(it, (S().codex || {})[it.id]);
+      });
       grid.appendChild(cell);
     });
     panel.appendChild(grid);
@@ -8406,14 +8731,18 @@ window.UI = (function () {
     const rec = (S().codex || {})[id];
     const cell = document.querySelector('#main .codex-cell[data-cxid="' + id + '"]');
     if (!rec || !cell) return false;
+    if (!cell.classList.contains('got')) return false; // 首次解锁交给整页重建，避免保留灰锁态
     const metas = cell.querySelectorAll('.cx-meta');
     if (metas[0]) metas[0].textContent = '已获得 ' + rec.count + ' 次';
     if (metas[1]) metas[1].textContent = '首获 ' + timeStr(rec.first);
     // 体型档框体（普通=铜 / 大型=银 / 巨型=金）就地换类；材料与组件没有体型档，保持高亮边框
     const meta = itemMeta(id);
     if (meta.kind === 'fish') {
+      const tier = codexTierMeta(rec);
       cell.classList.remove('tier-bronze', 'tier-silver', 'tier-gold');
-      cell.classList.add(rec.tier === 'G' ? 'tier-gold' : rec.tier === 'L' ? 'tier-silver' : 'tier-bronze');
+      cell.classList.add(tier.cls);
+      const badge = cell.querySelector('.cx-tier-badge');
+      if (badge) badge.textContent = tier.text;
     }
     const sumCatch = document.getElementById('cx-sum-catch');
     if (sumCatch) sumCatch.textContent = String(S().catchCount || 0);
@@ -9096,7 +9425,8 @@ window.UI = (function () {
   //     c. 列表用 patchList() 按 key 复用节点，只改文本/class，不重造行；填充函数必须被
   //        「首次铺」和「广播更新」两条路共用，避免两条路渲染出不同的 DOM。
   const VIEW_SCOPES = {
-    fishing: ['players', 'grounds', 'catch', 'assets', 'groundcfg', 'castcfg'], // 实况/日志/钓速随广播更新
+    fishing: ['players', 'grounds', 'catch', 'assets', 'groundcfg', 'castcfg', 'appearance'], // 实况/日志/钓速/船型
+    character: ['appearance'],                         // 船型账号外观与钓速明细
     bd: [],                                             // 钓竿页签：只随操作重绘（展示数据不受广播影响）
     ground: ['players', 'grounds', 'feed', 'groundcfg'],
     inventory: ['assets', 'shop', 'pricecfg', 'autosellcfg'],

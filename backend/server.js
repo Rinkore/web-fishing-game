@@ -685,6 +685,59 @@ const TRADE_COOLDOWN = 3000;
 // ---- 游戏静态数据：与前端共用 frontend/js/data.js（UMD，单一来源） ----
 const D = require(path.join(__dirname, '..', 'frontend', 'js', 'data.js'));
 
+// ---- 账号外观 / 船只专长 / 钓手天赋 ----
+// 外观 ID 一律以服务端共享目录为准；旧账号没有 appearance 时回退到初始船与初始钓手。
+// appearance 结构：{ boatId, anglerId, boats:[已拥有船], anglers:[已拥有钓手] }
+const DEFAULT_BOAT_ID = 'marsh_skiff';
+const DEFAULT_ANGLER_ID = 'lan';
+// 价格系统上线前所有账号都能免费用这两艘船；存量账号迁移时直接授予所有权。
+const LEGACY_FREE_BOAT_IDS = ['marsh_skiff', 'tide_cutter'];
+function uniqueIds(list) {
+  const out = [];
+  (Array.isArray(list) ? list : []).forEach(function (id) {
+    if (typeof id === 'string' && out.indexOf(id) < 0) out.push(id);
+  });
+  return out;
+}
+function appearanceOf(rec) {
+  const a = rec && rec.appearance && typeof rec.appearance === 'object' && !Array.isArray(rec.appearance)
+    ? rec.appearance : {};
+  const boats = uniqueIds(a.boats).filter(function (id) { return !!D.boatOf(id); });
+  const anglers = uniqueIds(a.anglers).filter(function (id) { return !!D.anglerOf(id); });
+  D.freeBoatIds().forEach(function (id) { if (boats.indexOf(id) < 0) boats.push(id); });
+  D.freeAnglerIds().forEach(function (id) { if (anglers.indexOf(id) < 0) anglers.push(id); });
+  const boatId = D.boatOf(a.boatId) && boats.indexOf(a.boatId) >= 0 ? a.boatId : DEFAULT_BOAT_ID;
+  const anglerId = D.anglerOf(a.anglerId) && anglers.indexOf(a.anglerId) >= 0 ? a.anglerId : DEFAULT_ANGLER_ID;
+  return { boatId: boatId, anglerId: anglerId, boats: boats, anglers: anglers };
+}
+function ensureAppearance(rec) {
+  const view = appearanceOf(rec);
+  if (!rec.appearance || typeof rec.appearance !== 'object' || Array.isArray(rec.appearance)) rec.appearance = {};
+  rec.appearance.boatId = view.boatId;
+  rec.appearance.anglerId = view.anglerId;
+  rec.appearance.boats = view.boats;
+  rec.appearance.anglers = view.anglers;
+  return rec.appearance;
+}
+function boatInfoOf(rec, groundId, spot) {
+  const stored = rec && rec.appearance;
+  const boat = stored && D.boatOf(stored.boatId);
+  const matched = !!(boat && spot && D.boatFits(boat.id, groundId, spot.id));
+  const eff = { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 };
+  const buffs = matched ? boat.buffs.map(function (b) { return { type: b.type, value: b.value }; }) : [];
+  buffs.forEach(function (b) { if (eff[b.type] != null) eff[b.type] += Number(b.value) || 0; });
+  return { boat: boat || null, matched: matched, buffs: buffs, eff: eff };
+}
+// 钓手被动天赋：常驻生效（不与钓点挂钩），数值与船只 buff 同一通道。
+function anglerInfoOf(rec) {
+  const stored = rec && rec.appearance;
+  const angler = stored && D.anglerOf(stored.anglerId);
+  const eff = { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 };
+  const buffs = angler && angler.passive ? [{ type: angler.passive.type, value: angler.passive.value }] : [];
+  buffs.forEach(function (b) { if (eff[b.type] != null) eff[b.type] += Number(b.value) || 0; });
+  return { angler: angler || null, buffs: buffs, eff: eff };
+}
+
 // 物品价格/名称表由共享目录派生（用于定价、市集与交易校验）
 //   ECO_PRICE：进入系统商店供需经济（有动态乘数与价格历史）的物品 —— 仅渔获与材料。
 //   组件为固定价道具（实例价 = 底材基准价 × 品质倍率），不走供需乘数；名称表覆盖全部物品。
@@ -804,9 +857,10 @@ function spotBiteRateOf(spot) {
   const n = Number(v);
   return isFinite(n) ? Math.max(0, Math.min(100, n)) : null;
 }
-// 当前实际抛竿间隔：优先钓点独立间隔；否则 基础 × (1 - 有效钓速/100) × (1 - 钓点钓速/100)
-// 钓点钓速为最终乘算（乘在钓竿/全服之后），最后再按「最短间隔」兜底。
-function intervalFor(rec, spot) {
+// 当前实际抛竿间隔：优先钓点独立间隔；否则 基础 × (1 - 有效钓速/100)
+// × (1 - 钓点钓速/100) × (1 - 适配船钓速/100) × (1 - 钓手天赋钓速/100)。
+// 钓点 / 船只 / 钓手钓速都是最终乘算，不改变原有的钓竿词缀、全服加成与速度上限语义，最后再按「最短间隔」兜底。
+function intervalFor(rec, spot, groundId) {
   const fixed = spot && spot.intervalMs;
   if (fixed != null && fixed !== '') {
     const n = Number(fixed);
@@ -815,16 +869,22 @@ function intervalFor(rec, spot) {
   const bdEff = bdEffectsOf(rec && rec.bd);
   const rodMs = castBaseMs() * (1 - effectiveSpeed({ speed: bdEff.speed }) / 100);
   const spotPct = Math.max(-100, Math.min(95, spotSpeedOf(spot)));
-  const ms = rodMs * (1 - spotPct / 100);
+  const boatPct = Math.max(-100, Math.min(95, boatInfoOf(rec, groundId, spot).eff.speed));
+  const anglerPct = Math.max(-100, Math.min(95, anglerInfoOf(rec).eff.speed));
+  const ms = rodMs * (1 - spotPct / 100) * (1 - boatPct / 100) * (1 - anglerPct / 100);
   return Math.max(castMinMs(), Math.round(ms));
 }
 // 钓速明细（下发给前端展示：基础值来自后台配置，实际值含钓竿词缀 / 钓点增益 / 全服加成并受上限截断）
-function castInfoOf(rec, spot) {
+function castInfoOf(rec, spot, groundId) {
   const bdEff = bdEffectsOf(rec && rec.bd);
-  const eff = mergedEffOf(rec && rec.bd, spot);
+  const eff = mergedEffOf(rec, spot, groundId);
+  const boatInfo = boatInfoOf(rec, groundId, spot);
+  const anglerInfo = anglerInfoOf(rec);
   const spotPct = spotSpeedOf(spot);
+  const boatPct = boatInfo.eff.speed;
+  const anglerPct = anglerInfo.eff.speed;
   const rodEff = effectiveSpeed({ speed: bdEff.speed });
-  const interval = intervalFor(rec, spot);
+  const interval = intervalFor(rec, spot, groundId);
   const override = spotBiteRateOf(spot);
   const biteRate = override != null ? override : Math.round(biteProbabilityOf(eff, interval, spot) * 10) / 10;
   return {
@@ -837,6 +897,20 @@ function castInfoOf(rec, spot) {
     rawSpeed: Math.round((rodEff) * 10) / 10,
     effSpeed: Math.round(rodEff * 10) / 10, // 钓竿 + 全服加成（已按上限截断）
     spotMult: Math.round((1 - Math.max(-100, Math.min(95, spotPct)) / 100) * 1000) / 1000,
+    boatId: boatInfo.boat ? boatInfo.boat.id : null,
+    boatName: boatInfo.boat ? boatInfo.boat.name : '',
+    boatMatched: boatInfo.matched,
+    boatBuffs: boatInfo.buffs,
+    boatSpeed: boatPct,
+    boatSkill: boatInfo.eff.skill,
+    boatMaterial: boatInfo.eff.material,
+    boatSize: boatInfo.eff.size,
+    boatMult: Math.round((1 - Math.max(-100, Math.min(95, boatPct)) / 100) * 1000) / 1000,
+    anglerId: anglerInfo.angler ? anglerInfo.angler.id : null,
+    anglerName: anglerInfo.angler ? anglerInfo.angler.name : '',
+    anglerBuffs: anglerInfo.buffs,
+    anglerSpeed: anglerPct,
+    anglerMult: Math.round((1 - Math.max(-100, Math.min(95, anglerPct)) / 100) * 1000) / 1000,
     intervalMs: spot && spot.intervalMs != null && spot.intervalMs !== '' ? Math.round(Number(spot.intervalMs)) : null,
     interval: interval,                 // 当前实际抛竿间隔
     biteRate: biteRate,                 // 当前实际上鱼率（%）：钓点覆盖优先，否则全服公式
@@ -844,14 +918,19 @@ function castInfoOf(rec, spot) {
   };
 }
 
-// 钓点增益并入总加成（管理员在后台为钓场/钓点配置，类别与组件词缀同一套：speed/skill/rare/material/size/double）
+// 钓点与适配船只增益并入总加成（类别与组件词缀同一套：speed/skill/rare/material/size/double）
 // 说明：这里的 speed 合计只用于「公式变量」与其它加成；抛竿间隔走 intervalFor()，
-// 其中钓点钓速是最终乘算（不与钓竿词缀/全服加成相加）。
-function mergedEffOf(bd, spot) {
-  const eff = bdEffectsOf(bd);
+// 其中钓点 / 船只钓速是最终乘算（不与钓竿词缀/全服加成相加）。
+function mergedEffOf(rec, spot, groundId) {
+  const eff = bdEffectsOf(rec && rec.bd);
   ((spot && spot.buffs) || []).forEach(function (b) {
     if (b && eff[b.type] != null) eff[b.type] += Number(b.value) || 0;
   });
+  const boatEff = boatInfoOf(rec, groundId, spot).eff;
+  Object.keys(boatEff).forEach(function (type) { if (eff[type] != null) eff[type] += boatEff[type]; });
+  // 钓手天赋词缀与船只同一通道（speed 同样只作公式变量；抛竿间隔走 intervalFor 最终乘算）。
+  const anglerEff = anglerInfoOf(rec).eff;
+  Object.keys(anglerEff).forEach(function (type) { if (eff[type] != null) eff[type] += anglerEff[type]; });
   return eff;
 }
 // 稀有度（rare 词缀）v0.13：不再放大稀有档渔获权重，改为**压低普通品质物品的权重**。
@@ -1272,8 +1351,10 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   sendTo(key, { type: 'assets', coins: rec.coins, catchCount: rec.catchCount, invAdd: invDelta, bigAdd: bigDelta });
   // 组件订阅提醒：命中玩家订阅条件时定向推送（双钓追加的组件同样逐条判定）
   maybeSendSubAlert(rec, key, item);
-  // 双钓：见 doubleCountOf。基础上钩 1 条，按双钓概率连续追加，最多 3 条。
-  const extra = doubleExtraOf(eff.double);
+  // 双钓：基础上钩 1 条，按双钓概率连续追加，最多 3 条。
+  // 追加渔获带 noDouble=true 回到本函数时必须终止追加；否则高双钓率会
+  // 让「追加的鱼」再触发双钓，极端下递归到栈溢出并追加上千条。
+  const extra = noDouble ? 0 : doubleExtraOf(eff.double);
   for (let i = 0; i < extra; i++) doServerCatch(rec, key, ground, spot, eff, true);
   // 自动售出：本竿（含双钓）钓到的鱼若满足规则，按系统行情立即卖出（资产/通知由 autoSellCheck 推送）
   try { autoSellCheck(key); } catch (e) {}
@@ -1307,9 +1388,9 @@ function fishTick(key) {
   const rec = users[key];
   const found = spotOf(p.fishing.groundId, p.fishing.spotId);
   if (!found) { stopFishingSession(key, { forget: true }); return; }
-  const eff = mergedEffOf(rec.bd, found.spot);
+  const eff = mergedEffOf(rec, found.spot, found.ground.id);
   // 上钩判断：钓点独立上鱼率优先，否则用全服公式；落空则本竿无收获，定时器继续下一竿
-  if (Math.random() * 100 >= biteProbabilityOf(eff, intervalFor(rec, found.spot), found.spot)) return;
+  if (Math.random() * 100 >= biteProbabilityOf(eff, intervalFor(rec, found.spot, found.ground.id), found.spot)) return;
   doServerCatch(rec, key, found.ground, found.spot, eff, false);
 }
 function startFishingSession(key, groundId, spotId, opts) {
@@ -1324,7 +1405,7 @@ function startFishingSession(key, groundId, spotId, opts) {
   if (prev) clearInterval(prev);
   p.fishing = { groundId: groundId, spotId: spotId };
   p.status = 'fishing'; p.groundId = groundId; p.spotId = spotId;
-  const interval = intervalFor(users[key], found.spot);
+  const interval = intervalFor(users[key], found.spot, found.ground.id);
   fishingTimers.set(key, setInterval(function () { try { fishTick(key); } catch (e) { console.error('[fishTick] ' + key + ' 抛错（跳过本竿，服务继续）: ' + ((e && e.stack) || e)); } }, interval));
   rememberFishingSpot(key, groundId, spotId);
   // opts.silent：重连续钓时由 /events 一次性下发 init，无需再单独广播一次 presence
@@ -1362,7 +1443,7 @@ function resumeFishingSpot(key) {
   if (!found || found.ground.locked) { forgetFishingSpot(key); return null; }
   const r = startFishingSession(key, last.groundId, last.spotId, { silent: true });
   if (r.error) { forgetFishingSpot(key); return null; }
-  return { interval: r.interval, castInfo: castInfoOf(rec, found.spot),
+  return { interval: r.interval, castInfo: castInfoOf(rec, found.spot, found.ground.id),
     groundId: last.groundId, spotId: last.spotId };
 }
 
@@ -1385,9 +1466,23 @@ function restartFishingAt(groundId, spotId) {
     const old = fishingTimers.get(key);
     if (old) clearInterval(old);
     const found = spotOf(groundId, spotId);
-    const interval = intervalFor(users[key], found && found.spot);
+    const interval = intervalFor(users[key], found && found.spot, found && found.ground.id);
     fishingTimers.set(key, setInterval(function () { try { fishTick(key); } catch (e) { console.error('[fishTick] ' + key + ' 抛错（跳过本竿，服务继续）: ' + ((e && e.stack) || e)); } }, interval));
   });
+}
+
+// 只重启一名玩家的钓鱼循环。换船是个人外观 / 加成变化，不应像钓点配置
+// 热更那样把同一钓点的其他玩家一起重启。
+function restartFishingFor(key) {
+  const p = players.get(key);
+  if (!p || !p.fishing) return null;
+  const found = spotOf(p.fishing.groundId, p.fishing.spotId);
+  if (!found) return null;
+  const old = fishingTimers.get(key);
+  if (old) clearInterval(old);
+  const interval = intervalFor(users[key], found.spot, found.ground.id);
+  fishingTimers.set(key, setInterval(function () { try { fishTick(key); } catch (e) { console.error('[fishTick] ' + key + ' 抛错（跳过本竿，服务继续）: ' + ((e && e.stack) || e)); } }, interval));
+  return { found: found, interval: interval };
 }
 
 // 抛竿间隔配置变化：所有正在钓鱼的玩家按新间隔重启循环（钓速加成仍在 fishIntervalOf 内叠加）
@@ -1398,7 +1493,7 @@ function restartAllFishing() {
     if (!found) { stopFishingSession(key); return; }
     const old = fishingTimers.get(key);
     if (old) clearInterval(old);
-    const interval = intervalFor(users[key], found.spot);
+    const interval = intervalFor(users[key], found.spot, found.ground.id);
     fishingTimers.set(key, setInterval(function () { try { fishTick(key); } catch (e) { console.error('[fishTick] ' + key + ' 抛错（跳过本竿，服务继续）: ' + ((e && e.stack) || e)); } }, interval));
   });
 }
@@ -2797,6 +2892,26 @@ function loadWorld() {
   void hasDomain;
 }
 loadUsers();
+// 存量账号迁移：旧档没有 appearance，或手工改成了不存在的船只 ID，
+// 统一回退到初始船并落盘，避免“这次登录有默认值、下次又丢失”。
+// v0.19 引入船只/钓手购买：缺 boats/anglers 数组的账号均为价格系统上线前的老档，
+// 直接授予当时免费的两艘船与两名钓手，避免老玩家失去正在使用的船。
+(function migrateAccountAppearances() {
+  let changed = false;
+  Object.keys(users).forEach(function (key) {
+    const rec = users[key];
+    if (!rec) return;
+    const a = rec.appearance && typeof rec.appearance === 'object' && !Array.isArray(rec.appearance) ? rec.appearance : null;
+    if (!a || !Array.isArray(a.boats)) {
+      rec.appearance = a || {};
+      rec.appearance.boats = uniqueIds((rec.appearance.boats || []).concat(LEGACY_FREE_BOAT_IDS));
+    }
+    const before = JSON.stringify(rec.appearance);
+    ensureAppearance(rec);
+    if (before !== JSON.stringify(rec.appearance)) { saveAccount(key); changed = true; }
+  });
+  if (changed) console.log('[migrate] account appearance → 船队/钓手所有权');
+})();
 migrateAutoSell(); // v0.13.8 自动售出重做：旧 {all,fish} 结构升级为逐物品 {items}
 loadWorld();
 // 存档快照：把持久化的配置灌进共享目录（data.js 的 getSnapshotCfg 供后台表单回显），再挂定时器
@@ -2901,6 +3016,7 @@ function profileOf(key) {
   const rec = users[key];
   return {
     features: world.features || {}, username: rec.username, name: rec.name, coins: rec.coins, qq: rec.qq || '',
+    appearance: appearanceOf(rec),
     inventory: rec.inventory || {}, bd: rec.bd || {},
     invRev: invRevOf(rec),   // 库存快照版本号：客户端据此丢弃过期快照（v0.13.9）
     bigfish: rec.bigfish || null,
@@ -3623,7 +3739,8 @@ const server = http.createServer(function (req, res) {
         return apiResp(res, 409, { error: '注册未完成，请更换账号或稍后再试' });
       }
       Registration.metrics.created++;
-      users[key] = { username: username, pwHash: pwHash, name: name, qq: qq, coins: 500, inventory: {}, bd: {}, codex: {}, catchCount: 0, createdAt: Date.now() };
+      users[key] = { username: username, pwHash: pwHash, name: name, qq: qq, coins: 500, inventory: {}, bd: {}, codex: {}, catchCount: 0,
+        appearance: { boatId: DEFAULT_BOAT_ID, anglerId: DEFAULT_ANGLER_ID, boats: D.freeBoatIds(), anglers: D.freeAnglerIds() }, createdAt: Date.now() };
       saveAccount(key);
       const token = newToken(); sessionSet(token, key);
       apiResp(res, 200, { token: Transport.loginToken(req, res, token, false), profile: profileOf(key) });
@@ -3710,6 +3827,93 @@ const server = http.createServer(function (req, res) {
     return;
   }
 
+  // ---- 选择船只（服务端目录权威，需已拥有） ----
+  if (p === '/api/appearance/boat' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const boat = D.boatOf(d.boatId);
+        if (!boat || boat.available === false) return apiResp(res, 400, { error: '未知或不可用的船只' });
+        const rec = users[key];
+        if (appearanceOf(rec).boats.indexOf(boat.id) < 0) return apiResp(res, 400, { error: '尚未拥有该船只，请先购买' });
+        const prev = appearanceOf(rec).boatId;
+        ensureAppearance(rec).boatId = boat.id;
+        const changed = prev !== boat.id;
+        let restarted = null;
+        if (changed) {
+          saveAccount(key);
+          // 船只会影响本人的钓速；如果正在钓鱼，只重启本人的定时器。
+          restarted = restartFishingFor(key);
+        }
+        const pNow = players.get(key);
+        const found = restarted ? restarted.found : ((pNow && pNow.fishing) ? spotOf(pNow.fishing.groundId, pNow.fishing.spotId) : null);
+        const castInfo = found ? castInfoOf(rec, found.spot, found.ground.id) : null;
+        const appearance = appearanceOf(rec);
+        if (changed) sendTo(key, { type: 'appearance', appearance: appearance, castInfo: castInfo });
+        apiResp(res, 200, { ok: true, appearance: appearance, castInfo: castInfo });
+      });
+    });
+    return;
+  }
+
+  // ---- 购买船只（服务器权威：校验目录 / 所有权 / 金币，成功后落盘广播） ----
+  if (p === '/api/appearance/boat/buy' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const boat = D.boatOf(d.boatId);
+        if (!boat || boat.available === false) return apiResp(res, 400, { error: '未知或不可用的船只' });
+        const rec = users[key];
+        const view = appearanceOf(rec);
+        if (view.boats.indexOf(boat.id) >= 0) return apiResp(res, 400, { error: '已拥有该船只' });
+        const cost = Math.max(0, Math.round(Number(boat.price) || 0));
+        if ((rec.coins || 0) < cost) return apiResp(res, 400, { error: '金币不足（需 ' + cost + '，当前 ' + Math.round(rec.coins || 0) + '）' });
+        rec.coins -= cost;
+        ensureAppearance(rec).boats.push(boat.id);
+        saveAccount(key);
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
+        const appearance = appearanceOf(rec);
+        sendTo(key, { type: 'appearance', appearance: appearance });
+        apiResp(res, 200, { ok: true, id: boat.id, name: boat.name, cost: cost, coins: rec.coins, appearance: appearance });
+      });
+    });
+    return;
+  }
+
+  // ---- 选择钓手（未拥有且付费解锁时原子扣款；天赋会影响钓速，钓鱼中即时重算） ----
+  if (p === '/api/appearance/angler' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const angler = D.anglerOf(d.anglerId);
+        if (!angler) return apiResp(res, 400, { error: '未知钓手' });
+        const rec = users[key];
+        const view = appearanceOf(rec);
+        let cost = 0;
+        if (view.anglers.indexOf(angler.id) < 0) {
+          if (!angler.unlock || angler.unlock.type !== 'coins') return apiResp(res, 400, { error: '该钓手尚未解锁' });
+          cost = Math.max(0, Math.round(Number(angler.unlock.cost) || 0));
+          if ((rec.coins || 0) < cost) return apiResp(res, 400, { error: '金币不足（需 ' + cost + '，当前 ' + Math.round(rec.coins || 0) + '）' });
+          rec.coins -= cost;
+          ensureAppearance(rec).anglers.push(angler.id);
+        }
+        const prev = view.anglerId;
+        ensureAppearance(rec).anglerId = angler.id;
+        const changed = prev !== angler.id;
+        let restarted = null;
+        if (changed || cost > 0) {
+          saveAccount(key);
+          restarted = changed ? restartFishingFor(key) : null;
+        }
+        const pNow = players.get(key);
+        const found = restarted ? restarted.found : ((pNow && pNow.fishing) ? spotOf(pNow.fishing.groundId, pNow.fishing.spotId) : null);
+        const castInfo = found ? castInfoOf(rec, found.spot, found.ground.id) : null;
+        const appearance = appearanceOf(rec);
+        if (cost > 0) sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec), codex: rec.codex, catchCount: rec.catchCount });
+        if (changed || cost > 0) sendTo(key, { type: 'appearance', appearance: appearance, castInfo: castInfo });
+        apiResp(res, 200, { ok: true, id: angler.id, name: angler.name, cost: cost, coins: rec.coins, appearance: appearance, castInfo: castInfo });
+      });
+    });
+    return;
+  }
+
   // ---- SSE 事件流（需登录） ----
   if (p === '/events' && req.method === 'GET') {
     const key = u.query.token && sessionGet(u.query.token);
@@ -3745,6 +3949,7 @@ const server = http.createServer(function (req, res) {
       // 钓场目录（含管理后台保存的掉落池/增益/锁定覆盖）：新客户端连接时同步，
       // 否则前端会一直用 data.js 里的硬编码默认值，导致图鉴产地与实际掉落不符。
       groundCfg: D.GROUNDS,
+      appearance: appearanceOf(rec),
       codex: rec.codex || {}, catchCount: rec.catchCount || 0,
       bigfish: rec.bigfish || null,   // v0.13.6：大型/巨型预留计数（背包标签行/筛选）
       // 服务器版本：客户端据此判断自己是不是旧前端。重启换版本后 SSE 会自动重连，
@@ -3799,7 +4004,8 @@ const server = http.createServer(function (req, res) {
       const r = startFishingSession(key, d.groundId, d.spotId);
       if (r.error) return apiResp(res, 400, { error: r.error });
       const found = spotOf(d.groundId, d.spotId);
-      apiResp(res, 200, { ok: true, interval: r.interval, castInfo: castInfoOf(users[key], found && found.spot) });
+      apiResp(res, 200, { ok: true, interval: r.interval,
+        castInfo: castInfoOf(users[key], found && found.spot, found && found.ground.id) });
     });
     return;
   }
@@ -3912,8 +4118,8 @@ const server = http.createServer(function (req, res) {
         apiResp(res, 200, {
           ok: true, bd: rec.bd, rodName: rec.rodName, rodActiveSlot: rec.rodActiveSlot, returned: returned,
           inventory: rec.inventory, invRev: invRevOf(rec), rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
-          interval: atSpot ? intervalFor(rec, atSpot.spot) : null,
-          castInfo: atSpot ? castInfoOf(rec, atSpot.spot) : null,
+          interval: atSpot ? intervalFor(rec, atSpot.spot, atSpot.ground.id) : null,
+          castInfo: atSpot ? castInfoOf(rec, atSpot.spot, atSpot.ground.id) : null,
         });
       });
     });
@@ -3943,8 +4149,8 @@ const server = http.createServer(function (req, res) {
         apiResp(res, 200, {
           ok: true, returned: returned, fromSlot: as, bd: rec.bd, rodName: rec.rodName, rodActiveSlot: -1,
           inventory: rec.inventory, invRev: invRevOf(rec), rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
-          interval: atSpot ? intervalFor(rec, atSpot.spot) : null,
-          castInfo: atSpot ? castInfoOf(rec, atSpot.spot) : null,
+          interval: atSpot ? intervalFor(rec, atSpot.spot, atSpot.ground.id) : null,
+          castInfo: atSpot ? castInfoOf(rec, atSpot.spot, atSpot.ground.id) : null,
         });
       });
     });
@@ -4024,7 +4230,7 @@ const server = http.createServer(function (req, res) {
           const old = fishingTimers.get(key);
           if (old) clearInterval(old);
           const found = spotOf(pl.fishing.groundId, pl.fishing.spotId);
-          interval = intervalFor(rec, found && found.spot);
+          interval = intervalFor(rec, found && found.spot, found && found.ground.id);
           fishingTimers.set(key, setInterval(function () { try { fishTick(key); } catch (e) { console.error('[fishTick] ' + key + ' 抛错（跳过本竿，服务继续）: ' + ((e && e.stack) || e)); } }, interval));
         }
         // 钓速明细随装备变化即时更新（含当前钓点的增益）
@@ -4048,7 +4254,7 @@ const server = http.createServer(function (req, res) {
         apiResp(res, 200, { ok: true, bd: rec.bd, effects: bdEffectsOf(rec.bd), interval: interval, inventory: rec.inventory, invRev: invRevOf(rec),
           rodSlots: rodSlotView(rec), rodLocked: rodUsageOf(rec),
           rodActiveSlot: rodActiveSlotOf(rec), releasedSlot: releasedSlot, releasedName: releasedName,
-          castInfo: castInfoOf(rec, atSpot && atSpot.spot) });
+          castInfo: castInfoOf(rec, atSpot && atSpot.spot, atSpot && atSpot.ground.id) });
       });
     });
     return;
@@ -5201,10 +5407,10 @@ function syntheticRodOf(totals) {
   });
   return bd;
 }
-function simulateRod(rec0, spot, totals) {
+function simulateRod(rec0, spot, totals, groundId) {
   const rec = { bd: rec0 };
-  const info = castInfoOf(rec, spot);
-  const eff = mergedEffOf(rec.bd, spot);
+  const info = castInfoOf(rec, spot, groundId);
+  const eff = mergedEffOf(rec, spot, groundId);
   const interval = info.interval;
   const bite = info.biteRate;                    // %
   const A = Math.max(0, Number(eff.double) || 0);
@@ -6793,7 +6999,7 @@ function lootPreviewRows(spot, rareVal) {
         found = spotOf(key.slice(0, ci), key.slice(ci + 1));
         if (!found || !found.spot) return apiResp(res, 400, { error: '钓点不存在：' + key });
       }
-      const sim = simulateRod(syntheticRodOf(totals), found ? found.spot : null, totals);
+      const sim = simulateRod(syntheticRodOf(totals), found ? found.spot : null, totals, found ? found.ground.id : null);
       const loot = found ? lootPreviewRows(found.spot, sim.eff.rare) : [];
       return apiResp(res, 200, {
         ok: true,

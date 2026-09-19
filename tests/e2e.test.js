@@ -41,11 +41,17 @@ function killTree(p) { try { spawnSync('taskkill', ['/F', '/T', '/PID', String(p
 
 function req(method, u, body) {
   return new Promise((resolve) => {
-    const p = url.parse(u);
-    const data = body ? JSON.stringify(body) : null;
+    // v0.16.4 起凭据只走传输层：URL query / body 里的 token 一律提升为 Authorization 请求头
+    const target = new URL(u);
+    let token = target.searchParams.get('token') || '';
+    if (token) target.searchParams.delete('token');
+    let payload = body;
+    if (body && body.token) { token = body.token; payload = Object.assign({}, body); delete payload.token; }
+    const data = payload ? JSON.stringify(payload) : null;
     const headers = { 'Content-Type': 'application/json' };
     if (data) headers['Content-Length'] = Buffer.byteLength(data);
-    const r = http.request({ hostname: p.hostname, port: p.port, path: p.path, method, headers }, res => {
+    if (token) headers.Authorization = 'Bearer ' + token;
+    const r = http.request({ hostname: target.hostname, port: target.port, path: target.pathname + target.search, method, headers }, res => {
       let d = ''; res.on('data', c => d += c);
       res.on('end', () => {
         let j = null; try { j = JSON.parse(d); } catch (e) {}
@@ -58,10 +64,20 @@ function req(method, u, body) {
   });
 }
 const GET = u => req('GET', u);
-const POST = (u, b) => req('POST', u, b);
+// v0.16.4 注册防滥用：同一来源第 4 次起要求一次性工作量证明（proof of work），
+// 命中 REGISTRATION_CHALLENGE 时自动求解并重试（与 admin 套件同款）。
+const POST = async (u, b) => {
+  const result = await req('POST', u, b);
+  if (result.data && result.data.code === 'REGISTRATION_CHALLENGE') {
+    const challenge = await req('GET', new URL(u).origin + '/api/register/challenge');
+    return req('POST', u, Object.assign({}, b, { proof: require('./_registration').solve(challenge.data) }));
+  }
+  return result;
+};
 
 function sse(tok, port, sink) {
-  const r = http.get('http://localhost:' + port + '/events?token=' + tok, res => {
+  // v0.16.4 起凭据只走传输层：/events 用 Authorization 头（query token 不再接受）
+  const r = http.get({ hostname: 'localhost', port: port, path: '/events', headers: { Authorization: 'Bearer ' + tok } }, res => {
     let buf = '';
     res.on('data', c => {
       buf += c.toString();
@@ -181,8 +197,8 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   let srv = start(P1);
   check('服务器就绪（轮询 /shop）', await waitHttp('http://localhost:' + P1 + '/shop', { timeout: 20000 }));
 
-  const ra = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_a', password: 'pass1234', name: '测试甲', qq: '10007' });
-  const rb = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_b', password: 'pass5678', name: '测试乙', qq: '10008' });
+  const ra = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_a', password: 'TesterPass1234', name: '测试甲', qq: '10007' });
+  const rb = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_b', password: 'TesterPass5678', name: '测试乙', qq: '10008' });
   check('注册成功返回 token', ra.status === 200 && !!ra.data.token && rb.status === 200);
   let tokA = ra.data.token, tokB = rb.data.token;
 
@@ -207,14 +223,19 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('非法钓点被拒 400', (await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'stillwater', spotId: 'not-exist' })).status === 400);
   check('活动钓场（锁定）被拒 400', (await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'frostmoon', spotId: 'ice' })).status === 400);
   const fs1 = await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'stillwater', spotId: 'dock' });
-  check('合法钓点开钓成功且基础间隔 3000ms', fs1.status === 200 && fs1.data.ok === true && fs1.data.interval === 3000, JSON.stringify(fs1.data));
+  check('合法钓点开钓成功（码头适航苇影舟 + 澜天赋，3000×0.96×0.98=2822ms）', fs1.status === 200 && fs1.data.ok === true && fs1.data.interval === 2822, JSON.stringify(fs1.data));
   // 钓速明细：基础值来自后台配置，实际值含词缀/钓点增益/全服加成（前端状态条据此展示）
   check('开钓返回钓速明细（基础/实际/加成拆分）', !!(fs1.data.castInfo && fs1.data.castInfo.baseMs === 3000
-    && fs1.data.castInfo.interval === 3000 && fs1.data.castInfo.globalBonus === 0
+    && fs1.data.castInfo.interval === 2822 && fs1.data.castInfo.globalBonus === 0
     && fs1.data.castInfo.affixSpeed === 0 && fs1.data.castInfo.buffSpeed === 0), JSON.stringify(fs1.data.castInfo));
   check('钓速明细带上鱼率（默认公式 90）', !!(fs1.data.castInfo && fs1.data.castInfo.biteRate === 90 && fs1.data.castInfo.biteOverride === false), JSON.stringify(fs1.data.castInfo && { bite: fs1.data.castInfo.biteRate }));
   await sleep(300);
-  check('B 收到 A 的在线状态与钓点（服务器维护）', sinkB.some(m => m.type === 'players' && m.players.some(p => p.id === 'tester_a' && p.status === 'fishing' && p.groundId === 'stillwater')));
+  // perf-9 起 presence 按视口分页推送：B 先登记玩家列表视口才会收到 playersPage；
+  // feed 按钓场分桶只推给同场钓者：B 到同钓场开钓才会收到 A 的渔获动态。
+  await POST('http://localhost:' + P1 + '/api/players/view', { token: tokB, page: 1, size: 30 });
+  await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokB, groundId: 'stillwater', spotId: 'dock' });
+  await waitFor(() => sinkB.some(m => m.type === 'playersPage' && m.players.some(p => p.id === 'tester_a' && p.status === 'fishing')), { timeout: 5000, interval: 100 });
+  check('B 收到 A 的在线状态与钓点（视口分页 playersPage）', sinkB.some(m => m.type === 'playersPage' && m.players.some(p => p.id === 'tester_a' && p.status === 'fishing' && p.groundId === 'stillwater')));
 
   const invBefore = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.inventory;
   const catchMark = sinkA.length;
@@ -258,7 +279,8 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const bigger = Math.round(gmSize) + 50;
   const gmMark = sinkB.length;
   await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokA, item: { kind: 'fish', id: 'tuna', rarity: 'big', size: bigger }, ground: '落日海湾', spot: '礁石区' });
-  await sleep(300);
+  // perf-8b 起播报走 1s 批量窗口：sleep(300) 等不到，改为轮询
+  await waitFor(() => sinkB.slice(gmMark).some(m => m.type === 'globalRecord' && m.record && m.record.size === bigger), { timeout: 4000, interval: 150 });
   check('破纪录后全场最大已更新', (await GET('http://localhost:' + P1 + '/api/records')).data.globalMax.size === bigger, String(bigger));
   check('订阅者收到 globalRecord 广播', sinkB.slice(gmMark).some(function (m) { return m.type === 'globalRecord' && m.record && m.record.size === bigger; }),
     JSON.stringify(sinkB.slice(gmMark).map(function (m) { return m.type; })));
@@ -266,7 +288,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   // 近期渔获（recent）：换大件概率最高的礁石区（~54%/竿），轮询等待广播
   await POST('http://localhost:' + P1 + '/api/fishing/start', { token: tokA, groundId: 'sunset', spotId: 'reef' });
   const recentMark = sinkB.length;
-  const sawRecent = await waitFor(() => sinkB.slice(recentMark).some(m => m.type === 'players' && m.players.some(p => p.id === 'tester_a' && p.recent)),
+  const sawRecent = await waitFor(() => sinkB.slice(recentMark).some(m => m.type === 'playersPage' && m.players.some(p => p.id === 'tester_a' && p.recent)),
     { timeout: 20000, interval: 300 });
   check('近期渔获（recent）出现在玩家列表', sawRecent, '超时 20s');
   const codexAfter = (await GET('http://localhost:' + P1 + '/api/me?token=' + tokA)).data.codex || {};
@@ -324,7 +346,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const meAfterBd = await GET('http://localhost:' + P1 + '/api/me?token=' + tokA);
   check('安装消耗组件道具（背包实例已扣除）', !meAfterBd.data.inventory[reelInst], JSON.stringify(meAfterBd.data.inventory));
   check('响应返回服务器词缀汇总 +25% 钓速', bdR.data.effects && bdR.data.effects.speed === 25, JSON.stringify(bdR.data.effects));
-  check('正在钓鱼时钓速即时生效（2250ms）', bdR.data.interval === 2250, String(bdR.data.interval));
+  check('正在钓鱼时钓速即时生效（3000×0.75×澜天赋0.98=2205ms）', bdR.data.interval === 2205, String(bdR.data.interval));
   check('未知组件被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'rod', compId: 'nope' })).status === 400);
   check('组件与部位不匹配被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'hook', compId: reelInst })).status === 400);
   check('未知部位被拒 400', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'nope', compId: null })).status === 400);
@@ -387,44 +409,46 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const reEq = await POST('http://localhost:' + P1 + '/api/bd/set', { token: tokA, part: 'reel', compId: reelInst });
   check('重新装回卷线器', reEq.status === 200 && reEq.data.bd.reel.compId === reelInst);
 
+  const stopResp = await POST('http://localhost:' + P1 + '/api/fishing/stop', { token: tokA });
+  check('停止钓鱼成功', stopResp.status === 200);
+  await sleep(1200); // 等过 1s 批量窗口：停竿前已结算的渔获可能还在队列里
   const stopMark = sinkA.length;
-  check('停止钓鱼成功', (await POST('http://localhost:' + P1 + '/api/fishing/stop', { token: tokA })).status === 200);
-  await sleep(4000); // 若未真正停止，2250ms 间隔至少再产 1 竿
+  await sleep(4000); // 若未真正停止，~2205ms 间隔至少再产 1 竿
   check('停止后服务器不再产出渔获', sinkA.slice(stopMark).every(m => m.type !== 'catch'), sinkA.slice(stopMark).map(m => m.type).join(','));
   await sleep(300);
-  check('停止后状态 idle 同步到 B', sinkB.some(m => m.type === 'players' && m.players.some(p => p.id === 'tester_a' && p.status === 'idle')));
+  check('停止后状态 idle 同步到 B', sinkB.some(m => m.type === 'playersPage' && m.players.some(p => p.id === 'tester_a' && p.status === 'idle')));
   check('未登录开钓被拒 401', (await POST('http://localhost:' + P1 + '/api/fishing/start', { token: 'bad', groundId: 'stillwater', spotId: 'dock' })).status === 401);
   check('未登录配置钓竿被拒 401', (await POST('http://localhost:' + P1 + '/api/bd/set', { token: 'bad', part: 'rod' })).status === 401);
 
   // ---------- 3. 账号系统 ----------
   section('3. 账号：注册 / 登录 / 会话');
-  const dupRes = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_a', password: 'another123', qq: '10009' });
+  const dupRes = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_a', password: 'anotherPass12', qq: '10009' });
   check('重复用户名被拒 409', dupRes.status === 409, 'status=' + dupRes.status);
-  const dupCase = await POST('http://localhost:' + P1 + '/api/register', { username: 'TESTER_A', password: 'another123', qq: '10010' });
+  const dupCase = await POST('http://localhost:' + P1 + '/api/register', { username: 'TESTER_A', password: 'anotherPass12', qq: '10010' });
   check('用户名大小写不敏感（同账号视为重复）409', dupCase.status === 409);
   check('非法用户名被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'ab', password: 'abcd' })).status === 400);
   check('过短密码被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_c', password: '1' })).status === 400);
   check('错误密码登录失败 401', (await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_a', password: 'bad' })).status === 401);
-  const lg = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_a', password: 'pass1234' });
+  const lg = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_a', password: 'TesterPass1234' });
   check('正确密码登录成功', lg.status === 200 && !!lg.data.token);
   check('顶号：再次登录后注册会话 token 失效', (await GET('http://localhost:' + P1 + '/api/me?token=' + ra.data.token)).status === 401);
   tokA = lg.data.token; // 后续改用新会话 token
   check('无 token 取资料被拒 401', (await GET('http://localhost:' + P1 + '/api/me')).status === 401);
   check('伪造 token 取资料被拒 401', (await GET('http://localhost:' + P1 + '/api/me?token=fake123')).status === 401);
   // 顶号：同账号二次登录使旧会话失效
-  const rc3 = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_c', password: 'pass1234', qq: '10011' });
+  const rc3 = await POST('http://localhost:' + P1 + '/api/register', { username: 'tester_c', password: 'TesterPass1234', qq: '10011' });
   check('第三个账号注册成功', rc3.status === 200);
-  const lgC1 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_c', password: 'pass1234', qq: '10011' });
-  const lgC2 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_c', password: 'pass1234', qq: '10011' });
+  const lgC1 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_c', password: 'TesterPass1234', qq: '10011' });
+  const lgC2 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_c', password: 'TesterPass1234', qq: '10011' });
   check('同账号二次登录成功（顶号）', lgC2.status === 200);
   check('旧 token 被顶号失效 401', (await GET('http://localhost:' + P1 + '/api/me?token=' + lgC1.data.token)).status === 401);
   check('新 token 可用', (await GET('http://localhost:' + P1 + '/api/me?token=' + lgC2.data.token)).status === 200);
 
   section('注册校验：QQ 必填 + 确认密码');
-  check('缺少 QQ 号被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'noqq_user', password: 'pass1234', qq: '' })).status === 400);
-  check('QQ 号格式非法被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'badqq_user', password: 'pass1234', qq: 'abc' })).status === 400);
-  check('确认密码不一致被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'mismatch_user', password: 'pass1234', confirmPassword: 'other999', qq: '123456' })).status === 400);
-  const okReg = await POST('http://localhost:' + P1 + '/api/register', { username: 'goodqq_user', password: 'pass1234', confirmPassword: 'pass1234', qq: '123456' });
+  check('缺少 QQ 号被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'noqq_user', password: 'TesterPass1234', qq: '' })).status === 400);
+  check('QQ 号格式非法被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'badqq_user', password: 'TesterPass1234', qq: 'abc' })).status === 400);
+  check('确认密码不一致被拒 400', (await POST('http://localhost:' + P1 + '/api/register', { username: 'mismatch_user', password: 'TesterPass1234', confirmPassword: 'other999', qq: '123456' })).status === 400);
+  const okReg = await POST('http://localhost:' + P1 + '/api/register', { username: 'goodqq_user', password: 'TesterPass1234', confirmPassword: 'TesterPass1234', qq: '123456' });
   check('QQ 与确认密码合法时注册成功', okReg.status === 200 && !!okReg.data.token);
   check('响应 profile 含 QQ 号', okReg.data.profile.qq === '123456', JSON.stringify(okReg.data.profile.qq));
 
@@ -433,7 +457,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   check('登出前 token 可用', (await GET('http://localhost:' + P1 + '/api/me?token=' + loTok)).status === 200);
   check('登出返回成功', (await POST('http://localhost:' + P1 + '/api/logout', { token: loTok })).status === 200);
   check('登出后 token 失效 401', (await GET('http://localhost:' + P1 + '/api/me?token=' + loTok)).status === 401);
-  check('登出后可用账号密码重新登录', (await POST('http://localhost:' + P1 + '/api/login', { username: 'goodqq_user', password: 'pass1234' })).status === 200);
+  check('登出后可用账号密码重新登录', (await POST('http://localhost:' + P1 + '/api/login', { username: 'goodqq_user', password: 'TesterPass1234' })).status === 200);
   check('无 token 登出也返回成功（幂等）', (await POST('http://localhost:' + P1 + '/api/logout', {})).status === 200);
 
   section('双钓：叠加值 A → 概率 P=A/(A+100)，最多 3 条');
@@ -464,12 +488,13 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   const uf = path.join(TMP_DATA, 'accounts', 'tester_a.json');
   check('账号已落盘 accounts/tester_a.json', fs.existsSync(uf));
   const raw = fs.readFileSync(uf, 'utf8');
-  check('密码以 salt+hash 存储（不存明文）', raw.includes('pwHash') && raw.includes('salt') && !raw.includes('pass1234'));
+  check('密码以 scrypt 哈希存储（不存明文、不存独立 salt 字段）', raw.includes('pwHash') && raw.includes('scrypt$v1$') && !raw.includes('TesterPass1234'));
   check('旧版 users.json 不再写入（已迁移到 accounts/）', !fs.existsSync(path.join(TMP_DATA, 'users.json')));
 
   cliA.destroy();
-  await sleep(400);
-  check('A 断线后 B 在线列表移除 A', sinkB.some(m => m.type === 'players' && !m.players.some(p => p.id === 'tester_a')));
+  // presence 1s 节流：轮询等 B 的视口页刷新掉 A
+  const sawGone = await waitFor(() => sinkB.some(m => m.type === 'playersPage' && !m.players.some(p => p.id === 'tester_a')), { timeout: 4000, interval: 150 });
+  check('A 断线后 B 在线列表移除 A', sawGone);
 
   cliB.destroy();
   await flushWait();  // 等过落盘防抖（saveAccount 1s / saveSessions 2s）
@@ -478,7 +503,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
 
   srv = start(P2);
   await sleep(900);
-  const lg2 = await POST('http://localhost:' + P2 + '/api/login', { username: 'tester_a', password: 'pass1234' });
+  const lg2 = await POST('http://localhost:' + P2 + '/api/login', { username: 'tester_a', password: 'TesterPass1234' });
   check('重启服务器后仍可登录', lg2.status === 200);
   const me2 = await GET('http://localhost:' + P2 + '/api/me?token=' + (lg2.data && lg2.data.token));
   check('重启后 coins 持久化 = 1234', me2.data && me2.data.coins === 1234);
@@ -492,8 +517,8 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   srv = start(P1);
   await sleep(800);
   section('5. 市集历史订单');
-  const lgA5 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_a', password: 'pass1234' });
-  const lgB5 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_b', password: 'pass5678' });
+  const lgA5 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_a', password: 'TesterPass1234' });
+  const lgB5 = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_b', password: 'TesterPass5678' });
   check('重启后双方可再登录', lgA5.status === 200 && lgB5.status === 200);
   check('B 补充库存（dev seed）', (await POST('http://localhost:' + P1 + '/api/dev/seed', { token: lgB5.data.token, inventory: { carp: 5 } })).status === 200);
   const lb5 = await POST('http://localhost:' + P1 + '/api/market/list', { token: lgB5.data.token, id: 'carp', qty: 5, price: 10 });
@@ -515,7 +540,7 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   killTree(srv);
   srv = spawn(NODE, ['backend/server.js'], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(8103), FISHING_DEV: '1', MARKET_FISH_LIST: '1', LISTING_TTL_MS: '1500', FISHING_DATA_DIR: TMP_DATA }) });
   await sleep(800);
-  const lgA6 = await POST('http://localhost:8103/api/login', { username: 'tester_a', password: 'pass1234' });
+  const lgA6 = await POST('http://localhost:8103/api/login', { username: 'tester_a', password: 'TesterPass1234' });
   check('补充库存 45 条鲫鱼', (await POST('http://localhost:8103/api/dev/seed', { token: lgA6.data.token, inventory: { crucian: 45 } })).status === 200);
   check('上架 1 条（TTL 环境变量覆盖有效期）', (await POST('http://localhost:8103/api/market/list', { token: lgA6.data.token, id: 'crucian', qty: 1, price: 1 })).status === 200);
   await sleep(2200);
@@ -559,8 +584,8 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
   // 静态章节结束时关掉了服务器，这里重新拉起（数据目录不变，账号仍在）
   srv = start(P1);
   await waitHttp('http://localhost:' + P1 + '/shop', { timeout: 20000 });
-  const rodLoginA = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_a', password: 'pass1234' });
-  const rodLoginB = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_b', password: 'pass5678' });
+  const rodLoginA = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_a', password: 'TesterPass1234' });
+  const rodLoginB = await POST('http://localhost:' + P1 + '/api/login', { username: 'tester_b', password: 'TesterPass5678' });
   tokA = rodLoginA.data.token; tokB = rodLoginB.data.token;
   check('钓竿章节重新登录（前章重启过服务器）', !!tokA && !!tokB);
   await POST('http://localhost:' + P1 + '/api/dev/seed', { token: tokA, coins: 6000000 });
@@ -800,35 +825,41 @@ function loadData() { return require(path.join(ROOT, 'frontend', 'js', 'data.js'
     return POST('http://localhost:' + P1 + '/api/dev/catch', { token: tok, item: { kind: 'fish', id: annFish, rarity: 'common', name: '麦穗鱼', size: size }, ground: '静水湖', spot: '芦苇浅滩' });
   };
   const annTexts = function (from) { return sinkAnn.slice(from).filter(x => x.type === 'globalRecord').map(x => (x.record && x.record.text) || ''); };
+  // 播报走 1s 批量窗口：用轮询替代固定 sleep(300)
+  const annWait = async function (from, re) {
+    await waitFor(() => annTexts(from).some(t => re.test(t)), { timeout: 4000, interval: 150 }).catch(() => {});
+    return annTexts(from);
+  };
   // 0) 先用超大个体把「全场最大」抬到 99999（避免后续鱼种纪录触发全场最大）
   let m = sinkAnn.length;
   await POST('http://localhost:' + P1 + '/api/dev/catch', { token: tokB, item: { kind: 'fish', id: 'tuna', rarity: 'big', name: '黄金枪鱼', size: 99999 }, ground: '落日海湾', spot: '礁石区' });
-  await sleep(300);
-  let texts0 = annTexts(m);
+  let texts0 = await annWait(m, /全场最大纪录被破/);
   check('全场最大被破为最高优先级播报', texts0.some(t => /全场最大纪录被破/.test(t)), JSON.stringify(texts0).slice(0, 160));
   // 1) 该鱼种最大纪录（5000 必然刷新历史，且低于 99999 不会触发全场最大）
   m = sinkAnn.length;
   await annPost(tokA, 5000);
-  await sleep(300);
-  let texts = annTexts(m);
+  let texts = await annWait(m, /全服最大纪录刷新/);
   check('刷新该鱼种最大纪录即播报（普通鱼同样通报）', texts.some(t => /全服最大纪录刷新/.test(t)), JSON.stringify(texts).slice(0, 160));
   // 2) 该鱼种最小纪录（1cm 必然刷新）
   m = sinkAnn.length;
   await annPost(tokA, 1);
-  await sleep(300);
-  texts = annTexts(m);
+  texts = await annWait(m, /全服最小纪录刷新/);
   check('刷新该鱼种最小纪录即播报', texts.some(t => /全服最小纪录刷新/.test(t)), JSON.stringify(texts).slice(0, 160));
-  // 3) 前十大：B 首次上榜（不破纪录）→ 播报名次
+  // 3) 前十大：v0.13.8 起横幅按「当日榜挤进已满员的前十」才播报（空榜首次上榜不算），
+  //    先把当日大榜填满 10 个名次（改名制造不同上榜人，榜内按 who 去重），再让 B 挤进。
+  for (let i = 1; i <= 10; i++) {
+    await POST('http://localhost:' + P1 + '/api/profile', { token: tokB, name: '榜' + i });
+    await annPost(tokB, 10 * i); // 10..100cm：不碰最大纪录 5000 与最小纪录 1
+  }
+  await POST('http://localhost:' + P1 + '/api/profile', { token: tokB, name: '测试乙' });
   m = sinkAnn.length;
-  await annPost(tokB, 100);
-  await sleep(300);
-  texts = annTexts(m);
+  await annPost(tokB, 55); // 满员榜中插入 55cm → 播报名次
+  texts = await annWait(m, /前十大更新/);
   check('进入前十大即播报（含名次）', texts.some(t => /前十大更新/.test(t) && /第 \d+ 名/.test(t)), JSON.stringify(texts).slice(0, 160));
-  // 4) 前十小：B 的成绩变小（前十大不变、也不破最小纪录 1）→ 只播报前十小
+  // 4) 前十小：同一批 10..100cm 也把小榜填满，B 的 5cm 挤进小榜（不破最小纪录 1）
   m = sinkAnn.length;
-  await annPost(tokB, 50);
-  await sleep(300);
-  texts = annTexts(m);
+  await annPost(tokB, 5);
+  texts = await annWait(m, /前十小更新/);
   check('前十小有更新即播报', texts.some(t => /前十小更新/.test(t)), JSON.stringify(texts).slice(0, 160));
   check('播报文案随事件下发（不再只靠前端拼）', texts.length > 0 && texts.every(t => typeof t === 'string' && t.length > 4), JSON.stringify(texts).slice(0, 160));
   cliAnn.destroy();

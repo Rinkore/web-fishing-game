@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """从像素鱼图鉴精灵表裁剪单鱼贴图：裁格 -> 去白底 -> 透明 -> 修剪 -> 输出到 frontend/assets/fish/"""
-import os
+import argparse, os
+from pathlib import Path
 from PIL import Image
 
-SHEET = r"C:\Users\qxl\Downloads\像素鱼图鉴_抽象白底.png"
-OUT_DIR = r"C:\Users\qxl\web-fishing-game\frontend\assets\fish"
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUT_DIR = ROOT / "frontend" / "assets" / "fish"
 
 # 行优先对应精灵表 6x3 格子（最后一格是标牌，忽略）
 IDS = [
@@ -43,8 +44,12 @@ def find_lines(img):
     return merge(vcols), merge(hrows)
 
 def main():
-    os.makedirs(OUT_DIR, exist_ok=True)
-    img = Image.open(SHEET).convert("RGBA")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sheet", type=Path, required=True, help="Source 6x3 sprite sheet")
+    parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
+    args = parser.parse_args()
+    os.makedirs(args.out_dir, exist_ok=True)
+    img = Image.open(args.sheet).convert("RGBA")
     vlines, hlines = find_lines(img)
     print("vlines:", vlines)
     print("hlines:", hlines)
@@ -89,7 +94,7 @@ def main():
         bbox = cell.getbbox()
         if bbox:
             cell = cell.crop(bbox)
-        cell.save(os.path.join(OUT_DIR, fid + ".png"))
+        cell.save(os.path.join(args.out_dir, fid + ".png"))
         print(fid, cell.size)
 
 if __name__ == "__main__":

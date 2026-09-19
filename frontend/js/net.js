@@ -260,6 +260,11 @@ window.Net = (function () {
   const fishingStart = (groundId, spotId) => authed('/api/fishing/start', { groundId: groundId, spotId: spotId });
   const fishingStop = () => authed('/api/fishing/stop', {});
   const bdSet = (part, compId) => authed('/api/bd/set', { part: part, compId: compId });
+  // 账号外观：船型由服务端持久化，选中后正在垂钓的钓速 / 产出加成也会即时重算。
+  const setBoat = (boatId) => authed('/api/appearance/boat', { boatId: boatId });
+  const buyBoat = (boatId) => authed('/api/appearance/boat/buy', { boatId: boatId });
+  // 钓手选择：未拥有的付费钓手会在同一请求内原子扣款解锁。
+  const setAngler = (anglerId) => authed('/api/appearance/angler', { anglerId: anglerId });
   // 自动售出规则（玩家自助）：单件 { id, ... } / 批量 { bulk:'fish'|'material'|'all', ... }；
   // 只传 { id, on } = 就地开关（不动阈值）；remove:true 删除规则
   const autoSellGet = () => apiFetch('GET', '/api/autosell?token=' + encodeURIComponent(me ? me.token : ''));
@@ -440,6 +445,11 @@ window.Net = (function () {
     // me.id 必须与之对齐，否则含大写字母的账号所有"是不是我"的判断都会失效
     me = { id: (profile.username || '').toLowerCase(), username: profile.username, name: profile.name, token: token, admin: !!profile.admin, listingCap: profile.listingCap == null ? null : profile.listingCap };
     state().me = me;
+    // Engine.applyProfile 只处理资产 / 钓竿；外观状态在网络层按服务端 profile 同步。
+    // 保留其它未来外观字段，避免升级时被只含 boatId 的旧前端清掉。
+    if (profile && profile.appearance) {
+      state().appearance = Object.assign({}, state().appearance || {}, profile.appearance);
+    }
     connectStream();
     startVersionWatch();
   }
@@ -496,11 +506,19 @@ window.Net = (function () {
         if (m.type === 'features') {
           S.features = m.features || {};
           if (ui && ui.onFeatures) ui.onFeatures();
+        } else if (m.type === 'appearance') {
+          S.appearance = Object.assign({}, S.appearance || {}, m.appearance || {});
+          if (m.castInfo) {
+            S.castInfo = m.castInfo;
+            if (m.castInfo.interval) S.fishingInterval = m.castInfo.interval;
+          }
+          if (ui && ui.refreshAll) ui.refreshAll('appearance');
         } else if (m.type === 'ping') {
           // v0.16.0：服务器每 25 秒推一条**真消息**心跳（原先是 `: ping` 注释，前端看不到）。
           // 只用于「连接是否假死」的判定（见 checkStreamHealth），不触发任何界面重绘。
         } else if (m.type === 'init') {
           S.features = m.features || {};
+          if (m.appearance) S.appearance = Object.assign({}, S.appearance || {}, m.appearance);
           // 服务器重启换版本后 SSE 会自动重连并带回新版本号：这是「热更新」最快的一条路径
           // （通常几秒内），比定时轮询快得多。刷新后本条连接自然被替换，无需额外处理。
           if (reloadForVersion(m.version)) return;
@@ -845,7 +863,8 @@ window.Net = (function () {
     register: register, login: login, logout: logout, fetchMe: fetchMe, setAuth: setAuth,
     guardVersion: guardVersion, startVersionWatch: startVersionWatch,
     probeServer: probeServer, connState: connState, reloadForVersion: reloadForVersion,
-    fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
+    fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet, setBoat: setBoat,
+    buyBoat: buyBoat, setAngler: setAngler,
     autoSellGet: autoSellGet, autoSellSet: autoSellSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,

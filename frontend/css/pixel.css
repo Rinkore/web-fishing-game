@@ -203,10 +203,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* v0.13.8 材料/组件没有体型档：改用与「图鉴 · 钓点」一致的青绿高亮边框（必须写在这里，pixel 的 !important 会吃掉 style.css） */
 .codex-cell.k-nosize { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(52, 224, 192, .18), 4px 4px 0 var(--px-shadow) !important; }
 .codex-cell .cx-tier { color: var(--px-gold); font-weight: 700; }
-.codex-cell.got:hover { transform: translate(-2px, -3px); }
-.codex-cell .cx-icon { animation: px-swim 3.6s ease-in-out infinite; transform-origin: center; }
-.codex-cell:not(.got) .cx-icon { animation: none; filter: grayscale(.55) brightness(.75); }
-.codex-cell:not(.got) > * { opacity: .55; }
+.codex-cell[role=button]:hover { transform: translate(-2px, -3px); }
+/* 只有已解锁鱼类会游动；材料、组件与钓点图标保持稳定。 */
+.codex-cell.k-fish.got .cx-icon { animation: px-swim 3.6s ease-in-out infinite; transform-origin: center; }
 .codex-cell .cx-icon.spot-icon { animation: none; }
 /* 图鉴 · 钓点：可前往的钓点＝已解锁，整卡点亮（跳出上面「未解锁压暗」那条通用规则）；
    锁定的钓场（后台锁定 / 限时未开窗）保持灰暗 + 灰色贴图，一眼分清「能去」与「还不能去」。 */
@@ -366,7 +365,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   from { transform: translateY(14px) scale(.97); opacity: 0; }
   to { transform: none; opacity: 1; }
 }
-.cd-icon { animation: px-swim 3.6s ease-in-out infinite; }
+.cd-icon-fish { animation: px-swim 3.6s ease-in-out infinite; }
 
 /* ---------- 品质配色强化 ---------- */
 .r-big { color: var(--px-gold); }
@@ -462,6 +461,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   transition: filter .1s;
 }
 .pn-buff { margin-left: 5px; color: var(--px-gold); }
+.pn-boat { margin-left: 5px; color: var(--accent); filter: drop-shadow(0 0 3px rgba(52, 224, 192, .8)); }
+/* 当前船型适航：青绿内光与钓点自身的金色增益标记并存。 */
+.px-node.boat-fit .pn-name { box-shadow: inset 0 -2px 0 rgba(52, 224, 192, .65); }
 
 /* 已选中的钓点：名牌金框 —— 与增益钓点（.buffed）同一套金色：选定钓点后框体即变黄 */
 .px-node.on .pn-name {
@@ -509,6 +511,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .px-legend .lg-bob::after { content: ''; position: absolute; left: 0; bottom: 0; width: 10px; height: 8px; background: #e84a3a; border-radius: 0 0 3px 3px; }
 .px-legend .lg-ring { display: inline-block; width: 14px; height: 14px; border: 3px solid var(--px-gold); border-radius: 50%; }
 .px-legend .lg-buff { color: var(--px-gold); }
+.px-legend .lg-boat { color: var(--accent); filter: drop-shadow(0 0 3px rgba(52, 224, 192, .75)); }
 
 /* ---------- 地图页签 ---------- */
 .px-map-tabs { display: flex; gap: 10px; margin-bottom: 12px; }
@@ -527,9 +530,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .px-node.locked .pn-bob { filter: grayscale(.8) brightness(.7); animation: none; }
 .px-node.locked .pn-name { color: #9fb8cc; border-style: dashed; }
 
-/* 渔夫标记：当前垂钓位置 */
+/* 渔夫标记：当前垂钓位置（脚底踩在浮漂上，不再悬空） */
 .pn-fisher {
-  position: absolute; left: 50%; top: -36px; width: 34px; height: auto;
+  position: absolute; left: 50%; top: -14px; width: 34px; height: auto;
   transform: translateX(-50%) scaleX(-1);
   image-rendering: pixelated;
   animation: px-fisher-sit 2.8s ease-in-out infinite;
@@ -666,6 +669,23 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .pb-chip b { color: var(--px-gold); font-weight: 600; }
 .pb-chip i { font-style: normal; color: var(--accent2); }
 
+/* 当前船型适航摘要：地图与角色页之间的快捷入口（紧凑单行，不挤占增益一览）。 */
+.px-boat-route {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  width: 100%; margin-top: 8px; padding: 5px 10px; text-align: left; cursor: pointer;
+  color: #e8f4ff; background: rgba(52, 224, 192, .07);
+  border: 2px solid rgba(52, 224, 192, .45) !important; border-radius: 4px;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .05), 3px 3px 0 var(--px-shadow) !important;
+}
+.px-boat-route:hover { border-color: var(--accent) !important; transform: translate(-1px, -1px); }
+.px-boat-route .pbr-icon { color: var(--accent); font-size: 16px; filter: drop-shadow(0 0 4px rgba(52, 224, 192, .7)); }
+.px-boat-route > span:nth-child(2) { display: flex; flex-direction: row; flex-wrap: wrap; align-items: baseline; min-width: 0; gap: 6px; }
+.px-boat-route b { color: var(--accent); font-size: 12px; }
+.px-boat-route i { color: #b8d4ea; font-size: 11px; font-style: normal; overflow-wrap: anywhere; }
+.px-boat-route em { padding: 1px 6px; font-size: 11px; font-style: normal; white-space: nowrap; border: 2px solid currentColor; }
+.px-boat-route em.on { color: var(--accent); background: rgba(52, 224, 192, .12); }
+.px-boat-route em.off { color: #9fb8cc; background: rgba(159, 184, 204, .08); }
+
 /* 钓场状态卡：当前选中/正在垂钓的钓场金色边框 */
 .px-region.g-card.on {
   border-color: var(--px-gold);
@@ -742,10 +762,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   background: #14102a;
 }
 .char-stage img { position: absolute; image-rendering: pixelated; pointer-events: none; }
-.cs-bg { inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.cs-dock { left: -2%; bottom: -14%; width: 55%; }
-.cs-dog { left: 20%; bottom: 41%; height: 26%; }
-.cs-boat { right: 4%; bottom: 12%; width: 34%; }
+.cs-bg { inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; }
+.cs-dock { left: -2%; bottom: -14%; z-index: 1; width: 55%; }
+.cs-boat { right: 3%; bottom: 10%; z-index: 2; width: 40%; max-height: 56%; object-fit: contain; object-position: right bottom; }
+.cs-angler { right: 12%; bottom: 18%; z-index: 3; width: 25%; height: 52%; object-fit: contain; object-position: center bottom; }
+/* 同一船图仅保留下半部作为前景船舷：人物夹在底船与船舷之间，视觉上真正坐进船舱。 */
+.cs-boat-front { z-index: 4; clip-path: inset(48% 0 0 0); }
+.cs-dog { left: 20%; bottom: 41%; z-index: 5; height: 26%; }
 
 /* 外观三层 */
 .char-sec { display: flex; flex-direction: column; gap: 6px; }
@@ -759,7 +782,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .cr-chip:hover { border-color: var(--px-line); }
 .cr-chip.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .12); }
 
-/* 同伴 / 船卡片 */
+/* 钓手 / 同伴 / 船型卡片 */
 .char-cards { display: flex; gap: 8px; flex-wrap: wrap; }
 .cc-card {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
@@ -776,3 +799,68 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .cc-card:hover { border-color: var(--px-line); }
 .cc-card.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .1); }
 .cc-card.locked { opacity: .62; }
+.cc-card .cc-art { display: flex; align-items: center; justify-content: center; min-width: 0; }
+.cc-card .cc-copy { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.cc-card .cc-trait { color: var(--accent2); opacity: 1; }
+
+.char-cards.angler-cards {
+  display: grid; grid-template-columns: repeat(2, minmax(220px, 300px)); gap: 10px;
+}
+.cc-card.angler-card {
+  flex-direction: row; align-items: center; width: 100%; min-width: 0; padding: 10px; text-align: left;
+}
+.cc-card.angler-card .cc-art { width: 112px; flex: 0 0 112px; }
+.cc-card.angler-card img { width: 112px; height: 78px; object-fit: contain; }
+.cc-card.angler-card .cc-copy { align-items: flex-start; }
+.cc-card.angler-card b { color: var(--accent); font-size: 16px; }
+.cc-card.angler-card i { text-align: left; line-height: 1.45; }
+
+.char-cards.boat-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;
+}
+.cc-card.boat-card {
+  display: grid; grid-template-columns: 132px minmax(0, 1fr); align-items: center; gap: 12px;
+  width: 100%; min-width: 0; padding: 12px; text-align: left;
+}
+.cc-card.boat-card .cc-art { width: 132px; min-height: 86px; }
+.cc-card.boat-card img { width: 132px; height: 86px; object-fit: contain; }
+.cc-card.boat-card .cc-copy { align-items: flex-start; }
+.cc-card.boat-card b { color: var(--accent2); font-size: 15px; }
+.cc-card.boat-card i { text-align: left; line-height: 1.45; opacity: .78; }
+.cc-card.boat-card .cc-kicker {
+  padding: 2px 6px; color: #06231c; background: var(--accent); font-size: 10px; font-weight: 700;
+  border: 1px solid #1b8f7a;
+}
+.cc-card.boat-card .cc-desc { color: #cfe4f5; }
+.cc-card.boat-card .cc-fit { color: #b8d4ea; }
+.cc-card.boat-card .cc-buffs { color: var(--px-gold); opacity: 1; }
+
+/* v0.19 角色系统重构：属性面板 / 价格行 / 水域标签 / 同伴品种分组 */
+.char-cards.angler-cards { grid-template-columns: repeat(auto-fit, minmax(280px, 340px)); }
+.cc-card .cc-stats { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+.cc-card .stat-row { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; gap: 6px; }
+.cc-card .stat-row em { font-style: normal; font-size: 10px; opacity: .7; }
+.cc-card .stat-cells { display: inline-flex; gap: 2px; }
+.cc-card .stat-cells i {
+  width: 12px; height: 8px; background: rgba(255, 255, 255, .08);
+  border: 1px solid var(--px-line); box-sizing: border-box;
+}
+.cc-card .stat-cells i.f {
+  background: var(--accent); border-color: #1b8f7a;
+  box-shadow: 1px 1px 0 var(--px-shadow);
+}
+.cc-card .cc-passive { color: var(--px-gold); opacity: 1 !important; }
+.cc-card .cc-price { color: #ffd23e; opacity: 1 !important; font-weight: 700; }
+.cc-card .cc-price.short { color: #e06c5f; }
+.cc-card .cc-price.owned { color: #7fd18b; font-weight: 400; }
+.cc-card .cc-water {
+  margin-left: 4px; padding: 2px 6px; font-style: normal; font-size: 10px; font-weight: 700;
+  color: #0b1d33; background: #6db3e8; border: 1px solid #35668f;
+}
+.companion-groups { display: flex; flex-direction: column; gap: 10px; }
+.breed-group { display: flex; flex-direction: column; gap: 6px; }
+.breed-title {
+  margin: 0; font-size: 13px; color: var(--accent2);
+  border-bottom: 2px solid var(--px-line); padding-bottom: 4px;
+}
+.breed-group .companion-cards { display: flex; gap: 8px; flex-wrap: wrap; }

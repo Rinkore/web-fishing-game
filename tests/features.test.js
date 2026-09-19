@@ -4,13 +4,18 @@ const fs = require('fs'), os = require('os'), path = require('path');
 const { spawn } = require('child_process');
 const { chromium } = require('playwright-core');
 const { waitHttp, waitFor } = require('./_util');
+const { provisionAdmin } = require('./_admin');
 const F = require('../frontend/js/features');
 const ROOT = path.join(__dirname, '..'), PORT = 8297, base = 'http://localhost:' + PORT;
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-features-'));
 let server, browser, pass = 0;
 function check(value, name) { assert.ok(value, name); pass++; }
 async function request(route, body) {
- const r = await fetch(base + route, body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const target=new URL(base+route);let token=target.searchParams.get('token')||'';if(token)target.searchParams.delete('token');
+ let payload=body;if(body&&body.token){token=body.token;payload={...body};delete payload.token;}
+ const opts=payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)};
+ if(token){opts.headers=opts.headers||{};opts.headers.Authorization='Bearer '+token;}
+ const r = await fetch(target,opts);
  return {status:r.status,data:await r.json()};
 }
 async function start() {
@@ -20,10 +25,12 @@ async function start() {
 async function stop() { if(!server)return; const child=server;server=null; await new Promise(resolve=>{child.once('exit',resolve);child.stdin.end('q\n');}); }
 (async()=>{
  await start();
- const adminReg=await request('/api/register',{username:'featureadmin',password:'test1234',qq:'123456'});
+ const password='FeaturePass1234';
+ const adminReg=await request('/api/register',{username:'featureadmin',password,qq:'123456'});
  check(adminReg.status===200,'admin account');
- const admin=(await request('/api/admin/login',{username:'featureadmin',password:'test1234'})).data.token;
- const player=(await request('/api/register',{username:'featureplayer',password:'test1234',qq:'123456'})).data.token;
+ const otp=await provisionAdmin(server,data,'featureadmin');
+ const admin=(await request('/api/admin/login',{username:'featureadmin',password,otp})).data.token;
+ const player=(await request('/api/register',{username:'featureplayer',password,qq:'123456'})).data.token;
  const set=features=>request('/api/admin/features',{token:admin,features});
  check((await request('/api/admin/features',{token:player,features:{mall:false}})).status===403,'players cannot change switches');
  check((await set({unknown:false})).status===400,'unknown ids rejected');
@@ -42,8 +49,9 @@ async function stop() { if(!server)return; const child=server;server=null; await
  check((await request('/api/chest/open',{token:player})).status===423,'child lock retained');
  check((await request('/api/chest/craft',{token:player})).status!==423,'sibling remains enabled');
  browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
- const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base);await page.evaluate(t=>localStorage.setItem('fishing_token',t),player);await page.reload();
+ const playerCtx=await browser.newContext();await playerCtx.addCookies([{name:'fish_game',value:player,url:base}]);
+ const page=await playerCtx.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(base);
  await page.waitForFunction(()=>Engine.state.me);
  await page.evaluate(()=>{UI.setView('inventory');UI.renderNav();UI.renderView();});
  check(await page.locator('[data-feature="mall.sell"][aria-disabled="true"]').count()>0,'sell controls show locked state');
@@ -58,8 +66,9 @@ async function stop() { if(!server)return; const child=server;server=null; await
  await page.waitForFunction(()=>Engine.state.features['fishing.cast']===false&&!Engine.state.fishing.active);
  check((await request('/api/fishing/start',{token:player,groundId:spot.g,spotId:spot.s})).status===423,'fishing restart blocked');
  check((await request('/api/fishing/stop',{token:player})).status===200,'stop still allowed');
- const adminPage=await browser.newPage();adminPage.on('pageerror',e=>errors.push(e.message));
- await adminPage.goto(base+'/admin.html');await adminPage.evaluate(t=>localStorage.setItem('fishing_admin_token',t),admin);await adminPage.reload();
+ const adminCtx=await browser.newContext();await adminCtx.addCookies([{name:'fish_admin',value:admin,url:base}]);
+ const adminPage=await adminCtx.newPage();adminPage.on('pageerror',e=>errors.push(e.message));
+ await adminPage.goto(base+'/admin.html');
  await adminPage.getByRole('button',{name:'🔒 功能开关',exact:true}).click();
  await adminPage.waitForSelector('[data-feature-key="mall.sell"]');
  await adminPage.locator('[data-feature-key="mall.sell"]').check();
@@ -69,6 +78,7 @@ async function stop() { if(!server)return; const child=server;server=null; await
  await set({'character.companion':false});
  await page.waitForFunction(()=>Engine.state.features['character.companion']===false);
  await page.evaluate(()=>{UI.setView('character');UI.renderNav();UI.renderView();});
+ await page.locator('[data-sectiontab="companion"]').click();
  check(await page.locator('[data-feature="character.companion"][aria-disabled="true"]').count()>0,'local cosmetic option visibly locked');
 
  // Existing automatic-sale rules must stop executing, not just become uneditable.
@@ -79,9 +89,11 @@ async function stop() { if(!server)return; const child=server;server=null; await
  await request('/api/dev/catch',{token:player,item:{id:'crucian',kind:'fish',rarity:'common'}});
  check((await request('/api/me?token='+player)).data.inventory.crucian===101,'existing auto-sale rule paused');
  check((await request('/api/autosell',{token:player,id:'crucian',on:true})).status===423,'auto-sale configuration locked');
- const peer=(await request('/api/register',{username:'featurepeer',password:'test1234',qq:'123456'})).data.token;
- const peerPage=await browser.newPage();await peerPage.goto(base);await peerPage.evaluate(t=>localStorage.setItem('fishing_token',t),peer);await peerPage.reload();await peerPage.waitForFunction(()=>Engine.state.me);
- const invitation=await request('/api/trade/invite',{token:player,target:'featurepeer'});
+ const peer=(await request('/api/register',{username:'featurepeer',password,qq:'123456'})).data.token;
+ const peerCtx=await browser.newContext();await peerCtx.addCookies([{name:'fish_game',value:peer,url:base}]);
+ const peerPage=await peerCtx.newPage();await peerPage.goto(base);await peerPage.waitForFunction(()=>Engine.state.me);
+ let invitation=null;
+ await waitFor(async()=>{invitation=await request('/api/trade/invite',{token:player,target:'featurepeer'});return invitation.status===200;},{timeout:5000,interval:40});
  check(invitation.status===200,'trade invitation created');
  await request('/api/trade/respond',{token:peer,tradeId:invitation.data.tradeId,accept:true});
  await set({'ground.trade':false});

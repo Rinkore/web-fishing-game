@@ -39,9 +39,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function req(method, u, body) {
   return new Promise(res => {
-    const p = url.parse(u); const data = body ? JSON.stringify(body) : null;
+    // 凭据只走传输层：body/query 里的 token 会被服务端 400 拒，提取到 Authorization 头
+    const parsed = new URL(u);
+    let token = parsed.searchParams.get('token') || '';
+    if (token) parsed.searchParams.delete('token');
+    let payload = body;
+    if (payload && payload.token) { token = payload.token; payload = Object.assign({}, payload); delete payload.token; }
+    const p = url.parse(parsed.href); const data = payload ? JSON.stringify(payload) : null;
     const h = { 'Content-Type': 'application/json' };
     if (data) h['Content-Length'] = Buffer.byteLength(data);
+    if (token) h.Authorization = 'Bearer ' + token;
     const r = http.request({ hostname: p.hostname, port: p.port, path: p.path, method, headers: h }, rs => {
       let d = ''; rs.on('data', c => d += c); rs.on('end', () => { let j = null; try { j = JSON.parse(d); } catch (e) {} res({ status: rs.statusCode, data: j, text: d }); });
     });
@@ -49,10 +56,18 @@ function req(method, u, body) {
     if (data) r.write(data); r.end();
   });
 }
-const POST = (u, b) => req('POST', u, b);
+// 注册防滥用：同 IP 第 4 次注册起要求一次性工作量证明，收到挑战先求解再带 proof 重试
+const POST = async (u, b) => {
+  const result = await req('POST', u, b);
+  if (result.data && result.data.code === 'REGISTRATION_CHALLENGE') {
+    const challenge = await req('GET', u.split('/api/')[0] + '/api/register/challenge');
+    return req('POST', u, Object.assign({}, b, { proof: require('./_registration').solve(challenge.data) }));
+  }
+  return result;
+};
 
 function sse(token, sink) {
-  const r = http.get('http://localhost:' + PORT + '/events?token=' + token, res => {
+  const r = http.get({ hostname: 'localhost', port: PORT, path: '/events', headers: { Authorization: 'Bearer ' + token } }, res => {
     let buf = '';
     res.on('data', c => {
       buf += c.toString();
@@ -86,16 +101,31 @@ async function openPage(token) {
   vc.on('jsdomError', e => errs.push('jsdomError: ' + e.message));
   const dom = new JSDOM(html, { url: 'http://localhost:' + PORT + '/', runScripts: 'dangerously', resources: 'usable', pretendToBeVisual: true, virtualConsole: vc });
   const w = dom.window;
+  // jsdom 无 matchMedia（v0.17.0 玩家设置模块 settings.js 顶层即调用），补一个恒不匹配的最小实现
+  w.matchMedia = w.matchMedia || function (q) { return { matches: false, media: q, addEventListener: function () {}, removeEventListener: function () {}, addListener: function () {}, removeListener: function () {} }; };
+  // 前端会话只认 Cookie（apiOnce 会剥掉 body/query 里的 token）：这里给 jsdom 页面
+  // 补一个最小 Cookie 罐，种子为测试通过 raw 接口拿到的会话 token（cookie 值即会话 token）。
+  const jar = {};
+  if (token) jar.fish_game = token;
+  const cookieHeader = () => Object.keys(jar).map(k => k + '=' + jar[k]).join('; ');
   w.fetch = function (u, opts) {
     const full = u.startsWith('http') ? u : ('http://localhost:' + PORT + u);
     return new Promise((resolve, reject) => {
       const p = url.parse(full);
       const body = opts && opts.body ? opts.body : null;
       const h = Object.assign({}, (opts && opts.headers) || {});
+      if (cookieHeader()) h.Cookie = cookieHeader();
       if (body) h['Content-Length'] = Buffer.byteLength(body);
       const r = http.request({ hostname: p.hostname, port: p.port, path: p.path, method: (opts && opts.method) || 'GET', headers: h }, rs => {
         let d = ''; rs.on('data', c => d += c);
-        rs.on('end', () => resolve({ ok: rs.statusCode >= 200 && rs.statusCode < 300, status: rs.statusCode, json: () => Promise.resolve(JSON.parse(d || '{}')) }));
+        rs.on('end', () => {
+          const sc = rs.headers['set-cookie'];
+          (Array.isArray(sc) ? sc : sc ? [sc] : []).forEach(c => {
+            const m = /^(fish_game|fish_admin)=([^;]*)/.exec(c);
+            if (m) { if (/Max-Age=0/.test(c)) delete jar[m[1]]; else jar[m[1]] = m[2]; }
+          });
+          resolve({ ok: rs.statusCode >= 200 && rs.statusCode < 300, status: rs.statusCode, json: () => Promise.resolve(JSON.parse(d || '{}')), text: () => Promise.resolve(d) });
+        });
       });
       r.on('error', reject);
       if (body) r.write(body); r.end();
@@ -106,8 +136,7 @@ async function openPage(token) {
   w.EventSource = function (u) {
     const self = this;
     this.onmessage = null; this.onerror = null;
-    const full = 'http://localhost:' + PORT + u;
-    const r = http.get(full, res => {
+    const r = http.get({ hostname: 'localhost', port: PORT, path: u, headers: cookieHeader() ? { Cookie: cookieHeader() } : {} }, res => {
       let buf = '';
       res.on('data', c => {
         buf += c.toString();
@@ -138,19 +167,29 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
 
   try {
     // 注册 A / B
-    const ra = await POST('http://localhost:' + PORT + '/api/register', { username: 'fisher_a', password: 'pass1234', name: '钓手甲', qq: '10012' });
-    const rb = await POST('http://localhost:' + PORT + '/api/register', { username: 'fisher_b', password: 'pass1234', name: '钓手乙', qq: '10013' });
+    const ra = await POST('http://localhost:' + PORT + '/api/register', { username: 'fisher_a', password: 'FisherPass1234', name: '钓手甲', qq: '10012' });
+    const rb = await POST('http://localhost:' + PORT + '/api/register', { username: 'fisher_b', password: 'FisherPass1234', name: '钓手乙', qq: '10013' });
     const tokA = ra.data.token, tokB = rb.data.token;
 
     const sinkB = [];
     const cliB = sse(tokB, sinkB);   // B 用原生 SSE 监听广播
+    await waitFor(() => sinkB.some(m => m.type === 'init'), { timeout: 6000 });
+    // perf-9 起 presence 按视口分页推送：B 先登记玩家列表视口才会收到 playersPage；
+    // perf-8b 起 feed 按钓场分桶只推给同场钓者：B 到落日海湾开钓才会收到 A（礁石区）的渔获动态。
+    await POST('http://localhost:' + PORT + '/api/players/view', { token: tokB, page: 1, size: 30 });
+    await POST('http://localhost:' + PORT + '/api/fishing/start', { token: tokB, groundId: 'sunset', spotId: 'beach' });
     await sleep(300);
 
     const A = await openPage(tokA);
     const w = A.w;
     const $ = id => w.document.getElementById(id);
     const spotBtns = () => Array.from(w.document.querySelectorAll('.px-node'));
-    const findSpot = (name) => spotBtns().find(b => b.textContent.trim() === name);
+    // 钓点按钮的 .pn-name 里现在还叠有 ⚡增益/⛵适航角标，按名字首文本节点精确匹配
+    const findSpot = (name) => spotBtns().find(b => {
+      const n = b.querySelector('.pn-name');
+      const first = n && n.firstChild;
+      return !!first && first.nodeType === 3 && first.textContent.trim() === name;
+    });
 
     section('A. 点钓点即开始自动钓鱼');
     check('页面加载无异常', A.errs.length === 0, A.errs.join(' | '));
@@ -199,26 +238,28 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     check('本机近期大鱼即时显示在渔场实况', gotBig, '等待 ' + (waited / 1000) + 's');
 
     section('E. 近期大鱼：广播给其他玩家');
-    const bSawRecent = sinkB.some(m => m.type === 'players' && m.players.some(p => p.id === 'fisher_a' && p.recent));
-    check('B 收到 A 的 recent 更新（含大鱼名）', bSawRecent, JSON.stringify(sinkB.filter(m => m.type === 'players').slice(-2)));
-    const bSawFeed = sinkB.some(m => m.type === 'feed' && m.entry && m.entry.who === '钓手甲');
+    // playersPage 推送有 1s 节流、recent 广播有 10s 节流：轮询等待
+    const bSawRecent = await waitFor(() => sinkB.some(m => m.type === 'playersPage' && m.players.some(p => p.id === 'fisher_a' && p.recent)), { timeout: 15000 });
+    check('B 收到 A 的 recent 更新（含大鱼名）', bSawRecent, JSON.stringify(sinkB.filter(m => m.type === 'playersPage').slice(-2)));
+    const bSawFeed = await waitFor(() => sinkB.some(m => m.type === 'feed' && m.entry && m.entry.who === '钓手甲'), { timeout: 4000 });
     check('B 收到 A 的渔获广播', bSawFeed);
 
     section('F. 普通状态上报不清空 recent');
-    // 查询服务器上 A 的 recent 是否仍存在（通过 B 的最新 players 快照）
-    const lastPlayers = sinkB.filter(m => m.type === 'players').slice(-1)[0];
+    // 查询服务器上 A 的 recent 是否仍存在（通过 B 的最新 playersPage 快照）
+    const lastPlayers = sinkB.filter(m => m.type === 'playersPage').slice(-1)[0];
     const aEntry = lastPlayers && lastPlayers.players.find(p => p.id === 'fisher_a');
     check('服务器玩家列表中 A 的 recent 未被清空', !!(aEntry && aEntry.recent), JSON.stringify(aEntry));
 
     section('G. 离开钓点后 recent 清空');
-    const before = sinkB.length;
     const curSpot = w.document.querySelector('.px-node.on');
     if (curSpot) curSpot.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-    await sleep(600);
-    const afterMsgs = sinkB.slice(before);
-    const afterPlayers = afterMsgs.filter(m => m.type === 'players').slice(-1)[0];
-    const aAfter = afterPlayers && afterPlayers.players.find(p => p.id === 'fisher_a');
-    check('离开钓点后服务器上 recent 已清空', aAfter ? !aAfter.recent : true, JSON.stringify(aAfter));
+    // 停钓触发 presence 推送（1s 节流）：轮询等 B 视口里的 A 清掉 recent（或退出列表）
+    const sawCleared = await waitFor(() => {
+      const last = sinkB.filter(m => m.type === 'playersPage').slice(-1)[0];
+      const a = last && last.players.find(p => p.id === 'fisher_a');
+      return !!last && (!a || !a.recent);
+    }, { timeout: 6000 });
+    check('离开钓点后服务器上 recent 已清空', sawCleared, JSON.stringify(sinkB.filter(m => m.type === 'playersPage').slice(-1)));
 
     // —— 同钓点过滤：同钓场但不同钓点的人不算「同钓点」（回归：旧版只按钓场过滤）——
     section('H. 同钓点过滤（同钓场不同钓点不算）');
@@ -229,17 +270,17 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     // B 用 API 去同钓场的另一个钓点（芦苇浅滩）
     const stB1 = await POST('http://localhost:' + PORT + '/api/fishing/start', { token: tokB, groundId: 'stillwater', spotId: 'reed' });
     check('H 前置：B 在同钓场另一钓点开钓', stB1.status === 200, JSON.stringify(stB1.data).slice(0, 80));
-    const bAtReed = await waitFor(() => w.Engine.state.players.some(p => p.name === '钓手乙' && p.spotId === 'reed'), { timeout: 6000 });
-    check('H 前置：A 的页面已收到 B 的位置', bAtReed === true, String(bAtReed));
-    check('同钓场不同钓点不计入「同钓点」', /同钓点 1 人/.test(w.document.querySelector('.peeps-head').textContent),
-      w.document.querySelector('.peeps-head').textContent);
+    // perf-9：A 的页面不再收全量 players 广播，同钓点列表改为 peepsPage 拉取制（开钓即拉 + 5s 轮询）——
+    // B 在不同钓点天然不进 A 的列表；等列表刷新到「同钓点 1 人」即证明过滤生效
+    const headOne = await waitFor(() => /同钓点 1 人/.test((w.document.querySelector('.peeps-head') || {}).textContent || ''), { timeout: 8000 });
+    check('同钓场不同钓点不计入「同钓点」', headOne === true,
+      (w.document.querySelector('.peeps-head') || {}).textContent);
     check('列表只显示同钓点玩家（1 人）', w.document.querySelectorAll('.peep').length === 1, String(w.document.querySelectorAll('.peep').length));
-    // B 换到 A 的同一个钓点 → 立即算同钓点
+    // B 换到 A 的同一个钓点 → 下一次 peeps 轮询（≤5s）后算同钓点
     await POST('http://localhost:' + PORT + '/api/fishing/start', { token: tokB, groundId: 'stillwater', spotId: 'dock' });
-    const bAtDock = await waitFor(() => w.Engine.state.players.some(p => p.name === '钓手乙' && p.spotId === 'dock'), { timeout: 6000 });
-    check('H 前置：B 已换到与 A 相同的钓点', bAtDock === true, String(bAtDock));
-    check('同钓点玩家计入面板（2 人）', /同钓点 2 人/.test(w.document.querySelector('.peeps-head').textContent),
-      w.document.querySelector('.peeps-head').textContent);
+    const headTwo = await waitFor(() => /同钓点 2 人/.test((w.document.querySelector('.peeps-head') || {}).textContent || ''), { timeout: 8000 });
+    check('同钓点玩家计入面板（2 人）', headTwo === true,
+      (w.document.querySelector('.peeps-head') || {}).textContent);
     check('列表显示同钓点 2 人', w.document.querySelectorAll('.peep').length === 2, String(w.document.querySelectorAll('.peep').length));
     // 清理：双方停钓（本段是最后一段，避免影响收尾）
     await POST('http://localhost:' + PORT + '/api/fishing/stop', { token: tokB });
@@ -253,7 +294,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     // 断线（服务端更新强刷 / 掉线 / 重启）时钓点写进账号存档；同一 token 重新建连即自动接着钓；
     // 只有玩家主动收竿（/api/fishing/stop）才清除记录。
     section('离线钓点记忆 + 重连续钓');
-    const regR = await POST('http://localhost:' + PORT + '/api/register', { username: 'resume_u', password: 'abcd1234', name: '续钓玩家', qq: '10031' });
+    const regR = await POST('http://localhost:' + PORT + '/api/register', { username: 'resume_u', password: 'ResumePass1234', name: '续钓玩家', qq: '10031' });
     const tokR = regR.data && regR.data.token;
     check('续钓用例：注册账号', !!tokR, JSON.stringify(regR.data));
     const sinkR = [];
