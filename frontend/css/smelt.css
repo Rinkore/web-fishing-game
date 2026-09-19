@@ -223,3 +223,49 @@
   .recast-workbench .sm-preview-panel .ws-preview,
   .smelt-workbench .ws-preview { height: 486px; min-height: 486px; flex: none; overflow: visible; }
 }
+/* Workshop result dialogs share the preview's spacing, typography and item card. */
+.sm-result-dialog { --sm-muted: #adbdcd; width: 700px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 32px); font-family: "Microsoft YaHei", sans-serif; }
+.sm-result-dialog .sm-preview-panel { position: static; min-height: 0; display: block; padding: 16px; }
+.sm-result-dialog .ws-result-card { display: flex; align-items: center; gap: 16px; padding: 16px; margin: 14px 0 6px; background: #22313a; border: 0; border-radius: 10px; }
+.sm-result-dialog .ws-result-icon { width: 64px; height: 72px; object-fit: contain; }
+.sm-result-dialog .sm-result-aff { padding: 12px 0; border-bottom: 1px solid #344352; }
+.sm-result-dialog .sm-outcome-row > div { display: grid; grid-template-columns: minmax(0,1fr) 24px minmax(0,1fr); gap: 10px; align-items: center; }
+.sm-outcome-row strong { font-size: 15px; }
+.sm-outcome-row small { display: block; color: #adbdcd; margin-top: 5px; }
+.sm-outcome-arrow { color: #b2e8c8; text-align: center; font-size: 22px; }
+.sm-outcome-row.lost strong, .sm-outcome-row.lost .sm-outcome-arrow { color: #f2b4a6; }
+.sm-result-dialog .modal-body { min-height: 0; overflow-y: auto; }
+.sm-result-dialog .sm-material-footer { font-size: 12px; color: #adbdcd; }
+.sm-result-dialog button, .ab-modal button { min-height: 36px; }
+#ws-forge-material-open .sm-material-icon { width: 48px; height: 56px; object-fit: contain; }
+#ws-forge-material-open > span:last-child { margin-left: auto; }
+.ab-modal { width: 1000px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 32px); font-family: "Microsoft YaHei", sans-serif; }
+.ab-modal .modal-body { max-height: none; min-height: 0; overflow-y: auto; padding: 18px; }
+.ab-intro { display: flex; flex-direction: column; gap: 8px; color: #adbdcd; font-size: 13px; }
+.ab-intro strong { color: #e8eef5; font-size: 17px; }
+.ab-help { margin: 12px 0; color: #adbdcd; font-size: 12px; }
+.ab-help summary { cursor: pointer; padding: 8px 0; }
+.ab-modal .ab-rows { gap: 10px; }
+.ab-modal .ab-row { display: grid; grid-template-columns: 20px 36px 36px 100px minmax(0,1fr) 110px; gap: 8px; padding: 12px; border-radius: 10px; background: #19232d; }
+.ab-modal .ab-row .ab-slider-grp { width: 100%; min-width: 0; }
+.ab-modal .ab-row .ab-num { width: 60px; min-height: 36px; box-sizing: border-box; }
+.ab-modal .ab-row .ab-peek { min-width: 0; white-space: normal; }
+.ab-modal .ab-actions { margin: 0; background: #19232d; flex-wrap: wrap; }
+.ab-modal .ab-res { padding: 12px; border: 1px solid #344352; border-radius: 10px; margin-top: 16px; }
+.ab-modal .ab-plan-row, .ab-modal .ab-diff-row { min-height: 36px; gap: 8px; }
+.ab-modal .ab-res h4 { font-size: 15px; margin: 12px 0; }
+@media (max-width: 760px) {
+  .ab-modal .ab-row { grid-template-columns: 20px 36px 36px minmax(0,1fr); gap: 6px; padding: 10px; }
+  .ab-modal .ab-row .ab-slider-grp { grid-column: 1 / -1; }
+  .ab-modal .ab-row .ab-peek { grid-column: 1 / -1; text-align: left; }
+  .ab-modal .ab-row .ab-en { min-width: 0; }
+  .ab-modal .modal-body { padding: 10px; }
+  .ab-modal .ab-plan-row { display: grid; grid-template-columns: 52px minmax(0,1fr) 16px minmax(0,1fr); }
+  .ab-modal .abp-part { width: auto; }
+  .ab-modal .abp-tag { grid-column: 4; }
+  .ab-modal .ab-diff-row { flex-wrap: wrap; }
+  .ab-modal .ab-actions .ab-hint { flex-basis: 100%; }
+  .sm-result-dialog .sm-preview-panel { padding: 10px; }
+  .sm-result-dialog .sm-outcome-row > div { gap: 5px; font-size: 12px; }
+  .sm-result-dialog .sm-outcome-row strong { font-size: 13px; }
+}

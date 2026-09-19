@@ -62,8 +62,8 @@ function csrf(req) {
   if (!req.headers.cookie && req.headers['x-session-mode'] !== 'cookie') return true;
   return req.headers['x-requested-with'] === 'FishGame' && String(req.headers['content-type'] || '').split(';')[0] === 'application/json';
 }
-function passwordPolicy(password) {
-  if (typeof password !== 'string' || password.length < 12 || password.length > 256) throw new ValidationError('新密码需为 12～256 位');
+function passwordPolicy(password, minLength = 12) {
+  if (typeof password !== 'string' || password.length < minLength || password.length > 256) throw new ValidationError('新密码需为 ' + minLength + '～256 位');
   const common = ['password1234', '123456789012', 'qwerty123456', '123456abcdef', 'abcdefghijkl'];
   if (common.includes(password.toLowerCase()) || /^(.)\1+$/.test(password)) throw new ValidationError('请勿使用常见弱密码');
 }

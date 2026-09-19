@@ -36,7 +36,7 @@ async function stop() {
     const legacy = { username: 'legacy', name: 'Legacy', salt: 'test', pwHash: crypto.createHash('sha256').update('test:oldpass').digest('hex'), coins: 500, inventory: {}, bd: {}, admin: true, adminTotpSecret: secret };
     fs.writeFileSync(path.join(dir, 'accounts/legacy.json'), JSON.stringify(legacy));
     await start();
-    const reg = await call('/api/register', { username: 'newplayer', password: 'New-Safe-Pass-77', qq: '12345' }, cookieHeaders);
+    const reg = await call('/api/register', { username: 'newplayer', password: 'River!28', qq: '12345' }, cookieHeaders);
     ok(reg.status === 200 && reg.data.token === 'cookie', 'browser never receives raw token');
     const set = reg.headers.get('set-cookie');
     ok(set.includes('__Host-fish_game=') && set.includes('HttpOnly') && set.includes('Secure') && set.includes('SameSite=Strict'), 'secure host-only cookie');
@@ -82,9 +82,10 @@ async function stop() {
     ok((await call('/api/me', undefined, adminHeaders)).status === 401, 'admin cookie does not replace game cookie');
     ok((await call('/api/admin/logout', {}, adminHeaders)).headers.get('set-cookie').includes('Max-Age=0'), 'admin logout clears cookie');
     ok((await call('/api/admin/session', undefined, adminHeaders)).status === 403, 'admin logout revokes session');
-    for (const password of ['short', 'password1234', 'aaaaaaaaaaaa']) ok((await call('/api/register', { username: 'weakuser', password, qq: '12345' })).status === 400, 'weak password rejected');
+    for (const password of ['River!2', 'password1234', 'aaaaaaaa', 'x'.repeat(257)]) ok((await call('/api/register', { username: 'weakuser', password, qq: '12345' })).status === 400, 'weak password rejected');
     ok((await call('/api/logout', {}, headers)).status === 200, 'game logout');
     ok((await call('/api/me', undefined, headers)).status === 401, 'game logout revokes cookie');
+    ok((await call('/api/login', { username: 'newplayer', password: 'River!28' })).status === 200, '8-character registered password can log in');
     ok((await call('/api/version')).headers.get('strict-transport-security') === null, 'no HSTS on HTTP');
     await stop();
     const migrated = JSON.parse(fs.readFileSync(path.join(dir, 'accounts/legacy.json')));
