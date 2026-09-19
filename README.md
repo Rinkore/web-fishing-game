@@ -363,7 +363,7 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH    测试依赖与浏览器位置
 
 ## 版本演进
 
-当前 **v0.20.0**；版本号唯一定义在 `frontend/js/data.js` 的 `VERSION`（前端启动时与 `/api/version`
+当前 **v0.20.1**；版本号唯一定义在 `frontend/js/data.js` 的 `VERSION`（前端启动时与 `/api/version`
 比对，不一致即带缓存参数强刷）。每版的完整变更见 GitHub Releases（正文即 `dist/notes-<ver>.md`）
 与该版本 tag 的注解，下表只列里程碑：
 
