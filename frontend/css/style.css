@@ -1782,3 +1782,10 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 .rec-personal b { display: block; margin-top: 6px; color: var(--text); font-size: 18px; }
 .top10-row.self { box-shadow: inset 0 0 0 2px #e7bd58; background: rgba(231,189,88,.09); }
 .top10-row.self .top10-who { color: #ffda7e; }
+
+/* Preserve column widths when configured feature order puts the sidebar first. */
+@media (min-width: 881px) {
+  .panel.two-col[data-order-first="mall.list"] { grid-template-columns: 340px minmax(0,1fr); }
+  .panel.two-col[data-order-first="mall.list"] > .col-side { border-left: 0; padding-left: 0; border-right: 1px solid var(--line); padding-right: 20px; }
+  .shop-cols[data-order-first="mall.autosell"] > .shop-colside { border-left: 0; padding-left: 0; border-right: 1px solid var(--line); padding-right: 16px; }
+}

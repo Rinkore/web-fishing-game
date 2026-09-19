@@ -34,6 +34,7 @@ window.UI = (function () {
       button.setAttribute('aria-disabled', 'true'); button.classList.add('feature-locked');
       button.title = window.GameFeatures.message(S().features, id);
     }
+    scheduleFeatureOrder();
     return button;
   }
   document.addEventListener('click', function (ev) {
@@ -41,8 +42,35 @@ window.UI = (function () {
     if (target && !featureGuard(target.getAttribute('data-feature'))) { ev.preventDefault(); ev.stopImmediatePropagation(); }
   }, true);
   function applyFeatureControls() {
-    const selectors = { '#ws-go': 'workshop.smelt', '#ws-recast-go': 'workshop.recast', '#ws-forge-go': 'workshop.forge', '.sub-entry': 'inventory.subscribe', '.ab-open-btn': 'bd.autobuild', '#sa-open-list': 'mall.autosell', '#sa-tier': 'mall.autosell' };
+    const selectors = { '#sea-ship-up': 'sea.upgrade', '#sea-chart-craft': 'sea.chart', '#sea-voyage': 'sea.voyage', '#ws-go': 'workshop.smelt', '#ws-recast-go': 'workshop.recast', '#ws-forge-go': 'workshop.forge', '.sub-entry': 'inventory.subscribe', '.ab-open-btn': 'bd.autobuild', '#sa-open-list': 'mall.autosell', '#sa-tier': 'mall.autosell' };
     Object.keys(selectors).forEach(function (selector) { document.querySelectorAll(selector).forEach(function (b) { markFeature(b, selectors[selector]); }); });
+  }
+  let featureOrderQueued = false;
+  function scheduleFeatureOrder() {
+    if (featureOrderQueued) return;
+    featureOrderQueued = true;
+    Promise.resolve().then(function () { featureOrderQueued = false; applyFeatureOrder(); });
+  }
+  // Reorder only peer controls/sections. Keep unrelated headings and help in place.
+  function applyFeatureOrder() {
+    const config = S().featureOrder || {}, parents = new Map();
+    document.querySelectorAll('[data-order-feature], [data-feature]').forEach(function (node) {
+      const keys = (node.dataset.orderFeature || node.dataset.feature || '').split(' ');
+      const scope = keys[0].split('.')[0], order = config[scope];
+      if (!Array.isArray(order) || !keys.some(function (key) { return order.includes(key); }) || !node.parentNode) return;
+      if (!parents.has(node.parentNode)) parents.set(node.parentNode, {});
+      const groups = parents.get(node.parentNode);
+      (groups[scope] || (groups[scope] = [])).push({ node: node, rank: Math.min.apply(null, keys.map(function (key) { const i = order.indexOf(key); return i < 0 ? order.length : i; })) });
+    });
+    parents.forEach(function (groups, parent) {
+      Object.keys(groups).forEach(function (scope) {
+        const entries = groups[scope], sorted = entries.slice().sort(function (a, b) { return a.rank - b.rank; });
+        if (parent.classList && (parent.classList.contains('two-col') || parent.classList.contains('shop-cols'))) parent.dataset.orderFirst = sorted[0].node.dataset.orderFeature || '';
+        if (entries.every(function (e, i) { return e === sorted[i]; })) return;
+        const slots = entries.map(function (e) { const marker = document.createComment('feature-order'); parent.insertBefore(marker, e.node); return marker; });
+        sorted.forEach(function (e, i) { slots[i].replaceWith(e.node); });
+      });
+    });
   }
   function onFeatures() {
     closeOverlays();
@@ -640,7 +668,11 @@ window.UI = (function () {
   function orderedFeatureTabs(scope, items, aliases) {
     const order = (S().featureOrder || {})[scope] || [];
     if (!order.length) return items;
-    function rank(k) { const at = order.indexOf(scope + '.' + ((aliases || {})[k] || k)); return at < 0 ? order.length : at; }
+    function rank(k) {
+      let keys = (aliases || {})[k] || k;
+      keys = Array.isArray(keys) ? keys : [keys];
+      return Math.min.apply(null, keys.map(function (key) { const at = order.indexOf(scope + '.' + key); return at < 0 ? order.length : at; }));
+    }
     return items.slice().sort(function (a, b) { return rank(a[0]) - rank(b[0]); });
   }
   function sectionTabsHtml(scope, active, items) {
@@ -689,7 +721,7 @@ window.UI = (function () {
   function renderNav() {
     const st = S();
     const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0,
-      st.me && st.me.admin ? 1 : 0, subUnseen, JSON.stringify(st.features || {})].join('|');
+      st.me && st.me.admin ? 1 : 0, subUnseen, JSON.stringify(st.features || {}), JSON.stringify(st.featureOrder || {})].join('|');
     if (sig === navSig) return;
     navSig = sig;
     const nav = $('nav');
@@ -726,7 +758,10 @@ window.UI = (function () {
       });
       return b;
     };
-    D.NAV.forEach(function (item) { nav.appendChild(makeItem(item)); });
+    window.GameFeatures.orderedMenu((S().featureOrder || {}).menu).forEach(function (id) {
+      const item = D.NAV.find(function (n) { return n.id === id; });
+      if (item) nav.appendChild(makeItem(item));
+    });
     revealActiveNav();
   }
   function revealActiveNav() {
@@ -2049,6 +2084,7 @@ window.UI = (function () {
     const bought = st.rodSlotsCount || 1;
     const max = st.rodSlotsMax || 8;
     const wrap = el('div', 'rod-slots');
+    wrap.dataset.orderFeature = 'bd.save bd.slots';
     const head = el('div', 'rs-head');
     const activeSlot = (typeof st.rodActiveSlot === 'number' && st.rodActiveSlot >= 0) ? st.rodActiveSlot : -1;
     head.innerHTML = '<b>🎣 我的钓竿</b>' +
@@ -2060,6 +2096,7 @@ window.UI = (function () {
     const grid = el('div', 'rs-grid');
     for (let i = 0; i < max; i++) {
       const card = el('div', 'rs-card' + (i >= bought ? ' locked' : '') + (slots[i] ? ' has' : ''));
+      card.dataset.orderFeature = i >= bought ? 'bd.slots' : 'bd.save';
       if (i >= bought) {
         const price = i === bought ? st.nextRodSlotPrice : null;
         card.innerHTML = '<div class="rs-name">🔒 槽位 ' + (i + 1) + '</div>' +
@@ -2214,6 +2251,7 @@ window.UI = (function () {
 
     // 配装器入口：从背包检索各部位候选件，按属性优先级与目标区间求最优组合，可一键装配
     const autoBar = el('div', 'bd-auto-bar');
+    autoBar.dataset.orderFeature = 'bd.autobuild';
     const abBtn = el('button', 'primary ab-open-btn', '🧠 自动配装 · 配装器');
     abBtn.title = '从背包检索 7 个部位的组件，按优先级（如先钓速、再双钓）求总属性最高的组合；' +
       '可设目标下限/上限，并用滑块反查「钓速定到多少时其他属性还能到多少」';
@@ -2224,6 +2262,7 @@ window.UI = (function () {
     panel.appendChild(autoBar);
 
     const grid = el('div', 'bd-grid');
+    grid.dataset.orderFeature = 'bd.equip';
     D.ROD_PARTS.forEach(function (part) {
       const cur = st.bd[part.key] || {};
       const comp = D.componentOf(cur.compId);
@@ -3019,6 +3058,7 @@ window.UI = (function () {
         '按现价把渔获与材料卖给系统：卖得越多价格越低（后台可调）。左上「出售数量」对全商店生效，卡片上的按钮按该数量结算。'));
       const cols = el('div', 'shop-cols');
       const colMain = el('div', 'shop-colmain');
+      colMain.dataset.orderFeature = 'mall.sell';
 
       // —— 出售数量（全局生效，模块级保留）——
       const qtyBar = el('div', 'shop-qtybar');
@@ -3086,6 +3126,7 @@ window.UI = (function () {
 
       // —— 右栏：自动售出（骨架只建一次；逐项控制都在弹窗子菜单里）——
       const colSide = el('div', 'shop-colside');
+      colSide.dataset.orderFeature = 'mall.autosell';
       const asPanel = el('div', 'shop-autosell');
       asPanel.id = 'shop-as-panel';
       asPanel.innerHTML =
@@ -3832,6 +3873,7 @@ window.UI = (function () {
       '玩家之间的挂单买卖：上架费按 6 / 12 / 24 小时收 1% / 3% / 5%（下架不退），成交再收 10% 税（卖家承担）。右栏可直接从背包上架。'));
 
     const colMain = el('div', 'col-main');
+    colMain.dataset.orderFeature = 'mall.marketbuy';
     const market = loaded ? (st.market || []) : [];
     const countsInfo = st.marketPage || st.marketMinePage || {};
     const mineCount = countsInfo.mineCount || 0;
@@ -4002,6 +4044,7 @@ window.UI = (function () {
     panel.appendChild(colMain);
 
     const side = el('div', 'col-side');
+    side.dataset.orderFeature = 'mall.list';
     side.appendChild(el('div', 'hint', '「上架」把你的物品挂到市集（收定价总额 1% 上架费，下架不退）；成交另收 10% 税（卖家承担）。'));
     side.appendChild(keepSell || marketSellPanel(st));
     panel.appendChild(side);
@@ -7747,7 +7790,7 @@ window.UI = (function () {
     const panel = el('div', 'panel wide ws-panel');
     panel.innerHTML = pageHead('⚒', '工坊', wsTab === 'smelt' ? '' : '开箱得组件 · 熔炼换词缀 · 重铸洗数值') +
       '<div class="inv-cats ws-tabs section-tabs" role="tablist">' +
-      orderedFeatureTabs('workshop', [['open', '🎁 开箱'], ['smelt', '🔥 熔炼'], ['recast', '♻ 重铸'], ['forge', '⚒ 锻造']]).map(function (kv) {
+      orderedFeatureTabs('workshop', [['open', '🎁 开箱'], ['smelt', '🔥 熔炼'], ['recast', '♻ 重铸'], ['forge', '⚒ 锻造']], { open: ['craft', 'open'] }).map(function (kv) {
         return '<button class="inv-cat' + (wsTab === kv[0] ? ' on' : '') + '" data-wstab="' + kv[0] +
           '" role="tab" aria-selected="' + (wsTab === kv[0] ? 'true' : 'false') + '">' + kv[1] + '</button>';
       }).join('') + '</div>';
@@ -8069,7 +8112,8 @@ window.UI = (function () {
           const range = comp && D.catalystRangeFor(comp.part, type);
           const full = comp && comp.affixes.length >= (D.QUALITY[comp.quality] || {}).cap;
           const exists = comp && comp.affixes.some(function (a) { return a.type === type; });
-          const reason = !comp ? '请先选择组件' : full ? '词条数已达上限' : exists ? '已有该词条' : !range ? '无法新增该词条' : !have ? '库存不足' : '';
+          const outside = comp && !D.getSmeltCfg().forgeAnyAffix && !D.COMPONENT_BASES.find(function (b) { return b.id === comp.baseId; }).pool.some(function (a) { return a.type === type; });
+          const reason = !comp ? '请先选择组件' : outside ? '当前禁止锻造池外词条' : full ? '词条数已达上限' : exists ? '已有该词条' : !range ? '无法新增该词条' : !have ? '库存不足' : '';
           return '<button type="button" class="ws-mat forge-mat' + (wsForgeMat === id ? ' selected' : '') + (reason ? ' unavailable' : '') +
             '" data-forge-mat="' + esc(id) + '" aria-pressed="' + (wsForgeMat === id) + '"' + (reason ? ' disabled' : '') + '>' +
             '<img class="sm-material-icon" src="assets/item/' + esc(id) + '.png" alt="" /><span class="sm-mat-info"><strong class="wm-name">' + esc(D.itemName(id)) +
@@ -8102,7 +8146,8 @@ window.UI = (function () {
     const range = eligible && chosenType ? D.catalystRangeFor(eligible.part, chosenType) : null;
     const have = wsForgeMat ? (st.inventory[wsForgeMat] || 0) : 0;
     const already = eligible && chosenType && (eligible.affixes || []).some(function (a) { return a.type === chosenType; });
-    const canGo = !!(eligible && chosenType && range && have > 0 && !already && !wsBusy);
+    const forgeAllowed = !eligible || D.getSmeltCfg().forgeAnyAffix || D.COMPONENT_BASES.find(function (b) { return b.id === eligible.baseId; }).pool.some(function (a) { return a.type === chosenType; });
+    const canGo = !!(eligible && chosenType && range && have > 0 && !already && forgeAllowed && !wsBusy);
     body.classList.add('smelt-workbench');
     body.innerHTML = '<fieldset class="sm-draft"' + (wsBusy ? ' disabled' : '') + '><legend class="sr-only">锻造方案</legend>' +
       '<div class="sm-step-title"><h3>01 <span>选择组件</span></h3><span>仅限词条未达上限</span></div>' +
@@ -8126,7 +8171,7 @@ window.UI = (function () {
       '<div class="ws-preview"><div class="ws-line" id="ws-forge-state">' +
       (!eligible ? '<span class="muted">先选择一件词条未达上限的组件</span>'
         : (!chosenType ? '<span class="muted">选择一种催化剂材料</span>'
-          : (already ? '<b class="err">该组件已经拥有这条词缀</b>'
+          : (!forgeAllowed ? '<b class="err">当前禁止锻造池外词条</b>' : already ? '<b class="err">该组件已经拥有这条词缀</b>'
             : (have > 0 ? '<b class="ok">可以锻造</b>' : '<b class="err">催化剂材料不足</b>')))) + '</div>' +
       (eligible && chosenType && range ? '<div class="ws-result-card"><img class="ws-result-icon" src="assets/item/' + esc(eligible.baseId) + '.png" alt="" />' +
         '<div><strong class="' + qualityClass(eligible) + '">' + esc(eligible.name) + '</strong>' +
@@ -8326,7 +8371,7 @@ window.UI = (function () {
   let mallTab = 'mall';         // 'mall' 限购 | 'shop' 收购 | 'market' 市集
   function mallTabsHtml(active) {
     return '<div class="inv-cats ws-tabs section-tabs" role="tablist">' +
-      orderedFeatureTabs('mall', [['mall', '🛒 限购'], ['shop', '🪙 收购'], ['market', '💱 市集']], { mall: 'buy', shop: 'sell', market: 'list' }).map(function (kv) {
+      orderedFeatureTabs('mall', [['mall', '🛒 限购'], ['shop', '🪙 收购'], ['market', '💱 市集']], { mall: 'buy', shop: ['sell', 'autosell'], market: ['list', 'marketbuy'] }).map(function (kv) {
         return '<button class="inv-cat' + (active === kv[0] ? ' on' : '') + '" data-malltab="' + kv[0] +
           '" role="tab" aria-selected="' + (active === kv[0] ? 'true' : 'false') + '">' + kv[1] + '</button>';
       }).join('') + '</div>';
@@ -8880,6 +8925,7 @@ window.UI = (function () {
 
     // 冷却状态条
     const banner = el('div', 'fb-banner' + (status.ready ? ' ready' : ' cooling'));
+    banner.dataset.orderFeature = 'feedback.skip';
     if (status.ready) {
       banner.innerHTML = '✅ 现在可以提交反馈（提交后进入 ' + cdText + ' 冷却）';
     } else {
@@ -8904,6 +8950,7 @@ window.UI = (function () {
     // 提交表单（「✍ 提交」页签）
     if (fbTab === 'submit') {
     const form = el('div', 'fb-form');
+    form.dataset.orderFeature = 'feedback.submit';
     const kindWrap = el('div', 'fb-kinds');
     FB_KINDS.forEach(function (kv) {
       const b = el('button', 'inv-cat' + (fbKind === kv[0] ? ' on' : ''), kv[1]);
@@ -9173,6 +9220,7 @@ window.UI = (function () {
     // ① 船
     const ship = d.ship;
     const pShip = el('div', 'panel');
+    pShip.dataset.orderFeature = 'sea.upgrade';
     pShip.innerHTML = '<h3>🚤 我的船 · ' + esc(ship.name) + '（' + ship.lv + '/5 级）</h3>';
     if (ship.max) {
       pShip.innerHTML += '<div class="hint">已满级：全部远洋钓点与深海海域开放。</div>';
@@ -9185,6 +9233,7 @@ window.UI = (function () {
     wrap.appendChild(pShip);
     // ② 海图
     const pChart = el('div', 'panel');
+    pChart.dataset.orderFeature = 'sea.chart sea.voyage';
     pChart.innerHTML = '<h3>🗺 海图工台</h3>' +
       '<div class="hint">海图碎片 <b>' + d.chartfrag + '</b>/' + d.chartCost + '（远洋钓点掉落 + 漂流宝箱）· 未知海图 <b>' + d.charts + '</b> 张</div>' +
       '<div class="sa-row"><button class="btn primary" id="sea-chart-craft"' + (d.chartfrag >= d.chartCost ? '' : ' disabled') + '>🧩 合成未知海图（' + d.chartCost + ' 碎片 → 1 张）</button>' +

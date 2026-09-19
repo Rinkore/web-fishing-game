@@ -432,6 +432,7 @@ function planForge(rec, id, materialId) {
   if ((meta.affixes || []).some(function (a) { return a.type === type; })) {
     return { error: '该组件已经拥有「' + (D.AFFIX_LABEL[type] || type) + '」词条' };
   }
+  if (!D.getSmeltCfg().forgeAnyAffix && !D.COMPONENT_BASES.find(function (b) { return b.id === meta.baseId; }).pool.some(function (a) { return a.type === type; })) return { error: '当前锻造不允许新增该底材的池外词条' };
   if (!invHas(rec, mat, 1)) return { error: itemName(mat) + '不足（需 1 个）' };
   const range = D.catalystRangeFor(meta.part, type);
   if (!range) return { error: '该部位没有可用的催化区间' };
@@ -790,8 +791,8 @@ function flattenLootPool(pool) {
 // 不再对加成结果设固定上限（旧版硬性封顶 range[1]*1.3，导致 +55% 体型也被压到 520cm）；
 // 数值上限由底材体型范围与词缀本身决定。
 function rollSizeOf(range, eff, modelOverride) {
-  const model = modelOverride || (D.getFishCfg && D.getFishCfg().sizeModel) || 'normal';
-  let v = range[0] + (range[1] - range[0]) * D.rollRatio(model);
+  const config = typeof modelOverride === 'object' ? modelOverride : Object.assign({}, D.getFishCfg(), modelOverride ? { sizeModel: modelOverride } : {});
+  let v = range[0] + (range[1] - range[0]) * D.rollFishRatio(config);
   if (eff.size) v = Math.max(1, v * (1 + eff.size / 100));
   return Math.round(v * 10) / 10;
 }
@@ -810,7 +811,7 @@ function resolveItemAt(spot, eff) {
     const m = D.MATERIALS.find(function (x) { return x.id === id; });
     if (m) return { kind: 'material', rarity: m.rarity, id: m.id, name: m.name, size: null };
   }
-  if (type === 'component') return D.rollComponent();
+  if (type === 'component') return D.rollComponent(id);
   return null;
 }
 // ---- 远洋（出海）：船级 / 未知海图临时海域（v0.19.0）----
@@ -1631,8 +1632,9 @@ function validateLootGroup(input) {
     if (type === 'fish') { if (!D.fishTierOf(iid)) return { error: '未知鱼类：' + (iid || pick) }; }
     else if (type === 'material') { if (!D.MATERIALS.some(function (m) { return m.id === iid; })) return { error: '未知材料：' + (iid || pick) }; }
     else if (type !== 'component') return { error: '战利品组只能放鱼 / 材料 / 组件：' + pick };
+    else if (!D.componentChoices(iid).length) return { error: '未知组件类型或底材：' + iid };
     if (!isFinite(w) || w < 0 || w > 1000000) return { error: '组内权重需在 0 - 1000000 之间' };
-    out.push({ pick: type === 'component' ? 'component:' : pick, weight: w });
+    out.push({ pick: pick, weight: w });
   }
   if (!out.some(function (e) { return e.weight > 0; })) return { error: '战利品组的总权重不能为 0' };
   return { ok: true, group: { id: id, name: name, weight: weight, items: out } };
@@ -1652,7 +1654,8 @@ function validatePoolEntries(list) {
     else if (type === 'group') { if (!lootGroupById(id)) return { error: '未知战利品组：' + (id || pick) }; }
     else if (type !== 'component') return { error: '无效的掉落条目：' + pick };
     if (!isFinite(weight) || weight < 0 || weight > 1000000) return { error: '权重需在 0 - 1000000 之间' };
-    out.push({ pick: type === 'component' ? 'component:' : pick, weight: weight });
+    if (type === 'component' && !D.componentChoices(id).length) return { error: '未知组件类型或底材：' + id };
+    out.push({ pick: pick, weight: weight });
   }
   if (!out.some(function (e) { return e.weight > 0; })) return { error: '掉落池的总权重不能为 0' };
   return { ok: true, pool: out };
@@ -2718,7 +2721,7 @@ function saveDomain(file, keys) {
   keys.forEach(function (k) { out[k] = world[k]; });
   writeJson(file, out);
 }
-const MARKET_KEYS = ['listingSeq', 'listings'];
+const MARKET_KEYS = ['listingSeq', 'listings', 'marketSupply'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax', 'rank', 'lastRec'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
 const CONFIG_KEYS = ['features', 'featureOrder', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'lootCfg', 'chestCfg', 'seaCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg', 'snapshotCfg', 'wikiConfigRevision'];
@@ -3823,6 +3826,10 @@ function bulkListPlan(d) {
   // 可上架的静态物品一律走 D.allItems()（带 kind 标签）：注意 D.FISH 是**按 id 索引的对象**、
   // D.MATERIALS / D.CHESTS 才是数组，直接 .map 会抛「不是函数」。
   const ALL_ITEMS = D.allItems();
+  for (const kind of kinds) {
+    const selected = picks[kind];
+    if (selected != null && (!Array.isArray(selected) || selected.some(function (id) { return kind === 'component' ? !D.COMPONENT_BASES.some(function (b) { return b.id === id; }) : !ALL_ITEMS.some(function (it) { return it.kind === kind && it.id === id; }); }))) return { error: '限定物品包含未知或错误类型：' + kind };
+  }
   const idsOfKind = function (kind) { return ALL_ITEMS.filter(function (i) { return i.kind === kind; }).map(function (i) { return i.id; }); };
   const fishIds = bulkPicksOf(picks.fish, idsOfKind('fish'));
   const matIds = bulkPicksOf(picks.material, idsOfKind('material'));
@@ -3832,7 +3839,7 @@ function bulkListPlan(d) {
   // 限定了底材却与所选部位没有交集 → 直接报错（静默忽略限定会让人以为「按限定挂的」）
   const rawPicked = (Array.isArray(picks.component) ? picks.component : []).map(String);
   const pickedBases = rawPicked.filter(function (id) { return partBases.some(function (b) { return b.id === id; }); });
-  if (rawPicked.length && !pickedBases.length) return { error: '限定的组件底材都不在所选部位下（换部位或清空底材限定）' };
+  if (kinds.includes('component') && rawPicked.length && !pickedBases.length) return { error: '限定的组件底材都不在所选部位下（换部位或清空底材限定）' };
   const baseIds = pickedBases.length ? pickedBases : partBases.map(function (b) { return b.id; });
   if (kinds.indexOf('component') >= 0 && !baseIds.length) return { error: '所选部位下没有可用的底材（换部位或清空底材限定）' };
 
@@ -3844,7 +3851,8 @@ function bulkListPlan(d) {
   }
   // 词条条数区间 → genComponent 的数量权重（数组下标 = 条数-1）
   const affixMin = bulkNum(d.affixMin, 1, 1, 4);
-  const affixMax = bulkNum(d.affixMax, 0, 0, 4);   // 0 = 用该品质上限
+  const affixMax = bulkNum(d.affixMax, 0, 0, 4);
+  if (kinds.includes('component') && affixMax > 0 && affixMax < affixMin) return { error: '词条数量上限不能低于下限' };   // 0 = 用该品质上限
   const affixWeights = [1, 2, 3, 4].map(function (n) {
     return (n >= affixMin && (!affixMax || n <= affixMax)) ? 1 : 0;
   });
@@ -3881,6 +3889,73 @@ function bulkListPlan(d) {
   const mul = mulMin === mulMax ? String(mulMin) : (mulMin + '~' + mulMax);
   return { items: items, hours: hours, mul: mul, byKind: byKind };
 }
+// Supply state lives with listings so each batch and its progress persist together.
+function marketSellerKeys(d) {
+  const raw = d.sellers != null ? d.sellers : [d.seller];
+  if (!Array.isArray(raw) || !raw.length || raw.length > 100) return null;
+  const keys = Array.from(new Set(raw.map(function (k) { return String(k || '').trim().toLowerCase(); })));
+  return keys.every(function (key) { return Object.prototype.hasOwnProperty.call(users, key) && !banInfoOf(users[key]).banned; }) ? keys : null;
+}
+function publishMarketSupply(plan, sellers, ruleId) {
+  const now = Date.now(), ttl = LISTING_TTL_MS_ENV || plan.hours * 3600000;
+  return plan.items.map(function (it) {
+    const key = sellers[Math.floor(Math.random() * sellers.length)];
+    const listing = { lid: world.listingSeq++, seller: key, sellerName: users[key].name,
+      id: it.id, name: it.name, qty: it.qty, price: it.price, t: now, expireAt: now + ttl, hours: plan.hours, src: 'admin' };
+    if (ruleId) listing.supplyId = ruleId;
+    world.listings.push(listing);
+    return listing;
+  });
+}
+function supplyStatus() {
+  const rule = world.marketSupply;
+  if (!rule) return null;
+  return Object.assign({}, rule, { stock: world.listings.filter(function (l) { return l.supplyId === rule.id && l.qty > 0 && l.expireAt > Date.now(); }).length });
+}
+function tickMarketSupply(now) {
+  const rule = world.marketSupply;
+  if (!rule || !rule.enabled || now < rule.nextAt) return;
+  try {
+    const sellers = marketSellerKeys(rule.recipe);
+    if (!sellers) throw new Error('卖家名单包含已删除或封禁账号，请修改后重新启动');
+    let wanted;
+    if (rule.mode === 'gradual') wanted = Math.min(rule.batch, rule.remaining);
+    else {
+      const stock = supplyStatus().stock;
+      if (stock < rule.threshold) rule.refilling = true;
+      if (stock >= rule.target) rule.refilling = false;
+      wanted = rule.refilling ? Math.min(rule.batch, rule.target - stock) : 0;
+    }
+    if (wanted > 0) {
+      const kinds = Object.keys(rule.recipe.counts).filter(function (k) { return rule.recipe.counts[k] > 0; });
+      const counts = {};
+      // A gradual run consumes each kind's requested count, not just its total.
+      const weights = rule.mode === 'gradual' ? rule.remainingCounts : rule.recipe.counts;
+      for (let i = 0; i < wanted; i++) {
+        const available = kinds.filter(function (k) { return rule.mode !== 'gradual' || weights[k] > (counts[k] || 0); });
+        const total = available.reduce(function (n, k) { return n + (rule.mode === 'gradual' ? weights[k] - (counts[k] || 0) : weights[k]); }, 0);
+        let roll = Math.random() * total, chosen = available[available.length - 1];
+        for (const k of available) { roll -= rule.mode === 'gradual' ? weights[k] - (counts[k] || 0) : weights[k]; if (roll < 0) { chosen = k; break; } }
+        counts[chosen] = (counts[chosen] || 0) + 1;
+      }
+      const plan = bulkListPlan(Object.assign({}, rule.recipe, { counts: counts }));
+      if (plan.error || plan.items.length !== wanted) throw new Error(plan.error || '生成数量不符，计划已暂停');
+      publishMarketSupply(plan, sellers, rule.id);
+      rule.created += wanted;
+      if (rule.mode === 'gradual') {
+        Object.keys(counts).forEach(function (k) { rule.remainingCounts[k] -= counts[k]; });
+        rule.remaining -= wanted;
+        if (!rule.remaining) rule.enabled = false;
+      }
+    }
+    rule.nextAt = now + rule.intervalSeconds * 1000;
+    rule.error = '';
+    saveMarket();
+    if (wanted) broadcastMarket();
+  } catch (err) { rule.enabled = false; rule.error = err.message; saveMarket(); }
+}
+setInterval(function () { tickMarketSupply(Date.now()); }, 1000).unref();
+
 function broadcastRecords() { broadcast({ type: 'records', records: world.bigRecords, small: world.smallRecords, last: world.lastRec || null }); }
 
 function groundCounts() {
@@ -3989,11 +4064,16 @@ const server = http.createServer(function (req, res) {
           if (typeof d.features[key] !== 'boolean') return true;
           return key === 'adminBypass' ? false : !Features.byId[key];
         })) return apiResp(res, 400, { error: '未知功能或开关值不是布尔值' });
-        world.features = Object.assign({}, world.features || {}, d.features);
+        // Commit switches only after every supplied order has been validated.
       }
       if (d.featureOrder != null) {
         if (typeof d.featureOrder !== 'object' || Array.isArray(d.featureOrder)) return apiResp(res, 400, { error: '功能排序格式错误' });
         const next = Object.assign({}, world.featureOrder || {});
+        if (d.featureOrder.menu != null) {
+          const order = d.featureOrder.menu;
+          if (!Array.isArray(order) || order.length !== Features.menuIds.length || new Set(order).size !== order.length || order.some(function (id) { return !Features.menuIds.includes(id); })) return apiResp(res, 400, { error: '菜单排序包含未知、重复或缺失项' });
+          next.menu = order.slice();
+        }
         for (const g of Features.groups) {
           if (!g.children.length) continue;
           const wanted = d.featureOrder[g.id];
@@ -4009,6 +4089,7 @@ const server = http.createServer(function (req, res) {
         }
         world.featureOrder = next;
       }
+      if (d.features != null) world.features = Object.assign({}, world.features || {}, d.features);
       saveConfig();
       if (Features.blocked(world.features, 'fishing.cast')) {
         Array.from(fishingTimers.keys()).forEach(function (key) { stopFishingSession(key, { forget: true }); });
@@ -6951,8 +7032,9 @@ function lootPreviewRows(spot, rareVal) {
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
       if (d.sizeModel == null) return apiResp(res, 400, { error: '缺少 sizeModel' });
-      if (D.ROLL_MODELS.indexOf(d.sizeModel) < 0) return apiResp(res, 400, { error: '未知的体型 roll 模型' });
-      const merged = Object.assign({}, D.getFishCfg ? D.getFishCfg() : {}, { sizeModel: d.sizeModel });
+      if (D.ROLL_MODELS.concat(['custom']).indexOf(d.sizeModel) < 0) return apiResp(res, 400, { error: '未知的体型 roll 模型' });
+      if (d.sizeWeights != null && !D.validSizeWeights(d.sizeWeights)) return apiResp(res, 400, { error: '体型分布需为10个0~100的数值，且不能全部为0' });
+      const merged = Object.assign({}, D.getFishCfg(), { sizeModel: d.sizeModel }, d.sizeWeights ? { sizeWeights: d.sizeWeights } : {});
       world.fishCfg = D.setFishCfg(merged);
       saveConfig();
       apiResp(res, 200, { ok: true, fishCfg: world.fishCfg });
@@ -6989,7 +7071,9 @@ function lootPreviewRows(spot, rareVal) {
       if (!all.length) return apiResp(res, 400, { error: '没有带体型范围的鱼' });
       const cur = (D.getFishCfg && D.getFishCfg().sizeModel) || 'normal';
       const model = d.model != null ? d.model : cur;
-      if (D.ROLL_MODELS.indexOf(model) < 0) return apiResp(res, 400, { error: '未知的体型 roll 模型' });
+      if (D.ROLL_MODELS.concat(['custom']).indexOf(model) < 0) return apiResp(res, 400, { error: '未知的体型 roll 模型' });
+      if (d.sizeWeights != null && !D.validSizeWeights(d.sizeWeights)) return apiResp(res, 400, { error: '无效的体型分布权重' });
+      const previewCfg = Object.assign({}, D.getFishCfg(), { sizeModel: model }, d.sizeWeights ? { sizeWeights: d.sizeWeights } : {});
       const target = d.fishId ? all.find(function (f) { return f.id === d.fishId; }) : null;
       if (d.fishId && !target) return apiResp(res, 400, { error: '未知鱼类：' + d.fishId });
       const buckets = new Array(20).fill(0);
@@ -6997,7 +7081,7 @@ function lootPreviewRows(spot, rareVal) {
       const use = target ? [target] : all;
       for (let i = 0; i < n; i++) {
         const f = use[i % use.length];
-        const size = rollSizeOf(f.size, eff, model);
+        const size = rollSizeOf(f.size, eff, previewCfg);
         const base = size / (1 + bonus / 100);
         const pos = f.size[1] > f.size[0] ? (base - f.size[0]) / (f.size[1] - f.size[0]) : 0;
         buckets[Math.max(0, Math.min(19, Math.floor(pos * 20)))]++;
@@ -7457,14 +7541,44 @@ function lootPreviewRows(spot, rareVal) {
   // 与玩家上架的区别：不扣背包、不收上架费、不受「每人 40 单」限制；挂单带 src:'admin'，
   // 过期或被退回时直接清除（见 sweepExpiredListings / market/return）。
   // dryRun=true 只生成样例与统计，不写任何数据（前端「预览」用）。
+  if (p === '/api/admin/market/supply' && req.method === 'GET') {
+    if (!adminOf(u.query.token)) return apiResp(res, 403, { error: '需要管理员权限' });
+    return apiResp(res, 200, { rule: supplyStatus() });
+  }
+  if (p === '/api/admin/market/supply' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      const d = bodyObj(body);
+      if (!d || !adminOf(d.token)) return apiResp(res, 403, { error: '需要管理员权限' });
+      if (d.action === 'pause') {
+        if (world.marketSupply) { world.marketSupply.enabled = false; saveMarket(); }
+        return apiResp(res, 200, { ok: true, rule: supplyStatus() });
+      }
+      if (!['gradual', 'restock'].includes(d.mode)) return apiResp(res, 400, { error: '未知上架模式' });
+      const recipe = {};
+      ['sellers', 'seller', 'hours', 'counts', 'picks', 'part', 'quality', 'affixMin', 'affixMax', 'qtyMin', 'qtyMax', 'mulMin', 'mulMax'].forEach(function (k) { if (d[k] != null) recipe[k] = d[k]; });
+      if (!marketSellerKeys(recipe)) return apiResp(res, 400, { error: '卖家名单无效' });
+      const integer = function (v, min, max) { return Number.isInteger(v) && v >= min && v <= max; };
+      if (!integer(d.batch, 1, 500) || !integer(d.intervalSeconds, 1, 86400)) return apiResp(res, 400, { error: '每批1~500条，间隔1~86400秒' });
+      if (d.mode === 'restock' && (!integer(d.threshold, 1, 5000) || !integer(d.target, d.threshold, 5000))) return apiResp(res, 400, { error: '阈值与目标需为1~5000整数，目标不能小于阈值' });
+      const plan = bulkListPlan(recipe);
+      if (plan.error) return apiResp(res, 400, { error: plan.error });
+      if (plan.items.length !== Object.values(recipe.counts).reduce(function (a, b) { return a + Number(b); }, 0)) return apiResp(res, 400, { error: '选项包含不可生成的物品' });
+      world.marketSupply = { id: 'supply-' + crypto.randomBytes(8).toString('hex'), enabled: true, mode: d.mode,
+        recipe: recipe, batch: d.batch, intervalSeconds: d.intervalSeconds, threshold: d.threshold || 1, target: d.target || 1,
+        remaining: plan.items.length, remainingCounts: Object.assign({}, recipe.counts), created: 0, nextAt: Date.now() + d.intervalSeconds * 1000, error: '' };
+      saveMarket();
+      return apiResp(res, 200, { ok: true, rule: supplyStatus() });
+    });
+    return;
+  }
   if (p === '/api/admin/market/bulk' && req.method === 'POST') {
     adminAuditedBody(req, p, function (body) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const a = adminOf(d.token);
       if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
-      const sellerKey = String(d.seller || '').toLowerCase();
-      const seller = users[sellerKey];
-      if (!seller) return apiResp(res, 400, { error: '卖家账号不存在' });
+      const sellerKeys = marketSellerKeys(d);
+      if (!sellerKeys) return apiResp(res, 400, { error: '请选择有效且未封禁的卖家名单（最多100人）' });
+      const sellerKey = sellerKeys[0], seller = users[sellerKey];
       // 生成过程兜底：抛错也要回一个响应，否则请求会一直挂着（客户端只能等到超时）
       let plan = null;
       try { plan = bulkListPlan(d); } catch (e) { return apiResp(res, 500, { error: '生成失败：' + ((e && e.message) || e) }); }
@@ -7476,25 +7590,8 @@ function lootPreviewRows(spot, rareVal) {
           hours: plan.hours, mul: plan.mul, byKind: plan.byKind,
         });
       }
-      const ttl = LISTING_TTL_MS_ENV || plan.hours * 3600 * 1000;
-      const now = Date.now();
-      const created = [];
-      plan.items.forEach(function (it) {
-        const listing = {
-          // seller 必须是账号 key（小写）：成交/下架/退单/删除账号都按 key 查，
-          // 写成 seller.username 会因大小写不符而不入账、不进该账号的历史订单。
-          lid: world.listingSeq++, seller: sellerKey, sellerName: seller.name,
-          id: it.id, name: it.name, qty: it.qty, price: it.price,
-          t: now, expireAt: now + ttl, hours: plan.hours, src: 'admin',
-        };
-        world.listings.push(listing);
-        created.push(listing);
-      });
-      saveMarket();
-      broadcastMarket();
-      if (created.length) {
-        sendTo(sellerKey, { type: 'notice', msg: '管理员以你的名头在市集上架了 ' + created.length + ' 件物品（' + plan.hours + ' 小时）' });
-      }
+      const created = publishMarketSupply(plan, sellerKeys);
+      saveMarket(); broadcastMarket();
       apiResp(res, 200, {
         ok: true, created: created.length, hours: plan.hours, mul: plan.mul, byKind: plan.byKind,
         seller: { key: sellerKey, name: seller.name },
@@ -7628,7 +7725,8 @@ function lootPreviewRows(spot, rareVal) {
           const x = D.MATERIALS.find(function (y) { return y.id === id; });
           if (x) { name = x.name; quality = (D.QUALITY[x.rarity] || {}).name || x.rarity; }
         } else if (type === 'component') {
-          name = '组件（随机底材）'; quality = '按品质权重';
+          const choices = D.componentChoices(id);
+          name = id.indexOf('base/') === 0 && choices.length ? choices[0].name : id.indexOf('part/') === 0 ? ((D.ROD_PARTS.find(function (p) { return p.key === id.slice(5); }) || {}).name || id) + '（随机底材）' : '组件（随机底材）'; quality = '按品质权重';
         }
         return { pick: e.pick, name: name, quality: quality, group: e.groupName || '', common: f < 1, weight: Math.round(e.weight * 1000) / 1000, beforePct: Math.round(p1 * 100) / 100, afterPct: Math.round(p2 * 100) / 100 };
       }).sort(function (x, y) { return y.beforePct - x.beforePct; });
@@ -7680,6 +7778,15 @@ function lootPreviewRows(spot, rareVal) {
         const c = D.compileExpr(fsrc, D.RETAIN_VAR_NAMES);
         if (c.error) err = '保留概率公式无效：' + c.error + '（可用变量：' + D.RETAIN_VAR_NAMES.join('/') + '）';
         else patch.retainFormula = fsrc;
+      }
+      if (d.catalystRatio != null) {
+        const ratio = Number(d.catalystRatio);
+        if (!Number.isFinite(ratio) || ratio < 0 || ratio > 200) err = '催化区间比例需为0~200%';
+        else patch.catalystRatio = ratio;
+      }
+      if (d.forgeAnyAffix != null) {
+        if (typeof d.forgeAnyAffix !== 'boolean') err = '锻造池外开关必须为布尔值';
+        else patch.forgeAnyAffix = d.forgeAnyAffix;
       }
       if (d.pearlRollTwice != null) patch.pearlRollTwice = !!d.pearlRollTwice;
       if (d.recastMinValue != null) patch.recastMinValue = (d.recastMinValue === true || d.recastMinValue === 1 || d.recastMinValue === '1') ? 1 : 0;

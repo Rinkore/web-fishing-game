@@ -199,7 +199,7 @@ window.Admin = (function () {
     main.innerHTML = '<h2>🔒 玩家功能开关</h2>' +
       '<div class="hint" style="margin-bottom:10px">勾选为开放。关闭主页面会同时停用下属操作，子项设置会保留。' +
       '出售开关适用于所有入口；关闭出售也暂停自动售出。停止钓鱼、取消交易、撤回挂单始终允许。' +
-      '角色外观与自动配装为本地界面功能。</div>' +
+      '拖动左侧把手调整菜单；拖动子功能标签调整子功能，保存后客户端菜单、页签和同组操作同步排序。</div>' +
       '<div class="feat-bar">' +
       '<label class="chk feat-bypass" title="开启后，带管理员身份的操作不受这些开关限制（玩家端照常受限），便于维护期自测">' +
       '<input type="checkbox" id="feat-admin-bypass"> 允许管理员进入已关闭功能</label>' +
@@ -218,7 +218,7 @@ window.Admin = (function () {
       const draft = Object.assign({}, r.data.features);
       const groupNameOf = {};
       r.data.groups.forEach(function (g) { groupNameOf[g.id] = g.name; });
-      const order = {};
+      const order = { menu: GameFeatures.orderedMenu((r.data.featureOrder || {}).menu) };
       r.data.groups.forEach(function (g) {
         if (!g.children.length) return;
         const ids = g.children.map(function (c) { return c.id; });
@@ -228,24 +228,64 @@ window.Admin = (function () {
       const bypassBox = $('feat-admin-bypass');
       if (bypassBox) bypassBox.checked = r.data.features.adminBypass === true;
       // 卡片式布局：一个页面一张卡；子项可单独开关并用上下箭头调整顺序。
-      host.innerHTML = r.data.groups.map(function (g) {
+      const sortedGroups = [];
+      order.menu.forEach(function (id) {
+        sortedGroups.push(r.data.groups.find(function (g) { return g.id === id; }));
+        if (id === 'fishing') sortedGroups.push(r.data.groups.find(function (g) { return g.id === 'bd'; }));
+        if (id === 'codex') sortedGroups.push(r.data.groups.find(function (g) { return g.id === 'records'; }));
+      });
+      host.innerHTML = sortedGroups.filter(Boolean).map(function (g) {
         const on = draft[g.id] !== false;
         const kids = g.children.length ? order[g.id].map(function (id) { return g.children.find(function (c) { return c.id === id; }); }).filter(Boolean) : [];
         return '<section class="panel feature-group' + (on ? '' : ' off') + '"' +
           (g.parent ? ' data-parent="' + g.parent + '"' : '') + ' data-name="' + esc(g.name) + '" data-order-group="' + esc(g.id) + '">' +
-          '<h3><label class="feat-page"><input type="checkbox" data-feature-key="' + g.id + '"' + (on ? ' checked' : '') + '>' +
+          '<h3>' + (order.menu.indexOf(g.id) >= 0 ? '<button type="button" class="feat-drag" draggable="true" title="拖动调整菜单顺序" aria-label="拖动调整菜单顺序">⠿</button>' : '') + '<label class="feat-page"><input type="checkbox" data-feature-key="' + g.id + '"' + (on ? ' checked' : '') + '>' +
           '<span>' + esc(g.name) + '</span><i class="feat-state">' + (on ? '开放' : '已关闭') + '</i></label></h3>' +
           (kids.length
             ? '<div class="feature-children">' + kids.map(function (a, idx) {
               const con = draft[a.id] !== false;
-              return '<span class="feat-chip' + (con ? '' : ' off') + '" data-child-id="' + esc(a.id) + '">' +
+              return '<span class="feat-chip' + (con ? '' : ' off') + '" draggable="true" data-child-id="' + esc(a.id) + '">' +
                 '<label><input type="checkbox" data-feature-key="' + a.id + '"' + (con ? ' checked' : '') + '><span>' + esc(a.name) + '</span></label>' +
                 '<button class="feat-move" type="button" data-move="-1" title="上移"' + (idx === 0 ? ' disabled' : '') + '>↑</button>' +
                 '<button class="feat-move" type="button" data-move="1" title="下移"' + (idx === kids.length - 1 ? ' disabled' : '') + '>↓</button></span>';
             }).join('') + '</div>'
-            : '<div class="hint">（该页没有可单独关闭的单项）</div>') +
+            : '<div class="hint">无独立子项</div>') +
           '<div class="hint feature-inherited"></div></section>';
       }).join('');
+      let dragged = null;
+      host.addEventListener('dragstart', function (ev) {
+        dragged = ev.target.closest('.feat-chip') || (ev.target.closest('.feat-drag') && ev.target.closest('.feature-group'));
+        if (!dragged) { ev.preventDefault(); return; }
+        ev.dataTransfer.setData('text/plain', dragged.dataset.childId || dragged.dataset.orderGroup);
+        ev.dataTransfer.effectAllowed = 'move';
+      });
+      host.addEventListener('dragover', function (ev) { if (dragged) ev.preventDefault(); });
+      host.addEventListener('drop', function (ev) {
+        if (!dragged) return;
+        ev.preventDefault();
+        const child = dragged.matches('.feat-chip');
+        const target = ev.target.closest(child ? '.feat-chip' : '.feature-group');
+        if (!target || target === dragged || (child && target.parentNode !== dragged.parentNode)) return;
+        if (!child && !order.menu.includes(target.dataset.orderGroup)) return;
+        target.parentNode.insertBefore(dragged, target);
+        if (child) {
+          const group = dragged.closest('.feature-group');
+          order[group.dataset.orderGroup] = Array.from(group.querySelectorAll('.feat-chip')).map(function (n, i, all) {
+            n.querySelector('[data-move="-1"]').disabled = i === 0;
+            n.querySelector('[data-move="1"]').disabled = i === all.length - 1;
+            return n.dataset.childId;
+          });
+        } else {
+          order.menu = Array.from(host.querySelectorAll('.feature-group')).map(function (n) { return n.dataset.orderGroup; }).filter(function (id) { return GameFeatures.menuIds.includes(id); });
+          [['fishing', 'bd'], ['codex', 'records']].forEach(function (pair) {
+            const parent = host.querySelector('[data-order-group="' + pair[0] + '"]');
+            const tab = host.querySelector('[data-order-group="' + pair[1] + '"]');
+            if (parent && tab) parent.after(tab);
+          });
+        }
+        dragged = null; $('features-result').textContent = ' 有未保存的排序修改';
+      });
+      host.addEventListener('dragend', function () { dragged = null; });
       function sync() {
         let on = 0, total = 0;
         host.querySelectorAll('.feature-group').forEach(function (group) {
@@ -2131,45 +2171,16 @@ window.Admin = (function () {
   // ================================
   // 服务端仍以「钓场」为内部容器：全部钓点挂在唯一隐式钓场 'map' 下（出海临时海域 sea:* 不在这里管理）。
   const MAP_GID = 'map';
-  let gdOverview = null;   // 最近一次概览数据（编辑器保存后重绘时复用，避免「注册/在线」清零）
-  // 一键布点的钓点命名池：按地图实景起名；重复执行时自动跳过已用名
-  const SPOT_NAME_POOL = ['晨风滩', '老码头', '芦苇荡', '回水湾', '瀑布潭', '灯塔礁', '沉船湾', '渔村港',
-    '湖心', '浅滩', '红树林', '礁石群', '溪口', '绿荫角', '长堤', '野塘'];
   function renderGrounds() {
     const main = $('main');
     main.innerHTML = '<h2>🎣 钓点管理</h2>' +
       '<div class="hint" style="margin-bottom:12px">钓点直接铺在世界地图上：列表选中钓点后编辑上鱼率/速率、掉落池（权重实时换算百分比）与增益，或在地图上拖动定位。保存后全服即时生效，正在钓鱼的玩家下一竿即按新配置掷骰。</div>' +
       '<div id="gd-body">加载中…</div>';
-    Promise.all([
-      loadWorldCfg(true),
-      adminApi('GET', '/api/admin/overview?token=' + encodeURIComponent(token)),
-    ]).then(function (rs) {
-      if (!rs[0] || view !== 'grounds') return;
-      gdOverview = rs[1] && rs[1].ok ? rs[1].data : null;
-      drawGrounds(rs[0], gdOverview);
+    loadWorldCfg(true).then(function (cfg) {
+      if (cfg && view === 'grounds') drawGrounds(cfg);
     });
   }
-  // 按服务器玩家大体数据建议钓点规模：注册每 15 人 +1，夹在 6~16 之间
-  function suggestSpotCount(ov) {
-    const users = Math.max(0, Math.floor((ov && ov.userCount) || 0));
-    return Math.max(6, Math.min(16, 6 + Math.ceil(users / 15)));
-  }
-  // 按比例把 n 个钓点铺满地图：近似正方网格 + 隔行错位，均匀覆盖可用区域（边缘留白）
-  function proportionalLayout(n) {
-    const out = [];
-    if (n <= 0) return out;
-    const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
-    const rows = Math.max(1, Math.ceil(n / cols));
-    for (let i = 0; i < n; i++) {
-      const cx = i % cols, cy = Math.floor(i / cols);
-      const x = cols === 1 ? 50 : 10 + (80 * cx) / (cols - 1) + (cy % 2 === 1 ? (40 / (cols - 1)) / 2 : 0);
-      const y = rows === 1 ? 50 : 12 + (74 * cy) / (rows - 1);
-      out.push([Math.round(Math.max(2, Math.min(98, x)) * 10) / 10, Math.round(Math.max(2, Math.min(98, y)) * 10) / 10]);
-    }
-    return out;
-  }
-  function drawGrounds(cfg, ov) {
-    ov = ov || gdOverview;
+  function drawGrounds(cfg) {
     const g = cfg.grounds.find(function (x) { return x.id === MAP_GID; }) || cfg.grounds[0];
     if (!g) return;
     if (!selSpot || !g.spots.some(function (s) { return s.id === selSpot; })) selSpot = g.spots.length ? g.spots[0].id : null;
@@ -2180,21 +2191,9 @@ window.Admin = (function () {
     const presetOpts = Object.keys(presets).map(function (k) {
       return '<option value="' + k + '">' + esc(presets[k].name) + '</option>';
     }).join('');
-    const suggest = suggestSpotCount(ov);
     const removedS = cfg.removedSpots || [];
     body.innerHTML =
-      // —— 服务器概览 + 智能一键配置 ——
-      '<div class="panel gd-new">' +
-      '<h3 style="margin-top:0">⚡ 智能配置</h3>' +
-      '<div class="hint" style="margin-bottom:8px">当前规模：注册 <b>' + ((ov && ov.userCount) || 0) + '</b> · 在线 <b>' + ((ov && ov.online) || 0) + '</b> · 钓鱼中 <b>' + ((ov && ov.fishingCount) || 0) + '</b> · 钓点 <b>' + g.spots.length + '</b> 个（按玩家规模建议 <b>' + suggest + '</b> 个左右）</div>' +
-      '<div class="mgr-row"><label>钓点数量</label>' +
-      '<input id="ac-count" class="ipt mk-num" type="number" min="1" max="40" step="1" value="' + Math.max(suggest, g.spots.length) + '" />' +
-      '<label class="hint">掉落预设</label><select id="ac-preset" class="ipt gi-type">' + presetOpts + '</select>' +
-      '<button class="btn primary" id="ac-layout" title="不足的数量自动补建（按预设填池），并把全部钓点按比例均匀铺到地图上">⚡ 一键布点</button>' +
-      '<button class="btn" id="ac-replace" title="不增删钓点，只把现有钓点按比例重新铺到地图上">↔ 仅按比例重排</button>' +
-      '<button class="btn" id="ac-fillall" title="把所有钓点的掉落池统一换成所选预设（会覆盖逐点调过的池子）">🧪 全部按预设填池</button>' +
-      '<span id="ac-state" class="hint"></span></div>' +
-      '<div class="hint">一键布点 = 补足数量 + 全部按比例铺图 + 新点填池；已有钓点的名字与池子保持不变，位置可再手动拖动微调。</div>' +
+      '<div class="gd-recovery">' +
       ((removedS.length)
         ? '<div class="gd-removed"><b>已删除钓点（可恢复）</b>：' +
           removedS.map(function (key) {
@@ -2248,7 +2247,7 @@ window.Admin = (function () {
         if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-lock')) return;
         selSpot = row.getAttribute('data-s');
         poolDirty = buffsDirty = false; posDraft = {};
-        drawGrounds(cfg, ov);
+        drawGrounds(cfg);
       };
     });
     body.querySelectorAll('[data-lock]').forEach(function (b) {
@@ -2259,7 +2258,7 @@ window.Admin = (function () {
         adminApi('POST', '/api/admin/spot/lock', { token: token, groundId: MAP_GID, spotId: sid, locked: !(spNow && spNow.locked) }).then(function (r) {
           if (!r.ok) { toast(r.data.error || '操作失败', true); return; }
           toast(r.data.locked ? '钓点已锁定（该点钓鱼已停止）' : '钓点已解锁');
-          loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2, ov); });
+          loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
         });
       };
     });
@@ -2269,85 +2268,10 @@ window.Admin = (function () {
         adminApi('POST', '/api/admin/ground/restore', { token: token, groundId: parts[0], spotId: parts[1] }).then(function (r) {
           if (!r.ok) { toast(r.data.error || '恢复失败', true); return; }
           toast('钓点已恢复');
-          loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2, ov); });
+          loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
         });
       };
     });
-    // —— 智能一键配置：按玩家规模补建钓点 + 按比例铺图 ——
-    $('ac-layout').onclick = function () {
-      const n = Math.max(1, Math.min(40, Math.round(Number($('ac-count').value) || 0)));
-      const preset = $('ac-preset').value;
-      const st = $('ac-state');
-      const missing = Math.max(0, n - g.spots.length);
-      st.innerHTML = missing ? '正在补建 ' + missing + ' 个钓点…' : '正在按比例布点…';
-      const usedNames = {};
-      g.spots.forEach(function (s) { usedNames[s.name] = 1; });
-      let added = 0;
-      let chain = Promise.resolve();
-      function addOne() {
-        const cand = SPOT_NAME_POOL.filter(function (nm) { return !usedNames[nm]; });
-        const nm = cand.length ? cand[0] : ('钓点' + (g.spots.length + added + 1));
-        usedNames[nm] = 1;
-        added++;
-        return adminApi('POST', '/api/admin/spot/add', {
-          token: token, groundId: MAP_GID, id: 'spot_' + Date.now().toString(36) + '_' + added,
-          name: nm, preset: preset, fill: true,
-        }).then(function (r) { if (!r.ok) throw new Error(r.data.error || '创建钓点失败'); });
-      }
-      for (let i = 0; i < missing; i++) chain = chain.then(addOne);
-      chain.then(function () { return loadWorldCfg(true); }).then(function (c2) {
-        const g2 = c2.grounds.find(function (x) { return x.id === MAP_GID; }) || c2.grounds[0];
-        return adminApi('POST', '/api/admin/spot/pos', {
-          token: token, groundId: MAP_GID,
-          list: proportionalLayout(g2.spots.length).map(function (pos, i) { return { spotId: g2.spots[i].id, pos: pos }; }),
-        });
-      }).then(function (r) {
-        if (!r.ok) throw new Error(r.data.error || '布点失败');
-        st.innerHTML = '<span style="color:var(--ok)">已按比例铺 ' + r.data.changed + ' 个钓点</span>';
-        toast('一键布点完成，可在下方地图拖动微调');
-        selSpot = null;
-        loadWorldCfg(true).then(function (c3) { if (view === 'grounds' && c3) drawGrounds(c3, ov); });
-      }).catch(function (e) {
-        st.innerHTML = '<span class="err">' + esc((e && e.message) || '操作失败') + '</span>';
-      });
-    };
-    $('ac-replace').onclick = function () {
-      const st = $('ac-state');
-      st.innerHTML = '正在按比例重排…';
-      adminApi('POST', '/api/admin/spot/pos', {
-        token: token, groundId: MAP_GID,
-        list: proportionalLayout(g.spots.length).map(function (pos, i) { return { spotId: g.spots[i].id, pos: pos }; }),
-      }).then(function (r) {
-        if (!r.ok) { st.innerHTML = '<span class="err">' + esc(r.data.error || '重排失败') + '</span>'; return; }
-        st.innerHTML = '<span style="color:var(--ok)">已重排 ' + r.data.changed + ' 个钓点</span>';
-        posDraft = {};
-        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2, ov); });
-      });
-    };
-    $('ac-fillall').onclick = function () {
-      const preset = $('ac-preset').value;
-      const nm = presets[preset] ? presets[preset].name : preset;
-      confirmModalLocal('把全部 ' + g.spots.length + ' 个钓点的掉落池统一换成「' + nm + '」？逐点调过的池子会被覆盖。').then(function (ok) {
-        if (!ok) return;
-        adminApi('POST', '/api/admin/pool/preset', { token: token, preset: preset }).then(function (r) {
-          if (!r.ok) { toast(r.data.error || '加载预设失败', true); return; }
-          const pool = r.data.pool;
-          let chain = Promise.resolve();
-          g.spots.forEach(function (s) {
-            chain = chain.then(function () {
-              return adminApi('POST', '/api/admin/spot/pool', { token: token, groundId: MAP_GID, spotId: s.id, pool: pool });
-            });
-          });
-          chain.then(function () {
-            $('ac-state').innerHTML = '<span style="color:var(--ok)">已按「' + esc(nm) + '」填充全部钓点</span>';
-            toast('全部钓点掉落池已更新');
-            loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2, ov); });
-          }).catch(function (e) {
-            $('ac-state').innerHTML = '<span class="err">' + esc((e && e.message) || '填充失败') + '</span>';
-          });
-        });
-      });
-    };
     // —— 新建 / 删除钓点 ——
     $('ns-add').onclick = function () {
       const name = $('ns-name').value.trim();
@@ -2362,7 +2286,7 @@ window.Admin = (function () {
         toast('钓点「' + name + '」已创建（掉落池已按预设填充）');
         selSpot = r.data.spot.id;
         poolDirty = buffsDirty = false; posDraft = {};
-        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2, ov); });
+        loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
       });
     };
     if ($('ns-del')) {
@@ -2375,7 +2299,7 @@ window.Admin = (function () {
             if (!r.ok) { toast(r.data.error || '删除失败', true); return; }
             toast('钓点已删除' + (r.data.restorable ? '（可恢复）' : ''));
             selSpot = null;
-            loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2, ov); });
+            loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
           });
         });
       };
@@ -2483,7 +2407,7 @@ window.Admin = (function () {
     const id = pick.slice(i + 1);
     return { type: type, id: id, weight: weight };
   }
-  function rowToPick(r) { return r.type === 'component' ? 'component:' : r.type + ':' + r.id; }
+  function rowToPick(r) { return r.type + ':' + (r.id || ''); }
 
   function drawEditors(cfg, g, sp) {
     const ed = $('ed-body');
@@ -2641,7 +2565,7 @@ window.Admin = (function () {
         parts.push(r.data.intervalMs != null ? ('间隔 ' + r.data.intervalMs + 'ms') : '间隔=按钓速计算');
         $('sr-state').innerHTML = '<span style="color:var(--ok)">已保存：' + esc(parts.join(' · ')) + '</span>';
         toast('钓点速率已保存，正在该钓点钓鱼的玩家立即生效');
-        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c, gdOverview); });
+        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c); });
       });
     }
     $('sr-save').onclick = function () { saveSpotRate(false); };
@@ -2667,7 +2591,7 @@ window.Admin = (function () {
         if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
         poolDirty = false;
         toast('掉落池已保存，全服即时生效');
-        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c, gdOverview); });
+        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c); });
       });
     };
     $('buff-save').onclick = function () {
@@ -2675,14 +2599,19 @@ window.Admin = (function () {
         if (!r.ok) { toast(r.data.error || '保存失败', true); return; }
         buffsDirty = false;
         toast('增益已保存，正在该钓点钓鱼的玩家立即按新加成循环');
-        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c, gdOverview); });
+        loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c); });
       });
     };
   }
 
     function itemSelectHtml(cfg, r, idx) {
       if (r.type === 'component') {
-        return '<select class="ipt c-item" disabled><option>组件（随机组件掉落）</option></select>';
+        const options = [{ id: '', name: '全部组件随机' }].concat(
+          GameData.ROD_PARTS.filter(function (p) { return !p.isCharm; }).map(function (p) { return { id: 'part/' + p.key, name: '类型 · ' + p.name }; }),
+          GameData.COMPONENT_BASES.map(function (b) { return { id: 'base/' + b.id, name: '底材 · ' + b.name }; }));
+        return '<select class="ipt c-item" data-idx="' + idx + '" data-f="id">' + options.map(function (o) {
+          return '<option value="' + esc(o.id) + '"' + (r.id === o.id ? ' selected' : '') + '>' + esc(o.name) + '</option>';
+        }).join('') + '</select>';
       }
       if (r.type === 'group') {
         const groups = cfg.lootGroups || [];
@@ -2711,7 +2640,11 @@ window.Admin = (function () {
     function lgItemLabel(pick) {
       const i = pick.indexOf(':');
       const type = pick.slice(0, i), id = pick.slice(i + 1);
-      if (type === 'component') return '随机组件';
+      if (type === 'component') {
+        const base = GameData.COMPONENT_BASES.find(function (b) { return 'base/' + b.id === id; });
+        const part = GameData.ROD_PARTS.find(function (p) { return 'part/' + p.key === id; });
+        return base ? base.name : part ? part.name + '（随机底材）' : '随机组件';
+      }
       const opts = type === 'fish' ? cfg.catalog.fish : cfg.catalog.materials;
       const f = (opts || []).find(function (o) { return o.id === id; });
       return f ? f.name : id;
@@ -2736,7 +2669,7 @@ window.Admin = (function () {
     function lgAfterSave(msg) {
       lgDraft = null; lgEditing = '';
       toast(msg);
-      loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c, gdOverview); });
+      loadWorldCfg(true).then(function (c) { if (view === 'grounds' && c) drawGrounds(c); });
     }
     function lgPost(payload, okMsg) {
       return adminApi('POST', '/api/admin/loot/group', payload).then(function (r) {
@@ -2900,6 +2833,7 @@ window.Admin = (function () {
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem('fishing_admin_bulk') || 'null'); } catch (e) {}
     blCfg = Object.assign({
+      sellers: [], mode: 'immediate', batch: 10, intervalSeconds: 60, threshold: 10, target: 50,
       seller: '', hours: 24, mulMin: 1, mulMax: 1, qtyMin: 1, qtyMax: 1,
       counts: { fish: 0, material: 0, chest: 0, component: 200 },
       picks: { fish: [], material: [], chest: [], component: [] },
@@ -2917,13 +2851,19 @@ window.Admin = (function () {
     return '<div class="panel mk-bulk">' +
       '<h3>🎪 后台批量上架 <span class="hint">以某个账号的名头挂出一批服务器现造的物品（不扣背包、不收上架费、不受挂单上限限制；上限在「账号管理」页按账号调）</span></h3>' +
       '<div class="bl-row">' +
-      '<label>卖家名头</label><select id="bl-seller" class="ipt"><option value="">加载账号…</option></select>' +
+      '<label>添加卖家</label><select id="bl-seller" class="ipt"><option value="">加载账号…</option></select><button type="button" class="btn mini" id="bl-seller-add">加入随机名单</button><div id="bl-sellers" class="bl-sellers"></div>' +
       '<label>时长</label><select id="bl-hours" class="ipt">' +
       [6, 12, 24].map(function (h) { return '<option value="' + h + '"' + (c.hours === h ? ' selected' : '') + '>' + h + ' 小时</option>'; }).join('') +
       '</select>' +
       '<label>价格倍率</label>' + nums('bl-mulmin', c.mulMin, 0.1, 10, 0.05) + '<span class="hint">~</span>' + nums('bl-mulmax', c.mulMax, 0.1, 10, 0.05) +
       '<span class="hint">（现价的倍数，1 = 原价；组件按品质固定价）</span>' +
       '</div>' +
+      '<div class="bl-row"><label>上架模式</label><select id="bl-mode" class="ipt">' +
+      [['immediate', '立即上架'], ['gradual', '按间隔分批上架'], ['restock', '条件补货']].map(function (kv) { return '<option value="' + kv[0] + '"' + (c.mode === kv[0] ? ' selected' : '') + '>' + kv[1] + '</option>'; }).join('') + '</select>' +
+      '<label>每批条数</label>' + nums('bl-batch', c.batch, 1, 500) + '<label>间隔秒数</label>' + nums('bl-interval', c.intervalSeconds, 1, 86400) +
+      '<label>低于多少条补货</label>' + nums('bl-threshold', c.threshold, 1, 5000) + '<label>补到多少条</label>' + nums('bl-target', c.target, 1, 5000) + '</div>' +
+      '<p class="hint">分批上架按各类条数完成后停止；条件补货以各类条数为抽取权重，仅统计本计划尚未售罄、未过期的挂单条数。达到阈值后分批补至目标。新计划会替换旧计划。</p>' +
+      '<div class="bl-row"><span id="bl-supply-status" role="status">读取计划…</span><button class="btn mini" id="bl-supply-refresh">刷新计划</button><button class="btn mini danger" id="bl-supply-pause">暂停计划</button><button class="btn mini" id="bl-supply-load">载入计划设置</button></div>' +
       '<div class="bl-grid">' +
       BULK_KINDS.map(function (k) {
         const items = bulkItemsOf(k.id);
@@ -2931,6 +2871,7 @@ window.Admin = (function () {
         // 勾选列表而非原生多选：原生 multiple 里单击是「选择」、取消要按 Ctrl，选错了没法清掉
         return '<div class="bl-card"><div class="bl-head"><span>' + k.label + '</span>' +
           nums('bl-c-' + k.id, (c.counts && c.counts[k.id]) || 0, 0, 500) + '<span class="hint">条</span></div>' +
+          '<input class="ipt bl-search" data-search-kind="' + k.id + '" placeholder="搜索' + k.label + '" aria-label="搜索物品" />' +
           '<div class="bl-pick" id="bl-p-' + k.id + '">' +
           items.map(function (it) {
             return '<label class="bl-opt"><input type="checkbox" value="' + esc(it.id) + '"' +
@@ -2957,7 +2898,7 @@ window.Admin = (function () {
       '</div>' +
       '<div class="bl-row bl-foot">' +
       '<button id="bl-preview" class="btn mini">预览 8 条</button>' +
-      '<button id="bl-go" class="btn primary">开始批量上架</button>' +
+      '<button id="bl-go" class="btn primary">上架 / 启动计划</button>' +
       '<span id="bl-state" class="hint">先点「预览」看看生成结果，再上架。单次最多 500 条（条数越多玩家端市集列表越长，建议单次 ≤ 200）；过期或被退回时直接清除，不退回背包。</span>' +
       '</div>' +
       '<div id="bl-prev" class="hint"></div>' +
@@ -2973,6 +2914,8 @@ window.Admin = (function () {
     c.affixMin = num('bl-affmin', 1); c.affixMax = num('bl-affmax', 0);
     c.part = val('bl-part');
     c.seller = val('bl-seller');
+    c.mode = val('bl-mode'); c.batch = num('bl-batch', 10); c.intervalSeconds = num('bl-interval', 60);
+    c.threshold = num('bl-threshold', 10); c.target = num('bl-target', 50);
     c.sellerName = '';
     const sel = $('bl-seller');
     if (sel && sel.selectedIndex >= 0 && sel.options[sel.selectedIndex]) c.sellerName = sel.options[sel.selectedIndex].getAttribute('data-name') || '';
@@ -2989,7 +2932,8 @@ window.Admin = (function () {
   function bulkPayload(dryRun) {
     const c = bulkReadForm();
     return {
-      token: token, seller: c.seller, hours: c.hours, dryRun: !!dryRun,
+      token: token, seller: c.seller, sellers: c.sellers.length ? c.sellers.slice() : [c.seller], hours: c.hours, dryRun: !!dryRun,
+      mode: c.mode, batch: c.batch, intervalSeconds: c.intervalSeconds, threshold: c.threshold, target: c.target,
       counts: c.counts, picks: c.picks, part: c.part, quality: c.quality,
       affixMin: c.affixMin, affixMax: c.affixMax, qtyMin: c.qtyMin, qtyMax: c.qtyMax,
       mulMin: c.mulMin, mulMax: c.mulMax,
@@ -3024,6 +2968,43 @@ window.Admin = (function () {
     bulkReadForm();
   }
   function wireBulkPanel() {
+    let savedRule = null;
+    function drawSellers() {
+      const c = bulkCfg();
+      $('bl-sellers').innerHTML = c.sellers.length ? c.sellers.map(function (key, i) { return '<button type="button" class="btn mini" data-remove-seller="' + i + '" title="移出随机名单">' + esc(key) + ' ×</button>'; }).join('') : '<span class="hint">名单为空时使用当前下拉账号；加入多人后每单随机选择。</span>';
+      $('bl-sellers').querySelectorAll('[data-remove-seller]').forEach(function (b) { b.onclick = function () { c.sellers.splice(Number(b.dataset.removeSeller), 1); bulkSave(); drawSellers(); }; });
+    }
+    drawSellers();
+    $('bl-seller-add').onclick = function () { const key = $('bl-seller').value, c = bulkCfg(); if (key && !c.sellers.includes(key)) c.sellers.push(key); bulkSave(); drawSellers(); };
+    function refreshSupply() {
+      adminApi('GET', '/api/admin/market/supply').then(function (r) {
+        if (view !== 'market' || !$('bl-supply-status')) return;
+        if (!r.ok) { $('bl-supply-status').textContent = '读取失败'; return; }
+        savedRule = r.data.rule;
+        $('bl-supply-status').textContent = !savedRule ? '没有上架计划' : (savedRule.enabled ? '运行中' : '已停止') + ' · 已上架 ' + savedRule.created + ' 条 · 当前库存 ' + savedRule.stock + ' 条' +
+          (savedRule.mode === 'gradual' ? ' · 待上架 ' + savedRule.remaining + ' 条' : ' · 低于 ' + savedRule.threshold + ' 补到 ' + savedRule.target) + (savedRule.error ? ' · ' + savedRule.error : '');
+      });
+    }
+    $('bl-supply-refresh').onclick = refreshSupply;
+    $('bl-supply-pause').onclick = function () { adminApi('POST', '/api/admin/market/supply', { action: 'pause' }).then(function (r) { if (!r.ok) toast('暂停失败', true); refreshSupply(); }); };
+    $('bl-supply-load').onclick = function () { if (!savedRule) return; blCfg = Object.assign({}, bulkCfg(), savedRule.recipe, { mode: savedRule.mode, batch: savedRule.batch, intervalSeconds: savedRule.intervalSeconds, threshold: savedRule.threshold, target: savedRule.target }); bulkSave(); renderMarket(); };
+    refreshSupply();
+    function filterItems() {
+      document.querySelectorAll('[data-search-kind]').forEach(function (input) {
+        const kind = input.dataset.searchKind, q = input.value.trim().toLowerCase(), part = $('bl-part').value;
+        $('bl-p-' + kind).querySelectorAll('.bl-opt').forEach(function (label) {
+          const cb = label.querySelector('input'), base = kind === 'component' && GameData.COMPONENT_BASES.find(function (b) { return b.id === cb.value; });
+          const match = !base || !part || base.part === part;
+          label.hidden = !match || !label.textContent.toLowerCase().includes(q);
+          if (!match) cb.checked = false;
+        });
+        bulkSyncPick(kind);
+      });
+    }
+    document.querySelectorAll('[data-search-kind]').forEach(function (input) { input.oninput = filterItems; });
+    $('bl-part').onchange = function () { filterItems(); bulkReadForm(); };
+    filterItems();
+
     // 账号名头下拉：管理员排前面（会显示成市集里的「卖家」名）
     adminApi('GET', '/api/admin/users?token=' + encodeURIComponent(token)).then(function (r) {
       if (!r.ok || view !== 'market') return;
@@ -3065,17 +3046,18 @@ window.Admin = (function () {
     if (go) go.addEventListener('click', function () {
       const c = bulkReadForm();
       const total = Object.keys(c.counts).reduce(function (s, k) { return s + c.counts[k]; }, 0);
-      if (!c.seller) { bulkSetState('请先选择卖家账号', true); return; }
+      if (!c.seller && !c.sellers.length) { bulkSetState('请先选择卖家账号', true); return; }
       if (total <= 0) { bulkSetState('请至少给一类物品设置条数', true); return; }
       // 注意：confirmModalLocal 会对文案做 esc()，这里只传纯文本（不能带标签）
-      confirmModalLocal('以「' + (c.sellerName || c.seller) + '」的名头批量上架 ' + total + ' 条物品？\n' +
+      confirmModalLocal((c.mode === 'immediate' ? '立即上架' : '启动' + (c.mode === 'restock' ? '条件补货' : '分批上架') + '计划（替换旧计划）') + '：以「' + (c.sellers.length ? c.sellers.join('、') + ' 随机卖家' : c.sellerName || c.seller) + '」的名头生成 ' + total + ' 条物品？\n' +
         '时长 ' + c.hours + ' 小时 · 价格倍率 ' + c.mulMin + '~' + c.mulMax + '\n' +
         '不收上架费；过期或被退回时直接清除（物品是现造的，不退回背包）。').then(function (ok) {
         if (!ok) return;
         bulkSetState('上架中…');
         go.disabled = true;
-        adminApi('POST', '/api/admin/market/bulk', bulkPayload(false)).then(function (r) {
+        adminApi('POST', c.mode === 'immediate' ? '/api/admin/market/bulk' : '/api/admin/market/supply', bulkPayload(false)).then(function (r) {
           go.disabled = false;
+          if (r.ok && r.data.rule) { bulkSetState('计划已启动，关闭页面后仍会按间隔执行'); refreshSupply(); return; }
           if (!r.ok) { bulkSetState('上架失败：' + esc((r.data && r.data.error) || '未知错误'), true); return; }
           toast('已挂出 ' + r.data.created + ' 条（卖家：' + (r.data.seller && r.data.seller.name) + '）');
           bulkSetState('上架完成：' + bulkReport(r.data));
@@ -3576,6 +3558,8 @@ window.Admin = (function () {
     body.innerHTML =
       '<h3 style="margin-top:0">🎯 熔炼成功率</h3>' +
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
+      F('catalystRatio', '催化区间宽度比例 %', '相对池内包络或手填区间，保持中心不变；0~200，默认90', '0.1') +
+      '<label class="chk"><input id="ws-cfg-forgeAnyAffix" type="checkbox"' + (SC.forgeAnyAffix !== false ? ' checked' : '') + '> 锻造允许新增底材池外词条</label>' +
       F('baseRate', '基础成功率 %', '默认 50') +
       F('failPerMaterial', '每份材料对失败率的影响', '负数 = 催化剂越多越不易失败（默认 -2）', '0.1') +
       F('rateMin', '成功率下限', '默认 5') + F('rateMax', '成功率上限', '默认 99') +
@@ -3686,7 +3670,7 @@ window.Admin = (function () {
           '<button class="btn mini" id="cat-preset" style="margin-left:8px" ' +
           'title="按推荐预设（GameData.catalystPreset）填充所有格子；不会自动保存，确认后再点保存">⚡ 一键预设</button></h3>' +
           '<div class="hint" style="margin-bottom:6px">材料催化成功赋予主件的词条（催化词缀）按<b>主件部位 + 词缀类型</b>取下表范围。' +
-          '留空 = 回退突破区间。每格标注的 <b>允许范围</b> 是该部位底材的硬边界（下限 ≥、上限 ≤），超出会被拒绝；' +
+          '留空 = 使用该部位池内包络，没有池内范围时回退突破区间；最终按上方比例缩放宽度。每格标注的 <b>允许范围</b> 是该部位底材的硬边界（下限 ≥、上限 ≤），超出会被拒绝；' +
           '标「回退突破」的格子表示该部位没有这种底材，不能填值。保存后全服即时生效（玩家端熔炼预览同步）。</div>' +
           '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px">' +
           '<tr><th style="text-align:left;padding:4px 8px">词缀 \\ 部位</th>' +
@@ -3759,6 +3743,8 @@ window.Admin = (function () {
       if (catErr) { toast(catErr, true); return; }
       adminApi('POST', '/api/admin/smelt/config', {
         token: token,
+        catalystRatio: $('ws-cfg-catalystRatio').value,
+        forgeAnyAffix: $('ws-cfg-forgeAnyAffix').checked,
         baseRate: $('ws-cfg-baseRate').value,
         failPerMaterial: $('ws-cfg-failPerMaterial').value,
         rateMin: $('ws-cfg-rateMin').value,
@@ -4858,6 +4844,7 @@ window.Admin = (function () {
     { k: 'linear', name: '线性（均匀）', desc: '区间内等概率取值' },
     { k: 'normal', name: '正态', desc: '靠近区间中值概率更高（默认）' },
     { k: 'skew', name: '偏态', desc: '偏向小值（小鱼更常见）' },
+    { k: 'custom', name: '自定义分布', desc: '拖动或输入每个体型分组的权重' },
   ];
   function renderFishSize() {
     const main = $('main');
@@ -4874,6 +4861,12 @@ window.Admin = (function () {
     const cfg = fishCfg || {};
     const saved = SIZE_MODEL_INFO.some(function (m) { return m.k === cfg.sizeModel; }) ? cfg.sizeModel : 'normal';
     let pick = saved; // 试算用模型（可能尚未保存）
+    function presetWeights(model) {
+      if (model === 'normal') return [0.82, 2.77, 7.92, 15.92, 22.57, 22.57, 15.92, 7.92, 2.77, 0.82];
+      if (model === 'skew') return new Array(10).fill(0).map(function (_, i) { return Math.round((Math.sqrt((i + 1) / 10) - Math.sqrt(i / 10)) * 10000) / 100; });
+      return new Array(10).fill(10);
+    }
+    const weights = saved === 'custom' && GameData.validSizeWeights(cfg.sizeWeights) ? cfg.sizeWeights.slice() : presetWeights(saved);
     const fishList = (worldCfg && worldCfg.catalog && worldCfg.catalog.fish) || [];
     const withSize = fishList.filter(function (f) { return f.size; });
     const body = $('fish-body');
@@ -4885,6 +4878,12 @@ window.Admin = (function () {
           '<input type="radio" name="fm" value="' + m.k + '"' + (m.k === pick ? ' checked' : '') + '>' +
           '<div><b>' + m.name + '</b><span>' + m.desc + '</span></div></label>';
       }).join('') + '</div>' +
+      '<div class="fish-distribution"><p class="hint">按基准体型区间每10%分组。拖动滑块或修改权重后切换为自定义分布；发生概率按总权重归一化。</p><div class="fish-weight-grid">' +
+      weights.map(function (v, i) {
+        return '<label class="fish-weight"><strong>' + (i * 10) + '–' + ((i + 1) * 10) + '%体型</strong>' +
+          '<input type="range" min="0" max="100" step="0.1" data-fish-range="' + i + '" value="' + v + '" aria-label="分组' + (i + 1) + '权重滑块">' +
+          '<input class="ipt" type="number" min="0" max="100" step="0.1" data-fish-weight="' + i + '" value="' + v + '" aria-label="分组' + (i + 1) + '权重"><span data-fish-pct="' + i + '"></span></label>';
+      }).join('') + '</div></div>' +
       '<h3 style="margin-top:20px">分布预览</h3>' +
       '<div class="mgr-row">' +
       '<label class="hint">目标鱼</label>' +
@@ -4921,19 +4920,23 @@ window.Admin = (function () {
         ? esc(data.fishName) + '（基准 ' + data.range[0] + '~' + data.range[1] + ' cm' + (data.sizeBonus ? '，体型 +' + data.sizeBonus + '%' : '') + '）：' +
           '中位数 ' + data.stats.p50 + ' cm · 均值 ' + data.stats.mean + ' cm · 25~75 分位 ' + data.stats.p25 + '~' + data.stats.p75 + ' cm'
         : '全鱼种 · 位置分布（' + data.n + ' 次采样，左小右大）';
+      const total = bs.reduce(function (a, b) { return a + b; }, 0) || 1;
+      const grouped = new Array(10).fill(0).map(function (_, i) { return '<span>' + (i * 10) + '–' + ((i + 1) * 10) + '%体型：<b>' + (((bs[i * 2] || 0) + (bs[i * 2 + 1] || 0)) / total * 100).toFixed(2) + '%</b></span>'; }).join('');
       chart.innerHTML = '<div style="margin-bottom:6px">' + head + '</div>' +
-        '<div style="display:flex;align-items:flex-end;gap:1px">' + bars + '</div>' + axis;
+        '<div style="display:flex;align-items:flex-end;gap:1px">' + bars + '</div>' + axis + '<div class="fish-percent-preview">' + grouped + '</div>';
     }
+    let previewSequence = 0;
     function runSim() {
+      const sequence = ++previewSequence;
       const chart = $('fish-chart');
       if (chart) chart.textContent = '采样中…';
       const sel = $('fish-pick');
       adminApi('POST', '/api/admin/fish/simulate', {
-        token: token, n: 20000, model: pick,
+        token: token, n: 20000, model: pick, sizeWeights: weights,
         fishId: (sel && sel.value) || undefined,
         sizeBonus: Number(($('fish-bonus') || {}).value) || 0,
       }).then(function (r) {
-        if (view !== 'fishsize' || !$('fish-chart')) return;
+        if (view !== 'fishsize' || !body.isConnected || sequence !== previewSequence || !$('fish-chart')) return;
         if (!r.ok) { $('fish-chart').innerHTML = '<span class="err">' + esc(r.data.error || '试算失败') + '</span>'; return; }
         drawChart(r.data);
       });
@@ -4943,13 +4946,32 @@ window.Admin = (function () {
         body.querySelectorAll('.radio-card[data-fm]').forEach(function (x) { x.classList.remove('sel'); });
         c.classList.add('sel'); c.querySelector('input').checked = true;
         pick = c.getAttribute('data-fm');
-        runSim();
+        if (pick !== 'custom') presetWeights(pick).forEach(function (v, i) { weights[i] = v; body.querySelector('[data-fish-range="' + i + '"]').value = v; body.querySelector('[data-fish-weight="' + i + '"]').value = v; });
+        syncWeights(); runSim();
       };
     });
+    function syncWeights() {
+      const total = weights.reduce(function (a, b) { return a + b; }, 0);
+      body.querySelectorAll('[data-fish-pct]').forEach(function (n) { n.textContent = total ? (weights[Number(n.dataset.fishPct)] / total * 100).toFixed(2) + '%概率' : '总权重不能为0'; });
+    }
+    let previewTimer;
+    body.querySelectorAll('[data-fish-range], [data-fish-weight]').forEach(function (input) {
+      input.oninput = function () {
+        const i = Number(input.dataset.fishRange == null ? input.dataset.fishWeight : input.dataset.fishRange);
+        weights[i] = Math.max(0, Math.min(100, Number(input.value) || 0));
+        body.querySelector('[data-fish-range="' + i + '"]').value = weights[i];
+        body.querySelector('[data-fish-weight="' + i + '"]').value = weights[i];
+        pick = 'custom';
+        body.querySelectorAll('[data-fm]').forEach(function (n) { const on = n.dataset.fm === pick; n.classList.toggle('sel', on); n.querySelector('input').checked = on; });
+        syncWeights(); clearTimeout(previewTimer);
+        if (weights.some(function (v) { return v > 0; })) previewTimer = setTimeout(function () { if (view === 'fishsize') runSim(); }, 250);
+      };
+    });
+    syncWeights();
     $('fish-sim').onclick = runSim;
     $('fish-pick').onchange = runSim;
     $('fish-save').onclick = function () {
-      adminApi('POST', '/api/admin/fish/config', { token: token, sizeModel: pick }).then(function (r) {
+      adminApi('POST', '/api/admin/fish/config', { token: token, sizeModel: pick, sizeWeights: weights }).then(function (r) {
         if (!r.ok) { $('fish-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
         fishCfg = r.data.fishCfg; worldCfg.fishCfg = fishCfg;
         toast('鱼类体型模型已保存（' + modelName(fishCfg.sizeModel) + '）');

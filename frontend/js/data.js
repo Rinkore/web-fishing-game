@@ -600,13 +600,13 @@
     const dft = DEFAULT_EXTRA_AFFIX_RANGES[type];
     return dft || [1, 3];
   }
-  // 催化词缀范围统一缩到原宽度的 90%，并保持整数与中心值不变。
+  // 催化词缀按后台配置的比例调整宽度（默认90%），保持整数与中心值不变。
   function scaleCatalystRange(range) {
     if (!Array.isArray(range) || range.length !== 2) return range;
     const lo = Number(range[0]), hi = Number(range[1]);
     if (!isFinite(lo) || !isFinite(hi) || hi < lo) return range;
     const midpoint = (lo + hi) / 2;
-    const half = (hi - lo) * 0.45;
+    const half = (hi - lo) * (smeltCfg.catalystRatio / 200);
     let nlo = Math.round(midpoint - half);
     let nhi = Math.round(midpoint + half);
     const sumNeed = Math.round(midpoint * 2);
@@ -623,8 +623,24 @@
   function defaultFishCfg() { return { sizeModel: SIZE_MODEL_DEFAULT }; }
   function setFishCfg(cfg) {
     const d = defaultFishCfg();
-    fishCfg = { sizeModel: (cfg && ROLL_MODELS.indexOf(cfg.sizeModel) >= 0) ? cfg.sizeModel : d.sizeModel };
+    fishCfg = { sizeModel: (cfg && (ROLL_MODELS.concat(['custom'])).indexOf(cfg.sizeModel) >= 0) ? cfg.sizeModel : d.sizeModel, sizeWeights: validSizeWeights(cfg && cfg.sizeWeights) ? cfg.sizeWeights.slice() : new Array(10).fill(10) };
     return fishCfg;
+  }
+  function validSizeWeights(weights) {
+    return Array.isArray(weights) && weights.length === 10 && weights.every(function (v) { return typeof v === 'number' && isFinite(v) && v >= 0 && v <= 100; }) && weights.some(function (v) { return v > 0; });
+  }
+  function rollFishRatio(cfg, rng) {
+    cfg = cfg || fishCfg;
+    const rand = rng || Math.random;
+    if (cfg.sizeModel !== 'custom') return rollRatioWithRng(cfg.sizeModel, rand);
+    const weights = validSizeWeights(cfg.sizeWeights) ? cfg.sizeWeights : new Array(10).fill(10);
+    const total = weights.reduce(function (a, b) { return a + b; }, 0);
+    let pick = rand() * total;
+    for (let i = 0; i < weights.length; i++) {
+      pick -= weights[i];
+      if (pick < 0) return (i + rand()) / weights.length;
+    }
+    return 1;
   }
   function getFishCfg() { return fishCfg; }
   // 加权随机取 key
@@ -772,8 +788,16 @@
     return QUALITY[k] ? k : 'rare';
   }
   // 从整份底材目录均匀抽一个底材，再定品质生成
-  function rollComponent() {
-    const base = COMPONENT_BASES[Math.floor(Math.random() * COMPONENT_BASES.length)];
+  function componentChoices(selector) {
+    if (!selector) return COMPONENT_BASES;
+    if (selector.indexOf('part/') === 0) return COMPONENT_BASES.filter(function (b) { return b.part === selector.slice(5); });
+    if (selector.indexOf('base/') === 0) return COMPONENT_BASES.filter(function (b) { return b.id === selector.slice(5); });
+    return [];
+  }
+  function rollComponent(selector) {
+    const choices = componentChoices(selector);
+    if (!choices.length) return null;
+    const base = choices[Math.floor(Math.random() * choices.length)];
     return genComponent(base.id, rollComponentQuality());
   }
 
@@ -1050,6 +1074,8 @@
     // { [部位]: { [词缀类型]: [min, max] } }：材料催化成功赋予的词条按主件部位 + 词缀类型取该范围；
     // 未配置的组合回退突破区间。催化产生的词缀范围来源记为 'ct'（显示为「催化词缀」）。
     catalystRanges: {},
+    catalystRatio: 90,
+    forgeAnyAffix: true,
   };
   let smeltCfg = Object.assign({}, SMELT_DEFAULTS);
   // 保留概率公式可用的变量（当前只有突破词缀条数）
@@ -1065,6 +1091,7 @@
       const v = (typeof d[k] === 'boolean') ? !!c[k] : Number(c[k]);
       if (typeof d[k] === 'boolean' ? true : isFinite(v)) d[k] = v;
     });
+    d.catalystRatio = Math.max(0, Math.min(200, d.catalystRatio));
     d.maxMaterials = Math.max(0, Math.min(99, Math.floor(d.maxMaterials)));
     d.maxTypes = Math.max(0, Math.min(8, Math.floor(d.maxTypes)));
     d.retainMaxRelic = Math.max(0, Math.min(99, Math.floor(d.retainMaxRelic)));
@@ -1227,7 +1254,7 @@
     return null;
   }
   function catalystRangeFor(part, type) {
-    return catalystRangeOf(part, type) || scaleCatalystRange(extraAffixRangeOf(type));
+    return catalystRangeOf(part, type) || scaleCatalystRange(catalystEnvelopeOf(part, type) || extraAffixRangeOf(type));
   }
   // 某部位某词缀的「催化区间包络」= 该部位所有底材里含有该词缀的那些区间的并集 [min, max]。
   // 后台配置催化区间时用它做硬约束：催化区间不得超出该部位的上下限
@@ -2129,7 +2156,7 @@
       g.spots.forEach(function (sp) {
         sp.pool.forEach(function (e) {
           // 隐式世界地图（'map'）不作为前缀：产地直接显示钓点名（如「芦苇荡」）
-          if (e.pick === pick) out.push(g.id === 'map' ? sp.name : g.name + '·' + sp.name);
+          if (e.pick === pick || (type === 'component' && e.pick.indexOf('component:') === 0 && componentChoices(e.pick.slice(10)).some(function (b) { return b.id === (item.baseId || id); }))) out.push(g.id === 'map' ? sp.name : g.name + '·' + sp.name);
         });
       });
     });
@@ -2243,10 +2270,10 @@
     COMPONENT_BASES: COMPONENT_BASES, componentBase: componentBase,
     instanceId: instanceId, instanceOf: instanceOf, isInstance: isInstance,
     codeOf: codeOf, typeOfCode: typeOfCode,
-    genComponent: genComponent, rollComponent: rollComponent, rollComponentQuality: rollComponentQuality,
+    genComponent: genComponent, rollComponent: rollComponent, componentChoices: componentChoices, rollComponentQuality: rollComponentQuality,
     setComponentCfg: setComponentCfg, getComponentCfg: getComponentCfg, defaultComponentCfg: defaultComponentCfg,
     setFishCfg: setFishCfg, getFishCfg: getFishCfg, defaultFishCfg: defaultFishCfg,
-    ROLL_MODELS: ROLL_MODELS, rollRatio: rollRatio,
+    ROLL_MODELS: ROLL_MODELS, rollRatio: rollRatio, rollFishRatio: rollFishRatio, validSizeWeights: validSizeWeights,
     affixRangeOf: affixRangeOf, rollAffixValue: rollAffixValue, weightedKey: weightedKey,
     adjectiveOf: adjectiveOf, affixCeilingOf: affixCeilingOf, instanceMeta: instanceMeta, componentOf: componentOf,
     legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,

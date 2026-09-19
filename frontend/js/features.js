@@ -18,6 +18,7 @@
     ['records', '记录（图鉴页签）', []],
     ['feedback', '反馈', [['submit', '提交反馈'], ['skip', '付费跳过冷却']]],
     ['logs', '日志', []],
+    ['wiki', 'WIKI', []],
   ].map(function (g) {
     // 页签页与主页面共用一个侧栏入口：主页面关闭时，页签也必须跟着关闭，
     // 否则会出现「侧栏入口锁着、页签却能继续用」的漏口（这正是 parent 链的作用）。
@@ -27,6 +28,11 @@
       children: g[2].map(function (a) { return { id: g[0] + '.' + a[0], name: a[1], parent: g[0] }; }),
     };
   });
+  const menuIds = ['fishing', 'sea', 'character', 'ground', 'inventory', 'workshop', 'mall', 'codex', 'feedback', 'logs', 'wiki'];
+  function orderedMenu(order) {
+    const saved = Array.isArray(order) ? order.filter(function (id, i) { return menuIds.indexOf(id) >= 0 && order.indexOf(id) === i; }) : [];
+    return saved.concat(menuIds.filter(function (id) { return saved.indexOf(id) < 0; }));
+  }
   const entries = [];
   groups.forEach(function (g) { entries.push(g); entries.push.apply(entries, g.children); });
   const byId = Object.create(null);
@@ -53,5 +59,5 @@
   }
   function route(method, path) { return method === 'POST' ? routes[path.split('?')[0]] : null; }
   function message(config, id) { const key = blocked(config, id); return key ? '「' + byId[key].name + '」暂时关闭，请稍后再试' : ''; }
-  return { groups: groups, entries: entries, byId: byId, blocked: blocked, route: route, message: message };
+  return { menuIds: menuIds, orderedMenu: orderedMenu, groups: groups, entries: entries, byId: byId, blocked: blocked, route: route, message: message };
 });
