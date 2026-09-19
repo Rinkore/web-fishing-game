@@ -7675,7 +7675,11 @@ window.UI = (function () {
       if (card) card.classList.toggle('complete', !!chosen);
     });
     const pearl = $('ws-pearl'), havePearl = S().inventory[D.SMELT_PEARL] || 0;
-    if (pearl) { pearl.disabled = !havePearl || wsBusy; pearl.checked = p.pearl; }
+    if (pearl) {
+      pearl.disabled = !havePearl || wsBusy;
+      pearl.classList.toggle('selected', !!p.pearl);
+      pearl.setAttribute('aria-pressed', String(!!p.pearl));
+    }
     if (!havePearl) wsPearl = false;
     const pearlStatus = $('ws-pearl-status');
     if (pearlStatus) pearlStatus.textContent = !havePearl ? '库存不足' : p.pearl
@@ -7704,9 +7708,9 @@ window.UI = (function () {
     if (matClear) matClear.disabled = wsBusy || !wsMatPick;
     const summary = $('ws-material-summary');
     if (summary) summary.textContent = !wsMatPick ? '点击选择催化剂' : itemMeta(wsMatPick).name + ' ×' + matQty + ' · 点击更换';
-    const images = $('ws-material-images');
-    const thumbs = wsMatPick ? '<img src="assets/item/' + esc(wsMatPick) + '.png" alt="' + esc(itemMeta(wsMatPick).name) + '" />' : '';
-    if (images && images.innerHTML !== thumbs) images.innerHTML = thumbs;
+    const matIcon = $('ws-material-icon'), matName = $('ws-material-name');
+    if (matIcon) matIcon.setAttribute('src', 'assets/item/' + (wsMatPick || 'lure') + '.png');
+    if (matName) matName.textContent = wsMatPick ? itemMeta(wsMatPick).name : '催化剂';
     wsSyncMaterialDialog();
     const announce = $('ws-step-feedback');
     const instruction = !p.main ? '选择主组件' : !p.sub ? '选择同部位副组件' : !wsMainAffix ? '选择主件保留词条'
@@ -7820,16 +7824,16 @@ window.UI = (function () {
       '<div class="sm-step-title"><h3>02 <span>辅助材料</span></h3><span>可选</span></div>' +
       '<div class="sm-options sm-options-3">' +
       '<div class="sm-option sm-catalyst" id="ws-material-open" role="button" tabindex="0" aria-haspopup="dialog" aria-label="选择催化剂">' +
-      '<img src="assets/item/lure.png" alt="" />' +
-      '<div class="sm-option-copy"><strong>催化剂</strong><small id="ws-material-summary">点击选择催化剂</small><small id="ws-material-images"></small></div>' +
+      '<img id="ws-material-icon" src="assets/item/lure.png" alt="" />' +
+      '<div class="sm-option-copy"><strong id="ws-material-name">催化剂</strong><small id="ws-material-summary">点击选择催化剂</small></div>' +
       '<div class="sm-mat-controls">' +
       '<button type="button" class="mini" id="ws-mat-minus1" aria-label="催化剂 -1">-1</button>' +
       '<button type="button" class="mini" id="ws-mat-plus1" aria-label="催化剂 +1">+1</button>' +
       '<button type="button" class="mini" id="ws-mat-plus5" aria-label="催化剂 +5">+5</button>' +
       '<button type="button" class="mini" id="ws-mat-clear">清空</button></div></div>' +
-      '<label class="sm-option ws-pearl"><img src="assets/item/' + esc(D.SMELT_PEARL) + '.png" alt="" />' +
+      '<button type="button" id="ws-pearl" class="sm-option ws-pearl" aria-pressed="false"><img src="assets/item/' + esc(D.SMELT_PEARL) + '.png" alt="" />' +
       '<span><strong>龙宫宝珠</strong><small>持有 <span data-have="' + esc(D.SMELT_PEARL) + '">' + (st.inventory[D.SMELT_PEARL] || 0) + '</span></small><small id="ws-pearl-status"></small></span>' +
-      '<input type="checkbox" id="ws-pearl"' + (wsPearl ? ' checked' : '') + ' /></label>' +
+      '</button>' +
       '<div class="sm-option sm-relic"><img src="assets/item/relic.png" alt="" /><div class="sm-relic-copy"><strong>沉船宝匣残片</strong>' +
       (rt.eligible ? '<small>持有 <span data-have="relic">' + rt.have + '</span> · 最多 ' + rt.max + ' 片</small>' +
         '<small id="ws-relic-count"></small><small id="ws-relic-chance"></small></div>' +
@@ -7851,12 +7855,12 @@ window.UI = (function () {
     // 点催化剂框体（份数按钮除外）打开子窗口；键盘 Enter / 空格同样可开
     const matCard = $('ws-material-open');
     matCard.onclick = function (ev) { if (ev.target.closest('.sm-mat-controls')) return; wsOpenMaterials(); };
-    matCard.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); wsOpenMaterials(); } };
+    matCard.onkeydown = function (ev) { if (ev.target === matCard && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); wsOpenMaterials(); } };
     [['ws-mat-minus1', -1], ['ws-mat-plus1', 1], ['ws-mat-plus5', 5]].forEach(function (pair) {
       if ($(pair[0])) $(pair[0]).onclick = function () { wsSetMatQty(wsMatQty() + pair[1]); wsRefreshPreview(); };
     });
     if ($('ws-mat-clear')) $('ws-mat-clear').onclick = function () { wsMatPick = ''; wsMats = {}; wsRefreshPreview(); };
-    $('ws-pearl').onchange = function () { wsPearl = this.checked; wsRefreshPreview(); };
+    $('ws-pearl').onclick = function () { wsPearl = !wsPearl; wsRefreshPreview(); };
     [['ws-relic-minus1', -1], ['ws-relic-plus1', 1], ['ws-relic-plus5', 5]].forEach(function (pair) {
       if ($(pair[0])) $(pair[0]).onclick = function () { wsAddRelics(pair[1]); };
     });

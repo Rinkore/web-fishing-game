@@ -97,7 +97,7 @@ async function run() {
   check('Dose drops to two after -1', (await page.locator('#ws-material-summary').textContent()).includes('×2'));
   await page.locator('#ws-mat-plus1').click();
   check('Main-page dose buttons feed the live preview', await page.locator('.sm-result-aff').count() === 3 && (await page.locator('#ws-material-summary').textContent()).includes('×3'));
-  const probability = await page.evaluate(() => GameData.smeltSuccessProbs(GameData.smeltRatesOf(GameData.smeltLoadOf([{ id: document.querySelector('#ws-material-images img').src.split('/').pop().replace('.png', ''), qty: 3 }]), false), true).full);
+  const probability = await page.evaluate(() => GameData.smeltSuccessProbs(GameData.smeltRatesOf(GameData.smeltLoadOf([{ id: document.querySelector('#ws-material-icon').src.split('/').pop().replace('.png', ''), qty: 3 }]), false), true).full);
   check('Catalyst probability is success × extra chance', await page.locator('.sm-result-aff.add .ws-aff-prob').textContent() === '获得概率 ' + probability + '%');
   const doseHandle = await page.locator('#ws-mat-plus1').elementHandle();
   await page.evaluate(() => { Engine.state.player.coins++; UI.refreshAll('assets'); });
@@ -117,7 +117,11 @@ async function run() {
   await page.locator('#ws-relic-minus1').click();
   check('Relic -1 steps the shard dose back', /已投入 0 \/ 10 片/.test(await page.locator('#ws-relic-count').textContent()));
   await page.locator('#ws-relic-plus1').click();
-  await page.locator('#ws-pearl').check();
+  await page.locator('#ws-pearl').click();
+  check('Pearl toggles the whole card gold without a checkbox', await page.locator('#ws-pearl').getAttribute('aria-pressed') === 'true' && await page.locator('#ws-pearl').evaluate(n => getComputedStyle(n).borderTopColor === 'rgb(239, 196, 91)') && await page.locator('#ws-pearl input').count() === 0);
+  await page.locator('#ws-pearl').press('Space');
+  check('Keyboard toggles pearl off', await page.locator('#ws-pearl').getAttribute('aria-pressed') === 'false');
+  await page.locator('#ws-pearl').press('Enter');
   await page.evaluate(() => { document.querySelector('#main').scrollTop = 0; });
   fs.mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: path.join(SHOTS, 'implemented-desktop.png'), fullPage: true });
@@ -130,7 +134,18 @@ async function run() {
     });
     console.log('Layout', width, height, fit);
     if (width === 1366) await page.screenshot({ path: path.join(SHOTS, 'fixed-desktop-1366.png') });
-    check('Workbench fully visible without scrolling at ' + width + 'x' + height, fit.page && fit.preview && fit.bottom <= fit.limit);
+    check('Workbench fully visible without scrolling at ' + width + 'x' + height, fit.page && fit.bottom <= fit.limit);
+  }
+  for (const [width, height] of [[1920,1080],[1536,864],[1280,720],[1097,617],[960,540],[1366,768],[1093,614],[911,512],[781,439],[683,384],[640,400],[390,844],[320,568]]) {
+    await page.setViewportSize({ width, height });
+    check('Zoom keeps workbench and submit inside one viewport ' + width + 'x' + height, await page.evaluate(() => {
+      const main = document.querySelector('#main');
+      return main.scrollWidth <= main.clientWidth + 1 && main.scrollHeight <= main.clientHeight + 1 &&
+        ['.sm-draft', '.sm-preview-panel', '#ws-go'].every(sel => {
+          const r = document.querySelector(sel).getBoundingClientRect();
+          return r.top >= 0 && r.bottom <= innerHeight + 1 && r.left >= 0 && r.right <= innerWidth + 1 && r.height > 0;
+        });
+    }));
   }
   for (const width of [1280, 1024, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -169,7 +184,7 @@ async function run() {
   await page.locator('#ws-mat-plus5').click(); await page.locator('#ws-mat-plus5').click(); await page.locator('#ws-mat-plus5').click();
   check('Material dose clamps to actual stock', (await page.locator('#ws-material-summary').textContent()).includes('×12'));
   await page.evaluate(() => {
-    const id = document.querySelector('#ws-material-images img').src.split('/').pop().replace('.png', '');
+    const id = document.querySelector('#ws-material-icon').src.split('/').pop().replace('.png', '');
     Engine.state.inventory[id] = 1; UI.refreshAll('assets');
   });
   check('Shrinking inventory clamps selected quantity', (await page.locator('#ws-material-summary').textContent()).includes('×1'));
