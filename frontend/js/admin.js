@@ -440,6 +440,7 @@ window.Admin = (function () {
     const sea = cfg.sea || { chartCost: 3, zoneTtlMin: 120, zoneMax: 3, events: { storm: 5, bounty: 6, school: 6, whirlpool: 3, wreck: 1.5, bountyDouble: 30 }, anchor: { coins: 50000, scales: 3, maxTimes: 3, extendMin: 1440 }, nightglow: { on: true, from: 20, to: 23, rare: 15 } };
     const lv = ship.levels, XN = ship.xpNeed, UC = ship.upCoins, US = ship.upScale;
     const ev = sea.events || {};
+    // 出厂兜底表：只在服务端没给 quests 时使用（正常都走 /api/admin/world 的当前生效值）
     const quests = Array.isArray(sea.quests) && sea.quests.length ? sea.quests : [
       { id: 'q_ocean_catch', title: '远洋渔汛：在远洋钓上 15 条渔获', kind: 'catch_ocean', need: 15, reward: { coins: 50000, items: { deepscale: 3, relic: 5 } } },
       { id: 'q_zone_catch', title: '探索未知：在临时海域钓上 10 条渔获', kind: 'catch_zone', need: 10, reward: { coins: 80000, items: { dragonpearl: 1 } } },
@@ -490,30 +491,118 @@ window.Admin = (function () {
       '<span class="ch-fix"><label>续期（分钟）</label><input id="sea-anc-extend" class="ipt mk-num" type="number" min="5" max="10080" step="1" value="' + ((sea.anchor || {}).extendMin != null ? sea.anchor.extendMin : 1440) + '"></span>' +
       '<span class="ch-fix"><label>🌌 夜光潮开</label><select id="sea-ng-on" class="ipt mk-num"><option value="1"' + ((sea.nightglow || {}).on !== false ? ' selected' : '') + '>开</option><option value="0"' + ((sea.nightglow || {}).on === false ? ' selected' : '') + '>关</option></select></span>' +
       '<span class="ch-fix"><label>夜光潮稀有%</label><input id="sea-ng-rare" class="ipt mk-num" type="number" min="0" max="100" step="1" value="' + ((sea.nightglow || {}).rare != null ? sea.nightglow.rare : 15) + '"></span></div>' +
-      '<h3>🏅 每日悬赏（v0.21.0，按条编辑，不能增删）</h3>' +
-      '<div class="hint" style="margin-bottom:8px">每天从奖池随机 3 条；标题 ≤40 字，「需求」= 完成次数，上贡类另按「上贡数量」扣深海鳞片。<br>' +
+      '<h3>🏅 每日悬赏（按条编辑，不能增删条目）</h3>' +
+      '<div class="hint" style="margin-bottom:8px">每天从奖池随机 3 条。<b>需求类型</b>决定这条悬赏怎么计数（选「上交指定物品」时另填要交的物品与数量，' +
+      '该条进度按持有量实时判定）；<b>奖励</b> = 金币 + 任意材料/宝匣（可加多行）。标题 ≤40 字。<br>' +
       '<label>悬赏刷新时刻（本地小时 0-23）</label><input id="sea-q-reset" class="ipt mk-num" type="number" min="0" max="23" step="1" value="' + ((sea.questResetHour != null) ? sea.questResetHour : 0) + '"></div>' +
-      '<table class="tbl"><thead><tr><th>标题</th><th class="num">需求</th><th class="num">上贡(鳞片)</th><th class="num">金币</th><th class="num">海图碎片</th><th class="num">深海鳞片</th><th class="num">龙宫宝珠</th><th class="num">宝匣残片</th><th class="num">深潜宝匣</th></tr></thead><tbody>' +
-      quests.map(function (q, qi) {
-        const rw = q.reward || {}, it = rw.items || {};
-        return '<tr><td><input id="sea-q-title-' + qi + '" class="ipt" type="text" maxlength="40" value="' + esc(q.title || '') + '"></td>' +
-          '<td class="num"><input id="sea-q-need-' + qi + '" class="ipt mk-num" type="number" min="1" max="999" step="1" value="' + (q.need != null ? q.need : 1) + '"></td>' +
-          '<td class="num">' + (q.kind === 'submit_deepscale' ? '<input id="sea-q-sub-' + qi + '" class="ipt mk-num" type="number" min="0" max="999" step="1" value="' + (q.submitNeed != null ? q.submitNeed : 5) + '">' : '<span class="hint">—</span>') + '</td>' +
-          '<td class="num"><input id="sea-q-coins-' + qi + '" class="ipt mk-num" type="number" min="0" step="1" value="' + (rw.coins != null ? rw.coins : 0) + '"></td>' +
-          '<td class="num"><input id="sea-q-frag-' + qi + '" class="ipt mk-num" type="number" min="0" step="1" value="' + (rw.chartfrag != null ? rw.chartfrag : 0) + '"></td>' +
-          '<td class="num"><input id="sea-q-ds-' + qi + '" class="ipt mk-num" type="number" min="0" step="1" value="' + (rw.deepscale != null ? rw.deepscale : 0) + '"></td>' +
-          '<td class="num"><input id="sea-q-pearl-' + qi + '" class="ipt mk-num" type="number" min="0" max="999" step="1" value="' + (it.dragonpearl != null ? it.dragonpearl : 0) + '"></td>' +
-          '<td class="num"><input id="sea-q-relic-' + qi + '" class="ipt mk-num" type="number" min="0" max="999" step="1" value="' + (it.relic != null ? it.relic : 0) + '"></td>' +
-          '<td class="num"><input id="sea-q-deep-' + qi + '" class="ipt mk-num" type="number" min="0" max="999" step="1" value="' + (it.chest_deep != null ? it.chest_deep : 0) + '"></td></tr>';
-      }).join('') + '</tbody></table>' +
+      '<div id="sea-quests"></div>' +
 
       '<div class="mgr-row" style="margin-top:10px"><button class="btn primary" id="sea-save">保存远洋配置</button>' +
       '<button class="btn" id="sea-reset" style="margin-left:8px">恢复出厂</button>' +
       '<span id="sea-state" class="hint" style="margin-left:10px"></span></div>';
+    // ---- 悬赏逐条编辑器（v0.21.2）----
+    // 草稿在 questDraft（模块作用域内）：增删奖励行、切需求类型都会重绘这一块，
+    // 重绘前先 syncQuestDraft() 把输入框里的值收回草稿，否则正在编辑的标题会被刷掉。
+    let questDraft = (sea.quests || []).map(questToDraft);
+    function questToDraft(q) {
+      const rw = q.reward || {};
+      const sub = GameData.seaQuestSubmitOf(q) || { id: 'deepscale', count: 8 };
+      const items = [];
+      ['chartfrag', 'deepscale'].forEach(function (id) {   // 旧字段（模板里 q_voyage 有 chartfrag）也并到奖励行里
+        const n = Math.floor(Number(rw[id]) || 0);
+        if (n > 0) items.push({ id: id, qty: n });
+      });
+      Object.keys(rw.items || {}).forEach(function (id) {
+        const n = Math.floor(Number(rw.items[id]) || 0);
+        if (n > 0 && GameData.isSeaQuestRewardId(id)) items.push({ id: GameData.normalizeItemId(id), qty: n });
+      });
+      return { id: q.id, title: q.title || '', kind: q.kind || 'catch_ocean', need: q.need != null ? q.need : 1,
+        submitId: sub.id, submitCount: sub.count, coins: rw.coins != null ? rw.coins : 0, items: items };
+    }
+    const rewardOpts = GameData.rewardItemChoices();
+    function itemOptsHtml(sel) {
+      const groups = [['material', '材料'], ['chest', '宝匣']];
+      return groups.map(function (gr) {
+        const opts = rewardOpts.filter(function (c) { return c.kind === gr[0]; })
+          .map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.name) + '</option>'; });
+        return opts.length ? '<optgroup label="' + gr[1] + '">' + opts.join('') + '</optgroup>' : '';
+      }).join('');
+    }
+    function syncQuestDraft() {
+      questDraft.forEach(function (q, qi) {
+        const g = function (cls) { const el = $('sea-q-' + cls + '-' + qi); return el ? el.value : null; };
+        if (g('title') != null) q.title = g('title').slice(0, 40);
+        if (g('kind') != null) q.kind = g('kind');
+        if (g('need') != null) q.need = Number(g('need')) || 1;
+        if (g('coins') != null) q.coins = Number(g('coins')) || 0;
+        if (g('subitem') != null) q.submitId = g('subitem');
+        if (g('subcount') != null) q.submitCount = Number(g('subcount')) || 1;
+        q.items.forEach(function (it, ii) {
+          const s = $('sea-q-item-' + qi + '-' + ii), n = $('sea-q-qty-' + qi + '-' + ii);
+          if (s) it.id = s.value;
+          if (n) it.qty = Number(n.value) || 0;
+        });
+      });
+    }
+    function drawQuestTable() {
+      const host = $('sea-quests');
+      if (!host) return;
+      host.innerHTML = questDraft.map(function (q, qi) {
+        return '<div class="q-card">' +
+          '<div class="q-head">' +
+          '<input id="sea-q-title-' + qi + '" class="ipt q-title" type="text" maxlength="40" value="' + esc(q.title) + '" title="玩家端显示的悬赏标题">' +
+          '<span class="ch-fix"><label>需求类型</label><select id="sea-q-kind-' + qi + '" class="ipt q-kind">' +
+          GameData.SEA_QUEST_KINDS.map(function (k) {
+            return '<option value="' + k.id + '"' + (k.id === q.kind ? ' selected' : '') + '>' + esc(k.name) + '</option>';
+          }).join('') + '</select></span>' +
+          '<span class="ch-fix"><label>' + esc((GameData.SEA_QUEST_KINDS.find(function (k) { return k.id === q.kind; }) || {}).unit ? '需求（' + GameData.SEA_QUEST_KINDS.find(function (k) { return k.id === q.kind; }).unit + '）' : '需求') + '</label>' +
+          // 上交类只交一次（服务端也会强制 need=1）：需求次数对上交类没有意义
+          (q.kind === 'submit'
+            ? '<input id="sea-q-need-' + qi + '" class="ipt mk-num" type="number" value="1" disabled title="上交类固定为交一次">'
+            : '<input id="sea-q-need-' + qi + '" class="ipt mk-num" type="number" min="1" max="999" step="1" value="' + esc(q.need) + '">') + '</span>' +
+          (q.kind === 'submit'
+            ? '<span class="ch-fix"><label>上交物品</label><select id="sea-q-subitem-' + qi + '" class="ipt q-sub-item">' + itemOptsHtml(q.submitId) + '</select></span>' +
+              '<span class="ch-fix"><label>上交数量</label><input id="sea-q-subcount-' + qi + '" class="ipt mk-num" type="number" min="1" max="999" step="1" value="' + esc(q.submitCount) + '"></span>'
+            : '') +
+          '<span class="ch-fix"><label>金币</label><input id="sea-q-coins-' + qi + '" class="ipt mk-num" type="number" min="0" step="1" value="' + esc(q.coins) + '"></span>' +
+          '</div>' +
+          '<div class="q-rewards"><span class="hint">奖励物品</span>' +
+          q.items.map(function (it, ii) {
+            return '<span class="ch-fix q-item-row"><select id="sea-q-item-' + qi + '-' + ii + '" class="ipt q-item">' + itemOptsHtml(it.id) + '</select>' +
+              '<input id="sea-q-qty-' + qi + '-' + ii + '" class="ipt mk-num" type="number" min="0" max="999" step="1" value="' + esc(it.qty) + '" title="数量（0 = 不发）">' +
+              '<button class="btn mini" data-qdel="' + qi + ':' + ii + '" title="删掉这条奖励">✕</button></span>';
+          }).join('') +
+          '<button class="btn mini" data-qadd="' + qi + '">＋ 加奖励物品</button>' +
+          '<span class="hint">物品限材料 / 宝匣；数量 0 表示不发</span></div>' +
+          '</div>';
+      }).join('');
+
+      host.querySelectorAll('select[id^="sea-q-kind-"]').forEach(function (sel) {
+        sel.onchange = function () { syncQuestDraft(); drawQuestTable(); };   // 切成上交类要立刻显示「上交物品」两个框
+      });
+      host.querySelectorAll('[data-qadd]').forEach(function (b) {
+        b.onclick = function () {
+          syncQuestDraft();
+          const q = questDraft[+b.getAttribute('data-qadd')];
+          q.items.push({ id: 'deepscale', qty: 1 });
+          drawQuestTable();
+        };
+      });
+      host.querySelectorAll('[data-qdel]').forEach(function (b) {
+        b.onclick = function () {
+          syncQuestDraft();
+          const parts = b.getAttribute('data-qdel').split(':');
+          questDraft[+parts[0]].items.splice(+parts[1], 1);
+          drawQuestTable();
+        };
+      });
+    }
+    drawQuestTable();
     $('sea-save').onclick = function () { saveSeaCfg(false); };
     $('sea-reset').onclick = function () { saveSeaCfg(true); };
     function seaName(id) { const el = $(id); return el && el.value.trim() ? el.value.trim() : null; }
     function saveSeaCfg(reset) {
+      if (!reset) syncQuestDraft();   // 悬赏那一块的输入框值先收回草稿再提交
       const payload = reset ? {} : {
         ship: {
           names: [0, 1, 2, 3, 4].map(function (i) { return seaName('sea-name-' + i); }),
@@ -544,20 +633,21 @@ window.Admin = (function () {
             rare: seaNum('sea-ng-rare', 0, 100, 15),
           },
           questResetHour: seaNum('sea-q-reset', 0, 23, 0),
-          quests: quests.map(function (q, qi) {
+          quests: questDraft.map(function (q) {
             const items = {};
-            const pearl = seaNum('sea-q-pearl-' + qi, 0, 999, 0); if (pearl > 0) items.dragonpearl = pearl;
-            const relic = seaNum('sea-q-relic-' + qi, 0, 999, 0); if (relic > 0) items.relic = relic;
-            const deep = seaNum('sea-q-deep-' + qi, 0, 999, 0); if (deep > 0) items.chest_deep = deep;
-            const out = { id: q.id, title: ((($('sea-q-title-' + qi) || {}).value || '').trim()).slice(0, 40) || q.title,
-              need: seaNum('sea-q-need-' + qi, 1, 999, q.need || 1),
-              reward: {
-                coins: seaNum('sea-q-coins-' + qi, 0, 1e9, (q.reward || {}).coins || 0),
-                chartfrag: seaNum('sea-q-frag-' + qi, 0, 1e9, (q.reward || {}).chartfrag || 0),
-                deepscale: seaNum('sea-q-ds-' + qi, 0, 1e9, (q.reward || {}).deepscale || 0),
-              } };
+            (q.items || []).forEach(function (it) {
+              const id = GameData.normalizeItemId(it.id);
+              const n = Math.max(0, Math.min(999, Math.floor(Number(it.qty) || 0)));
+              if (GameData.isSeaQuestRewardId(id) && n > 0) items[id] = (items[id] || 0) + n;
+            });
+            const out = { id: q.id, title: (String(q.title || '').trim().slice(0, 40)) || q.id,
+              kind: q.kind, need: Math.max(1, Math.min(999, Math.floor(Number(q.need) || 1))),
+              // chartfrag / deepscale 显式写 0：奖励物品一律走 items，避免与模板里的旧值叠加
+              reward: { coins: Math.max(0, Math.floor(Number(q.coins) || 0)), chartfrag: 0, deepscale: 0 } };
             if (Object.keys(items).length) out.reward.items = items;
-            if (q.kind === 'submit_deepscale') out.submitNeed = seaNum('sea-q-sub-' + qi, 0, 999, q.submitNeed || 5);
+            if (q.kind === 'submit') {
+              out.submit = { id: GameData.normalizeItemId(q.submitId), count: Math.max(1, Math.min(999, Math.floor(Number(q.submitCount) || 1))) };
+            }
             return out;
           }),
         },
@@ -2299,6 +2389,10 @@ window.Admin = (function () {
   // ================================
   // 服务端仍以「钓场」为内部容器：全部钓点挂在唯一隐式钓场 'map' 下（出海临时海域 sea:* 不在这里管理）。
   const MAP_GID = 'map';
+  // v0.21.2：近岸图 / 远洋图分开管理（与玩家端「🎣 钓鱼」页的两个地图页签同口径）。
+  // 以前两张图的钓点混在同一张近岸底图上拖动，远洋点的坐标看着毫无意义。
+  let spotMapTab = 'nearshore';
+  const mapTabOf = function (sp) { return sp && sp.map === 'voyage' ? 'voyage' : 'nearshore'; };
   function renderGrounds() {
     const main = $('main');
     main.innerHTML = '<h2>🎣 钓点管理</h2>' +
@@ -2311,7 +2405,12 @@ window.Admin = (function () {
   function drawGrounds(cfg) {
     const g = cfg.grounds.find(function (x) { return x.id === MAP_GID; }) || cfg.grounds[0];
     if (!g) return;
-    if (!selSpot || !g.spots.some(function (s) { return s.id === selSpot; })) selSpot = g.spots.length ? g.spots[0].id : null;
+    // 当前页签（近岸/远洋）下的钓点；切换页签时选中项也跟着换到该图的第一个点
+    const mapSpots = function (tab) {
+      return (g.spots || []).filter(function (s) { return mapTabOf(s) === tab; });
+    };
+    const curSpots = mapSpots(spotMapTab);
+    if (!selSpot || !curSpots.some(function (s) { return s.id === selSpot; })) selSpot = curSpots.length ? curSpots[0].id : null;
     const body = $('gd-body');
     // 拉数据期间页面可能已被切走或重绘（例如快速来回切页签）：容器不在就什么都不做
     if (!body) return;
@@ -2332,27 +2431,32 @@ window.Admin = (function () {
       '</div>' +
       // —— 钓点列表 + 新建 ——
       '<div class="panel">' +
-      '<h3 style="margin-top:0">🎣 钓点列表（' + g.spots.length + '）</h3>' +
-      '<div class="spot-rows">' + g.spots.map(function (s) {
+      '<h3 style="margin-top:0">🎣 钓点列表（近岸 ' + mapSpots('nearshore').length + ' / 远洋 ' + mapSpots('voyage').length + '）</h3>' +
+      '<div class="gd-tabs">' +
+      [['nearshore', '🏞 近岸图'], ['voyage', '⛵ 远洋图']].map(function (kv) {
+        return '<button class="btn mini gd-tab' + (spotMapTab === kv[0] ? ' on' : '') + '" data-mtab="' + kv[0] + '">' + kv[1] +
+          '<span class="hint">（' + mapSpots(kv[0]).length + '）</span></button>';
+      }).join('') +
+      '<span class="hint">两张图分别定位：下面的地图与列表只显示当前这张图的钓点</span></div>' +
+      '<div class="spot-rows">' + (curSpots.length ? curSpots.map(function (s) {
         const pos = Array.isArray(s.pos) ? s.pos : null;
         return '<div class="spot-row' + (s.id === selSpot ? ' sel' : '') + (s.locked ? ' locked' : '') + '" data-s="' + esc(s.id) + '">' +
           '<b>' + esc(s.name) + '</b>' + (s.locked ? ' 🔒' : '') +
-          (s.map === 'voyage' ? ' <span class="gd-badge custom">远洋图</span>' : '') +
           (s.minShip ? ' <span class="gd-badge limited" title="船级门槛">⛵ ' + s.minShip + ' 级船</span>' : '') +
-          '<span class="gi">' + (pos ? '坐标 ' + pos[0] + ', ' + pos[1] : '未定位') +
+          '<span class="gi">' + (pos ? '坐标 ' + pos[0] + ', ' + pos[1] : '未定位（在下方地图上拖一下）') +
           ' · 池 ' + (s.pool || []).length + ' 条' +
           ((s.buffs || []).length ? ' · 增益 ' + s.buffs.length + ' 条' : '') +
           (s.biteRate != null && s.biteRate !== '' ? ' · 上鱼率 ' + s.biteRate + '%' : '') +
           (s.intervalMs != null && s.intervalMs !== '' ? ' · 间隔 ' + s.intervalMs + 'ms' : '') + '</span>' +
           '<button class="btn mini" data-lock="' + esc(s.id) + '">' + (s.locked ? '解锁' : '锁定') + '</button>' +
           '</div>';
-      }).join('') + '</div>' +
+      }).join('') : '<div class="hint">这张图上还没有钓点，用下面的「＋ 新建钓点」添加（所属图已按当前页签预选）。</div>') + '</div>' +
       '<div class="mgr-row" style="margin-top:10px"><input id="ns-name" class="ipt gi-name" placeholder="新钓点名称" maxlength="20" />' +
       '<select id="ns-preset" class="ipt gi-type">' + presetOpts + '</select>' +
-      '<label class="hint">所属图</label><select id="ns-map" class="ipt gi-type"><option value="">近岸图</option><option value="voyage">远洋图</option></select>' +
+      '<label class="hint">所属图</label><select id="ns-map" class="ipt gi-type"><option value=""' + (spotMapTab === 'nearshore' ? ' selected' : '') + '>近岸图</option><option value="voyage"' + (spotMapTab === 'voyage' ? ' selected' : '') + '>远洋图</option></select>' +
       '<label class="hint">船级门槛</label><input id="ns-ship" class="ipt mk-num" type="number" min="0" max="5" step="1" placeholder="0=不限" style="width:70px" />' +
       '<button class="btn mini" id="ns-add">＋ 新建钓点（一键填充）</button>' +
-      (g.spots.length ? '<button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button>' : '') +
+      (curSpots.length ? '<button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button>' : '') +
       '</div></div>' +
       '<div class="panel gd-location"><div id="gd-map"></div><div id="ed-body"></div></div>' +
       // —— 战利品组（可整组放进掉落池） ——
@@ -2368,7 +2472,17 @@ window.Admin = (function () {
       '<span id="lg-state" class="hint"></span></div>' +
       '<div id="lg-edit"></div></div>';
 
-    // —— 钓点列表：选中 / 锁定 / 恢复 ——
+    // —— 钓点列表：切图 / 选中 / 锁定 / 恢复 ——
+    body.querySelectorAll('[data-mtab]').forEach(function (b) {
+      b.onclick = function () {
+        const tab = b.getAttribute('data-mtab');
+        if (tab === spotMapTab) return;
+        spotMapTab = tab;
+        selSpot = null;            // 交给 drawGrounds 在新图里重新选（选到该图第一个钓点）
+        poolDirty = buffsDirty = false; posDraft = {};
+        drawGrounds(cfg);
+      };
+    });
     body.querySelectorAll('.spot-row').forEach(function (row) {
       row.onclick = function (ev) {
         if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-lock')) return;
@@ -2412,13 +2526,14 @@ window.Admin = (function () {
         if (!r.ok) { toast(r.data.error || '创建失败', true); return; }
         toast('钓点「' + name + '」已创建（掉落池已按预设填充）');
         selSpot = r.data.spot.id;
+        spotMapTab = mapTabOf(r.data.spot);   // 新点建在另一张图上时自动切过去，否则看不到它
         poolDirty = buffsDirty = false; posDraft = {};
         loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
       });
     };
     if ($('ns-del')) {
       $('ns-del').onclick = function () {
-        const spNow = g.spots.find(function (x) { return x.id === selSpot; });
+        const spNow = curSpots.find(function (x) { return x.id === selSpot; });
         if (!spNow) return;
         confirmModalLocal('删除钓点「' + spNow.name + '」？在该点钓鱼的玩家会被停止（内置钓点可在「已删除钓点」中恢复）。').then(function (ok) {
           if (!ok) return;
@@ -2433,9 +2548,9 @@ window.Admin = (function () {
     }
 
     drawLootGroupManager(cfg);
-    drawSpotMap(g);
-    const sp = g.spots.find(function (x) { return x.id === selSpot; });
-    if (!sp) { $('ed-body').innerHTML = '<div class="hint">该渔场暂无钓点，可用上方「＋ 新建钓点」添加（自动填充掉落池）。</div>'; return; }
+    drawSpotMap(g, curSpots, g.spots);
+    const sp = curSpots.find(function (x) { return x.id === selSpot; });
+    if (!sp) { $('ed-body').innerHTML = '<div class="hint">这张图上还没有钓点，可用上方「＋ 新建钓点」添加（自动填充掉落池）。</div>'; return; }
     // 草稿：首次进入或切换钓点时从服务器数据拷贝
     if (!poolDirty && !buffsDirty) {
       poolDraft = (sp.pool || []).map(function (e) { return poolToRow(e.pick, e.weight); });
@@ -2444,20 +2559,26 @@ window.Admin = (function () {
     drawEditors(cfg, g, sp);
   }
   // ---- 钓点地图定位（拖动设置）----
-  // 玩家端「钓鱼」页的世界地图坐标与钓点数据一起下发（data.js 的 spot.pos，后台可覆盖）。
-  // 这里提供一张缩略世界地图：拖动节点 = 改坐标，坐标以地图宽高的百分比保存（2~98，防止拖出视野）。
+  // 玩家端「钓鱼」页的两张图各有一套坐标：近岸图 = assets/worldmap.png，远洋图 = voyage-map.js 的 CSS 像素海图
+  // （与玩家端「⛵ 远洋」页签同一份底图，坐标口径一致，后台看到的pos 就是玩家看到的pos）。
+  // 拖动节点 = 改坐标，坐标以地图宽高的百分比保存（2~98，防止拖出视野）。
   // 草稿存在 posDraft（模块级），因此上鱼广播/切页重绘都不会丢掉尚未保存的拖动结果。
-  function drawSpotMap(g) {
+  function drawSpotMap(g, spots, allSpots) {
     const host = $('gd-map');
     if (!host) return;
-    const spots = g.spots || [];
-    if (!spots.length) { host.innerHTML = ''; return; }
+    spots = spots || [];
+    host.innerHTML = '<h3>🗺 地图定位 — ' + (spotMapTab === 'voyage' ? '远洋图' : '近岸图') + ' · ' + esc(g.name) + '</h3>';
+    if (!spots.length) {
+      host.innerHTML += '<div class="hint">这张图上还没有钓点。切到「' + (spotMapTab === 'voyage' ? '🏞 近岸图' : '⛵ 远洋图') +
+        '」可编辑另一张图的钓点；新建时「所属图」记得选对。</div>';
+      return;
+    }
     const posOf = function (sp) { return posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) || [50, 50]; };
-    host.innerHTML = '<h3>🗺 地图定位 — ' + esc(g.name) + '</h3>' +
+    host.innerHTML +=
       '<div class="hint" style="margin-bottom:8px">直接拖动节点调整钓点在玩家端世界地图上的位置（坐标 = 地图宽高的百分比）。' +
       '「恢复出厂」把该钓点退回 data.js 的默认坐标。改完点「保存坐标」立即对全服生效。</div>' +
-      '<div class="gd-map" id="gd-map-canvas">' +
-      '<img class="gd-map-img" src="assets/worldmap.png" alt="" draggable="false">' +
+      '<div class="gd-map' + (spotMapTab === 'voyage' ? ' gd-map-voyage' : '') + '" id="gd-map-canvas">' +
+      (spotMapTab === 'voyage' ? '' : '<img class="gd-map-img" src="assets/worldmap.png" alt="" draggable="false">') +
       spots.map(function (sp) {
         const p = posOf(sp);
         return '<button class="gd-node" data-s="' + esc(sp.id) + '" style="left:' + p[0] + '%;top:' + p[1] + '%" title="拖动调整位置">' +
@@ -2469,6 +2590,14 @@ window.Admin = (function () {
       '<span id="gd-map-state" class="hint" style="margin-left:10px">拖动节点后记得保存</span></div>';
 
     const canvas = $('gd-map-canvas');
+    // 远洋底图：与玩家端同一份 CSS 像素海图（节点百分比坐标口径一致），垫在所有节点下面
+    if (spotMapTab === 'voyage') {
+      const wrap = document.createElement('div');
+      wrap.className = 'px-map-voyage';
+      if (window.VoyageMap) wrap.appendChild(window.VoyageMap.create());
+      else wrap.innerHTML = '<img class="gd-map-img" src="assets/voyagemap.png" alt="" draggable="false">';
+      canvas.insertBefore(wrap, canvas.firstChild);
+    }
     let drag = null;
     function setPos(node, sid, x, y) {
       const nx = Math.max(2, Math.min(98, Math.round(x * 10) / 10));
@@ -2502,7 +2631,8 @@ window.Admin = (function () {
       }
     });
     $('gd-map-save').onclick = function () {
-      const list = spots.map(function (sp) {
+      // 两张图的钓点一起保存：切页签之前的拖动也在这个 posDraft 里，别只存当前这张图
+      const list = (allSpots || spots).map(function (sp) {
         return { spotId: sp.id, pos: posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) };
       }).filter(function (e) { return e.pos; });
       adminApi('POST', '/api/admin/spot/pos', { token: token, groundId: g.id, list: list }).then(function (r) {
@@ -2513,11 +2643,11 @@ window.Admin = (function () {
       });
     };
     $('gd-map-reset').onclick = function () {
-      confirmModalLocal('把「' + g.name + '」的钓点坐标全部恢复为出厂值？').then(function (ok) {
+      confirmModalLocal('把「近岸图 + 远洋图」的钓点坐标全部恢复为出厂值？').then(function (ok) {
         if (!ok) return;
         adminApi('POST', '/api/admin/spot/pos', {
           token: token, groundId: g.id,
-          list: spots.map(function (sp) { return { spotId: sp.id, pos: null }; }),
+          list: (allSpots || spots).map(function (sp) { return { spotId: sp.id, pos: null }; }),
         }).then(function (r) {
           if (!r.ok) { toast((r.data && r.data.error) || '操作失败', true); return; }
           posDraft = {};

@@ -856,6 +856,16 @@ function ensureSeaQuests(rec) {
   if (!sea.quests || sea.quests.day !== day || !Array.isArray(sea.quests.list)) {
     sea.quests = { day: day, list: rollSeaQuests() };
   }
+  // v0.21.2：上交类悬赏的进度按「背包持有量」实时判定 —— 没有事件会推进它，
+  // 原来进度永远停在 0，这条悬赏因此一辈子领不了（旧档只在领取时校验材料，进度是死的）。
+  sea.quests.list.forEach(function (q) {
+    if (q.claimed) return;
+    const tpl = (D.SEA.quests || []).find(function (t) { return t.id === q.id; });
+    const sub = tpl && D.seaQuestSubmitOf(tpl);
+    if (!sub) return;
+    const have = invCountOf(rec, sub.id);
+    q.progress = have >= sub.count ? tpl.need : 0;
+  });
   return sea.quests;
 }
 function seaQuestOf(rec, questId) {
@@ -1213,25 +1223,29 @@ function validateSeaCfg(sc) {
       if (c.nightglow.rare !== undefined && !inRange(c.nightglow.rare, 0, 100)) return '夜光潮稀有加成需在 0 - 100';
     }
     if (c.quests !== undefined) {
-      // 悬赏按 id 对位编辑（模板在 data.js D.SEA.quests）：只允许改标题/需求/奖励，不能增删条目
+      // 悬赏按 id 对位编辑（模板在 data.js D.SEA.quests）：需求类型/标题/需求/上交物品/奖励都能改，不能增删条目
       if (!Array.isArray(c.quests)) return '悬赏配置格式错误';
       const ids = (D.SEA.quests || []).map(function (t) { return t.id; });
       for (const q of c.quests) {
         if (!q || typeof q !== 'object' || Array.isArray(q) || ids.indexOf(q.id) < 0) return '悬赏配置含未知条目';
+        if (q.kind !== undefined && !(D.SEA_QUEST_KINDS || []).some(function (k) { return k.id === q.kind; })) return '悬赏需求类型未知';
         if (q.title !== undefined && (typeof q.title !== 'string' || q.title.length > 40)) return '悬赏标题需 ≤40 字';
         if (q.need !== undefined && !inRange(q.need, 1, 999)) return '悬赏需求需在 1 - 999';
         if (q.submitNeed !== undefined && !inRange(q.submitNeed, 0, 999)) return '悬赏上贡数量需在 0 - 999';
+        if (q.submit !== undefined && q.submit !== null) {
+          if (typeof q.submit !== 'object' || Array.isArray(q.submit)) return '悬赏上交物品格式错误';
+          if (q.submit.id !== undefined && !D.isSeaQuestRewardId(q.submit.id)) return '悬赏上交物品不可用（限材料/宝匣）';
+          if (q.submit.count !== undefined && !inRange(q.submit.count, 1, 999)) return '悬赏上交数量需在 1 - 999';
+        }
         if (q.reward !== undefined) {
           if (!q.reward || typeof q.reward !== 'object' || Array.isArray(q.reward)) return '悬赏奖励格式错误';
           for (const rk of ['coins', 'chartfrag', 'deepscale']) {
             if (q.reward[rk] !== undefined && !inRange(q.reward[rk], 0, 1e9)) return '悬赏奖励（' + rk + '）需在 0 - 10 亿';
           }
           if (q.reward.items !== undefined) {
-            const allow = ['deepscale', 'dragonpearl', 'relic', 'tide_sand', 'dragon_scale', 'bait_pack', 'lure', 'rope',
-              'chest_wreck', 'chest_deep', 'chest_abyss', 'chest_king'];
             if (!q.reward.items || typeof q.reward.items !== 'object' || Array.isArray(q.reward.items)) return '悬赏奖励 items 格式错误';
             for (const ik of Object.keys(q.reward.items)) {
-              if (allow.indexOf(D.normalizeItemId(ik)) < 0) return '悬赏奖励物品（' + ik + '）不在允许清单（限材料/宝匣）';
+              if (!D.isSeaQuestRewardId(ik)) return '悬赏奖励物品（' + ik + '）不在允许清单（限材料/宝匣）';
               if (!inRange(q.reward.items[ik], 0, 999)) return '悬赏奖励数量需在 0 - 999';
             }
           }
@@ -3782,7 +3796,11 @@ function socialPlayerView(p) {
     const sp = g && (g.spots || []).find(function (s) { return s.id === p.spotId; });
     locationName = g ? (g.id === 'map' && sp ? sp.name : g.name) : '';
   }
-  return Object.assign({}, p, { locationName: locationName || (gid ? '未知钓点' : '未出发') });
+  // v0.21.2：一并带上账号名（username）——显示名可以重名，账号名才是唯一身份。
+  // 好友申请/搜索/在线列表只显示昵称时，两个同名账号长得一模一样（玩家会以为在给自己发申请）。
+  const rec0 = users[p.id];
+  const uname = rec0 ? rec0.username : '';
+  return Object.assign({}, p, { username: uname, locationName: locationName || (gid ? '未知钓点' : '未出发') });
 }
 function playersSortedFiltered(q, ground, spot) {
   const kw = (q || '').toLowerCase();
@@ -4312,7 +4330,7 @@ const server = http.createServer(function (req, res) {
       let d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '请求格式错误' });
       const username = (d.username || '').trim();
       const password = d.password || '';
-      const name = (d.name || '').trim() || username;
+      const name = ((d.name || '').trim() || username).slice(0, 20);
       if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) return apiResp(res, 400, { error: '用户名需为 3-20 位字母/数字/下划线' });
       Transport.passwordPolicy(password, 8);
       if (d.confirmPassword != null && String(d.confirmPassword) !== password) return apiResp(res, 400, { error: '两次输入的密码不一致' });
@@ -4523,11 +4541,13 @@ const server = http.createServer(function (req, res) {
           }) };
       }),
       glow: !!nightGlowBuff(),
-      // v0.21.0 每日悬赏（进度/领取状态随 /api/sea 下发）
+      // v0.21.0 每日悬赏（进度/领取状态随 /api/sea 下发）；v0.21.2 上交物品随条目下发（玩家端显示要交什么）
       quests: ensureSeaQuests(rec).list.map(function (q) {
         const tpl = (D.SEA.quests || []).find(function (t) { return t.id === q.id; });
+        const sub = tpl ? D.seaQuestSubmitOf(tpl) : null;
         return { id: q.id, title: tpl ? tpl.title : q.id, need: tpl ? tpl.need : 1, progress: q.progress,
-          claimed: !!q.claimed, reward: tpl ? tpl.reward : null, submit: tpl ? tpl.kind === 'submit_deepscale' : false };
+          claimed: !!q.claimed, reward: tpl ? tpl.reward : null, kind: tpl ? tpl.kind : null,
+          submit: sub ? { id: sub.id, name: D.itemName(sub.id), count: sub.count, have: invCountOf(rec, sub.id) } : null };
       }),
       party: {
         id: rec.partyId || null,
@@ -4622,13 +4642,15 @@ const server = http.createServer(function (req, res) {
         if (!hit) return apiResp(res, 404, { error: '没有这条悬赏' });
         const q = hit.q, tpl = hit.tpl;
         if (q.claimed) return apiResp(res, 400, { error: '这条悬赏已经领过了' });
+        // v0.21.2：上交物品由配置决定。先报「缺什么料」再报进度 —— 上交类缺料时，
+        // 说「深海鳞片不足（需 8，现有 3）」比「进度 0/1」有用得多（进度本来就是按持有量算的）。
+        const sub = D.seaQuestSubmitOf(tpl);
+        if (sub && !invHas(rec, sub.id, sub.count)) {
+          return apiResp(res, 400, { error: D.itemName(sub.id) + '不足（需 ' + sub.count + '，现有 ' + invCountOf(rec, sub.id) + '）' });
+        }
         if (q.progress < tpl.need) return apiResp(res, 400, { error: '悬赏还未完成（' + q.progress + '/' + tpl.need + '）' });
         const reward = tpl.reward || { coins: 3000, chartfrag: 2 };
-        if (tpl.kind === 'submit_deepscale') {
-          const need = tpl.submitNeed || 5;
-          if (!invHas(rec, 'deepscale', need)) return apiResp(res, 400, { error: '深海鳞片不足（需 ' + need + ' 片）' });
-          invAdd(rec, 'deepscale', -need);
-        }
+        if (sub) invAdd(rec, sub.id, -sub.count);
         q.claimed = true;
         if (reward.coins) rec.coins += reward.coins;
         if (reward.chartfrag) invAdd(rec, 'chartfrag', reward.chartfrag);
@@ -6494,6 +6516,19 @@ function lootPreviewRows(spot, rareVal) {
     if (!Array.isArray(rec.freqOut)) rec.freqOut = [];
     return rec;
   }
+  // v0.21.2：关系速查（在线/同钓点玩家卡片的「添加好友」按钮用）——
+  // 只回三组 id，不带玩家分页与好友详情，玩家列表每秒广播时靠它就地算出按钮该显示什么。
+  if (p === '/api/friends/relations' && req.method === 'GET') {
+    const key = u.query.token && sessionGet(u.query.token);
+    if (!key || !users[key]) return apiResp(res, 401, { error: '未登录' });
+    const rec = friendReqsOf(users[key]);
+    const alive = function (list) {
+      return (list || []).filter(function (id) { return Object.prototype.hasOwnProperty.call(users, id); });
+    };
+    return apiResp(res, 200, { ok: true,
+      friends: alive(Array.isArray(rec.friends) ? rec.friends : []),
+      in: alive(rec.freqIn), out: alive(rec.freqOut) });
+  }
   if (p === '/api/friends' && req.method === 'GET') {
     const key = u.query.token && sessionGet(u.query.token);
     if (!key || !users[key]) return apiResp(res, 401, { error: '未登录' });
@@ -6502,13 +6537,13 @@ function lootPreviewRows(spot, rareVal) {
     const friends = ids.filter(function (id) { return Object.prototype.hasOwnProperty.call(users, id); }).map(function (id) {
       const online = players.get(id);
       return online ? Object.assign(socialPlayerView(online), { online: true })
-        : { id: id, name: users[id].name, online: false, status: 'offline', locationName: '离线' };
+        : { id: id, name: users[id].name, username: users[id].username, online: false, status: 'offline', locationName: '离线' };
     });
     friends.sort(function (a, b) { return Number(b.online) - Number(a.online) || String(a.name).localeCompare(String(b.name)); });
     const reqView = function (list) {
       return list.filter(function (id) { return Object.prototype.hasOwnProperty.call(users, id); })
         .slice(0, 50).map(function (id) {
-          return { id: id, name: users[id].name, online: players.has(id) };
+          return { id: id, name: users[id].name, username: users[id].username, online: players.has(id) };
         });
     };
     const all = playersSortedFiltered(String(u.query.q || '').slice(0, 40)).filter(function (x) { return x.id !== key; });
@@ -6536,6 +6571,9 @@ function lootPreviewRows(spot, rareVal) {
       const ids = Array.isArray(rec.friends) ? rec.friends : [];
       const tids = Array.isArray(trec.friends) ? trec.friends : [];
       const notice = function (to, msg) { if (players.has(to)) sendTo(to, { type: 'notice', msg: msg }); };
+      // v0.21.2：关系一变就推一条 friends 事件 —— 对方那侧的好友/申请列表立刻刷新，
+      // 不必等 5 秒轮询（撤回/同意/拒绝以前是「我这边变了，对面还挂着」）。
+      const ping = function (to) { if (players.has(to)) sendTo(to, { type: 'friends' }); };
       const both = function () { saveAccount(key); saveAccount(target); };
       if (action === 'remove') {
         rec.friends = ids.filter(function (id) { return id !== target; });
@@ -6545,6 +6583,7 @@ function lootPreviewRows(spot, rareVal) {
         trec.freqIn = trec.freqIn.filter(function (id) { return id !== key; });
         trec.freqOut = trec.freqOut.filter(function (id) { return id !== key; });
         both();
+        ping(target);
         return apiResp(res, 200, { ok: true });
       }
       if (action === 'request') {
@@ -6555,7 +6594,8 @@ function lootPreviewRows(spot, rareVal) {
         rec.freqOut.push(target);
         trec.freqIn.push(key);
         both();
-        notice(target, '👥 ' + rec.name + ' 请求加你为好友，到「社交 · 好友」处理。');
+        notice(target, '👥 ' + rec.name + '（@' + rec.username + '）请求加你为好友，到「社交 · 好友」处理。');
+        ping(target);
         return apiResp(res, 200, { ok: true });
       }
       if (action === 'accept') {
@@ -6568,20 +6608,26 @@ function lootPreviewRows(spot, rareVal) {
           trec.friends = tids.concat(key);
         }
         both();
-        notice(target, '✅ ' + rec.name + ' 已同意你的好友请求，你们现在是好友了。');
+        notice(target, '✅ ' + rec.name + '（@' + rec.username + '）已同意你的好友请求，你们现在是好友了。');
+        ping(target);
         return apiResp(res, 200, { ok: true });
       }
       if (action === 'reject') {
+        // 没有待处理申请就别假装拒绝成功（撤回/拒绝都要有据可查，否则界面会说谎）
+        if (rec.freqIn.indexOf(target) < 0) return apiResp(res, 400, { error: '没有来自该玩家的好友请求' });
         rec.freqIn = rec.freqIn.filter(function (id) { return id !== target; });
         trec.freqOut = trec.freqOut.filter(function (id) { return id !== key; });
         both();
-        notice(target, '❌ ' + rec.name + ' 婉拒了你的好友请求。');
+        notice(target, '❌ ' + rec.name + '（@' + rec.username + '）婉拒了你的好友请求。');
+        ping(target);
         return apiResp(res, 200, { ok: true });
       }
-      // cancel：撤回自己发出的申请
+      // cancel：撤回自己发出的申请（没有这条申请时明确报错，而不是静默成功）
+      if (rec.freqOut.indexOf(target) < 0) return apiResp(res, 400, { error: '没有待撤回的好友申请（可能已被对方处理）' });
       rec.freqOut = rec.freqOut.filter(function (id) { return id !== target; });
       trec.freqIn = trec.freqIn.filter(function (id) { return id !== key; });
       both();
+      ping(target);
       return apiResp(res, 200, { ok: true });
     });
     return;
@@ -7297,9 +7343,11 @@ function lootPreviewRows(spot, rareVal) {
   if (p === '/api/admin/world' && req.method === 'GET') {
     const a = adminOf(u.query.token);
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    // v0.21.2：这里必须带上 anchor / nightglow / questResetHour / quests 的**当前生效值**。
+    // 以前只给了 chartCost/zoneTtl/zoneMax/events，后台悬赏编辑器拿不到 quests 就只能退回
+    // 一份写死的出厂表 —— 改完保存再进页面看到的是出厂标题，再点一次保存就把自己的改动覆盖回出厂。
     const seaNow = { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events,
       anchor: D.SEA.anchor, nightglow: D.SEA.nightglow, questResetHour: D.SEA.questResetHour, quests: D.SEA.quests };
-    const worldPayload = { seaCfg: world.seaCfg || {}, ship: D.SHIP, sea: seaNow };
     const fish = [];
     ['common', 'big', 'rare'].forEach(function (tier) {
       D.FISH[tier].forEach(function (f) { fish.push({ id: f.id, name: f.name, rarity: f.rarity, tier: tier, price: f.price, size: f.size || null }); });
@@ -7387,7 +7435,7 @@ function lootPreviewRows(spot, rareVal) {
       // ---- 远洋（v0.19.0）：已保存覆盖 + 当前生效值（面板展示/编辑用） ----
       seaCfg: world.seaCfg || {},
       ship: D.SHIP,
-      sea: { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events },
+      sea: seaNow,
       extraAffixRanges: (D.getComponentCfg && D.getComponentCfg().extraAffixRanges) || {},
       extraAffixDefaults: D.DEFAULT_EXTRA_AFFIX_RANGES,
       // ---- 工坊熔炼（成功率 / 花费 / 投料上限；材料→词缀对照只读展示） ----

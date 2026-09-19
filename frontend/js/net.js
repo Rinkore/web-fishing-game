@@ -392,6 +392,8 @@ window.Net = (function () {
   // 视口登记：告诉服务器当前正在看哪一页（之后每秒只推该页玩家状态）；clear=true 取消登记
   const fetchFriends = (q, page) => apiFetch('GET', '/api/friends?q=' + encodeURIComponent(q || '') + '&page=' + (page || 1));
   const friendUpdate = (target, action) => authed('/api/friends', { target: target, action: action });
+  // v0.21.2：只取关系（好友 / 收到 / 发出三组 id），供在线卡片上的「加好友」按钮判定显示什么
+  const friendRelations = () => apiFetch('GET', '/api/friends/relations');
   const setPlayersView = (opts) => {
     const o = opts || {};
     return authed('/api/players/view', { page: o.page || 1, size: o.size || 30, q: o.q || '',
@@ -800,6 +802,9 @@ window.Net = (function () {
         } else if (m.type === 'notice') {
           if (ui && ui.toast) ui.toast(m.msg || '');
           if (ui && ui.addLog) ui.addLog('system', m.msg || '');
+        } else if (m.type === 'friends') {
+          // v0.21.2：对端发起/同意/拒绝/撤回/移除 → 关系速查与好友面板立刻刷新（不必等 5 秒轮询）
+          if (ui && ui.friendPush) ui.friendPush();
         } else if (m.type === 'mktTrade') {
           // 市集成交：落进「📜 日志 · ✅ 交易」（原来只发 notice，会混进「系统」分类）。
           // 买家侧不 toast：发起购买的响应里已经有「购买成功」提示；卖家不在页面上也要能看到入账。
@@ -900,7 +905,7 @@ window.Net = (function () {
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
     fetchPlayersPage: fetchPlayersPage, setPlayersView: setPlayersView,
-    fetchFriends: fetchFriends, friendUpdate: friendUpdate,
+    fetchFriends: fetchFriends, friendUpdate: friendUpdate, friendRelations: friendRelations,
     fetchFeedback: fetchFeedback,
     fetchChest: fetchChest, chestCraft: chestCraft, chestOpen: chestOpen,
     fetchMall: fetchMall, mallBuy: mallBuy, fetchWorkshop: fetchWorkshop, smelt: smelt, recast: recast, forge: forge,

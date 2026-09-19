@@ -268,6 +268,8 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .peep-name { font-weight: 600; }
 .peep-loc { font-size: 12px; color: var(--muted); }
 .peep-recent { font-size: 12px; color: var(--big); }
+/* v0.21.2：@账号名（昵称可重名，好友请求/搜索结果靠它分辨是谁） */
+.peep-uname { font-size: 11px; color: var(--muted); margin-left: 6px; }
 
 .catch-log, .feed { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow: auto; font-size: 13px; }
 .log-line, .feed-line { padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.03); }

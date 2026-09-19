@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.21.1';
+  const VERSION = 'v0.21.2';
   const BUILD = '2026-09-20';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -2114,8 +2114,9 @@
     nightglow: { on: true, from: 20, to: 23, rare: 15 },
     questResetHour: 0,     // v0.21.0 悬赏每日刷新时刻（本地时间小时，0 = 零点）
     // v0.21.0 每日悬赏池：每天随机滚 3 条。奖励以稀缺资源为主（龙宫宝珠/深海鳞片/宝匣残片/宝匣），
-    // 金币只是零头——挂机玩家不缺金币。kind: catch_ocean / catch_zone / catch_deadly / catch_big_ocean /
-    // sea_event（宝箱或沉船事件）/ voyage / submit_deepscale（领取时扣 submitNeed 片鳞片）。
+    // 金币只是零头——挂机玩家不缺金币。kind 见 SEA_QUEST_KINDS（后台逐条可改）。
+    // v0.21.2：上贡类改通用 submit —— submit = { id: 上交物品, count: 数量 }（物品限材料/宝匣类），
+    // 进度按「持有量是否够」实时判定（旧档的 submit_deepscale + submitNeed 仍兼容）。
     // reward.items = { 物品id: 数量 }，物品限材料/宝匣类。
     quests: [
       { id: 'q_ocean_catch', title: '远洋渔汛：在远洋钓上 15 条渔获', kind: 'catch_ocean', need: 15,
@@ -2130,10 +2131,44 @@
         reward: { coins: 60000, items: { tide_sand: 5, relic: 8 } } },
       { id: 'q_voyage', title: '整装出航：发现 2 片新的临时海域', kind: 'voyage', need: 2,
         reward: { coins: 30000, chartfrag: 4 } },
-      { id: 'q_submit_scale', title: '上贡鳞片：上交 8 片深海鳞片', kind: 'submit_deepscale', need: 1, submitNeed: 8,
+      { id: 'q_submit_scale', title: '上贡鳞片：上交 8 片深海鳞片', kind: 'submit', need: 1,
+        submit: { id: 'deepscale', count: 8 },
         reward: { coins: 150000, items: { dragonpearl: 2 } } },
     ],
   };
+  // 悬赏需求类型（后台可逐条切换）：id 与 bumpSeaQuest 的计数键一一对应；submit 走上交物品那条通道。
+  const SEA_QUEST_KINDS = [
+    { id: 'catch_ocean', name: '远洋钓上渔获', unit: '条' },
+    { id: 'catch_zone', name: '临时海域钓上渔获', unit: '条' },
+    { id: 'catch_deadly', name: '凶险海域钓上渔获', unit: '条' },
+    { id: 'catch_big_ocean', name: '钓上大型/巨型海鱼', unit: '条' },
+    { id: 'sea_event', name: '撞上漂流宝箱/沉船残骸', unit: '次' },
+    { id: 'voyage', name: '发现新的临时海域', unit: '片' },
+    { id: 'submit', name: '上交指定物品', unit: '次' },
+  ];
+  function seaQuestKindName(kind) {
+    const k = SEA_QUEST_KINDS.find(function (x) { return x.id === kind; });
+    return k ? k.name : String(kind || '');
+  }
+  // 悬赏要上交什么：新版 = tpl.submit {id,count}；旧档 = kind 'submit_deepscale' + submitNeed（按深海鳞片读）
+  function seaQuestSubmitOf(tpl) {
+    if (!tpl) return null;
+    if (tpl.kind === 'submit' && tpl.submit && tpl.submit.id) {
+      return { id: normalizeItemId(tpl.submit.id), count: Math.max(1, Math.floor(Number(tpl.submit.count) || 1)) };
+    }
+    if (tpl.kind === 'submit_deepscale') return { id: 'deepscale', count: Math.max(1, Math.floor(Number(tpl.submitNeed) || 5)) };
+    return null;
+  }
+  // 悬赏奖励可选物品：材料 + 宝匣（渔获/组件不进奖励池，避免绕过大小鱼预留与图鉴口径）
+  const SEA_QUEST_REWARD_IDS = MATERIALS.map(function (m) { return m.id; })
+    .concat(CHESTS.map(function (c) { return c.id; }));
+  function rewardItemChoices() {
+    return SEA_QUEST_REWARD_IDS.map(function (id) {
+      const it = itemOf(id);
+      return { id: id, name: it.name, kind: it.kind };
+    });
+  }
+  function isSeaQuestRewardId(id) { return SEA_QUEST_REWARD_IDS.indexOf(normalizeItemId(id)) >= 0; }
   // 出厂快照：后台「远洋配置」恢复出厂 = 重放快照。applySeaCfg 先还原再叠加，保证幂等。
   const SHIP_DEFAULT = JSON.parse(JSON.stringify(SHIP));
   const SEA_DEFAULT = JSON.parse(JSON.stringify(SEA));
@@ -2199,24 +2234,36 @@
     }
     if (c.questResetHour != null) SEA.questResetHour = int(c.questResetHour, 0, 23, SEA.questResetHour);
       if (Array.isArray(c.quests)) {
-        // 悬赏按 id 对位合并：标题/需求/奖励可改，条目集不可增删
+        // 悬赏按 id 对位合并：需求类型 / 标题 / 需求 / 上交物品 / 奖励都可改，条目集不可增删
         c.quests.forEach(function (q) {
           const t = SEA.quests.find(function (x) { return x && x.id === q.id; });
           if (!t) return;
+          if (q.kind != null && SEA_QUEST_KINDS.some(function (k) { return k.id === q.kind; })) {
+            t.kind = q.kind;
+            if (q.kind !== 'submit') { delete t.submit; delete t.submitNeed; }
+          }
           if (q.title != null) t.title = String(q.title).slice(0, 40);
           if (q.need != null) t.need = int(q.need, 1, 999, t.need);
           if (q.submitNeed != null) t.submitNeed = int(q.submitNeed, 0, 999, t.submitNeed || 5);
+          if (q.submit && typeof q.submit === 'object' && !Array.isArray(q.submit) && q.submit.id != null) {
+            const sid = normalizeItemId(q.submit.id);
+            if (isSeaQuestRewardId(sid)) {
+              t.submit = { id: sid, count: int(q.submit.count, 1, 999, 1) };
+              delete t.submitNeed; // 新版字段落地后不再读旧字段
+            }
+          }
+          if (t.kind === 'submit' && !seaQuestSubmitOf(t)) t.submit = { id: 'deepscale', count: 8 };
+          // 上交类只判「交没交够」一次：需求次数无意义（否则会变成「交 15 次」这种领不了的配置）
+          if (t.kind === 'submit') t.need = 1;
           if (q.reward && typeof q.reward === 'object' && !Array.isArray(q.reward)) {
             ['coins', 'chartfrag', 'deepscale'].forEach(function (k) {
               if (q.reward[k] != null) t.reward[k] = int(q.reward[k], 0, 1e9, t.reward[k] || 0);
             });
             if (q.reward.items && typeof q.reward.items === 'object' && !Array.isArray(q.reward.items)) {
-              const allow = ['deepscale', 'dragonpearl', 'relic', 'tide_sand', 'dragon_scale', 'bait_pack', 'lure', 'rope',
-                'chest_wreck', 'chest_deep', 'chest_abyss', 'chest_king'];
               const items = {};
               Object.keys(q.reward.items).forEach(function (id) {
                 const nid = normalizeItemId(id);
-                if (allow.indexOf(nid) >= 0) items[nid] = int(q.reward.items[id], 0, 999, 0);
+                if (isSeaQuestRewardId(nid)) items[nid] = int(q.reward.items[id], 0, 999, 0);
               });
               t.reward.items = items;
             }
@@ -2365,6 +2412,8 @@
     normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
     GROUNDS: GROUNDS, NAV: NAV, SHIP: SHIP, SEA: SEA, applySeaCfg: applySeaCfg,
+    SEA_QUEST_KINDS: SEA_QUEST_KINDS, seaQuestKindName: seaQuestKindName,
+    seaQuestSubmitOf: seaQuestSubmitOf, rewardItemChoices: rewardItemChoices, isSeaQuestRewardId: isSeaQuestRewardId,
     allItems: allItems, itemOf: itemOf, itemName: itemName, isSellable: isSellable,
   };
 });

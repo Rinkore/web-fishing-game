@@ -450,6 +450,11 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .ch-ar-wrap .ch-fix .ipt { width: 72px; }
 
 /* ================= 钓点地图定位（拖动设置） ================= */
+/* v0.21.2：近岸图 / 远洋图分页签 —— 两张图的钓点与底图分开，不再混排在同一张坐标图上 */
+.gd-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.gd-tabs .gd-tab { min-width: 132px; }
+.gd-tabs .gd-tab.on { border-color: var(--acc); color: var(--acc); background: rgba(77, 163, 255, .12); font-weight: 600; }
+.gd-tabs .gd-tab .hint { margin-left: 4px; }
 .gd-map {
   position: relative; width: 100%; max-width: 760px; margin-bottom: 4px;
   border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
@@ -473,6 +478,17 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 }
 /* 商城配置：价格/限购输入框紧凑 */
 .ml-tbl .ipt { max-width: 140px; }
+
+/* ---------- 每日悬赏编辑器（v0.21.2：需求类型 + 上交物品 + 任意奖励物品行） ---------- */
+.q-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: var(--panel2); }
+.q-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 8px; }
+.q-head .q-title { flex: 1 1 320px; min-width: 220px; }
+.q-head .q-kind { width: 150px; flex: none; }
+.q-head .q-sub-item { width: 150px; flex: none; }
+.q-head .ch-fix .ipt { width: 88px; }
+.q-rewards { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.q-rewards .q-item { width: 150px; flex: none; }
+.q-rewards .q-item-row .ipt { width: 80px; }
 
 /* ---------- 反馈意见（v0.14.1 重排）----------
    ⚠️ 后台只加载本文件：原来这里的 .fb-admin-* 样式写在游戏端 style.css 里，

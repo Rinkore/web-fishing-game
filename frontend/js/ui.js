@@ -1336,6 +1336,55 @@ window.UI = (function () {
     }
   }
 
+  // ---- v0.21.2：好友关系速查（在线动态 / 同钓点 卡片上的「加好友」按钮用）----
+  // 服务端只回三组 id（/api/friends/relations）：登录后拉一次，好友操作后与收到 friends 推送时刷新。
+  // 昵称可以重名，所以按钮 title 里带上 @账号名 —— 只显示昵称时两个同名账号长得一模一样。
+  let friendRel = { friends: {}, in: {}, out: {} };
+  function relBucket(list) {
+    const o = Object.create(null);
+    (list || []).forEach(function (id) { o[String(id)] = 1; });
+    return o;
+  }
+  function setFriendRel(data) {
+    friendRel = { friends: relBucket(data && data.friends), in: relBucket(data && data.in), out: relBucket(data && data.out) };
+  }
+  function friendRelOf(id) {
+    const k = String(id == null ? '' : id);
+    return friendRel.friends[k] ? 'friend' : friendRel.in[k] ? 'in' : friendRel.out[k] ? 'out' : '';
+  }
+  function refreshFriendRel() {
+    if (!window.Net.friendRelations || !S().me) return Promise.resolve(null);
+    return window.Net.friendRelations().then(function (r) {
+      if (!r || !r.ok || !r.data) return null;
+      setFriendRel(r.data);
+      renderView();   // 挂钩的卡片就地换按钮（见 updatePeepCard 的关系比对）
+      return r.data;
+    }).catch(function () { return null; });
+  }
+  // 操作回包里已经给了权威结果，但卡片按钮要跟着变；立刻 renderView 会和调用方自己的重绘打架 —— 推迟一拍
+  function friendRelRefreshSoon() { setTimeout(function () { refreshFriendRel(); }, 0); }
+  // 「加好友」按钮：未建交 → 发申请；我发出过 → 撤回；对方申请过我 → 同意；已是好友 → 已添加（禁用）
+  function friendButton(b) {
+    const rel = friendRelOf(b.id);
+    const whoText = (b.name || '该玩家') + (b.username ? '（@' + b.username + '）' : '');
+    const btn = el('button', 'mini', rel === 'friend' ? '✓ 已添加' : rel === 'in' ? '✓ 同意' : rel === 'out' ? '撤回申请' : '➕ 加好友');
+    btn.title = rel === 'friend' ? whoText + ' 已经是你的好友'
+      : rel === 'in' ? '同意 ' + whoText + ' 的好友申请'
+        : rel === 'out' ? '撤回发给 ' + whoText + ' 的好友申请'
+          : '加 ' + whoText + ' 为好友';
+    btn.disabled = rel === 'friend';
+    if (!btn.disabled) btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      btn.disabled = true;
+      const act = rel === 'in' ? 'accept' : rel === 'out' ? 'cancel' : 'request';
+      window.Net.friendUpdate(b.id, act).then(function (r) {
+        if (!r || !r.ok) { btn.disabled = false; toast((r && r.data && r.data.error) || '操作失败，请重试', 'bad'); return; }
+        toast(act === 'accept' ? '已同意好友请求' : act === 'cancel' ? '已撤回申请' : '好友请求已发送，等对方处理');
+        refreshFriendRel();
+      });
+    });
+    return btn;
+  }
   function peepCard(b) {
     const st = S();
     const isSelf = st.me && b.id === st.me.id;
@@ -1345,7 +1394,7 @@ window.UI = (function () {
     card.innerHTML =
       '<span class="avatar" style="background:' + color + '">' + esc((b.name || '?').slice(0, 1)) + '</span>' +
       '<div class="peep-info">' + peepInfoHtml(b) + '</div>';
-    // 卡片右部操作区：交易（弹出子窗口）+ 查看（钓竿组件构成）
+    // 卡片右部操作区：交易（弹出子窗口）+ 查看（钓竿组件构成）+ 加好友（v0.21.2）
     if (!isSelf) {
       const acts = el('div', 'peep-acts');
       const tb = el('button', 'mini primary-mini', '🤝 交易');
@@ -1357,8 +1406,10 @@ window.UI = (function () {
       vb.addEventListener('click', function (ev) { ev.stopPropagation(); openRodModal(b.id, b.name); });
       acts.appendChild(tb);
       acts.appendChild(vb);
+      acts.appendChild(friendButton(b));
       card.appendChild(acts);
     }
+    card._rel = friendRelOf(b.id);   // 关系变了要整卡重建（见 updatePeepCard）
     return card;
   }
 
@@ -2466,6 +2517,8 @@ window.UI = (function () {
     const isSelf = !!(S().me && b.id === S().me.id);
     // 「是不是自己」变了（登录 / 切换账号）会增减右部按钮块，这种情况只能换整张卡
     if (!isSelf !== !!card.querySelector('.peep-acts')) return peepCard(b);
+    // v0.21.2：好友关系变了（申请/同意/撤回/移除）也要换卡，否则按钮文案停在旧状态
+    if (!isSelf && card._rel !== friendRelOf(b.id)) return peepCard(b);
     const html = peepInfoHtml(b);
     if (info.innerHTML !== html) info.innerHTML = html;
     if (card.classList.contains('self') !== isSelf) card.classList.toggle('self', isSelf);
@@ -2660,10 +2713,15 @@ window.UI = (function () {
     pager.appendChild(prev); pager.appendChild(label); pager.appendChild(next); search.appendChild(pager);
     cols.appendChild(saved); cols.appendChild(search); panel.appendChild(reqBlock); panel.appendChild(cols); main.appendChild(panel);
     let requestId = 0, lastFetch = 0, pending = false;
+    // 行内身份 = 昵称 + @账号名（昵称可重名；v0.21.2 起两处（搜索/申请）都用这一份，
+    // 就地更新时也按它比对，见 fill()）
+    function friendInfoHtml(p) {
+      return peepInfoHtml(p) + (p.username ? '<span class="peep-uname">@' + esc(p.username) + '</span>' : '');
+    }
     function friendRow(player, isSaved) {
       const row = el('div', 'peep');
       const info = el('div', 'peep-info');
-      info.innerHTML = peepInfoHtml(player);
+      info.innerHTML = friendInfoHtml(player);
       row.appendChild(info);
       // v0.21.0：搜索结果按关系分流 —— 对方申请过我=「同意请求」；我申请过=「撤回申请」；否则=「添加好友」
       let action, act;
@@ -2679,6 +2737,7 @@ window.UI = (function () {
         window.Net.friendUpdate(player.id, act).then(function (r) {
           if (!r || !r.ok) { button.disabled = false; toast(r && r.data && r.data.error || '操作失败，请重试', 'bad'); return; }
           toast(act === 'remove' ? '已移除好友' : act === 'accept' ? '已同意好友请求' : act === 'request' ? '好友请求已发送，等对方处理' : act === 'cancel' ? '已撤回申请' : '已处理');
+          friendRelRefreshSoon();
           panel._refresh(true);
         });
       });
@@ -2690,7 +2749,10 @@ window.UI = (function () {
     function reqRow(player, isIn) {
       const row = el('div', 'peep');
       const info = el('div', 'peep-info');
-      info.innerHTML = '<b>' + esc(player.name || player.id) + '</b>' + (player.online ? '<span class="dot on"></span>' : '<span class="dot idle"></span>');
+      // 昵称可重名，行里补一个 @账号名（v0.21.2）——否则两个同名账号完全无法区分
+      info.innerHTML = '<b>' + esc(player.name || player.id) + '</b>' +
+        (player.username ? '<span class="peep-uname">@' + esc(player.username) + '</span>' : '') +
+        (player.online ? '<span class="dot on"></span>' : '<span class="dot idle"></span>');
       row.appendChild(info);
       const ok = el('button', 'mini', isIn ? '✓ 同意' : '撤回');
       ok.addEventListener('click', function () {
@@ -2698,6 +2760,7 @@ window.UI = (function () {
         window.Net.friendUpdate(player.id, isIn ? 'accept' : 'cancel').then(function (r) {
           if (!r || !r.ok) { ok.disabled = false; toast(r && r.data && r.data.error || '操作失败，请重试', 'bad'); return; }
           toast(isIn ? '已同意好友请求' : '已撤回申请');
+          friendRelRefreshSoon();
           panel._refresh(true);
         });
       });
@@ -2709,6 +2772,7 @@ window.UI = (function () {
           window.Net.friendUpdate(player.id, 'reject').then(function (r) {
             if (!r || !r.ok) { no.disabled = false; return; }
             toast('已拒绝好友请求');
+            friendRelRefreshSoon();
             panel._refresh(true);
           });
         });
@@ -2726,7 +2790,7 @@ window.UI = (function () {
       patchList(list, players, function (p) { return p.id; }, function (p) { return friendRow(p, isSaved); }, function (row, p) {
         const act = isSaved ? 'remove' : p.reqIn ? 'accept' : p.reqOut ? 'cancel' : p.friend ? 'added' : 'request';
         if (row._friendAction !== act) { const replacement = friendRow(p, isSaved); row.replaceWith(replacement); return replacement; }
-        const html = peepInfoHtml(p), info = row.querySelector('.peep-info');
+        const html = friendInfoHtml(p), info = row.querySelector('.peep-info');
         if (info.innerHTML !== html) info.innerHTML = html;
         return null;
       });
@@ -9723,9 +9787,18 @@ window.UI = (function () {
       const row = el('div', 'sa-row');
       row.style.margin = '6px 0';
       const reward = q.reward || {};
-      const rewardText = [reward.coins ? reward.coins + ' 金币' : '', reward.chartfrag ? '海图碎片 ×' + reward.chartfrag : '', reward.deepscale ? '深海鳞片 ×' + reward.deepscale : ''].filter(Boolean).join(' + ') || '无';
-      const submitNeed = q.submit ? '（领取时扣除深海鳞片）' : '';
-      row.innerHTML = '<span>' + (q.claimed ? '✅' : (q.progress >= q.need ? '🎁' : '⬚')) + ' ' + esc(q.title) + submitNeed +
+      // 奖励物品由后台配置（reward.items = { 物品id: 数量 }），必须逐条列出名称 ——
+      // v0.21.2 之前只显示金币/海图碎片/深海鳞片，配置里的宝匣与龙宫宝珠在玩家端完全看不见。
+      const rewardText = [
+        reward.coins ? reward.coins + ' 金币' : '',
+        reward.chartfrag ? D.itemName('chartfrag') + ' ×' + reward.chartfrag : '',
+        reward.deepscale ? D.itemName('deepscale') + ' ×' + reward.deepscale : '',
+      ].concat(Object.keys(reward.items || {}).filter(function (id) { return Number(reward.items[id]) > 0; })
+        .map(function (id) { return D.itemName(id) + ' ×' + reward.items[id]; }))
+        .filter(Boolean).join(' + ') || '无';
+      const sub = q.submit;
+      const submitText = sub ? '（需上交 ' + esc(sub.name) + ' ×' + sub.count + '，当前持有 ' + sub.have + '）' : '';
+      row.innerHTML = '<span>' + (q.claimed ? '✅' : (q.progress >= q.need ? '🎁' : '⬚')) + ' ' + esc(q.title) + submitText +
         ' <span class="hint">进度 ' + q.progress + '/' + q.need + ' · 奖励：' + esc(rewardText) + '</span></span>';
       const cb = el('button', 'btn mini primary', q.claimed ? '已领取' : (q.progress >= q.need ? '领取奖励' : '未完成'));
       cb.style.marginLeft = '8px';
@@ -9970,6 +10043,8 @@ window.UI = (function () {
     if (window.Net.fetchBanners) window.Net.fetchBanners();
     // 主动拉取钓场目录：兜底确保后进入/刷新的玩家也拿到含增益的最新目录（钓点 ⚡ 标记）
     if (window.Net.fetchGrounds) window.Net.fetchGrounds();
+    // v0.21.2：好友关系速查（在线卡片上的「加好友」按钮依赖它）
+    refreshFriendRel();
   }
   // 每秒的钓鱼循环回包：只在「钓鱼」页刷新主区；切到其他页时只刷顶栏，不夺回页面。
   function onFishingTick() {
@@ -10194,9 +10269,20 @@ window.UI = (function () {
     }
   }
 
+  // v0.21.2：对端好友关系变化（发起/同意/拒绝/撤回/移除）→ 刷新关系速查 + 已打开的好友面板。
+  // 以前只有 5 秒轮询，对面撤回后我这边的好友请求会多挂 5 秒。
+  function friendPush() {
+    return Promise.resolve(refreshFriendRel()).then(function () {
+      const panel = document.querySelector('.friends-panel');
+      if (panel && panel._refresh) panel._refresh(true);
+      return null;
+    });
+  }
+
   return {
     onMarketChanged: onMarketChanged, onFeatures: onFeatures, init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
     patchCodexCell: patchCodexCell,
+    friendPush: friendPush,
     toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners, onBannerStop: onBannerStop,
     addLog: addLog, onSubAlert: onSubAlert, resetBanners: resetBanners,
     renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,
