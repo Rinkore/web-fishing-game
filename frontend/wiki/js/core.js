@@ -2,7 +2,9 @@
 (function () {
   const state = {
     snapshot: null, etag: null, lastOk: 0, readyPromise: null,
-    readyResolve: null, readyReject: null, unavailable: false, listeners: []
+    readyResolve: null, readyReject: null, unavailable: false, listeners: [],
+    content: null, contentEtag: null, contentLastOk: 0, contentReadyPromise: null,
+    contentReadyResolve: null, contentReadyReject: null
   };
   const D = window.GameData;
 
@@ -83,14 +85,127 @@
       state.unavailable = true; emit();
     }
   }
+  // 公开内容接口只下发攻略元数据；正文段落由 /api/wiki/guides/<id> 按需加载，
+  // 所以 sections 允许缺省，但出现时必须是合法结构。
+  function validContent(data) {
+    return !!(data && Array.isArray(data.guides) && data.guides.length &&
+      Array.isArray(data.updates) && data.guides.every(function (g) {
+        return g && typeof g.id === 'string' && typeof g.title === 'string' &&
+          (g.sections === undefined || (Array.isArray(g.sections) && g.sections.every(function (x) { return x && typeof x.h === 'string'; })));
+      }));
+  }
+  function applyContent(data) {
+    if (!validContent(data)) throw new Error('Wiki 内容结构无效');
+    state.content = {
+      revision: Math.max(0, Math.floor(Number(data.revision) || 0)),
+      updatedAt: data.updatedAt || '',
+      guides: data.guides,
+      updates: data.updates
+    };
+    window.WikiContent = state.content;
+    state.contentLastOk = Date.now();
+    if (state.contentReadyResolve) {
+      state.contentReadyResolve(state.content);
+      state.contentReadyResolve = null; state.contentReadyReject = null;
+    }
+    state.contentReadyPromise = null;
+    emit();
+  }
+  async function loadFallbackContent() {
+    const res = await fetch('/wiki/content/content.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    applyContent(await res.json());
+  }
+  async function refreshContent() {
+    const headers = {};
+    if (state.contentEtag) headers['If-None-Match'] = state.contentEtag;
+    try {
+      const res = await fetch('/api/wiki/content', { headers: headers, cache: 'no-cache' });
+      if (res.status === 304) {
+        state.contentLastOk = Date.now(); return;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      state.contentEtag = res.headers.get('ETag');
+      applyContent(await res.json());
+    } catch (e) {
+      if (!state.content) {
+        try { await loadFallbackContent(); return; } catch (e2) {}
+      }
+      if (state.contentReadyReject) {
+        state.contentReadyReject(e);
+        state.contentReadyReject = null; state.contentReadyResolve = null;
+      }
+      state.contentReadyPromise = null;
+    }
+  }
+  function contentReady() {
+    if (state.content) return Promise.resolve(state.content);
+    if (!state.contentReadyPromise) {
+      state.contentReadyPromise = new Promise(function (resolve, reject) {
+        state.contentReadyResolve = resolve; state.contentReadyReject = reject;
+      });
+      refreshContent();
+    }
+    return state.contentReadyPromise;
+  }
+  function qualityNameOf(q) {
+    const list = (D && D.QUALITY) || {};
+    return (list[q] && list[q].name) || String(q || '');
+  }
+  function partNameOf(p) {
+    const x = D && D.ROD_PARTS && D.ROD_PARTS.find(function (it) { return it.key === p; });
+    return x ? x.name : String(p || '');
+  }
+  function affixLabelOf(t) { return (D && D.AFFIX_LABEL && D.AFFIX_LABEL[t]) || String(t || ''); }
+  function stripHtml(v) { return String(v || '').replace(/<[^>]*>/g, ''); }
+  function rangeTextOf(pool) {
+    const a = Number(pool && pool.min), b = Number(pool && pool.max);
+    if (!isFinite(a) || !isFinite(b)) return '-';
+    const sign = function (v) { return (v > 0 ? '+' : '') + v; };
+    return sign(a) + '～' + sign(b);
+  }
+  // 目录条目：渔获 / 材料 / 组件底材 / 宝匣 / 词缀类型。desc 用于搜索结果一行摘要。
+  // 攻略详情缓存：按内容 revision 失效，避免列表轮询反复拉正文。
+  const guideDetails = { revision: null, items: {} };
+  function ensureGuideCacheRevision() {
+    const rev = state.content ? String(state.content.revision || '') : '';
+    if (guideDetails.revision !== rev) { guideDetails.revision = rev; guideDetails.items = {}; }
+  }
+  async function loadGuide(id) {
+    const gid = String(id || '');
+    if (!gid) throw new Error('攻略 ID 为空');
+    ensureGuideCacheRevision();
+    if (guideDetails.items[gid]) return guideDetails.items[gid];
+    const res = await fetch('/api/wiki/guides/' + encodeURIComponent(gid), { cache: 'no-store' });
+    if (res.status === 404) throw new Error('攻略不存在或未公开');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data || !data.guide || data.guide.id !== gid || !Array.isArray(data.guide.sections) || !data.guide.sections.length) throw new Error('攻略详情结构无效');
+    guideDetails.items[gid] = data.guide;
+    return data.guide;
+  }
   function itemEntries(s) {
     const out = [];
-    (s.catalog.fish || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'fish', type: 'fish' })); });
-    (s.catalog.materials || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'material', type: 'material' })); });
-    (s.catalog.components || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'component', type: 'component' })); });
-    (s.catalog.chests || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'chest', type: 'chest' })); });
+    (s.catalog.fish || []).forEach(function (x) {
+      const size = Array.isArray(x.size) ? x.size : null;
+      out.push(Object.assign({}, x, { kind: 'fish', type: 'fish',
+        desc: '渔获 · ' + qualityNameOf(x.rarity) + (size ? ' · 体型 ' + size[0] + '～' + size[1] + ' cm' : '') + (x.price != null ? ' · 基准价 ' + x.price : '') }));
+    });
+    (s.catalog.materials || []).forEach(function (x) {
+      out.push(Object.assign({}, x, { kind: 'material', type: 'material',
+        desc: '材料 · ' + qualityNameOf(x.rarity) + (x.price != null ? ' · 基准价 ' + x.price : '') }));
+    });
+    (s.catalog.components || []).forEach(function (x) {
+      const pool = (x.pool || []).map(function (p) { return affixLabelOf(p.type) + ' ' + rangeTextOf(p); }).join('、');
+      out.push(Object.assign({}, x, { kind: 'component', type: 'component',
+        desc: '组件底材 · ' + partNameOf(x.part) + (pool ? ' · 词缀池：' + pool : '') }));
+    });
+    (s.catalog.chests || []).forEach(function (x) {
+      out.push(Object.assign({}, x, { kind: 'chest', type: 'chest', desc: '宝匣 · ' + stripHtml(x.desc) }));
+    });
     Object.keys(s.catalog.affixes || {}).forEach(function (id) {
-      out.push({ id: 'affix:' + id, name: s.catalog.affixes[id], kind: 'affix', type: 'affix', rarity: null });
+      out.push({ id: 'affix:' + id, affixType: id, name: s.catalog.affixes[id], kind: 'affix', type: 'affix', rarity: null,
+        desc: '词缀类型 · 可出现在组件上；具体数值区间以配装/熔炼模拟器为准。' });
     });
     return out;
   }
@@ -98,15 +213,18 @@
     if (!entry || !entry.id) return '';
     if (entry.kind === 'fish') return '../../assets/fish/' + encodeURIComponent(entry.id) + '.png';
     if (entry.kind === 'component' || entry.kind === 'material' || entry.kind === 'chest') return '../../assets/item/' + encodeURIComponent(entry.id) + '.png';
+    if (entry.kind === 'ground' && entry.id === 'map') return '../../assets/worldmap.png';
     if (entry.kind === 'ground') return '../../assets/ground/' + encodeURIComponent(entry.id) + '.png';
-    if (entry.kind === 'spot') return '../../assets/spot/' + encodeURIComponent(entry.id) + '.png';
+    if (entry.kind === 'spot') {
+      const id = entry.spotId || entry.id;
+      if (['dock','reed','deep','beach','reef','shoal','pier','fall','eddy'].includes(id)) return '../../assets/spot/' + encodeURIComponent(id) + '.png';
+      if (id === 'falls') return '../../assets/spot/fall.png';
+      return ['shore','trench'].includes(id) ? '../../assets/voyagemap.png' : '../../assets/worldmap.png';
+    }
     return '';
   }
-  function itemUrl(entry) {
-    if (!entry) return '#';
-    if (entry.kind === 'affix') return '/wiki/items/index.html?id=' + encodeURIComponent(entry.id);
-    return '/wiki/items/index.html?id=' + encodeURIComponent(entry.id) + '&type=' + encodeURIComponent(entry.kind);
-  }
+
+  function itemUrl(id) { return '/wiki/search/index.html?item=' + encodeURIComponent(id); }
   function spotUrl(groundId, spotId) {
     return '/wiki/grounds/index.html?ground=' + encodeURIComponent(groundId) + (spotId ? '&spot=' + encodeURIComponent(spotId) : '');
   }
@@ -120,7 +238,7 @@
   }
   function guideEntries() {
     return (window.WikiContent ? window.WikiContent.guides : []).map(function (g) {
-      return { id: g.id, name: g.title, kind: 'guide', type: 'guide', desc: g.summary, aliases: g.aliases || [], tags: g.tags || [], rarity: null };
+      return { id: g.id, name: g.title, kind: 'guide', type: 'guide', desc: g.summary + (g.authorName ? ' · 作者 ' + g.authorName : ''), category: g.category || '', aliases: g.aliases || [], tags: g.tags || [], rarity: null };
     });
   }
   function toolEntries() {
@@ -131,20 +249,16 @@
   }
   function searchIndex(s) {
     const out = [];
-    itemEntries(s).forEach(function (x) {
-      const desc = x.kind === 'fish' ? (x.desc || '') :
-        x.kind === 'material' ? '材料 · ' + (x.desc || '') :
-        x.kind === 'component' ? '组件底材 · ' + (x.part || '') :
-        x.kind === 'chest' ? '宝匣 · ' + (x.desc || '') : '词缀机制';
-      out.push(Object.assign({}, x, { desc: desc, url: itemUrl(x), image: imageFor(x) }));
-    });
     groundEntries(s).forEach(function (x) {
       out.push(Object.assign({}, x, { url: x.kind === 'ground' ? spotUrl(x.id) : spotUrl(x.groundId, x.spotId), image: imageFor(x) }));
     });
-    guideEntries().forEach(function (x) { out.push(Object.assign({}, x, { url: '/wiki/guides/index.html?slug=' + encodeURIComponent(x.id) })); });
-    toolEntries().forEach(function (x) { out.push(Object.assign({}, x, { url: '/wiki/tools/' + x.id + '.html' })); });
+    itemEntries(s).forEach(function (x) {
+      out.push(Object.assign({}, x, { url: itemUrl(x.id), image: imageFor(x) }));
+    });
+    guideEntries().forEach(function (x) { out.push(Object.assign({}, x, { url: '/wiki/guides/index.html?slug=' + encodeURIComponent(x.id), image: '', icon: '📖' })); });
+    toolEntries().forEach(function (x) { out.push(Object.assign({}, x, { url: '/wiki/tools/' + x.id + '.html', image: '', icon: x.id === 'build' ? '🧠' : '🔥' })); });
     return out.map(function (x) {
-      const hay = [x.name, x.id, x.kind, x.desc, (x.aliases || []).join(' '), (x.tags || []).join(' ')].join(' ').toLowerCase();
+      const hay = [x.name, x.id, x.baseName, x.kind, x.desc, partNameOf(x.part), (x.pool || []).map(function (p) { return affixLabelOf(p.type); }).join(' '), (x.aliases || []).join(' '), (x.tags || []).join(' ')].join(' ').toLowerCase();
       return Object.assign({}, x, { hay: hay });
     });
   }
@@ -256,21 +370,28 @@
   function init() {
     renderStatus();
     setInterval(refresh, 5000);
+    setInterval(refreshContent, 5000);
     setInterval(checkStale, 1000);
-    window.addEventListener('focus', refresh);
-    return ready();
+    window.addEventListener('focus', function () { refresh(); refreshContent(); });
+    return Promise.allSettled([ready(), contentReady()]).then(function (results) {
+      if (results[0].status === 'rejected') throw results[0].reason;
+      return state.snapshot;
+    });
   }
 
   window.Wiki = {
     get snapshot() { return state.snapshot; },
     get unavailable() { return state.unavailable; },
     get rulesConfig() { return state.snapshot ? state.snapshot.rulesConfig : null; },
+    get content() { return state.content; },
     get items() { return state.snapshot ? itemEntries(state.snapshot) : []; },
     get grounds() { return state.snapshot ? state.snapshot.grounds : []; },
     el: el, fmt: fmt, pct: pct, signed: signed,
-    validSnapshot: validSnapshot, applyRules: applyRules, refresh: refresh, ready: ready, rules: rules,
-    search: search, searchIndex: searchIndex, itemEntries: itemEntries, groundEntries: groundEntries,
-    itemUrl: itemUrl, spotUrl: spotUrl, imageFor: imageFor, occurrences: occurrences, shopPrice: shopPrice,
+    validSnapshot: validSnapshot, validContent: validContent, applyRules: applyRules,
+    refresh: refresh, refreshContent: refreshContent, ready: ready, contentReady: contentReady, rules: rules,
+    search: search, searchIndex: searchIndex, itemEntries: itemEntries, groundEntries: groundEntries, loadGuide: loadGuide,
+    spotUrl: spotUrl, itemUrl: itemUrl, imageFor: imageFor, occurrences: occurrences, shopPrice: shopPrice,
+    qualityNameOf: qualityNameOf, partNameOf: partNameOf, affixLabelOf: affixLabelOf,
     storage: { available: localStorageAvailable, readJSON: readJSON, writeJSON: writeJSON, remove: removeStorage },
     encodeShare: encodeShare, decodeShare: decodeShare,
     onChange: function (fn) { if (typeof fn === 'function') state.listeners.push(fn); },

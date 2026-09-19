@@ -2158,6 +2158,8 @@
     { id: 'codex', name: '图鉴', icon: '📖', implemented: true },
     { id: 'feedback', name: '反馈', icon: '📮', implemented: true },
     { id: 'logs', name: '日志', icon: '📜', implemented: true },
+    // WIKI 与玩家端同域托管；从日志下方进入，保持主功能入口之后资料区不抢占常用功能。
+    { id: 'wiki', name: 'WIKI', icon: '📚', implemented: true },
   ];
 
   // ---- 物品索引（供 UI / 引擎统一查询） ----

@@ -1,4 +1,4 @@
-# 钓鱼网站 v0.19.1（web-fishing-game）
+# 钓鱼网站 v0.20.0（web-fishing-game）
 
 零第三方依赖的多人联机网页钓鱼小游戏。**所有处理逻辑在服务端**：钓鱼循环、掷骰、词缀加成、
 资产结算、钓竿配置均由后端权威执行，前端只发指令、收 SSE 广播、渲染。纯原生 Web 前端 +
@@ -10,24 +10,36 @@ Node 内置 `http` 后端，游戏数值目录前后端共用一份（UMD）；�
 | 服务器权威 | 客户端无法伪造渔获与资产，前端不持账本 |
 | 实时联机 | SSE 广播：在线玩家、渔场人数、渔获动态、行情、交易、横幅 |
 | 数据目录 | 存档落在用户「文档」目录，按域 + 按账号拆分文件 |
-| 可运营 | 管理后台 16 个页签，配置保存即生效并实时同步在线玩家 |
-| 前端 9 个入口 | 钓鱼 / 角色（含钓竿） / 社交 / 背包 / 工坊（开箱 · 熔炼 · 重铸） / 商城（限购 · 收购 · 市集） / 图鉴（含记录） / 反馈 / 日志 |
+| 可运营 | 管理后台分区管理游戏与 Wiki，配置保存即生效并实时同步在线玩家 |
+| 前端 11 个入口 | 钓鱼 / 远洋 / 角色（含钓竿） / 社交 / 背包 / 工坊（开箱 · 熔炼 · 重铸 · 锻造） / 商城（限购 · 收购 · 市集） / 图鉴（含记录） / 反馈 / 日志 / WIKI |
 | 场景引擎 | 零依赖 Canvas 场景层：手绘像素底图 + 水面倒影实时演算 + 氛围粒子 + 指针视差，按渔场换色 |
 | 基础设置 | 文字大小、清晰字体、场景动效、纪录播报与普通提示精简；浏览器本地保存，游戏进度不受影响 |
 | 角色系统 | 展示台（码头 / 泊船 / 同伴）：8 只同伴 + 5 级船型，本地偏好即选即换 |
-| 配套 Wiki | 同域托管 /wiki/：资料查询、全站搜索、攻略、配装模拟器与熔炼模拟器 |
+| 配套 Wiki | 同域托管 /wiki/：复用游戏像素 UI，提供钓场、渔获/材料/组件搜索（带贴图）、攻略、用户投稿、配装模拟器与熔炼模拟器；官方攻略与更新记录支持热更新 |
 
 ## 配套 Wiki
 
-Wiki 显示名称为 `wiki`，由游戏服务器同域托管 `/wiki/`，包含资料查询、玩法攻略、**配装模拟器与熔炼模拟器**。
-详细范围、数据同步方案、计算规则和验收标准见 [Wiki 开发文档](docs/wiki/DEVELOPMENT.md)，进展见 [Wiki 规划与开发日志](docs/wiki/CHANGELOG.md)。可运行 `npm run wiki:test`、`wiki:test:browser`、`wiki:check`、`wiki:build` 和 `wiki:verify:server` 执行专项回归。正式 Wiki 的数据与公式必须来自正式服务端快照并与服务端共用规则实现，不能伪造或滞后。
-Wiki 资料站、配装模拟器、熔炼模拟器、构建检查和本地验收已实现；Release 包内置 `SOURCE_COMMIT.txt`，服务端也可用 `SOURCE_COMMIT` 环境变量显式注入完整提交 SHA。
+Wiki 显示名称为 `wiki`，由游戏服务器同域托管 `/wiki/`，包含钓场资料、玩法攻略、**配装模拟器与熔炼模拟器**；页面外壳与工坊模拟器复用游戏 UI。
+详细范围、数据同步方案、计算规则和验收标准见 [Wiki 开发文档](docs/wiki/DEVELOPMENT.md)，进展见 [Wiki 规划与开发日志](docs/wiki/CHANGELOG.md)。可运行 `npm run wiki:sync`、`wiki:check`、`wiki:test`、`wiki:test:browser`、`wiki:build` 和 `wiki:verify:server` 执行版本同步与专项回归。正式 Wiki 的数据与公式必须来自正式服务端快照并与服务端共用规则实现，不能伪造或滞后。
+Wiki 资料站、配装模拟器、熔炼模拟器、构建检查和本地验收已实现。官方攻略、更新记录与玩家投稿统一存储在数据目录的 `wiki.db`（Node 内置 `node:sqlite`，WAL，零第三方依赖）；旧版 `wiki.json` / `wiki-guides.json` 会在首次启动时自动导入并保留作备份。公开内容接口只下发攻略元数据，正文由 `/api/wiki/guides/<id>` 按需读取，列表分页/搜索走 `/api/wiki/guides`。用户投稿默认自动通过、提交后立即公开（作者可删除自己的自动通过投稿），设置 `WIKI_GUIDE_AUTO_APPROVE=0` 重启后恢复「提交 → 待审核 → 管理员审核」流程。首页与更新页默认只突出最近一次更新，完整版本演进可在历史入口展开。Release 包内置 `SOURCE_COMMIT.txt`，服务端也可用 `SOURCE_COMMIT` 环境变量显式注入完整提交 SHA。
+
+### 本地 Docker 测试环境
+
+上线前可用隔离容器验证 Wiki、官方攻略热更新、用户投稿和管理员审核：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/wiki/docker-test.ps1
+```
+
+入口：<http://127.0.0.1:19000/wiki/>
+
+详细说明见 [Wiki 本地 Docker 测试环境](docs/wiki/DOCKER_TEST.md)。
 
 ## 快速开始
 
 安全加固说明见 [SECURITY.md](SECURITY.md)：包含管理员 MFA、Cookie/HTTPS、9001 仅本机监听、注册配额与计算验证，以及市集分页/增量通知。市集 API 默认 30 条、最多 100 条，调用方需遍历分页。生产部署后必须复测公网 9001 不可达。
 
-需要 Node.js（`run.bat` 会优先使用包内自带的 `node/node.exe`）。
+需要 Node.js。`run.bat` 会优先使用包内自带的 `node/node.exe`；Wiki 内容存储使用 Node 内置 `node:sqlite`，要求 **Node.js >= 22.13**（Release 包内的 node 运行时也必须同步到 22.13+）。
 
 ```bat
 run.bat                 :: 集成模式：后端 9000，同时托管 frontend/
@@ -351,7 +363,7 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH    测试依赖与浏览器位置
 
 ## 版本演进
 
-当前 **v0.19.1**；版本号唯一定义在 `frontend/js/data.js` 的 `VERSION`（前端启动时与 `/api/version`
+当前 **v0.20.0**；版本号唯一定义在 `frontend/js/data.js` 的 `VERSION`（前端启动时与 `/api/version`
 比对，不一致即带缓存参数强刷）。每版的完整变更见 GitHub Releases（正文即 `dist/notes-<ver>.md`）
 与该版本 tag 的注解，下表只列里程碑：
 

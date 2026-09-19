@@ -10,8 +10,8 @@ const { spawnSync } = require('child_process');
 const ROOT = path.join(__dirname, '..', '..');
 const SRC = path.join(ROOT, 'frontend', 'wiki');
 const REQUIRED = [
-  'index.html', 'items/index.html', 'grounds/index.html', 'guides/index.html', 'updates/index.html', 'search/index.html',
-  'css/wiki.css', 'js/content.js', 'js/core.js', 'js/pages.js',
+  'index.html', 'grounds/index.html', 'guides/index.html', 'guides/submit.html', 'updates/index.html', 'search/index.html',
+  'css/wiki.css', 'content/content.json', 'content/versions.json', 'js/content.js', 'js/core.js', 'js/pages.js',
   'tools/build.html', 'tools/build.js', 'tools/smelt.html', 'tools/smelt.js', 'tools/tool.css',
 ];
 
@@ -25,6 +25,12 @@ function walk(dir, out) {
   return out;
 }
 function rel(p) { return path.relative(SRC, p).replace(/\\/g, '/'); }
+function parseVersions(markdown) {
+  return markdown.split(/\r?\n/).map(function (line) {
+    const m = /^\|\s*(v[0-9][0-9.]*)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$/.exec(line);
+    return m ? { version: m[1], date: m[2], summary: m[3].replace(/\*\*/g, '') } : null;
+  }).filter(Boolean);
+}
 function fail(message) { console.error('FAIL ' + message); process.exitCode = 1; }
 function attr(source, name) {
   const re = new RegExp(name + '=["\']([^"\']+)["\']', 'ig');
@@ -69,6 +75,40 @@ jsFiles.forEach(function (file) {
   const r = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
   if (r.status !== 0) fail(rel(file) + ' 语法错误：' + (r.stderr || '').trim());
 });
+
+const versionsPath = path.join(SRC, 'content', 'versions.json');
+try {
+  const versionData = JSON.parse(fs.readFileSync(versionsPath, 'utf8'));
+  const expected = parseVersions(fs.readFileSync(path.join(ROOT, 'VERSIONS.md'), 'utf8'));
+  if (!Array.isArray(versionData.versions) || JSON.stringify(versionData.versions) !== JSON.stringify(expected)) {
+    fail('frontend/wiki/content/versions.json 与 VERSIONS.md 不同步，请运行 node tools/wiki/sync-versions.js');
+  }
+} catch (e) {
+  fail('版本记录 JSON 读取失败：' + e.message);
+}
+
+const contentPath = path.join(SRC, 'content', 'content.json');
+try {
+  const content = JSON.parse(fs.readFileSync(contentPath, 'utf8'));
+  if (!Array.isArray(content.guides) || !content.guides.length) fail('Wiki 攻略内容不能为空');
+  if (!Array.isArray(content.updates)) fail('Wiki 更新记录必须是数组');
+  const ids = new Set();
+  content.guides.forEach(function (g) {
+    if (!g || typeof g !== 'object' || !/^[a-z0-9][a-z0-9-]{1,79}$/.test(g.id || '')) fail('攻略 ID 无效：' + (g && g.id));
+    if (ids.has(g.id)) fail('攻略 ID 重复：' + g.id);
+    ids.add(g.id);
+    if (g.kind !== 'official' || g.status !== 'published') fail('官方攻略身份字段错误：' + (g.id || '?'));
+    if (!g.title || !g.category || !g.summary || !Array.isArray(g.sections) || !g.sections.length) fail('攻略结构不完整：' + (g.id || '?'));
+    g.sections.forEach(function (sec) {
+      if (!sec || !sec.h) fail('攻略段落缺少标题：' + (g.id || '?'));
+      if (!['p', 'note', 'ol', 'ul'].includes(sec.type)) fail('攻略段落类型未知：' + sec.type);
+      if ((sec.type === 'p' || sec.type === 'note') && !sec.text) fail('攻略段落缺少正文：' + (g.id || '?'));
+      if ((sec.type === 'ol' || sec.type === 'ul') && (!Array.isArray(sec.items) || !sec.items.length)) fail('攻略列表为空：' + (g.id || '?'));
+    });
+  });
+} catch (e) {
+  if (e instanceof SyntaxError) fail('content/content.json JSON 语法错误：' + e.message);
+}
 const serveFile = path.join(ROOT, 'frontend', 'serve.js');
 const serveCheck = spawnSync(process.execPath, ['--check', serveFile], { encoding: 'utf8' });
 if (serveCheck.status !== 0) fail('frontend/serve.js 语法错误：' + (serveCheck.stderr || '').trim());

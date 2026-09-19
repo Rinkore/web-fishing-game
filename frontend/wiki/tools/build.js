@@ -14,8 +14,10 @@
   function basesFor(part) { return GameData.COMPONENT_BASES.filter(b => b.part === part); }
   function affixRange(baseId, type, src) {
     const base = GameData.componentBase(baseId);
-    if (base && base.pool.some(a => a.type === type) && (!src || src === baseId)) return GameData.affixRangeOf(baseId, type);
-    if (src === 'ct') return GameData.catalystRangeOf(base && base.part, type) || GameData.extraAffixRangeOf(type);
+    const source = GameData.componentBase(src);
+    if (source && base && source.part === base.part && source.pool.some(a => a.type === type)) return GameData.affixRangeOf(src, source.pool.find(a => a.type === type));
+    if (base && base.pool.some(a => a.type === type) && (!src || src === baseId)) return GameData.affixRangeOf(baseId, base.pool.find(a => a.type === type));
+    if (src === 'ct') return GameData.catalystRangeFor(base && base.part, type);
     return GameData.extraAffixRangeOf(type);
   }
   function slotFromImported(part, value) {
@@ -45,7 +47,7 @@
         if (!isFinite(a.value)) errors.push(partName(p.key) + '：词缀数值无效');
         if (!state.research) {
           const r = affixRange(s.baseId, a.type, a.src);
-          if (r && (a.value < r.min || a.value > r.max)) errors.push(partName(p.key) + '：' + GameData.AFFIX_LABEL[a.type] + ' 超出当前规则区间');
+          if (r && (a.value < r[0] || a.value > r[1])) errors.push(partName(p.key) + '：' + GameData.AFFIX_LABEL[a.type] + ' 超出当前规则区间，可开启自由试算');
         }
       });
     });
@@ -110,10 +112,10 @@
       const qOpts = Object.keys(GameData.QUALITY).map(q => option(q, GameData.QUALITY[q].name, q === s.quality)).join('');
       const affixRows = (s.affixes || []).map(function (a, idx) {
         const typeOpts = GameData.AFFIX_TYPES.map(t => option(t, GameData.AFFIX_LABEL[t], t === a.type)).join('');
-        const srcOpts = option('', '底材 / 自然', !a.src) + option('bt', '突破', a.src === 'bt') + option('ct', '催化', a.src === 'ct');
-        return '<div class="affix-row" data-affix="' + idx + '"><select data-field="type">' + typeOpts + '</select><input type="number" data-field="value" value="' + Number(a.value) + '"><select data-field="src">' + srcOpts + '</select><button data-remove="' + idx + '">删</button></div>';
+        const srcOpts = option('', '底材 / 自然', !a.src) + option('bt', '突破', a.src === 'bt') + option('ct', '催化', a.src === 'ct') + bases.map(b => option(b.id, b.name + (a.src === b.id && a.srcExplicit === false ? '（推断）' : ''), a.src === b.id)).join('');
+        return '<div class="affix-row" data-affix="' + idx + '"><select data-field="type">' + typeOpts + '</select><input type="number" data-field="value" value="' + Number(a.value) + '"><select data-field="src">' + srcOpts + '</select><button type="button" class="tool-remove" aria-label="移除词条" data-remove="' + idx + '">×</button></div>';
       }).join('');
-      return '<section class="slot-editor" data-part="' + p.key + '"><div class="slot-head"><strong>' + escapeHTML(p.name) + '</strong><button data-add-affix>加词缀</button></div><div class="slot-fields"><select data-field="base">' + baseOpts + '</select><select data-field="quality">' + qOpts + '</select></div>' + affixRows + '</section>';
+      return '<section class="slot-editor" data-part="' + p.key + '"><div class="slot-head"><strong>' + escapeHTML(p.name) + '</strong><button data-add-affix>＋ 添加词条</button></div><div class="slot-fields"><select data-field="base">' + baseOpts + '</select><select data-field="quality">' + qOpts + '</select></div>' + affixRows + '</section>';
     }).join('');
     bindSlots();
   }
@@ -126,7 +128,10 @@
   function bindSlots() {
     document.querySelectorAll('.slot-editor').forEach(function (root) {
       const part = root.getAttribute('data-part');
-      root.querySelectorAll('[data-field]').forEach(function (input) {
+      root.querySelector('.slot-head').after(WikiInventory.picker(part, function (item) {
+        state.plans[state.active].slots[part] = slotFromImported(part, item); renderAll();
+      }));
+      root.querySelectorAll('.slot-fields [data-field]').forEach(function (input) {
         input.addEventListener('change', function () {
           const s = ensureSlot(part), field = input.getAttribute('data-field');
           if (field === 'base') { s.baseId = input.value; if (!s.affixes) s.affixes = []; }
@@ -142,7 +147,7 @@
             if (!a) return;
             if (field === 'type') a.type = input.value;
             if (field === 'value') a.value = Number(input.value);
-            if (field === 'src') a.src = input.value || null;
+            if (field === 'src') { a.src = input.value || null; a.srcExplicit = !!a.src; }
             renderAll();
           });
         });
@@ -173,6 +178,8 @@
   }
   function renderAll() {
     const plan = state.plans[state.active];
+    $('plan-a').setAttribute('aria-pressed', String(state.active === 'A'));
+    $('plan-b').setAttribute('aria-pressed', String(state.active === 'B'));
     $('plan-name').value = plan.name;
     $('spot-select').value = plan.spotId || '';
     $('research-mode').checked = state.research;
@@ -210,6 +217,28 @@
   }
 
   function init() {
+    function renderInventoryRods() {
+      const snapshot = WikiInventory.snapshot;
+      $('inventory-rod').innerHTML = option('', snapshot ? '选择当前装备或已存钓竿' : '先读取背包');
+      if (snapshot) {
+        $('inventory-rod').innerHTML += option('current', '当前穿戴装备');
+        snapshot.rodSlots.forEach(function (rod, i) { if (rod) $('inventory-rod').innerHTML += option(String(i), rod.name || '钓竿 ' + (i + 1)); });
+      }
+      $('inventory-rod').disabled = !snapshot;
+      $('inventory-load-rod').disabled = !snapshot;
+      renderAll();
+    }
+    WikiInventory.mount($('inventory-panel'), renderInventoryRods);
+    $('inventory-load-rod').addEventListener('click', function () {
+      const snapshot = WikiInventory.snapshot, selected = $('inventory-rod').value;
+      if (!snapshot || !selected) return;
+      const parts = selected === 'current' ? Object.fromEntries(Object.entries(snapshot.bd).map(([part, s]) => [part, s.compId])) : (snapshot.rodSlots[Number(selected)] || {}).parts;
+      if (!parts) return;
+      const plan = state.plans[state.active];
+      GameData.ROD_PARTS.forEach(function (p) { plan.slots[p.key] = slotFromImported(p.key, GameData.componentOf(parts[p.key])); });
+      state.importedMismatch = false; renderAll();
+      $('inventory-build-note').textContent = '已复制到方案 ' + state.active + '，可继续修改词条。真实穿戴保持不变。';
+    });
     $('plan-a').addEventListener('click', function () { state.active='A'; state.importedMismatch=false; renderAll(); });
     $('plan-b').addEventListener('click', function () { state.active='B'; state.importedMismatch=false; renderAll(); });
     $('plan-name').addEventListener('change', function () { state.plans[state.active].name=this.value; renderAll(); });

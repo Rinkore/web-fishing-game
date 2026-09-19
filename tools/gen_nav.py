@@ -142,11 +142,21 @@ def i_workshop(cv):
     cv.set(13, 11, hex2rgb('#9aa4ae'))               # 旁边工具
     cv.line(13, 11, 14, 13, hex2rgb('#9aa4ae'))
 
+def i_wiki(cv):
+    """WIKI：资料书 + 链接点"""
+    cv.fill(2, 4, 13, 13, hex2rgb('#2c4f74'))
+    cv.fill(3, 5, 12, 12, hex2rgb('#123055'))
+    cv.fill(4, 6, 11, 11, hex2rgb('#e8f4ff'))
+    cv.line(4, 8, 11, 8, hex2rgb('#3ec9f0'))
+    cv.line(4, 10, 10, 10, hex2rgb('#3ec9f0'))
+    cv.line(4, 12, 8, 12, hex2rgb('#3ec9f0'))
+    cv.set(12, 3, hex2rgb('#34e0c0')); cv.set(13, 2, hex2rgb('#34e0c0')); cv.set(14, 3, hex2rgb('#34e0c0'))
+
 ICONS = {
     'fishing': i_fishing, 'character': i_character, 'bd': i_bd, 'ground': i_ground, 'inventory': i_inventory,
     'chest': i_chest, 'workshop': i_workshop, 'shop': i_shop, 'market': i_market, 'trade': i_trade,
     'mall': i_mall, 'codex': i_codex, 'records': i_records, 'feedback': i_feedback,
-    'logs': i_logs,
+    'logs': i_logs, 'wiki': i_wiki,
 }
 
 if __name__ == '__main__':

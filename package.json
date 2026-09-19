@@ -3,13 +3,19 @@
   "private": true,
   "description": "零依赖多人联机网页钓鱼小游戏（Node 内置 http 后端 + 原生 Web 前端）",
   "scripts": {
-    "dev": "node backend/server.js",
-    "start": "node backend/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning backend/server.js",
+    "start": "node --disable-warning=ExperimentalWarning backend/server.js",
     "wiki:test": "node tests/wiki/wiki.test.js",
     "wiki:check": "node tools/wiki/check.js",
+    "wiki:sync": "node tools/wiki/sync-versions.js",
     "wiki:build": "node tools/wiki/build.js",
     "wiki:serve": "node frontend/serve.js",
     "wiki:verify:server": "node tools/wiki/verify-server.js",
-    "wiki:test:browser": "node tests/wiki/browser.test.js"
+    "wiki:test:browser": "node tests/wiki/browser.test.js",
+    "wiki:docker": "docker compose -f docker-compose.wiki-test.yml up --build",
+    "wiki:docker:up": "docker compose -f docker-compose.wiki-test.yml up -d --build",
+    "wiki:docker:down": "docker compose -f docker-compose.wiki-test.yml down",
+    "wiki:docker:reset": "docker compose -f docker-compose.wiki-test.yml down -v --remove-orphans",
+    "wiki:docker:logs": "docker compose -f docker-compose.wiki-test.yml logs -f wiki-test"
   }
 }

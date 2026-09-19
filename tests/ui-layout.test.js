@@ -174,16 +174,16 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'fishing-test-'));
     await login(p2, tokB);
 
     section('新增页面渲染');
-    // v0.11.3 起取消侧栏「更多」折叠组；v0.15.0 起按「一个入口一族功能」重组为 9 个入口
+    // v0.11.3 起取消侧栏「更多」折叠组；当前加入远洋与 WIKI 后共 11 个入口
     // （钓竿并入钓鱼、记录并入图鉴、收购/市集并入商城、开箱并入工坊、宝匣与交易也有各自归属）
-    check('侧栏 10 个入口全部常驻可见（无折叠组，v0.19.0 加远洋）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 10,
+    check('侧栏 11 个入口全部常驻可见（无折叠组，v0.19.0 加远洋）', (await p1.$$('#nav .nav-item:not(.locked)')).length === 11,
       String((await p1.$$('#nav .nav-item:not(.locked)')).length));
     check('不再有「更多」折叠组与折叠组容器', (await p1.$$('#nav .nav-more')).length === 0 && (await p1.$$('#nav .nav-group')).length === 0);
-    check('低频入口（图鉴/反馈/日志）直接可见且顺序不变', await p1.evaluate(() => {
+    check('低频入口（图鉴/反馈/日志/WIKI）直接可见且顺序不变', await p1.evaluate(() => {
       const t = Array.from(document.querySelectorAll('#nav .nav-item')).map(n => n.textContent)
-        .filter(x => /图鉴|记录|反馈|日志/.test(x));
+        .filter(x => /图鉴|记录|反馈|日志|WIKI/.test(x));
       // 「记录」已并入图鉴（页内页签），侧栏不再单独出现
-      return t.length === 3 && /图鉴/.test(t[0]) && /反馈/.test(t[1]) && /日志/.test(t[2]);
+      return t.length === 4 && /图鉴/.test(t[0]) && /反馈/.test(t[1]) && /日志/.test(t[2]) && /WIKI/.test(t[3]);
     }));
     check('无占位锁定入口（商城与工坊均已开放）', (await p1.$$('#nav .nav-item.locked')).length === 0);
     // 滚动条贴合像素主题：不与主题同色的灰白滚动条 = 回归

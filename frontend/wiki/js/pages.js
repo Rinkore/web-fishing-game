@@ -3,11 +3,55 @@ window.WikiPage = (function () {
   const W = () => window.Wiki;
   const C = () => window.WikiContent;
   function qs(name) { return new URLSearchParams(location.search).get(name) || ''; }
+  const WIKI_GUIDE_CATEGORIES = ['新手入门', '机制说明', '进阶策略', '工坊指南', '经济交易', '配装攻略', '心得分享'];
+  let guideFilter = 'all';
+  // 公开内容接口只给攻略元数据；正文按需拉取并在本页缓存，内容 revision 变化时自动失效。
+  let guideDetails = Object.create(null);
+  let guideDetailLoading = Object.create(null);
+  let guideDetailRevision = null;
+  let myWiki = { loading: true, authenticated: false, guides: [], limits: null, error: '' };
+  async function wikiApi(method, path, body) {
+    const opts = { method: method, credentials: 'same-origin', headers: { 'X-Requested-With': 'FishGame', 'X-Session-Mode': 'cookie' } };
+    if (body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(path, opts);
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    return { ok: res.ok, status: res.status, data: data || {} };
+  }
+  async function refreshMyWikiGuides() {
+    if (myWiki.loading && myWiki.inFlight) return myWiki.inFlight;
+    myWiki.loading = true; myWiki.error = '';
+    myWiki.inFlight = wikiApi('GET', '/api/wiki/guides/session').then(async function (session) {
+      if (!session.ok) throw new Error((session.data && session.data.error) || ('HTTP ' + session.status));
+      if (!session.data.authenticated) {
+        myWiki.authenticated = false; myWiki.guides = []; myWiki.limits = null;
+        return;
+      }
+      const r = await wikiApi('GET', '/api/wiki/guides/my');
+      if (!r.ok) throw new Error((r.data && r.data.error) || ('HTTP ' + r.status));
+      myWiki.authenticated = true;
+      myWiki.guides = r.data.guides || [];
+      myWiki.limits = r.data.limits || null;
+    }).then(function () {
+      myWiki.inFlight = null;
+      myWiki.loading = false;
+      const page = document.body.dataset.page;
+      if (page === 'guides' || page === 'guides-submit') render();
+    }).catch(function (e) {
+      myWiki.inFlight = null; myWiki.loading = false; myWiki.error = '网络错误，请稍后重试。';
+      const page = document.body.dataset.page;
+      if (page === 'guides' || page === 'guides-submit') render();
+    });
+    return myWiki.inFlight;
+  }
   function setNavCurrent() {
     const page = document.body.dataset.page || '';
-    document.querySelectorAll('.main-nav a').forEach(function (a) {
-      const target = (a.getAttribute('href') || '').replace('index.html', '').replace('.html', '');
-      if (target === page || (page === 'home' && target === '/wiki/')) a.setAttribute('aria-current', 'page');
+    const active = page === 'guides-submit' ? 'guides' : page;
+    document.querySelectorAll('[data-nav]').forEach(function (a) {
+      a.classList.toggle('active', a.getAttribute('data-nav') === active);
     });
   }
   function pageHead(title, sub) {
@@ -33,7 +77,7 @@ window.WikiPage = (function () {
     return root;
   }
   function card(title) {
-    const c = W().el('section', 'card');
+    const c = W().el('section', 'panel card');
     if (title) c.append(W().el('h2', 'card-title', title));
     return c;
   }
@@ -53,50 +97,181 @@ window.WikiPage = (function () {
   }
   function empty(text) { return W().el('div', 'empty', text || '暂无数据'); }
 
+  function latestUpdateNode() {
+    if (!versionTimeline && !versionTimelineError) {
+      ensureVersionTimeline();
+      return empty('正在读取更新…');
+    }
+    const list = window.WikiContentTools.mergeUpdates(C().updates, versionTimeline);
+    const box = W().el('div', 'latest-update');
+    if (versionTimelineError) box.append(versionRetryNode());
+    if (list.length) box.append(updateArticle(list[0]));
+    else box.append(empty('暂无更新记录。'));
+    const link = W().el('a', 'button small', '查看更新记录'); link.href = '/wiki/updates/';
+    box.append(link);
+    return box;
+  }
   function renderHome() {
     const main = document.getElementById('main');
     main.textContent = '';
-    const intro = card('wiki');
-    intro.append(W().el('p', null, '这是钓鱼网站配套资料站。目录、公式、概率和费用来自当前服务端规则快照；攻略与工具不会消耗游戏资产。'));
-    const links = W().el('div', 'grid cols-4');
+    const links = W().el('div', 'toolbar home-shortcuts');
     [
-      { name: '图鉴', desc: '鱼类、材料、组件底材、宝匣与词缀。', href: 'items/index.html' },
-      { name: '钓场与钓点', desc: '开放状态、增益、独立覆盖和有效掉落权重。', href: 'grounds/index.html' },
-      { name: '攻略', desc: '新手、机制、工坊、经济与常见问题。', href: 'guides/index.html' },
-      { name: '更新记录', desc: 'Wiki 功能与规则同步说明。', href: 'updates/index.html' }
+      { name: '钓场与钓点', icon: '🌊', desc: '开放状态、增益、独立覆盖与当前有效产出权重。', href: 'grounds/index.html' },
+      { name: '玩法攻略', icon: '📚', desc: '新手路线、机制说明、工坊路线与经济循环。', href: 'guides/index.html' },
+      { name: '全站搜索', icon: '🔎', desc: '钓场、渔获、材料、组件、宝匣、词缀与攻略。', href: 'search/index.html' },
+      { name: '更新记录', icon: '📜', desc: '只突出最近一次更新，历史版本默认收起。', href: 'updates/index.html' }
     ].forEach(function (x) {
-      const a = W().el('a', 'tile'); a.href = x.href;
-      a.append(W().el('h3', 'tile-title', x.name), W().el('p', 'tile-desc', x.desc));
+      const a = W().el('a', 'button', x.icon + ' ' + x.name); a.href = x.href;
       links.append(a);
     });
-    intro.append(links);
-    const tools = card('实用工具');
-    const toolGrid = W().el('div', 'grid cols-2');
+    const row = W().el('div', 'home-grid');
+    const side = W().el('div', 'home-side');
+    const tools = card('常用工具');
+    const toolGrid = W().el('div', 'home-tool-list');
     [
-      { name: '配装模拟器', desc: '七部位编辑、当前钓点试算、A/B 对比、保存与分享。', href: 'tools/build.html' },
-      { name: '熔炼模拟器', desc: '投料与保护预览、成功失败分支、单次和批量模拟。', href: 'tools/smelt.html' }
+      { name: '配装模拟器', icon: '🧠', desc: '七部位编辑、当前钓点试算、A/B 对比、保存与分享。', href: 'tools/build.html' },
+      { name: '熔炼模拟器', icon: '🔥', desc: '主副件、投料、概率、失败分支与批量模拟。', href: 'tools/smelt.html' }
     ].forEach(function (x) {
-      const a = W().el('a', 'tile'); a.href = x.href;
-      a.append(W().el('h3', 'tile-title', x.name), W().el('p', 'tile-desc', x.desc));
+      const a = W().el('a', 'home-tool'); a.href = x.href;
+      a.append(W().el('h3', 'tile-title', x.icon + ' ' + x.name), W().el('p', 'tile-desc', x.desc));
       toolGrid.append(a);
     });
-    tools.append(toolGrid, W().el('p', 'card-note', '两个模拟器均使用服务端下发的共享规则；无法确认最新配置时自动禁用。'));
-    const updates = card('最近更新');
-    C().updates.slice(0, 5).forEach(function (x) {
-      updates.append(W().el('p', null, x.date + ' · ' + x.title + ' — ' + x.summary));
+    tools.append(toolGrid);
+    const updates = card('最近一次更新');
+    updates.append(latestUpdateNode());
+    side.append(updates, tools);
+    const latestGuides = card('推荐攻略');
+    const gg = W().el('div', 'home-guide-list');
+    (C().guides || []).slice(0, 3).forEach(function (g) {
+      const a = W().el('a', 'home-guide'); a.href = '/wiki/guides/index.html?slug=' + encodeURIComponent(g.id);
+      if (g.id === 'six-affix-workshop-route') a.append(thumbNode({ image: '/assets/item/line_nylon.png', name: '尼龙线组' }));
+      const body = W().el('div');
+      body.append(W().el('span', 'result-meta', (g.kind === 'user' ? '玩家投稿' : '官方攻略') + ' · ' + g.category), W().el('h3', 'tile-title', g.title), W().el('p', 'tile-desc', g.summary));
+      a.append(body);
+      gg.append(a);
     });
-    const content = W().el('div');
-    content.append(pageHead('wiki', '玩家资料与攻略中心'), intro, tools, updates);
-    main.append(content);
+    const more = W().el('a', 'button', '全部攻略'); more.href = '/wiki/guides/';
+    latestGuides.append(gg, more);
+    row.append(latestGuides, side);
+    main.append(pageHead('今天想钓点什么？', 'WIKI 资料中心 · 查资料、做装备、看攻略'), links, row);
   }
 
+  const KIND_LABEL = {
+    ground: '钓场', spot: '钓点', fish: '渔获', material: '材料', component: '组件',
+    chest: '宝匣', affix: '词缀', guide: '攻略', tool: '工具'
+  };
+  function kindLabel(kind) { return KIND_LABEL[kind] || kind || '条目'; }
+  function thumbNode(entry, className) {
+    const box = W().el('div', className || 'result-thumb');
+    if (entry.image) {
+      const img = W().el('img');
+      img.src = entry.image; img.alt = entry.name || ''; img.loading = 'lazy';
+      img.addEventListener('error', function () {
+        img.remove(); box.classList.add('thumb-fallback'); box.textContent = entry.icon || '🎣';
+      });
+      box.append(img);
+    } else {
+      box.classList.add('thumb-fallback'); box.textContent = entry.icon || '📄';
+    }
+    return box;
+  }
+  function occurrenceList(id, kind, noteText) {
+    const rows = W().occurrences(id, kind);
+    if (!rows.length) return null;
+    const wrap = W().el('div', 'occurrence-list');
+    if (noteText) wrap.append(W().el('p', 'card-note', noteText));
+    rows.slice(0, 12).forEach(function (r) {
+      const a = W().el('a', 'occurrence-item');
+      a.href = W().spotUrl(r.groundId, r.spotId);
+      a.append(W().el('span', null, r.groundName + ' · ' + r.spotName), W().el('b', null, W().pct(r.percent, 1)));
+      wrap.append(a);
+    });
+    return wrap;
+  }
+  const AFFIX_DESC = {
+    speed: '降低抛竿间隔；达到当前最短间隔后不再增加产量。',
+    skill: '上鱼率公式的变量，具体收益取决于服务端当前公式。',
+    rare: '压低普通品质条目的出现权重，提高稀有内容的占比。',
+    material: '提高材料条目在掉落中的占比，适合刷残片与工坊材料。',
+    size: '放大渔获体型，用于大鱼/小鱼纪录与档位；不影响总产量。',
+    double: '提高一次抛竿钓到多条的概率，边际收益递减。'
+  };
+  function materialUseText(id) {
+    const D = window.GameData;
+    if (id === 'relic') return '沉船宝匣的合成材料，也是工坊的保留残片：失败时保护主件、成功时按概率保留池外词缀，还可作为材料概率催化剂投料。';
+    if (id === 'dragonpearl') return '重铸神话件的材料（基础 1 颗，指定第 n 条词条额外 n 颗）；熔炼投料时投入 1 颗可让数值掷两次取更靠近边界的值。';
+    if (D && D.smeltMaterialAffix && D.smeltMaterialAffix(id)) return '熔炼催化剂：补缀 ' + W().affixLabelOf(D.smeltMaterialAffix(id));
+    return '以当前工坊与商城配方为准。';
+  }
+  function renderItemDetail(entry) {
+    const c = card('条目详情');
+    const hero = W().el('div', 'item-hero');
+    hero.append(thumbNode(entry, 'item-icon'));
+    const info = W().el('div', 'item-hero-body');
+    const name = W().el('h2', 'item-name', entry.name);
+    if (entry.rarity) name.className = 'item-name q-' + entry.rarity;
+    info.append(name);
+    const bits = [kindLabel(entry.kind)];
+    if (entry.part) bits.push(W().partNameOf(entry.part));
+    if (entry.rarity) bits.push(W().qualityNameOf(entry.rarity));
+    if (entry.price != null) bits.push('基准价 ' + W().fmt(entry.price, 0));
+    if (Array.isArray(entry.size)) bits.push('体型 ' + entry.size[0] + '～' + entry.size[1] + ' cm');
+    info.append(W().el('p', 'item-sub', bits.join(' · ')));
+    const dl = W().el('dl', 'meta-grid');
+    function addMeta(k, v) { dl.append(W().el('dt', null, k), W().el('dd', null, v)); }
+    if (entry.kind === 'component') {
+      addMeta('部位', W().partNameOf(entry.part));
+      addMeta('词缀池', (entry.pool || []).map(function (p) { return W().affixLabelOf(p.type) + ' ' + (p.min > 0 ? '+' : '') + p.min + '～' + (p.max > 0 ? '+' : '') + p.max; }).join('；') || '-');
+      addMeta('价格', entry.price != null ? W().fmt(entry.price, 0) + ' 金币（基准）' : '-');
+    } else if (entry.kind === 'chest') {
+      addMeta('残片成本', entry.costRelic != null ? entry.costRelic + ' 片' : '-');
+      addMeta('金币成本', entry.costCoins != null ? W().fmt(entry.costCoins, 0) : '-');
+      addMeta('词条', entry.extra ? '神话突破件：池内全取，再补池外词条' : (entry.forceMax ? '填满底材词缀池' : '至少 ' + (entry.minAffixes || 2) + ' 条'));
+      addMeta('说明', String(entry.desc || '').replace(/<[^>]*>/g, '') || '-');
+    } else if (entry.kind === 'affix') {
+      const t = entry.affixType || String(entry.id || '').replace('affix:', '');
+      addMeta('类型', W().affixLabelOf(t));
+      addMeta('作用', AFFIX_DESC[t] || entry.desc || '-');
+    } else if (entry.kind === 'material') {
+      addMeta('用途', materialUseText(entry.id));
+      addMeta('基准价', entry.price != null ? W().fmt(entry.price, 0) : '-');
+    } else if (entry.kind === 'fish') {
+      addMeta('档位', entry.tier === 'big' ? '大型渔获' : entry.tier === 'rare' ? '稀有渔获' : '普通渔获');
+      addMeta('品质', entry.rarity ? W().qualityNameOf(entry.rarity) : '-');
+      addMeta('体型', Array.isArray(entry.size) ? entry.size[0] + '～' + entry.size[1] + ' cm' : '-');
+      addMeta('基准价', entry.price != null ? W().fmt(entry.price, 0) : '-');
+    }
+    if (dl.childNodes.length) info.append(dl);
+    hero.append(info);
+    c.append(hero);
+    const occ = entry.kind === 'component'
+      ? occurrenceList(entry.id, 'component', '组件在钓点掉落池里按通用条目计算，下列钓点都会产出组件：')
+      : occurrenceList(entry.id, entry.kind, null);
+    if (occ) c.append(W().el('h3', 'detail-subtitle', entry.kind === 'material' ? '产出钓点' : '出现钓点'), occ);
+    const tools = W().el('div', 'toolbar');
+    if (entry.kind === 'component') {
+      const a = W().el('a', 'button primary', '在配装模拟器里试用'); a.href = '/wiki/tools/build.html?base=' + encodeURIComponent(entry.id); tools.append(a);
+    }
+    if (entry.kind === 'material' || entry.kind === 'chest' || entry.kind === 'affix' || entry.kind === 'component') {
+      const b = W().el('a', 'button', '打开熔炼模拟器'); b.href = '/wiki/tools/smelt.html'; tools.append(b);
+    }
+    const clear = W().el('a', 'button', '清除条目详情');
+    clear.href = '/wiki/search/index.html?q=' + encodeURIComponent(qs('q')) + (qs('type') ? '&type=' + encodeURIComponent(qs('type')) : '');
+    tools.append(clear);
+    c.append(tools);
+    return c;
+  }
   function resultNode(entry) {
     const row = W().el('article', 'search-result');
-    if (entry.image) { const img = W().el('img'); img.src = entry.image; img.alt = ''; img.loading = 'lazy'; row.append(img); }
-    else { const icon = W().el('div', 'item-icon', entry.kind === 'guide' ? '文' : '·'); row.append(icon); }
+    row.append(thumbNode(entry));
     const body = W().el('div');
     const a = W().el('a', 'result-title', entry.name); a.href = entry.url || '#';
-    body.append(a, W().el('p', 'result-meta', (entry.kind || '-') + (entry.id ? ' · ' + entry.id : '')), W().el('p', 'result-desc', entry.desc || ''));
+    const bits = [kindLabel(entry.kind)];
+    if (entry.rarity) bits.push(W().qualityNameOf(entry.rarity));
+    if (entry.kind === 'component' && entry.part) bits.push(W().partNameOf(entry.part));
+    if (entry.kind === 'guide' && entry.category) bits.push(entry.category);
+    const desc = entry.kind === 'material' ? materialUseText(entry.id) : entry.desc;
+    body.append(a, W().el('p', 'result-meta', bits.join(' · ')), W().el('p', 'result-desc', desc || ''));
     row.append(body);
     return row;
   }
@@ -104,14 +279,17 @@ window.WikiPage = (function () {
     const main = document.getElementById('main');
     main.textContent = '';
     const toolbar = W().el('div', 'toolbar');
-    const input = W().el('input'); input.type = 'search'; input.id = 'page-search'; input.placeholder = '搜索物品、钓点、词缀或攻略'; input.value = qs('q');
+    const input = W().el('input'); input.type = 'search'; input.id = 'page-search';
+    input.placeholder = '搜索钓场、渔获、材料、组件、攻略或工具'; input.value = qs('q');
+    input.setAttribute('aria-label', '搜索关键词');
     const type = W().el('select'); type.id = 'search-type'; type.setAttribute('aria-label', '结果类型');
-    [['all','全部类型'],['fish','鱼类'],['material','材料'],['component','组件'],['chest','宝匣'],['affix','词缀'],['ground','钓场'],['spot','钓点'],['guide','攻略'],['tool','工具']].forEach(function (x) {
+    [['all','全部类型'],['ground','钓场'],['spot','钓点'],['fish','渔获'],['material','材料'],['component','组件'],['chest','宝匣'],['affix','词缀'],['guide','攻略'],['tool','工具']].forEach(function (x) {
       const o = W().el('option', null, x[1]); o.value = x[0]; type.append(o);
     });
     type.value = qs('type') || 'all';
     const button = W().el('button', 'primary', '搜索'); button.type = 'button';
-    const resultBox = W().el('div', 'grid');
+    const resultBox = W().el('div', 'grid search-results');
+    resultBox.setAttribute('aria-live', 'polite');
     function update(push) {
       const q = input.value.trim();
       resultBox.textContent = '';
@@ -120,7 +298,7 @@ window.WikiPage = (function () {
       else if (!rows.length) resultBox.append(empty('没有找到“' + q + '”。可以尝试简称、词缀名或钓点名。'));
       else {
         rows.forEach(function (x) { resultBox.append(resultNode(x)); });
-        resultBox.append(W().el('p', 'card-note', '共显示 ' + rows.length + ' 条结果；目录部分来自当前服务端快照。'));
+        resultBox.append(W().el('p', 'card-note', '共显示 ' + rows.length + ' 条结果；钓场与目录数据来自当前服务端规则。'));
       }
       if (push) {
         const url = new URL(location.href); url.searchParams.set('q', q); url.searchParams.set('type', type.value);
@@ -128,122 +306,23 @@ window.WikiPage = (function () {
       }
     }
     button.addEventListener('click', function () { update(true); });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); update(true); } });
     input.addEventListener('input', function () { update(false); });
     type.addEventListener('change', function () { update(true); });
     toolbar.append(input, type, button);
     const content = W().el('div');
-    content.append(pageHead('全站搜索', '搜索结果会实时合并当前规则快照中的目录。'), toolbar, resultBox);
+    content.append(pageHead('全站搜索', '钓场、渔获、材料、组件、宝匣、词缀、攻略与工具都能搜；条目结果带贴图。'), toolbar);
+    const itemId = qs('item');
+    if (itemId && W().snapshot) {
+      const entry = W().searchIndex(W().snapshot).find(function (x) { return x.id === itemId; });
+      if (entry) {
+        if (!input.value) input.value = entry.name;
+        content.append(renderItemDetail(entry));
+      }
+    }
+    content.append(resultBox);
     main.append(content); update(false);
   }
-
-  function itemCard(entry) {
-    const a = W().el('a', 'tile'); a.href = W().itemUrl(entry);
-    if (entry.image) { const img = W().el('img', 'item-icon'); img.src = entry.image; img.alt = ''; img.loading = 'lazy'; a.append(img); }
-    const title = W().el('h3', 'tile-title ' + (entry.rarity ? 'q-' + entry.rarity : ''), entry.name);
-    a.append(title, W().el('p', 'tile-desc', entry.kind === 'fish' ? '鱼类 · 基准价 ' + W().fmt(entry.price, 0) :
-      entry.kind === 'material' ? '材料 · 基准价 ' + W().fmt(entry.price, 0) :
-      entry.kind === 'component' ? '组件底材 · ' + (window.GameData.ROD_PARTS.find(function (p) { return p.key === entry.part; }) || {}).name :
-      entry.kind === 'chest' ? '宝匣 · ' + (entry.desc || '') : '词缀机制'));
-    return a;
-  }
-  function renderItemDetail(id) {
-    const main = document.getElementById('main'); main.textContent = '';
-    const entry = W().items.find(function (x) { return x.id === id; });
-    if (!entry) { main.append(pageHead('未找到条目'), empty('当前快照中没有这个条目。')); return; }
-    const c = card();
-    const hero = W().el('div', 'item-hero');
-    if (entry.image) { const img = W().el('img', 'item-icon'); img.src = entry.image; img.alt = entry.name; hero.append(img); }
-    const info = W().el('div');
-    info.append(W().el('h1', 'item-name ' + (entry.rarity ? 'q-' + entry.rarity : ''), entry.name));
-    info.append(W().el('p', 'item-sub', (entry.kind === 'fish' ? '鱼类 · ' + ({common:'普通',big:'大型',rare:'稀有'})[entry.tier] :
-      entry.kind === 'material' ? '材料' : entry.kind === 'component' ? '组件底材 · ' + ((window.GameData.ROD_PARTS.find(function (p) { return p.key === entry.part; }) || {}).name || '-') :
-      entry.kind === 'chest' ? '宝匣' : '词缀机制')));
-    const dl = W().el('dl', 'meta-grid');
-    function meta(k, v) { dl.append(W().el('dt', null, k), W().el('dd', null, v)); }
-    meta('条目 ID', entry.id);
-    if (entry.rarity) meta('品质', ({common:'普通',rare:'稀有',epic:'史诗',mythic:'神话'})[entry.rarity] || entry.rarity);
-    if (entry.price != null) meta('基准价', W().fmt(entry.price, 0) + ' 金币');
-    if (entry.size) meta('基准体型', entry.size[0] + ' ~ ' + entry.size[1] + ' cm');
-    if (entry.part) meta('部位', ((window.GameData.ROD_PARTS.find(function (p) { return p.key === entry.part; }) || {}).name || entry.part));
-    if (entry.desc) meta('说明', entry.desc);
-    const snap = W().snapshot;
-    meta('数据来源', snap ? '服务端规则快照 ' + snap.gameVersion + ' / 配置 ' + snap.configRevision : '规则不可用');
-    info.append(dl);
-    const live = W().el('p', null, '实时收购价：读取中…'); live.id = 'live-price';
-    if (entry.kind === 'fish' || entry.kind === 'material') {
-      info.append(live);
-      W().shopPrice(entry.id).then(function (x) {
-        live.textContent = x ? '实时收购价：' + W().fmt(x.price, 0) + ' 金币（基准 ' + W().fmt(x.base, 0) + '，今日售出 ' + W().fmt(x.soldToday, 0) + '） · ' + new Date(x.fetchedAt).toLocaleTimeString('zh-CN') : '实时收购价：该物品当前不在系统收购经济物品中。';
-      }).catch(function () { live.textContent = '实时收购价：读取失败，本次不显示旧价。'; });
-    }
-    hero.append(info); c.append(hero);
-
-    if (entry.kind === 'component') {
-      const affix = card('词缀池');
-      const rows = (entry.pool || []).map(function (p) {
-        const r = window.GameData.affixRangeOf(entry.id, p);
-        return [window.GameData.AFFIX_LABEL[p.type] || p.type, W().signed(r[0]) + ' ~ ' + W().signed(r[1])];
-      });
-      affix.append(rows.length ? table(['词缀', '当前区间'], rows) : empty('该底材没有自然词缀池。'));
-      const link = W().el('a', null, '在配装模拟器中使用'); link.href = '/wiki/tools/build.html?base=' + encodeURIComponent(entry.id);
-      affix.append(W().el('p', null, ''), link);
-      c.after(affix);
-    }
-    if (entry.kind === 'material') {
-      const smelt = (snap.catalog.smeltMaterials || []).find(function (x) { return x.id === entry.id; });
-      const pearl = snap.catalog.smeltPearl || {};
-      const usage = card('工坊用途');
-      if (smelt) usage.append(W().el('p', null, '熔炼投料：定向补缀「' + smelt.affixName + '」。具体成功率、补缀率和费用以当前快照计算。'));
-      else if (pearl.id === entry.id) usage.append(W().el('p', null, '龙宫宝珠：熔炼催化剂，改变取值规则与费用；不是定向投料。'));
-      else usage.append(W().el('p', null, '该材料当前没有公开的工坊定向用途。'));
-      const link = W().el('a', null, '打开熔炼模拟器'); link.href = '/wiki/tools/smelt.html';
-      usage.append(W().el('p', null, ''), link);
-      c.after(usage);
-    }
-    const occurs = W().occurrences(entry.id, entry.kind);
-    const where = card('获取地点');
-    if (occurs.length) {
-      where.append(table(['钓场', '钓点', '当前有效权重'], occurs.map(function (x) {
-        const a = W().el('a', null, x.groundName + ' · ' + x.spotName); a.href = W().spotUrl(x.groundId, x.spotId);
-        return [a, W().pct(x.percent, 3)];
-      })));
-    } else where.append(empty('当前快照的公开钓点池中没有直接产出记录。'));
-    const related = card('相关内容');
-    const rg = W().el('div', 'grid cols-3');
-    if (entry.kind === 'component') {
-      const a = W().el('a', 'tile', '组件品质与词缀'); a.href = '/wiki/guides/index.html?slug=component-quality'; rg.append(a);
-    }
-    if (entry.kind === 'material' || entry.kind === 'chest') {
-      const a = W().el('a', 'tile', '工坊规则'); a.href = '/wiki/guides/index.html?slug=workshop-rules'; rg.append(a);
-    }
-    const b = W().el('a', 'tile', '返回图鉴'); b.href = '/wiki/items/index.html'; rg.append(b);
-    related.append(rg);
-    const content = W().el('div');
-    content.append(pageHead('图鉴详情', '以下目录与权重来自当前服务端快照。'), c, where, related);
-    main.append(content);
-  }
-  function renderItems() {
-    const id = qs('id');
-    if (id) { renderItemDetail(id); return; }
-    const main = document.getElementById('main'); main.textContent = '';
-    const toolbar = W().el('div', 'toolbar');
-    const input = W().el('input'); input.type = 'search'; input.placeholder = '筛选名称或 ID';
-    const type = W().el('select'); type.setAttribute('aria-label', '条目类型');
-    [['all','全部'],['fish','鱼类'],['material','材料'],['component','组件底材'],['chest','宝匣'],['affix','词缀']].forEach(function (x) { type.append(Object.assign(W().el('option', null, x[1]), { value: x[0] })); });
-    const box = W().el('div', 'grid cols-4');
-    function update() {
-      box.textContent = '';
-      const q = input.value.trim().toLowerCase();
-      const rows = W().items.filter(function (x) { return (!type.value || type.value === 'all' || x.kind === type.value) && (!q || x.name.toLowerCase().indexOf(q) >= 0 || x.id.toLowerCase().indexOf(q) >= 0); });
-      if (!rows.length) box.append(empty('没有匹配条目。'));
-      else rows.forEach(function (x) { box.append(itemCard(x)); });
-    }
-    input.addEventListener('input', update); type.addEventListener('change', update);
-    toolbar.append(input, type);
-    const c = card('图鉴目录'); c.append(toolbar, W().el('p', 'card-note', '目录条目来自 /api/version?profile=wiki，服务器配置变化后无需发布新页面。'), box);
-    main.append(pageHead('图鉴', '鱼类、材料、组件底材、宝匣与词缀。'), c); update();
-  }
-
   function renderGrounds() {
     const main = document.getElementById('main'); main.textContent = '';
     const gid = qs('ground'), sid = qs('spot');
@@ -295,89 +374,376 @@ window.WikiPage = (function () {
 
   function guideCard(g) {
     const a = W().el('a', 'tile'); a.href = '/wiki/guides/index.html?slug=' + encodeURIComponent(g.id);
-    a.append(W().el('h3', 'tile-title', g.title), W().el('p', 'tile-desc', g.category + ' · ' + g.summary));
+    const meta = g.kind === 'user' ? '玩家投稿 · ' + (g.authorName || '玩家') : '官方攻略';
+    a.append(W().el('h3', 'tile-title', g.title), W().el('p', 'tile-desc', meta + ' · ' + g.category + ' · ' + g.summary));
     return a;
+  }
+  function guideStatusLabel(status, autoApproved) {
+    if (status === 'pending') return '待审核';
+    if (status === 'approved') return autoApproved ? '已通过（自动）' : '已通过';
+    if (status === 'rejected') return '已拒绝';
+    return status || '-';
+  }
+  function renderGuideActions() {
+    const box = W().el('div', 'toolbar guide-actions');
+    const link = W().el('a', 'button primary', '📝 贡献攻略'); link.href = '/wiki/guides/submit.html';
+    const mine = W().el('a', 'button', '我的攻略'); mine.href = '/wiki/guides/index.html?my=1';
+    if (myWiki.loading) box.append(W().el('span', 'status-line', '登录状态检查中…'));
+    else if (myWiki.authenticated) box.append(link, mine);
+    else {
+      const login = W().el('span', 'status-line', '登录游戏后可提交玩家攻略。');
+      box.append(login);
+    }
+    return box;
+  }
+  function renderGuideFilter() {
+    const box = W().el('div', 'toolbar guide-filter');
+    [['all','全部'],['official','官方'],['user','玩家']].forEach(function (x) {
+      const b = W().el('button', guideFilter === x[0] ? 'primary' : null, x[1]);
+      b.type = 'button';
+      b.addEventListener('click', function () { guideFilter = x[0]; render(); });
+      box.append(b);
+    });
+    return box;
+  }
+  function renderMyGuides() {
+    const c = card('我的攻略');
+    if (myWiki.loading) { c.append(W().el('p', 'status-line', '加载中…')); return c; }
+    if (myWiki.error) { c.append(W().el('div', 'callout warn', myWiki.error)); return c; }
+    if (!myWiki.authenticated) { c.append(W().el('div', 'callout warn', '请先登录游戏后再查看我的攻略。')); return c; }
+    if (!myWiki.guides.length) { c.append(empty('你还没有提交过攻略。')); return c; }
+    const list = W().el('div', 'guide-my-list');
+    myWiki.guides.forEach(function (g) {
+      const row = W().el('article', 'guide-my-item');
+      const head = W().el('div', 'guide-my-head');
+      head.append(W().el('b', null, g.title), W().el('span', 'guide-status ' + g.status, guideStatusLabel(g.status, g.autoApproved)));
+      row.append(head, W().el('p', 'item-sub', g.category + ' · 提交于 ' + new Date(g.submittedAt).toLocaleString('zh-CN')));
+      if (g.reviewedAt) row.append(W().el('p', 'item-sub', '审核于 ' + new Date(g.reviewedAt).toLocaleString('zh-CN')));
+      if (g.status === 'rejected' && g.reviewNote) row.append(W().el('div', 'callout warn', '拒绝原因：' + g.reviewNote));
+      row.append(W().el('p', null, g.summary));
+      if (g.status === 'pending' || (g.autoApproved && g.status === 'approved')) {
+        const del = W().el('button', 'danger', g.status === 'pending' ? '删除待审核攻略' : '删除这篇攻略');
+        del.type = 'button';
+        del.addEventListener('click', async function () {
+          del.disabled = true; del.textContent = '删除中…';
+          const r = await wikiApi('POST', '/api/wiki/guides/delete', { id: g.id });
+          if (!r.ok) { del.disabled = false; del.textContent = '删除失败，请重试'; return; }
+          await refreshMyWikiGuides(); render();
+        });
+        row.append(del);
+      }
+      list.append(row);
+    });
+    c.append(list);
+    if (myWiki.limits) {
+      c.append(W().el('p', 'card-note', '最近 24 小时已提交 ' + (myWiki.limits.submittedIn24h || 0) + ' / 3 篇 · ' +
+        (myWiki.limits.autoApprove ? '当前为自动审核，提交后立即公开' : '待审核 ' + (myWiki.limits.pending || 0) + ' / 3 篇') +
+        (myWiki.limits.nextAllowedAt ? ' · 下次可提交：' + new Date(myWiki.limits.nextAllowedAt).toLocaleString('zh-CN') : '')));
+    }
+    return c;
   }
   function renderGuides() {
     const main = document.getElementById('main'); main.textContent = '';
     const slug = qs('slug');
     const g = C().guides.find(function (x) { return x.id === slug; });
     if (!g) {
+      if (qs('my') === '1') {
+        main.append(pageHead('我的攻略', '查看投稿状态和审核结果。'), renderGuideActions(), renderMyGuides());
+        return;
+      }
       const c = card('攻略目录');
-      const grid = W().el('div', 'grid cols-2');
-      C().guides.forEach(function (x) { grid.append(guideCard(x)); });
-      c.append(grid, W().el('p', 'card-note', '攻略描述玩法结构；涉及当前数值时请以快照和模拟器结果为准。'));
-      main.append(pageHead('玩法与攻略', '新手、机制、工坊、经济与常见问题。'), c); return;
+      const grid = W().el('div', 'grid guides-grid');
+      let rows = C().guides || [];
+      if (guideFilter === 'official') rows = rows.filter(function (x) { return x.kind !== 'user'; });
+      if (guideFilter === 'user') rows = rows.filter(function (x) { return x.kind === 'user'; });
+      rows.forEach(function (x) { grid.append(guideCard(x)); });
+      c.append(renderGuideFilter(), grid, W().el('p', 'card-note', '官方攻略支持后台热更新；玩家攻略当前为自动通过、提交后立即展示（后续将加入人工审核）。涉及当前数值时以快照和模拟器结果为准。'));
+      if (!rows.length) c.append(empty('当前筛选下暂无攻略。'));
+      if (!C().guides.length) c.append(W().el('div', 'callout warn', '攻略内容正在同步，或当前服务端未返回可用攻略。'));
+      main.append(pageHead('玩法与攻略', '新手、机制、工坊、经济、配装与玩家心得。'), renderGuideActions(), c);
+      return;
     }
-    const c = card(g.title);
-    c.append(W().el('p', 'item-sub', g.category + ' · 更新于 ' + g.updatedAt + ' · ' + g.status));
+    const revision = C().revision || '';
+    if (guideDetailRevision !== revision) {
+      guideDetailRevision = revision;
+      guideDetails = Object.create(null);
+      guideDetailLoading = Object.create(null);
+    }
+    main.append(pageHead(g.title, g.summary));
+    const full = guideDetails[g.id] || (Array.isArray(g.sections) && g.sections.length ? g : null);
+    if (!full) {
+      const holder = W().el('div', 'guide-detail-holder');
+      const loading = card('攻略正文');
+      loading.append(empty('正在读取攻略正文…'));
+      holder.append(loading);
+      main.append(holder);
+      if (!guideDetailLoading[g.id]) {
+        guideDetailLoading[g.id] = true;
+        W().loadGuide(g.id).then(function (guide) {
+          guideDetails[g.id] = guide;
+          guideDetailLoading[g.id] = false;
+          if (document.body.dataset.page === 'guides' && qs('slug') === g.id) render();
+        }).catch(function (e) {
+          guideDetailLoading[g.id] = false;
+          if (document.body.dataset.page !== 'guides' || qs('slug') !== g.id) return;
+          holder.textContent = '';
+          const errCard = card('攻略正文');
+          errCard.append(W().el('div', 'callout warn', '攻略正文读取失败：' + ((e && e.message) || e)));
+          const retry = W().el('button', 'primary', '重试'); retry.type = 'button';
+          retry.addEventListener('click', function () { render(); });
+          errCard.append(retry);
+          holder.append(errCard);
+        });
+      }
+      return;
+    }
+    main.append(guideArticleLayout(full));
+  }
+  function guideArticleLayout(g) {
+    const wrap = W().el('div', 'guide-layout');
+    const c = card();
+    const source = g.kind === 'user' ? '玩家投稿 · ' + (g.authorName || '玩家') : '官方攻略';
+    c.append(W().el('p', 'item-sub', source + ' · ' + g.category + ' · 更新于 ' + new Date(g.updatedAt || '').toLocaleDateString('zh-CN')));
     const article = W().el('div', 'article');
-    (g.sections || []).forEach(function (s) {
-      article.append(W().el('h2', null, s.h));
-      if (s.type === 'p') article.append(W().el('p', null, s.text));
-      else if (s.type === 'note') article.append(W().el('div', 'callout', s.text));
+    const toc = W().el('nav', 'guide-toc'); toc.setAttribute('aria-label', '本文目录');
+    (g.sections || []).forEach(function (s, i) {
+      const section = W().el('section', 'guide-article-section'); section.id = 'section-' + (i + 1);
+      section.append(W().el('h2', null, s.h));
+      const anchor = W().el('a', null, s.h); anchor.href = '#' + section.id; toc.append(anchor);
+      if (s.type === 'p') section.append(W().el('p', null, s.text));
+      else if (s.type === 'note') section.append(W().el('div', 'callout', s.text));
       else {
         const list = W().el(s.type === 'ol' ? 'ol' : 'ul');
         (s.items || []).forEach(function (x) { list.append(W().el('li', null, x)); });
-        article.append(list);
+        section.append(list);
       }
+      article.append(section);
     });
     c.append(article);
-    const related = card('相关工具');
-    const rg = W().el('div', 'grid cols-3');
-    [['配装模拟器','/wiki/tools/build.html'],['熔炼模拟器','/wiki/tools/smelt.html'],['返回攻略','/wiki/guides/index.html']].forEach(function (x) {
-      const a = W().el('a', 'tile', x[0]); a.href = x[1]; rg.append(a);
+    const side = W().el('details', 'panel card guide-side');
+    side.open = window.matchMedia('(min-width: 1001px)').matches;
+    side.append(W().el('summary', 'guide-side-title', '本文目录与相关工具'));
+    const rg = W().el('div', 'grid');
+    [['配装模拟器', '🧠', '/wiki/tools/build.html'], ['熔炼模拟器', '🔥', '/wiki/tools/smelt.html']].forEach(function (x) {
+      const a = W().el('a', 'tile compact'); a.href = x[2];
+      a.append(W().el('span', 'tile-emoji', x[1]), W().el('h3', 'tile-title', x[0]));
+      rg.append(a);
     });
-    related.append(rg);
-    main.append(pageHead(g.title, g.summary), c, related);
+    const back = W().el('a', 'button', '返回攻略目录'); back.href = '/wiki/guides/index.html';
+    side.append(toc);
+    const paired = g.id === 'six-affix-workshop-route' ? ['词条来源与残片机制', 'affix-source-and-retention'] : g.id === 'affix-source-and-retention' ? ['六词条装备打造攻略', 'six-affix-workshop-route'] : null;
+    if (paired) {
+      const link = W().el('a', 'guide-related', paired[0]); link.href = '/wiki/guides/?slug=' + paired[1];
+      side.append(W().el('h3', null, '配套阅读'), link);
+    }
+    side.append(W().el('h3', null, '相关工具'), rg, back);
+    wrap.append(side, c);
+    return wrap;
+  }
+  function guideDraftValue() {
+    let value = W().storage.readJSON('wiki_guide_draft', null);
+    if (!value || typeof value !== 'object') {
+      value = { title: '', category: '心得分享', summary: '', tags: '', sections: [{ h: '', type: 'p', text: '', items: '' }] };
+    }
+    if (!Array.isArray(value.sections) || !value.sections.length) value.sections = [{ h: '', type: 'p', text: '', items: '' }];
+    return value;
+  }
+  function normalizeGuideDraft(draft) {
+    const sections = (draft.sections || []).map(function (s) {
+      return {
+        h: String(s.h || ''),
+        type: ['p', 'note', 'ol', 'ul'].includes(s.type) ? s.type : 'p',
+        text: String(s.text || ''),
+        items: String(s.items || '')
+      };
+    });
+    return {
+      title: String(draft.title || ''), category: WIKI_GUIDE_CATEGORIES.includes(draft.category) ? draft.category : '心得分享',
+      summary: String(draft.summary || ''), tags: String(draft.tags || ''), sections: sections
+    };
+  }
+  function guideDraftPayload(draft) {
+    return {
+      title: draft.title.trim(),
+      category: draft.category,
+      summary: draft.summary.trim(),
+      tags: draft.tags.split(/[,，\s]+/).map(x => x.trim()).filter(Boolean),
+      sections: draft.sections.map(function (s) {
+        if (s.type === 'ol' || s.type === 'ul') return { h: s.h.trim(), type: s.type, items: s.items.split(/\n+/).map(x => x.trim()).filter(Boolean) };
+        return { h: s.h.trim(), type: s.type, text: s.text.trim() };
+      })
+    };
+  }
+  function renderGuideSubmit() {
+    const main = document.getElementById('main'); main.textContent = '';
+    if (myWiki.loading) {
+      main.append(pageHead('贡献攻略', '检查登录状态中…'), W().el('p', 'status-line', '请稍候…'));
+      return;
+    }
+    if (!myWiki.authenticated) {
+      main.append(pageHead('贡献攻略', '登录后提交你的钓鱼心得。'), W().el('div', 'callout warn', '请先登录游戏，再打开本页提交攻略。'));
+      return;
+    }
+    if (myWiki.error) {
+      main.append(pageHead('贡献攻略', '登录状态读取失败。'), W().el('div', 'callout warn', myWiki.error));
+      return;
+    }
+    const draft = normalizeGuideDraft(guideDraftValue());
+    const c = card('攻略内容');
+    const form = W().el('form', 'guide-form');
+    function field(labelText, input) {
+      const wrap = W().el('label', 'field');
+      wrap.append(W().el('span', 'field-label', labelText), input);
+      return wrap;
+    }
+    const title = W().el('input'); title.className = 'ipt'; title.value = draft.title; title.maxLength = 120;
+    const category = W().el('select'); category.className = 'ipt';
+    WIKI_GUIDE_CATEGORIES.forEach(function (x) { const o = W().el('option', null, x); o.value = x; category.append(o); });
+    category.value = draft.category;
+    const summary = W().el('textarea'); summary.className = 'ipt'; summary.rows = 3; summary.maxLength = 300; summary.value = draft.summary;
+    const tags = W().el('input'); tags.className = 'ipt'; tags.value = draft.tags; tags.placeholder = '用逗号分隔，例如：新手, 材料';
+    form.append(field('标题', title), field('分类', category), field('摘要', summary), field('标签', tags));
+    const sectionBox = W().el('div', 'guide-sections');
+    function drawSections() {
+      sectionBox.textContent = '';
+      draft.sections.forEach(function (s, i) {
+        const box = W().el('article', 'guide-section');
+        const head = W().el('div', 'guide-section-head');
+        const h = W().el('input'); h.className = 'ipt'; h.value = s.h; h.placeholder = '段落标题'; h.maxLength = 100;
+        const type = W().el('select'); type.className = 'ipt';
+        [['p','普通段落'],['note','提示'],['ol','有序列表'],['ul','无序列表']].forEach(function (x) { const o = W().el('option', null, x[1]); o.value = x[0]; type.append(o); });
+        type.value = s.type;
+        h.addEventListener('input', function () { s.h = h.value; save(); });
+        type.addEventListener('change', function () { s.type = type.value; save(); drawSections(); });
+        const remove = W().el('button', 'danger mini', '删除段落'); remove.type = 'button';
+        remove.addEventListener('click', function () { draft.sections.splice(i, 1); save(); drawSections(); });
+        head.append(h, type, remove);
+        box.append(head);
+        if (s.type === 'ol' || s.type === 'ul') {
+          const items = W().el('textarea'); items.className = 'ipt'; items.rows = 5; items.value = s.items; items.placeholder = '每行一个列表项';
+          items.addEventListener('input', function () { s.items = items.value; save(); });
+          box.append(items);
+        } else {
+          const text = W().el('textarea'); text.className = 'ipt'; text.rows = 5; text.value = s.text;
+          text.addEventListener('input', function () { s.text = text.value; save(); });
+          box.append(text);
+        }
+        sectionBox.append(box);
+      });
+    }
+    function save() { W().storage.writeJSON('wiki_guide_draft', draft); }
+    title.addEventListener('input', function () { draft.title = title.value; save(); });
+    category.addEventListener('change', function () { draft.category = category.value; save(); });
+    summary.addEventListener('input', function () { draft.summary = summary.value; save(); });
+    tags.addEventListener('input', function () { draft.tags = tags.value; save(); });
+    const addSection = W().el('button', null, '添加段落'); addSection.type = 'button';
+    addSection.addEventListener('click', function () { draft.sections.push({ h: '', type: 'p', text: '', items: '' }); save(); drawSections(); });
+    form.append(sectionBox, addSection);
+    const status = W().el('p', 'status-line');
+    const submit = W().el('button', 'primary', '提交攻略'); submit.type = 'submit';
+    const clear = W().el('button', 'danger', '清空草稿'); clear.type = 'button';
+    clear.addEventListener('click', function () {
+      draft.title = ''; draft.category = '心得分享'; draft.summary = ''; draft.tags = ''; draft.sections = [{ h: '', type: 'p', text: '', items: '' }];
+      save(); render();
+    });
+    form.append(submit, clear, status);
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const payload = guideDraftPayload(draft);
+      if (!payload.title || !payload.summary || !payload.sections.length || payload.sections.some(s => !s.h || ((s.type === 'p' || s.type === 'note') ? !s.text : !(s.items || []).length))) {
+        status.textContent = '请完整填写标题、摘要和每段内容。';
+        return;
+      }
+      submit.disabled = true; submit.textContent = '提交中…'; status.textContent = '';
+      const r = await wikiApi('POST', '/api/wiki/guides/submit', payload);
+      submit.disabled = false; submit.textContent = '提交攻略';
+      if (!r.ok) { status.textContent = (r.data && r.data.error) || ('提交失败：HTTP ' + r.status); return; }
+      W().storage.remove('wiki_guide_draft');
+      location.href = '/wiki/guides/index.html?my=1';
+    });
+    drawSections();
+    const auto = !!(myWiki.limits && myWiki.limits.autoApprove);
+    const policy = auto ? '攻略提交后自动通过并公开；作者或管理员可删除内容。' : '攻略提交后进入待审核队列，管理员通过后公开。';
+    c.append(W().el('div', 'callout', policy), form);
+    main.append(pageHead('贡献攻略', policy), c);
+  }
+  let versionTimeline = null, versionTimelineLoading = false, versionTimelineError = '';
+  async function ensureVersionTimeline() {
+    if (versionTimeline || versionTimelineLoading || versionTimelineError) return;
+    versionTimelineLoading = true;
+    try {
+      const res = await fetch('/wiki/content/versions.json', { cache: 'no-cache' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (!Array.isArray(data.versions)) throw new Error('版本记录结构无效');
+      versionTimeline = data.versions;
+    } catch (e) {
+      versionTimelineError = '版本记录读取失败：' + (e && e.message || e);
+    } finally {
+      versionTimelineLoading = false;
+      if (['home', 'updates'].includes(document.body.dataset.page)) render();
+    }
+  }
+  function updateArticle(x) {
+    const item = W().el('article', 'update-item');
+    const head = W().el('div', 'update-head');
+    head.append(W().el('span', 'update-date', x.date + ' · ' + x.source), W().el('h3', 'update-title', x.title));
+    item.append(head, W().el('p', 'update-summary', x.summary));
+    return item;
+  }
+  function versionRetryNode() {
+    const box = W().el('div', 'callout warn');
+    box.append(W().el('p', null, '游戏版本记录暂不可用，目前仅显示 Wiki 内容更新。'));
+    const retry = W().el('button', 'small', '重新读取'); retry.type = 'button';
+    retry.addEventListener('click', function () { versionTimelineError = ''; ensureVersionTimeline(); render(); });
+    box.append(retry); return box;
   }
   function renderUpdates() {
     const main = document.getElementById('main'); main.textContent = '';
-    const c = card('Wiki 更新记录');
-    C().updates.forEach(function (x) {
-      const item = W().el('article', 'branch');
-      item.append(W().el('h3', null, x.date + ' · ' + x.title), W().el('p', null, x.summary));
-      c.append(item);
-    });
-    const status = card('当前规则');
-    const dl = W().el('dl', 'meta-grid'); dl.id = 'update-snapshot';
-    c.append(dl);
-    const snap = W().snapshot;
-    if (snap) [['游戏版本',snap.gameVersion],['规则版本',String(snap.rulesVersion)],['配置代数',String(snap.configRevision)],['配置哈希',snap.configHash],['快照时间',new Date(snap.generatedAt).toLocaleString('zh-CN')]].forEach(function (x) { dl.append(W().el('dt',null,x[0]),W().el('dd',null,x[1])); });
-    const feedback = card('纠错入口');
-    const textarea = W().el('textarea'); textarea.value = '页面地址：' + location.href + '\n游戏版本：' + (snap ? snap.gameVersion : '-') + '\n配置哈希：' + (snap ? snap.configHash : '-') + '\n问题描述：';
-    const button = W().el('button', 'primary', '复制纠错模板');
-    const statusLine = W().el('p', 'status-line', '复制后粘贴到既有反馈渠道。');
-    button.addEventListener('click', async function () {
-      try { await navigator.clipboard.writeText(textarea.value); statusLine.textContent = '已复制。'; }
-      catch (e) { statusLine.textContent = '复制失败，请手动选中文本复制。'; }
-    });
-    feedback.append(textarea, button, statusLine);
-    main.append(pageHead('更新记录', 'Wiki 功能更新与规则同步说明。'), c, status, feedback);
+    main.append(pageHead('更新记录', '游戏版本与 Wiki 内容合并展示，默认只显示最近一次更新。'));
+    const latest = card('最近一次更新'); latest.classList.add('updates-latest');
+    latest.append(latestUpdateNode());
+    // 详情页不重复提供指向自身的入口。
+    const selfLink = latest.querySelector('.latest-update > a');
+    if (selfLink) selfLink.remove();
+    main.append(latest);
+    const list = window.WikiContentTools.mergeUpdates(C().updates, versionTimeline);
+    if (list.length > 1 && (versionTimeline || versionTimelineError)) {
+      const history = W().el('details', 'history-details');
+      const summary = W().el('summary', 'history-summary', '查看历史更新（' + (list.length - 1) + ' 条）');
+      const body = W().el('div', 'history-body');
+      list.slice(1).forEach(function (x) { body.append(updateArticle(x)); });
+      history.append(summary, body); main.append(history);
+    }
   }
-
   function render() {
     setNavCurrent();
     const page = document.body.dataset.page;
     if (page === 'home') renderHome();
     else if (page === 'search') renderSearch();
-    else if (page === 'items') renderItems();
     else if (page === 'grounds') renderGrounds();
     else if (page === 'guides') renderGuides();
+    else if (page === 'guides-submit') renderGuideSubmit();
     else if (page === 'updates') renderUpdates();
   }
   function init() {
     let lastKey = '', lastUnavailable = null;
+    const guideWidth = window.matchMedia('(min-width: 1001px)');
+    guideWidth.addEventListener('change', function (e) {
+      const toc = document.querySelector('details.guide-side');
+      if (toc) toc.open = e.matches;
+    });
+    if (['guides', 'guides-submit'].includes(document.body.dataset.page || '')) refreshMyWikiGuides();
     W().onChange(function (snapshot, unavailable) {
-      const key = snapshot ? snapshot.snapshotId : '';
+      const content = W().content;
+      const key = (snapshot ? snapshot.snapshotId : '') + '|content:' +
+        (content ? (content.revision || 0) + ':' + (content.updatedAt || '') : '');
       if (key === lastKey && unavailable === lastUnavailable) return;
       lastKey = key; lastUnavailable = unavailable; render();
     });
     return W().init().then(render).catch(function (e) {
       render();
-      const main = document.getElementById('main');
-      const box = W().el('div', 'callout warn', '规则快照不可用：' + (e && e.message || e) + '。正文可浏览，数值和模拟器已禁用。');
-      main.prepend(box);
+      console.error('Wiki rules unavailable:', e);
     });
   }
   return { init: init, render: render };

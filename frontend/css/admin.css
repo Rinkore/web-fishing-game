@@ -573,3 +573,34 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .lg-row.sel { border-color: var(--acc); background: var(--panel2); }
 .lg-row .gi { flex: 1; min-width: 160px; font-size: 12px; color: var(--txt-dim); }
 .lg-edit { margin-top: 12px; border-color: var(--acc2); }
+
+/* ---- Wiki 攻略热更新 ---- */
+.wiki-panel { display: flex; flex-direction: column; gap: 12px; }
+.wiki-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.wiki-card {
+  display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px;
+  min-height: 34px; padding: 7px 9px; border: 1px solid #27364b; border-radius: 8px;
+  background: #111827; color: #dbe7ff; font-size: 12px;
+}
+.wiki-card b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wiki-card span { color: #8ca3c6; white-space: nowrap; }
+.wiki-json {
+  width: 100%; min-height: 520px; resize: vertical; font-family: Consolas, "Courier New", monospace;
+  font-size: 12px; line-height: 1.5; white-space: pre; overflow-wrap: normal;
+}
+@media (max-width: 720px) {
+  .wiki-card { grid-template-columns: 1fr; }
+  .wiki-card span { white-space: normal; }
+}
+
+/* ---- Wiki 官方内容与投稿审核 ---- */
+.wiki-review-card { border:1px solid #27364b; border-radius:10px; padding:12px; margin:10px 0; background:#111827; }
+.wiki-review-card header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.wiki-review-meta { display:flex; flex-wrap:wrap; gap:10px; color:#8ca3c6; font-size:12px; margin-top:6px; }
+.wiki-review-body { max-height:320px; overflow:auto; border-top:1px solid #27364b; margin-top:10px; padding-top:8px; }
+.wiki-review-body h4 { margin:10px 0 5px; }
+.wiki-review-body section { margin-bottom:10px; }
+.wiki-review-acts { display:flex; gap:8px; margin-top:10px; }
+.wiki-status { padding:2px 8px; border-radius:999px; font-size:12px; background:#27364b; color:#dbe7ff; }
+.wiki-status.approved { background:#14532d; color:#bbf7d0; }
+.wiki-status.rejected { background:#7f1d1d; color:#fecaca; }
