@@ -851,7 +851,8 @@ function rollSeaQuests() {
 }
 function ensureSeaQuests(rec) {
   const sea = seaStateOf(rec);
-  const day = new Date().toDateString();
+  // v0.21.0 刷新时刻可配：把「现在」平移回当日零点后再取日期串，questResetHour=0 即零点刷新
+  const day = new Date(Date.now() - (D.SEA.questResetHour || 0) * 3600000).toDateString();
   if (!sea.quests || sea.quests.day !== day || !Array.isArray(sea.quests.list)) {
     sea.quests = { day: day, list: rollSeaQuests() };
   }
@@ -1184,6 +1185,7 @@ function validateSeaCfg(sc) {
     if (c.zoneMax !== undefined && !inRange(c.zoneMax, 1, 10)) return '海域上限需在 1 - 10';
     if (c.events !== undefined) {
       if (!c.events || typeof c.events !== 'object' || Array.isArray(c.events)) return '事件概率格式错误';
+      if (c.questResetHour !== undefined && !inRange(c.questResetHour, 0, 23)) return '悬赏刷新时刻需在 0 - 23';
       for (const k of ['storm', 'bounty', 'school', 'whirlpool', 'wreck']) {
         if (c.events[k] !== undefined && !inRange(c.events[k], 0, 50)) return '事件概率（' + k + '）需在 0 - 50%';
       }
@@ -4536,7 +4538,7 @@ const server = http.createServer(function (req, res) {
       cfg: {
         ship: { names: D.SHIP.levels.map(function (l) { return l.name; }), xpNeed: D.SHIP.xpNeed, upCoins: D.SHIP.upCoins, upScale: D.SHIP.upScale },
         sea: { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events,
-          anchor: D.SEA.anchor, nightglow: D.SEA.nightglow },
+          anchor: D.SEA.anchor, nightglow: D.SEA.nightglow, questResetHour: D.SEA.questResetHour },
       },
     };
   }
@@ -7296,7 +7298,7 @@ function lootPreviewRows(spot, rareVal) {
     const a = adminOf(u.query.token);
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
     const seaNow = { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events,
-      anchor: D.SEA.anchor, nightglow: D.SEA.nightglow, quests: D.SEA.quests };
+      anchor: D.SEA.anchor, nightglow: D.SEA.nightglow, questResetHour: D.SEA.questResetHour, quests: D.SEA.quests };
     const worldPayload = { seaCfg: world.seaCfg || {}, ship: D.SHIP, sea: seaNow };
     const fish = [];
     ['common', 'big', 'rare'].forEach(function (tier) {

@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.21.0';
+  const VERSION = 'v0.21.1';
   const BUILD = '2026-09-20';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -2112,6 +2112,7 @@
       buffs: [{ type: 'double', value: 8 }] },
     // v0.21.0 夜光潮：每日 20~23 点全部临时海域附加稀有加成（on=false 关闭）。
     nightglow: { on: true, from: 20, to: 23, rare: 15 },
+    questResetHour: 0,     // v0.21.0 悬赏每日刷新时刻（本地时间小时，0 = 零点）
     // v0.21.0 每日悬赏池：每天随机滚 3 条。奖励以稀缺资源为主（龙宫宝珠/深海鳞片/宝匣残片/宝匣），
     // 金币只是零头——挂机玩家不缺金币。kind: catch_ocean / catch_zone / catch_deadly / catch_big_ocean /
     // sea_event（宝箱或沉船事件）/ voyage / submit_deepscale（领取时扣 submitNeed 片鳞片）。
@@ -2150,6 +2151,7 @@
     SEA.anchor = JSON.parse(JSON.stringify(SEA_DEFAULT.anchor));
     SEA.nightglow = JSON.parse(JSON.stringify(SEA_DEFAULT.nightglow));
     SEA.quests = JSON.parse(JSON.stringify(SEA_DEFAULT.quests));
+    SEA.questResetHour = SEA_DEFAULT.questResetHour;
     cfg = cfg && typeof cfg === 'object' ? cfg : {};
     const int = function (v, min, max, dflt) {
       v = Math.floor(Number(v));
@@ -2193,8 +2195,9 @@
         if (c.nightglow.on != null) SEA.nightglow.on = !!c.nightglow.on;
         if (c.nightglow.from != null) SEA.nightglow.from = int(c.nightglow.from, 0, 23, SEA.nightglow.from);
         if (c.nightglow.to != null) SEA.nightglow.to = int(c.nightglow.to, 0, 24, SEA.nightglow.to);
-        if (c.nightglow.rare != null) SEA.nightglow.rare = int(c.nightglow.rare, 0, 100, SEA.nightglow.rare);
-      }
+      if (c.nightglow.rare != null) SEA.nightglow.rare = int(c.nightglow.rare, 0, 100, SEA.nightglow.rare);
+    }
+    if (c.questResetHour != null) SEA.questResetHour = int(c.questResetHour, 0, 23, SEA.questResetHour);
       if (Array.isArray(c.quests)) {
         // 悬赏按 id 对位合并：标题/需求/奖励可改，条目集不可增删
         c.quests.forEach(function (q) {

@@ -441,11 +441,13 @@ window.Admin = (function () {
     const lv = ship.levels, XN = ship.xpNeed, UC = ship.upCoins, US = ship.upScale;
     const ev = sea.events || {};
     const quests = Array.isArray(sea.quests) && sea.quests.length ? sea.quests : [
-      { id: 'q_ocean_catch', title: '远洋渔汛：在远洋钓上 8 条渔获', kind: 'catch_ocean', need: 8, reward: { coins: 3000, chartfrag: 2 } },
-      { id: 'q_zone_catch', title: '探索未知：在临时海域钓上 5 条渔获', kind: 'catch_zone', need: 5, reward: { coins: 4000, chartfrag: 3 } },
-      { id: 'q_deadly_catch', title: '直面凶险：在凶险海域钓上 3 条渔获', kind: 'catch_deadly', need: 3, reward: { coins: 6000, chartfrag: 2 } },
-      { id: 'q_voyage', title: '整装出航：发现 1 片新的临时海域', kind: 'voyage', need: 1, reward: { coins: 2000, chartfrag: 2 } },
-      { id: 'q_submit_scale', title: '上贡鳞片：上交 5 片深海鳞片', kind: 'submit_deepscale', need: 1, submitNeed: 5, reward: { coins: 8000, chartfrag: 4 } },
+      { id: 'q_ocean_catch', title: '远洋渔汛：在远洋钓上 15 条渔获', kind: 'catch_ocean', need: 15, reward: { coins: 50000, items: { deepscale: 3, relic: 5 } } },
+      { id: 'q_zone_catch', title: '探索未知：在临时海域钓上 10 条渔获', kind: 'catch_zone', need: 10, reward: { coins: 80000, items: { dragonpearl: 1 } } },
+      { id: 'q_deadly_catch', title: '直面凶险：在凶险海域钓上 3 条渔获', kind: 'catch_deadly', need: 3, reward: { coins: 100000, items: { deepscale: 4 } } },
+      { id: 'q_big_catch', title: '大物猎人：钓上 2 条大型或巨型海鱼', kind: 'catch_big_ocean', need: 2, reward: { coins: 200000, items: { chest_deep: 1 } } },
+      { id: 'q_tide_hunter', title: '潮汐寻宝：撞上 3 次漂流宝箱或沉船残骸', kind: 'sea_event', need: 3, reward: { coins: 60000, items: { tide_sand: 5, relic: 8 } } },
+      { id: 'q_voyage', title: '整装出航：发现 2 片新的临时海域', kind: 'voyage', need: 2, reward: { coins: 30000, chartfrag: 4 } },
+      { id: 'q_submit_scale', title: '上贡鳞片：上交 8 片深海鳞片', kind: 'submit_deepscale', need: 1, submitNeed: 8, reward: { coins: 150000, items: { dragonpearl: 2 } } },
     ];
     const rows = [];
     for (let i = 0; i < 5; i++) {
@@ -488,6 +490,23 @@ window.Admin = (function () {
       '<span class="ch-fix"><label>续期（分钟）</label><input id="sea-anc-extend" class="ipt mk-num" type="number" min="5" max="10080" step="1" value="' + ((sea.anchor || {}).extendMin != null ? sea.anchor.extendMin : 1440) + '"></span>' +
       '<span class="ch-fix"><label>🌌 夜光潮开</label><select id="sea-ng-on" class="ipt mk-num"><option value="1"' + ((sea.nightglow || {}).on !== false ? ' selected' : '') + '>开</option><option value="0"' + ((sea.nightglow || {}).on === false ? ' selected' : '') + '>关</option></select></span>' +
       '<span class="ch-fix"><label>夜光潮稀有%</label><input id="sea-ng-rare" class="ipt mk-num" type="number" min="0" max="100" step="1" value="' + ((sea.nightglow || {}).rare != null ? sea.nightglow.rare : 15) + '"></span></div>' +
+      '<h3>🏅 每日悬赏（v0.21.0，按条编辑，不能增删）</h3>' +
+      '<div class="hint" style="margin-bottom:8px">每天从奖池随机 3 条；标题 ≤40 字，「需求」= 完成次数，上贡类另按「上贡数量」扣深海鳞片。<br>' +
+      '<label>悬赏刷新时刻（本地小时 0-23）</label><input id="sea-q-reset" class="ipt mk-num" type="number" min="0" max="23" step="1" value="' + ((sea.questResetHour != null) ? sea.questResetHour : 0) + '"></div>' +
+      '<table class="tbl"><thead><tr><th>标题</th><th class="num">需求</th><th class="num">上贡(鳞片)</th><th class="num">金币</th><th class="num">海图碎片</th><th class="num">深海鳞片</th><th class="num">龙宫宝珠</th><th class="num">宝匣残片</th><th class="num">深潜宝匣</th></tr></thead><tbody>' +
+      quests.map(function (q, qi) {
+        const rw = q.reward || {}, it = rw.items || {};
+        return '<tr><td><input id="sea-q-title-' + qi + '" class="ipt" type="text" maxlength="40" value="' + esc(q.title || '') + '"></td>' +
+          '<td class="num"><input id="sea-q-need-' + qi + '" class="ipt mk-num" type="number" min="1" max="999" step="1" value="' + (q.need != null ? q.need : 1) + '"></td>' +
+          '<td class="num">' + (q.kind === 'submit_deepscale' ? '<input id="sea-q-sub-' + qi + '" class="ipt mk-num" type="number" min="0" max="999" step="1" value="' + (q.submitNeed != null ? q.submitNeed : 5) + '">' : '<span class="hint">—</span>') + '</td>' +
+          '<td class="num"><input id="sea-q-coins-' + qi + '" class="ipt mk-num" type="number" min="0" step="1" value="' + (rw.coins != null ? rw.coins : 0) + '"></td>' +
+          '<td class="num"><input id="sea-q-frag-' + qi + '" class="ipt mk-num" type="number" min="0" step="1" value="' + (rw.chartfrag != null ? rw.chartfrag : 0) + '"></td>' +
+          '<td class="num"><input id="sea-q-ds-' + qi + '" class="ipt mk-num" type="number" min="0" step="1" value="' + (rw.deepscale != null ? rw.deepscale : 0) + '"></td>' +
+          '<td class="num"><input id="sea-q-pearl-' + qi + '" class="ipt mk-num" type="number" min="0" max="999" step="1" value="' + (it.dragonpearl != null ? it.dragonpearl : 0) + '"></td>' +
+          '<td class="num"><input id="sea-q-relic-' + qi + '" class="ipt mk-num" type="number" min="0" max="999" step="1" value="' + (it.relic != null ? it.relic : 0) + '"></td>' +
+          '<td class="num"><input id="sea-q-deep-' + qi + '" class="ipt mk-num" type="number" min="0" max="999" step="1" value="' + (it.chest_deep != null ? it.chest_deep : 0) + '"></td></tr>';
+      }).join('') + '</tbody></table>' +
+
       '<div class="mgr-row" style="margin-top:10px"><button class="btn primary" id="sea-save">保存远洋配置</button>' +
       '<button class="btn" id="sea-reset" style="margin-left:8px">恢复出厂</button>' +
       '<span id="sea-state" class="hint" style="margin-left:10px"></span></div>';
@@ -524,6 +543,23 @@ window.Admin = (function () {
             on: ($('sea-ng-on') || {}).value !== '0',
             rare: seaNum('sea-ng-rare', 0, 100, 15),
           },
+          questResetHour: seaNum('sea-q-reset', 0, 23, 0),
+          quests: quests.map(function (q, qi) {
+            const items = {};
+            const pearl = seaNum('sea-q-pearl-' + qi, 0, 999, 0); if (pearl > 0) items.dragonpearl = pearl;
+            const relic = seaNum('sea-q-relic-' + qi, 0, 999, 0); if (relic > 0) items.relic = relic;
+            const deep = seaNum('sea-q-deep-' + qi, 0, 999, 0); if (deep > 0) items.chest_deep = deep;
+            const out = { id: q.id, title: ((($('sea-q-title-' + qi) || {}).value || '').trim()).slice(0, 40) || q.title,
+              need: seaNum('sea-q-need-' + qi, 1, 999, q.need || 1),
+              reward: {
+                coins: seaNum('sea-q-coins-' + qi, 0, 1e9, (q.reward || {}).coins || 0),
+                chartfrag: seaNum('sea-q-frag-' + qi, 0, 1e9, (q.reward || {}).chartfrag || 0),
+                deepscale: seaNum('sea-q-ds-' + qi, 0, 1e9, (q.reward || {}).deepscale || 0),
+              } };
+            if (Object.keys(items).length) out.reward.items = items;
+            if (q.kind === 'submit_deepscale') out.submitNeed = seaNum('sea-q-sub-' + qi, 0, 999, q.submitNeed || 5);
+            return out;
+          }),
         },
       };
       adminApi('POST', '/api/admin/settings', { token: token, seaCfg: payload }).then(function (r) {
