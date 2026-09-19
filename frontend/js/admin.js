@@ -308,7 +308,7 @@ window.Admin = (function () {
   function renderWiki() {
     const main = $('main');
     main.innerHTML = '<h2>📚 Wiki 攻略管理</h2>' +
-      '<div class="hint" style="margin-bottom:12px">官方攻略可热更新；用户投稿独立存储，审核通过后才会在公开 Wiki 显示。两者互不覆盖。</div>' +
+      '<div class="hint" style="margin-bottom:12px">官方攻略可热更新；用户投稿当前为自动通过（提交后立即公开，可在“全部”里删除）。如需人工审核，用 WIKI_GUIDE_AUTO_APPROVE=0 重启服务端。两者互不覆盖。</div>' +
       '<div class="panel wiki-panel">' +
       '<div class="mgr-row"><label>官方内容</label><span id="wiki-meta" class="hint">加载中…</span>' +
       '<span style="flex:1"></span><button class="btn mini" id="wiki-refresh">刷新</button>' +
@@ -389,12 +389,18 @@ window.Admin = (function () {
       const meta = $('wiki-review-meta'), box = $('wiki-review-list');
       if (!meta || !box) return;
       const counts = data.counts || {};
-      meta.textContent = '投稿版本 ' + (data.revision || 1) + ' · 待审核 ' + (counts.pending || 0) +
+      if (data.autoApprove && wikiReviewStatus === 'pending' && !(counts.pending || 0)) {
+        wikiReviewStatus = 'approved';
+        const sel = $('wiki-review-status'); if (sel) sel.value = 'approved';
+        loadReview(); return;
+      }
+      meta.textContent = (data.autoApprove ? '自动审核已开启（投稿直接公开） · ' : '') +
+        '投稿版本 ' + (data.revision || 1) + ' · 待审核 ' + (counts.pending || 0) +
         ' · 已通过 ' + (counts.approved || 0) + ' · 已拒绝 ' + (counts.rejected || 0);
       if (!(data.guides || []).length) { box.innerHTML = '<div class="hint">当前状态下暂无投稿。</div>'; return; }
       box.innerHTML = data.guides.map(function (g) {
         return '<article class="wiki-review-card"><header><b>' + esc(g.title) + '</b>' +
-          '<span class="wiki-status ' + esc(g.status) + '">' + esc(g.status === 'pending' ? '待审核' : g.status === 'approved' ? '已通过' : '已拒绝') + '</span></header>' +
+          '<span class="wiki-status ' + esc(g.status) + '">' + esc(g.status === 'pending' ? '待审核' : g.status === 'approved' ? (g.autoApproved ? '已通过（自动）' : '已通过') : '已拒绝') + '</span></header>' +
           '<div class="wiki-review-meta"><span>' + esc(g.authorName || '未知作者') + '</span><span>' + esc(g.category || '-') + '</span>' +
           '<span>' + new Date(g.submittedAt).toLocaleString('zh-CN') + '</span></div>' +
           '<p>' + esc(g.summary) + '</p>' +

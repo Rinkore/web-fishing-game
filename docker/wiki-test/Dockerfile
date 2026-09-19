@@ -16,7 +16,12 @@ COPY package.json ./package.json
 COPY backend ./backend
 COPY frontend ./frontend
 
-# /data 是唯一可写目录，用于 wiki.json、wiki-guides.json、config.json 等测试数据。
+# Wiki 存储依赖 Node 内置 node:sqlite（Node >= 22.13），基础镜像不满足时直接构建失败。
+RUN node -e "const v=process.versions.node.split('.').map(Number); if(v[0]<22||(v[0]===22&&v[1]<13)){console.error('Wiki 需要 Node >= 22.13，当前 '+process.versions.node);process.exit(1)} const s=require('node:sqlite'); new s.DatabaseSync(':memory:').close();"
+
+# /data 是唯一可写目录，用于 wiki.db（SQLite）、config.json 等测试数据；
+# 旧版 wiki.json / wiki-guides.json 只在首次启动迁移时读取，保留作备份。
+# Wiki 存储使用 Node 内置 node:sqlite，基础镜像必须 >= Node 22.13。
 # 使用数字 UID/GID，兼容官方 node 镜像和本地已有 Node 运行时镜像。
 RUN mkdir -p /data && chown -R 1000:1000 /data
 
@@ -27,4 +32,4 @@ VOLUME ["/data"]
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:9000/api/version').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
-CMD ["node", "backend/server.js"]
+CMD ["node", "--disable-warning=ExperimentalWarning", "backend/server.js"]

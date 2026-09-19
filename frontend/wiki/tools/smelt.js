@@ -23,17 +23,21 @@
         '<label class="field"><span>词缀</span><select data-field="type" data-index="' + i + '">' + types + '</select></label>' +
         '<label class="field"><span>数值</span><input type="number" data-field="value" data-index="' + i + '" value="' + Number(a.value) + '"></label>' +
         '<label class="field affix-select"><span>选定</span><input type="radio" name="' + c.role + '-selected" data-field="selected" data-index="' + i + '" value="' + i + '"' + (c.selected === i ? ' checked' : '') + '></label>' +
-        '<button type="button" data-remove="' + i + '" aria-label="删除词缀">删</button></div>';
+        '<button type="button" class="tool-remove" data-remove="' + i + '" aria-label="删除词缀">×</button></div>';
     }).join('');
     return '<div class="toolbar slot-fields">' +
       '<label class="field"><span>部位</span><select data-field="part">' + partOpts + '</select></label>' +
       '<label class="field"><span>底材</span><select data-field="base">' + baseOpts + '</select></label>' +
       '<label class="field"><span>品质</span><select data-field="quality">' + qualityOpts + '</select></label>' +
-      '</div><div class="affix-list">' + rows + '</div><div class="toolbar"><button type="button" data-add-affix>加词缀</button></div>';
+      '</div><div class="affix-list">' + rows + '</div><div class="toolbar"><button type="button" data-add-affix>＋ 添加词条</button></div>';
   }  function renderEditors() {
     ['main','sub'].forEach(function (role) {
       const c = state[role], root = $(role + '-editor');
       root.innerHTML = editorHTML(c);
+      root.prepend(WikiInventory.picker(c.part, function (item) {
+        state[role] = { part:item.part, baseId:item.baseId, quality:item.quality, affixes:item.affixes.map(a => Object.assign({}, a)), selected:0, role:role };
+        renderAll();
+      }));
       root.querySelectorAll('[data-field]').forEach(function (input) {
         input.addEventListener('change', function () {
           const field = input.getAttribute('data-field');
@@ -57,50 +61,39 @@
     });
   }
   function materialList() {
-    const out = [];
-    document.querySelectorAll('[data-material]').forEach(function (input) {
-      const n = Math.max(0, Math.floor(Number(input.value) || 0));
-      if (n) out.push({ id:input.getAttribute('data-material'), qty:n });
-    });
-    return out;
+    return Object.keys(state.materials).filter(id => state.materials[id] > 0).map(id => ({ id:id, qty:state.materials[id] }));
   }
   function plan() {
     if (!state.snapshot || Wiki.unavailable) return { errors:['当前规则快照不可用，禁止使用默认值计算。'] };
-    const cfg = GameData.getSmeltCfg();
-    const materials = materialList();
-    const mainAffix = state.main.affixes[state.main.selected == null ? 0 : state.main.selected];
-    const subAffix = state.sub.affixes[state.sub.selected == null ? 0 : state.sub.selected];
-    const errors = [];
-    if (!mainAffix) errors.push('主件需要选择一条词缀');
-    if (!subAffix) errors.push('副件需要选择一条词缀');
-    if (mainAffix && subAffix && mainAffix.type === subAffix.type) errors.push('主副件选择的词缀类型不能相同');
-    const load = GameData.smeltLoadOf(materials);
-    if (load.total > cfg.maxMaterials) errors.push('投料超过上限 ' + cfg.maxMaterials);
-    if (load.types > cfg.maxTypes) errors.push('投料种类超过上限 ' + cfg.maxTypes);
-    let extraType = null;
-    if (load.total > 0 && mainAffix && subAffix) {
-      extraType = load.dominant;
-      const addable = GameData.smeltAddableAffixes(state.main.baseId, [mainAffix.type, subAffix.type]);
-      if (!extraType || addable.indexOf(extraType) < 0) errors.push('投料对应的补缀词缀不可用');
-      else if (2 + 1 > GameData.smeltAddAffixCap()) errors.push('补缀后超过词条数上限');
+    const mainAffix = state.main.affixes[state.main.selected || 0];
+    const subAffix = state.sub.affixes[state.sub.selected || 0];
+    for (const item of [state.main, state.sub]) {
+      if (item.affixes.some(a => !Number.isFinite(a.value) || !Number.isInteger(a.value))) return { errors:['词条数值需要是有效整数'] };
+      if (new Set(item.affixes.map(a => a.type)).size !== item.affixes.length) return { errors:['同一组件的词条类型不能重复'] };
     }
-    const extraAffixes = GameData.smeltExtraAffixesOf(state.main.baseId, state.main.affixes);
-    const relics = Math.max(0, Math.floor(Number($('relics').value) || 0));
-    if (relics > cfg.retainMaxRelic) errors.push('保护残片超过上限 ' + cfg.retainMaxRelic);
-    if (relics > 0 && (!GameData.canRecast({ kind:'component', quality:state.main.quality }) || !extraAffixes.length)) errors.push('当前主件不能使用保护残片');
-    const pearl = $('pearl').checked;
-    const rates = GameData.smeltRatesOf(load, pearl);
-    const gold = GameData.smeltGoldOf(load, pearl);
-    const probs = GameData.smeltSuccessProbs(rates, !!extraType);
-    const retainChance = GameData.smeltRetainChance(relics, GameData.breakthroughCountOf(state.main.affixes));
-    let ranges = null;
-    if (mainAffix && subAffix) {
-      const mainRange = GameData.smeltRangeEx(state.main.baseId, state.sub.baseId, 'main', mainAffix.type, { part:state.main.part, src:mainAffix.src, srcExplicit:mainAffix.srcExplicit });
-      const subRange = GameData.smeltRangeEx(state.main.baseId, state.sub.baseId, 'sub', subAffix.type, { part:state.sub.part, src:subAffix.src, srcExplicit:subAffix.srcExplicit });
-      const addRange = extraType ? GameData.smeltRangeEx(state.main.baseId, state.sub.baseId, 'add', extraType, { part:state.main.part }) : null;
-      ranges = { main:mainRange, sub:subRange, add:addRange };
-    }
-    return { errors:errors, cfg:cfg, materials:materials, load:load, mainAffix:mainAffix, subAffix:subAffix, extraType:extraType, extraAffixes:extraAffixes, relics:relics, pearl:pearl, rates:rates, gold:gold, probs:probs, retainChance:retainChance, ranges:ranges };
+    const shared = GameData.smeltPlanOf({
+      mainId: GameData.instanceId(state.main.baseId, state.main.quality, state.main.affixes),
+      subId: GameData.instanceId(state.sub.baseId, state.sub.quality, state.sub.affixes),
+      mainAffix: mainAffix && mainAffix.type, subAffix: subAffix && subAffix.type,
+      materials: materialList(), pearl: $('pearl').checked, relics: Number($('relics').value)
+    });
+    if (shared.error) return { errors:[shared.error] };
+    return Object.assign({}, shared, {
+      shared: shared, errors: [], probs: GameData.smeltSuccessProbs(shared.rates, !!shared.extraType),
+      ranges: { main: { range: shared.ranges.main }, sub: { range: shared.ranges.sub }, add: shared.ranges.add ? { range: shared.ranges.add } : null }
+    });
+  }
+  function inventoryCosts(p) {
+    const snapshot = WikiInventory.snapshot;
+    if (!snapshot || p.errors.length) return '';
+    const needs = {};
+    p.shared.consume.forEach(m => { needs[m.id] = (needs[m.id] || 0) + m.qty; });
+    let html = '<details class="sm-details"><summary>背包资源参考（不扣除）</summary><p>金币：需要 ' + p.gold + ' / 持有 ' + Wiki.fmt(snapshot.coins, 0) + '</p>';
+    Object.entries(needs).forEach(([id, need]) => {
+      const name = (GameData.MATERIALS.find(m => m.id === id) || {}).name || id;
+      html += '<p>' + escapeHTML(name) + '：需要 ' + need + ' / 背包 ' + (Number(snapshot.inventory[id]) || 0) + '</p>';
+    });
+    return html + '<p>每次独立试验，不累计扣减；已装备组件也可复制试算。</p></details>';
   }
   function previewHTML(p) {
     if (p.errors.length) return '<ul class="warning">' + p.errors.map(e => '<li>' + escapeHTML(e) + '</li>').join('') + '</ul>';
@@ -112,7 +105,7 @@
       row('投料', p.load.total + ' 份 / ' + p.load.types + ' 种') +
       row('主件词缀区间', rangeText(p.ranges.main)) + row('副件词缀区间', rangeText(p.ranges.sub)) +
       (p.ranges.add ? row('补缀区间', rangeText(p.ranges.add)) : '') +
-      '</tbody></table><p class="muted">完全成功不包含池外保留；失败时若投入保护残片，主件选中词缀也会保留。</p>';
+      '</tbody></table><p class="muted">完全成功不包含池外保留；失败时若投入保护残片，主件全部词缀保留（不投入则移除主选词条）。</p>';
   }
   function row(k, v) { return '<tr><th>' + k + '</th><td>' + escapeHTML(v) + '</td></tr>'; }
   function rangeText(r) { return r && r.range ? r.range[0] + ' ~ ' + r.range[1] : '-'; }
@@ -126,57 +119,107 @@
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
-  function rollValue(range, pearl, cfg, rng) {
-    if (!range || !range.range) return 0;
-    if (pearl && cfg.pearlRollTwice) return GameData.rollAffixValueBoundaryWithRng(range.range[0], range.range[1], GameData.getComponentCfg().rollModel, rng);
-    return GameData.rollAffixValueWithRng(range.range[0], range.range[1], GameData.getComponentCfg().rollModel, rng);
-  }
   function simulateOnce(p, rng) {
-    const success = rng() * 100 < p.rates.rate;
-    const result = { success:success, extraOk:false, retainOk:false, protected:!success && p.relics > 0, gold:p.gold, item:null, removedType:null, retained:[] };
-    if (success) {
-      const affixes = [
-        { type:p.mainAffix.type, value:rollValue(p.ranges.main, p.pearl, p.cfg, rng), src:p.ranges.main.src, srcExplicit:p.ranges.main.explicit },
-        { type:p.subAffix.type, value:rollValue(p.ranges.sub, p.pearl, p.cfg, rng), src:p.ranges.sub.src, srcExplicit:p.ranges.sub.explicit },
-      ];
-      if (p.extraType) {
-        result.extraOk = rng() * 100 < p.rates.extraRate;
-        if (result.extraOk) affixes.push({ type:p.extraType, value:rollValue(p.ranges.add, p.pearl, p.cfg, rng), src:p.ranges.add.src, srcExplicit:p.ranges.add.explicit });
-      }
-      if (p.relics > 0) {
-        result.retainOk = rng() * 100 < p.retainChance;
-        if (result.retainOk) {
-          const have = {}; affixes.forEach(a => have[a.type] = 1);
-          p.extraAffixes.forEach(function (a) { if (have[a.type]) return; have[a.type] = 1; affixes.push({ type:a.type, value:a.value, src:a.src || null, srcExplicit:a.srcExplicit }); result.retained.push(a.type); });
-        }
-      }
-      result.item = { baseId:state.main.baseId, quality:state.main.quality, affixes:affixes };
-    } else {
-      const left = state.main.affixes.filter(a => p.relics > 0 || a.type !== p.mainAffix.type).map(a => ({ type:a.type, value:a.value, src:a.src || null, srcExplicit:a.srcExplicit }));
-      if (p.relics <= 0) result.removedType = p.mainAffix.type;
-      result.item = { baseId:state.main.baseId, quality:state.main.quality, affixes:left };
-    }
-    return result;
+    const out = GameData.simulateSmeltPlan(p.shared, rng);
+    const item = out.result || out.mainAfter;
+    return {
+      success: out.success, extraOk: out.extraOk, retainOk: out.retainOk,
+      protected: out.protectAffix, gold: p.gold, removedType: out.removedAffix,
+      retained: out.retained.map(a => a.type),
+      item: { baseId: item.baseId, quality: item.quality, affixes: item.affixes.map(a => Object.assign({}, a)) },
+      costs: { materials: p.load.total, pearl: p.pearl, relics: p.relics }
+    };
   }
   function outcomeHTML(o, p) {
     return '<p>' + (o.success ? '<strong class="positive">熔炼成功</strong>' : '<strong class="negative">熔炼失败' + (o.protected ? '（残片保护）</strong>' : '</strong>')) +
       (o.extraOk ? ' · 补缀命中' : '') + (o.retainOk ? ' · 池外保留命中' : '') + '</p>' +
-      '<p>消耗：金币 ' + o.gold + '，副件 1' + (p.load.total ? '，投料 ' + p.load.total + ' 份' : '') + (p.pearl ? '，龙宫宝珠 1' : '') + (p.relics ? '，残片 ' + p.relics + ' 片' : '') + '</p>' +
+      '<p>模拟消耗（不扣库存）：金币 ' + o.gold + '，副件 1' + (o.costs.materials ? '，投料 ' + o.costs.materials + ' 份' : '') + (o.costs.pearl ? '，龙宫宝珠 1' : '') + (o.costs.relics ? '，残片 ' + o.costs.relics + ' 片' : '') + '</p>' +
       '<p>结果词缀：' + (o.item.affixes.map(a => GameData.AFFIX_LABEL[a.type] + ' ' + a.value).join(' · ') || '无') + '</p>' +
       (o.removedType ? '<p class="warning">失败时移除主件词缀：' + GameData.AFFIX_LABEL[o.removedType] + '</p>' : '');
+  }
+  function materialReason(m) {
+    if (!state.snapshot || Wiki.unavailable) return '规则暂不可用';
+    const main = state.main.affixes[state.main.selected || 0];
+    const sub = state.sub.affixes[state.sub.selected || 0];
+    if (!main || !sub) return '先选两条词条';
+    if (main.type === sub.type) return '主副词条不能相同';
+    if (state.main.part !== state.sub.part) return '主副组件需同部位';
+    if (GameData.smeltAddAffixCap() < 3) return '词条数已达上限';
+    const addable = GameData.smeltAddableAffixes(state.main.baseId, [main.type, sub.type]);
+    if (!addable.includes(GameData.smeltMaterialAffix(m.id))) return '该词条无法新增';
+    return '';
+  }
+  function fitMaterials() {
+    if (!state.snapshot || Wiki.unavailable) return;
+    const cfg = GameData.getSmeltCfg(), next = {};
+    let total = 0, types = 0;
+    (state.snapshot.catalog.smeltMaterials || []).forEach(function (m) {
+      const qty = !materialReason(m) && types < cfg.maxTypes
+        ? Math.max(0, Math.min(Math.floor(Number(state.materials[m.id]) || 0), cfg.maxMaterials - total)) : 0;
+      if (qty) { next[m.id] = qty; total += qty; types++; }
+    });
+    const changed = Object.keys(state.materials).some(id => state.materials[id] !== (next[id] || 0));
+    state.materials = next;
+    $('material-note').textContent = changed ? '已移除不适用或超出当前上限的投料。' : '';
+  }
+  function materialCapacity(m) {
+    const cfg = GameData.getSmeltCfg(), load = GameData.smeltLoadOf(materialList());
+    const qty = state.materials[m.id] || 0;
+    if (materialReason(m) || (!qty && load.types >= cfg.maxTypes)) return 0;
+    return Math.max(0, cfg.maxMaterials - load.total + qty);
+  }
+  function refreshMaterialControls() {
+    const cfg = GameData.getSmeltCfg(), mats = state.snapshot ? state.snapshot.catalog.smeltMaterials || [] : [];
+    const load = GameData.smeltLoadOf(materialList());
+    $('material-open').disabled = !state.snapshot || Wiki.unavailable;
+    $('material-limit').textContent = '最多 ' + cfg.maxMaterials + ' 份 / ' + cfg.maxTypes + ' 种 · 投入最多的材料决定新增词条';
+    $('material-summary').textContent = load.total ? load.total + ' 份 · 新增' + GameData.AFFIX_LABEL[load.dominant] + ' ↗' : '添加材料 ↗';
+    $('material-images').innerHTML = mats.filter(m => state.materials[m.id]).map(m => '<img src="/assets/item/' + escapeHTML(m.id) + '.png" alt="' + escapeHTML(m.name) + '">').join('');
+    $('material-feedback').textContent = load.total ? '已选 ' + load.total + ' 份 / ' + load.types + ' 种 · 补' + GameData.AFFIX_LABEL[load.dominant] : '尚未选择材料';
+    mats.forEach(function (m) {
+      const input = document.querySelector('[data-material="' + m.id + '"]');
+      if (!input) return;
+      const row = input.closest('.ws-mat'), qty = state.materials[m.id] || 0;
+      const capacity = materialCapacity(m), reason = materialReason(m);
+      input.value = qty; input.max = capacity; input.disabled = !!reason || capacity === 0;
+      row.classList.toggle('selected', qty > 0); row.classList.toggle('unavailable', !!reason || capacity === 0);
+      row.querySelector('[data-delta="-1"]').disabled = qty === 0 || Wiki.unavailable;
+      row.querySelector('[data-delta="1"]').disabled = qty >= capacity;
+      row.querySelector('.wm-have').textContent = (WikiInventory.quantity(m.id) === null ? '' : '背包 ' + WikiInventory.quantity(m.id) + ' · ') + (reason || (!qty && load.types >= cfg.maxTypes ? '已达种类上限' : qty >= capacity ? '已达份数上限' : '可补入'));
+    });
+  }
+  function setMaterial(m, value) {
+    const requested = Number(value);
+    const qty = Math.max(0, Math.min(materialCapacity(m), Number.isFinite(requested) ? Math.floor(requested) : 0));
+    if (qty) state.materials[m.id] = qty; else delete state.materials[m.id];
+    $('material-note').textContent = '';
+    refreshMaterialControls(); refreshPreview();
   }
   function renderMaterials() {
     const mats = state.snapshot.catalog.smeltMaterials || [];
     $('materials').innerHTML = mats.map(function (m) {
-      return '<div class="ws-mat wiki-material-card"><img src="/assets/item/' + escapeHTML(m.id) + '.png" alt=""><div class="sm-mat-info"><strong>' + escapeHTML(m.name) + '</strong><small>定向补缀：' + escapeHTML(m.affixName) + '</small></div>' +
-        '<input class="ipt" type="number" min="0" max="99" value="0" data-material="' + escapeHTML(m.id) + '" aria-label="' + escapeHTML(m.name) + '份数"></div>';
-    }).join('') + '<p class="sm-material-limit">残片既可作为普通投料定向“材料概率”，也可在上方单独作为保护残片；两处消耗独立计算。</p>';
-    $('materials').querySelectorAll('[data-material]').forEach(function (input) { input.addEventListener('change', renderAll); });
-  }  function renderAll() {
-    renderEditors();
+      return '<div class="ws-mat"><img class="sm-material-icon" src="/assets/item/' + escapeHTML(m.id) + '.png" alt="">' +
+        '<div class="sm-mat-info"><strong>' + escapeHTML(m.name) + '</strong><span>' + escapeHTML(m.affixName) + '</span><small class="wm-have"></small></div>' +
+        '<div class="sm-counter"><button type="button" data-delta="-1" aria-label="减少' + escapeHTML(m.name) + '">−</button>' +
+        '<input class="ipt ws-mat-qty" type="number" min="0" step="1" value="0" data-material="' + escapeHTML(m.id) + '" aria-label="' + escapeHTML(m.name) + '份数">' +
+        '<button type="button" data-delta="1" aria-label="增加' + escapeHTML(m.name) + '">＋</button></div></div>';
+    }).join('');
+    mats.forEach(function (m) {
+      const input = document.querySelector('[data-material="' + m.id + '"]');
+      input.addEventListener('input', function () { setMaterial(m, input.value); });
+      input.addEventListener('change', function () { setMaterial(m, input.value); });
+      input.closest('.ws-mat').querySelectorAll('[data-delta]').forEach(function (b) {
+        b.addEventListener('click', function () { setMaterial(m, (state.materials[m.id] || 0) + Number(b.dataset.delta)); });
+      });
+    });
+  }
+  function refreshPreview() {
     const p = plan();
-    $('preview').innerHTML = previewHTML(p);
-    if (state.lastOutcome) $('single-result').innerHTML = outcomeHTML(state.lastOutcome, p);
+    $('preview').innerHTML = previewHTML(p) + inventoryCosts(p);
+    if (state.lastOutcome && !p.errors.length) $('single-result').innerHTML = outcomeHTML(state.lastOutcome, p);
+  }
+  function renderAll() {
+    fitMaterials(); renderEditors(); refreshMaterialControls(); refreshPreview();
   }
   function runBatch(count, seed) {
     const p = plan(); if (p.errors.length) { $('batch-result').innerHTML = previewHTML(p); return; }
@@ -215,9 +258,27 @@
   function pct(a, b) { return b ? (a / b * 100).toFixed(2) + '%' : '-'; }
   function init() {
     state.main = defaultComponent('main'); state.sub = defaultComponent('sub');
+    WikiInventory.mount($('inventory-panel'), renderAll);
+    $('use-result').addEventListener('click', function () {
+      if (!state.lastOutcome) return;
+      const item = state.lastOutcome.item;
+      state.main = { part:GameData.componentBase(item.baseId).part, baseId:item.baseId, quality:item.quality, affixes:item.affixes.map(a => Object.assign({}, a)), selected:0, role:'main' };
+      renderAll();
+    });
+    const dialog = $('material-dialog');
+    $('material-open').addEventListener('click', function () {
+      fitMaterials(); refreshMaterialControls(); refreshPreview(); dialog.showModal(); $('material-close').focus();
+    });
+    $('material-close').addEventListener('click', function () { dialog.close(); });
+    $('material-done').addEventListener('click', function () { dialog.close(); });
+    dialog.addEventListener('close', function () { $('material-open').focus(); });
+    dialog.addEventListener('click', function (e) {
+      const r = dialog.getBoundingClientRect();
+      if (e.target === dialog && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dialog.close();
+    });
     $('simulate-once').addEventListener('click', function () {
       const p = plan(); if (p.errors.length) { $('single-result').innerHTML = previewHTML(p); return; }
-      state.lastOutcome = simulateOnce(p, Math.random); $('single-result').innerHTML = outcomeHTML(state.lastOutcome, p);
+      state.lastOutcome = simulateOnce(p, Math.random); $('single-result').innerHTML = outcomeHTML(state.lastOutcome, p); $('use-result').disabled = false;
     });
     $('send-to-build').addEventListener('click', function () {
       if (!state.lastOutcome) { $('single-result').innerHTML = '<p class="warning">请先模拟一次。</p>'; return; }

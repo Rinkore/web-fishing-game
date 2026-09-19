@@ -17,6 +17,8 @@ services:
       PORT: "9000"
       BIND_HOST: "0.0.0.0"
       FISHING_DATA_DIR: /data
+      # 1 = 攻略自动通过（默认）；设为 0 可测试「提交 → 待审核 → 管理员审核」完整链路。
+      WIKI_GUIDE_AUTO_APPROVE: "${WIKI_TEST_AUTO_APPROVE:-1}"
     volumes:
       - wiki-test-data:/data
     stdin_open: true

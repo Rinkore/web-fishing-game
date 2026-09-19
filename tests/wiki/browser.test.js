@@ -89,6 +89,7 @@ function errors(cdp) {
 }
 
 async function main() {
+  const fixture = require('./simulator-fixture')(TMP_DATA);
   const server = spawn(process.execPath, ['backend/server.js'], {
     cwd: ROOT,
     env: Object.assign({}, process.env, {
@@ -109,21 +110,43 @@ async function main() {
     const home = await openPage('/wiki/');
     const homeText = await evaluate(home, 'document.body.innerText');
     check('首页使用游戏化资料站外壳且不显示规则技术信息', homeText.includes('WIKI 资料中心') && homeText.includes('配装模拟器') && !homeText.includes('规则可用') && !homeText.includes('配置哈希'), homeText.slice(0, 300));
+    const homeLayout = await evaluate(home, `(() => {
+      const main = document.getElementById('main');
+      const grid = document.querySelector('.home-grid');
+      const latest = document.querySelector('.latest-update');
+      return { display: getComputedStyle(main).display, mainWidth: main.clientWidth, cardWidth: grid ? grid.getBoundingClientRect().width : 0, latest: latest ? latest.innerText : '' };
+    })()`);
+    check('首页内容铺满且只显示最近一次更新', homeLayout.display === 'block' && homeLayout.cardWidth > homeLayout.mainWidth * 0.8 && homeLayout.latest.includes('六词条攻略'), JSON.stringify(homeLayout).slice(0, 400));
     check('首页无脚本异常', errors(home).length === 0, JSON.stringify(errors(home).slice(0, 2)));
     home.close();
 
     const updates = await openPage('/wiki/updates/index.html');
     const updatesText = await evaluate(updates, 'document.body.innerText');
-    check('更新记录同步主线版本演进', updatesText.includes('游戏版本演进') && updatesText.includes('v0.18.0') && updatesText.includes('v0.19.0'), updatesText.slice(0, 300));
+    check('更新记录默认只突出最近一次更新', updatesText.includes('最近一次更新') && updatesText.includes('六词条攻略与 Wiki 布局优化') && !updatesText.includes('v0.19.0') && !updatesText.includes('v0.18.0'), updatesText.slice(0, 300));
+    const updatesHistory = await evaluate(updates, `(() => { const d = document.querySelector('details.history-details'); return { has: !!d, open: !!(d && d.open), text: d ? d.textContent : '' }; })()`);
+    check('更新记录保留可展开的历史入口', updatesHistory.has && !updatesHistory.open && updatesHistory.text.includes('v0.18.0'), JSON.stringify({ has: updatesHistory.has, open: updatesHistory.open }).slice(0, 200));
     check('更新记录不展示规则快照与纠错模板', !updatesText.includes('配置哈希') && !updatesText.includes('纠错入口') && !updatesText.includes('复制纠错模板'), updatesText.slice(0, 300));
     check('更新记录无脚本异常', errors(updates).length === 0, JSON.stringify(errors(updates).slice(0, 2)));
+    const expandedHistory = await evaluate(updates, `(() => { const d = document.querySelector('details.history-details'); d.open = true; return { latestCount: document.querySelectorAll('.updates-latest .update-item').length, historyHasGame: d.innerText.includes('v0.19.0'), repeatsLatest: d.innerText.includes('六词条攻略与 Wiki 布局优化') }; })()`);
+    check('合并后的最新记录只有一条，历史含游戏版本且不重复最新', expandedHistory.latestCount === 1 && expandedHistory.historyHasGame && !expandedHistory.repeatsLatest, JSON.stringify(expandedHistory));
     updates.close();
 
     const guides = await openPage('/wiki/guides/index.html');
     const guidesText = await evaluate(guides, 'document.body.innerText');
-    check('攻略页渲染热更新内容目录', guidesText.includes('七部位五词条参考配装') && guidesText.includes('工坊止损'), guidesText.slice(0, 300));
+    check('攻略页渲染热更新内容目录', guidesText.includes('七部位五词条参考配装') && guidesText.includes('工坊止损') && guidesText.includes('六词条装备怎么做'), guidesText.slice(0, 300));
     check('攻略页无脚本异常', errors(guides).length === 0, JSON.stringify(errors(guides).slice(0, 2)));
     guides.close();
+
+    const guideDetail = await openPage('/wiki/guides/index.html?slug=six-affix-workshop-route');
+    let guideDetailState = null;
+    for (let i = 0; i < 20; i++) {
+      await sleep(200);
+      guideDetailState = await evaluate(guideDetail, `({ text: document.body.innerText, hasArticle: !!document.querySelector('.guide-layout .article') })`);
+      if (guideDetailState.text.includes('第一步：补双钓，做出五词条')) break;
+    }
+    check('攻略详情按需加载正文并渲染', !!guideDetailState && guideDetailState.hasArticle && guideDetailState.text.includes('第一步：补双钓，做出五词条') && guideDetailState.text.includes('自己的词条不一样，怎么换配方'), JSON.stringify(guideDetailState).slice(0, 300));
+    check('攻略详情无脚本异常', errors(guideDetail).length === 0, JSON.stringify(errors(guideDetail).slice(0, 2)));
+    guideDetail.close();
 
     // 用户投稿：先在浏览器上下文登录，再走真实提交表单。
     const userRegister = await postJson('/api/register', { username: 'wikiuser', password: 'wiki-test-1234', name: 'Wiki User', qq: '827201' });
@@ -171,16 +194,16 @@ async function main() {
     for (let i = 0; i < 20; i++) {
       await sleep(200);
       submitState = await evaluate(submit, `({ url: location.href, text: document.body.innerText, status: document.querySelector('.status-line') && document.querySelector('.status-line').innerText })`);
-      if (submitState.text.includes('待审核')) break;
+      if (submitState.text.includes('已通过')) break;
     }
-    check('投稿表单提交成功并进入我的攻略', submitState.url.includes('/wiki/guides/index.html?my=1') && submitState.text.includes('待审核'), JSON.stringify(submitState));
+    check('投稿表单提交后自动通过并进入我的攻略', submitState.url.includes('/wiki/guides/index.html?my=1') && submitState.text.includes('已通过（自动）') && submitState.text.includes('浏览器投稿验证'), JSON.stringify(submitState).slice(0, 400));
     check('投稿页面无脚本异常', errors(submit).filter(e => e.method === 'Runtime.exceptionThrown').length === 0, JSON.stringify(errors(submit).filter(e => e.method === 'Runtime.exceptionThrown').slice(0, 2)));
     const submittedGuide = await evaluate(submit, `(async () => {
       const res = await fetch('/api/wiki/guides/my', { credentials: 'same-origin' });
       const data = await res.json();
       return data.guides && data.guides[0];
     })()`);
-    check('我的攻略接口返回浏览器投稿', !!(submittedGuide && submittedGuide.title === '浏览器投稿验证' && submittedGuide.status === 'pending'), JSON.stringify(submittedGuide || null));
+    check('我的攻略接口返回自动通过的浏览器投稿', !!(submittedGuide && submittedGuide.title === '浏览器投稿验证' && submittedGuide.status === 'approved' && submittedGuide.autoApproved === true), JSON.stringify(submittedGuide || null));
     submit.close();
 
 
@@ -191,6 +214,21 @@ async function main() {
     check('全站搜索 100 次平均耗时低于 100ms', searchMs / 100 < 100, (searchMs / 100).toFixed(2) + 'ms');
     check('搜索无脚本异常', errors(search).length === 0, JSON.stringify(errors(search).slice(0, 3)));
     search.close();
+
+    const itemSearch = await openPage('/wiki/search/index.html?q=' + encodeURIComponent('血燕钩'));
+    const itemSearchState = await evaluate(itemSearch, `(() => {
+      const img = document.querySelector('.search-result img');
+      return { text: document.body.innerText, hasImg: !!img, src: img ? img.src : '', loaded: !!(img && img.complete && img.naturalWidth > 0) };
+    })()`);
+    check('搜索组件结果显示贴图', itemSearchState.text.includes('血燕钩') && itemSearchState.hasImg && itemSearchState.src.includes('/assets/item/hook_swallow.png') && itemSearchState.loaded, JSON.stringify(itemSearchState).slice(0, 400));
+    check('组件搜索无脚本异常', errors(itemSearch).length === 0, JSON.stringify(errors(itemSearch).slice(0, 2)));
+    itemSearch.close();
+
+    const itemDetail = await openPage('/wiki/search/index.html?item=hook_swallow');
+    const itemDetailState = await evaluate(itemDetail, `(() => ({ text: document.body.innerText, hero: !!document.querySelector('.item-hero img'), tool: !!document.querySelector('.item-hero') }))()`);
+    check('条目详情显示贴图、词缀池与工具入口', itemDetailState.hero && itemDetailState.text.includes('词缀池') && itemDetailState.text.includes('熔炼模拟器'), JSON.stringify(itemDetailState).slice(0, 300));
+    check('条目详情无脚本异常', errors(itemDetail).length === 0, JSON.stringify(errors(itemDetail).slice(0, 2)));
+    itemDetail.close();
 
     const grounds = await openPage('/wiki/grounds/index.html?ground=stillwater');
     const groundsText = await evaluate(grounds, 'document.body.innerText');
@@ -211,6 +249,7 @@ async function main() {
     })()`);
     check('配装模拟器使用工坊式双栏布局', buildLayout.columns === 2 && buildLayout.previewPosition === 'sticky' && buildLayout.hasSlots && buildLayout.hasCompare, JSON.stringify(buildLayout));
     const share = await evaluate(build, `(async () => {
+      document.getElementById('research-mode').click();
       const root = document.querySelector('.slot-editor');
       root.querySelector('[data-add-affix]').click();
       await new Promise(r => setTimeout(r, 100));
@@ -249,10 +288,47 @@ async function main() {
       return { columns: style.gridTemplateColumns.split(' ').length, previewPosition: getComputedStyle(preview).position, hasMain: !!document.getElementById('main-editor'), hasSub: !!document.getElementById('sub-editor'), hasPreview: !!document.getElementById('preview') };
     })()`);
     check('熔炼模拟器使用工坊式双栏布局', smeltLayout.columns === 2 && smeltLayout.previewPosition === 'sticky' && smeltLayout.hasMain && smeltLayout.hasSub && smeltLayout.hasPreview, JSON.stringify(smeltLayout));
+    const catalyst = await evaluate(smelt, `(async () => {
+      const get = id => document.getElementById(id);
+      const input = id => document.querySelector('[data-material="' + id + '"]');
+      const plus = id => input(id).closest('.ws-mat').querySelector('[data-delta="1"]');
+      const original = GameData.getSmeltCfg();
+      const initiallyHidden = !get('material-dialog').open;
+      GameData.setSmeltCfg(Object.assign({}, original, { maxMaterials: 3, maxTypes: 1 }));
+      get('material-open').click();
+      const limits = get('material-limit').textContent;
+      const blocked = input('tide_sand').disabled;
+      plus('bait_pack').click();
+      const typeLimited = plus('lure').disabled;
+      input('bait_pack').value = '99';
+      input('bait_pack').dispatchEvent(new Event('change', { bubbles: true }));
+      const capped = input('bait_pack').value === '3' && plus('bait_pack').disabled;
+      input('bait_pack').closest('.ws-mat').querySelector('[data-delta="-1"]').click();
+      const decreased = input('bait_pack').value === '2';
+      get('material-done').click();
+      await new Promise(r => setTimeout(r, 50));
+      const focusReturned = document.activeElement === get('material-open');
+      get('material-open').click();
+      const persisted = input('bait_pack').value === '2';
+      get('material-close').click();
+      const sub = document.querySelector('#sub-editor [data-field="type"]');
+      const previousType = sub.value;
+      sub.value = 'rare'; sub.dispatchEvent(new Event('change', { bubbles: true }));
+      const invalidRemoved = input('bait_pack').value === '0' && get('material-note').textContent.includes('已移除');
+      const restoredSub = document.querySelector('#sub-editor [data-field="type"]');
+      restoredSub.value = previousType; restoredSub.dispatchEvent(new Event('change', { bubbles: true }));
+      GameData.setSmeltCfg(original);
+      return { initiallyHidden, limits, blocked, typeLimited, capped, decreased, focusReturned, persisted, invalidRemoved };
+    })()`);
+    check('催化剂弹窗按规则展示上限并禁用不适用材料', catalyst.initiallyHidden && catalyst.limits.includes('3 份 / 1 种') && catalyst.blocked, JSON.stringify(catalyst));
+    check('催化剂限制份数和种类，支持减少数量', catalyst.typeLimited && catalyst.capped && catalyst.decreased, JSON.stringify(catalyst));
+    check('关闭催化剂弹窗保留选择并归还焦点', catalyst.focusReturned && catalyst.persisted, JSON.stringify(catalyst));
+    check('更换词条后移除不适用的催化剂并提示', catalyst.invalidRemoved, JSON.stringify(catalyst));
     const smeltResult = await evaluate(smelt, `(async () => {
+      document.getElementById('material-open').click();
       const input = document.querySelector('[data-material="bait_pack"]');
-      input.value = '1';
-      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.closest('.ws-mat').querySelector('[data-delta="1"]').click();
+      document.getElementById('material-done').click();
       await new Promise(r => setTimeout(r, 200));
       const preview = document.getElementById('preview').innerText;
       for (let i = 0; i < 20; i++) {
@@ -270,6 +346,18 @@ async function main() {
     check('熔炼投料概率与费用按共享规则计算', smeltResult.preview.includes('48%') && smeltResult.preview.includes('8%') && smeltResult.preview.includes('3.8%') && smeltResult.preview.includes('5900'), smeltResult.preview);
     check('熔炼单次结果可写入本地', smeltResult.single.includes('已写入本地') && smeltResult.single.includes('熔炼成功'), smeltResult.single);
     check('熔炼批量完成并输出分布', smeltResult.batch.includes('100 次独立试验') && smeltResult.batch.includes('词缀数分布'), smeltResult.batch);
+    await smelt.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 740, deviceScaleFactor: 1, mobile: true });
+    const catalystMobile = await evaluate(smelt, `(() => {
+      document.getElementById('material-open').click();
+      const dialog = document.getElementById('material-dialog'), rect = dialog.getBoundingClientRect();
+      const body = dialog.querySelector('.sm-material-body');
+      return { fits: rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight && dialog.scrollWidth <= dialog.clientWidth, scrollable: body.scrollHeight > body.clientHeight && getComputedStyle(body).overflowY === 'auto' };
+    })()`);
+    check('360px 催化剂弹窗完整显示且列表可滚动', catalystMobile.fits && catalystMobile.scrollable, JSON.stringify(catalystMobile));
+    await smelt.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await smelt.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await sleep(100);
+    check('催化剂弹窗支持 Escape 关闭', await evaluate(smelt, `!document.getElementById('material-dialog').open && document.activeElement.id === 'material-open'`));
     check('熔炼模拟器无脚本异常', errors(smelt).length === 0);
     smelt.close();
 
@@ -304,7 +392,7 @@ async function main() {
     const adminWiki = await evaluate(admin, `(async () => {
       const button = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes('Wiki攻略'));
       if (button) button.click();
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 900));
       return {
         title: document.querySelector('main h2') && document.querySelector('main h2').innerText,
         meta: document.getElementById('wiki-meta') && document.getElementById('wiki-meta').innerText,
@@ -314,21 +402,20 @@ async function main() {
     })()`);
     check('管理后台 Wiki 官方编辑器可用', adminWiki.title && adminWiki.title.includes('Wiki 攻略管理') && adminWiki.cards > 0 && adminWiki.json.includes('guides'), JSON.stringify(adminWiki));
     check('管理后台 Wiki 页无脚本异常', errors(admin).filter(e => e.method === 'Runtime.exceptionThrown').length === 0, JSON.stringify(errors(admin).filter(e => e.method === 'Runtime.exceptionThrown').slice(0, 2)));
-    const adminReviewVisible = await evaluate(admin, `document.getElementById('wiki-review-list').innerText`);
-    check('管理后台显示待审核投稿', adminReviewVisible.includes('浏览器投稿验证') && adminReviewVisible.includes('待审核'), adminReviewVisible.slice(0, 300));
-
-    const review = await evaluate(admin, `(async () => {
-      const res = await fetch('/api/admin/wiki/guides/review', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'FishGame', 'X-Session-Mode': 'cookie' },
-        body: JSON.stringify({ id: '${submittedGuide.id}', action: 'approve', expectedStatus: 'pending', note: '' })
-      });
-      return { status: res.status, data: await res.json().catch(() => ({})) };
+    const adminReview = await evaluate(admin, `(async () => {
+      const res = await fetch('/api/admin/wiki/guides?status=approved', { credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      return {
+        mainText: document.getElementById('main').innerText.slice(0, 800),
+        listText: document.getElementById('wiki-review-list').innerText,
+        autoApprove: data.autoApprove,
+        hasGuide: !!(data.guides || []).some(g => g.title === '浏览器投稿验证' && g.autoApproved)
+      };
     })()`);
-    check('管理员通过浏览器投稿成功', review.status === 200 && review.data.guide && review.data.guide.status === 'approved', JSON.stringify(review || {}));
+    check('管理后台显示自动审核模式与已通过投稿', adminReview.autoApprove === true && adminReview.hasGuide && adminReview.mainText.includes('自动通过'), JSON.stringify(adminReview).slice(0, 600));
     const publicAfterReview = await openPage('/wiki/guides/index.html');
     const publicAfterReviewText = await evaluate(publicAfterReview, 'document.body.innerText');
-    check('审核通过后玩家投稿公开可见', publicAfterReviewText.includes('浏览器投稿验证') && publicAfterReviewText.includes('Wiki User'), publicAfterReviewText.slice(0, 500));
+    check('自动通过后玩家投稿公开可见', publicAfterReviewText.includes('浏览器投稿验证') && publicAfterReviewText.includes('Wiki User'), publicAfterReviewText.slice(0, 500));
     check('公开攻略页审核后无脚本异常', errors(publicAfterReview).length === 0, JSON.stringify(errors(publicAfterReview).slice(0, 2)));
     publicAfterReview.close();
     const userSearch = await openPage('/wiki/search/index.html?q=' + encodeURIComponent('浏览器投稿验证'));
@@ -343,12 +430,19 @@ async function main() {
       ['配装模拟器 360px 无横向溢出', '/wiki/tools/build.html?ground=stillwater&spot=dock&base=rod_bamboo'],
       ['熔炼模拟器 360px 无横向溢出', '/wiki/tools/smelt.html'],
       ['投稿页 360px 无横向溢出', '/wiki/guides/submit.html'],
+      ['攻略详情 360px 无横向溢出', '/wiki/guides/?slug=six-affix-workshop-route'],
+      ['搜索贴图 360px 无横向溢出', '/wiki/search/?q=' + encodeURIComponent('尼龙')],
+      ['更新记录 360px 无横向溢出', '/wiki/updates/'],
     ]) {
       const mobile = await openPage(url);
       await mobile.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 740, deviceScaleFactor: 2, mobile: true });
       await sleep(300);
       const overflow = await evaluate(mobile, 'document.documentElement.scrollWidth - window.innerWidth');
       check(name, overflow <= 1, 'overflow=' + overflow);
+      if (url.includes('slug=six-affix')) {
+        const folded = await evaluate(mobile, `(() => { const d = document.querySelector('details.guide-side'); return !!d && !d.open; })()`);
+        check('手机攻略目录默认折叠，正文可直接阅读', folded);
+      }
       mobile.close();
     }
 
@@ -363,6 +457,97 @@ async function main() {
     check('熔炼产物可带入配装计算', handoff.includes('钓速') && handoff.includes('体型'), handoff);
     check('产物带入配装无脚本异常', errors(buildFromSmelt).length === 0);
     buildFromSmelt.close();
+
+    // Real HTTP reads from an isolated fixture account; every subsequent edit stays local.
+    const stockBefore = await (await fetch(BASE + '/api/wiki/simulator/inventory', { headers: { Authorization: 'Bearer ' + fixture.token } })).json();
+    const accountBefore = fs.readFileSync(fixture.file, 'utf8');
+    const stockBuild = await openPage('/wiki/tools/build.html');
+    await stockBuild.send('Network.enable');
+    await stockBuild.send('Network.setCookie', { name: 'fish_game', value: fixture.token, url: BASE, httpOnly: true, sameSite: 'Strict' });
+    const stockBuildResult = await evaluate(stockBuild, `(async () => {
+      const get = id => document.getElementById(id);
+      get('inventory-refresh').click();
+      for (let i = 0; i < 50 && get('inventory-refresh').disabled; i++) await new Promise(r => setTimeout(r, 50));
+      const loaded = get('inventory-status').textContent.includes('模拟器测试装备');
+      const before = JSON.stringify(WikiInventory.snapshot);
+      get('inventory-rod').value = '0'; get('inventory-load-rod').click();
+      get('export-code').click();
+      const imported = Wiki.decodeShare(get('share-code').value).plan.slots.line;
+      const calculated = !get('current-result').textContent.includes('超出当前规则区间');
+      document.querySelector('[data-part="line"] [data-add-affix]').click();
+      get('research-mode').click();
+      const custom = document.querySelector('[data-part="line"] .affix-row:last-child [data-field="value"]');
+      custom.value = '77'; custom.dispatchEvent(new Event('change', { bubbles: true }));
+      get('save-plan').click(); get('copy-plan').click(); get('export-code').click();
+      const modified = Wiki.decodeShare(get('share-code').value).plan.slots.line;
+      const snapshotIntact = JSON.stringify(WikiInventory.snapshot) === before;
+      get('inventory-rod').value = 'current'; get('inventory-load-rod').click();
+      get('export-code').click();
+      const equipped = Wiki.decodeShare(get('share-code').value).plan.slots.rod;
+      const picker = document.querySelector('[data-part="line"] .inventory-picker select');
+      picker.value = ${JSON.stringify(fixture.mainId)}; picker.dispatchEvent(new Event('change', { bubbles: true }));
+      const rowCount = document.querySelectorAll('[data-part="line"] .affix-row').length;
+      get('inventory-refresh').click();
+      for (let i = 0; i < 50 && get('inventory-refresh').disabled; i++) await new Promise(r => setTimeout(r, 50));
+      return { loaded, imported, calculated, modified, snapshotIntact, equipped, rowCount };
+    })()`);
+    check('从已存钓竿复制实际词条并保留副件来源', stockBuildResult.loaded && stockBuildResult.imported.affixes.length === 4 && stockBuildResult.imported.affixes.some(a => a.src === 'line_titan' && a.srcExplicit) && stockBuildResult.calculated, JSON.stringify(stockBuildResult));
+    check('库存配装可自定义词条、保存和复制且不改变背包副本', stockBuildResult.modified.affixes.some(a => a.value === 77) && stockBuildResult.snapshotIntact);
+    check('可读取当前穿戴与单件库存组件', stockBuildResult.equipped.baseId === 'rod_bamboo' && stockBuildResult.rowCount === 4);
+    await stockBuild.send('Emulation.setDeviceMetricsOverride', { width: 360, height: 740, deviceScaleFactor: 1, mobile: true });
+    check('已加载长词条库存的配装页 360px 无溢出', await evaluate(stockBuild, `document.documentElement.scrollWidth <= innerWidth`));
+
+    const stockSmelt = await openPage('/wiki/tools/smelt.html');
+    await stockSmelt.send('Network.enable');
+    const stockSmeltResult = await evaluate(stockSmelt, `(async () => {
+      const get = id => document.getElementById(id);
+      get('inventory-refresh').click();
+      for (let i = 0; i < 50 && get('inventory-refresh').disabled; i++) await new Promise(r => setTimeout(r, 50));
+      const before = JSON.stringify(WikiInventory.snapshot);
+      for (const role of ['main','sub']) {
+        const part = document.querySelector('#' + role + '-editor [data-field="part"]');
+        part.value = 'line'; part.dispatchEvent(new Event('change', { bubbles: true }));
+        const select = document.querySelector('#' + role + '-editor .inventory-picker select');
+        select.value = role === 'main' ? ${JSON.stringify(fixture.mainId)} : ${JSON.stringify(fixture.subId)};
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      get('relics').value = '10'; get('relics').dispatchEvent(new Event('change', { bubbles: true }));
+      get('material-open').click();
+      const material = document.querySelector('[data-material="dragon_scale"]'); material.value = '12'; material.dispatchEvent(new Event('change', { bubbles: true }));
+      const stockText = material.closest('.ws-mat').innerText;
+      get('material-done').click();
+      let called = 0;
+      const originalSimulate = GameData.simulateSmeltPlan;
+      GameData.simulateSmeltPlan = function (p) { called++; return originalSimulate(p, () => 0); };
+      get('simulate-once').click();
+      const single = get('single-result').innerText;
+      get('send-to-build').click();
+      get('use-result').click();
+      const nextAffixes = document.querySelectorAll('#main-editor .affix-row').length;
+      get('batch-count').value = '100'; get('batch-start').click();
+      for (let i = 0; i < 60 && get('batch-start').disabled; i++) await new Promise(r => setTimeout(r, 50));
+      GameData.simulateSmeltPlan = originalSimulate;
+      const snapshotIntact = JSON.stringify(WikiInventory.snapshot) === before;
+      return { stockText, single, nextAffixes, snapshotIntact, called, batch: get('batch-result').innerText };
+    })()`);
+    check('熔炼读取真实材料参考库存且调用游戏共享计算', stockSmeltResult.stockText.includes('背包 27') && stockSmeltResult.called === 101 && stockSmeltResult.single.includes('熔炼成功'), JSON.stringify(stockSmeltResult));
+    check('熔炼产物可继续模拟和批量试算，库存副本不被扣减', stockSmeltResult.nextAffixes === 5 && stockSmeltResult.snapshotIntact && stockSmeltResult.batch.includes('100 次独立试验'));
+    const stockAfter = await (await fetch(BASE + '/api/wiki/simulator/inventory', { headers: { Authorization: 'Bearer ' + fixture.token } })).json();
+    delete stockBefore.fetchedAt; delete stockAfter.fetchedAt;
+    await sleep(1300);
+    check('配装、修改词条、单次和批量熔炼后真实资产与存档完全不变', JSON.stringify(stockBefore) === JSON.stringify(stockAfter) && fs.readFileSync(fixture.file, 'utf8') === accountBefore);
+    const requests = [stockBuild, stockSmelt].flatMap(c => c.events.filter(e => e.method === 'Network.requestWillBeSent').map(e => e.params.request)).filter(r => new URL(r.url).pathname.startsWith('/api/'));
+    check('模拟器所有网络操作仅使用允许的只读接口', requests.length > 0 && requests.every(r => r.method === 'GET' && ['/api/wiki/simulator/inventory', '/api/version', '/api/wiki/content'].includes(new URL(r.url).pathname)), JSON.stringify(requests.map(r => r.method + ' ' + new URL(r.url).pathname)));
+    await stockBuild.send('Network.deleteCookies', { name: 'fish_game', url: BASE });
+    const expired = await evaluate(stockBuild, `(async () => {
+      document.getElementById('inventory-refresh').click();
+      for (let i = 0; i < 50 && document.getElementById('inventory-refresh').disabled; i++) await new Promise(r => setTimeout(r, 50));
+      return { status: document.getElementById('inventory-status').textContent, cleared: WikiInventory.snapshot === null, disabled: document.querySelector('.inventory-picker select').disabled };
+    })()`);
+    check('会话失效时提示登录并清理旧背包选择', expired.cleared && expired.disabled && expired.status.includes('请先在游戏中登录'));
+    check('库存模拟页面无脚本异常', errors(stockBuild).filter(e => e.method === 'Runtime.exceptionThrown').length === 0 && errors(stockSmelt).length === 0);
+    stockBuild.close(); stockSmelt.close();
+
   } finally {
     killTree(chrome);
     killTree(server);

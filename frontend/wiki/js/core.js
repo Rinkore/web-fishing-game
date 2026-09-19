@@ -85,11 +85,13 @@
       state.unavailable = true; emit();
     }
   }
+  // 公开内容接口只下发攻略元数据；正文段落由 /api/wiki/guides/<id> 按需加载，
+  // 所以 sections 允许缺省，但出现时必须是合法结构。
   function validContent(data) {
     return !!(data && Array.isArray(data.guides) && data.guides.length &&
       Array.isArray(data.updates) && data.guides.every(function (g) {
         return g && typeof g.id === 'string' && typeof g.title === 'string' &&
-          Array.isArray(g.sections) && g.sections.every(function (x) { return x && typeof x.h === 'string'; });
+          (g.sections === undefined || (Array.isArray(g.sections) && g.sections.every(function (x) { return x && typeof x.h === 'string'; })));
       }));
   }
   function applyContent(data) {
@@ -146,14 +148,64 @@
     }
     return state.contentReadyPromise;
   }
+  function qualityNameOf(q) {
+    const list = (D && D.QUALITY) || {};
+    return (list[q] && list[q].name) || String(q || '');
+  }
+  function partNameOf(p) {
+    const x = D && D.ROD_PARTS && D.ROD_PARTS.find(function (it) { return it.key === p; });
+    return x ? x.name : String(p || '');
+  }
+  function affixLabelOf(t) { return (D && D.AFFIX_LABEL && D.AFFIX_LABEL[t]) || String(t || ''); }
+  function stripHtml(v) { return String(v || '').replace(/<[^>]*>/g, ''); }
+  function rangeTextOf(pool) {
+    const a = Number(pool && pool.min), b = Number(pool && pool.max);
+    if (!isFinite(a) || !isFinite(b)) return '-';
+    const sign = function (v) { return (v > 0 ? '+' : '') + v; };
+    return sign(a) + '～' + sign(b);
+  }
+  // 目录条目：渔获 / 材料 / 组件底材 / 宝匣 / 词缀类型。desc 用于搜索结果一行摘要。
+  // 攻略详情缓存：按内容 revision 失效，避免列表轮询反复拉正文。
+  const guideDetails = { revision: null, items: {} };
+  function ensureGuideCacheRevision() {
+    const rev = state.content ? String(state.content.revision || '') : '';
+    if (guideDetails.revision !== rev) { guideDetails.revision = rev; guideDetails.items = {}; }
+  }
+  async function loadGuide(id) {
+    const gid = String(id || '');
+    if (!gid) throw new Error('攻略 ID 为空');
+    ensureGuideCacheRevision();
+    if (guideDetails.items[gid]) return guideDetails.items[gid];
+    const res = await fetch('/api/wiki/guides/' + encodeURIComponent(gid), { cache: 'no-store' });
+    if (res.status === 404) throw new Error('攻略不存在或未公开');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data || !data.guide || data.guide.id !== gid || !Array.isArray(data.guide.sections) || !data.guide.sections.length) throw new Error('攻略详情结构无效');
+    guideDetails.items[gid] = data.guide;
+    return data.guide;
+  }
   function itemEntries(s) {
     const out = [];
-    (s.catalog.fish || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'fish', type: 'fish' })); });
-    (s.catalog.materials || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'material', type: 'material' })); });
-    (s.catalog.components || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'component', type: 'component' })); });
-    (s.catalog.chests || []).forEach(function (x) { out.push(Object.assign({}, x, { kind: 'chest', type: 'chest' })); });
+    (s.catalog.fish || []).forEach(function (x) {
+      const size = Array.isArray(x.size) ? x.size : null;
+      out.push(Object.assign({}, x, { kind: 'fish', type: 'fish',
+        desc: '渔获 · ' + qualityNameOf(x.rarity) + (size ? ' · 体型 ' + size[0] + '～' + size[1] + ' cm' : '') + (x.price != null ? ' · 基准价 ' + x.price : '') }));
+    });
+    (s.catalog.materials || []).forEach(function (x) {
+      out.push(Object.assign({}, x, { kind: 'material', type: 'material',
+        desc: '材料 · ' + qualityNameOf(x.rarity) + (x.price != null ? ' · 基准价 ' + x.price : '') }));
+    });
+    (s.catalog.components || []).forEach(function (x) {
+      const pool = (x.pool || []).map(function (p) { return affixLabelOf(p.type) + ' ' + rangeTextOf(p); }).join('、');
+      out.push(Object.assign({}, x, { kind: 'component', type: 'component',
+        desc: '组件底材 · ' + partNameOf(x.part) + (pool ? ' · 词缀池：' + pool : '') }));
+    });
+    (s.catalog.chests || []).forEach(function (x) {
+      out.push(Object.assign({}, x, { kind: 'chest', type: 'chest', desc: '宝匣 · ' + stripHtml(x.desc) }));
+    });
     Object.keys(s.catalog.affixes || {}).forEach(function (id) {
-      out.push({ id: 'affix:' + id, name: s.catalog.affixes[id], kind: 'affix', type: 'affix', rarity: null });
+      out.push({ id: 'affix:' + id, affixType: id, name: s.catalog.affixes[id], kind: 'affix', type: 'affix', rarity: null,
+        desc: '词缀类型 · 可出现在组件上；具体数值区间以配装/熔炼模拟器为准。' });
     });
     return out;
   }
@@ -166,6 +218,7 @@
     return '';
   }
 
+  function itemUrl(id) { return '/wiki/search/index.html?item=' + encodeURIComponent(id); }
   function spotUrl(groundId, spotId) {
     return '/wiki/grounds/index.html?ground=' + encodeURIComponent(groundId) + (spotId ? '&spot=' + encodeURIComponent(spotId) : '');
   }
@@ -179,7 +232,7 @@
   }
   function guideEntries() {
     return (window.WikiContent ? window.WikiContent.guides : []).map(function (g) {
-      return { id: g.id, name: g.title, kind: 'guide', type: 'guide', desc: g.summary + (g.authorName ? ' · 作者 ' + g.authorName : ''), aliases: g.aliases || [], tags: g.tags || [], rarity: null };
+      return { id: g.id, name: g.title, kind: 'guide', type: 'guide', desc: g.summary + (g.authorName ? ' · 作者 ' + g.authorName : ''), category: g.category || '', aliases: g.aliases || [], tags: g.tags || [], rarity: null };
     });
   }
   function toolEntries() {
@@ -190,14 +243,16 @@
   }
   function searchIndex(s) {
     const out = [];
-
     groundEntries(s).forEach(function (x) {
       out.push(Object.assign({}, x, { url: x.kind === 'ground' ? spotUrl(x.id) : spotUrl(x.groundId, x.spotId), image: imageFor(x) }));
     });
-    guideEntries().forEach(function (x) { out.push(Object.assign({}, x, { url: '/wiki/guides/index.html?slug=' + encodeURIComponent(x.id) })); });
-    toolEntries().forEach(function (x) { out.push(Object.assign({}, x, { url: '/wiki/tools/' + x.id + '.html' })); });
+    itemEntries(s).forEach(function (x) {
+      out.push(Object.assign({}, x, { url: itemUrl(x.id), image: imageFor(x) }));
+    });
+    guideEntries().forEach(function (x) { out.push(Object.assign({}, x, { url: '/wiki/guides/index.html?slug=' + encodeURIComponent(x.id), image: '', icon: '📖' })); });
+    toolEntries().forEach(function (x) { out.push(Object.assign({}, x, { url: '/wiki/tools/' + x.id + '.html', image: '', icon: x.id === 'build' ? '🧠' : '🔥' })); });
     return out.map(function (x) {
-      const hay = [x.name, x.id, x.kind, x.desc, (x.aliases || []).join(' '), (x.tags || []).join(' ')].join(' ').toLowerCase();
+      const hay = [x.name, x.id, x.baseName, x.kind, x.desc, partNameOf(x.part), (x.pool || []).map(function (p) { return affixLabelOf(p.type); }).join(' '), (x.aliases || []).join(' '), (x.tags || []).join(' ')].join(' ').toLowerCase();
       return Object.assign({}, x, { hay: hay });
     });
   }
@@ -328,8 +383,9 @@
     el: el, fmt: fmt, pct: pct, signed: signed,
     validSnapshot: validSnapshot, validContent: validContent, applyRules: applyRules,
     refresh: refresh, refreshContent: refreshContent, ready: ready, contentReady: contentReady, rules: rules,
-    search: search, searchIndex: searchIndex, itemEntries: itemEntries, groundEntries: groundEntries,
-    spotUrl: spotUrl, imageFor: imageFor, occurrences: occurrences, shopPrice: shopPrice,
+    search: search, searchIndex: searchIndex, itemEntries: itemEntries, groundEntries: groundEntries, loadGuide: loadGuide,
+    spotUrl: spotUrl, itemUrl: itemUrl, imageFor: imageFor, occurrences: occurrences, shopPrice: shopPrice,
+    qualityNameOf: qualityNameOf, partNameOf: partNameOf, affixLabelOf: affixLabelOf,
     storage: { available: localStorageAvailable, readJSON: readJSON, writeJSON: writeJSON, remove: removeStorage },
     encodeShare: encodeShare, decodeShare: decodeShare,
     onChange: function (fn) { if (typeof fn === 'function') state.listeners.push(fn); },

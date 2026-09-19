@@ -41,6 +41,16 @@ async function main() {
   const content = await contentRes.json().catch(() => null);
   ok('/api/wiki/content 返回攻略内容', contentRes.status === 200 && !!(content && typeof content.revision === 'string' && content.officialRevision >= 1 && content.userRevision >= 1 && Array.isArray(content.guides) && content.guides.length && Array.isArray(content.updates)), contentRes.status + ' ' + (content && content.revision) + ' / ' + (content && content.guides && content.guides.length));
   ok('攻略内容使用 no-cache 与 ETag', /no-cache/i.test(contentRes.headers.get('cache-control') || '') && !!contentRes.headers.get('etag'), contentRes.headers.get('cache-control') + ' ' + contentRes.headers.get('etag'));
+  ok('公开攻略只下发元数据', !!(content && Array.isArray(content.guides) && content.guides.every(g => g.sections === undefined)), JSON.stringify(content && content.guides && content.guides[0]));
+  const listRes = await fetch(BASE + '/api/wiki/guides?page=1&pageSize=5', { cache: 'no-store' });
+  const list = await listRes.json().catch(() => null);
+  ok('攻略列表分页接口可用', listRes.status === 200 && !!(list && list.ok && list.page === 1 && list.pageSize === 5 && Array.isArray(list.guides) && list.guides.length <= 5 && list.total >= list.guides.length), JSON.stringify(list && { total: list.total, page: list.page, size: list.pageSize }));
+  const firstGuideId = content && content.guides && content.guides[0] && content.guides[0].id;
+  if (firstGuideId) {
+    const detailRes = await fetch(BASE + '/api/wiki/guides/' + encodeURIComponent(firstGuideId), { cache: 'no-store' });
+    const detail = await detailRes.json().catch(() => null);
+    ok('攻略详情按需返回正文', detailRes.status === 200 && !!(detail && detail.ok && detail.guide && detail.guide.id === firstGuideId && Array.isArray(detail.guide.sections) && detail.guide.sections.length), detailRes.status + ' ' + firstGuideId);
+  }
   if (failed) process.exit(1);
   console.log('PASS Wiki 服务端契约验证：' + BASE);
 }

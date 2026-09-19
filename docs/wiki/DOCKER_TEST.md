@@ -123,28 +123,30 @@ admin-totp localadmin
 6. 点击 `恢复内置`，确认官方内容恢复。
 7. 确认用户投稿没有被恢复操作删除。
 
-### 4.2 用户投稿
+### 4.2 用户投稿（默认自动通过）
 
 1. 注册或登录普通玩家账号。
-2. 打开 `/wiki/guides/index.html`。
-3. 确认能看到 `📝 贡献攻略` 和 `我的攻略`。
-4. 打开 `/wiki/guides/submit.html`。
-5. 填写标题、分类、摘要、正文段落和标签。
-6. 提交后确认跳转到 `我的攻略`，状态为 `待审核`。
-7. 刷新公开攻略页，确认待审核攻略不可见。
-8. 管理员后台进入 `📚 Wiki攻略 → 用户投稿`。
-9. 通过该投稿。
-10. 刷新公开攻略页，确认该投稿可见并显示作者名。
+2. 打开 `/wiki/guides/index.html`，确认能看到 `📝 贡献攻略` 和 `我的攻略`。
+3. 打开 `/wiki/guides/submit.html`，填写标题、分类、摘要、正文段落和标签。
+4. 提交后确认跳转到 `我的攻略`，状态为 `已通过（自动）`。
+5. 刷新公开攻略页，确认该投稿立即可见并显示作者名；打开攻略详情确认正文按需加载。
+6. 在 `我的攻略` 删除该投稿，确认公开页不再显示。
 
-### 4.3 拒绝与删除
+人工审核模式（可选）：设置 `$env:WIKI_TEST_AUTO_APPROVE = '0'` 后执行 `npm run wiki:docker:down` / `npm run wiki:docker:up` 重启容器，compose 会把 `WIKI_GUIDE_AUTO_APPROVE=0` 传进服务端：
+
+1. 普通账号提交攻略 → `我的攻略` 显示 `待审核`。
+2. 公开攻略页确认待审核不可见。
+3. 管理员后台 `📚 Wiki攻略 → 用户投稿` 通过该投稿。
+4. 刷新公开攻略页确认可见；再提交一篇并测试拒绝原因。
+
+### 4.3 人工审核模式的拒绝与删除（`WIKI_TEST_AUTO_APPROVE=0`）
 
 1. 用另一个玩家账号提交一篇攻略。
 2. 管理员选择 `拒绝`，填写拒绝原因。
 3. 确认公开攻略页不可见。
 4. 作者打开 `我的攻略`，确认能看到拒绝原因。
-5. 再提交一篇待审核攻略。
-6. 作者在 `我的攻略` 删除待审核投稿。
-7. 管理员后台确认该投稿不再出现在列表。
+5. 再提交一篇待审核攻略，作者在 `我的攻略` 删除。
+6. 管理员后台确认该投稿不再出现在列表。
 
 ### 4.4 数据持久化
 
@@ -189,9 +191,10 @@ powershell -ExecutionPolicy Bypass -File tools/wiki/docker-test.ps1 -Reset
 
 注意：
 
-- `wiki-guides.json` 在第一次用户投稿后创建。
-- `wiki.json` 在管理员第一次保存官方内容后创建。
-- 官方内容未保存前，服务端使用内置 `frontend/wiki/content/content.json` 种子。
+- Wiki 内容统一存储在 named volume 里的 `wiki.db`（SQLite，WAL），第一次启动时自动创建。
+- 旧版 `wiki.json` / `wiki-guides.json` 只在首次启动迁移时读取，之后保留作备份，不再写入。
+- 官方内容未保存前，服务端使用内置 `frontend/wiki/content/content.json` 种子导入 SQLite。
+- 公开读取：`/api/wiki/content` 只返回攻略元数据，正文走 `/api/wiki/guides/<id>`，列表分页/搜索走 `/api/wiki/guides`。
 
 ## 6. 隔离与安全
 
@@ -226,6 +229,8 @@ powershell -ExecutionPolicy Bypass -File tools/wiki/docker-test.ps1 -Port 19100
 ```text
 node:22-alpine
 ```
+
+必须 >= Node 22.13（内置 `node:sqlite`）；当前 `node:22-alpine` 为 Node 22.23，已在本地 Docker 验证。
 
 如果 Docker Hub 访问受限，可以使用已有镜像源或本地含 Node 的镜像：
 
