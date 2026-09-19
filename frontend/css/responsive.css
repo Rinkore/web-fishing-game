@@ -28,6 +28,9 @@
 @media (min-width: 881px) and (max-width: 1280px) {
   .sidebar { width: 190px; }
   .content, .ground-cols { grid-template-columns: minmax(0, 1fr); }
+  .ground-cols-3 { grid-template-columns: 180px minmax(0, 1fr); }
+  .ground-side { grid-row: span 2; }
+  .ground-side .ground-counts { max-height: 56vh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 2px; }
   .panel.two-col { grid-template-columns: minmax(0, 1fr); }
   .panel.two-col .col-side {
     border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 16px;
@@ -45,7 +48,8 @@
   .nav-item { flex: 0 0 auto; flex-direction: column; white-space: nowrap; min-width: 76px; gap: 4px; padding: 6px 8px; font-size: 12px; }
   .nav-item .nav-badge { margin: 0; }
   .content, .ground-cols { grid-template-columns: minmax(0, 1fr); }
-  .px-grounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ground-cols-3 .ground-counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); max-height: none; overflow: visible; }
+.px-grounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .px-region.g-card .pg-info span { white-space: normal; }
 }
 

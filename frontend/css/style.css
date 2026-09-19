@@ -123,6 +123,8 @@ body {
 .live-buff-row i { font-style: normal; color: var(--accent2); white-space: nowrap; }
 .live-none { color: var(--muted); }
 .live-peeps-list { display: flex; flex-direction: column; gap: 8px; }
+/* v0.21.0：同钓点玩家默认露出约 5 张卡，超出的在列表内滚动，防右栏无限延伸 */
+.live-peeps { max-height: 340px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .fish-live .live-block .hint { margin-top: 7px; }
 .ground-list { display: flex; flex-direction: column; gap: 12px; }
 .ground-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(255,255,255,.03); }
@@ -294,6 +296,27 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .gcb-num { font-size: 26px; font-weight: 800; line-height: 1; }
 .gcb-num .u { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 4px; }
 .ground-cols { display: grid; grid-template-columns: minmax(280px, 1fr) 1.6fr; gap: 20px; align-items: start; }
+/* v0.21.0 社交页三栏：左侧钓点筛选竖排侧栏 */
+.ground-cols-3 { grid-template-columns: 200px minmax(280px, 1fr) 1.6fr; }
+.ground-side .ground-counts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 0; }
+.ground-side .gc-box { padding: 8px 10px; text-align: left; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; border-radius: 9px; }
+.ground-side .gcb-name { margin-bottom: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ground-side .gcb-num { font-size: 16px; }
+.ground-side .gcb-hint { margin-top: 0; }
+/* v0.21.0：侧栏里近岸/远洋并排平分宽度 */
+.ground-side .px-map-tabs { display: flex; flex-wrap: nowrap; gap: 6px; margin-bottom: 10px; }
+.ground-side .px-map-tab { flex: 1 1 0; min-width: 0; text-align: center; padding: 7px 4px; font-size: 12px; white-space: nowrap; }
+@media (max-width: 1280px) {
+  /* 窄屏：侧栏保持竖排跨两行，右侧玩家/动态叠放，不退化为单列大横条 */
+  .ground-cols-3 { grid-template-columns: 180px minmax(0, 1fr); }
+  .ground-side { grid-row: span 2; }
+  .ground-side .ground-counts { max-height: 56vh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 2px; }
+}
+@media (max-width: 880px) {
+  .ground-cols-3 { grid-template-columns: minmax(0, 1fr); }
+  .ground-side { grid-row: auto; }
+  .ground-side .ground-counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); max-height: none; overflow: visible; }
+}
 /* 最新动态：上限跟随视口高度（不再固定 560px），窗口矮时也不会把内容顶出屏幕。
    减去顶栏与页面上下留白，并保留一个合理下限，避免高窗口下被压得过小。 */
 .feed-big { max-height: min(560px, calc(100vh - 320px)); min-height: min(380px, calc(100vh - 480px)); }

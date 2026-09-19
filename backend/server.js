@@ -197,7 +197,7 @@ let users = {};
 // 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
 const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
 let wikiStore = null; // Wiki SQLite 存储（loadWorld 时初始化）
-let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, featureOrder: {}, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, lootCfg: { groups: [] }, priceOv: {}, economyLog: [], chestCfg: {}, seaCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, snapshotCfg: null, wikiConfigRevision: 1, statMin: [], statHour: [], statPeak: { online: 0, t: 0 } };
+let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, featureOrder: {}, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, lootCfg: { groups: [] }, priceOv: {}, economyLog: [], chestCfg: {}, seaCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, snapshotCfg: null, wikiConfigRevision: 1, statMin: [], statHour: [], statPeak: { online: 0, t: 0 }, parties: {} }; // parties: v0.21.0 编队出海（运行期状态，不落盘）
 
 // ---- 宝匣（沉船打捞）----
 // 档位配方与品质权重写在 frontend/js/data.js 的 CHESTS（与组件底材/词缀池同一份目录，前后端共用）；
@@ -831,7 +831,104 @@ function seaStateOf(rec) {
   rec.sea = rec.sea || { charts: 0, zones: [] };
   if (!Array.isArray(rec.sea.zones)) rec.sea.zones = [];
   if (!(rec.sea.charts >= 0)) rec.sea.charts = 0;
+  // v0.21.0：个别旧海域可能缺 name（配置覆盖期写入）——查询时兜底补名，前端卡片才不空
+  rec.sea.zones.forEach(function (z, i) {
+    if (!z.name) z.name = (D.SEA.names && D.SEA.names[i % (D.SEA.names.length || 1)]) || '无名海域';
+    if (!z.mood) z.mood = 'normal';
+  });
   return rec.sea;
+}
+// v0.21.0 远洋每日悬赏：按本地日期滚 3 条，进度记在 rec.sea.quests（kind 匹配才计数）。
+function rollSeaQuests() {
+  const pool = (D.SEA.quests || []).slice();
+  const out = [];
+  while (out.length < 3 && pool.length) {
+    const i = Math.floor(Math.random() * pool.length);
+    const t = pool.splice(i, 1)[0];
+    out.push({ id: t.id, kind: t.kind, progress: 0, claimed: false });
+  }
+  return out;
+}
+function ensureSeaQuests(rec) {
+  const sea = seaStateOf(rec);
+  const day = new Date().toDateString();
+  if (!sea.quests || sea.quests.day !== day || !Array.isArray(sea.quests.list)) {
+    sea.quests = { day: day, list: rollSeaQuests() };
+  }
+  return sea.quests;
+}
+function seaQuestOf(rec, questId) {
+  const qs = ensureSeaQuests(rec);
+  const q = qs.list.find(function (x) { return x.id === questId; });
+  const tpl = q && (D.SEA.quests || []).find(function (t) { return t.id === questId; });
+  return q && tpl ? { q: q, tpl: tpl } : null;
+}
+function bumpSeaQuest(rec, kind, n) {
+  const qs = ensureSeaQuests(rec);
+  let changed = false;
+  qs.list.forEach(function (q) {
+    const tpl = (D.SEA.quests || []).find(function (t) { return t.id === q.id; });
+    if (!tpl || tpl.kind !== kind || q.claimed || q.progress >= tpl.need) return;
+    q.progress = Math.min(tpl.need, q.progress + (n || 1));
+    changed = true;
+  });
+  return changed;
+}
+// v0.21.0 夜光潮：时段性全远洋增益（临时海域钓点附加 buff）。不改 mood 配置本体，copy 后追加。
+function nightGlowBuff() {
+  const ng = D.SEA.nightglow || {};
+  if (!ng.on) return null;
+  const h = new Date().getHours();
+  if (h >= (ng.from || 20) && h < (ng.to || 23)) return { type: 'rare', value: ng.rare || 15 };
+  return null;
+}
+// ---- v0.21.0 编队出海 ----
+// 队伍存 world.parties[partyId] = { id, leader, members:[key], invites:[key], t }；
+// 成员账号记 rec.partyId，收到的邀请记 rec.partyInv（一个玩家同时只保留最新一条邀请）。
+// 邀请只发给互为好友的玩家（好友双向化是编队的前置）。
+function partyOf(key) {
+  const pid = users[key] && users[key].partyId;
+  const p = pid && world.parties[pid];
+  return p || null;
+}
+function partyDisband(pid) {
+  const p = world.parties[pid];
+  if (!p) return;
+  p.members.forEach(function (m) { if (users[m]) users[m].partyId = null; });
+  p.invites.forEach(function (m) { if (users[m] && users[m].partyInv === pid) users[m].partyInv = null; });
+  delete world.parties[pid];
+}
+function partyView(p) {
+  if (!p) return null;
+  return {
+    id: p.id, leader: p.leader, leaderName: (users[p.leader] || {}).name || p.leader,
+    members: p.members.map(function (m) {
+      return { id: m, name: users[m] ? users[m].name : m, online: players.has(m) };
+    }),
+    max: 4,
+  };
+}
+function partyNotice(p, msg, exceptKey) {
+  p.members.forEach(function (m) {
+    if (m !== exceptKey && players.has(m)) sendTo(m, { type: 'notice', msg: msg });
+  });
+}
+// 同一海域（按 groundId）编队成员数：≥2 时鱼群事件加倍（doServerCatch 调用）
+function partySameZoneCount(key, groundId) {
+  const p = partyOf(key);
+  if (!p) return 1;
+  let n = 0;
+  p.members.forEach(function (m) {
+    if (m === key) { n++; return; }
+    const pv = players.get(m);
+    if (pv && pv.groundId === groundId) n++;
+  });
+  return Math.max(1, n);
+}
+// v0.21.0 编队共享出航：队长（或任一成员）的海域，同队成员都能下竿
+function partySharesZone(owner, key) {
+  const p = partyOf(owner);
+  return !!p && p.members.indexOf(key) >= 0;
 }
 // 惰性沉没：访问时清掉过期海域。正在里面钓鱼的玩家不用赶——fishTick 下一竿
 // 发现钓点消失会自己 stopFishingSession(forget)。
@@ -847,7 +944,13 @@ function purgeSeaZones(rec, key) {
   return sea.zones;
 }
 function zoneGroundOf(key, z) {
-  return { id: 'sea:' + key + ':' + z.id, name: z.name, type: 'ocean', zone: true, spots: z.spots };
+  const ng = nightGlowBuff();
+  const spots = (z.spots || []).map(function (s) {
+    const buffs = (s.buffs || []).slice();
+    if (ng && !buffs.some(function (b) { return b.type === ng.type; })) buffs.push(ng);
+    return Object.assign({}, s, { buffs: buffs });
+  });
+  return { id: 'sea:' + key + ':' + z.id, name: z.name, type: 'ocean', zone: true, mood: z.mood, glow: !!ng, spots: spots };
 }
 // 远洋判定：静态远洋渔场在目录里 type 仍是 'normal'（e2e 钓场分型计数依赖它），
 // 靠 id 识别；临时海域（zoneGroundOf）type 才是 'ocean'。两条路径在此收敛。
@@ -870,6 +973,11 @@ function seaMoodRoll() {
 function genVoyageZone() {
   const mood = seaMoodRoll();
   const name = D.SEA.names[Math.floor(Math.random() * D.SEA.names.length)];
+  // v0.21.0 钓点名从池里随机取 2 个（不再用「渔场·甲/乙」占位符）
+  const namePool = (D.SEA.spotNames || []).slice();
+  const spotNames = [];
+  for (let i = 0; i < 2 && namePool.length; i++) spotNames.push(namePool.splice(Math.floor(Math.random() * namePool.length), 1)[0]);
+  while (spotNames.length < 2) spotNames.push('渔场·' + ['甲', '乙'][spotNames.length]);
   const spots = [];
   for (let i = 0; i < 2; i++) {
     const shuffled = SEA_FISH_TEMPL.slice().sort(function () { return Math.random() - 0.5; });
@@ -879,7 +987,8 @@ function genVoyageZone() {
     });
     pool.push({ pick: 'material:chartfrag', weight: 2 });
     pool.push({ pick: 'component', weight: 6 });
-    spots.push({ id: 'z' + (i + 1), name: '渔场 · ' + ['甲', '乙'][i], pool: pool, buffs: mood.buffs });
+    // mood.buffs 必须深拷贝：zone 存进账号后锚地会就地追加增益，共享引用会污染全局 mood 配置
+    spots.push({ id: 'z' + (i + 1), name: spotNames[i], pool: pool, buffs: JSON.parse(JSON.stringify(mood.buffs)) });
   }
   return {
     id: 'z' + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36),
@@ -1075,10 +1184,57 @@ function validateSeaCfg(sc) {
     if (c.zoneMax !== undefined && !inRange(c.zoneMax, 1, 10)) return '海域上限需在 1 - 10';
     if (c.events !== undefined) {
       if (!c.events || typeof c.events !== 'object' || Array.isArray(c.events)) return '事件概率格式错误';
-      for (const k of ['storm', 'bounty', 'school']) {
+      for (const k of ['storm', 'bounty', 'school', 'whirlpool', 'wreck']) {
         if (c.events[k] !== undefined && !inRange(c.events[k], 0, 50)) return '事件概率（' + k + '）需在 0 - 50%';
       }
       if (c.events.bountyDouble !== undefined && !inRange(c.events.bountyDouble, 0, 100)) return '宝箱双倍概率需在 0 - 100%';
+    }
+    if (c.anchor !== undefined) {
+      if (!c.anchor || typeof c.anchor !== 'object' || Array.isArray(c.anchor)) return '锚地配置格式错误';
+      if (c.anchor.coins !== undefined && !inRange(c.anchor.coins, 0, 1e9)) return '锚地金币需在 0 - 10 亿';
+      if (c.anchor.scales !== undefined && !inRange(c.anchor.scales, 0, 999)) return '锚地鳞片需在 0 - 999';
+      if (c.anchor.maxTimes !== undefined && !inRange(c.anchor.maxTimes, 0, 30)) return '下锚次数需在 0 - 30';
+      if (c.anchor.extendMin !== undefined && !inRange(c.anchor.extendMin, 5, 10080)) return '续期时长需在 5 分钟 - 7 天';
+      if (c.anchor.buffs !== undefined) {
+        if (!Array.isArray(c.anchor.buffs) || c.anchor.buffs.length > 4) return '锚地增益格式错误';
+        for (const b of c.anchor.buffs) {
+          if (!b || typeof b !== 'object' || !['speed', 'skill', 'rare', 'material', 'size', 'double'].includes(b.type)) return '锚地增益类型未知';
+          if (!inRange(b.value, -100, 100)) return '锚地增益数值需在 -100 - 100';
+        }
+      }
+    }
+    if (c.nightglow !== undefined) {
+      if (!c.nightglow || typeof c.nightglow !== 'object' || Array.isArray(c.nightglow)) return '夜光潮配置格式错误';
+      if (c.nightglow.on !== undefined && typeof c.nightglow.on !== 'boolean') return '夜光潮开关需为布尔';
+      if (c.nightglow.from !== undefined && !inRange(c.nightglow.from, 0, 23)) return '夜光潮开始小时需在 0 - 23';
+      if (c.nightglow.to !== undefined && !inRange(c.nightglow.to, 0, 24)) return '夜光潮结束小时需在 0 - 24';
+      if (c.nightglow.rare !== undefined && !inRange(c.nightglow.rare, 0, 100)) return '夜光潮稀有加成需在 0 - 100';
+    }
+    if (c.quests !== undefined) {
+      // 悬赏按 id 对位编辑（模板在 data.js D.SEA.quests）：只允许改标题/需求/奖励，不能增删条目
+      if (!Array.isArray(c.quests)) return '悬赏配置格式错误';
+      const ids = (D.SEA.quests || []).map(function (t) { return t.id; });
+      for (const q of c.quests) {
+        if (!q || typeof q !== 'object' || Array.isArray(q) || ids.indexOf(q.id) < 0) return '悬赏配置含未知条目';
+        if (q.title !== undefined && (typeof q.title !== 'string' || q.title.length > 40)) return '悬赏标题需 ≤40 字';
+        if (q.need !== undefined && !inRange(q.need, 1, 999)) return '悬赏需求需在 1 - 999';
+        if (q.submitNeed !== undefined && !inRange(q.submitNeed, 0, 999)) return '悬赏上贡数量需在 0 - 999';
+        if (q.reward !== undefined) {
+          if (!q.reward || typeof q.reward !== 'object' || Array.isArray(q.reward)) return '悬赏奖励格式错误';
+          for (const rk of ['coins', 'chartfrag', 'deepscale']) {
+            if (q.reward[rk] !== undefined && !inRange(q.reward[rk], 0, 1e9)) return '悬赏奖励（' + rk + '）需在 0 - 10 亿';
+          }
+          if (q.reward.items !== undefined) {
+            const allow = ['deepscale', 'dragonpearl', 'relic', 'tide_sand', 'dragon_scale', 'bait_pack', 'lure', 'rope',
+              'chest_wreck', 'chest_deep', 'chest_abyss', 'chest_king'];
+            if (!q.reward.items || typeof q.reward.items !== 'object' || Array.isArray(q.reward.items)) return '悬赏奖励 items 格式错误';
+            for (const ik of Object.keys(q.reward.items)) {
+              if (allow.indexOf(D.normalizeItemId(ik)) < 0) return '悬赏奖励物品（' + ik + '）不在允许清单（限材料/宝匣）';
+              if (!inRange(q.reward.items[ik], 0, 999)) return '悬赏奖励数量需在 0 - 999';
+            }
+          }
+        }
+      }
     }
   }
   return null;
@@ -1151,9 +1307,22 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   if (!item) return;
   // v0.19.0 远洋随机事件：风暴直接脱钩（本竿无渔获）。事件只改本竿结果，
   // 不碰上钩/掉落/体型等共享公式 → Wiki 模拟器口径不受影响。概率走后台「远洋配置」。
-  if (isOceanGround(ground) && Math.random() * 100 < ((D.SEA.events && D.SEA.events.storm) || 0)) {
-    sendTo(key, { type: 'notice', msg: '⛈ 风暴袭来，' + rec.name + ' 本竿渔获脱钩而逃！' });
-    return;
+  // v0.21.0 漩涡也在这里先掷（命中再掷 50% 决定「卷走 / 卷来鱼群」，卷走同风暴直接 return）。
+  let seaWhirl = false;
+  if (isOceanGround(ground)) {
+    const EV0 = D.SEA.events || {};
+    const r0 = Math.random() * 100;
+    if (r0 < ((EV0.storm) || 0)) {
+      sendTo(key, { type: 'notice', msg: '⛈ 风暴袭来，' + rec.name + ' 本竿渔获脱钩而逃！' });
+      return;
+    }
+    if (r0 < (EV0.storm || 0) + (EV0.whirlpool || 0)) {
+      if (Math.random() * 100 < 50) {
+        sendTo(key, { type: 'notice', msg: '🌀 漩涡骤起，' + rec.name + ' 本竿渔获被卷入深海！' });
+        return;
+      }
+      seaWhirl = true;
+    }
   }
   invAdd(rec, item.id, 1);
   // v0.13.6 体型档：超出鱼种默认最大体型 → 大型/巨型，单独预留计数（背包标签行/筛选项的数据源）
@@ -1177,7 +1346,7 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
 
   // v0.19.0 远洋：出海经验 + 漂流宝箱 / 鱼群事件（附加收益在下方 invDelta 同一拍下发）。
   // 事件概率走后台「远洋配置」（D.SEA.events，%）；「经验攒够」提示只发一次（升过级才重置）。
-  let seaInvExtra = null, seaCodexExtra = 0, seaNote = null;
+  let seaExtras = null, seaCodexExtra = 0, seaNote = null;
   if (isOceanGround(ground)) {
     const ship = shipOf(rec);
     ship.xp += 1;
@@ -1187,24 +1356,46 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
       seaState.xpNotified = true;
       seaNote = '⭐ 船的出海经验已攒够，可到「⛵ 远洋」升级成 ' + D.SHIP.levels[ship.lv].name + '！';
     }
-    const EV = D.SEA.events || {};
-    const er = Math.random() * 100;
-    const stormP = EV.storm || 0, bountyP = EV.bounty || 0, schoolP = EV.school || 0;
-    if (er < bountyP) {       // 📦 漂流宝箱：海图碎片（偶尔双倍）
-      const n = 1 + (Math.random() * 100 < (EV.bountyDouble || 0) ? 1 : 0);
-      seaInvExtra = { id: 'chartfrag', n: n };
-      seaNote = (seaNote ? seaNote + ' ' : '') + '📦 捞到漂流宝箱：海图碎片 ×' + n + '！';
-    } else if (er < bountyP + schoolP) {   // 🐟 鱼群：同款渔获再 +1
-      seaInvExtra = { id: item.id, n: 1 };
-      seaCodexExtra = 1;
-      seaNote = (seaNote ? seaNote + ' ' : '') + '🐟 撞进鱼群！' + itemName(item.id) + ' 再 +1！';
+    // v0.21.0 每日悬赏进度（远洋上鱼 / 临时海域上鱼 / 凶险海域上鱼）
+    bumpSeaQuest(rec, 'catch_ocean');
+    if (ground.zone) {
+      bumpSeaQuest(rec, 'catch_zone');
+      if (ground.mood === 'deadly') bumpSeaQuest(rec, 'catch_deadly');
     }
-    if (seaInvExtra) {
-      invAdd(rec, seaInvExtra.id, seaInvExtra.n);
-      if (seaInvExtra.id === item.id) {
-        if (sizeTier) bigfishOf(rec, item.id)[sizeTier] += seaInvExtra.n;
-        cx.count += seaInvExtra.n;
-      }
+    if (sizeTier) bumpSeaQuest(rec, 'catch_big_ocean');
+    const EV = D.SEA.events || {};
+    // v0.21.0 编队同海域：鱼群事件概率 ×2、追加量 +1
+    const partyN = partySameZoneCount(key, ground.id);
+    const schoolP = (EV.school || 0) * (partyN >= 2 ? 2 : 1);
+    const bountyP = EV.bounty || 0, wreckP = EV.wreck || 0;
+    const er = Math.random() * 100;
+    if (seaWhirl) {          // 🌀 漩涡（上半场已掷定「卷来」）：同款渔获再 +2
+      seaExtras = [{ id: item.id, n: 2 }];
+      seaCodexExtra = 2;
+      seaNote = (seaNote ? seaNote + ' ' : '') + '🌀 漩涡涡流卷来鱼群！' + itemName(item.id) + ' 再 +2！';
+    } else if (er < bountyP) {       // 📦 漂流宝箱：海图碎片（偶尔双倍）
+      const n = 1 + (Math.random() * 100 < (EV.bountyDouble || 0) ? 1 : 0);
+      seaExtras = [{ id: 'chartfrag', n: n }];
+      bumpSeaQuest(rec, 'sea_event');
+      seaNote = (seaNote ? seaNote + ' ' : '') + '📦 捞到漂流宝箱：海图碎片 ×' + n + '！';
+    } else if (er < bountyP + schoolP) {   // 🐟 鱼群：同款渔获再 +1（编队同海域 +2）
+      const n = partyN >= 2 ? 2 : 1;
+      seaExtras = [{ id: item.id, n: n }];
+      seaCodexExtra = n;
+      seaNote = (seaNote ? seaNote + ' ' : '') + '🐟 撞进鱼群！' + itemName(item.id) + ' 再 +' + n + (partyN >= 2 ? '（⚓ 编队同海域加成）' : '') + '！';
+    } else if (er < bountyP + schoolP + wreckP) {   // 🚢 沉船残骸：深海鳞片 + 海图碎片
+      seaExtras = [{ id: 'deepscale', n: 2 }, { id: 'chartfrag', n: 1 }];
+      bumpSeaQuest(rec, 'sea_event');
+      seaNote = (seaNote ? seaNote + ' ' : '') + '🚢 捞到沉船残骸：深海鳞片 ×2 · 海图碎片 ×1！';
+    }
+    if (seaExtras && seaExtras.length) {
+      seaExtras.forEach(function (x) {
+        invAdd(rec, x.id, x.n);
+        if (x.id === item.id) {
+          if (sizeTier) bigfishOf(rec, item.id)[sizeTier] += x.n;
+          cx.count += x.n;
+        }
+      });
     }
   }
 
@@ -1293,12 +1484,12 @@ function doServerCatch(rec, key, ground, spot, eff, noDouble) {
   sendTo(key, { type: 'catch', entry: entry });
   sendTo(key, { type: 'codexAdd', id: codexId, name: itemName(codexId), add: 1 + seaCodexExtra, mx: cx.max, mn: cx.min, tier: cx.tier || null, catchCount: rec.catchCount });
   const invDelta = {}; invDelta[item.id] = 1;
-  if (seaInvExtra) invDelta[seaInvExtra.id] = (invDelta[seaInvExtra.id] || 0) + seaInvExtra.n;
+  if (seaExtras) seaExtras.forEach(function (x) { invDelta[x.id] = (invDelta[x.id] || 0) + x.n; });
   // bigAdd：大型/巨型预留增量（与背包增量同拍下发，前端合并进 bigfish）
   let bigDelta = null;
   if (sizeTier) {
     bigDelta = {}; bigDelta[item.id] = {}; bigDelta[item.id][sizeTier] = 1;
-    if (seaInvExtra && seaInvExtra.id === item.id) bigDelta[item.id][sizeTier] += seaInvExtra.n;
+    if (seaExtras) seaExtras.forEach(function (x) { if (x.id === item.id) bigDelta[item.id][sizeTier] += x.n; });
   }
   if (seaNote) sendTo(key, { type: 'notice', msg: seaNote });
   sendTo(key, { type: 'assets', coins: rec.coins, catchCount: rec.catchCount, invAdd: invDelta, bigAdd: bigDelta });
@@ -1347,12 +1538,12 @@ function startFishingSession(key, groundId, spotId, opts) {
   if (found.ground.locked) return { error: '该钓场尚未开放' };
   // v0.19.0 钓点级锁定（世界地图上单个钓点临时关闭，如活动钓点未开）
   if (found.spot.locked) return { error: '该钓点尚未开放' };
-  // v0.19.0 远洋：临时海域只有主人能下竿（id 内嵌归属，防冒用）；钓点船级门槛全图生效
-  //（v0.19.0 重构后远洋钓点直接挂在世界地图钓场下，不再按 ground type 识别）
+  // v0.19.0 远洋：临时海域默认只有主人能下竿；v0.21.0 编队成员共享出航（同队即可）
+  //（id 内嵌归属，防冒用）；钓点船级门槛全图生效
   const gid = String(groundId || '');
   if (gid.indexOf('sea:') === 0) {
     const owner = gid.slice(4, gid.indexOf(':', 4));
-    if (owner !== key) return { error: '这不是你的临时海域' };
+    if (owner !== key && !partySharesZone(owner, key)) return { error: '这不是你的临时海域（加入其队伍可共享出航）' };
   } else if (found.spot.minShip) {
     const ship = shipOf(users[key]);
     if (ship.lv < found.spot.minShip) {
@@ -4324,15 +4515,28 @@ const server = http.createServer(function (req, res) {
       charts: sea.charts, chartCost: D.SEA.chartCost,
       zones: zones.map(function (z) {
         return { groundId: 'sea:' + key + ':' + z.id, id: z.id, name: z.name, mood: z.mood, expire: z.expire,
+          anchors: z.anchors || 0,
           spots: (z.spots || []).map(function (s) {
             return { id: s.id, name: s.name, buffs: s.buffs || [], pool: s.pool || [] };
           }) };
       }),
+      glow: !!nightGlowBuff(),
+      // v0.21.0 每日悬赏（进度/领取状态随 /api/sea 下发）
+      quests: ensureSeaQuests(rec).list.map(function (q) {
+        const tpl = (D.SEA.quests || []).find(function (t) { return t.id === q.id; });
+        return { id: q.id, title: tpl ? tpl.title : q.id, need: tpl ? tpl.need : 1, progress: q.progress,
+          claimed: !!q.claimed, reward: tpl ? tpl.reward : null, submit: tpl ? tpl.kind === 'submit_deepscale' : false };
+      }),
+      party: {
+        id: rec.partyId || null,
+        invite: (rec.partyInv && world.parties[rec.partyInv]) ? { id: rec.partyInv, leaderName: (users[world.parties[rec.partyInv].leader] || {}).name || '未知' } : null,
+      },
       coins: rec.coins,
       // 玩家端 applySeaCfg 后展示与校验同口径（后台改完 8 秒内随 /api/sea 轮询生效）
       cfg: {
         ship: { names: D.SHIP.levels.map(function (l) { return l.name; }), xpNeed: D.SHIP.xpNeed, upCoins: D.SHIP.upCoins, upScale: D.SHIP.upScale },
-        sea: { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events },
+        sea: { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events,
+          anchor: D.SEA.anchor, nightglow: D.SEA.nightglow },
       },
     };
   }
@@ -4393,6 +4597,7 @@ const server = http.createServer(function (req, res) {
         if (sea.charts < 1) return apiResp(res, 400, { error: '没有「未知海图」（' + D.SEA.chartCost + ' 张海图碎片合成 1 张）' });
         if (sea.zones.length >= D.SEA.zoneMax) return apiResp(res, 400, { error: '已有 ' + D.SEA.zoneMax + ' 片临时海域未沉没，等它们到期后再出航' });
         sea.charts -= 1;
+        bumpSeaQuest(rec, 'voyage');
         const z = genVoyageZone();
         sea.zones.push(z);
         saveAccount(key); flushAccounts();
@@ -4403,6 +4608,202 @@ const server = http.createServer(function (req, res) {
           sea: seaViewOf(rec, key),
         });
       });
+    });
+    return;
+  }
+  // ---- v0.21.0 每日悬赏领取：submit 类先扣材料再发奖励，其余核对进度即可 ----
+  if (p === '/api/sea/quest/claim' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const hit = seaQuestOf(rec, String(d.id || ''));
+        if (!hit) return apiResp(res, 404, { error: '没有这条悬赏' });
+        const q = hit.q, tpl = hit.tpl;
+        if (q.claimed) return apiResp(res, 400, { error: '这条悬赏已经领过了' });
+        if (q.progress < tpl.need) return apiResp(res, 400, { error: '悬赏还未完成（' + q.progress + '/' + tpl.need + '）' });
+        const reward = tpl.reward || { coins: 3000, chartfrag: 2 };
+        if (tpl.kind === 'submit_deepscale') {
+          const need = tpl.submitNeed || 5;
+          if (!invHas(rec, 'deepscale', need)) return apiResp(res, 400, { error: '深海鳞片不足（需 ' + need + ' 片）' });
+          invAdd(rec, 'deepscale', -need);
+        }
+        q.claimed = true;
+        if (reward.coins) rec.coins += reward.coins;
+        if (reward.chartfrag) invAdd(rec, 'chartfrag', reward.chartfrag);
+        if (reward.deepscale) invAdd(rec, 'deepscale', reward.deepscale);
+        if (reward.items && typeof reward.items === 'object') {
+          Object.keys(reward.items).forEach(function (id) {
+            const n = Math.max(0, Math.min(999, Math.floor(Number(reward.items[id]) || 0)));
+            if (n > 0) invAdd(rec, D.normalizeItemId(id), n);
+          });
+        }
+        saveAccount(key); flushAccounts();
+        sendTo(key, { type: 'notice', msg: '🏅 悬赏完成：' + tpl.title + '，奖励已发放！' });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec) });
+        apiResp(res, 200, { ok: true, sea: seaViewOf(rec, key) });
+      });
+    });
+    return;
+  }
+  // ---- v0.21.0 锚地：临时海域下锚续期（金币 + 深海鳞片），并追加锚地增益 ----
+  if (p === '/api/sea/anchor' && req.method === 'POST') {
+    readBody(req, function (body) {
+      auth(req, res, body, function (d, key) {
+        const rec = users[key];
+        const cfg = D.SEA.anchor || {};
+        const zones = purgeSeaZones(rec, key);
+        const z = zones.find(function (x) { return x.id === String(d.zoneId || ''); });
+        if (!z) return apiResp(res, 404, { error: '没有这片临时海域（可能已沉没）' });
+        const maxTimes = cfg.maxTimes || 3;
+        if ((z.anchors || 0) >= maxTimes) return apiResp(res, 400, { error: '这片海域已下锚 ' + (z.anchors || 0) + ' 次，无法再续' });
+        const coins = cfg.coins || 50000, scales = cfg.scales || 3;
+        if (rec.coins < coins) return apiResp(res, 400, { error: '金币不足（需 ' + coins + '）' });
+        if (!invHas(rec, 'deepscale', scales)) return apiResp(res, 400, { error: '深海鳞片不足（需 ' + scales + ' 片）' });
+        rec.coins -= coins;
+        invAdd(rec, 'deepscale', -scales);
+        z.expire = Date.now() + (cfg.extendMin || 1440) * 60000;
+        z.anchors = (z.anchors || 0) + 1;
+        const pack = Array.isArray(cfg.buffs) ? cfg.buffs : [{ type: 'double', value: 8 }];
+        (z.spots || []).forEach(function (s) {
+          s.buffs = (s.buffs || []).slice();
+          pack.forEach(function (b) {
+            const v = Math.max(-100, Math.min(100, Math.floor(Number(b.value) || 0)));
+            const cur = s.buffs.find(function (x) { return x.type === b.type; });
+            if (cur) cur.value = Math.max(-100, Math.min(100, cur.value + v));
+            else if (v !== 0) s.buffs.push({ type: b.type, value: v });
+          });
+        });
+        saveAccount(key); flushAccounts();
+        sendTo(key, { type: 'notice', msg: '⚓ 已在「' + z.name + '」下锚：存续延长 ' + (cfg.extendMin || 1440) + ' 分钟，并附加锚地增益（第 ' + z.anchors + '/' + maxTimes + ' 次）。' });
+        sendTo(key, { type: 'assets', coins: rec.coins, inventory: rec.inventory, invRev: invRevOf(rec) });
+        apiResp(res, 200, { ok: true, sea: seaViewOf(rec, key) });
+      });
+    });
+    return;
+  }
+  // ---- v0.21.0 编队出海：创建 / 邀请（限互为好友）/ 接受 / 拒绝 / 踢人 / 离开 / 解散 ----
+  if (p === '/api/party' && req.method === 'GET') {
+    const key = u.query.token && sessionGet(u.query.token);
+    if (!key || !users[key]) return apiResp(res, 401, { error: '未登录' });
+    const rec = users[key];
+    const inv = rec.partyInv && world.parties[rec.partyInv];
+    // v0.21.0 队友共享海域：编队内其他成员的临时海域，成员可一键前往下竿
+    const memberZones = [];
+    const myParty = partyOf(key);
+    if (myParty) {
+      myParty.members.forEach(function (m) {
+        if (m === key || !users[m]) return;
+        purgeSeaZones(users[m], m);
+        ((users[m].sea && users[m].sea.zones) || []).forEach(function (z) {
+          memberZones.push({ owner: m, ownerName: users[m].name || m, groundId: 'sea:' + m + ':' + z.id,
+            name: z.name, mood: z.mood, expire: z.expire,
+            spots: (z.spots || []).map(function (s) { return { id: s.id, name: s.name, buffs: s.buffs || [] }; }) });
+        });
+      });
+    }
+    return apiResp(res, 200, { ok: true, party: partyView(partyOf(key)), memberZones: memberZones,
+      invite: inv ? { id: inv.id, leaderName: (users[inv.leader] || {}).name || '未知' } : null });
+  }
+  if (p === '/api/party' && req.method === 'POST') {
+    adminAuditedBody(req, p, function (body) {
+      const d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
+      const key = d.token && sessionGet(d.token);
+      if (!key || !users[key]) return apiResp(res, 401, { error: '未登录' });
+      const rec = users[key];
+      const action = String(d.action || '');
+      const myParty = partyOf(key);
+      if (action === 'create') {
+        if (myParty) return apiResp(res, 400, { error: '你已在队伍中，先离开当前队伍' });
+        const pid = 'p' + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36);
+        world.parties[pid] = { id: pid, leader: key, members: [key], invites: [], t: Date.now() };
+        rec.partyId = pid;
+        saveAccount(key);
+        return apiResp(res, 200, { ok: true, party: partyView(world.parties[pid]) });
+      }
+      if (action === 'invite') {
+        if (!myParty) return apiResp(res, 400, { error: '先创建队伍再邀请' });
+        if (myParty.leader !== key) return apiResp(res, 403, { error: '只有队长能邀请' });
+        const target = String(d.target || '').toLowerCase();
+        if (!Object.prototype.hasOwnProperty.call(users, target)) return apiResp(res, 404, { error: '玩家不存在' });
+        if (target === key) return apiResp(res, 400, { error: '不能邀请自己' });
+        // v0.21.0：已在别的编队也可以被邀请（接受时会离开原队），前端弹窗确认
+        // 编队邀请限互为好友：双向好友是 B2 的前置条件
+        const myFriends = Array.isArray(rec.friends) ? rec.friends : [];
+        const tFriends = Array.isArray(users[target].friends) ? users[target].friends : [];
+        if (myFriends.indexOf(target) < 0 || tFriends.indexOf(key) < 0) return apiResp(res, 400, { error: '只能邀请互为好友的玩家' });
+        if (myParty.members.length >= 4) return apiResp(res, 400, { error: '队伍已满（4 人）' });
+        if (myParty.invites.indexOf(target) < 0) myParty.invites.push(target);
+        if (myParty.invites.length > 50) myParty.invites = myParty.invites.slice(-50);
+        users[target].partyInv = myParty.id;
+        saveAccount(target);
+        if (players.has(target)) sendTo(target, { type: 'notice', msg: '⚓ ' + rec.name + ' 邀请你加入编队，到「社交 · 编队」处理。' });
+        return apiResp(res, 200, { ok: true });
+      }
+      if (action === 'accept') {
+        const newParty = rec.partyInv && world.parties[rec.partyInv];
+        if (!newParty) return apiResp(res, 400, { error: '没有待处理的编队邀请' });
+        // v0.21.0：已在别的编队也可以接受（换队）——先按「离开」语义退出原队
+        const oldParty = partyOf(key);
+        if (oldParty) {
+          if (oldParty.id === newParty.id) { rec.partyInv = null; saveAccount(key); return apiResp(res, 200, { ok: true, party: partyView(oldParty) }); }
+          oldParty.members = oldParty.members.filter(function (m) { return m !== key; });
+          partyNotice(oldParty, '⚓ ' + rec.name + ' 接受了其他编队的邀请，离开了本队。');
+          if (oldParty.leader === key && oldParty.members.length) {
+            oldParty.leader = oldParty.members[0];
+            if (players.has(oldParty.leader)) sendTo(oldParty.leader, { type: 'notice', msg: '⚓ 你现在是编队队长了。' });
+          }
+          if (!oldParty.members.length) partyDisband(oldParty.id);
+        }
+        if (newParty.members.length >= 4) { rec.partyInv = null; saveAccount(key); return apiResp(res, 400, { error: '目标队伍已满（4 人）' }); }
+        newParty.members.push(key);
+        newParty.invites = newParty.invites.filter(function (m) { return m !== key; });
+        rec.partyId = newParty.id; rec.partyInv = null;
+        saveAccount(key);
+        partyNotice(newParty, '⚓ ' + rec.name + (oldParty ? ' 换队加入了' : ' 加入了') + '编队（' + newParty.members.length + '/4）。', key);
+        return apiResp(res, 200, { ok: true, party: partyView(newParty) });
+      }
+      if (action === 'decline') {
+        const pid = rec.partyInv;
+        rec.partyInv = null;
+        saveAccount(key);
+        const p = pid && world.parties[pid];
+        if (p) {
+          p.invites = p.invites.filter(function (m) { return m !== key; });
+          if (players.has(p.leader)) sendTo(p.leader, { type: 'notice', msg: '❌ ' + rec.name + ' 婉拒了编队邀请。' });
+        }
+        return apiResp(res, 200, { ok: true });
+      }
+      if (action === 'leave' || action === 'kick' || action === 'disband') {
+        if (!myParty) return apiResp(res, 400, { error: '你不在任何队伍里' });
+        if (action === 'kick') {
+          if (myParty.leader !== key) return apiResp(res, 403, { error: '只有队长能移除成员' });
+          const target = String(d.target || '').toLowerCase();
+          if (target === key || myParty.members.indexOf(target) < 0) return apiResp(res, 404, { error: '该玩家不在队伍里' });
+          myParty.members = myParty.members.filter(function (m) { return m !== target; });
+          if (users[target]) { users[target].partyId = null; saveAccount(target); }
+          partyNotice(myParty, '⚓ ' + (users[target] || {}).name + ' 被队长移出了编队。');
+          return apiResp(res, 200, { ok: true, party: partyView(myParty) });
+        }
+        if (action === 'disband') {
+          if (myParty.leader !== key) return apiResp(res, 403, { error: '只有队长能解散队伍' });
+          partyNotice(myParty, '⚓ 队长解散了编队。');
+          partyDisband(myParty.id);
+          saveAccount(key);
+          return apiResp(res, 200, { ok: true });
+        }
+        // leave：队长离开自动转移给剩余第一名成员，没人了就地解散
+        myParty.members = myParty.members.filter(function (m) { return m !== key; });
+        rec.partyId = null;
+        partyNotice(myParty, '⚓ ' + rec.name + ' 离开了编队。');
+        if (myParty.leader === key && myParty.members.length) {
+          myParty.leader = myParty.members[0];
+          if (players.has(myParty.leader)) sendTo(myParty.leader, { type: 'notice', msg: '⚓ 你现在是编队队长了。' });
+        }
+        if (!myParty.members.length) partyDisband(myParty.id);
+        saveAccount(key);
+        return apiResp(res, 200, { ok: true });
+      }
+      return apiResp(res, 400, { error: '未知编队操作' });
     });
     return;
   }
@@ -4846,6 +5247,7 @@ const server = http.createServer(function (req, res) {
         }
         if (d.sea && typeof d.sea === 'object') {
           rec.sea = { charts: Math.max(0, Math.floor(Number(d.sea.charts) || 0)), zones: Array.isArray(d.sea.zones) ? d.sea.zones : [] };
+          if (d.sea.quests && typeof d.sea.quests === 'object' && !Array.isArray(d.sea.quests)) rec.sea.quests = d.sea.quests; // v0.21.0：测试可直接种每日悬赏
         }
         // 覆写背包/预留后夹一次：预留量不得超过持有量（否则会出现「可用量为负 → 钳 0」的假状态，
         // 前端算出的可卖/可上架数字会和实际对不上）
@@ -6063,10 +6465,37 @@ function lootPreviewRows(spot, rareVal) {
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
     return apiResp(res, 200, Object.assign({ ok: true, uptimeSec: Math.round((Date.now() - netStats.start) / 1000) }, netStats));
   }
-  // 好友保存于账号；添加仅记录到自己的列表，不改变对方的好友。
+  // ---- v0.21.0 后台编队管理：列表 + 解散 ----
+  if (p === '/api/admin/parties' && req.method === 'GET') {
+    const a = adminOf(u.query.token);
+    if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
+    const list = Object.keys(world.parties).map(function (pid) { return partyView(world.parties[pid]); });
+    return apiResp(res, 200, { ok: true, parties: list, total: list.length });
+  }
+  if (p === '/api/admin/party/disband' && req.method === 'POST') {
+    readBody(req, function (body) {
+      const d = bodyObj(body);
+      if (!adminOf(u.query.token) && !(d && d.token && adminOf(d.token))) return apiResp(res, 403, { error: '需要管理员权限' });
+      const pid = d && String(d.id || '');
+      const pt = pid && world.parties[pid];
+      if (!pt) return apiResp(res, 404, { error: '队伍不存在（可能已解散）' });
+      partyNotice(pt, '🛡 管理员解散了编队。');
+      partyDisband(pid);
+      apiResp(res, 200, { ok: true });
+    });
+    return;
+  }
+  // v0.21.0 好友改双向：request 发申请 → 对方 accept/reject；cancel 撤回；remove 双向解除。
+  // 待处理申请存 rec.freqIn（收到）/ rec.freqOut（发出），互为好友仍存 rec.friends（旧数据兼容）。
+  function friendReqsOf(rec) {
+    if (!Array.isArray(rec.freqIn)) rec.freqIn = [];
+    if (!Array.isArray(rec.freqOut)) rec.freqOut = [];
+    return rec;
+  }
   if (p === '/api/friends' && req.method === 'GET') {
     const key = u.query.token && sessionGet(u.query.token);
     if (!key || !users[key]) return apiResp(res, 401, { error: '未登录' });
+    const rec0 = friendReqsOf(users[key]);
     const ids = Array.isArray(users[key].friends) ? users[key].friends : [];
     const friends = ids.filter(function (id) { return Object.prototype.hasOwnProperty.call(users, id); }).map(function (id) {
       const online = players.get(id);
@@ -6074,12 +6503,20 @@ function lootPreviewRows(spot, rareVal) {
         : { id: id, name: users[id].name, online: false, status: 'offline', locationName: '离线' };
     });
     friends.sort(function (a, b) { return Number(b.online) - Number(a.online) || String(a.name).localeCompare(String(b.name)); });
+    const reqView = function (list) {
+      return list.filter(function (id) { return Object.prototype.hasOwnProperty.call(users, id); })
+        .slice(0, 50).map(function (id) {
+          return { id: id, name: users[id].name, online: players.has(id) };
+        });
+    };
     const all = playersSortedFiltered(String(u.query.q || '').slice(0, 40)).filter(function (x) { return x.id !== key; });
     const size = 30, pages = Math.max(1, Math.ceil(all.length / size));
     const page = Math.min(Math.max(parseInt(u.query.page, 10) || 1, 1), pages);
     return apiResp(res, 200, { ok: true, friends: friends, page: page, pages: pages, total: all.length,
+      requests: { in: reqView(rec0.freqIn), out: reqView(rec0.freqOut) },
       players: all.slice((page - 1) * size, page * size).map(function (x) {
-        return Object.assign(socialPlayerView(x), { friend: ids.indexOf(x.id) >= 0 });
+        return Object.assign(socialPlayerView(x), { friend: ids.indexOf(x.id) >= 0,
+          reqIn: rec0.freqIn.indexOf(x.id) >= 0, reqOut: rec0.freqOut.indexOf(x.id) >= 0 });
       }) });
   }
   if (p === '/api/friends' && req.method === 'POST') {
@@ -6087,18 +6524,62 @@ function lootPreviewRows(spot, rareVal) {
       const d = bodyObj(body); if (!d) return apiResp(res, 400, { error: '格式错误' });
       const key = d.token && sessionGet(d.token);
       if (!key || !users[key]) return apiResp(res, 401, { error: '未登录' });
+      const action = d.action === 'add' ? 'request' : d.action; // 旧前端缓存的 add = 发申请
+      if (action !== 'request' && action !== 'accept' && action !== 'reject' && action !== 'cancel' && action !== 'remove') return apiResp(res, 400, { error: '未知好友操作' });
       const target = String(d.target || '').toLowerCase();
-      if (d.action !== 'add' && d.action !== 'remove') return apiResp(res, 400, { error: '未知好友操作' });
       if (!Object.prototype.hasOwnProperty.call(users, target)) return apiResp(res, 404, { error: '玩家不存在' });
       if (target === key) return apiResp(res, 400, { error: '不能添加自己为好友' });
-      const rec = users[key];
+      const rec = friendReqsOf(users[key]);
+      const trec = friendReqsOf(users[target]);
       const ids = Array.isArray(rec.friends) ? rec.friends : [];
-      if (d.action === 'add' && ids.indexOf(target) < 0) {
-        if (!players.has(target)) return apiResp(res, 400, { error: '对方已离线，请搜索在线玩家添加好友' });
-        if (ids.length >= 200) return apiResp(res, 400, { error: '好友数量已达上限（200）' });
-        rec.friends = ids.concat(target);
-      } else if (d.action === 'remove') rec.friends = ids.filter(function (id) { return id !== target; });
-      saveAccount(key);
+      const tids = Array.isArray(trec.friends) ? trec.friends : [];
+      const notice = function (to, msg) { if (players.has(to)) sendTo(to, { type: 'notice', msg: msg }); };
+      const both = function () { saveAccount(key); saveAccount(target); };
+      if (action === 'remove') {
+        rec.friends = ids.filter(function (id) { return id !== target; });
+        trec.friends = tids.filter(function (id) { return id !== key; });
+        rec.freqIn = rec.freqIn.filter(function (id) { return id !== target; });
+        rec.freqOut = rec.freqOut.filter(function (id) { return id !== target; });
+        trec.freqIn = trec.freqIn.filter(function (id) { return id !== key; });
+        trec.freqOut = trec.freqOut.filter(function (id) { return id !== key; });
+        both();
+        return apiResp(res, 200, { ok: true });
+      }
+      if (action === 'request') {
+        if (ids.indexOf(target) >= 0) return apiResp(res, 200, { ok: true });
+        if (rec.freqOut.indexOf(target) >= 0) return apiResp(res, 200, { ok: true });
+        if (rec.freqIn.indexOf(target) >= 0) return apiResp(res, 400, { error: '对方已向你发送好友请求，请在「好友请求」里同意' });
+        if (rec.freqOut.length >= 50) return apiResp(res, 400, { error: '发出的好友请求过多（上限 50），请先撤回一些' });
+        rec.freqOut.push(target);
+        trec.freqIn.push(key);
+        both();
+        notice(target, '👥 ' + rec.name + ' 请求加你为好友，到「社交 · 好友」处理。');
+        return apiResp(res, 200, { ok: true });
+      }
+      if (action === 'accept') {
+        if (rec.freqIn.indexOf(target) < 0) return apiResp(res, 400, { error: '没有来自该玩家的好友请求' });
+        rec.freqIn = rec.freqIn.filter(function (id) { return id !== target; });
+        trec.freqOut = trec.freqOut.filter(function (id) { return id !== key; });
+        if (ids.indexOf(target) < 0) {
+          if (ids.length >= 200 || tids.length >= 200) return apiResp(res, 400, { error: '好友数量已达上限（200）' });
+          rec.friends = ids.concat(target);
+          trec.friends = tids.concat(key);
+        }
+        both();
+        notice(target, '✅ ' + rec.name + ' 已同意你的好友请求，你们现在是好友了。');
+        return apiResp(res, 200, { ok: true });
+      }
+      if (action === 'reject') {
+        rec.freqIn = rec.freqIn.filter(function (id) { return id !== target; });
+        trec.freqOut = trec.freqOut.filter(function (id) { return id !== key; });
+        both();
+        notice(target, '❌ ' + rec.name + ' 婉拒了你的好友请求。');
+        return apiResp(res, 200, { ok: true });
+      }
+      // cancel：撤回自己发出的申请
+      rec.freqOut = rec.freqOut.filter(function (id) { return id !== target; });
+      trec.freqIn = trec.freqIn.filter(function (id) { return id !== key; });
+      both();
       return apiResp(res, 200, { ok: true });
     });
     return;
@@ -6814,7 +7295,8 @@ function lootPreviewRows(spot, rareVal) {
   if (p === '/api/admin/world' && req.method === 'GET') {
     const a = adminOf(u.query.token);
     if (!a) return apiResp(res, 403, { error: '需要管理员权限' });
-    const seaNow = { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events };
+    const seaNow = { chartCost: D.SEA.chartCost, zoneTtlMin: D.SEA.zoneTtlMs / 60000, zoneMax: D.SEA.zoneMax, events: D.SEA.events,
+      anchor: D.SEA.anchor, nightglow: D.SEA.nightglow, quests: D.SEA.quests };
     const worldPayload = { seaCfg: world.seaCfg || {}, ship: D.SHIP, sea: seaNow };
     const fish = [];
     ['common', 'big', 'rare'].forEach(function (tier) {

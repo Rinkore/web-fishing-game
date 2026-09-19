@@ -175,6 +175,7 @@ window.Admin = (function () {
     { id: 'economy', name: '💰 经济参数' },
     { id: 'chest', name: '🎁 宝匣配置' },
     { id: 'sea', name: '⛵ 远洋配置' },
+    { id: 'party', name: '⚓ 编队管理' },
     { id: 'workshop', name: '⚒ 工坊配置' },
     { id: 'mall', name: '🛒 商城配置' },
     { id: 'formula', name: '🧮 公式管理' },
@@ -377,6 +378,40 @@ window.Admin = (function () {
   }
   // ⛵ 远洋配置（v0.19.0）：船级表 / 海图 / 临时海域 / 海上事件概率。
   // 保存走通用 settings 通道（world.seaCfg），立即生效并落盘；玩家端随 /api/sea 轮询（≤8 秒）同步。
+  // ---- v0.21.0 编队管理：全服队伍一览 + 解散 ----
+  function renderPartyMgr() {
+    const main = $('main');
+    main.innerHTML = '<h2>⚓ 编队管理</h2>' +
+      '<div class="hint" style="margin-bottom:12px">全服编队运行期状态（不落盘，服务器重启后清空）。' +
+      '编队上限 4 人、邀请限互为好友；解散即时生效并通知全部成员。</div>' +
+      '<div id="party-body" class="panel">加载中…</div>';
+    function load() {
+      adminApi('GET', '/api/admin/parties?token=' + encodeURIComponent(token)).then(function (r) {
+        const body = $('party-body');
+        if (!body || view !== 'party') return;
+        if (!r.ok || !r.data || !r.data.ok) { body.innerHTML = '<div class="hint">' + ((r.data && r.data.error) || '加载失败') + '</div>'; return; }
+        const list = r.data.parties || [];
+        if (!list.length) { body.innerHTML = '<div class="hint">当前没有编队。玩家在「社交 · 编队」创建队伍后这里会出现。</div>'; return; }
+        body.innerHTML = '<table class="tbl"><thead><tr><th>队长</th><th>成员</th><th>人数</th><th>操作</th></tr></thead><tbody>' +
+          list.map(function (pt) {
+            return '<tr><td><b>' + esc(pt.leaderName || pt.leader) + '</b></td>' +
+              '<td>' + esc(pt.members.map(function (m) { return m.name; }).join('、')) + '</td>' +
+              '<td class="num">' + pt.members.length + '/' + pt.max + '</td>' +
+              '<td><button class="btn mini danger" data-pid="' + esc(pt.id) + '">解散</button></td></tr>';
+          }).join('') + '</tbody></table>';
+        body.querySelectorAll('[data-pid]').forEach(function (b) {
+          b.onclick = function () {
+            b.disabled = true;
+            adminApi('POST', '/api/admin/party/disband', { token: token, id: b.getAttribute('data-pid') }).then(function (rr) {
+              if (!rr.ok) { toast((rr.data && rr.data.error) || '解散失败', true); b.disabled = false; return; }
+              toast('已解散该编队'); load();
+            });
+          };
+        });
+      });
+    }
+    load();
+  }
   function renderSeaCfg() {
     const main = $('main');
     main.innerHTML = '<h2>⛵ 远洋配置</h2>' +
@@ -393,13 +428,25 @@ window.Admin = (function () {
     if (!isFinite(v)) v = dflt;
     return Math.min(max, Math.max(min, v));
   }
+  function seaFloat(id, min, max, dflt) { // v0.21.0：漩涡/沉船概率支持 0.5 步进
+    let v = Number(($(id) || {}).value);
+    if (!isFinite(v)) v = dflt;
+    return Math.min(max, Math.max(min, v));
+  }
   function drawSeaCfg(cfg) {
     const body = $('sea-body');
     if (!body) return;
     const ship = cfg.ship || { levels: [{ name: '' }, { name: '' }, { name: '' }, { name: '' }, { name: '' }], xpNeed: [0, 0, 0, 0, 0], upCoins: [0, 0, 0, 0, 0], upScale: [0, 0, 0, 0, 0] };
-    const sea = cfg.sea || { chartCost: 3, zoneTtlMin: 120, zoneMax: 3, events: { storm: 5, bounty: 6, school: 6, bountyDouble: 30 } };
+    const sea = cfg.sea || { chartCost: 3, zoneTtlMin: 120, zoneMax: 3, events: { storm: 5, bounty: 6, school: 6, whirlpool: 3, wreck: 1.5, bountyDouble: 30 }, anchor: { coins: 50000, scales: 3, maxTimes: 3, extendMin: 1440 }, nightglow: { on: true, from: 20, to: 23, rare: 15 } };
     const lv = ship.levels, XN = ship.xpNeed, UC = ship.upCoins, US = ship.upScale;
     const ev = sea.events || {};
+    const quests = Array.isArray(sea.quests) && sea.quests.length ? sea.quests : [
+      { id: 'q_ocean_catch', title: '远洋渔汛：在远洋钓上 8 条渔获', kind: 'catch_ocean', need: 8, reward: { coins: 3000, chartfrag: 2 } },
+      { id: 'q_zone_catch', title: '探索未知：在临时海域钓上 5 条渔获', kind: 'catch_zone', need: 5, reward: { coins: 4000, chartfrag: 3 } },
+      { id: 'q_deadly_catch', title: '直面凶险：在凶险海域钓上 3 条渔获', kind: 'catch_deadly', need: 3, reward: { coins: 6000, chartfrag: 2 } },
+      { id: 'q_voyage', title: '整装出航：发现 1 片新的临时海域', kind: 'voyage', need: 1, reward: { coins: 2000, chartfrag: 2 } },
+      { id: 'q_submit_scale', title: '上贡鳞片：上交 5 片深海鳞片', kind: 'submit_deepscale', need: 1, submitNeed: 5, reward: { coins: 8000, chartfrag: 4 } },
+    ];
     const rows = [];
     for (let i = 0; i < 5; i++) {
       const nextName = i < 4 ? '<input id="sea-name-' + (i + 1) + '" class="ipt mk-num" type="text" maxlength="12" value="' + esc(lv[i + 1] ? lv[i + 1].name : '') + '" title="升到 ' + (i + 2) + ' 级后的船名（留空 = 保持默认）">' : '<span class="hint">满级</span>';
@@ -429,7 +476,18 @@ window.Admin = (function () {
       '<span class="ch-fix"><label>⛈ 风暴（脱钩）</label><input id="sea-ev-storm" class="ipt mk-num" type="number" min="0" max="50" step="1" value="' + (ev.storm || 0) + '"></span>' +
       '<span class="ch-fix"><label>📦 漂流宝箱</label><input id="sea-ev-bounty" class="ipt mk-num" type="number" min="0" max="50" step="1" value="' + (ev.bounty || 0) + '"></span>' +
       '<span class="ch-fix"><label>🐟 鱼群</label><input id="sea-ev-school" class="ipt mk-num" type="number" min="0" max="50" step="1" value="' + (ev.school || 0) + '"></span>' +
-      '<span class="ch-fix"><label>📦 宝箱双倍碎片</label><input id="sea-ev-double" class="ipt mk-num" type="number" min="0" max="100" step="1" value="' + (ev.bountyDouble || 0) + '"></span></div>' +
+      '<span class="ch-fix"><label>📦 宝箱双倍碎片</label><input id="sea-ev-double" class="ipt mk-num" type="number" min="0" max="100" step="1" value="' + (ev.bountyDouble || 0) + '"></span>' +
+      '<span class="ch-fix"><label>🌀 漩涡</label><input id="sea-ev-whirl" class="ipt mk-num" type="number" min="0" max="50" step="0.5" value="' + (ev.whirlpool != null ? ev.whirlpool : 3) + '"></span>' +
+      '<span class="ch-fix"><label>🚢 沉船残骸</label><input id="sea-ev-wreck" class="ipt mk-num" type="number" min="0" max="50" step="0.5" value="' + (ev.wreck != null ? ev.wreck : 1.5) + '"></span></div>' +
+      '<h3>⚓ 锚地与夜光潮（v0.21.0）</h3>' +
+      '<div class="hint" style="margin-bottom:8px">锚地 = 临时海域付费续期并附加增益（每片海域限次数）；夜光潮 = 每日固定时段给全部临时海域附加稀有度加成。</div>' +
+      '<div class="mgr-row">' +
+      '<span class="ch-fix"><label>锚地金币</label><input id="sea-anc-coins" class="ipt mk-num" type="number" min="0" max="1000000000" step="1" value="' + ((sea.anchor || {}).coins != null ? sea.anchor.coins : 50000) + '"></span>' +
+      '<span class="ch-fix"><label>锚地鳞片</label><input id="sea-anc-scales" class="ipt mk-num" type="number" min="0" max="999" step="1" value="' + ((sea.anchor || {}).scales != null ? sea.anchor.scales : 3) + '"></span>' +
+      '<span class="ch-fix"><label>每片限次</label><input id="sea-anc-times" class="ipt mk-num" type="number" min="0" max="30" step="1" value="' + ((sea.anchor || {}).maxTimes != null ? sea.anchor.maxTimes : 3) + '"></span>' +
+      '<span class="ch-fix"><label>续期（分钟）</label><input id="sea-anc-extend" class="ipt mk-num" type="number" min="5" max="10080" step="1" value="' + ((sea.anchor || {}).extendMin != null ? sea.anchor.extendMin : 1440) + '"></span>' +
+      '<span class="ch-fix"><label>🌌 夜光潮开</label><select id="sea-ng-on" class="ipt mk-num"><option value="1"' + ((sea.nightglow || {}).on !== false ? ' selected' : '') + '>开</option><option value="0"' + ((sea.nightglow || {}).on === false ? ' selected' : '') + '>关</option></select></span>' +
+      '<span class="ch-fix"><label>夜光潮稀有%</label><input id="sea-ng-rare" class="ipt mk-num" type="number" min="0" max="100" step="1" value="' + ((sea.nightglow || {}).rare != null ? sea.nightglow.rare : 15) + '"></span></div>' +
       '<div class="mgr-row" style="margin-top:10px"><button class="btn primary" id="sea-save">保存远洋配置</button>' +
       '<button class="btn" id="sea-reset" style="margin-left:8px">恢复出厂</button>' +
       '<span id="sea-state" class="hint" style="margin-left:10px"></span></div>';
@@ -452,7 +510,19 @@ window.Admin = (function () {
             storm: seaNum('sea-ev-storm', 0, 50, 5),
             bounty: seaNum('sea-ev-bounty', 0, 50, 6),
             school: seaNum('sea-ev-school', 0, 50, 6),
+            whirlpool: seaNum('sea-ev-whirl', 0, 50, 3),
+            wreck: seaFloat('sea-ev-wreck', 0, 50, 1.5),
             bountyDouble: seaNum('sea-ev-double', 0, 100, 30),
+          },
+          anchor: {
+            coins: seaNum('sea-anc-coins', 0, 1e9, 50000),
+            scales: seaNum('sea-anc-scales', 0, 999, 3),
+            maxTimes: seaNum('sea-anc-times', 0, 30, 3),
+            extendMin: seaNum('sea-anc-extend', 5, 10080, 1440),
+          },
+          nightglow: {
+            on: ($('sea-ng-on') || {}).value !== '0',
+            rare: seaNum('sea-ng-rare', 0, 100, 15),
           },
         },
       };
@@ -641,6 +711,7 @@ window.Admin = (function () {
     if (v === 'economy') return renderEconomy();
     if (v === 'chest') return renderChest();
     if (v === 'sea') return renderSeaCfg();
+    if (v === 'party') return renderPartyMgr();
     if (v === 'workshop') return renderWorkshop();
     if (v === 'mall') return renderMall();
     if (v === 'records') return renderRecords();

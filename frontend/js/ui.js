@@ -190,7 +190,7 @@ window.UI = (function () {
   // 旧 view id 仍由 navigateView 接受，确保顶栏快捷入口与外部调用平滑迁移。
   // 钓鱼页不再承载钓竿子页签；钓竿统一放在角色页。
   let codexMainTab = 'codex';   // codex | records
-  let charTab = 'companion';    // companion | boat
+  let charTab = 'rod';          // rod | companion | boat（v0.21.0 钓竿为第一页签）
   let fbTab = 'submit';         // submit | mine
 
   function $(id) { return document.getElementById(id); }
@@ -703,7 +703,7 @@ window.UI = (function () {
   // 仍可用 navigateView('bd' / 'records') 直达指定页签。
   function resetSectionTab(view) {
     if (view === 'codex') codexMainTab = 'codex';
-    else if (view === 'character') charTab = 'companion';
+    else if (view === 'character') charTab = 'rod';
     else if (view === 'feedback') fbTab = 'submit';
   }
   // 当前实际展示的页面 id（= 功能开关 id = 广播 scope 键）：
@@ -971,7 +971,7 @@ window.UI = (function () {
   function peepsHeadText(st) {
     if (st.peepsLoading) return '同钓点人数同步中…';
     const pp = st.peepsPage || { total: 0 };
-    return '同钓点 ' + pp.total + ' 人' + (pp.total > 5 ? ' · 已全部展开' : '');
+    return '同钓点 ' + pp.total + ' 人' + (pp.total > 5 ? ' · 默认显示 5 人，滚动查看' : '');
   }
   // 同钓点玩家列表的内容签名：只有玩家/状态/近期渔获真的变了才重建这几行
   function peepSig(here) {
@@ -1257,7 +1257,7 @@ window.UI = (function () {
       : '当前不在任何钓点';
     playersBlock.innerHTML = '<div class="live-head"><h3>👥 同钓点玩家</h3><span class="here-count">' +
       peepsHeadText(st) + '</span></div><div class="here-count">' + where + '</div>' +
-      '<div class="live-peeps"></div><div class="hint">同钓点一次显示全部玩家（最多 100 人），不翻页；可直接交易或查看钓竿。</div>';
+      '<div class="live-peeps"></div><div class="hint">同钓点默认显示 5 人，更多玩家在列表里滚动查看（最多 100 人）；可直接交易或查看钓竿。</div>';
     right.appendChild(playersBlock);
     fillLiveBuffs(right.querySelector('.live-buffs'));
     fillLivePeeps(right.querySelector('.live-peeps'), st);
@@ -2609,13 +2609,13 @@ window.UI = (function () {
 
   function socialTabs() {
     const tabs = el('div', 'px-map-tabs');
-    [['online', '🌊 在线动态'], ['friends', '👥 好友']].forEach(function (entry) {
+    [['online', '🌊 在线动态'], ['friends', '👥 好友'], ['party', '⚓ 编队']].forEach(function (entry) {
       const button = el('button', 'px-map-tab' + (socialTab === entry[0] ? ' on' : ''), entry[1]);
       button.addEventListener('click', function () {
         if (socialTab === entry[0]) return;
         socialTab = entry[0];
         if (socialTab === 'friends') window.Net.setPlayersView({ clear: true });
-        else { renderGround._lastViewSig = null; gotoPeepPage(1); }
+        else if (socialTab === 'online') { renderGround._lastViewSig = null; gotoPeepPage(1); }
         renderView();
       });
       tabs.appendChild(button);
@@ -2635,6 +2635,15 @@ window.UI = (function () {
     panel.appendChild(socialTabs());
     const cols = el('div', 'ground-cols');
     const saved = el('div', 'sub'), search = el('div', 'sub');
+    // v0.21.0 好友请求：收到的（同意/拒绝）+ 发出的（撤回）
+    const reqBlock = el('div', 'sub friend-reqs');
+    reqBlock.appendChild(el('h3', '', '📩 好友请求'));
+    const reqHint = el('div', 'hint', '');
+    const reqInList = el('div', 'peeps');
+    const reqOutHead = el('div', 'hint muted', '');
+    const reqOutList = el('div', 'peeps');
+    reqBlock.appendChild(reqHint); reqBlock.appendChild(reqInList);
+    reqBlock.appendChild(reqOutHead); reqBlock.appendChild(reqOutList);
     const savedHead = el('h3', '', '我的好友');
     const savedList = el('div', 'peeps');
     saved.appendChild(savedHead); saved.appendChild(savedList);
@@ -2649,32 +2658,74 @@ window.UI = (function () {
     const prev = el('button', 'mini', '上一页'), next = el('button', 'mini', '下一页'), label = el('span', 'muted');
     prev.disabled = next.disabled = true;
     pager.appendChild(prev); pager.appendChild(label); pager.appendChild(next); search.appendChild(pager);
-    cols.appendChild(saved); cols.appendChild(search); panel.appendChild(cols); main.appendChild(panel);
+    cols.appendChild(saved); cols.appendChild(search); panel.appendChild(reqBlock); panel.appendChild(cols); main.appendChild(panel);
     let requestId = 0, lastFetch = 0, pending = false;
     function friendRow(player, isSaved) {
       const row = el('div', 'peep');
       const info = el('div', 'peep-info');
       info.innerHTML = peepInfoHtml(player);
       row.appendChild(info);
-      const action = el('button', 'mini', isSaved ? '移除好友' : player.friend ? '已添加' : '添加好友');
-      action.disabled = !isSaved && !!player.friend;
-      action.addEventListener('click', function () {
-        action.disabled = true;
-        window.Net.friendUpdate(player.id, isSaved ? 'remove' : 'add').then(function (r) {
-          if (!r || !r.ok) { action.disabled = false; toast(r && r.data && r.data.error || '操作失败，请重试', 'bad'); return; }
-          toast(isSaved ? '已移除好友' : '已添加好友');
+      // v0.21.0：搜索结果按关系分流 —— 对方申请过我=「同意请求」；我申请过=「撤回申请」；否则=「添加好友」
+      let action, act;
+      if (isSaved) { action = '移除好友'; act = 'remove'; }
+      else if (player.reqIn) { action = '✓ 同意请求'; act = 'accept'; }
+      else if (player.reqOut) { action = '撤回申请'; act = 'cancel'; }
+      else if (player.friend) { action = '已添加'; act = null; }
+      else { action = '添加好友'; act = 'request'; }
+      const button = el('button', 'mini', action);
+      button.disabled = !act;
+      if (act) button.addEventListener('click', function () {
+        button.disabled = true;
+        window.Net.friendUpdate(player.id, act).then(function (r) {
+          if (!r || !r.ok) { button.disabled = false; toast(r && r.data && r.data.error || '操作失败，请重试', 'bad'); return; }
+          toast(act === 'remove' ? '已移除好友' : act === 'accept' ? '已同意好友请求' : act === 'request' ? '好友请求已发送，等对方处理' : act === 'cancel' ? '已撤回申请' : '已处理');
           panel._refresh(true);
         });
       });
-      row.appendChild(action);
-      row._friendAction = isSaved ? 'remove' : player.friend ? 'added' : 'add';
+      row.appendChild(button);
+      row._friendAction = act || 'added';
       return row;
+    }
+    // 好友请求行：收到的带 同意/拒绝，发出的带 撤回
+    function reqRow(player, isIn) {
+      const row = el('div', 'peep');
+      const info = el('div', 'peep-info');
+      info.innerHTML = '<b>' + esc(player.name || player.id) + '</b>' + (player.online ? '<span class="dot on"></span>' : '<span class="dot idle"></span>');
+      row.appendChild(info);
+      const ok = el('button', 'mini', isIn ? '✓ 同意' : '撤回');
+      ok.addEventListener('click', function () {
+        ok.disabled = true;
+        window.Net.friendUpdate(player.id, isIn ? 'accept' : 'cancel').then(function (r) {
+          if (!r || !r.ok) { ok.disabled = false; toast(r && r.data && r.data.error || '操作失败，请重试', 'bad'); return; }
+          toast(isIn ? '已同意好友请求' : '已撤回申请');
+          panel._refresh(true);
+        });
+      });
+      row.appendChild(ok);
+      if (isIn) {
+        const no = el('button', 'mini', '拒绝');
+        no.addEventListener('click', function () {
+          no.disabled = true;
+          window.Net.friendUpdate(player.id, 'reject').then(function (r) {
+            if (!r || !r.ok) { no.disabled = false; return; }
+            toast('已拒绝好友请求');
+            panel._refresh(true);
+          });
+        });
+        row.appendChild(no);
+      }
+      return row;
+    }
+    function fillReq(host, list, isIn) {
+      if (!host) return;
+      host.innerHTML = '';
+      (list || []).forEach(function (p) { host.appendChild(reqRow(p, isIn)); });
     }
     function fill(list, players, isSaved) {
       const hint = list.querySelector('.hint'); if (hint) hint.remove();
       patchList(list, players, function (p) { return p.id; }, function (p) { return friendRow(p, isSaved); }, function (row, p) {
-        const action = isSaved ? 'remove' : p.friend ? 'added' : 'add';
-        if (row._friendAction !== action) { const replacement = friendRow(p, isSaved); row.replaceWith(replacement); return replacement; }
+        const act = isSaved ? 'remove' : p.reqIn ? 'accept' : p.reqOut ? 'cancel' : p.friend ? 'added' : 'request';
+        if (row._friendAction !== act) { const replacement = friendRow(p, isSaved); row.replaceWith(replacement); return replacement; }
         const html = peepInfoHtml(p), info = row.querySelector('.peep-info');
         if (info.innerHTML !== html) info.innerHTML = html;
         return null;
@@ -2693,6 +2744,12 @@ window.UI = (function () {
         friendSearchPage = data.page;
         savedHead.textContent = '我的好友（' + data.friends.length + ' / 200）';
         fill(savedList, data.friends, true); fill(results, data.players, false);
+        // v0.21.0 好友请求区
+        const reqIn = (data.requests && data.requests.in) || [], reqOut = (data.requests && data.requests.out) || [];
+        fillReq(reqInList, reqIn, true);
+        fillReq(reqOutList, reqOut, false);
+        reqHint.textContent = reqIn.length ? ('有 ' + reqIn.length + ' 条待处理的好友请求。') : '暂无收到的好友请求。';
+        reqOutHead.textContent = reqOut.length ? ('已发出 ' + reqOut.length + ' 条申请，等待对方处理：') : '';
         prev.disabled = data.page <= 1; next.disabled = data.page >= data.pages;
         label.textContent = ' 第 ' + data.page + ' / ' + data.pages + ' 页 · ' + data.total + ' 人 ';
       });
@@ -2707,7 +2764,177 @@ window.UI = (function () {
       panel._refresh(false);
     }, 5000);
   }
+  // ---- v0.21.0 编队出海（社交页第三页签）----
+  let partyShowInvite = false; // 「邀请好友」折叠区开关
+  function renderParty() {
+    const main = $('main');
+    let panel = main.querySelector('.party-panel');
+    if (panel && panel.isConnected) { panel._refresh(false); return; }
+    main.innerHTML = '';
+    panel = el('div', 'panel wide party-panel');
+    panel.innerHTML = pageHead('⚓', '编队', '与互为好友的玩家组队远洋 · 同海域鱼群加成') +
+      pageHelp('队长邀请好友（需互为好友）组建编队，最多 4 人；全员在同一片临时海域垂钓时，鱼群事件概率翻倍且同款渔获额外 +1。');
+    panel.appendChild(socialTabs()); // 编队页也挂社交页签，否则切进来回不去
+    const body = el('div', 'sub party-body');
+    panel.appendChild(body);
+    main.appendChild(panel);
+    function meId() { return String(S().me && S().me.id || ''); }
+    function memberRow(p, party) {
+      const row = el('div', 'peep');
+      const info = el('div', 'peep-info');
+      info.innerHTML = (party.leader === p.id ? '👑 ' : '') + '<b>' + esc(p.name || p.id) + '</b>' +
+        (p.id === meId() ? '<span class="hint">（你）</span>' : '') +
+        (p.online ? '<span class="dot on"></span>' : '<span class="dot idle"></span>');
+      row.appendChild(info);
+      const amLeader = party.leader === meId();
+      if (amLeader && p.id !== meId()) {
+        const kick = el('button', 'mini', '移出');
+        kick.addEventListener('click', function () {
+          kick.disabled = true;
+          window.Net.partyAction('kick', p.id).then(function (r) {
+            if (!r || !r.ok) toast((r && r.data && r.data.error) || '操作失败', 'bad');
+            panel._refresh(true);
+          });
+        });
+        row.appendChild(kick);
+      }
+      return row;
+    }
+    function render(data) {
+      body.innerHTML = '';
+      const me = meId();
+      // 收到的邀请（已在编队时也显示：接受=换队，需弹窗确认）
+      if (data.invite) {
+        const inv = el('div', 'sub');
+        inv.appendChild(el('h3', '', '⚓ ' + (data.invite.leaderName || '队长') + ' 邀请你加入编队'));
+        const inParty = !!data.party;
+        if (inParty) inv.appendChild(el('div', 'hint', '你当前已在编队中，接受新邀请会离开现在的队伍。'));
+        const btns = el('div', 'sa-row');
+        const ok = el('button', 'btn primary', inParty ? '接受（换队）' : '接受邀请');
+        ok.onclick = function () {
+          ok.disabled = true;
+          const doAccept = function () { window.Net.partyAction('accept').then(function () { panel._refresh(true); }); };
+          if (inParty) {
+            window.UI.confirmModal({
+              title: '接受邀请并换队？',
+              html: '你当前在 <b>' + esc(data.party.leaderName || '队长') + '</b> 的编队（' + data.party.members.length + '/4）。<br>接受 <b>' + esc(data.invite.leaderName || '') + '</b> 的邀请会<b>离开当前编队</b>并加入对方队伍。',
+              okText: '确认换队', danger: false,
+            }).then(function (go) { if (go) doAccept(); else ok.disabled = false; });
+          } else doAccept();
+        };
+        const no = el('button', 'btn', '婉拒');
+        no.onclick = function () { no.disabled = true; window.Net.partyAction('decline').then(function () { panel._refresh(true); }); };
+        btns.appendChild(ok); btns.appendChild(no);
+        inv.appendChild(btns);
+        body.appendChild(inv);
+        if (inParty) return; // 在队时先处理邀请，不再渲染队伍区
+      }
+      if (!data.party) {
+        const empty = el('div', 'sub');
+        empty.appendChild(el('h3', '', '还没有加入编队'));
+        empty.appendChild(el('div', 'hint', '创建队伍后即可邀请好友一起出海远洋。'));
+        const create = el('button', 'btn primary', '⚓ 创建编队');
+        create.onclick = function () { create.disabled = true; window.Net.partyAction('create').then(function () { panel._refresh(true); }); };
+        empty.appendChild(create);
+        body.appendChild(empty);
+        return;
+      }
+      const party = data.party;
+      const box = el('div', 'sub');
+      box.appendChild(el('h3', '', '⚓ 我的编队（' + party.members.length + '/' + party.max + '）'));
+      const list = el('div', 'peeps');
+      party.members.forEach(function (m) { list.appendChild(memberRow(m, party)); });
+      box.appendChild(list);
+      const btns = el('div', 'sa-row');
+      const amLeader = party.leader === me;
+      const inviteBtn = el('button', 'btn mini primary', partyShowInvite ? '收起邀请' : '邀请好友');
+      inviteBtn.onclick = function () { partyShowInvite = !partyShowInvite; panel._refresh(true); };
+      btns.appendChild(inviteBtn);
+      const leave = el('button', 'btn mini', '离开编队');
+      leave.onclick = function () { leave.disabled = true; window.Net.partyAction('leave').then(function () { partyShowInvite = false; panel._refresh(true); }); };
+      btns.appendChild(leave);
+      if (amLeader) {
+        const disband = el('button', 'btn mini', '解散编队');
+        disband.onclick = function () { disband.disabled = true; window.Net.partyAction('disband').then(function () { partyShowInvite = false; panel._refresh(true); }); };
+        btns.appendChild(disband);
+      }
+      box.appendChild(btns);
+      if (partyShowInvite) {
+        const invBox = el('div', 'sub');
+        invBox.appendChild(el('h3', '', '邀请互为好友的玩家'));
+        const invList = el('div', 'peeps');
+        invBox.appendChild(invList);
+        box.appendChild(invBox);
+        window.Net.fetchFriends('', 1).then(function (r) {
+          if (!r || !r.ok || !invList.isConnected) return;
+          const friends = (r.data.friends || []).filter(function (f) {
+            return f.id !== me && !party.members.some(function (m) { return m.id === f.id; });
+          });
+          if (!friends.length) { invList.appendChild(el('div', 'hint', '没有可邀请的好友（编队邀请限互为好友）。')); return; }
+          friends.forEach(function (f) {
+            const row = el('div', 'peep');
+            const info = el('div', 'peep-info');
+            info.innerHTML = '<b>' + esc(f.name || f.id) + '</b>' + (f.online ? '<span class="dot on"></span>' : '<span class="dot idle"></span>');
+            row.appendChild(info);
+            const ask = el('button', 'mini', '邀请');
+            ask.onclick = function () {
+              ask.disabled = true;
+              window.Net.partyAction('invite', f.id).then(function (rr) {
+                toast(rr && rr.ok ? '已向 ' + (f.name || f.id) + ' 发出编队邀请' : (rr && rr.data && rr.data.error) || '邀请失败', rr && rr.ok ? '' : 'bad');
+                if (!rr || !rr.ok) ask.disabled = false;
+              });
+            };
+            row.appendChild(ask);
+            invList.appendChild(row);
+          });
+        });
+      }
+      body.appendChild(box);
+      // v0.21.0 队伍共享海域：成员一键前往队友的临时海域下竿（编队共享出航）
+      const zones = data.memberZones || [];
+      for (let i = D.GROUNDS.length - 1; i >= 0; i--) if (D.GROUNDS[i].zoneShared) D.GROUNDS.splice(i, 1);
+      if (zones.length) {
+        zones.forEach(function (z, zi) {
+          const base = zi === 0 ? [45, 58] : [72, 30];
+          D.GROUNDS.push({ id: z.groundId, name: z.name + '（' + z.ownerName + '）', type: 'ocean', zone: true, zoneShared: true, mood: z.mood,
+            desc: '队友海域 · ' + zoneMoodName(z.mood) + ' · ' + seaCountdown(z.expire) + ' 后沉没',
+            spots: (z.spots || []).map(function (s, si) {
+              return { id: s.id, name: s.name, pos: [base[0] + (si === 0 ? -9 : 9), base[1] + (si === 0 ? -4 : 6)], buffs: s.buffs || [], pool: [] };
+            }) });
+        });
+        const zs = el('div', 'sub party-zones');
+        zs.appendChild(el('h3', '', '🌊 队伍共享海域（' + zones.length + '）'));
+        zs.appendChild(el('div', 'hint', '队友的临时海域全队可下竿；全员在同一片海域垂钓时鱼群事件概率 ×2 且同款 +1。'));
+        zones.forEach(function (z) {
+          const row = el('div', 'sa-row');
+          row.style.margin = '6px 0';
+          row.innerHTML = '<span><b>' + esc(z.name) + '</b>（' + esc(z.ownerName) + ' · ' + zoneMoodName(z.mood) + ' · 剩 ' + seaCountdown(z.expire) + '）</span>';
+          (z.spots || []).forEach(function (s) {
+            const b = el('button', 'btn mini primary', '去「' + s.name + '」');
+            b.style.marginLeft = '8px';
+            b.onclick = function () { goSeaFishing(z.groundId, s.id, z.name + '·' + s.name); };
+            row.appendChild(b);
+          });
+          zs.appendChild(row);
+        });
+        body.appendChild(zs);
+      }
+    }
+    panel._refresh = function (force) {
+      window.Net.partyFetch().then(function (r) {
+        if (!panel.isConnected) return;
+        if (!r || !r.ok) { if (force) toast((r && r.data && r.data.error) || '编队加载失败', 'bad'); return; }
+        render(r.data || {});
+      });
+    };
+    panel._refresh(true);
+    const partyTimer = setInterval(function () {
+      if (!panel.isConnected) { clearInterval(partyTimer); return; }
+      panel._refresh(false);
+    }, 5000);
+  }
   function renderGround() {
+    if (socialTab === 'party') { renderParty(); return; }
     if (socialTab === 'friends') { renderFriends(); return; }
     const main = $('main');
     const st = S();
@@ -2751,16 +2978,18 @@ window.UI = (function () {
       });
       mapBar.appendChild(tb);
     });
-    panel.appendChild(mapBar);
-
-    // 地图概览：点击进入单地图动态（人数变化走 fillGroundCounts 就地更新，不重建卡片）
+    // v0.21.0：钓点筛选卡改左侧竖排侧栏（钓点多时不再横排一大坨）
+    const cols = el('div', 'ground-cols ground-cols-3');
+    const side = el('div', 'sub ground-side');
+    side.appendChild(el('h3', null, '🗺 按钓点筛选'));
+    side.appendChild(mapBar);
     const counts = el('div', 'ground-counts');
     counts.setAttribute('data-region', 'gcounts');
-    panel.appendChild(counts);
+    side.appendChild(counts);
+    cols.appendChild(side);
 
     // perf-9：玩家列表改为服务端分页（一次只渲染一页，不超过页面高度）+ 搜索；
     // 当前页玩家的状态更新由服务器按视口每秒推送（playersPage），不再全量下发在线列表。
-    const cols = el('div', 'ground-cols');
     const left = el('div', 'sub');
     const head = el('h3');
     head.setAttribute('data-region', 'peep-head');
@@ -7052,7 +7281,7 @@ window.UI = (function () {
     const st = st0;
     const wrap = el('div', 'panel char-view');
     wrap.innerHTML = pageHead('🧍', '角色', '同伴、船型、钓竿配装与场景背景') +
-      sectionTabsHtml('character', charTab, [['companion', '🐶 同伴'], ['boat', '⛵ 船型'], ['rod', '🎯 钓竿']]) +
+      sectionTabsHtml('character', charTab, [['rod', '🎯 钓竿'], ['companion', '🐶 同伴'], ['boat', '⛵ 船型']]) +
       pageHelp(charTab === 'rod'
         ? '装备组件并保存最多 8 套钓竿方案；正在钓鱼时换装也会立即生效。'
         : (charTab === 'boat'
@@ -9402,7 +9631,8 @@ window.UI = (function () {
   // 把临时海域注入 D.GROUNDS：地图节点 / 钓场状态卡 / 同钓点玩家列表 / presence 全部复用现有逻辑。
   // 每次整页重绘前重灌一次（fetchGrounds 等路径重建目录后也能自愈）。
   function syncSeaGrounds() {
-    for (let i = D.GROUNDS.length - 1; i >= 0; i--) if (D.GROUNDS[i].zone) D.GROUNDS.splice(i, 1);
+    // zoneShared（队友共享海域）由编队页注入，不在这里清
+    for (let i = D.GROUNDS.length - 1; i >= 0; i--) if (D.GROUNDS[i].zone && !D.GROUNDS[i].zoneShared) D.GROUNDS.splice(i, 1);
     if (!seaInfo || !seaInfo.zones) return;
     seaInfo.zones.forEach(function (z, zi) {
       const base = zi === 0 ? [45, 58] : [72, 30];
@@ -9457,24 +9687,72 @@ window.UI = (function () {
     (d.zones || []).forEach(function (z) {
       const row = el('div', 'sa-row');
       row.style.margin = '6px 0';
+      const glowTag = d.glow ? ' 🌌<span title="夜光潮时段：稀有度加成">夜光潮</span>' : '';
       row.innerHTML = '<b>' + esc(z.name) + '</b>（' + zoneMoodName(z.mood) + ' · 剩 ' + seaCountdown(z.expire) + '） ' +
-        (z.spots || []).map(function (s) { return esc(s.name); }).join(' / ');
+        (z.spots || []).map(function (s) { return esc(s.name); }).join(' / ') + glowTag;
       (z.spots || []).forEach(function (s) {
         const b = el('button', 'btn mini primary', '去「' + s.name + '」下竿');
         b.style.marginLeft = '8px';
         b.onclick = function () { goSeaFishing(z.groundId, s.id, z.name + '·' + s.name); };
         row.appendChild(b);
       });
+      // v0.21.0 锚地：下锚续期（金币 + 鳞片，追加锚地增益），最多 maxTimes 次
+      const anc = D.SEA.anchor || { coins: 50000, scales: 3, maxTimes: 3 };
+      const ab = el('button', 'btn mini', '⚓ 下锚续期（' + anc.coins + ' 金币 + ' + anc.scales + ' 鳞片 · 已 ' + (z.anchors || 0) + '/' + anc.maxTimes + '）');
+      ab.style.marginLeft = '8px';
+      ab.disabled = (z.anchors || 0) >= (anc.maxTimes || 3);
+      ab.onclick = function () {
+        ab.disabled = true;
+        window.Net.seaAnchor(z.id).then(function (r) {
+          if (r && r.ok && r.data && r.data.sea) { seaInfo = r.data.sea; seaInfoAt = Date.now(); toast('⚓ 下锚成功：海域存续延长并附加增益'); }
+          else toast((r && r.data && r.data.error) || '下锚失败');
+          renderView();
+        });
+      };
+      row.appendChild(ab);
       pZone.appendChild(row);
     });
     wrap.appendChild(pZone);
+    // ③.5 v0.21.0 远洋每日悬赏
+    const pQuest = el('div', 'panel');
+    pQuest.dataset.orderFeature = 'sea.quest';
+    pQuest.innerHTML = '<h3>🏅 远洋悬赏（每日 3 条，零点刷新）</h3>';
+    const quests = d.quests || [];
+    if (!quests.length) pQuest.innerHTML += '<div class="hint">今日悬赏生成中……</div>';
+    quests.forEach(function (q) {
+      const row = el('div', 'sa-row');
+      row.style.margin = '6px 0';
+      const reward = q.reward || {};
+      const rewardText = [reward.coins ? reward.coins + ' 金币' : '', reward.chartfrag ? '海图碎片 ×' + reward.chartfrag : '', reward.deepscale ? '深海鳞片 ×' + reward.deepscale : ''].filter(Boolean).join(' + ') || '无';
+      const submitNeed = q.submit ? '（领取时扣除深海鳞片）' : '';
+      row.innerHTML = '<span>' + (q.claimed ? '✅' : (q.progress >= q.need ? '🎁' : '⬚')) + ' ' + esc(q.title) + submitNeed +
+        ' <span class="hint">进度 ' + q.progress + '/' + q.need + ' · 奖励：' + esc(rewardText) + '</span></span>';
+      const cb = el('button', 'btn mini primary', q.claimed ? '已领取' : (q.progress >= q.need ? '领取奖励' : '未完成'));
+      cb.style.marginLeft = '8px';
+      cb.disabled = q.claimed || q.progress < q.need;
+      cb.onclick = function () {
+        cb.disabled = true;
+        window.Net.seaQuestClaim(q.id).then(function (r) {
+          if (r && r.ok && r.data && r.data.sea) { seaInfo = r.data.sea; seaInfoAt = Date.now(); toast('🏅 悬赏奖励已发放！'); }
+          else toast((r && r.data && r.data.error) || '领取失败');
+          renderView();
+        });
+      };
+      row.appendChild(cb);
+      pQuest.appendChild(row);
+    });
+    wrap.appendChild(pQuest);
     // ④ 说明
     const pHelp = el('div', 'panel');
     pHelp.innerHTML = '<h3>ℹ 玩法说明</h3>' +
       '<div class="hint">· 远洋钓点在「🎣 钓鱼」地图的「⛵ 远洋」页签：深海鱼礁需 3 级船、海沟裂谷需 4 级船。<br>' +
-      '· 远洋随机事件：⛈ 风暴（渔获脱钩）/ 📦 漂流宝箱（海图碎片）/ 🐟 鱼群（同款 +1）。<br>' +
+      '· 远洋随机事件：⛈ 风暴（渔获脱钩）/ 🌀 漩涡（一半卷走渔获、一半卷来同款 +2）/ 📦 漂流宝箱（海图碎片）/ 🐟 鱼群（同款 +1）/ 🚢 沉船残骸（深海鳞片 + 海图碎片）。<br>' +
+      '· 🌌 夜光潮：每日 ' + (D.SEA.nightglow ? D.SEA.nightglow.from : 20) + '~' + (D.SEA.nightglow ? D.SEA.nightglow.to : 23) + ' 点，全部临时海域附加稀有度加成。<br>' +
+      '· ⚓ 锚地：花金币与深海鳞片给临时海域续期 24 小时并附加锚地增益，每片最多 ' + (D.SEA.anchor ? D.SEA.anchor.maxTimes : 3) + ' 次。<br>' +
+      '· 🏅 每日悬赏：完成远洋任务领奖励，每天零点刷新；上贡类悬赏领取时扣除材料。<br>' +
+      '· ⚓ 编队：在「社交 · 编队」与互为好友的玩家组队（最多 4 人），同海域垂钓时鱼群事件概率 ×2 且多 +1 条。<br>' +
       '· 远洋经验只升不降；经验+金币+深海鳞片三条件都满足后升级按钮才亮。<br>' +
-      '· 临时海域 2 小时沉没，同时最多 ' + D.SEA.zoneMax + ' 片；只有自己能下竿，图鉴与纪录照常收录。</div>';
+      '· 临时海域 2 小时沉没（下锚可续），同时最多 ' + D.SEA.zoneMax + ' 片；只有自己能下竿，图鉴与纪录照常收录。</div>';
     wrap.appendChild(pHelp);
     const up = wrap.querySelector('#sea-ship-up');
     if (up) up.onclick = function () {

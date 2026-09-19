@@ -9,8 +9,8 @@
     // 这里仍保留独立 id —— 管理员可以只关掉某一个页签，关闭主页面会连带它一起关。
     ['bd', '钓竿（角色页签）', [['equip', '装备组件'], ['slots', '购买槽位'], ['save', '保存与管理钓竿'], ['autobuild', '自动配装']]],
     ['character', '角色', [['companion', '选择同伴'], ['boat', '选择船型']]],
-    ['sea', '远洋', [['upgrade', '船升级'], ['chart', '海图合成'], ['voyage', '随机海域出航']]],
-    ['ground', '社交', [['trade', '玩家交易']]],
+    ['sea', '远洋', [['upgrade', '船升级'], ['chart', '海图合成'], ['voyage', '随机海域出航'], ['quest', '每日悬赏'], ['anchor', '锚地续期']]],
+    ['ground', '社交', [['trade', '玩家交易'], ['party', '编队出海']]],
     ['inventory', '背包', [['subscribe', '组件订阅提醒']]],
     ['workshop', '工坊', [['craft', '合成宝匣'], ['open', '开启宝匣'], ['smelt', '熔炼'], ['recast', '重铸'], ['forge', '锻造']]],
     ['mall', '商城', [['buy', '限购商品购买'], ['sell', '出售物品（含背包入口）'], ['autosell', '自动售出'], ['list', '市集上架'], ['marketbuy', '市集购买']]],
@@ -47,9 +47,10 @@
     '/api/market/list': 'mall.list', '/api/market/buy': 'mall.marketbuy',
     '/api/trade/invite': 'ground.trade', '/api/trade/respond': 'ground.trade',
     '/api/trade/set': 'ground.trade', '/api/trade/confirm': 'ground.trade',
-    '/api/friends': 'ground',
+    '/api/friends': 'ground', '/api/party': 'ground.party',
     '/api/subscribe': 'inventory.subscribe', '/api/feedback/submit': 'feedback.submit', '/api/feedback/skip': 'feedback.skip',
     '/api/sea/ship/up': 'sea.upgrade', '/api/sea/chart': 'sea.chart', '/api/sea/voyage': 'sea.voyage',
+    '/api/sea/quest/claim': 'sea.quest', '/api/sea/anchor': 'sea.anchor',
   };
   function blocked(config, id) {
     const e = byId[id];

@@ -21,8 +21,8 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.20.3';
-  const BUILD = '2026-09-19';   // 构建日期（仅 /api/version 暴露，界面不展示）
+  const VERSION = 'v0.21.0';
+  const BUILD = '2026-09-20';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。
@@ -2095,14 +2095,43 @@
     zoneTtlMs: 2 * 3600 * 1000,  // 临时海域存续 2 小时，到期沉没
     zoneMax: 3,            // 同时最多存在 3 片临时海域
     names: ['迷雾海盆', '珊瑚深渊', '沉星海域', '鲸落平原', '翡翠环礁', '风暴湾', '幽蓝裂隙', '珍珠环礁'],
+    // v0.21.0 海域内钓点名池：出航时每片随机取 2 个（不再用「渔场·甲/乙」占位符）
+    spotNames: ['沉星湾', '月光潮径', '珊瑚台地', '鲸落浅滩', '风暴眼', '幽蓝水道', '珍珠浅滩', '海雾岬',
+      '琥珀暗礁', '极光海脊', '遗弃船坞', '龙涎海岸', '星坠海沟', '翡翠浅湾'],
     moods: [
       { id: 'rich', name: '富矿海域', w: 20, buffs: [{ type: 'double', value: 12 }], rareBias: 2 },
       { id: 'normal', name: '寻常海域', w: 60, buffs: [{ type: 'double', value: 5 }], rareBias: 1 },
       { id: 'deadly', name: '凶险海域', w: 20, buffs: [{ type: 'skill', value: -8 }, { type: 'rare', value: 25 }], rareBias: 3 },
     ],
     // 海上随机事件（远洋/临时海域，每竿掷骰，单位 %）：风暴=渔获脱钩、漂流宝箱=海图碎片、鱼群=同款+1。
-    // bountyDouble = 漂流宝箱额外多 1 片的概率。三项之和建议 ≤ 30，超出会明显侵蚀正常产出。
-    events: { storm: 5, bounty: 6, school: 6, bountyDouble: 30 },
+    // v0.21.0 新增：漩涡=50% 卷走本竿渔获 / 50% 同款+2；沉船=深海鳞片×2 + 海图碎片×1。
+    // bountyDouble = 漂流宝箱额外多 1 片的概率。各项之和建议 ≤ 35，超出会明显侵蚀正常产出。
+    events: { storm: 5, bounty: 6, school: 6, whirlpool: 3, wreck: 1.5, bountyDouble: 30 },
+    // v0.21.0 锚地：临时海域下锚续期（金币 + 深海鳞片），追加锚地增益；每片最多 maxTimes 次。
+    anchor: { coins: 50000, scales: 3, maxTimes: 3, extendMin: 1440,
+      buffs: [{ type: 'double', value: 8 }] },
+    // v0.21.0 夜光潮：每日 20~23 点全部临时海域附加稀有加成（on=false 关闭）。
+    nightglow: { on: true, from: 20, to: 23, rare: 15 },
+    // v0.21.0 每日悬赏池：每天随机滚 3 条。奖励以稀缺资源为主（龙宫宝珠/深海鳞片/宝匣残片/宝匣），
+    // 金币只是零头——挂机玩家不缺金币。kind: catch_ocean / catch_zone / catch_deadly / catch_big_ocean /
+    // sea_event（宝箱或沉船事件）/ voyage / submit_deepscale（领取时扣 submitNeed 片鳞片）。
+    // reward.items = { 物品id: 数量 }，物品限材料/宝匣类。
+    quests: [
+      { id: 'q_ocean_catch', title: '远洋渔汛：在远洋钓上 15 条渔获', kind: 'catch_ocean', need: 15,
+        reward: { coins: 50000, items: { deepscale: 3, relic: 5 } } },
+      { id: 'q_zone_catch', title: '探索未知：在临时海域钓上 10 条渔获', kind: 'catch_zone', need: 10,
+        reward: { coins: 80000, items: { dragonpearl: 1 } } },
+      { id: 'q_deadly_catch', title: '直面凶险：在凶险海域钓上 3 条渔获', kind: 'catch_deadly', need: 3,
+        reward: { coins: 100000, items: { deepscale: 4 } } },
+      { id: 'q_big_catch', title: '大物猎人：钓上 2 条大型或巨型海鱼', kind: 'catch_big_ocean', need: 2,
+        reward: { coins: 200000, items: { chest_deep: 1 } } },
+      { id: 'q_tide_hunter', title: '潮汐寻宝：撞上 3 次漂流宝箱或沉船残骸', kind: 'sea_event', need: 3,
+        reward: { coins: 60000, items: { tide_sand: 5, relic: 8 } } },
+      { id: 'q_voyage', title: '整装出航：发现 2 片新的临时海域', kind: 'voyage', need: 2,
+        reward: { coins: 30000, chartfrag: 4 } },
+      { id: 'q_submit_scale', title: '上贡鳞片：上交 8 片深海鳞片', kind: 'submit_deepscale', need: 1, submitNeed: 8,
+        reward: { coins: 150000, items: { dragonpearl: 2 } } },
+    ],
   };
   // 出厂快照：后台「远洋配置」恢复出厂 = 重放快照。applySeaCfg 先还原再叠加，保证幂等。
   const SHIP_DEFAULT = JSON.parse(JSON.stringify(SHIP));
@@ -2118,6 +2147,9 @@
     SEA.zoneTtlMs = SEA_DEFAULT.zoneTtlMs;
     SEA.zoneMax = SEA_DEFAULT.zoneMax;
     SEA.events = JSON.parse(JSON.stringify(SEA_DEFAULT.events));
+    SEA.anchor = JSON.parse(JSON.stringify(SEA_DEFAULT.anchor));
+    SEA.nightglow = JSON.parse(JSON.stringify(SEA_DEFAULT.nightglow));
+    SEA.quests = JSON.parse(JSON.stringify(SEA_DEFAULT.quests));
     cfg = cfg && typeof cfg === 'object' ? cfg : {};
     const int = function (v, min, max, dflt) {
       v = Math.floor(Number(v));
@@ -2141,10 +2173,52 @@
       if (c.zoneTtlMin != null) SEA.zoneTtlMs = int(c.zoneTtlMin, 5, 1440, SEA.zoneTtlMs / 60000) * 60000;
       if (c.zoneMax != null) SEA.zoneMax = int(c.zoneMax, 1, 10, SEA.zoneMax);
       if (c.events && typeof c.events === 'object') {
-        ['storm', 'bounty', 'school'].forEach(function (k) {
+        ['storm', 'bounty', 'school', 'whirlpool', 'wreck'].forEach(function (k) {
           if (c.events[k] != null) SEA.events[k] = int(c.events[k], 0, 50, SEA.events[k]);
         });
         if (c.events.bountyDouble != null) SEA.events.bountyDouble = int(c.events.bountyDouble, 0, 100, SEA.events.bountyDouble);
+      }
+      if (c.anchor && typeof c.anchor === 'object') {
+        if (c.anchor.coins != null) SEA.anchor.coins = int(c.anchor.coins, 0, 1e9, SEA.anchor.coins);
+        if (c.anchor.scales != null) SEA.anchor.scales = int(c.anchor.scales, 0, 999, SEA.anchor.scales);
+        if (c.anchor.maxTimes != null) SEA.anchor.maxTimes = int(c.anchor.maxTimes, 0, 30, SEA.anchor.maxTimes);
+        if (c.anchor.extendMin != null) SEA.anchor.extendMin = int(c.anchor.extendMin, 5, 10080, SEA.anchor.extendMin);
+        if (Array.isArray(c.anchor.buffs) && c.anchor.buffs.length <= 4) {
+          SEA.anchor.buffs = c.anchor.buffs.filter(function (b) {
+            return b && typeof b === 'object' && ['speed', 'skill', 'rare', 'material', 'size', 'double'].indexOf(b.type) >= 0;
+          }).map(function (b) { return { type: b.type, value: int(b.value, -100, 100, 0) }; }).filter(function (b) { return b.value !== 0; });
+        }
+      }
+      if (c.nightglow && typeof c.nightglow === 'object') {
+        if (c.nightglow.on != null) SEA.nightglow.on = !!c.nightglow.on;
+        if (c.nightglow.from != null) SEA.nightglow.from = int(c.nightglow.from, 0, 23, SEA.nightglow.from);
+        if (c.nightglow.to != null) SEA.nightglow.to = int(c.nightglow.to, 0, 24, SEA.nightglow.to);
+        if (c.nightglow.rare != null) SEA.nightglow.rare = int(c.nightglow.rare, 0, 100, SEA.nightglow.rare);
+      }
+      if (Array.isArray(c.quests)) {
+        // 悬赏按 id 对位合并：标题/需求/奖励可改，条目集不可增删
+        c.quests.forEach(function (q) {
+          const t = SEA.quests.find(function (x) { return x && x.id === q.id; });
+          if (!t) return;
+          if (q.title != null) t.title = String(q.title).slice(0, 40);
+          if (q.need != null) t.need = int(q.need, 1, 999, t.need);
+          if (q.submitNeed != null) t.submitNeed = int(q.submitNeed, 0, 999, t.submitNeed || 5);
+          if (q.reward && typeof q.reward === 'object' && !Array.isArray(q.reward)) {
+            ['coins', 'chartfrag', 'deepscale'].forEach(function (k) {
+              if (q.reward[k] != null) t.reward[k] = int(q.reward[k], 0, 1e9, t.reward[k] || 0);
+            });
+            if (q.reward.items && typeof q.reward.items === 'object' && !Array.isArray(q.reward.items)) {
+              const allow = ['deepscale', 'dragonpearl', 'relic', 'tide_sand', 'dragon_scale', 'bait_pack', 'lure', 'rope',
+                'chest_wreck', 'chest_deep', 'chest_abyss', 'chest_king'];
+              const items = {};
+              Object.keys(q.reward.items).forEach(function (id) {
+                const nid = normalizeItemId(id);
+                if (allow.indexOf(nid) >= 0) items[nid] = int(q.reward.items[id], 0, 999, 0);
+              });
+              t.reward.items = items;
+            }
+          }
+        });
       }
     }
     return { ship: SHIP, sea: SEA };

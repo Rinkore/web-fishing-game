@@ -4,7 +4,8 @@ const { promisify } = require('util');
 const scrypt = promisify(crypto.scrypt);
 const { ValidationError } = require('./security');
 const GAME_TTL = 24 * 3600 * 1000;
-const ADMIN_TTL = 30 * 60 * 1000;
+// v0.21.0：管理会话与游戏同寿命（本机测试服取消 30 分钟自动离线）
+const ADMIN_TTL = GAME_TTL;
 function trusted(req) {
   const peer = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
   return (process.env.TRUSTED_PROXY_IPS || '').split(',').map(x => x.trim()).includes(peer);

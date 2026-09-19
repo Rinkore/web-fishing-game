@@ -1,4 +1,4 @@
-$ver = 'v0.20.3'
+﻿$ver = 'v0.21.0'
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $stage = Join-Path $PSScriptRoot 'web-fishing-game-win64'

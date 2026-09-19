@@ -292,6 +292,11 @@ window.Net = (function () {
   const seaShipUp = () => authed('/api/sea/ship/up', {});
   const seaChart = () => authed('/api/sea/chart', {});
   const seaVoyage = () => authed('/api/sea/voyage', {});
+  // v0.21.0：悬赏领取 / 锚地下锚 / 编队
+  const seaQuestClaim = (id) => authed('/api/sea/quest/claim', { id: id });
+  const seaAnchor = (zoneId) => authed('/api/sea/anchor', { zoneId: zoneId });
+  const partyFetch = () => apiFetch('GET', '/api/party?token=' + encodeURIComponent(me ? me.token : ''));
+  const partyAction = (action, target) => authed('/api/party', { action: action, target: target });
   // 自动售出规则（玩家自助）：单件 { id, ... } / 批量 { bulk:'fish'|'material'|'all', ... }；
   // 只传 { id, on } = 就地开关（不动阈值）；remove:true 删除规则
   const autoSellGet = () => apiFetch('GET', '/api/autosell?token=' + encodeURIComponent(me ? me.token : ''));
@@ -890,6 +895,7 @@ window.Net = (function () {
     probeServer: probeServer, connState: connState, reloadForVersion: reloadForVersion,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
     seaGet: seaGet, seaShipUp: seaShipUp, seaChart: seaChart, seaVoyage: seaVoyage,
+    seaQuestClaim: seaQuestClaim, seaAnchor: seaAnchor, partyFetch: partyFetch, partyAction: partyAction,
     autoSellGet: autoSellGet, autoSellSet: autoSellSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,
