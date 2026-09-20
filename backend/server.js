@@ -2975,7 +2975,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings', 'marketSupply'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax', 'rank', 'lastRec'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['features', 'featureOrder', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'lootCfg', 'chestCfg', 'seaCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg', 'snapshotCfg', 'fishingFormulaRevision', 'wikiConfigRevision'];
+const CONFIG_KEYS = ['features', 'featureOrder', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'lootCfg', 'chestCfg', 'seaCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg', 'snapshotCfg', 'fishingFormulaRevision', 'fishingFormulaBackup', 'wikiConfigRevision'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
@@ -3441,11 +3441,22 @@ function loadWorld() {
 loadUsers();
 migrateAutoSell(); // v0.13.8 自动售出重做：旧 {all,fish} 结构升级为逐物品 {items}
 loadWorld();
-if (!world.fishingFormulaRevision) {
-  if (String(world.biteFormula).replace(/\s/g, '') === 'clamp(90+skill,0,100)') world.biteFormula = BITE_FORMULA_DEFAULT;
-  if (world.castCfg && world.castCfg.baseMs === 3000) world.castCfg.baseMs = 10000;
-  if (world.castCfg && world.castCfg.speedCap === 80) world.castCfg.speedCap = 100;
-  world.fishingFormulaRevision = 1;
+// revision 2 修复 v0.21.4 首次迁移仅替换旧默认、遗漏自定义公式的问题。
+// 只执行一次；之后管理员主动修改的公式与参数不会在重启时被覆盖。
+if (!(Number(world.fishingFormulaRevision) >= 2)) {
+  world.fishingFormulaBackup = {
+    revision: world.fishingFormulaRevision || 0,
+    biteFormula: world.biteFormula,
+    castCfg: Object.assign({}, world.castCfg),
+  };
+  world.biteFormula = BITE_FORMULA_DEFAULT;
+  world.castCfg = Object.assign({}, world.castCfg, {
+    baseMs: CAST_BASE_DEFAULT,
+    minMs: Math.min(castMinMs(), CAST_BASE_DEFAULT),
+    speedCap: CAST_SPEED_CAP_DEFAULT,
+    formula: D.CAST_FORMULA_DEFAULT,
+  });
+  world.fishingFormulaRevision = 2;
   saveConfig();
 }
 // 存档快照：把持久化的配置灌进共享目录（data.js 的 getSnapshotCfg 供后台表单回显），再挂定时器
