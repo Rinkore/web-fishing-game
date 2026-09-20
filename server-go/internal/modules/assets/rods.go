@@ -23,7 +23,7 @@ type RodCommand struct {
 }
 
 func (s *Service) ChangeRod(ctx context.Context, r RodCommand) (Result, error) {
-	if r.ActorID <= 0 || !validKey(r.RequestKey) || !utf8.ValidString(r.Name) || strings.ContainsRune(r.Name, 0) || len(utf16.Encode([]rune(r.Name))) > 20 {
+	if r.ActorID <= 0 || !validRequestKey(r.RequestKey) || !utf8.ValidString(r.Name) || strings.ContainsRune(r.Name, 0) || len(utf16.Encode([]rune(r.Name))) > 20 {
 		return Result{}, ErrInvalid
 	}
 	switch r.Action {
@@ -162,6 +162,9 @@ func (s *Service) ChangeRod(ctx context.Context, r RodCommand) (Result, error) {
 			return Result{}, err
 		}
 		if _, err = u.tx.Exec(ctx, "INSERT INTO fishing.rod_entries(operation_id,owner_id,before_state,after_state) VALUES ($1,$2,$3,$4)", u.op, r.ActorID, before, after); err != nil {
+			return Result{}, err
+		}
+		if _, err = u.tx.Exec(ctx, "UPDATE fishing.player_state SET loadout_rev=loadout_rev+1 WHERE account_id=$1", r.ActorID); err != nil {
 			return Result{}, err
 		}
 		return Result{Status: "rod_updated"}, nil

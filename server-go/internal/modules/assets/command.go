@@ -12,9 +12,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type rejection string
+type Rejection string
 
-func (r rejection) Error() string { return string(r) }
+type rejection = Rejection
+
+func (r Rejection) Error() string { return string(r) }
 
 // All asset use cases share one command boundary. Callback mutations execute
 // inside a savepoint: a business rejection rolls them back but persists the
@@ -48,6 +50,9 @@ func (s *Service) execute(ctx context.Context, c command, apply func(context.Con
 		}
 		if errors.Is(err, ErrCommitUnknown) {
 			return Result{}, ErrCommitUnknown
+		}
+		if errors.Is(err, ErrDeferred) {
+			return Result{}, ErrDeferred
 		}
 		return Result{}, ErrUnavailable
 	}
@@ -111,9 +116,7 @@ func (s *Service) executeOnce(ctx context.Context, c command, apply func(context
 			if _, err = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT asset_effects"); err != nil {
 				return Result{}, err
 			}
-			result.OperationID = ""
-			result.EquipmentIDs = nil
-			result.Status = string(rejected)
+			result = Result{Status: string(rejected), SenderBalance: result.SenderBalance, RecipientBalance: result.RecipientBalance}
 		} else if err != nil {
 			return Result{}, err
 		} else {

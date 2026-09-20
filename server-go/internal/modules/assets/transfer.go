@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -26,6 +27,9 @@ var ErrUnavailable = errors.New("asset storage unavailable; retry with the same 
 var ErrCommitUnknown = errors.New("commit outcome unknown; query or retry with the same request key")
 var ErrNotFound = errors.New("request result not found")
 
+// ErrDeferred rolls back without caching a terminal result (e.g. not due yet).
+var ErrDeferred = errors.New("command is not ready; retry the same candidate")
+
 type Transfer struct {
 	ActorID     int64
 	RecipientID int64
@@ -39,6 +43,9 @@ type Result struct {
 	SenderBalance    int64    `json:"senderBalance"`
 	RecipientBalance int64    `json:"recipientBalance"`
 	EquipmentIDs     []string `json:"equipmentIds,omitempty"`
+	ResourceID       string   `json:"resourceId,omitempty"`
+	Generation       int64    `json:"generation,omitempty,string"`
+	Sequence         int64    `json:"sequence,omitempty,string"`
 }
 
 type Service struct{ pool *pgxpool.Pool }
@@ -57,11 +64,24 @@ func validKey(key string) bool {
 	return true
 }
 
+// Automatic commands have deterministic keys. Ordinary commands must not be
+// able to occupy those keys and permanently block a cycle or escrow return.
+func systemKind(key string) string {
+	if strings.HasPrefix(key, "fishing:settle:") {
+		return "fishing_settle"
+	}
+	if strings.HasPrefix(key, "market:expire:") {
+		return "market_close"
+	}
+	return ""
+}
+func validRequestKey(key string) bool { return validKey(key) && systemKind(key) == "" }
+
 // TransferCoins trusts the caller's authenticated ActorID. Every attempt uses
 // the same input/key. Only DB-confirmed deadlocks/serialization aborts retry;
 // an uncertain COMMIT is never blindly re-executed under a new business key.
 func (s *Service) TransferCoins(ctx context.Context, request Transfer) (Result, error) {
-	if request.ActorID <= 0 || request.RecipientID <= 0 || request.ActorID == request.RecipientID || request.Amount < 1 || request.Amount > MaxCoins || !validKey(request.RequestKey) {
+	if request.ActorID <= 0 || request.RecipientID <= 0 || request.ActorID == request.RecipientID || request.Amount < 1 || request.Amount > MaxCoins || !validRequestKey(request.RequestKey) {
 		return Result{}, ErrInvalid
 	}
 	// Preserve v1 fingerprints so previously committed keys replay after upgrade.

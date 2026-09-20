@@ -76,3 +76,55 @@ func TestIntegrationUpgradePreservesCoinHistory(t *testing.T) {
 		t.Fatal("new transfer changed existing event contract")
 	}
 }
+
+func TestIntegrationUpgradePreservesBoundEquipmentAndInventory(t *testing.T) {
+	db := testdb.New(t, false)
+	ctx := context.Background()
+	if _, err := db.Admin.Exec(ctx, `CREATE TABLE public.fishing_schema_migrations(name text PRIMARY KEY,checksum text NOT NULL,applied_at timestamptz NOT NULL DEFAULT clock_timestamp())`); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"0001_asset_core.sql", "0002_inventory_equipment.sql"} {
+		ddl, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Admin.Exec(ctx, string(ddl)); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(ddl)
+		if _, err = db.Admin.Exec(ctx, `INSERT INTO public.fishing_schema_migrations(name,checksum) VALUES ($1,$2)`, name, hex.EncodeToString(sum[:])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Admin.Exec(ctx, `
+ INSERT INTO fishing.accounts OVERRIDING SYSTEM VALUE VALUES (1,now());
+ INSERT INTO fishing.player_state(account_id,assets_rev) VALUES(1,1);
+ INSERT INTO fishing.wallets(account_id,coins) VALUES(1,100);
+ INSERT INTO fishing.item_definitions(id,kind,part) VALUES('fish','fish',NULL),('rod','equipment','rod');
+ INSERT INTO fishing.command_results(actor_id,request_key,request_hash,result) VALUES(1,'old-reward',decode(repeat('00',32),'hex'),'{"status":"applied","operationId":"1","equipmentIds":["1"],"senderBalance":0,"recipientBalance":0}');
+ INSERT INTO fishing.asset_operations(actor_id,request_key,kind,rule_version) VALUES(1,'old-reward','asset_change','old-r1');
+ INSERT INTO fishing.asset_entries(operation_id,account_id,delta,balance_after) VALUES(1,1,100,100);
+ INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity) VALUES(1,'fish','fish','large',3);
+ INSERT INTO fishing.inventory_entries(operation_id,owner_id,item_id,tier,delta,quantity_after) VALUES(1,1,'fish','large',3,3);
+ INSERT INTO fishing.equipment_instances(owner_id,definition_id,part,attributes,created_operation) VALUES(1,'rod','rod','{"quality":"mythic","value":-2.5}',1);
+ INSERT INTO fishing.equipment_entries(operation_id,equipment_id,next_owner,action) VALUES(1,1,1,'create');
+ INSERT INTO fishing.rod_loadouts(owner_id,slot,active) VALUES(1,-1,false),(1,0,true);
+ INSERT INTO fishing.rod_components(owner_id,slot,part,equipment_id) VALUES(1,0,'rod',1);
+ INSERT INTO fishing.outbox_events(operation_id,event_type,payload) VALUES(1,'assets_changed','{}');`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrations.Apply(ctx, db.Admin); err != nil {
+		t.Fatal(err)
+	}
+	var intact bool
+	if err := db.Admin.QueryRow(ctx, `SELECT (SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=1 AND item_id='fish' AND tier='large')=3 AND (SELECT coins FROM fishing.wallets WHERE account_id=1)=100 AND (SELECT loadout_rev FROM fishing.player_state WHERE account_id=1)=0 AND (SELECT count(*) FROM fishing.rod_components WHERE equipment_id=1 AND slot=0)=1 AND (SELECT attributes='{"quality":"mythic","value":-2.5}'::jsonb AND lifecycle='available' AND escrow_listing_id IS NULL FROM fishing.equipment_instances WHERE id=1)`).Scan(&intact); err != nil || !intact {
+		t.Fatal("0003 changed existing inventory, attributes or binding")
+	}
+	r, err := assets.New(db.Admin).ChangeRod(ctx, assets.RodCommand{ActorID: 1, RequestKey: "post-upgrade", Action: "delete", Slot: 0})
+	if err != nil || r.Status != "rod_updated" {
+		t.Fatal("upgraded saved rod cannot be released")
+	}
+	if err := db.Admin.QueryRow(ctx, `SELECT (SELECT count(*) FROM fishing.rod_components WHERE owner_id=1)=0 AND (SELECT count(*) FROM fishing.equipment_instances WHERE owner_id=1 AND lifecycle='available')=1 AND (SELECT loadout_rev FROM fishing.player_state WHERE account_id=1)=1`).Scan(&intact); err != nil || !intact {
+		t.Fatal("post-upgrade operation lost equipment")
+	}
+}

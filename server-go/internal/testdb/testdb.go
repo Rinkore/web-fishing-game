@@ -87,6 +87,12 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, grants); err != nil {
 		t.Fatal("cannot grant test application permissions")
 	}
+	prototypeGrants := "GRANT SELECT ON fishing.fishing_rules TO " + quote(role) +
+		"; GRANT SELECT,INSERT,UPDATE ON fishing.fishing_connections,fishing.fishing_sessions,fishing.market_listings TO " + quote(role) +
+		"; GRANT SELECT,INSERT ON fishing.fishing_settlements TO " + quote(role)
+	if _, err := db.Admin.Exec(ctx, prototypeGrants); err != nil {
+		t.Fatal("cannot grant prototype application permissions")
+	}
 	appConfig := c.Copy()
 	appConfig.ConnConfig.User = role
 	appConfig.ConnConfig.Password = password

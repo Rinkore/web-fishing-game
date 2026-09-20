@@ -99,7 +99,7 @@ func fingerprint(value any) []byte {
 
 func (s *Service) ApplyChange(ctx context.Context, c Change) (Result, error) {
 	var ok bool
-	if c.ActorID <= 0 || !validKey(c.RequestKey) || !validKey(c.RuleVersion) || !amountValid(c.Coins) || len(c.Create) > 100 {
+	if c.ActorID <= 0 || !validRequestKey(c.RequestKey) || !validKey(c.RuleVersion) || !amountValid(c.Coins) || len(c.Create) > 100 {
 		return Result{}, ErrInvalid
 	}
 	if c.Reason != "reward" && c.Reason != "craft" && c.Reason != "consume" {
@@ -169,7 +169,7 @@ func (s *Service) ApplyChange(ctx context.Context, c Change) (Result, error) {
 
 func (s *Service) ExchangeAssets(ctx context.Context, r Exchange) (Result, error) {
 	var ok bool
-	if r.ActorID <= 0 || r.RecipientID <= 0 || r.ActorID == r.RecipientID || !validKey(r.RequestKey) || !amountValid(r.Coins) {
+	if r.ActorID <= 0 || r.RecipientID <= 0 || r.ActorID == r.RecipientID || !validRequestKey(r.RequestKey) || !amountValid(r.Coins) {
 		return Result{}, ErrInvalid
 	}
 	r.Stacks, ok = normalizeStacks(r.Stacks)
