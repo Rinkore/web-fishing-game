@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -97,7 +98,7 @@ func TestIntegrationTransfers(t *testing.T) {
 			if first.OperationID == "" {
 				first = result
 			}
-			if result != first {
+			if !reflect.DeepEqual(result, first) {
 				t.Error("replay changed result")
 			}
 		}
@@ -105,7 +106,7 @@ func TestIntegrationTransfers(t *testing.T) {
 			t.Fatal("duplicate transfer changed assets")
 		}
 		stored, err := s.Lookup(ctx, a, r.RequestKey)
-		if err != nil || stored != first {
+		if err != nil || !reflect.DeepEqual(stored, first) {
 			t.Fatal("lookup differs")
 		}
 		if _, err := s.Lookup(ctx, b, r.RequestKey); !errors.Is(err, ErrNotFound) {
@@ -164,7 +165,7 @@ func TestIntegrationTransfers(t *testing.T) {
 		r := Transfer{a, b, 10, "rejected"}
 		first := check(r, "insufficient_funds")
 		check(Transfer{c, a, 20, "fund"}, "transferred")
-		if replay := check(r, "insufficient_funds"); replay != first || balance(a) != 20 {
+		if replay := check(r, "insufficient_funds"); !reflect.DeepEqual(replay, first) || balance(a) != 20 {
 			t.Fatal("rejected request executed on retry")
 		}
 	})

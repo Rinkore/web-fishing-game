@@ -30,7 +30,7 @@ func TestIntegrationMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	if err := db.Admin.QueryRow(ctx, "SELECT count(*) FROM public.fishing_schema_migrations").Scan(&count); err != nil || count != 1 {
+	if err := db.Admin.QueryRow(ctx, "SELECT count(*) FROM public.fishing_schema_migrations").Scan(&count); err != nil || count != 2 {
 		t.Fatal("migration duplicated")
 	}
 	if _, err := db.Admin.Exec(ctx, "UPDATE public.fishing_schema_migrations SET checksum='tampered'"); err != nil {

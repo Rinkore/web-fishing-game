@@ -1,6 +1,6 @@
 # Go 后端重构起点
 
-架构基线见 [go-architecture.md](../docs/go-architecture.md)，实施状态见 [IMPLEMENTATION.md](../docs/go-rewrite/IMPLEMENTATION.md)。当前提供基础 HTTP 服务、数据库结构版本管理、金币转账事务和 M0 工具；玩法 API/SSE、认证及完整资产系统尚未实现。用户已确认业务版本 v0.21.4，正式数据迁移留到后续停服阶段。
+架构基线见 [go-architecture.md](../docs/go-architecture.md)，实施状态见 [IMPLEMENTATION.md](../docs/go-rewrite/IMPLEMENTATION.md)。当前提供基础 HTTP 服务、数据库结构版本管理、金币/库存/装备组合事务、钓竿归属管理和 M0 工具；玩法 API/SSE、认证、完整市场及钓鱼周期尚未实现。用户已确认业务版本 v0.21.4，正式数据迁移留到后续停服阶段。
 
 Go **1.27.1**（官方稳定版，下载档案需核对官方 SHA-256），Node **24.14.0**。直接依赖为 chi **v5.3.2**、pgx **v5.11.0**，全部版本及校验见 go.mod/go.sum；运行时依赖清单见 dependencies.json，许可见 THIRD_PARTY_NOTICES.md。
 
@@ -83,7 +83,9 @@ go run ./cmd/game --role=all
 | FISHING_GO_PROBE_TIMEOUT | 1s | 100ms～5s |
 | FISHING_GO_SHUTDOWN_TIMEOUT | 10s | 100ms～1m |
 
-连接层固定连接超时 3s、SQL 超时 5s、锁等待 1s、事务空闲 10s，并强制 `synchronous_commit=on`；这些设置不替代耐久性测试。角色拆分、认证和管理接口尚未开放。金币资产事务、锁序、幂等与故障边界见 [ASSETS.md](../docs/go-rewrite/ASSETS.md)。
+连接层固定连接超时 3s、SQL 超时 5s、锁等待 1s、事务空闲 10s，并强制 `synchronous_commit=on`；这些设置不替代耐久性测试。角色拆分、认证和管理接口尚未开放。资产事务、锁序、幂等、装备/钓竿语义与故障边界见 [ASSETS.md](../docs/go-rewrite/ASSETS.md)。
+
+当前 schema 包含 0001 金币核心及追加的 0002 库存/装备结构；0001 原摘要不变，升级保留旧金币历史及请求重放。新增内部方法为 ApplyChange、ExchangeAssets 和 ChangeRod，共用保存点实现组合效果回滚；不接受客户端直接提交奖励或费用计划。item_definitions 暂由合成测试种子提供，正式 catalog 发布、资产分页读接口及玩法事务接入留待下一批。
 
 依赖升级后在仓库根执行 `tools/go-rewrite/dependencies.ps1 -GoExe <go.exe路径>` 更新版本清单和许可。网络无法直达默认代理时，可仅为当前 PowerShell 设置 `$env:GOPROXY = 'https://goproxy.cn'`，保持默认 sumdb 校验。
 
