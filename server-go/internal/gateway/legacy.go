@@ -279,8 +279,8 @@ func (a *API) legacyRod(ctx context.Context, c *rules.Catalog, owner int64, capa
 	}
 
 	rodName := ""
-	if active >= 0 {
-		rodName = loadouts[active].Name
+	if lo, ok := loadouts[active]; ok {
+		rodName = lo.Name
 	}
 
 	// Legacy rodLocked counts each component id used by the active assembly plus

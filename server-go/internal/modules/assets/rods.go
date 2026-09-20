@@ -38,6 +38,11 @@ func (s *Service) ChangeRod(ctx context.Context, r RodCommand) (Result, error) {
 		if r.Action != "save" && r.Force || r.Action != "save" && r.Action != "rename" && r.Name != "" {
 			return Result{}, ErrInvalid
 		}
+	case "name":
+		// Renames the currently active assembly, including the unsaved slot -1.
+		if r.Slot != 0 || r.Part != "" || r.EquipmentID != 0 || r.Force {
+			return Result{}, ErrInvalid
+		}
 	case "stow":
 		if r.Part != "" || r.EquipmentID != 0 || r.Slot != 0 || r.Name != "" || r.Force {
 			return Result{}, ErrInvalid
@@ -153,6 +158,8 @@ func (s *Service) ChangeRod(ctx context.Context, r RodCommand) (Result, error) {
 				return Result{}, rejection("empty_rod")
 			}
 			_, err = u.tx.Exec(ctx, "UPDATE fishing.rod_loadouts SET name=$3 WHERE owner_id=$1 AND slot=$2", r.ActorID, r.Slot, r.Name)
+		case "name":
+			_, err = u.tx.Exec(ctx, "UPDATE fishing.rod_loadouts SET name=$2 WHERE owner_id=$1 AND slot=$3", r.ActorID, r.Name, active)
 		}
 		if err != nil {
 			return Result{}, err
