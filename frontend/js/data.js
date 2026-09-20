@@ -886,8 +886,12 @@
   }
 
   // ---- 抛竿 / 上鱼 / 双钓共享计算（服务端正式路径与 Wiki 模拟器共用） ----
-  // rules = { cast: {baseMs,minMs,speedBonus,speedCap}, biteFormula, doubleBase }
+  // rules = { cast: {baseMs,minMs,speedBonus,speedCap,formula}, biteFormula, doubleBase }
   const SIM_VAR_NAMES = ['speed', 'skill', 'big', 'rare', 'material', 'size', 'double', 'interval'];
+  const CAST_FORMULA_DEFAULT = 'interval / (1 + speed / 100)';
+  // x²/(55²+x²) 在 0–30 边际递增、50 以上递减；默认 10s 时极限 520 次/小时。
+  // interval/60 是百分数形式的 600 次/小时上限（不含双钓追加）。
+  const BITE_FORMULA_DEFAULT = 'clamp(min(interval / 60, (300 + 140 * max(0,speed) * max(0,speed) / (3025 + max(0,speed) * max(0,speed)) + 80 * max(0,skill) * max(0,skill) / (3025 + max(0,skill) * max(0,skill))) / (3.6 * (1 + max(0,speed) / 100))), 0, 100)';
   function simulationRulesOf(rules) {
     const r = rules || {};
     const c = r.cast || {};
@@ -897,12 +901,13 @@
     };
     return {
       cast: {
-        baseMs: num(c.baseMs, 3000, 200, 3600000),
+        baseMs: num(c.baseMs, 10000, 200, 3600000),
         minMs: num(c.minMs, 800, 100, 3600000),
         speedBonus: num(c.speedBonus, 0, -100, 500),
-        speedCap: num(c.speedCap, 80, 0, 100),
+        speedCap: num(c.speedCap, 100, 0, 100),
+        formula: c.formula == null ? CAST_FORMULA_DEFAULT : String(c.formula),
       },
-      biteFormula: r.biteFormula == null ? 'clamp(90 + skill, 0, 100)' : String(r.biteFormula),
+      biteFormula: r.biteFormula == null ? BITE_FORMULA_DEFAULT : String(r.biteFormula),
       doubleBase: num(r.doubleBase, 0, 0, 1),
     };
   }
@@ -928,21 +933,23 @@
   }
   function effectiveSpeedOf(eff, cast) {
     const raw = (Number(eff && eff.speed) || 0) + (Number(cast && cast.speedBonus) || 0);
-    const cap = Number(cast && cast.speedCap) || 80;
+    const cap = cast && cast.speedCap != null ? Number(cast.speedCap) : 100;
     return Math.max(0, Math.min(cap, raw));
   }
   function castIntervalOf(bd, spot, rules) {
     const r = simulationRulesOf(rules);
     const fixed = spot && spot.intervalMs;
-    if (fixed != null && fixed !== '') {
-      const n = Number(fixed);
-      if (isFinite(n) && n >= 100) return Math.round(n);
-    }
-    const bdEff = rodEffectsOf(bd);
-    const rodMs = r.cast.baseMs * (1 - effectiveSpeedOf({ speed: bdEff.speed }, r.cast) / 100);
-    const spotPct = Math.max(-100, Math.min(95, spotSpeedOf(spot)));
-    const ms = rodMs * (1 - spotPct / 100);
-    return Math.max(r.cast.minMs, Math.round(ms));
+    const spotMult = 1 - Math.max(-100, Math.min(95, spotSpeedOf(spot))) / 100;
+    const initial = fixed != null && fixed !== '' && isFinite(Number(fixed)) && Number(fixed) >= 100 ? Number(fixed) : r.cast.baseMs;
+    const base = initial * spotMult;
+    const eff = mergedEffectsOf(bd, spot);
+    const speed = effectiveSpeedOf(eff, r.cast);
+    const vars = Object.assign({ big: 0 }, eff, { speed: speed, interval: base });
+    const compiled = compileExpr(r.cast.formula, SIM_VAR_NAMES);
+    let ms = base / (1 + speed / 100);
+    try { if (compiled.ok) { const v = compiled.fn(vars); if (isFinite(v) && v > 0) ms = v; } } catch (e) {}
+    // 避免自定义公式超出计时器范围后溢出成 1ms 高频循环。
+    return Math.max(r.cast.minMs, Math.min(3600000, Math.round(ms)));
   }
   function mergedEffectsOf(bd, spot) {
     const eff = rodEffectsOf(bd);
@@ -972,15 +979,15 @@
     const bdEff = rodEffectsOf(bd);
     const eff = mergedEffectsOf(bd, spot);
     const spotPct = spotSpeedOf(spot);
-    const rodEff = effectiveSpeedOf({ speed: bdEff.speed }, r.cast);
+    const rodEff = effectiveSpeedOf(eff, r.cast);
     const interval = castIntervalOf(bd, spot, r);
     const override = spotBiteRateOf(spot);
     const biteRate = override != null ? override : Math.round(biteProbabilityOf(eff, interval, spot, r.biteFormula) * 10) / 10;
     return {
-      baseMs: r.cast.baseMs, minMs: r.cast.minMs, globalBonus: r.cast.speedBonus, cap: r.cast.speedCap,
-      affixSpeed: bdEff.speed, buffSpeed: spotPct, rawSpeed: Math.round(rodEff * 10) / 10,
+      baseMs: spot && Number(spot.intervalMs) >= 100 ? Number(spot.intervalMs) : r.cast.baseMs, minMs: r.cast.minMs, globalBonus: r.cast.speedBonus, cap: r.cast.speedCap,
+      affixSpeed: bdEff.speed, buffSpeed: spotPct, rawSpeed: Math.round((eff.speed + r.cast.speedBonus) * 10) / 10,
       effSpeed: Math.round(rodEff * 10) / 10,
-      spotMult: Math.round((1 - Math.max(-100, Math.min(95, spotPct)) / 100) * 1000) / 1000,
+      spotMult: 1 - Math.max(-100, Math.min(95, spotPct)) / 100, formula: r.cast.formula,
       intervalMs: spot && spot.intervalMs != null && spot.intervalMs !== '' ? Math.round(Number(spot.intervalMs)) : null,
       interval: interval, biteRate: biteRate, biteOverride: override != null,
     };
@@ -997,7 +1004,7 @@
     const info = castInfoOf(bd, spot, r);
     const eff = mergedEffectsOf(bd, spot);
     const interval = info.interval;
-    const bite = info.biteRate;
+    const bite = biteProbabilityOf(eff, interval, spot, r.biteFormula);
     const A = Math.max(0, Number(eff.double) || 0);
     const pDouble = A / (A + 100);
     const P = 1 - (1 - r.doubleBase) * (1 - pDouble);
@@ -2396,6 +2403,8 @@
     genBreakthrough: genBreakthrough, RELIC_PRICE: RELIC_PRICE,
     CHEST_BASE_COSTS: CHEST_BASE_COSTS, applyChestCosts: applyChestCosts, chestCostOverrides: chestCostOverrides,
     rollAffixValueBoundary: rollAffixValueBoundary, rollAffixValueBoundaryWithRng: rollAffixValueBoundaryWithRng, rollAffixValueWithRng: rollAffixValueWithRng,
+    CAST_FORMULA_DEFAULT: CAST_FORMULA_DEFAULT, BITE_FORMULA_DEFAULT: BITE_FORMULA_DEFAULT,
+    SIM_VAR_NAMES: SIM_VAR_NAMES,
     rodEffectsOf: rodEffectsOf, mergedEffectsOf: mergedEffectsOf, castInfoOf: castInfoOf, castIntervalOf: castIntervalOf,
     effectiveSpeedOf: effectiveSpeedOf, spotSpeedOf: spotSpeedOf, spotBiteRateOf: spotBiteRateOf,
     biteProbabilityOf: biteProbabilityOf, doubleProbOf: doubleProbOf, simulateRodPlan: simulateRodPlan,

@@ -2675,7 +2675,7 @@ window.Admin = (function () {
     const rateMs = sp.intervalMs != null && sp.intervalMs !== '' ? sp.intervalMs : '';
     ed.innerHTML = '<h3>🎯 钓点独立上鱼率 / 速率 — ' + esc(g.name) + ' · ' + esc(sp.name) + '</h3>' +
       '<div class="hint" style="margin-bottom:8px">留空 = 使用全服默认：上鱼率走「公式管理」的上钩公式，抛竿间隔按「基础间隔 + 钓速」计算。' +
-      '上鱼率填 100 表示该钓点必上钩；间隔填写后该钓点固定按此间隔抛竿（玩家钓速不再影响）。</div>' +
+      '上鱼率填 100 表示该钓点必上钩；间隔填写后仅替换该钓点的基础值，玩家钓速仍通过抛竿公式影响最终间隔（受最短间隔限制）。</div>' +
       '<div class="mgr-row"><label>上鱼率</label>' +
       '<input id="sr-bite" class="ipt mk-num" type="number" min="0" max="100" step="1" placeholder="留空=全服公式" value="' + esc(rateBite) + '" />' +
       '<span class="hint">%</span>' +
@@ -2708,8 +2708,8 @@ window.Admin = (function () {
     // 钓点增益可选的类别 = 组件词缀表 affixTypes（v0.13.3 起两者同一套：不再多一类「大鱼概率」）
     const affixes = cfg.affixTypes || {};
     const buffNote = {
-      speed: '钓速：该钓点抛竿速率的最终乘算（× (1-数值/100)），不与钓竿词缀/全服加成相加',
-      rare: '稀有度：降低普通品质物品的权重（普通品质权重 × K/(K+R)，K 见「🧮 公式管理」）', material: '材料概率：放大材料条目权重',
+      speed: '钓速：独立修正钓点基础间隔（× (1-数值/100)），不计入上钩公式 speed',
+      rare: '稀有度：降低普通品质物品的权重（普通品质权重 × K/(K+R)，K 见「🧮 公式管理」）', material: '材料概率：钓点所有材料最终权重 = 初始权重 × (1 + 材料概率/100)，包含战利品组内材料',
       size: '体型：放大捕获体型（不与钓竿词缀的体型上限相冲，按百分比放大结果）', double: '双钓概率：触发后立即再结算一竿',
     };
 
@@ -3469,7 +3469,7 @@ window.Admin = (function () {
   // skill = v0.11 起由「技巧」词缀提供的变量，是新版提升上钩率的主参数；big 是旧版遗留变量（恒为 0）。
   const BITE_VARS_DOC = [
     ['speed', '钓竿词缀钓速 %（不含钓点增益和全服加成）'],
-    ['skill', '技巧加成 %（钓竿「技巧」词缀合计 · v0.11 新增，默认公式 90 + skill）'],
+    ['skill', '技巧加成 %（钓竿「技巧」词缀合计，按上钩公式修正概率）'],
     ['rare', '稀有度（原「稀有概率」）：生成战利品时按 K/(K+R) 降低普通品质物品权重，见下方「💎 稀有度」面板'],
     ['material', '材料概率加成 %'],
     ['size', '体型加成 %'],
@@ -4418,7 +4418,7 @@ window.Admin = (function () {
         '<div class="sim-cells">' +
         cell('抛竿间隔', (d.cast.interval / 1000).toFixed(2) + ' 秒', '基础 ' + d.cast.baseMs + 'ms · 最短 ' + d.cast.minMs + 'ms') +
         cell('每小时抛竿', d.expect.castsPerHour, '有效钓速 ' + d.cast.effSpeed + '%（上限 ' + d.cast.cap + '%）') +
-        cell('上鱼率', d.bite.rate + '%', d.bite.override ? '钓点独立配置' : '全服公式') +
+        cell('上鱼率', Number(d.bite.rate).toFixed(1) + '%', d.bite.override ? '钓点独立配置' : '全服公式') +
         cell('双钓概率', d.double.p.toFixed(1) + '%', '叠加 A=' + d.double.A + ' · 基础 B=' + Math.round(d.double.base * 100) + '%') +
         cell('每竿期望', d.expect.fishPerCast + ' 条', '1 + P + P²（最多 3 条）') +
         cell('每小时期望', d.expect.fishPerHour + ' 条', '上鱼率 × 抛竿数 × 每竿期望') +
@@ -4427,7 +4427,7 @@ window.Admin = (function () {
         (d.spot ? '<div class="hint" style="margin-top:6px">钓点：<b>' + esc(d.spot.groundName + '·' + d.spot.spotName) + '</b>' +
           ((d.spot.buffs || []).length ? ' · 钓点增益 ' + d.spot.buffs.map(function (b) { return esc((L[b.type] || b.type) + ' ' + (b.value > 0 ? '+' : '') + b.value + '%'); }).join('、') : '') +
           (d.spot.biteRateOverride != null ? ' · 独立上鱼率 ' + d.spot.biteRateOverride + '%' : '') +
-          (d.spot.intervalOverride != null ? ' · 独立间隔 ' + d.spot.intervalOverride + 'ms' : '') + '</div>'
+          (d.spot.intervalOverride != null ? ' · 钓点基础间隔 ' + d.spot.intervalOverride + 'ms' : '') + '</div>'
           : '<div class="hint" style="margin-top:6px">未选钓点：只按公式与钓竿词缀计算（不含钓点增益与钓点独立配置）。</div>');
       const loot = d.loot || [];
       $('sim-loot').innerHTML = loot.length
@@ -4492,13 +4492,13 @@ window.Admin = (function () {
       '<div id="fx-prob" class="prob-out"></div>' +
       '</div>' +
       '<div class="panel"><h3>可用变量</h3>' +
-      '<div class="hint" style="margin-bottom:8px">变量值 = 该玩家当前生效的加成（钓竿词缀 + 钓点增益）。' +
+      '<div class="hint" style="margin-bottom:8px">变量值 = 该玩家当前生效的加成（钓竿词缀 + 钓点增益；speed 仅取钓竿词缀）。' +
       '<b><code>skill</code> 是 v0.11 新增的「技巧」词缀变量</b>——钓竿上的「技巧」词缀全部计入它，' +
-      '默认公式 <code>clamp(90 + skill, 0, 100)</code> 就是靠它提升上钩率（代码里不写死钩率提示，一切以本页公式为准）。</div>' +
+      '默认公式随钓速降低单竿上钩率，技巧提高上钩率；默认 10 秒基础间隔下，60/30 约 394 次、90/60 约 445 次成功上钩/小时。0–30 的期望边际收益递增，50 以上递减；上限 600 次/小时，不含双钓追加，钓点独立上鱼率与自定义公式可覆盖此限制。</div>' +
       '<div class="kv">' +
       BITE_VARS_DOC.map(function (v) { return '<code>' + v[0] + '</code> — ' + v[1] + '<br>'; }).join('') +
       '</div><h3>可用函数</h3><div class="kv"><code>min</code> <code>max</code> <code>floor</code> <code>ceil</code> <code>round</code> <code>abs</code> <code>clamp(x, lo, hi)</code><br>' +
-      '示例：<code>clamp(90 + skill, 0, 100)</code>（默认：基础 90% + 技巧词缀） ／ <code>90</code>（平值 90% 上钩） ／ ' +
+      '示例：<code>clamp(90 + skill, 0, 100)</code>（自定义示例） ／ <code>90</code>（平值 90% 上钩） ／ ' +
       '<code>clamp(85 + rare + skill * 0.5, 50, 100)</code>（稀有度与技巧各占一部分）</div></div>' +
       '<div class="panel" style="flex:1 1 100%;min-width:0">' +
       '<h3>🎣 双钓率</h3>' +
@@ -4512,12 +4512,12 @@ window.Admin = (function () {
       '<div id="db-preview" class="hint"></div></div>' +
       '<div class="panel" style="flex:1 1 100%;min-width:0">' +
       '<h3>🎣 抛竿间隔与全服钓速</h3>' +
-      '<div class="hint" style="margin-bottom:10px">服务端每隔该间隔自动抛一竿。间隔 = 基础 × (1 − 有效钓速/100) × <b>(1 − 钓点钓速/100)</b>，不低于最短间隔；' +
-      '有效钓速 = 钓竿词缀 + <b>全服钓速加成</b>，限制在 0 与<b>钓速上限</b>之间。钓点钓速是对间隔的总增减（范围 −100% 至 95%），独立乘算，不与词缀相加，也不进入上钩公式的 speed 变量。固定间隔钓点以固定值为准。上钩率由上方公式决定。' +
+      '<div class="hint" style="margin-bottom:10px">服务端每隔该间隔自动抛一竿。默认间隔 = 钓点基础 × (1 − 钓点钓速/100) / (1 + 有效钓速/100)，不低于最短间隔；' +
+      '有效钓速 = 钓竿词缀 + <b>全服钓速加成</b>，并按<b>钓速上限</b>截断。上钩率由上方公式决定，默认随钓速下降、技巧上升。' +
       '保存后正在钓鱼的玩家循环会立即按新间隔重启。</div>' +
       '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">基础间隔</label>' +
       '<input id="cast-base" class="ipt" type="number" min="200" max="60000" step="100" style="width:110px" />' +
-      '<span class="hint">ms（默认 3000）</span>' +
+      '<span class="hint">ms（默认 10000）</span>' +
       '<label style="width:110px;color:var(--txt-dim);font-size:13px;margin-left:12px">最短间隔</label>' +
       '<input id="cast-min" class="ipt" type="number" min="100" max="60000" step="100" style="width:110px" />' +
       '<span class="hint">ms（默认 800）</span></div>' +
@@ -4526,9 +4526,11 @@ window.Admin = (function () {
       '<span class="hint">%（加到每位玩家的有效钓速上，默认 0）</span>' +
       '<label style="width:110px;color:var(--txt-dim);font-size:13px;margin-left:12px">钓速上限</label>' +
       '<input id="cast-cap" class="ipt" type="number" min="0" max="100" step="5" style="width:110px" />' +
-      '<span class="hint">%（默认 80）</span>' +
+      '<span class="hint">%（默认 100）</span>' +
       '<button id="cast-save" class="btn primary" style="margin-left:12px">保存</button><span id="cast-state" class="hint"></span>' +
       '<button id="cast-reset" class="btn mini" style="margin-left:8px">恢复默认</button></div>' +
+      '<label for="cast-formula">抛竿间隔公式（结果为 ms）</label><textarea id="cast-formula" class="ipt" spellcheck="false"></textarea>' +
+      '<div class="hint">interval = 当前钓点基础间隔（独立值优先，再计入钓点速率增益）；speed = 钓竿 + 全服加成，经上限截断。其余变量与上钩公式相同。默认 interval / (1 + speed / 100)，无效计算值回退默认公式，最终间隔最长 1 小时。</div>' +
       '<div id="cast-preview" class="hint"></div></div>' +
       '<div class="panel" style="flex:1 1 100%;min-width:0">' +
       '<h3>💎 稀有度（<code>rare</code>）</h3>' +
@@ -4579,7 +4581,9 @@ window.Admin = (function () {
       };
       // 抛竿间隔 + 全服钓速（基础值 / 最短值 / 全服加成 / 上限）；保存后服务器广播并重启在线循环
       const cbInp = $('cast-base'), cmInp = $('cast-min'), cboInp = $('cast-bonus'), ccpInp = $('cast-cap');
-      const cdft = cfg.castDefaults || { baseMs: 3000, minMs: 800, speedBonus: 0, speedCap: 80 };
+      const cdft = cfg.castDefaults || { baseMs: 10000, minMs: 800, speedBonus: 0, speedCap: 100, formula: GameData.CAST_FORMULA_DEFAULT };
+      const cfInp = $('cast-formula');
+      cfInp.value = cfg.castFormula || cdft.formula || GameData.CAST_FORMULA_DEFAULT;
       cbInp.value = cfg.castBaseMs != null ? cfg.castBaseMs : cdft.baseMs;
       cmInp.value = cfg.castMinMs != null ? cfg.castMinMs : cdft.minMs;
       cboInp.value = cfg.castSpeedBonus != null ? cfg.castSpeedBonus : cdft.speedBonus;
@@ -4587,21 +4591,21 @@ window.Admin = (function () {
       function castPreview() {
         const base = Number(cbInp.value) || 0, min = Number(cmInp.value) || 0;
         const bonus = Number(cboInp.value) || 0, cap = Number(ccpInp.value) || 0;
-        const samples = [0, 20, 45, 60, 80].map(function (sp) {
+        const samples = [0, 20, 45, 60, 90].map(function (sp) {
           const eff = Math.max(0, Math.min(cap, sp + bonus));
-          const ms = Math.max(min, Math.round(base * (1 - eff / 100)));
+          const ms = GameData.castIntervalOf({}, null, { cast: { baseMs: base, minMs: min, speedBonus: sp + bonus, speedCap: cap, formula: cfInp.value } });
           return '玩家钓速 ' + sp + '%→有效 ' + Math.round(eff) + '%→' + (ms / 1000).toFixed(2) + 's';
         }).join('　');
         const pv = $('cast-preview');
         if (pv) pv.innerHTML = '实际间隔预览：' + samples;
       }
-      [cbInp, cmInp, cboInp, ccpInp].forEach(function (n) { n.addEventListener('input', castPreview); });
+      [cbInp, cmInp, cboInp, ccpInp, cfInp].forEach(function (n) { n.addEventListener('input', castPreview); });
       castPreview();
       $('cast-save').onclick = function () {
         const body = {
           token: token,
           castBaseMs: Number(cbInp.value), castMinMs: Number(cmInp.value),
-          castSpeedBonus: Number(cboInp.value), castSpeedCap: Number(ccpInp.value),
+          castSpeedBonus: Number(cboInp.value), castSpeedCap: Number(ccpInp.value), castFormula: cfInp.value,
         };
         adminApi('POST', '/api/admin/settings', body).then(function (r) {
           // 异步回包可能晚于「管理员切走本页」：面板已被重建/移除时不能再写 DOM，
@@ -4610,7 +4614,7 @@ window.Admin = (function () {
           if (!st) return;
           if (!r.ok) { st.innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
           cbInp.value = r.data.castBaseMs; cmInp.value = r.data.castMinMs;
-          cboInp.value = r.data.castSpeedBonus; ccpInp.value = r.data.castSpeedCap;
+          cboInp.value = r.data.castSpeedBonus; ccpInp.value = r.data.castSpeedCap; cfInp.value = r.data.castFormula;
           castPreview();
           st.innerHTML = '<span style="color:var(--ok)">已保存，在线玩家循环已按新间隔重启</span>';
           toast('抛竿间隔与钓速已保存');
@@ -4622,7 +4626,7 @@ window.Admin = (function () {
           if (!st) return;
           if (!r.ok) { st.innerHTML = '<span class="err">' + esc(r.data.error || '重置失败') + '</span>'; return; }
           cbInp.value = r.data.castBaseMs; cmInp.value = r.data.castMinMs;
-          cboInp.value = r.data.castSpeedBonus; ccpInp.value = r.data.castSpeedCap;
+          cboInp.value = r.data.castSpeedBonus; ccpInp.value = r.data.castSpeedCap; cfInp.value = r.data.castFormula;
           castPreview();
           st.innerHTML = '<span style="color:var(--ok)">已恢复默认</span>';
           toast('已恢复默认抛竿间隔与钓速');

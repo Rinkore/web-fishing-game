@@ -29,7 +29,7 @@ const NODE = process.execPath;
 const ALL_SUITES = ['e2e', 'auth-ui', 'fishing-interaction', 'bugfix', 'chest', 'v011', 'v013', 'v0134', 'v0135', 'v0136', 'v0138', 'v0138-ui', 'v0139', 'v0139-ui', 'v0140', 'v0140-ui', 'v0141', 'v0141-ui', 'v0161-ui', 'v0162', 'v0162-ui', 'scene-performance', 'inventory-pagination', 'mobile-layout', 'settings', 'mobile-trade-regression', 'desktop-zoom', 'features', 'ui-layout', 'admin', 'admin-ui'];
 ALL_SUITES.push('smelt-workbench', 'admin-editors');
 ALL_SUITES.push('v0190');
-ALL_SUITES.push('v0200-loot', 'v0200-ui');
+ALL_SUITES.push('v0200-loot', 'v0200-ui', 'fishing-formulas');
 ALL_SUITES.push('v0210');
 ALL_SUITES.push('v0212', 'v0212-ui');
 ALL_SUITES.push('v0213', 'v0213-ui');

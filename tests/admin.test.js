@@ -212,11 +212,12 @@ function waitReady() {
   const es1 = sse(TK1, sink1);
   await sleep(400);
   const fs1 = await POST(B + '/api/fishing/start', { token: TK1, groundId: 'map', spotId: 'dock' });
-  check('钓点增益改变抛竿间隔（3000×0.8=2400）', fs1.status === 200 && fs1.data.interval === 2400, JSON.stringify(fs1.data));
-  await sleep(4000);
+  check('钓点增益改变抛竿间隔（10000×0.8=8000）', fs1.status === 200 && fs1.data.interval === 8000, JSON.stringify(fs1.data));
+  await sleep(9000);
   const myCatch = sink1.filter(x => x.ev.type === 'catch' && x.ev.entry.who === '玩家一号');
-  check('4 秒内收到至少一条渔获推送', myCatch.length >= 1);
+  check('9 秒内收到至少一条渔获推送', myCatch.length >= 1);
   check('渔获全部来自新掉落池（鲫鱼）', myCatch.every(x => x.ev.entry.item.id === 'crucian'));
+  await waitFor(() => sink1.some(x => x.ev.type === 'feed' && x.ev.entry.who === '玩家一号'), { timeout: 4000 });
   check('全局 feed 正常广播（等级 all）', sink1.some(x => x.ev.type === 'feed' && x.ev.entry.who === '玩家一号'));
   await POST(B + '/api/fishing/stop', { token: TK1 });
 
@@ -373,6 +374,8 @@ function waitReady() {
 
   // ---------- 5. 上钩公式 ----------
   section('5. 上钩判断公式');
+  // 概率与通知测试固定短周期，避免依赖默认 10 秒间隔。
+  await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 1000 });
   check('非法公式被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '1 +', validateOnly: true })).status === 400);
   check('未知变量被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: 'hackspeed + 1', validateOnly: true })).status === 400);
   check('未知函数被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: 'eval(1)', validateOnly: true })).status === 400);
@@ -401,7 +404,7 @@ function waitReady() {
   // 池子只有普通鲫鱼：uncommon 下不广播 feed，但钓者自己的 catch 一定到
   const catchesSince = sink2.filter(x => x.ev.type === 'catch' && x.t > marker);
   check('uncommon 下钓者自己仍收到渔获推送', catchesSince.length >= 1);
-  check('uncommon 下普通鱼不进全服动态', !sink2.some(x => x.ev.type === 'feed' && x.ev.entry.who === '玩家二号' && x.t > marker));
+  check('uncommon 下普通鱼不进全服动态', !sink2.some(x => x.ev.type === 'feed' && x.ev.entry.who === '玩家二号' && x.ev.entry.t > marker));
   check('未知通知等级被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, notifyLevel: 'loud' })).status === 400);
 
   check('设为 all 后恢复广播', (await POST(B + '/api/admin/settings', { token: TOKA, notifyLevel: 'all' })).status === 200);
@@ -409,7 +412,7 @@ function waitReady() {
   await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
   await sleep(3800);
   await POST(B + '/api/fishing/stop', { token: TK2 });
-  check('all 下普通鱼重新进入动态', sink2.some(x => x.ev.type === 'feed' && x.ev.entry.who === '玩家二号' && x.t > marker2));
+  check('all 下普通鱼重新进入动态', sink2.some(x => x.ev.type === 'feed' && x.ev.entry.who === '玩家二号' && x.ev.entry.t > marker2));
 
   check('设为 none（关闭动态）', (await POST(B + '/api/admin/settings', { token: TOKA, notifyLevel: 'none' })).status === 200);
   const marker3 = Date.now();
@@ -417,9 +420,10 @@ function waitReady() {
   await sleep(3800);
   await POST(B + '/api/fishing/stop', { token: TK2 });
   check('none 下钓者自己仍收到推送', sink2.some(x => x.ev.type === 'catch' && x.t > marker3));
-  check('none 下无任何 feed 广播', !sink2.some(x => x.ev.type === 'feed' && x.t > marker3));
+  check('none 下无任何 feed 广播', !sink2.some(x => x.ev.type === 'feed' && x.ev.entry.t > marker3));
 
   // ---------- 7. 反馈意见管理 ----------
+  await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 10000 });
   section('7. 反馈意见');
   check('玩家提交反馈成功', (await POST(B + '/api/feedback/submit', { token: TK2, text: '管理员可见的测试反馈', kind: 'idea' })).status === 200);
   const fbList = await GET(B + '/api/admin/feedback?token=' + TOKA);
@@ -565,12 +569,12 @@ function waitReady() {
   // ---------- 9f. 抛竿间隔（基础值 / 最短值） ----------
   section('9f. 抛竿间隔配置');
   const wdCast = await GET(B + '/api/admin/world?token=' + TOKA);
-  check('world 返回抛竿间隔默认值（3000 / 800）', wdCast.data.castBaseMs === 3000 && wdCast.data.castMinMs === 800, JSON.stringify({ b: wdCast.data.castBaseMs, m: wdCast.data.castMinMs }));
+  check('world 返回抛竿间隔默认值（10000 / 800）', wdCast.data.castBaseMs === 10000 && wdCast.data.castMinMs === 800, JSON.stringify({ b: wdCast.data.castBaseMs, m: wdCast.data.castMinMs }));
   check('基础间隔过小被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 50 })).status === 400);
   check('最短间隔大于基础被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 3000, castMinMs: 5000 })).status === 400);
   check('非管理员改间隔被拒 403', (await POST(B + '/api/admin/settings', { token: TK2, castBaseMs: 4000 })).status === 403);
   check('validateOnly 只校验不落库', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 1234, validateOnly: true })).status === 200
-    && (await GET(B + '/api/admin/world?token=' + TOKA)).data.castBaseMs === 3000);
+    && (await GET(B + '/api/admin/world?token=' + TOKA)).data.castBaseMs === 10000);
   // 玩家二号在线开钓：基础 3000 → 4000ms 验证实际生效
   await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
   const castSinkMark = sink2.length;
@@ -580,18 +584,18 @@ function waitReady() {
   check('间隔变更广播 castcfg 给游戏端', sink2.slice(castSinkMark).some(x => x.ev.type === 'castcfg' && x.ev.baseMs === 4000 && x.ev.minMs === 600),
     sink2.slice(castSinkMark).map(x => x.ev.type).join(','));
   const reStart = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
-  check('按新基础间隔开钓（4000 × 0.8 钓点增益 = 3200ms）', reStart.data.interval === 3200, JSON.stringify(reStart.data));
+  check('按新基础间隔开钓（4000×0.8=3200ms）', reStart.data.interval === 3200, JSON.stringify(reStart.data));
   // 最短间隔限制：钓点 +20% 增益 + 组件 +25% = 45%，1000 × (1-0.45) = 550 → 应被 900ms 下限兜住
   const spdInst = 'reel_electric#common#spd+25';
   await POST(B + '/api/dev/catch', { token: TK2, item: { kind: 'component', id: spdInst } });
   await POST(B + '/api/bd/set', { token: TK2, part: 'reel', compId: spdInst });
   await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 1000, castMinMs: 900 });
   const reStart2 = await POST(B + '/api/fishing/start', { token: TK2, groundId: 'map', spotId: 'dock' });
-  check('最短间隔兜住词缀+增益（1000 × 0.55 = 550 → 900ms）', reStart2.data.interval === 900, JSON.stringify(reStart2.data));
+  check('最短间隔兜住词缀+增益（1000 / 1.25 × 0.8 = 640 → 900ms）', reStart2.data.interval === 900, JSON.stringify(reStart2.data));
   // 恢复：卸下组件 + 默认间隔
   await POST(B + '/api/bd/set', { token: TK2, part: 'reel', compId: null });
   await POST(B + '/api/fishing/stop', { token: TK2 });
-  check('恢复默认间隔', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 3000, castMinMs: 800 })).status === 200);
+  check('恢复默认间隔', (await POST(B + '/api/admin/settings', { token: TOKA, castBaseMs: 10000, castMinMs: 800 })).status === 200);
 
   // ---------- 9g. 鱼类体型 roll 模型（默认正态） ----------
   section('9g. 鱼类体型 roll 模型');
@@ -730,12 +734,12 @@ function waitReady() {
   const fx0 = await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '90' });
   const fxEval0 = await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '90', validateOnly: true, evalVars: { speed: 0 } });
   const fxEval50 = await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '90', validateOnly: true, evalVars: { speed: 50 } });
-  check('默认上钩公式为平值 90（钓速不再影响上钩率）', fx0.status === 200 && fxEval0.data.prob === 90 && fxEval50.data.prob === 90,
+  check('自定义平值 90 仍可覆盖默认曲线', fx0.status === 200 && fxEval0.data.prob === 90 && fxEval50.data.prob === 90,
     JSON.stringify({ a: fxEval0.data.prob, b: fxEval50.data.prob }));
   // 复原第 2 节设的公式 100（第 12 节持久化用例依赖该值）
   await POST(B + '/api/admin/settings', { token: TOKA, biteFormula: '100' });
   const w11 = await GET(B + '/api/admin/world?token=' + TOKA);
-  check('world 返回全服钓速加成/上限默认值（0 / 80）', w11.data.castSpeedBonus === 0 && w11.data.castSpeedCap === 80, JSON.stringify({ b: w11.data.castSpeedBonus, c: w11.data.castSpeedCap }));
+  check('world 返回全服钓速加成/上限默认值（0 / 100）', w11.data.castSpeedBonus === 0 && w11.data.castSpeedCap === 100, JSON.stringify({ b: w11.data.castSpeedBonus, c: w11.data.castSpeedCap }));
   check('非管理员改全服钓速被拒 403', (await POST(B + '/api/admin/settings', { token: TK2B, castSpeedBonus: 50 })).status === 403);
   check('全服钓速加成超范围被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 900 })).status === 400);
   check('钓速上限超范围被拒 400', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedCap: 150 })).status === 400);
@@ -743,13 +747,13 @@ function waitReady() {
   check('设置全服钓速 +50% 成功', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 50 })).status === 200);
   const spd1 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'map', spotId: 'dock' });
   // 钓点钓速为最终乘算：3000 × (1-0.50) × (1-0.20) = 1200ms（旧的加算写法会得 900ms）
-  check('全服钓速生效且钓点钓速乘算（3000×0.5×0.8=1200ms）', spd1.data.interval === 1200, JSON.stringify(spd1.data));
+  check('全服与钓点独立修正（10000/1.5×0.8=5333ms）', spd1.data.interval === 5333, JSON.stringify(spd1.data));
   // 上限截断：+200% 但上限 80% → 3000 × 0.2 = 600 → 最短间隔 800 兜底
   check('设置 +200% / 上限 80%', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 200, castSpeedCap: 80 })).status === 200);
   const spd2 = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'map', spotId: 'dock' });
-  check('钓速上限截断 + 最短间隔兜底（800ms）', spd2.data.interval === 800, JSON.stringify(spd2.data));
+  check('钓速上限截断（10000/1.8×0.8=4444ms）', spd2.data.interval === 4444, JSON.stringify(spd2.data));
   await POST(B + '/api/fishing/stop', { token: TK2B });
-  check('恢复默认钓速（0 / 80）', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 0, castSpeedCap: 80 })).status === 200);
+  check('恢复默认钓速（0 / 100）', (await POST(B + '/api/admin/settings', { token: TOKA, castSpeedBonus: 0, castSpeedCap: 100 })).status === 200);
 
   // ---------- 11b. 渔场与钓点增删（实时生效） ----------
   section('11b. 渔场与钓点增删 · 限时渔场 · 一键填充');
@@ -822,7 +826,7 @@ function waitReady() {
   const dockNow = (dockFind(srPub.data.grounds) || {}).spots.find(s => s.id === 'dock');
   check('钓点独立配置随目录下发（前端可见）', !!dockNow && dockNow.biteRate === 100 && dockNow.intervalMs === 1500, JSON.stringify(dockNow && { b: dockNow.biteRate, m: dockNow.intervalMs }));
   const srStart = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'map', spotId: 'dock' });
-  check('钓点独立间隔生效（1500ms）', srStart.data.interval === 1500, JSON.stringify(srStart.data));
+  check('钓点独立基础仍受钓速影响（1500×0.8=1200ms）', srStart.data.interval === 1200, JSON.stringify(srStart.data));
   check('castInfo 返回钓点独立上鱼率（100%）', !!(srStart.data.castInfo && srStart.data.castInfo.biteRate === 100 && srStart.data.castInfo.biteOverride === true), JSON.stringify(srStart.data.castInfo));
   const srMark = sink2b.length;
   await waitFor(() => sink2b.slice(srMark).filter(x => x.ev.type === 'catch').length >= 2, { timeout: 9000, interval: 150 });
@@ -836,12 +840,12 @@ function waitReady() {
   await POST(B + '/api/dev/catch', { token: TK2B, item: { kind: 'component', id: multInst } });
   await POST(B + '/api/bd/set', { token: TK2B, part: 'reel', compId: multInst });
   const multStart = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'map', spotId: 'dock' });
-  check('钓点钓速为最终乘算（3000×0.75×0.8=1800，非加算 1650）', multStart.data.interval === 1800, JSON.stringify(multStart.data));
-  check('乘算明细随 castInfo 下发（spotMult 0.8）', !!(multStart.data.castInfo && multStart.data.castInfo.spotMult === 0.8 && multStart.data.castInfo.buffSpeed === 20), JSON.stringify(multStart.data.castInfo));
+  check('钓点速率独立修正（10000/1.25×0.8=6400ms）', multStart.data.interval === 6400, JSON.stringify(multStart.data));
+  check('钓速明细随 castInfo 下发（钓竿25、点速20）', !!(multStart.data.castInfo && multStart.data.castInfo.effSpeed === 25 && multStart.data.castInfo.buffSpeed === 20), JSON.stringify(multStart.data.castInfo));
   await POST(B + '/api/bd/set', { token: TK2B, part: 'reel', compId: null });
   await POST(B + '/api/fishing/stop', { token: TK2B });
   const srBack = await POST(B + '/api/fishing/start', { token: TK2B, groundId: 'map', spotId: 'dock' });
-  check('清除独立间隔后回到按钓速计算（2400ms）', srBack.data.interval === 2400, JSON.stringify(srBack.data));
+  check('清除独立间隔后回到按钓速计算（8000ms）', srBack.data.interval === 8000, JSON.stringify(srBack.data));
   await POST(B + '/api/fishing/stop', { token: TK2B });
 
   // ---------- 11c. 横幅滚播状态与停止 ----------

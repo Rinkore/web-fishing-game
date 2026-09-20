@@ -81,7 +81,7 @@
     return '<div class="result-grid">' +
       metric('钓速', e.speed) + metric('技巧', e.skill) + metric('稀有度', e.rare) +
       metric('材料概率', e.material) + metric('体型', e.size) + metric('双钓', e.double) +
-      metric('抛竿间隔', i.interval + ' ms') + metric('上鱼率', sim.bite + '%') +
+      metric('抛竿间隔', i.interval + ' ms') + metric('上鱼率', sim.bite.toFixed(1) + '%') +
       metric('双钓概率', sim.doubleP.toFixed(2) + '%') + metric('期望件数', sim.perCast.toFixed(3)) +
       metric('每小时抛竿', Math.round(sim.castsPerHour)) + metric('理论掉落/小时', Math.round(sim.fishPerHour)) +
       '</div>' + (i.biteOverride ? '<p class="muted">上鱼率来自钓点独立配置。</p>' : '<p class="muted">上鱼率来自当前服务端公式。</p>');

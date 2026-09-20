@@ -711,7 +711,7 @@ window.Net = (function () {
           }
         } else if (m.type === 'castcfg') {
           // 管理员调整抛竿间隔/全服钓速：先记住新配置，再让服务器重算实际间隔（会即刻重绘钓鱼页）
-          S.castCfg = { baseMs: m.baseMs, minMs: m.minMs, speedBonus: m.speedBonus, speedCap: m.speedCap };
+          S.castCfg = { baseMs: m.baseMs, minMs: m.minMs, speedBonus: m.speedBonus, speedCap: m.speedCap, formula: m.formula };
           // 清掉旧的 castInfo：界面立刻按新配置 + 本地词缀/增益重算（随后服务器回传的精确值覆盖）
           S.castInfo = null;
           if (S.fishing && S.fishing.active && S.selected && S.selected.groundId) {

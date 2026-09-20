@@ -911,38 +911,18 @@ window.UI = (function () {
     if (st.castInfo) return st.castInfo;
     const cfg = st.castCfg;
     if (!cfg || !cfg.baseMs) return null;
-    const effBd = E().bdEffects ? E().bdEffects() : { speed: 0 };
-    const spot = currentSpotOf();
-    const spotPct = spotSpeedPct(spot);
-    const clampedSpot = Math.max(-100, Math.min(95, spotPct));
-    const globalBonus = Number(cfg.speedBonus) || 0;
-    const cap = cfg.speedCap != null ? Number(cfg.speedCap) : 80;
-    const minMs = cfg.minMs != null ? Number(cfg.minMs) : 800;
-    const rodEff = Math.max(0, Math.min(cap, (effBd.speed || 0) + globalBonus));
-    const fixed = spot && spot.intervalMs;
-    const hasFixed = fixed != null && fixed !== '' && isFinite(Number(fixed));
-    const interval = hasFixed
-      ? Math.round(Math.max(100, Number(fixed)))
-      : Math.max(minMs, Math.round(cfg.baseMs * (1 - rodEff / 100) * (1 - clampedSpot / 100)));
-    const spotBite = spot && spot.biteRate != null && spot.biteRate !== '' ? Number(spot.biteRate) : null;
-    return {
-      baseMs: cfg.baseMs, minMs: minMs, globalBonus: globalBonus, cap: cap,
-      affixSpeed: effBd.speed || 0, buffSpeed: spotPct,
-      rawSpeed: Math.round(rodEff * 10) / 10, effSpeed: Math.round(rodEff * 10) / 10,
-      spotMult: Math.round((1 - clampedSpot / 100) * 1000) / 1000,
-      intervalMs: hasFixed ? Math.round(Number(fixed)) : null,
-      interval: interval,
-      biteRate: spotBite, biteOverride: spotBite != null,
-    };
+    const info = D.castInfoOf(st.bd, currentSpotOf(), { cast: cfg, biteFormula: st.biteFormula });
+    if (!info.biteOverride && st.biteFormula == null) info.biteRate = null;
+    return info;
   }
   // 简短文案：每 2.75s 一竿（基础 3.00s · 竿+25% · 点速×0.80）
   function castSpeedShort() {
     const ci = castSpeedInfo();
     if (!ci) return '';
     const parts = [];
-    if (ci.intervalMs != null) parts.push('钓点固定间隔');
+    if (ci.intervalMs != null) parts.push('钓点基础间隔');
     if (ci.affixSpeed) parts.push('竿' + (ci.affixSpeed > 0 ? '+' : '') + ci.affixSpeed + '%');
-    if (ci.buffSpeed) parts.push('点速×' + (ci.spotMult != null ? ci.spotMult.toFixed(2) : '1.00'));
+    if (ci.buffSpeed) parts.push('钓点' + (ci.buffSpeed > 0 ? '+' : '') + ci.buffSpeed + '%');
     if (ci.globalBonus) parts.push('服' + (ci.globalBonus > 0 ? '+' : '') + ci.globalBonus + '%');
     const capTag = ci.rawSpeed > ci.effSpeed ? '，封顶 ' + ci.cap + '%' : '';
     return '每 ' + (ci.interval / 1000).toFixed(2) + 's 一竿（基础 ' + (ci.baseMs / 1000).toFixed(2) + 's'

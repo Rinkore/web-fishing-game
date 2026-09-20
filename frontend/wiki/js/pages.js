@@ -365,7 +365,7 @@ window.WikiPage = (function () {
       ]);
     });
     const spots = card('钓点');
-    spots.append(spotRows.length ? table(['钓点', '增益', '独立间隔', '独立上鱼率', '当前有效产出（前 8 项）'], spotRows) : empty('该钓场当前没有开放钓点。'));
+    spots.append(spotRows.length ? table(['钓点', '增益', '钓点基础间隔', '独立上鱼率', '当前有效产出（前 8 项）'], spotRows) : empty('该钓场当前没有开放钓点。'));
     const tool = card('相关工具');
     const a = W().el('a', 'button primary', '在配装模拟器中选择该钓场'); a.href = '/wiki/tools/build.html?ground=' + encodeURIComponent(ground.id) + (sid ? '&spot=' + encodeURIComponent(sid) : '');
     tool.append(a);

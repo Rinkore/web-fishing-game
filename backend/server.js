@@ -193,9 +193,9 @@ let users = {};
 
 // ---- 全局世界状态（商店价格 / 市集挂单 / 大鱼榜 / 价格历史 / 管理配置） ----
 // biteFormula：上钩判断公式（管理员可编辑）；groundCfg：钓场/钓点管理配置覆盖；notifyLevel：全服动态通知等级
-// 默认公式：基础 90% + 「技巧」词缀（技巧是上钩率公式里的一个变量，钩率提示一律不写死在代码里）。
-// 没有任何技巧词缀时，公式退化成平值 90%，与旧版默认行为一致。
-const BITE_FORMULA_DEFAULT = 'clamp(90 + skill, 0, 100)';
+// 默认上钩曲线与抛竿计算共享 data.js；钓速降低单竿成功率、技巧修正成功率。
+const D = require(path.join(__dirname, '..', 'frontend', 'js', 'data.js'));
+const BITE_FORMULA_DEFAULT = D.BITE_FORMULA_DEFAULT;
 let wikiStore = null; // Wiki SQLite 存储（loadWorld 时初始化）
 let world = { shopSales: {}, listings: [], listingSeq: 1, bigRecords: {}, smallRecords: {}, topCatches: {}, topSmall: {}, globalMax: null, rank: null, lastRec: null, priceLog: {}, tradeLog: {}, marketLog: [], groundCfg: { spots: {}, grounds: {}, spotPos: {} }, featureOrder: {}, notifyLevel: 'all', biteFormula: BITE_FORMULA_DEFAULT, doubleBase: 0, componentCfg: null, fishCfg: null, feedback: [], feedbackMeta: {}, bannerSeq: 1, banners: [], bannerCfg: {}, feedbackCfg: {}, castCfg: {}, priceCfg: {}, dropCfg: {}, lootCfg: { groups: [] }, priceOv: {}, economyLog: [], chestCfg: {}, seaCfg: {}, mallCfg: null, smeltCfg: null, recordsCfg: null, rareK: null, autoSellCfg: {}, snapshotCfg: null, wikiConfigRevision: 1, statMin: [], statHour: [], statPeak: { online: 0, t: 0 }, parties: {} }; // parties: v0.21.0 编队出海（运行期状态，不落盘）
 
@@ -602,7 +602,6 @@ let tradeSeq = 1;
 const TRADE_COOLDOWN = 3000;
 
 // ---- 游戏静态数据：与前端共用 frontend/js/data.js（UMD，单一来源） ----
-const D = require(path.join(__dirname, '..', 'frontend', 'js', 'data.js'));
 
 // 物品价格/名称表由共享目录派生（用于定价、市集与交易校验）
 //   ECO_PRICE：进入系统商店供需经济（有动态乘数与价格历史）的物品 —— 仅渔获与材料。
@@ -668,12 +667,12 @@ function invAvailOf(rec, id) { return Math.max(0, invCountOf(rec, id) - bigReser
 
 // ---- 服务端游戏引擎（钓鱼循环 / 掷骰 / 词缀加成：唯一权威，前端仅展示） ----
 // 抛竿间隔：基础值 + 最短值 + 全服钓速加成/上限均可由管理后台配置（world.castCfg，落盘 config.json）。
-// 抛竿间隔 = 基础 × (1 - 有效钓速/100) × 钓点乘数，不低于最短值；有效钓速仅合计词缀与全服加成。
-// 上钩率由后台公式（biteFormula）决定；公式 speed 仅为钓竿词缀，钓点钓速只乘算最终间隔。
-const CAST_BASE_DEFAULT = 3000; // 基础抛竿间隔 ms
+// 抛竿间隔默认 = 钓点基础 × 钓点速率系数 / (1 + 有效钓速/100)，有效钓速为词缀 + 全服加成。
+// 上钩率由后台公式（biteFormula）单独决定，默认随钓速下降、技巧上升，并限制每小时成功上钩次数。
+const CAST_BASE_DEFAULT = 10000; // 基础抛竿间隔 ms
 const CAST_MIN_DEFAULT = 800;   // 抛竿间隔下限 ms
 const CAST_SPEED_BONUS_DEFAULT = 0;   // 全服钓速加成（百分比点，可为负）
-const CAST_SPEED_CAP_DEFAULT = 80;    // 有效钓速上限（%），防止间隔被压到 0
+const CAST_SPEED_CAP_DEFAULT = 100;    // 有效钓速上限（%）
 function castBaseMs() {
   const v = Number(world.castCfg && world.castCfg.baseMs);
   return (isFinite(v) && v >= 200) ? v : CAST_BASE_DEFAULT;
@@ -694,7 +693,7 @@ function castSpeedCap() {
 // 不把 world 整包传下去，避免把内部状态或敏感配置误暴露给公开页面。
 function simulationRulesOf() {
   return {
-    cast: { baseMs: castBaseMs(), minMs: castMinMs(), speedBonus: castSpeedBonus(), speedCap: castSpeedCap() },
+    cast: { baseMs: castBaseMs(), minMs: castMinMs(), speedBonus: castSpeedBonus(), speedCap: castSpeedCap(), formula: (world.castCfg && world.castCfg.formula) || D.CAST_FORMULA_DEFAULT },
     biteFormula: String(world.biteFormula || BITE_FORMULA_DEFAULT),
     doubleBase: Number(world.doubleBase) || 0,
   };
@@ -743,7 +742,7 @@ function boostPoolOf(pool, eff) {
   eff = Object.assign({ rare: 0, material: 0 }, eff);
   const flat = (pool || []).filter(function (e) { return e && (e.pick.indexOf('group:') !== 0 || lootGroupById(e.pick.slice(6))); });
   const commonMult = rareMultOf(eff);
-  // 组在外层使用独立权重；类别增益只影响组内二次抽取。
+  // 组保留二次抽取；材料词条同步调整外层总质量，使展开后的所有材料权重线性增长。
   // 即使没有增益也保留层次，真正命中组后才进行第二次随机抽取。
   const dc = dropCfg();
   const compMult = componentCommonProb() * commonMult + (1 - componentCommonProb());
@@ -753,7 +752,11 @@ function boostPoolOf(pool, eff) {
     if (type === 'group') {
       const g = lootGroupById(id);
       const items = boostPoolOf(g.items, eff);
-      return { pick: e.pick, weight: items.some(function (it) { return it.weight > 0; }) ? e.weight * dc.global / 100 : 0, group: g.id, groupName: g.name, items: items };
+      const baseline = boostPoolOf(g.items, Object.assign({}, eff, { material: 0 }));
+      const before = baseline.reduce(function (sum, it) { return sum + it.weight; }, 0);
+      const after = items.reduce(function (sum, it) { return sum + it.weight; }, 0);
+      const materialMass = before > 0 ? after / before : 0;
+      return { pick: e.pick, weight: items.some(function (it) { return it.weight > 0; }) ? e.weight * dc.global / 100 * materialMass : 0, group: g.id, groupName: g.name, items: items };
     }
     const cm = pickIsCommon(e.pick) ? commonMult : 1;
     let mult = dc.global / 100;
@@ -762,7 +765,7 @@ function boostPoolOf(pool, eff) {
       if (tier === 'big') mult *= dc.big / 100;   // 大鱼档只看后台产出倍率（dc.big，即「大鱼季」），增益里没有大鱼概率这一类
       else if (tier === 'rare') mult *= (dc.rare / 100) * (1 + eff.rare / 100);
       else mult *= dc.common / 100 * cm;
-    } else if (type === 'material') mult *= (dc.material / 100) * (1 + eff.material / 100) * cm;
+    } else if (type === 'material') mult *= (dc.material / 100) * Math.max(0, 1 + eff.material / 100) * cm;
     else if (type === 'component') mult *= compMult;
     const row = { pick: e.pick, weight: e.weight * mult };
     if (e.group) { row.group = e.group; row.groupName = e.groupName; }
@@ -1693,7 +1696,7 @@ function restartAllFishing() {
 // 每次抛竿掷骰时求值：结果 = 本次上钩概率（%）；未上钩则该竿无收获（定时器继续下一竿）。
 // 可用变量：speed/skill/rare/material/size/double（钓竿词缀 + 钓点增益，%）与 interval（抛竿间隔 ms）。
 //   skill = 「技巧」词缀合计，是提升上钩率的主参数——**钩率提示只由这里的公式决定**，
-//   代码里不写死「技巧 = +X% 上钩率」这类文案，后台随时可以改公式（默认 clamp(90 + skill,0,100)）。
+//   代码里不写死「技巧 = +X% 上钩率」这类文案，后台随时可以改公式（默认曲线见 D.BITE_FORMULA_DEFAULT）。
 //   big = 旧「大鱼概率」变量，v0.11 起组件不再产出、v0.13.3 起增益也没有这一类了；
 //         变量名仍然接受（历史保存过的公式不能因为删变量而失效），取值恒为 0。
 // 可用函数：min max floor ceil round abs clamp(x,lo,hi)。
@@ -2972,7 +2975,7 @@ function saveDomain(file, keys) {
 const MARKET_KEYS = ['listingSeq', 'listings', 'marketSupply'];
 const RECORDS_KEYS = ['bigRecords', 'smallRecords', 'topCatches', 'topSmall', 'globalMax', 'rank', 'lastRec'];
 const ECONOMY_KEYS = ['shopSales', 'priceLog', 'tradeLog', 'marketLog', 'priceOv', 'economyLog'];
-const CONFIG_KEYS = ['features', 'featureOrder', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'lootCfg', 'chestCfg', 'seaCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg', 'snapshotCfg', 'wikiConfigRevision'];
+const CONFIG_KEYS = ['features', 'featureOrder', 'groundCfg', 'notifyLevel', 'autoNotify', 'biteFormula', 'doubleBase', 'componentCfg', 'fishCfg', 'bannerSeq', 'banners', 'bannerCfg', 'feedbackCfg', 'castCfg', 'priceCfg', 'dropCfg', 'lootCfg', 'chestCfg', 'seaCfg', 'mallCfg', 'smeltCfg', 'recordsCfg', 'rareK', 'autoSellCfg', 'snapshotCfg', 'fishingFormulaRevision', 'wikiConfigRevision'];
 // 反馈意见：items 列表 + meta（每账号下次可提交时间），单独一个文件
 const FEEDBACK_KEYS = ['feedback', 'feedbackMeta'];
 // 服务器统计采样（后台概览热力图）：分钟样本 24h + 小时样本 30 天 + 历史峰值在线
@@ -3277,7 +3280,7 @@ function publicVersionConfig() {
     features: world.features || {}, featureOrder: world.featureOrder || {},
     componentCfg: D.getComponentCfg ? D.getComponentCfg() : null,
     fishCfg: D.getFishCfg ? D.getFishCfg() : null,
-    castCfg: { baseMs: castBaseMs(), minMs: castMinMs(), speedBonus: castSpeedBonus(), speedCap: castSpeedCap() },
+    castCfg: { baseMs: castBaseMs(), minMs: castMinMs(), speedBonus: castSpeedBonus(), speedCap: castSpeedCap(), formula: (world.castCfg && world.castCfg.formula) || D.CAST_FORMULA_DEFAULT },
     priceCfg: priceCfg(),
     dropCfg: dropCfg(),
     autoSellCfg: autoSellCfgOf(),
@@ -3438,6 +3441,13 @@ function loadWorld() {
 loadUsers();
 migrateAutoSell(); // v0.13.8 自动售出重做：旧 {all,fish} 结构升级为逐物品 {items}
 loadWorld();
+if (!world.fishingFormulaRevision) {
+  if (String(world.biteFormula).replace(/\s/g, '') === 'clamp(90+skill,0,100)') world.biteFormula = BITE_FORMULA_DEFAULT;
+  if (world.castCfg && world.castCfg.baseMs === 3000) world.castCfg.baseMs = 10000;
+  if (world.castCfg && world.castCfg.speedCap === 80) world.castCfg.speedCap = 100;
+  world.fishingFormulaRevision = 1;
+  saveConfig();
+}
 // 存档快照：把持久化的配置灌进共享目录（data.js 的 getSnapshotCfg 供后台表单回显），再挂定时器
 world.snapshotCfg = D.setSnapshotCfg(world.snapshotCfg);
 armSnapshotTimer();
@@ -6462,9 +6472,9 @@ function simulateRod(rec0, spot, totals) {
   return sim;
 }
 // 产出分布（与 /api/admin/loot/test 同一套权重换算），供模拟钓竿一并展示。
-function lootPreviewRows(spot, rareVal) {
+function lootPreviewRows(spot, rareVal, materialVal) {
   const pool = flattenLootPool(boostPoolOf((spot && spot.pool) || [], {}));
-  const boosted = flattenLootPool(boostPoolOf((spot && spot.pool) || [], { rare: Math.max(0, Number(rareVal) || 0) }));
+  const boosted = flattenLootPool(boostPoolOf((spot && spot.pool) || [], { rare: Math.max(0, Number(rareVal) || 0), material: Number(materialVal) || 0 }));
   const before = pool.reduce(function (s, e) { return s + e.weight; }, 0) || 1;
   const after = boosted.reduce(function (s, e) { return s + e.weight; }, 0) || 1;
   return pool.map(function (e, index) {
@@ -7440,7 +7450,8 @@ function lootPreviewRows(spot, rareVal) {
       castMinMs: castMinMs(),
       castSpeedBonus: castSpeedBonus(),
       castSpeedCap: castSpeedCap(),
-      castDefaults: { baseMs: CAST_BASE_DEFAULT, minMs: CAST_MIN_DEFAULT, speedBonus: CAST_SPEED_BONUS_DEFAULT, speedCap: CAST_SPEED_CAP_DEFAULT },
+      castFormula: (world.castCfg && world.castCfg.formula) || D.CAST_FORMULA_DEFAULT,
+      castDefaults: { baseMs: CAST_BASE_DEFAULT, minMs: CAST_MIN_DEFAULT, speedBonus: CAST_SPEED_BONUS_DEFAULT, speedCap: CAST_SPEED_CAP_DEFAULT, formula: D.CAST_FORMULA_DEFAULT },
       poolPresets: POOL_PRESETS,
       lootGroups: lootGroups(),
       removedGrounds: (world.groundCfg && world.groundCfg.removed && world.groundCfg.removed.grounds) || [],
@@ -8278,7 +8289,7 @@ function lootPreviewRows(spot, rareVal) {
         if (!found || !found.spot) return apiResp(res, 400, { error: '钓点不存在：' + key });
       }
       const sim = simulateRod(syntheticRodOf(totals), found ? found.spot : null, totals);
-      const loot = found ? lootPreviewRows(found.spot, sim.eff.rare) : [];
+      const loot = found ? lootPreviewRows(found.spot, sim.eff.rare, sim.eff.material) : [];
       return apiResp(res, 200, {
         ok: true,
         spot: found ? { groundId: found.ground.id, groundName: found.ground.name, spotId: found.spot.id, spotName: found.spot.name,
@@ -8622,29 +8633,32 @@ function lootPreviewRows(spot, rareVal) {
         out.autoSellCfg = autoSellCfgOf();
       }
       // 抛竿间隔与全服钓速：基础值 / 最短值 / 全服钓速加成 / 有效钓速上限
-      // 保存后广播并重启所有在线钓鱼循环（钓速只影响间隔，上钩率由公式决定）
-      if (d.castBaseMs != null || d.castMinMs != null || d.castSpeedBonus != null || d.castSpeedCap != null || d.resetCastSpeed) {
+      // 保存后广播并重启所有在线钓鱼循环（间隔与上钩率分别由各自公式决定）
+      if (d.castFormula != null || d.castBaseMs != null || d.castMinMs != null || d.castSpeedBonus != null || d.castSpeedCap != null || d.resetCastSpeed) {
         const cur = world.castCfg || {};
         const bonusOff = !!d.resetCastSpeed;
         const base = d.castBaseMs != null ? Number(d.castBaseMs) : castBaseMs();
         const min = d.castMinMs != null ? Number(d.castMinMs) : castMinMs();
         const bonus = bonusOff ? CAST_SPEED_BONUS_DEFAULT : (d.castSpeedBonus != null ? Number(d.castSpeedBonus) : castSpeedBonus());
         const cap = bonusOff ? CAST_SPEED_CAP_DEFAULT : (d.castSpeedCap != null ? Number(d.castSpeedCap) : castSpeedCap());
-        void cur;
+        const castFormula = bonusOff ? D.CAST_FORMULA_DEFAULT : (d.castFormula != null ? String(d.castFormula).trim() : cur.formula || D.CAST_FORMULA_DEFAULT);
+        const compiledCast = D.compileExpr(castFormula, D.SIM_VAR_NAMES);
+        if (!compiledCast.ok) return apiResp(res, 400, { error: '抛竿公式无效：' + compiledCast.error });
         if (!isFinite(base) || base < 200 || base > 60000) return apiResp(res, 400, { error: '基础抛竿间隔需在 200 - 60000 ms 之间' });
         if (!isFinite(min) || min < 100 || min > 60000) return apiResp(res, 400, { error: '最短抛竿间隔需在 100 - 60000 ms 之间' });
         if (min > base) return apiResp(res, 400, { error: '最短间隔不能大于基础间隔' });
         if (!isFinite(bonus) || bonus < -100 || bonus > 500) return apiResp(res, 400, { error: '全服钓速加成需在 -100% - 500% 之间' });
         if (!isFinite(cap) || cap < 0 || cap > 100) return apiResp(res, 400, { error: '钓速上限需在 0% - 100% 之间' });
         if (!d.validateOnly) {
-          world.castCfg = { baseMs: Math.round(base), minMs: Math.round(min), speedBonus: Math.round(bonus * 10) / 10, speedCap: Math.round(cap) };
+          world.castCfg = { baseMs: Math.round(base), minMs: Math.round(min), speedBonus: Math.round(bonus * 10) / 10, speedCap: Math.round(cap), formula: castFormula };
           restartAllFishing();
-          broadcast({ type: 'castcfg', baseMs: world.castCfg.baseMs, minMs: world.castCfg.minMs, speedBonus: world.castCfg.speedBonus, speedCap: world.castCfg.speedCap });
+          broadcast({ type: 'castcfg', baseMs: world.castCfg.baseMs, minMs: world.castCfg.minMs, speedBonus: world.castCfg.speedBonus, speedCap: world.castCfg.speedCap, formula: world.castCfg.formula });
         }
         out.castBaseMs = Math.round(base);
         out.castMinMs = Math.round(min);
         out.castSpeedBonus = Math.round(bonus * 10) / 10;
         out.castSpeedCap = Math.round(cap);
+        out.castFormula = castFormula;
       }
       if (!d.validateOnly) saveConfig();
       // ---- 经济参数：价格模型全程可调（world.priceCfg / world.dropCfg / 单品干预 world.priceOv）----

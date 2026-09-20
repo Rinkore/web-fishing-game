@@ -300,14 +300,14 @@ async function main() {
     const spot = snap.grounds[0].spots[0];
     const rules = { cast: snap.rulesConfig.castCfg, biteFormula: snap.rulesConfig.biteFormula, doubleBase: snap.rulesConfig.doubleBase };
     const sim = D.simulateRodPlan(bd, spot, rules);
-    check('配装共享计算汇总词缀与抛竿间隔', sim.eff.speed === 50 && sim.info.affixSpeed === 50 && sim.info.interval === 1500, JSON.stringify({ eff: sim.eff, info: sim.info }));
-    check('配装共享计算上鱼率使用服务端公式', sim.bite === 90, JSON.stringify(sim));
+    check('配装共享计算汇总词缀与抛竿间隔', sim.eff.speed === 50 && sim.info.affixSpeed === 50 && sim.info.interval === 6667, JSON.stringify({ eff: sim.eff, info: sim.info }));
+    check('配装共享计算上鱼率使用服务端公式', Math.abs(sim.bite - 67.286) < 0.01, JSON.stringify(sim));
     const speedRules = { cast: { baseMs: 3000, minMs: 100, speedBonus: 0, speedCap: 80 }, biteFormula: 'speed + skill' };
     const boostedSpot = { buffs: [{ type: 'speed', value: 20 }, { type: 'skill', value: 7 }] };
     const boosted = D.simulateRodPlan(bd, boostedSpot, speedRules);
-    check('钓点钓速只乘算最终间隔、不进入上钩公式，技巧仍进入公式', boosted.interval === 1200 && boosted.bite === 57 && boosted.eff.speed === 50, JSON.stringify(boosted));
+    check('钓点钓速只乘算最终间隔、不进入上钩公式，技巧仍进入公式', boosted.interval === 1600 && boosted.bite === 57 && boosted.eff.speed === 50, JSON.stringify(boosted));
     const slowed = D.simulateRodPlan(bd, { buffs: [{ type: 'speed', value: -20 }, { type: 'skill', value: 7 }] }, speedRules);
-    check('负钓点钓速增大最终间隔、上钩公式 speed 保持词缀值', slowed.interval === 1800 && slowed.bite === 57, JSON.stringify(slowed));
+    check('负钓点钓速增大最终间隔、上钩公式 speed 保持词缀值', slowed.interval === 2400 && slowed.bite === 57, JSON.stringify(slowed));
     check('正式上钩路径与配装预览使用同一 speed 语义', D.biteProbabilityOf(D.mergedEffectsOf(bd, boostedSpot), boosted.interval, boostedSpot, 'speed + skill') === boosted.bite);
     check('双钓公式 A=100、B=0 时追加概率 50%', Math.abs(D.doubleProbOf(100, 0) - 0.5) < 1e-12, String(D.doubleProbOf(100, 0)));
   }

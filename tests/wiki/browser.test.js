@@ -247,7 +247,7 @@ async function main() {
     await build.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await sleep(200);
     const buildPreset = await evaluate(build, 'document.getElementById("current-result").innerText');
-    check('配装链接预设底材与钓点', buildPreset.includes('钓速') && buildPreset.includes('8') && buildPreset.includes('2760 ms'), buildPreset);
+    check('配装链接预设底材与钓点', buildPreset.includes('钓速') && buildPreset.includes('8') && buildPreset.includes('9259 ms'), buildPreset);
     const buildLayout = await evaluate(build, `(() => {
       const workbench = document.querySelector('.smelt-workbench');
       const preview = document.querySelector('.sm-preview-panel');
@@ -275,7 +275,7 @@ async function main() {
       await new Promise(r => setTimeout(r, 300));
       return { length: code.length, text: document.getElementById('current-result').innerText };
     })()`);
-    check('配装方案码导出导入往返', share.length > 100 && share.text.includes('50') && share.text.includes('1500 ms'), JSON.stringify(share));
+    check('配装方案码导出导入往返', share.length > 100 && share.text.includes('50') && share.text.includes('6667 ms'), JSON.stringify(share));
     const offline = await evaluate(build, `(async () => {
       window.fetch = function () { return Promise.reject(new Error('offline')); };
       await window.Wiki.refresh();
@@ -396,6 +396,27 @@ async function main() {
       };
     })()`);
     check('管理后台登录并显示 Wiki 攻略入口', adminLogin.loginHidden && adminLogin.nav.some(x => x.includes('Wiki攻略')), JSON.stringify(adminLogin));
+    const castEditor = await evaluate(admin, `(async () => {
+      document.querySelector('[data-view="formula"]')?.click();
+      if (!document.getElementById('cast-formula')) {
+        Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes('公式管理')).click();
+      }
+      const wait = async f => { for (let n=0;n<100;n++) { if(f()) return true; await new Promise(r=>setTimeout(r,50)); } return false; };
+      await wait(() => document.getElementById('cast-formula')?.value);
+      const input=document.getElementById('cast-formula');
+      const defaults=input.value==='interval / (1 + speed / 100)' && document.getElementById('cast-base').value==='10000';
+      input.value='interval / 2'; input.dispatchEvent(new Event('input',{bubbles:true}));
+      const preview=document.getElementById('cast-preview').innerText.includes('5.00s');
+      document.getElementById('cast-save').click();
+      const saved=await wait(()=>document.getElementById('cast-state').innerText.includes('已保存'));
+      const cfg=await fetch('/api/admin/world',{credentials:'same-origin'}).then(r=>r.json());
+      document.getElementById('cast-reset').click();
+      const reset=await wait(()=>input.value==='interval / (1 + speed / 100)' && document.getElementById('cast-state').innerText.includes('已恢复默认'));
+      return {defaults,preview,saved:saved&&cfg.castFormula==='interval / 2',reset};
+    })()`);
+    check('公式管理默认 10s 与可编辑抛竿公式回显', castEditor.defaults, JSON.stringify(castEditor));
+    check('抛竿公式编辑后本地预览与保存生效', castEditor.preview && castEditor.saved, JSON.stringify(castEditor));
+    check('抛竿公式可恢复默认', castEditor.reset, JSON.stringify(castEditor));
     const adminWiki = await evaluate(admin, `(async () => {
       const button = Array.from(document.querySelectorAll('.nav-item')).find(x => x.textContent.includes('Wiki攻略'));
       if (button) button.click();
