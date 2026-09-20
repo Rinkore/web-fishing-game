@@ -15,7 +15,7 @@ func TestNodeOracles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"legacy-rules.json", "native-rules.json", "economy-rules.json", "workshop-rules.json", "mall-rules.json"} {
+	for _, name := range []string{"legacy-rules.json", "native-rules.json", "economy-rules.json", "workshop-rules.json", "mall-rules.json", "chest-rules.json", "sea-rules.json"} {
 		data, err := os.ReadFile("../../testdata/" + name)
 		if err != nil {
 			t.Fatal(err)
@@ -47,6 +47,32 @@ func TestNodeOracles(t *testing.T) {
 				}
 				var got any
 				switch tc.Function {
+				case "voyageZone":
+					n, seed := 0, int(Number(args[1]))
+					rng := func() float64 { v := float64((n*37+seed)%101) / 101; n++; return v }
+					zone := c.VoyageZone(int64(Number(args[0])), rng)
+					got = map[string]any{"zone": zone, "draws": n}
+				case "seaQuests":
+					n, seed := 0, int(Number(args[0]))
+					rng := func() float64 { v := float64((n*37+seed)%101) / 101; n++; return v }
+					quests := c.RollSeaQuests(rng)
+					ids := []string{}
+					for _, q := range quests {
+						ids = append(ids, q.ID)
+					}
+					got = map[string]any{"ids": ids, "draws": n}
+				case "chest":
+					ch, ok := c.Chest(args[0].(string))
+					if !ok {
+						t.Fatal("chest missing")
+					}
+					n, seed := 0, int(Number(args[4]))
+					rng := func() float64 { v := float64((n*37+seed)%101) / 101; n++; return v }
+					id, ok := c.OpenChest(ch, args[1].(string), args[2].(string), c.ComponentConfig(), args[3].(bool), rng)
+					if !ok {
+						t.Fatal("chest failed")
+					}
+					got = map[string]any{"id": id, "draws": n}
 				case "mallCycle":
 					location, err := time.LoadLocation(args[2].(string))
 					if err != nil {

@@ -43,6 +43,44 @@ func (c *Catalog) MallConfig() MallConfig {
 	return cfg
 }
 
+// wallTime follows JavaScript Date's compatible disambiguation: choose the
+// earlier instant in a fold and advance through a gap. Go time.Date may choose
+// the opposite side of a daylight-saving transition.
+func wallTime(y int, m time.Month, d, h, minute int, loc *time.Location) time.Time {
+	wall := time.Date(y, m, d, h, minute, 0, 0, time.UTC)
+	offsets := map[int]bool{}
+	for _, delta := range []time.Duration{-36 * time.Hour, 0, 36 * time.Hour} {
+		_, offset := wall.Add(delta).In(loc).Zone()
+		offsets[offset] = true
+	}
+	var exact, forward time.Time
+	var distance time.Duration
+	for offset := range offsets {
+		candidate := wall.Add(-time.Duration(offset) * time.Second).In(loc)
+		cy, cm, cd := candidate.Date()
+		mapped := time.Date(cy, cm, cd, candidate.Hour(), candidate.Minute(), 0, 0, time.UTC)
+		gap := mapped.Sub(wall)
+		if gap == 0 && (exact.IsZero() || candidate.Before(exact)) {
+			exact = candidate
+		}
+		if gap > 0 && (forward.IsZero() || gap < distance) {
+			forward = candidate
+			distance = gap
+		}
+	}
+	if !exact.IsZero() {
+		return exact
+	}
+	if !forward.IsZero() {
+		return forward
+	}
+	return time.Date(y, m, d, h, minute, 0, 0, loc)
+}
+func nextWallDay(t time.Time, days int) time.Time {
+	y, m, d := t.Date()
+	return wallTime(y, m, d+days, t.Hour(), t.Minute(), t.Location())
+}
+
 // MallCycleOf uses calendar days in the configured server timezone, not 24h periods.
 func MallCycleOf(refresh string, now time.Time) MallCycle {
 	h, m, ok := ParseRefreshTime(refresh)
@@ -50,9 +88,9 @@ func MallCycleOf(refresh string, now time.Time) MallCycle {
 		h, m = 4, 0
 	}
 	y, month, day := now.Date()
-	start := time.Date(y, month, day, h, m, 0, 0, now.Location())
+	start := wallTime(y, month, day, h, m, now.Location())
 	if start.After(now) {
-		start = start.AddDate(0, 0, -1)
+		start = nextWallDay(start, -1)
 	}
-	return MallCycle{Key: start.Format("2006-01-02"), StartAt: start.UnixMilli(), NextAt: start.AddDate(0, 0, 1).UnixMilli(), RefreshTime: fmt.Sprintf("%d:%02d", h, m)}
+	return MallCycle{Key: start.Format("2006-01-02"), StartAt: start.UnixMilli(), NextAt: nextWallDay(start, 1).UnixMilli(), RefreshTime: fmt.Sprintf("%d:%02d", h, m)}
 }

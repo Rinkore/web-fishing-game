@@ -1,16 +1,13 @@
 package workshop
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"strconv"
-	"strings"
 
 	"fishing.local/server/internal/modules/assets"
+	"fishing.local/server/internal/modules/randomintent"
 	"fishing.local/server/internal/rules"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,34 +34,7 @@ type Command struct {
 
 func (s *Service) ruleVersion() string { return s.catalog.Version + ":" + s.catalog.SourceSHA256 }
 func (s *Service) intent(ctx context.Context, actor int64, key string, input any) ([]byte, error) {
-	if actor < 1 || len(key) < 1 || len(key) > 128 || strings.HasPrefix(key, "fishing:") || strings.HasPrefix(key, "market:") || strings.HasPrefix(key, "trade:") {
-		return nil, assets.ErrInvalid
-	}
-	for _, r := range key {
-		if r < 33 || r > 126 {
-			return nil, assets.ErrInvalid
-		}
-	}
-	body, err := json.Marshal(input)
-	if err != nil || len(body) > 16384 {
-		return nil, assets.ErrInvalid
-	}
-	hash := sha256.Sum256(body)
-	seed := make([]byte, 32)
-	if _, err := rand.Read(seed); err != nil {
-		return nil, assets.ErrUnavailable
-	}
-	if _, err := s.pool.Exec(ctx, `INSERT INTO fishing.random_intents(owner_id,request_key,input_hash,private_seed) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, actor, key, hash[:], seed); err != nil {
-		return nil, assets.ErrUnavailable
-	}
-	var storedHash, storedSeed []byte
-	if err := s.pool.QueryRow(ctx, `SELECT input_hash,private_seed FROM fishing.random_intents WHERE owner_id=$1 AND request_key=$2`, actor, key).Scan(&storedHash, &storedSeed); err != nil {
-		return nil, assets.ErrUnavailable
-	}
-	if !bytes.Equal(hash[:], storedHash) {
-		return nil, assets.ErrKeyConflict
-	}
-	return storedSeed, nil
+	return randomintent.Load(ctx, s.pool, actor, key, input)
 }
 func signature(ctx context.Context, t *assets.Transaction, owner, id int64) (string, error) {
 	var attributes []byte

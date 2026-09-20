@@ -3,6 +3,7 @@ package market
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -20,6 +21,61 @@ type orderFixture struct {
 	ctx     context.Context
 	a, b, c int64
 	seq     int
+}
+
+func TestIntegrationExpiredOrderRetryAndReservedKeys(t *testing.T) {
+	f := orderSetup(t)
+	first := f.list(OrderRequest{ItemID: "ore", Quantity: 3, UnitPrice: 10, Hours: 6})
+	second := f.list(OrderRequest{ItemID: "ore", Quantity: 4, UnitPrice: 10, Hours: 6})
+	if _, err := f.s.CloseOrder(f.ctx, f.a, first, fmt.Sprintf("market:expire:%d", first), false); !errors.Is(err, assets.ErrInvalid) {
+		t.Fatal("prototype expiry key occupied")
+	}
+	if _, err := f.s.CloseOrder(f.ctx, f.a, first, fmt.Sprintf("market:order-expire:%d", first), false); !errors.Is(err, assets.ErrInvalid) {
+		t.Fatal("automatic expiry key occupied")
+	}
+	// Advance only this isolated fixture's immutable deadlines, restoring the guard before use.
+	tx, err := f.db.Admin.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(f.ctx)
+	if _, err := tx.Exec(f.ctx, `ALTER TABLE fishing.market_orders DISABLE TRIGGER guard_market_order`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(f.ctx, `UPDATE fishing.market_orders SET expires_at=clock_timestamp()-interval '1 second' WHERE id=ANY($1::bigint[])`, []int64{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(f.ctx, `ALTER TABLE fishing.market_orders ENABLE TRIGGER guard_market_order`); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Admin.Exec(f.ctx, fmt.Sprintf(`CREATE FUNCTION fishing.fail_first_expiry() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id=%d AND NEW.state='expired' THEN RAISE EXCEPTION 'injected'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_first_expiry BEFORE UPDATE ON fishing.market_orders FOR EACH ROW EXECUTE FUNCTION fishing.fail_first_expiry()`, first)); err != nil {
+		t.Fatal(err)
+	}
+	after, err := f.s.ExpireOrders(f.ctx, 0)
+	if err == nil || after != 0 {
+		t.Fatal("earlier expiry failure masked", after, err)
+	}
+	if f.num(`SELECT count(*) FROM fishing.market_orders WHERE state='open'`) != 2 {
+		t.Fatal("expiry scan skipped failed candidate")
+	}
+	if _, err := f.db.Admin.Exec(f.ctx, `DROP TRIGGER fail_first_expiry ON fishing.market_orders`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.ExpireOrders(f.ctx, 0); err != nil {
+		t.Fatal("expiry retry", err)
+	}
+	if f.num(`SELECT count(*) FROM fishing.market_orders WHERE state='expired'`) != 2 || f.num(`SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id='ore' AND tier='normal'`, f.a) != 100 {
+		t.Fatal("expiry inventory return")
+	}
+	if _, err := f.s.ExpireOrders(f.ctx, 0); err != nil {
+		t.Fatal(err)
+	}
+	if f.num(`SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id='ore' AND tier='normal'`, f.a) != 100 {
+		t.Fatal("double expiry return")
+	}
 }
 
 func orderSetup(t *testing.T) *orderFixture {

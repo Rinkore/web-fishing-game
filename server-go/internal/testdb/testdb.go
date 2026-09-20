@@ -104,6 +104,24 @@ func New(t *testing.T, migrate bool) DB {
 		t.Fatal("cannot grant trade permissions")
 	}
 	appConfig := c.Copy()
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,UPDATE ON fishing.party_guard TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE ON fishing.parties TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.party_members,fishing.party_invites TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.party_events TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant party permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_quest_boards TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.sea_quest_roots TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant quest permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_zones TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant voyage permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_players TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.sea_progress_entries TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant sea permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT ON fishing.feature_releases TO "+quote(role)+"; GRANT SELECT,UPDATE ON fishing.feature_head TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant feature publication permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.economy_prices,fishing.autosell_settings TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.shop_sales TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant economy permissions")
+	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.friend_relations TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant friend permissions")
 	}

@@ -20,6 +20,16 @@ type authProof struct {
 func WithSession(ctx context.Context, actor int64, hash [32]byte, admin bool) context.Context {
 	return context.WithValue(ctx, authContextKey{}, authProof{actor, hash, admin})
 }
+
+// RequireAdmin rejects missing and player-realm proofs. Run additionally
+// revalidates the proof against current database state while holding the guard.
+func RequireAdmin(ctx context.Context, actor int64) error {
+	p, ok := ctx.Value(authContextKey{}).(authProof)
+	if !ok || p.actor != actor || !p.admin {
+		return ErrUnauthenticated
+	}
+	return nil
+}
 func checkSession(ctx context.Context, tx pgx.Tx, actor int64) error {
 	p, ok := ctx.Value(authContextKey{}).(authProof)
 	if !ok {

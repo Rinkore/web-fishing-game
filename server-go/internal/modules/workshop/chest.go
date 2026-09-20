@@ -23,7 +23,7 @@ func (s *Service) Chest(ctx context.Context, r ChestCommand) (assets.Result, err
 	if r.Action != "craft" && r.Action != "open" {
 		return assets.Result{}, assets.ErrInvalid
 	}
-	if r.Action == "craft" && (r.Quantity < 1 || r.Quantity > 100) {
+	if r.Action == "craft" && (r.Quantity < 1 || r.Quantity > 99) {
 		return assets.Result{}, assets.ErrInvalid
 	}
 	if r.Action == "open" && r.Quantity != 1 {

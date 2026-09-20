@@ -116,7 +116,10 @@ func (s *Service) executeOnce(ctx context.Context, c command, apply func(context
 		if err = tx.QueryRow(ctx, `INSERT INTO fishing.asset_operations(actor_id,request_key,kind,rule_version) VALUES ($1,$2,$3,$4) RETURNING id`, c.actor, c.key, c.kind, c.rule).Scan(&unit.op); err != nil {
 			return Result{}, err
 		}
-		result, err = apply(ctx, unit)
+		err = featureAllowed(ctx, tx, c.kind)
+		if err == nil {
+			result, err = apply(ctx, unit)
+		}
 		var rejected rejection
 		if errors.As(err, &rejected) {
 			if _, err = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT asset_effects"); err != nil {

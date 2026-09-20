@@ -9,12 +9,14 @@ import (
 	"net"
 	"sync"
 
+	"fishing.local/server/internal/modules/economy"
 	"fishing.local/server/internal/modules/fishing"
 	"fishing.local/server/internal/modules/market"
 	"fishing.local/server/internal/modules/trade"
 	"fishing.local/server/internal/platform/config"
 	"fishing.local/server/internal/platform/httpserver"
 	"fishing.local/server/internal/platform/postgres"
+	"fishing.local/server/internal/rules"
 	"fishing.local/server/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -53,12 +55,17 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 	}
 	defer listener.Close()
 	health, handler := httpserver.New(dependencies{pool}, c.ProbeTimeout, gateway.New(pool, c.MFAEncryptionKey, c.Location))
+	catalog, err := rules.Default()
+	if err != nil {
+		return errors.New("default catalog unavailable")
+	}
 	work, stopWork := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	workers.Add(3)
+	workers.Add(4)
 	go func() { defer workers.Done(); fishing.New(pool).Run(work, logger) }()
 	go func() { defer workers.Done(); market.New(pool).RunExpiry(work, logger) }()
 	go func() { defer workers.Done(); trade.New(pool).Run(work, logger) }()
+	go func() { defer workers.Done(); economy.New(pool, catalog).Run(work, logger) }()
 	defer func() { stopWork(); workers.Wait() }()
 	logger.Info("server_started", "address", listener.Addr().String(), "role", c.Role, "node_id", c.NodeID, "stage", "infrastructure")
 	return httpserver.Serve(ctx, listener, health, handler, c.ShutdownTimeout, logger)

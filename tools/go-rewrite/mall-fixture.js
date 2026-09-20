@@ -8,7 +8,7 @@ const previous = process.env.TZ;
 try {
   for (const zone of ['UTC', 'Asia/Shanghai', 'America/New_York']) {
     process.env.TZ = zone;
-    for (const refresh of ['04:00', '0:0', ' 23 : 59 ', 'invalid', '24:00']) {
+    for (const refresh of ['04:00', '0:0', ' 23 : 59 ', 'invalid', '24:00', '02:30', '01:30']) {
       for (const at of ['2026-01-01T00:00:00Z', '2026-09-20T19:59:59.999Z', '2026-09-20T20:00:00Z', '2026-03-08T07:00:00Z', '2026-11-01T06:00:00Z']) {
         const now = Date.parse(at);
         cases.push({ id: `mall-${cases.length}`, fn: 'mallCycle', args: [refresh, now, zone], expected: D.mallCycleOf(refresh, now) });
