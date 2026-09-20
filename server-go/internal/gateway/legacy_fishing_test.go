@@ -99,6 +99,12 @@ func TestIntegrationLegacyFishingLifecycle(t *testing.T) {
 				if m["version"] == nil || m["version"] == "" {
 					t.Fatalf("init missing version: %v", m)
 				}
+				if _, ok := m["playersTotal"]; !ok {
+					t.Fatalf("init missing playersTotal: %v", m)
+				}
+				if _, ok := m["grounds"]; !ok {
+					t.Fatalf("init missing grounds: %v", m)
+				}
 				break
 			}
 		}
@@ -127,7 +133,8 @@ func TestIntegrationLegacyFishingLifecycle(t *testing.T) {
 	// The SSE loop should emit a catch event within its 250ms tick.
 	deadline := time.Now().Add(3 * time.Second)
 	sawCatch := false
-	for time.Now().Before(deadline) && !sawCatch {
+	sawAssets := false
+	for time.Now().Before(deadline) && !(sawCatch && sawAssets) {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			continue
@@ -138,14 +145,23 @@ func TestIntegrationLegacyFishingLifecycle(t *testing.T) {
 				sawCatch = true
 				entry := m["entry"].(map[string]any)
 				item := entry["item"].(map[string]any)
-				if item["id"] != "crucian" || item["name"] == "" {
+				if item["id"] != "crucian" || item["name"] == "" || entry["who"] != "Fish" {
 					t.Fatalf("catch entry: %v", entry)
+				}
+			} else if err == nil && m["type"] == "assets" {
+				sawAssets = true
+				invAdd := m["invAdd"].(map[string]any)
+				if invAdd["crucian"] != float64(1) {
+					t.Fatalf("assets invAdd: %v", m)
 				}
 			}
 		}
 	}
 	if !sawCatch {
 		t.Fatal("no catch event observed")
+	}
+	if !sawAssets {
+		t.Fatal("no assets event observed")
 	}
 
 	if code, _ := post("/api/fishing/stop", "{}", token); code != 200 {

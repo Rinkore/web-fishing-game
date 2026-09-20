@@ -165,4 +165,75 @@ func TestIntegrationLegacyProfileShape(t *testing.T) {
 	if entry["count"] != float64(6) || entry["tier"] != "L" {
 		t.Fatalf("legacy codex mapping: %v", entry)
 	}
+
+	code, shop := get("/shop")
+	if code != 200 {
+		t.Fatalf("legacy shop: %d", code)
+	}
+	if _, ok := shop["crucian"]; !ok {
+		t.Fatalf("legacy shop missing crucian: %v", shop)
+	}
+	row := shop["crucian"].(map[string]any)
+	if row["base"] != float64(8) || row["price"] == nil {
+		t.Fatalf("legacy shop row: %v", row)
+	}
+
+	code, hist := get("/api/shop/history?id=crucian")
+	if code != 200 || hist["id"] != "crucian" || hist["base"] != float64(8) {
+		t.Fatalf("legacy shop history: %d %v", code, hist)
+	}
+	if code, _ := get("/api/shop/history?id=no_such_item"); code != 404 {
+		t.Fatalf("unknown shop history item: %d", code)
+	}
+
+	code, banner := get("/api/banner")
+	if code != 200 || len(banner["banners"].([]any)) != 0 || banner["seq"] != float64(1) {
+		t.Fatalf("legacy banner: %d %v", code, banner)
+	}
+
+	// Insert two players' catches to exercise records/top shapes.
+	if _, err := db.Admin.Exec(context.Background(), `INSERT INTO fishing.command_results(actor_id,request_key,request_hash) VALUES($1,'rec-a',decode(repeat('11',32),'hex'))`, session.AccountID); err != nil {
+		t.Fatal(err)
+	}
+	var opA int64
+	if err := db.Admin.QueryRow(context.Background(), `INSERT INTO fishing.asset_operations(actor_id,request_key,kind,rule_version) VALUES($1,'rec-a','fishing_settle','test-v1') RETURNING id`, session.AccountID).Scan(&opA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Admin.Exec(context.Background(), `INSERT INTO fishing.catch_records(operation_id,ordinal,owner_id,item_id,size,ground_id,spot_id,caught_at) VALUES($1,1,$2,'crucian',30,'map','dock',clock_timestamp())`, opA, session.AccountID); err != nil {
+		t.Fatal(err)
+	}
+
+	code, records := get("/api/records")
+	if code != 200 {
+		t.Fatalf("legacy records: %d", code)
+	}
+	recMap := records["records"].(map[string]any)
+	crucianRec := recMap["crucian"].(map[string]any)
+	if crucianRec["name"] != "鲫鱼" || crucianRec["size"] != float64(30) || crucianRec["who"] == "" {
+		t.Fatalf("legacy records entry: %v", crucianRec)
+	}
+	if records["globalMax"] == nil {
+		t.Fatal("legacy records globalMax missing")
+	}
+
+	code, top := get("/api/records/top?id=crucian&range=all")
+	if code != 200 {
+		t.Fatalf("legacy records top: %d", code)
+	}
+	topList := top["top"].([]any)
+	if len(topList) != 1 {
+		t.Fatalf("legacy records top list: %v", topList)
+	}
+	firstTop := topList[0].(map[string]any)
+	if firstTop["who"] == "" || firstTop["size"] != float64(30) || firstTop["self"] != true {
+		t.Fatalf("legacy records top entry: %v", firstTop)
+	}
+	if top["personal"] == nil {
+		t.Fatal("legacy records top personal missing")
+	}
+
+	code, features := get("/api/features")
+	if code != 200 || features["features"] == nil {
+		t.Fatalf("legacy features: %d %v", code, features)
+	}
 }

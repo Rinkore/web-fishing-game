@@ -152,7 +152,7 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-tick.C:
-			next, entries, err := a.settledCatches(r.Context(), c, session.AccountID, cursor)
+			next, entries, err := a.settledCatches(r.Context(), c, session.AccountID, session.Name, cursor)
 			if err != nil {
 				return
 			}
@@ -190,19 +190,22 @@ func (a *API) legacyInit(r *http.Request, c *rules.Catalog, session identity.Ses
 	}
 	var version string
 	_ = json.Unmarshal(c.Constants["VERSION"], &version)
+	playersTotal := a.onlinePlayers(r.Context())
+	grounds := a.groundCounts(r.Context())
+	spotCounts := a.spotCounts(r.Context())
 	init := map[string]any{
 		"type":           "init",
 		"you":            strconv.FormatInt(session.AccountID, 10),
 		"feed":           []any{},
 		"features":       profile["features"],
 		"featureOrder":   profile["featureOrder"],
-		"playersTotal":   0,
+		"playersTotal":   playersTotal,
 		"recordsVersion": 0,
 		"shop":           map[string]any{},
 		"marketRevision": 0,
 		"marketTotal":    0,
-		"grounds":        map[string]any{},
-		"spotCounts":     map[string]any{},
+		"grounds":        grounds,
+		"spotCounts":     spotCounts,
 		"trade":          nil,
 		"codex":          codex,
 		"catchCount":     catchCount,
@@ -220,13 +223,53 @@ func (a *API) legacyInit(r *http.Request, c *rules.Catalog, session identity.Ses
 	return init
 }
 
+func (a *API) onlinePlayers(ctx context.Context) int64 {
+	var n int64
+	_ = a.pool.QueryRow(ctx, `SELECT count(DISTINCT owner_id) FROM fishing.gateway_streams WHERE expires_at>clock_timestamp()`).Scan(&n)
+	return n
+}
+
+func (a *API) groundCounts(ctx context.Context) map[string]int64 {
+	out := map[string]int64{}
+	rows, err := a.pool.Query(ctx, `SELECT ground_id,count(*) FROM fishing.native_fishing_sessions WHERE state='active' GROUP BY ground_id`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var n int64
+		if rows.Scan(&id, &n) == nil {
+			out[id] = n
+		}
+	}
+	return out
+}
+
+func (a *API) spotCounts(ctx context.Context) map[string]int64 {
+	out := map[string]int64{}
+	rows, err := a.pool.Query(ctx, `SELECT ground_id,spot_id,count(*) FROM fishing.native_fishing_sessions WHERE state='active' GROUP BY ground_id,spot_id`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ground, spot string
+		var n int64
+		if rows.Scan(&ground, &spot, &n) == nil {
+			out[ground+":"+spot] = n
+		}
+	}
+	return out
+}
+
 func (a *API) lastCatchOperation(ctx context.Context, owner int64) int64 {
 	var last int64
 	_ = a.pool.QueryRow(ctx, `SELECT COALESCE(max(operation_id),0) FROM fishing.catch_records WHERE owner_id=$1`, owner).Scan(&last)
 	return last
 }
 
-func (a *API) settledCatches(ctx context.Context, c *rules.Catalog, owner, after int64) (int64, []map[string]any, error) {
+func (a *API) settledCatches(ctx context.Context, c *rules.Catalog, owner int64, name string, after int64) (int64, []map[string]any, error) {
 	rows, err := a.pool.Query(ctx, `SELECT cr.operation_id,cr.item_id,cr.size,cr.ground_id,cr.spot_id,cr.caught_at,cr.ordinal
  FROM fishing.catch_records cr WHERE cr.owner_id=$1 AND cr.operation_id>$2 ORDER BY cr.operation_id,cr.ordinal LIMIT 100`, owner, after)
 	if err != nil {
@@ -235,6 +278,10 @@ func (a *API) settledCatches(ctx context.Context, c *rules.Catalog, owner, after
 	defer rows.Close()
 	next := after
 	events := []map[string]any{}
+	groundNames := map[string]string{}
+	for _, g := range c.Grounds() {
+		groundNames[g.ID] = g.Name
+	}
 	for rows.Next() {
 		var op int64
 		var itemID, ground, spot string
@@ -248,33 +295,32 @@ func (a *API) settledCatches(ctx context.Context, c *rules.Catalog, owner, after
 			next = op
 		}
 		it, _ := c.Item(itemID)
+		tier := c.SizeTier(itemID, size)
 		entry := map[string]any{
 			"t":      caughtAt.UnixMilli(),
-			"who":    "",
-			"item":   map[string]any{"id": itemID, "name": it.Name, "kind": it.Kind, "rarity": it.Rarity, "size": size, "tier": c.SizeTier(itemID, size)},
-			"ground": ground,
+			"who":    name,
+			"item":   map[string]any{"id": itemID, "name": it.Name, "kind": it.Kind, "rarity": it.Rarity, "size": size, "tier": tier},
+			"ground": groundNames[ground],
 			"spot":   spot,
 			"size":   size,
 		}
 		events = append(events, map[string]any{"type": "catch", "entry": entry})
-		events = append(events, a.legacyCodexAdd(ctx, c, owner, itemID))
+		events = append(events, a.legacyCodexAdd(ctx, c, owner, itemID, tier))
+		events = append(events, a.legacyAssetsDelta(ctx, c, owner, itemID, tier))
 	}
 	if err := rows.Err(); err != nil {
 		return after, nil, err
 	}
-	if len(events) > 0 {
-		events = append(events, a.legacyAssetsSnapshot(ctx, c, owner))
-	}
 	return next, events, nil
 }
 
-func (a *API) legacyCodexAdd(ctx context.Context, c *rules.Catalog, owner int64, itemID string) map[string]any {
+func (a *API) legacyCodexAdd(ctx context.Context, c *rules.Catalog, owner int64, itemID, sizeTier string) map[string]any {
 	var count int64
 	var minSize, maxSize *float64
 	var tier string
 	err := a.pool.QueryRow(ctx, `SELECT count,min_size,max_size,best_tier FROM fishing.player_codex WHERE owner_id=$1 AND item_id=$2`, owner, itemID).Scan(&count, &minSize, &maxSize, &tier)
 	if err != nil {
-		return map[string]any{"type": "codexAdd", "id": itemID, "add": 1}
+		return map[string]any{"type": "codexAdd", "id": itemID, "add": 1, "tier": sizeTierLabel(sizeTier)}
 	}
 	var legacyTier any
 	switch tier {
@@ -292,10 +338,25 @@ func (a *API) legacyCodexAdd(ctx context.Context, c *rules.Catalog, owner int64,
 	}
 }
 
-func (a *API) legacyAssetsSnapshot(ctx context.Context, c *rules.Catalog, owner int64) map[string]any {
+func (a *API) legacyAssetsDelta(ctx context.Context, c *rules.Catalog, owner int64, itemID, sizeTier string) map[string]any {
 	var coins, catchCount int64
 	_ = a.pool.QueryRow(ctx, `SELECT w.coins,p.catch_count FROM fishing.wallets w JOIN fishing.player_state p ON p.account_id=w.account_id WHERE w.account_id=$1`, owner).Scan(&coins, &catchCount)
-	return map[string]any{"type": "assets", "coins": coins, "catchCount": catchCount, "invAdd": map[string]any{}, "bigAdd": map[string]any{}}
+	invAdd := map[string]int64{itemID: 1}
+	var bigAdd any
+	if label := sizeTierLabel(sizeTier); label != "" {
+		bigAdd = map[string]any{itemID: map[string]int64{label: 1}}
+	}
+	return map[string]any{"type": "assets", "coins": coins, "catchCount": catchCount, "invAdd": invAdd, "bigAdd": bigAdd}
+}
+
+func sizeTierLabel(tier string) string {
+	switch tier {
+	case "large":
+		return "L"
+	case "giant":
+		return "G"
+	}
+	return ""
 }
 
 func randomStreamID() string {
