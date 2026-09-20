@@ -72,7 +72,7 @@ func (s *Service) Run(ctx context.Context, c Command, apply func(context.Context
 	case "sea_quests_refresh", "sea_quest_claim":
 	case "sea_voyage", "sea_anchor":
 	case "ship_upgrade", "chart_craft":
-	case "feature_publish":
+	case "feature_publish", "catalog_publish":
 	case "shop_sell", "autosell_config", "autosell_run":
 	case "mall_buy", "friend_change":
 	case "fishing_connection", "fishing_start", "fishing_stop", "fishing_settle", "market_list", "market_buy", "market_close", "trade_invite", "trade_respond", "trade_offer", "trade_confirm", "trade_cancel", "trade_expire", "workshop_smelt", "workshop_recast", "workshop_forge", "chest_craft", "chest_open":

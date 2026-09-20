@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fishing.local/server/internal/modules/assets"
+	"fishing.local/server/internal/modules/catalog"
 	"fmt"
 	"log/slog"
 	"time"
@@ -53,7 +54,13 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 		case <-ticker.C:
 		}
 		work, cancel := context.WithTimeout(ctx, 5*time.Second)
-		next, err := s.Sweep(work, after)
+		c, _, err := catalog.Current(work, s.pool)
+		next := after
+		if err == nil {
+			copy := *s
+			copy.catalog = c
+			next, err = copy.Sweep(work, after)
+		}
 		cancel()
 		after = next
 		if err != nil && ctx.Err() == nil && time.Since(warned) > 5*time.Second {

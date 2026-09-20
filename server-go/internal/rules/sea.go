@@ -3,6 +3,7 @@ package rules
 import "strconv"
 
 type SeaConfig struct {
+	Events         SeaEvents  `json:"events"`
 	ChartCost      int64      `json:"chartCost"`
 	ZoneTTL        int64      `json:"zoneTtlMs"`
 	ZoneMax        int        `json:"zoneMax"`

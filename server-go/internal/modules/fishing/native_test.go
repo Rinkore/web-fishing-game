@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"sync"
 	"testing"
-	"time"
 
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/workshop"
@@ -130,7 +129,7 @@ func (f *nativeFixture) reconcile() {
 	for _, q := range []string{
 		`SELECT count(*) FROM fishing.inventory_stacks s WHERE quantity<>(SELECT COALESCE(sum(delta),0) FROM fishing.inventory_entries e WHERE e.owner_id=s.owner_id AND e.item_id=s.item_id AND e.tier=s.tier)`,
 		`SELECT count(*) FROM fishing.asset_operations o WHERE NOT EXISTS(SELECT 1 FROM fishing.outbox_events e WHERE e.operation_id=o.id)`,
-		`SELECT count(*) FROM fishing.player_state p WHERE catch_count<>(SELECT COALESCE(sum(caught),0) FROM fishing.native_fishing_settlements s JOIN fishing.native_fishing_sessions n ON n.id=s.session_id WHERE n.owner_id=p.account_id)`,
+		`SELECT count(*) FROM fishing.player_state p WHERE catch_count<>(SELECT COALESCE(sum(caught),0) FROM fishing.catch_segments s JOIN fishing.native_fishing_sessions n ON n.id=s.session_id WHERE n.owner_id=p.account_id)`,
 		`SELECT count(*) FROM fishing.command_results WHERE result IS NULL`,
 		`SELECT count(*) FROM fishing.outbox_events WHERE payload::text LIKE '%private_seed%' OR payload::text LIKE '%frames%'`,
 	} {
@@ -354,7 +353,7 @@ func TestIntegrationNativeEmptyStopRaceAndLimits(t *testing.T) {
 	}
 	f.reconcile()
 	connection := f.connect()
-	for spot, status := range map[string]string{"ice": "spot_locked", "shore": "sea_fishing_pending", "reef": "sea_fishing_pending", "absent": "unknown_spot"} {
+	for spot, status := range map[string]string{"ice": "spot_locked", "shore": "started", "reef": "ship_level_required", "absent": "unknown_spot"} {
 		r, e = f.s.Start(f.ctx, NativeStart{ActorID: f.owner, RequestKey: f.next(), ConnectionGeneration: connection, GroundID: "map", SpotID: spot})
 		f.want(r, e, status)
 	}
@@ -382,17 +381,40 @@ func TestIntegrationNativeEmptyStopRaceAndLimits(t *testing.T) {
 	}
 }
 
-func TestIntegrationNativeTimeoutHasNoPartialRewards(t *testing.T) {
+func TestIntegrationNativeUnboundedChainPersistsAndResumes(t *testing.T) {
 	f := nativeSetup(t)
 	f.spot([]rules.LootEntry{{Pick: "fish:crucian", Weight: 1}}, []rules.Buff{{Type: "double", Value: 1e20}}, 100)
 	c := f.start()
-	ctx, cancel := context.WithTimeout(f.ctx, 50*time.Millisecond)
-	defer cancel()
-	if _, err := f.s.Settle(ctx, c); err == nil {
-		t.Fatal("unbounded chain unexpectedly committed")
+	r, e := f.s.Settle(f.ctx, c)
+	f.want(r, e, "progressed")
+	before := f.num(`SELECT catch_count FROM fishing.player_state WHERE account_id=$1`, f.owner)
+	draws := f.num(`SELECT draws FROM fishing.catch_continuations`)
+	if before <= 3 || f.num(`SELECT next_seq FROM fishing.native_fishing_sessions`) != 1 {
+		t.Fatal("chain was truncated")
 	}
-	if f.num(`SELECT count(*) FROM fishing.native_fishing_settlements`) != 0 || f.num(`SELECT count(*) FROM fishing.inventory_stacks`) != 0 || f.num(`SELECT count(*) FROM fishing.player_codex`) != 0 || f.num(`SELECT next_seq FROM fishing.native_fishing_sessions`) != 1 {
-		t.Fatal("timeout left partial state")
+	// Simulate an interrupted second segment after effects have been attempted.
+	f.exec(`CREATE FUNCTION fishing.fail_segment() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END $$; CREATE TRIGGER fail_segment BEFORE INSERT ON fishing.catch_segments FOR EACH ROW EXECUTE FUNCTION fishing.fail_segment()`)
+	if _, e = f.s.Settle(f.ctx, c); e == nil {
+		t.Fatal("failure accepted")
+	}
+	if f.num(`SELECT catch_count FROM fishing.player_state WHERE account_id=$1`, f.owner) != before || f.num(`SELECT draws FROM fishing.catch_continuations`) != draws {
+		t.Fatal("failed segment advanced state")
+	}
+	f.exec(`DROP TRIGGER fail_segment ON fishing.catch_segments`)
+	// New service object has no in-memory execution state.
+	f.s = NewNative(f.db.App, f.s.catalog)
+	r, e = f.s.Settle(f.ctx, c)
+	f.want(r, e, "progressed")
+	if f.num(`SELECT catch_count FROM fishing.player_state WHERE account_id=$1`, f.owner) <= before || f.num(`SELECT part FROM fishing.catch_continuations`) != 2 {
+		t.Fatal("chain did not resume")
+	}
+	before = f.num(`SELECT catch_count FROM fishing.player_state WHERE account_id=$1`, f.owner)
+	r, e = f.s.Stop(f.ctx, Stop{ActorID: f.owner, RequestKey: f.next(), Generation: c.Generation})
+	f.want(r, e, "stopped")
+	r, e = f.s.Settle(f.ctx, c)
+	f.want(r, e, "stale_cycle")
+	if f.num(`SELECT catch_count FROM fishing.player_state WHERE account_id=$1`, f.owner) != before {
+		t.Fatal("stopped chain changed rewards")
 	}
 	f.reconcile()
 }

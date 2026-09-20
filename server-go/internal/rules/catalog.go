@@ -31,6 +31,7 @@ type Catalog struct {
 	Constants    map[string]json.RawMessage `json:"constants"`
 	Defaults     map[string]json.RawMessage `json:"defaults"`
 	Items        []Item                     `json:"items"`
+	Runtime      map[string]any             `json:"runtime,omitempty"`
 	index        map[string]Item
 	fishTiers    map[string]string
 }

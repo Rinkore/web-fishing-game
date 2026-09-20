@@ -4,7 +4,6 @@ import (
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/economy"
 	"fishing.local/server/internal/modules/identity"
-	"fishing.local/server/internal/rules"
 	"net/http"
 )
 
@@ -22,7 +21,7 @@ func (a *API) sell(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -43,7 +42,7 @@ func (a *API) autosellConfigure(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -63,7 +62,7 @@ func (a *API) autosellRun(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -73,7 +72,7 @@ func (a *API) autosellRun(w http.ResponseWriter, r *http.Request) {
 	assetResponse(w, res, err)
 }
 func (a *API) shopPrices(w http.ResponseWriter, r *http.Request) {
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -90,7 +89,7 @@ func (a *API) autosellSettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -114,7 +113,7 @@ func (a *API) sellEquipment(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return

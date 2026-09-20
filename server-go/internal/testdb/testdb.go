@@ -104,6 +104,15 @@ func New(t *testing.T, migrate bool) DB {
 		t.Fatal("cannot grant trade permissions")
 	}
 	appConfig := c.Copy()
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.gateway_streams TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant stream permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT ON fishing.catalog_releases TO "+quote(role)+"; GRANT SELECT,UPDATE ON fishing.catalog_head TO "+quote(role)+"; GRANT INSERT ON fishing.item_definitions TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant catalog permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.catch_continuations TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.catch_segments TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant catch continuation permissions")
+	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.native_fishing_sessions TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.native_fishing_settlements,fishing.catch_records TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant native fishing permissions")
 	}

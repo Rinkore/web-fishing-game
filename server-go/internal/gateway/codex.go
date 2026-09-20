@@ -26,7 +26,7 @@ func (a *API) codex(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
-	rows, err := a.pool.Query(r.Context(), `SELECT item_id,count,first_at FROM fishing.player_codex WHERE owner_id=$1 AND item_id>$2 ORDER BY item_id LIMIT $3`, session.AccountID, after, limit+1)
+	rows, err := a.pool.Query(r.Context(), `SELECT item_id,count,first_at,min_size,max_size,best_tier FROM fishing.player_codex WHERE owner_id=$1 AND item_id>$2 ORDER BY item_id LIMIT $3`, session.AccountID, after, limit+1)
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -38,7 +38,9 @@ func (a *API) codex(w http.ResponseWriter, r *http.Request) {
 		var id string
 		var count int64
 		var first time.Time
-		if rows.Scan(&id, &count, &first) != nil {
+		var minSize, maxSize *float64
+		var tier string
+		if rows.Scan(&id, &count, &first, &minSize, &maxSize, &tier) != nil {
 			failure(w, identity.ErrStorage)
 			return
 		}
@@ -46,7 +48,7 @@ func (a *API) codex(w http.ResponseWriter, r *http.Request) {
 			next = items[len(items)-1]["id"].(string)
 			break
 		}
-		items = append(items, map[string]any{"id": id, "count": count, "firstAt": first.UnixMilli()})
+		items = append(items, map[string]any{"id": id, "count": count, "firstAt": first.UnixMilli(), "min": minSize, "max": maxSize, "tier": tier})
 	}
 	if rows.Err() != nil {
 		failure(w, identity.ErrStorage)

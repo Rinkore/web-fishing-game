@@ -16,10 +16,11 @@ type codexDelta struct {
 	tier     string
 }
 
-func (s *NativeService) award(ctx context.Context, t *assets.Transaction, owner int64, ground, spot string, now time.Time, catches []rules.Catch) error {
+func (s *NativeService) award(ctx context.Context, t *assets.Transaction, owner int64, ground, spot string, now time.Time, catches []rules.Catch, bonuses ...rules.Catch) error {
 	stacks := map[string]assets.StackDelta{}
 	codex := map[string]*codexDelta{}
-	for i, v := range catches {
+	all := append(append([]rules.Catch(nil), catches...), bonuses...)
+	for i, v := range all {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -37,6 +38,9 @@ func (s *NativeService) award(ctx context.Context, t *assets.Transaction, owner 
 			d.Quantity++
 			stacks[key] = d
 		}
+		if v.CodexID == "" {
+			continue
+		}
 		d := codex[v.CodexID]
 		if d == nil {
 			d = &codexDelta{tier: "normal"}
@@ -50,8 +54,10 @@ func (s *NativeService) award(ctx context.Context, t *assets.Transaction, owner 
 			if d.max == nil || *v.Size > *d.max {
 				d.max = v.Size
 			}
-			if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.catch_records(operation_id,ordinal,owner_id,item_id,size,ground_id,spot_id,caught_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, t.OperationID(), i+1, owner, v.ID, *v.Size, ground, spot, now); err != nil {
-				return err
+			if i < len(catches) {
+				if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.catch_records(operation_id,ordinal,owner_id,item_id,size,ground_id,spot_id,caught_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, t.OperationID(), i+1, owner, v.ID, *v.Size, ground, spot, now); err != nil {
+					return err
+				}
 			}
 		}
 		if v.Tier == "giant" || v.Tier == "large" && d.tier != "giant" {

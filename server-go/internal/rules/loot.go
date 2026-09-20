@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"strings"
@@ -27,7 +28,14 @@ func (c *Catalog) DefaultLootConfig() LootConfig {
 	if total > 0 {
 		p = common / total
 	}
-	return LootConfig{100, 100, 100, 100, 100, 2, p}
+	m, _ := c.Runtime["drop"].(map[string]any)
+	return LootConfig{configNumber(m, "global", 100, 0, 10000), configNumber(m, "common", 100, 0, 10000), configNumber(m, "big", 100, 0, 10000), configNumber(m, "rare", 100, 0, 10000), configNumber(m, "material", 100, 0, 10000), configNumber(c.Runtime, "rareK", 2, 0, 1000), p}
+}
+func (c *Catalog) LootGroups() map[string][]LootEntry {
+	var groups map[string][]LootEntry
+	data, _ := json.Marshal(c.Runtime["lootGroups"])
+	_ = json.Unmarshal(data, &groups)
+	return groups
 }
 func (c *Catalog) FishTier(id string) string {
 	return c.fishTiers[id]
@@ -42,6 +50,9 @@ func (c *Catalog) boost(pool []LootEntry, groups map[string][]LootEntry, eff Eff
 	out := []LootEntry{}
 	cm := RareCommonMultiplier(eff["rare"], cfg.RareK)
 	for _, e := range pool {
+		if e.Pick == "component" {
+			e.Pick = "component:"
+		}
 		kind, id, ok := strings.Cut(e.Pick, ":")
 		if !ok || !finite(e.Weight) || e.Weight < 0 {
 			return nil, errors.New("invalid loot entry")

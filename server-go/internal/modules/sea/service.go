@@ -108,7 +108,7 @@ func (s *Service) Apply(ctx context.Context, r Command) (assets.Result, error) {
 			field = "level"
 			after = int64(v.Level)
 		}
-		if _, err := t.SQL().Exec(ctx, `UPDATE fishing.sea_players SET level=$2,charts=$3 WHERE owner_id=$1`, r.ActorID, v.Level, v.Charts); err != nil {
+		if _, err := t.SQL().Exec(ctx, `UPDATE fishing.sea_players SET level=$2,charts=$3,xp_notified=CASE WHEN level<>$2 THEN false ELSE xp_notified END WHERE owner_id=$1`, r.ActorID, v.Level, v.Charts); err != nil {
 			return assets.Result{}, err
 		}
 		if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.sea_progress_entries(operation_id,owner_id,field,delta,after_value) VALUES($1,$2,$3,1,$4)`, t.OperationID(), r.ActorID, field, after); err != nil {

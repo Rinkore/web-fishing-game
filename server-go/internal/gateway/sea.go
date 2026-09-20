@@ -4,7 +4,6 @@ import (
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/identity"
 	"fishing.local/server/internal/modules/sea"
-	"fishing.local/server/internal/rules"
 	"net/http"
 )
 
@@ -13,7 +12,7 @@ func (a *API) seaView(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -36,7 +35,7 @@ func (a *API) quests(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -57,7 +56,7 @@ func (a *API) questClaim(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -77,7 +76,7 @@ func (a *API) voyage(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -98,7 +97,7 @@ func (a *API) anchor(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -120,7 +119,7 @@ func (a *API) seaChange(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return

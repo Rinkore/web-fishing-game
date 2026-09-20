@@ -146,6 +146,9 @@ func jsString(v any) string {
 	}
 }
 func (c *Catalog) CastRules(input map[string]any) CastRules {
+	if input == nil {
+		input = c.Runtime
+	}
 	var castDefault, biteDefault string
 	_ = c.Constant("CAST_FORMULA_DEFAULT", &castDefault)
 	_ = c.Constant("BITE_FORMULA_DEFAULT", &biteDefault)

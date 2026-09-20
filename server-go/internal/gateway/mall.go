@@ -4,7 +4,6 @@ import (
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/identity"
 	"fishing.local/server/internal/modules/mall"
-	"fishing.local/server/internal/rules"
 	"net/http"
 )
 
@@ -21,7 +20,7 @@ func (a *API) mallBuy(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -35,7 +34,7 @@ func (a *API) mallView(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return

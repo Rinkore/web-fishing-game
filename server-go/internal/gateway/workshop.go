@@ -30,7 +30,7 @@ func (a *API) workshop(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -59,7 +59,7 @@ func (a *API) chest(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	c, err := rules.Default()
+	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
