@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 	"fishing.local/server/internal/modules/assets"
+	"fishing.local/server/internal/modules/fishing"
 	"fishing.local/server/internal/modules/mall"
 	"fishing.local/server/internal/modules/market"
 	"fishing.local/server/internal/modules/sea"
@@ -129,10 +130,31 @@ func TestIntegrationFeaturePublicationAuthorityRaceAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	expanded := flags(true)
-	expanded["sea"], expanded["party"] = false, false
+	conn, err := fishing.New(db.App).Connection(ctx, fishing.Connection{ActorID: ids[0], RequestKey: "native-connect", Action: "connect"})
+	if err != nil || conn.Status != "connected" {
+		t.Fatal(conn, err)
+	}
+	native := fishing.NewNative(db.App, c)
+	cast, err := native.Start(ctx, fishing.NativeStart{ActorID: ids[0], RequestKey: "native-start", ConnectionGeneration: conn.Generation, GroundID: "map", SpotID: "dock"})
+	if err != nil || cast.Status != "started" {
+		t.Fatal(cast, err)
+	}
+	castID, _ := strconv.ParseInt(cast.ResourceID, 10, 64)
+	expanded["sea"], expanded["party"], expanded["fishing"] = false, false, false
 	r, err = s.Publish(proofs[0], Publish{ActorID: ids[0], RequestKey: "close-sea-party", ExpectedRevision: view.Revision, Flags: expanded})
 	if err != nil || r.Status != "published" {
 		t.Fatal("publish expanded flags", r, err)
+	}
+	if _, err := native.Settle(ctx, fishing.Candidate{OwnerID: ids[0], SessionID: castID, Generation: cast.Generation, Sequence: 1}); err != assets.ErrDeferred {
+		t.Fatal("disabled cycle must remain retryable", err)
+	}
+	r, err = native.Start(ctx, fishing.NativeStart{ActorID: ids[0], RequestKey: "disabled-native-start", ConnectionGeneration: conn.Generation, GroundID: "map", SpotID: "dock"})
+	if err != nil || r.Status != "feature_disabled" {
+		t.Fatal("native gate", r, err)
+	}
+	r, err = native.Stop(ctx, fishing.Stop{ActorID: ids[0], RequestKey: "disabled-native-stop", Generation: cast.Generation})
+	if err != nil || r.Status != "stopped" {
+		t.Fatal("disabled fishing trapped session", r, err)
 	}
 	seaService := sea.New(db.App, c)
 	for _, command := range []sea.Command{

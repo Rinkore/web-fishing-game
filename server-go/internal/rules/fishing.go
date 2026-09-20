@@ -248,8 +248,8 @@ func (r CastRules) Info(rod Effects, spot Spot) CastInfo {
 	return CastInfo{base, r.MinMS, r.SpeedBonus, r.SpeedCap, rod["speed"], spotSpeed, Round((eff["speed"]+r.SpeedBonus)*10) / 10, Round(speed*10) / 10, mult, r.Formula, raw, ms, bite, override}
 }
 
-// DoubleProbability ports probability only. Recursive catch count remains a
-// pending compatibility decision and is deliberately not wired to settlement.
+// DoubleProbability is the per-edge probability. Legacy recursive catches
+// apply it again to each successful child (confirmed compatibility behavior).
 func DoubleProbability(a, base any) float64 {
 	x := math.Max(0, orZero(a))
 	p := x / (x + 100)

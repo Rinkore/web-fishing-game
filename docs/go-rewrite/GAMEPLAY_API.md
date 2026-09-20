@@ -22,7 +22,7 @@
 |---|---|
 | GET `/api/v1/me` | 身份、金币、资产修订、钓竿容量 |
 | GET `/api/v1/assets` | 库存/装备分页；修订变化使旧游标失效 |
-| GET `/api/v1/codex` | 已登记图鉴按物品 ID 分页；目前由开箱登记 |
+| GET `/api/v1/codex` | 已登记图鉴数量和首次时间按物品 ID 分页；由开箱和正式内部钓鱼登记，体型详情尚未映射到该接口 |
 | GET `/api/v1/events` | 玩家修订失效通知，支持 Last-Event-ID；不是旧版 SSE 全量消息 |
 | POST `/api/v1/presence` | connect / heartbeat / disconnect，代次防旧连接续租 |
 | POST `/api/v1/rod/change` | 已实现的钓竿配置操作 |
@@ -69,9 +69,9 @@
 
 ## 功能开关发布
 
-GET `/api/v1/features` 读取当前修订。管理员 POST `/api/admin/v1/features`，必须包含 `requestKey`、字符串 `expectedRevision` 和完整八项 `flags`：`market`、`trade`、`workshop`、`chest`、`mall`、`sell`、`autosell`、`friends`。另支持 `sea`、`party` 两项；旧八项发布仍合法，省略的这两项按开启处理。每次发布完整替换配置，要保持关闭必须显式带 `false`。
+GET `/api/v1/features` 读取当前修订。管理员 POST `/api/admin/v1/features`，必须包含 `requestKey`、字符串 `expectedRevision` 和完整八项 `flags`：`market`、`trade`、`workshop`、`chest`、`mall`、`sell`、`autosell`、`friends`。另支持 `sea`、`party`、`fishing` 三项；旧八项发布仍合法，省略的可选项按开启处理。每次发布完整替换配置，要保持关闭必须显式带 `false`。
 
-发布内容、摘要、操作者、操作号和时间存为不可变版本，原子替换发布指针；过期预期版本拒绝，避免覆盖另一位管理员的更改。资产事务取得玩家锁后读取当前开关；发布前已通过检查的事务允许完成。关闭出售也阻止自动出售。取消/到期返还不被关闭操作阻断。`sea=false` 阻止合成海图、升级、出航和下锚，仍可刷新悬赏及领取已达成奖励；`party=false` 阻止创建、邀请和加入，仍可拒绝邀请、离队、踢出和解散。此机制不等同紧急维护排空，也尚未覆盖正式钓鱼、注册等未完成域。
+发布内容、摘要、操作者、操作号和时间存为不可变版本，原子替换发布指针；过期预期版本拒绝，避免覆盖另一位管理员的更改。资产事务取得玩家锁后读取当前开关；发布前已通过检查的事务允许完成。关闭出售也阻止自动出售。取消/到期返还不被关闭操作阻断。`sea=false` 阻止合成海图、升级、出航和下锚，仍可刷新悬赏及领取已达成奖励；`party=false` 阻止创建、邀请和加入，仍可拒绝邀请、离队、踢出和解散。`fishing=false` 阻止默认正式内部周期开钓，可重试地推迟结算，仍可停钓；不影响合成测试原型。此机制不等同紧急维护排空，注册等未完成域尚未覆盖。
 
 ## 验证命令
 

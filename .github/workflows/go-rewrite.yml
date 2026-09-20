@@ -38,6 +38,7 @@ jobs:
           node tools/go-rewrite/mall-fixture.js --check
           node tools/go-rewrite/chest-fixture.js --check
           node tools/go-rewrite/sea-fixture.js --check
+          node tools/go-rewrite/catch-fixture.js --check
           node --test tests/go-rewrite-inventory.test.js 2>&1 | tail -40
       - name: Format, build, vet and test
         working-directory: server-go

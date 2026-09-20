@@ -16,7 +16,7 @@ func TestAutomaticRequestKeysCannotBeOccupiedByOtherCommands(t *testing.T) {
 	m := market.New(nil)
 	f := fishing.New(nil)
 	ctx := context.Background()
-	for _, key := range []string{"fishing:settle:1:1:1", "market:expire:1"} {
+	for _, key := range []string{"fishing:settle:1:1:1", "fishing:native-settle:1:1:1", "market:expire:1"} {
 		check := func(err error) {
 			t.Helper()
 			if !errors.Is(err, assets.ErrInvalid) {

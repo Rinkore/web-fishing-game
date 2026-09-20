@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"fishing.local/server/internal/modules/assets"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Cursor struct {
@@ -24,12 +25,21 @@ type Batch struct{ Candidates, Settled, Deferred, Failed int }
 // while scanning. Cursor rotation prevents a permanently blocked oldest batch
 // from starving later players. A restart rebuilds candidates from the database.
 func (s *Service) Sweep(ctx context.Context, after Cursor, limit, workers int) (Cursor, Batch, error) {
+	return sweep(ctx, s.pool, "fishing.fishing_sessions", s.Settle, after, limit, workers)
+}
+
+func (s *NativeService) Sweep(ctx context.Context, after Cursor, limit, workers int) (Cursor, Batch, error) {
+	return sweep(ctx, s.pool, "fishing.native_fishing_sessions", s.Settle, after, limit, workers)
+}
+
+// table is selected only by the two wrappers above, never from a request.
+func sweep(ctx context.Context, pool *pgxpool.Pool, table string, settle func(context.Context, Candidate) (assets.Result, error), after Cursor, limit, workers int) (Cursor, Batch, error) {
 	stats := Batch{}
 	if limit < 1 || limit > 100 || workers < 1 || workers > 8 || after.ID < 0 {
 		return after, stats, assets.ErrInvalid
 	}
 	read, stop := context.WithTimeout(ctx, 2*time.Second)
-	rows, err := s.pool.Query(read, `SELECT owner_id,id,generation,next_seq,due_at FROM fishing.fishing_sessions WHERE state='active' AND due_at<=clock_timestamp() AND ($1::bigint=0 OR (due_at,id)>($2,$1)) ORDER BY due_at,id LIMIT $3`, after.ID, after.Due, limit)
+	rows, err := pool.Query(read, `SELECT owner_id,id,generation,next_seq,due_at FROM `+table+` WHERE state='active' AND due_at<=clock_timestamp() AND ($1::bigint=0 OR (due_at,id)>($2,$1)) ORDER BY due_at,id LIMIT $3`, after.ID, after.Due, limit)
 	if err != nil {
 		stop()
 		return after, stats, assets.ErrUnavailable
@@ -70,7 +80,7 @@ func (s *Service) Sweep(ctx context.Context, after Cursor, limit, workers int) (
 				if ctx.Err() != nil {
 					return
 				}
-				r, err := s.Settle(ctx, q.Candidate)
+				r, err := settle(ctx, q.Candidate)
 				switch {
 				case errors.Is(err, assets.ErrDeferred):
 					results <- 1
@@ -101,6 +111,14 @@ func (s *Service) Sweep(ctx context.Context, after Cursor, limit, workers int) (
 }
 
 func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
+	runScheduler(ctx, logger, s.Sweep)
+}
+
+func (s *NativeService) Run(ctx context.Context, logger *slog.Logger) {
+	runScheduler(ctx, logger, s.Sweep)
+}
+
+func runScheduler(ctx context.Context, logger *slog.Logger, sweep func(context.Context, Cursor, int, int) (Cursor, Batch, error)) {
 	// A 100ms polling period alone consumed the entire p95 scheduling budget
 	// on persistent disk. Keep scans bounded while reducing idle polling delay.
 	ticker := time.NewTicker(25 * time.Millisecond)
@@ -113,7 +131,7 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 			return
 		case <-ticker.C:
 		}
-		next, stats, err := s.Sweep(ctx, after, 100, 8)
+		next, stats, err := sweep(ctx, after, 100, 8)
 		after = next
 		if ctx.Err() != nil {
 			return

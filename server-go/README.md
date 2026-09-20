@@ -1,6 +1,6 @@
 # Go 后端重构起点
 
-架构基线见 [go-architecture.md](../docs/go-architecture.md)，实施状态见 [IMPLEMENTATION.md](../docs/go-rewrite/IMPLEMENTATION.md)。当前提供基础 HTTP 服务、数据库结构版本管理、金币/库存/装备组合事务、钓竿归属，以及持久钓鱼周期和市集交易原型；正式玩法 API/SSE、认证和完整经济规则尚未接入。用户已确认业务版本 v0.21.4，正式数据迁移留到后续停服阶段。
+架构基线见 [go-architecture.md](../docs/go-architecture.md)，最新实施状态见 [DELIVERY.md](../docs/go-rewrite/DELIVERY.md)。当前已有身份认证、多个玩法的 v1 API/SSE、资产/交易/经济/海域事务和普通地图的默认正式规则内部钓鱼周期；旧前端协议与完整玩法尚未接通。用户已确认业务版本 v0.21.4，正式数据迁移留到后续停服阶段。钓鱼范围见 [NATIVE_FISHING.md](../docs/go-rewrite/NATIVE_FISHING.md)。
 
 Go **1.27.1**（官方稳定版，下载档案需核对官方 SHA-256），Node **24.14.0**。直接依赖为 chi **v5.3.2**、pgx **v5.11.0**，全部版本及校验见 go.mod/go.sum；运行时依赖清单见 dependencies.json，许可见 THIRD_PARTY_NOTICES.md。
 
@@ -68,9 +68,9 @@ go run ./cmd/game --role=all
 
 `sslmode=disable` 仅用于本机隔离开发连接；跨主机部署应显式启用并验证 TLS。game 不会创建数据库、表或运行存档迁移。未设置连接、连接不可用、schema 版本不匹配或监听失败时以非零状态退出，日志不输出连接串/底层驱动错误。
 
-默认监听 `127.0.0.1:19001`。`GET /healthz` 返回进程存活；`GET /readyz` 在数据库可达、schema 兼容且未关闭时返回 200，否则 503。就绪响应包含 `scope: infrastructure`，尚不表示完整游戏业务可用。DB 故障不会让存活探针失败，避免应用因数据库短暂故障无限重启；探针最多一个在途、独立超时。其他 URL 返回 404，非 GET 探针返回 405。
+默认监听 `127.0.0.1:19001`。`GET /healthz` 返回进程存活；`GET /readyz` 在数据库可达、schema 兼容且未关闭时返回 200，否则 503。就绪响应包含 `scope: infrastructure`，尚不表示完整游戏业务可用。DB 故障不会让存活探针失败，避免应用因数据库短暂故障无限重启；探针最多一个在途、独立超时。新玩法路由见 [GAMEPLAY_API.md](../docs/go-rewrite/GAMEPLAY_API.md)，其余 URL 返回 404，非 GET 探针返回 405。
 
-all 服务启动钓鱼调度器（100ms 扫描、最多 64 候选/4 执行者）及市集到期任务（每秒扫描最多 64 条）。规则/账号/会话仅由隔离测试显式创建，普通启动不会自动生成资产。收到 Ctrl+C/Linux SIGTERM 后转为未就绪，停止后台任务并等待在途请求和任务退出，再关闭连接池；HTTP 超时会关闭连接并报告错误。尚未接入 SSE，其连接排空与写超时将在实时模块中单独实现。
+all 服务启动原型和默认正式钓鱼调度器（各 25ms 扫描、最多 100 候选/8 执行者）、市集/交易到期和独立自动出售任务。普通启动不会自动生成账号、资产或钓鱼会话。收到 Ctrl+C/Linux SIGTERM 后转为未就绪，停止后台任务并等待在途请求和任务退出，再关闭连接池；HTTP 超时会关闭连接并报告错误。v1 SSE 已有资产修订及重拉通知，旧版事件负载和重连续钓仍待接入。
 
 | 环境变量 | 默认值 | 约束 |
 |---|---|---|
@@ -85,7 +85,7 @@ all 服务启动钓鱼调度器（100ms 扫描、最多 64 候选/4 执行者）
 
 连接层固定连接超时 3s、SQL 超时 5s、锁等待 1s、事务空闲 10s，并强制 `synchronous_commit=on`；这些设置不替代耐久性测试。角色拆分、认证和管理接口尚未开放。资产事务、锁序、幂等、装备/钓竿语义与故障边界见 [ASSETS.md](../docs/go-rewrite/ASSETS.md)。
 
-当前 schema 为 0001 金币、0002 库存/装备、0003 周期/市集原型；前两版摘要不变，升级保留金币历史、分类库存、装备及钓竿。ApplyChange、ExchangeAssets、ChangeRod 和模块 Run 共用命令事务，钓鱼进度和挂单状态与资产共同提交；不接受客户端直接提交奖励或费用计划。合成 catalog、私有随机、连接有效期、固定价自动出售、托管、调度及测试边界见 [PROTOTYPE.md](../docs/go-rewrite/PROTOTYPE.md)。正式 catalog 发布、完整资产读取及 HTTP/SSE 接入留待后续。
+当前 schema 至 0018 默认正式钓鱼。已有迁移摘要保持不变，升级保留金币历史、分类库存、装备、钓竿和图鉴。ApplyChange、ExchangeAssets、ChangeRod 和模块 Run 共用命令事务，钓鱼进度和挂单状态与资产共同提交；不接受客户端直接提交奖励或费用计划。合成原型的历史边界见 [PROTOTYPE.md](../docs/go-rewrite/PROTOTYPE.md)，默认正式周期及剩余兼容工作见 [NATIVE_FISHING.md](../docs/go-rewrite/NATIVE_FISHING.md)。
 
 依赖升级后在仓库根执行 `tools/go-rewrite/dependencies.ps1 -GoExe <go.exe路径>` 更新版本清单和许可。网络无法直达默认代理时，可仅为当前 PowerShell 设置 `$env:GOPROXY = 'https://goproxy.cn'`，保持默认 sumdb 校验。
 

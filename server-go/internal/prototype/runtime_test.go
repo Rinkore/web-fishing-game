@@ -11,7 +11,10 @@ import (
 	"time"
 
 	"fishing.local/server/internal/app"
+	"fishing.local/server/internal/modules/fishing"
+	"fishing.local/server/internal/modules/workshop"
 	"fishing.local/server/internal/platform/config"
+	"fishing.local/server/internal/rules"
 )
 
 func TestIntegrationAllRuntimeRunsAndDrainsPrototypeWorkers(t *testing.T) {
@@ -19,6 +22,17 @@ func TestIntegrationAllRuntimeRunsAndDrainsPrototypeWorkers(t *testing.T) {
 	owner := f.player()
 	c := f.start(owner, "caught-v1", false)
 	f.due(c)
+	catalog, err := rules.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = workshop.SeedDefinitions(f.ctx, f.db.Admin, catalog); err != nil {
+		t.Fatal(err)
+	}
+	nativeOwner := f.player()
+	nativeCast, err := fishing.NewNative(f.db.App, catalog).Start(f.ctx, fishing.NativeStart{ActorID: nativeOwner, RequestKey: f.key(), ConnectionGeneration: f.connect(nativeOwner), GroundID: "map", SpotID: "dock"})
+	f.want(nativeCast, err, "started")
+	f.exec(`UPDATE fishing.native_fishing_sessions SET due_at=clock_timestamp()-interval '1 second' WHERE owner_id=$1`, nativeOwner)
 	seller := f.player()
 	f.reward(seller, 0, 1)
 	lot := f.lot(seller, 1, 0, 10, 100*time.Millisecond)
@@ -39,7 +53,7 @@ func TestIntegrationAllRuntimeRunsAndDrainsPrototypeWorkers(t *testing.T) {
 			t.Fatalf("runtime exited early: %v", err)
 		default:
 		}
-		if f.num(`SELECT count(*) FROM fishing.fishing_settlements WHERE session_id=$1`, c.SessionID) > 0 && f.num(`SELECT count(*) FROM fishing.market_listings WHERE id=$1 AND state='expired'`, lot) == 1 {
+		if f.num(`SELECT count(*) FROM fishing.fishing_settlements WHERE session_id=$1`, c.SessionID) > 0 && f.num(`SELECT count(*) FROM fishing.market_listings WHERE id=$1 AND state='expired'`, lot) == 1 && f.num(`SELECT count(*) FROM fishing.native_fishing_settlements`) > 0 {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -57,8 +71,9 @@ func TestIntegrationAllRuntimeRunsAndDrainsPrototypeWorkers(t *testing.T) {
 		t.Fatal("runtime did not drain workers")
 	}
 	before := f.num(`SELECT count(*) FROM fishing.fishing_settlements`)
+	nativeBefore := f.num(`SELECT count(*) FROM fishing.native_fishing_settlements`)
 	time.Sleep(150 * time.Millisecond)
-	if f.num(`SELECT count(*) FROM fishing.fishing_settlements`) != before {
+	if f.num(`SELECT count(*) FROM fishing.fishing_settlements`) != before || f.num(`SELECT count(*) FROM fishing.native_fishing_settlements`) != nativeBefore {
 		t.Fatal("worker remained active after shutdown")
 	}
 	if f.qty(seller) != 1 {

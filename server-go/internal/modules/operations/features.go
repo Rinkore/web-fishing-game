@@ -46,7 +46,7 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 	if err := assets.RequireAdmin(ctx, r.ActorID); err != nil {
 		return assets.Result{}, err
 	}
-	if r.ExpectedRevision < 0 || len(r.Flags) < 8 || len(r.Flags) > 10 {
+	if r.ExpectedRevision < 0 || len(r.Flags) < 8 || len(r.Flags) > 11 {
 		return assets.Result{}, assets.ErrInvalid
 	}
 	// Existing eight-flag publications remain valid. New domains default to
@@ -58,7 +58,7 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 	}
 	for k := range r.Flags {
 		switch k {
-		case "market", "trade", "workshop", "chest", "mall", "sell", "autosell", "friends", "sea", "party":
+		case "market", "trade", "workshop", "chest", "mall", "sell", "autosell", "friends", "sea", "party", "fishing":
 		default:
 			return assets.Result{}, assets.ErrInvalid
 		}

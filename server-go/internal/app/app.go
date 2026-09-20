@@ -61,8 +61,9 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 	}
 	work, stopWork := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	workers.Add(4)
+	workers.Add(5)
 	go func() { defer workers.Done(); fishing.New(pool).Run(work, logger) }()
+	go func() { defer workers.Done(); fishing.NewNative(pool, catalog).Run(work, logger) }()
 	go func() { defer workers.Done(); market.New(pool).RunExpiry(work, logger) }()
 	go func() { defer workers.Done(); trade.New(pool).Run(work, logger) }()
 	go func() { defer workers.Done(); economy.New(pool, catalog).Run(work, logger) }()

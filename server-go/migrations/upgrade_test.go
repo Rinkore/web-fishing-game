@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -12,6 +13,44 @@ import (
 	"fishing.local/server/internal/testdb"
 	"fishing.local/server/migrations"
 )
+
+func TestIntegrationNativeUpgradePreservesCodex(t *testing.T) {
+	db := testdb.New(t, false)
+	ctx := context.Background()
+	if _, err := db.Admin.Exec(ctx, `CREATE TABLE public.fishing_schema_migrations(name text PRIMARY KEY,checksum text NOT NULL,applied_at timestamptz NOT NULL DEFAULT clock_timestamp())`); err != nil {
+		t.Fatal(err)
+	}
+	names, err := filepath.Glob("*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		if name >= "0018" {
+			break
+		}
+		ddl, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Admin.Exec(ctx, string(ddl)); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(ddl)
+		if _, err = db.Admin.Exec(ctx, `INSERT INTO public.fishing_schema_migrations(name,checksum) VALUES($1,$2)`, name, hex.EncodeToString(sum[:])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = db.Admin.Exec(ctx, `INSERT INTO fishing.accounts OVERRIDING SYSTEM VALUE VALUES(1,now());INSERT INTO fishing.player_state(account_id) VALUES(1);INSERT INTO fishing.item_definitions(id,kind) VALUES('crucian','fish');INSERT INTO fishing.player_codex(owner_id,item_id,count,first_at) VALUES(1,'crucian',7,'2026-01-01Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if err = migrations.Apply(ctx, db.Admin); err != nil {
+		t.Fatal(err)
+	}
+	var intact bool
+	if err = db.Admin.QueryRow(ctx, `SELECT count=7 AND first_at='2026-01-01Z'::timestamptz AND min_size IS NULL AND max_size IS NULL AND best_tier='normal' AND (SELECT catch_count=0 FROM fishing.player_state WHERE account_id=1) FROM fishing.player_codex WHERE owner_id=1 AND item_id='crucian'`).Scan(&intact); err != nil || !intact {
+		t.Fatal("codex upgrade changed history", err)
+	}
+}
 
 func TestIntegrationUpgradePreservesCoinHistory(t *testing.T) {
 	db := testdb.New(t, false)

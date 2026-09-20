@@ -104,6 +104,9 @@ func New(t *testing.T, migrate bool) DB {
 		t.Fatal("cannot grant trade permissions")
 	}
 	appConfig := c.Copy()
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.native_fishing_sessions TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.native_fishing_settlements,fishing.catch_records TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant native fishing permissions")
+	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,UPDATE ON fishing.party_guard TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE ON fishing.parties TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.party_members,fishing.party_invites TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.party_events TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant party permissions")
 	}

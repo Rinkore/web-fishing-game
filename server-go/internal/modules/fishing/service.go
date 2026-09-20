@@ -1,5 +1,5 @@
-// Package fishing implements a persistent, synthetic-rule cycle prototype.
-// Its trusted internal methods are not the legacy gameplay HTTP protocol.
+// Package fishing implements durable catalog-default and synthetic fishing
+// cycles. Its trusted internal methods are not the legacy gameplay HTTP protocol.
 package fishing
 
 import (
@@ -65,6 +65,9 @@ func (s *Service) Connection(ctx context.Context, c Connection) (assets.Result, 
 			}
 		}
 		// New connections invalidate old gateway work; resuming requires Start.
+		if _, err := t.SQL().Exec(ctx, `UPDATE fishing.native_fishing_sessions SET state='paused',generation=generation+1 WHERE owner_id=$1 AND state='active'`, c.ActorID); err != nil {
+			return assets.Result{}, err
+		}
 		_, err := t.SQL().Exec(ctx, `UPDATE fishing.fishing_sessions SET state='paused',generation=generation+1 WHERE owner_id=$1 AND state='active'`, c.ActorID)
 		status := "connected"
 		if c.Action == "disconnect" {
@@ -106,6 +109,9 @@ func (s *Service) Start(ctx context.Context, r Start) (assets.Result, error) {
 			return assets.Result{}, err
 		}
 		var id, generation int64
+		if _, err = t.SQL().Exec(ctx, `UPDATE fishing.native_fishing_sessions SET state='paused',generation=generation+1 WHERE owner_id=$1 AND state='active'`, r.ActorID); err != nil {
+			return assets.Result{}, err
+		}
 		err = t.SQL().QueryRow(ctx, `INSERT INTO fishing.fishing_sessions(owner_id,generation,connection_generation,state,rule_version,private_seed,loadout_rev,auto_sell,due_at)
  SELECT account_id,1,$2,'active',$3,$4,loadout_rev,$5,clock_timestamp()+($6::bigint*interval '1 millisecond') FROM fishing.player_state WHERE account_id=$1
  ON CONFLICT(owner_id) DO UPDATE SET generation=fishing.fishing_sessions.generation+1,next_seq=1,connection_generation=EXCLUDED.connection_generation,state='active',rule_version=EXCLUDED.rule_version,private_seed=EXCLUDED.private_seed,loadout_rev=EXCLUDED.loadout_rev,auto_sell=EXCLUDED.auto_sell,due_at=EXCLUDED.due_at
