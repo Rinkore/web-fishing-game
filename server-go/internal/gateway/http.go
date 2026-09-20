@@ -52,6 +52,8 @@ func New(pool *pgxpool.Pool, mfaKey []byte, locations ...*time.Location) http.Ha
 	r.Get("/api/v1/features", a.features)
 	r.Get("/api/version", a.legacyVersion)
 	r.Get("/api/me", a.legacyMe)
+	r.Get("/api/grounds", a.legacyGrounds)
+	r.Get("/api/codex", a.legacyCodex)
 	r.Get("/events", a.legacyEvents)
 	r.Post("/api/fishing/start", a.legacyFishingStart)
 	r.Post("/api/fishing/stop", a.legacyFishingStop)

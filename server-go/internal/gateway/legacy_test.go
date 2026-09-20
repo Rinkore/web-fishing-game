@@ -138,4 +138,31 @@ func TestIntegrationLegacyProfileShape(t *testing.T) {
 	if code != 200 || ver["version"] == nil || ver["version"] == "" {
 		t.Fatalf("legacy version: %d %v", code, ver)
 	}
+
+	code, grounds := get("/api/grounds")
+	if code != 200 {
+		t.Fatalf("legacy grounds: %d", code)
+	}
+	gs := grounds["grounds"].([]any)
+	if len(gs) == 0 {
+		t.Fatal("legacy grounds empty")
+	}
+	first := gs[0].(map[string]any)
+	if first["id"] != "map" {
+		t.Fatalf("legacy grounds shape: %v", first)
+	}
+	spots := first["spots"].([]any)
+	if len(spots) == 0 {
+		t.Fatal("legacy grounds spots empty")
+	}
+
+	code, codexResp := get("/api/codex")
+	if code != 200 {
+		t.Fatalf("legacy codex: %d", code)
+	}
+	codexMap := codexResp["codex"].(map[string]any)
+	entry = codexMap["crucian"].(map[string]any)
+	if entry["count"] != float64(6) || entry["tier"] != "L" {
+		t.Fatalf("legacy codex mapping: %v", entry)
+	}
 }

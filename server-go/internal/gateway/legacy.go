@@ -391,3 +391,67 @@ func (a *API) legacyVersion(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(c.Constants["BUILD"], &build)
 	write(w, 200, map[string]any{"version": version, "build": build})
 }
+
+// legacyGrounds serves the world-map spot catalog. The catalog GROUNDS constant
+// matches the frontend data.js shape (including pos/desc) and has no loot-group
+// indirection, so the raw value is the authoritative default projection.
+func (a *API) legacyGrounds(w http.ResponseWriter, r *http.Request) {
+	c, err := a.catalog(r.Context())
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	raw, ok := c.Constants["GROUNDS"]
+	if !ok {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	var grounds any
+	if err := json.Unmarshal(raw, &grounds); err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	write(w, 200, map[string]any{"grounds": grounds})
+}
+
+// legacyCodex returns the legacy full codex map plus catch count. The original
+// frontend consumes the whole map in one response, unlike the v1 pagination.
+func (a *API) legacyCodex(w http.ResponseWriter, r *http.Request) {
+	session, ok := a.authorize(w, r, false)
+	if !ok {
+		return
+	}
+	codex := map[string]map[string]any{}
+	rows, err := a.pool.Query(r.Context(), `SELECT item_id,count,first_at,min_size,max_size,best_tier FROM fishing.player_codex WHERE owner_id=$1`, session.AccountID)
+	if err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var count int64
+		var first time.Time
+		var minSize, maxSize *float64
+		var tier string
+		if err := rows.Scan(&id, &count, &first, &minSize, &maxSize, &tier); err != nil {
+			failure(w, identity.ErrStorage)
+			return
+		}
+		var legacyTier any
+		switch tier {
+		case "large":
+			legacyTier = "L"
+		case "giant":
+			legacyTier = "G"
+		}
+		codex[id] = map[string]any{"count": count, "first": first.UnixMilli(), "max": maxSize, "min": minSize, "tier": legacyTier}
+	}
+	if err := rows.Err(); err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	var catchCount int64
+	_ = a.pool.QueryRow(r.Context(), `SELECT catch_count FROM fishing.player_state WHERE account_id=$1`, session.AccountID).Scan(&catchCount)
+	write(w, 200, map[string]any{"codex": codex, "catchCount": catchCount})
+}
