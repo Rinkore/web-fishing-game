@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.21.2';
+  const VERSION = 'v0.21.3';
   const BUILD = '2026-09-20';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -2112,6 +2112,12 @@
       buffs: [{ type: 'double', value: 8 }] },
     // v0.21.0 夜光潮：每日 20~23 点全部临时海域附加稀有加成（on=false 关闭）。
     nightglow: { on: true, from: 20, to: 23, rare: 15 },
+    // v0.21.3 临时海域在地图上的落位锚点（地图宽高百分比，按「第几片海域」依次取用）。
+    // 以前 zi≥1 的海域共用同一个 base → 多片海域的钓点坐标完全相同，名牌直接叠在一起
+    // （玩家报的「临时海域钓点糊在一起」）。锚点两两至少隔开 12% 宽 / 18% 高，
+    // 并避开三个固定远洋钓点：近海渔场 [26,73] / 深海鱼礁 [62,44] / 海沟裂谷 [85,26]。
+    zoneAnchors: [[45, 84], [20, 50], [68, 66], [50, 16], [12, 28], [80, 86]],
+    zoneSpotGap: 13,       // 同一片海域两个钓点的横向间距（地图宽百分比，名牌互不压住）
     questResetHour: 0,     // v0.21.0 悬赏每日刷新时刻（本地时间小时，0 = 零点）
     // v0.21.0 每日悬赏池：每天随机滚 3 条。奖励以稀缺资源为主（龙宫宝珠/深海鳞片/宝匣残片/宝匣），
     // 金币只是零头——挂机玩家不缺金币。kind 见 SEA_QUEST_KINDS（后台逐条可改）。
@@ -2162,6 +2168,23 @@
   // 悬赏奖励可选物品：材料 + 宝匣（渔获/组件不进奖励池，避免绕过大小鱼预留与图鉴口径）
   const SEA_QUEST_REWARD_IDS = MATERIALS.map(function (m) { return m.id; })
     .concat(CHESTS.map(function (c) { return c.id; }));
+  // 一片临时海域的落点（v0.21.3）：返回 { center, spots:[[x,y],…] }，坐标 = 地图宽高百分比。
+  // zi = 该海域的**分配序号**（自己的海域 0..n-1，队友共享海域接在它们后面），保证同时存在的
+  // 海域彼此错开；同一片海域的钓点左右铺开、上下交错，名牌不会叠在一起。
+  function seaZoneLayout(zi, spotCount) {
+    const anchors = (Array.isArray(SEA.zoneAnchors) && SEA.zoneAnchors.length) ? SEA.zoneAnchors : [[50, 60]];
+    const i = Math.abs(Math.floor(Number(zi) || 0)) % anchors.length;
+    const a = anchors[i];
+    const n = Math.max(1, Math.floor(Number(spotCount) || 1));
+    const gap = Number(SEA.zoneSpotGap) || 13;
+    const clamp = function (v, lo, hi) { return Math.max(lo, Math.min(hi, Math.round(v * 10) / 10)); };
+    const spots = [];
+    for (let k = 0; k < n; k++) {
+      const off = k - (n - 1) / 2;                    // 左右对称：n=2 → ±0.5
+      spots.push([clamp(a[0] + off * gap, 4, 96), clamp(a[1] + (off === 0 ? 0 : (k % 2 ? 5 : -5)), 3, 97)]);
+    }
+    return { center: a.slice(), spots: spots };
+  }
   function rewardItemChoices() {
     return SEA_QUEST_REWARD_IDS.map(function (id) {
       const it = itemOf(id);
@@ -2412,7 +2435,7 @@
     normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
     GROUNDS: GROUNDS, NAV: NAV, SHIP: SHIP, SEA: SEA, applySeaCfg: applySeaCfg,
-    SEA_QUEST_KINDS: SEA_QUEST_KINDS, seaQuestKindName: seaQuestKindName,
+    SEA_QUEST_KINDS: SEA_QUEST_KINDS, seaQuestKindName: seaQuestKindName, seaZoneLayout: seaZoneLayout,
     seaQuestSubmitOf: seaQuestSubmitOf, rewardItemChoices: rewardItemChoices, isSeaQuestRewardId: isSeaQuestRewardId,
     allItems: allItems, itemOf: itemOf, itemName: itemName, isSellable: isSellable,
   };

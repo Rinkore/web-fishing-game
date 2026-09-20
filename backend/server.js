@@ -941,6 +941,44 @@ function partySharesZone(owner, key) {
   const p = partyOf(owner);
   return !!p && p.members.indexOf(key) >= 0;
 }
+// v0.21.3：编队变动（解散 / 离开 / 被踢 / 换队）后，收回「不再共享」的临时海域下竿权。
+// 权限没了不等于人会自己走：船还停在别人的海域里继续钓（玩家报的「队伍解散后没解锁的人
+// 还留在临时海域」）。所以这里主动停竿 + 单独推一条 seaEvict，客户端据此弹窗提醒。
+// 与「海域沉没」不同——沉没是惰性的（下一竿发现钓点没了自然停），这条路必须立刻生效。
+function evictZoneGuests(msg) {
+  const kicked = [];
+  players.forEach(function (pl, key) {
+    if (!pl.fishing) return;
+    const gid = String(pl.fishing.groundId || '');
+    if (gid.indexOf('sea:') !== 0) return;
+    const owner = gid.slice(4, gid.indexOf(':', 4));
+    if (owner === key || partySharesZone(owner, key)) return;
+    kicked.push(key);
+  });
+  kicked.forEach(function (key) {
+    stopFishingSession(key, { forget: true });
+    sendTo(key, { type: 'seaEvict', msg: msg || '⚓ 你已不在该编队，被送回岸边。' });
+  });
+  return kicked.length;
+}
+// v0.21.3：队友共享海域（同队成员可下竿的临时海域）—— /api/party 与 /api/sea **共用这一份口径**。
+// 客户端据此把队友的海域画到世界地图上；离队 / 解散后这份列表就空了，地图上下一次轮询即消失
+// （旧版只由编队页在打开时注入，队伍散了节点还挂在地图上，点进去才报「这不是你的临时海域」）。
+function memberZonesOf(key) {
+  const out = [];
+  const myParty = partyOf(key);
+  if (!myParty) return out;
+  myParty.members.forEach(function (m) {
+    if (m === key || !users[m]) return;
+    purgeSeaZones(users[m], m);
+    ((users[m].sea && users[m].sea.zones) || []).forEach(function (z) {
+      out.push({ owner: m, ownerName: users[m].name || m, groundId: 'sea:' + m + ':' + z.id,
+        name: z.name, mood: z.mood, expire: z.expire,
+        spots: (z.spots || []).map(function (s) { return { id: s.id, name: s.name, buffs: s.buffs || [] }; }) });
+    });
+  });
+  return out;
+}
 // 惰性沉没：访问时清掉过期海域。正在里面钓鱼的玩家不用赶——fishTick 下一竿
 // 发现钓点消失会自己 stopFishingSession(forget)。
 function purgeSeaZones(rec, key) {
@@ -4541,6 +4579,8 @@ const server = http.createServer(function (req, res) {
           }) };
       }),
       glow: !!nightGlowBuff(),
+      // v0.21.3：队友共享海域（与 /api/party 的 memberZones 同源）——玩家端把队友的海域也画在地图上
+      partyZones: memberZonesOf(key),
       // v0.21.0 每日悬赏（进度/领取状态随 /api/sea 下发）；v0.21.2 上交物品随条目下发（玩家端显示要交什么）
       quests: ensureSeaQuests(rec).list.map(function (q) {
         const tpl = (D.SEA.quests || []).find(function (t) { return t.id === q.id; });
@@ -4712,19 +4752,7 @@ const server = http.createServer(function (req, res) {
     const rec = users[key];
     const inv = rec.partyInv && world.parties[rec.partyInv];
     // v0.21.0 队友共享海域：编队内其他成员的临时海域，成员可一键前往下竿
-    const memberZones = [];
-    const myParty = partyOf(key);
-    if (myParty) {
-      myParty.members.forEach(function (m) {
-        if (m === key || !users[m]) return;
-        purgeSeaZones(users[m], m);
-        ((users[m].sea && users[m].sea.zones) || []).forEach(function (z) {
-          memberZones.push({ owner: m, ownerName: users[m].name || m, groundId: 'sea:' + m + ':' + z.id,
-            name: z.name, mood: z.mood, expire: z.expire,
-            spots: (z.spots || []).map(function (s) { return { id: s.id, name: s.name, buffs: s.buffs || [] }; }) });
-        });
-      });
-    }
+    const memberZones = memberZonesOf(key);
     return apiResp(res, 200, { ok: true, party: partyView(partyOf(key)), memberZones: memberZones,
       invite: inv ? { id: inv.id, leaderName: (users[inv.leader] || {}).name || '未知' } : null });
   }
@@ -4783,6 +4811,8 @@ const server = http.createServer(function (req, res) {
         newParty.invites = newParty.invites.filter(function (m) { return m !== key; });
         rec.partyId = newParty.id; rec.partyInv = null;
         saveAccount(key);
+        // v0.21.3：换队后原队队友的海域不再共享 —— 停竿 + 弹窗提醒（若正停在里面）
+        if (oldParty) evictZoneGuests('⚓ 你已换到别的编队，原队队友的临时海域不再对你开放，已被送回岸边。');
         partyNotice(newParty, '⚓ ' + rec.name + (oldParty ? ' 换队加入了' : ' 加入了') + '编队（' + newParty.members.length + '/4）。', key);
         return apiResp(res, 200, { ok: true, party: partyView(newParty) });
       }
@@ -4806,6 +4836,9 @@ const server = http.createServer(function (req, res) {
           myParty.members = myParty.members.filter(function (m) { return m !== target; });
           if (users[target]) { users[target].partyId = null; saveAccount(target); }
           partyNotice(myParty, '⚓ ' + (users[target] || {}).name + ' 被队长移出了编队。');
+          // v0.21.3：被踢的人若正在队友的临时海域里，立刻停竿 + 推 seaEvict（客户端弹窗）
+          sendTo(target, { type: 'notice', msg: '⚓ 你被移出了编队，队友的临时海域不再对你开放。' });
+          evictZoneGuests('⚓ 你被移出了编队，队友的临时海域不再对你开放，已被送回岸边。');
           return apiResp(res, 200, { ok: true, party: partyView(myParty) });
         }
         if (action === 'disband') {
@@ -4813,6 +4846,8 @@ const server = http.createServer(function (req, res) {
           partyNotice(myParty, '⚓ 队长解散了编队。');
           partyDisband(myParty.id);
           saveAccount(key);
+          // v0.21.3：队伍没了，原来靠编队共享下竿的成员立刻被收回海域（客户端弹窗提醒）
+          evictZoneGuests('⚓ 编队已解散，队友的临时海域不再对你开放，已被送回岸边。');
           return apiResp(res, 200, { ok: true });
         }
         // leave：队长离开自动转移给剩余第一名成员，没人了就地解散
@@ -4825,6 +4860,7 @@ const server = http.createServer(function (req, res) {
         }
         if (!myParty.members.length) partyDisband(myParty.id);
         saveAccount(key);
+        evictZoneGuests('⚓ 你已离开编队，队友的临时海域不再对你开放，已被送回岸边。');
         return apiResp(res, 200, { ok: true });
       }
       return apiResp(res, 400, { error: '未知编队操作' });
@@ -6505,6 +6541,7 @@ function lootPreviewRows(spot, rareVal) {
       if (!pt) return apiResp(res, 404, { error: '队伍不存在（可能已解散）' });
       partyNotice(pt, '🛡 管理员解散了编队。');
       partyDisband(pid);
+      evictZoneGuests('🛡 管理员解散了你的编队，队友的临时海域不再对你开放，已被送回岸边。');
       apiResp(res, 200, { ok: true });
     });
     return;

@@ -802,6 +802,11 @@ window.Net = (function () {
         } else if (m.type === 'notice') {
           if (ui && ui.toast) ui.toast(m.msg || '');
           if (ui && ui.addLog) ui.addLog('system', m.msg || '');
+        } else if (m.type === 'seaEvict') {
+          // v0.21.3：编队解散/离队/被踢 → 服务器已收回临时海域并停竿。
+          // 单独一条消息（不走 notice）：这个必须弹窗，不能只闪一条 toast 就没了。
+          if (ui && ui.onSeaEvict) ui.onSeaEvict(m.msg || '');
+          else if (ui && ui.toast) ui.toast(m.msg || '');
         } else if (m.type === 'friends') {
           // v0.21.2：对端发起/同意/拒绝/撤回/移除 → 关系速查与好友面板立刻刷新（不必等 5 秒轮询）
           if (ui && ui.friendPush) ui.friendPush();

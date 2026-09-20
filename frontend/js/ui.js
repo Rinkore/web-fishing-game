@@ -88,16 +88,15 @@ window.UI = (function () {
   // 出售回包就走在「回包结果未知 / 快照被判旧」这条路上：不补这一手，界面会停在
   // 「金币涨了、卖掉的竿身还在背包里，再卖报数量不足」的假象上（玩家反馈的那条）。
   // 注意 fetchMe 必须显式带 token（它只认 query token，不吃 X-Auth-Token）。
+  // v0.21.3：改用 adoptSnapshot **强制**采信 —— 兜底的场景本身就是「本地水位可能已经不权威」，
+  // 再拿本地水位去否决服务器快照（applyInv 的判新）就白兜了。
   function refetchMeSoon() {
     const me = window.Net.getMe && window.Net.getMe();
     const tok = me && me.token;
     if (!tok) return Promise.resolve(null);
     return Promise.resolve(window.Net.fetchMe(tok)).then(function (m) {
       if (m && m.ok && m.data) {
-        const st = S();
-        if (m.data.coins != null) st.player.coins = m.data.coins;
-        applyInvFrom(m.data);
-        if (m.data.bigfish !== undefined) st.bigfish = m.data.bigfish || {};
+        window.Engine.adoptSnapshot(m.data);
         renderTopbar();
       }
       return m;
@@ -614,6 +613,24 @@ window.UI = (function () {
       ok.focus();
     });
   }
+  // 提醒框（只有「知道了」）：服务器主动告知的事件用它（临时海域被收回等），
+  // 不用 confirmModal —— 那种框会多出一个没有意义的「取消」。
+  function alertModal(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      closeOverlays();
+      const overlay = buildOverlay(function () { resolve(true); });
+      const box = el('div', 'modal-box confirm-modal');
+      box.innerHTML = '<div class="modal-head"><span class="modal-title">' + esc(opts.title || '提示') + '</span></div>' +
+        '<div class="modal-body"><div class="cf-text">' + (opts.html || esc(opts.text || '')) + '</div>' +
+        '<div class="cf-actions"><button class="mini primary-mini cf-ok">' + esc(opts.okText || '知道了') + '</button></div></div>';
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      const ok = box.querySelector('.cf-ok');
+      ok.addEventListener('click', function () { overlay.remove(); resolve(true); });
+      ok.focus();
+    });
+  }
   // 输入框：可返回数字；min/max 限制
   function promptModal(opts) {
     opts = opts || {};
@@ -721,7 +738,8 @@ window.UI = (function () {
   function renderNav() {
     const st = S();
     const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0,
-      st.me && st.me.admin ? 1 : 0, subUnseen, JSON.stringify(st.features || {}), JSON.stringify(st.featureOrder || {})].join('|');
+      st.me && st.me.admin ? 1 : 0, subUnseen, friendReqInCount(),
+      JSON.stringify(st.features || {}), JSON.stringify(st.featureOrder || {})].join('|');
     if (sig === navSig) return;
     navSig = sig;
     const nav = $('nav');
@@ -733,6 +751,11 @@ window.UI = (function () {
       let badge = '';
       if (item.id === 'fishing' && S().fishing.active) badge = '<span class="nav-badge on">钓</span>';
       if (item.id === 'trade' && S().trade) badge = '<span class="nav-badge alert">!</span>';
+      // v0.21.3 好友请求红点：待处理的好友申请数挂在「社交」入口上（进社交页不清零 ——
+      // 只有同意/拒绝/撤回把申请处理掉才消失，那才是真的「没有待办」）
+      if (item.id === 'ground' && friendReqInCount() > 0) {
+        badge = '<span class="nav-badge alert">' + (friendReqInCount() > 99 ? '99+' : friendReqInCount()) + '</span>';
+      }
       // 组件订阅提醒：背包入口显示未读红标（进入背包即清零）
       if (item.id === 'inventory' && subUnseen > 0) badge = '<span class="nav-badge unread">' + (subUnseen > 99 ? '99+' : subUnseen) + '</span>';
       // 像素导航图标（assets/nav/<id>.png，由 tools/gen_nav.py 生成）；emoji 作为降级兜底
@@ -1048,6 +1071,10 @@ window.UI = (function () {
     if (featureBlocked('fishing')) return renderView();
     const main = $('main');
     const st = S();
+    // v0.21.3：远洋图上的临时海域靠 ensureSea 的 8 秒节流刷新；这一句必须放在**签名早退之前**，
+    // 否则它只写在重建分支里 → 页面结构不变时永远走不到 → 新出航/沉没的海域要等别的操作才出现
+    // （玩家看到的就是「地图上还是老的一片海域」）。ensureSea 内部有节流与在途锁，重复调用无副作用。
+    if (mapTab === 'voyage') ensureSea();
     const sig = fishingSig(st);
     const host = main.querySelector('.fish-select');
     // 结构没变（只是上鱼 / 人数 / 钓速变化）→ 原地增量更新，整页 DOM 与动画都不动
@@ -1162,6 +1189,7 @@ window.UI = (function () {
           node.style.top = pos[1] + '%';
           node.innerHTML = (locked ? '<span class="pn-lock">🔒</span>' : '<span class="pn-bob"></span>') +
             '<span class="pn-name">' + esc(sp.name) +
+            (g.zoneShared ? '<span class="pn-soon">（' + esc(g.ownerName || '队友') + ' 的海域）</span>' : '') +
             (sp.locked ? '<span class="pn-soon">（暂未开放）</span>'
               : (locked ? '<span class="pn-soon">（需 ' + need + ' 级船）</span>' : '')) +
             (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
@@ -1352,11 +1380,14 @@ window.UI = (function () {
     const k = String(id == null ? '' : id);
     return friendRel.friends[k] ? 'friend' : friendRel.in[k] ? 'in' : friendRel.out[k] ? 'out' : '';
   }
+  // 待我处理的好友申请数（社交入口的红点用它，见 renderNav）
+  function friendReqInCount() { return Object.keys(friendRel.in).length; }
   function refreshFriendRel() {
     if (!window.Net.friendRelations || !S().me) return Promise.resolve(null);
     return window.Net.friendRelations().then(function (r) {
       if (!r || !r.ok || !r.data) return null;
       setFriendRel(r.data);
+      renderNav();     // 社交入口的好友请求红点（navSig 缓存：数量没变就不重建）
       renderView();   // 挂钩的卡片就地换按钮（见 updatePeepCard 的关系比对）
       return r.data;
     }).catch(function () { return null; });
@@ -2746,13 +2777,16 @@ window.UI = (function () {
       return row;
     }
     // 好友请求行：收到的带 同意/拒绝，发出的带 撤回
+    // 昵称可重名，行里补一个 @账号名（v0.21.2）——否则两个同名账号完全无法区分
+    function reqInfoHtml(player) {
+      return '<b>' + esc(player.name || player.id) + '</b>' +
+        (player.username ? '<span class="peep-uname">@' + esc(player.username) + '</span>' : '') +
+        (player.online ? '<span class="dot on"></span>' : '<span class="dot idle"></span>');
+    }
     function reqRow(player, isIn) {
       const row = el('div', 'peep');
       const info = el('div', 'peep-info');
-      // 昵称可重名，行里补一个 @账号名（v0.21.2）——否则两个同名账号完全无法区分
-      info.innerHTML = '<b>' + esc(player.name || player.id) + '</b>' +
-        (player.username ? '<span class="peep-uname">@' + esc(player.username) + '</span>' : '') +
-        (player.online ? '<span class="dot on"></span>' : '<span class="dot idle"></span>');
+      info.innerHTML = reqInfoHtml(player);
       row.appendChild(info);
       const ok = el('button', 'mini', isIn ? '✓ 同意' : '撤回');
       ok.addEventListener('click', function () {
@@ -2780,10 +2814,18 @@ window.UI = (function () {
       }
       return row;
     }
+    // 好友请求列表：按 id 复用行（v0.21.3）。原来每次回包都 host.innerHTML='' 重建，
+    // 好友页开着的时候（上鱼广播 + 5 秒轮询都会走到这里）整片申请按钮一直在闪。
     function fillReq(host, list, isIn) {
       if (!host) return;
-      host.innerHTML = '';
-      (list || []).forEach(function (p) { host.appendChild(reqRow(p, isIn)); });
+      patchList(host, list || [], function (p) { return p.id; },
+        function (p) { return reqRow(p, isIn); },
+        function (row, p) {
+          const info = row.querySelector('.peep-info');
+          const html = reqInfoHtml(p);
+          if (info && info.innerHTML !== html) info.innerHTML = html;
+          return null;
+        });
     }
     function fill(list, players, isSaved) {
       const hint = list.querySelector('.hint'); if (hint) hint.remove();
@@ -2830,6 +2872,22 @@ window.UI = (function () {
   }
   // ---- v0.21.0 编队出海（社交页第三页签）----
   let partyShowInvite = false; // 「邀请好友」折叠区开关
+  // v0.21.3：编队面板的**结构签名**——只有这些变了才重建 DOM：
+  // 有无邀请 / 是否在队 / 队长与成员 id / 队伍共享海域（海域 id + 钓点 id）/ 「邀请好友」折叠态。
+  // 在离线圆点、成员数、海域倒计时等纯数据走 partyLivePatch 就地改写。
+  // 以前每个回包都 body.innerHTML='' 重建：上鱼广播一响（组队共享海域也挂在本页签）按钮就闪、
+  // 正在读的「邀请好友」列表跟着重拉（玩家报的「编队界面随上鱼闪动」）。
+  function partySigOf(data) {
+    const p = data.party;
+    return [
+      data.invite ? (data.invite.id || 'inv') : '',
+      p ? (p.leader + '>' + p.members.map(function (m) { return m.id; }).join(',')) : '',
+      partyShowInvite ? 'open' : '',
+      (data.memberZones || []).map(function (z) {
+        return z.groundId + ':' + (z.spots || []).map(function (s) { return s.id; }).join('+');
+      }).join(','),
+    ].join('|');
+  }
   function renderParty() {
     const main = $('main');
     let panel = main.querySelector('.party-panel');
@@ -2844,7 +2902,8 @@ window.UI = (function () {
     main.appendChild(panel);
     function meId() { return String(S().me && S().me.id || ''); }
     function memberRow(p, party) {
-      const row = el('div', 'peep');
+      const row = el('div', 'peep party-member');
+      row.setAttribute('data-m', p.id);
       const info = el('div', 'peep-info');
       info.innerHTML = (party.leader === p.id ? '👑 ' : '') + '<b>' + esc(p.name || p.id) + '</b>' +
         (p.id === meId() ? '<span class="hint">（你）</span>' : '') +
@@ -2863,6 +2922,24 @@ window.UI = (function () {
         row.appendChild(kick);
       }
       return row;
+    }
+    // 结构没变（成员上下线 / 海域倒计时 / 上鱼广播）时的就地更新：只改文字与圆点，不碰按钮
+    function livePatch(data) {
+      const p = data.party;
+      if (p) {
+        const cnt = body.querySelector('[data-p="count"]');
+        if (cnt) cnt.textContent = '⚓ 我的编队（' + p.members.length + '/' + p.max + '）';
+        p.members.forEach(function (m) {
+          const row = body.querySelector('.party-member[data-m="' + m.id + '"]');
+          const dot = row && row.querySelector('.dot');
+          if (dot) dot.className = 'dot' + (m.online ? ' on' : ' idle');
+        });
+      }
+      (data.memberZones || []).forEach(function (z) {
+        const row = body.querySelector('.party-zone[data-z="' + z.groundId + '"]');
+        const sub = row && row.querySelector('[data-zdesc]');
+        if (sub) sub.textContent = zoneMoodName(z.mood) + ' · 剩 ' + seaCountdown(z.expire);
+      });
     }
     function render(data) {
       body.innerHTML = '';
@@ -2886,7 +2963,8 @@ window.UI = (function () {
             }).then(function (go) { if (go) doAccept(); else ok.disabled = false; });
           } else doAccept();
         };
-        const no = el('button', 'btn', '婉拒');
+        // 按钮风格统一（v0.21.3）：与「离开编队 / 解散编队」同款黑底描边小按钮，不再用裸 btn
+        const no = el('button', 'btn mini', '婉拒');
         no.onclick = function () { no.disabled = true; window.Net.partyAction('decline').then(function () { panel._refresh(true); }); };
         btns.appendChild(ok); btns.appendChild(no);
         inv.appendChild(btns);
@@ -2905,7 +2983,9 @@ window.UI = (function () {
       }
       const party = data.party;
       const box = el('div', 'sub');
-      box.appendChild(el('h3', '', '⚓ 我的编队（' + party.members.length + '/' + party.max + '）'));
+      const head = el('h3', '', '⚓ 我的编队（' + party.members.length + '/' + party.max + '）');
+      head.setAttribute('data-p', 'count');
+      box.appendChild(head);
       const list = el('div', 'peeps');
       party.members.forEach(function (m) { list.appendChild(memberRow(m, party)); });
       box.appendChild(list);
@@ -2956,23 +3036,19 @@ window.UI = (function () {
       body.appendChild(box);
       // v0.21.0 队伍共享海域：成员一键前往队友的临时海域下竿（编队共享出航）
       const zones = data.memberZones || [];
-      for (let i = D.GROUNDS.length - 1; i >= 0; i--) if (D.GROUNDS[i].zoneShared) D.GROUNDS.splice(i, 1);
+      // v0.21.3：地图节点统一由 syncSeaGrounds 注入（与 /api/sea 的 partyZones 同源）。
+      // 这里只把最新一份交给它 —— 面板一打开就能在地图上点到，离开编队后随下一次轮询消失。
+      partyZoneList = zones;
+      syncSeaGrounds();
       if (zones.length) {
-        zones.forEach(function (z, zi) {
-          const base = zi === 0 ? [45, 58] : [72, 30];
-          D.GROUNDS.push({ id: z.groundId, name: z.name + '（' + z.ownerName + '）', type: 'ocean', zone: true, zoneShared: true, mood: z.mood,
-            desc: '队友海域 · ' + zoneMoodName(z.mood) + ' · ' + seaCountdown(z.expire) + ' 后沉没',
-            spots: (z.spots || []).map(function (s, si) {
-              return { id: s.id, name: s.name, pos: [base[0] + (si === 0 ? -9 : 9), base[1] + (si === 0 ? -4 : 6)], buffs: s.buffs || [], pool: [] };
-            }) });
-        });
         const zs = el('div', 'sub party-zones');
         zs.appendChild(el('h3', '', '🌊 队伍共享海域（' + zones.length + '）'));
         zs.appendChild(el('div', 'hint', '队友的临时海域全队可下竿；全员在同一片海域垂钓时鱼群事件概率 ×2 且同款 +1。'));
         zones.forEach(function (z) {
-          const row = el('div', 'sa-row');
+          const row = el('div', 'sa-row party-zone');
+          row.setAttribute('data-z', z.groundId);
           row.style.margin = '6px 0';
-          row.innerHTML = '<span><b>' + esc(z.name) + '</b>（' + esc(z.ownerName) + ' · ' + zoneMoodName(z.mood) + ' · 剩 ' + seaCountdown(z.expire) + '）</span>';
+          row.innerHTML = '<span><b>' + esc(z.name) + '</b>（' + esc(z.ownerName) + ' · <span data-zdesc>' + zoneMoodName(z.mood) + ' · 剩 ' + seaCountdown(z.expire) + '</span>）</span>';
           (z.spots || []).forEach(function (s) {
             const b = el('button', 'btn mini primary', '去「' + s.name + '」');
             b.style.marginLeft = '8px';
@@ -2984,11 +3060,22 @@ window.UI = (function () {
         body.appendChild(zs);
       }
     }
+    let lastFetch = 0, pending = false, requestId = 0;
     panel._refresh = function (force) {
+      // 编队页挂在「社交」页签下，上鱼广播（players / feed）也会走到这里：
+      // 不加节流就是每上一竿发一次 /api/party（v0.21.3）
+      if (!panel.isConnected || !force && (pending || Date.now() - lastFetch < 3000)) return;
+      const seq = ++requestId;
+      pending = true; lastFetch = Date.now();
       window.Net.partyFetch().then(function (r) {
-        if (!panel.isConnected) return;
+        if (seq !== requestId || !panel.isConnected) return;
+        pending = false;
         if (!r || !r.ok) { if (force) toast((r && r.data && r.data.error) || '编队加载失败', 'bad'); return; }
-        render(r.data || {});
+        const data = r.data || {};
+        const sig = partySigOf(data);
+        if (panel._sig === sig) { livePatch(data); return; }   // 结构没变：就地更新，不重建
+        panel._sig = sig;
+        render(data);
       });
     };
     panel._refresh(true);
@@ -5188,6 +5275,9 @@ window.UI = (function () {
       });
     });
     chain.then(function () {
+      // 有任一笔被服务器拒绝（最常见的是「数量不足」）就说明本地显示量已经不权威了 ——
+      // 立刻对一次账，否则玩家看到的就是「明明显示有、就是卖不掉」的虚空物品（v0.21.3）。
+      if (errs.length) resyncAssets();
       closeOverlays();
       renderTopbar(); renderView();
       if (!sold && skipped) {
@@ -9672,6 +9762,7 @@ window.UI = (function () {
 
   // ---- 远洋视图（v0.19.0：船系统 + 未知海图随机海域）----
   let seaInfo = null, seaLoading = false, seaInfoAt = 0;
+  let partyZoneList = [];   // 队友共享海域（/api/party 与 /api/sea 同源，取较新的一份；见 syncSeaGrounds）
   // 30 秒节流：进页/重绘时按需拉取，动作回包直接用服务器下发的最新状态
   function ensureSea(force) {
     if (seaLoading) return;
@@ -9682,10 +9773,11 @@ window.UI = (function () {
       seaLoading = false;
       if (r && r.ok && r.data) {
         seaInfo = r.data; seaInfoAt = Date.now();
+        partyZoneList = r.data.partyZones || [];   // 队友共享海域（离队/解散后这里就空了）
         if (r.data.cfg && window.D && D.applySeaCfg) D.applySeaCfg(r.data.cfg); // 后台改完随轮询生效
         syncSeaGrounds(); renderView();
       }
-    });
+    }, function () { seaLoading = false; });   // 请求异常也要解锁，否则后续 ensureSea 全被在途锁挡死
   }
   function zoneMoodName(id) { const m = D.SEA.moods.find(function (x) { return x.id === id; }); return m ? m.name : '未知海域'; }
   function seaCountdown(expire) {
@@ -9694,66 +9786,177 @@ window.UI = (function () {
   }
   // 把临时海域注入 D.GROUNDS：地图节点 / 钓场状态卡 / 同钓点玩家列表 / presence 全部复用现有逻辑。
   // 每次整页重绘前重灌一次（fetchGrounds 等路径重建目录后也能自愈）。
+  // 临时海域的钓点坐标：按「海域序号 + 海域内序号」取 D.seaZoneLayout 的分散落点
+  // （v0.21.3；以前所有 zi≥1 的海域共用同一个 base，多片海域的钓点叠在一起）。
+  function zoneSpotsOf(z, zi) {
+    const lay = D.seaZoneLayout ? D.seaZoneLayout(zi, (z.spots || []).length) : null;
+    return (z.spots || []).map(function (s, si) {
+      return {
+        id: s.id, name: s.name, buffs: s.buffs, pool: s.pool || [],
+        pos: lay ? lay.spots[si] : [50, 50],
+      };
+    });
+  }
   function syncSeaGrounds() {
-    // zoneShared（队友共享海域）由编队页注入，不在这里清
-    for (let i = D.GROUNDS.length - 1; i >= 0; i--) if (D.GROUNDS[i].zone && !D.GROUNDS[i].zoneShared) D.GROUNDS.splice(i, 1);
-    if (!seaInfo || !seaInfo.zones) return;
-    seaInfo.zones.forEach(function (z, zi) {
-      const base = zi === 0 ? [45, 58] : [72, 30];
+    // 自己的海域与队友共享海域（v0.21.3）一律在这里重灌：
+    // 队友海域来自 partyZoneList（/api/party 与 /api/sea 同源）—— 离队 / 解散后列表变空，
+    // 地图节点随之消失（旧版只在编队页打开时注入，队伍散了节点还挂着，点进去才报错）。
+    for (let i = D.GROUNDS.length - 1; i >= 0; i--) if (D.GROUNDS[i].zone) D.GROUNDS.splice(i, 1);
+    if (!seaInfo) { partyZoneList = []; return; }
+    const ownCount = (seaInfo.zones || []).length;
+    (seaInfo.zones || []).forEach(function (z, zi) {
       D.GROUNDS.push({
         id: z.groundId, name: z.name, type: 'ocean', zone: true,
         desc: zoneMoodName(z.mood) + ' · ' + seaCountdown(z.expire) + ' 后沉没',
-        spots: (z.spots || []).map(function (s, si) {
-          return { id: s.id, name: s.name, pos: [base[0] + (si === 0 ? -9 : 9), base[1] + (si === 0 ? -4 : 6)], buffs: s.buffs, pool: s.pool || [] };
-        }),
+        spots: zoneSpotsOf(z, zi),
       });
     });
+    (partyZoneList || []).forEach(function (z, zi) {
+      D.GROUNDS.push({
+        id: z.groundId, name: z.name + '（' + z.ownerName + '）', type: 'ocean', zone: true, zoneShared: true, mood: z.mood,
+        ownerName: z.ownerName,   // 地图节点上标出「谁的海域」（自己的海域不加后缀）
+        desc: '队友海域 · ' + zoneMoodName(z.mood) + ' · ' + seaCountdown(z.expire) + ' 后沉没',
+        spots: zoneSpotsOf(z, ownCount + zi),
+      });
+    });
+  }
+  // 远洋页结构签名（v0.21.3）：只含**会改变 DOM 结构**的量 —— 船级（决定升级按钮在不在）、
+  // 每片海域的 id 与钓点 id（决定「去下竿」按钮）、悬赏条数与各条的奖励/上交构成、夜光潮开关、
+  // 以及配置量（海域上限 / 锚地次数 / 夜光潮时段）。经验·金币·碎片·倒计时·悬赏进度都是纯数据，
+  // 由 seaFill 就地改写：原来 VIEW_SCOPES 里没有 'sea'，任何广播（含每竿一次的 assets）
+  // 都会整页重建，远洋页的按钮跟着上鱼一直闪。
+  function seaSigOf(d) {
+    if (!d) return 'sea:loading';
+    const zones = (d.zones || []).map(function (z) {
+      return z.id + '(' + (z.spots || []).map(function (s) { return s.id; }).join('+') + ')';
+    }).join(',');
+    const quests = (d.quests || []).map(function (q) {
+      return q.id + ':' + q.need + ':' + JSON.stringify(q.reward || null) + ':' + JSON.stringify(q.submit || null);
+    }).join(',');
+    const anc = D.SEA.anchor || {};
+    return ['ship' + ((d.ship && d.ship.lv) || 1) + (d.ship && d.ship.max ? 'M' : ''),
+      'z' + zones, 'q' + quests, 'g' + (d.glow ? 1 : 0),
+      'cfg' + D.SEA.zoneMax + ':' + anc.coins + ':' + anc.scales + ':' + anc.maxTimes + ':' + anc.extendMin +
+      ':' + ((D.SEA.nightglow || {}).on ? 1 : 0) + ((D.SEA.nightglow || {}).from) + '-' + ((D.SEA.nightglow || {}).to)].join('|');
+  }
+  // 远洋页的动态文本：首次铺页与广播更新两条路共用（避免两种画法）
+  function seaFill() {
+    const d = seaInfo, main = $('main');
+    if (!d || !main) return;
+    const at = function (sel) { return main.querySelector('[data-sea="' + sel + '"]'); };
+    const ship = d.ship || {};
+    const hint = at('ship-hint');
+    if (hint) {
+      // 金币取本地展示值（出售后立刻变），其余取 /api/sea 快照
+      const coins = (S().player && S().player.coins != null) ? S().player.coins : d.coins;
+      hint.innerHTML = ship.max ? '已满级：全部远洋钓点与深海海域开放。'
+        : '升级条件：远洋经验 <b>' + ship.xp + '/' + ship.xpNeed + '</b>' + (ship.xpOk ? ' ✅' : '（远洋每竿渔获 +1）') +
+          ' · 金币 <b>' + ship.upCoins + '</b>（持有 ' + coins + '） · 深海鳞片 <b>×' + ship.upScale + '</b>（持有 ' + d.deepscale + '）';
+    }
+    const up = at('ship-up');
+    if (up) {
+      up.disabled = !ship.xpOk;
+      up.textContent = '⬆ 升级到 ' + (((D.SHIP.levels || [])[ship.lv] || {}).name || '');
+    }
+    const chart = at('chart-hint');
+    if (chart) {
+      chart.innerHTML = '海图碎片 <b>' + d.chartfrag + '</b>/' + d.chartCost + '（远洋钓点掉落 + 漂流宝箱）· 未知海图 <b>' + d.charts + '</b> 张';
+    }
+    const cc = at('chart-craft');
+    if (cc) cc.disabled = d.chartfrag < d.chartCost;
+    const vg = at('voyage');
+    if (vg) vg.disabled = d.charts < 1;
+    const zc = at('zone-count');
+    if (zc) zc.textContent = '🌊 我的临时海域（' + (d.zones || []).length + '/' + D.SEA.zoneMax + '）';
+    (d.zones || []).forEach(function (z) {
+      const row = main.querySelector('[data-sea="zone"][data-z="' + z.id + '"]');
+      if (!row) return;
+      const meta = row.querySelector('[data-zone-meta]');
+      if (meta) {
+        meta.innerHTML = '（' + zoneMoodName(z.mood) + ' · 剩 ' + seaCountdown(z.expire) + '） ' +
+          (z.spots || []).map(function (s) { return esc(s.name); }).join(' / ') +
+          (d.glow ? ' 🌌<span title="夜光潮时段：稀有度加成">夜光潮</span>' : '');
+      }
+      const ab = row.querySelector('[data-zone-anchor]');
+      if (ab) { ab.disabled = (z.anchors || 0) >= ((D.SEA.anchor || {}).maxTimes || 3); ab.textContent = anchorLabel(z); }
+    });
+    (d.quests || []).forEach(function (q) {
+      const row = main.querySelector('[data-sea="quest"][data-q="' + q.id + '"]');
+      if (!row) return;
+      const st = row.querySelector('[data-quest-state]');
+      if (st) st.innerHTML = questText(q);
+      const cb = row.querySelector('[data-quest-claim]');
+      if (cb) {
+        cb.textContent = q.claimed ? '已领取' : (q.progress >= q.need ? '领取奖励' : '未完成');
+        cb.disabled = q.claimed || q.progress < q.need;
+      }
+    });
+  }
+  function anchorLabel(z) {
+    const anc = D.SEA.anchor || { coins: 50000, scales: 3, maxTimes: 3 };
+    return '⚓ 下锚续期（' + anc.coins + ' 金币 + ' + anc.scales + ' 鳞片 · 已 ' + (z.anchors || 0) + '/' + anc.maxTimes + '）';
+  }
+  function questText(q) {
+    const reward = q.reward || {};
+    // 奖励物品由后台配置（reward.items = { 物品id: 数量 }），必须逐条列出名称 ——
+    // v0.21.2 之前只显示金币/海图碎片/深海鳞片，配置里的宝匣与龙宫宝珠在玩家端完全看不见。
+    const rewardText = [
+      reward.coins ? reward.coins + ' 金币' : '',
+      reward.chartfrag ? D.itemName('chartfrag') + ' ×' + reward.chartfrag : '',
+      reward.deepscale ? D.itemName('deepscale') + ' ×' + reward.deepscale : '',
+    ].concat(Object.keys(reward.items || {}).filter(function (id) { return Number(reward.items[id]) > 0; })
+      .map(function (id) { return D.itemName(id) + ' ×' + reward.items[id]; }))
+      .filter(Boolean).join(' + ') || '无';
+    const sub = q.submit;
+    const submitText = sub ? '（需上交 ' + esc(sub.name) + ' ×' + sub.count + '，当前持有 ' + sub.have + '）' : '';
+    return (q.claimed ? '✅' : (q.progress >= q.need ? '🎁' : '⬚')) + ' ' + esc(q.title) + submitText +
+      ' <span class="hint">进度 ' + q.progress + '/' + q.need + ' · 奖励：' + esc(rewardText) + '</span>';
   }
   function renderSea() {
     // 不能传 force：强刷会让「渲染→拉取→再渲染」成环，页面每秒重绘一次（按钮永远点不中）。
     // 8 秒节流在 ensureSea 内部（过短会在广播重绘时频繁打接口，过长则升级材料攒够后按钮迟迟不亮）；动作回包各自直接更新 seaInfo，无需依赖这里的刷新。
     ensureSea();
-    const main = $('main'); main.innerHTML = '';
-    const wrap = el('div', 'panel wide');
+    const main = $('main');
+    const d = seaInfo;
+    const sig = seaSigOf(d);
+    const host = main.querySelector('.sea-panel');
+    // 结构没变（经验/金币/碎片/倒计时/进度在变）→ 只改文字与按钮状态，不重建页面
+    if (host && host.getAttribute('data-sig') === sig) { seaFill(); return; }
+    main.innerHTML = '';
+    const wrap = el('div', 'panel wide sea-panel');
+    wrap.setAttribute('data-sig', sig);
     wrap.innerHTML = pageHead('⛵', '远洋', '乘船远洋 · 深海钓点按船级解锁 · 未知海图发现随机海域');
     main.appendChild(wrap);
-    const d = seaInfo;
     if (!d) { wrap.appendChild(el('div', 'hint', '正在读取远洋状态……')); return; }
     // ① 船
     const ship = d.ship;
     const pShip = el('div', 'panel');
     pShip.dataset.orderFeature = 'sea.upgrade';
-    pShip.innerHTML = '<h3>🚤 我的船 · ' + esc(ship.name) + '（' + ship.lv + '/5 级）</h3>';
-    if (ship.max) {
-      pShip.innerHTML += '<div class="hint">已满级：全部远洋钓点与深海海域开放。</div>';
-    } else {
-      pShip.innerHTML += '<div class="hint">升级条件：远洋经验 <b>' + ship.xp + '/' + ship.xpNeed + '</b>' +
-        (ship.xpOk ? ' ✅' : '（远洋每竿渔获 +1）') + ' · 金币 <b>' + ship.upCoins + '</b>（持有 ' + d.coins + '）' +
-        ' · 深海鳞片 <b>×' + ship.upScale + '</b>（持有 ' + d.deepscale + '）</div>' +
-        '<div class="sa-row"><button class="btn primary" id="sea-ship-up"' + (ship.xpOk ? '' : ' disabled') + '>⬆ 升级到 ' + esc(D.SHIP.levels[ship.lv].name) + '</button></div>';
-    }
+    pShip.innerHTML = '<h3>🚤 我的船 · ' + esc(ship.name) + '（' + ship.lv + '/5 级）</h3>' +
+      '<div class="hint" data-sea="ship-hint"></div>' +
+      (ship.max ? '' : '<div class="sa-row"><button class="btn primary" data-sea="ship-up" id="sea-ship-up"></button></div>');
     wrap.appendChild(pShip);
     // ② 海图
     const pChart = el('div', 'panel');
     pChart.dataset.orderFeature = 'sea.chart sea.voyage';
     pChart.innerHTML = '<h3>🗺 海图工台</h3>' +
-      '<div class="hint">海图碎片 <b>' + d.chartfrag + '</b>/' + d.chartCost + '（远洋钓点掉落 + 漂流宝箱）· 未知海图 <b>' + d.charts + '</b> 张</div>' +
-      '<div class="sa-row"><button class="btn primary" id="sea-chart-craft"' + (d.chartfrag >= d.chartCost ? '' : ' disabled') + '>🧩 合成未知海图（' + d.chartCost + ' 碎片 → 1 张）</button>' +
-      '<button class="btn primary" id="sea-voyage"' + (d.charts >= 1 ? '' : ' disabled') + '>⛵ 出航（消耗 1 张海图）</button></div>' +
+      '<div class="hint" data-sea="chart-hint"></div>' +
+      '<div class="sa-row"><button class="btn primary" data-sea="chart-craft" id="sea-chart-craft">🧩 合成未知海图（' + d.chartCost + ' 碎片 → 1 张）</button>' +
+      '<button class="btn primary" data-sea="voyage" id="sea-voyage">⛵ 出航（消耗 1 张海图）</button></div>' +
       '<div class="hint">出航会发现一片只属于你的<b>临时海域</b>（2 小时后沉没）：富矿海域双钓↑、凶险海域技巧↓但稀有度↑，钓点池完全随机。</div>';
     wrap.appendChild(pChart);
     // ③ 临时海域
     const pZone = el('div', 'panel');
-    pZone.innerHTML = '<h3>🌊 我的临时海域（' + (d.zones || []).length + '/' + D.SEA.zoneMax + '）</h3>';
+    pZone.innerHTML = '<h3 data-sea="zone-count"></h3>';
     if (!(d.zones || []).length) {
       pZone.innerHTML += '<div class="hint">还没有临时海域。合成海图后点「出航」试试。</div>';
     }
     (d.zones || []).forEach(function (z) {
       const row = el('div', 'sa-row');
+      row.setAttribute('data-sea', 'zone');
+      row.setAttribute('data-z', z.id);
       row.style.margin = '6px 0';
-      const glowTag = d.glow ? ' 🌌<span title="夜光潮时段：稀有度加成">夜光潮</span>' : '';
-      row.innerHTML = '<b>' + esc(z.name) + '</b>（' + zoneMoodName(z.mood) + ' · 剩 ' + seaCountdown(z.expire) + '） ' +
-        (z.spots || []).map(function (s) { return esc(s.name); }).join(' / ') + glowTag;
+      row.innerHTML = '<b>' + esc(z.name) + '</b><span data-zone-meta></span>';
       (z.spots || []).forEach(function (s) {
         const b = el('button', 'btn mini primary', '去「' + s.name + '」下竿');
         b.style.marginLeft = '8px';
@@ -9761,10 +9964,9 @@ window.UI = (function () {
         row.appendChild(b);
       });
       // v0.21.0 锚地：下锚续期（金币 + 鳞片，追加锚地增益），最多 maxTimes 次
-      const anc = D.SEA.anchor || { coins: 50000, scales: 3, maxTimes: 3 };
-      const ab = el('button', 'btn mini', '⚓ 下锚续期（' + anc.coins + ' 金币 + ' + anc.scales + ' 鳞片 · 已 ' + (z.anchors || 0) + '/' + anc.maxTimes + '）');
+      const ab = el('button', 'btn mini');
+      ab.setAttribute('data-zone-anchor', '1');
       ab.style.marginLeft = '8px';
-      ab.disabled = (z.anchors || 0) >= (anc.maxTimes || 3);
       ab.onclick = function () {
         ab.disabled = true;
         window.Net.seaAnchor(z.id).then(function (r) {
@@ -9785,24 +9987,13 @@ window.UI = (function () {
     if (!quests.length) pQuest.innerHTML += '<div class="hint">今日悬赏生成中……</div>';
     quests.forEach(function (q) {
       const row = el('div', 'sa-row');
+      row.setAttribute('data-sea', 'quest');
+      row.setAttribute('data-q', q.id);
       row.style.margin = '6px 0';
-      const reward = q.reward || {};
-      // 奖励物品由后台配置（reward.items = { 物品id: 数量 }），必须逐条列出名称 ——
-      // v0.21.2 之前只显示金币/海图碎片/深海鳞片，配置里的宝匣与龙宫宝珠在玩家端完全看不见。
-      const rewardText = [
-        reward.coins ? reward.coins + ' 金币' : '',
-        reward.chartfrag ? D.itemName('chartfrag') + ' ×' + reward.chartfrag : '',
-        reward.deepscale ? D.itemName('deepscale') + ' ×' + reward.deepscale : '',
-      ].concat(Object.keys(reward.items || {}).filter(function (id) { return Number(reward.items[id]) > 0; })
-        .map(function (id) { return D.itemName(id) + ' ×' + reward.items[id]; }))
-        .filter(Boolean).join(' + ') || '无';
-      const sub = q.submit;
-      const submitText = sub ? '（需上交 ' + esc(sub.name) + ' ×' + sub.count + '，当前持有 ' + sub.have + '）' : '';
-      row.innerHTML = '<span>' + (q.claimed ? '✅' : (q.progress >= q.need ? '🎁' : '⬚')) + ' ' + esc(q.title) + submitText +
-        ' <span class="hint">进度 ' + q.progress + '/' + q.need + ' · 奖励：' + esc(rewardText) + '</span></span>';
-      const cb = el('button', 'btn mini primary', q.claimed ? '已领取' : (q.progress >= q.need ? '领取奖励' : '未完成'));
+      row.innerHTML = '<span data-quest-state></span>';
+      const cb = el('button', 'btn mini primary');
+      cb.setAttribute('data-quest-claim', '1');
       cb.style.marginLeft = '8px';
-      cb.disabled = q.claimed || q.progress < q.need;
       cb.onclick = function () {
         cb.disabled = true;
         window.Net.seaQuestClaim(q.id).then(function (r) {
@@ -9856,6 +10047,8 @@ window.UI = (function () {
         renderView();
       });
     };
+    // 首屏也走同一套填充函数（两条路渲染出同一份 DOM）
+    seaFill();
   }
   // 从「远洋」页直达临时海域下竿：复用地图 chooseSpot 的乐观更新 + 回包对账流程
   function goSeaFishing(gid, sid, label) {
@@ -10087,6 +10280,9 @@ window.UI = (function () {
     records: ['records'],
     feedback: ['feedback'],                              // 反馈页：fetchFeedback 到达后重绘（CD/费用随服务器下发）
     logs: [],                                            // 日志页：仅在收到消息（addLog）或本地操作时重绘
+    // 远洋页（v0.21.3）：船经验 / 金币 / 碎片 / 倒计时 / 悬赏进度全是纯数据，由 seaFill 就地改写；
+    // 结构变了（船升级、出航、后台改配置）才重建。缺这一项时任何广播都会整页重建（上鱼即闪）。
+    sea: ['assets'],
     // 商城/工坊：末位是视图自身 id——fetchMall / fetchWorkshop 完成后用 refreshAll('mall'|'workshop')
     // 触发重绘；少了它就会命中「scope 不在列表内 → 不重绘」，页面永远停在「加载中…」。
     // mall 三合一（限购/收购/市集）：三份数据源的广播都要能重绘本页
@@ -10250,6 +10446,20 @@ window.UI = (function () {
       if (rem > 0 || fbLast > 0) renderView();
       fbLast = rem;
     }, 1000);
+    // v0.21.3：背包定期全量对账（30 秒一次，标签页可见时才跑）。
+    // 只靠广播增量 + 快照判新，任何一侧长期漏包都会攒出「显示有、实际没有」的虚空物品；
+    // 定期拉一次权威资产整体替换，界面自己收敛（出售被拒时也会立刻补一次，见 bulkSellExec）。
+    setInterval(function () {
+      if (document.visibilityState === 'hidden' || !S().me) return;
+      resyncAssets();
+    }, 30000);
+    // v0.21.3：远洋数据轻量轮询（10 秒）——远洋页倒计时与「远洋图」上的临时海域靠它保持新鲜。
+    // 之前 ensureSea 只写在重建分支里：页面结构不变（玩家没在钓、也没点任何按钮）时永远不刷新，
+    // 新出航/沉没的海域要等别的操作才出现在地图上。只在相关页面时发请求，其余时候一枪不发。
+    setInterval(function () {
+      if (document.visibilityState === 'hidden') return;
+      if (currentView === 'sea' || (currentView === 'fishing' && mapTab === 'voyage')) ensureSea();
+    }, 10000);
     // 渔场实况场景已挪到「🧍 角色」页当可选背景（v0.19.0），钓鱼页不再有游鱼定时器
     let token = 'cookie';
     try { localStorage.removeItem('fishing_token'); } catch (e) {}
@@ -10279,10 +10489,40 @@ window.UI = (function () {
     });
   }
 
+  // v0.21.3：编队解散 / 离队 / 被踢 → 服务器收回临时海域下竿权并停竿，这里清本地展示态 + 弹窗。
+  // 只发 toast 不行：人正挂在队友的海域里，界面突然「不在钓点」会被当成掉线。
+  function onSeaEvict(msg) {
+    const st = S();
+    const gid = String((st.player && st.player.groundId) || (st.selected && st.selected.groundId) || '');
+    if (gid.indexOf('sea:') === 0 || st.fishing.active) {
+      if (window.Engine.revertLocalFishing) window.Engine.revertLocalFishing();
+    }
+    renderTopbar(); renderNav(); renderView();
+    alertModal({ title: '🌊 离开了临时海域', html: esc(msg || '你已不在该编队，队友的临时海域不再对你开放。') });
+  }
+
+  // v0.21.3：背包全量对账 —— 向服务器要一次权威资产并**强制采信**（Engine.adoptSnapshot）。
+  // 判新水位只能防「旧包盖新包」，防不住任何一侧漏包累积出的长期偏差（玩家报的虚空物品：
+  // 背包显示持有、出售却报「数量不足」）。定期跑一次，界面自己会收敛回真实值。
+  function resyncAssets() {
+    const me = window.Net.getMe && window.Net.getMe();
+    const tok = me && me.token;
+    if (!tok || !window.Net.fetchMe || !window.Engine.adoptSnapshot) return Promise.resolve(null);
+    return Promise.resolve(window.Net.fetchMe(tok)).then(function (r) {
+      if (!r || !r.ok || !r.data) return null;
+      window.Engine.adoptSnapshot(r.data);
+      refreshAll('assets');
+      return r.data;
+    }).catch(function () { return null; });
+  }
+
   return {
     onMarketChanged: onMarketChanged, onFeatures: onFeatures, init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
     patchCodexCell: patchCodexCell,
     friendPush: friendPush,
+    onSeaEvict: onSeaEvict,
+    resyncAssets: resyncAssets,
+    alertModal: alertModal,
     toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners, onBannerStop: onBannerStop,
     addLog: addLog, onSubAlert: onSubAlert, resetBanners: resetBanners,
     renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,

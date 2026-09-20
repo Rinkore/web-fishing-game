@@ -32,6 +32,7 @@ ALL_SUITES.push('v0190');
 ALL_SUITES.push('v0200-loot', 'v0200-ui');
 ALL_SUITES.push('v0210');
 ALL_SUITES.push('v0212', 'v0212-ui');
+ALL_SUITES.push('v0213', 'v0213-ui');
 ALL_SUITES.push('wiki/wiki');
 ALL_SUITES.push('wiki/browser');
 ALL_SUITES.push('social-friends');

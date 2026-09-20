@@ -266,6 +266,22 @@ window.Engine = (function () {
     refreshEffects: refreshEffects, bdEffects: function () { return state.bdEffects; },
     startFishing: startFishing, stopFishing: stopFishing, resetTransient: resetTransient,
     resetPeeps: resetPeepsFor,   // 重连续钓等场景：按当前钓点即时重建「同钓点」列表
+    revertLocalFishing: revertLocalFishing,   // 服务器单方面停竿（临时海域权限被收回等）：只清本地展示态
+    // v0.21.3：定期对账用的「强制采信」——不做新旧比较，直接按服务器快照整体替换，
+    // 并把两条水位一起抬到它的 rev（此后到达的、rev 不大于它的包都算已包含）。
+    // 用途：定期同步 + 出售被拒后校准，消掉任何一侧漏包积累出的「虚空物品」。
+    adoptSnapshot: function (snap) {
+      if (!snap) return false;
+      const r = Number(snap.invRev);
+      if (snap.inventory) state.inventory = snap.inventory;
+      if (snap.coins != null) state.player.coins = snap.coins;
+      if (snap.bigfish !== undefined) state.bigfish = snap.bigfish || {};
+      if (isFinite(r)) {
+        state.invRev = Math.max(Number(state.invRev) || 0, r);
+        state.deltaRev = Math.max(Number(state.deltaRev) || 0, r);
+      }
+      return true;
+    },
     loadPeeps: loadPeepsFor,     // 按当前钓点立刻拉一次分页（推送节奏不变）
     resolveSpot: resolveSpot, playersAtSpot: playersAtSpot,
     buildDefaultBD: buildDefaultBD,
