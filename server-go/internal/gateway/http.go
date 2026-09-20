@@ -52,6 +52,9 @@ func New(pool *pgxpool.Pool, mfaKey []byte, locations ...*time.Location) http.Ha
 	r.Get("/api/v1/features", a.features)
 	r.Get("/api/version", a.legacyVersion)
 	r.Get("/api/me", a.legacyMe)
+	r.Get("/events", a.legacyEvents)
+	r.Post("/api/fishing/start", a.legacyFishingStart)
+	r.Post("/api/fishing/stop", a.legacyFishingStop)
 	// v1 routes explicitly expose the new contract until legacy frontend parity is verified.
 	r.Get("/api/v1/me", a.me)
 	r.Get("/api/v1/assets", a.assets)
