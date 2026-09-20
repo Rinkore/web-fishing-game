@@ -16,7 +16,10 @@ try {
     }
   }
 } finally { if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; }
-const source = D.mallCycleOf.toString() + D.parseRefreshTime.toString();
+// Normalize CRLF so the digest is identical on Windows and Linux checkouts:
+// Function.prototype.toString preserves the file's line endings, which differ by
+// checkout (core.autocrlf), so hash the LF form on every platform.
+const source = (D.mallCycleOf.toString() + D.parseRefreshTime.toString()).replace(/\r\n/g, '\n');
 const content = JSON.stringify({ format: 1, version: D.VERSION, sourceSHA256: crypto.createHash('sha256').update(source).digest('hex'), cases }, null, 2) + '\n';
 const output = path.resolve(__dirname, '../../server-go/testdata/mall-rules.json');
 if (process.argv[2] === '--write') fs.writeFileSync(output, content);
