@@ -102,6 +102,32 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 		return nil, identity.ErrStorage
 	}
 	rows.Close()
+	// Component instances live in the durable equipment table, not in the stack
+	// table. The legacy inventory map keys them by instance signature and only
+	// lists the loose ones (available and not mounted on a saved rod), which is
+	// what the original server produced when it removed a component from
+	// rec.inventory on equip.
+	rows, err = a.pool.Query(ctx, `SELECT e.attributes->>'signature',count(*) FROM fishing.equipment_instances e
+ WHERE e.owner_id=$1 AND e.lifecycle='available' AND COALESCE(e.attributes->>'signature','')<>''
+ AND NOT EXISTS(SELECT 1 FROM fishing.rod_components rc WHERE rc.equipment_id=e.id)
+ GROUP BY 1`, session.AccountID)
+	if err != nil {
+		return nil, identity.ErrStorage
+	}
+	for rows.Next() {
+		var id string
+		var count int64
+		if err := rows.Scan(&id, &count); err != nil {
+			rows.Close()
+			return nil, identity.ErrStorage
+		}
+		inventory[id] += count
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, identity.ErrStorage
+	}
+	rows.Close()
 	bf := map[string]map[string]int64{}
 	for id, m := range bigfish {
 		if m["L"] > 0 || m["G"] > 0 {
