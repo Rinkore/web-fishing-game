@@ -79,6 +79,8 @@ func New(pool *pgxpool.Pool, mfaKey []byte, locations ...*time.Location) http.Ha
 	r.Post("/api/sea/voyage", a.legacySeaAction("voyage"))
 	r.Post("/api/sea/anchor", a.legacySeaAction("anchor"))
 	r.Post("/api/sea/quest/claim", a.legacySeaAction("quest"))
+	r.Get("/api/party", a.legacyParty)
+	r.Post("/api/party", a.legacyPartyChange)
 	r.Post("/api/mall/buy", a.legacyMallBuy)
 	r.Post("/api/bd/set", a.legacyBdSet)
 	r.Get("/events", a.legacyEvents)
