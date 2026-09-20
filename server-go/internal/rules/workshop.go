@@ -49,6 +49,24 @@ var materialOrder = []string{"lure", "bait_pack", "rope", "relic", "tide_sand", 
 var materialAffix = map[string]string{"lure": "skill", "bait_pack": "rare", "rope": "size", "relic": "material", "tide_sand": "speed", "dragon_scale": "double"}
 
 func MaterialAffix(id string) string { return materialAffix[id] }
+
+// SmeltMaterialIDs mirrors data.js smeltMaterialIds(): the ordered catalyst
+// materials the workshop UI lists, in the same order as the source constant.
+func SmeltMaterialIDs() []string { return append([]string(nil), materialOrder...) }
+
+// RetainPerRelic mirrors data.js retainChancePerRelic(breakthrough): the
+// per-relic retention chance compiled from the operator formula.
+func (w WorkshopConfig) RetainPerRelic(breakthrough int) float64 {
+	compiled, err := Compile(w.RetainFormula, []string{"breakthrough"})
+	if err != nil {
+		compiled, _ = Compile("10 - breakthrough * 0.5", []string{"breakthrough"})
+	}
+	per := compiled.Eval(map[string]float64{"breakthrough": float64(breakthrough)})
+	if !finite(per) {
+		per = 0
+	}
+	return clamp(Round(per*10)/10, 0, 100)
+}
 func poolHas(base Item, kind string) bool {
 	for _, a := range base.Pool {
 		if a.Type == kind {
@@ -301,15 +319,7 @@ func (c *Catalog) SmeltPlan(in SmeltInput, cfg ComponentConfig, w WorkshopConfig
 	p.ExtraRate = Round(math.Max(0, math.Min(w.ExtraRateMax, extra))*10) / 10
 	p.Gold = math.Max(0, Round(gold))
 	p.Boundary = pearl && w.PearlRollTwice
-	compiled, err := Compile(w.RetainFormula, []string{"breakthrough"})
-	if err != nil {
-		compiled, _ = Compile("10 - breakthrough * 0.5", []string{"breakthrough"})
-	}
-	per := compiled.Eval(map[string]float64{"breakthrough": float64(bt)})
-	if !finite(per) {
-		per = 0
-	}
-	per = clamp(Round(per*10)/10, 0, 100)
+	per := w.RetainPerRelic(bt)
 	p.RetainChance = clamp(Round(float64(in.Relics)*per*10)/10, 0, 100)
 	p.MainRange = c.smeltRange(cfg, w, main, sub, "main", mainAffix)
 	p.SubRange = c.smeltRange(cfg, w, main, sub, "sub", subAffix)

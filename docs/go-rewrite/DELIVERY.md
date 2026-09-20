@@ -71,6 +71,8 @@
 - 续作最终 Windows + Docker PostgreSQL 全套通过至 0017，Windows build/vet、gofmt、go mod verify、git diff --check 通过；本批测试容器和网络已清理。该结果验证新 Go 接口与事务，未执行旧前端浏览器 A/B，也不作为完整玩法或容量通过的证明。
 - 旧市集契约接入：`GET /api/market`（分页 / scope / kind / part / q / 词条区间 / 排序 / counts / parts / mineCount / marketTotal / revision）、`POST /api/market/list|buy|cancel`、`GET /api/market/history` 已桥接到正式市集事务。整竿标识 `rodset:part=sig;...` 由托管件 `market_order_equipment` 按 data.js 部位顺序还原；组件实例按签名还原并回写旧版中文拒绝文案。**已知偏差**：同一签名挂 N 件按「一件一单」落库（正式模型限制），每单各自 ceil 上架费，合计可能比旧版整单多 0～N-1 金币；部分成交/下架/历史（60 条）语义与旧版一致。
 - 修正旧档案投影：`/api/me` 的 inventory 现在按签名汇总「未装竿、未托管的可用组件实例」，与旧版 `rec.inventory`（装备时移出背包）口径一致；此前组件在旧前端背包中不可见，市集/宝匣/钓竿相关流程都受影响。
+- 旧工坊契约接入：`GET /api/workshop`（合并后的熔炼配置、六种催化剂材料与词缀对照、重铸与残片保留参数）、`POST /api/workshop/smelt|recast|forge` 已桥接到 `workshop.Apply`。随机结果仍由「请求号 + 持久随机意图」决定，回包按 data.js `instanceMeta` 形状还原产物/主件余件，并回写旧版中文拒绝文案。**已知偏差**：主副件同一签名会被正式模块拒绝（旧前端选择器本身也排除了这种情况）；单次投料种类上限 8（正式模块限制，旧版为 100 项校验）；`perRelic`/`breakthrough` 由等价公式现算。
+- `internal/rules` 补充 `SmeltMaterialIDs()` 与 `WorkshopConfig.RetainPerRelic()`（后者与 data.js `retainChancePerRelic` 同式，并替换 `SmeltPlan` 内的重复实现，行为不变）。
 - 本地提交 `4bda2dd` 保存前一批规则、身份、交易、市集、工坊、商城、好友和持久卷验收工程；后续经济/运营批次持续整理。远程 CI 增加所有规则 oracle 漂移检查，尚未推送触发。
 - 全部操作只涉及隔离合成数据库。未读取参考旧存档、未做迁移、未推送或部署。
 
