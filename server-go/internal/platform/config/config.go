@@ -3,6 +3,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"net"
 	"strconv"
@@ -18,11 +19,21 @@ type Config struct {
 	StartupTimeout   time.Duration
 	ProbeTimeout     time.Duration
 	ShutdownTimeout  time.Duration
+	MFAEncryptionKey []byte
+	Location         *time.Location
 }
 
 func Load(getenv func(string) string) (Config, error) {
 	c := Config{ListenAddress: "127.0.0.1:19001", NodeID: "local", Role: "all", DatabaseMaxConns: 16,
 		StartupTimeout: 5 * time.Second, ProbeTimeout: time.Second, ShutdownTimeout: 10 * time.Second}
+	c.Location = time.Local
+	if name := getenv("FISHING_GO_TIMEZONE"); name != "" {
+		location, err := time.LoadLocation(name)
+		if err != nil {
+			return Config{}, errors.New("invalid FISHING_GO_TIMEZONE")
+		}
+		c.Location = location
+	}
 	if v := getenv("FISHING_GO_LISTEN"); v != "" {
 		c.ListenAddress = v
 	}
@@ -49,6 +60,13 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, errors.New("only FISHING_GO_ROLE=all is implemented")
 	}
 	c.DatabaseURL = getenv("FISHING_GO_DATABASE_URL")
+	if raw := getenv("FISHING_GO_MFA_KEY"); raw != "" {
+		key, err := base64.StdEncoding.DecodeString(raw)
+		if err != nil || len(key) != 32 {
+			return Config{}, errors.New("FISHING_GO_MFA_KEY must be base64 of 32 bytes")
+		}
+		c.MFAEncryptionKey = key
+	}
 	if c.DatabaseURL == "" {
 		return Config{}, errors.New("FISHING_GO_DATABASE_URL is required")
 	}

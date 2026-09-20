@@ -68,7 +68,8 @@ func (s *Service) Run(ctx context.Context, c Command, apply func(context.Context
 		return Result{}, ErrInvalid
 	}
 	switch c.Kind {
-	case "fishing_connection", "fishing_start", "fishing_stop", "fishing_settle", "market_list", "market_buy", "market_close":
+	case "mall_buy", "friend_change":
+	case "fishing_connection", "fishing_start", "fishing_stop", "fishing_settle", "market_list", "market_buy", "market_close", "trade_invite", "trade_respond", "trade_offer", "trade_confirm", "trade_cancel", "trade_expire", "workshop_smelt", "workshop_recast", "workshop_forge", "chest_craft", "chest_open":
 	default:
 		return Result{}, ErrInvalid
 	}
@@ -94,6 +95,14 @@ func (s *Service) Run(ctx context.Context, c Command, apply func(context.Context
 	return s.execute(ctx, command{c.ActorID, c.RequestKey, c.Kind, c.RuleVersion, fingerprint(json.RawMessage(data)), players}, func(ctx context.Context, u *assetTx) (Result, error) {
 		return apply(ctx, &Transaction{u, locked})
 	})
+}
+
+// MoveEquipment transfers a loose instance after both owners are locked.
+func (t *Transaction) MoveEquipment(ctx context.Context, from, to, id int64) error {
+	if from == to || !t.players[from] || !t.players[to] || id <= 0 {
+		return ErrInvalid
+	}
+	return t.u.moveEquipment(ctx, from, to, id)
 }
 
 // HoldEquipment moves an unbound instance into a listing's escrow. The listing

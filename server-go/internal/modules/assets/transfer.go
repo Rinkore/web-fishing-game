@@ -38,14 +38,15 @@ type Transfer struct {
 }
 
 type Result struct {
-	Status           string   `json:"status"`
-	OperationID      string   `json:"operationId,omitempty"`
-	SenderBalance    int64    `json:"senderBalance"`
-	RecipientBalance int64    `json:"recipientBalance"`
-	EquipmentIDs     []string `json:"equipmentIds,omitempty"`
-	ResourceID       string   `json:"resourceId,omitempty"`
-	Generation       int64    `json:"generation,omitempty,string"`
-	Sequence         int64    `json:"sequence,omitempty,string"`
+	Status           string          `json:"status"`
+	OperationID      string          `json:"operationId,omitempty"`
+	SenderBalance    int64           `json:"senderBalance"`
+	RecipientBalance int64           `json:"recipientBalance"`
+	EquipmentIDs     []string        `json:"equipmentIds,omitempty"`
+	ResourceID       string          `json:"resourceId,omitempty"`
+	Generation       int64           `json:"generation,omitempty,string"`
+	Sequence         int64           `json:"sequence,omitempty,string"`
+	Details          json.RawMessage `json:"details,omitempty"`
 }
 
 type Service struct{ pool *pgxpool.Pool }
@@ -72,6 +73,12 @@ func systemKind(key string) string {
 	}
 	if strings.HasPrefix(key, "market:expire:") {
 		return "market_close"
+	}
+	if strings.HasPrefix(key, "market:order-expire:") {
+		return "market_close"
+	}
+	if strings.HasPrefix(key, "trade:expire:") {
+		return "trade_expire"
 	}
 	return ""
 }

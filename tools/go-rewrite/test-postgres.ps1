@@ -17,7 +17,7 @@ try {
   $env:FISHING_GO_TEST_DATABASE_URL = 'postgres://fishing_test_admin:local-test-only@' + $endpoint + '/fishing_test?sslmode=disable'
   Push-Location (Join-Path $repoRoot 'server-go')
   try {
-    & $GoExe test -count=1 -v ./... 2>&1 | Select-Object -Last 40
+    & $GoExe test -count=1 -timeout=3m ./... 2>&1 | Select-Object -Last 40
     if ($LASTEXITCODE -ne 0) { throw 'Go PostgreSQL integration tests failed' }
   } finally { Pop-Location }
 } finally {

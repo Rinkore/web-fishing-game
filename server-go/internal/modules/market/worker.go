@@ -10,6 +10,7 @@ func (s *Service) RunExpiry(ctx context.Context, logger *slog.Logger) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	var after int64
+	var ordersAfter int64
 	var lastWarning time.Time
 	for {
 		select {
@@ -19,6 +20,11 @@ func (s *Service) RunExpiry(ctx context.Context, logger *slog.Logger) {
 		}
 		batch, cancel := context.WithTimeout(ctx, 5*time.Second)
 		next, err := s.Expire(batch, after, 64)
+		ordersNext, ordersErr := s.ExpireOrders(batch, ordersAfter)
+		ordersAfter = ordersNext
+		if err == nil {
+			err = ordersErr
+		}
 		cancel()
 		after = next
 		if ctx.Err() != nil {

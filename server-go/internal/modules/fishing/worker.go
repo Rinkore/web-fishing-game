@@ -101,7 +101,9 @@ func (s *Service) Sweep(ctx context.Context, after Cursor, limit, workers int) (
 }
 
 func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
-	ticker := time.NewTicker(100 * time.Millisecond)
+	// A 100ms polling period alone consumed the entire p95 scheduling budget
+	// on persistent disk. Keep scans bounded while reducing idle polling delay.
+	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	after := Cursor{}
 	var lastWarning time.Time
@@ -111,7 +113,7 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 			return
 		case <-ticker.C:
 		}
-		next, stats, err := s.Sweep(ctx, after, 64, 4)
+		next, stats, err := s.Sweep(ctx, after, 100, 8)
 		after = next
 		if ctx.Err() != nil {
 			return

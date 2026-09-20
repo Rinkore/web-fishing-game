@@ -1,0 +1,4009 @@
+{
+  "format": 1,
+  "version": "v0.21.4",
+  "source": "frontend/js/data.js",
+  "sourceSHA256": "d1df3621a0599c39293df4de00ee54e95d595dadf20fe75650194b02bb24f2c0",
+  "constants": {
+    "VERSION": "v0.21.4",
+    "BUILD": "2026-09-20",
+    "FISH": {
+      "common": [
+        {
+          "id": "crucian",
+          "name": "鲫鱼",
+          "rarity": "common",
+          "price": 8,
+          "size": [
+            10,
+            35
+          ]
+        },
+        {
+          "id": "carp",
+          "name": "鲤鱼",
+          "rarity": "common",
+          "price": 12,
+          "size": [
+            20,
+            70
+          ]
+        },
+        {
+          "id": "grass",
+          "name": "草鱼",
+          "rarity": "common",
+          "price": 15,
+          "size": [
+            30,
+            90
+          ]
+        },
+        {
+          "id": "white",
+          "name": "白条",
+          "rarity": "common",
+          "price": 6,
+          "size": [
+            8,
+            25
+          ]
+        },
+        {
+          "id": "tilapia",
+          "name": "罗非鱼",
+          "rarity": "common",
+          "price": 10,
+          "size": [
+            15,
+            45
+          ]
+        },
+        {
+          "id": "minnow",
+          "name": "麦穗鱼",
+          "rarity": "common",
+          "price": 5,
+          "size": [
+            4,
+            12
+          ]
+        },
+        {
+          "id": "loach",
+          "name": "泥鳅",
+          "rarity": "common",
+          "price": 9,
+          "size": [
+            10,
+            25
+          ]
+        },
+        {
+          "id": "sardine",
+          "name": "沙丁鱼",
+          "rarity": "common",
+          "price": 6,
+          "size": [
+            8,
+            18
+          ]
+        },
+        {
+          "id": "croaker",
+          "name": "小黄鱼",
+          "rarity": "common",
+          "price": 11,
+          "size": [
+            10,
+            25
+          ]
+        },
+        {
+          "id": "yellowcat",
+          "name": "黄辣丁",
+          "rarity": "common",
+          "price": 13,
+          "size": [
+            12,
+            30
+          ]
+        },
+        {
+          "id": "bream",
+          "name": "鳊鱼",
+          "rarity": "common",
+          "price": 14,
+          "size": [
+            20,
+            50
+          ]
+        },
+        {
+          "id": "silvercarp",
+          "name": "鲢鱼",
+          "rarity": "common",
+          "price": 15,
+          "size": [
+            30,
+            75
+          ]
+        },
+        {
+          "id": "bighead",
+          "name": "鳙鱼",
+          "rarity": "common",
+          "price": 17,
+          "size": [
+            35,
+            90
+          ]
+        },
+        {
+          "id": "riverperch",
+          "name": "河鲈",
+          "rarity": "common",
+          "price": 12,
+          "size": [
+            15,
+            40
+          ]
+        },
+        {
+          "id": "culter",
+          "name": "翘嘴鲌",
+          "rarity": "common",
+          "price": 18,
+          "size": [
+            25,
+            60
+          ]
+        },
+        {
+          "id": "blackcarp",
+          "name": "青鱼",
+          "rarity": "common",
+          "price": 20,
+          "size": [
+            40,
+            100
+          ]
+        },
+        {
+          "id": "mullet",
+          "name": "鲻鱼",
+          "rarity": "common",
+          "price": 9,
+          "size": [
+            12,
+            35
+          ]
+        },
+        {
+          "id": "jackmack",
+          "name": "竹荚鱼",
+          "rarity": "common",
+          "price": 10,
+          "size": [
+            12,
+            30
+          ]
+        },
+        {
+          "id": "squid",
+          "name": "小鱿鱼",
+          "rarity": "common",
+          "price": 12,
+          "size": [
+            10,
+            30
+          ]
+        },
+        {
+          "id": "octo",
+          "name": "小章鱼",
+          "rarity": "common",
+          "price": 14,
+          "size": [
+            10,
+            35
+          ]
+        }
+      ],
+      "big": [
+        {
+          "id": "catfish",
+          "name": "巨型鲶鱼",
+          "rarity": "rare",
+          "price": 120,
+          "size": [
+            80,
+            220
+          ]
+        },
+        {
+          "id": "bass",
+          "name": "湖王鲈鱼",
+          "rarity": "rare",
+          "price": 150,
+          "size": [
+            60,
+            180
+          ]
+        },
+        {
+          "id": "tuna",
+          "name": "黄金枪鱼",
+          "rarity": "epic",
+          "price": 260,
+          "size": [
+            120,
+            320
+          ]
+        },
+        {
+          "id": "sturgeon",
+          "name": "远古巨鲟",
+          "rarity": "epic",
+          "price": 320,
+          "size": [
+            150,
+            400
+          ]
+        },
+        {
+          "id": "mandarin",
+          "name": "鳜鱼",
+          "rarity": "rare",
+          "price": 140,
+          "size": [
+            35,
+            90
+          ]
+        },
+        {
+          "id": "blackbass",
+          "name": "大口黑鲈",
+          "rarity": "rare",
+          "price": 160,
+          "size": [
+            45,
+            130
+          ]
+        },
+        {
+          "id": "seabass",
+          "name": "海鲈",
+          "rarity": "rare",
+          "price": 170,
+          "size": [
+            55,
+            140
+          ]
+        },
+        {
+          "id": "yellowcheek",
+          "name": "鳡鱼",
+          "rarity": "rare",
+          "price": 180,
+          "size": [
+            70,
+            170
+          ]
+        },
+        {
+          "id": "mackerel",
+          "name": "马鲛鱼",
+          "rarity": "epic",
+          "price": 210,
+          "size": [
+            55,
+            160
+          ]
+        },
+        {
+          "id": "grouper",
+          "name": "石斑鱼",
+          "rarity": "epic",
+          "price": 230,
+          "size": [
+            45,
+            150
+          ]
+        },
+        {
+          "id": "cobia",
+          "name": "军曹鱼",
+          "rarity": "epic",
+          "price": 250,
+          "size": [
+            90,
+            200
+          ]
+        },
+        {
+          "id": "rubysnapper",
+          "name": "金目鲷",
+          "rarity": "epic",
+          "price": 280,
+          "size": [
+            55,
+            140
+          ]
+        },
+        {
+          "id": "sunfish",
+          "name": "翻车鱼",
+          "rarity": "epic",
+          "price": 300,
+          "size": [
+            150,
+            300
+          ]
+        },
+        {
+          "id": "arapaima",
+          "name": "巨骨舌鱼",
+          "rarity": "epic",
+          "price": 350,
+          "size": [
+            180,
+            330
+          ]
+        },
+        {
+          "id": "mahimahi",
+          "name": "鬼头刀",
+          "rarity": "rare",
+          "price": 200,
+          "size": [
+            70,
+            160
+          ]
+        },
+        {
+          "id": "amberjack",
+          "name": "鰤鱼",
+          "rarity": "rare",
+          "price": 190,
+          "size": [
+            60,
+            150
+          ]
+        },
+        {
+          "id": "halibut",
+          "name": "大比目鱼",
+          "rarity": "epic",
+          "price": 270,
+          "size": [
+            80,
+            200
+          ]
+        },
+        {
+          "id": "giantquid",
+          "name": "巨型鱿鱼",
+          "rarity": "epic",
+          "price": 330,
+          "size": [
+            150,
+            400
+          ]
+        }
+      ],
+      "rare": [
+        {
+          "id": "koi",
+          "name": "黄金锦鲤",
+          "rarity": "rare",
+          "price": 400,
+          "size": [
+            40,
+            110
+          ]
+        },
+        {
+          "id": "pearl",
+          "name": "深海珍珠贝",
+          "rarity": "rare",
+          "price": 300,
+          "size": [
+            10,
+            40
+          ]
+        },
+        {
+          "id": "amberlobster",
+          "name": "琥珀龙虾",
+          "rarity": "rare",
+          "price": 340,
+          "size": [
+            20,
+            60
+          ]
+        },
+        {
+          "id": "voltaiceel",
+          "name": "电光鳗",
+          "rarity": "rare",
+          "price": 380,
+          "size": [
+            60,
+            140
+          ]
+        },
+        {
+          "id": "ghostray",
+          "name": "幽灵魟",
+          "rarity": "rare",
+          "price": 420,
+          "size": [
+            90,
+            220
+          ]
+        },
+        {
+          "id": "arowana",
+          "name": "金龙鱼",
+          "rarity": "rare",
+          "price": 450,
+          "size": [
+            45,
+            95
+          ]
+        },
+        {
+          "id": "moonkoi",
+          "name": "月光鲤",
+          "rarity": "rare",
+          "price": 480,
+          "size": [
+            40,
+            110
+          ]
+        },
+        {
+          "id": "dragonfish",
+          "name": "深海龙鱼",
+          "rarity": "rare",
+          "price": 500,
+          "size": [
+            50,
+            120
+          ]
+        },
+        {
+          "id": "swordfish",
+          "name": "剑鱼",
+          "rarity": "rare",
+          "price": 520,
+          "size": [
+            180,
+            380
+          ]
+        },
+        {
+          "id": "bluefin",
+          "name": "蓝鳍金枪鱼",
+          "rarity": "rare",
+          "price": 560,
+          "size": [
+            130,
+            300
+          ]
+        },
+        {
+          "id": "coelacanth",
+          "name": "腔棘鱼",
+          "rarity": "rare",
+          "price": 600,
+          "size": [
+            100,
+            220
+          ]
+        },
+        {
+          "id": "megamouth",
+          "name": "巨口鲨",
+          "rarity": "rare",
+          "price": 700,
+          "size": [
+            250,
+            500
+          ]
+        },
+        {
+          "id": "leviathan",
+          "name": "海王·利维坦",
+          "rarity": "rare",
+          "price": 900,
+          "size": [
+            300,
+            800
+          ]
+        }
+      ]
+    },
+    "MATERIALS": [
+      {
+        "id": "bait_pack",
+        "name": "诱饵包",
+        "rarity": "common",
+        "price": 5,
+        "size": null
+      },
+      {
+        "id": "rope",
+        "name": "耐磨绳",
+        "rarity": "common",
+        "price": 4,
+        "size": null
+      },
+      {
+        "id": "lure",
+        "name": "反光假饵",
+        "rarity": "common",
+        "price": 7,
+        "size": null
+      },
+      {
+        "id": "relic",
+        "name": "沉船宝匣残片",
+        "rarity": "rare",
+        "price": 380,
+        "size": null
+      },
+      {
+        "id": "tide_sand",
+        "name": "潮汐砂",
+        "rarity": "rare",
+        "price": 260,
+        "size": null
+      },
+      {
+        "id": "dragon_scale",
+        "name": "龙鳞碎屑",
+        "rarity": "epic",
+        "price": 720,
+        "size": null
+      },
+      {
+        "id": "dragonpearl",
+        "name": "龙宫宝珠",
+        "rarity": "epic",
+        "price": 600,
+        "size": null
+      },
+      {
+        "id": "chartfrag",
+        "name": "海图碎片",
+        "rarity": "rare",
+        "price": 120,
+        "size": null
+      },
+      {
+        "id": "deepscale",
+        "name": "深海鳞片",
+        "rarity": "rare",
+        "price": 180,
+        "size": null
+      }
+    ],
+    "RARITY_PRICE": {
+      "common": 10,
+      "rare": 350,
+      "epic": 600,
+      "mythic": 1200
+    },
+    "ROD_PARTS": [
+      {
+        "key": "rod",
+        "name": "竿身",
+        "default": {
+          "name": "标准竿身"
+        }
+      },
+      {
+        "key": "line",
+        "name": "线组",
+        "default": {
+          "name": "标准线组"
+        }
+      },
+      {
+        "key": "hook",
+        "name": "钩",
+        "default": {
+          "name": "标准钩"
+        }
+      },
+      {
+        "key": "bait",
+        "name": "饵",
+        "default": {
+          "name": "标准饵"
+        }
+      },
+      {
+        "key": "reel",
+        "name": "卷线器",
+        "default": {
+          "name": "标准卷线器"
+        }
+      },
+      {
+        "key": "accessory",
+        "name": "配件",
+        "default": {
+          "name": "标准配件"
+        }
+      },
+      {
+        "key": "charm",
+        "name": "饰品栏位",
+        "isCharm": true,
+        "default": {
+          "name": "（空）"
+        }
+      }
+    ],
+    "AFFIX_LABEL": {
+      "speed": "钓速",
+      "skill": "技巧",
+      "rare": "稀有度",
+      "material": "材料概率",
+      "size": "体型",
+      "double": "双钓概率"
+    },
+    "AFFIX_CODES": {
+      "speed": "spd",
+      "skill": "skl",
+      "rare": "rare",
+      "material": "mat",
+      "size": "size",
+      "double": "dbl"
+    },
+    "AFFIX_TYPES": [
+      "speed",
+      "skill",
+      "rare",
+      "material",
+      "size",
+      "double"
+    ],
+    "QUALITY": {
+      "common": {
+        "key": "common",
+        "name": "普通",
+        "cap": 1,
+        "mult": 1,
+        "cls": "q-common"
+      },
+      "rare": {
+        "key": "rare",
+        "name": "稀有",
+        "cap": 2,
+        "mult": 1.5,
+        "cls": "q-rare"
+      },
+      "epic": {
+        "key": "epic",
+        "name": "史诗",
+        "cap": 3,
+        "mult": 2.4,
+        "cls": "q-epic"
+      },
+      "mythic": {
+        "key": "mythic",
+        "name": "神话",
+        "cap": 4,
+        "mult": 3.6,
+        "cls": "q-mythic"
+      }
+    },
+    "QUALITY_ORDER": {
+      "common": 1,
+      "rare": 2,
+      "epic": 3,
+      "mythic": 4
+    },
+    "CHESTS": [
+      {
+        "id": "chest_wreck",
+        "name": "沉船宝匣",
+        "rarity": "rare",
+        "desc": "沉船里的随机打捞件，至少 2 条词缀。",
+        "costRelic": 8,
+        "costCoins": 8000,
+        "mode": "random",
+        "qualityWeights": {
+          "rare": 65,
+          "epic": 35
+        },
+        "minAffixes": 2,
+        "price": 11040
+      },
+      {
+        "id": "chest_deep",
+        "name": "深潜宝匣",
+        "rarity": "rare",
+        "desc": "自选部位，沉得更深、捞得更准，至少 2 条词缀。",
+        "costRelic": 20,
+        "costCoins": 30000,
+        "mode": "part",
+        "qualityWeights": {
+          "rare": 50,
+          "epic": 50
+        },
+        "minAffixes": 2,
+        "price": 37600
+      },
+      {
+        "id": "chest_abyss",
+        "name": "深渊宝匣",
+        "rarity": "epic",
+        "desc": "自选底材，必定史诗，且词条填满该底材的全部词缀池。",
+        "costRelic": 45,
+        "costCoins": 90000,
+        "mode": "base",
+        "qualityWeights": {
+          "epic": 100
+        },
+        "forceMax": true,
+        "price": 107100
+      },
+      {
+        "id": "chest_king",
+        "name": "海王遗匣",
+        "rarity": "mythic",
+        "desc": "自选底材，必定神话：50% 概率突破词缀池边界，获得一条<b>突破词缀</b>（该部位本没有的词缀）。",
+        "costRelic": 100,
+        "costCoins": 300000,
+        "mode": "base",
+        "qualityWeights": {
+          "mythic": 100
+        },
+        "extra": true,
+        "hitCount": 4,
+        "missCount": 3,
+        "chance": 0.5,
+        "price": 338000
+      }
+    ],
+    "RELIC_PRICE": 380,
+    "CHEST_BASE_COSTS": {
+      "chest_wreck": {
+        "costRelic": 8,
+        "costCoins": 8000
+      },
+      "chest_deep": {
+        "costRelic": 20,
+        "costCoins": 30000
+      },
+      "chest_abyss": {
+        "costRelic": 45,
+        "costCoins": 90000
+      },
+      "chest_king": {
+        "costRelic": 100,
+        "costCoins": 300000
+      }
+    },
+    "CAST_FORMULA_DEFAULT": "interval / (1 + speed / 100)",
+    "BITE_FORMULA_DEFAULT": "clamp(min(interval / 60, (300 + 140 * max(0,speed) * max(0,speed) / (3025 + max(0,speed) * max(0,speed)) + 80 * max(0,skill) * max(0,skill) / (3025 + max(0,skill) * max(0,skill))) / (3.6 * (1 + max(0,speed) / 100))), 0, 100)",
+    "SIM_VAR_NAMES": [
+      "speed",
+      "skill",
+      "big",
+      "rare",
+      "material",
+      "size",
+      "double",
+      "interval"
+    ],
+    "SMELT_MATERIAL_AFFIX": {
+      "lure": "skill",
+      "bait_pack": "rare",
+      "rope": "size",
+      "relic": "material",
+      "tide_sand": "speed",
+      "dragon_scale": "double"
+    },
+    "SMELT_PEARL": "dragonpearl",
+    "SMELT_DEFAULTS": {
+      "baseRate": 50,
+      "failPerMaterial": -2,
+      "extraRatePerMaterial": 8,
+      "extraRatePearl": 0,
+      "extraRateMax": 95,
+      "rateMin": 5,
+      "rateMax": 99,
+      "goldBase": 5000,
+      "goldPerMaterial": 900,
+      "goldPearl": 20000,
+      "maxMaterials": 20,
+      "maxTypes": 4,
+      "pearlRollTwice": true,
+      "recastPearl": 1,
+      "recastGold": 0,
+      "recastMinValue": 0,
+      "retainFormula": "10 - breakthrough * 0.5",
+      "retainMaxRelic": 10,
+      "subRangeFromSub": true,
+      "addAnyAffix": true,
+      "addAffixCap": 3,
+      "addAffixExtraRange": true,
+      "catalystRanges": {},
+      "catalystRatio": 90,
+      "forgeAnyAffix": true
+    },
+    "SNAPSHOT_DEFAULTS": {
+      "enabled": true,
+      "intervalMin": 30,
+      "keep": 5
+    },
+    "RETAIN_VAR_NAMES": [
+      "breakthrough"
+    ],
+    "RARE_K_DEFAULT": 2,
+    "RECAST_QUALITY": "mythic",
+    "MALL_DEFAULTS": {
+      "refreshTime": "04:00",
+      "items": [
+        {
+          "id": "bait_pack",
+          "price": 40,
+          "limit": 20
+        },
+        {
+          "id": "lure",
+          "price": 60,
+          "limit": 20
+        },
+        {
+          "id": "rope",
+          "price": 35,
+          "limit": 20
+        },
+        {
+          "id": "tide_sand",
+          "price": 2600,
+          "limit": 3
+        },
+        {
+          "id": "dragon_scale",
+          "price": 7200,
+          "limit": 1
+        },
+        {
+          "id": "relic",
+          "price": 3800,
+          "limit": 3
+        }
+      ]
+    },
+    "DEFAULT_EXTRA_AFFIX_RANGES": {
+      "speed": [
+        4,
+        10
+      ],
+      "skill": [
+        2,
+        6
+      ],
+      "rare": [
+        1,
+        4
+      ],
+      "material": [
+        8,
+        16
+      ],
+      "size": [
+        4,
+        10
+      ],
+      "double": [
+        3,
+        8
+      ]
+    },
+    "COMPONENT_BASES": [
+      {
+        "id": "rod_bamboo",
+        "name": "竹制短竿",
+        "part": "rod",
+        "price": 55,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 8,
+            "max": 14
+          },
+          {
+            "type": "size",
+            "min": -6,
+            "max": 4
+          }
+        ]
+      },
+      {
+        "id": "rod_fiberglass",
+        "name": "玻璃钢竿",
+        "part": "rod",
+        "price": 85,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 10,
+            "max": 18
+          },
+          {
+            "type": "size",
+            "min": -8,
+            "max": -1
+          }
+        ]
+      },
+      {
+        "id": "rod_carbon",
+        "name": "碳素长竿",
+        "part": "rod",
+        "price": 150,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 14,
+            "max": 22
+          },
+          {
+            "type": "material",
+            "min": -14,
+            "max": -4
+          },
+          {
+            "type": "size",
+            "min": -6,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "rod_dragonbone",
+        "name": "龙骨巨竿",
+        "part": "rod",
+        "price": 260,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 8,
+            "max": 14
+          },
+          {
+            "type": "size",
+            "min": 4,
+            "max": 12
+          },
+          {
+            "type": "speed",
+            "min": -18,
+            "max": -8
+          }
+        ]
+      },
+      {
+        "id": "line_nylon",
+        "name": "尼龙线组",
+        "part": "line",
+        "price": 45,
+        "pool": [
+          {
+            "type": "material",
+            "min": 15,
+            "max": 28
+          },
+          {
+            "type": "size",
+            "min": -6,
+            "max": 4
+          }
+        ]
+      },
+      {
+        "id": "line_stealth",
+        "name": "隐形鱼线",
+        "part": "line",
+        "price": 140,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 3,
+            "max": 7
+          },
+          {
+            "type": "size",
+            "min": -14,
+            "max": -5
+          }
+        ]
+      },
+      {
+        "id": "line_titan",
+        "name": "钛芯线",
+        "part": "line",
+        "price": 170,
+        "pool": [
+          {
+            "type": "size",
+            "min": 10,
+            "max": 18
+          },
+          {
+            "type": "speed",
+            "min": -9,
+            "max": -2
+          }
+        ]
+      },
+      {
+        "id": "line_dragon",
+        "name": "龙筋线",
+        "part": "line",
+        "price": 250,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 4,
+            "max": 8
+          },
+          {
+            "type": "rare",
+            "min": 3,
+            "max": 6
+          },
+          {
+            "type": "speed",
+            "min": -14,
+            "max": -6
+          }
+        ]
+      },
+      {
+        "id": "hook_barb",
+        "name": "倒刺钩",
+        "part": "hook",
+        "price": 50,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 3,
+            "max": 6
+          },
+          {
+            "type": "size",
+            "min": -4,
+            "max": 3
+          }
+        ]
+      },
+      {
+        "id": "hook_swallow",
+        "name": "血燕钩",
+        "part": "hook",
+        "price": 70,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 8,
+            "max": 15
+          },
+          {
+            "type": "size",
+            "min": -12,
+            "max": -4
+          }
+        ]
+      },
+      {
+        "id": "hook_steel",
+        "name": "精钢鱼钩",
+        "part": "hook",
+        "price": 150,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 6,
+            "max": 10
+          },
+          {
+            "type": "speed",
+            "min": -8,
+            "max": -2
+          }
+        ]
+      },
+      {
+        "id": "hook_ghost",
+        "name": "千钩·鬼牙",
+        "part": "hook",
+        "price": 245,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 8,
+            "max": 12
+          },
+          {
+            "type": "rare",
+            "min": -9,
+            "max": -3
+          },
+          {
+            "type": "size",
+            "min": 3,
+            "max": 9
+          }
+        ]
+      },
+      {
+        "id": "bait_corn",
+        "name": "浓香饵料",
+        "part": "bait",
+        "price": 40,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 1,
+            "max": 3
+          },
+          {
+            "type": "speed",
+            "min": 4,
+            "max": 9
+          }
+        ]
+      },
+      {
+        "id": "bait_rice",
+        "name": "酒米窝料",
+        "part": "bait",
+        "price": 42,
+        "pool": [
+          {
+            "type": "material",
+            "min": 22,
+            "max": 34
+          },
+          {
+            "type": "speed",
+            "min": -8,
+            "max": -2
+          }
+        ]
+      },
+      {
+        "id": "bait_secret",
+        "name": "秘制香饵",
+        "part": "bait",
+        "price": 165,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 4,
+            "max": 8
+          },
+          {
+            "type": "material",
+            "min": -14,
+            "max": -5
+          }
+        ]
+      },
+      {
+        "id": "bait_bionic",
+        "name": "仿生拟饵",
+        "part": "bait",
+        "price": 175,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 4,
+            "max": 8
+          },
+          {
+            "type": "rare",
+            "min": 2,
+            "max": 5
+          },
+          {
+            "type": "material",
+            "min": -18,
+            "max": -9
+          }
+        ]
+      },
+      {
+        "id": "reel_smooth",
+        "name": "顺滑卷线器",
+        "part": "reel",
+        "price": 55,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 8,
+            "max": 13
+          },
+          {
+            "type": "material",
+            "min": -5,
+            "max": 3
+          }
+        ]
+      },
+      {
+        "id": "reel_magnetic",
+        "name": "磁力刹车卷线器",
+        "part": "reel",
+        "price": 160,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 12,
+            "max": 18
+          },
+          {
+            "type": "material",
+            "min": -14,
+            "max": -5
+          }
+        ]
+      },
+      {
+        "id": "reel_electric",
+        "name": "电动卷线器",
+        "part": "reel",
+        "price": 240,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 20,
+            "max": 28
+          },
+          {
+            "type": "skill",
+            "min": -6,
+            "max": 2
+          }
+        ]
+      },
+      {
+        "id": "reel_turbo",
+        "name": "涡轮卷线器",
+        "part": "reel",
+        "price": 270,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 28,
+            "max": 38
+          },
+          {
+            "type": "skill",
+            "min": -12,
+            "max": -4
+          }
+        ]
+      },
+      {
+        "id": "acc_net",
+        "name": "鱼护网袋",
+        "part": "accessory",
+        "price": 60,
+        "pool": [
+          {
+            "type": "double",
+            "min": 7,
+            "max": 12
+          },
+          {
+            "type": "speed",
+            "min": -4,
+            "max": 3
+          }
+        ]
+      },
+      {
+        "id": "acc_float",
+        "name": "夜光浮漂",
+        "part": "accessory",
+        "price": 52,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 2,
+            "max": 5
+          },
+          {
+            "type": "size",
+            "min": -10,
+            "max": -3
+          }
+        ]
+      },
+      {
+        "id": "acc_scoop",
+        "name": "自动抄网",
+        "part": "accessory",
+        "price": 165,
+        "pool": [
+          {
+            "type": "double",
+            "min": 12,
+            "max": 18
+          },
+          {
+            "type": "material",
+            "min": -8,
+            "max": -2
+          }
+        ]
+      },
+      {
+        "id": "acc_sonar",
+        "name": "智能探鱼器",
+        "part": "accessory",
+        "price": 255,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 5,
+            "max": 9
+          },
+          {
+            "type": "rare",
+            "min": 3,
+            "max": 6
+          },
+          {
+            "type": "speed",
+            "min": -10,
+            "max": -3
+          }
+        ]
+      },
+      {
+        "id": "acc_radar",
+        "name": "深海声呐雷达",
+        "part": "accessory",
+        "price": 300,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 5,
+            "max": 9
+          },
+          {
+            "type": "size",
+            "min": 8,
+            "max": 14
+          },
+          {
+            "type": "speed",
+            "min": -14,
+            "max": -6
+          }
+        ]
+      },
+      {
+        "id": "charm_coin",
+        "name": "幸运硬币",
+        "part": "charm",
+        "price": 145,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 2,
+            "max": 5
+          },
+          {
+            "type": "size",
+            "min": 6,
+            "max": 12
+          }
+        ]
+      },
+      {
+        "id": "charm_jade",
+        "name": "翡翠鲤玉",
+        "part": "charm",
+        "price": 155,
+        "pool": [
+          {
+            "type": "size",
+            "min": 15,
+            "max": 24
+          },
+          {
+            "type": "speed",
+            "min": -12,
+            "max": -4
+          }
+        ]
+      },
+      {
+        "id": "charm_gold",
+        "name": "金鳞坠饰",
+        "part": "charm",
+        "price": 250,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 3,
+            "max": 6
+          },
+          {
+            "type": "rare",
+            "min": 2,
+            "max": 5
+          },
+          {
+            "type": "speed",
+            "min": 6,
+            "max": 12
+          }
+        ]
+      },
+      {
+        "id": "charm_trident",
+        "name": "海王徽记",
+        "part": "charm",
+        "price": 290,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 6,
+            "max": 10
+          },
+          {
+            "type": "rare",
+            "min": 4,
+            "max": 8
+          },
+          {
+            "type": "double",
+            "min": 8,
+            "max": 14
+          },
+          {
+            "type": "speed",
+            "min": -16,
+            "max": -8
+          }
+        ]
+      }
+    ],
+    "ROLL_MODELS": [
+      "linear",
+      "normal",
+      "skew"
+    ],
+    "ROD_SET_PREFIX": "rodset:",
+    "GROUNDS": [
+      {
+        "id": "map",
+        "name": "世界地图",
+        "type": "normal",
+        "desc": "钓点直接分布在世界地图与远洋图上；后台可增删改、按玩家规模一键布点。",
+        "spots": [
+          {
+            "id": "dock",
+            "name": "湖畔老码头",
+            "pos": [
+              62,
+              47
+            ],
+            "pool": [
+              {
+                "pick": "fish:crucian",
+                "weight": 30
+              },
+              {
+                "pick": "fish:white",
+                "weight": 18
+              },
+              {
+                "pick": "fish:minnow",
+                "weight": 12
+              },
+              {
+                "pick": "fish:carp",
+                "weight": 15
+              },
+              {
+                "pick": "fish:loach",
+                "weight": 8
+              },
+              {
+                "pick": "material:bait_pack",
+                "weight": 12
+              },
+              {
+                "pick": "component:",
+                "weight": 6
+              }
+            ]
+          },
+          {
+            "id": "reed",
+            "name": "芦苇荡",
+            "pos": [
+              67,
+              56
+            ],
+            "pool": [
+              {
+                "pick": "fish:grass",
+                "weight": 26
+              },
+              {
+                "pick": "fish:bream",
+                "weight": 14
+              },
+              {
+                "pick": "fish:yellowcat",
+                "weight": 16
+              },
+              {
+                "pick": "fish:loach",
+                "weight": 10
+              },
+              {
+                "pick": "fish:crucian",
+                "weight": 10
+              },
+              {
+                "pick": "fish:koi",
+                "weight": 1
+              },
+              {
+                "pick": "material:rope",
+                "weight": 14
+              },
+              {
+                "pick": "component:",
+                "weight": 7
+              }
+            ]
+          },
+          {
+            "id": "deep",
+            "name": "湖心深水",
+            "pos": [
+              74,
+              40
+            ],
+            "pool": [
+              {
+                "pick": "fish:silvercarp",
+                "weight": 12
+              },
+              {
+                "pick": "fish:bighead",
+                "weight": 14
+              },
+              {
+                "pick": "fish:blackcarp",
+                "weight": 12
+              },
+              {
+                "pick": "fish:catfish",
+                "weight": 8
+              },
+              {
+                "pick": "fish:bass",
+                "weight": 8
+              },
+              {
+                "pick": "fish:sturgeon",
+                "weight": 3
+              },
+              {
+                "pick": "fish:arapaima",
+                "weight": 3
+              },
+              {
+                "pick": "fish:voltaiceel",
+                "weight": 2
+              },
+              {
+                "pick": "fish:moonkoi",
+                "weight": 2
+              },
+              {
+                "pick": "material:lure",
+                "weight": 10
+              },
+              {
+                "pick": "component:",
+                "weight": 6
+              }
+            ]
+          },
+          {
+            "id": "falls",
+            "name": "落瀑潭",
+            "pos": [
+              82,
+              25
+            ],
+            "pool": [
+              {
+                "pick": "fish:catfish",
+                "weight": 8
+              },
+              {
+                "pick": "fish:yellowcheek",
+                "weight": 8
+              },
+              {
+                "pick": "fish:sturgeon",
+                "weight": 4
+              },
+              {
+                "pick": "fish:arapaima",
+                "weight": 3
+              },
+              {
+                "pick": "fish:ghostray",
+                "weight": 2
+              },
+              {
+                "pick": "fish:voltaiceel",
+                "weight": 2
+              },
+              {
+                "pick": "fish:moonkoi",
+                "weight": 2
+              },
+              {
+                "pick": "material:lure",
+                "weight": 10
+              },
+              {
+                "pick": "component:",
+                "weight": 7
+              }
+            ]
+          },
+          {
+            "id": "ice",
+            "name": "霜月冰窟",
+            "pos": [
+              64,
+              9
+            ],
+            "locked": true,
+            "pool": [
+              {
+                "pick": "fish:white",
+                "weight": 14
+              },
+              {
+                "pick": "fish:crucian",
+                "weight": 10
+              },
+              {
+                "pick": "fish:voltaiceel",
+                "weight": 6
+              },
+              {
+                "pick": "fish:moonkoi",
+                "weight": 4
+              },
+              {
+                "pick": "fish:ghostray",
+                "weight": 3
+              },
+              {
+                "pick": "material:lure",
+                "weight": 8
+              },
+              {
+                "pick": "component:",
+                "weight": 7
+              }
+            ]
+          },
+          {
+            "id": "beach",
+            "name": "月牙沙滩",
+            "pos": [
+              44,
+              68
+            ],
+            "pool": [
+              {
+                "pick": "fish:sardine",
+                "weight": 24
+              },
+              {
+                "pick": "fish:croaker",
+                "weight": 18
+              },
+              {
+                "pick": "fish:tilapia",
+                "weight": 12
+              },
+              {
+                "pick": "fish:mullet",
+                "weight": 10
+              },
+              {
+                "pick": "fish:jackmack",
+                "weight": 8
+              },
+              {
+                "pick": "fish:pearl",
+                "weight": 2
+              },
+              {
+                "pick": "material:bait_pack",
+                "weight": 12
+              },
+              {
+                "pick": "component:",
+                "weight": 7
+              }
+            ]
+          },
+          {
+            "id": "estuary",
+            "name": "河口浅滩",
+            "pos": [
+              48,
+              49
+            ],
+            "pool": [
+              {
+                "pick": "fish:crucian",
+                "weight": 22
+              },
+              {
+                "pick": "fish:white",
+                "weight": 16
+              },
+              {
+                "pick": "fish:riverperch",
+                "weight": 14
+              },
+              {
+                "pick": "fish:culter",
+                "weight": 12
+              },
+              {
+                "pick": "fish:yellowcat",
+                "weight": 10
+              },
+              {
+                "pick": "fish:loach",
+                "weight": 8
+              },
+              {
+                "pick": "material:bait_pack",
+                "weight": 10
+              },
+              {
+                "pick": "component:",
+                "weight": 7
+              }
+            ]
+          },
+          {
+            "id": "lighthouse",
+            "name": "灯塔礁",
+            "pos": [
+              33,
+              20
+            ],
+            "pool": [
+              {
+                "pick": "fish:seabass",
+                "weight": 14
+              },
+              {
+                "pick": "fish:mackerel",
+                "weight": 12
+              },
+              {
+                "pick": "fish:tuna",
+                "weight": 10
+              },
+              {
+                "pick": "fish:cobia",
+                "weight": 8
+              },
+              {
+                "pick": "fish:swordfish",
+                "weight": 4
+              },
+              {
+                "pick": "fish:bluefin",
+                "weight": 3
+              },
+              {
+                "pick": "material:lure",
+                "weight": 11
+              },
+              {
+                "pick": "component:",
+                "weight": 7
+              }
+            ]
+          },
+          {
+            "id": "wreck",
+            "name": "沉船残骸",
+            "pos": [
+              15,
+              74
+            ],
+            "pool": [
+              {
+                "pick": "fish:grouper",
+                "weight": 10
+              },
+              {
+                "pick": "fish:rubysnapper",
+                "weight": 8
+              },
+              {
+                "pick": "fish:sunfish",
+                "weight": 6
+              },
+              {
+                "pick": "fish:amberlobster",
+                "weight": 4
+              },
+              {
+                "pick": "fish:pearl",
+                "weight": 4
+              },
+              {
+                "pick": "fish:dragonfish",
+                "weight": 3
+              },
+              {
+                "pick": "material:relic",
+                "weight": 2
+              },
+              {
+                "pick": "material:dragonpearl",
+                "weight": 1
+              },
+              {
+                "pick": "material:rope",
+                "weight": 8
+              },
+              {
+                "pick": "component:",
+                "weight": 7
+              }
+            ]
+          },
+          {
+            "id": "harbor",
+            "name": "村港码头",
+            "pos": [
+              74,
+              87
+            ],
+            "pool": [
+              {
+                "pick": "fish:sardine",
+                "weight": 18
+              },
+              {
+                "pick": "fish:croaker",
+                "weight": 14
+              },
+              {
+                "pick": "fish:mullet",
+                "weight": 12
+              },
+              {
+                "pick": "fish:jackmack",
+                "weight": 12
+              },
+              {
+                "pick": "fish:squid",
+                "weight": 10
+              },
+              {
+                "pick": "fish:octo",
+                "weight": 8
+              },
+              {
+                "pick": "fish:mahimahi",
+                "weight": 4
+              },
+              {
+                "pick": "material:chartfrag",
+                "weight": 2
+              },
+              {
+                "pick": "material:bait_pack",
+                "weight": 9
+              },
+              {
+                "pick": "component:",
+                "weight": 6
+              }
+            ]
+          },
+          {
+            "id": "shore",
+            "name": "近海渔场",
+            "map": "voyage",
+            "pos": [
+              26,
+              73
+            ],
+            "minShip": 1,
+            "pool": [
+              {
+                "pick": "fish:mullet",
+                "weight": 18
+              },
+              {
+                "pick": "fish:jackmack",
+                "weight": 16
+              },
+              {
+                "pick": "fish:squid",
+                "weight": 13
+              },
+              {
+                "pick": "fish:octo",
+                "weight": 9
+              },
+              {
+                "pick": "fish:sardine",
+                "weight": 10
+              },
+              {
+                "pick": "fish:mahimahi",
+                "weight": 4
+              },
+              {
+                "pick": "fish:amberjack",
+                "weight": 4
+              },
+              {
+                "pick": "material:chartfrag",
+                "weight": 2
+              },
+              {
+                "pick": "material:bait_pack",
+                "weight": 9
+              },
+              {
+                "pick": "component:",
+                "weight": 6
+              }
+            ]
+          },
+          {
+            "id": "reef",
+            "name": "深海鱼礁",
+            "map": "voyage",
+            "pos": [
+              62,
+              44
+            ],
+            "minShip": 3,
+            "buffs": [
+              {
+                "type": "skill",
+                "value": -5
+              }
+            ],
+            "pool": [
+              {
+                "pick": "fish:mahimahi",
+                "weight": 9
+              },
+              {
+                "pick": "fish:amberjack",
+                "weight": 9
+              },
+              {
+                "pick": "fish:halibut",
+                "weight": 8
+              },
+              {
+                "pick": "fish:giantquid",
+                "weight": 7
+              },
+              {
+                "pick": "fish:grouper",
+                "weight": 4
+              },
+              {
+                "pick": "fish:sunfish",
+                "weight": 3
+              },
+              {
+                "pick": "material:deepscale",
+                "weight": 5
+              },
+              {
+                "pick": "material:chartfrag",
+                "weight": 3
+              },
+              {
+                "pick": "material:lure",
+                "weight": 8
+              },
+              {
+                "pick": "component:",
+                "weight": 7
+              }
+            ]
+          },
+          {
+            "id": "trench",
+            "name": "海沟裂谷",
+            "map": "voyage",
+            "pos": [
+              85,
+              26
+            ],
+            "minShip": 4,
+            "buffs": [
+              {
+                "type": "skill",
+                "value": -10
+              },
+              {
+                "type": "rare",
+                "value": 20
+              }
+            ],
+            "pool": [
+              {
+                "pick": "fish:giantquid",
+                "weight": 8
+              },
+              {
+                "pick": "fish:halibut",
+                "weight": 6
+              },
+              {
+                "pick": "fish:coelacanth",
+                "weight": 4
+              },
+              {
+                "pick": "fish:megamouth",
+                "weight": 3
+              },
+              {
+                "pick": "fish:leviathan",
+                "weight": 1
+              },
+              {
+                "pick": "fish:ghostray",
+                "weight": 2
+              },
+              {
+                "pick": "fish:dragonfish",
+                "weight": 3
+              },
+              {
+                "pick": "material:deepscale",
+                "weight": 6
+              },
+              {
+                "pick": "material:chartfrag",
+                "weight": 4
+              },
+              {
+                "pick": "material:relic",
+                "weight": 2
+              },
+              {
+                "pick": "material:rope",
+                "weight": 6
+              },
+              {
+                "pick": "component:",
+                "weight": 7
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "NAV": [
+      {
+        "id": "fishing",
+        "name": "钓鱼",
+        "icon": "🎣",
+        "implemented": true
+      },
+      {
+        "id": "sea",
+        "name": "远洋",
+        "icon": "⛵",
+        "implemented": true
+      },
+      {
+        "id": "character",
+        "name": "角色",
+        "icon": "🧍",
+        "implemented": true
+      },
+      {
+        "id": "ground",
+        "name": "社交",
+        "icon": "🌊",
+        "implemented": true
+      },
+      {
+        "id": "inventory",
+        "name": "背包",
+        "icon": "🎒",
+        "implemented": true
+      },
+      {
+        "id": "workshop",
+        "name": "工坊",
+        "icon": "⚒",
+        "implemented": true
+      },
+      {
+        "id": "mall",
+        "name": "商城",
+        "icon": "🛒",
+        "implemented": true
+      },
+      {
+        "id": "codex",
+        "name": "图鉴",
+        "icon": "📖",
+        "implemented": true
+      },
+      {
+        "id": "feedback",
+        "name": "反馈",
+        "icon": "📮",
+        "implemented": true
+      },
+      {
+        "id": "logs",
+        "name": "日志",
+        "icon": "📜",
+        "implemented": true
+      },
+      {
+        "id": "wiki",
+        "name": "WIKI",
+        "icon": "📚",
+        "implemented": true
+      }
+    ],
+    "SHIP": {
+      "levels": [
+        {
+          "lv": 1,
+          "name": "木划艇"
+        },
+        {
+          "lv": 2,
+          "name": "近海帆船"
+        },
+        {
+          "lv": 3,
+          "name": "远洋货轮"
+        },
+        {
+          "lv": 4,
+          "name": "深潜潜艇"
+        },
+        {
+          "lv": 5,
+          "name": "海王座舰"
+        }
+      ],
+      "xpNeed": [
+        0,
+        40,
+        120,
+        280,
+        560
+      ],
+      "upCoins": [
+        0,
+        20000,
+        80000,
+        200000,
+        500000
+      ],
+      "upScale": [
+        0,
+        5,
+        15,
+        40,
+        90
+      ]
+    },
+    "SEA": {
+      "chartCost": 3,
+      "zoneTtlMs": 7200000,
+      "zoneMax": 3,
+      "names": [
+        "迷雾海盆",
+        "珊瑚深渊",
+        "沉星海域",
+        "鲸落平原",
+        "翡翠环礁",
+        "风暴湾",
+        "幽蓝裂隙",
+        "珍珠环礁"
+      ],
+      "spotNames": [
+        "沉星湾",
+        "月光潮径",
+        "珊瑚台地",
+        "鲸落浅滩",
+        "风暴眼",
+        "幽蓝水道",
+        "珍珠浅滩",
+        "海雾岬",
+        "琥珀暗礁",
+        "极光海脊",
+        "遗弃船坞",
+        "龙涎海岸",
+        "星坠海沟",
+        "翡翠浅湾"
+      ],
+      "moods": [
+        {
+          "id": "rich",
+          "name": "富矿海域",
+          "w": 20,
+          "buffs": [
+            {
+              "type": "double",
+              "value": 12
+            }
+          ],
+          "rareBias": 2
+        },
+        {
+          "id": "normal",
+          "name": "寻常海域",
+          "w": 60,
+          "buffs": [
+            {
+              "type": "double",
+              "value": 5
+            }
+          ],
+          "rareBias": 1
+        },
+        {
+          "id": "deadly",
+          "name": "凶险海域",
+          "w": 20,
+          "buffs": [
+            {
+              "type": "skill",
+              "value": -8
+            },
+            {
+              "type": "rare",
+              "value": 25
+            }
+          ],
+          "rareBias": 3
+        }
+      ],
+      "events": {
+        "storm": 5,
+        "bounty": 6,
+        "school": 6,
+        "whirlpool": 3,
+        "wreck": 1.5,
+        "bountyDouble": 30
+      },
+      "anchor": {
+        "coins": 50000,
+        "scales": 3,
+        "maxTimes": 3,
+        "extendMin": 1440,
+        "buffs": [
+          {
+            "type": "double",
+            "value": 8
+          }
+        ]
+      },
+      "nightglow": {
+        "on": true,
+        "from": 20,
+        "to": 23,
+        "rare": 15
+      },
+      "zoneAnchors": [
+        [
+          45,
+          84
+        ],
+        [
+          20,
+          50
+        ],
+        [
+          68,
+          66
+        ],
+        [
+          50,
+          16
+        ],
+        [
+          12,
+          28
+        ],
+        [
+          80,
+          86
+        ]
+      ],
+      "zoneSpotGap": 13,
+      "questResetHour": 0,
+      "quests": [
+        {
+          "id": "q_ocean_catch",
+          "title": "远洋渔汛：在远洋钓上 15 条渔获",
+          "kind": "catch_ocean",
+          "need": 15,
+          "reward": {
+            "coins": 50000,
+            "items": {
+              "deepscale": 3,
+              "relic": 5
+            }
+          }
+        },
+        {
+          "id": "q_zone_catch",
+          "title": "探索未知：在临时海域钓上 10 条渔获",
+          "kind": "catch_zone",
+          "need": 10,
+          "reward": {
+            "coins": 80000,
+            "items": {
+              "dragonpearl": 1
+            }
+          }
+        },
+        {
+          "id": "q_deadly_catch",
+          "title": "直面凶险：在凶险海域钓上 3 条渔获",
+          "kind": "catch_deadly",
+          "need": 3,
+          "reward": {
+            "coins": 100000,
+            "items": {
+              "deepscale": 4
+            }
+          }
+        },
+        {
+          "id": "q_big_catch",
+          "title": "大物猎人：钓上 2 条大型或巨型海鱼",
+          "kind": "catch_big_ocean",
+          "need": 2,
+          "reward": {
+            "coins": 200000,
+            "items": {
+              "chest_deep": 1
+            }
+          }
+        },
+        {
+          "id": "q_tide_hunter",
+          "title": "潮汐寻宝：撞上 3 次漂流宝箱或沉船残骸",
+          "kind": "sea_event",
+          "need": 3,
+          "reward": {
+            "coins": 60000,
+            "items": {
+              "tide_sand": 5,
+              "relic": 8
+            }
+          }
+        },
+        {
+          "id": "q_voyage",
+          "title": "整装出航：发现 2 片新的临时海域",
+          "kind": "voyage",
+          "need": 2,
+          "reward": {
+            "coins": 30000,
+            "chartfrag": 4
+          }
+        },
+        {
+          "id": "q_submit_scale",
+          "title": "上贡鳞片：上交 8 片深海鳞片",
+          "kind": "submit",
+          "need": 1,
+          "submit": {
+            "id": "deepscale",
+            "count": 8
+          },
+          "reward": {
+            "coins": 150000,
+            "items": {
+              "dragonpearl": 2
+            }
+          }
+        }
+      ]
+    },
+    "SEA_QUEST_KINDS": [
+      {
+        "id": "catch_ocean",
+        "name": "远洋钓上渔获",
+        "unit": "条"
+      },
+      {
+        "id": "catch_zone",
+        "name": "临时海域钓上渔获",
+        "unit": "条"
+      },
+      {
+        "id": "catch_deadly",
+        "name": "凶险海域钓上渔获",
+        "unit": "条"
+      },
+      {
+        "id": "catch_big_ocean",
+        "name": "钓上大型/巨型海鱼",
+        "unit": "条"
+      },
+      {
+        "id": "sea_event",
+        "name": "撞上漂流宝箱/沉船残骸",
+        "unit": "次"
+      },
+      {
+        "id": "voyage",
+        "name": "发现新的临时海域",
+        "unit": "片"
+      },
+      {
+        "id": "submit",
+        "name": "上交指定物品",
+        "unit": "次"
+      }
+    ]
+  },
+  "items": [
+    {
+      "id": "crucian",
+      "name": "鲫鱼",
+      "rarity": "common",
+      "price": 8,
+      "size": [
+        10,
+        35
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "carp",
+      "name": "鲤鱼",
+      "rarity": "common",
+      "price": 12,
+      "size": [
+        20,
+        70
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "grass",
+      "name": "草鱼",
+      "rarity": "common",
+      "price": 15,
+      "size": [
+        30,
+        90
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "white",
+      "name": "白条",
+      "rarity": "common",
+      "price": 6,
+      "size": [
+        8,
+        25
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "tilapia",
+      "name": "罗非鱼",
+      "rarity": "common",
+      "price": 10,
+      "size": [
+        15,
+        45
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "minnow",
+      "name": "麦穗鱼",
+      "rarity": "common",
+      "price": 5,
+      "size": [
+        4,
+        12
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "loach",
+      "name": "泥鳅",
+      "rarity": "common",
+      "price": 9,
+      "size": [
+        10,
+        25
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "sardine",
+      "name": "沙丁鱼",
+      "rarity": "common",
+      "price": 6,
+      "size": [
+        8,
+        18
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "croaker",
+      "name": "小黄鱼",
+      "rarity": "common",
+      "price": 11,
+      "size": [
+        10,
+        25
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "yellowcat",
+      "name": "黄辣丁",
+      "rarity": "common",
+      "price": 13,
+      "size": [
+        12,
+        30
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "bream",
+      "name": "鳊鱼",
+      "rarity": "common",
+      "price": 14,
+      "size": [
+        20,
+        50
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "silvercarp",
+      "name": "鲢鱼",
+      "rarity": "common",
+      "price": 15,
+      "size": [
+        30,
+        75
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "bighead",
+      "name": "鳙鱼",
+      "rarity": "common",
+      "price": 17,
+      "size": [
+        35,
+        90
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "riverperch",
+      "name": "河鲈",
+      "rarity": "common",
+      "price": 12,
+      "size": [
+        15,
+        40
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "culter",
+      "name": "翘嘴鲌",
+      "rarity": "common",
+      "price": 18,
+      "size": [
+        25,
+        60
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "blackcarp",
+      "name": "青鱼",
+      "rarity": "common",
+      "price": 20,
+      "size": [
+        40,
+        100
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "mullet",
+      "name": "鲻鱼",
+      "rarity": "common",
+      "price": 9,
+      "size": [
+        12,
+        35
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "jackmack",
+      "name": "竹荚鱼",
+      "rarity": "common",
+      "price": 10,
+      "size": [
+        12,
+        30
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "squid",
+      "name": "小鱿鱼",
+      "rarity": "common",
+      "price": 12,
+      "size": [
+        10,
+        30
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "octo",
+      "name": "小章鱼",
+      "rarity": "common",
+      "price": 14,
+      "size": [
+        10,
+        35
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "catfish",
+      "name": "巨型鲶鱼",
+      "rarity": "rare",
+      "price": 120,
+      "size": [
+        80,
+        220
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "bass",
+      "name": "湖王鲈鱼",
+      "rarity": "rare",
+      "price": 150,
+      "size": [
+        60,
+        180
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "tuna",
+      "name": "黄金枪鱼",
+      "rarity": "epic",
+      "price": 260,
+      "size": [
+        120,
+        320
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "sturgeon",
+      "name": "远古巨鲟",
+      "rarity": "epic",
+      "price": 320,
+      "size": [
+        150,
+        400
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "mandarin",
+      "name": "鳜鱼",
+      "rarity": "rare",
+      "price": 140,
+      "size": [
+        35,
+        90
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "blackbass",
+      "name": "大口黑鲈",
+      "rarity": "rare",
+      "price": 160,
+      "size": [
+        45,
+        130
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "seabass",
+      "name": "海鲈",
+      "rarity": "rare",
+      "price": 170,
+      "size": [
+        55,
+        140
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "yellowcheek",
+      "name": "鳡鱼",
+      "rarity": "rare",
+      "price": 180,
+      "size": [
+        70,
+        170
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "mackerel",
+      "name": "马鲛鱼",
+      "rarity": "epic",
+      "price": 210,
+      "size": [
+        55,
+        160
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "grouper",
+      "name": "石斑鱼",
+      "rarity": "epic",
+      "price": 230,
+      "size": [
+        45,
+        150
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "cobia",
+      "name": "军曹鱼",
+      "rarity": "epic",
+      "price": 250,
+      "size": [
+        90,
+        200
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "rubysnapper",
+      "name": "金目鲷",
+      "rarity": "epic",
+      "price": 280,
+      "size": [
+        55,
+        140
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "sunfish",
+      "name": "翻车鱼",
+      "rarity": "epic",
+      "price": 300,
+      "size": [
+        150,
+        300
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "arapaima",
+      "name": "巨骨舌鱼",
+      "rarity": "epic",
+      "price": 350,
+      "size": [
+        180,
+        330
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "mahimahi",
+      "name": "鬼头刀",
+      "rarity": "rare",
+      "price": 200,
+      "size": [
+        70,
+        160
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "amberjack",
+      "name": "鰤鱼",
+      "rarity": "rare",
+      "price": 190,
+      "size": [
+        60,
+        150
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "halibut",
+      "name": "大比目鱼",
+      "rarity": "epic",
+      "price": 270,
+      "size": [
+        80,
+        200
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "giantquid",
+      "name": "巨型鱿鱼",
+      "rarity": "epic",
+      "price": 330,
+      "size": [
+        150,
+        400
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "koi",
+      "name": "黄金锦鲤",
+      "rarity": "rare",
+      "price": 400,
+      "size": [
+        40,
+        110
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "pearl",
+      "name": "深海珍珠贝",
+      "rarity": "rare",
+      "price": 300,
+      "size": [
+        10,
+        40
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "amberlobster",
+      "name": "琥珀龙虾",
+      "rarity": "rare",
+      "price": 340,
+      "size": [
+        20,
+        60
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "voltaiceel",
+      "name": "电光鳗",
+      "rarity": "rare",
+      "price": 380,
+      "size": [
+        60,
+        140
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "ghostray",
+      "name": "幽灵魟",
+      "rarity": "rare",
+      "price": 420,
+      "size": [
+        90,
+        220
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "arowana",
+      "name": "金龙鱼",
+      "rarity": "rare",
+      "price": 450,
+      "size": [
+        45,
+        95
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "moonkoi",
+      "name": "月光鲤",
+      "rarity": "rare",
+      "price": 480,
+      "size": [
+        40,
+        110
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "dragonfish",
+      "name": "深海龙鱼",
+      "rarity": "rare",
+      "price": 500,
+      "size": [
+        50,
+        120
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "swordfish",
+      "name": "剑鱼",
+      "rarity": "rare",
+      "price": 520,
+      "size": [
+        180,
+        380
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "bluefin",
+      "name": "蓝鳍金枪鱼",
+      "rarity": "rare",
+      "price": 560,
+      "size": [
+        130,
+        300
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "coelacanth",
+      "name": "腔棘鱼",
+      "rarity": "rare",
+      "price": 600,
+      "size": [
+        100,
+        220
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "megamouth",
+      "name": "巨口鲨",
+      "rarity": "rare",
+      "price": 700,
+      "size": [
+        250,
+        500
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "leviathan",
+      "name": "海王·利维坦",
+      "rarity": "rare",
+      "price": 900,
+      "size": [
+        300,
+        800
+      ],
+      "kind": "fish"
+    },
+    {
+      "id": "bait_pack",
+      "name": "诱饵包",
+      "rarity": "common",
+      "price": 5,
+      "size": null,
+      "kind": "material"
+    },
+    {
+      "id": "rope",
+      "name": "耐磨绳",
+      "rarity": "common",
+      "price": 4,
+      "size": null,
+      "kind": "material"
+    },
+    {
+      "id": "lure",
+      "name": "反光假饵",
+      "rarity": "common",
+      "price": 7,
+      "size": null,
+      "kind": "material"
+    },
+    {
+      "id": "relic",
+      "name": "沉船宝匣残片",
+      "rarity": "rare",
+      "price": 380,
+      "size": null,
+      "kind": "material"
+    },
+    {
+      "id": "tide_sand",
+      "name": "潮汐砂",
+      "rarity": "rare",
+      "price": 260,
+      "size": null,
+      "kind": "material"
+    },
+    {
+      "id": "dragon_scale",
+      "name": "龙鳞碎屑",
+      "rarity": "epic",
+      "price": 720,
+      "size": null,
+      "kind": "material"
+    },
+    {
+      "id": "dragonpearl",
+      "name": "龙宫宝珠",
+      "rarity": "epic",
+      "price": 600,
+      "size": null,
+      "kind": "material"
+    },
+    {
+      "id": "chartfrag",
+      "name": "海图碎片",
+      "rarity": "rare",
+      "price": 120,
+      "size": null,
+      "kind": "material"
+    },
+    {
+      "id": "deepscale",
+      "name": "深海鳞片",
+      "rarity": "rare",
+      "price": 180,
+      "size": null,
+      "kind": "material"
+    },
+    {
+      "id": "chest_wreck",
+      "name": "沉船宝匣",
+      "rarity": "rare",
+      "price": 11040,
+      "size": null,
+      "kind": "chest",
+      "chest": {
+        "id": "chest_wreck",
+        "name": "沉船宝匣",
+        "rarity": "rare",
+        "desc": "沉船里的随机打捞件，至少 2 条词缀。",
+        "costRelic": 8,
+        "costCoins": 8000,
+        "mode": "random",
+        "qualityWeights": {
+          "rare": 65,
+          "epic": 35
+        },
+        "minAffixes": 2,
+        "price": 11040
+      }
+    },
+    {
+      "id": "chest_deep",
+      "name": "深潜宝匣",
+      "rarity": "rare",
+      "price": 37600,
+      "size": null,
+      "kind": "chest",
+      "chest": {
+        "id": "chest_deep",
+        "name": "深潜宝匣",
+        "rarity": "rare",
+        "desc": "自选部位，沉得更深、捞得更准，至少 2 条词缀。",
+        "costRelic": 20,
+        "costCoins": 30000,
+        "mode": "part",
+        "qualityWeights": {
+          "rare": 50,
+          "epic": 50
+        },
+        "minAffixes": 2,
+        "price": 37600
+      }
+    },
+    {
+      "id": "chest_abyss",
+      "name": "深渊宝匣",
+      "rarity": "epic",
+      "price": 107100,
+      "size": null,
+      "kind": "chest",
+      "chest": {
+        "id": "chest_abyss",
+        "name": "深渊宝匣",
+        "rarity": "epic",
+        "desc": "自选底材，必定史诗，且词条填满该底材的全部词缀池。",
+        "costRelic": 45,
+        "costCoins": 90000,
+        "mode": "base",
+        "qualityWeights": {
+          "epic": 100
+        },
+        "forceMax": true,
+        "price": 107100
+      }
+    },
+    {
+      "id": "chest_king",
+      "name": "海王遗匣",
+      "rarity": "mythic",
+      "price": 338000,
+      "size": null,
+      "kind": "chest",
+      "chest": {
+        "id": "chest_king",
+        "name": "海王遗匣",
+        "rarity": "mythic",
+        "desc": "自选底材，必定神话：50% 概率突破词缀池边界，获得一条<b>突破词缀</b>（该部位本没有的词缀）。",
+        "costRelic": 100,
+        "costCoins": 300000,
+        "mode": "base",
+        "qualityWeights": {
+          "mythic": 100
+        },
+        "extra": true,
+        "hitCount": 4,
+        "missCount": 3,
+        "chance": 0.5,
+        "price": 338000
+      }
+    },
+    {
+      "id": "rod_bamboo",
+      "name": "竹制短竿",
+      "rarity": "common",
+      "price": 55,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 8,
+          "max": 14
+        },
+        {
+          "type": "size",
+          "min": -6,
+          "max": 4
+        }
+      ]
+    },
+    {
+      "id": "rod_fiberglass",
+      "name": "玻璃钢竿",
+      "rarity": "common",
+      "price": 85,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 10,
+          "max": 18
+        },
+        {
+          "type": "size",
+          "min": -8,
+          "max": -1
+        }
+      ]
+    },
+    {
+      "id": "rod_carbon",
+      "name": "碳素长竿",
+      "rarity": "common",
+      "price": 150,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 14,
+          "max": 22
+        },
+        {
+          "type": "material",
+          "min": -14,
+          "max": -4
+        },
+        {
+          "type": "size",
+          "min": -6,
+          "max": 6
+        }
+      ]
+    },
+    {
+      "id": "rod_dragonbone",
+      "name": "龙骨巨竿",
+      "rarity": "common",
+      "price": 260,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 8,
+          "max": 14
+        },
+        {
+          "type": "size",
+          "min": 4,
+          "max": 12
+        },
+        {
+          "type": "speed",
+          "min": -18,
+          "max": -8
+        }
+      ]
+    },
+    {
+      "id": "line_nylon",
+      "name": "尼龙线组",
+      "rarity": "common",
+      "price": 45,
+      "size": null,
+      "kind": "component",
+      "part": "line",
+      "pool": [
+        {
+          "type": "material",
+          "min": 15,
+          "max": 28
+        },
+        {
+          "type": "size",
+          "min": -6,
+          "max": 4
+        }
+      ]
+    },
+    {
+      "id": "line_stealth",
+      "name": "隐形鱼线",
+      "rarity": "common",
+      "price": 140,
+      "size": null,
+      "kind": "component",
+      "part": "line",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 3,
+          "max": 7
+        },
+        {
+          "type": "size",
+          "min": -14,
+          "max": -5
+        }
+      ]
+    },
+    {
+      "id": "line_titan",
+      "name": "钛芯线",
+      "rarity": "common",
+      "price": 170,
+      "size": null,
+      "kind": "component",
+      "part": "line",
+      "pool": [
+        {
+          "type": "size",
+          "min": 10,
+          "max": 18
+        },
+        {
+          "type": "speed",
+          "min": -9,
+          "max": -2
+        }
+      ]
+    },
+    {
+      "id": "line_dragon",
+      "name": "龙筋线",
+      "rarity": "common",
+      "price": 250,
+      "size": null,
+      "kind": "component",
+      "part": "line",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 4,
+          "max": 8
+        },
+        {
+          "type": "rare",
+          "min": 3,
+          "max": 6
+        },
+        {
+          "type": "speed",
+          "min": -14,
+          "max": -6
+        }
+      ]
+    },
+    {
+      "id": "hook_barb",
+      "name": "倒刺钩",
+      "rarity": "common",
+      "price": 50,
+      "size": null,
+      "kind": "component",
+      "part": "hook",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 3,
+          "max": 6
+        },
+        {
+          "type": "size",
+          "min": -4,
+          "max": 3
+        }
+      ]
+    },
+    {
+      "id": "hook_swallow",
+      "name": "血燕钩",
+      "rarity": "common",
+      "price": 70,
+      "size": null,
+      "kind": "component",
+      "part": "hook",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 8,
+          "max": 15
+        },
+        {
+          "type": "size",
+          "min": -12,
+          "max": -4
+        }
+      ]
+    },
+    {
+      "id": "hook_steel",
+      "name": "精钢鱼钩",
+      "rarity": "common",
+      "price": 150,
+      "size": null,
+      "kind": "component",
+      "part": "hook",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 6,
+          "max": 10
+        },
+        {
+          "type": "speed",
+          "min": -8,
+          "max": -2
+        }
+      ]
+    },
+    {
+      "id": "hook_ghost",
+      "name": "千钩·鬼牙",
+      "rarity": "common",
+      "price": 245,
+      "size": null,
+      "kind": "component",
+      "part": "hook",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 8,
+          "max": 12
+        },
+        {
+          "type": "rare",
+          "min": -9,
+          "max": -3
+        },
+        {
+          "type": "size",
+          "min": 3,
+          "max": 9
+        }
+      ]
+    },
+    {
+      "id": "bait_corn",
+      "name": "浓香饵料",
+      "rarity": "common",
+      "price": 40,
+      "size": null,
+      "kind": "component",
+      "part": "bait",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 1,
+          "max": 3
+        },
+        {
+          "type": "speed",
+          "min": 4,
+          "max": 9
+        }
+      ]
+    },
+    {
+      "id": "bait_rice",
+      "name": "酒米窝料",
+      "rarity": "common",
+      "price": 42,
+      "size": null,
+      "kind": "component",
+      "part": "bait",
+      "pool": [
+        {
+          "type": "material",
+          "min": 22,
+          "max": 34
+        },
+        {
+          "type": "speed",
+          "min": -8,
+          "max": -2
+        }
+      ]
+    },
+    {
+      "id": "bait_secret",
+      "name": "秘制香饵",
+      "rarity": "common",
+      "price": 165,
+      "size": null,
+      "kind": "component",
+      "part": "bait",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 4,
+          "max": 8
+        },
+        {
+          "type": "material",
+          "min": -14,
+          "max": -5
+        }
+      ]
+    },
+    {
+      "id": "bait_bionic",
+      "name": "仿生拟饵",
+      "rarity": "common",
+      "price": 175,
+      "size": null,
+      "kind": "component",
+      "part": "bait",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 4,
+          "max": 8
+        },
+        {
+          "type": "rare",
+          "min": 2,
+          "max": 5
+        },
+        {
+          "type": "material",
+          "min": -18,
+          "max": -9
+        }
+      ]
+    },
+    {
+      "id": "reel_smooth",
+      "name": "顺滑卷线器",
+      "rarity": "common",
+      "price": 55,
+      "size": null,
+      "kind": "component",
+      "part": "reel",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 8,
+          "max": 13
+        },
+        {
+          "type": "material",
+          "min": -5,
+          "max": 3
+        }
+      ]
+    },
+    {
+      "id": "reel_magnetic",
+      "name": "磁力刹车卷线器",
+      "rarity": "common",
+      "price": 160,
+      "size": null,
+      "kind": "component",
+      "part": "reel",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 12,
+          "max": 18
+        },
+        {
+          "type": "material",
+          "min": -14,
+          "max": -5
+        }
+      ]
+    },
+    {
+      "id": "reel_electric",
+      "name": "电动卷线器",
+      "rarity": "common",
+      "price": 240,
+      "size": null,
+      "kind": "component",
+      "part": "reel",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 20,
+          "max": 28
+        },
+        {
+          "type": "skill",
+          "min": -6,
+          "max": 2
+        }
+      ]
+    },
+    {
+      "id": "reel_turbo",
+      "name": "涡轮卷线器",
+      "rarity": "common",
+      "price": 270,
+      "size": null,
+      "kind": "component",
+      "part": "reel",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 28,
+          "max": 38
+        },
+        {
+          "type": "skill",
+          "min": -12,
+          "max": -4
+        }
+      ]
+    },
+    {
+      "id": "acc_net",
+      "name": "鱼护网袋",
+      "rarity": "common",
+      "price": 60,
+      "size": null,
+      "kind": "component",
+      "part": "accessory",
+      "pool": [
+        {
+          "type": "double",
+          "min": 7,
+          "max": 12
+        },
+        {
+          "type": "speed",
+          "min": -4,
+          "max": 3
+        }
+      ]
+    },
+    {
+      "id": "acc_float",
+      "name": "夜光浮漂",
+      "rarity": "common",
+      "price": 52,
+      "size": null,
+      "kind": "component",
+      "part": "accessory",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 2,
+          "max": 5
+        },
+        {
+          "type": "size",
+          "min": -10,
+          "max": -3
+        }
+      ]
+    },
+    {
+      "id": "acc_scoop",
+      "name": "自动抄网",
+      "rarity": "common",
+      "price": 165,
+      "size": null,
+      "kind": "component",
+      "part": "accessory",
+      "pool": [
+        {
+          "type": "double",
+          "min": 12,
+          "max": 18
+        },
+        {
+          "type": "material",
+          "min": -8,
+          "max": -2
+        }
+      ]
+    },
+    {
+      "id": "acc_sonar",
+      "name": "智能探鱼器",
+      "rarity": "common",
+      "price": 255,
+      "size": null,
+      "kind": "component",
+      "part": "accessory",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 5,
+          "max": 9
+        },
+        {
+          "type": "rare",
+          "min": 3,
+          "max": 6
+        },
+        {
+          "type": "speed",
+          "min": -10,
+          "max": -3
+        }
+      ]
+    },
+    {
+      "id": "acc_radar",
+      "name": "深海声呐雷达",
+      "rarity": "common",
+      "price": 300,
+      "size": null,
+      "kind": "component",
+      "part": "accessory",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 5,
+          "max": 9
+        },
+        {
+          "type": "size",
+          "min": 8,
+          "max": 14
+        },
+        {
+          "type": "speed",
+          "min": -14,
+          "max": -6
+        }
+      ]
+    },
+    {
+      "id": "charm_coin",
+      "name": "幸运硬币",
+      "rarity": "common",
+      "price": 145,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 2,
+          "max": 5
+        },
+        {
+          "type": "size",
+          "min": 6,
+          "max": 12
+        }
+      ]
+    },
+    {
+      "id": "charm_jade",
+      "name": "翡翠鲤玉",
+      "rarity": "common",
+      "price": 155,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "size",
+          "min": 15,
+          "max": 24
+        },
+        {
+          "type": "speed",
+          "min": -12,
+          "max": -4
+        }
+      ]
+    },
+    {
+      "id": "charm_gold",
+      "name": "金鳞坠饰",
+      "rarity": "common",
+      "price": 250,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 3,
+          "max": 6
+        },
+        {
+          "type": "rare",
+          "min": 2,
+          "max": 5
+        },
+        {
+          "type": "speed",
+          "min": 6,
+          "max": 12
+        }
+      ]
+    },
+    {
+      "id": "charm_trident",
+      "name": "海王徽记",
+      "rarity": "common",
+      "price": 290,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 6,
+          "max": 10
+        },
+        {
+          "type": "rare",
+          "min": 4,
+          "max": 8
+        },
+        {
+          "type": "double",
+          "min": 8,
+          "max": 14
+        },
+        {
+          "type": "speed",
+          "min": -16,
+          "max": -8
+        }
+      ]
+    },
+    {
+      "id": "comp_generic",
+      "name": "钓竿组件（默认）",
+      "rarity": "common",
+      "price": 40,
+      "size": null,
+      "kind": "component",
+      "part": null,
+      "pool": []
+    }
+  ],
+  "defaults": {
+    "component": {
+      "qualityWeights": {
+        "common": 0.62,
+        "rare": 0.3,
+        "epic": 0.08
+      },
+      "countWeights": {
+        "common": [
+          1
+        ],
+        "rare": [
+          0.5,
+          0.5
+        ],
+        "epic": [
+          0.3333333333333333,
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      },
+      "rollModel": "linear",
+      "affixRanges": {},
+      "extraAffixRanges": {},
+      "adjectiveRules": [
+        {
+          "name": "完美的",
+          "full": true,
+          "noNeg": true
+        },
+        {
+          "name": "饱满的",
+          "full": true
+        },
+        {
+          "name": "精良的",
+          "noNeg": true
+        },
+        {
+          "name": "平衡的",
+          "netMin": 1
+        },
+        {
+          "name": "粗糙的"
+        }
+      ]
+    },
+    "fish": {
+      "sizeModel": "normal"
+    },
+    "smelt": {
+      "baseRate": 50,
+      "failPerMaterial": -2,
+      "extraRatePerMaterial": 8,
+      "extraRatePearl": 0,
+      "extraRateMax": 95,
+      "rateMin": 5,
+      "rateMax": 99,
+      "goldBase": 5000,
+      "goldPerMaterial": 900,
+      "goldPearl": 20000,
+      "maxMaterials": 20,
+      "maxTypes": 4,
+      "pearlRollTwice": true,
+      "recastPearl": 1,
+      "recastGold": 0,
+      "recastMinValue": 0,
+      "retainFormula": "10 - breakthrough * 0.5",
+      "retainMaxRelic": 10,
+      "subRangeFromSub": true,
+      "addAnyAffix": true,
+      "addAffixCap": 3,
+      "addAffixExtraRange": true,
+      "catalystRanges": {},
+      "catalystRatio": 90,
+      "forgeAnyAffix": true
+    },
+    "snapshot": {
+      "enabled": true,
+      "intervalMin": 30,
+      "keep": 5
+    },
+    "mall": {
+      "refreshTime": "04:00",
+      "items": [
+        {
+          "id": "bait_pack",
+          "price": 40,
+          "limit": 20
+        },
+        {
+          "id": "lure",
+          "price": 60,
+          "limit": 20
+        },
+        {
+          "id": "rope",
+          "price": 35,
+          "limit": 20
+        },
+        {
+          "id": "tide_sand",
+          "price": 2600,
+          "limit": 3
+        },
+        {
+          "id": "dragon_scale",
+          "price": 7200,
+          "limit": 1
+        },
+        {
+          "id": "relic",
+          "price": 3800,
+          "limit": 3
+        }
+      ]
+    }
+  }
+}

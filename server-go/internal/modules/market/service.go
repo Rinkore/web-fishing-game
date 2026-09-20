@@ -127,6 +127,9 @@ func (s *Service) Close(ctx context.Context, r Close) (assets.Result, error) {
 	if strings.HasPrefix(r.RequestKey, "market:expire:") && (!r.Expire || r.RequestKey != fmt.Sprintf("market:expire:%d", r.ListingID)) {
 		return assets.Result{}, assets.ErrInvalid
 	}
+	if strings.HasPrefix(r.RequestKey, "market:order-expire:") {
+		return assets.Result{}, assets.ErrInvalid
+	}
 	return s.assets.Run(ctx, assets.Command{ActorID: r.ActorID, RequestKey: r.RequestKey, Kind: "market_close", RuleVersion: "market-lot-v1", Players: []int64{r.ActorID}, Input: r}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
 		lot, err := readLocked(ctx, t, r.ListingID)
 		if err != nil {

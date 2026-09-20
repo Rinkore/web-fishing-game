@@ -32,11 +32,14 @@ type Health struct {
 	probeSlot chan struct{}
 }
 
-func New(db Pinger, timeout time.Duration) (*Health, http.Handler) {
+func New(db Pinger, timeout time.Duration, application ...http.Handler) (*Health, http.Handler) {
 	h := &Health{db: db, timeout: timeout, probeSlot: make(chan struct{}, 1)}
 	r := chi.NewRouter()
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, `{"status":"alive"}`) })
 	r.Get("/readyz", h.ready)
+	if len(application) > 0 && application[0] != nil {
+		r.Mount("/", application[0])
+	}
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) { respond(w, 404, `{"error":"not_found"}`) })
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) { respond(w, 405, `{"error":"method_not_allowed"}`) })
 	return h, r
@@ -79,12 +82,13 @@ func respond(w http.ResponseWriter, code int, body string) {
 }
 
 // Serve owns the listener and drains active requests before returning. There
-// are no gameplay/SSE handlers yet; streaming write deadlines will be explicit
-// when that transport is implemented instead of inheriting these probe limits.
+// Streaming handlers reset their own write deadlines. BaseContext cancels
+// streams during draining so they cannot indefinitely block shutdown.
 func Serve(ctx context.Context, listener net.Listener, health *Health, handler http.Handler, shutdownTimeout time.Duration, logger *slog.Logger) error {
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
 		WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10,
 		ErrorLog: log.New(safeErrorWriter{logger}, "", 0)}
+	server.BaseContext = func(net.Listener) context.Context { return ctx }
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	select {

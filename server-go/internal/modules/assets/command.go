@@ -54,6 +54,9 @@ func (s *Service) execute(ctx context.Context, c command, apply func(context.Con
 		if errors.Is(err, ErrDeferred) {
 			return Result{}, ErrDeferred
 		}
+		if errors.Is(err, ErrUnauthenticated) {
+			return Result{}, ErrUnauthenticated
+		}
 		return Result{}, ErrUnavailable
 	}
 	return Result{}, ErrUnavailable
@@ -79,13 +82,6 @@ func (s *Service) executeOnce(ctx context.Context, c command, apply func(context
 	if !bytes.Equal(c.hash, storedHash) {
 		return Result{}, ErrKeyConflict
 	}
-	if len(storedResult) > 0 {
-		var r Result
-		if err = json.Unmarshal(storedResult, &r); err != nil {
-			return Result{}, err
-		}
-		return r, nil
-	}
 	ids := append([]int64(nil), c.players...)
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	result := Result{}
@@ -101,6 +97,16 @@ func (s *Service) executeOnce(ctx context.Context, c command, apply func(context
 			}
 			return Result{}, err
 		}
+	}
+	if err = checkSession(ctx, tx, c.actor); err != nil {
+		return Result{}, err
+	}
+	if len(storedResult) > 0 {
+		var r Result
+		if err = json.Unmarshal(storedResult, &r); err != nil {
+			return Result{}, err
+		}
+		return r, nil
 	}
 	if result.Status == "" {
 		if _, err = tx.Exec(ctx, "SAVEPOINT asset_effects"); err != nil {
@@ -136,7 +142,11 @@ func (s *Service) executeOnce(ctx context.Context, c command, apply func(context
 			if unit.eventPayload != nil {
 				payload = unit.eventPayload
 			}
-			if _, err = tx.Exec(ctx, `INSERT INTO fishing.outbox_events(operation_id,event_type,payload) VALUES ($1,$2,$3)`, unit.op, event, payload); err != nil {
+			var outboxID int64
+			if err = tx.QueryRow(ctx, `INSERT INTO fishing.outbox_events(operation_id,event_type,payload) VALUES ($1,$2,$3) RETURNING id`, unit.op, event, payload).Scan(&outboxID); err != nil {
+				return Result{}, err
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO fishing.player_events(owner_id,revision,outbox_id) SELECT account_id,assets_rev,$2 FROM fishing.player_state WHERE account_id=ANY($1::bigint[])`, ids, outboxID); err != nil {
 				return Result{}, err
 			}
 		}

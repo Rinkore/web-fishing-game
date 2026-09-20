@@ -23,7 +23,7 @@ func TestTransportLogsDoNotEchoRawErrors(t *testing.T) {
 	}
 }
 
-func TestShutdownDeadlineCancelsStuckRequest(t *testing.T) {
+func TestShutdownCancelsStreamingRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -54,8 +54,8 @@ func TestShutdownDeadlineCancelsStuckRequest(t *testing.T) {
 	cancel()
 	select {
 	case err := <-serverDone:
-		if err == nil {
-			t.Fatal("deadline not reported")
+		if err != nil {
+			t.Fatal("cooperative stream did not drain")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("shutdown hung")
@@ -66,6 +66,44 @@ func TestShutdownDeadlineCancelsStuckRequest(t *testing.T) {
 		t.Fatal("active request context not cancelled")
 	}
 	<-clientDone
+}
+
+func TestShutdownDeadlineForNonCooperativeHandler(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _ := New(pingFunc(func(context.Context) error { return nil }), time.Second)
+	started, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	handler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { close(started); <-release })
+	done := make(chan error, 1)
+	go func() {
+		done <- Serve(ctx, listener, h, handler, 50*time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	}()
+	client := &http.Client{Timeout: time.Second}
+	go func() {
+		res, err := client.Get("http://" + listener.Addr().String())
+		if err == nil {
+			_ = res.Body.Close()
+		}
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("request did not start")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("missing shutdown deadline")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("shutdown hung")
+	}
 }
 
 type pingFunc func(context.Context) error

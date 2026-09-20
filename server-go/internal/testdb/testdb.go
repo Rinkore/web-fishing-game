@@ -93,7 +93,29 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, prototypeGrants); err != nil {
 		t.Fatal("cannot grant prototype application permissions")
 	}
+	identityGrants := "GRANT INSERT ON fishing.accounts,fishing.player_state,fishing.wallets TO " + quote(role) +
+		"; GRANT SELECT,INSERT,UPDATE ON fishing.identities TO " + quote(role) +
+		"; GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.auth_sessions,fishing.auth_attempts TO " + quote(role) +
+		"; GRANT SELECT,INSERT ON fishing.player_events TO " + quote(role)
+	if _, err := db.Admin.Exec(ctx, identityGrants); err != nil {
+		t.Fatal("cannot grant identity permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.trades TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant trade permissions")
+	}
 	appConfig := c.Copy()
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.friend_relations TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant friend permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.mall_purchases TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant mall permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT ON fishing.random_intents TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE ON fishing.chest_pity,fishing.player_codex TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant workshop permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.market_orders TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.market_order_equipment,fishing.market_fills,fishing.market_charges TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant order permissions")
+	}
 	appConfig.ConnConfig.User = role
 	appConfig.ConnConfig.Password = password
 	appConfig.ConnConfig.RuntimeParams["statement_timeout"] = "5000"

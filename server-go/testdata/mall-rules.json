@@ -1,0 +1,1132 @@
+{
+  "format": 1,
+  "version": "v0.21.4",
+  "sourceSHA256": "e12e83206bedad1eff773bdffdbb13a8b7407d23bdb0183b1eeac30a93009586",
+  "cases": [
+    {
+      "id": "mall-0",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1767225600000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2025-12-31",
+        "startAt": 1767153600000,
+        "nextAt": 1767240000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-1",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1789934399999,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789876800000,
+        "nextAt": 1789963200000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-2",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1789934400000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789876800000,
+        "nextAt": 1789963200000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-3",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1772953200000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-03-08",
+        "startAt": 1772942400000,
+        "nextAt": 1773028800000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-4",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1793512800000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-11-01",
+        "startAt": 1793505600000,
+        "nextAt": 1793592000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-5",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1767225600000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-01-01",
+        "startAt": 1767225600000,
+        "nextAt": 1767312000000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-6",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1789934399999,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789862400000,
+        "nextAt": 1789948800000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-7",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1789934400000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789862400000,
+        "nextAt": 1789948800000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-8",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1772953200000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-03-08",
+        "startAt": 1772928000000,
+        "nextAt": 1773014400000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-9",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1793512800000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-11-01",
+        "startAt": 1793491200000,
+        "nextAt": 1793577600000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-10",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1767225600000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2025-12-31",
+        "startAt": 1767225540000,
+        "nextAt": 1767311940000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-11",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1789934399999,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-09-19",
+        "startAt": 1789862340000,
+        "nextAt": 1789948740000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-12",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1789934400000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-09-19",
+        "startAt": 1789862340000,
+        "nextAt": 1789948740000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-13",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1772953200000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-03-07",
+        "startAt": 1772927940000,
+        "nextAt": 1773014340000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-14",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1793512800000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-10-31",
+        "startAt": 1793491140000,
+        "nextAt": 1793577540000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-15",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1767225600000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2025-12-31",
+        "startAt": 1767153600000,
+        "nextAt": 1767240000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-16",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1789934399999,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789876800000,
+        "nextAt": 1789963200000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-17",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1789934400000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789876800000,
+        "nextAt": 1789963200000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-18",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1772953200000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-03-08",
+        "startAt": 1772942400000,
+        "nextAt": 1773028800000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-19",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1793512800000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-11-01",
+        "startAt": 1793505600000,
+        "nextAt": 1793592000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-20",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1767225600000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2025-12-31",
+        "startAt": 1767153600000,
+        "nextAt": 1767240000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-21",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1789934399999,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789876800000,
+        "nextAt": 1789963200000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-22",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1789934400000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789876800000,
+        "nextAt": 1789963200000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-23",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1772953200000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-03-08",
+        "startAt": 1772942400000,
+        "nextAt": 1773028800000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-24",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1793512800000,
+        "UTC"
+      ],
+      "expected": {
+        "key": "2026-11-01",
+        "startAt": 1793505600000,
+        "nextAt": 1793592000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-25",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1767225600000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-01-01",
+        "startAt": 1767211200000,
+        "nextAt": 1767297600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-26",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1789934399999,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789848000000,
+        "nextAt": 1789934400000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-27",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1789934400000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-09-21",
+        "startAt": 1789934400000,
+        "nextAt": 1790020800000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-28",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1772953200000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-03-08",
+        "startAt": 1772913600000,
+        "nextAt": 1773000000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-29",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1793512800000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-11-01",
+        "startAt": 1793476800000,
+        "nextAt": 1793563200000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-30",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1767225600000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-01-01",
+        "startAt": 1767196800000,
+        "nextAt": 1767283200000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-31",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1789934399999,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-09-21",
+        "startAt": 1789920000000,
+        "nextAt": 1790006400000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-32",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1789934400000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-09-21",
+        "startAt": 1789920000000,
+        "nextAt": 1790006400000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-33",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1772953200000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-03-08",
+        "startAt": 1772899200000,
+        "nextAt": 1772985600000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-34",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1793512800000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-11-01",
+        "startAt": 1793462400000,
+        "nextAt": 1793548800000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-35",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1767225600000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2025-12-31",
+        "startAt": 1767196740000,
+        "nextAt": 1767283140000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-36",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1789934399999,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789919940000,
+        "nextAt": 1790006340000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-37",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1789934400000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789919940000,
+        "nextAt": 1790006340000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-38",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1772953200000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-03-07",
+        "startAt": 1772899140000,
+        "nextAt": 1772985540000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-39",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1793512800000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-10-31",
+        "startAt": 1793462340000,
+        "nextAt": 1793548740000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-40",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1767225600000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-01-01",
+        "startAt": 1767211200000,
+        "nextAt": 1767297600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-41",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1789934399999,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789848000000,
+        "nextAt": 1789934400000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-42",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1789934400000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-09-21",
+        "startAt": 1789934400000,
+        "nextAt": 1790020800000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-43",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1772953200000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-03-08",
+        "startAt": 1772913600000,
+        "nextAt": 1773000000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-44",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1793512800000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-11-01",
+        "startAt": 1793476800000,
+        "nextAt": 1793563200000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-45",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1767225600000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-01-01",
+        "startAt": 1767211200000,
+        "nextAt": 1767297600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-46",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1789934399999,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789848000000,
+        "nextAt": 1789934400000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-47",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1789934400000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-09-21",
+        "startAt": 1789934400000,
+        "nextAt": 1790020800000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-48",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1772953200000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-03-08",
+        "startAt": 1772913600000,
+        "nextAt": 1773000000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-49",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1793512800000,
+        "Asia/Shanghai"
+      ],
+      "expected": {
+        "key": "2026-11-01",
+        "startAt": 1793476800000,
+        "nextAt": 1793563200000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-50",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1767225600000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2025-12-31",
+        "startAt": 1767171600000,
+        "nextAt": 1767258000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-51",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1789934399999,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789891200000,
+        "nextAt": 1789977600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-52",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1789934400000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789891200000,
+        "nextAt": 1789977600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-53",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1772953200000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-03-07",
+        "startAt": 1772874000000,
+        "nextAt": 1772956800000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-54",
+      "fn": "mallCycle",
+      "args": [
+        "04:00",
+        1793512800000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-10-31",
+        "startAt": 1793433600000,
+        "nextAt": 1793523600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-55",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1767225600000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2025-12-31",
+        "startAt": 1767157200000,
+        "nextAt": 1767243600000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-56",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1789934399999,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789876800000,
+        "nextAt": 1789963200000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-57",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1789934400000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789876800000,
+        "nextAt": 1789963200000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-58",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1772953200000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-03-08",
+        "startAt": 1772946000000,
+        "nextAt": 1773028800000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-59",
+      "fn": "mallCycle",
+      "args": [
+        "0:0",
+        1793512800000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-11-01",
+        "startAt": 1793505600000,
+        "nextAt": 1793595600000,
+        "refreshTime": "0:00"
+      }
+    },
+    {
+      "id": "mall-60",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1767225600000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2025-12-30",
+        "startAt": 1767157140000,
+        "nextAt": 1767243540000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-61",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1789934399999,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-09-19",
+        "startAt": 1789876740000,
+        "nextAt": 1789963140000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-62",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1789934400000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-09-19",
+        "startAt": 1789876740000,
+        "nextAt": 1789963140000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-63",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1772953200000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-03-07",
+        "startAt": 1772945940000,
+        "nextAt": 1773028740000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-64",
+      "fn": "mallCycle",
+      "args": [
+        " 23 : 59 ",
+        1793512800000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-10-31",
+        "startAt": 1793505540000,
+        "nextAt": 1793595540000,
+        "refreshTime": "23:59"
+      }
+    },
+    {
+      "id": "mall-65",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1767225600000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2025-12-31",
+        "startAt": 1767171600000,
+        "nextAt": 1767258000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-66",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1789934399999,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789891200000,
+        "nextAt": 1789977600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-67",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1789934400000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789891200000,
+        "nextAt": 1789977600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-68",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1772953200000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-03-07",
+        "startAt": 1772874000000,
+        "nextAt": 1772956800000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-69",
+      "fn": "mallCycle",
+      "args": [
+        "invalid",
+        1793512800000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-10-31",
+        "startAt": 1793433600000,
+        "nextAt": 1793523600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-70",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1767225600000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2025-12-31",
+        "startAt": 1767171600000,
+        "nextAt": 1767258000000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-71",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1789934399999,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789891200000,
+        "nextAt": 1789977600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-72",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1789934400000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-09-20",
+        "startAt": 1789891200000,
+        "nextAt": 1789977600000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-73",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1772953200000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-03-07",
+        "startAt": 1772874000000,
+        "nextAt": 1772956800000,
+        "refreshTime": "4:00"
+      }
+    },
+    {
+      "id": "mall-74",
+      "fn": "mallCycle",
+      "args": [
+        "24:00",
+        1793512800000,
+        "America/New_York"
+      ],
+      "expected": {
+        "key": "2026-10-31",
+        "startAt": 1793433600000,
+        "nextAt": 1793523600000,
+        "refreshTime": "4:00"
+      }
+    }
+  ]
+}

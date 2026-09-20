@@ -12,6 +12,7 @@ func TestConfigRejectsInvalidSettingsWithoutEchoingValues(t *testing.T) {
 		{"FISHING_GO_DB_MAX_CONNS", "0"}, {"FISHING_GO_DB_MAX_CONNS", "1000000"},
 		{"FISHING_GO_NODE_ID", "host\nSECRET"}, {"FISHING_GO_PROBE_TIMEOUT", "0"},
 		{"FISHING_GO_STARTUP_TIMEOUT", "999h"}, {"FISHING_GO_SHUTDOWN_TIMEOUT", "-1s"},
+		{"FISHING_GO_TIMEZONE", "SECRET-invalid-zone"},
 	} {
 		t.Run(tc.key+"/"+tc.value, func(t *testing.T) {
 			get := func(key string) string {

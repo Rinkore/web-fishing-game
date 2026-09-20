@@ -37,4 +37,4 @@ services:
         cp -a /src/. /work/
         go mod verify
         go vet ./...
-        go test -race -count=1 -v ./... 2>&1 | tail -40
+        go test -race -count=1 -timeout=3m ./... 2>&1 | tail -40
