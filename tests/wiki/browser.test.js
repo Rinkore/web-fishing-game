@@ -13,6 +13,7 @@ const { provisionAdmin } = require('../_admin.js');
 const registrationProof = require('../_registration.js');
 
 const ROOT = path.join(__dirname, '..', '..');
+const GAME_VERSION = require(path.join(ROOT, 'frontend/js/data.js')).VERSION;
 const PORT = Number(process.env.WIKI_BROWSER_TEST_PORT) || 8272;
 const CDP_PORT = Number(process.env.WIKI_CDP_TEST_PORT) || 9272;
 const BASE = 'http://127.0.0.1:' + PORT;
@@ -123,18 +124,18 @@ async function main() {
       const latest = document.querySelector('.latest-update');
       return { display: getComputedStyle(main).display, mainWidth: main.clientWidth, cardWidth: grid ? grid.getBoundingClientRect().width : 0, latest: latest ? latest.innerText : '' };
     })()`);
-    check('首页内容铺满且只显示最近一次更新', homeLayout.display === 'block' && homeLayout.cardWidth > homeLayout.mainWidth * 0.8 && homeLayout.latest.includes('六词条攻略'), JSON.stringify(homeLayout).slice(0, 400));
+    check('首页内容铺满且只显示最近一次更新', homeLayout.display === 'block' && homeLayout.cardWidth > homeLayout.mainWidth * 0.8 && homeLayout.latest.includes(GAME_VERSION + ' 版本更新'), JSON.stringify(homeLayout).slice(0, 400));
     check('首页无脚本异常', errors(home).length === 0, JSON.stringify(errors(home).slice(0, 2)));
     home.close();
 
     const updates = await openPage('/wiki/updates/index.html');
     const updatesText = await evaluate(updates, 'document.body.innerText');
-    check('更新记录默认只突出最近一次更新', updatesText.includes('最近一次更新') && updatesText.includes('六词条攻略与 Wiki 布局优化') && !updatesText.includes('v0.19.0') && !updatesText.includes('v0.18.0'), updatesText.slice(0, 300));
+    check('更新记录默认只突出最近一次更新', updatesText.includes('最近一次更新') && updatesText.includes(GAME_VERSION + ' 版本更新') && !updatesText.includes('v0.19.0') && !updatesText.includes('v0.18.0'), updatesText.slice(0, 300));
     const updatesHistory = await evaluate(updates, `(() => { const d = document.querySelector('details.history-details'); return { has: !!d, open: !!(d && d.open), text: d ? d.textContent : '' }; })()`);
     check('更新记录保留可展开的历史入口', updatesHistory.has && !updatesHistory.open && updatesHistory.text.includes('v0.18.0'), JSON.stringify({ has: updatesHistory.has, open: updatesHistory.open }).slice(0, 200));
     check('更新记录不展示规则快照与纠错模板', !updatesText.includes('配置哈希') && !updatesText.includes('纠错入口') && !updatesText.includes('复制纠错模板'), updatesText.slice(0, 300));
     check('更新记录无脚本异常', errors(updates).length === 0, JSON.stringify(errors(updates).slice(0, 2)));
-    const expandedHistory = await evaluate(updates, `(() => { const d = document.querySelector('details.history-details'); d.open = true; return { latestCount: document.querySelectorAll('.updates-latest .update-item').length, historyHasGame: d.innerText.includes('v0.19.0'), repeatsLatest: d.innerText.includes('六词条攻略与 Wiki 布局优化') }; })()`);
+    const expandedHistory = await evaluate(updates, `(() => { const d = document.querySelector('details.history-details'); d.open = true; return { latestCount: document.querySelectorAll('.updates-latest .update-item').length, historyHasGame: d.innerText.includes('v0.19.0'), repeatsLatest: d.innerText.includes('${GAME_VERSION} 版本更新') }; })()`);
     check('合并后的最新记录只有一条，历史含游戏版本且不重复最新', expandedHistory.latestCount === 1 && expandedHistory.historyHasGame && !expandedHistory.repeatsLatest, JSON.stringify(expandedHistory));
     updates.close();
 
