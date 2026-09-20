@@ -1,0 +1,2 @@
+# Keep the Go formatter deterministic on Windows and Linux checkouts.
+server-go/** text eol=lf
