@@ -236,4 +236,33 @@ func TestIntegrationLegacyProfileShape(t *testing.T) {
 	if code != 200 || features["features"] == nil {
 		t.Fatalf("legacy features: %d %v", code, features)
 	}
+
+	// Legacy sell: sell one crucian from the seeded inventory and verify the
+	// gain plus authoritative snapshots in the response.
+	sellBody := `{"id":"crucian","qty":1}`
+	r, err := http.NewRequest("POST", server.URL+"/api/sell", strings.NewReader(sellBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+token)
+	sellRes, err := client.Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sellRes.Body.Close()
+	var sold map[string]any
+	if err := json.NewDecoder(sellRes.Body).Decode(&sold); err != nil {
+		t.Fatal(err)
+	}
+	if sellRes.StatusCode != 200 || sold["ok"] != true || sold["gain"] == nil {
+		t.Fatalf("legacy sell: %d %v", sellRes.StatusCode, sold)
+	}
+	invAfter := sold["inventory"].(map[string]any)
+	if invAfter["crucian"] != float64(5) {
+		t.Fatalf("legacy sell inventory: %v", invAfter)
+	}
+	if sold["shop"] == nil {
+		t.Fatal("legacy sell shop snapshot missing")
+	}
 }
