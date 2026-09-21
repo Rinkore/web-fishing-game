@@ -132,8 +132,9 @@ func (p *legacyCatchPush) poll(ctx context.Context) []string {
 	// Read the current maximum once per page, not once per catch. Equal sizes
 	// retain the first caught row and do not produce another maximum banner.
 	var maxOp, maxOrd int64
-	if err := p.api.pool.QueryRow(ctx, `SELECT operation_id,ordinal FROM fishing.catch_records
-	 ORDER BY size DESC,caught_at,operation_id,ordinal LIMIT 1`).Scan(&maxOp, &maxOrd); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err := p.api.pool.QueryRow(ctx, `SELECT cr.operation_id,cr.ordinal FROM fishing.catch_records cr
+ WHERE NOT EXISTS (SELECT 1 FROM fishing.catch_record_hides h WHERE h.operation_id=cr.operation_id AND h.ordinal=cr.ordinal AND h.board_range='record' AND h.board_kind='big')
+ ORDER BY cr.size DESC,cr.caught_at,cr.operation_id,cr.ordinal LIMIT 1`).Scan(&maxOp, &maxOrd); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	feed := []map[string]any{}
