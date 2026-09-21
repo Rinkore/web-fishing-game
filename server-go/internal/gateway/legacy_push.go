@@ -3,9 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 
-	"fishing.local/server/internal/modules/identity"
 	"fishing.local/server/internal/rules"
 )
 
@@ -17,9 +15,9 @@ import (
 // so a slow or missed tick never drops an event.
 //
 // Covered: trade (the existing watcher), market fills plus listing revisions,
-// friend relations and the paginated player viewport.
-// Not covered yet (documented in DELIVERY.md): subalert, configuration and
-// banner pushes (bitecfg/castcfg/…/banner/maintenance), feed and records.
+// friend relations, the paginated player viewport, and durable catch/record
+// projections. Configuration and operator banner pushes still require a
+// durable publication stream and remain documented as a separate gap.
 
 type legacyStreamPush interface {
 	// init contributes fields to the SSE init frame (nil when the domain has no
@@ -41,6 +39,7 @@ func (a *API) newLegacyPushes(owner int64, c *rules.Catalog) *legacyPushSet {
 		&legacyMarketPush{api: a, owner: owner, catalog: c},
 		&legacyFriendPush{api: a, owner: owner},
 		&legacyPlayersPush{api: a, owner: owner, catalog: c},
+		&legacyCatchPush{api: a, owner: owner, catalog: c},
 	}}
 }
 
@@ -84,6 +83,7 @@ type legacyMarketPush struct {
 	revision   int64
 	fillCursor int64
 	seeded     bool
+	pending    bool
 }
 
 func (p *legacyMarketPush) init(ctx context.Context) map[string]any {
@@ -91,9 +91,11 @@ func (p *legacyMarketPush) init(ctx context.Context) map[string]any {
 	if err != nil {
 		return nil
 	}
+	if err := p.api.pool.QueryRow(ctx, `SELECT COALESCE(max(f.operation_id),0) FROM fishing.market_fills f JOIN fishing.market_orders o ON o.id=f.order_id WHERE f.buyer_id=$1 OR o.seller_id=$1`, p.owner).
+		Scan(&p.fillCursor); err != nil {
+		return nil
+	}
 	p.revision, p.seeded = revision, true
-	_ = p.api.pool.QueryRow(ctx, `SELECT COALESCE(max(f.operation_id),0) FROM fishing.market_fills f JOIN fishing.market_orders o ON o.id=f.order_id WHERE f.buyer_id=$1 OR o.seller_id=$1`, p.owner).
-		Scan(&p.fillCursor)
 	return map[string]any{"marketRevision": revision, "marketTotal": p.api.legacyMarketListed(ctx)}
 }
 
@@ -103,21 +105,24 @@ func (p *legacyMarketPush) poll(ctx context.Context) []string {
 		return nil
 	}
 	if !p.seeded {
-		p.revision, p.seeded = revision, true
+		p.init(ctx)
 		return nil
 	}
-	if revision == p.revision {
+	if revision == p.revision && !p.pending {
+		return nil
+	}
+	frames, err := p.fillFrames(ctx)
+	if err != nil {
 		return nil
 	}
 	p.revision = revision
-	frames := p.fillFrames(ctx)
 	frames = append(frames, legacyFrame(map[string]any{
 		"type": "marketDelta", "revision": revision, "total": p.api.legacyMarketListed(ctx),
 	}))
 	return frames
 }
 
-func (p *legacyMarketPush) fillFrames(ctx context.Context) []string {
+func (p *legacyMarketPush) fillFrames(ctx context.Context) ([]string, error) {
 	rows, err := p.api.pool.Query(ctx, `SELECT f.operation_id,f.order_id,f.quantity,f.total,f.tax,o.unit_price,o.kind,COALESCE(o.item_id,''),o.rod_name,
  f.buyer_id,lower(bi.username),bi.display_name,lower(si.username),si.display_name
  FROM fishing.market_fills f
@@ -127,7 +132,7 @@ func (p *legacyMarketPush) fillFrames(ctx context.Context) []string {
  WHERE f.operation_id>$1 AND (f.buyer_id=$2 OR o.seller_id=$2)
  ORDER BY f.operation_id LIMIT 16`, p.fillCursor, p.owner)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	type fill struct {
 		operation, order, quantity, total, tax, price, buyerID            int64
@@ -140,26 +145,24 @@ func (p *legacyMarketPush) fillFrames(ctx context.Context) []string {
 		if err := rows.Scan(&f.operation, &f.order, &f.quantity, &f.total, &f.tax, &f.price, &f.kind, &f.itemID, &f.rodName,
 			&f.buyerID, &f.buyerKey, &f.buyerName, &f.sellerKey, &f.sellerName); err != nil {
 			rows.Close()
-			return nil
+			return nil, err
 		}
 		list = append(list, f)
 		orderIDs = append(orderIDs, f.order)
 	}
 	if rows.Err() != nil {
+		err := rows.Err()
 		rows.Close()
-		return nil
+		return nil, err
 	}
 	rows.Close()
 	parts, err := p.api.legacyEquipmentParts(ctx, orderIDs)
 	if err != nil {
-		parts = nil
+		return nil, err
 	}
 	frames := []string{}
 	sellerPaid := false
 	for _, f := range list {
-		if f.operation > p.fillCursor {
-			p.fillCursor = f.operation
-		}
 		id, name, _, _, _ := legacyOrderIdentity(p.catalog, f.kind, f.itemID, f.rodName, parts[f.order])
 		role, other := "buy", f.sellerName
 		if f.buyerID != p.owner {
@@ -177,11 +180,17 @@ func (p *legacyMarketPush) fillFrames(ctx context.Context) []string {
 	if sellerPaid {
 		// The seller's coins/inventory changed server-side; push the authoritative
 		// snapshot so the sale is visible without a reload.
-		if frame, err := p.api.legacyAssetsFrame(ctx, p.owner); err == nil {
-			frames = append(frames, frame)
+		frame, err := p.api.legacyAssetsFrame(ctx, p.owner)
+		if err != nil {
+			return nil, err
 		}
+		frames = append(frames, frame)
 	}
-	return frames
+	if len(list) > 0 {
+		p.fillCursor = list[len(list)-1].operation
+	}
+	p.pending = len(list) == 16
+	return frames, nil
 }
 
 // legacyFriendPush projects reciprocal relationship changes onto the legacy
@@ -193,13 +202,17 @@ type legacyFriendPush struct {
 	seeded bool
 }
 
-func (p *legacyFriendPush) init(ctx context.Context) map[string]any { return nil }
+func (p *legacyFriendPush) init(ctx context.Context) map[string]any {
+	var cursor int64
+	if err := p.api.pool.QueryRow(ctx, `SELECT COALESCE(max(updated_operation),0) FROM fishing.friend_relations WHERE a_id=$1 OR b_id=$1`, p.owner).Scan(&cursor); err == nil {
+		p.cursor, p.seeded = cursor, true
+	}
+	return nil
+}
 
 func (p *legacyFriendPush) poll(ctx context.Context) []string {
 	if !p.seeded {
-		var cursor int64
-		_ = p.api.pool.QueryRow(ctx, `SELECT COALESCE(max(updated_operation),0) FROM fishing.friend_relations WHERE a_id=$1 OR b_id=$1`, p.owner).Scan(&cursor)
-		p.cursor, p.seeded = cursor, true
+		p.init(ctx)
 		return nil
 	}
 	rows, err := p.api.pool.Query(ctx, `SELECT r.requester_id,r.state,r.updated_operation,lower(i.username),i.display_name
@@ -282,19 +295,8 @@ func (p *legacyPlayersPush) poll(ctx context.Context) []string {
 
 // legacyAssetsFrame rebuilds the authoritative assets event for one player.
 func (a *API) legacyAssetsFrame(ctx context.Context, owner int64) (string, error) {
-	inventory, bigfish, err := a.legacyInventory(ctx, owner)
-	if err != nil {
-		return "", err
-	}
-	var coins, revision, catchCount int64
-	if err := a.pool.QueryRow(ctx, `SELECT w.coins,p.assets_rev,p.catch_count FROM fishing.wallets w JOIN fishing.player_state p ON p.account_id=w.account_id WHERE w.account_id=$1`, owner).
-		Scan(&coins, &revision, &catchCount); err != nil {
-		return "", identity.ErrStorage
-	}
-	return legacyFrame(map[string]any{
-		"type": "assets", "coins": coins, "inventory": inventory, "bigfish": bigfish,
-		"invRev": strconv.FormatInt(revision, 10), "catchCount": catchCount,
-	}), nil
+	frame, _, err := a.legacyAssetsSnapshot(ctx, owner)
+	return frame, err
 }
 
 // legacyMarketListed counts the open listings the marketTotal field reports.

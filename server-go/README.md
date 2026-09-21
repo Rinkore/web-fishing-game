@@ -1,6 +1,6 @@
 # Go 后端重构起点
 
-架构基线见 [go-architecture.md](../docs/go-architecture.md)，最新实施状态见 [DELIVERY.md](../docs/go-rewrite/DELIVERY.md)。当前已有身份认证、多个玩法的 v1 API/SSE、资产/交易/经济/海域事务和普通地图的默认正式规则内部钓鱼周期；旧前端协议与完整玩法尚未接通。用户已确认业务版本 v0.21.4，正式数据迁移留到后续停服阶段。钓鱼范围见 [NATIVE_FISHING.md](../docs/go-rewrite/NATIVE_FISHING.md)。
+架构基线见 [go-architecture.md](../docs/go-architecture.md)，最新实施状态见 [DELIVERY.md](../docs/go-rewrite/DELIVERY.md)，剩余优先级与完整接口缺口见 [REMAINING.md](../docs/go-rewrite/REMAINING.md)。当前已有身份认证、多个玩法的 v1 API/SSE、资产/交易/经济/海域事务、普通地图和远洋正式周期、递归分段恢复、运行时 catalog 发布及部分旧 HTTP/SSE。旧前端全流程和完整后台仍未验收。用户已确认业务版本 v0.21.4，正式数据迁移留到后续停服阶段。
 
 Go **1.27.1**（官方稳定版，下载档案需核对官方 SHA-256），Node **24.14.0**。直接依赖为 chi **v5.3.2**、pgx **v5.11.0**，全部版本及校验见 go.mod/go.sum；运行时依赖清单见 dependencies.json，许可见 THIRD_PARTY_NOTICES.md。
 
@@ -92,7 +92,7 @@ all 服务启动原型和默认正式钓鱼调度器（各 25ms 扫描、最多 
 
 连接层固定连接超时 3s、SQL 超时 5s、锁等待 1s、事务空闲 10s，并强制 `synchronous_commit=on`；这些设置不替代耐久性测试。角色拆分、认证和管理接口尚未开放。资产事务、锁序、幂等、装备/钓竿语义与故障边界见 [ASSETS.md](../docs/go-rewrite/ASSETS.md)。
 
-当前 schema 至 0018 默认正式钓鱼。已有迁移摘要保持不变，升级保留金币历史、分类库存、装备、钓竿和图鉴。ApplyChange、ExchangeAssets、ChangeRod 和模块 Run 共用命令事务，钓鱼进度和挂单状态与资产共同提交；不接受客户端直接提交奖励或费用计划。合成原型的历史边界见 [PROTOTYPE.md](../docs/go-rewrite/PROTOTYPE.md)，默认正式周期及剩余兼容工作见 [NATIVE_FISHING.md](../docs/go-rewrite/NATIVE_FISHING.md)。
+当前 schema 至 0023 管理后台。已有迁移摘要保持不变，升级保留金币历史、分类库存、装备、钓竿和图鉴。ApplyChange、ExchangeAssets、ChangeRod 和模块 Run 共用命令事务，钓鱼进度和挂单状态与资产共同提交；不接受客户端直接提交奖励或费用计划。合成原型的历史边界见 [PROTOTYPE.md](../docs/go-rewrite/PROTOTYPE.md)，默认正式周期及剩余兼容工作见 [NATIVE_FISHING.md](../docs/go-rewrite/NATIVE_FISHING.md)。
 
 依赖升级后在仓库根执行 `tools/go-rewrite/dependencies.ps1 -GoExe <go.exe路径>` 更新版本清单和许可。网络无法直达默认代理时，可仅为当前 PowerShell 设置 `$env:GOPROXY = 'https://goproxy.cn'`，保持默认 sumdb 校验。
 

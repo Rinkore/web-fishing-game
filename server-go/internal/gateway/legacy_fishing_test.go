@@ -116,17 +116,15 @@ func TestIntegrationLegacyFishingLifecycle(t *testing.T) {
 		t.Fatalf("start: %d %v", code, started)
 	}
 
-	// Settle directly: record a catch as if the native scheduler had run it. The
-	// asset_operations row requires a matching command_results dedup key.
-	var opID int64
-	if _, err := db.Admin.Exec(context.Background(), `INSERT INTO fishing.command_results(actor_id,request_key,request_hash) VALUES($1,'legacy-catch',decode(repeat('00',32),'hex'))`, session.AccountID); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Admin.QueryRow(context.Background(), `INSERT INTO fishing.asset_operations(actor_id,request_key,kind,rule_version) VALUES($1,'legacy-catch','fishing_settle','test-v1') RETURNING id`, session.AccountID).Scan(&opID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Admin.Exec(context.Background(), `INSERT INTO fishing.catch_records(operation_id,ordinal,owner_id,item_id,size,ground_id,spot_id,caught_at)
-	 VALUES($1,1,$2,'crucian',22,'map','dock',clock_timestamp())`, opID, session.AccountID); err != nil {
+	// Use the same atomic inventory/revision/outbox boundary as the scheduler.
+	_, err = assets.New(db.App).Run(ctx, assets.Command{ActorID: session.AccountID, RequestKey: "legacy-catch", Kind: "fishing_settle", RuleVersion: "test-v1", Players: []int64{session.AccountID}}, func(ctx context.Context, tx *assets.Transaction) (assets.Result, error) {
+		if err := tx.Stacks(ctx, session.AccountID, []assets.StackDelta{{ItemID: "crucian", Tier: "normal", Quantity: 1}}); err != nil {
+			return assets.Result{}, err
+		}
+		_, err := tx.SQL().Exec(ctx, `INSERT INTO fishing.catch_records(operation_id,ordinal,owner_id,item_id,size,ground_id,spot_id,caught_at) VALUES($1,1,$2,'crucian',22,'map','dock',clock_timestamp())`, tx.OperationID(), session.AccountID)
+		return assets.Result{Status: "settled"}, err
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -149,11 +147,8 @@ func TestIntegrationLegacyFishingLifecycle(t *testing.T) {
 					t.Fatalf("catch entry: %v", entry)
 				}
 			} else if err == nil && m["type"] == "assets" {
-				sawAssets = true
-				invAdd := m["invAdd"].(map[string]any)
-				if invAdd["crucian"] != float64(1) {
-					t.Fatalf("assets invAdd: %v", m)
-				}
+				inventory, ok := m["inventory"].(map[string]any)
+				sawAssets = ok && inventory["crucian"] == float64(1) && m["invRev"] != nil
 			}
 		}
 	}
@@ -167,5 +162,21 @@ func TestIntegrationLegacyFishingLifecycle(t *testing.T) {
 	if code, _ := post("/api/fishing/stop", "{}", token); code != 200 {
 		t.Fatalf("stop: %d", code)
 	}
-	_ = assets.Result{}
+	// Legacy clients do not supply command IDs. Each new start/stop must get a
+	// fresh durable key, or the second start replays the first completed start.
+	for i := 0; i < 2; i++ {
+		if code, body := post("/api/fishing/start", `{"groundId":"map","spotId":"dock"}`, token); code != 200 {
+			t.Fatalf("restart: %d %v", code, body)
+		}
+		var state string
+		if err := db.Admin.QueryRow(ctx, `SELECT state FROM fishing.native_fishing_sessions WHERE owner_id=$1`, session.AccountID).Scan(&state); err != nil || state != "active" {
+			t.Fatalf("restart state: %s %v", state, err)
+		}
+		if code, body := post("/api/fishing/stop", "{}", token); code != 200 {
+			t.Fatalf("restop: %d %v", code, body)
+		}
+		if err := db.Admin.QueryRow(ctx, `SELECT state FROM fishing.native_fishing_sessions WHERE owner_id=$1`, session.AccountID).Scan(&state); err != nil || state != "stopped" {
+			t.Fatalf("restop state: %s %v", state, err)
+		}
+	}
 }

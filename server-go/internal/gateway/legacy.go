@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/economy"
 	"fishing.local/server/internal/modules/identity"
 	"fishing.local/server/internal/modules/operations"
@@ -114,6 +115,10 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 	if s, err := economy.New(a.pool, c).Settings(ctx, session.AccountID); err == nil && len(s.Rules) > 0 {
 		autoSell = map[string]any{"items": s.Rules, "tier": s.IncludeTiers}
 	}
+	sub, err := a.legacySubscription(ctx, session.AccountID)
+	if err != nil {
+		return nil, identity.ErrStorage
+	}
 
 	bd, rodSlots, rodActiveSlot, rodName, rodLocked, err := a.legacyRod(ctx, c, session.AccountID, rodCapacity)
 	if err != nil {
@@ -149,7 +154,7 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 		"listingCap":       listingCap,
 		"listingCapSet":    false,
 		"autoSell":         autoSell,
-		"subNotify":        nil,
+		"subNotify":        sub,
 		"rodName":          rodName,
 		"rodSlotsCount":    rodCapacity,
 		"rodSlotsMax":      8,
@@ -169,9 +174,13 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 // removed a component from rec.inventory on equip. The second result is the
 // bigfish L/G split for the large and giant tiers.
 func (a *API) legacyInventory(ctx context.Context, owner int64) (map[string]int64, map[string]map[string]int64, error) {
+	return legacyInventoryFrom(ctx, a.pool, owner)
+}
+
+func legacyInventoryFrom(ctx context.Context, db assets.SQL, owner int64) (map[string]int64, map[string]map[string]int64, error) {
 	inventory := map[string]int64{}
 	bigfish := map[string]map[string]int64{}
-	rows, err := a.pool.Query(ctx, `SELECT item_id,kind,tier,quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND quantity>0`, owner)
+	rows, err := db.Query(ctx, `SELECT item_id,kind,tier,quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND quantity>0`, owner)
 	if err != nil {
 		return nil, nil, identity.ErrStorage
 	}
@@ -199,7 +208,7 @@ func (a *API) legacyInventory(ctx context.Context, owner int64) (map[string]int6
 		return nil, nil, identity.ErrStorage
 	}
 	rows.Close()
-	rows, err = a.pool.Query(ctx, `SELECT e.attributes->>'signature',count(*) FROM fishing.equipment_instances e
+	rows, err = db.Query(ctx, `SELECT e.attributes->>'signature',count(*) FROM fishing.equipment_instances e
  WHERE e.owner_id=$1 AND e.lifecycle='available' AND COALESCE(e.attributes->>'signature','')<>''
  AND NOT EXISTS(SELECT 1 FROM fishing.rod_components rc WHERE rc.equipment_id=e.id)
  GROUP BY 1`, owner)

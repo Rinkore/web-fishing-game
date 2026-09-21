@@ -365,7 +365,8 @@ func (s *NativeService) Settle(ctx context.Context, c Candidate) (assets.Result,
 		if _, err = t.SQL().Exec(ctx, `INSERT INTO fishing.catch_segments(session_id,generation,seq,part,operation_id,caught) VALUES($1,$2,$3,$4,$5,$6)`, c.SessionID, gen, seq, part, t.OperationID(), len(catches)); err != nil {
 			return assets.Result{}, err
 		}
-		r.Details, _ = json.Marshal(map[string]any{"caught": total, "segmentCaught": len(catches), "catches": catches, "bonuses": bonuses, "notices": notes})
+		r.Details, _ = json.Marshal(map[string]any{"caught": total, "segmentCaught": len(catches), "catches": catches, "bonuses": bonuses, "notices": notes,
+			"groundId": ground, "spotId": spotID, "groundName": access.GroundName, "spotName": spot.Name, "caughtAt": now.UnixMilli()})
 		if !walk.Done() {
 			r.Status = "progressed"
 			return r, nil

@@ -2,6 +2,8 @@
 
 用户已授权连续推进以下五项；正式数据迁移、正式部署和推送不在本轮范围。每项只有实现、对照和相应验证都通过后才标记完成。原型通过不等于正式玩法或容量验收通过。
 
+**2026-09-21 现状校正**：当前优先级、未注册接口的完整清单与验收条件见 [REMAINING.md](REMAINING.md)。以下日志按实施批次保留，早期的“尚未实现”描述可能已被后续提交覆盖，不能单独作为当前待办。`40e1855` 已接入递归分段持久化、catalog 发布、远洋结算及多连接租约；当前仍缺完整旧协议、后台和生产验收。
+
 ## 1. v0.21.4 正式规则
 
 - [ ] 从当前业务源码生成带摘要的完整默认 catalog，保留公开 ID 和覆盖入口。
@@ -9,7 +11,7 @@
 - [ ] 钓竿效果、抛竿间隔、上钩、多钓规则及 Node/Go 对照。
 - [ ] 权重池、鱼体型、装备生成、宝匣和工坊随机顺序对照。
 - [ ] 供需、价格覆盖、自动出售保留/体型/合计阈值与原子结算。
-- [ ] 正式规则接入持久周期，原型规则明确隔离。
+- [x] 正式规则接入持久周期，原型规则明确隔离；完整旧服等价与容量验收仍独立保留。
 - [x] 默认普通地图内部周期：装备效果、渔获、递归双钓、图鉴/纪录原子结算及真库回归；范围和限制见 [NATIVE_FISHING.md](NATIVE_FISHING.md)。
 
 ## 2. 身份、HTTP 和前端
@@ -86,17 +88,31 @@
 - 运营后台**已知偏差**：①`/api/admin/users/delete` 是「注销」不是真删——持久层把账号挂在 append-only 资产账本、渔获纪录与审计上，真删要拆账本；注销 = 用户名改 `retired_<id>`（原用户名可再次注册）、清空全部会话/连接、永久封禁、从账号列表隐藏，账面与历史保留，账号在编队或有进行中交易时拒绝注销。②`capSet` 恒 false（`listing_capacity NOT NULL DEFAULT 40`，持久层没有「未设置」态），挂单上限上限 10000（旧版 100000）。③限时封禁由 30 秒清扫解封；封禁/撤销管理员不再给玩家推 notice，改金币/奖励不推实时 `assets`（下次快照刷新可见）。④`lockouts` 只有账号名、没有来源 IP（Go 登录防护按 realm+账号，不按 IP）。⑤`registration/stats` 的 `challenged` 恒 0（Go 注册无挑战轮），`limits` 回旧版常量 200/10/5（Go 实际为每 IP 30 次/分钟、每账号 30 次/分钟）。⑥`notifyLevel` 固定 `all`、`biteFormula` 取 catalog `BITE_FORMULA_DEFAULT`（`/api/admin/settings` 未接入）。⑦users/snapshot*、`/api/admin/world`、横幅与 Wiki 内容编辑器仍不注册（保持 404）。
 - slice 1 的集成用例：`internal/gateway/legacy_admin_test.go`（越权拒绝、只读投影、账号编辑/封禁-解封-到期/管理员授权/注销与用户名释放、反馈审核-奖励-删除-配置立即生效、审计 append-only）、`internal/modules/operations/stats_test.go`（采样、分钟去重、30 天清理、钓场/钓点筛选口径）。
 - 旧 `/events` 推送补齐（第一批）：新增 `internal/gateway/legacy_push.go`，把每个域的**持久水位**投影成旧协议帧——`mktTrade`（买卖双方各一条，含 `role/other/qty/price/total/tax/sellerGain`）+ 卖家侧的权威 `assets` 快照、`marketDelta`（revision/total）、`friends` + 好友申请/同意 `notice`、以及登记视口后的 `playersPage`。`POST /api/players/view` 不再返回假的 `pushed:0`，而是返回该账号的在线流数并把视口登记进进程内 registry（`API.views`，单进程部署；多进程需共享状态）。每个投影各自持有游标（market 用 `market_fills.operation_id`、friends 用 `friend_relations.updated_operation`、trade 用 watcher 自比 revision/state/confirm），漏拍不会丢事件；`init` 现在带 `marketRevision`/`marketTotal`。
-- `/events` 推送**仍未覆盖**（继任批次）：`subalert`（组件订阅命中提醒——`/api/subscribe` 的配置已落库但还没有推送通道）、配置类推送（`bitecfg`/`castcfg`/`chestcfg`/`componentcfg`/`smeltcfg`/`mallcfg`/`pricecfg`/`groundcfg`/`grounds`/`autosellcfg`）、`banner`/`bannerStop`/`maintenance`、`feed`/`feedBatch`、`records`/`globalRecord`/`recordsDirty`、`shop`、`seaEvict`、`batch`/`big`。推送为每秒轮询各域水位（非即时广播），容量口径需在长测里复核。
+- `/events` 鱼类动态补齐：新增 `legacy_catch_push.go`，通过 `player_events` 的每玩家修订号 + 渔获 ordinal 投影 `feedBatch`（当前活动钓场过滤、每秒最多 10 条）与 `recordsDirty`，以及当前跨鱼种最大值的 `globalRecord`。不使用全局 operation ID 作为提交水位，避免跨玩家晚提交漏读；一竿超过 100 条可继续读取尾页；读失败不推进游标，重连从新基线开始，不重放历史社交播报。`recordsDirty.v` 为连接内递增的刷新标记。范围限 `catch_records` 中的鱼类：材料/组件动态、单鱼种/日榜横幅、通知等级过滤、初始 feed 历史与 records.last 仍未实现；单次轮询只播当前最大纪录，期间被超过的中间纪录不补播。本段为前一批社交流记录；个人 catch/资产路径随后已在本页“实时主链收尾”中修复。每连接保存玩家游标并轮询共享历史的成本仍需容量验收。
+- `/events` 仍未覆盖：配置类推送（`bitecfg`/`castcfg`/`chestcfg`/`componentcfg`/`smeltcfg`/`mallcfg`/`pricecfg`/`groundcfg`/`grounds`/`autosellcfg`）、`banner`/`bannerStop`/`maintenance`、`records` 全量帧、`shop`、`seaEvict`、`batch`/`big`。推送为轮询各域水位（非即时广播），容量口径需在长测里复核。
 - `internal/gateway/legacy_push_test.go`：真库覆盖市集成交双向帧 + 卖家 assets、好友申请/同意 notice、视口登记后的 playersPage 与 `pushed` 计数。
+- 2026-09-21 鱼类动态验证：`legacy_push_test.go` 验证实际 `/events` 的地点、动态、榜单刷新与横幅；`legacy_catch_push_test.go` 验证 105 条递归分页、跨玩家反序提交、钓场隔离、相同最大值不重播、断线重连不回放历史，以及中途数据库读取失败后重试。最终 Linux Docker 隔离 PostgreSQL 全套 `go mod verify`、`go vet ./...`、`go test -race -count=1 -timeout=3m ./...` 退出码 0（gateway 129.379 秒），Windows `go build ./...`、gofmt 通过。默认镜像/模块源网络失败后使用 README 已记录的固定镜像站和 goproxy.cn；本机 5433 便携库不可用导致另一次 Windows 真库尝试失败，该次不计通过。测试容器与网络已清理；没有执行浏览器 A/B、生产迁移或部署。
 - 旧 Wiki 契约接入（只读 5 条）：`GET /api/wiki/content`（元数据 + 更新记录 + `officialRevision`/`userRevision` + `ETag` 与 `If-None-Match` 304）、`/api/wiki/guides`（分页/`q`/`kind`/`category`，pageSize 默认 20 上限 50）、`/api/wiki/guides/{id}`（含正文段落，未知/不合法 id 回 404 中文文案）、`/api/wiki/guides/session`、`/api/wiki/simulator/inventory`（私有只读投影，不触发结算）。官方正文来自新增 `internal/wiki` 内嵌快照（生成器 `tools/go-rewrite/wiki-content.js` 带 `sourceSHA256`，CI 增加 `--check` 与 `frontend/wiki/content/content.json` 触发路径）。**已知偏差**：用户投稿与运营热保存未接入（`userRevision` 固定 0、列表不含投稿、更新内容需重建二进制）；revision 由快照摘要推导；`updatedAt` 取快照内最新日期；搜索按 Unicode 折叠大小写（旧版 SQLite LIKE 只折 ASCII）；未登录/封禁的 simulator 读取统一 401 `invalid_credentials`。
-- **仍属剩余范围**：`/api/admin/*` 剩余约 58 条（世界/掉落/玩法配置编辑器、用户快照与回滚、公告横幅、市集运营、编队、Wiki 运营等）；用户攻略存储（含 24h 3 篇、待审 3 篇、自动通过规则）与运营注册策略（`/api/register/challenge`）仍待用户确认方案；`subalert` 等配置类 SSE 推送（见上）；容量/故障/迁移/浏览器 A/B 仍按既定计划延期。
+- **仍属剩余范围**：`/api/admin/*` 剩余约 58 条（世界/掉落/玩法配置编辑器、用户快照与回滚、公告横幅、市集运营、编队、Wiki 运营等）；用户攻略存储（含 24h 3 篇、待审 3 篇、自动通过规则）与运营注册策略（`/api/register/challenge`）仍待用户确认方案；其余配置类 SSE 推送（见上；钓鱼组件 subalert 已接入）；容量/故障/迁移/浏览器 A/B 仍按既定计划延期。
+
+## 2026-09-21 实时主链收尾
+
+- 个人渔获改用 `player_events.revision` 按完整操作分页，一页 16 个操作；同操作不按 100 条鱼截断。读取已提交 outbox 的 `catches`，因此鱼、材料、组件均有个人 catch 帧。旧 payload 缺失时按操作读取完整鱼纪录作兼容；不从当前钓点反推历史地点。
+- 正式结算结果追加捕获时的钓场/钓点 ID、名称和时间；普通地图、远洋和共享海域均从结算时已校验的访问结果取名称。额外奖励不伪造为新的 primary catch，库存/图鉴快照包含已提交的全部奖励。
+- `assets` 的金币、库存、大鱼、图鉴、累计渔获和 `invRev` 由同一只读 Repeatable Read 事务获取。初始化先确定快照水位再发送；轮询失败不推进游标。每个有新资产修订的轮询最多一份快照，取代不带修订号的逐鱼加一，覆盖自动出售、管理员奖励、工坊/宝匣和其他标签页修改；分页 catch 只写日志，不再重复加库存/图鉴。全量快照的带宽与 UI 重绘成本仍需容量/浏览器验收。
+- 钓鱼获得组件时接通 `subalert`，包含递归追加；按底材、品质、同一词条的类型与闭区间筛选，关闭订阅立即影响后续轮询。`/api/me.subNotify` 读取真实配置，保留 badge/blink；订阅采用投影时的配置。当前功能发布模型还不支持旧版 `inventory.subscribe` 细粒度开关；宝匣/工坊获得组件不新增订阅提醒，与旧版触发点一致。
+- 市集 16 笔分页保持待发送标志，无新 revision 也继续发尾页；读取组件或卖家快照失败时不提前确认 cursor/revision。好友在 init 之前播种水位，修复首轮轮询吞掉新申请。
+- 修复旧 `/api/fishing/start|stop` 复用固定命令号，导致收竿后再次开钓只回放第一次成功结果的问题；每次旧 HTTP 动作使用新命令号。旧 SSE 心跳改为前端能够接收到的 `type:ping`。连接关闭清理提前登记，初始写入失败也释放自己的租约。
+- 新增 `legacy_personal_push_test.go`、`legacy_push_recovery_test.go`：真实原生递归分段超过 100 条并保持鱼/材料/组件顺序、订阅开关/筛选、渔获后出售的权威对账、18 个操作 × 105 条的分页、初始化发送窗口、断线基线、读失败重试、在线发奖；20 次实际市集部分成交翻页和快照失败重试、好友初始窗口；生命周期测试追加连续开钓/收竿。沿用工作树已有的社交渔获推送和对应测试。
+- 快照水位同时检查廉价唤醒读数与事件页末修订，修复两次读取之间新提交导致“游标已确认、快照未刷新”的竞态；`TestIntegrationPersonalPushCommitBetweenWakeupAndPage` 通过真实数据库锁精确制造该时序。
+- **最终验证**：Windows 连接本轮隔离 Docker PostgreSQL，全量 `go test -count=1 -timeout=8m ./...` 退出 0（gateway 51.407 秒）；Linux 同一代码最终全量 `go mod verify`、`go vet ./...`、`go test -race -count=1 -timeout=3m ./...` 退出 0（gateway 105.381 秒）。Windows 构建、gofmt、diff 检查通过；Node 基线 3/3；默认 catalog 94 项、全部 2551 项规则 oracle、Wiki 内容快照漂移检查通过。未运行原前端完整浏览器 A/B、持久磁盘容量或故障放行测试，不能把此结果用于宣称整项重写或生产验收已完成。
 
 ## 明确剩余范围
 
-1. 正式钓鱼周期扩展：默认普通地图的装备/体型/掉落/递归双钓/图鉴及纪录已接内部事务；仍需运行时 catalog 配置发布、远洋/活动、完整旧时机兼容及长链积压方案。自动出售按最新选择独立扫描，供需在出售事务更新。
+1. 正式钓鱼规则的完整旧版对照、活动与配置编辑器、长链长期积压/公平性验收。运行时 catalog 发布、远洋经验/悬赏/共享权限、递归分段恢复已实现；不能再次列为“未开发”。自动出售按最新选择独立扫描，供需在出售事务更新。
 2. 原前端与全部旧 API/SSE 契约、注册挑战/运营注册策略、浏览器 A/B。新 v1 接口不能替代该项验收。
 3. 已实现交易的旧契约逐项对照、到期/换装边界补充故障矩阵。
-4. 活动、正式远洋渔获/经验/钓鱼悬赏、自动配装、旧版个人/全服榜单和通知契约、完整管理后台。内部逐条纪录和按鱼种最大/最小查询已实现；海图/升级/临时海域/悬赏领取/编队的新接口及事务已实现。共享海域的正式钓鱼成员校验、旧协议和浏览器流程仍待接入。功能开关覆盖原八类及 sea/party/fishing。
+4. 活动、自动配装和完整通知契约、58 个尚未注册的后台接口、注册挑战、Wiki 投稿。旧版去重总榜/日榜/周榜查询已注册；纪录播报等级、历史动态、配置/公告/海域驱逐推送仍有缺口。远洋和共享权限已接内部核心，旧 `sea:<用户名>:<zone>` 转换与浏览器全流程仍需专项验收。功能开关覆盖原八类及 sea/party/fishing。
 5. 先完成 100 人长时间和完整玩法负载、写入中的数据库故障/进程重启、锁等待/SQL 次数，再阶梯测试 1000/5000 人；已有 SIGKILL 恢复是在停止负载之后进行。
 
 接口、限购时区、管理员运维入口和功能发布语义详见 [GAMEPLAY_API.md](GAMEPLAY_API.md)。本清单不把阶段实现标记为五项整体交付完成。

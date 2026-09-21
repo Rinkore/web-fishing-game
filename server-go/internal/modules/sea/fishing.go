@@ -15,6 +15,7 @@ import (
 
 type FishingAccess struct {
 	Spot        rules.FishingSpot
+	GroundName  string
 	Ocean, Zone bool
 	Mood        string
 	PartyCount  int
@@ -71,7 +72,7 @@ func (s *Service) ResolveFishing(ctx context.Context, t *assets.Transaction, own
 		if !found {
 			return v, assets.Rejection("unknown_spot")
 		}
-		v.Ocean, v.Zone, v.Mood = true, true, z.Mood
+		v.Ocean, v.Zone, v.Mood, v.GroundName = true, true, z.Mood, z.Name
 	} else {
 		g, p, ok := s.catalog.FishingSpot(ground, spot)
 		if !ok {
@@ -81,6 +82,7 @@ func (s *Service) ResolveFishing(ctx context.Context, t *assets.Transaction, own
 			return v, assets.Rejection("spot_locked")
 		}
 		v.Spot = p
+		v.GroundName = g.Name
 		v.Ocean = g.Type == "ocean" || g.ID == "ocean" || p.Map == "voyage"
 	}
 	if v.Ocean || v.Spot.MinShip > 0 {

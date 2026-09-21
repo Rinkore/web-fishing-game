@@ -6,6 +6,57 @@ import (
 	"time"
 )
 
+func TestIntegrationLegacyCatchPush(t *testing.T) {
+	f := newLegacyTradeFixture(t)
+	f.seed()
+	feed := openLegacyTradeStream(t, f, "trade_a")
+	defer feed.cancel()
+	feed.wait(t, "init", 10*time.Second)
+	if code, body := f.post("/api/fishing/start", `{"groundId":"map","spotId":"dock"}`, "trade_a"); code != 200 {
+		t.Fatalf("start fishing: %d %v", code, body)
+	}
+	if _, err := f.db.Admin.Exec(f.ctx, `INSERT INTO fishing.command_results(actor_id,request_key,request_hash) VALUES($1,'push-catch',decode(repeat('22',32),'hex'))`, f.id["trade_a"]); err != nil {
+		t.Fatal(err)
+	}
+	var operation int64
+	if err := f.db.Admin.QueryRow(f.ctx, `INSERT INTO fishing.asset_operations(actor_id,request_key,kind,rule_version) VALUES($1,'push-catch','fishing_settle','test-v1') RETURNING id`, f.id["trade_a"]).Scan(&operation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Admin.Exec(f.ctx, `INSERT INTO fishing.catch_records(operation_id,ordinal,owner_id,item_id,size,ground_id,spot_id,caught_at)
+ VALUES($1,1,$2,'crucian',20,'map','dock',clock_timestamp()),($1,2,$2,'crucian',40,'map','dock',clock_timestamp())`, operation, f.id["trade_a"]); err != nil {
+		t.Fatal(err)
+	}
+	var outbox int64
+	if err := f.db.Admin.QueryRow(f.ctx, `INSERT INTO fishing.outbox_events(operation_id,event_type,payload) VALUES($1,'assets_changed','{}') RETURNING id`, operation).Scan(&outbox); err != nil {
+		t.Fatal(err)
+	}
+	var revision int64
+	if err := f.db.Admin.QueryRow(f.ctx, `UPDATE fishing.player_state SET assets_rev=assets_rev+1 WHERE account_id=$1 RETURNING assets_rev`, f.id["trade_a"]).Scan(&revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Admin.Exec(f.ctx, `INSERT INTO fishing.player_events(owner_id,revision,outbox_id) VALUES($1,$2,$3)`, f.id["trade_a"], revision, outbox); err != nil {
+		t.Fatal(err)
+	}
+	feedEvent := feed.wait(t, "feedBatch", 15*time.Second)
+	list, ok := feedEvent["list"].([]any)
+	if !ok || len(list) != 2 {
+		t.Fatalf("feed batch: %v", feedEvent)
+	}
+	first := list[0].(map[string]any)
+	if first["ground"] != "世界地图" || first["spot"] != "湖畔老码头" {
+		t.Fatalf("feed location: %v", first)
+	}
+	dirty := feed.wait(t, "recordsDirty", 15*time.Second)
+	if dirty["v"] == nil {
+		t.Fatalf("records dirty: %v", dirty)
+	}
+	global := feed.wait(t, "globalRecord", 15*time.Second)
+	record := global["record"].(map[string]any)
+	if record["id"] != "crucian" || record["size"] != float64(40) || record["key"] != "trade_a" {
+		t.Fatalf("global record: %v", global)
+	}
+}
+
 // TestIntegrationLegacyPush covers the /events projections that do not belong
 // to a single HTTP domain: market fills and listing revisions, friend relation
 // notices, and the registered player-list viewport.

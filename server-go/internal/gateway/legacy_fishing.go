@@ -41,7 +41,7 @@ func (a *API) legacyFishingStart(w http.ResponseWriter, r *http.Request) {
 	svc := fishing.NewLiveNative(a.pool, a.location)
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
 	res, err := svc.Start(ctx, fishing.NativeStart{
-		ActorID: session.AccountID, RequestKey: "legacy:start", GroundID: in.GroundID, SpotID: in.SpotID,
+		ActorID: session.AccountID, RequestKey: legacyMarketKey("legacy:start"), GroundID: in.GroundID, SpotID: in.SpotID,
 		ConnectionGeneration: gen,
 	})
 	if err != nil {
@@ -75,7 +75,7 @@ func (a *API) legacyFishingStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-	if _, err := fishing.NewLiveNative(a.pool, a.location).Stop(ctx, fishing.Stop{ActorID: session.AccountID, RequestKey: "legacy:stop", Generation: gen}); err != nil {
+	if _, err := fishing.NewLiveNative(a.pool, a.location).Stop(ctx, fishing.Stop{ActorID: session.AccountID, RequestKey: legacyMarketKey("legacy:stop"), Generation: gen}); err != nil {
 		failure(w, err)
 		return
 	}
@@ -92,8 +92,8 @@ func (a *API) activeConnectionGeneration(ctx context.Context, owner int64) (int6
 }
 
 // legacyEvents serves the original frontend's /events stream. It establishes a
-// connection lease, emits init, then forwards settled catches as catch,
-// codexAdd and assets events using catch_records as the durable replay cursor.
+// connection lease, emits init, then projects committed player events and
+// authoritative asset snapshots. Social projections have separate cursors.
 func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 	session, ok := a.authorize(w, r, false)
 	if !ok {
@@ -107,6 +107,12 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		closeCtx = assets.WithSession(closeCtx, session.AccountID, session.Hash, false)
+		_, _ = svc.Stream(closeCtx, session.AccountID, "legacy:stream:"+streamID+":close", streamID, "close")
+	}()
 
 	controller := http.NewResponseController(w)
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
@@ -131,24 +137,20 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer func() {
-		closeCtx := assets.WithSession(context.Background(), session.AccountID, session.Hash, false)
-		// The request key must differ from the open command, otherwise the
-		// durable asset machinery replays the cached open result and the lease
-		// (and its stream row) is never released.
-		_, _ = svc.Stream(closeCtx, session.AccountID, "legacy:stream:"+streamID+":close", streamID, "close")
-	}()
-
 	c, err := a.catalog(r.Context())
 	if err != nil {
 		_ = send(`data: {"type":"kicked"}` + "\n\n")
 		return
 	}
 
-	// init carries the authoritative snapshot the legacy client needs to render.
-	// Each push projection seeds its own watermark from the same snapshot, so a
-	// change racing init is delivered by the next poll instead of being lost.
+	// Seed cursors before sending init. The personal assets frame and its cursor
+	// come from one snapshot, so a commit racing the send remains pending.
 	init := a.legacyInit(r, c, session, open.Generation)
+	personal := &legacyPersonalPush{api: a, owner: session.AccountID, name: session.Name, catalog: c}
+	snapshot, err := personal.init(r.Context())
+	if err != nil {
+		return
+	}
 	pushes := a.newLegacyPushes(session.AccountID, c)
 	for key, value := range pushes.init(r.Context()) {
 		init[key] = value
@@ -156,8 +158,10 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 	if !send("data: " + jsonString(init) + "\n\n") {
 		return
 	}
+	if !send(snapshot) {
+		return
+	}
 
-	cursor := a.lastCatchOperation(r.Context(), session.AccountID)
 	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
 	heartbeat := time.NewTicker(25 * time.Second)
@@ -191,21 +195,21 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		case <-tick.C:
-			next, entries, err := a.settledCatches(r.Context(), c, session.AccountID, session.Name, cursor)
+			entries, err := personal.poll(r.Context())
 			if err != nil {
-				return
+				// Retry the same page after a transient read failure.
+				continue
 			}
 			if len(entries) == 0 {
 				continue
 			}
-			cursor = next
 			for _, e := range entries {
-				if !send("data: " + jsonString(e) + "\n\n") {
+				if !send(e) {
 					return
 				}
 			}
 		case <-heartbeat.C:
-			if !send(": ping\n\n") {
+			if !send(legacyFrame(map[string]any{"type": "ping"})) {
 				return
 			}
 			// Revalidate the session each heartbeat so revocation kicks the stream.
@@ -229,10 +233,7 @@ func (a *API) assetsRevision(ctx context.Context, owner int64) (int64, error) {
 
 func (a *API) legacyInit(r *http.Request, c *rules.Catalog, session identity.Session, generation int64) map[string]any {
 	profile, _ := a.legacyProfile(r, c, session)
-	codex := map[string]any{}
-	if v, ok := profile["codex"].(map[string]any); ok {
-		codex = v
-	}
+	codex := profile["codex"]
 	catchCount := int64(0)
 	if v, ok := profile["catchCount"].(int64); ok {
 		catchCount = v
@@ -310,92 +311,6 @@ func (a *API) spotCounts(ctx context.Context) map[string]int64 {
 		}
 	}
 	return out
-}
-
-func (a *API) lastCatchOperation(ctx context.Context, owner int64) int64 {
-	var last int64
-	_ = a.pool.QueryRow(ctx, `SELECT COALESCE(max(operation_id),0) FROM fishing.catch_records WHERE owner_id=$1`, owner).Scan(&last)
-	return last
-}
-
-func (a *API) settledCatches(ctx context.Context, c *rules.Catalog, owner int64, name string, after int64) (int64, []map[string]any, error) {
-	rows, err := a.pool.Query(ctx, `SELECT cr.operation_id,cr.item_id,cr.size,cr.ground_id,cr.spot_id,cr.caught_at,cr.ordinal
- FROM fishing.catch_records cr WHERE cr.owner_id=$1 AND cr.operation_id>$2 ORDER BY cr.operation_id,cr.ordinal LIMIT 100`, owner, after)
-	if err != nil {
-		return after, nil, err
-	}
-	defer rows.Close()
-	next := after
-	events := []map[string]any{}
-	groundNames := map[string]string{}
-	for _, g := range c.Grounds() {
-		groundNames[g.ID] = g.Name
-	}
-	for rows.Next() {
-		var op int64
-		var itemID, ground, spot string
-		var size float64
-		var caughtAt time.Time
-		var ordinal int64
-		if err := rows.Scan(&op, &itemID, &size, &ground, &spot, &caughtAt, &ordinal); err != nil {
-			return after, nil, err
-		}
-		if op > next {
-			next = op
-		}
-		it, _ := c.Item(itemID)
-		tier := c.SizeTier(itemID, size)
-		entry := map[string]any{
-			"t":      caughtAt.UnixMilli(),
-			"who":    name,
-			"item":   map[string]any{"id": itemID, "name": it.Name, "kind": it.Kind, "rarity": it.Rarity, "size": size, "tier": tier},
-			"ground": groundNames[ground],
-			"spot":   spot,
-			"size":   size,
-		}
-		events = append(events, map[string]any{"type": "catch", "entry": entry})
-		events = append(events, a.legacyCodexAdd(ctx, c, owner, itemID, tier))
-		events = append(events, a.legacyAssetsDelta(ctx, c, owner, itemID, tier))
-	}
-	if err := rows.Err(); err != nil {
-		return after, nil, err
-	}
-	return next, events, nil
-}
-
-func (a *API) legacyCodexAdd(ctx context.Context, c *rules.Catalog, owner int64, itemID, sizeTier string) map[string]any {
-	var count int64
-	var minSize, maxSize *float64
-	var tier string
-	err := a.pool.QueryRow(ctx, `SELECT count,min_size,max_size,best_tier FROM fishing.player_codex WHERE owner_id=$1 AND item_id=$2`, owner, itemID).Scan(&count, &minSize, &maxSize, &tier)
-	if err != nil {
-		return map[string]any{"type": "codexAdd", "id": itemID, "add": 1, "tier": sizeTierLabel(sizeTier)}
-	}
-	var legacyTier any
-	switch tier {
-	case "large":
-		legacyTier = "L"
-	case "giant":
-		legacyTier = "G"
-	}
-	it, _ := c.Item(itemID)
-	var catchCount int64
-	_ = a.pool.QueryRow(ctx, `SELECT catch_count FROM fishing.player_state WHERE account_id=$1`, owner).Scan(&catchCount)
-	return map[string]any{
-		"type": "codexAdd", "id": itemID, "name": it.Name, "add": 1,
-		"mx": maxSize, "mn": minSize, "tier": legacyTier, "catchCount": catchCount,
-	}
-}
-
-func (a *API) legacyAssetsDelta(ctx context.Context, c *rules.Catalog, owner int64, itemID, sizeTier string) map[string]any {
-	var coins, catchCount int64
-	_ = a.pool.QueryRow(ctx, `SELECT w.coins,p.catch_count FROM fishing.wallets w JOIN fishing.player_state p ON p.account_id=w.account_id WHERE w.account_id=$1`, owner).Scan(&coins, &catchCount)
-	invAdd := map[string]int64{itemID: 1}
-	var bigAdd any
-	if label := sizeTierLabel(sizeTier); label != "" {
-		bigAdd = map[string]any{itemID: map[string]int64{label: 1}}
-	}
-	return map[string]any{"type": "assets", "coins": coins, "catchCount": catchCount, "invAdd": invAdd, "bigAdd": bigAdd}
 }
 
 func sizeTierLabel(tier string) string {
