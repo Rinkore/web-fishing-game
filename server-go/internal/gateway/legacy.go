@@ -70,73 +70,13 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 		return nil, identity.ErrStorage
 	}
 
-	// inventory_stacks holds fish in three tier rows; legacy flattens them to a
-	// single count plus a bigfish.L/G split for large and giant.
-	inventory := map[string]int64{}
-	bigfish := map[string]map[string]int64{}
-	rows, err := a.pool.Query(ctx, `SELECT item_id,kind,tier,quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND quantity>0`, session.AccountID)
+	inventory, bf, err := a.legacyInventory(ctx, session.AccountID)
 	if err != nil {
-		return nil, identity.ErrStorage
-	}
-	for rows.Next() {
-		var id, kind, tier string
-		var q int64
-		if err := rows.Scan(&id, &kind, &tier, &q); err != nil {
-			rows.Close()
-			return nil, identity.ErrStorage
-		}
-		inventory[id] += q
-		if kind == "fish" && (tier == "large" || tier == "giant") {
-			key := "L"
-			if tier == "giant" {
-				key = "G"
-			}
-			if bigfish[id] == nil {
-				bigfish[id] = map[string]int64{}
-			}
-			bigfish[id][key] += q
-		}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, identity.ErrStorage
-	}
-	rows.Close()
-	// Component instances live in the durable equipment table, not in the stack
-	// table. The legacy inventory map keys them by instance signature and only
-	// lists the loose ones (available and not mounted on a saved rod), which is
-	// what the original server produced when it removed a component from
-	// rec.inventory on equip.
-	rows, err = a.pool.Query(ctx, `SELECT e.attributes->>'signature',count(*) FROM fishing.equipment_instances e
- WHERE e.owner_id=$1 AND e.lifecycle='available' AND COALESCE(e.attributes->>'signature','')<>''
- AND NOT EXISTS(SELECT 1 FROM fishing.rod_components rc WHERE rc.equipment_id=e.id)
- GROUP BY 1`, session.AccountID)
-	if err != nil {
-		return nil, identity.ErrStorage
-	}
-	for rows.Next() {
-		var id string
-		var count int64
-		if err := rows.Scan(&id, &count); err != nil {
-			rows.Close()
-			return nil, identity.ErrStorage
-		}
-		inventory[id] += count
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, identity.ErrStorage
-	}
-	rows.Close()
-	bf := map[string]map[string]int64{}
-	for id, m := range bigfish {
-		if m["L"] > 0 || m["G"] > 0 {
-			bf[id] = m
-		}
+		return nil, err
 	}
 
 	codex := map[string]map[string]any{}
-	rows, err = a.pool.Query(ctx, `SELECT item_id,count,first_at,min_size,max_size,best_tier FROM fishing.player_codex WHERE owner_id=$1`, session.AccountID)
+	rows, err := a.pool.Query(ctx, `SELECT item_id,count,first_at,min_size,max_size,best_tier FROM fishing.player_codex WHERE owner_id=$1`, session.AccountID)
 	if err != nil {
 		return nil, identity.ErrStorage
 	}
@@ -219,6 +159,74 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 		"nextRodSlotPrice": nextPrice,
 		"rodLocked":        rodLocked,
 	}, nil
+}
+
+// legacyInventory projects the durable inventory into the legacy map: stack
+// quantities flattened over the size tiers plus the loose component instances
+// keyed by signature. Component instances live in the durable equipment table,
+// not in the stack table, and only the loose ones (available and not mounted on
+// a saved rod) appear — which is what the original server produced when it
+// removed a component from rec.inventory on equip. The second result is the
+// bigfish L/G split for the large and giant tiers.
+func (a *API) legacyInventory(ctx context.Context, owner int64) (map[string]int64, map[string]map[string]int64, error) {
+	inventory := map[string]int64{}
+	bigfish := map[string]map[string]int64{}
+	rows, err := a.pool.Query(ctx, `SELECT item_id,kind,tier,quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND quantity>0`, owner)
+	if err != nil {
+		return nil, nil, identity.ErrStorage
+	}
+	for rows.Next() {
+		var id, kind, tier string
+		var q int64
+		if err := rows.Scan(&id, &kind, &tier, &q); err != nil {
+			rows.Close()
+			return nil, nil, identity.ErrStorage
+		}
+		inventory[id] += q
+		if kind == "fish" && (tier == "large" || tier == "giant") {
+			key := "L"
+			if tier == "giant" {
+				key = "G"
+			}
+			if bigfish[id] == nil {
+				bigfish[id] = map[string]int64{}
+			}
+			bigfish[id][key] += q
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, nil, identity.ErrStorage
+	}
+	rows.Close()
+	rows, err = a.pool.Query(ctx, `SELECT e.attributes->>'signature',count(*) FROM fishing.equipment_instances e
+ WHERE e.owner_id=$1 AND e.lifecycle='available' AND COALESCE(e.attributes->>'signature','')<>''
+ AND NOT EXISTS(SELECT 1 FROM fishing.rod_components rc WHERE rc.equipment_id=e.id)
+ GROUP BY 1`, owner)
+	if err != nil {
+		return nil, nil, identity.ErrStorage
+	}
+	for rows.Next() {
+		var id string
+		var count int64
+		if err := rows.Scan(&id, &count); err != nil {
+			rows.Close()
+			return nil, nil, identity.ErrStorage
+		}
+		inventory[id] += count
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, nil, identity.ErrStorage
+	}
+	rows.Close()
+	bf := map[string]map[string]int64{}
+	for id, m := range bigfish {
+		if m["L"] > 0 || m["G"] > 0 {
+			bf[id] = m
+		}
+	}
+	return inventory, bf, nil
 }
 
 // legacyRod reads the active assembly (bd), the saved slot view, and the

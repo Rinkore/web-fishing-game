@@ -127,7 +127,10 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		closeCtx := assets.WithSession(context.Background(), session.AccountID, session.Hash, false)
-		_, _ = svc.Stream(closeCtx, session.AccountID, "legacy:stream:"+streamID, streamID, "close")
+		// The request key must differ from the open command, otherwise the
+		// durable asset machinery replays the cached open result and the lease
+		// (and its stream row) is never released.
+		_, _ = svc.Stream(closeCtx, session.AccountID, "legacy:stream:"+streamID+":close", streamID, "close")
 	}()
 
 	c, err := a.catalog(r.Context())
@@ -138,6 +141,11 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 
 	// init carries the authoritative snapshot the legacy client needs to render.
 	init := a.legacyInit(r, c, session, open.Generation)
+	// The trade watcher primes itself from the same snapshot, so a change racing
+	// init is delivered by the next poll instead of being lost.
+	trades := a.newLegacyTradeWatcher(r.Context(), session.AccountID)
+	init["trade"] = trades.snapshot(r.Context())
+	var tradeTicks int
 	if !send("data: " + jsonString(init) + "\n\n") {
 		return
 	}
@@ -147,10 +155,48 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 	defer tick.Stop()
 	heartbeat := time.NewTicker(25 * time.Second)
 	defer heartbeat.Stop()
+	// The durable modules treat an expired fishing_connections lease as offline,
+	// so the stream renews its own lease: the original frontend keeps /events
+	// open instead of heartbeating the game API.
+	presence := time.NewTicker(10 * time.Second)
+	defer presence.Stop()
+	tradeTick := time.NewTicker(time.Second)
+	defer tradeTick.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-presence.C:
+			leaseCtx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
+			if _, err := svc.Stream(leaseCtx, session.AccountID, "legacy:stream:"+streamID+":hb:"+randomStreamID(), streamID, "heartbeat"); err != nil {
+				// A vanished stream row (restored database, expired lease) is
+				// re-opened so presence and any paused session resume.
+				if _, reopen := svc.Stream(leaseCtx, session.AccountID, "legacy:stream:"+streamID+":hb:"+randomStreamID(), streamID, "open"); reopen != nil {
+					return
+				}
+			}
+		case <-tradeTick.C:
+			// Every successful trade mutation (invite, respond, offer, confirm,
+			// cancel, and the expiry sweep) is a durable asset command, so it
+			// bumps the participant's assets_rev (internal/modules/assets
+			// command.go). Gating on that revision keeps the unindexed
+			// (a_id=$1 OR b_id=$1) scan off the per-second path, which matters
+			// once the trades table carries history. tradeSafetyNet covers any
+			// transition that would not carry a revision bump.
+			revision, err := a.assetsRevision(r.Context(), session.AccountID)
+			if err != nil {
+				return
+			}
+			if revision == tradeRevision && tradeTicks%5 != 0 {
+				tradeTicks++
+				continue
+			}
+			tradeRevision, tradeTicks = revision, tradeTicks+1
+			for _, frame := range trades.poll(r.Context()) {
+				if !send(frame) {
+					return
+				}
+			}
 		case <-tick.C:
 			next, entries, err := a.settledCatches(r.Context(), c, session.AccountID, session.Name, cursor)
 			if err != nil {
@@ -176,6 +222,16 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// assetsRevision reads the participant's asset revision: the cheap wake-up
+// signal for stream projections that should not hold their own per-tick scan.
+func (a *API) assetsRevision(ctx context.Context, owner int64) (int64, error) {
+	var revision int64
+	if err := a.pool.QueryRow(ctx, `SELECT assets_rev FROM fishing.player_state WHERE account_id=$1`, owner).Scan(&revision); err != nil {
+		return 0, err
+	}
+	return revision, nil
 }
 
 func (a *API) legacyInit(r *http.Request, c *rules.Catalog, session identity.Session, generation int64) map[string]any {

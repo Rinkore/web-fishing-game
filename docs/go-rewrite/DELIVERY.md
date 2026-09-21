@@ -75,6 +75,11 @@
 - `internal/rules` 补充 `SmeltMaterialIDs()` 与 `WorkshopConfig.RetainPerRelic()`（后者与 data.js `retainChancePerRelic` 同式，并替换 `SmeltPlan` 内的重复实现，行为不变）。
 - 本地提交 `4bda2dd` 保存前一批规则、身份、交易、市集、工坊、商城、好友和持久卷验收工程；后续经济/运营批次持续整理。远程 CI 增加所有规则 oracle 漂移检查，尚未推送触发。
 - 全部操作只涉及隔离合成数据库。未读取参考旧存档、未做迁移、未推送或部署。
+- 旧交易契约接入：`POST /api/trade/invite|respond|set|confirm|cancel` 桥接到正式双人交易事务；`/events` 的 init 带 `trade` 快照，交易修订/状态变化时推送 `{"type":"trade","trade":{...}}`、结算推 `{"type":"tradeDone"}`（含双方 inventory/coins/invRev）。参与者按小写用户名投影，交易号暴露为 `T<数字>`，物品沿用旧背包口径（渔获/材料/宝匣按数量、组件按实例签名）。**同时修掉旧流租约两处真实缺陷**：`/events` 每 10 秒续期自己的在线租约（旧前端从不给游戏 API 发心跳，否则 15 秒后所有邀请都会以「对方不在线」失败）；关闭连接改用独立请求号（原先复用 open 请求号被命令幂等层回放，`close` 从不执行）。**已知偏差**：正式模块要求双方持有在线租约、邀请 10 分钟后自动失效（旧版仅邀请时校验在线且不自动失效）；推送为 1 秒轮询并由 watcher 自比 revision/state 去重（不是即时广播）；组件报价按实例逐个下发；`reason` 恒为 null（旧版会带「物品已变更/物品不足」文案，前端不读该字段）。
+- 旧好友与玩家列表契约接入：`GET /api/friends/relations`、`GET|POST /api/friends`、`GET /api/players/page`、`POST /api/players/view|rod`。身份一律用**小写用户名**；在线=持有流租约，钓鱼状态与位置来自正式钓鱼会话；`locationName` 复刻旧口径（世界地图取钓点名、共享海域取 `sea_zones.data->>'name'`），并把内部的 `sea:<账号ID>:<zoneId>` 换算回旧版 `sea:<账号名>:<zoneId>`（ground 过滤时反向换算）。**已知降级**：`POST /api/players/view` 只做参数校验并确认，返回 `pushed:0`，尚未实现按 SSE 连接登记视口与 `playersPage` 推送。
+- 旧订阅与反馈契约接入：`GET|POST /api/subscribe`（玩家级组件订阅配置 + bases/qualities/affixes 目录）、`GET /api/feedback`、`POST /api/feedback/submit|skip`（默认 24h 冷却 / 1 万金币跳过；冷却与费用在原版属运营配置，本批先固定为默认值）。新增 migration `0022_legacy_notify.sql`：`fishing.subscription_settings`（每账号一条 jsonb 配置）、`fishing.feedback_entries`（按账号与时间倒序索引）、`fishing.feedback_cooldowns`（每人一条冷却），并把 `feedback_skip` 加入 `asset_operations.kind` 白名单与 `assets` 命令类型白名单；`migrations.Count()` 取代 `migrate_test.go` 里硬编码的迁移条数，新增迁移不再需要改测试。
+- 本批（trade / friends+players / notify 与上述基础设施修复）在**本机便携 PostgreSQL 18.6（127.0.0.1:5433，`FishingGoTestPg`）**上 `go test -count=1 -timeout=12m ./...` 全绿。注意：不设置 `FISHING_GO_TEST_DATABASE_URL` 时集成用例会静默 skip，满屏 ok 不代表通过；Docker Desktop 引擎本次不可用，改用上述便携实例。
+- **仍属剩余范围**：`/api/wiki/*`（8 条：官方内容、攻略列表/详情、用户投稿、模拟器只读背包）与 `/api/admin/*`（约 70 条运营后台）尚未桥接；本轮不注册这两组路由，保持 404，不发布 501 占位。
 
 ## 明确剩余范围
 

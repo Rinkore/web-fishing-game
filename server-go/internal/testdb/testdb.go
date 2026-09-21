@@ -15,7 +15,24 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type DB struct{ Admin, App *pgxpool.Pool }
+type DB struct {
+	Admin, App *pgxpool.Pool
+	Role       string
+}
+
+// Grant adds SELECT/INSERT/UPDATE on the given schema-qualified, comma
+// separated tables to the restricted application role. Bridged legacy domains
+// that add their own migration call this before seeding; the grant stays
+// explicit per table so the fixture keeps its least-privilege property (the app
+// role must remain unable to touch operator and audit data).
+func (db DB) Grant(t *testing.T, tables string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON "+tables+" TO "+pgx.Identifier{db.Role}.Sanitize()); err != nil {
+		t.Fatal("cannot grant extra legacy permissions")
+	}
+}
 
 func New(t *testing.T, migrate bool) DB {
 	t.Helper()
@@ -83,6 +100,7 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, "CREATE ROLE "+quote(role)+" LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '"+password+"'"); err != nil {
 		t.Fatal("cannot create restricted test role")
 	}
+	db.Role = role
 	grants := "GRANT USAGE ON SCHEMA fishing TO " + quote(role) + `; GRANT SELECT ON public.fishing_schema_migrations TO ` + quote(role) + `; GRANT SELECT ON fishing.accounts TO ` + quote(role) + `; GRANT SELECT, UPDATE ON fishing.player_state, fishing.wallets TO ` + quote(role) + `; GRANT SELECT, INSERT, UPDATE ON fishing.command_results TO ` + quote(role) + `; GRANT SELECT, INSERT ON fishing.asset_operations, fishing.asset_entries, fishing.outbox_events TO ` + quote(role) + `; GRANT SELECT ON fishing.item_definitions TO ` + quote(role) + `; GRANT SELECT,INSERT,UPDATE ON fishing.inventory_stacks,fishing.equipment_instances,fishing.rod_loadouts TO ` + quote(role) + `; GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.rod_components TO ` + quote(role) + `; GRANT SELECT,INSERT ON fishing.inventory_entries,fishing.equipment_entries,fishing.rod_entries TO ` + quote(role) + `; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fishing TO ` + quote(role)
 	if _, err := db.Admin.Exec(ctx, grants); err != nil {
 		t.Fatal("cannot grant test application permissions")
@@ -145,6 +163,9 @@ func New(t *testing.T, migrate bool) DB {
 	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.market_orders TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.market_order_equipment,fishing.market_fills,fishing.market_charges TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant order permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.subscription_settings,fishing.feedback_cooldowns TO "+quote(role)+"; GRANT SELECT,INSERT,DELETE ON fishing.feedback_entries TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant notification permissions")
 	}
 	appConfig.ConnConfig.User = role
 	appConfig.ConnConfig.Password = password

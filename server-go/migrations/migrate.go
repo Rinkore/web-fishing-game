@@ -25,6 +25,10 @@ var ErrApply = errors.New("database schema update failed")
 
 type step struct{ name, sql, checksum string }
 
+// Count reports how many embedded steps this build ships, so callers can compare
+// the applied history with the binary instead of hardcoding a revision number.
+func Count() int { return len(steps()) }
+
 func steps() []step {
 	entries, _ := files.ReadDir(".")
 	var out []step
