@@ -4,7 +4,7 @@
 
 ## 当前基线
 
-`server-go/api/legacy-inventory.json` 的 152 个非开发接口，对照 `internal/gateway/http.go` 的 method + path，100 个已注册、52 个未注册，其中 48 个是后台接口。这个数字仅表示路由存在，不能代替权限、输入/输出、错误和旧浏览器的兼容测试。开发专用接口不计入分母。
+`server-go/api/legacy-inventory.json` 的 152 个非开发接口，对照 `internal/gateway/http.go` 的 method + path，101 个已注册、51 个未注册，其中 48 个是后台接口。这个数字仅表示路由存在，不能代替权限、输入/输出、错误和旧浏览器的兼容测试。开发专用接口不计入分母。
 
 已具备的核心包括身份/MFA、资产事务、交易/市集、工坊/宝匣、商城、好友/编队、供需/自动出售，以及普通地图和远洋结算。`0019` 已持久化递归段与随机游标，`0020` 已提供不可变 catalog 发布，`0021` 已提供多标签页租约；不要再按早期文档把这些列为未开发。旧 HTTP 接口的已知偏差继续以 DELIVERY 日志及实际测试为准。
 
@@ -15,7 +15,7 @@
 | P0 | 个人渔获/资产同步、组件订阅、SSE 分页与重试 | 已完成本轮代码与真库验收：鱼/材料/组件完整操作投影、同快照资产修订、订阅筛选/关闭、市集尾页、好友初始化窗口、反复开钓收竿；Windows 全套及 Linux race/vet 全套通过，验证记录见 DELIVERY |
 | P1 | 其余实时协议与后台配置 | 已接 catalog/原生功能开关到旧 SSE、持久公告队列和停止事件、海域主动驱逐、正常停服维护通知、实时商店价格及材料/组件公共动态；仍缺完整纪录通知和历史动态，以及尚无权威配置源的宝匣保底/经济/自动售出等配置推送；旧浏览器完整更新流程待 P4 |
 | P2 | 剩余 48 个后台接口 | 公告 8 条、编队管理 2 条已接并完成真库验证；其余按下表分组实现；每组须包含 MFA/越权拒绝、事务与审计、输入/错误契约、并发编辑冲突、失败回滚和旧后台浏览器流程 |
-| P3 | 注册挑战、Wiki 投稿/审核 | 未完成：对照旧注册策略和 proof；规划攻略/段落/审核结构后接 24h 3 篇、待审 3 篇与自动通过，明确官方正文热更新及现有 SQLite 的后续迁移路径 |
+| P3 | 注册挑战、Wiki 投稿/审核 | 注册表单/登录 profile、来源绑定的一次性 proof 和持久配额已接，真库与原浏览器注册验证通过；Wiki 尚未完成：规划攻略/段落/审核结构后接 24h 3 篇、待审 3 篇与自动通过，明确官方正文热更新及现有 SQLite 的后续迁移路径。生产反向代理的可信来源策略需在 P6 单独配置验收 |
 | P4 | 全部已注册接口与原前端 A/B | 真实 Chrome 已验证公告发布/停止、配置与功能更新、管理员解散编队；海域用户名转换已通过 HTTP/SSE 真库验证。完整钓鱼/换装/重连、多标签页、交易和市集、工坊/宝匣、后台与 Wiki A/B 仍未完成；须同依赖/同夹具对比 Node 和 Go 的套件级失败，不套用 v0.13.9 的旧失败数 |
 | P5 | 容量与故障验收 | 未完成：先固定 100 人完整玩法持久磁盘长测，记录 SQL/锁等待/周期延迟/WAL/空间/对账；写入中杀库/杀进程、提交回包丢失、去重恢复；通过后再测 1000/5000 |
 | P6 | 生产迁移与切服 | 仍延期：停服一致快照、可复现导入/对账、生产权限、备份恢复、回滚及切服；测试容器健康和短测不作为生产放行 |
@@ -32,7 +32,7 @@ P1/P2 完成后再冻结 P4/P5 的验收场景。当前个人 SSE 使用权威�
 | 经济/玩法/纪录（10） | POST `admin/market/return`；GET/POST `admin/market/supply`；POST `admin/market/bulk`、`admin/mall/config`、`admin/smelt/config`、`admin/records/config`、`admin/records/delete`、`admin/records/delone`、`admin/settings` |
 | 快照/回滚（6） | GET/POST `admin/users/snapshot`；GET `admin/users/snapshots`；POST `admin/users/snapshot-now`、`admin/users/rollback`、`admin/snapshot/config` |
 | Wiki 后台（5） | GET/POST `admin/wiki/content`；GET `admin/wiki/guides`；POST `admin/wiki/guides/review`、`admin/wiki/guides/delete` |
-| 玩家注册与 Wiki（4） | GET `register/challenge`；POST `wiki/guides/submit`；GET `wiki/guides/my`；POST `wiki/guides/delete` |
+| 玩家 Wiki（3） | POST `wiki/guides/submit`；GET `wiki/guides/my`；POST `wiki/guides/delete` |
 
 ## 本轮回归范围
 
@@ -46,5 +46,6 @@ P1/P2 完成后再冻结 P4/P5 的验收场景。当前个人 SSE 使用权威�
 - `legacy_browser_test.go` 与 `tests/go-rewrite-browser.test.js`：可选真实 Chrome 验证原后台表单与玩家 SSE，使用隔离合成账号；不是完整 Node/Go 浏览器 A/B。
 - `maintenance_test.go`：使用实际 HTTP server 关闭信号验证旧/v1 SSE 的最后维护帧、无错误踢线、正常退出与租约清理。
 - `legacy_shop_push_test.go`：初始商店、其他玩家出售后的即时更新、HTTP/SSE 一致、缓存去重、失败重试及 catalog 价格变更；原生递归专项同时覆盖公共鱼/材料/组件混合分页和历史鱼记录回退去重。
+- `identity/registration_test.go` 与网关 `registration_test.go`：注册配额持久化、最后名额并发争用、挑战来源/期限/错误答案/重放、SQL 失败回滚、旧表单字段与登录 profile；真实 Chrome 通过原注册 Worker 完成挑战并进入游戏，随后退出并从原表单重新登录。
 
 没有执行生产操作；完整浏览器 A/B 和容量/故障放行仍未完成。

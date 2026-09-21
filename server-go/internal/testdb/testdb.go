@@ -172,6 +172,9 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT ON fishing.admin_audit TO "+quote(role)+"; GRANT SELECT,INSERT,DELETE ON fishing.activity_samples TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant operator console permissions")
 	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.registration_limits,fishing.registration_challenges TO "+quote(role)); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,UPDATE ON fishing.banner_state TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.banner_events TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.banner_watchers TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant banner permissions")
 	}

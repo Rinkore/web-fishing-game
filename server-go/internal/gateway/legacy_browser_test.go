@@ -37,7 +37,7 @@ func TestIntegrationLegacyBrowserConfigBannerParty(t *testing.T) {
 		static.ServeHTTP(w, r)
 	}))
 	defer server.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 	script, err := filepath.Abs(filepath.Join("..", "..", "..", "tests", "go-rewrite-browser.test.js"))
 	if err != nil {

@@ -30,17 +30,19 @@ type API struct {
 	// started and the counters behind the console overview and netstats panels.
 	// The original tracked the same numbers in process memory; they reset on
 	// restart here too.
-	started      time.Time
-	apiReqs      atomic.Int64
-	apiBytes     atomic.Int64
-	sseMsgs      atomic.Int64
-	sseWrites    atomic.Int64
-	sseBytes     atomic.Int64
-	regAttempts  atomic.Int64
-	regCreated   atomic.Int64
-	regRejected  atomic.Int64
-	regDuplicate atomic.Int64
-	regLimited   atomic.Int64
+	started            time.Time
+	apiReqs            atomic.Int64
+	apiBytes           atomic.Int64
+	sseMsgs            atomic.Int64
+	sseWrites          atomic.Int64
+	sseBytes           atomic.Int64
+	regAttempts        atomic.Int64
+	regCreated         atomic.Int64
+	regRejected        atomic.Int64
+	regDuplicate       atomic.Int64
+	regLimited         atomic.Int64
+	regChallenged      atomic.Int64
+	registrationPolicy identity.RegistrationLimits
 	// views holds the legacy player-list viewports registered through
 	// POST /api/players/view, keyed by account. It is per-process state: the
 	// single-role deployment is the supported layout, a multi-process split
@@ -56,6 +58,7 @@ type bucket struct {
 
 func New(pool *pgxpool.Pool, mfaKey []byte, locations ...*time.Location) http.Handler {
 	a := &API{pool: pool, identity: identity.New(pool, mfaKey), limits: map[string]bucket{}, streams: make(chan struct{}, 128), views: map[int64]legacyPlayersView{}, started: time.Now()}
+	a.registrationPolicy = registrationLimits()
 	a.location = time.Local
 	if len(locations) > 0 && locations[0] != nil {
 		a.location = locations[0]
@@ -63,6 +66,7 @@ func New(pool *pgxpool.Pool, mfaKey []byte, locations ...*time.Location) http.Ha
 	r := chi.NewRouter()
 	r.Use(a.security)
 	r.Post("/api/register", a.register)
+	r.Get("/api/register/challenge", a.registerChallenge)
 	r.Post("/api/login", a.login)
 	r.Post("/api/admin/login", a.login)
 	r.Post("/api/logout", a.logout)
@@ -301,11 +305,8 @@ func (a *API) security(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if strings.HasSuffix(r.URL.Path, "/login") || r.URL.Path == "/api/register" {
+		if strings.HasSuffix(r.URL.Path, "/login") {
 			if a.limited(r) {
-				if r.URL.Path == "/api/register" {
-					a.regLimited.Add(1)
-				}
 				failure(w, identity.ErrBusy)
 				return
 			}
@@ -374,22 +375,53 @@ func setCookie(w http.ResponseWriter, r *http.Request, admin bool, value string,
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName(r, admin), Value: value, Path: "/", MaxAge: age, HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
 }
-func loginResponse(w http.ResponseWriter, r *http.Request, result identity.LoginResult) {
+func (a *API) loginResponse(w http.ResponseWriter, r *http.Request, result identity.LoginResult) {
+	c, err := a.catalog(r.Context())
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	profile, err := a.legacyProfile(r, c, result.Session)
+	if err != nil {
+		failure(w, err)
+		return
+	}
 	value := result.Token
 	if r.Header.Get("X-Session-Mode") == "cookie" {
 		setCookie(w, r, result.Session.Admin, value, false)
 		value = "cookie"
 	}
-	write(w, 200, map[string]any{"ok": true, "token": value, "username": result.Session.Username, "name": result.Session.Name, "admin": result.Session.Admin})
+	write(w, 200, map[string]any{"ok": true, "token": value, "profile": profile, "username": result.Session.Username, "name": result.Session.Name, "admin": result.Session.Admin})
 }
 func (a *API) register(w http.ResponseWriter, r *http.Request) {
 	a.regAttempts.Add(1)
-	var in identity.Registration
+	var in struct {
+		identity.Registration
+		ConfirmPassword *string                     `json:"confirmPassword"`
+		Proof           *identity.RegistrationProof `json:"proof"`
+	}
 	if !decode(w, r, &in) {
 		a.regRejected.Add(1)
 		return
 	}
-	result, err := a.identity.Register(r.Context(), in)
+	if !in.Registration.Valid() || in.ConfirmPassword != nil && *in.ConfirmPassword != in.Password {
+		a.regRejected.Add(1)
+		failure(w, identity.ErrInvalid)
+		return
+	}
+	if err := a.identity.BeginRegistration(r.Context(), registrationSource(r), in.Username, in.Proof, a.registrationPolicy); err != nil {
+		if errors.Is(err, identity.ErrRegistrationChallenge) {
+			a.regChallenged.Add(1)
+			write(w, 403, map[string]any{"error": "请完成注册验证后重试", "code": "REGISTRATION_CHALLENGE"})
+			return
+		}
+		if errors.Is(err, identity.ErrBusy) {
+			a.regLimited.Add(1)
+		}
+		failure(w, err)
+		return
+	}
+	result, err := a.identity.Register(r.Context(), in.Registration)
 	if err != nil {
 		a.regRejected.Add(1)
 		if errors.Is(err, identity.ErrExists) {
@@ -399,7 +431,7 @@ func (a *API) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.regCreated.Add(1)
-	loginResponse(w, r, result)
+	a.loginResponse(w, r, result)
 }
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	var in identity.Login
@@ -412,7 +444,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	loginResponse(w, r, result)
+	a.loginResponse(w, r, result)
 }
 func (a *API) authorize(w http.ResponseWriter, r *http.Request, admin bool) (identity.Session, bool) {
 	session, err := a.identity.Authenticate(r.Context(), token(r, admin), admin)

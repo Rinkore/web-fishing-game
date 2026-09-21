@@ -31,16 +31,13 @@ import (
 // and the wiki content editor. The banner console is in legacy_banner.go.
 
 const (
-	legacyAdminAuditKeep      = 300
-	legacyAdminLockMaxFails   = 5
-	legacyAdminLockWindowMin  = 10
-	legacyAdminLockMinutes    = 5
-	legacyListingCapDefault   = 40
-	legacyListingCapMax       = 10000
-	legacyAdminBanMaxHours    = 24 * 3650
-	legacyRegistrationGlobal  = 200
-	legacyRegistrationPerIP   = 10
-	legacyRegistrationPerName = 5
+	legacyAdminAuditKeep     = 300
+	legacyAdminLockMaxFails  = 5
+	legacyAdminLockWindowMin = 10
+	legacyAdminLockMinutes   = 5
+	legacyListingCapDefault  = 40
+	legacyListingCapMax      = 10000
+	legacyAdminBanMaxHours   = 24 * 3650
 )
 
 // legacyAdminExec is satisfied by both *pgxpool.Pool and pgx.Tx, so an audit row
@@ -251,15 +248,11 @@ func (a *API) legacyAdminRegistrationStats(w http.ResponseWriter, r *http.Reques
 	write(w, 200, map[string]any{
 		"counters": map[string]any{
 			"attempts": a.regAttempts.Load(), "created": a.regCreated.Load(), "rejected": a.regRejected.Load(),
-			// The Go registration path has no challenge round: a rejected
-			// attempt never has a challenge to solve, so the counter stays 0.
-			"challenged": 0,
+			"challenged": a.regChallenged.Load(),
 			"duplicate":  duplicate, "limited": limited,
 		},
 		"startedAt": a.started.UnixMilli(),
-		"limits": map[string]any{
-			"globalHourly": legacyRegistrationGlobal, "ipHourly": legacyRegistrationPerIP, "usernameHourly": legacyRegistrationPerName,
-		},
+		"limits":    a.registrationPolicy,
 		"attention": limited > 0 || duplicate >= 5,
 	})
 }

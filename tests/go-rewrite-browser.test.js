@@ -72,8 +72,33 @@ const chrome = process.env.CHROME_PATH || [
     await admin.waitForFunction(() => !document.querySelector('[data-pid]'));
     const party = await player.evaluate(async () => (await Net.partyFetch()).data);
     assert.equal(party.party, null);
+
+    // The fourth registration from this source exercises the unchanged
+    // browser proof worker and the actual registration form, without cookies.
+    const newContext = await browser.newContext();
+    const newcomer = await newContext.newPage();
+    newcomer.on('pageerror', e => errors.push('new player: ' + e.message));
+    await newcomer.goto(fixture.url + '/');
+    await newcomer.locator('#tab-register').click();
+    await newcomer.locator('#auth-user').fill('browser_new_player');
+    await newcomer.locator('#auth-pass').fill('Synthetic-browser-Pass42');
+    await newcomer.locator('#auth-pass2').fill('Synthetic-browser-Pass42');
+    await newcomer.locator('#auth-qq').fill('123456');
+    const proofRound = newcomer.waitForResponse(r => r.url().endsWith('/api/register/challenge'));
+    await newcomer.locator('#auth-submit').click();
+    assert.equal((await proofRound).status(), 200, 'real proof challenge issued');
+    await newcomer.waitForFunction(() => Net.getMe() && Net.getMe().id === 'browser_new_player', null, { timeout: 95000 });
+    assert.equal(await newcomer.evaluate(() => Engine.state.player.coins), 500);
+    await newcomer.evaluate(() => Net.logout());
+    await newcomer.reload();
+    await newcomer.locator('#auth-user').fill('browser_new_player');
+    await newcomer.locator('#auth-pass').fill('Synthetic-browser-Pass42');
+    await newcomer.locator('#auth-submit').click();
+    await newcomer.waitForFunction(() => Net.getMe() && Net.getMe().id === 'browser_new_player');
+    assert.equal(await newcomer.evaluate(() => Engine.state.player.coins), 500);
+    await newContext.close();
     assert.deepEqual(errors, [], 'no browser script exceptions');
-    console.log('Browser passed: real legacy console banner/config/party flows and player SSE updates.');
+    console.log('Browser passed: real legacy console banner/config/party flows, player SSE and registration proof worker.');
   } finally {
     await browser.close();
   }

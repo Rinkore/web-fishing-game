@@ -62,13 +62,13 @@ $env:FISHING_GO_TEST_DATABASE_URL = 'postgres://fishing_test_admin:local-test-on
 
 ## 原前端浏览器回归
 
-`TestIntegrationLegacyBrowserConfigBannerParty` 使用真实 PostgreSQL、原后台和玩家页面，验证公告发布/停止、catalog/功能更新、管理员解散编队以及玩家 SSE。默认 Go 测试跳过浏览器；显式提供安装了 `playwright-core` 的 Node 环境和本机 Chrome 后执行：
+`TestIntegrationLegacyBrowserConfigBannerParty` 使用真实 PostgreSQL、原后台和玩家页面，验证公告发布/停止、catalog/功能更新、管理员解散编队、玩家 SSE，以及原注册表单/挑战 Worker/重新登录。默认 Go 测试跳过浏览器；显式提供安装了 `playwright-core` 的 Node 环境和本机 Chrome 后执行：
 
 ```powershell
 # 保留上文隔离测试数据库的 FISHING_GO_TEST_DATABASE_URL。
 $env:FISHING_GO_BROWSER_NODE = 'C:\path\to\node.exe'
 $env:NODE_PATH = 'C:\path\to\node_modules'
-go test ./internal/gateway -run TestIntegrationLegacyBrowserConfigBannerParty -v -count=1 -timeout=2m
+go test ./internal/gateway -run TestIntegrationLegacyBrowserConfigBannerParty -v -count=1 -timeout=4m
 ```
 
 浏览器中的测试账号与服务只存在于临时夹具，凭据通过标准输入传递。此项是定向浏览器回归，完整 Node/Go 浏览器 A/B 仍见 REMAINING 清单。
@@ -102,10 +102,12 @@ all 服务启动原型和默认正式钓鱼调度器（各 25ms 扫描、最多 
 | FISHING_GO_STARTUP_TIMEOUT | 5s | 100ms～1m |
 | FISHING_GO_PROBE_TIMEOUT | 1s | 100ms～5s |
 | FISHING_GO_SHUTDOWN_TIMEOUT | 10s | 100ms～1m |
+| REGISTER_GLOBAL_HOURLY | 200 | 正整数；有效注册尝试的全局小时配额 |
+| REGISTER_IP_HOURLY | 10 | 正整数；按实际 TCP 来源的小时配额；非法配置沿用默认 |
 
 连接层固定连接超时 3s、SQL 超时 5s、锁等待 1s、事务空闲 10s，并强制 `synchronous_commit=on`；这些设置不替代耐久性测试。角色拆分、认证和管理接口尚未开放。资产事务、锁序、幂等、装备/钓竿语义与故障边界见 [ASSETS.md](../docs/go-rewrite/ASSETS.md)。
 
-当前 schema 至 0024 公告队列与不可变发布记录。已有迁移摘要保持不变，升级保留金币历史、分类库存、装备、钓竿和图鉴。ApplyChange、ExchangeAssets、ChangeRod 和模块 Run 共用命令事务，钓鱼进度和挂单状态与资产共同提交；不接受客户端直接提交奖励或费用计划。合成原型的历史边界见 [PROTOTYPE.md](../docs/go-rewrite/PROTOTYPE.md)，默认正式周期及剩余兼容工作见 [NATIVE_FISHING.md](../docs/go-rewrite/NATIVE_FISHING.md)。公告表的运行期权限和实时发布范围见 [DELIVERY.md](../docs/go-rewrite/DELIVERY.md)。
+当前 schema 至 0025 持久注册配额与一次性挑战（0024 为公告队列与不可变发布记录）。已有迁移摘要保持不变，升级保留金币历史、分类库存、装备、钓竿和图鉴。ApplyChange、ExchangeAssets、ChangeRod 和模块 Run 共用命令事务，钓鱼进度和挂单状态与资产共同提交；不接受客户端直接提交奖励或费用计划。合成原型的历史边界见 [PROTOTYPE.md](../docs/go-rewrite/PROTOTYPE.md)，默认正式周期及剩余兼容工作见 [NATIVE_FISHING.md](../docs/go-rewrite/NATIVE_FISHING.md)。新增表的运行期权限及协议范围见 [DELIVERY.md](../docs/go-rewrite/DELIVERY.md)。
 
 依赖升级后在仓库根执行 `tools/go-rewrite/dependencies.ps1 -GoExe <go.exe路径>` 更新版本清单和许可。网络无法直达默认代理时，可仅为当前 PowerShell 设置 `$env:GOPROXY = 'https://goproxy.cn'`，保持默认 sumdb 校验。
 

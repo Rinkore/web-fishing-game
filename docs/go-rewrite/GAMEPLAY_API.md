@@ -10,6 +10,8 @@
 
 旧 SSE 初始化包含实际商店价格，并在报价/销量变化后推送 `shop`；展示最多复用一秒快照，交易仍使用即时权威报价。公共动态覆盖鱼、材料和组件，以持久原生负载保留捕获时的位置。正常关闭 Go HTTP 服务时，旧/v1 SSE 最后发送 `maintenance` 后退出；强杀进程和网络故障无此承诺。
 
+注册兼容：`POST /api/register` 接受原表单的 `confirmPassword`，同时保留 `passwordConfirm`；两者提供时都须匹配。注册与登录成功包含旧前端必需的 `profile`。默认每小时全局 200 次、来源 10 次、用户名 5 次有效注册尝试；同来源第 4 次起需要 `proof`，挑战返回 403 / `REGISTRATION_CHALLENGE`。`GET /api/register/challenge` 提供 120 秒、来源绑定、单次使用的 SHA-256 工作量证明；每分钟全局 600 次、来源 20 次，最多保留 5000 个有效挑战。配额与挑战存 PostgreSQL，重启或多实例不重置；错误答案、来源错误和过期答案消耗已存在的挑战，技术失败回滚。来源取实际 TCP 对端，忽略客户端自行传入的转发头；生产代理部署必须单独落实可信来源边界。
+
 使用独立 PostgreSQL 数据库，先运行 `cmd/migrate`，再以管理数据库连接运行 `go run ./cmd/catalog defaults` 发布默认物品定义。运行应用的数据库角色不需要物品定义写权限；参考 `internal/testdb/testdb.go` 中各模块授权，生产角色仍须独立部署审阅。
 
 `FISHING_GO_DATABASE_URL` 是应用连接，`FISHING_GO_MIGRATION_DATABASE_URL` 是运维连接。连接值不得写进文档、命令参数或提交。`FISHING_GO_TIMEZONE=Asia/Shanghai` 指定每日商城刷新时区；省略时沿用操作系统本地时区。需与原服匹配，不能把 Docker 的 UTC 默认当作已确认的业务时区。

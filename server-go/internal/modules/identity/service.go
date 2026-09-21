@@ -71,7 +71,7 @@ func rollback(tx pgx.Tx) {
 func (s *Service) Register(ctx context.Context, in Registration) (LoginResult, error) {
 	username := strings.TrimSpace(in.Username)
 	qq := strings.TrimSpace(in.QQ)
-	if !usernamePattern.MatchString(username) || !qqPattern.MatchString(qq) || !PasswordPolicy(in.Password, 8) || (in.PasswordConfirm != nil && *in.PasswordConfirm != in.Password) {
+	if !in.Valid() {
 		return LoginResult{}, ErrInvalid
 	}
 	name := strings.TrimSpace(in.Name)
