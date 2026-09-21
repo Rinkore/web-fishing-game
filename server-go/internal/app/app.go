@@ -63,10 +63,11 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 	}
 	work, stopWork := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	workers.Add(7)
+	workers.Add(8)
 	go func() { defer workers.Done(); fishing.New(pool).Run(work, logger) }()
 	go func() { defer workers.Done(); fishing.NewLiveNative(pool, c.Location).Run(work, logger) }()
 	go func() { defer workers.Done(); market.New(pool).RunExpiry(work, logger) }()
+	go func() { defer workers.Done(); market.New(pool).RunSupply(work, catalog, logger) }()
 	go func() { defer workers.Done(); trade.New(pool).Run(work, logger) }()
 	go func() { defer workers.Done(); economy.New(pool, catalog).Run(work, logger) }()
 	// Operator console upkeep: timed bans expire and the overview heat map keeps

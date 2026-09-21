@@ -82,7 +82,12 @@ func (s *Service) Run(ctx context.Context, c Command, apply func(context.Context
 		return Result{}, ErrInvalid
 	}
 	players, ok := normalizeIDs(c.Players)
-	if !ok || len(players) < 1 || len(players) > 2 {
+	maxPlayers := 2
+	if c.Kind == "admin_grant" {
+		// Bulk operator actions lock every selected seller in one ordered set.
+		maxPlayers = 128
+	}
+	if !ok || len(players) < 1 || len(players) > maxPlayers {
 		return Result{}, ErrInvalid
 	}
 	locked := map[int64]bool{}
