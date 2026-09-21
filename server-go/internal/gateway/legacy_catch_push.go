@@ -65,32 +65,55 @@ func (p *legacyCatchPush) poll(ctx context.Context) []string {
 	}
 	rows, err := p.api.pool.Query(ctx, `WITH cursors AS (
  SELECT * FROM jsonb_to_recordset($1::jsonb) AS c(owner bigint,revision bigint,ordinal bigint)
- ) SELECT cr.operation_id,cr.ordinal,cr.owner_id,pe.revision,cr.item_id,cr.size,
- cr.ground_id,cr.spot_id,cr.caught_at,lower(i.username),i.display_name
+ ) SELECT e.operation_id,cr.ordinal,pe.owner_id,pe.revision,cr.item,
+ cr.ground_id,cr.spot_id,cr.caught_at,cr.ground_name,cr.spot_name,lower(i.username),i.display_name
  FROM fishing.player_events pe
  JOIN fishing.outbox_events e ON e.id=pe.outbox_id
- JOIN fishing.catch_records cr ON cr.operation_id=e.operation_id AND cr.owner_id=pe.owner_id
- JOIN fishing.identities i ON i.account_id=cr.owner_id
+ JOIN fishing.asset_operations o ON o.id=e.operation_id AND o.kind='fishing_settle'
+ JOIN LATERAL (
+ SELECT v.value AS item,v.ordinality AS ordinal,
+ COALESCE(e.payload#>>'{result,details,groundId}','') AS ground_id,
+ COALESCE(e.payload#>>'{result,details,spotId}','') AS spot_id,
+ COALESCE(to_timestamp((e.payload#>>'{result,details,caughtAt}')::double precision/1000),e.created_at) AS caught_at,
+ COALESCE(e.payload#>>'{result,details,groundName}','') AS ground_name,
+ COALESCE(e.payload#>>'{result,details,spotName}','') AS spot_name
+ FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.payload#>'{result,details,catches}')='array'
+ THEN e.payload#>'{result,details,catches}' ELSE '[]'::jsonb END) WITH ORDINALITY v(value,ordinality)
+ UNION ALL
+ SELECT jsonb_build_object('id',r.item_id,'kind','fish','size',r.size),r.ordinal,r.ground_id,r.spot_id,r.caught_at,'',''
+ FROM fishing.catch_records r WHERE r.operation_id=e.operation_id AND r.owner_id=pe.owner_id
+ AND jsonb_typeof(e.payload#>'{result,details,catches}') IS DISTINCT FROM 'array'
+ ) cr ON true
+ JOIN fishing.identities i ON i.account_id=pe.owner_id
  LEFT JOIN cursors c ON c.owner=pe.owner_id
  WHERE (pe.revision,cr.ordinal)>(COALESCE(c.revision,0),COALESCE(c.ordinal,0))
- ORDER BY cr.operation_id,cr.ordinal LIMIT 100`, raw)
+ ORDER BY e.operation_id,cr.ordinal LIMIT 100`, raw)
 	if err != nil {
 		return nil
 	}
 	type catchRow struct {
 		op, ordinal, owner, revision int64
-		itemID, groundID, spotID     string
-		size                         float64
+		groundID, spotID             string
+		groundName, spotName         string
+		item                         rules.Catch
 		caughtAt                     time.Time
 		key, name                    string
 	}
 	list := []catchRow{}
 	for rows.Next() {
 		var row catchRow
-		if err := rows.Scan(&row.op, &row.ordinal, &row.owner, &row.revision, &row.itemID, &row.size,
-			&row.groundID, &row.spotID, &row.caughtAt, &row.key, &row.name); err != nil {
+		var item []byte
+		if err := rows.Scan(&row.op, &row.ordinal, &row.owner, &row.revision, &item,
+			&row.groundID, &row.spotID, &row.caughtAt, &row.groundName, &row.spotName, &row.key, &row.name); err != nil {
 			rows.Close()
 			return nil
+		}
+		if json.Unmarshal(item, &row.item) != nil {
+			rows.Close()
+			return nil
+		}
+		if row.item.Kind == "fish" && row.item.Size != nil && row.item.Tier == "" {
+			row.item.Tier = p.catalog.SizeTier(row.item.ID, *row.item.Size)
 		}
 		list = append(list, row)
 	}
@@ -110,35 +133,28 @@ func (p *legacyCatchPush) poll(ctx context.Context) []string {
 	// retain the first caught row and do not produce another maximum banner.
 	var maxOp, maxOrd int64
 	if err := p.api.pool.QueryRow(ctx, `SELECT operation_id,ordinal FROM fishing.catch_records
- ORDER BY size DESC,caught_at,operation_id,ordinal LIMIT 1`).Scan(&maxOp, &maxOrd); err != nil {
+	 ORDER BY size DESC,caught_at,operation_id,ordinal LIMIT 1`).Scan(&maxOp, &maxOrd); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil
-	}
-	groundNames, spotNames := map[string]string{}, map[string]string{}
-	for _, g := range p.catalog.Grounds() {
-		groundNames[g.ID] = g.Name
-		for _, s := range g.Spots {
-			spotNames[g.ID+":"+s.ID] = s.Name
-		}
 	}
 	feed := []map[string]any{}
 	var global map[string]any
+	recordsChanged := false
 	for _, row := range list {
-		it, ok := p.catalog.Item(row.itemID)
-		if !ok {
-			continue
-		}
+		item := legacyCatchItem(p.catalog, row.item)
+		ground, spot := legacyCatchLocation(p.catalog, row.groundID, row.spotID, row.groundName, row.spotName)
 		if activeGround != "" && row.groundID == activeGround {
 			feed = append(feed, map[string]any{
 				"t": row.caughtAt.UnixMilli(), "who": row.name,
-				"item": map[string]any{"id": row.itemID, "name": it.Name, "kind": it.Kind, "rarity": it.Rarity,
-					"size": row.size, "tier": sizeTierLabel(p.catalog.SizeTier(row.itemID, row.size))},
-				"ground": groundNames[row.groundID], "spot": spotNames[row.groundID+":"+row.spotID], "size": row.size,
+				"item": legacySlimFeedItem(item), "ground": ground, "spot": spot, "size": row.item.Size,
 			})
 		}
-		if it.Kind == "fish" && maxOp == row.op && maxOrd == row.ordinal {
-			global = map[string]any{"id": row.itemID, "name": it.Name, "size": row.size, "who": row.name,
+		if row.item.Kind == "fish" && row.item.Size != nil {
+			recordsChanged = true
+		}
+		if row.item.Kind == "fish" && row.item.Size != nil && maxOp == row.op && maxOrd == row.ordinal {
+			global = map[string]any{"id": row.item.ID, "name": item["name"], "size": row.item.Size, "who": row.name,
 				"key": row.key, "t": row.caughtAt.UnixMilli(), "level": 1,
-				"text": fmt.Sprintf("🎉 全场最大纪录被破！%s 钓到 %s %gcm", row.name, it.Name, row.size)}
+				"text": fmt.Sprintf("🎉 全场最大纪录被破！%s 钓到 %s %gcm", row.name, item["name"], *row.item.Size)}
 		}
 	}
 	frames := []string{}
@@ -150,8 +166,10 @@ func (p *legacyCatchPush) poll(ctx context.Context) []string {
 	}
 	// Any catch can affect personal/day/week rankings even if it is not a
 	// historical extreme. This version is a stream-local invalidation token.
-	p.version++
-	frames = append(frames, legacyFrame(map[string]any{"type": "recordsDirty", "v": p.version}))
+	if recordsChanged {
+		p.version++
+		frames = append(frames, legacyFrame(map[string]any{"type": "recordsDirty", "v": p.version}))
+	}
 	if global != nil {
 		frames = append(frames, legacyFrame(map[string]any{"type": "globalRecord", "record": global}))
 	}
@@ -161,4 +179,16 @@ func (p *legacyCatchPush) poll(ctx context.Context) []string {
 		p.cursors[row.owner] = legacyCatchCursor{row.owner, row.revision, row.ordinal}
 	}
 	return frames
+}
+
+// Social rows only need the same display fields as the legacy slimFeedEntry;
+// full component affixes remain in the owner's catch and inventory frames.
+func legacySlimFeedItem(item map[string]any) map[string]any {
+	out := map[string]any{}
+	for _, key := range []string{"id", "name", "kind", "rarity", "part", "quality", "size", "tier"} {
+		if value, ok := item[key]; ok {
+			out[key] = value
+		}
+	}
+	return out
 }

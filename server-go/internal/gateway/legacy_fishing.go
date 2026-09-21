@@ -14,6 +14,7 @@ import (
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/fishing"
 	"fishing.local/server/internal/modules/identity"
+	"fishing.local/server/internal/platform/httpserver"
 	"fishing.local/server/internal/rules"
 	"github.com/jackc/pgx/v5"
 )
@@ -146,12 +147,18 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 	if !send("retry: 3000\n\n") {
 		return
 	}
+	var version string
+	defer func() {
+		if httpserver.IsDraining(r.Context()) {
+			_ = send(legacyFrame(map[string]any{"type": "maintenance", "version": version}))
+		}
+	}()
 
 	c, err := a.catalog(r.Context())
 	if err != nil {
-		_ = send(`data: {"type":"kicked"}` + "\n\n")
 		return
 	}
+	_ = json.Unmarshal(c.Constants["VERSION"], &version)
 
 	// Seed cursors before sending init. The personal assets frame and its cursor
 	// come from one snapshot, so a commit racing the send remains pending.
@@ -224,7 +231,9 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 			}
 			// Revalidate the session each heartbeat so revocation kicks the stream.
 			if _, err := a.identity.Authenticate(r.Context(), token(r, false), false); err != nil {
-				_ = send(`data: {"type":"kicked"}` + "\n\n")
+				if r.Context().Err() == nil {
+					_ = send(`data: {"type":"kicked"}` + "\n\n")
+				}
 				return
 			}
 		}

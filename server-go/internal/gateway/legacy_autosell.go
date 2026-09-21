@@ -201,11 +201,9 @@ func (a *API) legacyAutoSellSet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) legacyShopSnapshot(r *http.Request, c *rules.Catalog) map[string]any {
-	out := map[string]any{}
-	if prices, err := economy.New(a.pool, c).Prices(r.Context()); err == nil {
-		for _, p := range prices {
-			out[p.ID] = map[string]any{"base": p.Base, "price": p.Price, "soldToday": p.SoldToday, "soldTotal": p.SoldTotal}
-		}
+	out, _ := a.legacyShopData(r.Context(), c)
+	if out == nil {
+		out = map[string]any{}
 	}
 	return out
 }

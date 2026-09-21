@@ -16,6 +16,12 @@ import (
 
 type Pinger interface{ Ping(context.Context) error }
 
+var errDraining = errors.New("server draining")
+
+// IsDraining distinguishes an orderly shutdown from a disconnected client.
+// Streams may flush a final frame while the transport remains open.
+func IsDraining(ctx context.Context) bool { return errors.Is(context.Cause(ctx), errDraining) }
+
 type safeErrorWriter struct{ logger *slog.Logger }
 
 func (w safeErrorWriter) Write(p []byte) (int, error) {
@@ -85,10 +91,12 @@ func respond(w http.ResponseWriter, code int, body string) {
 // Streaming handlers reset their own write deadlines. BaseContext cancels
 // streams during draining so they cannot indefinitely block shutdown.
 func Serve(ctx context.Context, listener net.Listener, health *Health, handler http.Handler, shutdownTimeout time.Duration, logger *slog.Logger) error {
+	requests, cancelRequests := context.WithCancelCause(context.WithoutCancel(ctx))
+	defer cancelRequests(context.Canceled)
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
 		WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10,
 		ErrorLog: log.New(safeErrorWriter{logger}, "", 0)}
-	server.BaseContext = func(net.Listener) context.Context { return ctx }
+	server.BaseContext = func(net.Listener) context.Context { return requests }
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	select {
@@ -100,6 +108,7 @@ func Serve(ctx context.Context, listener net.Listener, health *Health, handler h
 		return errors.New("HTTP listener failed")
 	case <-ctx.Done():
 		health.Drain()
+		cancelRequests(errDraining)
 		logger.Info("shutdown_started")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"fishing.local/server/internal/modules/identity"
+	"fishing.local/server/internal/platform/httpserver"
 )
 
 func (a *API) events(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +59,11 @@ func (a *API) events(w http.ResponseWriter, r *http.Request) {
 		a.sseBytes.Add(int64(len(text)))
 		return true
 	}
+	defer func() {
+		if httpserver.IsDraining(r.Context()) {
+			_ = send(legacyFrame(map[string]any{"type": "maintenance"}))
+		}
+	}()
 	if raw == "" {
 		last = current
 		if !send(fmt.Sprintf("id: %d\ndata: {\"type\":\"snapshot_required\",\"assetsRev\":\"%d\"}\n\n", last, last)) {
@@ -68,7 +74,9 @@ func (a *API) events(w http.ResponseWriter, r *http.Request) {
 	defer tick.Stop()
 	for {
 		if _, err := a.identity.Authenticate(r.Context(), token(r, false), false); err != nil {
-			_ = send("data: {\"type\":\"kicked\"}\n\n")
+			if r.Context().Err() == nil {
+				_ = send("data: {\"type\":\"kicked\"}\n\n")
+			}
 			return
 		}
 		rows, err := a.pool.Query(r.Context(), `SELECT revision FROM fishing.player_events WHERE owner_id=$1 AND revision>$2 ORDER BY revision LIMIT 100`, session.AccountID, last)

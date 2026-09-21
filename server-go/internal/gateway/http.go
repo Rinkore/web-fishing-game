@@ -45,8 +45,9 @@ type API struct {
 	// POST /api/players/view, keyed by account. It is per-process state: the
 	// single-role deployment is the supported layout, a multi-process split
 	// would need to share it.
-	viewMu sync.Mutex
-	views  map[int64]legacyPlayersView
+	viewMu    sync.Mutex
+	views     map[int64]legacyPlayersView
+	shopCache legacyShopCache
 }
 type bucket struct {
 	start time.Time

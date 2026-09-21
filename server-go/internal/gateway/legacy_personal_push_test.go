@@ -62,6 +62,8 @@ func TestIntegrationPersonalPushNativeSegmentsAndSnapshot(t *testing.T) {
 	if _, err := p.init(f.ctx); err != nil {
 		t.Fatal(err)
 	}
+	public := &legacyCatchPush{api: p.api, owner: owner, catalog: c}
+	public.init(f.ctx)
 	result, err := svc.Settle(f.ctx, fishing.Candidate{OwnerID: owner, SessionID: id, Generation: start.Generation, Sequence: 1})
 	if err != nil || result.Status != "progressed" {
 		t.Fatalf("segment: %+v %v", result, err)
@@ -85,6 +87,25 @@ func TestIntegrationPersonalPushNativeSegmentsAndSnapshot(t *testing.T) {
 	details.Catches = append(details.Catches, second.Catches...)
 	if len(details.Catches) <= 100 {
 		t.Fatalf("fixture needs >100 catches, got %d", len(details.Catches))
+	}
+	publicKinds := map[string]bool{}
+	for range 5 {
+		for _, frame := range decodePersonalFrames(t, public.poll(f.ctx)) {
+			if frame["type"] != "feedBatch" {
+				continue
+			}
+			for _, value := range frame["list"].([]any) {
+				entry := value.(map[string]any)
+				item := entry["item"].(map[string]any)
+				publicKinds[item["kind"].(string)] = true
+				if item["name"] == "" || item["affixes"] != nil || entry["ground"] != "世界地图" {
+					t.Fatalf("public native catch projection: %v", entry)
+				}
+			}
+		}
+	}
+	if len(publicKinds) != 3 || public.cursors[owner].Ordinal != int64(len(second.Catches)) {
+		t.Fatalf("public mixed catch paging: %v cursor=%+v tail=%d", publicKinds, public.cursors[owner], len(second.Catches))
 	}
 	// A sale/grant races ahead of reading the catches. The snapshot must reflect
 	// current truth, not add the caught items a second time to an HTTP snapshot.

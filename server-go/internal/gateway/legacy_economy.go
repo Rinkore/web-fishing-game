@@ -23,14 +23,10 @@ func (a *API) legacyShop(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	prices, err := economy.New(a.pool, c).Prices(r.Context())
+	out, err := a.legacyShopData(r.Context(), c)
 	if err != nil {
 		failure(w, err)
 		return
-	}
-	out := map[string]any{}
-	for _, p := range prices {
-		out[p.ID] = map[string]any{"base": p.Base, "price": p.Price, "soldToday": p.SoldToday, "soldTotal": p.SoldTotal}
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	write(w, 200, out)

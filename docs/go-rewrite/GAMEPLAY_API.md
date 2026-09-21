@@ -8,6 +8,8 @@
 
 编队后台 `GET /api/admin/parties` 与 `POST /api/admin/party/disband` 已接入管理员会话，支持可选数字 `expectedRevision`；成员/邀请移除、事件及审计同事务提交。旧接口的成员与海域所有者使用小写用户名，v1 保持数字账号字符串。正式 worker 每秒检查最多 100 个失去共享权限或过期的海域会话，按游标轮转并在事务内重新核验，停止后由旧 SSE 下发 `seaEvict`；不依赖长竿到期。编队权限复核和主动驱逐均已有真库并发回归。
 
+旧 SSE 初始化包含实际商店价格，并在报价/销量变化后推送 `shop`；展示最多复用一秒快照，交易仍使用即时权威报价。公共动态覆盖鱼、材料和组件，以持久原生负载保留捕获时的位置。正常关闭 Go HTTP 服务时，旧/v1 SSE 最后发送 `maintenance` 后退出；强杀进程和网络故障无此承诺。
+
 使用独立 PostgreSQL 数据库，先运行 `cmd/migrate`，再以管理数据库连接运行 `go run ./cmd/catalog defaults` 发布默认物品定义。运行应用的数据库角色不需要物品定义写权限；参考 `internal/testdb/testdb.go` 中各模块授权，生产角色仍须独立部署审阅。
 
 `FISHING_GO_DATABASE_URL` 是应用连接，`FISHING_GO_MIGRATION_DATABASE_URL` 是运维连接。连接值不得写进文档、命令参数或提交。`FISHING_GO_TIMEZONE=Asia/Shanghai` 指定每日商城刷新时区；省略时沿用操作系统本地时区。需与原服匹配，不能把 Docker 的 UTC 默认当作已确认的业务时区。

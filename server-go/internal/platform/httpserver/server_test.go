@@ -32,7 +32,13 @@ func TestShutdownCancelsStreamingRequest(t *testing.T) {
 	}
 	h, _ := New(pingFunc(func(context.Context) error { return nil }), time.Second)
 	started, handlerDone := make(chan struct{}), make(chan struct{})
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(started); <-r.Context().Done(); close(handlerDone) })
+	draining := make(chan bool, 1)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+		draining <- IsDraining(r.Context())
+		close(handlerDone)
+	})
 	serverDone := make(chan error, 1)
 	go func() {
 		serverDone <- Serve(ctx, listener, h, handler, 50*time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -66,6 +72,9 @@ func TestShutdownCancelsStreamingRequest(t *testing.T) {
 		t.Fatal("active request context not cancelled")
 	}
 	<-clientDone
+	if !<-draining {
+		t.Fatal("shutdown was not distinguished from client cancellation")
+	}
 }
 
 func TestShutdownDeadlineForNonCooperativeHandler(t *testing.T) {

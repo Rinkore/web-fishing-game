@@ -36,11 +36,14 @@ func (a *API) newLegacyPushes(owner int64, c *rules.Catalog, personal *legacyPer
 	market := &legacyMarketPush{api: a, owner: owner, catalog: c}
 	players := &legacyPlayersPush{api: a, owner: owner, catalog: c}
 	catch := &legacyCatchPush{api: a, owner: owner, catalog: c}
+	shop := &legacyShopPush{api: a, catalog: c}
 	config := &legacyConfigPush{api: a, apply: func(c *rules.Catalog) {
 		market.catalog, players.catalog, catch.catalog, personal.catalog = c, c, c, c
+		shop.catalog = c
 	}}
 	return &legacyPushSet{parts: []legacyStreamPush{
 		config,
+		shop,
 		&legacyBannerPush{api: a},
 		&legacyPartyPush{api: a, owner: owner},
 		&legacyTradePush{watcher: a.newLegacyTradeWatcher(context.Background(), owner)},
