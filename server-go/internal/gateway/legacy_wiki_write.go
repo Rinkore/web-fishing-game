@@ -254,7 +254,7 @@ func (a *API) legacyAdminWikiGuides(w http.ResponseWriter, r *http.Request) {
 	for _, g := range guides {
 		out = append(out, wikiGuideAdminView(g))
 	}
-	write(w, http.StatusOK, map[string]any{"ok": true, "status": r.URL.Query().Get("status"), "revision": revision, "guides": out, "autoApprove": wikiAutoApprove(), "counts": counts})
+	write(w, http.StatusOK, map[string]any{"ok": true, "status": status, "revision": revision, "guides": out, "autoApprove": wikiAutoApprove(), "counts": counts})
 }
 
 func (a *API) legacyAdminWikiGuideReview(w http.ResponseWriter, r *http.Request) {
@@ -286,7 +286,8 @@ func (a *API) legacyAdminWikiGuideReview(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if errors.Is(err, wiki.ErrConflict) {
-		write(w, http.StatusConflict, map[string]any{"error": "攻略状态已变化，请刷新后重试"})
+		currentStatus := strings.TrimPrefix(err.Error(), wiki.ErrConflict.Error()+":")
+		write(w, http.StatusConflict, map[string]any{"error": "攻略状态已变化，请刷新后重试", "currentStatus": currentStatus})
 		return
 	}
 	if err != nil {

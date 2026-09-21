@@ -92,8 +92,8 @@
 - `/events` 仍未覆盖：配置类推送（`bitecfg`/`castcfg`/`chestcfg`/`componentcfg`/`smeltcfg`/`mallcfg`/`pricecfg`/`groundcfg`/`grounds`/`autosellcfg`）、`banner`/`bannerStop`/`maintenance`、`records` 全量帧、`shop`、`seaEvict`、`batch`/`big`。推送为轮询各域水位（非即时广播），容量口径需在长测里复核。
 - `internal/gateway/legacy_push_test.go`：真库覆盖市集成交双向帧 + 卖家 assets、好友申请/同意 notice、视口登记后的 playersPage 与 `pushed` 计数。
 - 2026-09-21 鱼类动态验证：`legacy_push_test.go` 验证实际 `/events` 的地点、动态、榜单刷新与横幅；`legacy_catch_push_test.go` 验证 105 条递归分页、跨玩家反序提交、钓场隔离、相同最大值不重播、断线重连不回放历史，以及中途数据库读取失败后重试。最终 Linux Docker 隔离 PostgreSQL 全套 `go mod verify`、`go vet ./...`、`go test -race -count=1 -timeout=3m ./...` 退出码 0（gateway 129.379 秒），Windows `go build ./...`、gofmt 通过。默认镜像/模块源网络失败后使用 README 已记录的固定镜像站和 goproxy.cn；本机 5433 便携库不可用导致另一次 Windows 真库尝试失败，该次不计通过。测试容器与网络已清理；没有执行浏览器 A/B、生产迁移或部署。
-- 旧 Wiki 契约接入（只读 5 条）：`GET /api/wiki/content`（元数据 + 更新记录 + `officialRevision`/`userRevision` + `ETag` 与 `If-None-Match` 304）、`/api/wiki/guides`（分页/`q`/`kind`/`category`，pageSize 默认 20 上限 50）、`/api/wiki/guides/{id}`（含正文段落，未知/不合法 id 回 404 中文文案）、`/api/wiki/guides/session`、`/api/wiki/simulator/inventory`（私有只读投影，不触发结算）。官方正文与用户投稿、审核、软删除、修订号、24h/待审配额和官方热保存现已迁移到 `0026_wiki_store.sql`，并注册 `admin/wiki/*` 与 `wiki/guides/*` 写入路由；`legacy_wiki_read_test.go` 覆盖公开只读契约，写入接口仍需独立真库回归与浏览器 A/B。搜索按 Unicode 折叠大小写；未登录/封禁的 simulator 读取统一 401 `invalid_credentials`。
-- **仍属剩余范围**：`/api/admin/*` 剩余约 51 条（世界/掉落/玩法配置编辑器、用户快照与回滚、公告横幅、市集运营等）；其余配置类 SSE 推送（见上；钓鱼组件 subalert 已接入）；容量/故障/迁移/浏览器 A/B 仍按既定计划延期。
+- 旧 Wiki 契约接入（只读 5 条）：`GET /api/wiki/content`（元数据 + 更新记录 + `officialRevision`/`userRevision` + `ETag` 与 `If-None-Match` 304）、`/api/wiki/guides`（分页/`q`/`kind`/`category`，pageSize 默认 20 上限 50）、`/api/wiki/guides/{id}`（含正文段落，未知/不合法 id 回 404 中文文案）、`/api/wiki/guides/session`、`/api/wiki/simulator/inventory`（私有只读投影，不触发结算）。官方正文与用户投稿、审核、软删除、修订号、24h/待审配额和官方热保存现已迁移到 `0026_wiki_store.sql`，并注册 `admin/wiki/*` 与 `wiki/guides/*` 写入路由；`legacy_wiki_read_test.go` 与 `legacy_wiki_write_test.go` 已通过真实 PostgreSQL，覆盖公开契约、并发播种、配额、审核冲突、软删除、不可变修订、官方发布冲突和事务回滚；真实浏览器 A/B 仍待完成。搜索按 Unicode 折叠大小写；未登录/封禁的 simulator 读取统一 401 `invalid_credentials`。
+- **仍属剩余范围**：`/api/admin/*` 剩余 43 条（功能开关、世界/掉落/玩法配置编辑器、用户快照与回滚、经济运营等）；其余配置类 SSE 推送（见上；钓鱼组件 subalert 已接入）；容量/故障/迁移/浏览器 A/B 仍按既定计划延期。
 
 ## 2026-09-21 实时主链收尾
 
@@ -146,7 +146,7 @@
 1. 正式钓鱼规则的完整旧版对照、活动与配置编辑器、长链长期积压/公平性验收。运行时 catalog 发布、远洋经验/悬赏/共享权限、递归分段恢复已实现；不能再次列为“未开发”。自动出售按最新选择独立扫描，供需在出售事务更新。
 2. 原前端与全部旧 API/SSE 契约、浏览器 A/B。注册挑战及旧表单已接入；生产代理来源策略仍需验收。新 v1 接口不能替代旧协议验收。
 3. 已实现交易的旧契约逐项对照、到期/换装边界补充故障矩阵。
-4. 活动、自动配装和完整通知契约、48 个尚未注册的后台接口及 Wiki 投稿。旧版去重总榜/日榜/周榜查询已注册；纪录播报等级、历史动态、未接权威源的运营配置仍有缺口。公告队列、已有 catalog/feature 推送及海域主动驱逐已接。远洋和共享权限已接内部核心，旧 `sea:<用户名>:<zone>` 转换已经 HTTP/SSE 验证，完整浏览器 A/B 仍待验收。功能开关覆盖原八类及 sea/party/fishing。
+4. 活动、自动配装和完整通知契约、43 个尚未注册的后台接口。旧版去重总榜/日榜/周榜查询已注册；纪录播报等级、历史动态、未接权威源的运营配置仍有缺口。公告队列、已有 catalog/feature 推送及海域主动驱逐已接。远洋和共享权限已接内部核心，旧 `sea:<用户名>:<zone>` 转换已经 HTTP/SSE 验证，完整浏览器 A/B 仍待验收。功能开关覆盖原八类及 sea/party/fishing。
 5. 先完成 100 人长时间和完整玩法负载、写入中的数据库故障/进程重启、锁等待/SQL 次数，再阶梯测试 1000/5000 人；已有 SIGKILL 恢复是在停止负载之后进行。
 
 接口、限购时区、管理员运维入口和功能发布语义详见 [GAMEPLAY_API.md](GAMEPLAY_API.md)。本清单不把阶段实现标记为五项整体交付完成。

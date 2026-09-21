@@ -60,6 +60,9 @@ func (s *Store) Ensure(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `SELECT singleton FROM fishing.wiki_state WHERE singleton FOR UPDATE`); err != nil {
+		return err
+	}
 	var official int
 	if err = tx.QueryRow(ctx, `SELECT count(*) FROM fishing.wiki_guides WHERE kind='official' AND deleted_at IS NULL`).Scan(&official); err != nil {
 		return err
@@ -91,6 +94,19 @@ func (s *Store) Ensure(ctx context.Context) error {
 }
 
 func marshalJSON(value any) ([]byte, error) { return json.Marshal(value) }
+
+func writeRevision(ctx context.Context, tx pgx.Tx, guideID string, revision int64, action string, actorID int64, actorName string, snapshot any) error {
+	raw, err := marshalJSON(snapshot)
+	if err != nil {
+		return err
+	}
+	var actor any
+	if actorID != 0 {
+		actor = actorID
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO fishing.wiki_revisions(guide_id,revision,action,actor_id,actor_name,snapshot) VALUES($1,$2,$3,$4,$5,$6)`, guideID, revision, action, actor, actorName, raw)
+	return err
+}
 
 func insertGuide(ctx context.Context, tx pgx.Tx, g Guide, ownerID int64, authorName string, submittedAt, reviewedAt *time.Time, reviewedBy, reviewNote string, sortOrder int, revision int64) error {
 	tags, err := marshalJSON(g.Tags)
@@ -468,6 +484,18 @@ func (s *Store) InsertUser(ctx context.Context, ownerID int64, authorName string
 	if err = insertGuide(ctx, tx, g, ownerID, authorName, &now, reviewedAt, reviewedBy, note, 0, 1); err != nil {
 		return "", "", limits, err
 	}
+	action := "submit"
+	if auto {
+		action = "auto_approve"
+	}
+	if err = writeRevision(ctx, tx, id, 1, action, ownerID, authorName, g); err != nil {
+		return "", "", limits, err
+	}
+	if auto {
+		if _, err = tx.Exec(ctx, `INSERT INTO fishing.admin_audit(actor_id,actor_name,account_id,action,target,detail) VALUES($1,$2,$3,'wiki_guide_auto_approve',$4,$5)`, ownerID, authorName, ownerID, id, note); err != nil {
+			return "", "", limits, err
+		}
+	}
 	if _, err = tx.Exec(ctx, `UPDATE fishing.wiki_state SET user_revision=user_revision+1 WHERE singleton`); err != nil {
 		return "", "", limits, err
 	}
@@ -505,6 +533,9 @@ func (s *Store) Review(ctx context.Context, id, action, note string, actorID int
 	if _, err = tx.Exec(ctx, `UPDATE fishing.wiki_guides SET status=$2,reviewed_at=clock_timestamp(),reviewed_by=$3,review_note=$4,revision=revision+1 WHERE id=$1`, id, status, actorName, note); err != nil {
 		return GuideRecord{}, 0, err
 	}
+	if err = writeRevision(ctx, tx, id, revision+1, action, actorID, actorName, map[string]any{"id": id, "status": status, "reviewNote": note}); err != nil {
+		return GuideRecord{}, 0, err
+	}
 	if _, err = tx.Exec(ctx, `UPDATE fishing.wiki_state SET user_revision=user_revision+1 WHERE singleton`); err != nil {
 		return GuideRecord{}, 0, err
 	}
@@ -537,8 +568,9 @@ func (s *Store) Delete(ctx context.Context, id string, actorID int64, actorName,
 	defer func() { _ = tx.Rollback(ctx) }()
 	var owner int64
 	var status, reviewedBy string
-	q := `SELECT owner_id,status,reviewed_by FROM fishing.wiki_guides WHERE id=$1 AND kind='user' AND deleted_at IS NULL FOR UPDATE`
-	if err = tx.QueryRow(ctx, q, id).Scan(&owner, &status, &reviewedBy); errors.Is(err, pgx.ErrNoRows) {
+	var currentRevision int64
+	q := `SELECT owner_id,status,reviewed_by,revision FROM fishing.wiki_guides WHERE id=$1 AND kind='user' AND deleted_at IS NULL FOR UPDATE`
+	if err = tx.QueryRow(ctx, q, id).Scan(&owner, &status, &reviewedBy, &currentRevision); errors.Is(err, pgx.ErrNoRows) {
 		return 0, pgx.ErrNoRows
 	} else if err != nil {
 		return 0, err
@@ -550,6 +582,9 @@ func (s *Store) Delete(ctx context.Context, id string, actorID int64, actorName,
 		return 0, fmt.Errorf("只有待审核或自动通过的攻略可以由作者删除")
 	}
 	if _, err = tx.Exec(ctx, `UPDATE fishing.wiki_guides SET deleted_at=clock_timestamp(),deleted_by=$2,delete_reason=$3,revision=revision+1 WHERE id=$1`, id, actorName, reason); err != nil {
+		return 0, err
+	}
+	if err = writeRevision(ctx, tx, id, currentRevision+1, "delete", actorID, actorName, map[string]any{"id": id, "deleted": true, "reason": reason}); err != nil {
 		return 0, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE fishing.wiki_state SET user_revision=user_revision+1 WHERE singleton`); err != nil {
@@ -592,6 +627,9 @@ func (s *Store) ReplaceOfficial(ctx context.Context, content Content, expected, 
 	for i, g := range content.Guides {
 		g.Kind, g.Status = "official", "published"
 		if err = insertGuide(ctx, tx, g, 0, "", nil, nil, "", "", i, revision); err != nil {
+			return 0, err
+		}
+		if err = writeRevision(ctx, tx, g.ID, revision, "publish", actorID, actorName, g); err != nil {
 			return 0, err
 		}
 	}
