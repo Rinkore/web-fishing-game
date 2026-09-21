@@ -43,9 +43,14 @@ func (a *API) legacyFishingStart(w http.ResponseWriter, r *http.Request) {
 	res, err := svc.Start(ctx, fishing.NativeStart{
 		ActorID: session.AccountID, RequestKey: legacyMarketKey("legacy:start"), GroundID: in.GroundID, SpotID: in.SpotID,
 		ConnectionGeneration: gen,
+		KeepActive:           true,
 	})
 	if err != nil {
 		failure(w, err)
+		return
+	}
+	if res.Status != "started" {
+		write(w, http.StatusConflict, map[string]any{"error": res.Status, "code": res.Status})
 		return
 	}
 	var details struct {
@@ -151,7 +156,7 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	pushes := a.newLegacyPushes(session.AccountID, c)
+	pushes := a.newLegacyPushes(session.AccountID, c, personal)
 	for key, value := range pushes.init(r.Context()) {
 		init[key] = value
 	}

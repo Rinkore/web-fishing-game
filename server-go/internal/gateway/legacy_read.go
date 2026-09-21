@@ -20,18 +20,7 @@ func (a *API) legacyFeatures(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	write(w, 200, map[string]any{"features": v.Flags})
-}
-
-// legacyBanner returns an empty banner queue with the legacy default config.
-// Banner storage is not migrated to the Go schema yet, so this is an explicit
-// degradation rather than invented content.
-func (a *API) legacyBanner(w http.ResponseWriter, r *http.Request) {
-	write(w, 200, map[string]any{
-		"banners": []any{},
-		"cfg":     map[string]any{"blink": false, "blinkTitle": "📢 有新公告"},
-		"seq":     1,
-	})
+	write(w, 200, map[string]any{"features": legacyFeatureFlags(v.Flags), "featureOrder": map[string]any{}})
 }
 
 type legacyRecordEntry struct {

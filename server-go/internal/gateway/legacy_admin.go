@@ -28,7 +28,7 @@ import (
 // Deliberately still out of scope, each needing its own design: the user
 // snapshot store (GET/POST /api/admin/users/snapshot, users/snapshots,
 // users/snapshot-now, users/rollback), the world/drop configuration editors,
-// the banner console and the wiki content editor.
+// and the wiki content editor. The banner console is in legacy_banner.go.
 
 const (
 	legacyAdminAuditKeep      = 300

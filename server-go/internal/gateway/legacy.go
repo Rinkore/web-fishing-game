@@ -108,7 +108,7 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 
 	features := map[string]bool{}
 	if f, err := operations.New(a.pool).Features(ctx); err == nil {
-		features = f.Flags
+		features = legacyFeatureFlags(f.Flags)
 	}
 
 	autoSell := any(nil)
@@ -137,7 +137,7 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 		}
 	}
 
-	return map[string]any{
+	profile := map[string]any{
 		"features":         features,
 		"featureOrder":     map[string]any{},
 		"username":         username,
@@ -163,7 +163,15 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 		"rodSlots":         rodSlots,
 		"nextRodSlotPrice": nextPrice,
 		"rodLocked":        rodLocked,
-	}, nil
+	}
+	config, _, err := legacyCatalogProjection(c)
+	if err != nil {
+		return nil, identity.ErrStorage
+	}
+	for key, value := range config {
+		profile[key] = value
+	}
+	return profile, nil
 }
 
 // legacyInventory projects the durable inventory into the legacy map: stack
@@ -435,22 +443,15 @@ func (a *API) legacyVersion(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{"version": version, "build": build})
 }
 
-// legacyGrounds serves the world-map spot catalog. The catalog GROUNDS constant
-// matches the frontend data.js shape (including pos/desc) and has no loot-group
-// indirection, so the raw value is the authoritative default projection.
+// legacyGrounds serves the published map with flattened, boosted loot pools.
 func (a *API) legacyGrounds(w http.ResponseWriter, r *http.Request) {
 	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, err)
 		return
 	}
-	raw, ok := c.Constants["GROUNDS"]
-	if !ok {
-		failure(w, identity.ErrStorage)
-		return
-	}
-	var grounds any
-	if err := json.Unmarshal(raw, &grounds); err != nil {
+	grounds, err := legacyGroundCatalog(c)
+	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
 	}

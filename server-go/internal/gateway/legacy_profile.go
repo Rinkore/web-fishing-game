@@ -42,13 +42,3 @@ func (a *API) legacyProfileSave(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, map[string]any{"ok": true})
 }
-
-// legacyBannerPlaying acknowledges the legacy banner watch report. Banner
-// storage is not migrated yet, so the legacy queue is empty and every report
-// is accepted as ignored, matching the original handler's missing-id branch.
-func (a *API) legacyBannerPlaying(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.authorize(w, r, false); !ok {
-		return
-	}
-	write(w, 200, map[string]any{"ok": true, "ignored": true})
-}

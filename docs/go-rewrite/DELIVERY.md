@@ -107,12 +107,23 @@
 - 快照水位同时检查廉价唤醒读数与事件页末修订，修复两次读取之间新提交导致“游标已确认、快照未刷新”的竞态；`TestIntegrationPersonalPushCommitBetweenWakeupAndPage` 通过真实数据库锁精确制造该时序。
 - **最终验证**：Windows 连接本轮隔离 Docker PostgreSQL，全量 `go test -count=1 -timeout=8m ./...` 退出 0（gateway 51.407 秒）；Linux 同一代码最终全量 `go mod verify`、`go vet ./...`、`go test -race -count=1 -timeout=3m ./...` 退出 0（gateway 105.381 秒）。Windows 构建、gofmt、diff 检查通过；Node 基线 3/3；默认 catalog 94 项、全部 2551 项规则 oracle、Wiki 内容快照漂移检查通过。未运行原前端完整浏览器 A/B、持久磁盘容量或故障放行测试，不能把此结果用于宣称整项重写或生产验收已完成。
 
+## 2026-09-21 配置发布与公告
+
+- `legacy_config_push.go` 从不可变 catalog/feature 发布头读取修订，只在改变时加载完整配置；投影 `componentcfg`、`smeltcfg`、`castcfg`、`bitecfg`、`groundcfg`、掉落部分的 `pricecfg` 和 `mallcfg`。初始化补发全套配置，相同内容不重复推送；读取失败保留旧游标。连接内个人/公共渔获、市集、玩家目录同步替换 catalog 指针。`/api/me` 也返回当前预览配置。
+- `/api/grounds` 与 SSE 共用掉落投影，保留坐标/说明并展开嵌套掉落组和全服倍率。功能开关将 Go 的领域名转换为旧前端动作名，如 `mall` → `mall.buy`、`market` → `mall.list`/`mall.marketbuy`；关闭 `sell` 同时关闭自动售出显示。原生 `friends` 没有独立旧前端开关，仍由服务端拒绝；完整层级开关、排序和管理员穿透仍在剩余范围。
+- 旧前端用开钓接口刷新配置时，同一钓点的活动会话只重算明细，不重置 generation/seq、随机种子、到期时间及未完成递归段；换钓点和收竿后重开仍创建新代。真库用例覆盖刷新与下一段结算并发，台账对账通过。
+- 新增 `0024_banner_publications.sql`：`banner_state` 串行头、`banner_events` 不可变发布记录、`banner_watchers` 观看上报。新增公告后台 8 条路由，队列/事件/审计同事务提交；支持颜色/内容/时长校验、排序、配置、停止及清空，单队列上限 500。可选数字 `expectedRevision` 防止同版本覆盖；旧后台未传时按原有增量编辑语义串行执行。请求返回不确定提交错误时先重读队列，旧公告新增没有跨请求幂等号。
+- `/api/banner` 不再固定空队列；`banner/playing` 使用实际条目和 15 秒观看 TTL。SSE 初始化发当前队列，之后按发布修订每页 16 条读取，尾页不依赖新事件，读失败不确认；重连不回放过去的停止操作。`catchLevel` 配置已持久化，但当前渔获横幅只实现总最大值 level 1（任何等级均允许），其余等级的实际播报仍待完整纪录通知。
+- 运行期角色需额外授权：`banner_state` SELECT/UPDATE、`banner_events` SELECT/INSERT、`banner_watchers` SELECT/INSERT/UPDATE/DELETE；合成测试最小权限已同步，未自动变更任何正式角色。公告事件历史目前不自动清理，须计入持久磁盘空间验收。
+- 静态路由覆盖更新为 98/152；未注册 54 条，其中后台 50 条。旧的 90/152 与 58 条后台数字属于上一批记录。
+- Windows 本轮真库全套 build/vet/test 通过（gateway 51.978 秒），Node 原始接口/规则基线 3/3。Linux Docker 隔离真库全套 `go mod verify`、`go vet ./...`、`go test -race -count=1 -timeout=3m ./...` 退出 0（gateway 122.406 秒）；gofmt 和 diff 检查通过。完整旧浏览器 A/B、持久容量与生产迁移未执行。
+
 ## 明确剩余范围
 
 1. 正式钓鱼规则的完整旧版对照、活动与配置编辑器、长链长期积压/公平性验收。运行时 catalog 发布、远洋经验/悬赏/共享权限、递归分段恢复已实现；不能再次列为“未开发”。自动出售按最新选择独立扫描，供需在出售事务更新。
 2. 原前端与全部旧 API/SSE 契约、注册挑战/运营注册策略、浏览器 A/B。新 v1 接口不能替代该项验收。
 3. 已实现交易的旧契约逐项对照、到期/换装边界补充故障矩阵。
-4. 活动、自动配装和完整通知契约、58 个尚未注册的后台接口、注册挑战、Wiki 投稿。旧版去重总榜/日榜/周榜查询已注册；纪录播报等级、历史动态、配置/公告/海域驱逐推送仍有缺口。远洋和共享权限已接内部核心，旧 `sea:<用户名>:<zone>` 转换与浏览器全流程仍需专项验收。功能开关覆盖原八类及 sea/party/fishing。
+4. 活动、自动配装和完整通知契约、50 个尚未注册的后台接口、注册挑战、Wiki 投稿。旧版去重总榜/日榜/周榜查询已注册；纪录播报等级、历史动态、未接权威源的运营配置及海域驱逐推送仍有缺口。公告队列和已有 catalog/feature 推送已接。远洋和共享权限已接内部核心，旧 `sea:<用户名>:<zone>` 转换与浏览器全流程仍需专项验收。功能开关覆盖原八类及 sea/party/fishing。
 5. 先完成 100 人长时间和完整玩法负载、写入中的数据库故障/进程重启、锁等待/SQL 次数，再阶梯测试 1000/5000 人；已有 SIGKILL 恢复是在停止负载之后进行。
 
 接口、限购时区、管理员运维入口和功能发布语义详见 [GAMEPLAY_API.md](GAMEPLAY_API.md)。本清单不把阶段实现标记为五项整体交付完成。

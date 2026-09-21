@@ -455,3 +455,52 @@ func TestIntegrationNativeCapacityAndEquipmentRollback(t *testing.T) {
 	}
 	f.reconcile()
 }
+
+func TestIntegrationNativeConfigRefreshPreservesContinuation(t *testing.T) {
+	f := nativeSetup(t)
+	f.spot([]rules.LootEntry{{Pick: "fish:crucian", Weight: 1}}, nil, 100)
+	f.s.catalog.Runtime = map[string]any{"doubleBase": float64(1)}
+	c := f.start()
+	r, err := f.s.Settle(f.ctx, c)
+	f.want(r, err, "progressed")
+	var before, after string
+	query := `SELECT jsonb_build_array(generation,next_seq,encode(private_seed,'hex'),due_at,rule_version)::text FROM fishing.native_fishing_sessions WHERE id=$1`
+	if err := f.db.Admin.QueryRow(f.ctx, query, c.SessionID).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	part := f.num(`SELECT part FROM fishing.catch_continuations WHERE session_id=$1`, c.SessionID)
+	f.s.catalog.Runtime["cast"] = map[string]any{"speedBonus": float64(50)}
+	request := NativeStart{ActorID: f.owner, RequestKey: f.next(), GroundID: "map", SpotID: "dock",
+		ConnectionGeneration: f.num(`SELECT generation FROM fishing.fishing_connections WHERE owner_id=$1`, f.owner), KeepActive: true}
+	r, err = f.s.Start(f.ctx, request)
+	f.want(r, err, "started")
+	if err := f.db.Admin.QueryRow(f.ctx, query, c.SessionID).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if before != after || r.Generation != c.Generation || r.Sequence != c.Sequence {
+		t.Fatal("refresh reset in-flight cycle", before, after, r)
+	}
+	var details struct {
+		CastInfo rules.CastInfo `json:"castInfo"`
+	}
+	if err := json.Unmarshal(r.Details, &details); err != nil || details.CastInfo.GlobalBonus != 50 {
+		t.Fatal("stale cast info", details, err)
+	}
+	// Refreshes and scheduler segments take the same player guard. Neither
+	// ordering may strand the committed continuation or reroll its seed.
+	request.RequestKey = f.next()
+	var refresh assets.Result
+	var refreshErr error
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() { defer wg.Done(); refresh, refreshErr = f.s.Start(f.ctx, request) }()
+	r, err = f.s.Settle(f.ctx, c)
+	wg.Wait()
+	f.want(r, err, "progressed")
+	f.want(refresh, refreshErr, "started")
+	if f.num(`SELECT part FROM fishing.catch_continuations WHERE session_id=$1`, c.SessionID) != part+1 ||
+		f.num(`SELECT generation FROM fishing.native_fishing_sessions WHERE id=$1`, c.SessionID) != c.Generation {
+		t.Fatal("concurrent refresh lost continuation")
+	}
+	f.reconcile()
+}

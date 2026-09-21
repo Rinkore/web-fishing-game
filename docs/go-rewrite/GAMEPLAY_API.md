@@ -4,6 +4,8 @@
 
 ## 隔离环境启动
 
+旧协议补充（2026-09-21）：catalog/原生功能开关已连接旧 SSE，公告队列新增 8 条后台接口及持久发布/观看统计。普通功能开关投影为旧前端动作名，完整旧层级编辑器尚未实现。公告更新支持可选数字 `expectedRevision`，冲突返回 409；队列、发布记录和审计原子提交。详见 DELIVERY 的“配置发布与公告”。
+
 使用独立 PostgreSQL 数据库，先运行 `cmd/migrate`，再以管理数据库连接运行 `go run ./cmd/catalog defaults` 发布默认物品定义。运行应用的数据库角色不需要物品定义写权限；参考 `internal/testdb/testdb.go` 中各模块授权，生产角色仍须独立部署审阅。
 
 `FISHING_GO_DATABASE_URL` 是应用连接，`FISHING_GO_MIGRATION_DATABASE_URL` 是运维连接。连接值不得写进文档、命令参数或提交。`FISHING_GO_TIMEZONE=Asia/Shanghai` 指定每日商城刷新时区；省略时沿用操作系统本地时区。需与原服匹配，不能把 Docker 的 UTC 默认当作已确认的业务时区。

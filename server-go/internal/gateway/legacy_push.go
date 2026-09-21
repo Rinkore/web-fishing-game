@@ -16,8 +16,7 @@ import (
 //
 // Covered: trade (the existing watcher), market fills plus listing revisions,
 // friend relations, the paginated player viewport, and durable catch/record
-// projections. Configuration and operator banner pushes still require a
-// durable publication stream and remain documented as a separate gap.
+// projections, plus immutable catalog/feature publications.
 
 type legacyStreamPush interface {
 	// init contributes fields to the SSE init frame (nil when the domain has no
@@ -33,13 +32,21 @@ func legacyFrame(payload map[string]any) string {
 
 type legacyPushSet struct{ parts []legacyStreamPush }
 
-func (a *API) newLegacyPushes(owner int64, c *rules.Catalog) *legacyPushSet {
+func (a *API) newLegacyPushes(owner int64, c *rules.Catalog, personal *legacyPersonalPush) *legacyPushSet {
+	market := &legacyMarketPush{api: a, owner: owner, catalog: c}
+	players := &legacyPlayersPush{api: a, owner: owner, catalog: c}
+	catch := &legacyCatchPush{api: a, owner: owner, catalog: c}
+	config := &legacyConfigPush{api: a, apply: func(c *rules.Catalog) {
+		market.catalog, players.catalog, catch.catalog, personal.catalog = c, c, c, c
+	}}
 	return &legacyPushSet{parts: []legacyStreamPush{
+		config,
+		&legacyBannerPush{api: a},
 		&legacyTradePush{watcher: a.newLegacyTradeWatcher(context.Background(), owner)},
-		&legacyMarketPush{api: a, owner: owner, catalog: c},
+		market,
 		&legacyFriendPush{api: a, owner: owner},
-		&legacyPlayersPush{api: a, owner: owner, catalog: c},
-		&legacyCatchPush{api: a, owner: owner, catalog: c},
+		players,
+		catch,
 	}}
 }
 

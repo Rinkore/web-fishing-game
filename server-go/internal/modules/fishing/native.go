@@ -48,6 +48,9 @@ type NativeStart struct {
 	RequestKey, GroundID, SpotID string
 	ConnectionGeneration         int64
 	Resume                       bool
+	// KeepActive lets legacy configuration refreshes obtain current cast info
+	// without discarding the random cursor or a partially settled catch chain.
+	KeepActive bool
 }
 
 func (s *NativeService) loadout(ctx context.Context, t *assets.Transaction, owner int64, spot rules.FishingSpot) (rules.Effects, rules.CastInfo, error) {
@@ -123,6 +126,19 @@ func (s *NativeService) Start(ctx context.Context, r NativeStart) (assets.Result
 		_, info, err := s.loadout(ctx, t, r.ActorID, access.Spot)
 		if err != nil {
 			return assets.Result{}, err
+		}
+		if r.KeepActive {
+			var id, generation, sequence int64
+			err := t.SQL().QueryRow(ctx, `UPDATE fishing.native_fishing_sessions SET connection_generation=$4
+ WHERE owner_id=$1 AND ground_id=$2 AND spot_id=$3 AND state='active' RETURNING id,generation,next_seq`,
+				r.ActorID, r.GroundID, r.SpotID, r.ConnectionGeneration).Scan(&id, &generation, &sequence)
+			if err == nil {
+				return assets.Result{Status: "started", ResourceID: strconv.FormatInt(id, 10), Generation: generation, Sequence: sequence,
+					Details: details(map[string]any{"interval": info.Interval, "castInfo": info})}, nil
+			}
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return assets.Result{}, err
+			}
 		}
 		if _, err = t.SQL().Exec(ctx, `UPDATE fishing.fishing_sessions SET state='paused',generation=generation+1 WHERE owner_id=$1 AND state='active'`, r.ActorID); err != nil {
 			return assets.Result{}, err
