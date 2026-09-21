@@ -53,6 +53,13 @@ $env:FISHING_GO_TEST_GOPROXY = 'https://goproxy.cn'
 
 也可自行设置 `FISHING_GO_TEST_DATABASE_URL` 后执行 go test；它必须指向隔离 PostgreSQL 的 `fishing_test` bootstrap 库，账号需要创建测试库/角色的权限。未设置时集成测试会明确跳过；不可把这样的运行当成集成验收。
 
+本机另有一份便携 PostgreSQL 18（非 Docker、非系统服务）在 `%LOCALAPPDATA%\FishingGoTestPg`，监听 `127.0.0.1:5433`，凭据与 [compose.yml](../deploy/go-test/compose.yml) 相同，可直接用于真库套件：
+
+```powershell
+$env:FISHING_GO_TEST_DATABASE_URL = 'postgres://fishing_test_admin:local-test-only@127.0.0.1:5433/fishing_test?sslmode=disable'
+& "$env:LOCALAPPDATA\FishingGoToolchains\go1.27.1\go\bin\go.exe" test -count=1 -timeout=15m ./...
+```
+
 ## 启动基础服务
 
 在 server-go 中设置隔离开发数据库连接（下列凭据仅为占位符）：

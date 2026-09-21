@@ -141,11 +141,18 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 
 	// init carries the authoritative snapshot the legacy client needs to render.
 	init := a.legacyInit(r, c, session, open.Generation)
-	// The trade watcher primes itself from the same snapshot, so a change racing
-	// init is delivered by the next poll instead of being lost.
+	// Seed the trade watermark before the snapshot is sent: the client can start
+	// trading as soon as it processes init, and a baseline read taken afterwards
+	// would already include that mutation and swallow its frame. The watcher
+	// primes itself from the same snapshot, so a change racing init is still
+	// delivered by the next poll.
+	tradeRevision, err := a.assetsRevision(r.Context(), session.AccountID)
+	if err != nil {
+		return
+	}
+	var tradeTicks int
 	trades := a.newLegacyTradeWatcher(r.Context(), session.AccountID)
 	init["trade"] = trades.snapshot(r.Context())
-	var tradeTicks int
 	if !send("data: " + jsonString(init) + "\n\n") {
 		return
 	}
