@@ -32,9 +32,25 @@ func (c *Catalog) DefaultLootConfig() LootConfig {
 	return LootConfig{configNumber(m, "global", 100, 0, 10000), configNumber(m, "common", 100, 0, 10000), configNumber(m, "big", 100, 0, 10000), configNumber(m, "rare", 100, 0, 10000), configNumber(m, "material", 100, 0, 10000), configNumber(c.Runtime, "rareK", 2, 0, 1000), p}
 }
 func (c *Catalog) LootGroups() map[string][]LootEntry {
-	var groups map[string][]LootEntry
+	groups := map[string][]LootEntry{}
 	data, _ := json.Marshal(c.Runtime["lootGroups"])
-	_ = json.Unmarshal(data, &groups)
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return groups
+	}
+	for id, value := range raw {
+		var items []LootEntry
+		if json.Unmarshal(value, &items) == nil {
+			groups[id] = items
+			continue
+		}
+		var wrapped struct {
+			Items []LootEntry `json:"items"`
+		}
+		if json.Unmarshal(value, &wrapped) == nil && wrapped.Items != nil {
+			groups[id] = wrapped.Items
+		}
+	}
 	return groups
 }
 func (c *Catalog) FishTier(id string) string {

@@ -51,6 +51,13 @@ type Publish struct {
 	RequestKey       string
 	ExpectedRevision int64
 	Catalog          json.RawMessage
+	// Audit fields are optional for the generic v1 catalog editor. World/drop
+	// admin mutations populate them so the console audit is committed with the
+	// immutable catalog release and head update.
+	AuditAction string
+	AuditName   string
+	AuditTarget string
+	AuditDetail string
 }
 
 func PublishConfig(ctx context.Context, pool *pgxpool.Pool, r Publish) (assets.Result, error) {
@@ -92,6 +99,12 @@ func PublishConfig(ctx context.Context, pool *pgxpool.Pool, r Publish) (assets.R
 		}
 		if _, err := t.SQL().Exec(ctx, `UPDATE fishing.catalog_head SET release_id=$1 WHERE singleton`, id); err != nil {
 			return assets.Result{}, err
+		}
+		if r.AuditAction != "" {
+			if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.admin_audit(actor_id,actor_name,action,target,detail) VALUES($1,$2,$3,$4,$5)`,
+				r.ActorID, r.AuditName, r.AuditAction, r.AuditTarget, r.AuditDetail); err != nil {
+				return assets.Result{}, err
+			}
 		}
 		return assets.Result{Status: "published", ResourceID: strconv.FormatInt(id, 10)}, nil
 	})
