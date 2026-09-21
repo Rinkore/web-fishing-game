@@ -2,9 +2,9 @@ name: Go rewrite baseline
 
 on:
   push:
-    paths: ['server-go/**', 'tools/go-rewrite/**', 'deploy/go-test/**', 'tests/go-rewrite-inventory.test.js', 'backend/server.js', 'frontend/js/data.js', 'frontend/js/net.js', '.github/workflows/go-rewrite.yml']
+    paths: ['server-go/**', 'tools/go-rewrite/**', 'deploy/go-test/**', 'tests/go-rewrite-inventory.test.js', 'backend/server.js', 'frontend/js/data.js', 'frontend/js/net.js', 'frontend/wiki/content/content.json', '.github/workflows/go-rewrite.yml']
   pull_request:
-    paths: ['server-go/**', 'tools/go-rewrite/**', 'deploy/go-test/**', 'tests/go-rewrite-inventory.test.js', 'backend/server.js', 'frontend/js/data.js', 'frontend/js/net.js', '.github/workflows/go-rewrite.yml']
+    paths: ['server-go/**', 'tools/go-rewrite/**', 'deploy/go-test/**', 'tests/go-rewrite-inventory.test.js', 'backend/server.js', 'frontend/js/data.js', 'frontend/js/net.js', 'frontend/wiki/content/content.json', '.github/workflows/go-rewrite.yml']
 
 permissions:
   contents: read
@@ -39,6 +39,7 @@ jobs:
           node tools/go-rewrite/chest-fixture.js --check
           node tools/go-rewrite/sea-fixture.js --check
           node tools/go-rewrite/catch-fixture.js --check
+          node tools/go-rewrite/wiki-content.js --check
           node --test tests/go-rewrite-inventory.test.js 2>&1 | tail -40
       - name: Format, build, vet and test
         working-directory: server-go

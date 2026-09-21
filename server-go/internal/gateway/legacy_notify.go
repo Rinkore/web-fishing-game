@@ -24,13 +24,13 @@ import (
 // The original server kept the subscription config on the account record and the
 // feedback queue in its runtime store. Both are persisted here (migration 0022).
 // The feedback cooldown and skip cost are operator settings in the original
-// system; the operator configuration path is not bridged yet, so the documented
-// defaults apply and are reported back through the same status projection.
+// system. They live in fishing.operator_settings once the console saves them;
+// the documented defaults apply until then.
 const (
-	legacyFeedbackMaxLen   = 1000
-	legacyFeedbackKeep     = 500
-	legacyFeedbackCDHours  = 24
-	legacyFeedbackSkipCost = 10000
+	legacyFeedbackMaxLen          = 1000
+	legacyFeedbackKeep            = 500
+	legacyFeedbackCDHoursDefault  = 24
+	legacyFeedbackSkipCostDefault = 10000
 )
 
 type legacySubscriptionBase struct {
@@ -39,7 +39,27 @@ type legacySubscriptionBase struct {
 	Part string `json:"part"`
 }
 
-func legacyFeedbackCD() time.Duration { return time.Duration(legacyFeedbackCDHours) * time.Hour }
+// legacyFeedbackConfig resolves the effective cooldown length and skip cost.
+func (a *API) legacyFeedbackConfig(ctx context.Context) (float64, int64) {
+	hours, cost := float64(legacyFeedbackCDHoursDefault), int64(legacyFeedbackSkipCostDefault)
+	var stored struct {
+		CDHours  *float64 `json:"cdHours"`
+		SkipCost *int64   `json:"skipCost"`
+	}
+	if a.legacyAdminSetting(ctx, "feedback", &stored) == nil {
+		if stored.CDHours != nil && *stored.CDHours >= 0 && *stored.CDHours <= 8760 {
+			hours = *stored.CDHours
+		}
+		if stored.SkipCost != nil && *stored.SkipCost >= 0 && *stored.SkipCost <= 1e12 {
+			cost = *stored.SkipCost
+		}
+	}
+	return hours, cost
+}
+
+func legacyFeedbackCD(hours float64) time.Duration {
+	return time.Duration(math.Round(hours * float64(time.Hour)))
+}
 
 // legacyFeedbackStateOf mirrors the original feedbackStatusOf(key); the HTTP
 // handler of the same name lives in this file's route registration.
@@ -58,12 +78,13 @@ func (a *API) legacyFeedbackStateOf(ctx context.Context, owner int64) (map[strin
 	if remaining < 0 {
 		remaining = 0
 	}
+	hours, cost := a.legacyFeedbackConfig(ctx)
 	return map[string]any{
 		"nextAt":      next,
 		"ready":       remaining == 0,
 		"remainingMs": remaining,
-		"skipCost":    legacyFeedbackSkipCost,
-		"cdHours":     math.Round(legacyFeedbackCDHours*100) / 100,
+		"skipCost":    cost,
+		"cdHours":     math.Round(hours*100) / 100,
 	}, nil
 }
 
@@ -298,6 +319,7 @@ func (a *API) legacyFeedbackSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	cooldownHours, skipCost := a.legacyFeedbackConfig(ctx)
 	status, err := a.legacyFeedbackStateOf(ctx, session.AccountID)
 	if err != nil {
 		failure(w, err)
@@ -305,7 +327,7 @@ func (a *API) legacyFeedbackSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	if ready, _ := status["ready"].(bool); !ready {
 		remaining, _ := status["remainingMs"].(int64)
-		message := "冷却中，" + strconv.FormatInt((remaining+59999)/60000, 10) + " 分钟后可再次提交（或花 " + strconv.Itoa(legacyFeedbackSkipCost) + " 金币立即结束冷却）"
+		message := "冷却中，" + strconv.FormatInt((remaining+59999)/60000, 10) + " 分钟后可再次提交（或花 " + strconv.FormatInt(skipCost, 10) + " 金币立即结束冷却）"
 		write(w, 429, map[string]any{"error": message, "status": status})
 		return
 	}
@@ -345,7 +367,7 @@ func (a *API) legacyFeedbackSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO fishing.feedback_cooldowns(account_id,next_at,last_at) VALUES($1,clock_timestamp()+$2::interval,clock_timestamp())
- ON CONFLICT(account_id) DO UPDATE SET next_at=excluded.next_at,last_at=excluded.last_at`, session.AccountID, legacyFeedbackCD().String()); err != nil {
+ ON CONFLICT(account_id) DO UPDATE SET next_at=excluded.next_at,last_at=excluded.last_at`, session.AccountID, legacyFeedbackCD(cooldownHours).String()); err != nil {
 		failure(w, identity.ErrStorage)
 		return
 	}
@@ -374,6 +396,7 @@ func (a *API) legacyFeedbackSkip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	_, skipCost := a.legacyFeedbackConfig(ctx)
 	status, err := a.legacyFeedbackStateOf(ctx, session.AccountID)
 	if err != nil {
 		failure(w, err)
@@ -388,8 +411,8 @@ func (a *API) legacyFeedbackSkip(w http.ResponseWriter, r *http.Request) {
 		failure(w, identity.ErrStorage)
 		return
 	}
-	if coins < legacyFeedbackSkipCost {
-		legacyTradeError(w, 400, "金币不足（需 "+strconv.Itoa(legacyFeedbackSkipCost)+"）")
+	if coins < skipCost {
+		legacyTradeError(w, 400, "金币不足（需 "+strconv.FormatInt(skipCost, 10)+"）")
 		return
 	}
 	// Charging the fee and clearing the cooldown share one asset transaction so a
@@ -397,9 +420,9 @@ func (a *API) legacyFeedbackSkip(w http.ResponseWriter, r *http.Request) {
 	sessionCtx := assets.WithSession(ctx, session.AccountID, session.Hash, false)
 	result, err := assets.New(a.pool).Run(sessionCtx, assets.Command{
 		ActorID: session.AccountID, RequestKey: legacyMarketKey("legacy:feedback:skip"), Kind: "feedback_skip",
-		RuleVersion: "legacy-feedback-v1", Players: []int64{session.AccountID}, Input: legacyFeedbackSkipCost,
+		RuleVersion: "legacy-feedback-v1", Players: []int64{session.AccountID}, Input: skipCost,
 	}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
-		if err := t.Coins(ctx, session.AccountID, -legacyFeedbackSkipCost); err != nil {
+		if err := t.Coins(ctx, session.AccountID, -skipCost); err != nil {
 			return assets.Result{}, err
 		}
 		if _, err := t.SQL().Exec(ctx, `UPDATE fishing.feedback_cooldowns SET next_at=clock_timestamp() WHERE account_id=$1`, session.AccountID); err != nil {
@@ -410,7 +433,7 @@ func (a *API) legacyFeedbackSkip(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var rejection assets.Rejection
 		if errors.As(err, &rejection) && string(rejection) == "insufficient_funds" {
-			legacyTradeError(w, 400, "金币不足（需 "+strconv.Itoa(legacyFeedbackSkipCost)+"）")
+			legacyTradeError(w, 400, "金币不足（需 "+strconv.FormatInt(skipCost, 10)+"）")
 			return
 		}
 		a.legacyTradeWriteFailure(w, err, legacyTradeState{})
@@ -420,7 +443,7 @@ func (a *API) legacyFeedbackSkip(w http.ResponseWriter, r *http.Request) {
 	// an error, so a raced balance check still surfaces as the legacy text.
 	if result.Status != "skipped" {
 		if result.Status == "insufficient_funds" {
-			legacyTradeError(w, 400, "金币不足（需 "+strconv.Itoa(legacyFeedbackSkipCost)+"）")
+			legacyTradeError(w, 400, "金币不足（需 "+strconv.FormatInt(skipCost, 10)+"）")
 			return
 		}
 		a.legacyTradeWriteFailure(w, assets.Rejection(result.Status), legacyTradeState{})

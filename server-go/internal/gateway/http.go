@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fishing.local/server/internal/modules/identity"
@@ -26,6 +27,26 @@ type API struct {
 	limits   map[string]bucket
 	streams  chan struct{}
 	location *time.Location
+	// started and the counters behind the console overview and netstats panels.
+	// The original tracked the same numbers in process memory; they reset on
+	// restart here too.
+	started      time.Time
+	apiReqs      atomic.Int64
+	apiBytes     atomic.Int64
+	sseMsgs      atomic.Int64
+	sseWrites    atomic.Int64
+	sseBytes     atomic.Int64
+	regAttempts  atomic.Int64
+	regCreated   atomic.Int64
+	regRejected  atomic.Int64
+	regDuplicate atomic.Int64
+	regLimited   atomic.Int64
+	// views holds the legacy player-list viewports registered through
+	// POST /api/players/view, keyed by account. It is per-process state: the
+	// single-role deployment is the supported layout, a multi-process split
+	// would need to share it.
+	viewMu sync.Mutex
+	views  map[int64]legacyPlayersView
 }
 type bucket struct {
 	start time.Time
@@ -33,7 +54,7 @@ type bucket struct {
 }
 
 func New(pool *pgxpool.Pool, mfaKey []byte, locations ...*time.Location) http.Handler {
-	a := &API{pool: pool, identity: identity.New(pool, mfaKey), limits: map[string]bucket{}, streams: make(chan struct{}, 128)}
+	a := &API{pool: pool, identity: identity.New(pool, mfaKey), limits: map[string]bucket{}, streams: make(chan struct{}, 128), views: map[int64]legacyPlayersView{}, started: time.Now()}
 	a.location = time.Local
 	if len(locations) > 0 && locations[0] != nil {
 		a.location = locations[0]
@@ -109,6 +130,26 @@ func New(pool *pgxpool.Pool, mfaKey []byte, locations ...*time.Location) http.Ha
 	r.Get("/api/players/page", a.legacyPlayersPage)
 	r.Post("/api/players/view", a.legacyPlayersView)
 	r.Post("/api/players/rod", a.legacyPlayersRod)
+	r.Get("/api/admin/overview", a.legacyAdminOverview)
+	r.Get("/api/admin/stats", a.legacyAdminStats)
+	r.Get("/api/admin/netstats", a.legacyAdminNetstats)
+	r.Get("/api/admin/security", a.legacyAdminSecurity)
+	r.Get("/api/admin/registration/stats", a.legacyAdminRegistrationStats)
+	r.Get("/api/admin/users", a.legacyAdminUsers)
+	r.Post("/api/admin/users/update", a.legacyAdminUserUpdate)
+	r.Post("/api/admin/users/ban", a.legacyAdminUserBan)
+	r.Post("/api/admin/users/setadmin", a.legacyAdminUserSetAdmin)
+	r.Post("/api/admin/users/delete", a.legacyAdminUserDelete)
+	r.Get("/api/admin/feedback", a.legacyAdminFeedback)
+	r.Post("/api/admin/feedback/status", a.legacyAdminFeedbackStatus)
+	r.Post("/api/admin/feedback/del", a.legacyAdminFeedbackDelete)
+	r.Post("/api/admin/feedback/reward", a.legacyAdminFeedbackReward)
+	r.Post("/api/admin/feedback/cfg", a.legacyAdminFeedbackConfig)
+	r.Get("/api/wiki/content", a.legacyWikiContent)
+	r.Get("/api/wiki/guides", a.legacyWikiGuides)
+	r.Get("/api/wiki/guides/session", a.legacyWikiGuideSession)
+	r.Get("/api/wiki/guides/{id}", a.legacyWikiGuideDetail)
+	r.Get("/api/wiki/simulator/inventory", a.legacyWikiSimulatorInventory)
 	r.Post("/api/mall/buy", a.legacyMallBuy)
 	r.Post("/api/bd/set", a.legacyBdSet)
 	r.Get("/events", a.legacyEvents)
@@ -217,6 +258,14 @@ func (a *API) limited(r *http.Request) bool {
 }
 func (a *API) security(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The console netstats panel reports API traffic; SSE responses are
+		// counted per frame by the stream handlers instead.
+		if r.URL.Path != "/events" && r.URL.Path != "/api/v1/events" {
+			a.apiReqs.Add(1)
+			counter := &legacyCountingWriter{ResponseWriter: w}
+			w = counter
+			defer func() { a.apiBytes.Add(counter.written) }()
+		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -243,6 +292,9 @@ func (a *API) security(next http.Handler) http.Handler {
 		}
 		if strings.HasSuffix(r.URL.Path, "/login") || r.URL.Path == "/api/register" {
 			if a.limited(r) {
+				if r.URL.Path == "/api/register" {
+					a.regLimited.Add(1)
+				}
 				failure(w, identity.ErrBusy)
 				return
 			}
@@ -250,6 +302,22 @@ func (a *API) security(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// legacyCountingWriter tallies response bytes for the console netstats panel.
+// Unwrap keeps http.ResponseController (write deadlines and flushing) working
+// for the SSE handlers.
+type legacyCountingWriter struct {
+	http.ResponseWriter
+	written int64
+}
+
+func (w *legacyCountingWriter) Write(p []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(p)
+	w.written += int64(n)
+	return n, err
+}
+
+func (w *legacyCountingWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	d := json.NewDecoder(r.Body)
@@ -304,15 +372,22 @@ func loginResponse(w http.ResponseWriter, r *http.Request, result identity.Login
 	write(w, 200, map[string]any{"ok": true, "token": value, "username": result.Session.Username, "name": result.Session.Name, "admin": result.Session.Admin})
 }
 func (a *API) register(w http.ResponseWriter, r *http.Request) {
+	a.regAttempts.Add(1)
 	var in identity.Registration
 	if !decode(w, r, &in) {
+		a.regRejected.Add(1)
 		return
 	}
 	result, err := a.identity.Register(r.Context(), in)
 	if err != nil {
+		a.regRejected.Add(1)
+		if errors.Is(err, identity.ErrExists) {
+			a.regDuplicate.Add(1)
+		}
 		failure(w, err)
 		return
 	}
+	a.regCreated.Add(1)
 	loginResponse(w, r, result)
 }
 func (a *API) login(w http.ResponseWriter, r *http.Request) {

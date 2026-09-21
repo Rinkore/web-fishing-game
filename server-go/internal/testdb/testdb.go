@@ -164,8 +164,13 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.market_orders TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.market_order_equipment,fishing.market_fills,fishing.market_charges TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant order permissions")
 	}
-	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.subscription_settings,fishing.feedback_cooldowns TO "+quote(role)+"; GRANT SELECT,INSERT,DELETE ON fishing.feedback_entries TO "+quote(role)); err != nil {
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.subscription_settings,fishing.feedback_cooldowns,fishing.operator_settings TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.feedback_entries TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant notification permissions")
+	}
+	// The console audit table is append only for the application role; the
+	// enrollment trail stays out of its reach on purpose.
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT ON fishing.admin_audit TO "+quote(role)+"; GRANT SELECT,INSERT,DELETE ON fishing.activity_samples TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant operator console permissions")
 	}
 	appConfig.ConnConfig.User = role
 	appConfig.ConnConfig.Password = password

@@ -50,7 +50,13 @@ func (a *API) events(w http.ResponseWriter, r *http.Request) {
 		if _, err := fmt.Fprint(w, text); err != nil {
 			return false
 		}
-		return controller.Flush() == nil
+		if controller.Flush() != nil {
+			return false
+		}
+		a.sseMsgs.Add(1)
+		a.sseWrites.Add(1)
+		a.sseBytes.Add(int64(len(text)))
+		return true
 	}
 	if raw == "" {
 		last = current

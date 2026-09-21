@@ -11,7 +11,9 @@ import (
 
 	"fishing.local/server/internal/modules/economy"
 	"fishing.local/server/internal/modules/fishing"
+	"fishing.local/server/internal/modules/identity"
 	"fishing.local/server/internal/modules/market"
+	"fishing.local/server/internal/modules/operations"
 	"fishing.local/server/internal/modules/trade"
 	"fishing.local/server/internal/platform/config"
 	"fishing.local/server/internal/platform/httpserver"
@@ -61,12 +63,16 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 	}
 	work, stopWork := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	workers.Add(5)
+	workers.Add(7)
 	go func() { defer workers.Done(); fishing.New(pool).Run(work, logger) }()
 	go func() { defer workers.Done(); fishing.NewLiveNative(pool, c.Location).Run(work, logger) }()
 	go func() { defer workers.Done(); market.New(pool).RunExpiry(work, logger) }()
 	go func() { defer workers.Done(); trade.New(pool).Run(work, logger) }()
 	go func() { defer workers.Done(); economy.New(pool, catalog).Run(work, logger) }()
+	// Operator console upkeep: timed bans expire and the overview heat map keeps
+	// sampling the server.
+	go func() { defer workers.Done(); identity.New(pool, c.MFAEncryptionKey).RunBanExpiry(work, logger) }()
+	go func() { defer workers.Done(); operations.New(pool).RunStatsSampler(work, logger) }()
 	defer func() { stopWork(); workers.Wait() }()
 	logger.Info("server_started", "address", listener.Addr().String(), "role", c.Role, "node_id", c.NodeID, "stage", "infrastructure")
 	return httpserver.Serve(ctx, listener, health, handler, c.ShutdownTimeout, logger)

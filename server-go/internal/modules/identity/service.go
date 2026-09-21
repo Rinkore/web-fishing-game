@@ -124,13 +124,16 @@ func (s *Service) Register(ctx context.Context, in Registration) (LoginResult, e
 }
 
 // Attempt limits persist across process restarts and concurrent login workers.
-func (s *Service) attempt(ctx context.Context, key string) ([32]byte, error) {
-	digest := sha256.Sum256([]byte(key))
+// The realm and username are stored next to the hash so the operator console can
+// name the account behind a locked key without reversing it.
+func (s *Service) attempt(ctx context.Context, realm, username string) ([32]byte, error) {
+	digest := sha256.Sum256([]byte(realm + username))
 	var allowed bool
-	err := s.pool.QueryRow(ctx, `INSERT INTO fishing.auth_attempts(key_hash,failures) VALUES($1,1)
+	err := s.pool.QueryRow(ctx, `INSERT INTO fishing.auth_attempts(key_hash,failures,realm,username) VALUES($1,1,$2,$3)
  ON CONFLICT(key_hash) DO UPDATE SET failures=CASE WHEN fishing.auth_attempts.window_start<clock_timestamp()-interval '1 minute' THEN 1 ELSE fishing.auth_attempts.failures+1 END,
- window_start=CASE WHEN fishing.auth_attempts.window_start<clock_timestamp()-interval '1 minute' THEN clock_timestamp() ELSE fishing.auth_attempts.window_start END
- RETURNING failures<=30 AND locked_until<=clock_timestamp()`, digest[:]).Scan(&allowed)
+ window_start=CASE WHEN fishing.auth_attempts.window_start<clock_timestamp()-interval '1 minute' THEN clock_timestamp() ELSE fishing.auth_attempts.window_start END,
+ realm=excluded.realm,username=excluded.username
+ RETURNING failures<=30 AND locked_until<=clock_timestamp()`, digest[:], realm, username).Scan(&allowed)
 	if err != nil {
 		return digest, ErrStorage
 	}
@@ -155,7 +158,7 @@ func (s *Service) Login(ctx context.Context, in Login) (LoginResult, error) {
 	if in.Admin {
 		realm = "admin:"
 	}
-	attempt, err := s.attempt(ctx, realm+username)
+	attempt, err := s.attempt(ctx, realm, username)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -260,7 +263,7 @@ func (s *Service) Authenticate(ctx context.Context, token string, admin bool) (S
 	}
 	h := sha256.Sum256([]byte(token))
 	out := Session{Hash: h, Admin: admin}
-	err := s.pool.QueryRow(ctx, `SELECT i.account_id,i.username,i.display_name FROM fishing.auth_sessions s JOIN fishing.identities i ON i.account_id=s.account_id WHERE s.token_hash=$1 AND s.admin=$2 AND s.expires_at>clock_timestamp() AND NOT i.banned AND (NOT s.admin OR i.admin)`, h[:], admin).Scan(&out.AccountID, &out.Username, &out.Name)
+	err := s.pool.QueryRow(ctx, `SELECT i.account_id,i.username,i.display_name FROM fishing.auth_sessions s JOIN fishing.identities i ON i.account_id=s.account_id WHERE s.token_hash=$1 AND s.admin=$2 AND s.expires_at>clock_timestamp() AND NOT i.banned AND NOT i.retired AND (NOT s.admin OR i.admin)`, h[:], admin).Scan(&out.AccountID, &out.Username, &out.Name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, ErrCredentials
 	}

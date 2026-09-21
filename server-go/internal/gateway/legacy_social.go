@@ -516,31 +516,47 @@ func (a *API) legacyFriendChange(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// legacyPlayersPage serves GET /api/players/page.
-func (a *API) legacyPlayersPage(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.legacySession(w, r); !ok {
+// legacyPlayersView is one registered player-list viewport: the page and the
+// filters the client is looking at, so the stream only projects that slice.
+type legacyPlayersView struct {
+	Page   int
+	Size   int
+	Query  string
+	Ground string
+	Spot   string
+}
+
+func (a *API) legacyViewport(owner int64) (legacyPlayersView, bool) {
+	a.viewMu.Lock()
+	defer a.viewMu.Unlock()
+	view, ok := a.views[owner]
+	return view, ok
+}
+
+func (a *API) setLegacyViewport(owner int64, view legacyPlayersView, clear bool) {
+	a.viewMu.Lock()
+	defer a.viewMu.Unlock()
+	if clear {
+		delete(a.views, owner)
 		return
 	}
-	c, err := a.catalog(r.Context())
+	a.views[owner] = view
+}
+
+// legacyPlayersPayload projects one player-list page. It is shared by the HTTP
+// contract and the playersPage stream push.
+func (a *API) legacyPlayersPayload(ctx context.Context, c *rules.Catalog, view legacyPlayersView) (map[string]any, error) {
+	online, err := a.legacyOnlinePlayers(ctx)
 	if err != nil {
-		failure(w, err)
-		return
+		return nil, err
 	}
-	online, err := a.legacyOnlinePlayers(r.Context())
+	locations, err := a.legacyLocationName(ctx, c, online)
 	if err != nil {
-		failure(w, err)
-		return
-	}
-	locations, err := a.legacyLocationName(r.Context(), c, online)
-	if err != nil {
-		failure(w, err)
-		return
+		return nil, err
 	}
 	size := 30
-	if raw := strings.TrimSpace(r.URL.Query().Get("size")); raw != "" {
-		if value, err := strconv.Atoi(raw); err == nil {
-			size = value
-		}
+	if view.Size > 0 {
+		size = view.Size
 	}
 	if size < 5 {
 		size = 5
@@ -548,16 +564,15 @@ func (a *API) legacyPlayersPage(w http.ResponseWriter, r *http.Request) {
 	if size > 100 {
 		size = 100
 	}
-	keyword := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	keyword := strings.ToLower(strings.TrimSpace(view.Query))
 	if len(keyword) > 40 {
 		keyword = keyword[:40]
 	}
-	ground, err := a.legacyGroundFilter(r.Context(), r.URL.Query().Get("ground"))
+	ground, err := a.legacyGroundFilter(ctx, view.Ground)
 	if err != nil {
-		failure(w, err)
-		return
+		return nil, err
 	}
-	spot := r.URL.Query().Get("spot")
+	spot := view.Spot
 	totalOnline := len(online)
 	filtered := []legacyOnlinePlayer{}
 	for _, player := range online {
@@ -571,7 +586,7 @@ func (a *API) legacyPlayersPage(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		player.LocationName = locations[player.AccountID]
-		if rewritten, ok := a.legacySeaGround(r.Context(), player.GroundID); ok {
+		if rewritten, ok := a.legacySeaGround(ctx, player.GroundID); ok {
 			player.GroundID = rewritten
 		}
 		filtered = append(filtered, player)
@@ -581,7 +596,7 @@ func (a *API) legacyPlayersPage(w http.ResponseWriter, r *http.Request) {
 	if len(filtered) > 0 {
 		pages = (len(filtered) + size - 1) / size
 	}
-	page := legacyPageParam(r.URL.Query().Get("page"), pages)
+	page := legacyPageParam(strconv.Itoa(view.Page), pages)
 	start := (page - 1) * size
 	if start > len(filtered) {
 		start = len(filtered)
@@ -594,10 +609,45 @@ func (a *API) legacyPlayersPage(w http.ResponseWriter, r *http.Request) {
 	for _, player := range filtered[start:end] {
 		listed = append(listed, player.view())
 	}
-	write(w, 200, map[string]any{
+	return map[string]any{
 		"ok": true, "page": page, "pages": pages, "size": size,
 		"total": len(filtered), "totalOnline": totalOnline, "players": listed,
+	}, nil
+}
+
+// legacyPlayersPage serves GET /api/players/page.
+func (a *API) legacyPlayersPage(w http.ResponseWriter, r *http.Request) {
+	if _, ok := a.legacySession(w, r); !ok {
+		return
+	}
+	c, err := a.catalog(r.Context())
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	size := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("size")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			size = value
+		}
+	}
+	page := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("page")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			page = value
+		}
+	}
+	payload, err := a.legacyPlayersPayload(r.Context(), c, legacyPlayersView{
+		Page: page, Size: size,
+		Query:  r.URL.Query().Get("q"),
+		Ground: r.URL.Query().Get("ground"),
+		Spot:   r.URL.Query().Get("spot"),
 	})
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	write(w, 200, payload)
 }
 
 // legacyPlayersView serves POST /api/players/view. The original client registers
@@ -605,7 +655,8 @@ func (a *API) legacyPlayersPage(w http.ResponseWriter, r *http.Request) {
 // Go bridge has no per-stream view registry yet, so the request is validated and
 // acknowledged without pushing (pushed stays 0 instead of claiming otherwise).
 func (a *API) legacyPlayersView(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.legacySession(w, r); !ok {
+	session, ok := a.legacySession(w, r)
+	if !ok {
 		return
 	}
 	var in struct {
@@ -619,7 +670,18 @@ func (a *API) legacyPlayersView(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	write(w, 200, map[string]any{"ok": true, "pushed": 0})
+	a.setLegacyViewport(session.AccountID, legacyPlayersView{
+		Page: in.Page, Size: in.Size, Query: in.Q, Ground: in.Ground, Spot: in.Spot,
+	}, in.Clear)
+	// The original server reported how many of the caller's SSE connections were
+	// registered; the bridge reports the caller's live streams, which is what the
+	// push set will project onto.
+	var pushed int64
+	if err := a.pool.QueryRow(r.Context(), `SELECT count(*) FROM fishing.gateway_streams WHERE owner_id=$1 AND expires_at>clock_timestamp()`, session.AccountID).Scan(&pushed); err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	write(w, 200, map[string]any{"ok": true, "pushed": pushed})
 }
 
 // legacyPlayersRod serves POST /api/players/rod: the read-only rod view of

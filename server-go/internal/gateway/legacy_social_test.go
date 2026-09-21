@@ -232,9 +232,10 @@ func TestIntegrationLegacySocial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The viewport registration is acknowledged without pretending to push.
+	// The viewport registration reports the caller's live stream leases, which is
+	// what the push projection will serve playersPage to.
 	code, viewport := do("POST", "/api/players/view", `{"page":1,"size":30,"q":"","ground":null,"spot":null,"clear":false}`, tokens["social_a"])
-	if code != 200 || viewport["ok"] != true || viewport["pushed"] != float64(0) {
+	if code != 200 || viewport["ok"] != true || viewport["pushed"] != float64(1) {
 		t.Fatalf("players view: %d %v", code, viewport)
 	}
 

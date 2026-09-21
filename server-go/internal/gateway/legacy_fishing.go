@@ -119,7 +119,13 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 		if _, err := fmt.Fprint(w, text); err != nil {
 			return false
 		}
-		return controller.Flush() == nil
+		if controller.Flush() != nil {
+			return false
+		}
+		a.sseMsgs.Add(1)
+		a.sseWrites.Add(1)
+		a.sseBytes.Add(int64(len(text)))
+		return true
 	}
 	if !send("retry: 3000\n\n") {
 		return
@@ -140,19 +146,13 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// init carries the authoritative snapshot the legacy client needs to render.
+	// Each push projection seeds its own watermark from the same snapshot, so a
+	// change racing init is delivered by the next poll instead of being lost.
 	init := a.legacyInit(r, c, session, open.Generation)
-	// Seed the trade watermark before the snapshot is sent: the client can start
-	// trading as soon as it processes init, and a baseline read taken afterwards
-	// would already include that mutation and swallow its frame. The watcher
-	// primes itself from the same snapshot, so a change racing init is still
-	// delivered by the next poll.
-	tradeRevision, err := a.assetsRevision(r.Context(), session.AccountID)
-	if err != nil {
-		return
+	pushes := a.newLegacyPushes(session.AccountID, c)
+	for key, value := range pushes.init(r.Context()) {
+		init[key] = value
 	}
-	var tradeTicks int
-	trades := a.newLegacyTradeWatcher(r.Context(), session.AccountID)
-	init["trade"] = trades.snapshot(r.Context())
 	if !send("data: " + jsonString(init) + "\n\n") {
 		return
 	}
@@ -183,23 +183,9 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		case <-tradeTick.C:
-			// Every successful trade mutation (invite, respond, offer, confirm,
-			// cancel, and the expiry sweep) is a durable asset command, so it
-			// bumps the participant's assets_rev (internal/modules/assets
-			// command.go). Gating on that revision keeps the unindexed
-			// (a_id=$1 OR b_id=$1) scan off the per-second path, which matters
-			// once the trades table carries history. tradeSafetyNet covers any
-			// transition that would not carry a revision bump.
-			revision, err := a.assetsRevision(r.Context(), session.AccountID)
-			if err != nil {
-				return
-			}
-			if revision == tradeRevision && tradeTicks%5 != 0 {
-				tradeTicks++
-				continue
-			}
-			tradeRevision, tradeTicks = revision, tradeTicks+1
-			for _, frame := range trades.poll(r.Context()) {
+			// Trade, market, friend and viewport projections each keep their own
+			// durable watermark and return nothing when their domain is idle.
+			for _, frame := range pushes.poll(r.Context()) {
 				if !send(frame) {
 					return
 				}
