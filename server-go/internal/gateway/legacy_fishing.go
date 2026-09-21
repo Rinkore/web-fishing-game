@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
+	"strings"
 	"time"
 
 	"fishing.local/server/internal/modules/assets"
@@ -36,6 +36,11 @@ func (a *API) legacyFishingStart(w http.ResponseWriter, r *http.Request) {
 	gen, err := a.activeConnectionGeneration(r.Context(), session.AccountID)
 	if err != nil {
 		failure(w, identity.ErrInvalid)
+		return
+	}
+	in.GroundID, err = a.legacyGroundFilter(r.Context(), in.GroundID)
+	if err != nil {
+		failure(w, identity.ErrStorage)
 		return
 	}
 	svc := fishing.NewLiveNative(a.pool, a.location)
@@ -250,7 +255,7 @@ func (a *API) legacyInit(r *http.Request, c *rules.Catalog, session identity.Ses
 	spotCounts := a.spotCounts(r.Context())
 	init := map[string]any{
 		"type":           "init",
-		"you":            strconv.FormatInt(session.AccountID, 10),
+		"you":            strings.ToLower(session.Username),
 		"feed":           []any{},
 		"features":       profile["features"],
 		"featureOrder":   profile["featureOrder"],
@@ -269,6 +274,10 @@ func (a *API) legacyInit(r *http.Request, c *rules.Catalog, session identity.Ses
 	}
 	status, err := fishing.NewLiveNative(a.pool, a.location).Status(r.Context(), session.AccountID)
 	if err == nil && status["active"] == true {
+		ground, _ := status["groundId"].(string)
+		if rewritten, ok := a.legacySeaGround(r.Context(), ground); ok {
+			status["groundId"] = rewritten
+		}
 		init["resumedFishing"] = map[string]any{
 			"groundId": status["groundId"],
 			"spotId":   status["spotId"],
@@ -295,6 +304,9 @@ func (a *API) groundCounts(ctx context.Context) map[string]int64 {
 		var id string
 		var n int64
 		if rows.Scan(&id, &n) == nil {
+			if rewritten, ok := a.legacySeaGround(ctx, id); ok {
+				id = rewritten
+			}
 			out[id] = n
 		}
 	}
@@ -312,6 +324,9 @@ func (a *API) spotCounts(ctx context.Context) map[string]int64 {
 		var ground, spot string
 		var n int64
 		if rows.Scan(&ground, &spot, &n) == nil {
+			if rewritten, ok := a.legacySeaGround(ctx, ground); ok {
+				ground = rewritten
+			}
 			out[ground+":"+spot] = n
 		}
 	}

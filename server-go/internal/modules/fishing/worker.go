@@ -115,7 +115,7 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 }
 
 func (s *NativeService) Run(ctx context.Context, logger *slog.Logger) {
-	runScheduler(ctx, logger, s.Sweep)
+	s.runWithZoneEvictions(ctx, logger)
 }
 
 func runScheduler(ctx context.Context, logger *slog.Logger, sweep func(context.Context, Cursor, int, int) (Cursor, Batch, error)) {

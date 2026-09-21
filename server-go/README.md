@@ -60,6 +60,19 @@ $env:FISHING_GO_TEST_DATABASE_URL = 'postgres://fishing_test_admin:local-test-on
 & "$env:LOCALAPPDATA\FishingGoToolchains\go1.27.1\go\bin\go.exe" test -count=1 -timeout=15m ./...
 ```
 
+## 原前端浏览器回归
+
+`TestIntegrationLegacyBrowserConfigBannerParty` 使用真实 PostgreSQL、原后台和玩家页面，验证公告发布/停止、catalog/功能更新、管理员解散编队以及玩家 SSE。默认 Go 测试跳过浏览器；显式提供安装了 `playwright-core` 的 Node 环境和本机 Chrome 后执行：
+
+```powershell
+# 保留上文隔离测试数据库的 FISHING_GO_TEST_DATABASE_URL。
+$env:FISHING_GO_BROWSER_NODE = 'C:\path\to\node.exe'
+$env:NODE_PATH = 'C:\path\to\node_modules'
+go test ./internal/gateway -run TestIntegrationLegacyBrowserConfigBannerParty -v -count=1 -timeout=2m
+```
+
+浏览器中的测试账号与服务只存在于临时夹具，凭据通过标准输入传递。此项是定向浏览器回归，完整 Node/Go 浏览器 A/B 仍见 REMAINING 清单。
+
 ## 启动基础服务
 
 在 server-go 中设置隔离开发数据库连接（下列凭据仅为占位符）：

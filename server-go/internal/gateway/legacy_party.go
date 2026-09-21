@@ -7,6 +7,7 @@ import (
 
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/identity"
+	"fishing.local/server/internal/modules/sea"
 	"fishing.local/server/internal/modules/social"
 	"github.com/jackc/pgx/v5"
 )
@@ -35,27 +36,33 @@ func (a *API) legacyPartyView(r *http.Request, owner int64) (map[string]any, err
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]any{"ok": true, "memberZones": v["memberZones"], "invite": nil}
+	shared, _ := v["memberZones"].([]sea.SharedZone)
+	zones, err := a.legacySharedZones(ctx, shared)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{"ok": true, "memberZones": zones, "invite": nil}
 	party, _ := v["party"].(social.Party)
 	if party.ID > 0 {
 		members := []map[string]any{}
-		var leaderName string
-		rows, err := a.pool.Query(ctx, `SELECT m.owner_id,i.display_name,EXISTS(SELECT 1 FROM fishing.gateway_streams g WHERE g.owner_id=m.owner_id AND g.expires_at>clock_timestamp()) FROM fishing.party_members m JOIN fishing.identities i ON i.account_id=m.owner_id WHERE m.party_id=$1 ORDER BY m.joined_revision,m.owner_id`, party.ID)
+		var leaderName, leaderKey string
+		rows, err := a.pool.Query(ctx, `SELECT m.owner_id,lower(i.username),i.display_name,EXISTS(SELECT 1 FROM fishing.gateway_streams g WHERE g.owner_id=m.owner_id AND g.expires_at>clock_timestamp()) FROM fishing.party_members m JOIN fishing.identities i ON i.account_id=m.owner_id WHERE m.party_id=$1 ORDER BY m.joined_revision,m.owner_id`, party.ID)
 		if err != nil {
 			return nil, identity.ErrStorage
 		}
 		for rows.Next() {
 			var id int64
-			var name string
+			var name, key string
 			var online bool
-			if rows.Scan(&id, &name, &online) != nil {
+			if rows.Scan(&id, &key, &name, &online) != nil {
 				rows.Close()
 				return nil, identity.ErrStorage
 			}
 			if id == party.LeaderID {
 				leaderName = name
+				leaderKey = key
 			}
-			members = append(members, map[string]any{"id": strconv.FormatInt(id, 10), "name": name, "online": online})
+			members = append(members, map[string]any{"id": key, "name": name, "online": online})
 		}
 		if rows.Err() != nil {
 			rows.Close()
@@ -66,7 +73,7 @@ func (a *API) legacyPartyView(r *http.Request, owner int64) (map[string]any, err
 			leaderName = strconv.FormatInt(party.LeaderID, 10)
 		}
 		out["party"] = map[string]any{
-			"id": party.ID, "leader": strconv.FormatInt(party.LeaderID, 10), "leaderName": leaderName,
+			"id": party.ID, "leader": leaderKey, "leaderName": leaderName,
 			"members": members, "max": 4,
 		}
 	} else {
@@ -100,7 +107,7 @@ func (a *API) legacyPartyChange(w http.ResponseWriter, r *http.Request) {
 	case float64:
 		target = strconv.FormatInt(int64(v), 10)
 	}
-	cmd := social.PartyCommand{ActorID: session.AccountID, RequestKey: "legacy:party:" + raw.Action + ":" + strconv.FormatInt(timeNowMS(), 10), Action: raw.Action}
+	cmd := social.PartyCommand{ActorID: session.AccountID, RequestKey: legacyMarketKey("legacy:party:" + raw.Action), Action: raw.Action}
 	switch raw.Action {
 	case "invite", "kick":
 		targetID, err := a.accountIDByName(r, target)

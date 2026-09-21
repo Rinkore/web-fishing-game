@@ -79,7 +79,7 @@ func TestIntegrationLegacyParty(t *testing.T) {
 		t.Fatalf("party create: %d %v", code, created)
 	}
 	party := created["party"].(map[string]any)
-	if party["id"] == nil || party["leaderName"] != "party_a" || len(party["members"].([]any)) != 1 {
+	if party["id"] == nil || party["leader"] != "party_a" || party["members"].([]any)[0].(map[string]any)["id"] != "party_a" || party["leaderName"] != "party_a" || len(party["members"].([]any)) != 1 {
 		t.Fatalf("party shape: %v", party)
 	}
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -112,7 +111,7 @@ func TestIntegrationLegacySea(t *testing.T) {
 		t.Fatalf("voyage zones: %v", zones)
 	}
 	zone := zones[0].(map[string]any)
-	if zone["groundId"] != "sea:"+strconv.FormatInt(session.AccountID, 10)+":"+zone["id"].(string) {
+	if zone["groundId"] != "sea:legacy_sea:"+zone["id"].(string) {
 		t.Fatalf("zone groundId: %v", zone)
 	}
 

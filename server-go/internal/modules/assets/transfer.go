@@ -68,6 +68,9 @@ func validKey(key string) bool {
 // Automatic commands have deterministic keys. Ordinary commands must not be
 // able to occupy those keys and permanently block a cycle or escrow return.
 func systemKind(key string) string {
+	if strings.HasPrefix(key, "fishing:zone-evict:") {
+		return "fishing_stop"
+	}
 	if strings.HasPrefix(key, "fishing:native-settle:") {
 		return "fishing_settle"
 	}

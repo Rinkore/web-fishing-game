@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -115,6 +116,10 @@ func (a *API) legacySeaView(r *http.Request, c *rules.Catalog, owner int64) (map
 		shipName = shipCfg.Levels[level-1].Name
 	}
 
+	var ownerKey string
+	if err := a.pool.QueryRow(ctx, `SELECT lower(username) FROM fishing.identities WHERE account_id=$1`, owner).Scan(&ownerKey); err != nil {
+		return nil, identity.ErrStorage
+	}
 	zoneList := []map[string]any{}
 	for _, z := range zones {
 		spots := []map[string]any{}
@@ -122,20 +127,13 @@ func (a *API) legacySeaView(r *http.Request, c *rules.Catalog, owner int64) (map
 			spots = append(spots, map[string]any{"id": s.ID, "name": s.Name, "buffs": s.Buffs, "pool": s.Pool})
 		}
 		zoneList = append(zoneList, map[string]any{
-			"groundId": "sea:" + strconv.FormatInt(owner, 10) + ":" + z.ID, "id": z.ID, "name": z.Name,
+			"groundId": "sea:" + ownerKey + ":" + z.ID, "id": z.ID, "name": z.Name,
 			"mood": z.Mood, "expire": z.Expire, "anchors": z.Anchors, "spots": spots,
 		})
 	}
-	partyZoneList := []map[string]any{}
-	for _, z := range shared {
-		spots := []map[string]any{}
-		for _, s := range z.Spots {
-			spots = append(spots, map[string]any{"id": s.ID, "name": s.Name, "buffs": s.Buffs})
-		}
-		partyZoneList = append(partyZoneList, map[string]any{
-			"owner": z.OwnerID, "ownerName": z.OwnerName, "groundId": z.GroundID,
-			"name": z.Name, "mood": z.Mood, "expire": z.Expire, "spots": spots,
-		})
+	partyZoneList, err := a.legacySharedZones(ctx, shared)
+	if err != nil {
+		return nil, err
 	}
 	questList := []map[string]any{}
 	for _, q := range board.Selected {
@@ -209,6 +207,23 @@ func (a *API) legacySeaView(r *http.Request, c *rules.Catalog, owner int64) (map
 			},
 		},
 	}, nil
+}
+
+func (a *API) legacySharedZones(ctx context.Context, zones []sea.SharedZone) ([]map[string]any, error) {
+	out := []map[string]any{}
+	keys := map[int64]string{}
+	for _, z := range zones {
+		key, ok := keys[z.OwnerID]
+		if !ok {
+			if err := a.pool.QueryRow(ctx, `SELECT lower(username) FROM fishing.identities WHERE account_id=$1`, z.OwnerID).Scan(&key); err != nil {
+				return nil, identity.ErrStorage
+			}
+			keys[z.OwnerID] = key
+		}
+		out = append(out, map[string]any{"owner": key, "ownerName": z.OwnerName, "groundId": "sea:" + key + ":" + z.ID,
+			"id": z.ID, "name": z.Name, "mood": z.Mood, "expire": z.Expire, "spots": z.Spots})
+	}
+	return out, nil
 }
 
 func shipNames(cfg legacyShipCfg) []string {

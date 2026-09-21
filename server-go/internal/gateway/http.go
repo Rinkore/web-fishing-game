@@ -146,6 +146,8 @@ func New(pool *pgxpool.Pool, mfaKey []byte, locations ...*time.Location) http.Ha
 	r.Post("/api/admin/feedback/reward", a.legacyAdminFeedbackReward)
 	r.Post("/api/admin/feedback/cfg", a.legacyAdminFeedbackConfig)
 	r.Get("/api/admin/banner", a.legacyAdminBanner)
+	r.Get("/api/admin/parties", a.legacyAdminParties)
+	r.Post("/api/admin/party/disband", a.legacyAdminPartyDisband)
 	r.Post("/api/admin/banner/add", a.legacyBannerChange("add"))
 	r.Post("/api/admin/banner/remove", a.legacyBannerChange("remove"))
 	r.Post("/api/admin/banner/move", a.legacyBannerChange("move"))

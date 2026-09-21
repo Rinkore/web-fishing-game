@@ -155,6 +155,9 @@ func (s *NativeService) Start(ctx context.Context, r NativeStart) (assets.Result
 }
 
 func (s *NativeService) Stop(ctx context.Context, r Stop) (assets.Result, error) {
+	if zoneEvictionKey(r.RequestKey) {
+		return assets.Result{}, assets.ErrInvalid
+	}
 	if s.live {
 		c, _, err := catalog.Current(ctx, s.pool)
 		if err != nil {

@@ -70,12 +70,14 @@ func (p *legacyPersonalPush) poll(ctx context.Context) ([]string, error) {
 	}
 	frames := []string{}
 	for _, e := range page {
-		if e.kind != "fishing_settle" {
+		if e.kind != "fishing_settle" && e.kind != "fishing_stop" {
 			continue
 		}
 		var payload struct {
 			Result struct {
+				Status  string `json:"status"`
 				Details struct {
+					Reason     string        `json:"reason"`
 					Catches    []rules.Catch `json:"catches"`
 					GroundID   string        `json:"groundId"`
 					SpotID     string        `json:"spotId"`
@@ -89,6 +91,17 @@ func (p *legacyPersonalPush) poll(ctx context.Context) ([]string, error) {
 			return nil, err
 		}
 		d := payload.Result.Details
+		if payload.Result.Status == "stopped" && (d.Reason == "sea_membership_required" || d.Reason == "sea_zone_expired") {
+			msg := "⚓ 你已不在该编队，共享海域权限已收回，已被送回岸边。"
+			if d.Reason == "sea_zone_expired" {
+				msg = "⚓ 临时海域已到期，已停止钓鱼并送回岸边。"
+			}
+			frames = append(frames, legacyFrame(map[string]any{"type": "seaEvict", "msg": msg}))
+			continue
+		}
+		if e.kind != "fishing_settle" {
+			continue
+		}
 		at := d.CaughtAt
 		if at == 0 {
 			at = e.at.UnixMilli()

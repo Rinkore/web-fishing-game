@@ -12,6 +12,7 @@ import (
 	"fishing.local/server/internal/modules/identity"
 	"fishing.local/server/internal/modules/social"
 	"fishing.local/server/internal/rules"
+	"github.com/jackc/pgx/v5"
 )
 
 // Legacy friends and player-list bridge. The durable social module owns the
@@ -188,6 +189,9 @@ func (a *API) legacyGroundFilter(ctx context.Context, ground string) (string, er
 	}
 	var owner int64
 	if err := a.pool.QueryRow(ctx, `SELECT account_id FROM fishing.identities WHERE lower(username)=$1`, strings.ToLower(parts[0])).Scan(&owner); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return "", err
+		}
 		// An unknown owner cannot match any projected row.
 		return "sea:-1:" + parts[1], nil
 	}

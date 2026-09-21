@@ -42,6 +42,7 @@ func (a *API) newLegacyPushes(owner int64, c *rules.Catalog, personal *legacyPer
 	return &legacyPushSet{parts: []legacyStreamPush{
 		config,
 		&legacyBannerPush{api: a},
+		&legacyPartyPush{api: a, owner: owner},
 		&legacyTradePush{watcher: a.newLegacyTradeWatcher(context.Background(), owner)},
 		market,
 		&legacyFriendPush{api: a, owner: owner},

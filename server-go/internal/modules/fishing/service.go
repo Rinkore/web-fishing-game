@@ -127,6 +127,9 @@ type Stop struct {
 }
 
 func (s *Service) Stop(ctx context.Context, r Stop) (assets.Result, error) {
+	if zoneEvictionKey(r.RequestKey) {
+		return assets.Result{}, assets.ErrInvalid
+	}
 	if r.ActorID <= 0 || r.Generation <= 0 {
 		return assets.Result{}, assets.ErrInvalid
 	}
