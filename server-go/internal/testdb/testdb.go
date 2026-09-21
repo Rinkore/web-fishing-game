@@ -175,6 +175,9 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.registration_limits,fishing.registration_challenges TO "+quote(role)); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.wiki_state,fishing.wiki_guides,fishing.wiki_sections,fishing.wiki_updates,fishing.wiki_revisions TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant Wiki permissions")
+	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,UPDATE ON fishing.banner_state TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.banner_events TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.banner_watchers TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant banner permissions")
 	}

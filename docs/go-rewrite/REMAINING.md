@@ -15,7 +15,7 @@
 | P0 | 个人渔获/资产同步、组件订阅、SSE 分页与重试 | 已完成本轮代码与真库验收：鱼/材料/组件完整操作投影、同快照资产修订、订阅筛选/关闭、市集尾页、好友初始化窗口、反复开钓收竿；Windows 全套及 Linux race/vet 全套通过，验证记录见 DELIVERY |
 | P1 | 其余实时协议与后台配置 | 已接 catalog/原生功能开关到旧 SSE、持久公告队列和停止事件、海域主动驱逐、正常停服维护通知、实时商店价格及材料/组件公共动态；仍缺完整纪录通知和历史动态，以及尚无权威配置源的宝匣保底/经济/自动售出等配置推送；旧浏览器完整更新流程待 P4 |
 | P2 | 剩余 48 个后台接口 | 公告 8 条、编队管理 2 条已接并完成真库验证；其余按下表分组实现；每组须包含 MFA/越权拒绝、事务与审计、输入/错误契约、并发编辑冲突、失败回滚和旧后台浏览器流程 |
-| P3 | 注册挑战、Wiki 投稿/审核 | 注册表单/登录 profile、来源绑定的一次性 proof 和持久配额已接，真库与原浏览器注册验证通过；Wiki 尚未完成：规划攻略/段落/审核结构后接 24h 3 篇、待审 3 篇与自动通过，明确官方正文热更新及现有 SQLite 的后续迁移路径。生产反向代理的可信来源策略需在 P6 单独配置验收 |
+| P3 | 注册挑战、Wiki 投稿/审核 | 注册表单/登录 profile、来源绑定的一次性 proof 和持久配额已接，真库与原浏览器注册验证通过；Wiki 投稿/审核、24h 3 篇、待审 3 篇、自动通过、官方热保存已接入 0026 PostgreSQL 存储，需补真实浏览器 A/B。生产反向代理的可信来源策略需在 P6 单独配置验收 |
 | P4 | 全部已注册接口与原前端 A/B | 真实 Chrome 已验证公告发布/停止、配置与功能更新、管理员解散编队；海域用户名转换已通过 HTTP/SSE 真库验证。完整钓鱼/换装/重连、多标签页、交易和市集、工坊/宝匣、后台与 Wiki A/B 仍未完成；须同依赖/同夹具对比 Node 和 Go 的套件级失败，不套用 v0.13.9 的旧失败数 |
 | P5 | 容量与故障验收 | 未完成：先固定 100 人完整玩法持久磁盘长测，记录 SQL/锁等待/周期延迟/WAL/空间/对账；写入中杀库/杀进程、提交回包丢失、去重恢复；通过后再测 1000/5000 |
 | P6 | 生产迁移与切服 | 仍延期：停服一致快照、可复现导入/对账、生产权限、备份恢复、回滚及切服；测试容器健康和短测不作为生产放行 |
@@ -31,8 +31,8 @@ P1/P2 完成后再冻结 P4/P5 的验收场景。当前个人 SSE 使用权威�
 | 锁定/模拟（5） | POST `admin/ground/lock`、`admin/spot/lock`；GET `admin/loot/spots`；POST `admin/simulate`、`admin/loot/test` |
 | 经济/玩法/纪录（10） | POST `admin/market/return`；GET/POST `admin/market/supply`；POST `admin/market/bulk`、`admin/mall/config`、`admin/smelt/config`、`admin/records/config`、`admin/records/delete`、`admin/records/delone`、`admin/settings` |
 | 快照/回滚（6） | GET/POST `admin/users/snapshot`；GET `admin/users/snapshots`；POST `admin/users/snapshot-now`、`admin/users/rollback`、`admin/snapshot/config` |
-| Wiki 后台（5） | GET/POST `admin/wiki/content`；GET `admin/wiki/guides`；POST `admin/wiki/guides/review`、`admin/wiki/guides/delete` |
-| 玩家 Wiki（3） | POST `wiki/guides/submit`；GET `wiki/guides/my`；POST `wiki/guides/delete` |
+| Wiki 后台（5） | **已接入** GET/POST `admin/wiki/content`；GET `admin/wiki/guides`；POST `admin/wiki/guides/review`、`admin/wiki/guides/delete` |
+| 玩家 Wiki（3） | **已接入** POST `wiki/guides/submit`；GET `wiki/guides/my`；POST `wiki/guides/delete` |
 
 ## 本轮回归范围
 

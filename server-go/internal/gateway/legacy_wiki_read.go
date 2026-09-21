@@ -15,53 +15,41 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Legacy Wiki read-only surface: public content (guides list, guide detail,
-// session probe) and the simulator's read-only inventory projection.
-//
-// The official content is the reviewed build-time snapshot in
-// internal/wiki/content.json, generated from frontend/wiki/content/content.json
-// by tools/go-rewrite/wiki-content.js. Known degradations, all recorded in
-// docs/go-rewrite/DELIVERY.md:
-//
-//   - Player submissions and the operator editor are not bridged yet, so the
-//     user revision is fixed at 0, user guides never appear, and every content
-//     change needs a new build instead of the legacy hot save.
-//   - Revisions are derived from the snapshot bytes rather than a write
-//     counter, so the ETag still changes exactly when the served content does.
-//   - The content timestamp is the newest date inside the snapshot instead of
-//     the legacy import/save timestamp.
-//   - Search folds case over Unicode while SQLite LIKE folds ASCII only, and an
-//     id the legacy path regex would not route answers with the same
-//     "攻略不存在或未公开" body as an unknown id.
-//   - Unauthenticated simulator reads answer with the shared credential failure
-//     (401 invalid_credentials) instead of the legacy body 请先在游戏中登录，
-//     再读取背包; a banned account therefore also answers 401.
-
-// legacyWikiUserRevision stays 0 because no user guide can be stored yet.
-const legacyWikiUserRevision = 0
+// Legacy Wiki public reads and the simulator's read-only inventory projection.
 
 var legacyWikiIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)
 
 // legacyWikiGuideView is the public guide projection. Lists omit sections,
 // exactly like publicGuideMeta in backend/server.js.
 type legacyWikiGuideView struct {
-	ID        string         `json:"id"`
-	Kind      string         `json:"kind"`
-	Status    string         `json:"status"`
-	Title     string         `json:"title"`
-	Category  string         `json:"category"`
-	Summary   string         `json:"summary"`
-	Sections  []wiki.Section `json:"sections,omitempty"`
-	Tags      []string       `json:"tags"`
-	Aliases   []string       `json:"aliases"`
-	UpdatedAt string         `json:"updatedAt"`
+	ID          string         `json:"id"`
+	Kind        string         `json:"kind"`
+	Status      string         `json:"status"`
+	Title       string         `json:"title"`
+	Category    string         `json:"category"`
+	Summary     string         `json:"summary"`
+	Sections    []wiki.Section `json:"sections,omitempty"`
+	Tags        []string       `json:"tags"`
+	Aliases     []string       `json:"aliases"`
+	UpdatedAt   string         `json:"updatedAt"`
+	AuthorName  string         `json:"authorName,omitempty"`
+	SubmittedAt *time.Time     `json:"submittedAt,omitempty"`
 }
 
-func legacyWikiView(guide *wiki.Guide, withSections bool) legacyWikiGuideView {
+func legacyWikiView(guide *wiki.GuideRecord, withSections bool) legacyWikiGuideView {
 	view := legacyWikiGuideView{
 		ID: guide.ID, Kind: guide.Kind, Status: guide.Status, Title: guide.Title,
 		Category: guide.Category, Summary: guide.Summary,
 		Tags: guide.Tags, Aliases: guide.Aliases, UpdatedAt: guide.UpdatedAt,
+	}
+	if guide.Kind == "user" {
+		view.AuthorName = guide.AuthorName
+		view.SubmittedAt = guide.SubmittedAt
+		if guide.ReviewedAt != nil {
+			view.UpdatedAt = guide.ReviewedAt.Format(time.RFC3339Nano)
+		} else if guide.SubmittedAt != nil {
+			view.UpdatedAt = guide.SubmittedAt.Format(time.RFC3339Nano)
+		}
 	}
 	if withSections {
 		view.Sections = guide.Sections
@@ -69,7 +57,7 @@ func legacyWikiView(guide *wiki.Guide, withSections bool) legacyWikiGuideView {
 	return view
 }
 
-func legacyWikiMetaList(guides []wiki.Guide) []legacyWikiGuideView {
+func legacyWikiMetaList(guides []wiki.GuideRecord) []legacyWikiGuideView {
 	metas := make([]legacyWikiGuideView, 0, len(guides))
 	for i := range guides {
 		metas = append(metas, legacyWikiView(&guides[i], false))
@@ -77,8 +65,8 @@ func legacyWikiMetaList(guides []wiki.Guide) []legacyWikiGuideView {
 	return metas
 }
 
-func legacyWikiETag(revision int64) string {
-	return `"wiki-content-` + strconv.FormatInt(revision, 10) + `-` + strconv.Itoa(legacyWikiUserRevision) + `"`
+func legacyWikiETagPair(official, user int64) string {
+	return `"wiki-content-` + strconv.FormatInt(official, 10) + `-` + strconv.FormatInt(user, 10) + `"`
 }
 
 // legacyWikiETagMatches mirrors etagMatches in backend/server.js: a comma
@@ -98,39 +86,33 @@ func legacyWikiETagMatches(header, etag string) bool {
 }
 
 func (a *API) legacyWikiContent(w http.ResponseWriter, r *http.Request) {
-	bundle, err := wiki.Default()
+	official, user, updatedAt, guides, err := a.wikiStore.PublicAll(r.Context())
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
 	}
-	revision := bundle.Revision()
-	etag := legacyWikiETag(revision)
+	etag := legacyWikiETagPair(official, user)
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("ETag", etag)
 	if legacyWikiETagMatches(r.Header.Get("If-None-Match"), etag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	var updatedAt any
-	if value := bundle.UpdatedAt(); value != "" {
-		updatedAt = value
+	var updated any
+	if updatedAt != "" {
+		updated = updatedAt
 	}
 	write(w, 200, map[string]any{
-		"revision":         "official:" + strconv.FormatInt(revision, 10) + ":user:" + strconv.Itoa(legacyWikiUserRevision),
-		"officialRevision": revision,
-		"userRevision":     legacyWikiUserRevision,
-		"updatedAt":        updatedAt,
-		"guides":           legacyWikiMetaList(bundle.Guides()),
-		"updates":          bundle.Updates(),
+		"revision":         "official:" + strconv.FormatInt(official, 10) + ":user:" + strconv.FormatInt(user, 10),
+		"officialRevision": official,
+		"userRevision":     user,
+		"updatedAt":        updated,
+		"guides":           legacyWikiMetaList(guides),
+		"updates":          a.wikiStore.Updates(r.Context()),
 	})
 }
 
 func (a *API) legacyWikiGuides(w http.ResponseWriter, r *http.Request) {
-	bundle, err := wiki.Default()
-	if err != nil {
-		failure(w, identity.ErrStorage)
-		return
-	}
 	query := r.URL.Query()
 	page := legacyWikiPageNumber(query.Get("page"))
 	pageSize := legacyWikiPageSize(query.Get("pageSize"))
@@ -138,13 +120,11 @@ func (a *API) legacyWikiGuides(w http.ResponseWriter, r *http.Request) {
 	if kind != "official" && kind != "user" {
 		kind = ""
 	}
-	total, guides := bundle.Search(
-		legacyWikiTruncate(query.Get("q"), 80),
-		kind,
-		legacyWikiTruncate(query.Get("category"), 40),
-		pageSize,
-		(page-1)*pageSize,
-	)
+	total, guides, err := a.wikiStore.Public(r.Context(), legacyWikiTruncate(query.Get("q"), 80), kind, legacyWikiTruncate(query.Get("category"), 40), pageSize, (page-1)*pageSize)
+	if err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
 	w.Header().Set("Cache-Control", "no-cache")
 	write(w, 200, map[string]any{
 		"ok":       true,
@@ -156,7 +136,7 @@ func (a *API) legacyWikiGuides(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) legacyWikiGuideDetail(w http.ResponseWriter, r *http.Request) {
-	bundle, err := wiki.Default()
+	guide, err := a.wikiStore.PublicOne(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
@@ -167,12 +147,11 @@ func (a *API) legacyWikiGuideDetail(w http.ResponseWriter, r *http.Request) {
 		write(w, 404, map[string]any{"error": "攻略不存在或未公开"})
 		return
 	}
-	guide, found := bundle.Guide(id)
-	if !found {
+	if guide == nil {
 		write(w, 404, map[string]any{"error": "攻略不存在或未公开"})
 		return
 	}
-	write(w, 200, map[string]any{"ok": true, "guide": legacyWikiView(&guide, true)})
+	write(w, 200, map[string]any{"ok": true, "guide": legacyWikiView(guide, true)})
 }
 
 // legacyWikiGuideSession reports whether the caller holds a player session. It
