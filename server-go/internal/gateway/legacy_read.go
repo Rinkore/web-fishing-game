@@ -58,7 +58,7 @@ type legacyRecordQueryer interface {
 func (a *API) legacyRecordsProjection(ctx context.Context, q legacyRecordQueryer, c *rules.Catalog) (map[string]any, error) {
 	big := map[string]legacyRecordEntry{}
 	small := map[string]legacyRecordEntry{}
-	rows, err := q.Query(ctx, `SELECT cr.item_id,cr.size,cr.caught_at,i.display_name,cr.owner_id,
+	rows, err := q.Query(ctx, `SELECT cr.item_id,cr.size,cr.caught_at,i.display_name,cr.owner_id,cr.operation_id,cr.ordinal,
  NOT EXISTS (SELECT 1 FROM fishing.catch_record_hides h WHERE h.operation_id=cr.operation_id AND h.ordinal=cr.ordinal AND h.board_range='record' AND h.board_kind='big') AS big_visible,
  NOT EXISTS (SELECT 1 FROM fishing.catch_record_hides h WHERE h.operation_id=cr.operation_id AND h.ordinal=cr.ordinal AND h.board_range='record' AND h.board_kind='small') AS small_visible
  FROM fishing.catch_records cr JOIN fishing.identities i ON i.account_id=cr.owner_id ORDER BY cr.caught_at,cr.operation_id,cr.ordinal`)
@@ -71,7 +71,8 @@ func (a *API) legacyRecordsProjection(ctx context.Context, q legacyRecordQueryer
 		var caughtAt time.Time
 		var owner int64
 		var bigVisible, smallVisible bool
-		if err := rows.Scan(&id, &size, &caughtAt, &who, &owner, &bigVisible, &smallVisible); err != nil {
+		var operationID, ordinal int64
+		if err := rows.Scan(&id, &size, &caughtAt, &who, &owner, &operationID, &ordinal, &bigVisible, &smallVisible); err != nil {
 			rows.Close()
 			return nil, identity.ErrStorage
 		}
@@ -110,6 +111,9 @@ func (a *API) legacyRecordsProjection(ctx context.Context, q legacyRecordQueryer
 		"records":   big,
 		"small":     small,
 		"globalMax": globalMax,
+		// lastRec is a notification watermark, not a record itself. The stream
+		// publishes it alongside recordsDirty; a fresh HTTP projection has no
+		// durable announcement marker to replay after a restart.
 		"last":      nil,
 		"rankLabel": map[string]string{"day": rankLabelOf("day", a.location, now), "week": rankLabelOf("week", a.location, now), "all": "总榜 · 历史前十"},
 	}
