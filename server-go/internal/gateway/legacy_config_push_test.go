@@ -125,7 +125,7 @@ func TestIntegrationLegacyConfigurationPublication(t *testing.T) {
 	// complete config set even if no further publication occurs.
 	reconnected := &legacyConfigPush{api: &API{pool: f.db.App}}
 	reconnected.init(ctx)
-	if reconnected.catalogRevision != id || len(reconnected.poll(ctx)) != 8 {
+	if reconnected.catalogRevision != id || len(reconnected.poll(ctx)) != 10 {
 		t.Fatal("reconnect lost current publication")
 	}
 }
