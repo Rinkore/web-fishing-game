@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "sourceCommit": "13694a7038438ac0b3dd7df07db8c05ea239141f",
+  "sourceCommit": "1d48dbf4bd6a265d188d0234f55636bd31a42191",
   "version": "v0.21.4",
   "sharedRulesSha256": "d1df3621a0599c39293df4de00ee54e95d595dadf20fe75650194b02bb24f2c0",
   "clientSha256": "e287ed3663ada0142552ee38ab6024a487730c617977774a19f50623c43c5582",
@@ -167,451 +167,444 @@
     }
   ],
   "scope": "Static candidates from local source; production version, payloads and authorization require review.",
-  "sourceSha256": "db3ddb98fbb48dffc08ab6ba1bcd695624566ab7639101dc121e1dd72531fd28",
+  "sourceSha256": "3c40596ad27da3b329b2dfb7318b5f113bc6915d9f2f8f38a76630fc3faabf2f",
   "routes": [
     {
       "method": "POST",
       "path": "/api/admin/logout",
-      "line": 4291,
+      "line": 4302,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/features",
-      "line": 4311,
+      "line": 4322,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/features",
-      "line": 4312,
+      "line": 4323,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/features",
-      "line": 4316,
+      "line": 4327,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/register/challenge",
-      "line": 4367,
+      "line": 4378,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/registration/stats",
-      "line": 4371,
+      "line": 4382,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/register",
-      "line": 4376,
+      "line": 4387,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/login",
-      "line": 4411,
+      "line": 4422,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/logout",
-      "line": 4435,
+      "line": 4446,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/me",
-      "line": 4465,
+      "line": 4476,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/profile",
-      "line": 4476,
+      "line": 4487,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/events",
-      "line": 4490,
+      "line": 4501,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/sea",
-      "line": 4615,
+      "line": 4626,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/sea/ship/up",
-      "line": 4621,
+      "line": 4632,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/sea/chart",
-      "line": 4646,
+      "line": 4657,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/sea/voyage",
-      "line": 4663,
+      "line": 4674,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/sea/quest/claim",
-      "line": 4687,
+      "line": 4698,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/sea/anchor",
-      "line": 4723,
+      "line": 4734,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/party",
-      "line": 4759,
+      "line": 4770,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/party",
-      "line": 4769,
+      "line": 4780,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/fishing/start",
-      "line": 4880,
+      "line": 4891,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/rod/slot/buy",
-      "line": 4894,
+      "line": 4905,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/rod/save",
-      "line": 4911,
+      "line": 4922,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/rod/name",
-      "line": 4947,
+      "line": 4958,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/rod/rename",
-      "line": 4960,
+      "line": 4971,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/rod/use",
-      "line": 4975,
+      "line": 4986,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/rod/stow",
-      "line": 5010,
+      "line": 5021,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/rod/delete",
-      "line": 5039,
+      "line": 5050,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/fishing/stop",
-      "line": 5068,
+      "line": 5079,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/bd/set",
-      "line": 5080,
+      "line": 5091,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/dev/catch",
-      "line": 5144,
+      "line": 5155,
       "developmentOnly": true,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/dev/doublecount",
-      "line": 5244,
+      "line": 5255,
       "developmentOnly": true,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/dev/rollsize",
-      "line": 5267,
+      "line": 5278,
       "developmentOnly": true,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/dev/admin-login",
-      "line": 5285,
+      "line": 5296,
       "developmentOnly": true,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/dev/seed",
-      "line": 5296,
+      "line": 5307,
       "developmentOnly": true,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/shop",
-      "line": 5335,
+      "line": 5346,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/market",
-      "line": 5340,
+      "line": 5351,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/shop/history",
-      "line": 5345,
+      "line": 5356,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/chest",
-      "line": 5390,
-      "developmentOnly": false,
-      "contract": "unreviewed"
-    },
-    {
-      "method": "POST",
-      "path": "/api/chest/craft",
       "line": 5401,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
+      "path": "/api/chest/craft",
+      "line": 5412,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
       "path": "/api/chest/open",
-      "line": 5430,
+      "line": 5441,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/mall",
-      "line": 5487,
+      "line": 5498,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/mall/buy",
-      "line": 5493,
+      "line": 5504,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/workshop",
-      "line": 5525,
+      "line": 5536,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/workshop/smelt",
-      "line": 5565,
+      "line": 5576,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/workshop/forge",
-      "line": 5601,
+      "line": 5612,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/workshop/recast",
-      "line": 5627,
+      "line": 5638,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/sell",
-      "line": 5658,
+      "line": 5669,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/autosell",
-      "line": 5705,
+      "line": 5716,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/autosell",
-      "line": 5711,
+      "line": 5722,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/market/list",
-      "line": 5796,
+      "line": 5807,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/market/buy",
-      "line": 5854,
+      "line": 5865,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/market/history",
-      "line": 5919,
+      "line": 5930,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/market/cancel",
-      "line": 5926,
+      "line": 5937,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/trade/invite",
-      "line": 5951,
+      "line": 5962,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/trade/respond",
-      "line": 5977,
+      "line": 5988,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/trade/set",
-      "line": 5999,
+      "line": 6010,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/trade/confirm",
-      "line": 6029,
+      "line": 6040,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/trade/cancel",
-      "line": 6071,
+      "line": 6082,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/version",
-      "line": 6088,
+      "line": 6099,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/wiki/simulator/inventory",
-      "line": 6104,
+      "line": 6115,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/wiki/content",
-      "line": 6120,
+      "line": 6131,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
-      "path": "/api/admin/wiki/content",
-      "line": 6130,
-      "developmentOnly": false,
-      "contract": "unreviewed"
-    },
-    {
-      "method": "POST",
       "path": "/api/admin/wiki/content",
       "line": 6141,
       "developmentOnly": false,
@@ -619,652 +612,659 @@
     },
     {
       "method": "POST",
+      "path": "/api/admin/wiki/content",
+      "line": 6152,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
       "path": "/api/wiki/guides/submit",
-      "line": 6162,
+      "line": 6173,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/wiki/guides/session",
-      "line": 6188,
+      "line": 6199,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/wiki/guides/my",
-      "line": 6192,
+      "line": 6203,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/wiki/guides/delete",
-      "line": 6198,
+      "line": 6209,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/wiki/guides",
-      "line": 6210,
+      "line": 6221,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/wiki/guides/review",
-      "line": 6223,
+      "line": 6234,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/wiki/guides/delete",
-      "line": 6243,
+      "line": 6254,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/wiki/guides",
-      "line": 6260,
+      "line": 6271,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/wiki/guides/{id}",
-      "line": 6269,
-      "developmentOnly": false,
-      "contract": "unreviewed"
-    },
-    {
-      "method": "GET",
-      "path": "/api/grounds",
       "line": 6280,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
+      "path": "/api/grounds",
+      "line": 6291,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
       "path": "/api/subscribe",
-      "line": 6285,
+      "line": 6296,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/subscribe",
-      "line": 6294,
+      "line": 6305,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/feedback",
-      "line": 6330,
+      "line": 6341,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/feedback/submit",
-      "line": 6338,
+      "line": 6349,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/feedback/skip",
-      "line": 6363,
+      "line": 6374,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/codex",
-      "line": 6382,
+      "line": 6393,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/records",
-      "line": 6388,
+      "line": 6399,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/records/top",
-      "line": 6397,
+      "line": 6408,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/login",
-      "line": 6503,
+      "line": 6514,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/session",
-      "line": 6527,
+      "line": 6538,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/netstats",
-      "line": 6533,
+      "line": 6544,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/parties",
-      "line": 6539,
+      "line": 6550,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/party/disband",
-      "line": 6545,
+      "line": 6556,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/friends/relations",
-      "line": 6568,
+      "line": 6579,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/friends",
-      "line": 6579,
+      "line": 6590,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/friends",
-      "line": 6606,
+      "line": 6617,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/players/page",
-      "line": 6683,
+      "line": 6694,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/players/view",
-      "line": 6695,
+      "line": 6706,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/players/rod",
-      "line": 6715,
+      "line": 6726,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/overview",
-      "line": 6730,
+      "line": 6741,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/stats",
-      "line": 6751,
+      "line": 6762,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/banner",
-      "line": 6761,
+      "line": 6772,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/banner",
-      "line": 6768,
+      "line": 6779,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/banner/add",
-      "line": 6781,
+      "line": 6792,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/banner/remove",
-      "line": 6805,
+      "line": 6816,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/banner/move",
-      "line": 6820,
+      "line": 6831,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/banner/cfg",
-      "line": 6840,
+      "line": 6851,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/banner/update",
-      "line": 6865,
+      "line": 6876,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/banner/playing",
-      "line": 6894,
+      "line": 6905,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/banner/stop",
-      "line": 6909,
+      "line": 6920,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/banner/clear",
-      "line": 6923,
+      "line": 6934,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/feedback",
-      "line": 6940,
+      "line": 6951,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/feedback/cfg",
-      "line": 6955,
+      "line": 6966,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/feedback/status",
-      "line": 6980,
+      "line": 6991,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/feedback/del",
-      "line": 6999,
+      "line": 7010,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/feedback/reward",
-      "line": 7021,
+      "line": 7032,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/users",
-      "line": 7050,
+      "line": 7061,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/users/setadmin",
-      "line": 7079,
+      "line": 7090,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/users/ban",
-      "line": 7106,
+      "line": 7117,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/security",
-      "line": 7144,
+      "line": 7155,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/users/delete",
-      "line": 7158,
+      "line": 7169,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/users/snapshot",
-      "line": 7182,
+      "line": 7193,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/users/snapshot",
-      "line": 7198,
+      "line": 7209,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/users/snapshots",
-      "line": 7262,
+      "line": 7273,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/users/snapshot-now",
-      "line": 7278,
+      "line": 7289,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/users/rollback",
-      "line": 7296,
+      "line": 7307,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/snapshot/config",
-      "line": 7324,
+      "line": 7335,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/users/update",
-      "line": 7339,
+      "line": 7350,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/world",
-      "line": 7390,
+      "line": 7401,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/component/config",
-      "line": 7507,
+      "line": 7518,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/component/reset",
-      "line": 7603,
+      "line": 7614,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/component/simulate",
-      "line": 7616,
+      "line": 7627,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/fish/config",
-      "line": 7654,
+      "line": 7665,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/fish/reset",
-      "line": 7670,
+      "line": 7681,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/fish/simulate",
-      "line": 7684,
+      "line": 7695,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/spot/pool",
-      "line": 7732,
+      "line": 7743,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/loot/groups",
-      "line": 7749,
+      "line": 7760,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/loot/group",
-      "line": 7754,
+      "line": 7765,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/spot/buffs",
-      "line": 7795,
+      "line": 7806,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/pool/preset",
-      "line": 7813,
+      "line": 7824,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/ground/add",
-      "line": 7825,
+      "line": 7836,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/spot/add",
-      "line": 7861,
+      "line": 7872,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/ground/remove",
-      "line": 7897,
+      "line": 7908,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/spot/remove",
-      "line": 7922,
+      "line": 7933,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/ground/restore",
-      "line": 7958,
+      "line": 7969,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/ground/update",
-      "line": 7988,
+      "line": 7999,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/spot/rate",
-      "line": 8030,
+      "line": 8041,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/spot/pos",
-      "line": 8064,
+      "line": 8075,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/ground/lock",
-      "line": 8087,
+      "line": 8098,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/spot/lock",
-      "line": 8113,
+      "line": 8124,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/market/return",
-      "line": 8139,
+      "line": 8150,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/market/supply",
-      "line": 8169,
+      "line": 8180,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/market/supply",
-      "line": 8173,
+      "line": 8184,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/market/bulk",
-      "line": 8199,
+      "line": 8210,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/mall/config",
-      "line": 8231,
+      "line": 8242,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "GET",
       "path": "/api/admin/loot/spots",
-      "line": 8258,
+      "line": 8269,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/simulate",
-      "line": 8273,
+      "line": 8284,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/loot/test",
-      "line": 8315,
+      "line": 8326,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/smelt/config",
-      "line": 8369,
+      "line": 8380,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/records/config",
-      "line": 8467,
+      "line": 8478,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/records/delete",
-      "line": 8500,
+      "line": 8511,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/records/delone",
-      "line": 8521,
+      "line": 8532,
       "developmentOnly": false,
       "contract": "unreviewed"
     },
     {
       "method": "POST",
       "path": "/api/admin/settings",
-      "line": 8556,
+      "line": 8567,
       "developmentOnly": false,
       "contract": "unreviewed"
     }
@@ -1369,6 +1369,7 @@
         "autoSellCfg",
         "snapshotCfg",
         "fishingFormulaRevision",
+        "fishingFormulaBackup",
         "wikiConfigRevision"
       ]
     },
@@ -1408,29 +1409,29 @@
         2124,
         2354,
         3414,
-        4012,
-        4639,
-        4676,
-        4715,
-        4751,
-        4801,
-        4815,
-        4836,
-        4850,
-        4869,
-        6356,
-        6620,
-        6993,
-        7013,
-        7043,
-        7094,
-        7256,
-        7318,
-        7384,
-        8104,
-        8130,
-        8156,
-        8616
+        4023,
+        4650,
+        4687,
+        4726,
+        4762,
+        4812,
+        4826,
+        4847,
+        4861,
+        4880,
+        6367,
+        6631,
+        7004,
+        7024,
+        7054,
+        7105,
+        7267,
+        7329,
+        7395,
+        8115,
+        8141,
+        8167,
+        8627
       ]
     },
     {
@@ -1450,31 +1451,31 @@
       "lines": [
         1501,
         1535,
-        3760,
-        5207,
-        5227
+        3771,
+        5218,
+        5238
       ]
     },
     {
       "type": "globalRecord",
       "lines": [
         1521,
-        5214,
-        5471
+        5225,
+        5482
       ]
     },
     {
       "type": "catch",
       "lines": [
         1541,
-        5229
+        5240
       ]
     },
     {
       "type": "codexAdd",
       "lines": [
         1542,
-        5230
+        5241
       ]
     },
     {
@@ -1482,33 +1483,33 @@
       "lines": [
         1552,
         2356,
-        4011,
-        4640,
-        4657,
-        4716,
-        4752,
-        4905,
-        4938,
-        4997,
-        5028,
-        5057,
-        5105,
-        5234,
-        5327,
-        5421,
-        5467,
-        5514,
-        5585,
-        5613,
-        5644,
-        5693,
-        5903,
-        6374,
-        7044,
-        7252,
-        7314,
-        7383,
-        8155
+        4022,
+        4651,
+        4668,
+        4727,
+        4763,
+        4916,
+        4949,
+        5008,
+        5039,
+        5068,
+        5116,
+        5245,
+        5338,
+        5432,
+        5478,
+        5525,
+        5596,
+        5624,
+        5655,
+        5704,
+        5914,
+        6385,
+        7055,
+        7263,
+        7325,
+        7394,
+        8166
       ]
     },
     {
@@ -1527,200 +1528,200 @@
       "type": "kicked",
       "lines": [
         2205,
-        3679,
-        4451,
-        4495,
-        4502,
-        4540
+        3690,
+        4462,
+        4506,
+        4513,
+        4551
       ]
     },
     {
       "type": "batch",
       "lines": [
-        3731,
-        3760,
-        3765,
-        3773,
-        3814
+        3742,
+        3771,
+        3776,
+        3784,
+        3825
       ]
     },
     {
       "type": "feedBatch",
       "lines": [
-        3773
+        3784
       ]
     },
     {
       "type": "playersPage",
       "lines": [
-        3882
+        3893
       ]
     },
     {
       "type": "shop",
       "lines": [
-        3971
+        3982
       ]
     },
     {
       "type": "marketDelta",
       "lines": [
-        3990
+        4001
       ]
     },
     {
       "type": "recordsDirty",
       "lines": [
-        4035
+        4046
       ]
     },
     {
       "type": "records",
       "lines": [
-        4221
+        4232
       ]
     },
     {
       "type": "grounds",
       "lines": [
-        4237
+        4248
       ]
     },
     {
       "type": "trade",
       "lines": [
-        4254
+        4265
       ]
     },
     {
       "type": "features",
       "lines": [
-        4362
+        4373
       ]
     },
     {
       "type": "init",
       "lines": [
-        4515
+        4526
       ]
     },
     {
       "type": "ping",
       "lines": [
-        4544
+        4555
       ]
     },
     {
       "type": "double",
       "lines": [
-        4740
+        4751
       ]
     },
     {
       "type": "mktTrade",
       "lines": [
-        5897
+        5908
       ]
     },
     {
       "type": "tradeDone",
       "lines": [
-        6058
+        6069
       ]
     },
     {
       "type": "friends",
       "lines": [
-        6623
+        6634
       ]
     },
     {
       "type": "banner",
       "lines": [
-        6800,
-        6814,
-        6834,
-        6859,
-        6888,
-        6932
+        6811,
+        6825,
+        6845,
+        6870,
+        6899,
+        6943
       ]
     },
     {
       "type": "bannerStop",
       "lines": [
-        6917,
-        6933
+        6928,
+        6944
       ]
     },
     {
       "type": "feedback",
       "lines": [
-        7014
+        7025
       ]
     },
     {
       "type": "componentcfg",
       "lines": [
-        7597,
-        7610
+        7608,
+        7621
       ]
     },
     {
       "type": "mallcfg",
       "lines": [
-        8250
+        8261
       ]
     },
     {
       "type": "smeltcfg",
       "lines": [
-        8459
+        8470
       ]
     },
     {
       "type": "recordscfg",
       "lines": [
-        8475,
-        8492
+        8486,
+        8503
       ]
     },
     {
       "type": "bitecfg",
       "lines": [
-        8569
+        8580
       ]
     },
     {
       "type": "autosellcfg",
       "lines": [
-        8630
+        8641
       ]
     },
     {
       "type": "castcfg",
       "lines": [
-        8655
+        8666
       ]
     },
     {
       "type": "pricecfg",
       "lines": [
-        8684,
-        8740,
-        8750,
-        8770
+        8695,
+        8751,
+        8761,
+        8781
       ]
     },
     {
       "type": "chestcfg",
       "lines": [
-        8879
+        8890
       ]
     },
     {
       "type": "maintenance",
       "lines": [
-        8938
+        8949
       ]
     }
   ],

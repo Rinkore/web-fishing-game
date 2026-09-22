@@ -5,7 +5,7 @@
 ## 固定输入
 
 - 业务玩法版本：`v0.21.4`。
-- Node 源码提交固定为 `13694a7038438ac0b3dd7df07db8c05ea239141f`，运行时固定 `24.14.0`。本次核对该提交与收口工作树的 `backend/`、`frontend/js/data.js`、`frontend/js/net.js` 无差异；这是玩法对照源，不跟随移动的 main。
+- 候选分支阶段固定 Node 源码为 `13694a7038438ac0b3dd7df07db8c05ea239141f`；合入 main 后，当前 Node 对照已随远端 main 更新为 `1d48dbf4bd6a265d188d0234f55636bd31a42191`，inventory、API/SSE 矩阵和 A/B 断言已按该源码重新生成。运行时仍固定 `24.14.0`，两套 SHA 均保留为可追溯历史对象。
 - Go toolchain: `go1.27.1`; PostgreSQL: `18.6`. Image, module, and direct dependency digests come from `deploy/go-test/compose.yml`, `server-go/go.mod`, `server-go/go.sum`, and `server-go/dependencies.json`.
 - 时区：Node、Go、PostgreSQL（`TZ`/`PGTZ`）和浏览器 context 统一 `Asia/Shanghai`，Windows 对应 `China Standard Time`。此前迁移专项数据库 UTC 的证据仅保留为历史批次；跨日/夏令时专项单独写明覆盖时区。
 - Go 直接依赖固定 chi `v5.3.2`、pgx `v5.11.0`、x/crypto `v0.43.0`；间接依赖及校验以共同提交的 go.mod/go.sum 为准，不在专项线自行升级。Node 服务无 npm 运行依赖。本机定向浏览器固定 Playwright Core `1.62.1`、Chrome `153.0.8010.53`，Chrome SHA-256 为 `e8bce39747ea63c9c7d4306f7635d2916c9ecb0cf913fbcf5e7acc4539b5b8a0`；ab 线将此版本变成可安装的测试锁定，跨平台替代或升级必须记录精确版本、摘要，并在同一组合下重跑 Node/Go 双方。

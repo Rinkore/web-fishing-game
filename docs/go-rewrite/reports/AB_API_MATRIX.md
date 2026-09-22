@@ -1,6 +1,6 @@
 # 旧协议 HTTP 契约矩阵（生成稿）
 
-核对基线：Node 13694a7038438ac0b3dd7df07db8c05ea239141f，玩法 v0.21.4；清单 SHA256 db3ddb98fbb48dffc08ab6ba1bcd695624566ab7639101dc121e1dd72531fd28；shared rules SHA256 d1df3621a0599c39293df4de00ee54e95d595dadf20fe75650194b02bb24f2c0；client.js SHA256 e287ed3663ada0142552ee38ab6024a487730c617977774a19f50623c43c5582。分母为 157 个候选减 5 个开发接口 = 152 条唯一非开发 method + path。
+核对基线：Node 1d48dbf4bd6a265d188d0234f55636bd31a42191，玩法 v0.21.4；清单 SHA256 3c40596ad27da3b329b2dfb7318b5f113bc6915d9f2f8f38a76630fc3faabf2f；shared rules SHA256 d1df3621a0599c39293df4de00ee54e95d595dadf20fe75650194b02bb24f2c0；client.js SHA256 e287ed3663ada0142552ee38ab6024a487730c617977774a19f50623c43c5582。分母为 157 个候选减 5 个开发接口 = 152 条唯一非开发 method + path。
 
 本表由 `node tools/go-rewrite/api-contract-matrix.js` 从 `server-go/api/legacy-inventory.json` 生成。契约类定义行为断言；路由表逐项列出 method/path、认证、输入、成功、业务错误和持久副作用。HTTP 通过必须在 Node/Go 适配夹具中分别执行并比对，静态注册不计作通过。
 
@@ -51,158 +51,158 @@
 
 | # | method + path | Node 行 | Go 注册处理器 | 契约类 | 本路由输入/查询 |
 |---:|---|---:|---|---|---|
-| 1 | POST `/api/admin/logout` | 4291 | `a.logout` | AUTH_LOGOUT | admin token |
-| 2 | GET `/api/features` | 4311 | `a.legacyFeatures` | PUBLIC_READ | none |
-| 3 | GET `/api/admin/features` | 4312 | `a.legacyAdminFeatures` | ADMIN_READ | token? |
-| 4 | POST `/api/admin/features` | 4316 | `a.legacyAdminFeatures` | ADMIN_CONFIG | token,features,featureOrder,baseRevision? |
-| 5 | GET `/api/register/challenge` | 4367 | `a.registerChallenge` | AUTH_CHALLENGE | source address (derived) |
-| 6 | GET `/api/admin/registration/stats` | 4371 | `a.legacyAdminRegistrationStats` | ADMIN_READ | token?; no body |
-| 7 | POST `/api/register` | 4376 | `a.register` | AUTH_REGISTER | username,password,confirmPassword,proof |
-| 8 | POST `/api/login` | 4411 | `a.login` | AUTH_LOGIN | username,password |
-| 9 | POST `/api/logout` | 4435 | `a.logout` | AUTH_LOGOUT | token |
-| 10 | GET `/api/me` | 4465 | `a.legacyMe` | AUTH_ME | token |
-| 11 | POST `/api/profile` | 4476 | `a.legacyProfileSave` | AUTH_ME | name |
-| 12 | GET `/events` | 4490 | `a.legacyEvents` | SSE | Last-Event-ID header |
-| 13 | GET `/api/sea` | 4615 | `a.legacySea` | SEA_READ | token |
-| 14 | POST `/api/sea/ship/up` | 4621 | `a.legacySeaAction("ship")` | SEA_WRITE | JSON body (strict; token may be query/header) |
-| 15 | POST `/api/sea/chart` | 4646 | `a.legacySeaAction("chart")` | SEA_WRITE | JSON body (strict; token may be query/header) |
-| 16 | POST `/api/sea/voyage` | 4663 | `a.legacySeaAction("voyage")` | SEA_WRITE | JSON body (strict; token may be query/header) |
-| 17 | POST `/api/sea/quest/claim` | 4687 | `a.legacySeaAction("quest")` | SEA_WRITE | JSON body (strict; token may be query/header) |
-| 18 | POST `/api/sea/anchor` | 4723 | `a.legacySeaAction("anchor")` | SEA_WRITE | JSON body (strict; token may be query/header) |
-| 19 | GET `/api/party` | 4759 | `a.legacyParty` | USER_READ | token; GET or action,target |
-| 20 | POST `/api/party` | 4769 | `a.legacyPartyChange` | SOCIAL_WRITE | token; GET or action,target |
-| 21 | POST `/api/fishing/start` | 4880 | `a.legacyFishingStart` | FISHING | groundId,spotId |
-| 22 | POST `/api/rod/slot/buy` | 4894 | `a.legacyRodSlotBuy` | ROD | none |
-| 23 | POST `/api/rod/save` | 4911 | `a.legacyRodSave` | ROD | slot,name,force |
-| 24 | POST `/api/rod/name` | 4947 | `a.legacyRodName` | ROD | name |
-| 25 | POST `/api/rod/rename` | 4960 | `a.legacyRodRename` | ROD | slot,name |
-| 26 | POST `/api/rod/use` | 4975 | `a.legacyRodUse` | ROD | slot |
-| 27 | POST `/api/rod/stow` | 5010 | `a.legacyRodStow` | ROD | none |
-| 28 | POST `/api/rod/delete` | 5039 | `a.legacyRodDelete` | ROD | slot |
-| 29 | POST `/api/fishing/stop` | 5068 | `a.legacyFishingStop` | FISHING | none |
-| 30 | POST `/api/bd/set` | 5080 | `a.legacyBdSet` | ROD | part,compId |
-| 31 | GET `/shop` | 5335 | `a.legacyShop` | PUBLIC_READ | none |
-| 32 | GET `/api/market` | 5340 | `a.legacyMarket` | PUBLIC_MARKET | scope,page,size,kind,part,q,sort,affix,min,max |
-| 33 | GET `/api/shop/history` | 5345 | `a.legacyShopHistory` | PUBLIC_READ | id |
-| 34 | GET `/api/chest` | 5390 | `a.legacyChest` | WORKSHOP_READ | token |
-| 35 | POST `/api/chest/craft` | 5401 | `a.legacyChestCraft` | WORKSHOP_WRITE | chestId,qty |
-| 36 | POST `/api/chest/open` | 5430 | `a.legacyChestOpen` | WORKSHOP_WRITE | chestId,part,baseId |
-| 37 | GET `/api/mall` | 5487 | `a.legacyMall` | USER_READ | token |
-| 38 | POST `/api/mall/buy` | 5493 | `a.legacyMallBuy` | ECONOMY | id,qty |
-| 39 | GET `/api/workshop` | 5525 | `a.legacyWorkshop` | WORKSHOP_READ | token |
-| 40 | POST `/api/workshop/smelt` | 5565 | `a.legacyWorkshopSmelt` | WORKSHOP_WRITE | mainId,subId,mainAffix,subAffix,materials,pearl,relics |
-| 41 | POST `/api/workshop/forge` | 5601 | `a.legacyWorkshopForge` | WORKSHOP_WRITE | id,materialId,pearl |
-| 42 | POST `/api/workshop/recast` | 5627 | `a.legacyWorkshopRecast` | WORKSHOP_WRITE | id,affixIndex? |
-| 43 | POST `/api/sell` | 5658 | `a.legacySell` | ECONOMY | id,qty,tier |
-| 44 | GET `/api/autosell` | 5705 | `a.legacyAutoSell` | USER_READ | token; GET or tier,id,scope,bulk,on,remove,minPct,minPrice,slackPct,slackPrice,keep |
-| 45 | POST `/api/autosell` | 5711 | `a.legacyAutoSellSet` | ECONOMY | token; GET or tier,id,scope,bulk,on,remove,minPct,minPrice,slackPct,slackPrice,keep |
-| 46 | POST `/api/market/list` | 5796 | `a.legacyMarketList` | MARKET_WRITE | id|rodSlot,qty,price,hours |
-| 47 | POST `/api/market/buy` | 5854 | `a.legacyMarketBuy` | MARKET_WRITE | lid,qty? |
-| 48 | GET `/api/market/history` | 5919 | `a.legacyMarketHistory` | USER_READ | token |
-| 49 | POST `/api/market/cancel` | 5926 | `a.legacyMarketCancel` | MARKET_WRITE | lid |
-| 50 | POST `/api/trade/invite` | 5951 | `a.legacyTradeInvite` | TRADE | target |
-| 51 | POST `/api/trade/respond` | 5977 | `a.legacyTradeRespond` | TRADE | tradeId,accept |
-| 52 | POST `/api/trade/set` | 5999 | `a.legacyTradeSet` | TRADE | tradeId,items |
-| 53 | POST `/api/trade/confirm` | 6029 | `a.legacyTradeConfirm` | TRADE | tradeId |
-| 54 | POST `/api/trade/cancel` | 6071 | `a.legacyTradeCancel` | TRADE | tradeId |
-| 55 | GET `/api/version` | 6088 | `a.legacyVersion` | PUBLIC_READ | none |
-| 56 | GET `/api/wiki/simulator/inventory` | 6104 | `a.legacyWikiSimulatorInventory` | WIKI_READ | token |
-| 57 | GET `/api/wiki/content` | 6120 | `a.legacyWikiContent` | WIKI_READ | If-None-Match? |
-| 58 | GET `/api/admin/wiki/content` | 6130 | `a.legacyAdminWikiContent` | ADMIN_WIKI | token?; If-None-Match? |
-| 59 | POST `/api/admin/wiki/content` | 6141 | `a.legacyAdminWikiContentSave` | ADMIN_WIKI | token,target,content|reset,baseRevision |
-| 60 | POST `/api/wiki/guides/submit` | 6162 | `a.legacyWikiGuideSubmit` | WIKI_WRITE | guide JSON (<=80KiB) |
-| 61 | GET `/api/wiki/guides/session` | 6188 | `a.legacyWikiGuideSession` | WIKI_READ | optional token |
-| 62 | GET `/api/wiki/guides/my` | 6192 | `a.legacyWikiGuideMine` | WIKI_READ | token |
-| 63 | POST `/api/wiki/guides/delete` | 6198 | `a.legacyWikiGuideDelete` | WIKI_WRITE | id |
-| 64 | GET `/api/admin/wiki/guides` | 6210 | `a.legacyAdminWikiGuides` | ADMIN_WIKI | token?,status=pending|approved|rejected|all |
-| 65 | POST `/api/admin/wiki/guides/review` | 6223 | `a.legacyAdminWikiGuideReview` | ADMIN_WIKI | token,target,action=approve|reject,expectedStatus,note |
-| 66 | POST `/api/admin/wiki/guides/delete` | 6243 | `a.legacyAdminWikiGuideDelete` | ADMIN_WIKI | token,target,reason |
-| 67 | GET `/api/wiki/guides` | 6260 | `a.legacyWikiGuides` | WIKI_READ | page,pageSize,q,kind,category |
-| 68 | GET `/api/wiki/guides/{id}` | 6269 | `a.legacyWikiGuideDetail` | WIKI_READ | id |
-| 69 | GET `/api/grounds` | 6280 | `a.legacyGrounds` | PUBLIC_READ | none |
-| 70 | GET `/api/subscribe` | 6285 | `a.legacySubscribeGet` | NOTIFY_READ | token; GET or on,baseId,quality,affixType,min,max,badge,blink |
-| 71 | POST `/api/subscribe` | 6294 | `a.legacySubscribeSet` | NOTIFY_WRITE | token; GET or on,baseId,quality,affixType,min,max,badge,blink |
-| 72 | GET `/api/feedback` | 6330 | `a.legacyFeedbackGet` | NOTIFY_READ | token |
-| 73 | POST `/api/feedback/submit` | 6338 | `a.legacyFeedbackSubmit` | NOTIFY_WRITE | text,kind |
-| 74 | POST `/api/feedback/skip` | 6363 | `a.legacyFeedbackSkip` | NOTIFY_WRITE | none |
-| 75 | GET `/api/codex` | 6382 | `a.legacyCodex` | USER_READ | token |
-| 76 | GET `/api/records` | 6388 | `a.legacyRecords` | PUBLIC_READ | none |
-| 77 | GET `/api/records/top` | 6397 | `a.legacyRecordsTop` | PUBLIC_READ | id,kind,range |
-| 78 | POST `/api/admin/login` | 6503 | `a.login` | AUTH_LOGIN | username,password,otp |
-| 79 | GET `/api/admin/session` | 6527 | `a.adminSession` | AUTH_ME | admin token |
-| 80 | GET `/api/admin/netstats` | 6533 | `a.legacyAdminNetstats` | ADMIN_READ | token?; no body |
-| 81 | GET `/api/admin/parties` | 6539 | `a.legacyAdminParties` | ADMIN_READ | token?; no body |
-| 82 | POST `/api/admin/party/disband` | 6545 | `a.legacyAdminPartyDisband` | ADMIN_PARTY | token,id |
-| 83 | GET `/api/friends/relations` | 6568 | `a.legacyFriendRelations` | SOCIAL_READ | none |
-| 84 | GET `/api/friends` | 6579 | `a.legacyFriendsView` | SOCIAL_READ | q,page or target,action |
-| 85 | POST `/api/friends` | 6606 | `a.legacyFriendChange` | SOCIAL_READ | q,page or target,action |
-| 86 | GET `/api/players/page` | 6683 | `a.legacyPlayersPage` | SOCIAL_READ | token,page,size,q,ground,spot |
-| 87 | POST `/api/players/view` | 6695 | `a.legacyPlayersView` | SOCIAL_VIEW | page,size,q,ground,spot,clear |
-| 88 | POST `/api/players/rod` | 6715 | `a.legacyPlayersRod` | SOCIAL_READ | target |
-| 89 | GET `/api/admin/overview` | 6730 | `a.legacyAdminOverview` | ADMIN_READ | token?; no body |
-| 90 | GET `/api/admin/stats` | 6751 | `a.legacyAdminStats` | ADMIN_READ | query: token? plus route filters (see handler) |
-| 91 | GET `/api/banner` | 6761 | `a.legacyBanner` | PUBLIC_READ | none |
-| 92 | GET `/api/admin/banner` | 6768 | `a.legacyAdminBanner` | ADMIN_READ | token?; no body |
-| 93 | POST `/api/admin/banner/add` | 6781 | `a.legacyBannerChange("add")` | ADMIN_BANNER | token,content,duration,color |
-| 94 | POST `/api/admin/banner/remove` | 6805 | `a.legacyBannerChange("remove")` | ADMIN_BANNER | token,id |
-| 95 | POST `/api/admin/banner/move` | 6820 | `a.legacyBannerChange("move")` | ADMIN_BANNER | token,id,dir=up|down |
-| 96 | POST `/api/admin/banner/cfg` | 6840 | `a.legacyBannerChange("cfg")` | ADMIN_BANNER | token,blink,blinkTitle,noticeColor,catchLevel |
-| 97 | POST `/api/admin/banner/update` | 6865 | `a.legacyBannerChange("update")` | ADMIN_BANNER | token,id,color |
-| 98 | POST `/api/banner/playing` | 6894 | `a.legacyBannerPlaying` | BANNER_PLAY | id |
-| 99 | POST `/api/admin/banner/stop` | 6909 | `a.legacyBannerChange("stop")` | ADMIN_BANNER | token,id |
-| 100 | POST `/api/admin/banner/clear` | 6923 | `a.legacyBannerChange("clear")` | ADMIN_BANNER | token |
-| 101 | GET `/api/admin/feedback` | 6940 | `a.legacyAdminFeedback` | ADMIN_READ | token?; no body |
-| 102 | POST `/api/admin/feedback/cfg` | 6955 | `a.legacyAdminFeedbackConfig` | ADMIN_FEEDBACK | token,cdHours,skipCost |
-| 103 | POST `/api/admin/feedback/status` | 6980 | `a.legacyAdminFeedbackStatus` | ADMIN_FEEDBACK | token,id,status |
-| 104 | POST `/api/admin/feedback/del` | 6999 | `a.legacyAdminFeedbackDelete` | ADMIN_FEEDBACK | token,id |
-| 105 | POST `/api/admin/feedback/reward` | 7021 | `a.legacyAdminFeedbackReward` | ADMIN_FEEDBACK | token,id,coins,note |
-| 106 | GET `/api/admin/users` | 7050 | `a.legacyAdminUsers` | ADMIN_READ | token?; no body |
-| 107 | POST `/api/admin/users/setadmin` | 7079 | `a.legacyAdminUserSetAdmin` | ADMIN_USERS | token,target,admin |
-| 108 | POST `/api/admin/users/ban` | 7106 | `a.legacyAdminUserBan` | ADMIN_USERS | token,target,hours,reason,confirm |
-| 109 | GET `/api/admin/security` | 7144 | `a.legacyAdminSecurity` | ADMIN_READ | token?; no body |
-| 110 | POST `/api/admin/users/delete` | 7158 | `a.legacyAdminUserDelete` | ADMIN_USERS | token,target,confirm |
-| 111 | GET `/api/admin/users/snapshot` | 7182 | `a.legacyAdminUserSnapshot` | ADMIN_SNAPSHOT | token,key |
-| 112 | POST `/api/admin/users/snapshot` | 7198 | `a.legacyAdminUserSnapshotSave` | ADMIN_SNAPSHOT | token,target,coins,inventory,bd |
-| 113 | GET `/api/admin/users/snapshots` | 7262 | `a.legacyAdminUserSnapshots` | ADMIN_SNAPSHOT | token,key |
-| 114 | POST `/api/admin/users/snapshot-now` | 7278 | `a.legacyAdminUserSnapshotNow` | ADMIN_SNAPSHOT | token,target |
-| 115 | POST `/api/admin/users/rollback` | 7296 | `a.legacyAdminUserRollback` | ADMIN_SNAPSHOT | token,target,snap,confirm |
-| 116 | POST `/api/admin/snapshot/config` | 7324 | `a.legacyAdminSnapshotConfig` | ADMIN_SNAPSHOT | token,enabled,interval,retention |
-| 117 | POST `/api/admin/users/update` | 7339 | `a.legacyAdminUserUpdate` | ADMIN_USERS | token,target,name,password,coins,listingCap |
-| 118 | GET `/api/admin/world` | 7390 | `a.legacyAdminWorld` | ADMIN_READ | token?; no body |
-| 119 | POST `/api/admin/component/config` | 7507 | `a.adminComponentConfig` | ADMIN_CONFIG | token,qualityWeights,countWeights,rollModel,affixRanges,extraAffixRanges,adjectiveRules |
-| 120 | POST `/api/admin/component/reset` | 7603 | `a.adminComponentReset` | ADMIN_WORLD | token |
-| 121 | POST `/api/admin/component/simulate` | 7616 | `a.adminComponentSimulate` | ADMIN_WORLD | token,n |
-| 122 | POST `/api/admin/fish/config` | 7654 | `a.adminFishConfig` | ADMIN_CONFIG | token,sizeModel,sizeWeights |
-| 123 | POST `/api/admin/fish/reset` | 7670 | `a.adminFishReset` | ADMIN_WORLD | token |
-| 124 | POST `/api/admin/fish/simulate` | 7684 | `a.adminFishSimulate` | ADMIN_WORLD | token,spotKey,model,n |
-| 125 | POST `/api/admin/spot/pool` | 7732 | `a.adminSpotPool` | ADMIN_WORLD | token,groundId,spotId,pool[{pick,weight}] |
-| 126 | GET `/api/admin/loot/groups` | 7749 | `a.adminLootGroups` | ADMIN_READ | token?; no body |
-| 127 | POST `/api/admin/loot/group` | 7754 | `a.adminLootGroup` | ADMIN_WORLD | token,group definition/entries |
-| 128 | POST `/api/admin/spot/buffs` | 7795 | `a.adminSpotBuffs` | ADMIN_WORLD | token,groundId,spotId,buffs[{type,value}] |
-| 129 | POST `/api/admin/pool/preset` | 7813 | `a.adminPoolPreset` | ADMIN_WORLD | token,preset |
-| 130 | POST `/api/admin/ground/add` | 7825 | `a.adminGroundAdd` | ADMIN_WORLD | token,ground definition |
-| 131 | POST `/api/admin/spot/add` | 7861 | `a.adminSpotAdd` | ADMIN_WORLD | token,groundId,spot definition |
-| 132 | POST `/api/admin/ground/remove` | 7897 | `a.adminGroundRemove` | ADMIN_WORLD | token,groundId,spotId?,locked? |
-| 133 | POST `/api/admin/spot/remove` | 7922 | `a.adminSpotRemove` | ADMIN_WORLD | token,groundId,spotId,locked? |
-| 134 | POST `/api/admin/ground/restore` | 7958 | `a.adminGroundRestore` | ADMIN_WORLD | token,groundId,spotId?,locked? |
-| 135 | POST `/api/admin/ground/update` | 7988 | `a.adminGroundUpdate` | ADMIN_WORLD | token,groundId,name,fields |
-| 136 | POST `/api/admin/spot/rate` | 8030 | `a.adminSpotRate` | ADMIN_WORLD | token,groundId,spotId,rate |
-| 137 | POST `/api/admin/spot/pos` | 8064 | `a.adminSpotPos` | ADMIN_WORLD | token,groundId,spotId?,list |
-| 138 | POST `/api/admin/ground/lock` | 8087 | `a.adminGroundLock` | ADMIN_WORLD | token,groundId,spotId?,locked? |
-| 139 | POST `/api/admin/spot/lock` | 8113 | `a.adminSpotLock` | ADMIN_WORLD | token,groundId,spotId,locked? |
-| 140 | POST `/api/admin/market/return` | 8139 | `a.legacyAdminMarketReturn` | ADMIN_MARKET | token,lid |
-| 141 | GET `/api/admin/market/supply` | 8169 | `a.legacyAdminMarketSupplyGet` | ADMIN_MARKET | token?; no body |
-| 142 | POST `/api/admin/market/supply` | 8173 | `a.legacyAdminMarketSupplyPost` | ADMIN_MARKET | JSON body (strict; token may be query/header) |
-| 143 | POST `/api/admin/market/bulk` | 8199 | `a.legacyAdminMarketBulk` | ADMIN_MARKET | token,mode,sellers,items,qty,price,hours |
-| 144 | POST `/api/admin/mall/config` | 8231 | `a.legacyAdminMallConfig` | ADMIN_CONFIG | token,refreshTime,items,reset |
-| 145 | GET `/api/admin/loot/spots` | 8258 | `a.adminLootSpots` | ADMIN_READ | token?; no body |
-| 146 | POST `/api/admin/simulate` | 8273 | `a.adminSimulate` | ADMIN_WORLD | token,totals,spotKey |
-| 147 | POST `/api/admin/loot/test` | 8315 | `a.adminLootTest` | ADMIN_WORLD | token,spotKey,rare |
-| 148 | POST `/api/admin/smelt/config` | 8369 | `a.legacyAdminSmeltConfig` | ADMIN_CONFIG | token,partial smelt config or reset |
-| 149 | POST `/api/admin/records/config` | 8467 | `a.legacyAdminRecordsConfig` | ADMIN_RECORDS | token,scale,x,y,reset |
-| 150 | POST `/api/admin/records/delete` | 8500 | `a.legacyAdminRecordsDelete` | ADMIN_RECORDS | token,id? |
-| 151 | POST `/api/admin/records/delone` | 8521 | `a.legacyAdminRecordDeleteOne` | ADMIN_RECORDS | token,id,range,kind,expected |
-| 152 | POST `/api/admin/settings` | 8556 | `a.legacyAdminSettings` | ADMIN_CONFIG | token,partial settings (seaCfg/chestCfg/castBaseMs/priceCfg/dropCfg/autoSellCfg/doubleBase/biteFormula/notifyLevel/rareK...) |
+| 1 | POST `/api/admin/logout` | 4302 | `a.logout` | AUTH_LOGOUT | admin token |
+| 2 | GET `/api/features` | 4322 | `a.legacyFeatures` | PUBLIC_READ | none |
+| 3 | GET `/api/admin/features` | 4323 | `a.legacyAdminFeatures` | ADMIN_READ | token? |
+| 4 | POST `/api/admin/features` | 4327 | `a.legacyAdminFeatures` | ADMIN_CONFIG | token,features,featureOrder,baseRevision? |
+| 5 | GET `/api/register/challenge` | 4378 | `a.registerChallenge` | AUTH_CHALLENGE | source address (derived) |
+| 6 | GET `/api/admin/registration/stats` | 4382 | `a.legacyAdminRegistrationStats` | ADMIN_READ | token?; no body |
+| 7 | POST `/api/register` | 4387 | `a.register` | AUTH_REGISTER | username,password,confirmPassword,proof |
+| 8 | POST `/api/login` | 4422 | `a.login` | AUTH_LOGIN | username,password |
+| 9 | POST `/api/logout` | 4446 | `a.logout` | AUTH_LOGOUT | token |
+| 10 | GET `/api/me` | 4476 | `a.legacyMe` | AUTH_ME | token |
+| 11 | POST `/api/profile` | 4487 | `a.legacyProfileSave` | AUTH_ME | name |
+| 12 | GET `/events` | 4501 | `a.legacyEvents` | SSE | Last-Event-ID header |
+| 13 | GET `/api/sea` | 4626 | `a.legacySea` | SEA_READ | token |
+| 14 | POST `/api/sea/ship/up` | 4632 | `a.legacySeaAction("ship")` | SEA_WRITE | JSON body (strict; token may be query/header) |
+| 15 | POST `/api/sea/chart` | 4657 | `a.legacySeaAction("chart")` | SEA_WRITE | JSON body (strict; token may be query/header) |
+| 16 | POST `/api/sea/voyage` | 4674 | `a.legacySeaAction("voyage")` | SEA_WRITE | JSON body (strict; token may be query/header) |
+| 17 | POST `/api/sea/quest/claim` | 4698 | `a.legacySeaAction("quest")` | SEA_WRITE | JSON body (strict; token may be query/header) |
+| 18 | POST `/api/sea/anchor` | 4734 | `a.legacySeaAction("anchor")` | SEA_WRITE | JSON body (strict; token may be query/header) |
+| 19 | GET `/api/party` | 4770 | `a.legacyParty` | USER_READ | token; GET or action,target |
+| 20 | POST `/api/party` | 4780 | `a.legacyPartyChange` | SOCIAL_WRITE | token; GET or action,target |
+| 21 | POST `/api/fishing/start` | 4891 | `a.legacyFishingStart` | FISHING | groundId,spotId |
+| 22 | POST `/api/rod/slot/buy` | 4905 | `a.legacyRodSlotBuy` | ROD | none |
+| 23 | POST `/api/rod/save` | 4922 | `a.legacyRodSave` | ROD | slot,name,force |
+| 24 | POST `/api/rod/name` | 4958 | `a.legacyRodName` | ROD | name |
+| 25 | POST `/api/rod/rename` | 4971 | `a.legacyRodRename` | ROD | slot,name |
+| 26 | POST `/api/rod/use` | 4986 | `a.legacyRodUse` | ROD | slot |
+| 27 | POST `/api/rod/stow` | 5021 | `a.legacyRodStow` | ROD | none |
+| 28 | POST `/api/rod/delete` | 5050 | `a.legacyRodDelete` | ROD | slot |
+| 29 | POST `/api/fishing/stop` | 5079 | `a.legacyFishingStop` | FISHING | none |
+| 30 | POST `/api/bd/set` | 5091 | `a.legacyBdSet` | ROD | part,compId |
+| 31 | GET `/shop` | 5346 | `a.legacyShop` | PUBLIC_READ | none |
+| 32 | GET `/api/market` | 5351 | `a.legacyMarket` | PUBLIC_MARKET | scope,page,size,kind,part,q,sort,affix,min,max |
+| 33 | GET `/api/shop/history` | 5356 | `a.legacyShopHistory` | PUBLIC_READ | id |
+| 34 | GET `/api/chest` | 5401 | `a.legacyChest` | WORKSHOP_READ | token |
+| 35 | POST `/api/chest/craft` | 5412 | `a.legacyChestCraft` | WORKSHOP_WRITE | chestId,qty |
+| 36 | POST `/api/chest/open` | 5441 | `a.legacyChestOpen` | WORKSHOP_WRITE | chestId,part,baseId |
+| 37 | GET `/api/mall` | 5498 | `a.legacyMall` | USER_READ | token |
+| 38 | POST `/api/mall/buy` | 5504 | `a.legacyMallBuy` | ECONOMY | id,qty |
+| 39 | GET `/api/workshop` | 5536 | `a.legacyWorkshop` | WORKSHOP_READ | token |
+| 40 | POST `/api/workshop/smelt` | 5576 | `a.legacyWorkshopSmelt` | WORKSHOP_WRITE | mainId,subId,mainAffix,subAffix,materials,pearl,relics |
+| 41 | POST `/api/workshop/forge` | 5612 | `a.legacyWorkshopForge` | WORKSHOP_WRITE | id,materialId,pearl |
+| 42 | POST `/api/workshop/recast` | 5638 | `a.legacyWorkshopRecast` | WORKSHOP_WRITE | id,affixIndex? |
+| 43 | POST `/api/sell` | 5669 | `a.legacySell` | ECONOMY | id,qty,tier |
+| 44 | GET `/api/autosell` | 5716 | `a.legacyAutoSell` | USER_READ | token; GET or tier,id,scope,bulk,on,remove,minPct,minPrice,slackPct,slackPrice,keep |
+| 45 | POST `/api/autosell` | 5722 | `a.legacyAutoSellSet` | ECONOMY | token; GET or tier,id,scope,bulk,on,remove,minPct,minPrice,slackPct,slackPrice,keep |
+| 46 | POST `/api/market/list` | 5807 | `a.legacyMarketList` | MARKET_WRITE | id|rodSlot,qty,price,hours |
+| 47 | POST `/api/market/buy` | 5865 | `a.legacyMarketBuy` | MARKET_WRITE | lid,qty? |
+| 48 | GET `/api/market/history` | 5930 | `a.legacyMarketHistory` | USER_READ | token |
+| 49 | POST `/api/market/cancel` | 5937 | `a.legacyMarketCancel` | MARKET_WRITE | lid |
+| 50 | POST `/api/trade/invite` | 5962 | `a.legacyTradeInvite` | TRADE | target |
+| 51 | POST `/api/trade/respond` | 5988 | `a.legacyTradeRespond` | TRADE | tradeId,accept |
+| 52 | POST `/api/trade/set` | 6010 | `a.legacyTradeSet` | TRADE | tradeId,items |
+| 53 | POST `/api/trade/confirm` | 6040 | `a.legacyTradeConfirm` | TRADE | tradeId |
+| 54 | POST `/api/trade/cancel` | 6082 | `a.legacyTradeCancel` | TRADE | tradeId |
+| 55 | GET `/api/version` | 6099 | `a.legacyVersion` | PUBLIC_READ | none |
+| 56 | GET `/api/wiki/simulator/inventory` | 6115 | `a.legacyWikiSimulatorInventory` | WIKI_READ | token |
+| 57 | GET `/api/wiki/content` | 6131 | `a.legacyWikiContent` | WIKI_READ | If-None-Match? |
+| 58 | GET `/api/admin/wiki/content` | 6141 | `a.legacyAdminWikiContent` | ADMIN_WIKI | token?; If-None-Match? |
+| 59 | POST `/api/admin/wiki/content` | 6152 | `a.legacyAdminWikiContentSave` | ADMIN_WIKI | token,target,content|reset,baseRevision |
+| 60 | POST `/api/wiki/guides/submit` | 6173 | `a.legacyWikiGuideSubmit` | WIKI_WRITE | guide JSON (<=80KiB) |
+| 61 | GET `/api/wiki/guides/session` | 6199 | `a.legacyWikiGuideSession` | WIKI_READ | optional token |
+| 62 | GET `/api/wiki/guides/my` | 6203 | `a.legacyWikiGuideMine` | WIKI_READ | token |
+| 63 | POST `/api/wiki/guides/delete` | 6209 | `a.legacyWikiGuideDelete` | WIKI_WRITE | id |
+| 64 | GET `/api/admin/wiki/guides` | 6221 | `a.legacyAdminWikiGuides` | ADMIN_WIKI | token?,status=pending|approved|rejected|all |
+| 65 | POST `/api/admin/wiki/guides/review` | 6234 | `a.legacyAdminWikiGuideReview` | ADMIN_WIKI | token,target,action=approve|reject,expectedStatus,note |
+| 66 | POST `/api/admin/wiki/guides/delete` | 6254 | `a.legacyAdminWikiGuideDelete` | ADMIN_WIKI | token,target,reason |
+| 67 | GET `/api/wiki/guides` | 6271 | `a.legacyWikiGuides` | WIKI_READ | page,pageSize,q,kind,category |
+| 68 | GET `/api/wiki/guides/{id}` | 6280 | `a.legacyWikiGuideDetail` | WIKI_READ | id |
+| 69 | GET `/api/grounds` | 6291 | `a.legacyGrounds` | PUBLIC_READ | none |
+| 70 | GET `/api/subscribe` | 6296 | `a.legacySubscribeGet` | NOTIFY_READ | token; GET or on,baseId,quality,affixType,min,max,badge,blink |
+| 71 | POST `/api/subscribe` | 6305 | `a.legacySubscribeSet` | NOTIFY_WRITE | token; GET or on,baseId,quality,affixType,min,max,badge,blink |
+| 72 | GET `/api/feedback` | 6341 | `a.legacyFeedbackGet` | NOTIFY_READ | token |
+| 73 | POST `/api/feedback/submit` | 6349 | `a.legacyFeedbackSubmit` | NOTIFY_WRITE | text,kind |
+| 74 | POST `/api/feedback/skip` | 6374 | `a.legacyFeedbackSkip` | NOTIFY_WRITE | none |
+| 75 | GET `/api/codex` | 6393 | `a.legacyCodex` | USER_READ | token |
+| 76 | GET `/api/records` | 6399 | `a.legacyRecords` | PUBLIC_READ | none |
+| 77 | GET `/api/records/top` | 6408 | `a.legacyRecordsTop` | PUBLIC_READ | id,kind,range |
+| 78 | POST `/api/admin/login` | 6514 | `a.login` | AUTH_LOGIN | username,password,otp |
+| 79 | GET `/api/admin/session` | 6538 | `a.adminSession` | AUTH_ME | admin token |
+| 80 | GET `/api/admin/netstats` | 6544 | `a.legacyAdminNetstats` | ADMIN_READ | token?; no body |
+| 81 | GET `/api/admin/parties` | 6550 | `a.legacyAdminParties` | ADMIN_READ | token?; no body |
+| 82 | POST `/api/admin/party/disband` | 6556 | `a.legacyAdminPartyDisband` | ADMIN_PARTY | token,id |
+| 83 | GET `/api/friends/relations` | 6579 | `a.legacyFriendRelations` | SOCIAL_READ | none |
+| 84 | GET `/api/friends` | 6590 | `a.legacyFriendsView` | SOCIAL_READ | q,page or target,action |
+| 85 | POST `/api/friends` | 6617 | `a.legacyFriendChange` | SOCIAL_READ | q,page or target,action |
+| 86 | GET `/api/players/page` | 6694 | `a.legacyPlayersPage` | SOCIAL_READ | token,page,size,q,ground,spot |
+| 87 | POST `/api/players/view` | 6706 | `a.legacyPlayersView` | SOCIAL_VIEW | page,size,q,ground,spot,clear |
+| 88 | POST `/api/players/rod` | 6726 | `a.legacyPlayersRod` | SOCIAL_READ | target |
+| 89 | GET `/api/admin/overview` | 6741 | `a.legacyAdminOverview` | ADMIN_READ | token?; no body |
+| 90 | GET `/api/admin/stats` | 6762 | `a.legacyAdminStats` | ADMIN_READ | query: token? plus route filters (see handler) |
+| 91 | GET `/api/banner` | 6772 | `a.legacyBanner` | PUBLIC_READ | none |
+| 92 | GET `/api/admin/banner` | 6779 | `a.legacyAdminBanner` | ADMIN_READ | token?; no body |
+| 93 | POST `/api/admin/banner/add` | 6792 | `a.legacyBannerChange("add")` | ADMIN_BANNER | token,content,duration,color |
+| 94 | POST `/api/admin/banner/remove` | 6816 | `a.legacyBannerChange("remove")` | ADMIN_BANNER | token,id |
+| 95 | POST `/api/admin/banner/move` | 6831 | `a.legacyBannerChange("move")` | ADMIN_BANNER | token,id,dir=up|down |
+| 96 | POST `/api/admin/banner/cfg` | 6851 | `a.legacyBannerChange("cfg")` | ADMIN_BANNER | token,blink,blinkTitle,noticeColor,catchLevel |
+| 97 | POST `/api/admin/banner/update` | 6876 | `a.legacyBannerChange("update")` | ADMIN_BANNER | token,id,color |
+| 98 | POST `/api/banner/playing` | 6905 | `a.legacyBannerPlaying` | BANNER_PLAY | id |
+| 99 | POST `/api/admin/banner/stop` | 6920 | `a.legacyBannerChange("stop")` | ADMIN_BANNER | token,id |
+| 100 | POST `/api/admin/banner/clear` | 6934 | `a.legacyBannerChange("clear")` | ADMIN_BANNER | token |
+| 101 | GET `/api/admin/feedback` | 6951 | `a.legacyAdminFeedback` | ADMIN_READ | token?; no body |
+| 102 | POST `/api/admin/feedback/cfg` | 6966 | `a.legacyAdminFeedbackConfig` | ADMIN_FEEDBACK | token,cdHours,skipCost |
+| 103 | POST `/api/admin/feedback/status` | 6991 | `a.legacyAdminFeedbackStatus` | ADMIN_FEEDBACK | token,id,status |
+| 104 | POST `/api/admin/feedback/del` | 7010 | `a.legacyAdminFeedbackDelete` | ADMIN_FEEDBACK | token,id |
+| 105 | POST `/api/admin/feedback/reward` | 7032 | `a.legacyAdminFeedbackReward` | ADMIN_FEEDBACK | token,id,coins,note |
+| 106 | GET `/api/admin/users` | 7061 | `a.legacyAdminUsers` | ADMIN_READ | token?; no body |
+| 107 | POST `/api/admin/users/setadmin` | 7090 | `a.legacyAdminUserSetAdmin` | ADMIN_USERS | token,target,admin |
+| 108 | POST `/api/admin/users/ban` | 7117 | `a.legacyAdminUserBan` | ADMIN_USERS | token,target,hours,reason,confirm |
+| 109 | GET `/api/admin/security` | 7155 | `a.legacyAdminSecurity` | ADMIN_READ | token?; no body |
+| 110 | POST `/api/admin/users/delete` | 7169 | `a.legacyAdminUserDelete` | ADMIN_USERS | token,target,confirm |
+| 111 | GET `/api/admin/users/snapshot` | 7193 | `a.legacyAdminUserSnapshot` | ADMIN_SNAPSHOT | token,key |
+| 112 | POST `/api/admin/users/snapshot` | 7209 | `a.legacyAdminUserSnapshotSave` | ADMIN_SNAPSHOT | token,target,coins,inventory,bd |
+| 113 | GET `/api/admin/users/snapshots` | 7273 | `a.legacyAdminUserSnapshots` | ADMIN_SNAPSHOT | token,key |
+| 114 | POST `/api/admin/users/snapshot-now` | 7289 | `a.legacyAdminUserSnapshotNow` | ADMIN_SNAPSHOT | token,target |
+| 115 | POST `/api/admin/users/rollback` | 7307 | `a.legacyAdminUserRollback` | ADMIN_SNAPSHOT | token,target,snap,confirm |
+| 116 | POST `/api/admin/snapshot/config` | 7335 | `a.legacyAdminSnapshotConfig` | ADMIN_SNAPSHOT | token,enabled,interval,retention |
+| 117 | POST `/api/admin/users/update` | 7350 | `a.legacyAdminUserUpdate` | ADMIN_USERS | token,target,name,password,coins,listingCap |
+| 118 | GET `/api/admin/world` | 7401 | `a.legacyAdminWorld` | ADMIN_READ | token?; no body |
+| 119 | POST `/api/admin/component/config` | 7518 | `a.adminComponentConfig` | ADMIN_CONFIG | token,qualityWeights,countWeights,rollModel,affixRanges,extraAffixRanges,adjectiveRules |
+| 120 | POST `/api/admin/component/reset` | 7614 | `a.adminComponentReset` | ADMIN_WORLD | token |
+| 121 | POST `/api/admin/component/simulate` | 7627 | `a.adminComponentSimulate` | ADMIN_WORLD | token,n |
+| 122 | POST `/api/admin/fish/config` | 7665 | `a.adminFishConfig` | ADMIN_CONFIG | token,sizeModel,sizeWeights |
+| 123 | POST `/api/admin/fish/reset` | 7681 | `a.adminFishReset` | ADMIN_WORLD | token |
+| 124 | POST `/api/admin/fish/simulate` | 7695 | `a.adminFishSimulate` | ADMIN_WORLD | token,spotKey,model,n |
+| 125 | POST `/api/admin/spot/pool` | 7743 | `a.adminSpotPool` | ADMIN_WORLD | token,groundId,spotId,pool[{pick,weight}] |
+| 126 | GET `/api/admin/loot/groups` | 7760 | `a.adminLootGroups` | ADMIN_READ | token?; no body |
+| 127 | POST `/api/admin/loot/group` | 7765 | `a.adminLootGroup` | ADMIN_WORLD | token,group definition/entries |
+| 128 | POST `/api/admin/spot/buffs` | 7806 | `a.adminSpotBuffs` | ADMIN_WORLD | token,groundId,spotId,buffs[{type,value}] |
+| 129 | POST `/api/admin/pool/preset` | 7824 | `a.adminPoolPreset` | ADMIN_WORLD | token,preset |
+| 130 | POST `/api/admin/ground/add` | 7836 | `a.adminGroundAdd` | ADMIN_WORLD | token,ground definition |
+| 131 | POST `/api/admin/spot/add` | 7872 | `a.adminSpotAdd` | ADMIN_WORLD | token,groundId,spot definition |
+| 132 | POST `/api/admin/ground/remove` | 7908 | `a.adminGroundRemove` | ADMIN_WORLD | token,groundId,spotId?,locked? |
+| 133 | POST `/api/admin/spot/remove` | 7933 | `a.adminSpotRemove` | ADMIN_WORLD | token,groundId,spotId,locked? |
+| 134 | POST `/api/admin/ground/restore` | 7969 | `a.adminGroundRestore` | ADMIN_WORLD | token,groundId,spotId?,locked? |
+| 135 | POST `/api/admin/ground/update` | 7999 | `a.adminGroundUpdate` | ADMIN_WORLD | token,groundId,name,fields |
+| 136 | POST `/api/admin/spot/rate` | 8041 | `a.adminSpotRate` | ADMIN_WORLD | token,groundId,spotId,rate |
+| 137 | POST `/api/admin/spot/pos` | 8075 | `a.adminSpotPos` | ADMIN_WORLD | token,groundId,spotId?,list |
+| 138 | POST `/api/admin/ground/lock` | 8098 | `a.adminGroundLock` | ADMIN_WORLD | token,groundId,spotId?,locked? |
+| 139 | POST `/api/admin/spot/lock` | 8124 | `a.adminSpotLock` | ADMIN_WORLD | token,groundId,spotId,locked? |
+| 140 | POST `/api/admin/market/return` | 8150 | `a.legacyAdminMarketReturn` | ADMIN_MARKET | token,lid |
+| 141 | GET `/api/admin/market/supply` | 8180 | `a.legacyAdminMarketSupplyGet` | ADMIN_MARKET | token?; no body |
+| 142 | POST `/api/admin/market/supply` | 8184 | `a.legacyAdminMarketSupplyPost` | ADMIN_MARKET | JSON body (strict; token may be query/header) |
+| 143 | POST `/api/admin/market/bulk` | 8210 | `a.legacyAdminMarketBulk` | ADMIN_MARKET | token,mode,sellers,items,qty,price,hours |
+| 144 | POST `/api/admin/mall/config` | 8242 | `a.legacyAdminMallConfig` | ADMIN_CONFIG | token,refreshTime,items,reset |
+| 145 | GET `/api/admin/loot/spots` | 8269 | `a.adminLootSpots` | ADMIN_READ | token?; no body |
+| 146 | POST `/api/admin/simulate` | 8284 | `a.adminSimulate` | ADMIN_WORLD | token,totals,spotKey |
+| 147 | POST `/api/admin/loot/test` | 8326 | `a.adminLootTest` | ADMIN_WORLD | token,spotKey,rare |
+| 148 | POST `/api/admin/smelt/config` | 8380 | `a.legacyAdminSmeltConfig` | ADMIN_CONFIG | token,partial smelt config or reset |
+| 149 | POST `/api/admin/records/config` | 8478 | `a.legacyAdminRecordsConfig` | ADMIN_RECORDS | token,scale,x,y,reset |
+| 150 | POST `/api/admin/records/delete` | 8511 | `a.legacyAdminRecordsDelete` | ADMIN_RECORDS | token,id? |
+| 151 | POST `/api/admin/records/delone` | 8532 | `a.legacyAdminRecordDeleteOne` | ADMIN_RECORDS | token,id,range,kind,expected |
+| 152 | POST `/api/admin/settings` | 8567 | `a.legacyAdminSettings` | ADMIN_CONFIG | token,partial settings (seaCfg/chestCfg/castBaseMs/priceCfg/dropCfg/autoSellCfg/doubleBase/biteFormula/notifyLevel/rareK...) |
 
 ## 验收规则
 

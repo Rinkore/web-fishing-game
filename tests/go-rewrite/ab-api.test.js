@@ -115,7 +115,7 @@ test.before(async () => { run = makeRun('api'); });
 test.after(async () => { await cleanup(run, services); });
 
 test('contract matrix is complete and explicit for all non-development legacy routes', () => {
-  assert.equal(matrix.source.commit, '13694a7038438ac0b3dd7df07db8c05ea239141f');
+  assert.equal(matrix.source.commit, '1d48dbf4bd6a265d188d0234f55636bd31a42191');
   assert.equal(matrix.denominator, 152);
   assert.equal(matrix.routes.length, 152);
   for (const row of matrix.routes) {
@@ -126,7 +126,7 @@ test('contract matrix is complete and explicit for all non-development legacy ro
 });
 
 test('SSE matrix records consumer, both sender paths and lifecycle assertions', () => {
-  assert.equal(sse.source.commit, '13694a7038438ac0b3dd7df07db8c05ea239141f');
+  assert.equal(sse.source.commit, '1d48dbf4bd6a265d188d0234f55636bd31a42191');
   assert.equal(sse.clientTypes.length, 40);
   assert.equal(sse.lifecycle.length, 9);
   assert.ok(sse.clientTypes.every(row => row.client.lines.length > 0));

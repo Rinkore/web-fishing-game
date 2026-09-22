@@ -39,5 +39,3 @@ if (process.argv[2] === '--write') fs.writeFileSync(output, content);
 else if (process.argv[2] === '--check') { if (fs.readFileSync(output, 'utf8') !== content) throw new Error('Rule oracle changed; review differences before recording'); }
 else throw new Error('Usage: node tools/go-rewrite/native-rules-fixture.js --write|--check');
 console.log(`Native rule oracle: ${cases.length} cases (${D.VERSION}); original legacy-rules.json unchanged.`);
-
-
