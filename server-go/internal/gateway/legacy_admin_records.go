@@ -139,6 +139,10 @@ func (a *API) legacyAdminRecordsDelete(w http.ResponseWriter, r *http.Request) {
 		legacyRecordsFailure(w, err)
 		return
 	}
+	if err = clearLegacyLastRecord(ctx, tx, in.ID); err != nil {
+		legacyRecordsFailure(w, err)
+		return
+	}
 	value, err := a.legacyRecordsProjection(ctx, tx, c)
 	if err != nil {
 		legacyRecordsFailure(w, err)
@@ -158,6 +162,26 @@ func (a *API) legacyAdminRecordsDelete(w http.ResponseWriter, r *http.Request) {
 		value["id"] = in.ID
 	}
 	write(w, 200, value)
+}
+
+func clearLegacyLastRecord(ctx context.Context, q legacyRecordQueryer, id string) error {
+	var raw []byte
+	if err := q.QueryRow(ctx, `SELECT value FROM fishing.operator_settings WHERE key=$1 FOR UPDATE`, legacyRecordsRuntime).Scan(&raw); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	var state struct {
+		LastRec struct {
+			ID string `json:"id"`
+		} `json:"lastRec"`
+	}
+	if json.Unmarshal(raw, &state) != nil || state.LastRec.ID == "" || id != "" && state.LastRec.ID != id {
+		return nil
+	}
+	_, err := q.Exec(ctx, `UPDATE fishing.operator_settings SET value='{"lastRec":null}'::jsonb,updated_at=clock_timestamp() WHERE key=$1`, legacyRecordsRuntime)
+	return err
 }
 
 func (a *API) legacyAdminRecordDeleteOne(w http.ResponseWriter, r *http.Request) {

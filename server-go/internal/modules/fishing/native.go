@@ -365,6 +365,9 @@ func (s *NativeService) Settle(ctx context.Context, c Candidate) (assets.Result,
 			}
 			return assets.Result{}, err
 		}
+		if err = s.persistLegacyRecordRuntime(ctx, t, c.OwnerID, catches, now); err != nil {
+			return assets.Result{}, fmt.Errorf("legacy record runtime: %w", err)
+		}
 		ready, err := seaService.CatchProgress(ctx, t, c.OwnerID, progress)
 		if err != nil {
 			return assets.Result{}, err

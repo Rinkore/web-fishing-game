@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"fishing.local/server/internal/modules/operations"
 	"fishing.local/server/internal/rules"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Legacy read-only records/banner/features projections. Records are derived
@@ -53,6 +55,22 @@ func (a *API) legacyRecords(w http.ResponseWriter, r *http.Request) {
 
 type legacyRecordQueryer interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func legacyLastRecord(ctx context.Context, q legacyRecordQueryer) any {
+	var raw []byte
+	if err := q.QueryRow(ctx, `SELECT value FROM fishing.operator_settings WHERE key=$1`, legacyRecordsRuntime).Scan(&raw); err != nil {
+		return nil
+	}
+	var state struct {
+		LastRec any `json:"lastRec"`
+	}
+	if json.Unmarshal(raw, &state) != nil {
+		return nil
+	}
+	return state.LastRec
 }
 
 func (a *API) legacyRecordsProjection(ctx context.Context, q legacyRecordQueryer, c *rules.Catalog) (map[string]any, error) {
@@ -111,10 +129,7 @@ func (a *API) legacyRecordsProjection(ctx context.Context, q legacyRecordQueryer
 		"records":   big,
 		"small":     small,
 		"globalMax": globalMax,
-		// lastRec is a notification watermark, not a record itself. The stream
-		// publishes it alongside recordsDirty; a fresh HTTP projection has no
-		// durable announcement marker to replay after a restart.
-		"last":      nil,
+		"last":      legacyLastRecord(ctx, q),
 		"rankLabel": map[string]string{"day": rankLabelOf("day", a.location, now), "week": rankLabelOf("week", a.location, now), "all": "总榜 · 历史前十"},
 	}
 	if value, ok := stored[legacyRecordsSetting]; ok {

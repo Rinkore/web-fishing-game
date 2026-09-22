@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"fishing.local/server/internal/rules"
@@ -152,6 +153,84 @@ type legacyCatchBoards struct {
 	small    map[legacyCatchKey]bool
 	topBig   map[legacyCatchKey]int
 	topSmall map[legacyCatchKey]int
+	history  map[legacyCatchKey]legacyCatchNotice
+}
+
+type legacyCatchNotice struct {
+	level  int
+	record bool
+	small  bool
+	rank   int
+}
+
+type legacyBoardValue struct {
+	key                      legacyCatchKey
+	owner                    int64
+	id                       string
+	sz                       float64
+	at                       time.Time
+	bigVisible, smallVisible bool
+}
+
+// legacyDailyRank applies the same one-entry-per-player and top-ten ordering
+// as the legacy daily board. It reports whether this catch improved the
+// player's entry and its resulting rank; an underfull board is still a valid
+// rank, so callers can apply the configured announcement policy separately.
+func legacyDailyRank(board map[int64]legacyBoardValue, v legacyBoardValue, small bool) (int, bool) {
+	old, exists := board[v.owner]
+	better := !exists || (small && v.sz < old.sz) || (!small && v.sz > old.sz)
+	if !better {
+		return legacyRankOf(board, v.owner, small), false
+	}
+	board[v.owner] = v
+	if len(board) > 10 {
+		values := make([]legacyBoardValue, 0, len(board))
+		for _, entry := range board {
+			values = append(values, entry)
+		}
+		sort.Slice(values, func(i, j int) bool {
+			if values[i].sz != values[j].sz {
+				if small {
+					return values[i].sz < values[j].sz
+				}
+				return values[i].sz > values[j].sz
+			}
+			return values[i].at.Before(values[j].at)
+		})
+		delete(board, values[len(values)-1].owner)
+	}
+	return legacyRankOf(board, v.owner, small), true
+}
+
+func legacyRankOf(board map[int64]legacyBoardValue, owner int64, small bool) int {
+	values := make([]legacyBoardValue, 0, len(board))
+	for _, v := range board {
+		values = append(values, v)
+	}
+	sort.Slice(values, func(i, j int) bool {
+		if values[i].sz != values[j].sz {
+			if small {
+				return values[i].sz < values[j].sz
+			}
+			return values[i].sz > values[j].sz
+		}
+		if !values[i].at.Equal(values[j].at) {
+			return values[i].at.Before(values[j].at)
+		}
+		if values[i].key.operation != values[j].key.operation {
+			return values[i].key.operation < values[j].key.operation
+		}
+		return values[i].key.ordinal < values[j].key.ordinal
+	})
+	for i, v := range values {
+		if v.owner == owner {
+			if i >= 10 {
+				return 0
+			}
+			return i + 1
+		}
+	}
+	return 0
 }
 
 func (p *legacyCatchPush) notifyLevel(ctx context.Context) string {
@@ -204,16 +283,17 @@ func catchKeyIsZero(k legacyCatchKey) bool { return k.operation == 0 && k.ordina
 // global max, per-fish max/min, then full daily top-ten boards. The immutable
 // catch ledger is the source of truth, while moderation hides are projections.
 func (p *legacyCatchPush) catchBoards(ctx context.Context, now time.Time) (legacyCatchBoards, error) {
-	b := legacyCatchBoards{big: map[legacyCatchKey]bool{}, small: map[legacyCatchKey]bool{}, topBig: map[legacyCatchKey]int{}, topSmall: map[legacyCatchKey]int{}}
-	rows, err := p.api.pool.Query(ctx, `SELECT cr.operation_id,cr.ordinal,cr.item_id,cr.size,cr.caught_at,
+	b := legacyCatchBoards{big: map[legacyCatchKey]bool{}, small: map[legacyCatchKey]bool{}, topBig: map[legacyCatchKey]int{}, topSmall: map[legacyCatchKey]int{}, history: map[legacyCatchKey]legacyCatchNotice{}}
+	rows, err := p.api.pool.Query(ctx, `SELECT cr.operation_id,cr.ordinal,cr.owner_id,cr.item_id,cr.size,cr.caught_at,
  NOT EXISTS (SELECT 1 FROM fishing.catch_record_hides h WHERE h.operation_id=cr.operation_id AND h.ordinal=cr.ordinal AND h.board_range='record' AND h.board_kind='big'),
  NOT EXISTS (SELECT 1 FROM fishing.catch_record_hides h WHERE h.operation_id=cr.operation_id AND h.ordinal=cr.ordinal AND h.board_range='record' AND h.board_kind='small')
- FROM fishing.catch_records cr ORDER BY cr.item_id,cr.size DESC,cr.caught_at,cr.operation_id,cr.ordinal`)
+ FROM fishing.catch_records cr ORDER BY cr.caught_at,cr.operation_id,cr.ordinal`)
 	if err != nil {
 		return b, err
 	}
 	type value struct {
 		key                      legacyCatchKey
+		owner                    int64
 		id                       string
 		sz                       float64
 		at                       time.Time
@@ -222,7 +302,7 @@ func (p *legacyCatchPush) catchBoards(ctx context.Context, now time.Time) (legac
 	values := []value{}
 	for rows.Next() {
 		var v value
-		if err := rows.Scan(&v.key.operation, &v.key.ordinal, &v.id, &v.sz, &v.at, &v.bigVisible, &v.smallVisible); err != nil {
+		if err := rows.Scan(&v.key.operation, &v.key.ordinal, &v.owner, &v.id, &v.sz, &v.at, &v.bigVisible, &v.smallVisible); err != nil {
 			rows.Close()
 			return b, err
 		}
@@ -235,29 +315,92 @@ func (p *legacyCatchPush) catchBoards(ctx context.Context, now time.Time) (legac
 	rows.Close()
 	maxByID := map[string]value{}
 	minByID := map[string]value{}
+	var global value
+	globalSet := false
+	loc := p.api.location
+	if loc == nil {
+		loc = time.Local
+	}
+	dayBig := map[string]map[int64]legacyBoardValue{}
+	daySmall := map[string]map[int64]legacyBoardValue{}
 	for _, v := range values {
+		if !v.bigVisible && !v.smallVisible {
+			continue
+		}
+		globalRecord := false
+		fishRecord := false
 		if v.bigVisible {
 			if cur, ok := maxByID[v.id]; !ok || v.sz > cur.sz || v.sz == cur.sz && v.at.Before(cur.at) {
 				maxByID[v.id] = v
+				fishRecord = true
+			}
+			if !globalSet || v.sz > global.sz || v.sz == global.sz && v.at.Before(global.at) {
+				global = v
+				globalSet = true
+				globalRecord = true
 			}
 		}
 		if v.smallVisible {
 			if cur, ok := minByID[v.id]; !ok || v.sz < cur.sz || v.sz == cur.sz && v.at.Before(cur.at) {
 				minByID[v.id] = v
+				fishRecord = true
+			}
+		}
+		day := v.at.In(loc).Format("2006-01-02")
+		boardID := day + "\x00" + v.id
+		boardValue := legacyBoardValue{key: v.key, owner: v.owner, id: v.id, sz: v.sz, at: v.at, bigVisible: v.bigVisible, smallVisible: v.smallVisible}
+		bigDay := dayBig[boardID]
+		if bigDay == nil {
+			bigDay = map[int64]legacyBoardValue{}
+			dayBig[boardID] = bigDay
+		}
+		smallDay := daySmall[boardID]
+		if smallDay == nil {
+			smallDay = map[int64]legacyBoardValue{}
+			daySmall[boardID] = smallDay
+		}
+		bigWasFull := len(bigDay) >= 10
+		smallWasFull := len(smallDay) >= 10
+		bigRank, bigChanged := 0, false
+		smallRank, smallChanged := 0, false
+		if v.bigVisible {
+			bigRank, bigChanged = legacyDailyRank(bigDay, boardValue, false)
+		}
+		if v.smallVisible {
+			smallRank, smallChanged = legacyDailyRank(smallDay, boardValue, true)
+		}
+		level := 0
+		rank := 0
+		smallRecord := false
+		if globalRecord {
+			level = 1
+		} else if fishRecord {
+			level = 2
+			smallRecord = v.smallVisible && minByID[v.id].key == v.key
+		} else if bigChanged && bigWasFull && bigRank > 0 {
+			level = 3
+			rank = legacyRankOf(bigDay, v.owner, false)
+		} else if smallChanged && smallWasFull && smallRank > 0 {
+			level = 4
+			rank = legacyRankOf(smallDay, v.owner, true)
+		}
+		if level > 0 {
+			b.history[v.key] = legacyCatchNotice{level: level, record: fishRecord || globalRecord, small: smallRecord, rank: rank}
+		}
+	}
+	for _, v := range values {
+		if v.bigVisible {
+			if cur, ok := maxByID[v.id]; ok && cur.key == v.key {
+				b.big[v.key] = true
+			}
+		}
+		if v.smallVisible {
+			if cur, ok := minByID[v.id]; ok && cur.key == v.key {
+				b.small[v.key] = true
 			}
 		}
 	}
-	var global value
-	for _, v := range maxByID {
-		b.big[v.key] = true
-		if catchKeyIsZero(b.global) || v.sz > global.sz || v.sz == global.sz && v.at.Before(global.at) {
-			global = v
-		}
-	}
-	for _, v := range minByID {
-		b.small[v.key] = true
-	}
-	if !catchKeyIsZero(global.key) {
+	if globalSet {
 		b.global = global.key
 	}
 	ids := map[string]bool{}
@@ -269,7 +412,7 @@ func (p *legacyCatchPush) catchBoards(ctx context.Context, now time.Time) (legac
 		if err != nil {
 			return b, err
 		}
-		if len(big) == 10 {
+		if len(big) > 0 {
 			for i, entry := range big {
 				b.topBig[legacyCatchKey{entry.OperationID, entry.Ordinal}] = i + 1
 			}
@@ -278,7 +421,7 @@ func (p *legacyCatchPush) catchBoards(ctx context.Context, now time.Time) (legac
 		if err != nil {
 			return b, err
 		}
-		if len(small) == 10 {
+		if len(small) > 0 {
 			for i, entry := range small {
 				b.topSmall[legacyCatchKey{entry.OperationID, entry.Ordinal}] = i + 1
 			}
@@ -288,6 +431,9 @@ func (p *legacyCatchPush) catchBoards(ctx context.Context, now time.Time) (legac
 }
 
 func legacyCatchNoticeLevel(b legacyCatchBoards, key legacyCatchKey) (int, bool) {
+	if notice, ok := b.history[key]; ok {
+		return notice.level, notice.record
+	}
 	if key == b.global && !catchKeyIsZero(key) {
 		return 1, true
 	}
@@ -434,34 +580,40 @@ func (p *legacyCatchPush) poll(ctx context.Context) []string {
 			// the daily/weekly board may change even when no banner is emitted.
 			recordsChanged = true
 		}
-		if level > 0 && (len(list) < 100 || level == 1) {
+		if level > 0 && row.item.Size != nil {
 			name := item["name"]
 			text := fmt.Sprintf("📊 %v 今日榜单更新：%s %gcm", name, row.name, *row.item.Size)
+			notice := boards.history[key]
 			switch level {
 			case 1:
 				text = fmt.Sprintf("🎉 全场最大纪录被破！%s 钓到 %v %gcm", row.name, name, *row.item.Size)
 			case 2:
-				if boards.small[key] && !boards.big[key] {
+				if notice.small || (boards.small[key] && !boards.big[key]) {
 					text = fmt.Sprintf("🏆 %v 全服最小纪录刷新：%s %gcm", name, row.name, *row.item.Size)
 				} else {
 					text = fmt.Sprintf("🏆 %v 全服最大纪录刷新：%s %gcm", name, row.name, *row.item.Size)
 				}
 			case 3:
-				text = fmt.Sprintf("📊 %v 今日前十大更新：%s %gcm（第 %d 名）", name, row.name, *row.item.Size, boards.topBig[key])
+				rank := notice.rank
+				if rank == 0 {
+					rank = boards.topBig[key]
+				}
+				text = fmt.Sprintf("📊 %v 今日前十大更新：%s %gcm（第 %d 名）", name, row.name, *row.item.Size, rank)
 			case 4:
-				text = fmt.Sprintf("📊 %v 今日前十小更新：%s %gcm（第 %d 名）", name, row.name, *row.item.Size, boards.topSmall[key])
+				rank := notice.rank
+				if rank == 0 {
+					rank = boards.topSmall[key]
+				}
+				text = fmt.Sprintf("📊 %v 今日前十小更新：%s %gcm（第 %d 名）", name, row.name, *row.item.Size, rank)
 			}
-			if bannerCatchAllowedLegacy(ctx, p.api, level) && (level < globalLevel || level == 1) {
-				global = map[string]any{"id": row.item.ID, "name": name, "size": row.item.Size, "who": row.name,
+			if bannerCatchAllowedLegacy(ctx, p.api, level) {
+				candidate := map[string]any{"id": row.item.ID, "name": name, "size": row.item.Size, "who": row.name,
 					"key": row.key, "t": row.caughtAt.UnixMilli(), "level": level, "global": level == 1, "text": text}
-				globalLevel = level
+				if global == nil || level < globalLevel || level == globalLevel {
+					global = candidate
+					globalLevel = level
+				}
 			}
-		}
-		if level == 1 && globalLevel != 1 {
-			global = map[string]any{"id": row.item.ID, "name": item["name"], "size": row.item.Size, "who": row.name,
-				"key": row.key, "t": row.caughtAt.UnixMilli(), "level": 1, "global": true,
-				"text": fmt.Sprintf("🎉 全场最大纪录被破！%s 钓到 %v %gcm", row.name, item["name"], *row.item.Size)}
-			globalLevel = 1
 		}
 	}
 	frames := []string{}
