@@ -2403,7 +2403,7 @@ window.UI = (function () {
   // 就地更新带 key 的列表：已有节点原地改内容，保住节点身份、事件与**父容器的滚动位置**；
   // 只有「新增 / 删除 / 换序」才真的插删 DOM。广播到达时必须走这条路——整块重建会把
   // 用户滚到的位置、正在点的那一行、输入法候选一起冲掉。
-  // update 返回新节点 = 该行必须换节点（结构变了），调用方按返回值继续用。
+  // update 返回新节点 = 该行必须换节点（结构变了），统一在这里替换并保留 key。
   function patchList(container, items, keyOf, create, update) {
     const have = Object.create(null);
     Array.prototype.slice.call(container.childNodes).forEach(function (n) {
@@ -2416,8 +2416,15 @@ window.UI = (function () {
       const k = String(keyOf(it));
       keep[k] = 1;
       let node = have[k];
-      if (node) node = update(node, it) || node;
-      else { node = create(it); node.setAttribute('data-key', k); }
+      if (node) {
+        const replacement = update(node, it);
+        if (replacement && replacement !== node) {
+          node.replaceWith(replacement);
+          node = replacement;
+        }
+      } else node = create(it);
+      // 关系变化会换整行；新节点也必须带 key，否则后续刷新会反复追加同一玩家。
+      node.setAttribute('data-key', k);
       const want = prev ? prev.nextSibling : container.firstChild;
       if (node !== want) container.insertBefore(node, want);
       prev = node;
@@ -2811,7 +2818,7 @@ window.UI = (function () {
       const hint = list.querySelector('.hint'); if (hint) hint.remove();
       patchList(list, players, function (p) { return p.id; }, function (p) { return friendRow(p, isSaved); }, function (row, p) {
         const act = isSaved ? 'remove' : p.reqIn ? 'accept' : p.reqOut ? 'cancel' : p.friend ? 'added' : 'request';
-        if (row._friendAction !== act) { const replacement = friendRow(p, isSaved); row.replaceWith(replacement); return replacement; }
+        if (row._friendAction !== act) return friendRow(p, isSaved);
         const html = friendInfoHtml(p), info = row.querySelector('.peep-info');
         if (info.innerHTML !== html) info.innerHTML = html;
         return null;

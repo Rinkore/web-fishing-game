@@ -14,7 +14,7 @@ const fs = require('fs'), path = require('path'), assert = require('node:assert/
    return route.fulfill({status:404,body:''});
  });
  await page.goto('http://fishing.test/');
- for(const file of ['data','engine','ui']) await page.addScriptTag({path:path.join(root,'js',file+'.js')});
+ for(const file of ['data','features','engine','ui']) await page.addScriptTag({path:path.join(root,'js',file+'.js')});
  await page.evaluate(()=>{
    document.querySelector('#auth').style.display='none';
    const D=GameData; window.ids=[];
