@@ -10,7 +10,33 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 )
+
+func TestGroundWindowClosedUsesCatalogWindowAtActionTime(t *testing.T) {
+	c, err := rules.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var grounds []map[string]any
+	if err := c.Constant("GROUNDS", &grounds); err != nil || len(grounds) == 0 {
+		t.Fatal("default grounds missing")
+	}
+	now := time.UnixMilli(1_000_000)
+	grounds[0]["openFrom"] = float64(now.Add(time.Hour).UnixMilli())
+	raw, _ := json.Marshal(grounds)
+	c.Constants["GROUNDS"] = raw
+	if !groundWindowClosed(c, grounds[0]["id"].(string), now) {
+		t.Fatal("future openFrom did not close ground")
+	}
+	grounds[0]["openFrom"] = nil
+	grounds[0]["openTo"] = float64(now.Add(-time.Hour).UnixMilli())
+	raw, _ = json.Marshal(grounds)
+	c.Constants["GROUNDS"] = raw
+	if !groundWindowClosed(c, grounds[0]["id"].(string), now) {
+		t.Fatal("expired openTo did not close ground")
+	}
+}
 
 func TestIntegrationChartCraftShipUpgradeAndRollback(t *testing.T) {
 	db := testdb.New(t, true)

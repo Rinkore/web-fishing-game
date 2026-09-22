@@ -19,6 +19,9 @@ func (a *API) legacyRodSlotBuy(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !a.legacyRodFeature(w, r.Context(), "bd.slots") {
+		return
+	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
 	res, err := assets.New(a.pool).BuyRodSlot(ctx, session.AccountID, "legacy:rod:buy:"+strconv.FormatInt(timeNowMS(), 10))
 	if err != nil {
@@ -71,6 +74,13 @@ func (a *API) legacyRodDelete(w http.ResponseWriter, r *http.Request) {
 func (a *API) legacyRodCommand(w http.ResponseWriter, r *http.Request, action string) {
 	session, ok := a.authorize(w, r, false)
 	if !ok {
+		return
+	}
+	feature := "bd.save"
+	if action == "use" || action == "stow" {
+		feature = "bd.equip"
+	}
+	if !a.legacyRodFeature(w, r.Context(), feature) {
 		return
 	}
 	var in struct {

@@ -9,6 +9,7 @@ import (
 
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/identity"
+	"fishing.local/server/internal/modules/operations"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -25,6 +26,9 @@ func (a *API) legacyBdSet(w http.ResponseWriter, r *http.Request) {
 		CompID string `json:"compId"`
 	}
 	if !decode(w, r, &in) {
+		return
+	}
+	if !a.legacyRodFeature(w, r.Context(), "bd.equip") {
 		return
 	}
 	c, err := a.catalog(r.Context())
@@ -46,8 +50,13 @@ func (a *API) legacyBdSet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-	if _, err := assets.New(a.pool).ChangeRod(ctx, assets.RodCommand{ActorID: session.AccountID, RequestKey: "legacy:bd:" + strconv.FormatInt(time.Now().UnixMilli(), 10), Action: "equip", Part: in.Part, EquipmentID: equipmentID}); err != nil {
+	res, err := assets.New(a.pool).ChangeRod(ctx, assets.RodCommand{ActorID: session.AccountID, RequestKey: "legacy:bd:" + strconv.FormatInt(time.Now().UnixMilli(), 10), Action: "equip", Part: in.Part, EquipmentID: equipmentID})
+	if err != nil {
 		failure(w, err)
+		return
+	}
+	if res.Status != "rod_updated" {
+		write(w, http.StatusBadRequest, map[string]any{"error": res.Status, "code": res.Status})
 		return
 	}
 	profile, err := a.legacyProfile(r, c, session)
@@ -64,6 +73,23 @@ func (a *API) legacyBdSet(w http.ResponseWriter, r *http.Request) {
 		"rodLocked":     profile["rodLocked"],
 		"rodActiveSlot": profile["rodActiveSlot"],
 	})
+}
+
+// Rod sub-actions are independently switchable in the operator console. The
+// native asset command predates those legacy sub-flags, so enforce an
+// explicitly published false flag at the legacy boundary while preserving the
+// enabled-by-default behavior for installations without a feature release.
+func (a *API) legacyRodFeature(w http.ResponseWriter, ctx context.Context, key string) bool {
+	features, err := operations.New(a.pool).Features(ctx)
+	if err != nil {
+		failure(w, err)
+		return false
+	}
+	if enabled, exists := features.Flags[key]; exists && !enabled {
+		write(w, http.StatusForbidden, map[string]any{"error": "feature_disabled", "code": "feature_disabled"})
+		return false
+	}
+	return true
 }
 
 func (a *API) freeEquipmentInstance(ctx context.Context, owner int64, part, signature string) (int64, error) {
