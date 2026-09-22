@@ -1,5 +1,7 @@
 # Go 重写玩法容量与故障验收
 
+> 专项阶段证据：以下 1 人短测绑定 resilience 分支 SHA，不代表当前集成候选容量通过。
+
 核对日：2026-09-22
 工作树：`E:\AAAworktrees\web-fishing-game\go-resilience`
 分支：`codex/go-resilience`
