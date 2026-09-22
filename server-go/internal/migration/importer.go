@@ -586,11 +586,11 @@ func importMarkets(ctx context.Context, tx pgx.Tx, runID string, es []entity, id
 				return err
 			}
 			state := stringValue(m, "state")
-			if state == "" {
+			if state == "" || state == "escrowed" {
 				state = "open"
 			}
-			if state == "escrowed" {
-				state = "open"
+			if state != "open" {
+				return fmt.Errorf("listing %d state %q requires a closed-operation mapper", i, state)
 			}
 			remaining := q.Int64()
 			if n, ok := integer(m["remaining"]); ok {
@@ -599,23 +599,24 @@ func importMarkets(ctx context.Context, tx pgx.Tx, runID string, es []entity, id
 			if remaining < 0 || remaining > q.Int64() {
 				return errors.New("listing remaining outside quantity")
 			}
-			closed := remaining == 0
-			if closed && state == "open" {
-				state = "sold"
+			if remaining == 0 {
+				return fmt.Errorf("listing %d has no remaining quantity and needs a closed-operation mapper", i)
 			}
 			expires := time.Now().Add(24 * time.Hour)
 			if ts := stringValue(m, "expiresAt"); ts != "" {
-				if t, err := time.Parse(time.RFC3339, ts); err == nil {
-					expires = t
+				t, err := time.Parse(time.RFC3339, ts)
+				if err != nil {
+					return fmt.Errorf("listing %d has invalid expiresAt: %w", i, err)
 				}
+				expires = t
+			}
+			if tag, err := tx.Exec(ctx, `UPDATE fishing.inventory_stacks SET quantity=quantity-$3 WHERE owner_id=$1 AND item_id=$2 AND tier='normal' AND quantity >= $3`, sid, item, remaining); err != nil {
+				return err
+			} else if tag.RowsAffected() != 1 {
+				return fmt.Errorf("listing %d has insufficient available normal inventory", i)
 			}
 			if _, err := tx.Exec(ctx, `INSERT INTO fishing.market_orders(seller_id,kind,item_id,quantity,remaining,unit_price,hours,state,created_operation,expires_at) VALUES($1,'stack',$2,$3,$4,$5,24,$6,$7,$8)`, sid, item, q.Int64(), remaining, price.Int64(), state, op, expires); err != nil {
 				return err
-			}
-			if remaining > 0 {
-				if _, err := tx.Exec(ctx, `UPDATE fishing.inventory_stacks SET quantity=quantity-$3 WHERE owner_id=$1 AND item_id=$2 AND tier='normal' AND quantity >= $3`, sid, item, remaining); err != nil {
-					return err
-				}
 			}
 			if _, err := tx.Exec(ctx, `INSERT INTO fishing.migration_entities(run_id,domain,entity_key,source_sha256,payload,status) VALUES($1,'market',$2,$3,$4,'imported') ON CONFLICT DO NOTHING`, runID, fmt.Sprintf("listing:%v", m["lid"]), e.sha, m); err != nil {
 				return err
@@ -770,11 +771,21 @@ func Reconcile(ctx context.Context, pool *pgxpool.Pool, runID string) (Result, e
 	if err := pool.QueryRow(ctx, `SELECT state,snapshot_sha256 FROM fishing.migration_runs WHERE id=$1`, runID).Scan(&r.State, &r.Manifest); err != nil {
 		return r, err
 	}
+	if r.State != "imported" && r.State != "reconciled" {
+		return r, fmt.Errorf("cannot reconcile migration run in state %q", r.State)
+	}
 	var n int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM fishing.migration_entities WHERE run_id=$1 AND status IN ('imported','reconciled')`, runID).Scan(&n); err != nil {
 		return r, err
 	}
 	r.Entities = n
+	var pending int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM fishing.migration_entities WHERE run_id=$1 AND status <> 'reconciled'`, runID).Scan(&pending); err != nil {
+		return r, err
+	}
+	if pending != 0 {
+		return r, fmt.Errorf("migration run has %d unreconciled entities", pending)
+	}
 	var gaps int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM fishing.migration_gaps WHERE run_id=$1 AND blocking`, runID).Scan(&gaps); err != nil {
 		return r, err
@@ -782,7 +793,7 @@ func Reconcile(ctx context.Context, pool *pgxpool.Pool, runID string) (Result, e
 	if gaps > 0 {
 		return r, ErrBlocked
 	}
-	rows, err := pool.Query(ctx, `SELECT e.entity_key,e.source_sha256,e.payload,m.new_id FROM fishing.migration_entities e
+	rows, err := pool.Query(ctx, `SELECT e.entity_key,e.source_sha256,e.payload,COALESCE(m.new_id,'') FROM fishing.migration_entities e
 LEFT JOIN fishing.legacy_id_map m ON m.run_id=e.run_id AND m.domain='account' AND m.legacy_id=COALESCE(e.payload->>'id',e.entity_key)
 WHERE e.run_id=$1 AND e.domain='account' ORDER BY e.entity_key`, runID)
 	if err != nil {

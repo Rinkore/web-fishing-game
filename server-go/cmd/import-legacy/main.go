@@ -89,16 +89,28 @@ func run(args []string, stderr io.Writer) int {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		cfg, err := pgxpool.ParseConfig(*dsn)
-		if err != nil { fmt.Fprintln(stderr, "Invalid database URL"); return 2 }
+		if err != nil {
+			fmt.Fprintln(stderr, "Invalid database URL")
+			return 2
+		}
 		pool, err := pgxpool.NewWithConfig(ctx, cfg)
-		if err != nil { fmt.Fprintln(stderr, "Cannot connect to isolated database"); return 2 }
+		if err != nil {
+			fmt.Fprintln(stderr, "Cannot connect to isolated database")
+			return 2
+		}
 		defer pool.Close()
-		if err := migrations.Check(ctx, pool); err != nil { fmt.Fprintln(stderr, "Database schema is not at migration head"); return 2 }
+		if err := migrations.Check(ctx, pool); err != nil {
+			fmt.Fprintln(stderr, "Database schema is not at migration head")
+			return 2
+		}
 		var result migration.Result
 		if *mode == "import" {
 			result, err = migration.Import(ctx, pool, migration.Options{Root: root, SourceVersion: *version, RunID: *runID, FailAfter: *failAfter})
 		} else {
-			if strings.TrimSpace(*runID) == "" { fmt.Fprintln(stderr, "--run-id is required for reconcile"); return 2 }
+			if strings.TrimSpace(*runID) == "" {
+				fmt.Fprintln(stderr, "--run-id is required for reconcile")
+				return 2
+			}
 			result, err = migration.Reconcile(ctx, pool, *runID)
 		}
 		if err != nil {
@@ -111,7 +123,10 @@ func run(args []string, stderr io.Writer) int {
 			return 1
 		}
 		data, _ = json.MarshalIndent(result, "", "  ")
-		if err := os.WriteFile(dest, append(data, '\n'), 0600); err != nil { fmt.Fprintln(stderr, "Cannot write database result"); return 2 }
+		if err := os.WriteFile(dest, append(data, '\n'), 0600); err != nil {
+			fmt.Fprintln(stderr, "Cannot write database result")
+			return 2
+		}
 		fmt.Fprintf(stderr, "%s completed: run %s state=%s\n", *mode, result.RunID, result.State)
 		return 0
 	}

@@ -49,6 +49,9 @@ func TestImportFailureRecoveryAndIdempotency(t *testing.T) {
 	if n := count(t, db, `SELECT count(*) FROM fishing.accounts`); n != 0 {
 		t.Fatalf("partial account survived failed transaction: %d", n)
 	}
+	if checked, err := Reconcile(ctx, db.Admin, failed.RunID); err == nil || checked.Reconciled {
+		t.Fatalf("failed run was reported reconciled: %+v %v", checked, err)
+	}
 	result, err := Import(ctx, db.Admin, Options{Root: root, SourceVersion: "v0.21.4", RunID: failed.RunID})
 	if err != nil || result.State != "reconciled" || !result.Reconciled {
 		t.Fatalf("recovery import failed: %+v %v", result, err)
@@ -91,6 +94,36 @@ func TestImportPersistsBlockingGapAfterRollback(t *testing.T) {
 	}
 	if n := count(t, db, `SELECT count(*) FROM fishing.accounts`); n != 0 {
 		t.Fatalf("blocked import wrote business rows: %d", n)
+	}
+}
+
+func TestImportRejectsUnsupportedOrUnfundedOrders(t *testing.T) {
+	for _, tc := range []struct {
+		name, listing string
+	}{
+		{"insufficient-normal", `"qty":4,"remaining":4,"price":10,"state":"open"`},
+		{"closed-order", `"qty":2,"remaining":0,"price":10,"state":"sold"`},
+		{"empty-open-order", `"qty":2,"remaining":0,"price":10,"state":"open"`},
+		{"invalid-expiry", `"qty":2,"remaining":2,"price":10,"state":"open","expiresAt":"invalid"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := testdb.New(t, true)
+			root := t.TempDir()
+			writeFixture(t, root)
+			body := `{"listings":[{"lid":7,"seller":"alice","id":"crucian",` + tc.listing + `}]}`
+			if err := os.WriteFile(filepath.Join(root, "market.json"), []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			result, err := Import(context.Background(), db.Admin, Options{Root: root, SourceVersion: "v0.21.4"})
+			if err == nil || result.Reconciled {
+				t.Fatalf("unsupported order accepted: %+v %v", result, err)
+			}
+			for _, table := range []string{"accounts", "market_orders", "asset_operations"} {
+				if n := count(t, db, "SELECT count(*) FROM fishing."+table); n != 0 {
+					t.Fatalf("partial %s rows survived: %d", table, n)
+				}
+			}
+		})
 	}
 }
 
