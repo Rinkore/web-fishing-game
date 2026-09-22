@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 	"strconv"
 
 	"fishing.local/server/internal/modules/assets"
@@ -95,6 +96,12 @@ func applyOperatorSettings(c *rules.Catalog, values map[string]json.RawMessage) 
 	if v, ok := settings["dropCfg"].(map[string]any); ok {
 		c.Runtime["drop"] = v
 	}
+	if n, ok := settings["rareK"].(float64); ok && finiteCatalogNumber(n) && n >= 0 && n <= 1000 {
+		c.Runtime["rareK"] = n
+	}
+	if n, ok := settings["doubleBase"].(float64); ok && finiteCatalogNumber(n) && n >= 0 && n <= 1 {
+		c.Runtime["doubleBase"] = n
+	}
 	if v, ok := settings["priceCfg"].(map[string]any); ok {
 		c.Runtime["price"] = v
 	}
@@ -119,6 +126,8 @@ func applyOperatorSettings(c *rules.Catalog, values map[string]json.RawMessage) 
 		c.Runtime["biteFormula"] = formula
 	}
 }
+
+func finiteCatalogNumber(n float64) bool { return !math.IsNaN(n) && !math.IsInf(n, 0) }
 
 func applyChestSettings(c *rules.Catalog, settings map[string]any) {
 	var chests []map[string]any

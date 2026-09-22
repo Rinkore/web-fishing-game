@@ -404,11 +404,7 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if raw, exists := in["notifyLevel"]; exists {
 		var level string
-		if json.Unmarshal(raw, &level) != nil || map[string]bool{
-			"all": true, "uncommon": true, "offrange": true, "records": true, "none": true,
-			// Keep the pre-Go aliases accepted by older clients.
-			"rare": true, "off": true,
-		}[level] == false {
+		if json.Unmarshal(raw, &level) != nil || map[string]bool{"all": true, "uncommon": true, "rare": true, "off": true}[level] == false {
 			legacyTradeError(w, 400, "未知的通知等级")
 			return
 		}
@@ -425,6 +421,14 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 	if raw, exists := in["chestCfg"]; exists && json.Valid(raw) == false {
 		legacyTradeError(w, 400, "宝匣配置格式错误")
 		return
+	}
+	for key, bounds := range map[string][2]float64{"rareK": {0, 1000}, "doubleBase": {0, 1}} {
+		if raw, exists := in[key]; exists {
+			if _, valid := legacyNumber(raw, bounds[0], bounds[1]); !valid {
+				legacyTradeError(w, 400, key+" 配置数值无效")
+				return
+			}
+		}
 	}
 	if !validateOnly {
 		if err := a.legacyAdminSettingsWrite(r, actor, in); err != nil {

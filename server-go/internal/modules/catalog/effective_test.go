@@ -16,6 +16,8 @@ func TestIntegrationEffectiveOperatorSettingsReachRules(t *testing.T) {
 		"dropCfg":     map[string]any{"material": 250},
 		"priceCfg":    map[string]any{"saleDivisor": .02, "floorPct": 25, "ceilPct": 300, "riseTargetPct": 250},
 		"autoSellCfg": map[string]any{"batch": 7},
+		"rareK":       4,
+		"doubleBase":  .2,
 		"castBaseMs":  2400, "castMinMs": 400,
 	}
 	mall := map[string]any{"refreshTime": "07:15", "items": []map[string]any{{"id": "rope", "price": 3, "limit": 2}}}
@@ -38,6 +40,9 @@ func TestIntegrationEffectiveOperatorSettingsReachRules(t *testing.T) {
 	}
 	if got := c.DefaultLootConfig(); got.Material != 250 {
 		t.Fatalf("drop override not effective: %+v", got)
+	}
+	if got := c.DefaultLootConfig(); got.RareK != 4 || c.Runtime["doubleBase"] != .2 {
+		t.Fatalf("rare/double override not effective: %+v runtime=%v", got, c.Runtime)
 	}
 	if got := c.PriceDynamicsFor("crucian"); got.SaleDivisor != .02 || got.Floor != .25 || got.Ceil != 3 || got.Target != 2.5 {
 		t.Fatalf("price override not effective: %+v", got)
