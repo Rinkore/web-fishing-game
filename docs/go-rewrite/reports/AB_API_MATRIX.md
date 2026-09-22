@@ -17,7 +17,7 @@
 | PUBLIC_MARKET | 公开；有会话时用 token 标示 mine | scope/kind/part/q/affix/min/max/page/size 等过滤；分页边界校验 | 200 {listings,page,pages,total,counts,parts,revision,...} | 400 请求参数无效；503 unavailable | 只读市场挂单/修订；无资产变更 |
 | USER_READ | 玩家 token（部分 legacySession 允许 cookie；失效统一 401 未登录） | 只读查询；严格分页/目标 ID/枚举校验 | 200 路由投影（profile/资产、海域、编队、社交、订单、工坊等） | 401 未登录/invalid_credentials；400 invalid_input；404 unknown target；503 unavailable | 只读；不得隐式出售、开箱、扣费或推进玩法 |
 | USER_WRITE | 玩家 token | 严格 JSON、DisallowUnknownFields；路由专用字段和枚举/数量/范围校验 | 200 {ok:true,...} 或 legacy 业务结果，附权威资产 rev/余额/库存 | 400 invalid_input/业务拒绝；401；403；404；409 状态冲突；429；503；commit_unknown | 同一 PostgreSQL 事务提交资产、流水、outbox/事件；重复请求按旧协议语义处理；失败回滚 |
-| SSE | 玩家 token；Authorization 或 fish_game cookie | Last-Event-ID 必须为非负整数且不大于当前 assets_rev；连接上限/写超时 | text/event-stream；首帧 snapshot_required（无 last id），随后 id+data JSON 和 heartbeat | 400 invalid_input；401；429 rate_limited；断线/读库失败关闭；kicked/maintenance 事件 | 建立 gateway_stream lease；只读事件游标；关闭释放 lease；不直接改资产 |
+| SSE | 玩家 token；Authorization 或 fish_game cookie | legacy /events 使用 stream cookie/bearer；Last-Event-ID 仅属于独立 v1 stream；连接上限/写超时 | text/event-stream；legacy 首帧 init，随后 data JSON 和 heartbeat；v1 才有 snapshot_required/assets_changed | 400 invalid_input；401；429 rate_limited；断线/读库失败关闭；kicked/maintenance 事件 | 建立 gateway_stream lease；只读事件游标；关闭释放 lease；不直接改资产 |
 | SEA_READ | 玩家 token | 无 body（token query/header） | 200 海域/船/海图/任务/共享区域投影 | 401；400 invalid_input；503 unavailable | 只读；状态以持久海域表为权威 |
 | SEA_WRITE | 玩家 token | {zoneId|id|action 相关字段}；枚举、归属、开关和资源校验 | 200 {ok:true,...} 或 sea 状态/资产快照 | 400 invalid_input/业务拒绝；401；403；404；409；503 | 事务更新船、海图、航次、任务、锚地或共享区域；奖励/费用与 outbox 原子提交 |
 | FISHING | 玩家 token | start {groundId,spotId}；stop 空 JSON；地图/钓点/状态枚举校验 | 200 {ok:true,...}；后续 SSE catch/assets/records | 400 invalid_input/不在场/重复状态；401；409 状态冲突；503 | 创建/结束持久 fishing session；调度收益由服务端决定；资产与纪录原子写入 |
@@ -216,5 +216,5 @@
 - `POST /api/players/view` 在 Go 仅登记 viewport 并返回当前 stream 数，尚未像 Node 一样对每条 SSE 连接推送 `playersPage`；浏览器 A/B 必须把“登记响应”和“后续推送”分开记差异。
 - `GET /api/shop/history` 的 Go 投影明确返回空 `points`/`trades`（价格和销量来自持久模块），不能把空数组误判为 Node 历史数据等价。
 - `POST /api/feedback/submit` 的 Go 注释说明尚未桥接管理员实时通知；反馈落库可比，但 SSE `feedback`/管理员即时提示需单独标记。
-- `GET /events` Go 首帧是 `snapshot_required`，随后从 `player_events` 以 `assets_changed` 重放；Node 的 `init`/`batch`/`assets`/个人事件语义必须用客户端消费分支验收，不能只按服务端 type 字面量对齐。
+- legacy `GET /events` 的 Go 首帧仍是 `init`；`snapshot_required`/`assets_changed` 属于另一个 `/api/v1/events` 消费者，不能拿 v1 类型替代旧前端的 `init`/`batch`/`assets`/个人事件验收。
 - `POST /api/market/*`、`/api/trade/*`、工坊和宝匣的随机/时间结果只比对受控夹具中的业务不变量、资产事务和事件顺序；不要求两次自然随机相同。
