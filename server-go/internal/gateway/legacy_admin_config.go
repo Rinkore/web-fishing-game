@@ -404,7 +404,10 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if raw, exists := in["notifyLevel"]; exists {
 		var level string
-		if json.Unmarshal(raw, &level) != nil || map[string]bool{"all": true, "uncommon": true, "rare": true, "off": true}[level] == false {
+		if json.Unmarshal(raw, &level) != nil || map[string]bool{
+			"all": true, "uncommon": true, "offrange": true, "records": true, "none": true,
+			"rare": true, "off": true,
+		}[level] == false {
 			legacyTradeError(w, 400, "未知的通知等级")
 			return
 		}
