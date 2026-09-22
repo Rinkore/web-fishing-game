@@ -36,10 +36,10 @@ function Invoke-LoggedCommand([string]$Executable, [string[]]$Arguments, [string
   $previousErrorAction = $ErrorActionPreference
   try {
     $ErrorActionPreference = 'Continue'
-    $LASTEXITCODE = $null
+    $global:LASTEXITCODE = $null
     & $Executable @Arguments 2>&1 | ForEach-Object { $_.ToString() } | Set-Content -LiteralPath $Log -Encoding UTF8
-    if ($null -eq $LASTEXITCODE) { return 1 }
-    return [int]$LASTEXITCODE
+    if ($null -eq $global:LASTEXITCODE) { return 1 }
+    return [int]$global:LASTEXITCODE
   } finally { $ErrorActionPreference = $previousErrorAction }
 }
 $runExit = 1
