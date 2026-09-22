@@ -360,13 +360,17 @@ func (a *API) legacyResumeCastInfo(ctx context.Context, c *rules.Catalog, owner 
 		return rules.CastInfo{}, false
 	}
 	defer rows.Close()
-	bd := map[string]struct{ CompID string `json:"compId"` }{}
+	bd := map[string]struct {
+		CompID string `json:"compId"`
+	}{}
 	for rows.Next() {
 		var part, signature string
 		if err := rows.Scan(&part, &signature); err != nil {
 			return rules.CastInfo{}, false
 		}
-		bd[part] = struct{ CompID string `json:"compId"` }{CompID: signature}
+		bd[part] = struct {
+			CompID string `json:"compId"`
+		}{CompID: signature}
 	}
 	if rows.Err() != nil {
 		return rules.CastInfo{}, false
