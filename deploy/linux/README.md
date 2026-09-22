@@ -29,7 +29,7 @@ sudo bash /tmp/fishing-release/install.sh BASELINE_COMMIT BASELINE_MIGRATIONS_SH
 4. 安装后，`fishing-deploy` 只能写 `incoming/`，root 拥有执行器、配置、版本目录和 authorized_keys。SSH 公钥带 `restrict`（禁 PTY/转发）；部署用户没有任意 sudo 权限。可用新账号测试 SSH 连接和目录上传，不要用试运行发布去验证权限。
 5. 在 GitHub 按 [Linux 自动发版](../../docs/CICD.md) 配置 `linux-go` 环境的主机、端口、路径、known_hosts 与密钥。首次启用 CD 前复核目标仍是 19000 上的 Go 实例。推送代码或创建 Release 不等于服务器已更新；以 workflow 部署 job 和检查结果为准。
 
-当前已核实的旧发行基线为 `bb0147c91ea6b3aeb0b428465817c3270ea8aa93`。其迁移文件与本轮接入时的 main 一致，安装前仍需确认服务器未被其他任务更新。旧发行无完整 release manifest，安装器只记录经管理员核对的迁移摘要；其历史包摘要用全零占位，不会作为新包的校验值。
+当前已核实的旧发行基线为 `bd62bc6bd92cd07ae9b5d59c0ae38bd21de0625a`。其迁移文件与本轮接入时的 main 一致，安装前仍需确认服务器未被其他任务更新。旧发行无完整 release manifest，安装器只记录经管理员核对的迁移摘要；其历史包摘要用全零占位，不会作为新包的校验值。
 
 ## 数据库与恢复边界
 

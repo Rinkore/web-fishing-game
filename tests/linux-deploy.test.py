@@ -28,6 +28,7 @@ class DeploymentTests(unittest.TestCase):
         self.old = dict(version="v1.0.0", sourceCommit="a" * 40, migrationsSha256="b" * 64,
                         asset="web-fishing-game-linux-amd64.tar.gz", sha256="c" * 64)
         (self.previous / ".release.json").write_text(json.dumps(self.old))
+        (self.previous / "SOURCE_COMMIT").write_text(self.old["sourceCommit"] + "\n")
         self.config = dict(root=str(self.root), service="fake-fishing", publicUrl="https://example.test:19000",
                            health_attempts=1, health_interval=0)
         self.calls = []
@@ -116,6 +117,17 @@ class DeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(deployment.DeploymentError, "migration digest changed"):
             self.invoke(manifest)
         self.assert_untouched()
+
+    def test_stale_manual_release_manifest_rejected_before_stop(self):
+        manifest, _ = self.package()
+        (self.previous / "SOURCE_COMMIT").write_text("e" * 40 + "\n")
+        with self.assertRaisesRegex(deployment.DeploymentError, "sourceCommit differs"):
+            self.invoke(manifest)
+        # --check uses the same baseline reader, before any health or service operation.
+        with self.assertRaisesRegex(deployment.DeploymentError, "sourceCommit differs"):
+            deployment.current_release(self.config)
+        self.assert_untouched()
+        self.assertEqual(self.calls, [])
 
     def test_tampered_archive_rejected_before_stop(self):
         manifest, release = self.package()

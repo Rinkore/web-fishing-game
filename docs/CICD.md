@@ -47,7 +47,7 @@ pwsh -File tools/release/start-release.ps1 -SameVersionRevision -Publish
 
 以当前管理账号 `rinkore` 上传 `deploy/linux/{install.sh,deploy.sh,deploy.py}` 和专用公钥，然后由服务器管理员执行一次 `install.sh`。具体参数、基线校验及权限说明见 [Linux 更新器](../deploy/linux/README.md)。安装不重启游戏；它创建部署账号、root 所有的执行器与配置，仅允许固定 sudo 更新入口。部署用户可写 `incoming/`，不能改运行配置、版本目录或系统服务文件。
 
-安装器需要经核对的当前提交和 SQL 迁移摘要；当前旧发行记录为 `bb0147c91ea6b3aeb0b428465817c3270ea8aa93`。源码摘要必须从该提交计算，并再次核对实际 `current/SOURCE_COMMIT`，不能拿后来分支的摘要直接覆盖。
+安装器需要经核对的当前提交和 SQL 迁移摘要；当前旧发行记录为 `bd62bc6bd92cd07ae9b5d59c0ae38bd21de0625a`。源码摘要必须从该提交计算，并再次核对实际 `current/SOURCE_COMMIT`，不能拿后来分支的摘要直接覆盖。
 
 ## 数据库变更和故障处理
 
