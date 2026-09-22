@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"net"
+	"net/netip"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -22,12 +24,40 @@ type Config struct {
 	ShutdownTimeout  time.Duration
 	MFAEncryptionKey []byte
 	Location         *time.Location
+	TrustedProxyIPs  []netip.Addr
+	RequireHTTPS     bool
+	CookieNamespace  string
 }
 
 func Load(getenv func(string) string) (Config, error) {
 	c := Config{ListenAddress: "127.0.0.1:9000", NodeID: "local", Role: "all", DatabaseMaxConns: 16,
 		StartupTimeout: 5 * time.Second, ProbeTimeout: time.Second, ShutdownTimeout: 10 * time.Second}
 	c.Location = time.Local
+	if raw := getenv("FISHING_GO_TRUSTED_PROXY_IPS"); raw != "" {
+		for _, value := range strings.Split(raw, ",") {
+			ip, err := netip.ParseAddr(strings.TrimSpace(value))
+			if err != nil || ip.Zone() != "" || ip.IsUnspecified() || ip.IsMulticast() {
+				return Config{}, errors.New("invalid FISHING_GO_TRUSTED_PROXY_IPS")
+			}
+			c.TrustedProxyIPs = append(c.TrustedProxyIPs, ip.Unmap())
+		}
+	}
+	switch getenv("FISHING_GO_REQUIRE_HTTPS") {
+	case "", "0":
+	case "1":
+		c.RequireHTTPS = true
+	default:
+		return Config{}, errors.New("invalid FISHING_GO_REQUIRE_HTTPS")
+	}
+	c.CookieNamespace = getenv("FISHING_GO_COOKIE_NAMESPACE")
+	if len(c.CookieNamespace) > 32 {
+		return Config{}, errors.New("invalid FISHING_GO_COOKIE_NAMESPACE")
+	}
+	for _, ch := range c.CookieNamespace {
+		if !(ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9' || ch == '_') {
+			return Config{}, errors.New("invalid FISHING_GO_COOKIE_NAMESPACE")
+		}
+	}
 	if name := getenv("FISHING_GO_TIMEZONE"); name != "" {
 		location, err := time.LoadLocation(name)
 		if err != nil {

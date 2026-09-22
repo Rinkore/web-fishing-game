@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"fishing.local/server/internal/modules/identity"
+	"fishing.local/server/internal/platform/httpserver"
 	"fishing.local/server/internal/wiki"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -357,7 +358,7 @@ func (a *API) security(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
 		scheme := "http"
-		if r.TLS != nil {
+		if httpserver.IsHTTPS(r) {
 			scheme = "https"
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		}
@@ -420,7 +421,10 @@ func cookieName(r *http.Request, admin bool) string {
 	if admin {
 		name = "fish_admin"
 	}
-	if r.TLS != nil {
+	if namespace := httpserver.CookieNamespace(r); namespace != "" {
+		name = "fish_" + namespace + strings.TrimPrefix(name, "fish")
+	}
+	if httpserver.IsHTTPS(r) {
 		name = "__Host-" + name
 	}
 	return name
@@ -443,7 +447,7 @@ func setCookie(w http.ResponseWriter, r *http.Request, admin bool, value string,
 	if clear {
 		age = -1
 	}
-	http.SetCookie(w, &http.Cookie{Name: cookieName(r, admin), Value: value, Path: "/", MaxAge: age, HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: cookieName(r, admin), Value: value, Path: "/", MaxAge: age, HttpOnly: true, Secure: httpserver.IsHTTPS(r), SameSite: http.SameSiteStrictMode})
 }
 func (a *API) loginResponse(w http.ResponseWriter, r *http.Request, result identity.LoginResult) {
 	c, err := a.catalog(r.Context())
