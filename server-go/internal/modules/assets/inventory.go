@@ -79,7 +79,7 @@ func normalizeStacks(input []StackDelta) ([]StackDelta, bool) {
 	return out, true
 }
 func normalizeIDs(ids []int64) ([]int64, bool) {
-	if len(ids) > 100 {
+	if len(ids) > 128 {
 		return nil, false
 	}
 	out := append([]int64{}, ids...)

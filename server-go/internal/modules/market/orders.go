@@ -35,6 +35,7 @@ type Order struct {
 	RodName   string    `json:"rodName,omitempty"`
 	State     string    `json:"state"`
 	ExpiresAt time.Time `json:"expiresAt"`
+	Source    string    `json:"-"`
 }
 
 func listingFee(total int64, hours int) int64 {
@@ -121,12 +122,12 @@ func (s *Service) ListOrder(ctx context.Context, r OrderRequest) (assets.Result,
 	})
 }
 func readOrder(ctx context.Context, q assets.SQL, id int64, lock bool) (Order, error) {
-	sql := `SELECT id,seller_id,kind,COALESCE(item_id,''),quantity,remaining,unit_price,rod_name,state,expires_at FROM fishing.market_orders WHERE id=$1`
+	sql := `SELECT id,seller_id,kind,COALESCE(item_id,''),quantity,remaining,unit_price,rod_name,state,expires_at,source FROM fishing.market_orders WHERE id=$1`
 	if lock {
 		sql += " FOR UPDATE"
 	}
 	var o Order
-	err := q.QueryRow(ctx, sql, id).Scan(&o.ID, &o.SellerID, &o.Kind, &o.ItemID, &o.Quantity, &o.Remaining, &o.UnitPrice, &o.RodName, &o.State, &o.ExpiresAt)
+	err := q.QueryRow(ctx, sql, id).Scan(&o.ID, &o.SellerID, &o.Kind, &o.ItemID, &o.Quantity, &o.Remaining, &o.UnitPrice, &o.RodName, &o.State, &o.ExpiresAt, &o.Source)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return o, assets.Rejection("listing_not_found")
 	}
@@ -177,7 +178,13 @@ func (s *Service) Fill(ctx context.Context, r FillRequest) (assets.Result, error
 		if err := t.Coins(ctx, o.SellerID, total-tax); err != nil {
 			return assets.Result{}, err
 		}
-		if o.Kind == "stack" {
+		if o.Source == "admin" {
+			if o.Kind == "stack" {
+				err = t.Stacks(ctx, r.ActorID, []assets.StackDelta{{ItemID: o.ItemID, Tier: "normal", Quantity: r.Quantity}})
+			} else {
+				err = t.ReturnOrderEquipment(ctx, o.SellerID, r.ActorID, o.ID, o.Kind == "rod", o.RodName)
+			}
+		} else if o.Kind == "stack" {
 			err = t.Stacks(ctx, r.ActorID, []assets.StackDelta{{ItemID: o.ItemID, Tier: "normal", Quantity: r.Quantity}})
 		} else {
 			err = t.ReturnOrderEquipment(ctx, o.SellerID, r.ActorID, o.ID, o.Kind == "rod", o.RodName)
@@ -223,7 +230,11 @@ func (s *Service) CloseOrder(ctx context.Context, actor, id int64, key string, e
 		if expire && !expired {
 			return assets.Result{}, assets.ErrDeferred
 		}
-		if o.Kind == "stack" {
+		if o.Source == "admin" {
+			if o.Kind != "stack" {
+				err = t.DiscardOrderEquipment(ctx, o.SellerID, o.ID)
+			}
+		} else if o.Kind == "stack" {
 			err = t.Stacks(ctx, actor, []assets.StackDelta{{ItemID: o.ItemID, Tier: "normal", Quantity: o.Remaining}})
 		} else {
 			err = t.ReturnOrderEquipment(ctx, actor, actor, id, o.Kind == "rod", o.RodName)
@@ -247,7 +258,7 @@ func (s *Service) OpenOrders(ctx context.Context, after int64, limit int) ([]Ord
 	if after < 0 || limit < 1 || limit > 100 {
 		return nil, assets.ErrInvalid
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id,seller_id,kind,COALESCE(item_id,''),quantity,remaining,unit_price,rod_name,state,expires_at FROM fishing.market_orders WHERE state='open' AND expires_at>clock_timestamp() AND id>$1 ORDER BY id LIMIT $2`, after, limit)
+	rows, err := s.pool.Query(ctx, `SELECT id,seller_id,kind,COALESCE(item_id,''),quantity,remaining,unit_price,rod_name,state,expires_at,source FROM fishing.market_orders WHERE state='open' AND expires_at>clock_timestamp() AND id>$1 ORDER BY id LIMIT $2`, after, limit)
 	if err != nil {
 		return nil, assets.ErrUnavailable
 	}
@@ -255,7 +266,7 @@ func (s *Service) OpenOrders(ctx context.Context, after int64, limit int) ([]Ord
 	out := []Order{}
 	for rows.Next() {
 		var o Order
-		if err := rows.Scan(&o.ID, &o.SellerID, &o.Kind, &o.ItemID, &o.Quantity, &o.Remaining, &o.UnitPrice, &o.RodName, &o.State, &o.ExpiresAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.SellerID, &o.Kind, &o.ItemID, &o.Quantity, &o.Remaining, &o.UnitPrice, &o.RodName, &o.State, &o.ExpiresAt, &o.Source); err != nil {
 			return nil, assets.ErrUnavailable
 		}
 		out = append(out, o)
