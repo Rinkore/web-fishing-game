@@ -69,7 +69,7 @@ func TestIntegrationLegacySnapshotRestoresEquipmentAndAllRods(t *testing.T) {
 			name := list["snapshots"].([]any)[0].(map[string]any)["name"].(string)
 			if scenario == "legacy-saved" {
 				// Simulate the older durable format, which did not capture saved rods.
-				if _, err := f.db.Admin.Exec(ctx, `UPDATE fishing.operator_settings SET value=(SELECT jsonb_agg(jsonb_set(entry,'{view}',entry->'view'-'_rodLoadouts')) FROM jsonb_array_elements(value) entry) WHERE key=$1`, snapshotSettingKey(f.playerID)); err != nil {
+				if _, err := f.db.Admin.Exec(ctx, `UPDATE fishing.operator_settings SET value=(SELECT jsonb_agg(jsonb_set(entry,'{view}',(entry->'view')-'_rodLoadouts'::text)) FROM jsonb_array_elements(value) entry) WHERE key=$1`, snapshotSettingKey(f.playerID)); err != nil {
 					t.Fatal(err)
 				}
 			}

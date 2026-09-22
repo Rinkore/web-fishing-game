@@ -1462,7 +1462,10 @@ func (a *API) adminSpotPool(w http.ResponseWriter, r *http.Request) {
 	}
 	s["pool"] = pool
 	setWorldSpots(g, spots)
-	_ = grounds
+	if err := setWorldGrounds(c, grounds); err != nil {
+		failure(w, identity.ErrInvalid)
+		return
+	}
 	next, good := worldPublish(a, w, r, session, body, "/api/admin/spot/pool", groundID+":"+spotID, c, rev)
 	if !good {
 		return

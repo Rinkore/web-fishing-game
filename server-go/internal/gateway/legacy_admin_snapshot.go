@@ -1314,6 +1314,9 @@ func (a *API) restoreLegacySnapshotRods(ctx context.Context, tx pgx.Tx, owner, o
 	_, complete := view["_rodLoadouts"]
 	if raw, ok := view["_rodLoadouts"]; ok {
 		encoded, err := json.Marshal(raw)
+		// Decode into fresh maps. Reusing the current slice lets json.Unmarshal
+		// merge Parts maps and retain components absent from the snapshot.
+		loadouts = nil
 		if err != nil || json.Unmarshal(encoded, &loadouts) != nil {
 			return identity.ErrInvalid
 		}

@@ -64,7 +64,10 @@ func TestIntegrationLegacyAdminWorldPreservesEditorState(t *testing.T) {
 		"items": []any{map[string]any{"pick": "fish:" + fishID, "weight": 9}}}
 	post("/api/admin/loot/group", map[string]any{"group": group})
 	pool := []any{map[string]any{"pick": "group:baseline_group", "weight": 13}}
-	post("/api/admin/spot/pool", map[string]any{"groundId": groundID, "spotId": spotID, "pool": pool})
+	savedPool := post("/api/admin/spot/pool", map[string]any{"groundId": groundID, "spotId": spotID, "pool": pool})
+	if jsonString(savedPool["pool"]) != jsonString(pool) {
+		t.Fatalf("spot pool mutation did not publish the requested pool: got %v, want %v", savedPool["pool"], pool)
+	}
 	post("/api/admin/smelt/config", map[string]any{"baseRate": 1})
 
 	code, after := f.admin("GET", "/api/admin/world", "")
@@ -97,7 +100,7 @@ func TestIntegrationLegacyAdminWorldPreservesEditorState(t *testing.T) {
 			if s["id"] == spotID {
 				foundSpot = true
 				if jsonString(s["pool"]) != jsonString(pool) {
-					t.Fatal("admin world flattened the editable group reference or changed its weight")
+					t.Fatalf("admin world flattened the editable group reference or changed its weight: got %v, want %v", s["pool"], pool)
 				}
 			}
 		}
