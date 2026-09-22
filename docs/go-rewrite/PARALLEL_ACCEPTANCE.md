@@ -31,6 +31,8 @@
 
 合并顺序固定为 compat → ab → resilience → migration。每次合并后重新构建并运行受影响验收；最后从干净提交构建候选产物。总览 `DELIVERY.md`、`REMAINING.md` 和本文由主窗口维护；专项报告只写入 `docs/go-rewrite/reports/`。
 
+2026-09-22 集成记录：compat merge `f5a9c20592f3864e773e5e9e45751e188b649cde`，ab merge `dd6239625f8d0d99585228a629360372651436d4`，resilience merge `02b9b1fcf49808bd0edfe69e8238b4f85819533`，migration merge `f936b73f4ef688c9aaca1dc1e340ea8b3cdec469`；随后提交了导入边界修复、兼容断言更新和总览文档。最终候选 SHA 以本轮最后一个干净提交为准，所有最终日志在该 SHA 上重跑或明确标记为同一树对象。
+
 专项交付合入后冻结候选 SHA，ab、resilience、migration 分别对该同一候选复验 A/B、容量故障和迁移演练。代码再次改变时重跑受影响验收，报告必须能追溯相同代码树；不能用合并前各分支通过结果替代最终复验。
 
 公共 `internal/gateway/http.go`、handler、`internal/testdb/testdb.go`、schema、权限、go.mod/go.sum、compose 和共享工具入口的修改，先在专属报告登记文件、目的、负责人和依赖提交，由主窗口分配唯一负责人。ab/resilience/migration 报告兼容缺陷交 compat 修复，不同时另写一份 handler。数据库权限建议必须区分 schema owner、migration role、runtime role，不能用测试管理员作为正式应用角色。迁移编号由主窗口统一分配；下一号从 0028 起，先登记再实现，禁止重命名已应用 SQL。

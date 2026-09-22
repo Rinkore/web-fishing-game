@@ -4,7 +4,7 @@
 
 ## 当前基线
 
-`server-go/api/legacy-inventory.json` 当前包含 157 个静态候选，其中 5 个开发专用接口不计入分母。最终候选前的 2026-09-22 合并树（源码修复后提交 `c768697398b12e98c211363acf2414701a97ead2`，文档提交后需重新冻结）按唯一且完全相同的 **method + path** 重算为 **152/152，未注册 0 条**；Go 共注册 192 个唯一 method + path，另 40 条为新协议。`inventory --check` 通过，未发现重复或未解析注册表达式。
+`server-go/api/legacy-inventory.json` 当前包含 157 个静态候选，其中 5 个开发专用接口不计入分母。本轮集成候选按唯一且完全相同的 **method + path** 重算为 **152/152，未注册 0 条**；Go 共注册 192 个唯一 method + path，另 40 条为新协议。`inventory --check` 通过，未发现重复或未解析注册表达式；候选 SHA 以 [集成验收报告](reports/INTEGRATION_ACCEPTANCE_2026-09-22.md) 所在最终提交为准。
 
 | 验证层次 | 当前结论 |
 |---|---|
