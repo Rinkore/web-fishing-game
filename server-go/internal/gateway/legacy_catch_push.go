@@ -87,7 +87,7 @@ func (p *legacyCatchPush) poll(ctx context.Context) []string {
  JOIN fishing.identities i ON i.account_id=pe.owner_id
  LEFT JOIN cursors c ON c.owner=pe.owner_id
  WHERE (pe.revision,cr.ordinal)>(COALESCE(c.revision,0),COALESCE(c.ordinal,0))
- ORDER BY e.operation_id,cr.ordinal LIMIT 100`, raw)
+ ORDER BY pe.revision,cr.ordinal LIMIT 100`, raw)
 	if err != nil {
 		return nil
 	}
