@@ -68,6 +68,19 @@ func TestIntegrationLegacyAdminWorldPreservesEditorState(t *testing.T) {
 	if jsonString(savedPool["pool"]) != jsonString(pool) {
 		t.Fatalf("spot pool mutation did not publish the requested pool: got %v, want %v", savedPool["pool"], pool)
 	}
+	buffs := []any{map[string]any{"type": "speed", "value": 17.5}}
+	savedBuffs := post("/api/admin/spot/buffs", map[string]any{"groundId": groundID, "spotId": spotID, "buffs": buffs})
+	if jsonString(savedBuffs["buffs"]) != jsonString(buffs) {
+		t.Fatalf("spot buffs mutation did not publish the requested buffs: got %v, want %v", savedBuffs["buffs"], buffs)
+	}
+	added := post("/api/admin/spot/add", map[string]any{"groundId": groundID, "id": "baseline_spot", "name": "基线新增钓点", "preset": "rare", "fill": true})
+	addedSpot, ok := added["spot"].(map[string]any)
+	if !ok || addedSpot["id"] != "baseline_spot" || addedSpot["name"] != "基线新增钓点" || added["filled"] != true || added["preset"] != "rare" {
+		t.Fatalf("spot add did not publish the requested spot: %v", added)
+	}
+	if values, ok := addedSpot["pool"].([]any); !ok || len(values) == 0 {
+		t.Fatalf("spot add did not retain the requested preset pool: %v", addedSpot)
+	}
 	post("/api/admin/smelt/config", map[string]any{"baseRate": 1})
 
 	code, after := f.admin("GET", "/api/admin/world", "")
@@ -89,7 +102,7 @@ func TestIntegrationLegacyAdminWorldPreservesEditorState(t *testing.T) {
 	if after["smeltCfg"].(map[string]any)["baseRate"] != float64(1) {
 		t.Fatal("world editor lost the additional legacy settings")
 	}
-	foundSpot := false
+	foundSpot, foundAddedSpot := false, false
 	for _, value := range after["grounds"].([]any) {
 		g := value.(map[string]any)
 		if g["id"] != groundID {
@@ -97,16 +110,28 @@ func TestIntegrationLegacyAdminWorldPreservesEditorState(t *testing.T) {
 		}
 		for _, value := range g["spots"].([]any) {
 			s := value.(map[string]any)
+			if s["id"] == "baseline_spot" {
+				foundAddedSpot = true
+				if jsonString(s) != jsonString(addedSpot) {
+					t.Fatalf("world editor changed the newly published spot: got %v, want %v", s, addedSpot)
+				}
+			}
 			if s["id"] == spotID {
 				foundSpot = true
 				if jsonString(s["pool"]) != jsonString(pool) {
 					t.Fatalf("admin world flattened the editable group reference or changed its weight: got %v, want %v", s["pool"], pool)
+				}
+				if jsonString(s["buffs"]) != jsonString(buffs) {
+					t.Fatalf("world editor lost the published spot buffs: got %v, want %v", s["buffs"], buffs)
 				}
 			}
 		}
 	}
 	if !foundSpot {
 		t.Fatal("world editor lost the updated spot")
+	}
+	if !foundAddedSpot {
+		t.Fatal("world editor lost the newly published spot")
 	}
 	code, groups := f.admin("GET", "/api/admin/loot/groups", "")
 	f.expect(code, groups, 200, "")

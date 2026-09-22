@@ -1514,7 +1514,10 @@ func (a *API) adminSpotBuffs(w http.ResponseWriter, r *http.Request) {
 	}
 	s["buffs"] = buffs
 	setWorldSpots(g, spots)
-	_ = grounds
+	if err := setWorldGrounds(c, grounds); err != nil {
+		failure(w, identity.ErrInvalid)
+		return
+	}
 	next, good := worldPublish(a, w, r, session, body, "/api/admin/spot/buffs", groundID+":"+spotID, c, rev)
 	if !good {
 		return
@@ -1859,7 +1862,10 @@ func (a *API) adminSpotAdd(w http.ResponseWriter, r *http.Request) {
 	spots := worldSpots(g)
 	spots = append(spots, spot)
 	setWorldSpots(g, spots)
-	_ = grounds
+	if err := setWorldGrounds(c, grounds); err != nil {
+		failure(w, identity.ErrInvalid)
+		return
+	}
 	next, good := worldPublish(a, w, r, session, body, "/api/admin/spot/add", groundID+":"+id, c, rev)
 	if !good {
 		return
