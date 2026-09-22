@@ -1,9 +1,9 @@
 # Go 重写玩法容量与故障验收
 
-核对日：2026-09-22  
-工作树：`E:\AAAworktrees\web-fishing-game\go-resilience`  
-分支：`codex/go-resilience`  
-最终短测候选 SHA：`9bed25cb2ddf526126034d7ab1747573450c9775`  
+核对日：2026-09-22
+工作树：`E:\AAAworktrees\web-fishing-game\go-resilience`
+分支：`codex/go-resilience`
+最终短测候选 SHA：`9bed25cb2ddf526126034d7ab1747573450c9775`
 最终短测工作树状态：`dirty=false`
 
 本专项按 [`PARALLEL_ACCEPTANCE.md`](../PARALLEL_ACCEPTANCE.md) 的共同基线执行。所有数据库、容器、卷和账号均为本地合成资源；未连接正式数据库、未 push、未部署。
