@@ -1,0 +1,3574 @@
+{
+  "format": 1,
+  "version": "v0.21.4",
+  "sourceSHA256": "018ff662d655bacd9949e398461f1af4801afac596d7e06ee391332f0a3211d7",
+  "cases": [
+    {
+      "id": "multiplier-0",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 0.1,
+          "lastTs": 1700000000000
+        },
+        1699999999000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 0.4
+    },
+    {
+      "id": "multiplier-1",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 0.1,
+          "lastTs": 1700000000000
+        },
+        1700000000000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 0.4
+    },
+    {
+      "id": "multiplier-2",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 0.1,
+          "lastTs": 1700000000000
+        },
+        1700000060000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 0.4264456738854119
+    },
+    {
+      "id": "multiplier-3",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 0.1,
+          "lastTs": 1700000000000
+        },
+        1700003600000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1.4113928941256924
+    },
+    {
+      "id": "multiplier-4",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 0.1,
+          "lastTs": 1700000000000
+        },
+        1700086400000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1.9999999999395979
+    },
+    {
+      "id": "multiplier-5",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 0.4,
+          "lastTs": 1700000000000
+        },
+        1699999999000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 0.4
+    },
+    {
+      "id": "multiplier-6",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 0.4,
+          "lastTs": 1700000000000
+        },
+        1700000000000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 0.4
+    },
+    {
+      "id": "multiplier-7",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 0.4,
+          "lastTs": 1700000000000
+        },
+        1700000060000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 0.4264456738854119
+    },
+    {
+      "id": "multiplier-8",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 0.4,
+          "lastTs": 1700000000000
+        },
+        1700003600000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1.4113928941256924
+    },
+    {
+      "id": "multiplier-9",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 0.4,
+          "lastTs": 1700000000000
+        },
+        1700086400000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1.9999999999395979
+    },
+    {
+      "id": "multiplier-10",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 1,
+          "lastTs": 1700000000000
+        },
+        1699999999000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1
+    },
+    {
+      "id": "multiplier-11",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 1,
+          "lastTs": 1700000000000
+        },
+        1700000000000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1
+    },
+    {
+      "id": "multiplier-12",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 1,
+          "lastTs": 1700000000000
+        },
+        1700000060000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1.0165285461783826
+    },
+    {
+      "id": "multiplier-13",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 1,
+          "lastTs": 1700000000000
+        },
+        1700003600000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1.6321205588285577
+    },
+    {
+      "id": "multiplier-14",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 1,
+          "lastTs": 1700000000000
+        },
+        1700086400000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1.9999999999622486
+    },
+    {
+      "id": "multiplier-15",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 2,
+          "lastTs": 1700000000000
+        },
+        1699999999000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 2
+    },
+    {
+      "id": "multiplier-16",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 2,
+          "lastTs": 1700000000000
+        },
+        1700000000000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 2
+    },
+    {
+      "id": "multiplier-17",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 2,
+          "lastTs": 1700000000000
+        },
+        1700000060000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 2
+    },
+    {
+      "id": "multiplier-18",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 2,
+          "lastTs": 1700000000000
+        },
+        1700003600000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 2
+    },
+    {
+      "id": "multiplier-19",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 2,
+          "lastTs": 1700000000000
+        },
+        1700086400000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 2
+    },
+    {
+      "id": "multiplier-20",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 3,
+          "lastTs": 1700000000000
+        },
+        1699999999000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 2
+    },
+    {
+      "id": "multiplier-21",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 3,
+          "lastTs": 1700000000000
+        },
+        1700000000000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 2
+    },
+    {
+      "id": "multiplier-22",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 3,
+          "lastTs": 1700000000000
+        },
+        1700000060000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 2
+    },
+    {
+      "id": "multiplier-23",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 3,
+          "lastTs": 1700000000000
+        },
+        1700003600000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 2
+    },
+    {
+      "id": "multiplier-24",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": 3,
+          "lastTs": 1700000000000
+        },
+        1700086400000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 2
+    },
+    {
+      "id": "multiplier-25",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": null,
+          "lastTs": 1700000000000
+        },
+        1699999999000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1
+    },
+    {
+      "id": "multiplier-26",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": null,
+          "lastTs": 1700000000000
+        },
+        1700000000000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1
+    },
+    {
+      "id": "multiplier-27",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": null,
+          "lastTs": 1700000000000
+        },
+        1700000060000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1.0165285461783826
+    },
+    {
+      "id": "multiplier-28",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": null,
+          "lastTs": 1700000000000
+        },
+        1700003600000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1.6321205588285577
+    },
+    {
+      "id": "multiplier-29",
+      "fn": "multiplier",
+      "args": [
+        {
+          "m": null,
+          "lastTs": 1700000000000
+        },
+        1700086400000,
+        {
+          "saleDivisor": 0.0075,
+          "riseTauMin": 60,
+          "floor": 0.4,
+          "ceil": 2,
+          "target": 2
+        }
+      ],
+      "expected": 1.9999999999622486
+    },
+    {
+      "id": "autosell-30",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        false,
+        1
+      ],
+      "expected": {
+        "pool": 110,
+        "blocked": 0,
+        "batch": 1,
+        "quantities": [
+          {
+            "id": "crucian",
+            "quantity": 50
+          },
+          {
+            "id": "bait_pack",
+            "quantity": 60
+          }
+        ]
+      }
+    },
+    {
+      "id": "autosell-31",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        false,
+        1
+      ],
+      "expected": {
+        "pool": 110,
+        "blocked": 0,
+        "batch": 1,
+        "quantities": [
+          {
+            "id": "crucian",
+            "quantity": 50
+          },
+          {
+            "id": "bait_pack",
+            "quantity": 60
+          }
+        ]
+      }
+    },
+    {
+      "id": "autosell-32",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        false,
+        1
+      ],
+      "expected": {
+        "pool": 0,
+        "blocked": 110,
+        "batch": 1,
+        "quantities": []
+      }
+    },
+    {
+      "id": "autosell-33",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        false,
+        100
+      ],
+      "expected": {
+        "pool": 110,
+        "blocked": 0,
+        "batch": 100,
+        "quantities": [
+          {
+            "id": "crucian",
+            "quantity": 50
+          },
+          {
+            "id": "bait_pack",
+            "quantity": 60
+          }
+        ]
+      }
+    },
+    {
+      "id": "autosell-34",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        false,
+        100
+      ],
+      "expected": {
+        "pool": 110,
+        "blocked": 0,
+        "batch": 100,
+        "quantities": [
+          {
+            "id": "crucian",
+            "quantity": 50
+          },
+          {
+            "id": "bait_pack",
+            "quantity": 60
+          }
+        ]
+      }
+    },
+    {
+      "id": "autosell-35",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        false,
+        100
+      ],
+      "expected": {
+        "pool": 0,
+        "blocked": 110,
+        "batch": 100,
+        "quantities": []
+      }
+    },
+    {
+      "id": "autosell-36",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        false,
+        500
+      ],
+      "expected": {
+        "pool": 110,
+        "blocked": 0,
+        "batch": 500,
+        "quantities": []
+      }
+    },
+    {
+      "id": "autosell-37",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        false,
+        500
+      ],
+      "expected": {
+        "pool": 110,
+        "blocked": 0,
+        "batch": 500,
+        "quantities": []
+      }
+    },
+    {
+      "id": "autosell-38",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        false,
+        500
+      ],
+      "expected": {
+        "pool": 0,
+        "blocked": 110,
+        "batch": 500,
+        "quantities": []
+      }
+    },
+    {
+      "id": "autosell-39",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        true,
+        1
+      ],
+      "expected": {
+        "pool": 210,
+        "blocked": 0,
+        "batch": 1,
+        "quantities": [
+          {
+            "id": "crucian",
+            "quantity": 100
+          },
+          {
+            "id": "bait_pack",
+            "quantity": 110
+          }
+        ]
+      }
+    },
+    {
+      "id": "autosell-40",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        true,
+        1
+      ],
+      "expected": {
+        "pool": 210,
+        "blocked": 0,
+        "batch": 1,
+        "quantities": [
+          {
+            "id": "crucian",
+            "quantity": 100
+          },
+          {
+            "id": "bait_pack",
+            "quantity": 110
+          }
+        ]
+      }
+    },
+    {
+      "id": "autosell-41",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        true,
+        1
+      ],
+      "expected": {
+        "pool": 0,
+        "blocked": 210,
+        "batch": 1,
+        "quantities": []
+      }
+    },
+    {
+      "id": "autosell-42",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        true,
+        100
+      ],
+      "expected": {
+        "pool": 210,
+        "blocked": 0,
+        "batch": 100,
+        "quantities": [
+          {
+            "id": "crucian",
+            "quantity": 100
+          },
+          {
+            "id": "bait_pack",
+            "quantity": 110
+          }
+        ]
+      }
+    },
+    {
+      "id": "autosell-43",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        true,
+        100
+      ],
+      "expected": {
+        "pool": 210,
+        "blocked": 0,
+        "batch": 100,
+        "quantities": [
+          {
+            "id": "crucian",
+            "quantity": 100
+          },
+          {
+            "id": "bait_pack",
+            "quantity": 110
+          }
+        ]
+      }
+    },
+    {
+      "id": "autosell-44",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        true,
+        100
+      ],
+      "expected": {
+        "pool": 0,
+        "blocked": 210,
+        "batch": 100,
+        "quantities": []
+      }
+    },
+    {
+      "id": "autosell-45",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": null
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        true,
+        500
+      ],
+      "expected": {
+        "pool": 210,
+        "blocked": 0,
+        "batch": 500,
+        "quantities": []
+      }
+    },
+    {
+      "id": "autosell-46",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 10
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        true,
+        500
+      ],
+      "expected": {
+        "pool": 210,
+        "blocked": 0,
+        "batch": 500,
+        "quantities": []
+      }
+    },
+    {
+      "id": "autosell-47",
+      "fn": "autosell",
+      "args": [
+        [
+          {
+            "id": "crucian",
+            "rule": {
+              "on": true,
+              "keep": 20,
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          },
+          {
+            "id": "bait_pack",
+            "rule": {
+              "on": true,
+              "keep": "10.5",
+              "minPrice": 9999
+            },
+            "normal": 70,
+            "large": 25,
+            "giant": 25,
+            "base": 10,
+            "price": 20
+          }
+        ],
+        true,
+        500
+      ],
+      "expected": {
+        "pool": 0,
+        "blocked": 210,
+        "batch": 500,
+        "quantities": []
+      }
+    },
+    {
+      "id": "boost-48",
+      "fn": "boost",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 10
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8
+          }
+        ],
+        {
+          "materials": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 10
+            },
+            {
+              "pick": "material:rope",
+              "weight": 11
+            },
+            {
+              "pick": "material:lure",
+              "weight": 12
+            }
+          ]
+        },
+        {
+          "rare": 0,
+          "material": -100
+        },
+        {
+          "global": 100,
+          "common": 100,
+          "big": 200,
+          "rare": 150,
+          "material": 80
+        }
+      ],
+      "expected": [
+        {
+          "pick": "fish:crucian",
+          "weight": 20
+        },
+        {
+          "pick": "fish:catfish",
+          "weight": 20
+        },
+        {
+          "pick": "fish:koi",
+          "weight": 7.5
+        },
+        {
+          "pick": "component:",
+          "weight": 10
+        },
+        {
+          "pick": "group:materials",
+          "weight": 0,
+          "items": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 0
+            },
+            {
+              "pick": "material:rope",
+              "weight": 0
+            },
+            {
+              "pick": "material:lure",
+              "weight": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pick-49",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 7.5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 0,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0
+              }
+            ]
+          }
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-50",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 7.5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 0,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0
+              }
+            ]
+          }
+        ],
+        [
+          0.3,
+          0.6
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-51",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 7.5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 0,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0
+              }
+            ]
+          }
+        ],
+        [
+          0.99,
+          0.99
+        ]
+      ],
+      "expected": {
+        "pick": "component:",
+        "draws": 1
+      }
+    },
+    {
+      "id": "boost-52",
+      "fn": "boost",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 10
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8
+          }
+        ],
+        {
+          "materials": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 10
+            },
+            {
+              "pick": "material:rope",
+              "weight": 11
+            },
+            {
+              "pick": "material:lure",
+              "weight": 12
+            }
+          ]
+        },
+        {
+          "rare": 0,
+          "material": 0
+        },
+        {
+          "global": 100,
+          "common": 100,
+          "big": 200,
+          "rare": 150,
+          "material": 80
+        }
+      ],
+      "expected": [
+        {
+          "pick": "fish:crucian",
+          "weight": 20
+        },
+        {
+          "pick": "fish:catfish",
+          "weight": 20
+        },
+        {
+          "pick": "fish:koi",
+          "weight": 7.5
+        },
+        {
+          "pick": "component:",
+          "weight": 10
+        },
+        {
+          "pick": "group:materials",
+          "weight": 8,
+          "items": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 8
+            },
+            {
+              "pick": "material:rope",
+              "weight": 8.8
+            },
+            {
+              "pick": "material:lure",
+              "weight": 9.600000000000001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pick-53",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 7.5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 8
+              },
+              {
+                "pick": "material:rope",
+                "weight": 8.8
+              },
+              {
+                "pick": "material:lure",
+                "weight": 9.600000000000001
+              }
+            ]
+          }
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-54",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 7.5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 8
+              },
+              {
+                "pick": "material:rope",
+                "weight": 8.8
+              },
+              {
+                "pick": "material:lure",
+                "weight": 9.600000000000001
+              }
+            ]
+          }
+        ],
+        [
+          0.3,
+          0.6
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-55",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 7.5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 8
+              },
+              {
+                "pick": "material:rope",
+                "weight": 8.8
+              },
+              {
+                "pick": "material:lure",
+                "weight": 9.600000000000001
+              }
+            ]
+          }
+        ],
+        [
+          0.99,
+          0.99
+        ]
+      ],
+      "expected": {
+        "pick": "material:lure",
+        "draws": 2
+      }
+    },
+    {
+      "id": "boost-56",
+      "fn": "boost",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 10
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8
+          }
+        ],
+        {
+          "materials": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 10
+            },
+            {
+              "pick": "material:rope",
+              "weight": 11
+            },
+            {
+              "pick": "material:lure",
+              "weight": 12
+            }
+          ]
+        },
+        {
+          "rare": 0,
+          "material": 100
+        },
+        {
+          "global": 100,
+          "common": 100,
+          "big": 200,
+          "rare": 150,
+          "material": 80
+        }
+      ],
+      "expected": [
+        {
+          "pick": "fish:crucian",
+          "weight": 20
+        },
+        {
+          "pick": "fish:catfish",
+          "weight": 20
+        },
+        {
+          "pick": "fish:koi",
+          "weight": 7.5
+        },
+        {
+          "pick": "component:",
+          "weight": 10
+        },
+        {
+          "pick": "group:materials",
+          "weight": 16,
+          "items": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 16
+            },
+            {
+              "pick": "material:rope",
+              "weight": 17.6
+            },
+            {
+              "pick": "material:lure",
+              "weight": 19.200000000000003
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pick-57",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 7.5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 16,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 16
+              },
+              {
+                "pick": "material:rope",
+                "weight": 17.6
+              },
+              {
+                "pick": "material:lure",
+                "weight": 19.200000000000003
+              }
+            ]
+          }
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-58",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 7.5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 16,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 16
+              },
+              {
+                "pick": "material:rope",
+                "weight": 17.6
+              },
+              {
+                "pick": "material:lure",
+                "weight": 19.200000000000003
+              }
+            ]
+          }
+        ],
+        [
+          0.3,
+          0.6
+        ]
+      ],
+      "expected": {
+        "pick": "fish:catfish",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-59",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 7.5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 16,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 16
+              },
+              {
+                "pick": "material:rope",
+                "weight": 17.6
+              },
+              {
+                "pick": "material:lure",
+                "weight": 19.200000000000003
+              }
+            ]
+          }
+        ],
+        [
+          0.99,
+          0.99
+        ]
+      ],
+      "expected": {
+        "pick": "material:lure",
+        "draws": 2
+      }
+    },
+    {
+      "id": "boost-60",
+      "fn": "boost",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 10
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8
+          }
+        ],
+        {
+          "materials": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 10
+            },
+            {
+              "pick": "material:rope",
+              "weight": 11
+            },
+            {
+              "pick": "material:lure",
+              "weight": 12
+            }
+          ]
+        },
+        {
+          "rare": 20,
+          "material": -100
+        },
+        {
+          "global": 100,
+          "common": 100,
+          "big": 200,
+          "rare": 150,
+          "material": 80
+        }
+      ],
+      "expected": [
+        {
+          "pick": "fish:crucian",
+          "weight": 1.8181818181818183
+        },
+        {
+          "pick": "fish:catfish",
+          "weight": 20
+        },
+        {
+          "pick": "fish:koi",
+          "weight": 9
+        },
+        {
+          "pick": "component:",
+          "weight": 4.363636363636363
+        },
+        {
+          "pick": "group:materials",
+          "weight": 0,
+          "items": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 0
+            },
+            {
+              "pick": "material:rope",
+              "weight": 0
+            },
+            {
+              "pick": "material:lure",
+              "weight": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pick-61",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 1.8181818181818183
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 9
+          },
+          {
+            "pick": "component:",
+            "weight": 4.363636363636363
+          },
+          {
+            "pick": "group:materials",
+            "weight": 0,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0
+              }
+            ]
+          }
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-62",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 1.8181818181818183
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 9
+          },
+          {
+            "pick": "component:",
+            "weight": 4.363636363636363
+          },
+          {
+            "pick": "group:materials",
+            "weight": 0,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0
+              }
+            ]
+          }
+        ],
+        [
+          0.3,
+          0.6
+        ]
+      ],
+      "expected": {
+        "pick": "fish:catfish",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-63",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 1.8181818181818183
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 9
+          },
+          {
+            "pick": "component:",
+            "weight": 4.363636363636363
+          },
+          {
+            "pick": "group:materials",
+            "weight": 0,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0
+              }
+            ]
+          }
+        ],
+        [
+          0.99,
+          0.99
+        ]
+      ],
+      "expected": {
+        "pick": "component:",
+        "draws": 1
+      }
+    },
+    {
+      "id": "boost-64",
+      "fn": "boost",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 10
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8
+          }
+        ],
+        {
+          "materials": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 10
+            },
+            {
+              "pick": "material:rope",
+              "weight": 11
+            },
+            {
+              "pick": "material:lure",
+              "weight": 12
+            }
+          ]
+        },
+        {
+          "rare": 20,
+          "material": 0
+        },
+        {
+          "global": 100,
+          "common": 100,
+          "big": 200,
+          "rare": 150,
+          "material": 80
+        }
+      ],
+      "expected": [
+        {
+          "pick": "fish:crucian",
+          "weight": 1.8181818181818183
+        },
+        {
+          "pick": "fish:catfish",
+          "weight": 20
+        },
+        {
+          "pick": "fish:koi",
+          "weight": 9
+        },
+        {
+          "pick": "component:",
+          "weight": 4.363636363636363
+        },
+        {
+          "pick": "group:materials",
+          "weight": 8,
+          "items": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 0.7272727272727274
+            },
+            {
+              "pick": "material:rope",
+              "weight": 0.8000000000000002
+            },
+            {
+              "pick": "material:lure",
+              "weight": 0.8727272727272728
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pick-65",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 1.8181818181818183
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 9
+          },
+          {
+            "pick": "component:",
+            "weight": 4.363636363636363
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0.7272727272727274
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0.8000000000000002
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0.8727272727272728
+              }
+            ]
+          }
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-66",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 1.8181818181818183
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 9
+          },
+          {
+            "pick": "component:",
+            "weight": 4.363636363636363
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0.7272727272727274
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0.8000000000000002
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0.8727272727272728
+              }
+            ]
+          }
+        ],
+        [
+          0.3,
+          0.6
+        ]
+      ],
+      "expected": {
+        "pick": "fish:catfish",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-67",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 1.8181818181818183
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 9
+          },
+          {
+            "pick": "component:",
+            "weight": 4.363636363636363
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0.7272727272727274
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0.8000000000000002
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0.8727272727272728
+              }
+            ]
+          }
+        ],
+        [
+          0.99,
+          0.99
+        ]
+      ],
+      "expected": {
+        "pick": "material:lure",
+        "draws": 2
+      }
+    },
+    {
+      "id": "boost-68",
+      "fn": "boost",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 10
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8
+          }
+        ],
+        {
+          "materials": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 10
+            },
+            {
+              "pick": "material:rope",
+              "weight": 11
+            },
+            {
+              "pick": "material:lure",
+              "weight": 12
+            }
+          ]
+        },
+        {
+          "rare": 20,
+          "material": 100
+        },
+        {
+          "global": 100,
+          "common": 100,
+          "big": 200,
+          "rare": 150,
+          "material": 80
+        }
+      ],
+      "expected": [
+        {
+          "pick": "fish:crucian",
+          "weight": 1.8181818181818183
+        },
+        {
+          "pick": "fish:catfish",
+          "weight": 20
+        },
+        {
+          "pick": "fish:koi",
+          "weight": 9
+        },
+        {
+          "pick": "component:",
+          "weight": 4.363636363636363
+        },
+        {
+          "pick": "group:materials",
+          "weight": 16,
+          "items": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 1.4545454545454548
+            },
+            {
+              "pick": "material:rope",
+              "weight": 1.6000000000000003
+            },
+            {
+              "pick": "material:lure",
+              "weight": 1.7454545454545456
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pick-69",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 1.8181818181818183
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 9
+          },
+          {
+            "pick": "component:",
+            "weight": 4.363636363636363
+          },
+          {
+            "pick": "group:materials",
+            "weight": 16,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 1.4545454545454548
+              },
+              {
+                "pick": "material:rope",
+                "weight": 1.6000000000000003
+              },
+              {
+                "pick": "material:lure",
+                "weight": 1.7454545454545456
+              }
+            ]
+          }
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-70",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 1.8181818181818183
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 9
+          },
+          {
+            "pick": "component:",
+            "weight": 4.363636363636363
+          },
+          {
+            "pick": "group:materials",
+            "weight": 16,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 1.4545454545454548
+              },
+              {
+                "pick": "material:rope",
+                "weight": 1.6000000000000003
+              },
+              {
+                "pick": "material:lure",
+                "weight": 1.7454545454545456
+              }
+            ]
+          }
+        ],
+        [
+          0.3,
+          0.6
+        ]
+      ],
+      "expected": {
+        "pick": "fish:catfish",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-71",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 1.8181818181818183
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 9
+          },
+          {
+            "pick": "component:",
+            "weight": 4.363636363636363
+          },
+          {
+            "pick": "group:materials",
+            "weight": 16,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 1.4545454545454548
+              },
+              {
+                "pick": "material:rope",
+                "weight": 1.6000000000000003
+              },
+              {
+                "pick": "material:lure",
+                "weight": 1.7454545454545456
+              }
+            ]
+          }
+        ],
+        [
+          0.99,
+          0.99
+        ]
+      ],
+      "expected": {
+        "pick": "material:lure",
+        "draws": 2
+      }
+    },
+    {
+      "id": "boost-72",
+      "fn": "boost",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 10
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8
+          }
+        ],
+        {
+          "materials": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 10
+            },
+            {
+              "pick": "material:rope",
+              "weight": 11
+            },
+            {
+              "pick": "material:lure",
+              "weight": 12
+            }
+          ]
+        },
+        {
+          "rare": 100,
+          "material": -100
+        },
+        {
+          "global": 100,
+          "common": 100,
+          "big": 200,
+          "rare": 150,
+          "material": 80
+        }
+      ],
+      "expected": [
+        {
+          "pick": "fish:crucian",
+          "weight": 0.39215686274509803
+        },
+        {
+          "pick": "fish:catfish",
+          "weight": 20
+        },
+        {
+          "pick": "fish:koi",
+          "weight": 15
+        },
+        {
+          "pick": "component:",
+          "weight": 3.9215686274509793
+        },
+        {
+          "pick": "group:materials",
+          "weight": 0,
+          "items": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 0
+            },
+            {
+              "pick": "material:rope",
+              "weight": 0
+            },
+            {
+              "pick": "material:lure",
+              "weight": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pick-73",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 0.39215686274509803
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 15
+          },
+          {
+            "pick": "component:",
+            "weight": 3.9215686274509793
+          },
+          {
+            "pick": "group:materials",
+            "weight": 0,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0
+              }
+            ]
+          }
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-74",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 0.39215686274509803
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 15
+          },
+          {
+            "pick": "component:",
+            "weight": 3.9215686274509793
+          },
+          {
+            "pick": "group:materials",
+            "weight": 0,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0
+              }
+            ]
+          }
+        ],
+        [
+          0.3,
+          0.6
+        ]
+      ],
+      "expected": {
+        "pick": "fish:catfish",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-75",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 0.39215686274509803
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 15
+          },
+          {
+            "pick": "component:",
+            "weight": 3.9215686274509793
+          },
+          {
+            "pick": "group:materials",
+            "weight": 0,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0
+              }
+            ]
+          }
+        ],
+        [
+          0.99,
+          0.99
+        ]
+      ],
+      "expected": {
+        "pick": "component:",
+        "draws": 1
+      }
+    },
+    {
+      "id": "boost-76",
+      "fn": "boost",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 10
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8
+          }
+        ],
+        {
+          "materials": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 10
+            },
+            {
+              "pick": "material:rope",
+              "weight": 11
+            },
+            {
+              "pick": "material:lure",
+              "weight": 12
+            }
+          ]
+        },
+        {
+          "rare": 100,
+          "material": 0
+        },
+        {
+          "global": 100,
+          "common": 100,
+          "big": 200,
+          "rare": 150,
+          "material": 80
+        }
+      ],
+      "expected": [
+        {
+          "pick": "fish:crucian",
+          "weight": 0.39215686274509803
+        },
+        {
+          "pick": "fish:catfish",
+          "weight": 20
+        },
+        {
+          "pick": "fish:koi",
+          "weight": 15
+        },
+        {
+          "pick": "component:",
+          "weight": 3.9215686274509793
+        },
+        {
+          "pick": "group:materials",
+          "weight": 8,
+          "items": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 0.1568627450980392
+            },
+            {
+              "pick": "material:rope",
+              "weight": 0.17254901960784313
+            },
+            {
+              "pick": "material:lure",
+              "weight": 0.18823529411764706
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pick-77",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 0.39215686274509803
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 15
+          },
+          {
+            "pick": "component:",
+            "weight": 3.9215686274509793
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0.1568627450980392
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0.17254901960784313
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0.18823529411764706
+              }
+            ]
+          }
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-78",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 0.39215686274509803
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 15
+          },
+          {
+            "pick": "component:",
+            "weight": 3.9215686274509793
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0.1568627450980392
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0.17254901960784313
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0.18823529411764706
+              }
+            ]
+          }
+        ],
+        [
+          0.3,
+          0.6
+        ]
+      ],
+      "expected": {
+        "pick": "fish:catfish",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-79",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 0.39215686274509803
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 15
+          },
+          {
+            "pick": "component:",
+            "weight": 3.9215686274509793
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0.1568627450980392
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0.17254901960784313
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0.18823529411764706
+              }
+            ]
+          }
+        ],
+        [
+          0.99,
+          0.99
+        ]
+      ],
+      "expected": {
+        "pick": "material:lure",
+        "draws": 2
+      }
+    },
+    {
+      "id": "boost-80",
+      "fn": "boost",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 20
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 10
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 5
+          },
+          {
+            "pick": "component:",
+            "weight": 10
+          },
+          {
+            "pick": "group:materials",
+            "weight": 8
+          }
+        ],
+        {
+          "materials": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 10
+            },
+            {
+              "pick": "material:rope",
+              "weight": 11
+            },
+            {
+              "pick": "material:lure",
+              "weight": 12
+            }
+          ]
+        },
+        {
+          "rare": 100,
+          "material": 100
+        },
+        {
+          "global": 100,
+          "common": 100,
+          "big": 200,
+          "rare": 150,
+          "material": 80
+        }
+      ],
+      "expected": [
+        {
+          "pick": "fish:crucian",
+          "weight": 0.39215686274509803
+        },
+        {
+          "pick": "fish:catfish",
+          "weight": 20
+        },
+        {
+          "pick": "fish:koi",
+          "weight": 15
+        },
+        {
+          "pick": "component:",
+          "weight": 3.9215686274509793
+        },
+        {
+          "pick": "group:materials",
+          "weight": 16,
+          "items": [
+            {
+              "pick": "material:bait_pack",
+              "weight": 0.3137254901960784
+            },
+            {
+              "pick": "material:rope",
+              "weight": 0.34509803921568627
+            },
+            {
+              "pick": "material:lure",
+              "weight": 0.3764705882352941
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pick-81",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 0.39215686274509803
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 15
+          },
+          {
+            "pick": "component:",
+            "weight": 3.9215686274509793
+          },
+          {
+            "pick": "group:materials",
+            "weight": 16,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0.3137254901960784
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0.34509803921568627
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0.3764705882352941
+              }
+            ]
+          }
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "expected": {
+        "pick": "fish:crucian",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-82",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 0.39215686274509803
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 15
+          },
+          {
+            "pick": "component:",
+            "weight": 3.9215686274509793
+          },
+          {
+            "pick": "group:materials",
+            "weight": 16,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0.3137254901960784
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0.34509803921568627
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0.3764705882352941
+              }
+            ]
+          }
+        ],
+        [
+          0.3,
+          0.6
+        ]
+      ],
+      "expected": {
+        "pick": "fish:catfish",
+        "draws": 1
+      }
+    },
+    {
+      "id": "pick-83",
+      "fn": "pick",
+      "args": [
+        [
+          {
+            "pick": "fish:crucian",
+            "weight": 0.39215686274509803
+          },
+          {
+            "pick": "fish:catfish",
+            "weight": 20
+          },
+          {
+            "pick": "fish:koi",
+            "weight": 15
+          },
+          {
+            "pick": "component:",
+            "weight": 3.9215686274509793
+          },
+          {
+            "pick": "group:materials",
+            "weight": 16,
+            "items": [
+              {
+                "pick": "material:bait_pack",
+                "weight": 0.3137254901960784
+              },
+              {
+                "pick": "material:rope",
+                "weight": 0.34509803921568627
+              },
+              {
+                "pick": "material:lure",
+                "weight": 0.3764705882352941
+              }
+            ]
+          }
+        ],
+        [
+          0.99,
+          0.99
+        ]
+      ],
+      "expected": {
+        "pick": "material:lure",
+        "draws": 2
+      }
+    }
+  ]
+}

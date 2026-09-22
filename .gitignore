@@ -30,3 +30,8 @@ dist/
 tools/.github-token
 # 测试生成的预览截图
 output/
+
+# Go build/test output and private offline migration snapshots/reports.
+server-go/bin/
+server-go/coverage.out
+migration-private/

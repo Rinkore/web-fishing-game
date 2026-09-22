@@ -1,0 +1,4282 @@
+{
+  "format": 1,
+  "version": "v0.21.4",
+  "sourceSHA256": "d1df3621a0599c39293df4de00ee54e95d595dadf20fe75650194b02bb24f2c0",
+  "cases": [
+    {
+      "id": "chest-0",
+      "fn": "chest",
+      "args": [
+        "chest_wreck",
+        "",
+        "",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "rod_bamboo#rare#spd+11,size+2",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-1",
+      "fn": "chest",
+      "args": [
+        "chest_wreck",
+        "",
+        "",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "hook_steel#epic#skl+9,spd-7",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-2",
+      "fn": "chest",
+      "args": [
+        "chest_wreck",
+        "",
+        "",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "charm_trident#rare#dbl+9,spd-12",
+        "draws": 8
+      }
+    },
+    {
+      "id": "chest-3",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "rod",
+        "",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "rod_bamboo#rare#spd+11,size+2",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-4",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "rod",
+        "",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "rod_fiberglass#epic#spd+17,size-7",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-5",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "rod",
+        "",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "rod_dragonbone#rare#size+10,spd-16",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-6",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "line",
+        "",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "line_nylon#rare#mat+21,size+2",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-7",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "line",
+        "",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "line_stealth#epic#rare+6,size-12",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-8",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "line",
+        "",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "line_dragon#rare#rare+5,spd-13",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-9",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "hook",
+        "",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "hook_barb#rare#skl+4,size+2",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-10",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "hook",
+        "",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "hook_swallow#epic#spd+14,size-10",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-11",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "hook",
+        "",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "hook_ghost#rare#rare-4,size+4",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-12",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "bait",
+        "",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "bait_corn#rare#rare+2,spd+8",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-13",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "bait",
+        "",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "bait_rice#epic#mat+32,spd-7",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-14",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "bait",
+        "",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "bait_bionic#rare#rare+4,mat-16",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-15",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "reel",
+        "",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "reel_smooth#rare#spd+10,mat+2",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-16",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "reel",
+        "",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "reel_magnetic#epic#spd+17,mat-12",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-17",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "reel",
+        "",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "reel_turbo#rare#spd+32,skl-6",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-18",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "accessory",
+        "",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_net#rare#dbl+9,spd+2",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-19",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "accessory",
+        "",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_float#epic#rare+4,size-9",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-20",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "accessory",
+        "",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_radar#rare#size+13,spd-13",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-21",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "charm",
+        "",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "charm_coin#rare#rare+3,size+11",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-22",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "charm",
+        "",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "charm_jade#epic#size+22,spd-10",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-23",
+      "fn": "chest",
+      "args": [
+        "chest_deep",
+        "charm",
+        "",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "charm_trident#rare#dbl+9,spd-12",
+        "draws": 8
+      }
+    },
+    {
+      "id": "chest-24",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_bamboo",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "rod_bamboo#epic#spd+12,size-5",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-25",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_bamboo",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "rod_bamboo#epic#spd+9,size-1",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-26",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_bamboo",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "rod_bamboo#epic#spd+12,size-5",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-27",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_fiberglass",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "rod_fiberglass#epic#spd+16,size-7",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-28",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_fiberglass",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "rod_fiberglass#epic#spd+11,size-5",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-29",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_fiberglass",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "rod_fiberglass#epic#spd+16,size-7",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-30",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_carbon",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "rod_carbon#epic#spd+15,mat-9,size+4",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-31",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_carbon",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "rod_carbon#epic#spd+18,mat-6,size-4",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-32",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_carbon",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "rod_carbon#epic#spd+15,mat-10,size+4",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-33",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_dragonbone",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "rod_dragonbone#epic#skl+9,size+8,spd-10",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-34",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_dragonbone",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "rod_dragonbone#epic#skl+11,size+11,spd-16",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-35",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "rod_dragonbone",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "rod_dragonbone#epic#skl+8,size+8,spd-10",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-36",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_nylon",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "line_nylon#epic#mat+25,size-5",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-37",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_nylon",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "line_nylon#epic#mat+16,size-1",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-38",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_nylon",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "line_nylon#epic#mat+24,size-5",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-39",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_stealth",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "line_stealth#epic#rare+6,size-13",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-40",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_stealth",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "line_stealth#epic#rare+3,size-10",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-41",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_stealth",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "line_stealth#epic#rare+6,size-13",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-42",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_titan",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "line_titan#epic#size+16,spd-8",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-43",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_titan",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "line_titan#epic#size+11,spd-6",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-44",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_titan",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "line_titan#epic#size+16,spd-8",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-45",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_dragon",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "line_dragon#epic#skl+4,rare+4,spd-7",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-46",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_dragon",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "line_dragon#epic#skl+6,rare+5,spd-12",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-47",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "line_dragon",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "line_dragon#epic#skl+4,rare+4,spd-8",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-48",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_barb",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "hook_barb#epic#skl+5,size-3",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-49",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_barb",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "hook_barb#epic#skl+3,size-1",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-50",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_barb",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "hook_barb#epic#skl+5,size-3",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-51",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_swallow",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "hook_swallow#epic#spd+13,size-11",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-52",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_swallow",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "hook_swallow#epic#spd+9,size-8",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-53",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_swallow",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "hook_swallow#epic#spd+13,size-11",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-54",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_steel",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "hook_steel#epic#skl+9,spd-7",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-55",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_steel",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "hook_steel#epic#skl+6,spd-5",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-56",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_steel",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "hook_steel#epic#skl+9,spd-8",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-57",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_ghost",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "hook_ghost#epic#skl+8,rare-6,size+8",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-58",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_ghost",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "hook_ghost#epic#skl+10,rare-4,size+4",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-59",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "hook_ghost",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "hook_ghost#epic#skl+8,rare-6,size+8",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-60",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_corn",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "bait_corn#epic#rare+2,spd+4",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-61",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_corn",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "bait_corn#epic#rare+1,spd+6",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-62",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_corn",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "bait_corn#epic#rare+2,spd+4",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-63",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_rice",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "bait_rice#epic#mat+31,spd-7",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-64",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_rice",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "bait_rice#epic#mat+23,spd-5",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-65",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_rice",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "bait_rice#epic#mat+31,spd-8",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-66",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_secret",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "bait_secret#epic#rare+7,mat-13",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-67",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_secret",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "bait_secret#epic#rare+4,mat-10",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-68",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_secret",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "bait_secret#epic#rare+7,mat-13",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-69",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_bionic",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "bait_bionic#epic#skl+4,rare+3,mat-11",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-70",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_bionic",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "bait_bionic#epic#skl+6,rare+4,mat-16",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-71",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "bait_bionic",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "bait_bionic#epic#skl+4,rare+3,mat-11",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-72",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_smooth",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "reel_smooth#epic#spd+12,mat-4",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-73",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_smooth",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "reel_smooth#epic#spd+8,mat-1",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-74",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_smooth",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "reel_smooth#epic#spd+12,mat-4",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-75",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_magnetic",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "reel_magnetic#epic#spd+16,mat-13",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-76",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_magnetic",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "reel_magnetic#epic#spd+13,mat-10",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-77",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_magnetic",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "reel_magnetic#epic#spd+16,mat-13",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-78",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_electric",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "reel_electric#epic#spd+26,skl-5",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-79",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_electric",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "reel_electric#epic#spd+21,skl-2",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-80",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_electric",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "reel_electric#epic#spd+26,skl-5",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-81",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_turbo",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "reel_turbo#epic#spd+35,skl-11",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-82",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_turbo",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "reel_turbo#epic#spd+29,skl-8",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-83",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "reel_turbo",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "reel_turbo#epic#spd+35,skl-11",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-84",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_net",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_net#epic#dbl+11,spd-3",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-85",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_net",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_net#epic#dbl+7,spd-1",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-86",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_net",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_net#epic#dbl+11,spd-3",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-87",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_float",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_float#epic#rare+4,size-9",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-88",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_float",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_float#epic#rare+2,size-7",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-89",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_float",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_float#epic#rare+4,size-9",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-90",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_scoop",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_scoop#epic#dbl+16,mat-7",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-91",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_scoop",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_scoop#epic#dbl+13,mat-5",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-92",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_scoop",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_scoop#epic#dbl+16,mat-8",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-93",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_sonar",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_sonar#epic#skl+5,rare+4,spd-4",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-94",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_sonar",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_sonar#epic#skl+7,rare+5,spd-9",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-95",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_sonar",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_sonar#epic#skl+5,rare+4,spd-4",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-96",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_radar",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_radar#epic#rare+5,size+11,spd-7",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-97",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_radar",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_radar#epic#rare+7,size+13,spd-12",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-98",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "acc_radar",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_radar#epic#rare+5,size+11,spd-8",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-99",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_coin",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "charm_coin#epic#rare+4,size+7",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-100",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_coin",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "charm_coin#epic#rare+2,size+9",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-101",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_coin",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "charm_coin#epic#rare+4,size+6",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-102",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_jade",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "charm_jade#epic#size+22,spd-11",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-103",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_jade",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "charm_jade#epic#size+16,spd-8",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-104",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_jade",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "charm_jade#epic#size+21,spd-11",
+        "draws": 4
+      }
+    },
+    {
+      "id": "chest-105",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_gold",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "charm_gold#epic#skl+3,rare+3,spd+11",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-106",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_gold",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "charm_gold#epic#skl+4,rare+4,spd+7",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-107",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_gold",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "charm_gold#epic#skl+3,rare+3,spd+11",
+        "draws": 6
+      }
+    },
+    {
+      "id": "chest-108",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_trident",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "charm_trident#epic#skl+8,dbl+13,spd-14",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-109",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_trident",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "charm_trident#epic#skl+9,rare+5,spd-11",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-110",
+      "fn": "chest",
+      "args": [
+        "chest_abyss",
+        "",
+        "charm_trident",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "charm_trident#epic#skl+8,dbl+13,spd-15",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-111",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_bamboo",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "rod_bamboo#mythic#spd+10,size-5,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-112",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_bamboo",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "rod_bamboo#mythic#spd+10,size-5,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-113",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_bamboo",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "rod_bamboo#mythic#spd+9,size+2,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-114",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_bamboo",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "rod_bamboo#mythic#spd+9,size+2,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-115",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_bamboo",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "rod_bamboo#mythic#spd+10,size-5,mat+15@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-116",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_bamboo",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "rod_bamboo#mythic#spd+10,size-5,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-117",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_fiberglass",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "rod_fiberglass#mythic#spd+16,size-7,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-118",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_fiberglass",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "rod_fiberglass#mythic#spd+16,size-7,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-119",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_fiberglass",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "rod_fiberglass#mythic#spd+11,size-2,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-120",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_fiberglass",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "rod_fiberglass#mythic#spd+11,size-2,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-121",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_fiberglass",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "rod_fiberglass#mythic#spd+16,size-7,mat+15@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-122",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_fiberglass",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "rod_fiberglass#mythic#spd+16,size-7,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-123",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_carbon",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "rod_carbon#mythic#spd+20,mat-13,size+4,skl+3@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-124",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_carbon",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "rod_carbon#mythic#spd+20,mat-13,size+4,skl+3@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-125",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_carbon",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "rod_carbon#mythic#spd+15,mat-6,size-4,rare+1@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-126",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_carbon",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "rod_carbon#mythic#spd+15,mat-6,size-4,rare+1@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-127",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_carbon",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "rod_carbon#mythic#spd+20,mat-13,size+4",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-128",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_carbon",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "rod_carbon#mythic#spd+20,mat-13,size+4,skl+3@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-129",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_dragonbone",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "rod_dragonbone#mythic#skl+10,size+5,spd-10,rare+2@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-130",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_dragonbone",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "rod_dragonbone#mythic#skl+10,size+5,spd-10,rare+2@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-131",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_dragonbone",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "rod_dragonbone#mythic#skl+9,size+11,spd-16,mat+8@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-132",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_dragonbone",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "rod_dragonbone#mythic#skl+9,size+11,spd-16,mat+8@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-133",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_dragonbone",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "rod_dragonbone#mythic#skl+10,size+5,spd-10",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-134",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "rod_dragonbone",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "rod_dragonbone#mythic#skl+10,size+5,spd-10,rare+2@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-135",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_nylon",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "line_nylon#mythic#mat+25,size-5,rare+4@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-136",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_nylon",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "line_nylon#mythic#mat+25,size-5,rare+4@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-137",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_nylon",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "line_nylon#mythic#mat+16,size+2,dbl+4@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-138",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_nylon",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "line_nylon#mythic#mat+16,size+2,dbl+4@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-139",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_nylon",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "line_nylon#mythic#mat+24,size-5,rare+4@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-140",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_nylon",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "line_nylon#mythic#mat+24,size-5,rare+4@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-141",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_stealth",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "line_stealth#mythic#rare+4,size-13,mat+15@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-142",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_stealth",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "line_stealth#mythic#rare+4,size-13,mat+15@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-143",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_stealth",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "line_stealth#mythic#rare+3,size-7,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-144",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_stealth",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "line_stealth#mythic#rare+3,size-7,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-145",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_stealth",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "line_stealth#mythic#rare+4,size-13,mat+15@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-146",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_stealth",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "line_stealth#mythic#rare+4,size-13,mat+15@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-147",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_titan",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "line_titan#mythic#size+16,spd-8,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-148",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_titan",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "line_titan#mythic#size+16,spd-8,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-149",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_titan",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "line_titan#mythic#size+11,spd-3,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-150",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_titan",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "line_titan#mythic#size+11,spd-3,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-151",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_titan",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "line_titan#mythic#size+16,spd-8,mat+15@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-152",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_titan",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "line_titan#mythic#size+16,spd-8,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-153",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_dragon",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "line_dragon#mythic#skl+5,rare+3,spd-7,mat+10@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-154",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_dragon",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "line_dragon#mythic#skl+5,rare+3,spd-7,mat+10@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-155",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_dragon",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "line_dragon#mythic#skl+4,rare+4,spd-12,size+4@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-156",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_dragon",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "line_dragon#mythic#skl+4,rare+4,spd-12,size+4@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-157",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_dragon",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "line_dragon#mythic#skl+5,rare+3,spd-13",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-158",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "line_dragon",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "line_dragon#mythic#skl+5,rare+3,spd-13,mat+10@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-159",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_barb",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "hook_barb#mythic#skl+4,size-3,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-160",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_barb",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "hook_barb#mythic#skl+4,size-3,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-161",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_barb",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "hook_barb#mythic#skl+3,size+2,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-162",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_barb",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "hook_barb#mythic#skl+3,size+2,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-163",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_barb",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "hook_barb#mythic#skl+4,size-3,mat+15@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-164",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_barb",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "hook_barb#mythic#skl+4,size-3,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-165",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_swallow",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "hook_swallow#mythic#spd+13,size-11,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-166",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_swallow",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "hook_swallow#mythic#spd+13,size-11,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-167",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_swallow",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "hook_swallow#mythic#spd+9,size-5,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-168",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_swallow",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "hook_swallow#mythic#spd+9,size-5,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-169",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_swallow",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "hook_swallow#mythic#spd+10,size-11,mat+15@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-170",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_swallow",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "hook_swallow#mythic#spd+10,size-11,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-171",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_steel",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "hook_steel#mythic#skl+7,spd-7,mat+8@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-172",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_steel",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "hook_steel#mythic#skl+7,spd-7,mat+8@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-173",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_steel",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "hook_steel#mythic#skl+6,spd-3,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-174",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_steel",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "hook_steel#mythic#skl+6,spd-3,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-175",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_steel",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "hook_steel#mythic#skl+7,spd-8,size+9@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-176",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_steel",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "hook_steel#mythic#skl+7,spd-8,mat+8@bt,size+9@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-177",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_ghost",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "hook_ghost#mythic#skl+9,rare-8,size+8,spd+6@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-178",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_ghost",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "hook_ghost#mythic#skl+9,rare-8,size+8,spd+6@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-179",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_ghost",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "hook_ghost#mythic#skl+8,rare-4,size+4,mat+8@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-180",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_ghost",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "hook_ghost#mythic#skl+8,rare-4,size+4,mat+8@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-181",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_ghost",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "hook_ghost#mythic#skl+9,rare-9,size+8",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-182",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "hook_ghost",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "hook_ghost#mythic#skl+9,rare-9,size+8,spd+6@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-183",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_corn",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "bait_corn#mythic#rare+2,spd+4,mat+8@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-184",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_corn",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "bait_corn#mythic#rare+2,spd+4,mat+8@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-185",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_corn",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "bait_corn#mythic#rare+1,spd+8,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-186",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_corn",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "bait_corn#mythic#rare+1,spd+8,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-187",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_corn",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "bait_corn#mythic#rare+2,spd+4,size+9@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-188",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_corn",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "bait_corn#mythic#rare+2,spd+4,mat+8@bt,size+9@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-189",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_rice",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "bait_rice#mythic#mat+31,spd-7,rare+1@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-190",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_rice",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "bait_rice#mythic#mat+31,spd-7,rare+1@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-191",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_rice",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "bait_rice#mythic#mat+23,spd-3,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-192",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_rice",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "bait_rice#mythic#mat+23,spd-3,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-193",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_rice",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "bait_rice#mythic#mat+31,spd-8,size+9@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-194",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_rice",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "bait_rice#mythic#mat+31,spd-8,rare+1@bt,size+9@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-195",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_secret",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "bait_secret#mythic#rare+5,mat-13,size+10@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-196",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_secret",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "bait_secret#mythic#rare+5,mat-13,size+10@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-197",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_secret",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "bait_secret#mythic#rare+4,mat-7,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-198",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_secret",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "bait_secret#mythic#rare+4,mat-7,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-199",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_secret",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "bait_secret#mythic#rare+5,mat-13,size+9@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-200",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_secret",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "bait_secret#mythic#rare+5,mat-13,size+9@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-201",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_bionic",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "bait_bionic#mythic#skl+5,rare+2,mat-11,spd+6@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-202",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_bionic",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "bait_bionic#mythic#skl+5,rare+2,mat-11,spd+6@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-203",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_bionic",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "bait_bionic#mythic#skl+4,rare+3,mat-16,size+4@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-204",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_bionic",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "bait_bionic#mythic#skl+4,rare+3,mat-16,size+4@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-205",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_bionic",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "bait_bionic#mythic#skl+5,rare+2,mat-11",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-206",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "bait_bionic",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "bait_bionic#mythic#skl+5,rare+2,mat-11,spd+6@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-207",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_smooth",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "reel_smooth#mythic#spd+12,mat-4,rare+1@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-208",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_smooth",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "reel_smooth#mythic#spd+12,mat-4,rare+1@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-209",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_smooth",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "reel_smooth#mythic#spd+8,mat+2,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-210",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_smooth",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "reel_smooth#mythic#spd+8,mat+2,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-211",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_smooth",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "reel_smooth#mythic#spd+12,mat-4,size+9@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-212",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_smooth",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "reel_smooth#mythic#spd+12,mat-4,rare+1@bt,size+9@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-213",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_magnetic",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "reel_magnetic#mythic#spd+14,mat-13,rare+1@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-214",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_magnetic",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "reel_magnetic#mythic#spd+14,mat-13,rare+1@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-215",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_magnetic",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "reel_magnetic#mythic#spd+13,mat-7,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-216",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_magnetic",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "reel_magnetic#mythic#spd+13,mat-7,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-217",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_magnetic",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "reel_magnetic#mythic#spd+14,mat-13,size+9@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-218",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_magnetic",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "reel_magnetic#mythic#spd+14,mat-13,rare+1@bt,size+9@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-219",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_electric",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "reel_electric#mythic#spd+26,skl-5,mat+8@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-220",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_electric",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "reel_electric#mythic#spd+26,skl-5,mat+8@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-221",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_electric",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "reel_electric#mythic#spd+21,skl+1,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-222",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_electric",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "reel_electric#mythic#spd+21,skl+1,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-223",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_electric",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "reel_electric#mythic#spd+26,skl-5,size+9@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-224",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_electric",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "reel_electric#mythic#spd+26,skl-5,mat+8@bt,size+9@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-225",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_turbo",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "reel_turbo#mythic#spd+35,skl-11,mat+8@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-226",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_turbo",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "reel_turbo#mythic#spd+35,skl-11,mat+8@bt,size+10@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-227",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_turbo",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "reel_turbo#mythic#spd+29,skl-5,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-228",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_turbo",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "reel_turbo#mythic#spd+29,skl-5,dbl+4@bt,size+4@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-229",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_turbo",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "reel_turbo#mythic#spd+31,skl-11,size+9@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-230",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "reel_turbo",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "reel_turbo#mythic#spd+31,skl-11,mat+8@bt,size+9@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-231",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_net",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_net#mythic#dbl+11,spd-3,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-232",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_net",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "acc_net#mythic#dbl+11,spd-3,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-233",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_net",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_net#mythic#dbl+7,spd+2,mat+8@bt,size+6@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-234",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_net",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "acc_net#mythic#dbl+7,spd+2,mat+8@bt,size+6@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-235",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_net",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_net#mythic#dbl+11,spd-3,mat+15@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-236",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_net",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "acc_net#mythic#dbl+11,spd-3,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-237",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_float",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_float#mythic#rare+3,size-9,mat+15@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-238",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_float",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "acc_float#mythic#rare+3,size-9,mat+15@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-239",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_float",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_float#mythic#rare+2,size-4,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-240",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_float",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "acc_float#mythic#rare+2,size-4,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-241",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_float",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_float#mythic#rare+3,size-9,mat+15@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-242",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_float",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "acc_float#mythic#rare+3,size-9,mat+15@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-243",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_scoop",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_scoop#mythic#dbl+14,mat-7,rare+4@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-244",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_scoop",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "acc_scoop#mythic#dbl+14,mat-7,rare+4@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-245",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_scoop",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_scoop#mythic#dbl+13,mat-3,rare+1@bt,size+6@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-246",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_scoop",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "acc_scoop#mythic#dbl+13,mat-3,rare+1@bt,size+6@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-247",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_scoop",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_scoop#mythic#dbl+14,mat-8,rare+4@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-248",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_scoop",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "acc_scoop#mythic#dbl+14,mat-8,rare+4@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-249",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_sonar",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_sonar#mythic#skl+6,rare+3,spd-4,mat+10@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-250",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_sonar",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "acc_sonar#mythic#skl+6,rare+3,spd-4,mat+10@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-251",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_sonar",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_sonar#mythic#skl+5,rare+4,spd-9,size+4@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-252",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_sonar",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "acc_sonar#mythic#skl+5,rare+4,spd-9,size+4@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-253",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_sonar",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_sonar#mythic#skl+6,rare+3,spd-4",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-254",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_sonar",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "acc_sonar#mythic#skl+6,rare+3,spd-4,mat+10@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-255",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_radar",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "acc_radar#mythic#rare+6,size+9,spd-7,skl+3@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-256",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_radar",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "acc_radar#mythic#rare+6,size+9,spd-7,skl+3@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-257",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_radar",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "acc_radar#mythic#rare+5,size+13,spd-12,mat+8@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-258",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_radar",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "acc_radar#mythic#rare+5,size+13,spd-12,mat+8@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-259",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_radar",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "acc_radar#mythic#rare+6,size+8,spd-13",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-260",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "acc_radar",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "acc_radar#mythic#rare+6,size+8,spd-13,skl+3@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-261",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_coin",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "charm_coin#mythic#rare+3,size+7,mat+15@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-262",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_coin",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "charm_coin#mythic#rare+3,size+7,mat+15@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-263",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_coin",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "charm_coin#mythic#rare+2,size+11,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-264",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_coin",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "charm_coin#mythic#rare+2,size+11,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-265",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_coin",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "charm_coin#mythic#rare+3,size+6,mat+15@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-266",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_coin",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "charm_coin#mythic#rare+3,size+6,mat+15@bt,skl+2@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-267",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_jade",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "charm_jade#mythic#size+22,spd-11,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-268",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_jade",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "charm_jade#mythic#size+22,spd-11,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-269",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_jade",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "charm_jade#mythic#size+16,spd-5,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-270",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_jade",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "charm_jade#mythic#size+16,spd-5,dbl+4@bt,mat+8@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-271",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_jade",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "charm_jade#mythic#size+18,spd-11,mat+15@bt",
+        "draws": 10
+      }
+    },
+    {
+      "id": "chest-272",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_jade",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "charm_jade#mythic#size+18,spd-11,mat+15@bt,rare+1@bt",
+        "draws": 12
+      }
+    },
+    {
+      "id": "chest-273",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_gold",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "charm_gold#mythic#skl+4,rare+2,spd+11,mat+10@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-274",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_gold",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "charm_gold#mythic#skl+4,rare+2,spd+11,mat+10@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-275",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_gold",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "charm_gold#mythic#skl+3,rare+3,spd+7,size+4@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-276",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_gold",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "charm_gold#mythic#skl+3,rare+3,spd+7,size+4@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-277",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_gold",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "charm_gold#mythic#skl+4,rare+2,spd+11",
+        "draws": 7
+      }
+    },
+    {
+      "id": "chest-278",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_gold",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "charm_gold#mythic#skl+4,rare+2,spd+11,mat+10@bt",
+        "draws": 11
+      }
+    },
+    {
+      "id": "chest-279",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_trident",
+        false,
+        0
+      ],
+      "expected": {
+        "id": "charm_trident#mythic#skl+6,rare+4,dbl+13,spd-14",
+        "draws": 8
+      }
+    },
+    {
+      "id": "chest-280",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_trident",
+        true,
+        0
+      ],
+      "expected": {
+        "id": "charm_trident#mythic#skl+6,rare+4,dbl+13,spd-14",
+        "draws": 8
+      }
+    },
+    {
+      "id": "chest-281",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_trident",
+        false,
+        37
+      ],
+      "expected": {
+        "id": "charm_trident#mythic#skl+7,rare+4,dbl+13,spd-9",
+        "draws": 8
+      }
+    },
+    {
+      "id": "chest-282",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_trident",
+        true,
+        37
+      ],
+      "expected": {
+        "id": "charm_trident#mythic#skl+7,rare+4,dbl+13,spd-9",
+        "draws": 8
+      }
+    },
+    {
+      "id": "chest-283",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_trident",
+        false,
+        99
+      ],
+      "expected": {
+        "id": "charm_trident#mythic#skl+10,rare+4,dbl+13,spd-15",
+        "draws": 8
+      }
+    },
+    {
+      "id": "chest-284",
+      "fn": "chest",
+      "args": [
+        "chest_king",
+        "",
+        "charm_trident",
+        true,
+        99
+      ],
+      "expected": {
+        "id": "charm_trident#mythic#skl+10,rare+4,dbl+13,spd-15",
+        "draws": 8
+      }
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+# Synthetic integration tests only. Never attach production volumes here.
+services:
+  postgres:
+    image: ${FISHING_GO_POSTGRES_IMAGE:-postgres:18.6-bookworm@sha256:3725f4e2499eef5134592b3b4ab79a543ed7f8e533b05b5b637af926630f6650}
+    environment:
+      POSTGRES_DB: fishing_test
+      POSTGRES_USER: fishing_test_admin
+      POSTGRES_PASSWORD: local-test-only
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    ports:
+      - '127.0.0.1::5432'
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U fishing_test_admin -d fishing_test']
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    stop_grace_period: 10s
+  go-tests:
+    profiles: ['linux']
+    image: ${FISHING_GO_TEST_IMAGE:-golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FISHING_GO_TEST_DATABASE_URL: postgres://fishing_test_admin:local-test-only@postgres:5432/fishing_test?sslmode=disable
+      GOTOOLCHAIN: local
+      GOPROXY: ${FISHING_GO_TEST_GOPROXY:-https://proxy.golang.org}
+      TZ: Asia/Shanghai
+      FISHING_GO_TIMEZONE: Asia/Shanghai
+      FISHING_GO_TEST_TIMEOUT: ${FISHING_GO_TEST_TIMEOUT:-15m}
+    volumes:
+      - ../../server-go:/src:ro
+      - ${FISHING_GO_TEST_LOG_DIR:-../../output/go-postgres-linux}:/logs
+    working_dir: /work
+    command:
+      - bash
+      - -c
+      - |
+        set -euo pipefail
+        cp -a /src/. /work/
+        mkdir -p /logs
+        go version > /logs/linux-toolchain.log
+        go mod verify > /logs/linux-mod-verify.log 2>&1
+        go vet ./... > /logs/linux-vet.log 2>&1
+        set +e
+        go test -race -json -count=1 -timeout="$${FISHING_GO_TEST_TIMEOUT}" ./... > /logs/linux-tests.jsonl 2>&1
+        result=$$?
+        printf '%s\n' "$$result" > /logs/linux-test-exit.txt
+        tail -40 /logs/linux-tests.jsonl
+        exit "$$result"

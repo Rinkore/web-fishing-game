@@ -1,0 +1,1728 @@
+{
+  "format": 1,
+  "sourceCommit": "13694a7038438ac0b3dd7df07db8c05ea239141f",
+  "version": "v0.21.4",
+  "sharedRulesSha256": "d1df3621a0599c39293df4de00ee54e95d595dadf20fe75650194b02bb24f2c0",
+  "clientSha256": "e287ed3663ada0142552ee38ab6024a487730c617977774a19f50623c43c5582",
+  "clientEvents": [
+    {
+      "type": "batch",
+      "line": 529
+    },
+    {
+      "type": "maintenance",
+      "line": 538
+    },
+    {
+      "type": "features",
+      "line": 541
+    },
+    {
+      "type": "ping",
+      "line": 545
+    },
+    {
+      "type": "init",
+      "line": 548
+    },
+    {
+      "type": "players",
+      "line": 600
+    },
+    {
+      "type": "playersDelta",
+      "line": 604
+    },
+    {
+      "type": "grounds",
+      "line": 627
+    },
+    {
+      "type": "playersPage",
+      "line": 632
+    },
+    {
+      "type": "recordsDirty",
+      "line": 637
+    },
+    {
+      "type": "shop",
+      "line": 642
+    },
+    {
+      "type": "marketDelta",
+      "line": 645
+    },
+    {
+      "type": "records",
+      "line": 650
+    },
+    {
+      "type": "globalRecord",
+      "line": 655
+    },
+    {
+      "type": "banner",
+      "line": 666
+    },
+    {
+      "type": "chestcfg",
+      "line": 678
+    },
+    {
+      "type": "mallcfg",
+      "line": 685
+    },
+    {
+      "type": "smeltcfg",
+      "line": 688
+    },
+    {
+      "type": "componentcfg",
+      "line": 695
+    },
+    {
+      "type": "recordscfg",
+      "line": 699
+    },
+    {
+      "type": "bannerStop",
+      "line": 703
+    },
+    {
+      "type": "bitecfg",
+      "line": 705
+    },
+    {
+      "type": "castcfg",
+      "line": 712
+    },
+    {
+      "type": "pricecfg",
+      "line": 723
+    },
+    {
+      "type": "autosellcfg",
+      "line": 728
+    },
+    {
+      "type": "subalert",
+      "line": 732
+    },
+    {
+      "type": "assets",
+      "line": 734
+    },
+    {
+      "type": "codexAdd",
+      "line": 765
+    },
+    {
+      "type": "codex",
+      "line": 781
+    },
+    {
+      "type": "catch",
+      "line": 785
+    },
+    {
+      "type": "kicked",
+      "line": 800
+    },
+    {
+      "type": "notice",
+      "line": 802
+    },
+    {
+      "type": "seaEvict",
+      "line": 805
+    },
+    {
+      "type": "friends",
+      "line": 810
+    },
+    {
+      "type": "mktTrade",
+      "line": 813
+    },
+    {
+      "type": "trade",
+      "line": 826
+    },
+    {
+      "type": "tradeDone",
+      "line": 830
+    },
+    {
+      "type": "feed",
+      "line": 852
+    },
+    {
+      "type": "feedBatch",
+      "line": 858
+    },
+    {
+      "type": "groundcfg",
+      "line": 865
+    }
+  ],
+  "scope": "Static candidates from local source; production version, payloads and authorization require review.",
+  "sourceSha256": "db3ddb98fbb48dffc08ab6ba1bcd695624566ab7639101dc121e1dd72531fd28",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/admin/logout",
+      "line": 4291,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/features",
+      "line": 4311,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/features",
+      "line": 4312,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/features",
+      "line": 4316,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/register/challenge",
+      "line": 4367,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/registration/stats",
+      "line": 4371,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/register",
+      "line": 4376,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/login",
+      "line": 4411,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/logout",
+      "line": 4435,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me",
+      "line": 4465,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/profile",
+      "line": 4476,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/events",
+      "line": 4490,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sea",
+      "line": 4615,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sea/ship/up",
+      "line": 4621,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sea/chart",
+      "line": 4646,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sea/voyage",
+      "line": 4663,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sea/quest/claim",
+      "line": 4687,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sea/anchor",
+      "line": 4723,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/party",
+      "line": 4759,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/party",
+      "line": 4769,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fishing/start",
+      "line": 4880,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rod/slot/buy",
+      "line": 4894,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rod/save",
+      "line": 4911,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rod/name",
+      "line": 4947,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rod/rename",
+      "line": 4960,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rod/use",
+      "line": 4975,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rod/stow",
+      "line": 5010,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rod/delete",
+      "line": 5039,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fishing/stop",
+      "line": 5068,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/bd/set",
+      "line": 5080,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dev/catch",
+      "line": 5144,
+      "developmentOnly": true,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dev/doublecount",
+      "line": 5244,
+      "developmentOnly": true,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dev/rollsize",
+      "line": 5267,
+      "developmentOnly": true,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dev/admin-login",
+      "line": 5285,
+      "developmentOnly": true,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/dev/seed",
+      "line": 5296,
+      "developmentOnly": true,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/shop",
+      "line": 5335,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/market",
+      "line": 5340,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/shop/history",
+      "line": 5345,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/chest",
+      "line": 5390,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/chest/craft",
+      "line": 5401,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/chest/open",
+      "line": 5430,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/mall",
+      "line": 5487,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/mall/buy",
+      "line": 5493,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/workshop",
+      "line": 5525,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workshop/smelt",
+      "line": 5565,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workshop/forge",
+      "line": 5601,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workshop/recast",
+      "line": 5627,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sell",
+      "line": 5658,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/autosell",
+      "line": 5705,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/autosell",
+      "line": 5711,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/market/list",
+      "line": 5796,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/market/buy",
+      "line": 5854,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/market/history",
+      "line": 5919,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/market/cancel",
+      "line": 5926,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/trade/invite",
+      "line": 5951,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/trade/respond",
+      "line": 5977,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/trade/set",
+      "line": 5999,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/trade/confirm",
+      "line": 6029,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/trade/cancel",
+      "line": 6071,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/version",
+      "line": 6088,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wiki/simulator/inventory",
+      "line": 6104,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wiki/content",
+      "line": 6120,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/wiki/content",
+      "line": 6130,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/wiki/content",
+      "line": 6141,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/wiki/guides/submit",
+      "line": 6162,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wiki/guides/session",
+      "line": 6188,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wiki/guides/my",
+      "line": 6192,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/wiki/guides/delete",
+      "line": 6198,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/wiki/guides",
+      "line": 6210,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/wiki/guides/review",
+      "line": 6223,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/wiki/guides/delete",
+      "line": 6243,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wiki/guides",
+      "line": 6260,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wiki/guides/{id}",
+      "line": 6269,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/grounds",
+      "line": 6280,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/subscribe",
+      "line": 6285,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/subscribe",
+      "line": 6294,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/feedback",
+      "line": 6330,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/feedback/submit",
+      "line": 6338,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/feedback/skip",
+      "line": 6363,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/codex",
+      "line": 6382,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/records",
+      "line": 6388,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/records/top",
+      "line": 6397,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/login",
+      "line": 6503,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/session",
+      "line": 6527,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/netstats",
+      "line": 6533,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/parties",
+      "line": 6539,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/party/disband",
+      "line": 6545,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/friends/relations",
+      "line": 6568,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/friends",
+      "line": 6579,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/friends",
+      "line": 6606,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/players/page",
+      "line": 6683,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/players/view",
+      "line": 6695,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/players/rod",
+      "line": 6715,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/overview",
+      "line": 6730,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/stats",
+      "line": 6751,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/banner",
+      "line": 6761,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/banner",
+      "line": 6768,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/banner/add",
+      "line": 6781,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/banner/remove",
+      "line": 6805,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/banner/move",
+      "line": 6820,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/banner/cfg",
+      "line": 6840,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/banner/update",
+      "line": 6865,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/banner/playing",
+      "line": 6894,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/banner/stop",
+      "line": 6909,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/banner/clear",
+      "line": 6923,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/feedback",
+      "line": 6940,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/feedback/cfg",
+      "line": 6955,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/feedback/status",
+      "line": 6980,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/feedback/del",
+      "line": 6999,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/feedback/reward",
+      "line": 7021,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/users",
+      "line": 7050,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/users/setadmin",
+      "line": 7079,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/users/ban",
+      "line": 7106,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/security",
+      "line": 7144,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/users/delete",
+      "line": 7158,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/users/snapshot",
+      "line": 7182,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/users/snapshot",
+      "line": 7198,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/users/snapshots",
+      "line": 7262,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/users/snapshot-now",
+      "line": 7278,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/users/rollback",
+      "line": 7296,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/snapshot/config",
+      "line": 7324,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/users/update",
+      "line": 7339,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/world",
+      "line": 7390,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/component/config",
+      "line": 7507,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/component/reset",
+      "line": 7603,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/component/simulate",
+      "line": 7616,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/fish/config",
+      "line": 7654,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/fish/reset",
+      "line": 7670,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/fish/simulate",
+      "line": 7684,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/spot/pool",
+      "line": 7732,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/loot/groups",
+      "line": 7749,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/loot/group",
+      "line": 7754,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/spot/buffs",
+      "line": 7795,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/pool/preset",
+      "line": 7813,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/ground/add",
+      "line": 7825,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/spot/add",
+      "line": 7861,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/ground/remove",
+      "line": 7897,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/spot/remove",
+      "line": 7922,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/ground/restore",
+      "line": 7958,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/ground/update",
+      "line": 7988,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/spot/rate",
+      "line": 8030,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/spot/pos",
+      "line": 8064,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/ground/lock",
+      "line": 8087,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/spot/lock",
+      "line": 8113,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/market/return",
+      "line": 8139,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/market/supply",
+      "line": 8169,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/market/supply",
+      "line": 8173,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/market/bulk",
+      "line": 8199,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/mall/config",
+      "line": 8231,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/loot/spots",
+      "line": 8258,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/simulate",
+      "line": 8273,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/loot/test",
+      "line": 8315,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/smelt/config",
+      "line": 8369,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/records/config",
+      "line": 8467,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/records/delete",
+      "line": 8500,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/records/delone",
+      "line": 8521,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/settings",
+      "line": 8556,
+      "developmentOnly": false,
+      "contract": "unreviewed"
+    }
+  ],
+  "persistedDomainKeys": [
+    {
+      "constant": "ADMIN_KEYS",
+      "line": 78,
+      "fields": [
+        "adminLog"
+      ]
+    },
+    {
+      "constant": "DROP_KEYS",
+      "line": 2421,
+      "fields": [
+        "global",
+        "common",
+        "big",
+        "rare",
+        "material"
+      ]
+    },
+    {
+      "constant": "SNAPSHOT_ASSET_KEYS",
+      "line": 2951,
+      "fields": [
+        "coins",
+        "inventory",
+        "bigfish",
+        "codex",
+        "catchCount",
+        "bd",
+        "rodSlots",
+        "rodActiveSlot",
+        "rodName",
+        "autoSell",
+        "subNotify"
+      ]
+    },
+    {
+      "constant": "MARKET_KEYS",
+      "line": 2975,
+      "fields": [
+        "listingSeq",
+        "listings",
+        "marketSupply"
+      ]
+    },
+    {
+      "constant": "RECORDS_KEYS",
+      "line": 2976,
+      "fields": [
+        "bigRecords",
+        "smallRecords",
+        "topCatches",
+        "topSmall",
+        "globalMax",
+        "rank",
+        "lastRec"
+      ]
+    },
+    {
+      "constant": "ECONOMY_KEYS",
+      "line": 2977,
+      "fields": [
+        "shopSales",
+        "priceLog",
+        "tradeLog",
+        "marketLog",
+        "priceOv",
+        "economyLog"
+      ]
+    },
+    {
+      "constant": "CONFIG_KEYS",
+      "line": 2978,
+      "fields": [
+        "features",
+        "featureOrder",
+        "groundCfg",
+        "notifyLevel",
+        "autoNotify",
+        "biteFormula",
+        "doubleBase",
+        "componentCfg",
+        "fishCfg",
+        "bannerSeq",
+        "banners",
+        "bannerCfg",
+        "feedbackCfg",
+        "castCfg",
+        "priceCfg",
+        "dropCfg",
+        "lootCfg",
+        "chestCfg",
+        "seaCfg",
+        "mallCfg",
+        "smeltCfg",
+        "recordsCfg",
+        "rareK",
+        "autoSellCfg",
+        "snapshotCfg",
+        "fishingFormulaRevision",
+        "wikiConfigRevision"
+      ]
+    },
+    {
+      "constant": "FEEDBACK_KEYS",
+      "line": 2980,
+      "fields": [
+        "feedback",
+        "feedbackMeta"
+      ]
+    },
+    {
+      "constant": "STATS_KEYS",
+      "line": 2982,
+      "fields": [
+        "statMin",
+        "statHour",
+        "statPeak"
+      ]
+    }
+  ],
+  "typeLiteralCandidates": [
+    {
+      "type": "rare",
+      "lines": [
+        896
+      ]
+    },
+    {
+      "type": "notice",
+      "lines": [
+        927,
+        994,
+        1373,
+        1378,
+        1551,
+        2124,
+        2354,
+        3414,
+        4012,
+        4639,
+        4676,
+        4715,
+        4751,
+        4801,
+        4815,
+        4836,
+        4850,
+        4869,
+        6356,
+        6620,
+        6993,
+        7013,
+        7043,
+        7094,
+        7256,
+        7318,
+        7384,
+        8104,
+        8130,
+        8156,
+        8616
+      ]
+    },
+    {
+      "type": "seaEvict",
+      "lines": [
+        963
+      ]
+    },
+    {
+      "type": "ocean",
+      "lines": [
+        1005
+      ]
+    },
+    {
+      "type": "feed",
+      "lines": [
+        1501,
+        1535,
+        3760,
+        5207,
+        5227
+      ]
+    },
+    {
+      "type": "globalRecord",
+      "lines": [
+        1521,
+        5214,
+        5471
+      ]
+    },
+    {
+      "type": "catch",
+      "lines": [
+        1541,
+        5229
+      ]
+    },
+    {
+      "type": "codexAdd",
+      "lines": [
+        1542,
+        5230
+      ]
+    },
+    {
+      "type": "assets",
+      "lines": [
+        1552,
+        2356,
+        4011,
+        4640,
+        4657,
+        4716,
+        4752,
+        4905,
+        4938,
+        4997,
+        5028,
+        5057,
+        5105,
+        5234,
+        5327,
+        5421,
+        5467,
+        5514,
+        5585,
+        5613,
+        5644,
+        5693,
+        5903,
+        6374,
+        7044,
+        7252,
+        7314,
+        7383,
+        8155
+      ]
+    },
+    {
+      "type": "subalert",
+      "lines": [
+        1841
+      ]
+    },
+    {
+      "type": "groundcfg",
+      "lines": [
+        2161
+      ]
+    },
+    {
+      "type": "kicked",
+      "lines": [
+        2205,
+        3679,
+        4451,
+        4495,
+        4502,
+        4540
+      ]
+    },
+    {
+      "type": "batch",
+      "lines": [
+        3731,
+        3760,
+        3765,
+        3773,
+        3814
+      ]
+    },
+    {
+      "type": "feedBatch",
+      "lines": [
+        3773
+      ]
+    },
+    {
+      "type": "playersPage",
+      "lines": [
+        3882
+      ]
+    },
+    {
+      "type": "shop",
+      "lines": [
+        3971
+      ]
+    },
+    {
+      "type": "marketDelta",
+      "lines": [
+        3990
+      ]
+    },
+    {
+      "type": "recordsDirty",
+      "lines": [
+        4035
+      ]
+    },
+    {
+      "type": "records",
+      "lines": [
+        4221
+      ]
+    },
+    {
+      "type": "grounds",
+      "lines": [
+        4237
+      ]
+    },
+    {
+      "type": "trade",
+      "lines": [
+        4254
+      ]
+    },
+    {
+      "type": "features",
+      "lines": [
+        4362
+      ]
+    },
+    {
+      "type": "init",
+      "lines": [
+        4515
+      ]
+    },
+    {
+      "type": "ping",
+      "lines": [
+        4544
+      ]
+    },
+    {
+      "type": "double",
+      "lines": [
+        4740
+      ]
+    },
+    {
+      "type": "mktTrade",
+      "lines": [
+        5897
+      ]
+    },
+    {
+      "type": "tradeDone",
+      "lines": [
+        6058
+      ]
+    },
+    {
+      "type": "friends",
+      "lines": [
+        6623
+      ]
+    },
+    {
+      "type": "banner",
+      "lines": [
+        6800,
+        6814,
+        6834,
+        6859,
+        6888,
+        6932
+      ]
+    },
+    {
+      "type": "bannerStop",
+      "lines": [
+        6917,
+        6933
+      ]
+    },
+    {
+      "type": "feedback",
+      "lines": [
+        7014
+      ]
+    },
+    {
+      "type": "componentcfg",
+      "lines": [
+        7597,
+        7610
+      ]
+    },
+    {
+      "type": "mallcfg",
+      "lines": [
+        8250
+      ]
+    },
+    {
+      "type": "smeltcfg",
+      "lines": [
+        8459
+      ]
+    },
+    {
+      "type": "recordscfg",
+      "lines": [
+        8475,
+        8492
+      ]
+    },
+    {
+      "type": "bitecfg",
+      "lines": [
+        8569
+      ]
+    },
+    {
+      "type": "autosellcfg",
+      "lines": [
+        8630
+      ]
+    },
+    {
+      "type": "castcfg",
+      "lines": [
+        8655
+      ]
+    },
+    {
+      "type": "pricecfg",
+      "lines": [
+        8684,
+        8740,
+        8750,
+        8770
+      ]
+    },
+    {
+      "type": "chestcfg",
+      "lines": [
+        8879
+      ]
+    },
+    {
+      "type": "maintenance",
+      "lines": [
+        8938
+      ]
+    }
+  ],
+  "unresolved": []
+}
