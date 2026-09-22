@@ -58,8 +58,17 @@ func (s *Service) Chest(ctx context.Context, r ChestCommand) (assets.Result, err
 		if err := t.SQL().QueryRow(ctx, `INSERT INTO fishing.chest_pity(owner_id,chest_id) VALUES($1,$2) ON CONFLICT(owner_id,chest_id) DO UPDATE SET misses=fishing.chest_pity.misses RETURNING misses`, r.ActorID, chest.ID).Scan(&misses); err != nil {
 			return assets.Result{}, err
 		}
-		// Default v0.21.4 pity is disabled. Configuration overrides are published separately.
-		signature, ok := s.catalog.OpenChest(chest, r.Part, r.BaseID, s.catalog.ComponentConfig(), false, rules.Stream(seed, "chest:"+chest.ID))
+		// The legacy console's pityN is an operator setting layered into the
+		// effective catalog. A trigger at N means the Nth consecutive miss is
+		// converted to a guaranteed breakthrough, matching Node's before>=N-1
+		// check. Non-breakthrough chests ignore the setting.
+		forced := false
+		if chest.Extra {
+			if n, ok := s.catalog.Runtime["chestPityN"].(float64); ok && n >= 1 && n <= 50 {
+				forced = misses >= int64(n)-1
+			}
+		}
+		signature, ok := s.catalog.OpenChest(chest, r.Part, r.BaseID, s.catalog.ComponentConfig(), forced, rules.Stream(seed, "chest:"+chest.ID))
 		if !ok {
 			return assets.Result{}, assets.Rejection("invalid_chest_selection")
 		}
@@ -78,7 +87,7 @@ func (s *Service) Chest(ctx context.Context, r ChestCommand) (assets.Result, err
 		if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.player_codex(owner_id,item_id,count) VALUES($1,$2,1) ON CONFLICT(owner_id,item_id) DO UPDATE SET count=fishing.player_codex.count+1`, r.ActorID, base.ID); err != nil {
 			return assets.Result{}, err
 		}
-		details, _ := json.Marshal(map[string]any{"signature": signature, "pityNow": misses, "forced": false})
+		details, _ := json.Marshal(map[string]any{"signature": signature, "pityNow": misses, "forced": forced})
 		return assets.Result{Status: "opened", EquipmentIDs: []string{strconv.FormatInt(id, 10)}, Details: details}, nil
 	})
 }

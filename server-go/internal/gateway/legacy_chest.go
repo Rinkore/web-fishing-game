@@ -72,12 +72,29 @@ func (a *API) legacyChestList(r *http.Request, c *rules.Catalog, owner int64) ([
 	}
 	rows.Close()
 	out := []map[string]any{}
+	pityN := int64(0)
+	if n, ok := c.Runtime["chestPityN"].(float64); ok && n >= 1 && n <= 50 {
+		pityN = int64(n)
+	}
 	for _, d := range a.legacyChestDefs(c) {
+		pityNow := pity[d.ID]
+		pityNeed := int64(0)
+		if d.Extra && pityN > 0 {
+			pityNeed = pityN - pityNow
+			if pityNeed < 0 {
+				pityNeed = 0
+			}
+		}
 		out = append(out, map[string]any{
 			"id": d.ID, "name": d.Name, "rarity": d.Rarity, "desc": d.Desc, "mode": d.Mode,
 			"costRelic": d.CostRelic, "costCoins": d.CostCoins, "price": d.Price,
 			"hasExtra": d.Extra, "minAffixes": d.MinAffixes, "forceMax": d.ForceMax,
-			"have": have[d.ID], "pityNow": pity[d.ID], "pityNeed": 0,
+			"have": have[d.ID], "pityNow": func() int64 {
+				if d.Extra {
+					return pityNow
+				}
+				return 0
+			}(), "pityNeed": pityNeed,
 		})
 	}
 	return out, nil
@@ -102,9 +119,13 @@ func (a *API) legacyChest(w http.ResponseWriter, r *http.Request) {
 	var relicHave, coins int64
 	_ = a.pool.QueryRow(r.Context(), `SELECT COALESCE((SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id='relic' AND tier='normal'),0)`, session.AccountID).Scan(&relicHave)
 	_ = a.pool.QueryRow(r.Context(), `SELECT coins FROM fishing.wallets WHERE account_id=$1`, session.AccountID).Scan(&coins)
+	pityN := int64(0)
+	if n, ok := c.Runtime["chestPityN"].(float64); ok && n >= 1 && n <= 50 {
+		pityN = int64(n)
+	}
 	write(w, 200, map[string]any{
 		"chests": chests, "relicId": "relic", "relicName": relic.Name, "relicHave": relicHave,
-		"relicPrice": relic.Price, "pityN": 0, "coins": coins,
+		"relicPrice": relic.Price, "pityN": pityN, "coins": coins,
 	})
 }
 

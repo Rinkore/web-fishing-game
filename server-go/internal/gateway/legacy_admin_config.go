@@ -80,6 +80,30 @@ func legacyStoredConfigFrames(values map[string]any) []map[string]any {
 		if value, exists := settings["autoSellCfg"]; exists {
 			frames = append(frames, map[string]any{"type": "autosellcfg", "autoSellCfg": value})
 		}
+		castNames := map[string]string{"castBaseMs": "baseMs", "castMinMs": "minMs", "castSpeedBonus": "speedBonus", "castSpeedCap": "speedCap", "castFormula": "formula"}
+		castFrame := map[string]any{"type": "castcfg"}
+		castPresent := false
+		for key, name := range castNames {
+			if value, exists := settings[key]; exists {
+				castFrame[name] = value
+				castPresent = true
+			}
+		}
+		if castPresent {
+			frames = append(frames, castFrame)
+		}
+		if value, exists := settings["biteFormula"]; exists {
+			frames = append(frames, map[string]any{"type": "bitecfg", "formula": value})
+		}
+		if price, priceOK := settings["priceCfg"]; priceOK {
+			frame := map[string]any{"type": "pricecfg", "priceCfg": price}
+			if drop, dropOK := settings["dropCfg"]; dropOK {
+				frame["dropCfg"] = drop
+			}
+			frames = append(frames, frame)
+		} else if drop, dropOK := settings["dropCfg"]; dropOK {
+			frames = append(frames, map[string]any{"type": "pricecfg", "dropCfg": drop})
+		}
 	}
 	return frames
 }
@@ -141,6 +165,35 @@ func (a *API) legacyAdminConfigWrite(w http.ResponseWriter, r *http.Request, act
 		}
 	}
 	if err = legacyAdminAudit(ctx, tx, actor, action, nil, target, detail); err != nil {
+		return identity.ErrStorage
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return identity.ErrCommitUnknown
+	}
+	return nil
+}
+
+// legacyAdminSettingsWrite merges a partial settings patch inside the same
+// transaction as the audit row. Reading the previous JSON in the HTTP handler
+// would let two concurrent operators overwrite each other's unrelated keys.
+func (a *API) legacyAdminSettingsWrite(r *http.Request, actor identity.Session, value any) error {
+	ctx := r.Context()
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		return identity.ErrStorage
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := legacyAdminWriteGuard(ctx, tx, actor); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return identity.ErrInvalid
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO fishing.operator_settings(key,value,updated_at) VALUES($1,$2,clock_timestamp()) ON CONFLICT(key) DO UPDATE SET value=fishing.operator_settings.value || excluded.value,updated_at=excluded.updated_at`, legacySettingsKey, raw); err != nil {
+		return identity.ErrStorage
+	}
+	if err = legacyAdminAudit(ctx, tx, actor, "settings/update", nil, "", "保存运营设置"); err != nil {
 		return identity.ErrStorage
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -349,18 +402,13 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"ok": true})
 		return
 	}
-	if raw, readErr := a.legacySettingRaw(r.Context(), legacySettingsKey); readErr == nil && len(raw) > 0 {
-		var previous map[string]json.RawMessage
-		if json.Unmarshal(raw, &previous) == nil {
-			for key, value := range in {
-				previous[key] = value
-			}
-			in = previous
-		}
-	}
 	if raw, exists := in["notifyLevel"]; exists {
 		var level string
-		if json.Unmarshal(raw, &level) != nil || map[string]bool{"all": true, "uncommon": true, "rare": true, "off": true}[level] == false {
+		if json.Unmarshal(raw, &level) != nil || map[string]bool{
+			"all": true, "uncommon": true, "offrange": true, "records": true, "none": true,
+			// Keep the pre-Go aliases accepted by older clients.
+			"rare": true, "off": true,
+		}[level] == false {
 			legacyTradeError(w, 400, "未知的通知等级")
 			return
 		}
@@ -379,7 +427,7 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validateOnly {
-		if err := a.legacyAdminConfigWrite(w, r, actor, legacySettingsKey, "settings/update", in, false, "", "保存运营设置"); err != nil {
+		if err := a.legacyAdminSettingsWrite(r, actor, in); err != nil {
 			failure(w, err)
 			return
 		}

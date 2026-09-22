@@ -32,12 +32,21 @@ func (a *API) legacyAutoSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	plan := a.legacyAutoSellPlan(r, c, session.AccountID, cfg)
-	write(w, 200, map[string]any{"ok": true, "items": cfg.Rules, "batch": 100, "tier": cfg.IncludeTiers, "plan": plan})
+	write(w, 200, map[string]any{"ok": true, "items": cfg.Rules, "batch": legacyAutoSellBatch(c), "tier": cfg.IncludeTiers, "plan": plan})
+}
+
+func legacyAutoSellBatch(c *rules.Catalog) int64 {
+	if c != nil {
+		if n, ok := c.Runtime["autoSellBatch"].(float64); ok && n >= 1 && n <= 10000 {
+			return int64(n)
+		}
+	}
+	return 100
 }
 
 // legacyAutoSellPlan rebuilds the read-only preview the legacy right rail uses.
 func (a *API) legacyAutoSellPlan(r *http.Request, c *rules.Catalog, owner int64, cfg economy.Settings) map[string]any {
-	plan := map[string]any{"pool": int64(0), "blocked": int64(0), "batch": int64(100), "ready": 0, "items": map[string]any{}}
+	plan := map[string]any{"pool": int64(0), "blocked": int64(0), "batch": legacyAutoSellBatch(c), "ready": 0, "items": map[string]any{}}
 	prices, err := economy.New(a.pool, c).Prices(r.Context())
 	if err != nil {
 		return plan
@@ -194,7 +203,7 @@ func (a *API) legacyAutoSellSet(w http.ResponseWriter, r *http.Request) {
 	}
 	shop := a.legacyShopSnapshot(r, c)
 	write(w, 200, map[string]any{
-		"ok": true, "items": cfg.Rules, "batch": 100, "tier": cfg.IncludeTiers,
+		"ok": true, "items": cfg.Rules, "batch": legacyAutoSellBatch(c), "tier": cfg.IncludeTiers,
 		"plan": a.legacyAutoSellPlan(r, c, session.AccountID, cfg), "sold": nil,
 		"coins": profile["coins"], "inventory": profile["inventory"], "invRev": profile["invRev"], "shop": shop,
 	})

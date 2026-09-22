@@ -19,7 +19,7 @@ func (s *NativeService) Stream(ctx context.Context, owner int64, key, id, action
 		return assets.Result{}, assets.ErrInvalid
 	}
 	if s.live {
-		c, _, err := catalog.Current(ctx, s.pool)
+		c, _, err := catalog.Effective(ctx, s.pool)
 		if err != nil {
 			return assets.Result{}, err
 		}
@@ -119,7 +119,7 @@ func (s *NativeService) Stream(ctx context.Context, owner int64, key, id, action
 // Status uses a read transaction so loadout and timing belong to one snapshot.
 func (s *NativeService) Status(ctx context.Context, owner int64) (map[string]any, error) {
 	if s.live {
-		c, _, err := catalog.Current(ctx, s.pool)
+		c, _, err := catalog.Effective(ctx, s.pool)
 		if err != nil {
 			return nil, err
 		}

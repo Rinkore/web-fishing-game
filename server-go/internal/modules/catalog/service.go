@@ -16,6 +16,133 @@ import (
 )
 
 func Version(c *rules.Catalog) string { return "catch-v1:" + c.Version + ":" + c.SourceSHA256 }
+
+// Effective returns the currently published catalog with the legacy operator
+// settings layered on top.  Operator settings are intentionally kept outside
+// immutable catalog releases: the old console edits these values in place and
+// clients expect them to take effect without publishing a new world snapshot.
+// Reading both sources through the same connection gives callers one
+// consistent view and avoids the "saved and echoed, but ignored by gameplay"
+// failure mode.
+func Effective(ctx context.Context, q assets.SQL) (*rules.Catalog, int64, error) {
+	var revision int64
+	var raw, settingsRaw []byte
+	// One statement observes the catalog head and all operator settings at the
+	// same PostgreSQL command snapshot. A pool QueryRow may choose a different
+	// connection for each call, so separate reads could otherwise combine a new
+	// catalog with an older configuration (or vice versa).
+	err := q.QueryRow(ctx, `SELECT COALESCE(h.release_id,0),r.catalog,
+ COALESCE((SELECT jsonb_object_agg(key,value) FROM fishing.operator_settings WHERE key IN ('legacy:mall','legacy:smelt','legacy:settings')),'{}'::jsonb)
+ FROM fishing.catalog_head h LEFT JOIN fishing.catalog_releases r ON r.id=h.release_id WHERE h.singleton`).Scan(&revision, &raw, &settingsRaw)
+	if err != nil {
+		return nil, 0, assets.ErrUnavailable
+	}
+	var c *rules.Catalog
+	if revision == 0 {
+		c, err = rules.Default()
+	} else {
+		c, err = rules.DecodeCatalog(raw)
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	values := map[string]json.RawMessage{}
+	var object map[string]json.RawMessage
+	if json.Unmarshal(settingsRaw, &object) == nil {
+		values = object
+	}
+	applyOperatorSettings(c, values)
+	return c, revision, nil
+}
+
+// applyOperatorSettings maps the legacy console's durable keys onto the
+// catalog runtime consumed by rules and gameplay modules. Invalid persisted
+// fragments are ignored; the endpoint validators reject new invalid writes and
+// this fallback keeps a damaged historical row from taking the server down.
+func applyOperatorSettings(c *rules.Catalog, values map[string]json.RawMessage) {
+	if c == nil {
+		return
+	}
+	mergeDefault := func(name string, raw json.RawMessage) {
+		base := map[string]any{}
+		patch := map[string]any{}
+		if json.Unmarshal(c.Defaults[name], &base) != nil || json.Unmarshal(raw, &patch) != nil {
+			return
+		}
+		for k, v := range patch {
+			base[k] = v
+		}
+		if encoded, err := json.Marshal(base); err == nil {
+			c.Defaults[name] = encoded
+		}
+	}
+	if raw := values["legacy:mall"]; len(raw) > 0 {
+		mergeDefault("mall", raw)
+	}
+	if raw := values["legacy:smelt"]; len(raw) > 0 {
+		mergeDefault("smelt", raw)
+	}
+	if c.Runtime == nil {
+		c.Runtime = map[string]any{}
+	}
+	settings := map[string]any{}
+	if raw := values["legacy:settings"]; len(raw) > 0 {
+		_ = json.Unmarshal(raw, &settings)
+	}
+	if v, ok := settings["chestCfg"].(map[string]any); ok {
+		applyChestSettings(c, v)
+	}
+	if v, ok := settings["dropCfg"].(map[string]any); ok {
+		c.Runtime["drop"] = v
+	}
+	if v, ok := settings["priceCfg"].(map[string]any); ok {
+		c.Runtime["price"] = v
+	}
+	if v, ok := settings["autoSellCfg"].(map[string]any); ok {
+		if n, ok := v["batch"].(float64); ok {
+			c.Runtime["autoSellBatch"] = n
+		}
+	}
+	cast := map[string]any{}
+	for key, name := range map[string]string{"castBaseMs": "baseMs", "castMinMs": "minMs", "castSpeedBonus": "speedBonus", "castSpeedCap": "speedCap"} {
+		if value, ok := settings[key]; ok {
+			cast[name] = value
+		}
+	}
+	if formula, ok := settings["castFormula"]; ok {
+		cast["formula"] = formula
+	}
+	if len(cast) > 0 {
+		c.Runtime["cast"] = cast
+	}
+	if formula, ok := settings["biteFormula"].(string); ok && formula != "" {
+		c.Runtime["biteFormula"] = formula
+	}
+}
+
+func applyChestSettings(c *rules.Catalog, settings map[string]any) {
+	var chests []map[string]any
+	if c.Constant("CHESTS", &chests) != nil {
+		return
+	}
+	if pity, ok := settings["pityN"].(float64); ok {
+		c.Runtime["chestPityN"] = pity
+	}
+	costs, _ := settings["costs"].(map[string]any)
+	for _, chest := range chests {
+		id, _ := chest["id"].(string)
+		override, _ := costs[id].(map[string]any)
+		for key := range map[string]bool{"costRelic": true, "costCoins": true} {
+			if value, ok := override[key]; ok {
+				chest[key] = value
+			}
+		}
+	}
+	if raw, err := json.Marshal(chests); err == nil {
+		c.Constants["CHESTS"] = raw
+	}
+}
+
 func Current(ctx context.Context, q assets.SQL) (*rules.Catalog, int64, error) {
 	var raw []byte
 	var id int64

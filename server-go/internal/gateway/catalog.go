@@ -13,7 +13,7 @@ import (
 )
 
 func (a *API) catalog(ctx context.Context) (*rules.Catalog, error) {
-	c, _, e := catalog.Current(ctx, a.pool)
+	c, _, e := catalog.Effective(ctx, a.pool)
 	return c, e
 }
 func (a *API) catalogView(w http.ResponseWriter, r *http.Request) {

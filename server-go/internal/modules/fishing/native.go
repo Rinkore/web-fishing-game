@@ -92,7 +92,7 @@ func (s *NativeService) loadout(ctx context.Context, t *assets.Transaction, owne
 
 func (s *NativeService) Start(ctx context.Context, r NativeStart) (assets.Result, error) {
 	if s.live {
-		c, _, err := catalog.Current(ctx, s.pool)
+		c, _, err := catalog.Effective(ctx, s.pool)
 		if err != nil {
 			return assets.Result{}, err
 		}
@@ -159,7 +159,7 @@ func (s *NativeService) Stop(ctx context.Context, r Stop) (assets.Result, error)
 		return assets.Result{}, assets.ErrInvalid
 	}
 	if s.live {
-		c, _, err := catalog.Current(ctx, s.pool)
+		c, _, err := catalog.Effective(ctx, s.pool)
 		if err != nil {
 			return assets.Result{}, err
 		}
@@ -187,7 +187,7 @@ func nativeKey(c Candidate) string {
 
 func (s *NativeService) Settle(ctx context.Context, c Candidate) (assets.Result, error) {
 	if s.live && s.catalog == nil {
-		current, _, err := catalog.Current(ctx, s.pool)
+		current, _, err := catalog.Effective(ctx, s.pool)
 		if err != nil {
 			return assets.Result{}, err
 		}
