@@ -33,5 +33,5 @@
 ## 剩余差异
 
 - 完整 Node/Go HTTP、SSE、浏览器 A/B 仍需集成窗口在冻结候选 SHA 上复验。
-- 验证：固定 Docker Go 1.27.1 镜像执行 `gofmt`、`go build ./...`、`go vet ./...` 通过；真实 PostgreSQL 定向配置 4 项、`internal/modules/fishing` 全套和纪录删除/权限回归通过。隔离 Linux race 首轮 `output/go-rewrite/compat-current/fishing-go-test-10d79553f8/` 在 2779 pass / 29 fail / 7 skip 下失败：业务失败集中在并行运行期间的旧测试与早期 runtime SQL 占位符错误；占位符已修复，后续单包真实库复验通过，待在最终候选上重跑全量 race。
+- 验证：固定 Docker Go 1.27.1 镜像执行 `gofmt`、`go build ./...`、`go vet ./...` 通过；真实 PostgreSQL 定向配置 4 项、`internal/modules/fishing` 全套和纪录删除/权限回归通过。修复后的隔离 Linux race `output/go-rewrite/compat-postfix/fishing-go-test-d91dc3af0b/` 为 2807 pass / 3 fail / 7 skip；剩余 3 项全部是上面列出的旧 gateway 帧数/历史播报断言，没有 runtime SQL 或业务包失败。
 - 本窗口没有 push、部署或写正式数据；宿主没有 Go 工具链，验证通过固定 Docker Go 1.27.1 镜像完成。
