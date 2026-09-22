@@ -91,14 +91,15 @@ go run ./cmd/game --role=all
 
 `sslmode=disable` 仅用于本机隔离开发连接；跨主机部署应显式启用并验证 TLS。game 不会创建数据库、表或运行存档迁移。未设置连接、连接不可用、schema 版本不匹配或监听失败时以非零状态退出，日志不输出连接串/底层驱动错误。
 
-默认监听 `127.0.0.1:19001`。`GET /healthz` 返回进程存活；`GET /readyz` 在数据库可达、schema 兼容且未关闭时返回 200，否则 503。就绪响应包含 `scope: infrastructure`，尚不表示完整游戏业务可用。DB 故障不会让存活探针失败，避免应用因数据库短暂故障无限重启；探针最多一个在途、独立超时。新玩法路由见 [GAMEPLAY_API.md](../docs/go-rewrite/GAMEPLAY_API.md)，其余 URL 返回 404，非 GET 探针返回 405。
+默认监听 `127.0.0.1:9000`，并从 `FISHING_GO_FRONTEND_DIR` 托管浏览器静态文件；`GET /healthz` 返回进程存活；`GET /readyz` 在数据库可达、schema 兼容且未关闭时返回 200，否则 503。就绪响应包含 `scope: infrastructure`，尚不表示完整游戏业务可用。DB 故障不会让存活探针失败，避免应用因数据库短暂故障无限重启；探针最多一个在途、独立超时。新玩法路由见 [GAMEPLAY_API.md](../docs/go-rewrite/GAMEPLAY_API.md)，其余 URL 返回 404，非 GET 探针返回 405。
 
 all 服务启动原型和默认正式钓鱼调度器（各 25ms 扫描、最多 100 候选/8 执行者）、市集/交易到期和独立自动出售任务。普通启动不会自动生成账号、资产或钓鱼会话。收到 Ctrl+C/Linux SIGTERM 后转为未就绪，停止后台任务并等待在途请求和任务退出，再关闭连接池；HTTP 超时会关闭连接并报告错误。v1 SSE 已有资产修订及重拉通知；旧 `/events` 已接个人 catch/资产快照、公共动态、交易/市集/好友/编队、配置/公告和海域驱逐，并接入多标签页租约与重连续钓。正常停服发送 maintenance；完整通知历史、全流程浏览器与容量仍待验收。
 
 | 环境变量 | 默认值 | 约束 |
 |---|---|---|
 | FISHING_GO_DATABASE_URL | 必填 | 通过环境注入；不写入仓库/日志 |
-| FISHING_GO_LISTEN | 127.0.0.1:19001 | host:port，端口 1～65535 |
+| FISHING_GO_LISTEN | 127.0.0.1:9000 | host:port，端口 1～65535 |
+| FISHING_GO_FRONTEND_DIR | empty | `run.bat`/发行包自动设置为 `frontend`；留空时仅提供 API |
 | FISHING_GO_NODE_ID | local | 1～64 位字母/数字/点/下划线/连字符 |
 | FISHING_GO_ROLE | all | 仅支持 all；命令行 --role 优先 |
 | FISHING_GO_DB_MAX_CONNS | 16 | 1～64；实际预算需按数据库容量再定 |

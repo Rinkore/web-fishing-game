@@ -1,35 +1,29 @@
-# 专门用于本地 Wiki / 攻略投稿链路测试的轻量运行时。
-# 默认使用官方 Node Alpine；如果本机已有其他含 Node 的基础镜像，
-# 可通过 compose 的 NODE_IMAGE build arg 覆盖，便于离线/镜像受限环境复用。
-ARG NODE_IMAGE=node:22-alpine
-FROM ${NODE_IMAGE}
+# Go-only Wiki/game integration image. The Wiki API is served by the same Go
+# process as the game API and stores content in PostgreSQL.
+ARG GO_IMAGE=golang:1.27.1-bookworm
+FROM ${GO_IMAGE} AS build
+WORKDIR /src
+COPY server-go/go.mod server-go/go.sum ./server-go/
+RUN cd server-go && go mod download
+COPY server-go ./server-go
+RUN cd server-go && CGO_ENABLED=0 go build -trimpath -o /out/game ./cmd/game && \
+    CGO_ENABLED=0 go build -trimpath -o /out/migrate ./cmd/migrate && \
+    CGO_ENABLED=0 go build -trimpath -o /out/catalog ./cmd/catalog && \
+    CGO_ENABLED=0 go build -trimpath -o /out/admin ./cmd/admin
 
-ARG SOURCE_COMMIT=0000000000000000000000000000000000000000
-ENV NODE_ENV=production \
-    PORT=9000 \
-    BIND_HOST=0.0.0.0 \
-    FISHING_DATA_DIR=/data \
-    SOURCE_COMMIT=${SOURCE_COMMIT}
-
+FROM debian:bookworm-slim
+ENV FISHING_GO_LISTEN=0.0.0.0:9000 \
+    FISHING_GO_FRONTEND_DIR=/app/frontend \
+    FISHING_GO_TIMEZONE=Asia/Shanghai
 WORKDIR /app
-COPY package.json ./package.json
-COPY backend ./backend
+COPY --from=build /out/game /usr/local/bin/game
+COPY --from=build /out/migrate /usr/local/bin/migrate
+COPY --from=build /out/catalog /usr/local/bin/catalog
+COPY --from=build /out/admin /usr/local/bin/admin
 COPY frontend ./frontend
-
-# Wiki 存储依赖 Node 内置 node:sqlite（Node >= 22.13），基础镜像不满足时直接构建失败。
-RUN node -e "const v=process.versions.node.split('.').map(Number); if(v[0]<22||(v[0]===22&&v[1]<13)){console.error('Wiki 需要 Node >= 22.13，当前 '+process.versions.node);process.exit(1)} const s=require('node:sqlite'); new s.DatabaseSync(':memory:').close();"
-
-# /data 是唯一可写目录，用于 wiki.db（SQLite）、config.json 等测试数据；
-# 旧版 wiki.json / wiki-guides.json 只在首次启动迁移时读取，保留作备份。
-# Wiki 存储使用 Node 内置 node:sqlite，基础镜像必须 >= Node 22.13。
-# 使用数字 UID/GID，兼容官方 node 镜像和本地已有 Node 运行时镜像。
-RUN mkdir -p /data && chown -R 1000:1000 /data
-
-USER 1000:1000
+COPY docker/wiki-test/entrypoint.sh /usr/local/bin/wiki-test-entrypoint
+RUN chmod 0755 /usr/local/bin/game /usr/local/bin/migrate /usr/local/bin/catalog /usr/local/bin/admin /usr/local/bin/wiki-test-entrypoint
 EXPOSE 9000
-VOLUME ["/data"]
-
-HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:9000/api/version').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-
-CMD ["node", "--disable-warning=ExperimentalWarning", "backend/server.js"]
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=5 \
+  CMD ["/bin/bash", "-c", "</dev/tcp/127.0.0.1/9000"]
+ENTRYPOINT ["/usr/local/bin/wiki-test-entrypoint"]

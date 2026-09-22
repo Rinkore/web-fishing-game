@@ -20,7 +20,7 @@ import (
 var legacyWikiIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)
 
 // legacyWikiGuideView is the public guide projection. Lists omit sections,
-// exactly like publicGuideMeta in backend/server.js.
+// exactly like publicGuideMeta in the retired Node server.
 type legacyWikiGuideView struct {
 	ID          string         `json:"id"`
 	Kind        string         `json:"kind"`
@@ -69,7 +69,7 @@ func legacyWikiETagPair(official, user int64) string {
 	return `"wiki-content-` + strconv.FormatInt(official, 10) + `-` + strconv.FormatInt(user, 10) + `"`
 }
 
-// legacyWikiETagMatches mirrors etagMatches in backend/server.js: a comma
+// legacyWikiETagMatches mirrors etagMatches in the retired Node server: a comma
 // separated list of exact validators, weak validators included. A wildcard is
 // not part of the legacy contract.
 func legacyWikiETagMatches(header, etag string) bool {

@@ -11,7 +11,8 @@
 - 数据持久化
 - 重启后数据不丢失
 
-它不是生产环境，不启用 HTTPS，只绑定本机回环地址。
+它不是生产环境，不启用 HTTPS，只绑定本机回环地址。游戏与 Wiki 由同一个 Go 进程提供，
+数据写入 compose 内的隔离 PostgreSQL 卷（`web-fishing-wiki-test-postgres`）。
 
 ## 1. 启动
 
@@ -36,14 +37,12 @@ http://127.0.0.1:19000
 也可以使用 npm：
 
 ```powershell
-$env:WIKI_TEST_SOURCE_COMMIT = (git rev-parse HEAD).Trim()
 npm run wiki:docker:up
 ```
 
 前台运行并查看实时日志：
 
 ```powershell
-$env:WIKI_TEST_SOURCE_COMMIT = (git rev-parse HEAD).Trim()
 npm run wiki:docker
 ```
 
@@ -71,44 +70,40 @@ Invoke-RestMethod http://127.0.0.1:19000/api/wiki/content
 
 ## 3. 测试管理员
 
-测试环境仍使用正式的安全模型：管理员必须通过控制台初始化，并使用 TOTP 登录。
+测试环境仍使用正式的安全模型：管理员由 Go 管理命令初始化，并使用 TOTP 登录。
 
 步骤：
 
 1. 先在浏览器注册一个测试账号，例如 `localadmin`。
-2. 附着到容器控制台：
+2. 先生成 32 字节 base64 MFA 密钥并导出给 compose；容器与初始化命令必须用同一个值：
 
    ```powershell
-   docker compose -f docker-compose.wiki-test.yml attach wiki-test
+   $env:WIKI_TEST_MFA_KEY = '<base64 32 字节密钥>'
+   npm run wiki:docker:up
    ```
 
-3. 输入：
+3. 在该 compose 的容器内执行管理命令，JSON 通过标准输入传入：
 
-   ```text
-   admin-init localadmin
+   ```powershell
+   '{"username":"localadmin","secret":"<TOTP base32 密钥>","otp":"<当前 6 位验证码>"}' |
+     docker compose -f docker-compose.wiki-test.yml run --rm --entrypoint /usr/local/bin/admin wiki-test provision
    ```
 
-4. 控制台会显示 TOTP 密钥和 `otpauth://` 链接。
-5. 用验证器扫码或手动录入密钥。
-6. 按 Docker 的分离快捷键离开 attach：
-
-   ```text
-   Ctrl-P Ctrl-Q
-   ```
-
-   attach 结束后容器会继续运行。
-7. 打开：
+   完整参数、密钥生成与审计要求见 [server-go/README.md](../../server-go/README.md)。
+4. 把上一步的 `secret` 录入 TOTP 验证器（或自行拼 `otpauth://` 链接）。
+5. 打开：
 
    ```text
    http://127.0.0.1:19000/admin.html
    ```
 
-8. 使用测试账号、密码和 6 位动态验证码登录。
+6. 使用测试账号、密码和 6 位动态验证码登录。
 
-如果需要重新生成管理员 TOTP：
+如果需要撤销管理员：
 
-```text
-admin-totp localadmin
+```powershell
+'{"username":"localadmin"}' |
+  docker compose -f docker-compose.wiki-test.yml run --rm --entrypoint /usr/local/bin/admin wiki-test revoke
 ```
 
 ## 4. 推荐上线前手工测试清单
@@ -132,7 +127,7 @@ admin-totp localadmin
 5. 刷新公开攻略页，确认该投稿立即可见并显示作者名；打开攻略详情确认正文按需加载。
 6. 在 `我的攻略` 删除该投稿，确认公开页不再显示。
 
-人工审核模式（可选）：设置 `$env:WIKI_TEST_AUTO_APPROVE = '0'` 后执行 `npm run wiki:docker:down` / `npm run wiki:docker:up` 重启容器，compose 会把 `WIKI_GUIDE_AUTO_APPROVE=0` 传进服务端：
+人工审核模式（可选）：设置 `$env:WIKI_TEST_AUTO_APPROVE = '0'` 后执行 `npm run wiki:docker:down` / `npm run wiki:docker:up` 重启容器，compose 会把 `WIKI_GUIDE_AUTO_APPROVE=0` 传给 Go 服务：
 
 1. 普通账号提交攻略 → `我的攻略` 显示 `待审核`。
 2. 公开攻略页确认待审核不可见。
@@ -168,7 +163,7 @@ docker compose -f docker-compose.wiki-test.yml restart wiki-test
 测试数据保存在 Docker named volume：
 
 ```text
-web-fishing-wiki-test-data
+web-fishing-wiki-test-postgres
 ```
 
 停止环境但保留数据：
@@ -191,9 +186,9 @@ powershell -ExecutionPolicy Bypass -File tools/wiki/docker-test.ps1 -Reset
 
 注意：
 
-- Wiki 内容统一存储在 named volume 里的 `wiki.db`（SQLite，WAL），第一次启动时自动创建。
-- 旧版 `wiki.json` / `wiki-guides.json` 只在首次启动迁移时读取，之后保留作备份，不再写入。
-- 官方内容未保存前，服务端使用内置 `frontend/wiki/content/content.json` 种子导入 SQLite。
+- Wiki 内容与玩家数据统一存储在 named volume 的 PostgreSQL 数据目录里，容器启动时先跑 `cmd/migrate`。
+- 旧版 `wiki.json` / `wiki-guides.json` 与旧 JSON 存档不在 Go 启动路径里，也不会被自动读取。
+- 官方内容未保存前，服务端使用编译进二进制的 `frontend/wiki/content/content.json` 快照。
 - 公开读取：`/api/wiki/content` 只返回攻略元数据，正文走 `/api/wiki/guides/<id>`，列表分页/搜索走 `/api/wiki/guides`。
 
 ## 6. 隔离与安全
@@ -202,19 +197,18 @@ Compose 配置做了以下限制：
 
 - 只绑定 `127.0.0.1`，局域网无法访问
 - 容器 root filesystem 为只读
-- 只有 `/data` 和 `/tmp` 可写
+- 应用容器只写 `/tmp`，数据全部落在隔离的 PostgreSQL 卷里
 - 删除所有 Linux capabilities
 - 禁止提权
 - 使用 named volume 隔离测试数据
-- 健康检查访问 `/api/version`
+- 健康检查直接探测容器内的 `127.0.0.1:9000`
 
-## 7. 自定义端口与基础镜像
+## 7. 自定义端口与镜像源
 
 自定义端口：
 
 ```powershell
 $env:WIKI_TEST_PORT = 19100
-$env:WIKI_TEST_SOURCE_COMMIT = (git rev-parse HEAD).Trim()
 npm run wiki:docker:up
 ```
 
@@ -224,20 +218,15 @@ npm run wiki:docker:up
 powershell -ExecutionPolicy Bypass -File tools/wiki/docker-test.ps1 -Port 19100
 ```
 
-默认基础镜像：
+默认镜像来自项目内置的 `docker/wiki-test/Dockerfile`（多阶段构建 Go 二进制，运行层为 `debian:bookworm-slim`），
+数据库镜像为 `postgres:18.6-bookworm`。
 
-```text
-node:22-alpine
-```
-
-必须 >= Node 22.13（内置 `node:sqlite`）；当前 `node:22-alpine` 为 Node 22.23，已在本地 Docker 验证。
-
-如果 Docker Hub 访问受限，可以使用已有镜像源或本地含 Node 的镜像：
+如果 Docker Hub 访问受限，可以改用镜像站或本地缓存镜像：
 
 ```powershell
-$env:WIKI_TEST_NODE_IMAGE = '<your-node-image>'
-$env:WIKI_TEST_SOURCE_COMMIT = (git rev-parse HEAD).Trim()
+$env:WIKI_TEST_POSTGRES_IMAGE = '<your-postgres-image>'
 npm run wiki:docker:up
 ```
 
-`WIKI_TEST_NODE_IMAGE` 必须是 Linux x64 镜像，且 `node` 可执行。
+`WIKI_TEST_POSTGRES_IMAGE` 必须是 Linux x64 的 PostgreSQL 18 镜像；Go 构建阶段使用 `golang:1.27.1-bookworm`，
+可用 `GO_IMAGE` build arg 覆盖。

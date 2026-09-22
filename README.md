@@ -2,14 +2,14 @@
 
 零第三方依赖的多人联机网页钓鱼小游戏。**所有处理逻辑在服务端**：钓鱼循环、掷骰、词缀加成、
 资产结算、钓竿配置均由后端权威执行，前端只发指令、收 SSE 广播、渲染。纯原生 Web 前端 +
-Node 内置 `http` 后端，游戏数值目录前后端共用一份（UMD）；桌面与手机端各自排版，全站像素页游风格。
+Go HTTP 后端，游戏数值目录由 Go catalog 和前端快照共同维护；桌面与手机端各自排版，全站像素页游风格。
 
 | 特性 | 说明 |
 |---|---|
-| 零依赖 | 运行时只用 Node 内置模块与原生浏览器 API，无需 `npm install` |
+| 运行时 | 游戏服务使用 Go + PostgreSQL；浏览器端无需 `npm install` |
 | 服务器权威 | 客户端无法伪造渔获与资产，前端不持账本 |
 | 实时联机 | SSE 广播：在线玩家、渔场人数、渔获动态、行情、交易、横幅 |
-| 数据目录 | 存档落在用户「文档」目录，按域 + 按账号拆分文件 |
+| 数据存储 | PostgreSQL 统一保存身份、资产、玩法、交易、Wiki 与审计数据 |
 | 可运营 | 管理后台分区管理游戏与 Wiki，配置保存即生效并实时同步在线玩家 |
 | 前端 11 个入口 | 钓鱼 / 远洋 / 角色（含钓竿） / 社交 / 背包 / 工坊（开箱 · 熔炼 · 重铸 · 锻造） / 商城（限购 · 收购 · 市集） / 图鉴（含记录） / 反馈 / 日志 / WIKI |
 | 场景引擎 | 零依赖 Canvas 场景层：手绘像素底图 + 水面倒影实时演算 + 氛围粒子 + 指针视差，按渔场换色 |
@@ -21,7 +21,7 @@ Node 内置 `http` 后端，游戏数值目录前后端共用一份（UMD）；�
 
 Wiki 显示名称为 `wiki`，由游戏服务器同域托管 `/wiki/`，包含钓场资料、玩法攻略、**配装模拟器与熔炼模拟器**；页面外壳与工坊模拟器复用游戏 UI。
 详细范围、数据同步方案、计算规则和验收标准见 [Wiki 开发文档](docs/wiki/DEVELOPMENT.md)，进展见 [Wiki 规划与开发日志](docs/wiki/CHANGELOG.md)。可运行 `npm run wiki:sync`、`wiki:check`、`wiki:test`、`wiki:test:browser`、`wiki:build` 和 `wiki:verify:server` 执行版本同步与专项回归。正式 Wiki 的数据与公式必须来自正式服务端快照并与服务端共用规则实现，不能伪造或滞后。
-Wiki 资料站、配装模拟器、熔炼模拟器、构建检查和本地验收已实现。官方攻略、更新记录与玩家投稿统一存储在数据目录的 `wiki.db`（Node 内置 `node:sqlite`，WAL，零第三方依赖）；旧版 `wiki.json` / `wiki-guides.json` 会在首次启动时自动导入并保留作备份。公开内容接口只下发攻略元数据，正文由 `/api/wiki/guides/<id>` 按需读取，列表分页/搜索走 `/api/wiki/guides`。用户投稿默认自动通过、提交后立即公开（作者可删除自己的自动通过投稿），设置 `WIKI_GUIDE_AUTO_APPROVE=0` 重启后恢复「提交 → 待审核 → 管理员审核」流程。首页与更新页默认只突出最近一次更新，完整版本演进可在历史入口展开。Release 包内置 `SOURCE_COMMIT.txt`，服务端也可用 `SOURCE_COMMIT` 环境变量显式注入完整提交 SHA。
+Wiki 资料站、配装模拟器、熔炼模拟器、构建检查和本地验收已实现。官方攻略、更新记录与玩家投稿由 Go 服务写入 PostgreSQL；公开内容接口只下发攻略元数据，正文由 `/api/wiki/guides/<id>` 按需读取，列表分页/搜索走 `/api/wiki/guides`。用户投稿默认自动通过、提交后立即公开（作者可删除自己的自动通过投稿），设置 `WIKI_GUIDE_AUTO_APPROVE=0` 重启后恢复「提交 → 待审核 → 管理员审核」流程。首页与更新页默认只突出最近一次更新，完整版本演进可在历史入口展开。Release 包内置 `SOURCE_COMMIT.txt`，服务端也可用 `SOURCE_COMMIT` 环境变量显式注入完整提交 SHA。
 
 ### 本地 Docker 测试环境
 
@@ -39,43 +39,39 @@ powershell -ExecutionPolicy Bypass -File tools/wiki/docker-test.ps1
 
 安全加固说明见 [SECURITY.md](SECURITY.md)：包含管理员 MFA、Cookie/HTTPS、9001 仅本机监听、注册配额与计算验证，以及市集分页/增量通知。市集 API 默认 30 条、最多 100 条，调用方需遍历分页。生产部署后必须复测公网 9001 不可达。
 
-需要 Node.js。`run.bat` 会优先使用包内自带的 `node/node.exe`；Wiki 内容存储使用 Node 内置 `node:sqlite`，要求 **Node.js >= 22.13**（Release 包内的 node 运行时也必须同步到 22.13+）。
+游戏服务现在只使用 Go 后端。运行前准备 PostgreSQL，设置 `FISHING_GO_DATABASE_URL`，并按
+[server-go/README.md](server-go/README.md) 先执行数据库迁移和默认 catalog 发布。Node.js 仅用于 Wiki 构建、旧协议对照工具和前端开发静态服务器，不再启动游戏后端。
 
 ```bat
-run.bat                 :: 集成模式：后端 9000，同时托管 frontend/
-start-frontend.bat      :: 分离模式：前端静态服务器 5500（与 run.bat 并用）
-Start-Game-HTTPS.bat    :: 已安装 HTTPS 服务时使用：后端 9001，公网 HTTPS 9000
+run.bat                 :: Go 集成模式：后端 9000，同时托管 frontend/
+start-frontend.bat      :: 可选分离模式：前端静态服务器 5500（与 run.bat 并用）
+Start-Game-HTTPS.bat    :: 已安装 HTTPS 服务时使用：Go 后端 9001，公网 HTTPS 9000
 ```
 
 打开 <http://localhost:9000>（分离模式 <http://localhost:5500>），注册登录即可；
-**多开浏览器标签 = 多真实玩家**。非 Windows 直接 `node backend/server.js`。前端也可托管到任意
+**多开浏览器标签 = 多真实玩家**。非 Windows 在仓库根执行 `npm start`（或在 `server-go` 目录执行 `FISHING_GO_FRONTEND_DIR=../frontend FISHING_GO_LISTEN=127.0.0.1:9000 go run ./cmd/game --role=all`）。前端也可托管到任意
 静态服务器（`API_BASE=auto` 自动连同主机的 9000，或改 `frontend/js/config.js`）。
 
 **Windows HTTPS 启动**：先运行独立 HTTPS 安装包的 `Install-HTTPS.bat`，完成 Caddy 和免费证书配置。
 之后在每个游戏 Release 目录中双击 `Start-Game-HTTPS.bat`，访问 <https://ipv4.rinkore.com:9000>。
-启动器调用**当前 Release 目录**的 `run.bat`，后端使用 9001，并沿用 HTTPS 安装时指定的存档目录；
-请继续使用原 Windows 账号。更换版本前，在旧游戏窗口输入 `q` 保存停服。
+启动器调用**当前 Release 目录**的 `run.bat`，Go 后端使用 9001。数据库连接通过
+`FISHING_GO_DATABASE_URL` 注入；Go 不会自动读取或迁移旧 JSON 存档。
 Caddy 开机自动启动，游戏仍需手动启动；新版安装包使用 Cloudflare DNS-01 自动申请和续期证书，
 无需开放公网 80/443，只需转发 TCP 9000。安装时输入仅限 `rinkore.com` 的 API Token，
 权限为 `Zone → DNS → Edit` 和 `Zone → Zone → Read`；域名记录保持“仅 DNS”（灰云）。
-HTTPS 启用后不要单独运行原 `run.bat`，否则会与代理争用 9000。
+HTTPS 启用后不要单独运行普通 `run.bat`，否则会与代理争用 9000。
 
 **管理后台**：`admin.html`，使用已授权的账号密码和验证器动态验证码登录。公开登录不再自动授予管理员。
-首次先注册账号，再在运行游戏的服务器控制台输入 `admin-init 用户名`；将控制台显示的密钥添加到 TOTP 验证器。
-已有管理员升级后，在服务器控制台输入 `admin-totp 用户名` 绑定验证器；此命令也用于丢失验证器后的本机重置，并注销该账号旧会话。
-后续管理员由「账号管理」授权，再由服务器操作员执行 `admin-totp 用户名` 完成绑定。普通游戏登录的 token 不能访问管理 API。
+管理员 MFA 通过 `server-go/cmd/admin provision` 的 JSON 标准输入配置，具体步骤见
+[server-go/README.md](server-go/README.md)。普通游戏登录的 token 不能访问管理 API。
 详细升级和验证说明见 [SECURITY.md](SECURITY.md)。
 
 | 环境变量 | 说明 |
 |---|---|
-| `PORT` | 监听端口，默认 9000（前端静态服务器默认 5500） |
-| `BIND_HOST` | 可选监听地址；9001 端口强制绑定 `127.0.0.1`，无法通过此变量放开公网访问 |
-| `TRUSTED_PROXY_IPS` | 逗号分隔的受信代理 IP，默认不信任转发头；HTTPS 启动器仅信任本机 Caddy |
-| `REQUIRE_HTTPS=1` | 拒绝未经可信 HTTPS 代理的请求；HTTPS 启动器默认开启 |
-| `ALLOWED_ORIGINS` | 精确 Origin 白名单（逗号分隔，含协议/端口，无末尾斜杠）；默认仅同源，跨域浏览器部署需要明确配置 |
-| `STATIC_DIR` | 指定前端目录；`none` = 纯 API（默认自动托管 `../frontend`） |
-| `FISHING_DATA_DIR` | 数据目录覆盖（测试套件用临时目录隔离） |
-| `FISHING_DEV=1` | 开启 `/api/dev/seed\|catch\|rollsize\|doublecount` 测试辅助接口 |
+| `FISHING_GO_DATABASE_URL` | 必填，Go 应用 PostgreSQL 连接串 |
+| `FISHING_GO_LISTEN` | Go 监听地址，`run.bat` 默认 `127.0.0.1:9000`；HTTPS 默认 `127.0.0.1:9001` |
+| `FISHING_GO_FRONTEND_DIR` | Go 静态前端目录，`run.bat` 默认仓库/发行包内的 `frontend` |
+| `FISHING_GO_TIMEZONE` | 业务时区，生产建议显式设置 `Asia/Shanghai` |
 
 ## 玩家功能开关
 
@@ -96,31 +92,13 @@ HTTPS 启用后不要单独运行原 `run.bat`，否则会与代理争用 9000�
 
 ## 数据存储
 
-默认落在用户「文档」目录（Windows `%USERPROFILE%\Documents\web-fishing-game`，macOS/Linux 同理，
-没有 Documents 时退回用户主目录），与程序文件分离 —— 升级 / 覆盖安装不丢存档：
-
-```
-<文档>/web-fishing-game/
-├── accounts/<账号>.json   # 身份 + 金币 + 背包 + 钓竿配置/槽位 + 图鉴 + 累计渔获 + 自动售出规则
-├── sessions.json          # 登录态（只存 token 的 SHA-256，30 天滑动过期）
-├── admin.json             # 管理操作审计日志（谁 / 何时 / 对谁 / 改了什么，最多保留 500 条）
-├── market.json            # 市集挂单与序号
-├── records.json           # 大鱼榜 / 小鱼纪录 / 前十大 / 前十小 / 全场最大
-├── economy.json           # 商店供需乘数 / 价格历史 / 流水 / 经济调参审计
-├── config.json            # 钓场与钓点 / 通知等级 / 上钩公式 / 组件生成 / 体型 / 宝匣 / 熔炼 / 商城 / 横幅 / 反馈
-└── feedback.json          # 玩家反馈 + 每人下次可提交时间
-```
-
-- 每次上鱼只重写该账号一个文件（账号落盘 1 秒批量化、会话 2 秒防抖）。
-- **关服请先存档**：在服务端控制台输入 `q` 回车（`quit` / `exit` / `save` / `stop` 同效，
-  `Ctrl+C` / `SIGTERM` 同路径）会把账号、市集、记录、经济、配置、反馈、统计与会话同步写盘再退出；
-  直接叉掉窗口是强杀进程，可能丢最后一笔。
-- 首次启动自动迁移旧数据（仓库内 `backend/data` → 文档目录；旧单文件 `users.json` / `world.json` → 拆分结构）。
-- 数据目录已 gitignore（含密码哈希与盐，绝不入库）。
+Go 服务使用 PostgreSQL 持久化身份、资产、玩法状态、交易、Wiki 和审计数据。
+数据库结构由 `server-go/cmd/migrate` 维护，应用启动只检查连接和 schema，不会自动读取、改写或迁移旧 Node JSON 存档。
+正式切换前应单独完成离线存档核查、备份恢复和数据迁移演练；旧 JSON 仅作为迁移对照资料。
 
 ## 架构要点
 
-**服务器权威**：`POST /api/fishing/start|stop` 启停服务端的钓鱼定时器，每竿按抛竿间隔掷骰
+**服务器权威**：Go 服务的 `POST /api/fishing/start|stop` 启停服务端的钓鱼定时器，每竿按抛竿间隔掷骰
 （上钩走后台公式、渔获从钓点掉落池按权重抽取），入库 / 图鉴 / 纪录 / 全服动态全部在服务端完成后，
 经 SSE 定向推送 `catch` 与权威 `assets`；客户端无法伪造渔获。会话：注册必填 QQ 号，登录签发 token，
 同账号二次登录顶号（旧会话全部失效），落盘只存 token 的 SHA-256。出售 / 挂单 / 购买 / 交易 / 开箱 /
@@ -278,58 +256,45 @@ Canvas 场景使用 `ResizeObserver` 按需读取尺寸，仅在缓冲尺寸或�
 
 ## 测试
 
+后端入口（Go）：
+
 ```bash
-node tests/run-all.js
+npm run go:build      # go -C server-go build ./...
+npm run go:vet        # go -C server-go vet ./...
+npm test              # go -C server-go test -count=1 ./...
 ```
 
-10 个套件并行执行（各自独立端口与临时数据目录，互不干扰）：**e2e**（全量端到端）·
-**auth-ui**（账号 / 会话）· **fishing-interaction**（真实浏览器交互）· **bugfix** · **chest**（宝匣）·
-**v011**（品质 / 技巧 / 熔炼 / 商城等 v0.11 全量功能）· **v013**（稀有度 / 催化范围 / 残片公式 /
-熔炼范围携带 / 池外词缀来源三分）· **ui-layout**（像素 UI 布局）· **admin**（后台功能）·
-**admin-ui**（后台页面场景）。可选环境变量：
+真库集成用例需要 `FISHING_GO_TEST_DATABASE_URL`（隔离 PostgreSQL 的 `fishing_test` bootstrap 库）；
+未设置时这些用例会明确跳过，所以“全 ok”不等于集成通过。完整命令、Docker/便携 PostgreSQL 用法和
+只读存档扫描见 [server-go/README.md](server-go/README.md)。
 
-```
-FISHING_TEST_ONLY=e2e,admin                       只跑指定套件
-FISHING_TEST_JOBS / FISHING_TEST_SHARDS / FISHING_TEST_TIMEOUT   并行度 / 分片 / 单套件超时
-FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH    测试依赖与浏览器位置
+前端浏览器回归（真实 Chrome，8 个套件）：
+
+```bash
+node tests/run-all.js                      # 并行跑全部前端套件
+FISHING_TEST_ONLY=settings node tests/run-all.js
 ```
 
-- **基线本来就红**（当前 v0.14.1，21 套件 **通过 1875 项 / 失败 49 项**：失败只有 e2e 13 / ui-layout 26 /
-  fishing-interaction 7 / auth-ui 2 / admin-ui 1 —— 与 v0.14.0 基线同集（41 项）加上并行负载型 flake：
-  `fishing-interaction` **单跑是 5 项**（并行时 presence/recent 两条时序用例会假失败）、`admin-ui` **单跑 153/0 全绿**
-  （并行时偶发一次元素未就绪的 TEST ERROR）；`ui-layout` 该项随负载浮动；其余 16 个套件全绿，含 `v0141`(32) /
-  `v0141-ui`(31) / `v0140`(20) / `v0140-ui`(37) / `v0139`(28) / `v0139-ui`(33) / `v0138`(59) / `v0138-ui`(104) /
-  `v0136`(36) / `v0135`(36) / `v0134`(22) / `bugfix`(87) / `chest`(81) / `admin`(390) / `admin-ui`(153) /
-  `v011`(207) / `v013`(76)——
-  改完要 A/B 对比**套件级失败数**，别把既有失败当成自己改坏的。
-  - 涉及鱼类上架的用例（admin / bugfix / e2e / ui-layout 里那些「拿鱼当方便素材」的上架步骤）在自己的 spawn env 里带
-    `MARKET_FISH_LIST=1`；不带就是玩家视角（鱼类不能上架）。
-  - `ui-layout` 的失败数**随机器负载浮动**很大：21 个套件并行跑时约 21~27 项，单独跑约 10 项；
-    同理 `fishing-interaction`（presence/recent 时序）与 `admin-ui`（元素就绪）并行时偶发假失败，先单跑再定性。
-    它在「在线交易」段会因既有失败级联中断，文件尾部的市集部位筛选 / 钓竿自动配装两段不执行，
-    所以新增的浏览器回归**不要往这个文件里塞**（本版回归在 `v0139`（纯 HTTP：合计打包 / invRev /
-    开箱落盘 / 交易可用量校验 / 播报精简）与 `v0139-ui`（浏览器：连开宝匣不丢件 / 背包口径 /
-    出售本地实时刷新 / 收购页就地刷新 / 自动售出清单合计），
-    上一版在 `v0138` / `v0138-ui`）。
-  - `e2e` 的 13 项失败集中在**推送即时性**（presence / feed / 纪录播报一批断言未同步新广播语义），
-    与自动售出无关；A/B 时对着失败**名单**比，不要只看条数（名单会因时序抖动 ±1）。
-  - `admin-ui` 偶发 `page.evaluate ... click of null`（后台页控件还没渲染完就点了）：属既有抖动，
-    单独跑能过，重跑即可。
-  - 已知过时断言：「在线交易」独立入口（v0.12 已并入交易子窗口）、部分场景/样式度量（钓线浮漂、
-    组件分组、槽位流程、整竿上架、掉落池同步）等，属测试未同步新语义；v0.15.0 已同步侧栏入口数
-    与入口名（`tests/_nav.js` 把旧入口名折算出「入口 + 页签」，老用例可继续按旧名字调用）；
-    实测单跑 `ui-layout` 为 169 通过 / 30 失败，与上一版基线同量级（少一条「侧栏入口数」）。
-  - `bugfix` 里那条「交易勾选不被重置」的用例原先也按独立交易页写，找不到入口就抛错**中断整套**
-    （它自己和后面 60 多项从此不执行，`bugfix` 的通过数只有 43）——本版已按子窗口流程重写，
-    该套件恢复 **87 项全绿**。教训：一处未捕获异常会让**尾部所有用例静默不通过**，新增回归一定要
-    确认它落在套件真正执行到的位置。
-- 套件内部不做固定 sleep（用 `tests/_util.js` 的 `waitHttp` / `waitFor` 轮询等待）；
-  **改完存档再重启的用例必须先 `flushWait()`**（账号 1 秒、会话 2 秒防抖，而 `taskkill /F` 会跳过退出钩子）。
-- **测试依赖不随仓库分发**：jsdom / playwright-core 需自行安装到项目 `node_modules`，或用
-  `NODE_PATH` / `FISHING_TEST_MODULES` 指定（`run-all.js` 也会自动使用项目同级的
-  `../fishing-test-modules/node_modules`）；`ui-layout` 需要真实 Chromium 内核浏览器
-  （优先 `CHROME_PATH`，否则自动探测 Chrome / Edge）。
-- `tests/shots*.js` 与 `tests/shots/` 是界面截图脚本与产物（截图不入库，可随时重新生成）。
+套件清单：`admin-interactions`（后台交互）· `desktop-zoom` · `inventory-pagination` · `mobile-layout` ·
+`scene-performance`（Canvas 场景）· `settings`（设置面板）· `smelt-workbench`（熔炼工作台）·
+`workshop-market-regression`。它们只用浏览器渲染前端：页面内自带桩服务或 `page.route` 拦截，
+不启动后端进程，因此不需要数据库。
+
+```text
+FISHING_TEST_ONLY=settings,smelt-workbench   只跑指定套件
+FISHING_TEST_JOBS / FISHING_TEST_TIMEOUT     并行度 / 单套件超时
+FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位置
+```
+
+- **测试依赖不随仓库分发**：`playwright-core` 需自行安装到项目 `node_modules`，或用
+  `NODE_PATH` / `FISHING_TEST_MODULES` 指定（`run-all.js` 会自动使用项目同级的
+  `../fishing-test-modules/node_modules`）；浏览器优先 `CHROME_PATH`，否则自动探测 Chrome / Edge。
+- 静态检查：`npm run go:coverage`（旧接口 method + path 对 Go 网关的静态覆盖，冻结分母在
+  `server-go/api/legacy-inventory.json`）、`npm run go:coverage:test`。
+- 其他 Go 侧检查：`node --test tests/migration-fixture.test.js`（迁移夹具规则）。
+  `tests/go-rewrite-browser.test.js` 不是独立套件：它由 Go 测试
+  `TestIntegrationLegacyBrowserConfigBannerParty` 通过标准输入驱动，需要隔离数据库、Chrome 和
+  `playwright-core`（见 server-go/README.md 的浏览器回归一节）。
 
 ## 工具脚本（tools/）
 
@@ -337,15 +302,17 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH    测试依赖与浏览器位置
   （材料 / 组件 / 宝匣）、`gen_grounds.py` / `gen_map*.py` / `gen_nav.py` / `gen_ui.py`
   （钓点场景、世界地图、导航与 UI 图标）、`crop_sheet.py`、`check_icons.py` / `check_items.py`
   （贴图与目录一致性校验）。新增鱼种 / 底材 / 钓点后重跑对应脚本即可补齐贴图。
-- **存档维护（Node，零依赖）**：`fix-save-v011.js`（旧「大鱼概率」签名 → 技巧、刷新展示字段；支持
+- **旧 JSON 存档维护（Node，零依赖；只对停用前的存档副本有意义）**：`fix-save-v011.js`（旧「大鱼概率」签名 → 技巧、刷新展示字段；支持
   `--dry-run` / `--data <目录>`，先整目录备份再修）、`clean-dragonpearl.js`（清理各类榜单与自动售出
   规则里残留的「龙宫宝珠」键）。
 
 ## 项目结构
 
 ```
-├── backend/server.js        # 权威服务器（单文件）：账号 / 钓鱼循环 / 经济 / 市集 / 交易 / 宝匣 / 工坊 /
-│                            #   商城 / 横幅 / 反馈 / 管理后台 API / SSE 广播；数据落盘用户「文档」目录
+├── server-go/               # 唯一游戏后端：API、SSE、玩法、事务、迁移和命令入口
+│   ├── cmd/game/             # 游戏服务入口
+│   ├── cmd/migrate/          # PostgreSQL 结构迁移入口
+│   └── internal/             # 业务模块与兼容 API
 ├── frontend/                # 纯静态瘦客户端，可部署到任意静态服务器
 │   ├── index.html           # 游戏页（桌面 + 手机端同一份 HTML，CSS 分辨率分栏）
 │   ├── admin.html           # 管理后台页面
@@ -353,10 +320,10 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH    测试依赖与浏览器位置
 │   ├── css/                 # style.css 基础 + pixel.css 像素主题层 + admin.css 后台
 │   ├── assets/              # 像素资源（全部程序化生成）：fish/ item/ spot/ ground/ nav/ ui/ 地图 / 像素字体
 │   └── js/                  # config / data（UMD 共享目录）/ engine / net / ui / admin
-├── tests/                   # 10 个测试套件 + run-all.js 一键运行 + 截图脚本
+├── tests/                   # 前端浏览器套件（8 个）+ run-all.js 一键运行 + Go 侧检查工具
 ├── tools/                   # 贴图生成脚本（Python）与存档维护脚本（Node）
 ├── dist/                    # 打包 / 发版脚本与发布文案（不入库）
-├── run.bat                  # 启动后端（集成模式，9000，同时托管前端）
+├── run.bat                  # 启动 Go 后端（集成模式，9000，同时托管前端）
 ├── Start-Game-HTTPS.bat      # 已安装 HTTPS 服务后启动当前版本（后端 9001 → HTTPS 9000）
 └── start-frontend.bat       # 启动前端独立静态服务器（5500）
 ```

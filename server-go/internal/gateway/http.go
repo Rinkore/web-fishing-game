@@ -59,6 +59,16 @@ type bucket struct {
 }
 
 func New(pool *pgxpool.Pool, mfaKey []byte, locations ...*time.Location) http.Handler {
+	return newAPI(pool, mfaKey, locations, "")
+}
+
+// NewWithFrontend is the production constructor. The old New constructor is
+// kept for focused API tests that intentionally do not mount browser assets.
+func NewWithFrontend(pool *pgxpool.Pool, mfaKey []byte, location *time.Location, frontendDir string) http.Handler {
+	return newAPI(pool, mfaKey, []*time.Location{location}, frontendDir)
+}
+
+func newAPI(pool *pgxpool.Pool, mfaKey []byte, locations []*time.Location, frontendDir string) http.Handler {
 	a := &API{pool: pool, identity: identity.New(pool, mfaKey), limits: map[string]bucket{}, streams: make(chan struct{}, 128), views: map[int64]legacyPlayersView{}, started: time.Now(), wikiStore: wiki.NewStore(pool)}
 	a.registrationPolicy = registrationLimits()
 	a.location = time.Local
@@ -260,7 +270,14 @@ func New(pool *pgxpool.Pool, mfaKey []byte, locations ...*time.Location) http.Ha
 	r.Post("/api/v1/autosell/run", a.autosellRun)
 	r.Get("/api/v1/shop", a.shopPrices)
 	r.Get("/api/v1/autosell", a.autosellSettings)
-	r.NotFound(func(w http.ResponseWriter, r *http.Request) { write(w, 404, map[string]any{"error": "not_found"}) })
+	static := frontendHandler(frontendDir)
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		if static != nil && (r.Method == http.MethodGet || r.Method == http.MethodHead) && !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/events" {
+			static.ServeHTTP(w, r)
+			return
+		}
+		write(w, 404, map[string]any{"error": "not_found"})
+	})
 	return r
 }
 func write(w http.ResponseWriter, status int, v any) {

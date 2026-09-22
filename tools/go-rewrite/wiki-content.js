@@ -1,11 +1,11 @@
 'use strict';
 
 // Builds the Wiki snapshot that the Go gateway embeds. The source of truth is
-// frontend/wiki/content/content.json — the same file the legacy server imports
-// into wiki.db. Keeping a generated snapshot (with the source digest) makes the
+// frontend/wiki/content/content.json — the same file the retired Node server
+// imported into wiki.db. Keeping a generated snapshot (with the source digest) makes the
 // Go build hermetic and lets CI fail when the source changes without a reviewed
 // regeneration. Field validation mirrors normalizeWikiContent in
-// backend/server.js; unknown section types are rejected instead of dropped.
+// the retired Node server; unknown section types are rejected instead of dropped.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');

@@ -1,2 +1,4 @@
 # Keep the Go formatter deterministic on Windows and Linux checkouts.
 server-go/** text eol=lf
+# Container entrypoints must stay LF so the shell inside the image can run them.
+*.sh text eol=lf

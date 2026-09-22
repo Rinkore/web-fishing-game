@@ -1,5 +1,12 @@
 # 安全加固与升级
 
+> **状态说明（2026-09-22）**：Node 服务端（`backend/server.js` 等）已从工作树删除，游戏后端只有
+> `server-go/`。本文档下列章节记录的是被替换前的 Node 行为（`PORT` / `TRUSTED_PROXY_IPS` /
+> 控制台 `admin-init`、`admin-totp`、JSON 存档目录等），保留作历史依据；当前实现的安全边界、
+> 环境变量和运维入口以 [server-go/README.md](server-go/README.md) 与
+> [docs/go-rewrite/GAMEPLAY_API.md](docs/go-rewrite/GAMEPLAY_API.md) 为准。Go 版管理员由
+> `server-go/cmd/admin provision` 通过标准输入配置，不再使用控制台命令。
+
 ## 管理员迁移
 
 公开后台登录不能领取管理员。没有管理员时，在游戏服务器控制台输入 `admin-init 用户名`，为已注册账号初始化管理员并生成 TOTP 密钥。有管理员时此命令拒绝执行。

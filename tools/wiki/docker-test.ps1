@@ -19,23 +19,7 @@ try {
     return
   }
 
-  $commit = (git rev-parse HEAD).Trim()
-  if ($commit -notmatch '^[0-9a-f]{40}$') { throw "无法取得 40 位 Git commit：$commit" }
-  $env:WIKI_TEST_SOURCE_COMMIT = $commit
   $env:WIKI_TEST_PORT = [string]$Port
-
-  # 默认使用官方 node:22-alpine；本机已有替代 Node 镜像时允许自动复用，便于镜像源受限环境。
-  if (-not $env:WIKI_TEST_NODE_IMAGE) {
-    $localImages = @(docker image ls --format '{{.Repository}}:{{.Tag}}')
-    if ($localImages -contains 'node:22-alpine') {
-      $env:WIKI_TEST_NODE_IMAGE = 'node:22-alpine'
-    } elseif ($localImages -contains 'web-fishing-node-runtime:local') {
-      $env:WIKI_TEST_NODE_IMAGE = 'web-fishing-node-runtime:local'
-      Write-Host '提示：未找到 node:22-alpine，已复用本机 web-fishing-node-runtime:local。'
-    } else {
-      $env:WIKI_TEST_NODE_IMAGE = 'node:22-alpine'
-    }
-  }
 
   $upArgs = @('up')
   if ($Follow) {

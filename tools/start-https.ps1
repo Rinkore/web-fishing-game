@@ -9,21 +9,16 @@ try {
     $config = Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
     if ($config.package -notin @('fishgame-https-9000-v1', 'fishgame-https-9000-v2')) { throw 'Invalid HTTPS installation marker. Reinstall the HTTPS package.' }
     if (@(Get-NetTCPConnection -State Listen -LocalPort 9001 -ErrorAction SilentlyContinue).Count) {
-        throw 'Port 9001 is already in use. Enter q in the old game console to save and stop it before starting this release.'
+        throw 'Port 9001 is already in use. Stop the running game process before starting this release.'
     }
-    $env:PORT = '9001'
-    $env:BIND_HOST = '127.0.0.1'
-    # Only the local Caddy proxy may supply client addresses.
-    $env:TRUSTED_PROXY_IPS = '127.0.0.1,::1'
-    $env:REQUIRE_HTTPS = '1'
-    if ($config.dataDir) { $env:FISHING_DATA_DIR = $config.dataDir }
-    $gameDir = Split-Path $PSScriptRoot -Parent
-    Set-Location -LiteralPath $gameDir
+    $gameDir = Split-Path -Parent $PSScriptRoot
     Write-Host ('Starting game from: ' + $gameDir)
     Write-Host 'Game backend: http://127.0.0.1:9001'
     Write-Host 'Public URL: https://ipv4.rinkore.com:9000'
-    Write-Host 'Keep the Caddy task running. Enter q here to save and stop the game.'
-    & '.\run.bat'
+    Write-Host 'Keep the Caddy task running. Press Ctrl+C in this window to stop the game.'
+    # The Go server binds loopback only and never trusts forwarded headers, so
+    # the local Caddy proxy stays the single public entry point.
+    & (Join-Path $PSScriptRoot 'start-go.ps1') -Listen '127.0.0.1:9001'
     exit $LASTEXITCODE
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red

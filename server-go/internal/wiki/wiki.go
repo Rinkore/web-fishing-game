@@ -27,7 +27,8 @@ import (
 var defaultContent []byte
 
 // Limits mirror WIKI_OFFICIAL_SECTION_LIMITS and normalizeWikiContent in
-// backend/server.js. Lengths count runes, which matches the UTF-16 unit counts
+// the retired Node server (recoverable from Git history). Lengths count runes,
+// which matches the UTF-16 unit counts
 // of the legacy checker for every character outside the astral planes and is
 // marginally more permissive for the rest.
 const (

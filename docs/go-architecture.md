@@ -886,11 +886,11 @@ schema 采用扩展→兼容运行→清理旧结构的方式演进。数据不�
 相对链接用于仓库内查看；行号随后续代码变更可能变化。
 
 - [项目说明与功能范围](../README.md)
-- [现有服务端](../backend/server.js)：JSON 持久化、钓鱼定时器、市场交易、供需、公式、配置与 SSE。
+- [当前服务端](../server-go)：Go + PostgreSQL，含 API、SSE、事务与迁移入口。
+- 被替换的 Node 服务端（`backend/server.js`、`backend/transport-security.js`、`backend/security.js`）已从工作树删除，
+  只保留在 Git 历史中，供迁移对照与历史证据引用。
 - [前后端共用数据与计算](../frontend/js/data.js)
-- [传输、Cookie 与密码安全](../backend/transport-security.js)
-- [输入校验与 MFA](../backend/security.js)
-- [现有测试入口](../tests/run-all.js)
+- [测试入口](../tests/run-all.js)：前端浏览器套件；后端为 `npm test`（go test ./...）
 - [安全部署说明](../SECURITY.md)
 
 架构编制沿用本会话已核查的 `f98077d` 本地代码事实，未连接或修改正式服。上游许可证链接见第 4 节。未来版本更新后，应重新验证会影响方案的事实。

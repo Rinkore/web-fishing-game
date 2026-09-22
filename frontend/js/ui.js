@@ -103,7 +103,7 @@ window.UI = (function () {
     }).catch(function () { return null; });
   }
 
-  // v0.14.0：**鱼类暂时不许上市集**（临时开关，true = 恢复；后端 backend/server.js 有同名常量 MARKET_FISH_LIST，
+  // v0.14.0：**鱼类暂时不许上市集**（临时开关，true = 恢复；Go 兼容 API 保留同名业务开关，
   // 两边要一起改）。改版期间渔获只走系统收购：背包行 / 市集「我的背包」都不再给鱼类出「上架」入口，
   // 服务端同样拒绝（前端隐藏只是避免点了才报错）。已有挂单照常可买、可下架。
   const MARKET_FISH_LIST = false;

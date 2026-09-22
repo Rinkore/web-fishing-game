@@ -32,6 +32,13 @@ func main() {
 		logger.Error("configuration_rejected", "reason", err.Error())
 		os.Exit(1)
 	}
+	if c.FrontendDir == "" {
+		if _, statErr := os.Stat("frontend"); statErr == nil {
+			c.FrontendDir = "frontend"
+		} else {
+			c.FrontendDir = "../frontend"
+		}
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	err = app.Run(ctx, c, logger)
 	stop()

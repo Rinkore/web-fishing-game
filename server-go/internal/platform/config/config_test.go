@@ -42,7 +42,7 @@ func TestConfigDefaultsBindLoopbackAndOnlyAllRole(t *testing.T) {
 		}
 		return ""
 	})
-	if err != nil || c.ListenAddress != "127.0.0.1:19001" || c.Role != "all" || c.DatabaseMaxConns != 16 {
+	if err != nil || c.ListenAddress != "127.0.0.1:9000" || c.Role != "all" || c.DatabaseMaxConns != 16 {
 		t.Fatal("unexpected defaults", err)
 	}
 }

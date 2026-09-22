@@ -12,6 +12,7 @@ import (
 
 type Config struct {
 	ListenAddress    string
+	FrontendDir      string
 	NodeID           string
 	Role             string
 	DatabaseURL      string
@@ -24,7 +25,7 @@ type Config struct {
 }
 
 func Load(getenv func(string) string) (Config, error) {
-	c := Config{ListenAddress: "127.0.0.1:19001", NodeID: "local", Role: "all", DatabaseMaxConns: 16,
+	c := Config{ListenAddress: "127.0.0.1:9000", NodeID: "local", Role: "all", DatabaseMaxConns: 16,
 		StartupTimeout: 5 * time.Second, ProbeTimeout: time.Second, ShutdownTimeout: 10 * time.Second}
 	c.Location = time.Local
 	if name := getenv("FISHING_GO_TIMEZONE"); name != "" {
@@ -37,6 +38,7 @@ func Load(getenv func(string) string) (Config, error) {
 	if v := getenv("FISHING_GO_LISTEN"); v != "" {
 		c.ListenAddress = v
 	}
+	c.FrontendDir = getenv("FISHING_GO_FRONTEND_DIR")
 	_, port, err := net.SplitHostPort(c.ListenAddress)
 	p, portErr := strconv.Atoi(port)
 	if err != nil || portErr != nil || p < 1 || p > 65535 {

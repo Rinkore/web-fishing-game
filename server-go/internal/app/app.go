@@ -56,7 +56,7 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 		return errors.New("HTTP listen address unavailable")
 	}
 	defer listener.Close()
-	health, handler := httpserver.New(dependencies{pool}, c.ProbeTimeout, gateway.New(pool, c.MFAEncryptionKey, c.Location))
+	health, handler := httpserver.New(dependencies{pool}, c.ProbeTimeout, gateway.NewWithFrontend(pool, c.MFAEncryptionKey, c.Location, c.FrontendDir))
 	catalog, err := rules.Default()
 	if err != nil {
 		return errors.New("default catalog unavailable")

@@ -1,10 +1,10 @@
-name: Go rewrite baseline
+name: Go server
 
 on:
   push:
-    paths: ['server-go/**', 'tools/go-rewrite/**', 'deploy/go-test/**', 'tests/go-rewrite-inventory.test.js', 'backend/server.js', 'frontend/js/data.js', 'frontend/js/net.js', 'frontend/wiki/content/content.json', '.github/workflows/go-rewrite.yml']
+    paths: ['server-go/**', 'tools/go-rewrite/**', 'deploy/go-test/**', 'tests/go-rewrite-route-coverage.test.js', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'tools/start-go.js', 'run.bat', 'package.json', '.github/workflows/go-rewrite.yml']
   pull_request:
-    paths: ['server-go/**', 'tools/go-rewrite/**', 'deploy/go-test/**', 'tests/go-rewrite-inventory.test.js', 'backend/server.js', 'frontend/js/data.js', 'frontend/js/net.js', 'frontend/wiki/content/content.json', '.github/workflows/go-rewrite.yml']
+    paths: ['server-go/**', 'tools/go-rewrite/**', 'deploy/go-test/**', 'tests/go-rewrite-route-coverage.test.js', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'tools/start-go.js', 'run.bat', 'package.json', '.github/workflows/go-rewrite.yml']
 
 permissions:
   contents: read
@@ -26,21 +26,22 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24.14.0'
-      - name: Check source inventory and legacy rule fixtures
+      - name: Check generated catalog, rule fixtures and wiki snapshot
         shell: bash
         run: |
           set -euo pipefail
-          node tools/go-rewrite/inventory.js --check
           node tools/go-rewrite/catalog.js --check
           node tools/go-rewrite/native-rules-fixture.js --check
-          node tools/go-rewrite/economy-fixture.js --check
           node tools/go-rewrite/workshop-fixture.js --check
           node tools/go-rewrite/mall-fixture.js --check
           node tools/go-rewrite/chest-fixture.js --check
-          node tools/go-rewrite/sea-fixture.js --check
-          node tools/go-rewrite/catch-fixture.js --check
           node tools/go-rewrite/wiki-content.js --check
-          node --test tests/go-rewrite-inventory.test.js 2>&1 | tail -40
+      - name: Check legacy route coverage of the Go gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/go-rewrite/route-coverage.js --check
+          node --test tests/go-rewrite-route-coverage.test.js 2>&1 | tail -40
       - name: Format, build, vet and test
         working-directory: server-go
         shell: bash
