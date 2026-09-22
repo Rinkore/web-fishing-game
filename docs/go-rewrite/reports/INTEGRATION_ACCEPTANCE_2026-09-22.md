@@ -26,7 +26,7 @@
 
 - Windows 隔离 PostgreSQL：2816 pass、0 fail、2 skip；skip 为 symlink 不可用和真实浏览器依赖缺失。完整日志：`output/go-rewrite/final-windows-20260922-final/fishing-go-test-dc144a8766/`。
 - Linux Docker PostgreSQL race：2817 pass、0 fail、1 skip；`go vet`、`go mod verify`、race 均退出 0。完整日志：`output/go-rewrite/final-linux-20260922-final/fishing-go-test-387854a77b/`。
-- migration importer/legacy scanner 定向 PostgreSQL：通过；导入失败回滚、幂等、库存不足、非法到期时间、无关闭账本挂单反例均通过。日志：`output/go-rewrite/final-migration-20260922/migration-tests.log`。
+- migration importer/legacy scanner 定向 PostgreSQL：通过；导入失败回滚、幂等、库存不足、非法到期时间、无关闭账本挂单反例均通过。日志：`output/go-rewrite/final-migration-20260922-final/migration-tests.log`。
 - Node API/SSE smoke：5 pass、0 fail、2 skip（Go A/B 环境变量和独立数据库未提供）；浏览器 A/B：36 skip，未启动真实 Chrome。日志在 `output/go-rewrite/ab/`。
 - resilience 专项此前只有 1 人、5/8 秒短测，且通知 p95 超阈值；最终候选尚未完成 100 人 2 小时、1000/5000 阶梯或精确 response-drop/commit-ack 网络注入。
 
