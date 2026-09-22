@@ -2,13 +2,13 @@
 
 本报告是 `codex/go-ab` 的框架交付和初始差异记录，不是兼容实现放行单。工作树为 `E:\AAAworktrees\web-fishing-game\go-ab`；本地分支为 `codex/go-ab`。固定共同基线来自 [PARALLEL_ACCEPTANCE.md](../PARALLEL_ACCEPTANCE.md)：玩法 `v0.21.4`，Node 对照提交 `13694a7038438ac0b3dd7df07db8c05ea239141f`，Node `24.14.0`，Go `1.27.1`，PostgreSQL `18.6`，Node/Go/PostgreSQL/浏览器时区均为 `Asia/Shanghai`。没有跟踪移动的 `main`，没有 push、部署或生产数据操作。
 
-本轮代码验收基点为本地提交链 `4e4466e -> 1469931 -> 28f87ce`；最终加入本报告和 A/B 测试文件后还需冻结一个候选 SHA，再按同一 SHA 重跑受影响套件。路由清单的 Node SHA、玩法版本和 `sharedRulesSha256` 已由生成器锁定，不因工作树后续移动而改变。
+本轮代码验收基点为本地提交链 `4e4466e -> 1469931 -> 28f87ce -> f4345f1`；候选代码 SHA 固定为 `f4345f11d3a5c48b7a77dba2774eca22e6d49a8a`。本报告的追加提交只修正报告指针，不改变候选代码；兼容实现合入后必须重新冻结 SHA 并重跑受影响套件。路由清单的 Node SHA、玩法版本和 `sharedRulesSha256` 已由生成器锁定，不因工作树后续移动而改变。
 
 ## 当前结果
 
 | 套件 | Node | Go | 退出码/口径 |
 |---|---:|---:|---|
-| 静态路由注册 | 152/152 | 152/152 | `route-coverage --ref 5906d9f`：0 缺失、0 重复、0 未解析；这不是行为通过 |
+| 静态路由注册 | 152/152 | 152/152 | `route-coverage --ref f4345f1`：0 缺失、0 重复、0 未解析；这不是行为通过 |
 | 旧协议 API 门禁及 SSE 首帧 smoke | 5 pass / 0 fail / 2 skip | 0 pass / 0 fail / 2 skip | `npm run go:ab:api` 退出 0；Go 缺 `FISHING_GO_AB_COMMAND` 与隔离 `FISHING_GO_DATABASE_URL` |
 | Node Go-rewrite 基线测试 | 7 pass / 0 fail | - | `npm run go:baseline:test` 退出 0 |
 | Go 包测试 | - | 包测试退出 0 | 使用协议指定 Go；没有 `FISHING_GO_TEST_DATABASE_URL`，真库集成不能计为通过 |
@@ -16,7 +16,7 @@
 
 Node smoke 实际注册了隔离账号、验证无认证 `/api/me` 被拒绝、验证有认证 `/api/me`，并读取 `/events` 首帧 `init`。逐路由无认证门禁覆盖 152 条路由；兼容旧协议的合法 `200/400/404` 行为按路由矩阵记录，未统一放宽为 `401/403`。浏览器 36 个 skip 和 Go 两个 skip 都不计通过。
 
-完整原始日志位于 Git 忽略目录 `output/go-rewrite/`：`ab-api-rerun.log`、`ab-browser-rerun.log`、`ab-go-test.log`、`ab-route-coverage-5906d9f.json`、`ab-sse-contract.json` 及每次夹具运行的 `ab/<run>/logs/`。报告不把旧 `tests/run-all.js` 的历史失败数当作本次基线；旧套件仍需在完成参数化前跨窗口串行。
+完整原始日志位于 Git 忽略目录 `output/go-rewrite/`：`ab-api-rerun.log`、`ab-browser-rerun.log`、`ab-go-test.log`、`ab-route-coverage-f4345f1.json`、`ab-sse-contract.json` 及每次夹具运行的 `ab/<run>/logs/`。报告不把旧 `tests/run-all.js` 的历史失败数当作本次基线；旧套件仍需在完成参数化前跨窗口串行。
 
 ## HTTP/API 矩阵
 
