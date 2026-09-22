@@ -370,6 +370,28 @@ func TestIntegrationLegacyAdminRecordsDeleteFishAndAll(t *testing.T) {
 	}
 }
 
+func TestIntegrationLegacyRecordsLastRuntimeClearsOnDelete(t *testing.T) {
+	f := newRecordAdminFixture(t)
+	now := recordTestTime()
+	f.catch(f.playerID, "crucian", 30, now)
+	if _, err := f.db.Admin.Exec(context.Background(), `INSERT INTO fishing.operator_settings(key,value) VALUES('legacy:records_runtime', $1)`, `{"lastRec":{"id":"crucian","name":"鲫鱼","size":30,"who":"后台管理员","t":1,"level":2}}`); err != nil {
+		t.Fatal(err)
+	}
+	before := f.records()
+	if before["last"] == nil {
+		t.Fatalf("records did not return durable lastRec: %v", before)
+	}
+	code, body := f.admin("POST", "/api/admin/records/delete", `{"id":"crucian"}`)
+	f.expect(code, body, 200, "")
+	if body["last"] != nil {
+		t.Fatalf("delete response retained matching lastRec: %v", body)
+	}
+	after := f.records()
+	if after["last"] != nil {
+		t.Fatalf("fresh records projection retained matching lastRec: %v", after)
+	}
+}
+
 func TestIntegrationLegacyAdminRecordsCalendarWindowAndSmallBoard(t *testing.T) {
 	f := newRecordAdminFixture(t)
 	loc := time.FixedZone("records-west", -7*60*60)
