@@ -58,8 +58,8 @@ jobs:
             echo "::group::go test failure markers"
             grep -nE -- '--- FAIL|^FAIL|^panic:|running tests:' "$log" | head -40 || true
             echo "::endgroup::"
-            echo "::group::go test log tail"
-            tail -150 "$log"
+            echo "::group::go test full failure log"
+            cat "$log"
             echo "::endgroup::"
           else
             tail -20 "$log"
@@ -78,8 +78,8 @@ jobs:
             echo "::group::go test failure markers"
             grep -nE -- '--- FAIL|^FAIL|^panic:|running tests:' "$log" | head -40 || true
             echo "::endgroup::"
-            echo "::group::go test log tail"
-            tail -150 "$log"
+            echo "::group::go test full failure log"
+            cat "$log"
             echo "::endgroup::"
           else
             tail -20 "$log"
@@ -119,8 +119,8 @@ jobs:
             echo "::group::go test failure markers"
             grep -nE -- '--- FAIL|^FAIL|^panic:|running tests:' "$log" | head -40 || true
             echo "::endgroup::"
-            echo "::group::go test log tail"
-            tail -150 "$log"
+            echo "::group::go test full failure log"
+            cat "$log"
             echo "::endgroup::"
           else
             tail -20 "$log"
