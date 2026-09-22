@@ -1,4 +1,6 @@
-# Isolated synthetic acceptance only. Named volume exercises Docker's disk path.
+# Isolated persistent acceptance. The host output bind is run-specific and is
+# used for evidence only; acceptance still writes its database to the named
+# Docker volume below, never to tmpfs.
 services:
   postgres:
     image: ${FISHING_GO_POSTGRES_IMAGE:-postgres:18.6-bookworm@sha256:3725f4e2499eef5134592b3b4ab79a543ed7f8e533b05b5b637af926630f6650}
@@ -6,6 +8,8 @@ services:
       POSTGRES_DB: fishing_acceptance
       POSTGRES_USER: fishing_test_admin
       POSTGRES_PASSWORD: local-test-only
+      TZ: ${TZ:-Asia/Shanghai}
+      PGTZ: ${PGTZ:-Asia/Shanghai}
     ports: ['127.0.0.1::5432']
     volumes: ['acceptance-data:/var/lib/postgresql']
     command: ['postgres', '-c', 'fsync=on', '-c', 'synchronous_commit=on', '-c', 'full_page_writes=on']
@@ -15,14 +19,20 @@ services:
       timeout: 3s
       retries: 30
     stop_grace_period: 10s
-  acceptance:
+  game:
     image: ${FISHING_GO_TEST_IMAGE:-golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195}
-    profiles: ['acceptance']
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      FISHING_GO_ACCEPTANCE_URL: postgres://fishing_test_admin:local-test-only@postgres:5432/fishing_acceptance?sslmode=disable
-      FISHING_GO_ACCEPTANCE_PHASE: ${FISHING_GO_ACCEPTANCE_PHASE:-run}
-      FISHING_GO_ACCEPTANCE_PLAYERS: ${FISHING_GO_ACCEPTANCE_PLAYERS:-100}
-      FISHING_GO_ACCEPTANCE_SECONDS: ${FISHING_GO_ACCEPTANCE_SECONDS:-60}
+      FISHING_GO_DATABASE_URL: postgres://fishing_test_admin:local-test-only@postgres:5432/fishing_acceptance?sslmode=disable
+      FISHING_GO_MIGRATION_DATABASE_URL: postgres://fishing_test_admin:local-test-only@postgres:5432/fishing_acceptance?sslmode=disable
+      FISHING_GO_LISTEN: 0.0.0.0:19001
+      FISHING_GO_TIMEZONE: Asia/Shanghai
+      REGISTER_GLOBAL_HOURLY: 9000
+      REGISTER_IP_HOURLY: 9000
+      TZ: ${TZ:-Asia/Shanghai}
+      PGTZ: ${PGTZ:-Asia/Shanghai}
       GOTOOLCHAIN: local
       GOPROXY: ${FISHING_GO_TEST_GOPROXY:-https://proxy.golang.org}
     volumes:
@@ -30,7 +40,45 @@ services:
       - go-cache:/go/pkg/mod
       - build-cache:/root/.cache/go-build
     working_dir: /work
+    command: ['bash', '-c', 'set -euo pipefail; cp -a /src/. /work/; go run ./cmd/migrate up; go run ./cmd/catalog defaults; exec go run ./cmd/game']
+    healthcheck:
+      test: ['CMD-SHELL', "bash -c '</dev/tcp/127.0.0.1/19001'"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  acceptance:
+    image: ${FISHING_GO_TEST_IMAGE:-golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195}
+    profiles: ['acceptance']
+    environment:
+      FISHING_GO_ACCEPTANCE_URL: postgres://fishing_test_admin:local-test-only@postgres:5432/fishing_acceptance?sslmode=disable
+      FISHING_GO_ACCEPTANCE_PHASE: ${FISHING_GO_ACCEPTANCE_PHASE:-run}
+      FISHING_GO_ACCEPTANCE_PLAYERS: ${FISHING_GO_ACCEPTANCE_PLAYERS:-100}
+      FISHING_GO_ACCEPTANCE_SECONDS: ${FISHING_GO_ACCEPTANCE_SECONDS:-7200}
+      FISHING_GO_ACCEPTANCE_RUN_ID: ${FISHING_GO_ACCEPTANCE_RUN_ID:-unbound}
+      FISHING_GO_ACCEPTANCE_OUTPUT_DIR: ${FISHING_GO_ACCEPTANCE_OUTPUT_DIR:-/evidence}
+      FISHING_GO_ACCEPTANCE_REPORT: ${FISHING_GO_ACCEPTANCE_REPORT:-/evidence/acceptance-run.json}
+      FISHING_GO_ACCEPTANCE_CANDIDATE_SHA: ${FISHING_GO_ACCEPTANCE_CANDIDATE_SHA:-}
+      FISHING_GO_ACCEPTANCE_FAULT_MODE: ${FISHING_GO_ACCEPTANCE_FAULT_MODE:-none}
+      FISHING_GO_ACCEPTANCE_FAULT_AT_SECONDS: ${FISHING_GO_ACCEPTANCE_FAULT_AT_SECONDS:-0}
+      FISHING_GO_ACCEPTANCE_BASE_URL: ${FISHING_GO_ACCEPTANCE_BASE_URL:-http://game:19001}
+      FISHING_GO_ACCEPTANCE_SERVER_BASE_URL: ${FISHING_GO_ACCEPTANCE_SERVER_BASE_URL:-http://game:19001}
+      FISHING_GO_ACCEPTANCE_SAMPLE_INTERVAL_SECONDS: ${FISHING_GO_ACCEPTANCE_SAMPLE_INTERVAL_SECONDS:-5}
+      FISHING_GO_ACCEPTANCE_LOAD_COMPLETE_FILE: ${FISHING_GO_ACCEPTANCE_LOAD_COMPLETE_FILE:-}
+      FISHING_GO_ACCEPTANCE_QUIESCE_FILE: ${FISHING_GO_ACCEPTANCE_QUIESCE_FILE:-}
+      TZ: ${TZ:-Asia/Shanghai}
+      PGTZ: ${PGTZ:-Asia/Shanghai}
+      GOTOOLCHAIN: local
+      GOPROXY: ${FISHING_GO_TEST_GOPROXY:-https://proxy.golang.org}
+    volumes:
+      - ../../server-go:/src:ro
+      - ${FISHING_GO_ACCEPTANCE_OUTPUT_ROOT:-./output/go-rewrite/resilience}:/evidence
+      - go-cache:/go/pkg/mod
+      - build-cache:/root/.cache/go-build
+    working_dir: /work
     command: ['bash', '-c', 'set -euo pipefail; cp -a /src/. /work/; go run ./cmd/acceptance']
+    depends_on:
+      game:
+        condition: service_healthy
 volumes:
   acceptance-data:
   go-cache:
