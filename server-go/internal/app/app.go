@@ -29,7 +29,10 @@ func (d dependencies) Ping(ctx context.Context) error {
 	if err := d.pool.Ping(ctx); err != nil {
 		return err
 	}
-	return migrations.Check(ctx, d.pool)
+	if err := migrations.Check(ctx, d.pool); err != nil {
+		return err
+	}
+	return checkCatalogDefinitions(ctx, d.pool)
 }
 
 func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
@@ -43,7 +46,7 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
-	err = migrations.Check(startup, pool)
+	err = (dependencies{pool}).Ping(startup)
 	cancel()
 	if err != nil {
 		return err
