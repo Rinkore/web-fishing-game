@@ -55,6 +55,46 @@ func socialFrames(t *testing.T, frames []string) map[string]map[string]any {
 	return out
 }
 
+func TestIntegrationCatchPushAfterRecordModeration(t *testing.T) {
+	f := newLegacyTradeFixture(t)
+	f.seed()
+	f.expectPost("/api/fishing/start", `{"groundId":"map","spotId":"dock"}`, "trade_a", 200, "")
+	c, err := rules.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &legacyCatchPush{api: &API{pool: f.db.App}, owner: f.id["trade_a"], catalog: c}
+	p.init(f.ctx)
+	if !p.seeded {
+		t.Fatal("cursor initialization failed")
+	}
+	old := stageSocialCatches(t, f, "trade_b", "moderated-record", "map", 1, 500)
+	if err := old.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Admin.Exec(f.ctx, `INSERT INTO fishing.catch_record_hides(operation_id,ordinal,item_id,board_range,board_kind,actor_id)
+ SELECT operation_id,ordinal,item_id,'record','big',$1 FROM fishing.catch_records WHERE size=501`, f.id["trade_a"]); err != nil {
+		t.Fatal(err)
+	}
+	current := stageSocialCatches(t, f, "trade_b", "new-visible-record", "map", 1, 40)
+	if err := current.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	frames := socialFrames(t, p.poll(f.ctx))
+	global := frames["globalRecord"]
+	if global == nil || global["record"].(map[string]any)["size"] != float64(41) {
+		t.Fatalf("hidden historical maximum suppressed the new visible record: %v", frames)
+	}
+	feed := frames["feedBatch"]
+	if feed == nil {
+		t.Fatal("record moderation suppressed catch history")
+	}
+	list := feed["list"].([]any)
+	if len(list) != 2 || list[0].(map[string]any)["size"] != float64(501) || list[1].(map[string]any)["size"] != float64(41) || frames["recordsDirty"] == nil {
+		t.Fatalf("moderation changed catch feed or invalidation: %v", frames)
+	}
+}
+
 func TestIntegrationCatchPushCommitOrderPagingAndScope(t *testing.T) {
 	f := newLegacyTradeFixture(t)
 	f.seed()
