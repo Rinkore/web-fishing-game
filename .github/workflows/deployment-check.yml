@@ -1,0 +1,41 @@
+name: Check Linux deployment setup
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: linux-go
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Verify runner SSH, restricted sudo and current application health
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ "$SSH_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ && "$SSH_USER" == fishing-deploy ]] || { echo 'Invalid SSH target'; exit 1; }
+          port="${SSH_PORT:-22}"
+          [[ "$port" =~ ^[0-9]{1,5}$ ]] && ((10#$port > 0 && 10#$port <= 65535)) || { echo 'Invalid SSH port'; exit 1; }
+          test -n "$SSH_KEY" && test -n "$SSH_KNOWN_HOSTS"
+          install -d -m 700 "$RUNNER_TEMP/release-ssh"
+          printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/release-ssh/key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/release-ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/release-ssh/key" -p "$port" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/release-ssh/known_hosts" \
+            -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" \
+            'sudo -n /usr/local/sbin/fishing-release-deploy --check'
+      - name: Remove temporary SSH identity
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts"

@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"sort"
 	"strconv"
@@ -435,18 +434,12 @@ func joinStrings(items []string, sep string) string {
 }
 
 func (a *API) legacyVersion(w http.ResponseWriter, r *http.Request) {
-	c, err := a.catalog(r.Context())
+	release, err := applicationVersion()
 	if err != nil {
 		failure(w, err)
 		return
 	}
-	var version, build string
-	if err := json.Unmarshal(c.Constants["VERSION"], &version); err != nil {
-		failure(w, identity.ErrStorage)
-		return
-	}
-	_ = json.Unmarshal(c.Constants["BUILD"], &build)
-	write(w, 200, map[string]any{"version": version, "build": build})
+	write(w, 200, map[string]any{"version": release.Version, "build": release.Build})
 }
 
 // legacyGrounds serves the published map with flattened, boosted loot pools.

@@ -152,10 +152,13 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 	if !send("retry: 3000\n\n") {
 		return
 	}
-	var version string
+	release, err := applicationVersion()
+	if err != nil {
+		return
+	}
 	defer func() {
 		if httpserver.IsDraining(r.Context()) {
-			_ = send(legacyFrame(map[string]any{"type": "maintenance", "version": version}))
+			_ = send(legacyFrame(map[string]any{"type": "maintenance", "version": release.Version}))
 		}
 	}()
 
@@ -163,8 +166,6 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(c.Constants["VERSION"], &version)
-
 	// Seed cursors before sending init. The personal assets frame and its cursor
 	// come from one snapshot, so a commit racing the send remains pending.
 	init := a.legacyInit(r, c, session, open.Generation)
@@ -265,8 +266,7 @@ func (a *API) legacyInit(r *http.Request, c *rules.Catalog, session identity.Ses
 	if v, ok := profile["catchCount"].(int64); ok {
 		catchCount = v
 	}
-	var version string
-	_ = json.Unmarshal(c.Constants["VERSION"], &version)
+	release, _ := applicationVersion() // Already validated by legacyEvents.
 	playersTotal := a.onlinePlayers(r.Context())
 	grounds := a.groundCounts(r.Context())
 	spotCounts := a.spotCounts(r.Context())
@@ -287,7 +287,7 @@ func (a *API) legacyInit(r *http.Request, c *rules.Catalog, session identity.Ses
 		"codex":          codex,
 		"catchCount":     catchCount,
 		"bigfish":        profile["bigfish"],
-		"version":        version,
+		"version":        release.Version,
 	}
 	status, err := fishing.NewLiveNative(a.pool, a.location).Status(r.Context(), session.AccountID)
 	if err == nil && status["active"] == true {

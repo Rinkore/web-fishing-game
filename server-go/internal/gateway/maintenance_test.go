@@ -12,11 +12,39 @@ import (
 	"testing"
 	"time"
 
+	"fishing.local/server/internal/modules/catalog"
 	"fishing.local/server/internal/platform/httpserver"
+	"fishing.local/server/internal/rules"
 )
 
 func TestIntegrationMaintenanceDrainsBothProtocols(t *testing.T) {
 	f := newAdminFixture(t)
+	c, err := rules.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expectedVersion, expectedBuild string
+	if err := c.Constant("VERSION", &expectedVersion); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Constant("BUILD", &expectedBuild); err != nil {
+		t.Fatal(err)
+	}
+	// A normal application upgrade preserves the operator's published rules,
+	// including their older metadata. HTTP and SSE must still identify the
+	// installed application so clients reload and deployment probes can pass.
+	c.Version = "v0.0.1"
+	c.Constants["VERSION"] = json.RawMessage(`"v0.0.1"`)
+	c.Constants["BUILD"] = json.RawMessage(`"1970-01-01"`)
+	if c.Runtime == nil {
+		c.Runtime = map[string]any{}
+	}
+	c.Runtime["autoSellBatch"] = float64(7)
+	revision := publishLegacyCatalog(t, f, c, 0, "old-gameplay-release")
+	code, body := f.call("GET", "/api/version", "", "")
+	if code != 200 || body["version"] != expectedVersion || body["build"] != expectedBuild {
+		t.Fatalf("application version follows old gameplay catalog: %d %v", code, body)
+	}
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -89,12 +117,15 @@ func TestIntegrationMaintenanceDrainsBothProtocols(t *testing.T) {
 			}
 			n := 0
 			for _, frame := range out.frames {
+				if out.path == "/events" && frame["type"] == "init" && frame["version"] != expectedVersion {
+					t.Fatalf("init version follows old gameplay catalog: %v", frame)
+				}
 				if frame["type"] == "kicked" {
 					t.Fatal("shutdown reported credential revocation")
 				}
 				if frame["type"] == "maintenance" {
 					n++
-					if out.path == "/events" && frame["version"] != "v0.21.4" {
+					if out.path == "/events" && frame["version"] != expectedVersion {
 						t.Fatalf("maintenance version: %v", frame)
 					}
 				}
@@ -117,5 +148,12 @@ func TestIntegrationMaintenanceDrainsBothProtocols(t *testing.T) {
 	var live int
 	if err := f.db.Admin.QueryRow(context.Background(), `SELECT count(*) FROM fishing.gateway_streams WHERE owner_id=$1 AND expires_at>clock_timestamp()`, f.playerID).Scan(&live); err != nil || live != 0 {
 		t.Fatalf("shutdown leaked stream lease: %d %v", live, err)
+	}
+	stored, actualRevision, err := catalog.Current(context.Background(), f.db.App)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actualRevision != revision || stored.Version != "v0.0.1" || string(stored.Constants["VERSION"]) != `"v0.0.1"` || stored.Runtime["autoSellBatch"] != float64(7) {
+		t.Fatalf("version reporting changed the operator catalog: revision=%d version=%s runtime=%v", actualRevision, stored.Version, stored.Runtime)
 	}
 }

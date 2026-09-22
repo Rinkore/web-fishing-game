@@ -1,10 +1,17 @@
 name: Go server
 
 on:
+  workflow_call:
+    inputs:
+      source-ref:
+        description: Exact source commit to validate for a release
+        required: false
+        type: string
+        default: ''
   push:
-    paths: ['server-go/**', 'tools/go-rewrite/**', 'deploy/go-test/**', 'tests/go-rewrite-route-coverage.test.js', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'tools/start-go.js', 'run.bat', 'package.json', '.github/workflows/go-rewrite.yml']
+    paths: ['server-go/**', 'tools/go-rewrite/**', 'tools/release/**', 'deploy/go-test/**', 'deploy/linux/**', 'tests/go-rewrite-route-coverage.test.js', 'tests/linux-deploy.test.py', 'tests/release-*.test.*', 'dist/release.ps1', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'tools/start-go.js', 'run.bat', 'package.json', '.github/workflows/**']
   pull_request:
-    paths: ['server-go/**', 'tools/go-rewrite/**', 'deploy/go-test/**', 'tests/go-rewrite-route-coverage.test.js', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'tools/start-go.js', 'run.bat', 'package.json', '.github/workflows/go-rewrite.yml']
+    paths: ['server-go/**', 'tools/go-rewrite/**', 'tools/release/**', 'deploy/go-test/**', 'deploy/linux/**', 'tests/go-rewrite-route-coverage.test.js', 'tests/linux-deploy.test.py', 'tests/release-*.test.*', 'dist/release.ps1', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'tools/start-go.js', 'run.bat', 'package.json', '.github/workflows/**']
 
 permissions:
   contents: read
@@ -19,6 +26,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.source-ref || github.sha }}
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: server-go/go.mod
@@ -42,6 +50,21 @@ jobs:
           set -euo pipefail
           node tools/go-rewrite/route-coverage.js --check
           node --test tests/go-rewrite-route-coverage.test.js 2>&1 | tail -40
+      - name: Check Linux release tooling and deployment failure handling
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/release/build-linux.sh deploy/linux/install.sh deploy/linux/deploy.sh
+          node --check tools/release/migration-hash.js
+          node tools/release/migration-hash.js
+          python3 tests/linux-deploy.test.py 2>&1 | tail -40
+          node --test tests/release-start.test.js 2>&1 | tail -40
+      - name: Check release publisher without network writes
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File tests/release-publish.test.ps1 | Select-Object -Last 40
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Format, build, vet and test
         working-directory: server-go
         shell: bash
@@ -102,6 +125,8 @@ jobs:
           --health-interval 1s --health-timeout 3s --health-retries 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source-ref || github.sha }}
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: server-go/go.mod
@@ -109,7 +134,7 @@ jobs:
       - name: Real PostgreSQL transactions and race detection
         working-directory: server-go
         env:
-          FISHING_GO_TEST_DATABASE_URL: postgres://fishing_test_admin:local-test-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/fishing_test?sslmode=disable
+          FISHING_GO_TEST_DATABASE_URL: postgres://fishing_test_admin:local-test-only@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/fishing_test?sslmode=disable
         run: |
           set -euo pipefail
           log="$(mktemp)"
