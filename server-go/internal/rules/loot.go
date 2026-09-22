@@ -29,7 +29,7 @@ func (c *Catalog) DefaultLootConfig() LootConfig {
 		p = common / total
 	}
 	m, _ := c.Runtime["drop"].(map[string]any)
-	return LootConfig{configNumber(m, "global", 100, 0, 10000), configNumber(m, "common", 100, 0, 10000), configNumber(m, "big", 100, 0, 10000), configNumber(m, "rare", 100, 0, 10000), configNumber(m, "material", 100, 0, 10000), configNumber(c.Runtime, "rareK", 2, 0, 1000), p}
+	return LootConfig{configNumber(m, "global", 100, 0, 10000), configNumber(m, "common", 100, 0, 10000), configNumber(m, "big", 100, 0, 10000), configNumber(m, "rare", 100, 0, 10000), configNumber(m, "material", 100, 0, 10000), configNumber(c.Runtime, "rareK", 2, 0, 100000), p}
 }
 func (c *Catalog) LootGroups() map[string][]LootEntry {
 	groups := map[string][]LootEntry{}

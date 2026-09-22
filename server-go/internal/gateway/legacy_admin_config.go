@@ -416,8 +416,8 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 		var cfg struct {
 			Batch int `json:"batch"`
 		}
-		if json.Unmarshal(raw, &cfg) != nil || cfg.Batch < 1 || cfg.Batch > 1000 {
-			legacyTradeError(w, 400, "自动售出打包阈值需在 1 - 1000 之间")
+		if json.Unmarshal(raw, &cfg) != nil || cfg.Batch < 1 || cfg.Batch > 10000 {
+			legacyTradeError(w, 400, "自动售出打包阈值需在 1 - 10000 之间")
 			return
 		}
 	}
@@ -425,9 +425,13 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 		legacyTradeError(w, 400, "宝匣配置格式错误")
 		return
 	}
-	for key, bounds := range map[string][2]float64{"rareK": {0, 1000}, "doubleBase": {0, 1}} {
+	for key, bounds := range map[string][2]float64{"rareK": {0, 100000}, "doubleBase": {0, 1}} {
 		if raw, exists := in[key]; exists {
-			if _, valid := legacyNumber(raw, bounds[0], bounds[1]); !valid {
+			value, valid := legacyNumber(raw, bounds[0], bounds[1])
+			if key == "rareK" && value <= 0 {
+				valid = false
+			}
+			if !valid {
 				legacyTradeError(w, 400, key+" 配置数值无效")
 				return
 			}

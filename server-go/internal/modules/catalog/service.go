@@ -96,7 +96,7 @@ func applyOperatorSettings(c *rules.Catalog, values map[string]json.RawMessage) 
 	if v, ok := settings["dropCfg"].(map[string]any); ok {
 		c.Runtime["drop"] = v
 	}
-	if n, ok := settings["rareK"].(float64); ok && finiteCatalogNumber(n) && n >= 0 && n <= 1000 {
+	if n, ok := settings["rareK"].(float64); ok && finiteCatalogNumber(n) && n > 0 && n <= 100000 {
 		c.Runtime["rareK"] = n
 	}
 	if n, ok := settings["doubleBase"].(float64); ok && finiteCatalogNumber(n) && n >= 0 && n <= 1 {
