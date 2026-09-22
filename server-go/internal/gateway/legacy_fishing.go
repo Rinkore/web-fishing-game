@@ -119,6 +119,10 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
+	if open.Status != "connected" {
+		write(w, http.StatusConflict, map[string]any{"error": open.Status, "code": open.Status})
+		return
+	}
 	defer func() {
 		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -197,10 +201,13 @@ func (a *API) legacyEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-presence.C:
 			leaseCtx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-			if _, err := svc.Stream(leaseCtx, session.AccountID, "legacy:stream:"+streamID+":hb:"+randomStreamID(), streamID, "heartbeat"); err != nil {
+			lease, err := svc.Stream(leaseCtx, session.AccountID, "legacy:stream:"+streamID+":hb:"+randomStreamID(), streamID, "heartbeat")
+			if err != nil || lease.Status != "connected" {
 				// A vanished stream row (restored database, expired lease) is
 				// re-opened so presence and any paused session resume.
-				if _, reopen := svc.Stream(leaseCtx, session.AccountID, "legacy:stream:"+streamID+":hb:"+randomStreamID(), streamID, "open"); reopen != nil {
+				// Business rejections are returned as Status with a nil error.
+				reopened, reopenErr := svc.Stream(leaseCtx, session.AccountID, "legacy:stream:"+streamID+":hb:"+randomStreamID(), streamID, "open")
+				if reopenErr != nil || reopened.Status != "connected" {
 					return
 				}
 			}

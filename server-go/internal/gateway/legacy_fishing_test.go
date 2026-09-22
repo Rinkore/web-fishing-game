@@ -6,16 +6,125 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"fishing.local/server/internal/modules/assets"
+	"fishing.local/server/internal/modules/fishing"
 	"fishing.local/server/internal/modules/identity"
 	"fishing.local/server/internal/modules/workshop"
 	"fishing.local/server/internal/rules"
 	"fishing.local/server/internal/testdb"
 )
+
+func TestIntegrationLegacyEventsRejectsUnestablishedLease(t *testing.T) {
+	f := newLegacyTradeFixture(t)
+	for i := range 8 {
+		streamID := strings.Repeat("0", 31) + strconv.Itoa(i)
+		if _, err := f.db.Admin.Exec(f.ctx, `INSERT INTO fishing.gateway_streams(owner_id,stream_id,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 minute')`, f.id["trade_a"], streamID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code, body := f.do("GET", "/events", "", f.token["trade_a"])
+	f.expect(code, body, http.StatusConflict, "stream_limit")
+}
+
+func TestIntegrationLegacyFishingHeartbeatRestoresLease(t *testing.T) {
+	for _, disruption := range []string{"missing", "expired"} {
+		t.Run(disruption, func(t *testing.T) {
+			f := newLegacyTradeFixture(t)
+			c, err := rules.Default()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := workshop.SeedDefinitions(f.ctx, f.db.Admin, c); err != nil {
+				t.Fatal(err)
+			}
+			// Keep settlement deterministic while exercising the real asset and
+			// SSE paths after the gateway restores the original connection.
+			grounds := c.Grounds()
+			grounds[0].Spots[0].BiteRate = 100
+			grounds[0].Spots[0].Pool = []rules.LootEntry{{Pick: "fish:crucian", Weight: 1}}
+			c.Constants["GROUNDS"], _ = json.Marshal(grounds)
+			svc := fishing.NewNative(f.db.App, c)
+			owner := f.id["trade_a"]
+			stream := openLegacyTradeStream(t, f, "trade_a")
+			defer stream.cancel()
+			stream.wait(t, "init", 3*time.Second)
+			f.expectPost("/api/fishing/start", `{"groundId":"map","spotId":"dock"}`, "trade_a", 200, "")
+
+			var streamID string
+			if err := f.db.Admin.QueryRow(f.ctx, `SELECT stream_id FROM fishing.gateway_streams WHERE owner_id=$1`, owner).Scan(&streamID); err != nil {
+				t.Fatal(err)
+			}
+			if disruption == "missing" {
+				_, err = f.db.Admin.Exec(f.ctx, `DELETE FROM fishing.gateway_streams WHERE owner_id=$1`, owner)
+			} else {
+				_, err = f.db.Admin.Exec(f.ctx, `UPDATE fishing.gateway_streams SET expires_at=clock_timestamp()-interval '1 second' WHERE owner_id=$1`, owner)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.db.Admin.Exec(f.ctx, `UPDATE fishing.fishing_connections SET expires_at=clock_timestamp()-interval '1 second' WHERE owner_id=$1`, owner); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.db.Admin.Exec(f.ctx, `UPDATE fishing.native_fishing_sessions SET due_at=clock_timestamp()-interval '1 second' WHERE owner_id=$1`, owner); err != nil {
+				t.Fatal(err)
+			}
+			if _, batch, err := svc.Sweep(f.ctx, fishing.Cursor{}, 100, 1); err != nil || batch.Failed != 0 {
+				t.Fatalf("pause offline fishing: %+v %v", batch, err)
+			}
+			status, err := svc.Status(f.ctx, owner)
+			if err != nil || status["state"] != "paused" {
+				t.Fatalf("expired connection did not pause fishing: %v %v", status, err)
+			}
+
+			// The browser keeps this SSE connection open. Its next ten-second
+			// heartbeat must reopen a missing/expired lease and resume fishing.
+			deadline := time.NewTimer(12 * time.Second)
+			defer deadline.Stop()
+			poll := time.NewTicker(50 * time.Millisecond)
+			defer poll.Stop()
+			for {
+				var restored bool
+				err := f.db.Admin.QueryRow(f.ctx, `SELECT EXISTS(
+ SELECT 1 FROM fishing.gateway_streams g
+ JOIN fishing.fishing_connections c USING(owner_id)
+ JOIN fishing.native_fishing_sessions n USING(owner_id)
+ WHERE g.owner_id=$1 AND g.stream_id=$2 AND g.expires_at>clock_timestamp()
+ AND c.expires_at>clock_timestamp() AND n.state='active')`, owner, streamID).Scan(&restored)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if restored {
+					break
+				}
+				select {
+				case <-deadline.C:
+					t.Fatal("SSE heartbeat did not restore the lease and resume fishing")
+				case <-poll.C:
+				}
+			}
+			if _, err := f.db.Admin.Exec(f.ctx, `UPDATE fishing.native_fishing_sessions SET due_at=clock_timestamp()-interval '1 second' WHERE owner_id=$1`, owner); err != nil {
+				t.Fatal(err)
+			}
+			if _, batch, err := svc.Sweep(f.ctx, fishing.Cursor{}, 100, 1); err != nil || batch.Settled != 1 || batch.Failed != 0 {
+				t.Fatalf("settle after lease recovery: %+v %v", batch, err)
+			}
+			caught := stream.wait(t, "catch", 3*time.Second)
+			entry := caught["entry"].(map[string]any)
+			if entry["item"].(map[string]any)["id"] != "crucian" {
+				t.Fatalf("recovered catch: %v", entry)
+			}
+			var count int64
+			if err := f.db.Admin.QueryRow(f.ctx, `SELECT catch_count FROM fishing.player_state WHERE account_id=$1`, owner).Scan(&count); err != nil || count < 1 {
+				t.Fatalf("recovered catch was not awarded: count=%d err=%v", count, err)
+			}
+		})
+	}
+}
 
 func TestIntegrationLegacyFishingLifecycle(t *testing.T) {
 	db := testdb.New(t, true)
