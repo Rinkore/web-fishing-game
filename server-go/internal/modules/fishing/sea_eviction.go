@@ -23,7 +23,7 @@ func zoneEvictionKey(key string) bool { return strings.HasPrefix(key, "fishing:z
 
 func (s *NativeService) EvictZoneGuest(ctx context.Context, c Candidate) (assets.Result, error) {
 	if s.catalog == nil {
-		current, _, err := catalog.Current(ctx, s.pool)
+		current, _, err := catalog.Effective(ctx, s.pool)
 		if err != nil {
 			return assets.Result{}, err
 		}

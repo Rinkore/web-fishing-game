@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -284,16 +285,97 @@ func (a *API) legacyInit(r *http.Request, c *rules.Catalog, session identity.Ses
 	status, err := fishing.NewLiveNative(a.pool, a.location).Status(r.Context(), session.AccountID)
 	if err == nil && status["active"] == true {
 		ground, _ := status["groundId"].(string)
-		if rewritten, ok := a.legacySeaGround(r.Context(), ground); ok {
-			status["groundId"] = rewritten
-		}
-		init["resumedFishing"] = map[string]any{
-			"groundId": status["groundId"],
-			"spotId":   status["spotId"],
+		spot, _ := status["spotId"].(string)
+		// The legacy client uses the reconnect snapshot to restore both the
+		// selected spot and the exact cast display.  Returning a zero interval
+		// leaves a resumed session looking idle until the next manual start,
+		// while the server is already settling it with the real loadout.
+		resume := map[string]any{
+			"groundId": ground,
+			"spotId":   spot,
 			"interval": 0,
 		}
+		if info, ok := a.legacyResumeCastInfo(r.Context(), c, session.AccountID, ground, spot); ok {
+			resume["interval"] = info.Interval
+			resume["castInfo"] = info
+		}
+		if rewritten, ok := a.legacySeaGround(r.Context(), ground); ok {
+			resume["groundId"] = rewritten
+		}
+		init["resumedFishing"] = resume
 	}
 	return init
+}
+
+// legacyResumeCastInfo is a read-only projection of the active loadout used by
+// the reconnect init frame.  Start/settle remain authoritative for gameplay;
+// this helper only reconstructs the same display values the legacy client
+// receives from /api/fishing/start.  Sea spots are durable JSON rows rather
+// than catalog entries, so resolve their spot buffs from the live zone first.
+func (a *API) legacyResumeCastInfo(ctx context.Context, c *rules.Catalog, owner int64, ground, spot string) (rules.CastInfo, bool) {
+	var target rules.FishingSpot
+	if strings.HasPrefix(ground, "sea:") {
+		parts := strings.SplitN(strings.TrimPrefix(ground, "sea:"), ":", 2)
+		if len(parts) != 2 {
+			return rules.CastInfo{}, false
+		}
+		zoneOwner, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil || zoneOwner <= 0 {
+			return rules.CastInfo{}, false
+		}
+		var raw []byte
+		if err := a.pool.QueryRow(ctx, `SELECT data FROM fishing.sea_zones WHERE owner_id=$1 AND id=$2 AND expires_at>clock_timestamp()`, zoneOwner, parts[1]).Scan(&raw); err != nil {
+			return rules.CastInfo{}, false
+		}
+		var zone rules.SeaZone
+		if json.Unmarshal(raw, &zone) != nil {
+			return rules.CastInfo{}, false
+		}
+		for _, value := range zone.Spots {
+			if value.ID != spot {
+				continue
+			}
+			target = rules.FishingSpot{ID: value.ID, Name: value.Name, Map: "voyage", MinShip: 1, Pool: value.Pool}
+			for _, buff := range value.Buffs {
+				target.Buffs = append(target.Buffs, rules.Buff{Type: buff.Type, Value: buff.Value})
+			}
+			break
+		}
+		if target.ID == "" {
+			return rules.CastInfo{}, false
+		}
+	} else {
+		_, value, ok := c.FishingSpot(ground, spot)
+		if !ok {
+			return rules.CastInfo{}, false
+		}
+		target = value
+	}
+	rows, err := a.pool.Query(ctx, `SELECT c.part,e.attributes->>'signature'
+ FROM fishing.rod_loadouts r
+ JOIN fishing.rod_components c USING(owner_id,slot)
+ JOIN fishing.equipment_instances e ON e.id=c.equipment_id
+ WHERE r.owner_id=$1 AND r.active ORDER BY c.part`, owner)
+	if err != nil {
+		return rules.CastInfo{}, false
+	}
+	defer rows.Close()
+	bd := map[string]struct {
+		CompID string `json:"compId"`
+	}{}
+	for rows.Next() {
+		var part, signature string
+		if err := rows.Scan(&part, &signature); err != nil {
+			return rules.CastInfo{}, false
+		}
+		bd[part] = struct {
+			CompID string `json:"compId"`
+		}{CompID: signature}
+	}
+	if rows.Err() != nil {
+		return rules.CastInfo{}, false
+	}
+	return c.CastRules(nil).Info(c.RodEffects(bd), target.Spot), true
 }
 
 func (a *API) onlinePlayers(ctx context.Context) int64 {

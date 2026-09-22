@@ -4,10 +4,31 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"fishing.local/server/internal/rules"
 	"github.com/jackc/pgx/v5"
 )
+
+func TestLegacyDailyRankRequiresFullBoardForAnnouncement(t *testing.T) {
+	board := map[int64]legacyBoardValue{}
+	for owner := int64(1); owner <= 10; owner++ {
+		_, changed := legacyDailyRank(board, legacyBoardValue{owner: owner, key: legacyCatchKey{owner, 1}, sz: float64(owner), at: time.Unix(owner, 0)}, false)
+		if !changed {
+			t.Fatalf("initial owner %d did not enter board", owner)
+		}
+	}
+	if len(board) != 10 {
+		t.Fatalf("board length = %d", len(board))
+	}
+	rank, changed := legacyDailyRank(board, legacyBoardValue{owner: 11, key: legacyCatchKey{11, 1}, sz: 11, at: time.Unix(11, 0)}, false)
+	if !changed || rank != 1 {
+		t.Fatalf("full-board replacement = rank %d changed %v", rank, changed)
+	}
+	if _, changed = legacyDailyRank(board, legacyBoardValue{owner: 12, key: legacyCatchKey{12, 1}, sz: 0, at: time.Unix(12, 0)}, true); !changed {
+		t.Fatal("small board replacement was not detected")
+	}
+}
 
 // Stage the same atomic ledger/event boundary as a real catch, with explicit
 // commit control to exercise operations that finish in reverse ID order.

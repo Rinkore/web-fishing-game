@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"fishing.local/server/internal/modules/operations"
 	"fishing.local/server/internal/rules"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Legacy read-only records/banner/features projections. Records are derived
@@ -53,12 +55,28 @@ func (a *API) legacyRecords(w http.ResponseWriter, r *http.Request) {
 
 type legacyRecordQueryer interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func legacyLastRecord(ctx context.Context, q legacyRecordQueryer) any {
+	var raw []byte
+	if err := q.QueryRow(ctx, `SELECT value FROM fishing.operator_settings WHERE key=$1`, legacyRecordsRuntime).Scan(&raw); err != nil {
+		return nil
+	}
+	var state struct {
+		LastRec any `json:"lastRec"`
+	}
+	if json.Unmarshal(raw, &state) != nil {
+		return nil
+	}
+	return state.LastRec
 }
 
 func (a *API) legacyRecordsProjection(ctx context.Context, q legacyRecordQueryer, c *rules.Catalog) (map[string]any, error) {
 	big := map[string]legacyRecordEntry{}
 	small := map[string]legacyRecordEntry{}
-	rows, err := q.Query(ctx, `SELECT cr.item_id,cr.size,cr.caught_at,i.display_name,cr.owner_id,
+	rows, err := q.Query(ctx, `SELECT cr.item_id,cr.size,cr.caught_at,i.display_name,cr.owner_id,cr.operation_id,cr.ordinal,
  NOT EXISTS (SELECT 1 FROM fishing.catch_record_hides h WHERE h.operation_id=cr.operation_id AND h.ordinal=cr.ordinal AND h.board_range='record' AND h.board_kind='big') AS big_visible,
  NOT EXISTS (SELECT 1 FROM fishing.catch_record_hides h WHERE h.operation_id=cr.operation_id AND h.ordinal=cr.ordinal AND h.board_range='record' AND h.board_kind='small') AS small_visible
  FROM fishing.catch_records cr JOIN fishing.identities i ON i.account_id=cr.owner_id ORDER BY cr.caught_at,cr.operation_id,cr.ordinal`)
@@ -71,7 +89,8 @@ func (a *API) legacyRecordsProjection(ctx context.Context, q legacyRecordQueryer
 		var caughtAt time.Time
 		var owner int64
 		var bigVisible, smallVisible bool
-		if err := rows.Scan(&id, &size, &caughtAt, &who, &owner, &bigVisible, &smallVisible); err != nil {
+		var operationID, ordinal int64
+		if err := rows.Scan(&id, &size, &caughtAt, &who, &owner, &operationID, &ordinal, &bigVisible, &smallVisible); err != nil {
 			rows.Close()
 			return nil, identity.ErrStorage
 		}
@@ -110,7 +129,7 @@ func (a *API) legacyRecordsProjection(ctx context.Context, q legacyRecordQueryer
 		"records":   big,
 		"small":     small,
 		"globalMax": globalMax,
-		"last":      nil,
+		"last":      legacyLastRecord(ctx, q),
 		"rankLabel": map[string]string{"day": rankLabelOf("day", a.location, now), "week": rankLabelOf("week", a.location, now), "all": "总榜 · 历史前十"},
 	}
 	if value, ok := stored[legacyRecordsSetting]; ok {

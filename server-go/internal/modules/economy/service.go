@@ -56,9 +56,9 @@ func (s *Service) price(id string, st rules.SaleState, now int64) float64 {
 	if st.LastMS == 0 {
 		return it.Price
 	}
-	return rules.Price(it.Price, &st, rules.PriceOverride{}, now, rules.DefaultPriceDynamics())
+	return rules.Price(it.Price, &st, rules.PriceOverride{}, now, s.catalog.PriceDynamicsFor(id))
 }
-func applyParts(ctx context.Context, t *assets.Transaction, owner int64, parts []rules.SalePart, states map[string]rules.SaleState, now int64, automatic bool) (assets.Result, error) {
+func applyParts(ctx context.Context, t *assets.Transaction, owner int64, parts []rules.SalePart, states map[string]rules.SaleState, now int64, automatic bool, c *rules.Catalog) (assets.Result, error) {
 	gain := int64(0)
 	deltas := []assets.StackDelta{}
 	for _, p := range parts {
@@ -75,7 +75,7 @@ func applyParts(ctx context.Context, t *assets.Transaction, owner int64, parts [
 		return assets.Result{}, err
 	}
 	for _, p := range parts {
-		st := rules.RegisterSale(states[p.ID], p.Quantity, now, rules.DefaultPriceDynamics())
+		st := rules.RegisterSale(states[p.ID], p.Quantity, now, c.PriceDynamicsFor(p.ID))
 		states[p.ID] = st
 		if st.SoldTotal < 0 || st.SoldTotal > assets.MaxCoins || st.SoldToday < 0 || st.SoldToday > assets.MaxCoins {
 			return assets.Result{}, assets.Rejection("sales_overflow")
@@ -128,7 +128,7 @@ func (s *Service) Sell(ctx context.Context, r Sell) (assets.Result, error) {
 		unit := s.price(r.ItemID, states[r.ItemID], now)
 		factor := map[string]float64{"normal": 0, "large": .5, "giant": 1.5}[r.Tier]
 		bonus := rules.Round(unit * float64(r.Quantity) * factor)
-		return applyParts(ctx, t, r.ActorID, []rules.SalePart{{ID: r.ItemID, Tier: r.Tier, Quantity: r.Quantity, Unit: unit, Bonus: bonus, Gain: unit*float64(r.Quantity) + bonus}}, states, now, false)
+		return applyParts(ctx, t, r.ActorID, []rules.SalePart{{ID: r.ItemID, Tier: r.Tier, Quantity: r.Quantity, Unit: unit, Bonus: bonus, Gain: unit*float64(r.Quantity) + bonus}}, states, now, false, s.catalog)
 	})
 }
 
@@ -219,10 +219,14 @@ func (s *Service) autoSell(ctx context.Context, owner int64, key string, require
 			}
 			inputs = append(inputs, x)
 		}
-		plan := s.catalog.PlanAutoSell(inputs, cfg.IncludeTiers, 100)
+		batch := int64(100)
+		if n, ok := s.catalog.Runtime["autoSellBatch"].(float64); ok && n >= 1 && n <= 10000 {
+			batch = int64(n)
+		}
+		plan := s.catalog.PlanAutoSell(inputs, cfg.IncludeTiers, batch)
 		if len(plan.Parts) == 0 {
 			return assets.Result{}, assets.ErrDeferred
 		}
-		return applyParts(ctx, t, owner, plan.Parts, states, now, true)
+		return applyParts(ctx, t, owner, plan.Parts, states, now, true, s.catalog)
 	})
 }

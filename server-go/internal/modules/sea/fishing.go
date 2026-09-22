@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/rules"
@@ -78,7 +79,7 @@ func (s *Service) ResolveFishing(ctx context.Context, t *assets.Transaction, own
 		if !ok {
 			return v, assets.Rejection("unknown_spot")
 		}
-		if g.Locked || p.Locked {
+		if g.Locked || p.Locked || groundWindowClosed(s.catalog, ground, time.Now()) {
 			return v, assets.Rejection("spot_locked")
 		}
 		v.Spot = p
@@ -107,6 +108,50 @@ func (s *Service) ResolveFishing(ctx context.Context, t *assets.Transaction, own
 		}
 	}
 	return v, nil
+}
+
+// Ground windows are operator data layered into the JSON catalog. The rules
+// Ground type intentionally keeps only gameplay fields, so inspect the raw
+// object here and evaluate openFrom/openTo at action time. This prevents a
+// session from remaining usable after an activity window expires without a
+// republish.
+func groundWindowClosed(c *rules.Catalog, id string, now time.Time) bool {
+	var grounds []map[string]any
+	if c == nil || c.Constant("GROUNDS", &grounds) != nil {
+		return false
+	}
+	for _, g := range grounds {
+		if value, _ := g["id"].(string); value != id {
+			continue
+		}
+		if raw, ok := g["openFrom"]; ok {
+			if ts, ok := catalogWindowTime(raw); ok && now.UnixMilli() < ts {
+				return true
+			}
+		}
+		if raw, ok := g["openTo"]; ok {
+			if ts, ok := catalogWindowTime(raw); ok && now.UnixMilli() > ts {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+func catalogWindowTime(raw any) (int64, bool) {
+	switch value := raw.(type) {
+	case float64:
+		if value == float64(int64(value)) {
+			return int64(value), true
+		}
+	case int64:
+		return value, true
+	case json.Number:
+		v, err := value.Int64()
+		return v, err == nil
+	}
+	return 0, false
 }
 
 // CatchProgress counts successful primary catches, never school copies or

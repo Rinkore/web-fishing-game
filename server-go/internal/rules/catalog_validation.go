@@ -45,11 +45,20 @@ func ValidateCatalog(c *Catalog) error {
 	}
 	for k, v := range c.Runtime {
 		switch k {
-		case "cast", "biteFormula", "drop", "lootGroups", "rareK", "doubleBase":
+		case "cast", "biteFormula", "drop", "lootGroups", "rareK", "doubleBase", "price", "autoSellBatch", "chestPityN":
 		default:
 			return bad
 		}
 		if k == "doubleBase" && (!finite(Number(v)) || Number(v) < 0 || Number(v) > 1) {
+			return bad
+		}
+		if k == "rareK" && (!finite(Number(v)) || Number(v) <= 0 || Number(v) > 100000) {
+			return bad
+		}
+		if k == "autoSellBatch" && (!finite(Number(v)) || Number(v) < 1 || Number(v) > 10000) {
+			return bad
+		}
+		if k == "chestPityN" && (!finite(Number(v)) || Number(v) < 1 || Number(v) > 50) {
 			return bad
 		}
 	}

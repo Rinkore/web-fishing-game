@@ -9,6 +9,7 @@ import (
 
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/identity"
+	"fishing.local/server/internal/modules/operations"
 	"fishing.local/server/internal/modules/sea"
 	"fishing.local/server/internal/rules"
 	"github.com/jackc/pgx/v5"
@@ -240,6 +241,18 @@ func (a *API) legacySeaAction(action string) http.HandlerFunc {
 		session, ok := a.authorize(w, r, false)
 		if !ok {
 			return
+		}
+		feature := map[string]string{"ship": "sea.upgrade", "chart": "sea.chart", "voyage": "sea.voyage", "anchor": "sea.anchor", "quest": "sea.quest"}[action]
+		if feature != "" {
+			features, featureErr := operations.New(a.pool).Features(r.Context())
+			if featureErr != nil {
+				failure(w, featureErr)
+				return
+			}
+			if enabled, exists := features.Flags[feature]; exists && !enabled {
+				write(w, http.StatusForbidden, map[string]any{"error": "feature_disabled", "code": "feature_disabled"})
+				return
+			}
 		}
 		c, err := a.catalog(r.Context())
 		if err != nil {

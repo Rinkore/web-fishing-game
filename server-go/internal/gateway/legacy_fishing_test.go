@@ -115,6 +115,43 @@ func TestIntegrationLegacyFishingLifecycle(t *testing.T) {
 	if code != 200 || started["ok"] != true || started["interval"] == nil || started["castInfo"] == nil {
 		t.Fatalf("start: %d %v", code, started)
 	}
+	// A second tab must receive the same cast details during init.  The old
+	// client renders the resumed interval directly and does not issue another
+	// start request just to populate the fishing panel.
+	resumeCtx, resumeCancel := context.WithCancel(context.Background())
+	defer resumeCancel()
+	resumeReq, err := http.NewRequestWithContext(resumeCtx, "GET", server.URL+"/events", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumeReq.Header.Set("Authorization", "Bearer "+token)
+	resumeRes, err := client.Do(resumeReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumeRes.Body.Close()
+	if resumeRes.StatusCode != 200 {
+		t.Fatalf("resume events: %d", resumeRes.StatusCode)
+	}
+	resumeReader := bufio.NewReader(resumeRes.Body)
+	for {
+		line, readErr := resumeReader.ReadString('\n')
+		if readErr != nil {
+			t.Fatalf("read resumed init: %v", readErr)
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		var m map[string]any
+		if json.Unmarshal([]byte(strings.TrimPrefix(strings.TrimSpace(line), "data: ")), &m) != nil || m["type"] != "init" {
+			continue
+		}
+		resumed, ok := m["resumedFishing"].(map[string]any)
+		if !ok || resumed["interval"].(float64) <= 0 || resumed["castInfo"] == nil {
+			t.Fatalf("resumed cast details: %v", m["resumedFishing"])
+		}
+		break
+	}
 
 	// Use the same atomic inventory/revision/outbox boundary as the scheduler.
 	_, err = assets.New(db.App).Run(ctx, assets.Command{ActorID: session.AccountID, RequestKey: "legacy-catch", Kind: "fishing_settle", RuleVersion: "test-v1", Players: []int64{session.AccountID}}, func(ctx context.Context, tx *assets.Transaction) (assets.Result, error) {

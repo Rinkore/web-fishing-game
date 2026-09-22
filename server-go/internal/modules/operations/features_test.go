@@ -13,13 +13,106 @@ import (
 	"fishing.local/server/internal/rules"
 	"fishing.local/server/internal/testdb"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 )
 
 func flags(enabled bool) map[string]bool {
 	return map[string]bool{"market": enabled, "trade": enabled, "workshop": enabled, "chest": enabled, "mall": enabled, "sell": enabled, "autosell": enabled, "friends": enabled}
+}
+
+// A feature-gated command may be waiting on its player rows after it has
+// passed the gate. Publication must wait for that shared publication lock, then
+// close the newly committed state in the same transaction. Without the common
+// lock order this leaves an invited trade alive after the feature is disabled.
+func TestIntegrationFeaturePublicationSerializesPendingInvite(t *testing.T) {
+	db := testdb.New(t, true)
+	ctx := context.Background()
+	ids := make([]int64, 2)
+	proofs := make([]context.Context, 2)
+	for i := range ids {
+		if err := db.Admin.QueryRow(ctx, `INSERT INTO fishing.accounts DEFAULT VALUES RETURNING id`).Scan(&ids[i]); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Admin.Exec(ctx, `INSERT INTO fishing.player_state(account_id) VALUES($1)`, ids[i]); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Admin.Exec(ctx, `INSERT INTO fishing.wallets(account_id) VALUES($1)`, ids[i]); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Admin.Exec(ctx, `INSERT INTO fishing.identities(account_id,username,display_name,qq,password_hash,admin) VALUES($1,$2,'fixture','123456','unused-test-only',$3)`, ids[i], fmt.Sprintf("serial_%d", i), i == 0); err != nil {
+			t.Fatal(err)
+		}
+		var hash [32]byte
+		hash[0] = byte(40 + i)
+		if _, err := db.Admin.Exec(ctx, `INSERT INTO fishing.auth_sessions(token_hash,account_id,admin,expires_at) VALUES($1,$2,$3,clock_timestamp()+interval '1 hour')`, hash[:], ids[i], i == 0); err != nil {
+			t.Fatal(err)
+		}
+		proofs[i] = assets.WithSession(ctx, ids[i], hash, i == 0)
+		if _, err := db.Admin.Exec(ctx, `INSERT INTO fishing.fishing_connections(owner_id,generation,expires_at) VALUES($1,1,clock_timestamp()+interval '1 hour')`, ids[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Hold both player guards to suspend Invite after its feature boundary.
+	locked, err := db.Admin.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer locked.Rollback(ctx)
+	if _, err := locked.Exec(ctx, `SELECT account_id FROM fishing.player_state WHERE account_id=ANY($1::bigint[]) ORDER BY account_id FOR UPDATE`, ids); err != nil {
+		t.Fatal(err)
+	}
+	tradeDone := make(chan struct{})
+	var invited assets.Result
+	var inviteErr error
+	go func() {
+		invited, inviteErr = trade.New(db.App).Invite(ctx, trade.Invite{ActorID: ids[1], TargetID: ids[0], RequestKey: "serial-invite"})
+		close(tradeDone)
+	}()
+	// The command must first acquire the shared publication lock. Once it is
+	// waiting on player rows, a close cannot commit until the lock is released.
+	time.Sleep(150 * time.Millisecond)
+	publishDone := make(chan struct{})
+	var published assets.Result
+	var publishErr error
+	go func() {
+		published, publishErr = New(db.App).Publish(proofs[0], Publish{ActorID: ids[0], RequestKey: "serial-close", Flags: flags(false)})
+		close(publishDone)
+	}()
+	select {
+	case <-publishDone:
+		t.Fatal("publication committed before pending feature-gated command released")
+	case <-time.After(150 * time.Millisecond):
+	}
+	if err := locked.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-tradeDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("invite did not finish")
+	}
+	select {
+	case <-publishDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("publication did not finish")
+	}
+	if inviteErr != nil || invited.Status != "invited" {
+		t.Fatal("invite", invited, inviteErr)
+	}
+	if publishErr != nil || published.Status != "published" {
+		t.Fatal("publish", published, publishErr)
+	}
+	var state string
+	if err := db.Admin.QueryRow(ctx, `SELECT state FROM fishing.trades WHERE (a_id=$1 AND b_id=$2) OR (a_id=$2 AND b_id=$1)`, ids[0], ids[1]).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "cancelled" {
+		t.Fatalf("pending invite escaped feature close: %s", state)
+	}
 }
 func TestIntegrationFeaturePublicationAuthorityRaceAndRollback(t *testing.T) {
 	db := testdb.New(t, true)

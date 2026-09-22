@@ -25,6 +25,58 @@ type PriceOverride struct {
 }
 
 func DefaultPriceDynamics() PriceDynamics { return PriceDynamics{.0075, 60, .4, 2, 2} }
+
+// PriceDynamicsFor applies the legacy operator economy settings to one item.
+// Values are clamped to the same ranges as the Node console, so old or
+// hand-edited rows cannot produce invalid price arithmetic. Tier overrides use
+// the fish tier name (common/big/rare) and fall back to the global values.
+func (c *Catalog) PriceDynamicsFor(id string) PriceDynamics {
+	d := DefaultPriceDynamics()
+	read := func(m map[string]any) {
+		if n, ok := m["saleDivisor"].(float64); ok && finite(n) && n >= .001 && n <= .05 {
+			d.SaleDivisor = n
+		}
+		if n, ok := m["riseTauMin"].(float64); ok && finite(n) && n >= 5 && n <= 1440 {
+			d.RiseTauMin = n
+		}
+		if n, ok := m["floorPct"].(float64); ok && finite(n) && n >= 10 && n <= 100 {
+			d.Floor = n / 100
+		}
+		if n, ok := m["ceilPct"].(float64); ok && finite(n) && n >= 100 && n <= 500 {
+			d.Ceil = n / 100
+		}
+		if n, ok := m["riseTargetPct"].(float64); ok && finite(n) && n >= 100 && n <= 300 {
+			d.Target = n / 100
+		}
+	}
+	if c != nil {
+		if raw, ok := c.Runtime["price"].(map[string]any); ok {
+			read(raw)
+			if tiers, ok := raw["tiers"].(map[string]any); ok {
+				tier := c.FishTier(id)
+				if override, ok := tiers[tier].(map[string]any); ok {
+					if n, ok := override["saleDivisor"].(float64); ok && finite(n) && n >= .001 && n <= .05 {
+						d.SaleDivisor = n
+					}
+					if n, ok := override["riseTauMin"].(float64); ok && finite(n) && n >= 5 && n <= 1440 {
+						d.RiseTauMin = n
+					}
+				}
+			}
+		}
+	}
+	if d.Floor >= d.Ceil {
+		d.Floor, d.Ceil = .4, 2
+	}
+	if d.Target < d.Floor {
+		d.Target = d.Floor
+	}
+	if d.Target > d.Ceil {
+		d.Target = d.Ceil
+	}
+	return d
+}
+
 func CurrentMultiplier(s SaleState, nowMS int64, d PriceDynamics) float64 {
 	last := s.LastMS
 	if last == 0 {

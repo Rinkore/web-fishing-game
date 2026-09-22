@@ -54,7 +54,7 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 		case <-ticker.C:
 		}
 		work, cancel := context.WithTimeout(ctx, 5*time.Second)
-		c, _, err := catalog.Current(work, s.pool)
+		c, _, err := catalog.Effective(work, s.pool)
 		next := after
 		if err == nil {
 			copy := *s

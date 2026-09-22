@@ -118,14 +118,26 @@ func (a *API) legacyAdminOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	groundCount, spotCount := a.legacyAdminCatalog(c)
-	biteFormula := ""
-	_ = c.Constant("BITE_FORMULA_DEFAULT", &biteFormula)
+	// The effective catalog already includes the persisted operator override;
+	// use it for the overview instead of always echoing the source default.
+	biteFormula := c.CastRules(nil).BiteFormula
 	notifyLevel := "all"
-	var notifySetting struct {
-		Level string `json:"level"`
+	if raw, readErr := a.legacySettingRaw(ctx, legacySettingsKey); readErr == nil && len(raw) > 0 {
+		var settings map[string]json.RawMessage
+		var level string
+		if json.Unmarshal(raw, &settings) == nil && json.Unmarshal(settings["notifyLevel"], &level) == nil && level != "" {
+			notifyLevel = level
+		}
 	}
-	if a.legacyAdminSetting(ctx, "notify", &notifySetting) == nil && notifySetting.Level != "" {
-		notifyLevel = notifySetting.Level
+	if notifyLevel == "all" {
+		// Older installations used a standalone `notify` row. Keep it as a
+		// read-only fallback while new writes use legacy:settings.
+		var notifySetting struct {
+			Level string `json:"level"`
+		}
+		if a.legacyAdminSetting(ctx, "notify", &notifySetting) == nil && notifySetting.Level != "" {
+			notifyLevel = notifySetting.Level
+		}
 	}
 	write(w, 200, map[string]any{
 		"ok":            true,
