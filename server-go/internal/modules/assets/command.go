@@ -82,6 +82,12 @@ func (s *Service) executeOnce(ctx context.Context, c command, apply func(context
 	if !bytes.Equal(c.hash, storedHash) {
 		return Result{}, ErrKeyConflict
 	}
+	// Establish the feature publication boundary before player guards. Publish
+	// and feature-gated commands therefore share one lock order and cannot
+	// deadlock while a publication closes existing player state.
+	if err = lockFeatureBoundary(ctx, tx, c.kind); err != nil {
+		return Result{}, err
+	}
 	ids := append([]int64(nil), c.players...)
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	result := Result{}

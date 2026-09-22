@@ -58,3 +58,20 @@ func requireFeature(ctx context.Context, tx pgx.Tx, feature string) error {
 	}
 	return nil
 }
+
+// Feature commands take a shared lock on the singleton publication row before
+// taking any player locks. Feature publication takes the same row exclusively
+// (see command.go), so a close cannot miss a command that has already passed
+// its gate or allow a new command to insert state after the close commits.
+func lockFeatureBoundary(ctx context.Context, tx pgx.Tx, kind string) error {
+	manual := kind == "fishing_start" || kind == "fishing_stop" || kind == "fishing_settle" || kind == "party_change"
+	if kind != "feature_publish" && FeatureOf(kind) == "" && !manual {
+		return nil
+	}
+	lock := "FOR SHARE"
+	if kind == "feature_publish" {
+		lock = "FOR UPDATE"
+	}
+	_, err := tx.Exec(ctx, "SELECT singleton FROM fishing.feature_head WHERE singleton "+lock)
+	return err
+}
