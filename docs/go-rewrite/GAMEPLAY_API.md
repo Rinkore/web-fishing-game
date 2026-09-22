@@ -85,4 +85,4 @@ GET `/api/v1/features` 读取当前修订。管理员 POST `/api/admin/v1/featur
 
 ## 验证命令
 
-在 `server-go` 执行 `go fmt ./...`、`go build ./...`、`go vet ./...`，设置隔离真库的 `FISHING_GO_TEST_DATABASE_URL` 后执行 `go test -count=1 ./...` 并核查 skip。从仓库根目录运行 `tools/go-rewrite/test-postgres.ps1 -Linux` 验证真实 PostgreSQL 与 race；`test-persistent.ps1 -Players 100 -Seconds 60` 是隔离持久卷短测，当前仅包含原型钓鱼和正式市集。Node oracle 脚本统一使用 `--check` 检测漂移，不应无说明更新输出。`npm run go:coverage` 只验证路由存在；同 SHA 的契约与浏览器结果须另外记录。完整日志保存忽略目录，终端仅显示末 40 行并保留原退出码；并行隔离及固定端口串行要求见 [PARALLEL_ACCEPTANCE.md](PARALLEL_ACCEPTANCE.md)。
+在 `server-go` 执行 `gofmt -l .`、`go build ./...`、`go vet ./...`，设置隔离真库的 `FISHING_GO_TEST_DATABASE_URL` 后执行 `go test -count=1 ./...` 并核查 skip。从仓库根目录运行 `tools/go-rewrite/test-postgres.ps1 -Linux` 验证真实 PostgreSQL 与 race；`test-persistent.ps1` 的默认入口是 100 人、7200 秒正式 HTTP/SSE 玩法负载，专项短测和故障证据仍须标明未达容量门槛。Node oracle 脚本统一使用 `--check` 检测漂移，不应无说明更新输出。`npm run go:coverage` 只验证路由存在；同 SHA 的契约与浏览器结果须另外记录。完整日志保存忽略目录，终端仅显示末 40 行并保留原退出码；并行隔离及固定端口串行要求见 [PARALLEL_ACCEPTANCE.md](PARALLEL_ACCEPTANCE.md)。

@@ -135,7 +135,7 @@ func TestIntegrationCatchPushCommitOrderPagingAndScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := socialFrames(t, p.poll(f.ctx))
-	if len(first["feedBatch"]["list"].([]any)) != 10 || first["globalRecord"] != nil {
+	if len(first["feedBatch"]["list"].([]any)) != 10 || first["globalRecord"] == nil || first["globalRecord"]["record"].(map[string]any)["size"] != float64(100) {
 		t.Fatalf("first page: %v", first)
 	}
 	if p.cursors[f.id["trade_b"]].Ordinal != 100 {

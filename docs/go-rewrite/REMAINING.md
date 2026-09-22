@@ -4,7 +4,7 @@
 
 ## 当前基线
 
-`server-go/api/legacy-inventory.json` 当前包含 157 个静态候选，其中 5 个开发专用接口不计入分母。2026-09-22 用 `tools/go-rewrite/route-coverage.js` 按唯一且完全相同的 **method + path** 重算：提交 `603c945d6181de83aec00a077e3af0a90ebe7483` 为 **140/152**，受测代码提交 `401a3f8f7a95d2c567e6a917fb587cbb14cdc4b2` 为 **152/152，未注册 0 条**；Go 共注册 192 个唯一 method + path，另 40 条为新协议。`inventory --check` 通过，未发现重复或未解析注册表达式。
+`server-go/api/legacy-inventory.json` 当前包含 157 个静态候选，其中 5 个开发专用接口不计入分母。最终候选前的 2026-09-22 合并树（源码修复后提交 `c768697398b12e98c211363acf2414701a97ead2`，文档提交后需重新冻结）按唯一且完全相同的 **method + path** 重算为 **152/152，未注册 0 条**；Go 共注册 192 个唯一 method + path，另 40 条为新协议。`inventory --check` 通过，未发现重复或未解析注册表达式。
 
 | 验证层次 | 当前结论 |
 |---|---|
@@ -12,11 +12,11 @@
 | HTTP/SSE 契约 | 已有分域真实 PostgreSQL 回归；尚无 152 条逐项全通过的验收结论，仍需 Node/Go 同输入对照、权限、错误与结算语义复验 |
 | 浏览器 | 已有原 Chrome 定向回归；完整 Node/Go A/B 未完成，不由路由数或 Go 包级测试通过替代 |
 
-复现：仓库根执行 `npm run go:inventory`、`npm run go:coverage`；历史比较执行 `node tools/go-rewrite/route-coverage.js --ref 603c945d6181de83aec00a077e3af0a90ebe7483`。`--json` 输出逐路由结果、源码摘要和验证对象；`--check` 在缺失路由时退出非零。早期静态日志保留 `output/go-baseline-20260922/`；最终完整证据在 `output/go-rewrite/closeout-20260922/`，受测代码、跳过和失败重跑见 [共同基线验收报告](reports/BASELINE_ACCEPTANCE_2026-09-22.md)。不得把历史批次的 124/152、28 条或 35 条未注册继续作为当前总览。
+复现：仓库根执行 `npm run go:inventory`、`npm run go:coverage`；最终路由 JSON 在 `output/go-rewrite/final-route-coverage-20260922.json`。`--json` 输出逐路由结果、源码摘要和验证对象；`--check` 在缺失路由时退出非零。历史批次数字保留在专项报告中，不作为当前行为通过。
 
 已具备的核心包括身份/MFA、资产事务、交易/市集、工坊/宝匣、商城、好友/编队、供需/自动出售，以及普通地图和远洋结算。`0019` 已持久化递归段与随机游标，`0020` 已提供不可变 catalog 发布，`0021` 已提供多标签页租约；不要再按早期文档把这些列为未开发。旧 HTTP 接口的已知偏差继续以 DELIVERY 日志及实际测试为准。
 
-本轮受测代码的 Windows 真库全套含定向 Chrome、Linux 真库 race/vet 均通过（各 2803 pass、0 fail、1 平台相关 skip）；双 0027 的新库与三种历史升级路径通过。最终文档提交只更新证据和总览，四线共同 BASE_SHA 与该代码树一致；这完成第一阶段共同基线，不代表下表专项已全部验收。
+本轮合并候选的 Windows 真库全套为 2813 pass、3 fail、2 skip；失败为 `CatchPushCommitOrderPagingAndScope`、`LegacyConfigurationPublication`、`LegacyConfigInitWindowAndFeatureMapping`，证据见 `output/go-rewrite/final-windows-20260922/`。Go 1.27.1 的 build/vet 通过；Linux Docker race、完整浏览器 A/B 和迁移运维演练尚未在最终候选上完成。双 0027/0028 的新库迁移包定向测试通过，但已有数据库升级和全套仍需复验；这不构成候选通过。
 
 ## 推进顺序与完成条件
 

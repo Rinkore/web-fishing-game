@@ -1,5 +1,7 @@
 # Go 重写旧协议 A/B 初始验收
 
+> 专项阶段证据：本报告保留 ab 分支对象和条件 skip；最终候选必须重新执行 Node/Go API、SSE 和浏览器套件。
+
 本报告是 `codex/go-ab` 的框架交付和初始差异记录，不是兼容实现放行单。工作树为 `E:\AAAworktrees\web-fishing-game\go-ab`；本地分支为 `codex/go-ab`。固定共同基线来自 [PARALLEL_ACCEPTANCE.md](../PARALLEL_ACCEPTANCE.md)：玩法 `v0.21.4`，Node 对照提交 `13694a7038438ac0b3dd7df07db8c05ea239141f`，Node `24.14.0`，Go `1.27.1`，PostgreSQL `18.6`，Node/Go/PostgreSQL/浏览器时区均为 `Asia/Shanghai`。没有跟踪移动的 `main`，没有 push、部署或生产数据操作。
 
 本轮代码验收基点为本地提交链 `4e4466e -> 1469931 -> 28f87ce -> f4345f1`；候选代码 SHA 固定为 `f4345f11d3a5c48b7a77dba2774eca22e6d49a8a`。本报告的追加提交只修正报告指针，不改变候选代码；兼容实现合入后必须重新冻结 SHA 并重跑受影响套件。路由清单的 Node SHA、玩法版本和 `sharedRulesSha256` 已由生成器锁定，不因工作树后续移动而改变。

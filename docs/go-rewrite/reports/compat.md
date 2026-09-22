@@ -1,5 +1,7 @@
 # Go Rewrite Compatibility Report
 
+> 专项阶段证据：本报告保留 compat 分支对象和历史失败；不代表最终集成候选通过。最终结论以主窗口冻结的候选 SHA 和重跑日志为准。
+
 核对输入：Node 固定源码 `13694a7038438ac0b3dd7df07db8c05ea239141f`、Go 1.27.1、PostgreSQL 18.6、Asia/Shanghai。当前 worktree `codex/go-compat` 的业务提交为 `c9ce3df`、`9bed038`、`9f10bd5`，纪录删除回归测试为 `a589cc2`；集成窗口仍需在合并候选 SHA 上复验。本报告不代表已 push 或部署。
 
 ## 具体缺口

@@ -80,7 +80,7 @@ pwsh -NoProfile -File tools/go-rewrite/postgres-ops-rehearsal.ps1 `
   -OutputRoot output/go-rewrite/migration-ops-final
 ```
 
-最终候选结果位于 `output/go-rewrite/migration-ops-final-candidate/<run-id>/result.json`，具体 `sourceCommit`、`dirty` 和 run ID 以该 JSON 为准。关键检查点：PostgreSQL 18.6 固定镜像摘要；空库 migration + schema owner 所有权；runtime 账号可完成最小注册写入；runtime `CREATE TABLE`、`CREATE ROLE`、删除 `operator_audit` 和 backup 写入均拒绝；ops 可读 `pg_stat_activity`；backup 角色只读 dump；logical dump 可恢复并核对钱包基线；物理 base backup + 5 个归档 WAL；SIGKILL 后提交基线保留；PITR 恢复到 marker 前，marker 行为 0。实测 RPO 取决于最后归档 WAL，RTO 以结果 JSON 为准。该单机 Docker 卷没有覆盖整机/磁盘损坏，不能宣传整机 RPO=0；结果字段明确 `hostFailure=untested`。最终候选 SHA 改变后必须重跑并记录新的 result.json。
+专项阶段结果位于 `output/go-rewrite/migration-ops-final-candidate/<run-id>/result.json`，其 `sourceCommit` 不是最终集成候选。关键检查点和限制保留作历史证据；最终候选 SHA 改变后必须重跑并记录新的 result.json。当前导入器定向 PostgreSQL 测试通过，但全域字段对账、WAL/SQLite 一致性、已有库升级、权限和切换演练仍是生产阻断项。
 
 ## 生产执行手册（后续阶段）
 
