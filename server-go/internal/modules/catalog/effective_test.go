@@ -8,7 +8,7 @@ import (
 	"fishing.local/server/internal/testdb"
 )
 
-func TestIntegrationEffectiveOperatorSettingsReachRules(t *testing.T) {
+func TestIntegrationEffectiveCatalogUsesOneImmutableSource(t *testing.T) {
 	db := testdb.New(t, true)
 	ctx := context.Background()
 	settings := map[string]any{
@@ -22,21 +22,23 @@ func TestIntegrationEffectiveOperatorSettingsReachRules(t *testing.T) {
 	}
 	mall := map[string]any{"refreshTime": "07:15", "items": []map[string]any{{"id": "rope", "price": 3, "limit": 2}}}
 	smelt := map[string]any{"baseRate": 12}
-	for key, value := range map[string]any{"legacy:settings": settings, "legacy:mall": mall, "legacy:smelt": smelt} {
-		raw, _ := json.Marshal(value)
-		if _, err := db.Admin.Exec(ctx, `INSERT INTO fishing.operator_settings(key,value) VALUES($1,$2)`, key, raw); err != nil {
-			t.Fatal(err)
-		}
-	}
 	c, _, err := Effective(ctx, db.App)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := c.MallConfig(); got.RefreshTime != "07:15" || len(got.Items) != 1 || got.Items[0].Price != 3 {
-		t.Fatalf("mall override not effective: %+v", got)
+	if got := c.MallConfig(); got.RefreshTime == "07:15" || len(got.Items) == 1 && got.Items[0].Price == 3 {
+		t.Fatalf("unexpected operator overlay: %+v", got)
 	}
-	if got := c.WorkshopConfig(); got.BaseRate != 12 {
-		t.Fatalf("smelt override not effective: %+v", got)
+	if got := c.WorkshopConfig(); got.BaseRate == 12 {
+		t.Fatalf("unexpected smelt operator overlay: %+v", got)
+	}
+	rawMall, _ := json.Marshal(mall)
+	rawSmelt, _ := json.Marshal(smelt)
+	ApplyLegacySettings(c, map[string]json.RawMessage{"legacy:mall": rawMall, "legacy:smelt": rawSmelt, "legacy:settings": mustJSON(settings)})
+	var mergedMall rulesMallConfigCompat
+	_ = json.Unmarshal(c.Defaults["mall"], &mergedMall)
+	if mergedMall.RefreshTime != "07:15" || len(mergedMall.Items) != 1 || mergedMall.Items[0].Price != 3 {
+		t.Fatalf("catalog mall patch not effective: %+v", mergedMall)
 	}
 	if got := c.DefaultLootConfig(); got.Material != 250 {
 		t.Fatalf("drop override not effective: %+v", got)
@@ -57,4 +59,16 @@ func TestIntegrationEffectiveOperatorSettingsReachRules(t *testing.T) {
 	if !ok || chest.CostRelic != 2 || chest.CostCoins != 7 || c.Runtime["chestPityN"] != float64(3) {
 		t.Fatalf("chest override not effective: %+v pity=%v", chest, c.Runtime["chestPityN"])
 	}
+}
+
+func mustJSON(value any) json.RawMessage {
+	raw, _ := json.Marshal(value)
+	return raw
+}
+
+type rulesMallConfigCompat struct {
+	RefreshTime string `json:"refreshTime"`
+	Items       []struct {
+		Price int64 `json:"price"`
+	} `json:"items"`
 }

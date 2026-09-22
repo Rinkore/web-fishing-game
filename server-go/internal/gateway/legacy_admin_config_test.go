@@ -2,10 +2,10 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"testing"
 
+	"fishing.local/server/internal/modules/catalog"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -76,8 +76,11 @@ func TestIntegrationLegacySettingsConcurrentMergeAndRollback(t *testing.T) {
 		wg.Add(1)
 		go func(body string) {
 			defer wg.Done()
-			code, _ := f.admin("POST", "/api/admin/settings", body)
+			code, result := f.admin("POST", "/api/admin/settings", body)
 			errs <- code
+			if code != 200 {
+				t.Logf("concurrent body %s: %v", body, result)
+			}
 		}(body)
 	}
 	wg.Wait()
@@ -87,32 +90,29 @@ func TestIntegrationLegacySettingsConcurrentMergeAndRollback(t *testing.T) {
 			t.Fatalf("concurrent setting update: %d", code)
 		}
 	}
-	var stored []byte
-	if err := f.db.Admin.QueryRow(ctx, `SELECT value FROM fishing.operator_settings WHERE key=$1`, legacySettingsKey).Scan(&stored); err != nil {
+	c, _, err := catalog.Current(ctx, f.db.App)
+	if err != nil {
 		t.Fatal(err)
 	}
-	var merged map[string]any
-	if err := json.Unmarshal(stored, &merged); err != nil {
-		t.Fatal(err)
-	}
-	if merged["notifyLevel"] != "rare" || merged["autoSellCfg"].(map[string]any)["batch"] != float64(7) || merged["dropCfg"].(map[string]any)["material"] != float64(250) {
-		t.Fatalf("concurrent patches lost: %v", merged)
+	if c.Runtime["autoSellBatch"] != float64(7) || c.DefaultLootConfig().Material != 250 {
+		t.Fatalf("concurrent patches lost: runtime=%v loot=%+v", c.Runtime, c.DefaultLootConfig())
 	}
 	role := pgx.Identifier{f.db.Role}.Sanitize()
-	if _, err := f.db.Admin.Exec(ctx, "REVOKE INSERT ON fishing.operator_settings FROM "+role); err != nil {
+	if _, err := f.db.Admin.Exec(ctx, "REVOKE INSERT ON fishing.catalog_releases FROM "+role); err != nil {
 		t.Fatal(err)
 	}
 	code, _ := f.admin("POST", "/api/admin/settings", `{"notifyLevel":"off"}`)
 	if code == 200 {
 		t.Fatal("failed setting write unexpectedly succeeded")
 	}
-	if _, err := f.db.Admin.Exec(ctx, "GRANT INSERT ON fishing.operator_settings TO "+role); err != nil {
+	if _, err := f.db.Admin.Exec(ctx, "GRANT INSERT ON fishing.catalog_releases TO "+role); err != nil {
 		t.Fatal(err)
 	}
+	var stored []byte
 	if err := f.db.Admin.QueryRow(ctx, `SELECT value->>'notifyLevel' FROM fishing.operator_settings WHERE key=$1`, legacySettingsKey).Scan(&stored); err != nil {
 		t.Fatal(err)
 	}
-	if string(stored) != `"rare"` {
+	if string(stored) != `rare` {
 		t.Fatalf("failed write changed setting: %s", stored)
 	}
 }
@@ -129,7 +129,7 @@ func TestIntegrationLegacyMallSettingChangesSettlement(t *testing.T) {
 		t.Fatalf("save mall config: %d %v", code, result)
 	}
 	code, view = f.player("GET", "/api/mall", "")
-	if code != 200 || view["refreshTime"] != "07:15" || view["items"].([]any)[0].(map[string]any)["price"] != float64(1) {
+	if code != 200 || view["refreshTime"] != "7:15" || view["items"].([]any)[0].(map[string]any)["price"] != float64(1) {
 		t.Fatalf("saved mall config not read by gameplay: %d %v", code, view)
 	}
 	code, bought := f.player("POST", "/api/mall/buy", `{"id":"`+id+`","qty":1}`)

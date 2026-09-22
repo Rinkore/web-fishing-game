@@ -191,6 +191,28 @@ func legacyCatalogProjection(c *rules.Catalog) (map[string]any, []map[string]any
 	castCfg := map[string]any{"baseMs": cast.BaseMS, "minMs": cast.MinMS, "speedBonus": cast.SpeedBonus, "speedCap": cast.SpeedCap, "formula": cast.Formula}
 	drop := c.DefaultLootConfig()
 	dropCfg := map[string]any{"global": drop.Global, "common": drop.Common, "big": drop.Big, "rare": drop.Rare, "material": drop.Material}
+	priceCfg := map[string]any{}
+	if configured, ok := c.Runtime["price"].(map[string]any); ok {
+		for key, value := range configured {
+			priceCfg[key] = value
+		}
+	}
+	autoSellCfg := map[string]any{"batch": float64(100)}
+	if batch, ok := c.Runtime["autoSellBatch"].(float64); ok && batch >= 1 && batch <= 10000 {
+		autoSellCfg["batch"] = batch
+	}
+	chestCfg := map[string]any{"pityN": float64(0), "costs": map[string]any{}}
+	if pity, ok := c.Runtime["chestPityN"].(float64); ok && pity >= 1 && pity <= 50 {
+		chestCfg["pityN"] = pity
+	}
+	if costs, ok := chestCfg["costs"].(map[string]any); ok {
+		var chests []rules.Chest
+		if c.Constant("CHESTS", &chests) == nil {
+			for _, chest := range chests {
+				costs[chest.ID] = map[string]any{"costRelic": chest.CostRelic, "costCoins": chest.CostCoins}
+			}
+		}
+	}
 	// Keep the raw component object: OrderedWeights is a decoding helper, not
 	// the JSON object shape expected by GameData.setComponentCfg.
 	var component, smelt, mall any
@@ -202,15 +224,17 @@ func legacyCatalogProjection(c *rules.Catalog) (map[string]any, []map[string]any
 			return nil, nil, err
 		}
 	}
-	fields := map[string]any{"groundCfg": grounds, "componentCfg": component, "smeltCfg": smelt, "castCfg": castCfg, "dropCfg": dropCfg}
+	fields := map[string]any{"groundCfg": grounds, "componentCfg": component, "smeltCfg": smelt, "castCfg": castCfg, "dropCfg": dropCfg, "priceCfg": priceCfg, "autoSellCfg": autoSellCfg, "chestCfg": chestCfg}
 	frames := []map[string]any{
 		{"type": "componentcfg", "componentCfg": component},
 		{"type": "smeltcfg", "smeltCfg": smelt},
 		{"type": "castcfg", "baseMs": cast.BaseMS, "minMs": cast.MinMS, "speedBonus": cast.SpeedBonus, "speedCap": cast.SpeedCap, "formula": cast.Formula},
 		{"type": "bitecfg", "formula": cast.BiteFormula},
 		{"type": "groundcfg", "grounds": grounds},
-		{"type": "pricecfg", "dropCfg": dropCfg},
+		{"type": "pricecfg", "priceCfg": priceCfg, "dropCfg": dropCfg},
 		{"type": "mallcfg", "mallCfg": mall},
+		{"type": "autosellcfg", "autoSellCfg": autoSellCfg},
+		{"type": "chestcfg", "chestCfg": chestCfg},
 	}
 	return fields, frames, nil
 }
