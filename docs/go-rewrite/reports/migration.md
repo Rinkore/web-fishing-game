@@ -80,7 +80,7 @@ pwsh -NoProfile -File tools/go-rewrite/postgres-ops-rehearsal.ps1 `
   -OutputRoot output/go-rewrite/migration-ops-final
 ```
 
-最终一次成功结果为 `output/go-rewrite/migration-ops/ops-8e113752064a/result.json`（执行时工作树 dirty，不能替代最终候选复验）。关键检查点：PostgreSQL 18.6 固定镜像摘要；空库 migration + schema owner 所有权；runtime 账号可完成最小注册写入；runtime `CREATE TABLE`、`CREATE ROLE`、删除 `operator_audit` 和 backup 写入均拒绝；ops 可读 `pg_stat_activity`；backup 角色只读 dump；logical dump 可恢复并核对钱包基线；物理 base backup 35,530,037 bytes + 5 个归档 WAL；SIGKILL 后提交基线保留（2,666 ms）；PITR 恢复到 marker 前，marker 行为 0（31,007 ms）。实测 RPO 取决于最后归档 WAL，RTO 以结果 JSON 为准。该单机 Docker 卷没有覆盖整机/磁盘损坏，不能宣传整机 RPO=0；结果字段明确 `hostFailure=untested`。最终候选 SHA 改变后必须重跑并记录新的 result.json。
+最终候选结果位于 `output/go-rewrite/migration-ops-final-candidate/<run-id>/result.json`，具体 `sourceCommit`、`dirty` 和 run ID 以该 JSON 为准。关键检查点：PostgreSQL 18.6 固定镜像摘要；空库 migration + schema owner 所有权；runtime 账号可完成最小注册写入；runtime `CREATE TABLE`、`CREATE ROLE`、删除 `operator_audit` 和 backup 写入均拒绝；ops 可读 `pg_stat_activity`；backup 角色只读 dump；logical dump 可恢复并核对钱包基线；物理 base backup + 5 个归档 WAL；SIGKILL 后提交基线保留；PITR 恢复到 marker 前，marker 行为 0。实测 RPO 取决于最后归档 WAL，RTO 以结果 JSON 为准。该单机 Docker 卷没有覆盖整机/磁盘损坏，不能宣传整机 RPO=0；结果字段明确 `hostFailure=untested`。最终候选 SHA 改变后必须重跑并记录新的 result.json。
 
 ## 生产执行手册（后续阶段）
 
