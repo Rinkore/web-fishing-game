@@ -14,6 +14,7 @@
 ## Common baseline and evidence
 
 1. 主窗口核对分支为 `codex/go-rewrite`，审阅已有改动后提交干净的 `BASE_SHA`。
+   四个 worktree 必须都从同一个已提交 BASE_SHA 创建；路径或分支已存在先核实，不覆盖、强制重置、删除，不复制未提交源码充当共同基线。
 2. 在 `BASE_SHA` 上依次保存 `gofmt -l`、`go build ./...`、`go vet ./...`、`go mod verify`、`npm run go:inventory`、`npm run go:coverage` 和 `npm run go:baseline:test` 的完整日志及退出码；终端只显示摘要和失败尾部。
 3. 另存 `node tools/go-rewrite/route-coverage.js --ref BASE_SHA --json`。它只证明静态路由注册；HTTP/SSE 契约和浏览器通过必须在报告中独立列出。
 4. Windows 真库和 Linux Docker race 必须设置 `FISHING_GO_TEST_DATABASE_URL` 或使用隔离 compose 脚本；没有数据库时的 Go `skip` 不能计为通过。
@@ -29,6 +30,8 @@
 | migration | `codex/go-migration` / `go-migration` | 导入、权限、备份恢复、切换演练工具 | `MIGRATION_` |
 
 合并顺序固定为 compat → ab → resilience → migration。每次合并后重新构建并运行受影响验收；最后从干净提交构建候选产物。总览 `DELIVERY.md`、`REMAINING.md` 和本文由主窗口维护；专项报告只写入 `docs/go-rewrite/reports/`。
+
+专项交付合入后冻结候选 SHA，ab、resilience、migration 分别对该同一候选复验 A/B、容量故障和迁移演练。代码再次改变时重跑受影响验收，报告必须能追溯相同代码树；不能用合并前各分支通过结果替代最终复验。
 
 公共 `internal/gateway/http.go`、handler、`internal/testdb/testdb.go`、schema、权限、go.mod/go.sum、compose 和共享工具入口的修改，先在专属报告登记文件、目的、负责人和依赖提交，由主窗口分配唯一负责人。ab/resilience/migration 报告兼容缺陷交 compat 修复，不同时另写一份 handler。数据库权限建议必须区分 schema owner、migration role、runtime role，不能用测试管理员作为正式应用角色。迁移编号由主窗口统一分配；下一号从 0028 起，先登记再实现，禁止重命名已应用 SQL。
 
@@ -46,13 +49,15 @@ Browser profile: <worktree>/output/go-rewrite/<line>-<candidate>/profile
 
 现有 testdb 明确要求 bootstrap 名为 `fishing_test`：以每次唯一 Compose project/实例/端口隔离，同一实例内每个用例再创建随机独立数据库和角色，不能直接把 bootstrap 改成 line_test。持久负载卷用 `<line>-<candidate>-<run-id>` 命名并记录归属，清理只限本次资源。浏览器独立临时 context 已隔离 Cookie；未实现的 profile 参数不视为已支持。Node 数据目录使用 `FISHING_DATA_DIR`，不得挂载主工作树或正式存档。
 
+直接调用 compose 才通过 `FISHING_GO_TEST_LOG_DIR` 指定日志挂载；调用现有 test-postgres.ps1 时使用 `-LogRoot`，helper 会在该目录下新建独立 project 子目录并设置挂载。
+
 Go 默认监听 `127.0.0.1:19001`；并行服务必须显式分配不重叠 loopback 端口（例如 19101–19104），并把端口写入报告。旧测试中仍写死固定端口、固定数据目录或固定 profile 的套件，在完成参数化前必须串行执行；不得用端口复用掩盖冲突。
 
 容量正式测量期间暂停同机其他重负载、浏览器回归和并行 Docker 构建，记录宿主 CPU、内存、磁盘与网络基线。容量结果必须包含 SQL/锁等待、延迟分位数、WAL/空间、在线口径和对账结果；tmpfs 或停止负载后的恢复测试不能替代持久磁盘故障验收。
 
 ## Migration 顺序与回滚
 
-迁移器按完整文件名排序并记录完整文件名；两份 `0027_admin_market.sql` 与 `0027_record_hides.sql` 都必须保留。新空库、`0026` 历史库、admin-first 历史和 record-first 历史分别验证；历史摘要、业务数据、权限和失败回滚均须有证据。任何新增 schema 必须先在 migration 线说明，再由主窗口冻结候选后合并，禁止各线自行复用编号。
+迁移器按完整文件名排序并记录完整文件名；两份 `0027_admin_market.sql` 与 `0027_record_hides.sql` 都必须保留。新空库、`0026` 历史库、admin-first 历史和 record-first 历史分别验证；历史摘要、业务数据、权限和失败回滚均须有证据。任何新增 schema 必须先在 migration 线说明，由主窗口协调合并顺序，再冻结候选共同复验，禁止各线自行复用编号。
 
 ## 通过口径
 
