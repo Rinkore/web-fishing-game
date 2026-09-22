@@ -22,7 +22,10 @@ func (a *API) legacyFeatures(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	write(w, 200, map[string]any{"features": legacyFeatureFlags(v.Flags), "featureOrder": map[string]any{}})
+	metadata := legacyFeatureMetadataRead(r.Context(), a)
+	flags := legacyFeatureFlags(v.Flags)
+	flags["adminBypass"] = metadata.AdminBypass
+	write(w, 200, map[string]any{"features": flags, "featureOrder": legacyFeatureOrder(metadata)})
 }
 
 type legacyRecordEntry struct {
@@ -102,13 +105,18 @@ func (a *API) legacyRecordsProjection(ctx context.Context, q legacyRecordQueryer
 	}
 
 	now := time.Now()
-	return map[string]any{
+	stored, _ := a.legacyStoredConfig(ctx)
+	response := map[string]any{
 		"records":   big,
 		"small":     small,
 		"globalMax": globalMax,
 		"last":      nil,
 		"rankLabel": map[string]string{"day": rankLabelOf("day", a.location, now), "week": rankLabelOf("week", a.location, now), "all": "总榜 · 历史前十"},
-	}, nil
+	}
+	if value, ok := stored[legacyRecordsSetting]; ok {
+		response["recordsCfg"] = value
+	}
+	return response, nil
 }
 
 func rankLabelOf(kind string, loc *time.Location, now time.Time) string {

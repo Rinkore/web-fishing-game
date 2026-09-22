@@ -161,7 +161,7 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.mall_purchases TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant mall permissions")
 	}
-	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT ON fishing.random_intents TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE ON fishing.chest_pity,fishing.player_codex TO "+quote(role)); err != nil {
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT ON fishing.random_intents TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.chest_pity,fishing.player_codex TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant workshop permissions")
 	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.market_orders TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.market_order_equipment,fishing.market_fills,fishing.market_charges TO "+quote(role)); err != nil {

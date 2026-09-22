@@ -107,8 +107,12 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 	rows.Close()
 
 	features := map[string]bool{}
+	featureOrder := map[string][]string{}
 	if f, err := operations.New(a.pool).Features(ctx); err == nil {
 		features = legacyFeatureFlags(f.Flags)
+		metadata := legacyFeatureMetadataRead(ctx, a)
+		features["adminBypass"] = metadata.AdminBypass
+		featureOrder = legacyFeatureOrder(metadata)
 	}
 
 	autoSell := any(nil)
@@ -139,7 +143,7 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 
 	profile := map[string]any{
 		"features":         features,
-		"featureOrder":     map[string]any{},
+		"featureOrder":     featureOrder,
 		"username":         username,
 		"name":             name,
 		"coins":            coins,
@@ -168,6 +172,8 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 	if err != nil {
 		return nil, identity.ErrStorage
 	}
+	stored, _ := a.legacyStoredConfig(ctx)
+	applyLegacyStoredConfig(config, stored)
 	for key, value := range config {
 		profile[key] = value
 	}

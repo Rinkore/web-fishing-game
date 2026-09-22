@@ -1,8 +1,8 @@
 # Go 后端重构起点
 
-架构基线见 [go-architecture.md](../docs/go-architecture.md)，最新实施状态见 [DELIVERY.md](../docs/go-rewrite/DELIVERY.md)，剩余优先级与完整接口缺口见 [REMAINING.md](../docs/go-rewrite/REMAINING.md)。当前已有身份认证、多个玩法的 v1 API/SSE、资产/交易/经济/海域事务、普通地图和远洋正式周期、递归分段恢复、运行时 catalog 发布及部分旧 HTTP/SSE。旧前端全流程和完整后台仍未验收。用户已确认业务版本 v0.21.4，正式数据迁移留到后续停服阶段。
+架构基线见 [go-architecture.md](../docs/go-architecture.md)，最新实施状态见 [DELIVERY.md](../docs/go-rewrite/DELIVERY.md)，剩余优先级与契约缺口见 [REMAINING.md](../docs/go-rewrite/REMAINING.md)。当前已有身份认证、多个玩法的 v1 API/SSE、资产/交易/经济/海域事务、普通地图和远洋正式周期、递归分段恢复和运行时 catalog 发布。截至 2026-09-22，非开发旧 HTTP/SSE 路由按 method + path 静态覆盖 **152/152**；这不等于全部契约或浏览器通过，旧前端全流程和完整后台行为仍未验收。用户已确认业务版本 v0.21.4，正式数据迁移留到后续停服阶段。
 
-Go **1.27.1**（官方稳定版，下载档案需核对官方 SHA-256），Node **24.14.0**。直接依赖为 chi **v5.3.2**、pgx **v5.11.0**，全部版本及校验见 go.mod/go.sum；运行时依赖清单见 dependencies.json，许可见 THIRD_PARTY_NOTICES.md。
+Go **1.27.1**（下载档案需核对官方 SHA-256），Node **24.14.0**。直接依赖为 chi **v5.3.2**、pgx **v5.11.0**、x/crypto **v0.43.0**，全部版本及校验见 go.mod/go.sum；运行时依赖清单见 dependencies.json，许可见 THIRD_PARTY_NOTICES.md。
 
 本次 Windows 工具链独立安装于 `%LOCALAPPDATA%\FishingGoToolchains\go1.27.1\go`，未修改系统 PATH。新开 PowerShell 可先执行：
 
@@ -18,8 +18,11 @@ $env:Path = "$env:LOCALAPPDATA\FishingGoToolchains\go1.27.1\go\bin;$env:Path"
 
 ```powershell
 npm run go:inventory
+npm run go:coverage
 npm run go:baseline:test 2>&1 | Select-Object -Last 40
 ```
+
+`go:coverage` 按非开发 inventory 的唯一 method + path 检查 Go 静态注册；`node tools/go-rewrite/route-coverage.js --ref <SHA> --json` 可复现指定提交的逐路由报告及源码摘要。该结果不执行 HTTP/SSE 契约或浏览器场景。正式验收的测试完整输出须另存忽略目录，显示末 40 行并保留原退出码，不能将管道末端的成功状态当成测试成功；并行规范见 [PARALLEL_ACCEPTANCE.md](../docs/go-rewrite/PARALLEL_ACCEPTANCE.md)。
 
 在 server-go 中运行：
 
@@ -41,7 +44,7 @@ CI 配置在 Windows 和 Linux 上执行以上检查，并设置独立 PostgreSQ
 ./tools/go-rewrite/test-postgres.ps1 -Linux
 ```
 
-脚本每次生成唯一 Compose 项目，动态分配 loopback 端口，使用 tmpfs 测试数据，完成后清理自己的容器/网络。测试数据库必须名为 `fishing_test`；测试内部再创建随机独立数据库和受限登录角色，清理时仅删除这些测试资源。未连接正式数据库，未挂载任何旧服存档。tmpfs 测试只证明事务/并发行为，不证明磁盘持久性、WAL 空间或灾难恢复能力。
+脚本每次生成唯一 Compose 项目，动态分配 loopback 端口，使用 tmpfs 测试数据，完成后清理自己的容器/网络。默认超时 15m，可用 `-Timeout` 调整；完整 JSONL、工具链、数据库版本/时区、退出码、跳过清单及摘要保存 `output/go-postgres/<唯一项目>/`，可用 `-LogRoot` 改日志根目录。摘要拒绝未完成运行和缺少真库环境的跳过；浏览器默认跳过，需显式启用。测试数据库必须名为 `fishing_test`；测试内部再创建随机独立数据库和受限登录角色，清理时仅删除这些测试资源。未连接正式数据库，未挂载任何旧服存档。tmpfs 测试只证明事务/并发行为，不证明磁盘持久性、WAL 空间或灾难恢复能力。
 
 测试镜像版本与摘要已固定到 [compose.yml](../deploy/go-test/compose.yml)。本机直连 Docker Hub 失败，本轮使用以下镜像站引用；其他环境可直接使用默认官方地址：
 
@@ -90,7 +93,7 @@ go run ./cmd/game --role=all
 
 默认监听 `127.0.0.1:19001`。`GET /healthz` 返回进程存活；`GET /readyz` 在数据库可达、schema 兼容且未关闭时返回 200，否则 503。就绪响应包含 `scope: infrastructure`，尚不表示完整游戏业务可用。DB 故障不会让存活探针失败，避免应用因数据库短暂故障无限重启；探针最多一个在途、独立超时。新玩法路由见 [GAMEPLAY_API.md](../docs/go-rewrite/GAMEPLAY_API.md)，其余 URL 返回 404，非 GET 探针返回 405。
 
-all 服务启动原型和默认正式钓鱼调度器（各 25ms 扫描、最多 100 候选/8 执行者）、市集/交易到期和独立自动出售任务。普通启动不会自动生成账号、资产或钓鱼会话。收到 Ctrl+C/Linux SIGTERM 后转为未就绪，停止后台任务并等待在途请求和任务退出，再关闭连接池；HTTP 超时会关闭连接并报告错误。v1 SSE 已有资产修订及重拉通知，旧版事件负载和重连续钓仍待接入。
+all 服务启动原型和默认正式钓鱼调度器（各 25ms 扫描、最多 100 候选/8 执行者）、市集/交易到期和独立自动出售任务。普通启动不会自动生成账号、资产或钓鱼会话。收到 Ctrl+C/Linux SIGTERM 后转为未就绪，停止后台任务并等待在途请求和任务退出，再关闭连接池；HTTP 超时会关闭连接并报告错误。v1 SSE 已有资产修订及重拉通知；旧 `/events` 已接个人 catch/资产快照、公共动态、交易/市集/好友/编队、配置/公告和海域驱逐，并接入多标签页租约与重连续钓。正常停服发送 maintenance；完整通知历史、全流程浏览器与容量仍待验收。
 
 | 环境变量 | 默认值 | 约束 |
 |---|---|---|
@@ -105,15 +108,15 @@ all 服务启动原型和默认正式钓鱼调度器（各 25ms 扫描、最多 
 | REGISTER_GLOBAL_HOURLY | 200 | 正整数；有效注册尝试的全局小时配额 |
 | REGISTER_IP_HOURLY | 10 | 正整数；按实际 TCP 来源的小时配额；非法配置沿用默认 |
 
-连接层固定连接超时 3s、SQL 超时 5s、锁等待 1s、事务空闲 10s，并强制 `synchronous_commit=on`；这些设置不替代耐久性测试。角色拆分、认证和管理接口尚未开放。资产事务、锁序、幂等、装备/钓竿语义与故障边界见 [ASSETS.md](../docs/go-rewrite/ASSETS.md)。
+连接层固定连接超时 3s、SQL 超时 5s、锁等待 1s、事务空闲 10s，并强制 `synchronous_commit=on`；这些设置不替代耐久性测试。身份认证、管理员 MFA 和管理接口已经接入；schema 运维角色与受限应用角色分离，应用运行形态当前仍为单一 all 角色。生产权限配置须独立审阅。资产事务、锁序、幂等、装备/钓竿语义与故障边界见 [ASSETS.md](../docs/go-rewrite/ASSETS.md)。
 
-当前 schema 至 0025 持久注册配额与一次性挑战（0024 为公告队列与不可变发布记录）。已有迁移摘要保持不变，升级保留金币历史、分类库存、装备、钓竿和图鉴。ApplyChange、ExchangeAssets、ChangeRod 和模块 Run 共用命令事务，钓鱼进度和挂单状态与资产共同提交；不接受客户端直接提交奖励或费用计划。合成原型的历史边界见 [PROTOTYPE.md](../docs/go-rewrite/PROTOTYPE.md)，默认正式周期及剩余兼容工作见 [NATIVE_FISHING.md](../docs/go-rewrite/NATIVE_FISHING.md)。新增表的运行期权限及协议范围见 [DELIVERY.md](../docs/go-rewrite/DELIVERY.md)。
+当前 schema 包含 `0025_registration_guard.sql`、`0026_wiki_store.sql`，以及两份不同的 `0027_admin_market.sql`、`0027_record_hides.sql`。迁移器按完整文件名排序并以完整文件名记账，两个 0027 不是互相替代的版本；不得为了编号整齐改名、重写内容或摘要。新空库与已有历史的升级必须分别验证。已有迁移摘要保持不变，升级保留金币历史、分类库存、装备、钓竿和图鉴。ApplyChange、ExchangeAssets、ChangeRod 和模块 Run 共用命令事务，钓鱼进度和挂单状态与资产共同提交；不接受客户端直接提交奖励或费用计划。合成原型的历史边界见 [PROTOTYPE.md](../docs/go-rewrite/PROTOTYPE.md)，默认正式周期及剩余兼容工作见 [NATIVE_FISHING.md](../docs/go-rewrite/NATIVE_FISHING.md)。新增表的运行期权限及协议范围见 [DELIVERY.md](../docs/go-rewrite/DELIVERY.md)。
 
 依赖升级后在仓库根执行 `tools/go-rewrite/dependencies.ps1 -GoExe <go.exe路径>` 更新版本清单和许可。网络无法直达默认代理时，可仅为当前 PowerShell 设置 `$env:GOPROXY = 'https://goproxy.cn'`，保持默认 sumdb 校验。
 
 ## 只读扫描离线存档
 
-当前按用户要求暂停此项；以下命令留作未来停服迁移阶段参考。
+2026-09-22 起迁移工具、权限、备份恢复及合成切换演练由 migration 专项线并行推进。以下扫描器只是现有实现；正式快照获取、正式数据库写入与真实切服不在本次授权内。
 
 先由运营方正常保存并停写，取得完整、一致的离线副本；不要直接指向运行中的数据目录。目录应包含 accounts/ 及对应世界域文件；Wiki SQLite 副本应采用正确的数据库备份方式，不能随意丢弃 WAL 文件。扫描器不证明复制过程一致性。
 

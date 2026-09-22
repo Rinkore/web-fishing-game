@@ -14,8 +14,8 @@ const chrome = process.env.CHROME_PATH || [
   assert.match(fixture.url, /^http:\/\/127\.0\.0\.1:\d+$/);
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   try {
-    const adminContext = await browser.newContext();
-    const playerContext = await browser.newContext();
+    const adminContext = await browser.newContext({ timezoneId: 'Asia/Shanghai' });
+    const playerContext = await browser.newContext({ timezoneId: 'Asia/Shanghai' });
     await adminContext.addCookies([{ name: 'fish_admin', value: fixture.adminToken, url: fixture.url, httpOnly: true }]);
     await playerContext.addCookies([{ name: 'fish_game', value: fixture.playerToken, url: fixture.url, httpOnly: true }]);
     const admin = await adminContext.newPage();
@@ -75,7 +75,7 @@ const chrome = process.env.CHROME_PATH || [
 
     // The fourth registration from this source exercises the unchanged
     // browser proof worker and the actual registration form, without cookies.
-    const newContext = await browser.newContext();
+    const newContext = await browser.newContext({ timezoneId: 'Asia/Shanghai' });
     const newcomer = await newContext.newPage();
     newcomer.on('pageerror', e => errors.push('new player: ' + e.message));
     await newcomer.goto(fixture.url + '/');

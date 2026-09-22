@@ -144,6 +144,15 @@ func (a *API) legacyWorkshop(w http.ResponseWriter, r *http.Request) {
 	inventory, _ := profile["inventory"].(map[string]int64)
 	labels := legacyAffixLabels(c)
 	cfg := c.WorkshopConfig()
+	if raw, ok := profile["smeltCfg"]; ok {
+		if encoded, marshalErr := json.Marshal(raw); marshalErr == nil {
+			if json.Valid(encoded) {
+				base := cfg
+				mergeLegacyWorkshopConfig(&base, raw)
+				cfg = base
+			}
+		}
+	}
 	materials := []map[string]any{}
 	for _, id := range rules.SmeltMaterialIDs() {
 		def, ok := c.Item(id)

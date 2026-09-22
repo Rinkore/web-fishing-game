@@ -40,13 +40,21 @@ type Publish struct {
 	RequestKey       string
 	ExpectedRevision int64
 	Flags            map[string]bool
+	// LegacyOrder and LegacyAdminBypass are the optional metadata used by the
+	// old operator console. They are committed with the feature release so a
+	// successful publish cannot leave the console layout half updated.
+	LegacyOrder       map[string][]string
+	LegacyAdminBypass *bool
+	LegacyAuditAction string
+	LegacyAuditTarget string
+	LegacyAuditDetail string
 }
 
 func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error) {
 	if err := assets.RequireAdmin(ctx, r.ActorID); err != nil {
 		return assets.Result{}, err
 	}
-	if r.ExpectedRevision < 0 || len(r.Flags) < 8 || len(r.Flags) > 11 {
+	if r.ExpectedRevision < 0 || len(r.Flags) < 8 || len(r.Flags) > 64 {
 		return assets.Result{}, assets.ErrInvalid
 	}
 	// Existing eight-flag publications remain valid. New domains default to
@@ -58,7 +66,13 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 	}
 	for k := range r.Flags {
 		switch k {
-		case "market", "trade", "workshop", "chest", "mall", "sell", "autosell", "friends", "sea", "party", "fishing":
+		case "market", "trade", "workshop", "chest", "mall", "sell", "autosell", "friends", "sea", "party", "fishing",
+			"fishing.cast", "bd", "bd.equip", "bd.slots", "bd.save", "bd.autobuild",
+			"character", "character.companion", "character.boat", "sea.upgrade", "sea.chart", "sea.voyage", "sea.quest", "sea.anchor",
+			"ground", "ground.trade", "ground.party", "inventory", "inventory.subscribe",
+			"workshop.craft", "workshop.open", "workshop.smelt", "workshop.recast", "workshop.forge",
+			"mall.buy", "mall.sell", "mall.autosell", "mall.list", "mall.marketbuy",
+			"codex", "records", "feedback", "feedback.submit", "feedback.skip", "logs", "wiki", "adminBypass":
 		default:
 			return assets.Result{}, assets.ErrInvalid
 		}
@@ -83,6 +97,45 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 		}
 		if _, err := t.SQL().Exec(ctx, `UPDATE fishing.feature_head SET release_id=$1 WHERE singleton`, id); err != nil {
 			return assets.Result{}, err
+		}
+		// Closing a feature must also make in-flight state terminal while it is
+		// still covered by the publication transaction. These updates are kept
+		// local instead of calling module services, which would open a nested
+		// asset transaction and publish separate operations.
+		if enabled, ok := r.Flags["fishing"]; ok && !enabled {
+			if _, err := t.SQL().Exec(ctx, `UPDATE fishing.native_fishing_sessions SET state='stopped',generation=generation+1,resume_enabled=false WHERE state='active'`); err != nil {
+				return assets.Result{}, err
+			}
+			if _, err := t.SQL().Exec(ctx, `UPDATE fishing.fishing_sessions SET state='stopped',generation=generation+1 WHERE state='active'`); err != nil {
+				return assets.Result{}, err
+			}
+		}
+		if enabled, ok := r.Flags["trade"]; ok && !enabled {
+			if _, err := t.SQL().Exec(ctx, `UPDATE fishing.trades SET state='cancelled',revision=revision+1,a_confirm=false,b_confirm=false WHERE state IN ('invited','accepted')`); err != nil {
+				return assets.Result{}, err
+			}
+		}
+		if r.LegacyOrder != nil || r.LegacyAdminBypass != nil {
+			metadata := map[string]any{"order": r.LegacyOrder}
+			if r.LegacyAdminBypass != nil {
+				metadata["adminBypass"] = *r.LegacyAdminBypass
+			}
+			encoded, err := json.Marshal(metadata)
+			if err != nil {
+				return assets.Result{}, err
+			}
+			if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.operator_settings(key,value,updated_at) VALUES($1,$2,clock_timestamp()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, "features", encoded); err != nil {
+				return assets.Result{}, err
+			}
+		}
+		if r.LegacyAuditAction != "" {
+			var actorName string
+			if err := t.SQL().QueryRow(ctx, `SELECT display_name FROM fishing.identities WHERE account_id=$1`, r.ActorID).Scan(&actorName); err != nil {
+				return assets.Result{}, err
+			}
+			if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.admin_audit(actor_id,actor_name,account_id,action,target,detail) VALUES($1,$2,$1,$3,$4,$5)`, r.ActorID, actorName, r.LegacyAuditAction, r.LegacyAuditTarget, r.LegacyAuditDetail); err != nil {
+				return assets.Result{}, err
+			}
 		}
 		return assets.Result{Status: "published", ResourceID: strconv.FormatInt(id, 10)}, nil
 	})

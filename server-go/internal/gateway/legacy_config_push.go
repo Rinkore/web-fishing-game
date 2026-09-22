@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 
 	"fishing.local/server/internal/modules/catalog"
 	"fishing.local/server/internal/modules/operations"
@@ -18,6 +19,8 @@ type legacyConfigPush struct {
 	apply                            func(*rules.Catalog)
 	catalogRevision, featureRevision int64
 	catalogSeeded, featureSeeded     bool
+	settingsDigest                   string
+	settingsSeeded                   bool
 	fields                           map[string]any
 	frames                           []map[string]any
 	pending                          []string
@@ -62,11 +65,28 @@ func (p *legacyConfigPush) poll(ctx context.Context) []string {
 	if !p.featureSeeded || featureID != p.featureRevision {
 		f, err := operations.New(p.api.pool).Features(ctx)
 		if err == nil {
+			if p.fields == nil {
+				p.fields = map[string]any{}
+			}
 			flags := legacyFeatureFlags(f.Flags)
-			p.fields["features"], p.fields["featureOrder"] = flags, map[string]any{}
-			out = append(out, legacyFrame(map[string]any{"type": "features", "features": flags, "featureOrder": map[string]any{}}))
+			metadata := legacyFeatureMetadataRead(ctx, p.api)
+			flags["adminBypass"] = metadata.AdminBypass
+			order := legacyFeatureOrder(metadata)
+			p.fields["features"], p.fields["featureOrder"] = flags, order
+			out = append(out, legacyFrame(map[string]any{"type": "features", "features": flags, "featureOrder": order}))
 			p.featureRevision, p.featureSeeded = f.Revision, true
 		}
+	}
+	values, digest := p.api.legacyStoredConfig(ctx)
+	if !p.settingsSeeded || digest != p.settingsDigest {
+		if p.fields == nil {
+			p.fields = map[string]any{}
+		}
+		applyLegacyStoredConfig(p.fields, values)
+		for _, frame := range legacyStoredConfigFrames(values) {
+			out = append(out, legacyFrame(frame))
+		}
+		p.settingsDigest, p.settingsSeeded = digest, true
 	}
 	return out
 }
@@ -74,6 +94,20 @@ func (p *legacyConfigPush) poll(ctx context.Context) []string {
 // Native flags gate actions; projecting them as legacy page flags (e.g. mall)
 // would also hide unrelated actions, such as selling or the player market.
 func legacyFeatureFlags(flags map[string]bool) map[string]bool {
+	copyFlags := make(map[string]bool, len(flags)+11)
+	for key, value := range flags {
+		copyFlags[key] = value
+	}
+	flags = copyFlags
+	// A fresh installation has no feature release yet. The legacy server
+	// treated every native gate as enabled until an operator published the
+	// first release, so preserve that default in every player projection.
+	defaults := []string{"market", "trade", "workshop", "chest", "mall", "sell", "autosell", "friends", "sea", "party", "fishing"}
+	for _, key := range defaults {
+		if _, ok := flags[key]; !ok {
+			flags[key] = true
+		}
+	}
 	out := map[string]bool{}
 	for native, legacy := range map[string][]string{
 		"market": {"mall.list", "mall.marketbuy"}, "trade": {"ground.trade"},
@@ -90,6 +124,60 @@ func legacyFeatureFlags(flags map[string]bool) map[string]bool {
 	}
 	if enabled, ok := flags["sell"]; ok && !enabled {
 		out["mall.autosell"] = false
+	}
+	for key, enabled := range flags {
+		if key == "adminBypass" || strings.Contains(key, ".") {
+			out[key] = enabled
+		}
+	}
+	return out
+}
+
+func legacyAdminFeatureFlags(flags map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	// The admin editor needs every page and child present. Player projections
+	// intentionally keep native group aliases out to avoid hiding unrelated
+	// actions when one native gate is closed.
+	for _, group := range legacyFeatureGroups {
+		out[group["id"].(string)] = true
+		for _, child := range group["children"].([]map[string]any) {
+			out[child["id"].(string)] = true
+		}
+	}
+	for key, value := range legacyFeatureFlags(flags) {
+		out[key] = value
+	}
+	for native, root := range map[string]string{"fishing": "fishing", "sea": "sea"} {
+		if enabled, ok := flags[native]; ok {
+			out[root] = enabled
+		}
+	}
+	if trade, ok := flags["trade"]; ok {
+		if party, exists := flags["party"]; exists {
+			out["ground"] = trade && party
+		}
+	}
+	if workshop, ok := flags["workshop"]; ok {
+		if chest, exists := flags["chest"]; exists {
+			out["workshop"] = workshop && chest
+		}
+	}
+	if mall, ok := flags["mall"]; ok {
+		if sell, exists := flags["sell"]; exists {
+			if market, marketExists := flags["market"]; marketExists {
+				out["mall"] = mall && sell && market
+			}
+		}
+	}
+	for key, enabled := range flags {
+		if key == "adminBypass" || strings.Contains(key, ".") {
+			out[key] = enabled
+			continue
+		}
+		switch key {
+		case "bd", "character", "ground", "inventory", "codex", "records", "feedback", "logs", "wiki":
+			out[key] = enabled
+		}
 	}
 	return out
 }

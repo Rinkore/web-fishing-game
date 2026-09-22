@@ -72,6 +72,13 @@ func compatible(seen map[string]string, expected []step, requireAll bool) bool {
 	if len(seen) > len(expected) || requireAll && len(seen) != len(expected) {
 		return false
 	}
+	if compatiblePrefix(seen, expected) {
+		return true
+	}
+	return !requireAll && compatibleRecordBranch(seen, expected)
+}
+
+func compatiblePrefix(seen map[string]string, expected []step) bool {
 	for i, step := range expected {
 		checksum, exists := seen[step.name]
 		if i < len(seen) {
@@ -83,6 +90,36 @@ func compatible(seen map[string]string, expected []step, requireAll bool) bool {
 		}
 	}
 	return true
+}
+
+// The two already-published 0027 steps were developed on separate branches.
+// The records branch could have applied record_hides before admin_market was
+// present. Permit only that exact historical branch, preserving every original
+// name and checksum. All other gaps, later history, or unknown steps fail closed.
+// New databases still apply both steps in full-filename order.
+func compatibleRecordBranch(seen map[string]string, expected []step) bool {
+	const adminMarket = "0027_admin_market.sql"
+	const recordHides = "0027_record_hides.sql"
+	if _, exists := seen[adminMarket]; exists {
+		return false
+	}
+	if _, exists := seen[recordHides]; !exists {
+		return false
+	}
+	count := 0
+	for _, step := range expected {
+		if step.name > recordHides {
+			break
+		}
+		if step.name == adminMarket {
+			continue
+		}
+		if checksum, exists := seen[step.name]; !exists || checksum != step.checksum {
+			return false
+		}
+		count++
+	}
+	return count == len(seen)
 }
 
 func Check(ctx context.Context, pool *pgxpool.Pool) error {

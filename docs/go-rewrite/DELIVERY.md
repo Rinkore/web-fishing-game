@@ -2,7 +2,9 @@
 
 用户已授权连续推进以下五项；正式数据迁移、正式部署和推送不在本轮范围。每项只有实现、对照和相应验证都通过后才标记完成。原型通过不等于正式玩法或容量验收通过。
 
-**2026-09-21 现状校正**：当前优先级、未注册接口的完整清单与验收条件见 [REMAINING.md](REMAINING.md)。以下日志按实施批次保留，早期的“尚未实现”描述可能已被后续提交覆盖，不能单独作为当前待办。`40e1855` 已接入递归分段持久化、catalog 发布、远洋结算及多连接租约；当前仍缺完整旧协议、后台和生产验收。
+**2026-09-22 当前总览**：当前优先级与验收条件见 [REMAINING.md](REMAINING.md)，并行所有权与候选复验规则见 [PARALLEL_ACCEPTANCE.md](PARALLEL_ACCEPTANCE.md)。`inventory --check` 无漂移；按唯一 method + path 重算，提交 `603c945d6181de83aec00a077e3af0a90ebe7483` 为 **140/152**，本轮收口工作树为 **152/152，未注册 0 条**，5 个开发接口排除在分母外。静态注册、HTTP/SSE 契约和浏览器通过是三个独立结论：当前不宣称 152 条已完成全部契约验收，也不宣称完整 Node/Go 浏览器 A/B 已通过。
+
+以下按日期保留历史实施批次；其中的路由数、测试结果和“尚未实现”只对应注明的提交或该批工作树，不能继承为最新 SHA 的通过结论。章节 1–5 的复选框是完整交付门槛，不等同于“尚无代码实现”。`40e1855` 及后续代码已接入递归分段持久化、catalog 发布、远洋结算、多连接租约及全部静态旧后台路由；剩余重点是逐项兼容、完整浏览器、容量故障和迁移验收。
 
 ## 1. v0.21.4 正式规则
 
@@ -51,7 +53,9 @@
 - 递归兼容验收必须覆盖超过 3 条、追加分支中的掉落/远洋提前返回、深度优先随机消耗顺序和子分支结束后的自动出售顺序；长链没有固定总量上限，需独立验证执行资源及故障恢复，不能通过静默截断改变收益。
 - 后续用户选择：先做内部正式核心与真库回归，再接旧 HTTP/SSE；自动出售本批沿用独立扫描。因此本批不承诺递归分支返回时立即出售的旧时机，整竿超时回滚后使用同一随机序列重试。
 
-## 本轮实施记录（持续更新，不代表 1–5 全部完成）
+## 2026-09-20 历史实施记录（0004–0017 批次）
+
+本节验证对象为当日各批次工作树，未逐批记录独立 SHA；数字和未实现项仅保留历史，不能作为 2026-09-22 基线的验收。下文标有 2026-09-21 的续作以该日对应批次为对象。
 
 - 新增 `internal/rules`：94 个物品默认定义、源码摘要检查、公式、抛竿/上钩/双钓概率、权重组、鱼体型、词条/装备/突破生成、供需、自动出售计划、熔炼及重铸纯规则。旧 14 样例保持不变，新增 602 + 84 + 435 个 Node oracle 对照已通过。正式周期仍使用原型规则，配置覆盖发布和剩余规则还未全部接通。
 - 新增 migration 0004–0005：账号/会话/MFA、按玩家资产修订编号的事件。注册赠币原子入账；会话摘要存储；密码 scrypt 与 Node 测试向量一致；管理员 MFA 密文绑定账号且拒绝验证码重放。`/api/v1` 已接分页、修订游标 SSE、身份绑定与慢客户端写超时。旧 `/api/me` 与原前端尚未迁完。
@@ -85,7 +89,7 @@
 - 本批的独立验证（HEAD `e6963de`，验证者不参与实现）：Windows 便携 PostgreSQL 18.6 真库全量 `go test -count=1 -timeout=10m ./...` 24 个包全 ok；Linux 容器 race 走 `tools/go-rewrite/test-postgres.ps1 -Linux`（含 `go mod verify` + `go vet` + `go test -race`）24 个包全 ok、退出码 0，容器与网络自动清理。Docker Hub 直连不可达时按 README 的镜像覆盖变量（`FISHING_GO_POSTGRES_IMAGE` / `FISHING_GO_TEST_IMAGE` / `FISHING_GO_TEST_GOPROXY=https://goproxy.cn,direct`）即可复现。**注意：不设置 `FISHING_GO_TEST_DATABASE_URL` 时集成用例静默 skip，无库跑批的"全 ok"不是通过。**
 - 旧运营后台契约接入（slice 1，15 条）：`GET /api/admin/overview|stats|netstats|security|registration/stats|users|feedback`、`POST /api/admin/users/update|ban|setadmin|delete`、`POST /api/admin/feedback/status|del|reward|cfg`。新增 migration `0023_admin_console.sql`：`identities` 增 `ban_until/ban_reason/ban_by/ban_at/retired`，`auth_attempts` 增 `realm/username`，`feedback_entries` 增 `status_at/status_by/reward`，新增 `operator_settings`（反馈 CD/跳过费用，保存后玩家端立即生效）、`activity_samples`（分钟采样）与控制台审计表 `admin_audit`；`admin_grant` 加入资产命令白名单。**审计不复用 `operator_audit`**：运行期角色必须无法写 MFA 运维审计（这是阻止被攻陷进程自我授权的边界），控制台审计单列一张表并复用同一 append-only 触发器。生产部署需为应用角色补：`admin_audit` SELECT/INSERT、`activity_samples` SELECT/INSERT/DELETE、`operator_settings` SELECT/INSERT/UPDATE、`feedback_entries` 追加 UPDATE（测试夹具已在 `testdb.go` 同步）。
 - 封禁模型：`banned` 仍是唯一的「当前是否封禁」标志（既有 `NOT i.banned` 判断一处未改），限时封禁写 `ban_until`，由 `identity.RunBanExpiry`（30 秒清扫，`app.Run` 启动）到点自动解封，`ban_until IS NULL` = 永久；封禁/改密/注销统一走「删除全部会话 + 过期实时连接租约 + 钓鱼会话置 paused」，在线流最迟 25 秒心跳时收到 `kicked`（旧版即时）。热力图由 `operations.RunStatsSampler` 每 60 秒采样（在线/钓鱼/挂单/交易/账号 + 按钓场、钓点钓鱼人数），`/api/admin/stats` 在 SQL 聚合（1h/60s、6h/5min、24h/10min、7d/1h、30d/6h）+ 28 天「星期×小时」热力格，尾部始终补 live 点；`netstats` 的 apiReqs/apiBytes 来自网关中间件计数，SSE 三计数来自 `/events` 与 `/api/v1/events` 写路径。
-- 运营后台**已知偏差**：①`/api/admin/users/delete` 是「注销」不是真删——持久层把账号挂在 append-only 资产账本、渔获纪录与审计上，真删要拆账本；注销 = 用户名改 `retired_<id>`（原用户名可再次注册）、清空全部会话/连接、永久封禁、从账号列表隐藏，账面与历史保留，账号在编队或有进行中交易时拒绝注销。②`capSet` 恒 false（`listing_capacity NOT NULL DEFAULT 40`，持久层没有「未设置」态），挂单上限上限 10000（旧版 100000）。③限时封禁由 30 秒清扫解封；封禁/撤销管理员不再给玩家推 notice，改金币/奖励不推实时 `assets`（下次快照刷新可见）。④`lockouts` 只有账号名、没有来源 IP（Go 登录防护按 realm+账号，不按 IP）。⑤`registration/stats` 的 `challenged` 恒 0（Go 注册无挑战轮），`limits` 回旧版常量 200/10/5（Go 实际为每 IP 30 次/分钟、每账号 30 次/分钟）。⑥`notifyLevel` 固定 `all`、`biteFormula` 取 catalog `BITE_FORMULA_DEFAULT`（`/api/admin/settings` 未接入）。⑦users/snapshot*、`/api/admin/world`、横幅与 Wiki 内容编辑器仍不注册（保持 404）。
+- 运营后台**已知偏差**：①`/api/admin/users/delete` 是「注销」不是真删——持久层把账号挂在 append-only 资产账本、渔获纪录与审计上，真删要拆账本；注销 = 用户名改 `retired_<id>`（原用户名可再次注册）、清空全部会话/连接、永久封禁、从账号列表隐藏，账面与历史保留，账号在编队或有进行中交易时拒绝注销。②`capSet` 恒 false（`listing_capacity NOT NULL DEFAULT 40`，持久层没有「未设置」态），挂单上限上限 10000（旧版 100000）。③限时封禁由 30 秒清扫解封；封禁/撤销管理员不再给玩家推 notice，改金币/奖励不推实时 `assets`（下次快照刷新可见）。④`lockouts` 只有账号名、没有来源 IP（Go 登录防护按 realm+账号，不按 IP）。⑤`registration/stats` 的 `challenged` 恒 0（Go 注册无挑战轮），`limits` 回旧版常量 200/10/5（Go 实际为每 IP 30 次/分钟、每账号 30 次/分钟）。⑥`notifyLevel` 固定 `all`、`biteFormula` 取 catalog `BITE_FORMULA_DEFAULT`（`/api/admin/settings` 未接入）。⑦`/api/admin/world` 与其余世界/掉落、经济运营编辑器仍未注册；功能开关、用户快照、公告和 Wiki 内容编辑器已接入。
 - slice 1 的集成用例：`internal/gateway/legacy_admin_test.go`（越权拒绝、只读投影、账号编辑/封禁-解封-到期/管理员授权/注销与用户名释放、反馈审核-奖励-删除-配置立即生效、审计 append-only）、`internal/modules/operations/stats_test.go`（采样、分钟去重、30 天清理、钓场/钓点筛选口径）。
 - 旧 `/events` 推送补齐（第一批）：新增 `internal/gateway/legacy_push.go`，把每个域的**持久水位**投影成旧协议帧——`mktTrade`（买卖双方各一条，含 `role/other/qty/price/total/tax/sellerGain`）+ 卖家侧的权威 `assets` 快照、`marketDelta`（revision/total）、`friends` + 好友申请/同意 `notice`、以及登记视口后的 `playersPage`。`POST /api/players/view` 不再返回假的 `pushed:0`，而是返回该账号的在线流数并把视口登记进进程内 registry（`API.views`，单进程部署；多进程需共享状态）。每个投影各自持有游标（market 用 `market_fills.operation_id`、friends 用 `friend_relations.updated_operation`、trade 用 watcher 自比 revision/state/confirm），漏拍不会丢事件；`init` 现在带 `marketRevision`/`marketTotal`。
 - `/events` 鱼类动态补齐：新增 `legacy_catch_push.go`，通过 `player_events` 的每玩家修订号 + 渔获 ordinal 投影 `feedBatch`（当前活动钓场过滤、每秒最多 10 条）与 `recordsDirty`，以及当前跨鱼种最大值的 `globalRecord`。不使用全局 operation ID 作为提交水位，避免跨玩家晚提交漏读；一竿超过 100 条可继续读取尾页；读失败不推进游标，重连从新基线开始，不重放历史社交播报。`recordsDirty.v` 为连接内递增的刷新标记。范围限 `catch_records` 中的鱼类：材料/组件动态、单鱼种/日榜横幅、通知等级过滤、初始 feed 历史与 records.last 仍未实现；单次轮询只播当前最大纪录，期间被超过的中间纪录不补播。本段为前一批社交流记录；个人 catch/资产路径随后已在本页“实时主链收尾”中修复。每连接保存玩家游标并轮询共享历史的成本仍需容量验收。
@@ -93,7 +97,7 @@
 - `internal/gateway/legacy_push_test.go`：真库覆盖市集成交双向帧 + 卖家 assets、好友申请/同意 notice、视口登记后的 playersPage 与 `pushed` 计数。
 - 2026-09-21 鱼类动态验证：`legacy_push_test.go` 验证实际 `/events` 的地点、动态、榜单刷新与横幅；`legacy_catch_push_test.go` 验证 105 条递归分页、跨玩家反序提交、钓场隔离、相同最大值不重播、断线重连不回放历史，以及中途数据库读取失败后重试。最终 Linux Docker 隔离 PostgreSQL 全套 `go mod verify`、`go vet ./...`、`go test -race -count=1 -timeout=3m ./...` 退出码 0（gateway 129.379 秒），Windows `go build ./...`、gofmt 通过。默认镜像/模块源网络失败后使用 README 已记录的固定镜像站和 goproxy.cn；本机 5433 便携库不可用导致另一次 Windows 真库尝试失败，该次不计通过。测试容器与网络已清理；没有执行浏览器 A/B、生产迁移或部署。
 - 旧 Wiki 契约接入（只读 5 条）：`GET /api/wiki/content`（元数据 + 更新记录 + `officialRevision`/`userRevision` + `ETag` 与 `If-None-Match` 304）、`/api/wiki/guides`（分页/`q`/`kind`/`category`，pageSize 默认 20 上限 50）、`/api/wiki/guides/{id}`（含正文段落，未知/不合法 id 回 404 中文文案）、`/api/wiki/guides/session`、`/api/wiki/simulator/inventory`（私有只读投影，不触发结算）。官方正文与用户投稿、审核、软删除、修订号、24h/待审配额和官方热保存现已迁移到 `0026_wiki_store.sql`，并注册 `admin/wiki/*` 与 `wiki/guides/*` 写入路由；`legacy_wiki_read_test.go` 与 `legacy_wiki_write_test.go` 已通过真实 PostgreSQL，覆盖公开契约、并发播种、配额、审核冲突、软删除、不可变修订、官方发布冲突和事务回滚；真实浏览器 A/B 仍待完成。搜索按 Unicode 折叠大小写；未登录/封禁的 simulator 读取统一 401 `invalid_credentials`。
-- **仍属剩余范围**：`/api/admin/*` 剩余 43 条（功能开关、世界/掉落/玩法配置编辑器、用户快照与回滚、经济运营等）；其余配置类 SSE 推送（见上；钓鱼组件 subalert 已接入）；容量/故障/迁移/浏览器 A/B 仍按既定计划延期。
+- **历史剩余范围（2026-09-21 旧协议首批工作树，未记录独立 SHA）**：当时 `/api/admin/*` 剩余 43 条（功能开关、世界/掉落/玩法配置编辑器、用户快照与回滚、经济运营等）；其余配置类 SSE 推送、容量/故障/迁移/浏览器 A/B 当时未验收。当前范围见本页总览及 REMAINING，旧延期安排不约束本轮专项实施。
 
 ## 2026-09-21 实时主链收尾
 
@@ -124,7 +128,7 @@
 - 修正旧编队与共享海域的账号标识，统一用小写用户名；进入海域、续钓、地图人数均完成双向转换，内部和 v1 仍用账号数字。新请求号消除编队快速操作的毫秒碰撞。
 - 原生 worker 每秒轮转检查最多 100 个失去权限或过期的海域会话，并在玩家、钓鱼会话、编队拓扑、海域的固定锁序下重查权限。主动停止不再等待长竿到期；停止、代次与禁止续钓原子提交，旧 SSE 下发 `seaEvict`。恢复权限后的候选不停止、不缓存拒绝；双 worker 使用保留请求号防止重复提交；单候选失败继续处理本批其余候选。
 - 新增原前端真实 Chrome 回归，使用隔离合成数据库与标准输入传递的测试会话，覆盖旧后台公告表单/停止/闪烁、catalog/功能更新、解散编队和玩家实时界面。单项通过（8.66 秒），随后 Windows 全量开启浏览器复验也通过。该覆盖不替代完整 Node/Go 浏览器 A/B。
-- 静态路由覆盖为 100/152，剩余 52 条，其中后台 48 条；完整清单见 REMAINING。Windows gofmt/build/vet/真库全套通过（gateway 70.812 秒），Node 基线 3/3；Linux 真库 go mod verify/vet/race 全套退出 0（gateway 138.099 秒，默认跳过可选浏览器）。
+- 本节 2026-09-21 工作树历史统计为 100/152，剩余 52 条，其中后台 48 条，未记录独立 SHA；不作为当前剩余清单。Windows gofmt/build/vet/真库全套通过（gateway 70.812 秒），Node 基线 3/3；Linux 真库 go mod verify/vet/race 全套退出 0（gateway 138.099 秒，默认跳过可选浏览器）。
 
 ## 2026-09-21 维护通知、价格与公共渔获
 
@@ -146,7 +150,21 @@
 1. 正式钓鱼规则的完整旧版对照、活动与配置编辑器、长链长期积压/公平性验收。运行时 catalog 发布、远洋经验/悬赏/共享权限、递归分段恢复已实现；不能再次列为“未开发”。自动出售按最新选择独立扫描，供需在出售事务更新。
 2. 原前端与全部旧 API/SSE 契约、浏览器 A/B。注册挑战及旧表单已接入；生产代理来源策略仍需验收。新 v1 接口不能替代旧协议验收。
 3. 已实现交易的旧契约逐项对照、到期/换装边界补充故障矩阵。
-4. 活动、自动配装和完整通知契约、43 个尚未注册的后台接口。旧版去重总榜/日榜/周榜查询已注册；纪录播报等级、历史动态、未接权威源的运营配置仍有缺口。公告队列、已有 catalog/feature 推送及海域主动驱逐已接。远洋和共享权限已接内部核心，旧 `sea:<用户名>:<zone>` 转换已经 HTTP/SSE 验证，完整浏览器 A/B 仍待验收。功能开关覆盖原八类及 sea/party/fishing。
+4. 活动、自动配装、完整通知契约，以及已全部静态注册的后台接口的行为验收。旧版去重总榜/日榜/周榜查询已注册；纪录播报等级、历史动态、运营配置在权威结算侧的实际生效仍有缺口。公告队列、已有 catalog/feature 推送及海域主动驱逐已接。远洋和共享权限已接内部核心，旧 `sea:<用户名>:<zone>` 转换已经 HTTP/SSE 验证，完整浏览器 A/B 仍待验收。功能开关覆盖原八类及 sea/party/fishing，旧层级子开关与 adminBypass 的逐动作权限等价仍需复验。
 5. 先完成 100 人长时间和完整玩法负载、写入中的数据库故障/进程重启、锁等待/SQL 次数，再阶梯测试 1000/5000 人；已有 SIGKILL 恢复是在停止负载之后进行。
 
 接口、限购时区、管理员运维入口和功能发布语义详见 [GAMEPLAY_API.md](GAMEPLAY_API.md)。本清单不把阶段实现标记为五项整体交付完成。
+
+## 2026-09-21 功能开关与用户快照
+
+- 旧后台 `GET/POST /api/admin/features` 已桥接到现有不可变 feature release：保留旧 `groups`、`featureOrder`、局部布尔更新和 `adminBypass`；首个 release 缺失时已知开关默认开放。页面根开关会同步对应 native gate，玩家和 SSE 仍使用不隐藏无关动作的旧投影。排序、权限、版本冲突和审计均复用既有事务边界。
+- 用户快照 6 条旧后台路由已接入 `operator_settings` 持久快照队列，支持金币、鱼/材料/宝匣、组件实例、图鉴、大鱼档位和活动钓竿装配的读取、编辑、立即备份、保留策略及确认回档。组件替换、图鉴清理和回档前备份在同一数据库事务内写入资产操作/outbox；测试角色补齐 `player_codex` 删除权限。
+- 新增 `legacy_admin_features_test.go`、`legacy_admin_snapshot_test.go`；便携 PostgreSQL 真库定向测试和完整 `internal/gateway` 套件通过（本批运行退出码 0）。**历史统计对象：2026-09-21 功能开关与快照批次工作树，未记录独立提交 SHA**；当时报告静态清单由 109/152 更新为 117/152，未注册后台接口由 43 条降为 35 条。该统计保留为批次日志，不代表当前总数；完整旧前端 A/B、Linux race/vet、容量/故障和生产迁移仍未由本批覆盖。
+- **历史统计对象：2026-09-22 世界只读与运营配置批次工作树，未记录独立提交 SHA**。本批新增只读 `admin/world`、`admin/loot/groups`、`admin/loot/spots`，并接入 `admin/settings`、`admin/mall/config`、`admin/smelt/config`、`admin/records/config` 的管理员事务审计与 `operator_settings` 持久化；配置变更纳入旧 SSE 的水位轮询和 `/api/me`/世界投影。功能开关关闭钓鱼会停止活动会话，关闭交易会取消邀请/已接受交易，均与发布事务同库回滚。快照金币、库存、组件回档补齐资产账本、设备账本、玩家修订和 `assets_changed` 事件。旧批次报告为 124/152、未注册 28 条；这是被 2026-09-22 当前全工作树重新统计替代的历史值，不是当前现状。该批记录 `go test ./...`、`go build ./...`、`go vet ./...`、`git diff --check` 通过，但未附环境变量与 skip 清单，不能代替本轮真实 PostgreSQL 全套和 Linux race 验证；未执行生产迁移、部署或推送。
+
+## 2026-09-22 基线路由覆盖收口
+
+- 新增 `tools/go-rewrite/route-coverage.js`：以唯一 method + path 连接非开发 inventory 与 Go 注册，忽略源码注释和字符串中的伪路由；重复、动态路径或不支持的路由分组必须显式处理。`--ref <SHA>` 同时读取该提交中的 inventory 与 Go 源码，`--json` 保存逐路由来源行号、输入摘要和验证对象，`--check` 在存在缺失时退出非零。
+- 本轮重新运行 `npm run go:inventory` 退出 0；提交 `603c945d6181de83aec00a077e3af0a90ebe7483` 的 180 个 Go 注册覆盖 140/152，缺 12 条；收口工作树的 192 个注册覆盖 152/152，缺 0 条。两者均无重复和未解析表达式；5 个开发接口不计入分母。
+- `npm run go:baseline:test` 为 7/7、skip 0，覆盖 inventory/oracle 漂移、GET/POST 分开统计、参数化路径、注释/字符串隔离、动态注册与重复检测；这不是 7 条 HTTP 契约通过。完整静态日志及 JSON 证据在忽略目录 `output/go-baseline-20260922/`。
+- 契约层保留已有分域真实数据库用例，浏览器层保留已有原 Chrome 定向用例；完整 HTTP/SSE Node/Go 对照、完整浏览器 A/B、容量故障和生产迁移尚未验收。不得从静态全覆盖推导行为或容量结论。
