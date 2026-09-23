@@ -211,3 +211,67 @@ func TestIntegrationRodFailureRollsBackBindings(t *testing.T) {
 		})
 	}
 }
+
+func TestIntegrationRodImportedSavedWithoutUnsavedSlot(t *testing.T) {
+	for _, action := range []string{"equip", "uninstall", "stow", "delete", "rename", "concurrent-equip", "rejected-equip"} {
+		t.Run(action, func(t *testing.T) {
+			f := newAssets(t)
+			a := f.player()
+			old, replacement := f.gear(a, "rod"), f.gear(a, "rod")
+			f.rod(RodCommand{ActorID: a, Action: "equip", Part: "rod", EquipmentID: old}, "rod_updated")
+			f.rod(RodCommand{ActorID: a, Action: "save", Slot: 0}, "rod_updated")
+			if _, err := f.db.Admin.Exec(f.ctx, "DELETE FROM fishing.rod_loadouts WHERE owner_id=$1 AND slot=-1", a); err != nil {
+				t.Fatal(err)
+			}
+			command := RodCommand{ActorID: a, Action: action}
+			wantActive := int64(0)
+			switch action {
+			case "equip", "concurrent-equip", "rejected-equip":
+				command.Action, command.Part, command.EquipmentID = "equip", "rod", replacement
+			case "uninstall":
+				command.Action, command.Part = "equip", "rod"
+				wantActive = -1
+			case "stow", "delete":
+				wantActive = -1
+			case "rename":
+				command.Name = "renamed"
+			}
+			if action == "rejected-equip" {
+				command.Part = "line"
+				f.rod(command, "wrong_equipment_part")
+				if f.number("SELECT count(*) FROM fishing.rod_loadouts WHERE owner_id=$1 AND slot=-1", a) != 0 || f.number("SELECT equipment_id FROM fishing.rod_components WHERE owner_id=$1 AND slot=0", a) != old {
+					t.Fatal("rejection did not roll back slot initialization and preserve equipment")
+				}
+			} else if action == "concurrent-equip" {
+				var wg sync.WaitGroup
+				start := make(chan struct{})
+				for i := 0; i < 2; i++ {
+					wg.Add(1)
+					go func(i int) {
+						defer wg.Done()
+						<-start
+						c := command
+						c.RequestKey = fmt.Sprintf("imported-equip-%d", i)
+						result, err := f.s.ChangeRod(f.ctx, c)
+						if err != nil || result.Status != "rod_updated" {
+							t.Errorf("concurrent imported equip: %v %s", err, result.Status)
+						}
+					}(i)
+				}
+				close(start)
+				wg.Wait()
+			} else {
+				f.rod(command, "rod_updated")
+			}
+			if f.active(a) != wantActive || f.number("SELECT count(*) FROM fishing.rod_loadouts WHERE owner_id=$1 AND active", a) != 1 {
+				t.Fatal("changed active rod unexpectedly")
+			}
+			if action == "equip" || action == "concurrent-equip" {
+				if f.number("SELECT equipment_id FROM fishing.rod_components WHERE owner_id=$1 AND slot=0", a) != replacement || f.number("SELECT count(*) FROM fishing.rod_components WHERE equipment_id=$1", old) != 0 {
+					t.Fatal("replacement binding or returned component incorrect")
+				}
+			}
+			assertInventoryReconciles(t, f.db.Admin)
+		})
+	}
+}

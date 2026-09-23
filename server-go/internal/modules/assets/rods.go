@@ -58,7 +58,11 @@ func (s *Service) ChangeRod(ctx context.Context, r RodCommand) (Result, error) {
 	return s.execute(ctx, command{r.ActorID, r.RequestKey, "rod_change", "rod-change-v1", hash, []int64{r.ActorID}}, func(ctx context.Context, u *assetTx) (Result, error) {
 		// A new account lazily gets one unsaved active assembly. Saved loadouts
 		// are created only when used by Save, after the purchased-capacity check.
-		if _, err := u.tx.Exec(ctx, `INSERT INTO fishing.rod_loadouts(owner_id,slot,active) VALUES ($1,-1,true) ON CONFLICT(owner_id,slot) DO NOTHING`, r.ActorID); err != nil {
+		// Imported accounts may already have an active saved rod but no slot -1.
+		// Keep that rod active; the player lock serializes this initialization.
+		if _, err := u.tx.Exec(ctx, `INSERT INTO fishing.rod_loadouts(owner_id,slot,active)
+ VALUES ($1,-1,NOT EXISTS(SELECT 1 FROM fishing.rod_loadouts WHERE owner_id=$1 AND active))
+ ON CONFLICT(owner_id,slot) DO NOTHING`, r.ActorID); err != nil {
 			return Result{}, err
 		}
 		before, err := u.rodState(ctx, r.ActorID)

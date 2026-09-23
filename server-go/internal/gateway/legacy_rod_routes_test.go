@@ -99,6 +99,21 @@ func TestIntegrationLegacyRodRoutes(t *testing.T) {
 	if slots[0] == nil || slots[0].(map[string]any)["name"] != "第一竿" {
 		t.Fatalf("rod slots view: %v", slots[0])
 	}
+	// Legacy imports with a saved active rod do not create an unsaved slot.
+	// Replacing a component must lazily create that slot without activating it.
+	if _, err := db.Admin.Exec(context.Background(), `DELETE FROM fishing.rod_loadouts WHERE owner_id=$1 AND slot=-1`, session.AccountID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := assets.New(db.App).ApplyChange(context.Background(), assets.Change{ActorID: session.AccountID, RequestKey: "replacement", Reason: "reward", RuleVersion: "test-v1", Create: []assets.EquipmentSpec{{DefinitionID: base.ID, Part: base.Part, Attributes: attrs}}}); err != nil {
+		t.Fatal(err)
+	}
+	code, replaced := do("POST", "/api/bd/set", `{"part":"rod","compId":"`+signature+`"}`, token)
+	if code != 200 || replaced["ok"] != true || replaced["rodActiveSlot"] != float64(0) {
+		t.Fatalf("replace imported saved rod component: %d %v", code, replaced)
+	}
+	if replaced["inventory"].(map[string]any)[signature] != float64(1) {
+		t.Fatalf("replaced component was not returned to inventory: %v", replaced["inventory"])
+	}
 	code, renamed := do("POST", "/api/rod/rename", `{"slot":0,"name":"改名竿"}`, token)
 	if code != 200 || renamed["rodName"] != "改名竿" {
 		t.Fatalf("rod rename: %d %v", code, renamed)
