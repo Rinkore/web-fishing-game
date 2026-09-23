@@ -3,7 +3,6 @@ package gateway
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"time"
 
 	"fishing.local/server/internal/modules/assets"
@@ -134,9 +133,9 @@ func (a *API) legacySell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-	res, err := economy.New(a.pool, c).Sell(ctx, economy.Sell{ActorID: session.AccountID, RequestKey: "legacy:sell:" + strconv.FormatInt(timeNowMS(), 10), ItemID: in.ID, Tier: tier, Quantity: in.Qty})
+	res, err := economy.New(a.pool, c).Sell(ctx, economy.Sell{ActorID: session.AccountID, RequestKey: legacyMarketKey("legacy:sell"), ItemID: in.ID, Tier: tier, Quantity: in.Qty})
 	if err != nil {
-		failure(w, err)
+		assetResponse(w, res, err)
 		return
 	}
 	if res.Status != "sold" {

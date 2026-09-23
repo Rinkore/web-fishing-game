@@ -114,6 +114,9 @@ func (s *Service) Sell(ctx context.Context, r Sell) (assets.Result, error) {
 	if r.Tier == "" {
 		r.Tier = "normal"
 	}
+	if _, _, _, ok := s.catalog.Instance(r.ItemID); ok {
+		return s.sellComponents(ctx, r)
+	}
 	it, _ := s.catalog.Item(r.ItemID)
 	if r.ActorID < 1 || !s.economic(r.ItemID) || r.Quantity < 1 || r.Quantity > assets.MaxCoins || (r.Tier != "normal" && r.Tier != "large" && r.Tier != "giant") || (it.Kind != "fish" && r.Tier != "normal") {
 		return assets.Result{}, assets.ErrInvalid
