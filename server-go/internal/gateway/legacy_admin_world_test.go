@@ -54,6 +54,15 @@ func TestIntegrationLegacyAdminWorldReadRoutes(t *testing.T) {
 	if world["ok"] != true || len(world["grounds"].([]any)) == 0 {
 		t.Fatalf("world projection: %v", world)
 	}
+	levels, ok := world["notifyLevels"].(map[string]any)
+	if !ok || len(levels) != 5 || world["notifyLevel"] != "all" {
+		t.Fatalf("notification editor missing defaults: %v / %v", levels, world["notifyLevel"])
+	}
+	for _, level := range []string{"all", "uncommon", "offrange", "records", "none"} {
+		if label, ok := levels[level].(string); !ok || label == "" {
+			t.Fatalf("notification level %s has no label", level)
+		}
+	}
 	catalog, ok := world["catalog"].(map[string]any)
 	if !ok || len(catalog["fish"].([]any)) == 0 {
 		t.Fatalf("world catalog: %v", world["catalog"])
@@ -73,6 +82,24 @@ func TestIntegrationLegacyAdminWorldReadRoutes(t *testing.T) {
 	f.expect(code, spots, 200, "")
 	if spots["ok"] != true || len(spots["spots"].([]any)) == 0 {
 		t.Fatalf("loot spots response: %v", spots)
+	}
+}
+
+func TestIntegrationLegacyAdminNotificationEditorReload(t *testing.T) {
+	f := newAdminFixture(t)
+	for _, tc := range []struct{ saved, selected string }{
+		{"records", "records"}, {"none", "none"}, {"rare", "uncommon"}, {"off", "none"}, {"all", "all"},
+	} {
+		code, result := f.admin("POST", "/api/admin/settings", `{"notifyLevel":"`+tc.saved+`"}`)
+		f.expect(code, result, 200, "")
+		code, world := f.admin("GET", "/api/admin/world", "")
+		f.expect(code, world, 200, "")
+		if world["notifyLevel"] != tc.selected {
+			t.Fatalf("saved %s: selected %v, want %s", tc.saved, world["notifyLevel"], tc.selected)
+		}
+		if world["notifyLevels"].(map[string]any)[tc.selected] == nil {
+			t.Fatalf("selected level %s has no option", tc.selected)
+		}
 	}
 }
 

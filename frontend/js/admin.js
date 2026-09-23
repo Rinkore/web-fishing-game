@@ -4784,15 +4784,30 @@ window.Admin = (function () {
     main.innerHTML = '<h2>🔔 全服动态通知等级</h2>' +
       '<div class="hint" style="margin-bottom:12px">控制全服动态（钓鱼页滚动条）推送哪些渔获。钓者本人的渔获推送不受影响。</div>' +
       '<div id="nt-body" class="panel">加载中…</div>';
-    loadWorldCfg(true).then(function (cfg) {
-      if (!cfg || view !== 'notify') return;
+    const body = $('nt-body');
+    const isCurrent = function () { return view === 'notify' && $('nt-body') === body; };
+    function showError(message) {
+      if (!isCurrent()) return;
+      body.innerHTML = '<div class="err">' + esc(message) + '</div>' +
+        '<button class="btn" id="nt-retry">重新加载</button>';
+      $('nt-retry').onclick = renderNotify;
+    }
+    adminApi('GET', '/api/admin/world').then(function (r) {
+      if (!isCurrent()) return;
+      if (!r.ok) { showError('通知等级加载失败：' + (r.data.error || '请稍后重试')); return; }
+      const cfg = r.data;
+      if (!cfg || !cfg.notifyLevels || typeof cfg.notifyLevels !== 'object' ||
+          Array.isArray(cfg.notifyLevels) || !Object.prototype.hasOwnProperty.call(cfg.notifyLevels, cfg.notifyLevel)) {
+        showError('通知等级加载失败：通知配置不完整，请更新服务后重试');
+        return;
+      }
+      worldCfg = cfg;
       drawNotify(cfg);
+    }).catch(function () {
+      showError('通知等级加载失败，请重新加载');
     });
   }
   function drawNotify(cfg) {
-    // fix：这里必须取 renderNotify 创建的 #nt-body 容器——
-    // 之前直接引用了不存在的 body 变量，drawNotify 一执行就抛 ReferenceError，
-    // promise 静默失败，页面永远停在「加载中…」。
     const body = $('nt-body');
     const an = cfg.autoNotify || { on: false, rules: [], hysteresisPct: 10, holdCount: 2 };
     const rulesRows = (an.rules || []).map(function (r, i) {

@@ -21,6 +21,8 @@ const CHROME = process.env.CHROME_PATH || [
     const componentWorld = {
       catalog: { components: catalog.items.filter(item => item.kind === 'component') },
       componentCfg: catalog.defaults.component,
+      notifyLevel: 'all',
+      notifyLevels: { all: '全部渔获', uncommon: '大鱼、稀有鱼与组件', offrange: '超出基准体型', records: '破纪录', none: '关闭全服渔获动态' },
     };
     let worldMode = 'ok', releaseWorld;
     let loginCalls = 0, feedbackReads = 0, statusCalls = 0;
@@ -121,6 +123,11 @@ const CHROME = process.env.CHROME_PATH || [
     await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50)));
     assert.equal(await page.locator('#comp-body').count(), 0, 'late response does not overwrite another page');
     assert.deepEqual(pageErrors, [], 'no unhandled page exceptions');
+    worldMode = 'ok';
+    await page.locator('.nav-item').filter({ hasText: '通知等级' }).click();
+    await page.locator('#nt-save').waitFor();
+    assert.equal(await page.locator('input[name=ntlv]').count(), 5, 'notification levels render');
+    assert.equal(await page.locator('input[name=ntlv]:checked').inputValue(), 'all', 'notification default renders selected');
     console.log('PASS admin interactions: login, feedback edits, component loading/retry, affix bounds, stale/malformed responses, navigation');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

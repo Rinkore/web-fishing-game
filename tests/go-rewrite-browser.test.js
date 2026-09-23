@@ -30,6 +30,17 @@ const chrome = process.env.CHROME_PATH || [
     await admin.locator('.nav-item').filter({ hasText: '组件生成' }).click();
     await admin.locator('#cmp-save').waitFor();
     assert.ok(await admin.locator('#range-rows input[data-bid]').count() > 0, 'real world response renders component affix ranges');
+    await admin.locator('.nav-item').filter({ hasText: '通知等级' }).click();
+    await admin.locator('#nt-save').waitFor();
+    assert.equal(await admin.locator('input[name=ntlv]').count(), 5);
+    assert.equal(await admin.locator('input[name=ntlv]:checked').inputValue(), 'all');
+    await admin.locator('[data-lv="records"]').click();
+    const notifySaved = admin.waitForResponse(r => r.url().endsWith('/api/admin/settings') && r.request().method() === 'POST');
+    await admin.locator('#nt-save').click();
+    assert.equal((await (await notifySaved).json()).notifyLevel, 'records');
+    await admin.locator('.nav-item').filter({ hasText: '通知等级' }).click();
+    await admin.locator('#nt-save').waitFor();
+    assert.equal(await admin.locator('input[name=ntlv]:checked').inputValue(), 'records', 'saved notification level survives editor reload');
     await admin.locator('.nav-item').filter({ hasText: '横幅管理' }).click();
     await admin.locator('#bn-content').fill('Go 浏览器公告验证');
     await admin.locator('#bn-dur').fill('60');
