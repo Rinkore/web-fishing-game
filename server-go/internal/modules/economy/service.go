@@ -1,6 +1,7 @@
 package economy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fishing.local/server/internal/modules/assets"
@@ -53,10 +54,11 @@ func databaseTime(ctx context.Context, t *assets.Transaction) (int64, error) {
 }
 func (s *Service) price(id string, st rules.SaleState, now int64) float64 {
 	it, _ := s.catalog.Item(id)
+	override := s.catalog.PriceOverrideFor(id, now)
 	if st.LastMS == 0 {
-		return it.Price
+		return rules.Price(it.Price, nil, override, now, s.catalog.PriceDynamicsFor(id))
 	}
-	return rules.Price(it.Price, &st, rules.PriceOverride{}, now, s.catalog.PriceDynamicsFor(id))
+	return rules.Price(it.Price, &st, override, now, s.catalog.PriceDynamicsFor(id))
 }
 func applyParts(ctx context.Context, t *assets.Transaction, owner int64, parts []rules.SalePart, states map[string]rules.SaleState, now int64, automatic bool, c *rules.Catalog) (assets.Result, error) {
 	gain := int64(0)
@@ -142,7 +144,8 @@ func (s *Service) Configure(ctx context.Context, owner int64, key string, cfg Se
 		return assets.Result{}, assets.ErrInvalid
 	}
 	for id, r := range cfg.Rules {
-		if !s.economic(id) {
+		item, known := s.catalog.Item(id)
+		if !known || (item.Kind != "fish" && item.Kind != "material") {
 			return assets.Result{}, assets.ErrInvalid
 		}
 		keep := rules.Number(r.Keep)
@@ -159,6 +162,43 @@ func (s *Service) Configure(ctx context.Context, owner int64, key string, cfg Se
 		cfg.Rules = map[string]rules.AutoSellRule{}
 	}
 	return s.assets.Run(ctx, assets.Command{ActorID: owner, RequestKey: key, Kind: "autosell_config", RuleVersion: s.version(), Players: []int64{owner}, Input: cfg}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
+		// Imported rules may predate a catalog's no-sell policy. Keep those
+		// historical preferences readable while allowing only preservation or
+		// disabling/removal. Read after the player guard is acquired: a stale
+		// concurrent save must never re-enable a rule disabled by another save.
+		var previous map[string]rules.AutoSellRule
+		for id, rule := range cfg.Rules {
+			item, _ := s.catalog.Item(id)
+			if !item.NoSell {
+				continue
+			}
+			if previous == nil {
+				var raw []byte
+				if err := t.SQL().QueryRow(ctx, `SELECT COALESCE((SELECT rules FROM fishing.autosell_settings WHERE owner_id=$1),'{}'::jsonb)`, owner).Scan(&raw); err != nil {
+					return assets.Result{}, err
+				}
+				if err := json.Unmarshal(raw, &previous); err != nil {
+					return assets.Result{}, err
+				}
+			}
+			old, exists := previous[id]
+			if !exists || (rule.On && !old.On) {
+				return assets.Result{}, assets.ErrInvalid
+			}
+			check := rule
+			check.On = old.On
+			before, err := json.Marshal(old)
+			if err != nil {
+				return assets.Result{}, err
+			}
+			after, err := json.Marshal(check)
+			if err != nil {
+				return assets.Result{}, err
+			}
+			if !bytes.Equal(before, after) {
+				return assets.Result{}, assets.ErrInvalid
+			}
+		}
 		data, err := json.Marshal(cfg.Rules)
 		if err != nil {
 			return assets.Result{}, err
@@ -212,8 +252,7 @@ func (s *Service) autoSell(ctx context.Context, owner int64, key string, require
 		}
 		inputs := []rules.AutoSellInput{}
 		for _, id := range ids {
-			it, _ := s.catalog.Item(id)
-			x := rules.AutoSellInput{ID: id, Rule: cfg.Rules[id], Base: it.Price, Price: s.price(id, states[id], now)}
+			x := rules.AutoSellInput{ID: id, Rule: cfg.Rules[id], Base: s.catalog.EconomyBase(id, now), Price: s.price(id, states[id], now)}
 			if err := t.SQL().QueryRow(ctx, `SELECT COALESCE(sum(quantity) FILTER(WHERE tier='normal'),0)::bigint,COALESCE(sum(quantity) FILTER(WHERE tier='large'),0)::bigint,COALESCE(sum(quantity) FILTER(WHERE tier='giant'),0)::bigint FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2`, owner, id).Scan(&x.Normal, &x.Large, &x.Giant); err != nil {
 				return assets.Result{}, err
 			}

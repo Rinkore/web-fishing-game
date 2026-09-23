@@ -975,5 +975,20 @@ func (a *API) legacyMarketHistory(w http.ResponseWriter, r *http.Request) {
 			"total": fill.total, "tax": fill.tax,
 		})
 	}
+	var username string
+	if err := a.pool.QueryRow(r.Context(), `SELECT username FROM fishing.identities WHERE account_id=$1`, session.AccountID).Scan(&username); err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	imported, err := a.legacyImportedMarketHistory(r.Context(), username)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	trades = append(trades, imported...)
+	sort.SliceStable(trades, func(i, j int) bool { return rules.Number(trades[i]["t"]) > rules.Number(trades[j]["t"]) })
+	if len(trades) > 60 {
+		trades = trades[:60]
+	}
 	write(w, 200, map[string]any{"trades": trades})
 }

@@ -52,7 +52,11 @@ func (s *Service) Prices(ctx context.Context) ([]PriceView, error) {
 		if st.Day != now.UTC().Format("2006-01-02") {
 			today = 0
 		}
-		out = append(out, PriceView{it.ID, it.Price, s.price(it.ID, st, now.UnixMilli()), st.SoldTotal, today})
+		base := it.Price
+		if override := s.catalog.PriceOverrideFor(it.ID, now.UnixMilli()); override.Base > 0 {
+			base = rules.Round(override.Base)
+		}
+		out = append(out, PriceView{it.ID, base, s.price(it.ID, st, now.UnixMilli()), st.SoldTotal, today})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil

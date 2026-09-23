@@ -273,12 +273,12 @@ func (s *Service) StatsReport(ctx context.Context, key string, filter StatsFilte
 		return entry
 	}
 
-	query := `SELECT (floor(extract(epoch FROM sampled_at)*1000/$2)::bigint*$2),count(*),avg(online),max(online),avg(fishing),avg(listings),avg(trades),
+	query := statsPointSource(r.Step >= time.Hour) + `SELECT (floor(extract(epoch FROM sampled_at)*1000/$2)::bigint*$2),sum(n),sum(osum)/sum(n),max(omax),sum(fsum)/sum(n),sum(lsum)/sum(n),sum(trsum)/sum(n),
  (array_agg(players ORDER BY sampled_at DESC))[1]`
 	if areaKey == "" {
-		query += ` FROM fishing.activity_samples WHERE sampled_at>=to_timestamp($1::double precision/1000.0) GROUP BY 1 ORDER BY 1`
+		query += ` FROM points WHERE sampled_at>=to_timestamp($1::double precision/1000.0) GROUP BY 1 ORDER BY 1`
 	} else {
-		query += `,avg(` + areaExpr("$3") + `) FROM fishing.activity_samples WHERE sampled_at>=to_timestamp($1::double precision/1000.0) GROUP BY 1 ORDER BY 1`
+		query += `,sum(` + areaExpr("$3") + `)/sum(n) FROM points WHERE sampled_at>=to_timestamp($1::double precision/1000.0) GROUP BY 1 ORDER BY 1`
 	}
 	args := []any{report.From, report.Step}
 	if areaKey != "" {
@@ -315,11 +315,11 @@ func (s *Service) StatsReport(ctx context.Context, key string, filter StatsFilte
 		return report, err
 	}
 
-	heatQuery := `SELECT extract(isodow FROM sampled_at AT TIME ZONE $1::interval)::int,extract(hour FROM sampled_at AT TIME ZONE $1::interval)::int,avg(`
+	heatQuery := statsPointSource(true) + `SELECT extract(isodow FROM sampled_at AT TIME ZONE $1::interval)::int,extract(hour FROM sampled_at AT TIME ZONE $1::interval)::int,sum(`
 	if areaKey == "" {
-		heatQuery += `online),count(*) FROM fishing.activity_samples WHERE sampled_at>=clock_timestamp()-interval '28 days' GROUP BY 1,2`
+		heatQuery += `osum)/sum(n),sum(n) FROM points WHERE sampled_at>=clock_timestamp()-interval '28 days' GROUP BY 1,2`
 	} else {
-		heatQuery += areaExpr("$2") + `),count(*) FROM fishing.activity_samples WHERE sampled_at>=clock_timestamp()-interval '28 days' GROUP BY 1,2`
+		heatQuery += areaExpr("$2") + `)/sum(n),sum(n) FROM points WHERE sampled_at>=clock_timestamp()-interval '28 days' GROUP BY 1,2`
 	}
 	heatArgs := []any{offset}
 	if areaKey != "" {
@@ -352,12 +352,12 @@ func (s *Service) StatsReport(ctx context.Context, key string, filter StatsFilte
 		return report, err
 	}
 
-	if err := s.pool.QueryRow(ctx, `SELECT online,(extract(epoch FROM sampled_at)*1000)::bigint FROM fishing.activity_samples ORDER BY online DESC,sampled_at LIMIT 1`).
+	if err := s.pool.QueryRow(ctx, `SELECT online,t FROM (SELECT online::bigint,(extract(epoch FROM sampled_at)*1000)::bigint AS t FROM fishing.activity_samples UNION ALL SELECT (value->'statPeak'->>'online')::bigint,(value->'statPeak'->>'t')::bigint FROM fishing.operator_settings WHERE key='migration:stats') p WHERE online IS NOT NULL ORDER BY online DESC,t LIMIT 1`).
 		Scan(&report.Peak.Online, &report.Peak.T); err != nil {
 		report.Peak.Online, report.Peak.T = 0, 0
 	}
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE sampled_at>=clock_timestamp()-interval '24 hours'),
- count(DISTINCT date_trunc('hour',sampled_at)) FROM fishing.activity_samples WHERE sampled_at>=clock_timestamp()-interval '30 days'`).
+	if err := s.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM fishing.activity_samples WHERE sampled_at>=clock_timestamp()-interval '24 hours'),
+ (SELECT count(DISTINCT t) FROM (SELECT date_trunc('hour',sampled_at) AS t FROM fishing.activity_samples UNION ALL SELECT to_timestamp((h->>'t')::double precision/1000) FROM fishing.operator_settings CROSS JOIN LATERAL jsonb_array_elements(COALESCE(value->'statHour','[]'::jsonb)) h WHERE key='migration:stats') hours WHERE t>=clock_timestamp()-interval '30 days')`).
 		Scan(&report.Samples.Min, &report.Samples.Hour); err != nil {
 		return report, err
 	}
