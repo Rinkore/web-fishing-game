@@ -2,6 +2,7 @@ package rules
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 )
 
@@ -91,6 +92,7 @@ func (c *Catalog) ComponentMeta(signature string) (ComponentMeta, bool) {
 	if !ok {
 		return ComponentMeta{}, false
 	}
+	affixes = c.GearAffixes(signature, base, affixes)
 	q, ok := c.qualities()[quality]
 	if !ok {
 		q = QualityMeta{Key: quality, Name: quality, Cap: 1, Mult: 1}
@@ -123,6 +125,12 @@ func (c *Catalog) ComponentMeta(signature string) (ComponentMeta, bool) {
 	}
 	full := poolLen > 0 && len(affixes) >= poolLen
 	adjective := adjectiveOf(list, net, noNeg, full, c.AdjectiveRules())
+	if g, modern := Growth(signature); modern {
+		adjective = fmt.Sprintf("+%d", g.Level)
+		if g.Engrave != "none" {
+			adjective += " · 精工"
+		}
+	}
 	name := base.Name
 	if adjective != "" {
 		name = adjective + " " + base.Name

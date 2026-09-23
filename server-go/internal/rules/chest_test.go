@@ -1,6 +1,9 @@
 package rules
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestChestBreakthroughCrossesNaturalPartPool(t *testing.T) {
 	c, err := Default()
@@ -12,7 +15,7 @@ func TestChestBreakthroughCrossesNaturalPartPool(t *testing.T) {
 		t.Fatal("missing breakthrough chest")
 	}
 	for _, base := range c.Items {
-		if base.Kind != "component" || base.Legacy || base.SetID != "" || base.Part == "" {
+		if base.Kind != "component" || base.Legacy || base.SetID != "" || base.Part == "" || strings.HasPrefix(base.ID, "gear_") {
 			continue
 		}
 		t.Run(base.ID, func(t *testing.T) {

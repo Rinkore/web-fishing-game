@@ -132,6 +132,10 @@ func affixCount(quality string, upper int, cfg ComponentConfig, o GenerateOption
 	return min(upper, max(n, max(1, min(o.MinAffixes, upper))))
 }
 func (c *Catalog) Generate(baseID, quality string, cfg ComponentConfig, o GenerateOptions, rng RNG) (string, bool) {
+	if c.GearConfig().Enabled && strings.HasPrefix(baseID, "gear_") {
+		sig, err := c.GearSignature(baseID, 0, "", "none", 0)
+		return sig, err == nil
+	}
 	base, ok := c.Item(baseID)
 	if !ok || base.Part == "" || base.Kind != "component" {
 		return "", false
@@ -159,6 +163,10 @@ func (c *Catalog) Generate(baseID, quality string, cfg ComponentConfig, o Genera
 	return InstanceID(base, quality, affixes), true
 }
 func (c *Catalog) Breakthrough(baseID string, cfg ComponentConfig, o BreakthroughOptions, rng RNG) (string, bool) {
+	if c.GearConfig().Enabled && strings.HasPrefix(baseID, "gear_") {
+		sig, err := c.GearSignature(baseID, 0, "", "none", 0)
+		return sig, err == nil
+	}
 	base, ok := c.Item(baseID)
 	if !ok || base.Part == "" || base.Kind != "component" {
 		return "", false

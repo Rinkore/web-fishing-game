@@ -12,6 +12,9 @@ func ValidateCatalog(c *Catalog) error {
 	if c == nil || len(c.Version) > 32 || strings.ContainsAny(c.Version, " :\r\n") || len(c.Items) > 4096 {
 		return bad
 	}
+	if err := c.ValidateGear(); err != nil {
+		return err
+	}
 	base, err := Default()
 	if err != nil {
 		return err

@@ -139,7 +139,7 @@ func TestIntegrationExpeditionLifecycleAndRewards(t *testing.T) {
 	if _, err = db.Admin.Exec(ctx, `UPDATE fishing.sea_players SET level=5 WHERE owner_id=$1`, owner); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Admin.Exec(ctx, `INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity) VALUES($1,'deepscale','material','normal',5)`, owner); err != nil {
+	if _, err = db.Admin.Exec(ctx, `INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity) VALUES($1,'deepscale','material','normal',5) ON CONFLICT(owner_id,item_id,tier) DO UPDATE SET quantity=fishing.inventory_stacks.quantity+5`, owner); err != nil {
 		t.Fatal(err)
 	}
 	r, err = svc.StartExpedition(ctx, owner, "danger-start", "danger", 12)
@@ -183,7 +183,7 @@ func TestExpeditionRuleBoundsAndSetEffects(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := c.ExpeditionConfig()
-	if len(cfg.Routes) != 5 || len(cfg.Catalysts) != 9 || len(c.GearSets()) != 8 {
+	if len(cfg.Routes) != 5 || len(cfg.Catalysts) != 9 || len(c.GearSets()) != 9 {
 		t.Fatal("incomplete design configuration")
 	}
 	for _, route := range cfg.Routes {
@@ -239,6 +239,7 @@ func TestIntegrationGearProgressAndSetAssembly(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	c.Constants["GEAR_SYSTEM"] = json.RawMessage(`{"enabled":false}`) // Historical progress contract.
 	svc := New(db.App, c)
 	a := assets.New(db.App)
 	seq := 0

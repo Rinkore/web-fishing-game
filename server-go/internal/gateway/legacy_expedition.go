@@ -17,6 +17,8 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 		}
 		var in struct {
 			Target     string `json:"target"`
+			Focus      string `json:"focus"`
+			Mode       string `json:"mode"`
 			RequestKey string `json:"requestKey"`
 			Route      string `json:"route"`
 			Hours      int    `json:"hours"`
@@ -44,7 +46,7 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 		case "target":
 			result, err = svc.SelectTarget(ctx, session.AccountID, in.RequestKey, in.Target)
 		case "start":
-			result, err = svc.StartExpedition(ctx, session.AccountID, in.RequestKey, in.Route, in.Hours)
+			result, err = svc.StartExpedition(ctx, session.AccountID, in.RequestKey, in.Route, in.Hours, in.Set, in.Focus, in.Mode)
 		case "claim":
 			id, _ := strconv.ParseInt(in.ID, 10, 64)
 			result, err = svc.ClaimExpedition(ctx, session.AccountID, in.RequestKey, id)

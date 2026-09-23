@@ -62,6 +62,9 @@ func (s *Service) create(ctx context.Context, t *assets.Transaction, owner int64
 	return t.CreateEquipment(ctx, owner, assets.EquipmentSpec{DefinitionID: base.ID, Part: base.Part, Attributes: attrs})
 }
 func (s *Service) Apply(ctx context.Context, r Command) (assets.Result, error) {
+	if s.catalog.GearConfig().Enabled {
+		return assets.Result{}, assets.Rejection("legacy_workshop_retired")
+	}
 	if r.MainID < 1 || r.Relics < 0 || len(r.Materials) > 12 {
 		return assets.Result{}, assets.ErrInvalid
 	}

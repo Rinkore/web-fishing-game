@@ -75,3 +75,5 @@ REVOKE ALL ON public.fishing_schema_migrations FROM PUBLIC;
 GRANT USAGE ON SCHEMA fishing TO fishing_backup;
 GRANT SELECT ON ALL TABLES IN SCHEMA fishing TO fishing_backup;
 GRANT SELECT ON public.fishing_schema_migrations TO fishing_backup;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON fishing.gear_progress TO fishing_runtime;

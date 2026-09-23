@@ -56,3 +56,14 @@ pwsh -File tools/release/start-release.ps1 -SameVersionRevision -Publish
 发布前后的健康检查只读，不代替玩法验收。首次启用后的升级与回滚演练应使用隔离实例/合成数据；部署成功只说明包切换与探针通过，不能把它写成全部玩法测试通过。
 
 检查 [Actions](https://github.com/Rinkore/web-fishing-game/actions/workflows/release.yml) 的 `source`、`test`、`publish`、`deploy` 状态。`publish` 成功但 `deploy` 失败，表示下载包已经发布，服务器更新未完成；查看部署日志是否成功回滚、是否提示需要操作员处理。正常代码 push、CI 配置提交都不会自动触发一次发版。
+
+## 2026-09-23 测试服维护基线
+
+v0.21.5（`4dafdcfcac70f51845ccb5f3c9e39990e9b4cbc2`）已在隔离升级、权限和备份恢复演练后完成显式维护。数据库包含 30 个迁移文件，摘要为 `03c94096882c6d68770b3227aa56bc4753d4e4df75d2cb6c03496c2d4ebb6226`。这是实际迁移后随新发行记录建立的基线，不能写入旧程序的 manifest。备份路径与验收证据见 [远航实现与部署记录](远航本地实现说明.md#最终部署验收)。
+
+独立 Nginx 服务 `fishing-go-test-web` 的 `Requires=fishing-go-test.service` 会在后端停止时连带停止网页代理。测试服已补两份 systemd drop-in：
+
+- `/etc/systemd/system/fishing-go-test.service.d/web-start.conf`：`[Unit]` 下添加 `Wants=fishing-go-test-web.service`，保证现有更新器先 stop 后 start 时能拉起代理。
+- `/etc/systemd/system/fishing-go-test-web.service.d/game-restart.conf`：`[Unit]` 下添加 `PartOf=fishing-go-test.service`，使显式 restart 同步传播。
+
+已执行 daemon-reload，并实际 stop/start 后端，验证两个服务 active、本机及公网探针、版本和前端摘要正常。此配置只针对 19000 测试实例，不应启动系统级 nginx 或改动旧正式服代理。

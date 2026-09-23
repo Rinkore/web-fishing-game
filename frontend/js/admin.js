@@ -170,7 +170,7 @@ window.Admin = (function () {
     { id: 'security', name: '🛡 安全' },   // v0.16.0：封禁名单 + 管理操作审计 + 异常登录
     { id: 'grounds', name: '🎣 钓点管理' },
     { id: 'market', name: '💱 市集管理' },
-    { id: 'component', name: '🧩 组件生成' },
+    { id: 'gear', name: '🧩 装备与套装' },
     { id: 'fishsize', name: '🐟 鱼类体型' },
     { id: 'economy', name: '💰 经济参数' },
     { id: 'chest', name: '🎁 宝匣配置' },
@@ -178,7 +178,6 @@ window.Admin = (function () {
     { id: 'expedition', name: '🧭 远航与套装' },
     { id: 'mail', name: '✉️ 邮件管理' },
     { id: 'party', name: '⚓ 编队管理' },
-    { id: 'workshop', name: '⚒ 工坊配置' },
     { id: 'mall', name: '🛒 商城配置' },
     { id: 'formula', name: '🧮 公式管理' },
     { id: 'notify', name: '🔔 通知等级' },
@@ -834,7 +833,7 @@ window.Admin = (function () {
     if (v === 'security') return renderSecurity();
     if (v === 'grounds') return renderGrounds();
     if (v === 'market') return renderMarket();
-    if (v === 'component') return renderComponent();
+    if (v === 'gear'||v === 'component'||v === 'workshop') return window.AdminGear.render($('main'),adminApi,confirmModalLocal);
     if (v === 'fishsize') return renderFishSize();
     if (v === 'economy') return renderEconomy();
     if (v === 'chest') return renderChest();

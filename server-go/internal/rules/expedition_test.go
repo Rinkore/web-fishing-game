@@ -7,7 +7,7 @@ func TestFuelImprovesSmeltWithoutAddingAffix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in := SmeltInput{MainID: "gear_line_1#epic#spd+4", SubID: "gear_line_2#epic#stb+3", MainAffix: "speed", SubAffix: "stability"}
+	in := SmeltInput{MainID: "line_nylon#epic#spd+4", SubID: "line_nylon#epic#skl+3", MainAffix: "speed", SubAffix: "skill"}
 	base, err := c.SmeltPlan(in, c.ComponentConfig(), c.WorkshopConfig())
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +34,15 @@ func TestFuelImprovesSmeltWithoutAddingAffix(t *testing.T) {
 		t.Fatal("fuel incorrectly amplifies catalyst", mix.ExtraRate, catalyst.ExtraRate)
 	}
 	in.Materials = []Material{{ID: "stardust", Quantity: 1}}
+	legacy, err := c.SmeltPlan(in, c.ComponentConfig(), c.WorkshopConfig())
+	if err != nil || legacy.ExtraType != "rare" {
+		t.Fatal("legacy line lost its historical catalyst pool", err)
+	}
+	// New ordinary parts use the restricted part pool, unlike legacy gear.
+	in.MainID = "gear_line_1#epic#skl+3"
+	in.SubID = "gear_line_1#epic#spd+4"
+	in.MainAffix, in.SubAffix = "skill", "speed"
 	if _, err = c.SmeltPlan(in, c.ComponentConfig(), c.WorkshopConfig()); err == nil {
-		t.Fatal("line acquired illegal rarity affix")
+		t.Fatal("new line acquired illegal rarity affix")
 	}
 }

@@ -318,7 +318,7 @@ func TestCatalogOwnership(t *testing.T) {
 	for _, i := range b.Items {
 		counts[i.Kind]++
 	}
-	if counts["fish"] != 51 || counts["material"] != 16 {
+	if counts["fish"] != 51 || counts["material"] != 20 {
 		t.Fatalf("incomplete catalog: %v", counts)
 	}
 }

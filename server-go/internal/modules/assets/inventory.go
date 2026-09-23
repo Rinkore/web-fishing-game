@@ -300,6 +300,15 @@ func (u *assetTx) createEquipment(ctx context.Context, owner int64, spec Equipme
 }
 
 func (u *assetTx) moveEquipment(ctx context.Context, from, to, id int64) error {
+	if to != 0 {
+		var locked bool
+		if err := u.tx.QueryRow(ctx, `SELECT COALESCE((attributes->>'bound')::boolean,false) FROM fishing.equipment_instances WHERE id=$1`, id).Scan(&locked); err != nil {
+			return err
+		}
+		if locked {
+			return rejection("bound_equipment")
+		}
+	}
 	var owner int64
 	var lifecycle string
 	err := u.tx.QueryRow(ctx, "SELECT owner_id,lifecycle FROM fishing.equipment_instances WHERE id=$1 FOR UPDATE", id).Scan(&owner, &lifecycle)

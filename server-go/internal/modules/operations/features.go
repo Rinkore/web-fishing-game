@@ -71,6 +71,7 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 			"character", "character.companion", "character.boat", "sea.upgrade", "sea.chart", "sea.voyage", "sea.quest", "sea.anchor", "sea.expedition",
 			"ground", "ground.trade", "ground.party", "inventory", "inventory.subscribe",
 			"workshop.craft", "workshop.open", "workshop.smelt", "workshop.recast", "workshop.forge",
+			"workshop.growth", "workshop.sets",
 			"mall.buy", "mall.sell", "mall.autosell", "mall.list", "mall.marketbuy",
 			"codex", "records", "feedback", "feedback.submit", "feedback.skip", "logs", "wiki", "mail", "adminBypass":
 		default:

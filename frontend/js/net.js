@@ -150,6 +150,7 @@ window.Net = (function () {
   // （展示与本地预览保持一致：例如工坊的成功率与花费预览必须和服务器算的同一套系数）
   function applyServerCfg(d) {
     if (!d) return;
+    if(d.gearConfig) window.GameData.setGearSystem(d.gearConfig);
     if(d.customItems) window.GameData.applyCustomItems(d.customItems);
     if (d.features) state().features = d.features;
     if (d.featureOrder) state().featureOrder = d.featureOrder;
@@ -869,6 +870,7 @@ window.Net = (function () {
           for (let i = 0; i < fb.length; i++) { if (!feedDup(fb[i])) { S.feed.unshift(fb[i]); added++; } }
           if (S.feed.length > 60) S.feed.length = 60;
           if (added && ui) ui.refreshAll('feed');
+        } else if(m.type==='gearcfg'){window.GameData.setGearSystem(m.gearConfig);if(window.GearUI)window.GearUI.invalidate();if(ui)ui.refreshAll('componentcfg');
         } else if (m.type === 'groundcfg') {
           // 管理后台修改了钓场/钓点配置：原位替换 GROUNDS 内容（保持数组引用），
           // 渔场页/图鉴产地/钓场锁定状态随即与服务器一致
@@ -907,6 +909,7 @@ window.Net = (function () {
   }, 5000);
 
   return {
+    gearApi:apiFetch,
     register: register, login: login, logout: logout, fetchMe: fetchMe, setAuth: setAuth,
     mailGet:mailGet,mailChange:mailChange,
     guardVersion: guardVersion, startVersionWatch: startVersionWatch,

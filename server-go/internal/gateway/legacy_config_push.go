@@ -237,6 +237,8 @@ func legacyCatalogProjection(c *rules.Catalog) (map[string]any, []map[string]any
 			custom = append(custom, it)
 		}
 	}
+	fields["gearConfig"] = c.GearConfig()
+	frames = append(frames, map[string]any{"type": "gearcfg", "gearConfig": c.GearConfig()})
 	fields["customItems"] = custom
 	frames = append(frames, map[string]any{"type": "customitems", "items": custom})
 	return fields, frames, nil

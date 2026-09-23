@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"fishing.local/server/internal/modules/assets"
+	"fishing.local/server/internal/modules/gear"
 	"fishing.local/server/internal/modules/randomintent"
 	"fishing.local/server/internal/rules"
 	"github.com/jackc/pgx/v5"
@@ -27,21 +28,29 @@ type Captain struct {
 	Tracking  int             `json:"tracking"`
 }
 type ExpeditionSnapshot struct {
-	Level   int           `json:"level"`
-	Set     string        `json:"set"`
-	Effects rules.Effects `json:"effects"`
-	Success float64       `json:"success"`
+	Growth         bool               `json:"growth"`
+	Stage          int                `json:"stage"`
+	Focus          string             `json:"focus"`
+	Mode           string             `json:"mode"`
+	ReceiptHours   int                `json:"receiptHours"`
+	SpecialEffects map[string]float64 `json:"specialEffects,omitempty"`
+	Level          int                `json:"level"`
+	Set            string             `json:"set"`
+	Effects        rules.Effects      `json:"effects"`
+	Success        float64            `json:"success"`
 }
 type ExpeditionReward struct {
-	Success     bool             `json:"success"`
-	Event       string           `json:"event"`
-	Coins       int64            `json:"coins"`
-	XP          int64            `json:"xp"`
-	Marks       int64            `json:"marks"`
-	Items       map[string]int64 `json:"items"`
-	Heat        int              `json:"heat"`
-	Clues       int              `json:"clues"`
-	SamplesUsed int              `json:"samplesUsed"`
+	ArchaeologyHours int              `json:"archaeologyHours"`
+	Receipts         int64            `json:"receipts"`
+	Success          bool             `json:"success"`
+	Event            string           `json:"event"`
+	Coins            int64            `json:"coins"`
+	XP               int64            `json:"xp"`
+	Marks            int64            `json:"marks"`
+	Items            map[string]int64 `json:"items"`
+	Heat             int              `json:"heat"`
+	Clues            int              `json:"clues"`
+	SamplesUsed      int              `json:"samplesUsed"`
 }
 type Expedition struct {
 	ID        string             `json:"id"`
@@ -89,6 +98,9 @@ func (s *Service) expeditionGear(ctx context.Context, q assets.SQL, owner int64)
 		return out, err
 	}
 	out.Level = v.Level
+	if s.catalog.GearConfig().Enabled {
+		return out, nil
+	}
 	rows, err := q.Query(ctx, `SELECT r.part,e.attributes FROM fishing.rod_components r JOIN fishing.rod_loadouts l ON l.owner_id=r.owner_id AND l.slot=r.slot AND l.active JOIN fishing.equipment_instances e ON e.id=r.equipment_id WHERE r.owner_id=$1 ORDER BY r.part`, owner)
 	if err != nil {
 		return out, err
@@ -227,7 +239,7 @@ func expeditionReward(cfg rules.ExpeditionConfig, route rules.ExpeditionRoute, h
 	}
 	return r
 }
-func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID string, hours int) (assets.Result, error) {
+func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID string, hours int, choices ...string) (assets.Result, error) {
 	cfg := s.catalog.ExpeditionConfig()
 	var route rules.ExpeditionRoute
 	for _, v := range cfg.Routes {
@@ -245,9 +257,10 @@ func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID
 		return assets.Result{}, assets.ErrInvalid
 	}
 	input := struct {
-		Route string
-		Hours int
-	}{routeID, hours}
+		Route   string
+		Hours   int
+		Choices []string
+	}{routeID, hours, choices}
 	version := "expedition-v1"
 	seed, err := randomintent.Load(ctx, s.pool, owner, key, input)
 	if err != nil {
@@ -293,6 +306,53 @@ func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID
 			snap.Success = math.Min(100, snap.Success+10)
 		}
 		reward := expeditionReward(cfg, route, hours, snap, rules.Stream(seed, "expedition"))
+		if s.catalog.GearConfig().Enabled {
+			progress, e := gear.Read(ctx, t.SQL(), owner)
+			if e != nil {
+				return assets.Result{}, e
+			}
+			selected, focus, mode := progress.Selected, progress.Focus, progress.VoyageMode
+			if len(choices) == 3 {
+				selected, focus, mode = choices[0], choices[1], choices[2]
+			}
+			gc := s.catalog.GearConfig()
+			ability, exists := gc.Specializations[selected]
+			if selected != "" && (!exists || !progress.Unlocked[selected]) {
+				return assets.Result{}, assets.Rejection("specialization_locked")
+			}
+			if mode != "" && mode != "normal" && mode != "deep" && mode != "evacuate" && mode != "concentrate" {
+				return assets.Result{}, assets.ErrInvalid
+			}
+			fx := ability.Effect(progress.Tiers[selected])
+			if (mode == "deep" && (selected != "storm" || fx["deepRisk"] == 0)) || (mode == "evacuate" && (selected != "rescue" || fx["evacuate"] == 0)) || (mode == "concentrate" && (selected != "tide" || fx["concentrate"] == 0)) {
+				return assets.Result{}, assets.Rejection("specialization_mode_locked")
+			}
+			if focus != "" {
+				it, ok := s.catalog.Item(focus)
+				if !ok || it.Kind != "material" {
+					return assets.Result{}, assets.ErrInvalid
+				}
+			}
+			snap.Growth = true
+			snap.Set = selected
+			snap.Stage = progress.Tiers[selected]
+			snap.Focus = focus
+			snap.Mode = mode
+			snap.Effects = rules.EmptyEffects()
+			snap.Success = route.Success
+			snap.ReceiptHours = gc.ReceiptHours
+			snap.SpecialEffects = fx
+			if selected == "storm" && mode == "deep" && route.Level >= int(fx["minRouteLevel"]) {
+				snap.Success = math.Max(0, snap.Success-fx["deepRisk"])
+			}
+			reward = growthExpeditionReward(s.catalog, route, hours, snap, progress, rules.Stream(seed, "growth-expedition"))
+			progress.Selected = selected
+			progress.Focus = focus
+			progress.VoyageMode = mode
+			if e = gear.Write(ctx, t, owner, progress); e != nil {
+				return assets.Result{}, e
+			}
+		}
 		raw, _ := json.Marshal(reward)
 		snapshot, _ := json.Marshal(snap)
 		var now time.Time
@@ -360,6 +420,23 @@ func (s *Service) claimExpedition(ctx context.Context, actor, owner int64, key s
 		}
 		if err = json.Unmarshal(snapshot, &snap); err != nil {
 			return assets.Result{}, err
+		}
+		if snap.Growth {
+			v, e := gear.Read(ctx, t.SQL(), owner)
+			if e != nil {
+				return assets.Result{}, e
+			}
+			v.ReceiptRemainder += hours
+			unit := max(1, snap.ReceiptHours)
+			reward.Receipts = int64(v.ReceiptRemainder / unit)
+			v.Receipts += reward.Receipts
+			v.ReceiptRemainder %= unit
+			if snap.Set == "wreck" {
+				v.ArchaeologyHours = reward.ArchaeologyHours
+			}
+			if e = gear.Write(ctx, t, owner, v); e != nil {
+				return assets.Result{}, e
+			}
 		}
 		cap, err := captain(ctx, t.SQL(), owner)
 		if err != nil {
@@ -483,6 +560,9 @@ func (s *Service) RedeemSet(ctx context.Context, owner int64, key, setID, part s
 				return assets.Result{}, assets.ErrInvalid
 			}
 			signature := rules.InstanceID(base, "epic", []rules.Affix{{Type: p.Type, Value: p.Value}})
+			if sig, ok := s.catalog.GearCoreSignature(set.ID, p.Part); ok {
+				signature = sig
+			}
 			attrs, _ := json.Marshal(map[string]any{"signature": signature})
 			id, err := t.CreateEquipment(ctx, owner, assets.EquipmentSpec{DefinitionID: base.ID, Part: p.Part, Attributes: attrs})
 			if err != nil {
