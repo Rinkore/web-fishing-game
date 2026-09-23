@@ -135,8 +135,9 @@ func (a *API) legacyChestCraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		ChestID string `json:"chestId"`
-		Qty     int64  `json:"qty"`
+		UnboundInputs bool   `json:"unboundInputs"`
+		ChestID       string `json:"chestId"`
+		Qty           int64  `json:"qty"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -154,7 +155,7 @@ func (a *API) legacyChestCraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-	res, err := workshop.New(a.pool, c).Chest(ctx, workshop.ChestCommand{ActorID: session.AccountID, RequestKey: "legacy:chest:craft:" + strconv.FormatInt(timeNowMS(), 10), ChestID: in.ChestID, Action: "craft", Quantity: in.Qty})
+	res, err := workshop.New(a.pool, c).Chest(ctx, workshop.ChestCommand{UnboundInputs: in.UnboundInputs, ActorID: session.AccountID, RequestKey: "legacy:chest:craft:" + strconv.FormatInt(timeNowMS(), 10), ChestID: in.ChestID, Action: "craft", Quantity: in.Qty})
 	if err != nil {
 		a.legacySeaFailure(w, err)
 		return
@@ -175,7 +176,7 @@ func (a *API) legacyChestCraft(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, map[string]any{
 		"ok": true, "chestId": in.ChestID, "qty": in.Qty, "coins": profile["coins"],
-		"inventory": profile["inventory"], "invRev": profile["invRev"], "chests": chests,
+		"inventory": profile["inventory"], "invRev": profile["invRev"], "rewardBindings": profile["rewardBindings"], "chests": chests,
 	})
 }
 
@@ -185,9 +186,10 @@ func (a *API) legacyChestOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		ChestID string `json:"chestId"`
-		Part    string `json:"part"`
-		BaseID  string `json:"baseId"`
+		UnboundInputs bool   `json:"unboundInputs"`
+		ChestID       string `json:"chestId"`
+		Part          string `json:"part"`
+		BaseID        string `json:"baseId"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -203,7 +205,7 @@ func (a *API) legacyChestOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-	res, err := workshop.New(a.pool, c).Chest(ctx, workshop.ChestCommand{ActorID: session.AccountID, RequestKey: "legacy:chest:open:" + strconv.FormatInt(timeNowMS(), 10), ChestID: in.ChestID, Action: "open", Part: in.Part, BaseID: in.BaseID, Quantity: 1})
+	res, err := workshop.New(a.pool, c).Chest(ctx, workshop.ChestCommand{UnboundInputs: in.UnboundInputs, ActorID: session.AccountID, RequestKey: "legacy:chest:open:" + strconv.FormatInt(timeNowMS(), 10), ChestID: in.ChestID, Action: "open", Part: in.Part, BaseID: in.BaseID, Quantity: 1})
 	if err != nil {
 		a.legacySeaFailure(w, err)
 		return
@@ -245,7 +247,7 @@ func (a *API) legacyChestOpen(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, 200, map[string]any{
 		"ok": true, "chestId": def.ID, "chestName": chestName, "item": item, "coins": profile["coins"],
-		"inventory": profile["inventory"], "invRev": profile["invRev"], "forced": details.Forced,
+		"inventory": profile["inventory"], "invRev": profile["invRev"], "rewardBindings": profile["rewardBindings"], "forced": details.Forced,
 		"pityNow": details.PityNow, "pityNeed": 0, "chests": chests,
 	})
 }

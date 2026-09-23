@@ -75,3 +75,8 @@ REVOKE ALL ON public.fishing_schema_migrations FROM PUBLIC;
 GRANT USAGE ON SCHEMA fishing TO fishing_backup;
 GRANT SELECT ON ALL TABLES IN SCHEMA fishing TO fishing_backup;
 GRANT SELECT ON public.fishing_schema_migrations TO fishing_backup;
+
+-- Reward mail extends existing asset and operator surfaces.
+GRANT SELECT, INSERT ON fishing.player_activity, fishing.inventory_binding_entries TO fishing_runtime;
+GRANT SELECT ON fishing.mail_tracking TO fishing_runtime;
+GRANT SELECT, INSERT, UPDATE ON fishing.mail_batches, fishing.mail_recipients TO fishing_runtime;

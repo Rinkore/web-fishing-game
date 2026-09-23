@@ -141,14 +141,14 @@ func normalize(o Offer) (Offer, bool) {
 func owns(ctx context.Context, q assets.SQL, owner int64, o Offer) (bool, error) {
 	for _, x := range o.Stacks {
 		var valid bool
-		err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2 AND tier='normal' AND quantity>=$3)`, owner, x.ID, x.Quantity).Scan(&valid)
+		err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2 AND tier='normal' AND quantity-bound_quantity>=$3)`, owner, x.ID, x.Quantity).Scan(&valid)
 		if err != nil || !valid {
 			return false, err
 		}
 	}
 	for _, id := range o.Equipment {
 		var valid bool
-		err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fishing.equipment_instances e WHERE e.id=$1 AND e.owner_id=$2 AND e.lifecycle='available' AND NOT EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id))`, id, owner).Scan(&valid)
+		err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fishing.equipment_instances e WHERE e.id=$1 AND e.owner_id=$2 AND e.lifecycle='available' AND NOT e.reward_bound AND NOT EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id))`, id, owner).Scan(&valid)
 		if err != nil || !valid {
 			return false, err
 		}

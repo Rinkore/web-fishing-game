@@ -29,9 +29,12 @@ type command struct {
 }
 
 type assetTx struct {
-	tx           pgx.Tx
-	op           int64
-	eventPayload json.RawMessage // optional payload for an existing event contract
+	tx            pgx.Tx
+	op            int64
+	kind          string
+	inherit       map[int64]bool
+	unboundInputs bool
+	eventPayload  json.RawMessage // optional payload for an existing event contract
 }
 
 func (s *Service) execute(ctx context.Context, c command, apply func(context.Context, *assetTx) (Result, error)) (Result, error) {
@@ -118,13 +121,19 @@ func (s *Service) executeOnce(ctx context.Context, c command, apply func(context
 		if _, err = tx.Exec(ctx, "SAVEPOINT asset_effects"); err != nil {
 			return Result{}, err
 		}
-		unit := &assetTx{tx: tx}
+		unit := &assetTx{tx: tx, kind: c.kind, inherit: map[int64]bool{}}
 		if err = tx.QueryRow(ctx, `INSERT INTO fishing.asset_operations(actor_id,request_key,kind,rule_version) VALUES ($1,$2,$3,$4) RETURNING id`, c.actor, c.key, c.kind, c.rule).Scan(&unit.op); err != nil {
 			return Result{}, err
 		}
 		err = featureAllowed(ctx, tx, c.kind)
 		if err == nil {
 			result, err = apply(ctx, unit)
+			if err == nil {
+				err = unit.bindCraftOutputs(ctx)
+			}
+			if err == nil {
+				err = unit.recordBindings(ctx)
+			}
 		}
 		var rejected rejection
 		if errors.As(err, &rejected) {

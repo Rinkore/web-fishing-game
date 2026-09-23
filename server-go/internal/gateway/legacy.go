@@ -140,7 +140,12 @@ func (a *API) legacyProfile(r *http.Request, c *rules.Catalog, session identity.
 		}
 	}
 
+	bindings, err := rewardBindings(ctx, a.pool, session.AccountID)
+	if err != nil {
+		return nil, err
+	}
 	profile := map[string]any{
+		"rewardBindings":   bindings,
 		"features":         features,
 		"featureOrder":     featureOrder,
 		"username":         username,

@@ -245,6 +245,9 @@ func (s *Service) Login(ctx context.Context, in Login) (LoginResult, error) {
 		return LoginResult{}, ErrStorage
 	}
 	if !in.Admin {
+		if _, err = tx.Exec(ctx, `INSERT INTO fishing.player_activity(owner_id,kind) VALUES($1,'login')`, id); err != nil {
+			return LoginResult{}, ErrStorage
+		}
 		if _, err = tx.Exec(ctx, `UPDATE fishing.fishing_connections SET expires_at=clock_timestamp() WHERE owner_id=$1`, id); err != nil {
 			return LoginResult{}, ErrStorage
 		}
@@ -269,6 +272,11 @@ func (s *Service) Authenticate(ctx context.Context, token string, admin bool) (S
 	}
 	if err != nil {
 		return Session{}, ErrStorage
+	}
+	if !admin {
+		if _, err = s.pool.Exec(ctx, `INSERT INTO fishing.player_activity(owner_id,kind,at) VALUES($1,'active',date_trunc('minute',clock_timestamp())) ON CONFLICT DO NOTHING`, out.AccountID); err != nil {
+			return Session{}, ErrStorage
+		}
 	}
 	return out, nil
 }

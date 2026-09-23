@@ -18,6 +18,8 @@ import (
 )
 
 type Attachment struct {
+	RewardBound bool   `json:"rewardBound"`
+	BindOutputs *bool  `json:"bindOutputs"`
 	ItemID      string `json:"itemId"`
 	Quantity    int64  `json:"quantity"`
 	Tier        string `json:"tier"`
@@ -25,6 +27,10 @@ type Attachment struct {
 	Description string `json:"description"`
 }
 type Message struct {
+	BatchID     string       `json:"batchId"`
+	ExpiresAt   *time.Time   `json:"expiresAt"`
+	Revoked     bool         `json:"revoked"`
+	Expired     bool         `json:"expired"`
 	ID          string       `json:"id"`
 	Sender      string       `json:"sender"`
 	Subject     string       `json:"subject"`
@@ -42,6 +48,7 @@ type View struct {
 	Page     int       `json:"page"`
 }
 type Send struct {
+	ExpiryDays  *int         `json:"expiryDays"`
 	Target      int64        `json:"-"`
 	Subject     string       `json:"subject"`
 	Body        string       `json:"body"`
@@ -55,12 +62,15 @@ type Service struct {
 func New(pool *pgxpool.Pool, c *rules.Catalog) *Service { return &Service{pool, c} }
 
 func (s *Service) List(ctx context.Context, owner int64, page int, summary bool) (View, error) {
+	return s.ListFiltered(ctx, owner, page, summary, "")
+}
+func (s *Service) ListFiltered(ctx context.Context, owner int64, page int, summary bool, filter string) (View, error) {
 	v := View{Messages: []Message{}, Page: max(1, page)}
-	err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER (WHERE read_at IS NULL),count(*) FILTER (WHERE claimed_at IS NULL AND EXISTS(SELECT 1 FROM fishing.mail_attachments a WHERE a.mail_id=m.id)) FROM fishing.mail_messages m WHERE recipient_id=$1`, owner).Scan(&v.Total, &v.Unread, &v.Pending)
+	err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER (WHERE read_at IS NULL),count(*) FILTER (WHERE claimed_at IS NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>clock_timestamp()) AND EXISTS(SELECT 1 FROM fishing.mail_attachments a WHERE a.mail_id=m.id)) FROM fishing.mail_messages m WHERE recipient_id=$1`, owner).Scan(&v.Total, &v.Unread, &v.Pending)
 	if err != nil || summary {
 		return v, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id,sender_name,subject,body,created_at,read_at IS NOT NULL,claimed_at IS NOT NULL FROM fishing.mail_messages WHERE recipient_id=$1 ORDER BY id DESC LIMIT 30 OFFSET $2`, owner, (v.Page-1)*30)
+	rows, err := s.pool.Query(ctx, `SELECT id,sender_name,subject,body,created_at,read_at IS NOT NULL,claimed_at IS NOT NULL,COALESCE(batch_id::text,''),expires_at,revoked_at IS NOT NULL,COALESCE(expires_at<=clock_timestamp(),false) FROM fishing.mail_messages m WHERE recipient_id=$1 AND ($3='' OR ($3='unread' AND read_at IS NULL) OR ($3='pending' AND claimed_at IS NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>clock_timestamp()) AND EXISTS(SELECT 1 FROM fishing.mail_attachments a WHERE a.mail_id=m.id)) OR ($3='expiring' AND claimed_at IS NULL AND revoked_at IS NULL AND expires_at>clock_timestamp() AND expires_at<=clock_timestamp()+interval '3 days')) ORDER BY id DESC LIMIT 30 OFFSET $2`, owner, (v.Page-1)*30, filter)
 	if err != nil {
 		return v, err
 	}
@@ -68,7 +78,7 @@ func (s *Service) List(ctx context.Context, owner int64, page int, summary bool)
 		var m Message
 		var id int64
 		var at time.Time
-		if err = rows.Scan(&id, &m.Sender, &m.Subject, &m.Body, &at, &m.Read, &m.Claimed); err != nil {
+		if err = rows.Scan(&id, &m.Sender, &m.Subject, &m.Body, &at, &m.Read, &m.Claimed, &m.BatchID, &m.ExpiresAt, &m.Revoked, &m.Expired); err != nil {
 			rows.Close()
 			return v, err
 		}
@@ -82,14 +92,19 @@ func (s *Service) List(ctx context.Context, owner int64, page int, summary bool)
 	if err != nil {
 		return v, err
 	}
+	if filter != "" {
+		if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM fishing.mail_messages m WHERE recipient_id=$1 AND (($2='unread' AND read_at IS NULL) OR ($2='pending' AND claimed_at IS NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>clock_timestamp()) AND EXISTS(SELECT 1 FROM fishing.mail_attachments a WHERE a.mail_id=m.id)) OR ($2='expiring' AND claimed_at IS NULL AND revoked_at IS NULL AND expires_at>clock_timestamp() AND expires_at<=clock_timestamp()+interval '3 days'))`, owner, filter).Scan(&v.Total); err != nil {
+			return v, err
+		}
+	}
 	for i := range v.Messages {
-		rows, err = s.pool.Query(ctx, `SELECT item_id,quantity,tier,custom_name,custom_description FROM fishing.mail_attachments WHERE mail_id=$1 ORDER BY id`, v.Messages[i].ID)
+		rows, err = s.pool.Query(ctx, `SELECT item_id,quantity,tier,custom_name,custom_description,reward_bound,bind_outputs FROM fishing.mail_attachments WHERE mail_id=$1 ORDER BY id`, v.Messages[i].ID)
 		if err != nil {
 			return v, err
 		}
 		for rows.Next() {
 			var a Attachment
-			if err = rows.Scan(&a.ItemID, &a.Quantity, &a.Tier, &a.Name, &a.Description); err != nil {
+			if err = rows.Scan(&a.ItemID, &a.Quantity, &a.Tier, &a.Name, &a.Description, &a.RewardBound, &a.BindOutputs); err != nil {
 				rows.Close()
 				return v, err
 			}
@@ -103,48 +118,50 @@ func (s *Service) List(ctx context.Context, owner int64, page int, summary bool)
 	}
 	return v, nil
 }
-func (s *Service) Send(ctx context.Context, actor int64, actorName, key string, in Send) (assets.Result, error) {
-	if err := assets.RequireAdmin(ctx, actor); err != nil {
-		return assets.Result{}, err
-	}
+func (s *Service) validate(in *Send) error {
 	in.Subject = strings.TrimSpace(in.Subject)
-	if in.Target <= 0 || in.Subject == "" || utf8.RuneCountInString(in.Subject) > 120 || utf8.RuneCountInString(in.Body) > 10000 || len(in.Attachments) > 30 {
-		return assets.Result{}, assets.ErrInvalid
+	if in.Subject == "" || utf8.RuneCountInString(in.Subject) > 120 || utf8.RuneCountInString(in.Body) > 10000 || len(in.Attachments) > 30 {
+		return assets.ErrInvalid
 	}
 	seen := map[string]bool{}
 	equipmentCount := int64(0)
 	for i := range in.Attachments {
 		a := &in.Attachments[i]
+		a.RewardBound = true
+		if a.BindOutputs == nil {
+			value := true
+			a.BindOutputs = &value
+		}
 		if len(a.ItemID) > 128 {
-			return assets.Result{}, assets.ErrInvalid
+			return assets.ErrInvalid
 		}
 		if a.Tier == "" {
 			a.Tier = "normal"
 		}
 		if a.Quantity < 1 || a.Quantity > 1000000 || seen[a.ItemID+":"+a.Tier] {
-			return assets.Result{}, assets.ErrInvalid
+			return assets.ErrInvalid
 		}
 		seen[a.ItemID+":"+a.Tier] = true
 		item, ok := s.catalog.Item(a.ItemID)
 		if !ok {
 			item, _, _, ok = s.catalog.Instance(a.ItemID)
 			if !ok || !strings.Contains(a.ItemID, "#") {
-				return assets.Result{}, assets.ErrInvalid
+				return assets.ErrInvalid
 			}
 		}
 		if item.Kind == "component" {
 			if !strings.Contains(a.ItemID, "#") {
-				return assets.Result{}, assets.ErrInvalid
+				return assets.ErrInvalid
 			}
 			equipmentCount += a.Quantity
 			_, quality, affixes, valid := s.catalog.Instance(a.ItemID)
 			if !valid || len(affixes) < 1 || len(affixes) > 9 {
-				return assets.Result{}, assets.ErrInvalid
+				return assets.ErrInvalid
 			}
 			seenAffix := map[string]bool{}
 			for _, af := range affixes {
 				if af.Type == "" || seenAffix[af.Type] || math.IsNaN(af.Value) || math.IsInf(af.Value, 0) || math.Abs(af.Value) > 100000 {
-					return assets.Result{}, assets.ErrInvalid
+					return assets.ErrInvalid
 				}
 				seenAffix[af.Type] = true
 			}
@@ -160,15 +177,35 @@ func (s *Service) Send(ctx context.Context, actor int64, actorName, key string, 
 					}
 				}
 				if !valid {
-					return assets.Result{}, assets.ErrInvalid
+					return assets.ErrInvalid
 				}
 			}
 		}
 		if equipmentCount > 100 || (a.Tier != "normal" && (item.Kind != "fish" || (a.Tier != "large" && a.Tier != "giant"))) {
-			return assets.Result{}, assets.ErrInvalid
+			return assets.ErrInvalid
 		}
 		a.Name = item.Name
 		a.Description = item.Description
+	}
+	if in.ExpiryDays == nil {
+		days := 30
+		in.ExpiryDays = &days
+	}
+	if *in.ExpiryDays < 0 || *in.ExpiryDays > 3650 {
+		return assets.ErrInvalid
+	}
+	return nil
+}
+
+func (s *Service) Send(ctx context.Context, actor int64, actorName, key string, in Send) (assets.Result, error) {
+	if err := assets.RequireAdmin(ctx, actor); err != nil {
+		return assets.Result{}, err
+	}
+	if in.Target <= 0 {
+		return assets.Result{}, assets.ErrInvalid
+	}
+	if err := s.validate(&in); err != nil {
+		return assets.Result{}, err
 	}
 	players := []int64{actor}
 	if actor != in.Target {
@@ -194,11 +231,11 @@ func (s *Service) Send(ctx context.Context, actor int64, actorName, key string, 
 			return assets.Result{}, assets.Rejection("account_not_found")
 		}
 		var id int64
-		if err := t.SQL().QueryRow(ctx, `INSERT INTO fishing.mail_messages(recipient_id,sender_name,subject,body) VALUES($1,'管理员',$2,$3) RETURNING id`, in.Target, in.Subject, in.Body).Scan(&id); err != nil {
+		if err := t.SQL().QueryRow(ctx, `INSERT INTO fishing.mail_messages(recipient_id,sender_name,subject,body,expires_at) VALUES($1,'管理员',$2,$3,CASE WHEN $4::int=0 THEN NULL ELSE clock_timestamp()+make_interval(days=>$4) END) RETURNING id`, in.Target, in.Subject, in.Body, *in.ExpiryDays).Scan(&id); err != nil {
 			return assets.Result{}, err
 		}
 		for _, a := range in.Attachments {
-			if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.mail_attachments(mail_id,item_id,quantity,tier,custom_name,custom_description) VALUES($1,$2,$3,$4,$5,$6)`, id, a.ItemID, a.Quantity, a.Tier, a.Name, a.Description); err != nil {
+			if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.mail_attachments(mail_id,item_id,quantity,tier,custom_name,custom_description,reward_bound,bind_outputs) VALUES($1,$2,$3,$4,$5,$6,true,$7)`, id, a.ItemID, a.Quantity, a.Tier, a.Name, a.Description, *a.BindOutputs); err != nil {
 				return assets.Result{}, err
 			}
 		}
@@ -220,8 +257,8 @@ func (s *Service) Change(ctx context.Context, owner int64, key string, id int64,
 		ID    int64
 		Claim bool
 	}{id, claim}}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
-		var claimed bool
-		err := t.SQL().QueryRow(ctx, `SELECT claimed_at IS NOT NULL FROM fishing.mail_messages WHERE id=$1 AND recipient_id=$2 FOR UPDATE`, id, owner).Scan(&claimed)
+		var claimed, unavailable bool
+		err := t.SQL().QueryRow(ctx, `SELECT claimed_at IS NOT NULL,(revoked_at IS NOT NULL OR COALESCE(expires_at<=clock_timestamp(),false)) FROM fishing.mail_messages WHERE id=$1 AND recipient_id=$2 FOR UPDATE`, id, owner).Scan(&claimed, &unavailable)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return assets.Result{}, assets.Rejection("mail_missing")
 		}
@@ -237,14 +274,17 @@ func (s *Service) Change(ctx context.Context, owner int64, key string, id int64,
 		if claimed {
 			return assets.Result{Status: "claimed", ResourceID: strconv.FormatInt(id, 10)}, nil
 		}
-		rows, err := t.SQL().Query(ctx, `SELECT item_id,quantity,tier FROM fishing.mail_attachments WHERE mail_id=$1 ORDER BY id`, id)
+		if unavailable {
+			return assets.Result{}, assets.Rejection("mail_unavailable")
+		}
+		rows, err := t.SQL().Query(ctx, `SELECT item_id,quantity,tier,reward_bound,bind_outputs FROM fishing.mail_attachments WHERE mail_id=$1 ORDER BY id`, id)
 		if err != nil {
 			return assets.Result{}, err
 		}
 		items := []Attachment{}
 		for rows.Next() {
 			var a Attachment
-			if err = rows.Scan(&a.ItemID, &a.Quantity, &a.Tier); err != nil {
+			if err = rows.Scan(&a.ItemID, &a.Quantity, &a.Tier, &a.RewardBound, &a.BindOutputs); err != nil {
 				rows.Close()
 				return assets.Result{}, err
 			}
@@ -264,7 +304,12 @@ func (s *Service) Change(ctx context.Context, owner int64, key string, id int64,
 				}
 				attrs, _ := json.Marshal(map[string]any{"signature": a.ItemID})
 				for n := int64(0); n < a.Quantity; n++ {
-					if _, err = t.CreateEquipment(ctx, owner, assets.EquipmentSpec{DefinitionID: base.ID, Part: base.Part, Attributes: attrs}); err != nil {
+					equipmentID, createErr := t.CreateEquipment(ctx, owner, assets.EquipmentSpec{DefinitionID: base.ID, Part: base.Part, Attributes: attrs})
+					err = createErr
+					if err == nil && a.RewardBound {
+						err = t.BindEquipment(ctx, owner, equipmentID, *a.BindOutputs)
+					}
+					if err != nil {
 						return assets.Result{}, err
 					}
 				}
@@ -274,6 +319,13 @@ func (s *Service) Change(ctx context.Context, owner int64, key string, id int64,
 		}
 		if err = t.Stacks(ctx, owner, deltas); err != nil {
 			return assets.Result{}, err
+		}
+		for _, a := range items {
+			if a.RewardBound && !strings.Contains(a.ItemID, "#") {
+				if err = t.BindStacks(ctx, owner, []assets.StackDelta{{ItemID: a.ItemID, Tier: a.Tier, Quantity: a.Quantity}}, *a.BindOutputs); err != nil {
+					return assets.Result{}, err
+				}
+			}
 		}
 		if _, err = t.SQL().Exec(ctx, `UPDATE fishing.mail_messages SET claimed_at=clock_timestamp() WHERE id=$1`, id); err != nil {
 			return assets.Result{}, err

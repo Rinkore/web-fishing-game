@@ -126,7 +126,7 @@ func (t *Transaction) HoldEquipment(ctx context.Context, owner, id, listing int6
 		return ErrInvalid
 	}
 	var allowed bool
-	if err := t.u.tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fishing.equipment_instances e JOIN fishing.market_listings l ON l.equipment_id=e.id WHERE e.id=$1 AND e.owner_id=$2 AND e.lifecycle='available' AND l.id=$3 AND l.seller_id=$2 AND l.state='open')`, id, owner, listing).Scan(&allowed); err != nil {
+	if err := t.u.tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fishing.equipment_instances e JOIN fishing.market_listings l ON l.equipment_id=e.id WHERE e.id=$1 AND e.owner_id=$2 AND e.lifecycle='available' AND l.id=$3 AND l.seller_id=$2 AND l.state='open' AND NOT e.reward_bound)`, id, owner, listing).Scan(&allowed); err != nil {
 		return err
 	}
 	if !allowed {

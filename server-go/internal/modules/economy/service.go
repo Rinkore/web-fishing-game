@@ -253,7 +253,7 @@ func (s *Service) autoSell(ctx context.Context, owner int64, key string, require
 		inputs := []rules.AutoSellInput{}
 		for _, id := range ids {
 			x := rules.AutoSellInput{ID: id, Rule: cfg.Rules[id], Base: s.catalog.EconomyBase(id, now), Price: s.price(id, states[id], now)}
-			if err := t.SQL().QueryRow(ctx, `SELECT COALESCE(sum(quantity) FILTER(WHERE tier='normal'),0)::bigint,COALESCE(sum(quantity) FILTER(WHERE tier='large'),0)::bigint,COALESCE(sum(quantity) FILTER(WHERE tier='giant'),0)::bigint FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2`, owner, id).Scan(&x.Normal, &x.Large, &x.Giant); err != nil {
+			if err := t.SQL().QueryRow(ctx, `SELECT COALESCE(sum(quantity-bound_quantity) FILTER(WHERE tier='normal'),0)::bigint,COALESCE(sum(quantity-bound_quantity) FILTER(WHERE tier='large'),0)::bigint,COALESCE(sum(quantity-bound_quantity) FILTER(WHERE tier='giant'),0)::bigint FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2`, owner, id).Scan(&x.Normal, &x.Large, &x.Giant); err != nil {
 				return assets.Result{}, err
 			}
 			inputs = append(inputs, x)

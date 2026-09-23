@@ -28,6 +28,7 @@ window.Engine = (function () {
     nextRodSlotPrice: null,     // 下一个槽位价格
     rodActiveSlot: -1,          // 当前使用的槽位（-1 = 用的是散件装配）
     rodLocked: {},              // 被钓竿占用的组件实例件数（背包/交易显示锁定标记）
+    rewardBindings: {},
     inventory: {},              // 服务器权威，SSE assets 整体同步
     // v0.13.9：库存快照的单调版本号（服务器 invRev）。HTTP 响应是「当场序列化」的旧快照，
     // SSE assets 是「150ms 批处理后按活引用序列化」的新快照，两条通道到达顺序不保证——
@@ -112,7 +113,7 @@ window.Engine = (function () {
     if (profile.coins != null) state.player.coins = profile.coins;
     // 登录/读档：这是「本会话第一次拿到的快照」，直接采信并把版本号抬到它的 rev（切号时先归零）
     if (prevUser && nextUser && prevUser !== nextUser) { state.invRev = 0; state.deltaRev = 0; }
-    applyInv(profile.inventory || {}, profile.invRev);
+    applyInv(profile.inventory || {}, profile.invRev, profile.rewardBindings || {});
     if (profile.bigfish !== undefined) state.bigfish = profile.bigfish || {};
     state.bd = (profile.bd && Object.keys(profile.bd).length) ? profile.bd : buildDefaultBD();
     state.codex = profile.codex || {};
@@ -235,12 +236,13 @@ window.Engine = (function () {
   //   rev  —— 服务器 invRev（缺省/非数字 = 老接口，按旧行为直接采信）
   // 返回是否采纳。注意：invAdd / bigAdd 这类**增量**不推进 invRev（增量丢一包不该让版本跑到内容前面），
   // 只有带 inventory 的完整快照参与比较。
-  function applyInv(inv, rev) {
+  function applyInv(inv, rev, bindings) {
     if (!inv) return false;
     const r = Number(rev);
     const hasRev = rev != null && isFinite(r);
     if (hasRev && r < (Number(state.invRev) || 0)) return false;   // 过期快照：丢弃
     state.inventory = inv;
+    if (bindings !== undefined) state.rewardBindings = bindings || {};
     if (hasRev) state.invRev = r;
     return true;
   }
@@ -277,6 +279,7 @@ window.Engine = (function () {
       const r = Number(snap.invRev);
       if (snap.inventory) state.inventory = snap.inventory;
       if (snap.coins != null) state.player.coins = snap.coins;
+      if (snap.rewardBindings !== undefined) state.rewardBindings = snap.rewardBindings || {};
       if (snap.bigfish !== undefined) state.bigfish = snap.bigfish || {};
       if (isFinite(r)) {
         state.invRev = Math.max(Number(state.invRev) || 0, r);

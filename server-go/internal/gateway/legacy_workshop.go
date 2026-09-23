@@ -77,12 +77,13 @@ func legacyComponentMeta(c *rules.Catalog, signature string) map[string]any {
 
 // legacyInstanceBySignature resolves a data.js component signature to the
 // lowest-id loose equipment instance, matching /api/bd/set and the market.
-func (a *API) legacyInstanceBySignature(ctx context.Context, owner int64, signature string) (int64, error) {
+func (a *API) legacyInstanceBySignature(ctx context.Context, owner int64, signature string, unboundOnly ...bool) (int64, error) {
+	onlyFree := len(unboundOnly) > 0 && unboundOnly[0]
 	var id int64
 	err := a.pool.QueryRow(ctx, `SELECT e.id FROM fishing.equipment_instances e
  WHERE e.owner_id=$1 AND e.lifecycle='available' AND e.attributes->>'signature'=$2
  AND NOT EXISTS(SELECT 1 FROM fishing.rod_components rc WHERE rc.equipment_id=e.id)
- ORDER BY e.id LIMIT 1`, owner, signature).Scan(&id)
+ AND (NOT $3::boolean OR NOT e.reward_bound) ORDER BY e.reward_bound DESC,e.bind_outputs DESC,e.id LIMIT 1`, owner, signature, onlyFree).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, assets.Rejection("equipment_unavailable")
 	}
@@ -199,13 +200,14 @@ func (a *API) legacyWorkshopSmelt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		MainID    string           `json:"mainId"`
-		SubID     string           `json:"subId"`
-		MainAffix string           `json:"mainAffix"`
-		SubAffix  string           `json:"subAffix"`
-		Materials []rules.Material `json:"materials"`
-		Pearl     *bool            `json:"pearl"`
-		Relics    *int64           `json:"relics"`
+		UnboundInputs bool             `json:"unboundInputs"`
+		MainID        string           `json:"mainId"`
+		SubID         string           `json:"subId"`
+		MainAffix     string           `json:"mainAffix"`
+		SubAffix      string           `json:"subAffix"`
+		Materials     []rules.Material `json:"materials"`
+		Pearl         *bool            `json:"pearl"`
+		Relics        *int64           `json:"relics"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -229,12 +231,12 @@ func (a *API) legacyWorkshopSmelt(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	mainID, err := a.legacyInstanceBySignature(r.Context(), session.AccountID, in.MainID)
+	mainID, err := a.legacyInstanceBySignature(r.Context(), session.AccountID, in.MainID, in.UnboundInputs)
 	if err != nil {
 		legacyWorkshopError(w, "背包中没有该主组件")
 		return
 	}
-	subID, err := a.legacyInstanceBySignature(r.Context(), session.AccountID, in.SubID)
+	subID, err := a.legacyInstanceBySignature(r.Context(), session.AccountID, in.SubID, in.UnboundInputs)
 	if err != nil {
 		legacyWorkshopError(w, "背包中没有该副组件")
 		return
@@ -245,7 +247,7 @@ func (a *API) legacyWorkshopSmelt(w http.ResponseWriter, r *http.Request) {
 		relics = *in.Relics
 	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-	res, err := workshop.New(a.pool, c).Apply(ctx, workshop.Command{
+	res, err := workshop.New(a.pool, c).Apply(ctx, workshop.Command{UnboundInputs: in.UnboundInputs,
 		ActorID: session.AccountID, RequestKey: legacyMarketKey("legacy:workshop:smelt"), Action: "smelt",
 		MainID: mainID, SubID: subID, MainAffix: in.MainAffix, SubAffix: in.SubAffix,
 		Materials: in.Materials, Pearl: pearl, Relics: relics,
@@ -314,8 +316,9 @@ func (a *API) legacyWorkshopRecast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		ID         string `json:"id"`
-		AffixIndex *int   `json:"affixIndex"`
+		UnboundInputs bool   `json:"unboundInputs"`
+		ID            string `json:"id"`
+		AffixIndex    *int   `json:"affixIndex"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -342,13 +345,13 @@ func (a *API) legacyWorkshopRecast(w http.ResponseWriter, r *http.Request) {
 		}
 		target = *in.AffixIndex
 	}
-	equipmentID, err := a.legacyInstanceBySignature(r.Context(), session.AccountID, in.ID)
+	equipmentID, err := a.legacyInstanceBySignature(r.Context(), session.AccountID, in.ID, in.UnboundInputs)
 	if err != nil {
 		legacyWorkshopError(w, "背包中没有该组件（可能已锁定在钓竿上）")
 		return
 	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-	res, err := workshop.New(a.pool, c).Apply(ctx, workshop.Command{
+	res, err := workshop.New(a.pool, c).Apply(ctx, workshop.Command{UnboundInputs: in.UnboundInputs,
 		ActorID: session.AccountID, RequestKey: legacyMarketKey("legacy:workshop:recast"), Action: "recast",
 		MainID: equipmentID, Target: target,
 	})
@@ -408,9 +411,10 @@ func (a *API) legacyWorkshopForge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		ID         string `json:"id"`
-		MaterialID string `json:"materialId"`
-		Pearl      *bool  `json:"pearl"`
+		UnboundInputs bool   `json:"unboundInputs"`
+		ID            string `json:"id"`
+		MaterialID    string `json:"materialId"`
+		Pearl         *bool  `json:"pearl"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -429,14 +433,14 @@ func (a *API) legacyWorkshopForge(w http.ResponseWriter, r *http.Request) {
 		legacyWorkshopError(w, "请选择一件已生成的组件")
 		return
 	}
-	equipmentID, err := a.legacyInstanceBySignature(r.Context(), session.AccountID, in.ID)
+	equipmentID, err := a.legacyInstanceBySignature(r.Context(), session.AccountID, in.ID, in.UnboundInputs)
 	if err != nil {
 		legacyWorkshopError(w, "背包中没有该组件（可能已锁定在钓竿上）")
 		return
 	}
 	pearl := in.Pearl != nil && *in.Pearl
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-	res, err := workshop.New(a.pool, c).Apply(ctx, workshop.Command{
+	res, err := workshop.New(a.pool, c).Apply(ctx, workshop.Command{UnboundInputs: in.UnboundInputs,
 		ActorID: session.AccountID, RequestKey: legacyMarketKey("legacy:workshop:forge"), Action: "forge",
 		MainID: equipmentID, MaterialID: in.MaterialID, Pearl: pearl,
 	})
