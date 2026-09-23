@@ -58,6 +58,10 @@ func (a *API) legacySeaView(r *http.Request, c *rules.Catalog, owner int64) (map
 	if err != nil {
 		return nil, err
 	}
+	expedition, err := svc.ExpeditionView(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
 	zones, err := svc.Zones(ctx, owner)
 	if err != nil {
 		return nil, err
@@ -196,7 +200,8 @@ func (a *API) legacySeaView(r *http.Request, c *rules.Catalog, owner int64) (map
 			"xpOk":    xpNeed != nil && state.Experience >= shipCfg.XPNeed[level],
 			"upCoins": upCoins, "upScale": upScale, "max": level >= 5,
 		},
-		"chartfrag": counts["chartfrag"], "deepscale": counts["deepscale"],
+		"expedition": expedition,
+		"chartfrag":  counts["chartfrag"], "deepscale": counts["deepscale"],
 		"charts": state.Charts, "chartCost": seaCfg.ChartCost,
 		"zones": zoneList, "glow": glow, "partyZones": partyZoneList, "quests": questList,
 		"party": map[string]any{"id": partyID, "invite": invite}, "coins": coins,

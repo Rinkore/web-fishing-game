@@ -4,14 +4,16 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const D = require('../../frontend/js/data');
 const cases = [];
+// New chest rewards use the five ordinary slots; legacy and fixed set cores are excluded.
+const ordinary = D.COMPONENT_BASES.filter(x => !x.setId && !x.legacy);
 for (const chest of D.CHESTS) {
-  const choices = chest.mode === 'random' ? [''] : chest.mode === 'part' ? [...new Set(D.COMPONENT_BASES.map(x => x.part))] : D.COMPONENT_BASES.map(x => x.id);
+  const choices = chest.mode === 'random' ? [''] : chest.mode === 'part' ? [...new Set(ordinary.map(x => x.part))] : ordinary.map(x => x.id);
   for (const choice of choices) for (const seed of [0, 37, 99]) for (const forced of chest.extra ? [false, true] : [false]) {
     let draws = 0; const previous = Math.random;
     Math.random = () => ((draws++ * 37 + seed) % 101) / 101;
     let item;
     try {
-      const bases = chest.mode === 'part' ? D.COMPONENT_BASES.filter(x => x.part === choice) : D.COMPONENT_BASES;
+      const bases = chest.mode === 'part' ? ordinary.filter(x => x.part === choice) : ordinary;
       const base = chest.mode === 'base' ? D.componentBase(choice) : bases[Math.floor(Math.random() * bases.length)];
       item = chest.extra ? D.genBreakthrough(base.id, { hitCount: chest.hitCount, missCount: chest.missCount, chance: forced ? 1 : chest.chance }) : D.genComponent(base.id, D.rollChestQuality(chest), { minAffixes: chest.minAffixes, forceMax: !!chest.forceMax });
     } finally { Math.random = previous; }

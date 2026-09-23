@@ -208,12 +208,15 @@ func TestIntegrationNativeRecursiveLootAndEquipment(t *testing.T) {
 				want := f.expected(c)
 				maxCount = max(maxCount, len(want))
 				r, e := f.s.Settle(f.ctx, c)
+				for segment := 0; e == nil && r.Status == "progressed" && segment < 100; segment++ {
+					r, e = f.s.Settle(f.ctx, c)
+				}
 				f.want(r, e, "settled")
 				if f.num(`SELECT caught FROM fishing.native_fishing_settlements WHERE session_id=$1 AND seq=$2`, c.SessionID, c.Sequence) != int64(len(want)) {
 					t.Fatal("lost recursive catch")
 				}
 				if pick == "component:" {
-					rows, e := f.db.App.Query(f.ctx, `SELECT attributes->>'signature' FROM fishing.equipment_instances WHERE created_operation=$1 ORDER BY id`, r.OperationID)
+					rows, e := f.db.App.Query(f.ctx, `SELECT attributes->>'signature' FROM fishing.equipment_instances WHERE created_operation IN (SELECT operation_id FROM fishing.catch_segments WHERE session_id=$1 AND seq=$2) ORDER BY id`, c.SessionID, c.Sequence)
 					if e != nil {
 						t.Fatal(e)
 					}

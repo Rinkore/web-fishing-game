@@ -62,7 +62,7 @@ func (s *Service) create(ctx context.Context, t *assets.Transaction, owner int64
 	return t.CreateEquipment(ctx, owner, assets.EquipmentSpec{DefinitionID: base.ID, Part: base.Part, Attributes: attrs})
 }
 func (s *Service) Apply(ctx context.Context, r Command) (assets.Result, error) {
-	if r.MainID < 1 || r.Relics < 0 || len(r.Materials) > 8 {
+	if r.MainID < 1 || r.Relics < 0 || len(r.Materials) > 12 {
 		return assets.Result{}, assets.ErrInvalid
 	}
 	switch r.Action {
@@ -90,6 +90,10 @@ func (s *Service) Apply(ctx context.Context, r Command) (assets.Result, error) {
 		main, err := signature(ctx, t, r.ActorID, r.MainID)
 		if err != nil {
 			return assets.Result{}, err
+		}
+		baseMain, _, _, _ := s.catalog.Instance(main)
+		if baseMain.SetID != "" {
+			return assets.Result{}, assets.Rejection("set_immutable")
 		}
 		cfg, w := s.catalog.ComponentConfig(), s.catalog.WorkshopConfig()
 		rng := rules.Stream(seed, "workshop:"+r.Action)
@@ -133,7 +137,7 @@ func (s *Service) Apply(ctx context.Context, r Command) (assets.Result, error) {
 		case "forge":
 			base, q, aa, ok := s.catalog.Instance(main)
 			kind := rules.MaterialAffix(r.MaterialID)
-			if !ok || kind == "" {
+			if !ok || kind == "" || (!base.Legacy && !s.catalog.AffixAllowed(base.Part, kind)) {
 				return assets.Result{}, assets.Rejection("invalid_forge_plan")
 			}
 			cap := map[string]int{"common": 1, "rare": 2, "epic": 3, "mythic": 4}[q]
@@ -162,6 +166,16 @@ func (s *Service) Apply(ctx context.Context, r Command) (assets.Result, error) {
 				consumed["dragonpearl"] = 1
 			}
 			value := rules.RollAffix(span[0], span[1], cfg.RollModel, rng)
+			var heat int
+			if err := t.SQL().QueryRow(ctx, `SELECT COALESCE((SELECT heat FROM fishing.sea_captains WHERE owner_id=$1),0)`, r.ActorID).Scan(&heat); err != nil {
+				return assets.Result{}, err
+			}
+			if heat > 0 {
+				value = span[1]
+				if _, err := t.SQL().Exec(ctx, `UPDATE fishing.sea_captains SET heat=heat-1 WHERE owner_id=$1`, r.ActorID); err != nil {
+					return assets.Result{}, err
+				}
+			}
 			aa = append(aa, rules.Affix{Type: kind, Value: value, Source: src, Explicit: true})
 			newSignature = rules.InstanceID(base, q, aa)
 			consumed[r.MaterialID]++

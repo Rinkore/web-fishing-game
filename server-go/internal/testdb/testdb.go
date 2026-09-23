@@ -143,7 +143,7 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_quest_boards TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.sea_quest_roots TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant quest permissions")
 	}
-	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_zones TO "+quote(role)); err != nil {
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_zones,fishing.sea_expeditions,fishing.sea_captains TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant voyage permissions")
 	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_players TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.sea_progress_entries TO "+quote(role)); err != nil {

@@ -85,6 +85,7 @@ func (s *NativeService) loadout(ctx context.Context, t *assets.Transaction, owne
 	if err := rows.Err(); err != nil {
 		return nil, rules.CastInfo{}, err
 	}
+	rows.Close()
 	rod := s.catalog.RodEffects(bd)
 	eff, _ := rules.MergeEffects(rod, spot.Spot)
 	return eff, s.catalog.CastRules(nil).Info(rod, spot.Spot), nil
@@ -293,6 +294,9 @@ func (s *NativeService) Settle(ctx context.Context, c Candidate) (assets.Result,
 		if err != nil {
 			return assets.Result{}, err
 		}
+		if err = seaService.TrackingPool(ctx, t, c.OwnerID, pool); err != nil {
+			return assets.Result{}, err
+		}
 		var draws uint64
 		var total int64
 		walk := rules.CatchWalk{}
@@ -357,6 +361,9 @@ func (s *NativeService) Settle(ctx context.Context, c Candidate) (assets.Result,
 			if err != nil {
 				return assets.Result{}, err
 			}
+		}
+		if err = seaService.GearCatchProgress(ctx, t, c.OwnerID, catches); err != nil {
+			return assets.Result{}, err
 		}
 		if err = s.award(ctx, t, c.OwnerID, ground, spotID, now, catches, bonuses...); err != nil {
 			var rejected assets.Rejection

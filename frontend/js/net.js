@@ -291,6 +291,7 @@ window.Net = (function () {
   const seaGet = () => apiFetch('GET', '/api/sea?token=' + encodeURIComponent(me ? me.token : ''));
   const seaShipUp = () => authed('/api/sea/ship/up', {});
   const seaChart = () => authed('/api/sea/chart', {});
+  const seaExpedition = (action,body) => authed((action === 'redeem' || action === 'target') ? '/api/sea/sets/'+action : '/api/sea/expedition/'+action, body);
   const seaVoyage = () => authed('/api/sea/voyage', {});
   // v0.21.0：悬赏领取 / 锚地下锚 / 编队
   const seaQuestClaim = (id) => authed('/api/sea/quest/claim', { id: id });
@@ -904,7 +905,7 @@ window.Net = (function () {
     guardVersion: guardVersion, startVersionWatch: startVersionWatch,
     probeServer: probeServer, connState: connState, reloadForVersion: reloadForVersion,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
-    seaGet: seaGet, seaShipUp: seaShipUp, seaChart: seaChart, seaVoyage: seaVoyage,
+    seaExpedition: seaExpedition, seaGet: seaGet, seaShipUp: seaShipUp, seaChart: seaChart, seaVoyage: seaVoyage,
     seaQuestClaim: seaQuestClaim, seaAnchor: seaAnchor, partyFetch: partyFetch, partyAction: partyAction,
     autoSellGet: autoSellGet, autoSellSet: autoSellSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,

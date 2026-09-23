@@ -32,10 +32,13 @@ jobs:
           printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/release-ssh/key"
           printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/release-ssh/known_hosts"
           chmod 600 "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts"
+          # Host public-key fingerprints let an operator verify a new local
+          # workstation against the already trusted deployment configuration.
+          ssh-keygen -lf "$RUNNER_TEMP/release-ssh/known_hosts"
           ssh -i "$RUNNER_TEMP/release-ssh/key" -p "$port" -o BatchMode=yes -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/release-ssh/known_hosts" \
             -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" \
-            'sudo -n /usr/local/sbin/fishing-release-deploy --check'
+            'sudo -n /usr/local/sbin/fishing-release-deploy --check && cat /opt/fishing-go-test/current/.release.json'
       - name: Remove temporary SSH identity
         if: always()
         run: rm -f -- "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts"

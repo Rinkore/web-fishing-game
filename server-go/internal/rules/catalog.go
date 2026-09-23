@@ -10,14 +10,18 @@ import (
 var defaultCatalog []byte
 
 type Item struct {
-	ID     string       `json:"id"`
-	Name   string       `json:"name"`
-	Rarity string       `json:"rarity"`
-	Kind   string       `json:"kind"`
-	Part   string       `json:"part"`
-	Price  float64      `json:"price"`
-	Size   []float64    `json:"size"`
-	Pool   []AffixRange `json:"pool"`
+	SetID          string       `json:"setId,omitempty"`
+	Legacy         bool         `json:"legacy,omitempty"`
+	NoSell         bool         `json:"noSell,omitempty"`
+	ExpeditionOnly bool         `json:"expeditionOnly,omitempty"`
+	ID             string       `json:"id"`
+	Name           string       `json:"name"`
+	Rarity         string       `json:"rarity"`
+	Kind           string       `json:"kind"`
+	Part           string       `json:"part"`
+	Price          float64      `json:"price"`
+	Size           []float64    `json:"size"`
+	Pool           []AffixRange `json:"pool"`
 }
 type AffixRange struct {
 	Type string  `json:"type"`

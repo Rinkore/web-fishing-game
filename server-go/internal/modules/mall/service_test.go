@@ -106,7 +106,13 @@ func TestIntegrationConcurrentLimitRetryResetAndRollback(t *testing.T) {
 		t.Fatal("insufficient funds", err)
 	}
 	view, err = s.View(ctx, owner)
-	if err != nil || view.Items[5].Bought != 0 {
+	var boughtRelic int64
+	for _, item := range view.Items {
+		if item.ID == "relic" {
+			boughtRelic = item.Bought
+		}
+	}
+	if err != nil || boughtRelic != 0 {
 		t.Fatal("rejection consumed quota", err)
 	}
 }

@@ -36,7 +36,7 @@ const fs = require('fs'), path = require('path'), assert = require('node:assert/
  nav: (()=>{const a=document.querySelector('.nav-item.active').getBoundingClientRect();return a.left>=0&&a.right<=innerWidth;})(),
  space:parseFloat(getComputedStyle(document.body).paddingBottom)>=document.querySelector('.sidebar').offsetHeight,
  }));
- check(!layout.overflow,width+' '+view+' panel fits'); check(layout.compact,'compact header'); check(layout.nav,'active navigation visible');check(layout.space,'navigation does not cover content');
+ check(!layout.overflow,width+' '+view+' panel fits'); check(layout.compact,width+' '+view+' compact header'); check(layout.nav,'active navigation visible');check(layout.space,'navigation does not cover content');
  }
  await page.evaluate(()=>{UI.setView('inventory');UI.renderView();});
  await page.getByRole('button',{name:'属性',exact:true}).first().click();
