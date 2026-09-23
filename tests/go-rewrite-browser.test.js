@@ -27,6 +27,9 @@ const chrome = process.env.CHROME_PATH || [
     player.on('pageerror', e => errors.push('player: ' + e.message));
     await Promise.all([admin.goto(fixture.url + '/admin.html'), player.goto(fixture.url + '/')]);
     await player.waitForFunction(() => window.Net && Net.getMe() && Net.getMe().id === 'console_target');
+    await admin.locator('.nav-item').filter({ hasText: '组件生成' }).click();
+    await admin.locator('#cmp-save').waitFor();
+    assert.ok(await admin.locator('#range-rows input[data-bid]').count() > 0, 'real world response renders component affix ranges');
     await admin.locator('.nav-item').filter({ hasText: '横幅管理' }).click();
     await admin.locator('#bn-content').fill('Go 浏览器公告验证');
     await admin.locator('#bn-dur').fill('60');

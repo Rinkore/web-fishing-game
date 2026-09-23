@@ -990,6 +990,9 @@ func worldView(c *rules.Catalog, grounds []map[string]any) map[string]any {
 		case "material":
 			materials = append(materials, row)
 		case "component":
+			// The admin editor needs the authoritative base ranges, including
+			// an empty array (rather than null) for components without affixes.
+			row["pool"] = append([]rules.AffixRange{}, it.Pool...)
 			components = append(components, row)
 		case "chest":
 			chests = append(chests, row)
