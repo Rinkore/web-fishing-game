@@ -64,3 +64,5 @@ html[data-motion=off] :is(.px-scene *, .px-node *) { transition: none !important
   .settings-scale { width: 100%; max-width: none; }
   .settings-row { gap: 10px; }
 }
+/* Tiny screens: the version otherwise forces a third brand line beside the actions. */
+@media (max-width: 380px) { .topbar .brand .ver { display: none; } }
