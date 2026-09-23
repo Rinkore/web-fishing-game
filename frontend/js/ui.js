@@ -959,17 +959,59 @@ window.UI = (function () {
       '</span>' + (meta.size ? ' <span class="muted">' + meta.size + 'cm</span>' : '') +
       (meta.rarity === 'rare' ? ' ✨稀有' : meta.rarity === 'epic' ? ' 💎史诗' : '');
   }
-  // 左栏底部状态条文案（在钓鱼 / 未钓鱼）
+  // 地图底部状态：成功上钩次数与渔获件数不同，不混入未知的双钓/战利品倍率。
   function fishStateHtml(st) {
-    if (!st.fishing.active) {
-      return '<span class="dot idle"></span> 未在钓鱼<span class="state-hint">点击任意垂钓点即可开始自动钓鱼</span>';
-    }
     const g = D.GROUNDS.find(function (x) { return x.id === st.player.groundId; });
     const sp = g && g.spots.find(function (x) { return x.id === st.player.spotId; });
-    // 隐式世界地图（'map'）不进文案：只报钓点名
-    const where = sp ? (g.id === 'map' ? '' : esc(g.name) + '·') + esc(sp.name) : esc(g ? g.name : '');
-    return '<span class="dot on"></span> 自动钓鱼中 · ' + where +
-      '<span class="state-hint">' + esc(castText()) + ' · 再点当前钓点可取消</span>';
+    const ci = st.fishing.active ? castSpeedInfo() : null;
+    const interval = ci && Number(ci.interval);
+    const bite = ci && ci.biteRate != null ? Number(ci.biteRate) : NaN;
+    const known = Number.isFinite(interval) && interval > 0 && Number.isFinite(bite);
+    const fields = [
+      ['钓鱼状态', st.fishing.active ? '自动钓鱼中' : '未在钓鱼'],
+      ['钓点', sp ? (g.id === 'map' ? '' : g.name + '·') + sp.name : '未选择'],
+      ['抛竿间隔', interval > 0 ? (interval / 1000).toFixed(2) + ' 秒' : '—'],
+      ['上钩率', Number.isFinite(bite) ? Math.round(bite * 10) / 10 + '%' : '—'],
+      ['每小时期望', known ? Math.round(3600000 / interval * Math.max(0, Math.min(100, bite)) / 100) + ' 次/时' : '—'],
+    ];
+    return fields.map(function (field, i) {
+      const tip = i === 4 ? '预计每小时成功上钩次数，不含双钓和战利品组的额外产出' : field[1];
+      return '<div class="fish-metric" title="' + esc(tip) + '"><span>' + field[0] + '</span><strong>' +
+        (i === 0 ? '<i class="dot ' + (st.fishing.active ? 'on' : 'idle') + '"></i>' : '') + esc(field[1]) + '</strong></div>';
+    }).join('');
+  }
+
+  let fishingOverlay = null;
+  let fishingDockCollapsed = false;
+  let disposeFishingViewport = null;
+  function mountFishingViewport(stage, map) {
+    if (disposeFishingViewport) disposeFishingViewport();
+    const img = map.querySelector('.px-map-img');
+    function fit() {
+      const bottom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+      const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+      const height = Math.max(420, (window.innerHeight - stage.getBoundingClientRect().top) / zoom - bottom);
+      stage.style.height = height + 'px';
+      const ratio = img && img.naturalWidth ? img.naturalWidth / img.naturalHeight : 8 / 5;
+      const width = Math.min(stage.clientWidth, stage.clientHeight * ratio);
+      map.style.width = width + 'px';
+      map.style.height = width / ratio + 'px';
+    }
+    const observer = new ResizeObserver(fit);
+    observer.observe(stage);
+    ['.topbar', '.sidebar', '#record-banner', '#notice-banner'].forEach(function (selector) {
+      const node = document.querySelector(selector);
+      if (node) observer.observe(node);
+    });
+    window.addEventListener('resize', fit);
+    if (img) img.addEventListener('load', fit);
+    disposeFishingViewport = function () {
+      observer.disconnect();
+      window.removeEventListener('resize', fit);
+      if (img) img.removeEventListener('load', fit);
+      disposeFishingViewport = null;
+    };
+    fit();
   }
   // 「同钓点 N 人」文案：构建与增量刷新共用（切钓点后本地会先标成同步中，不等 5s 轮询）
   function peepsHeadText(st) {
@@ -1011,8 +1053,14 @@ window.UI = (function () {
     return out;
   }
 
+  function liveBuffSpotsOfMap() {
+    return liveSpotsOfMap().filter(function (e) { return e.sp.buffs && e.sp.buffs.length > 0; });
+  }
+
   function liveBuffRowsHtml() {
-    return liveSpotsOfMap().map(function (e) {
+    const spots = liveBuffSpotsOfMap();
+    if (!spots.length) return '<div class="hint">当前地图暂无钓点增益。</div>';
+    return spots.map(function (e) {
       const sp = e.sp, buffs = sp.buffs || [];
       const tags = buffs.length
         ? buffs.map(function (b) {
@@ -1061,19 +1109,25 @@ window.UI = (function () {
     // 结构没变（只是上鱼 / 人数 / 钓速变化）→ 原地增量更新，整页 DOM 与动画都不动
     if (host && host.getAttribute('data-sig') === sig) { patchFishingLive(st); return; }
     main.innerHTML = '';
+    main.classList.add('fishing-page');
+    const stage = el('section', 'fishing-stage');
+    stage.setAttribute('aria-label', '钓鱼世界地图');
+    const toolbar = el('div', 'fishing-toolbar');
+    stage.appendChild(toolbar);
 
-    // 左：像素世界地图（钓场为区域、钓点为可点节点；点击节点=选择钓点，逻辑不变）
+    // 底层世界地图：图片和钓点在同一个等比缩放平面内。
     // 多地图页签：近岸 / 远洋
-    const left = el('div', 'panel fish-select');
-    left.innerHTML = pageHead('🎣', '钓鱼', '选钓点即自动垂钓 · 配装与存档在「角色 · 钓竿」页签') +
-      '<h3>🗺 世界地图 · 选择钓点</h3>';
+    const left = el('div', 'fish-select');
     const tabBar = el('div', 'px-map-tabs');
+    tabBar.setAttribute('role', 'group');
+    tabBar.setAttribute('aria-label', '切换地图');
     [['nearshore', '🏞 近岸'], ['voyage', '⛵ 远洋']].forEach(function (kv) {
       const tb = el('button', 'px-map-tab' + (mapTab === kv[0] ? ' on' : ''), kv[1]);
+      tb.setAttribute('aria-pressed', String(mapTab === kv[0]));
       tb.addEventListener('click', function () { if (mapTab !== kv[0]) { mapTab = kv[0]; renderView(); } });
       tabBar.appendChild(tb);
     });
-    left.appendChild(tabBar);
+    toolbar.appendChild(tabBar);
     // 地图节点坐标（地图宽高的百分比）：与 assets/worldmap.png 中场景对应。
     // 权威坐标来自钓点数据的 sp.pos（data.js 出厂值 + 管理后台拖动覆盖，见后台「钓点管理 · 地图定位」）；
     // 这里的表只作为**兜底**：后台新建、没有坐标的钓点围绕地图中心环形排布。
@@ -1239,22 +1293,58 @@ window.UI = (function () {
       '<span><i class="lg-ring"></i> 当前垂钓位置</span>' +
       '<span><i class="lg-buff">⚡</i> 有增益的钓点</span>' +
       '<span>🔒 未开放钓点</span>';
-    left.appendChild(legend);
+    stage.appendChild(legend);
 
     const ctrl = el('div', 'fish-ctrl');
+    ctrl.title = '点击钓点开始垂钓，再点当前钓点停止；每小时期望为成功上钩次数';
     const stateBar = el('div', 'fish-state' + (st.fishing.active ? ' on' : ''));
     stateBar.innerHTML = fishStateHtml(st);
     ctrl.appendChild(stateBar);
-    left.appendChild(ctrl);
+    stage.appendChild(ctrl);
     left.setAttribute('data-sig', sig); // 增量刷新靠它判断结构是否变化
-    main.appendChild(left);
+    stage.appendChild(left);
 
-    // 右：渔场实况（当前地图全部钓点增益 + 同钓点玩家；不翻页）
+    // 地图上方的三个独立开关：最多显示一个，再次点击收起，刷新不改变选择。
+    const switches = el('div', 'fishing-switches');
+    switches.setAttribute('role', 'group');
+    switches.setAttribute('aria-label', '地图功能');
+    const dock = el('div', 'fishing-dock');
+    dock.id = 'fishing-dock';
+    const dockToggle = el('button', 'fishing-dock-toggle');
+    dockToggle.setAttribute('aria-controls', 'fishing-dock-content');
+    const dockContent = el('div', 'fishing-dock-content');
+    dockContent.id = 'fishing-dock-content';
+    dock.appendChild(dockToggle);
+    dock.appendChild(dockContent);
+    dockContent.appendChild(switches);
+    function updateDock() {
+      dock.classList.toggle('collapsed', fishingDockCollapsed);
+      dockToggle.textContent = fishingDockCollapsed ? '‹' : '›';
+      dockToggle.setAttribute('aria-label', fishingDockCollapsed ? '展开地图功能' : '收起地图功能');
+      dockToggle.setAttribute('aria-expanded', String(!fishingDockCollapsed));
+      dockContent.inert = fishingDockCollapsed;
+      dockContent.setAttribute('aria-hidden', String(fishingDockCollapsed));
+    }
+    dockToggle.addEventListener('click', function () {
+      fishingDockCollapsed = !fishingDockCollapsed;
+      updateDock();
+    });
+    updateDock();
     const right = el('div', 'panel fish-live');
-    right.innerHTML = pageHead('🌊', '渔场实况', '当前地图钓点增益 · 同钓点玩家');
+    right.id = 'fishing-overlay';
+    right.setAttribute('role', 'region');
+    right.setAttribute('aria-labelledby', 'fishing-overlay-title');
+    const overlayHead = el('div', 'fishing-overlay-head');
+    const overlayTitle = el('h2');
+    overlayTitle.id = 'fishing-overlay-title';
+    const close = el('button', 'fishing-overlay-close', '×');
+    close.setAttribute('aria-label', '关闭地图功能');
+    overlayHead.appendChild(overlayTitle);
+    overlayHead.appendChild(close);
+    right.appendChild(overlayHead);
     const buffBlock = el('section', 'live-block');
-    buffBlock.innerHTML = '<div class="live-head"><h3>⚡ 地图钓点增益</h3><span>' +
-      liveSpotsOfMap().length + ' 个钓点</span></div><div class="live-buffs"></div>';
+    buffBlock.innerHTML = '<div class="live-head"><h3>⚡ 地图钓点增益</h3><span class="live-buff-count">' +
+      liveBuffSpotsOfMap().length + ' 个增益钓点</span></div><div class="live-buffs"></div>';
     right.appendChild(buffBlock);
 
     const playersBlock = el('section', 'live-block');
@@ -1274,10 +1364,11 @@ window.UI = (function () {
       return e.sp.id + ':' + (e.sp.buffs || []).map(function (b) { return b.type + b.value; }).join('+');
     }).join(';'));
 
-    // 主界面渔获日志：随上鱼实时滚动刷新（同时也会写入「📜 日志 · 🐟 渔获」分列做长期留存）
+    const logBlock = el('section', 'live-block fishing-log-block');
+    // 主界面渔获日志：随上鱼实时刷新，隐藏时也保留内容和滚动位置。
     const logHead = el('h3', null, '📜 我的渔获日志');
     logHead.title = '上鱼时自动滚动刷新；完整记录见「日志 · 🐟 渔获」';
-    right.appendChild(logHead);
+    logBlock.appendChild(logHead);
     const log = el('div', 'catch-log');
     if (st.log.length === 0) log.appendChild(el('div', 'hint', '还没有渔获，去抛竿吧。'));
     st.log.slice(0, 25).forEach(function (e) {
@@ -1285,10 +1376,48 @@ window.UI = (function () {
       row.setAttribute('data-k', logKey(e));
       log.appendChild(row);
     });
-    right.appendChild(log);
-    right.appendChild(el('div', 'hint', '完整渔获记录见「📜 日志 · 🐟 渔获」，可按时间线回看。'));
+    logBlock.appendChild(log);
+    logBlock.appendChild(el('div', 'hint', '完整渔获记录见「📜 日志 · 🐟 渔获」，可按时间线回看。'));
+    right.appendChild(logBlock);
 
-    main.appendChild(right);
+    const sections = { buffs: buffBlock, players: playersBlock, log: logBlock };
+    const labels = { buffs: '⚡ 钓点增益', players: '👥 钓点玩家', log: '📜 渔获日志' };
+    function updateOverlay() {
+      right.hidden = !fishingOverlay;
+      Object.keys(sections).forEach(function (key) { sections[key].hidden = fishingOverlay !== key; });
+      switches.querySelectorAll('button').forEach(function (button) {
+        const selected = button.dataset.overlay === fishingOverlay;
+        button.classList.toggle('on', selected);
+        button.setAttribute('aria-pressed', String(selected));
+        button.setAttribute('aria-expanded', String(selected));
+      });
+      overlayTitle.textContent = labels[fishingOverlay] || '渔场实况';
+    }
+    Object.keys(labels).forEach(function (key) {
+      const button = el('button', 'px-map-tab', labels[key]);
+      button.dataset.overlay = key;
+      button.setAttribute('aria-controls', right.id);
+      button.addEventListener('click', function () {
+        fishingOverlay = fishingOverlay === key ? null : key;
+        updateOverlay();
+      });
+      switches.appendChild(button);
+    });
+    function closeOverlay() {
+      const button = switches.querySelector('[aria-pressed="true"]');
+      fishingOverlay = null;
+      updateOverlay();
+      if (button) button.focus();
+    }
+    close.addEventListener('click', closeOverlay);
+    stage.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && fishingOverlay) { ev.stopPropagation(); closeOverlay(); }
+    });
+    updateOverlay();
+    dockContent.appendChild(right);
+    stage.appendChild(dock);
+    main.appendChild(stage);
+    mountFishingViewport(stage, map);
   }
 
   // 钓鱼页高频增量刷新：只改动「真的会变」的内容（同钓点玩家 / 渔获日志 / 状态条），
@@ -1296,15 +1425,17 @@ window.UI = (function () {
   function patchFishingLive(st) {
     const main = $('main');
     if (!main) return;
-    // ① 左栏状态条：钓速 / 上鱼率会随后台配置（castcfg）变化
+    // ① 地图状态条：钓速 / 上鱼率会随后台配置（castcfg）变化
     const stateBar = main.querySelector('.fish-state');
     if (stateBar) {
       const html = fishStateHtml(st);
       if (stateBar.innerHTML !== html) stateBar.innerHTML = html; // 内容没变就不碰 DOM，免得打断动画
     }
-    // ③ 右栏：当前地图增益 + 同钓点玩家（一次全部展开，不分页）
+    // ③ 浮层：即使收起也更新增益和玩家，下次展开直接显示最新内容。
     const buffHost = main.querySelector('.fish-live .live-buffs');
     if (buffHost) fillLiveBuffs(buffHost);
+    const buffCount = main.querySelector('.fish-live .live-buff-count');
+    if (buffCount) buffCount.textContent = liveBuffSpotsOfMap().length + ' 个增益钓点';
     const peepHost = main.querySelector('.fish-live .live-peeps');
     if (peepHost) {
       const here = st.peepsPage && st.peepsPage.list || [];
@@ -10066,6 +10197,9 @@ window.UI = (function () {
 
   function renderView() {
     const pageId = pageIdOf();
+    const fishingPage = currentView === 'fishing' && !featureBlocked(pageId);
+    $('main').classList.toggle('fishing-page', fishingPage);
+    if (!fishingPage && disposeFishingViewport) disposeFishingViewport();
     $('main').classList.toggle('smelt-page', currentView === 'workshop' && wsTab === 'smelt');
     if (featureBlocked(pageId)) {
       const main = $('main'); main.innerHTML = '';
