@@ -26,6 +26,11 @@ func (a *API) legacyAdminWorld(w http.ResponseWriter, r *http.Request) {
 	}
 	view := worldView(c, grounds)
 	for key, value := range map[string]any{
+		"notifyLevel": "all",
+		"notifyLevels": map[string]string{
+			"all": "全部渔获", "uncommon": "大鱼、稀有鱼与组件", "offrange": "超出基准体型",
+			"records": "破纪录", "none": "关闭全服渔获动态",
+		},
 		"groundCatalog":  legacyAdminGroundCatalog(c),
 		"quality":        legacyConstantMap(c, "QUALITY"),
 		"castCfg":        legacyCastConfig(c),
@@ -47,6 +52,32 @@ func (a *API) legacyAdminWorld(w http.ResponseWriter, r *http.Request) {
 	seaConfig["zoneTtlMin"] = c.SeaConfig().ZoneTTL / 60000
 	view["sea"] = seaConfig
 	applyLegacyStoredConfig(view, stored)
+	// Older saved levels have identical feed semantics; select the matching
+	// current option instead of leaving the editor with no selected level.
+	switch view["notifyLevel"] {
+	case "rare":
+		view["notifyLevel"] = "uncommon"
+	case "off":
+		view["notifyLevel"] = "none"
+	}
+	economyView, err := a.legacyEconomyConsole(r.Context(), c)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	for key, value := range economyView {
+		view[key] = value
+	}
+	fields, _, err := legacyCatalogProjection(c)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	for key, value := range fields {
+		if _, exists := view[key]; !exists {
+			view[key] = value
+		}
+	}
 	write(w, http.StatusOK, view)
 }
 

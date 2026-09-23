@@ -29,10 +29,13 @@ class DeploymentTests(unittest.TestCase):
                         asset="web-fishing-game-linux-amd64.tar.gz", sha256="c" * 64)
         (self.previous / ".release.json").write_text(json.dumps(self.old))
         (self.previous / "SOURCE_COMMIT").write_text(self.old["sourceCommit"] + "\n")
-        self.config = dict(root=str(self.root), service="fake-fishing", publicUrl="https://example.test:19000",
+        self.config = dict(root=str(self.root), service="fake-fishing", webService="fake-web", publicUrl="https://example.test:19000",
                            health_attempts=1, health_interval=0)
         self.calls = []
         self.fail_start = False
+        self.fail_web_start = False
+        self.game_active = True
+        self.web_active = True
         self.bad_new_smoke = False
         self.interrupt_signal = None
 
@@ -70,11 +73,29 @@ class DeploymentTests(unittest.TestCase):
 
     def systemctl(self, *arguments):
         self.calls.append(arguments)
+        action, service = arguments[0], arguments[-1]
+        is_game = service == self.config["service"]
         if arguments[0] == "start" and self.fail_start:
             self.fail_start = False
             raise subprocess.CalledProcessError(1, ["systemctl", *arguments])
+        if action == "start" and not is_game and self.fail_web_start:
+            self.fail_web_start = False
+            raise subprocess.CalledProcessError(1, ["systemctl", *arguments])
+        if action == "stop" and is_game:
+            # systemd Requires stops the dependent web unit, too.
+            self.game_active = self.web_active = False
+        elif action == "start":
+            if is_game:
+                self.game_active = True
+            else:
+                self.assertTrue(self.game_active, "start game before web")
+                self.web_active = True
+        elif action == "is-active" and not (self.game_active if is_game else self.web_active):
+            raise subprocess.CalledProcessError(3, ["systemctl", *arguments])
 
     def fetch(self, url):
+        if url.startswith(self.config["publicUrl"]) and not self.web_active:
+            raise OSError("Public proxy is stopped")
         current = (self.root / "current").resolve()
         release = json.loads((current / ".release.json").read_text())
         if self.interrupt_signal is not None and current != self.previous:
@@ -105,7 +126,33 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(current.name, release["version"] + "-" + release["sourceCommit"])
         self.assertEqual(json.loads((current / ".release.json").read_text()), release)
         self.assertTrue(self.previous.exists())
-        self.assertEqual([call[0] for call in self.calls if call[0] != "is-active"], ["stop", "start"])
+        self.assertEqual([call for call in self.calls if call[0] != "is-active"],
+                         [("stop", "fake-fishing"), ("start", "fake-fishing"), ("start", "fake-web")])
+        self.assertTrue(self.game_active and self.web_active)
+
+    def test_default_config_starts_production_web_unit(self):
+        del self.config["webService"]
+        manifest, _ = self.package()
+        self.invoke(manifest)
+        self.assertIn(("start", "fishing-go-web"), self.calls)
+        self.assertTrue(self.web_active)
+
+    def test_health_probes_production_backend_and_public_assets(self):
+        urls = []
+        def fetch(url):
+            urls.append(url)
+            return self.fetch(url)
+        deployment.check_health(self.config, self.previous, self.old, self.systemctl, fetch)
+        self.assertEqual(urls[:2], ['http://127.0.0.1:9001/healthz',
+                                   'http://127.0.0.1:9001/readyz'])
+        self.assertIn(self.config['publicUrl'] + '/wiki/', urls)
+
+    def test_inactive_web_rejected_before_service_changes(self):
+        manifest, _ = self.package()
+        self.web_active = False
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.invoke(manifest)
+        self.assert_untouched()
 
     def test_same_version_hotfix_uses_different_commit(self):
         manifest, _ = self.package(version="v1.0.0")
@@ -192,7 +239,19 @@ class DeploymentTests(unittest.TestCase):
             self.invoke(manifest)
         self.assertEqual((self.root / "current").resolve(), self.previous)
         self.assertEqual([call[0] for call in self.calls if call[0] != "is-active"],
-                         ["stop", "start", "stop", "start"])
+                         ["stop", "start", "stop", "start", "start"])
+        self.assertTrue(self.game_active and self.web_active)
+
+    def test_web_start_failure_restores_original_release_and_public_proxy(self):
+        manifest, _ = self.package()
+        self.fail_web_start = True
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.invoke(manifest)
+        self.assertEqual((self.root / "current").resolve(), self.previous)
+        self.assertTrue(self.game_active and self.web_active)
+        self.assertEqual([call for call in self.calls if call[0] != "is-active"],
+                         [("stop", "fake-fishing"), ("start", "fake-fishing"), ("start", "fake-web"),
+                          ("stop", "fake-fishing"), ("start", "fake-fishing"), ("start", "fake-web")])
 
     def test_public_smoke_failure_restores_original_release(self):
         manifest, _ = self.package()
@@ -200,6 +259,7 @@ class DeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(deployment.DeploymentError, "health verification failed"):
             self.invoke(manifest)
         self.assertEqual((self.root / "current").resolve(), self.previous)
+        self.assertTrue(self.game_active and self.web_active)
 
     def assert_signal_rolls_back(self, number, handler, exception):
         original = signal.signal(number, handler)
@@ -210,7 +270,8 @@ class DeploymentTests(unittest.TestCase):
             self.invoke(manifest)
         self.assertEqual((self.root / "current").resolve(), self.previous)
         self.assertEqual([call[0] for call in self.calls if call[0] != "is-active"],
-                         ["stop", "start", "stop", "start"])
+                         ["stop", "start", "start", "stop", "start", "start"])
+        self.assertTrue(self.game_active and self.web_active)
 
     def test_sigterm_during_health_check_rolls_back(self):
         self.assert_signal_rolls_back(signal.SIGTERM, deployment.interrupted, deployment.DeploymentInterrupted)

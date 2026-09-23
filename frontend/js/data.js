@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.22.0-local';
+  const VERSION = 'v0.22.0';
   const BUILD = '2026-09-23';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -140,7 +140,7 @@
       "level": 1,
       "success": 100,
       "coins": 6000,
-      "description": "稳定金币与钓速材料"
+      "description": "稳定金币与基础强化材料"
     },
     {
       "id": "gather",
@@ -148,7 +148,7 @@
       "level": 2,
       "success": 90,
       "coins": 3000,
-      "description": "深海鳞片与工坊采集材料"
+      "description": "深海鳞片、强化合金与少量精工合金"
     },
     {
       "id": "salvage",
@@ -156,7 +156,7 @@
       "level": 3,
       "success": 80,
       "coins": 4000,
-      "description": "宝匣残片、海图与稳定 / 共鸣材料"
+      "description": "宝匣残片、强化合金与熔炼催化晶"
     },
     {
       "id": "danger",
@@ -164,7 +164,7 @@
       "level": 4,
       "success": 65,
       "coins": 6000,
-      "description": "稀有度与体型材料"
+      "description": "高危航线，产出精工合金与熔炼催化晶"
     },
     {
       "id": "king",
@@ -172,7 +172,7 @@
       "level": 5,
       "success": 65,
       "coins": 8000,
-      "description": "满级单人挑战，龙鳞碎屑"
+      "description": "满级单人挑战，提高高级成长材料产出"
     }
   ],
   "catalysts": [
@@ -1040,7 +1040,7 @@
   "sets": {
     "forge": {
       "name": "锻造工匠",
-      "description": "有效钓鱼积累热量，用于精工、调校和精工预设切换。",
+      "description": "有效钓鱼积累热量，用于优惠精工和精工预设切换。",
       "coreAttributes": {
         "rod": {
           "skill": 3

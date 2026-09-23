@@ -4786,15 +4786,30 @@ window.Admin = (function () {
     main.innerHTML = '<h2>🔔 全服动态通知等级</h2>' +
       '<div class="hint" style="margin-bottom:12px">控制全服动态（钓鱼页滚动条）推送哪些渔获。钓者本人的渔获推送不受影响。</div>' +
       '<div id="nt-body" class="panel">加载中…</div>';
-    loadWorldCfg(true).then(function (cfg) {
-      if (!cfg || view !== 'notify') return;
+    const body = $('nt-body');
+    const isCurrent = function () { return view === 'notify' && $('nt-body') === body; };
+    function showError(message) {
+      if (!isCurrent()) return;
+      body.innerHTML = '<div class="err">' + esc(message) + '</div>' +
+        '<button class="btn" id="nt-retry">重新加载</button>';
+      $('nt-retry').onclick = renderNotify;
+    }
+    adminApi('GET', '/api/admin/world').then(function (r) {
+      if (!isCurrent()) return;
+      if (!r.ok) { showError('通知等级加载失败：' + (r.data.error || '请稍后重试')); return; }
+      const cfg = r.data;
+      if (!cfg || !cfg.notifyLevels || typeof cfg.notifyLevels !== 'object' ||
+          Array.isArray(cfg.notifyLevels) || !Object.prototype.hasOwnProperty.call(cfg.notifyLevels, cfg.notifyLevel)) {
+        showError('通知等级加载失败：通知配置不完整，请更新服务后重试');
+        return;
+      }
+      worldCfg = cfg;
       drawNotify(cfg);
+    }).catch(function () {
+      showError('通知等级加载失败，请重新加载');
     });
   }
   function drawNotify(cfg) {
-    // fix：这里必须取 renderNotify 创建的 #nt-body 容器——
-    // 之前直接引用了不存在的 body 变量，drawNotify 一执行就抛 ReferenceError，
-    // promise 静默失败，页面永远停在「加载中…」。
     const body = $('nt-body');
     const an = cfg.autoNotify || { on: false, rules: [], hysteresisPct: 10, holdCount: 2 };
     const rulesRows = (an.rules || []).map(function (r, i) {
@@ -4892,10 +4907,29 @@ window.Admin = (function () {
     main.innerHTML = '<h2>🧩 组件生成配置</h2>' +
       '<div class="hint" style="margin-bottom:12px">控制组件掉落的品质概率、词条数量概率、数值 roll 模型、各底材词缀数值范围，以及修饰词组合规则。保存后对全服即时生效。</div>' +
       '<div id="comp-body" class="panel">加载中…</div>';
-    loadWorldCfg(true).then(function (cfg) {
-      if (!cfg || view !== 'component') return;
-      compCfg = cfg.componentCfg || {};
+    const body = $('comp-body');
+    const isCurrent = function () { return view === 'component' && $('comp-body') === body; };
+    function showError(message) {
+      if (!isCurrent()) return;
+      body.innerHTML = '<div class="err">' + esc(message) + '</div>' +
+        '<button class="btn" id="cmp-retry">重新加载</button>';
+      $('cmp-retry').onclick = renderComponent;
+    }
+    // A failed refresh must not fall back to cached, potentially stale settings.
+    adminApi('GET', '/api/admin/world').then(function (r) {
+      if (!isCurrent()) return;
+      if (!r.ok) { showError('组件生成配置加载失败：' + (r.data.error || '请稍后重试')); return; }
+      const cfg = r.data;
+      if (!cfg.componentCfg || !cfg.catalog || !Array.isArray(cfg.catalog.components) ||
+          cfg.catalog.components.some(function (b) { return !b || !Array.isArray(b.pool); })) {
+        showError('组件生成配置加载失败：组件词缀数据不完整，请更新服务后重试');
+        return;
+      }
+      worldCfg = cfg;
+      compCfg = cfg.componentCfg;
       drawComponent();
+    }).catch(function () {
+      showError('组件生成配置加载失败，请重新加载');
     });
   }
   function drawComponent() {

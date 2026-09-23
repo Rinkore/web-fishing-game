@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,55 @@ import (
 
 	"fishing.local/server/internal/testdb"
 )
+
+func TestIntegrationLegacyAutoSellPreservesInactiveNoSellRules(t *testing.T) {
+	f := newAdminFixture(t)
+	ctx := context.Background()
+	before := f.coins(f.playerID)
+	if _, err := f.db.Admin.Exec(ctx, `INSERT INTO fishing.item_definitions(id,kind) VALUES('tide_sand','material') ON CONFLICT(id) DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Admin.Exec(ctx, `INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity) VALUES($1,'tide_sand','material','normal',10)`, f.playerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Admin.Exec(ctx, `INSERT INTO fishing.autosell_settings(owner_id,rules) VALUES($1,'{"tide_sand":{"on":true,"keep":0,"slackPct":0,"slackPrice":0}}') ON CONFLICT(owner_id) DO UPDATE SET rules=excluded.rules`, f.playerID); err != nil {
+		t.Fatal(err)
+	}
+	code, body := f.player("GET", "/api/autosell", "")
+	f.expect(code, body, 200, "")
+	plan := body["plan"].(map[string]any)
+	if plan["pool"] != float64(0) || plan["ready"] != float64(0) || plan["blocked"] != float64(0) {
+		t.Fatal("unsellable inventory appeared in automatic sale preview")
+	}
+	code, body = f.player("POST", "/api/autosell", `{"id":"crucian","on":true,"keep":2}`)
+	f.expect(code, body, 200, "")
+	code, body = f.player("POST", "/api/autosell", `{"bulk":"all","on":false}`)
+	f.expect(code, body, 200, "")
+	if body["items"].(map[string]any)["tide_sand"].(map[string]any)["on"] != true {
+		t.Fatal("bulk action changed an imported unsellable rule")
+	}
+	code, body = f.player("POST", "/api/autosell", `{"id":"tide_sand","on":false}`)
+	f.expect(code, body, 200, "")
+	if body["items"].(map[string]any)["tide_sand"].(map[string]any)["on"] != false {
+		t.Fatal("old unsellable rule could not be disabled")
+	}
+	for _, request := range []string{`{"id":"tide_sand","on":true}`, `{"id":"dragon_scale","on":false}`, `{"id":"dragon_scale","keep":0}`} {
+		code, body = f.player("POST", "/api/autosell", request)
+		f.expect(code, body, 400, "")
+	}
+	code, body = f.player("POST", "/api/autosell", `{"id":"tide_sand","remove":true}`)
+	f.expect(code, body, 200, "")
+	if _, exists := body["items"].(map[string]any)["tide_sand"]; exists {
+		t.Fatal("old unsellable rule could not be removed")
+	}
+	var quantity int64
+	if err := f.db.Admin.QueryRow(ctx, `SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id='tide_sand'`, f.playerID).Scan(&quantity); err != nil {
+		t.Fatal(err)
+	}
+	if quantity != 10 || f.coins(f.playerID) != before {
+		t.Fatal("settings compatibility changed player assets")
+	}
+}
 
 func TestIntegrationLegacyAutoSell(t *testing.T) {
 	db := testdb.New(t, true)

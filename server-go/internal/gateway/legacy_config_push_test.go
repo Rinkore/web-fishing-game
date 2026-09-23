@@ -39,7 +39,7 @@ func TestIntegrationLegacyConfigurationPublication(t *testing.T) {
 	if fields["groundCfg"] == nil || applied == nil {
 		t.Fatalf("init: %v", fields)
 	}
-	// Custom material metadata is an additional authoritative config frame.
+	// Gear configuration and custom material metadata each have an authoritative frame.
 	if initial := p.poll(ctx); len(initial) != 12 {
 		t.Fatalf("initial configs: %d", len(initial))
 	}

@@ -143,6 +143,10 @@ func (a *API) legacyAdminRecordsDelete(w http.ResponseWriter, r *http.Request) {
 		legacyRecordsFailure(w, err)
 		return
 	}
+	if err = removeImportedRecords(ctx, tx, in.ID, nil, "", "", true, a.location, now); err != nil {
+		legacyRecordsFailure(w, err)
+		return
+	}
 	value, err := a.legacyRecordsProjection(ctx, tx, c)
 	if err != nil {
 		legacyRecordsFailure(w, err)
@@ -278,12 +282,20 @@ func (a *API) legacyAdminRecordDeleteOne(w http.ResponseWriter, r *http.Request)
 		legacyRecordsFailure(w, err)
 		return
 	}
+	if err = removeImportedRecords(ctx, tx, in.ID, &cur, in.Range, in.Kind, purge, a.location, now); err != nil {
+		legacyRecordsFailure(w, err)
+		return
+	}
 	top, err = legacyRankList(ctx, tx, in.ID, in.Kind == "small", in.Range, a.location, now)
 	if err != nil {
 		legacyRecordsFailure(w, err)
 		return
 	}
-	if err = legacyAdminAudit(ctx, tx, actor, "records/delone", &cur.OwnerID, in.ID,
+	var auditOwner *int64
+	if cur.OwnerID > 0 {
+		auditOwner = &cur.OwnerID
+	}
+	if err = legacyAdminAudit(ctx, tx, actor, "records/delone", auditOwner, in.ID,
 		fmt.Sprintf("range=%s kind=%s index=%d size=%g t=%d purge=%t catch=%d/%d", in.Range, in.Kind, *in.Index, cur.Size, cur.T, purge, cur.OperationID, cur.Ordinal)); err != nil {
 		legacyRecordsFailure(w, err)
 		return
@@ -308,7 +320,7 @@ func (a *API) legacyRecordPurgeCounts(ctx context.Context, q legacyRecordQueryer
 				return nil, err
 			}
 			for _, entry := range top {
-				if entry.OwnerID == cur.OwnerID && entry.Size == cur.Size {
+				if legacyRankIdentity(entry) == legacyRankIdentity(cur) && entry.Size == cur.Size {
 					counts["boards"]++
 				}
 			}
@@ -323,7 +335,7 @@ func (a *API) legacyRecordPurgeCounts(ctx context.Context, q legacyRecordQueryer
 		if kind == "big" {
 			key = "records"
 		}
-		if entry, ok := value[key].(map[string]legacyRecordEntry)[id]; ok && entry.OwnerID == cur.OwnerID && entry.Size == cur.Size {
+		if entry, ok := value[key].(map[string]legacyRecordEntry)[id]; ok && (entry.OwnerID > 0 && entry.OwnerID == cur.OwnerID || entry.OwnerID == 0 && entry.Who == cur.Who) && entry.Size == cur.Size {
 			counts[kind]++
 		}
 	}

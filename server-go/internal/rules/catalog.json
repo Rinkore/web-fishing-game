@@ -1,8 +1,8 @@
 {
   "format": 1,
-  "version": "v0.22.0-local",
+  "version": "v0.22.0",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "799f0b9163bc3044a9e791830c4a770dfaadbdbe930e4f6a5b945ae2688e3c65",
+  "sourceSHA256": "59f46017e19f19c59e9d1d21dff3295e3e952d7a1939a17998c1b5b9daac1944",
   "constants": {
     "GEAR_SYSTEM": {
       "enabled": true,
@@ -406,7 +406,7 @@
       "sets": {
         "forge": {
           "name": "锻造工匠",
-          "description": "有效钓鱼积累热量，用于精工、调校和精工预设切换。",
+          "description": "有效钓鱼积累热量，用于优惠精工和精工预设切换。",
           "coreAttributes": {
             "rod": {
               "skill": 3
@@ -736,7 +736,7 @@
         "mythic": 2
       }
     },
-    "VERSION": "v0.22.0-local",
+    "VERSION": "v0.22.0",
     "BUILD": "2026-09-23",
     "FISH": {
       "common": [
@@ -1444,7 +1444,7 @@
           "level": 1,
           "success": 100,
           "coins": 6000,
-          "description": "稳定金币与钓速材料"
+          "description": "稳定金币与基础强化材料"
         },
         {
           "id": "gather",
@@ -1452,7 +1452,7 @@
           "level": 2,
           "success": 90,
           "coins": 3000,
-          "description": "深海鳞片与工坊采集材料"
+          "description": "深海鳞片、强化合金与少量精工合金"
         },
         {
           "id": "salvage",
@@ -1460,7 +1460,7 @@
           "level": 3,
           "success": 80,
           "coins": 4000,
-          "description": "宝匣残片、海图与稳定 / 共鸣材料"
+          "description": "宝匣残片、强化合金与熔炼催化晶"
         },
         {
           "id": "danger",
@@ -1468,7 +1468,7 @@
           "level": 4,
           "success": 65,
           "coins": 6000,
-          "description": "稀有度与体型材料"
+          "description": "高危航线，产出精工合金与熔炼催化晶"
         },
         {
           "id": "king",
@@ -1476,7 +1476,7 @@
           "level": 5,
           "success": 65,
           "coins": 8000,
-          "description": "满级单人挑战，龙鳞碎屑"
+          "description": "满级单人挑战，提高高级成长材料产出"
         }
       ],
       "catalysts": [
@@ -1617,7 +1617,7 @@
         "name": "锻造工匠",
         "level": 2,
         "cost": 25,
-        "effect": "有效钓鱼积累热量，用于精工、调校和精工预设切换。",
+        "effect": "有效钓鱼积累热量，用于优惠精工和精工预设切换。",
         "pending": false,
         "pieces": [
           {

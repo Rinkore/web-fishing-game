@@ -3,7 +3,43 @@ package gateway
 import (
 	"encoding/json"
 	"testing"
+
+	"fishing.local/server/internal/rules"
 )
+
+func TestAdminWorldComponentPools(t *testing.T) {
+	c, err := rules.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Empty pools must still be JSON arrays for the editor's map/find calls.
+	c.Items = append(c.Items, rules.Item{ID: "empty_pool", Kind: "component"})
+	view := worldView(c, nil)
+	rows := view["catalog"].(map[string]any)["components"].([]map[string]any)
+	seen := 0
+	for _, it := range c.Items {
+		if it.Kind != "component" {
+			continue
+		}
+		row := rows[seen]
+		seen++
+		pool, ok := row["pool"].([]rules.AffixRange)
+		if !ok || pool == nil {
+			t.Fatalf("component %s has no array-valued pool: %v", it.ID, row["pool"])
+		}
+		if len(pool) != len(it.Pool) {
+			t.Fatalf("component %s lost affix ranges", it.ID)
+		}
+		for i, p := range it.Pool {
+			if pool[i] != p {
+				t.Fatalf("component %s affix %d: got %+v, want %+v", it.ID, i, pool[i], p)
+			}
+		}
+	}
+	if seen < 2 {
+		t.Fatal("expected default components and an empty-pool component")
+	}
+}
 
 func TestIntegrationLegacyAdminWorldReadRoutes(t *testing.T) {
 	f := newAdminFixture(t)
@@ -18,9 +54,24 @@ func TestIntegrationLegacyAdminWorldReadRoutes(t *testing.T) {
 	if world["ok"] != true || len(world["grounds"].([]any)) == 0 {
 		t.Fatalf("world projection: %v", world)
 	}
+	levels, ok := world["notifyLevels"].(map[string]any)
+	if !ok || len(levels) != 5 || world["notifyLevel"] != "all" {
+		t.Fatalf("notification editor missing defaults: %v / %v", levels, world["notifyLevel"])
+	}
+	for _, level := range []string{"all", "uncommon", "offrange", "records", "none"} {
+		if label, ok := levels[level].(string); !ok || label == "" {
+			t.Fatalf("notification level %s has no label", level)
+		}
+	}
 	catalog, ok := world["catalog"].(map[string]any)
 	if !ok || len(catalog["fish"].([]any)) == 0 {
 		t.Fatalf("world catalog: %v", world["catalog"])
+	}
+	for _, raw := range catalog["components"].([]any) {
+		component := raw.(map[string]any)
+		if _, ok := component["pool"].([]any); !ok {
+			t.Fatalf("component %v pool is not a JSON array", component["id"])
+		}
 	}
 	code, groups := f.admin("GET", "/api/admin/loot/groups", "")
 	f.expect(code, groups, 200, "")
@@ -31,6 +82,24 @@ func TestIntegrationLegacyAdminWorldReadRoutes(t *testing.T) {
 	f.expect(code, spots, 200, "")
 	if spots["ok"] != true || len(spots["spots"].([]any)) == 0 {
 		t.Fatalf("loot spots response: %v", spots)
+	}
+}
+
+func TestIntegrationLegacyAdminNotificationEditorReload(t *testing.T) {
+	f := newAdminFixture(t)
+	for _, tc := range []struct{ saved, selected string }{
+		{"records", "records"}, {"none", "none"}, {"rare", "uncommon"}, {"off", "none"}, {"all", "all"},
+	} {
+		code, result := f.admin("POST", "/api/admin/settings", `{"notifyLevel":"`+tc.saved+`"}`)
+		f.expect(code, result, 200, "")
+		code, world := f.admin("GET", "/api/admin/world", "")
+		f.expect(code, world, 200, "")
+		if world["notifyLevel"] != tc.selected {
+			t.Fatalf("saved %s: selected %v, want %s", tc.saved, world["notifyLevel"], tc.selected)
+		}
+		if world["notifyLevels"].(map[string]any)[tc.selected] == nil {
+			t.Fatalf("selected level %s has no option", tc.selected)
+		}
 	}
 }
 

@@ -8,11 +8,12 @@ public_key=$(cat -- "$3")
 [[ $public_key != *$'\n'* && $public_key =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+(\ .*)?$ ]] || { echo 'Use one ed25519 public key.' >&2; exit 2; }
 ssh-keygen -l -f "$3" >/dev/null 2>&1 || { echo 'Invalid ed25519 public key.' >&2; exit 2; }
 source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-root=/opt/fishing-go-test
-[[ -L $root/current && -d $root/releases ]] || { echo 'Existing fishing-go-test deployment is required.' >&2; exit 2; }
-systemctl is-active --quiet fishing-go-test
-[[ $(systemctl show --property=WorkingDirectory --value fishing-go-test) == "$root/current" ]] || { echo 'Unexpected service working directory.' >&2; exit 2; }
-[[ $(systemctl show --property=ExecStart --value fishing-go-test) == *"$root/current/bin/game"* ]] || { echo 'Unexpected service executable.' >&2; exit 2; }
+root=/opt/fishing-go
+[[ -L $root/current && -d $root/releases ]] || { echo 'Existing fishing-go deployment is required.' >&2; exit 2; }
+systemctl is-active --quiet fishing-go
+systemctl is-active --quiet fishing-go-web
+[[ $(systemctl show --property=WorkingDirectory --value fishing-go) == "$root/current" ]] || { echo 'Unexpected service working directory.' >&2; exit 2; }
+[[ $(systemctl show --property=ExecStart --value fishing-go) == *"$root/current/bin/game"* ]] || { echo 'Unexpected service executable.' >&2; exit 2; }
 # Verify the baseline commit without reading the private runtime.env.
 python3 - "$root" "$1" "$2" <<'PY'
 import json, pathlib, re, sys
@@ -54,9 +55,10 @@ chown root:root /var/lib/fishing-deploy/.ssh/authorized_keys
 chmod 0644 /var/lib/fishing-deploy/.ssh/authorized_keys
 cat >/etc/fishing-release/config.json <<'JSON'
 {
-  "root": "/opt/fishing-go-test",
-  "service": "fishing-go-test",
-  "publicUrl": "https://ipv4.rinkore.com:19000"
+  "root": "/opt/fishing-go",
+  "service": "fishing-go",
+  "webService": "fishing-go-web",
+  "publicUrl": "https://ipv4.rinkore.com:9000"
 }
 JSON
 chmod 0644 /etc/fishing-release/config.json

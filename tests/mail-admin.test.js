@@ -3,6 +3,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {chromium}=require('playwright-core');
 const root=path.resolve(__dirname,'../frontend');
 (async()=>{
+ fs.mkdirSync(path.resolve(__dirname,'../output/mail-validation'),{recursive:true});
  const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true});
  try{
   const context=await browser.newContext({viewport:{width:1280,height:900}});const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(6000);

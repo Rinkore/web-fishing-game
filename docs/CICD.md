@@ -1,6 +1,6 @@
 # Linux 自动发版
 
-目标是当前 Go 测试实例 `https://ipv4.rinkore.com:19000`，systemd 服务 `fishing-go-test`，发行根目录 `/opt/fishing-go-test`。继续使用现有 Caddy、Nginx、PostgreSQL 和 `/etc/fishing-go-test/runtime.env`。本流程不会把旧正式服 9000/9001 切换成 Go，也不要求迁移到 Docker。
+正式入口是 `https://ipv4.rinkore.com:9000`，systemd 服务 `fishing-go`，发行根目录 `/opt/fishing-go`，运行配置 `/etc/fishing-go/runtime.env`。Caddy HTTPS 9000 → Nginx 回环 9002 → Go 回环 9001；沿用现有 PostgreSQL 数据，不迁移到 Docker。首次从测试部署切换参见 [正式化切换](../deploy/linux/README.md#正式化切换)。
 
 ## 日常使用
 
@@ -43,7 +43,7 @@ pwsh -File tools/release/start-release.ps1 -SameVersionRevision -Publish
 | Secret | `SSH_USER` | 专用账号 `fishing-deploy` |
 | Secret | `SSH_KEY` | 专用 ed25519 私钥 |
 | Secret | `SSH_KNOWN_HOSTS` | 已验证的服务器 SSH host keys |
-| Variable | `DEPLOY_PATH` | `/opt/fishing-go-test` |
+| Variable | `DEPLOY_PATH` | `/opt/fishing-go` |
 
 以当前管理账号 `rinkore` 上传 `deploy/linux/{install.sh,deploy.sh,deploy.py}` 和专用公钥，然后由服务器管理员执行一次 `install.sh`。具体参数、基线校验及权限说明见 [Linux 更新器](../deploy/linux/README.md)。安装不重启游戏；它创建部署账号、root 所有的执行器与配置，仅允许固定 sudo 更新入口。部署用户可写 `incoming/`，不能改运行配置、版本目录或系统服务文件。
 

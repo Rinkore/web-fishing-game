@@ -14,6 +14,17 @@ const CHROME = process.env.CHROME_PATH || [
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
   try {
     const page = await browser.newPage();
+    page.setDefaultTimeout(5000);
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'server-go/internal/rules/catalog.json'), 'utf8'));
+    const componentWorld = {
+      catalog: { components: catalog.items.filter(item => item.kind === 'component') },
+      componentCfg: catalog.defaults.component,
+      notifyLevel: 'all',
+      notifyLevels: { all: '全部渔获', uncommon: '大鱼、稀有鱼与组件', offrange: '超出基准体型', records: '破纪录', none: '关闭全服渔获动态' },
+    };
+    let worldMode = 'ok', releaseWorld;
     let loginCalls = 0, feedbackReads = 0, statusCalls = 0;
     let releaseLogin;
     const loginGate = new Promise(resolve => { releaseLogin = resolve; });
@@ -35,6 +46,13 @@ const CHROME = process.env.CHROME_PATH || [
       if (url.pathname === '/api/admin/feedback/status') {
         statusCalls++;
         return statusCalls === 1 ? json({ ok: true, status: 'accepted' }) : json({ error: '测试失败反馈' }, 400);
+      }
+      if (url.pathname === '/api/admin/world') {
+        if (worldMode === 'error') return json({ error: '测试配置加载失败' }, 500);
+        if (worldMode === 'delayed') await new Promise(resolve => { releaseWorld = resolve; });
+        const world = structuredClone(componentWorld);
+        if (worldMode === 'missing-pool') delete world.catalog.components[0].pool;
+        return json(world);
       }
       if (url.pathname.startsWith('/api/')) return json({ error: '测试未启用' }, 400);
       const files = { '/admin.html': ['admin.html', 'text/html'], '/css/admin.css': ['css/admin.css', 'text/css'], '/js/data.js': ['js/data.js', 'text/javascript'], '/js/features.js': ['js/features.js', 'text/javascript'], '/js/admin.js': ['js/admin.js', 'text/javascript'] };
@@ -70,7 +88,47 @@ const CHROME = process.env.CHROME_PATH || [
     await page.waitForFunction(() => !document.querySelector('.fb-status-sel').disabled && document.querySelector('.fb-status-sel').value === 'accepted');
     assert.equal(await page.locator('.fb-status').textContent(), '已受理');
     assert.equal(feedbackReads, 1, 'failed status update also preserves the page');
-    console.log('PASS admin interactions: six-digit login, duplicate guard, in-place feedback status/counts/draft, failure rollback');
-    console.log('通过 9 项，失败 0 项');
+    const componentNav = page.locator('.nav-item').filter({ hasText: '组件生成' });
+    worldMode = 'error';
+    await componentNav.click();
+    await page.locator('#cmp-retry').waitFor();
+    assert.equal(await page.locator('#comp-body').innerText().then(text => text.includes('加载失败')), true, 'initial failure replaces loading state');
+    worldMode = 'ok';
+    await page.locator('#cmp-retry').click();
+    await page.locator('#cmp-save').waitFor();
+    const base = componentWorld.catalog.components.find(item => item.pool.length);
+    const affix = base.pool[0];
+    assert.equal(await page.locator('input[data-bid="' + base.id + '"][data-t="' + affix.type + '"][data-i="0"]').inputValue(), String(affix.min), 'editor renders authoritative affix bounds');
+    assert.equal(await page.locator('#qw-common').inputValue(), String(componentWorld.componentCfg.qualityWeights.common));
+    worldMode = 'error';
+    await componentNav.click();
+    await page.locator('#cmp-retry').waitFor();
+    assert.equal(await page.locator('#cmp-save').count(), 0, 'failed refresh must not expose stale cached settings for saving');
+    worldMode = 'missing-pool';
+    await page.locator('#cmp-retry').click();
+    await page.locator('#cmp-retry').waitFor();
+    assert.equal(await page.locator('#cmp-save').count(), 0, 'malformed config fails visibly rather than rendering incomplete settings');
+    worldMode = 'ok';
+    await page.locator('#cmp-retry').click();
+    await page.locator('#cmp-save').waitFor();
+    worldMode = 'delayed';
+    const worldRequest = page.waitForRequest('**/api/admin/world*');
+    await componentNav.click();
+    await worldRequest;
+    await page.locator('.nav-item').filter({ hasText: '反馈' }).click();
+    await page.locator('.fb-status-sel').waitFor();
+    const worldResponse = page.waitForResponse('**/api/admin/world*');
+    releaseWorld();
+    await worldResponse;
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50)));
+    assert.equal(await page.locator('#comp-body').count(), 0, 'late response does not overwrite another page');
+    assert.deepEqual(pageErrors, [], 'no unhandled page exceptions');
+    worldMode = 'ok';
+    await page.locator('.nav-item').filter({ hasText: '通知等级' }).click();
+    await page.locator('#nt-save').waitFor();
+    assert.equal(await page.locator('input[name=ntlv]').count(), 5, 'notification levels render');
+    assert.equal(await page.locator('input[name=ntlv]:checked').inputValue(), 'all', 'notification default renders selected');
+    console.log('PASS admin interactions: login, feedback edits, component loading/retry, affix bounds, stale/malformed responses, navigation');
+    console.log('通过 18 项，失败 0 项');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

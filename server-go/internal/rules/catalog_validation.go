@@ -48,7 +48,7 @@ func ValidateCatalog(c *Catalog) error {
 	}
 	for k, v := range c.Runtime {
 		switch k {
-		case "cast", "biteFormula", "drop", "lootGroups", "rareK", "doubleBase", "price", "autoSellBatch", "chestPityN":
+		case "cast", "biteFormula", "drop", "lootGroups", "rareK", "doubleBase", "price", "autoSellBatch", "chestPityN", "priceOverrides":
 		default:
 			return bad
 		}
@@ -63,6 +63,31 @@ func ValidateCatalog(c *Catalog) error {
 		}
 		if k == "chestPityN" && (!finite(Number(v)) || Number(v) < 1 || Number(v) > 50) {
 			return bad
+		}
+		if k == "priceOverrides" {
+			overrides, ok := v.(map[string]any)
+			if !ok {
+				return bad
+			}
+			for id, raw := range overrides {
+				it, exists := c.Item(id)
+				if !exists || (it.Kind != "fish" && it.Kind != "material") {
+					return bad
+				}
+				patch, ok := raw.(map[string]any)
+				if !ok {
+					return bad
+				}
+				for key, n := range patch {
+					if key != "base" && key != "m" && key != "until" {
+						return bad
+					}
+					value := Number(n)
+					if !finite(value) || value < 0 || (key != "until" && value == 0) {
+						return bad
+					}
+				}
+			}
 		}
 	}
 	seen := map[string]bool{}

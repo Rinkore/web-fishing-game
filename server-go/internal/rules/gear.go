@@ -224,11 +224,17 @@ func (c *Catalog) ValidateGear() error {
 					_ = orig
 					switch k {
 					case "presets", "best", "largeMode", "queue", "highChest", "choice", "priority", "advanced", "evacuate":
-						if x != 0 && x != 1 { return bad }
+						if x != 0 && x != 1 {
+							return bad
+						}
 					case "copies":
-						if x < 1 || x > 20 || math.Trunc(x) != x { return bad }
+						if x < 1 || x > 20 || math.Trunc(x) != x {
+							return bad
+						}
 					case "deepRisk":
-						if x > 100 { return bad }
+						if x > 100 {
+							return bad
+						}
 					case "uniformMix":
 						if x > .15 {
 							return bad

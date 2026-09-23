@@ -114,6 +114,9 @@ func (a *API) legacyRecordsProjection(ctx context.Context, q legacyRecordQueryer
 		return nil, identity.ErrStorage
 	}
 	rows.Close()
+	if err := mergeImportedRecordExtrema(ctx, q, big, small); err != nil {
+		return nil, identity.ErrStorage
+	}
 
 	var globalMax *legacyRecordEntry
 	for _, e := range big {
@@ -290,6 +293,7 @@ func legacyRankList(ctx context.Context, q legacyRecordQueryer, id string, small
 	if rows.Err() != nil {
 		return nil, rows.Err()
 	}
+	rows.Close()
 	if len(order) > 10 {
 		order = order[:10]
 	}
@@ -297,5 +301,5 @@ func legacyRankList(ctx context.Context, q legacyRecordQueryer, id string, small
 	for _, owner := range order {
 		out = append(out, best[owner])
 	}
-	return out, nil
+	return mergeImportedRank(ctx, q, id, small, rnge, loc, now, out)
 }

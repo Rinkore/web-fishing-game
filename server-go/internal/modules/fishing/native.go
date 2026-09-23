@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"fishing.local/server/internal/modules/assets"
- "fishing.local/server/internal/modules/gear"
 	"fishing.local/server/internal/modules/catalog"
+	"fishing.local/server/internal/modules/gear"
 	"fishing.local/server/internal/modules/sea"
 	"fishing.local/server/internal/rules"
 	"github.com/jackc/pgx/v5"
@@ -295,8 +295,15 @@ func (s *NativeService) Settle(ctx context.Context, c Candidate) (assets.Result,
 		if err != nil {
 			return assets.Result{}, err
 		}
-		gearCycle, gearPool, err := gear.PrepareFishing(ctx,t,s.catalog,c.OwnerID,nativeKey(c),info.Interval,part==0,pool,eff)
- if err != nil {return assets.Result{},err}; if s.catalog.GearConfig().Enabled { pool=gearPool } else if err=seaService.TrackingPool(ctx,t,c.OwnerID,pool);err!=nil{return assets.Result{},err}
+		gearCycle, gearPool, err := gear.PrepareFishing(ctx, t, s.catalog, c.OwnerID, nativeKey(c), info.Interval, part == 0, pool, eff)
+		if err != nil {
+			return assets.Result{}, err
+		}
+		if s.catalog.GearConfig().Enabled {
+			pool = gearPool
+		} else if err = seaService.TrackingPool(ctx, t, c.OwnerID, pool); err != nil {
+			return assets.Result{}, err
+		}
 		var draws uint64
 		var total int64
 		walk := rules.CatchWalk{}
@@ -362,7 +369,15 @@ func (s *NativeService) Settle(ctx context.Context, c Candidate) (assets.Result,
 				return assets.Result{}, err
 			}
 		}
-		if s.catalog.GearConfig().Enabled { extra,e:=gearCycle.Finish(ctx,t,s.catalog,c.OwnerID,catches,walk.Done());if e!=nil{return assets.Result{},e};bonuses=append(bonuses,extra...) } else if err=seaService.GearCatchProgress(ctx,t,c.OwnerID,catches);err!=nil{return assets.Result{},err}
+		if s.catalog.GearConfig().Enabled {
+			extra, e := gearCycle.Finish(ctx, t, s.catalog, c.OwnerID, catches, walk.Done())
+			if e != nil {
+				return assets.Result{}, e
+			}
+			bonuses = append(bonuses, extra...)
+		} else if err = seaService.GearCatchProgress(ctx, t, c.OwnerID, catches); err != nil {
+			return assets.Result{}, err
+		}
 		if err = s.award(ctx, t, c.OwnerID, ground, spotID, now, catches, bonuses...); err != nil {
 			var rejected assets.Rejection
 			if errors.As(err, &rejected) {
