@@ -22,8 +22,18 @@ func (a *API) legacyRodSlotBuy(w http.ResponseWriter, r *http.Request) {
 	if !a.legacyRodFeature(w, r.Context(), "bd.slots") {
 		return
 	}
+	var in struct {
+		RequestKey string `json:"requestKey"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-	res, err := assets.New(a.pool).BuyRodSlot(ctx, session.AccountID, "legacy:rod:buy:"+strconv.FormatInt(timeNowMS(), 10))
+	key := in.RequestKey
+	if key == "" {
+		key = "legacy:rod:buy:" + strconv.FormatInt(timeNowMS(), 10)
+	}
+	res, err := assets.New(a.pool).BuyRodSlot(ctx, session.AccountID, key)
 	if err != nil {
 		a.legacyRodFailure(w, err)
 		return

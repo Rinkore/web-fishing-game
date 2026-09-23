@@ -2267,6 +2267,54 @@ window.UI = (function () {
     if (!n) return '';
     return '<span class="rod-lock" title="有 ' + n + ' 件装在钓竿上（已锁定，不可单独交易）；背包里的余量可正常出售">🔒×' + n + '</span>';
   }
+  // Keep the same write key after a timeout or an unknown commit. Legacy
+  // bridges accept an optional requestKey; retaining it lets the server replay
+  // the original result instead of charging a second time.
+  const pendingRequestMemory = Object.create(null);
+  const pendingRequestBusy = Object.create(null);
+  function pendingRequestStore(scope) {
+    const storageKey = 'fishing-pending-' + scope;
+    let pending = pendingRequestMemory[storageKey];
+    if (!pending) {
+      pending = Object.create(null);
+      try {
+        const parsed = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) pending = Object.assign(pending, parsed);
+      } catch (e) {}
+      pendingRequestMemory[storageKey] = pending;
+    }
+    return { storageKey: storageKey, pending: pending };
+  }
+  function pendingRequestKey(scope, signature) {
+    const store = pendingRequestStore(scope), storageKey = store.storageKey, pending = store.pending;
+    if (pending[signature]) return pending[signature];
+    const random = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).slice(2);
+    const key = 'legacy-ui:' + scope + ':' + Date.now() + ':' + random;
+    pending[signature] = key;
+    try { sessionStorage.setItem(storageKey, JSON.stringify(pending)); } catch (e) {}
+    return key;
+  }
+  function clearPendingRequestKey(scope, signature) {
+    const store = pendingRequestStore(scope), storageKey = store.storageKey, pending = store.pending;
+    try {
+      delete pending[signature];
+      sessionStorage.setItem(storageKey, JSON.stringify(pending));
+    } catch (e) {}
+    pendingRequestMemory[storageKey] = pending;
+  }
+  function beginPendingRequest(scope, signature) {
+    const key = scope + ':' + signature;
+    if (pendingRequestBusy[key]) return false;
+    pendingRequestBusy[key] = true;
+    return true;
+  }
+  function endPendingRequest(scope, signature) {
+    delete pendingRequestBusy[scope + ':' + signature];
+  }
+  function purchaseResponse(r) {
+    if (!r || r.ok || !r.data || (r.data.error !== 'retry_same_request' && r.data.code !== 'retry_same_request')) return r;
+    return Object.assign({}, r, { data: Object.assign({}, r.data, { error: '购买暂未完成，请重试同一操作。' }) });
+  }
   // 组件摘要（整竿用）
   function rodAffixBadges(affixes) {
     return (affixes || []).map(function (a) {
@@ -2306,7 +2354,12 @@ window.UI = (function () {
             if ((st.player.coins || 0) < price) { toast('金币不足（需 ' + price + '）'); return; }
             confirmModal({ title: '购买钓竿槽位', html: '花费 <b>💰' + price + '</b> 解锁第 ' + (i + 1) + ' 个钓竿槽位？', okText: '确认购买' }).then(function (ok) {
               if (!ok) return;
-              call(window.Net.rodBuySlot(), function (r) { return '已解锁第 ' + r.data.rodSlotsCount + ' 个槽位（花费 💰' + r.data.price + '）'; }).then(function (r) {
+              const signature = [st.me && st.me.id || '', i, price].join(':');
+              if (!beginPendingRequest('rod-slot-buy', signature)) { toast('购买请求正在处理中'); return; }
+              const requestKey = pendingRequestKey('rod-slot-buy', signature);
+              call(Promise.resolve(window.Net.rodBuySlot(requestKey)).then(purchaseResponse), function (r) { return '已解锁第 ' + r.data.rodSlotsCount + ' 个槽位（花费 💰' + r.data.price + '）'; }).then(function (r) {
+                endPendingRequest('rod-slot-buy', signature);
+                if (r && (r.ok || (r.status >= 400 && r.status < 500))) clearPendingRequestKey('rod-slot-buy', signature);
                 if (r && r.ok) { st.player.coins = r.data.coins; st.rodSlotsCount = r.data.rodSlotsCount; st.nextRodSlotPrice = r.data.nextRodSlotPrice; renderTopbar(); renderView(); }
               });
             });
@@ -4411,8 +4464,17 @@ window.UI = (function () {
             okText: '确定购买',
           }).then(function (ok) {
             if (!ok) return;
-            Promise.resolve(window.Net.marketBuy(l.lid, n)).then(function (r) {
-              if (!r || !r.ok) { toast((r && r.data && r.data.error) || '购买失败'); return; }
+            const signature = [S().me && S().me.id || '', l.lid, n, l.price].join(':');
+            if (!beginPendingRequest('market-buy', signature)) { toast('购买请求正在处理中'); return; }
+            const requestKey = pendingRequestKey('market-buy', signature);
+            Promise.resolve(window.Net.marketBuy(l.lid, n, requestKey)).then(purchaseResponse).then(function (r) {
+              endPendingRequest('market-buy', signature);
+              if (!r || !r.ok) {
+                if (r && r.status >= 400 && r.status < 500) clearPendingRequestKey('market-buy', signature);
+                toast((r && r.data && r.data.error) || '购买失败');
+                return;
+              }
+              clearPendingRequestKey('market-buy', signature);
               if (r && r.ok) {
                 st.player.coins = r.data.coins; applyInvFrom(r.data);
                 // 整竿成交：服务端随回包带回槽位状态，当场写回（原来要等下一次 /api/me 才显示）
@@ -4420,7 +4482,7 @@ window.UI = (function () {
                 toast('购买成功：' + l.name + ' ×' + n);
                 renderTopbar(); patchMarketAssets(); onMarketChanged();
               }
-            }).catch(function () { toast('网络错误'); });
+            }).catch(function () { endPendingRequest('market-buy', signature); toast('网络错误'); });
           });
         });
       });

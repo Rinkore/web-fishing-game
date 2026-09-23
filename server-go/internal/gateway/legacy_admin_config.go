@@ -14,6 +14,7 @@ import (
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/catalog"
 	"fishing.local/server/internal/modules/identity"
+	"fishing.local/server/internal/modules/mall"
 	"fishing.local/server/internal/modules/operations"
 	"fishing.local/server/internal/rules"
 	"github.com/jackc/pgx/v5"
@@ -376,7 +377,7 @@ func (a *API) legacyAdminMallConfig(w http.ResponseWriter, r *http.Request) {
 		items := make([]rules.MallItem, 0, len(in.Items))
 		for _, raw := range in.Items {
 			var item rules.MallItem
-			if json.Unmarshal(raw, &item) != nil || item.ID == "" || item.Price < 0 || item.Limit < 0 || item.Limit > 100000 {
+			if json.Unmarshal(raw, &item) != nil || item.ID == "" || item.Price < 0 || item.Limit < 0 || item.Limit > mall.MaxPurchaseQuantity {
 				legacyTradeError(w, 400, "商品配置格式错误")
 				return
 			}

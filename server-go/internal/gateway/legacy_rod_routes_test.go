@@ -67,12 +67,17 @@ func TestIntegrationLegacyRodRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Buy a second rod slot; the first is free.
-	code, bought := do("POST", "/api/rod/slot/buy", "{}", token)
+	buyBody := `{"requestKey":"legacy-rod-slot-buy"}`
+	code, bought := do("POST", "/api/rod/slot/buy", buyBody, token)
 	if code != 200 || bought["ok"] != true || bought["price"] != float64(10000) || bought["rodSlotsCount"] != float64(2) {
 		t.Fatalf("rod slot buy: %d %v", code, bought)
 	}
 	if bought["nextRodSlotPrice"] != float64(50000) {
 		t.Fatalf("rod slot next price: %v", bought["nextRodSlotPrice"])
+	}
+	code, replay := do("POST", "/api/rod/slot/buy", buyBody, token)
+	if code != 200 || replay["rodSlotsCount"] != float64(2) || replay["price"] != float64(10000) {
+		t.Fatalf("rod slot buy replay charged again: %d %v", code, replay)
 	}
 
 	// Create one rod component and equip it.
@@ -100,7 +105,23 @@ func TestIntegrationLegacyRodRoutes(t *testing.T) {
 		t.Fatalf("rod slots view: %v", slots[0])
 	}
 	// Legacy imports with a saved active rod do not create an unsaved slot.
-	// Replacing a component must lazily create that slot without activating it.
+	// Buying capacity and replacing a component must lazily create that slot
+	// without activating it.
+	if _, err := db.Admin.Exec(context.Background(), `DELETE FROM fishing.rod_loadouts WHERE owner_id=$1 AND slot=-1`, session.AccountID); err != nil {
+		t.Fatal(err)
+	}
+	// Imported accounts may have an active saved rod without the unsaved -1
+	// assembly. Buying a slot must preserve that active rod and avoid the
+	// partial unique active index conflict during lazy initialization.
+	code, bought = do("POST", "/api/rod/slot/buy", `{"requestKey":"legacy-rod-slot-buy-saved"}`, token)
+	if code != 200 || bought["ok"] != true || bought["rodSlotsCount"] != float64(3) || bought["price"] != float64(50000) {
+		t.Fatalf("rod slot buy with saved active rod: %d %v", code, bought)
+	}
+	code, profile := do("GET", "/api/me", "", token)
+	if code != 200 || profile["rodActiveSlot"] != float64(0) {
+		t.Fatalf("saved active rod changed during slot buy: %d %v", code, profile)
+	}
+	// Preserve the existing component replacement regression independently.
 	if _, err := db.Admin.Exec(context.Background(), `DELETE FROM fishing.rod_loadouts WHERE owner_id=$1 AND slot=-1`, session.AccountID); err != nil {
 		t.Fatal(err)
 	}

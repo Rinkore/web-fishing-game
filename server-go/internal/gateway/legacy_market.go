@@ -16,6 +16,7 @@ import (
 	"fishing.local/server/internal/modules/identity"
 	"fishing.local/server/internal/modules/market"
 	"fishing.local/server/internal/rules"
+	"github.com/jackc/pgx/v5"
 )
 
 // Legacy market bridge. The durable market module owns orders, escrow, listing
@@ -589,6 +590,44 @@ func (a *API) legacyMarketWriteFailure(w http.ResponseWriter, err error) {
 	}
 }
 
+// legacyMarketReplay serves a previously committed purchase before looking up
+// the open listing. A commit can succeed while the response is lost; in that
+// case the order is already closed and the normal listing lookup would turn a
+// safe retry into a misleading listing_not_found response.
+func (a *API) legacyMarketReplay(w http.ResponseWriter, r *http.Request, c *rules.Catalog, session identity.Session, key string, listingID int64, quantity *int64) bool {
+	result, err := assets.New(a.pool).Lookup(r.Context(), session.AccountID, key)
+	if err != nil || result.Status != "purchased" {
+		return false
+	}
+	operationID, err := strconv.ParseInt(result.OperationID, 10, 64)
+	if err != nil || operationID < 1 {
+		return false
+	}
+	var orderID, filled, total, tax int64
+	if err = a.pool.QueryRow(r.Context(), `SELECT order_id,quantity,total,tax FROM fishing.market_fills WHERE operation_id=$1`, operationID).Scan(&orderID, &filled, &total, &tax); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false
+		}
+		a.legacyMarketWriteFailure(w, assets.ErrUnavailable)
+		return true
+	}
+	if orderID != listingID || quantity != nil && *quantity != filled {
+		legacyMarketError(w, "重复的请求编号")
+		return true
+	}
+	snapshot, err := a.legacyMarketSnapshot(r, c, session)
+	if err != nil {
+		failure(w, err)
+		return true
+	}
+	snapshot["ok"] = true
+	snapshot["qty"] = filled
+	snapshot["total"] = total
+	snapshot["tax"] = tax
+	write(w, 200, snapshot)
+	return true
+}
+
 // legacyMarketStatusMessage maps a durable market rejection onto the original
 // frontend's Chinese text. total is the buyer-side amount used by the
 // insufficient-funds message (0 when unknown).
@@ -798,8 +837,9 @@ func (a *API) legacyMarketBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		LID *int64 `json:"lid"`
-		Qty *int64 `json:"qty"`
+		LID        *int64 `json:"lid"`
+		Qty        *int64 `json:"qty"`
+		RequestKey string `json:"requestKey"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -815,6 +855,13 @@ func (a *API) legacyMarketBuy(w http.ResponseWriter, r *http.Request) {
 	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, err)
+		return
+	}
+	key := in.RequestKey
+	if key == "" {
+		key = legacyMarketKey("legacy:market:buy")
+	}
+	if a.legacyMarketReplay(w, r, c, session, key, *in.LID, in.Qty) {
 		return
 	}
 	items, err := a.legacyMarketItems(r.Context(), c, []int64{*in.LID})
@@ -851,7 +898,7 @@ func (a *API) legacyMarketBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
-	res, err := market.New(a.pool).Fill(ctx, market.FillRequest{ActorID: session.AccountID, RequestKey: legacyMarketKey("legacy:market:buy"), OrderID: *in.LID, Quantity: quantity, ExpectedUnitPrice: order.Listing.Price})
+	res, err := market.New(a.pool).Fill(ctx, market.FillRequest{ActorID: session.AccountID, RequestKey: key, OrderID: *in.LID, Quantity: quantity, ExpectedUnitPrice: order.Listing.Price})
 	if err != nil {
 		a.legacyMarketWriteFailure(w, err)
 		return

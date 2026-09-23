@@ -2,14 +2,16 @@ package mall
 
 import (
 	"context"
-	"fishing.local/server/internal/modules/assets"
-	"fishing.local/server/internal/modules/workshop"
-	"fishing.local/server/internal/rules"
-	"fishing.local/server/internal/testdb"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"fishing.local/server/internal/modules/assets"
+	"fishing.local/server/internal/modules/workshop"
+	"fishing.local/server/internal/rules"
+	"fishing.local/server/internal/testdb"
 )
 
 func TestIntegrationConcurrentLimitRetryResetAndRollback(t *testing.T) {
@@ -99,6 +101,42 @@ func TestIntegrationConcurrentLimitRetryResetAndRollback(t *testing.T) {
 	}
 	if coins != 9120 || qty != 22 {
 		t.Fatal("rollback leaked assets", coins, qty)
+	}
+	// A configured limit above the old legacy request cap must be purchasable
+	// through the buy-all path, which submits the full remaining quantity.
+	c.Defaults["mall"] = []byte(`{"refreshTime":"04:00","items":[{"id":"bait_pack","price":40,"limit":100},{"id":"lure","price":60,"limit":20},{"id":"rope","price":35,"limit":20},{"id":"relic","price":3800,"limit":3}]}`)
+	if _, err := db.Admin.Exec(ctx, `UPDATE fishing.mall_purchases SET cycle_key=cycle_key-1 WHERE owner_id=$1 AND item_id='bait_pack'`, owner); err != nil {
+		t.Fatal(err)
+	}
+	r, err = s.Buy(ctx, Purchase{owner, "buy-all-over-99", "bait_pack", 100})
+	if err != nil || r.Status != "purchased" {
+		t.Fatalf("buy-all over legacy cap: %v %s", err, r.Status)
+	}
+	var details struct {
+		Cost, Bought, Quantity int64
+	}
+	if err := json.Unmarshal(r.Details, &details); err != nil {
+		t.Fatal("buy-all details", err)
+	}
+	if details.Cost != 4000 || details.Bought != 100 || details.Quantity != 100 {
+		t.Fatalf("buy-all details: %+v", details)
+	}
+	var buyAllCoins, buyAllQty, buyAllBought int64
+	if err := db.Admin.QueryRow(ctx, `SELECT coins FROM fishing.wallets WHERE account_id=$1`, owner).Scan(&buyAllCoins); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Admin.QueryRow(ctx, `SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id='bait_pack' AND tier='normal'`, owner).Scan(&buyAllQty); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Admin.QueryRow(ctx, `SELECT quantity FROM fishing.mall_purchases WHERE owner_id=$1 AND item_id='bait_pack'`, owner).Scan(&buyAllBought); err != nil {
+		t.Fatal(err)
+	}
+	if buyAllCoins != 5120 || buyAllQty != 122 || buyAllBought != 100 {
+		t.Fatalf("buy-all settlement: coins=%d inventory=%d bought=%d", buyAllCoins, buyAllQty, buyAllBought)
+	}
+	replay, err := s.Buy(ctx, Purchase{owner, "buy-all-over-99", "bait_pack", 100})
+	if err != nil || replay.OperationID != r.OperationID || replay.Status != r.Status {
+		t.Fatalf("buy-all replay: %v %+v", err, replay)
 	}
 	// Insufficient funds must not consume a limited slot.
 	r, err = s.Buy(ctx, Purchase{owner, "poor", "relic", 3})

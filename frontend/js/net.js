@@ -459,7 +459,7 @@ window.Net = (function () {
   const sell = (id, qty, tier) => authed('/api/sell', tier ? { id: id, qty: qty, tier: tier } : { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', { id: id, qty: qty, price: price, hours: hours });
   // qty 可选：不传 = 整单买走；传入 = 部分购买
-  const marketBuy = (lid, qty) => authed('/api/market/buy', { lid: lid, qty: qty });
+  const marketBuy = (lid, qty, requestKey) => authed('/api/market/buy', { lid: lid, qty: qty, requestKey: requestKey });
   const marketCancel = (lid) => authed('/api/market/cancel', { lid: lid });
   const feedbackStatus = () => apiFetch('GET', '/api/feedback?token=' + encodeURIComponent(me ? me.token : ''));
   const feedbackSubmit = (text, kind) => authed('/api/feedback/submit', { text: text, kind: kind });
@@ -472,7 +472,7 @@ window.Net = (function () {
   const tradeConfirm = (tradeId) => authed('/api/trade/confirm', { tradeId: tradeId });
   const tradeCancel = (tradeId) => authed('/api/trade/cancel', { tradeId: tradeId });
   // 钓竿存档 / 槽位
-  const rodBuySlot = () => authed('/api/rod/slot/buy', {});
+  const rodBuySlot = (requestKey) => authed('/api/rod/slot/buy', { requestKey: requestKey });
   const rodSave = (slot, name, force) => authed('/api/rod/save', { slot: slot, name: name, force: !!force });
   const rodName = (name) => authed('/api/rod/name', { name: name });
   const rodRename = (slot, name) => authed('/api/rod/rename', { slot: slot, name: name });

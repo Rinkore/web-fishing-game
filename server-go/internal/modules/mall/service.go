@@ -29,6 +29,12 @@ type Purchase struct {
 	RequestKey, ItemID string
 	Quantity           int64
 }
+
+// MaxPurchaseQuantity matches the largest per-item limit accepted by the
+// mall configuration. The legacy UI's "buy all" action submits the remaining
+// limit directly, so this must not be narrower than a valid configured limit.
+const MaxPurchaseQuantity int64 = 9999
+
 type ItemView struct {
 	rules.MallItem
 	Bought int64  `json:"bought"`
@@ -40,7 +46,7 @@ type View struct {
 }
 
 func (s *Service) Buy(ctx context.Context, r Purchase) (assets.Result, error) {
-	if r.ActorID < 1 || r.Quantity < 1 || r.Quantity > 99 {
+	if r.ActorID < 1 || r.Quantity < 1 || r.Quantity > MaxPurchaseQuantity {
 		return assets.Result{}, assets.ErrInvalid
 	}
 	cfg := s.catalog.MallConfig()
@@ -52,7 +58,7 @@ func (s *Service) Buy(ctx context.Context, r Purchase) (assets.Result, error) {
 		}
 	}
 	definition, exists := s.catalog.Item(item.ID)
-	if !exists || definition.ExpeditionOnly || definition.Kind != "material" || item.Price < 0 || item.Price > 100000000 || item.Limit < 0 || item.Limit > 9999 {
+	if !exists || definition.ExpeditionOnly || definition.Kind != "material" || item.Price < 0 || item.Price > 100000000 || item.Limit < 0 || item.Limit > MaxPurchaseQuantity {
 		return assets.Result{}, assets.ErrInvalid
 	}
 	return s.assets.Run(ctx, assets.Command{ActorID: r.ActorID, RequestKey: r.RequestKey, Kind: "mall_buy", RuleVersion: s.catalog.Version + ":" + s.catalog.SourceSHA256, Players: []int64{r.ActorID}, Input: r}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {

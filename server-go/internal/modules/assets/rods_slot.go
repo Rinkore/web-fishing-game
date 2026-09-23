@@ -29,7 +29,11 @@ func (s *Service) BuyRodSlot(ctx context.Context, actor int64, key string) (Resu
 		Version string
 		Actor   int64
 	}{"rod-slot-buy-v1", actor}), []int64{actor}}, func(ctx context.Context, u *assetTx) (Result, error) {
-		if _, err := u.tx.Exec(ctx, `INSERT INTO fishing.rod_loadouts(owner_id,slot,active) VALUES ($1,-1,true) ON CONFLICT(owner_id,slot) DO NOTHING`, actor); err != nil {
+		// Imported accounts can have an active saved rod without slot -1. Keep
+		// the existing assembly active, as ChangeRod does during initialization.
+		if _, err := u.tx.Exec(ctx, `INSERT INTO fishing.rod_loadouts(owner_id,slot,active)
+ VALUES ($1,-1,NOT EXISTS(SELECT 1 FROM fishing.rod_loadouts WHERE owner_id=$1 AND active))
+ ON CONFLICT(owner_id,slot) DO NOTHING`, actor); err != nil {
 			return Result{}, err
 		}
 		var capacity int

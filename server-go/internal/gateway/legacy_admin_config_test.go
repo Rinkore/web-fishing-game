@@ -219,16 +219,24 @@ func TestIntegrationLegacyMallSettingChangesSettlement(t *testing.T) {
 		t.Fatalf("mall view: %d %v", code, view)
 	}
 	id := view["items"].([]any)[0].(map[string]any)["id"].(string)
-	body := `{"refreshTime":"07:15","items":[{"id":"` + id + `","price":1,"limit":1}]}`
+	body := `{"refreshTime":"07:15","items":[{"id":"` + id + `","price":1,"limit":100}]}`
 	if code, result := f.admin("POST", "/api/admin/mall/config", body); code != 200 {
 		t.Fatalf("save mall config: %d %v", code, result)
 	}
 	code, view = f.player("GET", "/api/mall", "")
-	if code != 200 || view["refreshTime"] != "7:15" || view["items"].([]any)[0].(map[string]any)["price"] != float64(1) {
+	if code != 200 || view["refreshTime"] != "7:15" || view["items"].([]any)[0].(map[string]any)["price"] != float64(1) || view["items"].([]any)[0].(map[string]any)["remain"] != float64(100) {
 		t.Fatalf("saved mall config not read by gameplay: %d %v", code, view)
 	}
-	code, bought := f.player("POST", "/api/mall/buy", `{"id":"`+id+`","qty":1}`)
-	if code != 200 || bought["cost"] != float64(1) {
+	code, bought := f.player("POST", "/api/mall/buy", `{"id":"`+id+`","qty":100}`)
+	if code != 200 || bought["qty"] != float64(100) || bought["cost"] != float64(100) || bought["coins"] != float64(400) {
 		t.Fatalf("saved mall price not used by settlement: %d %v", code, bought)
+	}
+	inventory := bought["inventory"].(map[string]any)
+	if inventory[id] != float64(100) {
+		t.Fatalf("buy-all inventory: %v", inventory)
+	}
+	settled := bought["mall"].(map[string]any)["items"].([]any)[0].(map[string]any)
+	if settled["bought"] != float64(100) || settled["remain"] != float64(0) {
+		t.Fatalf("buy-all quota: %v", settled)
 	}
 }

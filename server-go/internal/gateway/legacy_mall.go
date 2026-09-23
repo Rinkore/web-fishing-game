@@ -88,7 +88,7 @@ func (a *API) legacyMallBuy(w http.ResponseWriter, r *http.Request) {
 	if in.Qty == 0 {
 		in.Qty = 1
 	}
-	if in.Qty < 1 || in.Qty > 99 {
+	if in.Qty < 1 || in.Qty > mall.MaxPurchaseQuantity {
 		failure(w, identity.ErrInvalid)
 		return
 	}

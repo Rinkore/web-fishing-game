@@ -328,8 +328,12 @@ func TestIntegrationLegacyMarket(t *testing.T) {
 		t.Fatalf("rod page identity: %v", items[0])
 	}
 	// The whole rod must be bought as a single order.
-	if code, body := do("POST", "/api/market/buy", `{"lid":`+itoa(int64(rodListing["lid"].(float64)))+`,"qty":1}`, buyerToken); code != 200 {
+	rodBuyBody := `{"lid":` + itoa(int64(rodListing["lid"].(float64))) + `,"qty":1,"requestKey":"legacy-rod-market-buy"}`
+	if code, body := do("POST", "/api/market/buy", rodBuyBody, buyerToken); code != 200 {
 		t.Fatalf("rod buy: %d %v", code, body)
+	}
+	if code, replay := do("POST", "/api/market/buy", rodBuyBody, buyerToken); code != 200 || replay["qty"] != float64(1) || replay["total"] != float64(8000) {
+		t.Fatalf("rod buy replay: %d %v", code, replay)
 	}
 	code, profile := do("GET", "/api/me", "", buyerToken)
 	if code != 200 {
