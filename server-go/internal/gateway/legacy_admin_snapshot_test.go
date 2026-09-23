@@ -208,25 +208,25 @@ func TestIntegrationLegacyAdminSnapshots(t *testing.T) {
 	}
 	snapName := snapshots[0].(map[string]any)["name"].(string)
 
-	code, body = f.admin("POST", "/api/admin/users/snapshot", `{"target":"`+f.playerKey+`","coins":900,"inventory":{"snapshot_rope":1}}`)
+	code, body = f.saveSnapshot(`{"target":"` + f.playerKey + `","coins":900,"inventory":{"snapshot_rope":1}}`)
 	f.expect(code, body, 200, "")
 	if body["coins"].(float64) != 900 || body["inventory"].(map[string]any)["snapshot_rope"].(float64) != 1 {
 		t.Fatalf("edited snapshot: %v", body)
 	}
-	if code, _ = f.admin("POST", "/api/admin/users/snapshot", `{"target":"`+f.playerKey+`","inventory":{"missing_item":1}}`); code != 400 {
+	if code, _ = f.saveSnapshot(`{"target":"` + f.playerKey + `","inventory":{"missing_item":1}}`); code != 400 {
 		t.Fatalf("unknown inventory item accepted: %d", code)
 	}
 	if _, err := f.db.Admin.Exec(ctx, `INSERT INTO fishing.item_definitions(id,kind,part) VALUES('rod_bamboo','equipment','rod') ON CONFLICT DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
 	component := `rod_bamboo#common#`
-	code, body = f.admin("POST", "/api/admin/users/snapshot", `{"target":"`+f.playerKey+`","inventory":{"snapshot_rope":1,"`+component+`":1}}`)
+	code, body = f.saveSnapshot(`{"target":"` + f.playerKey + `","inventory":{"snapshot_rope":1,"` + component + `":1}}`)
 	f.expect(code, body, 200, "")
 	var beforeLoadoutRev, beforeRodEntries int64
 	if err := f.db.Admin.QueryRow(ctx, `SELECT loadout_rev,(SELECT count(*) FROM fishing.rod_entries WHERE owner_id=$1) FROM fishing.player_state WHERE account_id=$1`, f.playerID).Scan(&beforeLoadoutRev, &beforeRodEntries); err != nil {
 		t.Fatal(err)
 	}
-	code, body = f.admin("POST", "/api/admin/users/snapshot", `{"target":"`+f.playerKey+`","bd":{"rod":{"compId":"`+component+`"}}}`)
+	code, body = f.saveSnapshot(`{"target":"` + f.playerKey + `","bd":{"rod":{"compId":"` + component + `"}}}`)
 	f.expect(code, body, 200, "")
 	if body["bd"].(map[string]any)["rod"].(map[string]any)["compId"] != component {
 		t.Fatalf("component equip: %v", body["bd"])
@@ -238,7 +238,7 @@ func TestIntegrationLegacyAdminSnapshots(t *testing.T) {
 	if afterLoadoutRev != beforeLoadoutRev+1 || afterRodEntries != beforeRodEntries+1 {
 		t.Fatal("admin bd edit did not advance rod revision and audit")
 	}
-	code, body = f.admin("POST", "/api/admin/users/snapshot", `{"target":"`+f.playerKey+`","bd":{"rod":{"compId":"`+component+`"}}}`)
+	code, body = f.saveSnapshot(`{"target":"` + f.playerKey + `","bd":{"rod":{"compId":"` + component + `"}}}`)
 	f.expect(code, body, 200, "")
 	if err := f.db.Admin.QueryRow(ctx, `SELECT loadout_rev,(SELECT count(*) FROM fishing.rod_entries WHERE owner_id=$1) FROM fishing.player_state WHERE account_id=$1`, f.playerID).Scan(&beforeLoadoutRev, &beforeRodEntries); err != nil {
 		t.Fatal(err)
@@ -246,7 +246,7 @@ func TestIntegrationLegacyAdminSnapshots(t *testing.T) {
 	if afterLoadoutRev != beforeLoadoutRev || afterRodEntries != beforeRodEntries {
 		t.Fatal("unchanged admin bd edit rewrote rod revision and audit")
 	}
-	code, body = f.admin("POST", "/api/admin/users/snapshot", `{"target":"`+f.playerKey+`","coins":1200,"inventory":{"snapshot_rope":7},"bd":{"reel":{"compId":"`+component+`"}}}`)
+	code, body = f.saveSnapshot(`{"target":"` + f.playerKey + `","coins":1200,"inventory":{"snapshot_rope":7},"bd":{"reel":{"compId":"` + component + `"}}}`)
 	f.expect(code, body, 400, "")
 	code, view = f.admin("GET", "/api/admin/users/snapshot?key="+f.playerKey, "")
 	f.expect(code, view, 200, "")

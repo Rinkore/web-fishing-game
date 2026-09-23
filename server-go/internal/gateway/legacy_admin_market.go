@@ -334,6 +334,10 @@ func (a *API) legacyAdminMarketSupplyPost(w http.ResponseWriter, r *http.Request
 	}{in.Action, in}}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
 		var rule *marketSupplyRule
 		if in.Action == "pause" {
+			var locked string
+			if err := t.SQL().QueryRow(ctx, `SELECT key FROM fishing.operator_settings WHERE key='market_supply' FOR UPDATE`).Scan(&locked); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return assets.Result{}, err
+			}
 			current, err := a.readMarketSupply(ctx, t.SQL())
 			if err != nil {
 				return assets.Result{}, err
@@ -342,7 +346,7 @@ func (a *API) legacyAdminMarketSupplyPost(w http.ResponseWriter, r *http.Request
 				current.Enabled = false
 				rule = current
 				raw, _ := json.Marshal(current)
-				if _, err := t.SQL().Exec(ctx, `UPDATE fishing.operator_settings SET value=$2,updated_at=clock_timestamp() WHERE key='market_supply'`, raw); err != nil {
+				if _, err := t.SQL().Exec(ctx, `UPDATE fishing.operator_settings SET value=$1,updated_at=clock_timestamp() WHERE key='market_supply'`, raw); err != nil {
 					return assets.Result{}, err
 				}
 			}

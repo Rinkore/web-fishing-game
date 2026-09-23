@@ -191,12 +191,7 @@ func legacyCatalogProjection(c *rules.Catalog) (map[string]any, []map[string]any
 	castCfg := map[string]any{"baseMs": cast.BaseMS, "minMs": cast.MinMS, "speedBonus": cast.SpeedBonus, "speedCap": cast.SpeedCap, "formula": cast.Formula}
 	drop := c.DefaultLootConfig()
 	dropCfg := map[string]any{"global": drop.Global, "common": drop.Common, "big": drop.Big, "rare": drop.Rare, "material": drop.Material}
-	priceCfg := map[string]any{}
-	if configured, ok := c.Runtime["price"].(map[string]any); ok {
-		for key, value := range configured {
-			priceCfg[key] = value
-		}
-	}
+	priceCfg := legacyEffectivePriceConfig(c)
 	autoSellCfg := map[string]any{"batch": float64(100)}
 	if batch, ok := c.Runtime["autoSellBatch"].(float64); ok && batch >= 1 && batch <= 10000 {
 		autoSellCfg["batch"] = batch

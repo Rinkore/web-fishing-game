@@ -21,11 +21,16 @@ const CHROME = process.env.CHROME_PATH || [
     const componentWorld = {
       catalog: { components: catalog.items.filter(item => item.kind === 'component') },
       componentCfg: catalog.defaults.component,
+      smeltCfg: catalog.defaults.smelt,
+      smeltDefaults: catalog.defaults.smelt,
+      snapshotCfg: { enabled: false, intervalMin: 7, keep: 3 },
       notifyLevel: 'all',
       notifyLevels: { all: '全部渔获', uncommon: '大鱼、稀有鱼与组件', offrange: '超出基准体型', records: '破纪录', none: '关闭全服渔获动态' },
     };
     let worldMode = 'ok', releaseWorld;
     let loginCalls = 0, feedbackReads = 0, statusCalls = 0;
+    let snapshotReads = 0, snapshotPayload, smeltPayload;
+    const snapshot = { name: '合成账号', coins: 500, invRev: '7', inventory: { crucian: 6 }, inventoryTiers: { crucian: { normal: 1, large: 2, giant: 3 } }, bd: {} };
     let releaseLogin;
     const loginGate = new Promise(resolve => { releaseLogin = resolve; });
     await page.route('http://admin.test/**', async route => {
@@ -53,6 +58,17 @@ const CHROME = process.env.CHROME_PATH || [
         const world = structuredClone(componentWorld);
         if (worldMode === 'missing-pool') delete world.catalog.components[0].pool;
         return json(world);
+      }
+      if (url.pathname === '/api/admin/users') return json({ me: 'admin', users: [{ key: 'synthetic', username: 'synthetic', name: '合成账号', coins: snapshot.coins }] });
+      if (url.pathname === '/api/admin/users/snapshot') {
+        if (route.request().method() === 'GET') { snapshotReads++; return json(snapshot); }
+        snapshotPayload = route.request().postDataJSON();
+        snapshot.coins = 600; snapshot.invRev = '8';
+        return json({ error: '资产已更新，请刷新后重试' }, 409);
+      }
+      if (url.pathname === '/api/admin/smelt/config') {
+        smeltPayload = route.request().postDataJSON();
+        return json({ ok: true, smeltCfg: smeltPayload });
       }
       if (url.pathname.startsWith('/api/')) return json({ error: '测试未启用' }, 400);
       const files = { '/admin.html': ['admin.html', 'text/html'], '/css/admin.css': ['css/admin.css', 'text/css'], '/js/data.js': ['js/data.js', 'text/javascript'], '/js/features.js': ['js/features.js', 'text/javascript'], '/js/admin.js': ['js/admin.js', 'text/javascript'] };
@@ -128,7 +144,40 @@ const CHROME = process.env.CHROME_PATH || [
     await page.locator('#nt-save').waitFor();
     assert.equal(await page.locator('input[name=ntlv]').count(), 5, 'notification levels render');
     assert.equal(await page.locator('input[name=ntlv]:checked').inputValue(), 'all', 'notification default renders selected');
-    console.log('PASS admin interactions: login, feedback edits, component loading/retry, affix bounds, stale/malformed responses, navigation');
-    console.log('通过 18 项，失败 0 项');
+    await page.locator('.nav-item').filter({ hasText: '账号管理' }).click();
+    await page.locator('[data-snap="synthetic"]').click();
+    await page.locator('#snap-save').waitFor();
+    assert.equal(await page.locator('[data-inv="crucian"][data-tier="giant"]').inputValue(), '3');
+    await page.locator('[data-inv="crucian"][data-tier="large"]').fill('4');
+    await page.locator('#snap-add-id').selectOption('relic');
+    await page.locator('#snap-add').click();
+    assert.equal(await page.locator('[data-inv="crucian"][data-tier="large"]').inputValue(), '4', 'adding a row preserves edited tiers');
+    await page.locator('#snap-save').click();
+    await page.waitForFunction(() => document.querySelector('#snap-coins')?.value === '600');
+    assert.equal(snapshotPayload.expectedInvRev, '7');
+    assert.deepEqual(snapshotPayload.inventoryTiers.crucian, { normal: 1, large: 4, giant: 3 });
+    assert.equal(snapshotPayload.inventory.crucian, 8);
+    assert.equal(snapshotReads, 2, 'conflict reloads the editor instead of overwriting new assets');
+    await page.locator('.cf-no').click();
+    const workshopNav = page.locator('.nav-item').filter({ hasText: '工坊配置' });
+    await workshopNav.click();
+    await page.locator('#ws-cfg-save').click();
+    await page.waitForFunction(() => document.querySelector('#ws-cfg-state').textContent.includes('已保存'));
+    assert.equal(typeof smeltPayload.baseRate, 'number');
+    assert.equal(typeof smeltPayload.recastGold, 'number');
+    assert.equal(typeof smeltPayload.recastMinValue, 'boolean');
+    assert.deepEqual(smeltPayload.catalystRanges, {});
+    await workshopNav.click();
+    await page.locator('#ws-cfg-save').waitFor();
+    worldMode = 'error';
+    await workshopNav.click();
+    await page.locator('#world-retry').waitFor();
+    assert.equal(await page.locator('#ws-cfg-save').count(), 0, 'shared loader hides cached config after a failed refresh');
+    worldMode = 'ok';
+    await page.locator('#world-retry').click();
+    await page.locator('#ws-cfg-save').waitFor();
+    assert.deepEqual(pageErrors, [], 'no unhandled page exceptions');
+    console.log('PASS admin interactions: login, feedback, component and shared config loading/retry, snapshot tiers/conflict, workshop numeric payload');
+    console.log('通过 30 项，失败 0 项');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

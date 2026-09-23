@@ -14,6 +14,7 @@ import (
 )
 
 type storedSupplyRule struct {
+	original        json.RawMessage
 	ID              string         `json:"id"`
 	Enabled         bool           `json:"enabled"`
 	Mode            string         `json:"mode"`
@@ -59,6 +60,7 @@ func (s *Service) readSupplyRule(ctx context.Context) (storedSupplyRule, error) 
 	if err := json.Unmarshal(raw, &rule); err != nil || rule.ID == "" {
 		return storedSupplyRule{}, errors.New("invalid market supply rule")
 	}
+	rule.original = append(json.RawMessage(nil), raw...)
 	return rule, nil
 }
 
@@ -114,11 +116,42 @@ func (s *Service) supplyStock(ctx context.Context, id string) (int, error) {
 
 func supplyCounts(rule storedSupplyRule, recipe storedSupplyRecipe, wanted int) map[string]int {
 	counts := map[string]int{}
+	kinds := []string{"fish", "material", "chest", "component"}
+	if rule.Mode == "restock" {
+		// Smooth weighted round robin spreads the recipe across small batches.
+		// Continue from the persisted cursor so later categories cannot starve.
+		total := 0
+		for _, kind := range kinds {
+			total += max(0, recipe.Counts[kind])
+		}
+		if total == 0 {
+			return counts
+		}
+		weights := make([]int, len(kinds))
+		offset := max(0, rule.Created) % total
+		for i := 0; i < offset+wanted; i++ {
+			selected := -1
+			for j, kind := range kinds {
+				if recipe.Counts[kind] <= 0 {
+					continue
+				}
+				weights[j] += recipe.Counts[kind]
+				if selected < 0 || weights[j] > weights[selected] {
+					selected = j
+				}
+			}
+			weights[selected] -= total
+			if i >= offset {
+				counts[kinds[selected]]++
+			}
+		}
+		return counts
+	}
 	remaining := recipe.Counts
 	if rule.Mode == "gradual" && len(rule.RemainingCounts) > 0 {
 		remaining = rule.RemainingCounts
 	}
-	for _, kind := range []string{"fish", "material", "chest", "component"} {
+	for _, kind := range kinds {
 		if wanted == 0 {
 			break
 		}
@@ -138,8 +171,12 @@ func supplyCounts(rule storedSupplyRule, recipe storedSupplyRecipe, wanted int) 
 func (s *Service) saveSupplyError(ctx context.Context, rule storedSupplyRule, message string) error {
 	rule.Enabled = false
 	rule.Error = message
+	return s.saveSupplyRule(ctx, rule)
+}
+
+func (s *Service) saveSupplyRule(ctx context.Context, rule storedSupplyRule) error {
 	raw, _ := json.Marshal(rule)
-	_, err := s.pool.Exec(ctx, `UPDATE fishing.operator_settings SET value=$1,updated_at=clock_timestamp() WHERE key='market_supply'`, raw)
+	_, err := s.pool.Exec(ctx, `UPDATE fishing.operator_settings SET value=$1,updated_at=clock_timestamp() WHERE key='market_supply' AND value=$2::jsonb`, raw, rule.original)
 	return err
 }
 
@@ -185,9 +222,7 @@ func (s *Service) SupplyTick(ctx context.Context, c *rules.Catalog) error {
 	if wanted <= 0 {
 		rule.NextAt = time.Now().Add(time.Duration(rule.IntervalSeconds) * time.Second).UnixMilli()
 		rule.Error = ""
-		raw, _ := json.Marshal(rule)
-		_, err = s.pool.Exec(ctx, `UPDATE fishing.operator_settings SET value=$1,updated_at=clock_timestamp() WHERE key='market_supply'`, raw)
-		return err
+		return s.saveSupplyRule(ctx, rule)
 	}
 	counts := supplyCounts(rule, recipe, wanted)
 	if len(counts) == 0 {
@@ -216,7 +251,7 @@ func (s *Service) SupplyTick(ctx context.Context, c *rules.Catalog) error {
 		}
 	}
 	newRule, _ := json.Marshal(rule)
-	_, err = s.AdminBulk(ctx, AdminBulkRequest{ActorID: sellers[0].ID, ActorName: sellers[0].Name, RequestKey: key, Sellers: sellers, Plan: plan, SupplyID: rule.ID, AfterRule: newRule})
+	_, err = s.AdminBulk(ctx, AdminBulkRequest{ActorID: sellers[0].ID, ActorName: sellers[0].Name, RequestKey: key, Sellers: sellers, Plan: plan, SupplyID: rule.ID, BeforeRule: rule.original, AfterRule: newRule})
 	return err
 }
 

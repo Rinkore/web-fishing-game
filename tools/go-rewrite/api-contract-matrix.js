@@ -43,7 +43,7 @@ const classes = {
   ADMIN_CONFIG: ['管理员 session + MFA', 'settings/features/mall/smelt/records/component/fish 等配置字段；reset/validateOnly；revision/枚举/范围校验', '200 {ok:true,revision/config,...}；配置推送 SSE type 字面量', '400 invalid/unknown key/range；401/403；409 revision；503/commit_unknown', 'operator_settings/catalog revision/审计日志事务写入，并广播 features/*cfg；失败不得部分落盘'],
   ADMIN_WORLD: ['管理员 session + MFA', 'ground/spot/pool/loot/component/fish simulate/config 字段；ID、权重、锁定和范围校验', '200 当前 world/catalog 或模拟结果', '400 invalid/unknown/lock conflict；401/403；404；409；503', '世界/掉落池/目录版本及 operator audit 持久化；变更推送 groundcfg/componentcfg 等'],
   ADMIN_USERS: ['管理员 session + MFA；自删/自撤权/最后管理员保护', 'target、name/password/coins/listingCap/admin/ban hours/reason/confirm 等字段', '200 用户列表/单用户/资产快照结果', '400 invalid/confirm/last-admin；401/403；404 account；409 active trade/party；503', '身份、权限、封禁、钱包、会话和审计原子更新；删除/回档踢出会话并保留审计'],
-  ADMIN_SNAPSHOT: ['管理员 session + MFA', 'target/key、coins/inventory/bd、snap、confirm；配置 interval/retention 等', '200 snapshot(s)/rollback/config', '400 malformed/confirm/config；401/403；404 account/snapshot；409；503', '快照文件/表、资产回档和 operator audit；回档事务覆盖资产、装备、钓竿并使旧会话失效'],
+  ADMIN_SNAPSHOT: ['管理员 session + MFA', 'target/key、expectedInvRev、coins/inventory/inventoryTiers/bd、snap、confirm；cfg {enabled,intervalMin,keep}', '200 snapshot(s)/rollback/config，invRev 与 inventoryTiers 来自一致性视图', '400 malformed/confirm/config；401/403；404 account/snapshot；409 assets_revision_conflict；503', '复用数据库玩家快照与保留策略；编辑在资产锁内校验 expectedInvRev，回档事务覆盖资产、装备、钓竿并使旧会话失效'],
   ADMIN_MARKET: ['管理员 session + MFA', 'lid/action/supply/bulk seller keys/rates/limits；批次 1..500 等约束', '200 市集供给/批处理结果和 revision', '400 参数/卖家/模式；401/403；404；409 duplicate request/status；503', '系统供给挂单、归还托管、批量生成/暂停和审计；资产/市场流水原子提交'],
   ADMIN_BANNER: ['管理员 session + MFA（playing 为玩家 token）', 'banner add/remove/move/update/cfg/stop/clear：id/content/duration/color/dir/config', '200 banners/cfg/queued result；playing 200 统计确认', '400 color/content/range/dir；401/403；404；409 banner_revision_changed/full/endpoint；503', 'banner 队列/config/revision/审计持久化；广播 banner/bannerStop；playing 只更新观看统计'],
   ADMIN_FEEDBACK: ['管理员 session + MFA', 'feedback status/del/reward/cfg：id/status/coins/note/cdHours/skipCost', '200 feedback list/update/config', '400 status/coins/config；401/403；404 feedback/account；409；503', '反馈状态、奖励金币、配置及审计事务；奖励只能一次且可对账'],
@@ -132,12 +132,12 @@ function inputFor(method, route) {
     if (route.endsWith('/ban')) return 'token,target,hours,reason,confirm';
     if (route.endsWith('/delete')) return 'token,target,confirm';
     if (route.endsWith('/update')) return 'token,target,name,password,coins,listingCap';
-    if (route.endsWith('/snapshot')) return method === 'GET' ? 'token,key' : 'token,target,coins,inventory,bd';
+    if (route.endsWith('/snapshot')) return method === 'GET' ? 'token,key' : 'token,target,expectedInvRev,coins,inventory,inventoryTiers,bd';
     if (route.endsWith('/snapshots')) return 'token,key';
     if (route.endsWith('/snapshot-now')) return 'token,target';
     if (route.endsWith('/rollback')) return 'token,target,snap,confirm';
   }
-  if (route === '/api/admin/snapshot/config') return 'token,enabled,interval,retention';
+  if (route === '/api/admin/snapshot/config') return 'token,cfg:{enabled,intervalMin,keep}';
   if (route.startsWith('/api/admin/market/')) {
     if (route.endsWith('/return')) return 'token,lid';
     if (route.endsWith('/supply')) return 'token,action,mode,interval,batch,threshold,target,sellers,options';
@@ -149,7 +149,7 @@ function inputFor(method, route) {
     if (route.endsWith('/delone')) return 'token,id,range,kind,expected';
     if (route.endsWith('/config')) return 'token,scale,x,y,reset';
   }
-  if (route === '/api/admin/settings') return 'token,partial settings (seaCfg/chestCfg/castBaseMs/priceCfg/dropCfg/autoSellCfg/doubleBase/biteFormula/notifyLevel/rareK...)';
+  if (route === '/api/admin/settings') return 'token,partial settings (seaCfg/chestCfg/castBaseMs/priceCfg/dropCfg/autoSellCfg/doubleBase/biteFormula/notifyLevel/autoNotify/rareK...),validateOnly,evalVars';
   if (route === '/api/admin/mall/config') return 'token,refreshTime,items,reset';
   if (route === '/api/admin/smelt/config') return 'token,partial smelt config or reset';
   if (route === '/api/admin/component/config') return 'token,qualityWeights,countWeights,rollModel,affixRanges,extraAffixRanges,adjectiveRules';

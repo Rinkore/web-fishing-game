@@ -72,7 +72,7 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 			"ground", "ground.trade", "ground.party", "inventory", "inventory.subscribe",
 			"workshop.craft", "workshop.open", "workshop.smelt", "workshop.recast", "workshop.forge",
 			"mall.buy", "mall.sell", "mall.autosell", "mall.list", "mall.marketbuy",
-			"codex", "records", "feedback", "feedback.submit", "feedback.skip", "logs", "wiki", "adminBypass":
+			"codex", "records", "feedback", "feedback.submit", "feedback.skip", "logs", "wiki", "mail", "adminBypass":
 		default:
 			return assets.Result{}, assets.ErrInvalid
 		}

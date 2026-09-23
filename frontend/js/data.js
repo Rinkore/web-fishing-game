@@ -1094,7 +1094,8 @@
     if (need > 0) {
       const used = {};
       picked.forEach(function (a) { used[a.type] = 1; });
-      const cands = AFFIX_TYPES.filter(function (t) { return !used[t] && (base.legacy || (PART_AFFIXES[base.part] || []).includes(t)); });
+      // 宝匣突破可跨越部位的自然属性池；普通熔炼 / 锻造仍遵循部位限制。
+      const cands = AFFIX_TYPES.filter(function (t) { return !used[t]; });
       for (let i = cands.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
       cands.slice(0, need).forEach(function (t) {
         const rng = extraAffixRangeOf(t);

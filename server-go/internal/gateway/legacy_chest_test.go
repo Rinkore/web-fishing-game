@@ -102,7 +102,51 @@ func TestIntegrationLegacyChest(t *testing.T) {
 	if item["id"] == nil || item["name"] == nil || item["affixes"] == nil || item["breakthrough"] == nil {
 		t.Fatalf("chest item: %v", item)
 	}
+	if opened["pityN"] != float64(0) || opened["pityNow"] != float64(0) || opened["pityNeed"] != float64(0) {
+		t.Fatalf("ordinary chest has pity progress: %v", opened)
+	}
 	if code, _ := do("POST", "/api/chest/open", `{"chestId":"nope"}`, token); code != 400 {
 		t.Fatalf("unknown chest accepted: %d", code)
+	}
+}
+
+func TestIntegrationLegacyChestForcedRewardAndCostReset(t *testing.T) {
+	f := newAdminFixture(t)
+	c, err := rules.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workshop.SeedDefinitions(context.Background(), f.db.Admin, c); err != nil {
+		t.Fatal(err)
+	}
+	code, body := f.admin("POST", "/api/admin/settings", `{"chestCfg":{"pityN":1,"costs":{"chest_king":{"costRelic":0,"costCoins":0}}}}`)
+	f.expect(code, body, 200, "")
+	code, body = f.player("POST", "/api/chest/craft", `{"chestId":"chest_king","qty":1}`)
+	f.expect(code, body, 200, "")
+	code, body = f.player("POST", "/api/chest/open", `{"chestId":"chest_king","baseId":"gear_hook_1"}`)
+	f.expect(code, body, 200, "")
+	item := body["item"].(map[string]any)
+	if body["forced"] != true || body["pityN"] != float64(1) || body["pityNow"] != float64(0) || body["pityNeed"] != float64(1) || item["breakthrough"] != true || len(item["affixes"].([]any)) != 4 {
+		t.Fatalf("forced chest did not award and report breakthrough: %v", body)
+	}
+	if body["inventory"].(map[string]any)[item["id"].(string)] != float64(1) {
+		t.Fatal("breakthrough reward missing from inventory")
+	}
+	code, body = f.admin("POST", "/api/admin/settings", `{"chestCfg":{"costs":{}}}`)
+	f.expect(code, body, 200, "")
+	code, body = f.player("GET", "/api/chest", "")
+	f.expect(code, body, 200, "")
+	for _, entry := range body["chests"].([]any) {
+		chest := entry.(map[string]any)
+		if chest["id"] == "chest_king" {
+			base, _ := c.Chest("chest_king")
+			if chest["costRelic"] != float64(base.CostRelic) || chest["costCoins"] != float64(base.CostCoins) || chest["pityNeed"] != float64(1) {
+				t.Fatalf("reset recipe or pity readback: %v", chest)
+			}
+		}
+	}
+	code, _ = f.player("POST", "/api/chest/craft", `{"chestId":"chest_king","qty":1}`)
+	if code != 400 {
+		t.Fatalf("craft after reset did not charge default price: %d", code)
 	}
 }

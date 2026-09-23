@@ -72,19 +72,11 @@ func (a *API) legacyChestList(r *http.Request, c *rules.Catalog, owner int64) ([
 	}
 	rows.Close()
 	out := []map[string]any{}
-	pityN := int64(0)
-	if n, ok := c.Runtime["chestPityN"].(float64); ok && n >= 1 && n <= 50 {
-		pityN = int64(n)
-	}
+	pityN := c.ChestPityN()
 	for _, d := range a.legacyChestDefs(c) {
 		pityNow := pity[d.ID]
-		pityNeed := int64(0)
-		if d.Extra && pityN > 0 {
-			pityNeed = pityN - pityNow
-			if pityNeed < 0 {
-				pityNeed = 0
-			}
-		}
+		chest, _ := c.Chest(d.ID)
+		pityNeed := chest.PityNeed(pityN, pityNow)
 		out = append(out, map[string]any{
 			"id": d.ID, "name": d.Name, "rarity": d.Rarity, "desc": d.Desc, "mode": d.Mode,
 			"costRelic": d.CostRelic, "costCoins": d.CostCoins, "price": d.Price,
@@ -119,10 +111,7 @@ func (a *API) legacyChest(w http.ResponseWriter, r *http.Request) {
 	var relicHave, coins int64
 	_ = a.pool.QueryRow(r.Context(), `SELECT COALESCE((SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id='relic' AND tier='normal'),0)`, session.AccountID).Scan(&relicHave)
 	_ = a.pool.QueryRow(r.Context(), `SELECT coins FROM fishing.wallets WHERE account_id=$1`, session.AccountID).Scan(&coins)
-	pityN := int64(0)
-	if n, ok := c.Runtime["chestPityN"].(float64); ok && n >= 1 && n <= 50 {
-		pityN = int64(n)
-	}
+	pityN := c.ChestPityN()
 	write(w, 200, map[string]any{
 		"chests": chests, "relicId": "relic", "relicName": relic.Name, "relicHave": relicHave,
 		"relicPrice": relic.Price, "pityN": pityN, "coins": coins,
@@ -214,7 +203,9 @@ func (a *API) legacyChestOpen(w http.ResponseWriter, r *http.Request) {
 	}
 	var details struct {
 		Signature string `json:"signature"`
+		PityN     int64  `json:"pityN"`
 		PityNow   int64  `json:"pityNow"`
+		PityNeed  int64  `json:"pityNeed"`
 		Forced    bool   `json:"forced"`
 	}
 	_ = json.Unmarshal(res.Details, &details)
@@ -246,6 +237,6 @@ func (a *API) legacyChestOpen(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{
 		"ok": true, "chestId": def.ID, "chestName": chestName, "item": item, "coins": profile["coins"],
 		"inventory": profile["inventory"], "invRev": profile["invRev"], "forced": details.Forced,
-		"pityNow": details.PityNow, "pityNeed": 0, "chests": chests,
+		"pityN": details.PityN, "pityNow": details.PityNow, "pityNeed": details.PityNeed, "chests": chests,
 	})
 }

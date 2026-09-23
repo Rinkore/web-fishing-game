@@ -46,7 +46,11 @@ func (s *Service) Chest(ctx context.Context, r ChestCommand) (assets.Result, err
 			if err := t.Coins(ctx, r.ActorID, -chest.CostCoins*r.Quantity); err != nil {
 				return assets.Result{}, err
 			}
-			if err := t.Stacks(ctx, r.ActorID, []assets.StackDelta{{ItemID: "relic", Tier: "normal", Quantity: -chest.CostRelic * r.Quantity}, {ItemID: chest.ID, Tier: "normal", Quantity: r.Quantity}}); err != nil {
+			stacks := []assets.StackDelta{{ItemID: chest.ID, Tier: "normal", Quantity: r.Quantity}}
+			if chest.CostRelic > 0 {
+				stacks = append(stacks, assets.StackDelta{ItemID: "relic", Tier: "normal", Quantity: -chest.CostRelic * r.Quantity})
+			}
+			if err := t.Stacks(ctx, r.ActorID, stacks); err != nil {
 				return assets.Result{}, err
 			}
 			return assets.Result{Status: "crafted"}, nil
@@ -62,12 +66,8 @@ func (s *Service) Chest(ctx context.Context, r ChestCommand) (assets.Result, err
 		// effective catalog. A trigger at N means the Nth consecutive miss is
 		// converted to a guaranteed breakthrough, matching Node's before>=N-1
 		// check. Non-breakthrough chests ignore the setting.
-		forced := false
-		if chest.Extra {
-			if n, ok := s.catalog.Runtime["chestPityN"].(float64); ok && n >= 1 && n <= 50 {
-				forced = misses >= int64(n)-1
-			}
-		}
+		pityN := s.catalog.ChestPityN()
+		forced := chest.Extra && pityN > 0 && misses >= pityN-1
 		signature, ok := s.catalog.OpenChest(chest, r.Part, r.BaseID, s.catalog.ComponentConfig(), forced, rules.Stream(seed, "chest:"+chest.ID))
 		if !ok {
 			return assets.Result{}, assets.Rejection("invalid_chest_selection")
@@ -77,8 +77,10 @@ func (s *Service) Chest(ctx context.Context, r ChestCommand) (assets.Result, err
 			return assets.Result{}, err
 		}
 		base, _, affixes, _ := s.catalog.Instance(signature)
-		misses++
-		if len(affixes) > 3 {
+		breakthrough := len(affixes) > 3
+		if chest.Extra && !breakthrough {
+			misses++
+		} else {
 			misses = 0
 		}
 		if _, err := t.SQL().Exec(ctx, `UPDATE fishing.chest_pity SET misses=$3 WHERE owner_id=$1 AND chest_id=$2`, r.ActorID, chest.ID, misses); err != nil {
@@ -87,7 +89,7 @@ func (s *Service) Chest(ctx context.Context, r ChestCommand) (assets.Result, err
 		if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.player_codex(owner_id,item_id,count) VALUES($1,$2,1) ON CONFLICT(owner_id,item_id) DO UPDATE SET count=fishing.player_codex.count+1`, r.ActorID, base.ID); err != nil {
 			return assets.Result{}, err
 		}
-		details, _ := json.Marshal(map[string]any{"signature": signature, "pityNow": misses, "forced": forced})
+		details, _ := json.Marshal(map[string]any{"signature": signature, "pityN": pityN, "pityNow": misses, "pityNeed": chest.PityNeed(pityN, misses), "forced": forced && breakthrough})
 		return assets.Result{Status: "opened", EquipmentIDs: []string{strconv.FormatInt(id, 10)}, Details: details}, nil
 	})
 }

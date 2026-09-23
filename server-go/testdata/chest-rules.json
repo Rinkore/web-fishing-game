@@ -1,7 +1,7 @@
 {
   "format": 1,
   "version": "v0.21.6",
-  "sourceSHA256": "d7898610c25e0f5c12e91c365142a3e4f6a8e8d12c88d2c3a829881795aff914",
+  "sourceSHA256": "e91cf1c2d9c93acdf9635568e27c0b28af5b232673aef7d8d5525d224b01aa9e",
   "cases": [
     {
       "id": "chest-0",
@@ -1364,8 +1364,8 @@
         0
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+4,stb+3,mat+3",
-        "draws": 7
+        "id": "gear_line_1#mythic#spd+4,stb+3,mat+3,size+9@bt",
+        "draws": 14
       }
     },
     {
@@ -1379,8 +1379,8 @@
         0
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+4,stb+3,mat+3",
-        "draws": 7
+        "id": "gear_line_1#mythic#spd+4,stb+3,mat+3,size+9@bt",
+        "draws": 14
       }
     },
     {
@@ -1394,8 +1394,8 @@
         37
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+3,stb+7,mat+1",
-        "draws": 7
+        "id": "gear_line_1#mythic#spd+3,stb+7,mat+1,res+1@bt",
+        "draws": 14
       }
     },
     {
@@ -1409,8 +1409,8 @@
         37
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+3,stb+7,mat+1",
-        "draws": 7
+        "id": "gear_line_1#mythic#spd+3,stb+7,mat+1,res+1@bt",
+        "draws": 14
       }
     },
     {
@@ -1439,8 +1439,8 @@
         99
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+4,stb+2,mat+3",
-        "draws": 7
+        "id": "gear_line_1#mythic#spd+4,stb+2,mat+3,size+6@bt",
+        "draws": 14
       }
     },
     {
@@ -1454,8 +1454,8 @@
         0
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+10,stb+4,mat+4",
-        "draws": 7
+        "id": "gear_line_2#mythic#spd+10,stb+4,mat+4,size+9@bt",
+        "draws": 14
       }
     },
     {
@@ -1469,8 +1469,8 @@
         0
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+10,stb+4,mat+4",
-        "draws": 7
+        "id": "gear_line_2#mythic#spd+10,stb+4,mat+4,size+9@bt",
+        "draws": 14
       }
     },
     {
@@ -1484,8 +1484,8 @@
         37
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+4,stb+10,mat+1",
-        "draws": 7
+        "id": "gear_line_2#mythic#spd+4,stb+10,mat+1,res+1@bt",
+        "draws": 14
       }
     },
     {
@@ -1499,8 +1499,8 @@
         37
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+4,stb+10,mat+1",
-        "draws": 7
+        "id": "gear_line_2#mythic#spd+4,stb+10,mat+1,res+1@bt",
+        "draws": 14
       }
     },
     {
@@ -1529,8 +1529,8 @@
         99
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+6,stb+4,mat+4",
-        "draws": 7
+        "id": "gear_line_2#mythic#spd+6,stb+4,mat+4,size+6@bt",
+        "draws": 14
       }
     },
     {
@@ -1544,8 +1544,8 @@
         0
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+13,stb+5,mat+5",
-        "draws": 7
+        "id": "gear_line_3#mythic#spd+13,stb+5,mat+5,size+9@bt",
+        "draws": 14
       }
     },
     {
@@ -1559,8 +1559,8 @@
         0
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+13,stb+5,mat+5",
-        "draws": 7
+        "id": "gear_line_3#mythic#spd+13,stb+5,mat+5,size+9@bt",
+        "draws": 14
       }
     },
     {
@@ -1574,8 +1574,8 @@
         37
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+5,stb+14,mat+1",
-        "draws": 7
+        "id": "gear_line_3#mythic#spd+5,stb+14,mat+1,res+1@bt",
+        "draws": 14
       }
     },
     {
@@ -1589,8 +1589,8 @@
         37
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+5,stb+14,mat+1",
-        "draws": 7
+        "id": "gear_line_3#mythic#spd+5,stb+14,mat+1,res+1@bt",
+        "draws": 14
       }
     },
     {
@@ -1619,8 +1619,8 @@
         99
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+13,stb+5,mat+5",
-        "draws": 7
+        "id": "gear_line_3#mythic#spd+13,stb+5,mat+5,size+6@bt",
+        "draws": 14
       }
     },
     {
@@ -1634,8 +1634,8 @@
         0
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+16,stb+6,mat+6",
-        "draws": 7
+        "id": "gear_line_4#mythic#spd+16,stb+6,mat+6,size+9@bt",
+        "draws": 14
       }
     },
     {
@@ -1649,8 +1649,8 @@
         0
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+16,stb+6,mat+6",
-        "draws": 7
+        "id": "gear_line_4#mythic#spd+16,stb+6,mat+6,size+9@bt",
+        "draws": 14
       }
     },
     {
@@ -1664,8 +1664,8 @@
         37
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+6,stb+17,mat+1",
-        "draws": 7
+        "id": "gear_line_4#mythic#spd+6,stb+17,mat+1,res+1@bt",
+        "draws": 14
       }
     },
     {
@@ -1679,8 +1679,8 @@
         37
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+6,stb+17,mat+1",
-        "draws": 7
+        "id": "gear_line_4#mythic#spd+6,stb+17,mat+1,res+1@bt",
+        "draws": 14
       }
     },
     {
@@ -1709,8 +1709,8 @@
         99
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+16,stb+6,mat+6",
-        "draws": 7
+        "id": "gear_line_4#mythic#spd+16,stb+6,mat+6,size+6@bt",
+        "draws": 14
       }
     },
     {
@@ -1724,8 +1724,8 @@
         0
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+19,stb+8,mat+7",
-        "draws": 7
+        "id": "gear_line_5#mythic#spd+19,stb+8,mat+7,size+9@bt",
+        "draws": 14
       }
     },
     {
@@ -1739,8 +1739,8 @@
         0
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+19,stb+8,mat+7",
-        "draws": 7
+        "id": "gear_line_5#mythic#spd+19,stb+8,mat+7,size+9@bt",
+        "draws": 14
       }
     },
     {
@@ -1754,8 +1754,8 @@
         37
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+8,stb+21,mat+2",
-        "draws": 7
+        "id": "gear_line_5#mythic#spd+8,stb+21,mat+2,res+1@bt",
+        "draws": 14
       }
     },
     {
@@ -1769,8 +1769,8 @@
         37
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+8,stb+21,mat+2",
-        "draws": 7
+        "id": "gear_line_5#mythic#spd+8,stb+21,mat+2,res+1@bt",
+        "draws": 14
       }
     },
     {
@@ -1799,8 +1799,8 @@
         99
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+19,stb+7,mat+1",
-        "draws": 7
+        "id": "gear_line_5#mythic#spd+19,stb+7,mat+1,size+6@bt",
+        "draws": 14
       }
     },
     {
@@ -1814,8 +1814,8 @@
         0
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+4,size+3",
-        "draws": 5
+        "id": "gear_hook_1#mythic#skl+4,size+3,stl+5@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -1829,8 +1829,8 @@
         0
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+4,size+3",
-        "draws": 5
+        "id": "gear_hook_1#mythic#skl+4,size+3,stl+5@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -1844,8 +1844,8 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+3,size+7",
-        "draws": 5
+        "id": "gear_hook_1#mythic#skl+3,size+7,mat+14@bt,spd+5@bt",
+        "draws": 15
       }
     },
     {
@@ -1859,8 +1859,8 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+3,size+7",
-        "draws": 5
+        "id": "gear_hook_1#mythic#skl+3,size+7,mat+14@bt,spd+5@bt",
+        "draws": 15
       }
     },
     {
@@ -1874,8 +1874,8 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+4,size+2",
-        "draws": 5
+        "id": "gear_hook_1#mythic#skl+4,size+2,stb+2@bt",
+        "draws": 13
       }
     },
     {
@@ -1889,8 +1889,8 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+4,size+2",
-        "draws": 5
+        "id": "gear_hook_1#mythic#skl+4,size+2,stl+2@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -1904,8 +1904,8 @@
         0
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+10,size+4",
-        "draws": 5
+        "id": "gear_hook_2#mythic#skl+10,size+4,stl+5@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -1919,8 +1919,8 @@
         0
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+10,size+4",
-        "draws": 5
+        "id": "gear_hook_2#mythic#skl+10,size+4,stl+5@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -1934,8 +1934,8 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+4,size+10",
-        "draws": 5
+        "id": "gear_hook_2#mythic#skl+4,size+10,mat+14@bt,spd+5@bt",
+        "draws": 15
       }
     },
     {
@@ -1949,8 +1949,8 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+4,size+10",
-        "draws": 5
+        "id": "gear_hook_2#mythic#skl+4,size+10,mat+14@bt,spd+5@bt",
+        "draws": 15
       }
     },
     {
@@ -1964,8 +1964,8 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+6,size+4",
-        "draws": 5
+        "id": "gear_hook_2#mythic#skl+6,size+4,stb+2@bt",
+        "draws": 13
       }
     },
     {
@@ -1979,8 +1979,8 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+6,size+4",
-        "draws": 5
+        "id": "gear_hook_2#mythic#skl+6,size+4,stl+2@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -1994,8 +1994,8 @@
         0
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+13,size+5",
-        "draws": 5
+        "id": "gear_hook_3#mythic#skl+13,size+5,stl+5@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -2009,8 +2009,8 @@
         0
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+13,size+5",
-        "draws": 5
+        "id": "gear_hook_3#mythic#skl+13,size+5,stl+5@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -2024,8 +2024,8 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+5,size+14",
-        "draws": 5
+        "id": "gear_hook_3#mythic#skl+5,size+14,mat+14@bt,spd+5@bt",
+        "draws": 15
       }
     },
     {
@@ -2039,8 +2039,8 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+5,size+14",
-        "draws": 5
+        "id": "gear_hook_3#mythic#skl+5,size+14,mat+14@bt,spd+5@bt",
+        "draws": 15
       }
     },
     {
@@ -2054,8 +2054,8 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+13,size+5",
-        "draws": 5
+        "id": "gear_hook_3#mythic#skl+13,size+5,stb+2@bt",
+        "draws": 13
       }
     },
     {
@@ -2069,8 +2069,8 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+13,size+5",
-        "draws": 5
+        "id": "gear_hook_3#mythic#skl+13,size+5,stl+2@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -2084,8 +2084,8 @@
         0
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+16,size+6",
-        "draws": 5
+        "id": "gear_hook_4#mythic#skl+16,size+6,stl+5@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -2099,8 +2099,8 @@
         0
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+16,size+6",
-        "draws": 5
+        "id": "gear_hook_4#mythic#skl+16,size+6,stl+5@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -2114,8 +2114,8 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+6,size+17",
-        "draws": 5
+        "id": "gear_hook_4#mythic#skl+6,size+17,mat+14@bt,spd+5@bt",
+        "draws": 15
       }
     },
     {
@@ -2129,8 +2129,8 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+6,size+17",
-        "draws": 5
+        "id": "gear_hook_4#mythic#skl+6,size+17,mat+14@bt,spd+5@bt",
+        "draws": 15
       }
     },
     {
@@ -2144,8 +2144,8 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+16,size+6",
-        "draws": 5
+        "id": "gear_hook_4#mythic#skl+16,size+6,stb+2@bt",
+        "draws": 13
       }
     },
     {
@@ -2159,8 +2159,8 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+16,size+6",
-        "draws": 5
+        "id": "gear_hook_4#mythic#skl+16,size+6,stl+2@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -2174,8 +2174,8 @@
         0
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+19,size+8",
-        "draws": 5
+        "id": "gear_hook_5#mythic#skl+19,size+8,stl+5@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -2189,8 +2189,8 @@
         0
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+19,size+8",
-        "draws": 5
+        "id": "gear_hook_5#mythic#skl+19,size+8,stl+5@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -2204,8 +2204,8 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+8,size+21",
-        "draws": 5
+        "id": "gear_hook_5#mythic#skl+8,size+21,mat+14@bt,spd+5@bt",
+        "draws": 15
       }
     },
     {
@@ -2219,8 +2219,8 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+8,size+21",
-        "draws": 5
+        "id": "gear_hook_5#mythic#skl+8,size+21,mat+14@bt,spd+5@bt",
+        "draws": 15
       }
     },
     {
@@ -2234,8 +2234,8 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+19,size+7",
-        "draws": 5
+        "id": "gear_hook_5#mythic#skl+19,size+7,stb+2@bt",
+        "draws": 13
       }
     },
     {
@@ -2249,8 +2249,8 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+19,size+7",
-        "draws": 5
+        "id": "gear_hook_5#mythic#skl+19,size+7,stl+2@bt,stb+2@bt",
+        "draws": 15
       }
     },
     {
@@ -2264,8 +2264,8 @@
         0
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+4,dbl+3,res+3",
-        "draws": 7
+        "id": "gear_bait_1#mythic#rare+4,dbl+3,res+3,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2279,8 +2279,8 @@
         0
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+4,dbl+3,res+3",
-        "draws": 7
+        "id": "gear_bait_1#mythic#rare+4,dbl+3,res+3,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2294,8 +2294,8 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+3,dbl+7,res+1",
-        "draws": 7
+        "id": "gear_bait_1#mythic#rare+3,dbl+7,res+1,stb+5@bt",
+        "draws": 14
       }
     },
     {
@@ -2309,8 +2309,8 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+3,dbl+7,res+1",
-        "draws": 7
+        "id": "gear_bait_1#mythic#rare+3,dbl+7,res+1,stb+5@bt",
+        "draws": 14
       }
     },
     {
@@ -2339,8 +2339,8 @@
         99
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+4,dbl+2,res+3",
-        "draws": 7
+        "id": "gear_bait_1#mythic#rare+4,dbl+2,res+3,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2354,8 +2354,8 @@
         0
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+10,dbl+4,res+4",
-        "draws": 7
+        "id": "gear_bait_2#mythic#rare+10,dbl+4,res+4,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2369,8 +2369,8 @@
         0
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+10,dbl+4,res+4",
-        "draws": 7
+        "id": "gear_bait_2#mythic#rare+10,dbl+4,res+4,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2384,8 +2384,8 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+4,dbl+10,res+1",
-        "draws": 7
+        "id": "gear_bait_2#mythic#rare+4,dbl+10,res+1,stb+5@bt",
+        "draws": 14
       }
     },
     {
@@ -2399,8 +2399,8 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+4,dbl+10,res+1",
-        "draws": 7
+        "id": "gear_bait_2#mythic#rare+4,dbl+10,res+1,stb+5@bt",
+        "draws": 14
       }
     },
     {
@@ -2429,8 +2429,8 @@
         99
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+6,dbl+4,res+4",
-        "draws": 7
+        "id": "gear_bait_2#mythic#rare+6,dbl+4,res+4,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2444,8 +2444,8 @@
         0
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+13,dbl+5,res+5",
-        "draws": 7
+        "id": "gear_bait_3#mythic#rare+13,dbl+5,res+5,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2459,8 +2459,8 @@
         0
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+13,dbl+5,res+5",
-        "draws": 7
+        "id": "gear_bait_3#mythic#rare+13,dbl+5,res+5,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2474,8 +2474,8 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+5,dbl+14,res+1",
-        "draws": 7
+        "id": "gear_bait_3#mythic#rare+5,dbl+14,res+1,stb+5@bt",
+        "draws": 14
       }
     },
     {
@@ -2489,8 +2489,8 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+5,dbl+14,res+1",
-        "draws": 7
+        "id": "gear_bait_3#mythic#rare+5,dbl+14,res+1,stb+5@bt",
+        "draws": 14
       }
     },
     {
@@ -2519,8 +2519,8 @@
         99
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+13,dbl+5,res+5",
-        "draws": 7
+        "id": "gear_bait_3#mythic#rare+13,dbl+5,res+5,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2534,8 +2534,8 @@
         0
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+16,dbl+6,res+6",
-        "draws": 7
+        "id": "gear_bait_4#mythic#rare+16,dbl+6,res+6,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2549,8 +2549,8 @@
         0
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+16,dbl+6,res+6",
-        "draws": 7
+        "id": "gear_bait_4#mythic#rare+16,dbl+6,res+6,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2564,8 +2564,8 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+6,dbl+17,res+1",
-        "draws": 7
+        "id": "gear_bait_4#mythic#rare+6,dbl+17,res+1,stb+5@bt",
+        "draws": 14
       }
     },
     {
@@ -2579,8 +2579,8 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+6,dbl+17,res+1",
-        "draws": 7
+        "id": "gear_bait_4#mythic#rare+6,dbl+17,res+1,stb+5@bt",
+        "draws": 14
       }
     },
     {
@@ -2609,8 +2609,8 @@
         99
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+16,dbl+6,res+6",
-        "draws": 7
+        "id": "gear_bait_4#mythic#rare+16,dbl+6,res+6,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2624,8 +2624,8 @@
         0
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+19,dbl+8,res+7",
-        "draws": 7
+        "id": "gear_bait_5#mythic#rare+19,dbl+8,res+7,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2639,8 +2639,8 @@
         0
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+19,dbl+8,res+7",
-        "draws": 7
+        "id": "gear_bait_5#mythic#rare+19,dbl+8,res+7,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2654,8 +2654,8 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+8,dbl+21,res+2",
-        "draws": 7
+        "id": "gear_bait_5#mythic#rare+8,dbl+21,res+2,stb+5@bt",
+        "draws": 14
       }
     },
     {
@@ -2669,8 +2669,8 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+8,dbl+21,res+2",
-        "draws": 7
+        "id": "gear_bait_5#mythic#rare+8,dbl+21,res+2,stb+5@bt",
+        "draws": 14
       }
     },
     {
@@ -2699,8 +2699,8 @@
         99
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+19,dbl+7,res+1",
-        "draws": 7
+        "id": "gear_bait_5#mythic#rare+19,dbl+7,res+1,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2714,8 +2714,8 @@
         0
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+4,stl+3,stb+3",
-        "draws": 7
+        "id": "gear_reel_1#mythic#spd+4,stl+3,stb+3,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2729,8 +2729,8 @@
         0
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+4,stl+3,stb+3",
-        "draws": 7
+        "id": "gear_reel_1#mythic#spd+4,stl+3,stb+3,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2744,8 +2744,8 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+3,stl+7,stb+1",
-        "draws": 7
+        "id": "gear_reel_1#mythic#spd+3,stl+7,stb+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -2759,8 +2759,8 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+3,stl+7,stb+1",
-        "draws": 7
+        "id": "gear_reel_1#mythic#spd+3,stl+7,stb+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -2789,8 +2789,8 @@
         99
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+4,stl+2,stb+3",
-        "draws": 7
+        "id": "gear_reel_1#mythic#spd+4,stl+2,stb+3,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2804,8 +2804,8 @@
         0
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+10,stl+4,stb+4",
-        "draws": 7
+        "id": "gear_reel_2#mythic#spd+10,stl+4,stb+4,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2819,8 +2819,8 @@
         0
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+10,stl+4,stb+4",
-        "draws": 7
+        "id": "gear_reel_2#mythic#spd+10,stl+4,stb+4,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2834,8 +2834,8 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+4,stl+10,stb+1",
-        "draws": 7
+        "id": "gear_reel_2#mythic#spd+4,stl+10,stb+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -2849,8 +2849,8 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+4,stl+10,stb+1",
-        "draws": 7
+        "id": "gear_reel_2#mythic#spd+4,stl+10,stb+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -2879,8 +2879,8 @@
         99
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+6,stl+4,stb+4",
-        "draws": 7
+        "id": "gear_reel_2#mythic#spd+6,stl+4,stb+4,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2894,8 +2894,8 @@
         0
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+13,stl+5,stb+5",
-        "draws": 7
+        "id": "gear_reel_3#mythic#spd+13,stl+5,stb+5,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2909,8 +2909,8 @@
         0
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+13,stl+5,stb+5",
-        "draws": 7
+        "id": "gear_reel_3#mythic#spd+13,stl+5,stb+5,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2924,8 +2924,8 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+5,stl+14,stb+1",
-        "draws": 7
+        "id": "gear_reel_3#mythic#spd+5,stl+14,stb+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -2939,8 +2939,8 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+5,stl+14,stb+1",
-        "draws": 7
+        "id": "gear_reel_3#mythic#spd+5,stl+14,stb+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -2969,8 +2969,8 @@
         99
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+13,stl+5,stb+5",
-        "draws": 7
+        "id": "gear_reel_3#mythic#spd+13,stl+5,stb+5,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2984,8 +2984,8 @@
         0
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+16,stl+6,stb+6",
-        "draws": 7
+        "id": "gear_reel_4#mythic#spd+16,stl+6,stb+6,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -2999,8 +2999,8 @@
         0
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+16,stl+6,stb+6",
-        "draws": 7
+        "id": "gear_reel_4#mythic#spd+16,stl+6,stb+6,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -3014,8 +3014,8 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+6,stl+17,stb+1",
-        "draws": 7
+        "id": "gear_reel_4#mythic#spd+6,stl+17,stb+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3029,8 +3029,8 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+6,stl+17,stb+1",
-        "draws": 7
+        "id": "gear_reel_4#mythic#spd+6,stl+17,stb+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3059,8 +3059,8 @@
         99
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+16,stl+6,stb+6",
-        "draws": 7
+        "id": "gear_reel_4#mythic#spd+16,stl+6,stb+6,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -3074,8 +3074,8 @@
         0
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+19,stl+8,stb+7",
-        "draws": 7
+        "id": "gear_reel_5#mythic#spd+19,stl+8,stb+7,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -3089,8 +3089,8 @@
         0
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+19,stl+8,stb+7",
-        "draws": 7
+        "id": "gear_reel_5#mythic#spd+19,stl+8,stb+7,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -3104,8 +3104,8 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+8,stl+21,stb+2",
-        "draws": 7
+        "id": "gear_reel_5#mythic#spd+8,stl+21,stb+2,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3119,8 +3119,8 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+8,stl+21,stb+2",
-        "draws": 7
+        "id": "gear_reel_5#mythic#spd+8,stl+21,stb+2,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3149,8 +3149,8 @@
         99
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+19,stl+7,stb+1",
-        "draws": 7
+        "id": "gear_reel_5#mythic#spd+19,stl+7,stb+1,mat+14@bt",
+        "draws": 14
       }
     },
     {
@@ -3164,8 +3164,8 @@
         0
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+4,res+3,stl+3",
-        "draws": 7
+        "id": "gear_accessory_1#mythic#mat+4,res+3,stl+3,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3179,8 +3179,8 @@
         0
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+4,res+3,stl+3",
-        "draws": 7
+        "id": "gear_accessory_1#mythic#mat+4,res+3,stl+3,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3194,8 +3194,8 @@
         37
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+3,res+7,stl+1",
-        "draws": 7
+        "id": "gear_accessory_1#mythic#mat+3,res+7,stl+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3209,8 +3209,8 @@
         37
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+3,res+7,stl+1",
-        "draws": 7
+        "id": "gear_accessory_1#mythic#mat+3,res+7,stl+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3239,8 +3239,8 @@
         99
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+4,res+2,stl+3",
-        "draws": 7
+        "id": "gear_accessory_1#mythic#mat+4,res+2,stl+3,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3254,8 +3254,8 @@
         0
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+10,res+4,stl+4",
-        "draws": 7
+        "id": "gear_accessory_2#mythic#mat+10,res+4,stl+4,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3269,8 +3269,8 @@
         0
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+10,res+4,stl+4",
-        "draws": 7
+        "id": "gear_accessory_2#mythic#mat+10,res+4,stl+4,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3284,8 +3284,8 @@
         37
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+4,res+10,stl+1",
-        "draws": 7
+        "id": "gear_accessory_2#mythic#mat+4,res+10,stl+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3299,8 +3299,8 @@
         37
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+4,res+10,stl+1",
-        "draws": 7
+        "id": "gear_accessory_2#mythic#mat+4,res+10,stl+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3329,8 +3329,8 @@
         99
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+6,res+4,stl+4",
-        "draws": 7
+        "id": "gear_accessory_2#mythic#mat+6,res+4,stl+4,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3344,8 +3344,8 @@
         0
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+13,res+5,stl+5",
-        "draws": 7
+        "id": "gear_accessory_3#mythic#mat+13,res+5,stl+5,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3359,8 +3359,8 @@
         0
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+13,res+5,stl+5",
-        "draws": 7
+        "id": "gear_accessory_3#mythic#mat+13,res+5,stl+5,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3374,8 +3374,8 @@
         37
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+5,res+14,stl+1",
-        "draws": 7
+        "id": "gear_accessory_3#mythic#mat+5,res+14,stl+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3389,8 +3389,8 @@
         37
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+5,res+14,stl+1",
-        "draws": 7
+        "id": "gear_accessory_3#mythic#mat+5,res+14,stl+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3419,8 +3419,8 @@
         99
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+13,res+5,stl+5",
-        "draws": 7
+        "id": "gear_accessory_3#mythic#mat+13,res+5,stl+5,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3434,8 +3434,8 @@
         0
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+16,res+6,stl+6",
-        "draws": 7
+        "id": "gear_accessory_4#mythic#mat+16,res+6,stl+6,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3449,8 +3449,8 @@
         0
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+16,res+6,stl+6",
-        "draws": 7
+        "id": "gear_accessory_4#mythic#mat+16,res+6,stl+6,rare+2@bt",
+        "draws": 14
       }
     },
     {
@@ -3464,8 +3464,8 @@
         37
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+6,res+17,stl+1",
-        "draws": 7
+        "id": "gear_accessory_4#mythic#mat+6,res+17,stl+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3479,8 +3479,8 @@
         37
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+6,res+17,stl+1",
-        "draws": 7
+        "id": "gear_accessory_4#mythic#mat+6,res+17,stl+1,dbl+7@bt",
+        "draws": 14
       }
     },
     {
@@ -3509,8 +3509,8 @@
         99
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+16,res+6,stl+6",
-        "draws": 7
+        "id": "gear_accessory_4#mythic#mat+16,res+6,stl+6,rare+2@bt",
+        "draws": 14
       }
     }
   ]

@@ -5,8 +5,36 @@ import (
 	"encoding/json"
 	"testing"
 
+	"fishing.local/server/internal/rules"
 	"fishing.local/server/internal/testdb"
 )
+
+func TestChestCostOverrideReplacementRestoresDefaults(t *testing.T) {
+	c, err := rules.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, _ := c.Chest("chest_wreck")
+	patch := func(value string) {
+		ApplyLegacySettings(c, map[string]json.RawMessage{"legacy:settings": json.RawMessage(value)})
+	}
+	patch(`{"chestCfg":{"pityN":3,"costs":{"chest_wreck":{"costRelic":2,"costCoins":7}}}}`)
+	patch(`{"chestCfg":{"pityN":1}}`)
+	chest, _ := c.Chest("chest_wreck")
+	if chest.CostRelic != 2 || chest.CostCoins != 7 {
+		t.Fatal("pity-only change reset costs", chest)
+	}
+	patch(`{"chestCfg":{"costs":{"chest_wreck":{"costRelic":1}}}}`)
+	chest, _ = c.Chest("chest_wreck")
+	if chest.CostRelic != 1 || chest.CostCoins != base.CostCoins {
+		t.Fatal("omitted cost did not restore default", chest)
+	}
+	patch(`{"chestCfg":{"costs":{}}}`)
+	chest, _ = c.Chest("chest_wreck")
+	if chest.CostRelic != base.CostRelic || chest.CostCoins != base.CostCoins || c.ChestPityN() != 1 {
+		t.Fatal("empty costs did not restore factory recipe", chest)
+	}
+}
 
 func TestIntegrationEffectiveCatalogUsesOneImmutableSource(t *testing.T) {
 	db := testdb.New(t, true)

@@ -190,7 +190,9 @@ func (c *Catalog) Breakthrough(baseID string, cfg ComponentConfig, o Breakthroug
 		_ = c.Constant("AFFIX_TYPES", &types)
 		candidates := []string{}
 		for _, k := range types {
-			if !used[k] && (base.Legacy || c.AffixAllowed(base.Part, k)) {
+			// Breakthrough rewards deliberately cross the part's natural pool.
+			// Ordinary forging and smelting still enforce AffixAllowed.
+			if !used[k] {
 				candidates = append(candidates, k)
 			}
 		}

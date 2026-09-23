@@ -120,13 +120,33 @@ func applyChestSettings(c *rules.Catalog, settings map[string]any) {
 			c.Runtime["chestPityN"] = pity
 		}
 	}
-	costs, _ := settings["costs"].(map[string]any)
+	costs, hasCosts := settings["costs"].(map[string]any)
+	if !hasCosts {
+		return
+	}
+	// Like GameData.applyChestCosts, costs replaces the override map. Empty
+	// or omitted entries restore the published factory recipe, not the last edit.
+	var baseCosts map[string]map[string]any
+	_ = c.Constant("CHEST_BASE_COSTS", &baseCosts)
+	var relicPrice float64
+	_ = c.Constant("RELIC_PRICE", &relicPrice)
 	for _, chest := range chests {
 		id, _ := chest["id"].(string)
 		override, _ := costs[id].(map[string]any)
 		for key := range map[string]bool{"costRelic": true, "costCoins": true} {
 			if value, ok := override[key]; ok {
 				chest[key] = value
+			} else if value, ok := baseCosts[id][key]; ok {
+				chest[key] = value
+			}
+		}
+		coins, _ := chest["costCoins"].(float64)
+		relics, _ := chest["costRelic"].(float64)
+		chest["price"] = coins + relics*relicPrice
+		for i := range c.Items {
+			if c.Items[i].ID == id {
+				c.Items[i].Price = coins + relics*relicPrice
+				break
 			}
 		}
 	}

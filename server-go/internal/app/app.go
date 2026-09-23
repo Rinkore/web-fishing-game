@@ -67,7 +67,7 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 	}
 	work, stopWork := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	workers.Add(8)
+	workers.Add(9)
 	go func() { defer workers.Done(); fishing.New(pool).Run(work, logger) }()
 	go func() { defer workers.Done(); fishing.NewLiveNative(pool, c.Location).Run(work, logger) }()
 	go func() { defer workers.Done(); market.New(pool).RunExpiry(work, logger) }()
@@ -78,6 +78,7 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 	// sampling the server.
 	go func() { defer workers.Done(); identity.New(pool, c.MFAEncryptionKey).RunBanExpiry(work, logger) }()
 	go func() { defer workers.Done(); operations.New(pool).RunStatsSampler(work, logger) }()
+	go func() { defer workers.Done(); gateway.RunLegacySnapshots(work, pool, logger) }()
 	defer func() { stopWork(); workers.Wait() }()
 	logger.Info("server_started", "address", listener.Addr().String(), "role", c.Role, "node_id", c.NodeID, "stage", "infrastructure")
 	return httpserver.Serve(ctx, listener, health, handler, c.ShutdownTimeout, logger)

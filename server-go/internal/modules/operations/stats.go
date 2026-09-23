@@ -105,17 +105,26 @@ func (s *Service) SampleOnce(ctx context.Context, at time.Time) error {
 }
 
 func (s *Service) RunStatsSampler(ctx context.Context, logger *slog.Logger) {
+	var sampledMinute time.Time
 	tick := func() {
 		work, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
 		// The original sampled at startup so a restarted server has a right edge
 		// on the curve instead of an empty chart.
-		if err := s.SampleOnce(work, time.Now()); err != nil && ctx.Err() == nil {
-			logger.Error("stats_sample_failed", "error", err.Error())
+		now := time.Now()
+		if minute := now.Truncate(time.Minute); !minute.Equal(sampledMinute) {
+			if err := s.SampleOnce(work, now); err != nil && ctx.Err() == nil {
+				logger.Error("stats_sample_failed", "error", err.Error())
+			} else {
+				sampledMinute = minute
+			}
+		}
+		if err := s.AutoNotifyOnce(work); err != nil && ctx.Err() == nil {
+			logger.Error("auto_notify_failed", "error", err.Error())
 		}
 	}
 	tick()
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {

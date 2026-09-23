@@ -7807,7 +7807,7 @@ window.UI = (function () {
       '至少 ' + (chest.minAffixes || 1) + ' 条词缀' + (parts ? ' · ' + parts : '');
   }
   function chestMaxCraftable(chest, relicHave, coins) {
-    const byRelic = Math.floor(relicHave / chest.costRelic);
+    const byRelic = chest.costRelic > 0 ? Math.floor(relicHave / chest.costRelic) : 99;
     const byCoins = chest.costCoins > 0 ? Math.floor(coins / chest.costCoins) : 99;
     return Math.max(0, Math.min(99, byRelic, byCoins));
   }
@@ -7861,6 +7861,12 @@ window.UI = (function () {
         : (meta.breakthrough ? '' : '')) +
       '</div>';
   }
+  function chestPityText(pityN, progress) {
+    const now = progress.pityNow || 0;
+    const need = progress.pityNeed > 0 ? progress.pityNeed : Math.max(1, pityN - now);
+    return need === 1 ? '⚡ 下次开箱必出突破件'
+      : '保底：已连续 ' + now + ' 次未突破，再开 ' + need + ' 次内必出突破件';
+  }
   function showChestResult(chest, data) {
     const meta = data.item;
     const st = S();
@@ -7873,9 +7879,8 @@ window.UI = (function () {
     let pityLine = '';
     if (chest.extra && pityN > 0) {
       pityLine = data.forced
-        ? '<div class="cr-pity hit">⚡ 保底触发：本次必出突破件</div>'
-        : '<div class="cr-pity">保底：已连续 ' + (data.pityNow || 0) + ' 次未突破，再 ' +
-            Math.max(0, (pityN - 1) - (data.pityNow || 0)) + ' 次未突破则必出</div>';
+        ? '<div class="cr-pity hit">⚡ 保底触发：本次已获得突破件</div>'
+        : '<div class="cr-pity">' + chestPityText(pityN, data) + '</div>';
     }
     box.innerHTML = '<div class="modal-head"><span class="modal-title">🎁 开箱结果 · ' + esc(data.chestName || chest.name) + '</span>' +
       '<button class="mini modal-close">✕ 关闭</button></div>' +
@@ -7925,7 +7930,7 @@ window.UI = (function () {
         if (!r || !r.ok) { toast((r && r.data && r.data.error) || '开箱失败'); return null; }
         st.player.coins = r.data.coins;
         applyInvFrom(r.data);
-        if (r.data.chests) st.chest = Object.assign({}, st.chest, { chests: r.data.chests });
+        if (r.data.chests) st.chest = Object.assign({}, st.chest, { chests: r.data.chests, pityN: r.data.pityN || 0 });
         renderTopbar(); renderView();
         showChestResult(chest, r.data);
         return r;
@@ -7941,8 +7946,7 @@ window.UI = (function () {
       '<div class="cf-row"><label>' + (chest.mode === 'part' ? '选择部位' : '选择底材') + '</label>' + chestTargetHtml(chest) + '</div>' +
       '<div class="hint" id="chest-target-hint"></div>' +
       (chest.extra && (st.chest && st.chest.pityN) > 0
-        ? '<div class="cr-pity">保底：已连续 ' + (info.pityNow || 0) + ' 次未突破，再 ' +
-            Math.max(0, ((st.chest.pityN - 1) - (info.pityNow || 0))) + ' 次未突破则必出</div>' : '') +
+        ? '<div class="cr-pity">' + chestPityText(st.chest.pityN, info) + '</div>' : '') +
       '<div class="cf-actions"><button class="mini cf-cancel">取消</button>' +
       '<button class="mini primary-mini cf-ok">开箱（持有 ' + have + '）</button></div>' +
       '</div>';
@@ -8000,9 +8004,7 @@ window.UI = (function () {
       // 品质类只挂 .cc-name（叶子），见 chestItemCardHtml 的同款注释
       const card = el('div', 'chest-card');
       const pityLine = (chest.extra && pityN > 0)
-        ? (cur.pityNow >= pityN - 1
-            ? '<div class="cc-pity hit">⚡ 下次开箱必出突破件</div>'
-            : '<div class="cc-pity">保底：已连续 ' + (cur.pityNow || 0) + ' 次未突破，再 ' + Math.max(0, (pityN - 1) - (cur.pityNow || 0)) + ' 次必出</div>')
+        ? '<div class="cc-pity' + (cur.pityNow >= pityN - 1 ? ' hit' : '') + '">' + chestPityText(pityN, cur) + '</div>'
         : '';
       card.innerHTML =
         '<img class="cc-icon" src="' + esc(D.itemIcon(chest.id)) + '" alt="" draggable="false">' +

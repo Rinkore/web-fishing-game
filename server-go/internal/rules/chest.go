@@ -24,6 +24,21 @@ func (c *Catalog) Chest(id string) (Chest, bool) {
 	}
 	return Chest{}, false
 }
+
+func (c *Catalog) ChestPityN() int64 {
+	if n, ok := c.Runtime["chestPityN"].(float64); ok && n >= 1 && n <= 50 {
+		return int64(n)
+	}
+	return 0
+}
+
+func (ch Chest) PityNeed(pityN, misses int64) int64 {
+	if !ch.Extra || pityN <= 0 {
+		return 0
+	}
+	return max(1, pityN-misses)
+}
+
 func (c *Catalog) OpenChest(ch Chest, part, baseID string, cfg ComponentConfig, forced bool, rng RNG) (string, bool) {
 	var base Item
 	if ch.Mode == "base" {

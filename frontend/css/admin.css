@@ -338,6 +338,9 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 .snap-inv { max-height: 320px; overflow: auto; }
 .snap-line label { width: 220px; }
 .snap-line .mk-num { flex: 0 0 90px; }
+.snap-tiers { display: flex; flex-wrap: wrap; gap: 6px; }
+.snap-tiers label { display: flex; flex-direction: column; gap: 4px; width: auto; font-size: 12px; }
+.snap-tiers .mk-num { flex: none; width: 68px; }
 .mk-num { width: 90px; flex: none; }
 /* v0.16.2：账号管理页顶部的「存档快照」策略条（间隔 / 保留份数 / 立即备份） */
 .snap-cfg-row { padding: 8px 10px; border: 1px solid var(--line, #2a3548); border-radius: 8px; background: rgba(45, 212, 191, .05); }

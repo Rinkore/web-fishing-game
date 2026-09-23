@@ -14,6 +14,7 @@ import (
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/catalog"
 	"fishing.local/server/internal/modules/identity"
+	"fishing.local/server/internal/modules/operations"
 	"fishing.local/server/internal/rules"
 	"github.com/jackc/pgx/v5"
 )
@@ -47,14 +48,17 @@ func (a *API) legacyStoredConfig(ctx context.Context) (map[string]any, string) {
 				continue
 			}
 			display := map[string]any{}
-			if notify, exists := settings["notifyLevel"]; exists {
-				display["notifyLevel"] = notify
+			for _, key := range []string{"notifyLevel", "autoNotify"} {
+				if value, exists := settings[key]; exists {
+					display[key] = value
+				}
 			}
 			value = display
 		}
 		values[key] = value
 		joined = append(joined, key...)
-		joined = append(joined, raw...)
+		projected, _ := json.Marshal(value)
+		joined = append(joined, projected...)
 	}
 	digest := sha256.Sum256(joined)
 	return values, hex.EncodeToString(digest[:])
@@ -65,7 +69,7 @@ func applyLegacyStoredConfig(fields map[string]any, values map[string]any) {
 		fields["recordsCfg"] = value
 	}
 	if settings, ok := values[legacySettingsKey].(map[string]any); ok {
-		for _, key := range []string{"notifyLevel"} {
+		for _, key := range []string{"notifyLevel", "autoNotify"} {
 			if value, exists := settings[key]; exists {
 				fields[key] = value
 			}
@@ -113,7 +117,14 @@ func (a *API) legacySettingRaw(ctx context.Context, key string) ([]byte, error) 
 
 func legacyNumber(raw json.RawMessage, min, max float64) (float64, bool) {
 	var n float64
-	if json.Unmarshal(raw, &n) != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < min || n > max {
+	if json.Unmarshal(raw, &n) != nil {
+		var s string
+		if json.Unmarshal(raw, &s) != nil || strings.TrimSpace(s) == "" {
+			return 0, false
+		}
+		n = rules.Number(s)
+	}
+	if string(raw) == "null" || math.IsNaN(n) || math.IsInf(n, 0) || n < min || n > max {
 		return 0, false
 	}
 	return n, true
@@ -220,7 +231,7 @@ func (a *API) legacyAdminSettingsWrite(r *http.Request, actor identity.Session, 
 	display := map[string]json.RawMessage{}
 	for key, value := range patch {
 		switch key {
-		case "notifyLevel":
+		case "notifyLevel", "autoNotify":
 			display[key] = value
 		case "chestCfg", "dropCfg", "rareK", "doubleBase", "priceCfg", "autoSellCfg",
 			"castBaseMs", "castMinMs", "castSpeedBonus", "castSpeedCap", "castFormula", "biteFormula":
@@ -237,6 +248,27 @@ func (a *API) legacyAdminSettingsWrite(r *http.Request, actor identity.Session, 
 		c, revision, err := catalog.Current(ctx, a.pool)
 		if err != nil {
 			return err
+		}
+		if raw, exists := patch["autoNotify"]; exists {
+			previous := operations.DefaultAutoNotify()
+			if stored, err := a.legacySettingRaw(ctx, legacySettingsKey); err != nil {
+				return err
+			} else if len(stored) > 0 {
+				var settings struct {
+					AutoNotify operations.AutoNotifyConfig `json:"autoNotify"`
+				}
+				settings.AutoNotify = previous
+				if json.Unmarshal(stored, &settings) != nil {
+					return identity.ErrStorage
+				}
+				previous = settings.AutoNotify
+			}
+			next, err := operations.ParseAutoNotify(raw, previous)
+			if err != nil {
+				return identity.ErrInvalid
+			}
+			display["autoNotify"], _ = json.Marshal(next)
+			display["autoNotifyState"] = json.RawMessage(`{}`)
 		}
 		// Reset flags are actions on the candidate snapshot, not durable settings.
 		if raw, exists := patch["seaCfg"]; exists {
@@ -282,7 +314,7 @@ func (a *API) legacyAdminSettingsWrite(r *http.Request, actor identity.Session, 
 }
 
 func rawBool(raw json.RawMessage) (bool, bool) {
-	if len(raw) == 0 {
+	if len(raw) == 0 || strings.TrimSpace(string(raw)) == "null" {
 		return false, false
 	}
 	var value bool
@@ -376,6 +408,7 @@ func (a *API) legacyAdminSmeltConfig(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
+	delete(in, "token")
 	reset := false
 	if raw, exists := in["reset"]; exists {
 		_ = json.Unmarshal(raw, &reset)
@@ -418,6 +451,10 @@ func (a *API) legacyAdminSmeltConfig(w http.ResponseWriter, r *http.Request) {
 				legacyTradeError(w, 400, "保留概率公式无效")
 				return
 			}
+			if _, err := rules.Compile(value, []string{"breakthrough"}); err != nil {
+				legacyTradeError(w, 400, "保留概率公式无效")
+				return
+			}
 			cfg[key] = strings.TrimSpace(value)
 			continue
 		}
@@ -428,10 +465,51 @@ func (a *API) legacyAdminSmeltConfig(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			cfg[key] = math.Round(n*10) / 10
+			if key == "maxMaterials" || key == "maxTypes" || key == "recastPearl" || key == "retainMaxRelic" || key == "addAffixCap" {
+				cfg[key] = math.Round(n)
+			}
 			continue
 		}
-		var boolean bool
-		if (key == "pearlRollTwice" || key == "subRangeFromSub" || key == "addAnyAffix" || key == "addAffixExtraRange" || key == "forgeAnyAffix") && json.Unmarshal(raw, &boolean) == nil {
+		if key == "recastMinValue" {
+			value, valid := rawBool(raw)
+			if !valid {
+				n, numeric := legacyNumber(raw, 0, 1)
+				if !numeric || n != math.Trunc(n) {
+					legacyTradeError(w, 400, "重铸下限开关无效")
+					return
+				}
+				value = n == 1
+			}
+			cfg[key] = 0
+			if value {
+				cfg[key] = 1
+			}
+			continue
+		}
+		if key == "catalystRanges" {
+			var ranges map[string]map[string][]float64
+			if json.Unmarshal(raw, &ranges) != nil || ranges == nil {
+				legacyTradeError(w, 400, "催化词缀范围无效")
+				return
+			}
+			for part, types := range ranges {
+				if len(types) == 0 {
+					legacyTradeError(w, 400, "催化词缀范围无效")
+					return
+				}
+				for kind, pair := range types {
+					envelope := c.CatalystEnvelope(c.ComponentConfig(), part, kind)
+					if len(pair) != 2 || len(envelope) != 2 || pair[0] > pair[1] || pair[0] < envelope[0] || pair[1] > envelope[1] {
+						legacyTradeError(w, 400, "催化词缀范围超出部位允许区间")
+						return
+					}
+				}
+			}
+			cfg[key] = ranges
+			continue
+		}
+		boolean, booleanOK := rawBool(raw)
+		if (key == "pearlRollTwice" || key == "subRangeFromSub" || key == "addAnyAffix" || key == "addAffixExtraRange" || key == "forgeAnyAffix") && booleanOK {
 			cfg[key] = boolean
 			continue
 		}
@@ -445,6 +523,10 @@ func (a *API) legacyAdminSmeltConfig(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		legacyTradeError(w, 400, "未知熔炼配置："+key)
+		return
+	}
+	if cfg["rateMin"].(float64) > cfg["rateMax"].(float64) {
+		legacyTradeError(w, 400, "成功率下限不能高于上限")
 		return
 	}
 	if err := legacyCatalogDefault(c, "smelt", cfg); err != nil {
@@ -509,6 +591,11 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(in, "token")
 	delete(in, "validateOnly")
+	preview, validationErr := validateLegacySettings(in)
+	if validationErr != nil {
+		legacyTradeError(w, 400, validationErr.Error())
+		return
+	}
 	if raw, exists := in["seaCfg"]; exists {
 		c, err := a.catalog(r.Context())
 		if err != nil {
@@ -557,6 +644,7 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 				legacyTradeError(w, 400, key+" 配置数值无效")
 				return
 			}
+			in[key], _ = json.Marshal(value)
 		}
 	}
 	if !validateOnly {
@@ -566,11 +654,44 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out := map[string]any{"ok": true}
-	for key, raw := range in {
-		var value any
-		if json.Unmarshal(raw, &value) == nil {
+	if validateOnly {
+		for key, raw := range in {
+			if key == "evalVars" {
+				continue
+			}
+			var value any
+			if json.Unmarshal(raw, &value) == nil {
+				out[key] = value
+			}
+		}
+		for key, value := range preview {
 			out[key] = value
 		}
+	} else {
+		c, err := a.catalog(r.Context())
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		fields, _, err := legacyCatalogProjection(c)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		for key, value := range fields {
+			out[key] = value
+		}
+		cast := c.CastRules(nil)
+		out["castBaseMs"], out["castMinMs"] = cast.BaseMS, cast.MinMS
+		out["castSpeedBonus"], out["castSpeedCap"], out["castFormula"] = cast.SpeedBonus, cast.SpeedCap, cast.Formula
+		out["biteFormula"] = cast.BiteFormula
+		out["rareK"], out["doubleBase"] = c.DefaultLootConfig().RareK, float64(0)
+		if value, exists := c.Runtime["doubleBase"]; exists {
+			out["doubleBase"] = value
+		}
+		out["seaCfg"] = c.SeaConfig()
+		stored, _ := a.legacyStoredConfig(r.Context())
+		applyLegacyStoredConfig(out, stored)
 	}
 	write(w, 200, out)
 }

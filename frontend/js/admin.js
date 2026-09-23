@@ -1531,6 +1531,7 @@ window.Admin = (function () {
   // 服务端按这套参数定时给每个账号留一份存档副本，超出份数丢最旧的；改完立即重挂定时器。
   function loadSnapCfg() {
     loadWorldCfg().then(function (cfg) {
+      if (!cfg) return;
       const c = (cfg && cfg.snapshotCfg) || { enabled: true, intervalMin: 30, keep: 5 };
       const on = $('snap-cfg-on'), min = $('snap-cfg-min'), keep = $('snap-cfg-keep'), st = $('snap-cfg-state');
       if (!on) return;   // 已切走页面
@@ -1968,6 +1969,21 @@ window.Admin = (function () {
       ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
       const invBox = ov.querySelector('#snap-inv');
       const searchBox = ov.querySelector('#snap-search');
+      const inventoryTiers = JSON.parse(JSON.stringify(d.inventoryTiers || {}));
+      const tierNames = { normal: '普通', large: '大型', giant: '巨型' };
+      function readInventoryDraft() {
+        const inventory = {};
+        ov.querySelectorAll('[data-inv]').forEach(function (inp) {
+          const id = inp.getAttribute('data-inv'), tier = inp.getAttribute('data-tier');
+          const qty = Math.floor(Number(inp.value) || 0);
+          if (tier) {
+            inventoryTiers[id] = inventoryTiers[id] || {};
+            inventoryTiers[id][tier] = qty;
+          }
+          inventory[id] = (inventory[id] || 0) + qty;
+        });
+        return inventory;
+      }
       function drawInv(inv) {
         const keys = Object.keys(inv);
         if (!keys.length) { invBox.innerHTML = '<div class="hint">背包为空</div>'; return; }
@@ -1976,8 +1992,12 @@ window.Admin = (function () {
           const nm = meta ? meta.name : id;
           // 组件实例（带品质 / 词条）可以改词条与属性：载入下方「定制配件」区改完替换原件
           const isInst = !!(window.GameData && GameData.instanceOf && GameData.instanceOf(id));
+          const isFish = (meta && meta.kind === 'fish') || inventoryTiers[id];
+          if (isFish && !inventoryTiers[id]) inventoryTiers[id] = { normal: inv[id], large: 0, giant: 0 };
           return '<div class="mgr-row snap-line" data-sid="' + esc(id) + '"><label title="' + esc(id) + '">' + esc(nm) + '<div class="hint">' + esc(id) + '</div></label>' +
-            '<input class="ipt mk-num" type="number" min="0" data-inv="' + esc(id) + '" value="' + inv[id] + '" />' +
+            (isFish ? '<span class="snap-tiers">' + Object.keys(tierNames).map(function (tier) {
+              return '<label>' + tierNames[tier] + '<input class="ipt mk-num" type="number" min="0" step="1" data-inv="' + esc(id) + '" data-tier="' + tier + '" value="' + (inventoryTiers[id][tier] || 0) + '" /></label>';
+            }).join('') + '</span>' : '<input class="ipt mk-num" type="number" min="0" step="1" data-inv="' + esc(id) + '" value="' + inv[id] + '" />') +
             (isInst ? '<button class="btn mini" data-itemedit="' + esc(id) + '" title="改这件组件的品质 / 词条（数量直接改左边的框）">改词条</button>' : '') +
             '</div>';
         }).join('');
@@ -2006,8 +2026,7 @@ window.Admin = (function () {
         if (!id) return false;
         const inputs = ov.querySelectorAll('[data-inv]');
         for (const inp of inputs) { if (inp.getAttribute('data-inv') === id) { inp.value = (Number(inp.value) || 0) + qty; if (bdBox) drawBd(); return true; } }
-        const cur = {};
-        inputs.forEach(function (inp) { cur[inp.getAttribute('data-inv')] = Number(inp.value) || 0; });
+        const cur = readInventoryDraft();
         cur[id] = qty;
         drawInv(cur);
         if (bdBox) drawBd();   // v0.16.3：背包草稿变了 → 钓竿装配的候选列表跟着重算
@@ -2277,16 +2296,21 @@ window.Admin = (function () {
       }
       drawBd();
       ov.querySelector('#snap-save').onclick = function () {
-        const inv = {};
-        ov.querySelectorAll('[data-inv]').forEach(function (inp) {
-          const q = Math.floor(Number(inp.value) || 0);
-          if (q > 0) inv[inp.getAttribute('data-inv')] = q;
-        });
+        const invalid = Array.prototype.find.call(ov.querySelectorAll('#snap-coins, [data-inv]'), function (inp) { return !inp.reportValidity(); });
+        if (invalid) return;
+        const inv = readInventoryDraft();
         // 钓竿装配：只提交「当前装的是哪件」（compId 或 null = 标准件）
         const bd = {};
         bdParts.forEach(function (p) { bd[p.key] = { compId: (bdDraft[p.key] || {}).compId || null }; });
-        adminApi('POST', '/api/admin/users/snapshot', { token: token, target: key, coins: Number(ov.querySelector('#snap-coins').value) || 0, inventory: inv, bd: bd }).then(function (rr) {
-          if (!rr.ok) { toast(rr.data.error || '保存失败', true); return; }
+        const save = ov.querySelector('#snap-save');
+        save.disabled = true;
+        adminApi('POST', '/api/admin/users/snapshot', { token: token, target: key, expectedInvRev: d.invRev, coins: Number(ov.querySelector('#snap-coins').value) || 0, inventory: inv, inventoryTiers: inventoryTiers, bd: bd }).then(function (rr) {
+          save.disabled = false;
+          if (!rr.ok) {
+            toast(rr.data.error || '保存失败', true);
+            if (rr.status === 409) { ov.remove(); openMgrSnapshot(key); }
+            return;
+          }
           toast('快照已保存（含钓竿装配）'); ov.remove(); loadMgrList();
         });
       };
@@ -2317,7 +2341,7 @@ window.Admin = (function () {
         '；该账号现有 <b>' + d.count + '</b> 份。<br/>回档只覆盖<b>资产</b>（金币 / 背包 / 图鉴 / 钓竿槽位 / 捕获数），' +
         '密码、管理员权限、封禁状态与挂单上限保持不变；回档前会自动留一份「回档前」的快照，点错了能退回来。</div>' +
         '<div class="mgr-row"><button class="btn mini" id="roll-now">立即为这个账号存一份</button>' +
-        '<span class="hint">存放在数据目录的 snapshots / ' + esc(key) + ' 下</span></div>' +
+        '<span class="hint">玩家资产快照用于回档；数据库灾备另行管理</span></div>' +
         '<div id="roll-list">' + rows + '</div>' +
         '<div class="cf-actions"><button class="btn mini cf-no">关闭</button></div>' +
         '</div></div>';
@@ -2382,9 +2406,21 @@ window.Admin = (function () {
   // ================================
   function loadWorldCfg(force) {
     if (worldCfg && !force) return Promise.resolve(worldCfg);
+    const requestedView = view, main = $('main'), first = main && main.firstElementChild;
     return adminApi('GET', '/api/admin/world?token=' + encodeURIComponent(token)).then(function (r) {
-      if (r.ok) worldCfg = r.data;
-      return worldCfg;
+      if (r.ok) { worldCfg = r.data; return worldCfg; }
+      worldCfg = null;
+      if (view === requestedView && main && main.firstElementChild === first) {
+        const message = '配置加载失败：' + ((r.data && r.data.error) || '请稍后重试');
+        if (view === 'accountmgr') {
+          setHint('snap-cfg-state', '<span class="err">' + esc(message) + '</span>');
+        } else {
+          main.innerHTML = '<div class="panel"><div class="err">' + esc(message) + '</div><button class="btn" id="world-retry">重新加载</button></div>';
+          $('world-retry').onclick = function () { switchView(requestedView); };
+        }
+        toast(message, true);
+      }
+      return null;
     });
   }
   // ================================
@@ -3483,7 +3519,7 @@ window.Admin = (function () {
   function renderChest() {
     const main = $('main');
     main.innerHTML = '<h2>🎁 宝匣配置</h2>' +
-      '<div class="hint" style="margin-bottom:12px">宝匣四档的配方（残片数 / 金币 / 基底模式 / 品质权重）定义在游戏目录 <code>frontend/js/data.js</code> 的 <code>CHESTS</code>，随版本发布；本页只放运行期可调项，保存即生效并落盘 config.json。</div>' +
+      '<div class="hint" style="margin-bottom:12px">查看宝匣配方，调整合成成本、突破保底次数与池外词缀区间；保存后即时生效。</div>' +
       '<div id="ch-body" class="panel">加载中…</div>';
     loadWorldCfg(true).then(function (cfg) {
       if (!cfg || view !== 'chest') return;
@@ -3964,6 +4000,7 @@ window.Admin = (function () {
     // 残片保留概率公式「恢复默认」：只改输入框，仍需点保存
     $('ws-cfg-retainFormula-reset').onclick = function () { $('ws-cfg-retainFormula').value = retainFormulaDefault(); };
     $('ws-cfg-save').onclick = function () {
+      if (Array.prototype.some.call(body.querySelectorAll('input[type="number"]'), function (inp) { return !inp.reportValidity(); })) return;
       // 残片保留概率公式：本地预检（空 / 未知变量），服务器另有权威校验
       const retainFormula = $('ws-cfg-retainFormula').value.trim();
       const fxErr = retainFormulaError(retainFormula);
@@ -4003,29 +4040,29 @@ window.Admin = (function () {
       if (catErr) { toast(catErr, true); return; }
       adminApi('POST', '/api/admin/smelt/config', {
         token: token,
-        catalystRatio: $('ws-cfg-catalystRatio').value,
+        catalystRatio: Number($('ws-cfg-catalystRatio').value),
         forgeAnyAffix: $('ws-cfg-forgeAnyAffix').checked,
-        baseRate: $('ws-cfg-baseRate').value,
-        failPerMaterial: $('ws-cfg-failPerMaterial').value,
-        rateMin: $('ws-cfg-rateMin').value,
-        rateMax: $('ws-cfg-rateMax').value,
-        extraRatePerMaterial: $('ws-cfg-extraRatePerMaterial').value,
-        extraRatePearl: $('ws-cfg-extraRatePearl').value,
-        extraRateMax: $('ws-cfg-extraRateMax').value,
-        goldBase: $('ws-cfg-goldBase').value,
-        goldPerMaterial: $('ws-cfg-goldPerMaterial').value,
-        goldPearl: $('ws-cfg-goldPearl').value,
-        maxMaterials: $('ws-cfg-maxMaterials').value,
-        maxTypes: $('ws-cfg-maxTypes').value,
+        baseRate: Number($('ws-cfg-baseRate').value),
+        failPerMaterial: Number($('ws-cfg-failPerMaterial').value),
+        rateMin: Number($('ws-cfg-rateMin').value),
+        rateMax: Number($('ws-cfg-rateMax').value),
+        extraRatePerMaterial: Number($('ws-cfg-extraRatePerMaterial').value),
+        extraRatePearl: Number($('ws-cfg-extraRatePearl').value),
+        extraRateMax: Number($('ws-cfg-extraRateMax').value),
+        goldBase: Number($('ws-cfg-goldBase').value),
+        goldPerMaterial: Number($('ws-cfg-goldPerMaterial').value),
+        goldPearl: Number($('ws-cfg-goldPearl').value),
+        maxMaterials: Number($('ws-cfg-maxMaterials').value),
+        maxTypes: Number($('ws-cfg-maxTypes').value),
         pearlRollTwice: $('ws-cfg-pearlRollTwice').checked,
-        recastPearl: $('ws-cfg-recastPearl').value,
-        recastGold: $('ws-cfg-recastGold').value,
+        recastPearl: Number($('ws-cfg-recastPearl').value),
+        recastGold: Number($('ws-cfg-recastGold').value),
         recastMinValue: $('ws-cfg-recastMinValue').checked,
         retainFormula: retainFormula,
-        retainMaxRelic: $('ws-cfg-retainMaxRelic').value,
+        retainMaxRelic: Number($('ws-cfg-retainMaxRelic').value),
         subRangeFromSub: $('ws-cfg-subRangeFromSub').checked,
         addAnyAffix: $('ws-cfg-addAnyAffix').checked,
-        addAffixCap: $('ws-cfg-addAffixCap').value,
+        addAffixCap: Number($('ws-cfg-addAffixCap').value),
         addAffixExtraRange: $('ws-cfg-addAffixExtraRange').checked,
         catalystRanges: catalystRanges,
       }).then(function (r) {
@@ -4853,7 +4890,10 @@ window.Admin = (function () {
       // perf-9：手动指定通知等级时自动关闭「按人数自动调节」，否则 5s 内会被自动档覆盖
       adminApi('POST', '/api/admin/settings', { token: token, notifyLevel: sel.value, autoNotify: { on: false } }).then(function (r) {
         if (!r.ok) { $('nt-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
-        if (worldCfg) worldCfg.notifyLevel = r.data.notifyLevel;
+        cfg.notifyLevel = r.data.notifyLevel;
+        cfg.autoNotify = r.data.autoNotify || Object.assign({}, an, { on: false });
+        if (worldCfg) { worldCfg.notifyLevel = cfg.notifyLevel; worldCfg.autoNotify = cfg.autoNotify; }
+        drawNotify(cfg);
         $('nt-state').innerHTML = '<span style="color:var(--ok)">已保存，立即生效</span>';
         toast('通知等级已保存：' + sel.value);
       });
@@ -4893,7 +4933,8 @@ window.Admin = (function () {
       adminApi('POST', '/api/admin/settings', payload).then(function (r) {
         if (!r.ok) { $('an-state').innerHTML = '<span class="err">' + esc(r.data.error || '保存失败') + '</span>'; return; }
         if (worldCfg) worldCfg.autoNotify = r.data.autoNotify;
-        $('an-state').innerHTML = '<span style="color:var(--ok)">已保存（当前在线 ' + esc(String(worldCfg && worldCfg.onlineCount || '—')) + ' 人，每 5s 评估一次）</span>';
+        if (r.data.autoNotify) { cfg.autoNotify = r.data.autoNotify; drawNotify(cfg); }
+        setHint('an-state', '<span style="color:var(--ok)">已保存，每 5 秒按在线人数评估</span>');
         toast('自动调节已保存');
       });
     };
@@ -5033,7 +5074,7 @@ window.Admin = (function () {
     $('cmp-reset').onclick = function () {
       adminApi('POST', '/api/admin/component/reset', { token: token }).then(function (r) {
         if (!r.ok) { toast(r.data.error || '重置失败', true); return; }
-        toast('已恢复默认'); loadWorldCfg(true).then(function (cfg) { compCfg = cfg.componentCfg; drawComponent(); });
+        toast('已恢复默认'); loadWorldCfg(true).then(function (cfg) { if (cfg && view === 'component') { compCfg = cfg.componentCfg; drawComponent(); } });
       });
     };
     $('cmp-sim').onclick = function () {

@@ -38,7 +38,7 @@
 | ADMIN_CONFIG | 管理员 session + MFA | settings/features/mall/smelt/records/component/fish 等配置字段；reset/validateOnly；revision/枚举/范围校验 | 200 {ok:true,revision/config,...}；配置推送 SSE type 字面量 | 400 invalid/unknown key/range；401/403；409 revision；503/commit_unknown | operator_settings/catalog revision/审计日志事务写入，并广播 features/*cfg；失败不得部分落盘 |
 | ADMIN_WORLD | 管理员 session + MFA | ground/spot/pool/loot/component/fish simulate/config 字段；ID、权重、锁定和范围校验 | 200 当前 world/catalog 或模拟结果 | 400 invalid/unknown/lock conflict；401/403；404；409；503 | 世界/掉落池/目录版本及 operator audit 持久化；变更推送 groundcfg/componentcfg 等 |
 | ADMIN_USERS | 管理员 session + MFA；自删/自撤权/最后管理员保护 | target、name/password/coins/listingCap/admin/ban hours/reason/confirm 等字段 | 200 用户列表/单用户/资产快照结果 | 400 invalid/confirm/last-admin；401/403；404 account；409 active trade/party；503 | 身份、权限、封禁、钱包、会话和审计原子更新；删除/回档踢出会话并保留审计 |
-| ADMIN_SNAPSHOT | 管理员 session + MFA | target/key、coins/inventory/bd、snap、confirm；配置 interval/retention 等 | 200 snapshot(s)/rollback/config | 400 malformed/confirm/config；401/403；404 account/snapshot；409；503 | 快照文件/表、资产回档和 operator audit；回档事务覆盖资产、装备、钓竿并使旧会话失效 |
+| ADMIN_SNAPSHOT | 管理员 session + MFA | target/key、expectedInvRev、coins/inventory/inventoryTiers/bd、snap、confirm；cfg {enabled,intervalMin,keep} | 200 snapshot(s)/rollback/config，invRev 与 inventoryTiers 来自一致性视图 | 400 malformed/confirm/config；401/403；404 account/snapshot；409 assets_revision_conflict；503 | 复用数据库玩家快照与保留策略；编辑在资产锁内校验 expectedInvRev，回档事务覆盖资产、装备、钓竿并使旧会话失效 |
 | ADMIN_MARKET | 管理员 session + MFA | lid/action/supply/bulk seller keys/rates/limits；批次 1..500 等约束 | 200 市集供给/批处理结果和 revision | 400 参数/卖家/模式；401/403；404；409 duplicate request/status；503 | 系统供给挂单、归还托管、批量生成/暂停和审计；资产/市场流水原子提交 |
 | ADMIN_BANNER | 管理员 session + MFA（playing 为玩家 token） | banner add/remove/move/update/cfg/stop/clear：id/content/duration/color/dir/config | 200 banners/cfg/queued result；playing 200 统计确认 | 400 color/content/range/dir；401/403；404；409 banner_revision_changed/full/endpoint；503 | banner 队列/config/revision/审计持久化；广播 banner/bannerStop；playing 只更新观看统计 |
 | ADMIN_FEEDBACK | 管理员 session + MFA | feedback status/del/reward/cfg：id/status/coins/note/cdHours/skipCost | 200 feedback list/update/config | 400 status/coins/config；401/403；404 feedback/account；409；503 | 反馈状态、奖励金币、配置及审计事务；奖励只能一次且可对账 |
@@ -162,11 +162,11 @@
 | 109 | GET `/api/admin/security` | 7155 | `a.legacyAdminSecurity` | ADMIN_READ | token?; no body |
 | 110 | POST `/api/admin/users/delete` | 7169 | `a.legacyAdminUserDelete` | ADMIN_USERS | token,target,confirm |
 | 111 | GET `/api/admin/users/snapshot` | 7193 | `a.legacyAdminUserSnapshot` | ADMIN_SNAPSHOT | token,key |
-| 112 | POST `/api/admin/users/snapshot` | 7209 | `a.legacyAdminUserSnapshotSave` | ADMIN_SNAPSHOT | token,target,coins,inventory,bd |
+| 112 | POST `/api/admin/users/snapshot` | 7209 | `a.legacyAdminUserSnapshotSave` | ADMIN_SNAPSHOT | token,target,expectedInvRev,coins,inventory,inventoryTiers,bd |
 | 113 | GET `/api/admin/users/snapshots` | 7273 | `a.legacyAdminUserSnapshots` | ADMIN_SNAPSHOT | token,key |
 | 114 | POST `/api/admin/users/snapshot-now` | 7289 | `a.legacyAdminUserSnapshotNow` | ADMIN_SNAPSHOT | token,target |
 | 115 | POST `/api/admin/users/rollback` | 7307 | `a.legacyAdminUserRollback` | ADMIN_SNAPSHOT | token,target,snap,confirm |
-| 116 | POST `/api/admin/snapshot/config` | 7335 | `a.legacyAdminSnapshotConfig` | ADMIN_SNAPSHOT | token,enabled,interval,retention |
+| 116 | POST `/api/admin/snapshot/config` | 7335 | `a.legacyAdminSnapshotConfig` | ADMIN_SNAPSHOT | token,cfg:{enabled,intervalMin,keep} |
 | 117 | POST `/api/admin/users/update` | 7350 | `a.legacyAdminUserUpdate` | ADMIN_USERS | token,target,name,password,coins,listingCap |
 | 118 | GET `/api/admin/world` | 7401 | `a.legacyAdminWorld` | ADMIN_READ | token?; no body |
 | 119 | POST `/api/admin/component/config` | 7518 | `a.adminComponentConfig` | ADMIN_CONFIG | token,qualityWeights,countWeights,rollModel,affixRanges,extraAffixRanges,adjectiveRules |
@@ -202,7 +202,7 @@
 | 149 | POST `/api/admin/records/config` | 8478 | `a.legacyAdminRecordsConfig` | ADMIN_RECORDS | token,scale,x,y,reset |
 | 150 | POST `/api/admin/records/delete` | 8511 | `a.legacyAdminRecordsDelete` | ADMIN_RECORDS | token,id? |
 | 151 | POST `/api/admin/records/delone` | 8532 | `a.legacyAdminRecordDeleteOne` | ADMIN_RECORDS | token,id,range,kind,expected |
-| 152 | POST `/api/admin/settings` | 8567 | `a.legacyAdminSettings` | ADMIN_CONFIG | token,partial settings (seaCfg/chestCfg/castBaseMs/priceCfg/dropCfg/autoSellCfg/doubleBase/biteFormula/notifyLevel/rareK...) |
+| 152 | POST `/api/admin/settings` | 8567 | `a.legacyAdminSettings` | ADMIN_CONFIG | token,partial settings (seaCfg/chestCfg/castBaseMs/priceCfg/dropCfg/autoSellCfg/doubleBase/biteFormula/notifyLevel/autoNotify/rareK...),validateOnly,evalVars |
 
 ## 验收规则
 

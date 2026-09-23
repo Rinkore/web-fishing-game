@@ -320,11 +320,15 @@ type AdminBulkRequest struct {
 	Sellers    []Seller
 	Plan       BulkPlan
 	SupplyID   string
+	BeforeRule json.RawMessage
 	AfterRule  json.RawMessage
 }
 
 func (s *Service) AdminBulk(ctx context.Context, r AdminBulkRequest) (assets.Result, error) {
 	if r.ActorID < 1 || len(r.Sellers) < 1 || len(r.Sellers) > 100 || len(r.Plan.Items) < 1 || len(r.Plan.Items) > BulkListMax || (r.Plan.Hours != 6 && r.Plan.Hours != 12 && r.Plan.Hours != 24) {
+		return assets.Result{}, assets.ErrInvalid
+	}
+	if r.SupplyID != "" && (!json.Valid(r.BeforeRule) || !json.Valid(r.AfterRule)) {
 		return assets.Result{}, assets.ErrInvalid
 	}
 	for _, item := range r.Plan.Items {
@@ -342,26 +346,28 @@ func (s *Service) AdminBulk(ctx context.Context, r AdminBulkRequest) (assets.Res
 		}
 	}
 	players := []int64{r.ActorID}
+	seen := map[int64]bool{r.ActorID: true}
 	for _, seller := range r.Sellers {
 		if seller.ID < 1 {
 			return assets.Result{}, assets.ErrInvalid
 		}
-		players = append(players, seller.ID)
+		if !seen[seller.ID] {
+			players = append(players, seller.ID)
+			seen[seller.ID] = true
+		}
 	}
 	return s.assets.Run(ctx, assets.Command{ActorID: r.ActorID, RequestKey: r.RequestKey, Kind: "admin_grant", RuleVersion: "admin-market-v1", Players: players, Input: struct {
-		Plan      BulkPlan
-		SupplyID  string
-		AfterRule json.RawMessage
-	}{r.Plan, r.SupplyID, r.AfterRule}}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
+		Plan       BulkPlan
+		SupplyID   string
+		BeforeRule json.RawMessage
+		AfterRule  json.RawMessage
+	}{r.Plan, r.SupplyID, r.BeforeRule, r.AfterRule}}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
 		if r.SupplyID != "" {
-			var current []byte
-			if err := t.SQL().QueryRow(ctx, `SELECT value FROM fishing.operator_settings WHERE key='market_supply' FOR UPDATE`).Scan(&current); err != nil {
+			var unchanged bool
+			if err := t.SQL().QueryRow(ctx, `SELECT value=$1::jsonb AND value->>'id'=$2 AND value->>'enabled'='true' FROM fishing.operator_settings WHERE key='market_supply' FOR UPDATE`, r.BeforeRule, r.SupplyID).Scan(&unchanged); err != nil {
 				return assets.Result{}, err
 			}
-			var rule struct {
-				ID string `json:"id"`
-			}
-			if err := json.Unmarshal(current, &rule); err != nil || rule.ID != r.SupplyID {
+			if !unchanged {
 				return assets.Result{}, assets.Rejection("supply_rule_changed")
 			}
 		}

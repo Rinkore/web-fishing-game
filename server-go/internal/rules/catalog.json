@@ -2,7 +2,7 @@
   "format": 1,
   "version": "v0.21.6",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "d7898610c25e0f5c12e91c365142a3e4f6a8e8d12c88d2c3a829881795aff914",
+  "sourceSHA256": "e91cf1c2d9c93acdf9635568e27c0b28af5b232673aef7d8d5525d224b01aa9e",
   "constants": {
     "VERSION": "v0.21.6",
     "BUILD": "2026-09-23",

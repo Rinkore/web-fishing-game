@@ -253,60 +253,20 @@ func legacySnapshotRodDetails(c *rules.Catalog, bd map[string]any) (map[string]f
 // the old profile. Inventory is flattened to the old map and bigfish retains
 // the large/giant split so a rollback does not lose fish tiers.
 func (a *API) legacyAdminSnapshotView(ctx context.Context, owner int64) (map[string]any, error) {
-	var coins, revision, catchCount int64
-	if err := a.pool.QueryRow(ctx, `SELECT w.coins,p.assets_rev,p.catch_count FROM fishing.wallets w JOIN fishing.player_state p ON p.account_id=w.account_id WHERE w.account_id=$1`, owner).Scan(&coins, &revision, &catchCount); err != nil {
-		return nil, err
-	}
-	inventory, bigfish, err := a.legacyInventory(ctx, owner)
+	tx, err := a.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
-	codex := map[string]any{}
-	rows, err := a.pool.Query(ctx, `SELECT item_id,count,first_at,min_size,max_size,best_tier FROM fishing.player_codex WHERE owner_id=$1`, owner)
+	defer func() { _ = tx.Rollback(ctx) }()
+	view, err := a.legacyAdminSnapshotViewTx(ctx, tx, owner)
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		var id, tier string
-		var count int64
-		var first time.Time
-		var minSize, maxSize *float64
-		if err := rows.Scan(&id, &count, &first, &minSize, &maxSize, &tier); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		codex[id] = map[string]any{"count": count, "first": first.UnixMilli(), "min": minSize, "max": maxSize, "tier": tier}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	rows.Close()
-	bd := map[string]any{}
-	rodSlots := []any{}
-	rodActiveSlot := -1
-	rodName := ""
-	var capacity int
-	if err := a.pool.QueryRow(ctx, `SELECT rod_capacity FROM fishing.player_state WHERE account_id=$1`, owner).Scan(&capacity); err == nil {
-		if c, err := a.catalog(ctx); err == nil {
-			if active, slots, slot, name, _, err := a.legacyRod(ctx, c, owner, capacity); err == nil {
-				for part, value := range active {
-					bd[part] = value
-				}
-				rodSlots, rodActiveSlot, rodName = slots, slot, name
-			}
-		}
-	}
-	effects := map[string]float64{}
-	interval := float64(0)
-	if c, err := a.catalog(ctx); err == nil {
-		effects, interval = legacySnapshotRodDetails(c, bd)
-	}
-	return map[string]any{
-		"coins": coins, "inventory": inventory, "bigfish": bigfish, "codex": codex,
-		"catchCount": catchCount, "invRev": strconv.FormatInt(revision, 10),
-		"bd": bd, "effects": effects, "interval": interval, "rodSlots": rodSlots, "rodActiveSlot": rodActiveSlot, "rodName": rodName,
-	}, nil
+	delete(view, "_rodLoadouts")
+	return view, nil
 }
 
 func nextLegacySnapshotName(records []legacySnapshotRecord, now int64) string {
@@ -340,6 +300,10 @@ func appendLegacySnapshot(records []legacySnapshotRecord, record legacySnapshotR
 }
 
 func (a *API) writeLegacySnapshotTx(ctx context.Context, tx pgx.Tx, owner int64, cfg legacySnapshotCfg) (legacySnapshotRecord, error) {
+	return a.writeLegacySnapshotAtTx(ctx, tx, owner, cfg, time.Now())
+}
+
+func (a *API) writeLegacySnapshotAtTx(ctx context.Context, tx pgx.Tx, owner int64, cfg legacySnapshotCfg, at time.Time) (legacySnapshotRecord, error) {
 	view, err := a.legacyAdminSnapshotViewTx(ctx, tx, owner)
 	if err != nil {
 		return legacySnapshotRecord{}, err
@@ -348,7 +312,7 @@ func (a *API) writeLegacySnapshotTx(ctx context.Context, tx pgx.Tx, owner int64,
 	if err != nil {
 		return legacySnapshotRecord{}, err
 	}
-	now := time.Now().UnixMilli()
+	now := at.UnixMilli()
 	record := legacySnapshotRecord{Name: nextLegacySnapshotName(records, now), TS: now, View: view}
 	records = appendLegacySnapshot(records, record, cfg.Keep)
 	return record, writeLegacySnapshotRecords(ctx, tx, owner, records)
@@ -396,8 +360,11 @@ func (a *API) legacyAdminSnapshotViewTx(ctx context.Context, tx pgx.Tx, owner in
 	active, rodName := -1, ""
 	rodSlots := make([]any, 8)
 	for _, loadout := range loadouts {
-		if loadout.Slot >= 0 && len(loadout.Parts) > 0 {
-			rodSlots[loadout.Slot] = map[string]any{"slot": loadout.Slot, "name": loadout.Name, "parts": loadout.Parts}
+		if loadout.Slot >= 0 && loadout.Slot < len(rodSlots) && len(loadout.Parts) > 0 {
+			if meta := rodSetMeta(catalog, loadout.Parts); meta != nil {
+				rodSlots[loadout.Slot] = legacyRodSlot{Slot: loadout.Slot, Name: loadout.Name, Parts: loadout.Parts,
+					RodID: meta.RodID, Count: len(loadout.Parts), Affixes: meta.Affixes, Price: meta.Price, Active: loadout.Active}
+			}
 		}
 		if !loadout.Active {
 			continue
@@ -413,12 +380,23 @@ func (a *API) legacyAdminSnapshotViewTx(ctx context.Context, tx pgx.Tx, owner in
 			bd[part] = entry
 		}
 	}
-	effects := map[string]float64{}
-	interval := float64(0)
-	if c, err := a.catalog(ctx); err == nil {
-		effects, interval = legacySnapshotRodDetails(c, bd)
+	effects, interval := legacySnapshotRodDetails(catalog, bd)
+	stacks, err := readLegacySnapshotStacks(ctx, tx, owner)
+	if err != nil {
+		return nil, err
 	}
-	return map[string]any{"coins": coins, "inventory": inventory, "bigfish": bigfish, "codex": codex,
+	tiers := map[string]map[string]int64{}
+	for key, stack := range stacks {
+		if stack.Kind != "fish" || stack.Quantity <= 0 {
+			continue
+		}
+		id := strings.SplitN(key, "\x00", 2)[0]
+		if tiers[id] == nil {
+			tiers[id] = map[string]int64{"normal": 0, "large": 0, "giant": 0}
+		}
+		tiers[id][stack.Tier] = stack.Quantity
+	}
+	return map[string]any{"coins": coins, "inventory": inventory, "bigfish": bigfish, "inventoryTiers": tiers, "codex": codex,
 		"catchCount": catchCount, "invRev": strconv.FormatInt(revision, 10), "bd": bd, "effects": effects, "interval": interval,
 		"rodSlots": rodSlots, "rodActiveSlot": active, "rodName": rodName, "_rodLoadouts": loadouts}, nil
 }
@@ -453,10 +431,12 @@ func (a *API) legacyAdminUserSnapshot(w http.ResponseWriter, r *http.Request) {
 }
 
 type legacySnapshotSaveInput struct {
-	Target    string                     `json:"target"`
-	Coins     *float64                   `json:"coins"`
-	Inventory map[string]json.RawMessage `json:"inventory"`
-	BD        json.RawMessage            `json:"bd"`
+	Target         string                      `json:"target"`
+	ExpectedInvRev json.RawMessage             `json:"expectedInvRev"`
+	Coins          *float64                    `json:"coins"`
+	Inventory      map[string]json.RawMessage  `json:"inventory"`
+	InventoryTiers map[string]map[string]int64 `json:"inventoryTiers"`
+	BD             json.RawMessage             `json:"bd"`
 }
 
 func decodeSnapshotInventory(raw map[string]json.RawMessage) (map[string]int64, error) {
@@ -697,10 +677,11 @@ func (a *API) applySnapshotInventory(ctx context.Context, tx pgx.Tx, owner, oper
 					giant = int64(math.Floor(n))
 				}
 			}
+			// Aggregate-only edits add normal fish and remove normal, then large,
+			// then giant fish. Explicit tier edits already sum to quantity.
+			giant = min(giant, quantity)
+			large = min(large, quantity-giant)
 			normal := quantity - large - giant
-			if normal < 0 {
-				normal = 0
-			}
 			for tier, q := range map[string]int64{"normal": normal, "large": large, "giant": giant} {
 				if _, err := tx.Exec(ctx, `INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity) VALUES($1,$2,$3,$4,$5)
  ON CONFLICT(owner_id,item_id,tier) DO UPDATE SET quantity=excluded.quantity`, owner, id, kind, tier, q); err != nil {
@@ -745,7 +726,7 @@ func (a *API) legacyAdminUserSnapshotSave(w http.ResponseWriter, r *http.Request
 		legacyTradeError(w, 400, "背包格式错误")
 		return
 	}
-	kinds, components, err := a.validateSnapshotInventory(r.Context(), ids)
+	kinds, _, err := a.validateSnapshotInventory(r.Context(), ids)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "unknown item:") {
 			legacyTradeError(w, 400, "未知物品："+strings.TrimPrefix(err.Error(), "unknown item: "))
@@ -753,6 +734,47 @@ func (a *API) legacyAdminUserSnapshotSave(w http.ResponseWriter, r *http.Request
 			failure(w, identity.ErrStorage)
 		}
 		return
+	}
+	var expected json.Number
+	if json.Unmarshal(in.ExpectedInvRev, &expected) != nil {
+		legacyTradeError(w, 400, "缺少有效资产版本，请刷新后重试")
+		return
+	}
+	expectedRevision, err := strconv.ParseInt(expected.String(), 10, 64)
+	if err != nil || expectedRevision < 0 {
+		legacyTradeError(w, 400, "缺少有效资产版本，请刷新后重试")
+		return
+	}
+	for item, tiers := range in.InventoryTiers {
+		total := int64(0)
+		if kinds[item] == "" && in.Inventory != nil {
+			// Zero totals are omitted by decodeSnapshotInventory, but an explicit
+			// all-zero fish tier edit is still a valid deletion.
+			var kind string
+			err := a.pool.QueryRow(r.Context(), `SELECT kind FROM fishing.item_definitions WHERE id=$1`, item).Scan(&kind)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				failure(w, identity.ErrStorage)
+				return
+			}
+			if err == nil {
+				kinds[item] = kind
+			}
+		}
+		if kinds[item] != "fish" {
+			legacyTradeError(w, 400, "鱼类规格格式错误")
+			return
+		}
+		for tier, quantity := range tiers {
+			if (tier != "normal" && tier != "large" && tier != "giant") || quantity < 0 || quantity > 9007199254740991 {
+				legacyTradeError(w, 400, "鱼类规格格式错误")
+				return
+			}
+			total += quantity
+		}
+		if total != ids[item] {
+			legacyTradeError(w, 400, "鱼类规格数量与总数不一致")
+			return
+		}
 	}
 	ctx := r.Context()
 	tx, err := a.pool.Begin(ctx)
@@ -763,6 +785,15 @@ func (a *API) legacyAdminUserSnapshotSave(w http.ResponseWriter, r *http.Request
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := legacyAdminWriteGuard(ctx, tx, actor, id); err != nil {
 		failure(w, err)
+		return
+	}
+	var revision int64
+	if err := tx.QueryRow(ctx, `SELECT assets_rev FROM fishing.player_state WHERE account_id=$1`, id).Scan(&revision); err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	if revision != expectedRevision {
+		write(w, http.StatusConflict, map[string]any{"error": "资产已更新，请刷新后重试", "code": "assets_revision_conflict", "invRev": strconv.FormatInt(revision, 10)})
 		return
 	}
 	var operation int64
@@ -799,73 +830,22 @@ func (a *API) legacyAdminUserSnapshotSave(w http.ResponseWriter, r *http.Request
 			failure(w, identity.ErrStorage)
 			return
 		}
-		if _, err = tx.Exec(ctx, `UPDATE fishing.inventory_stacks SET quantity=0 WHERE owner_id=$1`, id); err != nil {
+		inventory := map[string]any{}
+		bigfish := map[string]any{}
+		for item, quantity := range ids {
+			inventory[item] = quantity
+			large := beforeStacks[item+"\x00large"].Quantity
+			giant := beforeStacks[item+"\x00giant"].Quantity
+			if tiers, supplied := in.InventoryTiers[item]; supplied {
+				large, giant = tiers["large"], tiers["giant"]
+			}
+			bigfish[item] = map[string]any{"L": large, "G": giant}
+		}
+		if err = a.applySnapshotInventory(ctx, tx, id, operation, map[string]any{"inventory": inventory, "bigfish": bigfish}); err != nil {
 			failure(w, identity.ErrStorage)
 			return
-		}
-		// Replace only loose component instances. Bound equipment remains part
-		// of the active/saved rod and is therefore still visible in the legacy
-		// projection.
-		rows, qerr := tx.Query(ctx, `SELECT e.id FROM fishing.equipment_instances e
- WHERE e.owner_id=$1 AND e.lifecycle='available' AND NOT EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id) FOR UPDATE`, id)
-		if qerr != nil {
-			failure(w, identity.ErrStorage)
-			return
-		}
-		var loose []int64
-		for rows.Next() {
-			var equipment int64
-			if qerr = rows.Scan(&equipment); qerr != nil {
-				rows.Close()
-				failure(w, identity.ErrStorage)
-				return
-			}
-			loose = append(loose, equipment)
-		}
-		if qerr = rows.Err(); qerr != nil {
-			rows.Close()
-			failure(w, identity.ErrStorage)
-			return
-		}
-		rows.Close()
-		for _, equipment := range loose {
-			if _, err = tx.Exec(ctx, `UPDATE fishing.equipment_instances SET lifecycle='consumed',escrow_listing_id=NULL WHERE id=$1`, equipment); err != nil {
-				failure(w, identity.ErrStorage)
-				return
-			}
-			if _, err = tx.Exec(ctx, `INSERT INTO fishing.equipment_entries(operation_id,equipment_id,previous_owner,action) VALUES($1,$2,$3,'consume')`, operation, equipment, id); err != nil {
-				failure(w, identity.ErrStorage)
-				return
-			}
-		}
-		for item, qty := range ids {
-			if kinds[item] == "equipment" {
-				base := components[item]
-				for i := int64(0); i < qty; i++ {
-					attrs, _ := json.Marshal(map[string]any{"signature": item})
-					var equipment int64
-					if err = tx.QueryRow(ctx, `INSERT INTO fishing.equipment_instances(owner_id,definition_id,part,attributes,created_operation) VALUES($1,$2,$3,$4,$5) RETURNING id`, id, base.ID, base.Part, attrs, operation).Scan(&equipment); err != nil {
-						failure(w, identity.ErrStorage)
-						return
-					}
-					if _, err = tx.Exec(ctx, `INSERT INTO fishing.equipment_entries(operation_id,equipment_id,next_owner,action) VALUES($1,$2,$3,'create')`, operation, equipment, id); err != nil {
-						failure(w, identity.ErrStorage)
-						return
-					}
-				}
-				continue
-			}
-			if _, err = tx.Exec(ctx, `INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity) VALUES($1,$2,$3,'normal',$4)
- ON CONFLICT(owner_id,item_id,tier) DO UPDATE SET quantity=excluded.quantity`, id, item, kinds[item], qty); err != nil {
-				failure(w, identity.ErrStorage)
-				return
-			}
 		}
 		if _, err = tx.Exec(ctx, `UPDATE fishing.player_state SET assets_rev=assets_rev+1 WHERE account_id=$1`, id); err != nil {
-			failure(w, identity.ErrStorage)
-			return
-		}
-		if err = recordLegacySnapshotStackDeltas(ctx, tx, operation, id, beforeStacks); err != nil {
 			failure(w, identity.ErrStorage)
 			return
 		}
@@ -925,7 +905,7 @@ func (a *API) legacyAdminUserSnapshotSave(w http.ResponseWriter, r *http.Request
 		failure(w, identity.ErrStorage)
 		return
 	}
-	write(w, 200, map[string]any{"ok": true, "key": target, "coins": view["coins"], "inventory": view["inventory"], "invRev": view["invRev"], "bd": view["bd"]})
+	write(w, 200, map[string]any{"ok": true, "key": target, "coins": view["coins"], "inventory": view["inventory"], "inventoryTiers": view["inventoryTiers"], "bigfish": view["bigfish"], "invRev": view["invRev"], "bd": view["bd"]})
 }
 
 func (a *API) applyLegacySnapshotBD(ctx context.Context, tx pgx.Tx, owner int64, raw json.RawMessage, operation int64) (bool, error) {
@@ -962,11 +942,14 @@ func (a *API) applyLegacySnapshotBDParts(ctx context.Context, tx pgx.Tx, owner i
 		return false, err
 	}
 	validPart := map[string]bool{"rod": true, "line": true, "hook": true, "bait": true, "reel": true, "accessory": true, "charm": true}
-	if _, err := tx.Exec(ctx, `INSERT INTO fishing.rod_loadouts(owner_id,slot,active) VALUES($1,-1,true) ON CONFLICT(owner_id,slot) DO NOTHING`, owner); err != nil {
-		return false, err
-	}
 	var active int
-	if err := tx.QueryRow(ctx, `SELECT slot FROM fishing.rod_loadouts WHERE owner_id=$1 AND active FOR UPDATE`, owner).Scan(&active); err != nil {
+	err = tx.QueryRow(ctx, `SELECT slot FROM fishing.rod_loadouts WHERE owner_id=$1 AND active FOR UPDATE`, owner).Scan(&active)
+	if errors.Is(err, pgx.ErrNoRows) {
+		active = -1
+		_, err = tx.Exec(ctx, `INSERT INTO fishing.rod_loadouts(owner_id,slot,active) VALUES($1,-1,true)
+ ON CONFLICT(owner_id,slot) DO UPDATE SET active=true`, owner)
+	}
+	if err != nil {
 		return false, err
 	}
 	if operation == 0 {
@@ -996,6 +979,9 @@ func (a *API) applyLegacySnapshotBDParts(ctx context.Context, tx pgx.Tx, owner i
 			return false, err
 		}
 		rows.Close()
+		if len(previous) == 0 {
+			return false, nil
+		}
 		if _, err := tx.Exec(ctx, `DELETE FROM fishing.rod_components WHERE owner_id=$1 AND slot=$2`, owner, active); err != nil {
 			return false, err
 		}
@@ -1040,11 +1026,16 @@ func (a *API) applyLegacySnapshotBDParts(ctx context.Context, tx pgx.Tx, owner i
 			if boundErr == nil {
 				// The requested component is already installed. Keep it in place;
 				// this makes an idempotent admin save harmless.
-				changed = true
 				continue
 			}
 			if !errors.Is(boundErr, pgx.ErrNoRows) {
 				return false, boundErr
+			}
+			var previous int64
+			previousErr := tx.QueryRow(ctx, `SELECT e.id FROM fishing.rod_components r JOIN fishing.equipment_instances e ON e.id=r.equipment_id
+ WHERE r.owner_id=$1 AND r.slot=$2 AND r.part=$3 AND e.owner_id=$1 AND e.lifecycle='available' FOR UPDATE OF e`, owner, active, part).Scan(&previous)
+			if previousErr != nil && !errors.Is(previousErr, pgx.ErrNoRows) {
+				return false, previousErr
 			}
 			var equipment int64
 			err := tx.QueryRow(ctx, `SELECT e.id FROM fishing.equipment_instances e
@@ -1052,13 +1043,20 @@ func (a *API) applyLegacySnapshotBDParts(ctx context.Context, tx pgx.Tx, owner i
  AND NOT EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id)
  ORDER BY e.id LIMIT 1 FOR UPDATE`, owner, part, compID).Scan(&equipment)
 			if errors.Is(err, pgx.ErrNoRows) {
-				return false, identity.ErrInvalid
+				if previous == 0 {
+					return false, identity.ErrInvalid
+				}
+				// Editing installed affixes creates a replacement through the same
+				// immutable equipment ledger as workshop and snapshot restoration.
+				attrs, _ := json.Marshal(map[string]string{"signature": compID})
+				err = tx.QueryRow(ctx, `INSERT INTO fishing.equipment_instances(owner_id,definition_id,part,attributes,created_operation) VALUES($1,$2,$3,$4,$5) RETURNING id`, owner, base.ID, part, attrs, operation).Scan(&equipment)
+				if err == nil {
+					_, err = tx.Exec(ctx, `INSERT INTO fishing.equipment_entries(operation_id,equipment_id,next_owner,action) VALUES($1,$2,$3,'create')`, operation, equipment, owner)
+				}
 			}
 			if err != nil {
 				return false, err
 			}
-			var previous int64
-			_ = tx.QueryRow(ctx, `SELECT equipment_id FROM fishing.rod_components WHERE owner_id=$1 AND slot=$2 AND part=$3`, owner, active, part).Scan(&previous)
 			if _, err := tx.Exec(ctx, `DELETE FROM fishing.rod_components WHERE owner_id=$1 AND slot=$2 AND part=$3`, owner, active, part); err != nil {
 				return false, err
 			}
@@ -1073,6 +1071,7 @@ func (a *API) applyLegacySnapshotBDParts(ctx context.Context, tx pgx.Tx, owner i
 			if _, err := tx.Exec(ctx, `INSERT INTO fishing.rod_components(owner_id,slot,part,equipment_id) VALUES($1,$2,$3,$4)`, owner, active, part, equipment); err != nil {
 				return false, err
 			}
+			changed = true
 		} else {
 			var previous int64
 			_ = tx.QueryRow(ctx, `SELECT equipment_id FROM fishing.rod_components WHERE owner_id=$1 AND slot=$2 AND part=$3`, owner, active, part).Scan(&previous)
@@ -1086,9 +1085,9 @@ func (a *API) applyLegacySnapshotBDParts(ctx context.Context, tx pgx.Tx, owner i
 				if _, err := tx.Exec(ctx, `INSERT INTO fishing.equipment_entries(operation_id,equipment_id,previous_owner,action) VALUES($1,$2,$3,'consume') ON CONFLICT DO NOTHING`, operation, previous, owner); err != nil {
 					return false, err
 				}
+				changed = true
 			}
 		}
-		changed = true
 	}
 	return changed, nil
 }
