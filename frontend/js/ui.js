@@ -2842,11 +2842,9 @@ window.UI = (function () {
     const savedList = el('div', 'peeps');
     saved.appendChild(savedHead); saved.appendChild(savedList);
     search.appendChild(el('h3', '', '搜索在线玩家'));
-    const searchBar = el('form', 'peep-search');
-    const input = el('input', 'friend-search-input');
-    input.type = 'search'; input.placeholder = '输入玩家名搜索在线玩家'; input.value = friendSearchQ; input.maxLength = 40;
-    const submit = el('button', 'mini', '搜索'); submit.type = 'submit';
-    searchBar.appendChild(input); searchBar.appendChild(submit); search.appendChild(searchBar);
+    const searchBar = el('div', 'peep-search');
+    const submit = el('button', 'mini primary-mini', '🔍 搜索好友');
+    searchBar.appendChild(submit); search.appendChild(searchBar);
     const results = el('div', 'peeps'); search.appendChild(results);
     const pager = el('div', 'peep-pager');
     const prev = el('button', 'mini', '上一页'), next = el('button', 'mini', '下一页'), label = el('span', 'muted');
@@ -2970,7 +2968,12 @@ window.UI = (function () {
         label.textContent = ' 第 ' + data.page + ' / ' + data.pages + ' 页 · ' + data.total + ' 人 ';
       });
     };
-    searchBar.addEventListener('submit', function (e) { e.preventDefault(); friendSearchQ = input.value.trim(); friendSearchPage = 1; panel._refresh(true); });
+    submit.addEventListener('click', function () {
+      promptModal({ title: '搜索好友', value: friendSearchQ, okText: '搜索', html: '<div class="cf-hint">输入昵称或 @账号名</div>' }).then(function (q) {
+        if (q == null) return;
+        friendSearchQ = String(q).trim(); friendSearchPage = 1; panel._refresh(true);
+      });
+    });
     prev.addEventListener('click', function () { friendSearchPage--; panel._refresh(true); });
     next.addEventListener('click', function () { friendSearchPage++; panel._refresh(true); });
     panel._refresh(true);
@@ -3217,8 +3220,8 @@ window.UI = (function () {
     panel.setAttribute('data-sig', sig);   // 下次广播到达时按它判断「能不能就地更新」
     const filterSpot = selectedSocialSpot();
     const mapName = mapTab === 'voyage' ? '远洋' : '近岸';
-    panel.innerHTML = '<h3>' + (filterSpot ? esc(filterSpot.sp.name) + ' · 实时动态' : mapName + '实时动态') + '</h3>';
-    panel.insertBefore(socialTabs(), panel.querySelector('h3'));
+    // 在线动态页直接从页签进入内容，不再显示「近岸 / 远洋实时动态」标题行。
+    panel.appendChild(socialTabs());
     if (groundFilterId) {
       const back = el('button', 'mini ground-back', '🌐 返回全服');
       back.addEventListener('click', function () { groundFilterId = null; gotoPeepPage(1); renderView(); });
@@ -4711,18 +4714,26 @@ window.UI = (function () {
   let mktSellCat = 'all';
   let mktSellPick = {};      // 勾选的物品 id → true
   let mktSellScroll = 0;     // 列表滚动位置（仅在必须重建时还原，避免多选时被弹回顶部）
+  let mktSellPage = 1;
+  const MKT_SELL_PAGE_SIZE = 20;
   const MKT_SELL_CATS = [
     ['all', '📦 全部'], ['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['chest', '🎁 宝匣'], ['component', '🔧 组件'],
   ];
   // 当前分类下要列出的物品 id（按现价从高到低；现价随售出量浮动）
   // v0.14.0：鱼类暂时不能上架 → 从「我的背包（上架）」里整个隐去（分类页签也不出鱼类）
-  function mktSellKeys(st) {
+  function mktSellAllKeys(st) {
     const ids = Object.keys(st.inventory).filter(function (id) {
       const kind = itemMeta(id).kind;
       if (!MARKET_FISH_LIST && kind === 'fish') return false;
       return mktSellCat === 'all' || kind === mktSellCat;
     });
     return ids.sort(function (a, b) { return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1); });
+  }
+  function mktSellKeys(st) {
+    const all = mktSellAllKeys(st);
+    const pages = Math.max(1, Math.ceil(all.length / MKT_SELL_PAGE_SIZE));
+    if (mktSellPage > pages) mktSellPage = pages;
+    return all.slice((mktSellPage - 1) * MKT_SELL_PAGE_SIZE, mktSellPage * MKT_SELL_PAGE_SIZE);
   }
   function mktSellCatCounts(st) {
     const n = { fish: 0, material: 0, chest: 0, component: 0 };
@@ -4810,6 +4821,7 @@ window.UI = (function () {
       b.addEventListener('click', function () {
         if (mktSellCat === kv[0]) return;
         mktSellCat = kv[0];
+        mktSellPage = 1;
         mktSellScroll = 0;   // 换分类从头看起
         renderView();
       });
@@ -4825,6 +4837,17 @@ window.UI = (function () {
     list.addEventListener('scroll', function () { mktSellScroll = list.scrollTop; });
     keys.forEach(function (id) { list.appendChild(mktSellRow(id, st)); });
     box.appendChild(list);
+    const totalPages = Math.max(1, Math.ceil(mktSellAllKeys(st).length / MKT_SELL_PAGE_SIZE));
+    if (totalPages > 1) {
+      const pager = el('div', 'mkt-sell-pager');
+      const prev = el('button', 'mini', '‹ 上一页');
+      const next = el('button', 'mini', '下一页 ›');
+      const label = el('span', 'muted', '第 ' + mktSellPage + ' / ' + totalPages + ' 页');
+      prev.disabled = mktSellPage <= 1; next.disabled = mktSellPage >= totalPages;
+      prev.onclick = function () { mktSellPage--; mktSellScroll = 0; renderView(); };
+      next.onclick = function () { mktSellPage++; mktSellScroll = 0; renderView(); };
+      pager.appendChild(prev); pager.appendChild(label); pager.appendChild(next); box.appendChild(pager);
+    }
     const foot = el('div', 'mkt-sell-foot');
     foot.appendChild(el('button', 'primary'));
     const clr = el('button', 'mini', '清空选择');
@@ -9230,7 +9253,7 @@ window.UI = (function () {
     // 分类页签（与背包一致；数量为各类条目数）
     const tabs = el('div', 'inv-cats sub-cats');
     const spotTotal = D.GROUNDS.reduce(function (n, g) { return n + (g.spots || []).length + ((g.spots || []).length ? 0 : 1); }, 0);
-    [['all', '📦 全部', items.length], ['fish', '🐟 鱼类', fishItems.length],
+    [['fish', '🐟 鱼类', fishItems.length],
      ['material', '🧵 材料', items.filter(function (i) { return i.kind === 'material'; }).length],
      ['component', '🔧 组件', items.filter(function (i) { return i.kind === 'component'; }).length],
      ['spots', '📍 钓点', spotTotal]].forEach(function (kv) {
