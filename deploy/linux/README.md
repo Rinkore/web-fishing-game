@@ -12,6 +12,8 @@ sudo -n /usr/local/sbin/fishing-release-deploy /opt/fishing-go-test/incoming/COM
 
 manifest 字段为 `version`、`sourceCommit`、`migrationsSha256`、`asset`、`sha256`。更新器先把上传文件复制到 root 私有临时目录并校验 SHA-256，拒绝路径穿越、链接、设备文件、重复条目和异常大包，核对包内版本/提交/SQL 摘要及前端版本。通过后用 systemd 优雅停服，原子切换 `current`，启动同一个服务，再检查本机与公网 readiness、公网版本和前端文件 SHA-256；失败则恢复原 `current` 并检查旧服务。
 
+网页代理服务 `fishing-go-test-web` 通过 `Requires` 依赖游戏服务；停止游戏时代理也会停止。更新与回滚均按游戏、网页代理的顺序启动，并检查两个服务及公网探针。配置中的 `webService` 默认是 `fishing-go-test-web`，兼容已安装的旧配置。
+
 更新器以本机文件锁串行执行；拒绝低于当前版本的排队发布，同版本、不同提交可用于已约定的热修。相同版本与提交但内容不同的包会被拒绝，应从新提交重新构建。旧发行目录不会自动清理，失败包会保留供复核，重试前需管理员检查同名发行目录。
 
 ## 一次性接入
