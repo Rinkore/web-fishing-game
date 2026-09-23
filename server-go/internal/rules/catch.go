@@ -76,7 +76,7 @@ func (c *Catalog) ResolveCatch(pool []LootEntry, eff Effects, rng RNG) (Catch, b
 		return Catch{ID: signature, Kind: kind, CodexID: base.ID, Tier: "normal"}, ok
 	}
 	it, ok := c.Item(id)
-	if !ok || it.Kind != kind || (kind != "fish" && kind != "material") {
+	if !ok || it.ExpeditionOnly || it.Kind != kind || (kind != "fish" && kind != "material") {
 		return Catch{}, false
 	}
 	v := Catch{ID: id, Kind: kind, CodexID: id, Tier: "normal"}

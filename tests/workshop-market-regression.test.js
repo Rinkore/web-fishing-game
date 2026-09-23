@@ -55,7 +55,7 @@ async function run() {
   await page.locator('[data-wstab="smelt"]').click();
   await page.locator('[data-pick="main"]').click(); await page.locator('.bec-card .bec-acts button:not([disabled])').first().click();
   await page.locator('#ws-material-open').click({ position: { x: 8, y: 8 } });
-  check('Every catalyst displays its configured affix range', await page.locator('#ws-material-modal .wm-aff').evaluateAll(nodes => nodes.length > 0 && nodes.every(n => /[+-]?\d.*~.*%/.test(n.textContent))));
+  check('Every catalyst displays its configured affix range', await page.locator('#ws-material-modal [data-affix]:not([data-affix=""]) .wm-aff').evaluateAll(nodes => nodes.length > 0 && nodes.every(n => /[+-]?\d.*~.*%/.test(n.textContent))));
   await page.locator('#ws-material-modal .modal-close').click();
   await page.evaluate(() => {
     const st = Engine.state; st.player.coins = 0;

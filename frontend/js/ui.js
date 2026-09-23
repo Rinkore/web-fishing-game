@@ -279,6 +279,7 @@ window.UI = (function () {
   // 组件实例的状态标签：突破 > 满词条（突破件必然也满词条，但语义是「越过了词缀池边界」）
   function itemTag(meta) {
     if (!meta || meta.kind !== 'component') return '';
+    if (meta.setId) return '<span class="full-tag">套装核心 · 不可改造</span>';
     if (meta.breakthrough) return '<span class="full-tag bt-tag">突破</span>';
     if (meta.isFull) return '<span class="full-tag">满词条</span>';
     return '';
@@ -1515,7 +1516,7 @@ window.UI = (function () {
   // 求解全部在 GameData.autoBuildPlan / autoBuildPeek（纯函数、可单测）里，这里只做渲染与交互。
   // 面板每行的滑块 = 该属性的目标下限（拖动即「钓速定到多少」），右侧「可达」列由 autoBuildPeek
   // 现算：把它排到首位、在其余属性的目标区间下求最大值 —— 就是「其他属性还能配到多高」。
-  const AB_PRIO_DEFAULT = ['speed', 'double', 'skill', 'rare', 'material', 'size'];
+  const AB_PRIO_DEFAULT = ['speed', 'double', 'skill', 'rare', 'material', 'size', 'stability', 'resonance', 'settle'];
   let abOrder = AB_PRIO_DEFAULT.slice();
   let abEnabled = {};
   let abMin = {}, abMax = {};
@@ -1535,7 +1536,8 @@ window.UI = (function () {
       const list = [];
       const cur = st.bd && st.bd[p.key] && st.bd[p.key].compId;
       if (cur) list.push(cur);
-      Object.keys(st.inventory).forEach(function (id) { if (st.inventory[id] > 0) list.push(id); });
+      const fixedCore = (p.key === 'rod' || p.key === 'charm') && ['rod','charm'].some(function(k){const c=D.componentOf(st.bd && st.bd[k] && st.bd[k].compId);return c && c.setId;});
+      if (!fixedCore) Object.keys(st.inventory).forEach(function (id) { const c=D.componentOf(id);if (st.inventory[id] > 0 && c && !c.setId) list.push(id); });
       m[p.key] = list;
     });
     return m;
@@ -1795,7 +1797,7 @@ window.UI = (function () {
       resBox.innerHTML = html;
       applyBtn.disabled = !changes;
       applyBtn.textContent = changes ? ('一键装配（换 ' + changes + ' 件）') : '无需改动';
-      applyHint.textContent = changes ? '' : '（改优先级或目标可换方案）';
+      applyHint.textContent = '自动配装保留已选套装核心；更换套装请先手动选择。' + (changes ? '' : '（改优先级或目标可换方案）');
     }
 
     // 逐个部位调用 /api/bd/set（服务器权威：校验部位匹配、背包持有、锁定与钓速即时生效）。
@@ -1809,6 +1811,9 @@ window.UI = (function () {
         if (id && id !== curId) todo.push({ key: part.key, name: part.name, id: id, cur: curId });
       });
       if (!todo.length) { abBusy = false; toast('当前装配已经是最优组合，无需改动'); return; }
+      // Release replaced resonance pieces first so intermediate assemblies also obey the cap.
+      const releases=todo.filter(function(x){const c=D.componentOf(x.cur);return c && !c.setId && c.affixes.some(function(a){return a.type==='resonance';});}).map(function(x){return {key:x.key,name:x.name,id:null};});
+      todo.unshift.apply(todo,releases);
       let i = 0, done = 0;
       applyBtn.disabled = true;
       function step() {
@@ -1837,7 +1842,7 @@ window.UI = (function () {
           if (r.data.rodSlots) st2.rodSlots = r.data.rodSlots;
           if (r.data.rodLocked) st2.rodLocked = r.data.rodLocked;
           if (r.data.rodActiveSlot !== undefined) st2.rodActiveSlot = r.data.rodActiveSlot;
-          done++;
+          if(x.id)done++;
           step();
         }).catch(function () { abBusy = false; toast('网络错误，装配已中止'); });
       }
@@ -1870,7 +1875,7 @@ window.UI = (function () {
   let bdEquipFilterPart = '';
   let bdEquipSort = 'rarity';
   let bdEquipDir = 'desc';
-  const BD_AFFIXES = [['speed', '⚡ 钓速'], ['skill', '🎯 技巧'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓']];
+  const BD_AFFIXES = [['speed', '⚡ 钓速'], ['skill', '🎯 技巧'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓'], ['stability', '⚓ 稳定'], ['resonance', '🔮 共鸣'], ['settle', '📦 结算']];
   function partNameOf(key) {
     const p = D.ROD_PARTS.find(function (x) { return x.key === key; });
     return p ? p.name : key;
@@ -1946,7 +1951,7 @@ window.UI = (function () {
             (rng ? '<span class="aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '');
         }).join(' ');
         cur.innerHTML = '<div class="bec-head"><span class="bec-label">' + (pick ? '已选' : '当前已装备') + '</span>' +
-          '<img class="bec-icon" src="assets/item/' + esc(cur0.baseId || '') + '.png" alt="" draggable="false">' +
+          '<img class="bec-icon" src="' + esc(D.itemIcon(cur0.baseId || '')) + '" alt="" draggable="false">' +
           '<b class="' + qualityClass(cur0) + '">' + esc(cur0.name) + '</b>' +
           itemTag(cur0) +
           '<span class="inst-meta">' + esc(partNameOf(cur0.part)) + ' · ' + esc(qualityName(cur0)) + '品质 · ' + cur0.affixes.length + '/' + cur0.maxAffixes + ' 词条</span>' +
@@ -2062,7 +2067,7 @@ window.UI = (function () {
           const c = o2.c;
           const card = el('div', 'bec-card');
           card.innerHTML =
-            '<div class="bec-name"><img class="bec-icon" src="assets/item/' + esc(c.baseId || '') + '.png" alt="" draggable="false">' +
+            '<div class="bec-name"><img class="bec-icon" src="' + esc(D.itemIcon(c.baseId || '')) + '" alt="" draggable="false">' +
             '<span class="' + qualityClass(c) + '">' + esc(c.name) + itemTag(c) + '</span><span class="bec-price">' + c.price + '💰</span></div>' +
             '<div class="inst-meta">' + (partKey ? '' : esc(partNameOf(c.part)) + ' · ') + esc(qualityName(c)) + '品质 · ' + c.affixes.length + '/' + c.maxAffixes + ' 词条</div>' +
             c.affixes.map(function (a) { return '<div class="bec-aff' + (a.value < 0 ? ' aff-neg' : '') + (a.extra ? ' extra' : '') + affixKindCls(a) + '">' + esc(affixText(a)) + '</div>'; }).join('') +
@@ -2302,7 +2307,7 @@ window.UI = (function () {
 
     // 加成总览（与 Engine 的钓鱼逻辑同源）
     const eff = E().bdEffects();
-    const effDefs = [['speed', '⚡ 钓速'], ['skill', '🎯 技巧'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓']];
+    const effDefs = [['speed', '⚡ 钓速'], ['skill', '🎯 技巧'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓'], ['stability', '⚓ 稳定'], ['resonance', '🔮 共鸣'], ['settle', '📦 结算']];
     const strip = el('div', 'eff-strip');
     let any = false;
     effDefs.forEach(function (kv) {
@@ -2338,7 +2343,7 @@ window.UI = (function () {
         : '<div class="af-line"><span class="muted">标准 · 无加成</span></div>';
       // 组件图标：装备中显示底材贴图（assets/item/<baseId>.png），未装备显示通用组件螺母
       const bdIcon = comp
-        ? '<img class="bd-icon" src="assets/item/' + esc(comp.baseId || '') + '.png" alt="" draggable="false">'
+        ? '<img class="bd-icon" src="' + esc(D.itemIcon(comp.baseId || '')) + '" alt="" draggable="false">'
         : '<img class="bd-icon std" src="assets/item/comp_generic.png" alt="" draggable="false">';
       cell.innerHTML =
         '<div class="bd-part">' + esc(part.name) + (part.isCharm ? ' <span class="charm-tag">饰品</span>' : '') + '</div>' +
@@ -3685,7 +3690,7 @@ window.UI = (function () {
     const st = S();
     return Object.keys(st.shop || {}).map(function (id) {
       return { id: id, s: st.shop[id], meta: itemMeta(id), have: st.inventory[id] || 0 };
-    }).filter(function (o) { return o.meta.kind === 'fish' || o.meta.kind === 'material'; });
+    }).filter(function (o) { return !o.meta.noSell && (o.meta.kind === 'fish' || o.meta.kind === 'material'); });
   }
   function openAutoSellListModal() {
     if (!featureGuard('mall.autosell')) return;
@@ -4095,7 +4100,7 @@ window.UI = (function () {
     return out;
   }
   function hasAutoRule(id, kind) {
-    if (kind !== 'fish' && kind !== 'material') return false;
+    if ((itemMeta(id)||{}).noSell || (kind !== 'fish' && kind !== 'material')) return false;
     const r = autoSellRule(id);
     return !!(r && r.on);
   }
@@ -5987,7 +5992,7 @@ window.UI = (function () {
   }
   function itemIconSrc(it) {
     if (it.kind === 'fish') return 'assets/fish/' + it.id + '.png';
-    if (it.kind === 'material' || it.kind === 'chest' || it.kind === 'component') return 'assets/item/' + it.id + '.png';
+    if (it.kind === 'material' || it.kind === 'chest' || it.kind === 'component') return D.itemIcon(it.id);
     return '';
   }
   function itemIconHtml(it, cls) {
@@ -6484,7 +6489,7 @@ window.UI = (function () {
             (meta.kind === 'fish' && total > cnt ? '<span class="inv-total" title="背包总量（含大型/巨型预留）">总 ×' + total + '</span>' : '');
           const acts = el('span', 'inv-acts');
           // 宝匣只能市集交易（系统商店不收购），所以不出售按钮，只给「上架」+ 前往开箱页
-          if (meta.kind !== 'chest') {
+          if (meta.kind !== 'chest' && !meta.noSell) {
             const sellBtn = el('button', 'mini primary-mini', '出售 1');
             markFeature(sellBtn, 'mall.sell');
             sellBtn.title = '按当前系统收购价出售 1 个';
@@ -6495,7 +6500,7 @@ window.UI = (function () {
             sellAll.title = '打开批量出售子窗口：可填数量或用滑块，并查看价格趋势';
             sellAll.addEventListener('click', function () { openBatchSellModal(id); });
             acts.appendChild(sellAll);
-          } else {
+          } else if (meta.kind === 'chest') {
             const goChest = el('button', 'mini', '去开箱');
             goChest.title = '宝匣只能在「⚒ 工坊 · 开箱」页开箱；系统商店不收购宝匣';
             goChest.addEventListener('click', function () { currentView = 'workshop'; wsTab = 'open'; renderNav(); renderView(); loadViewData('workshop'); });
@@ -7058,7 +7063,7 @@ window.UI = (function () {
         if (a && a.type != null) total[a.type] = (total[a.type] || 0) + (Number(a.value) || 0);
       });
     });
-    const effDefs = [['speed', '⚡ 钓速'], ['skill', '🎯 技巧'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓']];
+    const effDefs = [['speed', '⚡ 钓速'], ['skill', '🎯 技巧'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓'], ['stability', '⚓ 稳定'], ['resonance', '🔮 共鸣'], ['settle', '📦 结算']];
     const chips = effDefs.map(function (kv) {
       const v = total[kv[0]];
       if (!v) return '';
@@ -7540,7 +7545,7 @@ window.UI = (function () {
 
     const inner = box.querySelector('.codex-detail');
     const cdIconSrc = it.kind === 'fish' ? 'assets/fish/' + esc(it.id) + '.png'
-      : (it.kind === 'material' || it.kind === 'component') ? 'assets/item/' + esc(it.id) + '.png'
+      : (it.kind === 'material' || it.kind === 'component') ? '' + esc(D.itemIcon(it.id)) + ''
       : null;
     const cdIcon = cdIconSrc ? '<img class="cd-icon" src="' + cdIconSrc + '" alt="" draggable="false">' : '';
     inner.innerHTML =
@@ -7677,7 +7682,7 @@ window.UI = (function () {
   function chestPlanText(chest) {
     if (chest.extra) {
       const hit = Math.round((chest.chance != null ? chest.chance : 0.5) * 100);
-      return '必定神话 · ' + hit + '% 突破到 4 词条（补 1~2 条本部位没有的词缀）';
+      return '必定神话 · 填满本部位词条池（2～3 条），数值按高阶规则生成';
     }
     if (chest.forceMax) return '必定史诗 · 词条填满该底材的词缀池';
     const w = chest.qualityWeights || {};
@@ -7695,7 +7700,7 @@ window.UI = (function () {
   function chestTargetHtml(chest) {
     const opts = [];
     D.ROD_PARTS.forEach(function (p) {
-      const cands = D.COMPONENT_BASES.filter(function (b) { return b.part === p.key; });
+      const cands = D.COMPONENT_BASES.filter(function (b) { return b.part === p.key && !b.setId && !b.legacy; });
       if (!cands.length) return;
       if (chest.mode === 'part') {
         opts.push('<option value="' + esc(p.key) + '">' + esc(p.name) + '（' + cands.length + ' 种底材）</option>');
@@ -7834,7 +7839,7 @@ window.UI = (function () {
       if (!sel || !hint) return;
       const v = sel.value;
       if (chest.mode === 'part') {
-        const n = D.COMPONENT_BASES.filter(function (b) { return b.part === v; }).length;
+        const n = D.COMPONENT_BASES.filter(function (b) { return b.part === v && !b.setId && !b.legacy; }).length;
         hint.textContent = '该部位有 ' + n + ' 种底材，具体是哪一种随机（这就是「自选部位」与「自选底材」的差别）。';
       } else {
         const b = D.componentBase(v);
@@ -7887,7 +7892,7 @@ window.UI = (function () {
             : '<div class="cc-pity">保底：已连续 ' + (cur.pityNow || 0) + ' 次未突破，再 ' + Math.max(0, (pityN - 1) - (cur.pityNow || 0)) + ' 次必出</div>')
         : '';
       card.innerHTML =
-        '<img class="cc-icon" src="assets/item/' + esc(chest.id) + '.png" alt="" draggable="false">' +
+        '<img class="cc-icon" src="' + esc(D.itemIcon(chest.id)) + '" alt="" draggable="false">' +
         '<div class="cc-head"><span class="cc-name ' + (D.QUALITY[chest.rarity] ? D.QUALITY[chest.rarity].cls : '') + '">' + esc(chest.name) + '</span>' +
           '<span class="cc-have">持有 ×<span data-have="' + esc(chest.id) + '">' + have + '</span></span></div>' +
         '<div class="cc-desc">' + esc(chest.desc) + '</div>' +
@@ -7989,7 +7994,7 @@ window.UI = (function () {
     const out = [];
     Object.keys(st.inventory || {}).forEach(function (id) {
       const meta = D.componentOf(id);
-      if (!meta || !D.isInstance(id)) return;
+      if (!meta || meta.setId || !D.isInstance(id)) return;
       out.push({ id: id, meta: meta, count: st.inventory[id] });
     });
     out.sort(function (a, b) {
@@ -8014,7 +8019,7 @@ window.UI = (function () {
     return '<section class="ws-col" data-slot="' + which + '"><header class="sm-slot-head"><h3>' + title + '</h3>' +
       '<span class="sm-badge">' + (isMain ? '保留底材' : '熔炼后消耗') + '</span></header>' +
       (comp ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-pick="' + which + '">' +
-        '<img class="ws-pick-icon" src="assets/item/' + esc(comp.meta.baseId) + '.png" alt="" />' +
+        '<img class="ws-pick-icon" src="' + esc(D.itemIcon(comp.meta.baseId)) + '" alt="" />' +
         '<span class="sm-item-copy"><strong class="ws-pick-name ' + qualityClass(comp.meta) + '">' + esc(comp.meta.name) + '</strong>' +
         '<span class="ws-pick-meta">' + esc(partNameOf(comp.meta.part)) + ' · ' + esc(comp.meta.qualityName) + '</span>' +
         '<span class="ws-pick-change">更换 ↗</span></span></button>' +
@@ -8070,13 +8075,14 @@ window.UI = (function () {
     } else if (!wsMainAffix) error = '请选择主件上要保留的词条';
     else if (!wsSubAffix) error = '请选择副件上要搬运的词条';
     else if (wsMainAffix === wsSubAffix) error = '主副选中的词条类型不能相同';
+    else if (!D.componentBase(mainC.meta.baseId).legacy && !(D.PART_AFFIXES[mainC.meta.part] || []).includes(wsSubAffix)) error = '副件词条不属于主件的部位属性池';
     else if (load.total > Number(cfg.maxMaterials)) {
       error = '催化剂最多 ' + cfg.maxMaterials + ' 份（当前 ' + load.total + ' 份），请减少份数';
     } else if (Object.keys(load.byAffix).length > Number(cfg.maxTypes)) {
       error = '催化剂最多 ' + cfg.maxTypes + ' 种（当前 ' + Object.keys(load.byAffix).length + ' 种），请清空多余材料';
-    } else if (load.total > 0) {
+    } else if (load.dominant) {
       const addable = D.smeltAddableAffixes(mainC.meta.baseId, [wsMainAffix, wsSubAffix]);
-      if (addable.indexOf(load.dominant) < 0) {
+      if (load.dominant && addable.indexOf(load.dominant) < 0) {
         error = '催化剂对应「' + (D.AFFIX_LABEL[load.dominant] || load.dominant) + '」，但熔炼结果里已经有这条词缀了';
       } else if (2 + 1 > addCap) {
         error = '本次词条数已达上限（' + addCap + ' 条）';
@@ -8107,7 +8113,7 @@ window.UI = (function () {
     const meta = D.componentOf(wsMain), known = !!(meta && wsMainAffix && wsSubAffix);
     const addable = known ? D.smeltAddableAffixes(meta.baseId, [wsMainAffix, wsSubAffix]) : [];
     const cfg = D.getSmeltCfg(), capOk = 3 <= D.smeltAddAffixCap();
-    const fit = known && capOk && addable.indexOf(D.smeltMaterialAffix(id)) >= 0;
+    const fit = known && (D.smeltFuelIds().includes(id) || capOk && addable.indexOf(D.smeltMaterialAffix(id)) >= 0);
     const have = S().inventory[id] || 0;
     return fit ? Math.max(0, Math.min(have, Number(cfg.maxMaterials) || 0)) : 0;
   }
@@ -8127,7 +8133,7 @@ window.UI = (function () {
   }
   // Keep unavailable materials visible with a reason; clamp the draft to current stock and rules.
   function wsFitMaterials() {
-    const ids = D.smeltMaterialIds();
+    const ids = D.smeltMaterialIds().concat(D.smeltFuelIds());
     const before = wsMatQty();
     let removed = false;
     if (wsMatPick && (ids.indexOf(wsMatPick) < 0 || wsMatLimit(wsMatPick) <= 0)) { wsMatPick = ''; removed = true; }
@@ -8145,7 +8151,7 @@ window.UI = (function () {
     const capOk = 3 <= D.smeltAddAffixCap();
     box.querySelectorAll('.ws-mat').forEach(function (row) {
       const id = row.getAttribute('data-mat');
-      const fit = known && capOk && addable.indexOf(D.smeltMaterialAffix(id)) >= 0;
+      const fit = known && (D.smeltFuelIds().includes(id) || capOk && addable.indexOf(D.smeltMaterialAffix(id)) >= 0);
       const have = S().inventory[id] || 0;
       row.classList.toggle('unavailable', !fit || !have);
       row.classList.toggle('selected', wsMatPick === id);
@@ -8170,14 +8176,14 @@ window.UI = (function () {
     box.innerHTML = '<div class="modal-head"><span class="modal-title" id="ws-material-title">选择催化剂</span>' +
       '<button class="mini modal-close" aria-label="关闭催化剂选择">✕</button></div><div class="modal-body">' +
       '<div class="sm-material-limit">每种催化剂补一条对应词缀 · 份数在熔炼页面用 +1 / +5 / 清空 调整</div>' +
-      '<div class="ws-mat-grid">' + D.smeltMaterialIds().map(function (id) {
+      '<div class="ws-mat-grid">' + D.smeltMaterialIds().concat(D.smeltFuelIds()).map(function (id) {
         const meta = D.itemOf(id), aff = D.smeltMaterialAffix(id);
         const main = D.componentOf(wsMain), sub = D.componentOf(wsSub);
         const range = main ? D.smeltRangeOf(main.baseId, sub && sub.baseId, 'add', aff, { part: main.part }) : null;
         const rangeLabel = range ? ' · ' + rangeText({ min: range[0], max: range[1] }) + '%' : ' · 选择主件后显示区间';
         return '<button type="button" class="ws-mat" data-mat="' + esc(id) + '" data-affix="' + esc(aff) + '" aria-pressed="false">' +
-          '<img class="sm-material-icon" src="assets/item/' + esc(id) + '.png" alt="" />' +
-          '<span class="sm-mat-info"><strong class="wm-name">' + esc(meta.name) + '</strong><span class="wm-aff">' + esc((D.AFFIX_LABEL[aff] || aff) + rangeLabel) + '</span><small class="wm-have"></small></span></button>';
+          '<img class="sm-material-icon" src="' + esc(D.itemIcon(id)) + '" alt="" />' +
+          '<span class="sm-mat-info"><strong class="wm-name">' + esc(meta.name) + '</strong><span class="wm-aff">' + esc(aff ? (D.AFFIX_LABEL[aff] || aff) + rangeLabel : '基础燃料 · 只降低失败率') + '</span><small class="wm-have"></small></span></button>';
       }).join('') + '</div><div id="ws-mats-note" role="status"></div></div>' +
       '<footer class="sm-material-footer"><div id="ws-material-feedback" role="status" aria-live="polite"></div><button class="mini primary-mini sm-material-done">完成</button></footer>';
     overlay.appendChild(box); document.body.appendChild(overlay);
@@ -8263,7 +8269,7 @@ window.UI = (function () {
     const summary = $('ws-material-summary');
     if (summary) summary.textContent = !wsMatPick ? '点击选择催化剂' : itemMeta(wsMatPick).name + ' ×' + matQty + ' · 点击更换';
     const matIcon = $('ws-material-icon'), matName = $('ws-material-name');
-    if (matIcon) matIcon.setAttribute('src', 'assets/item/' + (wsMatPick || 'lure') + '.png');
+    if (matIcon) matIcon.setAttribute('src', D.itemIcon(wsMatPick || 'lure'));
     if (matName) matName.textContent = wsMatPick ? itemMeta(wsMatPick).name : '催化剂';
     wsSyncMaterialDialog();
     const announce = $('ws-step-feedback');
@@ -8283,7 +8289,7 @@ window.UI = (function () {
     }
     function current(comp, type) { const a = comp && comp.meta.affixes.find(function (a) { return a.type === type; }); return a ? a.value : null; }
     const retained = p.retain.qty > 0 ? p.retain.affixes.filter(function (a) { return a.type !== wsMainAffix && a.type !== wsSubAffix; }) : [];
-    const resultCard = p.main ? '<div class="ws-result-card"><img class="ws-result-icon" src="assets/item/' + esc(p.main.meta.baseId) + '.png" alt="" />' +
+    const resultCard = p.main ? '<div class="ws-result-card"><img class="ws-result-icon" src="' + esc(D.itemIcon(p.main.meta.baseId)) + '" alt="" />' +
       '<div><strong class="' + qualityClass(p.main.meta) + '">' + esc(p.main.meta.baseName || p.main.meta.name) + '</strong>' +
       '<span>' + esc(p.main.meta.qualityName) + ' · ' + esc(partNameOf(p.main.meta.part)) + '</span><small>底材与品质不变</small></div></div>'
       : '<div class="sm-result-empty"><span aria-hidden="true">◇</span>选入主件后，产物在这里预览</div>';
@@ -8322,6 +8328,7 @@ window.UI = (function () {
         ? '从背包里挑一件组件作为主件（保留的那件）。可按部位与词条筛选。'
         : '副件会被熔毁，且必须与主件**同部位**——这里只列出与主件同部位的组件。',
       pickLabel: which === 'main' ? '选为主件' : '选为副件',
+      filter: function (c) { return !c.setId; },
       exclude: which === 'main' ? [wsSub] : [wsMain],
       getCurrent: function () { return which === 'main' ? wsMain : wsSub; },
       onPick: function (id) {
@@ -8385,7 +8392,7 @@ window.UI = (function () {
       '<button type="button" class="mini" id="ws-mat-plus1" aria-label="催化剂 +1">+1</button>' +
       '<button type="button" class="mini" id="ws-mat-plus5" aria-label="催化剂 +5">+5</button>' +
       '<button type="button" class="mini" id="ws-mat-clear">清空</button></div></div>' +
-      '<button type="button" id="ws-pearl" class="sm-option ws-pearl" aria-pressed="false"><img src="assets/item/' + esc(D.SMELT_PEARL) + '.png" alt="" />' +
+      '<button type="button" id="ws-pearl" class="sm-option ws-pearl" aria-pressed="false"><img src="' + esc(D.itemIcon(D.SMELT_PEARL)) + '" alt="" />' +
       '<span><strong>龙宫宝珠</strong><small>持有 <span data-have="' + esc(D.SMELT_PEARL) + '">' + (st.inventory[D.SMELT_PEARL] || 0) + '</span></small><small id="ws-pearl-status"></small></span>' +
       '</button>' +
       '<div class="sm-option sm-relic"><img src="assets/item/relic.png" alt="" /><div class="sm-relic-copy"><strong>沉船宝匣残片</strong>' +
@@ -8480,7 +8487,7 @@ window.UI = (function () {
     box.innerHTML = '<div class="modal-head"><span class="modal-title" id="ws-result-title">' + esc(title) +
       '</span><button class="mini modal-close" aria-label="关闭结果">✕</button></div>' +
       '<div class="modal-body"><section class="sm-preview-panel"><header><h3>产物结算</h3><span>实际结果</span></header>' +
-      (item ? '<div class="ws-result-card"><img class="ws-result-icon" src="assets/item/' + esc(item.baseId) + '.png" alt="" />' +
+      (item ? '<div class="ws-result-card"><img class="ws-result-icon" src="' + esc(D.itemIcon(item.baseId)) + '" alt="" />' +
         '<div><strong class="' + qualityClass(item) + '">' + esc(item.name) + '</strong><span>' +
         esc(partNameOf(item.part)) + ' · ' + esc(qualityName(item)) + ' · ' + item.affixes.length + ' 词条</span></div></div>' : '') +
       '<div class="ws-res-affs">' + rows + '</div></section>' + note + '</div>' +
@@ -8580,7 +8587,7 @@ window.UI = (function () {
       '<div class="ws-col"><h3>♻ 待重铸组件（' + esc(info.qualityName) + '品质）</h3>' +
       (eligible
         ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-recast-pick="1">' +
-          '<img class="ws-pick-icon" src="assets/item/' + esc(eligible.baseId) + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
+          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
           '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
           '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + ' 词条 · 基准价 ' + eligible.price + '💰</span>' +
           '<span class="ws-pick-change">更换</span></button>' +
@@ -8675,11 +8682,11 @@ window.UI = (function () {
           const range = comp && D.catalystRangeFor(comp.part, type);
           const full = comp && comp.affixes.length >= (D.QUALITY[comp.quality] || {}).cap;
           const exists = comp && comp.affixes.some(function (a) { return a.type === type; });
-          const outside = comp && !D.getSmeltCfg().forgeAnyAffix && !D.COMPONENT_BASES.find(function (b) { return b.id === comp.baseId; }).pool.some(function (a) { return a.type === type; });
+          const outside = comp && ((!(D.componentBase(comp.baseId)||{}).legacy && (D.PART_AFFIXES[comp.part]||[]).indexOf(type)<0) || (!D.getSmeltCfg().forgeAnyAffix && !D.COMPONENT_BASES.find(function (b) { return b.id === comp.baseId; }).pool.some(function (a) { return a.type === type; })));
           const reason = !comp ? '请先选择组件' : outside ? '当前禁止锻造池外词条' : full ? '词条数已达上限' : exists ? '已有该词条' : !range ? '无法新增该词条' : !have ? '库存不足' : '';
           return '<button type="button" class="ws-mat forge-mat' + (wsForgeMat === id ? ' selected' : '') + (reason ? ' unavailable' : '') +
             '" data-forge-mat="' + esc(id) + '" aria-pressed="' + (wsForgeMat === id) + '"' + (reason ? ' disabled' : '') + '>' +
-            '<img class="sm-material-icon" src="assets/item/' + esc(id) + '.png" alt="" /><span class="sm-mat-info"><strong class="wm-name">' + esc(D.itemName(id)) +
+            '<img class="sm-material-icon" src="' + esc(D.itemIcon(id)) + '" alt="" /><span class="sm-mat-info"><strong class="wm-name">' + esc(D.itemName(id)) +
             '</strong><span class="wm-aff">→ ' + esc(D.AFFIX_LABEL[type] || type) + (range ? ' ' + esc(rangeText({ min: range[0], max: range[1] })) + '%' : '') +
             '</span><small class="wm-have">持有 ' + have + (reason ? ' · ' + reason : ' · 消耗 1') + '</small></span></button>';
         }).join('') + '</div></div><footer class="sm-material-footer"><span role="status">' +
@@ -8706,19 +8713,20 @@ window.UI = (function () {
     if (!pearlHave) wsForgePearl = false;
     const comp = wsForge ? D.componentOf(wsForge) : null;
     const cap = comp ? (((D.QUALITY[comp.quality] || {}).cap) || 0) : 0;
-    const eligible = comp && cap > 0 && (comp.affixes || []).length < cap ? comp : null;
+    const eligible = comp && !comp.setId && cap > 0 && (comp.affixes || []).length < cap ? comp : null;
     const chosenType = wsForgeMat ? D.smeltMaterialAffix(wsForgeMat) : '';
     const range = eligible && chosenType ? D.catalystRangeFor(eligible.part, chosenType, wsForgePearl) : null;
     const have = wsForgeMat ? (st.inventory[wsForgeMat] || 0) : 0;
     const already = eligible && chosenType && (eligible.affixes || []).some(function (a) { return a.type === chosenType; });
-    const forgeAllowed = !eligible || D.getSmeltCfg().forgeAnyAffix || D.COMPONENT_BASES.find(function (b) { return b.id === eligible.baseId; }).pool.some(function (a) { return a.type === chosenType; });
+    const forgeBase = eligible && D.COMPONENT_BASES.find(function (b) { return b.id === eligible.baseId; });
+    const forgeAllowed = !eligible || ((forgeBase.legacy || (D.PART_AFFIXES[eligible.part] || []).includes(chosenType)) && (D.getSmeltCfg().forgeAnyAffix || forgeBase.pool.some(function (a) { return a.type === chosenType; })));
     const canGo = !!(eligible && chosenType && range && have > 0 && !already && forgeAllowed && !wsBusy);
     body.classList.add('smelt-workbench');
     body.innerHTML = '<fieldset class="sm-draft"' + (wsBusy ? ' disabled' : '') + '><legend class="sr-only">锻造方案</legend>' +
       '<div class="sm-step-title"><h3>01 <span>选择组件</span></h3><span>仅限词条未达上限</span></div>' +
       (eligible
         ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-forge-pick="1">' +
-          '<img class="ws-pick-icon" src="assets/item/' + esc(eligible.baseId) + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
+          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
           '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
           '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + '/' + cap + ' 词条 · ' + esc(qualityName(eligible)) + '</span>' +
           '<span class="ws-pick-change">更换</span></button>' +
@@ -8729,13 +8737,13 @@ window.UI = (function () {
         : '<button class="ws-pick empty" data-forge-pick="1">＋ 点击选择词条未达上限的组件</button>') +
       '<div class="sm-step-title"><h3>02 <span>选择催化剂</span></h3><span>消耗 1 个</span></div>' +
       '<button type="button" class="sm-materials" id="ws-forge-material-open" aria-haspopup="dialog">' +
-      (wsForgeMat ? '<img class="sm-material-icon" src="assets/item/' + esc(wsForgeMat) + '.png" alt="" />' : '') +
+      (wsForgeMat ? '<img class="sm-material-icon" src="' + esc(D.itemIcon(wsForgeMat)) + '" alt="" />' : '') +
       '<span class="sm-item-copy"><strong>' + (wsForgeMat ? esc(D.itemName(wsForgeMat)) : '选择催化剂') +
       '</strong><small>' + (wsForgeMat ? '持有 ' + have + ' · 消耗 1 个 · 点击更换' : '查看材料库存与可新增词条') + '</small></span><span>→</span></button>' +
       '<div class="sm-step-title"><h3>03 <span>辅助材料</span></h3><span>可选</span></div>' +
       '<button type="button" id="ws-forge-pearl" class="sm-option ws-pearl' + (wsForgePearl ? ' selected' : '') +
       '" aria-pressed="' + wsForgePearl + '"' + (!pearlHave || wsBusy ? ' disabled' : '') + '>' +
-      '<img src="assets/item/' + esc(D.SMELT_PEARL) + '.png" alt=""><span><strong>龙宫宝珠</strong>' +
+      '<img src="' + esc(D.itemIcon(D.SMELT_PEARL)) + '" alt=""><span><strong>龙宫宝珠</strong>' +
       '<small>宝珠护持</small><small>消耗 1 颗龙宫宝珠，恢复催化词条的完整数值范围</small>' +
       '<small>持有 ' + pearlHave + ' · ' + (wsForgePearl ? '已启用 · 本次消耗 1 颗' : '未启用') + '</small></span></button></fieldset>' +
       '<aside class="sm-preview-panel" aria-label="锻造预览"><header><h3>锻造预览</h3><span>催化剂词条</span></header>' +
@@ -8744,7 +8752,7 @@ window.UI = (function () {
         : (!chosenType ? '<span class="muted">选择一种催化剂材料</span>'
           : (!forgeAllowed ? '<b class="err">当前禁止锻造池外词条</b>' : already ? '<b class="err">该组件已经拥有这条词缀</b>'
             : (have > 0 ? '<b class="ok">可以锻造</b>' : '<b class="err">催化剂材料不足</b>')))) + '</div>' +
-      (eligible && chosenType && range ? '<div class="ws-result-card"><img class="ws-result-icon" src="assets/item/' + esc(eligible.baseId) + '.png" alt="" />' +
+      (eligible && chosenType && range ? '<div class="ws-result-card"><img class="ws-result-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" />' +
         '<div><strong class="' + qualityClass(eligible) + '">' + esc(eligible.name) + '</strong>' +
         '<span>新增 ' + esc(D.AFFIX_LABEL[chosenType] || chosenType) + ' ' + esc(rangeText({ min: range[0], max: range[1] })) + '%</span>' +
         '<small>词条 ' + eligible.affixes.length + ' → ' + (eligible.affixes.length + 1) + ' / ' + cap + '</small></div></div>' : '') +
@@ -8758,7 +8766,7 @@ window.UI = (function () {
           pickLabel: '选为锻造件', exclude: [], getCurrent: function () { return wsForge; },
           filter: function (c) {
             const ccap = (((D.QUALITY[c.quality] || {}).cap) || 0);
-            return ccap > 0 && (c.affixes || []).length < ccap;
+            return !c.setId && ccap > 0 && (c.affixes || []).length < ccap;
           },
           onPick: function (id) { wsForge = id; wsForgeMat = ''; wsForgePearl = false; renderView(); },
         });
@@ -9022,7 +9030,7 @@ window.UI = (function () {
       const card = el('div', 'mall-card' + (soldOut ? ' soldout' : ''));
       card.setAttribute('data-id', it.id);   // 就地补丁用（见 patchMallLimit）
       const iconSrc = it.kind === 'fish' ? 'assets/fish/' + esc(it.id) + '.png'
-        : (it.kind === 'material' || it.kind === 'component') ? 'assets/item/' + esc(it.id) + '.png' : null;
+        : (it.kind === 'material' || it.kind === 'component') ? '' + esc(D.itemIcon(it.id)) + '' : null;
       const limitText = it.limit > 0
         ? '今日限购 ' + it.limit + ' · 剩余 <b>' + it.remain + '</b>'
         : '不限购 · 本期已购 ' + it.bought;
@@ -9221,7 +9229,7 @@ window.UI = (function () {
       const nameCls = rec ? qualityClass(it) : 'locked-name';
       // 条目贴图：鱼 assets/fish/，材料与组件底材 assets/item/（像素 PNG，透明底）
       const iconSrc = it.kind === 'fish' ? 'assets/fish/' + esc(it.id) + '.png'
-        : (it.kind === 'material' || it.kind === 'component') ? 'assets/item/' + esc(it.id) + '.png'
+        : (it.kind === 'material' || it.kind === 'component') ? '' + esc(D.itemIcon(it.id)) + ''
         : null;
       const iconHtml = iconSrc ? '<img class="cx-icon" src="' + iconSrc + '" alt="" draggable="false">' : '';
       // 统一五行骨架：全部卡片结构一致、高度对齐
@@ -9831,18 +9839,20 @@ window.UI = (function () {
     const d = seaInfo, main = $('main');
     if (!d || !main) return;
     const at = function (sel) { return main.querySelector('[data-sea="' + sel + '"]'); };
+    const expedition = main.querySelector('.expedition-panel');
+    if (window.ExpeditionUI && expedition) window.ExpeditionUI.update(expedition, d, function(next,msg) { seaInfo=next; seaInfoAt=Date.now(); syncSeaGrounds(); renderView(); toast(msg); });
     const ship = d.ship || {};
     const hint = at('ship-hint');
     if (hint) {
       // 金币取本地展示值（出售后立刻变），其余取 /api/sea 快照
       const coins = (S().player && S().player.coins != null) ? S().player.coins : d.coins;
       hint.innerHTML = ship.max ? '已满级：全部远洋钓点与深海海域开放。'
-        : '升级条件：远洋经验 <b>' + ship.xp + '/' + ship.xpNeed + '</b>' + (ship.xpOk ? ' ✅' : '（远洋每竿渔获 +1）') +
+        : '升级条件：远洋经验 <b>' + ship.xp + '/' + ship.xpNeed + '</b>' + (ship.xpOk ? ' ✅' : '（远洋渔获与远航返航获得经验）') +
           ' · 金币 <b>' + ship.upCoins + '</b>（持有 ' + coins + '） · 深海鳞片 <b>×' + ship.upScale + '</b>（持有 ' + d.deepscale + '）';
     }
     const up = at('ship-up');
     if (up) {
-      up.disabled = !ship.xpOk;
+      up.disabled = !ship.xpOk || Number(d.coins) < ship.upCoins || Number(d.deepscale) < ship.upScale;
       up.textContent = '⬆ 升级到 ' + (((D.SHIP.levels || [])[ship.lv] || {}).name || '');
     }
     const chart = at('chart-hint');
@@ -9923,13 +9933,15 @@ window.UI = (function () {
       '<div class="hint" data-sea="ship-hint"></div>' +
       (ship.max ? '' : '<div class="sa-row"><button class="btn primary" data-sea="ship-up" id="sea-ship-up"></button></div>');
     wrap.appendChild(pShip);
+    const pExpedition = el('div', 'panel expedition-panel');
+    wrap.appendChild(pExpedition);
     // ② 海图
     const pChart = el('div', 'panel');
     pChart.dataset.orderFeature = 'sea.chart sea.voyage';
     pChart.innerHTML = '<h3>🗺 海图工台</h3>' +
       '<div class="hint" data-sea="chart-hint"></div>' +
       '<div class="sa-row"><button class="btn primary" data-sea="chart-craft" id="sea-chart-craft">🧩 合成未知海图（' + d.chartCost + ' 碎片 → 1 张）</button>' +
-      '<button class="btn primary" data-sea="voyage" id="sea-voyage">⛵ 出航（消耗 1 张海图）</button></div>' +
+      '<button class="btn primary" data-sea="voyage" id="sea-voyage">🗺 探索临时海域（1 张海图）</button></div>' +
       '<div class="hint">出航会发现一片只属于你的<b>临时海域</b>（2 小时后沉没）：富矿海域双钓↑、凶险海域技巧↓但稀有度↑，钓点池完全随机。</div>';
     wrap.appendChild(pChart);
     // ③ 临时海域

@@ -165,7 +165,7 @@ func (c *Catalog) CastRules(input map[string]any) CastRules {
 	return r
 }
 func EmptyEffects() Effects {
-	return Effects{"speed": 0, "skill": 0, "rare": 0, "material": 0, "size": 0, "double": 0}
+	return Effects{"speed": 0, "skill": 0, "rare": 0, "material": 0, "size": 0, "double": 0, "stability": 0, "resonance": 0, "settle": 0}
 }
 func MergeEffects(rod Effects, spot Spot) (Effects, float64) {
 	eff := EmptyEffects()
@@ -272,8 +272,8 @@ func RareCommonMultiplier(rare, k float64) float64 {
 	return math.Max(0, k/(k+rare))
 }
 
-var affixToken = regexp.MustCompile(`^(spd|skl|rare|mat|size|dbl|big)([+-]?[0-9]+)(?:@([A-Za-z0-9_]+))?$`)
-var codeType = map[string]string{"spd": "speed", "skl": "skill", "big": "skill", "rare": "rare", "mat": "material", "size": "size", "dbl": "double"}
+var affixToken = regexp.MustCompile(`^(spd|skl|rare|mat|size|dbl|big|stb|res|stl)([+-]?[0-9]+)(?:@([A-Za-z0-9_]+))?$`)
+var codeType = map[string]string{"spd": "speed", "skl": "skill", "big": "skill", "rare": "rare", "mat": "material", "size": "size", "dbl": "double", "stb": "stability", "res": "resonance", "stl": "settle"}
 
 type Affix struct {
 	Type     string  `json:"type"`

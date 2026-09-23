@@ -190,7 +190,7 @@ func (c *Catalog) Breakthrough(baseID string, cfg ComponentConfig, o Breakthroug
 		_ = c.Constant("AFFIX_TYPES", &types)
 		candidates := []string{}
 		for _, k := range types {
-			if !used[k] {
+			if !used[k] && (base.Legacy || c.AffixAllowed(base.Part, k)) {
 				candidates = append(candidates, k)
 			}
 		}
@@ -209,7 +209,7 @@ func (c *Catalog) RollComponent(selector string, cfg ComponentConfig, rng RNG) (
 	// Catalog item order preserves COMPONENT_BASES order.
 	choices := []Item{}
 	for _, b := range c.Items {
-		if b.Kind == "component" && b.Part != "" && (selector == "" || selector == "part/"+b.Part || selector == "base/"+b.ID) {
+		if b.Kind == "component" && !b.Legacy && b.SetID == "" && b.Part != "" && (selector == "" || selector == "part/"+b.Part || selector == "base/"+b.ID) {
 			choices = append(choices, b)
 		}
 	}
@@ -239,7 +239,7 @@ func InstanceID(base Item, quality string, affixes []Affix) string {
 		return a < b
 	})
 	tokens := []string{}
-	codes := map[string]string{"speed": "spd", "skill": "skl", "rare": "rare", "material": "mat", "size": "size", "double": "dbl"}
+	codes := map[string]string{"speed": "spd", "skill": "skl", "rare": "rare", "material": "mat", "size": "size", "double": "dbl", "stability": "stb", "resonance": "res", "settle": "stl"}
 	for _, a := range aa {
 		sign := ""
 		if a.Value >= 0 {

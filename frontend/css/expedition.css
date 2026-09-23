@@ -1,0 +1,11 @@
+.exp-metrics,.exp-actions,.exp-rail{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0}
+.exp-metrics{padding:12px;border:1px solid #476577;border-radius:8px;background:rgba(40,115,140,.1)}
+.exp-rail span{padding:6px 10px;border:1px solid #56606b;border-radius:6px;opacity:.5;font-size:12px}
+.exp-rail .unlocked{border-color:#41a88d;opacity:1}
+.exp-routes,.exp-sets{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,235px),1fr));gap:12px;margin:16px 0}
+.exp-route{min-width:0;padding:14px;border:1px solid #455b6b;border-radius:8px;background:rgba(32,65,86,.1)}
+.exp-route h4{margin:0 0 8px}.exp-route small{font-weight:normal;opacity:.65}.exp-route p{line-height:1.6;font-size:13px}
+.exp-route.locked{opacity:.6}.exp-active,.exp-choice{padding:14px;border:1px solid #be9d49;border-radius:8px;margin:12px 0}
+.exp-active p{overflow-wrap:anywhere}.exp-routes button,.exp-actions button{max-width:100%;white-space:normal}
+.expedition-panel select{padding:7px;border-radius:5px;color:inherit;background:var(--panel,#102436)}
+@media(max-width:600px){.exp-metrics{font-size:12px;gap:8px}.exp-routes,.exp-sets{grid-template-columns:1fr}}

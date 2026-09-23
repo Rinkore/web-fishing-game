@@ -22,7 +22,7 @@ func New(pool *pgxpool.Pool, c *rules.Catalog) *Service { return &Service{pool, 
 func (s *Service) version() string                      { return s.catalog.Version + ":" + s.catalog.SourceSHA256 }
 func (s *Service) economic(id string) bool {
 	it, ok := s.catalog.Item(id)
-	return ok && (it.Kind == "fish" || it.Kind == "material")
+	return ok && !it.NoSell && (it.Kind == "fish" || it.Kind == "material")
 }
 
 // Price rows are always acquired in sorted item order, after all player guards.
@@ -194,7 +194,7 @@ func (s *Service) autoSell(ctx context.Context, owner int64, key string, require
 		}
 		ids := []string{}
 		for id, r := range cfg.Rules {
-			if r.On {
+			if r.On && s.economic(id) {
 				ids = append(ids, id)
 			}
 		}

@@ -52,7 +52,7 @@ func (s *Service) Buy(ctx context.Context, r Purchase) (assets.Result, error) {
 		}
 	}
 	definition, exists := s.catalog.Item(item.ID)
-	if !exists || definition.Kind != "material" || item.Price < 0 || item.Price > 100000000 || item.Limit < 0 || item.Limit > 9999 {
+	if !exists || definition.ExpeditionOnly || definition.Kind != "material" || item.Price < 0 || item.Price > 100000000 || item.Limit < 0 || item.Limit > 9999 {
 		return assets.Result{}, assets.ErrInvalid
 	}
 	return s.assets.Run(ctx, assets.Command{ActorID: r.ActorID, RequestKey: r.RequestKey, Kind: "mall_buy", RuleVersion: s.catalog.Version + ":" + s.catalog.SourceSHA256, Players: []int64{r.ActorID}, Input: r}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {

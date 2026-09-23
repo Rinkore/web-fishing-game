@@ -68,7 +68,7 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 		switch k {
 		case "market", "trade", "workshop", "chest", "mall", "sell", "autosell", "friends", "sea", "party", "fishing",
 			"fishing.cast", "bd", "bd.equip", "bd.slots", "bd.save", "bd.autobuild",
-			"character", "character.companion", "character.boat", "sea.upgrade", "sea.chart", "sea.voyage", "sea.quest", "sea.anchor",
+			"character", "character.companion", "character.boat", "sea.upgrade", "sea.chart", "sea.voyage", "sea.quest", "sea.anchor", "sea.expedition",
 			"ground", "ground.trade", "ground.party", "inventory", "inventory.subscribe",
 			"workshop.craft", "workshop.open", "workshop.smelt", "workshop.recast", "workshop.forge",
 			"mall.buy", "mall.sell", "mall.autosell", "mall.list", "mall.marketbuy",
