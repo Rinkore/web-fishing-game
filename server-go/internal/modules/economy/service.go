@@ -1,6 +1,7 @@
 package economy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fishing.local/server/internal/modules/assets"
@@ -143,7 +144,8 @@ func (s *Service) Configure(ctx context.Context, owner int64, key string, cfg Se
 		return assets.Result{}, assets.ErrInvalid
 	}
 	for id, r := range cfg.Rules {
-		if !s.economic(id) {
+		item, known := s.catalog.Item(id)
+		if !known || (item.Kind != "fish" && item.Kind != "material") {
 			return assets.Result{}, assets.ErrInvalid
 		}
 		keep := rules.Number(r.Keep)
@@ -160,6 +162,43 @@ func (s *Service) Configure(ctx context.Context, owner int64, key string, cfg Se
 		cfg.Rules = map[string]rules.AutoSellRule{}
 	}
 	return s.assets.Run(ctx, assets.Command{ActorID: owner, RequestKey: key, Kind: "autosell_config", RuleVersion: s.version(), Players: []int64{owner}, Input: cfg}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
+		// Imported rules may predate a catalog's no-sell policy. Keep those
+		// historical preferences readable while allowing only preservation or
+		// disabling/removal. Read after the player guard is acquired: a stale
+		// concurrent save must never re-enable a rule disabled by another save.
+		var previous map[string]rules.AutoSellRule
+		for id, rule := range cfg.Rules {
+			item, _ := s.catalog.Item(id)
+			if !item.NoSell {
+				continue
+			}
+			if previous == nil {
+				var raw []byte
+				if err := t.SQL().QueryRow(ctx, `SELECT COALESCE((SELECT rules FROM fishing.autosell_settings WHERE owner_id=$1),'{}'::jsonb)`, owner).Scan(&raw); err != nil {
+					return assets.Result{}, err
+				}
+				if err := json.Unmarshal(raw, &previous); err != nil {
+					return assets.Result{}, err
+				}
+			}
+			old, exists := previous[id]
+			if !exists || (rule.On && !old.On) {
+				return assets.Result{}, assets.ErrInvalid
+			}
+			check := rule
+			check.On = old.On
+			before, err := json.Marshal(old)
+			if err != nil {
+				return assets.Result{}, err
+			}
+			after, err := json.Marshal(check)
+			if err != nil {
+				return assets.Result{}, err
+			}
+			if !bytes.Equal(before, after) {
+				return assets.Result{}, assets.ErrInvalid
+			}
+		}
 		data, err := json.Marshal(cfg.Rules)
 		if err != nil {
 			return assets.Result{}, err

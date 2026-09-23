@@ -62,7 +62,7 @@ func (a *API) legacyAutoSellPlan(r *http.Request, c *rules.Catalog, owner int64,
 			continue
 		}
 		def, ok := c.Item(id)
-		if !ok || (def.Kind != "fish" && def.Kind != "material") {
+		if !ok || def.NoSell || (def.Kind != "fish" && def.Kind != "material") {
 			continue
 		}
 		var normal, large, giant int64
@@ -158,6 +158,13 @@ func (a *API) legacyAutoSellSet(w http.ResponseWriter, r *http.Request) {
 				failure(w, identity.ErrInvalid)
 				return
 			}
+			if def.NoSell && !in.Remove {
+				_, exists := cfg.Rules[id]
+				if !exists || !toggleOnly || in.On == nil || *in.On {
+					failure(w, identity.ErrInvalid)
+					return
+				}
+			}
 			ids = []string{id}
 		}
 		for _, id := range ids {
@@ -220,6 +227,9 @@ func (a *API) legacyShopSnapshot(r *http.Request, c *rules.Catalog) map[string]a
 func (a *API) autoSellEligibleIDs(c *rules.Catalog, kind string) []string {
 	ids := []string{}
 	for _, it := range c.Items {
+		if it.NoSell {
+			continue
+		}
 		if kind != "" && it.Kind != kind {
 			continue
 		}

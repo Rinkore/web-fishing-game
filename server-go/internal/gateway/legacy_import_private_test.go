@@ -55,6 +55,21 @@ func TestPrivateImportedRestoreHTTPReadViews(t *testing.T) {
 	if pool.Ping(ctx) != nil {
 		t.Fatal("clone unavailable")
 	}
+	appPool := pool
+	if runtimeDSN := os.Getenv("FISHING_PRIVATE_HTTP_RUNTIME_URL"); runtimeDSN != "" {
+		runtimeConfig, e := pgxpool.ParseConfig(runtimeDSN)
+		if e != nil || runtimeConfig.ConnConfig.Host != cfg.ConnConfig.Host || runtimeConfig.ConnConfig.Port != cfg.ConnConfig.Port || runtimeConfig.ConnConfig.Database != cfg.ConnConfig.Database || runtimeConfig.ConnConfig.User != "fishing_runtime" {
+			t.Fatal("private runtime verification requires the same restore clone")
+		}
+		appPool, e = pgxpool.NewWithConfig(ctx, runtimeConfig)
+		if e != nil {
+			t.Fatal("runtime clone connection unavailable")
+		}
+		defer appPool.Close()
+		if appPool.Ping(ctx) != nil {
+			t.Fatal("runtime clone unavailable")
+		}
+	}
 	var hashes [][]byte
 	defer func() {
 		for _, h := range hashes {
@@ -64,7 +79,7 @@ func TestPrivateImportedRestoreHTTPReadViews(t *testing.T) {
 		}
 	}()
 	loc, _ := time.LoadLocation("Asia/Shanghai")
-	server := httptest.NewServer(New(pool, key, loc))
+	server := httptest.NewServer(New(appPool, key, loc))
 	defer server.Close()
 	client := server.Client()
 	client.Timeout = 45 * time.Second

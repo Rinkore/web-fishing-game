@@ -11,6 +11,38 @@ import (
 	"fishing.local/server/internal/rules"
 )
 
+// History remains available after a catalog update makes a material unsellable.
+// This quote is read-only; the economy module still enforces NoSell for trades.
+func (a *API) legacyHistoryQuote(ctx context.Context, c *rules.Catalog, id string) (economy.PriceView, bool, error) {
+	it, exists := c.Item(id)
+	if !exists || (it.Kind != "fish" && it.Kind != "material") {
+		return economy.PriceView{}, false, nil
+	}
+	var now time.Time
+	var raw []byte
+	if err := a.pool.QueryRow(ctx, `SELECT statement_timestamp(),COALESCE((SELECT state FROM fishing.economy_prices WHERE item_id=$1),'{}'::jsonb)`, id).Scan(&now, &raw); err != nil {
+		return economy.PriceView{}, false, identity.ErrStorage
+	}
+	var state rules.SaleState
+	if json.Unmarshal(raw, &state) != nil {
+		return economy.PriceView{}, false, identity.ErrStorage
+	}
+	var priceState *rules.SaleState
+	if state.LastMS != 0 {
+		priceState = &state
+	}
+	base := c.EconomyBase(id, now.UnixMilli())
+	price := rules.Price(it.Price, priceState, c.PriceOverrideFor(id, now.UnixMilli()), now.UnixMilli(), c.PriceDynamicsFor(id))
+	if base == 0 && it.NoSell {
+		price = 0
+	}
+	today := state.SoldToday
+	if state.Day != now.UTC().Format("2006-01-02") {
+		today = 0
+	}
+	return economy.PriceView{ID: id, Base: base, Price: price, SoldTotal: state.SoldTotal, SoldToday: today}, true, nil
+}
+
 func (a *API) legacyEconomicHistory(ctx context.Context, kind, id string, limit int) ([]map[string]any, error) {
 	rows, err := a.pool.Query(ctx, `SELECT payload FROM fishing.legacy_economy_history WHERE kind=$1 AND item_id=$2 ORDER BY occurred_at DESC,ordinal DESC LIMIT $3`, kind, id, limit)
 	if err != nil {

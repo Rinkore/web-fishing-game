@@ -5,7 +5,7 @@
 -- intentionally outside the process trust boundary.
 REVOKE CREATE ON SCHEMA public FROM fishing_runtime;
 REVOKE CREATE ON SCHEMA fishing FROM fishing_runtime;
-REVOKE CREATE ON DATABASE fishing_test FROM fishing_runtime;
+SELECT format('REVOKE CREATE ON DATABASE %I FROM fishing_runtime', current_database()) \gexec
 GRANT USAGE ON SCHEMA fishing TO fishing_runtime;
 GRANT SELECT ON public.fishing_schema_migrations TO fishing_runtime;
 GRANT SELECT ON public.fishing_schema_migrations TO fishing_backup;

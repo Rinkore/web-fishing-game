@@ -85,6 +85,21 @@ func buildRealCatalog(cfg, economy map[string]any) (*rules.Catalog, error) {
 			c.Defaults[key] = merge(c.Defaults[key], value)
 		}
 	}
+	// The source ledger keeps the unmodified operator configuration. Current
+	// expedition-only materials cannot be purchased, so do not publish dead
+	// mall entries from an older release. Inventory and purchase counters are
+	// imported independently and remain unchanged.
+	mall := c.MallConfig()
+	mallItems := make([]rules.MallItem, 0, len(mall.Items))
+	for _, item := range mall.Items {
+		definition, exists := c.Item(item.ID)
+		if exists && definition.ExpeditionOnly {
+			continue
+		}
+		mallItems = append(mallItems, item)
+	}
+	mall.Items = mallItems
+	c.Defaults["mall"] = jsonBytes(mall, nil)
 	settings := map[string]any{}
 	for _, k := range []string{"chestCfg", "dropCfg", "rareK", "doubleBase", "priceCfg", "autoSellCfg", "biteFormula"} {
 		if v, ok := values[k]; ok {

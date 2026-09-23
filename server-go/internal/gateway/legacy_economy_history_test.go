@@ -21,6 +21,8 @@ func TestIntegrationImportedEconomyHistoryReadableWithoutReplayingAssets(t *test
 	}{
 		{"price", "crucian", map[string]any{"t": now, "p": 77}},
 		{"shop", "crucian", map[string]any{"t": now, "who": "Synthetic", "qty": 12, "unit": 77}},
+		{"price", "tide_sand", map[string]any{"t": now, "p": 123}},
+		{"shop", "tide_sand", map[string]any{"t": now, "who": "Synthetic", "qty": 7, "unit": 123}},
 		{"market", "", map[string]any{"t": now, "buyer": f.playerKey, "seller": "other", "qty": 1, "price": 44, "id": "crucian"}},
 		{"audit", "", map[string]any{"t": now, "who": "Synthetic admin", "text": "Imported economy setting"}},
 	}
@@ -34,6 +36,26 @@ func TestIntegrationImportedEconomyHistoryReadableWithoutReplayingAssets(t *test
 	f.expect(code, body, 200, "")
 	if len(body["points"].([]any)) != 1 || len(body["trades"].([]any)) != 1 {
 		t.Fatal("imported shop history missing")
+	}
+	if _, err := f.db.Admin.Exec(ctx, `INSERT INTO fishing.item_definitions(id,kind) VALUES('tide_sand','material') ON CONFLICT(id) DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Admin.Exec(ctx, `INSERT INTO fishing.economy_prices(item_id,state) VALUES('tide_sand',$1) ON CONFLICT(item_id) DO UPDATE SET state=excluded.state`, []byte(`{"soldTotal":7,"soldToday":3,"day":"2000-01-01"}`)); err != nil {
+		t.Fatal(err)
+	}
+	code, body = f.call("GET", "/api/shop/history?id=tide_sand", "", "")
+	f.expect(code, body, 200, "")
+	if len(body["points"].([]any)) != 1 || len(body["trades"].([]any)) != 1 || body["soldTotal"] != float64(7) || body["soldToday"] != float64(0) {
+		t.Fatal("unsellable material lost imported history or counters")
+	}
+	code, body = f.call("GET", "/shop", "", "")
+	f.expect(code, body, 200, "")
+	if _, exists := body["tide_sand"]; exists {
+		t.Fatal("historical material was made sellable")
+	}
+	for _, id := range []string{"unknown_item", "rod_fiberglass"} {
+		code, body = f.call("GET", "/api/shop/history?id="+id, "", "")
+		f.expect(code, body, 404, "unknown_item")
 	}
 	code, body = f.player("GET", "/api/market/history", "")
 	f.expect(code, body, 200, "")

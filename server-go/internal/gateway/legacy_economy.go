@@ -41,69 +41,66 @@ func (a *API) legacyShopHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.URL.Query().Get("id")
-	prices, err := economy.New(a.pool, c).Prices(r.Context())
+	p, exists, err := a.legacyHistoryQuote(r.Context(), c, id)
 	if err != nil {
 		failure(w, err)
 		return
 	}
-	for _, p := range prices {
-		if p.ID != id {
-			continue
-		}
-		points, err := a.legacyEconomicHistory(r.Context(), "price", id, 10000)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		for i, j := 0, len(points)-1; i < j; i, j = i+1, j-1 {
-			points[i], points[j] = points[j], points[i]
-		}
-		trades, err := a.legacyEconomicHistory(r.Context(), "shop", id, 200)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		rows, err := a.pool.Query(r.Context(), `SELECT (1000*extract(epoch from s.created_at))::bigint,i.display_name,s.quantity,s.unit,s.automatic FROM fishing.shop_sales s JOIN fishing.identities i ON i.account_id=s.owner_id WHERE s.item_id=$1 ORDER BY s.created_at DESC,s.operation_id DESC LIMIT 200`, id)
-		if err != nil {
-			failure(w, identity.ErrStorage)
-			return
-		}
-		live := []map[string]any{}
-		for rows.Next() {
-			var t, q, unit int64
-			var who string
-			var auto bool
-			if rows.Scan(&t, &who, &q, &unit, &auto) != nil {
-				rows.Close()
-				failure(w, identity.ErrStorage)
-				return
-			}
-			if auto {
-				who += "·自动"
-			}
-			live = append(live, map[string]any{"t": t, "who": who, "qty": q, "unit": unit})
-		}
-		if rows.Err() != nil {
+	if !exists {
+		write(w, 404, map[string]any{"error": "unknown_item", "code": "unknown_item"})
+		return
+	}
+	points, err := a.legacyEconomicHistory(r.Context(), "price", id, 10000)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	for i, j := 0, len(points)-1; i < j; i, j = i+1, j-1 {
+		points[i], points[j] = points[j], points[i]
+	}
+	trades, err := a.legacyEconomicHistory(r.Context(), "shop", id, 200)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	rows, err := a.pool.Query(r.Context(), `SELECT (1000*extract(epoch from s.created_at))::bigint,i.display_name,s.quantity,s.unit,s.automatic FROM fishing.shop_sales s JOIN fishing.identities i ON i.account_id=s.owner_id WHERE s.item_id=$1 ORDER BY s.created_at DESC,s.operation_id DESC LIMIT 200`, id)
+	if err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	live := []map[string]any{}
+	for rows.Next() {
+		var t, q, unit int64
+		var who string
+		var auto bool
+		if rows.Scan(&t, &who, &q, &unit, &auto) != nil {
 			rows.Close()
 			failure(w, identity.ErrStorage)
 			return
 		}
+		if auto {
+			who += "·自动"
+		}
+		live = append(live, map[string]any{"t": t, "who": who, "qty": q, "unit": unit})
+	}
+	if rows.Err() != nil {
 		rows.Close()
-		trades = append(live, trades...)
-		if len(trades) > 200 {
-			trades = trades[:200]
-		}
-		for i, j := 0, len(trades)-1; i < j; i, j = i+1, j-1 {
-			trades[i], trades[j] = trades[j], trades[i]
-		}
-		write(w, 200, map[string]any{
-			"id": p.ID, "base": p.Base, "price": p.Price,
-			"soldToday": p.SoldToday, "soldTotal": p.SoldTotal,
-			"points": points, "trades": trades,
-		})
+		failure(w, identity.ErrStorage)
 		return
 	}
-	write(w, 404, map[string]any{"error": "unknown_item", "code": "unknown_item"})
+	rows.Close()
+	trades = append(live, trades...)
+	if len(trades) > 200 {
+		trades = trades[:200]
+	}
+	for i, j := 0, len(trades)-1; i < j; i, j = i+1, j-1 {
+		trades[i], trades[j] = trades[j], trades[i]
+	}
+	write(w, 200, map[string]any{
+		"id": p.ID, "base": p.Base, "price": p.Price,
+		"soldToday": p.SoldToday, "soldTotal": p.SoldTotal,
+		"points": points, "trades": trades,
+	})
 }
 
 // legacySell bridges the original /api/sell contract. The frontend sends tier

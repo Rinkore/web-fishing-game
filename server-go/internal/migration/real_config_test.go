@@ -1,8 +1,11 @@
 package migration
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
+
+	"fishing.local/server/internal/rules"
 )
 
 func TestRealCatalogPreservesEffectiveRulesAndIgnoresObsoleteGrounds(t *testing.T) {
@@ -34,6 +37,46 @@ func TestRealCatalogPreservesEffectiveRulesAndIgnoresObsoleteGrounds(t *testing.
 	}
 	if !found {
 		t.Fatal("ice missing")
+	}
+}
+
+func TestRealCatalogKeepsExpeditionsAndHidesObsoleteMallEntries(t *testing.T) {
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(`{"mallCfg":{"refreshTime":"05:30","items":[{"id":"tide_sand","price":4500,"limit":100},{"id":"dragon_scale","price":12000,"limit":100},{"id":"relic","price":6500,"limit":100},{"id":"dragonpearl","price":14000,"limit":200}]},"smeltCfg":{"baseRate":99,"failPerMaterial":-4}}`), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := json.Marshal(cfg)
+	c, err := buildRealCatalog(cfg, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mall := c.MallConfig()
+	if mall.RefreshTime != "05:30" || len(mall.Items) != 2 || mall.Items[0] != (rules.MallItem{ID: "relic", Price: 6500, Limit: 100}) || mall.Items[1] != (rules.MallItem{ID: "dragonpearl", Price: 14000, Limit: 200}) {
+		t.Fatal("effective mall lost applicable legacy settings")
+	}
+	after, _ := json.Marshal(cfg)
+	if !bytes.Equal(before, after) {
+		t.Fatal("source configuration was mutated")
+	}
+	base, err := rules.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"EXPEDITION", "GEAR_SETS", "PART_AFFIXES"} {
+		if len(c.Constants[key]) == 0 || !bytes.Equal(jsonBytes(c.Constants[key], nil), jsonBytes(base.Constants[key], nil)) {
+			t.Fatalf("new version constant %s was erased", key)
+		}
+	}
+	for _, id := range []string{"tide_sand", "dragon_scale", "grindstone"} {
+		if item, ok := c.Item(id); !ok || !item.ExpeditionOnly || !item.NoSell {
+			t.Fatalf("current material restrictions lost for %s", id)
+		}
+	}
+	if item, ok := c.Item("rod_fiberglass"); !ok || !item.Legacy {
+		t.Fatal("old equipment definition was removed")
+	}
+	if c.WorkshopConfig().BaseRate != 99 || c.WorkshopConfig().FailPerMaterial != -4 {
+		t.Fatal("operator workshop settings changed")
 	}
 }
 
