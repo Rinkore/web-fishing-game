@@ -101,6 +101,7 @@ func New(t *testing.T, migrate bool) DB {
 		t.Fatal("cannot create restricted test role")
 	}
 	db.Role = role
+ if _,err:=db.Admin.Exec(ctx,"GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.gear_progress TO "+quote(role));err!=nil{t.Fatal(err)}
 	grants := "GRANT USAGE ON SCHEMA fishing TO " + quote(role) + `; GRANT SELECT ON public.fishing_schema_migrations TO ` + quote(role) + `; GRANT SELECT ON fishing.accounts TO ` + quote(role) + `; GRANT SELECT, UPDATE ON fishing.player_state, fishing.wallets TO ` + quote(role) + `; GRANT SELECT, INSERT, UPDATE ON fishing.command_results TO ` + quote(role) + `; GRANT SELECT, INSERT ON fishing.asset_operations, fishing.asset_entries, fishing.outbox_events TO ` + quote(role) + `; GRANT SELECT ON fishing.item_definitions TO ` + quote(role) + `; GRANT SELECT,INSERT,UPDATE ON fishing.inventory_stacks,fishing.equipment_instances,fishing.rod_loadouts TO ` + quote(role) + `; GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.rod_components TO ` + quote(role) + `; GRANT SELECT,INSERT ON fishing.inventory_entries,fishing.equipment_entries,fishing.rod_entries TO ` + quote(role) + `; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fishing TO ` + quote(role)
 	if _, err := db.Admin.Exec(ctx, grants); err != nil {
 		t.Fatal("cannot grant test application permissions")
@@ -143,7 +144,7 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_quest_boards TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.sea_quest_roots TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant quest permissions")
 	}
-	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_zones,fishing.sea_expeditions,fishing.sea_captains TO "+quote(role)); err != nil {
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_zones,fishing.sea_expeditions,fishing.sea_captains,fishing.mail_messages,fishing.mail_attachments TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant voyage permissions")
 	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_players TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.sea_progress_entries TO "+quote(role)); err != nil {

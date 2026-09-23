@@ -1,10 +1,742 @@
 {
   "format": 1,
-  "version": "v0.21.5",
+  "version": "v0.22.0-local",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "d3d4a94997b40334ff93cb74c02abe69364ec4328f6d6949ea23717201e07f36",
+  "sourceSHA256": "799f0b9163bc3044a9e791830c4a770dfaadbdbe930e4f6a5b945ae2688e3c65",
   "constants": {
-    "VERSION": "v0.21.5",
+    "GEAR_SYSTEM": {
+      "enabled": true,
+      "maxLevel": 12,
+      "subUnlock": 4,
+      "boundLevel": 4,
+      "receiptHours": 8,
+      "mainEngrave": 0.05,
+      "subEngrave": 0.1,
+      "engraveLevel": 8,
+      "parts": {
+        "line": {
+          "name": "稳定线组",
+          "main": "skill",
+          "subs": [
+            "speed",
+            "size"
+          ],
+          "mainValues": [
+            3,
+            3.35,
+            3.7,
+            4.05,
+            4.4,
+            4.75,
+            5.1,
+            5.45,
+            5.8,
+            6.15,
+            6.5,
+            6.85,
+            7.2
+          ],
+          "subValues": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1.4,
+            1.8,
+            2.2,
+            2.6,
+            3,
+            3.4,
+            3.8,
+            4.2
+          ]
+        },
+        "hook": {
+          "name": "巨物钩",
+          "main": "size",
+          "subs": [
+            "skill",
+            "double"
+          ],
+          "mainValues": [
+            8,
+            9.5,
+            11,
+            12.5,
+            14,
+            15.5,
+            17,
+            18.5,
+            20,
+            21.5,
+            23,
+            24.5,
+            26
+          ],
+          "subValues": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1.4,
+            1.8,
+            2.2,
+            2.6,
+            3,
+            3.4,
+            3.8,
+            4.2
+          ]
+        },
+        "bait": {
+          "name": "双生拟饵",
+          "main": "double",
+          "subs": [
+            "skill",
+            "size"
+          ],
+          "mainValues": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17
+          ],
+          "subValues": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1.4,
+            1.8,
+            2.2,
+            2.6,
+            3,
+            3.4,
+            3.8,
+            4.2
+          ]
+        },
+        "reel": {
+          "name": "疾风卷线器",
+          "main": "speed",
+          "subs": [
+            "skill",
+            "double"
+          ],
+          "mainValues": [
+            8,
+            9.2,
+            10.4,
+            11.6,
+            12.8,
+            14,
+            15.2,
+            16.4,
+            17.6,
+            18.8,
+            20,
+            21.2,
+            22.4
+          ],
+          "subValues": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1.4,
+            1.8,
+            2.2,
+            2.6,
+            3,
+            3.4,
+            3.8,
+            4.2
+          ]
+        },
+        "accessory": {
+          "name": "稳流浮漂",
+          "main": "skill",
+          "subs": [
+            "double",
+            "size"
+          ],
+          "mainValues": [
+            2,
+            2.3,
+            2.6,
+            2.9,
+            3.2,
+            3.5,
+            3.8,
+            4.1,
+            4.4,
+            4.7,
+            5,
+            5.3,
+            5.6
+          ],
+          "subValues": [
+            0,
+            0,
+            0,
+            0,
+            1,
+            1.4,
+            1.8,
+            2.2,
+            2.6,
+            3,
+            3.4,
+            3.8,
+            4.2
+          ]
+        }
+      },
+      "costs": {
+        "upgrade": [
+          {
+            "coins": 1000,
+            "items": {
+              "gear_alloy": 2
+            },
+            "receipts": 0,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 2000,
+            "items": {
+              "gear_alloy": 4
+            },
+            "receipts": 0,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 3000,
+            "items": {
+              "gear_alloy": 6
+            },
+            "receipts": 0,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 4000,
+            "items": {
+              "gear_alloy": 8
+            },
+            "receipts": 1,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 5000,
+            "items": {
+              "gear_alloy": 10
+            },
+            "receipts": 0,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 6000,
+            "items": {
+              "gear_alloy": 12
+            },
+            "receipts": 0,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 7000,
+            "items": {
+              "gear_alloy": 14
+            },
+            "receipts": 0,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 8000,
+            "items": {
+              "gear_alloy": 16
+            },
+            "receipts": 1,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 9000,
+            "items": {
+              "gear_alloy": 18
+            },
+            "receipts": 0,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 10000,
+            "items": {
+              "gear_alloy": 20
+            },
+            "receipts": 0,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 11000,
+            "items": {
+              "gear_alloy": 22
+            },
+            "receipts": 0,
+            "heat": 0,
+            "cores": 0
+          },
+          {
+            "coins": 12000,
+            "items": {
+              "gear_alloy": 24
+            },
+            "receipts": 1,
+            "heat": 0,
+            "cores": 0
+          }
+        ],
+        "tune": {
+          "coins": 2000,
+          "items": {
+            "gear_alloy": 2
+          },
+          "receipts": 0,
+          "heat": 0,
+          "cores": 0
+        },
+        "engrave": {
+          "coins": 10000,
+          "items": {
+            "gear_fine": 3
+          },
+          "receipts": 1,
+          "heat": 0,
+          "cores": 0
+        },
+        "heatEngrave": {
+          "coins": 10000,
+          "items": {
+            "gear_fine": 1
+          },
+          "receipts": 1,
+          "heat": 10,
+          "cores": 0
+        },
+        "transfer": {
+          "coins": 1000,
+          "items": {},
+          "receipts": 0,
+          "heat": 0,
+          "cores": 0
+        },
+        "convert": {
+          "coins": 0,
+          "items": {},
+          "receipts": 0,
+          "heat": 0,
+          "cores": 0
+        },
+        "preset": {
+          "coins": 1000,
+          "items": {},
+          "receipts": 0,
+          "heat": 2,
+          "cores": 0
+        },
+        "unlock": {
+          "coins": 5000,
+          "items": {
+            "gear_crystal": 2
+          },
+          "receipts": 0,
+          "heat": 0,
+          "cores": 0
+        },
+        "stage": [
+          {
+            "coins": 20000,
+            "items": {
+              "gear_crystal": 10
+            },
+            "receipts": 1,
+            "heat": 0,
+            "cores": 1
+          },
+          {
+            "coins": 40000,
+            "items": {
+              "gear_crystal": 20
+            },
+            "receipts": 1,
+            "heat": 0,
+            "cores": 2
+          },
+          {
+            "coins": 60000,
+            "items": {
+              "gear_crystal": 30
+            },
+            "receipts": 1,
+            "heat": 0,
+            "cores": 3
+          }
+        ]
+      },
+      "sets": {
+        "forge": {
+          "name": "锻造工匠",
+          "description": "有效钓鱼积累热量，用于精工、调校和精工预设切换。",
+          "coreAttributes": {
+            "rod": {
+              "skill": 3
+            },
+            "charm": {
+              "speed": 2
+            }
+          },
+          "stages": [
+            {
+              "heatSeconds": 600,
+              "heatCap": 30,
+              "heatDiscount": 0,
+              "presets": 0
+            },
+            {
+              "heatSeconds": 600,
+              "heatCap": 40,
+              "heatDiscount": 0,
+              "presets": 0
+            },
+            {
+              "heatSeconds": 480,
+              "heatCap": 40,
+              "heatDiscount": 2,
+              "presets": 0
+            },
+            {
+              "heatSeconds": 480,
+              "heatCap": 40,
+              "heatDiscount": 2,
+              "presets": 1
+            }
+          ]
+        },
+        "harvest": {
+          "name": "丰收渔获",
+          "description": "成功上鱼积累丰收进度，额外获得可出售鱼获，不重复写入纪录。",
+          "coreAttributes": {
+            "rod": {
+              "double": 3
+            },
+            "charm": {
+              "skill": 2
+            }
+          },
+          "stages": [
+            {
+              "casts": 20,
+              "copies": 1,
+              "best": 0,
+              "largeMode": 0,
+              "largeMultiplier": 3,
+              "recent": 5
+            },
+            {
+              "casts": 18,
+              "copies": 1,
+              "best": 0,
+              "largeMode": 0,
+              "largeMultiplier": 3,
+              "recent": 5
+            },
+            {
+              "casts": 18,
+              "copies": 1,
+              "best": 1,
+              "largeMode": 0,
+              "largeMultiplier": 3,
+              "recent": 5
+            },
+            {
+              "casts": 18,
+              "copies": 1,
+              "best": 1,
+              "largeMode": 1,
+              "largeMultiplier": 3,
+              "recent": 5
+            }
+          ]
+        },
+        "apex": {
+          "name": "猎王追踪",
+          "description": "追踪当前钓点已有目标鱼种，积累权重并按鱼种稀缺度保底。",
+          "coreAttributes": {
+            "rod": {
+              "skill": 3
+            },
+            "charm": {
+              "size": 2
+            }
+          },
+          "stages": [
+            {
+              "weightStep": 0.25,
+              "maxStacks": 10,
+              "pityFactor": 1,
+              "pityCommon": 30,
+              "pityRare": 120,
+              "pityEpic": 200,
+              "queue": 0
+            },
+            {
+              "weightStep": 0.3,
+              "maxStacks": 10,
+              "pityFactor": 1,
+              "pityCommon": 30,
+              "pityRare": 120,
+              "pityEpic": 200,
+              "queue": 0
+            },
+            {
+              "weightStep": 0.3,
+              "maxStacks": 10,
+              "pityFactor": 0.85,
+              "pityCommon": 30,
+              "pityRare": 120,
+              "pityEpic": 200,
+              "queue": 0
+            },
+            {
+              "weightStep": 0.3,
+              "maxStacks": 10,
+              "pityFactor": 0.85,
+              "pityCommon": 30,
+              "pityRare": 120,
+              "pityEpic": 200,
+              "queue": 1
+            }
+          ]
+        },
+        "research": {
+          "name": "生态培育",
+          "description": "少量混入同区间均匀分布，轻微增加大小两端的个体，不扩大体型上限。",
+          "coreAttributes": {
+            "rod": {
+              "size": 3
+            },
+            "charm": {
+              "skill": 2
+            }
+          },
+          "stages": [
+            {
+              "uniformMix": 0.05
+            },
+            {
+              "uniformMix": 0.06
+            },
+            {
+              "uniformMix": 0.07
+            },
+            {
+              "uniformMix": 0.08
+            }
+          ]
+        }
+      },
+      "specializations": {
+        "tide": {
+          "name": "潮汐采集",
+          "description": "增加航线合法材料；可选择采集方向。",
+          "stages": [
+            {
+              "bonus": 0.2,
+              "focus": 0,
+              "minimum": 0,
+              "concentrate": 0
+            },
+            {
+              "bonus": 0.25,
+              "focus": 0.25,
+              "minimum": 0,
+              "concentrate": 0
+            },
+            {
+              "bonus": 0.30000000000000004,
+              "focus": 0.25,
+              "minimum": 1,
+              "concentrate": 0
+            },
+            {
+              "bonus": 0.35000000000000003,
+              "focus": 0.25,
+              "minimum": 1,
+              "concentrate": 0.5
+            }
+          ]
+        },
+        "wreck": {
+          "name": "沉船考古",
+          "description": "稳定宝匣碎片，独立惊喜宝匣与按时长累计保底。",
+          "stages": [
+            {
+              "fragmentsPerHour": 1,
+              "chestChancePerHour": 0.008,
+              "pityHours": 0,
+              "highChest": 0,
+              "minRouteLevel": 3
+            },
+            {
+              "fragmentsPerHour": 1.5,
+              "chestChancePerHour": 0.008,
+              "pityHours": 0,
+              "highChest": 0,
+              "minRouteLevel": 3
+            },
+            {
+              "fragmentsPerHour": 1.5,
+              "chestChancePerHour": 0.008,
+              "pityHours": 120,
+              "highChest": 0,
+              "minRouteLevel": 3
+            },
+            {
+              "fragmentsPerHour": 1.5,
+              "chestChancePerHour": 0.008,
+              "pityHours": 120,
+              "highChest": 1,
+              "minRouteLevel": 3
+            }
+          ]
+        },
+        "storm": {
+          "name": "风暴远洋",
+          "description": "风暴与高危航线提供特殊收益，深入风暴需承担额外风险。",
+          "stages": [
+            {
+              "bonus": 0.15,
+              "deepRisk": 0,
+              "deepBonus": 0,
+              "choice": 0,
+              "minRouteLevel": 4,
+              "specialPerHour": 0.15
+            },
+            {
+              "bonus": 0.2,
+              "deepRisk": 0,
+              "deepBonus": 0,
+              "choice": 0,
+              "minRouteLevel": 4,
+              "specialPerHour": 0.2
+            },
+            {
+              "bonus": 0.25,
+              "deepRisk": 15,
+              "deepBonus": 0.5,
+              "choice": 0,
+              "minRouteLevel": 4,
+              "specialPerHour": 0.25
+            },
+            {
+              "bonus": 0.30000000000000004,
+              "deepRisk": 15,
+              "deepBonus": 0.5,
+              "choice": 1,
+              "minRouteLevel": 4,
+              "specialPerHour": 0.30000000000000004
+            }
+          ]
+        },
+        "rescue": {
+          "name": "救生护航",
+          "description": "减少事故损失，指定货物保护或提前撤离。",
+          "stages": [
+            {
+              "retain": 0.75,
+              "priority": 0,
+              "advanced": 0,
+              "evacuate": 0,
+              "evacuationLoss": 0.2
+            },
+            {
+              "retain": 0.8,
+              "priority": 1,
+              "advanced": 0,
+              "evacuate": 0,
+              "evacuationLoss": 0.2
+            },
+            {
+              "retain": 0.85,
+              "priority": 1,
+              "advanced": 1,
+              "evacuate": 0,
+              "evacuationLoss": 0.2
+            },
+            {
+              "retain": 0.9,
+              "priority": 1,
+              "advanced": 1,
+              "evacuate": 1,
+              "evacuationLoss": 0.2
+            }
+          ]
+        }
+      },
+      "fishPity": {},
+      "excludedFish": [],
+      "baseDrops": {
+        "trade": {
+          "gear_alloy": 2,
+          "deepscale": 0.5
+        },
+        "gather": {
+          "gear_alloy": 3,
+          "gear_fine": 0.5,
+          "deepscale": 0.5
+        },
+        "salvage": {
+          "gear_alloy": 1,
+          "gear_crystal": 1,
+          "relic": 1
+        },
+        "danger": {
+          "gear_fine": 1,
+          "gear_crystal": 1
+        },
+        "king": {
+          "gear_fine": 1.5,
+          "gear_crystal": 1.5
+        }
+      },
+      "legacyConvertReceipts": {
+        "common": 0,
+        "rare": 0,
+        "epic": 1,
+        "mythic": 2
+      }
+    },
+    "VERSION": "v0.22.0-local",
     "BUILD": "2026-09-23",
     "FISH": {
       "common": [
@@ -654,6 +1386,42 @@
         "size": null,
         "noSell": true,
         "expeditionOnly": true
+      },
+      {
+        "id": "gear_alloy",
+        "name": "强化合金",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
+      },
+      {
+        "id": "gear_fine",
+        "name": "精工合金",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
+      },
+      {
+        "id": "gear_crystal",
+        "name": "熔炼催化晶",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
+      },
+      {
+        "id": "storm_relic",
+        "name": "风暴遗物",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
       }
     ],
     "RARITY_PRICE": {
@@ -783,7 +1551,7 @@
         "name": "潮汐采集",
         "level": 1,
         "cost": 20,
-        "effect": "远航每 2 小时回收 1 份宝匣残片，共鸣提高回收量。",
+        "effect": "增加航线合法材料；可选择采集方向。",
         "pending": false,
         "pieces": [
           {
@@ -805,20 +1573,20 @@
         "name": "猎王追踪",
         "level": 2,
         "cost": 25,
-        "effect": "选择目标鱼种；在线有鱼结算未命中时积累追踪，最多 3 层，每层提高目标权重 25%，命中清空。仅在含该鱼的钓点生效。",
+        "effect": "追踪当前钓点已有目标鱼种，积累权重并按鱼种稀缺度保底。",
         "pending": false,
         "pieces": [
           {
             "part": "rod",
             "name": "猎王追踪核心",
             "type": "skill",
-            "value": 8
+            "value": 3
           },
           {
             "part": "charm",
             "name": "猎王追踪徽记",
             "type": "size",
-            "value": 6
+            "value": 2
           }
         ]
       },
@@ -827,7 +1595,7 @@
         "name": "风暴远洋",
         "level": 4,
         "cost": 30,
-        "effect": "风险航线成功率额外 +10%，按航线危险程度增加材料收益。",
+        "effect": "风暴与高危航线提供特殊收益，深入风暴需承担额外风险。",
         "pending": false,
         "pieces": [
           {
@@ -849,20 +1617,20 @@
         "name": "锻造工匠",
         "level": 2,
         "cost": 25,
-        "effect": "在线钓获材料或远航产生精工热量；工坊锻造自动消耗 1 点，让新增词条取正向上界。",
+        "effect": "有效钓鱼积累热量，用于精工、调校和精工预设切换。",
         "pending": false,
         "pieces": [
           {
             "part": "rod",
             "name": "锻造工匠核心",
-            "type": "material",
-            "value": 6
+            "type": "skill",
+            "value": 3
           },
           {
             "part": "charm",
             "name": "锻造工匠徽记",
-            "type": "settle",
-            "value": 8
+            "type": "speed",
+            "value": 2
           }
         ]
       },
@@ -871,7 +1639,7 @@
         "name": "沉船考古",
         "level": 3,
         "cost": 30,
-        "effect": "打捞或更高航线积累遗物线索；每 6 点兑换一只深海珍匣。",
+        "effect": "稳定宝匣碎片，独立惊喜宝匣与按时长累计保底。",
         "pending": false,
         "pieces": [
           {
@@ -890,23 +1658,23 @@
       },
       {
         "id": "research",
-        "name": "生态研究",
+        "name": "生态培育",
         "level": 3,
         "cost": 25,
-        "effect": "在线首次发现鱼种留下研究样本；远航返航消耗样本，额外获得海图碎片与船经验。",
+        "effect": "少量混入同区间均匀分布，轻微增加大小两端的个体，不扩大体型上限。",
         "pending": false,
         "pieces": [
           {
             "part": "rod",
             "name": "生态研究核心",
-            "type": "skill",
-            "value": 6
+            "type": "size",
+            "value": 3
           },
           {
             "part": "charm",
             "name": "生态研究徽记",
-            "type": "rare",
-            "value": 8
+            "type": "skill",
+            "value": 2
           }
         ]
       },
@@ -915,7 +1683,7 @@
         "name": "救生护航",
         "level": 4,
         "cost": 30,
-        "effect": "事故时自动撤离，保留 90% 收益；撤离不发成功印记。",
+        "effect": "减少事故损失，指定货物保护或提前撤离。",
         "pending": false,
         "pieces": [
           {
@@ -953,32 +1721,55 @@
             "value": 6
           }
         ]
+      },
+      {
+        "id": "harvest",
+        "name": "丰收渔获",
+        "level": 1,
+        "cost": 20,
+        "effect": "成功上鱼积累丰收进度，额外获得可出售鱼获，不重复写入纪录。",
+        "pending": false,
+        "pieces": [
+          {
+            "part": "rod",
+            "name": "丰收渔获核心",
+            "type": "double",
+            "value": 3
+          },
+          {
+            "part": "charm",
+            "name": "丰收渔获徽记",
+            "type": "skill",
+            "value": 2
+          }
+        ]
       }
     ],
     "PART_AFFIXES": {
       "line": [
+        "skill",
         "speed",
-        "stability",
-        "material"
+        "size"
       ],
       "hook": [
+        "size",
+        "skill",
+        "double"
+      ],
+      "bait": [
+        "double",
         "skill",
         "size"
       ],
-      "bait": [
-        "rare",
-        "double",
-        "resonance"
-      ],
       "reel": [
         "speed",
-        "settle",
-        "stability"
+        "skill",
+        "double"
       ],
       "accessory": [
-        "material",
-        "resonance",
-        "settle"
+        "skill",
+        "double",
+        "size"
       ]
     },
     "ROD_PARTS": [
@@ -1035,7 +1826,7 @@
     ],
     "AFFIX_LABEL": {
       "speed": "钓速",
-      "skill": "技巧",
+      "skill": "稳定",
       "rare": "稀有度",
       "material": "材料概率",
       "size": "体型",
@@ -1917,19 +2708,19 @@
         "price": 60,
         "pool": [
           {
+            "type": "skill",
+            "min": 3,
+            "max": 7.2
+          },
+          {
             "type": "speed",
-            "min": 2,
-            "max": 8
-          },
-          {
-            "type": "stability",
-            "min": 2,
-            "max": 8
-          },
-          {
-            "type": "material",
             "min": 0,
-            "max": 4
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -1940,19 +2731,19 @@
         "price": 115,
         "pool": [
           {
+            "type": "skill",
+            "min": 3,
+            "max": 7.2
+          },
+          {
             "type": "speed",
-            "min": 3,
-            "max": 12
-          },
-          {
-            "type": "stability",
-            "min": 3,
-            "max": 12
-          },
-          {
-            "type": "material",
             "min": 0,
-            "max": 5
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -1963,19 +2754,19 @@
         "price": 170,
         "pool": [
           {
+            "type": "skill",
+            "min": 3,
+            "max": 7.2
+          },
+          {
             "type": "speed",
-            "min": 4,
-            "max": 16
-          },
-          {
-            "type": "stability",
-            "min": 4,
-            "max": 16
-          },
-          {
-            "type": "material",
             "min": 0,
-            "max": 6
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -1986,19 +2777,19 @@
         "price": 225,
         "pool": [
           {
+            "type": "skill",
+            "min": 3,
+            "max": 7.2
+          },
+          {
             "type": "speed",
-            "min": 5,
-            "max": 20
-          },
-          {
-            "type": "stability",
-            "min": 5,
-            "max": 20
-          },
-          {
-            "type": "material",
             "min": 0,
-            "max": 7
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2009,19 +2800,19 @@
         "price": 280,
         "pool": [
           {
+            "type": "skill",
+            "min": 3,
+            "max": 7.2
+          },
+          {
             "type": "speed",
-            "min": 6,
-            "max": 24
-          },
-          {
-            "type": "stability",
-            "min": 6,
-            "max": 24
-          },
-          {
-            "type": "material",
             "min": 0,
-            "max": 8
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2032,14 +2823,19 @@
         "price": 60,
         "pool": [
           {
-            "type": "skill",
-            "min": 2,
-            "max": 8
+            "type": "size",
+            "min": 8,
+            "max": 26
           },
           {
-            "type": "size",
-            "min": 2,
-            "max": 8
+            "type": "skill",
+            "min": 0,
+            "max": 4.2
+          },
+          {
+            "type": "double",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2050,14 +2846,19 @@
         "price": 115,
         "pool": [
           {
-            "type": "skill",
-            "min": 3,
-            "max": 12
+            "type": "size",
+            "min": 8,
+            "max": 26
           },
           {
-            "type": "size",
-            "min": 3,
-            "max": 12
+            "type": "skill",
+            "min": 0,
+            "max": 4.2
+          },
+          {
+            "type": "double",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2068,14 +2869,19 @@
         "price": 170,
         "pool": [
           {
-            "type": "skill",
-            "min": 4,
-            "max": 16
+            "type": "size",
+            "min": 8,
+            "max": 26
           },
           {
-            "type": "size",
-            "min": 4,
-            "max": 16
+            "type": "skill",
+            "min": 0,
+            "max": 4.2
+          },
+          {
+            "type": "double",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2086,14 +2892,19 @@
         "price": 225,
         "pool": [
           {
-            "type": "skill",
-            "min": 5,
-            "max": 20
+            "type": "size",
+            "min": 8,
+            "max": 26
           },
           {
-            "type": "size",
-            "min": 5,
-            "max": 20
+            "type": "skill",
+            "min": 0,
+            "max": 4.2
+          },
+          {
+            "type": "double",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2104,14 +2915,19 @@
         "price": 280,
         "pool": [
           {
-            "type": "skill",
-            "min": 6,
-            "max": 24
+            "type": "size",
+            "min": 8,
+            "max": 26
           },
           {
-            "type": "size",
-            "min": 6,
-            "max": 24
+            "type": "skill",
+            "min": 0,
+            "max": 4.2
+          },
+          {
+            "type": "double",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2122,19 +2938,19 @@
         "price": 60,
         "pool": [
           {
-            "type": "rare",
-            "min": 2,
-            "max": 8
-          },
-          {
             "type": "double",
-            "min": 2,
-            "max": 8
+            "min": 5,
+            "max": 17
           },
           {
-            "type": "resonance",
+            "type": "skill",
             "min": 0,
-            "max": 4
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2145,19 +2961,19 @@
         "price": 115,
         "pool": [
           {
-            "type": "rare",
-            "min": 3,
-            "max": 12
-          },
-          {
             "type": "double",
-            "min": 3,
-            "max": 12
+            "min": 5,
+            "max": 17
           },
           {
-            "type": "resonance",
+            "type": "skill",
             "min": 0,
-            "max": 5
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2168,19 +2984,19 @@
         "price": 170,
         "pool": [
           {
-            "type": "rare",
-            "min": 4,
-            "max": 16
-          },
-          {
             "type": "double",
-            "min": 4,
-            "max": 16
+            "min": 5,
+            "max": 17
           },
           {
-            "type": "resonance",
+            "type": "skill",
             "min": 0,
-            "max": 6
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2191,19 +3007,19 @@
         "price": 225,
         "pool": [
           {
-            "type": "rare",
-            "min": 5,
-            "max": 20
-          },
-          {
             "type": "double",
             "min": 5,
-            "max": 20
+            "max": 17
           },
           {
-            "type": "resonance",
+            "type": "skill",
             "min": 0,
-            "max": 7
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2214,19 +3030,19 @@
         "price": 280,
         "pool": [
           {
-            "type": "rare",
-            "min": 6,
-            "max": 24
-          },
-          {
             "type": "double",
-            "min": 6,
-            "max": 24
+            "min": 5,
+            "max": 17
           },
           {
-            "type": "resonance",
+            "type": "skill",
             "min": 0,
-            "max": 8
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2238,18 +3054,18 @@
         "pool": [
           {
             "type": "speed",
-            "min": 2,
-            "max": 8
+            "min": 8,
+            "max": 22.4
           },
           {
-            "type": "settle",
-            "min": 2,
-            "max": 8
-          },
-          {
-            "type": "stability",
+            "type": "skill",
             "min": 0,
-            "max": 4
+            "max": 4.2
+          },
+          {
+            "type": "double",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2261,18 +3077,18 @@
         "pool": [
           {
             "type": "speed",
-            "min": 3,
-            "max": 12
+            "min": 8,
+            "max": 22.4
           },
           {
-            "type": "settle",
-            "min": 3,
-            "max": 12
-          },
-          {
-            "type": "stability",
+            "type": "skill",
             "min": 0,
-            "max": 5
+            "max": 4.2
+          },
+          {
+            "type": "double",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2284,18 +3100,18 @@
         "pool": [
           {
             "type": "speed",
-            "min": 4,
-            "max": 16
+            "min": 8,
+            "max": 22.4
           },
           {
-            "type": "settle",
-            "min": 4,
-            "max": 16
-          },
-          {
-            "type": "stability",
+            "type": "skill",
             "min": 0,
-            "max": 6
+            "max": 4.2
+          },
+          {
+            "type": "double",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2307,18 +3123,18 @@
         "pool": [
           {
             "type": "speed",
-            "min": 5,
-            "max": 20
+            "min": 8,
+            "max": 22.4
           },
           {
-            "type": "settle",
-            "min": 5,
-            "max": 20
-          },
-          {
-            "type": "stability",
+            "type": "skill",
             "min": 0,
-            "max": 7
+            "max": 4.2
+          },
+          {
+            "type": "double",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2330,18 +3146,18 @@
         "pool": [
           {
             "type": "speed",
-            "min": 6,
-            "max": 24
+            "min": 8,
+            "max": 22.4
           },
           {
-            "type": "settle",
-            "min": 6,
-            "max": 24
-          },
-          {
-            "type": "stability",
+            "type": "skill",
             "min": 0,
-            "max": 8
+            "max": 4.2
+          },
+          {
+            "type": "double",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2352,19 +3168,19 @@
         "price": 60,
         "pool": [
           {
-            "type": "material",
+            "type": "skill",
             "min": 2,
-            "max": 8
+            "max": 5.6
           },
           {
-            "type": "resonance",
-            "min": 2,
-            "max": 8
-          },
-          {
-            "type": "settle",
+            "type": "double",
             "min": 0,
-            "max": 4
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2375,19 +3191,19 @@
         "price": 115,
         "pool": [
           {
-            "type": "material",
-            "min": 3,
-            "max": 12
+            "type": "skill",
+            "min": 2,
+            "max": 5.6
           },
           {
-            "type": "resonance",
-            "min": 3,
-            "max": 12
-          },
-          {
-            "type": "settle",
+            "type": "double",
             "min": 0,
-            "max": 5
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2398,19 +3214,19 @@
         "price": 170,
         "pool": [
           {
-            "type": "material",
-            "min": 4,
-            "max": 16
+            "type": "skill",
+            "min": 2,
+            "max": 5.6
           },
           {
-            "type": "resonance",
-            "min": 4,
-            "max": 16
-          },
-          {
-            "type": "settle",
+            "type": "double",
             "min": 0,
-            "max": 6
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2421,19 +3237,19 @@
         "price": 225,
         "pool": [
           {
-            "type": "material",
-            "min": 5,
-            "max": 20
+            "type": "skill",
+            "min": 2,
+            "max": 5.6
           },
           {
-            "type": "resonance",
-            "min": 5,
-            "max": 20
-          },
-          {
-            "type": "settle",
+            "type": "double",
             "min": 0,
-            "max": 7
+            "max": 4.2
+          },
+          {
+            "type": "size",
+            "min": 0,
+            "max": 4.2
           }
         ]
       },
@@ -2477,8 +3293,8 @@
         "pool": [
           {
             "type": "skill",
-            "min": 8,
-            "max": 8
+            "min": 3,
+            "max": 3
           }
         ]
       },
@@ -2492,8 +3308,8 @@
         "pool": [
           {
             "type": "size",
-            "min": 6,
-            "max": 6
+            "min": 2,
+            "max": 2
           }
         ]
       },
@@ -2536,9 +3352,9 @@
         "noSell": true,
         "pool": [
           {
-            "type": "material",
-            "min": 6,
-            "max": 6
+            "type": "skill",
+            "min": 3,
+            "max": 3
           }
         ]
       },
@@ -2551,9 +3367,9 @@
         "noSell": true,
         "pool": [
           {
-            "type": "settle",
-            "min": 8,
-            "max": 8
+            "type": "speed",
+            "min": 2,
+            "max": 2
           }
         ]
       },
@@ -2589,31 +3405,31 @@
       },
       {
         "id": "set_research_rod",
-        "name": "生态研究核心",
+        "name": "生态培育核心",
         "part": "rod",
         "price": 0,
         "setId": "research",
         "noSell": true,
         "pool": [
           {
-            "type": "skill",
-            "min": 6,
-            "max": 6
+            "type": "size",
+            "min": 3,
+            "max": 3
           }
         ]
       },
       {
         "id": "set_research_charm",
-        "name": "生态研究徽记",
+        "name": "生态培育徽记",
         "part": "charm",
         "price": 0,
         "setId": "research",
         "noSell": true,
         "pool": [
           {
-            "type": "rare",
-            "min": 8,
-            "max": 8
+            "type": "skill",
+            "min": 2,
+            "max": 2
           }
         ]
       },
@@ -2674,6 +3490,36 @@
             "type": "resonance",
             "min": 6,
             "max": 6
+          }
+        ]
+      },
+      {
+        "id": "set_harvest_rod",
+        "name": "丰收渔获核心",
+        "part": "rod",
+        "price": 0,
+        "setId": "harvest",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "double",
+            "min": 3,
+            "max": 3
+          }
+        ]
+      },
+      {
+        "id": "set_harvest_charm",
+        "name": "丰收渔获徽记",
+        "part": "charm",
+        "price": 0,
+        "setId": "harvest",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 2,
+            "max": 2
           }
         ]
       }
@@ -3348,6 +4194,12 @@
         "id": "inventory",
         "name": "背包",
         "icon": "🎒",
+        "implemented": true
+      },
+      {
+        "id": "mail",
+        "name": "邮件",
+        "icon": "✉️",
         "implemented": true
       },
       {
@@ -4409,6 +5261,46 @@
       "expeditionOnly": true
     },
     {
+      "id": "gear_alloy",
+      "name": "强化合金",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
+    },
+    {
+      "id": "gear_fine",
+      "name": "精工合金",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
+    },
+    {
+      "id": "gear_crystal",
+      "name": "熔炼催化晶",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
+    },
+    {
+      "id": "storm_relic",
+      "name": "风暴遗物",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
+    },
+    {
       "id": "chest_wreck",
       "name": "沉船宝匣",
       "rarity": "rare",
@@ -5257,19 +6149,19 @@
       "part": "line",
       "pool": [
         {
+          "type": "skill",
+          "min": 3,
+          "max": 7.2
+        },
+        {
           "type": "speed",
-          "min": 2,
-          "max": 8
-        },
-        {
-          "type": "stability",
-          "min": 2,
-          "max": 8
-        },
-        {
-          "type": "material",
           "min": 0,
-          "max": 4
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5286,19 +6178,19 @@
       "part": "line",
       "pool": [
         {
+          "type": "skill",
+          "min": 3,
+          "max": 7.2
+        },
+        {
           "type": "speed",
-          "min": 3,
-          "max": 12
-        },
-        {
-          "type": "stability",
-          "min": 3,
-          "max": 12
-        },
-        {
-          "type": "material",
           "min": 0,
-          "max": 5
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5315,19 +6207,19 @@
       "part": "line",
       "pool": [
         {
+          "type": "skill",
+          "min": 3,
+          "max": 7.2
+        },
+        {
           "type": "speed",
-          "min": 4,
-          "max": 16
-        },
-        {
-          "type": "stability",
-          "min": 4,
-          "max": 16
-        },
-        {
-          "type": "material",
           "min": 0,
-          "max": 6
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5344,19 +6236,19 @@
       "part": "line",
       "pool": [
         {
+          "type": "skill",
+          "min": 3,
+          "max": 7.2
+        },
+        {
           "type": "speed",
-          "min": 5,
-          "max": 20
-        },
-        {
-          "type": "stability",
-          "min": 5,
-          "max": 20
-        },
-        {
-          "type": "material",
           "min": 0,
-          "max": 7
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5373,19 +6265,19 @@
       "part": "line",
       "pool": [
         {
+          "type": "skill",
+          "min": 3,
+          "max": 7.2
+        },
+        {
           "type": "speed",
-          "min": 6,
-          "max": 24
-        },
-        {
-          "type": "stability",
-          "min": 6,
-          "max": 24
-        },
-        {
-          "type": "material",
           "min": 0,
-          "max": 8
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5402,14 +6294,19 @@
       "part": "hook",
       "pool": [
         {
-          "type": "skill",
-          "min": 2,
-          "max": 8
+          "type": "size",
+          "min": 8,
+          "max": 26
         },
         {
-          "type": "size",
-          "min": 2,
-          "max": 8
+          "type": "skill",
+          "min": 0,
+          "max": 4.2
+        },
+        {
+          "type": "double",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5426,14 +6323,19 @@
       "part": "hook",
       "pool": [
         {
-          "type": "skill",
-          "min": 3,
-          "max": 12
+          "type": "size",
+          "min": 8,
+          "max": 26
         },
         {
-          "type": "size",
-          "min": 3,
-          "max": 12
+          "type": "skill",
+          "min": 0,
+          "max": 4.2
+        },
+        {
+          "type": "double",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5450,14 +6352,19 @@
       "part": "hook",
       "pool": [
         {
-          "type": "skill",
-          "min": 4,
-          "max": 16
+          "type": "size",
+          "min": 8,
+          "max": 26
         },
         {
-          "type": "size",
-          "min": 4,
-          "max": 16
+          "type": "skill",
+          "min": 0,
+          "max": 4.2
+        },
+        {
+          "type": "double",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5474,14 +6381,19 @@
       "part": "hook",
       "pool": [
         {
-          "type": "skill",
-          "min": 5,
-          "max": 20
+          "type": "size",
+          "min": 8,
+          "max": 26
         },
         {
-          "type": "size",
-          "min": 5,
-          "max": 20
+          "type": "skill",
+          "min": 0,
+          "max": 4.2
+        },
+        {
+          "type": "double",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5498,14 +6410,19 @@
       "part": "hook",
       "pool": [
         {
-          "type": "skill",
-          "min": 6,
-          "max": 24
+          "type": "size",
+          "min": 8,
+          "max": 26
         },
         {
-          "type": "size",
-          "min": 6,
-          "max": 24
+          "type": "skill",
+          "min": 0,
+          "max": 4.2
+        },
+        {
+          "type": "double",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5522,19 +6439,19 @@
       "part": "bait",
       "pool": [
         {
-          "type": "rare",
-          "min": 2,
-          "max": 8
-        },
-        {
           "type": "double",
-          "min": 2,
-          "max": 8
+          "min": 5,
+          "max": 17
         },
         {
-          "type": "resonance",
+          "type": "skill",
           "min": 0,
-          "max": 4
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5551,19 +6468,19 @@
       "part": "bait",
       "pool": [
         {
-          "type": "rare",
-          "min": 3,
-          "max": 12
-        },
-        {
           "type": "double",
-          "min": 3,
-          "max": 12
+          "min": 5,
+          "max": 17
         },
         {
-          "type": "resonance",
+          "type": "skill",
           "min": 0,
-          "max": 5
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5580,19 +6497,19 @@
       "part": "bait",
       "pool": [
         {
-          "type": "rare",
-          "min": 4,
-          "max": 16
-        },
-        {
           "type": "double",
-          "min": 4,
-          "max": 16
+          "min": 5,
+          "max": 17
         },
         {
-          "type": "resonance",
+          "type": "skill",
           "min": 0,
-          "max": 6
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5609,19 +6526,19 @@
       "part": "bait",
       "pool": [
         {
-          "type": "rare",
-          "min": 5,
-          "max": 20
-        },
-        {
           "type": "double",
           "min": 5,
-          "max": 20
+          "max": 17
         },
         {
-          "type": "resonance",
+          "type": "skill",
           "min": 0,
-          "max": 7
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5638,19 +6555,19 @@
       "part": "bait",
       "pool": [
         {
-          "type": "rare",
-          "min": 6,
-          "max": 24
-        },
-        {
           "type": "double",
-          "min": 6,
-          "max": 24
+          "min": 5,
+          "max": 17
         },
         {
-          "type": "resonance",
+          "type": "skill",
           "min": 0,
-          "max": 8
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5668,18 +6585,18 @@
       "pool": [
         {
           "type": "speed",
-          "min": 2,
-          "max": 8
+          "min": 8,
+          "max": 22.4
         },
         {
-          "type": "settle",
-          "min": 2,
-          "max": 8
-        },
-        {
-          "type": "stability",
+          "type": "skill",
           "min": 0,
-          "max": 4
+          "max": 4.2
+        },
+        {
+          "type": "double",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5697,18 +6614,18 @@
       "pool": [
         {
           "type": "speed",
-          "min": 3,
-          "max": 12
+          "min": 8,
+          "max": 22.4
         },
         {
-          "type": "settle",
-          "min": 3,
-          "max": 12
-        },
-        {
-          "type": "stability",
+          "type": "skill",
           "min": 0,
-          "max": 5
+          "max": 4.2
+        },
+        {
+          "type": "double",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5726,18 +6643,18 @@
       "pool": [
         {
           "type": "speed",
-          "min": 4,
-          "max": 16
+          "min": 8,
+          "max": 22.4
         },
         {
-          "type": "settle",
-          "min": 4,
-          "max": 16
-        },
-        {
-          "type": "stability",
+          "type": "skill",
           "min": 0,
-          "max": 6
+          "max": 4.2
+        },
+        {
+          "type": "double",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5755,18 +6672,18 @@
       "pool": [
         {
           "type": "speed",
-          "min": 5,
-          "max": 20
+          "min": 8,
+          "max": 22.4
         },
         {
-          "type": "settle",
-          "min": 5,
-          "max": 20
-        },
-        {
-          "type": "stability",
+          "type": "skill",
           "min": 0,
-          "max": 7
+          "max": 4.2
+        },
+        {
+          "type": "double",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5784,18 +6701,18 @@
       "pool": [
         {
           "type": "speed",
-          "min": 6,
-          "max": 24
+          "min": 8,
+          "max": 22.4
         },
         {
-          "type": "settle",
-          "min": 6,
-          "max": 24
-        },
-        {
-          "type": "stability",
+          "type": "skill",
           "min": 0,
-          "max": 8
+          "max": 4.2
+        },
+        {
+          "type": "double",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5812,19 +6729,19 @@
       "part": "accessory",
       "pool": [
         {
-          "type": "material",
+          "type": "skill",
           "min": 2,
-          "max": 8
+          "max": 5.6
         },
         {
-          "type": "resonance",
-          "min": 2,
-          "max": 8
-        },
-        {
-          "type": "settle",
+          "type": "double",
           "min": 0,
-          "max": 4
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5841,19 +6758,19 @@
       "part": "accessory",
       "pool": [
         {
-          "type": "material",
-          "min": 3,
-          "max": 12
+          "type": "skill",
+          "min": 2,
+          "max": 5.6
         },
         {
-          "type": "resonance",
-          "min": 3,
-          "max": 12
-        },
-        {
-          "type": "settle",
+          "type": "double",
           "min": 0,
-          "max": 5
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5870,19 +6787,19 @@
       "part": "accessory",
       "pool": [
         {
-          "type": "material",
-          "min": 4,
-          "max": 16
+          "type": "skill",
+          "min": 2,
+          "max": 5.6
         },
         {
-          "type": "resonance",
-          "min": 4,
-          "max": 16
-        },
-        {
-          "type": "settle",
+          "type": "double",
           "min": 0,
-          "max": 6
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5899,19 +6816,19 @@
       "part": "accessory",
       "pool": [
         {
-          "type": "material",
-          "min": 5,
-          "max": 20
+          "type": "skill",
+          "min": 2,
+          "max": 5.6
         },
         {
-          "type": "resonance",
-          "min": 5,
-          "max": 20
-        },
-        {
-          "type": "settle",
+          "type": "double",
           "min": 0,
-          "max": 7
+          "max": 4.2
+        },
+        {
+          "type": "size",
+          "min": 0,
+          "max": 4.2
         }
       ],
       "setId": "",
@@ -5967,8 +6884,8 @@
       "pool": [
         {
           "type": "skill",
-          "min": 8,
-          "max": 8
+          "min": 3,
+          "max": 3
         }
       ],
       "setId": "apex",
@@ -5986,8 +6903,8 @@
       "pool": [
         {
           "type": "size",
-          "min": 6,
-          "max": 6
+          "min": 2,
+          "max": 2
         }
       ],
       "setId": "apex",
@@ -6042,9 +6959,9 @@
       "part": "rod",
       "pool": [
         {
-          "type": "material",
-          "min": 6,
-          "max": 6
+          "type": "skill",
+          "min": 3,
+          "max": 3
         }
       ],
       "setId": "forge",
@@ -6061,9 +6978,9 @@
       "part": "charm",
       "pool": [
         {
-          "type": "settle",
-          "min": 8,
-          "max": 8
+          "type": "speed",
+          "min": 2,
+          "max": 2
         }
       ],
       "setId": "forge",
@@ -6110,7 +7027,7 @@
     },
     {
       "id": "set_research_rod",
-      "name": "生态研究核心",
+      "name": "生态培育核心",
       "rarity": "common",
       "price": 0,
       "size": null,
@@ -6118,9 +7035,9 @@
       "part": "rod",
       "pool": [
         {
-          "type": "skill",
-          "min": 6,
-          "max": 6
+          "type": "size",
+          "min": 3,
+          "max": 3
         }
       ],
       "setId": "research",
@@ -6129,7 +7046,7 @@
     },
     {
       "id": "set_research_charm",
-      "name": "生态研究徽记",
+      "name": "生态培育徽记",
       "rarity": "common",
       "price": 0,
       "size": null,
@@ -6137,9 +7054,9 @@
       "part": "charm",
       "pool": [
         {
-          "type": "rare",
-          "min": 8,
-          "max": 8
+          "type": "skill",
+          "min": 2,
+          "max": 2
         }
       ],
       "setId": "research",
@@ -6219,6 +7136,44 @@
         }
       ],
       "setId": "market",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_harvest_rod",
+      "name": "丰收渔获核心",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "double",
+          "min": 3,
+          "max": 3
+        }
+      ],
+      "setId": "harvest",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_harvest_charm",
+      "name": "丰收渔获徽记",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 2,
+          "max": 2
+        }
+      ],
+      "setId": "harvest",
       "legacy": false,
       "noSell": true
     },

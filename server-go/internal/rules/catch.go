@@ -86,7 +86,11 @@ func (c *Catalog) ResolveCatch(pool []LootEntry, eff Effects, rng RNG) (Catch, b
 			Weights []float64 `json:"sizeWeights"`
 		}
 		_ = json.Unmarshal(c.Defaults["fish"], &cfg)
-		size := FishSize(it.Size, eff["size"], cfg.Model, cfg.Weights, rng)
+		model := cfg.Model
+		if eff["_ecology"] > 0 && rng() < eff["_ecology"] {
+			model = "linear"
+		}
+		size := FishSize(it.Size, eff["size"], model, cfg.Weights, rng)
 		v.Size = &size
 		v.Tier = c.SizeTier(id, size)
 	}

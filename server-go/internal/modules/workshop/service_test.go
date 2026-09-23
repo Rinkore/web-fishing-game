@@ -31,6 +31,7 @@ func setup(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.Constants["GEAR_SYSTEM"] = json.RawMessage(`{"enabled":false}`) // Historical workshop contract only.
 	f := &fixture{t: t, db: db, c: c, ctx: context.Background(), s: New(db.App, c), assets: assets.New(db.App)}
 	if err := SeedDefinitions(f.ctx, db.Admin, c); err != nil {
 		t.Fatal(err)
@@ -204,10 +205,10 @@ func TestIntegrationSetImmutabilityAndEarnedHeat(t *testing.T) {
 	if _, err = f.db.Admin.Exec(f.ctx, `INSERT INTO fishing.sea_captains(owner_id,heat) VALUES($1,2)`, f.owner); err != nil {
 		t.Fatal(err)
 	}
-	ordinary := f.gear("gear_line_1#epic#spd+4")
-	r, err = f.s.Apply(f.ctx, Command{ActorID: f.owner, RequestKey: f.key(), Action: "forge", MainID: ordinary, MaterialID: "stardust"})
+	ordinary := f.gear("line_nylon#epic#spd+4")
+	r, err = f.s.Apply(f.ctx, Command{ActorID: f.owner, RequestKey: f.key(), Action: "forge", MainID: ordinary, MaterialID: "relic"})
 	if err != nil || r.Status != "invalid_forge_plan" || f.num(`SELECT heat FROM fishing.sea_captains WHERE owner_id=$1`, f.owner) != 2 {
-		t.Fatal("illegal part consumed heat", r, err)
+		t.Fatal("invalid catalyst consumed heat", r, err)
 	}
 	if _, err = f.assets.ApplyChange(f.ctx, assets.Change{ActorID: f.owner, RequestKey: f.key(), Reason: "reward", RuleVersion: "test", Stacks: []assets.StackDelta{{ItemID: "humus", Tier: "normal", Quantity: 1}}}); err != nil {
 		t.Fatal(err)

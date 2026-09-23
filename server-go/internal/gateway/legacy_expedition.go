@@ -17,6 +17,8 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 		}
 		var in struct {
 			Target     string `json:"target"`
+			Focus      string `json:"focus"`
+			Mode       string `json:"mode"`
 			RequestKey string `json:"requestKey"`
 			Route      string `json:"route"`
 			Hours      int    `json:"hours"`
@@ -34,7 +36,7 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 		}
 		c, err := a.catalog(r.Context())
 		if err != nil {
-			failure(w, err)
+			assetResponse(w, assets.Result{}, err)
 			return
 		}
 		svc := sea.New(a.pool, c, a.location)
@@ -44,7 +46,7 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 		case "target":
 			result, err = svc.SelectTarget(ctx, session.AccountID, in.RequestKey, in.Target)
 		case "start":
-			result, err = svc.StartExpedition(ctx, session.AccountID, in.RequestKey, in.Route, in.Hours)
+			result, err = svc.StartExpedition(ctx, session.AccountID, in.RequestKey, in.Route, in.Hours, in.Set, in.Focus, in.Mode)
 		case "claim":
 			id, _ := strconv.ParseInt(in.ID, 10, 64)
 			result, err = svc.ClaimExpedition(ctx, session.AccountID, in.RequestKey, id)
@@ -52,7 +54,7 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 			result, err = svc.RedeemSet(ctx, session.AccountID, in.RequestKey, in.Set, in.Part, in.Starter)
 		}
 		if err != nil {
-			failure(w, err)
+			assetResponse(w, assets.Result{}, err)
 			return
 		}
 		if result.Status != "dispatched" && result.Status != "claimed" && result.Status != "redeemed" && result.Status != "target_selected" {
@@ -61,7 +63,7 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 		}
 		view, err := a.legacySeaView(r, c, session.AccountID)
 		if err != nil {
-			failure(w, err)
+			assetResponse(w, assets.Result{}, err)
 			return
 		}
 		write(w, 200, map[string]any{"ok": true, "sea": view, "result": result})

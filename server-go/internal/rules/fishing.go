@@ -272,7 +272,7 @@ func RareCommonMultiplier(rare, k float64) float64 {
 	return math.Max(0, k/(k+rare))
 }
 
-var affixToken = regexp.MustCompile(`^(spd|skl|rare|mat|size|dbl|big|stb|res|stl)([+-]?[0-9]+)(?:@([A-Za-z0-9_]+))?$`)
+var affixToken = regexp.MustCompile(`^(spd|skl|rare|mat|size|dbl|big|stb|res|stl)([+-]?[0-9]+(?:\.[0-9]+)?)(?:@([A-Za-z0-9_]+))?$`)
 var codeType = map[string]string{"spd": "speed", "skl": "skill", "big": "skill", "rare": "rare", "mat": "material", "size": "size", "dbl": "double", "stb": "stability", "res": "resonance", "stl": "settle"}
 
 type Affix struct {
@@ -312,8 +312,9 @@ func (c *Catalog) RodEffects(bd map[string]struct {
 }) Effects {
 	e := EmptyEffects()
 	for _, part := range []string{"rod", "line", "hook", "bait", "reel", "accessory", "charm"} {
-		_, _, aa, ok := c.Instance(bd[part].CompID)
+		base, _, aa, ok := c.Instance(bd[part].CompID)
 		if ok {
+			aa = c.GearAffixes(bd[part].CompID, base, aa)
 			for _, a := range aa {
 				e[a.Type] += a.Value
 			}

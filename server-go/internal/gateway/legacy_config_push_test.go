@@ -39,7 +39,8 @@ func TestIntegrationLegacyConfigurationPublication(t *testing.T) {
 	if fields["groundCfg"] == nil || applied == nil {
 		t.Fatalf("init: %v", fields)
 	}
-	if initial := p.poll(ctx); len(initial) != 10 {
+	// Custom material metadata is an additional authoritative config frame.
+	if initial := p.poll(ctx); len(initial) != 12 {
 		t.Fatalf("initial configs: %d", len(initial))
 	}
 	if got := p.poll(ctx); len(got) != 0 {
@@ -125,7 +126,7 @@ func TestIntegrationLegacyConfigurationPublication(t *testing.T) {
 	// complete config set even if no further publication occurs.
 	reconnected := &legacyConfigPush{api: &API{pool: f.db.App}}
 	reconnected.init(ctx)
-	if reconnected.catalogRevision != id || len(reconnected.poll(ctx)) != 10 {
+	if reconnected.catalogRevision != id || len(reconnected.poll(ctx)) != 12 {
 		t.Fatal("reconnect lost current publication")
 	}
 }
@@ -142,7 +143,7 @@ func TestIntegrationLegacyConfigInitWindowAndFeatureMapping(t *testing.T) {
 	c.Runtime = map[string]any{"cast": map[string]any{"speedBonus": float64(50)}}
 	publishLegacyCatalog(t, f, c, 0, "init-window")
 	got := decodePersonalFrames(t, p.poll(ctx))
-	if len(got) != 11 || got[len(got)-1]["speedBonus"] != float64(50) {
+	if len(got) != 13 || got[len(got)-1]["speedBonus"] != float64(50) {
 		t.Fatalf("init window: %v", got)
 	}
 	flags := map[string]bool{"market": false, "trade": false, "workshop": false, "chest": true, "mall": false, "sell": false, "autosell": true, "friends": true}

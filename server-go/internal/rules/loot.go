@@ -122,6 +122,9 @@ func (c *Catalog) boost(pool []LootEntry, groups map[string][]LootEntry, eff Eff
 				mult *= cfg.Common / 100 * cm
 			}
 		case "material":
+			if it, ok := c.Item(id); ok && c.GearConfig().Enabled && it.ExpeditionOnly {
+				continue
+			}
 			mult *= cfg.Material / 100 * math.Max(0, 1+eff["material"]/100)
 			if it, ok := c.Item(id); ok && it.Rarity == "common" {
 				mult *= cm

@@ -136,6 +136,10 @@ func (a *API) legacyWorkshop(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
+	if c.GearConfig().Enabled {
+		write(w, http.StatusBadRequest, map[string]any{"error": "旧装备熔炼、重铸和锻造已停用，请使用装备成长", "code": "legacy_workshop_retired"})
+		return
+	}
 	profile, err := a.legacyProfile(r, c, session)
 	if err != nil {
 		failure(w, err)
@@ -227,6 +231,10 @@ func (a *API) legacyWorkshopSmelt(w http.ResponseWriter, r *http.Request) {
 	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, err)
+		return
+	}
+	if c.GearConfig().Enabled {
+		write(w, http.StatusBadRequest, map[string]any{"error": "旧装备熔炼、重铸和锻造已停用，请使用装备成长", "code": "legacy_workshop_retired"})
 		return
 	}
 	mainID, err := a.legacyInstanceBySignature(r.Context(), session.AccountID, in.MainID)
@@ -323,6 +331,10 @@ func (a *API) legacyWorkshopRecast(w http.ResponseWriter, r *http.Request) {
 	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, err)
+		return
+	}
+	if c.GearConfig().Enabled {
+		write(w, http.StatusBadRequest, map[string]any{"error": "旧装备熔炼、重铸和锻造已停用，请使用装备成长", "code": "legacy_workshop_retired"})
 		return
 	}
 	before, ok := c.ComponentMeta(in.ID)
@@ -422,6 +434,10 @@ func (a *API) legacyWorkshopForge(w http.ResponseWriter, r *http.Request) {
 	c, err := a.catalog(r.Context())
 	if err != nil {
 		failure(w, err)
+		return
+	}
+	if c.GearConfig().Enabled {
+		write(w, http.StatusBadRequest, map[string]any{"error": "旧装备熔炼、重铸和锻造已停用，请使用装备成长", "code": "legacy_workshop_retired"})
 		return
 	}
 	base, _, _, ok := c.Instance(in.ID)

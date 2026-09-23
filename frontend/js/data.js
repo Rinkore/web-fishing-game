@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.21.5';
+  const VERSION = 'v0.22.0-local';
   const BUILD = '2026-09-23';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -457,7 +457,7 @@
   // 实例签名里可出现的全部短码（新码 + 旧别名），供解析用。
   // v0.12.2 起词缀 token 允许带「范围来源」后缀 @src（src = 底材id / 'bt' 突破 / 'ct' 催化），
   // 记录这条词缀的数值当初是按哪个范围 roll 的——熔炼/重铸重 roll 时按它自己的范围，而不是底材池的区间。
-  const AFFIX_CODE_RE = new RegExp('^(' + Object.keys(CODE_TO_TYPE).join('|') + ')([+-]?\\d+)(?:@([A-Za-z0-9_]+))?$');
+  const AFFIX_CODE_RE = new RegExp('^(' + Object.keys(CODE_TO_TYPE).join('|') + ')([+-]?\\d+(?:\\.\\d+)?)(?:@([A-Za-z0-9_]+))?$');
   // 组件词缀类型全集（固定顺序；池外补足时按此顺序取候选，保证签名跨端一致）
   // 刻意用显式数组而不是 Object.keys：顺序稳定，也不受 AFFIX_LABEL 将来加键影响。
   const AFFIX_TYPES = ['speed', 'skill', 'rare', 'material', 'size', 'double', 'stability', 'resonance', 'settle'];
@@ -637,6 +637,743 @@
     { id: 'charm_trident', name: '海王徽记', part: 'charm', price: 290, pool: [
       { type: 'skill', min: 6, max: 10 }, { type: 'rare', min: 4, max: 8 }, { type: 'double', min: 8, max: 14 }, { type: 'speed', min: -16, max: -8 } ] },
   ];
+  // MATERIAL_GEAR_SYSTEM_BEGIN
+  const GEAR_SYSTEM = {
+  "enabled": true,
+  "maxLevel": 12,
+  "subUnlock": 4,
+  "boundLevel": 4,
+  "receiptHours": 8,
+  "mainEngrave": 0.05,
+  "subEngrave": 0.1,
+  "engraveLevel": 8,
+  "parts": {
+    "line": {
+      "name": "稳定线组",
+      "main": "skill",
+      "subs": [
+        "speed",
+        "size"
+      ],
+      "mainValues": [
+        3,
+        3.35,
+        3.7,
+        4.05,
+        4.4,
+        4.75,
+        5.1,
+        5.45,
+        5.8,
+        6.15,
+        6.5,
+        6.85,
+        7.2
+      ],
+      "subValues": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        1.4,
+        1.8,
+        2.2,
+        2.6,
+        3,
+        3.4,
+        3.8,
+        4.2
+      ]
+    },
+    "hook": {
+      "name": "巨物钩",
+      "main": "size",
+      "subs": [
+        "skill",
+        "double"
+      ],
+      "mainValues": [
+        8,
+        9.5,
+        11,
+        12.5,
+        14,
+        15.5,
+        17,
+        18.5,
+        20,
+        21.5,
+        23,
+        24.5,
+        26
+      ],
+      "subValues": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        1.4,
+        1.8,
+        2.2,
+        2.6,
+        3,
+        3.4,
+        3.8,
+        4.2
+      ]
+    },
+    "bait": {
+      "name": "双生拟饵",
+      "main": "double",
+      "subs": [
+        "skill",
+        "size"
+      ],
+      "mainValues": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+      ],
+      "subValues": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        1.4,
+        1.8,
+        2.2,
+        2.6,
+        3,
+        3.4,
+        3.8,
+        4.2
+      ]
+    },
+    "reel": {
+      "name": "疾风卷线器",
+      "main": "speed",
+      "subs": [
+        "skill",
+        "double"
+      ],
+      "mainValues": [
+        8,
+        9.2,
+        10.4,
+        11.6,
+        12.8,
+        14,
+        15.2,
+        16.4,
+        17.6,
+        18.8,
+        20,
+        21.2,
+        22.4
+      ],
+      "subValues": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        1.4,
+        1.8,
+        2.2,
+        2.6,
+        3,
+        3.4,
+        3.8,
+        4.2
+      ]
+    },
+    "accessory": {
+      "name": "稳流浮漂",
+      "main": "skill",
+      "subs": [
+        "double",
+        "size"
+      ],
+      "mainValues": [
+        2,
+        2.3,
+        2.6,
+        2.9,
+        3.2,
+        3.5,
+        3.8,
+        4.1,
+        4.4,
+        4.7,
+        5,
+        5.3,
+        5.6
+      ],
+      "subValues": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        1.4,
+        1.8,
+        2.2,
+        2.6,
+        3,
+        3.4,
+        3.8,
+        4.2
+      ]
+    }
+  },
+  "costs": {
+    "upgrade": [
+      {
+        "coins": 1000,
+        "items": {
+          "gear_alloy": 2
+        },
+        "receipts": 0,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 2000,
+        "items": {
+          "gear_alloy": 4
+        },
+        "receipts": 0,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 3000,
+        "items": {
+          "gear_alloy": 6
+        },
+        "receipts": 0,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 4000,
+        "items": {
+          "gear_alloy": 8
+        },
+        "receipts": 1,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 5000,
+        "items": {
+          "gear_alloy": 10
+        },
+        "receipts": 0,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 6000,
+        "items": {
+          "gear_alloy": 12
+        },
+        "receipts": 0,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 7000,
+        "items": {
+          "gear_alloy": 14
+        },
+        "receipts": 0,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 8000,
+        "items": {
+          "gear_alloy": 16
+        },
+        "receipts": 1,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 9000,
+        "items": {
+          "gear_alloy": 18
+        },
+        "receipts": 0,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 10000,
+        "items": {
+          "gear_alloy": 20
+        },
+        "receipts": 0,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 11000,
+        "items": {
+          "gear_alloy": 22
+        },
+        "receipts": 0,
+        "heat": 0,
+        "cores": 0
+      },
+      {
+        "coins": 12000,
+        "items": {
+          "gear_alloy": 24
+        },
+        "receipts": 1,
+        "heat": 0,
+        "cores": 0
+      }
+    ],
+    "tune": {
+      "coins": 2000,
+      "items": {
+        "gear_alloy": 2
+      },
+      "receipts": 0,
+      "heat": 0,
+      "cores": 0
+    },
+    "engrave": {
+      "coins": 10000,
+      "items": {
+        "gear_fine": 3
+      },
+      "receipts": 1,
+      "heat": 0,
+      "cores": 0
+    },
+    "heatEngrave": {
+      "coins": 10000,
+      "items": {
+        "gear_fine": 1
+      },
+      "receipts": 1,
+      "heat": 10,
+      "cores": 0
+    },
+    "transfer": {
+      "coins": 1000,
+      "items": {},
+      "receipts": 0,
+      "heat": 0,
+      "cores": 0
+    },
+    "convert": {
+      "coins": 0,
+      "items": {},
+      "receipts": 0,
+      "heat": 0,
+      "cores": 0
+    },
+    "preset": {
+      "coins": 1000,
+      "items": {},
+      "receipts": 0,
+      "heat": 2,
+      "cores": 0
+    },
+    "unlock": {
+      "coins": 5000,
+      "items": {
+        "gear_crystal": 2
+      },
+      "receipts": 0,
+      "heat": 0,
+      "cores": 0
+    },
+    "stage": [
+      {
+        "coins": 20000,
+        "items": {
+          "gear_crystal": 10
+        },
+        "receipts": 1,
+        "heat": 0,
+        "cores": 1
+      },
+      {
+        "coins": 40000,
+        "items": {
+          "gear_crystal": 20
+        },
+        "receipts": 1,
+        "heat": 0,
+        "cores": 2
+      },
+      {
+        "coins": 60000,
+        "items": {
+          "gear_crystal": 30
+        },
+        "receipts": 1,
+        "heat": 0,
+        "cores": 3
+      }
+    ]
+  },
+  "sets": {
+    "forge": {
+      "name": "锻造工匠",
+      "description": "有效钓鱼积累热量，用于精工、调校和精工预设切换。",
+      "coreAttributes": {
+        "rod": {
+          "skill": 3
+        },
+        "charm": {
+          "speed": 2
+        }
+      },
+      "stages": [
+        {
+          "heatSeconds": 600,
+          "heatCap": 30,
+          "heatDiscount": 0,
+          "presets": 0
+        },
+        {
+          "heatSeconds": 600,
+          "heatCap": 40,
+          "heatDiscount": 0,
+          "presets": 0
+        },
+        {
+          "heatSeconds": 480,
+          "heatCap": 40,
+          "heatDiscount": 2,
+          "presets": 0
+        },
+        {
+          "heatSeconds": 480,
+          "heatCap": 40,
+          "heatDiscount": 2,
+          "presets": 1
+        }
+      ]
+    },
+    "harvest": {
+      "name": "丰收渔获",
+      "description": "成功上鱼积累丰收进度，额外获得可出售鱼获，不重复写入纪录。",
+      "coreAttributes": {
+        "rod": {
+          "double": 3
+        },
+        "charm": {
+          "skill": 2
+        }
+      },
+      "stages": [
+        {
+          "casts": 20,
+          "copies": 1,
+          "best": 0,
+          "largeMode": 0,
+          "largeMultiplier": 3,
+          "recent": 5
+        },
+        {
+          "casts": 18,
+          "copies": 1,
+          "best": 0,
+          "largeMode": 0,
+          "largeMultiplier": 3,
+          "recent": 5
+        },
+        {
+          "casts": 18,
+          "copies": 1,
+          "best": 1,
+          "largeMode": 0,
+          "largeMultiplier": 3,
+          "recent": 5
+        },
+        {
+          "casts": 18,
+          "copies": 1,
+          "best": 1,
+          "largeMode": 1,
+          "largeMultiplier": 3,
+          "recent": 5
+        }
+      ]
+    },
+    "apex": {
+      "name": "猎王追踪",
+      "description": "追踪当前钓点已有目标鱼种，积累权重并按鱼种稀缺度保底。",
+      "coreAttributes": {
+        "rod": {
+          "skill": 3
+        },
+        "charm": {
+          "size": 2
+        }
+      },
+      "stages": [
+        {
+          "weightStep": 0.25,
+          "maxStacks": 10,
+          "pityFactor": 1,
+          "pityCommon": 30,
+          "pityRare": 120,
+          "pityEpic": 200,
+          "queue": 0
+        },
+        {
+          "weightStep": 0.3,
+          "maxStacks": 10,
+          "pityFactor": 1,
+          "pityCommon": 30,
+          "pityRare": 120,
+          "pityEpic": 200,
+          "queue": 0
+        },
+        {
+          "weightStep": 0.3,
+          "maxStacks": 10,
+          "pityFactor": 0.85,
+          "pityCommon": 30,
+          "pityRare": 120,
+          "pityEpic": 200,
+          "queue": 0
+        },
+        {
+          "weightStep": 0.3,
+          "maxStacks": 10,
+          "pityFactor": 0.85,
+          "pityCommon": 30,
+          "pityRare": 120,
+          "pityEpic": 200,
+          "queue": 1
+        }
+      ]
+    },
+    "research": {
+      "name": "生态培育",
+      "description": "少量混入同区间均匀分布，轻微增加大小两端的个体，不扩大体型上限。",
+      "coreAttributes": {
+        "rod": {
+          "size": 3
+        },
+        "charm": {
+          "skill": 2
+        }
+      },
+      "stages": [
+        {
+          "uniformMix": 0.05
+        },
+        {
+          "uniformMix": 0.06
+        },
+        {
+          "uniformMix": 0.07
+        },
+        {
+          "uniformMix": 0.08
+        }
+      ]
+    }
+  },
+  "specializations": {
+    "tide": {
+      "name": "潮汐采集",
+      "description": "增加航线合法材料；可选择采集方向。",
+      "stages": [
+        {
+          "bonus": 0.2,
+          "focus": 0,
+          "minimum": 0,
+          "concentrate": 0
+        },
+        {
+          "bonus": 0.25,
+          "focus": 0.25,
+          "minimum": 0,
+          "concentrate": 0
+        },
+        {
+          "bonus": 0.30000000000000004,
+          "focus": 0.25,
+          "minimum": 1,
+          "concentrate": 0
+        },
+        {
+          "bonus": 0.35000000000000003,
+          "focus": 0.25,
+          "minimum": 1,
+          "concentrate": 0.5
+        }
+      ]
+    },
+    "wreck": {
+      "name": "沉船考古",
+      "description": "稳定宝匣碎片，独立惊喜宝匣与按时长累计保底。",
+      "stages": [
+        {
+          "fragmentsPerHour": 1,
+          "chestChancePerHour": 0.008,
+          "pityHours": 0,
+          "highChest": 0,
+          "minRouteLevel": 3
+        },
+        {
+          "fragmentsPerHour": 1.5,
+          "chestChancePerHour": 0.008,
+          "pityHours": 0,
+          "highChest": 0,
+          "minRouteLevel": 3
+        },
+        {
+          "fragmentsPerHour": 1.5,
+          "chestChancePerHour": 0.008,
+          "pityHours": 120,
+          "highChest": 0,
+          "minRouteLevel": 3
+        },
+        {
+          "fragmentsPerHour": 1.5,
+          "chestChancePerHour": 0.008,
+          "pityHours": 120,
+          "highChest": 1,
+          "minRouteLevel": 3
+        }
+      ]
+    },
+    "storm": {
+      "name": "风暴远洋",
+      "description": "风暴与高危航线提供特殊收益，深入风暴需承担额外风险。",
+      "stages": [
+        {
+          "bonus": 0.15,
+          "deepRisk": 0,
+          "deepBonus": 0,
+          "choice": 0,
+          "minRouteLevel": 4,
+          "specialPerHour": 0.15
+        },
+        {
+          "bonus": 0.2,
+          "deepRisk": 0,
+          "deepBonus": 0,
+          "choice": 0,
+          "minRouteLevel": 4,
+          "specialPerHour": 0.2
+        },
+        {
+          "bonus": 0.25,
+          "deepRisk": 15,
+          "deepBonus": 0.5,
+          "choice": 0,
+          "minRouteLevel": 4,
+          "specialPerHour": 0.25
+        },
+        {
+          "bonus": 0.30000000000000004,
+          "deepRisk": 15,
+          "deepBonus": 0.5,
+          "choice": 1,
+          "minRouteLevel": 4,
+          "specialPerHour": 0.30000000000000004
+        }
+      ]
+    },
+    "rescue": {
+      "name": "救生护航",
+      "description": "减少事故损失，指定货物保护或提前撤离。",
+      "stages": [
+        {
+          "retain": 0.75,
+          "priority": 0,
+          "advanced": 0,
+          "evacuate": 0,
+          "evacuationLoss": 0.2
+        },
+        {
+          "retain": 0.8,
+          "priority": 1,
+          "advanced": 0,
+          "evacuate": 0,
+          "evacuationLoss": 0.2
+        },
+        {
+          "retain": 0.85,
+          "priority": 1,
+          "advanced": 1,
+          "evacuate": 0,
+          "evacuationLoss": 0.2
+        },
+        {
+          "retain": 0.9,
+          "priority": 1,
+          "advanced": 1,
+          "evacuate": 1,
+          "evacuationLoss": 0.2
+        }
+      ]
+    }
+  },
+  "fishPity": {},
+  "excludedFish": [],
+  "baseDrops": {
+    "trade": {
+      "gear_alloy": 2,
+      "deepscale": 0.5
+    },
+    "gather": {
+      "gear_alloy": 3,
+      "gear_fine": 0.5,
+      "deepscale": 0.5
+    },
+    "salvage": {
+      "gear_alloy": 1,
+      "gear_crystal": 1,
+      "relic": 1
+    },
+    "danger": {
+      "gear_fine": 1,
+      "gear_crystal": 1
+    },
+    "king": {
+      "gear_fine": 1.5,
+      "gear_crystal": 1.5
+    }
+  },
+  "legacyConvertReceipts": {
+    "common": 0,
+    "rare": 0,
+    "epic": 1,
+    "mythic": 2
+  }
+};
+  function setGearSystem(cfg) { if(!cfg || !cfg.enabled)return; Object.keys(GEAR_SYSTEM).forEach(k=>delete GEAR_SYSTEM[k]);Object.assign(GEAR_SYSTEM,cfg); }
+  function gearState(id) { const m=String(id).match(/@g(\d+)_(none|main|sub)_(\d+)/);return m?{level:+m[1],engrave:m[2],presets:+m[3]}:null; }
+  function gearSignature(baseId,level,sub,engrave,presets){const b=componentBase(baseId),p=b&&GEAR_SYSTEM.parts[b.part];if(!p)return null;const source='g'+level+'_'+(engrave||'none')+'_'+(presets||0);const a=[{type:p.main,value:Math.round(p.mainValues[level]*((engrave==='main')?1+GEAR_SYSTEM.mainEngrave:1)*100)/100,src:source}];if(level>=GEAR_SYSTEM.subUnlock&&p.subs.includes(sub))a.push({type:sub,value:Math.round(p.subValues[level]*((engrave==='sub')?1+GEAR_SYSTEM.subEngrave:1)*100)/100});return instanceId(baseId,'common',a);}
+  // MATERIAL_GEAR_SYSTEM_END
   // 历史底材只读兼容，新掉落使用 24 个按部位分工的普通底材。
   const PART_AFFIXES = {"line":["speed","stability","material"],"hook":["skill","size"],"bait":["rare","double","resonance"],"reel":["speed","settle","stability"],"accessory":["material","resonance","settle"]};
   COMPONENT_BASES.forEach(function(b){ b.legacy = true; });
@@ -650,6 +1387,14 @@
   GEAR_SETS.forEach(function (set) { set.pieces.forEach(function (p) {
     COMPONENT_BASES.push({id:'set_'+set.id+'_'+p.part,name:p.name,part:p.part,price:0,setId:set.id,noSell:true,pool:[{type:p.type,min:p.value,max:p.value}]});
   }); });
+  // Default migration of definitions; historical signatures remain readable.
+  Object.keys(GEAR_SYSTEM.parts).forEach(part=>{PART_AFFIXES[part]=[GEAR_SYSTEM.parts[part].main].concat(GEAR_SYSTEM.parts[part].subs);});
+  COMPONENT_BASES.forEach(b=>{if(!b.legacy&&!b.setId){const p=GEAR_SYSTEM.parts[b.part];b.pool=[{type:p.main,min:p.mainValues[0],max:p.mainValues[12]}].concat(p.subs.map(t=>({type:t,min:0,max:p.subValues[12]})));}});
+  if(!GEAR_SETS.some(s=>s.id==='harvest')){GEAR_SETS.push({id:'harvest',name:'丰收渔获',level:1,cost:20,effect:GEAR_SYSTEM.sets.harvest.description,pending:false,pieces:[{part:'rod',name:'丰收渔获核心',type:'double',value:3},{part:'charm',name:'丰收渔获徽记',type:'skill',value:2}]});GEAR_SETS[GEAR_SETS.length-1].pieces.forEach(p=>COMPONENT_BASES.push({id:'set_harvest_'+p.part,name:p.name,part:p.part,price:0,setId:'harvest',noSell:true,pool:[{type:p.type,min:p.value,max:p.value}]}));}
+  GEAR_SETS.forEach(s=>{const x=GEAR_SYSTEM.sets[s.id]||GEAR_SYSTEM.specializations[s.id];if(x){s.name=x.name;s.effect=x.description;if(GEAR_SYSTEM.sets[s.id])s.pieces.forEach(p=>{p.type=Object.keys(x.coreAttributes[p.part])[0];p.value=x.coreAttributes[p.part][p.type];const b=COMPONENT_BASES.find(b=>b.id==='set_'+s.id+'_'+p.part);if(b){b.name=x.name+(p.part==='rod'?'核心':'徽记');b.pool=[{type:p.type,min:p.value,max:p.value}];}});}});
+  [['gear_alloy','强化合金'],['gear_fine','精工合金'],['gear_crystal','熔炼催化晶'],['storm_relic','风暴遗物']].forEach(([id,name])=>{if(!MATERIALS.some(m=>m.id===id))MATERIALS.push({id,name,rarity:'rare',price:0,size:null,noSell:true,expeditionOnly:true});});
+  // Only growth materials are voyage-exclusive. Ship and chest resources retain their existing sources.
+  AFFIX_LABEL.skill='稳定';
   const BASE_MAP = {};
   COMPONENT_BASES.forEach(function (b) { b.pool = b.pool.map(function (a) { return { type: a.type, min: a.min, max: a.max }; }); BASE_MAP[b.id] = b; });
   function componentBase(id) { return BASE_MAP[id] || null; }
@@ -705,7 +1450,7 @@
         const m = AFFIX_CODE_RE.exec(tok);
         if (!m) return null;
         const type = typeOfCode(m[1]);
-        const value = parseInt(m[2], 10);
+        const value = Number(m[2]);
         // 范围来源：token 显式携带 @src 时直接用（srcExplicit = true，参与签名）；
         // 旧 token（无 @）按底材池 + 数值**推断**（srcExplicit = false）——推断结果只影响取值区间，
         // 不会被写回签名，见 affixToken 的注释。
@@ -823,7 +1568,10 @@
     //   只有前者能证明它出自宝匣，后者不能，见 affixKindOf。
     const poolTypes = {};
     base.pool.forEach(function (p) { poolTypes[p.type] = 1; });
-    const affixes = inst.affixes.map(function (a) {
+    let displayAffixes=inst.affixes;
+    if(GEAR_SYSTEM.enabled&&GEAR_SYSTEM.sets[base.setId])displayAffixes=Object.entries(GEAR_SYSTEM.sets[base.setId].coreAttributes[base.part]||{}).map(([type,value])=>({type,value}));
+    const gx=gearState(id);if(gx){const pp=GEAR_SYSTEM.parts[base.part];if(pp){const secondary=inst.affixes.find(a=>a.type!==pp.main);const updated=gearSignature(base.id,Math.min(gx.level,GEAR_SYSTEM.maxLevel),secondary?secondary.type:'',gx.engrave,gx.presets);const parsed=updated&&instanceOf(updated);if(parsed)displayAffixes=parsed.affixes;}}
+    const affixes = displayAffixes.map(function (a) {
       return {
         type: a.type, value: a.value, extra: !poolTypes[a.type], src: a.src || null,
         srcExplicit: a.srcExplicit !== false && !!a.src,
@@ -834,7 +1582,8 @@
     //   两者刻意分开：若用 hasExtra 判定，82% 的海王遗匣产出都会挂上「突破」标签而失去意义。
     const hasExtra = affixes.some(function (a) { return a.extra; });
     const breakthrough = affixes.length > QUALITY.epic.cap;
-    const adjective = adjectiveOf(affixes, base, inst.quality);
+    const growth=gearState(id);
+    const adjective = growth ? ('+'+growth.level+(growth.engrave!=='none'?' · 精工':'')) : adjectiveOf(affixes, base, inst.quality);
     return {
       id: id, kind: 'component', baseId: base.id, baseName: base.name, part: base.part, setId: base.setId || '', noSell: !!base.noSell,
       quality: inst.quality, qualityName: q.name, qualityCls: q.cls,
@@ -843,7 +1592,7 @@
       full: full, isFull: full, hasExtra: hasExtra, breakthrough: breakthrough,
       adjective: adjective,
       name: adjective + ' ' + base.name,
-      price: Math.round(base.price * q.mult),
+      price: Math.round(base.price * q.mult), growth: growth, bound: !!(growth&&(growth.level>=GEAR_SYSTEM.boundLevel||growth.engrave!=='none')),
       size: null,
     };
   }
@@ -1032,6 +1781,7 @@
   // opt 供宝匣档位覆盖（不传则与钓鱼掉落路径完全一致，行为不变）：
   //   countWeights 覆盖词条数量权重；minAffixes 为词条数下限；forceMax 取满池。
   function genComponent(baseId, quality, opt) {
+    if (GEAR_SYSTEM.enabled && /^gear_/.test(baseId)) return instanceMeta(gearSignature(baseId, 0, '', 'none', 0));
     const base = BASE_MAP[baseId];
     if (!base) return null;
     const o = opt || {};
@@ -1078,6 +1828,7 @@
   // 特例：池长已够最高目标的底材（全游戏只有 4 条池的海王徽记）直接满池、不掷骰也不补池外——
   //       否则「未中」分支会把它 4 条池里弃掉 1 条，让最贵的宝匣产出降级件。
   function genBreakthrough(baseId, opt) {
+    if (GEAR_SYSTEM.enabled && /^gear_/.test(baseId)) return instanceMeta(gearSignature(baseId, 0, '', 'none', 0));
     const base = BASE_MAP[baseId];
     if (!base) return null;
     const o = opt || {};
@@ -2667,6 +3418,7 @@
     { id: 'character', name: '角色', icon: '🧍', implemented: true },
     { id: 'ground', name: '社交', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
+    { id: 'mail', name: '邮件', icon: '✉️', implemented: true },
     // 「宝匣合成」不再是独立页面：并入「工坊」页（熔炼/重铸同款页签切换），改名「开箱」，见 ui.js 的 renderWorkshop。
     { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
     // 「系统商店」「开放市集」不再是独立页面：合并进「商城」页（工坊熔炼/重铸同款页签切换），
@@ -2702,6 +3454,14 @@
   }
   const ITEM_MAP = {};
   allItems().forEach(function (it) { ITEM_MAP[it.id] = it; });
+  function applyCustomItems(items) {
+    if (!Array.isArray(items)) return;
+    items.filter(function(it){return it.kind==='material' && /^custom_/.test(it.id);}).forEach(function(it){
+      const copy=Object.assign({},it);ITEM_MAP[it.id]=copy;
+      const at=MATERIALS.findIndex(function(m){return m.id===it.id;});
+      if(at<0)MATERIALS.push(copy);else MATERIALS[at]=copy;
+    });
+  }
   function itemOf(id) {
     if (id == null) return { id: id, name: String(id), rarity: 'common', price: RARITY_PRICE.common, size: null, kind: 'unknown' };
     const s = String(id);
@@ -2725,7 +3485,9 @@
   }
 
   return {
+    GEAR_SYSTEM, setGearSystem, gearState, gearSignature,
     VERSION: VERSION, BUILD: BUILD,
+    applyCustomItems: applyCustomItems,
     FISH: FISH, MATERIALS: MATERIALS, RARITY_PRICE: RARITY_PRICE,
     EXPEDITION: EXPEDITION, GEAR_SETS: GEAR_SETS, PART_AFFIXES: PART_AFFIXES,
     itemIcon: function(id) { const b=componentBase(id); if(b && (b.setId || !b.legacy)) return 'assets/item/'+({rod:'rod_dragonbone',charm:'charm_coin',line:'line_nylon',hook:'hook_barb',bait:'bait_corn',reel:'reel_smooth',accessory:'acc_sonar'}[b.part])+'.png'; return 'assets/item/'+id+(["grindstone","stardust","humus","boneash","ballast","resonance_crystal","curesalt"].indexOf(id)>=0 ? '.svg' : '.png'); },

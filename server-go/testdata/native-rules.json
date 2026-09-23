@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "v0.21.5",
+  "version": "v0.22.0-local",
   "cases": [
     {
       "id": "expression-0",
@@ -11159,8 +11159,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#common#spd+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11174,8 +11173,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+7,stb+3,mat+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11189,8 +11187,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#common#stb+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -11204,8 +11201,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+7,stb+3,mat+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11219,8 +11215,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#rare#spd+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11234,8 +11229,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+7,stb+3,mat+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11249,8 +11243,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#rare#stb+7,mat+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11264,8 +11257,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+7,stb+3,mat+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11279,8 +11271,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#epic#spd+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11294,8 +11285,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+7,stb+3,mat+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11309,8 +11299,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#epic#spd+7,stb+3,mat+2",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -11324,8 +11313,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+7,stb+3,mat+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11339,8 +11327,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11354,8 +11341,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+7,stb+3,mat+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11369,8 +11355,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+7,stb+3,mat+2",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -11384,8 +11369,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_1#mythic#spd+7,stb+3,mat+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11399,8 +11383,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#common#spd+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11414,8 +11397,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+11,stb+5,mat+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11429,8 +11411,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#common#stb+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -11444,8 +11425,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+11,stb+5,mat+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11459,8 +11439,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#rare#spd+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11474,8 +11453,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+11,stb+5,mat+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11489,8 +11467,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#rare#stb+11,mat+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11504,8 +11481,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+11,stb+5,mat+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11519,8 +11495,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#epic#spd+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11534,8 +11509,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+11,stb+5,mat+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11549,8 +11523,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#epic#spd+11,stb+5,mat+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -11564,8 +11537,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+11,stb+5,mat+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11579,8 +11551,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11594,8 +11565,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+11,stb+5,mat+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11609,8 +11579,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+11,stb+5,mat+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -11624,8 +11593,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_2#mythic#spd+11,stb+5,mat+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11639,8 +11607,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#common#spd+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11654,8 +11621,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+14,stb+7,mat+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11669,8 +11635,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#common#stb+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -11684,8 +11649,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+14,stb+7,mat+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11699,8 +11663,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#rare#spd+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11714,8 +11677,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+14,stb+7,mat+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11729,8 +11691,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#rare#stb+14,mat+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11744,8 +11705,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+14,stb+7,mat+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11759,8 +11719,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#epic#spd+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11774,8 +11733,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+14,stb+7,mat+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11789,8 +11747,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#epic#spd+14,stb+7,mat+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -11804,8 +11761,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+14,stb+7,mat+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11819,8 +11775,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11834,8 +11789,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+14,stb+7,mat+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11849,8 +11803,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+14,stb+7,mat+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -11864,8 +11817,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_3#mythic#spd+14,stb+7,mat+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11879,8 +11831,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#common#spd+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11894,8 +11845,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+18,stb+8,mat+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11909,8 +11859,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#common#stb+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -11924,8 +11873,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+18,stb+8,mat+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11939,8 +11887,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#rare#spd+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11954,8 +11901,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+18,stb+8,mat+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11969,8 +11915,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#rare#stb+18,mat+2",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -11984,8 +11929,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+18,stb+8,mat+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -11999,8 +11943,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#epic#spd+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -12014,8 +11957,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+18,stb+8,mat+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12029,8 +11971,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#epic#spd+18,stb+8,mat+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12044,8 +11985,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+18,stb+8,mat+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12059,8 +11999,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -12074,8 +12013,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+18,stb+8,mat+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12089,8 +12027,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+18,stb+8,mat+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12104,8 +12041,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_4#mythic#spd+18,stb+8,mat+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12119,8 +12055,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#common#spd+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -12134,8 +12069,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+22,stb+10,mat+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12149,8 +12083,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#common#stb+22",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12164,8 +12097,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+22,stb+10,mat+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12179,8 +12111,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#rare#spd+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -12194,8 +12125,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+22,stb+10,mat+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12209,8 +12139,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#rare#stb+22,mat+2",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -12224,8 +12153,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+22,stb+10,mat+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12239,8 +12167,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#epic#spd+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -12254,8 +12181,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+22,stb+10,mat+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12269,8 +12195,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#epic#spd+22,stb+10,mat+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12284,8 +12209,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+22,stb+10,mat+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12299,8 +12223,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -12314,8 +12237,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+22,stb+10,mat+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12329,8 +12251,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+22,stb+10,mat+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12344,8 +12265,7 @@
         }
       ],
       "expected": {
-        "id": "gear_line_5#mythic#spd+22,stb+10,mat+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -12359,8 +12279,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#common#size+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12374,8 +12293,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+7,size+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12389,8 +12307,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#common#size+5",
-        "draws": 2
+        "draws": 0
       }
     },
     {
@@ -12404,8 +12321,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+7,size+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12419,8 +12335,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#rare#size+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12434,8 +12349,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+7,size+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12449,8 +12363,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#rare#skl+5,size+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12464,8 +12377,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+7,size+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12479,8 +12391,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#epic#size+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12494,8 +12405,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+7,size+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12509,8 +12419,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#epic#skl+5,size+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12524,8 +12433,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+7,size+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12539,8 +12447,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#size+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12554,8 +12461,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+7,size+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12569,8 +12475,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+5,size+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12584,8 +12489,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_1#mythic#skl+7,size+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12599,8 +12503,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#common#size+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12614,8 +12517,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+11,size+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12629,8 +12531,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#common#size+7",
-        "draws": 2
+        "draws": 0
       }
     },
     {
@@ -12644,8 +12545,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+11,size+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12659,8 +12559,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#rare#size+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12674,8 +12573,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+11,size+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12689,8 +12587,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#rare#skl+7,size+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12704,8 +12601,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+11,size+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12719,8 +12615,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#epic#size+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12734,8 +12629,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+11,size+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12749,8 +12643,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#epic#skl+7,size+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12764,8 +12657,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+11,size+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12779,8 +12671,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#size+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12794,8 +12685,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+11,size+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12809,8 +12699,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+7,size+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12824,8 +12713,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_2#mythic#skl+11,size+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12839,8 +12727,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#common#size+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12854,8 +12741,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+14,size+7",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12869,8 +12755,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#common#size+10",
-        "draws": 2
+        "draws": 0
       }
     },
     {
@@ -12884,8 +12769,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+14,size+7",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12899,8 +12783,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#rare#size+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12914,8 +12797,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+14,size+7",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12929,8 +12811,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#rare#skl+10,size+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12944,8 +12825,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+14,size+7",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12959,8 +12839,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#epic#size+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -12974,8 +12853,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+14,size+7",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -12989,8 +12867,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#epic#skl+10,size+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13004,8 +12881,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+14,size+7",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13019,8 +12895,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#size+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13034,8 +12909,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+14,size+7",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13049,8 +12923,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+10,size+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13064,8 +12937,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_3#mythic#skl+14,size+7",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13079,8 +12951,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#common#size+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13094,8 +12965,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+18,size+8",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13109,8 +12979,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#common#size+12",
-        "draws": 2
+        "draws": 0
       }
     },
     {
@@ -13124,8 +12993,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+18,size+8",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13139,8 +13007,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#rare#size+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13154,8 +13021,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+18,size+8",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13169,8 +13035,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#rare#skl+12,size+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13184,8 +13049,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+18,size+8",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13199,8 +13063,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#epic#size+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13214,8 +13077,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+18,size+8",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13229,8 +13091,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#epic#skl+12,size+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13244,8 +13105,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+18,size+8",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13259,8 +13119,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#size+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13274,8 +13133,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+18,size+8",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13289,8 +13147,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+12,size+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13304,8 +13161,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_4#mythic#skl+18,size+8",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13319,8 +13175,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#common#size+22",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13334,8 +13189,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+22,size+10",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13349,8 +13203,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#common#size+15",
-        "draws": 2
+        "draws": 0
       }
     },
     {
@@ -13364,8 +13217,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+22,size+10",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13379,8 +13231,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#rare#size+22",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13394,8 +13245,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+22,size+10",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13409,8 +13259,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#rare#skl+15,size+22",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13424,8 +13273,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+22,size+10",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13439,8 +13287,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#epic#size+22",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13454,8 +13301,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+22,size+10",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13469,8 +13315,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#epic#skl+15,size+22",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13484,8 +13329,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+22,size+10",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13499,8 +13343,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#size+22",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13514,8 +13357,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+22,size+10",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13529,8 +13371,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+15,size+22",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13544,8 +13385,7 @@
         }
       ],
       "expected": {
-        "id": "gear_hook_5#mythic#skl+22,size+10",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13559,8 +13399,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#common#rare+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -13574,8 +13413,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+7,dbl+3,res+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13589,8 +13427,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#common#dbl+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13604,8 +13441,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+7,dbl+3,res+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13619,8 +13455,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#rare#rare+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -13634,8 +13469,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+7,dbl+3,res+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13649,8 +13483,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#rare#dbl+7,res+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -13664,8 +13497,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+7,dbl+3,res+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13679,8 +13511,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#epic#rare+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -13694,8 +13525,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+7,dbl+3,res+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13709,8 +13539,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#epic#rare+7,dbl+3,res+2",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13724,8 +13553,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+7,dbl+3,res+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13739,8 +13567,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -13754,8 +13581,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+7,dbl+3,res+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13769,8 +13595,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+7,dbl+3,res+2",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13784,8 +13609,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_1#mythic#rare+7,dbl+3,res+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13799,8 +13623,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#common#rare+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -13814,8 +13637,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+11,dbl+5,res+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13829,8 +13651,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#common#dbl+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -13844,8 +13665,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+11,dbl+5,res+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13859,8 +13679,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#rare#rare+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -13874,8 +13693,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+11,dbl+5,res+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13889,8 +13707,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#rare#dbl+11,res+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -13904,8 +13721,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+11,dbl+5,res+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13919,8 +13735,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#epic#rare+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -13934,8 +13749,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+11,dbl+5,res+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13949,8 +13763,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#epic#rare+11,dbl+5,res+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -13964,8 +13777,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+11,dbl+5,res+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -13979,8 +13791,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -13994,8 +13805,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+11,dbl+5,res+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14009,8 +13819,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+11,dbl+5,res+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -14024,8 +13833,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_2#mythic#rare+11,dbl+5,res+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14039,8 +13847,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#common#rare+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14054,8 +13861,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+14,dbl+7,res+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14069,8 +13875,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#common#dbl+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -14084,8 +13889,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+14,dbl+7,res+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14099,8 +13903,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#rare#rare+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14114,8 +13917,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+14,dbl+7,res+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14129,8 +13931,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#rare#dbl+14,res+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14144,8 +13945,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+14,dbl+7,res+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14159,8 +13959,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#epic#rare+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14174,8 +13973,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+14,dbl+7,res+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14189,8 +13987,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#epic#rare+14,dbl+7,res+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -14204,8 +14001,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+14,dbl+7,res+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14219,8 +14015,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14234,8 +14029,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+14,dbl+7,res+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14249,8 +14043,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+14,dbl+7,res+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -14264,8 +14057,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_3#mythic#rare+14,dbl+7,res+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14279,8 +14071,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#common#rare+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14294,8 +14085,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+18,dbl+8,res+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14309,8 +14099,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#common#dbl+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -14324,8 +14113,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+18,dbl+8,res+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14339,8 +14127,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#rare#rare+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14354,8 +14141,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+18,dbl+8,res+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14369,8 +14155,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#rare#dbl+18,res+2",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14384,8 +14169,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+18,dbl+8,res+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14399,8 +14183,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#epic#rare+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14414,8 +14197,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+18,dbl+8,res+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14429,8 +14211,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#epic#rare+18,dbl+8,res+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -14444,8 +14225,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+18,dbl+8,res+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14459,8 +14239,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14474,8 +14253,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+18,dbl+8,res+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14489,8 +14267,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+18,dbl+8,res+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -14504,8 +14281,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_4#mythic#rare+18,dbl+8,res+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14519,8 +14295,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#common#rare+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14534,8 +14309,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+22,dbl+10,res+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14549,8 +14323,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#common#dbl+22",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -14564,8 +14337,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+22,dbl+10,res+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14579,8 +14351,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#rare#rare+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14594,8 +14365,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+22,dbl+10,res+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14609,8 +14379,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#rare#dbl+22,res+2",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14624,8 +14393,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+22,dbl+10,res+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14639,8 +14407,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#epic#rare+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14654,8 +14421,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+22,dbl+10,res+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14669,8 +14435,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#epic#rare+22,dbl+10,res+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -14684,8 +14449,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+22,dbl+10,res+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14699,8 +14463,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14714,8 +14477,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+22,dbl+10,res+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14729,8 +14491,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+22,dbl+10,res+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -14744,8 +14505,7 @@
         }
       ],
       "expected": {
-        "id": "gear_bait_5#mythic#rare+22,dbl+10,res+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14759,8 +14519,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#common#spd+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14774,8 +14533,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+7,stl+3,stb+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14789,8 +14547,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#common#stl+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -14804,8 +14561,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+7,stl+3,stb+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14819,8 +14575,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#rare#spd+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14834,8 +14589,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+7,stl+3,stb+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14849,8 +14603,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#rare#stl+7,stb+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14864,8 +14617,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+7,stl+3,stb+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14879,8 +14631,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#epic#spd+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14894,8 +14645,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+7,stl+3,stb+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14909,8 +14659,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#epic#spd+7,stl+3,stb+2",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -14924,8 +14673,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+7,stl+3,stb+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14939,8 +14687,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -14954,8 +14701,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+7,stl+3,stb+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14969,8 +14715,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+7,stl+3,stb+2",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -14984,8 +14729,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_1#mythic#spd+7,stl+3,stb+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -14999,8 +14743,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#common#spd+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15014,8 +14757,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+11,stl+5,stb+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15029,8 +14771,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#common#stl+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -15044,8 +14785,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+11,stl+5,stb+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15059,8 +14799,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#rare#spd+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15074,8 +14813,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+11,stl+5,stb+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15089,8 +14827,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#rare#stl+11,stb+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15104,8 +14841,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+11,stl+5,stb+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15119,8 +14855,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#epic#spd+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15134,8 +14869,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+11,stl+5,stb+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15149,8 +14883,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#epic#spd+11,stl+5,stb+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -15164,8 +14897,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+11,stl+5,stb+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15179,8 +14911,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15194,8 +14925,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+11,stl+5,stb+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15209,8 +14939,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+11,stl+5,stb+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -15224,8 +14953,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_2#mythic#spd+11,stl+5,stb+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15239,8 +14967,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#common#spd+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15254,8 +14981,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+14,stl+7,stb+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15269,8 +14995,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#common#stl+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -15284,8 +15009,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+14,stl+7,stb+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15299,8 +15023,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#rare#spd+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15314,8 +15037,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+14,stl+7,stb+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15329,8 +15051,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#rare#stl+14,stb+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15344,8 +15065,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+14,stl+7,stb+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15359,8 +15079,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#epic#spd+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15374,8 +15093,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+14,stl+7,stb+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15389,8 +15107,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#epic#spd+14,stl+7,stb+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -15404,8 +15121,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+14,stl+7,stb+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15419,8 +15135,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15434,8 +15149,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+14,stl+7,stb+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15449,8 +15163,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+14,stl+7,stb+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -15464,8 +15177,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_3#mythic#spd+14,stl+7,stb+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15479,8 +15191,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#common#spd+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15494,8 +15205,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+18,stl+8,stb+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15509,8 +15219,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#common#stl+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -15524,8 +15233,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+18,stl+8,stb+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15539,8 +15247,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#rare#spd+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15554,8 +15261,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+18,stl+8,stb+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15569,8 +15275,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#rare#stl+18,stb+2",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15584,8 +15289,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+18,stl+8,stb+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15599,8 +15303,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#epic#spd+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15614,8 +15317,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+18,stl+8,stb+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15629,8 +15331,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#epic#spd+18,stl+8,stb+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -15644,8 +15345,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+18,stl+8,stb+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15659,8 +15359,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15674,8 +15373,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+18,stl+8,stb+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15689,8 +15387,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+18,stl+8,stb+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -15704,8 +15401,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_4#mythic#spd+18,stl+8,stb+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15719,8 +15415,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#common#spd+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15734,8 +15429,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+22,stl+10,stb+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15749,8 +15443,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#common#stl+22",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -15764,8 +15457,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+22,stl+10,stb+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15779,8 +15471,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#rare#spd+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15794,8 +15485,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+22,stl+10,stb+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15809,8 +15499,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#rare#stl+22,stb+2",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15824,8 +15513,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+22,stl+10,stb+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15839,8 +15527,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#epic#spd+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15854,8 +15541,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+22,stl+10,stb+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15869,8 +15555,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#epic#spd+22,stl+10,stb+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -15884,8 +15569,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+22,stl+10,stb+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15899,8 +15583,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+10",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15914,8 +15597,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+22,stl+10,stb+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15929,8 +15611,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+22,stl+10,stb+5",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -15944,8 +15625,7 @@
         }
       ],
       "expected": {
-        "id": "gear_reel_5#mythic#spd+22,stl+10,stb+8",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15959,8 +15639,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#common#mat+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -15974,8 +15653,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+7,res+3,stl+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -15989,8 +15667,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#common#res+7",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -16004,8 +15681,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+7,res+3,stl+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16019,8 +15695,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#rare#mat+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16034,8 +15709,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+7,res+3,stl+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16049,8 +15723,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#rare#res+7,stl+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16064,8 +15737,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+7,res+3,stl+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16079,8 +15751,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#epic#mat+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16094,8 +15765,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+7,res+3,stl+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16109,8 +15779,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#epic#mat+7,res+3,stl+2",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -16124,8 +15793,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+7,res+3,stl+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16139,8 +15807,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+3",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16154,8 +15821,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+7,res+3,stl+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16169,8 +15835,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+7,res+3,stl+2",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -16184,8 +15849,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_1#mythic#mat+7,res+3,stl+4",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16199,8 +15863,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#common#mat+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16214,8 +15877,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+11,res+5,stl+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16229,8 +15891,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#common#res+11",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -16244,8 +15905,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+11,res+5,stl+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16259,8 +15919,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#rare#mat+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16274,8 +15933,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+11,res+5,stl+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16289,8 +15947,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#rare#res+11,stl+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16304,8 +15961,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+11,res+5,stl+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16319,8 +15975,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#epic#mat+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16334,8 +15989,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+11,res+5,stl+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16349,8 +16003,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#epic#mat+11,res+5,stl+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -16364,8 +16017,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+11,res+5,stl+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16379,8 +16031,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+5",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16394,8 +16045,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+11,res+5,stl+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16409,8 +16059,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+11,res+5,stl+3",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -16424,8 +16073,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_2#mythic#mat+11,res+5,stl+5",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16439,8 +16087,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#common#mat+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16454,8 +16101,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+14,res+7,stl+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16469,8 +16115,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#common#res+14",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -16484,8 +16129,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+14,res+7,stl+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16499,8 +16143,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#rare#mat+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16514,8 +16157,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+14,res+7,stl+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16529,8 +16171,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#rare#res+14,stl+1",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16544,8 +16185,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+14,res+7,stl+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16559,8 +16199,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#epic#mat+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16574,8 +16213,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+14,res+7,stl+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16589,8 +16227,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#epic#mat+14,res+7,stl+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -16604,8 +16241,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+14,res+7,stl+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16619,8 +16255,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+7",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16634,8 +16269,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+14,res+7,stl+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16649,8 +16283,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+14,res+7,stl+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -16664,8 +16297,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_3#mythic#mat+14,res+7,stl+6",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16679,8 +16311,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#common#mat+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16694,8 +16325,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+18,res+8,stl+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16709,8 +16339,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#common#res+18",
-        "draws": 3
+        "draws": 0
       }
     },
     {
@@ -16724,8 +16353,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+18,res+8,stl+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16739,8 +16367,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#rare#mat+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16754,8 +16381,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+18,res+8,stl+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16769,8 +16395,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#rare#res+18,stl+2",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16784,8 +16409,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+18,res+8,stl+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16799,8 +16423,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#epic#mat+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16814,8 +16437,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+18,res+8,stl+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16829,8 +16451,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#epic#mat+18,res+8,stl+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -16844,8 +16465,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+18,res+8,stl+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16859,8 +16479,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+8",
-        "draws": 4
+        "draws": 0
       }
     },
     {
@@ -16874,8 +16493,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+18,res+8,stl+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -16889,8 +16507,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+18,res+8,stl+4",
-        "draws": 5
+        "draws": 0
       }
     },
     {
@@ -16904,8 +16521,7 @@
         }
       ],
       "expected": {
-        "id": "gear_accessory_4#mythic#mat+18,res+8,stl+7",
-        "draws": 7
+        "draws": 0
       }
     },
     {
@@ -17399,7 +17015,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#common#skl+8",
+        "id": "set_apex_rod#common#skl+3",
         "draws": 1
       }
     },
@@ -17414,7 +17030,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#mythic#skl+8",
+        "id": "set_apex_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -17429,7 +17045,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#common#skl+8",
+        "id": "set_apex_rod#common#skl+3",
         "draws": 0
       }
     },
@@ -17444,7 +17060,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#mythic#skl+8",
+        "id": "set_apex_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -17459,7 +17075,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#rare#skl+8",
+        "id": "set_apex_rod#rare#skl+3",
         "draws": 1
       }
     },
@@ -17474,7 +17090,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#mythic#skl+8",
+        "id": "set_apex_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -17489,7 +17105,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#rare#skl+8",
+        "id": "set_apex_rod#rare#skl+3",
         "draws": 0
       }
     },
@@ -17504,7 +17120,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#mythic#skl+8",
+        "id": "set_apex_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -17519,7 +17135,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#epic#skl+8",
+        "id": "set_apex_rod#epic#skl+3",
         "draws": 1
       }
     },
@@ -17534,7 +17150,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#mythic#skl+8",
+        "id": "set_apex_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -17549,7 +17165,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#epic#skl+8",
+        "id": "set_apex_rod#epic#skl+3",
         "draws": 0
       }
     },
@@ -17564,7 +17180,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#mythic#skl+8",
+        "id": "set_apex_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -17579,7 +17195,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#mythic#skl+8",
+        "id": "set_apex_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -17594,7 +17210,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#mythic#skl+8",
+        "id": "set_apex_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -17609,7 +17225,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#mythic#skl+8",
+        "id": "set_apex_rod#mythic#skl+3",
         "draws": 0
       }
     },
@@ -17624,7 +17240,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_rod#mythic#skl+8",
+        "id": "set_apex_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -17639,7 +17255,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#common#size+6",
+        "id": "set_apex_charm#common#size+2",
         "draws": 1
       }
     },
@@ -17654,7 +17270,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#mythic#size+6",
+        "id": "set_apex_charm#mythic#size+2",
         "draws": 1
       }
     },
@@ -17669,7 +17285,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#common#size+6",
+        "id": "set_apex_charm#common#size+2",
         "draws": 0
       }
     },
@@ -17684,7 +17300,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#mythic#size+6",
+        "id": "set_apex_charm#mythic#size+2",
         "draws": 1
       }
     },
@@ -17699,7 +17315,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#rare#size+6",
+        "id": "set_apex_charm#rare#size+2",
         "draws": 1
       }
     },
@@ -17714,7 +17330,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#mythic#size+6",
+        "id": "set_apex_charm#mythic#size+2",
         "draws": 1
       }
     },
@@ -17729,7 +17345,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#rare#size+6",
+        "id": "set_apex_charm#rare#size+2",
         "draws": 0
       }
     },
@@ -17744,7 +17360,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#mythic#size+6",
+        "id": "set_apex_charm#mythic#size+2",
         "draws": 1
       }
     },
@@ -17759,7 +17375,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#epic#size+6",
+        "id": "set_apex_charm#epic#size+2",
         "draws": 1
       }
     },
@@ -17774,7 +17390,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#mythic#size+6",
+        "id": "set_apex_charm#mythic#size+2",
         "draws": 1
       }
     },
@@ -17789,7 +17405,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#epic#size+6",
+        "id": "set_apex_charm#epic#size+2",
         "draws": 0
       }
     },
@@ -17804,7 +17420,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#mythic#size+6",
+        "id": "set_apex_charm#mythic#size+2",
         "draws": 1
       }
     },
@@ -17819,7 +17435,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#mythic#size+6",
+        "id": "set_apex_charm#mythic#size+2",
         "draws": 1
       }
     },
@@ -17834,7 +17450,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#mythic#size+6",
+        "id": "set_apex_charm#mythic#size+2",
         "draws": 1
       }
     },
@@ -17849,7 +17465,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#mythic#size+6",
+        "id": "set_apex_charm#mythic#size+2",
         "draws": 0
       }
     },
@@ -17864,7 +17480,7 @@
         }
       ],
       "expected": {
-        "id": "set_apex_charm#mythic#size+6",
+        "id": "set_apex_charm#mythic#size+2",
         "draws": 1
       }
     },
@@ -18359,7 +17975,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#common#mat+6",
+        "id": "set_forge_rod#common#skl+3",
         "draws": 1
       }
     },
@@ -18374,7 +17990,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#mythic#mat+6",
+        "id": "set_forge_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -18389,7 +18005,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#common#mat+6",
+        "id": "set_forge_rod#common#skl+3",
         "draws": 0
       }
     },
@@ -18404,7 +18020,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#mythic#mat+6",
+        "id": "set_forge_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -18419,7 +18035,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#rare#mat+6",
+        "id": "set_forge_rod#rare#skl+3",
         "draws": 1
       }
     },
@@ -18434,7 +18050,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#mythic#mat+6",
+        "id": "set_forge_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -18449,7 +18065,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#rare#mat+6",
+        "id": "set_forge_rod#rare#skl+3",
         "draws": 0
       }
     },
@@ -18464,7 +18080,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#mythic#mat+6",
+        "id": "set_forge_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -18479,7 +18095,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#epic#mat+6",
+        "id": "set_forge_rod#epic#skl+3",
         "draws": 1
       }
     },
@@ -18494,7 +18110,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#mythic#mat+6",
+        "id": "set_forge_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -18509,7 +18125,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#epic#mat+6",
+        "id": "set_forge_rod#epic#skl+3",
         "draws": 0
       }
     },
@@ -18524,7 +18140,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#mythic#mat+6",
+        "id": "set_forge_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -18539,7 +18155,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#mythic#mat+6",
+        "id": "set_forge_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -18554,7 +18170,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#mythic#mat+6",
+        "id": "set_forge_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -18569,7 +18185,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#mythic#mat+6",
+        "id": "set_forge_rod#mythic#skl+3",
         "draws": 0
       }
     },
@@ -18584,7 +18200,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_rod#mythic#mat+6",
+        "id": "set_forge_rod#mythic#skl+3",
         "draws": 1
       }
     },
@@ -18599,7 +18215,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#common#stl+8",
+        "id": "set_forge_charm#common#spd+2",
         "draws": 1
       }
     },
@@ -18614,7 +18230,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#mythic#stl+8",
+        "id": "set_forge_charm#mythic#spd+2",
         "draws": 1
       }
     },
@@ -18629,7 +18245,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#common#stl+8",
+        "id": "set_forge_charm#common#spd+2",
         "draws": 0
       }
     },
@@ -18644,7 +18260,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#mythic#stl+8",
+        "id": "set_forge_charm#mythic#spd+2",
         "draws": 1
       }
     },
@@ -18659,7 +18275,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#rare#stl+8",
+        "id": "set_forge_charm#rare#spd+2",
         "draws": 1
       }
     },
@@ -18674,7 +18290,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#mythic#stl+8",
+        "id": "set_forge_charm#mythic#spd+2",
         "draws": 1
       }
     },
@@ -18689,7 +18305,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#rare#stl+8",
+        "id": "set_forge_charm#rare#spd+2",
         "draws": 0
       }
     },
@@ -18704,7 +18320,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#mythic#stl+8",
+        "id": "set_forge_charm#mythic#spd+2",
         "draws": 1
       }
     },
@@ -18719,7 +18335,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#epic#stl+8",
+        "id": "set_forge_charm#epic#spd+2",
         "draws": 1
       }
     },
@@ -18734,7 +18350,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#mythic#stl+8",
+        "id": "set_forge_charm#mythic#spd+2",
         "draws": 1
       }
     },
@@ -18749,7 +18365,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#epic#stl+8",
+        "id": "set_forge_charm#epic#spd+2",
         "draws": 0
       }
     },
@@ -18764,7 +18380,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#mythic#stl+8",
+        "id": "set_forge_charm#mythic#spd+2",
         "draws": 1
       }
     },
@@ -18779,7 +18395,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#mythic#stl+8",
+        "id": "set_forge_charm#mythic#spd+2",
         "draws": 1
       }
     },
@@ -18794,7 +18410,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#mythic#stl+8",
+        "id": "set_forge_charm#mythic#spd+2",
         "draws": 1
       }
     },
@@ -18809,7 +18425,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#mythic#stl+8",
+        "id": "set_forge_charm#mythic#spd+2",
         "draws": 0
       }
     },
@@ -18824,7 +18440,7 @@
         }
       ],
       "expected": {
-        "id": "set_forge_charm#mythic#stl+8",
+        "id": "set_forge_charm#mythic#spd+2",
         "draws": 1
       }
     },
@@ -19319,7 +18935,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#common#skl+6",
+        "id": "set_research_rod#common#size+3",
         "draws": 1
       }
     },
@@ -19334,7 +18950,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#mythic#skl+6",
+        "id": "set_research_rod#mythic#size+3",
         "draws": 1
       }
     },
@@ -19349,7 +18965,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#common#skl+6",
+        "id": "set_research_rod#common#size+3",
         "draws": 0
       }
     },
@@ -19364,7 +18980,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#mythic#skl+6",
+        "id": "set_research_rod#mythic#size+3",
         "draws": 1
       }
     },
@@ -19379,7 +18995,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#rare#skl+6",
+        "id": "set_research_rod#rare#size+3",
         "draws": 1
       }
     },
@@ -19394,7 +19010,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#mythic#skl+6",
+        "id": "set_research_rod#mythic#size+3",
         "draws": 1
       }
     },
@@ -19409,7 +19025,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#rare#skl+6",
+        "id": "set_research_rod#rare#size+3",
         "draws": 0
       }
     },
@@ -19424,7 +19040,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#mythic#skl+6",
+        "id": "set_research_rod#mythic#size+3",
         "draws": 1
       }
     },
@@ -19439,7 +19055,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#epic#skl+6",
+        "id": "set_research_rod#epic#size+3",
         "draws": 1
       }
     },
@@ -19454,7 +19070,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#mythic#skl+6",
+        "id": "set_research_rod#mythic#size+3",
         "draws": 1
       }
     },
@@ -19469,7 +19085,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#epic#skl+6",
+        "id": "set_research_rod#epic#size+3",
         "draws": 0
       }
     },
@@ -19484,7 +19100,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#mythic#skl+6",
+        "id": "set_research_rod#mythic#size+3",
         "draws": 1
       }
     },
@@ -19499,7 +19115,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#mythic#skl+6",
+        "id": "set_research_rod#mythic#size+3",
         "draws": 1
       }
     },
@@ -19514,7 +19130,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#mythic#skl+6",
+        "id": "set_research_rod#mythic#size+3",
         "draws": 1
       }
     },
@@ -19529,7 +19145,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#mythic#skl+6",
+        "id": "set_research_rod#mythic#size+3",
         "draws": 0
       }
     },
@@ -19544,7 +19160,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_rod#mythic#skl+6",
+        "id": "set_research_rod#mythic#size+3",
         "draws": 1
       }
     },
@@ -19559,7 +19175,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#common#rare+8",
+        "id": "set_research_charm#common#skl+2",
         "draws": 1
       }
     },
@@ -19574,7 +19190,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#mythic#rare+8",
+        "id": "set_research_charm#mythic#skl+2",
         "draws": 1
       }
     },
@@ -19589,7 +19205,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#common#rare+8",
+        "id": "set_research_charm#common#skl+2",
         "draws": 0
       }
     },
@@ -19604,7 +19220,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#mythic#rare+8",
+        "id": "set_research_charm#mythic#skl+2",
         "draws": 1
       }
     },
@@ -19619,7 +19235,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#rare#rare+8",
+        "id": "set_research_charm#rare#skl+2",
         "draws": 1
       }
     },
@@ -19634,7 +19250,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#mythic#rare+8",
+        "id": "set_research_charm#mythic#skl+2",
         "draws": 1
       }
     },
@@ -19649,7 +19265,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#rare#rare+8",
+        "id": "set_research_charm#rare#skl+2",
         "draws": 0
       }
     },
@@ -19664,7 +19280,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#mythic#rare+8",
+        "id": "set_research_charm#mythic#skl+2",
         "draws": 1
       }
     },
@@ -19679,7 +19295,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#epic#rare+8",
+        "id": "set_research_charm#epic#skl+2",
         "draws": 1
       }
     },
@@ -19694,7 +19310,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#mythic#rare+8",
+        "id": "set_research_charm#mythic#skl+2",
         "draws": 1
       }
     },
@@ -19709,7 +19325,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#epic#rare+8",
+        "id": "set_research_charm#epic#skl+2",
         "draws": 0
       }
     },
@@ -19724,7 +19340,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#mythic#rare+8",
+        "id": "set_research_charm#mythic#skl+2",
         "draws": 1
       }
     },
@@ -19739,7 +19355,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#mythic#rare+8",
+        "id": "set_research_charm#mythic#skl+2",
         "draws": 1
       }
     },
@@ -19754,7 +19370,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#mythic#rare+8",
+        "id": "set_research_charm#mythic#skl+2",
         "draws": 1
       }
     },
@@ -19769,7 +19385,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#mythic#rare+8",
+        "id": "set_research_charm#mythic#skl+2",
         "draws": 0
       }
     },
@@ -19784,7 +19400,7 @@
         }
       ],
       "expected": {
-        "id": "set_research_charm#mythic#rare+8",
+        "id": "set_research_charm#mythic#skl+2",
         "draws": 1
       }
     },
@@ -20745,6 +20361,486 @@
       ],
       "expected": {
         "id": "set_market_charm#mythic#res+6",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1242",
+      "fn": "generate",
+      "args": [
+        "set_harvest_rod",
+        "common",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#common#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "breakthrough-1243",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_rod",
+        "common",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#mythic#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1244",
+      "fn": "generate",
+      "args": [
+        "set_harvest_rod",
+        "common",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#common#dbl+3",
+        "draws": 0
+      }
+    },
+    {
+      "id": "breakthrough-1245",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_rod",
+        "common",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#mythic#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1246",
+      "fn": "generate",
+      "args": [
+        "set_harvest_rod",
+        "rare",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#rare#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "breakthrough-1247",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_rod",
+        "rare",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#mythic#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1248",
+      "fn": "generate",
+      "args": [
+        "set_harvest_rod",
+        "rare",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#rare#dbl+3",
+        "draws": 0
+      }
+    },
+    {
+      "id": "breakthrough-1249",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_rod",
+        "rare",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#mythic#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1250",
+      "fn": "generate",
+      "args": [
+        "set_harvest_rod",
+        "epic",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#epic#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "breakthrough-1251",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_rod",
+        "epic",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#mythic#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1252",
+      "fn": "generate",
+      "args": [
+        "set_harvest_rod",
+        "epic",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#epic#dbl+3",
+        "draws": 0
+      }
+    },
+    {
+      "id": "breakthrough-1253",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_rod",
+        "epic",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#mythic#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1254",
+      "fn": "generate",
+      "args": [
+        "set_harvest_rod",
+        "mythic",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#mythic#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "breakthrough-1255",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_rod",
+        "mythic",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#mythic#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1256",
+      "fn": "generate",
+      "args": [
+        "set_harvest_rod",
+        "mythic",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#mythic#dbl+3",
+        "draws": 0
+      }
+    },
+    {
+      "id": "breakthrough-1257",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_rod",
+        "mythic",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_rod#mythic#dbl+3",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1258",
+      "fn": "generate",
+      "args": [
+        "set_harvest_charm",
+        "common",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#common#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "breakthrough-1259",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_charm",
+        "common",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#mythic#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1260",
+      "fn": "generate",
+      "args": [
+        "set_harvest_charm",
+        "common",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#common#skl+2",
+        "draws": 0
+      }
+    },
+    {
+      "id": "breakthrough-1261",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_charm",
+        "common",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#mythic#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1262",
+      "fn": "generate",
+      "args": [
+        "set_harvest_charm",
+        "rare",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#rare#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "breakthrough-1263",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_charm",
+        "rare",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#mythic#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1264",
+      "fn": "generate",
+      "args": [
+        "set_harvest_charm",
+        "rare",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#rare#skl+2",
+        "draws": 0
+      }
+    },
+    {
+      "id": "breakthrough-1265",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_charm",
+        "rare",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#mythic#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1266",
+      "fn": "generate",
+      "args": [
+        "set_harvest_charm",
+        "epic",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#epic#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "breakthrough-1267",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_charm",
+        "epic",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#mythic#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1268",
+      "fn": "generate",
+      "args": [
+        "set_harvest_charm",
+        "epic",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#epic#skl+2",
+        "draws": 0
+      }
+    },
+    {
+      "id": "breakthrough-1269",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_charm",
+        "epic",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#mythic#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1270",
+      "fn": "generate",
+      "args": [
+        "set_harvest_charm",
+        "mythic",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#mythic#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "breakthrough-1271",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_charm",
+        "mythic",
+        {
+          "forceMax": false
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#mythic#skl+2",
+        "draws": 1
+      }
+    },
+    {
+      "id": "generate-1272",
+      "fn": "generate",
+      "args": [
+        "set_harvest_charm",
+        "mythic",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#mythic#skl+2",
+        "draws": 0
+      }
+    },
+    {
+      "id": "breakthrough-1273",
+      "fn": "breakthrough",
+      "args": [
+        "set_harvest_charm",
+        "mythic",
+        {
+          "forceMax": true
+        }
+      ],
+      "expected": {
+        "id": "set_harvest_charm#mythic#skl+2",
         "draws": 1
       }
     }

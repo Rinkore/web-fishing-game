@@ -10,6 +10,7 @@ import (
 var defaultCatalog []byte
 
 type Item struct {
+	Description    string       `json:"description,omitempty"`
 	SetID          string       `json:"setId,omitempty"`
 	Legacy         bool         `json:"legacy,omitempty"`
 	NoSell         bool         `json:"noSell,omitempty"`

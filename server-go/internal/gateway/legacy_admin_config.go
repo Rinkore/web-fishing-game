@@ -239,6 +239,11 @@ func (a *API) legacyAdminSettingsWrite(r *http.Request, actor identity.Session, 
 			return err
 		}
 		// Reset flags are actions on the candidate snapshot, not durable settings.
+		if raw, exists := patch["seaCfg"]; exists {
+			if err := applySeaSettings(c, raw); err != nil {
+				return err
+			}
+		}
 		if reset, _ := rawBool(patch["resetPriceCfg"]); reset {
 			delete(c.Runtime, "price")
 		}
@@ -499,6 +504,17 @@ func (a *API) legacyAdminSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(in, "token")
 	delete(in, "validateOnly")
+	if raw, exists := in["seaCfg"]; exists {
+		c, err := a.catalog(r.Context())
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		if err = applySeaSettings(c, raw); err != nil {
+			failure(w, err)
+			return
+		}
+	}
 	if len(in) == 0 {
 		write(w, 200, map[string]any{"ok": true})
 		return

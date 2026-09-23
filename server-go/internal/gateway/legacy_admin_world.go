@@ -43,6 +43,9 @@ func (a *API) legacyAdminWorld(w http.ResponseWriter, r *http.Request) {
 		view[key] = value
 	}
 	stored, _ := a.legacyStoredConfig(r.Context())
+	seaConfig := legacyConstantMap(c, "SEA")
+	seaConfig["zoneTtlMin"] = c.SeaConfig().ZoneTTL / 60000
+	view["sea"] = seaConfig
 	applyLegacyStoredConfig(view, stored)
 	write(w, http.StatusOK, view)
 }

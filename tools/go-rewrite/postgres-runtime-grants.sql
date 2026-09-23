@@ -41,7 +41,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON fishing.party_members, fishing.party_inv
 GRANT SELECT, INSERT ON fishing.party_events TO fishing_runtime;
 GRANT SELECT, INSERT, UPDATE ON fishing.sea_quest_boards, fishing.sea_zones TO fishing_runtime;
 GRANT SELECT, INSERT ON fishing.sea_quest_roots, fishing.sea_progress_entries TO fishing_runtime;
-GRANT SELECT, INSERT, UPDATE ON fishing.sea_players, fishing.sea_expeditions, fishing.sea_captains TO fishing_runtime;
+GRANT SELECT, INSERT, UPDATE ON fishing.sea_players, fishing.sea_expeditions, fishing.sea_captains, fishing.mail_messages, fishing.mail_attachments TO fishing_runtime;
 GRANT SELECT, INSERT ON fishing.feature_releases TO fishing_runtime;
 GRANT SELECT, UPDATE ON fishing.feature_head TO fishing_runtime;
 GRANT SELECT, INSERT, UPDATE ON fishing.economy_prices, fishing.autosell_settings TO fishing_runtime;
@@ -74,3 +74,5 @@ REVOKE ALL ON public.fishing_schema_migrations FROM PUBLIC;
 GRANT USAGE ON SCHEMA fishing TO fishing_backup;
 GRANT SELECT ON ALL TABLES IN SCHEMA fishing TO fishing_backup;
 GRANT SELECT ON public.fishing_schema_migrations TO fishing_backup;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON fishing.gear_progress TO fishing_runtime;
