@@ -43,8 +43,9 @@ test('independent voyage specializations and fishing equipment', async t => {
       config.costs.stage[0] = { coins: 2345, receipts: 3, items: {}, cores: 2 };
       D.setGearSystem(config);
       window.growthFixture = { config, state: {
-        selected: 'tide', focus: '', voyageMode: 'normal', unlocked: { tide: true },
-        tiers: { tide: 0 }, receipts: 20, receiptRemainder: 1,
+        selected: 'tide', focus: '', voyageMode: 'normal', allocations: { tide: 3 },
+        unlocked: { tide: true, storm: true, rescue: true },
+        tiers: { tide: 0, storm: 1, rescue: 0 }, receipts: 20, receiptRemainder: 1,
       }, equipment: [] };
       window.seaFixture = { ship: { lv: 5 }, deepscale: 50, expedition: {
         captain: { marks: 200, starter: 1 }, config: D.EXPEDITION, sets: D.GEAR_SETS,
@@ -62,6 +63,11 @@ test('independent voyage specializations and fishing equipment', async t => {
         if (failNext) { failNext = false; throw new Error('simulated lost response'); }
         if (body.action === 'unlock') growthFixture.state.unlocked[body.set] = true;
         if (body.action === 'stage') growthFixture.state.tiers[body.set] = (growthFixture.state.tiers[body.set] || 0) + 1;
+        if (body.action === 'preferences') {
+          growthFixture.state.allocations = { ...body.allocations };
+          growthFixture.state.focus = body.focus || '';
+          growthFixture.state.voyageMode = body.mode || 'normal';
+        }
         return { ok: true, data: growthFixture };
       };
       Net.seaExpedition = async (type, body) => {
@@ -76,17 +82,17 @@ test('independent voyage specializations and fishing equipment', async t => {
       window.renderVoyage = () => ExpeditionUI.update(document.querySelector('.expedition-panel'), seaFixture, next => { seaFixture = next; renderVoyage(); });
       renderVoyage();
     });
-    await page.locator('[data-voyage-tab="specializations"]').waitFor();
+    await page.locator('[data-voyage-tab="specialization"]').waitFor();
     return { page, errors };
   }
 
   await t.test('four specializations are separate from four fishing sets and show material costs', async () => {
     const { page, errors } = await fixture();
     try {
-      await page.locator('[data-voyage-tab="specializations"]').click();
+      await page.locator('[data-voyage-tab="specialization"]').click();
       assert.equal(await page.locator('.voyage-specializations > article').count(), 4);
       assert.equal(await page.locator('[data-redeem]').count(), 0);
-      assert.match(await page.locator('[data-unlock="storm"]').locator('..').innerText(), /1234 金币.*航程凭证 × 2/);
+      assert.match(await page.locator('[data-unlock="wreck"]').locator('..').innerText(), /1234 金币.*航程凭证 × 2/);
       assert.doesNotMatch(await page.locator('.voyage-card-action').allInnerTexts().then(x => x.join('\n')), /重复核心/);
       await page.locator('[data-voyage-tab="sets"]').click();
       assert.equal(await page.locator('.voyage-specializations > article').count(), 4);
@@ -101,25 +107,25 @@ test('independent voyage specializations and fishing equipment', async t => {
   await t.test('unlock and advance use the gear endpoint, preserve source, and retry with one request key', async () => {
     const { page, errors } = await fixture();
     try {
-      await page.locator('[data-voyage-tab="specializations"]').click();
+      await page.locator('[data-voyage-tab="specialization"]').click();
       await page.locator('[data-reward-source]').selectOption('free');
       await page.evaluate(() => { failNext = true; });
-      await page.locator('[data-unlock="storm"]').click();
+      await page.locator('[data-unlock="wreck"]').click();
       await page.waitForFunction(() => document.querySelector('.gear-notice').textContent.includes('连接未完成'));
-      assert.equal(await page.locator('[data-unlock="storm"]').isEnabled(), true);
-      await page.locator('[data-unlock="storm"]').click();
-      await page.locator('[data-stage="storm"]').waitFor();
+      assert.equal(await page.locator('[data-unlock="wreck"]').isEnabled(), true);
+      await page.locator('[data-unlock="wreck"]').click();
+      await page.locator('[data-stage="wreck"]').waitFor();
       const attempts = await page.evaluate(() => calls.filter(x => x.method === 'POST'));
       assert.equal(attempts.length, 2);
       assert.equal(attempts[0].url, '/api/gear/action');
       assert.equal(attempts[0].body.action, 'unlock');
-      assert.equal(attempts[0].body.set, 'storm');
+      assert.equal(attempts[0].body.set, 'wreck');
       assert.equal(attempts[0].body.unboundInputs, true);
       assert.equal(attempts[0].body.requestKey, attempts[1].body.requestKey);
       assert.ok(attempts[0].body.requestKey);
       assert.equal('cores' in attempts[0].body, false);
-      await page.locator('[data-stage="storm"]').click();
-      await page.waitForFunction(() => growthFixture.state.tiers.storm === 1);
+      await page.locator('[data-stage="wreck"]').click();
+      await page.waitForFunction(() => growthFixture.state.tiers.wreck === 1);
       const advance = await page.evaluate(() => calls.filter(x => x.method === 'POST').at(-1));
       assert.equal(advance.body.action, 'stage');
       assert.notEqual(advance.body.requestKey, attempts[1].body.requestKey);
@@ -131,7 +137,10 @@ test('independent voyage specializations and fishing equipment', async t => {
     const { page, errors } = await fixture();
     try {
       await page.locator('[data-hours]').selectOption('12');
-      await page.locator('[data-voyage-tab="configuration"]').click();
+      await page.locator('[data-voyage-tab="specialization"]').click();
+      // Rebalance the saved allocation from 3+0 to 2+1, then save once.
+      await page.locator('[data-allocation="tide"][data-delta="-1"]').click();
+      await page.locator('[data-allocation="storm"][data-delta="1"]').click();
       await page.locator('[data-focus]').selectOption('storm_relic');
       await page.locator('[data-config-save]').click();
       await page.waitForFunction(() => !document.querySelector('[data-config-save]').disabled);
@@ -145,7 +154,8 @@ test('independent voyage specializations and fishing equipment', async t => {
       assert.equal(await page.locator('[data-voyage-tab="history"]').getAttribute('aria-pressed'), 'true');
       await page.locator('[data-voyage-tab="dispatch"]').click();
       assert.equal(await page.locator('[data-hours]').inputValue(), '12');
-      assert.match(await page.locator('.voyage-saved-config').first().textContent(), /潮汐采集/);
+      assert.match(await page.locator('.voyage-saved-config').first().textContent(), /潮汐采集 2\/3/);
+      assert.match(await page.locator('.voyage-saved-config').first().textContent(), /风暴.*1\/3/);
       assert.match(await page.locator('.voyage-saved-config').first().textContent(), /风暴遗物/);
       await page.evaluate(() => { allowConfirm = false; });
       await page.locator('[data-start="trade"]').click();
@@ -172,7 +182,7 @@ test('independent voyage specializations and fishing equipment', async t => {
         renderVoyage();
       });
       await page.setViewportSize({ width: 390, height: 844 });
-      for (const tab of ['dispatch', 'specializations', 'sets', 'history']) {
+      for (const tab of ['dispatch', 'specialization', 'sets', 'history']) {
         await page.locator('[data-voyage-tab="' + tab + '"]').click();
         assert.equal(await page.locator('[data-claim]').isVisible(), true, tab + ' retains claim action');
         assert.equal(await page.locator('.expedition-panel').evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, tab + ' fits mobile');
