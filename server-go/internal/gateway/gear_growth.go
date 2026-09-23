@@ -24,6 +24,12 @@ func (a *API) gearView(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
+	bindings, err := rewardBindings(r.Context(), a.pool, session.AccountID)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	view["rewardBindings"] = bindings
 	write(w, 200, view)
 }
 func (a *API) gearAction(w http.ResponseWriter, r *http.Request) {

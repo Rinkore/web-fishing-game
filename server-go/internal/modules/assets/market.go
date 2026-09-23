@@ -12,7 +12,7 @@ func (t *Transaction) HoldOrderEquipment(ctx context.Context, owner, id, order i
 		return ErrInvalid
 	}
 	var part string
-	err := t.SQL().QueryRow(ctx, `SELECT e.part FROM fishing.equipment_instances e JOIN fishing.market_orders o ON o.id=$3 WHERE e.id=$1 AND e.owner_id=$2 AND e.lifecycle='available' AND o.seller_id=$2 AND o.state='open' AND o.kind IN ('equipment','rod') AND NOT EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id)`, id, owner, order).Scan(&part)
+	err := t.SQL().QueryRow(ctx, `SELECT e.part FROM fishing.equipment_instances e JOIN fishing.market_orders o ON o.id=$3 WHERE e.id=$1 AND e.owner_id=$2 AND e.lifecycle='available' AND NOT e.reward_bound AND o.seller_id=$2 AND o.state='open' AND o.kind IN ('equipment','rod') AND NOT EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id)`, id, owner, order).Scan(&part)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Rejection("equipment_unavailable")
 	}

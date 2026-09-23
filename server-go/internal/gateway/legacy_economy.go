@@ -139,6 +139,14 @@ func (a *API) legacySell(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
+	if res.Status != "sold" {
+		message := res.Status
+		if res.Status == "reward_bound" {
+			message = "奖励绑定物品不可出售；仅普通库存可出售"
+		}
+		write(w, 400, map[string]any{"error": message, "code": res.Status})
+		return
+	}
 	var details struct {
 		Gain int64 `json:"gain"`
 	}

@@ -10,6 +10,7 @@ import (
 )
 
 type ChestCommand struct {
+	UnboundInputs                             bool `json:"unboundInputs"`
 	ActorID                                   int64
 	RequestKey, ChestID, Action, Part, BaseID string
 	Quantity                                  int64
@@ -42,6 +43,7 @@ func (s *Service) Chest(ctx context.Context, r ChestCommand) (assets.Result, err
 		}
 	}
 	return s.assets.Run(ctx, assets.Command{ActorID: r.ActorID, RequestKey: r.RequestKey, Kind: "chest_" + r.Action, RuleVersion: version, Players: []int64{r.ActorID}, Input: r}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
+		t.UnboundInputsOnly(r.UnboundInputs)
 		if r.Action == "craft" {
 			if err := t.Coins(ctx, r.ActorID, -chest.CostCoins*r.Quantity); err != nil {
 				return assets.Result{}, err

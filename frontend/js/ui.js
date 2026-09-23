@@ -83,7 +83,7 @@ window.UI = (function () {
   function S() { return window.Engine.state; }
   // 库存快照统一入口（v0.13.9）：带 invRev 的完整快照只在「不旧于已应用版本」时才生效。
   // 直接 `st.inventory = r.data.inventory` 会让先发后到的旧响应盖掉刚获得的物品（连开宝匣丢配件的根因）。
-  function applyInvFrom(d) { return !!(d && d.inventory && window.Engine.applyInv(d.inventory, d.invRev)); }
+  function applyInvFrom(d) { return !!(d && d.inventory && window.Engine.applyInv(d.inventory, d.invRev, d.rewardBindings)); }
   // v0.16.2：快照被 applyInv 判旧丢弃时的兜底——向服务器要一次权威资产再校准。
   // 出售回包就走在「回包结果未知 / 快照被判旧」这条路上：不补这一手，界面会停在
   // 「金币涨了、卖掉的竿身还在背包里，再卖报数量不足」的假象上（玩家反馈的那条）。
@@ -230,6 +230,9 @@ window.UI = (function () {
     return tier ? (bf[tier] || 0) : ((bf.L || 0) + (bf.G || 0));
   }
   // 「普通」可用量 = 背包总量 − 大型/巨型预留（批量出售 / 上架弹窗的输入上限用它，服务器同样校验）
+  function rewardBoundCount(id,tier) { const v=((S().rewardBindings||{})[id]||{})[tier==='G'?'giant':tier==='L'?'large':'normal'];return v?Number(v.bound)||0:0; }
+  function tradableCountOf(id,tier) { return Math.max(0,(tier?reservedCountOf(id,tier):availCountOf(id))-rewardBoundCount(id,tier)); }
+  function rewardBindingBadge(id,tier) {const n=rewardBoundCount(id,tier);return n?'<span class="reward-bound">奖励绑定 ×'+n+' · 不可出售 / 交易，可消耗</span>':'';}
   function availCountOf(id) { return Math.max(0, (S().inventory[id] || 0) - reservedCountOf(id)); }
   // ---- 组件展示辅助 ----
   // 品质配色类（配色规范：普通=灰蓝 / 稀有=蓝 / 史诗=金 / 神话=彩虹，见 style.css 的 .q-*/.r-* 与 data.js QUALITY 注释）：
@@ -2215,6 +2218,7 @@ window.UI = (function () {
             // 直接出售（组件固定价，无需等行情）
             const sellBtn = el('button', 'mini', '出售 1');
             markFeature(sellBtn, 'mall.sell');
+            sellBtn.disabled=tradableCountOf(o2.id)<1;
             sellBtn.title = '按系统固定价出售 1 个（组件不随市场浮动）';
             sellBtn.addEventListener('click', function () { sellFromEquip(o2.id); });
             acts.appendChild(sellBtn);
@@ -3373,6 +3377,7 @@ window.UI = (function () {
   // rodInfo：整根钓竿模式（{rodSlot, name, affixes, price, count}）——数量固定 1，组件随竿卖出
   function openListModal(id, onListed, rodInfo) {
     const isRod0 = !!(rodInfo && rodInfo.rodSlot != null);
+    if(isRod0 && rewardBoundCount('@rod:'+rodInfo.rodSlot)>0){toast('该钓竿包含奖励绑定组件，无法上架');return;}
     // v0.14.0：鱼类暂时不能上市集（见顶部 MARKET_FISH_LIST）——入口已经隐掉，这里再兜一道，
     // 免得旧页面 / 快捷路径绕过 UI 直接开窗（服务端也会拒，但让玩家少一次白填参数）
     if (!isRod0 && !MARKET_FISH_LIST && itemMeta(id).kind === 'fish') {
@@ -3380,7 +3385,7 @@ window.UI = (function () {
       return;
     }
     // 悬空引用检测：物品可能刚被卖掉 / 熔炼掉 / 交易走，不能再挂单（否则填完参数才被服务器拒绝）
-    if (!isRod0 && availCountOf(id) <= 0) {
+    if (!isRod0 && tradableCountOf(id) <= 0) {
       const total0 = S().inventory[id] || 0;
       toast(total0 > 0
         ? '「' + itemMeta(id).name + '」的可上架数量为 0（' + reservedCountOf(id) + ' 条是大型/巨型预留，普通通道不能上架）'
@@ -3393,7 +3398,7 @@ window.UI = (function () {
     const isRod = !!(rodInfo && rodInfo.rodSlot != null);
     // v0.13.9：上架走普通通道，服务端按可用量校验 —— 数量上限必须用可用量（此前用总量，必然被拒）
     const total = isRod ? 1 : (st.inventory[id] || 0);
-    const have = isRod ? 1 : availCountOf(id);
+    const have = isRod ? 1 : tradableCountOf(id);
     // 挂单上限提示（上限由后台按账号设置：默认 40，0 = 不限；后台批量上架也会占用这个额度）
     const capRaw = Number(st && st.me ? st.me.listingCap : NaN);
     const myCap = isFinite(capRaw) && capRaw > 0 ? capRaw : 0;
@@ -4922,7 +4927,7 @@ window.UI = (function () {
     const st = S();
     // v0.13.9：上架走普通通道，只按**可用量**上架（持有 − 大型/巨型预留）——
     // 与 /api/market/list 的校验同口径；可用量为 0 的（纯预留 / 已卖光）不列进来。
-    const ids = (rawIds || []).filter(function (id) { return availCountOf(id) > 0; });
+    const ids = (rawIds || []).filter(function (id) { return tradableCountOf(id) > 0; });
     if (!ids.length) { toast('选中的物品没有可上架数量（可能都是大型/巨型预留）', true); return; }
     closeOverlays();
     const overlay = buildOverlay(function () { closeOverlays(); });
@@ -4930,7 +4935,7 @@ window.UI = (function () {
     let hours = 6;
     const rowsHtml = ids.map(function (id) {
       const meta = itemMeta(id);
-      const qty = availCountOf(id);
+      const qty = tradableCountOf(id);
       const totalHeld = st.inventory[id] || 0;
       return '<div class="bl-row"><span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
         '<span class="cnt">×' + qty + '</span>' + (totalHeld > qty ? '<span class="cnt inv-total" title="背包总量（含大型/巨型预留）">总 ×' + totalHeld + '</span>' : '') +
@@ -4959,7 +4964,7 @@ window.UI = (function () {
       const rate = { 6: 0.01, 12: 0.03, 24: 0.05 }[hours];
       let total = 0, fee = 0;
       ids.forEach(function (id) {
-        const qty = availCountOf(id);
+        const qty = tradableCountOf(id);
         const price = Math.max(1, Math.round(unitPriceOf(id) * mult));
         total += price * qty;
         fee += Math.ceil(price * qty * rate);
@@ -4987,7 +4992,7 @@ window.UI = (function () {
       let ok = 0, fail = 0, failMsg = '', chain = Promise.resolve();
       ids.forEach(function (id) {
         chain = chain.then(function () {
-          const qty = availCountOf(id);
+          const qty = tradableCountOf(id);
           if (qty <= 0) return null;
           const price = Math.max(1, Math.round(unitPriceOf(id) * mult));
           return window.Net.marketList(id, qty, price, hours).then(function (r) {
@@ -5052,7 +5057,7 @@ window.UI = (function () {
   // 本次可卖上限：一般行 = 可用量（持有 − 预留）；体型档行 = 该档预留量
   function bulkMaxQtyOf(key) {
     const t = bulkRowTier(key), id = bulkRowId(key);
-    return t === 'N' ? availCountOf(id) : Math.max(0, reservedCountOf(id, t));
+    return tradableCountOf(id,t==='N'?null:t);
   }
   // 展示 / 预估单价：体型档含加成
   function bulkUnitOf(key) {
@@ -5410,9 +5415,9 @@ window.UI = (function () {
   // 该鱼当前可卖的三条通道（没量的不列）：tier=null 为普通通道
   function batchChannelsOf(id) {
     const out = [];
-    if (shownAvailOf(id) > 0) out.push({ tier: null, label: '一般', n: shownAvailOf(id), unit: unitPriceOf(id), bonus: 0 });
+    if (Math.min(shownAvailOf(id),tradableCountOf(id)) > 0) out.push({ tier: null, label: '一般', n: Math.min(shownAvailOf(id),tradableCountOf(id)), unit: unitPriceOf(id), bonus: 0 });
     ['L', 'G'].forEach(function (t) {
-      const n = shownReservedOf(id, t);
+      const n = Math.min(shownReservedOf(id,t),tradableCountOf(id,t));
       if (n > 0) out.push({ tier: t, label: t === 'G' ? '巨型' : '大型', n: n, unit: shownUnitOf(id, t), bonus: t === 'G' ? 150 : 50 });
     });
     return out;
@@ -5893,6 +5898,8 @@ window.UI = (function () {
         const sb = el('button', 'mini primary-mini', '出售 1');
         markFeature(sb, 'mall.sell');
         sb.title = '单独出售这 1 件（系统固定价）';
+        sb.disabled=tradableCountOf(it.id)<1;
+        row.insertAdjacentHTML('beforeend',rewardBindingBadge(it.id));
         sb.addEventListener('click', function () { doSell(it.id, 1); });
         acts.appendChild(sb);
         const sa = el('button', 'mini', '批量出售');
@@ -6614,6 +6621,7 @@ window.UI = (function () {
           if (meta.kind !== 'chest' && !meta.noSell) {
             const sellBtn = el('button', 'mini primary-mini', '出售 1');
             markFeature(sellBtn, 'mall.sell');
+            sellBtn.disabled=tradableCountOf(id)<1;
             sellBtn.title = '按当前系统收购价出售 1 个';
             sellBtn.addEventListener('click', function () { doSell(id, 1); });
             acts.appendChild(sellBtn);
@@ -6641,6 +6649,7 @@ window.UI = (function () {
             acts.appendChild(lb);
           }
           row.appendChild(acts);
+          if(rewardBoundCount(id)>0)row.insertAdjacentHTML('beforeend',rewardBindingBadge(id));
           wireItemIntro(row, id);   // 悬停出简介浮标 + 点击开完整简介（鱼 / 材料 / 宝匣）
           list.appendChild(row);
         }
@@ -6663,6 +6672,7 @@ window.UI = (function () {
             const tact = el('span', 'inv-acts');
             const tsb = el('button', 'mini primary-mini', '出售 1');
             markFeature(tsb, 'mall.sell');
+            tsb.disabled=tradableCountOf(id,t)<1;
             tsb.title = '出售' + (t === 'G' ? '巨型' : '大型') + '（额外 +' + (t === 'G' ? '150' : '50') + '% 金币加成）';
             tsb.addEventListener('click', function () { doSell(id, 1, t); });
             tact.appendChild(tsb);
@@ -6674,6 +6684,7 @@ window.UI = (function () {
             tall.addEventListener('click', function () { openBatchSellModal(id); });
             tact.appendChild(tall);
             trow.appendChild(tact);
+            trow.insertAdjacentHTML('beforeend',rewardBindingBadge(id,t));
             wireItemIntro(trow, id);
             list.appendChild(trow);
           });
@@ -8479,6 +8490,11 @@ window.UI = (function () {
         return '<button class="inv-cat' + (wsTab === kv[0] ? ' on' : '') + '" data-wstab="' + kv[0] +
           '" role="tab" aria-selected="' + (wsTab === kv[0] ? 'true' : 'false') + '">' + kv[1] + '</button>';
       }).join('') + '</div>';
+    const bindingChoice=el('label','ops-row');
+    bindingChoice.innerHTML='<span>消耗来源</span><select class="ipt" data-workshop-source><option value="bound">优先使用奖励绑定物品</option><option value="free">仅使用普通物品</option></select><span class="hint">产物按管理员规则继承绑定；不会更改奖励本身的绑定。</span>';
+    bindingChoice.querySelector('select').value=st.unboundInputs?'free':'bound';
+    bindingChoice.querySelector('select').onchange=function(e){st.unboundInputs=e.target.value==='free';};
+    panel.appendChild(bindingChoice);
     const body = el('div', 'ws-body');
     panel.appendChild(body);
     main.appendChild(panel);

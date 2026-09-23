@@ -412,7 +412,7 @@ func (a *API) legacyTradeOffer(ctx context.Context, c *rules.Catalog, owner int6
 			return offer, "交易物品非法或重复", nil
 		}
 		var have int64
-		if err := a.pool.QueryRow(ctx, `SELECT COALESCE(sum(quantity),0) FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2 AND tier='normal'`, owner, id).Scan(&have); err != nil {
+		if err := a.pool.QueryRow(ctx, `SELECT COALESCE(sum(quantity-bound_quantity),0) FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2 AND tier='normal'`, owner, id).Scan(&have); err != nil {
 			return offer, "", identity.ErrStorage
 		}
 		if have < item.Qty {

@@ -12,6 +12,7 @@ import (
 	"fishing.local/server/internal/modules/economy"
 	"fishing.local/server/internal/modules/fishing"
 	"fishing.local/server/internal/modules/identity"
+	"fishing.local/server/internal/modules/mail"
 	"fishing.local/server/internal/modules/market"
 	"fishing.local/server/internal/modules/operations"
 	"fishing.local/server/internal/modules/trade"
@@ -67,7 +68,8 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 	}
 	work, stopWork := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	workers.Add(8)
+	workers.Add(9)
+	go func() { defer workers.Done(); mail.New(pool, nil).Run(work, logger) }()
 	go func() { defer workers.Done(); fishing.New(pool).Run(work, logger) }()
 	go func() { defer workers.Done(); fishing.NewLiveNative(pool, c.Location).Run(work, logger) }()
 	go func() { defer workers.Done(); market.New(pool).RunExpiry(work, logger) }()

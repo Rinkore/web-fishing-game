@@ -43,15 +43,16 @@ type legacySnapshotRecord struct {
 }
 
 type legacySnapshotLoadout struct {
-	Slot   int               `json:"slot"`
-	Name   string            `json:"name"`
-	Active bool              `json:"active"`
-	Parts  map[string]string `json:"parts"`
+	Bindings map[string]bindingCount `json:"bindings,omitempty"`
+	Slot     int                     `json:"slot"`
+	Name     string                  `json:"name"`
+	Active   bool                    `json:"active"`
+	Parts    map[string]string       `json:"parts"`
 }
 
 func readLegacySnapshotLoadouts(ctx context.Context, tx pgx.Tx, owner int64) ([]legacySnapshotLoadout, error) {
 	var raw []byte
-	err := tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('slot',r.slot,'name',r.name,'active',r.active,'parts',
+	err := tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('slot',r.slot,'name',r.name,'active',r.active,'bindings',(SELECT COALESCE(jsonb_object_agg(c.part,jsonb_build_object('bound',CASE WHEN e.reward_bound THEN 1 ELSE 0 END,'inherit',CASE WHEN e.bind_outputs THEN 1 ELSE 0 END)),'{}'::jsonb) FROM fishing.rod_components c JOIN fishing.equipment_instances e ON e.id=c.equipment_id WHERE c.owner_id=r.owner_id AND c.slot=r.slot),'parts',
  (SELECT COALESCE(jsonb_object_agg(c.part,e.attributes->>'signature'),'{}'::jsonb)
  FROM fishing.rod_components c JOIN fishing.equipment_instances e ON e.id=c.equipment_id WHERE c.owner_id=r.owner_id AND c.slot=r.slot)) ORDER BY r.slot),'[]'::jsonb)
  FROM fishing.rod_loadouts r WHERE r.owner_id=$1`, owner).Scan(&raw)
@@ -65,7 +66,7 @@ func readLegacySnapshotLoadouts(ctx context.Context, tx pgx.Tx, owner int64) ([]
 
 func legacySnapshotRodState(ctx context.Context, tx pgx.Tx, owner int64) ([]byte, error) {
 	var raw []byte
-	err := tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('slot',r.slot,'name',r.name,'active',r.active,'parts',
+	err := tx.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(jsonb_build_object('slot',r.slot,'name',r.name,'active',r.active,'bindings',(SELECT COALESCE(jsonb_object_agg(c.part,jsonb_build_object('bound',CASE WHEN e.reward_bound THEN 1 ELSE 0 END,'inherit',CASE WHEN e.bind_outputs THEN 1 ELSE 0 END)),'{}'::jsonb) FROM fishing.rod_components c JOIN fishing.equipment_instances e ON e.id=c.equipment_id WHERE c.owner_id=r.owner_id AND c.slot=r.slot),'parts',
  (SELECT COALESCE(jsonb_object_agg(c.part,c.equipment_id::text),'{}'::jsonb) FROM fishing.rod_components c WHERE c.owner_id=r.owner_id AND c.slot=r.slot)) ORDER BY r.slot),'[]'::jsonb)
  FROM fishing.rod_loadouts r WHERE r.owner_id=$1`, owner).Scan(&raw)
 	return raw, err
@@ -257,6 +258,10 @@ func (a *API) legacyAdminSnapshotView(ctx context.Context, owner int64) (map[str
 	if err := a.pool.QueryRow(ctx, `SELECT w.coins,p.assets_rev,p.catch_count FROM fishing.wallets w JOIN fishing.player_state p ON p.account_id=w.account_id WHERE w.account_id=$1`, owner).Scan(&coins, &revision, &catchCount); err != nil {
 		return nil, err
 	}
+	bindings, bindingErr := rewardBindings(ctx, a.pool, owner)
+	if bindingErr != nil {
+		return nil, bindingErr
+	}
 	inventory, bigfish, err := a.legacyInventory(ctx, owner)
 	if err != nil {
 		return nil, err
@@ -303,7 +308,7 @@ func (a *API) legacyAdminSnapshotView(ctx context.Context, owner int64) (map[str
 		effects, interval = legacySnapshotRodDetails(c, bd)
 	}
 	return map[string]any{
-		"coins": coins, "inventory": inventory, "bigfish": bigfish, "codex": codex,
+		"rewardBindings": bindings, "coins": coins, "inventory": inventory, "bigfish": bigfish, "codex": codex,
 		"catchCount": catchCount, "invRev": strconv.FormatInt(revision, 10),
 		"bd": bd, "effects": effects, "interval": interval, "rodSlots": rodSlots, "rodActiveSlot": rodActiveSlot, "rodName": rodName,
 	}, nil
@@ -363,6 +368,10 @@ func (a *API) legacyAdminSnapshotViewTx(ctx context.Context, tx pgx.Tx, owner in
 	if err := tx.QueryRow(ctx, `SELECT w.coins,p.assets_rev,p.catch_count FROM fishing.wallets w JOIN fishing.player_state p ON p.account_id=w.account_id WHERE w.account_id=$1`, owner).Scan(&coins, &revision, &catchCount); err != nil {
 		return nil, err
 	}
+	bindings, bindingErr := rewardBindings(ctx, tx, owner)
+	if bindingErr != nil {
+		return nil, bindingErr
+	}
 	inventory, bigfish, err := legacyInventoryFrom(ctx, tx, owner)
 	if err != nil {
 		return nil, err
@@ -418,7 +427,7 @@ func (a *API) legacyAdminSnapshotViewTx(ctx context.Context, tx pgx.Tx, owner in
 	if c, err := a.catalog(ctx); err == nil {
 		effects, interval = legacySnapshotRodDetails(c, bd)
 	}
-	return map[string]any{"coins": coins, "inventory": inventory, "bigfish": bigfish, "codex": codex,
+	return map[string]any{"rewardBindings": bindings, "coins": coins, "inventory": inventory, "bigfish": bigfish, "codex": codex,
 		"catchCount": catchCount, "invRev": strconv.FormatInt(revision, 10), "bd": bd, "effects": effects, "interval": interval,
 		"rodSlots": rodSlots, "rodActiveSlot": active, "rodName": rodName, "_rodLoadouts": loadouts}, nil
 }
@@ -597,6 +606,14 @@ func (a *API) applySnapshotInventory(ctx context.Context, tx pgx.Tx, owner, oper
 	if !ok {
 		return errors.New("invalid snapshot inventory")
 	}
+	currentBindings, bindingErr := rewardBindings(ctx, tx, owner)
+	if bindingErr != nil {
+		return bindingErr
+	}
+	bindings := view["rewardBindings"]
+	if bindings == nil {
+		bindings = currentBindings
+	}
 	before, err := readLegacySnapshotStacks(ctx, tx, owner)
 	if err != nil {
 		return err
@@ -666,7 +683,7 @@ func (a *API) applySnapshotInventory(ctx context.Context, tx pgx.Tx, owner, oper
 	// A legacy map contains the total quantity; restore the large/giant rows
 	// from the companion bigfish projection where available.
 	bigfish, _ := view["bigfish"].(map[string]any)
-	if _, err := tx.Exec(ctx, `UPDATE fishing.inventory_stacks SET quantity=0 WHERE owner_id=$1`, owner); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE fishing.inventory_stacks SET quantity=0,bound_quantity=0,inherit_quantity=0 WHERE owner_id=$1`, owner); err != nil {
 		return err
 	}
 	for id, quantity := range ids {
@@ -713,6 +730,9 @@ func (a *API) applySnapshotInventory(ctx context.Context, tx pgx.Tx, owner, oper
  ON CONFLICT(owner_id,item_id,tier) DO UPDATE SET quantity=excluded.quantity`, owner, id, kind, quantity); err != nil {
 			return err
 		}
+	}
+	if err := restoreRewardBindings(ctx, tx, owner, operation, bindings); err != nil {
+		return err
 	}
 	return recordLegacySnapshotStackDeltas(ctx, tx, operation, owner, before)
 }
@@ -794,12 +814,17 @@ func (a *API) legacyAdminUserSnapshotSave(w http.ResponseWriter, r *http.Request
 	}
 	assetsChanged := in.Coins != nil
 	if in.Inventory != nil {
+		bindings, bindingErr := rewardBindings(ctx, tx, id)
+		if bindingErr != nil {
+			failure(w, identity.ErrStorage)
+			return
+		}
 		beforeStacks, readErr := readLegacySnapshotStacks(ctx, tx, id)
 		if readErr != nil {
 			failure(w, identity.ErrStorage)
 			return
 		}
-		if _, err = tx.Exec(ctx, `UPDATE fishing.inventory_stacks SET quantity=0 WHERE owner_id=$1`, id); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE fishing.inventory_stacks SET quantity=0,bound_quantity=0,inherit_quantity=0 WHERE owner_id=$1`, id); err != nil {
 			failure(w, identity.ErrStorage)
 			return
 		}
@@ -862,6 +887,10 @@ func (a *API) legacyAdminUserSnapshotSave(w http.ResponseWriter, r *http.Request
 			}
 		}
 		if _, err = tx.Exec(ctx, `UPDATE fishing.player_state SET assets_rev=assets_rev+1 WHERE account_id=$1`, id); err != nil {
+			failure(w, identity.ErrStorage)
+			return
+		}
+		if err = restoreRewardBindings(ctx, tx, id, operation, bindings); err != nil {
 			failure(w, identity.ErrStorage)
 			return
 		}
@@ -1444,6 +1473,11 @@ func (a *API) restoreLegacySnapshotRods(ctx context.Context, tx pgx.Tx, owner, o
 					return err
 				}
 				if _, err := tx.Exec(ctx, `INSERT INTO fishing.equipment_entries(operation_id,equipment_id,next_owner,action) VALUES($1,$2,$3,'create')`, operation, id, owner); err != nil {
+					return err
+				}
+			}
+			if b := loadout.Bindings[part]; b.Bound > 0 {
+				if _, err := tx.Exec(ctx, `UPDATE fishing.equipment_instances SET reward_bound=true,bind_outputs=bind_outputs OR $2 WHERE id=$1`, id, b.Inherit > 0); err != nil {
 					return err
 				}
 			}
