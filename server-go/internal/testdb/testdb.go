@@ -152,7 +152,7 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT ON fishing.feature_releases TO "+quote(role)+"; GRANT SELECT,UPDATE ON fishing.feature_head TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant feature publication permissions")
 	}
-	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.economy_prices,fishing.autosell_settings TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.shop_sales TO "+quote(role)); err != nil {
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT ON fishing.legacy_economy_history TO "+quote(role)+"; GRANT SELECT,INSERT,UPDATE ON fishing.economy_prices,fishing.autosell_settings TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.shop_sales TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant economy permissions")
 	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.friend_relations TO "+quote(role)); err != nil {

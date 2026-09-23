@@ -311,7 +311,7 @@ func deterministicRunID(manifest, version string) string {
 	h := sha256.Sum256([]byte(version + "\x00" + manifest))
 	h[6] = (h[6] & 0x0f) | 0x50
 	h[8] = (h[8] & 0x3f) | 0x80
-	b := hex.EncodeToString(h[:])
+	b := hex.EncodeToString(h[:16])
 	return b[:8] + "-" + b[8:12] + "-" + b[12:16] + "-" + b[16:20] + "-" + b[20:]
 }
 

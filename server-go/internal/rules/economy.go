@@ -24,6 +24,39 @@ type PriceOverride struct {
 	UntilMS          int64
 }
 
+// PriceOverrideFor keeps legacy operator interventions in the same immutable
+// catalog as other economy rules. Expiry is evaluated at settlement time.
+func (c *Catalog) PriceOverrideFor(id string, nowMS int64) PriceOverride {
+	if c == nil {
+		return PriceOverride{}
+	}
+	all, _ := c.Runtime["priceOverrides"].(map[string]any)
+	raw, _ := all[id].(map[string]any)
+	o := PriceOverride{}
+	if n, ok := raw["base"].(float64); ok {
+		o.Base = n
+	}
+	if n, ok := raw["m"].(float64); ok {
+		o.Multiplier = n
+	}
+	if n, ok := raw["until"].(float64); ok {
+		o.UntilMS = int64(n)
+	}
+	if o.UntilMS > 0 && nowMS > o.UntilMS {
+		return PriceOverride{}
+	}
+	return o
+}
+
+func (c *Catalog) EconomyBase(id string, nowMS int64) float64 {
+	it, _ := c.Item(id)
+	o := c.PriceOverrideFor(id, nowMS)
+	if o.Base > 0 {
+		return Round(o.Base)
+	}
+	return it.Price
+}
+
 func DefaultPriceDynamics() PriceDynamics { return PriceDynamics{.0075, 60, .4, 2, 2} }
 
 // PriceDynamicsFor applies the legacy operator economy settings to one item.

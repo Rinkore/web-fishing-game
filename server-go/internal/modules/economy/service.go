@@ -53,10 +53,11 @@ func databaseTime(ctx context.Context, t *assets.Transaction) (int64, error) {
 }
 func (s *Service) price(id string, st rules.SaleState, now int64) float64 {
 	it, _ := s.catalog.Item(id)
+	override := s.catalog.PriceOverrideFor(id, now)
 	if st.LastMS == 0 {
-		return it.Price
+		return rules.Price(it.Price, nil, override, now, s.catalog.PriceDynamicsFor(id))
 	}
-	return rules.Price(it.Price, &st, rules.PriceOverride{}, now, s.catalog.PriceDynamicsFor(id))
+	return rules.Price(it.Price, &st, override, now, s.catalog.PriceDynamicsFor(id))
 }
 func applyParts(ctx context.Context, t *assets.Transaction, owner int64, parts []rules.SalePart, states map[string]rules.SaleState, now int64, automatic bool, c *rules.Catalog) (assets.Result, error) {
 	gain := int64(0)
@@ -212,8 +213,7 @@ func (s *Service) autoSell(ctx context.Context, owner int64, key string, require
 		}
 		inputs := []rules.AutoSellInput{}
 		for _, id := range ids {
-			it, _ := s.catalog.Item(id)
-			x := rules.AutoSellInput{ID: id, Rule: cfg.Rules[id], Base: it.Price, Price: s.price(id, states[id], now)}
+			x := rules.AutoSellInput{ID: id, Rule: cfg.Rules[id], Base: s.catalog.EconomyBase(id, now), Price: s.price(id, states[id], now)}
 			if err := t.SQL().QueryRow(ctx, `SELECT COALESCE(sum(quantity) FILTER(WHERE tier='normal'),0)::bigint,COALESCE(sum(quantity) FILTER(WHERE tier='large'),0)::bigint,COALESCE(sum(quantity) FILTER(WHERE tier='giant'),0)::bigint FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2`, owner, id).Scan(&x.Normal, &x.Large, &x.Giant); err != nil {
 				return assets.Result{}, err
 			}

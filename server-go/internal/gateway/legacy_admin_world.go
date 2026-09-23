@@ -44,6 +44,24 @@ func (a *API) legacyAdminWorld(w http.ResponseWriter, r *http.Request) {
 	}
 	stored, _ := a.legacyStoredConfig(r.Context())
 	applyLegacyStoredConfig(view, stored)
+	economyView, err := a.legacyEconomyConsole(r.Context(), c)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	for key, value := range economyView {
+		view[key] = value
+	}
+	fields, _, err := legacyCatalogProjection(c)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	for key, value := range fields {
+		if _, exists := view[key]; !exists {
+			view[key] = value
+		}
+	}
 	write(w, http.StatusOK, view)
 }
 

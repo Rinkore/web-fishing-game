@@ -252,6 +252,11 @@ func (a *API) legacyAdminSettingsWrite(r *http.Request, actor identity.Session, 
 			encoded, _ := json.Marshal(gameplay)
 			catalog.ApplyLegacySettings(c, map[string]json.RawMessage{"legacy:settings": encoded})
 		}
+		if raw, ok := patch["priceOv"]; ok {
+			if err := applyLegacyPriceOverride(c, raw, time.Now().UnixMilli()); err != nil {
+				return err
+			}
+		}
 		err = a.legacyPublishCatalog(r, actor, "/api/admin/settings", "保存运营设置", c, revision, display)
 		if err == nil {
 			return nil

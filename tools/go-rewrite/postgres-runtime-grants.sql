@@ -16,6 +16,7 @@ GRANT SELECT, INSERT, UPDATE ON fishing.player_state, fishing.wallets TO fishing
 GRANT SELECT, INSERT, UPDATE ON fishing.command_results TO fishing_runtime;
 GRANT SELECT, INSERT ON fishing.asset_operations, fishing.asset_entries, fishing.outbox_events TO fishing_runtime;
 GRANT SELECT ON fishing.item_definitions, fishing.fishing_rules TO fishing_runtime;
+GRANT SELECT ON fishing.legacy_economy_history TO fishing_runtime;
 GRANT SELECT, INSERT, UPDATE ON fishing.inventory_stacks, fishing.equipment_instances, fishing.rod_loadouts TO fishing_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON fishing.rod_components TO fishing_runtime;
 GRANT SELECT, INSERT ON fishing.inventory_entries, fishing.equipment_entries, fishing.rod_entries TO fishing_runtime;
