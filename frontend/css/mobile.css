@@ -2,7 +2,7 @@
 @media (max-width: 640px) {
   :root { --mobile-nav-height: 76px; }
   body {
-    min-height: 100dvh;
+    min-height: 0;
     padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px));
   }
   .topbar {

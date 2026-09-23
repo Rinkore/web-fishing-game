@@ -1,4 +1,14 @@
 /* Browser zoom reduces the CSS viewport; size layouts by available space. */
+/* Keep navigation in the viewport; only the main content scrolls. */
+body { height: calc(100dvh / var(--text-scale, 1)); min-height: 0; overflow: hidden; }
+.layout { overflow: hidden; }
+.content { min-height: 0; overscroll-behavior: contain; }
+.record-banner { flex-shrink: 0; }
+.content.character-page { display: flex; flex-direction: column; }
+.character-page > .panel { flex: 1 0 auto; width: 100%; max-width: none; }
+@media (min-width: 641px) {
+  .layout > .sidebar { max-height: none; min-height: 0; }
+}
 .layout, .content, .content > *, .ground-cols > * { min-width: 0; }
 .content { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .topbar { flex-shrink: 0; }

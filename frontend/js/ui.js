@@ -665,18 +665,7 @@ window.UI = (function () {
   }
 
   // ---- 侧边导航 ----
-  // 页面骨架统一为「一行标题 + 可选页签 + 可选说明」：
-  //   pageHead('🛒', '商城', '限购 · 金币直购 ｜ 收购 · 卖出换钱 ｜ 市集 · 玩家交易')
-  //   sectionTabsHtml(scope, active, items) —— 商城「限购 / 收购 / 市集」同款页签
-  //   pageHelp('一句话说清这一页怎么用') —— 页签下的操作说明，写在内容之前
-  // 每个导航入口只承载一个主页面，主页面内的子功能一律用页签切换，不再各占一个侧栏入口。
-  function pageHead(icon, title, subtitle) {
-    return '<h2>' + icon + ' ' + esc(title) +
-      (subtitle ? ' <span class="subtitle">' + subtitle + '</span>' : '') + '</h2>';
-  }
-  function pageHelp(text) {
-    return '<div class="hint page-help">' + text + '</div>';
-  }
+  // 功能名称由导航和页签承载，页面直接展示操作内容。
   // 页签（与商城「限购 / 收购 / 市集」同款）：scope 决定点选后写哪个页签状态
   const SECTION_STATE = {
     codex: function (v) { codexMainTab = v; },
@@ -2514,9 +2503,7 @@ window.UI = (function () {
     const main = $('main');
     main.innerHTML = '';
     const panel = el('div', 'panel wide char-view');
-    panel.innerHTML = pageHead('🧍', '角色', '钓竿配装与方案') +
-      pageHelp('装上组件即可拿到词缀加成（正在钓鱼也会立即生效）。最多保存 8 套钓竿方案，随时一键切换。') +
-      '<h3>🎯 钓竿 · 配装与方案</h3>';
+    panel.innerHTML = '';
     renderBdContent(panel);
     main.appendChild(panel);
   }
@@ -2837,8 +2824,7 @@ window.UI = (function () {
     main.innerHTML = '';
     panel = el('div', 'panel wide friends-panel');
     panel._owner = owner;
-    panel.innerHTML = pageHead('👥', '好友', '保存常联系的钓友，查看好友在线状态') +
-      pageHelp('搜索在线玩家并添加到自己的好友列表；好友离线后仍会保留，可随时移除。');
+    panel.innerHTML = '';
     panel.appendChild(socialTabs());
     const cols = el('div', 'ground-cols');
     const saved = el('div', 'sub'), search = el('div', 'sub');
@@ -3017,8 +3003,7 @@ window.UI = (function () {
     if (panel && panel.isConnected) { panel._refresh(false); return; }
     main.innerHTML = '';
     panel = el('div', 'panel wide party-panel');
-    panel.innerHTML = pageHead('⚓', '编队', '与互为好友的玩家组队远洋 · 同海域鱼群加成') +
-      pageHelp('队长邀请好友（需互为好友）组建编队，最多 4 人；全员在同一片临时海域垂钓时，鱼群事件概率翻倍且同款渔获额外 +1。');
+    panel.innerHTML = '';
     panel.appendChild(socialTabs()); // 编队页也挂社交页签，否则切进来回不去
     const body = el('div', 'sub party-body');
     panel.appendChild(body);
@@ -3231,9 +3216,7 @@ window.UI = (function () {
     panel.setAttribute('data-sig', sig);   // 下次广播到达时按它判断「能不能就地更新」
     const filterSpot = selectedSocialSpot();
     const mapName = mapTab === 'voyage' ? '远洋' : '近岸';
-    panel.innerHTML = pageHead('🌊', '社交', '在线玩家 · 按地图与钓点筛选 · 实时渔获；玩家之间可直接交易') +
-      pageHelp('先选近岸 / 远洋，再点钓点卡片继续筛选；「全服在线」返回全服，点玩家卡片上的「🤝 交易」即可发起以物易物。') +
-      '<h3>' + (filterSpot ? esc(filterSpot.sp.name) + ' · 实时动态' : mapName + '实时动态') + '</h3>';
+    panel.innerHTML = '<h3>' + (filterSpot ? esc(filterSpot.sp.name) + ' · 实时动态' : mapName + '实时动态') + '</h3>';
     panel.insertBefore(socialTabs(), panel.querySelector('h3'));
     if (groundFilterId) {
       const back = el('button', 'mini ground-back', '🌐 返回全服');
@@ -3631,17 +3614,6 @@ window.UI = (function () {
     });
   }
 
-  // 商店头部文案：跟随后台经济参数（world.priceCfg 经 /api/version 与 pricecfg 广播同步）
-  function shopSubtitle() {
-    const c = (S() && S().priceCfg) || null;
-    const divisorPct = c && c.saleDivisor != null ? (c.saleDivisor * 100) : 0.75;
-    const tauMin = c && c.riseTauMin != null ? c.riseTauMin : 60;
-    const targetX = c && c.riseTargetPct != null ? (c.riseTargetPct / 100) : 2;
-    const tauText = tauMin >= 60 ? (Math.round(tauMin / 6) / 10) + ' 小时' : Math.round(tauMin) + ' 分钟';
-    const fmtPct = Math.round(divisorPct * 100) / 100;
-    return '价格随供需浮动 · 每卖一件约 -' + fmtPct + '% · 闲置约 ' + tauText + ' 回到 ' + targetX + ' 倍基准价';
-  }
-
   function renderShop() {
     if (featureBlocked('mall')) return renderView();
     const st = S();
@@ -3664,10 +3636,8 @@ window.UI = (function () {
     if (!document.querySelector('#shop-panel .shop-grid')) {
       const panel = el('div', 'panel wide');
       panel.id = 'shop-panel';
-      panel.innerHTML = '<h2>🪙 收购 <span class="subtitle" id="shop-sub">' + shopSubtitle() + '</span></h2>' + mallTabsHtml('shop');
+      panel.innerHTML = mallTabsHtml('shop');
       bindMallTabs(panel);
-      panel.appendChild(el('div', 'hint page-help',
-        '按现价把渔获与材料卖给系统：卖得越多价格越低（后台可调）。左上「出售数量」对全商店生效，卡片上的按钮按该数量结算。'));
       const cols = el('div', 'shop-cols');
       const colMain = el('div', 'shop-colmain');
       colMain.dataset.orderFeature = 'mall.sell';
@@ -3778,8 +3748,6 @@ window.UI = (function () {
     }
 
     // 广播刷新：只重建网格与右栏一览，不动输入框；头部文案跟随经济参数变化
-    const subEl = document.getElementById('shop-sub');
-    if (subEl) subEl.textContent = shopSubtitle();
     renderShopSide();
     renderShopGrid();
     // 清单子窗口开着时就地刷新列表（价格 / 持有 / 可卖余量随行情变）——
@@ -4543,10 +4511,8 @@ window.UI = (function () {
     main.innerHTML = '';
     const panel = el('div', 'panel wide two-col');
     if (loaded && marketTab !== 'history') panel.dataset.marketQuery = queryKey;
-    panel.innerHTML = '<h2>💱 市集 <span class="subtitle">购买 / 我的挂单 / 历史订单 分页管理 · 成交收 10% 税（卖家承担）</span></h2>' + mallTabsHtml('market');
+    panel.innerHTML = mallTabsHtml('market');
     bindMallTabs(panel);
-    panel.appendChild(el('div', 'hint page-help',
-      '玩家之间的挂单买卖：上架费按 6 / 12 / 24 小时收 1% / 3% / 5%（下架不退），成交再收 10% 税（卖家承担）。右栏可直接从背包上架。'));
 
     const colMain = el('div', 'col-main');
     colMain.dataset.orderFeature = 'mall.marketbuy';
@@ -6526,7 +6492,7 @@ window.UI = (function () {
     normalizeInvFilters();
     main.innerHTML = '';
     const panel = el('div', 'panel wide two-col inventory-panel');
-    panel.innerHTML = pageHead('🎒', '背包', '渔获 / 材料 / 宝匣 / 组件分类存放；出售、上架与订阅都在这里');
+    panel.innerHTML = '';
     // 交易进行中：背包内容锁定（新渔获不会自动刷新列表，避免交易选物品时被冲掉）
     if (tradeLockOn()) panel.appendChild(tradeLockBar());
 
@@ -7557,17 +7523,10 @@ window.UI = (function () {
     main.innerHTML = '';
     const st = st0;
     const wrap = el('div', 'panel char-view');
-    wrap.innerHTML = pageHead('🧍', '角色', '同伴、船型、钓竿配装与场景背景') +
-      sectionTabsHtml('character', charTab, [['rod', '🎯 钓竿'], ['companion', '🐶 同伴'], ['boat', '⛵ 船型']]) +
-      pageHelp(charTab === 'rod'
-        ? '装备组件并保存最多 8 套钓竿方案；正在钓鱼时换装也会立即生效。'
-        : (charTab === 'boat'
-          ? '点船型卡片即换上；锁定的船型后续在商城上架。'
-          : '点同伴卡片即换上（随钓手出现在世界地图上）；场景背景只改展示台画面。'));
+    wrap.innerHTML = sectionTabsHtml('character', charTab, [['rod', '🎯 钓竿'], ['companion', '🐶 同伴'], ['boat', '⛵ 船型']]);
     wrap.setAttribute('data-sig', sig);
     bindSectionTabs(wrap, 'character');
     if (charTab === 'rod') {
-      wrap.appendChild(el('h3', null, '🎯 钓竿 · 配装与方案'));
       renderBdContent(wrap);
       main.appendChild(wrap);
       return;
@@ -7993,8 +7952,6 @@ window.UI = (function () {
     const st = S();
     const info = st.chest;
     body.innerHTML = '';
-    body.appendChild(el('div', 'ws-open-head',
-      '<h3>🎁 开箱 · 沉船打捞</h3>' + pageHelp('残片 + 金币换宝匣，档位越高消除的随机越多：Ⅲ 档自选底材且满词条，Ⅳ 档必定神话。开箱后才产出组件。')));
     if (!info) {
       body.appendChild(el('div', 'hint', '宝匣数据加载中…（若长时间无响应请刷新页面）'));
       return;
@@ -8484,8 +8441,7 @@ window.UI = (function () {
     wsPruneStale(); // 选中的组件若已被消耗 / 出售（悬空引用），先清掉再渲染
     main.innerHTML = '';
     const panel = el('div', 'panel wide ws-panel');
-    panel.innerHTML = pageHead('⚒', '工坊', wsTab === 'smelt' ? '' : '开箱得组件 · 熔炼换词缀 · 重铸洗数值') +
-      '<div class="inv-cats ws-tabs section-tabs" role="tablist">' +
+    panel.innerHTML = '<div class="inv-cats ws-tabs section-tabs" role="tablist">' +
       orderedFeatureTabs('workshop', [['open', '🎁 开箱'], ['smelt', '🔥 熔炼'], ['recast', '♻ 重铸'], ['forge', '⚒ 锻造']], { open: ['craft', 'open'] }).map(function (kv) {
         return '<button class="inv-cat' + (wsTab === kv[0] ? ' on' : '') + '" data-wstab="' + kv[0] +
           '" role="tab" aria-selected="' + (wsTab === kv[0] ? 'true' : 'false') + '">' + kv[1] + '</button>';
@@ -9134,8 +9090,7 @@ window.UI = (function () {
     const st = S();
     main.innerHTML = '';
     const panel = el('div', 'panel wide');
-    panel.innerHTML = pageHead('🛒', '商城', '限购 · 金币直购 ｜ 收购 · 卖给系统 ｜ 市集 · 玩家挂单') + mallTabsHtml('mall') +
-      pageHelp('限购用金币直购官方商品（按刷新时间每日重置）；收购把渔获与材料卖给系统换金币；市集是玩家之间的挂单买卖。');
+    panel.innerHTML = mallTabsHtml('mall');
     bindMallTabs(panel);
     const mall = st.mall;
     if (!mall || !mall.items) {
@@ -9256,9 +9211,7 @@ window.UI = (function () {
     const panel = el('div', 'panel wide');
     const caught = st.codex || {};
     const total = Object.keys(caught).length;
-    panel.innerHTML = pageHead('📖', '图鉴', '收集进度与全服纪录合并在这一页') +
-      sectionTabsHtml('codex', 'codex', [['codex', '📖 图鉴'], ['records', '🏆 记录']]) +
-      pageHelp('按鱼种与底材列出收集进度、产地与个人体型极值；点卡片看完整资料，未解锁的也能查到去哪钓。');
+    panel.innerHTML = sectionTabsHtml('codex', 'codex', [['codex', '📖 图鉴'], ['records', '🏆 记录']]);
     bindSectionTabs(panel, 'codex');
 
     // 汇总：图鉴只收「钓得到」的物品——宝匣是合成的、不在任何钓点掉落池里，
@@ -9519,9 +9472,7 @@ window.UI = (function () {
     const st = S();
     main.innerHTML = '';
     const panel = el('div', 'panel wide');
-    panel.innerHTML = pageHead('📖', '图鉴', '收集进度与全服纪录合并在这一页') +
-      sectionTabsHtml('codex', 'records', [['codex', '📖 图鉴'], ['records', '🏆 记录']]) +
-      pageHelp('汇总每种鱼的全服最大与最小渔获；点鱼类卡片可切换日榜、周榜与总榜。');
+    panel.innerHTML = sectionTabsHtml('codex', 'records', [['codex', '📖 图鉴'], ['records', '🏆 记录']]);
     bindSectionTabs(panel, 'codex');
 
     const recs = Object.keys(st.records || {}).map(function (id) { return st.records[id]; })
@@ -9633,11 +9584,7 @@ window.UI = (function () {
     const cdText = cdHours >= 1 ? (cdHours + ' 小时') : Math.round(cdHours * 60) + ' 分钟';
     const panel = el('div', 'panel wide feedback-panel');
     const mine = (fb.mine || []);
-    panel.innerHTML = pageHead('📮', '反馈', '每 ' + cdText + ' 可提交 1 条 · ' + status.skipCost + ' 金币可结束冷却') +
-      sectionTabsHtml('feedback', fbTab, [['submit', '✍ 提交'], ['mine', '📜 我的反馈' + (mine.length ? ' ' + mine.length : '')]]) +
-      pageHelp(fbTab === 'submit'
-        ? '写清复现步骤或建议理由；管理员可在后台逐条改状态（受理 / 完成 / 拒绝）并发放奖励。'
-        : '按类型与处理状态筛选；受理 / 完成会带上奖励与时间，被拒绝的会标出状态。');
+    panel.innerHTML = sectionTabsHtml('feedback', fbTab, [['submit', '✍ 提交'], ['mine', '📜 我的反馈' + (mine.length ? ' ' + mine.length : '')]]);
     bindSectionTabs(panel, 'feedback');
 
     // 冷却状态条
@@ -9798,7 +9745,7 @@ window.UI = (function () {
     const main = $('main');
     main.innerHTML = '';
     const panel = el('div', 'panel wide');
-    panel.innerHTML = pageHead('📜', '日志', '按类型回看渔获、公告、交易、纪录与订阅提醒');
+    panel.innerHTML = '';
     const counts = { all: msgLog.length };
     Object.keys(LOG_KINDS).forEach(function (k) { counts[k] = msgLog.filter(function (e) { return e.kind === k; }).length; });
     const tabs = el('div', 'inv-cats sub-cats');
@@ -9809,8 +9756,7 @@ window.UI = (function () {
       tabs.appendChild(b);
     });
     panel.appendChild(tabs);
-    panel.appendChild(el('div', 'hint page-help', '日志只存在本机浏览器（按账号区分），不上传服务器：「🐟 渔获」与「🖥 系统」各留最近 ' +
-      LOG_KEEP + ' 条，交易 / 纪录 / 订阅提醒长期保留。'));
+
 
     const list = el('div', 'log-page');
     const rows = msgLog.filter(function (e) { return logFilter === 'all' || e.kind === logFilter; });
@@ -10053,7 +9999,7 @@ window.UI = (function () {
     main.innerHTML = '';
     const wrap = el('div', 'panel wide sea-panel');
     wrap.setAttribute('data-sig', sig);
-    wrap.innerHTML = pageHead('⛵', '远洋', '乘船远洋 · 深海钓点按船级解锁 · 未知海图发现随机海域');
+    wrap.innerHTML = '';
     main.appendChild(wrap);
     if (!d) { wrap.appendChild(el('div', 'hint', '正在读取远洋状态……')); return; }
     // ① 船
@@ -10199,6 +10145,7 @@ window.UI = (function () {
     const pageId = pageIdOf();
     const fishingPage = currentView === 'fishing' && !featureBlocked(pageId);
     $('main').classList.toggle('fishing-page', fishingPage);
+    $('main').classList.toggle('character-page', currentView === 'character' || currentView === 'bd');
     if (!fishingPage && disposeFishingViewport) disposeFishingViewport();
     $('main').classList.toggle('smelt-page', currentView === 'workshop' && wsTab === 'smelt');
     if (featureBlocked(pageId)) {

@@ -46,7 +46,6 @@ html[data-text-scale]:not([data-text-scale="100"]) :is(.trade-modal .modal-body,
 html[data-text-scale]:not([data-text-scale="100"]) :is(.snap-inv, .bulk-rows, .log-page, .inventory-panel .inv-page) {
   max-height: calc(58dvh / var(--text-scale, 1));
 }
-html[data-text-scale]:not([data-text-scale="100"]) .sidebar { max-height: calc((100dvh - 64px - var(--banner-h, 0px)) / var(--text-scale, 1)); }
 html[data-text-scale]:not([data-text-scale="100"]) :is(.feed-big, .bd-grid) { max-height: calc((100dvh - 300px) / var(--text-scale, 1)); }
 
 html[data-records=false] #record-banner { display: none !important; }
