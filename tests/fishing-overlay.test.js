@@ -30,6 +30,23 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     await page.evaluate(() => document.fonts.ready);
     const overlay = page.locator('#fishing-overlay');
     check(!await overlay.isVisible(), 'overlay starts closed');
+    await page.locator('[data-overlay="buffs"]').click();
+    check(await page.locator('.live-buff-row').count() === 0, 'spots without buffs are omitted');
+    check((await page.locator('.live-buffs').innerText()).includes('暂无钓点增益'), 'empty buff menu explains its empty state');
+    await page.evaluate(() => {
+      GameData.GROUNDS.find(g => g.id === 'map').spots.find(s => s.id === 'dock').buffs = [{ type: 'speed', value: 20 }];
+      UI.onFishingTick();
+    });
+    check(await page.locator('.live-buff-row').count() === 1, 'new buff appears after live refresh');
+    check((await page.locator('.live-buff-row').innerText()).includes('湖畔老码头'), 'only the buffed spot is shown');
+    check((await page.locator('.live-buff-count').innerText()) === '1 个增益钓点', 'count matches filtered spots');
+    await page.evaluate(() => {
+      GameData.GROUNDS.find(g => g.id === 'map').spots.find(s => s.id === 'dock').buffs = [];
+      UI.onFishingTick();
+    });
+    check(await page.locator('.live-buff-row').count() === 0, 'expired buff disappears after live refresh');
+    check((await page.locator('.live-buff-count').innerText()) === '0 个增益钓点', 'expired buff count updates');
+    await page.locator('[data-overlay="buffs"]').click();
     for (const key of ['buffs', 'players', 'log']) {
       const button = page.locator('[data-overlay="' + key + '"]');
       await button.click();

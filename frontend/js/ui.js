@@ -1052,8 +1052,14 @@ window.UI = (function () {
     return out;
   }
 
+  function liveBuffSpotsOfMap() {
+    return liveSpotsOfMap().filter(function (e) { return e.sp.buffs && e.sp.buffs.length > 0; });
+  }
+
   function liveBuffRowsHtml() {
-    return liveSpotsOfMap().map(function (e) {
+    const spots = liveBuffSpotsOfMap();
+    if (!spots.length) return '<div class="hint">当前地图暂无钓点增益。</div>';
+    return spots.map(function (e) {
       const sp = e.sp, buffs = sp.buffs || [];
       const tags = buffs.length
         ? buffs.map(function (b) {
@@ -1336,8 +1342,8 @@ window.UI = (function () {
     overlayHead.appendChild(close);
     right.appendChild(overlayHead);
     const buffBlock = el('section', 'live-block');
-    buffBlock.innerHTML = '<div class="live-head"><h3>⚡ 地图钓点增益</h3><span>' +
-      liveSpotsOfMap().length + ' 个钓点</span></div><div class="live-buffs"></div>';
+    buffBlock.innerHTML = '<div class="live-head"><h3>⚡ 地图钓点增益</h3><span class="live-buff-count">' +
+      liveBuffSpotsOfMap().length + ' 个增益钓点</span></div><div class="live-buffs"></div>';
     right.appendChild(buffBlock);
 
     const playersBlock = el('section', 'live-block');
@@ -1427,6 +1433,8 @@ window.UI = (function () {
     // ③ 浮层：即使收起也更新增益和玩家，下次展开直接显示最新内容。
     const buffHost = main.querySelector('.fish-live .live-buffs');
     if (buffHost) fillLiveBuffs(buffHost);
+    const buffCount = main.querySelector('.fish-live .live-buff-count');
+    if (buffCount) buffCount.textContent = liveBuffSpotsOfMap().length + ' 个增益钓点';
     const peepHost = main.querySelector('.fish-live .live-peeps');
     if (peepHost) {
       const here = st.peepsPage && st.peepsPage.list || [];
