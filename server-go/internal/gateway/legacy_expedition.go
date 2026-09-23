@@ -25,6 +25,7 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 			ID         string `json:"id"`
 			Set        string `json:"set"`
 			Part       string `json:"part"`
+			UseSaved   bool   `json:"useSaved"`
 			Starter    bool   `json:"starter"`
 		}
 		if !decode(w, r, &in) {
@@ -46,7 +47,11 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 		case "target":
 			result, err = svc.SelectTarget(ctx, session.AccountID, in.RequestKey, in.Target)
 		case "start":
-			result, err = svc.StartExpedition(ctx, session.AccountID, in.RequestKey, in.Route, in.Hours, in.Set, in.Focus, in.Mode)
+			if in.UseSaved {
+				result, err = svc.StartExpedition(ctx, session.AccountID, in.RequestKey, in.Route, in.Hours)
+			} else {
+				result, err = svc.StartExpedition(ctx, session.AccountID, in.RequestKey, in.Route, in.Hours, in.Set, in.Focus, in.Mode)
+			}
 		case "claim":
 			id, _ := strconv.ParseInt(in.ID, 10, 64)
 			result, err = svc.ClaimExpedition(ctx, session.AccountID, in.RequestKey, id)

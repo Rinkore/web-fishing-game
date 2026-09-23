@@ -93,7 +93,7 @@ func TestIntegrationExpeditionHTTPIsolation(t *testing.T) {
 	if err = db.Admin.QueryRow(context.Background(), `SELECT count(*) FROM fishing.sea_progress_entries WHERE operation_id=(SELECT claim_operation FROM fishing.sea_expeditions WHERE id=$1)`, id).Scan(&count); err != nil || count != 1 {
 		t.Fatal("duplicated growth", count, err)
 	}
-	code, out = do("/api/sea/sets/redeem", `{"requestKey":"forged-starter","set":"tide","part":"","starter":true}`, other)
+	code, out = do("/api/sea/sets/redeem", `{"requestKey":"forged-starter","set":"harvest","part":"","starter":true}`, other)
 	if code != 400 || out["error"] != "starter_unavailable" {
 		t.Fatal("unearned starter", code, out)
 	}

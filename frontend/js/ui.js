@@ -10100,6 +10100,7 @@ window.UI = (function () {
     return (q.claimed ? '✅' : (q.progress >= q.need ? '🎁' : '⬚')) + ' ' + esc(q.title) + submitText +
       ' <span class="hint">进度 ' + q.progress + '/' + q.need + ' · 奖励：' + esc(rewardText) + '</span>';
   }
+  let seaSection = 'expedition';
   function renderSea() {
     // 不能传 force：强刷会让「渲染→拉取→再渲染」成环，页面每秒重绘一次（按钮永远点不中）。
     // 8 秒节流在 ensureSea 内部（过短会在广播重绘时频繁打接口，过长则升级材料攒够后按钮迟迟不亮）；动作回包各自直接更新 seaInfo，无需依赖这里的刷新。
@@ -10116,6 +10117,35 @@ window.UI = (function () {
     wrap.innerHTML = '';
     main.appendChild(wrap);
     if (!d) { wrap.appendChild(el('div', 'hint', '正在读取远洋状态……')); return; }
+    const heading = el('div', 'sea-heading');
+    heading.innerHTML = '<div><h2>⛵ 远洋港口</h2><p class="hint">安排远航、培养专精，或整备船只探索海域。</p></div>';
+    wrap.appendChild(heading);
+    const nav = el('nav', 'sea-nav');
+    nav.setAttribute('aria-label', '远洋功能');
+    const sections = {};
+    [['expedition', '🧭 远航中心'], ['exploration', '🗺 船坞与海图'], ['quests', '🏅 每日悬赏']].forEach(function (entry) {
+      const button = el('button', 'btn', entry[1]);
+      button.type = 'button';
+      button.dataset.seaSection = entry[0];
+      button.setAttribute('aria-controls', 'sea-section-' + entry[0]);
+      nav.appendChild(button);
+      const section = el('section', 'sea-section');
+      section.id = 'sea-section-' + entry[0];
+      section.setAttribute('aria-label', entry[1]);
+      sections[entry[0]] = section;
+      button.onclick = function () { seaSection = entry[0]; selectSection(); };
+    });
+    function selectSection() {
+      Object.keys(sections).forEach(function (key) { sections[key].hidden = key !== seaSection; });
+      nav.querySelectorAll('button').forEach(function (button) {
+        const active = button.dataset.seaSection === seaSection;
+        button.classList.toggle('primary', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+    }
+    wrap.appendChild(nav);
+    Object.values(sections).forEach(function (section) { wrap.appendChild(section); });
+    selectSection();
     // ① 船
     const ship = d.ship;
     const pShip = el('div', 'panel');
@@ -10123,9 +10153,9 @@ window.UI = (function () {
     pShip.innerHTML = '<h3>🚤 我的船 · ' + esc(ship.name) + '（' + ship.lv + '/5 级）</h3>' +
       '<div class="hint" data-sea="ship-hint"></div>' +
       (ship.max ? '' : '<div class="sa-row"><button class="btn primary" data-sea="ship-up" id="sea-ship-up"></button></div>');
-    wrap.appendChild(pShip);
+    sections.exploration.appendChild(pShip);
     const pExpedition = el('div', 'panel expedition-panel');
-    wrap.appendChild(pExpedition);
+    sections.expedition.appendChild(pExpedition);
     // ② 海图
     const pChart = el('div', 'panel');
     pChart.dataset.orderFeature = 'sea.chart sea.voyage';
@@ -10134,7 +10164,7 @@ window.UI = (function () {
       '<div class="sa-row"><button class="btn primary" data-sea="chart-craft" id="sea-chart-craft">🧩 合成未知海图（' + d.chartCost + ' 碎片 → 1 张）</button>' +
       '<button class="btn primary" data-sea="voyage" id="sea-voyage">🗺 探索临时海域（1 张海图）</button></div>' +
       '<div class="hint">出航会发现一片只属于你的<b>临时海域</b>（2 小时后沉没）：富矿海域双钓↑、凶险海域技巧↓但稀有度↑，钓点池完全随机。</div>';
-    wrap.appendChild(pChart);
+    sections.exploration.appendChild(pChart);
     // ③ 临时海域
     const pZone = el('div', 'panel');
     pZone.innerHTML = '<h3 data-sea="zone-count"></h3>';
@@ -10168,7 +10198,7 @@ window.UI = (function () {
       row.appendChild(ab);
       pZone.appendChild(row);
     });
-    wrap.appendChild(pZone);
+    sections.exploration.appendChild(pZone);
     // ③.5 v0.21.0 远洋每日悬赏
     const pQuest = el('div', 'panel');
     pQuest.dataset.orderFeature = 'sea.quest';
@@ -10195,10 +10225,10 @@ window.UI = (function () {
       row.appendChild(cb);
       pQuest.appendChild(row);
     });
-    wrap.appendChild(pQuest);
+    sections.quests.appendChild(pQuest);
     // ④ 说明
-    const pHelp = el('div', 'panel');
-    pHelp.innerHTML = '<h3>ℹ 玩法说明</h3>' +
+    const pHelp = el('details', 'panel');
+    pHelp.innerHTML = '<summary>ℹ 海域玩法说明</summary>' +
       '<div class="hint">· 远洋钓点在「🎣 钓鱼」地图的「⛵ 远洋」页签：深海鱼礁需 3 级船、海沟裂谷需 4 级船。<br>' +
       '· 远洋随机事件：⛈ 风暴（渔获脱钩）/ 🌀 漩涡（一半卷走渔获、一半卷来同款 +2）/ 📦 漂流宝箱（海图碎片）/ 🐟 鱼群（同款 +1）/ 🚢 沉船残骸（深海鳞片 + 海图碎片）。<br>' +
       '· 🌌 夜光潮：每日 ' + (D.SEA.nightglow ? D.SEA.nightglow.from : 20) + '~' + (D.SEA.nightglow ? D.SEA.nightglow.to : 23) + ' 点，全部临时海域附加稀有度加成。<br>' +
@@ -10207,7 +10237,7 @@ window.UI = (function () {
       '· ⚓ 编队：在「社交 · 编队」与互为好友的玩家组队（最多 4 人），同海域垂钓时鱼群事件概率 ×2 且多 +1 条。<br>' +
       '· 远洋经验只升不降；经验+金币+深海鳞片三条件都满足后升级按钮才亮。<br>' +
       '· 临时海域 2 小时沉没（下锚可续），同时最多 ' + D.SEA.zoneMax + ' 片；只有自己能下竿，图鉴与纪录照常收录。</div>';
-    wrap.appendChild(pHelp);
+    sections.exploration.appendChild(pHelp);
     const up = wrap.querySelector('#sea-ship-up');
     if (up) up.onclick = function () {
       up.disabled = true;

@@ -233,6 +233,108 @@ func TestIntegrationStagesAndEngraving(t *testing.T) {
 		t.Fatal("preset state", raw)
 	}
 }
+
+func TestIntegrationSpecializationPreferenceModes(t *testing.T) {
+	f := setup(t)
+	f.exec("UPDATE fishing.gear_progress SET state=$2 WHERE owner_id=$1", f.owner, `{"receipts":100,"tiers":{"tide":2,"storm":1,"rescue":2},"unlocked":{"tide":true,"storm":true,"rescue":true,"wreck":true},"selected":"wreck","voyageMode":"normal"}`)
+	for _, in := range []Command{
+		{Set: "tide", Mode: "concentrate"},
+		{Set: "storm", Mode: "deep"},
+		{Set: "rescue", Mode: "evacuate"},
+		{Set: "wreck", Mode: "deep"},
+		{Mode: "concentrate"},
+	} {
+		in.Action = "preferences"
+		if r := f.apply(in); r.Status != "specialization_mode_locked" {
+			t.Fatal("saved unavailable mode", in, r)
+		}
+		v, err := Read(f.ctx, f.db.Admin, f.owner)
+		if err != nil || v.Selected != "wreck" || v.VoyageMode != "normal" {
+			t.Fatal("rejected mode changed preferences", v, err)
+		}
+	}
+	f.exec("UPDATE fishing.gear_progress SET state=jsonb_set(state,'{tiers}','{\"tide\":3,\"storm\":2,\"rescue\":3}') WHERE owner_id=$1", f.owner)
+	for _, in := range []Command{
+		{Set: "tide", Mode: "concentrate", Focus: "gear_crystal"},
+		{Set: "storm", Mode: "deep"},
+		{Set: "rescue", Mode: "evacuate"},
+		{Set: "wreck", Mode: "normal"},
+		{Mode: "normal"},
+		{},
+	} {
+		in.Action = "preferences"
+		if r := f.apply(in); r.Status != "crafted" {
+			t.Fatal("valid mode rejected", in, r)
+		}
+		v, err := Read(f.ctx, f.db.Admin, f.owner)
+		if err != nil || v.Selected != in.Set || v.VoyageMode != in.Mode || v.Focus != in.Focus {
+			t.Fatal("preferences not saved", v, err)
+		}
+	}
+}
+
+func TestIntegrationIndependentSpecializationProgress(t *testing.T) {
+	f := setup(t)
+	if r := f.apply(Command{Action: "stage", Set: "tide"}); r.Status != "请先认证专精" {
+		t.Fatal("locked specialization advanced", r)
+	}
+	// Competing unlocks must charge once, without requiring any equipment.
+	rr := make([]assets.Result, 2)
+	ee := make([]error, 2)
+	var wg sync.WaitGroup
+	for i := range rr {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			rr[i], ee[i] = f.s.Apply(f.ctx, f.owner, Command{Action: "unlock", Set: "tide", RequestKey: fmt.Sprintf("specialization-unlock-%d", i)})
+		}(i)
+	}
+	wg.Wait()
+	wins := 0
+	for i, r := range rr {
+		if ee[i] != nil {
+			t.Fatal(ee[i])
+		}
+		if r.Status == "crafted" {
+			wins++
+		} else if r.Status != "专精已认证或不存在" {
+			t.Fatal(r)
+		}
+	}
+	if wins != 1 || f.num("SELECT coins FROM fishing.wallets WHERE account_id=$1", f.owner) != 995000 {
+		t.Fatal("specialization unlock charged more than once")
+	}
+	// Material failure must roll back payment and progress together.
+	f.exec("UPDATE fishing.inventory_stacks SET quantity=0 WHERE owner_id=$1 AND item_id='gear_crystal'", f.owner)
+	if r := f.apply(Command{Action: "stage", Set: "tide"}); r.Status == "crafted" {
+		t.Fatal("advanced without materials")
+	}
+	v, err := Read(f.ctx, f.db.Admin, f.owner)
+	if err != nil || v.Tiers["tide"] != 0 || v.Receipts != 100 || !v.Unlocked["tide"] || v.Tiers["forge"] != 3 || f.num("SELECT coins FROM fishing.wallets WHERE account_id=$1", f.owner) != 995000 {
+		t.Fatal("failed advancement changed assets or progress", v, err)
+	}
+	f.exec("UPDATE fishing.inventory_stacks SET quantity=998 WHERE owner_id=$1 AND item_id='gear_crystal'", f.owner)
+	legacyID := ""
+	for stage := 1; stage <= 3; stage++ {
+		if r := f.apply(Command{Action: "stage", Set: "tide"}); r.Status != "crafted" {
+			t.Fatal("specialization requires equipment", stage, r)
+		}
+		if stage == 1 {
+			// Later upgrades must also preserve previously issued specialization equipment.
+			legacyID = f.add("set_tide_rod#epic#mat+8")
+		}
+	}
+	if r := f.apply(Command{Action: "stage", Set: "tide"}); r.Status != "已达三阶" {
+		t.Fatal("advanced beyond maximum", r)
+	}
+	v, err = Read(f.ctx, f.db.Admin, f.owner)
+	if err != nil || v.Tiers["tide"] != 3 || v.Receipts != 97 || f.num("SELECT coins FROM fishing.wallets WHERE account_id=$1", f.owner) != 875000 || f.num("SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id='gear_crystal'", f.owner) != 938 {
+		t.Fatal("wrong specialization costs", v, err)
+	}
+	if r := f.apply(Command{Action: "preferences", Set: "tide"}); r.Status != "crafted" || f.num("SELECT count(*) FROM fishing.equipment_instances WHERE id=$1 AND lifecycle='available'", legacyID) != 1 {
+		t.Fatal("legacy asset removed", r)
+	}
+}
 func TestIntegrationHarvestSingleCastAndTargetQueue(t *testing.T) {
 	f := setup(t)
 	cfg := f.c.GearConfig()
