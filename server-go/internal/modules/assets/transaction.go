@@ -70,7 +70,7 @@ func (s *Service) Run(ctx context.Context, c Command, apply func(context.Context
 	switch c.Kind {
 	case "party_change":
 	case "sea_quests_refresh", "sea_quest_claim":
-	case "sea_voyage", "sea_anchor":
+	case "sea_voyage", "sea_anchor", "expedition_start", "expedition_claim", "sea_set_redeem", "sea_set_target":
 	case "ship_upgrade", "chart_craft":
 	case "feature_publish", "catalog_publish":
 	case "shop_sell", "autosell_config", "autosell_run":

@@ -21,8 +21,8 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.21.4';
-  const BUILD = '2026-09-20';   // 构建日期（仅 /api/version 暴露，界面不展示）
+  const VERSION = 'v0.21.5';
+  const BUILD = '2026-09-23';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。
@@ -106,8 +106,319 @@
     { id: 'deepscale', name: '深海鳞片', rarity: 'rare', price: 180, size: null },
   ];
 
+  // 专属催化剂只由远航产出；可玩家交易，不可系统出售。
+  [
+  {"id":"tide_sand","name":"潮汐砂","affix":"speed","route":"trade","minHours":2},
+  {"id":"grindstone","name":"磨石粉","affix":"skill","route":"gather","minHours":2},
+  {"id":"stardust","name":"星辉粉","affix":"rare","route":"danger","minHours":2},
+  {"id":"humus","name":"腐殖泥","affix":"material","route":"gather","minHours":2},
+  {"id":"boneash","name":"巨兽骨粉","affix":"size","route":"danger","minHours":2},
+  {"id":"dragon_scale","name":"龙鳞碎屑","affix":"double","route":"king","minHours":2},
+  {"id":"ballast","name":"稳舵配重","affix":"stability","route":"salvage","minHours":2},
+  {"id":"resonance_crystal","name":"共鸣结晶","affix":"resonance","route":"salvage","minHours":8},
+  {"id":"curesalt","name":"防腐盐","affix":"settle","route":"trade","minHours":8}
+  ].forEach(function (c) {
+    let item = MATERIALS.find(function (m) { return m.id === c.id; });
+    if (!item) { item = { id: c.id, name: c.name, rarity: 'rare', price: 0, size: null }; MATERIALS.push(item); }
+    item.noSell = true; item.expeditionOnly = true; item.price = 0;
+  });
+
   // 稀有度基准价倍率（无独立 price 时兜底；仅用于渔获/材料）
   const RARITY_PRICE = { common: 10, rare: 350, epic: 600, mythic: 1200 };
+
+  const EXPEDITION = {
+  "hours": [
+    2,
+    8,
+    12
+  ],
+  "ticket": 1,
+  "routes": [
+    {
+      "id": "trade",
+      "name": "沿岸贸易",
+      "level": 1,
+      "success": 100,
+      "coins": 6000,
+      "description": "稳定金币与钓速材料"
+    },
+    {
+      "id": "gather",
+      "name": "深海采集",
+      "level": 2,
+      "success": 90,
+      "coins": 3000,
+      "description": "深海鳞片与工坊采集材料"
+    },
+    {
+      "id": "salvage",
+      "name": "沉船打捞",
+      "level": 3,
+      "success": 80,
+      "coins": 4000,
+      "description": "宝匣残片、海图与稳定 / 共鸣材料"
+    },
+    {
+      "id": "danger",
+      "name": "凶险远征",
+      "level": 4,
+      "success": 65,
+      "coins": 6000,
+      "description": "稀有度与体型材料"
+    },
+    {
+      "id": "king",
+      "name": "海王航线",
+      "level": 5,
+      "success": 65,
+      "coins": 8000,
+      "description": "满级单人挑战，龙鳞碎屑"
+    }
+  ],
+  "catalysts": [
+    {
+      "id": "tide_sand",
+      "name": "潮汐砂",
+      "affix": "speed",
+      "route": "trade",
+      "minHours": 2
+    },
+    {
+      "id": "grindstone",
+      "name": "磨石粉",
+      "affix": "skill",
+      "route": "gather",
+      "minHours": 2
+    },
+    {
+      "id": "stardust",
+      "name": "星辉粉",
+      "affix": "rare",
+      "route": "danger",
+      "minHours": 2
+    },
+    {
+      "id": "humus",
+      "name": "腐殖泥",
+      "affix": "material",
+      "route": "gather",
+      "minHours": 2
+    },
+    {
+      "id": "boneash",
+      "name": "巨兽骨粉",
+      "affix": "size",
+      "route": "danger",
+      "minHours": 2
+    },
+    {
+      "id": "dragon_scale",
+      "name": "龙鳞碎屑",
+      "affix": "double",
+      "route": "king",
+      "minHours": 2
+    },
+    {
+      "id": "ballast",
+      "name": "稳舵配重",
+      "affix": "stability",
+      "route": "salvage",
+      "minHours": 2
+    },
+    {
+      "id": "resonance_crystal",
+      "name": "共鸣结晶",
+      "affix": "resonance",
+      "route": "salvage",
+      "minHours": 8
+    },
+    {
+      "id": "curesalt",
+      "name": "防腐盐",
+      "affix": "settle",
+      "route": "trade",
+      "minHours": 8
+    }
+  ]
+};
+  const GEAR_SETS = [
+  {
+    "id": "tide",
+    "name": "潮汐采集",
+    "level": 1,
+    "cost": 20,
+    "effect": "远航每 2 小时回收 1 份宝匣残片，共鸣提高回收量。",
+    "pending": false,
+    "pieces": [
+      {
+        "part": "rod",
+        "name": "潮汐采集核心",
+        "type": "material",
+        "value": 8
+      },
+      {
+        "part": "charm",
+        "name": "潮汐采集徽记",
+        "type": "settle",
+        "value": 6
+      }
+    ]
+  },
+  {
+    "id": "apex",
+    "name": "猎王追踪",
+    "level": 2,
+    "cost": 25,
+    "effect": "选择目标鱼种；在线有鱼结算未命中时积累追踪，最多 3 层，每层提高目标权重 25%，命中清空。仅在含该鱼的钓点生效。",
+    "pending": false,
+    "pieces": [
+      {
+        "part": "rod",
+        "name": "猎王追踪核心",
+        "type": "skill",
+        "value": 8
+      },
+      {
+        "part": "charm",
+        "name": "猎王追踪徽记",
+        "type": "size",
+        "value": 6
+      }
+    ]
+  },
+  {
+    "id": "storm",
+    "name": "风暴远洋",
+    "level": 4,
+    "cost": 30,
+    "effect": "风险航线成功率额外 +10%，按航线危险程度增加材料收益。",
+    "pending": false,
+    "pieces": [
+      {
+        "part": "rod",
+        "name": "风暴远洋核心",
+        "type": "stability",
+        "value": 8
+      },
+      {
+        "part": "charm",
+        "name": "风暴远洋徽记",
+        "type": "resonance",
+        "value": 6
+      }
+    ]
+  },
+  {
+    "id": "forge",
+    "name": "锻造工匠",
+    "level": 2,
+    "cost": 25,
+    "effect": "在线钓获材料或远航产生精工热量；工坊锻造自动消耗 1 点，让新增词条取正向上界。",
+    "pending": false,
+    "pieces": [
+      {
+        "part": "rod",
+        "name": "锻造工匠核心",
+        "type": "material",
+        "value": 6
+      },
+      {
+        "part": "charm",
+        "name": "锻造工匠徽记",
+        "type": "settle",
+        "value": 8
+      }
+    ]
+  },
+  {
+    "id": "wreck",
+    "name": "沉船考古",
+    "level": 3,
+    "cost": 30,
+    "effect": "打捞或更高航线积累遗物线索；每 6 点兑换一只深海珍匣。",
+    "pending": false,
+    "pieces": [
+      {
+        "part": "rod",
+        "name": "沉船考古核心",
+        "type": "material",
+        "value": 8
+      },
+      {
+        "part": "charm",
+        "name": "沉船考古徽记",
+        "type": "resonance",
+        "value": 6
+      }
+    ]
+  },
+  {
+    "id": "research",
+    "name": "生态研究",
+    "level": 3,
+    "cost": 25,
+    "effect": "在线首次发现鱼种留下研究样本；远航返航消耗样本，额外获得海图碎片与船经验。",
+    "pending": false,
+    "pieces": [
+      {
+        "part": "rod",
+        "name": "生态研究核心",
+        "type": "skill",
+        "value": 6
+      },
+      {
+        "part": "charm",
+        "name": "生态研究徽记",
+        "type": "rare",
+        "value": 8
+      }
+    ]
+  },
+  {
+    "id": "rescue",
+    "name": "救生护航",
+    "level": 4,
+    "cost": 30,
+    "effect": "事故时自动撤离，保留 90% 收益；撤离不发成功印记。",
+    "pending": false,
+    "pieces": [
+      {
+        "part": "rod",
+        "name": "救生护航核心",
+        "type": "stability",
+        "value": 10
+      },
+      {
+        "part": "charm",
+        "name": "救生护航徽记",
+        "type": "settle",
+        "value": 8
+      }
+    ]
+  },
+  {
+    "id": "market",
+    "name": "商路观测",
+    "level": 5,
+    "cost": 30,
+    "effect": "企划中，暂未开放兑换。",
+    "pending": true,
+    "pieces": [
+      {
+        "part": "rod",
+        "name": "商路观测核心",
+        "type": "rare",
+        "value": 7
+      },
+      {
+        "part": "charm",
+        "name": "商路观测徽记",
+        "type": "resonance",
+        "value": 6
+      }
+    ]
+  }
+];
 
   // ---- 钓竿部位框架（含饰品栏位） ----
   // 每个部位默认安装一个“标准”组件，默认无词缀、无效果。
@@ -129,14 +440,14 @@
   // 「压低普通品质物品权重」——生成战利品时普通品质条目的权重乘以 K/(K+R)（R = 稀有度，K 后台可配）。
   const AFFIX_LABEL = {
     speed: '钓速', skill: '技巧', rare: '稀有度',
-    material: '材料概率', size: '体型', double: '双钓概率',
+    material: '材料概率', size: '体型', double: '双钓概率', stability: '稳定', resonance: '共鸣', settle: '结算',
   };
   // 钓点增益的类别 = 组件词缀**同一套**（speed/skill/rare/material/size/double）。
   // v0.13.3 删掉了这里曾经多出来的一类「大鱼概率」（big）：它只放大「大鱼」档掉落权重，
   // 与产出倍率（后台「大鱼季」的 dc.big）和「技巧」的语义都重叠，实际没人用，
   // 还让「大鱼」一词同时指鱼档位和增益类别。旧配置里残留的 { type:'big' } 由服务端载入时剔除。
   const AFFIX_CODES = {
-    speed: 'spd', skill: 'skl', rare: 'rare', material: 'mat', size: 'size', double: 'dbl',
+    speed: 'spd', skill: 'skl', rare: 'rare', material: 'mat', size: 'size', double: 'dbl', stability: 'stb', resonance: 'res', settle: 'stl',
   };
   // 旧存档兼容：组件实例签名里出现过的大鱼概率短码仍按「技巧」解析（v0.11 起组件不再产出该词缀）
   const LEGACY_CODE_ALIAS = { big: 'skill' };
@@ -149,7 +460,7 @@
   const AFFIX_CODE_RE = new RegExp('^(' + Object.keys(CODE_TO_TYPE).join('|') + ')([+-]?\\d+)(?:@([A-Za-z0-9_]+))?$');
   // 组件词缀类型全集（固定顺序；池外补足时按此顺序取候选，保证签名跨端一致）
   // 刻意用显式数组而不是 Object.keys：顺序稳定，也不受 AFFIX_LABEL 将来加键影响。
-  const AFFIX_TYPES = ['speed', 'skill', 'rare', 'material', 'size', 'double'];
+  const AFFIX_TYPES = ['speed', 'skill', 'rare', 'material', 'size', 'double', 'stability', 'resonance', 'settle'];
 
   // ---- 池外词缀默认数值区间 ----
   // 「海王遗匣」的突破件会在底材词缀池之外补足词缀（见 genBreakthrough）。
@@ -164,7 +475,7 @@
     rare:     [1, 4],
     material: [8, 16],
     size:     [4, 10],
-    double:   [3, 8],
+    double:   [3, 8], stability: [2, 6], resonance: [1, 4], settle: [2, 6],
   };
 
   // ---- 品质（== 组件的“稀有度”概念，统一称为品质） ----
@@ -326,6 +637,19 @@
     { id: 'charm_trident', name: '海王徽记', part: 'charm', price: 290, pool: [
       { type: 'skill', min: 6, max: 10 }, { type: 'rare', min: 4, max: 8 }, { type: 'double', min: 8, max: 14 }, { type: 'speed', min: -16, max: -8 } ] },
   ];
+  // 历史底材只读兼容，新掉落使用 24 个按部位分工的普通底材。
+  const PART_AFFIXES = {"line":["speed","stability","material"],"hook":["skill","size"],"bait":["rare","double","resonance"],"reel":["speed","settle","stability"],"accessory":["material","resonance","settle"]};
+  COMPONENT_BASES.forEach(function(b){ b.legacy = true; });
+  const ORDINARY_NAMES = {"line":["轻潮线组","稳舵线组","丰收线组","远洋线组","龙筋航线"],"hook":["磨石钩","巨兽骨钩","精准钩","重型海钩","猎王钩"],"bait":["星辉拟饵","双生拟饵","回声拟饵","深海诱饵","共鸣香饵"],"reel":["疾风卷线器","航海卷线器","稳帆卷线器","长航卷线器","涡轮航海轮"],"accessory":["收获网袋","共鸣声呐","防腐收纳箱","远洋采集器"]};
+  Object.keys(ORDINARY_NAMES).forEach(function(part){ ORDINARY_NAMES[part].forEach(function(name,i){
+    COMPONENT_BASES.push({id:'gear_'+part+'_'+(i+1),name:name,part:part,price:60+i*55,pool:PART_AFFIXES[part].map(function(t,j){
+      const main=j<2; return {type:t,min:main?2+i:0,max:main?8+i*4:4+i};
+    })});
+  }); });
+  // 套装核心固定属性，只能由远航自选或印记兑换获得。
+  GEAR_SETS.forEach(function (set) { set.pieces.forEach(function (p) {
+    COMPONENT_BASES.push({id:'set_'+set.id+'_'+p.part,name:p.name,part:p.part,price:0,setId:set.id,noSell:true,pool:[{type:p.type,min:p.value,max:p.value}]});
+  }); });
   const BASE_MAP = {};
   COMPONENT_BASES.forEach(function (b) { b.pool = b.pool.map(function (a) { return { type: a.type, min: a.min, max: a.max }; }); BASE_MAP[b.id] = b; });
   function componentBase(id) { return BASE_MAP[id] || null; }
@@ -512,7 +836,7 @@
     const breakthrough = affixes.length > QUALITY.epic.cap;
     const adjective = adjectiveOf(affixes, base, inst.quality);
     return {
-      id: id, kind: 'component', baseId: base.id, baseName: base.name, part: base.part,
+      id: id, kind: 'component', baseId: base.id, baseName: base.name, part: base.part, setId: base.setId || '', noSell: !!base.noSell,
       quality: inst.quality, qualityName: q.name, qualityCls: q.cls,
       rarity: inst.quality, rarityName: q.name,
       affixes: affixes, pool: base.pool, maxAffixes: maxN, qualityCap: qualityCap,
@@ -770,7 +1094,7 @@
     if (need > 0) {
       const used = {};
       picked.forEach(function (a) { used[a.type] = 1; });
-      const cands = AFFIX_TYPES.filter(function (t) { return !used[t]; });
+      const cands = AFFIX_TYPES.filter(function (t) { return !used[t] && (base.legacy || (PART_AFFIXES[base.part] || []).includes(t)); });
       for (let i = cands.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
       cands.slice(0, need).forEach(function (t) {
         const rng = extraAffixRangeOf(t);
@@ -789,9 +1113,9 @@
   }
   // 从整份底材目录均匀抽一个底材，再定品质生成
   function componentChoices(selector) {
-    if (!selector) return COMPONENT_BASES;
-    if (selector.indexOf('part/') === 0) return COMPONENT_BASES.filter(function (b) { return b.part === selector.slice(5); });
-    if (selector.indexOf('base/') === 0) return COMPONENT_BASES.filter(function (b) { return b.id === selector.slice(5); });
+    if (!selector) return COMPONENT_BASES.filter(function(b){return !b.setId && !b.legacy;});
+    if (selector.indexOf('part/') === 0) return COMPONENT_BASES.filter(function (b) { return b.part === selector.slice(5) && !b.setId && !b.legacy; });
+    if (selector.indexOf('base/') === 0) return COMPONENT_BASES.filter(function (b) { return b.id === selector.slice(5) && !b.setId && !b.legacy; });
     return [];
   }
   function rollComponent(selector) {
@@ -912,7 +1236,7 @@
     };
   }
   function rodEffectsOf(bd) {
-    const eff = { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0 };
+    const eff = { speed: 0, skill: 0, rare: 0, material: 0, size: 0, double: 0, stability:0, resonance:0, settle:0 };
     ROD_PARTS.forEach(function (part) {
       const comp = componentOf(bd && bd[part.key] && bd[part.key].compId);
       if (!comp) return;
@@ -1034,13 +1358,16 @@
   // 材料即「词缀定向器」：每种材料只对应一个词缀类型，投料量最大的那种材料决定要补的词缀
   // （并列时按本表顺序取先出现的）。龙宫宝珠不是定向材料，而是催化剂，单列。
   const SMELT_MATERIAL_AFFIX = {
-    lure: 'skill',        // 反光假饵   → 技巧
-    bait_pack: 'rare',    // 诱饵包     → 稀有度
-    rope: 'size',         // 耐磨绳     → 体型
-    relic: 'material',    // 沉船宝匣残片 → 材料概率
-    tide_sand: 'speed',   // 潮汐砂     → 钓速（新材料）
-    dragon_scale: 'double', // 龙鳞碎屑 → 双钓（新材料）
-  };
+  "tide_sand": "speed",
+  "grindstone": "skill",
+  "stardust": "rare",
+  "humus": "material",
+  "boneash": "size",
+  "dragon_scale": "double",
+  "ballast": "stability",
+  "resonance_crystal": "resonance",
+  "curesalt": "settle"
+};
   const SMELT_PEARL = 'dragonpearl'; // 龙宫宝珠：催化剂（roll 两次取边界值）
   // 补缀（投料新增词缀）的候选：默认 = **全部 6 类词缀**里熔炼结果尚未拥有的那些（不再受主件底材词缀池限制）。
   function smeltMaterialAffix(id) { return SMELT_MATERIAL_AFFIX[id] || null; }
@@ -1166,7 +1493,7 @@
       if (!qty) return;
       if (id === SMELT_PEARL) { pearl += qty; return; }
       const affix = SMELT_MATERIAL_AFFIX[id];
-      if (!affix) return;
+      if (!affix) { if (['bait_pack','rope','lure'].indexOf(id)>=0) total+=qty; return; }
       byAffix[affix] = (byAffix[affix] || 0) + qty;
       total += qty;
     });
@@ -1183,9 +1510,10 @@
     const c = smeltCfg;
     const total = Math.max(0, Number(load && load.total) || 0);
     const pearl = hasPearl != null ? !!hasPearl : !!(load && load.pearl > 0);
-    const raw = c.baseRate + c.failPerMaterial * total;
+    const raw = c.baseRate - c.failPerMaterial * total;
     const rate = Math.max(c.rateMin, Math.min(c.rateMax, raw));
-    const extraRaw = c.extraRatePerMaterial * total + (pearl ? c.extraRatePearl : 0);
+    const catalysts = Object.values((load && load.byAffix) || {}).reduce((sum, n) => sum + n, 0);
+    const extraRaw = c.extraRatePerMaterial * catalysts + (pearl ? c.extraRatePearl : 0);
     const extraRate = Math.max(0, Math.min(c.extraRateMax, extraRaw));
     return {
       rate: Math.round(rate * 10) / 10,
@@ -1218,7 +1546,8 @@
     const have = {};
     (currentTypes || []).forEach(function (t) { have[t] = 1; });
     const anyAffix = smeltCfg.addAnyAffix !== false;
-    if (anyAffix) return AFFIX_TYPES.filter(function (t) { return !have[t]; });
+    if (base && base.setId) return [];
+    if (anyAffix) return AFFIX_TYPES.filter(function (t) { return !have[t] && (!base || base.legacy || (PART_AFFIXES[base.part] || []).indexOf(t)>=0); });
     if (!base) return [];
     return base.pool.filter(function (p) { return !have[p.type]; }).map(function (p) { return p.type; });
   }
@@ -1420,11 +1749,13 @@
     };
     if (!mainMeta || !isInstance(mainRaw)) return { error: '主组件必须是已生成的组件实例' };
     if (!subMeta || !isInstance(subRaw)) return { error: '副组件必须是已生成的组件实例' };
+    if ((componentBase(mainMeta.baseId) || {}).setId || (componentBase(subMeta.baseId) || {}).setId) return { error: '套装核心不可熔炼或改造' };
     if (mainMeta.part !== subMeta.part) {
       return { error: '主件与副件必须是同一部位的组件（当前：' + partName(mainMeta.part) + ' / ' + partName(subMeta.part) + '）' };
     }
     const mainAffix = mainMeta.affixes.find(function (a) { return a.type === d.mainAffix; });
     const subAffix = subMeta.affixes.find(function (a) { return a.type === d.subAffix; });
+    if (!componentBase(mainMeta.baseId).legacy && !(PART_AFFIXES[mainMeta.part] || []).includes(d.subAffix)) return { error: '副件词条不属于主件的部位属性池' };
     if (!mainAffix) return { error: '请选择主组件上的一条词条' };
     if (!subAffix) return { error: '请选择副组件上的一条词条' };
     if (mainAffix.type === subAffix.type) return { error: '主副选中的词条类型不能相同（熔炼后两条词条会合成同一条）' };
@@ -1441,9 +1772,9 @@
       const qty = e && e.qty;
       if (matList.some(function (x) { return x.id === id; })) return { error: '投料物品重复' };
       if (id === SMELT_PEARL) { pearl = true; pearlQty += qty; continue; }
-      if (!smeltMaterialAffix(id)) return { error: '「' + materialName(id) + '」不是熔炼材料' };
+      if (!smeltMaterialAffix(id) && ['bait_pack','rope','lure'].indexOf(id)<0) return { error: '「' + materialName(id) + '」不是熔炼材料' };
       matList.push({ id: id, qty: qty });
-      types[smeltMaterialAffix(id)] = 1;
+      if (smeltMaterialAffix(id)) types[smeltMaterialAffix(id)] = 1;
       total += Math.max(0, Math.floor(Number(qty) || 0));
     }
     if (pearlQty > 1) return { error: '龙宫宝珠一次最多投入 1 个' };
@@ -1471,7 +1802,7 @@
     const load = smeltLoadOf(matList);
     const afterTypes = [mainAffix.type, subAffix.type];
     let extraType = null;
-    if (load.total > 0) {
+    if (load.dominant) {
       extraType = load.dominant;
       const addable = smeltAddableAffixes(mainMeta.baseId, afterTypes);
       if (!extraType || addable.indexOf(extraType) < 0) {
@@ -1566,7 +1897,7 @@
   // 允许重铸的品质：全游戏只有「海王遗匣」产出神话件（后台掉落权重刻意不含 mythic），
   // 所以神话品质就是「宝匣产出的组件」这一身份标识；工坊熔炼保留主件品质，熔出来的神话件同样可重铸。
   const RECAST_QUALITY = 'mythic';
-  function canRecast(meta) { return !!(meta && meta.kind === 'component' && meta.quality === RECAST_QUALITY); }
+  function canRecast(meta) { return !!(meta && meta.kind === 'component' && !((componentBase(meta.baseId) || {}).setId) && meta.quality === RECAST_QUALITY); }
   // 重铸·指定词条的额外宝珠数量：第 1 条额外 1 颗、第 2 条额外 2 颗……（1-based = 索引 + 1）。
   // 传 null / undefined / 负数 = 不指定（重 roll 全部词条），额外消耗为 0。
   function recastPearlExtra(idx) {
@@ -1633,8 +1964,6 @@
       { id: 'bait_pack', price: 40, limit: 20 },
       { id: 'lure', price: 60, limit: 20 },
       { id: 'rope', price: 35, limit: 20 },
-      { id: 'tide_sand', price: 2600, limit: 3 },
-      { id: 'dragon_scale', price: 7200, limit: 1 },
       { id: 'relic', price: 3800, limit: 3 },
     ],
   };
@@ -1777,31 +2106,33 @@
         const c = componentOf(id);
         if (!c || c.part !== key) return;      // 部位不符 / 旧格式件：不参与配装
         const vec = autoBuildVec(c);
-        const sig = AFFIX_TYPES.map(function (t) { return vec[t]; }).join(',');
+        const resonance = !c.setId && c.affixes.some(function(a){return a.type==='resonance';}) ? 1 : 0;
+        const sig = (c.setId || '') + ':' + resonance + ':' + AFFIX_TYPES.map(function (t) { return vec[t]; }).join(',');
         if (seen[sig]) return;                 // 属性完全一样的两件等价，留一件即可
         seen[sig] = 1;
-        list.push({ id: c.id, vec: vec });
+        list.push({ id: c.id, vec: vec, set: c.setId || '', resonance: resonance });
       });
       list.sort(function (a, b) { return lex(b.vec, a.vec) || (a.id < b.id ? -1 : 1); });
       const keep = [];
       list.forEach(function (it) {              // 单部位内被逐项压制的件永远不可能被选
-        for (let i = 0; i < keep.length; i++) if (autoBuildDom(keep[i].vec, it.vec)) return;
+        for (let i = 0; i < keep.length; i++) if (keep[i].set===it.set && keep[i].resonance===it.resonance && autoBuildDom(keep[i].vec, it.vec)) return;
         keep.push(it);
       });
       cand[key] = keep.slice(0, AUTO_BUILD_CANDS);
     });
 
-    let frontier = [{ vec: autoBuildZero(), picks: {} }];
+    let frontier = [{ vec: autoBuildZero(), picks: {}, set:'', resonance:0 }];
     Object.keys(cand).forEach(function (key) {
       const list = cand[key];
       if (!list.length) { frontier.forEach(function (s) { s.picks[key] = null; }); return; }   // 该部位没得挑：保持原样
       const next = [];
       frontier.forEach(function (s) {
         list.forEach(function (c) {
+          if ((s.set && c.set && s.set!==c.set) || s.resonance+c.resonance>2) return;
           const picks = {};
           for (const k in s.picks) picks[k] = s.picks[k];
           picks[key] = c.id;
-          next.push({ vec: autoBuildAdd(s.vec, c.vec), picks: picks });
+          next.push({ vec: autoBuildAdd(s.vec, c.vec), picks: picks, set:s.set||c.set, resonance:s.resonance+c.resonance });
         });
       });
       // 截断排序：**已越过目标上限的状态排在后面**（同组内仍按优先级字典序）。
@@ -1826,7 +2157,7 @@
       const keep = [];
       for (let i = 0; i < next.length && keep.length < slot; i++) {
         let dom = false;
-        for (let j = 0; j < keep.length; j++) if (autoBuildDom(keep[j].vec, next[i].vec)) { dom = true; break; }
+        for (let j = 0; j < keep.length; j++) if (keep[j].set===next[i].set && keep[j].resonance===next[i].resonance && autoBuildDom(keep[j].vec, next[i].vec)) { dom = true; break; }
         if (!dom) keep.push(next[i]);
       }
       AFFIX_TYPES.forEach(function (t) {
@@ -2141,7 +2472,7 @@
       { id: 'q_big_catch', title: '大物猎人：钓上 2 条大型或巨型海鱼', kind: 'catch_big_ocean', need: 2,
         reward: { coins: 200000, items: { chest_deep: 1 } } },
       { id: 'q_tide_hunter', title: '潮汐寻宝：撞上 3 次漂流宝箱或沉船残骸', kind: 'sea_event', need: 3,
-        reward: { coins: 60000, items: { tide_sand: 5, relic: 8 } } },
+        reward: { coins: 60000, items: { relic: 8 } } },
       { id: 'q_voyage', title: '整装出航：发现 2 片新的临时海域', kind: 'voyage', need: 2,
         reward: { coins: 30000, chartfrag: 4 } },
       { id: 'q_submit_scale', title: '上贡鳞片：上交 8 片深海鳞片', kind: 'submit', need: 1,
@@ -2173,7 +2504,7 @@
     return null;
   }
   // 悬赏奖励可选物品：材料 + 宝匣（渔获/组件不进奖励池，避免绕过大小鱼预留与图鉴口径）
-  const SEA_QUEST_REWARD_IDS = MATERIALS.map(function (m) { return m.id; })
+  const SEA_QUEST_REWARD_IDS = MATERIALS.filter(function (m) { return !m.expeditionOnly; }).map(function (m) { return m.id; })
     .concat(CHESTS.map(function (c) { return c.id; }));
   // 一片临时海域的落点（v0.21.3）：返回 { center, spots:[[x,y],…] }，坐标 = 地图宽高百分比。
   // zi = 该海域的**分配序号**（自己的海域 0..n-1，队友共享海域接在它们后面），保证同时存在的
@@ -2358,13 +2689,13 @@
       });
     });
     MATERIALS.forEach(function (m) {
-      out.push({ id: m.id, name: m.name, rarity: m.rarity, price: m.price, size: null, kind: 'material' });
+      out.push({ id: m.id, name: m.name, rarity: m.rarity, price: m.price, size: null, kind: 'material', noSell: !!m.noSell, expeditionOnly: !!m.expeditionOnly });
     });
     CHESTS.forEach(function (c) {
       out.push({ id: c.id, name: c.name, rarity: c.rarity, price: c.price, size: null, kind: 'chest', chest: c });
     });
     COMPONENT_BASES.forEach(function (b) {
-      out.push({ id: b.id, name: b.name, rarity: 'common', price: b.price, size: null, kind: 'component', part: b.part, pool: b.pool });
+      out.push({ id: b.id, name: b.name, rarity: 'common', price: b.price, size: null, kind: 'component', part: b.part, pool: b.pool, setId: b.setId || '', legacy: !!b.legacy, noSell: !!b.noSell });
     });
     out.push({ id: LEGACY_COMPONENT.id, name: LEGACY_COMPONENT.name, rarity: LEGACY_COMPONENT.rarity, price: LEGACY_COMPONENT.price, size: null, kind: 'component', part: null, pool: [] });
     return out;
@@ -2396,6 +2727,8 @@
   return {
     VERSION: VERSION, BUILD: BUILD,
     FISH: FISH, MATERIALS: MATERIALS, RARITY_PRICE: RARITY_PRICE,
+    EXPEDITION: EXPEDITION, GEAR_SETS: GEAR_SETS, PART_AFFIXES: PART_AFFIXES,
+    itemIcon: function(id) { const b=componentBase(id); if(b && (b.setId || !b.legacy)) return 'assets/item/'+({rod:'rod_dragonbone',charm:'charm_coin',line:'line_nylon',hook:'hook_barb',bait:'bait_corn',reel:'reel_smooth',accessory:'acc_sonar'}[b.part])+'.png'; return 'assets/item/'+id+(["grindstone","stardust","humus","boneash","ballast","resonance_crystal","curesalt"].indexOf(id)>=0 ? '.svg' : '.png'); },
     ROD_PARTS: ROD_PARTS,
     AFFIX_LABEL: AFFIX_LABEL, AFFIX_CODES: AFFIX_CODES, AFFIX_TYPES: AFFIX_TYPES,
     QUALITY: QUALITY, QUALITY_ORDER: QUALITY_ORDER,
@@ -2411,7 +2744,7 @@
     SMELT_MATERIAL_AFFIX: SMELT_MATERIAL_AFFIX, SMELT_PEARL: SMELT_PEARL,
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     SNAPSHOT_DEFAULTS: SNAPSHOT_DEFAULTS, defaultSnapshotCfg: defaultSnapshotCfg, setSnapshotCfg: setSnapshotCfg, getSnapshotCfg: getSnapshotCfg,
-    smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds,
+    smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds, smeltFuelIds: function(){return ['bait_pack','rope','lure'];},
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltSuccessProbs: smeltSuccessProbs, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
     smeltPlanOf: smeltPlanOf, simulateSmeltPlan: simulateSmeltPlan, smeltRollWithRng: smeltRollWithRng,
     smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,

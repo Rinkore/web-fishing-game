@@ -320,7 +320,7 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 │   ├── css/                 # style.css 基础 + pixel.css 像素主题层 + admin.css 后台
 │   ├── assets/              # 像素资源（全部程序化生成）：fish/ item/ spot/ ground/ nav/ ui/ 地图 / 像素字体
 │   └── js/                  # config / data（UMD 共享目录）/ engine / net / ui / admin
-├── tests/                   # 前端浏览器套件（8 个）+ run-all.js 一键运行 + Go 侧检查工具
+├── tests/                   # 前端浏览器套件（10 个）+ run-all.js 一键运行 + Go 侧检查工具
 ├── tools/                   # 贴图生成脚本（Python）与存档维护脚本（Node）
 ├── dist/                    # 打包 / 发版脚本与发布文案（不入库）
 ├── run.bat                  # 启动 Go 后端（集成模式，9000，同时托管前端）
@@ -330,7 +330,17 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 
 ## 版本演进
 
+### v0.21.5：远航派遣、套装成长与装备分工（2026-09-23）
+
+- 本地打包与清理：复用 `dist/make-zip.ps1 -LocalBuild` 生成 Windows x64 测试包，包含未提交的新功能并记录构建来源；移除已过时规划图、PLAN、截图及中间产物，保留有效技术文档和最终验证记录。发布与测试服部署结果另见实现说明。
+
+- 新增 2 / 8 / 12 小时离线远航，衔接原船经验与等级、背包和工坊；五条航线、九种专属催化剂、七个装备位置分工与 24 个普通底材。
+- 七套可用套装接入首通自选、印记兑换、在线追踪/样本和远航收益；第八套商路观测按设计保留预告。固定核心不参与改造，旧装备保留兼容。
+- 新增真实 PostgreSQL 事务、并发及权限测试和浏览器回归。功能范围、设计差异和复验方法见 [本地实现说明](docs/远航本地实现说明.md)。
+
 ### v0.21.4：钓速、技巧与材料概率调整（2026-09-20）
+
+- Go 钓鱼排查修订（2026-09-23）：新库建表后还须执行 `go -C server-go run ./cmd/catalog defaults` 初始化物品定义；原启动检查未拦截缺定义的数据库，会导致开钓成功但首竿发奖反复回滚。现于启动和就绪探针只读校验生效规则所需定义；同时修复 SSE 心跳忽略 `connection_expired` 业务状态、租约过期后无法自动恢复钓鱼的问题。部署与验证边界见 [排查报告](docs/go-rewrite/reports/FISHING_ROOT_CAUSE_2026-09-23.md)。
 
 - 默认基础抛竿间隔 **10000ms（10 秒）**，最短间隔仍为 800ms；钓点独立间隔只替换基础值。默认公式 `interval / (1 + speed / 100)` 可在后台「公式管理 → 抛竿间隔」修改。这里 `interval` 为钓点基础值再乘钓点速率系数 `1 - clamp(钓点钓速,-100,95)/100`，`speed` 为钓竿与全服加成之和（默认上限 100，可配置）；其余词条变量也可用于公式。计算结果取整并应用最短间隔，上限为 1 小时以避免计时器溢出；非有限值或非正数回退默认公式。
 - 材料词条使当前钓点所有材料权重乘以 `max(0, 1 + material / 100)`，包含战利品组内材料；同步调整组的外层权重，保持非材料权重不变。后台材料产出倍率、稀有度仍先按已有规则计算，材料词条在该结果上修正。后台模拟器同步显示材料词条的真实分布。
@@ -353,7 +363,7 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 同版本迁移修订验证：公式/迁移 35 项、管理接口 392 项、Wiki 规则 97 项，共 524 项全部通过；覆盖旧默认、旧自定义、已标记 revision 1 三类存档及备份/重启保持。已安装原 v0.21.4 的服务器须重新下载安装包，停服替换后启动一次以执行迁移。
 
 
-当前 **v0.21.4**；版本号唯一定义在 `frontend/js/data.js` 的 `VERSION`（前端启动时与 `/api/version`
+当前 **v0.21.5**；版本号唯一定义在 `frontend/js/data.js` 的 `VERSION`（前端启动时与 `/api/version`
 比对，不一致即带缓存参数强刷）。每版的完整变更见 GitHub Releases（正文即 `dist/notes-<ver>.md`）
 与该版本 tag 的注解，下表只列里程碑：
 

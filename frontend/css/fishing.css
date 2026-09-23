@@ -1,0 +1,115 @@
+/* Full-map fishing view. The map and its nodes share one uncropped coordinate plane. */
+.content.fishing-page { display: block; padding: 0; overflow: auto; }
+.fishing-stage {
+  --fish-edge: 16px;
+  --fish-footer-height: 44px;
+  position: relative; isolation: isolate; min-height: 420px; overflow: hidden;
+  background: #0a2034;
+}
+.fishing-stage .fish-select { position: absolute; inset: 0; }
+.fishing-stage .px-map {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  border: 0; border-radius: 0; box-shadow: none;
+}
+.fishing-stage .px-map-img { width: 100%; height: 100%; object-fit: contain; }
+.fishing-stage .fishing-toolbar {
+  position: absolute; z-index: 4; top: var(--fish-edge); left: var(--fish-edge); right: var(--fish-edge);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  pointer-events: none;
+}
+.fishing-toolbar .px-map-tabs, .fishing-switches {
+  display: flex; flex-wrap: nowrap; gap: 6px; margin: 0; padding: 6px;
+  background: rgba(10, 29, 48, .95); border: 1px solid var(--px-line); border-radius: 4px;
+  pointer-events: auto;
+}
+.fishing-stage .px-map-tab { min-height: 40px; padding: 7px 12px; font-size: 13px; letter-spacing: 0; white-space: nowrap; }
+.fishing-dock {
+  position: absolute; z-index: 5; top: var(--fish-edge); right: var(--fish-edge); bottom: 76px;
+  width: min(390px, calc(100% - 64px)); pointer-events: none;
+  transition: transform .16s ease-out;
+}
+.fishing-dock.collapsed { transform: translateX(calc(100% + var(--fish-edge))); }
+.fishing-dock-content { height: 100%; }
+.fishing-switches { pointer-events: auto; }
+.fishing-switches button { flex: 1; min-width: 0; }
+.fishing-dock-toggle {
+  position: absolute; top: 8px; left: -28px; width: 26px; height: 38px; padding: 0;
+  font-size: 28px; line-height: 28px; color: var(--accent); background: #102d43;
+  pointer-events: auto; cursor: pointer;
+}
+.fishing-stage .fish-live {
+  position: absolute; z-index: 3; top: 66px; right: 0;
+  width: 100%; max-height: calc(100% - 66px); pointer-events: auto;
+  display: flex; gap: 10px; padding: 14px; overflow: hidden;
+  background: rgba(15, 36, 60, .97);
+}
+.fishing-stage [hidden] { display: none !important; }
+.fishing-overlay-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
+.fishing-overlay-head h2 { margin: 0; font-size: 16px; }
+.fishing-overlay-close {
+  width: 36px; height: 36px; flex: none; font-size: 22px; cursor: pointer;
+  background: var(--px-bg2); color: var(--text);
+}
+.fishing-stage .live-block {
+  min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  padding: 0; border: 0; border-radius: 0; background: none;
+}
+.fishing-stage .live-head { align-items: center; }
+.fishing-stage .live-head h3 { font-size: 12px; }
+.fishing-stage .live-head > span { font-size: 11px; }
+.fishing-stage .live-buffs { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.fishing-stage .live-buff-row { min-height: 40px; padding: 8px; }
+.fishing-stage .live-buff-row b { white-space: normal; overflow-wrap: anywhere; }
+.fishing-stage .live-peeps { max-height: none; overflow: visible; margin-top: 10px; }
+.fishing-stage .peep { flex-wrap: wrap; }
+.fishing-stage .peep-acts { flex-wrap: wrap; }
+.fishing-stage .fishing-log-block > h3 { margin-top: 0; font-size: 12px; }
+.fishing-stage .catch-log { max-height: none; min-height: 0; overflow: visible; }
+.fishing-stage .px-legend {
+  position: absolute; z-index: 2; bottom: var(--fish-edge); left: var(--fish-edge);
+  height: var(--fish-footer-height); margin: 0; padding: 6px 10px; align-items: center;
+  gap: 10px; flex-wrap: nowrap; font-size: 10px; background: rgba(8, 24, 40, .95);
+}
+.fishing-stage .fish-ctrl {
+  position: absolute; z-index: 2; bottom: var(--fish-edge); right: var(--fish-edge);
+  width: min(660px, calc(100% - 380px)); margin: 0; gap: 0;
+}
+/* Keep the original rounded, teal fishing status frame; match the legend height. */
+.fishing-stage .fish-state {
+  display: grid; grid-template-columns: 1fr 1.3fr 1fr .8fr 1.1fr;
+  height: var(--fish-footer-height); gap: 0; padding: 4px 8px;
+  background: rgba(12, 33, 51, .96); border-radius: 10px;
+}
+.fishing-stage .fish-state.on { background: rgba(17, 56, 65, .96); }
+.fish-metric { min-width: 0; padding: 0 6px; border-right: 1px solid var(--line); text-align: center; }
+.fish-metric:last-child { border: 0; }
+.fish-metric > span { display: block; color: var(--muted); font-size: 10px; line-height: 14px; }
+.fish-metric strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; line-height: 18px; }
+.fish-state.on .fish-metric:first-child strong { color: var(--accent); }
+.fish-metric:last-child strong { color: var(--px-gold); }
+.fish-metric .dot { width: 6px; height: 6px; }
+.fishing-stage button:focus-visible { outline: 2px solid var(--px-gold); outline-offset: 3px; }
+/* Narrow desktop and tablet: keep the two footer frames apart. */
+@media (max-width: 1250px) {
+  .fishing-stage .fish-ctrl { width: calc(100% - 32px); }
+  .fishing-stage .px-legend { bottom: calc(var(--fish-edge) + var(--fish-footer-height) + 8px); }
+  .fishing-dock { bottom: 124px; }
+}
+@media (max-width: 640px) {
+  .fishing-stage { --fish-edge: 8px; }
+  .fishing-stage .fishing-toolbar { flex-wrap: wrap; gap: 8px; }
+  .fishing-toolbar .px-map-tabs { padding: 3px; }
+  .fishing-dock { top: 66px; bottom: 112px; }
+  .fishing-switches { padding: 3px; }
+  .fishing-stage .px-map-tab { min-height: 40px; padding: 6px 7px; font-size: 12px; }
+  .fishing-stage .fish-live { top: 60px; max-height: calc(100% - 60px); padding: 10px; }
+  .fishing-stage .live-buff-row { flex-direction: row; align-items: center; }
+  .fishing-stage .fish-ctrl { width: calc(100% - 16px); }
+  .fishing-stage .fish-state { padding: 4px 2px; }
+  .fish-metric { padding: 0 2px; }
+  .fish-metric strong { font-size: 11px; }
+  .fish-metric .dot { display: none; }
+  .fishing-stage .px-legend { max-width: calc(100% - 16px); gap: 8px; padding: 6px; font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .fishing-dock { transition: none; } }
+html:is([data-motion=reduced], [data-motion=off]) .fishing-dock { transition: none; }

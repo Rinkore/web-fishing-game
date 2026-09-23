@@ -43,7 +43,7 @@ func setup(t *testing.T) *fixture {
 			t.Fatal(err)
 		}
 	}
-	r, err := f.assets.ApplyChange(f.ctx, assets.Change{ActorID: f.owner, RequestKey: "resources", Reason: "reward", RuleVersion: "test-v1", Coins: 1000000, Stacks: []assets.StackDelta{{ItemID: "relic", Tier: "normal", Quantity: 1000}, {ItemID: "dragonpearl", Tier: "normal", Quantity: 100}, {ItemID: "bait_pack", Tier: "normal", Quantity: 100}}})
+	r, err := f.assets.ApplyChange(f.ctx, assets.Change{ActorID: f.owner, RequestKey: "resources", Reason: "reward", RuleVersion: "test-v1", Coins: 1000000, Stacks: []assets.StackDelta{{ItemID: "relic", Tier: "normal", Quantity: 1000}, {ItemID: "dragonpearl", Tier: "normal", Quantity: 100}, {ItemID: "stardust", Tier: "normal", Quantity: 100}}})
 	if err != nil || r.Status != "applied" {
 		t.Fatal("resources", err)
 	}
@@ -77,7 +77,7 @@ func TestIntegrationSmeltRetryPreservesRandomResultAndAtomicAssets(t *testing.T)
 	mainSig := "rod_bamboo#mythic#spd+5,skl+3,rare+2@bt"
 	subSig := "rod_bamboo#epic#skl+2"
 	main, sub := f.gear(mainSig), f.gear(subSig)
-	command := Command{ActorID: f.owner, RequestKey: f.key(), Action: "smelt", MainID: main, SubID: sub, MainAffix: "speed", SubAffix: "skill", Materials: []rules.Material{{ID: "bait_pack", Quantity: 3}}, Relics: 10, Pearl: true}
+	command := Command{ActorID: f.owner, RequestKey: f.key(), Action: "smelt", MainID: main, SubID: sub, MainAffix: "speed", SubAffix: "skill", Materials: []rules.Material{{ID: "stardust", Quantity: 3}}, Relics: 10, Pearl: true}
 	input := struct {
 		Command Command
 		Version string
@@ -130,7 +130,7 @@ func TestIntegrationSmeltRetryPreservesRandomResultAndAtomicAssets(t *testing.T)
 func TestIntegrationForgeRecastChestAndConcurrentConsumption(t *testing.T) {
 	f := setup(t)
 	id := f.gear("rod_bamboo#mythic#spd+5,skl+3")
-	forged, err := f.s.Apply(f.ctx, Command{ActorID: f.owner, RequestKey: f.key(), Action: "forge", MainID: id, MaterialID: "bait_pack", Pearl: true})
+	forged, err := f.s.Apply(f.ctx, Command{ActorID: f.owner, RequestKey: f.key(), Action: "forge", MainID: id, MaterialID: "stardust", Pearl: true})
 	if err != nil || forged.Status != "crafted" {
 		t.Fatal("forge", err)
 	}
@@ -163,7 +163,7 @@ func TestIntegrationForgeRecastChestAndConcurrentConsumption(t *testing.T) {
 	if err != nil || r.Status != "crafted" {
 		t.Fatal("chest craft", r, err)
 	}
-	open := ChestCommand{ActorID: f.owner, RequestKey: f.key(), ChestID: "chest_king", Action: "open", Quantity: 1, BaseID: "rod_bamboo"}
+	open := ChestCommand{ActorID: f.owner, RequestKey: f.key(), ChestID: "chest_king", Action: "open", Quantity: 1, BaseID: "gear_line_1"}
 	r, err = f.s.Chest(f.ctx, open)
 	if err != nil || r.Status != "opened" {
 		t.Fatal("chest open", r, err)
@@ -172,10 +172,59 @@ func TestIntegrationForgeRecastChestAndConcurrentConsumption(t *testing.T) {
 	if err != nil || repeat.OperationID != r.OperationID {
 		t.Fatal("chest duplicate")
 	}
-	if f.num(`SELECT count FROM fishing.player_codex WHERE owner_id=$1 AND item_id='rod_bamboo'`, f.owner) != 1 {
+	if f.num(`SELECT count FROM fishing.player_codex WHERE owner_id=$1 AND item_id='gear_line_1'`, f.owner) != 1 {
 		t.Fatal("codex duplicate")
 	}
 	if f.num(`SELECT w.coins-COALESCE(sum(e.delta),0) FROM fishing.wallets w LEFT JOIN fishing.asset_entries e ON e.account_id=w.account_id WHERE w.account_id=$1 GROUP BY w.coins`, f.owner) != 0 {
 		t.Fatal("craft ledger mismatch")
+	}
+}
+
+func TestIntegrationSetImmutabilityAndEarnedHeat(t *testing.T) {
+	f := setup(t)
+	fixed := f.gear("set_tide_rod#epic#mat+8")
+	sub := f.gear("rod_bamboo#epic#skl+3")
+	for _, action := range []string{"forge", "recast", "smelt"} {
+		subID := int64(0)
+		if action == "smelt" {
+			subID = sub
+		}
+		r, err := f.s.Apply(f.ctx, Command{ActorID: f.owner, RequestKey: f.key(), Action: action, MainID: fixed, SubID: subID, MainAffix: "material", SubAffix: "skill", MaterialID: "stardust", Target: 0})
+		if err != nil || r.Status != "set_immutable" {
+			t.Fatal("set altered", action, r, err)
+		}
+	}
+	r, err := f.s.Apply(f.ctx, Command{ActorID: f.owner, RequestKey: f.key(), Action: "smelt", MainID: sub, SubID: fixed, MainAffix: "skill", SubAffix: "material"})
+	if err != nil || r.Status != "invalid_smelt_plan" {
+		t.Fatal("set consumed as secondary", r, err)
+	}
+	if f.num(`SELECT count(*) FROM fishing.equipment_instances WHERE id=$1 AND lifecycle='available'`, fixed) != 1 {
+		t.Fatal("set was consumed")
+	}
+	if _, err = f.db.Admin.Exec(f.ctx, `INSERT INTO fishing.sea_captains(owner_id,heat) VALUES($1,2)`, f.owner); err != nil {
+		t.Fatal(err)
+	}
+	ordinary := f.gear("gear_line_1#epic#spd+4")
+	r, err = f.s.Apply(f.ctx, Command{ActorID: f.owner, RequestKey: f.key(), Action: "forge", MainID: ordinary, MaterialID: "stardust"})
+	if err != nil || r.Status != "invalid_forge_plan" || f.num(`SELECT heat FROM fishing.sea_captains WHERE owner_id=$1`, f.owner) != 2 {
+		t.Fatal("illegal part consumed heat", r, err)
+	}
+	if _, err = f.assets.ApplyChange(f.ctx, assets.Change{ActorID: f.owner, RequestKey: f.key(), Reason: "reward", RuleVersion: "test", Stacks: []assets.StackDelta{{ItemID: "humus", Tier: "normal", Quantity: 1}}}); err != nil {
+		t.Fatal(err)
+	}
+	cmd := Command{ActorID: f.owner, RequestKey: f.key(), Action: "forge", MainID: ordinary, MaterialID: "humus"}
+	for range 2 {
+		r, err = f.s.Apply(f.ctx, cmd)
+		if err != nil || r.Status != "crafted" {
+			t.Fatal("heat forge retry", r, err)
+		}
+	}
+	var details struct{ Value float64 }
+	if err = json.Unmarshal(r.Details, &details); err != nil {
+		t.Fatal(err)
+	}
+	span := f.c.CatalystRange(f.c.ComponentConfig(), f.c.WorkshopConfig(), "line", "material", false)
+	if details.Value != span[1] || f.num(`SELECT heat FROM fishing.sea_captains WHERE owner_id=$1`, f.owner) != 1 {
+		t.Fatal("heat not consumed exactly once at upper bound", details)
 	}
 }

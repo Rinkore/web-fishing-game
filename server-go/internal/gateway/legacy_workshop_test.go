@@ -68,7 +68,7 @@ func TestIntegrationLegacyWorkshop(t *testing.T) {
 		Coins: 1000000, Stacks: []assets.StackDelta{
 			{ItemID: "dragonpearl", Tier: "normal", Quantity: 6},
 			{ItemID: "relic", Tier: "normal", Quantity: 10},
-			{ItemID: "rope", Tier: "normal", Quantity: 5},
+			{ItemID: "boneash", Tier: "normal", Quantity: 5},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -114,17 +114,17 @@ func TestIntegrationLegacyWorkshop(t *testing.T) {
 		t.Fatalf("workshop cfg: %v", cfg)
 	}
 	materials := view["materials"].([]any)
-	if len(materials) != 6 {
+	if len(materials) != 9 {
 		t.Fatalf("workshop materials: %v", materials)
 	}
 	order := []string{}
 	for _, entry := range materials {
 		order = append(order, entry.(map[string]any)["id"].(string))
 	}
-	if strings.Join(order, ",") != "lure,bait_pack,rope,relic,tide_sand,dragon_scale" {
+	if strings.Join(order, ",") != "tide_sand,grindstone,stardust,humus,boneash,dragon_scale,ballast,resonance_crystal,curesalt" {
 		t.Fatalf("material order: %v", order)
 	}
-	if first := materials[0].(map[string]any); first["affix"] != "skill" || first["affixName"] != "技巧" || first["name"] != "反光假饵" {
+	if first := materials[0].(map[string]any); first["affix"] != "speed" || first["affixName"] != "钓速" || first["name"] != "潮汐砂" {
 		t.Fatalf("material entry: %v", first)
 	}
 	if pearl := view["pearl"].(map[string]any); pearl["id"] != "dragonpearl" || pearl["name"] != "龙宫宝珠" {
@@ -188,7 +188,7 @@ func TestIntegrationLegacyWorkshop(t *testing.T) {
 	// Forge: add a catalyst affix to a component that still has room.
 	plain := "rod_bamboo#common#"
 	gear("plain", plain)
-	code, forged := do("POST", "/api/workshop/forge", `{"id":"`+plain+`","materialId":"rope"}`, token)
+	code, forged := do("POST", "/api/workshop/forge", `{"id":"`+plain+`","materialId":"boneash"}`, token)
 	if code != 200 {
 		t.Fatalf("forge: %d %v", code, forged)
 	}
@@ -201,7 +201,7 @@ func TestIntegrationLegacyWorkshop(t *testing.T) {
 	if affix["type"] != "size" || affix["name"] != "体型" || affix["src"] != "ct" || affix["min"] == nil || affix["max"] == nil {
 		t.Fatalf("forge affix: %v", affix)
 	}
-	if material := forged["material"].(map[string]any); material["id"] != "rope" || material["have"] != float64(4) {
+	if material := forged["material"].(map[string]any); material["id"] != "boneash" || material["have"] != float64(4) {
 		t.Fatalf("forge material: %v", material)
 	}
 	if inventory()[forged["id"].(string)] != float64(1) {
@@ -209,12 +209,12 @@ func TestIntegrationLegacyWorkshop(t *testing.T) {
 	}
 	// A saturated component reports the cap; a duplicate catalyst type on a
 	// component with room reports the duplicate.
-	if code, body := do("POST", "/api/workshop/forge", `{"id":"`+forged["id"].(string)+`","materialId":"rope"}`, token); code != 400 || body["error"] != "该组件词条已达上限" {
+	if code, body := do("POST", "/api/workshop/forge", `{"id":"`+forged["id"].(string)+`","materialId":"boneash"}`, token); code != 400 || body["error"] != "该组件词条已达上限" {
 		t.Fatalf("forge above capacity: %d %v", code, body)
 	}
 	duplicate := "rod_bamboo#epic#size+5"
 	gear("dup", duplicate)
-	if code, body := do("POST", "/api/workshop/forge", `{"id":"`+duplicate+`","materialId":"rope"}`, token); code != 400 || body["error"] != "该组件已经拥有这条词条" {
+	if code, body := do("POST", "/api/workshop/forge", `{"id":"`+duplicate+`","materialId":"boneash"}`, token); code != 400 || body["error"] != "该组件已经拥有这条词条" {
 		t.Fatalf("duplicate forge affix: %d %v", code, body)
 	}
 	if code, body := do("POST", "/api/workshop/forge", `{"id":"`+plain+`","materialId":"chest_wreck"}`, token); code != 400 || body["error"] != "请选择一种催化剂材料" {
@@ -227,12 +227,12 @@ func TestIntegrationLegacyWorkshop(t *testing.T) {
 	gear("smelt-main", mainSig)
 	gear("smelt-sub", subSig)
 	startCoins := coins()
-	payload := `{"mainId":"` + mainSig + `","subId":"` + subSig + `","mainAffix":"speed","subAffix":"skill","materials":[{"id":"rope","qty":2}],"pearl":false,"relics":0}`
+	payload := `{"mainId":"` + mainSig + `","subId":"` + subSig + `","mainAffix":"speed","subAffix":"skill","materials":[{"id":"boneash","qty":2}],"pearl":false,"relics":0}`
 	code, smelted := do("POST", "/api/workshop/smelt", payload, token)
 	if code != 200 {
 		t.Fatalf("smelt: %d %v", code, smelted)
 	}
-	if smelted["rate"] != float64(46) || smelted["extraRate"] != float64(16) || smelted["gold"] != float64(6800) || smelted["extraType"] != "size" {
+	if smelted["rate"] != float64(54) || smelted["extraRate"] != float64(16) || smelted["gold"] != float64(6800) || smelted["extraType"] != "size" {
 		t.Fatalf("smelt plan echo: %v", smelted)
 	}
 	if smelted["mainId"] != mainSig || smelted["subId"] != subSig || smelted["retainChance"] != float64(0) {
@@ -265,8 +265,8 @@ func TestIntegrationLegacyWorkshop(t *testing.T) {
 	if after[subSig] != nil {
 		t.Fatalf("sub component survived: %v", after[subSig])
 	}
-	if after["rope"] != float64(2) {
-		t.Fatalf("catalyst materials: %v", after["rope"])
+	if after["boneash"] != float64(2) {
+		t.Fatalf("catalyst materials: %v", after["boneash"])
 	}
 	if code, body := do("POST", "/api/workshop/smelt", `{"mainId":"`+mainSig+`","subId":"`+mainSig+`","mainAffix":"speed","subAffix":"speed","materials":[],"pearl":false,"relics":0}`, token); code != 400 {
 		t.Fatalf("same main and sub: %d %v", code, body)

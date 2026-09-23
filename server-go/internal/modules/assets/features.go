@@ -25,7 +25,7 @@ func FeatureOf(kind string) string {
 		return "autosell"
 	case "friend_change":
 		return "friends"
-	case "chart_craft", "ship_upgrade", "sea_voyage", "sea_anchor":
+	case "chart_craft", "ship_upgrade", "sea_voyage", "sea_anchor", "expedition_start", "sea_set_redeem", "sea_set_target":
 		return "sea"
 	}
 	return ""

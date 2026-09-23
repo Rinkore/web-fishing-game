@@ -167,6 +167,9 @@ func (s *Service) QuestClaim(ctx context.Context, owner int64, key, id string) (
 			q.Progress = tpl.Need
 		}
 		for item, n := range tpl.Reward.Items {
+			if it, ok := s.catalog.Item(item); n > 0 && ok && it.ExpeditionOnly {
+				return assets.Result{}, assets.Rejection("expedition_only_reward")
+			}
 			quantities[item] += n
 		}
 		quantities["chartfrag"] += tpl.Reward.Chartfrag

@@ -45,8 +45,8 @@ type Material struct {
 	Quantity int64  `json:"qty"`
 }
 
-var materialOrder = []string{"lure", "bait_pack", "rope", "relic", "tide_sand", "dragon_scale"}
-var materialAffix = map[string]string{"lure": "skill", "bait_pack": "rare", "rope": "size", "relic": "material", "tide_sand": "speed", "dragon_scale": "double"}
+var materialOrder = []string{"tide_sand", "grindstone", "stardust", "humus", "boneash", "dragon_scale", "ballast", "resonance_crystal", "curesalt"}
+var materialAffix = map[string]string{"tide_sand": "speed", "grindstone": "skill", "stardust": "rare", "humus": "material", "boneash": "size", "dragon_scale": "double", "ballast": "stability", "resonance_crystal": "resonance", "curesalt": "settle"}
 
 func MaterialAffix(id string) string { return materialAffix[id] }
 
@@ -235,7 +235,10 @@ func (c *Catalog) SmeltPlan(in SmeltInput, cfg ComponentConfig, w WorkshopConfig
 		return SmeltPlan{}, ErrWorkshop
 	}
 	sub, _, sa, ok := c.Instance(in.SubID)
-	if !ok || main.Part != sub.Part || in.MainAffix == in.SubAffix {
+	if !ok || main.SetID != "" || sub.SetID != "" || main.Part != sub.Part || in.MainAffix == in.SubAffix {
+		return SmeltPlan{}, ErrWorkshop
+	}
+	if !main.Legacy && !c.AffixAllowed(main.Part, in.SubAffix) {
 		return SmeltPlan{}, ErrWorkshop
 	}
 	ma = c.ResolveAffixSources(main, ma, cfg)
@@ -269,7 +272,12 @@ func (c *Catalog) SmeltPlan(in SmeltInput, cfg ComponentConfig, w WorkshopConfig
 		}
 		kind := materialAffix[m.ID]
 		if kind == "" {
-			return p, ErrWorkshop
+			if m.ID != "bait_pack" && m.ID != "rope" && m.ID != "lure" {
+				return p, ErrWorkshop
+			}
+			total += m.Quantity
+			p.Consume = append(p.Consume, m)
+			continue
 		}
 		total += m.Quantity
 		byType[kind] += m.Quantity
@@ -296,7 +304,7 @@ func (c *Catalog) SmeltPlan(in SmeltInput, cfg ComponentConfig, w WorkshopConfig
 		}
 		p.Consume = append(p.Consume, Material{"relic", in.Relics})
 	}
-	if total > 0 {
+	if len(byType) > 0 {
 		best := int64(0)
 		for _, id := range materialOrder {
 			kind := materialAffix[id]
@@ -308,9 +316,16 @@ func (c *Catalog) SmeltPlan(in SmeltInput, cfg ComponentConfig, w WorkshopConfig
 		if p.ExtraType == in.MainAffix || p.ExtraType == in.SubAffix || w.AddAffixCap < 3 || (!w.AddAnyAffix && !poolHas(main, p.ExtraType)) {
 			return p, ErrWorkshop
 		}
+		if !main.Legacy && !c.AffixAllowed(main.Part, p.ExtraType) {
+			return p, ErrWorkshop
+		}
 	}
-	p.Rate = Round(math.Max(w.RateMin, math.Min(w.RateMax, w.BaseRate+w.FailPerMaterial*float64(total)))*10) / 10
-	extra := w.ExtraRatePerMaterial * float64(total)
+	p.Rate = Round(math.Max(w.RateMin, math.Min(w.RateMax, w.BaseRate-w.FailPerMaterial*float64(total)))*10) / 10
+	catalysts := int64(0)
+	for _, n := range byType {
+		catalysts += n
+	}
+	extra := w.ExtraRatePerMaterial * float64(catalysts)
 	gold := w.GoldBase + w.GoldPerMaterial*float64(total)
 	if pearl {
 		extra += w.ExtraRatePearl
@@ -404,7 +419,7 @@ func (p SmeltPlan) Roll(rng RNG) SmeltOutcome {
 }
 func (c *Catalog) Recast(id string, target int, cfg ComponentConfig, w WorkshopConfig, rng RNG) (string, int, float64, error) {
 	base, q, aa, ok := c.Instance(id)
-	if !ok || q != "mythic" || len(aa) == 0 || target >= len(aa) || target < -1 {
+	if !ok || base.SetID != "" || q != "mythic" || len(aa) == 0 || target >= len(aa) || target < -1 {
 		return "", 0, 0, ErrWorkshop
 	}
 	aa = c.ResolveAffixSources(base, aa, cfg)

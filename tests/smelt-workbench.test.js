@@ -12,7 +12,7 @@ const chrome = process.env.CHROME_PATH || [
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
   '/usr/bin/chromium', '/usr/bin/google-chrome',
 ].find(p => fs.existsSync(p));
-const MIME = { '.css': 'text/css', '.js': 'application/javascript', '.html': 'text/html', '.png': 'image/png', '.woff2': 'font/woff2' };
+const MIME = { '.css': 'text/css', '.js': 'application/javascript', '.html': 'text/html', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 let browser, count = 0;
 function check(name, value) { assert.ok(value, name); console.log('PASS ' + name); count++; }
 const srv = http.createServer((req, res) => {
@@ -69,7 +69,7 @@ async function run() {
   const baseRate = await page.evaluate(() => GameData.smeltRatesOf(GameData.smeltLoadOf([]), false).rate);
   check('Base probabilities use shared rules', (await page.locator('.ws-aff-prob').allTextContents()).every(s => s === '获得概率 ' + baseRate + '%'));
   await page.locator('#ws-material-open').click({ position: { x: 8, y: 8 } });
-  check('Catalysts open in an accessible dialog with loaded material images', await page.locator('#ws-material-modal').getAttribute('role') === 'dialog' && await page.locator('.sm-material-icon').evaluateAll(nodes => nodes.length === 6 && nodes.every(n => n.complete && n.naturalWidth > 0)));
+  check('Catalysts open in an accessible dialog with loaded material images', await page.locator('#ws-material-modal').getAttribute('role') === 'dialog' && await page.locator('.sm-material-icon').evaluateAll(nodes => nodes.length === 12 && nodes.every(n => n.complete && n.naturalWidth > 0)));
   check('Catalyst dialog only offers material choice (no dose inputs)', await page.locator('#ws-material-modal input, #ws-material-modal .sm-counter').count() === 0);
   await page.waitForTimeout(300);   // the modal entrance animation starts 14px low; measure the settled box
   check('Catalyst dialog is centered on screen', await page.locator('#ws-material-modal').evaluate(n => {
@@ -97,7 +97,7 @@ async function run() {
   check('Dose drops to two after -1', (await page.locator('#ws-material-summary').textContent()).includes('×2'));
   await page.locator('#ws-mat-plus1').click();
   check('Main-page dose buttons feed the live preview', await page.locator('.sm-result-aff').count() === 3 && (await page.locator('#ws-material-summary').textContent()).includes('×3'));
-  const probability = await page.evaluate(() => GameData.smeltSuccessProbs(GameData.smeltRatesOf(GameData.smeltLoadOf([{ id: document.querySelector('#ws-material-icon').src.split('/').pop().replace('.png', ''), qty: 3 }]), false), true).full);
+  const probability = await page.evaluate(() => GameData.smeltSuccessProbs(GameData.smeltRatesOf(GameData.smeltLoadOf([{ id: document.querySelector('#ws-material-icon').src.split('/').pop().replace(/\.(png|svg)$/, ''), qty: 3 }]), false), true).full);
   check('Catalyst probability is success × extra chance', await page.locator('.sm-result-aff.add .ws-aff-prob').textContent() === '获得概率 ' + probability + '%');
   const doseHandle = await page.locator('#ws-mat-plus1').elementHandle();
   await page.evaluate(() => { Engine.state.player.coins++; UI.refreshAll('assets'); });
@@ -184,7 +184,7 @@ async function run() {
   await page.locator('#ws-mat-plus5').click(); await page.locator('#ws-mat-plus5').click(); await page.locator('#ws-mat-plus5').click();
   check('Material dose clamps to actual stock', (await page.locator('#ws-material-summary').textContent()).includes('×12'));
   await page.evaluate(() => {
-    const id = document.querySelector('#ws-material-icon').src.split('/').pop().replace('.png', '');
+    const id = document.querySelector('#ws-material-icon').src.split('/').pop().replace(/\.(png|svg)$/, '');
     Engine.state.inventory[id] = 1; UI.refreshAll('assets');
   });
   check('Shrinking inventory clamps selected quantity', (await page.locator('#ws-material-summary').textContent()).includes('×1'));
@@ -254,7 +254,7 @@ async function run() {
   await page.evaluate(() => { UI.setView('bd'); UI.renderView(); });
   await page.locator('.ab-open-btn').click();
   check('Auto build footer stays visible on mobile', await page.locator('.ab-apply').evaluate(n => n.getBoundingClientRect().bottom <= innerHeight));
-  check('Auto build rows fit mobile width', await page.locator('.ab-row').evaluateAll(nodes => nodes.length === 6 && nodes.every(n => n.scrollWidth <= n.clientWidth + 1)));
+  check('Auto build rows fit mobile width', await page.locator('.ab-row').evaluateAll(nodes => nodes.length === 9 && nodes.every(n => n.scrollWidth <= n.clientWidth + 1)));
   await page.screenshot({ path: path.join(SHOTS, 'autobuild-mobile.png'), animations: 'disabled' });
   await page.setViewportSize({ width: 1440, height: 900 });
   check('Auto build rows fit desktop width', await page.locator('.ab-row').evaluateAll(nodes => nodes.every(n => n.scrollWidth <= n.clientWidth + 1)));

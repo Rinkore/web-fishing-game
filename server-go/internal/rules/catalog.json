@@ -1,11 +1,11 @@
 {
   "format": 1,
-  "version": "v0.21.4",
+  "version": "v0.21.5",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "d1df3621a0599c39293df4de00ee54e95d595dadf20fe75650194b02bb24f2c0",
+  "sourceSHA256": "d3d4a94997b40334ff93cb74c02abe69364ec4328f6d6949ea23717201e07f36",
   "constants": {
-    "VERSION": "v0.21.4",
-    "BUILD": "2026-09-20",
+    "VERSION": "v0.21.5",
+    "BUILD": "2026-09-23",
     "FISH": {
       "common": [
         {
@@ -557,15 +557,19 @@
         "id": "tide_sand",
         "name": "潮汐砂",
         "rarity": "rare",
-        "price": 260,
-        "size": null
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
       },
       {
         "id": "dragon_scale",
         "name": "龙鳞碎屑",
         "rarity": "epic",
-        "price": 720,
-        "size": null
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
       },
       {
         "id": "dragonpearl",
@@ -587,6 +591,69 @@
         "rarity": "rare",
         "price": 180,
         "size": null
+      },
+      {
+        "id": "grindstone",
+        "name": "磨石粉",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
+      },
+      {
+        "id": "stardust",
+        "name": "星辉粉",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
+      },
+      {
+        "id": "humus",
+        "name": "腐殖泥",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
+      },
+      {
+        "id": "boneash",
+        "name": "巨兽骨粉",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
+      },
+      {
+        "id": "ballast",
+        "name": "稳舵配重",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
+      },
+      {
+        "id": "resonance_crystal",
+        "name": "共鸣结晶",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
+      },
+      {
+        "id": "curesalt",
+        "name": "防腐盐",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true,
+        "expeditionOnly": true
       }
     ],
     "RARITY_PRICE": {
@@ -594,6 +661,325 @@
       "rare": 350,
       "epic": 600,
       "mythic": 1200
+    },
+    "EXPEDITION": {
+      "hours": [
+        2,
+        8,
+        12
+      ],
+      "ticket": 1,
+      "routes": [
+        {
+          "id": "trade",
+          "name": "沿岸贸易",
+          "level": 1,
+          "success": 100,
+          "coins": 6000,
+          "description": "稳定金币与钓速材料"
+        },
+        {
+          "id": "gather",
+          "name": "深海采集",
+          "level": 2,
+          "success": 90,
+          "coins": 3000,
+          "description": "深海鳞片与工坊采集材料"
+        },
+        {
+          "id": "salvage",
+          "name": "沉船打捞",
+          "level": 3,
+          "success": 80,
+          "coins": 4000,
+          "description": "宝匣残片、海图与稳定 / 共鸣材料"
+        },
+        {
+          "id": "danger",
+          "name": "凶险远征",
+          "level": 4,
+          "success": 65,
+          "coins": 6000,
+          "description": "稀有度与体型材料"
+        },
+        {
+          "id": "king",
+          "name": "海王航线",
+          "level": 5,
+          "success": 65,
+          "coins": 8000,
+          "description": "满级单人挑战，龙鳞碎屑"
+        }
+      ],
+      "catalysts": [
+        {
+          "id": "tide_sand",
+          "name": "潮汐砂",
+          "affix": "speed",
+          "route": "trade",
+          "minHours": 2
+        },
+        {
+          "id": "grindstone",
+          "name": "磨石粉",
+          "affix": "skill",
+          "route": "gather",
+          "minHours": 2
+        },
+        {
+          "id": "stardust",
+          "name": "星辉粉",
+          "affix": "rare",
+          "route": "danger",
+          "minHours": 2
+        },
+        {
+          "id": "humus",
+          "name": "腐殖泥",
+          "affix": "material",
+          "route": "gather",
+          "minHours": 2
+        },
+        {
+          "id": "boneash",
+          "name": "巨兽骨粉",
+          "affix": "size",
+          "route": "danger",
+          "minHours": 2
+        },
+        {
+          "id": "dragon_scale",
+          "name": "龙鳞碎屑",
+          "affix": "double",
+          "route": "king",
+          "minHours": 2
+        },
+        {
+          "id": "ballast",
+          "name": "稳舵配重",
+          "affix": "stability",
+          "route": "salvage",
+          "minHours": 2
+        },
+        {
+          "id": "resonance_crystal",
+          "name": "共鸣结晶",
+          "affix": "resonance",
+          "route": "salvage",
+          "minHours": 8
+        },
+        {
+          "id": "curesalt",
+          "name": "防腐盐",
+          "affix": "settle",
+          "route": "trade",
+          "minHours": 8
+        }
+      ]
+    },
+    "GEAR_SETS": [
+      {
+        "id": "tide",
+        "name": "潮汐采集",
+        "level": 1,
+        "cost": 20,
+        "effect": "远航每 2 小时回收 1 份宝匣残片，共鸣提高回收量。",
+        "pending": false,
+        "pieces": [
+          {
+            "part": "rod",
+            "name": "潮汐采集核心",
+            "type": "material",
+            "value": 8
+          },
+          {
+            "part": "charm",
+            "name": "潮汐采集徽记",
+            "type": "settle",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "id": "apex",
+        "name": "猎王追踪",
+        "level": 2,
+        "cost": 25,
+        "effect": "选择目标鱼种；在线有鱼结算未命中时积累追踪，最多 3 层，每层提高目标权重 25%，命中清空。仅在含该鱼的钓点生效。",
+        "pending": false,
+        "pieces": [
+          {
+            "part": "rod",
+            "name": "猎王追踪核心",
+            "type": "skill",
+            "value": 8
+          },
+          {
+            "part": "charm",
+            "name": "猎王追踪徽记",
+            "type": "size",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "id": "storm",
+        "name": "风暴远洋",
+        "level": 4,
+        "cost": 30,
+        "effect": "风险航线成功率额外 +10%，按航线危险程度增加材料收益。",
+        "pending": false,
+        "pieces": [
+          {
+            "part": "rod",
+            "name": "风暴远洋核心",
+            "type": "stability",
+            "value": 8
+          },
+          {
+            "part": "charm",
+            "name": "风暴远洋徽记",
+            "type": "resonance",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "id": "forge",
+        "name": "锻造工匠",
+        "level": 2,
+        "cost": 25,
+        "effect": "在线钓获材料或远航产生精工热量；工坊锻造自动消耗 1 点，让新增词条取正向上界。",
+        "pending": false,
+        "pieces": [
+          {
+            "part": "rod",
+            "name": "锻造工匠核心",
+            "type": "material",
+            "value": 6
+          },
+          {
+            "part": "charm",
+            "name": "锻造工匠徽记",
+            "type": "settle",
+            "value": 8
+          }
+        ]
+      },
+      {
+        "id": "wreck",
+        "name": "沉船考古",
+        "level": 3,
+        "cost": 30,
+        "effect": "打捞或更高航线积累遗物线索；每 6 点兑换一只深海珍匣。",
+        "pending": false,
+        "pieces": [
+          {
+            "part": "rod",
+            "name": "沉船考古核心",
+            "type": "material",
+            "value": 8
+          },
+          {
+            "part": "charm",
+            "name": "沉船考古徽记",
+            "type": "resonance",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "id": "research",
+        "name": "生态研究",
+        "level": 3,
+        "cost": 25,
+        "effect": "在线首次发现鱼种留下研究样本；远航返航消耗样本，额外获得海图碎片与船经验。",
+        "pending": false,
+        "pieces": [
+          {
+            "part": "rod",
+            "name": "生态研究核心",
+            "type": "skill",
+            "value": 6
+          },
+          {
+            "part": "charm",
+            "name": "生态研究徽记",
+            "type": "rare",
+            "value": 8
+          }
+        ]
+      },
+      {
+        "id": "rescue",
+        "name": "救生护航",
+        "level": 4,
+        "cost": 30,
+        "effect": "事故时自动撤离，保留 90% 收益；撤离不发成功印记。",
+        "pending": false,
+        "pieces": [
+          {
+            "part": "rod",
+            "name": "救生护航核心",
+            "type": "stability",
+            "value": 10
+          },
+          {
+            "part": "charm",
+            "name": "救生护航徽记",
+            "type": "settle",
+            "value": 8
+          }
+        ]
+      },
+      {
+        "id": "market",
+        "name": "商路观测",
+        "level": 5,
+        "cost": 30,
+        "effect": "企划中，暂未开放兑换。",
+        "pending": true,
+        "pieces": [
+          {
+            "part": "rod",
+            "name": "商路观测核心",
+            "type": "rare",
+            "value": 7
+          },
+          {
+            "part": "charm",
+            "name": "商路观测徽记",
+            "type": "resonance",
+            "value": 6
+          }
+        ]
+      }
+    ],
+    "PART_AFFIXES": {
+      "line": [
+        "speed",
+        "stability",
+        "material"
+      ],
+      "hook": [
+        "skill",
+        "size"
+      ],
+      "bait": [
+        "rare",
+        "double",
+        "resonance"
+      ],
+      "reel": [
+        "speed",
+        "settle",
+        "stability"
+      ],
+      "accessory": [
+        "material",
+        "resonance",
+        "settle"
+      ]
     },
     "ROD_PARTS": [
       {
@@ -653,7 +1039,10 @@
       "rare": "稀有度",
       "material": "材料概率",
       "size": "体型",
-      "double": "双钓概率"
+      "double": "双钓概率",
+      "stability": "稳定",
+      "resonance": "共鸣",
+      "settle": "结算"
     },
     "AFFIX_CODES": {
       "speed": "spd",
@@ -661,7 +1050,10 @@
       "rare": "rare",
       "material": "mat",
       "size": "size",
-      "double": "dbl"
+      "double": "dbl",
+      "stability": "stb",
+      "resonance": "res",
+      "settle": "stl"
     },
     "AFFIX_TYPES": [
       "speed",
@@ -669,7 +1061,10 @@
       "rare",
       "material",
       "size",
-      "double"
+      "double",
+      "stability",
+      "resonance",
+      "settle"
     ],
     "QUALITY": {
       "common": {
@@ -802,12 +1197,15 @@
       "interval"
     ],
     "SMELT_MATERIAL_AFFIX": {
-      "lure": "skill",
-      "bait_pack": "rare",
-      "rope": "size",
-      "relic": "material",
       "tide_sand": "speed",
-      "dragon_scale": "double"
+      "grindstone": "skill",
+      "stardust": "rare",
+      "humus": "material",
+      "boneash": "size",
+      "dragon_scale": "double",
+      "ballast": "stability",
+      "resonance_crystal": "resonance",
+      "curesalt": "settle"
     },
     "SMELT_PEARL": "dragonpearl",
     "SMELT_DEFAULTS": {
@@ -866,16 +1264,6 @@
           "limit": 20
         },
         {
-          "id": "tide_sand",
-          "price": 2600,
-          "limit": 3
-        },
-        {
-          "id": "dragon_scale",
-          "price": 7200,
-          "limit": 1
-        },
-        {
           "id": "relic",
           "price": 3800,
           "limit": 3
@@ -906,6 +1294,18 @@
       "double": [
         3,
         8
+      ],
+      "stability": [
+        2,
+        6
+      ],
+      "resonance": [
+        1,
+        4
+      ],
+      "settle": [
+        2,
+        6
       ]
     },
     "COMPONENT_BASES": [
@@ -925,7 +1325,8 @@
             "min": -6,
             "max": 4
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "rod_fiberglass",
@@ -943,7 +1344,8 @@
             "min": -8,
             "max": -1
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "rod_carbon",
@@ -966,7 +1368,8 @@
             "min": -6,
             "max": 6
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "rod_dragonbone",
@@ -989,7 +1392,8 @@
             "min": -18,
             "max": -8
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "line_nylon",
@@ -1007,7 +1411,8 @@
             "min": -6,
             "max": 4
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "line_stealth",
@@ -1025,7 +1430,8 @@
             "min": -14,
             "max": -5
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "line_titan",
@@ -1043,7 +1449,8 @@
             "min": -9,
             "max": -2
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "line_dragon",
@@ -1066,7 +1473,8 @@
             "min": -14,
             "max": -6
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "hook_barb",
@@ -1084,7 +1492,8 @@
             "min": -4,
             "max": 3
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "hook_swallow",
@@ -1102,7 +1511,8 @@
             "min": -12,
             "max": -4
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "hook_steel",
@@ -1120,7 +1530,8 @@
             "min": -8,
             "max": -2
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "hook_ghost",
@@ -1143,7 +1554,8 @@
             "min": 3,
             "max": 9
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "bait_corn",
@@ -1161,7 +1573,8 @@
             "min": 4,
             "max": 9
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "bait_rice",
@@ -1179,7 +1592,8 @@
             "min": -8,
             "max": -2
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "bait_secret",
@@ -1197,7 +1611,8 @@
             "min": -14,
             "max": -5
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "bait_bionic",
@@ -1220,7 +1635,8 @@
             "min": -18,
             "max": -9
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "reel_smooth",
@@ -1238,7 +1654,8 @@
             "min": -5,
             "max": 3
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "reel_magnetic",
@@ -1256,7 +1673,8 @@
             "min": -14,
             "max": -5
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "reel_electric",
@@ -1274,7 +1692,8 @@
             "min": -6,
             "max": 2
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "reel_turbo",
@@ -1292,7 +1711,8 @@
             "min": -12,
             "max": -4
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "acc_net",
@@ -1310,7 +1730,8 @@
             "min": -4,
             "max": 3
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "acc_float",
@@ -1328,7 +1749,8 @@
             "min": -10,
             "max": -3
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "acc_scoop",
@@ -1346,7 +1768,8 @@
             "min": -8,
             "max": -2
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "acc_sonar",
@@ -1369,7 +1792,8 @@
             "min": -10,
             "max": -3
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "acc_radar",
@@ -1392,7 +1816,8 @@
             "min": -14,
             "max": -6
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "charm_coin",
@@ -1410,7 +1835,8 @@
             "min": 6,
             "max": 12
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "charm_jade",
@@ -1428,7 +1854,8 @@
             "min": -12,
             "max": -4
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "charm_gold",
@@ -1451,7 +1878,8 @@
             "min": 6,
             "max": 12
           }
-        ]
+        ],
+        "legacy": true
       },
       {
         "id": "charm_trident",
@@ -1478,6 +1906,774 @@
             "type": "speed",
             "min": -16,
             "max": -8
+          }
+        ],
+        "legacy": true
+      },
+      {
+        "id": "gear_line_1",
+        "name": "轻潮线组",
+        "part": "line",
+        "price": 60,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 2,
+            "max": 8
+          },
+          {
+            "type": "stability",
+            "min": 2,
+            "max": 8
+          },
+          {
+            "type": "material",
+            "min": 0,
+            "max": 4
+          }
+        ]
+      },
+      {
+        "id": "gear_line_2",
+        "name": "稳舵线组",
+        "part": "line",
+        "price": 115,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 3,
+            "max": 12
+          },
+          {
+            "type": "stability",
+            "min": 3,
+            "max": 12
+          },
+          {
+            "type": "material",
+            "min": 0,
+            "max": 5
+          }
+        ]
+      },
+      {
+        "id": "gear_line_3",
+        "name": "丰收线组",
+        "part": "line",
+        "price": 170,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 4,
+            "max": 16
+          },
+          {
+            "type": "stability",
+            "min": 4,
+            "max": 16
+          },
+          {
+            "type": "material",
+            "min": 0,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "gear_line_4",
+        "name": "远洋线组",
+        "part": "line",
+        "price": 225,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 5,
+            "max": 20
+          },
+          {
+            "type": "stability",
+            "min": 5,
+            "max": 20
+          },
+          {
+            "type": "material",
+            "min": 0,
+            "max": 7
+          }
+        ]
+      },
+      {
+        "id": "gear_line_5",
+        "name": "龙筋航线",
+        "part": "line",
+        "price": 280,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 6,
+            "max": 24
+          },
+          {
+            "type": "stability",
+            "min": 6,
+            "max": 24
+          },
+          {
+            "type": "material",
+            "min": 0,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "gear_hook_1",
+        "name": "磨石钩",
+        "part": "hook",
+        "price": 60,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 2,
+            "max": 8
+          },
+          {
+            "type": "size",
+            "min": 2,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "gear_hook_2",
+        "name": "巨兽骨钩",
+        "part": "hook",
+        "price": 115,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 3,
+            "max": 12
+          },
+          {
+            "type": "size",
+            "min": 3,
+            "max": 12
+          }
+        ]
+      },
+      {
+        "id": "gear_hook_3",
+        "name": "精准钩",
+        "part": "hook",
+        "price": 170,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 4,
+            "max": 16
+          },
+          {
+            "type": "size",
+            "min": 4,
+            "max": 16
+          }
+        ]
+      },
+      {
+        "id": "gear_hook_4",
+        "name": "重型海钩",
+        "part": "hook",
+        "price": 225,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 5,
+            "max": 20
+          },
+          {
+            "type": "size",
+            "min": 5,
+            "max": 20
+          }
+        ]
+      },
+      {
+        "id": "gear_hook_5",
+        "name": "猎王钩",
+        "part": "hook",
+        "price": 280,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 6,
+            "max": 24
+          },
+          {
+            "type": "size",
+            "min": 6,
+            "max": 24
+          }
+        ]
+      },
+      {
+        "id": "gear_bait_1",
+        "name": "星辉拟饵",
+        "part": "bait",
+        "price": 60,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 2,
+            "max": 8
+          },
+          {
+            "type": "double",
+            "min": 2,
+            "max": 8
+          },
+          {
+            "type": "resonance",
+            "min": 0,
+            "max": 4
+          }
+        ]
+      },
+      {
+        "id": "gear_bait_2",
+        "name": "双生拟饵",
+        "part": "bait",
+        "price": 115,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 3,
+            "max": 12
+          },
+          {
+            "type": "double",
+            "min": 3,
+            "max": 12
+          },
+          {
+            "type": "resonance",
+            "min": 0,
+            "max": 5
+          }
+        ]
+      },
+      {
+        "id": "gear_bait_3",
+        "name": "回声拟饵",
+        "part": "bait",
+        "price": 170,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 4,
+            "max": 16
+          },
+          {
+            "type": "double",
+            "min": 4,
+            "max": 16
+          },
+          {
+            "type": "resonance",
+            "min": 0,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "gear_bait_4",
+        "name": "深海诱饵",
+        "part": "bait",
+        "price": 225,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 5,
+            "max": 20
+          },
+          {
+            "type": "double",
+            "min": 5,
+            "max": 20
+          },
+          {
+            "type": "resonance",
+            "min": 0,
+            "max": 7
+          }
+        ]
+      },
+      {
+        "id": "gear_bait_5",
+        "name": "共鸣香饵",
+        "part": "bait",
+        "price": 280,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 6,
+            "max": 24
+          },
+          {
+            "type": "double",
+            "min": 6,
+            "max": 24
+          },
+          {
+            "type": "resonance",
+            "min": 0,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "gear_reel_1",
+        "name": "疾风卷线器",
+        "part": "reel",
+        "price": 60,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 2,
+            "max": 8
+          },
+          {
+            "type": "settle",
+            "min": 2,
+            "max": 8
+          },
+          {
+            "type": "stability",
+            "min": 0,
+            "max": 4
+          }
+        ]
+      },
+      {
+        "id": "gear_reel_2",
+        "name": "航海卷线器",
+        "part": "reel",
+        "price": 115,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 3,
+            "max": 12
+          },
+          {
+            "type": "settle",
+            "min": 3,
+            "max": 12
+          },
+          {
+            "type": "stability",
+            "min": 0,
+            "max": 5
+          }
+        ]
+      },
+      {
+        "id": "gear_reel_3",
+        "name": "稳帆卷线器",
+        "part": "reel",
+        "price": 170,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 4,
+            "max": 16
+          },
+          {
+            "type": "settle",
+            "min": 4,
+            "max": 16
+          },
+          {
+            "type": "stability",
+            "min": 0,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "gear_reel_4",
+        "name": "长航卷线器",
+        "part": "reel",
+        "price": 225,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 5,
+            "max": 20
+          },
+          {
+            "type": "settle",
+            "min": 5,
+            "max": 20
+          },
+          {
+            "type": "stability",
+            "min": 0,
+            "max": 7
+          }
+        ]
+      },
+      {
+        "id": "gear_reel_5",
+        "name": "涡轮航海轮",
+        "part": "reel",
+        "price": 280,
+        "pool": [
+          {
+            "type": "speed",
+            "min": 6,
+            "max": 24
+          },
+          {
+            "type": "settle",
+            "min": 6,
+            "max": 24
+          },
+          {
+            "type": "stability",
+            "min": 0,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "gear_accessory_1",
+        "name": "收获网袋",
+        "part": "accessory",
+        "price": 60,
+        "pool": [
+          {
+            "type": "material",
+            "min": 2,
+            "max": 8
+          },
+          {
+            "type": "resonance",
+            "min": 2,
+            "max": 8
+          },
+          {
+            "type": "settle",
+            "min": 0,
+            "max": 4
+          }
+        ]
+      },
+      {
+        "id": "gear_accessory_2",
+        "name": "共鸣声呐",
+        "part": "accessory",
+        "price": 115,
+        "pool": [
+          {
+            "type": "material",
+            "min": 3,
+            "max": 12
+          },
+          {
+            "type": "resonance",
+            "min": 3,
+            "max": 12
+          },
+          {
+            "type": "settle",
+            "min": 0,
+            "max": 5
+          }
+        ]
+      },
+      {
+        "id": "gear_accessory_3",
+        "name": "防腐收纳箱",
+        "part": "accessory",
+        "price": 170,
+        "pool": [
+          {
+            "type": "material",
+            "min": 4,
+            "max": 16
+          },
+          {
+            "type": "resonance",
+            "min": 4,
+            "max": 16
+          },
+          {
+            "type": "settle",
+            "min": 0,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "gear_accessory_4",
+        "name": "远洋采集器",
+        "part": "accessory",
+        "price": 225,
+        "pool": [
+          {
+            "type": "material",
+            "min": 5,
+            "max": 20
+          },
+          {
+            "type": "resonance",
+            "min": 5,
+            "max": 20
+          },
+          {
+            "type": "settle",
+            "min": 0,
+            "max": 7
+          }
+        ]
+      },
+      {
+        "id": "set_tide_rod",
+        "name": "潮汐采集核心",
+        "part": "rod",
+        "price": 0,
+        "setId": "tide",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "material",
+            "min": 8,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "set_tide_charm",
+        "name": "潮汐采集徽记",
+        "part": "charm",
+        "price": 0,
+        "setId": "tide",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "settle",
+            "min": 6,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "set_apex_rod",
+        "name": "猎王追踪核心",
+        "part": "rod",
+        "price": 0,
+        "setId": "apex",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 8,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "set_apex_charm",
+        "name": "猎王追踪徽记",
+        "part": "charm",
+        "price": 0,
+        "setId": "apex",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "size",
+            "min": 6,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "set_storm_rod",
+        "name": "风暴远洋核心",
+        "part": "rod",
+        "price": 0,
+        "setId": "storm",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "stability",
+            "min": 8,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "set_storm_charm",
+        "name": "风暴远洋徽记",
+        "part": "charm",
+        "price": 0,
+        "setId": "storm",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "resonance",
+            "min": 6,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "set_forge_rod",
+        "name": "锻造工匠核心",
+        "part": "rod",
+        "price": 0,
+        "setId": "forge",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "material",
+            "min": 6,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "set_forge_charm",
+        "name": "锻造工匠徽记",
+        "part": "charm",
+        "price": 0,
+        "setId": "forge",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "settle",
+            "min": 8,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "set_wreck_rod",
+        "name": "沉船考古核心",
+        "part": "rod",
+        "price": 0,
+        "setId": "wreck",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "material",
+            "min": 8,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "set_wreck_charm",
+        "name": "沉船考古徽记",
+        "part": "charm",
+        "price": 0,
+        "setId": "wreck",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "resonance",
+            "min": 6,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "set_research_rod",
+        "name": "生态研究核心",
+        "part": "rod",
+        "price": 0,
+        "setId": "research",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "skill",
+            "min": 6,
+            "max": 6
+          }
+        ]
+      },
+      {
+        "id": "set_research_charm",
+        "name": "生态研究徽记",
+        "part": "charm",
+        "price": 0,
+        "setId": "research",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 8,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "set_rescue_rod",
+        "name": "救生护航核心",
+        "part": "rod",
+        "price": 0,
+        "setId": "rescue",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "stability",
+            "min": 10,
+            "max": 10
+          }
+        ]
+      },
+      {
+        "id": "set_rescue_charm",
+        "name": "救生护航徽记",
+        "part": "charm",
+        "price": 0,
+        "setId": "rescue",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "settle",
+            "min": 8,
+            "max": 8
+          }
+        ]
+      },
+      {
+        "id": "set_market_rod",
+        "name": "商路观测核心",
+        "part": "rod",
+        "price": 0,
+        "setId": "market",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "rare",
+            "min": 7,
+            "max": 7
+          }
+        ]
+      },
+      {
+        "id": "set_market_charm",
+        "name": "商路观测徽记",
+        "part": "charm",
+        "price": 0,
+        "setId": "market",
+        "noSell": true,
+        "pool": [
+          {
+            "type": "resonance",
+            "min": 6,
+            "max": 6
           }
         ]
       }
@@ -2420,7 +3616,6 @@
           "reward": {
             "coins": 60000,
             "items": {
-              "tide_sand": 5,
               "relic": 8
             }
           }
@@ -3059,7 +4254,9 @@
       "rarity": "common",
       "price": 5,
       "size": null,
-      "kind": "material"
+      "kind": "material",
+      "noSell": false,
+      "expeditionOnly": false
     },
     {
       "id": "rope",
@@ -3067,7 +4264,9 @@
       "rarity": "common",
       "price": 4,
       "size": null,
-      "kind": "material"
+      "kind": "material",
+      "noSell": false,
+      "expeditionOnly": false
     },
     {
       "id": "lure",
@@ -3075,7 +4274,9 @@
       "rarity": "common",
       "price": 7,
       "size": null,
-      "kind": "material"
+      "kind": "material",
+      "noSell": false,
+      "expeditionOnly": false
     },
     {
       "id": "relic",
@@ -3083,23 +4284,29 @@
       "rarity": "rare",
       "price": 380,
       "size": null,
-      "kind": "material"
+      "kind": "material",
+      "noSell": false,
+      "expeditionOnly": false
     },
     {
       "id": "tide_sand",
       "name": "潮汐砂",
       "rarity": "rare",
-      "price": 260,
+      "price": 0,
       "size": null,
-      "kind": "material"
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
     },
     {
       "id": "dragon_scale",
       "name": "龙鳞碎屑",
       "rarity": "epic",
-      "price": 720,
+      "price": 0,
       "size": null,
-      "kind": "material"
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
     },
     {
       "id": "dragonpearl",
@@ -3107,7 +4314,9 @@
       "rarity": "epic",
       "price": 600,
       "size": null,
-      "kind": "material"
+      "kind": "material",
+      "noSell": false,
+      "expeditionOnly": false
     },
     {
       "id": "chartfrag",
@@ -3115,7 +4324,9 @@
       "rarity": "rare",
       "price": 120,
       "size": null,
-      "kind": "material"
+      "kind": "material",
+      "noSell": false,
+      "expeditionOnly": false
     },
     {
       "id": "deepscale",
@@ -3123,7 +4334,79 @@
       "rarity": "rare",
       "price": 180,
       "size": null,
-      "kind": "material"
+      "kind": "material",
+      "noSell": false,
+      "expeditionOnly": false
+    },
+    {
+      "id": "grindstone",
+      "name": "磨石粉",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
+    },
+    {
+      "id": "stardust",
+      "name": "星辉粉",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
+    },
+    {
+      "id": "humus",
+      "name": "腐殖泥",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
+    },
+    {
+      "id": "boneash",
+      "name": "巨兽骨粉",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
+    },
+    {
+      "id": "ballast",
+      "name": "稳舵配重",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
+    },
+    {
+      "id": "resonance_crystal",
+      "name": "共鸣结晶",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
+    },
+    {
+      "id": "curesalt",
+      "name": "防腐盐",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": true
     },
     {
       "id": "chest_wreck",
@@ -3237,7 +4520,10 @@
           "min": -6,
           "max": 4
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "rod_fiberglass",
@@ -3258,7 +4544,10 @@
           "min": -8,
           "max": -1
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "rod_carbon",
@@ -3284,7 +4573,10 @@
           "min": -6,
           "max": 6
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "rod_dragonbone",
@@ -3310,7 +4602,10 @@
           "min": -18,
           "max": -8
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "line_nylon",
@@ -3331,7 +4626,10 @@
           "min": -6,
           "max": 4
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "line_stealth",
@@ -3352,7 +4650,10 @@
           "min": -14,
           "max": -5
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "line_titan",
@@ -3373,7 +4674,10 @@
           "min": -9,
           "max": -2
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "line_dragon",
@@ -3399,7 +4703,10 @@
           "min": -14,
           "max": -6
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "hook_barb",
@@ -3420,7 +4727,10 @@
           "min": -4,
           "max": 3
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "hook_swallow",
@@ -3441,7 +4751,10 @@
           "min": -12,
           "max": -4
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "hook_steel",
@@ -3462,7 +4775,10 @@
           "min": -8,
           "max": -2
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "hook_ghost",
@@ -3488,7 +4804,10 @@
           "min": 3,
           "max": 9
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "bait_corn",
@@ -3509,7 +4828,10 @@
           "min": 4,
           "max": 9
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "bait_rice",
@@ -3530,7 +4852,10 @@
           "min": -8,
           "max": -2
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "bait_secret",
@@ -3551,7 +4876,10 @@
           "min": -14,
           "max": -5
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "bait_bionic",
@@ -3577,7 +4905,10 @@
           "min": -18,
           "max": -9
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "reel_smooth",
@@ -3598,7 +4929,10 @@
           "min": -5,
           "max": 3
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "reel_magnetic",
@@ -3619,7 +4953,10 @@
           "min": -14,
           "max": -5
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "reel_electric",
@@ -3640,7 +4977,10 @@
           "min": -6,
           "max": 2
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "reel_turbo",
@@ -3661,7 +5001,10 @@
           "min": -12,
           "max": -4
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "acc_net",
@@ -3682,7 +5025,10 @@
           "min": -4,
           "max": 3
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "acc_float",
@@ -3703,7 +5049,10 @@
           "min": -10,
           "max": -3
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "acc_scoop",
@@ -3724,7 +5073,10 @@
           "min": -8,
           "max": -2
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "acc_sonar",
@@ -3750,7 +5102,10 @@
           "min": -10,
           "max": -3
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "acc_radar",
@@ -3776,7 +5131,10 @@
           "min": -14,
           "max": -6
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "charm_coin",
@@ -3797,7 +5155,10 @@
           "min": 6,
           "max": 12
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "charm_jade",
@@ -3818,7 +5179,10 @@
           "min": -12,
           "max": -4
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "charm_gold",
@@ -3844,7 +5208,10 @@
           "min": 6,
           "max": 12
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
     },
     {
       "id": "charm_trident",
@@ -3875,7 +5242,985 @@
           "min": -16,
           "max": -8
         }
-      ]
+      ],
+      "setId": "",
+      "legacy": true,
+      "noSell": false
+    },
+    {
+      "id": "gear_line_1",
+      "name": "轻潮线组",
+      "rarity": "common",
+      "price": 60,
+      "size": null,
+      "kind": "component",
+      "part": "line",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 2,
+          "max": 8
+        },
+        {
+          "type": "stability",
+          "min": 2,
+          "max": 8
+        },
+        {
+          "type": "material",
+          "min": 0,
+          "max": 4
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_line_2",
+      "name": "稳舵线组",
+      "rarity": "common",
+      "price": 115,
+      "size": null,
+      "kind": "component",
+      "part": "line",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 3,
+          "max": 12
+        },
+        {
+          "type": "stability",
+          "min": 3,
+          "max": 12
+        },
+        {
+          "type": "material",
+          "min": 0,
+          "max": 5
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_line_3",
+      "name": "丰收线组",
+      "rarity": "common",
+      "price": 170,
+      "size": null,
+      "kind": "component",
+      "part": "line",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 4,
+          "max": 16
+        },
+        {
+          "type": "stability",
+          "min": 4,
+          "max": 16
+        },
+        {
+          "type": "material",
+          "min": 0,
+          "max": 6
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_line_4",
+      "name": "远洋线组",
+      "rarity": "common",
+      "price": 225,
+      "size": null,
+      "kind": "component",
+      "part": "line",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 5,
+          "max": 20
+        },
+        {
+          "type": "stability",
+          "min": 5,
+          "max": 20
+        },
+        {
+          "type": "material",
+          "min": 0,
+          "max": 7
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_line_5",
+      "name": "龙筋航线",
+      "rarity": "common",
+      "price": 280,
+      "size": null,
+      "kind": "component",
+      "part": "line",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 6,
+          "max": 24
+        },
+        {
+          "type": "stability",
+          "min": 6,
+          "max": 24
+        },
+        {
+          "type": "material",
+          "min": 0,
+          "max": 8
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_hook_1",
+      "name": "磨石钩",
+      "rarity": "common",
+      "price": 60,
+      "size": null,
+      "kind": "component",
+      "part": "hook",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 2,
+          "max": 8
+        },
+        {
+          "type": "size",
+          "min": 2,
+          "max": 8
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_hook_2",
+      "name": "巨兽骨钩",
+      "rarity": "common",
+      "price": 115,
+      "size": null,
+      "kind": "component",
+      "part": "hook",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 3,
+          "max": 12
+        },
+        {
+          "type": "size",
+          "min": 3,
+          "max": 12
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_hook_3",
+      "name": "精准钩",
+      "rarity": "common",
+      "price": 170,
+      "size": null,
+      "kind": "component",
+      "part": "hook",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 4,
+          "max": 16
+        },
+        {
+          "type": "size",
+          "min": 4,
+          "max": 16
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_hook_4",
+      "name": "重型海钩",
+      "rarity": "common",
+      "price": 225,
+      "size": null,
+      "kind": "component",
+      "part": "hook",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 5,
+          "max": 20
+        },
+        {
+          "type": "size",
+          "min": 5,
+          "max": 20
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_hook_5",
+      "name": "猎王钩",
+      "rarity": "common",
+      "price": 280,
+      "size": null,
+      "kind": "component",
+      "part": "hook",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 6,
+          "max": 24
+        },
+        {
+          "type": "size",
+          "min": 6,
+          "max": 24
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_bait_1",
+      "name": "星辉拟饵",
+      "rarity": "common",
+      "price": 60,
+      "size": null,
+      "kind": "component",
+      "part": "bait",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 2,
+          "max": 8
+        },
+        {
+          "type": "double",
+          "min": 2,
+          "max": 8
+        },
+        {
+          "type": "resonance",
+          "min": 0,
+          "max": 4
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_bait_2",
+      "name": "双生拟饵",
+      "rarity": "common",
+      "price": 115,
+      "size": null,
+      "kind": "component",
+      "part": "bait",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 3,
+          "max": 12
+        },
+        {
+          "type": "double",
+          "min": 3,
+          "max": 12
+        },
+        {
+          "type": "resonance",
+          "min": 0,
+          "max": 5
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_bait_3",
+      "name": "回声拟饵",
+      "rarity": "common",
+      "price": 170,
+      "size": null,
+      "kind": "component",
+      "part": "bait",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 4,
+          "max": 16
+        },
+        {
+          "type": "double",
+          "min": 4,
+          "max": 16
+        },
+        {
+          "type": "resonance",
+          "min": 0,
+          "max": 6
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_bait_4",
+      "name": "深海诱饵",
+      "rarity": "common",
+      "price": 225,
+      "size": null,
+      "kind": "component",
+      "part": "bait",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 5,
+          "max": 20
+        },
+        {
+          "type": "double",
+          "min": 5,
+          "max": 20
+        },
+        {
+          "type": "resonance",
+          "min": 0,
+          "max": 7
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_bait_5",
+      "name": "共鸣香饵",
+      "rarity": "common",
+      "price": 280,
+      "size": null,
+      "kind": "component",
+      "part": "bait",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 6,
+          "max": 24
+        },
+        {
+          "type": "double",
+          "min": 6,
+          "max": 24
+        },
+        {
+          "type": "resonance",
+          "min": 0,
+          "max": 8
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_reel_1",
+      "name": "疾风卷线器",
+      "rarity": "common",
+      "price": 60,
+      "size": null,
+      "kind": "component",
+      "part": "reel",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 2,
+          "max": 8
+        },
+        {
+          "type": "settle",
+          "min": 2,
+          "max": 8
+        },
+        {
+          "type": "stability",
+          "min": 0,
+          "max": 4
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_reel_2",
+      "name": "航海卷线器",
+      "rarity": "common",
+      "price": 115,
+      "size": null,
+      "kind": "component",
+      "part": "reel",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 3,
+          "max": 12
+        },
+        {
+          "type": "settle",
+          "min": 3,
+          "max": 12
+        },
+        {
+          "type": "stability",
+          "min": 0,
+          "max": 5
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_reel_3",
+      "name": "稳帆卷线器",
+      "rarity": "common",
+      "price": 170,
+      "size": null,
+      "kind": "component",
+      "part": "reel",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 4,
+          "max": 16
+        },
+        {
+          "type": "settle",
+          "min": 4,
+          "max": 16
+        },
+        {
+          "type": "stability",
+          "min": 0,
+          "max": 6
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_reel_4",
+      "name": "长航卷线器",
+      "rarity": "common",
+      "price": 225,
+      "size": null,
+      "kind": "component",
+      "part": "reel",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 5,
+          "max": 20
+        },
+        {
+          "type": "settle",
+          "min": 5,
+          "max": 20
+        },
+        {
+          "type": "stability",
+          "min": 0,
+          "max": 7
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_reel_5",
+      "name": "涡轮航海轮",
+      "rarity": "common",
+      "price": 280,
+      "size": null,
+      "kind": "component",
+      "part": "reel",
+      "pool": [
+        {
+          "type": "speed",
+          "min": 6,
+          "max": 24
+        },
+        {
+          "type": "settle",
+          "min": 6,
+          "max": 24
+        },
+        {
+          "type": "stability",
+          "min": 0,
+          "max": 8
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_accessory_1",
+      "name": "收获网袋",
+      "rarity": "common",
+      "price": 60,
+      "size": null,
+      "kind": "component",
+      "part": "accessory",
+      "pool": [
+        {
+          "type": "material",
+          "min": 2,
+          "max": 8
+        },
+        {
+          "type": "resonance",
+          "min": 2,
+          "max": 8
+        },
+        {
+          "type": "settle",
+          "min": 0,
+          "max": 4
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_accessory_2",
+      "name": "共鸣声呐",
+      "rarity": "common",
+      "price": 115,
+      "size": null,
+      "kind": "component",
+      "part": "accessory",
+      "pool": [
+        {
+          "type": "material",
+          "min": 3,
+          "max": 12
+        },
+        {
+          "type": "resonance",
+          "min": 3,
+          "max": 12
+        },
+        {
+          "type": "settle",
+          "min": 0,
+          "max": 5
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_accessory_3",
+      "name": "防腐收纳箱",
+      "rarity": "common",
+      "price": 170,
+      "size": null,
+      "kind": "component",
+      "part": "accessory",
+      "pool": [
+        {
+          "type": "material",
+          "min": 4,
+          "max": 16
+        },
+        {
+          "type": "resonance",
+          "min": 4,
+          "max": 16
+        },
+        {
+          "type": "settle",
+          "min": 0,
+          "max": 6
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "gear_accessory_4",
+      "name": "远洋采集器",
+      "rarity": "common",
+      "price": 225,
+      "size": null,
+      "kind": "component",
+      "part": "accessory",
+      "pool": [
+        {
+          "type": "material",
+          "min": 5,
+          "max": 20
+        },
+        {
+          "type": "resonance",
+          "min": 5,
+          "max": 20
+        },
+        {
+          "type": "settle",
+          "min": 0,
+          "max": 7
+        }
+      ],
+      "setId": "",
+      "legacy": false,
+      "noSell": false
+    },
+    {
+      "id": "set_tide_rod",
+      "name": "潮汐采集核心",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "material",
+          "min": 8,
+          "max": 8
+        }
+      ],
+      "setId": "tide",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_tide_charm",
+      "name": "潮汐采集徽记",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "settle",
+          "min": 6,
+          "max": 6
+        }
+      ],
+      "setId": "tide",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_apex_rod",
+      "name": "猎王追踪核心",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 8,
+          "max": 8
+        }
+      ],
+      "setId": "apex",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_apex_charm",
+      "name": "猎王追踪徽记",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "size",
+          "min": 6,
+          "max": 6
+        }
+      ],
+      "setId": "apex",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_storm_rod",
+      "name": "风暴远洋核心",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "stability",
+          "min": 8,
+          "max": 8
+        }
+      ],
+      "setId": "storm",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_storm_charm",
+      "name": "风暴远洋徽记",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "resonance",
+          "min": 6,
+          "max": 6
+        }
+      ],
+      "setId": "storm",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_forge_rod",
+      "name": "锻造工匠核心",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "material",
+          "min": 6,
+          "max": 6
+        }
+      ],
+      "setId": "forge",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_forge_charm",
+      "name": "锻造工匠徽记",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "settle",
+          "min": 8,
+          "max": 8
+        }
+      ],
+      "setId": "forge",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_wreck_rod",
+      "name": "沉船考古核心",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "material",
+          "min": 8,
+          "max": 8
+        }
+      ],
+      "setId": "wreck",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_wreck_charm",
+      "name": "沉船考古徽记",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "resonance",
+          "min": 6,
+          "max": 6
+        }
+      ],
+      "setId": "wreck",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_research_rod",
+      "name": "生态研究核心",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "skill",
+          "min": 6,
+          "max": 6
+        }
+      ],
+      "setId": "research",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_research_charm",
+      "name": "生态研究徽记",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 8,
+          "max": 8
+        }
+      ],
+      "setId": "research",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_rescue_rod",
+      "name": "救生护航核心",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "stability",
+          "min": 10,
+          "max": 10
+        }
+      ],
+      "setId": "rescue",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_rescue_charm",
+      "name": "救生护航徽记",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "settle",
+          "min": 8,
+          "max": 8
+        }
+      ],
+      "setId": "rescue",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_market_rod",
+      "name": "商路观测核心",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "rod",
+      "pool": [
+        {
+          "type": "rare",
+          "min": 7,
+          "max": 7
+        }
+      ],
+      "setId": "market",
+      "legacy": false,
+      "noSell": true
+    },
+    {
+      "id": "set_market_charm",
+      "name": "商路观测徽记",
+      "rarity": "common",
+      "price": 0,
+      "size": null,
+      "kind": "component",
+      "part": "charm",
+      "pool": [
+        {
+          "type": "resonance",
+          "min": 6,
+          "max": 6
+        }
+      ],
+      "setId": "market",
+      "legacy": false,
+      "noSell": true
     },
     {
       "id": "comp_generic",
@@ -3987,16 +6332,6 @@
           "id": "rope",
           "price": 35,
           "limit": 20
-        },
-        {
-          "id": "tide_sand",
-          "price": 2600,
-          "limit": 3
-        },
-        {
-          "id": "dragon_scale",
-          "price": 7200,
-          "limit": 1
         },
         {
           "id": "relic",

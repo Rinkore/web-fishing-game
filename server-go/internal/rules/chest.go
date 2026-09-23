@@ -29,13 +29,13 @@ func (c *Catalog) OpenChest(ch Chest, part, baseID string, cfg ComponentConfig, 
 	if ch.Mode == "base" {
 		var ok bool
 		base, ok = c.Item(baseID)
-		if !ok || base.Part == "" || base.Kind != "component" {
+		if !ok || base.SetID != "" || base.Legacy || base.Part == "" || base.Kind != "component" {
 			return "", false
 		}
 	} else {
 		choices := []Item{}
 		for _, b := range c.Items {
-			if b.Kind == "component" && b.Part != "" && (ch.Mode == "random" || b.Part == part) {
+			if b.Kind == "component" && b.SetID == "" && !b.Legacy && b.Part != "" && (ch.Mode == "random" || b.Part == part) {
 				choices = append(choices, b)
 			}
 		}

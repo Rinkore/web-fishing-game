@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fishing.local/server/internal/rules"
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -214,6 +215,27 @@ func (u *assetTx) equip(ctx context.Context, r RodCommand, active int) error {
 		}
 		if part != r.Part {
 			return rejection("wrong_equipment_part")
+		}
+		var definition string
+		if err = u.tx.QueryRow(ctx, "SELECT definition_id FROM fishing.equipment_instances WHERE id=$1", r.EquipmentID).Scan(&definition); err != nil {
+			return err
+		}
+		if set := rules.SetID(definition); set != "" {
+			var mismatch bool
+			if err = u.tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fishing.rod_components r JOIN fishing.equipment_instances e ON e.id=r.equipment_id WHERE r.owner_id=$1 AND r.slot=$2 AND r.part<>$3 AND e.definition_id LIKE 'set_%' AND split_part(e.definition_id,'_',2)<>$4)`, r.ActorID, active, r.Part, set).Scan(&mismatch); err != nil {
+				return err
+			}
+			if mismatch {
+				return rejection("set_mismatch")
+			}
+		}
+		// Ordinary resonance may appear on at most two pieces of one rod.
+		var resonanceCount int
+		if err = u.tx.QueryRow(ctx, `SELECT count(*) FROM fishing.equipment_instances e WHERE (e.id=$1 OR e.id IN (SELECT equipment_id FROM fishing.rod_components WHERE owner_id=$2 AND slot=$3 AND part<>$4)) AND e.definition_id NOT LIKE 'set_%' AND (e.attributes->>'signature') ~ '(#|,)res[+-]'`, r.EquipmentID, r.ActorID, active, r.Part).Scan(&resonanceCount); err != nil {
+			return err
+		}
+		if resonanceCount > 2 {
+			return rejection("resonance_limit")
 		}
 		var bound bool
 		if err = u.tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM fishing.rod_components WHERE equipment_id=$1)", r.EquipmentID).Scan(&bound); err != nil {

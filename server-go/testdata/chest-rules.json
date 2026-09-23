@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "version": "v0.21.4",
-  "sourceSHA256": "d1df3621a0599c39293df4de00ee54e95d595dadf20fe75650194b02bb24f2c0",
+  "version": "v0.21.5",
+  "sourceSHA256": "d3d4a94997b40334ff93cb74c02abe69364ec4328f6d6949ea23717201e07f36",
   "cases": [
     {
       "id": "chest-0",
@@ -14,8 +14,8 @@
         0
       ],
       "expected": {
-        "id": "rod_bamboo#rare#spd+11,size+2",
-        "draws": 6
+        "id": "gear_line_1#rare#stb+7,mat+1",
+        "draws": 7
       }
     },
     {
@@ -29,7 +29,7 @@
         37
       ],
       "expected": {
-        "id": "hook_steel#epic#skl+9,spd-7",
+        "id": "gear_hook_4#epic#skl+17,size+8",
         "draws": 6
       }
     },
@@ -44,8 +44,8 @@
         99
       ],
       "expected": {
-        "id": "charm_trident#rare#dbl+9,spd-12",
-        "draws": 8
+        "id": "gear_accessory_4#rare#res+17,stl+1",
+        "draws": 7
       }
     },
     {
@@ -53,14 +53,14 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "rod",
+        "line",
         "",
         false,
         0
       ],
       "expected": {
-        "id": "rod_bamboo#rare#spd+11,size+2",
-        "draws": 6
+        "id": "gear_line_1#rare#stb+7,mat+1",
+        "draws": 7
       }
     },
     {
@@ -68,14 +68,14 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "rod",
+        "line",
         "",
         false,
         37
       ],
       "expected": {
-        "id": "rod_fiberglass#epic#spd+17,size-7",
-        "draws": 6
+        "id": "gear_line_2#epic#spd+5,mat+3",
+        "draws": 7
       }
     },
     {
@@ -83,13 +83,13 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "rod",
+        "line",
         "",
         false,
         99
       ],
       "expected": {
-        "id": "rod_dragonbone#rare#size+10,spd-16",
+        "id": "gear_line_5#rare#stb+21,mat+1",
         "draws": 7
       }
     },
@@ -98,13 +98,13 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "line",
+        "hook",
         "",
         false,
         0
       ],
       "expected": {
-        "id": "line_nylon#rare#mat+21,size+2",
+        "id": "gear_hook_1#rare#skl+5,size+7",
         "draws": 6
       }
     },
@@ -113,13 +113,13 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "line",
+        "hook",
         "",
         false,
         37
       ],
       "expected": {
-        "id": "line_stealth#epic#rare+6,size-12",
+        "id": "gear_hook_2#epic#skl+10,size+5",
         "draws": 6
       }
     },
@@ -128,14 +128,14 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "line",
+        "hook",
         "",
         false,
         99
       ],
       "expected": {
-        "id": "line_dragon#rare#rare+5,spd-13",
-        "draws": 7
+        "id": "gear_hook_5#rare#skl+14,size+21",
+        "draws": 6
       }
     },
     {
@@ -143,14 +143,14 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "hook",
+        "bait",
         "",
         false,
         0
       ],
       "expected": {
-        "id": "hook_barb#rare#skl+4,size+2",
-        "draws": 6
+        "id": "gear_bait_1#rare#dbl+7,res+1",
+        "draws": 7
       }
     },
     {
@@ -158,14 +158,14 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "hook",
+        "bait",
         "",
         false,
         37
       ],
       "expected": {
-        "id": "hook_swallow#epic#spd+14,size-10",
-        "draws": 6
+        "id": "gear_bait_2#epic#rare+5,res+3",
+        "draws": 7
       }
     },
     {
@@ -173,13 +173,13 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "hook",
+        "bait",
         "",
         false,
         99
       ],
       "expected": {
-        "id": "hook_ghost#rare#rare-4,size+4",
+        "id": "gear_bait_5#rare#dbl+21,res+1",
         "draws": 7
       }
     },
@@ -188,14 +188,14 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "bait",
+        "reel",
         "",
         false,
         0
       ],
       "expected": {
-        "id": "bait_corn#rare#rare+2,spd+8",
-        "draws": 6
+        "id": "gear_reel_1#rare#stl+7,stb+1",
+        "draws": 7
       }
     },
     {
@@ -203,14 +203,14 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "bait",
+        "reel",
         "",
         false,
         37
       ],
       "expected": {
-        "id": "bait_rice#epic#mat+32,spd-7",
-        "draws": 6
+        "id": "gear_reel_2#epic#spd+5,stb+3",
+        "draws": 7
       }
     },
     {
@@ -218,13 +218,13 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "bait",
+        "reel",
         "",
         false,
         99
       ],
       "expected": {
-        "id": "bait_bionic#rare#rare+4,mat-16",
+        "id": "gear_reel_5#rare#stl+21,stb+1",
         "draws": 7
       }
     },
@@ -233,14 +233,14 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "reel",
+        "accessory",
         "",
         false,
         0
       ],
       "expected": {
-        "id": "reel_smooth#rare#spd+10,mat+2",
-        "draws": 6
+        "id": "gear_accessory_1#rare#res+7,stl+1",
+        "draws": 7
       }
     },
     {
@@ -248,14 +248,14 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "reel",
+        "accessory",
         "",
         false,
         37
       ],
       "expected": {
-        "id": "reel_magnetic#epic#spd+17,mat-12",
-        "draws": 6
+        "id": "gear_accessory_2#epic#mat+5,stl+3",
+        "draws": 7
       }
     },
     {
@@ -263,28 +263,28 @@
       "fn": "chest",
       "args": [
         "chest_deep",
-        "reel",
+        "accessory",
         "",
         false,
         99
       ],
       "expected": {
-        "id": "reel_turbo#rare#spd+32,skl-6",
-        "draws": 6
+        "id": "gear_accessory_4#rare#res+17,stl+1",
+        "draws": 7
       }
     },
     {
       "id": "chest-18",
       "fn": "chest",
       "args": [
-        "chest_deep",
-        "accessory",
+        "chest_abyss",
         "",
+        "gear_line_1",
         false,
         0
       ],
       "expected": {
-        "id": "acc_net#rare#dbl+9,spd+2",
+        "id": "gear_line_1#epic#spd+3,stb+5,mat+3",
         "draws": 6
       }
     },
@@ -292,14 +292,14 @@
       "id": "chest-19",
       "fn": "chest",
       "args": [
-        "chest_deep",
-        "accessory",
+        "chest_abyss",
         "",
+        "gear_line_1",
         false,
         37
       ],
       "expected": {
-        "id": "acc_float#epic#rare+4,size-9",
+        "id": "gear_line_1#epic#spd+5,stb+7,mat+1",
         "draws": 6
       }
     },
@@ -307,29 +307,29 @@
       "id": "chest-20",
       "fn": "chest",
       "args": [
-        "chest_deep",
-        "accessory",
+        "chest_abyss",
         "",
+        "gear_line_1",
         false,
         99
       ],
       "expected": {
-        "id": "acc_radar#rare#size+13,spd-13",
-        "draws": 7
+        "id": "gear_line_1#epic#spd+2,stb+5,mat+3",
+        "draws": 6
       }
     },
     {
       "id": "chest-21",
       "fn": "chest",
       "args": [
-        "chest_deep",
-        "charm",
+        "chest_abyss",
         "",
+        "gear_line_2",
         false,
         0
       ],
       "expected": {
-        "id": "charm_coin#rare#rare+3,size+11",
+        "id": "gear_line_2#epic#spd+4,stb+7,mat+4",
         "draws": 6
       }
     },
@@ -337,14 +337,14 @@
       "id": "chest-22",
       "fn": "chest",
       "args": [
-        "chest_deep",
-        "charm",
+        "chest_abyss",
         "",
+        "gear_line_2",
         false,
         37
       ],
       "expected": {
-        "id": "charm_jade#epic#size+22,spd-10",
+        "id": "gear_line_2#epic#spd+7,stb+10,mat+1",
         "draws": 6
       }
     },
@@ -352,15 +352,15 @@
       "id": "chest-23",
       "fn": "chest",
       "args": [
-        "chest_deep",
-        "charm",
+        "chest_abyss",
         "",
+        "gear_line_2",
         false,
         99
       ],
       "expected": {
-        "id": "charm_trident#rare#dbl+9,spd-12",
-        "draws": 8
+        "id": "gear_line_2#epic#spd+4,stb+7,mat+4",
+        "draws": 6
       }
     },
     {
@@ -369,13 +369,13 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_bamboo",
+        "gear_line_3",
         false,
         0
       ],
       "expected": {
-        "id": "rod_bamboo#epic#spd+12,size-5",
-        "draws": 4
+        "id": "gear_line_3#epic#spd+5,stb+10,mat+5",
+        "draws": 6
       }
     },
     {
@@ -384,13 +384,13 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_bamboo",
+        "gear_line_3",
         false,
         37
       ],
       "expected": {
-        "id": "rod_bamboo#epic#spd+9,size-1",
-        "draws": 4
+        "id": "gear_line_3#epic#spd+10,stb+14,mat+1",
+        "draws": 6
       }
     },
     {
@@ -399,13 +399,13 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_bamboo",
+        "gear_line_3",
         false,
         99
       ],
       "expected": {
-        "id": "rod_bamboo#epic#spd+12,size-5",
-        "draws": 4
+        "id": "gear_line_3#epic#spd+5,stb+9,mat+5",
+        "draws": 6
       }
     },
     {
@@ -414,13 +414,13 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_fiberglass",
+        "gear_line_4",
         false,
         0
       ],
       "expected": {
-        "id": "rod_fiberglass#epic#spd+16,size-7",
-        "draws": 4
+        "id": "gear_line_4#epic#spd+6,stb+12,mat+6",
+        "draws": 6
       }
     },
     {
@@ -429,13 +429,13 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_fiberglass",
+        "gear_line_4",
         false,
         37
       ],
       "expected": {
-        "id": "rod_fiberglass#epic#spd+11,size-5",
-        "draws": 4
+        "id": "gear_line_4#epic#spd+12,stb+17,mat+1",
+        "draws": 6
       }
     },
     {
@@ -444,13 +444,13 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_fiberglass",
+        "gear_line_4",
         false,
         99
       ],
       "expected": {
-        "id": "rod_fiberglass#epic#spd+16,size-7",
-        "draws": 4
+        "id": "gear_line_4#epic#spd+6,stb+12,mat+6",
+        "draws": 6
       }
     },
     {
@@ -459,12 +459,12 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_carbon",
+        "gear_line_5",
         false,
         0
       ],
       "expected": {
-        "id": "rod_carbon#epic#spd+15,mat-9,size+4",
+        "id": "gear_line_5#epic#spd+8,stb+14,mat+7",
         "draws": 6
       }
     },
@@ -474,12 +474,12 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_carbon",
+        "gear_line_5",
         false,
         37
       ],
       "expected": {
-        "id": "rod_carbon#epic#spd+18,mat-6,size-4",
+        "id": "gear_line_5#epic#spd+14,stb+21,mat+2",
         "draws": 6
       }
     },
@@ -489,12 +489,12 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_carbon",
+        "gear_line_5",
         false,
         99
       ],
       "expected": {
-        "id": "rod_carbon#epic#spd+15,mat-10,size+4",
+        "id": "gear_line_5#epic#spd+7,stb+14,mat+6",
         "draws": 6
       }
     },
@@ -504,13 +504,13 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_dragonbone",
+        "gear_hook_1",
         false,
         0
       ],
       "expected": {
-        "id": "rod_dragonbone#epic#skl+9,size+8,spd-10",
-        "draws": 6
+        "id": "gear_hook_1#epic#skl+6,size+3",
+        "draws": 4
       }
     },
     {
@@ -519,13 +519,13 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_dragonbone",
+        "gear_hook_1",
         false,
         37
       ],
       "expected": {
-        "id": "rod_dragonbone#epic#skl+11,size+11,spd-16",
-        "draws": 6
+        "id": "gear_hook_1#epic#skl+3,size+5",
+        "draws": 4
       }
     },
     {
@@ -534,13 +534,13 @@
       "args": [
         "chest_abyss",
         "",
-        "rod_dragonbone",
+        "gear_hook_1",
         false,
         99
       ],
       "expected": {
-        "id": "rod_dragonbone#epic#skl+8,size+8,spd-10",
-        "draws": 6
+        "id": "gear_hook_1#epic#skl+6,size+2",
+        "draws": 4
       }
     },
     {
@@ -549,12 +549,12 @@
       "args": [
         "chest_abyss",
         "",
-        "line_nylon",
+        "gear_hook_2",
         false,
         0
       ],
       "expected": {
-        "id": "line_nylon#epic#mat+25,size-5",
+        "id": "gear_hook_2#epic#skl+10,size+4",
         "draws": 4
       }
     },
@@ -564,12 +564,12 @@
       "args": [
         "chest_abyss",
         "",
-        "line_nylon",
+        "gear_hook_2",
         false,
         37
       ],
       "expected": {
-        "id": "line_nylon#epic#mat+16,size-1",
+        "id": "gear_hook_2#epic#skl+4,size+7",
         "draws": 4
       }
     },
@@ -579,12 +579,12 @@
       "args": [
         "chest_abyss",
         "",
-        "line_nylon",
+        "gear_hook_2",
         false,
         99
       ],
       "expected": {
-        "id": "line_nylon#epic#mat+24,size-5",
+        "id": "gear_hook_2#epic#skl+9,size+4",
         "draws": 4
       }
     },
@@ -594,12 +594,12 @@
       "args": [
         "chest_abyss",
         "",
-        "line_stealth",
+        "gear_hook_3",
         false,
         0
       ],
       "expected": {
-        "id": "line_stealth#epic#rare+6,size-13",
+        "id": "gear_hook_3#epic#skl+13,size+5",
         "draws": 4
       }
     },
@@ -609,12 +609,12 @@
       "args": [
         "chest_abyss",
         "",
-        "line_stealth",
+        "gear_hook_3",
         false,
         37
       ],
       "expected": {
-        "id": "line_stealth#epic#rare+3,size-10",
+        "id": "gear_hook_3#epic#skl+5,size+10",
         "draws": 4
       }
     },
@@ -624,12 +624,12 @@
       "args": [
         "chest_abyss",
         "",
-        "line_stealth",
+        "gear_hook_3",
         false,
         99
       ],
       "expected": {
-        "id": "line_stealth#epic#rare+6,size-13",
+        "id": "gear_hook_3#epic#skl+13,size+5",
         "draws": 4
       }
     },
@@ -639,12 +639,12 @@
       "args": [
         "chest_abyss",
         "",
-        "line_titan",
+        "gear_hook_4",
         false,
         0
       ],
       "expected": {
-        "id": "line_titan#epic#size+16,spd-8",
+        "id": "gear_hook_4#epic#skl+16,size+6",
         "draws": 4
       }
     },
@@ -654,12 +654,12 @@
       "args": [
         "chest_abyss",
         "",
-        "line_titan",
+        "gear_hook_4",
         false,
         37
       ],
       "expected": {
-        "id": "line_titan#epic#size+11,spd-6",
+        "id": "gear_hook_4#epic#skl+6,size+12",
         "draws": 4
       }
     },
@@ -669,12 +669,12 @@
       "args": [
         "chest_abyss",
         "",
-        "line_titan",
+        "gear_hook_4",
         false,
         99
       ],
       "expected": {
-        "id": "line_titan#epic#size+16,spd-8",
+        "id": "gear_hook_4#epic#skl+16,size+6",
         "draws": 4
       }
     },
@@ -684,13 +684,13 @@
       "args": [
         "chest_abyss",
         "",
-        "line_dragon",
+        "gear_hook_5",
         false,
         0
       ],
       "expected": {
-        "id": "line_dragon#epic#skl+4,rare+4,spd-7",
-        "draws": 6
+        "id": "gear_hook_5#epic#skl+19,size+8",
+        "draws": 4
       }
     },
     {
@@ -699,13 +699,13 @@
       "args": [
         "chest_abyss",
         "",
-        "line_dragon",
+        "gear_hook_5",
         false,
         37
       ],
       "expected": {
-        "id": "line_dragon#epic#skl+6,rare+5,spd-12",
-        "draws": 6
+        "id": "gear_hook_5#epic#skl+8,size+14",
+        "draws": 4
       }
     },
     {
@@ -714,13 +714,13 @@
       "args": [
         "chest_abyss",
         "",
-        "line_dragon",
+        "gear_hook_5",
         false,
         99
       ],
       "expected": {
-        "id": "line_dragon#epic#skl+4,rare+4,spd-8",
-        "draws": 6
+        "id": "gear_hook_5#epic#skl+19,size+7",
+        "draws": 4
       }
     },
     {
@@ -729,13 +729,13 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_barb",
+        "gear_bait_1",
         false,
         0
       ],
       "expected": {
-        "id": "hook_barb#epic#skl+5,size-3",
-        "draws": 4
+        "id": "gear_bait_1#epic#rare+3,dbl+5,res+3",
+        "draws": 6
       }
     },
     {
@@ -744,13 +744,13 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_barb",
+        "gear_bait_1",
         false,
         37
       ],
       "expected": {
-        "id": "hook_barb#epic#skl+3,size-1",
-        "draws": 4
+        "id": "gear_bait_1#epic#rare+5,dbl+7,res+1",
+        "draws": 6
       }
     },
     {
@@ -759,13 +759,13 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_barb",
+        "gear_bait_1",
         false,
         99
       ],
       "expected": {
-        "id": "hook_barb#epic#skl+5,size-3",
-        "draws": 4
+        "id": "gear_bait_1#epic#rare+2,dbl+5,res+3",
+        "draws": 6
       }
     },
     {
@@ -774,13 +774,13 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_swallow",
+        "gear_bait_2",
         false,
         0
       ],
       "expected": {
-        "id": "hook_swallow#epic#spd+13,size-11",
-        "draws": 4
+        "id": "gear_bait_2#epic#rare+4,dbl+7,res+4",
+        "draws": 6
       }
     },
     {
@@ -789,13 +789,13 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_swallow",
+        "gear_bait_2",
         false,
         37
       ],
       "expected": {
-        "id": "hook_swallow#epic#spd+9,size-8",
-        "draws": 4
+        "id": "gear_bait_2#epic#rare+7,dbl+10,res+1",
+        "draws": 6
       }
     },
     {
@@ -804,13 +804,13 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_swallow",
+        "gear_bait_2",
         false,
         99
       ],
       "expected": {
-        "id": "hook_swallow#epic#spd+13,size-11",
-        "draws": 4
+        "id": "gear_bait_2#epic#rare+4,dbl+7,res+4",
+        "draws": 6
       }
     },
     {
@@ -819,13 +819,13 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_steel",
+        "gear_bait_3",
         false,
         0
       ],
       "expected": {
-        "id": "hook_steel#epic#skl+9,spd-7",
-        "draws": 4
+        "id": "gear_bait_3#epic#rare+5,dbl+10,res+5",
+        "draws": 6
       }
     },
     {
@@ -834,13 +834,13 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_steel",
+        "gear_bait_3",
         false,
         37
       ],
       "expected": {
-        "id": "hook_steel#epic#skl+6,spd-5",
-        "draws": 4
+        "id": "gear_bait_3#epic#rare+10,dbl+14,res+1",
+        "draws": 6
       }
     },
     {
@@ -849,13 +849,13 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_steel",
+        "gear_bait_3",
         false,
         99
       ],
       "expected": {
-        "id": "hook_steel#epic#skl+9,spd-8",
-        "draws": 4
+        "id": "gear_bait_3#epic#rare+5,dbl+9,res+5",
+        "draws": 6
       }
     },
     {
@@ -864,12 +864,12 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_ghost",
+        "gear_bait_4",
         false,
         0
       ],
       "expected": {
-        "id": "hook_ghost#epic#skl+8,rare-6,size+8",
+        "id": "gear_bait_4#epic#rare+6,dbl+12,res+6",
         "draws": 6
       }
     },
@@ -879,12 +879,12 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_ghost",
+        "gear_bait_4",
         false,
         37
       ],
       "expected": {
-        "id": "hook_ghost#epic#skl+10,rare-4,size+4",
+        "id": "gear_bait_4#epic#rare+12,dbl+17,res+1",
         "draws": 6
       }
     },
@@ -894,12 +894,12 @@
       "args": [
         "chest_abyss",
         "",
-        "hook_ghost",
+        "gear_bait_4",
         false,
         99
       ],
       "expected": {
-        "id": "hook_ghost#epic#skl+8,rare-6,size+8",
+        "id": "gear_bait_4#epic#rare+6,dbl+12,res+6",
         "draws": 6
       }
     },
@@ -909,13 +909,13 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_corn",
+        "gear_bait_5",
         false,
         0
       ],
       "expected": {
-        "id": "bait_corn#epic#rare+2,spd+4",
-        "draws": 4
+        "id": "gear_bait_5#epic#rare+8,dbl+14,res+7",
+        "draws": 6
       }
     },
     {
@@ -924,13 +924,13 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_corn",
+        "gear_bait_5",
         false,
         37
       ],
       "expected": {
-        "id": "bait_corn#epic#rare+1,spd+6",
-        "draws": 4
+        "id": "gear_bait_5#epic#rare+14,dbl+21,res+2",
+        "draws": 6
       }
     },
     {
@@ -939,13 +939,13 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_corn",
+        "gear_bait_5",
         false,
         99
       ],
       "expected": {
-        "id": "bait_corn#epic#rare+2,spd+4",
-        "draws": 4
+        "id": "gear_bait_5#epic#rare+7,dbl+14,res+6",
+        "draws": 6
       }
     },
     {
@@ -954,13 +954,13 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_rice",
+        "gear_reel_1",
         false,
         0
       ],
       "expected": {
-        "id": "bait_rice#epic#mat+31,spd-7",
-        "draws": 4
+        "id": "gear_reel_1#epic#spd+3,stl+5,stb+3",
+        "draws": 6
       }
     },
     {
@@ -969,13 +969,13 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_rice",
+        "gear_reel_1",
         false,
         37
       ],
       "expected": {
-        "id": "bait_rice#epic#mat+23,spd-5",
-        "draws": 4
+        "id": "gear_reel_1#epic#spd+5,stl+7,stb+1",
+        "draws": 6
       }
     },
     {
@@ -984,13 +984,13 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_rice",
+        "gear_reel_1",
         false,
         99
       ],
       "expected": {
-        "id": "bait_rice#epic#mat+31,spd-8",
-        "draws": 4
+        "id": "gear_reel_1#epic#spd+2,stl+5,stb+3",
+        "draws": 6
       }
     },
     {
@@ -999,13 +999,13 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_secret",
+        "gear_reel_2",
         false,
         0
       ],
       "expected": {
-        "id": "bait_secret#epic#rare+7,mat-13",
-        "draws": 4
+        "id": "gear_reel_2#epic#spd+4,stl+7,stb+4",
+        "draws": 6
       }
     },
     {
@@ -1014,13 +1014,13 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_secret",
+        "gear_reel_2",
         false,
         37
       ],
       "expected": {
-        "id": "bait_secret#epic#rare+4,mat-10",
-        "draws": 4
+        "id": "gear_reel_2#epic#spd+7,stl+10,stb+1",
+        "draws": 6
       }
     },
     {
@@ -1029,13 +1029,13 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_secret",
+        "gear_reel_2",
         false,
         99
       ],
       "expected": {
-        "id": "bait_secret#epic#rare+7,mat-13",
-        "draws": 4
+        "id": "gear_reel_2#epic#spd+4,stl+7,stb+4",
+        "draws": 6
       }
     },
     {
@@ -1044,12 +1044,12 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_bionic",
+        "gear_reel_3",
         false,
         0
       ],
       "expected": {
-        "id": "bait_bionic#epic#skl+4,rare+3,mat-11",
+        "id": "gear_reel_3#epic#spd+5,stl+10,stb+5",
         "draws": 6
       }
     },
@@ -1059,12 +1059,12 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_bionic",
+        "gear_reel_3",
         false,
         37
       ],
       "expected": {
-        "id": "bait_bionic#epic#skl+6,rare+4,mat-16",
+        "id": "gear_reel_3#epic#spd+10,stl+14,stb+1",
         "draws": 6
       }
     },
@@ -1074,12 +1074,12 @@
       "args": [
         "chest_abyss",
         "",
-        "bait_bionic",
+        "gear_reel_3",
         false,
         99
       ],
       "expected": {
-        "id": "bait_bionic#epic#skl+4,rare+3,mat-11",
+        "id": "gear_reel_3#epic#spd+5,stl+9,stb+5",
         "draws": 6
       }
     },
@@ -1089,13 +1089,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_smooth",
+        "gear_reel_4",
         false,
         0
       ],
       "expected": {
-        "id": "reel_smooth#epic#spd+12,mat-4",
-        "draws": 4
+        "id": "gear_reel_4#epic#spd+6,stl+12,stb+6",
+        "draws": 6
       }
     },
     {
@@ -1104,13 +1104,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_smooth",
+        "gear_reel_4",
         false,
         37
       ],
       "expected": {
-        "id": "reel_smooth#epic#spd+8,mat-1",
-        "draws": 4
+        "id": "gear_reel_4#epic#spd+12,stl+17,stb+1",
+        "draws": 6
       }
     },
     {
@@ -1119,13 +1119,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_smooth",
+        "gear_reel_4",
         false,
         99
       ],
       "expected": {
-        "id": "reel_smooth#epic#spd+12,mat-4",
-        "draws": 4
+        "id": "gear_reel_4#epic#spd+6,stl+12,stb+6",
+        "draws": 6
       }
     },
     {
@@ -1134,13 +1134,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_magnetic",
+        "gear_reel_5",
         false,
         0
       ],
       "expected": {
-        "id": "reel_magnetic#epic#spd+16,mat-13",
-        "draws": 4
+        "id": "gear_reel_5#epic#spd+8,stl+14,stb+7",
+        "draws": 6
       }
     },
     {
@@ -1149,13 +1149,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_magnetic",
+        "gear_reel_5",
         false,
         37
       ],
       "expected": {
-        "id": "reel_magnetic#epic#spd+13,mat-10",
-        "draws": 4
+        "id": "gear_reel_5#epic#spd+14,stl+21,stb+2",
+        "draws": 6
       }
     },
     {
@@ -1164,13 +1164,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_magnetic",
+        "gear_reel_5",
         false,
         99
       ],
       "expected": {
-        "id": "reel_magnetic#epic#spd+16,mat-13",
-        "draws": 4
+        "id": "gear_reel_5#epic#spd+7,stl+14,stb+6",
+        "draws": 6
       }
     },
     {
@@ -1179,13 +1179,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_electric",
+        "gear_accessory_1",
         false,
         0
       ],
       "expected": {
-        "id": "reel_electric#epic#spd+26,skl-5",
-        "draws": 4
+        "id": "gear_accessory_1#epic#mat+3,res+5,stl+3",
+        "draws": 6
       }
     },
     {
@@ -1194,13 +1194,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_electric",
+        "gear_accessory_1",
         false,
         37
       ],
       "expected": {
-        "id": "reel_electric#epic#spd+21,skl-2",
-        "draws": 4
+        "id": "gear_accessory_1#epic#mat+5,res+7,stl+1",
+        "draws": 6
       }
     },
     {
@@ -1209,13 +1209,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_electric",
+        "gear_accessory_1",
         false,
         99
       ],
       "expected": {
-        "id": "reel_electric#epic#spd+26,skl-5",
-        "draws": 4
+        "id": "gear_accessory_1#epic#mat+2,res+5,stl+3",
+        "draws": 6
       }
     },
     {
@@ -1224,13 +1224,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_turbo",
+        "gear_accessory_2",
         false,
         0
       ],
       "expected": {
-        "id": "reel_turbo#epic#spd+35,skl-11",
-        "draws": 4
+        "id": "gear_accessory_2#epic#mat+4,res+7,stl+4",
+        "draws": 6
       }
     },
     {
@@ -1239,13 +1239,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_turbo",
+        "gear_accessory_2",
         false,
         37
       ],
       "expected": {
-        "id": "reel_turbo#epic#spd+29,skl-8",
-        "draws": 4
+        "id": "gear_accessory_2#epic#mat+7,res+10,stl+1",
+        "draws": 6
       }
     },
     {
@@ -1254,13 +1254,13 @@
       "args": [
         "chest_abyss",
         "",
-        "reel_turbo",
+        "gear_accessory_2",
         false,
         99
       ],
       "expected": {
-        "id": "reel_turbo#epic#spd+35,skl-11",
-        "draws": 4
+        "id": "gear_accessory_2#epic#mat+4,res+7,stl+4",
+        "draws": 6
       }
     },
     {
@@ -1269,13 +1269,13 @@
       "args": [
         "chest_abyss",
         "",
-        "acc_net",
+        "gear_accessory_3",
         false,
         0
       ],
       "expected": {
-        "id": "acc_net#epic#dbl+11,spd-3",
-        "draws": 4
+        "id": "gear_accessory_3#epic#mat+5,res+10,stl+5",
+        "draws": 6
       }
     },
     {
@@ -1284,13 +1284,13 @@
       "args": [
         "chest_abyss",
         "",
-        "acc_net",
+        "gear_accessory_3",
         false,
         37
       ],
       "expected": {
-        "id": "acc_net#epic#dbl+7,spd-1",
-        "draws": 4
+        "id": "gear_accessory_3#epic#mat+10,res+14,stl+1",
+        "draws": 6
       }
     },
     {
@@ -1299,13 +1299,13 @@
       "args": [
         "chest_abyss",
         "",
-        "acc_net",
+        "gear_accessory_3",
         false,
         99
       ],
       "expected": {
-        "id": "acc_net#epic#dbl+11,spd-3",
-        "draws": 4
+        "id": "gear_accessory_3#epic#mat+5,res+9,stl+5",
+        "draws": 6
       }
     },
     {
@@ -1314,13 +1314,13 @@
       "args": [
         "chest_abyss",
         "",
-        "acc_float",
+        "gear_accessory_4",
         false,
         0
       ],
       "expected": {
-        "id": "acc_float#epic#rare+4,size-9",
-        "draws": 4
+        "id": "gear_accessory_4#epic#mat+6,res+12,stl+6",
+        "draws": 6
       }
     },
     {
@@ -1329,13 +1329,13 @@
       "args": [
         "chest_abyss",
         "",
-        "acc_float",
+        "gear_accessory_4",
         false,
         37
       ],
       "expected": {
-        "id": "acc_float#epic#rare+2,size-7",
-        "draws": 4
+        "id": "gear_accessory_4#epic#mat+12,res+17,stl+1",
+        "draws": 6
       }
     },
     {
@@ -1344,297 +1344,297 @@
       "args": [
         "chest_abyss",
         "",
-        "acc_float",
+        "gear_accessory_4",
         false,
         99
       ],
       "expected": {
-        "id": "acc_float#epic#rare+4,size-9",
-        "draws": 4
+        "id": "gear_accessory_4#epic#mat+6,res+12,stl+6",
+        "draws": 6
       }
     },
     {
       "id": "chest-90",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "acc_scoop",
+        "gear_line_1",
         false,
         0
       ],
       "expected": {
-        "id": "acc_scoop#epic#dbl+16,mat-7",
-        "draws": 4
+        "id": "gear_line_1#mythic#spd+4,stb+3,mat+3",
+        "draws": 7
       }
     },
     {
       "id": "chest-91",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "acc_scoop",
-        false,
-        37
+        "gear_line_1",
+        true,
+        0
       ],
       "expected": {
-        "id": "acc_scoop#epic#dbl+13,mat-5",
-        "draws": 4
+        "id": "gear_line_1#mythic#spd+4,stb+3,mat+3",
+        "draws": 7
       }
     },
     {
       "id": "chest-92",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "acc_scoop",
+        "gear_line_1",
         false,
-        99
+        37
       ],
       "expected": {
-        "id": "acc_scoop#epic#dbl+16,mat-8",
-        "draws": 4
+        "id": "gear_line_1#mythic#spd+3,stb+7,mat+1",
+        "draws": 7
       }
     },
     {
       "id": "chest-93",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "acc_sonar",
-        false,
-        0
+        "gear_line_1",
+        true,
+        37
       ],
       "expected": {
-        "id": "acc_sonar#epic#skl+5,rare+4,spd-4",
-        "draws": 6
+        "id": "gear_line_1#mythic#spd+3,stb+7,mat+1",
+        "draws": 7
       }
     },
     {
       "id": "chest-94",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "acc_sonar",
+        "gear_line_1",
         false,
-        37
+        99
       ],
       "expected": {
-        "id": "acc_sonar#epic#skl+7,rare+5,spd-9",
-        "draws": 6
+        "id": "gear_line_1#mythic#spd+4,stb+2,mat+3",
+        "draws": 7
       }
     },
     {
       "id": "chest-95",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "acc_sonar",
-        false,
+        "gear_line_1",
+        true,
         99
       ],
       "expected": {
-        "id": "acc_sonar#epic#skl+5,rare+4,spd-4",
-        "draws": 6
+        "id": "gear_line_1#mythic#spd+4,stb+2,mat+3",
+        "draws": 7
       }
     },
     {
       "id": "chest-96",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "acc_radar",
+        "gear_line_2",
         false,
         0
       ],
       "expected": {
-        "id": "acc_radar#epic#rare+5,size+11,spd-7",
-        "draws": 6
+        "id": "gear_line_2#mythic#spd+10,stb+4,mat+4",
+        "draws": 7
       }
     },
     {
       "id": "chest-97",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "acc_radar",
-        false,
-        37
+        "gear_line_2",
+        true,
+        0
       ],
       "expected": {
-        "id": "acc_radar#epic#rare+7,size+13,spd-12",
-        "draws": 6
+        "id": "gear_line_2#mythic#spd+10,stb+4,mat+4",
+        "draws": 7
       }
     },
     {
       "id": "chest-98",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "acc_radar",
+        "gear_line_2",
         false,
-        99
+        37
       ],
       "expected": {
-        "id": "acc_radar#epic#rare+5,size+11,spd-8",
-        "draws": 6
+        "id": "gear_line_2#mythic#spd+4,stb+10,mat+1",
+        "draws": 7
       }
     },
     {
       "id": "chest-99",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_coin",
-        false,
-        0
+        "gear_line_2",
+        true,
+        37
       ],
       "expected": {
-        "id": "charm_coin#epic#rare+4,size+7",
-        "draws": 4
+        "id": "gear_line_2#mythic#spd+4,stb+10,mat+1",
+        "draws": 7
       }
     },
     {
       "id": "chest-100",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_coin",
+        "gear_line_2",
         false,
-        37
+        99
       ],
       "expected": {
-        "id": "charm_coin#epic#rare+2,size+9",
-        "draws": 4
+        "id": "gear_line_2#mythic#spd+6,stb+4,mat+4",
+        "draws": 7
       }
     },
     {
       "id": "chest-101",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_coin",
-        false,
+        "gear_line_2",
+        true,
         99
       ],
       "expected": {
-        "id": "charm_coin#epic#rare+4,size+6",
-        "draws": 4
+        "id": "gear_line_2#mythic#spd+6,stb+4,mat+4",
+        "draws": 7
       }
     },
     {
       "id": "chest-102",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_jade",
+        "gear_line_3",
         false,
         0
       ],
       "expected": {
-        "id": "charm_jade#epic#size+22,spd-11",
-        "draws": 4
+        "id": "gear_line_3#mythic#spd+13,stb+5,mat+5",
+        "draws": 7
       }
     },
     {
       "id": "chest-103",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_jade",
-        false,
-        37
+        "gear_line_3",
+        true,
+        0
       ],
       "expected": {
-        "id": "charm_jade#epic#size+16,spd-8",
-        "draws": 4
+        "id": "gear_line_3#mythic#spd+13,stb+5,mat+5",
+        "draws": 7
       }
     },
     {
       "id": "chest-104",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_jade",
+        "gear_line_3",
         false,
-        99
+        37
       ],
       "expected": {
-        "id": "charm_jade#epic#size+21,spd-11",
-        "draws": 4
+        "id": "gear_line_3#mythic#spd+5,stb+14,mat+1",
+        "draws": 7
       }
     },
     {
       "id": "chest-105",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_gold",
-        false,
-        0
+        "gear_line_3",
+        true,
+        37
       ],
       "expected": {
-        "id": "charm_gold#epic#skl+3,rare+3,spd+11",
-        "draws": 6
+        "id": "gear_line_3#mythic#spd+5,stb+14,mat+1",
+        "draws": 7
       }
     },
     {
       "id": "chest-106",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_gold",
+        "gear_line_3",
         false,
-        37
+        99
       ],
       "expected": {
-        "id": "charm_gold#epic#skl+4,rare+4,spd+7",
-        "draws": 6
+        "id": "gear_line_3#mythic#spd+13,stb+5,mat+5",
+        "draws": 7
       }
     },
     {
       "id": "chest-107",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_gold",
-        false,
+        "gear_line_3",
+        true,
         99
       ],
       "expected": {
-        "id": "charm_gold#epic#skl+3,rare+3,spd+11",
-        "draws": 6
+        "id": "gear_line_3#mythic#spd+13,stb+5,mat+5",
+        "draws": 7
       }
     },
     {
       "id": "chest-108",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_trident",
+        "gear_line_4",
         false,
         0
       ],
       "expected": {
-        "id": "charm_trident#epic#skl+8,dbl+13,spd-14",
+        "id": "gear_line_4#mythic#spd+16,stb+6,mat+6",
         "draws": 7
       }
     },
@@ -1642,14 +1642,14 @@
       "id": "chest-109",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_trident",
-        false,
-        37
+        "gear_line_4",
+        true,
+        0
       ],
       "expected": {
-        "id": "charm_trident#epic#skl+9,rare+5,spd-11",
+        "id": "gear_line_4#mythic#spd+16,stb+6,mat+6",
         "draws": 7
       }
     },
@@ -1657,14 +1657,14 @@
       "id": "chest-110",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "charm_trident",
+        "gear_line_4",
         false,
-        99
+        37
       ],
       "expected": {
-        "id": "charm_trident#epic#skl+8,dbl+13,spd-15",
+        "id": "gear_line_4#mythic#spd+6,stb+17,mat+1",
         "draws": 7
       }
     },
@@ -1674,13 +1674,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_bamboo",
-        false,
-        0
+        "gear_line_4",
+        true,
+        37
       ],
       "expected": {
-        "id": "rod_bamboo#mythic#spd+10,size-5,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_line_4#mythic#spd+6,stb+17,mat+1",
+        "draws": 7
       }
     },
     {
@@ -1689,13 +1689,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_bamboo",
-        true,
-        0
+        "gear_line_4",
+        false,
+        99
       ],
       "expected": {
-        "id": "rod_bamboo#mythic#spd+10,size-5,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_line_4#mythic#spd+16,stb+6,mat+6",
+        "draws": 7
       }
     },
     {
@@ -1704,13 +1704,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_bamboo",
-        false,
-        37
+        "gear_line_4",
+        true,
+        99
       ],
       "expected": {
-        "id": "rod_bamboo#mythic#spd+9,size+2,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_line_4#mythic#spd+16,stb+6,mat+6",
+        "draws": 7
       }
     },
     {
@@ -1719,13 +1719,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_bamboo",
-        true,
-        37
+        "gear_line_5",
+        false,
+        0
       ],
       "expected": {
-        "id": "rod_bamboo#mythic#spd+9,size+2,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_line_5#mythic#spd+19,stb+8,mat+7",
+        "draws": 7
       }
     },
     {
@@ -1734,13 +1734,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_bamboo",
-        false,
-        99
+        "gear_line_5",
+        true,
+        0
       ],
       "expected": {
-        "id": "rod_bamboo#mythic#spd+10,size-5,mat+15@bt",
-        "draws": 10
+        "id": "gear_line_5#mythic#spd+19,stb+8,mat+7",
+        "draws": 7
       }
     },
     {
@@ -1749,13 +1749,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_bamboo",
-        true,
-        99
+        "gear_line_5",
+        false,
+        37
       ],
       "expected": {
-        "id": "rod_bamboo#mythic#spd+10,size-5,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_line_5#mythic#spd+8,stb+21,mat+2",
+        "draws": 7
       }
     },
     {
@@ -1764,13 +1764,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_fiberglass",
-        false,
-        0
+        "gear_line_5",
+        true,
+        37
       ],
       "expected": {
-        "id": "rod_fiberglass#mythic#spd+16,size-7,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_line_5#mythic#spd+8,stb+21,mat+2",
+        "draws": 7
       }
     },
     {
@@ -1779,13 +1779,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_fiberglass",
-        true,
-        0
+        "gear_line_5",
+        false,
+        99
       ],
       "expected": {
-        "id": "rod_fiberglass#mythic#spd+16,size-7,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_line_5#mythic#spd+19,stb+7,mat+1",
+        "draws": 7
       }
     },
     {
@@ -1794,13 +1794,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_fiberglass",
-        false,
-        37
+        "gear_line_5",
+        true,
+        99
       ],
       "expected": {
-        "id": "rod_fiberglass#mythic#spd+11,size-2,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_line_5#mythic#spd+19,stb+7,mat+1",
+        "draws": 7
       }
     },
     {
@@ -1809,13 +1809,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_fiberglass",
-        true,
-        37
+        "gear_hook_1",
+        false,
+        0
       ],
       "expected": {
-        "id": "rod_fiberglass#mythic#spd+11,size-2,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_hook_1#mythic#skl+4,size+3",
+        "draws": 5
       }
     },
     {
@@ -1824,13 +1824,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_fiberglass",
-        false,
-        99
+        "gear_hook_1",
+        true,
+        0
       ],
       "expected": {
-        "id": "rod_fiberglass#mythic#spd+16,size-7,mat+15@bt",
-        "draws": 10
+        "id": "gear_hook_1#mythic#skl+4,size+3",
+        "draws": 5
       }
     },
     {
@@ -1839,13 +1839,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_fiberglass",
-        true,
-        99
+        "gear_hook_1",
+        false,
+        37
       ],
       "expected": {
-        "id": "rod_fiberglass#mythic#spd+16,size-7,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_hook_1#mythic#skl+3,size+7",
+        "draws": 5
       }
     },
     {
@@ -1854,13 +1854,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_carbon",
-        false,
-        0
+        "gear_hook_1",
+        true,
+        37
       ],
       "expected": {
-        "id": "rod_carbon#mythic#spd+20,mat-13,size+4,skl+3@bt",
-        "draws": 11
+        "id": "gear_hook_1#mythic#skl+3,size+7",
+        "draws": 5
       }
     },
     {
@@ -1869,13 +1869,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_carbon",
-        true,
-        0
+        "gear_hook_1",
+        false,
+        99
       ],
       "expected": {
-        "id": "rod_carbon#mythic#spd+20,mat-13,size+4,skl+3@bt",
-        "draws": 11
+        "id": "gear_hook_1#mythic#skl+4,size+2",
+        "draws": 5
       }
     },
     {
@@ -1884,13 +1884,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_carbon",
-        false,
-        37
+        "gear_hook_1",
+        true,
+        99
       ],
       "expected": {
-        "id": "rod_carbon#mythic#spd+15,mat-6,size-4,rare+1@bt",
-        "draws": 11
+        "id": "gear_hook_1#mythic#skl+4,size+2",
+        "draws": 5
       }
     },
     {
@@ -1899,13 +1899,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_carbon",
-        true,
-        37
+        "gear_hook_2",
+        false,
+        0
       ],
       "expected": {
-        "id": "rod_carbon#mythic#spd+15,mat-6,size-4,rare+1@bt",
-        "draws": 11
+        "id": "gear_hook_2#mythic#skl+10,size+4",
+        "draws": 5
       }
     },
     {
@@ -1914,13 +1914,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_carbon",
-        false,
-        99
+        "gear_hook_2",
+        true,
+        0
       ],
       "expected": {
-        "id": "rod_carbon#mythic#spd+20,mat-13,size+4",
-        "draws": 7
+        "id": "gear_hook_2#mythic#skl+10,size+4",
+        "draws": 5
       }
     },
     {
@@ -1929,13 +1929,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_carbon",
-        true,
-        99
+        "gear_hook_2",
+        false,
+        37
       ],
       "expected": {
-        "id": "rod_carbon#mythic#spd+20,mat-13,size+4,skl+3@bt",
-        "draws": 11
+        "id": "gear_hook_2#mythic#skl+4,size+10",
+        "draws": 5
       }
     },
     {
@@ -1944,13 +1944,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_dragonbone",
-        false,
-        0
+        "gear_hook_2",
+        true,
+        37
       ],
       "expected": {
-        "id": "rod_dragonbone#mythic#skl+10,size+5,spd-10,rare+2@bt",
-        "draws": 11
+        "id": "gear_hook_2#mythic#skl+4,size+10",
+        "draws": 5
       }
     },
     {
@@ -1959,13 +1959,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_dragonbone",
-        true,
-        0
+        "gear_hook_2",
+        false,
+        99
       ],
       "expected": {
-        "id": "rod_dragonbone#mythic#skl+10,size+5,spd-10,rare+2@bt",
-        "draws": 11
+        "id": "gear_hook_2#mythic#skl+6,size+4",
+        "draws": 5
       }
     },
     {
@@ -1974,13 +1974,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_dragonbone",
-        false,
-        37
+        "gear_hook_2",
+        true,
+        99
       ],
       "expected": {
-        "id": "rod_dragonbone#mythic#skl+9,size+11,spd-16,mat+8@bt",
-        "draws": 11
+        "id": "gear_hook_2#mythic#skl+6,size+4",
+        "draws": 5
       }
     },
     {
@@ -1989,13 +1989,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_dragonbone",
-        true,
-        37
+        "gear_hook_3",
+        false,
+        0
       ],
       "expected": {
-        "id": "rod_dragonbone#mythic#skl+9,size+11,spd-16,mat+8@bt",
-        "draws": 11
+        "id": "gear_hook_3#mythic#skl+13,size+5",
+        "draws": 5
       }
     },
     {
@@ -2004,13 +2004,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_dragonbone",
-        false,
-        99
+        "gear_hook_3",
+        true,
+        0
       ],
       "expected": {
-        "id": "rod_dragonbone#mythic#skl+10,size+5,spd-10",
-        "draws": 7
+        "id": "gear_hook_3#mythic#skl+13,size+5",
+        "draws": 5
       }
     },
     {
@@ -2019,13 +2019,13 @@
       "args": [
         "chest_king",
         "",
-        "rod_dragonbone",
-        true,
-        99
+        "gear_hook_3",
+        false,
+        37
       ],
       "expected": {
-        "id": "rod_dragonbone#mythic#skl+10,size+5,spd-10,rare+2@bt",
-        "draws": 11
+        "id": "gear_hook_3#mythic#skl+5,size+14",
+        "draws": 5
       }
     },
     {
@@ -2034,13 +2034,13 @@
       "args": [
         "chest_king",
         "",
-        "line_nylon",
-        false,
-        0
+        "gear_hook_3",
+        true,
+        37
       ],
       "expected": {
-        "id": "line_nylon#mythic#mat+25,size-5,rare+4@bt,skl+2@bt",
-        "draws": 12
+        "id": "gear_hook_3#mythic#skl+5,size+14",
+        "draws": 5
       }
     },
     {
@@ -2049,13 +2049,13 @@
       "args": [
         "chest_king",
         "",
-        "line_nylon",
-        true,
-        0
+        "gear_hook_3",
+        false,
+        99
       ],
       "expected": {
-        "id": "line_nylon#mythic#mat+25,size-5,rare+4@bt,skl+2@bt",
-        "draws": 12
+        "id": "gear_hook_3#mythic#skl+13,size+5",
+        "draws": 5
       }
     },
     {
@@ -2064,13 +2064,13 @@
       "args": [
         "chest_king",
         "",
-        "line_nylon",
-        false,
-        37
+        "gear_hook_3",
+        true,
+        99
       ],
       "expected": {
-        "id": "line_nylon#mythic#mat+16,size+2,dbl+4@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_hook_3#mythic#skl+13,size+5",
+        "draws": 5
       }
     },
     {
@@ -2079,13 +2079,13 @@
       "args": [
         "chest_king",
         "",
-        "line_nylon",
-        true,
-        37
+        "gear_hook_4",
+        false,
+        0
       ],
       "expected": {
-        "id": "line_nylon#mythic#mat+16,size+2,dbl+4@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_hook_4#mythic#skl+16,size+6",
+        "draws": 5
       }
     },
     {
@@ -2094,13 +2094,13 @@
       "args": [
         "chest_king",
         "",
-        "line_nylon",
-        false,
-        99
+        "gear_hook_4",
+        true,
+        0
       ],
       "expected": {
-        "id": "line_nylon#mythic#mat+24,size-5,rare+4@bt",
-        "draws": 10
+        "id": "gear_hook_4#mythic#skl+16,size+6",
+        "draws": 5
       }
     },
     {
@@ -2109,13 +2109,13 @@
       "args": [
         "chest_king",
         "",
-        "line_nylon",
-        true,
-        99
+        "gear_hook_4",
+        false,
+        37
       ],
       "expected": {
-        "id": "line_nylon#mythic#mat+24,size-5,rare+4@bt,skl+2@bt",
-        "draws": 12
+        "id": "gear_hook_4#mythic#skl+6,size+17",
+        "draws": 5
       }
     },
     {
@@ -2124,13 +2124,13 @@
       "args": [
         "chest_king",
         "",
-        "line_stealth",
-        false,
-        0
+        "gear_hook_4",
+        true,
+        37
       ],
       "expected": {
-        "id": "line_stealth#mythic#rare+4,size-13,mat+15@bt,skl+2@bt",
-        "draws": 12
+        "id": "gear_hook_4#mythic#skl+6,size+17",
+        "draws": 5
       }
     },
     {
@@ -2139,13 +2139,13 @@
       "args": [
         "chest_king",
         "",
-        "line_stealth",
-        true,
-        0
+        "gear_hook_4",
+        false,
+        99
       ],
       "expected": {
-        "id": "line_stealth#mythic#rare+4,size-13,mat+15@bt,skl+2@bt",
-        "draws": 12
+        "id": "gear_hook_4#mythic#skl+16,size+6",
+        "draws": 5
       }
     },
     {
@@ -2154,13 +2154,13 @@
       "args": [
         "chest_king",
         "",
-        "line_stealth",
-        false,
-        37
+        "gear_hook_4",
+        true,
+        99
       ],
       "expected": {
-        "id": "line_stealth#mythic#rare+3,size-7,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_hook_4#mythic#skl+16,size+6",
+        "draws": 5
       }
     },
     {
@@ -2169,13 +2169,13 @@
       "args": [
         "chest_king",
         "",
-        "line_stealth",
-        true,
-        37
+        "gear_hook_5",
+        false,
+        0
       ],
       "expected": {
-        "id": "line_stealth#mythic#rare+3,size-7,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_hook_5#mythic#skl+19,size+8",
+        "draws": 5
       }
     },
     {
@@ -2184,13 +2184,13 @@
       "args": [
         "chest_king",
         "",
-        "line_stealth",
-        false,
-        99
+        "gear_hook_5",
+        true,
+        0
       ],
       "expected": {
-        "id": "line_stealth#mythic#rare+4,size-13,mat+15@bt",
-        "draws": 10
+        "id": "gear_hook_5#mythic#skl+19,size+8",
+        "draws": 5
       }
     },
     {
@@ -2199,13 +2199,13 @@
       "args": [
         "chest_king",
         "",
-        "line_stealth",
-        true,
-        99
+        "gear_hook_5",
+        false,
+        37
       ],
       "expected": {
-        "id": "line_stealth#mythic#rare+4,size-13,mat+15@bt,skl+2@bt",
-        "draws": 12
+        "id": "gear_hook_5#mythic#skl+8,size+21",
+        "draws": 5
       }
     },
     {
@@ -2214,13 +2214,13 @@
       "args": [
         "chest_king",
         "",
-        "line_titan",
-        false,
-        0
+        "gear_hook_5",
+        true,
+        37
       ],
       "expected": {
-        "id": "line_titan#mythic#size+16,spd-8,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_hook_5#mythic#skl+8,size+21",
+        "draws": 5
       }
     },
     {
@@ -2229,13 +2229,13 @@
       "args": [
         "chest_king",
         "",
-        "line_titan",
-        true,
-        0
+        "gear_hook_5",
+        false,
+        99
       ],
       "expected": {
-        "id": "line_titan#mythic#size+16,spd-8,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_hook_5#mythic#skl+19,size+7",
+        "draws": 5
       }
     },
     {
@@ -2244,13 +2244,13 @@
       "args": [
         "chest_king",
         "",
-        "line_titan",
-        false,
-        37
+        "gear_hook_5",
+        true,
+        99
       ],
       "expected": {
-        "id": "line_titan#mythic#size+11,spd-3,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_hook_5#mythic#skl+19,size+7",
+        "draws": 5
       }
     },
     {
@@ -2259,13 +2259,13 @@
       "args": [
         "chest_king",
         "",
-        "line_titan",
-        true,
-        37
+        "gear_bait_1",
+        false,
+        0
       ],
       "expected": {
-        "id": "line_titan#mythic#size+11,spd-3,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_bait_1#mythic#rare+4,dbl+3,res+3",
+        "draws": 7
       }
     },
     {
@@ -2274,13 +2274,13 @@
       "args": [
         "chest_king",
         "",
-        "line_titan",
-        false,
-        99
+        "gear_bait_1",
+        true,
+        0
       ],
       "expected": {
-        "id": "line_titan#mythic#size+16,spd-8,mat+15@bt",
-        "draws": 10
+        "id": "gear_bait_1#mythic#rare+4,dbl+3,res+3",
+        "draws": 7
       }
     },
     {
@@ -2289,13 +2289,13 @@
       "args": [
         "chest_king",
         "",
-        "line_titan",
-        true,
-        99
+        "gear_bait_1",
+        false,
+        37
       ],
       "expected": {
-        "id": "line_titan#mythic#size+16,spd-8,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_bait_1#mythic#rare+3,dbl+7,res+1",
+        "draws": 7
       }
     },
     {
@@ -2304,13 +2304,13 @@
       "args": [
         "chest_king",
         "",
-        "line_dragon",
-        false,
-        0
+        "gear_bait_1",
+        true,
+        37
       ],
       "expected": {
-        "id": "line_dragon#mythic#skl+5,rare+3,spd-7,mat+10@bt",
-        "draws": 11
+        "id": "gear_bait_1#mythic#rare+3,dbl+7,res+1",
+        "draws": 7
       }
     },
     {
@@ -2319,13 +2319,13 @@
       "args": [
         "chest_king",
         "",
-        "line_dragon",
-        true,
-        0
+        "gear_bait_1",
+        false,
+        99
       ],
       "expected": {
-        "id": "line_dragon#mythic#skl+5,rare+3,spd-7,mat+10@bt",
-        "draws": 11
+        "id": "gear_bait_1#mythic#rare+4,dbl+2,res+3",
+        "draws": 7
       }
     },
     {
@@ -2334,13 +2334,13 @@
       "args": [
         "chest_king",
         "",
-        "line_dragon",
-        false,
-        37
+        "gear_bait_1",
+        true,
+        99
       ],
       "expected": {
-        "id": "line_dragon#mythic#skl+4,rare+4,spd-12,size+4@bt",
-        "draws": 11
+        "id": "gear_bait_1#mythic#rare+4,dbl+2,res+3",
+        "draws": 7
       }
     },
     {
@@ -2349,13 +2349,13 @@
       "args": [
         "chest_king",
         "",
-        "line_dragon",
-        true,
-        37
+        "gear_bait_2",
+        false,
+        0
       ],
       "expected": {
-        "id": "line_dragon#mythic#skl+4,rare+4,spd-12,size+4@bt",
-        "draws": 11
+        "id": "gear_bait_2#mythic#rare+10,dbl+4,res+4",
+        "draws": 7
       }
     },
     {
@@ -2364,12 +2364,12 @@
       "args": [
         "chest_king",
         "",
-        "line_dragon",
-        false,
-        99
+        "gear_bait_2",
+        true,
+        0
       ],
       "expected": {
-        "id": "line_dragon#mythic#skl+5,rare+3,spd-13",
+        "id": "gear_bait_2#mythic#rare+10,dbl+4,res+4",
         "draws": 7
       }
     },
@@ -2379,13 +2379,13 @@
       "args": [
         "chest_king",
         "",
-        "line_dragon",
-        true,
-        99
+        "gear_bait_2",
+        false,
+        37
       ],
       "expected": {
-        "id": "line_dragon#mythic#skl+5,rare+3,spd-13,mat+10@bt",
-        "draws": 11
+        "id": "gear_bait_2#mythic#rare+4,dbl+10,res+1",
+        "draws": 7
       }
     },
     {
@@ -2394,13 +2394,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_barb",
-        false,
-        0
+        "gear_bait_2",
+        true,
+        37
       ],
       "expected": {
-        "id": "hook_barb#mythic#skl+4,size-3,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_bait_2#mythic#rare+4,dbl+10,res+1",
+        "draws": 7
       }
     },
     {
@@ -2409,13 +2409,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_barb",
-        true,
-        0
+        "gear_bait_2",
+        false,
+        99
       ],
       "expected": {
-        "id": "hook_barb#mythic#skl+4,size-3,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_bait_2#mythic#rare+6,dbl+4,res+4",
+        "draws": 7
       }
     },
     {
@@ -2424,13 +2424,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_barb",
-        false,
-        37
+        "gear_bait_2",
+        true,
+        99
       ],
       "expected": {
-        "id": "hook_barb#mythic#skl+3,size+2,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_bait_2#mythic#rare+6,dbl+4,res+4",
+        "draws": 7
       }
     },
     {
@@ -2439,13 +2439,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_barb",
-        true,
-        37
+        "gear_bait_3",
+        false,
+        0
       ],
       "expected": {
-        "id": "hook_barb#mythic#skl+3,size+2,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_bait_3#mythic#rare+13,dbl+5,res+5",
+        "draws": 7
       }
     },
     {
@@ -2454,13 +2454,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_barb",
-        false,
-        99
+        "gear_bait_3",
+        true,
+        0
       ],
       "expected": {
-        "id": "hook_barb#mythic#skl+4,size-3,mat+15@bt",
-        "draws": 10
+        "id": "gear_bait_3#mythic#rare+13,dbl+5,res+5",
+        "draws": 7
       }
     },
     {
@@ -2469,13 +2469,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_barb",
-        true,
-        99
+        "gear_bait_3",
+        false,
+        37
       ],
       "expected": {
-        "id": "hook_barb#mythic#skl+4,size-3,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_bait_3#mythic#rare+5,dbl+14,res+1",
+        "draws": 7
       }
     },
     {
@@ -2484,13 +2484,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_swallow",
-        false,
-        0
+        "gear_bait_3",
+        true,
+        37
       ],
       "expected": {
-        "id": "hook_swallow#mythic#spd+13,size-11,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_bait_3#mythic#rare+5,dbl+14,res+1",
+        "draws": 7
       }
     },
     {
@@ -2499,13 +2499,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_swallow",
-        true,
-        0
+        "gear_bait_3",
+        false,
+        99
       ],
       "expected": {
-        "id": "hook_swallow#mythic#spd+13,size-11,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_bait_3#mythic#rare+13,dbl+5,res+5",
+        "draws": 7
       }
     },
     {
@@ -2514,13 +2514,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_swallow",
-        false,
-        37
+        "gear_bait_3",
+        true,
+        99
       ],
       "expected": {
-        "id": "hook_swallow#mythic#spd+9,size-5,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_bait_3#mythic#rare+13,dbl+5,res+5",
+        "draws": 7
       }
     },
     {
@@ -2529,13 +2529,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_swallow",
-        true,
-        37
+        "gear_bait_4",
+        false,
+        0
       ],
       "expected": {
-        "id": "hook_swallow#mythic#spd+9,size-5,dbl+4@bt,mat+8@bt",
-        "draws": 12
+        "id": "gear_bait_4#mythic#rare+16,dbl+6,res+6",
+        "draws": 7
       }
     },
     {
@@ -2544,13 +2544,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_swallow",
-        false,
-        99
+        "gear_bait_4",
+        true,
+        0
       ],
       "expected": {
-        "id": "hook_swallow#mythic#spd+10,size-11,mat+15@bt",
-        "draws": 10
+        "id": "gear_bait_4#mythic#rare+16,dbl+6,res+6",
+        "draws": 7
       }
     },
     {
@@ -2559,13 +2559,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_swallow",
-        true,
-        99
+        "gear_bait_4",
+        false,
+        37
       ],
       "expected": {
-        "id": "hook_swallow#mythic#spd+10,size-11,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_bait_4#mythic#rare+6,dbl+17,res+1",
+        "draws": 7
       }
     },
     {
@@ -2574,13 +2574,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_steel",
-        false,
-        0
+        "gear_bait_4",
+        true,
+        37
       ],
       "expected": {
-        "id": "hook_steel#mythic#skl+7,spd-7,mat+8@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_bait_4#mythic#rare+6,dbl+17,res+1",
+        "draws": 7
       }
     },
     {
@@ -2589,13 +2589,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_steel",
-        true,
-        0
+        "gear_bait_4",
+        false,
+        99
       ],
       "expected": {
-        "id": "hook_steel#mythic#skl+7,spd-7,mat+8@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_bait_4#mythic#rare+16,dbl+6,res+6",
+        "draws": 7
       }
     },
     {
@@ -2604,13 +2604,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_steel",
-        false,
-        37
+        "gear_bait_4",
+        true,
+        99
       ],
       "expected": {
-        "id": "hook_steel#mythic#skl+6,spd-3,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_bait_4#mythic#rare+16,dbl+6,res+6",
+        "draws": 7
       }
     },
     {
@@ -2619,13 +2619,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_steel",
-        true,
-        37
+        "gear_bait_5",
+        false,
+        0
       ],
       "expected": {
-        "id": "hook_steel#mythic#skl+6,spd-3,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_bait_5#mythic#rare+19,dbl+8,res+7",
+        "draws": 7
       }
     },
     {
@@ -2634,13 +2634,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_steel",
-        false,
-        99
+        "gear_bait_5",
+        true,
+        0
       ],
       "expected": {
-        "id": "hook_steel#mythic#skl+7,spd-8,size+9@bt",
-        "draws": 10
+        "id": "gear_bait_5#mythic#rare+19,dbl+8,res+7",
+        "draws": 7
       }
     },
     {
@@ -2649,13 +2649,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_steel",
-        true,
-        99
+        "gear_bait_5",
+        false,
+        37
       ],
       "expected": {
-        "id": "hook_steel#mythic#skl+7,spd-8,mat+8@bt,size+9@bt",
-        "draws": 12
+        "id": "gear_bait_5#mythic#rare+8,dbl+21,res+2",
+        "draws": 7
       }
     },
     {
@@ -2664,13 +2664,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_ghost",
-        false,
-        0
+        "gear_bait_5",
+        true,
+        37
       ],
       "expected": {
-        "id": "hook_ghost#mythic#skl+9,rare-8,size+8,spd+6@bt",
-        "draws": 11
+        "id": "gear_bait_5#mythic#rare+8,dbl+21,res+2",
+        "draws": 7
       }
     },
     {
@@ -2679,13 +2679,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_ghost",
-        true,
-        0
+        "gear_bait_5",
+        false,
+        99
       ],
       "expected": {
-        "id": "hook_ghost#mythic#skl+9,rare-8,size+8,spd+6@bt",
-        "draws": 11
+        "id": "gear_bait_5#mythic#rare+19,dbl+7,res+1",
+        "draws": 7
       }
     },
     {
@@ -2694,13 +2694,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_ghost",
-        false,
-        37
+        "gear_bait_5",
+        true,
+        99
       ],
       "expected": {
-        "id": "hook_ghost#mythic#skl+8,rare-4,size+4,mat+8@bt",
-        "draws": 11
+        "id": "gear_bait_5#mythic#rare+19,dbl+7,res+1",
+        "draws": 7
       }
     },
     {
@@ -2709,13 +2709,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_ghost",
-        true,
-        37
+        "gear_reel_1",
+        false,
+        0
       ],
       "expected": {
-        "id": "hook_ghost#mythic#skl+8,rare-4,size+4,mat+8@bt",
-        "draws": 11
+        "id": "gear_reel_1#mythic#spd+4,stl+3,stb+3",
+        "draws": 7
       }
     },
     {
@@ -2724,12 +2724,12 @@
       "args": [
         "chest_king",
         "",
-        "hook_ghost",
-        false,
-        99
+        "gear_reel_1",
+        true,
+        0
       ],
       "expected": {
-        "id": "hook_ghost#mythic#skl+9,rare-9,size+8",
+        "id": "gear_reel_1#mythic#spd+4,stl+3,stb+3",
         "draws": 7
       }
     },
@@ -2739,13 +2739,13 @@
       "args": [
         "chest_king",
         "",
-        "hook_ghost",
-        true,
-        99
+        "gear_reel_1",
+        false,
+        37
       ],
       "expected": {
-        "id": "hook_ghost#mythic#skl+9,rare-9,size+8,spd+6@bt",
-        "draws": 11
+        "id": "gear_reel_1#mythic#spd+3,stl+7,stb+1",
+        "draws": 7
       }
     },
     {
@@ -2754,13 +2754,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_corn",
-        false,
-        0
+        "gear_reel_1",
+        true,
+        37
       ],
       "expected": {
-        "id": "bait_corn#mythic#rare+2,spd+4,mat+8@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_reel_1#mythic#spd+3,stl+7,stb+1",
+        "draws": 7
       }
     },
     {
@@ -2769,13 +2769,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_corn",
-        true,
-        0
+        "gear_reel_1",
+        false,
+        99
       ],
       "expected": {
-        "id": "bait_corn#mythic#rare+2,spd+4,mat+8@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_reel_1#mythic#spd+4,stl+2,stb+3",
+        "draws": 7
       }
     },
     {
@@ -2784,13 +2784,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_corn",
-        false,
-        37
+        "gear_reel_1",
+        true,
+        99
       ],
       "expected": {
-        "id": "bait_corn#mythic#rare+1,spd+8,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_reel_1#mythic#spd+4,stl+2,stb+3",
+        "draws": 7
       }
     },
     {
@@ -2799,13 +2799,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_corn",
-        true,
-        37
+        "gear_reel_2",
+        false,
+        0
       ],
       "expected": {
-        "id": "bait_corn#mythic#rare+1,spd+8,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_reel_2#mythic#spd+10,stl+4,stb+4",
+        "draws": 7
       }
     },
     {
@@ -2814,13 +2814,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_corn",
-        false,
-        99
+        "gear_reel_2",
+        true,
+        0
       ],
       "expected": {
-        "id": "bait_corn#mythic#rare+2,spd+4,size+9@bt",
-        "draws": 10
+        "id": "gear_reel_2#mythic#spd+10,stl+4,stb+4",
+        "draws": 7
       }
     },
     {
@@ -2829,13 +2829,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_corn",
-        true,
-        99
+        "gear_reel_2",
+        false,
+        37
       ],
       "expected": {
-        "id": "bait_corn#mythic#rare+2,spd+4,mat+8@bt,size+9@bt",
-        "draws": 12
+        "id": "gear_reel_2#mythic#spd+4,stl+10,stb+1",
+        "draws": 7
       }
     },
     {
@@ -2844,13 +2844,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_rice",
-        false,
-        0
+        "gear_reel_2",
+        true,
+        37
       ],
       "expected": {
-        "id": "bait_rice#mythic#mat+31,spd-7,rare+1@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_reel_2#mythic#spd+4,stl+10,stb+1",
+        "draws": 7
       }
     },
     {
@@ -2859,13 +2859,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_rice",
-        true,
-        0
+        "gear_reel_2",
+        false,
+        99
       ],
       "expected": {
-        "id": "bait_rice#mythic#mat+31,spd-7,rare+1@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_reel_2#mythic#spd+6,stl+4,stb+4",
+        "draws": 7
       }
     },
     {
@@ -2874,13 +2874,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_rice",
-        false,
-        37
+        "gear_reel_2",
+        true,
+        99
       ],
       "expected": {
-        "id": "bait_rice#mythic#mat+23,spd-3,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_reel_2#mythic#spd+6,stl+4,stb+4",
+        "draws": 7
       }
     },
     {
@@ -2889,13 +2889,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_rice",
-        true,
-        37
+        "gear_reel_3",
+        false,
+        0
       ],
       "expected": {
-        "id": "bait_rice#mythic#mat+23,spd-3,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_reel_3#mythic#spd+13,stl+5,stb+5",
+        "draws": 7
       }
     },
     {
@@ -2904,13 +2904,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_rice",
-        false,
-        99
+        "gear_reel_3",
+        true,
+        0
       ],
       "expected": {
-        "id": "bait_rice#mythic#mat+31,spd-8,size+9@bt",
-        "draws": 10
+        "id": "gear_reel_3#mythic#spd+13,stl+5,stb+5",
+        "draws": 7
       }
     },
     {
@@ -2919,13 +2919,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_rice",
-        true,
-        99
+        "gear_reel_3",
+        false,
+        37
       ],
       "expected": {
-        "id": "bait_rice#mythic#mat+31,spd-8,rare+1@bt,size+9@bt",
-        "draws": 12
+        "id": "gear_reel_3#mythic#spd+5,stl+14,stb+1",
+        "draws": 7
       }
     },
     {
@@ -2934,13 +2934,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_secret",
-        false,
-        0
+        "gear_reel_3",
+        true,
+        37
       ],
       "expected": {
-        "id": "bait_secret#mythic#rare+5,mat-13,size+10@bt,skl+2@bt",
-        "draws": 12
+        "id": "gear_reel_3#mythic#spd+5,stl+14,stb+1",
+        "draws": 7
       }
     },
     {
@@ -2949,13 +2949,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_secret",
-        true,
-        0
+        "gear_reel_3",
+        false,
+        99
       ],
       "expected": {
-        "id": "bait_secret#mythic#rare+5,mat-13,size+10@bt,skl+2@bt",
-        "draws": 12
+        "id": "gear_reel_3#mythic#spd+13,stl+5,stb+5",
+        "draws": 7
       }
     },
     {
@@ -2964,13 +2964,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_secret",
-        false,
-        37
+        "gear_reel_3",
+        true,
+        99
       ],
       "expected": {
-        "id": "bait_secret#mythic#rare+4,mat-7,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_reel_3#mythic#spd+13,stl+5,stb+5",
+        "draws": 7
       }
     },
     {
@@ -2979,13 +2979,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_secret",
-        true,
-        37
+        "gear_reel_4",
+        false,
+        0
       ],
       "expected": {
-        "id": "bait_secret#mythic#rare+4,mat-7,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_reel_4#mythic#spd+16,stl+6,stb+6",
+        "draws": 7
       }
     },
     {
@@ -2994,13 +2994,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_secret",
-        false,
-        99
+        "gear_reel_4",
+        true,
+        0
       ],
       "expected": {
-        "id": "bait_secret#mythic#rare+5,mat-13,size+9@bt",
-        "draws": 10
+        "id": "gear_reel_4#mythic#spd+16,stl+6,stb+6",
+        "draws": 7
       }
     },
     {
@@ -3009,13 +3009,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_secret",
-        true,
-        99
+        "gear_reel_4",
+        false,
+        37
       ],
       "expected": {
-        "id": "bait_secret#mythic#rare+5,mat-13,size+9@bt,skl+2@bt",
-        "draws": 12
+        "id": "gear_reel_4#mythic#spd+6,stl+17,stb+1",
+        "draws": 7
       }
     },
     {
@@ -3024,13 +3024,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_bionic",
-        false,
-        0
+        "gear_reel_4",
+        true,
+        37
       ],
       "expected": {
-        "id": "bait_bionic#mythic#skl+5,rare+2,mat-11,spd+6@bt",
-        "draws": 11
+        "id": "gear_reel_4#mythic#spd+6,stl+17,stb+1",
+        "draws": 7
       }
     },
     {
@@ -3039,13 +3039,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_bionic",
-        true,
-        0
+        "gear_reel_4",
+        false,
+        99
       ],
       "expected": {
-        "id": "bait_bionic#mythic#skl+5,rare+2,mat-11,spd+6@bt",
-        "draws": 11
+        "id": "gear_reel_4#mythic#spd+16,stl+6,stb+6",
+        "draws": 7
       }
     },
     {
@@ -3054,13 +3054,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_bionic",
-        false,
-        37
+        "gear_reel_4",
+        true,
+        99
       ],
       "expected": {
-        "id": "bait_bionic#mythic#skl+4,rare+3,mat-16,size+4@bt",
-        "draws": 11
+        "id": "gear_reel_4#mythic#spd+16,stl+6,stb+6",
+        "draws": 7
       }
     },
     {
@@ -3069,13 +3069,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_bionic",
-        true,
-        37
+        "gear_reel_5",
+        false,
+        0
       ],
       "expected": {
-        "id": "bait_bionic#mythic#skl+4,rare+3,mat-16,size+4@bt",
-        "draws": 11
+        "id": "gear_reel_5#mythic#spd+19,stl+8,stb+7",
+        "draws": 7
       }
     },
     {
@@ -3084,12 +3084,12 @@
       "args": [
         "chest_king",
         "",
-        "bait_bionic",
-        false,
-        99
+        "gear_reel_5",
+        true,
+        0
       ],
       "expected": {
-        "id": "bait_bionic#mythic#skl+5,rare+2,mat-11",
+        "id": "gear_reel_5#mythic#spd+19,stl+8,stb+7",
         "draws": 7
       }
     },
@@ -3099,13 +3099,13 @@
       "args": [
         "chest_king",
         "",
-        "bait_bionic",
-        true,
-        99
+        "gear_reel_5",
+        false,
+        37
       ],
       "expected": {
-        "id": "bait_bionic#mythic#skl+5,rare+2,mat-11,spd+6@bt",
-        "draws": 11
+        "id": "gear_reel_5#mythic#spd+8,stl+21,stb+2",
+        "draws": 7
       }
     },
     {
@@ -3114,13 +3114,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_smooth",
-        false,
-        0
+        "gear_reel_5",
+        true,
+        37
       ],
       "expected": {
-        "id": "reel_smooth#mythic#spd+12,mat-4,rare+1@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_reel_5#mythic#spd+8,stl+21,stb+2",
+        "draws": 7
       }
     },
     {
@@ -3129,13 +3129,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_smooth",
-        true,
-        0
+        "gear_reel_5",
+        false,
+        99
       ],
       "expected": {
-        "id": "reel_smooth#mythic#spd+12,mat-4,rare+1@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_reel_5#mythic#spd+19,stl+7,stb+1",
+        "draws": 7
       }
     },
     {
@@ -3144,13 +3144,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_smooth",
-        false,
-        37
+        "gear_reel_5",
+        true,
+        99
       ],
       "expected": {
-        "id": "reel_smooth#mythic#spd+8,mat+2,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_reel_5#mythic#spd+19,stl+7,stb+1",
+        "draws": 7
       }
     },
     {
@@ -3159,13 +3159,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_smooth",
-        true,
-        37
+        "gear_accessory_1",
+        false,
+        0
       ],
       "expected": {
-        "id": "reel_smooth#mythic#spd+8,mat+2,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_accessory_1#mythic#mat+4,res+3,stl+3",
+        "draws": 7
       }
     },
     {
@@ -3174,13 +3174,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_smooth",
-        false,
-        99
+        "gear_accessory_1",
+        true,
+        0
       ],
       "expected": {
-        "id": "reel_smooth#mythic#spd+12,mat-4,size+9@bt",
-        "draws": 10
+        "id": "gear_accessory_1#mythic#mat+4,res+3,stl+3",
+        "draws": 7
       }
     },
     {
@@ -3189,13 +3189,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_smooth",
-        true,
-        99
+        "gear_accessory_1",
+        false,
+        37
       ],
       "expected": {
-        "id": "reel_smooth#mythic#spd+12,mat-4,rare+1@bt,size+9@bt",
-        "draws": 12
+        "id": "gear_accessory_1#mythic#mat+3,res+7,stl+1",
+        "draws": 7
       }
     },
     {
@@ -3204,13 +3204,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_magnetic",
-        false,
-        0
+        "gear_accessory_1",
+        true,
+        37
       ],
       "expected": {
-        "id": "reel_magnetic#mythic#spd+14,mat-13,rare+1@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_accessory_1#mythic#mat+3,res+7,stl+1",
+        "draws": 7
       }
     },
     {
@@ -3219,13 +3219,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_magnetic",
-        true,
-        0
+        "gear_accessory_1",
+        false,
+        99
       ],
       "expected": {
-        "id": "reel_magnetic#mythic#spd+14,mat-13,rare+1@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_accessory_1#mythic#mat+4,res+2,stl+3",
+        "draws": 7
       }
     },
     {
@@ -3234,13 +3234,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_magnetic",
-        false,
-        37
+        "gear_accessory_1",
+        true,
+        99
       ],
       "expected": {
-        "id": "reel_magnetic#mythic#spd+13,mat-7,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_accessory_1#mythic#mat+4,res+2,stl+3",
+        "draws": 7
       }
     },
     {
@@ -3249,13 +3249,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_magnetic",
-        true,
-        37
+        "gear_accessory_2",
+        false,
+        0
       ],
       "expected": {
-        "id": "reel_magnetic#mythic#spd+13,mat-7,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_accessory_2#mythic#mat+10,res+4,stl+4",
+        "draws": 7
       }
     },
     {
@@ -3264,13 +3264,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_magnetic",
-        false,
-        99
+        "gear_accessory_2",
+        true,
+        0
       ],
       "expected": {
-        "id": "reel_magnetic#mythic#spd+14,mat-13,size+9@bt",
-        "draws": 10
+        "id": "gear_accessory_2#mythic#mat+10,res+4,stl+4",
+        "draws": 7
       }
     },
     {
@@ -3279,13 +3279,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_magnetic",
-        true,
-        99
+        "gear_accessory_2",
+        false,
+        37
       ],
       "expected": {
-        "id": "reel_magnetic#mythic#spd+14,mat-13,rare+1@bt,size+9@bt",
-        "draws": 12
+        "id": "gear_accessory_2#mythic#mat+4,res+10,stl+1",
+        "draws": 7
       }
     },
     {
@@ -3294,13 +3294,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_electric",
-        false,
-        0
+        "gear_accessory_2",
+        true,
+        37
       ],
       "expected": {
-        "id": "reel_electric#mythic#spd+26,skl-5,mat+8@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_accessory_2#mythic#mat+4,res+10,stl+1",
+        "draws": 7
       }
     },
     {
@@ -3309,13 +3309,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_electric",
-        true,
-        0
+        "gear_accessory_2",
+        false,
+        99
       ],
       "expected": {
-        "id": "reel_electric#mythic#spd+26,skl-5,mat+8@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_accessory_2#mythic#mat+6,res+4,stl+4",
+        "draws": 7
       }
     },
     {
@@ -3324,13 +3324,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_electric",
-        false,
-        37
+        "gear_accessory_2",
+        true,
+        99
       ],
       "expected": {
-        "id": "reel_electric#mythic#spd+21,skl+1,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_accessory_2#mythic#mat+6,res+4,stl+4",
+        "draws": 7
       }
     },
     {
@@ -3339,13 +3339,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_electric",
-        true,
-        37
+        "gear_accessory_3",
+        false,
+        0
       ],
       "expected": {
-        "id": "reel_electric#mythic#spd+21,skl+1,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_accessory_3#mythic#mat+13,res+5,stl+5",
+        "draws": 7
       }
     },
     {
@@ -3354,13 +3354,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_electric",
-        false,
-        99
+        "gear_accessory_3",
+        true,
+        0
       ],
       "expected": {
-        "id": "reel_electric#mythic#spd+26,skl-5,size+9@bt",
-        "draws": 10
+        "id": "gear_accessory_3#mythic#mat+13,res+5,stl+5",
+        "draws": 7
       }
     },
     {
@@ -3369,13 +3369,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_electric",
-        true,
-        99
+        "gear_accessory_3",
+        false,
+        37
       ],
       "expected": {
-        "id": "reel_electric#mythic#spd+26,skl-5,mat+8@bt,size+9@bt",
-        "draws": 12
+        "id": "gear_accessory_3#mythic#mat+5,res+14,stl+1",
+        "draws": 7
       }
     },
     {
@@ -3384,13 +3384,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_turbo",
-        false,
-        0
+        "gear_accessory_3",
+        true,
+        37
       ],
       "expected": {
-        "id": "reel_turbo#mythic#spd+35,skl-11,mat+8@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_accessory_3#mythic#mat+5,res+14,stl+1",
+        "draws": 7
       }
     },
     {
@@ -3399,13 +3399,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_turbo",
-        true,
-        0
+        "gear_accessory_3",
+        false,
+        99
       ],
       "expected": {
-        "id": "reel_turbo#mythic#spd+35,skl-11,mat+8@bt,size+10@bt",
-        "draws": 12
+        "id": "gear_accessory_3#mythic#mat+13,res+5,stl+5",
+        "draws": 7
       }
     },
     {
@@ -3414,13 +3414,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_turbo",
-        false,
-        37
+        "gear_accessory_3",
+        true,
+        99
       ],
       "expected": {
-        "id": "reel_turbo#mythic#spd+29,skl-5,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_accessory_3#mythic#mat+13,res+5,stl+5",
+        "draws": 7
       }
     },
     {
@@ -3429,13 +3429,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_turbo",
-        true,
-        37
+        "gear_accessory_4",
+        false,
+        0
       ],
       "expected": {
-        "id": "reel_turbo#mythic#spd+29,skl-5,dbl+4@bt,size+4@bt",
-        "draws": 12
+        "id": "gear_accessory_4#mythic#mat+16,res+6,stl+6",
+        "draws": 7
       }
     },
     {
@@ -3444,13 +3444,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_turbo",
-        false,
-        99
+        "gear_accessory_4",
+        true,
+        0
       ],
       "expected": {
-        "id": "reel_turbo#mythic#spd+31,skl-11,size+9@bt",
-        "draws": 10
+        "id": "gear_accessory_4#mythic#mat+16,res+6,stl+6",
+        "draws": 7
       }
     },
     {
@@ -3459,13 +3459,13 @@
       "args": [
         "chest_king",
         "",
-        "reel_turbo",
-        true,
-        99
+        "gear_accessory_4",
+        false,
+        37
       ],
       "expected": {
-        "id": "reel_turbo#mythic#spd+31,skl-11,mat+8@bt,size+9@bt",
-        "draws": 12
+        "id": "gear_accessory_4#mythic#mat+6,res+17,stl+1",
+        "draws": 7
       }
     },
     {
@@ -3474,13 +3474,13 @@
       "args": [
         "chest_king",
         "",
-        "acc_net",
-        false,
-        0
+        "gear_accessory_4",
+        true,
+        37
       ],
       "expected": {
-        "id": "acc_net#mythic#dbl+11,spd-3,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_accessory_4#mythic#mat+6,res+17,stl+1",
+        "draws": 7
       }
     },
     {
@@ -3489,13 +3489,13 @@
       "args": [
         "chest_king",
         "",
-        "acc_net",
-        true,
-        0
+        "gear_accessory_4",
+        false,
+        99
       ],
       "expected": {
-        "id": "acc_net#mythic#dbl+11,spd-3,mat+15@bt,rare+1@bt",
-        "draws": 12
+        "id": "gear_accessory_4#mythic#mat+16,res+6,stl+6",
+        "draws": 7
       }
     },
     {
@@ -3504,778 +3504,13 @@
       "args": [
         "chest_king",
         "",
-        "acc_net",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "acc_net#mythic#dbl+7,spd+2,mat+8@bt,size+6@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-234",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_net",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "acc_net#mythic#dbl+7,spd+2,mat+8@bt,size+6@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-235",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_net",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "acc_net#mythic#dbl+11,spd-3,mat+15@bt",
-        "draws": 10
-      }
-    },
-    {
-      "id": "chest-236",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_net",
+        "gear_accessory_4",
         true,
         99
       ],
       "expected": {
-        "id": "acc_net#mythic#dbl+11,spd-3,mat+15@bt,rare+1@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-237",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_float",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "acc_float#mythic#rare+3,size-9,mat+15@bt,skl+2@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-238",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_float",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "acc_float#mythic#rare+3,size-9,mat+15@bt,skl+2@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-239",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_float",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "acc_float#mythic#rare+2,size-4,dbl+4@bt,mat+8@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-240",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_float",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "acc_float#mythic#rare+2,size-4,dbl+4@bt,mat+8@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-241",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_float",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "acc_float#mythic#rare+3,size-9,mat+15@bt",
-        "draws": 10
-      }
-    },
-    {
-      "id": "chest-242",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_float",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "acc_float#mythic#rare+3,size-9,mat+15@bt,skl+2@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-243",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_scoop",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "acc_scoop#mythic#dbl+14,mat-7,rare+4@bt,skl+2@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-244",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_scoop",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "acc_scoop#mythic#dbl+14,mat-7,rare+4@bt,skl+2@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-245",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_scoop",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "acc_scoop#mythic#dbl+13,mat-3,rare+1@bt,size+6@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-246",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_scoop",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "acc_scoop#mythic#dbl+13,mat-3,rare+1@bt,size+6@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-247",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_scoop",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "acc_scoop#mythic#dbl+14,mat-8,rare+4@bt",
-        "draws": 10
-      }
-    },
-    {
-      "id": "chest-248",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_scoop",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "acc_scoop#mythic#dbl+14,mat-8,rare+4@bt,skl+2@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-249",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_sonar",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "acc_sonar#mythic#skl+6,rare+3,spd-4,mat+10@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-250",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_sonar",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "acc_sonar#mythic#skl+6,rare+3,spd-4,mat+10@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-251",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_sonar",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "acc_sonar#mythic#skl+5,rare+4,spd-9,size+4@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-252",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_sonar",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "acc_sonar#mythic#skl+5,rare+4,spd-9,size+4@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-253",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_sonar",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "acc_sonar#mythic#skl+6,rare+3,spd-4",
+        "id": "gear_accessory_4#mythic#mat+16,res+6,stl+6",
         "draws": 7
-      }
-    },
-    {
-      "id": "chest-254",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_sonar",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "acc_sonar#mythic#skl+6,rare+3,spd-4,mat+10@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-255",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_radar",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "acc_radar#mythic#rare+6,size+9,spd-7,skl+3@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-256",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_radar",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "acc_radar#mythic#rare+6,size+9,spd-7,skl+3@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-257",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_radar",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "acc_radar#mythic#rare+5,size+13,spd-12,mat+8@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-258",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_radar",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "acc_radar#mythic#rare+5,size+13,spd-12,mat+8@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-259",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_radar",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "acc_radar#mythic#rare+6,size+8,spd-13",
-        "draws": 7
-      }
-    },
-    {
-      "id": "chest-260",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "acc_radar",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "acc_radar#mythic#rare+6,size+8,spd-13,skl+3@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-261",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_coin",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "charm_coin#mythic#rare+3,size+7,mat+15@bt,skl+2@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-262",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_coin",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "charm_coin#mythic#rare+3,size+7,mat+15@bt,skl+2@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-263",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_coin",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "charm_coin#mythic#rare+2,size+11,dbl+4@bt,mat+8@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-264",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_coin",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "charm_coin#mythic#rare+2,size+11,dbl+4@bt,mat+8@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-265",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_coin",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "charm_coin#mythic#rare+3,size+6,mat+15@bt",
-        "draws": 10
-      }
-    },
-    {
-      "id": "chest-266",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_coin",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "charm_coin#mythic#rare+3,size+6,mat+15@bt,skl+2@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-267",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_jade",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "charm_jade#mythic#size+22,spd-11,mat+15@bt,rare+1@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-268",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_jade",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "charm_jade#mythic#size+22,spd-11,mat+15@bt,rare+1@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-269",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_jade",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "charm_jade#mythic#size+16,spd-5,dbl+4@bt,mat+8@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-270",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_jade",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "charm_jade#mythic#size+16,spd-5,dbl+4@bt,mat+8@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-271",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_jade",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "charm_jade#mythic#size+18,spd-11,mat+15@bt",
-        "draws": 10
-      }
-    },
-    {
-      "id": "chest-272",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_jade",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "charm_jade#mythic#size+18,spd-11,mat+15@bt,rare+1@bt",
-        "draws": 12
-      }
-    },
-    {
-      "id": "chest-273",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_gold",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "charm_gold#mythic#skl+4,rare+2,spd+11,mat+10@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-274",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_gold",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "charm_gold#mythic#skl+4,rare+2,spd+11,mat+10@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-275",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_gold",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "charm_gold#mythic#skl+3,rare+3,spd+7,size+4@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-276",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_gold",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "charm_gold#mythic#skl+3,rare+3,spd+7,size+4@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-277",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_gold",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "charm_gold#mythic#skl+4,rare+2,spd+11",
-        "draws": 7
-      }
-    },
-    {
-      "id": "chest-278",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_gold",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "charm_gold#mythic#skl+4,rare+2,spd+11,mat+10@bt",
-        "draws": 11
-      }
-    },
-    {
-      "id": "chest-279",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_trident",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "charm_trident#mythic#skl+6,rare+4,dbl+13,spd-14",
-        "draws": 8
-      }
-    },
-    {
-      "id": "chest-280",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_trident",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "charm_trident#mythic#skl+6,rare+4,dbl+13,spd-14",
-        "draws": 8
-      }
-    },
-    {
-      "id": "chest-281",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_trident",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "charm_trident#mythic#skl+7,rare+4,dbl+13,spd-9",
-        "draws": 8
-      }
-    },
-    {
-      "id": "chest-282",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_trident",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "charm_trident#mythic#skl+7,rare+4,dbl+13,spd-9",
-        "draws": 8
-      }
-    },
-    {
-      "id": "chest-283",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_trident",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "charm_trident#mythic#skl+10,rare+4,dbl+13,spd-15",
-        "draws": 8
-      }
-    },
-    {
-      "id": "chest-284",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "charm_trident",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "charm_trident#mythic#skl+10,rare+4,dbl+13,spd-15",
-        "draws": 8
       }
     }
   ]

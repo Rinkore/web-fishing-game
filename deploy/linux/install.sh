@@ -11,6 +11,7 @@ source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 root=/opt/fishing-go-test
 [[ -L $root/current && -d $root/releases ]] || { echo 'Existing fishing-go-test deployment is required.' >&2; exit 2; }
 systemctl is-active --quiet fishing-go-test
+systemctl is-active --quiet fishing-go-test-web
 [[ $(systemctl show --property=WorkingDirectory --value fishing-go-test) == "$root/current" ]] || { echo 'Unexpected service working directory.' >&2; exit 2; }
 [[ $(systemctl show --property=ExecStart --value fishing-go-test) == *"$root/current/bin/game"* ]] || { echo 'Unexpected service executable.' >&2; exit 2; }
 # Verify the baseline commit without reading the private runtime.env.
@@ -56,6 +57,7 @@ cat >/etc/fishing-release/config.json <<'JSON'
 {
   "root": "/opt/fishing-go-test",
   "service": "fishing-go-test",
+  "webService": "fishing-go-test-web",
   "publicUrl": "https://ipv4.rinkore.com:19000"
 }
 JSON
