@@ -325,7 +325,7 @@ func (s *Store) Public(ctx context.Context, q, kind, category string, limit, off
 	if q != "" {
 		pattern := "%" + strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(q, "\\", "\\\\"), "%", "\\%"), "_", "\\_") + "%"
 		p := fmt.Sprint(len(args) + 1)
-		where = append(where, `(title ILIKE $`+p+` ESCAPE '\\' OR summary ILIKE $`+p+` ESCAPE '\\' OR tags::text ILIKE $`+p+` ESCAPE '\\' OR aliases::text ILIKE $`+p+` ESCAPE '\\' OR EXISTS(SELECT 1 FROM fishing.wiki_sections s WHERE s.guide_id=wiki_guides.id AND (s.heading ILIKE $`+p+` ESCAPE '\\' OR s.body ILIKE $`+p+` ESCAPE '\\' OR s.items::text ILIKE $`+p+` ESCAPE '\\'))`)
+		where = append(where, `(title ILIKE $`+p+` ESCAPE E'\\' OR summary ILIKE $`+p+` ESCAPE E'\\' OR tags::text ILIKE $`+p+` ESCAPE E'\\' OR aliases::text ILIKE $`+p+` ESCAPE E'\\' OR EXISTS(SELECT 1 FROM fishing.wiki_sections s WHERE s.guide_id=wiki_guides.id AND (s.heading ILIKE $`+p+` ESCAPE E'\\' OR s.body ILIKE $`+p+` ESCAPE E'\\' OR s.items::text ILIKE $`+p+` ESCAPE E'\\')))`)
 		args = append(args, pattern)
 	}
 	base := ` FROM fishing.wiki_guides WHERE ` + strings.Join(where, " AND ")

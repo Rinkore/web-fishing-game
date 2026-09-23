@@ -110,7 +110,7 @@ func TestIntegrationLegacyChest(t *testing.T) {
 	}
 }
 
-func TestIntegrationLegacyChestForcedRewardAndCostReset(t *testing.T) {
+func TestIntegrationLegacyChestGearRewardAndCostReset(t *testing.T) {
 	f := newAdminFixture(t)
 	c, err := rules.Default()
 	if err != nil {
@@ -126,11 +126,14 @@ func TestIntegrationLegacyChestForcedRewardAndCostReset(t *testing.T) {
 	code, body = f.player("POST", "/api/chest/open", `{"chestId":"chest_king","baseId":"gear_hook_1"}`)
 	f.expect(code, body, 200, "")
 	item := body["item"].(map[string]any)
-	if body["forced"] != true || body["pityN"] != float64(1) || body["pityNow"] != float64(0) || body["pityNeed"] != float64(1) || item["breakthrough"] != true || len(item["affixes"].([]any)) != 4 {
-		t.Fatalf("forced chest did not award and report breakthrough: %v", body)
+	// Gear bases are handled by the gear signature path. They intentionally
+	// keep their level-0 main attribute and are not breakthrough components;
+	// the pity counter therefore remains pending for a later eligible base.
+	if body["forced"] != false || body["pityN"] != float64(1) || body["pityNow"] != float64(1) || body["pityNeed"] != float64(1) || item["breakthrough"] != false || len(item["affixes"].([]any)) != 1 {
+		t.Fatalf("gear chest reward did not preserve gear semantics: %v", body)
 	}
 	if body["inventory"].(map[string]any)[item["id"].(string)] != float64(1) {
-		t.Fatal("breakthrough reward missing from inventory")
+		t.Fatal("gear reward missing from inventory")
 	}
 	code, body = f.admin("POST", "/api/admin/settings", `{"chestCfg":{"costs":{}}}`)
 	f.expect(code, body, 200, "")
