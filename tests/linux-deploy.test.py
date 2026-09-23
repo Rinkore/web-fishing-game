@@ -130,12 +130,22 @@ class DeploymentTests(unittest.TestCase):
                          [("stop", "fake-fishing"), ("start", "fake-fishing"), ("start", "fake-web")])
         self.assertTrue(self.game_active and self.web_active)
 
-    def test_legacy_config_starts_the_existing_web_unit(self):
+    def test_default_config_starts_production_web_unit(self):
         del self.config["webService"]
         manifest, _ = self.package()
         self.invoke(manifest)
-        self.assertIn(("start", "fishing-go-test-web"), self.calls)
+        self.assertIn(("start", "fishing-go-web"), self.calls)
         self.assertTrue(self.web_active)
+
+    def test_health_probes_production_backend_and_public_assets(self):
+        urls = []
+        def fetch(url):
+            urls.append(url)
+            return self.fetch(url)
+        deployment.check_health(self.config, self.previous, self.old, self.systemctl, fetch)
+        self.assertEqual(urls[:2], ['http://127.0.0.1:9001/healthz',
+                                   'http://127.0.0.1:9001/readyz'])
+        self.assertIn(self.config['publicUrl'] + '/wiki/', urls)
 
     def test_inactive_web_rejected_before_service_changes(self):
         manifest, _ = self.package()

@@ -182,9 +182,9 @@ def check_health(config, directory, release, systemctl, fetch):
     for attempt in range(config.get("health_attempts", 12)):
         try:
             systemctl("is-active", "--quiet", config["service"])
-            systemctl("is-active", "--quiet", config.get("webService", "fishing-go-test-web"))
-            fetch("http://127.0.0.1:19001/healthz")
-            ready = json.loads(fetch("http://127.0.0.1:19001/readyz"))
+            systemctl("is-active", "--quiet", config.get("webService", "fishing-go-web"))
+            fetch("http://127.0.0.1:9001/healthz")
+            ready = json.loads(fetch("http://127.0.0.1:9001/readyz"))
             require(ready.get("status") == "ready", "Local readiness failed.")
             origin = config["publicUrl"].rstrip("/")
             public_ready = json.loads(fetch(origin + "/readyz"))
@@ -219,7 +219,7 @@ def start_services(config, systemctl):
     # The web unit Requires the game unit: stopping the game also stops nginx,
     # but starting the game does not automatically start its dependent unit.
     # Keep the default for deployment configs installed before webService existed.
-    systemctl("start", config.get("webService", "fishing-go-test-web"))
+    systemctl("start", config.get("webService", "fishing-go-web"))
 
 
 def deploy(config, manifest_path, systemctl=run_systemctl, fetch=fetch_url):
@@ -227,7 +227,7 @@ def deploy(config, manifest_path, systemctl=run_systemctl, fetch=fetch_url):
     releases = root / "releases"
     previous, old = current_release(config)
     systemctl("is-active", "--quiet", config["service"])
-    systemctl("is-active", "--quiet", config.get("webService", "fishing-go-test-web"))
+    systemctl("is-active", "--quiet", config.get("webService", "fishing-go-web"))
     with tempfile.TemporaryDirectory(prefix=".deploy-", dir=root) as temporary:
         staging = Path(temporary)
         release = copy_incoming(config, manifest_path, staging)
@@ -273,7 +273,7 @@ def deploy(config, manifest_path, systemctl=run_systemctl, fetch=fetch_url):
 def main():
     require(os.geteuid() == 0, "Use the installed restricted sudo deployment entrypoint.")
     os.umask(0o022)
-    require(len(sys.argv) == 2, "Usage: fishing-release-deploy /opt/fishing-go-test/incoming/COMMIT/linux-release.json")
+    require(len(sys.argv) == 2, "Usage: fishing-release-deploy /opt/fishing-go/incoming/COMMIT/linux-release.json")
     config_path = Path("/etc/fishing-release/config.json")
     config = json.loads(config_path.read_text())
     signal.signal(signal.SIGTERM, interrupted)
