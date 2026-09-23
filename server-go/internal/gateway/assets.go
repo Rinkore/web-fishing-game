@@ -69,7 +69,7 @@ func (a *API) assets(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]any{}
 	var next *assetCursor
 	if kind == "stacks" {
-		rows, err := tx.Query(ctx, `SELECT item_id,tier,quantity,kind FROM fishing.inventory_stacks WHERE owner_id=$1 AND quantity>0 AND (item_id,tier)>($2,$3) ORDER BY item_id,tier LIMIT $4`, session.AccountID, cursor.Item, cursor.Tier, limit+1)
+		rows, err := tx.Query(ctx, `SELECT item_id,tier,quantity,kind,bound_quantity,inherit_quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND quantity>0 AND (item_id,tier)>($2,$3) ORDER BY item_id,tier LIMIT $4`, session.AccountID, cursor.Item, cursor.Tier, limit+1)
 		if err != nil {
 			failure(w, identity.ErrStorage)
 			return
@@ -77,8 +77,8 @@ func (a *API) assets(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var id, tier, k string
-			var q int64
-			if rows.Scan(&id, &tier, &q, &k) != nil {
+			var q, bound, inherit int64
+			if rows.Scan(&id, &tier, &q, &k, &bound, &inherit) != nil {
 				failure(w, identity.ErrStorage)
 				return
 			}
@@ -87,7 +87,7 @@ func (a *API) assets(w http.ResponseWriter, r *http.Request) {
 				next = &copy
 				break
 			}
-			items = append(items, map[string]any{"id": id, "tier": tier, "kind": k, "quantity": q})
+			items = append(items, map[string]any{"id": id, "tier": tier, "kind": k, "quantity": q, "boundQuantity": bound, "inheritQuantity": inherit})
 			cursor.Item = id
 			cursor.Tier = tier
 		}
@@ -97,7 +97,7 @@ func (a *API) assets(w http.ResponseWriter, r *http.Request) {
 		}
 		rows.Close()
 	} else {
-		rows, err := tx.Query(ctx, `SELECT id,definition_id,part,attributes,lifecycle FROM fishing.equipment_instances WHERE owner_id=$1 AND lifecycle<>'consumed' AND id>$2 ORDER BY id LIMIT $3`, session.AccountID, cursor.ID, limit+1)
+		rows, err := tx.Query(ctx, `SELECT id,definition_id,part,attributes,lifecycle,reward_bound,bind_outputs FROM fishing.equipment_instances WHERE owner_id=$1 AND lifecycle<>'consumed' AND id>$2 ORDER BY id LIMIT $3`, session.AccountID, cursor.ID, limit+1)
 		if err != nil {
 			failure(w, identity.ErrStorage)
 			return
@@ -107,7 +107,8 @@ func (a *API) assets(w http.ResponseWriter, r *http.Request) {
 			var id int64
 			var def, part, state string
 			var attrs json.RawMessage
-			if rows.Scan(&id, &def, &part, &attrs, &state) != nil {
+			var bound, inherit bool
+			if rows.Scan(&id, &def, &part, &attrs, &state, &bound, &inherit) != nil {
 				failure(w, identity.ErrStorage)
 				return
 			}
@@ -116,7 +117,7 @@ func (a *API) assets(w http.ResponseWriter, r *http.Request) {
 				next = &copy
 				break
 			}
-			items = append(items, map[string]any{"id": strconv.FormatInt(id, 10), "definitionId": def, "part": part, "attributes": attrs, "state": state})
+			items = append(items, map[string]any{"id": strconv.FormatInt(id, 10), "definitionId": def, "part": part, "attributes": attrs, "state": state, "rewardBound": bound, "bindOutputs": inherit})
 			cursor.ID = id
 		}
 		if rows.Err() != nil {

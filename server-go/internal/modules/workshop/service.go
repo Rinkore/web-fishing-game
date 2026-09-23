@@ -22,6 +22,7 @@ type Service struct {
 func New(pool *pgxpool.Pool, c *rules.Catalog) *Service { return &Service{pool, assets.New(pool), c} }
 
 type Command struct {
+	UnboundInputs                   bool `json:"unboundInputs"`
 	ActorID                         int64
 	RequestKey, Action              string
 	MainID, SubID                   int64
@@ -90,6 +91,7 @@ func (s *Service) Apply(ctx context.Context, r Command) (assets.Result, error) {
 		return assets.Result{}, err
 	}
 	return s.assets.Run(ctx, assets.Command{ActorID: r.ActorID, RequestKey: r.RequestKey, Kind: "workshop_" + r.Action, RuleVersion: version, Players: []int64{r.ActorID}, Input: r}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
+		t.UnboundInputsOnly(r.UnboundInputs)
 		main, err := signature(ctx, t, r.ActorID, r.MainID)
 		if err != nil {
 			return assets.Result{}, err

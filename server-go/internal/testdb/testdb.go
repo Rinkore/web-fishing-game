@@ -146,8 +146,11 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_quest_boards TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.sea_quest_roots TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant quest permissions")
 	}
-	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_zones,fishing.sea_expeditions,fishing.sea_captains,fishing.mail_messages,fishing.mail_attachments TO "+quote(role)); err != nil {
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_zones,fishing.sea_expeditions,fishing.sea_captains,fishing.mail_messages,fishing.mail_attachments,fishing.mail_batches,fishing.mail_recipients TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant voyage permissions")
+	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT ON fishing.mail_tracking TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.player_activity,fishing.inventory_binding_entries TO "+quote(role)); err != nil {
+		t.Fatal("cannot grant mail binding permissions")
 	}
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.sea_players TO "+quote(role)+"; GRANT SELECT,INSERT ON fishing.sea_progress_entries TO "+quote(role)); err != nil {
 		t.Fatal("cannot grant sea permissions")

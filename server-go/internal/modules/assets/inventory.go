@@ -247,8 +247,8 @@ func (u *assetTx) stacks(ctx context.Context, owner int64, deltas []StackDelta) 
 		if kind == "equipment" || kind != "fish" && d.Tier != "normal" {
 			return rejection("invalid_item_tier")
 		}
-		var before int64
-		err := u.tx.QueryRow(ctx, "SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2 AND tier=$3", owner, d.ItemID, d.Tier).Scan(&before)
+		var before, boundQty, inheritQty int64
+		err := u.tx.QueryRow(ctx, "SELECT quantity,bound_quantity,inherit_quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2 AND tier=$3", owner, d.ItemID, d.Tier).Scan(&before, &boundQty, &inheritQty)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
@@ -258,8 +258,23 @@ func (u *assetTx) stacks(ctx context.Context, owner int64, deltas []StackDelta) 
 		if d.Quantity > 0 && before > MaxCoins-d.Quantity {
 			return rejection("quantity_limit")
 		}
+		if d.Quantity < 0 {
+			if u.commercial() || u.unboundInputs {
+				if before-boundQty < -d.Quantity {
+					return rejection("reward_bound")
+				}
+			} else {
+				used := min(boundQty, -d.Quantity)
+				inherited := min(inheritQty, used)
+				boundQty -= used
+				inheritQty -= inherited
+				if inherited > 0 {
+					u.inherit[owner] = true
+				}
+			}
+		}
 		after := before + d.Quantity
-		if _, err = u.tx.Exec(ctx, `INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity) VALUES ($1,$2,$3,$4,$5) ON CONFLICT(owner_id,item_id,tier) DO UPDATE SET quantity=EXCLUDED.quantity`, owner, d.ItemID, kind, d.Tier, after); err != nil {
+		if _, err = u.tx.Exec(ctx, `INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity,bound_quantity,inherit_quantity) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(owner_id,item_id,tier) DO UPDATE SET quantity=EXCLUDED.quantity,bound_quantity=EXCLUDED.bound_quantity,inherit_quantity=EXCLUDED.inherit_quantity`, owner, d.ItemID, kind, d.Tier, after, boundQty, inheritQty); err != nil {
 			return err
 		}
 		if _, err = u.tx.Exec(ctx, `INSERT INTO fishing.inventory_entries(operation_id,owner_id,item_id,tier,delta,quantity_after) VALUES ($1,$2,$3,$4,$5,$6)`, u.op, owner, d.ItemID, d.Tier, d.Quantity, after); err != nil {
@@ -311,7 +326,8 @@ func (u *assetTx) moveEquipment(ctx context.Context, from, to, id int64) error {
 	}
 	var owner int64
 	var lifecycle string
-	err := u.tx.QueryRow(ctx, "SELECT owner_id,lifecycle FROM fishing.equipment_instances WHERE id=$1 FOR UPDATE", id).Scan(&owner, &lifecycle)
+	var rewardBound, bindOutputs bool
+	err := u.tx.QueryRow(ctx, "SELECT owner_id,lifecycle,reward_bound,bind_outputs FROM fishing.equipment_instances WHERE id=$1 FOR UPDATE", id).Scan(&owner, &lifecycle, &rewardBound, &bindOutputs)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && (owner != from || lifecycle != "available") {
 		return rejection("equipment_unavailable")
 	}
@@ -324,6 +340,12 @@ func (u *assetTx) moveEquipment(ctx context.Context, from, to, id int64) error {
 	}
 	if bound {
 		return rejection("equipment_locked")
+	}
+	if (to != 0 || u.commercial() || u.unboundInputs) && rewardBound {
+		return rejection("reward_bound")
+	}
+	if to == 0 && bindOutputs {
+		u.inherit[from] = true
 	}
 	if to == 0 {
 		if _, err = u.tx.Exec(ctx, "UPDATE fishing.equipment_instances SET lifecycle='consumed' WHERE id=$1", id); err != nil {

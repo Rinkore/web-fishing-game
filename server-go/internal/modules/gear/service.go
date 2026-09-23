@@ -96,16 +96,18 @@ type Service struct {
 func New(p *pgxpool.Pool, c *rules.Catalog) *Service { return &Service{p, c, assets.New(p)} }
 
 type Equipment struct {
-	ID        string            `json:"id"`
-	Signature string            `json:"signature"`
-	Base      string            `json:"base"`
-	Name      string            `json:"name"`
-	Part      string            `json:"part"`
-	Set       string            `json:"set"`
-	Locked    bool              `json:"locked"`
-	Bound     bool              `json:"bound"`
-	Growth    *rules.GearGrowth `json:"growth"`
-	Affixes   []rules.Affix     `json:"affixes"`
+	RewardBound bool              `json:"rewardBound"`
+	BindOutputs bool              `json:"bindOutputs"`
+	ID          string            `json:"id"`
+	Signature   string            `json:"signature"`
+	Base        string            `json:"base"`
+	Name        string            `json:"name"`
+	Part        string            `json:"part"`
+	Set         string            `json:"set"`
+	Locked      bool              `json:"locked"`
+	Bound       bool              `json:"bound"`
+	Growth      *rules.GearGrowth `json:"growth"`
+	Affixes     []rules.Affix     `json:"affixes"`
 }
 
 func (s *Service) View(ctx context.Context, owner int64) (map[string]any, error) {
@@ -117,7 +119,7 @@ func (s *Service) View(ctx context.Context, owner int64) (map[string]any, error)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT e.id,e.attributes->>'signature',COALESCE((e.attributes->>'bound')::boolean,false),EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id) FROM fishing.equipment_instances e WHERE e.owner_id=$1 AND e.lifecycle='available' ORDER BY e.id`, owner)
+	rows, err := s.pool.Query(ctx, `SELECT e.id,e.attributes->>'signature',COALESCE((e.attributes->>'bound')::boolean,false) OR e.reward_bound,e.reward_bound,e.bind_outputs,EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id) FROM fishing.equipment_instances e WHERE e.owner_id=$1 AND e.lifecycle='available' ORDER BY e.id`, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +128,7 @@ func (s *Service) View(ctx context.Context, owner int64) (map[string]any, error)
 	for rows.Next() {
 		var id int64
 		var e Equipment
-		if err = rows.Scan(&id, &e.Signature, &e.Bound, &e.Locked); err != nil {
+		if err = rows.Scan(&id, &e.Signature, &e.Bound, &e.RewardBound, &e.BindOutputs, &e.Locked); err != nil {
 			return nil, err
 		}
 		e.ID = strconv.FormatInt(id, 10)
@@ -151,19 +153,20 @@ func (s *Service) View(ctx context.Context, owner int64) (map[string]any, error)
 }
 
 type Command struct {
-	Action     string   `json:"action"`
-	RequestKey string   `json:"requestKey"`
-	ID         string   `json:"id"`
-	OtherID    string   `json:"otherId"`
-	Sub        string   `json:"sub"`
-	Direction  string   `json:"direction"`
-	UseHeat    bool     `json:"useHeat"`
-	Set        string   `json:"set"`
-	Focus      string   `json:"focus"`
-	Mode       string   `json:"mode"`
-	Target     string   `json:"target"`
-	Queue      []string `json:"queue"`
-	Goal       int      `json:"goal"`
+	UnboundInputs bool     `json:"unboundInputs"`
+	Action        string   `json:"action"`
+	RequestKey    string   `json:"requestKey"`
+	ID            string   `json:"id"`
+	OtherID       string   `json:"otherId"`
+	Sub           string   `json:"sub"`
+	Direction     string   `json:"direction"`
+	UseHeat       bool     `json:"useHeat"`
+	Set           string   `json:"set"`
+	Focus         string   `json:"focus"`
+	Mode          string   `json:"mode"`
+	Target        string   `json:"target"`
+	Queue         []string `json:"queue"`
+	Goal          int      `json:"goal"`
 }
 
 func Pay(ctx context.Context, t *assets.Transaction, owner int64, cost rules.GearCost, v *State) error {
@@ -195,6 +198,7 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 	}
 	// A stable operation rule lets network retries return the original result even after an admin publication.
 	return s.a.Run(ctx, assets.Command{ActorID: owner, RequestKey: in.RequestKey, Kind: "workshop_forge", RuleVersion: "gear-growth-v1", Players: []int64{owner}, Input: in}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
+		t.UnboundInputsOnly(in.UnboundInputs)
 		feature := "workshop.growth"
 		switch in.Action {
 		case "preferences", "target", "harvest_mode", "unlock", "stage":
@@ -289,7 +293,7 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 				}
 			}
 			if cost.Cores > 0 {
-				rows, err := t.SQL().Query(ctx, `SELECT e.id FROM fishing.equipment_instances e WHERE e.owner_id=$1 AND lifecycle='available' AND definition_id=ANY($2::text[]) AND NOT EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id) ORDER BY e.id OFFSET 0`, owner, []string{"set_" + in.Set + "_rod", "set_" + in.Set + "_charm"})
+				rows, err := t.SQL().Query(ctx, `SELECT e.id FROM fishing.equipment_instances e WHERE e.owner_id=$1 AND lifecycle='available' AND definition_id=ANY($2::text[]) AND NOT EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id) AND (NOT $3::boolean OR NOT e.reward_bound) ORDER BY e.reward_bound DESC,e.bind_outputs DESC,e.id OFFSET 0`, owner, []string{"set_" + in.Set + "_rod", "set_" + in.Set + "_charm"}, in.UnboundInputs)
 				if err != nil {
 					return assets.Result{}, err
 				}

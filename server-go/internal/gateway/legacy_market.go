@@ -525,7 +525,7 @@ func (a *API) legacyMarketSnapshot(r *http.Request, c *rules.Catalog, session id
 		return nil, err
 	}
 	return map[string]any{
-		"coins": profile["coins"], "inventory": profile["inventory"], "invRev": profile["invRev"],
+		"coins": profile["coins"], "inventory": profile["inventory"], "invRev": profile["invRev"], "rewardBindings": profile["rewardBindings"],
 		"rodSlots": profile["rodSlots"], "rodSlotsCount": profile["rodSlotsCount"],
 		"rodActiveSlot": profile["rodActiveSlot"], "rodLocked": profile["rodLocked"],
 		"rodName": profile["rodName"], "nextRodSlotPrice": profile["nextRodSlotPrice"],
@@ -552,7 +552,7 @@ func (a *API) listingCapacity(ctx context.Context, owner int64) int {
 // signature, in durable id order.
 func (a *API) legacyFreeInstances(ctx context.Context, owner int64, signature string, limit int64) ([]int64, error) {
 	rows, err := a.pool.Query(ctx, `SELECT e.id FROM fishing.equipment_instances e
- WHERE e.owner_id=$1 AND e.lifecycle='available' AND e.attributes->>'signature'=$2
+ WHERE e.owner_id=$1 AND e.lifecycle='available' AND NOT e.reward_bound AND e.attributes->>'signature'=$2
  AND NOT EXISTS(SELECT 1 FROM fishing.rod_components rc WHERE rc.equipment_id=e.id)
  ORDER BY e.id LIMIT $3`, owner, signature, limit)
 	if err != nil {

@@ -283,9 +283,13 @@ func (a *API) legacyAssetsSnapshot(ctx context.Context, owner int64) (string, in
 	if err != nil {
 		return "", 0, err
 	}
+	bindings, err := rewardBindings(ctx, tx, owner)
+	if err != nil {
+		return "", 0, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", 0, err
 	}
-	return legacyFrame(map[string]any{"type": "assets", "coins": coins, "inventory": inv, "bigfish": big,
+	return legacyFrame(map[string]any{"type": "assets", "rewardBindings": bindings, "coins": coins, "inventory": inv, "bigfish": big,
 		"codex": codex, "invRev": strconv.FormatInt(revision, 10), "catchCount": count}), revision, nil
 }

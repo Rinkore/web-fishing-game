@@ -66,7 +66,7 @@ func (a *API) legacyAutoSellPlan(r *http.Request, c *rules.Catalog, owner int64,
 			continue
 		}
 		var normal, large, giant int64
-		if err := a.pool.QueryRow(r.Context(), `SELECT COALESCE(sum(quantity) FILTER(WHERE tier='normal'),0)::bigint,COALESCE(sum(quantity) FILTER(WHERE tier='large'),0)::bigint,COALESCE(sum(quantity) FILTER(WHERE tier='giant'),0)::bigint FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2`, owner, id).Scan(&normal, &large, &giant); err != nil {
+		if err := a.pool.QueryRow(r.Context(), `SELECT COALESCE(sum(quantity-bound_quantity) FILTER(WHERE tier='normal'),0)::bigint,COALESCE(sum(quantity-bound_quantity) FILTER(WHERE tier='large'),0)::bigint,COALESCE(sum(quantity-bound_quantity) FILTER(WHERE tier='giant'),0)::bigint FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id=$2`, owner, id).Scan(&normal, &large, &giant); err != nil {
 			continue
 		}
 		have := normal

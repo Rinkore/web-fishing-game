@@ -291,7 +291,7 @@ window.Net = (function () {
   const bdSet = (part, compId) => authed('/api/bd/set', { part: part, compId: compId });
   // 远洋（出海）：船 / 海图 / 临时海域（v0.19.0）
   const seaGet = () => apiFetch('GET', '/api/sea?token=' + encodeURIComponent(me ? me.token : ''));
-  const mailGet = (page,summary) => apiFetch('GET','/api/mail?token='+encodeURIComponent(me?me.token:'')+'&page='+(page||1)+(summary?'&summary=1':''));
+  const mailGet = (page,summary,filter) => apiFetch('GET','/api/mail?token='+encodeURIComponent(me?me.token:'')+'&page='+(page||1)+(summary?'&summary=1':'')+'&filter='+encodeURIComponent(filter||''));
   const mailChange = (action,body) => authed('/api/mail/'+action,body);
   const seaShipUp = () => authed('/api/sea/ship/up', {});
   const seaChart = () => authed('/api/sea/chart', {});
@@ -421,9 +421,15 @@ window.Net = (function () {
     }
     return r;
   });
-  const chestCraft = (chestId, qty) => authed('/api/chest/craft', { chestId: chestId, qty: qty === undefined ? 1 : qty });
+  function rewardCraft(path,payload,inputs) {
+    const free=!!state().unboundInputs,bindings=state().rewardBindings||{};
+    const inherited=!free&&inputs.some(function(id){return (((bindings[id]||{}).normal||{}).inherit||0)>0;});
+    if(inherited&&!window.confirm('本次会优先消耗要求继承绑定的奖励物品，直接产物将绑定，不可出售或交易。继续？\n如需保留普通产物，请在工坊将消耗来源改为“仅使用普通物品”。'))return Promise.resolve({ok:false,data:{error:'已取消操作'}});
+    return authed(path,Object.assign({},payload,{unboundInputs:free}));
+  }
+  const chestCraft = (chestId, qty) => rewardCraft('/api/chest/craft', { chestId: chestId, qty: qty === undefined ? 1 : qty },['relic']);
   // sel：自选目标（mode='part' 传 {part}；mode='base' 传 {baseId}；mode='random' 不传）
-  const chestOpen = (chestId, sel) => authed('/api/chest/open', Object.assign({ chestId: chestId }, sel || {}));
+  const chestOpen = (chestId, sel) => rewardCraft('/api/chest/open', Object.assign({ chestId: chestId }, sel || {}),[chestId]);
   // 商城（每日限购）：拉取当前周期商品与限购余额 / 购买
   const fetchMall = () => apiFetch('GET', '/api/mall?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
     if (r && r.ok) {
@@ -444,12 +450,11 @@ window.Net = (function () {
     return r;
   });
   // 熔炼：payload = { mainId, subId, mainAffix, subAffix, materials:[{id,qty}], pearl }
-  const smelt = (payload) => authed('/api/workshop/smelt', payload || {});
+  const smelt = (payload) => rewardCraft('/api/workshop/smelt', payload || {},[payload.mainId,payload.subId].concat((payload.materials||[]).filter(m=>(m.qty||m.quantity)>0).map(m=>m.id),payload.relics>0?['relic']:[],payload.pearl?['dragonpearl']:[]));
   // 重铸：用残片重 roll 宝匣神话件的全部词条数值
   // affixIndex 可选：指定只重铸第几条词条（0 基下标）；不传 = 重 roll 全部词条
-  const recast = (id, affixIndex) => authed('/api/workshop/recast',
-    (affixIndex == null || affixIndex < 0) ? { id: id } : { id: id, affixIndex: affixIndex });
-  const forge = (id, materialId, pearl) => authed('/api/workshop/forge', { id: id, materialId: materialId, pearl: !!pearl });
+  const recast = (id, affixIndex) => rewardCraft('/api/workshop/recast', (affixIndex == null || affixIndex < 0) ? { id: id } : { id: id, affixIndex: affixIndex },[id,'dragonpearl']);
+  const forge = (id, materialId, pearl) => rewardCraft('/api/workshop/forge', { id: id, materialId: materialId, pearl: !!pearl },[id,materialId].concat(pearl?['dragonpearl']:[]));
   // v0.13.6：tier='L'|'G' → 按大型/巨型通道出售（额外金币加成）
   const sell = (id, qty, tier) => authed('/api/sell', tier ? { id: id, qty: qty, tier: tier } : { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', { id: id, qty: qty, price: price, hours: hours });
@@ -745,7 +750,7 @@ window.Net = (function () {
           // v0.13.9：库存快照带 invRev（单调版本号），**旧快照必须丢弃**——HTTP 响应是当场序列化的
           // 旧快照，SSE assets 是入队时刻定版（150ms 后发出）的新快照，两条通道到达顺序不保证；
           // 直接赋值会让旧快照盖掉刚开箱得到的配件（用户报的「连开宝匣丢配件」就是这个）。
-          if (m.inventory) window.Engine.applyInv(m.inventory, m.invRev);
+          if (m.inventory) window.Engine.applyInv(m.inventory, m.invRev, m.rewardBindings);
           // perf-8c：钓鱼热路径增量——只合并背包增量，避免每竿全量传输。
           // 增量与 bigAdd 同属一次状态推进：只判一次（判过就把 rev 抬到该值），
           // 已包含在刚应用的快照里的增量其 rev 不会更大 → 整体跳过（否则同一件东西被计两次）

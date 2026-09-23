@@ -24,7 +24,7 @@ func (a *API) legacyMail(w http.ResponseWriter, r *http.Request) {
 	if page > 100000 {
 		page = 100000
 	}
-	view, err := mail.New(a.pool, nil).List(r.Context(), session.AccountID, page, r.URL.Query().Get("summary") == "1")
+	view, err := mail.New(a.pool, nil).ListFiltered(r.Context(), session.AccountID, page, r.URL.Query().Get("summary") == "1", r.URL.Query().Get("filter"))
 	if err != nil {
 		assetResponse(w, assets.Result{}, err)
 		return
@@ -39,6 +39,7 @@ func (a *API) legacyMailChange(claim bool) http.HandlerFunc {
 		}
 		var in struct {
 			ID         string `json:"id"`
+			AfterID    string `json:"afterId"`
 			RequestKey string `json:"requestKey"`
 		}
 		if !decode(w, r, &in) {
@@ -51,6 +52,10 @@ func (a *API) legacyMailChange(claim bool) http.HandlerFunc {
 			return
 		}
 		ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
+		if claim && in.ID == "all" {
+			a.legacyMailClaimAll(w, r, c, session, in.RequestKey, in.AfterID)
+			return
+		}
 		result, err := mail.New(a.pool, c).Change(ctx, session.AccountID, in.RequestKey, id, claim)
 		if err != nil {
 			assetResponse(w, assets.Result{}, err)
@@ -74,6 +79,9 @@ func (a *API) adminMail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
+		if a.adminMailQuery(w, r, c) {
+			return
+		}
 		target := r.URL.Query().Get("target")
 		out := map[string]any{"items": c.Items}
 		if target != "" {
@@ -95,6 +103,10 @@ func (a *API) adminMail(w http.ResponseWriter, r *http.Request) {
 			out["inbox"] = view
 		}
 		write(w, 200, out)
+		return
+	}
+	if r.URL.Query().Get("batch") == "1" {
+		a.adminMailBatch(w, r, c, actor)
 		return
 	}
 	var in struct {

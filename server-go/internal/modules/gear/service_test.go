@@ -291,3 +291,42 @@ func TestIntegrationCompetingUpgradesOnlySpendOnce(t *testing.T) {
 		t.Fatal("double spend")
 	}
 }
+
+func TestIntegrationGrowthRewardBindingPolicy(t *testing.T) {
+	for _, inherit := range []bool{false, true} {
+		t.Run(fmt.Sprint(inherit), func(t *testing.T) {
+			f := setup(t)
+			id := f.modern(0, "")
+			f.exec(`UPDATE fishing.equipment_instances SET reward_bound=true,bind_outputs=$2 WHERE id=$1`, id, inherit)
+			denied := f.apply(Command{Action: "upgrade", ID: id, UnboundInputs: true})
+			if denied.Status != "reward_bound" {
+				t.Fatal("ordinary-only used reward equipment", denied)
+			}
+			next := resultID(t, f.apply(Command{Action: "upgrade", ID: id}))
+			var bound, propagate bool
+			if err := f.db.Admin.QueryRow(f.ctx, `SELECT reward_bound,bind_outputs FROM fishing.equipment_instances WHERE id=$1`, next).Scan(&bound, &propagate); err != nil || bound != inherit || propagate != inherit {
+				t.Fatal("growth binding mismatch", bound, propagate, err)
+			}
+			// Mixed ordinary equipment and inheriting material must produce bound gear.
+			ordinary := f.modern(0, "")
+			f.exec(`UPDATE fishing.inventory_stacks SET bound_quantity=quantity,inherit_quantity=quantity WHERE owner_id=$1 AND item_id='gear_alloy'`, f.owner)
+			next = resultID(t, f.apply(Command{Action: "upgrade", ID: ordinary}))
+			if err := f.db.Admin.QueryRow(f.ctx, `SELECT reward_bound,bind_outputs FROM fishing.equipment_instances WHERE id=$1`, next).Scan(&bound, &propagate); err != nil || !bound || !propagate {
+				t.Fatal("mixed input lost binding", bound, propagate, err)
+			}
+			view, err := f.s.View(f.ctx, f.owner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, e := range view["equipment"].([]Equipment) {
+				if e.ID == next {
+					found = e.Bound && e.RewardBound && e.BindOutputs
+				}
+			}
+			if !found {
+				t.Fatal("binding missing from growth view")
+			}
+		})
+	}
+}
