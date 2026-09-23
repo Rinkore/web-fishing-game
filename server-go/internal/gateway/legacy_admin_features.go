@@ -30,7 +30,8 @@ var legacyFeatureGroups = []map[string]any{
 	{"id": "wiki", "name": "WIKI", "parent": nil, "children": []map[string]any{}},
 }
 
-var legacyFeatureMenuIDs = []string{"fishing", "sea", "character", "ground", "inventory", "mail", "workshop", "mall", "codex", "feedback", "logs", "wiki"}
+// 邮件属于低频通知，放在主要玩法入口之后，和反馈/日志/WIKI 归在功能尾部。
+var legacyFeatureMenuIDs = []string{"fishing", "sea", "character", "ground", "inventory", "workshop", "mall", "codex", "feedback", "logs", "mail", "wiki"}
 
 type legacyFeatureMetadata struct {
 	Order       map[string][]string `json:"order"`
