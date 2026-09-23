@@ -52,6 +52,21 @@ def load_manifest(path):
     return value
 
 
+def current_release(config):
+    root = Path(config["root"])
+    require((root / "current").is_symlink(), "Current release is not a symlink.")
+    current = (root / "current").resolve(strict=True)
+    require(current.parent == (root / "releases").resolve(strict=True),
+            "Current release is outside the managed releases directory.")
+    release = load_manifest(current / ".release.json")
+    source = current / "SOURCE_COMMIT.txt"
+    if not source.exists():
+        source = current / "SOURCE_COMMIT"
+    require(source.is_file() and source.read_text(encoding="utf-8").strip() == release["sourceCommit"],
+            "Current release manifest sourceCommit differs from its SOURCE_COMMIT marker; baseline review required.")
+    return current, release
+
+
 def file_hash(path):
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -201,10 +216,7 @@ def switch_current(root, destination):
 def deploy(config, manifest_path, systemctl=run_systemctl, fetch=fetch_url):
     root = Path(config["root"])
     releases = root / "releases"
-    require((root / "current").is_symlink(), "Current release is not a symlink.")
-    previous = (root / "current").resolve(strict=True)
-    require(previous.parent == releases.resolve(strict=True), "Current release is outside the managed releases directory.")
-    old = load_manifest(previous / ".release.json")
+    previous, old = current_release(config)
     systemctl("is-active", "--quiet", config["service"])
     with tempfile.TemporaryDirectory(prefix=".deploy-", dir=root) as temporary:
         staging = Path(temporary)
@@ -262,11 +274,7 @@ def main():
         except BlockingIOError:
             raise DeploymentError("Another deployment is running.")
         if sys.argv[1] == "--check":
-            root = Path(config["root"])
-            require((root / "current").is_symlink(), "Current release is not a symlink.")
-            current = (root / "current").resolve(strict=True)
-            require(current.parent == (root / "releases").resolve(strict=True), "Current release is outside releases/.")
-            release = load_manifest(current / ".release.json")
+            current, release = current_release(config)
             check_health(config, current, release, run_systemctl, fetch_url)
             print("Deployment setup verified: " + release["version"] + " (" + release["sourceCommit"] + "). No service restarted.")
         else:
