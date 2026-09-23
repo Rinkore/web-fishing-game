@@ -29,7 +29,7 @@
       children: g[2].map(function (a) { return { id: g[0] + '.' + a[0], name: a[1], parent: g[0] }; }),
     };
   });
-  const menuIds = ['fishing', 'sea', 'character', 'ground', 'inventory', 'mail', 'workshop', 'mall', 'codex', 'feedback', 'logs', 'wiki'];
+  const menuIds = ['fishing', 'sea', 'character', 'ground', 'inventory', 'workshop', 'mall', 'codex', 'feedback', 'logs', 'mail', 'wiki'];
   function orderedMenu(order) {
     const saved = Array.isArray(order) ? order.filter(function (id, i) { return menuIds.indexOf(id) >= 0 && order.indexOf(id) === i; }) : [];
     return saved.concat(menuIds.filter(function (id) { return saved.indexOf(id) < 0; }));

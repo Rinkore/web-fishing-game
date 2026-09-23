@@ -10290,6 +10290,9 @@ window.UI = (function () {
     const fishingPage = currentView === 'fishing' && !featureBlocked(pageId);
     $('main').classList.toggle('fishing-page', fishingPage);
     $('main').classList.toggle('character-page', currentView === 'character' || currentView === 'bd');
+    // 工坊内容（尤其是成长总览与套装卡片）可能超过视口高度。统一让主内容区
+    // 承担纵向滚动，避免被旧版熔炼页的 overflow 规则或网格行高截断。
+    $('main').classList.toggle('workshop-page', currentView === 'workshop');
     if (!fishingPage && disposeFishingViewport) disposeFishingViewport();
     $('main').classList.toggle('smelt-page', currentView === 'workshop' && wsTab === 'smelt');
     if (featureBlocked(pageId)) {

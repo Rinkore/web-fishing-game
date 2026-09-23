@@ -3419,7 +3419,6 @@
     { id: 'character', name: '角色', icon: '🧍', implemented: true },
     { id: 'ground', name: '社交', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
-    { id: 'mail', name: '邮件', icon: '✉️', implemented: true },
     // 「宝匣合成」不再是独立页面：并入「工坊」页（熔炼/重铸同款页签切换），改名「开箱」，见 ui.js 的 renderWorkshop。
     { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
     // 「系统商店」「开放市集」不再是独立页面：合并进「商城」页（工坊熔炼/重铸同款页签切换），
@@ -3428,6 +3427,8 @@
     { id: 'codex', name: '图鉴', icon: '📖', implemented: true },
     { id: 'feedback', name: '反馈', icon: '📮', implemented: true },
     { id: 'logs', name: '日志', icon: '📜', implemented: true },
+    // 邮件属于低频通知，放在主要玩法入口之后，和反馈/日志/WIKI 归在功能尾部。
+    { id: 'mail', name: '邮件', icon: '✉️', implemented: true },
     // WIKI 与玩家端同域托管；从日志下方进入，保持主功能入口之后资料区不抢占常用功能。
     { id: 'wiki', name: 'WIKI', icon: '📚', implemented: true },
   ];

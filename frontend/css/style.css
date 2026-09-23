@@ -70,6 +70,14 @@ body {
 .side-foot { margin-top: auto; font-size: 11px; color: var(--muted); padding: 8px 4px; border-top: 1px solid var(--line); }
 
 .content { flex: 1; padding: 20px; overflow: auto; }
+/* 工坊是长页面：保持布局宽度不变，由主内容区自然承接纵向滚动。 */
+#main.content.workshop-page {
+  display: block;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+.content.workshop-page > .panel { min-height: min-content; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
 .panel.wide { max-width: 1000px; }
 .panel.center { text-align: center; padding: 60px 20px; }
