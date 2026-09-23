@@ -341,7 +341,12 @@ func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID
 			if selected != "" && (!exists || !progress.Unlocked[selected]) {
 				return assets.Result{}, assets.Rejection("specialization_locked")
 			}
-			fx := ability.Effect(progress.Tiers[selected])
+			// Resolve each allocated specialization independently. The old single
+			// selected field remains a display/compatibility field only.
+			fx := map[string]float64{}
+			if selected != "" {
+				fx = ability.AllocationEffect(progress.Tiers[selected], allocation[selected])
+			}
 			if focus != "" {
 				it, ok := s.catalog.Item(focus)
 				if !ok || it.Kind != "material" {
@@ -360,9 +365,9 @@ func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID
 			snap.Allocations = allocation
 			snap.SpecializationStages = map[string]int{}
 			snap.SpecializationEffects = map[string]map[string]float64{}
-			for id := range allocation {
+			for id, points := range allocation {
 				snap.SpecializationStages[id] = progress.Tiers[id]
-				snap.SpecializationEffects[id] = gc.Specializations[id].Effect(progress.Tiers[id])
+				snap.SpecializationEffects[id] = gc.Specializations[id].AllocationEffect(progress.Tiers[id], points)
 			}
 			if selected == "storm" && mode == "deep" && route.Level >= int(fx["minRouteLevel"]) {
 				snap.Success = math.Max(0, snap.Success-fx["deepRisk"])

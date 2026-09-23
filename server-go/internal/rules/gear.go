@@ -72,6 +72,24 @@ func (g GearAbility) Effect(stage int) map[string]float64 {
 	return g.Stages[min(max(0, stage), len(g.Stages)-1)]
 }
 
+// AllocationEffect resolves the effects enabled by a specialization allocation.
+// The legacy stage array is also the source of truth for the first three points:
+// point 1 uses stage 1, point 2 uses stage 2 and point 3 uses stage 3, capped by
+// the specialization's currently unlocked tier. A zero allocation keeps the
+// stage-zero baseline for callers that still render a locked card.
+func (g GearAbility) AllocationEffect(tier, points int) map[string]float64 {
+	if points <= 0 {
+		return g.Effect(0)
+	}
+	if tier < 0 {
+		tier = 0
+	}
+	if points > tier {
+		points = tier
+	}
+	return g.Effect(points)
+}
+
 type GearGrowth struct {
 	Level   int    `json:"level"`
 	Engrave string `json:"engrave"`

@@ -243,7 +243,11 @@ func ValidateAllocation(cfg rules.GearConfig, state State, allocation map[string
 	if out[selected] == 0 {
 		selected = ""
 	}
-	if err := ValidateVoyageMode(selected, mode, cfg.Specializations[selected].Effect(state.Tiers[selected])); err != nil {
+	var effects map[string]float64
+	if selected != "" {
+		effects = cfg.Specializations[selected].AllocationEffect(state.Tiers[selected], out[selected])
+	}
+	if err := ValidateVoyageMode(selected, mode, effects); err != nil {
 		return nil, err
 	}
 	return out, nil
