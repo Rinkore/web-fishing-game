@@ -34,7 +34,7 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 		}
 		c, err := a.catalog(r.Context())
 		if err != nil {
-			failure(w, err)
+			assetResponse(w, assets.Result{}, err)
 			return
 		}
 		svc := sea.New(a.pool, c, a.location)
@@ -52,7 +52,7 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 			result, err = svc.RedeemSet(ctx, session.AccountID, in.RequestKey, in.Set, in.Part, in.Starter)
 		}
 		if err != nil {
-			failure(w, err)
+			assetResponse(w, assets.Result{}, err)
 			return
 		}
 		if result.Status != "dispatched" && result.Status != "claimed" && result.Status != "redeemed" && result.Status != "target_selected" {
@@ -61,7 +61,7 @@ func (a *API) legacyExpedition(action string) http.HandlerFunc {
 		}
 		view, err := a.legacySeaView(r, c, session.AccountID)
 		if err != nil {
-			failure(w, err)
+			assetResponse(w, assets.Result{}, err)
 			return
 		}
 		write(w, 200, map[string]any{"ok": true, "sea": view, "result": result})

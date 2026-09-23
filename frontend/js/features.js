@@ -12,6 +12,7 @@
     ['sea', '远洋', [['upgrade', '船升级'], ['chart', '海图合成'], ['voyage', '随机海域出航'], ['expedition', '离线远航派遣'], ['quest', '每日悬赏'], ['anchor', '锚地续期']]],
     ['ground', '社交', [['trade', '玩家交易'], ['party', '编队出海']]],
     ['inventory', '背包', [['subscribe', '组件订阅提醒']]],
+    ['mail', '邮件', []],
     ['workshop', '工坊', [['craft', '合成宝匣'], ['open', '开启宝匣'], ['smelt', '熔炼'], ['recast', '重铸'], ['forge', '锻造']]],
     ['mall', '商城', [['buy', '限购商品购买'], ['sell', '出售物品（含背包入口）'], ['autosell', '自动售出'], ['list', '市集上架'], ['marketbuy', '市集购买']]],
     ['codex', '图鉴', []],
@@ -28,7 +29,7 @@
       children: g[2].map(function (a) { return { id: g[0] + '.' + a[0], name: a[1], parent: g[0] }; }),
     };
   });
-  const menuIds = ['fishing', 'sea', 'character', 'ground', 'inventory', 'workshop', 'mall', 'codex', 'feedback', 'logs', 'wiki'];
+  const menuIds = ['fishing', 'sea', 'character', 'ground', 'inventory', 'mail', 'workshop', 'mall', 'codex', 'feedback', 'logs', 'wiki'];
   function orderedMenu(order) {
     const saved = Array.isArray(order) ? order.filter(function (id, i) { return menuIds.indexOf(id) >= 0 && order.indexOf(id) === i; }) : [];
     return saved.concat(menuIds.filter(function (id) { return saved.indexOf(id) < 0; }));

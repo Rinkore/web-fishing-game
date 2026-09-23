@@ -129,5 +129,6 @@ const CHROME = process.env.CHROME_PATH || [
     assert.equal(await page.locator('input[name=ntlv]').count(), 5, 'notification levels render');
     assert.equal(await page.locator('input[name=ntlv]:checked').inputValue(), 'all', 'notification default renders selected');
     console.log('PASS admin interactions: login, feedback edits, component loading/retry, affix bounds, stale/malformed responses, navigation');
+    console.log('通过 18 项，失败 0 项');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

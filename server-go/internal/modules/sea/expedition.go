@@ -55,13 +55,14 @@ type Expedition struct {
 	Reward    *ExpeditionReward  `json:"reward,omitempty"`
 }
 type ExpeditionView struct {
-	Now     int64                  `json:"now"`
-	Captain Captain                `json:"captain"`
-	Config  rules.ExpeditionConfig `json:"config"`
-	Sets    []rules.GearSet        `json:"sets"`
-	Active  *Expedition            `json:"active"`
-	Last    *Expedition            `json:"last"`
-	Gear    ExpeditionSnapshot     `json:"gear"`
+	FreeTrades int                    `json:"freeTrades"`
+	Now        int64                  `json:"now"`
+	Captain    Captain                `json:"captain"`
+	Config     rules.ExpeditionConfig `json:"config"`
+	Sets       []rules.GearSet        `json:"sets"`
+	Active     *Expedition            `json:"active"`
+	Last       *Expedition            `json:"last"`
+	Gear       ExpeditionSnapshot     `json:"gear"`
 }
 
 func captain(ctx context.Context, q assets.SQL, owner int64) (Captain, error) {
@@ -125,6 +126,11 @@ func (s *Service) ExpeditionView(ctx context.Context, owner int64) (ExpeditionVi
 		return v, err
 	}
 	v.Now = now.UnixMilli()
+	var trades int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM fishing.sea_expeditions WHERE owner_id=$1 AND route='trade'`, owner).Scan(&trades); err != nil {
+		return v, err
+	}
+	v.FreeTrades = max(0, 3-trades)
 	var err error
 	v.Captain, err = captain(ctx, s.pool, owner)
 	if err != nil {
@@ -229,7 +235,13 @@ func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID
 			route = v
 		}
 	}
-	if route.ID == "" || (hours != 2 && hours != 8 && hours != 12) {
+	allowedHours := false
+	for _, h := range cfg.Hours {
+		if h == hours {
+			allowedHours = true
+		}
+	}
+	if route.ID == "" || !allowedHours || (hours != 2 && hours != 8 && hours != 12) {
 		return assets.Result{}, assets.ErrInvalid
 	}
 	input := struct {
@@ -271,7 +283,7 @@ func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID
 			}
 			free = trades < 3
 		}
-		if !free {
+		if !free && cfg.Ticket > 0 {
 			if err = t.Stacks(ctx, owner, []assets.StackDelta{{ItemID: "deepscale", Tier: "normal", Quantity: -cfg.Ticket}}); err != nil {
 				return assets.Result{}, err
 			}
@@ -297,10 +309,33 @@ func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID
 	})
 }
 func (s *Service) ClaimExpedition(ctx context.Context, owner int64, key string, id int64) (assets.Result, error) {
+	return s.claimExpedition(ctx, owner, owner, key, id, false, "")
+}
+
+// FinishExpedition settles the original persisted reward under the same player
+// lock as a normal claim. It never rerolls, changes duration, or splits the grant.
+func (s *Service) FinishExpedition(ctx context.Context, actor, owner int64, key string, id int64, actorName string) (assets.Result, error) {
+	if err := assets.RequireAdmin(ctx, actor); err != nil {
+		return assets.Result{}, err
+	}
+	return s.claimExpedition(ctx, actor, owner, key, id, true, actorName)
+}
+func (s *Service) claimExpedition(ctx context.Context, actor, owner int64, key string, id int64, force bool, actorName string) (assets.Result, error) {
 	if id <= 0 {
 		return assets.Result{}, assets.ErrInvalid
 	}
-	return s.assets.Run(ctx, assets.Command{ActorID: owner, RequestKey: key, Kind: "expedition_claim", RuleVersion: "expedition-v1", Players: []int64{owner}, Input: struct{ ID int64 }{id}}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
+	players := []int64{owner}
+	if actor != owner {
+		players = append(players, actor)
+	}
+	var input any = struct{ ID int64 }{id}
+	if force {
+		input = struct {
+			ID, Owner int64
+			Force     bool
+		}{id, owner, true}
+	}
+	return s.assets.Run(ctx, assets.Command{ActorID: actor, RequestKey: key, Kind: "expedition_claim", RuleVersion: "expedition-v1", Players: players, Input: input}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
 		var route string
 		var hours int
 		var raw, snapshot []byte
@@ -315,7 +350,7 @@ func (s *Service) ClaimExpedition(ctx context.Context, owner int64, key string, 
 		if claimed {
 			return assets.Result{}, assets.Rejection("expedition_claimed")
 		}
-		if !ready {
+		if !ready && !force {
 			return assets.Result{}, assets.Rejection("expedition_not_ready")
 		}
 		var reward ExpeditionReward
@@ -393,6 +428,11 @@ func (s *Service) ClaimExpedition(ctx context.Context, owner int64, key string, 
 		raw, _ = json.Marshal(reward)
 		if _, err = t.SQL().Exec(ctx, `UPDATE fishing.sea_expeditions SET claimed_at=clock_timestamp(),claim_operation=$2,reward=$3 WHERE id=$1`, id, t.OperationID(), raw); err != nil {
 			return assets.Result{}, err
+		}
+		if force {
+			if _, err = t.SQL().Exec(ctx, `INSERT INTO fishing.admin_audit(actor_id,actor_name,account_id,action,target,detail) VALUES($1,$2,$3,'expedition/finish',$4,'管理员提前结束并按原奖励结算')`, actor, actorName, owner, strconv.FormatInt(id, 10)); err != nil {
+				return assets.Result{}, err
+			}
 		}
 		return assets.Result{Status: "claimed", ResourceID: strconv.FormatInt(id, 10), Details: raw}, nil
 	})

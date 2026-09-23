@@ -43,7 +43,12 @@ const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+nam
   await host.locator('[data-exp-hours]').selectOption('12');
   await page.evaluate(()=>{window.sameHost=document.querySelector('.expedition-panel');UI.renderView();});
   check('Routine updates preserve duration and panel DOM',await host.locator('[data-exp-hours]').inputValue()==='12' && await page.evaluate(()=>sameHost===document.querySelector('.expedition-panel')));
-  await host.locator('[data-exp-start="trade"]').click();await host.locator('.exp-active').waitFor();
+  await host.locator('[data-exp-start="trade"]').click();
+  check('Departure opens confirmation without sending a request',await page.locator('.confirm-modal').count()===1 && await page.evaluate(()=>calls.length===0));
+  check('Confirmation shows chosen duration and ticket cost',(await page.locator('.confirm-modal').innerText()).includes('12 小时'));
+  await page.locator('.cf-cancel').click();
+  check('Cancel leaves the expedition undispatched',await page.evaluate(()=>calls.length===0));
+  await host.locator('[data-exp-start="trade"]').click();await page.locator('.cf-ok').click();await host.locator('.exp-active').waitFor();
   check('Dispatch sends chosen duration with a stable request key',await page.evaluate(()=>calls[0].body.hours===12&&calls[0].body.requestKey.startsWith('exp-')));
   check('Active voyage prevents a second dispatch',await host.locator('[data-exp-start]:enabled').count()===0);
   check('Reward button is absent while sailing',await host.locator('[data-exp-claim]').count()===0);
@@ -51,9 +56,9 @@ const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+nam
   await host.locator('[data-exp-claim]').click();await host.locator('[data-exp-choice="tide"]').waitFor();
   check('First success unlocks whole-set choice',await host.locator('[data-exp-choice="tide"]').isEnabled());
   check('Undesigned merchant set is a preview, not a redeemable fake feature',await host.locator('[data-exp-redeem="market"]').count()===0);
-  page.once('dialog',d=>d.dismiss());await host.locator('[data-exp-choice="tide"]').click();
+  await host.locator('[data-exp-choice="tide"]').click();await page.locator('.cf-cancel').click();
   check('Canceling the choice does not consume the unique entitlement',await page.evaluate(()=>calls.filter(x=>x.type==='redeem').length===0));
-  page.once('dialog',d=>d.accept());await host.locator('[data-exp-choice="tide"]').click();
+  await host.locator('[data-exp-choice="tide"]').click();await page.locator('.cf-ok').click();
   check('Confirming redeems two-piece starter and removes choice buttons',await page.evaluate(()=>calls.at(-1).body.starter===true)&&await host.locator('[data-exp-choice]').count()===0);
   await page.evaluate(()=>{fixture.expedition.gear.set='apex';fixture.expedition.captain.tracking=2;ExpeditionUI.update(document.querySelector('.expedition-panel'),fixture,document.querySelector('.expedition-panel')._onChange);});
   await host.locator('[data-exp-target]').selectOption('carp');await host.locator('[data-exp-target-save]').click();

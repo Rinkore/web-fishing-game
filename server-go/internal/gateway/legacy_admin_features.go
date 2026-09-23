@@ -25,11 +25,12 @@ var legacyFeatureGroups = []map[string]any{
 	{"id": "codex", "name": "图鉴", "parent": nil, "children": []map[string]any{}},
 	{"id": "records", "name": "记录（图鉴页签）", "parent": "codex", "children": []map[string]any{}},
 	{"id": "feedback", "name": "反馈", "parent": nil, "children": []map[string]any{{"id": "feedback.submit", "name": "提交反馈", "parent": "feedback"}, {"id": "feedback.skip", "name": "付费跳过冷却", "parent": "feedback"}}},
+	{"id": "mail", "name": "邮件", "parent": nil, "children": []map[string]any{}},
 	{"id": "logs", "name": "日志", "parent": nil, "children": []map[string]any{}},
 	{"id": "wiki", "name": "WIKI", "parent": nil, "children": []map[string]any{}},
 }
 
-var legacyFeatureMenuIDs = []string{"fishing", "sea", "character", "ground", "inventory", "workshop", "mall", "codex", "feedback", "logs", "wiki"}
+var legacyFeatureMenuIDs = []string{"fishing", "sea", "character", "ground", "inventory", "mail", "workshop", "mall", "codex", "feedback", "logs", "wiki"}
 
 type legacyFeatureMetadata struct {
 	Order       map[string][]string `json:"order"`
@@ -107,6 +108,25 @@ func legacyFeatureOrder(metadata legacyFeatureMetadata) map[string][]string {
 	out := map[string][]string{"menu": append([]string(nil), legacyFeatureMenuIDs...)}
 	if values := metadata.Order["menu"]; legacyFeatureOrderValid(map[string][]string{"menu": values}) {
 		out["menu"] = append([]string(nil), values...)
+	} else if len(values) > 0 {
+		// Adding a menu entry must preserve the operator's existing ordering.
+		known, seen := map[string]bool{}, map[string]bool{}
+		for _, id := range legacyFeatureMenuIDs {
+			known[id] = true
+		}
+		merged := []string{}
+		for _, id := range values {
+			if known[id] && !seen[id] {
+				merged = append(merged, id)
+				seen[id] = true
+			}
+		}
+		for _, id := range legacyFeatureMenuIDs {
+			if !seen[id] {
+				merged = append(merged, id)
+			}
+		}
+		out["menu"] = merged
 	}
 	for _, group := range legacyFeatureGroups {
 		id := group["id"].(string)
@@ -168,6 +188,11 @@ func (a *API) legacyAdminFeatures(w http.ResponseWriter, r *http.Request) {
 			legacyTradeError(w, 400, "未知功能或开关值不是布尔值")
 			return
 		}
+	}
+	if menu, exists := in.FeatureOrder["menu"]; exists && len(menu) == len(legacyFeatureMenuIDs)-1 {
+		// Older open consoles predate the mail entry. Append only this new ID;
+		// the ordinary validator still rejects other omissions and duplicates.
+		in.FeatureOrder["menu"] = append(append([]string{}, menu...), "mail")
 	}
 	if in.FeatureOrder != nil && !legacyFeatureOrderValid(in.FeatureOrder) {
 		legacyTradeError(w, 400, "菜单排序包含未知、重复或缺失项")

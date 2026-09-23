@@ -175,6 +175,8 @@ window.Admin = (function () {
     { id: 'economy', name: '💰 经济参数' },
     { id: 'chest', name: '🎁 宝匣配置' },
     { id: 'sea', name: '⛵ 远洋配置' },
+    { id: 'expedition', name: '🧭 远航与套装' },
+    { id: 'mail', name: '✉️ 邮件管理' },
     { id: 'party', name: '⚓ 编队管理' },
     { id: 'workshop', name: '⚒ 工坊配置' },
     { id: 'mall', name: '🛒 商城配置' },
@@ -837,6 +839,7 @@ window.Admin = (function () {
     if (v === 'economy') return renderEconomy();
     if (v === 'chest') return renderChest();
     if (v === 'sea') return renderSeaCfg();
+    if(v==='expedition'||v==='mail')return window.AdminOperations[v]($('main'),adminApi,confirmModalLocal);
     if (v === 'party') return renderPartyMgr();
     if (v === 'workshop') return renderWorkshop();
     if (v === 'mall') return renderMall();

@@ -1,10 +1,10 @@
 {
   "format": 1,
-  "version": "v0.21.5",
+  "version": "v0.21.6",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "d3d4a94997b40334ff93cb74c02abe69364ec4328f6d6949ea23717201e07f36",
+  "sourceSHA256": "d7898610c25e0f5c12e91c365142a3e4f6a8e8d12c88d2c3a829881795aff914",
   "constants": {
-    "VERSION": "v0.21.5",
+    "VERSION": "v0.21.6",
     "BUILD": "2026-09-23",
     "FISH": {
       "common": [
@@ -3348,6 +3348,12 @@
         "id": "inventory",
         "name": "背包",
         "icon": "🎒",
+        "implemented": true
+      },
+      {
+        "id": "mail",
+        "name": "邮件",
+        "icon": "✉️",
         "implemented": true
       },
       {

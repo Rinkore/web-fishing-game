@@ -92,6 +92,7 @@ window.Engine = (function () {
   }
 
   function applyProfile(profile) {
+    if(profile && profile.customItems) D.applyCustomItems(profile.customItems);
     // 钓竿存档字段：只在 profile 真的带这些字段时覆盖（局部 profile 不应清空运行时状态）
     if (profile) {
       if (profile.rodName !== undefined) state.rodName = profile.rodName || '';
@@ -272,6 +273,7 @@ window.Engine = (function () {
     // 用途：定期同步 + 出售被拒后校准，消掉任何一侧漏包积累出的「虚空物品」。
     adoptSnapshot: function (snap) {
       if (!snap) return false;
+      if(snap.customItems) D.applyCustomItems(snap.customItems);
       const r = Number(snap.invRev);
       if (snap.inventory) state.inventory = snap.inventory;
       if (snap.coins != null) state.player.coins = snap.coins;

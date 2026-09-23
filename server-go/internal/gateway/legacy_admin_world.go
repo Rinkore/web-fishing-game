@@ -48,6 +48,9 @@ func (a *API) legacyAdminWorld(w http.ResponseWriter, r *http.Request) {
 		view[key] = value
 	}
 	stored, _ := a.legacyStoredConfig(r.Context())
+	seaConfig := legacyConstantMap(c, "SEA")
+	seaConfig["zoneTtlMin"] = c.SeaConfig().ZoneTTL / 60000
+	view["sea"] = seaConfig
 	applyLegacyStoredConfig(view, stored)
 	// Older saved levels have identical feed semantics; select the matching
 	// current option instead of leaving the editor with no selected level.

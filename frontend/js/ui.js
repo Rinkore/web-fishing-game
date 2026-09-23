@@ -728,7 +728,7 @@ window.UI = (function () {
   function renderNav() {
     const st = S();
     const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0,
-      st.me && st.me.admin ? 1 : 0, subUnseen, friendReqInCount(),
+      st.me && st.me.admin ? 1 : 0, subUnseen, friendReqInCount(), st.mailUnread||0, st.mailPending||0,
       JSON.stringify(st.features || {}), JSON.stringify(st.featureOrder || {})].join('|');
     if (sig === navSig) return;
     navSig = sig;
@@ -748,6 +748,7 @@ window.UI = (function () {
       }
       // 组件订阅提醒：背包入口显示未读红标（进入背包即清零）
       if (item.id === 'inventory' && subUnseen > 0) badge = '<span class="nav-badge unread">' + (subUnseen > 99 ? '99+' : subUnseen) + '</span>';
+      if(item.id==='mail' && (st.mailUnread>0||st.mailPending>0)) badge='<span class="nav-badge unread" aria-label="有未读邮件或待领取附件">'+(st.mailUnread>99?'99+':st.mailUnread||'!')+'</span>';
       // 像素导航图标（assets/nav/<id>.png，由 tools/gen_nav.py 生成）；emoji 作为降级兜底
       const navIcon = '<span class="nav-icon"><img class="nav-ico" src="assets/nav/' + esc(item.id) +
         '.png" alt="" draggable="false" onerror="this.outerHTML=\'' + item.icon + '\'"></span>';
@@ -6099,6 +6100,7 @@ window.UI = (function () {
   }
   // 一句话简介
   function itemBriefText(it) {
+    if(it.description) return it.description;
     if (it.kind === 'chest') return (it.chest && it.chest.desc) || '宝匣：开启后获得带词条的组件。';
     if (it.kind === 'fish') {
       const spots = D.spotsOf(it.id);
@@ -6112,7 +6114,7 @@ window.UI = (function () {
         return '熔炼催化剂 → 定向补「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀' +
           (it.id === 'relic' ? '；另用于合成宝匣、工坊残片保留与重铸。' : '。');
       }
-      return qualityName(it) + '材料 · 可在系统商店出售，或挂到开放市集。';
+      return qualityName(it) + (it.noSell?'材料 · 可玩家交易，不可卖给系统。':'材料 · 可在系统商店出售，或挂到开放市集。');
     }
     return qualityName(it) + '物品。';
   }
@@ -6153,7 +6155,7 @@ window.UI = (function () {
         out.push('宝匣：合成各档宝匣的主材料（' + (D.CHESTS || []).map(function (c) { return c.name + ' ' + c.costRelic + ' 片'; }).join(' · ') + '）');
         out.push('熔炼：残片保留（按后台公式 ' + (cfg.retainFormula || '?') + ' 计算每片保留池外词缀的概率；公式变量 breakthrough 只数突破词缀）+ 重铸（洗词条数值）');
       }
-      out.push('出售 / 挂单：系统商店 ' + (it.price || 0) + '💰，也可挂到开放市集');
+      out.push(it.noSell?'玩家交易 / 市集挂单：不可卖给系统。':'出售 / 挂单：系统商店 ' + (it.price || 0) + '💰，也可挂到开放市集');
     }
     return out;
   }
@@ -9799,6 +9801,7 @@ window.UI = (function () {
   // 进入页面时按需拉取该页数据（其余页面不产生任何请求）
   function loadViewData(view) {
     if (!window.Net) return;
+    if(view==='mail')window.MailUI.refresh(false);
     if (view === 'shop' || view === 'inventory') window.Net.fetchShop();
     if (view === 'inventory') window.Net.fetchMyMarket();
     // 商城 = 限购 + 收购 + 市集 三合一：进页把三份数据都拉齐，页签切换不再单独请求
@@ -10176,6 +10179,7 @@ window.UI = (function () {
     else if (currentView === 'codex') { if (codexMainTab === 'records') renderRecords(); else renderCodex(); }
     else if (currentView === 'records') renderRecords();
     else if (currentView === 'feedback') renderFeedback();
+    else if (currentView === 'mail') window.MailUI.render($('main'));
     else if (currentView === 'logs') renderLogs();
     else {
       const navItem = D.NAV.find(function (x) { return x.id === currentView; });
@@ -10209,6 +10213,7 @@ window.UI = (function () {
     confirmModal({ title: '退出登录', html: '确定要退出当前账号吗？', okText: '退出登录', danger: true }).then(function (ok) {
       if (!ok) return;
       const done = function () {
+        window.MailUI.stop();
         try { localStorage.removeItem('fishing_token'); } catch (e) {}
         if (window.Net && window.Net.getMe && window.Net.getMe()) { try { window.Net.closeStream && window.Net.closeStream(); } catch (e) {} }
         // 清空与账号绑定的临时状态与横幅/闪烁
@@ -10249,6 +10254,7 @@ window.UI = (function () {
   function showAuth() { $('auth').style.display = 'flex'; syncBrandAdmin(); }
   // 顶号/会话失效：回到登录界面并提示原因
   function forceLogout(msg) {
+    window.MailUI.stop();
     currentView = 'fishing';
     showAuth();
     authMsg(msg || '');
@@ -10308,6 +10314,7 @@ window.UI = (function () {
     subUnseen = 0;
     msgLogOwner = null; // 切换账号后日志按新账号重新加载
     window.Net.setAuth(token, profile);
+    window.MailUI.reset();window.MailUI.refresh(true);
     $('auth').style.display = 'none';
     renderNav();
     renderTopbar();
@@ -10349,6 +10356,7 @@ window.UI = (function () {
   //     c. 列表用 patchList() 按 key 复用节点，只改文本/class，不重造行；填充函数必须被
   //        「首次铺」和「广播更新」两条路共用，避免两条路渲染出不同的 DOM。
   const VIEW_SCOPES = {
+    mail: [],
     fishing: ['players', 'grounds', 'catch', 'assets', 'groundcfg', 'castcfg'], // 实况/日志/钓速随广播更新
     bd: [],                                             // 角色 · 钓竿页签：只随操作重绘（展示数据不受广播影响）
     ground: ['players', 'grounds', 'feed', 'groundcfg'],
@@ -10501,6 +10509,8 @@ window.UI = (function () {
     }).catch(function () { initApp(); });
   }
   function initApp() {
+    setInterval(function(){if(document.visibilityState!=='hidden' && S().me)window.MailUI.refresh(currentView!=='mail');},5000);
+    document.addEventListener('visibilitychange',function(){if(document.visibilityState!=='hidden' && S().me)window.MailUI.refresh(currentView!=='mail');});
     // 交易冷却倒计时：交易子窗口打开时，仅在冷却期间更新倒计时文字，冷却结束后补一次重绘
     let cdLast = 0;
     setInterval(function () {
@@ -10602,7 +10612,7 @@ window.UI = (function () {
     friendPush: friendPush,
     onSeaEvict: onSeaEvict,
     resyncAssets: resyncAssets,
-    alertModal: alertModal,
+    alertModal: alertModal, confirmModal: confirmModal,
     toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners, onBannerStop: onBannerStop,
     addLog: addLog, onSubAlert: onSubAlert, resetBanners: resetBanners,
     renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,

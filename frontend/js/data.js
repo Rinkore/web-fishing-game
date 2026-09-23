@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.21.5';
+  const VERSION = 'v0.21.6';
   const BUILD = '2026-09-23';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -2667,6 +2667,7 @@
     { id: 'character', name: '角色', icon: '🧍', implemented: true },
     { id: 'ground', name: '社交', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
+    { id: 'mail', name: '邮件', icon: '✉️', implemented: true },
     // 「宝匣合成」不再是独立页面：并入「工坊」页（熔炼/重铸同款页签切换），改名「开箱」，见 ui.js 的 renderWorkshop。
     { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
     // 「系统商店」「开放市集」不再是独立页面：合并进「商城」页（工坊熔炼/重铸同款页签切换），
@@ -2702,6 +2703,14 @@
   }
   const ITEM_MAP = {};
   allItems().forEach(function (it) { ITEM_MAP[it.id] = it; });
+  function applyCustomItems(items) {
+    if (!Array.isArray(items)) return;
+    items.filter(function(it){return it.kind==='material' && /^custom_/.test(it.id);}).forEach(function(it){
+      const copy=Object.assign({},it);ITEM_MAP[it.id]=copy;
+      const at=MATERIALS.findIndex(function(m){return m.id===it.id;});
+      if(at<0)MATERIALS.push(copy);else MATERIALS[at]=copy;
+    });
+  }
   function itemOf(id) {
     if (id == null) return { id: id, name: String(id), rarity: 'common', price: RARITY_PRICE.common, size: null, kind: 'unknown' };
     const s = String(id);
@@ -2726,6 +2735,7 @@
 
   return {
     VERSION: VERSION, BUILD: BUILD,
+    applyCustomItems: applyCustomItems,
     FISH: FISH, MATERIALS: MATERIALS, RARITY_PRICE: RARITY_PRICE,
     EXPEDITION: EXPEDITION, GEAR_SETS: GEAR_SETS, PART_AFFIXES: PART_AFFIXES,
     itemIcon: function(id) { const b=componentBase(id); if(b && (b.setId || !b.legacy)) return 'assets/item/'+({rod:'rod_dragonbone',charm:'charm_coin',line:'line_nylon',hook:'hook_barb',bait:'bait_corn',reel:'reel_smooth',accessory:'acc_sonar'}[b.part])+'.png'; return 'assets/item/'+id+(["grindstone","stardust","humus","boneash","ballast","resonance_crystal","curesalt"].indexOf(id)>=0 ? '.svg' : '.png'); },

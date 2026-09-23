@@ -150,6 +150,7 @@ window.Net = (function () {
   // （展示与本地预览保持一致：例如工坊的成功率与花费预览必须和服务器算的同一套系数）
   function applyServerCfg(d) {
     if (!d) return;
+    if(d.customItems) window.GameData.applyCustomItems(d.customItems);
     if (d.features) state().features = d.features;
     if (d.featureOrder) state().featureOrder = d.featureOrder;
     if (d.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(d.componentCfg);
@@ -289,6 +290,8 @@ window.Net = (function () {
   const bdSet = (part, compId) => authed('/api/bd/set', { part: part, compId: compId });
   // 远洋（出海）：船 / 海图 / 临时海域（v0.19.0）
   const seaGet = () => apiFetch('GET', '/api/sea?token=' + encodeURIComponent(me ? me.token : ''));
+  const mailGet = (page,summary) => apiFetch('GET','/api/mail?token='+encodeURIComponent(me?me.token:'')+'&page='+(page||1)+(summary?'&summary=1':''));
+  const mailChange = (action,body) => authed('/api/mail/'+action,body);
   const seaShipUp = () => authed('/api/sea/ship/up', {});
   const seaChart = () => authed('/api/sea/chart', {});
   const seaExpedition = (action,body) => authed((action === 'redeem' || action === 'target') ? '/api/sea/sets/'+action : '/api/sea/expedition/'+action, body);
@@ -640,6 +643,9 @@ window.Net = (function () {
           if (m.v != null) S.recordsVersion = m.v;
           const rfNow = Date.now();
           if (!S._recordsFetchAt || rfNow - S._recordsFetchAt > 5000) { S._recordsFetchAt = rfNow; fetchRecords(); }
+        } else if (m.type === 'customitems') {
+          window.GameData.applyCustomItems(m.items);
+          if(ui)ui.refreshAll('assets');
         } else if (m.type === 'shop') {
           S.shop = m.shop || {};
           if (ui) ui.refreshAll('shop');
@@ -902,6 +908,7 @@ window.Net = (function () {
 
   return {
     register: register, login: login, logout: logout, fetchMe: fetchMe, setAuth: setAuth,
+    mailGet:mailGet,mailChange:mailChange,
     guardVersion: guardVersion, startVersionWatch: startVersionWatch,
     probeServer: probeServer, connState: connState, reloadForVersion: reloadForVersion,
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,

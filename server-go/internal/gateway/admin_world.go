@@ -155,7 +155,7 @@ func worldPublish(a *API, w http.ResponseWriter, r *http.Request, session identi
 		detail += " " + target
 	}
 	ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, true)
-	_, err = catalog.PublishConfig(ctx, a.pool, catalog.Publish{
+	result, err := catalog.PublishConfig(ctx, a.pool, catalog.Publish{
 		ActorID: session.AccountID, RequestKey: worldRequestKey(body, route),
 		ExpectedRevision: expected, Catalog: raw,
 		AuditAction: legacyAdminClip(strings.TrimPrefix(route, "/api/admin/"), 80), AuditName: legacyAdminClip(session.Name, 120),
@@ -163,6 +163,10 @@ func worldPublish(a *API, w http.ResponseWriter, r *http.Request, session identi
 	})
 	if err != nil {
 		assetResponse(w, assets.Result{}, err)
+		return nil, false
+	}
+	if result.Status != "published" {
+		assetResponse(w, result, assets.Rejection(result.Status))
 		return nil, false
 	}
 	next, _, err := worldCurrent(r.Context(), a)

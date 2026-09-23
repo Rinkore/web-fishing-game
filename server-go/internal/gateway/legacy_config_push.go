@@ -126,7 +126,7 @@ func legacyFeatureFlags(flags map[string]bool) map[string]bool {
 		out["mall.autosell"] = false
 	}
 	for key, enabled := range flags {
-		if key == "adminBypass" || strings.Contains(key, ".") {
+		if key == "adminBypass" || key == "mail" || strings.Contains(key, ".") {
 			out[key] = enabled
 		}
 	}
@@ -236,6 +236,14 @@ func legacyCatalogProjection(c *rules.Catalog) (map[string]any, []map[string]any
 		{"type": "autosellcfg", "autoSellCfg": autoSellCfg},
 		{"type": "chestcfg", "chestCfg": chestCfg},
 	}
+	custom := []rules.Item{}
+	for _, it := range c.Items {
+		if len(it.ID) > 7 && it.ID[:7] == "custom_" {
+			custom = append(custom, it)
+		}
+	}
+	fields["customItems"] = custom
+	frames = append(frames, map[string]any{"type": "customitems", "items": custom})
 	return fields, frames, nil
 }
 
