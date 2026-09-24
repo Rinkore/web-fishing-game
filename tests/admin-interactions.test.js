@@ -68,7 +68,7 @@ const CHROME = process.env.CHROME_PATH || [
       }
       if (url.pathname === '/api/admin/gear') return json({ config: catalog.constants.GEAR_SYSTEM, revision: 1, items: catalog.items });
       if (url.pathname.startsWith('/api/')) return json({ error: '测试未启用' }, 400);
-      const files = { '/admin.html': ['admin.html', 'text/html'], '/css/admin.css': ['css/admin.css', 'text/css'], '/js/data.js': ['js/data.js', 'text/javascript'], '/js/features.js': ['js/features.js', 'text/javascript'], '/js/gear.js': ['js/gear.js', 'text/javascript'], '/js/admin-gear.js': ['js/admin-gear.js', 'text/javascript'], '/js/admin.js': ['js/admin.js', 'text/javascript'] };
+      const files = { '/admin.html': ['admin.html', 'text/html'], '/css/admin.css': ['css/admin.css', 'text/css'], '/js/data.js': ['js/data.js', 'text/javascript'], '/js/features.js': ['js/features.js', 'text/javascript'], '/js/gear.js': ['js/gear.js', 'text/javascript'], '/js/admin-edit.js': ['js/admin-edit.js', 'text/javascript'], '/js/admin-pool-import.js': ['js/admin-pool-import.js', 'text/javascript'], '/js/admin-gear.js': ['js/admin-gear.js', 'text/javascript'], '/js/admin.js': ['js/admin.js', 'text/javascript'] };
       const file = files[url.pathname];
       if (!file) return route.fulfill({ status: 404, body: '' });
       return route.fulfill({ contentType: file[1], body: fs.readFileSync(path.join(__dirname, '..', 'frontend', file[0])) });

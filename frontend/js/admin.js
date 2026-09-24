@@ -424,15 +424,31 @@ window.Admin = (function () {
       drawSeaCfg(cfg);
     });
   }
+  // 本页原先会把越界输入静默夹到范围内、把空值静默换成默认值，运营以为存进去的是自己填的值。
+  // 每次保存前清空，保存后把被改动的字段报出来。
+  let seaClampLog = [];
+  function seaClampNote(id, raw, value) {
+    const el = $(id);
+    if (!el) return;
+    const lab = el.closest('label');
+    const name = String((lab ? lab.textContent : el.getAttribute('aria-label')) || id).replace(/\s+/g, ' ').trim().slice(0, 24);
+    seaClampLog.push(name + '：' + (isFinite(raw) ? raw : '空') + ' → ' + value);
+  }
   function seaNum(id, min, max, dflt) {
-    let v = Math.floor(Number(($(id) || {}).value));
+    const raw = Number(($(id) || {}).value);
+    let v = Math.floor(raw);
     if (!isFinite(v)) v = dflt;
-    return Math.min(max, Math.max(min, v));
+    const out = Math.min(max, Math.max(min, v));
+    if (out !== raw) seaClampNote(id, raw, out);
+    return out;
   }
   function seaFloat(id, min, max, dflt) { // v0.21.0：漩涡/沉船概率支持 0.5 步进
-    let v = Number(($(id) || {}).value);
+    const raw = Number(($(id) || {}).value);
+    let v = raw;
     if (!isFinite(v)) v = dflt;
-    return Math.min(max, Math.max(min, v));
+    const out = Math.min(max, Math.max(min, v));
+    if (out !== raw) seaClampNote(id, raw, out);
+    return out;
   }
   function drawSeaCfg(cfg) {
     const body = $('sea-body');
@@ -604,6 +620,7 @@ window.Admin = (function () {
     function seaName(id) { const el = $(id); return el && el.value.trim() ? el.value.trim() : null; }
     function saveSeaCfg(reset) {
       if (!reset) syncQuestDraft();   // 悬赏那一块的输入框值先收回草稿再提交
+      seaClampLog = [];
       const payload = reset ? {} : {
         ship: {
           names: [0, 1, 2, 3, 4].map(function (i) { return seaName('sea-name-' + i); }),
@@ -656,8 +673,15 @@ window.Admin = (function () {
       adminApi('POST', '/api/admin/settings', { token: token, seaCfg: payload }).then(function (r) {
         if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
         worldCfg = null;
-        setHint('sea-state', '<span style="color:var(--ok)">已保存，立即生效（玩家端 ≤8 秒同步）</span>');
-        toast('⛵ 远洋配置已保存');
+        if (seaClampLog.length) {
+          const shown = seaClampLog.slice(0, 6).join('；');
+          const more = seaClampLog.length > 6 ? '；另有 ' + (seaClampLog.length - 6) + ' 项' : '';
+          setHint('sea-state', '<span style="color:var(--warn)">已保存，但有 ' + seaClampLog.length + ' 个字段被自动修正：' + esc(shown + more) + '</span>');
+          toast('⛵ 已保存，' + seaClampLog.length + ' 个字段被自动修正', true);
+        } else {
+          setHint('sea-state', '<span style="color:var(--ok)">已保存，立即生效（玩家端 ≤8 秒同步）</span>');
+          toast('⛵ 远洋配置已保存');
+        }
       });
     }
   }
@@ -838,7 +862,7 @@ window.Admin = (function () {
     if (v === 'economy') return renderEconomy();
     if (v === 'chest') return renderChest();
     if (v === 'sea') return renderSeaCfg();
-    if(v==='expedition'||v==='mail')return window.AdminOperations[v]($('main'),adminApi,confirmModalLocal);
+    if(v==='expedition'||v==='mail')return window.AdminOperations[v]($('main'),adminApi,confirmModalLocal,switchView);
     if (v === 'party') return renderPartyMgr();
     if (v === 'workshop') return renderWorkshop();
     if (v === 'mall') return renderMall();
@@ -2435,10 +2459,20 @@ window.Admin = (function () {
     const main = $('main');
     main.innerHTML = '<h2>🎣 钓点管理</h2>' +
       '<div class="hint" style="margin-bottom:12px">钓点直接铺在世界地图上：列表选中钓点后编辑上鱼率/速率、掉落池（权重实时换算百分比）与增益，或在地图上拖动定位。保存后全服即时生效，正在钓鱼的玩家下一竿即按新配置掷骰。</div>' +
-      '<div id="gd-body">加载中…</div>';
+      '<div id="gd-body">加载中…</div>' +
+      '<div id="gd-import"></div>';
     loadWorldCfg(true).then(function (cfg) {
-      if (cfg && view === 'grounds') drawGrounds(cfg);
+      if (cfg && view === 'grounds') { drawGrounds(cfg); mountPoolImport(cfg); }
     });
+  }
+  // 鱼池文档一键导入：换地图时不用手点几十次；导出/导入用同一份文档格式
+  function mountPoolImport(cfg) {
+    const host = $('gd-import');
+    if (!host || !window.AdminPoolImport) return;
+    const fresh = function () { return loadWorldCfg(true); };
+    window.AdminPoolImport.render(host, cfg, adminApi, confirmModalLocal, function () {
+      return fresh().then(function (next) { if (next && view === 'grounds') drawGrounds(next); });
+    }, fresh);
   }
   function drawGrounds(cfg) {
     const g = cfg.grounds.find(function (x) { return x.id === MAP_GID; }) || cfg.grounds[0];
