@@ -983,7 +983,6 @@ window.UI = (function () {
   function mountFishingViewport(stage, map, chooseSpot) {
     if (disposeFishingViewport) disposeFishingViewport();
     const viewport = stage.querySelector('.fish-select');
-    const controls = stage.querySelector('.fishing-map-controls');
     const pointers = new Map();
     let width = 0, height = 0, gesture = null;
     function paint() {
@@ -994,10 +993,6 @@ window.UI = (function () {
       map.style.transform = 'translate(-50%, -50%) translate(' + fishingMapView.x * width + 'px, ' +
         fishingMapView.y * height + 'px) scale(' + fishingMapView.zoom + ')';
       map.style.setProperty('--map-scale', fishingMapView.zoom);
-      controls.querySelector('.fishing-map-zoom').textContent = Math.round(fishingMapView.zoom * 100) + '%';
-      controls.querySelector('[data-map-action="out"]').disabled = fishingMapView.zoom <= 1;
-      controls.querySelector('[data-map-action="in"]').disabled = fishingMapView.zoom >= 4;
-      controls.querySelector('[data-map-action="locate"]').disabled = !map.querySelector('.px-node.here');
     }
     function localPoint(clientX, clientY) {
       const rect = viewport.getBoundingClientRect();
@@ -1035,14 +1030,6 @@ window.UI = (function () {
       fishingMapView.y = (.5 - parseFloat(node.style.top) / 100) * fishingMapView.zoom;
       paint();
     }
-    controls.addEventListener('click', function (ev) {
-      const button = ev.target.closest('[data-map-action]');
-      if (!button) return;
-      const action = button.dataset.mapAction;
-      if (action === 'reset') { fishingMapView.zoom = 1; fishingMapView.x = 0; fishingMapView.y = 0; paint(); }
-      else if (action === 'locate') locate(map.querySelector('.px-node.here'));
-      else zoomAt(fishingMapView.zoom * (action === 'in' ? 1.25 : .8), { x: 0, y: 0 });
-    });
     viewport.addEventListener('wheel', function (ev) {
       ev.preventDefault();
       const delta = ev.deltaY * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? viewport.clientHeight : 1);
@@ -1233,24 +1220,10 @@ window.UI = (function () {
     main.classList.add('fishing-page');
     const stage = el('section', 'fishing-stage');
     stage.setAttribute('aria-label', '钓鱼世界地图');
-    const toolbar = el('div', 'fishing-toolbar');
-    stage.appendChild(toolbar);
-
     // 近岸、远洋与临时海域共享底图和平移缩放平面。
     const left = el('div', 'fish-select');
     left.tabIndex = 0;
     left.setAttribute('aria-label', '世界地图：拖动平移，滚轮或双指缩放，点击钓点垂钓；方向键平移，加减键缩放');
-    const controls = el('div', 'fishing-map-controls');
-    controls.setAttribute('role', 'group');
-    controls.setAttribute('aria-label', '地图视角');
-    controls.innerHTML = '<span class="fishing-map-title">世界海图</span>' +
-      '<button type="button" data-map-action="out" aria-label="缩小地图" title="缩小地图">−</button>' +
-      '<output class="fishing-map-zoom" aria-label="地图缩放比例">100%</output>' +
-      '<button type="button" data-map-action="in" aria-label="放大地图" title="放大地图">+</button>' +
-      '<button type="button" data-map-action="reset" aria-label="显示全图">全图</button>' +
-      '<button type="button" data-map-action="locate" aria-label="定位当前钓点" title="定位当前钓点">定位</button>';
-    toolbar.appendChild(controls);
-    toolbar.appendChild(el('span', 'fishing-map-hint', '拖动探索 · 滚轮 / 双指缩放 · 点击钓点'));
     // 保留两片区域原有百分比坐标，通过 VoyageMap.project 投影到统一世界海图。
     // 权威坐标来自钓点数据的 sp.pos（data.js 出厂值 + 管理后台拖动覆盖，见后台「钓点管理 · 地图定位」）；
     // 这里的表只作为**兜底**：后台新建、没有坐标的钓点围绕地图中心环形排布。

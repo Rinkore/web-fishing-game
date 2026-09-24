@@ -32,6 +32,7 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     const overlay = page.locator('#fishing-overlay');
     check(!await overlay.isVisible(), 'overlay starts closed');
     check(await page.locator('.vm-art').count() === 1, 'one CSS world map renders');
+    check(await page.locator('.fishing-map-controls, .fishing-map-hint').count() === 0, 'map control strip is removed');
     check(await page.locator('.px-map .px-map-img').count() === 0, 'world map does not use a bitmap background');
     check(await page.locator('.px-node[data-s="dock"]').count() === 1 && await page.locator('.px-node[data-s="trench"]').count() === 1, 'nearshore and offshore spots share the map');
     check(await page.evaluate(() => {
@@ -78,9 +79,11 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     check(await page.evaluate(() => !Engine.state.fishing.active), 'locked nearshore spot does not start fishing');
     await page.locator('.px-node[data-s="shore"] .pn-name').click();
     check(await page.evaluate(() => !Engine.state.fishing.active), 'offshore spot still requires a registered ship');
-    await page.getByRole('button', { name: '放大地图', exact: true }).click();
     const zoomedWidth = await page.locator('.px-map').evaluate(e => e.getBoundingClientRect().width);
-    check(await page.locator('.px-map').evaluate(e => parseFloat(e.style.getPropertyValue('--map-scale')) > 1), 'zoom button enlarges the map');
+    await page.locator('.fish-select').hover();
+    await page.mouse.wheel(0, -180);
+    await page.waitForFunction(width => document.querySelector('.px-map').getBoundingClientRect().width > width + 1, zoomedWidth);
+    check(await page.locator('.px-map').evaluate(e => parseFloat(e.style.getPropertyValue('--map-scale')) > 1), 'wheel enlarges the map');
     const dragNode = await page.locator('.px-node[data-s="dock"] .pn-name').boundingBox();
     await page.mouse.move(dragNode.x + dragNode.width / 2, dragNode.y + dragNode.height / 2);
     const beforeDrag = await page.locator('.px-map').evaluate(e => e.getBoundingClientRect().left);
@@ -89,11 +92,7 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     await page.mouse.up();
     check(await page.evaluate(() => !Engine.state.fishing.active), 'dragging from a spot does not select it');
     check(Math.abs(await page.locator('.px-map').evaluate(e => e.getBoundingClientRect().left) - beforeDrag) > 20, 'pointer drag moves the map');
-    await page.mouse.wheel(0, -180);
-    await page.waitForFunction(width => document.querySelector('.px-map').getBoundingClientRect().width > width + 1, zoomedWidth);
     check(await page.locator('.px-map').evaluate(e => e.getBoundingClientRect().width) > zoomedWidth, 'wheel zoom enlarges the map');
-    await page.getByRole('button', { name: '显示全图', exact: true }).click();
-    await page.getByRole('button', { name: '放大地图', exact: true }).click();
     const selectedZoom = await page.locator('.px-map').evaluate(e => e.style.getPropertyValue('--map-scale'));
     // Map click still reaches original start/stop flow behind the overlay controls.
     await page.locator('.px-node[data-s="dock"] .pn-name').click();
@@ -120,10 +119,11 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     check((await page.locator('.fish-metric').last().innerText()).includes('—'), 'idle status does not show stale estimates');
     // Closed sidebar state survives zooming and restoring the unified map.
     await page.locator('.fishing-dock-toggle').click();
-    await page.getByRole('button', { name: '显示全图', exact: true }).click();
     check(await page.locator('.vm-art').count() === 1, 'restoring the view keeps one map');
     check(await page.locator('.fishing-dock').evaluate(e => e.classList.contains('collapsed')), 'restoring the map preserves dock state');
     await page.locator('.fishing-dock-toggle').click();
+    await page.locator('.fish-select').focus();
+    for (let i = 0; i < 6; i++) await page.keyboard.press('-');
     // Responsive containment, footer sizing and overlay scrolling.
     for (const [width, height] of [[1600, 940], [1280, 720], [880, 700], [640, 700], [390, 844], [320, 700]]) {
       await page.setViewportSize({ width, height });
