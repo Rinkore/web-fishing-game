@@ -8540,7 +8540,7 @@ window.UI = (function () {
     if(D.GEAR_SYSTEM.enabled && window.GearUI){
       const existing=main.querySelector('[data-modern-workshop]');
       if(existing){if(wsTab!=='open')GearUI.mount(existing.querySelector('[data-modern-body]'));return;}
-      main.innerHTML='<section class="panel wide" data-modern-workshop><h2>⚒ 工坊</h2><div class="section-tabs"><button data-modern-tab="growth">装备与套装成长</button><button data-modern-tab="open">🎁 开箱</button></div><div data-modern-body></div></section>';
+      main.innerHTML='<section class="panel wide" data-modern-workshop><h2>⚒ 工坊</h2><div class="section-tabs workshop-main-tabs"><button data-modern-tab="growth">装备与套装成长</button><button data-modern-tab="open">🎁 开箱</button></div><div data-modern-body></div></section>';
       const body=main.querySelector('[data-modern-body]');
       const show=()=>{body.innerHTML='';main.querySelectorAll('[data-modern-tab]').forEach(b=>b.classList.toggle('on',(wsTab==='open'?'open':'growth')===b.dataset.modernTab));if(wsTab==='open')wsRenderOpen(body);else GearUI.mount(body);};
       main.querySelectorAll('[data-modern-tab]').forEach(b=>b.onclick=()=>{wsTab=b.dataset.modernTab;show();});show();return;

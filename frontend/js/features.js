@@ -32,7 +32,15 @@
   const menuIds = ['fishing', 'sea', 'character', 'ground', 'inventory', 'workshop', 'mall', 'codex', 'feedback', 'logs', 'mail', 'wiki'];
   function orderedMenu(order) {
     const saved = Array.isArray(order) ? order.filter(function (id, i) { return menuIds.indexOf(id) >= 0 && order.indexOf(id) === i; }) : [];
-    return saved.concat(menuIds.filter(function (id) { return saved.indexOf(id) < 0; }));
+    const result = saved.concat(menuIds.filter(function (id) { return saved.indexOf(id) < 0; }));
+    // 旧账号可能保存了邮件在工坊前的菜单顺序。邮件属于低频通知，始终放在日志之后，避免旧配置覆盖当前产品布局。
+    const mailIndex = result.indexOf('mail');
+    if (mailIndex >= 0) {
+      result.splice(mailIndex, 1);
+      const logsIndex = result.indexOf('logs');
+      result.splice(logsIndex >= 0 ? logsIndex + 1 : result.length, 0, 'mail');
+    }
+    return result;
   }
   const entries = [];
   groups.forEach(function (g) { entries.push(g); entries.push.apply(entries, g.children); });
