@@ -317,7 +317,7 @@ window.UI = (function () {
   // ---- 顶部横幅：两条独立轨道，互不打断 ----
   //  · 纪录轨（#record-banner）：纪录 / 最大鱼播报，**按到达顺序排队播放**，新的一条不会挤掉正在播的
   //  · 公告轨（#notice-banner）：管理后台公告，独立排队；支持每条自定义颜色（醒目度）
-  //  两条轨道都以 fixed 浮层显示，不参与页面布局；每次播放时定位到顶栏下方。
+  //  两条轨道都会把页面整体下移（--banner-h），因此不会遮挡顶部状态栏。
   const BANNER_LANE_H = 34;
   function laneEl(lane) { return $(lane === 'notice' ? 'notice-banner' : 'record-banner'); }
   const lanes = {
@@ -332,31 +332,20 @@ window.UI = (function () {
     const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
     return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#06202e' : '#f8fafc';
   }
-  // 各轨道的可见高度累计；轨道顺序（自上而下）：纪录 → 公告。
-  // 横幅脱离文档流，不再通过 padding 或 topbar 位移改变页面尺寸。
+  // 各轨道的可见高度累计 → 页面下移量（避免遮挡顶部状态栏）
+  // 轨道顺序（自上而下）：纪录 → 公告
   function syncBannerOffset() {
     const rec = laneEl('record'), not = laneEl('notice');
-    const topbar = document.querySelector('.topbar');
-    const topbarRect = topbar && topbar.getBoundingClientRect();
-    // sticky 顶栏通常从 viewport 顶部开始；取 bottom 可兼容移动端换行后高度变化。
-    let top = topbarRect ? Math.max(0, topbarRect.bottom) : 0;
     const recOn = !!(rec && rec.classList.contains('show') && (!window.PlayerSettings || window.PlayerSettings.get().records));
     const notOn = !!(not && not.classList.contains('show'));
+    let top = 0;
     if (rec) rec.style.top = top + 'px';
     if (recOn) top += BANNER_LANE_H;
     if (not) not.style.top = top + 'px';
     const h = (recOn ? BANNER_LANE_H : 0) + (notOn ? BANNER_LANE_H : 0);
-    // 保留变量供诊断/旧版脚本读取，但不再被布局样式引用。
     document.body.style.setProperty('--banner-h', h + 'px');
     document.body.classList.toggle('banner-open', h > 0);
   }
-
-  // 顶栏可能因响应式换行、状态文案更新或旋转屏幕而改变高度；浮层随之重新定位。
-  if (typeof ResizeObserver !== 'undefined') {
-    const topbar = document.querySelector('.topbar');
-    if (topbar) new ResizeObserver(syncBannerOffset).observe(topbar);
-  }
-  window.addEventListener('resize', syncBannerOffset);
 
   // 播放单条（lane: 'record' | 'notice'；opts: { duration, id, color, onDone }）
   function playMarquee(lane, text, opts) {
