@@ -14,6 +14,11 @@ on:
         required: false
         type: boolean
         default: false
+      reuse_release:
+        description: Deploy the existing verified release assets without rebuilding or republishing
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -77,6 +82,7 @@ jobs:
           ref: ${{ needs.source.outputs.commit }}
           fetch-depth: 0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        if: ${{ !inputs.reuse_release }}
         with:
           go-version-file: server-go/go.mod
           cache: false
@@ -84,11 +90,44 @@ jobs:
         with:
           node-version: '24.14.0'
       - name: Build Linux amd64 package and integrity manifest
+        if: ${{ !inputs.reuse_release }}
         env:
           RELEASE_VERSION: ${{ needs.source.outputs.version }}
         run: |
           set -euo pipefail
           bash tools/release/build-linux.sh "$RELEASE_VERSION" 2>&1 | tail -40
+      - name: Download and verify existing release assets
+        if: ${{ inputs.reuse_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.source.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p output/release
+          gh release download "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern linux-release.json --pattern web-fishing-game-linux-amd64.tar.gz \
+            --dir output/release
+          export MIGRATIONS_SHA256="$(node tools/release/migration-hash.js)"
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const root = 'output/release/';
+          const manifest = JSON.parse(fs.readFileSync(root + 'linux-release.json', 'utf8'));
+          const expected = {
+            version: process.env.RELEASE_VERSION,
+            sourceCommit: process.env.SOURCE_COMMIT,
+            migrationsSha256: process.env.MIGRATIONS_SHA256,
+            asset: 'web-fishing-game-linux-amd64.tar.gz',
+          };
+          if (Object.entries(expected).some(([key, value]) => manifest[key] !== value)
+              || !/^[0-9a-f]{64}$/.test(manifest.sha256)) {
+            throw new Error('Published manifest differs from the selected release source');
+          }
+          const digest = crypto.createHash('sha256').update(fs.readFileSync(root + manifest.asset)).digest('hex');
+          if (digest !== manifest.sha256) throw new Error('Published package checksum mismatch');
+          console.log(`Reusing verified ${manifest.version} package from ${manifest.sourceCommit}`);
+          NODE
       - name: Export tested package identity
         id: manifest
         run: |
@@ -99,6 +138,7 @@ jobs:
             `sha256=${manifest.sha256}\nmigrationsSha256=${manifest.migrationsSha256}\n`);
           NODE
       - name: Publish through the repository release entry point
+        if: ${{ !inputs.reuse_release }}
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -111,7 +151,7 @@ jobs:
     needs: [source, publish]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.publish.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment: linux-go
     concurrency:
       group: linux-go-deploy
@@ -175,13 +215,25 @@ jobs:
         run: |
           set -euo pipefail
           options=(-i "$RUNNER_TEMP/release-ssh/key" -o BatchMode=yes -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/release-ssh/known_hosts" -o ConnectTimeout=15)
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/release-ssh/known_hosts" \
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
           destination="$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST"
           incoming="$DEPLOY_ROOT/incoming/$SOURCE_COMMIT"
           ssh "${options[@]}" -p "$DEPLOY_SSH_PORT" "$destination" "mkdir -p -- '$incoming'"
+          # An operator can stage the published package through another connection.
+          # Treat it as untrusted: require the exact verified hash before reuse.
+          staged="/var/tmp/fishing-release-$ASSET_SHA256/web-fishing-game-linux-amd64.tar.gz"
+          if ssh "${options[@]}" -p "$DEPLOY_SSH_PORT" "$destination" \
+            "test -f '$staged' && printf '%s  %s\n' '$ASSET_SHA256' '$staged' | sha256sum --check --status && cp -- '$staged' '$incoming/web-fishing-game-linux-amd64.tar.gz'"; then
+            echo 'Reused the staged package after SHA-256 verification.'
+          else
+            echo 'Uploading release package over SCP.'
+            timeout 1200 scp -v "${options[@]}" -P "$DEPLOY_SSH_PORT" \
+              "$RUNNER_TEMP/release/web-fishing-game-linux-amd64.tar.gz" "$destination:$incoming/"
+          fi
+          echo 'Uploading release manifest.'
           scp "${options[@]}" -P "$DEPLOY_SSH_PORT" \
-            "$RUNNER_TEMP/release/linux-release.json" "$RUNNER_TEMP/release/web-fishing-game-linux-amd64.tar.gz" \
-            "$destination:$incoming/"
+            "$RUNNER_TEMP/release/linux-release.json" "$destination:$incoming/"
           read -r kind current_commit <<< "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_VERSION" --jq '.object | [.type, .sha] | @tsv')"
           for attempt in {1..8}; do
             [[ "$kind" == commit ]] && break
@@ -189,8 +241,9 @@ jobs:
             read -r kind current_commit <<< "$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$current_commit" --jq '.object | [.type, .sha] | @tsv')"
           done
           [[ "$kind" == commit && "$current_commit" == "$SOURCE_COMMIT" ]] || { echo 'Release tag moved after build; refusing deployment'; exit 1; }
+          echo 'Starting the installed deployer and health checks.'
           ssh "${options[@]}" -p "$DEPLOY_SSH_PORT" "$destination" \
-            "sudo -n /usr/local/sbin/fishing-release-deploy '$incoming/linux-release.json'" 2>&1 | tail -40
+            "sudo -n /usr/local/sbin/fishing-release-deploy '$incoming/linux-release.json'"
       - name: Remove temporary SSH identity
         if: always()
         run: rm -f -- "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts"

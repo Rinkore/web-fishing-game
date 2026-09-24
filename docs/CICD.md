@@ -19,6 +19,10 @@ pwsh -File tools/release/start-release.ps1 -SameVersionRevision -Publish
 
 已经指向相同提交的 tag 不会产生新 push 事件。要重试，在 GitHub Actions 的 **Linux release and deploy → Run workflow** 中填写该 tag；无需造新版本或移动标签。
 
+已有 Release 构建成功、仅部署需要重试时，可从 `main` 手动运行并勾选 `reuse_release`。流水线下载既有资产，核对标签提交、版本、迁移摘要和包 SHA-256，再进入原部署器；不重新构建或覆盖 Release。该选项独立于 `skip_tests`；同一标签提交的必要测试已通过时，可同时勾选 `skip_tests` 复用验收结果。
+
+若 Runner 到服务器的 SCP 上传持续超时，可由操作员通过已验证的 SSH 连接，将原发布包暂存到服务器 `/var/tmp/fishing-release-<包 SHA-256>/web-fishing-game-linux-amd64.tar.gz`，供部署账号读取。流水线仅在暂存包摘要与下载验证的资产一致时复用，否则仍走 SCP；固定部署器会再次校验归档。部署 job 上限为 30 分钟，SCP 大包上传上限为 20 分钟，并启用 SSH 保活与分阶段日志。成功后可删除本次暂存文件与空目录。
+
 ### 已完成本地验收，发布时不重复测试
 
 仅当待发布的同一提交已完成本地必要测试和验收，且明确要求发布阶段不重复测试时，使用手动发版的 `skip_tests` 选项。该选项默认关闭，只作用于 `workflow_dispatch`；普通标签推送仍按默认流程执行 Go CI。它不会跳过版本与 main 归属校验、构建、包摘要校验、部署健康检查或失败回滚，也不能把失败的测试结果当成通过。
