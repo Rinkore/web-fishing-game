@@ -330,6 +330,11 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 
 ## 版本演进
 
+### v0.22.5：后台编辑与鱼池导入修复（2026-09-25）
+
+- 修复后台撤销与跳转确认、内置地图鱼池导入及预检计划失效问题；补齐取消操作与导入回归。
+- 沿用已有接口与异步确认组件，游戏数值和数据库结构不变。
+
 ### v0.22.4：世界地图缩放清晰度修复（2026-09-24）
 
 - 地图按缩放后的尺寸重新绘制，避免整体变换缩放造成地形模糊；钓点标签和点击范围保持原有大小。
@@ -384,7 +389,7 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 同版本迁移修订验证：公式/迁移 35 项、管理接口 392 项、Wiki 规则 97 项，共 524 项全部通过；覆盖旧默认、旧自定义、已标记 revision 1 三类存档及备份/重启保持。已安装原 v0.21.4 的服务器须重新下载安装包，停服替换后启动一次以执行迁移。
 
 
-当前 **v0.22.4**；版本号唯一定义在 `frontend/js/data.js` 的 `VERSION`（前端启动时与 `/api/version`
+当前 **v0.22.5**；版本号唯一定义在 `frontend/js/data.js` 的 `VERSION`（前端启动时与 `/api/version`
 比对，不一致即带缓存参数强刷）。每版的完整变更见 GitHub Releases（正文即 `dist/notes-<ver>.md`）
 与该版本 tag 的注解，下表只列里程碑：
 
