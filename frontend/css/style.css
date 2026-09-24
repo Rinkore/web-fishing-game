@@ -50,9 +50,9 @@ body {
 /* 桌面端：侧边栏高度封顶在视口内，导航区自己滚动。
    导航项会随版本增加（现在 14 项 + 后台入口），不封顶的话侧栏会把整页撑高、
    玩家必须滚动整页才能看到底部菜单；封顶后只有导航区滚动，底部「框架占位」提示始终可见。
-   calc 里减去的 64px 是顶栏高度，--banner-h 是顶部横幅把页面下移的量（横幅出现时侧栏可用高度同步减少）。 */
+   calc 里减去的 64px 是顶栏高度；顶部横幅使用 fixed 浮层，不参与侧栏高度计算。 */
 @media (min-width: 641px) {
-  .sidebar { max-height: calc(100vh - 64px - var(--banner-h, 0px)); }
+  .sidebar { max-height: calc(100vh - 64px); }
   .nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
   .side-foot { flex: none; }
 }
@@ -755,10 +755,7 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
   animation: rb-marquee 12s linear 1 both;
 }
 @keyframes rb-marquee { from { transform: translateX(0); } to { transform: translateX(-100%); } }
-.record-banner.notice-banner { top: 0; }
-/* 横幅显示时把页面整体下移，避免遮挡顶栏与内容：--banner-h 由 JS 按各轨道可见高度累计维护 */
-body.banner-open { padding-top: var(--banner-h, 34px); }
-body.banner-open .topbar { top: var(--banner-h, 34px); }
+/* 横幅是脱离文档流的浮层；JS 会把每条轨道定位到动态测量的顶栏下方。 */
 
 /* ---- 工坊 · 熔炼 ---- */
 .ws-panel .ws-help {
