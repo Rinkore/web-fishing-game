@@ -990,8 +990,15 @@ window.UI = (function () {
       const maxY = Math.max(0, (height * fishingMapView.zoom - stage.clientHeight) / 2);
       fishingMapView.x = Math.max(-maxX, Math.min(maxX, fishingMapView.x * width)) / width;
       fishingMapView.y = Math.max(-maxY, Math.min(maxY, fishingMapView.y * height)) / height;
-      map.style.transform = 'translate(-50%, -50%) translate(' + fishingMapView.x * width + 'px, ' +
-        fishingMapView.y * height + 'px) scale(' + fishingMapView.zoom + ')';
+      // 直接调整地图尺寸，避免 CSS transform 在 box-shadow 像素段上做位图式
+      // 合成缩放。地图内容会按新的容器宽度重新计算像素段，放大后边缘保持清晰；
+      // 用 left/top 做平移，避免再次把整张地图提升为带重采样的变换层。
+      const mapWidth = width * fishingMapView.zoom, mapHeight = height * fishingMapView.zoom;
+      map.style.width = mapWidth + 'px';
+      map.style.height = mapHeight + 'px';
+      map.style.left = (viewport.clientWidth / 2 + fishingMapView.x * width - mapWidth / 2) + 'px';
+      map.style.top = (viewport.clientHeight / 2 + fishingMapView.y * height - mapHeight / 2) + 'px';
+      map.style.transform = 'none';
       map.style.setProperty('--map-scale', fishingMapView.zoom);
     }
     function localPoint(clientX, clientY) {
@@ -1012,8 +1019,6 @@ window.UI = (function () {
       stage.style.height = Math.max(420, (window.innerHeight - stage.getBoundingClientRect().top) / zoom - bottom) + 'px';
       width = Math.max(1, Math.min(stage.clientWidth, stage.clientHeight * 2));
       height = width / 2;
-      map.style.width = width + 'px';
-      map.style.height = height + 'px';
       if (!fishingMapView.initialized) {
         fishingMapView.initialized = true;
         if (stage.clientWidth <= 640) {

@@ -13,10 +13,12 @@
   border: 0; border-radius: 0; box-shadow: none;
 }
 .fishing-stage .px-map-img { width: 100%; height: 100%; object-fit: contain; }
-.fishing-stage .px-map-world { overflow: visible; transform-origin: center; will-change: transform; }
+.fishing-stage .px-map-world { overflow: visible; transform-origin: center; }
 .fishing-stage .px-map-world .px-node,
 .fishing-stage .px-map-world .px-node:active {
-  transform: translate(-50%, -50%) scale(calc(1 / var(--map-scale, 1))) !important;
+  /* The map grows by layout during zoom, so fixed-size labels and hit targets
+     must not be inversely scaled as they were when the map used transform:scale. */
+  transform: translate(-50%, -50%) !important;
 }
 .fishing-switches {
   display: flex; flex-wrap: nowrap; gap: 6px; margin: 0; padding: 6px;

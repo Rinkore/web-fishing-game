@@ -84,6 +84,13 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     await page.mouse.wheel(0, -180);
     await page.waitForFunction(width => document.querySelector('.px-map').getBoundingClientRect().width > width + 1, zoomedWidth);
     check(await page.locator('.px-map').evaluate(e => parseFloat(e.style.getPropertyValue('--map-scale')) > 1), 'wheel enlarges the map');
+    check(await page.locator('.px-map').evaluate(e => {
+      // The CSS-pixel terrain must be laid out at its zoomed size. Scaling the
+      // whole map element promotes box-shadow art to a filtered compositing
+      // layer and makes the pixel coastline soft after zooming.
+      return parseFloat(e.style.width) > 0 && parseFloat(e.style.height) > 0 &&
+        !/\bscale\s*\(/.test(e.style.transform);
+    }), 'zoom lays out the map at its target size instead of filtering a scaled layer');
     const dragNode = await page.locator('.px-node[data-s="dock"] .pn-name').boundingBox();
     await page.mouse.move(dragNode.x + dragNode.width / 2, dragNode.y + dragNode.height / 2);
     const beforeDrag = await page.locator('.px-map').evaluate(e => e.getBoundingClientRect().left);
