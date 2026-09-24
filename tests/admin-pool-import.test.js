@@ -69,12 +69,12 @@ window.__boot = (cfg, fresh) => window.AdminPoolImport.render(document.querySele
     ok(/economy/.test(rules) && /大物塘|big/.test(rules), '规则里应列出可用预设池');
     ok(/权重是相对值/.test(rules), '规则里应说明权重是相对值');
 
-    // 2) 填入示例 → 预检通过并列出步骤
+    // 2) 填入示例 → 预检通过并列出步骤（示例挂在内置 map 下：不再有建图步骤）
     await page.locator('[data-fill-example]').click();
     await page.waitForFunction(() => !document.querySelector('[data-run]').disabled);
     const planText = await page.locator('[data-plan]').textContent();
-    ok(/预检通过：将执行 5 步/.test(planText), '示例应预检通过并列出 5 步，实际：' + planText.slice(0, 60));
-    ok(/新建地图 coral_sea/.test(planText) && /新建钓点 coral_flat/.test(planText) && /覆盖鱼池 coral_deep|覆盖鱼池 coral_flat/.test(planText), '步骤清单应包含建图/建点/写池');
+    ok(/预检通过：将执行 4 步/.test(planText), '示例应预检通过并列出 4 步，实际：' + planText.slice(0, 60));
+    ok(!/新建地图/.test(planText) && /新建钓点 coral_flat/.test(planText) && /覆盖鱼池 coral_flat/.test(planText), '内置地图不再建图，步骤清单只含建点/写池');
     ok(/tier\/gate 是预留字段/.test(planText), '预留字段应给出提示而不是静默忽略');
 
     // 3) 坏文档被拦：非法地图 id / 未知鱼 / 权重为 0
@@ -88,22 +88,21 @@ window.__boot = (cfg, fresh) => window.AdminPoolImport.render(document.querySele
     ok(/weight 必须是大于 0/.test(badText), '应指出权重必须大于 0');
     ok(await page.locator('[data-run]').isDisabled(), '预检未通过时导入按钮应禁用');
 
-    // 4) 正常导入：按顺序发请求，「已存在」按跳过处理
-    await page.evaluate(() => { window.__existing = { '/api/admin/ground/add': 'ground_exists' }; window.__calls = []; });
+    // 4) 正常导入：按顺序发请求，「已存在」按跳过处理（内置地图不触发建图请求）
+    await page.evaluate(() => { window.__calls = []; });
     await page.locator('[data-fill-example]').click();
     await page.waitForFunction(() => !document.querySelector('[data-run]').disabled);
     await page.locator('[data-run]').click();
     await page.waitForFunction(() => /导入完成/.test(document.querySelector('[data-doc-status]').textContent));
     const calls = await page.evaluate(() => window.__calls.map(c => c.url));
-    assert.deepEqual(calls, ['/api/admin/ground/add', '/api/admin/spot/add', '/api/admin/spot/pool', '/api/admin/spot/add', '/api/admin/spot/buffs'], '请求顺序应为建图→建点→写池→建点→写增益');
-    const body = await page.evaluate(() => window.__calls[1].body);
-    ok(body.groundId === 'coral_sea' && body.id === 'coral_flat' && body.preset === 'big', '建点请求应带 groundId/id/preset');
-    const poolBody = await page.evaluate(() => window.__calls[2].body);
+    assert.deepEqual(calls, ['/api/admin/spot/add', '/api/admin/spot/pool', '/api/admin/spot/add', '/api/admin/spot/buffs'], '请求顺序应为建点→写池→建点→写增益（内置地图跳过建图）');
+    const body = await page.evaluate(() => window.__calls[0].body);
+    ok(body.groundId === 'map' && body.id === 'coral_flat' && body.preset === 'big', '建点请求应带 groundId/id/preset');
+    const poolBody = await page.evaluate(() => window.__calls[1].body);
     ok(poolBody.pool.length === 5 && poolBody.pool[4].pick === 'component:' && poolBody.pool[0].weight === 10, '写池请求应带完整权重与随机组件项');
-    const addDeep = await page.evaluate(() => window.__calls[3].body);
-    ok(addDeep.map === 'voyage' && addDeep.minShip === 3, '远洋钓点应带 map/minShip');
+    const addDeep = await page.evaluate(() => window.__calls[2].body);
+    ok(addDeep.map == null && addDeep.minShip === 3, '统一世界地图后新建钓点不再携带 map 字段');
     const result = await page.locator('[data-plan]').textContent();
-    ok(/已存在，跳过/.test(result), '「已存在」应记为跳过而不是失败');
     ok(await page.evaluate(() => window.__freshCalls > 0), '导入成功后应刷新钓点列表');
 
     // 5) 中途失败：停止执行、指出失败步骤、后续步骤不再发请求
@@ -112,7 +111,7 @@ window.__boot = (cfg, fresh) => window.AdminPoolImport.render(document.querySele
     await page.locator('[data-run]').click();
     await page.waitForFunction(() => /已停止/.test(document.querySelector('[data-doc-status]').textContent));
     const after = await page.evaluate(() => window.__calls.map(c => c.url));
-    assert.deepEqual(after, ['/api/admin/ground/add', '/api/admin/spot/add', '/api/admin/spot/pool'], '失败后不应继续执行后续步骤');
+    assert.deepEqual(after, ['/api/admin/spot/add', '/api/admin/spot/pool'], '失败后不应继续执行后续步骤');
     ok(/失败：/.test(await page.locator('[data-plan]').textContent()), '结果应标出失败的那一步');
 
     // 6) 导出 → 再预检往返可用

@@ -250,15 +250,14 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
       await admin.mouse.move(mapBox.x + mapBox.width * x / 100, mapBox.y + mapBox.height * y / 100, { steps: 5 });
       await admin.mouse.up();
     }
-    await admin.locator('[data-mtab="voyage"]').click();
     await admin.locator('#gd-map-save').click();
     await admin.waitForFunction(() => document.querySelector('#gd-map-state').textContent.includes('已保存'));
     check(savedPositions.groundId === 'map', 'admin keeps existing save endpoint and ground identity');
     const positions = Object.fromEntries(savedPositions.list.map(s => [s.spotId, s.pos]));
     check(Math.abs(positions.dock[0] - 65.2) < .2 && Math.abs(positions.dock[1] - 38.1) < .2, 'nearshore drag saves inverse projected legacy coordinates across list changes');
     check(Math.abs(positions.shore[0] - 40.5) < .2 && Math.abs(positions.shore[1] - 61.9) < .2, 'offshore drag saves inverse projected legacy coordinates');
-    await admin.locator('[data-mtab="nearshore"]').click();
-    check(await admin.locator('.gd-node[data-s="shore"]').evaluate(e => Math.abs(parseFloat(e.style.left) - 70) < .2), 'saved map positions survive subsequent category changes');
+    check(await admin.locator('.gd-node[data-s="shore"]').evaluate(e => Math.abs(parseFloat(e.style.left) - 70) < .2), 'saved map positions survive redraws');
+    check(await admin.locator('[data-mtab]').count() === 0 && await admin.locator('#ns-map').count() === 0, 'admin no longer exposes deprecated fishing zones');
     await admin.close();
     assert.deepEqual(errors, []); pass++;
     console.log('通过 ' + pass + ' 项，失败 0 项');

@@ -23,11 +23,11 @@
   const EXAMPLE = {
     version: 1,
     grounds: [{
-      id: 'coral_sea',
-      name: '珊瑚海',
+      id: 'map',
+      name: '世界地图',
       spots: [
         {
-          id: 'coral_flat', name: '珊瑚浅滩', map: 'voyage', minShip: 2, preset: 'big', tier: 4, gate: 8000,
+          id: 'coral_flat', name: '珊瑚浅滩', minShip: 2, preset: 'big', tier: 4, gate: 8000,
           pool: [
             { pick: 'fish:grouper', weight: 10 },
             { pick: 'fish:rubysnapper', weight: 8 },
@@ -36,7 +36,7 @@
             { pick: 'component:', weight: 6 },
           ],
         },
-        { id: 'coral_deep', name: '珊瑚深沟', map: 'voyage', minShip: 3, preset: 'rare', buffs: [{ type: 'skill', value: -5 }, { type: 'rare', value: 20 }] },
+        { id: 'coral_deep', name: '珊瑚深沟', minShip: 3, preset: 'rare', buffs: [{ type: 'skill', value: -5 }, { type: 'rare', value: 20 }] },
       ],
     }],
   };
@@ -50,13 +50,13 @@
     const compIds = new Set(((catalog.components) || []).map(c => c.id));
     let groundIds = new Set(((cfg && cfg.grounds) || []).map(g => g.id));
     host.innerHTML = '<h2>📥 一键导入鱼池文档</h2>'
-      + '<p class="hint">用于换地图：把一整张地图的钓点与掉落池写成一份文档，预检通过后按 建图 → 建点 → 写鱼池 的顺序自动执行。<strong>只新建与覆盖，不删除任何东西</strong>；要下线钓点请用左侧列表的删除按钮。</p>'
+      + '<p class="hint">用于配置世界地图：把钓点与掉落池写成一份文档，预检通过后按 建图 → 建点 → 写鱼池 的顺序自动执行。当前地图不再按钓区分栏。<strong>只新建与覆盖，不删除任何东西</strong>；要下线钓点请用左侧列表的删除按钮。</p>'
       + '<details class="ops-card" open><summary>文档编写规则</summary>'
       + '<div class="scroll"><table class="tbl"><thead><tr><th>字段</th><th>必填</th><th>说明</th></tr></thead><tbody>'
       + '<tr><td>version</td><td>否</td><td>固定 1，用于将来换格式</td></tr>'
-      + '<tr><td>grounds[]</td><td><b>是</b></td><td>一张地图一项。<code>id</code> 必填，规则 <code>^[a-z][a-z0-9_]{1,23}$</code>（2~24 位，字母开头，小写）；<code>name</code> 必填，≤20 字</td></tr>'
+      + '<tr><td>grounds[]</td><td><b>是</b></td><td>世界地图一项（通常使用现有的 <code>map</code>）。<code>id</code> 必填，规则 <code>^[a-z][a-z0-9_]{1,23}$</code>（2~24 位，字母开头，小写）；<code>name</code> 必填，≤20 字</td></tr>'
       + '<tr><td>grounds[].spots[]</td><td><b>是</b></td><td>地图下的钓点。<code>id</code> 规则 <code>^[a-z][a-z0-9_]{0,23}$</code>；<code>name</code> ≤20 字</td></tr>'
-      + '<tr><td>spots[].map</td><td>否</td><td>填 <code>voyage</code> 表示出现在「远洋图」页签；留空＝近岸图</td></tr>'
+      + '<tr><td>spots[].map</td><td>否</td><td>历史兼容字段。新配置请留空；后台现在统一显示在世界地图。旧文档中的 <code>voyage</code> 会原样提交以保持兼容。</td></tr>'
       + '<tr><td>spots[].minShip</td><td>否</td><td>需要的船级 0~5；留空或 0＝无门槛</td></tr>'
       + '<tr><td>spots[].preset</td><td>否</td><td>新建时先套用的预设池：' + esc(presets.join(' / ') || 'economy') + '（默认 economy）</td></tr>'
       + '<tr><td>spots[].pool[]</td><td>否</td><td>写这份池就<strong>覆盖</strong>整池（不是追加）。每项 <code>{pick, weight}</code>，weight 必须 &gt; 0</td></tr>'
@@ -138,6 +138,7 @@
           if (!snameOk) problems.push(sAt + '.name 必填且不超过 20 字');
           let mapOk = true;
           if (s.map != null && s.map !== '' && s.map !== 'voyage') { problems.push(sAt + '.map 只能是 voyage 或留空'); mapOk = false; }
+          if (s.map === 'voyage') warnings.push(sAt + '.map=voyage 是历史字段，当前后台统一显示在世界地图');
           let shipOk = true;
           if (s.minShip != null && !(Number(s.minShip) >= 0 && Number(s.minShip) <= 5)) { problems.push(sAt + '.minShip 需在 0~5'); shipOk = false; }
           let preset = String(s.preset || 'economy');

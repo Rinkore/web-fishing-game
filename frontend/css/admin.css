@@ -563,6 +563,20 @@ textarea.ipt { width: 100%; min-height: 90px; resize: vertical; font-family: Con
 /* ---------- 滚动条：与后台深色主题一致（深底 + 蓝灰滑块，细） ----------
    后台页面只加载本文件，与游戏端（style.css/pixel.css）各写一份；
    标准属性（Firefox / Chrome 121+）与 Webkit 伪元素两套写法都给出。 */
+.scroll {
+  max-width: 100%;
+  overflow: auto;
+}
+/* 导入文档示例是长行 JSON；限制在卡片宽度内，避免把整个管理页撑出横向滚动。 */
+pre.scroll {
+  white-space: pre;
+  overflow: auto;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .16);
+}
 :root { scrollbar-color: var(--line) var(--bg); scrollbar-width: thin; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
