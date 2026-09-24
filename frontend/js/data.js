@@ -655,36 +655,8 @@
         "speed",
         "size"
       ],
-      "mainValues": [
-        3,
-        3.35,
-        3.7,
-        4.05,
-        4.4,
-        4.75,
-        5.1,
-        5.45,
-        5.8,
-        6.15,
-        6.5,
-        6.85,
-        7.2
-      ],
-      "subValues": [
-        0,
-        0,
-        0,
-        0,
-        1,
-        1.4,
-        1.8,
-        2.2,
-        2.6,
-        3,
-        3.4,
-        3.8,
-        4.2
-      ]
+      "mainValues": [4, 5.2, 6.4, 7.6, 9, 10.4, 11.8, 13.2, 14.6, 16, 17.4, 18.8, 20.2],
+      "subValues": [0, 0, 0, 0, 3, 4.2, 5.4, 6.6, 7.8, 9, 10.2, 11.4, 12.6]
     },
     "hook": {
       "name": "巨物钩",
@@ -693,36 +665,8 @@
         "skill",
         "double"
       ],
-      "mainValues": [
-        8,
-        9.5,
-        11,
-        12.5,
-        14,
-        15.5,
-        17,
-        18.5,
-        20,
-        21.5,
-        23,
-        24.5,
-        26
-      ],
-      "subValues": [
-        0,
-        0,
-        0,
-        0,
-        1,
-        1.4,
-        1.8,
-        2.2,
-        2.6,
-        3,
-        3.4,
-        3.8,
-        4.2
-      ]
+      "mainValues": [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34],
+      "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     },
     "bait": {
       "name": "双生拟饵",
@@ -731,36 +675,8 @@
         "skill",
         "size"
       ],
-      "mainValues": [
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        17
-      ],
-      "subValues": [
-        0,
-        0,
-        0,
-        0,
-        1,
-        1.4,
-        1.8,
-        2.2,
-        2.6,
-        3,
-        3.4,
-        3.8,
-        4.2
-      ]
+      "mainValues": [4, 4.6, 5.2, 5.8, 6.4, 7, 7.6, 8.2, 8.8, 9.4, 10, 10.6, 11.2],
+      "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     },
     "reel": {
       "name": "疾风卷线器",
@@ -769,36 +685,8 @@
         "skill",
         "double"
       ],
-      "mainValues": [
-        8,
-        9.2,
-        10.4,
-        11.6,
-        12.8,
-        14,
-        15.2,
-        16.4,
-        17.6,
-        18.8,
-        20,
-        21.2,
-        22.4
-      ],
-      "subValues": [
-        0,
-        0,
-        0,
-        0,
-        1,
-        1.4,
-        1.8,
-        2.2,
-        2.6,
-        3,
-        3.4,
-        3.8,
-        4.2
-      ]
+      "mainValues": [12, 14.5, 17, 19.5, 22, 24.5, 27, 29.5, 32, 34.5, 37, 40, 44],
+      "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     },
     "accessory": {
       "name": "稳流浮漂",
@@ -807,36 +695,8 @@
         "double",
         "size"
       ],
-      "mainValues": [
-        2,
-        2.3,
-        2.6,
-        2.9,
-        3.2,
-        3.5,
-        3.8,
-        4.1,
-        4.4,
-        4.7,
-        5,
-        5.3,
-        5.6
-      ],
-      "subValues": [
-        0,
-        0,
-        0,
-        0,
-        1,
-        1.4,
-        1.8,
-        2.2,
-        2.6,
-        3,
-        3.4,
-        3.8,
-        4.2
-      ]
+      "mainValues": [5, 5.6, 6.2, 6.8, 7.4, 8, 8.6, 9.2, 9.8, 10.4, 11, 11.6, 12.2],
+      "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     }
   },
   "costs": {
@@ -1043,10 +903,10 @@
       "description": "有效钓鱼积累热量，用于优惠精工和精工预设切换。",
       "coreAttributes": {
         "rod": {
-          "skill": 3
+          "skill": 10
         },
         "charm": {
-          "speed": 2
+          "speed": 10
         }
       },
       "stages": [
@@ -1081,10 +941,10 @@
       "description": "成功上鱼积累丰收进度，额外获得可出售鱼获，不重复写入纪录。",
       "coreAttributes": {
         "rod": {
-          "double": 3
+          "double": 10
         },
         "charm": {
-          "skill": 2
+          "skill": 8
         }
       },
       "stages": [
@@ -1127,10 +987,10 @@
       "description": "追踪当前钓点已有目标鱼种，积累权重并按鱼种稀缺度保底。",
       "coreAttributes": {
         "rod": {
-          "skill": 3
+          "skill": 10
         },
         "charm": {
-          "size": 2
+          "size": 10
         }
       },
       "stages": [
@@ -1177,10 +1037,10 @@
       "description": "少量混入同区间均匀分布，轻微增加大小两端的个体，不扩大体型上限。",
       "coreAttributes": {
         "rod": {
-          "size": 3
+          "size": 10
         },
         "charm": {
-          "skill": 2
+          "skill": 8
         }
       },
       "stages": [
@@ -1394,7 +1254,7 @@
   GEAR_SETS.forEach(s=>{const x=GEAR_SYSTEM.sets[s.id]||GEAR_SYSTEM.specializations[s.id];if(x){s.name=x.name;s.effect=x.description;if(GEAR_SYSTEM.sets[s.id])s.pieces.forEach(p=>{p.type=Object.keys(x.coreAttributes[p.part])[0];p.value=x.coreAttributes[p.part][p.type];const b=COMPONENT_BASES.find(b=>b.id==='set_'+s.id+'_'+p.part);if(b){b.name=x.name+(p.part==='rod'?'核心':'徽记');b.pool=[{type:p.type,min:p.value,max:p.value}];}});}});
   [['gear_alloy','强化合金'],['gear_fine','精工合金'],['gear_crystal','熔炼催化晶'],['storm_relic','风暴遗物']].forEach(([id,name])=>{if(!MATERIALS.some(m=>m.id===id))MATERIALS.push({id,name,rarity:'rare',price:0,size:null,noSell:true,expeditionOnly:true});});
   // Only growth materials are voyage-exclusive. Ship and chest resources retain their existing sources.
-  AFFIX_LABEL.skill='稳定';
+  AFFIX_LABEL.skill='技巧';
   const BASE_MAP = {};
   COMPONENT_BASES.forEach(function (b) { b.pool = b.pool.map(function (a) { return { type: a.type, min: a.min, max: a.max }; }); BASE_MAP[b.id] = b; });
   function componentBase(id) { return BASE_MAP[id] || null; }

@@ -2,7 +2,7 @@
   "format": 1,
   "version": "v0.22.0",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "aa4f22ee8452420a5742416a7f8dacb11b8f90b888de8f232529c7127c27c2c7",
+  "sourceSHA256": "0321c058fe19930a0d2ec9b6afa480d7c386435938e68d4ff2b2869786b96383",
   "constants": {
     "GEAR_SYSTEM": {
       "enabled": true,
@@ -22,34 +22,34 @@
             "size"
           ],
           "mainValues": [
-            3,
-            3.35,
-            3.7,
-            4.05,
-            4.4,
-            4.75,
-            5.1,
-            5.45,
-            5.8,
-            6.15,
-            6.5,
-            6.85,
-            7.2
+            4,
+            5.2,
+            6.4,
+            7.6,
+            9,
+            10.4,
+            11.8,
+            13.2,
+            14.6,
+            16,
+            17.4,
+            18.8,
+            20.2
           ],
           "subValues": [
             0,
             0,
             0,
             0,
-            1,
-            1.4,
-            1.8,
-            2.2,
-            2.6,
             3,
-            3.4,
-            3.8,
-            4.2
+            4.2,
+            5.4,
+            6.6,
+            7.8,
+            9,
+            10.2,
+            11.4,
+            12.6
           ]
         },
         "hook": {
@@ -60,34 +60,34 @@
             "double"
           ],
           "mainValues": [
-            8,
-            9.5,
-            11,
-            12.5,
+            10,
+            12,
             14,
-            15.5,
-            17,
-            18.5,
+            16,
+            18,
             20,
-            21.5,
-            23,
-            24.5,
-            26
+            22,
+            24,
+            26,
+            28,
+            30,
+            32,
+            34
           ],
           "subValues": [
             0,
             0,
             0,
             0,
-            1,
-            1.4,
-            1.8,
-            2.2,
-            2.6,
+            2,
             3,
-            3.4,
-            3.8,
-            4.2
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
           ]
         },
         "bait": {
@@ -98,34 +98,34 @@
             "size"
           ],
           "mainValues": [
-            5,
-            6,
+            4,
+            4.6,
+            5.2,
+            5.8,
+            6.4,
             7,
-            8,
-            9,
+            7.6,
+            8.2,
+            8.8,
+            9.4,
             10,
-            11,
-            12,
-            13,
-            14,
-            15,
-            16,
-            17
+            10.6,
+            11.2
           ],
           "subValues": [
             0,
             0,
             0,
             0,
-            1,
-            1.4,
-            1.8,
-            2.2,
-            2.6,
+            2,
             3,
-            3.4,
-            3.8,
-            4.2
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
           ]
         },
         "reel": {
@@ -136,34 +136,34 @@
             "double"
           ],
           "mainValues": [
-            8,
-            9.2,
-            10.4,
-            11.6,
-            12.8,
-            14,
-            15.2,
-            16.4,
-            17.6,
-            18.8,
-            20,
-            21.2,
-            22.4
+            12,
+            14.5,
+            17,
+            19.5,
+            22,
+            24.5,
+            27,
+            29.5,
+            32,
+            34.5,
+            37,
+            40,
+            44
           ],
           "subValues": [
             0,
             0,
             0,
             0,
-            1,
-            1.4,
-            1.8,
-            2.2,
-            2.6,
+            2,
             3,
-            3.4,
-            3.8,
-            4.2
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
           ]
         },
         "accessory": {
@@ -174,34 +174,34 @@
             "size"
           ],
           "mainValues": [
-            2,
-            2.3,
-            2.6,
-            2.9,
-            3.2,
-            3.5,
-            3.8,
-            4.1,
-            4.4,
-            4.7,
             5,
-            5.3,
-            5.6
+            5.6,
+            6.2,
+            6.8,
+            7.4,
+            8,
+            8.6,
+            9.2,
+            9.8,
+            10.4,
+            11,
+            11.6,
+            12.2
           ],
           "subValues": [
             0,
             0,
             0,
             0,
-            1,
-            1.4,
-            1.8,
-            2.2,
-            2.6,
+            2,
             3,
-            3.4,
-            3.8,
-            4.2
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
           ]
         }
       },
@@ -409,10 +409,10 @@
           "description": "有效钓鱼积累热量，用于优惠精工和精工预设切换。",
           "coreAttributes": {
             "rod": {
-              "skill": 3
+              "skill": 10
             },
             "charm": {
-              "speed": 2
+              "speed": 10
             }
           },
           "stages": [
@@ -447,10 +447,10 @@
           "description": "成功上鱼积累丰收进度，额外获得可出售鱼获，不重复写入纪录。",
           "coreAttributes": {
             "rod": {
-              "double": 3
+              "double": 10
             },
             "charm": {
-              "skill": 2
+              "skill": 8
             }
           },
           "stages": [
@@ -493,10 +493,10 @@
           "description": "追踪当前钓点已有目标鱼种，积累权重并按鱼种稀缺度保底。",
           "coreAttributes": {
             "rod": {
-              "skill": 3
+              "skill": 10
             },
             "charm": {
-              "size": 2
+              "size": 10
             }
           },
           "stages": [
@@ -543,10 +543,10 @@
           "description": "少量混入同区间均匀分布，轻微增加大小两端的个体，不扩大体型上限。",
           "coreAttributes": {
             "rod": {
-              "size": 3
+              "size": 10
             },
             "charm": {
-              "skill": 2
+              "skill": 8
             }
           },
           "stages": [
@@ -1580,13 +1580,13 @@
             "part": "rod",
             "name": "猎王追踪核心",
             "type": "skill",
-            "value": 3
+            "value": 10
           },
           {
             "part": "charm",
             "name": "猎王追踪徽记",
             "type": "size",
-            "value": 2
+            "value": 10
           }
         ]
       },
@@ -1624,13 +1624,13 @@
             "part": "rod",
             "name": "锻造工匠核心",
             "type": "skill",
-            "value": 3
+            "value": 10
           },
           {
             "part": "charm",
             "name": "锻造工匠徽记",
             "type": "speed",
-            "value": 2
+            "value": 10
           }
         ]
       },
@@ -1668,13 +1668,13 @@
             "part": "rod",
             "name": "生态研究核心",
             "type": "size",
-            "value": 3
+            "value": 10
           },
           {
             "part": "charm",
             "name": "生态研究徽记",
             "type": "skill",
-            "value": 2
+            "value": 8
           }
         ]
       },
@@ -1734,13 +1734,13 @@
             "part": "rod",
             "name": "丰收渔获核心",
             "type": "double",
-            "value": 3
+            "value": 10
           },
           {
             "part": "charm",
             "name": "丰收渔获徽记",
             "type": "skill",
-            "value": 2
+            "value": 8
           }
         ]
       }
@@ -1826,7 +1826,7 @@
     ],
     "AFFIX_LABEL": {
       "speed": "钓速",
-      "skill": "稳定",
+      "skill": "技巧",
       "rare": "稀有度",
       "material": "材料概率",
       "size": "体型",
@@ -2709,18 +2709,18 @@
         "pool": [
           {
             "type": "skill",
-            "min": 3,
-            "max": 7.2
+            "min": 4,
+            "max": 20.2
           },
           {
             "type": "speed",
             "min": 0,
-            "max": 4.2
+            "max": 12.6
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 12.6
           }
         ]
       },
@@ -2732,18 +2732,18 @@
         "pool": [
           {
             "type": "skill",
-            "min": 3,
-            "max": 7.2
+            "min": 4,
+            "max": 20.2
           },
           {
             "type": "speed",
             "min": 0,
-            "max": 4.2
+            "max": 12.6
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 12.6
           }
         ]
       },
@@ -2755,18 +2755,18 @@
         "pool": [
           {
             "type": "skill",
-            "min": 3,
-            "max": 7.2
+            "min": 4,
+            "max": 20.2
           },
           {
             "type": "speed",
             "min": 0,
-            "max": 4.2
+            "max": 12.6
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 12.6
           }
         ]
       },
@@ -2778,18 +2778,18 @@
         "pool": [
           {
             "type": "skill",
-            "min": 3,
-            "max": 7.2
+            "min": 4,
+            "max": 20.2
           },
           {
             "type": "speed",
             "min": 0,
-            "max": 4.2
+            "max": 12.6
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 12.6
           }
         ]
       },
@@ -2801,18 +2801,18 @@
         "pool": [
           {
             "type": "skill",
-            "min": 3,
-            "max": 7.2
+            "min": 4,
+            "max": 20.2
           },
           {
             "type": "speed",
             "min": 0,
-            "max": 4.2
+            "max": 12.6
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 12.6
           }
         ]
       },
@@ -2824,18 +2824,18 @@
         "pool": [
           {
             "type": "size",
-            "min": 8,
-            "max": 26
+            "min": 10,
+            "max": 34
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -2847,18 +2847,18 @@
         "pool": [
           {
             "type": "size",
-            "min": 8,
-            "max": 26
+            "min": 10,
+            "max": 34
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -2870,18 +2870,18 @@
         "pool": [
           {
             "type": "size",
-            "min": 8,
-            "max": 26
+            "min": 10,
+            "max": 34
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -2893,18 +2893,18 @@
         "pool": [
           {
             "type": "size",
-            "min": 8,
-            "max": 26
+            "min": 10,
+            "max": 34
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -2916,18 +2916,18 @@
         "pool": [
           {
             "type": "size",
-            "min": 8,
-            "max": 26
+            "min": 10,
+            "max": 34
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -2939,18 +2939,18 @@
         "pool": [
           {
             "type": "double",
-            "min": 5,
-            "max": 17
+            "min": 4,
+            "max": 11.2
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -2962,18 +2962,18 @@
         "pool": [
           {
             "type": "double",
-            "min": 5,
-            "max": 17
+            "min": 4,
+            "max": 11.2
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -2985,18 +2985,18 @@
         "pool": [
           {
             "type": "double",
-            "min": 5,
-            "max": 17
+            "min": 4,
+            "max": 11.2
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3008,18 +3008,18 @@
         "pool": [
           {
             "type": "double",
-            "min": 5,
-            "max": 17
+            "min": 4,
+            "max": 11.2
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3031,18 +3031,18 @@
         "pool": [
           {
             "type": "double",
-            "min": 5,
-            "max": 17
+            "min": 4,
+            "max": 11.2
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3054,18 +3054,18 @@
         "pool": [
           {
             "type": "speed",
-            "min": 8,
-            "max": 22.4
+            "min": 12,
+            "max": 44
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3077,18 +3077,18 @@
         "pool": [
           {
             "type": "speed",
-            "min": 8,
-            "max": 22.4
+            "min": 12,
+            "max": 44
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3100,18 +3100,18 @@
         "pool": [
           {
             "type": "speed",
-            "min": 8,
-            "max": 22.4
+            "min": 12,
+            "max": 44
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3123,18 +3123,18 @@
         "pool": [
           {
             "type": "speed",
-            "min": 8,
-            "max": 22.4
+            "min": 12,
+            "max": 44
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3146,18 +3146,18 @@
         "pool": [
           {
             "type": "speed",
-            "min": 8,
-            "max": 22.4
+            "min": 12,
+            "max": 44
           },
           {
             "type": "skill",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3169,18 +3169,18 @@
         "pool": [
           {
             "type": "skill",
-            "min": 2,
-            "max": 5.6
+            "min": 5,
+            "max": 12.2
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3192,18 +3192,18 @@
         "pool": [
           {
             "type": "skill",
-            "min": 2,
-            "max": 5.6
+            "min": 5,
+            "max": 12.2
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3215,18 +3215,18 @@
         "pool": [
           {
             "type": "skill",
-            "min": 2,
-            "max": 5.6
+            "min": 5,
+            "max": 12.2
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3238,18 +3238,18 @@
         "pool": [
           {
             "type": "skill",
-            "min": 2,
-            "max": 5.6
+            "min": 5,
+            "max": 12.2
           },
           {
             "type": "double",
             "min": 0,
-            "max": 4.2
+            "max": 10
           },
           {
             "type": "size",
             "min": 0,
-            "max": 4.2
+            "max": 10
           }
         ]
       },
@@ -3293,8 +3293,8 @@
         "pool": [
           {
             "type": "skill",
-            "min": 3,
-            "max": 3
+            "min": 10,
+            "max": 10
           }
         ]
       },
@@ -3308,8 +3308,8 @@
         "pool": [
           {
             "type": "size",
-            "min": 2,
-            "max": 2
+            "min": 10,
+            "max": 10
           }
         ]
       },
@@ -3353,8 +3353,8 @@
         "pool": [
           {
             "type": "skill",
-            "min": 3,
-            "max": 3
+            "min": 10,
+            "max": 10
           }
         ]
       },
@@ -3368,8 +3368,8 @@
         "pool": [
           {
             "type": "speed",
-            "min": 2,
-            "max": 2
+            "min": 10,
+            "max": 10
           }
         ]
       },
@@ -3413,8 +3413,8 @@
         "pool": [
           {
             "type": "size",
-            "min": 3,
-            "max": 3
+            "min": 10,
+            "max": 10
           }
         ]
       },
@@ -3428,8 +3428,8 @@
         "pool": [
           {
             "type": "skill",
-            "min": 2,
-            "max": 2
+            "min": 8,
+            "max": 8
           }
         ]
       },
@@ -3503,8 +3503,8 @@
         "pool": [
           {
             "type": "double",
-            "min": 3,
-            "max": 3
+            "min": 10,
+            "max": 10
           }
         ]
       },
@@ -3518,8 +3518,8 @@
         "pool": [
           {
             "type": "skill",
-            "min": 2,
-            "max": 2
+            "min": 8,
+            "max": 8
           }
         ]
       }
@@ -4197,12 +4197,6 @@
         "implemented": true
       },
       {
-        "id": "mail",
-        "name": "邮件",
-        "icon": "✉️",
-        "implemented": true
-      },
-      {
         "id": "workshop",
         "name": "工坊",
         "icon": "⚒",
@@ -4230,6 +4224,12 @@
         "id": "logs",
         "name": "日志",
         "icon": "📜",
+        "implemented": true
+      },
+      {
+        "id": "mail",
+        "name": "邮件",
+        "icon": "✉️",
         "implemented": true
       },
       {
@@ -6150,18 +6150,18 @@
       "pool": [
         {
           "type": "skill",
-          "min": 3,
-          "max": 7.2
+          "min": 4,
+          "max": 20.2
         },
         {
           "type": "speed",
           "min": 0,
-          "max": 4.2
+          "max": 12.6
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 12.6
         }
       ],
       "setId": "",
@@ -6179,18 +6179,18 @@
       "pool": [
         {
           "type": "skill",
-          "min": 3,
-          "max": 7.2
+          "min": 4,
+          "max": 20.2
         },
         {
           "type": "speed",
           "min": 0,
-          "max": 4.2
+          "max": 12.6
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 12.6
         }
       ],
       "setId": "",
@@ -6208,18 +6208,18 @@
       "pool": [
         {
           "type": "skill",
-          "min": 3,
-          "max": 7.2
+          "min": 4,
+          "max": 20.2
         },
         {
           "type": "speed",
           "min": 0,
-          "max": 4.2
+          "max": 12.6
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 12.6
         }
       ],
       "setId": "",
@@ -6237,18 +6237,18 @@
       "pool": [
         {
           "type": "skill",
-          "min": 3,
-          "max": 7.2
+          "min": 4,
+          "max": 20.2
         },
         {
           "type": "speed",
           "min": 0,
-          "max": 4.2
+          "max": 12.6
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 12.6
         }
       ],
       "setId": "",
@@ -6266,18 +6266,18 @@
       "pool": [
         {
           "type": "skill",
-          "min": 3,
-          "max": 7.2
+          "min": 4,
+          "max": 20.2
         },
         {
           "type": "speed",
           "min": 0,
-          "max": 4.2
+          "max": 12.6
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 12.6
         }
       ],
       "setId": "",
@@ -6295,18 +6295,18 @@
       "pool": [
         {
           "type": "size",
-          "min": 8,
-          "max": 26
+          "min": 10,
+          "max": 34
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6324,18 +6324,18 @@
       "pool": [
         {
           "type": "size",
-          "min": 8,
-          "max": 26
+          "min": 10,
+          "max": 34
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6353,18 +6353,18 @@
       "pool": [
         {
           "type": "size",
-          "min": 8,
-          "max": 26
+          "min": 10,
+          "max": 34
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6382,18 +6382,18 @@
       "pool": [
         {
           "type": "size",
-          "min": 8,
-          "max": 26
+          "min": 10,
+          "max": 34
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6411,18 +6411,18 @@
       "pool": [
         {
           "type": "size",
-          "min": 8,
-          "max": 26
+          "min": 10,
+          "max": 34
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6440,18 +6440,18 @@
       "pool": [
         {
           "type": "double",
-          "min": 5,
-          "max": 17
+          "min": 4,
+          "max": 11.2
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6469,18 +6469,18 @@
       "pool": [
         {
           "type": "double",
-          "min": 5,
-          "max": 17
+          "min": 4,
+          "max": 11.2
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6498,18 +6498,18 @@
       "pool": [
         {
           "type": "double",
-          "min": 5,
-          "max": 17
+          "min": 4,
+          "max": 11.2
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6527,18 +6527,18 @@
       "pool": [
         {
           "type": "double",
-          "min": 5,
-          "max": 17
+          "min": 4,
+          "max": 11.2
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6556,18 +6556,18 @@
       "pool": [
         {
           "type": "double",
-          "min": 5,
-          "max": 17
+          "min": 4,
+          "max": 11.2
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6585,18 +6585,18 @@
       "pool": [
         {
           "type": "speed",
-          "min": 8,
-          "max": 22.4
+          "min": 12,
+          "max": 44
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6614,18 +6614,18 @@
       "pool": [
         {
           "type": "speed",
-          "min": 8,
-          "max": 22.4
+          "min": 12,
+          "max": 44
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6643,18 +6643,18 @@
       "pool": [
         {
           "type": "speed",
-          "min": 8,
-          "max": 22.4
+          "min": 12,
+          "max": 44
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6672,18 +6672,18 @@
       "pool": [
         {
           "type": "speed",
-          "min": 8,
-          "max": 22.4
+          "min": 12,
+          "max": 44
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6701,18 +6701,18 @@
       "pool": [
         {
           "type": "speed",
-          "min": 8,
-          "max": 22.4
+          "min": 12,
+          "max": 44
         },
         {
           "type": "skill",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6730,18 +6730,18 @@
       "pool": [
         {
           "type": "skill",
-          "min": 2,
-          "max": 5.6
+          "min": 5,
+          "max": 12.2
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6759,18 +6759,18 @@
       "pool": [
         {
           "type": "skill",
-          "min": 2,
-          "max": 5.6
+          "min": 5,
+          "max": 12.2
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6788,18 +6788,18 @@
       "pool": [
         {
           "type": "skill",
-          "min": 2,
-          "max": 5.6
+          "min": 5,
+          "max": 12.2
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6817,18 +6817,18 @@
       "pool": [
         {
           "type": "skill",
-          "min": 2,
-          "max": 5.6
+          "min": 5,
+          "max": 12.2
         },
         {
           "type": "double",
           "min": 0,
-          "max": 4.2
+          "max": 10
         },
         {
           "type": "size",
           "min": 0,
-          "max": 4.2
+          "max": 10
         }
       ],
       "setId": "",
@@ -6884,8 +6884,8 @@
       "pool": [
         {
           "type": "skill",
-          "min": 3,
-          "max": 3
+          "min": 10,
+          "max": 10
         }
       ],
       "setId": "apex",
@@ -6903,8 +6903,8 @@
       "pool": [
         {
           "type": "size",
-          "min": 2,
-          "max": 2
+          "min": 10,
+          "max": 10
         }
       ],
       "setId": "apex",
@@ -6960,8 +6960,8 @@
       "pool": [
         {
           "type": "skill",
-          "min": 3,
-          "max": 3
+          "min": 10,
+          "max": 10
         }
       ],
       "setId": "forge",
@@ -6979,8 +6979,8 @@
       "pool": [
         {
           "type": "speed",
-          "min": 2,
-          "max": 2
+          "min": 10,
+          "max": 10
         }
       ],
       "setId": "forge",
@@ -7036,8 +7036,8 @@
       "pool": [
         {
           "type": "size",
-          "min": 3,
-          "max": 3
+          "min": 10,
+          "max": 10
         }
       ],
       "setId": "research",
@@ -7055,8 +7055,8 @@
       "pool": [
         {
           "type": "skill",
-          "min": 2,
-          "max": 2
+          "min": 8,
+          "max": 8
         }
       ],
       "setId": "research",
@@ -7150,8 +7150,8 @@
       "pool": [
         {
           "type": "double",
-          "min": 3,
-          "max": 3
+          "min": 10,
+          "max": 10
         }
       ],
       "setId": "harvest",
@@ -7169,8 +7169,8 @@
       "pool": [
         {
           "type": "skill",
-          "min": 2,
-          "max": 2
+          "min": 8,
+          "max": 8
         }
       ],
       "setId": "harvest",
