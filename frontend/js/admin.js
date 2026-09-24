@@ -2635,7 +2635,7 @@ window.Admin = (function () {
     }
     const posOf = function (sp) { return posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) || spotFactoryPos(sp.id) || [50, 50]; };
     host.innerHTML +=
-      '<div class="hint" style="margin-bottom:8px">直接拖动节点调整位置；所有钓点共用这张世界地图。' +
+      '<div class="hint" style="margin-bottom:8px">直接拖动节点调整位置；所有钓点共用这张世界地图，拖过中线会自动切换到另一侧坐标带（与玩家端投影保持一致）。' +
       '「恢复出厂」把该钓点退回 data.js 的默认坐标。改完点「保存坐标」立即对全服生效。</div>' +
       '<div class="gd-map px-map-voyage" id="gd-map-canvas">' +
       spots.map(function (sp) {
@@ -2651,15 +2651,21 @@ window.Admin = (function () {
     const canvas = $('gd-map-canvas');
     canvas.insertBefore(window.VoyageMap.create(), canvas.firstChild);
     let drag = null;
+    // 世界地图的坐标分成左右两条历史坐标带（近岸 = 左带 / 远洋 = 右带），玩家端按钓点的
+    // map 字段选带投影。拖过中线时自动切换到光标所在的一带并连带改 map，节点就能自由跨越。
+    const MIDLINE_X = 52;
+    let mapDraft = {};
     function setPos(node, sid, x, y) {
       const sp = spots.find(function (s) { return s.id === sid; });
-      const local = window.VoyageMap.unproject([x, y], sp.map === 'voyage');
+      const voyage = x >= MIDLINE_X;
+      const local = window.VoyageMap.unproject([x, y], voyage);
       const nx = Math.max(2, Math.min(98, Math.round(local[0] * 10) / 10));
       const ny = Math.max(2, Math.min(98, Math.round(local[1] * 10) / 10));
-      const world = window.VoyageMap.project([nx, ny], sp.map === 'voyage');
+      const world = window.VoyageMap.project([nx, ny], voyage);
       node.style.left = world[0] + '%';
       node.style.top = world[1] + '%';
       posDraft[sid] = [nx, ny];
+      mapDraft[sid] = voyage ? 'voyage' : '';
     }
     canvas.querySelectorAll('.gd-node').forEach(function (node) {
       node.addEventListener('pointerdown', function (ev) {
@@ -2694,15 +2700,19 @@ window.Admin = (function () {
     $('gd-map-save').onclick = function () {
       // 两个区域一起保存，切换列表分类时保留尚未提交的坐标草稿。
       const list = (allSpots || spots).map(function (sp) {
-        return { spotId: sp.id, pos: posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) };
+        const entry = { spotId: sp.id, pos: posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) };
+        if (mapDraft[sp.id] != null) entry.map = mapDraft[sp.id];
+        return entry;
       }).filter(function (e) { return e.pos; });
       adminApi('POST', '/api/admin/spot/pos', { token: token, groundId: g.id, list: list }).then(function (r) {
         if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
         list.forEach(function (entry) {
           const sp = spots.find(function (s) { return s.id === entry.spotId; });
-          if (sp) sp.pos = entry.pos.slice();
+          if (!sp) return;
+          if (entry.pos) sp.pos = entry.pos.slice();
+          if (entry.map != null) { if (entry.map) sp.map = 'voyage'; else delete sp.map; }
         });
-        posDraft = {};
+        posDraft = {}; mapDraft = {};
         setHint('gd-map-state', '<span style="color:var(--ok)">已保存 ' + (r.data.changed || 0) + ' 处坐标，玩家端地图立即生效</span>');
         toast('钓点坐标已保存');
       });

@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "version": "v0.22.7",
-  "sourceSHA256": "c030b6135c3b9311c211b4052087ea3443241ad99496b0bc8935a2c182fc9a0b",
+  "version": "v0.22.8",
+  "sourceSHA256": "d389ade28cac77958d98843982cb0dccca1be813fc99eac172688e369ca29695",
   "cases": [
     {
       "id": "chest-0",

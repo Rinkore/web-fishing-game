@@ -258,6 +258,19 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     check(Math.abs(positions.shore[0] - 40.5) < .2 && Math.abs(positions.shore[1] - 61.9) < .2, 'offshore drag saves inverse projected legacy coordinates');
     check(await admin.locator('.gd-node[data-s="shore"]').evaluate(e => Math.abs(parseFloat(e.style.left) - 70) < .2), 'saved map positions survive redraws');
     check(await admin.locator('[data-mtab]').count() === 0 && await admin.locator('#ns-map').count() === 0, 'admin no longer exposes deprecated fishing zones');
+    // 拖过中线：坐标带跟着光标切换，保存时连带提交 map 归属（远洋点拖回左侧变近岸）
+    {
+      const mapBox = await admin.locator('#gd-map-canvas').boundingBox();
+      const nodeBox = await admin.locator('.gd-node[data-s="shore"]').boundingBox();
+      await admin.mouse.move(nodeBox.x + nodeBox.width / 2, nodeBox.y + nodeBox.height / 2);
+      await admin.mouse.down();
+      await admin.mouse.move(mapBox.x + mapBox.width * 20 / 100, mapBox.y + mapBox.height * 60 / 100, { steps: 5 });
+      await admin.mouse.up();
+    }
+    await admin.locator('#gd-map-save').click();
+    await admin.waitForFunction(() => document.querySelector('#gd-map-state').textContent.includes('已保存'));
+    const savedShore = savedPositions.list.find(s => s.spotId === 'shore');
+    check(savedShore.map === '' && Math.abs(savedShore.pos[0] - 32.6) < .2, 'crossing the midline switches the coordinate band and submits the map ownership');
     await admin.close();
     assert.deepEqual(errors, []); pass++;
     console.log('通过 ' + pass + ' 项，失败 0 项');
