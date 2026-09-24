@@ -178,7 +178,7 @@
    pn.onclick=e=>{const remove=e.target.closest('[data-remove]');if(remove){remove.closest('[data-material]').remove();refresh();return;}const add=e.target.closest('[data-add-item]');if(add){const box=Array.from(form.querySelectorAll('[data-items]')).find(x=>x.dataset.items===add.dataset.addItem);box.insertAdjacentHTML('beforeend',itemRow(mats[0].id,1,mats,box.dataset.items.startsWith('baseDrops')?'.01':'1'));refresh();}};
    form.addEventListener('input',refreshSoon);form.addEventListener('change',refreshSoon);
    form.onsubmit=e=>{e.preventDefault();submit();};
-   panel.querySelector('[data-revert]').onclick=()=>{const {next}=collect();const n=E?E.diff(cfg,next).length:0;if(!n){setStatus('当前没有未保存的修改。');return;}if(!confirm('放弃全部未保存的修改，恢复到已保存的版本 '+revision+'？'))return;paint();};
+   panel.querySelector('[data-revert]').onclick=async()=>{const {next}=collect();const n=E?E.diff(cfg,next).length:0;if(!n){setStatus('当前没有未保存的修改。');return;}if(!await confirm('放弃全部未保存的修改，恢复到已保存的版本 '+revision+'？'))return;paint();};
    panel.querySelector('[data-export]').onclick=()=>panel.querySelector('[data-json]').value=JSON.stringify(cfg,null,2);
    panel.querySelector('[data-import]').onclick=async e=>{const status=panel.querySelector('[data-json-status]');try{const next=JSON.parse(panel.querySelector('[data-json]').value);const bad=validate(next,mats.map(m=>m.id));if(bad.length){status.textContent='校验未通过（'+bad.length+' 项）：'+bad[0].msg;return;}if(!await confirm('导入完整装备配置并覆盖当前规则？'))return;if(await save(next)){paint();setStatus('已通过导入保存，版本 '+revision+'。');}}catch(err){status.textContent='配置格式错误：'+err.message;}};
    panel.querySelector('[data-player-load]').onclick=loadPlayer;

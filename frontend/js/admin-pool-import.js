@@ -48,6 +48,7 @@
     const fishNames = Object.fromEntries(((catalog.fish) || []).map(f => [f.id, f.name]));
     const matNames = Object.fromEntries(((catalog.materials) || []).map(m => [m.id, m.name]));
     const compIds = new Set(((catalog.components) || []).map(c => c.id));
+    let groundIds = new Set(((cfg && cfg.grounds) || []).map(g => g.id));
     host.innerHTML = '<h2>📥 一键导入鱼池文档</h2>'
       + '<p class="hint">用于换地图：把一整张地图的钓点与掉落池写成一份文档，预检通过后按 建图 → 建点 → 写鱼池 的顺序自动执行。<strong>只新建与覆盖，不删除任何东西</strong>；要下线钓点请用左侧列表的删除按钮。</p>'
       + '<details class="ops-card" open><summary>文档编写规则</summary>'
@@ -73,6 +74,14 @@
     const planBox = host.querySelector('[data-plan]');
     const runBtn = host.querySelector('[data-run]');
     let plan = null;
+    let planDoc = '';
+    let running = false;
+    doc.addEventListener('input', () => {
+      plan = null;
+      runBtn.disabled = true;
+      planBox.innerHTML = '';
+      status.textContent = '文档已修改，请重新预检。';
+    });
 
     function collectPool(raw, where, problems) {
       const out = [];
@@ -115,7 +124,7 @@
         if (!gnameOk) problems.push(gAt + '.name 必填且不超过 20 字');
         if (!Array.isArray(g.spots) || !g.spots.length) { problems.push(gAt + '.spots 必须是非空数组'); return; }
         const groundOk = gidOk && gnameOk;
-        if (groundOk) steps.push({ groundId: gid, label: '新建地图 ' + gid + '（' + gname + '）', method: '/api/admin/ground/add', body: { id: gid, name: gname }, skipOnExists: true });
+        if (groundOk && !groundIds.has(gid)) steps.push({ groundId: gid, label: '新建地图 ' + gid + '（' + gname + '）', method: '/api/admin/ground/add', body: { id: gid, name: gname }, skipOnExists: true });
         const sids = new Set();
         g.spots.forEach((s, si) => {
           const sAt = gAt + '.spots[' + si + ']';
@@ -149,6 +158,7 @@
     }
     function showPlan(result) {
       plan = result;
+      planDoc = doc.value;
       if (result.problems.length) {
         planBox.innerHTML = '<div class="gear-card"><h3>预检未通过（' + result.problems.length + ' 项）</h3><ul>' + result.problems.slice(0, 30).map(p => '<li class="err">' + esc(p) + '</li>').join('') + '</ul></div>';
         runBtn.disabled = true;
@@ -158,18 +168,20 @@
       planBox.innerHTML = '<div class="gear-card"><h3>预检通过：将执行 ' + result.steps.length + ' 步</h3><ol>' + result.steps.map(s => '<li>' + esc(s.label) + '</li>').join('') + '</ol>'
         + (result.warnings.length ? '<p class="hint">提示：' + esc(result.warnings.slice(0, 10).join('；')) + '</p>' : '')
         + '<p class="hint">执行顺序即上面的顺序，每步单独发布一版配置；中途失败会停下来并指出是哪一步。</p></div>';
-      runBtn.disabled = false;
+      runBtn.disabled = running;
       status.textContent = '预检通过，可以导入。';
       return true;
     }
     host.querySelector('[data-check]').onclick = () => {
       let input;
-      try { input = JSON.parse(doc.value); } catch (e) { status.textContent = 'JSON 解析失败：' + e.message; planBox.innerHTML = ''; runBtn.disabled = true; return; }
+      try { input = JSON.parse(doc.value); } catch (e) { plan = null; status.textContent = 'JSON 解析失败：' + e.message; planBox.innerHTML = ''; runBtn.disabled = true; return; }
       showPlan(buildPlan(input));
     };
     host.querySelector('[data-fill-example]').onclick = () => { doc.value = JSON.stringify(EXAMPLE, null, 2); host.querySelector('[data-check]').click(); };
     host.querySelector('[data-export-current]').onclick = async () => {
       const use = fresh ? await fresh() : cfg;   // 导出前重新拉一次，避免拿到进页面时的旧快照
+      if (running) return;
+      groundIds = new Set((use.grounds || []).map(g => g.id));
       const out = { version: 1, grounds: (use.grounds || []).map(g => ({
         id: g.id, name: g.name,
         spots: (g.spots || []).map(s => {
@@ -188,14 +200,18 @@
       host.querySelector('[data-check]').click();
     };
     runBtn.onclick = async () => {
-      if (!plan || plan.problems.length) return;
-      if (!await confirm('将按预检清单执行 ' + plan.steps.length + ' 步（只新建与覆盖，不删除）？')) return;
-      runBtn.disabled = true; host.querySelector('[data-check]').disabled = true;
+      if (running || !plan || plan.problems.length || doc.value !== planDoc) return;
+      const activePlan = plan, activeDoc = planDoc;
+      running = true; runBtn.disabled = true;
+      const controls = Array.from(host.querySelectorAll('.ops-row button')).filter(button => button !== runBtn);
       const lines = [];
       let done = 0;
-      const draw = () => { planBox.innerHTML = '<div class="gear-card"><h3>执行结果（' + done + '/' + plan.steps.length + '）</h3><ol>' + lines.map(l => '<li class="' + (l.ok ? '' : 'err') + '">' + esc(l.text) + '</li>').join('') + '</ol></div>'; };
+      const draw = () => { planBox.innerHTML = '<div class="gear-card"><h3>执行结果（' + done + '/' + activePlan.steps.length + '）</h3><ol>' + lines.map(l => '<li class="' + (l.ok ? '' : 'err') + '">' + esc(l.text) + '</li>').join('') + '</ol></div>'; };
       try {
-        for (const step of plan.steps) {
+        if (!await confirm('将按预检清单执行 ' + activePlan.steps.length + ' 步（只新建与覆盖，不删除）？')) return;
+        if (plan !== activePlan || doc.value !== activeDoc) return;
+        controls.forEach(button => { button.disabled = true; }); doc.disabled = true;
+        for (const step of activePlan.steps) {
           const r = await api('POST', step.method, step.body);
           const exists = r && r.data && (r.data.error === 'ground_exists' || r.data.error === 'spot_exists');
           if (r && r.ok) { lines.push({ ok: true, text: step.label + ' — 完成' }); }
@@ -203,10 +219,12 @@
           else { lines.push({ ok: false, text: step.label + ' — 失败：' + errText(r) }); done++; draw(); status.textContent = '第 ' + (done) + ' 步失败，已停止。修正后可重跑（已完成的步骤会按「已存在」跳过）。'; return; }
           done++; draw();
         }
-        status.textContent = '导入完成：' + plan.steps.length + ' 步全部成功。钓点列表已刷新。';
+        status.textContent = '导入完成：' + activePlan.steps.length + ' 步全部成功。钓点列表已刷新。';
         if (onDone) await onDone();
       } finally {
-        runBtn.disabled = false; host.querySelector('[data-check]').disabled = false;
+        running = false;
+        runBtn.disabled = !plan || plan.problems.length > 0 || doc.value !== planDoc;
+        controls.forEach(button => { button.disabled = false; }); doc.disabled = false;
       }
     };
   }

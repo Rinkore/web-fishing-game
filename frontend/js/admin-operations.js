@@ -98,9 +98,9 @@
    const form=form$(),pn=panel;
    form.addEventListener('input',refreshSoon);form.addEventListener('change',refreshSoon);
    form.onsubmit=e=>{e.preventDefault();submit();};
-   panel.querySelector('[data-revert]').onclick=()=>{if(!changed.length){setStatus('当前没有未保存的修改。');return;}if(!confirm('放弃全部未保存的修改，恢复到已保存的版本 '+revision+'？'))return;paint();};
+   panel.querySelector('[data-revert]').onclick=async()=>{if(!changed.length){setStatus('当前没有未保存的修改。');return;}if(!await confirm('放弃全部未保存的修改，恢复到已保存的版本 '+revision+'？'))return;paint();};
    const toGear=panel.querySelector('[data-goto-gear]');
-   if(toGear)toGear.onclick=()=>{const {next}=collect();if(next&&changed.length&&!confirm('「装备与套装」是另一个页面，切换后本页未保存的修改会丢失。继续？'))return;nav('gear');};
+   if(toGear)toGear.onclick=async()=>{const {next}=collect();if(next&&changed.length&&!await confirm('「装备与套装」是另一个页面，切换后本页未保存的修改会丢失。继续？'))return;nav('gear');};
    panel.querySelector('[data-load]').onclick=loadPlayer;
    refresh();
   }

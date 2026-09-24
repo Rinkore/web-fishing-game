@@ -33,11 +33,12 @@ const html = `<!doctype html><html><head><meta charset="utf-8"></head><body><div
 window.__calls = []; window.__confirm = true; window.__failPath = null; window.__existing = {};
 window.__api = async (method, url, body) => {
   window.__calls.push({ method, url, body });
+  if (url === '/api/admin/ground/add' && body.id === 'map') return { ok: false, status: 400, data: { error: 'invalid_input' } };
   if (window.__failPath === url) return { ok: false, status: 400, data: { error: 'invalid_input' } };
   if (window.__existing[url]) return { ok: false, status: 409, data: { error: window.__existing[url] } };
   return { ok: true, data: { ok: true } };
 };
-window.__boot = (cfg, fresh) => window.AdminPoolImport.render(document.querySelector('#import'), cfg, window.__api, async () => window.__confirm, fresh, fresh);
+window.__boot = (cfg, fresh) => window.AdminPoolImport.render(document.querySelector('#import'), cfg, window.__api, async () => window.__waitConfirm ? new Promise(resolve => { window.__resolveConfirm = resolve; }) : window.__confirm, fresh, fresh);
 </script></body></html>`;
 
 (async () => {
@@ -123,6 +124,38 @@ window.__boot = (cfg, fresh) => window.AdminPoolImport.render(document.querySele
     ok(exported.grounds[0].spots[1].map === 'voyage' && exported.grounds[0].spots[1].minShip === 3, '导出应保留 map/minShip');
     ok(exported.grounds[0].spots[1].buffs[0].type === 'skill', '导出应保留增益');
     ok(await page.evaluate(() => window.__freshCalls > 1), '导出前应重新拉一次最新配置');
+
+    // 内置 map 的创建接口返回 invalid_input，导出再导入必须直接进入钓点/鱼池步骤。
+    await page.evaluate(() => { window.__calls = []; window.__existing = { '/api/admin/spot/add': 'spot_exists' }; });
+    await page.locator('[data-run]').click();
+    await page.waitForFunction(() => /导入完成/.test(document.querySelector('[data-doc-status]').textContent));
+    const roundTrip = await page.evaluate(() => window.__calls);
+    ok(!roundTrip.some(c => c.url === '/api/admin/ground/add'), '已有内置地图不应调用新建地图接口');
+    ok(roundTrip.filter(c => c.url === '/api/admin/spot/pool').length === 2 && roundTrip.some(c => c.url === '/api/admin/spot/buffs'), '导出再导入应完成默认地图的鱼池与增益覆盖');
+
+    // 预检后编辑必须作废旧计划，重新预检后只提交新权重。
+    exported.grounds[0].spots[0].pool[0].weight = 47;
+    await page.locator('[data-doc]').fill(JSON.stringify(exported));
+    ok(await page.locator('[data-run]').isDisabled(), '编辑文档后应禁用导入，要求重新预检');
+    ok((await page.locator('[data-plan]').textContent()) === '', '编辑文档后应清除旧计划');
+    await page.evaluate(() => { window.__calls = []; document.querySelector('[data-run]').onclick(); });
+    ok(await page.evaluate(() => window.__calls.length === 0), '旧计划失效后不应发出任何写请求');
+    await page.locator('[data-check]').click();
+    await page.locator('[data-run]').click();
+    await page.waitForFunction(() => /导入完成/.test(document.querySelector('[data-doc-status]').textContent));
+    ok(await page.evaluate(() => window.__calls.find(c => c.url === '/api/admin/spot/pool').body.pool[0].weight === 47), '重新预检后应提交修改后的权重');
+
+    // 确认弹窗等待期间修改文档，不能在确认后继续执行旧计划。
+    await page.evaluate(() => { window.__calls = []; window.__waitConfirm = true; });
+    await page.locator('[data-run]').click();
+    await page.waitForFunction(() => typeof window.__resolveConfirm === 'function');
+    ok(await page.evaluate(() => window.__calls.length === 0), '确认未结束时不应写入配置');
+    exported.grounds[0].spots[0].pool[0].weight = 58;
+    await page.locator('[data-doc]').fill(JSON.stringify(exported));
+    await page.evaluate(() => { window.__resolveConfirm(true); });
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
+    ok(await page.evaluate(() => window.__calls.length === 0), '确认期间文档变化后应中止旧计划');
+    ok(await page.locator('[data-run]').isDisabled(), '确认期间文档变化后仍需重新预检');
 
     ok(errors.length === 0, '不应有未捕获的前端异常：' + errors.join(' | '));
   } finally {

@@ -39,6 +39,7 @@ window.GameData = { setGearSystem(){}, AFFIX_LABEL: {} };
 </script>
 <script src="/js/admin-edit.js"></script>
 <script src="/js/admin-gear.js"></script>
+<script src="/js/admin-operations.js"></script>
 <script>
 window.__calls = [];
 window.__confirm = true;
@@ -51,6 +52,10 @@ window.__api = async (method, url, body) => {
   return { ok: false, data: { error: '测试未启用' } };
 };
 window.__boot = () => window.AdminGear.render(document.querySelector('#main'), window.__api, async () => window.__confirm);
+window.__nav = [];
+window.__bootExpedition = () => window.AdminOperations.expedition(document.querySelector('#main'), async () => ({
+  ok: true, data: { config: window.__expedition, sets: window.__sets, revision: 7 }
+}), async () => window.__confirm, target => window.__nav.push(target));
 </script></body></html>`;
 
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
@@ -60,7 +65,7 @@ window.__boot = () => window.AdminGear.render(document.querySelector('#main'), w
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await context.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message)); page.setDefaultTimeout(8000);
-    await page.addInitScript(({ cfg, items, state }) => { window.__cfg = cfg; window.__items = items; window.__state = state; }, { cfg, items, state });
+    await page.addInitScript(({ cfg, items, state, expedition, sets }) => { window.__cfg = cfg; window.__items = items; window.__state = state; window.__expedition = expedition; window.__sets = sets; }, { cfg, items, state, expedition: catalog.constants.EXPEDITION, sets: catalog.constants.GEAR_SETS });
     await context.route('http://growth.test/**', route => {
       const url = new URL(route.request().url());
       if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
@@ -85,9 +90,15 @@ window.__boot = () => window.AdminGear.render(document.querySelector('#main'), w
     ok(await page.locator('[data-path="receiptHours"].admin-changed').count() === 1, '被改动的字段应高亮');
     ok(/每张航程凭证所需小时/.test(await page.locator('[data-diff-list]').textContent()), '摘要应把字段翻成人话');
 
-    // 3) 撤销：回到零变更
+    // 3) 异步确认等待期间与取消后都保留草稿，确认撤销后回到零变更
+    await page.evaluate(() => { window.__confirm = new Promise(resolve => { window.__resolveConfirm = resolve; }); });
     await page.locator('[data-revert]').click();
-    await page.locator('[data-revert]').click(); // 第一次进入确认；confirm 被 stub 成 true
+    ok(await page.locator('[data-path="receiptHours"]').inputValue() === '12', '装备撤销确认未完成时应保留草稿');
+    await page.evaluate(() => window.__resolveConfirm(false));
+    ok(await page.locator('[data-path="receiptHours"]').inputValue() === '12', '取消装备撤销应保留草稿');
+    ok(await page.locator('[data-diff-count]').textContent() === '1', '取消装备撤销应保留变更摘要');
+    await page.evaluate(() => { window.__confirm = true; });
+    await page.locator('[data-revert]').click();
     await page.waitForFunction(() => document.querySelector('[data-diff-count]').textContent === '0');
     ok(await page.locator('[data-path="receiptHours"]').inputValue() === String(cfg.receiptHours), '撤销后应恢复已保存值');
     ok(await page.locator('.admin-changed').count() === 0, '撤销后不应残留改动高亮');
@@ -137,6 +148,34 @@ window.__boot = () => window.AdminGear.render(document.querySelector('#main'), w
     ok(Object.keys(playerBody.after.allocations).length === 1, '0 点专精不应出现在分配表里');
     await page.locator('[data-unlocked]').first().uncheck();
     ok(await page.locator('[data-alloc]').first().inputValue() === '0', '取消认证应把该专精点数清零');
+
+    // 7) 远航撤销与跨页跳转共用异步确认：等待 / 取消不能丢草稿
+    await page.evaluate(() => window.__bootExpedition());
+    const ticket = catalog.constants.EXPEDITION.ticket;
+    await page.locator('[data-ticket]').fill(String(ticket + 1));
+    await page.waitForFunction(() => document.querySelector('[data-diff-count]').textContent === '1');
+    await page.evaluate(() => { window.__confirm = new Promise(resolve => { window.__resolveConfirm = resolve; }); });
+    await page.locator('[data-revert]').click();
+    ok(await page.locator('[data-ticket]').inputValue() === String(ticket + 1), '远航撤销确认未完成时应保留草稿');
+    await page.evaluate(() => window.__resolveConfirm(false));
+    ok(await page.locator('[data-ticket]').inputValue() === String(ticket + 1), '取消远航撤销应保留草稿');
+    ok(await page.locator('[data-diff-count]').textContent() === '1', '取消远航撤销应保留变更摘要');
+    await page.evaluate(() => { window.__confirm = true; });
+    await page.locator('[data-revert]').click();
+    await page.waitForFunction(() => document.querySelector('[data-diff-count]').textContent === '0');
+    ok(await page.locator('[data-ticket]').inputValue() === String(ticket), '确认远航撤销应恢复已保存值');
+
+    await page.locator('[data-ticket]').fill(String(ticket + 1));
+    await page.waitForFunction(() => document.querySelector('[data-diff-count]').textContent === '1');
+    await page.evaluate(() => { window.__confirm = new Promise(resolve => { window.__resolveConfirm = resolve; }); });
+    await page.locator('[data-goto-gear]').click();
+    ok(await page.evaluate(() => window.__nav.length) === 0, '跨页确认未完成时不应跳转');
+    await page.evaluate(() => window.__resolveConfirm(false));
+    ok(await page.evaluate(() => window.__nav.length) === 0, '取消跨页确认不应跳转');
+    ok(await page.locator('[data-ticket]').inputValue() === String(ticket + 1), '取消跨页确认应保留远航草稿');
+    await page.evaluate(() => { window.__confirm = true; });
+    await page.locator('[data-goto-gear]').click();
+    ok(await page.evaluate(() => window.__nav.join(',')) === 'gear', '确认跨页操作应跳转到装备页面');
 
     ok(errors.length === 0, '不应有未捕获的前端异常：' + errors.join(' | '));
   } finally {
