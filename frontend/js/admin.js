@@ -2452,6 +2452,19 @@ window.Admin = (function () {
   // 服务端仍以「钓场」为内部容器：全部钓点挂在唯一隐式钓场 'map' 下（出海临时海域 sea:* 不在这里管理）。
   const MAP_GID = 'map';
   // 世界地图已统一为单一钓区。历史数据仍保留 map 字段，用于坐标投影和玩家端兼容。
+  // 与玩家端同一套兜底坐标：服务器配置里没存过 pos 的钓点，用 data.js 的出厂坐标；
+  // 两者都没有时按玩家端同款环形排布（索引取自钓点在地图下的顺序）。
+  function spotFactoryPos(sid) {
+    const gs = (window.GameData && window.GameData.GROUNDS) || [];
+    const g = gs.find(function (x) { return x.id === MAP_GID; }) || gs[0];
+    const spots = (g && g.spots) || [];
+    const idx = spots.findIndex(function (s) { return s.id === sid; });
+    if (idx < 0) return null;
+    const sp = spots[idx];
+    if (Array.isArray(sp.pos) && sp.pos.length === 2) return sp.pos;
+    const ang = (-90 + idx * 60) * Math.PI / 180;
+    return [50 + 9 * Math.cos(ang), 50 + 9 * Math.sin(ang)];
+  }
   function renderGrounds() {
     const main = $('main');
     main.innerHTML = '<h2>🎣 钓点管理</h2>' +
@@ -2499,11 +2512,13 @@ window.Admin = (function () {
       '<h3 style="margin-top:0">🎣 钓点列表（共 ' + curSpots.length + ' 个）</h3>' +
       '<div class="gd-tabs"><span class="hint">所有钓点均属于统一世界地图，地图与列表保持同步</span></div>' +
       '<div class="spot-rows">' + (curSpots.length ? curSpots.map(function (s) {
-        const pos = Array.isArray(s.pos) ? s.pos : null;
+        const pos = Array.isArray(s.pos) ? s.pos : spotFactoryPos(s.id);
         return '<div class="spot-row' + (s.id === selSpot ? ' sel' : '') + (s.locked ? ' locked' : '') + '" data-s="' + esc(s.id) + '">' +
           '<b>' + esc(s.name) + '</b>' + (s.locked ? ' 🔒' : '') +
           (s.minShip ? ' <span class="gd-badge limited" title="船级门槛">⛵ ' + s.minShip + ' 级船</span>' : '') +
-          '<span class="gi">' + (pos ? '坐标 ' + pos[0] + ', ' + pos[1] : '未定位（在下方地图上拖一下）') +
+          '<span class="gi">' + (pos
+            ? (Array.isArray(s.pos) ? '坐标 ' : '出厂坐标 ') + pos[0] + ', ' + pos[1]
+            : '未定位（在下方地图上拖一下）') +
           ' · 池 ' + (s.pool || []).length + ' 条' +
           ((s.buffs || []).length ? ' · 增益 ' + s.buffs.length + ' 条' : '') +
           (s.biteRate != null && s.biteRate !== '' ? ' · 上鱼率 ' + s.biteRate + '%' : '') +
@@ -2618,7 +2633,7 @@ window.Admin = (function () {
       host.innerHTML += '<div class="hint">世界地图还没有钓点，请先新建钓点。</div>';
       return;
     }
-    const posOf = function (sp) { return posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) || [50, 50]; };
+    const posOf = function (sp) { return posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) || spotFactoryPos(sp.id) || [50, 50]; };
     host.innerHTML +=
       '<div class="hint" style="margin-bottom:8px">直接拖动节点调整位置；所有钓点共用这张世界地图。' +
       '「恢复出厂」把该钓点退回 data.js 的默认坐标。改完点「保存坐标」立即对全服生效。</div>' +
