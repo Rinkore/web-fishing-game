@@ -1654,18 +1654,6 @@ window.UI = (function () {
   function abLabel(t) { const kv = BD_AFFIXES.find(function (x) { return x[0] === t; }); return kv ? kv[1] : t; }
   function abSigned(v) { return (v > 0 ? '+' : '') + v + '%'; }
   // 候选 = 背包里数量 >0 的组件 + 当前已装的那件（已装件不在背包里，但它也是「可选方案」之一）
-  function abCandidateMap(st) {
-    const m = {};
-    D.ROD_PARTS.forEach(function (p) {
-      const list = [];
-      const cur = st.bd && st.bd[p.key] && st.bd[p.key].compId;
-      if (cur) list.push(cur);
-      const fixedCore = (p.key === 'rod' || p.key === 'charm') && ['rod','charm'].some(function(k){const c=D.componentOf(st.bd && st.bd[k] && st.bd[k].compId);return c && c.setId;});
-      if (!fixedCore) Object.keys(st.inventory).forEach(function (id) { const c=D.componentOf(id);if (st.inventory[id] > 0 && c && !c.setId) list.push(id); });
-      m[p.key] = list;
-    });
-    return m;
-  }
   function autoBuildOpen() {
     if (!featureGuard('bd.autobuild')) return;
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
@@ -1674,7 +1662,7 @@ window.UI = (function () {
     box.innerHTML = '<div class="modal-head"><span class="modal-title">🧠 自动配装 · 从背包检索最优组合</span>' +
       '<button class="mini modal-close">✕ 关闭</button></div>' +
       '<div class="modal-body">' +
-      '<div class="ab-intro"><strong>01 设置目标</strong><span>按从上到下的优先级，挑选背包与当前装备中的最优组合。</span></div>' +
+      '<div class="ab-intro"><strong>01 设置目标</strong><span>先选择已拥有套装与固定配件，再按属性优先级优化其余部位。</span></div>' +
       '<details class="ab-help"><summary>如何调整优先级和属性范围？</summary><p>用 ↑ ↓ 调整优先级；取消勾选可忽略该属性。下限与上限支持拖动或输入，留空表示不限。可达区间随目标实时更新。</p></details>' +
       '<div class="ab-rows"></div>' +
       '<div class="ab-res"></div></div><footer class="ab-actions sm-material-footer"><button class="mini ab-reset">重置目标</button>' +
@@ -1682,6 +1670,10 @@ window.UI = (function () {
       '<span class="ab-hint ab-apply-hint"></span></footer>';
     overlay.appendChild(box);
     document.body.appendChild(overlay);
+    let setChoice = 'current', fixedParts = {}, options = null;
+    const fixedChoiceFilters = {};
+    const setupBox = el('div', 'ab-setup');
+    box.querySelector('.ab-rows').before(setupBox);
     const rowsBox = box.querySelector('.ab-rows');
     const resBox = box.querySelector('.ab-res');
     const applyBtn = box.querySelector('.ab-apply');
@@ -1696,8 +1688,33 @@ window.UI = (function () {
       if (!mk || !mk.token) { if (next) next(); return; }
       window.Net.fetchMe(mk.token).then(function (r) {
         if (r && r.ok && r.data) { E().applyProfile(r.data); renderTopbar(); renderView(); }
-        if (next) next(); else abRefresh();
-      }).catch(function () { if (next) next(); else abRefresh(); });
+        if (r && r.ok && r.data) { abRefresh(); if (next) next(); }
+        else { abBusy = false; abRefresh(); toast('无法同步最新装备，请重试', 'bad'); }
+      }).catch(function () { abBusy = false; abRefresh(); toast('无法同步最新装备，请重试', 'bad'); });
+    }
+
+    function renderSetup(st) {
+      options = D.autoBuildOptions(st, { set: setChoice, fixed: fixedParts });
+      setupBox.innerHTML = '<h4>套装效果与固定配件</h4><label>套装效果 <select class="ab-set-choice"><option value="current">保留当前核心</option>' + options.sets.map(function (set) {
+        return '<option value="' + esc(set.id) + '"' + (setChoice === set.id ? ' selected' : '') + '>' + esc(set.name) + '</option>';
+      }).join('') + '</select></label><p class="ab-hint">' + esc(options.selected ? options.selected.description : '仅列出背包及当前装配中同时拥有竿身与饰品的套装；选择后固定两件核心。') + '</p>';
+      setupBox.querySelector('select').addEventListener('change', function (e) { setChoice = e.target.value; abRefresh(); });
+      setupBox.appendChild(equipmentFilterControls(fixedChoiceFilters, abRefresh, { affixes: true }));
+      const grid = el('div', 'gear-grid');
+      D.ROD_PARTS.filter(function (p) { return p.key !== 'rod' && p.key !== 'charm'; }).forEach(function (p) {
+        const label = el('label', 'ab-fixed-part', p.name + ' '), select = el('select');
+        select.setAttribute('aria-label', '固定' + p.name);
+        select.innerHTML = '<option value="auto">自动优化</option><option value="">固定空置</option>' + options.owned[p.key].filter(function (id) {
+          return fixedParts[p.key] === id || equipmentFilterMatch(id, fixedChoiceFilters);
+        }).map(function (id) {
+          const c = D.componentOf(id);
+          return '<option value="' + esc(id) + '">' + esc(c.name + ' · ' + c.affixes.map(function (a) { return abLabel(a.type) + ' ' + abSigned(a.value); }).join(' / ')) + '</option>';
+        }).join('');
+        select.value = Object.prototype.hasOwnProperty.call(fixedParts, p.key) ? fixedParts[p.key] || '' : 'auto';
+        select.addEventListener('change', function () { if (select.value === 'auto') delete fixedParts[p.key]; else fixedParts[p.key] = select.value || null; abRefresh(); });
+        label.appendChild(select); grid.appendChild(label);
+      });
+      setupBox.appendChild(grid);
     }
 
     // 每行：[序号 ↑↓] [勾选 属性名] [下限] [滑块] [上限] [可达 X]
@@ -1822,9 +1839,10 @@ window.UI = (function () {
 
     function abRefresh() {
       const st = S();
+      renderSetup(st);
       const cfg = {
         parts: D.ROD_PARTS.map(function (p) { return p.key; }),
-        candidates: abCandidateMap(st),
+        candidates: options.candidates,
         order: abOrder, enabled: abEnabled, min: abMin, max: abMax,
       };
       const peekCfg = {};
@@ -1873,14 +1891,14 @@ window.UI = (function () {
         const id = p.picks[part.key];
         const curId = st.bd[part.key] && st.bd[part.key].compId;
         const keep = !!id && id === curId;
-        if (id && !keep) changes++;
+        if ((id || null) !== (curId || null)) changes++;
         const meta = id ? itemMeta(id) : null;
         html += '<div class="ab-plan-row' + (keep ? ' keep' : '') + '">' +
           '<span class="abp-part">' + esc(part.name) + '</span>' +
           '<span class="abp-cur">' + esc(curId ? itemMeta(curId).name : part.default.name) + '</span>' +
           '<span class="abp-arrow">→</span>' +
-          '<span class="abp-new ' + (meta ? qualityClass(meta) : '') + '">' + esc(meta ? meta.name : '（无可用组件 · 保持空置）') + '</span>' +
-          '<span class="abp-tag">' + (keep ? '已装' : (id ? '替换' : '')) + '</span></div>';
+          '<span class="abp-new ' + (meta ? qualityClass(meta) : '') + '">' + esc(meta ? meta.name : '（空置）') + '</span>' +
+          '<span class="abp-tag">' + (Object.prototype.hasOwnProperty.call(fixedParts, part.key) || (options.selected && options.selected.picks[part.key]) ? '固定' : keep ? '已装' : (id ? '替换' : '')) + '</span></div>';
       });
       html += '<h4>属性对比</h4>';
       const missed = [];
@@ -1919,9 +1937,10 @@ window.UI = (function () {
         html += '<div class="ab-ok">✅ 按当前优先级与目标，共 ' + changes + ' 件可以换得更好。</div>';
       }
       resBox.innerHTML = html;
-      applyBtn.disabled = !changes;
+      const invalid = options.error || p.error || (Object.keys(p.picks).length !== D.ROD_PARTS.length ? '固定配件无法组成合法装配，请减少共鸣配件。' : '');
+      applyBtn.disabled = abBusy || !changes || !!invalid;
       applyBtn.textContent = changes ? ('一键装配（换 ' + changes + ' 件）') : '无需改动';
-      applyHint.textContent = '自动配装保留已选套装核心；更换套装请先手动选择。' + (changes ? '' : '（改优先级或目标可换方案）');
+      applyHint.textContent = invalid || '保留选定套装效果及固定配件；属性数值包含核心与成长词条，套装触发效果另行生效。';
     }
 
     // 逐个部位调用 /api/bd/set（服务器权威：校验部位匹配、背包持有、锁定与钓速即时生效）。
@@ -1929,14 +1948,19 @@ window.UI = (function () {
     function doApply() {
       const st = S();
       const todo = [];
+      if (options.error || abPlan.error || Object.keys(abPlan.picks).length !== D.ROD_PARTS.length) { abBusy = false; abRefresh(); return; }
       D.ROD_PARTS.forEach(function (part) {
         const id = abPlan && abPlan.picks[part.key];
         const curId = st.bd[part.key] && st.bd[part.key].compId;
-        if (id && id !== curId) todo.push({ key: part.key, name: part.name, id: id, cur: curId });
+        if ((id || null) !== (curId || null)) todo.push({ key: part.key, name: part.name, id: id, cur: curId });
       });
       if (!todo.length) { abBusy = false; toast('当前装配已经是最优组合，无需改动'); return; }
-      // Release replaced resonance pieces first so intermediate assemblies also obey the cap.
-      const releases=todo.filter(function(x){const c=D.componentOf(x.cur);return c && !c.setId && c.affixes.some(function(a){return a.type==='resonance';});}).map(function(x){return {key:x.key,name:x.name,id:null};});
+      // 先卸下旧套装核心与共鸣件，避免切换过程中触发混套或共鸣数量限制。
+      const releases = todo.filter(function (x) {
+        const c = D.componentOf(x.cur);
+        return x.id && c && (c.setId || c.affixes.some(function (a) { return a.type === 'resonance'; }));
+      }).map(function (x) { return { key: x.key, name: x.name, id: null }; });
+      todo.sort(function (a, b) { return Number(!!a.id) - Number(!!b.id); });
       todo.unshift.apply(todo,releases);
       let i = 0, done = 0;
       applyBtn.disabled = true;
@@ -1968,7 +1992,7 @@ window.UI = (function () {
           if (r.data.rodActiveSlot !== undefined) st2.rodActiveSlot = r.data.rodActiveSlot;
           if(x.id)done++;
           step();
-        }).catch(function () { abBusy = false; toast('网络错误，装配已中止'); });
+        }).catch(function () { abBusy = false; toast('网络错误，装配已中止'); syncProfile(); });
       }
       step();
     }
@@ -1999,10 +2023,52 @@ window.UI = (function () {
   let bdEquipFilterPart = '';
   let bdEquipSort = 'rarity';
   let bdEquipDir = 'desc';
+  let bdEquipmentFilters = {};
   const BD_AFFIXES = [['speed', '⚡ 钓速'], ['skill', '🎯 技巧'], ['rare', '✨ 稀有'], ['material', '🧵 材料'], ['size', '📏 体型'], ['double', '🎣 双钓'], ['stability', '⚓ 稳定'], ['resonance', '🔮 共鸣'], ['settle', '📦 结算']];
   function partNameOf(key) {
     const p = D.ROD_PARTS.find(function (x) { return x.key === key; });
     return p ? p.name : key;
+  }
+  // 背包、装配、交易与上架共用新制装备筛选；各入口仅保存自己的筛选状态。
+  function equipmentFilterMatch(id, f) {
+    const m = itemMeta(id), g = m.growth;
+    if (f.quality && f.quality !== 'all' && (m.quality || m.rarity) !== f.quality) return false;
+    if (f.part && f.part !== 'all' && m.part !== f.part) return false;
+    if (f.affix && f.affix !== 'all' && !(m.affixes || []).some(function (a) { return a.type === f.affix; })) return false;
+    if (f.growth === 'legacy' && (g || m.setId)) return false;
+    if (f.growth === 'modern' && !g) return false;
+    if (f.growth === 'base' && (!g || g.level !== 0)) return false;
+    if (f.growth === 'upgraded' && (!g || g.level <= 0)) return false;
+    if (f.growth === 'engraved' && (!g || !g.engrave || g.engrave === 'none')) return false;
+    if (f.growth === 'set' && !m.setId) return false;
+    const bound = !!m.bound || rewardBoundCount(id) > 0;
+    if (f.binding === 'bound' && !bound) return false;
+    if (f.binding === 'free' && (m.bound || tradableCountOf(id) <= 0)) return false;
+    return true;
+  }
+  function equipmentFilterControls(f, redraw, options) {
+    const row = el('div', 'inv-subrow equipment-filters');
+    const specs = [];
+    if (!options || !options.hideQuality) specs.push(['quality', '品质', [['all', '全部品质']].concat(Object.keys(D.QUALITY).map(function (q) { return [q, D.QUALITY[q].name]; }))]);
+    if (options && options.parts) specs.push(['part', '部位', [['all', '全部部位']].concat(D.ROD_PARTS.map(function (p) { return [p.key, p.name]; }))]);
+    if (options && options.affixes) specs.push(['affix', '属性', [['all', '全部属性']].concat(BD_AFFIXES.map(function (kv) { return [kv[0], abLabel(kv[0])]; }))]);
+    specs.push(['growth', '成长', [['all', '全部装备'], ['legacy', '旧制装备'], ['modern', '新制装备'], ['base', '新制 +0'], ['upgraded', '已强化'], ['engraved', '已精工'], ['set', '套装核心']]]);
+    specs.push(['binding', '绑定', [['all', '全部绑定状态'], ['free', '有未绑定库存'], ['bound', '含绑定装备']]]);
+    specs.forEach(function (spec) {
+      const label = el('label', 'equipment-filter-label', spec[1] + ' ');
+      const select = el('select', 'bulk-select');
+      select.setAttribute('aria-label', '装备' + spec[1] + '筛选');
+      spec[2].forEach(function (kv) { const o = el('option', '', kv[1]); o.value = kv[0]; select.appendChild(o); });
+      select.value = f[spec[0]] || 'all';
+      select.onchange = function () { f[spec[0]] = select.value; invFocus = false; redraw(); };
+      select.onfocus = function () { invFocus = true; };
+      select.onblur = function () { invFocus = false; };
+      label.appendChild(select); row.appendChild(label);
+    });
+    const clear = el('button', 'mini', '重置装备筛选');
+    clear.onclick = function () { Object.keys(f).forEach(function (k) { delete f[k]; }); invFocus = false; redraw(); };
+    row.appendChild(clear);
+    return row;
   }
   // 装备子页面：以弹窗形式展示该部位可装备的组件（筛选 / 排序 / 装备）
   function openBdEquipModal(partKey) { openCompPicker({ mode: 'equip', part: partKey }); }
@@ -2017,6 +2083,7 @@ window.UI = (function () {
     // 换一个部位打开时列表会被上一个弹窗的部位/词条筛选整个滤空（表现为「组件都不见了」）。
     bdEquipFilterPart = '';
     bdEquipFilter = 'all';
+    bdEquipmentFilters = {};
     compPickCtx = (mode === 'pick') ? {
       title: o.title || '选择组件',
       note: o.note || '',
@@ -2155,9 +2222,11 @@ window.UI = (function () {
         ctr.appendChild(b);
       });
       body.appendChild(ctr);
+      body.appendChild(equipmentFilterControls(bdEquipmentFilters, renderBody));
 
       // 组件卡片
       let list = owned.filter(function (o2) {
+        if (!equipmentFilterMatch(o2.id, bdEquipmentFilters)) return false;
         if (partFilterOn && bdEquipFilterPart && o2.c.part !== bdEquipFilterPart) return false;
         return bdEquipFilter === 'all' || o2.c.affixes.some(function (a) { return a.type === bdEquipFilter; });
       });
@@ -2898,6 +2967,11 @@ window.UI = (function () {
     const savedHead = el('h3', '', '我的好友');
     const savedList = el('div', 'peeps');
     saved.appendChild(savedHead); saved.appendChild(savedList);
+    const savedPager = el('div', 'peep-pager');
+    const savedPrev = el('button', 'mini', '上一页'), savedNext = el('button', 'mini', '下一页'), savedLabel = el('span', 'muted');
+    savedPrev.disabled = savedNext.disabled = true;
+    savedPager.appendChild(savedPrev); savedPager.appendChild(savedLabel); savedPager.appendChild(savedNext); saved.appendChild(savedPager);
+    let savedPage = 1, savedFriends = [];
     search.appendChild(el('h3', '', '搜索在线玩家'));
     const searchBar = el('div', 'peep-search');
     const submit = el('button', 'mini primary-mini', '🔍 搜索好友');
@@ -2919,6 +2993,18 @@ window.UI = (function () {
       const info = el('div', 'peep-info');
       info.innerHTML = friendInfoHtml(player);
       row.appendChild(info);
+      const acts = el('div', 'peep-acts');
+      if (isSaved) {
+        const trade = el('button', 'mini primary-mini friend-trade', '🤝 交易');
+        markFeature(trade, 'ground.trade');
+        trade.disabled = !player.online;
+        trade.title = player.online ? '与 ' + (player.name || '该好友') + ' 进行在线交易' : '好友离线，暂时无法交易';
+        trade.addEventListener('click', function () {
+          const current = savedFriends.find(function (p) { return p.id === player.id; }) || player;
+          openTradeModal(current.id, current.name);
+        });
+        acts.appendChild(trade);
+      }
       // v0.21.0：搜索结果按关系分流 —— 对方申请过我=「同意请求」；我申请过=「撤回申请」；否则=「添加好友」
       let action, act;
       if (isSaved) { action = '移除好友'; act = 'remove'; }
@@ -2937,7 +3023,7 @@ window.UI = (function () {
           panel._refresh(true);
         });
       });
-      row.appendChild(button);
+      acts.appendChild(button); row.appendChild(acts);
       row._friendAction = act || 'added';
       return row;
     }
@@ -2999,9 +3085,22 @@ window.UI = (function () {
         if (row._friendAction !== act) return friendRow(p, isSaved);
         const html = friendInfoHtml(p), info = row.querySelector('.peep-info');
         if (info.innerHTML !== html) info.innerHTML = html;
+        const trade = row.querySelector('.friend-trade');
+        if (trade) {
+          trade.disabled = !p.online;
+          trade.title = p.online ? '与 ' + (p.name || '该好友') + ' 进行在线交易' : '好友离线，暂时无法交易';
+        }
         return null;
       });
       if (!players.length) list.appendChild(el('div', 'hint', isSaved ? '还没有好友，搜索在线玩家添加吧。' : '没有匹配的在线玩家。'));
+    }
+    function drawSaved() {
+      const pages = Math.max(1, Math.ceil(savedFriends.length / PEEP_PAGE_SIZE));
+      savedPage = Math.max(1, Math.min(savedPage, pages));
+      savedHead.textContent = '我的好友（' + savedFriends.length + ' / 200）';
+      fill(savedList, savedFriends.slice((savedPage - 1) * PEEP_PAGE_SIZE, savedPage * PEEP_PAGE_SIZE), true);
+      savedPrev.disabled = savedPage <= 1; savedNext.disabled = savedPage >= pages;
+      savedLabel.textContent = ' 第 ' + savedPage + ' / ' + pages + ' 页 · ' + savedFriends.length + ' 人 ';
     }
     panel._refresh = function (force) {
       if (!panel.isConnected || !force && (pending || Date.now() - lastFetch < 5000)) return;
@@ -3013,8 +3112,8 @@ window.UI = (function () {
         if (!r || !r.ok) { if (force) toast(r && r.data && r.data.error || '好友加载失败', 'bad'); return; }
         const data = r.data;
         friendSearchPage = data.page;
-        savedHead.textContent = '我的好友（' + data.friends.length + ' / 200）';
-        fill(savedList, data.friends, true); fill(results, data.players, false);
+        savedFriends = data.friends || [];
+        drawSaved(); fill(results, data.players, false);
         // v0.21.0 好友请求区
         const reqIn = (data.requests && data.requests.in) || [], reqOut = (data.requests && data.requests.out) || [];
         fillReq(reqInList, reqIn, true);
@@ -3033,6 +3132,8 @@ window.UI = (function () {
     });
     prev.addEventListener('click', function () { friendSearchPage--; panel._refresh(true); });
     next.addEventListener('click', function () { friendSearchPage++; panel._refresh(true); });
+    savedPrev.addEventListener('click', function () { savedPage--; drawSaved(); });
+    savedNext.addEventListener('click', function () { savedPage++; drawSaved(); });
     panel._refresh(true);
     // 好友可能处于岸边，没有渔获广播；独立轮询使离线/上线状态也能及时更新。
     const refreshTimer = setInterval(function () {
@@ -4570,12 +4671,13 @@ window.UI = (function () {
     }
     const pageInfo = loaded ? st.marketPage : null;
     const livePanel = main.querySelector('[data-market-query]');
-    if (marketTab !== 'history' && livePanel && livePanel.dataset.marketQuery === queryKey && !marketError) {
+    const prevSell = main.querySelector('.mkt-sell');
+    if (marketTab !== 'history' && livePanel && livePanel.dataset.marketQuery === queryKey &&
+        prevSell && prevSell.getAttribute('data-cat') === mktSellCat && !marketError) {
       if (!loaded || patchMarketListings(livePanel, st)) return;
     }
     // 右栏「我的背包（上架）」优先复用已有节点（别人挂单 / 成交的广播会整页重建市集）：
     // 重建右栏会把滚动位置、勾选焦点与鼠标悬停全丢掉，多选上架时列表被弹回顶部、点击落空。
-    const prevSell = main.querySelector('.mkt-sell');
     const keepSell = (prevSell && prevSell.getAttribute('data-cat') === mktSellCat) ? prevSell : null;
     const prevList = keepSell ? keepSell.querySelector('.mkt-sell-list') : null;
     const prevScroll = prevList ? prevList.scrollTop : 0;
@@ -4779,6 +4881,7 @@ window.UI = (function () {
   // ---- 市集右栏「我的背包」：简易分类筛选 + 多选 + 一键上架 ----
   // 分类只为快速定位要上架的物品；多选后统一设置时长与价格倍率，逐个调用挂单接口。
   let mktSellCat = 'all';
+  const mktEquipmentFilters = {};
   let mktSellPick = {};      // 勾选的物品 id → true
   let mktSellScroll = 0;     // 列表滚动位置（仅在必须重建时还原，避免多选时被弹回顶部）
   let mktSellPage = 1;
@@ -4792,6 +4895,7 @@ window.UI = (function () {
     const ids = Object.keys(st.inventory).filter(function (id) {
       const kind = itemMeta(id).kind;
       if (!MARKET_FISH_LIST && kind === 'fish') return false;
+      if (mktSellCat === 'component' && !equipmentFilterMatch(id, mktEquipmentFilters)) return false;
       return mktSellCat === 'all' || kind === mktSellCat;
     });
     return ids.sort(function (a, b) { return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1); });
@@ -4895,6 +4999,11 @@ window.UI = (function () {
       cats.appendChild(b);
     });
     box.appendChild(cats);
+    if (mktSellCat === 'component') box.appendChild(equipmentFilterControls(mktEquipmentFilters, function () {
+      mktSellPage = 1; mktSellScroll = 0;
+      box.replaceWith(marketSellPanel(S()));
+      syncMktSellFoot();
+    }, { parts: true, affixes: true }));
     if (!MARKET_FISH_LIST) {
       box.appendChild(el('div', 'hint mk-off-hint', '🐟 鱼类暂时不能上架（改版中）：渔获请在「商城 · 收购」出售，大型/巨型鱼可按档位卖（+50% / +150% 加成）。'));
     }
@@ -4916,7 +5025,7 @@ window.UI = (function () {
       pager.appendChild(prev); pager.appendChild(label); pager.appendChild(next); box.appendChild(pager);
     }
     const foot = el('div', 'mkt-sell-foot');
-    foot.appendChild(el('button', 'primary'));
+    foot.appendChild(el('button', 'primary', '⚡ 一键上架（已选 0）'));
     const clr = el('button', 'mini', '清空选择');
     clr.addEventListener('click', function () {
       // 就地取消勾选（同样避免重绘导致的滚动跳动）
@@ -5081,6 +5190,7 @@ window.UI = (function () {
   // 当前分类（模块级：重绘间保留）
   let invCategory = 'all';
   let invSearch = '', invPage = 1, invFilterSig = '';
+  const invEquipmentFilters = {};
   const INV_PAGE_SIZE = 12;
   // 子分类筛选（随分类页签切换显示）：
   //   鱼类/材料 → 品质；组件 → 一级「部位」 + 二级「词条 + 数值范围」
@@ -5745,6 +5855,7 @@ window.UI = (function () {
       return row;
     }
     if (invCategory === 'component') {
+      row.appendChild(equipmentFilterControls(invEquipmentFilters, function () { invPage = 1; renderView(); }));
       // 一级：部位
       const partCount = {};
       invKeys.forEach(function (id) {
@@ -6365,6 +6476,7 @@ window.UI = (function () {
       if ((st.inventory[id] || 0) <= 0) return false;
       const m = itemMeta(id);
       if (m.kind !== 'component') return false;
+      if (!equipmentFilterMatch(id, invEquipmentFilters)) return false;
       if (invPart !== 'all' && (m.part || '') !== invPart) return false;
       if (invBase !== 'all' && (m.baseId || '') !== invBase) return false;
       if (invAffixCount !== 'all') {
@@ -6517,7 +6629,7 @@ window.UI = (function () {
       return query.split(/\s+/).every(function (word) { return text.indexOf(word) >= 0; });
     });
     const filterSig = JSON.stringify([invCategory, invSubRar, invTier, invPart,
-      invBase, invAffixCount, invAffixType, invAffixMin, invAffixMax, query]);
+      invBase, invAffixCount, invAffixType, invAffixMin, invAffixMax, query, invEquipmentFilters]);
     if (filterSig !== invFilterSig) { invPage = 1; invFilterSig = filterSig; }
     // 组件：分页单位是「行」而不是「物品」——组头恒占一行，展开的成员各占一行（折叠组只占 1 行）。
     // 这样「一页 12 行」就等于屏幕上看到的 12 行：折叠后不会出现「一页只有两行」的错位，
@@ -6876,6 +6988,7 @@ window.UI = (function () {
   // 交易草稿状态：必须放在模块级并在重绘间保留，否则任何一次重绘
   // （SSE 广播非常频繁）都会把用户刚勾选的物品清空。
   let tradeDraft = { tid: null, sel: {} };
+  const tradeEquipmentFilters = {};
   let tradePickCat = 'all'; // 提供物品列表的分类页签（全部/鱼类/材料/宝匣/组件）
   // 提供物品列表的细分筛选（v0.13.8：与背包同一套口径与逻辑）——
   // 点开大分类才出现对应细分：材料/宝匣＝品质，组件＝品质+部位+词条。
@@ -6912,6 +7025,7 @@ window.UI = (function () {
     }
     if (tradePickRar !== 'all' && m.rarity !== tradePickRar) return false;
     if (tradePickCat !== 'component') return true;
+    if (!equipmentFilterMatch(id, tradeEquipmentFilters)) return false;
     if (tradePickPart !== 'all' && (m.part || '') !== tradePickPart) return false;
     if (tradePickAffixCount !== 'all') {
       const n = (m.affixes || []).length;
@@ -6953,6 +7067,7 @@ window.UI = (function () {
     });
     row.appendChild(rarRow);
     if (tradePickCat === 'component') {
+      row.appendChild(equipmentFilterControls(tradeEquipmentFilters, redraw, { hideQuality: true }));
       const partRow = el('div', 'inv-subrow');
       partRow.appendChild(el('span', 'sub-label', '部位'));
       const partCount = {};

@@ -51,7 +51,26 @@ const fs = require('fs'), path = require('path'), assert = require('node:assert/
  assert.match(await page.locator('.inv-page-info').innerText(),/第 1 \/ 1/);
  assert.equal(await page.locator('.inv-page-row').count(),1);
  assert.equal(await page.locator('.inv-group-head').count(),1);
+ await page.locator('.inv-search input').fill('');
+ await page.locator('.inv-search input').press('Enter');
+ await page.evaluate(()=>{
+   const D=GameData;
+   window.grownId=D.gearSignature('gear_line_1',8,'speed','main',0);
+   Engine.state.inventory[grownId]=1;
+   UI.refreshAll('assets');
+ });
+ await page.getByLabel('装备成长筛选',{exact:true}).selectOption('engraved');
+ assert.equal(await page.locator('.inv-page-row').count(),1,'engraved filter shows only grown item');
+ assert.equal(await page.locator('.inv-page-row').first().getAttribute('data-id'),await page.evaluate(()=>grownId));
+ await page.getByLabel('装备成长筛选',{exact:true}).selectOption('legacy');
+ assert.equal(await page.locator('.inv-page-row').count(),1,'legacy filter excludes grown item');
+ await page.getByLabel('装备品质筛选',{exact:true}).selectOption('mythic');
+ assert.equal(await page.locator('.inv-page-row').count(),0,'quality intersects growth filter');
+ await page.getByRole('button',{name:'重置装备筛选',exact:true}).click();
+ assert.equal(await page.locator('.inv-group-head').count(),2,'reset restores both component groups');
+ await page.getByRole('button',{name:'全部展开',exact:true}).click();
+ assert.equal(await page.locator('.inv-page-row').count(),2,'reset restores both items');
  assert.deepEqual(errors,[]);
- console.log('通过 16 项，失败 0 项');
+ console.log('通过 22 项，失败 0 项');
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

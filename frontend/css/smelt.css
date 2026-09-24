@@ -317,3 +317,8 @@
   .sm-result-dialog .sm-outcome-row > div { gap: 5px; font-size: 12px; }
   .sm-result-dialog .sm-outcome-row strong { font-size: 13px; }
 }
+
+.ab-setup { margin: 14px 0 20px; padding: 12px; border: 1px solid var(--line); border-radius: 3px; }
+.ab-setup .gear-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 10px; }
+.ab-fixed-part { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ab-setup select { width: 100%; min-width: 0; max-width: 100%; min-height: 36px; }

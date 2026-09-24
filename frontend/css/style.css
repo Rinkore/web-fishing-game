@@ -1586,6 +1586,9 @@ body.banner-open .topbar { top: var(--banner-h, 34px); }
 /* ================= 背包：子分类筛选 + 可展开分组 ================= */
 .inv-subfilters { margin: 6px 0 10px; display: flex; flex-direction: column; gap: 6px; }
 .inv-subrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.equipment-filters { margin: 8px 0; }
+.equipment-filter-label { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 12px; color: var(--muted); }
+.equipment-filter-label select { max-width: 100%; min-height: 32px; }
 .inv-subrow .sub-label { font-size: 12px; color: var(--muted); flex: none; min-width: 32px; }
 .inv-cat.sub { padding: 2px 9px; font-size: 12px; }
 .inv-subrow .sub-sel { padding: 3px 8px; font-size: 12px; }

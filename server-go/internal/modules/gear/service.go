@@ -163,6 +163,7 @@ type Command struct {
 	Action        string         `json:"action"`
 	RequestKey    string         `json:"requestKey"`
 	ID            string         `json:"id"`
+	IDs           []string       `json:"ids,omitempty"`
 	OtherID       string         `json:"otherId"`
 	Sub           string         `json:"sub"`
 	Direction     string         `json:"direction"`
@@ -299,6 +300,47 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 		cost := rules.GearCost{}
 		result := map[string]any{}
 		switch in.Action {
+		case "convert", "convert_batch":
+			ids := in.IDs
+			if in.Action == "convert" {
+				ids = []string{in.ID}
+			}
+			if len(ids) == 0 || len(ids) > 100 {
+				return assets.Result{}, assets.Rejection("每批请选择 1 至 100 件旧制配件")
+			}
+			seen := map[int64]bool{}
+			converted := []map[string]any{}
+			var compensation int64
+			for _, rawID := range ids {
+				id, parseErr := strconv.ParseInt(rawID, 10, 64)
+				if parseErr != nil || id <= 0 || seen[id] {
+					return assets.Result{}, assets.Rejection("请选择不重复的有效旧制配件")
+				}
+				seen[id] = true
+				item, err := s.convert(ctx, t, owner, id, &v)
+				if err != nil {
+					return assets.Result{}, err
+				}
+				converted = append(converted, item)
+				compensation += item["compensationReceipts"].(int64)
+			}
+			// Asset ledgers allow one entry per operation and material, so pay the
+			// aggregate once after the entire batch has been validated and converted.
+			cost = cfg.Costs.Convert
+			cost.Coins *= int64(len(ids))
+			cost.Receipts *= int64(len(ids))
+			cost.Heat *= len(ids)
+			cost.Items = make(map[string]int64, len(cfg.Costs.Convert.Items))
+			for item, quantity := range cfg.Costs.Convert.Items {
+				cost.Items[item] = quantity * int64(len(ids))
+			}
+			result["converted"] = converted
+			result["count"] = len(converted)
+			result["compensationReceipts"] = compensation
+			if in.Action == "convert" {
+				result["id"] = converted[0]["id"]
+				result["signature"] = converted[0]["signature"]
+			}
 		case "preferences":
 			allocation := in.Allocations
 			if allocation == nil {
@@ -444,7 +486,7 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 			if err != nil {
 				return assets.Result{}, err
 			}
-			base, quality, aa, ok := s.c.Instance(sig)
+			base, _, aa, ok := s.c.Instance(sig)
 			p, ordinary := cfg.Parts[base.Part]
 			if !ok || !ordinary || base.SetID != "" {
 				return assets.Result{}, assets.Rejection("请选择普通配件")
@@ -464,14 +506,6 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 			}
 			targetBase := base.ID
 			switch in.Action {
-			case "convert":
-				if modern {
-					return assets.Result{}, assets.Rejection("该配件已是新制")
-				}
-				cost = cfg.Costs.Convert
-				targetBase = "gear_" + base.Part + "_1"
-				v.Receipts += cfg.LegacyConvertReceipts[quality]
-				result["compensationReceipts"] = cfg.LegacyConvertReceipts[quality]
 			case "upgrade":
 				if !modern {
 					return assets.Result{}, assets.Rejection("请先转为新制配件")
@@ -575,4 +609,43 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 		return assets.Result{Status: "crafted", Details: raw}, nil
 	})
 }
+
+// convert is shared by individual and batch conversion inside the same asset transaction.
+func (s *Service) convert(ctx context.Context, t *assets.Transaction, owner, id int64, v *State) (map[string]any, error) {
+	var sig string
+	var bound bool
+	err := t.SQL().QueryRow(ctx, `SELECT attributes->>'signature',COALESCE((attributes->>'bound')::boolean,false) FROM fishing.equipment_instances e WHERE id=$1 AND owner_id=$2 AND lifecycle='available' AND NOT EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id)`, id, owner).Scan(&sig, &bound)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, assets.Rejection("请先卸下装备并解除保存配装占用")
+	}
+	if err != nil {
+		return nil, err
+	}
+	cfg := s.c.GearConfig()
+	base, quality, _, ok := s.c.Instance(sig)
+	_, ordinary := cfg.Parts[base.Part]
+	if !ok || !ordinary || base.SetID != "" {
+		return nil, assets.Rejection("请选择普通配件")
+	}
+	if _, modern := rules.Growth(sig); modern {
+		return nil, assets.Rejection("该配件已是新制")
+	}
+	targetBase := "gear_" + base.Part + "_1"
+	newsig, err := s.c.GearSignature(targetBase, 0, "", "none", 0)
+	if err != nil {
+		return nil, err
+	}
+	compensation := cfg.LegacyConvertReceipts[quality]
+	v.Receipts += compensation
+	if err = t.ConsumeEquipment(ctx, owner, id); err != nil {
+		return nil, err
+	}
+	attrs, _ := json.Marshal(map[string]any{"signature": newsig, "bound": bound})
+	newid, err := t.CreateEquipment(ctx, owner, assets.EquipmentSpec{DefinitionID: targetBase, Part: base.Part, Attributes: attrs})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"sourceId": strconv.FormatInt(id, 10), "id": strconv.FormatInt(newid, 10), "signature": newsig, "compensationReceipts": compensation}, nil
+}
+
 func IsModern(sig string) bool { return strings.Contains(sig, "@g") }

@@ -21,8 +21,8 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.22.0';
-  const BUILD = '2026-09-23';   // 构建日期（仅 /api/version 暴露，界面不展示）
+  const VERSION = 'v0.22.1';
+  const BUILD = '2026-09-24';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。
@@ -2679,13 +2679,42 @@
     AFFIX_TYPES.forEach(function (t) { v[t] = (a[t] || 0) + (b[t] || 0); });
     return v;
   }
-  function autoBuildDom(x, y) {          // y 是否被 x 逐项压制（含相等）
-    for (let i = 0; i < AFFIX_TYPES.length; i++) { const t = AFFIX_TYPES[i]; if (x[t] < y[t]) return false; }
-    return true;
-  }
   // cfg: { parts?:[部位…], candidates:{ 部位:[组件id…] }, order:[词条…], enabled:{词条:bool},
   //        min:{词条:数值}, max:{词条:数值}, dir:{词条:'min'|'max'}, maxStates? }
   // → { vec, picks:{部位:组件id|null}, order, relaxed:null|'max'|'all', miss:{词条:实际值} }
+  // 背包与当前装配均属于可用装备；选择套装时先固定两件核心。
+  function autoBuildOptions(state, selection) {
+    state = state || {}; selection = selection || {};
+    const owned = {}, sets = [], candidates = {}, fixed = selection.fixed || {};
+    ROD_PARTS.forEach(function (p) {
+      owned[p.key] = [];
+      const id = state.bd && state.bd[p.key] && state.bd[p.key].compId;
+      const c = id && componentOf(id);
+      if (c && c.part === p.key) owned[p.key].push(id);
+    });
+    Object.keys(state.inventory || {}).forEach(function (id) {
+      const c = componentOf(id);
+      if (state.inventory[id] > 0 && c && owned[c.part] && owned[c.part].indexOf(id) < 0) owned[c.part].push(id);
+    });
+    Object.keys(GEAR_SYSTEM.sets || {}).forEach(function (id) {
+      const picks = {};
+      ['rod', 'charm'].forEach(function (part) { picks[part] = owned[part].find(function (key) { return componentOf(key).setId === id; }); });
+      if (picks.rod && picks.charm) sets.push({ id: id, name: GEAR_SYSTEM.sets[id].name, description: GEAR_SYSTEM.sets[id].description, picks: picks });
+    });
+    const selected = sets.find(function (x) { return x.id === selection.set; });
+    let error = selection.set && selection.set !== 'current' && !selected ? '所选套装核心已不完整，请重新选择。' : '';
+    ROD_PARTS.forEach(function (p) {
+      const cur = state.bd && state.bd[p.key] && state.bd[p.key].compId;
+      if (selected && selected.picks[p.key]) candidates[p.key] = [selected.picks[p.key]];
+      else if (Object.prototype.hasOwnProperty.call(fixed, p.key)) {
+        const id = fixed[p.key];
+        if (id && owned[p.key].indexOf(id) < 0) error = '固定配件已不在背包中，请重新选择。';
+        candidates[p.key] = id && owned[p.key].indexOf(id) >= 0 ? [id] : [];
+      } else if (p.key === 'rod' || p.key === 'charm') candidates[p.key] = cur ? [cur] : [];
+      else candidates[p.key] = owned[p.key].filter(function (id) { return !componentOf(id).setId; });
+    });
+    return { owned: owned, sets: sets, selected: selected, candidates: candidates, error: error };
+  }
   function autoBuildPlan(cfg) {
     cfg = cfg || {};
     const enabled = cfg.enabled || null;   // null = 全部属性参与
@@ -2699,6 +2728,15 @@
     const bound = function (src, t) { return src[t] != null && src[t] !== '' && isFinite(Number(src[t])); };
     const minKeys = AFFIX_TYPES.filter(function (t) { return bound(mins, t); });
     const maxKeys = AFFIX_TYPES.filter(function (t) { return bound(maxs, t); });
+    // 有上限时更高不一定更好；最小值探针也不能沿用逐项最大化剪枝。
+    function dominates(a, b) {
+      for (let i = 0; i < AFFIX_TYPES.length; i++) {
+        const t = AFFIX_TYPES[i];
+        if (bound(maxs, t) && a[t] !== b[t]) return false;
+        if (dirs[t] === 'min' ? a[t] > b[t] : a[t] < b[t]) return false;
+      }
+      return true;
+    }
 
     function lexOrd(order, a, b) {
       for (let i = 0; i < order.length; i++) {
@@ -2726,11 +2764,21 @@
       });
       list.sort(function (a, b) { return lex(b.vec, a.vec) || (a.id < b.id ? -1 : 1); });
       const keep = [];
-      list.forEach(function (it) {              // 单部位内被逐项压制的件永远不可能被选
-        for (let i = 0; i < keep.length; i++) if (keep[i].set===it.set && keep[i].resonance===it.resonance && autoBuildDom(keep[i].vec, it.vec)) return;
+      list.forEach(function (it) {              // 仅剪掉在当前约束下被支配的候选
+        for (let i = 0; i < keep.length; i++) if (keep[i].set===it.set && keep[i].resonance===it.resonance && dominates(keep[i].vec, it.vec)) return;
         keep.push(it);
       });
       cand[key] = keep.slice(0, AUTO_BUILD_CANDS);
+      // 保留每个属性的端点，避免大量不同等级装备挤掉可达下限。
+      AFFIX_TYPES.forEach(function (t) {
+        let lo = null, hi = null;
+        keep.forEach(function (it) {
+          if (!lo || it.vec[t] < lo.vec[t]) lo = it;
+          if (!hi || it.vec[t] > hi.vec[t]) hi = it;
+        });
+        if (lo && cand[key].indexOf(lo) < 0) cand[key].push(lo);
+        if (hi && cand[key].indexOf(hi) < 0) cand[key].push(hi);
+      });
     });
 
     let frontier = [{ vec: autoBuildZero(), picks: {}, set:'', resonance:0 }];
@@ -2769,7 +2817,7 @@
       const keep = [];
       for (let i = 0; i < next.length && keep.length < slot; i++) {
         let dom = false;
-        for (let j = 0; j < keep.length; j++) if (keep[j].set===next[i].set && keep[j].resonance===next[i].resonance && autoBuildDom(keep[j].vec, next[i].vec)) { dom = true; break; }
+        for (let j = 0; j < keep.length; j++) if (keep[j].set===next[i].set && keep[j].resonance===next[i].resonance && dominates(keep[j].vec, next[i].vec)) { dom = true; break; }
         if (!dom) keep.push(next[i]);
       }
       AFFIX_TYPES.forEach(function (t) {
@@ -2814,7 +2862,8 @@
     }
     const miss = {};
     minKeys.forEach(function (t) { if (res.vec[t] < Number(mins[t])) miss[t] = res.vec[t]; });
-    return { vec: res.vec, picks: res.picks, order: prio, relaxed: relaxed, miss: miss };
+    return { vec: res.vec, picks: res.picks, order: prio, relaxed: relaxed, miss: miss,
+      error: frontier.length ? '' : '固定配件无法组成合法装配，请检查套装与共鸣配件。' };
   }
   // 单属性「可达」探针：把它排到优先级首位、去掉它自己的目标区间，
   // 在其余属性的目标区间约束下求它的最大值（dir='max'，默认）或最小值（dir='min'）。
@@ -3396,7 +3445,7 @@
     adjectiveOf: adjectiveOf, affixCeilingOf: affixCeilingOf, instanceMeta: instanceMeta, componentOf: componentOf,
     legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,
     ROD_SET_PREFIX: ROD_SET_PREFIX, isRodSet: isRodSet, rodPartsOf: rodPartsOf, rodSetId: rodSetId, rodMeta: rodMeta,
-    autoBuildPlan: autoBuildPlan, autoBuildPeek: autoBuildPeek, autoBuildVec: autoBuildVec,
+    autoBuildOptions: autoBuildOptions, autoBuildPlan: autoBuildPlan, autoBuildPeek: autoBuildPeek, autoBuildVec: autoBuildVec,
     autoBuildRange: autoBuildRange,
     normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,

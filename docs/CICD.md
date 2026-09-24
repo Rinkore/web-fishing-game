@@ -19,6 +19,17 @@ pwsh -File tools/release/start-release.ps1 -SameVersionRevision -Publish
 
 已经指向相同提交的 tag 不会产生新 push 事件。要重试，在 GitHub Actions 的 **Linux release and deploy → Run workflow** 中填写该 tag；无需造新版本或移动标签。
 
+### 已完成本地验收，发布时不重复测试
+
+仅当待发布的同一提交已完成本地必要测试和验收，且明确要求发布阶段不重复测试时，使用手动发版的 `skip_tests` 选项。该选项默认关闭，只作用于 `workflow_dispatch`；普通标签推送仍按默认流程执行 Go CI。它不会跳过版本与 main 归属校验、构建、包摘要校验、部署健康检查或失败回滚，也不能把失败的测试结果当成通过。
+
+1. 完成本地验收，记录结果，并将验收过的代码、版本和发布说明一起提交；这次发布提交的消息包含 `[skip ci]`，避免随后 main/tag push 自动触发重复 CI。提交后若继续修改源码或整合远端改动，必须重新验收受影响部分，不能沿用旧提交的结果。
+2. 在干净的 `main` 上执行 `pwsh -File tools/release/start-release.ps1 -Publish`，原子推送 main 和标签。此脚本只检查发布条件与推送引用，本身不运行测试。
+3. 在 GitHub Actions 的 **Linux release and deploy → Run workflow** 中选择 `main`，`version` 填写刚推送的标签，勾选 `skip_tests` 后启动。`[skip ci]` 仅跳过 push/pull_request 触发，不阻止手动工作流；若没有手动启动，标签推送本身不会完成本次发布。
+4. 跟踪 `source`、`publish`、`deploy` 成功；`test` 应明确显示 skipped。只有部署和公网健康检查成功后，才能确认正式服更新完成。
+
+通过 GitHub CLI 手动启动的等价方式为 `gh workflow run release.yml --ref main -f version=vX.Y.Z -f skip_tests=true`。不要仅重跑此前被 `[skip ci]` 跳过的 push 事件；它没有手动输入，不会使用免重复测试选项。
+
 ## 流水线
 
 1. 校验 tag、前端版本、发布说明以及提交属于 main。

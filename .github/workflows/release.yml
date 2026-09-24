@@ -9,6 +9,11 @@ on:
         description: Existing release tag, for example v0.21.5
         required: true
         type: string
+      skip_tests:
+        description: Skip repeated CI only when this exact release commit has passed local acceptance
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -51,12 +56,14 @@ jobs:
 
   test:
     needs: source
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_tests }}
     uses: ./.github/workflows/go-rewrite.yml
     with:
       source-ref: ${{ needs.source.outputs.commit }}
 
   publish:
     needs: [source, test]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && (needs.test.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.skip_tests && needs.test.result == 'skipped')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -102,6 +109,7 @@ jobs:
 
   deploy:
     needs: [source, publish]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.publish.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: linux-go

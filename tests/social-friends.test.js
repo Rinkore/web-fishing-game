@@ -111,6 +111,32 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     await searchPeer.getByRole('button', { name: '添加好友', exact: true }).waitFor();
     check('Reject removes the request without stale rows', await incoming.locator('.peep').count() === 0 && await search.locator('.peep').count() === 2);
     check('Each click sends exactly one action for the intended player', await page.evaluate(() => socialFixture.actions.every(a => a.id === 'peer') && socialFixture.actions.map(a => a.action).join(',') === 'request,cancel,accept,request,cancel,accept,remove,reject'));
+    await page.evaluate(async () => {
+      for (let i = 0; i < 21; i++) {
+        const id = 'saved-' + i;
+        socialFixture.peers.push({ id, name: 'Saved ' + i, username: id, online: i !== 0 });
+        socialFixture.relations.friends.push(id);
+      }
+      Net.tradeInvite = async id => {
+        socialFixture.tradeTarget = id;
+        return { ok: false, data: { error: '测试交易申请' } };
+      };
+      await UI.friendPush();
+    });
+    const savedPanel = page.locator('.friends-panel .ground-cols > .sub').first();
+    check('Saved friends show one bounded page and total count', await saved.locator('.peep').count() === 20 && await savedPanel.locator('.peep-pager').innerText().then(text => text.includes('第 1 / 2 页') && text.includes('21 人')));
+    check('Offline friends cannot start an online trade', await saved.locator('[data-key="saved-0"]').getByRole('button', { name: '🤝 交易', exact: true }).isDisabled());
+    await saved.locator('[data-key="saved-1"]').getByRole('button', { name: '🤝 交易', exact: true }).click();
+    check('Saved friend trade reuses invitation flow with the correct player', await page.evaluate(() => socialFixture.tradeTarget === 'saved-1'));
+    await savedPanel.getByRole('button', { name: '下一页', exact: true }).click();
+    check('Saved friends next page shows remaining friend', await saved.locator('.peep').count() === 1 && await saved.locator('[data-key="saved-20"]').count() === 1);
+    await page.evaluate(async () => { await UI.friendPush(); });
+    check('Friend refresh preserves selected page', await saved.locator('[data-key="saved-20"]').count() === 1);
+    await saved.getByRole('button', { name: '移除好友', exact: true }).click();
+    await saved.locator('[data-key="saved-0"]').waitFor();
+    check('Removing last friend on a page clamps to the preceding page', await saved.locator('.peep').count() === 20 && await savedPanel.getByRole('button', { name: '下一页', exact: true }).isDisabled());
+    await page.evaluate(async () => { socialFixture.peers.find(p => p.id === 'saved-0').online = true; await UI.friendPush(); });
+    check('Friend trade availability updates after coming online', await saved.locator('[data-key="saved-0"]').getByRole('button', { name: '🤝 交易', exact: true }).isEnabled());
     assert.deepEqual(errors, []);
     check('No browser errors', true);
     console.log('通过 ' + count + ' 项，失败 0 项');

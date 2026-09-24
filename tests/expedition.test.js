@@ -75,6 +75,22 @@ const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+nam
     const p=GameData.autoBuildPlan({parts:['line','bait','accessory'],candidates:{line:['line_nylon#epic#res+10','gear_line_1#epic#spd+3'],bait:['gear_bait_3#epic#res+5'],accessory:['gear_accessory_2#epic#res+5']},order:['resonance']});
     return p.picks.line==='gear_line_1#epic#spd+3'&&p.vec.resonance===10;
   }));
+  check('Owned complete sets lock cores and preserve chosen grown accessories',await page.evaluate(()=>{
+    const D=GameData, rod='set_harvest_rod#epic#mat+8', charm='set_harvest_charm#epic#stl+6';
+    const line=D.gearSignature('gear_line_1',8,'speed','main',0);
+    const state={bd:{rod:{compId:rod}},inventory:{[charm]:1,[line]:1,'set_apex_rod#epic#skl+8':1}};
+    const options=D.autoBuildOptions(state,{set:'harvest',fixed:{line}});
+    const plan=D.autoBuildPlan({candidates:options.candidates});
+    return !options.error&&options.sets.length===1&&plan.picks.rod===rod&&plan.picks.charm===charm&&plan.picks.line===line&&plan.vec.skill>=D.autoBuildVec(D.componentOf(line)).skill;
+  }));
+  check('Missing selected cores or fixed accessories invalidate stale plans',await page.evaluate(()=>{
+    return !!GameData.autoBuildOptions({inventory:{},bd:{}},{set:'tide'}).error&&!!GameData.autoBuildOptions({inventory:{},bd:{}},{fixed:{line:'gone'}}).error;
+  }));
+  check('Fixed empty slots remain empty while other owned accessories optimize',await page.evaluate(()=>{
+    const D=GameData,line=D.gearSignature('gear_line_1',4,'speed','none',0);
+    const options=D.autoBuildOptions({inventory:{[line]:1},bd:{}},{fixed:{line:null}});
+    return D.autoBuildPlan({candidates:options.candidates}).picks.line===null;
+  }));
   check('No browser script errors',errors.length===0);
  }finally{await browser.close();}
  console.log('通过 '+count+' 项，失败 0 项');
