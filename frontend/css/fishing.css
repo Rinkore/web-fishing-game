@@ -6,12 +6,28 @@
   position: relative; isolation: isolate; min-height: 420px; overflow: hidden;
   background: #0a2034;
 }
-.fishing-stage .fish-select { position: absolute; inset: 0; }
+.fishing-stage .fish-select { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; }
+.fishing-stage .fish-select.is-dragging, .fishing-stage .fish-select.is-dragging .px-node { cursor: grabbing; }
 .fishing-stage .px-map {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   border: 0; border-radius: 0; box-shadow: none;
 }
 .fishing-stage .px-map-img { width: 100%; height: 100%; object-fit: contain; }
+.fishing-stage .px-map-world { overflow: visible; transform-origin: center; will-change: transform; }
+.fishing-stage .px-map-world .px-node,
+.fishing-stage .px-map-world .px-node:active {
+  transform: translate(-50%, -50%) scale(calc(1 / var(--map-scale, 1))) !important;
+}
+.fishing-map-controls {
+  display: flex; align-items: center; gap: 5px; padding: 6px;
+  color: var(--text); background: rgba(10, 29, 48, .95);
+  border: 1px solid var(--px-line); border-radius: 4px; pointer-events: auto;
+}
+.fishing-map-title { padding: 0 7px; color: var(--px-gold); font-size: 13px; white-space: nowrap; }
+.fishing-map-controls button { min-width: 38px; min-height: 38px; padding: 5px 8px; font-size: 13px; }
+.fishing-map-controls button[data-map-action="in"], .fishing-map-controls button[data-map-action="out"] { font-size: 20px; }
+.fishing-map-zoom { min-width: 40px; text-align: center; font-size: 11px; }
+.fishing-map-hint { position: absolute; left: 0; top: 62px; padding: 4px 8px; color: #c8dfed; background: rgba(10, 29, 48, .78); border-radius: 3px; font-size: 11px; }
 .fishing-stage .fishing-toolbar {
   position: absolute; z-index: 4; top: var(--fish-edge); left: var(--fish-edge); right: var(--fish-edge);
   display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
@@ -98,6 +114,10 @@
 @media (max-width: 640px) {
   .fishing-stage { --fish-edge: 8px; }
   .fishing-stage .fishing-toolbar { flex-wrap: wrap; gap: 8px; }
+  .fishing-map-controls { gap: 3px; padding: 3px; }
+  .fishing-map-title { display: none; }
+  .fishing-map-controls button { min-width: 34px; padding: 4px 6px; }
+  .fishing-map-hint { top: 52px; max-width: calc(100% - 35px); font-size: 10px; }
   .fishing-toolbar .px-map-tabs { padding: 3px; }
   .fishing-dock { top: 66px; bottom: 112px; }
   .fishing-switches { padding: 3px; }

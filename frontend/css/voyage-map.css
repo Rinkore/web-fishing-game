@@ -1,24 +1,36 @@
-/* 近岸同系的细像素海图：8:5，地物按更远的地图尺度绘制。
+/* 连续世界海图：2:1，近岸大陆、湖泊、港湾与远洋群岛共享同一比例。
    彩色短段均为原生 CSS box-shadow；JS 仅计算固定地形的段坐标。 */
-.px-map-voyage { container-type: inline-size; isolation: isolate; }
+.px-map-world, .px-map-voyage { container-type: inline-size; isolation: isolate; }
 .vm-art {
-  position: relative; width: 100%; aspect-ratio: 8 / 5; overflow: hidden;
+  position: relative; width: 100%; aspect-ratio: 2 / 1; overflow: hidden; container-type: inline-size;
   pointer-events: none; user-select: none;
   background:
-    radial-gradient(ellipse at 60% 44%, #1b496a 0, transparent 19%),
-    radial-gradient(ellipse at 9% 87%, #234e6e 0, transparent 28%),
-    radial-gradient(ellipse at 87% 28%, #0e2d4b 0, transparent 36%),
-    linear-gradient(155deg, #123a60, #103454 55%, #103453);
+    radial-gradient(ellipse at 38% 60%, #306c7c 0, transparent 34%),
+    radial-gradient(ellipse at 9% 28%, #28566e 0, transparent 38%),
+    radial-gradient(ellipse at 88% 28%, #0d293f 0, transparent 33%),
+    linear-gradient(115deg, #194b68, #173e5b 55%, #103453);
 }
 .vm-ink {
   position: absolute; display: block; top: 0; left: 0;
-  font-size: calc(100cqw / 640); height: 1em;
+  font-size: calc(100cqw / 960); height: 1em;
   pointer-events: none;
 }
 .vm-atmosphere {
   position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(ellipse at center, transparent 45%, #071a291c 100%);
 }
-/* 靠近地图右缘的名牌向内收，窄屏也能完整读出船级。 */
-.px-map-voyage .pn-name { font-size: clamp(9px, 2cqw, 12px); padding-inline: 6px; }
-.px-map-voyage .px-node[data-s="trench"] .pn-name { transform: translateX(-23%); }
+.vm-region {
+  position: absolute; transform: translate(-50%, -50%);
+  color: #c1d4c8; opacity: .6; letter-spacing: .3em;
+  font-size: clamp(9px, 1.3cqw, 15px); white-space: nowrap;
+  text-shadow: 0 2px 2px #0c263d; pointer-events: none;
+}
+.vm-compass {
+  position: absolute; right: 4%; top: 7%; color: #afc3c7;
+  font: 11px Georgia, serif; text-align: center; opacity: .65;
+}
+.vm-compass::after {
+  content: ''; display: block; width: 20px; height: 38px; margin-top: 5px;
+  background: linear-gradient(90deg, #cbd4c1 50%, #64858c 50%);
+  clip-path: polygon(50% 0, 100% 100%, 50% 75%, 0 100%);
+}

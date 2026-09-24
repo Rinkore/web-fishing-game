@@ -2451,8 +2451,7 @@ window.Admin = (function () {
   // ================================
   // 服务端仍以「钓场」为内部容器：全部钓点挂在唯一隐式钓场 'map' 下（出海临时海域 sea:* 不在这里管理）。
   const MAP_GID = 'map';
-  // v0.21.2：近岸图 / 远洋图分开管理（与玩家端「🎣 钓鱼」页的两个地图页签同口径）。
-  // 以前两张图的钓点混在同一张近岸底图上拖动，远洋点的坐标看着毫无意义。
+  // 列表按近岸 / 远洋分类，地图统一显示；保存时仍使用各区域的原始百分比坐标。
   let spotMapTab = 'nearshore';
   const mapTabOf = function (sp) { return sp && sp.map === 'voyage' ? 'voyage' : 'nearshore'; };
   function renderGrounds() {
@@ -2505,11 +2504,11 @@ window.Admin = (function () {
       '<div class="panel">' +
       '<h3 style="margin-top:0">🎣 钓点列表（近岸 ' + mapSpots('nearshore').length + ' / 远洋 ' + mapSpots('voyage').length + '）</h3>' +
       '<div class="gd-tabs">' +
-      [['nearshore', '🏞 近岸图'], ['voyage', '⛵ 远洋图']].map(function (kv) {
+      [['nearshore', '🏞 近岸钓点'], ['voyage', '⛵ 远洋钓点']].map(function (kv) {
         return '<button class="btn mini gd-tab' + (spotMapTab === kv[0] ? ' on' : '') + '" data-mtab="' + kv[0] + '">' + kv[1] +
           '<span class="hint">（' + mapSpots(kv[0]).length + '）</span></button>';
       }).join('') +
-      '<span class="hint">两张图分别定位：下面的地图与列表只显示当前这张图的钓点</span></div>' +
+      '<span class="hint">分类仅筛选列表，下方世界地图同时显示近岸与远洋钓点</span></div>' +
       '<div class="spot-rows">' + (curSpots.length ? curSpots.map(function (s) {
         const pos = Array.isArray(s.pos) ? s.pos : null;
         return '<div class="spot-row' + (s.id === selSpot ? ' sel' : '') + (s.locked ? ' locked' : '') + '" data-s="' + esc(s.id) + '">' +
@@ -2522,10 +2521,10 @@ window.Admin = (function () {
           (s.intervalMs != null && s.intervalMs !== '' ? ' · 间隔 ' + s.intervalMs + 'ms' : '') + '</span>' +
           '<button class="btn mini" data-lock="' + esc(s.id) + '">' + (s.locked ? '解锁' : '锁定') + '</button>' +
           '</div>';
-      }).join('') : '<div class="hint">这张图上还没有钓点，用下面的「＋ 新建钓点」添加（所属图已按当前页签预选）。</div>') + '</div>' +
+      }).join('') : '<div class="hint">此区域还没有钓点，用下面的「＋ 新建钓点」添加。</div>') + '</div>' +
       '<div class="mgr-row" style="margin-top:10px"><input id="ns-name" class="ipt gi-name" placeholder="新钓点名称" maxlength="20" />' +
       '<select id="ns-preset" class="ipt gi-type">' + presetOpts + '</select>' +
-      '<label class="hint">所属图</label><select id="ns-map" class="ipt gi-type"><option value=""' + (spotMapTab === 'nearshore' ? ' selected' : '') + '>近岸图</option><option value="voyage"' + (spotMapTab === 'voyage' ? ' selected' : '') + '>远洋图</option></select>' +
+      '<label class="hint">所属区域</label><select id="ns-map" class="ipt gi-type"><option value=""' + (spotMapTab === 'nearshore' ? ' selected' : '') + '>近岸</option><option value="voyage"' + (spotMapTab === 'voyage' ? ' selected' : '') + '>远洋</option></select>' +
       '<label class="hint">船级门槛</label><input id="ns-ship" class="ipt mk-num" type="number" min="0" max="5" step="1" placeholder="0=不限" style="width:70px" />' +
       '<button class="btn mini" id="ns-add">＋ 新建钓点（一键填充）</button>' +
       (curSpots.length ? '<button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button>' : '') +
@@ -2551,7 +2550,7 @@ window.Admin = (function () {
         if (tab === spotMapTab) return;
         spotMapTab = tab;
         selSpot = null;            // 交给 drawGrounds 在新图里重新选（选到该图第一个钓点）
-        poolDirty = buffsDirty = false; posDraft = {};
+        poolDirty = buffsDirty = false;
         drawGrounds(cfg);
       };
     });
@@ -2559,7 +2558,7 @@ window.Admin = (function () {
       row.onclick = function (ev) {
         if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-lock')) return;
         selSpot = row.getAttribute('data-s');
-        poolDirty = buffsDirty = false; posDraft = {};
+        poolDirty = buffsDirty = false;
         drawGrounds(cfg);
       };
     });
@@ -2622,7 +2621,7 @@ window.Admin = (function () {
     drawLootGroupManager(cfg);
     drawSpotMap(g, curSpots, g.spots);
     const sp = curSpots.find(function (x) { return x.id === selSpot; });
-    if (!sp) { $('ed-body').innerHTML = '<div class="hint">这张图上还没有钓点，可用上方「＋ 新建钓点」添加（自动填充掉落池）。</div>'; return; }
+    if (!sp) { $('ed-body').innerHTML = '<div class="hint">此区域还没有钓点，可用上方「＋ 新建钓点」添加（自动填充掉落池）。</div>'; return; }
     // 草稿：首次进入或切换钓点时从服务器数据拷贝
     if (!poolDirty && !buffsDirty) {
       poolDraft = (sp.pool || []).map(function (e) { return poolToRow(e.pick, e.weight); });
@@ -2631,28 +2630,24 @@ window.Admin = (function () {
     drawEditors(cfg, g, sp);
   }
   // ---- 钓点地图定位（拖动设置）----
-  // 玩家端「钓鱼」页的两张图各有一套坐标：近岸图 = assets/worldmap.png，远洋图 = voyage-map.js 的 CSS 像素海图
-  // （与玩家端「⛵ 远洋」页签同一份底图，坐标口径一致，后台看到的pos 就是玩家看到的pos）。
-  // 拖动节点 = 改坐标，坐标以地图宽高的百分比保存（2~98，防止拖出视野）。
+  // 与玩家端共用 CSS 世界地图及坐标投影；后台拖动逆投影后沿用现有保存接口。
   // 草稿存在 posDraft（模块级），因此上鱼广播/切页重绘都不会丢掉尚未保存的拖动结果。
   function drawSpotMap(g, spots, allSpots) {
     const host = $('gd-map');
     if (!host) return;
-    spots = spots || [];
-    host.innerHTML = '<h3>🗺 地图定位 — ' + (spotMapTab === 'voyage' ? '远洋图' : '近岸图') + ' · ' + esc(g.name) + '</h3>';
+    spots = allSpots || spots || [];
+    host.innerHTML = '<h3>🗺 世界地图定位 · ' + esc(g.name) + '</h3>';
     if (!spots.length) {
-      host.innerHTML += '<div class="hint">这张图上还没有钓点。切到「' + (spotMapTab === 'voyage' ? '🏞 近岸图' : '⛵ 远洋图') +
-        '」可编辑另一张图的钓点；新建时「所属图」记得选对。</div>';
+      host.innerHTML += '<div class="hint">世界地图还没有钓点，请先新建钓点。</div>';
       return;
     }
     const posOf = function (sp) { return posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) || [50, 50]; };
     host.innerHTML +=
-      '<div class="hint" style="margin-bottom:8px">直接拖动节点调整钓点在玩家端世界地图上的位置（坐标 = 地图宽高的百分比）。' +
+      '<div class="hint" style="margin-bottom:8px">直接拖动节点调整位置：左侧近岸，右侧远洋；钓点在所属区域内移动。' +
       '「恢复出厂」把该钓点退回 data.js 的默认坐标。改完点「保存坐标」立即对全服生效。</div>' +
-      '<div class="gd-map' + (spotMapTab === 'voyage' ? ' gd-map-voyage' : '') + '" id="gd-map-canvas">' +
-      (spotMapTab === 'voyage' ? '' : '<img class="gd-map-img" src="assets/worldmap.png" alt="" draggable="false">') +
+      '<div class="gd-map px-map-voyage" id="gd-map-canvas">' +
       spots.map(function (sp) {
-        const p = posOf(sp);
+        const p = window.VoyageMap.project(posOf(sp), sp.map === 'voyage');
         return '<button class="gd-node" data-s="' + esc(sp.id) + '" style="left:' + p[0] + '%;top:' + p[1] + '%" title="拖动调整位置">' +
           '<span class="gd-node-dot"></span><span class="gd-node-name">' + esc(sp.name) + '</span></button>';
       }).join('') +
@@ -2662,24 +2657,21 @@ window.Admin = (function () {
       '<span id="gd-map-state" class="hint" style="margin-left:10px">拖动节点后记得保存</span></div>';
 
     const canvas = $('gd-map-canvas');
-    // 远洋底图：与玩家端同一份 CSS 像素海图（节点百分比坐标口径一致），垫在所有节点下面
-    if (spotMapTab === 'voyage') {
-      const wrap = document.createElement('div');
-      wrap.className = 'px-map-voyage';
-      if (window.VoyageMap) wrap.appendChild(window.VoyageMap.create());
-      else wrap.innerHTML = '<img class="gd-map-img" src="assets/voyagemap.png" alt="" draggable="false">';
-      canvas.insertBefore(wrap, canvas.firstChild);
-    }
+    canvas.insertBefore(window.VoyageMap.create(), canvas.firstChild);
     let drag = null;
     function setPos(node, sid, x, y) {
-      const nx = Math.max(2, Math.min(98, Math.round(x * 10) / 10));
-      const ny = Math.max(2, Math.min(98, Math.round(y * 10) / 10));
-      node.style.left = nx + '%';
-      node.style.top = ny + '%';
+      const sp = spots.find(function (s) { return s.id === sid; });
+      const local = window.VoyageMap.unproject([x, y], sp.map === 'voyage');
+      const nx = Math.max(2, Math.min(98, Math.round(local[0] * 10) / 10));
+      const ny = Math.max(2, Math.min(98, Math.round(local[1] * 10) / 10));
+      const world = window.VoyageMap.project([nx, ny], sp.map === 'voyage');
+      node.style.left = world[0] + '%';
+      node.style.top = world[1] + '%';
       posDraft[sid] = [nx, ny];
     }
     canvas.querySelectorAll('.gd-node').forEach(function (node) {
       node.addEventListener('pointerdown', function (ev) {
+        if (ev.button !== 0) return;
         ev.preventDefault();
         const rect = canvas.getBoundingClientRect();
         drag = { node: node, sid: node.getAttribute('data-s'), rect: rect };
@@ -2696,6 +2688,11 @@ window.Admin = (function () {
         $('gd-map-state').innerHTML = '<span style="color:var(--warn)">未保存：' + esc(node.getAttribute('data-s')) +
           ' → ' + posDraft[node.getAttribute('data-s')].join(', ') + '</span>';
       });
+      node.addEventListener('pointercancel', function () {
+        if (!drag || drag.node !== node) return;
+        node.classList.remove('dragging');
+        drag = null;
+      });
       function onMove(ev) {
         const r = drag.rect;
         if (!r.width || !r.height) return;
@@ -2703,19 +2700,23 @@ window.Admin = (function () {
       }
     });
     $('gd-map-save').onclick = function () {
-      // 两张图的钓点一起保存：切页签之前的拖动也在这个 posDraft 里，别只存当前这张图
+      // 两个区域一起保存，切换列表分类时保留尚未提交的坐标草稿。
       const list = (allSpots || spots).map(function (sp) {
         return { spotId: sp.id, pos: posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) };
       }).filter(function (e) { return e.pos; });
       adminApi('POST', '/api/admin/spot/pos', { token: token, groundId: g.id, list: list }).then(function (r) {
         if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
+        list.forEach(function (entry) {
+          const sp = spots.find(function (s) { return s.id === entry.spotId; });
+          if (sp) sp.pos = entry.pos.slice();
+        });
         posDraft = {};
         setHint('gd-map-state', '<span style="color:var(--ok)">已保存 ' + (r.data.changed || 0) + ' 处坐标，玩家端地图立即生效</span>');
         toast('钓点坐标已保存');
       });
     };
     $('gd-map-reset').onclick = function () {
-      confirmModalLocal('把「近岸图 + 远洋图」的钓点坐标全部恢复为出厂值？').then(function (ok) {
+      confirmModalLocal('把世界地图中近岸与远洋钓点的坐标全部恢复为出厂值？').then(function (ok) {
         if (!ok) return;
         adminApi('POST', '/api/admin/spot/pos', {
           token: token, groundId: g.id,

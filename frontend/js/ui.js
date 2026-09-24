@@ -977,19 +977,148 @@ window.UI = (function () {
   let fishingOverlay = null;
   let fishingDockCollapsed = false;
   let disposeFishingViewport = null;
-  function mountFishingViewport(stage, map) {
+  let fishingMapLocate = false;
+  // 视角独立于页面 DOM，切换钓点与服务器推送不会重置拖动和缩放。
+  const fishingMapView = { zoom: 1, x: 0, y: 0, initialized: false };
+  function mountFishingViewport(stage, map, chooseSpot) {
     if (disposeFishingViewport) disposeFishingViewport();
-    const img = map.querySelector('.px-map-img');
+    const viewport = stage.querySelector('.fish-select');
+    const controls = stage.querySelector('.fishing-map-controls');
+    const pointers = new Map();
+    let width = 0, height = 0, gesture = null;
+    function paint() {
+      const maxX = Math.max(0, (width * fishingMapView.zoom - stage.clientWidth) / 2);
+      const maxY = Math.max(0, (height * fishingMapView.zoom - stage.clientHeight) / 2);
+      fishingMapView.x = Math.max(-maxX, Math.min(maxX, fishingMapView.x * width)) / width;
+      fishingMapView.y = Math.max(-maxY, Math.min(maxY, fishingMapView.y * height)) / height;
+      map.style.transform = 'translate(-50%, -50%) translate(' + fishingMapView.x * width + 'px, ' +
+        fishingMapView.y * height + 'px) scale(' + fishingMapView.zoom + ')';
+      map.style.setProperty('--map-scale', fishingMapView.zoom);
+      controls.querySelector('.fishing-map-zoom').textContent = Math.round(fishingMapView.zoom * 100) + '%';
+      controls.querySelector('[data-map-action="out"]').disabled = fishingMapView.zoom <= 1;
+      controls.querySelector('[data-map-action="in"]').disabled = fishingMapView.zoom >= 4;
+      controls.querySelector('[data-map-action="locate"]').disabled = !map.querySelector('.px-node.here');
+    }
+    function localPoint(clientX, clientY) {
+      const rect = viewport.getBoundingClientRect();
+      return { x: (clientX - rect.left - rect.width / 2) * viewport.clientWidth / rect.width,
+        y: (clientY - rect.top - rect.height / 2) * viewport.clientHeight / rect.height };
+    }
+    function zoomAt(value, point) {
+      const next = Math.max(1, Math.min(4, value)), ratio = next / fishingMapView.zoom;
+      fishingMapView.x = (point.x - (point.x - fishingMapView.x * width) * ratio) / width;
+      fishingMapView.y = (point.y - (point.y - fishingMapView.y * height) * ratio) / height;
+      fishingMapView.zoom = next;
+      paint();
+    }
     function fit() {
       const bottom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
       const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
-      const height = Math.max(420, (window.innerHeight - stage.getBoundingClientRect().top) / zoom - bottom);
-      stage.style.height = height + 'px';
-      const ratio = img && img.naturalWidth ? img.naturalWidth / img.naturalHeight : 8 / 5;
-      const width = Math.min(stage.clientWidth, stage.clientHeight * ratio);
+      stage.style.height = Math.max(420, (window.innerHeight - stage.getBoundingClientRect().top) / zoom - bottom) + 'px';
+      width = Math.max(1, Math.min(stage.clientWidth, stage.clientHeight * 2));
+      height = width / 2;
       map.style.width = width + 'px';
-      map.style.height = width / ratio + 'px';
+      map.style.height = height + 'px';
+      if (!fishingMapView.initialized) {
+        fishingMapView.initialized = true;
+        if (stage.clientWidth <= 640) {
+          fishingMapView.zoom = 2.5;
+          locate(map.querySelector('.px-node.here') || map.querySelector('.px-node.on') || map.querySelector('[data-s="dock"]') || map.querySelector('.px-node'));
+        }
+      }
+      paint();
     }
+    function locate(node) {
+      if (!node) return;
+      fishingMapView.zoom = Math.max(2, fishingMapView.zoom);
+      fishingMapView.x = (.5 - parseFloat(node.style.left) / 100) * fishingMapView.zoom;
+      fishingMapView.y = (.5 - parseFloat(node.style.top) / 100) * fishingMapView.zoom;
+      paint();
+    }
+    controls.addEventListener('click', function (ev) {
+      const button = ev.target.closest('[data-map-action]');
+      if (!button) return;
+      const action = button.dataset.mapAction;
+      if (action === 'reset') { fishingMapView.zoom = 1; fishingMapView.x = 0; fishingMapView.y = 0; paint(); }
+      else if (action === 'locate') locate(map.querySelector('.px-node.here'));
+      else zoomAt(fishingMapView.zoom * (action === 'in' ? 1.25 : .8), { x: 0, y: 0 });
+    });
+    viewport.addEventListener('wheel', function (ev) {
+      ev.preventDefault();
+      const delta = ev.deltaY * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? viewport.clientHeight : 1);
+      zoomAt(fishingMapView.zoom * Math.exp(-delta * .0015), localPoint(ev.clientX, ev.clientY));
+    }, { passive: false });
+    function resetGesture(moved) {
+      const list = Array.from(pointers.values());
+      if (!list.length) { gesture = null; return; }
+      const a = list[0], b = list[1];
+      gesture = { x: b ? (a.x + b.x) / 2 : a.x, y: b ? (a.y + b.y) / 2 : a.y,
+        distance: b ? Math.hypot(a.x - b.x, a.y - b.y) : 0, moved: moved,
+        node: a.node };
+    }
+    viewport.addEventListener('pointerdown', function (ev) {
+      if (ev.button !== 0) return;
+      const point = localPoint(ev.clientX, ev.clientY);
+      point.node = ev.target.closest('.px-node');
+      pointers.set(ev.pointerId, point);
+      viewport.setPointerCapture(ev.pointerId);
+      resetGesture(pointers.size > 1);
+    });
+    viewport.addEventListener('pointermove', function (ev) {
+      if (!pointers.has(ev.pointerId) || !gesture) return;
+      const previous = pointers.get(ev.pointerId), point = localPoint(ev.clientX, ev.clientY);
+      point.node = previous.node;
+      pointers.set(ev.pointerId, point);
+      const list = Array.from(pointers.values()), a = list[0], b = list[1];
+      const x = b ? (a.x + b.x) / 2 : a.x, y = b ? (a.y + b.y) / 2 : a.y;
+      if (!gesture.moved && Math.hypot(x - gesture.x, y - gesture.y) < 6) return;
+      gesture.moved = true;
+      viewport.classList.add('is-dragging');
+      fishingMapView.x += (x - gesture.x) / width;
+      fishingMapView.y += (y - gesture.y) / height;
+      if (b) {
+        const distance = Math.hypot(a.x - b.x, a.y - b.y);
+        if (gesture.distance > 0) zoomAt(fishingMapView.zoom * distance / gesture.distance, { x: x, y: y });
+        gesture.distance = distance;
+      }
+      gesture.x = x; gesture.y = y;
+      paint();
+    });
+    function endPointer(ev) {
+      if (!pointers.has(ev.pointerId)) return;
+      const node = gesture && !gesture.moved && pointers.size === 1 && ev.type === 'pointerup' ? gesture.node : null;
+      pointers.delete(ev.pointerId);
+      if (viewport.hasPointerCapture(ev.pointerId)) viewport.releasePointerCapture(ev.pointerId);
+      viewport.classList.remove('is-dragging');
+      resetGesture(true);
+      if (node) chooseSpot(node);
+    }
+    viewport.addEventListener('pointerup', endPointer);
+    viewport.addEventListener('pointercancel', endPointer);
+    viewport.addEventListener('lostpointercapture', endPointer);
+    map.addEventListener('click', function (ev) {
+      // 指针由 pointerup 判断是否拖动；保留键盘和辅助技术生成的 click。
+      if (ev.detail !== 0) return;
+      const node = ev.target.closest('.px-node');
+      if (node) chooseSpot(node);
+    });
+    map.addEventListener('dragstart', function (ev) { ev.preventDefault(); });
+    viewport.addEventListener('keydown', function (ev) {
+      if (ev.target !== viewport) return;
+      const steps = { ArrowLeft: [60, 0], ArrowRight: [-60, 0], ArrowUp: [0, 60], ArrowDown: [0, -60] };
+      if (steps[ev.key]) {
+        ev.preventDefault(); fishingMapView.x += steps[ev.key][0] / width; fishingMapView.y += steps[ev.key][1] / height; paint();
+      } else if (ev.key === '+' || ev.key === '=' || ev.key === '-') {
+        ev.preventDefault(); zoomAt(fishingMapView.zoom * (ev.key === '-' ? .8 : 1.25), { x: 0, y: 0 });
+      }
+    });
+    map.addEventListener('focusin', function (ev) {
+      if (pointers.size) return;
+      const node = ev.target.closest('.px-node');
+      if (!node) return;
+      const rect = node.getBoundingClientRect(), bounds = viewport.getBoundingClientRect();
+      if (rect.left < bounds.left || rect.right > bounds.right || rect.top < bounds.top || rect.bottom > bounds.bottom) locate(node);
+    });
     const observer = new ResizeObserver(fit);
     observer.observe(stage);
     ['.topbar', '.sidebar', '#record-banner', '#notice-banner'].forEach(function (selector) {
@@ -997,14 +1126,13 @@ window.UI = (function () {
       if (node) observer.observe(node);
     });
     window.addEventListener('resize', fit);
-    if (img) img.addEventListener('load', fit);
     disposeFishingViewport = function () {
       observer.disconnect();
       window.removeEventListener('resize', fit);
-      if (img) img.removeEventListener('load', fit);
       disposeFishingViewport = null;
     };
     fit();
+    if (fishingMapLocate) { fishingMapLocate = false; locate(map.querySelector('.px-node.here')); }
   }
   // 「同钓点 N 人」文案：构建与增量刷新共用（切钓点后本地会先标成同步中，不等 5s 轮询）
   function peepsHeadText(st) {
@@ -1018,29 +1146,29 @@ window.UI = (function () {
       return b.id + ',' + b.status + ',' + (b.recent || '') + ',' + (b.color || '');
     }).join(';');
   }
-  // 钓鱼页结构签名：地图页签 / 钓点与增益 / 所点与所在钓点 / 是否在钓鱼。
+  // 钓鱼页结构签名：船级 / 钓点与增益 / 所点与所在钓点 / 是否在钓鱼。
   // 人数、渔获、金币等高频变化的**不进签名**——它们走 patchFishingLive() 原地更新；
   // 否则每次上鱼都整页重建，地图节点、水面动画、渔获日志会被重建而闪动（动画从头播）。
   function fishingSig(st) {
-    const parts = [mapTab, st.selected.groundId || '', st.selected.spotId || '',
+    const parts = [(seaInfo && seaInfo.ship ? seaInfo.ship.lv : 0), st.selected.groundId || '', st.selected.spotId || '',
       st.player.groundId || '', st.player.spotId || '', st.fishing.active ? 1 : 0];
     D.GROUNDS.forEach(function (g) {
       parts.push(g.id + ':' + g.name + ':' + (g.locked ? 'L' : '') + ':' + g.type);
       (g.spots || []).forEach(function (sp) {
-        parts.push(sp.id + ':' + sp.name + ':' + (Array.isArray(sp.pos) ? sp.pos.join(',') : '') + ':' +
+        parts.push(sp.id + ':' + sp.name + ':' + (sp.locked ? 'L' : '') + ':' + (sp.minShip || 0) + ':' + (sp.map || '') + ':' + (Array.isArray(sp.pos) ? sp.pos.join(',') : '') + ':' +
           (sp.buffs || []).map(function (b) { return b.type + b.value; }).join('+'));
       });
     });
     return parts.join('|');
   }
 
-  function liveSpotsOfMap() {
+  function liveSpotsOfMap(filter) {
     const out = [];
     D.GROUNDS.forEach(function (g) {
       (g.spots || []).forEach(function (sp) {
         const mapId = sp.map || 'nearshore';
-        if (g.zone) { if (mapTab === 'voyage') out.push({ g: g, sp: sp }); return; }
-        if (mapId === mapTab) out.push({ g: g, sp: sp });
+        if (g.zone) { if (!filter || filter === 'voyage') out.push({ g: g, sp: sp }); return; }
+        if (!filter || mapId === filter) out.push({ g: g, sp: sp });
       });
     });
     return out;
@@ -1096,7 +1224,7 @@ window.UI = (function () {
     // v0.21.3：远洋图上的临时海域靠 ensureSea 的 8 秒节流刷新；这一句必须放在**签名早退之前**，
     // 否则它只写在重建分支里 → 页面结构不变时永远走不到 → 新出航/沉没的海域要等别的操作才出现
     // （玩家看到的就是「地图上还是老的一片海域」）。ensureSea 内部有节流与在途锁，重复调用无副作用。
-    if (mapTab === 'voyage') ensureSea();
+    ensureSea();
     const sig = fishingSig(st);
     const host = main.querySelector('.fish-select');
     // 结构没变（只是上鱼 / 人数 / 钓速变化）→ 原地增量更新，整页 DOM 与动画都不动
@@ -1108,20 +1236,22 @@ window.UI = (function () {
     const toolbar = el('div', 'fishing-toolbar');
     stage.appendChild(toolbar);
 
-    // 底层世界地图：图片和钓点在同一个等比缩放平面内。
-    // 多地图页签：近岸 / 远洋
+    // 近岸、远洋与临时海域共享底图和平移缩放平面。
     const left = el('div', 'fish-select');
-    const tabBar = el('div', 'px-map-tabs');
-    tabBar.setAttribute('role', 'group');
-    tabBar.setAttribute('aria-label', '切换地图');
-    [['nearshore', '🏞 近岸'], ['voyage', '⛵ 远洋']].forEach(function (kv) {
-      const tb = el('button', 'px-map-tab' + (mapTab === kv[0] ? ' on' : ''), kv[1]);
-      tb.setAttribute('aria-pressed', String(mapTab === kv[0]));
-      tb.addEventListener('click', function () { if (mapTab !== kv[0]) { mapTab = kv[0]; renderView(); } });
-      tabBar.appendChild(tb);
-    });
-    toolbar.appendChild(tabBar);
-    // 地图节点坐标（地图宽高的百分比）：与 assets/worldmap.png 中场景对应。
+    left.tabIndex = 0;
+    left.setAttribute('aria-label', '世界地图：拖动平移，滚轮或双指缩放，点击钓点垂钓；方向键平移，加减键缩放');
+    const controls = el('div', 'fishing-map-controls');
+    controls.setAttribute('role', 'group');
+    controls.setAttribute('aria-label', '地图视角');
+    controls.innerHTML = '<span class="fishing-map-title">世界海图</span>' +
+      '<button type="button" data-map-action="out" aria-label="缩小地图" title="缩小地图">−</button>' +
+      '<output class="fishing-map-zoom" aria-label="地图缩放比例">100%</output>' +
+      '<button type="button" data-map-action="in" aria-label="放大地图" title="放大地图">+</button>' +
+      '<button type="button" data-map-action="reset" aria-label="显示全图">全图</button>' +
+      '<button type="button" data-map-action="locate" aria-label="定位当前钓点" title="定位当前钓点">定位</button>';
+    toolbar.appendChild(controls);
+    toolbar.appendChild(el('span', 'fishing-map-hint', '拖动探索 · 滚轮 / 双指缩放 · 点击钓点'));
+    // 保留两片区域原有百分比坐标，通过 VoyageMap.project 投影到统一世界海图。
     // 权威坐标来自钓点数据的 sp.pos（data.js 出厂值 + 管理后台拖动覆盖，见后台「钓点管理 · 地图定位」）；
     // 这里的表只作为**兜底**：后台新建、没有坐标的钓点围绕地图中心环形排布。
     const MAP_LAYOUT = {
@@ -1131,31 +1261,8 @@ window.UI = (function () {
         shore: [26, 73], reef: [62, 44], trench: [85, 26],
       },
     };
-    // 远洋图的钓点坐标：远洋钓场用 data.js 出厂 pos；临时海域由注入时的环绕逻辑定位
-    const map = el('div', 'px-map');
-    if (mapTab === 'voyage') {
-      map.classList.add('px-map-voyage');
-      map.appendChild(window.VoyageMap.create());
-    } else {
-      map.innerHTML = '<img class="px-map-img" src="assets/worldmap.png" alt="" draggable="false">';
-    }
-    // 钓点选择（定义提前到分支外，增益一览等地图外控件也要用）：
-    // 鼠标在按下时处理，避免广播重绘丢失 mouseup；触摸/笔只在 click 时处理，
-    // 防止按下后重绘导致合成 click 再次进入新节点（开始后立刻退出），也允许滑动取消点击。
-    function bindSpotInput(target, resolve) {
-      target.addEventListener('pointerdown', function (ev) {
-        lastSpotPointerType = ev.pointerType;
-        if (ev.pointerType !== 'mouse' || ev.button !== 0) return;
-        const node = resolve(ev);
-        if (node) chooseSpot(node);
-      });
-      target.addEventListener('click', function (ev) {
-        // detail=0 是键盘/辅助技术激活；鼠标真实点击已由 pointerdown 处理。
-        if (ev.detail !== 0 && lastSpotPointerType === 'mouse') return;
-        const node = resolve(ev);
-        if (node) chooseSpot(node);
-      });
-    }
+    const map = el('div', 'px-map px-map-world');
+    map.appendChild(window.VoyageMap.create());
     function chooseSpot(t) {
       const gid = t.getAttribute('data-g');
       const sid = t.getAttribute('data-s');
@@ -1189,83 +1296,37 @@ window.UI = (function () {
         renderTopbar(); renderNav(); renderFishing();
       });
     }
-    if (mapTab === 'voyage') {
-      // v0.19.0 远洋图做实：远洋钓点（船级门槛锁定）+ 临时海域节点（账号私有，服务端下发）。
-      // 复用近岸同一套节点渲染与 chooseSpot 流程，只是底图与钓点集合不同。
-      ensureSea();
-      const shipLv = (seaInfo && seaInfo.ship) ? seaInfo.ship.lv : 1;
-      D.GROUNDS.filter(function (g) { return g.zone || g.id === 'map'; }).forEach(function (g) {
-        const lay = MAP_LAYOUT[g.id] || {};
-        const isMap = !g.zone;
-        (g.spots || []).forEach(function (sp, spIdx) {
-          if (isMap && sp.map !== 'voyage') return; // 世界地图的近岸钓点不出现在远洋图
-          let pos = (Array.isArray(sp.pos) && sp.pos.length === 2) ? sp.pos : lay[sp.id];
-          if (!pos) {
-            const base = lay.label || [50, 50];
-            const ang = -90 + spIdx * 60;
-            pos = [base[0] + 9 * Math.cos(ang * Math.PI / 180), base[1] + 9 * Math.sin(ang * Math.PI / 180)];
-          }
-          const need = sp.minShip || 1;
-          const locked = !!sp.locked || (isMap && shipLv < need);
-          const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
-          const here = st.player.groundId === g.id && st.player.spotId === sp.id;
-          const buffed = sp.buffs && sp.buffs.length > 0;
-          const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : '') + (locked ? ' locked' : ''));
-          node.setAttribute('data-g', g.id);
-          node.setAttribute('data-s', sp.id);
-          node.style.left = pos[0] + '%';
-          node.style.top = pos[1] + '%';
-          node.innerHTML = (locked ? '<span class="pn-lock">🔒</span>' : '<span class="pn-bob"></span>') +
-            '<span class="pn-name">' + esc(sp.name) +
-            (g.zoneShared ? '<span class="pn-soon">（' + esc(g.ownerName || '队友') + ' 的海域）</span>' : '') +
-            (sp.locked ? '<span class="pn-soon">（暂未开放）</span>'
-              : (locked ? '<span class="pn-soon">（需 ' + need + ' 级船）</span>' : '')) +
-            (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
-            (here ? '<img class="pn-fisher" src="' + charSrc('hold') + '" alt="">' : '');
-          map.appendChild(node);
-        });
-      });
-      bindSpotInput(map, function (ev) {
-        const t = ev.target && ev.target.closest ? ev.target.closest('.px-node') : null;
-        return t && t.getAttribute('data-g') ? t : null;
-      });
-      left.appendChild(map);
-    } else {
-    // 近岸地图：两只飞鸟掠过（纯装饰）
-    map.innerHTML += '<img class="px-bird b1" src="assets/ui/bird.png" alt="">' +
-      '<img class="px-bird b2" src="assets/ui/bird.png" alt="">';
+    const shipLv = seaInfo && seaInfo.ship ? seaInfo.ship.lv : 0;
     D.GROUNDS.forEach(function (g) {
-      if (g.zone) return; // 临时海域只出现在「⛵ 远洋」图上
       const lay = MAP_LAYOUT[g.id] || {};
-      // 未预置坐标的钓点（后台新建、还没在后台拖过位置）：围绕地图中心环状排列
       (g.spots || []).forEach(function (sp, spIdx) {
-        if (sp.map === 'voyage') return; // 远洋钓点只出现在「⛵ 远洋」图上
         let pos = (Array.isArray(sp.pos) && sp.pos.length === 2) ? sp.pos : lay[sp.id];
         if (!pos) {
-          const base = lay.label || [50, 50];
-          const ang = -90 + spIdx * 60;
-          pos = [base[0] + 9 * Math.cos(ang * Math.PI / 180), base[1] + 9 * Math.sin(ang * Math.PI / 180)];
+          const ang = (-90 + spIdx * 60) * Math.PI / 180;
+          pos = [50 + 9 * Math.cos(ang), 50 + 9 * Math.sin(ang)];
         }
+        pos = window.VoyageMap.project(pos, !!g.zone || sp.map === 'voyage');
+        const need = sp.minShip || 0;
+        const unavailable = !!g.locked || !!sp.locked;
+        const locked = unavailable || shipLv < need;
         const on = st.selected.groundId === g.id && st.selected.spotId === sp.id;
         const here = st.player.groundId === g.id && st.player.spotId === sp.id;
         const buffed = sp.buffs && sp.buffs.length > 0;
-        // 锁定（钓场未开 / 后台单独锁点）：节点画成 🔒 并标注「暂未开放」，点击只提示
-        const locked = !!g.locked || !!sp.locked;
         const node = el('button', 'px-node' + (on ? ' on' : '') + (here ? ' here' : '') + (buffed ? ' buffed' : '') + (locked ? ' locked' : ''));
+        node.type = 'button';
         node.setAttribute('data-g', g.id);
         node.setAttribute('data-s', sp.id);
+        node.setAttribute('aria-pressed', String(here));
         node.style.left = pos[0] + '%';
         node.style.top = pos[1] + '%';
         node.innerHTML = (locked ? '<span class="pn-lock">🔒</span>' : '<span class="pn-bob"></span>') +
-          '<span class="pn-name">' + esc(sp.name) + (locked ? '<span class="pn-soon">（暂未开放）</span>' : '') +
+          '<span class="pn-name">' + esc(sp.name) +
+          (g.zoneShared ? '<span class="pn-soon">（' + esc(g.ownerName || '队友') + ' 的海域）</span>' : '') +
+          (unavailable ? '<span class="pn-soon">（暂未开放）</span>' : locked ? '<span class="pn-soon">（需 ' + need + ' 级船）</span>' : '') +
           (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
           (here ? '<img class="pn-fisher" src="' + charSrc('hold') + '" alt="">' : '');
         map.appendChild(node);
       });
-    });
-    bindSpotInput(map, function (ev) {
-      const t = ev.target && ev.target.closest ? ev.target.closest('.px-node') : null;
-      return t && t.getAttribute('data-g') ? t : null;
     });
     left.appendChild(map);
     // 甩杆动画（纯视觉）：侠客后摆→前挥→入水。换钓点/开始钓鱼时播一次；
@@ -1279,7 +1340,6 @@ window.UI = (function () {
       setTimeout(function () { if (fisherImg.isConnected) fisherImg.src = seq[2]; }, 320);
     }
     lastFisherSpotKey = hereKey;
-    }
     // 图例：帮助首次进入的玩家看懂地图标记
     const legend = el('div', 'px-legend');
     legend.innerHTML = '<span><i class="lg-bob"></i> 钓点</span>' +
@@ -1410,7 +1470,7 @@ window.UI = (function () {
     dockContent.appendChild(right);
     stage.appendChild(dock);
     main.appendChild(stage);
-    mountFishingViewport(stage, map);
+    mountFishingViewport(stage, map, chooseSpot);
   }
 
   // 钓鱼页高频增量刷新：只改动「真的会变」的内容（同钓点玩家 / 渔获日志 / 状态条），
@@ -2716,7 +2776,7 @@ window.UI = (function () {
   }
   function socialSpotItems() {
     const out = [TOTAL_GC];
-    liveSpotsOfMap().forEach(function (e) {
+    liveSpotsOfMap(mapTab).forEach(function (e) {
       out.push({ key: e.g.id + ':' + e.sp.id, g: e.g, sp: e.sp });
     });
     return out;
@@ -7660,8 +7720,7 @@ window.UI = (function () {
   // ---- 图鉴视图 ----
   // 当前分类（模块级：重绘间保留）；详情改为子窗口，无需记录展开项
   let codexCategory = 'all';
-  let lastSpotPointerType = ''; // 跨重绘保留，兼容不提供 click.pointerType 的浏览器
-  let mapTab = 'nearshore'; // 共享地图页签：nearshore 近岸 / voyage 远洋
+  let mapTab = 'nearshore'; // 社交动态分类：nearshore 近岸 / voyage 远洋
   let lastFisherSpotKey = null; // 甩杆动画记忆：同一钓点重绘不重复播放
 
   // ---- 角色模块：钓鱼小人皮肤可更换（本地偏好，后续可升级进服务器存档）----
@@ -10344,7 +10403,7 @@ window.UI = (function () {
     // ④ 说明
     const pHelp = el('details', 'panel');
     pHelp.innerHTML = '<summary>ℹ 海域玩法说明</summary>' +
-      '<div class="hint">· 远洋钓点在「🎣 钓鱼」地图的「⛵ 远洋」页签：深海鱼礁需 3 级船、海沟裂谷需 4 级船。<br>' +
+      '<div class="hint">· 远洋钓点在「🎣 钓鱼」世界海图的右侧海域：深海鱼礁需 3 级船、海沟裂谷需 4 级船。<br>' +
       '· 远洋随机事件：⛈ 风暴（渔获脱钩）/ 🌀 漩涡（一半卷走渔获、一半卷来同款 +2）/ 📦 漂流宝箱（海图碎片）/ 🐟 鱼群（同款 +1）/ 🚢 沉船残骸（深海鳞片 + 海图碎片）。<br>' +
       '· 🌌 夜光潮：每日 ' + (D.SEA.nightglow ? D.SEA.nightglow.from : 20) + '~' + (D.SEA.nightglow ? D.SEA.nightglow.to : 23) + ' 点，全部临时海域附加稀有度加成。<br>' +
       '· ⚓ 锚地：花金币与深海鳞片给临时海域续期 24 小时并附加锚地增益，每片最多 ' + (D.SEA.anchor ? D.SEA.anchor.maxTimes : 3) + ' 次。<br>' +
@@ -10388,7 +10447,7 @@ window.UI = (function () {
   // 从「远洋」页直达临时海域下竿：复用地图 chooseSpot 的乐观更新 + 回包对账流程
   function goSeaFishing(gid, sid, label) {
     navigateView('fishing');
-    mapTab = 'voyage';
+    fishingMapLocate = true;
     const wasFishing = S().fishing.active;
     S().selected = { groundId: gid, spotId: sid };
     const pr = E().startFishing(gid, sid);
@@ -10807,7 +10866,7 @@ window.UI = (function () {
     // 新出航/沉没的海域要等别的操作才出现在地图上。只在相关页面时发请求，其余时候一枪不发。
     setInterval(function () {
       if (document.visibilityState === 'hidden') return;
-      if (currentView === 'sea' || (currentView === 'fishing' && mapTab === 'voyage')) ensureSea();
+      if (currentView === 'sea' || currentView === 'fishing') ensureSea();
     }, 10000);
     // 渔场实况场景已挪到「🧍 角色」页当可选背景（v0.19.0），钓鱼页不再有游鱼定时器
     let token = 'cookie';
