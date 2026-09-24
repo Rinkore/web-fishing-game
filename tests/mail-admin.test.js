@@ -26,7 +26,7 @@ const root=path.resolve(__dirname,'../frontend');
   assert.equal(await page.evaluate(()=>mailCalls.filter(c=>c.body.id==='all').length),1,'claim-all works over insecure HTTP');
   await page.setViewportSize({width:390,height:844});assert(await page.locator('.mail-panel').evaluate(n=>n.scrollWidth<=n.clientWidth+1));
   await page.screenshot({path:path.resolve(__dirname,'../output/mail-validation/mail-mobile.png'),fullPage:true});
-  await page.setViewportSize({width:1280,height:900});await page.addScriptTag({url:'http://ops.test/js/admin-mail.js'});await page.addScriptTag({url:'http://ops.test/js/admin-operations.js'});
+  await page.setViewportSize({width:1280,height:900});await page.addScriptTag({url:'http://ops.test/js/admin-edit.js'});await page.addScriptTag({url:'http://ops.test/js/admin-mail.js'});await page.addScriptTag({url:'http://ops.test/js/admin-operations.js'});
   await page.evaluate(()=>{
    window.adminCalls=[];window.allowConfirm=false;window.opsData={config:structuredClone(GameData.EXPEDITION),sets:structuredClone(GameData.GEAR_SETS),revision:1,player:{captain:{marks:10,voyages:1,successes:0,starter:0,clears:{},heat:0,clues:0,samples:0,tracking:0,target:''},active:{id:'100',route:'trade',hours:8,endsAt:Date.now()+3600000}}};
    window.opsApi=async(method,url,body)=>{adminCalls.push({method,url,body});if(url.startsWith('/api/admin/expedition'))return {ok:true,data:method==='GET'?opsData:{result:{details:{coins:123}}}};if(url==='/api/admin/mail')return {ok:true,data:{items:[{id:'relic',name:'沉船残片',kind:'material',rarity:'rare',price:1},{id:'rod_bamboo',name:'竹竿',kind:'component',part:'rod',rarity:'common'}]}};return {ok:true,data:{}};};
@@ -91,6 +91,6 @@ const root=path.resolve(__dirname,'../frontend');
   await adminPage.locator('[data-draft]').waitFor();
   assert.match(await adminPage.locator('[data-items] option').textContent(),/沉船残片.*relic/);
   await adminPage.screenshot({path:path.resolve(__dirname,'../output/mail-validation/admin-mail-shell.png'),fullPage:true});
-  assert.deepEqual(errors,[]);console.log('PASS mail unread/read/claim/mobile/escaping; admin config/finish/cancel/progress/send/custom-item forms and actual admin navigation');console.log('PASS reward wizard cross-page selection/exclusion/frozen preview/size/policy/totals/cancel/send/mobile and existing expedition/mail flows');
+  assert.deepEqual(errors,[]);console.log('PASS mail unread/read/claim/mobile/escaping; admin config/finish/cancel/progress/send/custom-item forms and actual admin navigation');console.log('PASS reward wizard cross-page selection/exclusion/frozen preview/size/policy/totals/cancel/send/mobile and existing expedition/mail flows');console.log('通过 2 项，失败 0 项');
  }finally{await browser.close();}
-})().catch(e=>{console.error(e);process.exitCode=1;});
+})().catch(e=>{console.error(e);console.log('通过 0 项，失败 1 项');process.exitCode=1;});
