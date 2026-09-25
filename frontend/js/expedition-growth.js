@@ -34,16 +34,21 @@
     finally{busy=false;redraw(host);}
   }
   function effects(fx){return '<ul class="voyage-effects">'+Object.entries(fx||{}).map(([k,n])=>'<li>'+esc(G.effect(k,n))+'</li>').join('')+'</ul>';}
-  // Render each point as its own capability so the player can immediately see
-  // which effects are active for the current allocation and growth tier.
+  // 服务端 AllocationEffect 取 min(投入点数, 已解锁阶数)，所以每一点就是一阶效果。
+  // 这里始终列出 1-3 点的全部效果：投入且解锁的点数用重点色，其余保持灰暗。
   function allocationEffects(x,points,tier){
-    const max=Math.min(3,Math.max(0,x.stages?.length-1||0)),active=Math.min(points,tier);
-    return '<div class="voyage-point-effects" aria-label="专精三点效果">'+Array.from({length:3},(_,i)=>{
-      const point=i+1,fx=x.stages?.[Math.min(point,max)]||{},enabled=point<=active,assigned=point<=points,locked=point>tier;
-      const state=enabled?'is-active':locked?'is-locked':'is-unassigned';
-      const label=enabled?'生效':locked?'未解锁':'未投入';
-      return '<div class="voyage-effect-point '+state+'"><div class="voyage-effect-point-head"><b>第 '+point+' 点</b><span>'+label+'</span></div>'+effects(fx)+'</div>';
+    const max=Math.min(3,Math.max(0,(x.stages?.length||1)-1)),active=Math.min(points,tier);
+    return '<div class="voyage-point-effects" aria-label="专精 1 至 3 点效果">'+Array.from({length:3},(_,i)=>{
+      const point=i+1,stage=Math.min(point,max),open=point<=tier,enabled=point<=active;
+      const state=enabled?'is-active':open?'is-unassigned':'is-locked';
+      const label=enabled?'生效中':open?'未投入':'需 '+stage+' 阶';
+      return '<div class="voyage-effect-point '+state+'"><div class="voyage-effect-point-head"><b>第 '+point+' 点 · '+stage+' 阶效果</b><span class="voyage-effect-point-state">'+label+'</span></div>'+effects(x.stages?.[stage]||{})+'</div>';
     }).join('')+'</div>';
+  }
+  function liveEffect(points,tier){
+    if(!points)return '本次投入：未投入，不生效';
+    const stage=Math.min(points,tier);
+    return '本次投入：'+points+' / 3 点 · '+(stage?'生效 '+stage+' 阶效果':'仅生效基础效果')+(points>tier?'，'+(points-tier)+' 点待进阶':'');
   }
   function dispatch(sea,c,state){
     const v=sea.expedition,current=v.active,lv=sea.ship.lv,s=selectionState;
@@ -67,9 +72,12 @@
   }
   function specializationWorkbench(c,state){
     const s=selectionState,total=allocationTotal(s.allocations);
-    return '<section class="gear-card voyage-form"><div class="voyage-allocation-total" role="status">已分配 <b>'+total+' / 3</b> · 剩余 <b>'+(3-total)+'</b> 点 · 可选 3 / 2+1 / 1+1+1</div><div class="gear-grid"><label>专精模式<select data-mode></select></label><label>定向货物<select data-focus>'+G.option('','无定向',!s.focus)+Array.from(new Set(Object.values(c.baseDrops).flatMap(x=>Object.keys(x)).concat('storm_relic'))).map(id=>G.option(id,D.itemName(id),id===s.focus)).join('')+'</select></label></div><p class="gear-caption">模式与定向货物同专精点数一起保存，下一次启航生效；每项收益按投入点数 / 3 发挥。</p><div class="gear-grid voyage-specializations">'+Object.entries(c.specializations).map(([id,x])=>{
-      const points=s.allocations[id]||0,tier=state.tiers[id]||0,max=x.stages.length-1,unlocked=!!state.unlocked[id],ratio=points/3;
-      return '<article class="gear-card voyage-allocation '+(points?'is-assigned':'')+'"><span class="gear-eyebrow">'+(unlocked?'已解锁 · '+tier+' 阶':'未解锁')+'</span><h3>'+esc(x.name)+'</h3><p>'+esc(x.description)+'</p><div class="voyage-stepper"><button data-allocation="'+esc(id)+'" data-delta="-1" aria-label="减少'+esc(x.name)+'配额" '+(!unlocked||points===0?'disabled':'')+'>−</button><strong>'+points+' / 3</strong><button data-allocation="'+esc(id)+'" data-delta="1" aria-label="增加'+esc(x.name)+'配额" '+(!unlocked||total>=3?'disabled':'')+'>+</button></div><h4>三点效果状态</h4>'+allocationEffects(x,points,tier)+'<p class="voyage-live-effect">本次投入：'+(points?Math.round(ratio*100)+'% 效果':'未投入，不生效')+'</p>'+(!unlocked?'<div class="voyage-card-action"><p>解锁消耗：'+esc(G.cost({...c.costs.unlock,cores:0}))+'</p><button class="primary" data-unlock="'+esc(id)+'">解锁专精</button></div>':tier<max?'<div class="voyage-card-action"><p>进阶消耗：'+esc(G.cost({...c.costs.stage[tier],cores:0}))+'</p><button data-stage="'+esc(id)+'">进阶至 '+(tier+1)+' 阶</button></div>':'<p class="voyage-card-action">已达到最高阶段</p>')+'</article>';
+    return '<section class="gear-card voyage-form"><div class="voyage-allocation-total" role="status">已分配 <b>'+total+' / 3</b> · 剩余 <b>'+(3-total)+'</b> 点 · 可选 3 / 2+1 / 1+1+1</div><div class="gear-grid"><label>专精模式<select data-mode></select></label><label>定向货物<select data-focus>'+G.option('','无定向',!s.focus)+Array.from(new Set(Object.values(c.baseDrops).flatMap(x=>Object.keys(x)).concat('storm_relic'))).map(id=>G.option(id,D.itemName(id),id===s.focus)).join('')+'</select></label></div><p class="gear-caption">模式与定向货物随专精点数一起保存，下一次启航生效；每点解锁一阶效果，阶数不足的点数先保留。</p><div class="gear-grid voyage-specializations">'+Object.entries(c.specializations).map(([id,x])=>{
+      const points=s.allocations[id]||0,tier=state.tiers[id]||0,max=x.stages.length-1,unlocked=!!state.unlocked[id];
+      // 未解锁的专精只留解锁入口：不出现加点控件与各点效果选项；解锁后完整列出 1-3 点效果。
+      const allocation=unlocked?'<div class="voyage-stepper"><button data-allocation="'+esc(id)+'" data-delta="-1" aria-label="减少'+esc(x.name)+'配额" '+(points===0?'disabled':'')+'>−</button><strong>'+points+' / 3</strong><button data-allocation="'+esc(id)+'" data-delta="1" aria-label="增加'+esc(x.name)+'配额" '+(total>=3?'disabled':'')+'>+</button></div><h4>1-3 点效果</h4>'+allocationEffects(x,points,tier)+'<p class="voyage-live-effect">'+liveEffect(points,tier)+'</p>':'<p class="voyage-locked-note">未解锁：解锁后才能投入点数并查看 1-3 点效果。</p>';
+      const act=!unlocked?'<div class="voyage-card-action"><p>解锁消耗：'+esc(G.cost({...c.costs.unlock,cores:0}))+'</p><button class="primary" data-unlock="'+esc(id)+'">解锁专精</button></div>':tier<max?'<div class="voyage-card-action"><p>进阶消耗：'+esc(G.cost({...c.costs.stage[tier],cores:0}))+'</p><button data-stage="'+esc(id)+'">进阶至 '+(tier+1)+' 阶</button></div>':'<p class="voyage-card-action">已达到最高阶段</p>';
+      return '<article class="gear-card voyage-allocation '+(points?'is-assigned':'')+'"><span class="gear-eyebrow">'+(unlocked?'已解锁 · '+tier+' 阶':'未解锁')+'</span><h3>'+esc(x.name)+'</h3><p>'+esc(x.description)+'</p>'+allocation+act+'</article>';
     }).join('')+'</div><label class="voyage-source">消耗来源<select data-reward-source>'+G.option('bound','优先使用奖励绑定物品',!Engine.state.unboundInputs)+G.option('free','仅使用普通物品',!!Engine.state.unboundInputs)+'</select></label><p class="hint" data-config-status></p><div class="voyage-actions"><button class="primary" data-config-save>保存专精配置</button><button data-config-reset>恢复已保存配置</button><button data-voyage-jump="dispatch">返回远航派遣</button></div></section>';
   }
   function sets(sea,c){

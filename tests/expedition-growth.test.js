@@ -94,6 +94,19 @@ test('independent voyage specializations and fishing equipment', async t => {
       assert.equal(await page.locator('[data-redeem]').count(), 0);
       assert.match(await page.locator('[data-unlock="wreck"]').locator('..').innerText(), /1234 金币.*航程凭证 × 2/);
       assert.doesNotMatch(await page.locator('.voyage-card-action').allInnerTexts().then(x => x.join('\n')), /重复核心/);
+      // 工作台契约：未解锁的专精不出现加点与各点效果，已解锁的专精始终列出 1-3 点效果并高亮生效项。
+      const cards = page.locator('.voyage-allocation');
+      assert.equal(await cards.count(), 4);
+      const wreck = cards.filter({ has: page.locator('[data-unlock="wreck"]') });
+      assert.equal(await wreck.locator('.voyage-stepper').count(), 0, '未解锁专精不应出现加点控件');
+      assert.equal(await wreck.locator('.voyage-effect-point').count(), 0, '未解锁专精不应显示各点效果');
+      const tide = cards.filter({ has: page.locator('[data-allocation="tide"]') });
+      assert.equal(await tide.locator('.voyage-effect-point').count(), 3, '已解锁专精应列出 1-3 点效果');
+      assert.equal(await tide.locator('.voyage-effect-point.is-locked').count(), 3, '0 阶时三点效果都还没解锁');
+      const storm = cards.filter({ has: page.locator('[data-allocation="storm"]') });
+      assert.equal(await storm.locator('.voyage-effect-point.is-active').count(), 0, '未投入点数时没有生效项');
+      assert.equal(await storm.locator('.voyage-effect-point.is-unassigned').count(), 1, '已解锁却未投入的点数标记未投入');
+      assert.equal(await storm.locator('.voyage-effect-point.is-locked').count(), 2, '超过已解锁阶数的点数标记需进阶');
       await page.locator('[data-voyage-tab="sets"]').click();
       assert.equal(await page.locator('.voyage-specializations > article').count(), 4);
       const ids = await page.locator('[data-redeem]').evaluateAll(nodes => [...new Set(nodes.map(n => n.dataset.redeem))].sort());
