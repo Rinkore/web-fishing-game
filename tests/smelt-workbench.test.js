@@ -34,6 +34,9 @@ async function run() {
   await page.evaluate(() => {
     document.querySelector('#auth').remove();
     const D = GameData, st = Engine.state;
+    // 本套件覆盖的是熔炼 / 重铸这套「历史工坊」契约：关闭装备成长系统才会渲染这些页签
+    // （与 server-go/internal/modules/workshop/service_test.go 里的 enabled:false 口径一致）。
+    D.GEAR_SYSTEM.enabled = false;
     window.fixtureMain = 'rod_dragonbone#mythic#spd+18,dbl+12@bt,rare+4@ct';
     window.fixtureSub = 'rod_carbon#epic#skl+6,spd+10';
     st.player.coins = 200000;

@@ -8312,7 +8312,8 @@ window.UI = (function () {
         '<img class="cc-icon" src="' + esc(D.itemIcon(chest.id)) + '" alt="" draggable="false">' +
         '<div class="cc-head"><span class="cc-name ' + (D.QUALITY[chest.rarity] ? D.QUALITY[chest.rarity].cls : '') + '">' + esc(chest.name) + '</span>' +
           '<span class="cc-have">持有 ×<span data-have="' + esc(chest.id) + '">' + have + '</span></span></div>' +
-        '<div class="cc-desc">' + esc(chest.desc) + '</div>' +
+        // desc 与「物品详情」共用同一份带 <b> 标注的文案（见 chestDetailText），这里不转义
+        '<div class="cc-desc">' + (chest.desc || '') + '</div>' +
         '<div class="cc-plan">' + esc(chestPlanText(chest)) + '</div>' +
         '<div class="cc-cost">消耗：' + esc(info.relicName || '残片') + ' ×<b>' + chest.costRelic + '</b>' +
           ' + 💰<b>' + chest.costCoins + '</b></div>' +
@@ -8775,11 +8776,11 @@ window.UI = (function () {
       const existing=main.querySelector('[data-modern-workshop]');
       if(existing){if(wsTab!=='open')mountGrowth(existing.querySelector('[data-modern-body]'));return;}
       const tabs=orderedFeatureTabs('workshop',[['growth','⚙ 装备与套装成长'],['open','🎁 开箱']],{growth:['growth','sets'],open:['craft','open']});
+      // 标题与主页签合并成一行：删掉「装备与资源中心」介绍行，功能页签直接进入视野。
       main.innerHTML='<section class="panel wide workshop-shell" data-modern-workshop>'+
-        '<header class="workshop-header"><div><span class="gear-eyebrow">装备与资源中心</span><h2>⚒ 工坊</h2><p class="hint">集中处理装备成长、套装培养与宝匣开箱。</p></div></header>'+
-        '<nav class="section-tabs workshop-main-tabs" role="tablist" aria-label="工坊功能">'+tabs.map(function(kv){
+        '<div class="workshop-topbar"><h2>⚒ 工坊</h2><nav class="section-tabs workshop-main-tabs" role="tablist" aria-label="工坊功能">'+tabs.map(function(kv){
           return '<button type="button" role="tab" data-modern-tab="'+kv[0]+'"><span>'+kv[1]+'</span><small>'+(kv[0]==='open'?'合成与开启宝匣':'强化 · 调校 · 精工')+'</small></button>';
-        }).join('')+'</nav><div class="workshop-body" data-modern-body></div></section>';
+        }).join('')+'</nav></div><div class="workshop-body" data-modern-body></div></section>';
       const body=main.querySelector('[data-modern-body]');
       const show=function(){
         const active=wsTab==='open'?'open':'growth';
@@ -8806,7 +8807,7 @@ window.UI = (function () {
           '" role="tab" aria-selected="' + (wsTab === kv[0] ? 'true' : 'false') + '">' + kv[1] + '</button>';
       }).join('') + '</div>';
     const bindingChoice=el('label','ops-row');
-    bindingChoice.innerHTML='<span>消耗来源</span><select class="ipt" data-workshop-source><option value="bound">优先使用奖励绑定物品</option><option value="free">仅使用普通物品</option></select><span class="hint">产物按管理员规则继承绑定；不会更改奖励本身的绑定。</span>';
+    bindingChoice.innerHTML='<span>消耗来源</span><select class="ipt" data-workshop-source title="奖励本身不可出售或交易；产物按管理员规则继承绑定"><option value="bound">优先使用奖励绑定物品</option><option value="free">仅使用普通物品</option></select>';
     bindingChoice.querySelector('select').value=st.unboundInputs?'free':'bound';
     bindingChoice.querySelector('select').onchange=function(e){st.unboundInputs=e.target.value==='free';};
     panel.appendChild(bindingChoice);
@@ -9028,12 +9029,12 @@ window.UI = (function () {
     const enough = info.pearlHave >= cost.pearl && (st.player.coins || 0) >= cost.gold;
     body.innerHTML =
       '<fieldset class="sm-draft"' + (wsBusy ? ' disabled' : '') + '><legend class="sr-only">重铸方案</legend>' +
-      '<div class="ws-help">重铸只针对<b>宝匣产出的神话组件</b>（海王遗匣的产出，含突破件）：' +
+      '<details class="ws-help"><summary>重铸规则</summary>重铸只针对<b>宝匣产出的神话组件</b>（海王遗匣的产出，含突破件）：' +
       '保持词条类型与条数不变，按当前 roll 模型重新掷数值。消耗 <b>' + esc(info.pearlName) + '</b>：' +
       '基础 <b>' + info.pearlBase + ' 颗</b>重 roll 全部词条；再<b>点下面的某一条词条</b>即可把重铸指定到它——' +
       '第 n 条额外消耗 n 颗宝珠，此时只有这一条会变。' +
       (info.minValue ? '<b class="ok">当前设置为「至少不比原来差」</b>：每条取新旧里更好的那个。' : '') +
-      '</div>' +
+      '</details>' +
       '<div class="ws-grid">' +
       '<div class="ws-col"><h3>♻ 待重铸组件（' + esc(info.qualityName) + '品质）</h3>' +
       (eligible
@@ -10563,7 +10564,7 @@ window.UI = (function () {
     const fishingPage = currentView === 'fishing' && !featureBlocked(pageId);
     $('main').classList.toggle('fishing-page', fishingPage);
     $('main').classList.toggle('character-page', currentView === 'character' || currentView === 'bd');
-    // 工坊内容（尤其是成长总览与套装卡片）可能超过视口高度。统一让主内容区
+    // 工坊内容（尤其是装备成长工作台与套装卡片）可能超过视口高度。统一让主内容区
     // 承担纵向滚动，避免被旧版熔炼页的 overflow 规则或网格行高截断。
     $('main').classList.toggle('workshop-page', currentView === 'workshop');
     if (!fishingPage && disposeFishingViewport) disposeFishingViewport();

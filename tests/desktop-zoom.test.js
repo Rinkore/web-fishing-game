@@ -14,7 +14,9 @@ const fs = require('fs'), path = require('path'), assert = require('node:assert/
    return route.fulfill({status:404,body:''});
  });
  await page.goto('http://fishing.test/');
- for(const file of ['data','features','engine','ui']) await page.addScriptTag({path:path.join(root,'js',file+'.js')});
+ // voyage-map.js 是钓鱼页海图的依赖（缺失时 renderFishing 会在 VoyageMap.create 抛错），
+ // 与 tests/mobile-layout.test.js 保持同一份脚本清单。
+ for(const file of ['data','features','engine','voyage-map','ui']) await page.addScriptTag({path:path.join(root,'js',file+'.js')});
  await page.evaluate(()=>{
    document.querySelector('#auth').style.display='none';
    const D=GameData; window.ids=[];

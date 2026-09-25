@@ -27,6 +27,8 @@ async function run() {
   await page.goto('http://127.0.0.1:' + server.address().port);
   await page.evaluate(() => {
     document.querySelector('#auth').remove();
+    // 熔炼 / 重铸属于「历史工坊」页签：关闭装备成长系统后才会渲染，见 tests/smelt-workbench.test.js。
+    GameData.GEAR_SYSTEM.enabled = false;
     const st = Engine.state;
     st.me = { id: 'buyer', name: 'Buyer' }; st.player.coins = 100000;
     window.recastId = 'rod_dragonbone#mythic#spd+18,dbl+12@bt,rare+4@ct';
