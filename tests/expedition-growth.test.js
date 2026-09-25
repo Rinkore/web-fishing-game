@@ -104,11 +104,13 @@ test('independent voyage specializations and fishing equipment', async t => {
       assert.equal(await tide.locator('.voyage-effect-point').count(), 3, '已解锁专精应列出 1-3 点效果');
       assert.equal(await tide.locator('.voyage-effect-point.is-locked').count(), 3, '0 阶时三点效果都还没解锁');
       assert.equal(await tide.locator('.voyage-effect-point ul').count(), 0, '点数效果应为单行紧凑写法，不再堆多行列表');
-      assert.match(await tide.locator('.voyage-effect-point').first().innerText(), /1 点[\s\S]*材料收益 25%/, '效果行应显示短标签与数值');
+      assert.match(await tide.locator('.voyage-effect-point').first().innerText(), /材料额外收益比例 20% → 25%/, '应保留完整参数名并标出相对基础的变化');
+      assert.equal(await tide.locator('.voyage-effect-point').first().locator('.voyage-effect-entry.is-changed').count(), 2, '首点里发生变化的参数应着重点色');
       const storm = cards.filter({ has: page.locator('[data-allocation="storm"]') });
       assert.equal(await storm.locator('.voyage-effect-point.is-active').count(), 0, '未投入点数时没有生效项');
       assert.equal(await storm.locator('.voyage-effect-point.is-unassigned').count(), 1, '已解锁却未投入的点数标记未投入');
       assert.equal(await storm.locator('.voyage-effect-point.is-locked').count(), 2, '超过已解锁阶数的点数标记需进阶');
+      assert.match(await storm.locator('.voyage-effect-point').first().innerText(), /下一档/, '下一次投入会落到的点数应标注下一档');
       await page.locator('[data-voyage-tab="sets"]').click();
       assert.equal(await page.locator('.voyage-specializations > article').count(), 4);
       const ids = await page.locator('[data-redeem]').evaluateAll(nodes => [...new Set(nodes.map(n => n.dataset.redeem))].sort());

@@ -34,15 +34,22 @@
     finally{busy=false;redraw(host);}
   }
   // 服务端 AllocationEffect 取 min(投入点数, 已解锁阶数)，所以每一点就是一阶效果。
-  // 1-3 点各占一行：点数 + 紧凑效果 + 状态；投入且已解锁的行用重点色，其余压暗。
-  function effectLine(fx){return Object.entries(fx||{}).map(([k,n])=>esc(G.shortLabels[k]||G.labels[k]||k)+' '+esc(G.value(k,n))).join(' · ');}
+  // 每点一行保留完整参数说明（点数 + 全部效果 + 状态），并把相对上一点发生变化的项高亮成「旧值 → 新值」，
+  // 也就是「再投入一点会变成什么」；投入且已解锁的行整体用重点色，其余压暗。
+  function effectLine(fx,prev){
+    return Object.entries(fx||{}).map(([k,n])=>{
+      // 按格式化后的数值比较，避免 0.25 与 0.30000000000000004 这类浮点尾差被当成变化。
+      const now=G.value(k,n),before=prev&&k in prev?G.value(k,prev[k]):'',changed=!!before&&before!==now;
+      return '<span class="voyage-effect-entry'+(changed?' is-changed':'')+'">'+esc(G.labels[k]||k)+' '+(changed?'<i>'+esc(before)+' →</i> ':'')+esc(now)+'</span>';
+    }).join(' · ');
+  }
   function allocationEffects(x,points,tier){
-    const max=Math.min(3,Math.max(0,(x.stages?.length||1)-1)),active=Math.min(points,tier);
+    const max=Math.min(3,Math.max(0,(x.stages?.length||1)-1)),active=Math.min(points,tier),next=points<3?points+1:0;
     return '<div class="voyage-point-effects" aria-label="专精 1 至 3 点效果">'+Array.from({length:3},(_,i)=>{
-      const point=i+1,stage=Math.min(point,max),open=point<=tier,enabled=point<=active;
+      const point=i+1,stage=Math.min(point,max),open=point<=tier,enabled=point<=active,upNext=open&&point===next;
       const state=enabled?'is-active':open?'is-unassigned':'is-locked';
-      const label=enabled?'生效':open?'未投入':'需 '+stage+' 阶';
-      return '<div class="voyage-effect-point '+state+'"><b>'+point+' 点</b><span class="voyage-effect-point-fx">'+effectLine(x.stages?.[stage])+'</span><span class="voyage-effect-point-state">'+label+'</span></div>';
+      const label=enabled?'生效':upNext?'下一档':open?'未投入':'需 '+stage+' 阶';
+      return '<div class="voyage-effect-point '+state+(upNext?' is-next':'')+'"><b>'+point+' 点</b><span class="voyage-effect-point-fx">'+effectLine(x.stages?.[stage],x.stages?.[Math.max(0,stage-1)])+'</span><span class="voyage-effect-point-state">'+label+'</span></div>';
     }).join('')+'</div>';
   }
   function liveEffect(points,tier){
@@ -72,7 +79,7 @@
   }
   function specializationWorkbench(c,state){
     const s=selectionState,total=allocationTotal(s.allocations);
-    return '<section class="gear-card voyage-form"><div class="voyage-allocation-total" role="status">已分配 <b>'+total+' / 3</b> · 剩余 <b>'+(3-total)+'</b> 点 · 可选 3 / 2+1 / 1+1+1</div><div class="gear-grid"><label>专精模式<select data-mode></select></label><label>定向货物<select data-focus>'+G.option('','无定向',!s.focus)+Array.from(new Set(Object.values(c.baseDrops).flatMap(x=>Object.keys(x)).concat('storm_relic'))).map(id=>G.option(id,D.itemName(id),id===s.focus)).join('')+'</select></label></div><p class="gear-caption">模式与定向货物随专精点数一起保存，下一次启航生效；每点解锁一阶效果，阶数不足的点数先保留。</p><div class="gear-grid voyage-specializations">'+Object.entries(c.specializations).map(([id,x])=>{
+    return '<section class="gear-card voyage-form"><div class="voyage-allocation-total" role="status">已分配 <b>'+total+' / 3</b> · 剩余 <b>'+(3-total)+'</b> 点 · 可选 3 / 2+1 / 1+1+1</div><div class="gear-grid"><label>专精模式<select data-mode></select></label><label>定向货物<select data-focus>'+G.option('','无定向',!s.focus)+Array.from(new Set(Object.values(c.baseDrops).flatMap(x=>Object.keys(x)).concat('storm_relic'))).map(id=>G.option(id,D.itemName(id),id===s.focus)).join('')+'</select></label></div><p class="gear-caption">模式与定向货物随专精点数一起保存，下一次启航生效；每点列出该档全部参数，黄色标出再投入一点会变化的项，「下一档」是下一次投入会落到的点数，阶数不足的点数先保留。</p><div class="gear-grid voyage-specializations">'+Object.entries(c.specializations).map(([id,x])=>{
       const points=s.allocations[id]||0,tier=state.tiers[id]||0,max=x.stages.length-1,unlocked=!!state.unlocked[id];
       // 未解锁的专精只留解锁入口：不出现加点控件与各点效果选项；解锁后完整列出 1-3 点效果。
       const allocation=unlocked?'<div class="voyage-stepper"><button data-allocation="'+esc(id)+'" data-delta="-1" aria-label="减少'+esc(x.name)+'配额" '+(points===0?'disabled':'')+'>−</button><strong>'+points+' / 3</strong><button data-allocation="'+esc(id)+'" data-delta="1" aria-label="增加'+esc(x.name)+'配额" '+(total>=3?'disabled':'')+'>+</button></div><h4>1-3 点效果</h4>'+allocationEffects(x,points,tier)+'<p class="voyage-live-effect">'+liveEffect(points,tier)+'</p>':'<p class="voyage-locked-note">未解锁：解锁后才能投入点数并查看 1-3 点效果。</p>';
