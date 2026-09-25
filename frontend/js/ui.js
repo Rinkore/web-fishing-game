@@ -42,7 +42,7 @@ window.UI = (function () {
     if (target && !featureGuard(target.getAttribute('data-feature'))) { ev.preventDefault(); ev.stopImmediatePropagation(); }
   }, true);
   function applyFeatureControls() {
-    const selectors = { '#sea-ship-up': 'sea.upgrade', '#sea-chart-craft': 'sea.chart', '#sea-voyage': 'sea.voyage', '#ws-go': 'workshop.smelt', '#ws-recast-go': 'workshop.recast', '#ws-forge-go': 'workshop.forge', '.sub-entry': 'inventory.subscribe', '.ab-open-btn': 'bd.autobuild', '#sa-open-list': 'mall.autosell', '#sa-tier': 'mall.autosell' };
+    const selectors = { '#sea-ship-up': 'sea.upgrade', '#sea-chart-craft': 'sea.chart', '#sea-voyage': 'sea.voyage', '[data-sea="voyage-empty"]': 'sea.voyage', '#ws-go': 'workshop.smelt', '#ws-recast-go': 'workshop.recast', '#ws-forge-go': 'workshop.forge', '.sub-entry': 'inventory.subscribe', '.ab-open-btn': 'bd.autobuild', '#sa-open-list': 'mall.autosell', '#sa-tier': 'mall.autosell' };
     Object.keys(selectors).forEach(function (selector) { document.querySelectorAll(selector).forEach(function (b) { markFeature(b, selectors[selector]); }); });
   }
   let featureOrderQueued = false;
@@ -10302,9 +10302,11 @@ window.UI = (function () {
     if (hint) {
       // 金币取本地展示值（出售后立刻变），其余取 /api/sea 快照
       const coins = (S().player && S().player.coins != null) ? S().player.coins : d.coins;
-      hint.innerHTML = ship.max ? '已满级：全部远洋钓点与深海海域开放。'
-        : '升级条件：远洋经验 <b>' + ship.xp + '/' + ship.xpNeed + '</b>' + (ship.xpOk ? ' ✅' : '（远洋渔获与远航返航获得经验）') +
-          ' · 金币 <b>' + ship.upCoins + '</b>（持有 ' + coins + '） · 深海鳞片 <b>×' + ship.upScale + '</b>（持有 ' + d.deepscale + '）';
+      // 升级条件改成「条件芯片」：三个门槛各自绿/灰，读一眼就知道还差哪一项（原来是一整段文字）。
+      hint.innerHTML = ship.max ? '<span class="sea-cond is-ok">🏁 已满级 · 全部远洋钓点与深海海域开放</span>'
+        : '<span class="sea-cond ' + (ship.xpOk ? 'is-ok' : 'is-off') + '" title="远洋渔获与远航返航都会累积远洋经验">🧪 远洋经验 <b>' + ship.xp + ' / ' + ship.xpNeed + '</b></span>' +
+          '<span class="sea-cond ' + (Number(coins) >= Number(ship.upCoins) ? 'is-ok' : 'is-off') + '">💰 金币 <b>' + ship.upCoins + '</b>（持有 ' + coins + '）</span>' +
+          '<span class="sea-cond ' + (Number(d.deepscale) >= Number(ship.upScale) ? 'is-ok' : 'is-off') + '">🐟 深海鳞片 <b>×' + ship.upScale + '</b>（持有 ' + d.deepscale + '）</span>';
     }
     const up = at('ship-up');
     if (up) {
@@ -10313,12 +10315,16 @@ window.UI = (function () {
     }
     const chart = at('chart-hint');
     if (chart) {
-      chart.innerHTML = '海图碎片 <b>' + d.chartfrag + '</b>/' + d.chartCost + '（远洋钓点掉落 + 漂流宝箱）· 未知海图 <b>' + d.charts + '</b> 张';
+      chart.innerHTML = '<span class="sea-cond ' + (d.chartfrag >= d.chartCost ? 'is-ok' : 'is-off') + '" title="远洋钓点掉落 + 漂流宝箱">🧩 海图碎片 <b>' + d.chartfrag + ' / ' + d.chartCost + '</b></span>' +
+        '<span class="sea-cond ' + (d.charts >= 1 ? 'is-ok' : 'is-off') + '">🗺 未知海图 <b>' + d.charts + ' 张</b></span>' +
+        '<span class="sea-cond ' + ((d.zones || []).length < D.SEA.zoneMax ? 'is-ok' : 'is-off') + '">🌊 临时海域 <b>' + (d.zones || []).length + ' / ' + D.SEA.zoneMax + '</b></span>';
     }
     const cc = at('chart-craft');
     if (cc) cc.disabled = d.chartfrag < d.chartCost;
     const vg = at('voyage');
     if (vg) vg.disabled = d.charts < 1;
+    const vge = at('voyage-empty');   // 空状态里的「出航」按钮与工具条按钮同源，条件一起变
+    if (vge) vge.disabled = d.charts < 1;
     const zc = at('zone-count');
     if (zc) zc.textContent = '🌊 我的临时海域（' + (d.zones || []).length + '/' + D.SEA.zoneMax + '）';
     (d.zones || []).forEach(function (z) {
@@ -10344,6 +10350,7 @@ window.UI = (function () {
         cb.disabled = q.claimed || q.progress < q.need;
       }
     });
+    seaStepsFill(d);
   }
   function anchorLabel(z) {
     const anc = D.SEA.anchor || { coins: 50000, scales: 3, maxTimes: 3 };
@@ -10362,8 +10369,27 @@ window.UI = (function () {
       .filter(Boolean).join(' + ') || '无';
     const sub = q.submit;
     const submitText = sub ? '（需上交 ' + esc(sub.name) + ' ×' + sub.count + '，当前持有 ' + sub.have + '）' : '';
+    const pct = Math.max(0, Math.min(100, Math.round(q.progress / Math.max(1, q.need) * 100)));
     return (q.claimed ? '✅' : (q.progress >= q.need ? '🎁' : '⬚')) + ' ' + esc(q.title) + submitText +
-      ' <span class="hint">进度 ' + q.progress + '/' + q.need + ' · 奖励：' + esc(rewardText) + '</span>';
+      ' <span class="hint">进度 ' + q.progress + '/' + q.need + ' · 奖励：' + esc(rewardText) + '</span>' +
+      '<i class="sea-gauge' + (pct >= 100 ? ' is-full' : '') + '" role="img" aria-label="悬赏进度 ' + q.progress + ' / ' + q.need + '"><b style="width:' + pct + '%"></b></i>';
+  }
+  // 远洋流程引导（图形化）：① 升级船只 → ② 合成海图 → ③ 出航探索 → ④ 下竿 · 下锚。
+  // 只改 class、不重建 DOM：这样每竿广播的 seaFill 就地刷新时按钮不会闪。
+  function seaStepsFill(d) {
+    const main = $('main');
+    if (!main || !d) return;
+    const nodes = main.querySelectorAll('[data-sea="step"]');
+    if (!nodes.length) return;
+    const ship = d.ship || {}, zones = (d.zones || []).length;
+    const done = [(ship.lv || 1) > 1, (d.charts || 0) > 0 || zones > 0, zones > 0, zones > 0];
+    let now = 1;
+    for (let i = 0; i < done.length; i++) { if (done[i]) now = i + 2; else break; }
+    nodes.forEach(function (node) {
+      const at = Number(node.getAttribute('data-step'));
+      node.classList.toggle('is-done', at < now);
+      node.classList.toggle('is-now', at === Math.min(now, 4));
+    });
   }
   let seaSection = 'expedition';
   function renderSea() {
@@ -10382,21 +10408,20 @@ window.UI = (function () {
     wrap.innerHTML = '';
     main.appendChild(wrap);
     if (!d) { wrap.appendChild(el('div', 'hint', '正在读取远洋状态……')); return; }
-    const heading = el('header', 'sea-heading');
-    heading.innerHTML = '<div><span class="gear-eyebrow">远洋航海中心</span><h2>⛵ 远洋港口</h2><p class="hint">先安排远航与准备资源，再整备船只探索临时海域。</p></div>';
-    wrap.appendChild(heading);
-    const overview = el('div', 'sea-overview');
-    overview.innerHTML = [['ship','船队等级'],['chart','海图储备'],['zones','临时海域'],['quests','每日悬赏']].map(function(item){
-      return '<div class="sea-metric" data-sea="metric-'+item[0]+'"><span>'+item[1]+'</span><b></b><small></small></div>';
-    }).join('');
-    wrap.appendChild(overview);
-    const nav = el('nav', 'sea-nav gear-tabs');
+    // 顶部：标题与三个功能页签排在同一行（原「远洋航海中心」介绍行与四个大指标格已删除，
+    // 功能页从屏幕顶部开始）。页签顺序跟随后台的功能排序，与工坊主页面签同一口径。
+    const top = el('div', 'sea-topbar');
+    top.innerHTML = '<h2>⛵ 远洋港口</h2>';
+    const nav = el('nav', 'section-tabs sea-nav');
+    nav.setAttribute('role', 'tablist');
     nav.setAttribute('aria-label', '远洋功能');
     const sections = {};
-    [['expedition', '🧭 远航中心', '派遣、专精与套装'], ['exploration', '🗺 船坞与海图', '升级、海图与临时海域'], ['quests', '🏅 每日悬赏', '今日任务与奖励']].forEach(function (entry) {
+    orderedFeatureTabs('sea', [['expedition', '🧭 远航中心', '派遣 · 专精 · 套装'], ['exploration', '🚤 船坞与海图', '升级 · 出航 · 临时海域'], ['quests', '🏅 每日悬赏', '今日任务与奖励']],
+      { expedition: 'expedition', exploration: ['upgrade', 'chart', 'voyage', 'anchor'], quests: 'quest' }).forEach(function (entry) {
       const button = el('button', 'btn');
       button.type = 'button';
       button.dataset.seaSection = entry[0];
+      button.setAttribute('role', 'tab');
       button.setAttribute('aria-controls', 'sea-section-' + entry[0]);
       button.innerHTML = '<span class="sea-tab-title">' + entry[1] + '</span><small' +
         (entry[0] === 'quests' ? ' data-sea="quest-nav"' : '') + '>' + entry[2] + '</small>';
@@ -10407,6 +10432,14 @@ window.UI = (function () {
       sections[entry[0]] = section;
       button.onclick = function () { seaSection = entry[0]; selectSection(); };
     });
+    top.appendChild(nav);
+    wrap.appendChild(top);
+    // 资源条：四个指标压成一行条件芯片，替代原来的四格大面板。
+    const bar = el('div', 'sea-bar');
+    bar.innerHTML = '<div class="gear-metrics">' + [['ship', '🚤', '船队等级'], ['chart', '🗺', '海图储备'], ['zones', '🌊', '临时海域'], ['quests', '🏅', '每日悬赏']].map(function (item) {
+      return '<span class="sea-metric" data-sea="metric-' + item[0] + '"><i class="sea-metric-icon" aria-hidden="true">' + item[1] + '</i><span class="sea-metric-name">' + item[2] + '</span><b></b><small></small></span>';
+    }).join('') + '</div>';
+    wrap.appendChild(bar);
     function selectSection() {
       Object.keys(sections).forEach(function (key) { sections[key].hidden = key !== seaSection; });
       nav.querySelectorAll('button').forEach(function (button) {
@@ -10415,7 +10448,6 @@ window.UI = (function () {
         button.setAttribute('aria-pressed', String(active));
       });
     }
-    wrap.appendChild(nav);
     Object.values(sections).forEach(function (section) { wrap.appendChild(section); });
     selectSection();
     // ① 船
@@ -10423,27 +10455,53 @@ window.UI = (function () {
     const pShip = el('div', 'panel sea-card sea-ship-card');
     pShip.dataset.orderFeature = 'sea.upgrade';
     pShip.innerHTML = '<div class="sea-card-head"><div><span class="sea-card-kicker">船坞整备</span><h3>🚤 我的船 · ' + esc(ship.name) + '</h3></div><span class="sea-level">Lv ' + ship.lv + '</span></div>' +
-      '<div class="hint" data-sea="ship-hint"></div>' +
+      '<div class="sea-conds" data-sea="ship-hint"></div>' +
       (ship.max ? '' : '<div class="sa-row"><button class="btn primary" data-sea="ship-up" id="sea-ship-up"></button></div>');
     const cardGrid = el('div', 'sea-card-grid');
     cardGrid.appendChild(pShip);
     const pExpedition = el('div', 'panel expedition-panel');
     sections.expedition.appendChild(pExpedition);
-    // ② 海图
+    // ② 图形化引导：原来的「海域玩法说明」整段文字换成流程条 + 图标图例（数值仍是后台配置，随配置走）。
+    const seaCfg = D.SEA || {}, anchorCfg = seaCfg.anchor || {}, glowCfg = seaCfg.nightglow || {};
+    const guide = el('div', 'gear-guide sea-guide');
+    guide.setAttribute('aria-label', '远洋流程引导');
+    guide.innerHTML = '<div class="gear-steps">' +
+      [['1', '🚤', '升级船只', '远洋经验 + 金币 + 鳞片'], ['2', '🗺', '合成海图', d.chartCost + ' 碎片 → 1 张'],
+        ['3', '⛵', '出航探索', '消耗 1 张海图'], ['4', '🎣', '下竿 · 下锚', '临时海域 2 小时']].map(function (step, i) {
+        return (i ? '<span class="gear-step-arrow" aria-hidden="true">→</span>' : '') +
+          '<span class="gear-step" data-sea="step" data-step="' + step[0] + '"><b>' + step[0] + '</b><span>' + step[1] + ' ' + step[2] + '<small>' + step[3] + '</small></span></span>';
+      }).join('') + '</div><div class="gear-milestones sea-legend">' +
+      [
+        '🌌 夜光潮 ' + (glowCfg.from != null ? glowCfg.from : 20) + '~' + (glowCfg.to != null ? glowCfg.to : 23) + ' 点 · 稀有度加成',
+        '⚓ 锚地续期 ' + (anchorCfg.coins != null ? anchorCfg.coins : 50000) + ' 金币 + ' + (anchorCfg.scales != null ? anchorCfg.scales : 3) + ' 鳞片 · 每片最多 ' + (anchorCfg.maxTimes != null ? anchorCfg.maxTimes : 3) + ' 次',
+        '🎲 海域气质 富矿（双钓↑）/ 寻常 / 凶险（技巧↓ · 稀有度↑）',
+        '🌊 临时海域 2 小时沉没 · 同时最多 ' + (seaCfg.zoneMax || 3) + ' 片',
+        '⛈ 随机事件 风暴 / 漩涡 / 漂流宝箱 / 鱼群 / 沉船残骸',
+        '🧭 船级门槛 近海渔场 Lv1 · 深海鱼礁 Lv3 · 海沟裂谷 Lv4',
+        '👥 编队 4 人同海域：鱼群概率 ×2',
+      ].map(function (text) { return '<span class="gear-mile" title="' + esc(text) + '">' + esc(text) + '</span>'; }).join('') +
+      '</div>';
+    sections.exploration.appendChild(guide);
+    // ③ 海图
     const pChart = el('div', 'panel sea-card sea-chart-card');
     pChart.dataset.orderFeature = 'sea.chart sea.voyage';
     pChart.innerHTML = '<div class="sea-card-head"><div><span class="sea-card-kicker">探索准备</span><h3>🗺 海图工台</h3></div><span class="sea-level">临时海域</span></div>' +
-      '<div class="hint" data-sea="chart-hint"></div>' +
+      '<div class="sea-conds" data-sea="chart-hint"></div>' +
       '<div class="sa-row"><button class="btn primary" data-sea="chart-craft" id="sea-chart-craft">🧩 合成未知海图（' + d.chartCost + ' 碎片 → 1 张）</button>' +
-      '<button class="btn primary" data-sea="voyage" id="sea-voyage">🗺 探索临时海域（1 张海图）</button></div>' +
-      '<div class="hint">出航会发现一片只属于你的<b>临时海域</b>（2 小时后沉没）：富矿海域双钓↑、凶险海域技巧↓但稀有度↑，钓点池完全随机。</div>';
+      '<button class="btn primary" data-sea="voyage" id="sea-voyage">🗺 探索临时海域（1 张海图）</button></div>';
     cardGrid.appendChild(pChart);
     sections.exploration.appendChild(cardGrid);
-    // ③ 临时海域
+    // ④ 临时海域
     const pZone = el('div', 'panel sea-card sea-zone-card');
     pZone.innerHTML = '<h3 data-sea="zone-count"></h3>';
     if (!(d.zones || []).length) {
-      pZone.innerHTML += '<div class="hint">还没有临时海域。合成海图后点「出航」试试。</div>';
+      // 空状态用「图标 + 一句话 + 下一步按钮」，不用说明段落（与工坊空状态同一口径）。
+      const empty = el('div', 'gear-empty');
+      empty.innerHTML = '<span class="gear-empty-icon" aria-hidden="true">🌊</span><b>还没有临时海域</b><small>合成未知海图后点「出航」，就能发现一片只属于你的海域</small>';
+      const emptyBtn = el('button', 'btn primary', '🗺 出航探索（1 张海图）');
+      emptyBtn.setAttribute('data-sea', 'voyage-empty');
+      empty.appendChild(emptyBtn);
+      pZone.appendChild(empty);
     }
     (d.zones || []).forEach(function (z) {
       const row = el('div', 'sa-row sea-list-row');
@@ -10500,18 +10558,8 @@ window.UI = (function () {
       pQuest.appendChild(row);
     });
     sections.quests.appendChild(pQuest);
-    // ④ 说明
-    const pHelp = el('details', 'panel sea-card sea-help');
-    pHelp.innerHTML = '<summary>ℹ 海域玩法说明</summary>' +
-      '<div class="hint">· 远洋钓点在「🎣 钓鱼」世界海图的右侧海域：深海鱼礁需 3 级船、海沟裂谷需 4 级船。<br>' +
-      '· 远洋随机事件：⛈ 风暴（渔获脱钩）/ 🌀 漩涡（一半卷走渔获、一半卷来同款 +2）/ 📦 漂流宝箱（海图碎片）/ 🐟 鱼群（同款 +1）/ 🚢 沉船残骸（深海鳞片 + 海图碎片）。<br>' +
-      '· 🌌 夜光潮：每日 ' + (D.SEA.nightglow ? D.SEA.nightglow.from : 20) + '~' + (D.SEA.nightglow ? D.SEA.nightglow.to : 23) + ' 点，全部临时海域附加稀有度加成。<br>' +
-      '· ⚓ 锚地：花金币与深海鳞片给临时海域续期 24 小时并附加锚地增益，每片最多 ' + (D.SEA.anchor ? D.SEA.anchor.maxTimes : 3) + ' 次。<br>' +
-      '· 🏅 每日悬赏：完成远洋任务领奖励，每天零点刷新；上贡类悬赏领取时扣除材料。<br>' +
-      '· ⚓ 编队：在「社交 · 编队」与互为好友的玩家组队（最多 4 人），同海域垂钓时鱼群事件概率 ×2 且多 +1 条。<br>' +
-      '· 远洋经验只升不降；经验+金币+深海鳞片三条件都满足后升级按钮才亮。<br>' +
-      '· 临时海域 2 小时沉没（下锚可续），同时最多 ' + D.SEA.zoneMax + ' 片；只有自己能下竿，图鉴与纪录照常收录。</div>';
-    sections.exploration.appendChild(pHelp);
+    // 原来的「ℹ 海域玩法说明」details 已删除：其中每条数值都搬到了船坞页的图例芯片与按钮上，
+    // 玩家不再需要读一段说明才能开始操作。
     const up = wrap.querySelector('#sea-ship-up');
     if (up) up.onclick = function () {
       up.disabled = true;
@@ -10530,17 +10578,19 @@ window.UI = (function () {
         renderView();
       });
     };
-    const vg = wrap.querySelector('#sea-voyage');
-    if (vg) vg.onclick = function () {
-      vg.disabled = true;
-      window.Net.seaVoyage().then(function (r) {
-        if (r && r.ok && r.data && r.data.sea) {
-          seaInfo = r.data.sea; seaInfoAt = Date.now(); syncSeaGrounds();
-          toast('⛵ 出航成功：发现「' + (r.data.zone ? r.data.zone.name : '') + '」！');
-        } else toast((r && r.data && r.data.error) || '出航失败');
-        renderView();
-      });
-    };
+    // 「出航」有两处入口（海图工台按钮 + 海域空状态按钮），共用同一个处理函数与禁用条件。
+    wrap.querySelectorAll('#sea-voyage, [data-sea="voyage-empty"]').forEach(function (vg) {
+      vg.onclick = function () {
+        vg.disabled = true;
+        window.Net.seaVoyage().then(function (r) {
+          if (r && r.ok && r.data && r.data.sea) {
+            seaInfo = r.data.sea; seaInfoAt = Date.now(); syncSeaGrounds();
+            toast('⛵ 出航成功：发现「' + (r.data.zone ? r.data.zone.name : '') + '」！');
+          } else toast((r && r.data && r.data.error) || '出航失败');
+          renderView();
+        });
+      };
+    });
     // 首屏也走同一套填充函数（两条路渲染出同一份 DOM）
     seaFill();
   }

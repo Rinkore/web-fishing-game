@@ -21,6 +21,10 @@ const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+nam
   await page.goto('http://expedition.test/');
   await page.evaluate(()=>{
    document.querySelector('#auth').remove();const D=GameData;
+   // 本套件覆盖的是「远洋页 + 历史远征面板」的契约：只有关闭装备成长系统时，
+   // ExpeditionUI 才会走 legacy 渲染（enabled 时由远航中心接管，见 tests/expedition-growth.test.js）。
+   // 与 tests/smelt-workbench.test.js 关闭装备成长后再测熔炼的口径一致。
+   D.GEAR_SYSTEM.enabled=false;
    window.fixture={ship:{lv:1,name:'木划艇',xp:0,xpNeed:40,xpOk:false,upCoins:20000,upScale:5},coins:1000,deepscale:0,chartfrag:0,charts:0,chartCost:3,zones:[],quests:[],partyZones:[],
     expedition:{now:Date.now(),captain:{marks:0,voyages:0,successes:0,starter:0,clears:{},heat:0,clues:0,samples:0,tracking:0},config:D.EXPEDITION,sets:D.GEAR_SETS,gear:{level:1,set:'',effects:{stability:0,resonance:0,settle:0}},active:null,last:null}};
    window.calls=[];Engine.state.player.coins=1000;
@@ -37,6 +41,9 @@ const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+nam
   });
   const host=page.locator('.expedition-panel');await host.getByText('远航派遣',{exact:false}).first().waitFor();
   check('New expedition appears inside existing sea page',await host.count()===1 && await page.locator('#sea-chart-craft').count()===1);
+  check('Sea page keeps functional pages only (intro help removed)',await page.locator('.sea-help').count()===0 && await page.locator('.sea-overview').count()===0);
+  check('Sea title shares one row with the three function tabs',await page.locator('.sea-topbar .sea-nav>button').count()===3);
+  check('Sea dock page leads with the four-step visual guide',await page.locator('[data-sea="step"]').count()===4 && await page.locator('.sea-legend .gear-mile').count()>0);
   check('Five routes follow the ship progression',await host.locator('[data-exp-start]').count()===5);
   check('Lv1 can start coastal route and sees higher routes locked',await host.locator('[data-exp-start="trade"]').isEnabled() && await host.locator('[data-exp-start="gather"]').isDisabled());
   check('Starter ticket exemption is visible',await host.innerText().then(t=>t.includes('前 3 次沿岸贸易免门票')));
