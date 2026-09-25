@@ -3324,12 +3324,12 @@
   //   页签页的功能开关 id 仍是 bd / records（见 features.js），旧 view id 由 navigateView 兜底兼容。
   const NAV = [
     { id: 'fishing', name: '钓鱼', icon: '🎣', implemented: true },
-    { id: 'sea', name: '远洋', icon: '⛵', implemented: true },
     { id: 'character', name: '角色', icon: '🧍', implemented: true },
-    { id: 'ground', name: '社交', icon: '🌊', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
     // 「宝匣合成」不再是独立页面：并入「工坊」页（熔炼/重铸同款页签切换），改名「开箱」，见 ui.js 的 renderWorkshop。
     { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
+    { id: 'sea', name: '远洋', icon: '⛵', implemented: true },
+    { id: 'ground', name: '社交', icon: '🌊', implemented: true },
     // 「系统商店」「开放市集」不再是独立页面：合并进「商城」页（工坊熔炼/重铸同款页签切换），
     // 系统商店改名「收购」、开放市集改名「市集」，见 ui.js 的 renderMall。
     { id: 'mall', name: '商城', icon: '🛒', implemented: true },
