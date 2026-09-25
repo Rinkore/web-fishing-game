@@ -1,8 +1,8 @@
 {
   "format": 1,
-  "version": "v0.23.1",
+  "version": "v0.23.2",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "99c8d3c38143a470810f5cc9f88e7a7f464bb8a42b9214aafafa4ed4cb986fbc",
+  "sourceSHA256": "d3a68cc47721170d10b42a385bc45bbb424b42e6e17141e99ad897d0d5bb20c0",
   "constants": {
     "GEAR_SYSTEM": {
       "enabled": true,
@@ -736,7 +736,7 @@
         "mythic": 2
       }
     },
-    "VERSION": "v0.23.1",
+    "VERSION": "v0.23.2",
     "BUILD": "2026-09-25",
     "FISH": {
       "common": [
