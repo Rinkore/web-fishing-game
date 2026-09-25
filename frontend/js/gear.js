@@ -6,6 +6,8 @@
  const flags=new Set(['presets','best','largeMode','queue','highChest','choice','priority','advanced','evacuate']);
  function fmt1(v){return typeof v==='number'?Number(v.toFixed(1)):v;}
  function value(k,v){return flags.has(k)?(v?'已开放':'未开放'):percentages.has(k)?fmt1(v*100)+'%':fmt1(v);}
+ // 相邻两档的差值标注：百分比补 %，开关项的前后值本身就能看出变化，不再重复标注。
+ function delta(k,a,b){if(flags.has(k))return '';const d=Math.round((percentages.has(k)?(b-a)*100:b-a)*1000)/1000;return d?(d>0?'+':'')+fmt1(d)+(percentages.has(k)?'%':''):'';}
  function effect(k,v){return (labels[k]||k)+'：'+value(k,v);}
  function cost(c){if(!c)return '—';return [c.coins?c.coins+' 金币':'',...Object.entries(c.items||{}).map(([id,n])=>D.itemName(id)+' × '+n),c.receipts?'航程凭证 × '+c.receipts:'',c.heat?'精工热量 × '+c.heat:'',c.cores?'同套重复核心 × '+c.cores:''].filter(Boolean).join(' · ')||'免费';}
  const affixes=aa=>(aa||[]).map(a=>esc(labels[a.type]||a.type)+' +'+fmt1(a.value)+'%').join(' · ');
@@ -83,5 +85,5 @@
   const target=root.querySelector('[data-target-save]');if(target)target.onclick=()=>action({action:'target',target:root.querySelector('[data-target]').value,goal:Number(root.querySelector('[data-goal]').value),queue:root.querySelector('[data-queue]').value.split(',').map(s=>s.trim()).filter(Boolean)});
   const harvest=root.querySelector('[data-harvest-save]');if(harvest)harvest.onclick=()=>action({action:'harvest_mode',mode:root.querySelector('[data-harvest]').value});if(busy)root.querySelectorAll('button,input,select').forEach(b=>b.disabled=true);
  }
- window.GearUI={mount(host){if(!root){root=document.createElement('div');root.className='gear-system';draw();}host.append(root);load(false);},invalidate(){last=0;if(root?.isConnected&&!busy)load(true);},cost,effect,value,labels,esc,option,affixes};
+ window.GearUI={mount(host){if(!root){root=document.createElement('div');root.className='gear-system';draw();}host.append(root);load(false);},invalidate(){last=0;if(root?.isConnected&&!busy)load(true);},cost,effect,value,delta,labels,esc,option,affixes};
 })();
