@@ -33,16 +33,16 @@
     }catch(_){(activeHost||host)._growthMessage='连接未完成，请重试同一操作；不会重复扣费';}
     finally{busy=false;redraw(host);}
   }
-  function effects(fx){return '<ul class="voyage-effects">'+Object.entries(fx||{}).map(([k,n])=>'<li>'+esc(G.effect(k,n))+'</li>').join('')+'</ul>';}
   // 服务端 AllocationEffect 取 min(投入点数, 已解锁阶数)，所以每一点就是一阶效果。
-  // 这里始终列出 1-3 点的全部效果：投入且解锁的点数用重点色，其余保持灰暗。
+  // 1-3 点各占一行：点数 + 紧凑效果 + 状态；投入且已解锁的行用重点色，其余压暗。
+  function effectLine(fx){return Object.entries(fx||{}).map(([k,n])=>esc(G.shortLabels[k]||G.labels[k]||k)+' '+esc(G.value(k,n))).join(' · ');}
   function allocationEffects(x,points,tier){
     const max=Math.min(3,Math.max(0,(x.stages?.length||1)-1)),active=Math.min(points,tier);
     return '<div class="voyage-point-effects" aria-label="专精 1 至 3 点效果">'+Array.from({length:3},(_,i)=>{
       const point=i+1,stage=Math.min(point,max),open=point<=tier,enabled=point<=active;
       const state=enabled?'is-active':open?'is-unassigned':'is-locked';
-      const label=enabled?'生效中':open?'未投入':'需 '+stage+' 阶';
-      return '<div class="voyage-effect-point '+state+'"><div class="voyage-effect-point-head"><b>第 '+point+' 点 · '+stage+' 阶效果</b><span class="voyage-effect-point-state">'+label+'</span></div>'+effects(x.stages?.[stage]||{})+'</div>';
+      const label=enabled?'生效':open?'未投入':'需 '+stage+' 阶';
+      return '<div class="voyage-effect-point '+state+'"><b>'+point+' 点</b><span class="voyage-effect-point-fx">'+effectLine(x.stages?.[stage])+'</span><span class="voyage-effect-point-state">'+label+'</span></div>';
     }).join('')+'</div>';
   }
   function liveEffect(points,tier){

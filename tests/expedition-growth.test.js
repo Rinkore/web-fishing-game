@@ -103,6 +103,8 @@ test('independent voyage specializations and fishing equipment', async t => {
       const tide = cards.filter({ has: page.locator('[data-allocation="tide"]') });
       assert.equal(await tide.locator('.voyage-effect-point').count(), 3, '已解锁专精应列出 1-3 点效果');
       assert.equal(await tide.locator('.voyage-effect-point.is-locked').count(), 3, '0 阶时三点效果都还没解锁');
+      assert.equal(await tide.locator('.voyage-effect-point ul').count(), 0, '点数效果应为单行紧凑写法，不再堆多行列表');
+      assert.match(await tide.locator('.voyage-effect-point').first().innerText(), /1 点[\s\S]*材料收益 25%/, '效果行应显示短标签与数值');
       const storm = cards.filter({ has: page.locator('[data-allocation="storm"]') });
       assert.equal(await storm.locator('.voyage-effect-point.is-active').count(), 0, '未投入点数时没有生效项');
       assert.equal(await storm.locator('.voyage-effect-point.is-unassigned').count(), 1, '已解锁却未投入的点数标记未投入');

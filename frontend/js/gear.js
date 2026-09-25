@@ -3,9 +3,12 @@
  const D=window.GameData, esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const labels={speed:'钓速',skill:'技巧',size:'体型',double:'双钓',line:'鱼线',hook:'鱼钩',bait:'拟饵',reel:'卷线器',accessory:'配件',rod:'竿身',charm:'饰品',heatSeconds:'每点热量所需在线垂钓秒数',heatCap:'热量上限',heatDiscount:'精工节省热量',presets:'开放精工预设切换',casts:'每次丰收所需成功抛竿',copies:'丰收额外鱼数',best:'采用近期最高价值鱼',largeMode:'开放大丰收',largeMultiplier:'大丰收周期与数量倍数',recent:'近期候选次数',weightStep:'每层目标权重增幅',maxStacks:'权重层数上限',pityFactor:'保底周期系数',pityCommon:'普通鱼基础保底次数',pityRare:'稀有鱼基础保底次数',pityEpic:'史诗及神话鱼基础保底次数',queue:'开放目标轮换名单',uniformMix:'均匀分布混合比例',bonus:'材料额外收益比例',focus:'指定材料额外比例',minimum:'指定材料最低数量',concentrate:'集中采集额外比例',minRouteLevel:'生效最低航线等级',fragmentsPerHour:'每小时额外宝匣碎片',chestChancePerHour:'每小时完整宝匣惊喜概率',pityHours:'完整宝匣保底小时',highChest:'高阶航线升级宝匣',deepRisk:'深入模式成功率损失（百分点）',deepBonus:'深入模式额外收益比例',specialPerHour:'每小时风暴特产数量',choice:'开放特产选择',retain:'事故货物保留比例',priority:'优先货物完整保全',advanced:'保全覆盖高级材料',evacuate:'开放撤离模式',evacuationLoss:'撤离已得货物损失比例'};
  const percentages=new Set(['weightStep','pityFactor','uniformMix','bonus','focus','concentrate','chestChancePerHour','deepBonus','retain','evacuationLoss']);
+ // 紧凑写法：远航专精的 1-3 点效果行要在一行内塞下四到六个数值，这里给每个参数一个短名。
+ const shortLabels={bonus:'材料收益',focus:'定向材料',minimum:'定向保底',concentrate:'集中采集',minRouteLevel:'生效航线',fragmentsPerHour:'碎片/小时',chestChancePerHour:'惊喜宝匣/小时',pityHours:'宝匣保底小时',highChest:'高阶宝匣',deepRisk:'深入损失',deepBonus:'深入收益',specialPerHour:'特产/小时',choice:'特产选择',retain:'事故保留',priority:'优先保全',advanced:'高级材料保全',evacuate:'撤离模式',evacuationLoss:'撤离损失'};
  const flags=new Set(['presets','best','largeMode','queue','highChest','choice','priority','advanced','evacuate']);
  function fmt1(v){return typeof v==='number'?Number(v.toFixed(1)):v;}
- function effect(k,v){return (labels[k]||k)+'：'+(flags.has(k)?(v?'已开放':'未开放'):percentages.has(k)?fmt1(v*100)+'%':fmt1(v));}
+ function value(k,v){return flags.has(k)?(v?'已开放':'未开放'):percentages.has(k)?fmt1(v*100)+'%':fmt1(v);}
+ function effect(k,v){return (labels[k]||k)+'：'+value(k,v);}
  function cost(c){if(!c)return '—';return [c.coins?c.coins+' 金币':'',...Object.entries(c.items||{}).map(([id,n])=>D.itemName(id)+' × '+n),c.receipts?'航程凭证 × '+c.receipts:'',c.heat?'精工热量 × '+c.heat:'',c.cores?'同套重复核心 × '+c.cores:''].filter(Boolean).join(' · ')||'免费';}
  const affixes=aa=>(aa||[]).map(a=>esc(labels[a.type]||a.type)+' +'+fmt1(a.value)+'%').join(' · ');
  const option=(v,t,s)=>'<option value="'+esc(v)+'" '+(s?'selected':'')+'>'+esc(t)+'</option>';
@@ -82,5 +85,5 @@
   const target=root.querySelector('[data-target-save]');if(target)target.onclick=()=>action({action:'target',target:root.querySelector('[data-target]').value,goal:Number(root.querySelector('[data-goal]').value),queue:root.querySelector('[data-queue]').value.split(',').map(s=>s.trim()).filter(Boolean)});
   const harvest=root.querySelector('[data-harvest-save]');if(harvest)harvest.onclick=()=>action({action:'harvest_mode',mode:root.querySelector('[data-harvest]').value});if(busy)root.querySelectorAll('button,input,select').forEach(b=>b.disabled=true);
  }
- window.GearUI={mount(host){if(!root){root=document.createElement('div');root.className='gear-system';draw();}host.append(root);load(false);},invalidate(){last=0;if(root?.isConnected&&!busy)load(true);},cost,effect,labels,esc,option,affixes};
+ window.GearUI={mount(host){if(!root){root=document.createElement('div');root.className='gear-system';draw();}host.append(root);load(false);},invalidate(){last=0;if(root?.isConnected&&!busy)load(true);},cost,effect,value,labels,shortLabels,esc,option,affixes};
 })();
