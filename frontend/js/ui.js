@@ -985,14 +985,20 @@ window.UI = (function () {
     const viewport = stage.querySelector('.fish-select');
     const pointers = new Map();
     let width = 0, height = 0, gesture = null;
-    function paint() {
+    let previewing = false, previewFrame = 0, commitTimer = 0;
+    let previewBaseZoom = fishingMapView.zoom, previewBaseX = fishingMapView.x, previewBaseY = fishingMapView.y;
+    function clampView() {
       const maxX = Math.max(0, (width * fishingMapView.zoom - stage.clientWidth) / 2);
       const maxY = Math.max(0, (height * fishingMapView.zoom - stage.clientHeight) / 2);
       fishingMapView.x = Math.max(-maxX, Math.min(maxX, fishingMapView.x * width)) / width;
       fishingMapView.y = Math.max(-maxY, Math.min(maxY, fishingMapView.y * height)) / height;
-      // 直接调整地图尺寸，避免 CSS transform 在 box-shadow 像素段上做位图式
-      // 合成缩放。地图内容会按新的容器宽度重新计算像素段，放大后边缘保持清晰；
-      // 用 left/top 做平移，避免再次把整张地图提升为带重采样的变换层。
+    }
+    // 交互时只更新合成层，rAF 自动合并高频 pointermove / wheel；提交时再按目标
+    // 尺寸重排像素段。这样拖动和缩放不会每帧触发布局，停下后也不会长期模糊。
+    function commitPaint() {
+      if (previewFrame) { cancelAnimationFrame(previewFrame); previewFrame = 0; }
+      if (commitTimer) { clearTimeout(commitTimer); commitTimer = 0; }
+      clampView();
       const mapWidth = width * fishingMapView.zoom, mapHeight = height * fishingMapView.zoom;
       map.style.width = mapWidth + 'px';
       map.style.height = mapHeight + 'px';
@@ -1000,6 +1006,37 @@ window.UI = (function () {
       map.style.top = (viewport.clientHeight / 2 + fishingMapView.y * height - mapHeight / 2) + 'px';
       map.style.transform = 'none';
       map.style.setProperty('--map-scale', fishingMapView.zoom);
+      previewBaseZoom = fishingMapView.zoom;
+      previewBaseX = fishingMapView.x;
+      previewBaseY = fishingMapView.y;
+      previewing = false;
+      viewport.classList.remove('is-previewing');
+    }
+    function beginPreview() {
+      if (previewing) return;
+      previewing = true;
+      previewBaseZoom = fishingMapView.zoom;
+      previewBaseX = fishingMapView.x;
+      previewBaseY = fishingMapView.y;
+      viewport.classList.add('is-previewing');
+    }
+    function paintPreview() {
+      previewFrame = 0;
+      if (!previewing) return;
+      clampView();
+      const dx = (fishingMapView.x - previewBaseX) * width;
+      const dy = (fishingMapView.y - previewBaseY) * height;
+      const scale = fishingMapView.zoom / previewBaseZoom;
+      map.style.transform = 'translate(' + dx + 'px, ' + dy + 'px) scale(' + scale + ')';
+      map.style.setProperty('--map-scale', fishingMapView.zoom);
+    }
+    function schedulePreview() {
+      beginPreview();
+      if (!previewFrame) previewFrame = requestAnimationFrame(paintPreview);
+    }
+    function scheduleCommit(delay) {
+      if (commitTimer) clearTimeout(commitTimer);
+      commitTimer = setTimeout(function () { commitTimer = 0; commitPaint(); }, delay);
     }
     function localPoint(clientX, clientY) {
       const rect = viewport.getBoundingClientRect();
@@ -1011,7 +1048,7 @@ window.UI = (function () {
       fishingMapView.x = (point.x - (point.x - fishingMapView.x * width) * ratio) / width;
       fishingMapView.y = (point.y - (point.y - fishingMapView.y * height) * ratio) / height;
       fishingMapView.zoom = next;
-      paint();
+      schedulePreview();
     }
     function fit() {
       const bottom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
@@ -1026,19 +1063,20 @@ window.UI = (function () {
           locate(map.querySelector('.px-node.here') || map.querySelector('.px-node.on') || map.querySelector('[data-s="dock"]') || map.querySelector('.px-node'));
         }
       }
-      paint();
+      commitPaint();
     }
     function locate(node) {
       if (!node) return;
       fishingMapView.zoom = Math.max(2, fishingMapView.zoom);
       fishingMapView.x = (.5 - parseFloat(node.style.left) / 100) * fishingMapView.zoom;
       fishingMapView.y = (.5 - parseFloat(node.style.top) / 100) * fishingMapView.zoom;
-      paint();
+      commitPaint();
     }
     viewport.addEventListener('wheel', function (ev) {
       ev.preventDefault();
       const delta = ev.deltaY * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? viewport.clientHeight : 1);
       zoomAt(fishingMapView.zoom * Math.exp(-delta * .0015), localPoint(ev.clientX, ev.clientY));
+      scheduleCommit(120);
     }, { passive: false });
     function resetGesture(moved) {
       const list = Array.from(pointers.values());
@@ -1074,7 +1112,7 @@ window.UI = (function () {
         gesture.distance = distance;
       }
       gesture.x = x; gesture.y = y;
-      paint();
+      schedulePreview();
     });
     function endPointer(ev) {
       if (!pointers.has(ev.pointerId)) return;
@@ -1083,6 +1121,7 @@ window.UI = (function () {
       if (viewport.hasPointerCapture(ev.pointerId)) viewport.releasePointerCapture(ev.pointerId);
       viewport.classList.remove('is-dragging');
       resetGesture(true);
+      if (!pointers.size) commitPaint();
       if (node) chooseSpot(node);
     }
     viewport.addEventListener('pointerup', endPointer);
@@ -1099,9 +1138,11 @@ window.UI = (function () {
       if (ev.target !== viewport) return;
       const steps = { ArrowLeft: [60, 0], ArrowRight: [-60, 0], ArrowUp: [0, 60], ArrowDown: [0, -60] };
       if (steps[ev.key]) {
-        ev.preventDefault(); fishingMapView.x += steps[ev.key][0] / width; fishingMapView.y += steps[ev.key][1] / height; paint();
+        ev.preventDefault(); fishingMapView.x += steps[ev.key][0] / width; fishingMapView.y += steps[ev.key][1] / height;
+        commitPaint();
       } else if (ev.key === '+' || ev.key === '=' || ev.key === '-') {
         ev.preventDefault(); zoomAt(fishingMapView.zoom * (ev.key === '-' ? .8 : 1.25), { x: 0, y: 0 });
+        commitPaint();
       }
     });
     map.addEventListener('focusin', function (ev) {
@@ -1119,6 +1160,8 @@ window.UI = (function () {
     });
     window.addEventListener('resize', fit);
     disposeFishingViewport = function () {
+      if (previewFrame) cancelAnimationFrame(previewFrame);
+      if (commitTimer) clearTimeout(commitTimer);
       observer.disconnect();
       window.removeEventListener('resize', fit);
       disposeFishingViewport = null;
@@ -1318,14 +1361,6 @@ window.UI = (function () {
       setTimeout(function () { if (fisherImg.isConnected) fisherImg.src = seq[2]; }, 320);
     }
     lastFisherSpotKey = hereKey;
-    // 图例：帮助首次进入的玩家看懂地图标记
-    const legend = el('div', 'px-legend');
-    legend.innerHTML = '<span><i class="lg-bob"></i> 钓点</span>' +
-      '<span><i class="lg-ring"></i> 当前垂钓位置</span>' +
-      '<span><i class="lg-buff">⚡</i> 有增益的钓点</span>' +
-      '<span>🔒 未开放钓点</span>';
-    stage.appendChild(legend);
-
     const ctrl = el('div', 'fish-ctrl');
     ctrl.title = '点击钓点开始垂钓，再点当前钓点停止；每小时期望为成功上钩次数';
     const stateBar = el('div', 'fish-state' + (st.fishing.active ? ' on' : ''));

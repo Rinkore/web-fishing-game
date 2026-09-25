@@ -33,6 +33,7 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     check(!await overlay.isVisible(), 'overlay starts closed');
     check(await page.locator('.vm-art').count() === 1, 'one CSS world map renders');
     check(await page.locator('.fishing-map-controls, .fishing-map-hint').count() === 0, 'map control strip is removed');
+    check(await page.locator('.px-legend').count() === 0, 'map legend is removed');
     check(await page.locator('.px-map .px-map-img').count() === 0, 'world map does not use a bitmap background');
     check(await page.locator('.px-node[data-s="dock"]').count() === 1 && await page.locator('.px-node[data-s="trench"]').count() === 1, 'nearshore and offshore spots share the map');
     check(await page.evaluate(() => {
@@ -82,7 +83,10 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     const zoomedWidth = await page.locator('.px-map').evaluate(e => e.getBoundingClientRect().width);
     await page.locator('.fish-select').hover();
     await page.mouse.wheel(0, -180);
-    await page.waitForFunction(width => document.querySelector('.px-map').getBoundingClientRect().width > width + 1, zoomedWidth);
+    await page.waitForFunction(width => {
+      const map = document.querySelector('.px-map');
+      return parseFloat(map.style.width) > width + 1 && !/\bscale\s*\(/.test(map.style.transform);
+    }, zoomedWidth);
     check(await page.locator('.px-map').evaluate(e => parseFloat(e.style.getPropertyValue('--map-scale')) > 1), 'wheel enlarges the map');
     check(await page.locator('.px-map').evaluate(e => {
       // The CSS-pixel terrain must be laid out at its zoomed size. Scaling the
@@ -139,15 +143,13 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
       const metrics = await page.evaluate(() => {
         const stage = document.querySelector('.fishing-stage').getBoundingClientRect();
         const map = document.querySelector('.px-map').getBoundingClientRect();
-        const legend = document.querySelector('.px-legend').getBoundingClientRect();
         const status = document.querySelector('.fish-state').getBoundingClientRect();
         const panel = document.querySelector('.fish-live').getBoundingClientRect();
         return {
           ratio: Math.abs(map.width / map.height - 2) < .001,
           fit: map.width <= stage.width + 1 && map.height <= stage.height + 1,
           fill: Math.abs(map.width - stage.width) < 1 || Math.abs(map.height - stage.height) < 1,
-          footer: legend.height === status.height,
-          panel: panel.left >= stage.left && panel.right <= stage.right + 1 && panel.bottom <= legend.top + 1,
+          panel: panel.left >= stage.left && panel.right <= stage.right + 1 && panel.bottom <= status.top + 1,
           overflow: document.querySelector('#main').scrollWidth <= document.querySelector('#main').clientWidth + 1,
         };
       });

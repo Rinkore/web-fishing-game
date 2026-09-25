@@ -419,6 +419,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   user-select: none;
 }
 .px-map-img { display: block; width: 100%; image-rendering: pixelated; }
+.fishing-stage .fish-select.is-previewing .px-map-world { will-change: transform; }
 
 /* 区域名标签 */
 .px-region {
@@ -492,23 +493,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* 地图状态条：与旧版同款，位置在地图下方 */
 .fish-ctrl { margin-top: 12px; }
-
-/* ---------- 地图图例 ---------- */
-.px-legend {
-  display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px;
-  padding: 8px 14px; font-size: 12px; color: var(--muted);
-  border: 3px solid var(--px-line); border-radius: 4px;
-  background: rgba(0, 0, 0, .25);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .05), 4px 4px 0 var(--px-shadow);
-}
-.px-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.px-legend .lg-bob {
-  position: relative; display: inline-block; width: 10px; height: 14px;
-}
-.px-legend .lg-bob::before { content: ''; position: absolute; left: 1px; top: 0; width: 8px; height: 6px; background: #f2f2f2; }
-.px-legend .lg-bob::after { content: ''; position: absolute; left: 0; bottom: 0; width: 10px; height: 8px; background: #e84a3a; border-radius: 0 0 3px 3px; }
-.px-legend .lg-ring { display: inline-block; width: 14px; height: 14px; border: 3px solid var(--px-gold); border-radius: 50%; }
-.px-legend .lg-buff { color: var(--px-gold); }
 
 /* ---------- 地图页签 ---------- */
 .px-map-tabs { display: flex; gap: 10px; margin-bottom: 12px; }
