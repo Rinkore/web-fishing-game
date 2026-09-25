@@ -110,6 +110,7 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     await page.waitForFunction(() => Engine.state.fishing.active && Engine.state.castInfo);
     check(await page.locator('.px-map').evaluate(e => e.style.getPropertyValue('--map-scale')) === selectedZoom, 'selecting a spot preserves the zoom level');
     check((await page.locator('.fish-state').innerText()).includes('360 次/时'), 'server interval and bite rate produce expected hourly hook count');
+    check(await page.locator('#player-status [data-view="bd"] .meta-txt').innerText() === '🎣 抛竿间隔 8.00s', 'topbar cast interval shows only the final value');
     await page.locator('[data-overlay="log"]').click();
     await page.evaluate(() => { window.originalMap = document.querySelector('.px-map'); });
     await page.locator('.fishing-dock-toggle').click();
@@ -274,6 +275,14 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     const savedShore = savedPositions.list.find(s => s.spotId === 'shore');
     check(savedShore.map === '' && Math.abs(savedShore.pos[0] - 32.6) < .2, 'crossing the midline switches the coordinate band and submits the map ownership');
     await admin.close();
+    await page.evaluate(() => { UI.setView('codex'); UI.renderNav(); UI.renderView(); });
+    const codexState = await page.evaluate(() => ({
+      active: document.querySelector('#main .codex-summary + .inv-cats .inv-cat.on')?.innerText || '',
+      cells: document.querySelectorAll('#main .codex-grid .codex-cell').length,
+      fishCells: document.querySelectorAll('#main .codex-grid .codex-cell.k-fish').length,
+      fishTotal: GameData.allItems().filter(item => item.kind === 'fish').length,
+    }));
+    check(codexState.active.includes('🐟 鱼类') && codexState.cells === codexState.fishTotal && codexState.fishCells === codexState.fishTotal, 'codex initially shows fish instead of all item kinds');
     assert.deepEqual(errors, []); pass++;
     console.log('通过 ' + pass + ' 项，失败 0 项');
   } finally { await browser.close(); }

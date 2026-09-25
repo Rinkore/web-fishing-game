@@ -58,7 +58,32 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
       };
       UI.setView('ground'); UI.renderView();
     });
-    const online = page.locator('[data-region="peeps"]');
+    const onlinePlayersPane = page.locator('[data-online-pane="players"]');
+    const onlineFeedPane = page.locator('[data-online-pane="feed"]');
+    check('Online view defaults to the player pane with a visible first-level switch',
+      await onlinePlayersPane.isVisible() && !await onlineFeedPane.isVisible() &&
+      await page.locator('[data-online-pane-tab="players"]').getAttribute('aria-selected') === 'true');
+    await page.evaluate(() => {
+      const list = document.querySelector('[data-online-pane="players"] [data-region="peeps"]');
+      list.style.maxHeight = '24px';
+      list.scrollTop = 30;
+      window.socialPlayerListNode = list;
+    });
+    const socialPlayerScroll = await onlinePlayersPane.locator('[data-region="peeps"]').evaluate(e => e.scrollTop);
+    await page.locator('[data-online-pane-tab="feed"]').click();
+    check('Latest feed shows only its content while retaining the spot sidebar',
+      await onlineFeedPane.isVisible() && !await onlinePlayersPane.isVisible() &&
+      socialPlayerScroll > 0 && await page.locator('.ground-side').isVisible() &&
+      await page.locator('[data-online-pane]:visible').count() === 1);
+    await page.evaluate(() => UI.renderView());
+    check('Live patch keeps the hidden player pane intact',
+      await page.evaluate(() => window.socialPlayerListNode === document.querySelector('[data-online-pane="players"] [data-region="peeps"]')));
+    await page.locator('[data-online-pane-tab="players"]').click();
+    check('Switching back restores the same player list and scroll position',
+      await onlinePlayersPane.isVisible() && !await onlineFeedPane.isVisible() &&
+      await page.evaluate(() => window.socialPlayerListNode === document.querySelector('[data-online-pane="players"] [data-region="peeps"]')) &&
+      await onlinePlayersPane.locator('[data-region="peeps"]').evaluate((e, top) => e.scrollTop === top, socialPlayerScroll));
+    const online = onlinePlayersPane.locator('[data-region="peeps"]');
     const onlinePeer = online.locator('[data-key="peer"]');
     check('Online list initially shows each player once, including matching nicknames', await online.locator('.peep').count() === 3);
     await page.evaluate(() => { window.unchangedPeer = document.querySelector('[data-region="peeps"] [data-key="other"]'); });

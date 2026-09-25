@@ -712,7 +712,10 @@ window.UI = (function () {
   // 从侧栏再点进来时若不复位，看起来就像没切过去。顶栏快捷入口与外部 setView 不走这里，
   // 仍可用 navigateView('bd' / 'records') 直达指定页签。
   function resetSectionTab(view) {
-    if (view === 'codex') codexMainTab = 'codex';
+    if (view === 'codex') {
+      codexMainTab = 'codex';
+      if (codexCategory === 'all') codexCategory = 'fish'; // 兼容旧会话，不再回到无页签对应的「全部」
+    }
     else if (view === 'character') charTab = 'rod';
     else if (view === 'feedback') fbTab = 'submit';
   }
@@ -909,18 +912,11 @@ window.UI = (function () {
     if (!info.biteOverride && st.biteFormula == null) info.biteRate = null;
     return info;
   }
-  // 简短文案：每 2.75s 一竿（基础 3.00s · 竿+25% · 点速×0.80）
+  // 简短文案：只报最终抛竿间隔；基础值与加成公式保留在钓鱼页的完整说明里。
   function castSpeedShort() {
     const ci = castSpeedInfo();
     if (!ci) return '';
-    const parts = [];
-    if (ci.intervalMs != null) parts.push('钓点基础间隔');
-    if (ci.affixSpeed) parts.push('竿' + (ci.affixSpeed > 0 ? '+' : '') + ci.affixSpeed + '%');
-    if (ci.buffSpeed) parts.push('钓点' + (ci.buffSpeed > 0 ? '+' : '') + ci.buffSpeed + '%');
-    if (ci.globalBonus) parts.push('服' + (ci.globalBonus > 0 ? '+' : '') + ci.globalBonus + '%');
-    const capTag = ci.rawSpeed > ci.effSpeed ? '，封顶 ' + ci.cap + '%' : '';
-    return '每 ' + (ci.interval / 1000).toFixed(2) + 's 一竿（基础 ' + (ci.baseMs / 1000).toFixed(2) + 's'
-      + (parts.length ? ' · ' + parts.join(' · ') + capTag : ' · 无加成') + '）';
+    return '抛竿间隔 ' + (ci.interval / 1000).toFixed(2) + 's';
   }
   // 上鱼率文案（钓点独立值优先，否则由全服公式决定）：数值未知时返回空串
   function biteRateShort() {
@@ -2712,6 +2708,7 @@ window.UI = (function () {
   // 当前筛选的地图（null = 全服；模块级：重绘间保留）
   let groundFilterId = null;
   let socialTab = 'online';
+  let onlinePane = 'players';
   let friendSearchQ = '';
   let friendSearchPage = 1;
   // perf-9：玩家列表搜索/翻页状态（服务端分页，一次最多渲染一页；列表限高可下滑，避免页面被拉长）
@@ -3011,6 +3008,47 @@ window.UI = (function () {
         if (socialTab === 'friends') window.Net.setPlayersView({ clear: true });
         else if (socialTab === 'online') { renderGround._lastViewSig = null; gotoPeepPage(1); }
         renderView();
+      });
+      tabs.appendChild(button);
+    });
+    return tabs;
+  }
+  function paintOnlinePane(panel) {
+    if (!panel) return;
+    panel.querySelectorAll('[data-online-pane]').forEach(function (pane) {
+      const on = pane.getAttribute('data-online-pane') === onlinePane;
+      if (!pane.hidden && !on) {
+        pane._onlineScroll = {};
+        pane.querySelectorAll('[data-region="peeps"], [data-region="gfeed"]').forEach(function (node) {
+          pane._onlineScroll[node.getAttribute('data-region')] = node.scrollTop;
+        });
+      }
+      pane.hidden = !on;
+      if (on && pane._onlineScroll) {
+        pane.querySelectorAll('[data-region="peeps"], [data-region="gfeed"]').forEach(function (node) {
+          const top = pane._onlineScroll[node.getAttribute('data-region')];
+          if (top != null) node.scrollTop = top;
+        });
+      }
+    });
+    panel.querySelectorAll('[data-online-pane-tab]').forEach(function (button) {
+      const on = button.getAttribute('data-online-pane-tab') === onlinePane;
+      button.classList.toggle('on', on);
+      button.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+  function onlinePaneTabs(panel) {
+    const tabs = el('div', 'inv-cats sub-cats online-pane-tabs');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', '在线动态内容');
+    [['players', '👥 在线玩家'], ['feed', '📡 最新动态']].forEach(function (entry) {
+      const button = el('button', 'inv-cat', entry[1]);
+      button.setAttribute('role', 'tab');
+      button.setAttribute('data-online-pane-tab', entry[0]);
+      button.addEventListener('click', function () {
+        if (onlinePane === entry[0]) return;
+        onlinePane = entry[0];
+        paintOnlinePane(panel);
       });
       tabs.appendChild(button);
     });
@@ -3453,6 +3491,7 @@ window.UI = (function () {
     const mapName = mapTab === 'voyage' ? '远洋' : '近岸';
     // 在线动态页直接从页签进入内容，不再显示「近岸 / 远洋实时动态」标题行。
     panel.appendChild(socialTabs());
+    panel.appendChild(onlinePaneTabs(panel));
     if (groundFilterId) {
       const back = el('button', 'mini ground-back', '🌐 返回全服');
       back.addEventListener('click', function () { groundFilterId = null; gotoPeepPage(1); renderView(); });
@@ -3483,6 +3522,7 @@ window.UI = (function () {
     // perf-9：玩家列表改为服务端分页（一次只渲染一页，不超过页面高度）+ 搜索；
     // 当前页玩家的状态更新由服务器按视口每秒推送（playersPage），不再全量下发在线列表。
     const left = el('div', 'sub');
+    left.setAttribute('data-online-pane', 'players');
     const head = el('h3');
     head.setAttribute('data-region', 'peep-head');
     left.appendChild(head);
@@ -3549,6 +3589,7 @@ window.UI = (function () {
     cols.appendChild(left);
 
     const right = el('div', 'sub');
+    right.setAttribute('data-online-pane', 'feed');
     right.appendChild(el('h3', null, '📡 最新动态' + (filterSpot ? ' · ' + esc(filterSpot.sp.name) : ' · ' + mapName)));
     const feed = el('div', 'feed feed-big');
     feed.setAttribute('data-region', 'gfeed');
@@ -3556,6 +3597,7 @@ window.UI = (function () {
     cols.appendChild(right);
     panel.appendChild(cols);
     main.appendChild(panel);
+    paintOnlinePane(panel);
     // 首次铺内容：与广播触发的就地更新共用同一套填充函数，两条路渲染出的 DOM 必须一样
     fillGroundCounts(panel);
     fillPeepList(panel);
@@ -7732,7 +7774,7 @@ window.UI = (function () {
 
   // ---- 图鉴视图 ----
   // 当前分类（模块级：重绘间保留）；详情改为子窗口，无需记录展开项
-  let codexCategory = 'all';
+  let codexCategory = 'fish';
   let mapTab = 'nearshore'; // 社交动态分类：nearshore 近岸 / voyage 远洋
   let lastFisherSpotKey = null; // 甩杆动画记忆：同一钓点重绘不重复播放
 

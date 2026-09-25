@@ -308,6 +308,8 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 .ground-cols { display: grid; grid-template-columns: minmax(280px, 1fr) 1.6fr; gap: 20px; align-items: start; }
 /* v0.21.0 社交页三栏：左侧钓点筛选竖排侧栏 */
 .ground-cols-3 { grid-template-columns: 200px minmax(280px, 1fr) 1.6fr; }
+/* 在线玩家 / 最新动态共用右侧内容位；动态展开时占满剩余两栏。 */
+.ground-cols-3 > [data-online-pane="feed"] { grid-column: 2 / -1; }
 .ground-side .ground-counts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 0; }
 .ground-side .gc-box { padding: 8px 10px; text-align: left; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; border-radius: 9px; }
 .ground-side .gcb-name { margin-bottom: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -324,6 +326,7 @@ button.locked { background: rgba(255,255,255,.08); color: var(--muted); border: 
 }
 @media (max-width: 880px) {
   .ground-cols-3 { grid-template-columns: minmax(0, 1fr); }
+  .ground-cols-3 > [data-online-pane="feed"] { grid-column: auto; }
   .ground-side { grid-row: auto; }
   .ground-side .ground-counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); max-height: none; overflow: visible; }
 }
