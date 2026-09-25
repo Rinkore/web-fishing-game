@@ -1840,7 +1840,7 @@
         baseMs: num(c.baseMs, 10000, 200, 3600000),
         minMs: num(c.minMs, 800, 100, 3600000),
         speedBonus: num(c.speedBonus, 0, -100, 500),
-        speedCap: num(c.speedCap, 100, 0, 100),
+        speedCap: num(c.speedCap, 100, 0, 10000),
         formula: c.formula == null ? CAST_FORMULA_DEFAULT : String(c.formula),
       },
       biteFormula: r.biteFormula == null ? BITE_FORMULA_DEFAULT : String(r.biteFormula),

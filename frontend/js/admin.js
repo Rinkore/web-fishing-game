@@ -4601,7 +4601,7 @@ window.Admin = (function () {
       '<input id="cast-bonus" class="ipt" type="number" min="-100" max="500" step="5" style="width:110px" />' +
       '<span class="hint">%（加到每位玩家的有效钓速上，默认 0）</span>' +
       '<label style="width:110px;color:var(--txt-dim);font-size:13px;margin-left:12px">钓速上限</label>' +
-      '<input id="cast-cap" class="ipt" type="number" min="0" max="100" step="5" style="width:110px" />' +
+      '<input id="cast-cap" class="ipt" type="number" min="0" max="10000" step="5" style="width:110px" />' +
       '<span class="hint">%（默认 100）</span>' +
       '<button id="cast-save" class="btn primary" style="margin-left:12px">保存</button><span id="cast-state" class="hint"></span>' +
       '<button id="cast-reset" class="btn mini" style="margin-left:8px">恢复默认</button></div>' +

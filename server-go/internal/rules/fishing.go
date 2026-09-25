@@ -153,7 +153,7 @@ func (c *Catalog) CastRules(input map[string]any) CastRules {
 	_ = c.Constant("CAST_FORMULA_DEFAULT", &castDefault)
 	_ = c.Constant("BITE_FORMULA_DEFAULT", &biteDefault)
 	m, _ := input["cast"].(map[string]any)
-	r := CastRules{BaseMS: configNumber(m, "baseMs", 10000, 200, 3600000), MinMS: configNumber(m, "minMs", 800, 100, 3600000), SpeedBonus: configNumber(m, "speedBonus", 0, -100, 500), SpeedCap: configNumber(m, "speedCap", 100, 0, 100), Formula: castDefault, BiteFormula: biteDefault}
+	r := CastRules{BaseMS: configNumber(m, "baseMs", 10000, 200, 3600000), MinMS: configNumber(m, "minMs", 800, 100, 3600000), SpeedBonus: configNumber(m, "speedBonus", 0, -100, 500), SpeedCap: configNumber(m, "speedCap", 100, 0, 10000), Formula: castDefault, BiteFormula: biteDefault}
 	if v := m["formula"]; v != nil {
 		r.Formula = jsString(v)
 	}
