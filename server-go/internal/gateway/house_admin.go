@@ -9,14 +9,11 @@ import (
 )
 
 // houseInvariants renders the load-bearing rules as operator-readable badges.
-// It reuses ValidateHut's own arithmetic so the console and the publisher can
-// never disagree about what "healthy" means.
+// It mirrors ValidateHut, which only enforces lower bounds and structural
+// coherence: the console has no upper limits, so oversized (but self-consistent)
+// values must read as healthy here as well.
 func houseInvariants(c *rules.Catalog) []map[string]any {
 	h := c.HutConfig()
-	// Same budget as ValidateHut: DailyMax already applies the 1+ itself, so
-	// the badges must pass the bare sum of the caps or a healthy config would
-	// read as over the 3,190 line.
-	budget := h.PetBonusCap + h.RoleBonusCap
 	// A production catalog can still point at a release published before the
 	// HUT section existed: HutConfig then reports a zero value and the level
 	// curve is empty. Report that as a failing badge instead of indexing an
@@ -32,9 +29,7 @@ func houseInvariants(c *rules.Catalog) []map[string]any {
 	}{
 		{"已发布渔屋配置段", len(h.Levels) > 0, "缺失时升级 / 翻新 / 宠物 / 角色全部不可用"},
 		{"等级曲线单调不减", len(h.Levels) == 10 && monotonic(h.Levels), "Lv1→Lv10"},
-		{"晒场容量在 1~24h", h.CapacityHours >= 1 && h.CapacityHours <= 24, "当前 " + trimNum(h.CapacityHours) + "h"},
-		{"满级日上限 ≤ 3,190", h.DailyMax(topLevel, budget) <= 3190, "含宠物+厨师加成上限"},
-		{"无尽渐近线 ≤ 3,190", h.DailyMax(h.AsymptoteRate, budget) <= 3190, "渐近线越高，满投入越接近 5% 线"},
+		{"晒场容量 ≥ 1h", h.CapacityHours >= 1, "当前 " + trimNum(h.CapacityHours) + "h，后台不设上限"},
 		{"渐近线不低于满级速率", h.AsymptoteRate >= topLevel, "否则翻新会降速"},
 		{"渐近速度 > 0", h.EndlessTau > 0, "越小越快撞线"},
 		{"偷取参数自洽", h.StealPerPickCap*int64(h.StealPicksPerDay) >= h.StealDailyCoinCap, "单次 × 次数 ≥ 日上限"},

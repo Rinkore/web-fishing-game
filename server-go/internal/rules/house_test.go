@@ -83,7 +83,7 @@ func TestHutDailyCeilingStaysInsideTheShareBudget(t *testing.T) {
 
 func TestValidateHutRejectsBrokenConfigs(t *testing.T) {
 	for name, mutate := range map[string]func(*HutConfig){
-		"pond larger than a day": func(h *HutConfig) { h.CapacityHours = 48 },
+		"capacity below an hour": func(h *HutConfig) { h.CapacityHours = 0.5 },
 		"descending curve":       func(h *HutConfig) { h.Levels[3] = h.Levels[2] - 1 },
 		"short upgrade table":    func(h *HutConfig) { h.UpgradeCosts = h.UpgradeCosts[:8] },
 		"material off whitelist": func(h *HutConfig) {
@@ -100,5 +100,28 @@ func TestValidateHutRejectsBrokenConfigs(t *testing.T) {
 				t.Fatal("broken config accepted")
 			}
 		})
+	}
+}
+
+// TestValidateHutAcceptsUnboundedValues pins the operator decision behind the
+// 「后台不设上限」 change: the console must publish oversized but self-consistent
+// values instead of failing the old 24 hour / 3,190 assertions. The 5% share
+// budget still shows up in SimulateHut, but as advice that cannot block.
+func TestValidateHutAcceptsUnboundedValues(t *testing.T) {
+	c, _ := Default()
+	h := c.HutConfig()
+	h.CapacityHours = 240
+	h.Levels[9] = 5000
+	h.AsymptoteRate = 20000
+	h.PetBonusCap = 5
+	h.RoleBonusCap = 5
+	h.StealPerPickCap = 1000000
+	h.StealDailyCoinCap = 1500000
+	c.Constants["HUT"] = h.Raw()
+	if err := c.ValidateHut(); err != nil {
+		t.Fatalf("unbounded config rejected: %v", err)
+	}
+	if sim := c.SimulateHut(); len(sim.Violations) == 0 {
+		t.Fatal("simulation stopped reporting the share budget; it should stay visible as advice")
 	}
 }

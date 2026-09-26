@@ -52,21 +52,24 @@
     upgradeCosts: '升级阶梯', renovateCost: '无尽翻新消耗', materialWhitelist: '材料白名单',
     coins: '金币', items: '材料', coinsGrowth: '金币增长率', stormRelic: '风暴遗物', alloyPerLevel: '强化合金/级',
   };
-  // [路径, 名称, 最小, 最大, 步长]；顺序即表单顺序
+  // [路径, 名称, 最小值, 步长]；顺序即表单顺序。
+  // 后台不设上限：这里不渲染 max，只保留下限与步长；服务端 ValidateHut 同样只校验下限
+  // 与结构（容量 ≥ 1 小时、曲线单调、渐近线不低于满级、偷取参数自洽、材料白名单）。
   const BASIC = [
     // endlessTau 用 step="any"：min 一旦设成非 0 值，HTML 的 step 基准就变成 min，
     // 会把这类的正常取值（如 0.001 + 0.5k）之外的默认值 10 判成「步长不匹配」，整张表单提交不了。
-    ['capacityHours', 1, 24, '0.5'], ['asymptoteRate', 1, 1000, '1'], ['endlessTau', 0.001, 1000, 'any'],
-    ['bonusUnlockLevel', 1, 10, '1'], ['bonusHalfUntilLevel', 0, 10, '1'],
-    ['petPerLevel', 0, 1, '0.005'], ['petBonusCap', 0, 1, '0.01'], ['petSlots', 1, 6, '1'],
-    ['rolePerPoint', 0, 1, '0.005'], ['roleBonusCap', 0, 1, '0.01'], ['rolePointsMax', 0, 60, '1'],
-    ['stealPerLevel', 0, 1000, '1'], ['stealPerPickCap', 0, 100000, '1'], ['stealDailyCoinCap', 0, 1000000, '1'],
-    ['stealPicksPerDay', 0, 100, '1'], ['relationshipMinHours', 24, 8760, '1'],
+    ['capacityHours', 1, '0.5'], ['asymptoteRate', 1, '1'], ['endlessTau', 0.001, 'any'],
+    ['bonusUnlockLevel', 1, '1'], ['bonusHalfUntilLevel', 0, '1'],
+    ['petPerLevel', 0, '0.005'], ['petBonusCap', 0, '0.01'], ['petSlots', 1, '1'],
+    ['rolePerPoint', 0, '0.005'], ['roleBonusCap', 0, '0.01'], ['rolePointsMax', 0, '1'],
+    ['stealPerLevel', 0, '1'], ['stealPerPickCap', 0, '1'], ['stealDailyCoinCap', 0, '1'],
+    ['stealPicksPerDay', 0, '1'], ['relationshipMinHours', 24, '1'],
   ];
-  const RENOVATE = [['coins', 0, 1e9, '1'], ['coinsGrowth', 1, 10, '0.01'], ['stormRelic', 0, 1000, '1'], ['alloyPerLevel', 0, 1000, '1']];
+  const RENOVATE = [['coins', 0, '1'], ['coinsGrowth', 1, '0.01'], ['stormRelic', 0, '1'], ['alloyPerLevel', 0, '1']];
 
   function input(path, n, step) { return '<input aria-label="' + esc(path) + '" type="number" step="' + step + '" data-path="' + esc(path) + '" value="' + n + '" required>'; }
-  function numField(path, name, n, min, max, step) { return '<label>' + esc(name) + '<input aria-label="' + esc(path) + '" type="number" min="' + min + '" max="' + max + '" step="' + step + '" data-path="' + esc(path) + '" value="' + n + '" required></label>'; }
+  // 只写 min / step：后台不设上限，浏览器不再按 max 拦人，服务端也不再按上限拒绝发布。
+  function numField(path, name, n, min, step) { return '<label>' + esc(name) + '<input aria-label="' + esc(path) + '" type="number" min="' + min + '" step="' + step + '" data-path="' + esc(path) + '" value="' + n + '" required></label>'; }
   function matOptions(id) {
     const list = materials(), seen = list.some(m => m.id === id);
     return (seen || !id ? list : list.concat([{ id: id, name: itemName(id) }]))
@@ -85,15 +88,11 @@
       if (!(v > 0)) add('levels.' + i, 'Lv' + (i + 1) + ' 速率必须大于 0');
       else if (i && v < L[i - 1]) add('levels.' + i, '不能低于上一级（必须单调不减）');
     });
-    if (!(h.capacityHours >= 1 && h.capacityHours <= 24)) add('capacityHours', '需在 1~24 小时');
+    // 后台不设上限：容量只保留下限，速率与加成也不再按 3,190 / 5% 线预检拦截；
+    // 越线只会在「试算占比」里提示，不再阻止保存。
+    if (!(h.capacityHours >= 1)) add('capacityHours', '需不小于 1 小时');
     if (!(h.endlessTau > 0)) add('endlessTau', '必须大于 0');
     if (!(h.asymptoteRate >= L[9])) add('asymptoteRate', '不能低于满级速率 ' + round(L[9] || 0) + '（否则翻新会降速）');
-    // 与服务端 ValidateHut 一致：日上限本身就是 速率 × 24 × (1 + 加成上限)，
-    // 这里只给加成上限本身，否则默认（健康）配置会被预检误判越线。
-    const bonusCap = (h.petBonusCap || 0) + (h.roleBonusCap || 0);
-    const maxLevel = (L[9] || 0) * 24 * (1 + bonusCap), maxEndless = (h.asymptoteRate || 0) * 24 * (1 + bonusCap);
-    if (maxLevel > 3190) add('levels.9', '满级日上限 ' + round(maxLevel) + ' 超过 3,190（后期钓鱼收入的 5% 线）');
-    if (maxEndless > 3190) add('asymptoteRate', '渐近线日上限 ' + round(maxEndless) + ' 超过 3,190（无尽投入会顶破后期 5% 线）');
     if (!(h.stealPerPickCap * h.stealPicksPerDay >= h.stealDailyCoinCap)) add('stealDailyCoinCap', '「单次上限 × 每日次数」必须不小于每日上限，否则参数自相矛盾');
     if (!(h.relationshipMinHours >= 24)) add('relationshipMinHours', '好友关系门槛不得低于 24 小时（防小号互刷）');
     const costs = h.upgradeCosts || [];
@@ -116,9 +115,9 @@
       + '<td>' + round(p.pct) + '%</td><td>' + (p.ok ? '✅ 通过' : '⛔ 越线') + '</td></tr>').join('');
     const bad = (data.violations || []);
     return '<div class="gear-card"><h4>试算结果（不会写入）</h4>'
-      + '<p class="hint">后期满无尽 + 偷取合计 ' + (data.endlessTotal != null ? data.endlessTotal : '—') + ' 金币/天（上限 3,400 = 后期钓鱼收入的 5%）。</p>'
+      + '<p class="hint">后期满无尽 + 偷取合计 ' + (data.endlessTotal != null ? data.endlessTotal : '—') + ' 金币/天（参考线 3,400 = 后期钓鱼收入的 5%）。</p>'
       + '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th>渔屋日收益</th><th>基准日收入</th><th>占比</th><th>结论</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
-      + (bad.length ? '<p class="gear-warning">' + bad.map(esc).join('；') + '</p>' : '<p class="gear-notice">三条占比验收全部通过。</p>')
+      + (bad.length ? '<p class="gear-warning">' + bad.map(esc).join('；') + '（仅提示，不阻止保存）</p>' : '<p class="gear-notice">三条占比验收全部通过。</p>')
       + invariantsHTML(data.invariants) + '</div>';
   }
   function playerHTML(name, v) {
@@ -153,7 +152,8 @@
       const h = cfg;
       return '<div class="gear-header"><div><span class="gear-eyebrow">全量配置 · 版本 ' + revision + '</span><h2>🏠 渔屋配置</h2></div></div>'
         + '<p class="hint">渔屋只有<strong>时间</strong>这一把锁：单次最多结算「晒场容量」小时，一天只有 24 小时，所以日上限 = 速率 × 24 × 加成；'
-        + '金币没有硬上限、领取次数也不限。无尽翻新用渐近线逼近「渐近线速率」——每级都有正收益，但永远追不到。</p>'
+        + '金币没有硬上限、领取次数也不限。无尽翻新用渐近线逼近「渐近线速率」——每级都有正收益，但永远追不到。'
+        + '后台配置<strong>不设数值上限</strong>：容量、速率、加成都能填任意大，5% 线只在「试算占比」里提示，不会阻止保存。</p>'
         + invariantsHTML(inv)
         + '<div class="gear-save"><button class="primary" type="submit" form="house-config" data-save>保存全部渔屋配置</button>'
         + '<button type="button" data-revert>撤销全部修改</button><button type="button" data-simulate>试算占比</button><span role="status" data-status></span></div>'
@@ -162,16 +162,16 @@
         + '<p class="hint" data-diff-warn></p><p class="hint">只有点「保存」后才会生效；服务端会再跑一次 ValidateHut 并写审计。</p></details>'
         + '<form data-config id="house-config">'
         + '<details open><summary>成长通则 · 容量、渐近线与养成/偷取参数</summary><div class="gear-grid">'
-        + BASIC.map(([k, lo, hi, step]) => numField(k, title[k], h[k], lo, hi, step)).join('') + '</div></details>'
+        + BASIC.map(([k, lo, step]) => numField(k, title[k], h[k], lo, step)).join('') + '</div></details>'
         + '<details open><summary>等级曲线 · Lv1~Lv10 金币/小时</summary><div class="scroll gear-compact-table"><table><thead><tr><th>等级</th><th>金币/小时</th><th>满额度日收益（24h，不含加成）</th></tr></thead><tbody>'
         + (h.levels || []).map((v, i) => '<tr><td>Lv' + (i + 1) + '</td><td>' + input('levels.' + i, v, '0.01') + '</td><td>' + round(v * 24) + '</td></tr>').join('')
         + '</tbody></table></div><p class="hint">累计投入：每一级都只能提高速率，服务端要求单调不减。</p></details>'
         + '<details><summary>升级阶梯 · Lv1→Lv10 的金币与材料</summary><div class="gear-grid">'
         + (h.upgradeCosts || []).map((c, i) => '<section class="gear-card"><h4>Lv' + (i + 1) + ' → Lv' + (i + 2) + '</h4>'
-          + '<div class="gear-grid">' + numField('upgradeCosts.' + i + '.coins', '金币', c.coins, 0, 1e9, '1') + '</div>'
+          + '<div class="gear-grid">' + numField('upgradeCosts.' + i + '.coins', '金币', c.coins, 0, '1') + '</div>'
           + itemRows('upgradeCosts.' + i + '.items', c.items) + '</section>').join('') + '</div></details>'
         + '<details><summary>无尽翻新 · 每级金币按增长率递增</summary><div class="gear-grid">'
-        + RENOVATE.map(([k, lo, hi, step]) => numField('renovateCost.' + k, title[k], h.renovateCost[k], lo, hi, step)).join('')
+        + RENOVATE.map(([k, lo, step]) => numField('renovateCost.' + k, title[k], h.renovateCost[k], lo, step)).join('')
         + '</div><p class="hint">翻新只提高速率并抬高渐近线逼近速度，不改变 24 小时这条硬边界。</p></details>'
         + '<details><summary>材料白名单 · 升级消耗只允许出现在这里的材料</summary><div class="ops-grid">'
         + materials().map(m => '<label><input type="checkbox" data-whitelist="' + esc(m.id) + '"' + ((h.materialWhitelist || []).includes(m.id) ? ' checked' : '') + '>' + esc(m.name) + '</label>').join('')

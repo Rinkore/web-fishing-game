@@ -174,6 +174,11 @@ func (h HutConfig) allowsMaterial(id string) bool {
 
 // ValidateHut mirrors ValidateGear: every failure returns a Chinese message so
 // the operator console can show it verbatim.
+//
+// The console deliberately has no upper limits: an operator may publish any
+// capacity, rate or bonus the design needs, so only lower bounds and structural
+// coherence are rejected. The 5% late-game share budget is reported by
+// SimulateHut as advice and no longer blocks a publication.
 func (c *Catalog) ValidateHut() error {
 	h := c.HutConfig()
 	bad := errors.New("渔屋配置无效：检查等级曲线、晒场容量、无尽层与偷取参数")
@@ -188,23 +193,14 @@ func (c *Catalog) ValidateHut() error {
 			return errors.New("渔屋配置无效：速率曲线必须单调不减")
 		}
 	}
-	if !finite(h.CapacityHours) || h.CapacityHours < 1 || h.CapacityHours > 24 {
-		return errors.New("渔屋配置无效：晒场容量必须在 1~24 小时之间")
+	if !finite(h.CapacityHours) || h.CapacityHours < 1 {
+		return errors.New("渔屋配置无效：晒场容量必须不小于 1 小时")
 	}
 	if !finite(h.EndlessTau) || h.EndlessTau <= 0 {
 		return errors.New("渔屋配置无效：无尽层渐近速度必须大于 0")
 	}
 	if !finite(h.AsymptoteRate) || h.AsymptoteRate < h.Levels[len(h.Levels)-1] {
 		return errors.New("渔屋配置无效：无尽渐近线不能低于满级速率")
-	}
-	// The load-bearing inequality: even a fully invested, endlessly renovated
-	// hut must stay inside its share of the late-game income.
-	budget := (h.PetBonusCap + h.RoleBonusCap)
-	if h.DailyMax(h.AsymptoteRate, budget) > 3190 {
-		return errors.New("渔屋配置无效：渐近线过高，满投入会顶破后期收入的 5% 线")
-	}
-	if h.DailyMax(h.Levels[len(h.Levels)-1], budget) > 3190 {
-		return errors.New("渔屋配置无效：满级速率过高，已顶破后期收入的 5% 线")
 	}
 	if h.StealPerPickCap*int64(h.StealPicksPerDay) < h.StealDailyCoinCap {
 		return errors.New("渔屋配置无效：偷取单次上限 × 每日次数 小于每日上限，参数自相矛盾")
@@ -253,7 +249,8 @@ const (
 
 // SimulateHut recomputes the acceptance table from the current config. It is
 // the same arithmetic the design doc used, exposed so the operator console can
-// refuse to publish a config that breaks the share budget.
+// show how a draft compares with the 5% share budget. Publishing is never
+// blocked by it: the console has no upper limits, the table is advice.
 func (c *Catalog) SimulateHut() HutSimulation {
 	h := c.HutConfig()
 	full := []int{h.PetSlots, 10}
