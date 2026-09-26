@@ -1,6 +1,6 @@
 {
   "source": "VERSIONS.md",
-  "count": 105,
+  "count": 106,
   "versions": [
     {
       "version": "v0.2",
@@ -526,6 +526,11 @@
       "version": "v0.24.0",
       "date": "2026-09-26",
       "summary": "「角色」页升级为「渔屋」（侧栏 id 仍是 character，钓竿页签原样保留）：晒场离线收益单次最多结算 8 小时、金币与领取次数都不设限，满级后转无尽翻新（渐近线 103/小时），另有三方向角色点数、宠物驻守与好友偷取（偷溢出晒场、不扣原主收益）；服务端新增 modules/house、迁移 0034、catalog 的 HUT 段与 ValidateHut 后期占比断言，后台新增「渔屋配置」页（配置发布链 + 平衡模拟 + 玩家查询与冻结）"
+    },
+    {
+      "version": "v0.25.0",
+      "date": "2026-09-26",
+      "summary": "后台「账号管理」可直接为已授权管理员生成 / 轮换 TOTP 验证器密钥（新增 POST /api/admin/users/totp：AES-GCM 密文落库、重置重放水位、注销其它后台会话、审计 users/totp，密钥只在一次响应里返回）；站名「钓鱼网站」统一为 DeepFish（游戏外壳、页面标题、Wiki 外壳与 meta、指南与版本文档、验证器 issuer）；发行包改由 push-linux-package.sh 按 4 MiB 分片多连接并行上传并断点续传（v0.24.0 的部署即因单条 TCP 流约 25 KB/s 超时失败），发送端补 BBR / fq / 路径 MTU 探测，另加手动量测工作流 Probe Linux deploy transfer；reset fresh 清档保留已发布的运营配置与官方 Wiki 内容、只裁剪玩家投稿（accounts 等改为按外键顺序裁剪且不重置序列）；catalog.Current / ByVersion 用内置快照回填发布里缺失的常量段，修复发布头停留在 v0.23.4 时渔屋玩法全部被拒的问题"
     }
   ]
 }
