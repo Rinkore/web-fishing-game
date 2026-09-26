@@ -151,7 +151,7 @@ jobs:
     needs: [source, publish]
     if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.publish.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     environment: linux-go
     concurrency:
       group: linux-go-deploy
@@ -162,6 +162,11 @@ jobs:
       ASSET_SHA256: ${{ needs.publish.outputs.asset-sha256 }}
       MIGRATIONS_SHA256: ${{ needs.publish.outputs.migrations-sha256 }}
     steps:
+      # The transfer tool comes from the workflow revision itself, so a retry of
+      # an older tag still runs the current uploader.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
       - name: Download and verify the published package
         env:
           GH_TOKEN: ${{ github.token }}
@@ -212,13 +217,21 @@ jobs:
       - name: Transfer package and run the installed Linux deployer
         env:
           GH_TOKEN: ${{ github.token }}
+          DEPLOY_TRANSFER_STREAMS: ${{ vars.DEPLOY_TRANSFER_STREAMS }}
         run: |
           set -euo pipefail
-          # Every ssh call below shares one multiplexed connection: repeated
+          # Short helper calls below share one multiplexed connection: repeated
           # handshakes and per-connection stalls used to dominate this step.
-          # Transfers also avoid the SFTP subsystem: scp starts it before the
-          # first byte, so a stalled sftp-server holds the step until the
-          # wall-clock timeout kills it.
+          # The package itself does not travel over that connection. This host
+          # sits behind a ~245 ms, ~13% loss international path where a single
+          # TCP flow collapses to roughly 25 KB/s, which is why one sequential
+          # stream needed about three minutes per 4 MiB and exhausted its
+          # budget on every release. tools/release/push-linux-package.sh spreads
+          # the archive over several parallel flows instead, verifies each chunk
+          # before assembly, and resumes from the verified chunks after a
+          # failure. Transfers still avoid the SFTP subsystem: scp starts it
+          # before the first byte, so a stalled sftp-server holds the step until
+          # the wall-clock timeout kills it.
           options=(-i "$RUNNER_TEMP/release-ssh/key" -o BatchMode=yes -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/release-ssh/known_hosts" \
             -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
@@ -239,9 +252,6 @@ jobs:
             # hold the deployment job for its whole wall-clock budget.
             timeout 120 ssh "${options[@]}" -p "$DEPLOY_SSH_PORT" "$destination" "$1"
           }
-          drop_connection() {
-            timeout 15 ssh -o "ControlPath=$RUNNER_TEMP/release-ssh/control" -O exit "$destination" >/dev/null 2>&1 || true
-          }
           archive_verified() {
             remote "test -f '$1' && printf '%s  %s\n' '$ASSET_SHA256' '$1' | sha256sum --check --status"
           }
@@ -252,34 +262,19 @@ jobs:
           staged="/var/tmp/fishing-release-$ASSET_SHA256/web-fishing-game-linux-amd64.tar.gz"
           if remote "test -f '$staged' && cp -- '$staged' '$remote_package'" && archive_verified "$remote_package"; then
             mark 'Reused the staged package after SHA-256 verification.'
-          elif archive_verified "$remote_package"; then
-            mark 'Reused the already uploaded package after SHA-256 verification.'
           else
-            # Send the package through an SSH exec channel in bounded slices, so
-            # a stalled link costs one slice instead of the whole transfer. The
-            # slices land at absolute offsets, which keeps every retry
-            # idempotent, and the archive hash still gates the deployer.
-            package="$RUNNER_TEMP/release/web-fishing-game-linux-amd64.tar.gz"
-            size=$(stat -c %s "$package")
-            slice=$((4 * 1024 * 1024))
-            deadline=$((SECONDS + 900))
-            printf 'Uploading the verified package: %s bytes.\n' "$size"
-            for ((offset = 0; offset < size; offset += slice)); do
-              (( SECONDS < deadline )) || { echo 'Package upload exceeded its 15 minute budget; stage the package and rerun the deployment job.'; exit 1; }
-              length=$((size - offset)); (( length <= slice )) || length=$slice
-              uploaded=false
-              for attempt in 1 2; do
-                if timeout 240 ssh "${options[@]}" -p "$DEPLOY_SSH_PORT" "$destination" \
-                  "dd of='$remote_package' bs=1M seek=$((offset / 1048576)) conv=notrunc 2>/dev/null" \
-                  < <(tail -c +$((offset + 1)) "$package" | head -c "$length"); then
-                  uploaded=true
-                  break
-                fi
-                echo "Slice at offset $offset stalled on attempt $attempt; retrying over a fresh connection."
-                drop_connection
-              done
-              [[ "$uploaded" == true ]] || { echo 'Package upload stalled; stage the package and rerun the deployment job.'; exit 1; }
-            done
+            # The transfer script owns its own connections: every worker holds a
+            # separate TCP flow, which is what the failing single-stream loop
+            # could not do. It reuses a target that already matches ASSET_SHA256,
+            # so a rerun after a partial upload only sends the missing chunks.
+            bash tools/release/push-linux-package.sh \
+              --host "$DEPLOY_SSH_HOST" --port "$DEPLOY_SSH_PORT" --user "$DEPLOY_SSH_USER" \
+              --key "$RUNNER_TEMP/release-ssh/key" --known-hosts "$RUNNER_TEMP/release-ssh/known_hosts" \
+              --control-path "$RUNNER_TEMP/release-ssh/control" \
+              --local "$RUNNER_TEMP/release/web-fishing-game-linux-amd64.tar.gz" \
+              --remote "$remote_package" --sha256 "$ASSET_SHA256" \
+              --streams "${DEPLOY_TRANSFER_STREAMS:-8}" --deadline 1200 \
+              || { echo 'Package upload failed; stage the package and rerun the deployment job.'; exit 1; }
             archive_verified "$remote_package" || { echo 'Uploaded package SHA-256 mismatch; stage the package and rerun the deployment job.'; exit 1; }
             mark 'Uploaded the release package.'
           fi
