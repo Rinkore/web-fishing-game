@@ -41,6 +41,20 @@ sudo bash /tmp/fishing-release/install.sh BASELINE_COMMIT BASELINE_MIGRATIONS_SH
 
 当前已核实的旧发行基线为 `bd62bc6bd92cd07ae9b5d59c0ae38bd21de0625a`。其迁移文件与本轮接入时的 main 一致，安装前仍需确认服务器未被其他任务更新。旧发行无完整 release manifest，安装器只记录经管理员核对的迁移摘要；其历史包摘要用全零占位，不会作为新包的校验值。
 
+## 更新器升级
+
+发行包成员与更新器白名单是同一套契约：`deploy.py` 逐条校验归档成员，新增或改名成员（例如 v0.23.4 加入的 `bin/reset`）时必须同步刷新服务器上的更新器。刷新前的旧更新器会拒绝整包，并以 `Unexpected release archive member.` 结束；此时不停服、不切换 `current`，线上继续运行旧版本，修好再重跑即可。
+
+`deploy.sh` 未变时只需替换 root 所有的执行模块：
+
+```bash
+sudo install -o root -g root -m 0644 deploy.py /usr/local/lib/fishing-release/deploy.py
+grep -n 'bin/reset' /usr/local/lib/fishing-release/deploy.py   # 确认新成员已进入白名单
+sudo -n /usr/local/sbin/fishing-release-deploy --check          # 只读：安装、受限 sudo 与健康检查
+```
+
+这一步只能由管理员执行：发布账号仅有固定更新入口的受限 sudo，流水线无法自行刷新更新器，因此它只能报告失败而不能绕过白名单。刷新后不必重推代码，在 Actions 的 **Linux release and deploy → Run workflow** 用同一个 tag 勾选 `reuse_release` 重跑部署即可。
+
 ## 数据库与恢复边界
 
 **SQL 迁移摘要不同会在停服之前拒绝自动部署。** 当前 Go 服务要求 schema 与全部内嵌迁移精确一致，因此不自动执行 `migrate up`、`catalog defaults`、数据库备份恢复或 schema 回滚。普通相同 schema 的应用更新不修改数据库结构，失败时可切回旧程序；已有数据库定时备份继续照常运行。
