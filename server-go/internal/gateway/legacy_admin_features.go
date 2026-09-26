@@ -20,7 +20,9 @@ var legacyFeatureGroups = []map[string]any{
 	{"id": "sea", "name": "远洋", "parent": nil, "children": []map[string]any{{"id": "sea.upgrade", "name": "船升级", "parent": "sea"}, {"id": "sea.chart", "name": "海图合成", "parent": "sea"}, {"id": "sea.voyage", "name": "随机海域出航", "parent": "sea"}, {"id": "sea.quest", "name": "每日悬赏", "parent": "sea"}, {"id": "sea.anchor", "name": "锚地续期", "parent": "sea"}, {"id": "sea.expedition", "name": "离线远航派遣", "parent": "sea"}}},
 	{"id": "ground", "name": "社交", "parent": nil, "children": []map[string]any{{"id": "ground.trade", "name": "玩家交易", "parent": "ground"}, {"id": "ground.party", "name": "编队出海", "parent": "ground"}}},
 	{"id": "inventory", "name": "背包", "parent": nil, "children": []map[string]any{{"id": "inventory.subscribe", "name": "组件订阅提醒", "parent": "inventory"}}},
-	{"id": "workshop", "name": "工坊", "parent": nil, "children": []map[string]any{{"id": "workshop.craft", "name": "合成宝匣", "parent": "workshop"}, {"id": "workshop.open", "name": "开启宝匣", "parent": "workshop"}, {"id": "workshop.growth", "name": "装备成长", "parent": "workshop"}, {"id": "workshop.sets", "name": "套装成长与偏好", "parent": "workshop"}}},
+	{"id": "workshop", "name": "工坊", "parent": nil, "children": []map[string]any{{"id": "workshop.growth", "name": "装备成长", "parent": "workshop"}, {"id": "workshop.sets", "name": "套装成长与偏好", "parent": "workshop"}}},
+	// 开箱（原「宝匣合成」）自 v0.23.5 起从工坊独立成页，合成/开启两个开关跟着这一页走。
+	{"id": "chest", "name": "开箱", "parent": nil, "children": []map[string]any{{"id": "chest.craft", "name": "合成宝匣", "parent": "chest"}, {"id": "chest.open", "name": "开启宝匣", "parent": "chest"}}},
 	{"id": "mall", "name": "商城", "parent": nil, "children": []map[string]any{{"id": "mall.buy", "name": "限购商品购买", "parent": "mall"}, {"id": "mall.sell", "name": "出售物品（含背包入口）", "parent": "mall"}, {"id": "mall.autosell", "name": "自动售出", "parent": "mall"}, {"id": "mall.list", "name": "市集上架", "parent": "mall"}, {"id": "mall.marketbuy", "name": "市集购买", "parent": "mall"}}},
 	{"id": "codex", "name": "图鉴", "parent": nil, "children": []map[string]any{}},
 	{"id": "records", "name": "记录（图鉴页签）", "parent": "codex", "children": []map[string]any{}},
@@ -31,7 +33,7 @@ var legacyFeatureGroups = []map[string]any{
 }
 
 // 邮件属于低频通知，放在主要玩法入口之后，和反馈/日志/WIKI 归在功能尾部。
-var legacyFeatureMenuIDs = []string{"fishing", "sea", "character", "ground", "inventory", "workshop", "mall", "codex", "feedback", "logs", "mail", "wiki"}
+var legacyFeatureMenuIDs = []string{"fishing", "sea", "character", "ground", "inventory", "workshop", "chest", "mall", "codex", "feedback", "logs", "mail", "wiki"}
 
 type legacyFeatureMetadata struct {
 	Order       map[string][]string `json:"order"`
@@ -122,6 +124,24 @@ func legacyFeatureOrder(metadata legacyFeatureMetadata) map[string][]string {
 				seen[id] = true
 			}
 		}
+		// 后加的「开箱」入口紧跟「工坊」：旧存档的菜单顺序不必手工再排一次。
+		if !seen["chest"] {
+			at := -1
+			for i, id := range merged {
+				if id == "workshop" {
+					at = i
+					break
+				}
+			}
+			if at < 0 {
+				merged = append(merged, "chest")
+			} else {
+				merged = append(merged, "")
+				copy(merged[at+2:], merged[at+1:])
+				merged[at+1] = "chest"
+			}
+			seen["chest"] = true
+		}
 		for _, id := range legacyFeatureMenuIDs {
 			if !seen[id] {
 				merged = append(merged, id)
@@ -190,10 +210,11 @@ func (a *API) legacyAdminFeatures(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if menu, exists := in.FeatureOrder["menu"]; exists && len(menu) == len(legacyFeatureMenuIDs)-1 {
-		// Older open consoles predate the mail entry. Append only this new ID;
-		// the ordinary validator still rejects other omissions and duplicates.
-		in.FeatureOrder["menu"] = append(append([]string{}, menu...), "mail")
+	if menu, exists := in.FeatureOrder["menu"]; exists {
+		// Consoles opened before the newest menu entries (mail, then the
+		// standalone chest page) are completed instead of rejected; the
+		// ordinary validator still rejects unknown, duplicate or short lists.
+		in.FeatureOrder["menu"] = legacyMenuOrderCompleted(menu)
 	}
 	if in.FeatureOrder != nil && !legacyFeatureOrderValid(in.FeatureOrder) {
 		legacyTradeError(w, 400, "菜单排序包含未知、重复或缺失项")
@@ -259,6 +280,57 @@ func (a *API) legacyAdminFeatures(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, view)
 }
 
+// legacyMenuOrderCompleted completes a menu order saved by an older console
+// that predates the newest menu entries (mail, then the standalone chest page).
+// Each missing entry lands next to its canonical neighbour so the operator's
+// existing ordering survives. Unknown, duplicate or otherwise incomplete lists
+// pass through untouched for the ordinary validator to reject.
+func legacyMenuOrderCompleted(menu []string) []string {
+	known, seen := map[string]bool{}, map[string]bool{}
+	for _, id := range legacyFeatureMenuIDs {
+		known[id] = true
+	}
+	for _, id := range menu {
+		if !known[id] || seen[id] {
+			return menu
+		}
+		seen[id] = true
+	}
+	missing := 0
+	for _, id := range legacyFeatureMenuIDs {
+		if !seen[id] {
+			missing++
+		}
+	}
+	if missing == 0 || missing > 2 {
+		return menu
+	}
+	out := append([]string{}, menu...)
+	for i, id := range legacyFeatureMenuIDs {
+		if seen[id] {
+			continue
+		}
+		at := len(out)
+		for j := i - 1; j >= 0; j-- {
+			if !seen[legacyFeatureMenuIDs[j]] {
+				continue
+			}
+			for k, have := range out {
+				if have == legacyFeatureMenuIDs[j] {
+					at = k + 1
+					break
+				}
+			}
+			break
+		}
+		out = append(out, "")
+		copy(out[at+1:], out[at:])
+		out[at] = id
+		seen[id] = true
+	}
+	return out
+}
+
 func legacyNativeForRoot(key string) []string {
 	switch key {
 	case "fishing":
@@ -268,7 +340,9 @@ func legacyNativeForRoot(key string) []string {
 	case "ground":
 		return []string{"trade", "party"}
 	case "workshop":
-		return []string{"workshop", "chest"}
+		return []string{"workshop"}
+	case "chest":
+		return []string{"chest"}
 	case "mall":
 		return []string{"mall", "sell", "autosell", "market"}
 	}

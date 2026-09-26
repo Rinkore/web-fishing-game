@@ -1,8 +1,8 @@
 {
   "format": 1,
-  "version": "v0.23.4",
+  "version": "v0.23.5",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "bac4f482cfb07e1734db9c50d5a5408466ecda4e0a74cbc063fc8a8ddaa4ea57",
+  "sourceSHA256": "bdcba556dfd79af696f07065b46de58be7d050d45ac697dd8e6f012dacf29a50",
   "constants": {
     "GEAR_SYSTEM": {
       "enabled": true,
@@ -345,13 +345,6 @@
         },
         "transfer": {
           "coins": 1000,
-          "items": {},
-          "receipts": 0,
-          "heat": 0,
-          "cores": 0
-        },
-        "convert": {
-          "coins": 0,
           "items": {},
           "receipts": 0,
           "heat": 0,
@@ -728,15 +721,9 @@
           "gear_fine": 1.5,
           "gear_crystal": 1.5
         }
-      },
-      "legacyConvertReceipts": {
-        "common": 0,
-        "rare": 0,
-        "epic": 1,
-        "mythic": 2
       }
     },
-    "VERSION": "v0.23.4",
+    "VERSION": "v0.23.5",
     "BUILD": "2026-09-26",
     "FISH": {
       "common": [
@@ -4188,6 +4175,12 @@
         "id": "workshop",
         "name": "工坊",
         "icon": "⚒",
+        "implemented": true
+      },
+      {
+        "id": "chest",
+        "name": "开箱",
+        "icon": "🎁",
         "implemented": true
       },
       {

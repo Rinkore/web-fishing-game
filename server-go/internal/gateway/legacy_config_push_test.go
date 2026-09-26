@@ -166,7 +166,7 @@ func TestIntegrationLegacyConfigInitWindowAndFeatureMapping(t *testing.T) {
 			t.Fatalf("unmapped disabled action %s: %v", id, projected)
 		}
 	}
-	if projected["workshop"] != nil || projected["mall"] != nil || projected["workshop.open"] != true {
+	if projected["workshop"] != nil || projected["mall"] != nil || projected["chest.open"] != true {
 		t.Fatalf("native action gate hid unrelated actions: %v", projected)
 	}
 	for _, path := range []string{"/api/features", "/api/me"} {

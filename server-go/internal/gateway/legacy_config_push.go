@@ -112,7 +112,7 @@ func legacyFeatureFlags(flags map[string]bool) map[string]bool {
 	for native, legacy := range map[string][]string{
 		"market": {"mall.list", "mall.marketbuy"}, "trade": {"ground.trade"},
 		"workshop": {"workshop.smelt", "workshop.recast", "workshop.forge"},
-		"chest":    {"workshop.craft", "workshop.open"}, "mall": {"mall.buy"},
+		"chest":    {"chest", "chest.craft", "chest.open"}, "mall": {"mall.buy"},
 		"sell": {"mall.sell"}, "autosell": {"mall.autosell"},
 		"sea": {"sea"}, "party": {"ground.party"}, "fishing": {"fishing.cast"},
 	} {
@@ -157,10 +157,10 @@ func legacyAdminFeatureFlags(flags map[string]bool) map[string]bool {
 			out["ground"] = trade && party
 		}
 	}
+	// 开箱自 v0.23.5 起是独立页面：工坊的开关不再受原生 chest 门控影响，
+	// 两个入口在后台各自显示自己的发布状态（玩家投影同理，见 legacyFeatureFlags）。
 	if workshop, ok := flags["workshop"]; ok {
-		if chest, exists := flags["chest"]; exists {
-			out["workshop"] = workshop && chest
-		}
+		out["workshop"] = workshop
 	}
 	if mall, ok := flags["mall"]; ok {
 		if sell, exists := flags["sell"]; exists {

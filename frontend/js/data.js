@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.23.4';
+  const VERSION = 'v0.23.5';
   const BUILD = '2026-09-26';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -844,13 +844,6 @@
       "heat": 0,
       "cores": 0
     },
-    "convert": {
-      "coins": 0,
-      "items": {},
-      "receipts": 0,
-      "heat": 0,
-      "cores": 0
-    },
     "preset": {
       "coins": 1000,
       "items": {},
@@ -1223,12 +1216,6 @@
       "gear_crystal": 1.5
     }
   },
-  "legacyConvertReceipts": {
-    "common": 0,
-    "rare": 0,
-    "epic": 1,
-    "mythic": 2
-  }
 };
   function setGearSystem(cfg) { if(!cfg || !cfg.enabled)return; Object.keys(GEAR_SYSTEM).forEach(k=>delete GEAR_SYSTEM[k]);Object.assign(GEAR_SYSTEM,cfg); }
   function gearState(id) { const m=String(id).match(/@g(\d+)_(none|main|sub)_(\d+)/);return m?{level:+m[1],engrave:m[2],presets:+m[3]}:null; }
@@ -1984,6 +1971,36 @@
   // 补缀（投料新增词缀）的候选：默认 = **全部 6 类词缀**里熔炼结果尚未拥有的那些（不再受主件底材词缀池限制）。
   function smeltMaterialAffix(id) { return SMELT_MATERIAL_AFFIX[id] || null; }
   function smeltMaterialIds() { return Object.keys(SMELT_MATERIAL_AFFIX); }
+  // 装备成长材料的用途：从当前配置（GEAR_SYSTEM.costs）反查这份材料参与哪些操作与消耗量。
+  // 游戏内物品详情与 Wiki 资料页共用这一份，管理员改了配方两处一起变。
+  function gearMaterialUses(id) {
+    const costs = (GEAR_SYSTEM && GEAR_SYSTEM.costs) || {};
+    const seen = {}, out = [];
+    const add = function (name, c) {
+      if (!c || !c.items || !c.items[id]) return;
+      const n = c.items[id], cur = seen[name];
+      if (!cur) { out.push(seen[name] = { name: name, lo: n, hi: n, coinsLo: c.coins || 0, coinsHi: c.coins || 0, receipts: c.receipts || 0, heat: c.heat || 0, cores: c.cores || 0 }); return; }
+      cur.lo = Math.min(cur.lo, n); cur.hi = Math.max(cur.hi, n);
+      cur.coinsLo = Math.min(cur.coinsLo, c.coins || 0); cur.coinsHi = Math.max(cur.coinsHi, c.coins || 0);
+      cur.receipts = Math.max(cur.receipts, c.receipts || 0); cur.heat = Math.max(cur.heat, c.heat || 0); cur.cores = Math.max(cur.cores, c.cores || 0);
+    };
+    (costs.upgrade || []).forEach(function (c) { add('强化', c); });
+    add('副属性调校', costs.tune);
+    add('纯材料精工', costs.engrave);
+    add('热量优惠精工', costs.heatEngrave);
+    add('成长转移', costs.transfer);
+    add('精工预设切换', costs.preset);
+    add('远航专精认证', costs.unlock);
+    (costs.stage || []).forEach(function (c) { add('套装／专精进阶', c); });
+    return out.map(function (u) {
+      const bits = ['材料 ×' + u.lo + (u.hi > u.lo ? '~' + u.hi : '')];
+      if (u.coinsHi) bits.push(u.coinsLo === u.coinsHi ? u.coinsHi + '💰' : u.coinsLo + '~' + u.coinsHi + '💰');
+      if (u.receipts) bits.push('航程凭证 ×' + u.receipts);
+      if (u.heat) bits.push('精工热量 ×' + u.heat);
+      if (u.cores) bits.push('同套重复核心 ×' + u.cores);
+      return u.name + '（每次 ' + bits.join(' + ') + '）';
+    });
+  }
 
   const SMELT_DEFAULTS = {
     baseRate: 50,              // 熔炼基础成功率（%）：失败 = 副件/材料被熔毁、主件失去选中的那条词条
@@ -3326,8 +3343,9 @@
     { id: 'fishing', name: '钓鱼', icon: '🎣', implemented: true },
     { id: 'character', name: '角色', icon: '🧍', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
-    // 「宝匣合成」不再是独立页面：并入「工坊」页（熔炼/重铸同款页签切换），改名「开箱」，见 ui.js 的 renderWorkshop。
+    // 「开箱」（原「宝匣合成」）自 v0.23.5 起从工坊独立成页：入口在工坊之后，页面见 ui.js 的 renderChest。
     { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
+    { id: 'chest', name: '开箱', icon: '🎁', implemented: true },
     { id: 'sea', name: '远洋', icon: '⛵', implemented: true },
     { id: 'ground', name: '社交', icon: '🌊', implemented: true },
     // 「系统商店」「开放市集」不再是独立页面：合并进「商城」页（工坊熔炼/重铸同款页签切换），
@@ -3418,6 +3436,7 @@
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     SNAPSHOT_DEFAULTS: SNAPSHOT_DEFAULTS, defaultSnapshotCfg: defaultSnapshotCfg, setSnapshotCfg: setSnapshotCfg, getSnapshotCfg: getSnapshotCfg,
     smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds, smeltFuelIds: function(){return ['bait_pack','rope','lure'];},
+    gearMaterialUses: gearMaterialUses,
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltSuccessProbs: smeltSuccessProbs, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
     smeltPlanOf: smeltPlanOf, simulateSmeltPlan: simulateSmeltPlan, smeltRollWithRng: smeltRollWithRng,
     smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,

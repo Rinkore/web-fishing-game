@@ -10,7 +10,9 @@
     ['bd', '钓竿（角色页签）', [['equip', '装备组件'], ['slots', '购买槽位'], ['save', '保存与管理钓竿'], ['autobuild', '自动配装']]],
     ['character', '角色', [['companion', '选择同伴'], ['boat', '选择船型']]],
     ['inventory', '背包', [['subscribe', '组件订阅提醒']]],
-    ['workshop', '工坊', [['craft', '合成宝匣'], ['open', '开启宝匣'], ['growth', '装备成长'], ['sets', '套装成长与偏好']]],
+    ['workshop', '工坊', [['growth', '装备成长'], ['sets', '套装成长与偏好']]],
+    // v0.23.5：开箱从工坊独立成页（原工坊页的「开箱」页签），合成宝匣/开启宝匣归到这一页。
+    ['chest', '开箱', [['craft', '合成宝匣'], ['open', '开启宝匣']]],
     ['sea', '远洋', [['upgrade', '船升级'], ['chart', '海图合成'], ['voyage', '随机海域出航'], ['expedition', '离线远航派遣'], ['quest', '每日悬赏'], ['anchor', '锚地续期']]],
     ['ground', '社交', [['trade', '玩家交易'], ['party', '编队出海']]],
     ['mall', '商城', [['buy', '限购商品购买'], ['sell', '出售物品（含背包入口）'], ['autosell', '自动售出'], ['list', '市集上架'], ['marketbuy', '市集购买']]],
@@ -29,7 +31,7 @@
       children: g[2].map(function (a) { return { id: g[0] + '.' + a[0], name: a[1], parent: g[0] }; }),
     };
   });
-  const menuIds = ['fishing', 'character', 'inventory', 'workshop', 'sea', 'ground', 'mall', 'codex', 'feedback', 'logs', 'mail', 'wiki'];
+  const menuIds = ['fishing', 'character', 'inventory', 'workshop', 'chest', 'sea', 'ground', 'mall', 'codex', 'feedback', 'logs', 'mail', 'wiki'];
   // v0.21 以前保存过的默认顺序需要迁移；仅识别整套旧默认顺序，避免覆盖管理员
   // 真正自定义过的排序。邮件单独忽略，因为旧函数本来就始终把它归到日志之后。
   const legacyDefaultMenu = ['fishing', 'sea', 'character', 'ground', 'inventory', 'workshop', 'mall', 'codex', 'feedback', 'logs', 'mail', 'wiki'];
@@ -39,6 +41,12 @@
     const oldShape = legacyDefaultMenu.filter(function (id) { return id !== 'mail'; }).join('|');
     const savedShape = restored.filter(function (id) { return id !== 'mail'; }).join('|');
     const result = (saved.length && savedShape === oldShape ? menuIds.slice() : restored);
+    // Stored orders predate the standalone chest entry: keep it next to「工坊」instead of
+    // trailing the whole menu (an operator can still drag it anywhere afterwards).
+    if (saved.length && saved.indexOf('chest') < 0) {
+      const at = result.indexOf('chest'), workshop = result.indexOf('workshop');
+      if (at >= 0 && workshop >= 0 && at !== workshop + 1) { result.splice(at, 1); result.splice(workshop + 1, 0, 'chest'); }
+    }
     // 旧账号可能保存了邮件在工坊前的菜单顺序。邮件属于低频通知，始终放在日志之后，避免旧配置覆盖当前产品布局。
     const mailIndex = result.indexOf('mail');
     if (mailIndex >= 0) {
@@ -56,7 +64,7 @@
     '/api/fishing/start': 'fishing.cast', '/api/bd/set': 'bd.equip',
     '/api/rod/slot/buy': 'bd.slots', '/api/rod/save': 'bd.save', '/api/rod/name': 'bd.save',
     '/api/rod/rename': 'bd.save', '/api/rod/use': 'bd.save', '/api/rod/stow': 'bd.save', '/api/rod/delete': 'bd.save',
-    '/api/chest/craft': 'workshop.craft', '/api/chest/open': 'workshop.open',
+    '/api/chest/craft': 'chest.craft', '/api/chest/open': 'chest.open',
     '/api/gear/action': 'workshop',
     '/api/workshop/smelt': 'workshop.smelt', '/api/workshop/recast': 'workshop.recast', '/api/workshop/forge': 'workshop.forge',
     '/api/mall/buy': 'mall.buy', '/api/sell': 'mall.sell', '/api/autosell': 'mall.autosell',

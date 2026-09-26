@@ -70,6 +70,7 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 			"fishing.cast", "bd", "bd.equip", "bd.slots", "bd.save", "bd.autobuild",
 			"character", "character.companion", "character.boat", "sea.upgrade", "sea.chart", "sea.voyage", "sea.quest", "sea.anchor", "sea.expedition",
 			"ground", "ground.trade", "ground.party", "inventory", "inventory.subscribe",
+			"chest.craft", "chest.open",
 			"workshop.craft", "workshop.open", "workshop.smelt", "workshop.recast", "workshop.forge",
 			"workshop.growth", "workshop.sets",
 			"mall.buy", "mall.sell", "mall.autosell", "mall.list", "mall.marketbuy",

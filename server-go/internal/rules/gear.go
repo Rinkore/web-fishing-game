@@ -36,28 +36,26 @@ type GearCosts struct {
 	Engrave     GearCost   `json:"engrave"`
 	HeatEngrave GearCost   `json:"heatEngrave"`
 	Transfer    GearCost   `json:"transfer"`
-	Convert     GearCost   `json:"convert"`
 	Preset      GearCost   `json:"preset"`
 	Unlock      GearCost   `json:"unlock"`
 	Stage       []GearCost `json:"stage"`
 }
 type GearConfig struct {
-	Enabled               bool                          `json:"enabled"`
-	MaxLevel              int                           `json:"maxLevel"`
-	SubUnlock             int                           `json:"subUnlock"`
-	BoundLevel            int                           `json:"boundLevel"`
-	ReceiptHours          int                           `json:"receiptHours"`
-	EngraveLevel          int                           `json:"engraveLevel"`
-	MainEngrave           float64                       `json:"mainEngrave"`
-	SubEngrave            float64                       `json:"subEngrave"`
-	Parts                 map[string]GearPart           `json:"parts"`
-	Costs                 GearCosts                     `json:"costs"`
-	Sets                  map[string]GearAbility        `json:"sets"`
-	Specializations       map[string]GearAbility        `json:"specializations"`
-	FishPity              map[string]int                `json:"fishPity"`
-	ExcludedFish          []string                      `json:"excludedFish"`
-	BaseDrops             map[string]map[string]float64 `json:"baseDrops"`
-	LegacyConvertReceipts map[string]int64              `json:"legacyConvertReceipts"`
+	Enabled         bool                          `json:"enabled"`
+	MaxLevel        int                           `json:"maxLevel"`
+	SubUnlock       int                           `json:"subUnlock"`
+	BoundLevel      int                           `json:"boundLevel"`
+	ReceiptHours    int                           `json:"receiptHours"`
+	EngraveLevel    int                           `json:"engraveLevel"`
+	MainEngrave     float64                       `json:"mainEngrave"`
+	SubEngrave      float64                       `json:"subEngrave"`
+	Parts           map[string]GearPart           `json:"parts"`
+	Costs           GearCosts                     `json:"costs"`
+	Sets            map[string]GearAbility        `json:"sets"`
+	Specializations map[string]GearAbility        `json:"specializations"`
+	FishPity        map[string]int                `json:"fishPity"`
+	ExcludedFish    []string                      `json:"excludedFish"`
+	BaseDrops       map[string]map[string]float64 `json:"baseDrops"`
 }
 
 func (c *Catalog) GearConfig() GearConfig {
@@ -210,7 +208,7 @@ func (c *Catalog) ValidateGear() error {
 	}
 	costs := append([]GearCost{}, g.Costs.Upgrade...)
 	costs = append(costs, g.Costs.Stage...)
-	costs = append(costs, g.Costs.Tune, g.Costs.Engrave, g.Costs.HeatEngrave, g.Costs.Transfer, g.Costs.Convert, g.Costs.Preset, g.Costs.Unlock)
+	costs = append(costs, g.Costs.Tune, g.Costs.Engrave, g.Costs.HeatEngrave, g.Costs.Transfer, g.Costs.Preset, g.Costs.Unlock)
 	for _, v := range costs {
 		if v.Coins < 0 || v.Coins > 1000000000 || v.Receipts < 0 || v.Receipts > 10000 || v.Heat < 0 || v.Heat > 10000 || v.Cores < 0 || v.Cores > 100 {
 			return bad
@@ -323,11 +321,6 @@ func (c *Catalog) ValidateGear() error {
 			if !ok || it.Kind != "material" || !finite(n) || n < 0 || n > 10000 {
 				return bad
 			}
-		}
-	}
-	for q, n := range g.LegacyConvertReceipts {
-		if !validQuality(q) || n < 0 || n > 100 {
-			return bad
 		}
 	}
 	return nil

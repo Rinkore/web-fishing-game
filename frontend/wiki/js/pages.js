@@ -198,10 +198,17 @@ window.WikiPage = (function () {
   };
   function materialUseText(id) {
     const D = window.GameData;
-    if (id === 'relic') return '沉船宝匣的合成材料，也是工坊的保留残片：失败时保护主件、成功时按概率保留池外词缀，还可作为材料概率催化剂投料。';
-    if (id === 'dragonpearl') return '重铸神话件的材料（基础 1 颗，指定第 n 条词条额外 n 颗）；熔炼投料时投入 1 颗可让数值掷两次取更靠近边界的值。';
-    if (D && D.smeltMaterialAffix && D.smeltMaterialAffix(id)) return '熔炼催化剂：补缀 ' + W().affixLabelOf(D.smeltMaterialAffix(id));
-    return '以当前工坊与商城配方为准。';
+    // 与游戏内物品详情共用同一份现算结果（见 data.js 的 gearMaterialUses）。
+    const gear = (D && D.gearMaterialUses && D.gearMaterialUses(id)) || [];
+    const lead = gear.length ? '装备成长材料 → ' + gear.join(' · ') + '。' : '';
+    if (id === 'relic') return lead + '开箱合成宝匣的主材料，也是熔炼的保留残片：失败时保护主件、成功时按概率保留池外词缀，还可作为材料概率催化剂投料，并用于重铸。';
+    if (id === 'dragonpearl') return lead + '重铸神话件的材料（基础 1 颗，指定第 n 条词条额外 n 颗）；熔炼投料时投入 1 颗可让数值掷两次取更靠近边界的值。';
+    if (id === 'chartfrag') return '远洋海图碎片：' + ((D && D.SEA && D.SEA.chartCost) || 3) + ' 片合成 1 张未知海图，出航后随机发现一片临时海域。';
+    if (id === 'deepscale') return '远洋船坞材料：船升级按等级需要（见船坞当前需求），也是远航每日悬赏的上交物。';
+    if (id === 'storm_relic') return '远洋风暴特产：风暴深入模式（需风暴专精）产出，可在远航里作为定向货物指定收取。';
+    if (D && D.smeltMaterialAffix && D.smeltMaterialAffix(id)) return lead + '熔炼催化剂：补缀 ' + W().affixLabelOf(D.smeltMaterialAffix(id));
+    if (D && D.smeltFuelIds && D.smeltFuelIds().indexOf(id) >= 0) return lead + '熔炼燃料：只增加投料量（补缀率更高、熔炼更稳），不补任何词缀。';
+    return lead || '以当前工坊与商城配方为准。';
   }
   function renderItemDetail(entry) {
     const c = card('条目详情');
