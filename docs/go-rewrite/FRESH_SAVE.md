@@ -4,7 +4,7 @@
 
 ## 目标与边界
 
-目标是把正式服恢复成“全新存档”：玩家账号、资产、图鉴、渔获纪录、市集、交易、邮件、好友与编队、海域与远航、反馈、Wiki 投稿、会话与在线租约、后台审计与登录失败记录等运行时数据全部清空；表、字段、索引、约束、序列、权限和迁移账本原样保留。运营配置 `operator_settings`、公告串行头 `banner_state` 等迁移期单例行保留。
+目标是把正式服恢复成“全新存档”：玩家账号、资产、图鉴、渔获纪录、市集、交易、邮件、好友与编队、海域与远航、反馈、Wiki 投稿、会话与在线租约、后台审计与登录失败记录等运行时数据全部清空；表、字段、索引、约束、序列、权限和迁移账本原样保留。运营配置全部保留：已发布的目录与规则快照 `catalog_releases`、功能开关 `feature_releases` 及两个发布头、物品定义 `item_definitions`、运营设置 `operator_settings`、公告串行头 `banner_state`、Wiki 修订水位 `wiki_state` 等迁移期单例行都不会被清空，因此清档后服务器仍按同一份已发布配置运行，不会回落到二进制内置默认值。
 
 不包含：不 DROP 数据库或 `fishing` schema，不重建角色与授权，不修改 `public.fishing_schema_migrations`，不自动部署，不代替备份。玩家必须重新注册，管理员必须重新初始化；玩家资产快照（`admin/users/snapshot`）是资产级回滚，不是全服存档回滚，清档后同样不存在。
 
@@ -16,7 +16,7 @@
 
 1. 备份并确认可恢复：沿用现有 PostgreSQL 备份流程，保留切换前的完整备份。
 2. 停服：按 [Linux 自动更新](../../deploy/linux/README.md) 的顺序停止 game 与网页代理服务。
-3. 预演（只读）：用 schema 管理连接执行 `./bin/reset fresh`，核对输出中的 `preserved`、`cleared` 与各表 `rows`；这一步不写库。
+3. 预演（只读）：用 schema 管理连接执行 `./bin/reset fresh`，核对输出中的 `preserved`、`retained`、`cleared` 与各表 `rows`；这一步不写库。
 4. 执行：同一个连接上执行 `./bin/reset fresh --confirm`。命令在有其他 `fishing-go` 连接时会拒绝执行，避免带着运行中的进程清档。
 5. 重新初始化管理员：按 [server-go/README.md](../../server-go/README.md) 的管理员初始化流程执行 `./bin/admin provision`（用户名/密钥/OTP 只经标准输入与环境变量传入）。
 6. 启动 game 与网页代理，检查 `/healthz`、`/readyz`、公网版本、管理员登录，并做一次注册与钓鱼冒烟。
@@ -40,27 +40,30 @@ export FISHING_GO_MIGRATION_DATABASE_URL='postgres://schema_owner:REPLACE_ME@127
 | 保留 | `item_definitions` | 物品定义属于目录配置，不是玩家存档 |
 | 保留 | `operator_settings` | 运营参数（商城、熔炼、纪录、掉落等覆盖值） |
 | 保留 | `banner_state` | 公告队列与串行修订，运营配置 |
+| 保留（已有发布时） | `catalog_head`、`catalog_releases` | 已发布的目录与规则快照（钓速、咬钩、掉落、价格、商城、渔场等），服务器实际生效的运营配置；从未发布过的库仍按旧行为清空并重建空头 |
+| 保留（已有发布时） | `feature_head`、`feature_releases` | 已发布的功能开关（市集、交易、工坊、宝匣、商城、出售、自动出售、好友等）；从未发布过的库同样重建空头 |
 | 保留 | `mail_tracking` | 邮件 worker 的迁移期起点单例行 |
 | 保留 | `party_guard`、`catch_record_moderation_guard` | 迁移期创建的串行修订单例行 |
 | 保留 | `wiki_state` | 官方 Wiki 修订水位单例行 |
-| 清空后重建空头 | `catalog_head`、`feature_head` | 发布头引用的 release 行随 `accounts`/`asset_operations` 一起清空，必须恢复成空白头 |
+| 只保留配置相关行 | `accounts`、`asset_operations`、`command_results` | 发布行由发布者账号签名、并挂在其已审计操作与命令结果上；这三张表按外键逐级裁剪，只留已发布配置引用的行，其余玩家行全部删除 |
 
-清空后命令会在同一批步骤中重建可启动状态：重播物品定义（`workshop.SeedDefinitions`）、重建发布空头、按内置内容恢复官方 Wiki 指南。被清空的运营规则发布（`catalog_releases`、`feature_releases`）不会恢复，生效目录回落到二进制内置默认值；管理员、运营设置与公告需要按第 5 步及后台流程重新配置。
+清空后命令会在同一批步骤中重建可启动状态：重播物品定义（`workshop.SeedDefinitions`）、补齐发布头（已随发布保留，仅在缺少种子行时补空头）、按内置内容恢复官方 Wiki 指南。服务器继续使用清档前已发布的目录与功能开关，已发布发行记录、公告与运营设置都还在；需要按第 5 步重做的只有管理员账号本身——发布者账号只作为发布行的归属保留（没有登录身份），管理员必须重新初始化。
 
 ## 安全边界
 
 - 执行前先做 `migrations.Check`，schema 与二进制不一致时拒绝运行。
 - 使用共享的 `application_name='fishing-go'`（见 `server-go/internal/platform/postgres/pool.go`）检测其他进程连接，运行中的 game 即使空闲也会被识别。
-- 清空在单个事务里完成，失败整体回滚；`RESTART IDENTITY` 让新账号从 1 开始编号。
+- 清空在单个事务里完成，失败整体回滚；被清空的表用 `RESTART IDENTITY` 重新从 1 编号。
+- `accounts`、`asset_operations`、`command_results` 不会被 `TRUNCATE`：它们各自含有已发布配置引用的行，改为按外键顺序删除其余行，所以这三张表的自增序列不会被重置，清档后新账号接着既有编号往后走，也不会与保留行冲突。没有发布过任何配置的库退化成原来的纯 `TRUNCATE` 路径，新账号仍从 1 开始。
 - 命令只使用 schema 管理连接，不需要也不应使用超级用户；运行角色权限不受影响。
 
 ## 新增迁移时的维护
 
-若后续迁移引入新的“启动必需单例行”，必须同时把它加入 `server-go/internal/app/reset.go` 的 `freshSavePreserved` 或 `freshSaveRebuildRows`，并在下一次预演输出里确认；否则清档后可能缺少必要行，`/readyz` 会明确拒绝就绪。
+若后续迁移引入新的“启动必需单例行”或新的运营配置表，必须同时把它加入 `server-go/internal/app/reset.go` 的 `freshSavePreserved`（整表保留）或 `freshSaveRebuildRows`（清空后补行），并在下一次预演输出里确认；否则清档后可能缺少必要行，`/readyz` 会明确拒绝就绪，配置也会静默丢失。若新的运营配置表引用了玩家表，还需要同步扩展 `freshSaveRetainedTables` 与 `freshSaveRetainedPrune` 的裁剪谓词。
 
 ## 本仓库验收
 
-- 合成真库（`deploy/go-test` 的隔离 PostgreSQL 18.6）：`go build ./...`、`go vet ./...`、`go test -count=1 ./...` 均退出 0。`internal/app` 的 `TestIntegrationFreshSave*` 覆盖清空与保留判定、`catalog_head`/`feature_head` 空头重建、官方 Wiki 恢复、迁移账本不变、序列重新从 1 开始、清档后运行角色就绪，以及存在 `fishing-go` 连接时拒绝执行。
+- 合成真库（`deploy/go-test` 的隔离 PostgreSQL 18.6）：`go build ./...`、`go vet ./...`、`go test -count=1 ./...` 均退出 0。`internal/app` 的 `TestIntegrationFreshSave*` 覆盖清空与保留判定、`catalog_head`/`feature_head` 空头重建、官方 Wiki 恢复、迁移账本不变、未发布配置时序列重新从 1 开始、清档后运行角色就绪、存在 `fishing-go` 连接时拒绝执行，以及已发布目录/功能开关在清档后逐字保留、发布者以外的账号与操作被裁剪、被保留行的自增序列不被重置。
 - CLI 冒烟（临时库 `reset_smoke`）：`cmd/migrate up` 与 `cmd/catalog defaults` 之后执行 `reset fresh`（只读预演）与 `reset fresh --confirm`。清档后 `fishing` schema 的 91 张表全部保留：玩家表为 0 行，`item_definitions` 146 行、官方指南 13 条、`catalog_head` 与 `feature_head` 各 1 行、`public.fishing_schema_migrations` 仍为 34 条；非法参数按 usage 报错并以非零状态退出。
 - `tests/linux-deploy.test.py` 20/20 通过，覆盖发行包允许且必须包含 `bin/reset`。
 - 以上均针对合成数据，未连接也未修改正式服数据库；正式执行前仍须按“操作步骤”备份并在维护窗口停服。

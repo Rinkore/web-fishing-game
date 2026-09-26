@@ -1,7 +1,9 @@
 // reset hands a running installation a fresh save: it clears player data, keeps
-// the schema, privileges, and migration ledger, and restores the built-in item
-// definitions and official wiki content. Dropping the database would lose the
-// runtime role grants, so this command is the supported reset path.
+// the schema, privileges, migration ledger and the published operator
+// configuration (rules, prices, drops, mall, feature flags, settings), and
+// restores the built-in item definitions and official wiki content. Dropping
+// the database would lose the runtime role grants, so this command is the
+// supported reset path.
 package main
 
 import (
