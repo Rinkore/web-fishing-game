@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 )
 
 // HutConfig is the fish-house ("渔屋") ruleset. It lives in the same immutable
@@ -224,13 +225,19 @@ func (c *Catalog) ValidateHut() error {
 	return nil
 }
 
-// HutPhase is one row of the operator-facing balance report.
+// HutPhase is one row of the operator-facing balance report. Baseline is that
+// profile's reference daily fishing income; PerCast / MaterialPerCast show the
+// same number split per cast, so an operator can see that the materials players
+// sell are part of the baseline instead of an invisible add-on.
 type HutPhase struct {
-	Stage    string  `json:"stage"`
-	Daily    int64   `json:"daily"`
-	Baseline int64   `json:"baseline"`
-	Pct      float64 `json:"pct"`
-	OK       bool    `json:"ok"`
+	Stage           string  `json:"stage"`
+	Casts           int     `json:"casts"`
+	PerCast         float64 `json:"perCast"`
+	MaterialPerCast float64 `json:"materialPerCast"`
+	Daily           int64   `json:"daily"`
+	Baseline        int64   `json:"baseline"`
+	Pct             float64 `json:"pct"`
+	OK              bool    `json:"ok"`
 }
 type HutSimulation struct {
 	Phases       []HutPhase `json:"phases"`
@@ -238,14 +245,81 @@ type HutSimulation struct {
 	Violations   []string   `json:"violations"`
 }
 
-// HutBaselines are the reference daily incomes the design is calibrated
-// against. Early is the measured rookie baseline (see the design doc §2.6);
-// mid/late come from the growth-curve rework profile.
+// The reference fishing profiles behind the share budget follow the tier table
+// of docs/成长曲线重做方案.md §3.2 — early = tier 1 spots, mid = tier 3, late =
+// tier 5 — with the standard profile's cast count from tools/balance-sim.js.
 const (
-	hutBaselineEarly = 4292
-	hutBaselineMid   = 24000
-	hutBaselineLate  = 68000
+	hutCastsEarly = 400
+	hutCastsMid   = 800
+	hutCastsLate  = 800
+	// hutSizeBonus mirrors tools/balance-sim.js: the large/giant size weighting
+	// lifts the average sale value of a cast by roughly 15%.
+	hutSizeBonus = 1.15
 )
+
+var (
+	hutEarlySpots = []string{"dock", "reed", "estuary", "beach"}
+	hutMidSpots   = []string{"deep", "ice", "lighthouse", "wreck"}
+	hutLateSpots  = []string{"trench"}
+	// hutKeepMaterials are currencies (ship levels, smelting) the shop does not
+	// buy, so they stay out of the coin baseline exactly like balance-sim.js.
+	hutKeepMaterials = map[string]bool{"deepscale": true, "dragonpearl": true}
+)
+
+// hutSellablePerCast is the expected coin value of one cast at a spot: every
+// sellable drop counts, so the materials a player sells are included next to
+// the fish. It returns the total and the material-only part.
+func (c *Catalog) hutSellablePerCast(spotID string) (perCast, material float64) {
+	var grounds []Ground
+	if err := c.Constant("GROUNDS", &grounds); err != nil {
+		return 0, 0
+	}
+	for _, g := range grounds {
+		for _, spot := range g.Spots {
+			if spot.ID != spotID {
+				continue
+			}
+			weight, gold, mat := 0.0, 0.0, 0.0
+			for _, e := range spot.Pool {
+				weight += e.Weight
+				kind, id, ok := strings.Cut(e.Pick, ":")
+				if !ok || id == "" || (kind != "fish" && kind != "material") || hutKeepMaterials[id] {
+					continue
+				}
+				item, found := c.Item(id)
+				if !found || item.NoSell || item.Price <= 0 {
+					continue
+				}
+				gold += e.Weight * item.Price
+				if kind == "material" {
+					mat += e.Weight * item.Price
+				}
+			}
+			if weight <= 0 {
+				return 0, 0
+			}
+			return gold / weight * hutSizeBonus, mat / weight * hutSizeBonus
+		}
+	}
+	return 0, 0
+}
+
+// hutBaseline converts one profile into its daily reference income: casts times
+// the average per-cast expectation of that profile's spots. Sold materials are
+// part of the number by construction.
+func (c *Catalog) hutBaseline(casts int, spots []string) (daily int64, perCast, material float64) {
+	if len(spots) == 0 {
+		return 0, 0, 0
+	}
+	for _, id := range spots {
+		p, m := c.hutSellablePerCast(id)
+		perCast += p
+		material += m
+	}
+	perCast /= float64(len(spots))
+	material /= float64(len(spots))
+	return int64(math.Round(perCast * float64(casts))), perCast, material
+}
 
 // SimulateHut recomputes the acceptance table from the current config. It is
 // the same arithmetic the design doc used, exposed so the operator console can
@@ -256,17 +330,24 @@ func (c *Catalog) SimulateHut() HutSimulation {
 	full := []int{h.PetSlots, 10}
 	half := []int{h.PetSlots, 6}
 	out := HutSimulation{Phases: []HutPhase{}, Violations: []string{}}
+	earlyDaily, earlyPerCast, earlyMaterial := c.hutBaseline(hutCastsEarly, hutEarlySpots)
+	midDaily, midPerCast, midMaterial := c.hutBaseline(hutCastsMid, hutMidSpots)
+	lateDaily, latePerCast, lateMaterial := c.hutBaseline(hutCastsLate, hutLateSpots)
 
-	add := func(stage string, level int, affinities []int, cook int, baseline int64) {
+	add := func(stage string, level int, affinities []int, cook, casts int, baseline int64, perCast, materialPerCast float64) {
 		bonus := h.Bonus(level, affinities, map[string]int{"cook": cook})
 		daily := h.Payout(h.Rate(level, 0), 24, bonus)
-		pct := float64(daily) / float64(baseline) * 100
-		out.Phases = append(out.Phases, HutPhase{Stage: stage, Daily: daily, Baseline: baseline, Pct: pct})
+		pct := 0.0
+		if baseline > 0 {
+			pct = float64(daily) / float64(baseline) * 100
+		}
+		out.Phases = append(out.Phases, HutPhase{Stage: stage, Casts: casts, PerCast: perCast,
+			MaterialPerCast: materialPerCast, Daily: daily, Baseline: baseline, Pct: pct})
 	}
 	// 前期只吃等级收益（加成 Lv5 才解锁），中期吃半效加成，后期满配。
-	add("early", 1, nil, 0, hutBaselineEarly)
-	add("mid", 6, half, 2, hutBaselineMid)
-	add("late", 10, full, 3, hutBaselineLate)
+	add("early", 1, nil, 0, hutCastsEarly, earlyDaily, earlyPerCast, earlyMaterial)
+	add("mid", 6, half, 2, hutCastsMid, midDaily, midPerCast, midMaterial)
+	add("late", 10, full, 3, hutCastsLate, lateDaily, latePerCast, lateMaterial)
 
 	// 验收：前期 15~30%、占比单调下降、后期 ≤5%
 	early, mid, late := &out.Phases[0], &out.Phases[1], &out.Phases[2]
@@ -283,11 +364,11 @@ func (c *Catalog) SimulateHut() HutSimulation {
 		out.Violations = append(out.Violations, "后期占比超过 5%")
 	}
 
-	// 满无尽 + 偷取的总账：这是设计里唯一还保留的金额硬顶（偷取部分）。
+	// 满无尽 + 偷取的总账：参考线是后期基准日收入的 5%。
 	fullBonus := 1 + h.PetBonusCap + h.RoleBonusCap
 	hutMax := int64(math.Round(h.AsymptoteRate * 24 * fullBonus))
 	out.EndlessTotal = hutMax + h.StealDailyCoinCap
-	if out.EndlessTotal > hutBaselineLate/20 {
+	if lateDaily > 0 && out.EndlessTotal > lateDaily/20 {
 		out.Violations = append(out.Violations, "满无尽 + 偷取合计超过后期钓鱼收入的 5%")
 	}
 	return out

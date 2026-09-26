@@ -2,6 +2,7 @@ package rules
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -67,10 +68,18 @@ func TestHutDailyCeilingStaysInsideTheShareBudget(t *testing.T) {
 	c, _ := Default()
 	h := c.HutConfig()
 	full := h.PetBonusCap + h.RoleBonusCap
-	if got := h.DailyMax(h.AsymptoteRate, full); got > 3190 {
-		t.Fatalf("fully invested daily ceiling %v breaks the 5%% budget", got)
-	}
 	sim := c.SimulateHut()
+	late := sim.Phases[len(sim.Phases)-1]
+	for _, phase := range sim.Phases {
+		t.Logf("%s baseline=%d (%d casts x %.2f/cast, materials %.2f)",
+			phase.Stage, phase.Baseline, phase.Casts, phase.PerCast, phase.MaterialPerCast)
+	}
+	if late.Baseline <= 0 || late.Casts <= 0 {
+		t.Fatalf("late reference profile is empty: %+v", late)
+	}
+	if got := h.DailyMax(h.AsymptoteRate, full); got > float64(late.Baseline)/20 {
+		t.Fatalf("fully invested daily ceiling %v breaks the 5%% budget of %d", got, late.Baseline)
+	}
 	if len(sim.Violations) != 0 {
 		t.Fatalf("shipped config violates acceptance: %v", sim.Violations)
 	}
@@ -78,6 +87,53 @@ func TestHutDailyCeilingStaysInsideTheShareBudget(t *testing.T) {
 		if !phase.OK {
 			t.Fatalf("phase %s failed: %+v", phase.Stage, phase)
 		}
+		if phase.MaterialPerCast <= 0 {
+			t.Fatalf("phase %s baseline ignores sold materials: %+v", phase.Stage, phase)
+		}
+	}
+}
+
+// TestHutBaselineCountsSoldMaterials pins the console decision: the reference
+// daily income is every sellable drop — fish and materials — so raising the shop
+// price of a material that drops in the profile's spot must raise the baseline.
+func TestHutBaselineCountsSoldMaterials(t *testing.T) {
+	c, _ := Default()
+	before := c.SimulateHut()
+	var grounds []Ground
+	if err := c.Constant("GROUNDS", &grounds); err != nil {
+		t.Fatal(err)
+	}
+	bumped := ""
+	for _, g := range grounds {
+		for _, spot := range g.Spots {
+			if spot.ID != hutLateSpots[0] {
+				continue
+			}
+			for _, e := range spot.Pool {
+				kind, id, ok := strings.Cut(e.Pick, ":")
+				if !ok || kind != "material" || id == "" {
+					continue
+				}
+				if item, found := c.Item(id); found && !item.NoSell && item.Price > 0 {
+					bumped = id
+				}
+			}
+		}
+	}
+	if bumped == "" {
+		t.Fatalf("precondition: spot %s has no sellable material", hutLateSpots[0])
+	}
+	item, _ := c.Item(bumped)
+	item.Price *= 10
+	c.index[bumped] = item
+	after := c.SimulateHut()
+	if after.Phases[2].Baseline <= before.Phases[2].Baseline {
+		t.Fatalf("material price no longer moves the baseline: %d -> %d",
+			before.Phases[2].Baseline, after.Phases[2].Baseline)
+	}
+	if after.Phases[2].MaterialPerCast <= before.Phases[2].MaterialPerCast {
+		t.Fatalf("material share of the baseline did not move: %v -> %v",
+			before.Phases[2].MaterialPerCast, after.Phases[2].MaterialPerCast)
 	}
 }
 

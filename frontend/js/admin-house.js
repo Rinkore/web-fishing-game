@@ -111,12 +111,19 @@
       '<span class="tag" title="' + esc(x.detail || '') + '">' + (x.ok ? '✅ ' : '⛔ ') + esc(x.name) + '</span>').join('') + '</div>';
   }
   function simHTML(data) {
-    const rows = (data.phases || []).map(p => '<tr><td>' + esc(p.stage) + '</td><td>' + p.daily + '</td><td>' + p.baseline + '</td>'
+    const phases = data.phases || [];
+    // 参考线不再是写死的 3,400：它是「后期基准日收入的 5%」，随目录与材料售价一起变。
+    const late = phases.find(p => p.stage === 'late');
+    const limit = late && late.baseline ? Math.round(late.baseline / 20) : null;
+    const rows = phases.map(p => '<tr><td>' + esc(p.stage) + '</td><td>' + p.daily + '</td><td>' + p.baseline + '</td>'
+      + '<td>' + round(p.perCast || 0) + '（材料 ' + round(p.materialPerCast || 0) + '）</td>'
       + '<td>' + round(p.pct) + '%</td><td>' + (p.ok ? '✅ 通过' : '⛔ 越线') + '</td></tr>').join('');
     const bad = (data.violations || []);
     return '<div class="gear-card"><h4>试算结果（不会写入）</h4>'
-      + '<p class="hint">后期满无尽 + 偷取合计 ' + (data.endlessTotal != null ? data.endlessTotal : '—') + ' 金币/天（参考线 3,400 = 后期钓鱼收入的 5%）。</p>'
-      + '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th>渔屋日收益</th><th>基准日收入</th><th>占比</th><th>结论</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      + '<p class="hint">基准日收入 = 该阶段每日可卖物期望（<strong>鱼 + 可售材料</strong>，按当前目录的池权重与售价折算）× 竿数：前期 400 竿（tier1 钓点）、中期 800 竿（tier3）、后期 800 竿（tier5）；'
+      + '材料售价或掉落权重变化会同步抬高基准。后期满无尽 + 偷取合计 ' + (data.endlessTotal != null ? data.endlessTotal : '—') + ' 金币/天'
+      + (limit != null ? '（参考线 ' + limit + ' = 后期基准日收入的 5%）。' : '。') + '</p>'
+      + '<div class="scroll"><table class="tbl"><thead><tr><th>阶段</th><th>渔屋日收益</th><th>基准日收入</th><th>每竿期望（材料）</th><th>占比</th><th>结论</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
       + (bad.length ? '<p class="gear-warning">' + bad.map(esc).join('；') + '（仅提示，不阻止保存）</p>' : '<p class="gear-notice">三条占比验收全部通过。</p>')
       + invariantsHTML(data.invariants) + '</div>';
   }
