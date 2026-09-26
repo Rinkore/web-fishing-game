@@ -167,7 +167,15 @@ func Current(ctx context.Context, q assets.SQL) (*rules.Catalog, int64, error) {
 		return c, 0, e
 	}
 	c, e := rules.DecodeCatalog(raw)
-	return c, id, e
+	if e != nil {
+		return nil, 0, e
+	}
+	// The live head can still point at a release published before a section
+	// existed; serve the built-in section instead of a zero value.
+	if e := c.FillMissingDefaults(); e != nil {
+		return nil, 0, e
+	}
+	return c, id, nil
 }
 func ByVersion(ctx context.Context, q assets.SQL, version string) (*rules.Catalog, error) {
 	var raw []byte
@@ -182,7 +190,15 @@ func ByVersion(ctx context.Context, q assets.SQL, version string) (*rules.Catalo
 	if err != nil {
 		return nil, assets.ErrUnavailable
 	}
-	return rules.DecodeCatalog(raw)
+	c, err := rules.DecodeCatalog(raw)
+	if err != nil {
+		return nil, err
+	}
+	// Pinned retries read the same release, so they get the same backfill.
+	if err := c.FillMissingDefaults(); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 type Publish struct {

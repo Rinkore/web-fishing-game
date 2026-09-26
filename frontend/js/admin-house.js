@@ -88,8 +88,10 @@
     if (!(h.capacityHours >= 1 && h.capacityHours <= 24)) add('capacityHours', '需在 1~24 小时');
     if (!(h.endlessTau > 0)) add('endlessTau', '必须大于 0');
     if (!(h.asymptoteRate >= L[9])) add('asymptoteRate', '不能低于满级速率 ' + round(L[9] || 0) + '（否则翻新会降速）');
-    const full = 1 + (h.petBonusCap || 0) + (h.roleBonusCap || 0);
-    const maxLevel = (L[9] || 0) * 24 * full, maxEndless = (h.asymptoteRate || 0) * 24 * full;
+    // 与服务端 ValidateHut 一致：日上限本身就是 速率 × 24 × (1 + 加成上限)，
+    // 这里只给加成上限本身，否则默认（健康）配置会被预检误判越线。
+    const bonusCap = (h.petBonusCap || 0) + (h.roleBonusCap || 0);
+    const maxLevel = (L[9] || 0) * 24 * (1 + bonusCap), maxEndless = (h.asymptoteRate || 0) * 24 * (1 + bonusCap);
     if (maxLevel > 3190) add('levels.9', '满级日上限 ' + round(maxLevel) + ' 超过 3,190（后期钓鱼收入的 5% 线）');
     if (maxEndless > 3190) add('asymptoteRate', '渐近线日上限 ' + round(maxEndless) + ' 超过 3,190（无尽投入会顶破后期 5% 线）');
     if (!(h.stealPerPickCap * h.stealPicksPerDay >= h.stealDailyCoinCap)) add('stealDailyCoinCap', '「单次上限 × 每日次数」必须不小于每日上限，否则参数自相矛盾');
