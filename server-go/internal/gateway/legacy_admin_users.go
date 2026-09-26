@@ -419,6 +419,102 @@ func (a *API) legacyAdminUserSetAdmin(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{"ok": true, "target": target, "admin": grant})
 }
 
+// legacyAdminUserTOTP mints a fresh authenticator secret for an administrator.
+// The console route closes the gap the operator CLI left open: a newly
+// authorized admin can be enrolled without shell access. The plaintext secret
+// is returned exactly once; the audit row and the account list stay keyed to
+// the account and never carry the credential.
+func (a *API) legacyAdminUserTOTP(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.authorize(w, r, true)
+	if !ok {
+		return
+	}
+	var in struct {
+		Token   string `json:"token"`
+		Target  string `json:"target"`
+		Confirm bool   `json:"confirm"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if !in.Confirm {
+		legacyTradeError(w, 400, "需要二次确认")
+		return
+	}
+	ctx := r.Context()
+	target := strings.ToLower(strings.TrimSpace(in.Target))
+	targetID, exists, err := a.legacyAdminTarget(ctx, target)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	if !exists {
+		legacyTradeError(w, 404, "账号不存在")
+		return
+	}
+	secret, err := identity.NewMFASecret()
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	sealed, err := a.identity.SealMFA(targetID, secret)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	tx, err := a.pool.Begin(ctx)
+	if err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT account_id FROM fishing.player_state WHERE account_id=$1 FOR UPDATE`, targetID); err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	// The player guard serializes identity changes, so the eligibility check
+	// belongs to the same transaction: a revocation racing this request must
+	// not leave a secret behind. Reading the row after the guard keeps the lock
+	// order used by Login and the operator CLI.
+	var admin, banned bool
+	if err := tx.QueryRow(ctx, `SELECT admin,banned FROM fishing.identities WHERE account_id=$1`, targetID).Scan(&admin, &banned); err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	if !admin {
+		legacyTradeError(w, 400, "该账号不是管理员，请先打开「管理员」开关")
+		return
+	}
+	if banned {
+		legacyTradeError(w, 400, "该账号已被封禁，请先解封")
+		return
+	}
+	if _, err := tx.Exec(ctx, `UPDATE fishing.identities SET mfa_secret=$2,mfa_last_step=-1,updated_at=clock_timestamp() WHERE account_id=$1`, targetID, sealed); err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	// The old authenticator stops working and every other console session is
+	// revoked; rotating your own key keeps the session you are using. Gameplay
+	// sessions and realtime streams are untouched: this rotates a console
+	// credential, not the account's login state.
+	if _, err := tx.Exec(ctx, `DELETE FROM fishing.auth_sessions WHERE account_id=$1 AND admin AND token_hash<>$2`, targetID, actor.Hash[:]); err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	if err := legacyAdminAudit(ctx, tx, actor, "users/totp", &targetID, target, "已二次确认"); err != nil {
+		failure(w, identity.ErrStorage)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		failure(w, identity.ErrCommitUnknown)
+		return
+	}
+	write(w, 200, map[string]any{
+		"ok": true, "target": target, "secret": secret,
+		"otpauthUrl": identity.MFAAuthURL(legacyAdminTOTPIssuer, target, secret),
+	})
+}
+
 func (a *API) legacyAdminUserDelete(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.authorize(w, r, true)
 	if !ok {

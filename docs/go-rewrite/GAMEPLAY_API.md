@@ -77,6 +77,8 @@
 
 工具先验证验证码，再同时保存账号绑定的 AES-GCM 密文、启用管理员、消耗验证码、撤销原管理员会话并写追加式审计。该验证码不能再用于登录。`go run ./cmd/admin revoke` 从标准输入读取仅含 `username` 的 JSON，撤销管理员权限和管理员会话，保留独立玩家会话。应用角色没有运维审计插入权限；该入口不暴露为 HTTP。旧服十六进制 MFA 密钥迁移仍属后续停服迁移工作。
 
+已授权的管理员也可以在后台「账号管理」页为管理员生成 / 轮换 TOTP 密钥：`POST /api/admin/users/totp`，body 为 `{"target":"<用户名>","confirm":true}`，需要管理员会话与二次确认，只接受已授权且未封禁的账号（未授权返回「该账号不是管理员，请先打开「管理员」开关」）。服务端用 `crypto/rand` 生成 20 字节 Base32 密钥，落库的是与运维入口相同的 AES-GCM 密文，同时把 `mfa_last_step` 重置为 -1、注销该账号的后台会话（给发起方自己轮换时保留当前会话）、写 `admin_audit` 的 `users/totp`。Base32 `secret` 与 `otpauth://`（SHA-1 / 6 位 / 30 秒）只在这一次 200 响应里返回，审计、日志与账号列表投影都不含密钥。
+
 ## 功能开关发布
 
 GET `/api/v1/features` 读取当前修订。管理员 POST `/api/admin/v1/features`，必须包含 `requestKey`、字符串 `expectedRevision` 和完整八项 `flags`：`market`、`trade`、`workshop`、`chest`、`mall`、`sell`、`autosell`、`friends`。另支持 `sea`、`party`、`fishing` 三项；旧八项发布仍合法，省略的可选项按开启处理。每次发布完整替换配置，要保持关闭必须显式带 `false`。

@@ -29,7 +29,7 @@ const CHROME = process.env.CHROME_PATH || [
     };
     let worldMode = 'ok', releaseWorld;
     let loginCalls = 0, feedbackReads = 0, statusCalls = 0;
-    let snapshotReads = 0, snapshotPayload;
+    let snapshotReads = 0, snapshotPayload, totpPayload;
     const snapshot = { name: '合成账号', coins: 500, invRev: '7', inventory: { crucian: 6 }, inventoryTiers: { crucian: { normal: 1, large: 2, giant: 3 } }, bd: {} };
     let releaseLogin;
     const loginGate = new Promise(resolve => { releaseLogin = resolve; });
@@ -59,7 +59,14 @@ const CHROME = process.env.CHROME_PATH || [
         if (worldMode === 'missing-pool') delete world.catalog.components[0].pool;
         return json(world);
       }
-      if (url.pathname === '/api/admin/users') return json({ me: 'admin', users: [{ key: 'synthetic', username: 'synthetic', name: '合成账号', coins: snapshot.coins }] });
+      if (url.pathname === '/api/admin/users') return json({ me: 'admin', users: [
+        { key: 'synthetic', username: 'synthetic', name: '合成账号', coins: snapshot.coins },
+        { key: 'keeper', username: 'keeper', name: '另一位管理员', coins: 10, admin: true },
+      ] });
+      if (url.pathname === '/api/admin/users/totp') {
+        totpPayload = route.request().postDataJSON();
+        return json({ ok: true, target: 'keeper', secret: 'JBSWY3DPEHPK3PXP', otpauthUrl: 'otpauth://totp/%E9%92%93%E9%B1%BC%E7%BD%91%E7%AB%99:keeper?secret=JBSWY3DPEHPK3PXP' });
+      }
       if (url.pathname === '/api/admin/users/snapshot') {
         if (route.request().method() === 'GET') { snapshotReads++; return json(snapshot); }
         snapshotPayload = route.request().postDataJSON();
@@ -130,8 +137,21 @@ const CHROME = process.env.CHROME_PATH || [
     assert.equal(snapshotPayload.inventory.crucian, 8);
     assert.equal(snapshotReads, 2, 'conflict reloads the editor instead of overwriting new assets');
     await page.locator('.cf-no').click();
+    // 验证器：按钮只挂在管理员行；二次确认后才请求，密钥弹窗展示一次性 Base32 与 otpauth 链接
+    assert.equal(await page.locator('[data-totp]').count(), 1, 'only the authorized administrator row offers enrollment');
+    await page.locator('[data-totp="keeper"]').click();
+    await page.locator('.cf-yes').click();
+    await page.locator('#totp-secret').waitFor();
+    // 会话走 cookie：apiOnce 会把 body 里的 token 去掉，只留业务字段
+    assert.deepEqual(totpPayload, { target: 'keeper', confirm: true });
+    assert.equal(await page.locator('#totp-secret').inputValue(), 'JBSWY3DPEHPK3PXP');
+    assert.equal((await page.locator('#totp-url').inputValue()).startsWith('otpauth://totp/'), true, 'enrollment returns the otpauth link');
+    await page.locator('#totp-copy').click();
+    await page.waitForFunction(() => document.querySelector('#totp-tip').textContent.includes('复制'));
+    await page.locator('.cf-x').click();
+    assert.equal(await page.locator('#totp-secret').count(), 0, 'closing the dialog drops the one-time secret');
     assert.deepEqual(pageErrors, [], 'no unhandled page exceptions');
-    console.log('PASS admin interactions: login, feedback, gear config, fish house config, snapshot tiers/conflict');
-    console.log('通过 27 项，失败 0 项');
+    console.log('PASS admin interactions: login, feedback, gear config, fish house config, snapshot tiers/conflict, admin TOTP enrollment');
+    console.log('通过 32 项，失败 0 项');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

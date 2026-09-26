@@ -1508,7 +1508,7 @@ window.Admin = (function () {
   function renderAccountMgr() {
     const main = $('main');
     main.innerHTML = '<h2>👥 账号管理</h2>' +
-      '<div class="hint" style="margin-bottom:12px">可改密码 / 显示名 / 金币，开关「管理员」授权（开启后该账号即可打开 admin.html，<b>不能撤销自己的权限</b>），查看并编辑玩家快照（金币与背包），或删除账号（需二次确认）。修改密码会使其所有登录会话失效。点击表头可排序。</div>' +
+      '<div class="hint" style="margin-bottom:12px">可改密码 / 显示名 / 金币，开关「管理员」授权（开启后该账号即可打开 admin.html，<b>不能撤销自己的权限</b>），为管理员生成 / 轮换<b>验证器密钥</b>（需二次确认，旧验证器立即失效），查看并编辑玩家快照（金币与背包），或删除账号（需二次确认）。修改密码会使其所有登录会话失效。点击表头可排序。</div>' +
       '<div class="mgr-row" style="margin-bottom:10px">' +
       '<label>🔍 搜索</label>' +
       '<span style="position:relative;display:inline-block;vertical-align:middle">' +
@@ -1653,6 +1653,11 @@ window.Admin = (function () {
     const pageRows = rows.slice(from, from + size);
     const body = pageRows.map(function (u) {
       const self = u.key === meKey;
+      // 只有已授权且未封禁的管理员能生成验证器密钥（后端同样拒绝其余目标），
+      // 按钮只在有意义的行上出现，避免点了才被拒。
+      const totpBtn = (u.admin && !u.banned)
+        ? '<button class="btn mini" data-totp="' + esc(u.key) + '" title="为该管理员生成 / 轮换 TOTP 验证器密钥；旧验证器立即失效">验证器</button>'
+        : '';
       return '<tr>' +
         '<td><b>' + esc(u.name) + '</b> <span class="hint">' + esc(u.username) + (self ? '（你）' : '') + '</span>' +
         (u.qq ? '<div class="hint">QQ：' + esc(u.qq) + '</div>' : '') + '</td>' +
@@ -1672,6 +1677,7 @@ window.Admin = (function () {
         '<button class="btn mini" data-edit="' + esc(u.key) + '">编辑</button>' +
         '<button class="btn mini" data-snap="' + esc(u.key) + '">快照</button>' +
         '<button class="btn mini" data-snaps="' + esc(u.key) + '" title="查看这个账号的历史存档，可回档到任意一份">存档/回档</button>' +
+        totpBtn +
         (u.banned
           ? '<button class="btn mini" data-unban="' + esc(u.key) + '"' + (self ? ' disabled title="不能操作自己"' : '') + '>解封</button>'
           : '<button class="btn mini danger" data-ban="' + esc(u.key) + '"' + (self ? ' disabled title="不能封禁自己"' : '') + '>封禁</button>') +
@@ -1772,6 +1778,24 @@ window.Admin = (function () {
           if (row) row.admin = want;
           toast(want ? '已授予管理员权限' : '已收回管理员权限');
           if (want) loadWorldCfg(); // 目录可能变化，预取
+          drawMgrList();            // 授权状态决定「验证器」按钮是否出现
+        });
+      };
+    });
+    // 生成 / 轮换管理员验证器密钥（原来只能由运维在服务端跑 cmd/admin provision）
+    $('mgr-list').querySelectorAll('[data-totp]').forEach(function (b) {
+      b.onclick = function () {
+        const key = b.getAttribute('data-totp');
+        confirmModalLocal('为「' + key + '」生成 / 轮换验证器（TOTP）密钥？旧验证器会立即失效，' +
+          '该账号已登录的后台会话会被注销' + (key === meKey ? '（你正在使用的这个会话会保留）' : '') +
+          '；新密钥只在下一步显示一次，请当场录入验证器 App。').then(function (ok) {
+          if (!ok) return;
+          b.disabled = true;
+          adminApi('POST', '/api/admin/users/totp', { token: token, target: key, confirm: true }).then(function (r) {
+            b.disabled = false;
+            if (!r.ok) { toast((r.data && r.data.error) || '生成失败', true); return; }
+            showTotpSecret(r.data);
+          });
         });
       };
     });
@@ -2424,6 +2448,36 @@ window.Admin = (function () {
         toast('已删除账号 ' + key); ov.remove(); loadMgrList();
       });
     };
+  }
+  // 验证器密钥弹窗：服务端只在这一次 200 里返回 Base32 与 otpauth 链接，
+  // 关闭后无法再查（账号列表与审计都不含密钥），所以这里把它放在只读输入框里让管理员抄写。
+  function showTotpSecret(data) {
+    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay';
+    ov.innerHTML = '<div class="modal-box confirm-modal totp-modal"><div class="modal-head"><span class="modal-title">验证器密钥 · ' + esc(data.target) + '</span></div>' +
+      '<div class="modal-body"><div class="cf-text">在验证器 App 里添加账号并扫描下面的链接，或手动输入密钥。' +
+      '<b>密钥只会显示这一次</b>，关掉窗口就查不到了，请当场录入。</div>' +
+      '<div class="cf-row"><label class="hint">密钥（Base32）</label>' +
+      '<input class="ipt" id="totp-secret" readonly value="' + esc(data.secret) + '" /></div>' +
+      '<div class="cf-row"><label class="hint">otpauth 链接（SHA-1 / 6 位 / 30 秒）</label>' +
+      '<input class="ipt" id="totp-url" readonly value="' + esc(data.otpauthUrl) + '" /></div>' +
+      '<div class="cf-hint" id="totp-tip">已重置该账号的验证器重放计数，旧验证码不再可用。</div>' +
+      '<div class="cf-actions"><button class="btn mini" id="totp-copy">复制密钥</button><button class="btn mini primary cf-x">我已录入</button></div></div></div>';
+    document.body.appendChild(ov);
+    const secretBox = ov.querySelector('#totp-secret'), tip = ov.querySelector('#totp-tip');
+    function copyFallback() {
+      try { secretBox.focus(); secretBox.select(); document.execCommand('copy'); tip.textContent = '密钥已复制到剪贴板。'; }
+      catch (e) { tip.textContent = '浏览器不允许自动复制，请手动选中上面的密钥复制。'; }
+    }
+    ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+    ov.querySelector('.cf-x').onclick = function () { ov.remove(); };
+    ov.querySelector('#totp-copy').onclick = function () {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(secretBox.value).then(function () { tip.textContent = '密钥已复制到剪贴板。'; }, copyFallback);
+      } else copyFallback();
+    };
+    secretBox.focus(); secretBox.select();
   }
 
   // ================================

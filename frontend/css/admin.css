@@ -297,6 +297,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .confirm-modal .modal-body { padding: 14px 16px; }
 .confirm-modal .cf-text { font-size: 14px; line-height: 1.6; margin-bottom: 16px; }
 .confirm-modal .cf-actions { display: flex; justify-content: flex-end; gap: 10px; }
+/* 验证器密钥弹窗：otpauth 链接较长，按内容加宽；cf-row / cf-hint 与游戏端确认框保持一致 */
+.totp-modal { width: min(560px, 94vw); }
+.confirm-modal .cf-row { margin-bottom: 14px; }
+.confirm-modal .cf-row .ipt { width: 100%; }
+.confirm-modal .cf-hint { font-size: 12px; color: var(--txt-dim); margin-bottom: 10px; }
 
 /* ---- 公式 / 通知 ---- */
 .formula-box { display: flex; gap: 16px; flex-wrap: wrap; }

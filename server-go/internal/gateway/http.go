@@ -223,6 +223,7 @@ func newAPI(pool *pgxpool.Pool, mfaKey []byte, locations []*time.Location, front
 	r.Post("/api/admin/users/update", a.legacyAdminUserUpdate)
 	r.Post("/api/admin/users/ban", a.legacyAdminUserBan)
 	r.Post("/api/admin/users/setadmin", a.legacyAdminUserSetAdmin)
+	r.Post("/api/admin/users/totp", a.legacyAdminUserTOTP)
 	r.Post("/api/admin/users/delete", a.legacyAdminUserDelete)
 	r.Get("/api/admin/feedback", a.legacyAdminFeedback)
 	r.Post("/api/admin/feedback/status", a.legacyAdminFeedbackStatus)
