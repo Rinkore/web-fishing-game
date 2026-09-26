@@ -89,6 +89,9 @@ func systemKind(key string) string {
 	if strings.HasPrefix(key, "trade:expire:") {
 		return "trade_expire"
 	}
+	if strings.HasPrefix(key, "house:settle:") {
+		return "house_settle"
+	}
 	return ""
 }
 func validRequestKey(key string) bool { return validKey(key) && systemKind(key) == "" }

@@ -42,7 +42,8 @@ window.UI = (function () {
     if (target && !featureGuard(target.getAttribute('data-feature'))) { ev.preventDefault(); ev.stopImmediatePropagation(); }
   }, true);
   function applyFeatureControls() {
-    const selectors = { '#sea-ship-up': 'sea.upgrade', '#sea-chart-craft': 'sea.chart', '#sea-voyage': 'sea.voyage', '[data-sea="voyage-empty"]': 'sea.voyage', '#ws-go': 'workshop.smelt', '#ws-recast-go': 'workshop.recast', '#ws-forge-go': 'workshop.forge', '.sub-entry': 'inventory.subscribe', '.ab-open-btn': 'bd.autobuild', '#sa-open-list': 'mall.autosell', '#sa-tier': 'mall.autosell' };
+    // 渔屋（v0.24.0）：页签内的写操作按钮各自带 data-feature（见 house.js），这里补上元素级的标记与提示。
+    const selectors = { '#sea-ship-up': 'sea.upgrade', '#sea-chart-craft': 'sea.chart', '#sea-voyage': 'sea.voyage', '[data-sea="voyage-empty"]': 'sea.voyage', '#ws-go': 'workshop.smelt', '#ws-recast-go': 'workshop.recast', '#ws-forge-go': 'workshop.forge', '.sub-entry': 'inventory.subscribe', '.ab-open-btn': 'bd.autobuild', '#sa-open-list': 'mall.autosell', '#sa-tier': 'mall.autosell', '[data-house-action="collect"]': 'character.collect', '[data-house-action="upgrade"]': 'character.upgrade', '[data-house-action="renovate"]': 'character.upgrade', '[data-house-action="pet"]': 'character.pet', '[data-house-action="role"]': 'character.role', '[data-house-action="steal"]': 'character.steal' };
     Object.keys(selectors).forEach(function (selector) { document.querySelectorAll(selector).forEach(function (b) { markFeature(b, selectors[selector]); }); });
   }
   let featureOrderQueued = false;
@@ -189,7 +190,9 @@ window.UI = (function () {
   // 旧 view id 仍由 navigateView 接受，确保顶栏快捷入口与外部调用平滑迁移。
   // 钓鱼页不再承载钓竿子页签；钓竿统一放在角色页。
   let codexMainTab = 'codex';   // codex | records
-  let charTab = 'rod';          // rod | companion | boat（v0.21.0 钓竿为第一页签）
+  // v0.24.0：渔屋 = 原「角色」页，页签为 yard | pet | role | rod（晒场 / 宠物 / 角色 / 钓竿）。
+  // 钓竿仍是 bd 功能组（parent=fishing）的宿主页签，所以 pageIdOf 必须把它折算回 bd。
+  let charTab = 'yard';
   let fbTab = 'submit';         // submit | mine
 
   function $(id) { return document.getElementById(id); }
@@ -685,8 +688,9 @@ window.UI = (function () {
     }
     return items.slice().sort(function (a, b) { return rank(a[0]) - rank(b[0]); });
   }
-  function sectionTabsHtml(scope, active, items) {
-    items = orderedFeatureTabs(scope, items);
+  // aliases：页签键与后台功能子项 id 不一致时的折算（渔屋「晒场」= character.collect / character.upgrade）
+  function sectionTabsHtml(scope, active, items, aliases) {
+    items = orderedFeatureTabs(scope, items, aliases);
     return '<div class="inv-cats ws-tabs section-tabs" role="tablist">' + items.map(function (kv) {
       return '<button class="inv-cat' + (active === kv[0] ? ' on' : '') + '" data-section="' + scope +
         '" data-sectiontab="' + kv[0] + '" role="tab" aria-selected="' + (active === kv[0] ? 'true' : 'false') + '">' + kv[1] + '</button>';
@@ -716,7 +720,8 @@ window.UI = (function () {
       codexMainTab = 'codex';
       if (codexCategory === 'all') codexCategory = 'fish'; // 兼容旧会话，不再回到无页签对应的「全部」
     }
-    else if (view === 'character') charTab = 'rod';
+    // 渔屋的主页签是「晒场」；钓竿仍可用 navigateView('bd') 直达（顶栏快捷入口走那条路）
+    else if (view === 'character') charTab = 'yard';
     else if (view === 'feedback') fbTab = 'submit';
   }
   // 当前实际展示的页面 id（= 功能开关 id = 广播 scope 键）：
@@ -7823,12 +7828,8 @@ window.UI = (function () {
   const CHAR2_HATS = [['orange', '橙线帽'], ['teal', '青线帽'], ['red', '红线帽'], ['cream', '米线帽']];
   const CHAR2_OUTFITS = [['green', '苔绿工装'], ['yellow', '雨黄工装'], ['red', '砖红工装'], ['blue', '海蓝工装']];
   const CHAR2_SKINS = [['light', '浅麦'], ['tan', '小麦'], ['dark', '深麦']];
-  const CHAR2_DOGS = [
-    // 官方同伴图标（unpack.wiki 游戏资源，统一化调色后接入），全部可选
-    ['golden', '金毛', true], ['corgi', '柯基', true], ['malamute', '阿拉斯加', true],
-    ['basset', '巴吉度', true], ['shepherd', '德牧', true], ['dachshund', '腊肠', true],
-    ['bernese', '伯恩山', true], ['mainecoon', '缅因猫', true],
-  ];
+  // 原「同伴」的 8 只宠物清单已升级为服务端权威的宠物养成，清单搬到 house.js 的 PETS
+  // （id 与 assets/ui/char/dog_<id>.png 一致）；本文件只保留 dog 这个本地偏好键作为展示台兜底。
   // 船贴图为 Cast n Chill 官方图标（unpack.wiki 游戏资源），名称沿用官方中文译名
   const CHAR2_BOATS = [
     ['wood', '池塘划手', true, '初始船只'],
@@ -7859,15 +7860,24 @@ window.UI = (function () {
   function renderCharacter() {
     const main = $('main');
     const st0 = char2();
-    // 结构签名：页签 / 同伴 / 船 / 背景都没变就不重建 —— 广播触发的重绘不会重启场景画布
+    // 结构签名：页签 / 同伴 / 船 / 背景都没变、渔屋结构也没变就不重建 —— 广播触发的重绘不会重启场景画布，
+    // 也不会重建渔屋页（每竿一次的 assets 广播只让 HouseUI.fill 就地改写纯数据）。
+    const houseSig = charTab === 'rod' ? '' : (window.HouseUI ? window.HouseUI.sig(S().house) : JSON.stringify(S().house || null));
     const sig = 'char|' + charTab + '|' + st0.dog + '|' + st0.boat + '|' + (st0.bg || 'stillwater') +
-      (charTab === 'rod' ? '|' + JSON.stringify(S().bd) + '|' + JSON.stringify(S().inventory) : '');
+      (charTab === 'rod' ? '|' + JSON.stringify(S().bd) + '|' + JSON.stringify(S().inventory) : '|' + houseSig);
     const prevWrap = main.querySelector('.char-view');
-    if (prevWrap && prevWrap.getAttribute('data-sig') === sig) return;
+    if (prevWrap && prevWrap.getAttribute('data-sig') === sig) {
+      if (charTab !== 'rod' && window.HouseUI) window.HouseUI.fill(prevWrap, charTab);
+      return;
+    }
     main.innerHTML = '';
     const st = st0;
     const wrap = el('div', 'panel char-view');
-    wrap.innerHTML = sectionTabsHtml('character', charTab, [['rod', '🎯 钓竿'], ['companion', '🐶 同伴'], ['boat', '⛵ 船型']]);
+    // 渔屋（v0.24.0）：晒场 / 宠物 / 角色 / 钓竿。钓竿留在原处，bd 的跳转与开关都不用改。
+    // 「晒场」页签承载两个功能子项（领取 = character.collect、升级 = character.upgrade），所以传 aliases 让后台排序能落到这个页签上。
+    wrap.innerHTML = sectionTabsHtml('character', charTab,
+      [['yard', '🏠 晒场'], ['pet', '🐶 宠物'], ['role', '🧍 角色'], ['rod', '🎯 钓竿']],
+      { yard: ['collect', 'upgrade'] });
     wrap.setAttribute('data-sig', sig);
     bindSectionTabs(wrap, 'character');
     if (charTab === 'rod') {
@@ -7875,18 +7885,43 @@ window.UI = (function () {
       main.appendChild(wrap);
       return;
     }
-    // 展示台：场景背景（原渔场实况画布）+ 木码头 + 船 + 同伴狗（人物外观模块暂缓，贴图保留在 assets/ui/char/）
-    // cs-bg 静态图兜底：无 Canvas 环境（jsdom 测试 / 老浏览器）画布挂不上时仍有画面
+    // 展示台（晒场 / 宠物页签）：场景背景 + 木码头 + 船 + 驻守宠物。
+    // 原「角色」页的展示台整块保留，只是狗改成显示服务端驻守中的宠物（无驻守时退回本地偏好）。
+    if (charTab === 'yard' || charTab === 'pet') {
+      wrap.appendChild(renderCharStage(st));
+      if (charTab === 'yard') wrap.appendChild(charBgRow(st));
+    }
+    // 服务端权威面板（晒场 / 宠物 / 角色）：页签骨架在上面，数据面板在同目录的 house.js 里
+    if (window.HouseUI) window.HouseUI.render(wrap, charTab);
+    else wrap.appendChild(el('p', 'hint', '渔屋脚本未加载，请强制刷新页面（Ctrl+F5）后重试。'));
+    // 角色页签的本地装饰层：外观（48 套预渲染贴图）+ 船型（原「船型」页签的内容，纯装饰不接服务端）
+    if (charTab === 'role') {
+      wrap.appendChild(charLook());
+      wrap.appendChild(charBoatRow(st));
+    }
+    main.appendChild(wrap);
+  }
+  // 展示台：cs-bg 静态图兜底（无 Canvas 环境画布挂不上时仍有画面）
+  function renderCharStage(st) {
+    const house = S().house || {};
+    const stationed = (house.stationed || []).filter(Boolean).slice(0, 2);
+    const pets = stationed.length ? stationed : [st.dog];
     const stage = el('div', 'char-stage');
     stage.innerHTML =
       '<img class="cs-bg" src="assets/scene/stillwater.png" alt="" draggable="false">' +
       '<div class="cs-scene"></div>' +
       '<img class="cs-dock" src="assets/ui/char/dock.png" alt="" draggable="false">' +
       '<img class="cs-boat" src="assets/ui/char/boat_' + st.boat + '.png" alt="" draggable="false">' +
-      '<img class="cs-dog" src="assets/ui/char/dog_' + st.dog + '.png" alt="" draggable="false" onerror="this.style.display=\'none\'">';
+      pets.map(function (id, i) {
+        const pos = i === 0 ? '' : ' style="left:38%"';
+        return '<img class="cs-dog" src="assets/ui/char/dog_' + esc(id) + '.png" alt="" draggable="false"' + pos +
+          ' onerror="this.style.display=\'none\'">';
+      }).join('');
     if (window.PxScene) window.PxScene.mount(stage.querySelector('.cs-scene'), st.bg || 'stillwater');
-    wrap.appendChild(stage);
-    // 场景背景选择：纯装饰（不做钓点/钓鱼逻辑），本地偏好保存
+    return stage;
+  }
+  // 场景背景选择：纯装饰（不做钓点/钓鱼逻辑），本地偏好保存
+  function charBgRow(st) {
     const bgRow = el('div', 'char-bgs');
     bgRow.appendChild(el('span', 'cb-title', '🖼 场景背景'));
     CHAR2_BGS.forEach(function (b) {
@@ -7899,49 +7934,64 @@ window.UI = (function () {
       markFeature(chip, 'character');
       bgRow.appendChild(chip);
     });
-    wrap.appendChild(bgRow);
-    // 展示台是两张卡片的共用预览，下面的卡片列表按页签只画一张，避免来回滚动
-    if (charTab === 'boat') {
-      wrap.appendChild(el('h3', null, '⛵ 船型'));
-      const boats = el('div', 'char-cards');
-      CHAR2_BOATS.forEach(function (b) {
-        const card = el('button', 'cc-card wide' + (st.boat === b[0] ? ' on' : '') + (b[2] ? '' : ' locked'));
-        card.innerHTML = '<img src="assets/ui/char/boat_' + b[0] + '.png" alt="" draggable="false"' +
-          ' onerror="this.outerHTML=\'<span class=cc-lock>🔒</span>\'">' +
-          '<b>' + b[1] + (b[2] ? '' : ' 🔒') + '</b><i>' + b[3] + '</i>';
-        card.addEventListener('click', function () {
-          if (!b[2]) { toast('「' + b[1] + '」即将在商城上架'); return; }
-          if (!featureGuard('character.boat')) return;
-          char2Save({ boat: b[0] });
-          renderView();
+    return bgRow;
+  }
+  // 角色外观：48 套预渲染贴图（帽子 × 服装 × 肤色）的搭配预览。
+  // 与「角色养成」的三个方向并列，属本地装饰层（数值成长在 house.js 的 🧍 角色页签）。
+  function charLook() {
+    const box = el('div', 'char-look');
+    function draw() {
+      const st = char2();
+      box.innerHTML = '';
+      box.appendChild(el('h3', null, '🧍 外观'));
+      const img = el('img');
+      img.src = anglerSrc(st);
+      img.alt = '';
+      img.setAttribute('draggable', 'false');
+      img.style.cssText = 'width:120px;max-width:100%;image-rendering:pixelated';
+      box.appendChild(img);
+      [['hat', '帽子', CHAR2_HATS], ['outfit', '服装', CHAR2_OUTFITS], ['skin', '肤色', CHAR2_SKINS]].forEach(function (row) {
+        const line = el('div', 'char-bgs');
+        line.appendChild(el('span', 'cb-title', row[1]));
+        row[2].forEach(function (v) {
+          const chip = el('button', 'cb-chip' + (st[row[0]] === v[0] ? ' on' : ''), v[1]);
+          chip.addEventListener('click', function () {
+            if (!featureGuard('character.role')) return;
+            const patch = {};
+            patch[row[0]] = v[0];
+            char2Save(patch);
+            draw();
+          });
+          markFeature(chip, 'character.role');
+          line.appendChild(chip);
         });
-        markFeature(card, 'character.boat');
-        boats.appendChild(card);
+        box.appendChild(line);
       });
-      wrap.appendChild(boats);
-      main.appendChild(wrap);
-      return;
     }
-    // 同伴
-    wrap.appendChild(el('h3', null, '🐶 同伴'));
-    const dogs = el('div', 'char-cards');
-    CHAR2_DOGS.forEach(function (d) {
-      const card = el('button', 'cc-card' + (st.dog === d[0] ? ' on' : '') + (d[2] ? '' : ' locked'));
-      card.innerHTML = (d[2]
-        ? '<img src="assets/ui/char/dog_' + d[0] + '.png" alt="" draggable="false">'
-        : '<span class="cc-lock">🔒</span>') +
-        '<b>' + d[1] + '</b>' + (d[2] ? '' : '<i>敬请期待</i>');
+    draw();
+    return box;
+  }
+  // 船型（原「船型」页签）：外观层，纯装饰；数值船级仍归远洋的 SHIP
+  function charBoatRow(st) {
+    const box = el('div', 'char-boats');
+    box.appendChild(el('h3', null, '⛵ 船型'));
+    const boats = el('div', 'char-cards');
+    CHAR2_BOATS.forEach(function (b) {
+      const card = el('button', 'cc-card wide' + (st.boat === b[0] ? ' on' : '') + (b[2] ? '' : ' locked'));
+      card.innerHTML = '<img src="assets/ui/char/boat_' + b[0] + '.png" alt="" draggable="false"' +
+        ' onerror="this.outerHTML=\'<span class=cc-lock>🔒</span>\'">' +
+        '<b>' + b[1] + (b[2] ? '' : ' 🔒') + '</b><i>' + b[3] + '</i>';
       card.addEventListener('click', function () {
-        if (!d[2]) { toast('「' + d[1] + '」后续版本加入'); return; }
-        if (!featureGuard('character.companion')) return;
-        char2Save({ dog: d[0] });
+        if (!b[2]) { toast('「' + b[1] + '」即将在商城上架'); return; }
+        if (!featureGuard('character')) return;
+        char2Save({ boat: b[0] });
         renderView();
       });
-      markFeature(card, 'character.companion');
-      dogs.appendChild(card);
+      markFeature(card, 'character');
+      boats.appendChild(card);
     });
-    wrap.appendChild(dogs);
-    main.appendChild(wrap);
+    box.appendChild(boats);
+    return box;
   }
   let codexSortRarity = false;
 
@@ -10188,6 +10238,8 @@ window.UI = (function () {
     else if (view === 'workshop') { window.Net.fetchWorkshop(); }
     // 开箱（v0.23.5 自工坊独立成页）：宝匣档位 / 保底进度 / 持有量
     else if (view === 'chest') { window.Net.fetchChest(); }
+    // 渔屋（原角色页）：进页拉一次权威视图；写操作之后直接用响应里的 house 重绘，不再额外请求
+    else if (view === 'character') { window.Net.fetchHouse(); }
     else if (view === 'market') { S().marketQuery = null; }
     else if (view === 'codex') window.Net.fetchCodex();
     else if (view === 'records') window.Net.fetchRecords();
@@ -10866,6 +10918,9 @@ window.UI = (function () {
     // 开箱（v0.23.5 独立成页）：宝匣数据源的广播（chestcfg 后台配置 / chest 数据到达 /
     // 资产变化中的宝匣数量）都要能重绘本页——fetchChest 完成后 refreshAll('chest') 命中 'chest' scope。
     chest: ['assets', 'chestcfg', 'chest'],
+    // 渔屋（v0.24.0）：原表只有 bd（钓竿页签）。少了 character 这一项，
+    // 每竿一次的 assets 广播不会刷新晒场的「已积累 / 待领取」—— 历史踩坑点，别删。
+    character: ['assets', 'house'],
   };
   // 主区内是否有输入控件正被编辑（数字框 / 文本 / 下拉 / 可编辑元素）
   // 例外：渔场页的玩家搜索框。它靠「重建后还回焦点与光标」保证输入不丢（见 renderGround），

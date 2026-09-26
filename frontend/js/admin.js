@@ -171,6 +171,7 @@ window.Admin = (function () {
     { id: 'grounds', name: '🎣 钓点管理' },
     { id: 'market', name: '💱 市集管理' },
     { id: 'gear', name: '🧩 装备与套装' },
+    { id: 'house', name: '🏠 渔屋配置' },
     { id: 'fishsize', name: '🐟 鱼类体型' },
     { id: 'economy', name: '💰 经济参数' },
     { id: 'chest', name: '🎁 宝匣配置' },
@@ -858,6 +859,7 @@ window.Admin = (function () {
     if (v === 'grounds') return renderGrounds();
     if (v === 'market') return renderMarket();
     if (v === 'gear'||v === 'component'||v === 'workshop') return window.AdminGear.render($('main'),adminApi,confirmModalLocal);
+    if (v === 'house') return window.AdminHouse.render($('main'),adminApi,confirmModalLocal);
     if (v === 'fishsize') return renderFishSize();
     if (v === 'economy') return renderEconomy();
     if (v === 'chest') return renderChest();

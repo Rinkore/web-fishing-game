@@ -67,8 +67,9 @@ const CHROME = process.env.CHROME_PATH || [
         return json({ error: '资产已更新，请刷新后重试' }, 409);
       }
       if (url.pathname === '/api/admin/gear') return json({ config: catalog.constants.GEAR_SYSTEM, revision: 1, items: catalog.items });
+      if (url.pathname === '/api/admin/house') return json({ config: catalog.constants.HUT, revision: 3, invariants: [{ name: '等级曲线单调不减', ok: true, detail: 'Lv1→Lv10' }] });
       if (url.pathname.startsWith('/api/')) return json({ error: '测试未启用' }, 400);
-      const files = { '/admin.html': ['admin.html', 'text/html'], '/css/admin.css': ['css/admin.css', 'text/css'], '/js/data.js': ['js/data.js', 'text/javascript'], '/js/features.js': ['js/features.js', 'text/javascript'], '/js/gear.js': ['js/gear.js', 'text/javascript'], '/js/admin-edit.js': ['js/admin-edit.js', 'text/javascript'], '/js/admin-pool-import.js': ['js/admin-pool-import.js', 'text/javascript'], '/js/admin-gear.js': ['js/admin-gear.js', 'text/javascript'], '/js/admin.js': ['js/admin.js', 'text/javascript'] };
+      const files = { '/admin.html': ['admin.html', 'text/html'], '/css/admin.css': ['css/admin.css', 'text/css'], '/js/data.js': ['js/data.js', 'text/javascript'], '/js/features.js': ['js/features.js', 'text/javascript'], '/js/gear.js': ['js/gear.js', 'text/javascript'], '/js/admin-edit.js': ['js/admin-edit.js', 'text/javascript'], '/js/admin-pool-import.js': ['js/admin-pool-import.js', 'text/javascript'], '/js/admin-gear.js': ['js/admin-gear.js', 'text/javascript'], '/js/admin-house.js': ['js/admin-house.js', 'text/javascript'], '/js/admin.js': ['js/admin.js', 'text/javascript'] };
       const file = files[url.pathname];
       if (!file) return route.fulfill({ status: 404, body: '' });
       return route.fulfill({ contentType: file[1], body: fs.readFileSync(path.join(__dirname, '..', 'frontend', file[0])) });
@@ -104,6 +105,12 @@ const CHROME = process.env.CHROME_PATH || [
     await page.locator('.nav-item').filter({ hasText: '装备与套装' }).click();
     await page.locator('[data-config]').waitFor();
     assert.equal(await page.locator('.gear-system').count(), 1, 'equipment administration page renders authoritative config');
+    await page.locator('.nav-item').filter({ hasText: '渔屋配置' }).click();
+    await page.locator('.house-admin [data-config]').waitFor();
+    assert.equal(await page.locator('.house-admin [data-path^="levels."]').count(), 10, 'fish house page renders the ten level rates from the authoritative config');
+    assert.equal(await page.locator('.house-admin [data-invariants] .tag').count(), 1, 'fish house invariants render');
+    assert.equal(await page.locator('.house-admin [data-path="capacityHours"]').inputValue(), '8', 'capacity renders the published value');
+    assert.equal(await page.locator('.house-admin form :invalid').count(), 0, 'the published fish house config is always submittable (no step/min mismatch)');
     await page.locator('.nav-item').filter({ hasText: '通知等级' }).click();
     await page.locator('#nt-save').waitFor();
     assert.equal(await page.locator('input[name=ntlv]').count(), 5, 'notification levels render');
@@ -124,7 +131,7 @@ const CHROME = process.env.CHROME_PATH || [
     assert.equal(snapshotReads, 2, 'conflict reloads the editor instead of overwriting new assets');
     await page.locator('.cf-no').click();
     assert.deepEqual(pageErrors, [], 'no unhandled page exceptions');
-    console.log('PASS admin interactions: login, feedback, gear config, snapshot tiers/conflict');
-    console.log('通过 23 项，失败 0 项');
+    console.log('PASS admin interactions: login, feedback, gear config, fish house config, snapshot tiers/conflict');
+    console.log('通过 27 项，失败 0 项');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

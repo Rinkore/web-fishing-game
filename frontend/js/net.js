@@ -300,6 +300,19 @@ window.Net = (function () {
   // v0.21.0：悬赏领取 / 锚地下锚 / 编队
   const seaQuestClaim = (id) => authed('/api/sea/quest/claim', { id: id });
   const seaAnchor = (zoneId) => authed('/api/sea/anchor', { zoneId: zoneId });
+  // 渔屋（v0.24.0）：晒场离线收益 / 宠物驻守 / 角色方向 / 好友偷取。
+  // 写操作照抄远洋离线派遣：客户端生成并持久化 requestKey，服务端在 command_results 上做去重，
+  // 重放返回首次结果（见 assets/command.go）；拒绝码原样透出给面板的 errors{} 翻中文。
+  const houseGet = () => apiFetch('GET', '/api/house?token=' + encodeURIComponent(me ? me.token : ''));
+  const fetchHouse = () => houseGet().then(function (r) {
+    if (r && r.ok && r.data && r.data.house) {
+      state().house = r.data.house;
+      if (r.data.coins != null) state().player.coins = r.data.coins;
+      if (window.UI) window.UI.refreshAll('house');
+    }
+    return r;
+  });
+  const houseAction = (action, body) => authed('/api/house/' + action, body || {});
   const partyFetch = () => apiFetch('GET', '/api/party?token=' + encodeURIComponent(me ? me.token : ''));
   const partyAction = (action, target) => authed('/api/party', { action: action, target: target });
   // 自动售出规则（玩家自助）：单件 { id, ... } / 批量 { bulk:'fish'|'material'|'all', ... }；
@@ -709,6 +722,10 @@ window.Net = (function () {
           // 后台改了组件生成配置（含池外/突破词缀数值区间）：工坊补缀与宝匣突破件的预览区间都要跟着变
           if (m.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(m.componentCfg);
           if (ui) ui.refreshAll('componentcfg');
+        } else if (m.type === 'house') {
+          // 渔屋权威视图（结算 / 升级 / 被偷等）：整体替换后重绘渔屋页；
+          // 结构签名没变时 ui.js 走就地更新，不会重建 DOM。
+          if (m.house) { S.house = m.house; if (ui) ui.refreshAll('house'); }
         } else if (m.type === 'recordscfg') {
           // 后台改了「全场最大鱼」贴图的缩放/偏移：就地更新并重绘纪录页
           if (m.recordsCfg) S.recordsCfg = m.recordsCfg;
@@ -922,6 +939,7 @@ window.Net = (function () {
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
     seaExpedition: seaExpedition, seaGet: seaGet, seaShipUp: seaShipUp, seaChart: seaChart, seaVoyage: seaVoyage,
     seaQuestClaim: seaQuestClaim, seaAnchor: seaAnchor, partyFetch: partyFetch, partyAction: partyAction,
+    houseGet: houseGet, fetchHouse: fetchHouse, houseAction: houseAction,
     autoSellGet: autoSellGet, autoSellSet: autoSellSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,

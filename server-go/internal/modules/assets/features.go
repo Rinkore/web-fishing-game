@@ -27,6 +27,18 @@ func FeatureOf(kind string) string {
 		return "friends"
 	case "chart_craft", "ship_upgrade", "sea_voyage", "sea_anchor", "expedition_start", "sea_set_redeem", "sea_set_target":
 		return "sea"
+	// 渔屋复用「角色」页入口 id，因此门禁也用 character.* 子开关：
+	// 带点的键会被 legacy_config_push 原样下发到玩家端（顶层键不会）。
+	case "house_collect":
+		return "character.collect"
+	case "house_upgrade", "house_prestige":
+		return "character.upgrade"
+	case "house_pet":
+		return "character.pet"
+	case "house_role":
+		return "character.role"
+	case "house_steal":
+		return "character.steal"
 	}
 	return ""
 }

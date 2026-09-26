@@ -5,10 +5,12 @@
   'use strict';
   const groups = [
     ['fishing', '钓鱼', [['cast', '抛竿与自动钓鱼']]],
-    // 侧栏入口与页面是多对一：钓竿 / 记录分别是「角色」「图鉴」页里的页签，
+    // 侧栏入口与页面是多对一：钓竿 / 记录分别是「渔屋」「图鉴」页里的页签，
     // 这里仍保留独立 id —— 管理员可以只关掉某一个页签，关闭主页面会连带它一起关。
-    ['bd', '钓竿（角色页签）', [['equip', '装备组件'], ['slots', '购买槽位'], ['save', '保存与管理钓竿'], ['autobuild', '自动配装']]],
-    ['character', '角色', [['companion', '选择同伴'], ['boat', '选择船型']]],
+    ['bd', '钓竿（渔屋页签）', [['equip', '装备组件'], ['slots', '购买槽位'], ['save', '保存与管理钓竿'], ['autobuild', '自动配装']]],
+    // v0.24.0：渔屋（原「角色」页）—— 晒场离线收益 / 升级与无尽翻新 / 宠物驻守 / 角色方向 / 好友偷取。
+    // 入口 id 仍是 character（旧存档与旧广播不受影响）；钓竿页签继续由 bd 组（parent=fishing）单独管。
+    ['character', '渔屋', [['collect', '领取晒场收益'], ['upgrade', '渔屋升级与翻新'], ['pet', '宠物驻守'], ['role', '角色方向'], ['steal', '好友偷取']]],
     ['inventory', '背包', [['subscribe', '组件订阅提醒']]],
     ['workshop', '工坊', [['growth', '装备成长'], ['sets', '套装成长与偏好']]],
     // v0.23.5：开箱从工坊独立成页（原工坊页的「开箱」页签），合成宝匣/开启宝匣归到这一页。
@@ -73,6 +75,9 @@
     '/api/trade/set': 'ground.trade', '/api/trade/confirm': 'ground.trade',
     '/api/friends': 'ground', '/api/party': 'ground.party',
     '/api/subscribe': 'inventory.subscribe', '/api/feedback/submit': 'feedback.submit', '/api/feedback/skip': 'feedback.skip',
+    // 渔屋：漏了这几条，功能开关对渔屋完全失效（见 recon/contracts.md §4.1 第 4 条）
+    '/api/house/collect': 'character.collect', '/api/house/upgrade': 'character.upgrade', '/api/house/renovate': 'character.upgrade',
+    '/api/house/pet': 'character.pet', '/api/house/role': 'character.role', '/api/house/steal': 'character.steal',
     '/api/sea/expedition/start': 'sea.expedition',
     '/api/sea/ship/up': 'sea.upgrade', '/api/sea/chart': 'sea.chart', '/api/sea/voyage': 'sea.voyage',
     '/api/sea/quest/claim': 'sea.quest', '/api/sea/anchor': 'sea.anchor',

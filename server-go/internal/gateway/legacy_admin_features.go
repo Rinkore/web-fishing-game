@@ -16,7 +16,17 @@ import (
 var legacyFeatureGroups = []map[string]any{
 	{"id": "fishing", "name": "钓鱼", "parent": nil, "children": []map[string]any{{"id": "fishing.cast", "name": "抛竿与自动钓鱼", "parent": "fishing"}}},
 	{"id": "bd", "name": "钓竿（角色页签）", "parent": "fishing", "children": []map[string]any{{"id": "bd.equip", "name": "装备组件", "parent": "bd"}, {"id": "bd.slots", "name": "购买槽位", "parent": "bd"}, {"id": "bd.save", "name": "保存与管理钓竿", "parent": "bd"}, {"id": "bd.autobuild", "name": "自动配装", "parent": "bd"}}},
-	{"id": "character", "name": "角色", "parent": nil, "children": []map[string]any{{"id": "character.companion", "name": "选择同伴", "parent": "character"}, {"id": "character.boat", "name": "选择船型", "parent": "character"}}},
+	// v0.24.0：「角色」页升级为「渔屋」（晒场 / 宠物 / 角色 / 钓竿四个页签），
+	// 因此这里保留 character 这个入口 id（旧存档与旧广播都指向它），只换名字并加渔屋子项。
+	{"id": "character", "name": "渔屋", "parent": nil, "children": []map[string]any{
+		{"id": "character.collect", "name": "晒场领取与升级", "parent": "character"},
+		{"id": "character.upgrade", "name": "渔屋升级与翻新", "parent": "character"},
+		{"id": "character.pet", "name": "宠物养成", "parent": "character"},
+		{"id": "character.role", "name": "角色养成", "parent": "character"},
+		{"id": "character.steal", "name": "好友间偷取", "parent": "character"},
+		{"id": "character.companion", "name": "选择同伴（旧）", "parent": "character"},
+		{"id": "character.boat", "name": "选择船型（旧）", "parent": "character"},
+	}},
 	{"id": "sea", "name": "远洋", "parent": nil, "children": []map[string]any{{"id": "sea.upgrade", "name": "船升级", "parent": "sea"}, {"id": "sea.chart", "name": "海图合成", "parent": "sea"}, {"id": "sea.voyage", "name": "随机海域出航", "parent": "sea"}, {"id": "sea.quest", "name": "每日悬赏", "parent": "sea"}, {"id": "sea.anchor", "name": "锚地续期", "parent": "sea"}, {"id": "sea.expedition", "name": "离线远航派遣", "parent": "sea"}}},
 	{"id": "ground", "name": "社交", "parent": nil, "children": []map[string]any{{"id": "ground.trade", "name": "玩家交易", "parent": "ground"}, {"id": "ground.party", "name": "编队出海", "parent": "ground"}}},
 	{"id": "inventory", "name": "背包", "parent": nil, "children": []map[string]any{{"id": "inventory.subscribe", "name": "组件订阅提醒", "parent": "inventory"}}},

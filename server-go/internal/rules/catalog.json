@@ -2,7 +2,7 @@
   "format": 1,
   "version": "v0.23.5",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "bdcba556dfd79af696f07065b46de58be7d050d45ac697dd8e6f012dacf29a50",
+  "sourceSHA256": "32dc03d7030cc2a2458368b1f9bf89565fb5f48802a31c579c54d83220581550",
   "constants": {
     "GEAR_SYSTEM": {
       "enabled": true,
@@ -4161,8 +4161,8 @@
       },
       {
         "id": "character",
-        "name": "角色",
-        "icon": "🧍",
+        "name": "渔屋",
+        "icon": "🏠",
         "implemented": true
       },
       {
@@ -4491,6 +4491,110 @@
             }
           }
         }
+      ]
+    },
+    "HUT": {
+      "levels": [
+        45,
+        51,
+        57,
+        63,
+        68,
+        74,
+        80,
+        86,
+        92,
+        98
+      ],
+      "capacityHours": 8,
+      "asymptoteRate": 103,
+      "endlessTau": 10,
+      "petPerLevel": 0.02,
+      "petBonusCap": 0.2,
+      "petSlots": 2,
+      "rolePerPoint": 0.03,
+      "roleBonusCap": 0.09,
+      "rolePointsMax": 9,
+      "bonusUnlockLevel": 5,
+      "bonusHalfUntilLevel": 7,
+      "stealPerLevel": 15,
+      "stealPerPickCap": 100,
+      "stealDailyCoinCap": 200,
+      "stealPicksPerDay": 2,
+      "relationshipMinHours": 24,
+      "upgradeCosts": [
+        {
+          "coins": 800,
+          "items": {
+            "bait_pack": 4
+          }
+        },
+        {
+          "coins": 1800,
+          "items": {
+            "bait_pack": 6
+          }
+        },
+        {
+          "coins": 3200,
+          "items": {
+            "rope": 9
+          }
+        },
+        {
+          "coins": 5500,
+          "items": {
+            "rope": 12
+          }
+        },
+        {
+          "coins": 8000,
+          "items": {
+            "lure": 16,
+            "storm_relic": 1
+          }
+        },
+        {
+          "coins": 11000,
+          "items": {
+            "lure": 20,
+            "storm_relic": 1
+          }
+        },
+        {
+          "coins": 15000,
+          "items": {
+            "gear_alloy": 9,
+            "storm_relic": 1
+          }
+        },
+        {
+          "coins": 21000,
+          "items": {
+            "gear_alloy": 12,
+            "storm_relic": 2
+          }
+        },
+        {
+          "coins": 30000,
+          "items": {
+            "gear_alloy": 16,
+            "storm_relic": 2
+          }
+        }
+      ],
+      "renovateCost": {
+        "coins": 30000,
+        "coinsGrowth": 1.35,
+        "stormRelic": 1,
+        "alloyPerLevel": 5
+      },
+      "materialWhitelist": [
+        "storm_relic",
+        "gear_alloy",
+        "bait_pack",
+        "rope",
+        "lure"
       ]
     },
     "SEA_QUEST_KINDS": [
