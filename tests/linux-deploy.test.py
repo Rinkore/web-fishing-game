@@ -48,7 +48,7 @@ class DeploymentTests(unittest.TestCase):
         values = {"VERSION.txt": version, "SOURCE_COMMIT.txt": source,
                   "MIGRATIONS_SHA256.txt": release["migrationsSha256"],
                   "frontend/js/data.js": "const VERSION = '" + version + "';\n"}
-        for name in ("game", "migrate", "catalog", "admin"):
+        for name in ("game", "migrate", "catalog", "admin", "reset"):
             values["bin/" + name] = "synthetic binary"
         archive = incoming / release["asset"]
         with tarfile.open(archive, "w:gz") as bundle:

@@ -47,6 +47,8 @@ sudo bash /tmp/fishing-release/install.sh BASELINE_COMMIT BASELINE_MIGRATIONS_SH
 
 新增迁移的版本仍可自动构建和发布，但部署需要先在隔离库完成升级、权限、备份恢复演练，再按维护窗口执行迁移并显式接入新的已验证基线。不要为绕过阻断而直接改摘要。
 
+需要把正式服恢复成全新存档（清空玩家数据、保留字段与权限）时，用发行包内的 `bin/reset fresh` 只读预演、`bin/reset fresh --confirm` 实际执行；范围、判定与停服顺序见 [全新存档说明](../../docs/go-rewrite/FRESH_SAVE.md)。它不做备份也不替代上面的回滚流程，清档前必须先有可恢复的备份。
+
 进程被 SIGKILL、断电或磁盘失效无法由脚本捕获；管理员需要检查 `current` 指向及 `systemctl status fishing-go`。正常命令失败、SIGTERM、SIGHUP 和 SIGINT 会触发回滚；回滚也失败时脚本非零退出并要求人工处理。健康检查是只读检查，未替代登录、钓鱼、交易等业务验收。失败发行目录保留，自动重跑会拒绝覆盖同名目录；管理员须先核对 `current` 已恢复、检查失败原因与该目录，再处理重试。
 
 手动恢复应用时先确认 schema 未变化，然后停止 `fishing-go`，把 `current` 原子切回明确选定的旧发行，再启动并检查公网地址。不要删除或恢复 PostgreSQL 数据来“尝试”修复应用发布失败。
