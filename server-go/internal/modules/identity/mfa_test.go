@@ -26,7 +26,7 @@ func TestIntegrationNewMFASecretEnrollsAdministrator(t *testing.T) {
 	if second, err := NewMFASecret(); err != nil || second == first {
 		t.Fatalf("secret is not random: %q %v", second, err)
 	}
-	link := MFAAuthURL("钓鱼网站", "console_enroll", first)
+	link := MFAAuthURL("DeepFish", "console_enroll", first)
 	for _, want := range []string{"otpauth://totp/", "secret=" + first, "issuer=", "algorithm=SHA1", "digits=6", "period=30"} {
 		if !strings.Contains(link, want) {
 			t.Fatalf("otpauth link %q misses %q", link, want)

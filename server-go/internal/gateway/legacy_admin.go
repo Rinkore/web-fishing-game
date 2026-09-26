@@ -40,7 +40,7 @@ const (
 	legacyAdminBanMaxHours   = 24 * 3650
 	// legacyAdminTOTPIssuer is the label authenticator apps show for console
 	// enrollment; the account name is appended to it in the otpauth link.
-	legacyAdminTOTPIssuer = "钓鱼网站"
+	legacyAdminTOTPIssuer = "DeepFish"
 )
 
 // legacyAdminExec is satisfied by both *pgxpool.Pool and pgx.Tx, so an audit row

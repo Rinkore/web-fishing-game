@@ -10,7 +10,7 @@ window.UI = (function () {
   (function applyVersion() {
     const v = (D && D.VERSION) || '';
     if (!v) return;
-    document.title = '钓鱼网站 ' + v;
+    document.title = 'DeepFish ' + v;
     const nodes = document.querySelectorAll('[data-ver]');
     for (let i = 0; i < nodes.length; i++) nodes[i].textContent = v;
   })();
