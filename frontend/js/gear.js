@@ -26,19 +26,24 @@
  async function load(force){if(loading||(!force&&Date.now()-last<3000))return;loading=true;try{const r=await Net.gearApi('GET','/api/gear');if(r.ok){view=r.data;D.setGearSystem(view.config);last=Date.now();draw();}else{notice=message(r);draw();}}finally{loading=false;}}
  async function action(body){if(busy)return;body={...body,unboundInputs:!!Engine.state.unboundInputs};const input=view.equipment.find(e=>e.id===body.id),other=view.equipment.find(e=>e.id===body.otherId),costs=view.config.costs;const recipe=body.action==='upgrade'?costs.upgrade[input?.growth?.level||0]:body.action==='engrave'?(body.useHeat?costs.heatEngrave:costs.engrave):costs[body.action==='convert_batch'?'convert':body.action];const inherits=!body.unboundInputs&&(body.id||body.ids?.length)&&(input?.bindOutputs||other?.bindOutputs||view.equipment.some(e=>body.ids?.includes(e.id)&&e.bindOutputs)||Object.keys(recipe?.items||{}).some(id=>view.rewardBindings?.[id]?.normal?.inherit>0));if(inherits&&!await UI.confirmModal({title:'产物将继承奖励绑定',html:'本次消耗包含要求继承绑定的奖励物品，本次操作的全部产物（包括批量转换的整批配件）不可出售或交易，后续消耗继续继承绑定。',okText:'确认消耗'}))return;busy=true;const sig=JSON.stringify(body);if(!pending||pending.sig!==sig)pending={sig,key:'gear-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2))};sessionStorage.setItem('gear-pending',JSON.stringify(pending));draw();try{const r=await Net.gearApi('POST','/api/gear/action',{...body,requestKey:pending.key});if(r.ok){notice=body.action==='convert_batch'?'已批量转换 '+(r.data.result?.details?.count||body.ids.length)+' 件配件，消耗与补偿已保存':'操作完成，消耗与成长已保存';if(body.action==='convert_batch')batchSelection.clear();selected=r.data.result?.details?.id||selected;}else notice=message(r);if(r.ok||(r.status>=400&&r.status<500)){pending=null;sessionStorage.removeItem('gear-pending');}await load(true);}catch(_){notice='连接未完成，请重试同一操作。';}finally{busy=false;draw();}}
   // ---- 图形化引导（替代原「成长总览」介绍页）：步骤条 + 强化路径 + 里程碑 ----
-  function guide(e){const c=view.config,p=c.parts[e.part],g=e.growth,lv=g?g.level:0;
+  // 组件选择卡片：空卡片点开选择子窗口，已选卡片点击即取消当前选中的组件。
+  function pickCard(e,count){
+   if(!e)return '<button type="button" class="gear-pick-card is-empty" data-pick-card="open" '+(!count?'disabled':'')+' aria-haspopup="dialog" aria-label="选择组件"><span class="gear-eyebrow">组件选择</span><b>'+(count?'＋ 点击选择组件':'暂无可选组件')+'</b><small>'+(count?count+' 件可选 · 点击打开选择子窗口':'先获取新制配件，再回来选择')+'</small></button>';
+   return '<button type="button" class="gear-pick-card is-picked" data-pick-card="clear" aria-haspopup="dialog" aria-label="取消选中的组件"><span class="gear-eyebrow">已选组件</span><b>'+esc(e.name)+' +'+e.growth.level+'</b><small>'+esc(labels[e.part]||e.part)+' · '+affixes(e.affixes)+'</small><small>点击卡片取消当前选中的组件</small></button>';}
+  function guide(e,count){const c=view.config,p=e?c.parts[e.part]:null,lv=e?e.growth.level:0;
    // 高亮「当前该做的那一步」：没选装备→选装备；还没到副属性档→直接强化；可定副属性或未精工→选方向；否则→执行操作。
-   const now=!g?1:(g.engrave==='none'&&lv+1>=c.subUnlock?2:3);
-   const steps=[['1','选装备','上方卡片中选择'],['2','选副属性方向','+'+c.subUnlock+' 解锁'],['3','强化 · 精工 · 转移','材料确定成长']];
+   const now=!e?1:(e.growth.engrave==='none'&&lv+1>=c.subUnlock?2:3),bound=!!e&&!!e.bound;
+   const steps=[['1','选装备','点强化路径里的卡片'],['2','选副属性方向','+'+c.subUnlock+' 解锁'],['3','强化 · 精工 · 转移','材料确定成长']];
    let h='<div class="gear-steps">';
    steps.forEach((d,i)=>{h+=(i?'<span class="gear-step-arrow" aria-hidden="true">→</span>':'')+'<span class="gear-step '+(i+1===now?'is-now':i+1<now?'is-done':'')+'"><b>'+d[0]+'</b><span>'+d[1]+'<small>'+d[2]+'</small></span></span>';});
-   h+='</div><div class="gear-track"><span class="gear-track-title">强化路径</span><div class="gear-track-nodes" role="img" aria-label="当前 +'+lv+'，满级 +'+c.maxLevel+'">';
+   h+='</div><div class="gear-track">'+pickCard(e,count)+'<span class="gear-track-title">强化路径</span><div class="gear-track-nodes" role="img" aria-label="'+(e?'当前 +'+lv+'，满级 +'+c.maxLevel:'尚未选择组件，满级 +'+c.maxLevel)+'">';
    for(let i=0;i<=c.maxLevel;i++){
     const mark=i===c.subUnlock?'副':i===c.engraveLevel?'精':i===c.maxLevel?'满':'';
     const color=i===c.subUnlock?'#7fc4ec':i===c.engraveLevel?'#c084fc':'#f5ce56';
-    h+='<span class="gear-node '+(i===lv?'is-now':i<lv?'is-done':'')+(mark?' has-mark':'')+'"'+(mark?' style="--gear-mark:'+color+'"':'')+
-      ' title="+'+i+' · '+esc(labels[p.main])+' '+(p.mainValues[i]??'')+'%'+(i>=c.subUnlock?' · 副属性 '+(p.subValues[i]??'')+'%':'')+'"><i>'+i+'</i>'+(mark?'<em>'+mark+'</em>':'')+'</span>';}
-   h+='</div></div><div class="gear-milestones">'+[['🔓','+'+c.subUnlock+' 副属性解锁',lv>=c.subUnlock],['🔨','+'+c.engraveLevel+' 精工开放',lv>=c.engraveLevel],['🏁','+'+c.maxLevel+' 满级',lv>=c.maxLevel],['🔒',e.bound?'已绑定角色':'+'+c.boundLevel+' 或精工后绑定',!!e.bound]]
+    const title='+'+i+(p?' · '+esc(labels[p.main])+' '+(p.mainValues[i]??'')+'%'+(i>=c.subUnlock?' · 副属性 '+(p.subValues[i]??'')+'%':''):'');
+    h+='<span class="gear-node '+(e&&i===lv?'is-now':e&&i<lv?'is-done':'')+(mark?' has-mark':'')+'"'+(mark?' style="--gear-mark:'+color+'"':'')+
+      ' title="'+title+'"><i>'+i+'</i>'+(mark?'<em>'+mark+'</em>':'')+'</span>';}
+   h+='</div></div><div class="gear-milestones">'+[['🔓','+'+c.subUnlock+' 副属性解锁',lv>=c.subUnlock],['🔨','+'+c.engraveLevel+' 精工开放',lv>=c.engraveLevel],['🏁','+'+c.maxLevel+' 满级',lv>=c.maxLevel],['🔒',bound?'已绑定角色':'+'+c.boundLevel+' 或精工后绑定',bound]]
     .map(m=>'<span class="gear-mile '+(m[2]?'is-done':'')+'">'+m[0]+' '+esc(m[1])+'</span>').join('')+'</div>';
    return '<section class="gear-guide" aria-label="成长指引">'+h+'</section>';}
   function pips(tier,max){return '<span class="gear-pips" role="img" aria-label="成长阶段 '+tier+' / '+max+'">'+Array.from({length:max+1},(_,i)=>'<i class="'+(i<=tier?'on':'')+'"></i>').join('')+'</span>';}
@@ -46,16 +51,42 @@
   function emptyState(mode,filtered){const [icon,title,note]=EMPTY[mode]||EMPTY.growth;
    const action=filtered?'<button data-empty-reset>重置筛选</button>':mode==='legacy'?'<button data-gear-tab="growth" class="primary">查看装备成长</button>':'<button data-open-chest class="primary">去开箱获取装备</button>';
    return '<div class="gear-empty"><span class="gear-empty-icon" aria-hidden="true">'+icon+'</span><b>'+(filtered?'没有符合筛选条件的装备':title)+'</b><small>'+note+'</small>'+action+'</div></section></div>';}
-  function equipment(mode='growth'){const c=view.config,all=view.equipment.filter(e=>c.parts[e.part]&&!e.set),list=mode==='legacy'?all.filter(e=>!e.growth):all.filter(e=>e.growth);const filtered=list.filter(matchesEquipment),e=filtered.find(e=>e.id===selected)||filtered.find(eligible)||filtered[0];if(e&&selected!==e.id){selected=e.id;selectedSub='';selectedDirection='main';}
-  for(const id of batchSelection)if(!all.some(x=>x.id===id&&!x.growth&&eligible(x)))batchSelection.delete(id);
-  // 选择装备做成一张卡片：搜索、筛选与结果都收在卡片内，工作台由「左列 + 详情」改为单列上下布局。
-  const items=filtered.length?filtered.map(x=>(mode==='legacy'?'<label class="gear-batch-choice"><input type="checkbox" data-batch-item="'+esc(x.id)+'" '+(batchSelection.has(x.id)?'checked ':'')+(!eligible(x)?'disabled':'')+'>选择 '+esc(x.name)+'</label>':'')+'<button class="gear-item '+(e&&e.id===x.id?'selected':'')+'" data-equipment="'+x.id+'"><b>'+esc(x.name)+' '+(x.growth?'+'+x.growth.level:'旧制')+'</b><small>'+esc(labels[x.part]||x.part)+' · '+affixes(x.affixes)+'</small><small>'+(x.locked?'装配占用 · ':'')+(x.rewardBound?'奖励绑定 · 产物'+(x.bindOutputs?'绑定':'不绑定'):x.bound?'已绑定':'可交易')+'</small></button>').join(''):'<p class="hint">没有匹配的配件</p>';
-  const top='<div class="gear-workbench"><article class="gear-card gear-picker"><div class="gear-picker-head"><div><span class="gear-eyebrow">'+(mode==='legacy'?'旧制配件':'普通配件')+'</span><h3>选择装备</h3></div><span class="gear-picker-count">显示 '+filtered.length+' / '+list.length+' 件</span></div>'+'<div class="gear-picker-controls"><input class="gear-picker-search" data-equipment-filter placeholder="搜索配件或属性" aria-label="搜索配件或属性" value="'+esc(equipmentFilter)+'"/>'+equipmentFilterControls(mode)+'</div>'+'<div class="gear-picker-grid">'+items+'</div></article><section class="gear-detail">'+(mode==='legacy'?batchPanel():'');
-  if(!e)return top+emptyState(mode,!!list.length);
-  const g=e.growth,p=c.parts[e.part],level=g?.level||0,sub=selectedSub||e.affixes.find(a=>a.type!==p.main)?.type||p.subs[0];
-  let body='<span class="gear-eyebrow">'+esc(labels[e.part])+' / '+(e.bound?'角色绑定':'未绑定')+'</span><h2>'+esc(e.name)+' '+(g?'+'+level:'旧制')+'</h2><p class="gear-stats">'+affixes(e.affixes)+'</p>'+(g?guide(e):'');
-  if(!g)body+='<article class="gear-card"><h3>旧制转换</h3><p>旧词条消失，转为同部位 +0 基础配件。补偿 '+(c.legacyConvertReceipts[e.signature.split('#')[1]]||0)+' 张绑定航程凭证。</p><p>'+esc(cost(c.costs.convert))+'</p><button data-action="convert">确认转制</button></article>';
-  else{
+  // 组件选择子窗口：沿用全局 .modal-overlay / .modal-box 与工坊筛选控件，只有点开卡片时才渲染列表。
+  let pickerEl=null;
+  function pickerList(){return view.equipment.filter(e=>view.config.parts[e.part]&&!e.set&&e.growth);}
+  function pickerClose(){if(pickerEl){pickerEl.remove();pickerEl=null;}}
+  function pickerGrid(box){const list=pickerList(),filtered=list.filter(matchesEquipment);
+   box.querySelector('.gear-picker-count').textContent='显示 '+filtered.length+' / '+list.length+' 件';
+   box.querySelector('.gear-picker-grid').innerHTML=filtered.length?filtered.map(x=>'<button type="button" class="gear-item '+(x.id===selected?'selected':'')+'" data-pick-item="'+esc(x.id)+'"><b>'+esc(x.name)+' +'+x.growth.level+'</b><small>'+esc(labels[x.part]||x.part)+' · '+affixes(x.affixes)+'</small><small>'+(x.locked?'装配占用 · ':'')+(x.rewardBound?'奖励绑定 · 产物'+(x.bindOutputs?'绑定':'不绑定'):x.bound?'已绑定':'可交易')+'</small></button>').join(''):'<p class="hint">没有匹配的配件</p>';
+   box.querySelectorAll('[data-pick-item]').forEach(b=>b.onclick=()=>{selected=b.dataset.pickItem;selectedSub='';selectedDirection='main';pickerClose();draw();});}
+  function openPicker(){if(pickerEl||!view)return;
+   document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+   const overlay=document.createElement('div');overlay.className='modal-overlay';
+   overlay.addEventListener('click',ev=>{if(ev.target===overlay)pickerClose();});
+   const box=document.createElement('div');box.className='modal-box shop-modal gear-system gear-pick-modal';
+   box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-label','选择组件');
+   box.innerHTML='<div class="modal-head"><span class="modal-title">🔧 选择组件</span><button class="mini modal-close">✕ 关闭</button></div>'+
+     '<div class="modal-body gear-pick-body"><p class="gear-caption">点选一件配件即选中并关闭窗口；再次点击「强化路径」里的卡片可以取消当前选中的组件。</p>'+
+     '<div class="gear-picker-controls"><input class="gear-picker-search" data-equipment-filter placeholder="搜索配件或属性" aria-label="搜索配件或属性" value="'+esc(equipmentFilter)+'"/>'+equipmentFilterControls('growth')+'</div>'+
+     '<p class="gear-picker-count"></p><div class="gear-picker-grid"></div></div>';
+   overlay.appendChild(box);document.body.appendChild(overlay);pickerEl=overlay;
+   box.querySelector('.modal-close').onclick=pickerClose;
+   const filter=box.querySelector('[data-equipment-filter]');if(filter)filter.oninput=()=>{equipmentFilter=filter.value;pickerGrid(box);};
+   box.querySelectorAll('[data-equipment-select]').forEach(el=>el.onchange=()=>{equipmentFilters[el.dataset.equipmentSelect]=el.value;pickerGrid(box);});
+   const reset=box.querySelector('[data-equipment-reset]');if(reset)reset.onclick=()=>{equipmentFilter='';Object.keys(equipmentFilters).forEach(k=>equipmentFilters[k]='');filter.value='';box.querySelectorAll('[data-equipment-select]').forEach(el=>el.value='');pickerGrid(box);};
+   // Esc 关闭 / Tab 在子窗口内循环焦点，与工坊其它子窗口保持一致。
+   box.addEventListener('keydown',ev=>{if(ev.key==='Escape'){ev.preventDefault();ev.stopPropagation();pickerClose();}
+    if(ev.key==='Tab'){const nodes=Array.from(box.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled)')),first=nodes[0],last=nodes[nodes.length-1];
+     if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}}});
+   pickerGrid(box);box.querySelector('.modal-close').focus();}
+  // 装备成长工作台：组件选择收进「强化路径」框体内的卡片，详情只展示当前选中配件的成长操作。
+  function growthTab(){const c=view.config,list=pickerList(),e=list.find(x=>x.id===selected)||null;let h='<div class="gear-workbench"><section class="gear-detail">'+guide(e,list.length);
+   if(!e){const [icon,title,note]=EMPTY.growth;
+    h+=list.length?'<section class="gear-card gear-pick-empty"><h3>还没有选择组件</h3><p>在「强化路径」的卡片里挑一件配件，这里会显示材料强化、副属性方向、精工锻造与成长转移。</p><button type="button" class="primary" data-pick-card="open">选择组件</button></section>'
+     :'<div class="gear-empty"><span class="gear-empty-icon" aria-hidden="true">'+icon+'</span><b>'+title+'</b><small>'+note+'</small><button data-open-chest class="primary">去开箱获取装备</button></div>';
+    return h+'</section></div>';}
+   const g=e.growth,p=c.parts[e.part],level=g.level,sub=selectedSub||e.affixes.find(a=>a.type!==p.main)?.type||p.subs[0];
+   let body='<span class="gear-eyebrow">'+esc(labels[e.part])+' / '+(e.bound?'角色绑定':'未绑定')+'</span><h2>'+esc(e.name)+' +'+level+'</h2><p class="gear-stats">'+affixes(e.affixes)+'</p>';
    // 强化等级不够使用的功能（副属性方向 / 副属性调校 / 精工锻造）在到达对应档位前不渲染，只保留里程碑说明下一步。
    const subPick=level+1>=c.subUnlock,subReady=level>=c.subUnlock,forgeReady=level>=c.engraveLevel;
    if(subPick)body+='<div class="gear-choice-group"><h3>副属性方向</h3><div class="gear-choice-grid">'+p.subs.map(s=>'<button type="button" class="gear-choice '+(s===sub?'selected':'')+'" data-sub-option="'+esc(s)+'"><b>'+esc(labels[s])+'</b><small>'+((e.affixes.find(a=>a.type===s)?.value||0)>0?'当前 +'+e.affixes.find(a=>a.type===s).value+'%':subReady?'可调校到该属性':'强化到 +'+c.subUnlock+' 时采用')+'</small></button>').join('')+'</div></div>';
@@ -68,9 +99,19 @@
    // 只列出还没到等级的项：到 +4 后调校已经出现，提示里就不该再说「+4 解锁副属性调校」。
    const pending=[!subReady?'+'+c.subUnlock+' 开放副属性调校':'',!forgeReady?'+'+c.engraveLevel+' 开放精工锻造':''].filter(Boolean).join('，');
    if(pending)body+='<p class="gear-caption">未到等级的功能先不显示：'+pending+'，到达后对应操作会出现在这里。</p>';
+   return h+body+(e.locked?'<p class="gear-warning">此配件被配装占用，卸下并解除保存配装占用后方可成长。</p>':'')+'</section></div>';
   }
-  return top+body+(e.locked?'<p class="gear-warning">此配件被配装占用，卸下并解除保存配装占用后方可成长。</p>':'')+'</section></div>';
- }
+  // 旧制转换仍用卡片内的多选列表：批量勾选要在一屏内完成，不适合收进子窗口。
+  function equipment(mode='legacy'){const c=view.config,all=view.equipment.filter(e=>c.parts[e.part]&&!e.set),list=all.filter(e=>!e.growth),filtered=list.filter(matchesEquipment),e=filtered.find(e=>e.id===selected)||filtered.find(eligible)||filtered[0];
+   if(e&&selected!==e.id){selected=e.id;selectedSub='';selectedDirection='main';}
+   for(const id of batchSelection)if(!all.some(x=>x.id===id&&!x.growth&&eligible(x)))batchSelection.delete(id);
+   const items=filtered.length?filtered.map(x=>'<label class="gear-batch-choice"><input type="checkbox" data-batch-item="'+esc(x.id)+'" '+(batchSelection.has(x.id)?'checked ':'')+(!eligible(x)?'disabled':'')+'>选择 '+esc(x.name)+'</label><button class="gear-item '+(e&&e.id===x.id?'selected':'')+'" data-equipment="'+x.id+'"><b>'+esc(x.name)+' 旧制</b><small>'+esc(labels[x.part]||x.part)+' · '+affixes(x.affixes)+'</small><small>'+(x.locked?'装配占用 · ':'')+(x.rewardBound?'奖励绑定 · 产物'+(x.bindOutputs?'绑定':'不绑定'):x.bound?'已绑定':'可交易')+'</small></button>').join(''):'<p class="hint">没有匹配的配件</p>';
+   const top='<div class="gear-workbench"><article class="gear-card gear-picker"><div class="gear-picker-head"><div><span class="gear-eyebrow">旧制配件</span><h3>选择装备</h3></div><span class="gear-picker-count">显示 '+filtered.length+' / '+list.length+' 件</span></div>'+'<div class="gear-picker-controls"><input class="gear-picker-search" data-equipment-filter placeholder="搜索配件或属性" aria-label="搜索配件或属性" value="'+esc(equipmentFilter)+'"/>'+equipmentFilterControls(mode)+'</div>'+'<div class="gear-picker-grid">'+items+'</div></article><section class="gear-detail">'+batchPanel();
+   if(!e)return top+emptyState(mode,!!list.length);
+   const body='<span class="gear-eyebrow">'+esc(labels[e.part])+' / '+(e.bound?'角色绑定':'未绑定')+'</span><h2>'+esc(e.name)+' 旧制</h2><p class="gear-stats">'+affixes(e.affixes)+'</p>'+
+     '<article class="gear-card"><h3>旧制转换</h3><p>旧词条消失，转为同部位 +0 基础配件。补偿 '+(c.legacyConvertReceipts[e.signature.split('#')[1]]||0)+' 张绑定航程凭证。</p><p>'+esc(cost(c.costs.convert))+'</p><button data-action="convert">确认转制</button></article>';
+   return top+body+(e.locked?'<p class="gear-warning">此配件被配装占用，卸下并解除保存配装占用后方可成长。</p>':'')+'</section></div>';
+  }
   // 只保留功能性页签：装备成长 / 钓鱼套装 / 旧制转换（原「成长总览」介绍页已删除）。
   const GEAR_TABS=[['growth','⚙ 装备成长'],['sets','🎣 钓鱼套装'],['legacy','♻ 旧制转换']];
  // 套装效果表与「远洋 → 专精工作台」的 1-3 点效果表同构：参数只出现一次，各阶并排，黄色小字是相对上一阶的变化。
@@ -108,9 +149,12 @@
    '<button class="gear-refresh" data-refresh>刷新</button></div>'+
    '<nav class="gear-tabs" role="tablist" aria-label="装备与套装功能">'+GEAR_TABS.map(([id,t])=>'<button class="'+(tab===id?'primary':'')+'" data-gear-tab="'+id+'" role="tab" aria-selected="'+(tab===id)+'">'+t+'</button>').join('')+'</nav>'+
    '<p role="status" class="gear-notice">'+esc(notice)+'</p>'+
-   (view?(tab==='sets'?sets():tab==='legacy'?equipment('legacy'):equipment('growth')):'<p class="gear-caption">读取装备成长状态…</p>');
+   (view?(tab==='sets'?sets():tab==='legacy'?equipment('legacy'):growthTab()):'<p class="gear-caption">读取装备成长状态…</p>');
   root.querySelector('[data-reward-source]').onchange=e=>{Engine.state.unboundInputs=e.target.value==='free';draw();};root.querySelector('[data-refresh]').onclick=()=>load(true);const openChest=root.querySelector('[data-open-chest]');if(openChest)openChest.onclick=()=>{const t=document.querySelector('[data-modern-tab="open"]');if(t)t.click();else{tab='legacy';draw();}};const emptyReset=root.querySelector('[data-empty-reset]');if(emptyReset)emptyReset.onclick=()=>{equipmentFilter='';Object.keys(equipmentFilters).forEach(k=>equipmentFilters[k]='');draw();};const filter=root.querySelector('[data-equipment-filter]');if(filter)filter.oninput=e=>{const start=e.target.selectionStart;equipmentFilter=e.target.value;draw();const next=root.querySelector('[data-equipment-filter]');next.focus();next.setSelectionRange(start,start);};root.querySelectorAll('[data-sub-option]').forEach(b=>b.onclick=()=>{selectedSub=b.dataset.subOption;draw();});root.querySelectorAll('[data-direction-option]').forEach(b=>b.onclick=()=>{selectedDirection=b.dataset.directionOption;draw();});root.querySelectorAll('[data-gear-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.gearTab;draw();});root.querySelectorAll('[data-equipment]').forEach(b=>b.onclick=()=>{selected=b.dataset.equipment;selectedSub='';selectedDirection='main';draw();});
-  const transferFilter=root.querySelector('[data-transfer-binding]');if(transferFilter)transferFilter.onchange=()=>{transferBinding=transferFilter.value;draw();};
+   // 强化路径里的组件卡片：空卡片打开选择子窗口，已选卡片点击取消当前选中的组件。
+   root.querySelectorAll('[data-pick-card]').forEach(b=>b.onclick=()=>{if(b.dataset.pickCard==='clear'){selected='';selectedSub='';selectedDirection='main';draw();}else openPicker();});
+   if(pickerEl){if(!pickerEl.isConnected||!view)pickerEl=null;else pickerGrid(pickerEl);}
+   const transferFilter=root.querySelector('[data-transfer-binding]');if(transferFilter)transferFilter.onchange=()=>{transferBinding=transferFilter.value;draw();};
   root.querySelectorAll('[data-equipment-select]').forEach(el=>el.onchange=()=>{equipmentFilters[el.dataset.equipmentSelect]=el.value;draw();});const reset=root.querySelector('[data-equipment-reset]');if(reset)reset.onclick=()=>{equipmentFilter='';Object.keys(equipmentFilters).forEach(k=>equipmentFilters[k]='');draw();};
   root.querySelectorAll('[data-batch-item]').forEach(el=>el.onchange=()=>{if(el.checked&&batchSelection.size>=100){notice='每批最多选择 100 件配件';}else if(el.checked)batchSelection.add(el.dataset.batchItem);else batchSelection.delete(el.dataset.batchItem);draw();});
   const selectBatch=root.querySelector('[data-batch-select]');if(selectBatch)selectBatch.onclick=()=>{batchSelection.clear();view.equipment.filter(e=>!e.growth&&!e.set&&view.config.parts[e.part]&&eligible(e)&&matchesEquipment(e)).slice(0,100).forEach(e=>batchSelection.add(e.id));draw();};const clearBatch=root.querySelector('[data-batch-clear]');if(clearBatch)clearBatch.onclick=()=>{batchSelection.clear();draw();};

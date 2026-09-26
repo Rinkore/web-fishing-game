@@ -70,11 +70,24 @@
 .gear-picker-controls .gear-equipment-filters { min-width: 0; align-content: start; }
 .gear-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; max-height: clamp(180px, 42vh, 420px); overflow-y: auto; padding-right: 4px; }
 .gear-picker-grid .gear-item { margin: 0; }
+/* 工坊 · 装备成长：组件选择做成强化路径框体内的一张卡片，点击开选择子窗口，已选时点击取消。 */
+.workshop-growth .gear-track { border: 1px solid var(--line, #345169); border-radius: 3px; padding: 8px 10px; background: rgba(5, 15, 28, .35); }
+.gear-pick-card { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: 0 0 auto; width: min(250px, 100%); padding: 8px 10px; text-align: left; line-height: 1.45; }
+.gear-pick-card b { font-size: 13px; }
+.gear-pick-card small { font-size: 11px; opacity: .85; }
+.gear-pick-card .gear-eyebrow { font-size: 10px; letter-spacing: .06em; }
+.gear-pick-card.is-empty { border-style: dashed; color: var(--muted, #8faec8); }
+.gear-pick-card.is-picked { border-color: var(--gear-accent); background: rgba(38, 133, 113, .16); color: var(--gear-accent); }
+.gear-pick-empty { margin: 0; }
+.gear-pick-modal .modal-body { display: flex; flex-direction: column; gap: 8px; max-height: 74vh; }
+.gear-pick-modal .gear-picker-count { margin: 0; }
+.gear-pick-modal .gear-picker-grid { max-height: clamp(200px, 52vh, 460px); }
+.gear-pick-modal .gear-item { margin: 0; }
 .gear-detail .gear-grid { grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); }
 .gear-sets h4 { margin: 16px 0 6px; color: var(--gear-accent); font-size: 14px; }
 .workshop-growth .gear-detail { padding-top: 0; }
 .workshop-growth .gear-notice:empty { display: none; }
-@media(max-width:760px) { .gear-picker-controls { grid-template-columns: minmax(0, 1fr); } .gear-picker-grid { grid-template-columns: minmax(0, 1fr); max-height: clamp(200px, 60vh, 520px); } .gear-sets .voyage-point-table thead th { font-size: 10px; } .gear-sets .voyage-point-table th, .gear-sets .voyage-point-table td { padding: 4px 3px; } }
+@media(max-width:760px) { .gear-picker-controls { grid-template-columns: minmax(0, 1fr); } .gear-picker-grid { grid-template-columns: minmax(0, 1fr); max-height: clamp(200px, 60vh, 520px); } .workshop-growth .gear-track { flex-wrap: wrap; overflow: visible; } .gear-pick-card { width: 100%; } .gear-sets .voyage-point-table thead th { font-size: 10px; } .gear-sets .voyage-point-table th, .gear-sets .voyage-point-table td { padding: 4px 3px; } }
 /* 工坊 · 工具条：资源、消耗来源与刷新压成一行，替代原「大标题 + 说明段落」。 */
 .gear-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px;border:1px solid var(--line,#345169);border-radius:3px;background:rgba(8,22,38,.35)}.gear-bar .gear-metrics{gap:6px;margin:0}.gear-bar .gear-metrics>span{padding:5px 10px;font-size:12px}.gear-bar .gear-metrics b{margin-left:6px;font-size:15px}.gear-bar .gear-source{flex-direction:row;align-items:center;gap:6px;margin:0;font-size:12px;color:var(--muted,#8faec8)}.gear-bar .gear-source select{padding:6px 8px;font-size:12px}.gear-bar .gear-refresh{margin-left:auto}
 /* 工坊 · 图形化引导：步骤条 + 强化路径 + 里程碑，替代原「成长总览」的说明文案。 */
