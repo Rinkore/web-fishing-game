@@ -37,11 +37,52 @@ var freshSavePreserved = []string{
 	"wiki_state",
 }
 
+// freshSaveKeep names the operator-owned state a database still holds. A fresh
+// save carries it over instead of clearing it.
+type freshSaveKeep struct {
+	// published is set while the database holds a catalog or feature release.
+	published bool
+	// wiki is set while the database holds official wiki guides.
+	wiki bool
+}
+
+// keepsAnything reports whether the reset has to carry operator state over, so
+// player tables that state references are pruned instead of truncated.
+func (k freshSaveKeep) keepsAnything() bool { return k.published || k.wiki }
+
+// wholeTables are the tables a keep preserves row for row.
+func (k freshSaveKeep) wholeTables() []string {
+	tables := make([]string, 0, len(freshSavePublishedTables)+len(freshSaveWikiTables))
+	if k.published {
+		tables = append(tables, freshSavePublishedTables...)
+	}
+	if k.wiki {
+		tables = append(tables, freshSaveWikiTables...)
+	}
+	return tables
+}
+
+// retainedRows are the tables a keep prunes back to the rows it pins, in the
+// foreign-key order the deletes must follow.
+func (k freshSaveKeep) retainedRows() []freshSaveRetainedRow {
+	rows := make([]freshSaveRetainedRow, 0, len(freshSaveRetainedRows))
+	for _, row := range freshSaveRetainedRows {
+		if (row.forPublished && k.published) || (row.forWiki && k.wiki) {
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
 // freshSavePublishedTables carry the published operator configuration. They are
 // kept only while a release exists: an install that never published anything
 // keeps the original behaviour, where the empty heads are rebuilt and every
 // identity restarts at 1.
 var freshSavePublishedTables = []string{"catalog_head", "catalog_releases", "feature_head", "feature_releases"}
+
+// freshSaveWikiTables carry the official wiki content that the store replaces
+// as one bundle: the guides and their update log always change together.
+var freshSaveWikiTables = []string{"wiki_updates"}
 
 // freshSaveRebuiltRows restores the migration-seeded release heads, mirroring
 // 0013_feature_releases.sql and 0020_catalog_releases.sql. They rebuild the
@@ -53,49 +94,67 @@ var freshSaveRebuiltRows = []string{
 	`INSERT INTO fishing.feature_head(singleton,release_id) VALUES(true,NULL) ON CONFLICT(singleton) DO NOTHING`,
 }
 
-// freshSaveRetainedTables hold player data, but a published configuration pins
-// a few of their rows: a release is signed by the account that published it and
-// carries the audited operation that committed it, and that operation requires
-// its command result. When releases exist these tables are pruned instead of
-// truncated, so the running rules, prices, drops, mall and feature flags survive
-// a fresh save while the players do not.
-var freshSaveRetainedTables = []string{"accounts", "asset_operations", "command_results"}
+// freshSaveRetainedRow is a table that holds player data plus the rows the kept
+// operator state pins. keep is a predicate over the table alias that identifies
+// the rows that survive; forPublished and forWiki name the kept state that needs
+// them.
+type freshSaveRetainedRow struct {
+	table, alias, keep string
+	forPublished       bool
+	forWiki            bool
+}
 
 // The predicates below are the single source of truth for "this row belongs to
-// the published configuration". The dry run and the prune share them, so a plan
+// the kept operator state". The dry run and the prune share them, so a plan
 // always matches what --confirm removes. The aliases are the ones the prune
 // statements and the count query use.
 const (
 	freshSaveOperationKept = `(EXISTS (SELECT 1 FROM fishing.catalog_releases cr WHERE cr.operation_id=o.id) OR EXISTS (SELECT 1 FROM fishing.feature_releases fr WHERE fr.operation_id=o.id))`
 	freshSaveResultKept    = `EXISTS (SELECT 1 FROM fishing.asset_operations o WHERE o.actor_id=c.actor_id AND o.request_key=c.request_key AND ` + freshSaveOperationKept + `)`
 	freshSaveAccountKept   = `(EXISTS (SELECT 1 FROM fishing.catalog_releases cr WHERE cr.actor_id=a.id) OR EXISTS (SELECT 1 FROM fishing.feature_releases fr WHERE fr.actor_id=a.id) OR EXISTS (SELECT 1 FROM fishing.asset_operations o WHERE o.actor_id=a.id AND ` + freshSaveOperationKept + `))`
+	freshSaveGuideKept     = `(wg.kind='official' AND wg.deleted_at IS NULL)`
+	freshSaveSectionKept   = `EXISTS (SELECT 1 FROM fishing.wiki_guides wg WHERE wg.id=ws.guide_id AND ` + freshSaveGuideKept + `)`
 )
 
-// The statements follow the foreign keys: operations pin command results, and
-// both pin accounts.
-var freshSaveRetainedPrune = []string{
-	`DELETE FROM fishing.asset_operations o WHERE NOT ` + freshSaveOperationKept,
-	`DELETE FROM fishing.command_results c WHERE NOT ` + freshSaveResultKept,
-	`DELETE FROM fishing.accounts a WHERE NOT ` + freshSaveAccountKept,
+// The order is the foreign-key order the deletes must follow.
+var freshSaveRetainedRows = []freshSaveRetainedRow{
+	// A release is signed by the account that published it, carries the audited
+	// operation that committed it, and that operation requires its command
+	// result, so the running rules, prices, drops, mall and feature flags survive
+	// a fresh save while their publishers' other rows do not.
+	{table: "asset_operations", alias: "o", keep: freshSaveOperationKept, forPublished: true},
+	{table: "command_results", alias: "c", keep: freshSaveResultKept, forPublished: true},
+	// Official guides are operator content; the submissions next to them belong
+	// to players. Their sections cascade from the guide, and both must go before
+	// the accounts the submissions point at.
+	{table: "wiki_sections", alias: "ws", keep: freshSaveSectionKept, forWiki: true},
+	{table: "wiki_guides", alias: "wg", keep: freshSaveGuideKept, forWiki: true},
+	// Accounts stay out of the truncate list whenever a kept table references
+	// them; the predicate still deletes every account that no kept row pins.
+	{table: "accounts", alias: "a", keep: freshSaveAccountKept, forPublished: true, forWiki: true},
 }
 
-// PlanFreshSave reports which tables a reset preserves and clears, with
+// PlanFreshSave reports which tables a reset preserves, prunes and clears, with
 // best-effort row counts, without writing anything.
 func PlanFreshSave(ctx context.Context, pool *pgxpool.Pool) (FreshSaveSummary, error) {
+	keep, err := detectFreshSaveKeep(ctx, pool)
+	if err != nil {
+		return FreshSaveSummary{}, err
+	}
+	return planFreshSave(ctx, pool, keep)
+}
+
+func planFreshSave(ctx context.Context, pool *pgxpool.Pool, keep freshSaveKeep) (FreshSaveSummary, error) {
 	tables, err := fishingTables(ctx, pool)
 	if err != nil {
 		return FreshSaveSummary{}, err
 	}
-	retain, err := freshSaveKeepsPublishedConfig(ctx, pool)
+	summary, err := splitFreshSave(tables, keep)
 	if err != nil {
 		return FreshSaveSummary{}, err
 	}
-	summary, err := splitFreshSave(tables, retain)
-	if err != nil {
-		return FreshSaveSummary{}, err
-	}
-	if retain {
-		if summary.Retained, err = freshSaveRetainedRows(ctx, pool); err != nil {
+	if keep.keepsAnything() {
+		if summary.Retained, err = freshSaveRetainedRowCounts(ctx, pool, keep); err != nil {
 			return FreshSaveSummary{}, err
 		}
 	}
@@ -103,39 +162,38 @@ func PlanFreshSave(ctx context.Context, pool *pgxpool.Pool) (FreshSaveSummary, e
 	return summary, nil
 }
 
-func splitFreshSave(tables []string, retain bool) (FreshSaveSummary, error) {
+func splitFreshSave(tables []string, keep freshSaveKeep) (FreshSaveSummary, error) {
 	known := make(map[string]bool, len(tables))
 	for _, name := range tables {
 		known[name] = true
 	}
-	preserved := make([]string, 0, len(freshSavePreserved)+len(freshSavePublishedTables))
-	keep := make(map[string]bool, len(freshSavePreserved)+len(freshSavePublishedTables)+len(freshSaveRetainedTables))
+	retained := keep.retainedRows()
+	preserved := make([]string, 0, len(freshSavePreserved)+len(freshSavePublishedTables)+len(freshSaveWikiTables))
+	kept := make(map[string]bool, cap(preserved)+len(retained))
 	for _, name := range freshSavePreserved {
 		if !known[name] {
 			return FreshSaveSummary{}, fmt.Errorf("preserved table %s is missing from the schema", name)
 		}
 		preserved = append(preserved, name)
-		keep[name] = true
+		kept[name] = true
 	}
-	if retain {
-		for _, name := range freshSavePublishedTables {
-			if !known[name] {
-				return FreshSaveSummary{}, fmt.Errorf("published table %s is missing from the schema", name)
-			}
-			preserved = append(preserved, name)
-			keep[name] = true
+	for _, name := range keep.wholeTables() {
+		if !known[name] {
+			return FreshSaveSummary{}, fmt.Errorf("preserved table %s is missing from the schema", name)
 		}
-		for _, name := range freshSaveRetainedTables {
-			if !known[name] {
-				return FreshSaveSummary{}, fmt.Errorf("retained table %s is missing from the schema", name)
-			}
-			keep[name] = true
+		preserved = append(preserved, name)
+		kept[name] = true
+	}
+	for _, row := range retained {
+		if !known[row.table] {
+			return FreshSaveSummary{}, fmt.Errorf("retained table %s is missing from the schema", row.table)
 		}
+		kept[row.table] = true
 	}
 	sort.Strings(preserved)
 	summary := FreshSaveSummary{Preserved: preserved, Retained: map[string]int64{}, Rows: map[string]int64{}}
 	for _, name := range tables {
-		if !keep[name] {
+		if !kept[name] {
 			summary.Cleared = append(summary.Cleared, name)
 		}
 	}
@@ -143,18 +201,21 @@ func splitFreshSave(tables []string, retain bool) (FreshSaveSummary, error) {
 }
 
 // FreshSave clears all player data while keeping the schema: every fishing
-// table is truncated except the preserved configuration tables, then the
-// published releases are pruned back to the rows the operator configuration
-// pins, and the built-in item definitions and official wiki content are
-// restored. The schema, its privileges, and the migration ledger stay
-// untouched, so the running release keeps matching the database. Stop the game
-// first; the reset refuses to run while another fishing-go process is
-// connected.
+// table is truncated except the tables the operator state lives in, those are
+// pruned back to the rows that state pins, and the built-in item definitions and
+// official wiki content are restored when they are missing. The schema, its
+// privileges, and the migration ledger stay untouched, so the running release
+// keeps matching the database. Stop the game first; the reset refuses to run
+// while another fishing-go process is connected.
 func FreshSave(ctx context.Context, pool *pgxpool.Pool) (FreshSaveSummary, error) {
 	if err := ensureGameStopped(ctx, pool); err != nil {
 		return FreshSaveSummary{}, err
 	}
-	summary, err := PlanFreshSave(ctx, pool)
+	keep, err := detectFreshSaveKeep(ctx, pool)
+	if err != nil {
+		return FreshSaveSummary{}, err
+	}
+	summary, err := planFreshSave(ctx, pool, keep)
 	if err != nil {
 		return FreshSaveSummary{}, err
 	}
@@ -170,9 +231,11 @@ func FreshSave(ctx context.Context, pool *pgxpool.Pool) (FreshSaveSummary, error
 	if _, err := tx.Exec(ctx, statement); err != nil {
 		return FreshSaveSummary{}, err
 	}
-	// Accounts, operations and command results are player data too: keep only
-	// the rows the preserved releases pin and drop the rest.
-	for _, prune := range freshSaveRetainedPrune {
+	// The tables the kept operator state lives in also hold player data: drop
+	// every row that state does not pin, in foreign-key order.
+	for _, row := range keep.retainedRows() {
+		prune := "DELETE FROM " + pgx.Identifier{"fishing", row.table}.Sanitize() +
+			" " + row.alias + " WHERE NOT " + row.keep
 		if _, err := tx.Exec(ctx, prune); err != nil {
 			return FreshSaveSummary{}, err
 		}
@@ -182,8 +245,8 @@ func FreshSave(ctx context.Context, pool *pgxpool.Pool) (FreshSaveSummary, error
 			return FreshSaveSummary{}, err
 		}
 	}
-	if len(summary.Retained) > 0 {
-		retained, err := freshSaveRetainedRows(ctx, tx)
+	if keep.keepsAnything() {
+		retained, err := freshSaveRetainedRowCounts(ctx, tx, keep)
 		if err != nil {
 			return FreshSaveSummary{}, err
 		}
@@ -232,21 +295,26 @@ type freshSaveSQL interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
 }
 
-// freshSaveKeepsPublishedConfig reports whether the database holds published
-// operator releases. Without one a fresh save stays a plain truncation that
-// restarts every identity, because no row has to survive for a configuration.
-func freshSaveKeepsPublishedConfig(ctx context.Context, pool *pgxpool.Pool) (bool, error) {
-	var keeps bool
-	err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM fishing.catalog_releases) OR EXISTS (SELECT 1 FROM fishing.feature_releases)`).Scan(&keeps)
-	return keeps, err
+// detectFreshSaveKeep reports which operator state the database still holds.
+// Without any, a fresh save stays a plain truncation that restarts every
+// identity, because no row has to survive for the configuration.
+func detectFreshSaveKeep(ctx context.Context, pool *pgxpool.Pool) (freshSaveKeep, error) {
+	var keep freshSaveKeep
+	err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM fishing.catalog_releases) OR EXISTS (SELECT 1 FROM fishing.feature_releases),
+EXISTS (SELECT 1 FROM fishing.wiki_guides WHERE kind='official' AND deleted_at IS NULL)`).Scan(&keep.published, &keep.wiki)
+	return keep, err
 }
 
-// freshSaveRetainedRows counts what the prune keeps, so a dry run shows the
+// freshSaveRetainedRowCounts counts what the prune keeps, so a dry run shows the
 // rows that will still be there after --confirm.
-func freshSaveRetainedRows(ctx context.Context, q freshSaveSQL) (map[string]int64, error) {
-	rows, err := q.Query(ctx, `SELECT 'asset_operations'::text, count(*) FROM fishing.asset_operations o WHERE `+freshSaveOperationKept+
-		` UNION ALL SELECT 'command_results', count(*) FROM fishing.command_results c WHERE `+freshSaveResultKept+
-		` UNION ALL SELECT 'accounts', count(*) FROM fishing.accounts a WHERE `+freshSaveAccountKept)
+func freshSaveRetainedRowCounts(ctx context.Context, q freshSaveSQL, keep freshSaveKeep) (map[string]int64, error) {
+	kept := keep.retainedRows()
+	parts := make([]string, 0, len(kept))
+	for _, row := range kept {
+		parts = append(parts, fmt.Sprintf("SELECT %s::text, count(*) FROM %s %s WHERE %s",
+			quoteLiteral(row.table), pgx.Identifier{"fishing", row.table}.Sanitize(), row.alias, row.keep))
+	}
+	rows, err := q.Query(ctx, strings.Join(parts, " UNION ALL "))
 	if err != nil {
 		return nil, err
 	}

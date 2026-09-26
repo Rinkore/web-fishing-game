@@ -12,6 +12,7 @@ import (
 	"fishing.local/server/internal/modules/workshop"
 	"fishing.local/server/internal/rules"
 	"fishing.local/server/internal/testdb"
+	"fishing.local/server/internal/wiki"
 	"fishing.local/server/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -308,6 +309,127 @@ func insertFixtureOperation(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 		t.Fatal(err)
 	}
 	return operation
+}
+
+// TestIntegrationFreshSaveKeepsOfficialWiki covers a wipe on a server whose
+// operator published wiki content: the guides, their sections and the update
+// log stay, while the player submissions around them go with the players.
+func TestIntegrationFreshSaveKeepsOfficialWiki(t *testing.T) {
+	db := testdb.New(t, true)
+	ctx := context.Background()
+	defaults, err := rules.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workshop.SeedDefinitions(ctx, db.Admin, defaults); err != nil {
+		t.Fatal(err)
+	}
+	player := insertFixtureAccount(t, ctx, db.Admin, "saltydog")
+	insertFixtureOfficialGuide(t, ctx, db.Admin)
+	insertFixtureUserGuide(t, ctx, db.Admin, player)
+
+	wantRetained := map[string]int64{"wiki_guides": 1, "wiki_sections": 2, "accounts": 0}
+	plan, err := PlanFreshSave(ctx, db.Admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(plan.Preserved, "wiki_updates") || contains(plan.Cleared, "wiki_updates") {
+		t.Fatalf("plan does not preserve the official update log: %v / %v", plan.Preserved, plan.Cleared)
+	}
+	for _, name := range []string{"wiki_guides", "wiki_sections"} {
+		if contains(plan.Cleared, name) {
+			t.Fatalf("plan truncates the official wiki table %s", name)
+		}
+	}
+	for name, want := range wantRetained {
+		if plan.Retained[name] != want {
+			t.Fatalf("plan keeps %d rows in %s, want %d: %v", plan.Retained[name], name, want, plan.Retained)
+		}
+	}
+
+	summary, err := FreshSave(ctx, db.Admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range wantRetained {
+		if summary.Retained[name] != want {
+			t.Fatalf("reset kept %d rows in %s, want %d: %v", summary.Retained[name], name, want, summary.Retained)
+		}
+	}
+	for _, name := range []string{"identities", "player_state", "wallets", "wiki_revisions"} {
+		rows, err := countRows(ctx, db.Admin, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rows != 0 {
+			t.Fatalf("%s still holds %d rows after the reset", name, rows)
+		}
+	}
+	accounts, err := countRows(ctx, db.Admin, "accounts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accounts != 0 {
+		t.Fatalf("the submitting player's account survived the reset: %d", accounts)
+	}
+	// The runtime read path must serve the operator's content, not fall back to
+	// the bundle the binary ships.
+	revision, updatedAt, guides, updates, err := wiki.NewStore(db.App).Official(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(guides) != 1 || guides[0].ID != "og_operator" || len(guides[0].Sections) != 2 || guides[0].Sections[0].Text != "运营正文" {
+		t.Fatalf("official wiki content changed: %+v", guides)
+	}
+	if revision != 7 || updatedAt != "2026-09-26" {
+		t.Fatalf("official wiki revision changed: %d %q", revision, updatedAt)
+	}
+	if len(updates) != 1 || updates[0].Title != "运营更新" {
+		t.Fatalf("official wiki update log changed: %+v", updates)
+	}
+	if err := migrations.Check(ctx, db.Admin); err != nil {
+		t.Fatal("reset changed the schema ledger")
+	}
+	if err := (dependencies{db.App}).Ping(ctx); err != nil {
+		t.Fatalf("runtime readiness failed after the reset: %v", err)
+	}
+}
+
+func insertFixtureOfficialGuide(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	if _, err := pool.Exec(ctx, `INSERT INTO fishing.wiki_guides(id,kind,status,title,category,summary,tags,aliases,updated_label,revision,sort_order)
+VALUES('og_operator','official','published','运营指南','玩法','运营改写过的摘要','[]'::jsonb,'[]'::jsonb,'2026-09-26',7,0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO fishing.wiki_sections(guide_id,ordinal,heading,type,body,items) VALUES
+('og_operator',0,'运营章节','p','运营正文','[]'::jsonb),
+('og_operator',1,'运营要点','ul','','["一","二"]'::jsonb)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO fishing.wiki_updates(ordinal,day,title,summary) VALUES(0,'2026-09-26','运营更新','运营写的更新日志')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO fishing.wiki_revisions(guide_id,revision,action,actor_id,actor_name,snapshot) VALUES('og_operator',7,'publish',NULL,'ops','{}'::jsonb)`); err != nil {
+		t.Fatal(err)
+	}
+	// The console publishes the guide set and the revision watermark together.
+	if _, err := pool.Exec(ctx, `UPDATE fishing.wiki_state SET official_revision=7,official_updated_at='2026-09-26' WHERE singleton`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertFixtureUserGuide(t *testing.T, ctx context.Context, pool *pgxpool.Pool, owner int64) {
+	t.Helper()
+	if _, err := pool.Exec(ctx, `INSERT INTO fishing.wiki_guides(id,kind,status,title,category,summary,tags,aliases,owner_id,author_name,submitted_at,revision,sort_order)
+VALUES('ug_player','user','pending','玩家投稿','玩法','玩家投稿摘要','[]'::jsonb,'[]'::jsonb,$1,'Salty',clock_timestamp(),1,0)`, owner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO fishing.wiki_sections(guide_id,ordinal,heading,type,body,items) VALUES('ug_player',0,'玩家章节','p','玩家投稿内容','[]'::jsonb)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO fishing.wiki_revisions(guide_id,revision,action,actor_id,actor_name,snapshot) VALUES('ug_player',1,'submit',$1,'Salty','{}'::jsonb)`, owner); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func countRows(ctx context.Context, pool interface {
