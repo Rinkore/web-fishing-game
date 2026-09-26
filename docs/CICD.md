@@ -21,9 +21,9 @@ pwsh -File tools/release/start-release.ps1 -SameVersionRevision -Publish
 
 已有 Release 构建成功、仅部署需要重试时，可从 `main` 手动运行并勾选 `reuse_release`。流水线下载既有资产，核对标签提交、版本、迁移摘要和包 SHA-256，再进入原部署器；不重新构建或覆盖 Release。该选项独立于 `skip_tests`；同一标签提交的必要测试已通过时，可同时勾选 `skip_tests` 复用验收结果。
 
-发行包不再走 SFTP：OpenSSH 9 起的 `scp` 默认使用 SFTP 子系统，实际发生过「`Sending subsystem: sftp` 之后零字节挂起」直到 20 分钟上限才被中止的情况。现在所有 ssh/scp 调用复用同一条多路复用连接，包本体通过 SSH exec 通道按 4 MiB 分片写入 `incoming/<提交>/`，单片滞留 4 分钟即断开重连并重试一次，整体预算 15 分钟；manifest 用 `ssh … "cat > …"` 发送。传输完成后先在服务器校验包 SHA-256 才调用固定入口，已完整且校验通过的包在重跑时直接复用。该步骤逐步打印阶段耗时（形如 `… [step 42s, phase 3s]`），用于区分耗时在传输还是在部署器；部署器侧的时间主要花在优雅停服与健康检查重试窗口（默认 12 次 × 3 秒，可用 `/etc/fishing-release/config.json` 的 `health_attempts`、`health_interval` 调整，改动后需复核回滚路径）。
+发行包不再走 SFTP：OpenSSH 9 起的 `scp` 默认使用 SFTP 子系统，实际发生过「`Sending subsystem: sftp` 之后零字节挂起」直到 20 分钟上限才被中止的情况。Runner 到服务器的链路约 245 ms 延迟、约 13% 丢包，单条 TCP 流只有约 25 KB/s，所以原先「一条复用连接顺序写 4 MiB 分片」的写法每片约需三分钟，每个版本都在预算内被中止。现在只有短小的辅助命令复用多路复用连接，包本体交给 `tools/release/push-linux-package.sh`（部署 job 从本次工作流修订检出，因此重试旧标签也用当前上传器）：4 MiB 分片落在绝对偏移，每片一条独立连接并关闭 ControlMaster（多路复用会让所有通道共享同一个 TCP 窗口）；单片滞留或摘要不符只重传该片，上传前先比对两侧每片摘要，重跑只补缺片；最后由服务器整体校验归档 SHA-256 后才调用固定入口，调用方还会再校验一次。默认 8 条并行流（仓库变量 `DEPLOY_TRANSFER_STREAMS` 可调，上限 8），传输预算 20 分钟；manifest 仍用 `ssh … "cat > …"` 发送。该步骤逐步打印阶段耗时（形如 `… [step 42s, phase 3s]`），用于区分耗时在传输还是在部署器；部署器侧的时间主要花在优雅停服与健康检查重试窗口（默认 12 次 × 3 秒，可用 `/etc/fishing-release/config.json` 的 `health_attempts`、`health_interval` 调整，改动后需复核回滚路径）。
 
-若 Runner 到服务器的传输持续失败，可由操作员通过已验证的 SSH 连接，将原发布包暂存到服务器 `/var/tmp/fishing-release-<包 SHA-256>/web-fishing-game-linux-amd64.tar.gz`，供部署账号读取。流水线仅在暂存包摘要与下载验证的资产一致时复用；固定部署器会再次校验归档。部署 job 上限为 30 分钟，并启用 SSH 保活、连接复用与分阶段日志。成功后可删除本次暂存文件与空目录。
+若 Runner 到服务器的传输持续失败，可由操作员通过已验证的 SSH 连接，将原发布包暂存到服务器 `/var/tmp/fishing-release-<包 SHA-256>/web-fishing-game-linux-amd64.tar.gz`，供部署账号读取。流水线仅在暂存包摘要与下载验证的资产一致时复用；固定部署器会再次校验归档。部署 job 上限为 40 分钟（20 分钟传输预算加上单片重试与部署器时间），并启用 SSH 保活、独立传输连接与分阶段日志。成功后可删除本次暂存文件与空目录。
 
 ### 已完成本地验收，发布时不重复测试
 
