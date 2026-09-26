@@ -214,6 +214,8 @@ jobs:
           chmod 600 "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts"
           printf 'DEPLOY_SSH_HOST=%s\nDEPLOY_SSH_USER=%s\nDEPLOY_SSH_PORT=%s\nDEPLOY_ROOT=%s\n' \
             "$SSH_HOST" "$SSH_USER" "$port" "$DEPLOY_PATH" >> "$GITHUB_ENV"
+      - name: Tune the sender for the long-haul transfer path
+        run: bash tools/release/tune-lossy-path.sh
       - name: Transfer package and run the installed Linux deployer
         env:
           GH_TOKEN: ${{ github.token }}
@@ -226,12 +228,12 @@ jobs:
           # sits behind a ~245 ms, ~13% loss international path where a single
           # TCP flow collapses to roughly 25 KB/s, which is why one sequential
           # stream needed about three minutes per 4 MiB and exhausted its
-          # budget on every release. tools/release/push-linux-package.sh spreads
-          # the archive over several parallel flows instead, verifies each chunk
-          # before assembly, and resumes from the verified chunks after a
-          # failure. Transfers still avoid the SFTP subsystem: scp starts it
-          # before the first byte, so a stalled sftp-server holds the step until
-          # the wall-clock timeout kills it.
+          # budget on every release. The step above tunes the runner side of the
+          # path, and tools/release/push-linux-package.sh spreads the archive
+          # over several parallel flows, verifies every chunk and resumes from
+          # the chunks that already match. Transfers still avoid the SFTP
+          # subsystem: scp starts it before the first byte, so a stalled
+          # sftp-server holds the step until the wall-clock timeout kills it.
           options=(-i "$RUNNER_TEMP/release-ssh/key" -o BatchMode=yes -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/release-ssh/known_hosts" \
             -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \

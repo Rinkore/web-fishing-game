@@ -37,7 +37,10 @@ known_hosts=''
 local_package=''
 remote_path=''
 sha256=''
-streams=4
+# The deploy host keeps the default sshd MaxStartups (10:30:100) and every chunk
+# opens its own connection, so eight flows stay below the point where sshd starts
+# dropping unauthenticated sessions while still multiplying the per-flow rate.
+streams=8
 deadline_seconds=1200
 chunk=$((4 * 1024 * 1024))
 attempts=3

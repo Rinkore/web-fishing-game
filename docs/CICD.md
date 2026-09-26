@@ -23,6 +23,10 @@ pwsh -File tools/release/start-release.ps1 -SameVersionRevision -Publish
 
 发行包不再走 SFTP：OpenSSH 9 起的 `scp` 默认使用 SFTP 子系统，实际发生过「`Sending subsystem: sftp` 之后零字节挂起」直到 20 分钟上限才被中止的情况。Runner 到服务器的链路约 245 ms 延迟、约 13% 丢包，单条 TCP 流只有约 25 KB/s，所以原先「一条复用连接顺序写 4 MiB 分片」的写法每片约需三分钟，每个版本都在预算内被中止。现在只有短小的辅助命令复用多路复用连接，包本体交给 `tools/release/push-linux-package.sh`（部署 job 从本次工作流修订检出，因此重试旧标签也用当前上传器）：4 MiB 分片落在绝对偏移，每片一条独立连接并关闭 ControlMaster（多路复用会让所有通道共享同一个 TCP 窗口）；单片滞留或摘要不符只重传该片，上传前先比对两侧每片摘要，重跑只补缺片；最后由服务器整体校验归档 SHA-256 后才调用固定入口，调用方还会再校验一次。默认 8 条并行流（仓库变量 `DEPLOY_TRANSFER_STREAMS` 可调，上限 8），传输预算 20 分钟；manifest 仍用 `ssh … "cat > …"` 发送。该步骤逐步打印阶段耗时（形如 `… [step 42s, phase 3s]`），用于区分耗时在传输还是在部署器；部署器侧的时间主要花在优雅停服与健康检查重试窗口（默认 12 次 × 3 秒，可用 `/etc/fishing-release/config.json` 的 `health_attempts`、`health_interval` 调整，改动后需复核回滚路径）。
 
+传输前 Runner 还会尽力把发送端调成抗丢包配置：`tools/release/tune-lossy-path.sh` 打开 `fq`、`BBR` 和路径 MTU 探测。约 13% 丢包会让 CUBIC 把拥塞窗口压到约 25 KB/s，而 BBR 不把这类丢包当作拥塞，所以推送方向先调发送端是划算的；该脚本全程 `sudo -n … || true` 并打印内核实际取值，被 Runner 镜像拒绝时只记录现状，不会让发版失败。
+
+要在发版之前先量这条链路，用 **Probe Linux deploy transfer** 工作流（只支持手动触发）：填写已有版本标签，它下载并校验已发布的包，再用同一个上传器把包写进服务器 `incoming/.transfer-probe/<run>/`，结束时 `rm -rf` 掉该目录并清理临时密钥，不碰任何服务、也不调用部署器。同一个标签跑两次即可对比方向：`streams: 1` 是单流上限（实测约 25-38 KB/s），`streams: 8` 是并行聚合（实测良好时段可达数 MB/s，拥塞时段只有数百 KB/s）；两者差距大说明瓶颈是每流丢包限制而不是链路不通，若 8 条流仍然只有百 KB/s 量级，再考虑 `DEPLOY_TRANSFER_STREAMS` 与链路本身。
+
 若 Runner 到服务器的传输持续失败，可由操作员通过已验证的 SSH 连接，将原发布包暂存到服务器 `/var/tmp/fishing-release-<包 SHA-256>/web-fishing-game-linux-amd64.tar.gz`，供部署账号读取。流水线仅在暂存包摘要与下载验证的资产一致时复用；固定部署器会再次校验归档。部署 job 上限为 40 分钟（20 分钟传输预算加上单片重试与部署器时间），并启用 SSH 保活、独立传输连接与分阶段日志。成功后可删除本次暂存文件与空目录。
 
 ### 已完成本地验收，发布时不重复测试

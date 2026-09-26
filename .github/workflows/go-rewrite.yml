@@ -56,6 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n tools/release/build-linux.sh tools/release/push-linux-package.sh \
+            tools/release/tune-lossy-path.sh \
             deploy/linux/install.sh deploy/linux/deploy.sh
           node --check tools/release/migration-hash.js
           node tools/release/migration-hash.js

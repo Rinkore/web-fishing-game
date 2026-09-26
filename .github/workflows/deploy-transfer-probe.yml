@@ -1,0 +1,119 @@
+name: Probe Linux deploy transfer
+
+# What fails on a release is the transfer, not the deployer: the runner reaches
+# the release host over a ~245 ms, ~13% loss international path where a single
+# TCP flow collapses to roughly 25 KB/s, so every release used to die inside the
+# sequential upload before the deployer was ever called. This probe pushes the
+# already published package through the same uploader into a scratch directory,
+# without touching services or the deployer, so an operator can measure the link
+# (one flow shows the per-flow limit, eight show the parallel aggregate) and
+# tune DEPLOY_TRANSFER_STREAMS before the next release needs it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing release tag, for example v0.24.0
+        required: true
+        type: string
+      streams:
+        description: Parallel upload flows, 1 to 8
+        required: false
+        type: string
+        default: '8'
+      chunk-mb:
+        description: Chunk size in MiB
+        required: false
+        type: string
+        default: '4'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: linux-go
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      PROBE_STREAMS: ${{ inputs.streams }}
+      PROBE_CHUNK_MB: ${{ inputs.chunk-mb }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download and verify the published package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Expected a vX.Y.Z release tag'; exit 1; }
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern linux-release.json --pattern web-fishing-game-linux-amd64.tar.gz \
+            --dir "$RUNNER_TEMP/release"
+          cd "$RUNNER_TEMP/release"
+          sha256="$(node -e "process.stdout.write(require('./linux-release.json').sha256)")"
+          printf '%s  %s\n' "$sha256" web-fishing-game-linux-amd64.tar.gz | sha256sum --check --status
+          printf 'ASSET_SHA256=%s\n' "$sha256" >> "$GITHUB_ENV"
+      - name: Install SSH identity and validate deployment configuration
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          [[ "$SSH_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo 'Configure SSH_HOST for linux-go'; exit 1; }
+          [[ "$SSH_USER" == fishing-deploy ]] || { echo 'SSH_USER must be the dedicated fishing-deploy account'; exit 1; }
+          port="${SSH_PORT:-22}"
+          [[ "$port" =~ ^[0-9]{1,5}$ ]] && ((10#$port > 0 && 10#$port <= 65535)) || { echo 'Invalid SSH_PORT'; exit 1; }
+          [[ "$DEPLOY_PATH" =~ ^/[A-Za-z0-9_./-]+$ && "$DEPLOY_PATH" != / && "$DEPLOY_PATH" != *..* ]] || { echo 'Configure DEPLOY_PATH for linux-go'; exit 1; }
+          test -n "$SSH_KEY" && test -n "$SSH_KNOWN_HOSTS" || { echo 'Configure SSH_KEY and SSH_KNOWN_HOSTS for linux-go'; exit 1; }
+          [[ "$PROBE_STREAMS" =~ ^[0-9]+$ ]] || { echo 'streams must be a number'; exit 1; }
+          [[ "$PROBE_CHUNK_MB" =~ ^[0-9]+$ ]] || { echo 'chunk-mb must be a number'; exit 1; }
+          install -d -m 700 "$RUNNER_TEMP/release-ssh"
+          printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/release-ssh/key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/release-ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts"
+          printf 'DEPLOY_SSH_HOST=%s\nDEPLOY_SSH_USER=%s\nDEPLOY_SSH_PORT=%s\nDEPLOY_ROOT=%s\n' \
+            "$SSH_HOST" "$SSH_USER" "$port" "$DEPLOY_PATH" >> "$GITHUB_ENV"
+      - name: Tune the sender for the long-haul transfer path
+        run: bash tools/release/tune-lossy-path.sh
+      - name: Upload the published package into the probe directory
+        run: |
+          set -euo pipefail
+          # The probe never calls the deployer and never writes outside its own
+          # run directory, so it is safe to repeat while investigating the link.
+          probe="$DEPLOY_ROOT/incoming/.transfer-probe/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          printf 'PROBE_DIR=%s\n' "$probe" >> "$GITHUB_ENV"
+          started=$(date -u +%s)
+          bash tools/release/push-linux-package.sh \
+            --host "$DEPLOY_SSH_HOST" --port "$DEPLOY_SSH_PORT" --user "$DEPLOY_SSH_USER" \
+            --key "$RUNNER_TEMP/release-ssh/key" --known-hosts "$RUNNER_TEMP/release-ssh/known_hosts" \
+            --control-path "$RUNNER_TEMP/release-ssh/control" \
+            --local "$RUNNER_TEMP/release/web-fishing-game-linux-amd64.tar.gz" \
+            --remote "$probe/web-fishing-game-linux-amd64.tar.gz" \
+            --sha256 "$ASSET_SHA256" \
+            --streams "$PROBE_STREAMS" --chunk-bytes "$((PROBE_CHUNK_MB * 1048576))" \
+            --deadline 1200
+          printf 'Probe moved the package in %ss.\n' "$(( $(date -u +%s) - started ))"
+      - name: Remove the probe package and the temporary SSH identity
+        if: always()
+        run: |
+          set -euo pipefail
+          control="$RUNNER_TEMP/release-ssh/control"
+          if [[ -n "${DEPLOY_SSH_HOST:-}" && -n "${PROBE_DIR:-}" && -f "$RUNNER_TEMP/release-ssh/key" ]]; then
+            timeout 120 ssh -i "$RUNNER_TEMP/release-ssh/key" -o BatchMode=yes -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/release-ssh/known_hosts" \
+              -o "ControlPath=$control" -p "$DEPLOY_SSH_PORT" "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST" \
+              "rm -rf -- '$PROBE_DIR' && rmdir --ignore-fail-on-non-empty -- '$(dirname -- "$PROBE_DIR")'" \
+              >/dev/null 2>&1 || echo 'Could not remove the remote probe directory; remove it manually.'
+          fi
+          timeout 15 ssh -o "ControlPath=$control" -O exit "${DEPLOY_SSH_USER:-fishing-deploy}@${DEPLOY_SSH_HOST:-localhost}" >/dev/null 2>&1 || true
+          rm -f -- "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts" "$control"
