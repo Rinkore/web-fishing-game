@@ -23,7 +23,7 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
 }
 #harbor[hidden] { display: none; }
 
-/* ---------- 场景区（阶段 A 纯色占位；目录与内景面板都叠在它上面） ---------- */
+/* ---------- 场景区（阶段 B：画布 + 建筑热区；目录 / 罗盘 / 内景面板都叠在它上面） ---------- */
 .h-stage { flex: 1 1 auto; min-height: 120px; position: relative; }
 .h-scene {
   position: absolute; inset: 0;
@@ -32,7 +32,6 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
   background: linear-gradient(180deg, #0d2138 0%, #123055 55%, #0a1b30 100%);
   box-shadow: inset 0 0 0 3px rgba(0, 0, 0, .35);
 }
-.h-scene-note { margin: 0; padding: 10px 12px; text-align: center; font-size: 12px; color: var(--df-muted, #9db4cc); }
 /* 进入内景后收起占位场景，把高度让给内景面板 */
 #harbor:not(.home) .h-scene { display: none; }
 
@@ -111,8 +110,6 @@ html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animati
   background: var(--px-panel-solid, #0f243c); overflow: hidden;
 }
 .h-dir-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-/* 首页本身就是目录，不需要「返回港湾」这颗按钮 */
-#harbor.home .h-mini { display: none; }
 
 /* 目录里的导航就是真正的 #nav（含后台排序、红标、锁定态），这里只把它从
    桌面侧栏 / 手机底栏改成纵向列表；手机的分组折叠（.nav-more / .nav-sheet）在目录里不需要。 */
@@ -136,6 +133,88 @@ html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animati
   .h-stage { min-height: 0; }
   .h-hud-bottom { flex-wrap: wrap; }
   .h-cast { order: -1; flex: 1 1 100%; }
+  /* 状态块排成一行横向滑动：换成三行会把场景挤掉一大截；金币块已排在最前（pixel.css order） */
+  .h-hud-id .player-status { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .h-hud-id .player-status::-webkit-scrollbar { display: none; }
+  .h-hud-id .player-status .meta { flex: none; min-height: 40px; }
   .h-overlay { align-items: stretch; border-radius: 10px; }
   .h-sheet { flex: 1 1 auto; max-width: none; max-height: none; }
+}
+
+/* ============================================================
+   阶段 B：港湾场景、建筑热区、罗盘、告示板
+   ============================================================ */
+.h-scene { overflow: hidden; background: #070f24; }
+/* 画布按整数倍缩放（js/harbor.js layoutScene）：桌面居中放整幅，手机横向滑动浏览全景 */
+.h-pan { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.h-scene.h-phone .h-pan { justify-content: flex-start; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; }
+.h-scene.h-phone .h-pan::-webkit-scrollbar { display: none; }
+.h-world { position: relative; flex: none; }
+.h-world canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+
+/* 热区是透明按钮：pixel.css 给所有 button 加了带 !important 的描边、底色与按压阴影，这里必须同样收回 */
+.h-hot { position: absolute; padding: 0; background: transparent !important; border: 2px dashed transparent !important; filter: none !important; cursor: pointer; touch-action: manipulation; box-shadow: none !important; transform: none !important; }
+.h-hot:focus-visible { border-color: rgba(255, 210, 62, .85) !important; outline: none; }
+.h-sign {
+  position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%);
+  white-space: nowrap; pointer-events: none; transition: transform .12s;
+  font-family: var(--px-font); font-size: 12px; line-height: 1.5; color: #ffe9a8;
+  background: #3a2618; border: 2px solid #8a5a34; box-shadow: 0 3px 0 rgba(0, 0, 0, .5); padding: 0 7px;
+}
+.h-sign::before { content: ''; position: absolute; left: 50%; top: 100%; width: 2px; height: 5px; background: #8a5a34; }
+.h-hot:hover .h-sign, .h-hot:focus-visible .h-sign { transform: translateX(-50%) translateY(-2px); border-color: var(--px-gold, #ffd23e); color: #fff; }
+/* 栈桥热区从码头边开始，招牌放到桥面上，不压住集市摊位 */
+.h-hot.h-primary .h-sign { bottom: auto; top: 34%; left: 62%; background: #0f5f52; border-color: var(--accent, #34e0c0); color: #eafff9; }
+.h-hot.h-primary .h-sign::before { display: none; }
+.h-hot.locked .h-sign { background: #2a2f3a; border-color: #5b6475; color: #aab4c4; }
+.h-badge {
+  position: absolute; top: -9px; right: -10px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  background: var(--danger, #f87171); color: #fff; font: 12px/20px var(--px-font); font-style: normal; text-align: center;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .5); pointer-events: none; animation: h-pulse 1.6s ease-in-out infinite;
+}
+@keyframes h-pulse { 50% { transform: scale(1.15); } }
+html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animation: none; }
+@media (prefers-reduced-motion: reduce) { .h-badge { animation: none; } }
+
+/* 罗盘：按后台菜单顺序排一圈，数字键 1–9、0 */
+.h-compass { background: rgba(4, 12, 22, .66); }
+.h-ring {
+  position: relative; width: min(420px, 94vw, 94%); aspect-ratio: 1; border-radius: 50%;
+  border: 4px solid var(--px-line-hi, #48709c);
+  background: radial-gradient(circle, rgba(16, 31, 54, .97) 56%, rgba(16, 31, 54, .78));
+  box-shadow: 0 0 0 6px rgba(0, 0, 0, .3);
+}
+.h-needle {
+  position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; transform: translate(-50%, -50%);
+  display: grid; place-content: center; text-align: center; border-radius: 50%;
+  border: 3px solid var(--px-gold, #ffd23e); background: #0b1a2e; color: var(--px-gold, #ffd23e);
+  font-family: var(--px-font); font-size: 12px; line-height: 1.4;
+}
+.h-needle small { font-size: 12px; color: var(--df-muted, #9db4cc); }
+.h-cmp-item {
+  position: absolute; width: 66px; height: 58px; margin: -29px 0 0 -33px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: #0f243c; border: 3px solid var(--px-line, #2c4f74) !important; color: #fff;
+  font-family: var(--px-font); font-size: 12px; cursor: pointer;
+}
+.h-cmp-item img, .h-board-item img { width: 24px; height: 24px; image-rendering: pixelated; }
+.h-cmp-item kbd { position: absolute; top: 0; left: 3px; font: 12px var(--px-font); color: var(--df-muted, #9db4cc); }
+.h-cmp-item:hover, .h-cmp-item:focus-visible { border-color: var(--px-gold, #ffd23e) !important; background: #1a3558; outline: none; }
+.h-cmp-item.locked, .h-board-item.locked { opacity: .5; }
+.h-cmp-item .h-badge { top: -9px; right: -9px; }
+
+/* 告示板：四个低频入口 */
+.h-board-sheet { max-width: 460px; flex: 0 1 auto; }
+.h-board-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--px-font); font-size: 12px; color: var(--px-gold, #ffd23e); }
+.h-board-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.h-board-item {
+  position: relative; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 8px 10px;
+  background: #0f243c; border: 3px solid var(--px-line, #2c4f74) !important; color: #fff;
+  font-family: var(--px-font); font-size: 12px; cursor: pointer; text-align: left;
+}
+.h-board-item:hover, .h-board-item:focus-visible { border-color: var(--px-gold, #ffd23e) !important; outline: none; }
+.h-board-item .h-badge { top: -8px; right: -8px; }
+.h-sheet .h-mini { align-self: flex-end; }
+@media (max-width: 640px) {
+  .h-board-sheet { align-self: center; flex: 0 0 auto; }
 }

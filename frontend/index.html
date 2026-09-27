@@ -50,8 +50,8 @@
   </div>
 
   <!-- 港湾界面外壳（设计稿 v2 · 阶段 A）。默认隐藏；「⚙ 设置 → 界面风格」选「港湾」后启用。
-       阶段 A 交付：HUD、内景面板（承载既有页面，原有 render* 不改）、目录列表模式、路由与设置；
-       场景美术 / 建筑热区 / 罗盘属于阶段 B，见 output/design-review/redesign/v2/index.html §13。
+       阶段 A：HUD、内景面板（承载既有页面，原有 render* 不改）、目录列表模式、路由与设置；
+       阶段 B：港湾场景、建筑热区、罗盘与告示板。见 output/design-review/redesign/v2/index.html §13。
        注意：#nav 与 #main 由 js/harbor.js 在两种外壳之间搬移，不要在别处缓存它们的父节点。 -->
   <div id="harbor" class="harbor" hidden>
     <div class="h-hud h-hud-top">
@@ -59,11 +59,19 @@
       <button class="h-timechip" id="h-tchip" type="button" aria-label="港湾时间，打开设置"><span class="h-ticon">🌙</span><span class="h-tlabel">--:--</span></button>
     </div>
 
-    <!-- 场景区：阶段 A 是纯色占位，目录（列表模式）与内景面板都叠在它上面，
-         HUD 在上下两条，不会互相遮挡。 -->
+    <!-- 场景区（阶段 B）：js/harbor.js 在 #h-scene 里放入港湾画布（js/harbor-art.js 绘制）与建筑热区按钮。
+         目录（列表模式）、罗盘、告示板与内景面板都叠在它上面；HUD 在上下两条，不会互相遮挡。 -->
     <div class="h-stage" id="h-stage">
-      <div class="h-scene" id="h-scene">
-        <p class="h-scene-note">🌊 港湾场景将在阶段 B 接入（阶段 A 先交付外壳与内景面板）</p>
+      <div class="h-scene" id="h-scene"></div>
+
+      <div class="h-overlay h-compass" id="h-compass" role="dialog" aria-label="罗盘：快速前往" hidden>
+        <div class="h-ring" id="h-ring"><div class="h-needle" aria-hidden="true">罗盘<br><small>Esc 关闭</small></div></div>
+      </div>
+      <div class="h-overlay" id="h-board" role="dialog" aria-labelledby="h-board-title" hidden>
+        <div class="h-sheet h-board-sheet">
+          <div class="h-board-head"><b id="h-board-title">📜 告示板</b><button class="h-mini" id="h-board-close" type="button">✕ 关闭</button></div>
+          <div class="h-board-body" id="h-board-body"></div>
+        </div>
       </div>
 
       <!-- 目录与内景面板都不锁 HUD（设计稿里 HUD 始终可用），所以不加 aria-modal。 -->
@@ -91,6 +99,7 @@
       <button class="h-btn" id="h-set" type="button">⚙<span>设置</span></button>
       <button class="h-cast" id="h-cast" type="button">🎣 出海钓鱼<small id="h-cast-sub"></small></button>
       <button class="h-btn" id="h-bag" type="button">🎒<span>背包</span></button>
+      <button class="h-btn" id="h-compass-btn" type="button" aria-haspopup="dialog" aria-controls="h-compass" aria-keyshortcuts="C">🧭<span>罗盘</span></button>
     </div>
   </div>
 
@@ -135,6 +144,7 @@
   <script src="js/mail.js?v=0.26.0" defer></script>
   <script src="js/house.js?v=0.26.0" defer></script>
   <script src="js/ui.js?v=0.26.0" defer></script>
+  <script src="js/harbor-art.js?v=0.26.0" defer></script>
   <script src="js/harbor.js?v=0.26.0" defer></script>
   <script>
     window.addEventListener('DOMContentLoaded', function () {

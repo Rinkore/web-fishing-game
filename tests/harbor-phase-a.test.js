@@ -65,13 +65,16 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     check('目录直接复用 renderNav 的 #nav（含后台排序与红标）', await page.evaluate(() => document.getElementById('nav').parentElement.id === 'h-dir-body' && document.querySelectorAll('#h-dir-body .nav-item[data-feature]').length >= 10));
     check('#player-status 搬进港湾 HUD', await page.evaluate(() => document.getElementById('player-status').parentElement.id === 'h-status'));
     check('时间牌显示当前时段的图标与时间', await page.evaluate(() => /🌅|☀️|🌇|🌙/.test(document.querySelector('#h-tchip .h-ticon').textContent) && /\d{2}:\d{2}/.test(document.querySelector('#h-tchip .h-tlabel').textContent)));
-    check('港湾首页停在目录（内景面板未打开）', await page.evaluate(() => document.getElementById('h-panel').hidden && !document.getElementById('h-dirbox').hidden));
+    // 阶段 B 起港湾首页是场景本身，目录（列表模式）改由 ☰ / L 打开
+    check('港湾首页是场景：目录收起、内景面板未打开', await page.evaluate(() => document.getElementById('h-panel').hidden && document.getElementById('h-dirbox').hidden && getComputedStyle(document.getElementById('h-scene')).display !== 'none'));
+    await page.click('#h-dir');
+    check('☰ 打开目录', await page.evaluate(() => !document.getElementById('h-dirbox').hidden));
     // 目录是叠在场景上的浮层，HUD 是上下两条独立区域：两者不能互相遮挡，
     // 否则港湾首页点不到「出海钓鱼 / 背包」（这正是重构前踩到的坑）。
     check('港湾首页：目录打开时 HUD 仍可点', await page.evaluate(() => {
       const c = document.getElementById('h-cast').getBoundingClientRect();
       const top = document.elementFromPoint(c.x + c.width / 2, c.y + c.height / 2);
-      const sheet = document.querySelector('.h-sheet').getBoundingClientRect();
+      const sheet = document.querySelector('#h-dirbox .h-sheet').getBoundingClientRect();
       return !!(top && top.closest && top.closest('#h-cast')) && sheet.top >= document.querySelector('.h-hud-top').getBoundingClientRect().bottom - 1;
     }));
 
@@ -82,7 +85,7 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     check('进入内景会同步哈希路由', await page.evaluate(() => location.hash === '#/workshop'));
 
     await page.click('#h-back');
-    check('「回港湾」收起面板并恢复目录', await page.evaluate(() => document.getElementById('h-panel').hidden && !document.getElementById('h-dirbox').hidden && location.hash === '#/'));
+    check('「回港湾」收起面板并回到场景', await page.evaluate(() => document.getElementById('h-panel').hidden && document.getElementById('h-dirbox').hidden && getComputedStyle(document.getElementById('h-scene')).display !== 'none' && location.hash === '#/'));
 
     await page.evaluate(() => { location.hash = '#/inventory'; });
     await page.waitForFunction(() => !document.getElementById('h-panel').hidden).catch(() => {});

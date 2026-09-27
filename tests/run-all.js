@@ -19,7 +19,7 @@ const ROOT = path.join(__dirname, '..');
 const NODE = process.execPath;
 
 // 套件清单：全部为前端渲染回归，互不占用端口
-const ALL_SUITES = ['mail-admin', 'admin-interactions', 'admin-growth-ui', 'admin-pool-import', 'desktop-zoom', 'expedition', 'fishing-overlay', 'harbor-phase-a', 'inventory-pagination', 'mobile-layout', 'scene-performance', 'settings', 'smelt-workbench', 'social-friends', 'workshop-market-regression'];
+const ALL_SUITES = ['mail-admin', 'admin-interactions', 'admin-growth-ui', 'admin-pool-import', 'desktop-zoom', 'expedition', 'fishing-overlay', 'harbor-phase-a', 'harbor-phase-b', 'inventory-pagination', 'mobile-layout', 'scene-performance', 'settings', 'smelt-workbench', 'social-friends', 'workshop-market-regression'];
 const ONLY = (process.env.FISHING_TEST_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
 const SUITES = ONLY.length ? ALL_SUITES.filter(s => ONLY.indexOf(s) >= 0) : ALL_SUITES;
 

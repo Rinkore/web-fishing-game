@@ -923,6 +923,8 @@ window.UI = (function () {
       nav.appendChild(sheet);
     }
     revealActiveNav();
+    // 港湾场景的建筑徽标读的是刚画好的 #nav，所以要在重建之后再通知一次（开头那次只管外壳接管）
+    harborHook('syncScene');
   }
   function revealActiveNav() {
     const nav = $('nav');
