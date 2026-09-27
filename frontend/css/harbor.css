@@ -73,7 +73,7 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
   animation: h-panel-in 220ms ease-out;
 }
 .h-panel[hidden] { display: none; }
-@keyframes h-panel-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes h-panel-in { from { opacity: 0; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: none; } }
 html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animation: none; }
 @media (prefers-reduced-motion: reduce) { .h-panel { animation: none; } }
 .h-plank {
@@ -131,8 +131,10 @@ html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animati
 @media (max-width: 640px) {
   #harbor { padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); gap: 8px; }
   .h-stage { min-height: 0; }
-  .h-hud-bottom { flex-wrap: wrap; }
-  .h-cast { order: -1; flex: 1 1 100%; }
+  /* 设计稿 §9：底部一行 ☰ ⚙ · 🎣 · 🎒 🧭，cast 居中拉伸，四个导航按钮固定宽度 */
+  .h-hud-bottom { flex-wrap: nowrap; }
+  .h-btn { flex: 0 0 auto; min-width: 44px; padding: 6px 6px; }
+  .h-cast { flex: 1 1 auto; }
   /* 状态块排成一行横向滑动：换成三行会把场景挤掉一大截；金币块已排在最前（pixel.css order） */
   .h-hud-id .player-status { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .h-hud-id .player-status::-webkit-scrollbar { display: none; }
