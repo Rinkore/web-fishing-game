@@ -33,8 +33,9 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     }
 
     await load();
-    check('默认界面风格是经典：不接管外壳', await page.evaluate(() => !document.body.classList.contains('harbor-on') && document.getElementById('harbor').hidden));
-    check('设置项「界面风格」默认经典', await page.evaluate(() => PlayerSettings.get().theme === 'classic'));
+    // 阶段 E：港湾成为默认界面风格，经典侧栏改为「设置 → 界面风格」里的保留项
+    check('默认界面风格是港湾：登录后接管外壳', await page.evaluate(() => document.body.classList.contains('harbor-on') && !document.getElementById('harbor').hidden));
+    check('设置项「界面风格」默认港湾', await page.evaluate(() => PlayerSettings.get().theme === 'harbor'));
     check('评审默认时段 05:00 / 07:30 / 17:30 / 19:30', await page.evaluate(() => {
       const p = HarborShell.defaults.periods;
       return p.dawn === '05:00' && p.day === '07:30' && p.dusk === '17:30' && p.night === '19:30';

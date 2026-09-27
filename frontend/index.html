@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="css/fishing.css?v=0.26.0" />
   <link rel="stylesheet" href="css/responsive.css?v=0.26.0" />
   <link rel="stylesheet" href="css/mobile.css?v=0.26.0" />
-  <!-- 港湾外壳（设计稿 v2 · 阶段 A）：放在最后，用来覆盖 responsive/mobile 对 .nav 的横排与底栏规则 -->
+  <!-- 港湾外壳（设计稿 v2 · 阶段 A–E）：放在最后，用来覆盖 responsive/mobile 对 .nav 的横排与底栏规则 -->
   <link rel="stylesheet" href="css/harbor.css?v=0.26.0" />
   <script src="js/settings.js?v=0.26.0" defer></script>
 </head>
@@ -49,9 +49,11 @@
     <main id="main" class="content"></main>
   </div>
 
-  <!-- 港湾界面外壳（设计稿 v2 · 阶段 A）。默认隐藏；「⚙ 设置 → 界面风格」选「港湾」后启用。
+  <!-- 港湾界面外壳（设计稿 v2 · 阶段 A–E）。阶段 E 起港湾是默认界面风格；
+       「⚙ 设置 → 界面风格」仍可切回经典侧栏。
        阶段 A：HUD、内景面板（承载既有页面，原有 render* 不改）、目录列表模式、路由与设置；
-       阶段 B：港湾场景、建筑热区、罗盘与告示板。见 output/design-review/redesign/v2/index.html §13。
+       阶段 B：港湾场景、建筑热区、罗盘与告示板；C：时段设置；D：手机布局（横向全景 / 罗盘首页）；E：港湾默认。
+       见 output/design-review/redesign/v2/index.html §13。
        注意：#nav 与 #main 由 js/harbor.js 在两种外壳之间搬移，不要在别处缓存它们的父节点。 -->
   <div id="harbor" class="harbor" hidden>
     <div class="h-hud h-hud-top">
@@ -60,9 +62,16 @@
     </div>
 
     <!-- 场景区（阶段 B）：js/harbor.js 在 #h-scene 里放入港湾画布（js/harbor-art.js 绘制）与建筑热区按钮。
-         目录（列表模式）、罗盘、告示板与内景面板都叠在它上面；HUD 在上下两条，不会互相遮挡。 -->
+         目录（列表模式）、罗盘、告示板与内景面板都叠在它上面；HUD 在上下两条，不会互相遮挡。
+         阶段 D：#h-home 是手机罗盘首页布局（js/harbor.js 在 .h-compass-home 时显示） -->
     <div class="h-stage" id="h-stage">
       <div class="h-scene" id="h-scene"></div>
+
+      <!-- 罗盘首页（阶段 D · 手机布局：条带 + 地点磁贴网格） -->
+      <div class="h-home" id="h-home" aria-label="罗盘首页">
+        <canvas class="h-strip" id="h-strip" width="480" height="120" aria-hidden="true"></canvas>
+        <div class="h-home-tiles" id="h-home-tiles"></div>
+      </div>
 
       <div class="h-overlay h-compass" id="h-compass" role="dialog" aria-label="罗盘：快速前往" hidden>
         <div class="h-ring" id="h-ring"><div class="h-needle" aria-hidden="true">罗盘<br><small>Esc 关闭</small></div></div>

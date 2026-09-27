@@ -1,8 +1,10 @@
 /*
- * DeepFish 港湾外壳（设计稿 v2 · 阶段 A + B）
+ * DeepFish 港湾外壳（设计稿 v2 · 阶段 A–E）
  * 阶段 A：HUD、内景面板（承载既有 #main，render* 不改）、目录列表模式、路由与设置。
  * 阶段 B：港湾场景（画面见 js/harbor-art.js）、建筑热区与状态、罗盘、告示板、C / 数字快捷键。
- * 时段设置（阶段 C）与内景精修 / 手机布局选项（阶段 D）尚未接入。
+ * 阶段 C：时段设置（跟随时钟 / 固定模式 / 时段编辑器 / 混合过渡）。
+ * 阶段 D：手机布局选项（横向全景 / 罗盘首页 / 自动）、bug 修复。
+ * 阶段 E：港湾成为默认界面风格；经典侧栏作为设置保留，不再是默认。
  * 设计稿见 output/design-review/redesign/v2/index.html §13；本文件只做「外壳」，
  * 页面内容一律仍由 ui.js 的 render* 渲染，二者通过 ui.js 的 harborHook / UI.openView 通信。
  */
@@ -11,8 +13,8 @@ window.HarborShell = (function () {
   const D = window.GameData;
   // v2 评审（2026-09-27）定稿的默认值 —— 阶段 B/C/D 一律从这里取，不要再各处写字面量。
   const DEFAULTS = {
-    theme: 'classic',        // 阶段 A–D 默认经典；阶段 E 才默认港湾
-    timeMode: 'clock',       // 跟随本地时间（固定模式由玩家显式切换）
+    theme: 'harbor',           // 阶段 E：港湾成为默认；经典侧栏作为设置保留
+    timeMode: 'clock',         // 跟随本地时间（固定模式由玩家显式切换）
     periods: { dawn: '05:00', day: '07:30', dusk: '17:30', night: '19:30' },
     blend: 45,               // 过渡时长（分钟），以每个时段开始时间为中心
     fixed: 'night',          // 切到固定模式时的默认时段
@@ -36,13 +38,15 @@ window.HarborShell = (function () {
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
   // ---- 时段表（评审默认值；阶段 C 起改由玩家设置覆盖）----
-  function starts() { return ORDER.map(function (id) { return toMin(DEFAULTS.periods[id]); }); }
+  // 时段与过渡一律取自 artSettings()：HUD 时间牌和画面必须读同一份设置，
+  // 否则玩家在设置里改完时段，画面换了、时间牌还停在默认值。
+  function starts() { const c = artSettings(); return ORDER.map(function (id) { return toMin(c.periods[id]); }); }
   // 给定当天分钟数，返回所处时段；过渡窗口以每个时段开始时间为中心（blend / 2 分钟）。
   // 返回 { id, name, icon, minute, startMin, blend: [fromId, toId] | null }。
   function periodAt(minute) {
     const m = ((Math.round(minute) % 1440) + 1440) % 1440;
     const st = starts();
-    const half = DEFAULTS.blend / 2;
+    const half = artSettings().blend / 2;
     let idx = ORDER.length - 1;                       // 凌晨落在「夜晚」（19:30 → 次日 05:00）
     for (let i = 0; i < ORDER.length; i++) if (m >= st[i]) idx = i;
     let blend = null;
@@ -92,11 +96,23 @@ window.HarborShell = (function () {
   // ---- HUD ----
   function paintTime() {
     if (!els || !els.ticon) return;
-    const info = nowInfo();
-    els.ticon.textContent = info.icon;
-    els.tlabel.textContent = label(info);
-    els.tchip.setAttribute('aria-label', '港湾时间：' + label(info) + '，打开设置');
-    els.tchip.setAttribute('title', '港湾时间：' + info.icon + ' ' + info.name + '（阶段 C 起可自定义时段与过渡）');
+    const ps = window.PlayerSettings && PlayerSettings.get ? PlayerSettings.get() : {};
+    const fixed = ps.timeMode && ps.timeMode !== 'clock' ? ps.timeMode : null;
+    let icon, text, ariaLabel;
+    if (fixed) {
+      icon = META[fixed].icon;
+      text = '固定' + META[fixed].name;
+      ariaLabel = '港湾时间：固定' + META[fixed].name + '，打开设置';
+    } else {
+      const info = nowInfo();
+      icon = info.icon;
+      text = label(info);
+      ariaLabel = '港湾时间：' + label(info) + '，打开设置';
+    }
+    els.ticon.textContent = icon;
+    els.tlabel.textContent = text;
+    els.tchip.setAttribute('aria-label', ariaLabel);
+    els.tchip.setAttribute('title', ariaLabel);
   }
   function syncHud() {
     if (!els || !on) return;
@@ -195,7 +211,14 @@ window.HarborShell = (function () {
     state: null, stateSig: '', hover: null, scale: 0, lastFrame: 0, lastStill: 0, phone: false };
 
   function art() { return window.HarborArt; }
-  function artSettings() { return { periods: DEFAULTS.periods, blend: DEFAULTS.blend }; }
+  function artSettings() {
+    const ps = window.PlayerSettings && PlayerSettings.get ? PlayerSettings.get() : {};
+    const A = art();
+    const periods = (ps.periods && A && !A.validPeriods({ periods: ps.periods, blend: ps.blend != null ? ps.blend : DEFAULTS.blend }))
+      ? ps.periods : DEFAULTS.periods;
+    const blend = (ps.blend != null && [0, 30, 45, 60].indexOf(+ps.blend) >= 0) ? +ps.blend : DEFAULTS.blend;
+    return { periods: periods, blend: blend };
+  }
   function motionOff() { const ps = window.PlayerSettings; const m = ps && ps.motion ? ps.motion() : 'full'; return m === 'reduced' || m === 'off'; }
   function navItem(view) { return els && els.nav ? els.nav.querySelector('.nav-item[data-feature="' + view + '"]') : null; }
   // 徽标一律读 renderNav 已经画好的 #nav：红点规则（好友申请 / 订阅 / 邮件…）只在 ui.js 里写一份
@@ -289,9 +312,17 @@ window.HarborShell = (function () {
   function toastMsg(t) { if (window.UI && UI.toast) UI.toast(t); }
   function layoutScene() {
     if (!scene.built || !on) return;
-    const A = art(), r = els.scene.getBoundingClientRect();
+    const A = art();
+    // 量宿主 #h-stage 而不是 #h-scene：罗盘首页与内景面板都会把 #h-scene 设成 display:none，
+    // 那时量它只会拿到 0×0 而在开头就 return，手机 ↔ 桌面切换再也不会重新布局。
+    const r = (els.stage || els.scene).getBoundingClientRect();
     if (!r.width || !r.height) return;
     scene.phone = r.width <= 640;
+    const ps = window.PlayerSettings && PlayerSettings.get ? PlayerSettings.get() : {};
+    const motion = window.PlayerSettings && PlayerSettings.motion ? PlayerSettings.motion() : 'full';
+    // 罗盘首页：手机布局设为「compass」，或「auto」且动效关闭/减少（省电）
+    const wantCompass = scene.phone && (ps.mobile === 'compass' || (ps.mobile !== 'panorama' && (motion === 'reduced' || motion === 'off')));
+    els.root.classList.toggle('h-compass-home', wantCompass);
     // 只用整数倍缩放（像素不糊）。手机按高度取倍数、横向滑动浏览全景；桌面整幅放得下为准。
     const s = scene.phone ? Math.max(1, Math.floor(r.height / A.H)) : Math.max(1, Math.floor(Math.min(r.width / A.W, r.height / A.H)));
     const first = !scene.scale;
@@ -300,7 +331,15 @@ window.HarborShell = (function () {
       scene.world.style.width = A.W * s + 'px'; scene.world.style.height = A.H * s + 'px';
     }
     els.scene.classList.toggle('h-phone', scene.phone);
-    if (scene.phone && (first || scene.pan.scrollLeft === 0)) scene.pan.scrollLeft = Math.max(0, (A.W * s - r.width) * 0.52);
+    if (scene.phone && !wantCompass && (first || scene.pan.scrollLeft === 0)) scene.pan.scrollLeft = Math.max(0, (A.W * s - r.width) * 0.52);
+    // 罗盘首页：把场景条带画进 #h-strip（如果存在）
+    if (wantCompass && els.strip && scene.cv) {
+      const sc = els.strip.getContext('2d');
+      sc.imageSmoothingEnabled = false;
+      sc.clearRect(0, 0, els.strip.width, els.strip.height);
+      // 截取场景中段 (y=60..180) 作为条带
+      sc.drawImage(scene.cv, 0, 60, A.W, 120, 0, 0, els.strip.width, els.strip.height);
+    }
   }
   function refreshScene() {
     if (!scene.built) return;
@@ -318,12 +357,22 @@ window.HarborShell = (function () {
       else if (bd) bd.remove();
       b.setAttribute('aria-label', PLACES[id].name + '：' + PLACES[id].desc + (st ? '。' + st : '') + (badge && !lk ? '（有 ' + badge + ' 条提醒）' : ''));
     });
+    buildHomeTiles();
     drawScene(performance.now(), true);
   }
   function drawScene(ts, force) {
     const A = art(); if (!A || !scene.state) return;
-    const d = new Date(), m = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
-    const pal = A.paletteAt(m, artSettings());
+    const as = artSettings();
+    const ps = window.PlayerSettings && PlayerSettings.get ? PlayerSettings.get() : {};
+    const fixed = ps.timeMode && ps.timeMode !== 'clock' ? ps.timeMode : null;
+    let m, pal;
+    if (fixed) {
+      m = A.sampleMinute(fixed, as);
+      pal = { P: A.PAL[fixed], period: fixed, key: fixed };
+    } else {
+      const d = new Date(); m = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+      pal = A.paletteAt(m, as);
+    }
     const key = pal.key + '|' + scene.stateSig;
     if (key !== scene.layerKey) { scene.layers = A.makeLayers(pal.P, scene.state); scene.layerKey = key; force = true;
       // 画布外的留白用同一时段的天空 / 海面色补齐，桌面整数倍缩放放不满时不会露出一圈黑边
@@ -333,7 +382,7 @@ window.HarborShell = (function () {
     // 减少 / 关闭动效：只在状态或时段变了、或每 20 秒（日月位置）重画一帧
     if (still && !force && ts - scene.lastStill < 20000) return;
     if (still) scene.lastStill = ts;
-    A.drawFrame(scene.ctx, scene.layers, pal.P, scene.state, still ? 0 : ts / 1000, m, artSettings(), scene.hover);
+    A.drawFrame(scene.ctx, scene.layers, pal.P, scene.state, still ? 0 : ts / 1000, m, as, scene.hover);
   }
   function sceneLoop(ts) {
     requestAnimationFrame(sceneLoop);
@@ -341,9 +390,30 @@ window.HarborShell = (function () {
     if (!on || document.hidden || statePlace || ts - scene.lastFrame < 83) return;
     scene.lastFrame = ts;
     drawScene(ts, !!scene.hover);
+    // 罗盘首页：每帧把场景条带刷进 #h-strip
+    if (els.root && els.root.classList.contains('h-compass-home') && els.strip && scene.cv) {
+      const A = art(), sc = els.strip.getContext('2d');
+      sc.imageSmoothingEnabled = false;
+      sc.clearRect(0, 0, els.strip.width, els.strip.height);
+      sc.drawImage(scene.cv, 0, 60, A.W, 120, 0, 0, els.strip.width, els.strip.height);
+    }
   }
 
-  // ---- 罗盘：快速前往（C 键 / HUD 🧭）----
+  // ---- 罗盘首页磁贴（阶段 D：手机罗盘首页布局） ----
+  function buildHomeTiles() {
+    const tiles = els.homeTiles; if (!tiles) return;
+    tiles.innerHTML = '';
+    menuIds().forEach(function (id) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'h-home-tile' + (navLocked(id) ? ' locked' : '');
+      const badge = navBadge(id), status = placeStatus(id, scene.state || {});
+      b.innerHTML = navIcon(id) + '<span class="h-home-name">' + placeName(id) + '</span>' +
+        (status ? '<span class="h-home-status">' + status + '</span>' : '') +
+        (badge && !navLocked(id) ? '<i class="h-badge">' + badge + '</i>' : '');
+      b.setAttribute('aria-label', placeName(id) + (status ? '，' + status : '') + (badge && !navLocked(id) ? '，有 ' + badge + ' 条提醒' : '') + (navLocked(id) ? '，暂未开放' : ''));
+      b.addEventListener('click', function () { enterPlace(id, b); });
+      tiles.appendChild(b);
+    });
+  }
   // 条目与数字键顺序都按后台 featureOrder.menu（与目录一致），WIKI 仍新开标签。
   function menuIds() {
     const st = (window.Engine && window.Engine.state) || {};
@@ -435,7 +505,8 @@ window.HarborShell = (function () {
     moveTo(els.main, els.pbody);
     moveTo(els.status, els.statusSlot);
     buildScene();
-    if (changed) requestAnimationFrame(layoutScene);
+    // 设置变化（手机布局 / 动效 / 界面风格）也要立刻重排，不能等到下一次 resize
+    requestAnimationFrame(layoutScene);
     refreshScene();
     paintTime();
     syncHud();
@@ -447,12 +518,15 @@ window.HarborShell = (function () {
     if (els) return;
     els = {
       root: $('harbor'), scene: $('h-scene'), nav: $('nav'), main: $('main'), status: $('player-status'),
+      stage: $('h-stage'),
       statusSlot: $('h-status'), tchip: $('h-tchip'), ticon: document.querySelector('#h-tchip .h-ticon'),
       tlabel: document.querySelector('#h-tchip .h-tlabel'), cast: $('h-cast'), castSub: $('h-cast-sub'),
       dir: $('h-dir'), set: $('h-set'), bag: $('h-bag'), panel: $('h-panel'), back: $('h-back'),
       close: $('h-close'), title: $('h-p-title'), crumb: $('h-p-crumb'), pbody: $('h-pbody'),
       dirbox: $('h-dirbox'), dirClose: $('h-dir-close'), dirBody: $('h-dir-body'),
-      compassBtn: $('h-compass-btn'), compass: $('h-compass'), ring: $('h-ring'), board: $('h-board'), boardBody: $('h-board-body'), boardClose: $('h-board-close'),
+      compassBtn: $('h-compass-btn'), compass: $('h-compass'), ring: $('h-ring'),
+      board: $('h-board'), boardBody: $('h-board-body'), boardClose: $('h-board-close'),
+      home: $('h-home'), strip: $('h-strip'), homeTiles: $('h-home-tiles'),
     };
     if (!els.root) return;
     originMain = els.main ? els.main.parentNode : null;

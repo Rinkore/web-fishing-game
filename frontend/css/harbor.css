@@ -1,8 +1,8 @@
 /* ============================================================
-   DeepFish 港湾外壳（设计稿 v2 · 阶段 A）
+   DeepFish 港湾外壳（设计稿 v2 · 阶段 A–E）
    加载顺序最后：用来覆盖 responsive/mobile 对 .nav / .layout 的横排与底栏规则。
-   阶段 A 交付 HUD、内景面板（承载既有 #main）、目录列表与设置；
-   场景美术 / 建筑热区 / 罗盘属于阶段 B，这里只有纯色占位场景。
+   阶段 A–B 交付 HUD、内景面板（承载既有 #main）、目录/罗盘与港湾场景；
+   阶段 C 时段设置、阶段 D 手机布局（横向全景 / 罗盘首页）、阶段 E 港湾成为默认界面风格。
    详见 output/design-review/redesign/v2/index.html §13。
    ============================================================ */
 
@@ -218,3 +218,85 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
 @media (max-width: 640px) {
   .h-board-sheet { align-self: center; flex: 0 0 auto; }
 }
+
+/* ============================================================
+   阶段 D：罗盘首页（手机布局）、手机布局设置行
+   ============================================================ */
+
+/* 罗盘首页容器：默认隐藏，.h-compass-home 时覆盖场景区 */
+.h-home {
+  display: none;
+  position: absolute; inset: 0; z-index: 1;
+  flex-direction: column; overflow: hidden;
+  border: 3px solid var(--px-line, #2c4f74); border-radius: 10px;
+  background: #070f24;
+}
+.h-compass-home .h-home { display: flex; }
+/* 罗盘首页时隐藏滚动场景，避免重叠和 rAF 浪费 */
+.h-compass-home .h-scene { display: none; }
+
+/* 条带：场景中段截图，像素对齐 */
+.h-strip {
+  flex: none; width: 100%; height: auto; max-height: 90px;
+  image-rendering: pixelated; display: block;
+  border-bottom: 2px solid var(--px-line, #2c4f74);
+}
+
+/* 地点磁贴网格 */
+.h-home-tiles {
+  flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;
+  padding: 8px;
+}
+.h-home-tile {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  min-height: 52px; padding: 8px 10px;
+  background: rgba(15, 36, 60, .92); border: 2px solid var(--px-line, #2c4f74) !important;
+  border-radius: 8px; color: var(--df-text, #e8f2ff);
+  font-family: var(--px-font); font-size: 12px; cursor: pointer; text-align: left;
+  touch-action: manipulation;
+}
+.h-home-tile img { width: 24px; height: 24px; image-rendering: pixelated; flex: none; }
+.h-home-tile span { display: block; line-height: 1.3; min-width: 0; }
+.h-home-name { font-size: 13px; color: var(--df-text, #e8f2ff); }
+.h-home-status { font-size: 11px; color: var(--df-muted, #9db4cc); margin-top: 1px; }
+.h-home-tile:hover, .h-home-tile:focus-visible { border-color: var(--px-gold, #ffd23e) !important; outline: none; background: rgba(20, 46, 76, .95); }
+.h-home-tile.locked { opacity: .55; }
+.h-home-tile .h-badge { top: -8px; right: -8px; }
+
+/* 手机布局设置行（注入到 settings-dialog） */
+.sgrp {
+  padding: 10px 0; border-bottom: 1px solid var(--line, #2c4f74);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sgrp b { font-size: 14px; color: var(--df-text, #e8f2ff); }
+.sgrp small { font-size: 12px; color: var(--df-muted, #9db4cc); font-weight: normal; margin-left: 4px; }
+.sgrp label { display: flex; align-items: flex-start; gap: 6px; font-size: 14px; cursor: pointer; line-height: 1.4; }
+.sgrp label small { display: block; font-size: 11px; margin-left: 0; margin-top: 1px; }
+#settings-harbor-time { align-items: flex-start; flex-direction: column; gap: 8px; }
+/* .settings-row 是 display:flex，会盖掉浏览器默认的 [hidden]{display:none}，
+   经典界面风格下要隐藏「港湾时间」整块，必须显式收回。 */
+#settings-harbor-time[hidden] { display: none; }
+#settings-harbor-time > span { flex: none; }
+.settings-harbor-time-body { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.settings-harbor-modes { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.settings-harbor-modes label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+.settings-harbor-periods {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px;
+  padding: 10px; border: 2px solid var(--line, #2c4f74); border-radius: 8px;
+  background: rgba(0, 0, 0, .15);
+}
+.settings-harbor-periods label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.settings-harbor-periods input[type=time],
+.settings-harbor-periods select {
+  padding: 5px 7px; border: 2px solid var(--line, #2c4f74); border-radius: 6px;
+  background: var(--bg, #07101e); color: var(--ink, #e8f2ff); font: 14px var(--body, system-ui);
+  width: 100%;
+}
+.settings-harbor-periods input[type=time]:disabled,
+.settings-harbor-periods select:disabled { opacity: .45; cursor: not-allowed; }
+.btn-link {
+  background: none; border: none; padding: 2px 4px; font-size: 13px;
+  color: var(--accent, #34e0c0); cursor: pointer; text-decoration: underline; text-decoration-style: dotted;
+}
+.btn-link:disabled { opacity: .45; cursor: not-allowed; text-decoration: none; }
