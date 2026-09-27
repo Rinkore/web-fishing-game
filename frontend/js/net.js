@@ -39,7 +39,10 @@ window.Net = (function () {
 
   // 请求超时：偶发请求悬挂时页面会停在旧状态（按钮点了没反应），超时后中断并当网络错误报出，
   // GET 再自动重试一次；写操作不重试，避免重复提交。
+  // 写操作超时放宽到 30s：中断的只是浏览器等待，服务端仍会完成交易（限购曾出现
+  // 「跳网络错误但实际购买成功」）；超时只是放弃等待，不回滚也不重发。
   const API_TIMEOUT_MS = 8000;
+  const API_WRITE_TIMEOUT_MS = 30000;
   function apiOnce(method, u, body) {
     return new Promise(function (resolve) {
       // Keep legacy call sites' state marker out of URLs and JSON; only HttpOnly cookies authenticate.
@@ -53,7 +56,7 @@ window.Net = (function () {
       if (typeof AbortController !== 'undefined') {
         ctrl = new AbortController();
         opts.signal = ctrl.signal;
-        timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, API_TIMEOUT_MS);
+        timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, method === 'GET' ? API_TIMEOUT_MS : API_WRITE_TIMEOUT_MS);
       }
       const done = function () { if (timer) { clearTimeout(timer); timer = null; } };
       fetch(API_BASE + u, opts)

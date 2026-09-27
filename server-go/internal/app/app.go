@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fishing.local/server/internal/gateway"
+	"fishing.local/server/internal/gearmerge"
 	"log/slog"
 	"net"
 	"sync"
@@ -55,6 +56,13 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 	}
 	if ctx.Err() != nil {
 		return nil
+	}
+	// 阶段一装备底材合并：幂等启动钩子（首次发布别名目录并转换存量引用，之后为空操作）。
+	mctx, mcancel := context.WithTimeout(ctx, c.StartupTimeout)
+	err = gearmerge.AutoMigrate(mctx, pool, func(msg string, kv ...any) { logger.Info(msg, kv...) })
+	mcancel()
+	if err != nil {
+		return errors.New("gear base migration failed: " + err.Error())
 	}
 	listener, err := net.Listen("tcp", c.ListenAddress)
 	if err != nil {

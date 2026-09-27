@@ -197,6 +197,12 @@ func TestIntegrationChartCraftShipUpgradeAndRollback(t *testing.T) {
 	if _, err := db.Admin.Exec(ctx, `DROP TRIGGER fail_anchor ON fishing.sea_zones`); err != nil {
 		t.Fatal(err)
 	}
+	// 续期必须在原到期时间上追加：在下锚前记下当前到期时间，
+	// 断言新到期 = 旧到期 + ExtendMin，防止再出现「以当前时刻重算」吞掉海域剩余存续时间的回归。
+	var preExpires time.Time
+	if err := db.Admin.QueryRow(ctx, `SELECT expires_at FROM fishing.sea_zones WHERE owner_id=$1 AND id=$2`, owner, zoneID).Scan(&preExpires); err != nil {
+		t.Fatal(err)
+	}
 	r, err = s.Anchor(ctx, owner, "anchor-fault", zoneID)
 	if err != nil || r.Status != "anchored" {
 		t.Fatal("anchor retry", r, err)
@@ -204,6 +210,9 @@ func TestIntegrationChartCraftShipUpgradeAndRollback(t *testing.T) {
 	var anchored rules.SeaZone
 	if err := json.Unmarshal(r.Details, &anchored); err != nil || anchored.Anchors != 1 {
 		t.Fatal("anchor count", err)
+	}
+	if want := preExpires.UnixMilli() + s.catalog.SeaConfig().Anchor.ExtendMin*60000; anchored.Expire != want {
+		t.Fatalf("anchor extend: got %d, want %d (pre %d)", anchored.Expire, want, preExpires.UnixMilli())
 	}
 	for i := 0; i < 3; i++ {
 		r, err := s.Anchor(ctx, owner, fmt.Sprintf("anchor-%d", i), zoneID)

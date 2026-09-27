@@ -21,9 +21,26 @@ func WithSession(ctx context.Context, actor int64, hash [32]byte, admin bool) co
 	return context.WithValue(ctx, authContextKey{}, authProof{actor, hash, admin})
 }
 
+type maintenanceContextKey struct{}
+
+// WithMaintenance marks a trusted offline maintenance tool (cmd/*) as an
+// acting administrator. It skips session revalidation but keeps every other
+// guard, ledger entry and audit trail of the normal write path.
+func WithMaintenance(ctx context.Context, actor int64) context.Context {
+	return context.WithValue(ctx, maintenanceContextKey{}, actor)
+}
+
+func maintenanceActor(ctx context.Context) (int64, bool) {
+	actor, ok := ctx.Value(maintenanceContextKey{}).(int64)
+	return actor, ok && actor > 0
+}
+
 // RequireAdmin rejects missing and player-realm proofs. Run additionally
 // revalidates the proof against current database state while holding the guard.
 func RequireAdmin(ctx context.Context, actor int64) error {
+	if m, ok := maintenanceActor(ctx); ok && m == actor {
+		return nil
+	}
 	p, ok := ctx.Value(authContextKey{}).(authProof)
 	if !ok || p.actor != actor || !p.admin {
 		return ErrUnauthenticated
@@ -31,6 +48,9 @@ func RequireAdmin(ctx context.Context, actor int64) error {
 	return nil
 }
 func checkSession(ctx context.Context, tx pgx.Tx, actor int64) error {
+	if m, ok := maintenanceActor(ctx); ok && m == actor {
+		return nil
+	}
 	p, ok := ctx.Value(authContextKey{}).(authProof)
 	if !ok {
 		return nil

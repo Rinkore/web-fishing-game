@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "version": "v0.25.3",
-  "sourceSHA256": "61f38600b2181a556b0de3d6e6bd2eace1fea18f45d5ed435bd298414e46ee7b",
+  "version": "v0.25.7",
+  "sourceSHA256": "b4f089405f80bec714f656aed2255856fa5cb1457ce8ae9d4c33794abba6c755",
   "cases": [
     {
       "id": "chest-0",
@@ -29,7 +29,7 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_4#common#size+10@g0_none_0",
+        "id": "gear_hook_1#common#size+10@g0_none_0",
         "draws": 2
       }
     },
@@ -44,7 +44,7 @@
         99
       ],
       "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
         "draws": 2
       }
     },
@@ -74,7 +74,7 @@
         37
       ],
       "expected": {
-        "id": "gear_line_2#common#skl+4@g0_none_0",
+        "id": "gear_line_1#common#skl+4@g0_none_0",
         "draws": 2
       }
     },
@@ -89,7 +89,7 @@
         99
       ],
       "expected": {
-        "id": "gear_line_5#common#skl+4@g0_none_0",
+        "id": "gear_line_1#common#skl+4@g0_none_0",
         "draws": 2
       }
     },
@@ -119,7 +119,7 @@
         37
       ],
       "expected": {
-        "id": "gear_hook_2#common#size+10@g0_none_0",
+        "id": "gear_hook_1#common#size+10@g0_none_0",
         "draws": 2
       }
     },
@@ -134,7 +134,7 @@
         99
       ],
       "expected": {
-        "id": "gear_hook_5#common#size+10@g0_none_0",
+        "id": "gear_hook_1#common#size+10@g0_none_0",
         "draws": 2
       }
     },
@@ -164,7 +164,7 @@
         37
       ],
       "expected": {
-        "id": "gear_bait_2#common#dbl+4@g0_none_0",
+        "id": "gear_bait_1#common#dbl+4@g0_none_0",
         "draws": 2
       }
     },
@@ -179,7 +179,7 @@
         99
       ],
       "expected": {
-        "id": "gear_bait_5#common#dbl+4@g0_none_0",
+        "id": "gear_bait_1#common#dbl+4@g0_none_0",
         "draws": 2
       }
     },
@@ -209,7 +209,7 @@
         37
       ],
       "expected": {
-        "id": "gear_reel_2#common#spd+12@g0_none_0",
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
         "draws": 2
       }
     },
@@ -224,7 +224,7 @@
         99
       ],
       "expected": {
-        "id": "gear_reel_5#common#spd+12@g0_none_0",
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
         "draws": 2
       }
     },
@@ -254,7 +254,7 @@
         37
       ],
       "expected": {
-        "id": "gear_accessory_2#common#skl+5@g0_none_0",
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
         "draws": 2
       }
     },
@@ -269,7 +269,7 @@
         99
       ],
       "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
         "draws": 2
       }
     },
@@ -324,12 +324,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_2",
+        "gear_hook_1",
         false,
         0
       ],
       "expected": {
-        "id": "gear_line_2#common#skl+4@g0_none_0",
+        "id": "gear_hook_1#common#size+10@g0_none_0",
         "draws": 1
       }
     },
@@ -339,12 +339,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_2",
+        "gear_hook_1",
         false,
         37
       ],
       "expected": {
-        "id": "gear_line_2#common#skl+4@g0_none_0",
+        "id": "gear_hook_1#common#size+10@g0_none_0",
         "draws": 1
       }
     },
@@ -354,12 +354,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_2",
+        "gear_hook_1",
         false,
         99
       ],
       "expected": {
-        "id": "gear_line_2#common#skl+4@g0_none_0",
+        "id": "gear_hook_1#common#size+10@g0_none_0",
         "draws": 1
       }
     },
@@ -369,12 +369,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_3",
+        "gear_bait_1",
         false,
         0
       ],
       "expected": {
-        "id": "gear_line_3#common#skl+4@g0_none_0",
+        "id": "gear_bait_1#common#dbl+4@g0_none_0",
         "draws": 1
       }
     },
@@ -384,12 +384,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_3",
+        "gear_bait_1",
         false,
         37
       ],
       "expected": {
-        "id": "gear_line_3#common#skl+4@g0_none_0",
+        "id": "gear_bait_1#common#dbl+4@g0_none_0",
         "draws": 1
       }
     },
@@ -399,12 +399,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_3",
+        "gear_bait_1",
         false,
         99
       ],
       "expected": {
-        "id": "gear_line_3#common#skl+4@g0_none_0",
+        "id": "gear_bait_1#common#dbl+4@g0_none_0",
         "draws": 1
       }
     },
@@ -414,12 +414,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_4",
+        "gear_reel_1",
         false,
         0
       ],
       "expected": {
-        "id": "gear_line_4#common#skl+4@g0_none_0",
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
         "draws": 1
       }
     },
@@ -429,12 +429,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_4",
+        "gear_reel_1",
         false,
         37
       ],
       "expected": {
-        "id": "gear_line_4#common#skl+4@g0_none_0",
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
         "draws": 1
       }
     },
@@ -444,12 +444,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_4",
+        "gear_reel_1",
         false,
         99
       ],
       "expected": {
-        "id": "gear_line_4#common#skl+4@g0_none_0",
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
         "draws": 1
       }
     },
@@ -459,12 +459,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_5",
+        "gear_accessory_1",
         false,
         0
       ],
       "expected": {
-        "id": "gear_line_5#common#skl+4@g0_none_0",
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
         "draws": 1
       }
     },
@@ -474,12 +474,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_5",
+        "gear_accessory_1",
         false,
         37
       ],
       "expected": {
-        "id": "gear_line_5#common#skl+4@g0_none_0",
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
         "draws": 1
       }
     },
@@ -489,12 +489,12 @@
       "args": [
         "chest_abyss",
         "",
-        "gear_line_5",
+        "gear_accessory_1",
         false,
         99
       ],
       "expected": {
-        "id": "gear_line_5#common#skl+4@g0_none_0",
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
         "draws": 1
       }
     },
@@ -502,2736 +502,441 @@
       "id": "chest-33",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_1",
+        "gear_line_1",
         false,
         0
       ],
       "expected": {
-        "id": "gear_hook_1#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_line_1#common#skl+4@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-34",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_1",
-        false,
-        37
+        "gear_line_1",
+        true,
+        0
       ],
       "expected": {
-        "id": "gear_hook_1#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_line_1#common#skl+4@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-35",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_1",
+        "gear_line_1",
         false,
-        99
+        37
       ],
       "expected": {
-        "id": "gear_hook_1#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_line_1#common#skl+4@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-36",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_2",
-        false,
-        0
+        "gear_line_1",
+        true,
+        37
       ],
       "expected": {
-        "id": "gear_hook_2#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_line_1#common#skl+4@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-37",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_2",
+        "gear_line_1",
         false,
-        37
+        99
       ],
       "expected": {
-        "id": "gear_hook_2#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_line_1#common#skl+4@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-38",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_2",
-        false,
+        "gear_line_1",
+        true,
         99
       ],
       "expected": {
-        "id": "gear_hook_2#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_line_1#common#skl+4@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-39",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_3",
+        "gear_hook_1",
         false,
         0
       ],
       "expected": {
-        "id": "gear_hook_3#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_hook_1#common#size+10@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-40",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_3",
-        false,
-        37
+        "gear_hook_1",
+        true,
+        0
       ],
       "expected": {
-        "id": "gear_hook_3#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_hook_1#common#size+10@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-41",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_3",
+        "gear_hook_1",
         false,
-        99
+        37
       ],
       "expected": {
-        "id": "gear_hook_3#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_hook_1#common#size+10@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-42",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_4",
-        false,
-        0
+        "gear_hook_1",
+        true,
+        37
       ],
       "expected": {
-        "id": "gear_hook_4#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_hook_1#common#size+10@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-43",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_4",
+        "gear_hook_1",
         false,
-        37
+        99
       ],
       "expected": {
-        "id": "gear_hook_4#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_hook_1#common#size+10@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-44",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_4",
-        false,
+        "gear_hook_1",
+        true,
         99
       ],
       "expected": {
-        "id": "gear_hook_4#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_hook_1#common#size+10@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-45",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_5",
+        "gear_bait_1",
         false,
         0
       ],
       "expected": {
-        "id": "gear_hook_5#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_bait_1#common#dbl+4@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-46",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_5",
-        false,
-        37
+        "gear_bait_1",
+        true,
+        0
       ],
       "expected": {
-        "id": "gear_hook_5#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_bait_1#common#dbl+4@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-47",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_hook_5",
+        "gear_bait_1",
         false,
-        99
+        37
       ],
       "expected": {
-        "id": "gear_hook_5#common#size+10@g0_none_0",
-        "draws": 1
+        "id": "gear_bait_1#common#dbl+4@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-48",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
         "gear_bait_1",
-        false,
-        0
+        true,
+        37
       ],
       "expected": {
         "id": "gear_bait_1#common#dbl+4@g0_none_0",
-        "draws": 1
+        "draws": 0
       }
     },
     {
       "id": "chest-49",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
         "gear_bait_1",
         false,
-        37
+        99
       ],
       "expected": {
         "id": "gear_bait_1#common#dbl+4@g0_none_0",
-        "draws": 1
+        "draws": 0
       }
     },
     {
       "id": "chest-50",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
         "gear_bait_1",
-        false,
+        true,
         99
       ],
       "expected": {
         "id": "gear_bait_1#common#dbl+4@g0_none_0",
-        "draws": 1
+        "draws": 0
       }
     },
     {
       "id": "chest-51",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_2",
+        "gear_reel_1",
         false,
         0
       ],
       "expected": {
-        "id": "gear_bait_2#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-52",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_2",
-        false,
-        37
+        "gear_reel_1",
+        true,
+        0
       ],
       "expected": {
-        "id": "gear_bait_2#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-53",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_2",
+        "gear_reel_1",
         false,
-        99
+        37
       ],
       "expected": {
-        "id": "gear_bait_2#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-54",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_3",
-        false,
-        0
+        "gear_reel_1",
+        true,
+        37
       ],
       "expected": {
-        "id": "gear_bait_3#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-55",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_3",
+        "gear_reel_1",
         false,
-        37
+        99
       ],
       "expected": {
-        "id": "gear_bait_3#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-56",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_3",
-        false,
+        "gear_reel_1",
+        true,
         99
       ],
       "expected": {
-        "id": "gear_bait_3#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_reel_1#common#spd+12@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-57",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_4",
+        "gear_accessory_1",
         false,
         0
       ],
       "expected": {
-        "id": "gear_bait_4#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-58",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_4",
-        false,
-        37
+        "gear_accessory_1",
+        true,
+        0
       ],
       "expected": {
-        "id": "gear_bait_4#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-59",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_4",
+        "gear_accessory_1",
         false,
-        99
+        37
       ],
       "expected": {
-        "id": "gear_bait_4#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-60",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_5",
-        false,
-        0
+        "gear_accessory_1",
+        true,
+        37
       ],
       "expected": {
-        "id": "gear_bait_5#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-61",
       "fn": "chest",
       "args": [
-        "chest_abyss",
+        "chest_king",
         "",
-        "gear_bait_5",
+        "gear_accessory_1",
         false,
-        37
+        99
       ],
       "expected": {
-        "id": "gear_bait_5#common#dbl+4@g0_none_0",
-        "draws": 1
+        "id": "gear_accessory_1#common#skl+5@g0_none_0",
+        "draws": 0
       }
     },
     {
       "id": "chest-62",
       "fn": "chest",
       "args": [
-        "chest_abyss",
-        "",
-        "gear_bait_5",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_5#common#dbl+4@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-63",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_1",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_1#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-64",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_1",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_1#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-65",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_1",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_1#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-66",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_2",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_2#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-67",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_2",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_2#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-68",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_2",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_2#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-69",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_3",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_3#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-70",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_3",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_3#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-71",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_3",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_3#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-72",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_4",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_4#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-73",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_4",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_4#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-74",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_4",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_4#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-75",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_5",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_5#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-76",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_5",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_5#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-77",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_reel_5",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_5#common#spd+12@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-78",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_1",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_1#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-79",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_1",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_1#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-80",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_1",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_1#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-81",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_2",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_2#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-82",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_2",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_2#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-83",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_2",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_2#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-84",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_3",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_3#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-85",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_3",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_3#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-86",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_3",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_3#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-87",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_4",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-88",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_4",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-89",
-      "fn": "chest",
-      "args": [
-        "chest_abyss",
-        "",
-        "gear_accessory_4",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
-        "draws": 1
-      }
-    },
-    {
-      "id": "chest-90",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_1",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_line_1#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-91",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_1",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_line_1#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-92",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_1",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_line_1#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-93",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_1",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_line_1#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-94",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_1",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_line_1#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-95",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_1",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_line_1#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-96",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_2",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_line_2#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-97",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_2",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_line_2#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-98",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_2",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_line_2#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-99",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_2",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_line_2#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-100",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_2",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_line_2#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-101",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_2",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_line_2#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-102",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_3",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_line_3#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-103",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_3",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_line_3#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-104",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_3",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_line_3#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-105",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_3",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_line_3#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-106",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_3",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_line_3#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-107",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_3",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_line_3#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-108",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_4",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_line_4#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-109",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_4",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_line_4#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-110",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_4",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_line_4#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-111",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_4",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_line_4#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-112",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_4",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_line_4#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-113",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_4",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_line_4#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-114",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_5",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_line_5#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-115",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_5",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_line_5#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-116",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_5",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_line_5#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-117",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_5",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_line_5#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-118",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_5",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_line_5#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-119",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_line_5",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_line_5#common#skl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-120",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_1",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_hook_1#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-121",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_1",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_hook_1#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-122",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_1",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_hook_1#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-123",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_1",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_hook_1#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-124",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_1",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_hook_1#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-125",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_1",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_hook_1#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-126",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_2",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_hook_2#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-127",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_2",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_hook_2#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-128",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_2",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_hook_2#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-129",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_2",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_hook_2#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-130",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_2",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_hook_2#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-131",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_2",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_hook_2#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-132",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_3",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_hook_3#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-133",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_3",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_hook_3#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-134",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_3",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_hook_3#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-135",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_3",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_hook_3#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-136",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_3",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_hook_3#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-137",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_3",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_hook_3#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-138",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_4",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_hook_4#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-139",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_4",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_hook_4#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-140",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_4",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_hook_4#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-141",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_4",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_hook_4#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-142",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_4",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_hook_4#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-143",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_4",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_hook_4#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-144",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_5",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_hook_5#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-145",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_5",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_hook_5#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-146",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_5",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_hook_5#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-147",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_5",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_hook_5#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-148",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_5",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_hook_5#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-149",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_hook_5",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_hook_5#common#size+10@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-150",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_1",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_bait_1#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-151",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_1",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_bait_1#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-152",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_1",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_bait_1#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-153",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_1",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_bait_1#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-154",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_1",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_1#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-155",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_1",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_1#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-156",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_2",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_bait_2#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-157",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_2",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_bait_2#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-158",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_2",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_bait_2#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-159",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_2",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_bait_2#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-160",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_2",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_2#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-161",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_2",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_2#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-162",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_3",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_bait_3#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-163",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_3",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_bait_3#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-164",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_3",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_bait_3#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-165",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_3",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_bait_3#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-166",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_3",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_3#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-167",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_3",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_3#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-168",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_4",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_bait_4#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-169",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_4",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_bait_4#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-170",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_4",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_bait_4#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-171",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_4",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_bait_4#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-172",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_4",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_4#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-173",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_4",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_4#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-174",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_5",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_bait_5#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-175",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_5",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_bait_5#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-176",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_5",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_bait_5#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-177",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_5",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_bait_5#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-178",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_5",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_5#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-179",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_bait_5",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_bait_5#common#dbl+4@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-180",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_1",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_1#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-181",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_1",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_1#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-182",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_1",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_1#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-183",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_1",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_1#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-184",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_1",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_1#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-185",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_1",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_1#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-186",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_2",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_2#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-187",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_2",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_2#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-188",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_2",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_2#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-189",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_2",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_2#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-190",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_2",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_2#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-191",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_2",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_2#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-192",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_3",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_3#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-193",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_3",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_3#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-194",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_3",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_3#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-195",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_3",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_3#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-196",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_3",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_3#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-197",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_3",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_3#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-198",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_4",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_4#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-199",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_4",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_4#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-200",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_4",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_4#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-201",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_4",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_4#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-202",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_4",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_4#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-203",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_4",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_4#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-204",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_5",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_5#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-205",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_5",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_reel_5#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-206",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_5",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_5#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-207",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_5",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_reel_5#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-208",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_5",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_5#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-209",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_reel_5",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_reel_5#common#spd+12@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-210",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_1",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_1#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-211",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_1",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_1#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-212",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_1",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_1#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-213",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_1",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_1#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-214",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_1",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_1#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-215",
-      "fn": "chest",
-      "args": [
         "chest_king",
         "",
         "gear_accessory_1",
@@ -3240,276 +945,6 @@
       ],
       "expected": {
         "id": "gear_accessory_1#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-216",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_2",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_2#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-217",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_2",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_2#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-218",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_2",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_2#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-219",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_2",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_2#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-220",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_2",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_2#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-221",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_2",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_2#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-222",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_3",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_3#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-223",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_3",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_3#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-224",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_3",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_3#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-225",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_3",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_3#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-226",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_3",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_3#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-227",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_3",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_3#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-228",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_4",
-        false,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-229",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_4",
-        true,
-        0
-      ],
-      "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-230",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_4",
-        false,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-231",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_4",
-        true,
-        37
-      ],
-      "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-232",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_4",
-        false,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
-        "draws": 0
-      }
-    },
-    {
-      "id": "chest-233",
-      "fn": "chest",
-      "args": [
-        "chest_king",
-        "",
-        "gear_accessory_4",
-        true,
-        99
-      ],
-      "expected": {
-        "id": "gear_accessory_4#common#skl+5@g0_none_0",
         "draws": 0
       }
     }

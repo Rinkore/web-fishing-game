@@ -21,7 +21,17 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.25.3';
+  const VERSION = 'v0.25.7';
+  // 图片加载失败自动重试（发版切流 / 网络抖动时瞬时 404 会让图片永久消失）：
+  // 重试 3 次、间隔递增；仍失败才隐藏占位。onerror 内联调用 window.__imgFail(this)。
+  if (typeof window !== 'undefined') window.__imgFail = function (img) {
+    try {
+      const n = Number(img.dataset.retry || 0) + 1;
+      img.dataset.retry = String(n);
+      if (n <= 3) setTimeout(function () { img.style.display = ''; img.src = img.src; }, 1200 * n);
+      else img.style.display = 'none';
+    } catch (e) {}
+  };
   const BUILD = '2026-09-27';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -649,7 +659,7 @@
   "engraveLevel": 8,
   "parts": {
     "line": {
-      "name": "稳定线组",
+      "name": "轻潮线组",
       "main": "skill",
       "subs": [
         "speed",
@@ -659,7 +669,7 @@
       "subValues": [0, 0, 0, 0, 3, 4.2, 5.4, 6.6, 7.8, 9, 10.2, 11.4, 12.6]
     },
     "hook": {
-      "name": "巨物钩",
+      "name": "倒刺钩",
       "main": "size",
       "subs": [
         "skill",
@@ -669,7 +679,7 @@
       "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     },
     "bait": {
-      "name": "双生拟饵",
+      "name": "玉米拟饵",
       "main": "double",
       "subs": [
         "skill",
@@ -679,7 +689,7 @@
       "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     },
     "reel": {
-      "name": "疾风卷线器",
+      "name": "顺滑卷线器",
       "main": "speed",
       "subs": [
         "skill",
@@ -689,7 +699,7 @@
       "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     },
     "accessory": {
-      "name": "稳流浮漂",
+      "name": "共鸣声呐",
       "main": "skill",
       "subs": [
         "double",
@@ -864,29 +874,29 @@
       {
         "coins": 20000,
         "items": {
-          "gear_crystal": 10
+          "gear_crystal": 15
         },
         "receipts": 1,
         "heat": 0,
-        "cores": 1
+        "cores": 0
       },
       {
         "coins": 40000,
-        "items": {
-          "gear_crystal": 20
-        },
-        "receipts": 1,
-        "heat": 0,
-        "cores": 2
-      },
-      {
-        "coins": 60000,
         "items": {
           "gear_crystal": 30
         },
         "receipts": 1,
         "heat": 0,
-        "cores": 3
+        "cores": 0
+      },
+      {
+        "coins": 60000,
+        "items": {
+          "gear_crystal": 45
+        },
+        "receipts": 1,
+        "heat": 0,
+        "cores": 0
       }
     ]
   },
@@ -1224,12 +1234,17 @@
   // 历史底材只读兼容，新掉落使用 24 个按部位分工的普通底材。
   const PART_AFFIXES = {"line":["speed","stability","material"],"hook":["skill","size"],"bait":["rare","double","resonance"],"reel":["speed","settle","stability"],"accessory":["material","resonance","settle"]};
   COMPONENT_BASES.forEach(function(b){ b.legacy = true; });
-  const ORDINARY_NAMES = {"line":["轻潮线组","稳舵线组","丰收线组","远洋线组","龙筋航线"],"hook":["磨石钩","巨兽骨钩","精准钩","重型海钩","猎王钩"],"bait":["星辉拟饵","双生拟饵","回声拟饵","深海诱饵","共鸣香饵"],"reel":["疾风卷线器","航海卷线器","稳帆卷线器","长航卷线器","涡轮航海轮"],"accessory":["收获网袋","共鸣声呐","防腐收纳箱","远洋采集器"]};
-  Object.keys(ORDINARY_NAMES).forEach(function(part){ ORDINARY_NAMES[part].forEach(function(name,i){
-    COMPONENT_BASES.push({id:'gear_'+part+'_'+(i+1),name:name,part:part,price:60+i*55,pool:PART_AFFIXES[part].map(function(t,j){
-      const main=j<2; return {type:t,min:main?2+i:0,max:main?8+i*4:4+i};
-    })});
-  }); });
+  // 每部位只保留一个普通底材；历史 2..5 档 id 通过别名继续可读（存量实例/钓竿配置里的旧签名）。
+  const ORDINARY_NAMES = {"line":"轻潮线组","hook":"倒刺钩","bait":"玉米拟饵","reel":"顺滑卷线器","accessory":"共鸣声呐"};
+  const ORDINARY_LEGACY = {"line":["稳舵线组","丰收线组","远洋线组","龙筋航线"],"hook":["磨石钩","巨兽骨钩","精准钩","重型海钩","猎王钩"],"bait":["星辉拟饵","双生拟饵","回声拟饵","深海诱饵","共鸣香饵"],"reel":["航海卷线器","稳帆卷线器","长航卷线器","涡轮航海轮"],"accessory":["收获网袋","防腐收纳箱","远洋采集器"]};
+  const ORDINARY_BASES = {};
+  Object.keys(ORDINARY_NAMES).forEach(function(part){
+    const b={id:'gear_'+part+'_1',name:ORDINARY_NAMES[part],part:part,price:60,pool:PART_AFFIXES[part].map(function(t,j){
+      const main=j<2; return {type:t,min:main?2:0,max:main?8:4};
+    })};
+    COMPONENT_BASES.push(b); ORDINARY_BASES[part]=b;
+  });
+
   // 套装核心固定属性，只能由远航自选或印记兑换获得。
   GEAR_SETS.forEach(function (set) { set.pieces.forEach(function (p) {
     COMPONENT_BASES.push({id:'set_'+set.id+'_'+p.part,name:p.name,part:p.part,price:0,setId:set.id,noSell:true,pool:[{type:p.type,min:p.value,max:p.value}]});
@@ -1244,6 +1259,8 @@
   AFFIX_LABEL.skill='技巧';
   const BASE_MAP = {};
   COMPONENT_BASES.forEach(function (b) { b.pool = b.pool.map(function (a) { return { type: a.type, min: a.min, max: a.max }; }); BASE_MAP[b.id] = b; });
+  // 历史底材 id → canonical 底材对象（不出现在任何枚举列表里）。
+  Object.keys(ORDINARY_LEGACY).forEach(function(part){ for(let i=0;i<ORDINARY_LEGACY[part].length;i++) BASE_MAP['gear_'+part+'_'+(i+2)] = BASE_MAP['gear_'+part+'_1']; });
   function componentBase(id) { return BASE_MAP[id] || null; }
 
   // ---- 实例签名 ----

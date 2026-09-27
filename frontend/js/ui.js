@@ -846,7 +846,7 @@ window.UI = (function () {
       if(item.id==='mail' && (st.mailUnread>0||st.mailPending>0)) badge='<span class="nav-badge unread" aria-label="有未读邮件或待领取附件">'+(st.mailUnread>99?'99+':st.mailUnread||'!')+'</span>';
       // 像素导航图标（assets/nav/<id>.png，由 tools/gen_nav.py 生成）；emoji 作为降级兜底
       const navIcon = '<span class="nav-icon"><img class="nav-ico" src="assets/nav/' + esc(item.id) +
-        '.png" alt="" draggable="false" onerror="this.outerHTML=\'' + item.icon + '\'"></span>';
+        '.png" alt="" draggable="false" onerror="__imgFail(this)"></span>';
       if (featureBlocked(item.id)) badge += '<span class="nav-badge">🔒</span>';
       b.innerHTML = navIcon + '<span>' + esc(item.name) + '</span>' + badge +
         (item.implemented ? '' : '<span class="lock">🔒</span>');
@@ -1303,7 +1303,8 @@ window.UI = (function () {
   // 人数、渔获、金币等高频变化的**不进签名**——它们走 patchFishingLive() 原地更新；
   // 否则每次上鱼都整页重建，地图节点、水面动画、渔获日志会被重建而闪动（动画从头播）。
   function fishingSig(st) {
-    const parts = [(seaInfo && seaInfo.ship ? seaInfo.ship.lv : 0), st.selected.groundId || '', st.selected.spotId || '',
+    const parts = [(seaInfo && seaInfo.ship ? seaInfo.ship.lv : 0), (window.VoyageMap ? 1 : 0),
+      st.selected.groundId || '', st.selected.spotId || '',
       st.player.groundId || '', st.player.spotId || '', st.fishing.active ? 1 : 0];
     D.GROUNDS.forEach(function (g) {
       parts.push(g.id + ':' + g.name + ':' + (g.locked ? 'L' : '') + ':' + g.type);
@@ -1353,7 +1354,10 @@ window.UI = (function () {
   // —— 📍 钓点信息（钓鱼页右上角开关，不弹子窗口）——
   // 与「图鉴 · 钓点」子窗口同源同口径：读 D.GROUNDS 的 sp.pool，按权重降序列出掉落物与占比。
   // 后台改掉落池 / 增益后经 patchFishingLive 就地刷新，不重建整页。
-  function currentSpotOf(st) {
+  // 注意：不能用 currentSpotOf 这个名字——上方钓速计算还有一个同名无参版本
+  // （返回单个 sp，服务 castInfoOf），v0.25.3 的同名重定义曾把它遮蔽，
+  // 顶栏渲染抛 TypeError 打断整条 refreshAll，渔屋等页面卡在加载态。
+  function spotInfoTargetOf(st) {
     // 优先「所在钓点」；未开始时退回「所点钓点」，两者都没有就返回 null。
     const gid = st.player.groundId || (st.selected && st.selected.groundId);
     const sid = st.player.spotId || (st.selected && st.selected.spotId);
@@ -1362,7 +1366,7 @@ window.UI = (function () {
     return g && sp ? { g: g, sp: sp } : null;
   }
   function spotInfoHtml(st) {
-    const here = currentSpotOf(st);
+    const here = spotInfoTargetOf(st);
     if (!here) {
       return '<div class="hint">点地图上的钓点下竿后，这里显示该钓点的掉落物与权重（与「📖 图鉴 · 📍 钓点」同一份配置）。</div>';
     }
@@ -1412,6 +1416,22 @@ window.UI = (function () {
     }
   }
 
+  // voyage-map.js 补加载：动态脚本异步执行，返回时多半还没就绪，
+  // 所以这里只负责触发加载；就绪后的广播重绘会自然用回完整海图。
+  // 「海图是否可用」已进 fishingSig（见 fishingSig 注释），补加载就绪后这里主动重绘一次，
+  // 不必等下一次广播才把降级底图换回完整海图。
+  let ensureVoyageMapRetried = false;
+  function retryVoyageMapScript() {
+    try {
+      const orig = document.querySelector('script[src*="voyage-map.js"]');
+      const s = document.createElement('script');
+      s.src = orig ? orig.src : 'js/voyage-map.js';   // 复用页面里的带版本地址，缓存口径一致
+      s.async = false;
+      s.onload = function () { if (window.VoyageMap && currentView === 'fishing') renderView(); };
+      document.head.appendChild(s);
+    } catch (e) { /* 补加载失败也只是没有底图，不再打断渲染 */ }
+  }
+
   function renderFishing() {
     if (featureBlocked('fishing')) return renderView();
     const main = $('main');
@@ -1443,7 +1463,16 @@ window.UI = (function () {
       },
     };
     const map = el('div', 'px-map px-map-world');
-    map.appendChild(window.VoyageMap.create());
+    // voyage-map.js 偶发加载失败（发版瞬间 / 网络抖动）会让 window.VoyageMap 缺失，
+    // 在这里抛异常会把整页卡死在空白（main 已清空、stage 尚未挂载，之后每次重绘都在同一处抛）。
+    // 缺失时先试着补一次 <script>，仍拿不到就降级为纯色底图继续渲染，
+    // 补加载完成后随下一次广播重绘自动恢复完整海图。
+    if (!window.VoyageMap && !ensureVoyageMapRetried) {
+      ensureVoyageMapRetried = true;
+      retryVoyageMapScript();
+    }
+    if (window.VoyageMap) map.appendChild(window.VoyageMap.create());
+    else map.classList.add('px-map-plain');
     function chooseSpot(t) {
       const gid = t.getAttribute('data-g');
       const sid = t.getAttribute('data-s');
@@ -1486,7 +1515,7 @@ window.UI = (function () {
           const ang = (-90 + spIdx * 60) * Math.PI / 180;
           pos = [50 + 9 * Math.cos(ang), 50 + 9 * Math.sin(ang)];
         }
-        pos = window.VoyageMap.project(pos, !!g.zone || sp.map === 'voyage');
+        pos = window.VoyageMap ? window.VoyageMap.project(pos, !!g.zone || sp.map === 'voyage') : pos;
         const need = sp.minShip || 0;
         const unavailable = !!g.locked || !!sp.locked;
         const locked = unavailable || shipLv < need;
@@ -6610,7 +6639,7 @@ window.UI = (function () {
   function itemIconHtml(it, cls) {
     const src = itemIconSrc(it);
     if (!src) return '';
-    return '<img class="' + cls + '" src="' + esc(src) + '" alt="" draggable="false" onerror="this.style.display=\'none\'">';
+    return '<img class="' + cls + '" src="' + esc(src) + '" alt="" draggable="false" onerror="__imgFail(this)">';
   }
   // 装备成长材料用途见 data.js 的 gearMaterialUses（Wiki 资料页共用同一份现算结果）。
   function gearCostUses(id) { return (D.gearMaterialUses && D.gearMaterialUses(id)) || []; }
@@ -8106,7 +8135,7 @@ window.UI = (function () {
       pets.map(function (id, i) {
         const pos = i === 0 ? '' : ' style="left:38%"';
         return '<img class="cs-dog" src="assets/ui/char/dog_' + esc(id) + '.png" alt="" draggable="false"' + pos +
-          ' onerror="this.style.display=\'none\'">';
+          ' onerror="__imgFail(this)">';
       }).join('');
     if (window.PxScene) window.PxScene.mount(stage.querySelector('.cs-scene'), st.bg || 'stillwater');
     return stage;
@@ -9299,7 +9328,7 @@ window.UI = (function () {
       '<div class="ws-col"><h3>♻ 待重铸组件（' + esc(info.qualityName) + '品质）</h3>' +
       (eligible
         ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-recast-pick="1">' +
-          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
+          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="__imgFail(this)">' +
           '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
           '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + ' 词条 · 基准价 ' + eligible.price + '💰</span>' +
           '<span class="ws-pick-change">更换</span></button>' +
@@ -9438,7 +9467,7 @@ window.UI = (function () {
       '<div class="sm-step-title"><h3>01 <span>选择组件</span></h3><span>仅限词条未达上限</span></div>' +
       (eligible
         ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-forge-pick="1">' +
-          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
+          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="__imgFail(this)">' +
           '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
           '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + '/' + cap + ' 词条 · ' + esc(qualityName(eligible)) + '</span>' +
           '<span class="ws-pick-change">更换</span></button>' +
@@ -9746,7 +9775,7 @@ window.UI = (function () {
         ? '今日限购 ' + it.limit + ' · 剩余 <b>' + it.remain + '</b>'
         : '不限购 · 本期已购 ' + it.bought;
       card.innerHTML =
-        (iconSrc ? '<img class="mc-icon" src="' + iconSrc + '" alt="" draggable="false" onerror="this.style.display=\'none\'">' : '') +
+        (iconSrc ? '<img class="mc-icon" src="' + iconSrc + '" alt="" draggable="false" onerror="__imgFail(this)">' : '') +
         '<div class="mc-name ' + cls + '">' + esc(it.name) + '</div>' +
         '<div class="mc-price">' + it.price + '<span class="u">💰</span></div>' +
         '<div class="mc-limit' + (soldOut ? ' out' : '') + '">' + limitText + '</div>' +
@@ -10876,6 +10905,22 @@ window.UI = (function () {
     });
   }
 
+  // 渲染异常的降级面板：比空白页好在「可见、可恢复、有原因」。main 被整体替换后
+  // 旧 data-sig 一并消失，下一次 renderView 会走完整重建（多数情况随下一次广播自愈）。
+  function renderRenderError(err) {
+    const main = $('main');
+    if (!main) return;
+    const panel = el('div', 'panel wide render-error');
+    const h = el('h2', null, '⚠️ 页面绘制遇到异常');
+    const msg = el('div', 'hint', '界面渲染时出现错误，已记录到浏览器控制台（F12 可查看详情）。' +
+      '通常会随下一次数据刷新自动恢复；若页面一直异常，请点击下方按钮重载。');
+    const btn = el('button', 'primary', '↻ 重载界面');
+    btn.addEventListener('click', function () { location.reload(); });
+    panel.appendChild(h); panel.appendChild(msg); panel.appendChild(btn);
+    main.innerHTML = '';
+    main.appendChild(panel);
+  }
+
   // 页首横幅：没有场景图的页面顶上一条「图标 + 标题 + 一句话」的像素横幅，进页面先知道自己在哪。
   // 画在 #main::before 上（CSS 读 data-banner-* 与 --banner-icon），不占 DOM：邮件、装备成长、市集等
   // 模块会在数据回来后直接改写 #main.innerHTML，真节点会被一并抹掉。
@@ -10935,25 +10980,34 @@ window.UI = (function () {
       if (window.Net) window.Net.setPlayersView({ clear: true });
     }
     // 合并页按当前页签分发（钓竿在角色页、记录在图鉴）；旧 view id 保留分支以便外部平滑迁移
-    if (currentView === 'fishing') renderFishing();
-    else if (currentView === 'sea') renderSea();
-    else if (currentView === 'character') renderCharacter();
-    else if (currentView === 'bd') renderBD();
-    else if (currentView === 'ground') renderGround();
-    else if (currentView === 'inventory') renderInventory();
-    else if (currentView === 'workshop') renderWorkshop();
-    else if (currentView === 'chest') renderChest();
-    else if (currentView === 'mall') renderMall();
-    else if (currentView === 'shop') renderShop();
-    else if (currentView === 'market') renderMarket();
-    else if (currentView === 'codex') { if (codexMainTab === 'records') renderRecords(); else renderCodex(); }
-    else if (currentView === 'records') renderRecords();
-    else if (currentView === 'feedback') renderFeedback();
-    else if (currentView === 'mail') window.MailUI.render($('main'));
-    else if (currentView === 'logs') renderLogs();
-    else {
-      const navItem = D.NAV.find(function (x) { return x.id === currentView; });
-      renderPlaceholder(navItem ? navItem.name : '未开放');
+    // 页面渲染兜底：任何一页抛异常都不能让主区停在「已清空」的空白态 ——
+    // 否则之后每次广播重绘都在同一处再抛，玩家只能手动刷新。降级面板给了
+    // 重载入口；因为 main 被整个换掉，旧的结构签名也随之消失，下一次重绘会走完整重建。
+    try {
+      if (currentView === 'fishing') renderFishing();
+      else if (currentView === 'sea') renderSea();
+      else if (currentView === 'character') renderCharacter();
+      else if (currentView === 'bd') renderBD();
+      else if (currentView === 'ground') renderGround();
+      else if (currentView === 'inventory') renderInventory();
+      else if (currentView === 'workshop') renderWorkshop();
+      else if (currentView === 'chest') renderChest();
+      else if (currentView === 'mall') renderMall();
+      else if (currentView === 'shop') renderShop();
+      else if (currentView === 'market') renderMarket();
+      else if (currentView === 'codex') { if (codexMainTab === 'records') renderRecords(); else renderCodex(); }
+      else if (currentView === 'records') renderRecords();
+      else if (currentView === 'feedback') renderFeedback();
+      else if (currentView === 'mail') window.MailUI.render($('main'));
+      else if (currentView === 'logs') renderLogs();
+      else {
+        const navItem = D.NAV.find(function (x) { return x.id === currentView; });
+        renderPlaceholder(navItem ? navItem.name : '未开放');
+      }
+    } catch (err) {
+      console.error('[ui] 页面渲染异常，已降级（下次数据刷新会自动重试完整重建）：', err);
+      renderRenderError(err);
+      return;
     }
     applyFeatureControls();
     const group = window.GameFeatures && window.GameFeatures.byId[pageId];

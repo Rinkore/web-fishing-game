@@ -1,6 +1,18 @@
 /* 连续世界海图：2:1，近岸大陆、湖泊、港湾与远洋群岛共享同一比例。
    彩色短段均为原生 CSS box-shadow；JS 仅计算固定地形的段坐标。 */
 .px-map-world, .px-map-voyage { container-type: inline-size; isolation: isolate; }
+/* voyage-map.js 偶发加载失败时的降级底图：纯色海面 + 提示，节点仍可点击（见 ui.js） */
+.px-map-plain {
+  aspect-ratio: 2 / 1;
+  background:
+    radial-gradient(ellipse at 30% 55%, #1b4467 0, transparent 55%),
+    #103753;
+}
+.px-map-plain::after {
+  content: '海图资源加载中，稍候自动恢复…';
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  color: rgba(255, 255, 255, .45); font-size: 12px; letter-spacing: 2px; pointer-events: none;
+}
 .vm-art {
   position: relative; width: 100%; aspect-ratio: 2 / 1; overflow: hidden; container-type: inline-size;
   pointer-events: none; user-select: none;

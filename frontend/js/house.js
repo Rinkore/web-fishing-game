@@ -290,7 +290,7 @@
         const id = p[0], affinity = num(pets[id], 0), on = stationed.indexOf(id) >= 0;
         return '<article class="exp-route" data-pet-card="' + id + '">' +
           '<h4>' + esc(p[1]) + ' <small>亲和 ' + affinity + ' / ' + max + (on ? ' · 驻守中' : '') + '</small></h4>' +
-          '<img src="assets/ui/char/dog_' + id + '.png" alt="" draggable="false" style="width:72px;height:56px;object-fit:contain;image-rendering:pixelated" onerror="this.style.display=\'none\'">' +
+          '<img src="assets/ui/char/dog_' + id + '.png" alt="" draggable="false" style="width:72px;height:56px;object-fit:contain;image-rendering:pixelated" onerror="__imgFail(this)">' +
           '<div class="exp-actions">' +
           '<button class="btn mini" data-house-action="pet" data-pet-id="' + id + '" data-pet-op="feed" data-feature="character.pet">喂养</button>' +
           '<button class="btn mini" data-house-action="pet" data-pet-id="' + id + '" data-pet-op="' + (on ? 'unstow' : 'station') + '" data-feature="character.pet">' +

@@ -12,6 +12,7 @@ var defaultCatalog []byte
 type Item struct {
 	Description    string       `json:"description,omitempty"`
 	SetID          string       `json:"setId,omitempty"`
+	AliasOf        string       `json:"aliasOf,omitempty"`
 	Legacy         bool         `json:"legacy,omitempty"`
 	NoSell         bool         `json:"noSell,omitempty"`
 	ExpeditionOnly bool         `json:"expeditionOnly,omitempty"`
@@ -76,10 +77,26 @@ func DecodeCatalog(data []byte) (*Catalog, error) {
 		copy.Size = append([]float64(nil), it.Size...)
 		c.index[it.ID] = copy
 	}
+	for _, it := range c.Items {
+		if it.AliasOf == "" {
+			continue
+		}
+		target, ok := c.index[it.AliasOf]
+		if !ok || target.Kind != it.Kind || target.AliasOf != "" {
+			return nil, errors.New("invalid alias")
+		}
+	}
 	return &c, nil
 }
+
+// Item resolves legacy base ids through their alias chain so old stored
+// signatures keep parsing after a merge; alias entries themselves are never
+// returned.
 func (c *Catalog) Item(id string) (Item, bool) {
 	it, ok := c.index[id]
+	if ok && it.AliasOf != "" {
+		return c.Item(it.AliasOf)
+	}
 	it.Pool = append([]AffixRange(nil), it.Pool...)
 	it.Size = append([]float64(nil), it.Size...)
 	return it, ok
