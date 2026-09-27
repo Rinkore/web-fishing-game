@@ -155,7 +155,11 @@ window.HarborShell = (function () {
   function showHome() {
     const wasPlace = statePlace;
     statePlace = null;
-    if (els.panel) els.panel.hidden = true;
+    if (els.panel) {
+      els.panel.hidden = true;
+      // 清除 data-place 属性
+      delete els.panel.dataset.place;
+    }
     if (els.root) els.root.classList.add('home');
     // 阶段 B：港湾首页是场景本身，目录（列表模式）改为 ☰ / L 按需打开
     showDir(false);
@@ -174,7 +178,11 @@ window.HarborShell = (function () {
     if (!statePlace) returnFocus = document.activeElement;
     statePlace = id;
     if (els.root) els.root.classList.remove('home');
-    if (els.panel) els.panel.hidden = false;
+    if (els.panel) {
+      els.panel.hidden = false;
+      // v3 F3: 设置 data-place 属性以便 CSS 针对不同地点应用特定样式（如告示板的 cork 背景）
+      els.panel.dataset.place = id;
+    }
     if (els.title) els.title.textContent = placeName(id);
     // v3 F3：告示板有子页签；其余地点面包屑只到地点名
     if (els.crumb) els.crumb.textContent = '港湾 › ' + placeName(id);

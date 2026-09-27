@@ -156,6 +156,30 @@ html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animati
 /* 既有页面容器（.content 是 grid + overflow:auto）：迁进面板后由它自己滚动；padding 和 font-size 也在它这层 */
 .h-pbody > #main.content { flex: 1 1 auto; min-height: 0; margin: 0; padding: 12px 14px 16px; font-size: 14px; }
 
+/* v3 F3: 告示板 cork 背景（图鉴/记录/日志/反馈页面的通用背景） */
+.h-panel[data-place="board"] .h-pbody { background: #d4c4a8; }
+.h-panel[data-place="board"] #main.content { background: transparent; }
+
+/* 告示板纸张卡片样式：白色背景，阴影，像软木板上钉的纸 */
+.h-panel[data-place="board"] .panel.wide {
+  background: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, .15);
+  padding: 16px 20px;
+  margin-bottom: 14px;
+}
+
+/* 告示板上的内容区域保持白色纸张外观 */
+.h-panel[data-place="board"] .codex-grid,
+.h-panel[data-place="board"] .record-list,
+.h-panel[data-place="board"] .feedback-panel,
+.h-panel[data-place="board"] .logs-panel {
+  background: #fff;
+  padding: 14px;
+  border-radius: 6px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, .12);
+}
+
 /* ---------- 目录（列表模式）：直接复用 renderNav 渲染的 #nav ---------- */
 .h-overlay {
   position: absolute; inset: 0; z-index: 5;
