@@ -762,7 +762,7 @@ window.UI = (function () {
       if(item.id==='mail' && (st.mailUnread>0||st.mailPending>0)) badge='<span class="nav-badge unread" aria-label="有未读邮件或待领取附件">'+(st.mailUnread>99?'99+':st.mailUnread||'!')+'</span>';
       // 像素导航图标（assets/nav/<id>.png，由 tools/gen_nav.py 生成）；emoji 作为降级兜底
       const navIcon = '<span class="nav-icon"><img class="nav-ico" src="assets/nav/' + esc(item.id) +
-        '.png" alt="" draggable="false" onerror="this.outerHTML=\'' + item.icon + '\'"></span>';
+        '.png" alt="" draggable="false" onerror="__imgFail(this)"></span>';
       if (featureBlocked(item.id)) badge += '<span class="nav-badge">🔒</span>';
       b.innerHTML = navIcon + '<span>' + esc(item.name) + '</span>' + badge +
         (item.implemented ? '' : '<span class="lock">🔒</span>');
@@ -6523,7 +6523,7 @@ window.UI = (function () {
   function itemIconHtml(it, cls) {
     const src = itemIconSrc(it);
     if (!src) return '';
-    return '<img class="' + cls + '" src="' + esc(src) + '" alt="" draggable="false" onerror="this.style.display=\'none\'">';
+    return '<img class="' + cls + '" src="' + esc(src) + '" alt="" draggable="false" onerror="__imgFail(this)">';
   }
   // 装备成长材料用途见 data.js 的 gearMaterialUses（Wiki 资料页共用同一份现算结果）。
   function gearCostUses(id) { return (D.gearMaterialUses && D.gearMaterialUses(id)) || []; }
@@ -8019,7 +8019,7 @@ window.UI = (function () {
       pets.map(function (id, i) {
         const pos = i === 0 ? '' : ' style="left:38%"';
         return '<img class="cs-dog" src="assets/ui/char/dog_' + esc(id) + '.png" alt="" draggable="false"' + pos +
-          ' onerror="this.style.display=\'none\'">';
+          ' onerror="__imgFail(this)">';
       }).join('');
     if (window.PxScene) window.PxScene.mount(stage.querySelector('.cs-scene'), st.bg || 'stillwater');
     return stage;
@@ -9212,7 +9212,7 @@ window.UI = (function () {
       '<div class="ws-col"><h3>♻ 待重铸组件（' + esc(info.qualityName) + '品质）</h3>' +
       (eligible
         ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-recast-pick="1">' +
-          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
+          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="__imgFail(this)">' +
           '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
           '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + ' 词条 · 基准价 ' + eligible.price + '💰</span>' +
           '<span class="ws-pick-change">更换</span></button>' +
@@ -9351,7 +9351,7 @@ window.UI = (function () {
       '<div class="sm-step-title"><h3>01 <span>选择组件</span></h3><span>仅限词条未达上限</span></div>' +
       (eligible
         ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-forge-pick="1">' +
-          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="this.style.display=\'none\'">' +
+          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="__imgFail(this)">' +
           '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
           '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + '/' + cap + ' 词条 · ' + esc(qualityName(eligible)) + '</span>' +
           '<span class="ws-pick-change">更换</span></button>' +
@@ -9659,7 +9659,7 @@ window.UI = (function () {
         ? '今日限购 ' + it.limit + ' · 剩余 <b>' + it.remain + '</b>'
         : '不限购 · 本期已购 ' + it.bought;
       card.innerHTML =
-        (iconSrc ? '<img class="mc-icon" src="' + iconSrc + '" alt="" draggable="false" onerror="this.style.display=\'none\'">' : '') +
+        (iconSrc ? '<img class="mc-icon" src="' + iconSrc + '" alt="" draggable="false" onerror="__imgFail(this)">' : '') +
         '<div class="mc-name ' + cls + '">' + esc(it.name) + '</div>' +
         '<div class="mc-price">' + it.price + '<span class="u">💰</span></div>' +
         '<div class="mc-limit' + (soldOut ? ' out' : '') + '">' + limitText + '</div>' +
