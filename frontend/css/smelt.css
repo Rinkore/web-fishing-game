@@ -150,14 +150,14 @@
   .smelt-workbench .ws-col { padding: 10px; display: flex; flex-direction: column; min-height: 0; }
   .sm-slot-head { gap: 5px; }
   .sm-slot-head h3 { font-size: 15px; }
-  .sm-badge { padding: 2px 5px; font-size: 11px; }
+  .sm-badge { padding: 2px 5px; font-size: 12px; }
   .smelt-workbench .ws-pick-row { position: relative; display: block; margin: 8px 0; }
   .smelt-workbench .ws-pick { gap: 8px; padding: 8px; }
   .smelt-workbench .ws-pick.chosen { padding-right: 32px; }
   .smelt-workbench .ws-pick .ws-pick-icon { width: 36px; height: 48px; }
   .smelt-workbench .ws-pick-name { font-size: 14px; }
-  .smelt-workbench .ws-pick-meta, .smelt-workbench .ws-pick-change { font-size: 11px; }
-  .smelt-workbench .ws-pick-row .ws-unload { position: absolute; top: 0; right: 0; padding: 0 3px; writing-mode: vertical-rl; font-size: 11px; min-height: 40px; }
+  .smelt-workbench .ws-pick-meta, .smelt-workbench .ws-pick-change { font-size: 12px; }
+  .smelt-workbench .ws-pick-row .ws-unload { position: absolute; top: 0; right: 0; padding: 0 3px; writing-mode: vertical-rl; font-size: 12px; min-height: 40px; }
   .smelt-workbench .ws-pick.empty { min-height: 120px; height: 100%; margin-top: 8px; }
   .sm-slot-hint { margin: 0 0 6px; font-size: 12px; }
   .smelt-workbench .ws-affs { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; margin: 0; scrollbar-width: thin; }
@@ -167,9 +167,9 @@
   .sm-option { padding: 8px; gap: 8px; }
   .sm-option img { width: 44px; height: 52px; }
   .sm-option strong { font-size: 14px; }
-  .sm-option small { font-size: 11px; }
+  .sm-option small { font-size: 12px; }
   .sm-option .sm-mat-controls { gap: 4px; margin-top: 4px; }
-  .sm-mat-controls .mini { min-height: 26px; padding: 2px 6px; font-size: 11px; }
+  .sm-mat-controls .mini { min-height: 26px; padding: 2px 6px; font-size: 12px; }
   .sm-preview-panel { position: static; min-height: 0; padding: 12px; display: flex; flex-direction: column; }
   .sm-preview-panel > header { padding-bottom: 6px; }
   .sm-preview-panel > header h3 { font-size: 17px; }
@@ -178,28 +178,28 @@
   .smelt-workbench .ws-result-icon { width: 44px; height: 46px; }
   .ws-result-card > div { gap: 0; }
   .ws-result-card strong { font-size: 16px; }
-  .ws-result-card small, .ws-result-card span { font-size: 11px; }
+  .ws-result-card small, .ws-result-card span { font-size: 12px; }
   .smelt-workbench .sm-result-aff { padding: 7px 0; }
   .sm-result-aff strong { font-size: 14px; }
   .sm-result-aff > div { gap: 4px; }
-  .sm-result-aff .ws-aff-prob { font-size: 11px; }
+  .sm-result-aff .ws-aff-prob { font-size: 12px; }
   .sm-range { margin-top: 2px; font-size: 12px; }
   .sm-range b { font-size: 16px; }
   .sm-probabilities { margin: 8px 0; gap: 6px; }
   .sm-probabilities b, .sm-probabilities .ws-full-prob { font-size: 23px; }
-  .sm-probabilities span { font-size: 11px; }
+  .sm-probabilities span { font-size: 12px; }
   .sm-risk { padding: 7px; font-size: 12px; }
   .sm-details, .sm-retained { margin-top: 2px; font-size: 12px; }
   .sm-details summary { min-height: 28px; }
   .sm-cost { margin-top: 6px; gap: 8px; font-size: 13px; }
   .sm-cost b { font-size: 18px; }
-  .sm-extra-cost { font-size: 11px; }
+  .sm-extra-cost { font-size: 12px; }
   .smelt-workbench #ws-go { min-height: 40px; padding: 7px; font-size: 15px; flex-shrink: 0; }
 }
 /* 窄桌面（881~1180px）：三张辅助材料卡只有 ~140px，份数按钮再收紧一档以免换行 */
 @media (min-width: 881px) and (max-width: 1180px) {
   .sm-option .sm-mat-controls { gap: 3px; }
-  .sm-option .sm-mat-controls .mini { min-height: 24px; padding: 2px 4px; font-size: 10px; }
+  .sm-option .sm-mat-controls .mini { min-height: 24px; padding: 2px 4px; font-size: 12px; }
 }
 @media (min-width: 881px) and (max-height: 820px) {
   .smelt-page > .ws-panel { padding: 8px; }
@@ -213,7 +213,7 @@
   .sm-probabilities b, .sm-probabilities .ws-full-prob { font-size: 20px; }
   .sm-risk { padding: 5px 7px; }
   .sm-details summary { min-height: 24px; }
-  .sm-retained { margin-top: 2px; padding: 5px 7px; font-size: 11px; }
+  .sm-retained { margin-top: 2px; padding: 5px 7px; font-size: 12px; }
   .sm-retained-title { margin-bottom: 2px; }
   .sm-retained-row { padding: 1px 0; }
   .smelt-workbench .ws-preview { margin: 5px 0; }
@@ -237,7 +237,7 @@
   .smelt-page .smelt-workbench { grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); gap: 8px; align-items: stretch; }
   .smelt-page .sm-step-title { margin: 4px 0; gap: 4px; }
   .smelt-page .sm-step-title h3 { font-size: 14px; }
-  .smelt-page .sm-step-title > span { font-size: 11px; }
+  .smelt-page .sm-step-title > span { font-size: 12px; }
   .smelt-page .ws-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
   .smelt-page .ws-col, .smelt-page .sm-preview-panel { padding: 6px; }
   .smelt-page .sm-slot-head { flex-wrap: wrap; gap: 2px; }

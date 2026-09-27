@@ -31,7 +31,18 @@
 }
 
 /* ---------- 全局字体与背景 ---------- */
-body, button, input, select, textarea { font-family: var(--px-font) !important; }
+/* 字体分工：像素字按 12px 网格绘制，小字号或非整数倍缩放会糊，大段说明读起来吃力。
+   所以正文、说明、表格与输入框用系统中文字体（body 继承 --font-body）；
+   像素字体只挂在「游戏感」元素上：品牌、面板标题、按钮 / 页签 / 导航、卡片名与统计数字。 */
+body, input, select, textarea { font-family: var(--font-body); }
+button, .brand, .brand-big, .panel h2, .panel h3, .nav-item, .cx-name, .cs-box b, .ver {
+  font-family: var(--px-font);
+  /* 像素字体没有粗体字形：600/700 会被浏览器「伪加粗」把笔画糊成一团，这里禁掉 */
+  font-synthesis: none;
+}
+/* 字号吸附到像素网格：12px 原生、24px 两倍，其它字号都是非整数缩放 */
+button, .nav-item, .cx-name, .panel h3 { font-size: 12px; }
+.brand, .brand-big, .panel h2, .cs-box b { font-size: 24px; }
 body {
   background:
     radial-gradient(900px 420px at 75% -8%, rgba(62, 201, 240, .10), transparent 60%),
@@ -75,6 +86,8 @@ body::before {
 .panel h2, .panel h3 { text-shadow: 2px 2px 0 rgba(0, 0, 0, .5); letter-spacing: 1px; }
 .panel h2 { color: var(--accent2); }
 .panel h3 { color: var(--px-gold); }
+/* 小节标题：像素字固定 12px 与正文同高，层级靠左侧色条 + 字距拉开，而不是放大字号 */
+.panel h3 { border-left: 4px solid var(--px-gold); padding-left: 8px; letter-spacing: 2px; line-height: 1.6; }
 
 /* ---------- 按钮：像素块 + 按压 ---------- */
 button, .nav-item, .spot-btn, .inv-cat, .mini, .primary, .primary-big,
@@ -108,7 +121,7 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
   backdrop-filter: none;
   box-shadow: 0 4px 0 var(--px-shadow);
 }
-.brand { text-shadow: 2px 2px 0 rgba(0, 0, 0, .6); color: var(--px-gold); font-size: 19px; }
+.brand { text-shadow: 2px 2px 0 rgba(0, 0, 0, .6); color: var(--px-gold); }
 .brand .ver { color: var(--accent); }
 .player-status .meta {
   padding: 3px 9px; border: 2px solid var(--px-line); border-radius: 3px;
@@ -205,8 +218,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .codex-cell .cx-tier { color: var(--px-gold); font-weight: 700; }
 .codex-cell.got:hover { transform: translate(-2px, -3px); }
 .codex-cell .cx-icon { animation: px-swim 3.6s ease-in-out infinite; transform-origin: center; }
-.codex-cell:not(.got) .cx-icon { animation: none; filter: grayscale(.55) brightness(.75); }
-.codex-cell:not(.got) > * { opacity: .55; }
+/* 未解锁：贴图压成剪影（留一圈淡描边看得出轮廓），文字改用弱化色而不是整卡半透明——
+   半透明的像素小字几乎读不出来；剪影则留下「还差这条」的收集悬念 */
+.codex-cell:not(.got):not(.k-spots) .cx-icon { animation: none; filter: brightness(0) drop-shadow(0 0 1px rgba(150, 190, 230, .75)); opacity: .85; }
+.codex-cell:not(.got):not(.k-spots) { background: rgba(6, 16, 30, .75); }
+.codex-cell:not(.got):not(.k-spots) .cx-name { color: #7f98b0; }
+.codex-cell:not(.got):not(.k-spots) .cx-meta { color: #7f98b0; }
+.codex-cell.k-spots:not(.got) > * { opacity: .55; }
 .codex-cell .cx-icon.spot-icon { animation: none; }
 /* 图鉴 · 钓点：可前往的钓点＝已解锁，整卡点亮（跳出上面「未解锁压暗」那条通用规则）；
    锁定的钓场（后台锁定 / 限时未开窗）保持灰暗 + 灰色贴图，一眼分清「能去」与「还不能去」。 */
@@ -224,13 +242,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   0%, 100% { transform: translateX(-4px) rotate(-2deg); }
   50% { transform: translateX(4px) rotate(2deg); }
 }
-/* 已解锁稀有/史诗卡片：呼吸金光 */
+/* 已解锁稀有/史诗卡片：呼吸光晕取文字本身的品质色（稀有蓝光、史诗金光），不再一律金光 */
 .codex-cell.got .cx-name.r-rare, .codex-cell.got .cx-name.r-epic, .codex-cell.got .cx-name.r-big {
   animation: px-rare-glow 2.2s ease-in-out infinite;
 }
 @keyframes px-rare-glow {
-  0%, 100% { text-shadow: 0 0 4px rgba(255, 210, 62, .35), 2px 2px 0 rgba(0, 0, 0, .5); }
-  50% { text-shadow: 0 0 14px rgba(255, 210, 62, .8), 2px 2px 0 rgba(0, 0, 0, .5); }
+  0%, 100% { text-shadow: 0 0 3px currentColor, 2px 2px 0 rgba(0, 0, 0, .5); }
+  50% { text-shadow: 0 0 12px currentColor, 2px 2px 0 rgba(0, 0, 0, .5); }
 }
 
 /* ---------- 钓鱼场景（装饰性，由 ui.js 插入） ---------- */
@@ -368,10 +386,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 }
 .cd-icon { animation: px-swim 3.6s ease-in-out infinite; }
 
-/* ---------- 品质配色强化 ---------- */
-.r-big { color: var(--px-gold); }
-.r-rare, .q-rare { color: #ffe08a; }
-.q-epic { color: #d09aff; }
+/* ---------- 品质配色强化 ----------
+   普通 / 稀有 / 史诗的颜色只在 style.css（--common / --rare / --epic）定义一次。
+   这里曾把 .q-epic 改成紫、.r-rare 改成浅金：组件史诗变紫而渔获史诗仍是金，
+   同一个「史诗」两种颜色；稀有那条又被 style.css 的 !important 盖掉，从未生效。 */
 .q-mythic {
   background: linear-gradient(90deg, #ff6b6b, #ffd23e, #34e0c0, #3ec9f0, #d09aff);
   -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -497,7 +515,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* ---------- 地图页签 ---------- */
 .px-map-tabs { display: flex; gap: 10px; margin-bottom: 12px; }
 .px-map-tab {
-  padding: 8px 18px; font-size: 14px; letter-spacing: 2px; cursor: pointer;
+  padding: 8px 18px; font-size: 12px; letter-spacing: 2px; cursor: pointer;
   color: #b8d4ea; background: rgba(0, 0, 0, .3);
 }
 .px-map-tab.on {
@@ -576,7 +594,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* 增益钓点的常驻提示（无需悬浮） */
 .pn-bufftip {
-  display: inline-block; padding: 1px 7px; font-size: 11px; white-space: nowrap;
+  display: inline-block; padding: 1px 7px; font-size: 12px; white-space: nowrap;
   color: var(--px-gold); background: rgba(6, 16, 30, .85);
   border: 2px solid rgba(255, 210, 62, .55); border-radius: 3px;
   text-shadow: 1px 1px 0 rgba(0, 0, 0, .6);
@@ -660,7 +678,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ---------- 装配器双滑块（下限青 / 上限金） ---------- */
 .ab-slider-grp { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; }
-.ab-grp-tag { font-style: normal; font-size: 11px; color: var(--accent2); flex: none; width: 26px; text-align: center; }
+.ab-grp-tag { font-style: normal; font-size: 12px; color: var(--accent2); flex: none; width: 26px; text-align: center; }
 .ab-grp-tag.max { color: var(--px-gold); }
 .ab-row .ab-slider-grp .ab-num { flex: none; width: 56px; }
 .ab-row .ab-range-min { accent-color: var(--accent2); flex: 1; min-width: 60px; }
@@ -705,7 +723,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .ab-dual input.ab-range-max { z-index: 4; }
 /* 行结构：下限 [数字框] [同轨双滑块] [数字框] 上限 */
 .ab-row .ab-slider-grp { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
-.ab-grp-tag { font-style: normal; font-size: 11px; color: var(--accent2); flex: none; width: 26px; text-align: center; }
+.ab-grp-tag { font-style: normal; font-size: 12px; color: var(--accent2); flex: none; width: 26px; text-align: center; }
 .ab-grp-tag.max { color: var(--px-gold); }
 .ab-row .ab-slider-grp .ab-num { flex: none; width: 56px; }
 
@@ -755,7 +773,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .cc-card img { width: 72px; height: 56px; object-fit: contain; image-rendering: pixelated; }
 .cc-card.wide img { width: 110px; }
 .cc-card b { font-size: 12px; }
-.cc-card i { font-style: normal; font-size: 10px; opacity: .6; text-align: center; }
+.cc-card i { font-style: normal; font-size: 12px; opacity: .6; text-align: center; }
 .cc-card .cc-lock { font-size: 26px; line-height: 56px; opacity: .5; }
 .cc-card:hover { border-color: var(--px-line); }
 .cc-card.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .1); }
