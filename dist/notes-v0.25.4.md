@@ -1,0 +1,9 @@
+v0.25.4 · 自动售出恢复可保存 / 专精解锁弹窗与拥有量显示 / 下锚续期修正
+
+- **自动售出规则恢复可保存**：旧版前端把数字输入框的值按字符串提交（`"150"` / 留空 `""`），Node 时代靠 JS 宽松类型接收；Go 重写后 `/api/autosell` 严格 JSON 解码直接 400，规则存不上导致自动出售失效。`minPct / minPrice / slackPct / slackPrice / keep` 改用 `lenientFloat` 兼容数字、字符串数字与空串，配单测锁定。
+- **专精解锁 / 进阶缺材料改为弹窗**：失败不再显示裸错误码，弹出统一「材料不足 / 金币不足」提示并附本次消耗清单；页面提示行翻译为可读文案（`GearUI.errors` 错误码映射）。
+- **消耗材料旁显示拥有量**：所有消耗展示的每种材料标注「（拥有 N，不足）」，远洋与工坊同一 `cost()` 口径。
+- **套装熔炼进阶取消「同套重复核心」**：`cores` 清零，按每颗折 5 颗计入熔炼催化晶（15/30/45），金币与航程凭证不变。
+- **下锚续期修正**：`sea_anchor` 不再把到期时间重算为「当前时刻 + 续期时长」（会吞掉剩余存续），改为在原到期时间上追加，并加集成回归断言。
+
+验收：前端 expedition（27/0）、expedition-growth（5/0）、gear-growth（1/0）通过；Go `go build ./...`、`go vet ./...`、`go test -count=1 ./...` 全部通过（需要 PostgreSQL 的集成用例按设计 skip，由 CI 执行）；catalog v0.25.4（`catalog.js --check`）、wiki 快照、native 1274 / workshop 795 / mall 105 / chest 234 oracle 与 `route-coverage --check` 均按当前 `data.js` 重新生成并通过。

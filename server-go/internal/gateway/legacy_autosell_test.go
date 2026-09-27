@@ -136,3 +136,32 @@ func TestIntegrationLegacyAutoSell(t *testing.T) {
 		t.Fatalf("autosell bad bulk accepted: %d", code)
 	}
 }
+
+// 旧版前端把数字输入框的 .value 原样提交：价格线可能是字符串 "150"、空串 ""（= 不看价格）。
+// Go 严格 JSON 解码曾直接 400，导致自动售出规则保存整体失效；这里锁住字符串兼容。
+func TestLenientFloatAcceptsLegacyStringNumbers(t *testing.T) {
+	var in struct {
+		MinPct     *lenientFloat `json:"minPct"`
+		MinPrice   *lenientFloat `json:"minPrice"`
+		SlackPct   *lenientFloat `json:"slackPct"`
+		SlackPrice *lenientFloat `json:"slackPrice"`
+		Keep       *lenientFloat `json:"keep"`
+		On         *bool         `json:"on"`
+	}
+	payload := `{"minPct":"150","minPrice":"","slackPct":"5","slackPrice":12,"keep":"0","on":true}`
+	if err := json.Unmarshal([]byte(payload), &in); err != nil {
+		t.Fatalf("lenient decode: %v", err)
+	}
+	if in.MinPct == nil || *in.MinPct != 150 || in.MinPrice == nil || *in.MinPrice != 0 {
+		t.Fatalf("minPct/minPrice: %v %v", in.MinPct, in.MinPrice)
+	}
+	if in.SlackPct == nil || *in.SlackPct != 5 || in.SlackPrice == nil || *in.SlackPrice != 12 || in.Keep == nil || *in.Keep != 0 {
+		t.Fatalf("slack/keep: %v %v %v", in.SlackPct, in.SlackPrice, in.Keep)
+	}
+	if in.On == nil || !*in.On {
+		t.Fatal("on")
+	}
+	if derefOr(in.SlackPct, 0) != 5 || floatPtr(in.MinPct) == nil || *floatPtr(in.MinPct) != 150 {
+		t.Fatal("helpers")
+	}
+}

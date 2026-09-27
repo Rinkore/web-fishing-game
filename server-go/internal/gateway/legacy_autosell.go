@@ -1,10 +1,12 @@
 package gateway
 
 import (
+	"encoding/json"
 	"math"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/modules/economy"
@@ -102,17 +104,17 @@ func (a *API) legacyAutoSellSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Tier       *bool    `json:"tier"`
-		ID         string   `json:"id"`
-		Scope      string   `json:"scope"`
-		Bulk       string   `json:"bulk"`
-		On         *bool    `json:"on"`
-		Remove     bool     `json:"remove"`
-		MinPct     *float64 `json:"minPct"`
-		MinPrice   *float64 `json:"minPrice"`
-		SlackPct   *float64 `json:"slackPct"`
-		SlackPrice *float64 `json:"slackPrice"`
-		Keep       *float64 `json:"keep"`
+		Tier       *bool   `json:"tier"`
+		ID         string  `json:"id"`
+		Scope      string  `json:"scope"`
+		Bulk       string  `json:"bulk"`
+		On         *bool   `json:"on"`
+		Remove     bool    `json:"remove"`
+		MinPct     *lenientFloat `json:"minPct"`
+		MinPrice   *lenientFloat `json:"minPrice"`
+		SlackPct   *lenientFloat `json:"slackPct"`
+		SlackPrice *lenientFloat `json:"slackPrice"`
+		Keep       *lenientFloat `json:"keep"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -183,8 +185,8 @@ func (a *API) legacyAutoSellSet(w http.ResponseWriter, r *http.Request) {
 			}
 			rule := rules.AutoSellRule{
 				On:         in.On == nil || *in.On,
-				MinPct:     in.MinPct,
-				MinPrice:   in.MinPrice,
+				MinPct:     floatPtr(in.MinPct),
+				MinPrice:   floatPtr(in.MinPrice),
 				SlackPct:   derefOr(in.SlackPct, 0),
 				SlackPrice: derefOr(in.SlackPrice, 0),
 				Keep:       derefOr(in.Keep, 0),
@@ -241,9 +243,46 @@ func (a *API) autoSellEligibleIDs(c *rules.Catalog, kind string) []string {
 	return ids
 }
 
-func derefOr(v *float64, fallback float64) float64 {
+func floatPtr(v *lenientFloat) *float64 {
+	if v == nil {
+		return nil
+	}
+	n := float64(*v)
+	return &n
+}
+
+func derefOr(v *lenientFloat, fallback float64) float64 {
 	if v == nil {
 		return fallback
 	}
-	return *v
+	return float64(*v)
+}
+
+// lenientFloat 兼容旧版前端把数字输入框的 .value 原样提交：JSON 里可能是数字 50，
+// 也可能是字符串 "50" 或空串 ""（= 未填价格线）。Node 时代靠 JS 宽松类型接收，
+// Go 的标准 JSON 解码会直接拒绝字符串，导致自动售出规则保存整体失效。
+type lenientFloat float64
+
+func (f *lenientFloat) UnmarshalJSON(data []byte) error {
+	text := strings.TrimSpace(string(data))
+	if text == "null" || text == `""` {
+		*f = 0
+		return nil
+	}
+	if text[0] == '"' {
+		if err := json.Unmarshal(data, &text); err != nil {
+			return err
+		}
+		text = strings.TrimSpace(text)
+		if text == "" {
+			*f = 0
+			return nil
+		}
+	}
+	value, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return err
+	}
+	*f = lenientFloat(value)
+	return nil
 }

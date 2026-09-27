@@ -27,7 +27,17 @@
         if(type==='preferences'&&gear){data.state.allocations={...body.allocations};data.state.selected="";data.state.focus=body.focus;data.state.voyageMode=body.mode;}
         if(r.data.sea){host._sea=r.data.sea;host._onChange(r.data.sea,host._growthMessage);}
         G.invalidate();
-      }else host._growthMessage=r.data?.error||'连接未完成，请重试同一操作；不会重复扣费';
+      }else{
+        const code=r.data?.error;
+        const friendly=G.errors?.[code]||code||'连接未完成，请重试同一操作；不会重复扣费';
+        host._growthMessage=friendly;
+        // 缺材料/缺金币时弹窗明确告知，不再只留一行裸错误码。
+        if((type==='unlock'||type==='stage')&&code&&G.errors?.[code]){
+          const cfg=data.config||{};
+          const cost=type==='unlock'?cfg.costs?.unlock:cfg.costs?.stage?.[(data.state?.tiers?.[body.set]||0)];
+          UI.alertModal({title:code==='insufficient_items'?'材料不足':'金币不足',html:'<p>'+esc(friendly)+'</p>'+(cost?'<p class="hint">本次消耗：'+esc(G.cost(cost))+'</p>':''),okText:'知道了'});
+        }
+      }
       if(r.ok||(r.status>=400&&r.status<500)){pending=null;savePending();}
       await load(host);
     }catch(_){(activeHost||host)._growthMessage='连接未完成，请重试同一操作；不会重复扣费';}

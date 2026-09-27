@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.25.3';
+  const VERSION = 'v0.25.4';
   const BUILD = '2026-09-27';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
@@ -864,29 +864,29 @@
       {
         "coins": 20000,
         "items": {
-          "gear_crystal": 10
+          "gear_crystal": 15
         },
         "receipts": 1,
         "heat": 0,
-        "cores": 1
+        "cores": 0
       },
       {
         "coins": 40000,
-        "items": {
-          "gear_crystal": 20
-        },
-        "receipts": 1,
-        "heat": 0,
-        "cores": 2
-      },
-      {
-        "coins": 60000,
         "items": {
           "gear_crystal": 30
         },
         "receipts": 1,
         "heat": 0,
-        "cores": 3
+        "cores": 0
+      },
+      {
+        "coins": 60000,
+        "items": {
+          "gear_crystal": 45
+        },
+        "receipts": 1,
+        "heat": 0,
+        "cores": 0
       }
     ]
   },

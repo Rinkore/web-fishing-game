@@ -1,8 +1,8 @@
 {
   "format": 1,
-  "version": "v0.25.3",
+  "version": "v0.25.4",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "61f38600b2181a556b0de3d6e6bd2eace1fea18f45d5ed435bd298414e46ee7b",
+  "sourceSHA256": "336ecd0d5751ef946f07ddd31f9ca7cf7ac2135b9ac77cb5d3bc94c65580de5b",
   "constants": {
     "GEAR_SYSTEM": {
       "enabled": true,
@@ -370,29 +370,29 @@
           {
             "coins": 20000,
             "items": {
-              "gear_crystal": 10
+              "gear_crystal": 15
             },
             "receipts": 1,
             "heat": 0,
-            "cores": 1
+            "cores": 0
           },
           {
             "coins": 40000,
-            "items": {
-              "gear_crystal": 20
-            },
-            "receipts": 1,
-            "heat": 0,
-            "cores": 2
-          },
-          {
-            "coins": 60000,
             "items": {
               "gear_crystal": 30
             },
             "receipts": 1,
             "heat": 0,
-            "cores": 3
+            "cores": 0
+          },
+          {
+            "coins": 60000,
+            "items": {
+              "gear_crystal": 45
+            },
+            "receipts": 1,
+            "heat": 0,
+            "cores": 0
           }
         ]
       },
@@ -723,7 +723,7 @@
         }
       }
     },
-    "VERSION": "v0.25.3",
+    "VERSION": "v0.25.4",
     "BUILD": "2026-09-27",
     "FISH": {
       "common": [
