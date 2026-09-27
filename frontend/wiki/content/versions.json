@@ -1,6 +1,6 @@
 {
   "source": "VERSIONS.md",
-  "count": 117,
+  "count": 118,
   "versions": [
     {
       "version": "v0.2",
@@ -546,6 +546,11 @@
       "version": "v0.27.3",
       "date": "2026-09-28",
       "summary": "修复 v0.27.2 港湾像素组件被 pixel.css 全局 button 规则（border / border-radius / box-shadow / filter / transition，均带 !important）盖掉：harbor.css 用同优先级 !important 恢复导航按钮 / 出海按钮 / 返回关闭 / 页签 / 迷你按钮的 3px 描边、零圆角、按压位移 + 硬阴影，hover / active 限定为 :not(:disabled) 使禁用态不再有反馈；设置分组 .sgrp 收敛到 #settings-dialog / .h-pbody 不再外溢；body.harbor-on #toast 补 !important 边框与本文件内的显示 / 淡出动画；手机 ≤640px 时间牌收起文字只留图标；版本号升至 v0.27.3 并同步 ?v= 缓存参数"
+    },
+    {
+      "version": "v0.27.4",
+      "date": "2026-09-28",
+      "summary": "港湾外壳 v3 收尾（F1–F3）：页签深链 `#/place/tab`（工坊 / 渔屋 / 图鉴 / 反馈 / 商城按 0 基序号直达，越界收敛不报错）；HUD 直播播报字幕取服务端大鱼广播最新一条（内景 / 目录 / 罗盘打开时隐藏，手机 70% 宽）；稀有 / 史诗 / 神话钓获全屏庆祝动画（白闪 + 稀有度色旋转光芒 + 贴图 / 品名 / 档位，1.8 秒自动消失或点击关闭，减少 / 关闭动效时不动画）；告示板由四按钮浮层改为内景面板页签（图鉴 / 记录 / 日志 / 反馈 / WIKI ↗，页签沿用原红点徽标，子视图可深链 `#/codex`·`#/logs`·`#/feedback`）；内景面板桌面端改为 `inset: 54px 3% 8px` 让场景在两侧露出，手机保持全宽；设置新增「建筑招牌」始终 / 悬停切换；版本号升至 v0.27.4 并同步 ?v= 缓存参数"
     },
     {
       "version": "v0.24.0",

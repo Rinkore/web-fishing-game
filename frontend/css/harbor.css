@@ -92,7 +92,8 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
 
 /* ---------- 内景面板：承载既有 #main ---------- */
 .h-panel {
-  position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column;
+  /* v3 F1：桌面端 3% 侧边距，场景在边缘露出，增加空间层次感（v3 设计稿 §5 决定） */
+  position: absolute; inset: 54px 3% 8px; z-index: 4; display: flex; flex-direction: column;
   background: #0e1d33; border: 4px solid #8a5a34;
   box-shadow: 0 0 0 4px #3a2618, 0 12px 40px rgba(0, 0, 0, .6); overflow: hidden;
   animation: h-panel-in 220ms ease-out;
@@ -101,6 +102,8 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
 @keyframes h-panel-in { from { opacity: 0; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: none; } }
 html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animation: none; }
 @media (prefers-reduced-motion: reduce) { .h-panel { animation: none; } }
+/* 手机：全宽，顶部入场（设计稿 §9） */
+@media (max-width: 640px) { .h-panel { inset: 0; border-width: 3px 0 0; box-shadow: 0 -4px 0 #3a2618; } }
 
 /* 木板横梁（设计稿 §1 .plank）：横纹木纹渐变，金色标题，像素字 */
 .h-plank {
@@ -261,23 +264,12 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
   font-family: var(--px-font); font-size: 12px; cursor: pointer;
 }
 .h-cmp-item img { width: 30px; height: 30px; image-rendering: pixelated; }
-.h-board-item img { width: 24px; height: 24px; image-rendering: pixelated; }
 .h-cmp-item kbd { position: absolute; top: 0; left: 3px; font: 12px var(--px-font); color: #8fa6bf; }
 .h-cmp-item:hover, .h-cmp-item:focus-visible { border-color: var(--px-gold, #ffd23e) !important; background: #1a3558; outline: none; }
-.h-cmp-item.locked, .h-board-item.locked { opacity: .55; }
+.h-cmp-item.locked { opacity: .55; }
 .h-cmp-item .h-badge { top: -9px; right: -9px; }
 
-/* 告示板：四个低频入口 */
-.h-board-sheet { max-width: 460px; flex: 0 1 auto; }
-.h-board-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--px-font); font-size: 12px; color: var(--px-gold, #ffd23e); }
-.h-board-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.h-board-item {
-  position: relative; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 6px 10px;
-  background: #0f243c; border: 3px solid #2c4f74 !important; color: #fff;
-  font-family: var(--px-font); font-size: 12px; cursor: pointer; text-align: left;
-}
-.h-board-item:hover, .h-board-item:focus-visible { border-color: var(--px-gold, #ffd23e) !important; outline: none; }
-.h-board-item .h-badge { top: -8px; right: -8px; }
+/* v3 F3：告示板浮层样式随 #h-board 一起移除（见 .h-tabs 页签与内景面板） */
 /* 关闭 / 迷你按钮共用：像素风，3px 描边，box-shadow 按压（设计稿 §1 .mini）
    pixel.css !important 会给所有 button 加圆角和 box-shadow，必须覆盖 */
 .h-mini {
@@ -295,9 +287,6 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
 .h-mini:active:not(:disabled) { transform: translateY(2px) !important; box-shadow: 0 1px 0 rgba(0, 0, 0, .4) !important; }
 .h-mini:not(:disabled):hover { border-color: var(--px-line-hi, #48709c) !important; filter: none !important; }
 .h-sheet .h-mini { align-self: flex-end; }
-@media (max-width: 640px) {
-  .h-board-sheet { align-self: center; flex: 0 0 auto; }
-}
 
 /* ============================================================
    阶段 D：罗盘首页（手机布局）、手机布局设置行
@@ -466,3 +455,64 @@ body.harbor-on #toast.show { display: block; animation: h-toast-fade 2.6s forwar
 @media (max-width: 640px) { .h-timechip .h-tlabel { display: none; } }
 @media (prefers-reduced-motion: reduce) { .h-badge { animation: none; } }
 html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animation: none; }
+
+/* ============================================================
+   v3 F1：直播播报字幕
+   ============================================================ */
+.h-ticker {
+  position: absolute; left: 50%; top: 8px; transform: translateX(-50%);
+  max-width: 50%; font: 12px var(--px-font); color: #cfe3ff;
+  background: rgba(6, 14, 28, .72); border: 2px solid #2c4f74;
+  padding: 2px 10px; z-index: 6; pointer-events: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.h-ticker:empty, .h-ticker[hidden] { display: none; }
+@media (max-width: 640px) { .h-ticker { max-width: 70%; } }
+
+/* ============================================================
+   v3 F2：钓获庆祝动画（稀有 / 史诗 / 神话）
+   ============================================================ */
+.h-flash {
+  position: fixed; inset: 0; z-index: 12;
+  display: grid; place-items: center;
+  pointer-events: auto; cursor: pointer;
+}
+.h-flash-go { animation: h-flashbg 1.8s forwards; }
+.h-flash-catch { text-align: center; animation: h-pop 1.8s forwards; position: relative; }
+.h-flash-rays {
+  position: absolute; left: 50%; top: 70px; width: 320px; height: 320px; margin: -160px;
+  background: repeating-conic-gradient(from 0deg, var(--fc, #c084fc) 0 8deg, transparent 8deg 24deg);
+  opacity: .25; border-radius: 50%; animation: h-spin 6s linear infinite;
+  mask: radial-gradient(circle, #000 20%, transparent 70%);
+  -webkit-mask: radial-gradient(circle, #000 20%, transparent 70%);
+}
+.h-flash-img {
+  position: relative; width: 140px; height: 140px;
+  image-rendering: pixelated; object-fit: contain;
+  filter: drop-shadow(0 0 16px var(--fc, #c084fc));
+}
+.h-flash-name { position: relative; font: 24px var(--px-font); text-shadow: 2px 2px 0 #000; }
+.h-flash-tier { position: relative; font: 12px var(--px-font); color: #fff; text-shadow: 1px 1px 0 #000; }
+@keyframes h-flashbg {
+  0% { background: rgba(255, 255, 255, .55); }
+  14% { background: rgba(0, 0, 0, .4); }
+  86% { background: rgba(0, 0, 0, .4); }
+  100% { background: transparent; }
+}
+@keyframes h-pop {
+  0% { transform: scale(.3); opacity: 0; }
+  16% { transform: scale(1.12); opacity: 1; }
+  26% { transform: scale(1); }
+  86% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-20px); }
+}
+@keyframes h-spin { to { transform: rotate(360deg); } }
+html[data-motion="reduced"] .h-flash-rays, html[data-motion="off"] .h-flash-rays { animation: none; }
+@media (prefers-reduced-motion: reduce) { .h-flash-rays { animation: none; } }
+
+/* ============================================================
+   v3 F1：建筑招牌仅在悬停 / 聚焦时显示（场景.signs-hover 类）
+   ============================================================ */
+.h-scene.signs-hover .h-sign { opacity: 0; transition: opacity .15s; pointer-events: none; }
+.h-scene.signs-hover .h-hot:hover .h-sign,
+.h-scene.signs-hover .h-hot:focus-visible .h-sign { opacity: 1; pointer-events: auto; }

@@ -88,9 +88,11 @@ window.HarborShell = (function () {
     suppressHash = true;
     try { location.hash = h; } catch (e) { suppressHash = false; }
   }
+  // v3 F1：解析 #/place 和 #/place/tabIndex 两种格式
   function hashPlace() {
-    const m = /^#\/([a-z]+)$/.exec(location.hash || '');
-    return m ? m[1] : '';
+    const m = /^#\/([a-z]+)(?:\/(\d+))?$/.exec(location.hash || '');
+    if (!m) return { id: '', tab: 0 };
+    return { id: m[1], tab: m[2] != null ? +m[2] : 0 };
   }
 
   // ---- HUD ----
@@ -128,6 +130,20 @@ window.HarborShell = (function () {
       text = g ? g.name : '空闲';
     }
     if (sub.textContent !== text) sub.textContent = text;
+    // v3 F1：播报字幕 — feed 新的在前（net.js 用 unshift），所以取 feed[0]；feed 条目没有 text
+    // 字段，这一行按动态流的字段现拼，和「港湾现场 / 社交动态」显示同一份数据。
+    if (els.ticker) {
+      const feed = (st && st.feed) || [];
+      const latest = feed.length ? feed[0] : null;
+      const it = latest && latest.item;
+      const line = it ? ('📢 ' + (latest.who || '') + ' 在 ' + (latest.ground || '') +
+        (latest.spot ? '·' + latest.spot : '') + ' 钓到 ' + (it.name || '') +
+        (latest.size ? ' ' + latest.size + 'cm' : '') +
+        (it.tier === 'G' ? ' 🥇' : it.tier === 'L' ? ' 🥈' : '')) : '';
+      if (els.ticker.textContent !== line) els.ticker.textContent = line;
+      // 内景面板 / 目录 / 罗盘盖住场景时隐藏字幕
+      els.ticker.hidden = !!statePlace || dirOpen || overlayOpen();
+    }
   }
 
   // ---- 目录 / 内景面板 ----
@@ -153,36 +169,67 @@ window.HarborShell = (function () {
     }
     returnFocus = null;
   }
-  function showPlace(id) {
+  function showPlace(id, tab) {
     if (!on) return;
-    // 记住进来之前焦点在哪（目录里的入口 / HUD 按钮），回港湾时还回去（设计稿 §11）。
     if (!statePlace) returnFocus = document.activeElement;
     statePlace = id;
     if (els.root) els.root.classList.remove('home');
     if (els.panel) els.panel.hidden = false;
     if (els.title) els.title.textContent = placeName(id);
+    // v3 F3：告示板有子页签；其余地点面包屑只到地点名
     if (els.crumb) els.crumb.textContent = '港湾 › ' + placeName(id);
+    // v3 F3：在面板页签栏渲染告示板的子页签
+    buildPanelTabs(id, tab || 0);
     showDir(false);
-    setHash('#/' + id);
-    if (els.back) els.back.focus();   // 设计稿 §7：打开内景后焦点落在「← 回港湾」
+    // v3 F1：页签路由 — 有 tab 参数时写入 URL，关闭时恢复到 #/ 即可
+    setHash('#/' + id + (tab ? '/' + tab : ''));
+    if (els.back) els.back.focus();
   }
-  function openPlace(id) {
+  // v3 F3：告示板子页签渲染；其余地点页签由 ui.js 的 renderView 管理
+  const BOARD_TAB_LABELS = ['图鉴', '记录', '日志', '反馈', 'WIKI ↗'];
+  function buildPanelTabs(placeId, activeTab) {
+    if (!els.tabs) return;
+    if (placeId !== 'board') { els.tabs.innerHTML = ''; return; }
+    els.tabs.innerHTML = BOARD_VIEWS.map(function (v, i) {
+      // 徽标沿用 renderNav 已算好的 #nav 数字（反馈回复 / 日志条数），和建筑热区上的红点同源
+      const badge = navBadge(v).replace(/[<>"&]/g, '');
+      return '<button role="tab" aria-selected="' + (i === activeTab ? 'true' : 'false') +
+        '" data-tab="' + i + '" data-view="' + v + '">' + BOARD_TAB_LABELS[i] +
+        (badge ? '<i class="h-badge">' + badge + '</i>' : '') + '</button>';
+    }).join('');
+  }
+  function openPlace(id, tab) {
+    // v3 F3：告示板（board）不在 D.NAV 里，单独处理：用对应子视图打开 UI，但外壳以 'board' 跟踪地点
+    if (id === 'board') {
+      if (!window.UI || !window.UI.openView) return false;
+      const subView = BOARD_VIEWS[tab || 0] || BOARD_VIEWS[0];
+      let ok = false;
+      try { ok = window.UI.openView(subView) !== false; } catch (e) { ok = false; }
+      if (!ok) return false;
+      showPlace('board', tab || 0);
+      return true;
+    }
     if (!isPlace(id)) return false;
     if (!window.UI || !window.UI.openView) return false;
     let ok = false;
-    try { ok = window.UI.openView(id) !== false; } catch (e) { ok = false; }
+    // v3 F1：#/place/tab 深链：把 0 基页签序号透传给 ui.js，越界由它收敛
+    try { ok = window.UI.openView(id, tab || 0) !== false; } catch (e) { ok = false; }
     if (!ok) return false;
-    if (id === 'wiki') return true;        // 同域资料站：新标签打开，不切外壳
-    showPlace(id);
+    if (id === 'wiki') return true;
+    showPlace(id, tab || 0);
     return true;
   }
 
   // ---- 路由 ----
   function route() {
     if (!on) return;
-    const id = hashPlace();
-    if (id && isPlace(id)) { if (statePlace !== id) openPlace(id); }
-    else if (statePlace) showHome();
+    const hp = hashPlace();
+    // 告示板的子视图（codex / logs / feedback / wiki）也可以直接路由
+    if (hp.id && isPlace(hp.id)) {
+      if (statePlace !== hp.id) openPlace(hp.id, hp.tab);
+    } else if (hp.id && BOARD_SUB_IDS.indexOf(hp.id) >= 0) {
+      openBoardView(hp.id);
+    } else if (statePlace) showHome();
     else { showHome(); setHash('#/'); }
   }
   function onHashChange() {
@@ -275,6 +322,17 @@ window.HarborShell = (function () {
     }
     return '';
   }
+  // v3 F3：告示板改为内景面板（四个子视图作为页签），不再弹选择浮层
+  // 子视图 id（用于路由解析和 openBoardView）
+  const BOARD_SUB_IDS = BOARD_VIEWS;
+  // 告示板保留 view:null — openPlace 对 'board' 单独处理，不走 PLACES[id].view 路径
+
+  // 进入告示板：直接用 openPlace，可选指定子视图索引
+  function openBoardView(viewId) {
+    const idx = BOARD_VIEWS.indexOf(viewId);
+    openPlace('board', idx >= 0 ? idx : 0);
+  }
+
   function buildScene() {
     if (scene.built || !els.scene || !art()) return;
     const A = art();
@@ -306,8 +364,9 @@ window.HarborShell = (function () {
   }
   function enterPlace(id, from) {
     if (placeLocked(id)) { toastMsg('🔒 「' + PLACES[id].name + '」暂未开放'); return; }
-    if (id === 'board') { openBoard(from); return; }
-    openPlace(PLACES[id].view);
+    // v3 F3：告示板（board）的 view 为 null，openPlace 对它单独处理；其余地点传 view id
+    var placeId = (id === 'board') ? 'board' : PLACES[id].view;
+    openPlace(placeId);
   }
   function toastMsg(t) { if (window.UI && UI.toast) UI.toast(t); }
   function layoutScene() {
@@ -343,6 +402,9 @@ window.HarborShell = (function () {
   }
   function refreshScene() {
     if (!scene.built) return;
+    // v3 F1：建筑招牌悬停模式（设置 › 建筑招牌）。放在指纹提前返回之前，设置一改就生效。
+    const prefs = window.PlayerSettings && PlayerSettings.get ? PlayerSettings.get() : {};
+    if (els.scene) els.scene.classList.toggle('signs-hover', prefs.signs === 'hover');
     // 签名同时包含徽标：状态（如未读邮件数）可能先于 #nav 重建变化，徽标晚一拍才出现
     const s = sceneState(), badges = SCENE_ORDER.map(placeBadge).join('|'), sig = JSON.stringify(s) + badges;
     if (sig === scene.stateSig) return;
@@ -446,31 +508,33 @@ window.HarborShell = (function () {
     els.compass.hidden = false;
     const first = els.ring.querySelector('button'); if (first) first.focus();
   }
-  // 告示板：一处收纳四个低频入口
-  function openBoard() {
-    closeOverlays();
-    const body = els.boardBody; body.innerHTML = '';
-    BOARD_VIEWS.forEach(function (v) {
-      if (!isPlace(v)) return;
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'h-board-item' + (navLocked(v) ? ' locked' : '');
-      const badge = navBadge(v);
-      b.innerHTML = navIcon(v) + '<span>' + placeName(v) + (v === 'wiki' ? ' ↗' : '') + '</span>' + (badge ? '<i class="h-badge">' + badge + '</i>' : '');
-      b.addEventListener('click', function () { closeOverlays(); openPlace(v); });
-      body.appendChild(b);
-    });
-    returnFocusOverlay = document.activeElement;
-    els.board.hidden = false;
-    const f = body.querySelector('button'); if (f) f.focus();
-  }
+  // v3 F3：告示板改用内景面板；overlayOpen 只检查罗盘
   let returnFocusOverlay = null;
-  function overlayOpen() { return (els.compass && !els.compass.hidden) || (els.board && !els.board.hidden); }
+  function overlayOpen() { return !!(els.compass && !els.compass.hidden); }
   function closeOverlays() {
     const was = overlayOpen();
     if (els.compass) els.compass.hidden = true;
-    if (els.board) els.board.hidden = true;
     if (was && returnFocusOverlay && returnFocusOverlay.isConnected && returnFocusOverlay.offsetParent) returnFocusOverlay.focus();
     returnFocusOverlay = null;
     return was;
+  }
+
+  // v3 F2：稀有度庆祝动画
+  const RC = { rare: 'var(--r-rare,#38bdf8)', epic: 'var(--r-epic,#ffd24a)', mythic: 'var(--r-mythic,#c084fc)' };
+  function reward(imgSrc, name, rarity, text) {
+    if (!RC[rarity]) return; // 普通钓获不弹动画
+    const fl = els.flash; if (!fl) return;
+    fl.style.setProperty('--fc', RC[rarity]);
+    const img = document.getElementById('h-flash-img');
+    const nameEl = document.getElementById('h-flash-name');
+    const tierEl = document.getElementById('h-flash-tier');
+    if (img) { img.src = imgSrc; img.alt = name; }
+    if (nameEl) { nameEl.textContent = name; nameEl.className = 'h-flash-name rc-' + rarity; }
+    if (tierEl) tierEl.textContent = { rare: '稀有', epic: '史诗', mythic: '神话' }[rarity] + ' · ' + text;
+    fl.style.display = '';
+    fl.classList.remove('h-flash-go'); void fl.offsetWidth; fl.classList.add('h-flash-go');
+    fl.addEventListener('animationend', function handler() { fl.style.display = 'none'; fl.classList.remove('h-flash-go'); fl.removeEventListener('animationend', handler); });
+    fl.onclick = function () { fl.style.display = 'none'; fl.classList.remove('h-flash-go'); };
   }
 
   // ---- 外壳搬移 ----
@@ -523,10 +587,13 @@ window.HarborShell = (function () {
       tlabel: document.querySelector('#h-tchip .h-tlabel'), cast: $('h-cast'), castSub: $('h-cast-sub'),
       dir: $('h-dir'), set: $('h-set'), bag: $('h-bag'), panel: $('h-panel'), back: $('h-back'),
       close: $('h-close'), title: $('h-p-title'), crumb: $('h-p-crumb'), pbody: $('h-pbody'),
+      tabs: $('h-tabs'),
       dirbox: $('h-dirbox'), dirClose: $('h-dir-close'), dirBody: $('h-dir-body'),
       compassBtn: $('h-compass-btn'), compass: $('h-compass'), ring: $('h-ring'),
-      board: $('h-board'), boardBody: $('h-board-body'), boardClose: $('h-board-close'),
+      // v3 F3：board 告示板浮层移除
       home: $('h-home'), strip: $('h-strip'), homeTiles: $('h-home-tiles'),
+      // v3 F1/F2 新元素
+      ticker: $('h-ticker'), flash: $('h-flash'),
     };
     if (!els.root) return;
     originMain = els.main ? els.main.parentNode : null;
@@ -539,13 +606,27 @@ window.HarborShell = (function () {
     if (els.dir) els.dir.addEventListener('click', function () { closeOverlays(); showDir(true); });
     if (els.dirClose) els.dirClose.addEventListener('click', function () { showDir(false); });
     if (els.compassBtn) els.compassBtn.addEventListener('click', openCompass);
-    if (els.boardClose) els.boardClose.addEventListener('click', closeOverlays);
-    [els.compass, els.board].forEach(function (o) { if (o) o.addEventListener('click', function (ev) { if (ev.target === o) closeOverlays(); }); });
+    // v3 F3：board 浮层已移除，只保留罗盘的 overlay click-outside
+    if (els.compass) els.compass.addEventListener('click', function (ev) { if (ev.target === els.compass) closeOverlays(); });
     if (els.bag) els.bag.addEventListener('click', function () { openPlace('inventory'); });
     if (els.cast) els.cast.addEventListener('click', function () { openPlace('fishing'); });
     if (els.back) els.back.addEventListener('click', function () { showHome(); setHash('#/'); });
     if (els.close) els.close.addEventListener('click', function () { showHome(); setHash('#/'); });
-    // 设计稿 §11 / §7：内景面板里 Tab 焦点循环（焦点陷阱），Esc 在没有更上层对话框时关闭面板。
+    // v3 F3：告示板子页签点击
+    if (els.tabs) els.tabs.addEventListener('click', function (ev) {
+      const b = ev.target.closest('[data-tab]'); if (!b || statePlace !== 'board') return;
+      const tab = +b.dataset.tab;
+      const view = b.dataset.view;
+      if (view === 'wiki') { closeOverlays(); openPlace('wiki'); return; }
+      // 切换 BOARD_VIEWS 子视图
+      if (window.UI && UI.openView) { try { UI.openView(view); } catch (e) {} }
+      // 更新页签选中态
+      Array.prototype.forEach.call(els.tabs.querySelectorAll('[role=tab]'), function (t) {
+        t.setAttribute('aria-selected', t.dataset.tab === String(tab) ? 'true' : 'false');
+      });
+      setHash('#/board/' + tab);
+    });
+    // 设计稿 §11 / §7：内景面板里 Tab 焦点循环（焦点陷阱）
     if (els.panel) els.panel.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Tab') return;
       const focusable = Array.prototype.slice.call(
@@ -625,6 +706,8 @@ window.HarborShell = (function () {
     init: init,
     syncShell: apply, syncHud: syncHud, syncView: apply, syncNav: apply, syncScene: function () { if (on) refreshScene(); },
     openPlace: openPlace, goHome: function () { showHome(); setHash('#/'); },
+    // v3 F2：稀有 / 史诗 / 神话钓获的全屏庆祝动画（ui.js 的 catchReward 钩子调用）
+    catchReward: function (payload) { if (payload) reward(payload.img, payload.name, payload.rarity, payload.text); },
     periodAt: periodAt, current: nowInfo, label: label,
     isOn: function () { return on; },
     sceneState: sceneState, openCompass: openCompass, closeOverlays: closeOverlays,

@@ -4,9 +4,9 @@ window.PlayerSettings = (function () {
   const KEY = 'fishing_preferences_v1';
   // v0.20：字号由「标准/大号」两档改为可拖动的百分比滑杆（90 ~ 140，步长 5）
   const defaults = { textScale: 100, font: 'pixel', motion: 'system', records: true, tips: 'all', theme: 'harbor',
-    timeMode: 'clock', periods: { dawn: '05:00', day: '07:30', dusk: '17:30', night: '19:30' }, blend: 45, mobile: 'auto' };
+    timeMode: 'clock', periods: { dawn: '05:00', day: '07:30', dusk: '17:30', night: '19:30' }, blend: 45, mobile: 'auto', signs: 'always' };
   const choices = { font: ['pixel', 'clear'], motion: ['system', 'full', 'reduced', 'off'], tips: ['all', 'brief'], theme: ['classic', 'harbor'],
-    timeMode: ['clock', 'dawn', 'day', 'dusk', 'night'], mobile: ['auto', 'panorama', 'compass'] };
+    timeMode: ['clock', 'dawn', 'day', 'dusk', 'night'], mobile: ['auto', 'panorama', 'compass'], signs: ['always', 'hover'] };
   // 港湾时段验证：四段起始时间必须顺序排列，相邻间距 >= blend 分钟（与 harbor-art.js validPeriods 逻辑一致）。
   function toMinHhmm(s) { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '')); return m ? Math.min(23, +m[1]) * 60 + Math.min(59, +m[2]) : -1; }
   function validatePeriodOrder(p, blend) {
@@ -153,6 +153,7 @@ window.PlayerSettings = (function () {
       '<label><input type="radio" name="mobile" value="compass" data-setting="mobile"> 罗盘首页<small>条带 + 格子，省电</small></label>' +
       '</div>' +
       '<label class="settings-row"><span>场景动效<small>减少动效时保留钓鱼状态和进度</small></span><select data-setting="motion"><option value="system">跟随系统</option><option value="full">完整</option><option value="reduced">减少</option><option value="off">关闭装饰动画</option></select></label>' +
+      '<label class="settings-row"><span>建筑招牌<small>场景里建筑上方的招牌文字何时显示</small></span><select data-setting="signs"><option value="always">始终显示</option><option value="hover">悬停 / 聚焦时显示</option></select></label>' +
       '<label class="settings-row"><span>全服纪录播报<small>管理员公告仍会正常显示</small></span><input type="checkbox" data-setting="records" aria-label="显示全服纪录播报"></label>' +
       '<label class="settings-row"><span>普通操作提示<small>精简钓点切换、装备和列表刷新提示；保留错误和交易结果</small></span><select data-setting="tips"><option value="all">显示</option><option value="brief">精简</option></select></label>' +
       '<div class="settings-row settings-account"><span>账号<small>退出后回到登录页；钓鱼进度保存在服务器</small></span><button type="button" id="settings-logout">退出登录</button></div>' +

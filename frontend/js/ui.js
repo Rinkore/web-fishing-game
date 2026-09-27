@@ -16,9 +16,9 @@ window.UI = (function () {
   })();
   // 港湾外壳钩子（js/harbor.js，设计稿 v2 阶段 A）：ui.js 只在渲染出口通知它，
   // 是否启用由它按玩家设置判断；没启用港湾时是一次空调用。
-  function harborHook(name) {
+  function harborHook(name, payload) {
     const h = window.HarborShell;
-    if (h && typeof h[name] === 'function') h[name]();
+    if (h && typeof h[name] === 'function') h[name](payload);
   }
   // 惰性获取：避免加载顺序问题
   // v0.16.0：后台开启「允许管理员进入已关闭功能」后，管理员本人在玩家端也不再被挡
@@ -779,7 +779,7 @@ window.UI = (function () {
   }
   // 港湾外壳（设计稿 v2 阶段 A）：进入某个页面的**唯一入口**，与侧栏点击走同一条路径
   //（复位主页签 → 切视图 → 拉数据）。港湾的目录 / 内景面板路由都调它，避免两套入口分叉。
-  function openView(id) {
+  function openView(id, tab) {
     if (id === 'wiki') { window.open('/wiki/', '_blank', 'noopener'); return true; }
     if (!featureGuard(id)) return false;
     resetSectionTab(id);
@@ -787,7 +787,20 @@ window.UI = (function () {
     if (id === 'inventory') clearSubAlerts();
     if (id !== 'ground') peepComposing = false;
     renderNav(); renderView(); loadViewData(id);
+    applyTabDeepLink(tab);
     return true;
+  }
+  // v3 F1：深链 #/place/tab —— 渲染完成后按 0 基序号点选该视图自己的页签按钮。
+  // 直接点 DOM 上真实存在的页签（data-sectiontab / data-wstab / data-malltab），既复用各页签
+  // 自己的处理逻辑，也自动跟随后台功能排序；越界取最后一个，视图没有页签就什么都不做。
+  function applyTabDeepLink(tab) {
+    if (typeof tab !== 'number' || !isFinite(tab) || tab < 0) return;
+    const main = $('main'); if (!main) return;
+    let list = main.querySelectorAll('[data-sectiontab], [data-wstab], [data-malltab]');
+    if (!list.length) list = main.querySelectorAll('[role="tab"]');
+    if (!list.length) return;
+    const b = list[Math.min(tab, list.length - 1)];
+    if (b && b.click) b.click();
   }
   // 侧栏入口一律回到该页的**主页签**：合并页会记住上次停留的页签（如「钓鱼 · 钓竿」），
   // 从侧栏再点进来时若不复位，看起来就像没切过去。顶栏快捷入口与外部 setView 不走这里，
@@ -11504,6 +11517,7 @@ window.UI = (function () {
     alertModal: alertModal, confirmModal: confirmModal,
     toast: toast, showRecordBanner: showRecordBanner, onBanners: onBanners, onBannerStop: onBannerStop,
     addLog: addLog, onSubAlert: onSubAlert, resetBanners: resetBanners,
+    harborHook: harborHook,
     renderNav: renderNav, renderTopbar: renderTopbar, renderView: renderView, forceLogout: forceLogout,
     onConnChange: onConnChange,
     getView: function () { return currentView; },

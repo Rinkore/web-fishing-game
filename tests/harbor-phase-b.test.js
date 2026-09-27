@@ -68,11 +68,17 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     await page.evaluate(() => { Engine.state.features = {}; UI.renderNav(); });
     check('功能恢复后解除锁定', await page.evaluate(() => !document.querySelector('.h-hot[data-place=workshop]').classList.contains('locked')));
 
-    // ---- 告示板 ----
+    // ---- 告示板（v3 F3：改为内景面板，不再弹选择浮层） ----
     await page.click('.h-hot[data-place=board]');
-    check('告示板弹出四个入口（图鉴 / 日志 / 反馈 / WIKI）', await page.evaluate(() => !document.getElementById('h-board').hidden && document.querySelectorAll('#h-board-body button').length === 4));
-    await page.click('#h-board-body button:first-child');
-    check('告示板 → 图鉴打开图鉴内景', await page.evaluate(() => UI.getView() === 'codex' && !document.getElementById('h-panel').hidden && document.getElementById('h-board').hidden));
+    check('告示板直接打开内景面板，页签含四个子视图', await page.evaluate(() => {
+      const panel = document.getElementById('h-panel');
+      const tabs = document.querySelectorAll('#h-tabs button[role=tab]');
+      return !panel.hidden && tabs.length === 4 && UI.getView() === 'codex';
+    }));
+    check('告示板内景面板显示「图鉴」为第一个选中页签', await page.evaluate(() => {
+      const first = document.querySelector('#h-tabs button[role=tab]');
+      return first && first.getAttribute('aria-selected') === 'true';
+    }));
     await page.click('#h-back');
 
     // ---- 罗盘与快捷键 ----

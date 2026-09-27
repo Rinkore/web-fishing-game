@@ -10,21 +10,21 @@
   <!-- 像素字体体积较大（~900 KB）：预加载，避免字体到达后再回流一次 -->
   <link rel="preload" href="assets/fonts/fusion-pixel-12px.woff2" as="font" type="font/woff2" crossorigin />
   <!-- 加载顺序：tokens（色板 / 断点 / 全局焦点环）→ 基础 → 组件 → 响应式 → mobile 最后 -->
-  <link rel="stylesheet" href="css/tokens.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/style.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/pixel.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/voyage-map.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/smelt.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/expedition.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/mail.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/gear.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/settings.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/fishing.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/responsive.css?v=0.27.3" />
-  <link rel="stylesheet" href="css/mobile.css?v=0.27.3" />
+  <link rel="stylesheet" href="css/tokens.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/style.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/pixel.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/voyage-map.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/smelt.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/expedition.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/mail.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/gear.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/settings.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/fishing.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/responsive.css?v=0.27.4" />
+  <link rel="stylesheet" href="css/mobile.css?v=0.27.4" />
   <!-- 港湾外壳（设计稿 v2 · 阶段 A–E）：放在最后，用来覆盖 responsive/mobile 对 .nav 的横排与底栏规则 -->
-  <link rel="stylesheet" href="css/harbor.css?v=0.27.3" />
-  <script src="js/settings.js?v=0.27.3" defer></script>
+  <link rel="stylesheet" href="css/harbor.css?v=0.27.4" />
+  <script src="js/settings.js?v=0.27.4" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -68,6 +68,17 @@
       <div class="h-scene" id="h-scene"></div>
       <!-- 内联 display:none 是缓存兜底：样式表按 ?v= 长期缓存，旧表配新页面时不至于把提示画成裸文本 -->
       <div class="h-pan-hint" aria-hidden="true" style="display: none">← 左右滑动浏览港湾 →</div>
+      <!-- v3 F2：钓获庆祝动画（稀有 / 史诗 / 神话），由 harbor.js reward() 触发 -->
+      <div class="h-flash" id="h-flash" aria-hidden="true" style="display:none">
+        <div class="h-flash-catch">
+          <div class="h-flash-rays"></div>
+          <img class="h-flash-img" id="h-flash-img" alt="">
+          <div class="h-flash-name" id="h-flash-name"></div>
+          <div class="h-flash-tier" id="h-flash-tier"></div>
+        </div>
+      </div>
+      <!-- v3 F1：直播播报字幕（服务端广播），由 harbor.js syncHud() 更新 -->
+      <div class="h-ticker" id="h-ticker" aria-live="polite" aria-atomic="true"></div>
 
       <!-- 罗盘首页（阶段 D · 手机布局：条带 + 地点磁贴网格） -->
       <div class="h-home" id="h-home" aria-label="罗盘首页">
@@ -78,12 +89,7 @@
       <div class="h-overlay h-compass" id="h-compass" role="dialog" aria-modal="true" aria-label="罗盘：快速前往" hidden>
         <div class="h-ring" id="h-ring"><div class="h-needle" aria-hidden="true">罗盘<br><small>Esc 关闭</small></div></div>
       </div>
-      <div class="h-overlay" id="h-board" role="dialog" aria-labelledby="h-board-title" hidden>
-        <div class="h-sheet h-board-sheet">
-          <div class="h-board-head"><b id="h-board-title">📜 告示板</b><button class="h-mini" id="h-board-close" type="button">✕ 关闭</button></div>
-          <div class="h-board-body" id="h-board-body"></div>
-        </div>
-      </div>
+      <!-- v3 F3：告示板浮层已改为内景面板页签；此处不再有 #h-board 覆盖层 -->
 
       <!-- 目录与内景面板都不锁 HUD（设计稿里 HUD 始终可用），所以不加 aria-modal。 -->
       <div class="h-overlay" id="h-dirbox" role="dialog" aria-label="目录" hidden>
@@ -142,21 +148,21 @@
 
   <!-- 全部 defer：settings.js 原先比 UI.init() 晚跑，导致设置界面读到未初始化的 UI。
        统一 defer 后按文档顺序执行，init 等 DOMContentLoaded（defer 全部跑完）再启动。 -->
-  <script src="js/config.js?v=0.27.3" defer></script>
-  <script src="js/data.js?v=0.27.3" defer></script>
-  <script src="js/features.js?v=0.27.3" defer></script>
-  <script src="js/engine.js?v=0.27.3" defer></script>
-  <script src="js/scene.js?v=0.27.3" defer></script>
-  <script src="js/net.js?v=0.27.3" defer></script>
-  <script src="js/voyage-map.js?v=0.27.3" defer></script>
-  <script src="js/expedition.js?v=0.27.3" defer></script>
-  <script src="js/gear.js?v=0.27.3" defer></script>
-  <script src="js/expedition-growth.js?v=0.27.3" defer></script>
-  <script src="js/mail.js?v=0.27.3" defer></script>
-  <script src="js/house.js?v=0.27.3" defer></script>
-  <script src="js/ui.js?v=0.27.3" defer></script>
-  <script src="js/harbor-art.js?v=0.27.3" defer></script>
-  <script src="js/harbor.js?v=0.27.3" defer></script>
+  <script src="js/config.js?v=0.27.4" defer></script>
+  <script src="js/data.js?v=0.27.4" defer></script>
+  <script src="js/features.js?v=0.27.4" defer></script>
+  <script src="js/engine.js?v=0.27.4" defer></script>
+  <script src="js/scene.js?v=0.27.4" defer></script>
+  <script src="js/net.js?v=0.27.4" defer></script>
+  <script src="js/voyage-map.js?v=0.27.4" defer></script>
+  <script src="js/expedition.js?v=0.27.4" defer></script>
+  <script src="js/gear.js?v=0.27.4" defer></script>
+  <script src="js/expedition-growth.js?v=0.27.4" defer></script>
+  <script src="js/mail.js?v=0.27.4" defer></script>
+  <script src="js/house.js?v=0.27.4" defer></script>
+  <script src="js/ui.js?v=0.27.4" defer></script>
+  <script src="js/harbor-art.js?v=0.27.4" defer></script>
+  <script src="js/harbor.js?v=0.27.4" defer></script>
   <script>
     window.addEventListener('DOMContentLoaded', function () {
       window.Engine.init();

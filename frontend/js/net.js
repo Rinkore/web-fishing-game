@@ -831,13 +831,21 @@ window.Net = (function () {
           if (m.entry && me && m.entry.who === me.name) {
             S.log.unshift(m.entry);
             if (S.log.length > 60) S.log.pop();
+            const it = m.entry.item || {};
             // 渔获同时记入「📜 日志 · 🐟 渔获」分列（本地按账号保留）
             if (ui && ui.addLog) {
-              const it = m.entry.item || {};
             ui.addLog('catch', '钓到 ' + (it.name || '?') + (it.size ? ' ' + it.size + 'cm' : '') +
               (it.tier === 'G' ? ' 🥇巨型' : it.tier === 'L' ? ' 🥈大型' : '') +
               (it.rarity === 'rare' ? ' ✨稀有' : it.rarity === 'epic' ? ' 💎史诗' : '') +
                 (m.entry.ground ? '（' + m.entry.ground + (m.entry.spot ? '·' + m.entry.spot : '') + '）' : ''));
+            }
+            // v3 F2：稀有 / 史诗 / 神话钓获交给港湾外壳弹全屏庆祝动画（普通钓获只走日志与吐司）
+            if (ui && ui.harborHook) {
+              const id = it.id || '';
+              const img = it.kind === 'fish' ? 'assets/fish/' + id + '.png'
+                : (window.GameData && window.GameData.itemIcon ? window.GameData.itemIcon(id) : '');
+              const prefix = it.tier === 'G' ? '巨型 ' : it.tier === 'L' ? '大型 ' : '';
+              ui.harborHook('catchReward', { img: img, name: prefix + (it.name || ''), rarity: it.rarity, text: '已放入仓库' });
             }
           }
           if (ui) ui.refreshAll('catch');
