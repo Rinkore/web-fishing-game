@@ -70,10 +70,10 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
 
     // ---- 告示板（v3 F3：改为内景面板，不再弹选择浮层） ----
     await page.click('.h-hot[data-place=board]');
-    check('告示板直接打开内景面板，页签含四个子视图', await page.evaluate(() => {
+    check('告示板直接打开内景面板，页签含五个子视图', await page.evaluate(() => {
       const panel = document.getElementById('h-panel');
       const tabs = document.querySelectorAll('#h-tabs button[role=tab]');
-      return !panel.hidden && tabs.length === 4 && UI.getView() === 'codex';
+      return !panel.hidden && tabs.length === 5 && UI.getView() === 'codex';
     }));
     check('告示板内景面板显示「图鉴」为第一个选中页签', await page.evaluate(() => {
       const first = document.querySelector('#h-tabs button[role=tab]');
@@ -124,12 +124,7 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     await page.waitForTimeout(200);
     await page.screenshot({ path: path.join(__dirname, 'shots/harbor-b-desktop.png') });
 
-    // ---- 切回经典：场景停画、罗盘收起 ----
-    await page.evaluate(() => { HarborShell.openCompass(); PlayerSettings.set('theme', 'classic'); });
-    check('切回经典：罗盘收起、港湾隐藏', await page.evaluate(() => document.getElementById('h-compass').hidden && document.getElementById('harbor').hidden));
-    await page.keyboard.press('c');
-    check('经典界面下 C 键不打开罗盘', await page.evaluate(() => document.getElementById('h-compass').hidden));
-
+    // v4 F5：经典界面已移除，港湾始终开启，不再测试切回经典
     check('无页面错误', errors.length === 0);
     console.log('通过 ' + count + ' 项，失败 0 项');
   } finally { await browser.close(); }

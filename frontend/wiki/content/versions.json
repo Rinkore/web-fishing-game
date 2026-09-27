@@ -1,6 +1,6 @@
 {
   "source": "VERSIONS.md",
-  "count": 118,
+  "count": 119,
   "versions": [
     {
       "version": "v0.2",
@@ -551,6 +551,11 @@
       "version": "v0.27.4",
       "date": "2026-09-28",
       "summary": "港湾外壳 v3 收尾（F1–F3）：页签深链 `#/place/tab`（工坊 / 渔屋 / 图鉴 / 反馈 / 商城按 0 基序号直达，越界收敛不报错）；HUD 直播播报字幕取服务端大鱼广播最新一条（内景 / 目录 / 罗盘打开时隐藏，手机 70% 宽）；稀有 / 史诗 / 神话钓获全屏庆祝动画（白闪 + 稀有度色旋转光芒 + 贴图 / 品名 / 档位，1.8 秒自动消失或点击关闭，减少 / 关闭动效时不动画）；告示板由四按钮浮层改为内景面板页签（图鉴 / 记录 / 日志 / 反馈 / WIKI ↗，页签沿用原红点徽标，子视图可深链 `#/codex`·`#/logs`·`#/feedback`）；内景面板桌面端改为 `inset: 54px 3% 8px` 让场景在两侧露出，手机保持全宽；设置新增「建筑招牌」始终 / 悬停切换；版本号升至 v0.27.4 并同步 ?v= 缓存参数"
+    },
+    {
+      "version": "v0.27.5",
+      "date": "2026-09-28",
+      "summary": "港湾外壳 v4 收尾（F2–F5 + Phase G）：告示板 BOARD_VIEWS 补回「记录」（原少一项导致标签与视图逐位错位、WIKI 页签从不渲染），现为图鉴 / 记录 / 日志 / 反馈 / WIKI ↗ 一一对应；钓获日志在稀有 / 史诗 / 神话时调用 `harborHook('catchReward', …)` 让全屏庆祝动画真正触发，设置新增「钓获特效」开启 / 关闭；邮件内景补信封样式（折角、蜡封、已读 / 已领取 / 已过期态）与渔屋场景条带样式；经典界面彻底移除 —— `choices.theme` 只剩 harbor，`harbor.js` 删除 `enabled()` 与还原分支，`#nav` / `.layout` / `.sidebar` 从 index.html 删除、harbor.css 不再隐藏 `.layout`（顶栏 `.topbar` 保留），徽标与锁定状态改由 ui.js 写入 `window._navMeta` 共享、`renderNav()` 在港湾里直接渲染进 `#h-dir-body`；四个规则 oracle 由生成器随版本号重新生成，catalog.json 只改 version 与 constants.VERSION；版本号升至 v0.27.5 并同步 ?v= 缓存参数"
     },
     {
       "version": "v0.24.0",

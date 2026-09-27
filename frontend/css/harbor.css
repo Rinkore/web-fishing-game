@@ -1,15 +1,14 @@
 /* ============================================================
-   DeepFish 港湾外壳（设计稿 v2 · 阶段 A–E）
+   DeepFish 港湾外壳（设计稿 v2 · 阶段 A–E · Phase G）
    加载顺序最后：用来覆盖 responsive/mobile 对 .nav / .layout 的横排与底栏规则。
    阶段 A–B 交付 HUD、内景面板（承载既有 #main）、目录/罗盘与港湾场景；
    阶段 C 时段设置、阶段 D 手机布局（横向全景 / 罗盘首页）、阶段 E 港湾成为默认界面风格。
+   Phase G：经典侧栏（.layout / .sidebar / #nav）已移除，只保留 header.topbar（#player-status 等）。
    详见 output/design-review/redesign/v2/index.html §13。
    ============================================================ */
 
-/* 港湾接管时收起经典外壳：顶栏与侧栏/主区。
-   #main 已被 js/harbor.js 搬进 #h-pbody，所以隐藏 .layout 不会丢内容。 */
-body.harbor-on .topbar,
-body.harbor-on .layout { display: none; }
+/* 港湾接管时收起顶栏（经典侧栏已移除，不再需要隐藏 .layout）。 */
+body.harbor-on .topbar { display: none; }
 /* 手机端为经典底部标签栏预留的 body padding 在港湾里不需要 */
 body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
 
@@ -516,3 +515,43 @@ html[data-motion="reduced"] .h-flash-rays, html[data-motion="off"] .h-flash-rays
 .h-scene.signs-hover .h-sign { opacity: 0; transition: opacity .15s; pointer-events: none; }
 .h-scene.signs-hover .h-hot:hover .h-sign,
 .h-scene.signs-hover .h-hot:focus-visible .h-sign { opacity: 1; pointer-events: auto; }
+
+/* ============================================================
+   v4 F4a：邮件信封样式
+   渲染层（ui.js renderMail）给每条消息加 .message-item / .read / .claimed / .expired
+   ============================================================ */
+.h-pbody .message-item {
+  background: #efe3c8; color: #2a2018;
+  padding: 11px 12px 10px; margin: 0 0 12px;
+  box-shadow: 3px 4px 0 rgba(0, 0, 0, .35); position: relative;
+}
+/* 折角：左上 / 右上三角形（纯 CSS，伪元素） */
+.h-pbody .message-item::before,
+.h-pbody .message-item::after {
+  content: ''; position: absolute; top: 0; width: 0; height: 0;
+}
+.h-pbody .message-item::before { left: 0; border-top: 28px solid rgba(0,0,0,.08); border-right: 70px solid transparent; }
+.h-pbody .message-item::after  { right:0; border-top: 28px solid rgba(0,0,0,.08); border-left:  70px solid transparent; }
+/* 蜡封圆点（::marker 不能嵌套，用 .msg-seal span 承载） */
+.h-pbody .message-item .msg-seal {
+  position: absolute; top: -5px; left: 50%; width: 10px; height: 10px;
+  margin-left: -5px; border-radius: 50%;
+  background: #b8302e; box-shadow: 0 2px 0 rgba(0,0,0,.4);
+}
+.h-pbody .message-item.read    .msg-seal { background: #6b6b6b; }
+.h-pbody .message-item.claimed .msg-seal,
+.h-pbody .message-item.expired .msg-seal { background: #3a3a3a; }
+.h-pbody .message-item.claimed,
+.h-pbody .message-item.expired { opacity: .7; }
+.h-pbody .message-item .msg-subject { font-weight: 700; font-size: 13px; line-height: 1.3; margin: 0 0 3px; color: #2a2018; }
+.h-pbody .message-item.read    .msg-subject { font-weight: 400; }
+.h-pbody .message-item .msg-meta { font-size: 11px; color: #6b5040; margin: 0; }
+
+/* ============================================================
+   v4 F4b：渔屋场景条带（内景面板内，和罗盘首页 .h-strip 同规格）
+   ============================================================ */
+.h-pbody .h-house-strip {
+  width: 100%; height: auto; max-height: 80px;
+  image-rendering: pixelated; display: block;
+  border-bottom: 2px solid #2c4f74; margin-bottom: 12px;
+}

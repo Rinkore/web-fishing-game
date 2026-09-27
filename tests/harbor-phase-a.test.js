@@ -61,9 +61,9 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
       UI.renderNav();
       return document.body.classList.contains('harbor-on') && !document.getElementById('harbor').hidden;
     }));
-    check('经典外壳被收起（顶栏与侧栏不占位）', await page.evaluate(() => getComputedStyle(document.querySelector('.topbar')).display === 'none' && getComputedStyle(document.querySelector('.layout')).display === 'none'));
+    check('经典外壳被收起（顶栏不占位）', await page.evaluate(() => getComputedStyle(document.querySelector('.topbar')).display === 'none'));
     check('#main 搬进内景面板，页面渲染器不变', await page.evaluate(() => document.getElementById('main').parentElement.id === 'h-pbody'));
-    check('目录直接复用 renderNav 的 #nav（含后台排序与红标）', await page.evaluate(() => document.getElementById('nav').parentElement.id === 'h-dir-body' && document.querySelectorAll('#h-dir-body .nav-item[data-feature]').length >= 10));
+    check('目录由 renderNav 直接写到 #h-dir-body（Phase G）', await page.evaluate(() => document.querySelectorAll('#h-dir-body .nav-item[data-feature]').length >= 10));
     check('#player-status 搬进港湾 HUD', await page.evaluate(() => document.getElementById('player-status').parentElement.id === 'h-status'));
     check('时间牌显示当前时段的图标与时间', await page.evaluate(() => /🌅|☀️|🌇|🌙/.test(document.querySelector('#h-tchip .h-ticon').textContent) && /\d{2}:\d{2}/.test(document.querySelector('#h-tchip .h-tlabel').textContent)));
     // 阶段 B 起港湾首页是场景本身，目录（列表模式）改由 ☰ / L 打开
@@ -97,18 +97,6 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     check('HUD 出海钓鱼按钮切到钓鱼页', await page.evaluate(() => UI.getView() === 'fishing' && document.getElementById('h-p-title').textContent === '钓鱼'));
     check('出海按钮副标题反映当前状态', await page.evaluate(() => document.getElementById('h-cast-sub').textContent.length > 0));
 
-    await page.evaluate(() => PlayerSettings.set('theme', 'classic'));
-    check('切回经典：外壳、#main、#nav 与顶栏状态全部还原', await page.evaluate(() => !document.body.classList.contains('harbor-on') && document.getElementById('harbor').hidden &&
-      document.getElementById('main').parentElement.classList.contains('layout') &&
-      document.getElementById('nav').parentElement.classList.contains('sidebar') &&
-      document.getElementById('player-status').parentElement.classList.contains('topbar')));
-    check('还原后 #player-status 仍在 .topbar-actions 之前（视觉顺序不变）', await page.evaluate(() => {
-      const bar = document.querySelector('.topbar'), s = document.getElementById('player-status'), a = document.querySelector('.topbar-actions');
-      return !!(s.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING) && s.parentElement === bar;
-    }));
-    check('经典界面下顶栏重新可见', await page.evaluate(() => getComputedStyle(document.querySelector('.topbar')).display !== 'none'));
-
-    // 港湾里的 HUD 状态块（金币 → 集市、位置 → 钓鱼）要走内景面板，不能只在后台换页
     await page.evaluate(() => PlayerSettings.set('theme', 'harbor'));
     await page.click('#h-status .coins[data-view="mall"]');
     await page.waitForFunction(() => !document.getElementById('h-panel').hidden).catch(() => {});
@@ -118,16 +106,11 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     await page.keyboard.press('Escape');
     check('Esc 先收起目录再回港湾', await page.evaluate(() => document.getElementById('h-dirbox').hidden && !document.getElementById('h-panel').hidden));
     await page.click('#h-back');
-    await page.evaluate(() => PlayerSettings.set('theme', 'classic'));
 
     for (const width of [1440, 880, 390]) {
       await page.setViewportSize({ width, height: 820 });
-      await page.evaluate(() => PlayerSettings.set('theme', 'harbor'));
       check('港湾外壳在 ' + width + ' 宽不溢出视口', await page.evaluate(() => { const r = document.getElementById('harbor').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; }));
-      await page.evaluate(() => PlayerSettings.set('theme', 'classic'));
     }
-    await page.setViewportSize({ width: 390, height: 820 });
-    await page.evaluate(() => PlayerSettings.set('theme', 'harbor'));
     fs.mkdirSync(path.join(__dirname, 'shots'), { recursive: true });
     await page.screenshot({ path: path.join(__dirname, 'shots/harbor-mobile.png') });
     await page.setViewportSize({ width: 1440, height: 900 });

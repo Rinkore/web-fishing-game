@@ -66,7 +66,7 @@ window.HarborShell = (function () {
   }
 
   // ---- 外壳状态 ----
-  let els = null, originMain = null, originNav = null, originStatus = null, originStatusNext = null;
+  let els = null, originMain = null, originStatus = null, originStatusNext = null;
   let on = false, statePlace = null, dirOpen = false, suppressHash = false, returnFocus = null;
 
   function theme() {
@@ -75,7 +75,7 @@ window.HarborShell = (function () {
   }
   // 登录后 ui.js 会把 #auth 的 display 设为 none；未登录（含启动瞬间）不接管外壳。
   function authed() { const a = $('auth'); return !!a && a.style.display === 'none'; }
-  function enabled() { return theme() === 'harbor' && authed(); }
+  // v4 F5：classic 从 choices.theme 移除，harbor 是唯一主题，enabled() 简化为 authed()
   function placeIds() { return (D && D.NAV ? D.NAV : []).map(function (n) { return n.id; }); }
   function isPlace(id) { return !!id && placeIds().indexOf(id) >= 0; }
   function placeName(id) {
@@ -252,7 +252,7 @@ window.HarborShell = (function () {
     board: { name: '告示板', view: null, icon: '📜', desc: '图鉴、日志、反馈、WIKI' },
     sea: { name: '远洋码头', view: 'sea', icon: '⛵', desc: '远洋海域与船只' },
   };
-  const BOARD_VIEWS = ['codex', 'logs', 'feedback', 'wiki'];
+  const BOARD_VIEWS = ['codex', 'records', 'logs', 'feedback', 'wiki'];
   const SCENE_ORDER = ['character', 'mail', 'inventory', 'workshop', 'chest', 'mall', 'ground', 'board', 'sea', 'fishing'];
   const scene = { built: false, wrap: null, pan: null, world: null, cv: null, ctx: null, hots: {}, layers: null, layerKey: '',
     state: null, stateSig: '', hover: null, scale: 0, lastFrame: 0, lastStill: 0, phone: false };
@@ -267,14 +267,10 @@ window.HarborShell = (function () {
     return { periods: periods, blend: blend };
   }
   function motionOff() { const ps = window.PlayerSettings; const m = ps && ps.motion ? ps.motion() : 'full'; return m === 'reduced' || m === 'off'; }
-  function navItem(view) { return els && els.nav ? els.nav.querySelector('.nav-item[data-feature="' + view + '"]') : null; }
-  // 徽标一律读 renderNav 已经画好的 #nav：红点规则（好友申请 / 订阅 / 邮件…）只在 ui.js 里写一份
-  function navBadge(view) {
-    const it = navItem(view); if (!it) return '';
-    const b = [].slice.call(it.querySelectorAll('.nav-badge')).map(function (x) { return x.textContent.trim(); }).filter(function (t) { return t && t !== '🔒'; });
-    return b[0] || '';
-  }
-  function navLocked(view) { const it = navItem(view); return !!(it && it.classList.contains('feature-locked')); }
+  // Phase G：不再依赖 #nav DOM 查询徽标；ui.js renderNav() 在重建 #nav 之前先写入 window._navMeta
+  function navMeta(view) { return (window._navMeta && window._navMeta[view]) || null; }
+  function navBadge(view) { const m = navMeta(view); return m ? m.badge || '' : ''; }
+  function navLocked(view) { const m = navMeta(view); return m ? !!m.locked : false; }
   function placeBadge(id) {
     if (id === 'board') {
       let n = 0, any = '';
@@ -548,14 +544,14 @@ window.HarborShell = (function () {
   }
   function apply() {
     if (!els || !els.root) return;
-    const want = enabled();
+    // v4 F5：enabled() 已移除，直接用 authed()（harbor 是唯一主题）
+    const want = authed();
     const changed = want !== on;
     on = want;
     document.body.classList.toggle('harbor-on', on);
     els.root.hidden = !on;
     if (!on) {
       if (originMain) moveTo(els.main, originMain);
-      if (originNav) moveTo(els.nav, originNav);
       if (originStatus) moveBefore(els.status, originStatus, originStatusNext);
       if (els.panel) els.panel.hidden = true;
       if (els.dirbox) els.dirbox.hidden = true;
@@ -563,9 +559,8 @@ window.HarborShell = (function () {
       statePlace = null;
       return;
     }
-    // 阶段 A：目录列表直接复用真正的 #nav（renderNav 仍是唯一的导航渲染器），
-    // 内景面板直接复用 #main，所以既有 render* 一行都不用改。
-    moveTo(els.nav, els.dirBody);
+    // Phase G：#nav 已从 index.html 移除，目录列表改为直接渲染到 #h-dir-body；
+    // #main 仍然在 #h-pbody 里，render* 不用改。
     moveTo(els.main, els.pbody);
     moveTo(els.status, els.statusSlot);
     buildScene();
@@ -581,7 +576,7 @@ window.HarborShell = (function () {
   function init() {
     if (els) return;
     els = {
-      root: $('harbor'), scene: $('h-scene'), nav: $('nav'), main: $('main'), status: $('player-status'),
+      root: $('harbor'), scene: $('h-scene'), main: $('main'), status: $('player-status'),
       stage: $('h-stage'),
       statusSlot: $('h-status'), tchip: $('h-tchip'), ticon: document.querySelector('#h-tchip .h-ticon'),
       tlabel: document.querySelector('#h-tchip .h-tlabel'), cast: $('h-cast'), castSub: $('h-cast-sub'),
@@ -590,14 +585,12 @@ window.HarborShell = (function () {
       tabs: $('h-tabs'),
       dirbox: $('h-dirbox'), dirClose: $('h-dir-close'), dirBody: $('h-dir-body'),
       compassBtn: $('h-compass-btn'), compass: $('h-compass'), ring: $('h-ring'),
-      // v3 F3：board 告示板浮层移除
+      // Phase G：#nav 从 index.html 移除，目录改为 renderNav 直接写到 #h-dir-body
       home: $('h-home'), strip: $('h-strip'), homeTiles: $('h-home-tiles'),
-      // v3 F1/F2 新元素
       ticker: $('h-ticker'), flash: $('h-flash'),
     };
     if (!els.root) return;
     originMain = els.main ? els.main.parentNode : null;
-    originNav = els.nav ? els.nav.parentNode : null;
     originStatus = els.status ? els.status.parentNode : null;
     originStatusNext = els.status ? els.status.nextSibling : null;
 
@@ -655,9 +648,9 @@ window.HarborShell = (function () {
       openPlace(id);
     }, true);
 
-    // 目录里的导航项就是真正的 #nav 节点（renderNav 渲染），沿用它的既有点击行为，
-    // 这里只在外壳层面把页面切到内景面板。
-    if (els.nav) els.nav.addEventListener('click', function (ev) {
+    // Phase G：目录列表直接渲染到 #h-dir-body，不再搬移 #nav；
+    // 监听 #h-dir-body 里的导航项点击，把页面切到内景面板。
+    if (els.dirBody) els.dirBody.addEventListener('click', function (ev) {
       const item = ev.target.closest && ev.target.closest('.nav-item');
       if (!item || item.classList.contains('nav-more')) return;
       const id = item.getAttribute('data-feature') || '';

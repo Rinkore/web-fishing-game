@@ -50,9 +50,7 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     // ---- 阶段 C：设置里的港湾时间 ----
     await page.evaluate(() => PlayerSettings.open());
     check('港湾风格下「港湾时间」整块可见', await page.evaluate(() => { const el = document.getElementById('settings-harbor-time'); return !el.hidden && getComputedStyle(el).display !== 'none'; }));
-    await page.selectOption('#settings-dialog select[data-setting=theme]', 'classic');
-    check('经典风格下「港湾时间」整块收起（display:none）', await page.evaluate(() => getComputedStyle(document.getElementById('settings-harbor-time')).display === 'none'));
-    await page.selectOption('#settings-dialog select[data-setting=theme]', 'harbor');
+    // v4 F5：经典界面已移除，界面风格 select 不再存在于设置对话框，跳过切换测试
     check('切回港湾后设置块恢复', await page.evaluate(() => getComputedStyle(document.getElementById('settings-harbor-time')).display !== 'none'));
 
     // 固定模式：HUD 与画面都切到该时段，编辑器禁用

@@ -861,7 +861,28 @@ window.UI = (function () {
       JSON.stringify(st.features || {}), JSON.stringify(st.featureOrder || {})].join('|');
     if (sig === navSig) return;
     navSig = sig;
-    const nav = $('nav');
+
+    // Phase G：把徽标和锁定状态写入共享对象，harbor.js 直接读它而不用查询 #nav DOM
+    // 这让告示板浮层移除后 harbor.js 不再依赖 #nav 存在于文档里。
+    const meta = {};
+    (D.NAV || []).forEach(function (item) {
+      const id = item.id;
+      let badge = '';
+      if (id === 'fishing' && st.fishing.active) badge = '钓';
+      else if (id === 'trade' && st.trade) badge = '!';
+      else if (id === 'ground' && friendReqInCount() > 0) badge = String(friendReqInCount() > 99 ? '99+' : friendReqInCount());
+      else if (id === 'inventory' && subUnseen > 0) badge = String(subUnseen > 99 ? '99+' : subUnseen);
+      else if (id === 'mail' && (st.mailUnread > 0 || st.mailPending > 0)) badge = String(st.mailUnread > 99 ? '99+' : st.mailUnread || '!');
+      const locked = !!featureBlocked(id);
+      meta[id] = { badge: badge, locked: locked };
+    });
+    window._navMeta = meta;
+
+    // Phase G：#nav（经典侧栏）已从 index.html 移除；港湾开着时直接渲染到 #h-dir-body，
+    // 这样目录浮层无需再搬移 DOM 节点，renderNav 是唯一渲染入口。
+    const harborOn = window.HarborShell && HarborShell.isOn && HarborShell.isOn();
+    const nav = harborOn ? $('h-dir-body') : $('nav');
+    if (!nav) { harborHook('syncScene'); return; }
     nav.innerHTML = '';
     const makeItem = function (item) {
       const b = el('button', 'nav-item' + (item.id === currentView ? ' active' : '') + (item.implemented ? '' : ' locked'));
@@ -1101,6 +1122,16 @@ window.UI = (function () {
   }
   function logRowHtml(e) {
     const meta = e.item || {};
+    // v4 F2：稀有 / 史诗 / 神话钓获触发港湾庆祝动画（仅设置开启时）
+    if ((meta.rarity === 'rare' || meta.rarity === 'epic' || meta.rarity === 'mythic') &&
+        window.PlayerSettings && PlayerSettings.get && PlayerSettings.get().catchFlash !== 'off') {
+      harborHook('catchReward', {
+        img: (D.ASSET || '') + 'assets/fish/' + (e.id || '') + '.png',
+        name: meta.name || '',
+        rarity: meta.rarity,
+        text: '已放入仓库'
+      });
+    }
     return timeStr(e.t) + ' · 钓到 <span class="' + qualityClass(meta) + '">' + esc(meta.name) +
       '</span>' + (meta.size ? ' <span class="muted">' + meta.size + 'cm</span>' : '') +
       (meta.rarity === 'rare' ? ' ✨稀有' : meta.rarity === 'epic' ? ' 💎史诗' : '');
