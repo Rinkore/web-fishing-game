@@ -330,7 +330,10 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 
 ## 版本演进
 
-### v0.25.4：自动售出修复、专精解锁弹窗与下锚续期修正（2026-09-27）
+### v0.25.4：
+
+- **海图加载失败自愈**：voyage-map.js 偶发加载失败（发版瞬间 / 网络抖动）会让 `window.VoyageMap` 缺失，渲染在 `VoyageMap.create()` 抛异常后整页卡死空白。现在缺失时先补加载一次 `<script>`，仍拿不到就降级为纯色底图（`.px-map-plain`，节点仍可点击）继续渲染，「海图是否可用」进 `fishingSig`，补加载就绪后主动重绘换回完整海图；另加渲染异常兜底面板，展示原因并提供「↻ 重载界面」。
+自动售出修复、专精解锁弹窗与下锚续期修正（2026-09-27）
 
 - **自动售出规则恢复可保存**：旧版前端把数字输入框的 `.value` 原样提交——价格线是字符串 `"150"`、留空是 `""`；Node 后端靠 JS 宽松类型接收，Go 重写后 `/api/autosell` 的标准 JSON 严格解码直接 400，规则自 Go 版上线后根本存不上，自动出售「无效」。现在 `legacyAutoSellSet` 的 `minPct / minPrice / slackPct / slackPrice / keep` 五个字段改用 `lenientFloat`：数字、字符串数字、空串（= 不看价格）都能正确解析，并配单测 `TestLenientFloatAcceptsLegacyStringNumbers` 锁定。
 - **专精解锁 / 进阶缺材料改为弹窗提示**：远航专精解锁与进阶失败不再把裸错误码（如 `insufficient_items`）打在页面上，改为统一的「材料不足 / 金币不足」`alertModal` 弹窗并附本次消耗清单；页面提示行同样翻译成可读文案（新增错误码映射 `GearUI.errors`）。
