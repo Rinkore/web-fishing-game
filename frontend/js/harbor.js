@@ -259,6 +259,8 @@ window.HarborShell = (function () {
       const t = ev.target;
       if (t && (t.closest && t.closest('input, textarea, select, [contenteditable]'))) return;
       if (ev.key === 'Escape') {
+        // 交易窗口 / 确认框 / 设置对话框叠在内景上时，Esc 归它们处理，不能顺手把底下的内景也关掉
+        if (document.querySelector('dialog[open], .modal-overlay')) return;
         if (dirOpen && statePlace) { showDir(false); return; }
         if (statePlace) { showHome(); setHash('#/'); }
         return;
