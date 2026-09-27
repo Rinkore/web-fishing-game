@@ -1,6 +1,6 @@
 {
   "source": "VERSIONS.md",
-  "count": 116,
+  "count": 117,
   "versions": [
     {
       "version": "v0.2",
@@ -541,6 +541,11 @@
       "version": "v0.27.2",
       "date": "2026-09-28",
       "summary": "港湾外壳按设计稿像素风重做（frontend/css/harbor.css）：时间牌 / 导航按钮 / 出海按钮 / 内景面板与木板横梁 / 页签吊牌 / 罗盘环与按钮 / 告示板 / 迷你按钮 / 罗盘首页磁贴 / 设置分组统一 3px 描边、去圆角、按压位移 + 硬阴影；手机端 ≤640px 导航按钮 48×48 与出海按钮省略号保持单行；新增工具栏 / 稀有度槽位 / 进度条 / 内嵌框 / 稀有度文字色 / 列表行等内景共用工具类；版本号升至 v0.27.2 并同步 ?v= 缓存参数"
+    },
+    {
+      "version": "v0.27.3",
+      "date": "2026-09-28",
+      "summary": "修复 v0.27.2 港湾像素组件被 pixel.css 全局 button 规则（border / border-radius / box-shadow / filter / transition，均带 !important）盖掉：harbor.css 用同优先级 !important 恢复导航按钮 / 出海按钮 / 返回关闭 / 页签 / 迷你按钮的 3px 描边、零圆角、按压位移 + 硬阴影，hover / active 限定为 :not(:disabled) 使禁用态不再有反馈；设置分组 .sgrp 收敛到 #settings-dialog / .h-pbody 不再外溢；body.harbor-on #toast 补 !important 边框与本文件内的显示 / 淡出动画；手机 ≤640px 时间牌收起文字只留图标；版本号升至 v0.27.3 并同步 ?v= 缓存参数"
     },
     {
       "version": "v0.24.0",

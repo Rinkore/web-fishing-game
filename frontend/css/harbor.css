@@ -54,32 +54,41 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
 /* 底部 HUD */
 .h-hud-bottom { display: flex; align-items: stretch; gap: 8px; }
 
-/* 导航按钮：52×52 正方形，3px 描边，像素字标签，按压阴影（设计稿 §1 .hbtn） */
+/* 導航按钮：52×52 正方形，3px 描边，像素字标签，按压阴影（设计稿 §1 .hbtn）
+   pixel.css 对所有 button 加了 border/box-shadow/border-radius 的 !important，必须同等覆盖 */
 .h-btn {
   position: relative; flex: 0 0 auto;
   width: 52px; height: 52px; font-size: 22px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: rgba(6, 14, 28, .88); border: 3px solid #3d5f8a; color: #fff;
-  cursor: pointer; box-shadow: 0 4px 0 rgba(0, 0, 0, .5);
-  touch-action: manipulation;
+  background: rgba(6, 14, 28, .88); color: #fff;
+  cursor: pointer; touch-action: manipulation;
+  border: 3px solid #3d5f8a !important;
+  border-radius: 0 !important;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, .5) !important;
+  filter: none !important;
+  transition: border-color .1s, background .1s !important;
 }
 .h-btn span { position: absolute; left: -8px; right: -8px; bottom: -18px; font: 12px var(--px-font); color: #cfe3ff; text-shadow: 1px 1px 0 #000; white-space: nowrap; text-align: center; }
-.h-btn:hover { border-color: var(--px-line-hi, #48709c); background: #1a3558; }
-.h-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0, 0, 0, .5); }
+.h-btn:not(:disabled):hover { border-color: var(--px-line-hi, #48709c) !important; background: #1a3558; filter: none !important; }
+.h-btn:not(:disabled):active { transform: translateY(3px) !important; box-shadow: 0 1px 0 rgba(0, 0, 0, .5) !important; }
 
-/* 出海钓鱼按钮：像素字 + 渐变 + 发光（设计稿 §1 .cast） */
+/* 出海钓鱼按钮：像素字 + 渐变 + 发光（设计稿 §1 .cast）
+   pixel.css !important 规则会盖掉 border/box-shadow/border-radius，必须同等覆盖 */
 .h-cast {
   flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center;
   flex-direction: column; padding: 6px 26px; line-height: 1.2;
   font: 24px var(--px-font); color: #032;
   background: linear-gradient(#4af0d0, #22b89e);
-  border: 3px solid #0d6d5d;
-  box-shadow: 0 5px 0 rgba(0, 0, 0, .5), 0 0 22px rgba(52, 224, 192, .45);
   cursor: pointer; touch-action: manipulation;
+  border: 3px solid #0d6d5d !important;
+  border-radius: 0 !important;
+  box-shadow: 0 5px 0 rgba(0, 0, 0, .5), 0 0 22px rgba(52, 224, 192, .45) !important;
+  filter: none !important;
+  transition: background .1s !important;
 }
 .h-cast small { display: block; font-size: 12px; color: #064; text-align: center; }
-.h-cast:hover { background: linear-gradient(#5af5d8, #2ac8a8); }
-.h-cast:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0, 0, 0, .5), 0 0 12px rgba(52, 224, 192, .3); }
+.h-cast:not(:disabled):hover { background: linear-gradient(#5af5d8, #2ac8a8); filter: none !important; }
+.h-cast:not(:disabled):active { transform: translateY(3px) !important; box-shadow: 0 2px 0 rgba(0, 0, 0, .5), 0 0 12px rgba(52, 224, 192, .3) !important; }
 
 /* ---------- 内景面板：承载既有 #main ---------- */
 .h-panel {
@@ -101,22 +110,30 @@ html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animati
 }
 .h-back, .h-x {
   flex: none; font: 12px var(--px-font); background: #3a2618; color: #ffe9a8;
-  border: 2px solid #a8744a; padding: 4px 8px; cursor: pointer; touch-action: manipulation;
+  border: 2px solid #a8744a !important; border-radius: 0 !important;
+  box-shadow: none !important; padding: 4px 8px; cursor: pointer; touch-action: manipulation;
+  filter: none !important; transition: border-color .1s, background .1s !important;
 }
 .h-x { margin-left: auto; background: transparent; }
-.h-back:hover { background: #4a3020; border-color: #c89060; }
-.h-x:hover { background: rgba(255, 233, 168, .12); border-color: #c89060; }
+.h-back:not(:disabled):hover { background: #4a3020; border-color: #c89060 !important; filter: none !important; }
+.h-x:not(:disabled):hover { background: rgba(255, 233, 168, .12); border-color: #c89060 !important; filter: none !important; }
+.h-back:not(:disabled):active, .h-x:not(:disabled):active { transform: none !important; box-shadow: none !important; }
 .h-plank-title { flex: 1 1 auto; min-width: 0; }
 .h-ttl { font: 24px var(--px-font); color: #ffe9a8; text-shadow: 2px 2px 0 #2a1a10; line-height: 1.1; }
 .h-crumb { font-size: 12px; color: #f0d9b5; }
 
-/* 页签：像素风吊牌，带木绳假元素，选中时下移 2px 并变青色（设计稿 §1 .hang） */
+/* 页签：像素风吊牌，带木绳假元素，选中时下移 2px 并变青色（设计稿 §1 .hang）
+   pixel.css !important 会给所有 button 加圆角和 box-shadow，必须覆盖 */
 .h-tabs { flex: none; display: flex; gap: 10px; padding: 8px 14px 0; flex-wrap: wrap; }
 .h-tabs:empty { display: none; }
 .h-tabs button[role=tab] {
   position: relative; font: 12px var(--px-font); color: #cfe3ff;
-  background: #16304f; border: 3px solid #2c4f74; padding: 5px 12px;
-  margin-top: 8px; cursor: pointer;
+  background: #16304f; padding: 5px 12px; margin-top: 8px; cursor: pointer;
+  border: 3px solid #2c4f74 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  transition: border-color .1s, background .1s !important;
 }
 .h-tabs button[role=tab]::before,
 .h-tabs button[role=tab]::after {
@@ -124,8 +141,13 @@ html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animati
 }
 .h-tabs button[role=tab]::before { left: 9px; }
 .h-tabs button[role=tab]::after  { right: 9px; }
-.h-tabs button[role=tab][aria-selected=true] { color: #032; background: var(--accent, #34e0c0); border-color: #0d6d5d; transform: translateY(2px); }
-.h-tabs button[role=tab]:hover:not([aria-selected=true]) { border-color: var(--px-gold, #ffd23e); }
+.h-tabs button[role=tab][aria-selected=true] {
+  color: #032; background: var(--accent, #34e0c0);
+  border-color: #0d6d5d !important; transform: translateY(2px);
+  filter: none !important;
+}
+.h-tabs button[role=tab]:not([aria-selected=true]):hover { border-color: var(--px-gold, #ffd23e) !important; filter: none !important; }
+.h-tabs button[role=tab]:not(:disabled):active { transform: translateY(1px) !important; box-shadow: none !important; }
 .h-tabs button[role=tab] .h-badge { position: static; display: inline-block; margin-left: 6px; min-width: 18px; height: 18px; line-height: 18px; animation: none; }
 
 .h-pbody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
@@ -256,17 +278,22 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
 }
 .h-board-item:hover, .h-board-item:focus-visible { border-color: var(--px-gold, #ffd23e) !important; outline: none; }
 .h-board-item .h-badge { top: -8px; right: -8px; }
-/* 关闭 / 迷你按钮共用：像素风，3px 描边，box-shadow 按压（设计稿 §1 .mini） */
+/* 关闭 / 迷你按钮共用：像素风，3px 描边，box-shadow 按压（设计稿 §1 .mini）
+   pixel.css !important 会给所有 button 加圆角和 box-shadow，必须覆盖 */
 .h-mini {
-  font: 12px var(--px-font); padding: 5px 10px;
-  border: 3px solid #2c4f74; background: #16304f; color: #fff;
-  cursor: pointer; box-shadow: 0 3px 0 rgba(0, 0, 0, .4); touch-action: manipulation;
+  font: 12px var(--px-font); padding: 5px 10px; color: #fff;
+  background: #16304f; cursor: pointer; touch-action: manipulation;
+  border: 3px solid #2c4f74 !important;
+  border-radius: 0 !important;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, .4) !important;
+  filter: none !important;
+  transition: border-color .1s, background .1s !important;
 }
-.h-mini.go { background: var(--accent, #34e0c0); color: #032; border-color: #0d6d5d; }
-.h-mini.gold { background: var(--px-gold, #ffd23e); color: #402; border-color: #a88a1f; }
+.h-mini.go { background: var(--accent, #34e0c0); color: #032; border-color: #0d6d5d !important; }
+.h-mini.gold { background: var(--px-gold, #ffd23e); color: #402; border-color: #a88a1f !important; }
 .h-mini:disabled { opacity: .45; cursor: not-allowed; }
-.h-mini:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .4); }
-.h-mini:hover:not(:disabled) { border-color: var(--px-line-hi, #48709c); }
+.h-mini:active:not(:disabled) { transform: translateY(2px) !important; box-shadow: 0 1px 0 rgba(0, 0, 0, .4) !important; }
+.h-mini:not(:disabled):hover { border-color: var(--px-line-hi, #48709c) !important; filter: none !important; }
 .h-sheet .h-mini { align-self: flex-end; }
 @media (max-width: 640px) {
   .h-board-sheet { align-self: center; flex: 0 0 auto; }
@@ -368,15 +395,21 @@ html[data-motion="off"] .h-stage .h-scene ~ .h-pan-hint { display: none !importa
 .h-lrow .nm { font-size: 14px; } .h-lrow .nm small { display: block; color: #8fa6bf; font-size: 12px; }
 .h-lrow .num { font: 12px var(--px-font); color: var(--px-gold, #ffd23e); text-align: right; white-space: nowrap; }
 
-/* 设置面板（注入到 settings-dialog） */
-.sgrp {
+/* 设置面板（注入到 settings-dialog）
+   限定在 .settings-dialog 或 .h-pbody 里，避免污染其他组件 */
+#settings-dialog .sgrp,
+.h-pbody .sgrp {
   border: 2px solid #25405f; background: #0a1628; padding: 10px 12px; margin-bottom: 10px;
   display: flex; flex-direction: column; gap: 6px;
 }
-.sgrp > b { display: block; font: 12px var(--px-font); color: var(--px-gold, #ffd23e); font-weight: 400; margin-bottom: 6px; }
-.sgrp label { display: inline-flex; align-items: center; gap: 5px; margin: 3px 12px 3px 0; cursor: pointer; font-size: 14px; }
-.sgrp small { font-size: 12px; color: #8fa6bf; font-weight: normal; margin-left: 4px; }
-.sgrp label small { display: block; font-size: 11px; margin-left: 0; margin-top: 1px; }
+#settings-dialog .sgrp > b,
+.h-pbody .sgrp > b { display: block; font: 12px var(--px-font); color: var(--px-gold, #ffd23e); font-weight: 400; margin-bottom: 6px; }
+#settings-dialog .sgrp label,
+.h-pbody .sgrp label { display: inline-flex; align-items: center; gap: 5px; margin: 3px 12px 3px 0; cursor: pointer; font-size: 14px; }
+#settings-dialog .sgrp small,
+.h-pbody .sgrp small { font-size: 12px; color: #8fa6bf; font-weight: normal; margin-left: 4px; }
+#settings-dialog .sgrp label small,
+.h-pbody .sgrp label small { display: block; font-size: 11px; margin-left: 0; margin-top: 1px; }
 
 #settings-harbor-time { align-items: flex-start; flex-direction: column; gap: 8px; }
 #settings-harbor-time[hidden] { display: none; }
@@ -416,11 +449,20 @@ html[data-motion="off"] .h-stage .h-scene ~ .h-pan-hint { display: none !importa
 }
 
 /* ---------- 吐司（设计稿 §1 .toast） ---------- */
-/* #toast 在 #harbor 之外 — 给它加 harbor-on 时的定位规则 */
+/* #toast 在 #harbor 之外 — 给它加 harbor-on 时的定位规则。
+   pixel.css 有 .toast { border: 3px solid var(--px-line) !important }，必须覆盖边框颜色。
+   .toast.show 的淡出动画也在这里定义，避免依赖其他文件。 */
 body.harbor-on #toast {
   position: fixed; z-index: 14; left: 50%; bottom: 92px; transform: translateX(-50%);
-  font: 12px var(--px-font); background: #0f243c; border: 3px solid var(--px-gold, #ffd23e);
+  font: 12px var(--px-font); background: #0f243c;
+  border: 3px solid var(--px-gold, #ffd23e) !important;
+  border-radius: 0 !important;
   color: #fff; padding: 6px 12px; white-space: nowrap;
+  display: none;
 }
+body.harbor-on #toast.show { display: block; animation: h-toast-fade 2.6s forwards; }
+@keyframes h-toast-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+/* 手机：时间标签文字太长，收起只留图标（设计稿 §9 .device.phone .timechip .tt） */
+@media (max-width: 640px) { .h-timechip .h-tlabel { display: none; } }
 @media (prefers-reduced-motion: reduce) { .h-badge { animation: none; } }
 html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animation: none; }

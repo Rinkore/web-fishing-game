@@ -1,4 +1,4 @@
-# DeepFish v0.27.2（web-fishing-game）
+# DeepFish v0.27.3（web-fishing-game）
 
 零第三方依赖的多人联机网页钓鱼小游戏。**所有处理逻辑在服务端**：钓鱼循环、掷骰、词缀加成、
 资产结算、钓竿配置均由后端权威执行，前端只发指令、收 SSE 广播、渲染。纯原生 Web 前端 +
@@ -329,6 +329,14 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 ```
 
 ## 版本演进
+
+### v0.27.3：港湾像素组件覆盖像素基础样式（2026-09-28）
+
+- **修复**：pixel.css 对所有 `button` 施加了带 `!important` 的 `border` / `border-radius` / `box-shadow` / `filter` / `transition`，v0.27.2 的港湾像素组件被整体盖掉（按钮变圆角、蓝色描边、按压阴影丢失、hover 出现亮度滤镜）。harbor.css 现在用同优先级的 `!important` 逐项覆盖：导航按钮、出海按钮、返回 / 关闭、页签、迷你按钮恢复 3px 描边、零圆角、按压位移 + 硬阴影，hover / active 限定为 `:not(:disabled)`，禁用态不再有交互反馈。
+- **设置分组**：`.sgrp` 系列选择器收敛到 `#settings-dialog .sgrp, .h-pbody .sgrp`，不再污染设置弹窗以外的同名结构。
+- **吐司**：`body.harbor-on #toast` 用 `!important` 覆盖 pixel.css 的边框并去掉圆角；默认隐藏与 `.show` 淡出动画（`h-toast-fade`）改在本文件定义，不再依赖其它样式文件。
+- **手机**：≤640px 时时间牌 `.h-tlabel` 收起，只留图标，避免文字撑开底部 HUD。
+- **缓存**：版本号升至 v0.27.3，前端 `data.js`、内嵌 Go catalog 与 `?v=` 缓存参数同源；上一版缓存的 js/css 在版本比对后自动强制刷新，不必手动清缓存。
 
 ### v0.27.2：港湾外壳像素风重做（2026-09-28）
 
