@@ -41,59 +41,96 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
 .h-hud-id { min-width: 0; flex: 1 1 auto; }
 .h-hud-id .player-status { flex-wrap: wrap; gap: 8px 12px; font-size: 12px; }
 
+/* 时间牌：像素风格，3px 描边，无圆角（设计稿 §1 .timechip） */
 .h-timechip {
   flex: none; display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 12px; border: 2px solid var(--px-line, #2c4f74); border-radius: 8px;
-  background: rgba(15, 36, 60, .92); color: var(--df-text, #e8f2ff);
-  font-family: var(--px-font); font-size: 12px; cursor: pointer;
+  padding: 4px 8px; border: 3px solid #3d5f8a;
+  background: rgba(6, 14, 28, .82); color: #cfe3ff;
+  font-family: var(--px-font); font-size: 12px; cursor: pointer; white-space: nowrap;
 }
 .h-timechip:hover { border-color: var(--px-line-hi, #48709c); }
 .h-timechip .h-ticon { font-size: 15px; line-height: 1; }
 
+/* 底部 HUD */
 .h-hud-bottom { display: flex; align-items: stretch; gap: 8px; }
-.h-btn, .h-cast {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 52px; padding: 6px 10px;
-  border: 2px solid var(--px-line, #2c4f74); border-radius: 10px;
-  background: rgba(15, 36, 60, .92); color: var(--df-text, #e8f2ff);
-  font-family: var(--px-font); font-size: 12px; cursor: pointer; touch-action: manipulation;
+
+/* 导航按钮：52×52 正方形，3px 描边，像素字标签，按压阴影（设计稿 §1 .hbtn） */
+.h-btn {
+  position: relative; flex: 0 0 auto;
+  width: 52px; height: 52px; font-size: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(6, 14, 28, .88); border: 3px solid #3d5f8a; color: #fff;
+  cursor: pointer; box-shadow: 0 4px 0 rgba(0, 0, 0, .5);
+  touch-action: manipulation;
 }
-.h-btn { flex: 0 0 auto; min-width: 56px; flex-direction: column; }
-.h-btn span { font-size: 12px; }
-.h-btn:hover, .h-cast:hover { border-color: var(--px-line-hi, #48709c); background: rgba(20, 46, 76, .95); }
-.h-cast { flex: 1 1 auto; flex-direction: column; font-size: 14px; border-color: var(--accent, #34e0c0); color: var(--accent, #34e0c0); }
-.h-cast small { font-size: 12px; color: var(--df-muted, #9db4cc); }
+.h-btn span { position: absolute; left: -8px; right: -8px; bottom: -18px; font: 12px var(--px-font); color: #cfe3ff; text-shadow: 1px 1px 0 #000; white-space: nowrap; text-align: center; }
+.h-btn:hover { border-color: var(--px-line-hi, #48709c); background: #1a3558; }
+.h-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0, 0, 0, .5); }
+
+/* 出海钓鱼按钮：像素字 + 渐变 + 发光（设计稿 §1 .cast） */
+.h-cast {
+  flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center;
+  flex-direction: column; padding: 6px 26px; line-height: 1.2;
+  font: 24px var(--px-font); color: #032;
+  background: linear-gradient(#4af0d0, #22b89e);
+  border: 3px solid #0d6d5d;
+  box-shadow: 0 5px 0 rgba(0, 0, 0, .5), 0 0 22px rgba(52, 224, 192, .45);
+  cursor: pointer; touch-action: manipulation;
+}
+.h-cast small { display: block; font-size: 12px; color: #064; text-align: center; }
+.h-cast:hover { background: linear-gradient(#5af5d8, #2ac8a8); }
+.h-cast:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0, 0, 0, .5), 0 0 12px rgba(52, 224, 192, .3); }
 
 /* ---------- 内景面板：承载既有 #main ---------- */
 .h-panel {
   position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column;
-  border: 3px solid var(--px-line, #2c4f74); border-radius: 10px;
-  background: var(--px-panel, rgba(15, 36, 60, .92)); overflow: hidden;
-  /* 设计稿 §10：内景升起 220ms；减少/关闭动效时直接出现（面板每次由 hidden 变可见都会重放） */
+  background: #0e1d33; border: 4px solid #8a5a34;
+  box-shadow: 0 0 0 4px #3a2618, 0 12px 40px rgba(0, 0, 0, .6); overflow: hidden;
   animation: h-panel-in 220ms ease-out;
 }
 .h-panel[hidden] { display: none; }
 @keyframes h-panel-in { from { opacity: 0; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: none; } }
 html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animation: none; }
 @media (prefers-reduced-motion: reduce) { .h-panel { animation: none; } }
+
+/* 木板横梁（设计稿 §1 .plank）：横纹木纹渐变，金色标题，像素字 */
 .h-plank {
-  flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 10px;
-  background: rgba(8, 22, 38, .85); border-bottom: 2px solid var(--px-line, #2c4f74);
+  flex: none; display: flex; align-items: center; gap: 10px; padding: 7px 12px;
+  background: repeating-linear-gradient(90deg, #6b4631 0 38px, #5e3d2a 38px 40px);
+  border-bottom: 4px solid #3a2618;
 }
-.h-back, .h-x, .h-mini {
-  flex: none; padding: 7px 12px; border: 2px solid var(--px-line, #2c4f74); border-radius: 8px;
-  background: rgba(15, 36, 60, .92); color: var(--df-text, #e8f2ff);
-  font-family: var(--px-font); font-size: 12px; cursor: pointer; touch-action: manipulation;
+.h-back, .h-x {
+  flex: none; font: 12px var(--px-font); background: #3a2618; color: #ffe9a8;
+  border: 2px solid #a8744a; padding: 4px 8px; cursor: pointer; touch-action: manipulation;
 }
-.h-back:hover, .h-x:hover, .h-mini:hover { border-color: var(--px-line-hi, #48709c); }
+.h-x { margin-left: auto; background: transparent; }
+.h-back:hover { background: #4a3020; border-color: #c89060; }
+.h-x:hover { background: rgba(255, 233, 168, .12); border-color: #c89060; }
 .h-plank-title { flex: 1 1 auto; min-width: 0; }
-.h-ttl { font-family: var(--px-font); font-size: 15px; color: var(--df-gold, #ffd23e); }
-.h-crumb { font-size: 12px; color: var(--df-muted, #9db4cc); }
-.h-tabs { flex: none; }
+.h-ttl { font: 24px var(--px-font); color: #ffe9a8; text-shadow: 2px 2px 0 #2a1a10; line-height: 1.1; }
+.h-crumb { font-size: 12px; color: #f0d9b5; }
+
+/* 页签：像素风吊牌，带木绳假元素，选中时下移 2px 并变青色（设计稿 §1 .hang） */
+.h-tabs { flex: none; display: flex; gap: 10px; padding: 8px 14px 0; flex-wrap: wrap; }
 .h-tabs:empty { display: none; }
+.h-tabs button[role=tab] {
+  position: relative; font: 12px var(--px-font); color: #cfe3ff;
+  background: #16304f; border: 3px solid #2c4f74; padding: 5px 12px;
+  margin-top: 8px; cursor: pointer;
+}
+.h-tabs button[role=tab]::before,
+.h-tabs button[role=tab]::after {
+  content: ''; position: absolute; top: -11px; width: 2px; height: 9px; background: #8a5a34;
+}
+.h-tabs button[role=tab]::before { left: 9px; }
+.h-tabs button[role=tab]::after  { right: 9px; }
+.h-tabs button[role=tab][aria-selected=true] { color: #032; background: var(--accent, #34e0c0); border-color: #0d6d5d; transform: translateY(2px); }
+.h-tabs button[role=tab]:hover:not([aria-selected=true]) { border-color: var(--px-gold, #ffd23e); }
+.h-tabs button[role=tab] .h-badge { position: static; display: inline-block; margin-left: 6px; min-width: 18px; height: 18px; line-height: 18px; animation: none; }
+
 .h-pbody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-/* 既有页面容器（.content 是 grid + overflow:auto）：迁进面板后仍由它自己滚动 */
-.h-pbody > #main.content { flex: 1 1 auto; min-height: 0; margin: 0; }
+/* 既有页面容器（.content 是 grid + overflow:auto）：迁进面板后由它自己滚动；padding 和 font-size 也在它这层 */
+.h-pbody > #main.content { flex: 1 1 auto; min-height: 0; margin: 0; padding: 12px 14px 16px; font-size: 14px; }
 
 /* ---------- 目录（列表模式）：直接复用 renderNav 渲染的 #nav ---------- */
 .h-overlay {
@@ -133,8 +170,8 @@ html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animati
   .h-stage { min-height: 0; }
   /* 设计稿 §9：底部一行 ☰ ⚙ · 🎣 · 🎒 🧭，cast 居中拉伸，四个导航按钮固定宽度 */
   .h-hud-bottom { flex-wrap: nowrap; }
-  .h-btn { flex: 0 0 auto; min-width: 44px; padding: 6px 6px; }
-  .h-cast { flex: 1 1 auto; }
+  .h-btn { flex: 0 0 auto; width: 48px; height: 48px; font-size: 20px; padding: 0; min-width: 0; }
+  .h-cast { flex: 1 1 auto; font-size: 12px; padding: 8px 10px; }
   /* 状态块排成一行横向滑动：换成三行会把场景挤掉一大截；金币块已排在最前（pixel.css order） */
   .h-hud-id .player-status { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .h-hud-id .player-status::-webkit-scrollbar { display: none; }
@@ -181,28 +218,31 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
 /* 罗盘：按后台菜单顺序排一圈，数字键 1–9、0 */
 .h-compass { background: rgba(4, 12, 22, .66); }
 .h-ring {
-  position: relative; width: min(420px, 94vw, 94%); aspect-ratio: 1; border-radius: 50%;
-  border: 4px solid var(--px-line-hi, #48709c);
-  background: radial-gradient(circle, rgba(16, 31, 54, .97) 56%, rgba(16, 31, 54, .78));
+  position: relative; width: 360px; height: 360px; border-radius: 50%;
+  border: 4px solid #3d5f8a;
+  background: radial-gradient(circle, rgba(16, 31, 54, .97) 56%, rgba(16, 31, 54, .75));
   box-shadow: 0 0 0 6px rgba(0, 0, 0, .3);
 }
+@media (max-width: 640px) { .h-ring { width: 340px; height: 340px; } }
 .h-needle {
   position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; transform: translate(-50%, -50%);
   display: grid; place-content: center; text-align: center; border-radius: 50%;
   border: 3px solid var(--px-gold, #ffd23e); background: #0b1a2e; color: var(--px-gold, #ffd23e);
   font-family: var(--px-font); font-size: 12px; line-height: 1.4;
 }
-.h-needle small { font-size: 12px; color: var(--df-muted, #9db4cc); }
+.h-needle small { font-size: 12px; color: #8fa6bf; }
+/* 罗盘按钮：70×62px，无圆角，3px 描边，像素字，画布缩略图（设计稿 §1 .ring button） */
 .h-cmp-item {
-  position: absolute; width: 66px; height: 58px; margin: -29px 0 0 -33px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  background: #0f243c; border: 3px solid var(--px-line, #2c4f74) !important; color: #fff;
+  position: absolute; width: 70px; height: 62px; margin: -31px 0 0 -35px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  background: #0f243c; border: 3px solid #2c4f74 !important; color: #fff;
   font-family: var(--px-font); font-size: 12px; cursor: pointer;
 }
-.h-cmp-item img, .h-board-item img { width: 24px; height: 24px; image-rendering: pixelated; }
-.h-cmp-item kbd { position: absolute; top: 0; left: 3px; font: 12px var(--px-font); color: var(--df-muted, #9db4cc); }
+.h-cmp-item img { width: 30px; height: 30px; image-rendering: pixelated; }
+.h-board-item img { width: 24px; height: 24px; image-rendering: pixelated; }
+.h-cmp-item kbd { position: absolute; top: 0; left: 3px; font: 12px var(--px-font); color: #8fa6bf; }
 .h-cmp-item:hover, .h-cmp-item:focus-visible { border-color: var(--px-gold, #ffd23e) !important; background: #1a3558; outline: none; }
-.h-cmp-item.locked, .h-board-item.locked { opacity: .5; }
+.h-cmp-item.locked, .h-board-item.locked { opacity: .55; }
 .h-cmp-item .h-badge { top: -9px; right: -9px; }
 
 /* 告示板：四个低频入口 */
@@ -210,12 +250,23 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
 .h-board-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--px-font); font-size: 12px; color: var(--px-gold, #ffd23e); }
 .h-board-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .h-board-item {
-  position: relative; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 8px 10px;
-  background: #0f243c; border: 3px solid var(--px-line, #2c4f74) !important; color: #fff;
+  position: relative; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 6px 10px;
+  background: #0f243c; border: 3px solid #2c4f74 !important; color: #fff;
   font-family: var(--px-font); font-size: 12px; cursor: pointer; text-align: left;
 }
 .h-board-item:hover, .h-board-item:focus-visible { border-color: var(--px-gold, #ffd23e) !important; outline: none; }
 .h-board-item .h-badge { top: -8px; right: -8px; }
+/* 关闭 / 迷你按钮共用：像素风，3px 描边，box-shadow 按压（设计稿 §1 .mini） */
+.h-mini {
+  font: 12px var(--px-font); padding: 5px 10px;
+  border: 3px solid #2c4f74; background: #16304f; color: #fff;
+  cursor: pointer; box-shadow: 0 3px 0 rgba(0, 0, 0, .4); touch-action: manipulation;
+}
+.h-mini.go { background: var(--accent, #34e0c0); color: #032; border-color: #0d6d5d; }
+.h-mini.gold { background: var(--px-gold, #ffd23e); color: #402; border-color: #a88a1f; }
+.h-mini:disabled { opacity: .45; cursor: not-allowed; }
+.h-mini:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .4); }
+.h-mini:hover:not(:disabled) { border-color: var(--px-line-hi, #48709c); }
 .h-sheet .h-mini { align-self: flex-end; }
 @media (max-width: 640px) {
   .h-board-sheet { align-self: center; flex: 0 0 auto; }
@@ -225,98 +276,151 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
    阶段 D：罗盘首页（手机布局）、手机布局设置行
    ============================================================ */
 
-/* 手机横向全景时的滑动提示（设计稿 §9）：淡出后消失，不遮挡热区。
-   index.html 走 no-cache、JS / CSS 按 ?v= 长期缓存，两条通道可能一旧一新；
-   这里给提示的显隐都带 !important，配合 HTML 内联 display:none 兜底，
-   避免旧样式表配新页面时提示以裸文本贴在舞台上。 */
+/* 手机横向全景时的滑动提示（设计稿 §9）*/
 .h-pan-hint {
   display: none; position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
-  font-family: var(--px-font); font-size: 12px; color: #fff;
-  background: rgba(0, 0, 0, .6); padding: 3px 10px; border-radius: 4px;
+  font: 12px var(--px-font); color: #fff;
+  background: rgba(0, 0, 0, .6); padding: 3px 10px;
   z-index: 4; pointer-events: none; white-space: nowrap;
 }
-/* h-phone 加在 .h-scene 上、h-compass-home 加在 #harbor（根）上，所以分两条规则。 */
 .h-scene.h-phone ~ .h-pan-hint { display: block !important; animation: h-pan-hint-fade 4.5s forwards; }
 #harbor.h-compass-home .h-pan-hint { display: none !important; }
-@keyframes h-pan-hint-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes h-pan-hint-fade { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .h-stage .h-scene ~ .h-pan-hint { display: none !important; } }
 html[data-motion="reduced"] .h-stage .h-scene ~ .h-pan-hint,
 html[data-motion="off"] .h-stage .h-scene ~ .h-pan-hint { display: none !important; }
 
 /* 罗盘首页容器：默认隐藏，.h-compass-home 时覆盖场景区 */
 .h-home {
-  display: none;
-  position: absolute; inset: 0; z-index: 1;
+  display: none; position: absolute; inset: 0; z-index: 1;
   flex-direction: column; overflow: hidden;
-  border: 3px solid var(--px-line, #2c4f74); border-radius: 10px;
-  background: #070f24;
+  border: 3px solid #2c4f74; background: #070f24;
 }
 .h-compass-home .h-home { display: flex; }
-/* 罗盘首页时隐藏滚动场景，避免重叠和 rAF 浪费 */
 .h-compass-home .h-scene { display: none; }
 
 /* 条带：场景中段截图，像素对齐 */
 .h-strip {
-  flex: none; width: 100%; height: auto; max-height: 90px;
+  flex: none; width: 100%; height: auto; max-height: 96px;
   image-rendering: pixelated; display: block;
-  border-bottom: 2px solid var(--px-line, #2c4f74);
+  border: 3px solid #2c4f74; margin-bottom: 8px;
 }
 
-/* 地点磁贴网格 */
+/* 地点磁贴：像素风，3px 描边，无圆角（设计稿 §1 .tile） */
 .h-home-tiles {
   flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain;
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;
-  padding: 8px;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+  padding: 8px 10px;
 }
 .h-home-tile {
-  position: relative; display: flex; align-items: center; gap: 8px;
-  min-height: 52px; padding: 8px 10px;
-  background: rgba(15, 36, 60, .92); border: 2px solid var(--px-line, #2c4f74) !important;
-  border-radius: 8px; color: var(--df-text, #e8f2ff);
-  font-family: var(--px-font); font-size: 12px; cursor: pointer; text-align: left;
-  touch-action: manipulation;
+  position: relative; display: flex; gap: 8px; align-items: center; text-align: left;
+  min-height: 52px; padding: 6px;
+  background: #0f243c; border: 3px solid #2c4f74 !important;
+  color: #e8f2ff; font-family: var(--px-font); font-size: 12px;
+  cursor: pointer; touch-action: manipulation;
 }
-.h-home-tile img { width: 24px; height: 24px; image-rendering: pixelated; flex: none; }
-.h-home-tile span { display: block; line-height: 1.3; min-width: 0; }
-.h-home-name { font-size: 13px; color: var(--df-text, #e8f2ff); }
-.h-home-status { font-size: 11px; color: var(--df-muted, #9db4cc); margin-top: 1px; }
-.h-home-tile:hover, .h-home-tile:focus-visible { border-color: var(--px-gold, #ffd23e) !important; outline: none; background: rgba(20, 46, 76, .95); }
+.h-home-tile img { width: 48px; height: 48px; image-rendering: pixelated; flex: none; }
+.h-home-name { display: block; font: 12px var(--px-font); color: #fff; font-weight: 400; }
+.h-home-status { display: block; font-size: 12px; color: #8fa6bf; line-height: 1.4; }
+.h-home-tile:hover, .h-home-tile:focus-visible { border-color: var(--px-gold, #ffd23e) !important; outline: none; }
 .h-home-tile.locked { opacity: .55; }
 .h-home-tile .h-badge { top: -8px; right: -8px; }
 
-/* 手机布局设置行（注入到 settings-dialog） */
+/* ---------- 内景共用工具类（设计稿 harbor-rooms / harbor-app） ---------- */
+/* 小按钮（工具栏里的操作，与 .h-mini 同规格） */
+.h-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.h-toolbar input[type=search], .h-toolbar select {
+  background: #07101e; color: #e8f2ff; border: 2px solid #2c4f74;
+  padding: 4px 8px; font: 14px var(--font-body, system-ui);
+}
+.h-toolbar input[type=search] { flex: 1; min-width: 140px; }
+
+/* 带颜色的稀有度描边插槽 */
+.h-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }
+.h-slot { position: relative; aspect-ratio: 1; background: #0a1628; border: 3px solid #25405f; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.h-slot img { width: 78%; height: 78%; object-fit: contain; image-rendering: pixelated; }
+.h-slot .h-qty { position: absolute; right: 2px; bottom: 0; font: 12px var(--px-font); color: #fff; text-shadow: 1px 1px 0 #000, -1px 0 0 #000; }
+.h-slot.common { border-color: #5b6b80; }
+.h-slot.rare { border-color: #38bdf8; box-shadow: inset 0 0 8px rgba(56, 189, 248, .35); }
+.h-slot.epic { border-color: #ffd24a; box-shadow: inset 0 0 10px rgba(255, 210, 74, .4), 0 0 8px rgba(255, 210, 74, .25); }
+.h-slot.mythic { border-color: #c084fc; box-shadow: inset 0 0 12px rgba(192, 132, 252, .5), 0 0 10px rgba(192, 132, 252, .35); }
+.h-slot.empty { cursor: default; opacity: .45; }
+.h-slot.sel { outline: 3px solid #fff; outline-offset: 1px; }
+.h-slot:hover:not(.empty) { transform: translateY(-2px); }
+
+/* 进度条 */
+.h-meter { height: 10px; background: #07101e; border: 2px solid #25405f; }
+.h-meter i { display: block; height: 100%; background: linear-gradient(90deg, #22b89e, #4af0d0); }
+.h-meter.gold i { background: linear-gradient(90deg, #c8961e, #ffd23e); }
+
+/* 内嵌框 */
+.h-box { border: 3px solid #25405f; background: #0a1628; padding: 10px; }
+.h-box > h5 { margin: 0 0 8px; font: 12px var(--px-font); color: var(--px-gold, #ffd23e); font-weight: 400; letter-spacing: 1px; }
+
+/* 稀有度文字色 */
+.rc-common { color: #cbd5e1; } .rc-rare { color: #38bdf8; } .rc-epic { color: #ffd24a; }
+.rc-mythic { background: linear-gradient(90deg, #f87171, #fbbf24, #4ade80, #38bdf8, #c084fc); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* 列表行 */
+.h-list-rows { display: flex; flex-direction: column; gap: 6px; }
+.h-lrow { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; background: #0a1628; border: 2px solid #25405f; padding: 5px 8px; }
+.h-lrow img { width: 32px; height: 32px; image-rendering: pixelated; object-fit: contain; }
+.h-lrow .nm { font-size: 14px; } .h-lrow .nm small { display: block; color: #8fa6bf; font-size: 12px; }
+.h-lrow .num { font: 12px var(--px-font); color: var(--px-gold, #ffd23e); text-align: right; white-space: nowrap; }
+
+/* 设置面板（注入到 settings-dialog） */
 .sgrp {
-  padding: 10px 0; border-bottom: 1px solid var(--line, #2c4f74);
+  border: 2px solid #25405f; background: #0a1628; padding: 10px 12px; margin-bottom: 10px;
   display: flex; flex-direction: column; gap: 6px;
 }
-.sgrp b { font-size: 14px; color: var(--df-text, #e8f2ff); }
-.sgrp small { font-size: 12px; color: var(--df-muted, #9db4cc); font-weight: normal; margin-left: 4px; }
-.sgrp label { display: flex; align-items: flex-start; gap: 6px; font-size: 14px; cursor: pointer; line-height: 1.4; }
+.sgrp > b { display: block; font: 12px var(--px-font); color: var(--px-gold, #ffd23e); font-weight: 400; margin-bottom: 6px; }
+.sgrp label { display: inline-flex; align-items: center; gap: 5px; margin: 3px 12px 3px 0; cursor: pointer; font-size: 14px; }
+.sgrp small { font-size: 12px; color: #8fa6bf; font-weight: normal; margin-left: 4px; }
 .sgrp label small { display: block; font-size: 11px; margin-left: 0; margin-top: 1px; }
+
 #settings-harbor-time { align-items: flex-start; flex-direction: column; gap: 8px; }
-/* .settings-row 是 display:flex，会盖掉浏览器默认的 [hidden]{display:none}，
-   经典界面风格下要隐藏「港湾时间」整块，必须显式收回。 */
 #settings-harbor-time[hidden] { display: none; }
 #settings-harbor-time > span { flex: none; }
 .settings-harbor-time-body { width: 100%; display: flex; flex-direction: column; gap: 8px; }
 .settings-harbor-modes { display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .settings-harbor-modes label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
 .settings-harbor-periods {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px;
-  padding: 10px; border: 2px solid var(--line, #2c4f74); border-radius: 8px;
-  background: rgba(0, 0, 0, .15);
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px;
 }
-.settings-harbor-periods label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+@media (max-width: 640px) { .settings-harbor-periods { grid-template-columns: repeat(2, 1fr); } }
+.settings-harbor-periods label { display: flex; flex-direction: column; align-items: stretch; gap: 2px; font-size: 12px; margin: 0; }
 .settings-harbor-periods input[type=time],
 .settings-harbor-periods select {
-  padding: 5px 7px; border: 2px solid var(--line, #2c4f74); border-radius: 6px;
-  background: var(--bg, #07101e); color: var(--ink, #e8f2ff); font: 14px var(--body, system-ui);
-  width: 100%;
+  background: #07101e; color: #e8f2ff; border: 2px solid #2c4f74;
+  padding: 3px 5px; font: 14px var(--font-body, system-ui); width: 100%;
 }
 .settings-harbor-periods input[type=time]:disabled,
 .settings-harbor-periods select:disabled { opacity: .45; cursor: not-allowed; }
+.settings-err { color: #f87171; font-size: 13px; min-height: 1.4em; }
+.settings-now { font-size: 13px; color: #b8d4ea; }
 .btn-link {
   background: none; border: none; padding: 2px 4px; font-size: 13px;
   color: var(--accent, #34e0c0); cursor: pointer; text-decoration: underline; text-decoration-style: dotted;
 }
 .btn-link:disabled { opacity: .45; cursor: not-allowed; text-decoration: none; }
+
+/* ---------- 手机覆盖 ---------- */
+@media (max-width: 640px) {
+  /* 面板全宽顶部入场，只保留顶部描边（设计稿 §9 .device.phone .panel） */
+  .h-panel { border-width: 3px 0 0; box-shadow: 0 -4px 0 #3a2618; }
+  /* HUD 按钮缩一号 */
+  .h-btn { width: 48px; height: 48px; font-size: 20px; }
+  /* 出海按钮缩小以融入单行 */
+  .h-cast { font-size: 12px; padding: 8px 14px; }
+  .h-cast small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+}
+
+/* ---------- 吐司（设计稿 §1 .toast） ---------- */
+/* #toast 在 #harbor 之外 — 给它加 harbor-on 时的定位规则 */
+body.harbor-on #toast {
+  position: fixed; z-index: 14; left: 50%; bottom: 92px; transform: translateX(-50%);
+  font: 12px var(--px-font); background: #0f243c; border: 3px solid var(--px-gold, #ffd23e);
+  color: #fff; padding: 6px 12px; white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) { .h-badge { animation: none; } }
+html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animation: none; }
