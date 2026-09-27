@@ -24,7 +24,9 @@ const cases = [
 
 if (require.main === module) {
   if (process.argv[2] !== '--write') throw new Error('Usage: node tools/go-rewrite/rules-fixture.js --write');
-  const fixture = { format: 1, version: D.VERSION, floatingComparisonTolerance: 1e-12,
+  // legacy-rules.json 是从 Node 服务器捕获的对照快照，compatibility_test 把它
+  // （连同 economy/sea）钉在原始溯源版本 v0.21.4 上——重新生成时绝不能改写版本号。
+  const fixture = { format: 1, version: 'v0.21.4', floatingComparisonTolerance: 1e-12,
     cases: cases.map(c => ({ ...c, expected: D[c.fn](...c.args) })) };
   const output = path.resolve(__dirname, '../../server-go/testdata/legacy-rules.json');
   fs.mkdirSync(path.dirname(output), { recursive: true });
