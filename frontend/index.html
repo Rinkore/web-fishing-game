@@ -66,7 +66,8 @@
          阶段 D：#h-home 是手机罗盘首页布局（js/harbor.js 在 .h-compass-home 时显示） -->
     <div class="h-stage" id="h-stage">
       <div class="h-scene" id="h-scene"></div>
-      <div class="h-pan-hint" aria-hidden="true">← 左右滑动浏览港湾 →</div>
+      <!-- 内联 display:none 是缓存兜底：样式表按 ?v= 长期缓存，旧表配新页面时不至于把提示画成裸文本 -->
+      <div class="h-pan-hint" aria-hidden="true" style="display: none">← 左右滑动浏览港湾 →</div>
 
       <!-- 罗盘首页（阶段 D · 手机布局：条带 + 地点磁贴网格） -->
       <div class="h-home" id="h-home" aria-label="罗盘首页">
