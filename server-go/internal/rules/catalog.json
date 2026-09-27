@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "v0.25.6",
+  "version": "v0.25.7",
   "source": "frontend/js/data.js",
   "sourceSHA256": "edb3410127f78a9c7ee36377f24a5d2491ba17219e7dd14399f269e57214cce3",
   "constants": {
@@ -15,7 +15,7 @@
       "engraveLevel": 8,
       "parts": {
         "line": {
-          "name": "稳定线组",
+          "name": "轻潮线组",
           "main": "skill",
           "subs": [
             "speed",
@@ -53,7 +53,7 @@
           ]
         },
         "hook": {
-          "name": "巨物钩",
+          "name": "倒刺钩",
           "main": "size",
           "subs": [
             "skill",
@@ -91,7 +91,7 @@
           ]
         },
         "bait": {
-          "name": "双生拟饵",
+          "name": "玉米拟饵",
           "main": "double",
           "subs": [
             "skill",
@@ -129,7 +129,7 @@
           ]
         },
         "reel": {
-          "name": "疾风卷线器",
+          "name": "顺滑卷线器",
           "main": "speed",
           "subs": [
             "skill",
@@ -167,7 +167,7 @@
           ]
         },
         "accessory": {
-          "name": "稳流浮漂",
+          "name": "共鸣声呐",
           "main": "skill",
           "subs": [
             "double",
@@ -723,7 +723,7 @@
         }
       }
     },
-    "VERSION": "v0.25.6",
+    "VERSION": "v0.25.7",
     "BUILD": "2026-09-27",
     "FISH": {
       "common": [
@@ -6292,7 +6292,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_line_1"
     },
     {
       "id": "gear_line_3",
@@ -6321,7 +6322,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_line_1"
     },
     {
       "id": "gear_line_4",
@@ -6350,7 +6352,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_line_1"
     },
     {
       "id": "gear_line_5",
@@ -6379,11 +6382,12 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_line_1"
     },
     {
       "id": "gear_hook_1",
-      "name": "磨石钩",
+      "name": "倒刺钩",
       "rarity": "common",
       "price": 60,
       "size": null,
@@ -6437,7 +6441,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_hook_1"
     },
     {
       "id": "gear_hook_3",
@@ -6466,7 +6471,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_hook_1"
     },
     {
       "id": "gear_hook_4",
@@ -6495,7 +6501,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_hook_1"
     },
     {
       "id": "gear_hook_5",
@@ -6524,11 +6531,12 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_hook_1"
     },
     {
       "id": "gear_bait_1",
-      "name": "星辉拟饵",
+      "name": "玉米拟饵",
       "rarity": "common",
       "price": 60,
       "size": null,
@@ -6582,7 +6590,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_bait_1"
     },
     {
       "id": "gear_bait_3",
@@ -6611,7 +6620,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_bait_1"
     },
     {
       "id": "gear_bait_4",
@@ -6640,7 +6650,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_bait_1"
     },
     {
       "id": "gear_bait_5",
@@ -6669,11 +6680,12 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_bait_1"
     },
     {
       "id": "gear_reel_1",
-      "name": "疾风卷线器",
+      "name": "顺滑卷线器",
       "rarity": "common",
       "price": 60,
       "size": null,
@@ -6727,7 +6739,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_reel_1"
     },
     {
       "id": "gear_reel_3",
@@ -6756,7 +6769,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_reel_1"
     },
     {
       "id": "gear_reel_4",
@@ -6785,7 +6799,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_reel_1"
     },
     {
       "id": "gear_reel_5",
@@ -6814,11 +6829,12 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_reel_1"
     },
     {
       "id": "gear_accessory_1",
-      "name": "收获网袋",
+      "name": "共鸣声呐",
       "rarity": "common",
       "price": 60,
       "size": null,
@@ -6872,7 +6888,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_accessory_1"
     },
     {
       "id": "gear_accessory_3",
@@ -6901,7 +6918,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_accessory_1"
     },
     {
       "id": "gear_accessory_4",
@@ -6930,7 +6948,8 @@
       ],
       "setId": "",
       "legacy": false,
-      "noSell": false
+      "noSell": false,
+      "aliasOf": "gear_accessory_1"
     },
     {
       "id": "set_tide_rod",

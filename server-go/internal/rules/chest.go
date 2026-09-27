@@ -50,7 +50,7 @@ func (c *Catalog) OpenChest(ch Chest, part, baseID string, cfg ComponentConfig, 
 	} else {
 		choices := []Item{}
 		for _, b := range c.Items {
-			if b.Kind == "component" && b.SetID == "" && !b.Legacy && b.Part != "" && (ch.Mode == "random" || b.Part == part) {
+			if b.Kind == "component" && b.SetID == "" && !b.Legacy && b.AliasOf == "" && b.Part != "" && (ch.Mode == "random" || b.Part == part) {
 				choices = append(choices, b)
 			}
 		}

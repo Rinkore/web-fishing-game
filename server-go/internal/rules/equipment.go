@@ -219,7 +219,7 @@ func (c *Catalog) RollComponent(selector string, cfg ComponentConfig, rng RNG) (
 	// Catalog item order preserves COMPONENT_BASES order.
 	choices := []Item{}
 	for _, b := range c.Items {
-		if b.Kind == "component" && !b.Legacy && b.SetID == "" && b.Part != "" && (selector == "" || selector == "part/"+b.Part || selector == "base/"+b.ID) {
+		if b.Kind == "component" && !b.Legacy && b.SetID == "" && b.AliasOf == "" && b.Part != "" && (selector == "" || selector == "part/"+b.Part || selector == "base/"+b.ID) {
 			choices = append(choices, b)
 		}
 	}
