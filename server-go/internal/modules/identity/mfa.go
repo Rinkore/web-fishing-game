@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func totp(secret string, step int64) string {
@@ -42,6 +43,14 @@ func verifyOTP(secret, code string, nowStep, lastStep int64) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+// VerifyMFA reports whether code matches secret's current time step (or one
+// step either side, to tolerate clock skew). Console enrollment uses it to
+// confirm the administrator really captured the pending secret before that
+// secret is written, so a mistyped key can never lock the account out.
+func VerifyMFA(secret, code string) bool {
+	_, ok := verifyOTP(secret, strings.TrimSpace(code), time.Now().Unix()/30, -1)
+	return ok
 }
 func mfaCipher(key []byte) (cipher.AEAD, error) {
 	if len(key) != 32 {

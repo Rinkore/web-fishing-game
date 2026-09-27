@@ -389,17 +389,21 @@ window.Net = (function () {
     return r;
   });
   // perf-9：玩家列表分页 / 搜索（服务端分页）。target 区分存储槽：'playersPage'=渔场页玩家列表，'peepsPage'=同钓点列表
+  // 每个 target 一个请求序号：慢的旧请求（如 5s 轮询）晚到时会覆盖新搜索/翻页的结果，序号对不上就丢弃。
+  const pageRequestSeq = { playersPage: 0, peepsPage: 0 };
   const fetchPlayersPage = (opts) => {
     const o = opts || {};
+    const target = o.target || 'playersPage';
+    const seq = (pageRequestSeq[target] = (pageRequestSeq[target] || 0) + 1);
     const t = me ? me.token : '';
     return apiFetch('GET', '/api/players/page?token=' + encodeURIComponent(t) +
       '&page=' + (o.page || 1) + '&size=' + (o.size || 30) +
       '&q=' + encodeURIComponent(o.q || '') +
       (o.ground ? '&ground=' + encodeURIComponent(o.ground) : '') +
       (o.spot ? '&spot=' + encodeURIComponent(o.spot) : '')).then(function (r) {
-      if (r && r.ok) {
+      if (r && r.ok && seq === pageRequestSeq[target]) {
         const d = r.data;
-        state()[o.target || 'playersPage'] = { page: d.page, pages: d.pages, total: d.total, list: d.players || [] };
+        state()[target] = { page: d.page, pages: d.pages, total: d.total, list: d.players || [] };
         if (o.target === 'peepsPage') state().peepsLoading = false;   // 拉到了就撤掉「同步中」
         if (d.totalOnline != null) state().onlineTotal = d.totalOnline;
         if (window.UI) window.UI.refreshAll(o.target === 'peepsPage' ? 'fishing' : 'players');
@@ -550,7 +554,14 @@ window.Net = (function () {
         lastMsgAt = Date.now();   // 心跳看门狗据此判断连接是否假死
         let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
         if (m && m.type === 'batch' && Array.isArray(m.list)) {
-          for (let bi = 0; bi < m.list.length; bi++) handleServerEvent(m.list[bi]);
+          // 一批事件里每个事件都会调 UI.refreshAll(scope)；用 batchRefresh 把它们并起来，
+          // 这一批只重绘一次（下一帧），而不是每条事件各整页重绘一次。
+          const ui = window.UI;
+          if (ui && ui.batchRefresh) {
+            ui.batchRefresh(function () { for (let bi = 0; bi < m.list.length; bi++) handleServerEvent(m.list[bi]); });
+          } else {
+            for (let bi = 0; bi < m.list.length; bi++) handleServerEvent(m.list[bi]);
+          }
           return;
         }
         handleServerEvent(m);
@@ -922,6 +933,7 @@ window.Net = (function () {
 
   // perf-9：同钓点玩家列表——钓鱼中每 5s 拉取当前钓点的分页数据（拉取制，不占推送带宽）
   setInterval(function () {
+    if (document.hidden) return;   // 后台标签页不轮询：省流量，避免返回前台时被一串过期回包刷屏
     const S = state();
     if (!(S.fishing && S.fishing.active && S.player && S.player.groundId)) return;
     const pv = S.peepView = S.peepView || { page: 1, size: 100, q: '' };
@@ -929,6 +941,15 @@ window.Net = (function () {
     fetchPlayersPage({ target: 'peepsPage', page: pv.page, size: pv.size, q: pv.q,
       ground: S.player.groundId, spot: S.player.spotId });
   }, 5000);
+  // 回到前台立刻补一次，避免恢复后最多 5s 的空白
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    const S = state();
+    if (!(S.fishing && S.fishing.active && S.player && S.player.groundId)) return;
+    const pv = S.peepView = S.peepView || { page: 1, size: 100, q: '' };
+    fetchPlayersPage({ target: 'peepsPage', page: pv.page, size: pv.size, q: pv.q,
+      ground: S.player.groundId, spot: S.player.spotId });
+  });
 
   return {
     gearApi:apiFetch,

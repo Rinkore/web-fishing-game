@@ -88,6 +88,7 @@ window.Admin = (function () {
   function adminApi(method, path, body) {
     return api(method, path, body).then(function (r) {
       if (r.status === 403) { logout('登录已失效或管理员权限被收回，请重新登录'); }
+      if (r && r.ok && method !== 'GET') clearDirty(); // 写操作成功 = 改动已落库
       return r;
     });
   }
@@ -96,6 +97,11 @@ window.Admin = (function () {
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   let toastTimer = null;
+  // 未保存改动标记：编辑类控件一旦 input/change 就置位，成功保存（非 GET 请求成功）或切换页面时清零。
+  // 用于切换页面与关闭/刷新前的提醒，避免几十个输入框里刚改的东西被无声丢掉。
+  let adminDirty = false;
+  function markDirty() { adminDirty = true; }
+  function clearDirty() { adminDirty = false; }
   function toast(msg, err) {
     const t = $('toast');
     t.textContent = msg; t.classList.toggle('err', !!err); t.classList.add('show');
@@ -107,6 +113,12 @@ window.Admin = (function () {
   function setHint(id, html) {
     const el = $(id);
     if (el) el.innerHTML = html;
+    return !!el;
+  }
+  // 纯文本提示走这里：服务端返回的错误文本一律当文本写，绝不拼进 innerHTML
+  function setHintText(id, text) {
+    const el = $(id);
+    if (el) el.textContent = text == null ? '' : String(text);
     return !!el;
   }
   function fmtTime(ts) { return ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '—'; }
@@ -194,7 +206,14 @@ window.Admin = (function () {
       const b = document.createElement('button');
       b.className = 'nav-item' + (n.id === view ? ' active' : '');
       b.textContent = n.name;
-      b.onclick = function () { switchView(n.id); };
+      b.onclick = function () {
+        if (n.id === view) return;
+        if (adminDirty) {
+          confirmModalLocal('当前页面有未保存的修改，离开后这些修改会丢失。确定要切换吗？').then(function (ok) { if (ok) switchView(n.id); });
+          return;
+        }
+        switchView(n.id);
+      };
       nav.appendChild(b);
     });
   }
@@ -358,8 +377,8 @@ window.Admin = (function () {
       if ($('feat-open-all')) $('feat-open-all').addEventListener('click', function () { setAll(true); });
       if ($('feat-close-all')) {
         $('feat-close-all').addEventListener('click', function () {
-          confirmModalLocal('确定把「所有页面与单项操作」都设为关闭吗？保存后所有玩家将无法钓鱼、交易与买卖。' +
-            '（已开启管理员穿透时，管理员本人仍可操作。）').then(function (ok) { if (ok) setAll(false); });
+          confirmDangerous({ title: '关闭全部功能', confirmWord: '关闭', okText: '全部关闭',
+            text: '确定把「所有页面与单项操作」都设为关闭吗？保存后所有玩家将无法钓鱼、交易与买卖。（已开启管理员穿透时，管理员本人仍可操作。）' }).then(function (ok) { if (ok) setAll(false); });
         });
       }
       sync();
@@ -391,7 +410,7 @@ window.Admin = (function () {
       adminApi('GET', '/api/admin/parties?token=' + encodeURIComponent(token)).then(function (r) {
         const body = $('party-body');
         if (!body || view !== 'party') return;
-        if (!r.ok || !r.data || !r.data.ok) { body.innerHTML = '<div class="hint">' + ((r.data && r.data.error) || '加载失败') + '</div>'; return; }
+        if (!r.ok || !r.data || !r.data.ok) { body.innerHTML = '<div class="hint"></div>'; body.firstChild.textContent = (r.data && r.data.error) || '加载失败'; return; }
         const list = r.data.parties || [];
         if (!list.length) { body.innerHTML = '<div class="hint">当前没有编队。玩家在「社交 · 编队」创建队伍后这里会出现。</div>'; return; }
         body.innerHTML = '<table class="tbl"><thead><tr><th>队长</th><th>成员</th><th>人数</th><th>操作</th></tr></thead><tbody>' +
@@ -729,7 +748,7 @@ window.Admin = (function () {
     function loadOfficial() {
       adminApi('GET', '/api/admin/wiki/content').then(function (r) {
         if (view !== 'wiki') return;
-        if (!r.ok) { setHint('wiki-list', '官方内容加载失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
+        if (!r.ok) { setHintText('wiki-list', '官方内容加载失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
         drawOfficial(r.data);
       });
     }
@@ -741,7 +760,7 @@ window.Admin = (function () {
     function saveOfficial(payload) {
       adminApi('POST', '/api/admin/wiki/content', Object.assign({ target: 'official-content' }, payload)).then(function (r) {
         if (view !== 'wiki') return;
-        if (!r.ok) { setHint('wiki-msg', '保存失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
+        if (!r.ok) { setHintText('wiki-msg', '保存失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
         drawOfficial(r.data);
         toast('官方 Wiki 内容已发布');
       });
@@ -749,13 +768,13 @@ window.Admin = (function () {
     $('wiki-refresh').onclick = loadOfficial;
     $('wiki-format').onclick = function () {
       try { $('wiki-json').value = JSON.stringify(parseOfficialEditor(), null, 2); setHint('wiki-msg', '已格式化；尚未保存。'); }
-      catch (e) { setHint('wiki-msg', 'JSON 格式错误：' + e.message); }
+      catch (e) { setHintText('wiki-msg', 'JSON 格式错误：' + e.message); }
     };
     $('wiki-save').onclick = function () {
       const button = this;
       let content;
       try { content = parseOfficialEditor(); }
-      catch (e) { setHint('wiki-msg', 'JSON 格式错误：' + e.message); return; }
+      catch (e) { setHintText('wiki-msg', 'JSON 格式错误：' + e.message); return; }
       button.disabled = true; button.textContent = '保存中…';
       adminApi('POST', '/api/admin/wiki/content', { target: 'official-content', content: content, baseRevision: wikiOfficialRevision }).then(function (r) {
         button.disabled = false; button.textContent = '保存并发布';
@@ -838,7 +857,7 @@ window.Admin = (function () {
     function loadReview() {
       adminApi('GET', '/api/admin/wiki/guides?status=' + encodeURIComponent(wikiReviewStatus)).then(function (r) {
         if (view !== 'wiki') return;
-        if (!r.ok) { setHint('wiki-review-list', '投稿加载失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
+        if (!r.ok) { setHintText('wiki-review-list', '投稿加载失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
         drawReview(r.data);
       });
     }
@@ -849,6 +868,7 @@ window.Admin = (function () {
   }
   function switchView(v) {
     view = v;
+    clearDirty(); // 进入新页面 = 上一页的编辑态已结束（未保存的会在 renderNav 的点击处先确认）
     stopOverviewTimer();
     stopBannerTimer();
     renderNav();
@@ -866,7 +886,6 @@ window.Admin = (function () {
     if (v === 'sea') return renderSeaCfg();
     if(v==='expedition'||v==='mail')return window.AdminOperations[v]($('main'),adminApi,confirmModalLocal,switchView);
     if (v === 'party') return renderPartyMgr();
-    if (v === 'workshop') return renderWorkshop();
     if (v === 'mall') return renderMall();
     if (v === 'records') return renderRecords();
     if (v === 'formula') return renderFormula();
@@ -1786,12 +1805,13 @@ window.Admin = (function () {
     $('mgr-list').querySelectorAll('[data-totp]').forEach(function (b) {
       b.onclick = function () {
         const key = b.getAttribute('data-totp');
-        confirmModalLocal('为「' + key + '」生成 / 轮换验证器（TOTP）密钥？旧验证器会立即失效，' +
-          '该账号已登录的后台会话会被注销' + (key === meKey ? '（你正在使用的这个会话会保留）' : '') +
-          '；新密钥只在下一步显示一次，请当场录入验证器 App。').then(function (ok) {
+        confirmDangerous({ title: '轮换验证器密钥', confirmWord: key, okText: '生成密钥',
+          text: '为「' + key + '」生成 / 轮换验证器（TOTP）密钥？旧验证器会立即失效，该账号已登录的后台会话会被注销' +
+            (key === meKey ? '（你正在使用的这个会话会保留）' : '') +
+            '。第一步只是生成密钥，你必须在验证器里输入一次新验证码后才会真正生效；中途关闭不会有任何改动。' }).then(function (ok) {
           if (!ok) return;
           b.disabled = true;
-          adminApi('POST', '/api/admin/users/totp', { token: token, target: key, confirm: true }).then(function (r) {
+          adminApi('POST', '/api/admin/users/totp', { token: token, target: key, confirm: true, stage: 'begin' }).then(function (r) {
             b.disabled = false;
             if (!r.ok) { toast((r.data && r.data.error) || '生成失败', true); return; }
             showTotpSecret(r.data);
@@ -2432,22 +2452,15 @@ window.Admin = (function () {
   }
   // 删除账号（二次确认）
   function confirmDeleteUser(key) {
-    document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
-    const ov = document.createElement('div');
-    ov.className = 'modal-overlay';
-    ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">删除账号</span></div>' +
-      '<div class="modal-body"><div class="cf-text">确定删除账号 <b>' + esc(key) + '</b>？<br>此操作不可恢复：账号、背包、图鉴将被移除，该账号挂单也会一并清空。</div>' +
-      '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn danger" id="del-ok">确认删除</button></div></div></div>';
-    document.body.appendChild(ov);
-    ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
-    ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
-    ov.querySelector('#del-ok').onclick = function () {
-      const btn = ov.querySelector('#del-ok'); btn.disabled = true; btn.textContent = '删除中…';
+    // 不可恢复的删除：要求管理员手动输入账号名后才能点确认（默认焦点在取消）
+    confirmDangerous({ title: '删除账号', confirmWord: key, okText: '确认删除',
+      text: '确定删除账号 ' + key + '？此操作不可恢复：账号、背包、图鉴将被移除，该账号挂单也会一并清空。' }).then(function (ok) {
+      if (!ok) return;
       adminApi('POST', '/api/admin/users/delete', { token: token, target: key, confirm: true }).then(function (r) {
-        if (!r.ok) { toast(r.data.error || '删除失败', true); ov.remove(); return; }
-        toast('已删除账号 ' + key); ov.remove(); loadMgrList();
+        if (!r.ok) { toast(r.data.error || '删除失败', true); return; }
+        toast('已删除账号 ' + key); loadMgrList();
       });
-    };
+    });
   }
   // 验证器密钥弹窗：服务端只在这一次 200 里返回 Base32 与 otpauth 链接，
   // 关闭后无法再查（账号列表与审计都不含密钥），所以这里把它放在只读输入框里让管理员抄写。
@@ -2455,29 +2468,68 @@ window.Admin = (function () {
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
     const ov = document.createElement('div');
     ov.className = 'modal-overlay';
-    ov.innerHTML = '<div class="modal-box confirm-modal totp-modal"><div class="modal-head"><span class="modal-title">验证器密钥 · ' + esc(data.target) + '</span></div>' +
-      '<div class="modal-body"><div class="cf-text">在验证器 App 里添加账号并扫描下面的链接，或手动输入密钥。' +
-      '<b>密钥只会显示这一次</b>，关掉窗口就查不到了，请当场录入。</div>' +
+    ov.innerHTML = '<div class="modal-box confirm-modal totp-modal" role="dialog" aria-modal="true" aria-label="验证器密钥 · ' + esc(data.target) + '">' +
+      '<div class="modal-head"><span class="modal-title">验证器密钥 · ' + esc(data.target) + '</span></div>' +
+      '<div class="modal-body"><div class="cf-text">用验证器 App 扫描下面的二维码，或手动输入密钥。' +
+      '<b>这一步还没有生效：</b>请把下面 6 位验证码填进来并点「确认启用」，密钥才会写入。中途关闭不会做任何改动。</div>' +
+      '<div class="cf-row"><div id="totp-qr" class="totp-qr" aria-label="验证器二维码"></div></div>' +
       '<div class="cf-row"><label class="hint">密钥（Base32）</label>' +
       '<input class="ipt" id="totp-secret" readonly value="' + esc(data.secret) + '" /></div>' +
       '<div class="cf-row"><label class="hint">otpauth 链接（SHA-1 / 6 位 / 30 秒）</label>' +
       '<input class="ipt" id="totp-url" readonly value="' + esc(data.otpauthUrl) + '" /></div>' +
-      '<div class="cf-hint" id="totp-tip">已重置该账号的验证器重放计数，旧验证码不再可用。</div>' +
-      '<div class="cf-actions"><button class="btn mini" id="totp-copy">复制密钥</button><button class="btn mini primary cf-x">我已录入</button></div></div></div>';
+      '<div class="cf-row"><label class="hint" for="totp-code">验证器里的 6 位验证码</label>' +
+      '<input class="ipt" id="totp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 位数字" /></div>' +
+      '<div class="cf-hint" id="totp-tip">输入新验证器的验证码后，旧验证器立即失效。</div>' +
+      '<div class="cf-actions"><button class="btn mini" id="totp-copy">复制密钥</button>' +
+      '<button class="btn mini cf-x">关闭（不启用）</button>' +
+      '<button class="btn mini primary" id="totp-apply" disabled>确认启用</button></div></div></div>';
     document.body.appendChild(ov);
     const secretBox = ov.querySelector('#totp-secret'), tip = ov.querySelector('#totp-tip');
+    const codeBox = ov.querySelector('#totp-code'), applyBtn = ov.querySelector('#totp-apply');
+    // 本地渲染二维码：不依赖任何外部图片服务（后台可能部署在内网 / 离线环境）。
+    try {
+      if (typeof qrcode === 'function') {
+        const qr = qrcode(0, 'M'); qr.addData(data.otpauthUrl); qr.make();
+        ov.querySelector('#totp-qr').innerHTML = qr.createSvgTag(4, 8);
+      } else {
+        ov.querySelector('#totp-qr').textContent = '（二维码生成库未加载，请改用下面的密钥或链接手动添加）';
+      }
+    } catch (e) {
+      ov.querySelector('#totp-qr').textContent = '（二维码生成失败，请改用下面的密钥或链接手动添加）';
+    }
     function copyFallback() {
       try { secretBox.focus(); secretBox.select(); document.execCommand('copy'); tip.textContent = '密钥已复制到剪贴板。'; }
       catch (e) { tip.textContent = '浏览器不允许自动复制，请手动选中上面的密钥复制。'; }
     }
-    ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+    // 注意：这里刻意不做「点背景关闭」。这是密钥唯一一次显示的机会，误点一下就会把它丢掉。
     ov.querySelector('.cf-x').onclick = function () { ov.remove(); };
     ov.querySelector('#totp-copy').onclick = function () {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(secretBox.value).then(function () { tip.textContent = '密钥已复制到剪贴板。'; }, copyFallback);
       } else copyFallback();
     };
-    secretBox.focus(); secretBox.select();
+    codeBox.addEventListener('input', function () { applyBtn.disabled = !/^\d{6}$/.test(codeBox.value.trim()); });
+    codeBox.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !applyBtn.disabled) applyBtn.click(); });
+    applyBtn.onclick = function () {
+      const otp = codeBox.value.trim();
+      if (!/^\d{6}$/.test(otp)) { tip.textContent = '请输入 6 位数字验证码。'; return; }
+      applyBtn.disabled = true; applyBtn.textContent = '校验中…';
+      adminApi('POST', '/api/admin/users/totp', { token: token, target: data.target, confirm: true, stage: 'finish', otp: otp }).then(function (r) {
+        if (!r.ok) {
+          applyBtn.disabled = false; applyBtn.textContent = '确认启用';
+          tip.textContent = (r.data && r.data.error) || '校验失败，请核对验证器时间后重试。';
+          return;
+        }
+        ov.remove();
+        toast('已启用新的验证器密钥');
+        loadMgrList();
+      });
+    };
+    document.addEventListener('keydown', function onKey(e) {
+      if (!ov.isConnected) { document.removeEventListener('keydown', onKey, true); return; }
+      if (e.key === 'Escape') { e.preventDefault(); ov.remove(); }
+    }, true);
+    codeBox.focus();
   }
 
   // ================================
@@ -3537,15 +3589,52 @@ window.Admin = (function () {
       document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
       const ov = document.createElement('div');
       ov.className = 'modal-overlay';
-      ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">请确认</span></div>' +
+      ov.innerHTML = '<div class="modal-box confirm-modal" role="dialog" aria-modal="true" aria-label="请确认"><div class="modal-head"><span class="modal-title">请确认</span></div>' +
         '<div class="modal-body"><div class="cf-text">' + esc(text) + '</div>' +
         '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn mini danger cf-yes">确定</button></div></div></div>';
       document.body.appendChild(ov);
       ov.addEventListener('click', function (e) { if (e.target === ov) { ov.remove(); resolve(false); } });
       ov.querySelector('.cf-no').onclick = function () { ov.remove(); resolve(false); };
       ov.querySelector('.cf-yes').onclick = function () { ov.remove(); resolve(true); };
+      ov.querySelector('.cf-no').focus(); // 默认焦点在「取消」，避免回车误触销毁
+      document.addEventListener('keydown', function onKey(e) {
+        if (!ov.isConnected) { document.removeEventListener('keydown', onKey, true); return; }
+        if (e.key === 'Escape') { e.preventDefault(); ov.remove(); resolve(false); }
+      }, true);
     });
   }
+  // 危险操作二次确认：必须手动输入指定词（账号名 / 数量 / 「关闭」等）才能点确定，
+  // 默认焦点在「取消」上。用于删账号、轮换验证器、关闭全部功能、全服发奖、导池等不可逆操作。
+  function confirmDangerous(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+      const word = String(opts.confirmWord == null ? '' : opts.confirmWord);
+      const ov = document.createElement('div');
+      ov.className = 'modal-overlay';
+      ov.innerHTML = '<div class="modal-box confirm-modal" role="dialog" aria-modal="true" aria-label="' + esc(opts.title || '危险操作确认') + '">' +
+        '<div class="modal-head"><span class="modal-title">' + esc(opts.title || '危险操作确认') + '</span></div>' +
+        '<div class="modal-body"><div class="cf-text">' + esc(opts.text || '') + '</div>' +
+        (word ? '<div class="cf-row"><label class="hint" for="cd-word">请输入「' + esc(word) + '」以确认</label>' +
+          '<input class="ipt" id="cd-word" autocomplete="off" /></div>' : '') +
+        '<div class="cf-actions"><button class="btn mini cf-no">取消</button>' +
+        '<button class="btn mini danger cf-yes" disabled>' + esc(opts.okText || '确定') + '</button></div></div></div>';
+      document.body.appendChild(ov);
+      const input = ov.querySelector('#cd-word'), yes = ov.querySelector('.cf-yes'), no = ov.querySelector('.cf-no');
+      function close(v) { document.removeEventListener('keydown', onKey, true); ov.remove(); resolve(v); }
+      function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); close(false); } }
+      document.addEventListener('keydown', onKey, true);
+      if (input) {
+        input.addEventListener('input', function () { yes.disabled = input.value.trim().toLowerCase() !== word.toLowerCase(); });
+        input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !yes.disabled) close(true); });
+      }
+      yes.onclick = function () { if (!yes.disabled) close(true); };
+      no.onclick = function () { close(false); };
+      if (input) input.focus(); else no.focus();
+    });
+  }
+  // 供 admin-mail.js / admin-pool-import.js 等子模块复用（它们只拿到一个 confirm 回调）
+  window.confirmDangerous = confirmDangerous;
   // 子窗口输入（数字/文本；替代浏览器 prompt）
   function promptModalLocal(opts) {
     opts = opts || {};
@@ -5932,17 +6021,33 @@ window.Admin = (function () {
       if (/^\d{6}$/.test(this.value.trim()) && $('login-user').value.trim() && $('login-pass').value) doLogin();
     });
     $('login-user').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+    // 登录表单本身也要拦 submit：<form> 里的回车默认会提交并跳转，把当前页面刷掉
+    const loginForm = $('login-form');
+    if (loginForm) loginForm.addEventListener('submit', function (e) { e.preventDefault(); doLogin(); });
     $('logout-btn').onclick = function () { logout(); };
-    let saved = 'cookie';
-    try { localStorage.removeItem('fishing_admin_token'); } catch (e) {}
-    if (saved) {
-      api('GET', '/api/admin/session?token=' + encodeURIComponent(saved)).then(function (r) {
-        if (r.ok) { token = saved; me = { username: r.data.username, name: r.data.name }; enter(); }
-        else showLogin();
-      });
-    } else {
-      showLogin();
+    // 编辑类控件改动即置「未保存」；搜索 / 标记 data-nodirty 的控件不算
+    const main = $('main');
+    function isDirtySource(t) {
+      if (!t || !/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return false;
+      if (t.type === 'search' || t.hasAttribute('data-nodirty')) return false;
+      // 只认真正的「配置编辑器」控件：带 data-path 的数值框、[data-config] 表单、
+      // 功能开关的勾选框、装备/渔屋编辑区。动作类下拉（如反馈状态选择）不算改动，
+      // 否则会被误判成「有未保存的修改」而挡住正常的页面切换。
+      return !!(t.hasAttribute('data-path') || t.closest('[data-config]') ||
+        t.closest('.feature-group') || t.closest('.gear-system') || t.closest('.house-admin'));
     }
+    if (main) {
+      main.addEventListener('input', function (e) { if (isDirtySource(e.target)) markDirty(); });
+      main.addEventListener('change', function (e) { if (isDirtySource(e.target)) markDirty(); });
+    }
+    // 关闭 / 刷新前提醒：避免几十个输入框里刚改的东西被无声丢掉
+    window.addEventListener('beforeunload', function (e) { if (adminDirty) { e.preventDefault(); e.returnValue = ''; return ''; } });
+    try { localStorage.removeItem('fishing_admin_token'); } catch (e) {}
+    // 会话走 Cookie：服务器从请求里读会话，前端不再持有 token（apiOnce 也会丢掉 token 参数）
+    api('GET', '/api/admin/session').then(function (r) {
+      if (r.ok) { token = 'cookie'; me = { username: r.data.username, name: r.data.name }; enter(); }
+      else showLogin();
+    });
   }
 
   return { init: init };

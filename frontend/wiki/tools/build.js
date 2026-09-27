@@ -3,11 +3,12 @@
   const STORE_KEY = 'fishing-wiki:builds:v1';
   const SMELT_RESULT_KEY = 'fishing-wiki:smelt-result:v1';
   const $ = id => document.getElementById(id);
-  const state = { snapshot:null, plans:{ A:emptyPlan('方案 A'), B:emptyPlan('方案 B') }, active:'A', research:false, importedMismatch:false };
+  const state = { snapshot:null, plans:{ A:emptyPlan('方案 A'), B:emptyPlan('方案 B') }, active:'A', research:false };
   function emptyPlan(name) {
     const slots = {};
     GameData.ROD_PARTS.forEach(function (p) { slots[p.key] = null; });
-    return { name:name || '未命名方案', spotId:'', slots:slots };
+    // mismatch 挂在方案上：A / B 可能来自不同快照，不能共用一个全局标志
+    return { name:name || '未命名方案', spotId:'', slots:slots, mismatch:false };
   }
   function escapeHTML(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function partName(key) { const p = GameData.ROD_PARTS.find(x => x.key === key); return p ? p.name : key; }
@@ -27,6 +28,7 @@
   function normalizePlan(plan) {
     const out = emptyPlan(plan && plan.name || '未命名方案');
     out.spotId = plan && plan.spotId || '';
+    out.mismatch = !!(plan && plan.mismatch);
     GameData.ROD_PARTS.forEach(function (p) { out.slots[p.key] = slotFromImported(p.key, plan && plan.slots && plan.slots[p.key]); });
     return out;
   }
@@ -70,7 +72,7 @@
     if (!state.snapshot || Wiki.unavailable) return null;
     const errors = validatePlan(plan);
     if (errors.length) return { errors:errors };
-    if (state.importedMismatch) return { errors:['导入方案与当前规则快照不一致，不能按官方规则复现。可点击“另存为当前规则”后重新计算。'] };
+    if (plan.mismatch) return { errors:['导入方案与当前规则快照不一致，不能按官方规则复现。可点击“另存为当前规则”后重新计算。'] };
     const rules = { cast:state.snapshot.rulesConfig.castCfg, biteFormula:state.snapshot.rulesConfig.biteFormula, doubleBase:state.snapshot.rulesConfig.doubleBase };
     return GameData.simulateRodPlan(buildBd(plan), spotOf(plan.spotId), rules);
   }
@@ -90,15 +92,18 @@
   function compareHTML(a, b) {
     if (!a || !b || a.errors || b.errors) return '<p class="muted">两个方案都有效后显示对比。</p>';
     const rows = [
-      ['钓速', a.eff.speed, b.eff.speed], ['技巧', a.eff.skill, b.eff.skill],
-      ['稀有度', a.eff.rare, b.eff.rare], ['材料概率', a.eff.material, b.eff.material],
-      ['体型', a.eff.size, b.eff.size], ['双钓', a.eff.double, b.eff.double],
-      ['间隔 ms', a.interval, b.interval], ['上鱼率 %', a.bite, b.bite],
-      ['理论掉落/小时', Math.round(a.fishPerHour), Math.round(b.fishPerHour)],
+      ['钓速', a.eff.speed, b.eff.speed, 2], ['技巧', a.eff.skill, b.eff.skill, 2],
+      ['稀有度', a.eff.rare, b.eff.rare, 2], ['材料概率', a.eff.material, b.eff.material, 2],
+      ['体型', a.eff.size, b.eff.size, 2], ['双钓', a.eff.double, b.eff.double, 2],
+      ['间隔 ms', a.interval, b.interval, 0], ['上鱼率 %', a.bite, b.bite, 2],
+      ['理论掉落/小时', a.fishPerHour, b.fishPerHour, 0],
     ];
+    // 浮点直接落表会拖一串 0.30000000000000004；按指标精度先取整再算差值，避免「差值对不上显示值」
+    const fmt = (v, d) => Number(v).toFixed(d);
     return '<table><thead><tr><th>指标</th><th>A</th><th>B</th><th>差值</th></tr></thead><tbody>' + rows.map(function (r) {
-      const d = r[2] - r[1], cls = d > 0 ? 'positive' : (d < 0 ? 'negative' : '');
-      return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td class="' + cls + '">' + (d > 0 ? '+' : '') + d + '</td></tr>';
+      const digits = r[3], av = Number(fmt(r[1], digits)), bv = Number(fmt(r[2], digits)), d = bv - av;
+      const cls = d > 0 ? 'positive' : (d < 0 ? 'negative' : '');
+      return '<tr><td>' + r[0] + '</td><td>' + fmt(av, digits) + '</td><td>' + fmt(bv, digits) + '</td><td class="' + cls + '">' + (d > 0 ? '+' : '') + fmt(d, digits) + '</td></tr>';
     }).join('') + '</tbody></table>';
   }
   function option(v, label, selected) { return '<option value="' + escapeHTML(v) + '"' + (selected ? ' selected' : '') + '>' + escapeHTML(label || v) + '</option>'; }
@@ -167,15 +172,20 @@
     $('saved-plans').innerHTML = option('', '选择已保存方案') + list.map((p, i) => option(String(i), p.name)).join('');
   }
   function shareObject() {
-    return { schemaVersion:1, rulesVersion:state.snapshot.rulesVersion, gameVersion:state.snapshot.gameVersion, snapshotId:state.snapshot.snapshotId, configHash:state.snapshot.configHash, plan:state.plans[state.active] };
+    const plan = Object.assign({}, state.plans[state.active]); delete plan.mismatch; // mismatch 是本地判定结果，不进分享码
+    return { schemaVersion:1, rulesVersion:state.snapshot.rulesVersion, gameVersion:state.snapshot.gameVersion, snapshotId:state.snapshot.snapshotId, configHash:state.snapshot.configHash, plan:plan };
   }
   function applyImport(value, showMessage) {
     if (!value || value.schemaVersion !== 1 || !value.plan) throw new Error('方案结构无效');
-    state.plans[state.active] = normalizePlan(value.plan);
-    state.importedMismatch = !state.snapshot || value.rulesVersion !== state.snapshot.rulesVersion || value.gameVersion !== state.snapshot.gameVersion || value.configHash !== state.snapshot.configHash;
+    const plan = normalizePlan(value.plan);
+    plan.mismatch = !state.snapshot || value.rulesVersion !== state.snapshot.rulesVersion || value.gameVersion !== state.snapshot.gameVersion || value.configHash !== state.snapshot.configHash;
+    state.plans[state.active] = plan;
     renderAll();
-    if (showMessage) $('share-code').value = '导入完成' + (state.importedMismatch ? '：规则版本不一致，官方计算已阻断。' : '。');
+    if (showMessage) setStatus('导入完成' + (plan.mismatch ? '：规则版本不一致，官方计算已阻断。' : '。'));
   }
+  // 状态提示单独用一个 role=status 元素，不再占用方案码输入框：
+  // 以前把「导入完成 / 导入失败」写进 #share-code，会把玩家粘进去的方案码覆盖掉。
+  function setStatus(msg) { const el = $('tool-status'); if (el) el.textContent = msg || ''; }
   function renderAll() {
     const plan = state.plans[state.active];
     $('plan-a').setAttribute('aria-pressed', String(state.active === 'A'));
@@ -236,26 +246,26 @@
       if (!parts) return;
       const plan = state.plans[state.active];
       GameData.ROD_PARTS.forEach(function (p) { plan.slots[p.key] = slotFromImported(p.key, GameData.componentOf(parts[p.key])); });
-      state.importedMismatch = false; renderAll();
+      state.plans[state.active].mismatch = false; renderAll();
       $('inventory-build-note').textContent = '已复制到方案 ' + state.active + '，可继续修改词条。真实穿戴保持不变。';
     });
-    $('plan-a').addEventListener('click', function () { state.active='A'; state.importedMismatch=false; renderAll(); });
-    $('plan-b').addEventListener('click', function () { state.active='B'; state.importedMismatch=false; renderAll(); });
+    $('plan-a').addEventListener('click', function () { state.active='A'; renderAll(); });
+    $('plan-b').addEventListener('click', function () { state.active='B'; renderAll(); });
     $('plan-name').addEventListener('change', function () { state.plans[state.active].name=this.value; renderAll(); });
     $('spot-select').addEventListener('change', function () { state.plans[state.active].spotId=this.value; renderAll(); });
     $('research-mode').addEventListener('change', function () { state.research=this.checked; renderAll(); });
-    $('copy-plan').addEventListener('click', function () { state.plans[state.active === 'A' ? 'B' : 'A'] = JSON.parse(JSON.stringify(state.plans[state.active])); state.active = state.active === 'A' ? 'B' : 'A'; state.importedMismatch=false; renderAll(); });
-    $('clear-plan').addEventListener('click', function () { state.plans[state.active] = emptyPlan('未命名方案'); state.importedMismatch=false; renderAll(); });
-    $('save-plan').addEventListener('click', function () { if (!state.snapshot || Wiki.unavailable) { $('share-code').value = '当前规则快照不可用，暂不能保存官方方案。'; return; } const list=savedPlans(); list.push(shareObject()); if (!savePlans(list)) $('share-code').value = '浏览器存储不可用'; renderAll(); });
+    $('copy-plan').addEventListener('click', function () { state.plans[state.active === 'A' ? 'B' : 'A'] = JSON.parse(JSON.stringify(state.plans[state.active])); state.active = state.active === 'A' ? 'B' : 'A'; renderAll(); });
+    $('clear-plan').addEventListener('click', function () { state.plans[state.active] = emptyPlan('未命名方案'); renderAll(); });
+    $('save-plan').addEventListener('click', function () { if (!state.snapshot || Wiki.unavailable) { setStatus('当前规则快照不可用，暂不能保存官方方案。'); return; } const list=savedPlans(); list.push(shareObject()); if (!savePlans(list)) setStatus('浏览器存储不可用'); renderAll(); });
     $('load-plan').addEventListener('click', function () { const i=Number($('saved-plans').value); const list=savedPlans(); if (!(i >= 0) || !list[i]) return; applyImport(list[i], true); });
     $('delete-plan').addEventListener('click', function () { const i=Number($('saved-plans').value); const list=savedPlans(); if (i >= 0 && list[i]) { list.splice(i,1); savePlans(list); renderAll(); } });
-    $('share-link').addEventListener('click', function () { if (!state.snapshot || Wiki.unavailable) { $('share-code').value = '当前规则快照不可用，暂不能生成官方分享。'; return; } const code=Wiki.encodeShare(shareObject()); const url=location.origin + location.pathname + '#plan=' + code; $('share-code').value=url; const a=$('share-link-output'); a.href=url; a.hidden=false; a.textContent='打开分享链接'; });
-    $('export-code').addEventListener('click', function () { if (!state.snapshot || Wiki.unavailable) { $('share-code').value = '当前规则快照不可用，暂不能导出官方方案。'; return; } $('share-code').value=Wiki.encodeShare(shareObject()); });
-    $('import-code').addEventListener('click', function () { try { applyImport(Wiki.decodeShare($('share-code').value.trim()), true); } catch(e) { $('share-code').value = '导入失败：' + e.message; } });
-    $('adopt-import').addEventListener('click', function () { if (!state.importedMismatch) return; state.importedMismatch=false; $('share-code').value='已按当前规则另存，官方计算恢复。'; renderAll(); });
+    $('share-link').addEventListener('click', function () { if (!state.snapshot || Wiki.unavailable) { setStatus('当前规则快照不可用，暂不能生成官方分享。'); return; } const code=Wiki.encodeShare(shareObject()); const url=location.origin + location.pathname + '#plan=' + code; $('share-code').value=url; const a=$('share-link-output'); a.href=url; a.hidden=false; a.textContent='打开分享链接'; });
+    $('export-code').addEventListener('click', function () { if (!state.snapshot || Wiki.unavailable) { setStatus('当前规则快照不可用，暂不能导出官方方案。'); return; } $('share-code').value=Wiki.encodeShare(shareObject()); });
+    $('import-code').addEventListener('click', function () { try { applyImport(Wiki.decodeShare($('share-code').value.trim()), true); } catch(e) { setStatus('导入失败：' + e.message); } });
+    $('adopt-import').addEventListener('click', function () { const plan=state.plans[state.active]; if (!plan.mismatch) return; plan.mismatch=false; setStatus('已按当前规则另存，官方计算恢复。'); renderAll(); });
     $('load-smelt').addEventListener('click', function () {
-      const item=Wiki.storage.readJSON(SMELT_RESULT_KEY, null); if (!item) { $('share-code').value = '没有可读取的熔炼产物'; return; }
-      const part=(GameData.componentBase(item.baseId) || {}).part; if (!part) { $('share-code').value = '熔炼产物底材无效'; return; }
+      const item=Wiki.storage.readJSON(SMELT_RESULT_KEY, null); if (!item) { setStatus('没有可读取的熔炼产物'); return; }
+      const part=(GameData.componentBase(item.baseId) || {}).part; if (!part) { setStatus('熔炼产物底材无效'); return; }
       state.plans[state.active].slots[part] = slotFromImported(part, item); renderAll();
     });
     Wiki.onChange(function (s, unavailable) {
@@ -270,8 +280,14 @@
       }
       if (changed) renderAll();
     });
-    Wiki.init().catch(function (e) { console.error(e); });
-    const m=/#plan=([^&]+)/.exec(location.hash); if (m) { try { applyImport(Wiki.decodeShare(decodeURIComponent(m[1])), true); } catch(e) { console.error(e); } }
+    // 分享链接里的 #plan= 必须等规则快照就绪后再导入：
+    // 快照还没到就比对版本号，导入会被永远判成「规则版本不一致」。
+    function applyHashPlan() {
+      const m = /#plan=([^&]+)/.exec(location.hash); if (!m) return;
+      try { applyImport(Wiki.decodeShare(decodeURIComponent(m[1])), true); }
+      catch (e) { setStatus('分享链接解析失败：' + e.message); }
+    }
+    Wiki.init().then(applyHashPlan).catch(function (e) { console.error(e); });
   }
   document.addEventListener('DOMContentLoaded', function () { applyQueryPreset(); init(); });
 })();

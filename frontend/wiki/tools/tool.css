@@ -1,4 +1,9 @@
 /* Wiki 工具页：在游戏 smelt.css 基础上，仅补配装编辑器没有的表单布局。 */
+/* 工具页标题改用 <h1>（每页恰好一个一级标题）；沿用原 .panel h2 的排版。 */
+.wiki-tool-panel h1.wiki-tool-title { margin: 0 0 14px; font-size: 18px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.wiki-tool-panel h1.wiki-tool-title .subtitle { font-size: 12px; font-weight: 400; color: var(--muted); }
+#tool-status:empty { display: none; }
+#tool-status { margin: 8px 0 0; font-size: 13px; color: #b3cecf; overflow-wrap: anywhere; }
 .slot-editor { border: 2px solid var(--px-line, #2c4f74); border-radius: 4px; padding: 11px; margin: 10px 0; background: rgba(6,16,30,.68); }
 .slot-head { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; }
 .slot-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(175px,1fr)); gap:8px; margin-top:8px; }

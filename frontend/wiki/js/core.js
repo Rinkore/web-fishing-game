@@ -7,6 +7,8 @@
     contentReadyResolve: null, contentReadyReject: null
   };
   const D = window.GameData;
+  const POLL_MS = 30000;      // 规则 / 内容快照低频轮询：30 秒一次足够
+  const STALE_MS = 90000;     // 连续 3 个轮询周期没回包才判定规则过期（大于轮询间隔）
 
   function el(tag, className, text) {
     const n = document.createElement(tag);
@@ -47,8 +49,11 @@
     if (dot) dot.setAttribute('aria-hidden', 'true');
     const text = node.querySelector('.rule-text');
     if (!text) return;
-    if (state.unavailable || !s) text.textContent = '规则不可用：数值与模拟器已禁用，等待服务端确认。';
-    else text.textContent = '规则可用 · ' + s.gameVersion + ' · 配置 ' + s.configRevision + ' · ' + s.configHash.slice(0, 12) + ' · ' + new Date(s.generatedAt).toLocaleString('zh-CN');
+    // 只在文案真的变化时改写：状态卡是 aria-live 区域，每轮轮询都重写会让读屏器反复播报同一句。
+    const next = (state.unavailable || !s)
+      ? '规则不可用：数值与模拟器已禁用，等待服务端确认。'
+      : '规则可用 · ' + s.gameVersion + ' · 配置 ' + s.configRevision + ' · ' + s.configHash.slice(0, 12) + ' · ' + new Date(s.generatedAt).toLocaleString('zh-CN');
+    if (text.textContent !== next) text.textContent = next;
   }
   function emit() {
     renderStatus();
@@ -81,7 +86,10 @@
     }
   }
   function checkStale() {
-    if (state.snapshot && !state.unavailable && state.lastOk && Date.now() - state.lastOk > 10000) {
+    // 隐藏标签页里轮询本来就是暂停的，心跳“过期”属正常，不能据此判死；
+    // 阈值也要大于轮询间隔（30 秒一次 → 90 秒没回包才算过期），否则每 10 秒就误报一次不可用。
+    if (document.hidden) return;
+    if (state.snapshot && !state.unavailable && state.lastOk && Date.now() - state.lastOk > STALE_MS) {
       state.unavailable = true; emit();
     }
   }
@@ -369,9 +377,10 @@
   }
   function init() {
     renderStatus();
-    setInterval(refresh, 5000);
-    setInterval(refreshContent, 5000);
+    setInterval(function () { if (!document.hidden) refresh(); }, POLL_MS);
+    setInterval(function () { if (!document.hidden) refreshContent(); }, POLL_MS);
     setInterval(checkStale, 1000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { refresh(); refreshContent(); } });
     window.addEventListener('focus', function () { refresh(); refreshContent(); });
     return Promise.allSettled([ready(), contentReady()]).then(function (results) {
       if (results[0].status === 'rejected') throw results[0].reason;

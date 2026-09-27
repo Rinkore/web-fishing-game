@@ -433,6 +433,12 @@ func (a *API) legacyAdminUserTOTP(w http.ResponseWriter, r *http.Request) {
 		Token   string `json:"token"`
 		Target  string `json:"target"`
 		Confirm bool   `json:"confirm"`
+		// Two-phase enrollment for the console: Stage "begin" only mints and
+		// returns a secret (nothing is persisted), Stage "finish" writes it once
+		// OTP from the new authenticator matches. Empty stage keeps the legacy
+		// one-shot behaviour used by the operator flow and existing tests.
+		Stage string `json:"stage"`
+		OTP   string `json:"otp"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -452,10 +458,69 @@ func (a *API) legacyAdminUserTOTP(w http.ResponseWriter, r *http.Request) {
 		legacyTradeError(w, 404, "账号不存在")
 		return
 	}
-	secret, err := identity.NewMFASecret()
-	if err != nil {
-		failure(w, err)
+	// Two-phase console enrollment: the first call hands the administrator a
+	// secret to scan but writes nothing, so a typing mistake can never lock the
+	// account out. The secret is only committed once a code from the new
+	// authenticator proves it was captured.
+	if in.Stage == "begin" {
+		var admin, banned bool
+		if err := a.pool.QueryRow(ctx, `SELECT admin,banned FROM fishing.identities WHERE account_id=$1`, targetID).Scan(&admin, &banned); err != nil {
+			failure(w, identity.ErrStorage)
+			return
+		}
+		if !admin {
+			legacyTradeError(w, 400, "该账号不是管理员，请先打开「管理员」开关")
+			return
+		}
+		if banned {
+			legacyTradeError(w, 400, "该账号已被封禁，请先解封")
+			return
+		}
+		pending, err := identity.NewMFASecret()
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		a.totpMu.Lock()
+		if a.totpPending == nil {
+			a.totpPending = make(map[int64]totpPendingEnrollment)
+		}
+		a.totpPending[targetID] = totpPendingEnrollment{secret: pending, expires: time.Now().Add(10 * time.Minute)}
+		a.totpMu.Unlock()
+		write(w, 200, map[string]any{
+			"ok": true, "target": target, "secret": pending, "pending": true,
+			"otpauthUrl": identity.MFAAuthURL(legacyAdminTOTPIssuer, target, pending),
+		})
 		return
+	}
+	var secret string
+	if in.Stage == "finish" {
+		a.totpMu.Lock()
+		pending, ok := a.totpPending[targetID]
+		if ok && time.Now().After(pending.expires) {
+			ok = false
+		}
+		a.totpMu.Unlock()
+		if !ok {
+			legacyTradeError(w, 400, "密钥已过期，请重新生成")
+			return
+		}
+		// A wrong code keeps the pending secret so the administrator can retry
+		// without re-scanning; only success (below) consumes it.
+		if !identity.VerifyMFA(pending.secret, in.OTP) {
+			legacyTradeError(w, 400, "验证码不正确，请核对验证器后重试")
+			return
+		}
+		secret = pending.secret
+		a.totpMu.Lock()
+		delete(a.totpPending, targetID)
+		a.totpMu.Unlock()
+	} else {
+		secret, err = identity.NewMFASecret()
+		if err != nil {
+			failure(w, err)
+			return
+		}
 	}
 	sealed, err := a.identity.SealMFA(targetID, secret)
 	if err != nil {
@@ -509,10 +574,13 @@ func (a *API) legacyAdminUserTOTP(w http.ResponseWriter, r *http.Request) {
 		failure(w, identity.ErrCommitUnknown)
 		return
 	}
-	write(w, 200, map[string]any{
-		"ok": true, "target": target, "secret": secret,
-		"otpauthUrl": identity.MFAAuthURL(legacyAdminTOTPIssuer, target, secret),
-	})
+	payload := map[string]any{"ok": true, "target": target}
+	if in.Stage != "finish" {
+		// The plaintext secret is shown exactly once, on the call that mints it.
+		payload["secret"] = secret
+		payload["otpauthUrl"] = identity.MFAAuthURL(legacyAdminTOTPIssuer, target, secret)
+	}
+	write(w, 200, payload)
 }
 
 func (a *API) legacyAdminUserDelete(w http.ResponseWriter, r *http.Request) {

@@ -209,7 +209,11 @@
       let done = 0;
       const draw = () => { planBox.innerHTML = '<div class="gear-card"><h3>执行结果（' + done + '/' + activePlan.steps.length + '）</h3><ol>' + lines.map(l => '<li class="' + (l.ok ? '' : 'err') + '">' + esc(l.text) + '</li>').join('') + '</ol></div>'; };
       try {
-        if (!await confirm('将按预检清单执行 ' + activePlan.steps.length + ' 步（只新建与覆盖，不删除）？')) return;
+        const runText = '将按预检清单执行 ' + activePlan.steps.length + ' 步（只新建与覆盖，不删除）？';
+        const runOk = window.confirmDangerous
+          ? await window.confirmDangerous({ title: '执行导入', text: runText + '\n请手动输入「导入」以确认。', confirmWord: '导入', okText: '执行导入' })
+          : await confirm(runText);
+        if (!runOk) return;
         if (plan !== activePlan || doc.value !== activeDoc) return;
         controls.forEach(button => { button.disabled = true; }); doc.disabled = true;
         for (const step of activePlan.steps) {

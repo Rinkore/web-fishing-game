@@ -3,6 +3,23 @@ window.WikiPage = (function () {
   const W = () => window.Wiki;
   const C = () => window.WikiContent;
   function qs(name) { return new URLSearchParams(location.search).get(name) || ''; }
+  // 每页各自的标题与描述：以前所有页面共用一个 <meta description>、详情页从不改 document.title，
+  // 搜索引擎只会看到一堆同质页面。detail 渲染（钓场 / 渔获 / 攻略）会在下面覆盖成具体条目。
+  const META_BY_PAGE = {
+    home: ['首页', 'DeepFish 配套资料站：钓场、渔获、材料、组件、攻略与更新记录，以及配装 / 熔炼模拟器。'],
+    search: ['全站搜索', '在 DeepFish 资料站搜索钓场、渔获、材料、组件、宝匣、词缀、攻略与工具。'],
+    grounds: ['钓场与钓点', '查找 DeepFish 各钓场的开放状态、增益、钓点与有效掉落权重。'],
+    guides: ['玩法与攻略', 'DeepFish 玩法说明、机制解析、工坊与经济指南、配装攻略与玩家心得。'],
+    'guides-submit': ['贡献攻略', '向 DeepFish 资料站投稿你的钓鱼心得与攻略。'],
+    updates: ['更新记录', 'DeepFish 游戏版本与 Wiki 内容的合并更新记录。'],
+  };
+  function setMeta(title, description) {
+    if (title) document.title = title + ' · WIKI';
+    if (description) {
+      const m = document.querySelector('meta[name="description"]');
+      if (m) m.setAttribute('content', String(description).slice(0, 200));
+    }
+  }
   const WIKI_GUIDE_CATEGORIES = ['新手入门', '机制说明', '进阶策略', '工坊指南', '经济交易', '配装攻略', '心得分享'];
   let guideFilter = 'all';
   // 公开内容接口只给攻略元数据；正文按需拉取并在本页缓存，内容 revision 变化时自动失效。
@@ -211,6 +228,7 @@ window.WikiPage = (function () {
     return lead || '以当前工坊与商城配方为准。';
   }
   function renderItemDetail(entry) {
+    setMeta(entry.name, entry.desc || ('DeepFish 资料站 · ' + entry.name));
     const c = card('条目详情');
     const hero = W().el('div', 'item-hero');
     hero.append(thumbNode(entry, 'item-icon'));
@@ -307,14 +325,18 @@ window.WikiPage = (function () {
         rows.forEach(function (x) { resultBox.append(resultNode(x)); });
         resultBox.append(W().el('p', 'card-note', '共显示 ' + rows.length + ' 条结果；钓场与目录数据来自当前服务端规则。'));
       }
-      if (push) {
-        const url = new URL(location.href); url.searchParams.set('q', q); url.searchParams.set('type', type.value);
-        history.replaceState(null, '', url);
-      }
+      // 输入时就把 q / type 同步进地址栏：否则下一次重渲染用 qs('q') 回填输入框，
+      // 玩家正在敲的关键字会被冲掉、焦点也会丢。replaceState 不产生历史记录。
+      const url = new URL(location.href);
+      if (url.searchParams.get('q') !== q) url.searchParams.set('q', q);
+      if (url.searchParams.get('type') !== type.value) url.searchParams.set('type', type.value);
+      history.replaceState(null, '', url);
     }
     button.addEventListener('click', function () { update(true); });
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); update(true); } });
-    input.addEventListener('input', function () { update(false); });
+    // 输入防抖：逐键重排并在 aria-live 区域播报结果对读屏用户是噪声
+    let searchTimer = null;
+    input.addEventListener('input', function () { clearTimeout(searchTimer); searchTimer = setTimeout(function () { update(false); }, 250); });
     type.addEventListener('change', function () { update(true); });
     toolbar.append(input, type, button);
     const content = W().el('div');
@@ -351,7 +373,9 @@ window.WikiPage = (function () {
     const img = W().el('img', 'item-icon'); img.src = W().imageFor({ id: ground.id, kind: 'ground' }); img.alt = '';
     hero.append(img);
     const info = W().el('div');
-    info.append(W().el('h1', 'item-name', ground.name), W().el('p', 'item-sub', ground.desc || ''));
+    // 详情页顶部已有 pageHead 的 <h1>，这里用 <h2>，避免同页两个 <h1>（不利于读屏与 SEO）
+    setMeta(ground.name + ' · 钓场', ground.desc || ('DeepFish 钓场 ' + ground.name + ' 的钓点与掉落权重。'));
+    info.append(W().el('h2', 'item-name', ground.name), W().el('p', 'item-sub', ground.desc || ''));
     const dl = W().el('dl', 'meta-grid');
     [['类型', ground.type === 'event' ? '活动钓场' : '常驻钓场'], ['状态', ground.locked ? '锁定' : '开放'], ['钓点数', String((ground.spots || []).length)]].forEach(function (x) { dl.append(W().el('dt', null, x[0]), W().el('dd', null, x[1])); });
     info.append(dl); hero.append(info); c.append(hero);
@@ -408,6 +432,7 @@ window.WikiPage = (function () {
     [['all','全部'],['official','官方'],['user','玩家']].forEach(function (x) {
       const b = W().el('button', guideFilter === x[0] ? 'primary' : null, x[1]);
       b.type = 'button';
+      b.setAttribute('aria-pressed', String(guideFilter === x[0]));
       b.addEventListener('click', function () { guideFilter = x[0]; render(); });
       box.append(b);
     });
@@ -432,6 +457,8 @@ window.WikiPage = (function () {
         const del = W().el('button', 'danger', g.status === 'pending' ? '删除待审核攻略' : '删除这篇攻略');
         del.type = 'button';
         del.addEventListener('click', async function () {
+          // 删除不可恢复：先确认（此前点一下就删，容易误触）
+          if (!window.confirm('确定删除「' + g.title + '」（' + guideStatusLabel(g.status, g.autoApproved) + '）？删除后无法恢复。')) return;
           del.disabled = true; del.textContent = '删除中…';
           const r = await wikiApi('POST', '/api/wiki/guides/delete', { id: g.id });
           if (!r.ok) { del.disabled = false; del.textContent = '删除失败，请重试'; return; }
@@ -476,6 +503,7 @@ window.WikiPage = (function () {
       guideDetails = Object.create(null);
       guideDetailLoading = Object.create(null);
     }
+    setMeta(g.title, g.summary);
     main.append(pageHead(g.title, g.summary));
     const full = guideDetails[g.id] || (Array.isArray(g.sections) && g.sections.length ? g : null);
     if (!full) {
@@ -726,6 +754,7 @@ window.WikiPage = (function () {
   function render() {
     setNavCurrent();
     const page = document.body.dataset.page;
+    const meta = META_BY_PAGE[page]; if (meta) setMeta(meta[0], meta[1]);
     if (page === 'home') renderHome();
     else if (page === 'search') renderSearch();
     else if (page === 'grounds') renderGrounds();

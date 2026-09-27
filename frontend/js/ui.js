@@ -205,9 +205,15 @@ window.UI = (function () {
   // 词缀/增益名称：组件词缀与钓点增益同一套标签（v0.13.3 起不再有大鱼概率）
   function affixName(type) { return D.AFFIX_LABEL[type] || type; }
   function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    // 单引号也要转义：颜色等值会拼进 style='...' 这类单引号属性，漏掉 ' 会被闭合出属性注入
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
+  }
+  // 颜色白名单：只放行 #RGB / #RGBA / #RRGGBB / #RRGGBBAA，其余（rgb()、变量、url()、CSS 片段）一律拒绝
+  function safeColor(v, fallback) {
+    const s = String(v == null ? '' : v).trim();
+    return /^#[0-9a-fA-F]{3,8}$/.test(s) ? s : (fallback || '');
   }
   // 空状态：像素图标 + 一句标题 + 一句说明 + 一个去处按钮。
   // 一句「去某某页做某事」的灰字不如直接给玩家一个能点的按钮。
@@ -386,7 +392,7 @@ window.UI = (function () {
     // 公告颜色（每条可自定义；未设置时用后台默认色；都没有则用样式默认渐变）
     if (lane === 'notice') {
       const cfg = S().bannerCfg || {};
-      const col = opts.color || cfg.noticeColor || '';
+      const col = safeColor(opts.color || cfg.noticeColor || '');
       b.style.background = col || '';
       b.style.color = col ? textColorFor(col) : '';
     }
@@ -616,7 +622,21 @@ window.UI = (function () {
   function closeOverlays() {
     spotDetailRedraw = null; // 钓点详情弹窗的重绘钩子随弹窗一起移除
     // data-keep 的 overlay（交易子窗口）不被普通弹窗关闭——组件属性/确认框会叠在它上面打开
-    document.querySelectorAll('.modal-overlay').forEach(function (m) { if (!m.dataset.keep) m.remove(); });
+    document.querySelectorAll('.modal-overlay').forEach(function (m) {
+      if (m.dataset.keep) return;
+      // 关掉挂在 Promise 上的弹窗（confirm / alert / prompt）前先结算，
+      // 否则 await 它们的代码会永远等下去（原来只 remove 节点，Promise 悬空）。
+      if (typeof m.__onDismiss === 'function') { try { m.__onDismiss(); } catch (e) {} m.__onDismiss = null; }
+      m.remove();
+    });
+  }
+  // Escape 关闭：只在弹窗还在文档里时响应，弹窗已被别的路径关掉就顺手摘掉监听
+  function closeOnEscape(overlay, fn) {
+    function onKey(e) {
+      if (!overlay.isConnected) { document.removeEventListener('keydown', onKey, true); return; }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); document.removeEventListener('keydown', onKey, true); fn(); }
+    }
+    document.addEventListener('keydown', onKey, true);
   }
   function buildOverlay(onCancel) {
     const overlay = el('div', 'modal-overlay');
@@ -628,8 +648,10 @@ window.UI = (function () {
     opts = opts || {};
     return new Promise(function (resolve) {
       closeOverlays();
+      const opener = document.activeElement;
       const overlay = buildOverlay(function () { resolve(false); });
       const box = el('div', 'modal-box confirm-modal');
+      box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', opts.title || '请确认');
       box.innerHTML = '<div class="modal-head"><span class="modal-title">' + esc(opts.title || '请确认') + '</span></div>' +
         '<div class="modal-body"><div class="cf-text">' + (opts.html || esc(opts.text || '')) + '</div>' +
         '<div class="cf-actions"><button class="mini cf-cancel">取消</button>' +
@@ -638,9 +660,13 @@ window.UI = (function () {
       document.body.appendChild(overlay);
       const ok = box.querySelector('.cf-ok'), cancel = box.querySelector('.cf-cancel');
       if (opts.danger) { ok.classList.remove('primary-mini'); ok.classList.add('danger-mini'); }
-      ok.addEventListener('click', function () { overlay.remove(); resolve(true); });
-      cancel.addEventListener('click', function () { overlay.remove(); resolve(false); });
-      ok.focus();
+      function done(v) { overlay.remove(); if (opener && opener.isConnected && typeof opener.focus === 'function') { try { opener.focus(); } catch (e) {} } resolve(v); }
+      overlay.__onDismiss = function () { resolve(false); };
+      ok.addEventListener('click', function () { done(true); });
+      cancel.addEventListener('click', function () { done(false); });
+      closeOnEscape(overlay, function () { done(false); });
+      // 危险操作默认把焦点放在「取消」上，避免一路回车误触销毁
+      if (opts.danger) cancel.focus(); else ok.focus();
     });
   }
   // 提醒框（只有「知道了」）：服务器主动告知的事件用它（临时海域被收回等），
@@ -649,15 +675,20 @@ window.UI = (function () {
     opts = opts || {};
     return new Promise(function (resolve) {
       closeOverlays();
+      const opener = document.activeElement;
       const overlay = buildOverlay(function () { resolve(true); });
       const box = el('div', 'modal-box confirm-modal');
+      box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', opts.title || '提示');
       box.innerHTML = '<div class="modal-head"><span class="modal-title">' + esc(opts.title || '提示') + '</span></div>' +
         '<div class="modal-body"><div class="cf-text">' + (opts.html || esc(opts.text || '')) + '</div>' +
         '<div class="cf-actions"><button class="mini primary-mini cf-ok">' + esc(opts.okText || '知道了') + '</button></div></div>';
       overlay.appendChild(box);
       document.body.appendChild(overlay);
       const ok = box.querySelector('.cf-ok');
-      ok.addEventListener('click', function () { overlay.remove(); resolve(true); });
+      function done() { overlay.remove(); if (opener && opener.isConnected && typeof opener.focus === 'function') { try { opener.focus(); } catch (e) {} } resolve(true); }
+      overlay.__onDismiss = function () { resolve(true); };
+      ok.addEventListener('click', function () { done(); });
+      closeOnEscape(overlay, done);
       ok.focus();
     });
   }
@@ -666,8 +697,10 @@ window.UI = (function () {
     opts = opts || {};
     return new Promise(function (resolve) {
       closeOverlays();
+      const opener = document.activeElement;
       const overlay = buildOverlay(function () { resolve(null); });
       const box = el('div', 'modal-box confirm-modal');
+      box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', opts.title || '请输入');
       const numeric = !!opts.numeric;
       box.innerHTML = '<div class="modal-head"><span class="modal-title">' + esc(opts.title || '请输入') + '</span>' +
         '<button class="mini modal-close">✕</button></div>' +
@@ -680,15 +713,18 @@ window.UI = (function () {
       overlay.appendChild(box);
       document.body.appendChild(overlay);
       const inp = box.querySelector('.cf-input');
+      function done(v) { overlay.remove(); if (opener && opener.isConnected && typeof opener.focus === 'function') { try { opener.focus(); } catch (e) {} } resolve(v); }
+      overlay.__onDismiss = function () { resolve(null); };
       function submit() {
         let v = inp.value;
         if (numeric) { v = Number(v); if (!isFinite(v)) { inp.focus(); return; } if (opts.min != null && v < opts.min) v = opts.min; if (opts.max != null && v > opts.max) v = opts.max; }
-        overlay.remove(); resolve(v);
+        done(v);
       }
       box.querySelector('.cf-ok').addEventListener('click', submit);
-      box.querySelector('.cf-cancel').addEventListener('click', function () { overlay.remove(); resolve(null); });
-      box.querySelector('.modal-close').addEventListener('click', function () { overlay.remove(); resolve(null); });
+      box.querySelector('.cf-cancel').addEventListener('click', function () { done(null); });
+      box.querySelector('.modal-close').addEventListener('click', function () { done(null); });
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+      closeOnEscape(overlay, function () { done(null); });
       inp.focus(); inp.select();
     });
   }
@@ -1752,7 +1788,7 @@ window.UI = (function () {
   function peepCard(b) {
     const st = S();
     const isSelf = st.me && b.id === st.me.id;
-    const color = b.color || colorFor(b.name || '?');
+    const color = safeColor(b.color) || colorFor(b.name || '?');
     const card = el('div', 'peep' + (isSelf ? ' self' : ''));
     // 信息块单独成函数（peepInfoHtml）：广播只重写这一块，右部按钮原地不动
     card.innerHTML =
@@ -3408,6 +3444,7 @@ window.UI = (function () {
     // 好友可能处于岸边，没有渔获广播；独立轮询使离线/上线状态也能及时更新。
     const refreshTimer = setInterval(function () {
       if (!panel.isConnected) { clearInterval(refreshTimer); return; }
+      if (document.hidden) return;   // 后台标签页不轮询好友状态
       panel._refresh(false);
     }, 5000);
   }
@@ -10187,7 +10224,7 @@ window.UI = (function () {
     } else {
       const cost = status.skipCost;
       const canPay = (st.player.coins || 0) >= cost;
-      banner.innerHTML = '⏳ 冷却中 · 剩余 <b>' + fmtRemain(status.remainingMs) + '</b>';
+      banner.innerHTML = '⏳ 冷却中 · 剩余 <b id="fb-remaining">' + fmtRemain(status.remainingMs) + '</b>';
       const skip = el('button', 'mini primary-mini' + (canPay ? '' : ' locked'), '💸 花 ' + cost + ' 金币立即结束 CD');
       markFeature(skip, 'feedback.skip');
       skip.addEventListener('click', function () {
@@ -11127,7 +11164,43 @@ window.UI = (function () {
     if (a.classList && a.classList.contains('peep-search-input')) return false;
     return /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName) || a.isContentEditable === true;
   }
+  let batchCollect = null, pendingBatch = null, batchFlushHandle = 0;
+  // 批量刷新（perf）：SSE 一次推一批事件时，把这一批里每个事件要求刷新的 scope 并起来，
+  // 下一帧只重绘一次，而不是每个事件各重绘一次。批处理之外 refreshAll 仍然同步执行，
+  // 避免影响依赖「广播后立即拿到新 DOM」的既有逻辑与测试。
+  function batchRefresh(fn) {
+    const outer = batchCollect;
+    if (outer === null) batchCollect = { all:false, scopes:new Set() };
+    try { fn(); }
+    finally {
+      if (outer !== null) { // 嵌套批处理：并入外层，别提前 flush
+        if (batchCollect.all) outer.all = true;
+        batchCollect.scopes.forEach(function (s) { outer.scopes.add(s); });
+        batchCollect = outer;
+        return;
+      }
+      const collect = batchCollect; batchCollect = null;
+      // 同一帧里可能来两批事件：第二次投递要并进「待刷新」集合，不能因为已经排了帧
+      // 就把这批的 scope 丢掉（否则这批事件的界面更新会迟到一个事件才出现）。
+      if (!pendingBatch) pendingBatch = { all:false, scopes:new Set() };
+      if (collect.all) pendingBatch.all = true;
+      collect.scopes.forEach(function (s) { pendingBatch.scopes.add(s); });
+      if (batchFlushHandle) return;
+      const raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : function (cb) { return setTimeout(cb, 16); };
+      batchFlushHandle = raf(function () {
+        batchFlushHandle = 0;
+        const batch = pendingBatch; pendingBatch = null;
+        if (!batch) return;
+        if (batch.all) { refreshAllNow(); return; }
+        batch.scopes.forEach(function (s) { if (s !== 'all') refreshAllNow(s); });
+      });
+    }
+  }
   function refreshAll(scope) {
+    if (batchCollect) { if (!scope) batchCollect.all = true; else batchCollect.scopes.add(scope); return; }
+    return refreshAllNow(scope);
+  }
+  function refreshAllNow(scope) {
     if (featureBlocked(pageIdOf())) { renderTopbar(); renderNav(); renderView(); return; }
     if (scope === 'all') scope = null; // init 全量刷新
     if (scope === 'trade' || !scope) settlePendingTradeCancel(); // 「关闭时邀请还在途」欠下的撤回，会话一落地就补上
@@ -11263,14 +11336,17 @@ window.UI = (function () {
       }
       cdLast = cd;
     }, 500);
-    // 反馈页冷却倒计时：仅在反馈页且冷却中时按秒重绘剩余时间
+    // 反馈页冷却倒计时：冷却中只按秒改写剩余时间文字，不整页重绘
+    // （整页重绘会打断正在输入的意见文本）；冷却刚结束时补一次重绘来解锁提交按钮。
     let fbLast = 0;
     setInterval(function () {
+      if (document.hidden) return;
       if (currentView !== 'feedback') { fbLast = 0; return; }
       const st = S().feedback;
       if (!st || !st.status) { fbLast = 0; return; }
       const rem = Math.max(0, (st.status.nextAt || 0) - Date.now());
-      if (rem > 0 || fbLast > 0) renderView();
+      if (rem > 0) { const b = $('fb-remaining'); if (b) b.textContent = fmtRemain(rem); }
+      else if (fbLast > 0) renderView();
       fbLast = rem;
     }, 1000);
     // v0.21.3：背包定期全量对账（30 秒一次，标签页可见时才跑）。
@@ -11288,22 +11364,18 @@ window.UI = (function () {
       if (currentView === 'sea' || currentView === 'fishing') ensureSea();
     }, 10000);
     // 渔场实况场景已挪到「🧍 角色」页当可选背景（v0.19.0），钓鱼页不再有游鱼定时器
-    let token = 'cookie';
+    // 会话走 Cookie：服务器从请求里读会话，前端不再持有 token。'cookie' 只是占位，不参与鉴权。
     try { localStorage.removeItem('fishing_token'); } catch (e) {}
-    if (token) {
-      Promise.resolve()
-        .then(function () { return window.Net.fetchMe(token); })
-        .then(function (r) {
-          if (r && r.ok) { startGame(token, r.data); }
-          else { try { localStorage.removeItem('fishing_token'); } catch (e) {} showAuth(); }
-        })
-        .catch(function () {
-          try { localStorage.removeItem('fishing_token'); } catch (e) {}
-          showAuth();
-        });
-    } else {
-      showAuth();
-    }
+    Promise.resolve()
+      .then(function () { return window.Net.fetchMe('cookie'); })
+      .then(function (r) {
+        if (r && r.ok) { startGame('cookie', r.data); }
+        else { try { localStorage.removeItem('fishing_token'); } catch (e) {} showAuth(); }
+      })
+      .catch(function () {
+        try { localStorage.removeItem('fishing_token'); } catch (e) {}
+        showAuth();
+      });
   }
 
   // v0.21.2：对端好友关系变化（发起/同意/拒绝/撤回/移除）→ 刷新关系速查 + 已打开的好友面板。
@@ -11345,6 +11417,7 @@ window.UI = (function () {
 
   return {
     onMarketChanged: onMarketChanged, onFeatures: onFeatures, init: init, onFishingTick: onFishingTick, refreshAll: refreshAll,
+    batchRefresh: batchRefresh,
     patchCodexCell: patchCodexCell,
     friendPush: friendPush,
     onSeaEvict: onSeaEvict,

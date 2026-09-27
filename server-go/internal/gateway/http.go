@@ -53,6 +53,15 @@ type API struct {
 	views     map[int64]legacyPlayersView
 	shopCache legacyShopCache
 	wikiStore *wiki.Store
+	// totpPending holds in-flight console TOTP enrollments: a freshly minted
+	// secret that has been shown to the administrator but not yet confirmed
+	// with a code from the new authenticator. Per-process, expires quickly.
+	totpMu      sync.Mutex
+	totpPending map[int64]totpPendingEnrollment
+}
+type totpPendingEnrollment struct {
+	secret  string
+	expires time.Time
 }
 type bucket struct {
 	start time.Time

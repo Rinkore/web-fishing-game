@@ -76,7 +76,7 @@ const CHROME = process.env.CHROME_PATH || [
       if (url.pathname === '/api/admin/gear') return json({ config: catalog.constants.GEAR_SYSTEM, revision: 1, items: catalog.items });
       if (url.pathname === '/api/admin/house') return json({ config: catalog.constants.HUT, revision: 3, invariants: [{ name: '等级曲线单调不减', ok: true, detail: 'Lv1→Lv10' }] });
       if (url.pathname.startsWith('/api/')) return json({ error: '测试未启用' }, 400);
-      const files = { '/admin.html': ['admin.html', 'text/html'], '/css/admin.css': ['css/admin.css', 'text/css'], '/js/data.js': ['js/data.js', 'text/javascript'], '/js/features.js': ['js/features.js', 'text/javascript'], '/js/gear.js': ['js/gear.js', 'text/javascript'], '/js/admin-edit.js': ['js/admin-edit.js', 'text/javascript'], '/js/admin-pool-import.js': ['js/admin-pool-import.js', 'text/javascript'], '/js/admin-gear.js': ['js/admin-gear.js', 'text/javascript'], '/js/admin-house.js': ['js/admin-house.js', 'text/javascript'], '/js/admin.js': ['js/admin.js', 'text/javascript'] };
+      const files = { '/admin.html': ['admin.html', 'text/html'], '/css/admin.css': ['css/admin.css', 'text/css'], '/js/data.js': ['js/data.js', 'text/javascript'], '/js/features.js': ['js/features.js', 'text/javascript'], '/js/gear.js': ['js/gear.js', 'text/javascript'], '/js/admin-edit.js': ['js/admin-edit.js', 'text/javascript'], '/js/admin-pool-import.js': ['js/admin-pool-import.js', 'text/javascript'], '/js/admin-gear.js': ['js/admin-gear.js', 'text/javascript'], '/js/admin-house.js': ['js/admin-house.js', 'text/javascript'], '/js/vendor/qrcode.js': ['js/vendor/qrcode.js', 'text/javascript'], '/js/admin.js': ['js/admin.js', 'text/javascript'] };
       const file = files[url.pathname];
       if (!file) return route.fulfill({ status: 404, body: '' });
       return route.fulfill({ contentType: file[1], body: fs.readFileSync(path.join(__dirname, '..', 'frontend', file[0])) });
@@ -137,19 +137,24 @@ const CHROME = process.env.CHROME_PATH || [
     assert.equal(snapshotPayload.inventory.crucian, 8);
     assert.equal(snapshotReads, 2, 'conflict reloads the editor instead of overwriting new assets');
     await page.locator('.cf-no').click();
-    // 验证器：按钮只挂在管理员行；二次确认后才请求，密钥弹窗展示一次性 Base32 与 otpauth 链接
+    // 验证器：按钮只挂在管理员行；需手动输入账号名二次确认，且分两步——
+    // 第一步（stage=begin）只返回密钥不落库，输入一次验证码（stage=finish）后才生效
     assert.equal(await page.locator('[data-totp]').count(), 1, 'only the authorized administrator row offers enrollment');
     await page.locator('[data-totp="keeper"]').click();
+    await page.locator('#cd-word').fill('keeper');
     await page.locator('.cf-yes').click();
     await page.locator('#totp-secret').waitFor();
     // 会话走 cookie：apiOnce 会把 body 里的 token 去掉，只留业务字段
-    assert.deepEqual(totpPayload, { target: 'keeper', confirm: true });
+    assert.deepEqual(totpPayload, { target: 'keeper', confirm: true, stage: 'begin' }, '第一步只取密钥，不落库');
     assert.equal(await page.locator('#totp-secret').inputValue(), 'JBSWY3DPEHPK3PXP');
     assert.equal((await page.locator('#totp-url').inputValue()).startsWith('otpauth://totp/'), true, 'enrollment returns the otpauth link');
+    assert.equal(await page.locator('#totp-qr svg').count(), 1, '二维码在本地渲染，不依赖外部服务');
     await page.locator('#totp-copy').click();
     await page.waitForFunction(() => document.querySelector('#totp-tip').textContent.includes('复制'));
-    await page.locator('.cf-x').click();
-    assert.equal(await page.locator('#totp-secret').count(), 0, 'closing the dialog drops the one-time secret');
+    await page.locator('#totp-code').fill('123456');
+    await page.locator('#totp-apply').click();
+    await page.waitForFunction(() => !document.querySelector('#totp-secret'));
+    assert.deepEqual(totpPayload, { target: 'keeper', confirm: true, stage: 'finish', otp: '123456' }, '输入验证码后才落库');
     assert.deepEqual(pageErrors, [], 'no unhandled page exceptions');
     console.log('PASS admin interactions: login, feedback, gear config, fish house config, snapshot tiers/conflict, admin TOTP enrollment');
     console.log('通过 32 项，失败 0 项');

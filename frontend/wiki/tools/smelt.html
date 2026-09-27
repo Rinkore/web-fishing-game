@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/assets/fish/crucian.png"><meta name="description" content="DeepFish 配套资料站，提供钓场、渔获/材料/组件搜索、攻略、更新记录、配装模拟器与熔炼模拟器。"><title>熔炼模拟器 · WIKI</title><link rel="stylesheet" href="/css/style.css"><link rel="stylesheet" href="/css/pixel.css"><link rel="stylesheet" href="/css/smelt.css"><link rel="stylesheet" href="/css/responsive.css"><link rel="stylesheet" href="/css/mobile.css"><link rel="stylesheet" href="/wiki/css/wiki.css"><link rel="stylesheet" href="/wiki/tools/tool.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/assets/fish/crucian.png"><meta name="description" content="DeepFish 熔炼模拟器：主副件与投料选择、成功率与词缀概率、批量模拟与可复现的单次模拟。"><title>熔炼模拟器 · WIKI</title><link rel="canonical" href="/wiki/tools/smelt.html"><meta property="og:type" content="website"><meta property="og:site_name" content="DeepFish WIKI"><meta property="og:title" content="熔炼模拟器 · WIKI"><meta property="og:description" content="DeepFish 熔炼模拟器：主副件与投料选择、成功率与词缀概率、批量模拟与可复现的单次模拟。"><meta property="og:url" content="/wiki/tools/smelt.html"><link rel="stylesheet" href="/css/style.css"><link rel="stylesheet" href="/css/pixel.css"><link rel="stylesheet" href="/css/smelt.css"><link rel="stylesheet" href="/css/responsive.css"><link rel="stylesheet" href="/css/mobile.css"><link rel="stylesheet" href="/wiki/css/wiki.css"><link rel="stylesheet" href="/wiki/tools/tool.css"></head>
 <body data-page="smelt">
+<noscript><p class="callout warn">资料站的部分内容由脚本动态加载。请启用 JavaScript 查看钓场、渔获、攻略与模拟器；也可以直接进入 <a href="/">游戏</a>。</p></noscript>
 <header class="topbar wiki-topbar">
   <a class="brand" href="/wiki/">🎣 DeepFish <span class="ver">WIKI</span></a>
   <form class="wiki-search-form" action="/wiki/search/index.html" role="search">
@@ -25,7 +26,7 @@
   </aside>
   <main id="main" class="content">
     <section class="panel wide wiki-tool-panel">
-      <h2>🔥 熔炼模拟器 <span class="subtitle">主副件 · 投料 · 概率 · 批量模拟</span></h2>
+      <h1 class="wiki-tool-title">🔥 熔炼模拟器 <span class="subtitle">主副件 · 投料 · 概率 · 批量模拟</span></h1>
       <div id="status-card" class="status-card" aria-live="polite"></div>
       <div class="smelt-workbench">
         <fieldset class="sm-draft">
@@ -65,7 +66,7 @@
         <aside class="sm-preview-panel" aria-label="熔炼计算结果">
           <header><h3>产物预览</h3><span>实时更新</span></header>
           <div id="preview" class="ws-preview"></div>
-          <div class="wiki-preview-block"><h4>单次模拟</h4><div class="toolbar tool-simulate-actions"><button id="simulate-once" class="tool-primary" type="button">模拟一次</button><button id="send-to-build" type="button">带入配装</button><button id="use-result" type="button" disabled>用结果继续模拟</button></div><div id="single-result"></div></div>
+          <div class="wiki-preview-block"><h4>单次模拟</h4><div class="toolbar tool-simulate-actions"><label class="check">种子 <input type="number" id="single-seed" min="0" max="4294967295" inputmode="numeric" placeholder="留空随机"></label><button id="simulate-once" class="tool-primary" type="button">模拟一次</button><button id="send-to-build" type="button">带入配装</button><button id="use-result" type="button" disabled>用结果继续模拟</button></div><div id="single-result"></div></div>
         </aside>
         <dialog id="material-dialog" class="wiki-catalyst-dialog sm-material-dialog" aria-labelledby="material-title">
           <header><h2 id="material-title">选择催化剂</h2><button type="button" id="material-close" class="tool-quiet" aria-label="关闭催化剂选择">×</button></header>

@@ -223,7 +223,7 @@
   }
   function runBatch(count, seed) {
     const p = plan(); if (p.errors.length) { $('batch-result').innerHTML = previewHTML(p); return; }
-    const rng = mulberry32(seed), stats = { n:count, success:0, extra:0, retain:0, actualRetain:0, protectedFail:0, removed:0, counts:{}, values:[] };
+    const rng = mulberry32(seed), stats = { n:count, success:0, extra:0, retain:0, actualRetain:0, protectedFail:0, removed:0, counts:{}, byType:{} };
     let i = 0; state.batch = { running:true, cancel:false };
     $('batch-start').disabled = true; $('batch-cancel').disabled = false; $('batch-progress').max = count; $('batch-progress').value = 0;
     function chunk() {
@@ -236,7 +236,8 @@
         if (o.retainOk) stats.retain++;
         if (o.retained.length) stats.actualRetain++;
         const n = o.item.affixes.length; stats.counts[n] = (stats.counts[n] || 0) + 1;
-        o.item.affixes.forEach(a => stats.values.push(a.value));
+        // 词缀数值按类型分别统计：不同词缀的数值量纲不同（钓速 +%、技巧 +点…），混在一起求均值没有意义
+        o.item.affixes.forEach(a => { (stats.byType[a.type] = stats.byType[a.type] || []).push(a.value); });
       }
       $('batch-progress').value = i;
       if (i < count) { setTimeout(chunk, 0); return; }
@@ -244,18 +245,29 @@
     }
     function finish(label) {
       state.batch.running = false; $('batch-start').disabled = false; $('batch-cancel').disabled = true;
-      const mean = stats.values.length ? (stats.values.reduce((a,b) => a+b, 0) / stats.values.length).toFixed(2) : '-';
+      const typeMeans = Object.keys(stats.byType).sort().map(function (t) {
+        const arr = stats.byType[t], mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+        return (GameData.AFFIX_LABEL[t] || t) + ' ' + mean.toFixed(2) + '（n=' + arr.length + '）';
+      }).join(' · ') || '-';
       $('batch-result').innerHTML = '<p>' + label + '：' + stats.n + ' 次独立试验 · 种子 ' + seed + '</p><table><tbody>' +
         row('熔炼成功', stats.success + ' / ' + pct(stats.success, stats.n)) + row('补缀命中', stats.extra + ' / ' + pct(stats.extra, stats.n)) +
         row('保留判定命中', stats.retain + ' / ' + pct(stats.retain, stats.n)) + row('实际追加池外', stats.actualRetain + ' / ' + pct(stats.actualRetain, stats.n)) +
         row('失败且保护', stats.protectedFail) + row('失败且移除词缀', stats.removed) +
         row('词缀数分布', Object.keys(stats.counts).sort().map(k => k + ':' + stats.counts[k]).join(' · ')) +
-        row('词缀数值均值', mean) + row('总金币', stats.n * p.gold) + '</tbody></table>' +
+        row('词缀数值均值（按类型）', typeMeans) + row('总金币', stats.n * p.gold) + '</tbody></table>' +
         '<p class="muted">批量是同一输入的独立重复试验，不代表连续强化同一件主件，也不估算真实库存。</p>';
     }
     setTimeout(chunk, 0);
   }
   function pct(a, b) { return b ? (a / b * 100).toFixed(2) + '%' : '-'; }
+  // 单次模拟也要可复现：同样的输入 + 同样的种子必然得到同样的结果。
+  // 种子为空 / 非法时随机生成一个并写回输入框，玩家可抄下复现。
+  function singleSeed() {
+    const el = $('single-seed'); if (!el) return Math.floor(Math.random() * 0xFFFFFFFF);
+    let v = Number(el.value);
+    if (!isFinite(v) || v < 0) { v = Math.floor(Math.random() * 0xFFFFFFFF); el.value = String(v); }
+    return Math.floor(v) >>> 0;
+  }
   function init() {
     state.main = defaultComponent('main'); state.sub = defaultComponent('sub');
     WikiInventory.mount($('inventory-panel'), renderAll);
@@ -278,7 +290,8 @@
     });
     $('simulate-once').addEventListener('click', function () {
       const p = plan(); if (p.errors.length) { $('single-result').innerHTML = previewHTML(p); return; }
-      state.lastOutcome = simulateOnce(p, Math.random); $('single-result').innerHTML = outcomeHTML(state.lastOutcome, p); $('use-result').disabled = false;
+      const seed = singleSeed();
+      state.lastOutcome = simulateOnce(p, mulberry32(seed)); $('single-result').innerHTML = '<p class="muted">种子 ' + seed + '</p>' + outcomeHTML(state.lastOutcome, p); $('use-result').disabled = false;
     });
     $('send-to-build').addEventListener('click', function () {
       if (!state.lastOutcome) { $('single-result').innerHTML = '<p class="warning">请先模拟一次。</p>'; return; }
