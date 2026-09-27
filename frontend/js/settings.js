@@ -127,7 +127,6 @@ window.PlayerSettings = (function () {
       '<input id="settings-scale" type="range" min="' + SCALE_MIN + '" max="' + SCALE_MAX + '" step="' + SCALE_STEP + '" value="' + defaults.textScale + '" data-setting="textScale" aria-label="字号大小（百分比）" />' +
       '<div class="settings-scale-marks" aria-hidden="true">' + scaleMarksHtml() + '</div></div></div>' +
       '<label class="settings-row"><span>界面字体<small>像素风格或清晰易读的系统字体</small></span><select data-setting="font"><option value="pixel">像素字体</option><option value="clear">清晰字体</option></select></label>' +
-      '<label class="settings-row"><span>界面风格<small>港湾是新的画面外壳，经典保留原来的侧栏；随时可切回</small></span><select data-setting="theme"><option value="harbor">港湾</option><option value="classic">经典侧栏</option></select></label>' +
       '<div id="settings-harbor-time" class="settings-row settings-harbor-time"><span>港湾时间<small>场景色调随本地时钟变化，也可以固定在某个时段</small></span>' +
       '<div class="settings-harbor-time-body">' +
       '<div class="settings-harbor-modes">' +

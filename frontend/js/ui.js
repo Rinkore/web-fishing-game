@@ -1122,16 +1122,8 @@ window.UI = (function () {
   }
   function logRowHtml(e) {
     const meta = e.item || {};
-    // v4 F2：稀有 / 史诗 / 神话钓获触发港湾庆祝动画（仅设置开启时）
-    if ((meta.rarity === 'rare' || meta.rarity === 'epic' || meta.rarity === 'mythic') &&
-        window.PlayerSettings && PlayerSettings.get && PlayerSettings.get().catchFlash !== 'off') {
-      harborHook('catchReward', {
-        img: (D.ASSET || '') + 'assets/fish/' + (e.id || '') + '.png',
-        name: meta.name || '',
-        rarity: meta.rarity,
-        text: '已放入仓库'
-      });
-    }
+    // v4 F2 修订：庆祝动画只在 net.js 收到服务器上鱼推送时触发（开关由 HarborShell.catchReward 统一判断）。
+    // 渲染函数不能带副作用：写在这里会让切页 / 重绘把同一次钓获重复弹一遍。
     return timeStr(e.t) + ' · 钓到 <span class="' + qualityClass(meta) + '">' + esc(meta.name) +
       '</span>' + (meta.size ? ' <span class="muted">' + meta.size + 'cm</span>' : '') +
       (meta.rarity === 'rare' ? ' ✨稀有' : meta.rarity === 'epic' ? ' 💎史诗' : '');

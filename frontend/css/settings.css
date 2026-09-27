@@ -33,6 +33,35 @@
 #settings-reset-confirm { padding: 12px; margin-top: 12px; background: #19354c; border-radius: 6px; }
 #settings-dialog button { min-height: 44px; }
 #settings-dialog :focus-visible, #settings-btn:focus-visible { outline: 2px solid #34e0c0; outline-offset: 3px; }
+
+/* 港湾界面（body.harbor-on；港湾是唯一主题）：设置对话框改用木牌 + 像素风格，
+   与港湾内景面板（harbor.css 的 .h-panel / .h-plank）保持一致。
+   加 body.harbor-on 前缀既限定作用域，也提高优先级以覆盖上方经典深蓝配色，
+   以及 harbor.css 里 `#settings-dialog .sgrp …` 的既有规则（只覆盖，不删旧规则）。 */
+body.harbor-on #settings-dialog {
+  color: #e9f6ff; background: #0e1d33;
+  border: 4px solid #8a5a34; border-radius: 0;
+  box-shadow: 0 0 0 4px #3a2618, 0 16px 48px rgba(0, 0, 0, .6);
+}
+body.harbor-on #settings-dialog::backdrop { background: rgba(2, 11, 24, .8); }
+body.harbor-on #settings-dialog .settings-head {
+  padding: 14px 16px;
+  background: repeating-linear-gradient(90deg, #6b4631 0 38px, #5e3d2a 38px 40px);
+  border-bottom: 4px solid #3a2618;
+}
+body.harbor-on #settings-dialog .settings-head h2 { font: 24px var(--px-font); color: #ffe9a8; text-shadow: 1px 1px 0 #000; }
+/* pixel.css 对所有 button 打了 border / box-shadow / border-radius 的 !important，必须同等覆盖 */
+body.harbor-on #settings-dialog .settings-close {
+  font: 12px var(--px-font); padding: 4px 10px; background: rgba(6, 14, 28, .6); color: #ffe9a8;
+  border: 2px solid #a8744a !important; border-radius: 0 !important; box-shadow: none !important;
+}
+body.harbor-on #settings-dialog .settings-close:hover { background: #4a3020; border-color: #c89060 !important; }
+body.harbor-on #settings-dialog .settings-row { border-bottom: 2px solid #25405f; }
+body.harbor-on #settings-dialog .settings-row small { color: #8fa6bf; }
+body.harbor-on #settings-dialog .settings-row select { border-radius: 0 !important; }
+body.harbor-on #settings-dialog #settings-status { color: #7fe7d0; }
+body.harbor-on #settings-dialog #settings-reset-confirm { background: #0a1628; border: 2px solid #25405f; border-radius: 0; }
+
 html[data-font=clear] { --px-font: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
 /* 字号缩放：等效浏览器缩放，整页文字与界面元素同比放大；100% 时完全不介入 */
 html[data-text-scale]:not([data-text-scale="100"]) { zoom: var(--text-scale, 1); }

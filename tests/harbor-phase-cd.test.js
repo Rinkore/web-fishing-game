@@ -139,6 +139,29 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     await page.waitForTimeout(300);
     check('恢复完整动效：自动布局回到横向全景', await page.evaluate(() => !document.getElementById('harbor').classList.contains('h-compass-home') && document.getElementById('h-scene').classList.contains('h-phone')));
 
+    // ---- 修复回归：钓获特效开关真的生效 + 设置对话框跟随港湾风格 ----
+    check('关闭「钓获特效」后不播放庆祝动画', await page.evaluate(() => {
+      PlayerSettings.set('catchFlash', 'off');
+      HarborShell.catchReward({ img: '', name: '测试鱼', rarity: 'epic', text: '已放入仓库' });
+      const fl = document.getElementById('h-flash');
+      return getComputedStyle(fl).display === 'none' && !fl.classList.contains('h-flash-go');
+    }));
+    check('开启「钓获特效」后播放庆祝动画', await page.evaluate(() => {
+      PlayerSettings.set('catchFlash', 'on');
+      HarborShell.catchReward({ img: '', name: '测试鱼', rarity: 'epic', text: '已放入仓库' });
+      return document.getElementById('h-flash').classList.contains('h-flash-go');
+    }));
+    await page.evaluate(() => { document.getElementById('h-flash').click(); PlayerSettings.open(); });
+    await page.waitForTimeout(200);
+    check('设置对话框跟随港湾风格（木框 / 无圆角 / 木牌标题栏）', await page.evaluate(() => {
+      const d = document.getElementById('settings-dialog');
+      const cs = getComputedStyle(d), head = getComputedStyle(d.querySelector('.settings-head'));
+      return cs.borderRadius === '0px' && cs.borderTopColor === 'rgb(138, 90, 52)' &&
+        head.backgroundImage.indexOf('repeating-linear-gradient') >= 0;
+    }));
+    await page.evaluate(() => document.getElementById('settings-dialog').close());
+    await page.waitForTimeout(150);
+
     check('无页面错误', errors.length === 0);
     console.log('通过 ' + count + ' 项，失败 0 项');
   } finally { await browser.close(); }

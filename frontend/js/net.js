@@ -839,7 +839,8 @@ window.Net = (function () {
               (it.rarity === 'rare' ? ' ✨稀有' : it.rarity === 'epic' ? ' 💎史诗' : '') +
                 (m.entry.ground ? '（' + m.entry.ground + (m.entry.spot ? '·' + m.entry.spot : '') + '）' : ''));
             }
-            // v3 F2：稀有 / 史诗 / 神话钓获交给港湾外壳弹全屏庆祝动画（普通钓获只走日志与吐司）
+            // v3 F2：稀有 / 史诗 / 神话钓获交给港湾外壳弹全屏庆祝动画（普通钓获只走日志与吐司）。
+            // 唯一触发点：是否播放由 HarborShell.catchReward 读「钓获特效」设置决定，这里不要再判断一次。
             if (ui && ui.harborHook) {
               const id = it.id || '';
               const img = it.kind === 'fish' ? 'assets/fish/' + id + '.png'

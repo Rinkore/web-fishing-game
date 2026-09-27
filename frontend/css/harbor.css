@@ -470,32 +470,34 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
 
 /* ============================================================
    v3 F2：钓获庆祝动画（稀有 / 史诗 / 神话）
+   v4 修订：整屏白闪太晃眼，改为「轻微压暗 + 品质色光晕」的温和入场；
+   转光放慢、发光收敛，设置里的「钓获特效」关闭时由 harbor.js 直接不播放。
    ============================================================ */
 .h-flash {
   position: fixed; inset: 0; z-index: 12;
   display: grid; place-items: center;
   pointer-events: auto; cursor: pointer;
 }
-.h-flash-go { animation: h-flashbg 1.8s forwards; }
-.h-flash-catch { text-align: center; animation: h-pop 1.8s forwards; position: relative; }
+.h-flash-go { animation: h-flashbg 1.6s forwards; }
+.h-flash-catch { text-align: center; animation: h-pop 1.6s forwards; position: relative; }
 .h-flash-rays {
   position: absolute; left: 50%; top: 70px; width: 320px; height: 320px; margin: -160px;
   background: repeating-conic-gradient(from 0deg, var(--fc, #c084fc) 0 8deg, transparent 8deg 24deg);
-  opacity: .25; border-radius: 50%; animation: h-spin 6s linear infinite;
+  opacity: .14; border-radius: 50%; animation: h-spin 10s linear infinite;
   mask: radial-gradient(circle, #000 20%, transparent 70%);
   -webkit-mask: radial-gradient(circle, #000 20%, transparent 70%);
 }
 .h-flash-img {
   position: relative; width: 140px; height: 140px;
   image-rendering: pixelated; object-fit: contain;
-  filter: drop-shadow(0 0 16px var(--fc, #c084fc));
+  filter: drop-shadow(0 0 8px var(--fc, #c084fc));
 }
 .h-flash-name { position: relative; font: 24px var(--px-font); text-shadow: 2px 2px 0 #000; }
 .h-flash-tier { position: relative; font: 12px var(--px-font); color: #fff; text-shadow: 1px 1px 0 #000; }
 @keyframes h-flashbg {
-  0% { background: rgba(255, 255, 255, .55); }
-  14% { background: rgba(0, 0, 0, .4); }
-  86% { background: rgba(0, 0, 0, .4); }
+  0% { background: rgba(3, 8, 18, 0); }
+  14% { background: rgba(3, 8, 18, .5); }
+  84% { background: rgba(3, 8, 18, .5); }
   100% { background: transparent; }
 }
 @keyframes h-pop {

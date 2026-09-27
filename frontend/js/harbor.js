@@ -699,8 +699,14 @@ window.HarborShell = (function () {
     init: init,
     syncShell: apply, syncHud: syncHud, syncView: apply, syncNav: apply, syncScene: function () { if (on) refreshScene(); },
     openPlace: openPlace, goHome: function () { showHome(); setHash('#/'); },
-    // v3 F2：稀有 / 史诗 / 神话钓获的全屏庆祝动画（ui.js 的 catchReward 钩子调用）
-    catchReward: function (payload) { if (payload) reward(payload.img, payload.name, payload.rarity, payload.text); },
+    // v3 F2：稀有 / 史诗 / 神话钓获的全屏庆祝动画（net.js 的 catchReward 钩子调用）。
+    // 「钓获特效」开关只在这里判断一次：ui.js / net.js 的调用方不再各自把关，避免漏判。
+    catchReward: function (payload) {
+      if (!payload) return;
+      const ps = window.PlayerSettings;
+      if (ps && ps.get && ps.get().catchFlash === 'off') return;
+      reward(payload.img, payload.name, payload.rarity, payload.text);
+    },
     periodAt: periodAt, current: nowInfo, label: label,
     isOn: function () { return on; },
     sceneState: sceneState, openCompass: openCompass, closeOverlays: closeOverlays,

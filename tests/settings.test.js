@@ -23,6 +23,8 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     check('System reduced motion applies by default', await page.evaluate(() => PlayerSettings.motion() === 'reduced'));
     await page.click('#settings-btn');
     check('Accessible modal opens and focuses close', await page.evaluate(() => document.querySelector('#settings-dialog').open && document.activeElement.className === 'settings-close'));
+    // v4 F5：经典界面已移除，界面风格（港湾 / 经典侧栏）切换没有可用项，整行随之下线
+    check('界面风格切换已随经典界面一并移除', await page.evaluate(() => !document.querySelector('#settings-dialog [data-setting=theme]') && !/经典侧栏/.test(document.getElementById('settings-dialog').textContent)));
     await page.selectOption('[data-setting=font]', 'clear');
     check('Clear font takes effect', await page.evaluate(() => !getComputedStyle(document.querySelector('#settings-btn')).fontFamily.includes('FusionPixel')));
     check('Font-size slider marks the suggested stops', await page.locator('.scale-mark.rec').count() === 2 && (await page.locator('.settings-scale-marks').textContent()).includes('建议'));
