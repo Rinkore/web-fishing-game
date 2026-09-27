@@ -136,7 +136,7 @@
    '<button class="gear-refresh" data-refresh>刷新</button></div>'+
    '<nav class="gear-tabs" role="tablist" aria-label="装备与套装功能">'+GEAR_TABS.map(([id,t])=>'<button class="'+(tab===id?'primary':'')+'" data-gear-tab="'+id+'" role="tab" aria-selected="'+(tab===id)+'">'+t+'</button>').join('')+'</nav>'+
    '<p role="status" class="gear-notice">'+esc(notice)+'</p>'+
-   (view?(tab==='sets'?sets():growthTab()):'<p class="gear-caption">读取装备成长状态…</p>');
+   (view?(tab==='sets'?sets():growthTab()):'<p class="gear-caption ld-state">读取装备成长状态…</p>');
   root.querySelector('[data-reward-source]').onchange=e=>{Engine.state.unboundInputs=e.target.value==='free';draw();};root.querySelector('[data-refresh]').onclick=()=>load(true);const openChest=root.querySelector('[data-open-chest]');if(openChest)openChest.onclick=()=>{UI.setView('chest');UI.renderNav();UI.renderView();if(window.Net&&Net.fetchChest)Net.fetchChest();};const filter=root.querySelector('[data-equipment-filter]');if(filter)filter.oninput=e=>{const start=e.target.selectionStart;equipmentFilter=e.target.value;draw();const next=root.querySelector('[data-equipment-filter]');next.focus();next.setSelectionRange(start,start);};root.querySelectorAll('[data-sub-option]').forEach(b=>b.onclick=()=>{selectedSub=b.dataset.subOption;draw();});root.querySelectorAll('[data-direction-option]').forEach(b=>b.onclick=()=>{selectedDirection=b.dataset.directionOption;draw();});root.querySelectorAll('[data-gear-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.gearTab;draw();});
    // 强化路径里的组件卡片：空卡片打开选择子窗口，已选卡片点击取消当前选中的组件。
    root.querySelectorAll('[data-pick-card]').forEach(b=>b.onclick=()=>{if(b.dataset.pickCard==='clear'){selected='';selectedSub='';selectedDirection='main';draw();}else openPicker();});

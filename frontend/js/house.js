@@ -366,7 +366,7 @@
     wire(host);
     const h = house();
     if (!h) {
-      host.appendChild(el('div', 'hint', '正在读取渔屋状态…'));
+      host.appendChild(el('div', 'hint ld-state', '正在读取渔屋状态…'));
       ensureLoad();
       return;
     }

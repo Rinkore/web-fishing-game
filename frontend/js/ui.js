@@ -209,6 +209,29 @@ window.UI = (function () {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
   }
+  // 空状态：像素图标 + 一句标题 + 一句说明 + 一个去处按钮。
+  // 一句「去某某页做某事」的灰字不如直接给玩家一个能点的按钮。
+  function emptyState(opts) {
+    const box = el('div', 'empty-state');
+    box.innerHTML = (opts.icon ? '<img class="es-icon" src="' + esc(opts.icon) + '" alt="" draggable="false">' : '') +
+      '<div class="es-title">' + esc(opts.title) + '</div>' +
+      (opts.text ? '<div class="es-text">' + esc(opts.text) + '</div>' : '');
+    if (opts.action) {
+      const go = el('button', 'primary es-go', esc(opts.action.label));
+      go.type = 'button';
+      go.addEventListener('click', function () {
+        navigateView(opts.action.view); renderNav(); renderView(); loadViewData(opts.action.view);
+      });
+      box.appendChild(go);
+    }
+    return box;
+  }
+  // 规则说明：长段的税率 / 手续费 / 玩法细则默认收起，只露一行「ⓘ 规则说明」，需要时再展开
+  function ruleTip(text, label) {
+    const d = el('details', 'rule-tip');
+    d.innerHTML = '<summary>ⓘ ' + esc(label || '规则说明') + '</summary><div class="rule-tip-body">' + esc(text) + '</div>';
+    return d;
+  }
   function colorFor(name) {
     let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
     return 'hsl(' + h + ',55%,55%)';
@@ -4037,7 +4060,7 @@ window.UI = (function () {
       // 占位面板不带 id：否则规则拉取完成后会误判「骨架已建」而跳过，商店只剩「加载中…」
       main.innerHTML = '';
       const p0 = el('div', 'panel wide');
-      p0.textContent = '加载中…';
+      p0.appendChild(el('div', 'hint ld-state', '加载中…'));
       main.appendChild(p0);
       window.Net.autoSellGet().then(function (r) {
         if (r && r.ok) { shopAuto.loaded = true; shopAuto.items = r.data.items || {}; shopAuto.batch = Number(r.data.batch) || 0; shopAuto.tier = !!r.data.tier; }
@@ -5107,13 +5130,13 @@ window.UI = (function () {
       colMain.appendChild(filters);
       colMain.appendChild(list);
       refreshList();
-      colMain.appendChild(el('div', 'hint', '提示：买到的物品可拿去系统商店出售赚差价；市集成交收 10% 税（由卖家承担）。'));
+      colMain.appendChild(ruleTip('买到的物品可拿去系统商店出售赚差价；市集成交收 10% 税（由卖家承担）。', '市集规则'));
     }
     panel.appendChild(colMain);
 
     const side = el('div', 'col-side');
     side.dataset.orderFeature = 'mall.list';
-    side.appendChild(el('div', 'hint', '「上架」把你的物品挂到市集（收定价总额 1% 上架费，下架不退）；成交另收 10% 税（卖家承担）。'));
+    side.appendChild(ruleTip('「上架」把你的物品挂到市集：收定价总额 1% 上架费，下架不退；成交另收 10% 税（卖家承担）。', '上架规则'));
     side.appendChild(keepSell || marketSellPanel(st));
     panel.appendChild(side);
 
@@ -5286,7 +5309,7 @@ window.UI = (function () {
     });
     foot.appendChild(clr);
     box.appendChild(foot);
-    box.appendChild(el('div', 'hint', '勾选多件后点「一键上架」：统一设置时长与价格倍率（按各物品现价计算），逐个挂单。'));
+    box.appendChild(ruleTip('勾选多件后点「一键上架」：统一设置时长与价格倍率（按各物品现价计算），逐个挂单。', '一键上架说明'));
     syncMktSellFoot();
     return box;
   }
@@ -7032,9 +7055,9 @@ window.UI = (function () {
     // 组件分类走「行计划」（组头 + 成员行）分页：判断空列表要看行数而不是物品数
     const emptyList = invCategory === 'component' ? !(plan.rows && plan.rows.length) : keys.length === 0;
     if (emptyList) {
-      list.appendChild(el('div', 'hint', Object.keys(st.inventory).length === 0
-        ? '背包空空如也。去「钓鱼」页选个钓点抛竿，渔获会自动入包。'
-        : '该筛选条件下没有物品。'));
+      list.appendChild(Object.keys(st.inventory).length === 0
+        ? emptyState({ icon: 'assets/nav/fishing.png', title: '背包还是空的', text: '选个钓点抛竿，渔获会自动放进背包。', action: { label: '🎣 去钓鱼', view: 'fishing' } })
+        : el('div', 'hint', '该筛选条件下没有物品。'));
     } else if (invCategory === 'component') {
       renderComponentRows(list, plan, st, unitPrice, itemValue, doSell);
     } else {
@@ -7146,7 +7169,7 @@ window.UI = (function () {
     pageInfo.setAttribute('aria-live', 'polite');
     pager.appendChild(previous); pager.appendChild(pageInfo); pager.appendChild(next);
     colMain.appendChild(pager);
-    colMain.appendChild(el('div', 'hint', '提示：出售走系统商店动态收购价（售出越多价越低）；「上架」挂到开放市集等玩家购买，需支付定价总额 1% 上架费（下架不退），成交另收 10% 税（卖家承担）。'));
+    colMain.appendChild(ruleTip('出售走系统商店动态收购价（售出越多价越低）；「上架」挂到开放市集等玩家购买，需支付定价总额 1% 上架费（下架不退），成交另收 10% 税（卖家承担）。', '出售与上架规则'));
     panel.appendChild(colMain);
 
     const side = el('div', 'col-side');
@@ -8489,7 +8512,7 @@ window.UI = (function () {
     const info = st.chest;
     body.innerHTML = '';
     if (!info) {
-      body.appendChild(el('div', 'hint', '宝匣数据加载中…（若长时间无响应请刷新页面）'));
+      body.appendChild(el('div', 'hint ld-state', '宝匣数据加载中…（若长时间无响应请刷新页面）'));
       return;
     }
     // 残片与宝匣持有量以背包为权威（SSE assets 会持续刷新），不用服务端快照里可能已过期的 have
@@ -9659,7 +9682,7 @@ window.UI = (function () {
     bindMallTabs(panel);
     const mall = st.mall;
     if (!mall || !mall.items) {
-      panel.appendChild(el('div', 'hint', '正在读取商城…若长时间无内容，请刷新页面。'));
+      panel.appendChild(el('div', 'hint ld-state', '正在读取商城…若长时间无内容，请刷新页面。'));
       main.appendChild(panel);
       return;
     }
@@ -10614,7 +10637,7 @@ window.UI = (function () {
     wrap.setAttribute('data-sig', sig);
     wrap.innerHTML = '';
     main.appendChild(wrap);
-    if (!d) { wrap.appendChild(el('div', 'hint', '正在读取远洋状态……')); return; }
+    if (!d) { wrap.appendChild(el('div', 'hint ld-state', '正在读取远洋状态……')); return; }
     // 顶部：标题与三个功能页签排在同一行（原「远洋航海中心」介绍行与四个大指标格已删除，
     // 功能页从屏幕顶部开始）。页签顺序跟随后台的功能排序，与工坊主页面签同一口径。
     const top = el('div', 'sea-topbar');
@@ -10816,6 +10839,39 @@ window.UI = (function () {
     });
   }
 
+  // 页首横幅：没有场景图的页面顶上一条「图标 + 标题 + 一句话」的像素横幅，进页面先知道自己在哪。
+  // 画在 #main::before 上（CSS 读 data-banner-* 与 --banner-icon），不占 DOM：邮件、装备成长、市集等
+  // 模块会在数据回来后直接改写 #main.innerHTML，真节点会被一并抹掉。
+  // 钓鱼页（海图）与渔屋（场景）本身就是大图，不加；熔炼台是定高网格，多一行会把它挤坏。
+  const PAGE_BANNERS = {
+    inventory: ['背包', '渔获、材料、宝匣与组件都收在这里'],
+    workshop: ['工坊', '装备成长与钓鱼套装'],
+    chest: ['开箱', '合成宝匣，开出稀有组件'],
+    sea: ['远洋', '派船出海，带回近岸钓不到的渔获'],
+    ground: ['社交', '在线玩家、好友与编队'],
+    mall: ['商城', '限购、系统收购与玩家市集'],
+    codex: ['图鉴', '把每一种鱼都收进图鉴'],
+    feedback: ['反馈', '提建议、报问题，管理员会回复'],
+    logs: ['日志', '最近的操作与收获'],
+    mail: ['邮件', '系统通知与附件领取'],
+  };
+  function paintPageBanner() {
+    const main = $('main');
+    const b = PAGE_BANNERS[currentView];
+    const on = !!b && !(currentView === 'workshop' && wsTab === 'smelt');
+    main.classList.toggle('has-banner', on);
+    if (!on) { delete main.dataset.bannerTitle; delete main.dataset.bannerSub; return; }
+    // 远洋 / 邮件还没有像素导航图标：标题前改用菜单里的 emoji
+    const png = BANNER_ICONS.indexOf(currentView) >= 0;
+    const nav = D.NAV.find(function (n) { return n.id === currentView; });
+    main.dataset.bannerTitle = (png || !nav ? '' : nav.icon + ' ') + b[0];
+    main.dataset.bannerSub = b[1];
+    main.classList.toggle('banner-noicon', !png);
+    // 自定义属性里的相对 url() 各浏览器解析基准不一，这里直接给绝对地址
+    if (png) main.style.setProperty('--banner-icon', 'url("' + new URL('assets/nav/' + currentView + '.png', document.baseURI).href + '")');
+    else main.style.removeProperty('--banner-icon');   // 上一页的图标别残留
+  }
+  const BANNER_ICONS = ['inventory', 'workshop', 'chest', 'ground', 'mall', 'codex', 'feedback', 'logs'];
   function renderView() {
     const pageId = pageIdOf();
     const fishingPage = currentView === 'fishing' && !featureBlocked(pageId);
@@ -10826,6 +10882,7 @@ window.UI = (function () {
     $('main').classList.toggle('workshop-page', currentView === 'workshop');
     if (!fishingPage && disposeFishingViewport) disposeFishingViewport();
     $('main').classList.toggle('smelt-page', currentView === 'workshop' && wsTab === 'smelt');
+    paintPageBanner();
     if (featureBlocked(pageId)) {
       const main = $('main'); main.innerHTML = '';
       const panel = el('div', 'panel wide feature-closed');
