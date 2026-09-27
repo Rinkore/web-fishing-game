@@ -39,6 +39,15 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     check(await page.locator('.fishing-switches .pt-ico:visible').count() === 4, 'every switch keeps its icon');
     check(await page.locator('.fishing-switches .px-map-tab').evaluateAll(bs => bs.map(b => b.dataset.overlay).join(',')) === 'info,buffs,players,log', 'spot info leads the switch row');
     check(await page.locator('[data-overlay="info"]').getAttribute('aria-label') === '钓点信息' && await page.locator('[data-overlay="info"]').getAttribute('title') === '钓点信息', 'icon-only switch keeps a readable full name');
+    // 开关条按内容收缩后，收起按钮必须跟着框体左缘，而不是留在 dock 的固定左边界上。
+    const toggleGap = () => page.evaluate(() => {
+      const toggle = document.querySelector('.fishing-dock-toggle').getBoundingClientRect();
+      const row = document.querySelector('.fishing-switches').getBoundingClientRect();
+      return { gap: Math.round(row.left - toggle.right), dock: Math.round(row.left - document.querySelector('.fishing-dock').getBoundingClientRect().left) };
+    });
+    let hug = await toggleGap();
+    check(hug.gap >= 0 && hug.gap <= 6, 'hide button hugs the switch box left edge');
+    check(hug.dock > 20, 'switch box no longer spans the whole dock');
     check(await page.locator('.vm-art').count() === 1, 'one CSS world map renders');
     check(await page.locator('.fishing-map-controls, .fishing-map-hint').count() === 0, 'map control strip is removed');
     check(await page.locator('.px-legend').count() === 0, 'map legend is removed');
@@ -56,6 +65,8 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     await page.locator('[data-overlay="buffs"]').click();
     check(await page.locator('[data-overlay="buffs"] .pt-name:visible').count() === 1, 'selected switch expands its name');
     check((await page.locator('[data-overlay="buffs"]').innerText()).includes('钓点增益'), 'expanded switch names its section');
+    const widened = await toggleGap();
+    check(widened.gap >= 0 && widened.gap <= 6, 'hide button follows the switch box after a name expands');
     check(await page.locator('.live-buff-row').count() === 0, 'spots without buffs are omitted');
     check((await page.locator('.live-buffs').innerText()).includes('暂无钓点增益'), 'empty buff menu explains its empty state');
     await page.evaluate(() => {
@@ -150,6 +161,10 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     check(await page.locator('.fishing-dock-content').evaluate(e => e.inert), 'collapsed controls are not focusable');
     check(await page.locator('.fishing-dock').evaluate(e => e.getBoundingClientRect().left >= document.querySelector('.fishing-stage').getBoundingClientRect().right - 1), 'entire dock leaves viewport');
     check((await page.locator('.fishing-dock-toggle').innerText()) === '‹', 'collapsed control is icon only');
+    check(await page.locator('.fishing-dock-toggle').evaluate(e => {
+      const rect = e.getBoundingClientRect(), stage = document.querySelector('.fishing-stage').getBoundingClientRect();
+      return rect.width > 0 && rect.left >= stage.left && rect.right <= stage.right + 1;
+    }), 'collapsed hide button stays reachable at the stage edge');
     await page.evaluate(() => {
       Engine.state.log.unshift({ t: Date.now(), item: { name: '测试鲫鱼', size: 27, rarity: 'common' } });
       UI.onFishingTick();

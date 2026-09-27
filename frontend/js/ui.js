@@ -981,7 +981,7 @@ window.UI = (function () {
   let fishingMapLocate = false;
   // 视角独立于页面 DOM，切换钓点与服务器推送不会重置拖动和缩放。
   const fishingMapView = { zoom: 1, x: 0, y: 0, initialized: false };
-  function mountFishingViewport(stage, map, chooseSpot) {
+  function mountFishingViewport(stage, map, chooseSpot, onLayout) {
     if (disposeFishingViewport) disposeFishingViewport();
     const viewport = stage.querySelector('.fish-select');
     const pointers = new Map();
@@ -1065,6 +1065,7 @@ window.UI = (function () {
         }
       }
       commitPaint();
+      if (onLayout) onLayout();
     }
     function locate(node) {
       if (!node) return;
@@ -1155,7 +1156,8 @@ window.UI = (function () {
     });
     const observer = new ResizeObserver(fit);
     observer.observe(stage);
-    ['.topbar', '.sidebar', '#record-banner', '#notice-banner'].forEach(function (selector) {
+    // 开关条也在观察列表里：它按内容收缩，选中态展开名字后会变宽（见 alignDockToggle）
+    ['.topbar', '.sidebar', '#record-banner', '#notice-banner', '.fishing-switches'].forEach(function (selector) {
       const node = document.querySelector(selector);
       if (node) observer.observe(node);
     });
@@ -1426,6 +1428,14 @@ window.UI = (function () {
     dock.appendChild(dockToggle);
     dock.appendChild(dockContent);
     dockContent.appendChild(switches);
+    // 收起 / 展开按钮贴在开关条左缘：开关条按内容收缩并靠右对齐后（见 fishing.css），
+    // 再固定贴 dock 左边就会浮在半空、与框体断开。收起时仍用 dock 左缘（也就是舞台右缘
+    // 外露的那一格），否则按钮会跟着开关条一起滑出屏幕就再也点不开。
+    // 开关条宽度会随「选中才展开名字」变化，所以除了这里，fit() 里也回调一次重算。
+    function alignDockToggle() {
+      const left = fishingDockCollapsed ? -28 : Math.max(-28, Math.round(switches.offsetLeft) - 28);
+      dockToggle.style.left = left + 'px';
+    }
     function updateDock() {
       dock.classList.toggle('collapsed', fishingDockCollapsed);
       dockToggle.textContent = fishingDockCollapsed ? '‹' : '›';
@@ -1433,6 +1443,7 @@ window.UI = (function () {
       dockToggle.setAttribute('aria-expanded', String(!fishingDockCollapsed));
       dockContent.inert = fishingDockCollapsed;
       dockContent.setAttribute('aria-hidden', String(fishingDockCollapsed));
+      alignDockToggle();
     }
     dockToggle.addEventListener('click', function () {
       fishingDockCollapsed = !fishingDockCollapsed;
@@ -1512,6 +1523,7 @@ window.UI = (function () {
         button.setAttribute('aria-expanded', String(selected));
       });
       overlayTitle.textContent = labels[fishingOverlay] || '渔场实况';
+      alignDockToggle();   // 选中态展开名字会改变开关条宽度，收起按钮要跟着挪
     }
     tabs.forEach(function (tab) {
       const button = el('button', 'px-map-tab');
@@ -1541,7 +1553,7 @@ window.UI = (function () {
     dockContent.appendChild(right);
     stage.appendChild(dock);
     main.appendChild(stage);
-    mountFishingViewport(stage, map, chooseSpot);
+    mountFishingViewport(stage, map, chooseSpot, alignDockToggle);
   }
 
   // 钓鱼页高频增量刷新：只改动「真的会变」的内容（同钓点玩家 / 渔获日志 / 状态条），

@@ -43,6 +43,7 @@
 .fishing-switches .pt-name { display: none; }
 .fishing-switches .px-map-tab.on .pt-name { display: inline; margin-left: 5px; }
 .fishing-dock-toggle {
+  /* 左偏移由 alignDockToggle() 按开关条左缘写入（-28 是收起态的兜底值）。 */
   position: absolute; top: 8px; left: -28px; width: 26px; height: 38px; padding: 0;
   font-size: 28px; line-height: 28px; color: var(--accent); background: #102d43;
   pointer-events: auto; cursor: pointer;
