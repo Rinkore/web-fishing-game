@@ -1,0 +1,141 @@
+/* ============================================================
+   DeepFish 港湾外壳（设计稿 v2 · 阶段 A）
+   加载顺序最后：用来覆盖 responsive/mobile 对 .nav / .layout 的横排与底栏规则。
+   阶段 A 交付 HUD、内景面板（承载既有 #main）、目录列表与设置；
+   场景美术 / 建筑热区 / 罗盘属于阶段 B，这里只有纯色占位场景。
+   详见 output/design-review/redesign/v2/index.html §13。
+   ============================================================ */
+
+/* 港湾接管时收起经典外壳：顶栏与侧栏/主区。
+   #main 已被 js/harbor.js 搬进 #h-pbody，所以隐藏 .layout 不会丢内容。 */
+body.harbor-on .topbar,
+body.harbor-on .layout { display: none; }
+/* 手机端为经典底部标签栏预留的 body padding 在港湾里不需要 */
+body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
+
+#harbor {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  top: var(--banner-h, 0px);           /* 顶部横幅出现时整体下移，和顶栏一致 */
+  z-index: 4;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 10px clamp(8px, 2vw, 18px) calc(10px + env(safe-area-inset-bottom, 0px));
+  background: radial-gradient(1200px 600px at 80% -10%, #15466b 0%, var(--px-bg, #081426) 60%);
+}
+#harbor[hidden] { display: none; }
+
+/* ---------- 场景区（阶段 A 纯色占位；目录与内景面板都叠在它上面） ---------- */
+.h-stage { flex: 1 1 auto; min-height: 120px; position: relative; }
+.h-scene {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 3px solid var(--px-line, #2c4f74); border-radius: 10px;
+  background: linear-gradient(180deg, #0d2138 0%, #123055 55%, #0a1b30 100%);
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, .35);
+}
+.h-scene-note { margin: 0; padding: 10px 12px; text-align: center; font-size: 12px; color: var(--df-muted, #9db4cc); }
+/* 进入内景后收起占位场景，把高度让给内景面板 */
+#harbor:not(.home) .h-scene { display: none; }
+
+/* ---------- HUD ---------- */
+.h-hud { flex: none; display: flex; gap: 8px; }
+.h-hud-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.h-hud-id { min-width: 0; flex: 1 1 auto; }
+.h-hud-id .player-status { flex-wrap: wrap; gap: 8px 12px; font-size: 12px; }
+
+.h-timechip {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border: 2px solid var(--px-line, #2c4f74); border-radius: 8px;
+  background: rgba(15, 36, 60, .92); color: var(--df-text, #e8f2ff);
+  font-family: var(--px-font); font-size: 12px; cursor: pointer;
+}
+.h-timechip:hover { border-color: var(--px-line-hi, #48709c); }
+.h-timechip .h-ticon { font-size: 15px; line-height: 1; }
+
+.h-hud-bottom { display: flex; align-items: stretch; gap: 8px; }
+.h-btn, .h-cast {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 52px; padding: 6px 10px;
+  border: 2px solid var(--px-line, #2c4f74); border-radius: 10px;
+  background: rgba(15, 36, 60, .92); color: var(--df-text, #e8f2ff);
+  font-family: var(--px-font); font-size: 12px; cursor: pointer; touch-action: manipulation;
+}
+.h-btn { flex: 0 0 auto; min-width: 56px; flex-direction: column; }
+.h-btn span { font-size: 12px; }
+.h-btn:hover, .h-cast:hover { border-color: var(--px-line-hi, #48709c); background: rgba(20, 46, 76, .95); }
+.h-cast { flex: 1 1 auto; flex-direction: column; font-size: 14px; border-color: var(--accent, #34e0c0); color: var(--accent, #34e0c0); }
+.h-cast small { font-size: 12px; color: var(--df-muted, #9db4cc); }
+
+/* ---------- 内景面板：承载既有 #main ---------- */
+.h-panel {
+  position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column;
+  border: 3px solid var(--px-line, #2c4f74); border-radius: 10px;
+  background: var(--px-panel, rgba(15, 36, 60, .92)); overflow: hidden;
+  /* 设计稿 §10：内景升起 220ms；减少/关闭动效时直接出现（面板每次由 hidden 变可见都会重放） */
+  animation: h-panel-in 220ms ease-out;
+}
+.h-panel[hidden] { display: none; }
+@keyframes h-panel-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animation: none; }
+@media (prefers-reduced-motion: reduce) { .h-panel { animation: none; } }
+.h-plank {
+  flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  background: rgba(8, 22, 38, .85); border-bottom: 2px solid var(--px-line, #2c4f74);
+}
+.h-back, .h-x, .h-mini {
+  flex: none; padding: 7px 12px; border: 2px solid var(--px-line, #2c4f74); border-radius: 8px;
+  background: rgba(15, 36, 60, .92); color: var(--df-text, #e8f2ff);
+  font-family: var(--px-font); font-size: 12px; cursor: pointer; touch-action: manipulation;
+}
+.h-back:hover, .h-x:hover, .h-mini:hover { border-color: var(--px-line-hi, #48709c); }
+.h-plank-title { flex: 1 1 auto; min-width: 0; }
+.h-ttl { font-family: var(--px-font); font-size: 15px; color: var(--df-gold, #ffd23e); }
+.h-crumb { font-size: 12px; color: var(--df-muted, #9db4cc); }
+.h-tabs { flex: none; }
+.h-tabs:empty { display: none; }
+.h-pbody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* 既有页面容器（.content 是 grid + overflow:auto）：迁进面板后仍由它自己滚动 */
+.h-pbody > #main.content { flex: 1 1 auto; min-height: 0; margin: 0; }
+
+/* ---------- 目录（列表模式）：直接复用 renderNav 渲染的 #nav ---------- */
+.h-overlay {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(4, 12, 22, .72);
+}
+.h-overlay[hidden] { display: none; }
+.h-sheet {
+  /* 行方向铺满（上限 720px），纵向由 align-items:center 按内容高度居中；
+     不写 width:100% 的话，里面 .nav-item 的 width:100% 在自动宽度容器里会塌成 100 多像素宽。 */
+  flex: 1 1 auto; width: 100%; max-width: 720px; max-height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 8px;
+  padding: 10px; border: 3px solid var(--px-line, #2c4f74); border-radius: 10px;
+  background: var(--px-panel-solid, #0f243c); overflow: hidden;
+}
+.h-dir-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+/* 首页本身就是目录，不需要「返回港湾」这颗按钮 */
+#harbor.home .h-mini { display: none; }
+
+/* 目录里的导航就是真正的 #nav（含后台排序、红标、锁定态），这里只把它从
+   桌面侧栏 / 手机底栏改成纵向列表；手机的分组折叠（.nav-more / .nav-sheet）在目录里不需要。 */
+.h-dir-body .nav,
+.h-dir-body .nav-sheet { display: block; }
+.h-dir-body .nav { width: 100%; gap: 4px; }
+.h-dir-body .nav-more { display: none !important; }
+.h-dir-body .nav-item { width: 100%; flex-direction: row; justify-content: flex-start; text-align: left; min-width: 0; }
+.h-dir-body .nav-badge { position: static; margin-left: auto; }
+.h-dir-body .nav-group { display: block; }
+/* 手机底栏的「更多」面板是 position:absolute; bottom:calc(100% + 6px) 的浮层（见 mobile.css），
+   搬进目录后必须收回文档流，否则第 5 项之后的入口会跑到视口外（只剩前 4 项可见）。 */
+.h-dir-body .nav-sheet {
+  position: static; left: auto; right: auto; bottom: auto; width: 100%;
+  padding: 0; border: 0; background: none; box-shadow: none; gap: 4px;
+}
+
+/* ---------- 手机：HUD 紧凑、目录铺满 ---------- */
+@media (max-width: 640px) {
+  #harbor { padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); gap: 8px; }
+  .h-stage { min-height: 0; }
+  .h-hud-bottom { flex-wrap: wrap; }
+  .h-cast { order: -1; flex: 1 1 100%; }
+  .h-overlay { align-items: stretch; border-radius: 10px; }
+  .h-sheet { flex: 1 1 auto; max-width: none; max-height: none; }
+}

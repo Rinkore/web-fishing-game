@@ -3,8 +3,8 @@ window.PlayerSettings = (function () {
   'use strict';
   const KEY = 'fishing_preferences_v1';
   // v0.20：字号由「标准/大号」两档改为可拖动的百分比滑杆（90 ~ 140，步长 5）
-  const defaults = { textScale: 100, font: 'pixel', motion: 'system', records: true, tips: 'all' };
-  const choices = { font: ['pixel', 'clear'], motion: ['system', 'full', 'reduced', 'off'], tips: ['all', 'brief'] };
+  const defaults = { textScale: 100, font: 'pixel', motion: 'system', records: true, tips: 'all', theme: 'classic' };
+  const choices = { font: ['pixel', 'clear'], motion: ['system', 'full', 'reduced', 'off'], tips: ['all', 'brief'], theme: ['classic', 'harbor'] };
   const SCALE_MIN = 90, SCALE_MAX = 140, SCALE_STEP = 5;
   // 拖动条上的建议值：rec = 推荐档位（金色高亮 + 「建议」字样）
   const SCALE_MARKS = [
@@ -87,6 +87,7 @@ window.PlayerSettings = (function () {
       '<input id="settings-scale" type="range" min="' + SCALE_MIN + '" max="' + SCALE_MAX + '" step="' + SCALE_STEP + '" value="' + defaults.textScale + '" data-setting="textScale" aria-label="字号大小（百分比）" />' +
       '<div class="settings-scale-marks" aria-hidden="true">' + scaleMarksHtml() + '</div></div></div>' +
       '<label class="settings-row"><span>界面字体<small>像素风格或清晰易读的系统字体</small></span><select data-setting="font"><option value="pixel">像素字体</option><option value="clear">清晰字体</option></select></label>' +
+      '<label class="settings-row"><span>界面风格<small>港湾是新的画面外壳，经典保留现在的侧栏；随时可切回</small></span><select data-setting="theme"><option value="classic">经典侧栏</option><option value="harbor">港湾（预览）</option></select></label>' +
       '<label class="settings-row"><span>场景动效<small>减少动效时保留钓鱼状态和进度</small></span><select data-setting="motion"><option value="system">跟随系统</option><option value="full">完整</option><option value="reduced">减少</option><option value="off">关闭装饰动画</option></select></label>' +
       '<label class="settings-row"><span>全服纪录播报<small>管理员公告仍会正常显示</small></span><input type="checkbox" data-setting="records" aria-label="显示全服纪录播报"></label>' +
       '<label class="settings-row"><span>普通操作提示<small>精简钓点切换、装备和列表刷新提示；保留错误和交易结果</small></span><select data-setting="tips"><option value="all">显示</option><option value="brief">精简</option></select></label>' +
@@ -134,5 +135,10 @@ window.PlayerSettings = (function () {
   media.addEventListener('change', apply);
   window.addEventListener('storage', function (event) { if (event.key === KEY || event.key === null) { settings = read(); apply(); } });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
-  return { get: function () { return Object.assign({}, settings); }, motion: motion, open: open };
+  return {
+    get: function () { return Object.assign({}, settings); },
+    motion: motion, open: open,
+    // 程序化改一项（港湾外壳切换界面风格、测试用）；不传值时沿用校验后的默认值
+    set: function (key, value) { settings = validate(Object.assign({}, settings, { [key]: value })); if (status) save(); else apply(); },
+  };
 })();

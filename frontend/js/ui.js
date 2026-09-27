@@ -14,6 +14,12 @@ window.UI = (function () {
     const nodes = document.querySelectorAll('[data-ver]');
     for (let i = 0; i < nodes.length; i++) nodes[i].textContent = v;
   })();
+  // 港湾外壳钩子（js/harbor.js，设计稿 v2 阶段 A）：ui.js 只在渲染出口通知它，
+  // 是否启用由它按玩家设置判断；没启用港湾时是一次空调用。
+  function harborHook(name) {
+    const h = window.HarborShell;
+    if (h && typeof h[name] === 'function') h[name]();
+  }
   // 惰性获取：避免加载顺序问题
   // v0.16.0：后台开启「允许管理员进入已关闭功能」后，管理员本人在玩家端也不再被挡
   function adminBypassOn() {
@@ -771,6 +777,18 @@ window.UI = (function () {
     if (view === 'records') { currentView = 'codex'; codexMainTab = 'records'; return; }
     currentView = view;
   }
+  // 港湾外壳（设计稿 v2 阶段 A）：进入某个页面的**唯一入口**，与侧栏点击走同一条路径
+  //（复位主页签 → 切视图 → 拉数据）。港湾的目录 / 内景面板路由都调它，避免两套入口分叉。
+  function openView(id) {
+    if (id === 'wiki') { window.open('/wiki/', '_blank', 'noopener'); return true; }
+    if (!featureGuard(id)) return false;
+    resetSectionTab(id);
+    navigateView(id);
+    if (id === 'inventory') clearSubAlerts();
+    if (id !== 'ground') peepComposing = false;
+    renderNav(); renderView(); loadViewData(id);
+    return true;
+  }
   // 侧栏入口一律回到该页的**主页签**：合并页会记住上次停留的页签（如「钓鱼 · 钓竿」），
   // 从侧栏再点进来时若不复位，看起来就像没切过去。顶栏快捷入口与外部 setView 不走这里，
   // 仍可用 navigateView('bd' / 'records') 直达指定页签。
@@ -822,6 +840,9 @@ window.UI = (function () {
   });
   function renderNav() {
     const st = S();
+    // 港湾外壳：必须放在下面的「签名未变就直接返回」之前 —— 签名只反映导航徽标，
+    // 外壳是否接管（登录状态 / 界面风格）会变而签名不变，漏掉这一句外壳就停在上一次的状态。
+    harborHook('syncNav');
     const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0,
       st.me && st.me.admin ? 1 : 0, subUnseen, friendReqInCount(), st.mailUnread||0, st.mailPending||0,
       JSON.stringify(st.features || {}), JSON.stringify(st.featureOrder || {})].join('|');
@@ -941,6 +962,7 @@ window.UI = (function () {
     const p = S().player;
     const st = S();
     syncBrandAdmin();   // 登录账号是管理员时给品牌挂 brand-admin（CSS 出光标）
+    harborHook('syncHud');   // 港湾 HUD 复用 #player-status，这里只补时间牌与出海按钮的副标题
     const statusText = p.status === 'fishing' ? '正在钓鱼' : (p.groundId ? '空闲' : '未出发');
     const loc = p.groundId
       ? (function () {
@@ -11017,6 +11039,7 @@ window.UI = (function () {
       if (panel) { const notice = el('div', 'hint feature-notice'); notice.textContent = '🔒 暂停开放：' + locked.map(function (a) { return a.name; }).join('、'); panel.insertBefore(notice, panel.firstChild); }
     }
     restoreScroll(saved);
+    harborHook('syncView');
   }
 
   // ---- 认证流程 ----
@@ -11483,5 +11506,6 @@ window.UI = (function () {
     onConnChange: onConnChange,
     getView: function () { return currentView; },
     setView: function (v) { navigateView(v); },
+    openView: openView,
   };
 })();
