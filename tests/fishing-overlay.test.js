@@ -31,6 +31,14 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     await page.evaluate(() => document.fonts.ready);
     const overlay = page.locator('#fishing-overlay');
     check(!await overlay.isVisible(), 'overlay starts closed');
+    // 开关条默认收成图标：四个开关（钓点信息 / 钓点增益 / 钓点玩家 / 渔获日志）都只留 emoji，
+    // 未选中时 .pt-name 被 CSS 隐藏，整排只占几格宽度；完整名字留给 aria-label / title 与选中态。
+    check(await page.locator('.fishing-switches .px-map-tab').count() === 4, 'map switches keep four toggles');
+    check(await page.locator('.fishing-switches .pt-name:visible').count() === 0, 'unselected switches show icons only');
+    check(await page.locator('.fishing-switches .px-map-tab').evaluateAll(bs => bs.every(b => !/[\u4e00-\u9fa5]/.test(b.innerText))), 'unselected switches hide their names');
+    check(await page.locator('.fishing-switches .pt-ico:visible').count() === 4, 'every switch keeps its icon');
+    check(await page.locator('.fishing-switches .px-map-tab').evaluateAll(bs => bs.map(b => b.dataset.overlay).join(',')) === 'info,buffs,players,log', 'spot info leads the switch row');
+    check(await page.locator('[data-overlay="info"]').getAttribute('aria-label') === '钓点信息' && await page.locator('[data-overlay="info"]').getAttribute('title') === '钓点信息', 'icon-only switch keeps a readable full name');
     check(await page.locator('.vm-art').count() === 1, 'one CSS world map renders');
     check(await page.locator('.fishing-map-controls, .fishing-map-hint').count() === 0, 'map control strip is removed');
     check(await page.locator('.px-legend').count() === 0, 'map legend is removed');
@@ -46,6 +54,8 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
       });
     }), 'existing spot positions project consistently and round trip without migrations');
     await page.locator('[data-overlay="buffs"]').click();
+    check(await page.locator('[data-overlay="buffs"] .pt-name:visible').count() === 1, 'selected switch expands its name');
+    check((await page.locator('[data-overlay="buffs"]').innerText()).includes('钓点增益'), 'expanded switch names its section');
     check(await page.locator('.live-buff-row').count() === 0, 'spots without buffs are omitted');
     check((await page.locator('.live-buffs').innerText()).includes('暂无钓点增益'), 'empty buff menu explains its empty state');
     await page.evaluate(() => {
@@ -62,7 +72,9 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     check(await page.locator('.live-buff-row').count() === 0, 'expired buff disappears after live refresh');
     check((await page.locator('.live-buff-count').innerText()) === '0 个增益钓点', 'expired buff count updates');
     await page.locator('[data-overlay="buffs"]').click();
-    for (const key of ['buffs', 'players', 'log']) {
+    check(await page.locator('.fishing-switches .pt-name:visible').count() === 0, 'closing a switch collapses the row back to icons');
+    check(!(await page.locator('[data-overlay="buffs"]').innerText()).includes('钓点增益'), 'collapsed switch hides its name again');
+    for (const key of ['info', 'buffs', 'players', 'log']) {
       const button = page.locator('[data-overlay="' + key + '"]');
       await button.click();
       check(await overlay.isVisible(), key + ' opens');
@@ -111,6 +123,27 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     check(await page.locator('.px-map').evaluate(e => e.style.getPropertyValue('--map-scale')) === selectedZoom, 'selecting a spot preserves the zoom level');
     check((await page.locator('.fish-state').innerText()).includes('360 次/时'), 'server interval and bite rate produce expected hourly hook count');
     check(await page.locator('#player-status [data-view="bd"] .meta-txt').innerText() === '🎣 抛竿间隔 8.00s', 'topbar cast interval shows only the final value');
+    // 📍 钓点信息：下竿后在同一页右栏原地展示当前钓点的掉落池与权重（不弹子窗口），
+    // 口径与「图鉴 · 钓点」一致，掉落物名字 / 条目数都用 GameData 现算，避免硬编码漂移。
+    const dockPool = await page.evaluate(() => {
+      const dock = GameData.GROUNDS.find(g => g.id === 'map').spots.find(s => s.id === 'dock');
+      const sorted = dock.pool.slice().sort((a, b) => (b.weight || 0) - (a.weight || 0));
+      const pick = sorted[0].pick, id = pick.slice(pick.indexOf(':') + 1);
+      return { size: dock.pool.length, first: GameData.itemOf(id).name };
+    });
+    await page.locator('[data-overlay="info"]').click();
+    check(await page.locator('.fishing-stage .live-block:visible').count() === 1, 'spot info stays the only visible section');
+    check(await page.locator('.spot-info-block:visible').count() === 1 && (await page.locator('.spot-info-block').innerText()).includes('当前钓点'), 'spot info names the spot being fished');
+    check(await page.locator('.spot-info-block .spot-pool-row').count() === dockPool.size, 'spot info lists every drop in the spot pool');
+    check((await page.locator('.spot-info-block').innerText()).includes(dockPool.first), 'spot info names the heaviest drop');
+    check(await page.locator('.spot-info-block .spot-pool-row .sp-pct').count() === dockPool.size && await page.locator('.spot-info-block .spot-pool-row .hint').count() === dockPool.size, 'every drop row shows a share and a raw weight');
+    check(await page.locator('.spot-info-block .spot-pool-row').evaluateAll(rows => rows.every(r => r.querySelector('.hint').innerText.includes('权重'))), 'drop rows label their raw weight');
+    check(await page.locator('.spot-info-block .spot-pool-row').evaluateAll(rows => {
+      const pct = rows.map(r => parseFloat(r.dataset.pct));
+      return pct.every((v, i) => i === 0 || pct[i - 1] >= v);
+    }), 'drop rows are ordered by descending share');
+    await page.locator('[data-overlay="info"]').click();
+    check(!await overlay.isVisible(), 'spot info closes on second click');
     await page.locator('[data-overlay="log"]').click();
     await page.evaluate(() => { window.originalMap = document.querySelector('.px-map'); });
     await page.locator('.fishing-dock-toggle').click();

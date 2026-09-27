@@ -1233,6 +1233,48 @@ window.UI = (function () {
     if (host) host.innerHTML = liveBuffRowsHtml();
   }
 
+  // —— 📍 钓点信息（钓鱼页右上角开关，不弹子窗口）——
+  // 与「图鉴 · 钓点」子窗口同源同口径：读 D.GROUNDS 的 sp.pool，按权重降序列出掉落物与占比。
+  // 后台改掉落池 / 增益后经 patchFishingLive 就地刷新，不重建整页。
+  function currentSpotOf(st) {
+    // 优先「所在钓点」；未开始时退回「所点钓点」，两者都没有就返回 null。
+    const gid = st.player.groundId || (st.selected && st.selected.groundId);
+    const sid = st.player.spotId || (st.selected && st.selected.spotId);
+    const g = gid ? D.GROUNDS.find(function (x) { return x.id === gid; }) : null;
+    const sp = g ? (g.spots || []).find(function (x) { return x.id === sid; }) : null;
+    return g && sp ? { g: g, sp: sp } : null;
+  }
+  function spotInfoHtml(st) {
+    const here = currentSpotOf(st);
+    if (!here) {
+      return '<div class="hint">点地图上的钓点下竿后，这里显示该钓点的掉落物与权重（与「📖 图鉴 · 📍 钓点」同一份配置）。</div>';
+    }
+    const g = here.g, sp = here.sp;
+    const pool = sp.pool || [];
+    const total = pool.reduce(function (s, e) { return s + Math.max(0, e.weight || 0); }, 0);
+    const head = pool.length ? '掉落 ' + pool.length + ' 项 · 总权重 ' + total : '暂无掉落池';
+    let html = '<div class="live-head"><h3>📍 当前钓点</h3><span class="spot-info-count">' + esc(head) + '</span></div>' +
+      '<div class="spot-info">' +
+      '<div class="cd-line"><b>' + esc((g.id === 'map' ? '' : g.name + '·') + sp.name) + '</b> · ' +
+      (g.locked || sp.locked ? '🔒 尚未开放' : '✅ 已解锁 · 可前往垂钓') +
+      (sp.biteRate != null && sp.biteRate !== '' ? ' · 上鱼率 ' + esc(String(sp.biteRate)) + '%' : '') +
+      (sp.intervalMs ? ' · 抛竿间隔 ' + esc(String(sp.intervalMs)) + 'ms' : '') + '</div>';
+    if (sp.buffs && sp.buffs.length) {
+      html += '<div class="cd-line">⚡ 增益：' + sp.buffs.map(function (bf) {
+        return esc(affixName(bf.type) + (bf.value > 0 ? '+' : '') + bf.value + '%');
+      }).join(' · ') + '</div>';
+    }
+    html += '<div class="cd-sub">🎯 可钓物品与实时产出概率（' + pool.length + ' 项）</div>';
+    if (!pool.length) {
+      html += '<div class="cd-line muted">该钓点尚未配置掉落池（可在后台「钓点管理」配置）。</div>';
+    } else {
+      html += '<div class="spot-pool">' + spotPoolRowsHtml(pool) + '</div>' +
+        '<div class="cd-line muted">以上为基础权重占比（与后台「钓点管理」配置一致，改动即时同步）；' +
+        '钓竿的大鱼 / 稀有 / 材料词缀会在此基础上放大对应类别的权重。</div>';
+    }
+    return html + '</div>';
+  }
+
   function livePeepsHtml(st) {
     const pp = st.peepsPage || { total: 0, list: [] };
     const here = pp.list || [];
@@ -1409,6 +1451,10 @@ window.UI = (function () {
     overlayHead.appendChild(overlayTitle);
     overlayHead.appendChild(close);
     right.appendChild(overlayHead);
+    // 📍 钓点信息：当前钓点的掉落物与权重（同一份数据与排版口径，但不另开子窗口）
+    const infoBlock = el('section', 'live-block spot-info-block');
+    infoBlock.innerHTML = spotInfoHtml(st);
+    right.appendChild(infoBlock);
     const buffBlock = el('section', 'live-block');
     buffBlock.innerHTML = '<div class="live-head"><h3>⚡ 地图钓点增益</h3><span class="live-buff-count">' +
       liveBuffSpotsOfMap().length + ' 个增益钓点</span></div><div class="live-buffs"></div>';
@@ -1447,8 +1493,15 @@ window.UI = (function () {
     logBlock.appendChild(el('div', 'hint', '完整渔获记录见「📜 日志 · 🐟 渔获」，可按时间线回看。'));
     right.appendChild(logBlock);
 
-    const sections = { buffs: buffBlock, players: playersBlock, log: logBlock };
-    const labels = { buffs: '⚡ 钓点增益', players: '👥 钓点玩家', log: '📜 渔获日志' };
+    const sections = { info: infoBlock, buffs: buffBlock, players: playersBlock, log: logBlock };
+    const labels = { info: '📍 钓点信息', buffs: '⚡ 钓点增益', players: '👥 钓点玩家', log: '📜 渔获日志' };
+    // 开关默认只显示图标（📍 ⚡ 👥 📜），选中后才展开完整名字，收起时整排只占几个图标的宽度。
+    const tabs = [
+      { key: 'info', icon: '📍', name: '钓点信息' },
+      { key: 'buffs', icon: '⚡', name: '钓点增益' },
+      { key: 'players', icon: '👥', name: '钓点玩家' },
+      { key: 'log', icon: '📜', name: '渔获日志' },
+    ];
     function updateOverlay() {
       right.hidden = !fishingOverlay;
       Object.keys(sections).forEach(function (key) { sections[key].hidden = fishingOverlay !== key; });
@@ -1460,12 +1513,16 @@ window.UI = (function () {
       });
       overlayTitle.textContent = labels[fishingOverlay] || '渔场实况';
     }
-    Object.keys(labels).forEach(function (key) {
-      const button = el('button', 'px-map-tab', labels[key]);
-      button.dataset.overlay = key;
+    tabs.forEach(function (tab) {
+      const button = el('button', 'px-map-tab');
+      button.dataset.overlay = tab.key;
       button.setAttribute('aria-controls', right.id);
+      button.setAttribute('aria-label', tab.name);
+      button.title = tab.name;   // 收起时只剩图标，鼠标悬停仍能看到完整名字
+      button.innerHTML = '<span class="pt-ico" aria-hidden="true">' + tab.icon + '</span>' +
+        '<span class="pt-name">' + esc(tab.name) + '</span>';
       button.addEventListener('click', function () {
-        fishingOverlay = fishingOverlay === key ? null : key;
+        fishingOverlay = fishingOverlay === tab.key ? null : tab.key;
         updateOverlay();
       });
       switches.appendChild(button);
@@ -1497,6 +1554,12 @@ window.UI = (function () {
     if (stateBar) {
       const html = fishStateHtml(st);
       if (stateBar.innerHTML !== html) stateBar.innerHTML = html; // 内容没变就不碰 DOM，免得打断动画
+    }
+    // ② 钓点信息：当前钓点的掉落池 / 增益 / 上鱼率随后台配置变化，内容没变就不碰 DOM
+    const infoBlock = main.querySelector('.fish-live .spot-info-block');
+    if (infoBlock) {
+      const html = spotInfoHtml(st);
+      if (infoBlock.innerHTML !== html) infoBlock.innerHTML = html;
     }
     // ③ 浮层：即使收起也更新增益和玩家，下次展开直接显示最新内容。
     const buffHost = main.querySelector('.fish-live .live-buffs');
@@ -8090,6 +8153,30 @@ window.UI = (function () {
   // —— 钓点图鉴：查看各钓点能钓到什么，以及实时产出概率 ——
   // 数据源是 D.GROUNDS（后台改掉落池/增益后经 SSE groundcfg 推送、原位替换），
   // 弹窗开着时收到 groundcfg 会立即重绘（见 refreshAll 顶部钩子），所以始终与后台一致。
+  // 掉落池行 HTML：「图鉴 · 钓点」子窗口与钓鱼页「📍 钓点信息」共用这一套口径
+  // （按权重降序、条形按占比、右侧标百分比与原始权重），只是外层宽度不同。
+  function spotPoolRowsHtml(pool) {
+    const list = (pool || []).slice().sort(function (a, b) { return (b.weight || 0) - (a.weight || 0); });
+    const total = list.reduce(function (s, e) { return s + Math.max(0, e.weight || 0); }, 0);
+    return list.map(function (e) {
+      const i = e.pick.indexOf(':');
+      const type = i < 0 ? e.pick : e.pick.slice(0, i);
+      const iid = i < 0 ? '' : e.pick.slice(i + 1);
+      let name = '组件（随机组件掉落）', cls = '';
+      if (type === 'fish' || type === 'material') {
+        const m = D.itemOf(iid);
+        if (m) { name = m.name; cls = qualityClass(m); }
+      }
+      const w = Math.max(0, e.weight || 0);
+      const pct = total > 0 ? Math.round(w / total * 1000) / 10 : 0;
+      return '<div class="spot-pool-row" data-pick="' + esc(e.pick) + '" data-pct="' + pct + '">' +
+        '<span class="sp-name ' + cls + '">' + esc(name) + '</span>' +
+        '<span class="sp-type">' + esc(type === 'fish' ? '鱼' : (type === 'material' ? '材料' : '组件')) + '</span>' +
+        '<span class="sp-bar"><i style="width:' + pct + '%"></i></span>' +
+        '<span class="sp-pct">' + pct + '%</span>' +
+        '<span class="hint">权重 ' + (e.weight || 0) + '</span></div>';
+    }).join('');
+  }
   let spotDetailRedraw = null;
   function openSpotDetail(groundId, spotId, opts) {
     opts = opts || {};
@@ -8118,8 +8205,7 @@ window.UI = (function () {
       if (!g || !sp) return close(); // 该钓点刚被删除
       box.querySelector('.modal-title').textContent = '📍 ' + g.name + ' · ' + sp.name;
       const inner = box.querySelector('.spot-detail');
-      const pool = (sp.pool || []).slice().sort(function (a, b) { return (b.weight || 0) - (a.weight || 0); });
-      const total = pool.reduce(function (s, e) { return s + Math.max(0, e.weight || 0); }, 0);
+      const pool = sp.pool || [];
       let html = '<div class="cd-line">' + (g.locked ? '🔒 尚未开放（后台锁定 / 限时未开窗）' : '✅ 已解锁 · 可前往垂钓') +
         (sp.biteRate != null && sp.biteRate !== '' ? ' · 上鱼率 ' + esc(String(sp.biteRate)) + '%（钓点独立）' : '') +
         (sp.intervalMs ? ' · 抛竿间隔 ' + esc(String(sp.intervalMs)) + 'ms（钓点独立）' : '') + '</div>';
@@ -8132,23 +8218,7 @@ window.UI = (function () {
       if (!pool.length) {
         html += '<div class="cd-line muted">该钓点尚未配置掉落池（可在后台「钓点管理」配置）。</div>';
       } else {
-        html += '<div class="spot-pool">';
-        pool.forEach(function (e) {
-          const i = e.pick.indexOf(':');
-          const type = i < 0 ? e.pick : e.pick.slice(0, i);
-          const iid = i < 0 ? '' : e.pick.slice(i + 1);
-          let name = '组件（随机组件掉落）', cls = '';
-          if (type === 'fish' || type === 'material') { const m = D.itemOf(iid); name = m.name; cls = qualityClass(m); }
-          const w = Math.max(0, e.weight || 0);
-          const pct = total > 0 ? Math.round(w / total * 1000) / 10 : 0;
-          html += '<div class="spot-pool-row" data-pick="' + esc(e.pick) + '" data-pct="' + pct + '">' +
-            '<span class="' + cls + '">' + esc(name) + '</span>' +
-            '<span class="sp-type">' + esc(type === 'fish' ? '鱼' : (type === 'material' ? '材料' : '组件')) + '</span>' +
-            '<span class="sp-bar"><i style="width:' + pct + '%"></i></span>' +
-            '<span class="sp-pct">' + pct + '%</span>' +
-            '<span class="hint">权重 ' + (e.weight || 0) + '</span></div>';
-        });
-        html += '</div>';
+        html += '<div class="spot-pool">' + spotPoolRowsHtml(pool) + '</div>';
         html += '<div class="cd-line muted">以上为基础权重占比（与后台「钓点管理」配置一致，改动即时同步）；' +
           '钓竿的大鱼 / 稀有 / 材料词缀会在此基础上放大对应类别的权重。</div>';
       }
