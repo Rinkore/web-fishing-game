@@ -545,6 +545,19 @@ window.HarborShell = (function () {
     if (els.cast) els.cast.addEventListener('click', function () { openPlace('fishing'); });
     if (els.back) els.back.addEventListener('click', function () { showHome(); setHash('#/'); });
     if (els.close) els.close.addEventListener('click', function () { showHome(); setHash('#/'); });
+    // 设计稿 §11 / §7：内景面板里 Tab 焦点循环（焦点陷阱），Esc 在没有更上层对话框时关闭面板。
+    if (els.panel) els.panel.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Tab') return;
+      const focusable = Array.prototype.slice.call(
+        els.panel.querySelectorAll('button, input, select, textarea, [tabindex]')
+      ).filter(function (x) { return !x.disabled && x.offsetParent !== null; });
+      if (!focusable.length) return;
+      if (ev.shiftKey && document.activeElement === focusable[0]) {
+        focusable[focusable.length - 1].focus(); ev.preventDefault();
+      } else if (!ev.shiftKey && document.activeElement === focusable[focusable.length - 1]) {
+        focusable[0].focus(); ev.preventDefault();
+      }
+    });
 
     // HUD 顶部的状态块（位置 / 在线 / 金币…）来自 ui.js 的 renderTopbar，点击原本只切后台页面；
     // 港湾里页面藏在面板后面，不接管的话点一下看着毫无反应。这里在捕获阶段把它改成「打开对应内景」，
@@ -593,7 +606,11 @@ window.HarborShell = (function () {
         return;
       }
       if (ev.key === 'l' || ev.key === 'L') {
-        closeOverlays(); showDir(true); ev.preventDefault();
+        closeOverlays(); showDir(true); ev.preventDefault(); return;
+      }
+      // F = 出海钓鱼（设计稿 §7）
+      if (ev.key === 'f' || ev.key === 'F') {
+        closeOverlays(); showDir(false); openPlace('fishing'); ev.preventDefault();
       }
     });
     window.addEventListener('hashchange', onHashChange);

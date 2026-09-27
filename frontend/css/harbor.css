@@ -223,6 +223,21 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
    阶段 D：罗盘首页（手机布局）、手机布局设置行
    ============================================================ */
 
+/* 手机横向全景时的滑动提示（设计稿 §9）：淡出后消失，不遮挡热区 */
+.h-pan-hint {
+  display: none; position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
+  font-family: var(--px-font); font-size: 12px; color: #fff;
+  background: rgba(0, 0, 0, .6); padding: 3px 10px; border-radius: 4px;
+  z-index: 4; pointer-events: none; white-space: nowrap;
+}
+/* h-phone is on .h-scene; h-compass-home is on #harbor (root). Use two rules. */
+.h-scene.h-phone ~ .h-pan-hint { display: block; animation: h-pan-hint-fade 4.5s forwards; }
+#harbor.h-compass-home .h-pan-hint { display: none; }
+@keyframes h-pan-hint-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .h-pan-hint { display: none !important; } }
+html[data-motion="reduced"] .h-pan-hint,
+html[data-motion="off"] .h-pan-hint { display: none !important; }
+
 /* 罗盘首页容器：默认隐藏，.h-compass-home 时覆盖场景区 */
 .h-home {
   display: none;

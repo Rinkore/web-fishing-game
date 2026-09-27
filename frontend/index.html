@@ -66,6 +66,7 @@
          阶段 D：#h-home 是手机罗盘首页布局（js/harbor.js 在 .h-compass-home 时显示） -->
     <div class="h-stage" id="h-stage">
       <div class="h-scene" id="h-scene"></div>
+      <div class="h-pan-hint" aria-hidden="true">← 左右滑动浏览港湾 →</div>
 
       <!-- 罗盘首页（阶段 D · 手机布局：条带 + 地点磁贴网格） -->
       <div class="h-home" id="h-home" aria-label="罗盘首页">
@@ -104,9 +105,9 @@
     </div>
 
     <div class="h-hud h-hud-bottom">
-      <button class="h-btn" id="h-dir" type="button" aria-haspopup="dialog" aria-controls="h-dirbox">☰<span>目录</span></button>
+      <button class="h-btn" id="h-dir" type="button" aria-haspopup="dialog" aria-controls="h-dirbox" aria-keyshortcuts="L">☰<span>目录</span></button>
       <button class="h-btn" id="h-set" type="button">⚙<span>设置</span></button>
-      <button class="h-cast" id="h-cast" type="button">🎣 出海钓鱼<small id="h-cast-sub"></small></button>
+      <button class="h-cast" id="h-cast" type="button" aria-keyshortcuts="F">🎣 出海钓鱼<small id="h-cast-sub"></small></button>
       <button class="h-btn" id="h-bag" type="button">🎒<span>背包</span></button>
       <button class="h-btn" id="h-compass-btn" type="button" aria-haspopup="dialog" aria-controls="h-compass" aria-keyshortcuts="C">🧭<span>罗盘</span></button>
     </div>
