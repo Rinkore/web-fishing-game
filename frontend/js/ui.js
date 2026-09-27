@@ -1239,7 +1239,10 @@ window.UI = (function () {
   // —— 📍 钓点信息（钓鱼页右上角开关，不弹子窗口）——
   // 与「图鉴 · 钓点」子窗口同源同口径：读 D.GROUNDS 的 sp.pool，按权重降序列出掉落物与占比。
   // 后台改掉落池 / 增益后经 patchFishingLive 就地刷新，不重建整页。
-  function currentSpotOf(st) {
+  // 注意：不能用 currentSpotOf 这个名字——上方钓速计算还有一个同名无参版本
+  // （返回单个 sp，服务 castInfoOf），v0.25.3 的同名重定义曾把它遮蔽，
+  // 顶栏渲染抛 TypeError 打断整条 refreshAll，渔屋等页面卡在加载态。
+  function spotInfoTargetOf(st) {
     // 优先「所在钓点」；未开始时退回「所点钓点」，两者都没有就返回 null。
     const gid = st.player.groundId || (st.selected && st.selected.groundId);
     const sid = st.player.spotId || (st.selected && st.selected.spotId);
@@ -1248,7 +1251,7 @@ window.UI = (function () {
     return g && sp ? { g: g, sp: sp } : null;
   }
   function spotInfoHtml(st) {
-    const here = currentSpotOf(st);
+    const here = spotInfoTargetOf(st);
     if (!here) {
       return '<div class="hint">点地图上的钓点下竿后，这里显示该钓点的掉落物与权重（与「📖 图鉴 · 📍 钓点」同一份配置）。</div>';
     }

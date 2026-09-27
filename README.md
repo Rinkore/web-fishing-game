@@ -1,4 +1,4 @@
-# DeepFish v0.25.4（web-fishing-game）
+# DeepFish v0.25.5（web-fishing-game）
 
 零第三方依赖的多人联机网页钓鱼小游戏。**所有处理逻辑在服务端**：钓鱼循环、掷骰、词缀加成、
 资产结算、钓竿配置均由后端权威执行，前端只发指令、收 SSE 广播、渲染。纯原生 Web 前端 +
@@ -329,6 +329,12 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 ```
 
 ## 版本演进
+
+### v0.25.5：函数遮蔽崩溃修复、静态缓存策略与写超时放宽（2026-09-27）
+
+- **currentSpotOf 同名遮蔽修复（渔屋卡加载态的根因）**：v0.25.3 的「📍 钓点信息」在 ui.js 后部定义了带参数的 `currentSpotOf(st)`，把上方钓速计算的无参同名函数遮蔽。顶栏 `castSpeedInfo` 一旦 `castCfg` 就绪就在 `st.player` 处抛 TypeError，打断 `refreshAll` 整条刷新链：任何依赖「请求完成后重绘」的页面（渔屋、商城等）停在加载占位。现把钓点信息版本改名 `spotInfoTargetOf(st)`，无参版恢复原语义。
+- **静态资源缓存策略**：Go 静态处理器此前不发 Cache-Control，浏览器启发式缓存导致发版后停留旧前端。现在带 `?v=` 的资源 `public, max-age=31536000, immutable`，HTML 与无版本资源 `no-cache` 每次回源校验。
+- **写请求超时放宽到 30s**：GET 保持 8s 并自动重试；写操作（购买、出售、兑换等）此前 8s 中断，中断的只是浏览器等待而服务端照常成交（限购「跳网络错误但实际购买成功」）。现放宽到 30s，超时仅放弃等待、不重发。
 
 ### v0.25.4：
 
