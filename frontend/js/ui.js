@@ -736,6 +736,31 @@ window.UI = (function () {
   // 结构：全部入口平铺常驻（v0.11.3 起取消「更多」折叠组）——菜单一眼看全，
   // 一屏放不下时导航区自己滚动（滚动条样式与像素主题一致，见 style.css 的 .nav）。
   let navSig = null;
+  // 侧栏分组（按默认菜单顺序连成三段）；后台新增、这里没登记的入口沿用上一项的分组
+  const NAV_GROUP = {
+    fishing: '玩法', character: '玩法', inventory: '玩法', workshop: '玩法', chest: '玩法', sea: '玩法',
+    ground: '社交与交易', mall: '社交与交易',
+    codex: '资料与消息', feedback: '资料与消息', logs: '资料与消息', mail: '资料与消息', wiki: '资料与消息',
+  };
+  const NAV_SLOTS = 4;   // 手机底栏常驻入口数（第 5 格是「更多」）
+  function closeNavSheet() {
+    const nav = $('nav');
+    if (!nav || !nav.classList.contains('more-open')) return;
+    nav.classList.remove('more-open');
+    const more = nav.querySelector('.nav-more');
+    if (more) more.setAttribute('aria-expanded', 'false');
+  }
+  document.addEventListener('click', function (e) {
+    const nav = $('nav');
+    if (nav && nav.classList.contains('more-open') && !nav.contains(e.target)) closeNavSheet();
+  });
+  document.addEventListener('keydown', function (e) {
+    const nav = $('nav');
+    if (e.key !== 'Escape' || !nav || !nav.classList.contains('more-open')) return;
+    closeNavSheet();
+    const more = nav.querySelector('.nav-more');
+    if (more) more.focus();
+  });
   function renderNav() {
     const st = S();
     const sig = [currentView, st.fishing.active ? 1 : 0, st.trade ? (st.trade.id || 1) : 0,
@@ -767,6 +792,7 @@ window.UI = (function () {
       b.innerHTML = navIcon + '<span>' + esc(item.name) + '</span>' + badge +
         (item.implemented ? '' : '<span class="lock">🔒</span>');
       b.addEventListener('click', function () {
+        closeNavSheet();
         if (!item.implemented) {
           toast('「' + item.name + '」功能尚未开放（框架占位）');
           return; // 未完成功能：不可跳转
@@ -783,10 +809,39 @@ window.UI = (function () {
       });
       return b;
     };
+    // 菜单分组与手机「更多」：
+    //   桌面侧栏在相邻两项分组不同处插入小标题——顺序仍听后台 featureOrder，只是被改乱时标题会多出几条；
+    //   手机底栏只放前 NAV_SLOTS 项 + 「更多」，其余进 .nav-sheet（桌面上 display: contents，照常排成一列）。
+    nav.classList.remove('more-open');
+    const sheet = el('div', 'nav-sheet');
+    sheet.id = 'nav-sheet';
+    let lastGroup = null, count = 0;
     window.GameFeatures.orderedMenu((S().featureOrder || {}).menu).forEach(function (id) {
       const item = D.NAV.find(function (n) { return n.id === id; });
-      if (item) nav.appendChild(makeItem(item));
+      if (!item) return;
+      const group = NAV_GROUP[id] || lastGroup;
+      const parent = count < NAV_SLOTS ? nav : sheet;
+      if (group && group !== lastGroup) parent.appendChild(el('div', 'nav-group', group));
+      lastGroup = group;
+      parent.appendChild(makeItem(item));
+      count++;
     });
+    if (sheet.childElementCount) {
+      const more = el('button', 'nav-item nav-more');
+      more.type = 'button';
+      more.setAttribute('aria-expanded', 'false');
+      more.setAttribute('aria-controls', 'nav-sheet');
+      const hidden = sheet.querySelector('.nav-item.active');
+      if (hidden) more.classList.add('has-active');
+      more.innerHTML = '<span class="nav-icon" aria-hidden="true">☰</span><span>更多</span>' +
+        (sheet.querySelector('.nav-badge.alert, .nav-badge.unread, .nav-badge.on') ? '<span class="nav-badge unread" aria-label="更多里有新提醒">!</span>' : '');
+      more.addEventListener('click', function () {
+        const open = nav.classList.toggle('more-open');
+        more.setAttribute('aria-expanded', String(open));
+      });
+      nav.appendChild(more);
+      nav.appendChild(sheet);
+    }
     revealActiveNav();
   }
   function revealActiveNav() {
@@ -851,7 +906,8 @@ window.UI = (function () {
     if (!connOk()) {
       chips.push({ cls: ' meta-btn conn-off', tip: '与服务器的实时连接已断开，正在自动重连；期间显示的数据可能不是最新。服务器若已更新，重连后会自动刷新到新版本。', view: '', html: '<span class="meta-txt">⚠ 连接断开 · 重连中</span>' });
     }
-    chips.push({ cls: ' meta-btn coins', tip: '金币余额 · 点击打开商城', view: 'mall', html: '<span class="meta-txt">💰 ' + shownCoinsOf() + '</span>' });
+    // 金币是主资源：做成顶栏最醒目的资源徽章（像素大号数字），CSS 把它排在玩家名之后
+    chips.push({ cls: ' meta-btn coins', tip: '金币余额 · 点击打开商城', view: 'mall', html: '<span class="res-ico" aria-hidden="true">💰</span><b class="res-num">' + shownCoinsOf() + '</b><span class="sr-only">金币</span>' });
     const status = $('player-status');
     const chipsHtml = chips.map(function (c) {
       // 保留原有 .meta 类（顶栏配色与像素主题都挂在它上面），再叠加 .meta-btn 表示可点击

@@ -83,3 +83,22 @@
   .shop-grid, .bd-grid { grid-template-columns: minmax(0, 1fr); }
   .char-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* 手机底栏：4 个常驻入口 + 「更多」；其余入口收进底栏上方弹出的格子面板（.nav-sheet）。
+   13 个入口横向滑动时既看不出还能滑，也很难一眼找到要去的页面。 */
+@media (max-width: 640px) {
+  .sidebar { overflow: visible; }
+  .nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); width: 100%; gap: 4px; }
+  .nav-item { min-width: 0; padding-left: 2px; padding-right: 2px; }
+  .nav-more { display: flex !important; }
+  .nav-more.has-active { border-color: var(--accent) !important; background: rgba(52, 224, 192, .16) !important; }
+  .nav-more .nav-icon { font-size: 22px; line-height: 24px; }
+  .nav-sheet {
+    display: none; position: absolute; left: 6px; right: 6px; bottom: calc(100% + 6px);
+    grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 8px;
+    background: var(--px-panel-solid); border: 3px solid var(--px-line-hi);
+    box-shadow: 0 -4px 0 var(--px-shadow), 0 -12px 28px rgba(0, 0, 0, .5);
+  }
+  .nav.more-open .nav-sheet { display: grid; }
+  .player-status .meta.coins { padding: 2px 8px 2px 6px; }
+}

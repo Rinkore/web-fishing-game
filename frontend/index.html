@@ -27,7 +27,8 @@
     <div class="topbar-actions">
       <a id="wiki-btn" class="wiki-btn" href="wiki/index.html" target="_blank" rel="noopener">📚 WIKI</a>
       <button id="settings-btn" type="button" aria-haspopup="dialog" aria-controls="settings-dialog">⚙ 设置</button>
-      <button id="logout-btn" class="logout-btn" title="退出登录">退出登录</button>
+      <!-- 退出登录入口在「设置」对话框里；这个隐藏按钮保留原有的登出流程与监听（ui.js wireAuth） -->
+      <button id="logout-btn" class="logout-btn" type="button" hidden>退出登录</button>
     </div>
   </header>
 
@@ -38,7 +39,6 @@
   <div class="layout">
     <aside class="sidebar">
       <nav id="nav" class="nav"></nav>
-      <div class="side-foot">选择功能 · 页内切换子功能</div>
     </aside>
     <main id="main" class="content"></main>
   </div>

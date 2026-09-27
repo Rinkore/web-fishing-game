@@ -90,6 +90,7 @@ window.PlayerSettings = (function () {
       '<label class="settings-row"><span>场景动效<small>减少动效时保留钓鱼状态和进度</small></span><select data-setting="motion"><option value="system">跟随系统</option><option value="full">完整</option><option value="reduced">减少</option><option value="off">关闭装饰动画</option></select></label>' +
       '<label class="settings-row"><span>全服纪录播报<small>管理员公告仍会正常显示</small></span><input type="checkbox" data-setting="records" aria-label="显示全服纪录播报"></label>' +
       '<label class="settings-row"><span>普通操作提示<small>精简钓点切换、装备和列表刷新提示；保留错误和交易结果</small></span><select data-setting="tips"><option value="all">显示</option><option value="brief">精简</option></select></label>' +
+      '<div class="settings-row settings-account"><span>账号<small>退出后回到登录页；钓鱼进度保存在服务器</small></span><button type="button" id="settings-logout">退出登录</button></div>' +
       '<p id="settings-status" role="status" aria-live="polite"></p>' +
       '<button type="button" id="settings-reset">恢复默认设置</button>' +
       '<div id="settings-reset-confirm" hidden><p>恢复以上设置为默认值？游戏进度和角色外观不受影响。</p><button type="button" id="settings-reset-yes">确认恢复</button> <button type="button" id="settings-reset-no">取消</button></div></div>';
@@ -113,6 +114,13 @@ window.PlayerSettings = (function () {
       if (!key) return;
       settings = validate(Object.assign({}, settings, { [key]: input.type === 'checkbox' ? input.checked : input.value }));
       save();
+    });
+    // 退出登录从顶栏收进设置：先关掉对话框（顶层 dialog 会盖住确认框），再走顶栏按钮上的原有登出流程
+    dialog.querySelector('#settings-logout').addEventListener('click', function () {
+      const logout = document.getElementById('logout-btn');
+      opener = null;
+      dialog.close();
+      if (logout) logout.click();
     });
     dialog.querySelector('#settings-reset').addEventListener('click', function () { resetBox.hidden = false; dialog.querySelector('#settings-reset-no').focus(); });
     dialog.querySelector('#settings-reset-no').addEventListener('click', function () { resetBox.hidden = true; dialog.querySelector('#settings-reset').focus(); });

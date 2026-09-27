@@ -791,3 +791,46 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 }
 .cb-chip:hover { border-color: var(--px-line); }
 .cb-chip.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .12); }
+
+/* ---------- 顶栏：资源徽章 ----------
+   状态块原来都是一样的深色描边方框，看着像输入框；金币这个主资源反而最不起眼。
+   现在普通状态块只留淡底，悬停才出描边；金币改成金色徽章 + 24px 像素数字，排在玩家名之后。 */
+.player-status .meta {
+  border-color: transparent; background: rgba(255, 255, 255, .04); box-shadow: none;
+}
+.player-status .meta-btn:first-child { order: -2; }
+.player-status .meta.coins {
+  order: -1; cursor: pointer; gap: 6px; padding: 2px 12px 2px 8px;
+  border: 2px solid rgba(255, 210, 62, .55); background: rgba(255, 210, 62, .10);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .08), 0 3px 0 var(--px-shadow);
+}
+.player-status .meta-btn.coins:hover { background: rgba(255, 210, 62, .18); }
+.player-status .coins .res-ico { font-size: 18px; line-height: 1; }
+.player-status .coins .res-num {
+  font-family: var(--px-font); font-size: 24px; line-height: 1; font-weight: 400; font-synthesis: none;
+  color: var(--px-gold); text-shadow: 2px 2px 0 rgba(0, 0, 0, .55); font-variant-numeric: tabular-nums;
+}
+/* 状态块是 <button>：上面的通用按钮规则带 !important（粗描边 + 按压阴影），这里只能同样用 !important 收回 */
+.player-status .meta-btn { border: 2px solid transparent !important; box-shadow: none !important; }
+.player-status .meta-btn:hover { border-color: var(--px-line-hi) !important; }
+.player-status .meta-btn.coins {
+  border-color: rgba(255, 210, 62, .55) !important;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .08), 0 3px 0 var(--px-shadow) !important;
+}
+.player-status .meta-btn.coins:hover { border-color: var(--px-gold) !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+.logout-btn[hidden] { display: none !important; }
+#settings-logout { color: #ffb4b4; border-color: #8a4444 !important; background: rgba(90, 42, 42, .6); }
+
+/* ---------- 侧栏：分组标题与「更多」 ---------- */
+.nav-group {
+  margin: 10px 4px 2px; padding-left: 6px; border-left: 3px solid var(--px-line-hi);
+  font-family: var(--px-font); font-size: 12px; letter-spacing: 2px; color: #7f98b0;
+}
+.nav > .nav-group:first-child { margin-top: 0; }
+.nav-item { padding-top: 8px; padding-bottom: 8px; }
+.nav-sheet { display: contents; }
+.nav-more { display: none !important; }
+@media (max-width: 880px) {
+  .nav-group { display: none; }
+}
