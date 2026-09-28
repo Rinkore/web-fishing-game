@@ -1,4 +1,4 @@
-# DeepFish v0.27.6（web-fishing-game）
+# DeepFish v0.27.7（web-fishing-game）
 
 零第三方依赖的多人联机网页钓鱼小游戏。**所有处理逻辑在服务端**：钓鱼循环、掷骰、词缀加成、
 资产结算、钓竿配置均由后端权威执行，前端只发指令、收 SSE 广播、渲染。纯原生 Web 前端 +
@@ -329,6 +329,13 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 ```
 
 ## 版本演进
+
+### v0.27.7：告示板统一内景面板 + 白纸卡片 + 页签深链（2026-09-28）
+
+- **告示板改回一块内景面板（结构收敛）**：图鉴 / 记录 / 日志 / 反馈 四个页签此前各自是一个独立视图，`harbor.js` 每次都要把页签序号折算成子视图 id 再打开；现在 `UI.openView('board', tabIndex)` 只打开统一视图，`ui.js` 用 `boardTab` 记录当前页签并只重绘 `.board-content`，外壳地点、建筑高亮、返回与关闭行为不变。四个子渲染函数复用既有数据与弹窗（钓点产出详情、纪录排行榜、反馈冷却与金币跳过、清空日志），没有另起一套实现。
+- **深链与页面归属补齐**：`applyTabDeepLink` 的选择器加入 `[data-board-tab]`，`#/place/N` 可直接选中第 N 个页签；`pageIdOf()` 把 board 折算回页签对应的页面 id，功能锁定、广播重绘范围与页签红点沿用原来的口径。
+- **白纸卡片样式收敛**：软木板背景上的卡片选择器由 `.panel.wide` 改为 `.board-card` / `.board-paper`（白底 `#fff`、`1px #ddd` 描边、`0 4px 8px rgba(0,0,0,.15)` 阴影、`16px 20px` 内边距），`.board-content` 用 flex 列 + `20px` 间隔统一间距；此前叠在 `.codex-grid` / `.record-list` / `.feedback-panel` / `.logs-panel` 上的第二层白底、圆角与阴影被删除，四个页签共用同一套纸卡外观。
+- **缓存**：版本号升至 v0.27.7，前端 `data.js`、内嵌 Go catalog 与 `?v=` 缓存参数同源；上一版缓存的 js/css 在版本比对后自动强制刷新，不必手动清缓存。
 
 ### v0.27.6：钓获特效开关真正生效 + 动画降强度 + 设置面板港湾化（2026-09-28）
 
