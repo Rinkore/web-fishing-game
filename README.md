@@ -1,4 +1,4 @@
-# DeepFish v0.27.8（web-fishing-game）
+# DeepFish v0.27.9（web-fishing-game）
 
 零第三方依赖的多人联机网页钓鱼小游戏。**所有处理逻辑在服务端**：钓鱼循环、掷骰、词缀加成、
 资产结算、钓竿配置均由后端权威执行，前端只发指令、收 SSE 广播、渲染。纯原生 Web 前端 +
@@ -329,6 +329,15 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 ```
 
 ## 版本演进
+
+### v0.27.9：港湾内景 v2 样式层与原型渲染器 + 登录失败提示中文化（2026-09-28）
+
+- **港湾内景 v2 样式层入库**：`harbor.css` 追加约 90 行设计稿 v2 的共用样式类——迷你按钮 `.mini`（含 `go` / `gold` 两个变体）、`.slot` 格子（普通 / 稀有 / 史诗 / 神话各自描边与内发光、选中描边、空格半透明）、软木板 + 白纸卡 `.cork` / `.paper`（含图钉、奇偶轻微旋转、图鉴小格、反馈输入框）、熔炼台 `.forge`（主副件 + 箭头 + 上限标签）、信封与蜡封 `.env` / `.letter`（已读 / 未读 / 蜡封三态）、环形成长图 `.partmap`（绝对定位部件槽 + 等级 + 名称）、两栏内景 `.room2`、工具条 `.toolbar`、`.chip` 材料 chips、`.meter` 进度条、`.kv` 键值表、`.lrow` 列表行、`.pcard` 卡片、`.capbar` 容量条等。此前这些样式只存在于设计稿评审产物里，内景要复刻 v2 外观只能各写各的。
+- **内景原型渲染器入库**：新增 `frontend/js/harbor-rooms.js`（250 行），按地点把设计稿 v2 的内容结构实现成 `render(id, tab, api)`：仓库（搜索 / 排序 / 格子 + 详情 + 出售）、工坊（三选一入口 / 部件环形成长 / 套装 / 熔炼主副件）、宝箱、市集、码头海图（可点钓点与锁定态）、告示板（软木板纸卡）、邮筒（信封列表 + 信件正文）、渔屋（晒场收益 / 宠物 / 换装 / 钓竿概要）与栈桥。它在 `index.html` 以 `defer` 挂载，排在 `harbor.js` 之后，入口是 `window.HarborRooms.render(...)`。
+- **接入边界（务必注意）**：本轮只把**样式层 + 原型渲染器**落进仓库，`window.HarborRooms` 尚未接入内景渲染主路径——十个内景仍走既有 `ui.js` / `harbor.js` 的 `render*` 实现，玩家侧外观与行为与 v0.27.8 一致。后续按地点逐个把内景切到 v2 结构，先替换一个地点、验收一个地点。
+- **登录失败提示中文化（修复）**：服务端按契约返回错误码（`invalid_credentials` / `invalid_input` / `username_exists` / `account_banned` / `admin_required` / `MFA_SETUP_REQUIRED` / `rate_limited` / `unavailable` / `commit_unknown` / `not_found` / `origin_rejected`），`onAuthSubmit` 此前把 `r.data.error` 原样写进 `#auth-msg`，玩家看到的是英文错误码。现在 `ui.js` 用 `AUTH_ERR_TEXT` 表 + `authErrText()` 统一翻译：`code` 字段优先、回退 `error`；已经是中文 / 句子的提示（例如注册验证超时）原样保留；表里没有的「代码形状」字符串不再暴露给玩家，退回「操作失败，请重试」。
+- **文档**：新增港湾 v2 内景的实施与验证记录（`docs/IMPLEMENTATION_GAP_ANALYSIS_FINAL.md`、`docs/PHASE2_*.md`、`docs/QUICK_VERIFICATION_COMPLETE.md`），并同步更新既有差距分析与阶段状态。
+- **缓存**：版本号升至 v0.27.9，前端 `data.js`、内嵌 Go catalog 与 `?v=` 缓存参数同源；上一版缓存的 js/css 在版本比对后自动强制刷新。
 
 ### v0.27.8：登录按钮无响应修复（ui.js 解析期语法错误）+ 图鉴卡片类名修复（2026-09-28）
 

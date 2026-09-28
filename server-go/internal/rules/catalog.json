@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "v0.27.8",
+  "version": "v0.27.9",
   "source": "frontend/js/data.js",
   "sourceSHA256": "edb3410127f78a9c7ee36377f24a5d2491ba17219e7dd14399f269e57214cce3",
   "constants": {
@@ -723,7 +723,7 @@
         }
       }
     },
-    "VERSION": "v0.27.8",
+    "VERSION": "v0.27.9",
     "BUILD": "2026-09-28",
     "FISH": {
       "common": [
