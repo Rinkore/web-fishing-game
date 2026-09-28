@@ -141,8 +141,9 @@ window.HarborShell = (function () {
         (latest.size ? ' ' + latest.size + 'cm' : '') +
         (it.tier === 'G' ? ' 🥇' : it.tier === 'L' ? ' 🥈' : '')) : '';
       if (els.ticker.textContent !== line) els.ticker.textContent = line;
-      // 内景面板 / 目录 / 罗盘盖住场景时隐藏字幕
-      els.ticker.hidden = !!statePlace || dirOpen || overlayOpen();
+      // v2 阶段 F：内景面板打开时字幕保留（设计稿 §1：字幕在木梁上方的横条里一直播）；
+      // 目录 / 罗盘是盖住场景的浮层，这两种情况才收起，避免文字压在浮层上。
+      els.ticker.hidden = dirOpen || overlayOpen();
     }
   }
 
@@ -183,28 +184,39 @@ window.HarborShell = (function () {
       // v3 F3: 设置 data-place 属性以便 CSS 针对不同地点应用特定样式（如告示板的 cork 背景）
       els.panel.dataset.place = id;
     }
-    if (els.title) els.title.textContent = placeName(id);
-    // v3 F3：告示板有子页签；其余地点面包屑只到地点名
-    if (els.crumb) els.crumb.textContent = '港湾 › ' + placeName(id);
-    // v3 F3：在面板页签栏渲染告示板的子页签
-    buildPanelTabs(id, tab || 0);
+    // v2 阶段 F：标题用设计稿的「地点名 · 页面名」（§1 .plank），面包屑到大类 + 当前页签
+    const full = (PLACES[id] && PLACES[id].full) || placeName(id);
+    const place = (PLACES[id] && PLACES[id].name) || placeName(id);
+    const meta = window.UI && UI.panelTabs ? UI.panelTabs() : null;
+    const activeItem = meta && meta.items ? meta.items.filter(function (t) { return t.key === meta.active; })[0] : null;
+    if (els.title) els.title.textContent = full;
+    if (els.crumb) els.crumb.textContent = '港湾 › ' + place + (activeItem ? ' › ' + activeItem.label.replace(/ ↗$/, '') : '');
+    // v2 阶段 F：木梁下方的挂签由 ui.js 的页签定义渲染
+    buildPanelTabs();
     showDir(false);
-    // v3 F1：页签路由 — 有 tab 参数时写入 URL，关闭时恢复到 #/ 即可
-    setHash('#/' + id + (tab ? '/' + tab : ''));
+    // v3 F1：页签路由 — 把当前一级页签写进 URL（与 ui.js 的页签顺序一致），关闭时恢复到 #/
+    const tabIdx = meta && meta.items ? Math.max(0, meta.items.map(function (t) { return t.key; }).indexOf(meta.active)) : 0;
+    setHash('#/' + id + (tabIdx ? '/' + tabIdx : ''));
     if (els.back) els.back.focus();
   }
-  // v3 F3：告示板子页签渲染；其余地点页签由 ui.js 的 renderView 管理
-  const BOARD_TAB_LABELS = ['图鉴', '记录', '日志', '反馈', 'WIKI ↗'];
-  function buildPanelTabs(placeId, activeTab) {
+  // v2 阶段 F：内景一级页签（挂签）——页签清单由 ui.js 按当前页面提供（UI.panelTabs），
+  // 外壳只负责渲染成木梁下方的吊牌并转发点击；没有一级页签的页面（邮筒 / 栈桥）整条收起。
+  function buildPanelTabs() {
     if (!els.tabs) return;
-    if (placeId !== 'board') { els.tabs.innerHTML = ''; return; }
-    els.tabs.innerHTML = BOARD_VIEWS.map(function (v, i) {
-      // 徽标沿用 renderNav 已算好的 #nav 数字（反馈回复 / 日志条数），和建筑热区上的红点同源
-      const badge = navBadge(v).replace(/[<>"&]/g, '');
-      return '<button role="tab" aria-selected="' + (i === activeTab ? 'true' : 'false') +
-        '" data-tab="' + i + '" data-view="' + v + '">' + BOARD_TAB_LABELS[i] +
-        (badge ? '<i class="h-badge">' + badge + '</i>' : '') + '</button>';
+    const meta = window.UI && UI.panelTabs ? UI.panelTabs() : null;
+    if (!meta || !meta.items || meta.items.length < 2) { els.tabs.innerHTML = ''; return; }
+    els.tabs.innerHTML = meta.items.map(function (t) {
+      const badge = t.badge ? '<i class="h-badge">' + t.badge + '</i>' : '';
+      return '<button role="tab" aria-selected="' + (t.key === meta.active ? 'true' : 'false') +
+        '" data-tabkey="' + t.key + '">' + t.label + badge + '</button>';
     }).join('');
+  }
+  // 深链 #/place/序号：从页签 key 反查序号（与 UI.panelTabs 的顺序一致）
+  function tabIndexOf(key) {
+    const meta = window.UI && UI.panelTabs ? UI.panelTabs() : null;
+    if (!meta || !meta.items) return 0;
+    for (let i = 0; i < meta.items.length; i++) { if (meta.items[i].key === key) return i; }
+    return 0;
   }
   function openPlace(id, tab) {
     // v3 F3：告示板（board）不在 D.NAV 里，单独处理：用统一的 board 视图打开 UI，传入页签索引
@@ -213,7 +225,7 @@ window.HarborShell = (function () {
       let ok = false;
       try { ok = window.UI.openView('board', tab || 0) !== false; } catch (e) { ok = false; }
       if (!ok) return false;
-      showPlace('board', tab || 0);
+      showPlace('board');
       return true;
     }
     if (!isPlace(id)) return false;
@@ -223,7 +235,7 @@ window.HarborShell = (function () {
     try { ok = window.UI.openView(id, tab || 0) !== false; } catch (e) { ok = false; }
     if (!ok) return false;
     if (id === 'wiki') return true;
-    showPlace(id, tab || 0);
+    showPlace(id);
     return true;
   }
 
@@ -248,16 +260,17 @@ window.HarborShell = (function () {
   // 画面由 js/harbor-art.js 负责；这里把游戏状态整理成它要的 sceneState，并管热区 / 缩放 / 帧循环。
   // 10 个地点对应既有页面；告示板一处收纳 图鉴 / 日志 / 反馈 / WIKI（v1 评审定稿），点它先弹小选择面板。
   const PLACES = {
-    fishing: { name: '栈桥', view: 'fishing', icon: '🎣', desc: '打开海图，选钓点抛竿' },
-    character: { name: '渔屋', view: 'character', icon: '🏠', desc: '晒场、宠物、角色、钓竿' },
-    mail: { name: '邮筒', view: 'mail', icon: '📮', desc: '系统通知与附件领取' },
-    inventory: { name: '仓库', view: 'inventory', icon: '📦', desc: '渔获、材料、宝匣、组件' },
-    workshop: { name: '工坊', view: 'workshop', icon: '⚒', desc: '装备成长、钓鱼套装、熔炼' },
-    chest: { name: '宝匣', view: 'chest', icon: '🎁', desc: '合成宝匣与开箱' },
-    mall: { name: '集市', view: 'mall', icon: '🛒', desc: '限购、收购、玩家市集' },
-    ground: { name: '酒馆', view: 'ground', icon: '🍺', desc: '在线玩家、好友、编队' },
-    board: { name: '告示板', view: null, icon: '📜', desc: '图鉴、日志、反馈、WIKI' },
-    sea: { name: '远洋码头', view: 'sea', icon: '⛵', desc: '远洋海域与船只' },
+    // full 是设计稿 v2 的木梁标题（§1 .plank：地点名 · 页面名），name 仍用于目录与建筑招牌
+    fishing: { name: '栈桥', full: '栈桥 · 钓鱼', view: 'fishing', icon: '🎣', desc: '打开海图，选钓点抛竿' },
+    character: { name: '渔屋', full: '渔屋', view: 'character', icon: '🏠', desc: '晒场、宠物、角色、钓竿' },
+    mail: { name: '邮筒', full: '邮筒 · 邮件', view: 'mail', icon: '📮', desc: '系统通知与附件领取' },
+    inventory: { name: '仓库', full: '仓库 · 背包', view: 'inventory', icon: '📦', desc: '渔获、材料、宝匣、组件' },
+    workshop: { name: '工坊', full: '工坊', view: 'workshop', icon: '⚒', desc: '装备成长、钓鱼套装、熔炼' },
+    chest: { name: '宝匣', full: '宝匣 · 开箱', view: 'chest', icon: '🎁', desc: '合成宝匣与开箱' },
+    mall: { name: '集市', full: '集市 · 商城', view: 'mall', icon: '🛒', desc: '限购、收购、玩家市集' },
+    ground: { name: '酒馆', full: '渔人酒馆 · 社交', view: 'ground', icon: '🍺', desc: '在线玩家、好友、编队' },
+    board: { name: '告示板', full: '告示板', view: null, icon: '📜', desc: '图鉴、日志、反馈、WIKI' },
+    sea: { name: '远洋码头', full: '远洋码头', view: 'sea', icon: '⛵', desc: '远洋海域与船只' },
   };
   const BOARD_VIEWS = ['codex', 'records', 'logs', 'feedback', 'wiki'];
   const SCENE_ORDER = ['character', 'mail', 'inventory', 'workshop', 'chest', 'mall', 'ground', 'board', 'sea', 'fishing'];
@@ -576,6 +589,8 @@ window.HarborShell = (function () {
     refreshScene();
     paintTime();
     syncHud();
+    // v2 阶段 F：页面重绘（renderView → syncView）后同步挂签的清单与选中态
+    if (statePlace) buildPanelTabs();
     if (changed) route();
     else if (statePlace === null && els.dirbox) els.dirbox.hidden = !dirOpen;
   }
@@ -612,19 +627,17 @@ window.HarborShell = (function () {
     if (els.cast) els.cast.addEventListener('click', function () { openPlace('fishing'); });
     if (els.back) els.back.addEventListener('click', function () { showHome(); setHash('#/'); });
     if (els.close) els.close.addEventListener('click', function () { showHome(); setHash('#/'); });
-    // v3 F3：告示板子页签点击
+    // v2 阶段 F：内景一级页签（挂签）点击 —— 页签清单由 ui.js 的 UI.panelTab 提供，
+    // 外壳不关心具体是哪个页面，只把 key 转回去并同步选中态。
     if (els.tabs) els.tabs.addEventListener('click', function (ev) {
-      const b = ev.target.closest('[data-tab]'); if (!b || statePlace !== 'board') return;
-      const tab = +b.dataset.tab;
-      const view = b.dataset.view;
-      if (view === 'wiki') { closeOverlays(); openPlace('wiki'); return; }
-      // 切换 BOARD_VIEWS 子视图
-      if (window.UI && UI.openView) { try { UI.openView(view); } catch (e) {} }
-      // 更新页签选中态
-      Array.prototype.forEach.call(els.tabs.querySelectorAll('[role=tab]'), function (t) {
-        t.setAttribute('aria-selected', t.dataset.tab === String(tab) ? 'true' : 'false');
-      });
-      setHash('#/board/' + tab);
+      const b = ev.target.closest('[data-tabkey]');
+      if (!b || !window.UI || !UI.panelTab) return;
+      const key = b.dataset.tabkey;
+      const place = statePlace;
+      UI.panelTab(key);
+      if (key === 'wiki') { closeOverlays(); return; }
+      if (place) setHash('#/' + place + '/' + tabIndexOf(key));
+      buildPanelTabs(place);
     });
     // 设计稿 §11 / §7：内景面板里 Tab 焦点循环（焦点陷阱）
     if (els.panel) els.panel.addEventListener('keydown', function (ev) {

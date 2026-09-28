@@ -1,0 +1,43 @@
+# 内景功能页对齐设计稿 v2 · 差距报告（阶段 F）
+
+**口径**：设计稿 `output/design-review/redesign/v2/`（渲染 `harbor-rooms.js` + 样式 `harbor.css`，
+截图 `shots/a-room-*.png`、手机 `shots/a-phone*.png`）；验收条目 `docs/ACCEPTANCE_SPEC_INTERIORS.md`。
+施工说明与分组见 `docs/V2_ROOM_PARITY_PLAN.md`。
+
+**现状快照**：`output/design-review/v2-parity/now-{desktop,phone}-*.png`（本轮开工前实拍）。
+
+## 结论
+
+外壳（木梁标题 / 面包屑 / 一级挂签 / 面板透明化 / 栈桥工具栏）已经落地并通过冒烟；
+**十个内景页的内容区还是经典版结构**——宽表格行、右侧概览卡、"读取…中"占位。也就是说：
+本轮要做的全部是「页面内容区按设计稿重排」，功能与接口一个都不能少。
+
+## 逐页差距（对照设计截图逐张比对）
+
+| 页面 | 设计稿（参照） | 现状 | 差距（要做的） |
+| --- | --- | --- | --- |
+| 仓库 | `a-room-inventory.png` / `a-phone-room.png` | 左列宽行列表 + 右列「背包概览」（种类/总数/估价/一键出售） | 改成 **8 列格子墙 + 右侧物品明细卡**：`.slots/.slot`（品质描边、数量角标、`.sel`）+ 工具栏（搜索框 / 品质下拉 / 格子·列表切换）+ 底部容量条 `.capbar` + 折叠规则 `.note`；空槽补齐整行 |
+| 宝匣 | `a-room-chest.png` | 「宝匣数据加载中…」占位（开箱页内容随 `wsRenderOpen`） | 改成 **4 张宝匣卡**（图标 / 名称 / 持有 ×n / 开箱按钮，按品质描边），合成页签保持可用 |
+| 工坊 | `a-room-workshop.png` `a-room-growth.png` | 「读取装备成长状态…」占位；页签由挂签接管后内容与 `wsPanelTab` 不对应 | 工作台 = **3 张 bench 卡**（装备成长 / 钓鱼套装 / 熔炼，可点进对应页签）；装备成长 = **7 部位环形 `.partmap` + 右侧强化卡**；套装 = 套装卡网格；熔炼 = `主+副+催化 → 产物` 的 `.forge` 流程 |
+| 渔屋 | `a-room-character.png` | 只剩一条渔屋场景带，下面的晒场收益 / 宠物 / 角色 / 钓竿内容没进面板 | 场景带保留；下面按设计稿补 **晒场收益 `.box` + 下一级升级 `.box`**，宠物 / 角色 / 钓竿页签各自成块 |
+| 远洋码头 | `a-room-sea.png` | 「正在读取远洋状态……」占位 | 改成 **左航图 `.voy` + 右「远航中」卡片（倒计时 / 预计收获 chip / 立即返航）**；船只页签保留 |
+| 集市 | `a-room-mall.png` | 「正在读取商城…」占位 | 改成 **顶部刷新倒计时 chip + 4 张商品卡**（图标 / 名称 / 剩余 x/n / 进度条 / 价格按钮）；收购、市集页签保留 |
+| 酒馆 | `a-room-ground.png` | 左钓点筛选列表 + 右在线玩家表 | 在线动态 = **玩家卡网格 `.cards/.pcard`（人像 / 名字 Lv / 状态 / 加好友·组队）+ 右侧「最新动态」盒**；好友 / 编队页签保留 |
+| 告示板 | `a-room-board.png` | 未见（本轮截图里 board 页签内容空/旧） | 图鉴 / 记录 / 日志 / 反馈四张 **cork 木板 + paper 纸条**（图鉴用 `.dex` 6 列网格，未解锁置灰），WIKI 仍是外链 |
+| 邮筒 | `a-room-mail.png` | 「加载中…」+ 头顶重复的「邮件」标题 | 改成 **信封列表 `.envs/.env`（信封 + 蜡封 + 标题 + 发件人/时间 + 附件 chip）+ 顶部「未读 n · 共 m 封 / 一键领取」**；信件正文用 `.letter` |
+| 栈桥 | `a-room-fishing.png` | 已是海图，但工具栏与钓点标签还没完全对齐 | 工具栏「继续：<钓点> / 收竿」保留；钓点标签用 `.pin` 口径（像素字 + 2px 描边）；海图铺满内容区 |
+
+手机尺寸：设计稿手机版是**单列**（`a-phone-room.png`），格子墙自动降列，右侧明细卡折到下面。
+
+## 硬约束（每页都要守）
+
+1. 只改观感与结构，**功能一个都不能少**：出售 / 上架 / 批量 / 分页 / 筛选 / 交易 / 开箱 /
+   熔炼 / 强化 / 好友 / 编队 / 邮件附件领取等原有交互与接口调用保持可用。
+2. **保留既有 DOM 契约**（`data-*`、id、class）。同一个改动里改契约，就必须把依赖它的
+   patch 函数（`patchInventoryRow` / `patchInventoryLive` / `patchFishingLive` 等）一起改掉。
+3. 复用已有零件：`window.RoomUI`（`frontend/js/room-ui.js`）+ `frontend/css/harbor.css`
+   的「内景功能页」段（`.box / .slot / .chip / .meter / .mini / .toolbar / .pcard / .cards /
+   .partmap / .forge / .voy / .cork / .paper / .env / .letter / .kv / .capbar / .grid* / .split`）。
+   **不要新建第二套零件**，也不要把设计稿的 `harbor.css` 整段复制进来。
+4. 一级页签只由木梁下方的挂签（`UI.panelTabs/panelTab`）承载，页面里不要再画一行一级页签；
+   页面自己的二级筛选（品质 / 部位 / 词条等）保留。

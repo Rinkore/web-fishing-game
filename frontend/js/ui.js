@@ -204,6 +204,11 @@ window.UI = (function () {
   let boardTab = 'codex';       // codex | records | logs | feedback
   let codexCategory = 'fish';   // 图鉴内分类（fish | material | component | spots）
   let codexSortRarity = false;  // 图鉴品级倒序开关
+  // 设计稿 v2 阶段 F：这三页的一级页签由港湾木梁下方的挂签承载（见 panelTabDefs），
+  // 页面自身不再画一行页签按钮。
+  let wsPanelTab = 'bench';     // 工坊：bench 工作台 | growth 装备成长 | sets 钓鱼套装 | smelt 熔炼
+  let chestTab = 'open';        // 宝匣：open 开箱 | craft 合成
+  let seaPanelTab = 'voyage';   // 远洋码头：voyage 远航 | ship 船只
 
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, html) {
@@ -800,11 +805,119 @@ window.UI = (function () {
     applyTabDeepLink(tab);
     return true;
   }
-  // v3 F1：深链 #/place/tab —— 渲染完成后按 0 基序号点选该视图自己的页签按钮。
-  // 直接点 DOM 上真实存在的页签（data-sectiontab / data-wstab / data-malltab / data-board-tab），既复用各页签
-  // 自己的处理逻辑，也自动跟随后台功能排序；越界取最后一个，视图没有页签就什么都不做。
+  // ---- 设计稿 v2 阶段 F：内景一级页签（木梁下方的挂签）----
+  // 设计稿把每页的功能页签画在木梁下方（harbor.css 的 .h-tabs），页面内不再重复一行按钮。
+  // 各页在这里登记自己的「页签清单 + 当前项 + 切换实现」，外壳只负责画挂签、转发点击；
+  // 深链 #/place/tab 与后台功能排序（orderedFeatureTabs）都复用这一份定义。
+  // 返回 null 表示该视图没有一级页签（邮筒 / 栈桥）。
+  function panelTabDefs() {
+    if (currentView === 'inventory') {
+      return {
+        items: [['all', '全部'], ['fish', '鱼类'], ['material', '材料'], ['chest', '宝匣'], ['component', '组件']],
+        active: invCategory,
+        set: function (k) { invCategory = k; invPage = 1; },
+      };
+    }
+    if (currentView === 'workshop') {
+      return {
+        items: orderedFeatureTabs('workshop', [['bench', '工作台'], ['growth', '装备成长'], ['sets', '钓鱼套装'], ['smelt', '熔炼']],
+          { bench: 'growth', growth: 'growth', sets: 'sets', smelt: ['smelt', 'recast', 'forge'] }),
+        active: wsPanelTab,
+        set: function (k) { wsPanelTab = k; },
+      };
+    }
+    if (currentView === 'chest') {
+      return {
+        items: orderedFeatureTabs('chest', [['open', '开箱'], ['craft', '合成']], { open: 'open', craft: 'craft' }),
+        active: chestTab,
+        set: function (k) { chestTab = k; },
+      };
+    }
+    if (currentView === 'mall') {
+      return {
+        items: orderedFeatureTabs('mall', [['mall', '限购'], ['shop', '收购'], ['market', '市集']],
+          { mall: 'buy', shop: ['sell', 'autosell'], market: ['list', 'marketbuy'] }),
+        active: mallTab,
+        set: function (k) { mallTab = k; },
+      };
+    }
+    if (currentView === 'ground') {
+      return {
+        items: orderedFeatureTabs('ground', [['online', '在线动态'], ['friends', '好友'], ['party', '编队']],
+          { online: 'trade', friends: [], party: 'party' }),
+        active: socialTab,
+        set: function (k) {
+          socialTab = k;
+          if (k === 'friends' && window.Net && Net.setPlayersView) Net.setPlayersView({ clear: true });
+        },
+      };
+    }
+    if (currentView === 'sea') {
+      return {
+        items: orderedFeatureTabs('sea', [['voyage', '远航'], ['ship', '船只']],
+          { voyage: ['expedition', 'voyage', 'quest', 'anchor'], ship: ['upgrade', 'chart'] }),
+        active: seaPanelTab,
+        set: function (k) { seaPanelTab = k; },
+      };
+    }
+    if (currentView === 'character') {
+      return {
+        items: orderedFeatureTabs('character', [['yard', '晒场'], ['pet', '宠物'], ['role', '角色'], ['rod', '钓竿']],
+          { yard: ['collect', 'upgrade'], pet: 'pet', role: 'role', rod: 'bd' }),
+        active: charTab === 'rod' ? 'rod' : charTab,
+        set: function (k) { charTab = k; },
+      };
+    }
+    // 告示板：图鉴 / 记录 / 日志 / 反馈 + 外链 WIKI（WIKI 不是子视图，点击直接开新页）
+    if (currentView === 'board' || currentView === 'codex' || currentView === 'records' ||
+      currentView === 'logs' || currentView === 'feedback') {
+      const onBoard = currentView === 'board';
+      const active = onBoard ? boardTab : (currentView === 'records' ? 'records' : currentView);
+      return {
+        items: [['codex', '图鉴'], ['records', '记录'], ['logs', '日志'], ['feedback', '反馈'], ['wiki', 'WIKI ↗']],
+        active: active,
+        badge: function (key) { return key === 'codex' ? '' : navBadgeOf(key); },
+        set: function (key) {
+          if (key === 'wiki') { window.open('/wiki/', '_blank', 'noopener'); return; }
+          boardTab = key;
+          currentView = 'board';
+        },
+      };
+    }
+    return null;
+  }
+  // 外壳渲染挂签用：只读快照（标签 / 当前项 / 徽标）
+  // 徽标沿用 renderNav 已经算好的 window._navMeta（红点数字），避免两处各算一遍。
+  function navBadgeOf(view) {
+    const m = window._navMeta && window._navMeta[view];
+    return m && m.badge ? String(m.badge).replace(/[<>"&]/g, '') : '';
+  }
+  function panelTabs() {
+    const def = panelTabDefs();
+    if (!def || !def.items || def.items.length < 2) return null;
+    return {
+      items: def.items.map(function (kv) {
+        return { key: kv[0], label: kv[1], badge: def.badge ? def.badge(kv[0]) : '' };
+      }),
+      active: def.active,
+    };
+  }
+  function panelTab(key) {
+    const def = panelTabDefs();
+    if (!def || !def.set || key == null) return false;
+    def.set(key);
+    renderNav(); renderView();
+    return true;
+  }
+  // v3 F1：深链 #/place/tab —— 优先用页签定义（#/place/tab 的序号映射到 key），
+  // 未登记的页面退回「点 DOM 上真实的页签按钮」这一兼容路径。
   function applyTabDeepLink(tab) {
     if (typeof tab !== 'number' || !isFinite(tab) || tab < 0) return;
+    const def = panelTabDefs();
+    if (def && def.items && def.items.length) {
+      const kv = def.items[Math.min(tab, def.items.length - 1)];
+      if (kv && typeof kv[0] === 'string') { panelTab(kv[0]); return; }
+    }
     const main = $('main'); if (!main) return;
     let list = main.querySelectorAll('[data-sectiontab], [data-wstab], [data-malltab], [data-board-tab]');
     if (!list.length) list = main.querySelectorAll('[role="tab"]');
@@ -1240,7 +1353,13 @@ window.UI = (function () {
     function fit() {
       const bottom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
       const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
-      stage.style.height = Math.max(420, (window.innerHeight - stage.getBoundingClientRect().top) / zoom - bottom) + 'px';
+      // 港湾内景（设计稿 v2 阶段 F）：页面高度由面板内容区决定 —— 面板贴着场景，
+      // 用 window.innerHeight 折算会把海图撑出面板底部，内景变成整页滚动。
+      const scroller = document.body.classList.contains('harbor-on') ? stage.parentElement : null;
+      const avail = scroller
+        ? scroller.clientHeight - (stage.getBoundingClientRect().top - scroller.getBoundingClientRect().top)
+        : (window.innerHeight - stage.getBoundingClientRect().top) / zoom - bottom;
+      stage.style.height = Math.max(scroller ? 240 : 420, avail) + 'px';
       width = Math.max(1, Math.min(stage.clientWidth, stage.clientHeight * 2));
       height = width / 2;
       if (!fishingMapView.initialized) {
@@ -1517,6 +1636,51 @@ window.UI = (function () {
     if (host && host.getAttribute('data-sig') === sig) { patchFishingLive(st); return; }
     main.innerHTML = '';
     main.classList.add('fishing-page');
+    // 设计稿 v2（栈桥 · 钓鱼 · a-room-fishing.png）：顶部一行工具栏「继续：<钓点> / 收竿」+ 说明，
+    // 下面是海图。港湾版只把侧栏换成「← 回港湾」，实时钓鱼的玩法与数据全都不动。
+    // 钓点取「正在钓的钓点」，没有再退回「点过但还没下竿的钓点」；都没有就只留说明文字。
+    const spotNow = (function () {
+      const sel = st.selected || {};
+      const gid = st.player.groundId || sel.groundId || null;
+      const sid = st.player.spotId || sel.spotId || null;
+      const g = gid ? D.GROUNDS.find(function (x) { return x.id === gid; }) : null;
+      const sp = g ? (g.spots || []).find(function (x) { return x.id === sid; }) : null;
+      return g && sp ? { g: g, sp: sp, label: (g.id === 'map' ? '' : g.name + '·') + sp.name } : null;
+    })();
+    const tools = el('div', 'toolbar fish-tools');
+    if (spotNow) {
+      const cont = el('button', 'mini go', '🎣 继续：' + spotNow.label);
+      cont.type = 'button';
+      cont.title = '回港湾，继续在「' + spotNow.label + '」垂钓';
+      cont.addEventListener('click', function () {
+        const resume = function () {
+          toast('继续在「' + spotNow.label + '」钓鱼', 'routine');
+          if (window.HarborShell && HarborShell.goHome) HarborShell.goHome();
+        };
+        if (st.fishing.active && st.player.groundId === spotNow.g.id && st.player.spotId === spotNow.sp.id) { resume(); return; }
+        const pr = E().startFishing(spotNow.g.id, spotNow.sp.id);
+        renderTopbar(); renderNav();
+        Promise.resolve(pr).then(function (r) {
+          if (r && r.ok === false) { toast(r.msg || '无法继续钓鱼'); return; }
+          resume();
+          renderTopbar(); renderNav();
+        });
+      });
+      tools.appendChild(cont);
+    }
+    if (st.fishing.active) {
+      const stop = el('button', 'mini', '收竿');
+      stop.type = 'button';
+      stop.addEventListener('click', function () {
+        E().stopFishing();
+        st.selected = { groundId: null, spotId: null };
+        toast('已收竿，回到港湾休息', 'routine');
+        renderTopbar(); renderNav(); renderFishing();
+      });
+      tools.appendChild(stop);
+    }
+    tools.appendChild(el('span', 'note', '这是现有的钓鱼页（海图 + 实时钓鱼），港湾版只把侧栏换成「← 回港湾」。'));
+    main.appendChild(tools);
     const stage = el('section', 'fishing-stage');
     stage.setAttribute('aria-label', '钓鱼世界地图');
     // 近岸、远洋与临时海域共享底图和平移缩放平面。
@@ -11962,5 +12126,7 @@ window.UI = (function () {
     getView: function () { return currentView; },
     setView: function (v) { navigateView(v); },
     openView: openView,
+    // 设计稿 v2 阶段 F：内景一级页签（木梁下方的挂签）由外壳渲染，页面只提供清单与切换
+    panelTabs: panelTabs, panelTab: panelTab,
   };
 })();
