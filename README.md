@@ -1,4 +1,4 @@
-# DeepFish v0.27.7（web-fishing-game）
+# DeepFish v0.27.8（web-fishing-game）
 
 零第三方依赖的多人联机网页钓鱼小游戏。**所有处理逻辑在服务端**：钓鱼循环、掷骰、词缀加成、
 资产结算、钓竿配置均由后端权威执行，前端只发指令、收 SSE 广播、渲染。纯原生 Web 前端 +
@@ -329,6 +329,13 @@ FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH   playwright-core 与浏览器位
 ```
 
 ## 版本演进
+
+### v0.27.8：登录按钮无响应修复（ui.js 解析期语法错误）+ 图鉴卡片类名修复（2026-09-28）
+
+- **登录按钮点不动的根因（修复）**：v0.27.7 重构告示板时，`ui.js` 在「图鉴视图」段重复声明了文件顶部已有的模块级变量 `let codexCategory` 与 `let codexSortRarity`。`ui.js` 是以传统 `<script defer>` 加载的，同一作用域重复 `let` 属于**解析期**语法错误，浏览器会放弃执行整个文件——`window.UI` 始终是 `undefined`，`index.html` 的 `window.UI.init()` 抛 `Cannot read properties of undefined (reading 'init')`，`wireAuth()` 从未执行，`#auth-submit` 没有任何 `onclick`，于是「登录」按钮（连同登录 / 注册页签）完全无响应。删除两处重复声明即恢复。
+- **同一提交里的第二处语法错误（修复）**：图鉴卡片模板 `'<div class="cx-name" + (rec ? '' : ' un') + '">'` 少了一个引号，被上一条错误掩盖（解析器只报第一个）；修正为 `'<div class="cx-name' + (rec ? '' : ' un') + '">'`，未解锁卡片恢复 `cx-name un` 类名。
+- **登录卡默认提交被拦掉（加固）**：`#auth-form` 是真实表单且提交按钮是 `type=submit`，此前没有 `onsubmit`，点击 / 回车会在发出请求的同时带查询串重载页面，把「登录中…」与随后的 `startGame()` 一起冲掉（表现为登录「没反应」或登录成功仍停在登录页）。现在 `wireAuth()` 里 `$('auth-form').onsubmit = e => e.preventDefault()`，请求仍走原有的 `onclick` / `keydown` 处理器，不重复绑定。
+- **缓存**：版本号升至 v0.27.8，前端 `data.js`、内嵌 Go catalog 与 `?v=` 缓存参数同源；上一版缓存的 js/css 在版本比对后自动强制刷新。
 
 ### v0.27.7：告示板统一内景面板 + 白纸卡片 + 页签深链（2026-09-28）
 

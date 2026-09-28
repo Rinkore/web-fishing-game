@@ -8086,8 +8086,8 @@ window.UI = (function () {
   }
 
   // ---- 图鉴视图 ----
-  // 当前分类（模块级：重绘间保留）；详情改为子窗口，无需记录展开项
-  let codexCategory = 'fish';
+  // 当前分类与品级排序在文件顶部声明（codexCategory / codexSortRarity），此处不再重复声明：
+  // 同一作用域内重复 let 是解析期语法错误，会让整个 ui.js 不执行（登录按钮全无响应）。
   let mapTab = 'nearshore'; // 社交动态分类：nearshore 近岸 / voyage 远洋
   let lastFisherSpotKey = null; // 甩杆动画记忆：同一钓点重绘不重复播放
 
@@ -8284,7 +8284,6 @@ window.UI = (function () {
     box.appendChild(boats);
     return box;
   }
-  let codexSortRarity = false;
 
   // 图鉴详情浮层：完整信息 + 全部产地（点击卡片开合；未解锁也可查看获取信息）
   // 图鉴详情：子窗口展示（替代原先卡片内展开）
@@ -10068,7 +10067,7 @@ window.UI = (function () {
       cell.setAttribute('data-cxid', it.id);
       cell.innerHTML = '<img class="cx-icon" src="assets/' + (it.kind === 'fish' ? 'fish' : 'items') + '/' + esc(it.id) +
         '.png" alt="" draggable="false">' +
-        '<div class="cx-name" + (rec ? '' : ' un') + '">' + esc(it.name) + '</div>' +
+        '<div class="cx-name' + (rec ? '' : ' un') + '">' + esc(it.name) + '</div>' +
         (rec ? '<div class="cx-meta">已获得 ' + rec.count + ' 次</div>' : '<div class="cx-meta">🔒 未解锁</div>') +
         (rec ? '<div class="cx-meta">' + timeStr(rec.first) + '</div>' : '<div class="cx-meta un">去产地' + (it.kind === 'fish' ? '垂钓' : '获得') + '即可解锁</div>') +
         tierLine;
@@ -11472,6 +11471,11 @@ window.UI = (function () {
     $('tab-login').onclick = function () { setAuthTab('login'); };
     $('tab-register').onclick = function () { setAuthTab('register'); };
     $('auth-submit').onclick = onAuthSubmit;
+    // 登录卡是个真表单，按钮又是 type=submit：不拦默认提交的话，点「登录」/在输入框回车
+    // 会在请求发出的同时带着查询串重载页面，把「登录中…」和后续 startGame 一起冲掉
+    // （表现为登录「没反应」或登录成功后仍停在登录页）。这里只拦默认行为，
+    // 发放请求仍走下面的 onclick / keydown 处理器，避免一条路径重复绑定两次。
+    $('auth-form').onsubmit = function (e) { e.preventDefault(); };
     $('auth-pass').addEventListener('keydown', function (e) { if (e.key === 'Enter') onAuthSubmit(); });
     $('auth-user').addEventListener('keydown', function (e) { if (e.key === 'Enter') onAuthSubmit(); });
     $('auth-pass2').addEventListener('keydown', function (e) { if (e.key === 'Enter') onAuthSubmit(); });

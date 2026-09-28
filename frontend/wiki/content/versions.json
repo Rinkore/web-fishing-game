@@ -1,6 +1,6 @@
 {
   "source": "VERSIONS.md",
-  "count": 121,
+  "count": 122,
   "versions": [
     {
       "version": "v0.2",
@@ -566,6 +566,11 @@
       "version": "v0.27.7",
       "date": "2026-09-28",
       "summary": "告示板由「四个独立子视图」改为「一块内景面板 + 图鉴 / 记录 / 日志 / 反馈四个页签」：`harbor.js` 的 `openPlace('board', tab)` 改为把页签序号交给统一视图（`UI.openView('board', tabIndex)`），`ui.js` 新增 `renderBoard()` 外壳与四个子渲染函数（复用既有数据、`openSpotDetail` / `openRecordsModal` / 反馈冷却等交互，状态由 `boardTab` / `codexCategory` / `codexSortRarity` 持有）；`applyTabDeepLink` 的选择器补 `[data-board-tab]` 使 `#/place/N` 能直达页签，`pageIdOf()` 把 board 折算回页签对应的页面 id 以沿用功能锁定与广播重绘口径；卡片样式从 `.panel.wide` 收敛为 `.board-card` / `.board-paper` 白纸卡（1px 描边 + 4px 阴影），`.board-content` 改 flex 列 20px 间隔、内景补 16px 内边距，并删掉叠在 `.codex-grid` / `.record-list` / `.feedback-panel` / `.logs-panel` 上的第二层白底；版本号升至 v0.27.7 并同步 ?v= 缓存参数"
+    },
+    {
+      "version": "v0.27.8",
+      "date": "2026-09-28",
+      "summary": "修复「点击登录没有反应」：v0.27.7 重构图鉴时 `ui.js` 重复声明了顶部已有的 `let codexCategory` / `let codexSortRarity`，传统 `defer` 脚本的同作用域重复 `let` 是解析期语法错误，整个 ui.js 不执行 —— `window.UI` 为 undefined、`UI.init()` 抛错、`wireAuth()` 从未运行，登录按钮与登录 / 注册页签全部无响应（同时修掉被它掩盖的第二处语法错误：图鉴卡片模板 `'<div class=\"cx-name\" + (rec ? '' : ' un') + '\">'` 少一个引号，改为 `'<div class=\"cx-name' + …`，未解锁卡片恢复 `cx-name un` 类名）；另加固登录卡：`#auth-form` 补 `onsubmit` 的 `preventDefault()`，避免 `type=submit` 的按钮点击 / 回车在发请求的同时重载页面冲掉「登录中…」与 `startGame()`；版本号升至 v0.27.8 并同步 ?v= 缓存参数"
     },
     {
       "version": "v0.24.0",
