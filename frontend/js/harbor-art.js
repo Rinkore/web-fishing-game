@@ -1,4 +1,4 @@
-/* DeepFish 港湾场景渲染器（设计稿 v2 · 阶段 B；与 output/design-review/redesign/v2/harbor-art.js 同源）。
+/* DeepFish 港湾场景渲染器（设计稿 v2 · 阶段 B；海岸材质参考 assets/worldmap.png 的旧草稿）。
    只负责画：状态由 js/harbor.js 从游戏状态整理好传进来（sceneState），这里不读 Engine / UI。
    Everything is drawn on a 480×240 canvas and scaled by whole numbers.
    Static layers (sky, land, buildings) are cached per palette + state; the
@@ -25,25 +25,25 @@
     dawn: { sky: ['#2c3470', '#6c4f8c', '#d27f86', '#f6b98a'], sun: '#ffe6a0', glow: '#ffb878', star: .35, cloud: ['#f6b0a0', '#b97a96'], cloudA: .9,
       far: '#6d5b8e', near: '#4a4272', tree: '#35305a', snow: '#e8d6e6', sea: ['#8f7fb4', '#6d6aa2', '#4f5a90', '#3a467a'], seaHi: '#ffd6b0',
       quay: '#6a6478', quayHi: '#8a849a', quayDk: '#46425a', wood: '#7a4e38', woodHi: '#a06c4a', woodDk: '#4a3024',
-      roof: '#9a3c3c', roofHi: '#bc5a4c', slate: '#4e5072', slateHi: '#6a6e92', stone: '#6e6a82', stoneHi: '#8c88a0', stoneDk: '#4a4862',
+      roof: '#884a48', roofHi: '#aa625a', slate: '#4e5072', slateHi: '#6a6e92', stone: '#6e6a82', stoneHi: '#8c88a0', stoneDk: '#4a4862',
       plaster: '#cdb2a0', plasterHi: '#e0c6b2', win: '#3a3a60', light: '#ffd08a', smoke: '#c9b8cc', ink: '#16121f', foam: '#f2dcd0',
       lamps: .55, beam: .45, tintC: '#5a3a78', tintA: .12 },
     day: { sky: ['#3a86d4', '#5aa6e6', '#8cc8f0', '#c4e6f6'], sun: '#fff8d0', glow: '#fff2b0', star: 0, cloud: ['#ffffff', '#d3e4f2'], cloudA: 1,
-      far: '#7ea6c8', near: '#5a88ae', tree: '#2f6a52', snow: '#f4f8fc', sea: ['#4a9ccc', '#3486bc', '#2672a6', '#1c5c8e'], seaHi: '#d4f0ff',
+      far: '#7ea6c8', near: '#5a88ae', tree: '#365b45', snow: '#f4f8fc', sea: ['#346f94', '#2a6388', '#20567b', '#17466e'], seaHi: '#b6ddea',
       quay: '#8e939e', quayHi: '#b2b7c0', quayDk: '#60656f', wood: '#8e5e3c', woodHi: '#b8845a', woodDk: '#5c3c28',
-      roof: '#bc463c', roofHi: '#dc6652', slate: '#5c6c8a', slateHi: '#7a8cac', stone: '#8e949e', stoneHi: '#b0b5be', stoneDk: '#666b76',
+      roof: '#965443', roofHi: '#b77459', slate: '#5c6c8a', slateHi: '#7a8cac', stone: '#8e949e', stoneHi: '#b0b5be', stoneDk: '#666b76',
       plaster: '#eadcc0', plasterHi: '#f8eed8', win: '#3c6690', light: '#a8d4f0', smoke: '#dfe6ee', ink: '#1c1c26', foam: '#ffffff',
       lamps: 0, beam: 0, tintC: '#ffffff', tintA: 0 },
     dusk: { sky: ['#24285c', '#5e3a72', '#c65a52', '#f39a4e'], sun: '#ffb25e', glow: '#ff8c4a', star: .2, cloud: ['#f07a5a', '#8e4a70'], cloudA: .9,
       far: '#5c3c62', near: '#402c4e', tree: '#2c203a', snow: '#e8b8b0', sea: ['#d0784e', '#94505e', '#5e3c62', '#3c2c50'], seaHi: '#ffc684',
       quay: '#5c4c5e', quayHi: '#7a6678', quayDk: '#3c3040', wood: '#6c4430', woodHi: '#925c40', woodDk: '#402a20',
-      roof: '#8e3232', roofHi: '#b04c40', slate: '#463f60', slateHi: '#60577c', stone: '#60546a', stoneHi: '#7c6e86', stoneDk: '#40364a',
+      roof: '#88443b', roofHi: '#ad6049', slate: '#463f60', slateHi: '#60577c', stone: '#60546a', stoneHi: '#7c6e86', stoneDk: '#40364a',
       plaster: '#b08e7c', plasterHi: '#c8a48e', win: '#2c2644', light: '#ffcc6a', smoke: '#a88e9e', ink: '#130d18', foam: '#ffd8b8',
       lamps: 1, beam: .9, tintC: '#3a1a44', tintA: .12 },
     night: { sky: ['#070f24', '#0d1d42', '#152c58', '#1f3c6a'], sun: '#efe9cc', glow: '#8fb4e8', star: 1, cloud: ['#1e3056', '#162644'], cloudA: .7,
       far: '#12284a', near: '#0d1f38', tree: '#09172a', snow: '#8aa4c8', sea: ['#173a64', '#112e54', '#0c2444', '#081a34'], seaHi: '#4f86bc',
       quay: '#2e3648', quayHi: '#434e66', quayDk: '#1c2232', wood: '#5a3b28', woodHi: '#7c5438', woodDk: '#382418',
-      roof: '#6c2a2a', roofHi: '#8a3c36', slate: '#384460', slateHi: '#4c5a7a', stone: '#465064', stoneHi: '#5a6680', stoneDk: '#2a3242',
+      roof: '#623735', roofHi: '#804c43', slate: '#384460', slateHi: '#4c5a7a', stone: '#465064', stoneHi: '#5a6680', stoneDk: '#2a3242',
       plaster: '#6a6252', plasterHi: '#7c7260', win: '#18223a', light: '#ffd466', smoke: '#7e8ca4', ink: '#060a14', foam: '#9cc0e8',
       lamps: 1, beam: 1, tintC: '#0a1638', tintA: .25 },
   };
@@ -87,6 +87,51 @@
   // ---------- helpers ----------
   const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + .5) / 16);
   function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  // The old coast draft gets its depth from many tiny, irregular material
+  // changes. Keep those changes deterministic so cached layers never shimmer.
+  function grain(x, y, salt) {
+    let n = Math.imul(x + salt * 17, 374761393) + Math.imul(y - salt * 29, 668265263);
+    n = Math.imul(n ^ n >>> 13, 1274126177);
+    return ((n ^ n >>> 16) >>> 0) / 4294967295;
+  }
+  function blendPixel(data, offset, rgb, amount) {
+    for (let k = 0; k < 3; k++) data[offset + k] = Math.round(data[offset + k] * (1 - amount) + rgb[k] * amount);
+  }
+  function weatherSprite(ctx, P, ox, oy, w, h) {
+    const image = ctx.getImageData(0, 0, w, h), data = image.data;
+    const materials = [
+      [P.roof, P.roofHi, P.ink, 1], [P.slate, P.slateHi, P.ink, 2],
+      [P.wood, P.woodHi, P.woodDk, 3], [P.stone, P.stoneHi, P.stoneDk, 4],
+      [P.plaster, P.plasterHi, P.stoneDk, 5],
+    ];
+    const keys = new Map(materials.map(([base, light, dark, salt]) => {
+      const rgb = hexRgb(base);
+      return [(rgb[0] << 16) | (rgb[1] << 8) | rgb[2], { light: hexRgb(light), dark: hexRgb(dark), salt }];
+    }));
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] !== 255) continue;
+      const material = keys.get((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
+      if (!material) continue;
+      const gx = ox + x, gy = oy + y;
+      const fleck = grain(gx, gy, material.salt);
+      const patch = grain(gx >> 2, gy >> 2, material.salt + 11);
+      if (fleck > .91 || patch > .82 && fleck > .58) blendPixel(data, i, material.light, .35);
+      else if (fleck < .08 || patch < .18 && fleck < .43) blendPixel(data, i, material.dark, .3);
+    }
+    ctx.putImageData(image, 0, 0);
+  }
+  function textureSea(image, P) {
+    const data = image.data, light = hexRgb(P.seaHi), dark = hexRgb(P.sea[3]);
+    for (let y = HORIZON + 2; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const patch = grain(x >> 3, y >> 2, 19), fleck = grain(x, y, 23);
+      const current = Math.sin(x * .105 + y * .19) + Math.sin(x * .037 - y * .11);
+      if (patch > .54 && current > .5 && fleck > .52) blendPixel(data, i, light, .08 + .08 * fleck);
+      else if (patch < .32 && fleck < .48) blendPixel(data, i, dark, .16);
+      if (fleck > .982 && y > HORIZON + 18) blendPixel(data, i, light, .24);
+    }
+  }
   function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
   function dither(img, y0, y1, stops) {
     const d = new Uint32Array(img.data.buffer), rgb = stops.map(hexRgb), w = img.width;
@@ -343,6 +388,7 @@
     const [x, y, w, h] = p.box, c = canvas(w, h), ctx = c.getContext('2d');
     ctx.translate(-x, -y); const g = G(ctx, P); p.draw(g, st);
     if (st.locked && st.locked[id] && p.door) boardUp(g, p.door);
+    weatherSprite(ctx, P, x, y, w, h);
     const sil = canvas(w, h), s = sil.getContext('2d'); s.drawImage(c, 0, 0); s.globalCompositeOperation = 'source-in'; s.fillStyle = '#ffd23e'; s.fillRect(0, 0, w, h);
     return { c, sil, x, y, w, h };
   }
@@ -350,7 +396,7 @@
   const CLOUDS = (() => { const R = rng(11), a = []; for (let i = 0; i < 6; i++) a.push({ x: R() * W, y: 14 + R() * 50, w: 18 + Math.floor(R() * 26), sp: .6 + R() * 1.2, seed: Math.floor(R() * 999) }); return a; })();
   function makeLayers(P, st) {
     const sky = canvas(W, HORIZON + 1), sc = sky.getContext('2d'), si = sc.createImageData(W, HORIZON + 1); dither(si, 0, HORIZON + 1, P.sky); sc.putImageData(si, 0, 0);
-    const land = canvas(W, H), lc = land.getContext('2d'), li = lc.createImageData(W, H); dither(li, HORIZON, H, P.sea); lc.putImageData(li, 0, 0);
+    const land = canvas(W, H), lc = land.getContext('2d'), li = lc.createImageData(W, H); dither(li, HORIZON, H, P.sea); textureSea(li, P); lc.putImageData(li, 0, 0);
     const g = G(lc, P), ridge = X => Math.round(92 + 9 * Math.sin(X * .014 + 1.3) + 6 * Math.sin(X * .043 + .4) + 2 * Math.sin(X * .13));
     const hill = X => Math.round(106 + 5 * Math.sin(X * .021 + 2.1) + 3 * Math.sin(X * .07 + 1));
     for (let X = 0; X < W; X++) { const y = ridge(X); g.r(X, y, 1, HORIZON - y, 'far'); if (y < 90) g.r(X, y, 1, Math.min(3, 91 - y), 'snow'); }
@@ -361,7 +407,13 @@
     const mid = canvas(W, H), mc = mid.getContext('2d'), m = G(mc, P);
     m.r(0, GROUND, 380, QUAY_B - GROUND, 'quay'); m.r(0, GROUND, 380, 2, 'quayHi');
     for (let row = 0; row < 2; row++) { const y = GROUND + 3 + row * 6; m.r(0, y - 1, 380, 1, 'quayDk'); for (let x = row ? -8 : 0; x < 380; x += 16) m.r(x, y, 1, 5, 'quayDk'); }
+    for (let y = GROUND + 2; y < QUAY_B - 1; y++) for (let x = 0; x < 380; x++) {
+      const n = grain(x, y, 31);
+      if (n > .958) m.r(x, y, 1, 1, 'quayHi');
+      else if (n < .028) m.r(x, y, 1, 1, 'quayDk');
+    }
     m.r(0, QUAY_B - 1, 380, 1, 'quayDk'); m.a(.45, () => m.r(0, QUAY_B, 380, 2, 'ink'));
+    for (let x = 2; x < 380; x += 2) if (grain(x, QUAY_B, 37) > .72) m.a(.38, () => m.r(x, QUAY_B + 2 + (x % 3), 1 + (x % 4 === 0 ? 1 : 0), 1, 'foam'));
     [70, 146, 224, 290, 368].forEach(x => { m.r(x, GROUND - 4, 3, 4, 'ink'); m.r(x - 1, GROUND - 5, 5, 1, 'stoneHi'); });
     [[225, 128], [348, 128]].forEach(([x, y]) => { m.r(x, y, 1, 22, 'ink'); m.r(x - 1, y - 4, 3, 4, 'ink'); });
     DRAW_ORDER.forEach(id => { const s = sprites[id]; mc.drawImage(s.c, s.x, s.y); });

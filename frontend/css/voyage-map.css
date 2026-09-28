@@ -17,10 +17,10 @@
   position: relative; width: 100%; aspect-ratio: 2 / 1; overflow: hidden; container-type: inline-size;
   pointer-events: none; user-select: none;
   background:
-    radial-gradient(ellipse at 38% 60%, #306c7c 0, transparent 34%),
-    radial-gradient(ellipse at 9% 28%, #28566e 0, transparent 38%),
+    radial-gradient(ellipse at 38% 60%, #285d73 0, transparent 34%),
+    radial-gradient(ellipse at 9% 28%, #204b69 0, transparent 38%),
     radial-gradient(ellipse at 88% 28%, #0d293f 0, transparent 33%),
-    linear-gradient(115deg, #194b68, #173e5b 55%, #103453);
+    linear-gradient(115deg, #173f60, #153b5a 55%, #103453);
 }
 .vm-ink {
   position: absolute; display: block; top: 0; left: 0;

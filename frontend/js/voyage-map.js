@@ -1,14 +1,14 @@
-/* 连续的 CSS 像素世界图。960×480 逻辑网格，按同宽色段合并为 box-shadow。
+/* 连续的 CSS 像素世界图。960×480 逻辑网格，色调与海岸颗粒参考 assets/worldmap.png 旧草稿，按同宽色段合并为 box-shadow。
    无位图、canvas 或 SVG；固定种子只影响装饰，不参与游戏随机数。
    地貌构建一次并缓存，钓点继续由 UI 按百分比独立定位。 */
 (function () {
   'use strict';
   const W = 960, H = 480;
   const COLORS = [
-    '', '#103753', '#153d60', '#1b4467', '#244f70', '#315f79', '#416c7b',
-    '#527c86', '#709291', '#8ea79d', '#b2baaa', '#7b8777',
-    '#8e8165', '#a29272', '#b4a17d', '#c1af87', '#6a6549',
-    '#343f2d', '#3d4932', '#465337', '#515d3e', '#5c6745', '#6a714c',
+    '', '#103753', '#164161', '#1b4868', '#285574', '#376981', '#4b7784',
+    '#638a8e', '#819b98', '#a0afa1', '#c1c4af', '#7b8777',
+    '#90795d', '#a58d6e', '#bda783', '#ceb994', '#6a6549',
+    '#343f2d', '#414b32', '#4c5739', '#596441', '#66704b', '#737b53',
     '#263b2d', '#304831', '#3b5638', '#4a6442', '#5a714a',
     '#24352c', '#182e28', '#756f56', '#8b836b', '#a09a80',
     '#4a5350', '#5c635b', '#72776a', '#8c8f7c', '#a5a590',
@@ -139,6 +139,20 @@
     }
     river([[409, 157], [402, 174], [386, 179], [379, 194]], 4);
     river([[322, 238], [302, 243], [290, 230], [275, 232], [254, 244], [232, 247]], 6);
+    // Follow the old draft's broken foam and warm sand grain rather than a
+    // single sharp coast outline. Work from a snapshot so new foam cannot
+    // spread into the next pixel as the scan advances.
+    const beforeShore = pixels.slice();
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x, c = beforeShore[i], fleck = hash(x + 911, y + 277);
+      if (c >= 1 && c <= 8) {
+        const neighbors = [beforeShore[i - 1], beforeShore[i + 1], beforeShore[i - W], beforeShore[i + W]];
+        if (neighbors.some(v => v >= 12 && v <= 22) && fleck > .24) put(x, y, fleck > .76 ? 10 : 9);
+      } else if (c >= 12 && c <= 15) {
+        if (fleck > .9) put(x, y, Math.min(15, c + 1));
+        else if (fleck < .08) put(x, y, Math.max(12, c - 1));
+      } else if (c >= 17 && c <= 22 && fleck > .94) put(x, y, Math.min(22, c + 1));
+    }
     for (let y = 158; y < 172; y++) { line(404, y, 411, y, y % 3 ? 10 : 47); }
     function tree(x, y, size) {
       ellipse(x + 2, y + 1, size * .6, 2, 29);

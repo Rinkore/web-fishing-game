@@ -124,6 +124,9 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.waitForTimeout(200);
     await page.screenshot({ path: path.join(__dirname, 'shots/harbor-b-desktop.png') });
+    await page.evaluate(() => PlayerSettings.set('timeMode', 'day'));
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(__dirname, 'shots/harbor-b-day.png') });
 
     // v4 F5：经典界面已移除，港湾始终开启，不再测试切回经典
     check('无页面错误', errors.length === 0);
