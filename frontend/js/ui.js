@@ -11551,14 +11551,16 @@ window.UI = (function () {
     not_found: '接口不存在，请刷新页面后重试',
     origin_rejected: '请求来源被拒，请刷新页面后重试',
   };
-  // 只翻译「代码形状」的错误串：注册验证超时等已经是人话的提示（含中文 / 空格）原样保留，
-  // 表里没有的未知错误码也不要暴露给玩家，退回通用文案。
+  // 服务端有两种形状：failure() 发 {error: code, code: code}，注册验证等发
+  // {error: "请完成注册验证后重试", code: "REGISTRATION_CHALLENGE"}。所以错误码只用来查表，
+  // 查不到时优先显示 error 正文：正文是人话（含中文 / 空格）就原样保留，
+  // 仍是「代码形状」的未知错误码不暴露给玩家，退回通用文案。
   function authErrText(r) {
     const d = (r && r.data) || {};
-    const raw = String(d.code || d.error || '').trim();
-    if (AUTH_ERR_TEXT[raw]) return AUTH_ERR_TEXT[raw];
-    if (raw && /^[A-Za-z][A-Za-z0-9_]*$/.test(raw)) return '操作失败，请重试';
-    return raw || '操作失败，请重试';
+    const err = String(d.error || '').trim();
+    const code = String(d.code || '').trim();
+    const readable = t => (/^[A-Za-z][A-Za-z0-9_]*$/.test(t || '') ? '' : t);
+    return AUTH_ERR_TEXT[code] || AUTH_ERR_TEXT[err] || readable(err) || readable(code) || '操作失败，请重试';
   }
   function onAuthSubmit() {
     const user = $('auth-user').value.trim();
