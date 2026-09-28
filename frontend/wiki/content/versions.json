@@ -1,6 +1,6 @@
 {
   "source": "VERSIONS.md",
-  "count": 123,
+  "count": 124,
   "versions": [
     {
       "version": "v0.2",
@@ -576,6 +576,11 @@
       "version": "v0.27.9",
       "date": "2026-09-28",
       "summary": "港湾内景 v2 样式层与原型渲染器入库：`harbor.css` 追加约 90 行设计稿 v2 共用类（`.mini go/gold` 迷你按钮、`.slot` 四品质描边与内发光 + 选中 / 空格态、`.cork` 软木板 + `.paper` 白纸卡与图钉、`.forge` 熔炼主副件与箭头、`.env` / `.letter` 信封蜡封三态、`.partmap` 环形成长图、`.room2` 两栏、`.toolbar` / `.chip` / `.meter` / `.kv` / `.lrow` / `.pcard` / `.capbar` 等），新增 `frontend/js/harbor-rooms.js`（250 行，按地点实现仓库 / 工坊 / 宝箱 / 市集 / 码头海图 / 告示板 / 邮筒 / 渔屋 / 栈桥的 v2 内容结构，入口 `window.HarborRooms.render`，在 index.html 以 defer 挂载）；本轮只落样式层与原型渲染器，`window.HarborRooms` 尚未接入内景主路径，十个内景仍走既有 render* 实现，玩家侧外观与行为同 v0.27.8；修复登录失败提示暴露服务端错误码：`ui.js` 新增 `AUTH_ERR_TEXT`（invalid_credentials / invalid_input / username_exists / account_banned / admin_required / MFA_SETUP_REQUIRED / rate_limited / unavailable / commit_unknown / not_found / origin_rejected）与 `authErrText()`（`code` 优先、回退 `error`，中文提示原样保留，未知代码形状字符串退回「操作失败，请重试」）；补港湾 v2 内景实施与验证文档；版本号升至 v0.27.9 并同步 ?v= 缓存参数"
+    },
+    {
+      "version": "v0.28.0",
+      "date": "2026-09-28",
+      "summary": "港湾内景十页按设计稿 v2 重排（功能一个都没少）：仓库 = 工具栏（搜索 / 按现价·品质·数量排序 / 格子·列表）+ 8 列格子墙（品质描边 / 数量角标 / 空槽补齐）+ 物品明细卡（品质 / 持有 / 体型 / 现价 / 小计 + 出售 1 / 批量出售 / 上架 / 去开箱）+ 容量条；宝匣 = 「开箱 / 合成」挂签与品质描边卡；邮筒 = 未读统计 + 信封列表（蜡封 / 未读高亮 / 附件 chip）+ 信件正文；工坊 = 「工作台 / 装备成长 / 钓鱼套装 / 熔炼」四挂签 + 七部位环形成长图与强化详情卡 + 熔炼流程一览条；渔屋 = 场景条带 + 「晒场收益 / 下一级」双栏；远洋码头 = 「远航 / 船只」两挂签；集市 = 限购卡补库存条与售罄置灰；酒馆 = 玩家卡网格 + 最新动态同屏；告示板 = 软木板 + 纸条；栈桥 = 「继续：<钓点> / 收竿」工具栏 + 海图铺满面板。外壳：木梁标题改「地点名 · 页面名」、面包屑补当前页签，一级页签统一由木梁挂签承载 —— `ui.js` 新增 `panelTabDefs()` / `panelTabs()` / `panelTab(key)` 作唯一来源（集合页跟随后台功能排序），`harbor.js` 只渲染与转发，深链 `#/place/序号` 走同一份定义；经典页首横幅在港湾内景关闭、内景不再套第二层 `.panel`。共用零件：新增 `frontend/js/room-ui.js`（`window.RoomUI` 的 slot / chip / meter / box / kv / mini / toolbar / note / card 等）并补内景令牌（`--px` / `--gold` / `--r-*` / `--paper` / `--wood-*`，此前 var() 失效会整条丢弃声明），页面样式拆成 `room-inventory.css` / `room-workshop.css` / `room-social.css` / `room-board.css`。顺带修复：渔屋好友接口失败时 `drawFriends ↔ loadFriends` 无限递归、装备成长缺 `itemIcon` 时整页崩、远洋「船只」页签空白、编队页无数据时全空、`harbor.css` 设计稿资源路径越界。有意偏差：顶栏 HUD 保留生产数据（设计稿的玩家等级 / 称号无数据源）、远洋保留卡片工作台、装备成长保留「组件 + 词条」系统。验收：设计稿对照脚本覆盖十页桌面与手机，`harbor-phase-a/b/cd` / `smelt-workbench` / `social-friends` / `gear-growth` / `inventory-pagination` / `mail-gear` / `workshop-market-regression` 等通过（前五个按设计变更更新断言）；版本号升至 v0.28.0 并同步 ?v= 缓存参数与四个规则 oracle"
     },
     {
       "version": "v0.24.0",
