@@ -872,8 +872,8 @@ window.UI = (function () {
     }
     if (currentView === 'character') {
       return {
-        items: orderedFeatureTabs('character', [['yard', '晒场'], ['pet', '宠物'], ['role', '角色'], ['rod', '钓竿']],
-          { yard: ['collect', 'upgrade'], pet: 'pet', role: 'role', rod: 'bd' }),
+        items: orderedFeatureTabs('character', [['yard', '晒场'], ['breeding', '繁育'], ['pet', '宠物'], ['role', '角色'], ['rod', '钓竿']],
+          { yard: ['collect', 'upgrade'], breeding: 'breeding', pet: 'pet', role: 'role', rod: 'bd' }),
         active: charTab === 'rod' ? 'rod' : charTab,
         set: function (k) { charTab = k; },
       };
@@ -8540,12 +8540,12 @@ window.UI = (function () {
     const st0 = char2();
     // 结构签名：页签 / 同伴 / 船 / 背景都没变、渔屋结构也没变就不重建 —— 广播触发的重绘不会重启场景画布，
     // 也不会重建渔屋页（每竿一次的 assets 广播只让 HouseUI.fill 就地改写纯数据）。
-    const houseSig = charTab === 'rod' ? '' : (window.HouseUI ? window.HouseUI.sig(S().house) : JSON.stringify(S().house || null));
+    const houseSig = charTab === 'rod' || charTab === 'breeding' ? '' : (window.HouseUI ? window.HouseUI.sig(S().house) : JSON.stringify(S().house || null));
     const sig = 'char|' + charTab + '|' + st0.dog + '|' + st0.boat + '|' + (st0.bg || 'stillwater') +
       (charTab === 'rod' ? '|' + JSON.stringify(S().bd) + '|' + JSON.stringify(S().inventory) : '|' + houseSig);
     const prevWrap = main.querySelector('.char-view');
     if (prevWrap && prevWrap.getAttribute('data-sig') === sig) {
-      if (charTab !== 'rod' && window.HouseUI) window.HouseUI.fill(prevWrap, charTab);
+      if (charTab !== 'rod' && charTab !== 'breeding' && window.HouseUI) window.HouseUI.fill(prevWrap, charTab);
       return;
     }
     main.innerHTML = '';
@@ -8554,12 +8554,18 @@ window.UI = (function () {
     // 渔屋（v0.24.0）：晒场 / 宠物 / 角色 / 钓竿。钓竿留在原处，bd 的跳转与开关都不用改。
     // 「晒场」页签承载两个功能子项（领取 = character.collect、升级 = character.upgrade），所以传 aliases 让后台排序能落到这个页签上。
     wrap.innerHTML = sectionTabsHtml('character', charTab,
-      [['yard', '🏠 晒场'], ['pet', '🐶 宠物'], ['role', '🧍 角色'], ['rod', '🎯 钓竿']],
-      { yard: ['collect', 'upgrade'] });
+      [['yard', '🏠 晒场'], ['breeding', '🧬 繁育'], ['pet', '🐶 宠物'], ['role', '🧍 角色'], ['rod', '🎯 钓竿']],
+      { yard: ['collect', 'upgrade'], breeding: 'breeding' });
     wrap.setAttribute('data-sig', sig);
     bindSectionTabs(wrap, 'character');
     if (charTab === 'rod') {
       renderBdContent(wrap);
+      main.appendChild(wrap);
+      return;
+    }
+    if (charTab === 'breeding') {
+      if (window.BreedUI) window.BreedUI.mount(wrap);
+      else wrap.appendChild(el('p', 'hint', '繁育脚本未加载，请强制刷新页面（Ctrl+F5）后重试。'));
       main.appendChild(wrap);
       return;
     }
@@ -11379,7 +11385,7 @@ window.UI = (function () {
     // 开箱（v0.23.5 自工坊独立成页）：宝匣档位 / 保底进度 / 持有量
     else if (view === 'chest') { window.Net.fetchChest(); }
     // 渔屋（原角色页）：进页拉一次权威视图；写操作之后直接用响应里的 house 重绘，不再额外请求
-    else if (view === 'character') { window.Net.fetchHouse(); }
+    else if (view === 'character' && charTab !== 'breeding') { window.Net.fetchHouse(); }
     else if (view === 'market') { S().marketQuery = null; }
     else if (view === 'board') {
       // 告示板：按当前页签拉取数据

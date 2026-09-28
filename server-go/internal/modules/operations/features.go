@@ -85,7 +85,7 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 		case "market", "trade", "workshop", "chest", "mall", "sell", "autosell", "friends", "sea", "party", "fishing",
 			"fishing.cast", "bd", "bd.equip", "bd.slots", "bd.save", "bd.autobuild",
 			"character", "character.companion", "character.boat", "sea.upgrade", "sea.chart", "sea.voyage", "sea.quest", "sea.anchor", "sea.expedition",
-			"character.collect", "character.upgrade", "character.pet", "character.role", "character.steal",
+			"character.collect", "character.upgrade", "character.pet", "character.role", "character.steal", "character.breeding",
 			"ground", "ground.trade", "ground.party", "inventory", "inventory.subscribe",
 			"chest.craft", "chest.open",
 			"workshop.craft", "workshop.open", "workshop.smelt", "workshop.recast", "workshop.forge",

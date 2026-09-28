@@ -21,6 +21,7 @@ var legacyFeatureGroups = []map[string]any{
 	{"id": "character", "name": "渔屋", "parent": nil, "children": []map[string]any{
 		{"id": "character.collect", "name": "晒场领取与升级", "parent": "character"},
 		{"id": "character.upgrade", "name": "渔屋升级与翻新", "parent": "character"},
+		{"id": "character.breeding", "name": "鱼类繁育", "parent": "character"},
 		{"id": "character.pet", "name": "宠物养成", "parent": "character"},
 		{"id": "character.role", "name": "角色养成", "parent": "character"},
 		{"id": "character.steal", "name": "好友间偷取", "parent": "character"},

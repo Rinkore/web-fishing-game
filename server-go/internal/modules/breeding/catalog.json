@@ -1,0 +1,3395 @@
+{
+  "version": 2,
+  "loci": [
+    "body",
+    "head",
+    "dorsal",
+    "ventral",
+    "tail",
+    "skin"
+  ],
+  "labels": {
+    "body": "体型骨架",
+    "dorsal": "背部（背鳍、棘、冠）",
+    "head": "头部（眼、吻、鳃、须）",
+    "skin": "体表（底色、纹理、鳞、发光）",
+    "tail": "尾部",
+    "ventral": "腹部（腹鳍、足、腕）"
+  },
+  "mutations": {
+    "albino": {
+      "allele": "a",
+      "description": "aa 表达，Aa 携带；减少体色并将眼部染红",
+      "dominance": "recessive",
+      "label": "白化红眼",
+      "wild": "A"
+    },
+    "glow": {
+      "allele": "G",
+      "description": "Gg / GG 表达；沿身体外轮廓产生青色光点",
+      "dominance": "dominant",
+      "label": "荧光边缘",
+      "wild": "g"
+    },
+    "star": {
+      "allele": "s",
+      "description": "ss 表达，Ss 携带；身体表面出现金色星点",
+      "dominance": "recessive",
+      "label": "星点鳞",
+      "wild": "S"
+    },
+    "veil": {
+      "allele": "V",
+      "description": "Vv / VV 表达；仅有独立尾鳍的体型可表达",
+      "dominance": "dominant",
+      "label": "流纱尾",
+      "wild": "v"
+    }
+  },
+  "species": {
+    "amberjack": {
+      "id": "amberjack",
+      "name": "鰤鱼",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "amberjack",
+      "breedNote": "仅允许同种繁育",
+      "notes": "蓝青长纺锤身；金色背腹鳍和月牙尾；金色侧线；银腹",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        25,
+        20,
+        205,
+        110
+      ],
+      "bounds": {
+        "dorsal": [
+          78,
+          20,
+          140,
+          47
+        ],
+        "head": [
+          25,
+          45,
+          78,
+          90
+        ],
+        "skin": [
+          78,
+          47,
+          164,
+          86
+        ],
+        "tail": [
+          164,
+          30,
+          205,
+          105
+        ],
+        "ventral": [
+          78,
+          86,
+          140,
+          110
+        ]
+      },
+      "sha256": "16c9ad2c5a41c254c9b247289cf38369b342baa52329cdd316011a3f7903a2bf",
+      "layerSha256": {
+        "dorsal": "c5ab64fc6dc59c9931ecb5599a61be9e30dd2bb2c355c2c74034e1553fd134e3",
+        "head": "827cae4fdf4b2b355e046be1261ebcd37820f55451f5a8d660ffb6f2fb18349d",
+        "skin": "f9556b7bf22ead97e91a434ad74572e7d0b4fa461d563d7328fb4774c1cfea8e",
+        "tail": "1e6a8b7caa3fa5ed656c1363cd45cf06d4fffb7a7da8607b682ef9eafb224a69",
+        "ventral": "6b747988e2de0b9a722cb6870d1ffc5a0588debe1019776b540366af15859089"
+      },
+      "rank": {
+        "body": 1,
+        "dorsal": 27,
+        "head": 14,
+        "skin": 14,
+        "tail": 1,
+        "ventral": 40
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "amberlobster": {
+      "id": "amberlobster",
+      "name": "琥珀龙虾",
+      "family": "lobster",
+      "group": "crustacean",
+      "breedGroup": "amberlobster",
+      "breedNote": "仅允许同种繁育",
+      "notes": "橙琥珀分节甲壳；长触角；步足；分节腹与尾扇",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        10,
+        25,
+        200,
+        115
+      ],
+      "bounds": {
+        "dorsal": [
+          66,
+          40,
+          105,
+          52
+        ],
+        "head": [
+          10,
+          25,
+          66,
+          115
+        ],
+        "skin": [
+          66,
+          52,
+          157,
+          91
+        ],
+        "tail": [
+          157,
+          60,
+          200,
+          85
+        ],
+        "ventral": [
+          66,
+          91,
+          115,
+          115
+        ]
+      },
+      "sha256": "a5e8d1ba5e3873e21468dbeca1cd70dea057244848c8914b48175e0695adf4a7",
+      "layerSha256": {
+        "dorsal": "f70c4b789a713c1d7750b8e527d63a1c3a75252e6c59b5d27049a1e8347df8b5",
+        "head": "f8961e98506653a43e3b76c968b9904a7ac61d1e528b84c9b0fe3e3c2a95da8d",
+        "skin": "04b7c111e0e62fbba4ee97d9b25c062bd3b6fda20d2f44a7951d482a7fd227aa",
+        "tail": "e249d0d86e43730c378a9a07baf1f9b5216c656db1d8a3bebbc624b89dedd5ac",
+        "ventral": "031992daa65d2fc869b66e109d0449888726518f86f8dbbbfbfbb355e50fbb19"
+      },
+      "rank": {
+        "body": 18,
+        "dorsal": 44,
+        "head": 31,
+        "skin": 31,
+        "tail": 18,
+        "ventral": 5
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "arapaima": {
+      "id": "arapaima",
+      "name": "巨骨舌鱼",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "arapaima",
+      "breedNote": "仅允许同种繁育",
+      "notes": "红褐长筒身；朱红竖鳞缘；深红圆尾；小黑眼",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        20,
+        45,
+        210,
+        105
+      ],
+      "bounds": {
+        "dorsal": [
+          76,
+          45,
+          167,
+          63
+        ],
+        "head": [
+          20,
+          50,
+          76,
+          90
+        ],
+        "skin": [
+          76,
+          63,
+          167,
+          89
+        ],
+        "tail": [
+          167,
+          45,
+          210,
+          90
+        ],
+        "ventral": [
+          100,
+          89,
+          130,
+          105
+        ]
+      },
+      "sha256": "71905400ebadfa4caa6da6119600c6287d751b66e435aeb24cbcedbb15a8dc3f",
+      "layerSha256": {
+        "dorsal": "73af623874a561973577c907e47d97d1b2bcb3a01da06f32a7f0769047582d42",
+        "head": "dc331f30cd3383cc5b1bc5305d1958ceed7ef67bec61545e871c982429670b15",
+        "skin": "0ac9fdbc4636f1e8d18d0cb8750bcdf45a4032e7cae61589244f188bbd500073",
+        "tail": "16092de7bbb8a71df9b9f97a778166ff3cc6afa27f9504180a5bf7e463fe31e9",
+        "ventral": "1382148cee9105a842587e126c3a9b31049ce7b1011861e6f64f911cd56ee6b5"
+      },
+      "rank": {
+        "body": 35,
+        "dorsal": 9,
+        "head": 48,
+        "skin": 48,
+        "tail": 35,
+        "ventral": 22
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "arowana": {
+      "id": "arowana",
+      "name": "金龙鱼",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "arowana",
+      "breedNote": "仅允许同种繁育",
+      "notes": "金红长身；大块网格金鳞；后置低背鳍及臀鳍；圆尾；上翘吻与双须",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        10,
+        30,
+        200,
+        105
+      ],
+      "bounds": {
+        "dorsal": [
+          66,
+          30,
+          157,
+          52
+        ],
+        "head": [
+          10,
+          45,
+          66,
+          90
+        ],
+        "skin": [
+          66,
+          52,
+          157,
+          85
+        ],
+        "tail": [
+          157,
+          35,
+          200,
+          100
+        ],
+        "ventral": [
+          66,
+          85,
+          157,
+          105
+        ]
+      },
+      "sha256": "ac7039daf1264fb81743db244038fe466878735a8deefb91ffdb0f36ebbf1136",
+      "layerSha256": {
+        "dorsal": "575d3b4eb75a4e48ca47c7ce16b3c98ae5418af73419ccad8d2a095f20d3519d",
+        "head": "46b00777ffae9b42ec9d726e315945bbd6deee894de58b299e5f780d97001630",
+        "skin": "140c0a540eec7b01bd1b65bd40cb19a58cb31f9d9a91147a4af4659020bfedda",
+        "tail": "0e4416a1d759a034e226d529cd7bb56c0f01cf7a776bc483cd1b217aa56e13da",
+        "ventral": "6d62c9807a1b4701635c8a3be94eef8b06e52d2d86e5bb4a15ba4a726c52030e"
+      },
+      "rank": {
+        "body": 52,
+        "dorsal": 26,
+        "head": 13,
+        "skin": 13,
+        "tail": 52,
+        "ventral": 39
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "bass": {
+      "id": "bass",
+      "name": "湖王鲈鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "bass",
+      "breedNote": "仅允许同种繁育",
+      "notes": "橄榄绿宽身；高背鳍；夸张张口；黑眼；深色尾柄",
+      "width": 266,
+      "height": 189,
+      "bbox": [
+        0,
+        0,
+        266,
+        189
+      ],
+      "bounds": {
+        "dorsal": [
+          78,
+          0,
+          202,
+          55
+        ],
+        "head": [
+          0,
+          23,
+          78,
+          179
+        ],
+        "skin": [
+          78,
+          55,
+          205,
+          138
+        ],
+        "tail": [
+          205,
+          55,
+          266,
+          162
+        ],
+        "ventral": [
+          78,
+          138,
+          205,
+          189
+        ]
+      },
+      "sha256": "6e80adad9ef2d11757ff0dfa6a991466d175a16acf8f0a4255cd84796b4d1f88",
+      "layerSha256": {
+        "dorsal": "3901c1d83ac42c872462de90a862a9a3e720d1821cd2522852fd745e918cee5b",
+        "head": "e172709bca421ddb38c2e936f0ade56e5947bc50777279827f478dddeef835c5",
+        "skin": "32f5ded79aeed05214e0c0424fd150aef6759687530ceb791a032e247d3a18bf",
+        "tail": "bbd5c9c01823dcd39d650738445e65d1975919e31c3527cbf51e62b81ec0eb2e",
+        "ventral": "8aae94ebc0ffe3824c18b5dc441a7e34cf168b7a20ad6fbedc081233d64a9454"
+      },
+      "rank": {
+        "body": 17,
+        "dorsal": 43,
+        "head": 30,
+        "skin": 30,
+        "tail": 17,
+        "ventral": 4
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "bighead": {
+      "id": "bighead",
+      "name": "鳙鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "hypophthalmichthys",
+      "breedNote": "鳙鱼可与鲢鱼形成现实记录中的杂交组合",
+      "notes": "灰绿大头宽身；方块杂斑；白色大鳃腹；黑眼；短尾",
+      "width": 261,
+      "height": 158,
+      "bbox": [
+        0,
+        0,
+        261,
+        158
+      ],
+      "bounds": {
+        "dorsal": [
+          76,
+          0,
+          201,
+          46
+        ],
+        "head": [
+          0,
+          0,
+          76,
+          158
+        ],
+        "skin": [
+          76,
+          46,
+          201,
+          116
+        ],
+        "tail": [
+          201,
+          34,
+          261,
+          141
+        ],
+        "ventral": [
+          76,
+          116,
+          201,
+          158
+        ]
+      },
+      "sha256": "c386d786300f17590679caa5cab1b58b5b45e804743021e7844a818b2a146c32",
+      "layerSha256": {
+        "dorsal": "487fbf531a5251b0038c48e6d8c471c9f4e22df0ee83bb9ecc980980e0e3e016",
+        "head": "ec3c2a341075db3aa735552c13f2aa2b5a0e5201d0e9bea257e3a08025c6672f",
+        "skin": "363925089ad5b289c1222c90e959a1db0fd7ea8ffa9fd9fc687f7aefe3a39afa",
+        "tail": "d8f04398272ec5c8532c9dc1fc65ce7d8832fe79904013077b578f431364180d",
+        "ventral": "b286d1fe1ce2aec887cf2ce82534298e127b103979e15dcf6e7bd6e1787dbbcb"
+      },
+      "rank": {
+        "body": 34,
+        "dorsal": 8,
+        "head": 47,
+        "skin": 47,
+        "tail": 34,
+        "ventral": 21
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "blackbass": {
+      "id": "blackbass",
+      "name": "大口黑鲈",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "blackbass",
+      "breedNote": "仅允许同种繁育",
+      "notes": "橄榄长椭圆身；白色侧线与浅腹；大口；尖背鳍；扇尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        30,
+        20,
+        195,
+        110
+      ],
+      "bounds": {
+        "dorsal": [
+          78,
+          20,
+          158,
+          47
+        ],
+        "head": [
+          30,
+          45,
+          78,
+          90
+        ],
+        "skin": [
+          78,
+          47,
+          158,
+          86
+        ],
+        "tail": [
+          158,
+          45,
+          195,
+          90
+        ],
+        "ventral": [
+          78,
+          86,
+          158,
+          110
+        ]
+      },
+      "sha256": "cb59bbe256b0601b5155880c7952e23971e5d3f4ef555254da4b9e53c850e769",
+      "layerSha256": {
+        "dorsal": "0743ef8eae1a218cf80dd5c61666042b6e27f9649c5dea2b3eed71e2bc4df9d2",
+        "head": "f734921b7049d22ca9e62b760a44cf097f4a3010917d585fd36af5047e94fe80",
+        "skin": "201434ab99786dc107188e046cdacf5a4574ec395eb80d023122fe8c0609492f",
+        "tail": "aedd53b102fd36ad7cd97b087e36fc60913d54e5cc9c84d81c04a4841f68156b",
+        "ventral": "06a4f59404c93024770fd9a7abb983bd58602663b49176f51f4cc08b5045f0b3"
+      },
+      "rank": {
+        "body": 51,
+        "dorsal": 25,
+        "head": 12,
+        "skin": 12,
+        "tail": 51,
+        "ventral": 38
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "blackcarp": {
+      "id": "blackcarp",
+      "name": "青鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "blackcarp",
+      "breedNote": "仅允许同种繁育",
+      "notes": "深蓝宽椭圆身；高背鳍；蓝黑头；黑眼；叉尾",
+      "width": 299,
+      "height": 191,
+      "bbox": [
+        0,
+        0,
+        299,
+        191
+      ],
+      "bounds": {
+        "dorsal": [
+          87,
+          0,
+          211,
+          56
+        ],
+        "head": [
+          0,
+          27,
+          87,
+          172
+        ],
+        "skin": [
+          87,
+          56,
+          231,
+          140
+        ],
+        "tail": [
+          231,
+          43,
+          299,
+          161
+        ],
+        "ventral": [
+          87,
+          140,
+          231,
+          191
+        ]
+      },
+      "sha256": "8ee527faf4302e8f5893eac241f0597eacbaa15acc789cc614f8a2cebdb80b4b",
+      "layerSha256": {
+        "dorsal": "35d9bab90c64e4239519d28567bc5d3b423c3abed3d7bf0474d0b803643e51ff",
+        "head": "ced7955d5be524433ea844360f7249d5161879a5ea138c8b75a15054916a8475",
+        "skin": "6e1ecda08be0690ec394b5f6bc6f06737348eeae1b34aae7d28f0ed67970d3db",
+        "tail": "44fc6153bd09910cd8833355585fa6db03a2b180dc41a34b5230019c75a8b74c",
+        "ventral": "c127479bf1591a8d23d6a5437b8790c36b2ae771467047b0ec71f325e0d4053f"
+      },
+      "rank": {
+        "body": 16,
+        "dorsal": 42,
+        "head": 29,
+        "skin": 29,
+        "tail": 16,
+        "ventral": 3
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "bluefin": {
+      "id": "bluefin",
+      "name": "蓝鳍金枪鱼",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "bluefin",
+      "breedNote": "仅允许同种繁育",
+      "notes": "藏蓝纺锤身；银腹；两块金黄鳍；叉尾；黑眼",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        30,
+        20,
+        200,
+        110
+      ],
+      "bounds": {
+        "dorsal": [
+          80,
+          20,
+          161,
+          47
+        ],
+        "head": [
+          30,
+          40,
+          80,
+          90
+        ],
+        "skin": [
+          80,
+          47,
+          161,
+          86
+        ],
+        "tail": [
+          161,
+          30,
+          200,
+          105
+        ],
+        "ventral": [
+          80,
+          86,
+          161,
+          110
+        ]
+      },
+      "sha256": "2891f921b214f009d8585d1af53a14f6cf2125de1cfe6e715b48ab15a03bb532",
+      "layerSha256": {
+        "dorsal": "f66bc2ff4edfafe5548dacbc619e80d09a18923733505eae7070a808803ce2b6",
+        "head": "9bb2d6e9c50b65d26de0f9dfb2e44fc4c9ebc7a18b22dbe7e203e0bb9977da69",
+        "skin": "a0c973deab221012cb742fd531eca787c6682b373fd5fc3f56acd559d68cbfaa",
+        "tail": "c89cc21b66ac8462d605a6deaa9d6dd2ab523d1a3320da2e8a3b486757447f8a",
+        "ventral": "6d8a474eb712cba8200b57d101dbe27504a97808ea27f910f3367beaa2d6226f"
+      },
+      "rank": {
+        "body": 33,
+        "dorsal": 7,
+        "head": 46,
+        "skin": 46,
+        "tail": 33,
+        "ventral": 20
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "bream": {
+      "id": "bream",
+      "name": "鳊鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "bream",
+      "breedNote": "仅允许同种繁育",
+      "notes": "灰绿高菱形身；浅色宽腹；尖背鳍与臀鳍；短扇尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        50,
+        5,
+        210,
+        125
+      ],
+      "bounds": {
+        "dorsal": [
+          97,
+          5,
+          155,
+          40
+        ],
+        "head": [
+          50,
+          20,
+          97,
+          115
+        ],
+        "skin": [
+          97,
+          40,
+          174,
+          93
+        ],
+        "tail": [
+          174,
+          50,
+          210,
+          85
+        ],
+        "ventral": [
+          97,
+          93,
+          160,
+          125
+        ]
+      },
+      "sha256": "87e52c54b9bbd4f700698c7f0eb6cb7910b876c504c23b54cc77f36a1f1d747a",
+      "layerSha256": {
+        "dorsal": "079b7a684819cdeb14a2b8207356e959ceef7f0dc652a1f3b2977f47193accc6",
+        "head": "0dba27aeab993569359f80e2df097d44682c7fff62c5b345349e1664846d711b",
+        "skin": "a9f8cd60bf7caa732ad155ed971f8b34bac4a7db8b437021a02f643b28425444",
+        "tail": "5d4645a1edd6066a537098207e1ae4931a26e3bfd99ec384b17c1233f97f7d18",
+        "ventral": "95652d2803e1dcb5bbfc30db2b571b294c273551490b275a9323fafbcba39a91"
+      },
+      "rank": {
+        "body": 50,
+        "dorsal": 24,
+        "head": 11,
+        "skin": 11,
+        "tail": 50,
+        "ventral": 37
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "carp": {
+      "id": "carp",
+      "name": "鲤鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "cyprinid-carp",
+      "breedNote": "鲤鱼品系；可与锦鲤、鲫鱼形成现实记录中的杂交组合",
+      "notes": "橙红高背；橙色腹鳍；黑眼；大鳃盖；口须；叉尾",
+      "width": 272,
+      "height": 152,
+      "bbox": [
+        0,
+        0,
+        272,
+        152
+      ],
+      "bounds": {
+        "dorsal": [
+          79,
+          0,
+          172,
+          45
+        ],
+        "head": [
+          0,
+          30,
+          79,
+          152
+        ],
+        "skin": [
+          79,
+          45,
+          210,
+          111
+        ],
+        "tail": [
+          210,
+          38,
+          272,
+          128
+        ],
+        "ventral": [
+          79,
+          111,
+          210,
+          152
+        ]
+      },
+      "sha256": "6669916476b83890c6a3b3867d16434ebeb235eaee03f6917e6f100d81f7a2c5",
+      "layerSha256": {
+        "dorsal": "c8c704ffa05ec7f7d982092b8e157a0b8cb1874bb4dc5d94052215c3cf8b14c4",
+        "head": "09012f6fcd7a30340d4aa6a2421dfb0ddb3473a44319fa7dcb81a5eeab2bf031",
+        "skin": "ba06e7c93333be97991af60fb147891faa3a7cc9cd1be0802f804b7dc8f64578",
+        "tail": "9c58755a6133f0382b0ca18d610383af2d82398a95c85ca5a518131fcf2c4dd3",
+        "ventral": "79701adfdee358ca9e932fca8c4886a63c8ffc962c7e28c020f9fe68d982423b"
+      },
+      "rank": {
+        "body": 15,
+        "dorsal": 41,
+        "head": 28,
+        "skin": 28,
+        "tail": 15,
+        "ventral": 2
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "catfish": {
+      "id": "catfish",
+      "name": "巨型鲶鱼",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "catfish",
+      "breedNote": "仅允许同种繁育",
+      "notes": "蓝灰椭圆身；深头；短背鳍；小扇尾；低对比口须",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        15,
+        15,
+        200,
+        115
+      ],
+      "bounds": {
+        "dorsal": [
+          69,
+          15,
+          135,
+          44
+        ],
+        "head": [
+          15,
+          40,
+          69,
+          95
+        ],
+        "skin": [
+          69,
+          44,
+          158,
+          89
+        ],
+        "tail": [
+          158,
+          40,
+          200,
+          95
+        ],
+        "ventral": [
+          69,
+          89,
+          145,
+          115
+        ]
+      },
+      "sha256": "9b47ef46a2b4ea5312901b35c4784e2abbd7346442fbbfab7d65619378de6f17",
+      "layerSha256": {
+        "dorsal": "c62930a33e21489406aba90658f56cbcf29a64888c0bdb2f2b5ca0e40f1fc211",
+        "head": "b29795e61d6ad259c70a2240f97158a896275e760ea4d554d4669d9829100f69",
+        "skin": "8a994c6abe82c21338088020269279250fc1cb1dc859160744404966d4b16ca1",
+        "tail": "9d7f7995b5be1015d5aa9cad3e95b222fc8c7d495da48a5f9e8b0947345bc5c9",
+        "ventral": "3bc7f0b8524c17f679f86bc32a201ae2fae7ce1dc4de0b7d4ca42c7d31ed82c8"
+      },
+      "rank": {
+        "body": 32,
+        "dorsal": 6,
+        "head": 45,
+        "skin": 45,
+        "tail": 32,
+        "ventral": 19
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "cobia": {
+      "id": "cobia",
+      "name": "军曹鱼",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "cobia",
+      "breedNote": "仅允许同种繁育",
+      "notes": "褐灰长身；深色竖带；尖背鳍；叉尾；浅鳃盖",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        30,
+        25,
+        210,
+        105
+      ],
+      "bounds": {
+        "dorsal": [
+          83,
+          25,
+          135,
+          49
+        ],
+        "head": [
+          30,
+          45,
+          83,
+          90
+        ],
+        "skin": [
+          83,
+          49,
+          169,
+          84
+        ],
+        "tail": [
+          169,
+          30,
+          210,
+          105
+        ],
+        "ventral": [
+          83,
+          84,
+          155,
+          105
+        ]
+      },
+      "sha256": "bff0aea20ee0ec340bc6f4fee877bbdb0261a80b4189d3f3944b9bfcbaed92c9",
+      "layerSha256": {
+        "dorsal": "44dfd4339c82af7a9d4821afd2eaba5572e6a1039269a7dee7c13deef4ee8927",
+        "head": "b4b894d51f89d703ca468448c99054799b801239c6d6588212a7f47a040208ec",
+        "skin": "92755c15a258136203510b76607d8c573e4b10e84871355531b78d1013e0759a",
+        "tail": "b3061e85e1800c158e31448072290ba82e4c3f493041464059010d89cc0ffc6e",
+        "ventral": "85955b7a158b0a58fc66c620061ea50dd4848ec3400813e04e828d12cdce79ee"
+      },
+      "rank": {
+        "body": 49,
+        "dorsal": 23,
+        "head": 10,
+        "skin": 10,
+        "tail": 49,
+        "ventral": 36
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "coelacanth": {
+      "id": "coelacanth",
+      "name": "腔棘鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "coelacanth",
+      "breedNote": "仅允许同种繁育",
+      "notes": "钢蓝短厚身；浅蓝块斑；肉质叶状成对鳍；三叶式尾部",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        25,
+        15,
+        220,
+        120
+      ],
+      "bounds": {
+        "dorsal": [
+          82,
+          15,
+          175,
+          46
+        ],
+        "head": [
+          25,
+          30,
+          82,
+          100
+        ],
+        "skin": [
+          82,
+          46,
+          176,
+          92
+        ],
+        "tail": [
+          176,
+          50,
+          220,
+          85
+        ],
+        "ventral": [
+          82,
+          92,
+          170,
+          120
+        ]
+      },
+      "sha256": "b4459a337352d3e490c609e7824161d27d03ea6eabcfa8ca73d10bb43e1bf50b",
+      "layerSha256": {
+        "dorsal": "b9831fd966eaa0b2a36487707bd3adbc1b3ac3fd73a6f0359d11d7a5ea6bf40e",
+        "head": "d399f94e45a42ac5776fdf7f7c9a3e3df2402c36c236e12a21434ad73e00fca0",
+        "skin": "5ac89e60ef83531acbeccbfd4181fa77605f16df5cfe72b7ff936ead54df023e",
+        "tail": "d8663ce75369f2d49599eae31d7069eb7609706500892c95e46d2908d0b7cafd",
+        "ventral": "e77e4ee2efef365d070220bb83bcc3f0444b937821f4cf79623372ade98b75c4"
+      },
+      "rank": {
+        "body": 14,
+        "dorsal": 40,
+        "head": 27,
+        "skin": 27,
+        "tail": 14,
+        "ventral": 1
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "croaker": {
+      "id": "croaker",
+      "name": "小黄鱼",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "croaker",
+      "breedNote": "仅允许同种繁育",
+      "notes": "亮金黄色纺锤身；高背鳍；浅金腹；叉尾；黑眼",
+      "width": 277,
+      "height": 133,
+      "bbox": [
+        0,
+        0,
+        277,
+        133
+      ],
+      "bounds": {
+        "dorsal": [
+          81,
+          0,
+          197,
+          39
+        ],
+        "head": [
+          0,
+          18,
+          81,
+          113
+        ],
+        "skin": [
+          81,
+          39,
+          214,
+          98
+        ],
+        "tail": [
+          214,
+          23,
+          277,
+          110
+        ],
+        "ventral": [
+          81,
+          98,
+          213,
+          133
+        ]
+      },
+      "sha256": "1671b9dd24ce5a286a0384f7e2f909c126bac109c797be24c51c016dd5020a24",
+      "layerSha256": {
+        "dorsal": "754f6443481da2b31559436d31b22404c55fe3cd8f0c7903c2254e8ae082d6da",
+        "head": "030f75861e1ed5ef7c1eae1a67c83df1b8143ea1eb1bcdc7d196b632b5b97544",
+        "skin": "23f6882bf34fd1906807a539126633b92a6192d2d3261e55c47d16fe86e5ebc5",
+        "tail": "cb39808a938b8e33069ffd518121ce42d1ca8171b719f83c492cfa2cc2e4cc39",
+        "ventral": "0c396dbe25e88589e77d32c9731ec6117f453a8cc0e97260a8f56a17b704e056"
+      },
+      "rank": {
+        "body": 31,
+        "dorsal": 5,
+        "head": 44,
+        "skin": 44,
+        "tail": 31,
+        "ventral": 18
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "crucian": {
+      "id": "crucian",
+      "name": "鲫鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "cyprinid-carp",
+      "breedNote": "鲫鱼与鲤鱼存在现实记录中的杂交组合",
+      "notes": "金褐宽身；大鳃盖；暗金高背鳍；扇形尾；浅腹",
+      "width": 266,
+      "height": 152,
+      "bbox": [
+        0,
+        0,
+        266,
+        152
+      ],
+      "bounds": {
+        "dorsal": [
+          78,
+          0,
+          175,
+          45
+        ],
+        "head": [
+          0,
+          15,
+          78,
+          152
+        ],
+        "skin": [
+          78,
+          45,
+          205,
+          111
+        ],
+        "tail": [
+          205,
+          30,
+          266,
+          134
+        ],
+        "ventral": [
+          78,
+          111,
+          188,
+          152
+        ]
+      },
+      "sha256": "3d918ba40368eb64dd3776a7191dbbdce58afa4c57bbd29dd12fa848591e0773",
+      "layerSha256": {
+        "dorsal": "8c1b8b32c07be1d355963df79fb5cceaa4a3c6cf6d22ca4e88cd4bffaa697fee",
+        "head": "aeead3b14b0d183a87d771f5040f776a11ff817260eb0384fdff6354170873a0",
+        "skin": "dabdee5f58bdb424fff7b4d900e7d60e014955832c4b9f109a8a32fdad2f1f90",
+        "tail": "c5fee9d112df0798c30ed97a942a9e67a7f738608771b589d3c35b53addcc0a2",
+        "ventral": "c5bba9ebb4fbc8392dc90e0ce6d3107bf0079aed6370407b9202b5148176babd"
+      },
+      "rank": {
+        "body": 48,
+        "dorsal": 22,
+        "head": 9,
+        "skin": 9,
+        "tail": 48,
+        "ventral": 35
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "culter": {
+      "id": "culter",
+      "name": "翘嘴鲌",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "culter",
+      "breedNote": "仅允许同种繁育",
+      "notes": "银灰长身；翘起尖吻；白鳃盖；高背鳍；叉尾",
+      "width": 286,
+      "height": 145,
+      "bbox": [
+        0,
+        0,
+        286,
+        145
+      ],
+      "bounds": {
+        "dorsal": [
+          87,
+          0,
+          196,
+          43
+        ],
+        "head": [
+          0,
+          0,
+          83,
+          120
+        ],
+        "skin": [
+          83,
+          43,
+          221,
+          106
+        ],
+        "tail": [
+          221,
+          37,
+          286,
+          130
+        ],
+        "ventral": [
+          83,
+          106,
+          221,
+          145
+        ]
+      },
+      "sha256": "1e976bef6f019226d1bd32a8b0d5e92515599a8a90c8b4c13c64b1edc0b0919b",
+      "layerSha256": {
+        "dorsal": "8944444cf4ca164de346939a9b5a64835a77f31d716d8ebbd3798fb3d1318430",
+        "head": "44cda287c8c3e86507897226c0b096091986371d5eecd06951a87de13f73fe87",
+        "skin": "d8c304126bbd9dbddb56e5e16de6cf000a0b3c88d0993058d9b71fe9fcfc1ef9",
+        "tail": "cb526442a3533f41affe8e43fbb26a4900bfc8bf2c31ee9ee60d7888cb1b6656",
+        "ventral": "8d2c0deab0f5a1ce9c69ada5b5d53e21f31ca5806dfffc1ac5fadc5316b442a5"
+      },
+      "rank": {
+        "body": 13,
+        "dorsal": 39,
+        "head": 26,
+        "skin": 26,
+        "tail": 13,
+        "ventral": 52
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "dragonfish": {
+      "id": "dragonfish",
+      "name": "深海龙鱼",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "dragonfish",
+      "breedNote": "仅允许同种繁育",
+      "notes": "墨蓝细长身；头顶发光钓灯；橙色牙口；暗色叉尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        25,
+        15,
+        195,
+        110
+      ],
+      "bounds": {
+        "dorsal": null,
+        "head": [
+          25,
+          15,
+          75,
+          95
+        ],
+        "skin": [
+          75,
+          50,
+          156,
+          85
+        ],
+        "tail": [
+          156,
+          40,
+          195,
+          105
+        ],
+        "ventral": [
+          75,
+          85,
+          156,
+          110
+        ]
+      },
+      "sha256": "7c2e6679438afbc2afca8594d603f6a995acb7398776533fb5f1435bff8bbed0",
+      "layerSha256": {
+        "dorsal": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "head": "87e797f1e99494d6badd4a96c00eacc2f2947098a387dbbb7678fd7c8032a403",
+        "skin": "3252bbe4952add9b7d0b98e30214d63ca58f671dbb7fd84af800dd35c135d436",
+        "tail": "2bd4dea6c91afe6fda4ebfc65f57189da73489aa96388dbcee3b9b0a1a700dc4",
+        "ventral": "7b04193b7bbf6fe723f6cb878be4be517bde08aada7e5830b09bc1181b985848"
+      },
+      "rank": {
+        "body": 30,
+        "dorsal": 4,
+        "head": 43,
+        "skin": 43,
+        "tail": 30,
+        "ventral": 17
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "dragonpearl": {
+      "id": "dragonpearl",
+      "name": "龙宫宝珠",
+      "family": "orb",
+      "group": "orb",
+      "breedGroup": "dragonpearl",
+      "breedNote": "仅允许同种繁育",
+      "notes": "青绿色圆珠；白色高光；金色离散环绕光点",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        55,
+        20,
+        170,
+        115
+      ],
+      "bounds": {
+        "dorsal": null,
+        "head": null,
+        "skin": [
+          55,
+          20,
+          170,
+          115
+        ],
+        "tail": null,
+        "ventral": null
+      },
+      "sha256": "2f3071f0355b81792c054e2eb8ac12bafb26e91a2f5c728128176b66609553cf",
+      "layerSha256": {
+        "dorsal": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "head": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "skin": "27fccf3882f7468888a9ccf0c983f442cfc377ce03852991045cea6619bebeb4",
+        "tail": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "ventral": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241"
+      },
+      "rank": {
+        "body": 47,
+        "dorsal": 21,
+        "head": 8,
+        "skin": 8,
+        "tail": 47,
+        "ventral": 34
+      },
+      "tailEnabled": false,
+      "referenceExact": true
+    },
+    "ghostray": {
+      "id": "ghostray",
+      "name": "幽灵魟",
+      "family": "ray",
+      "group": "fish",
+      "breedGroup": "ghostray",
+      "breedNote": "仅允许同种繁育",
+      "notes": "银蓝菱形鳐盘；白色翼缘；中央黑眼；细长鞭尾；周围幽光",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        40,
+        20,
+        220,
+        110
+      ],
+      "bounds": {
+        "dorsal": null,
+        "head": [
+          40,
+          50,
+          85,
+          85
+        ],
+        "skin": [
+          75,
+          20,
+          220,
+          110
+        ],
+        "tail": null,
+        "ventral": null
+      },
+      "sha256": "55795f3524b4133fd1983b7bdef4d23b79735884bdde1227ae89ce7a7a4ead17",
+      "layerSha256": {
+        "dorsal": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "head": "5af0278366fa6550e905daa8b1fcc6e457bbeed61ecd259fdca09e6a326114aa",
+        "skin": "3caee883933d209a1d34a8e29dd9f60ee09db2c7cb7dca7580e02c0a58ec78ce",
+        "tail": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "ventral": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241"
+      },
+      "rank": {
+        "body": 12,
+        "dorsal": 38,
+        "head": 25,
+        "skin": 25,
+        "tail": 12,
+        "ventral": 51
+      },
+      "tailEnabled": false,
+      "referenceExact": true
+    },
+    "giantquid": {
+      "id": "giantquid",
+      "name": "巨型鱿鱼",
+      "family": "squid",
+      "group": "cephalopod",
+      "breedGroup": "giantquid",
+      "breedNote": "仅允许同种繁育",
+      "notes": "粉红长胴体；侧鳍；白眼黑瞳；左侧长触腕与吸盘块",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        5,
+        20,
+        190,
+        120
+      ],
+      "bounds": {
+        "dorsal": null,
+        "head": [
+          76,
+          40,
+          104,
+          85
+        ],
+        "skin": [
+          104,
+          20,
+          190,
+          90
+        ],
+        "tail": null,
+        "ventral": [
+          5,
+          30,
+          76,
+          120
+        ]
+      },
+      "sha256": "dd18599c22f2892e305eddbe885df15488522b8c186c35739773ea7b21a10d66",
+      "layerSha256": {
+        "dorsal": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "head": "04dd9ef47d4350c622ecb810ad6ea8a6c744ec9eec467ca58d07c69d2167dde4",
+        "skin": "6b2d35704aef65021c6dc1f7a066a5c205134d53fb0b261c3dc5f6d24691825e",
+        "tail": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "ventral": "37ed84cab0208c7892e0f36b3e9c2e4889c5a9f861b8b49f6d194a57a086f20b"
+      },
+      "rank": {
+        "body": 29,
+        "dorsal": 3,
+        "head": 42,
+        "skin": 42,
+        "tail": 29,
+        "ventral": 16
+      },
+      "tailEnabled": false,
+      "referenceExact": true
+    },
+    "grass": {
+      "id": "grass",
+      "name": "草鱼",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "grass",
+      "breedNote": "仅允许同种繁育",
+      "notes": "橄榄长方身；浅色长腹；低背鳍；竖黑眼；叉尾",
+      "width": 287,
+      "height": 90,
+      "bbox": [
+        0,
+        0,
+        287,
+        90
+      ],
+      "bounds": {
+        "dorsal": [
+          84,
+          0,
+          167,
+          27
+        ],
+        "head": [
+          0,
+          16,
+          84,
+          78
+        ],
+        "skin": [
+          84,
+          27,
+          221,
+          66
+        ],
+        "tail": [
+          221,
+          7,
+          287,
+          88
+        ],
+        "ventral": [
+          84,
+          66,
+          221,
+          90
+        ]
+      },
+      "sha256": "4edc09f448b81b95187fc05ab097546129ae71fce07b45f73230cd9e5158f294",
+      "layerSha256": {
+        "dorsal": "3340ba32c37d77ec25b30ad15bf6b19d8faea4947df800d18f84ae24e4a251ce",
+        "head": "ce01c6e79e018752e7cbf69f7b50fcea916bff9a24b2f5659f07637091ffc54b",
+        "skin": "7d19ccd611c5e55ce4a6dae700b27cd1ff37de73d2b9ad6bebfba5b75b96cdc9",
+        "tail": "70c333f02ca74344875a744ff9be97b55cbe6d6cc6ba9b68aa3e6cd49560d875",
+        "ventral": "457fe1344dc95d58800443722c09eb0d66e55946571f358ab1233d836c59f788"
+      },
+      "rank": {
+        "body": 46,
+        "dorsal": 20,
+        "head": 7,
+        "skin": 7,
+        "tail": 46,
+        "ventral": 33
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "grouper": {
+      "id": "grouper",
+      "name": "石斑鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "grouper",
+      "breedNote": "仅允许同种繁育",
+      "notes": "褐灰厚身；不规则深斑；厚唇；高背鳍；扇尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        35,
+        15,
+        195,
+        115
+      ],
+      "bounds": {
+        "dorsal": [
+          82,
+          15,
+          159,
+          44
+        ],
+        "head": [
+          35,
+          30,
+          82,
+          100
+        ],
+        "skin": [
+          82,
+          44,
+          159,
+          89
+        ],
+        "tail": [
+          159,
+          40,
+          195,
+          95
+        ],
+        "ventral": [
+          82,
+          89,
+          159,
+          115
+        ]
+      },
+      "sha256": "a8bcb3ad7d32887899073ebb70cc0b705d6d00b96390032fb80a96f183d1ea03",
+      "layerSha256": {
+        "dorsal": "5bfb350796f0204ec7217f2276243a65b57f43f93589d840dbab96c6644a57c9",
+        "head": "6564b936190e2eec6968072470cbaf56603a4c1b906bb61f4258197bbc501a79",
+        "skin": "592560e69473c83db4dcea59fce81cec38c8cd0606f3c8d47f3074cf4a0c1e57",
+        "tail": "06ee32a3f93e2eb7462557b3f9d777b3776aa2c63005aacbfd36421ff3352381",
+        "ventral": "3925d5a0edfebe162ebc46963f47e4c15839bc86b7d128cd39dc1598f99d4551"
+      },
+      "rank": {
+        "body": 11,
+        "dorsal": 37,
+        "head": 24,
+        "skin": 24,
+        "tail": 11,
+        "ventral": 50
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "halibut": {
+      "id": "halibut",
+      "name": "大比目鱼",
+      "family": "flat",
+      "group": "fish",
+      "breedGroup": "halibut",
+      "breedNote": "仅允许同种繁育",
+      "notes": "沙褐扁椭圆身；褐色散点；边缘连续鳍；小头；短尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        25,
+        10,
+        205,
+        120
+      ],
+      "bounds": {
+        "dorsal": null,
+        "head": [
+          25,
+          44,
+          70,
+          90
+        ],
+        "skin": [
+          40,
+          10,
+          205,
+          120
+        ],
+        "tail": null,
+        "ventral": null
+      },
+      "sha256": "af3c6066ec5340b00fb315208176146c1b5d6ecdb3ab919235e705820e4666a9",
+      "layerSha256": {
+        "dorsal": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "head": "3e944c9338bfc582526e54d0a60683b72c4b9df01afa41db63474a41200367c0",
+        "skin": "85d75c3fd435eea3a6a69fa08ba9ebaf7c42233b94ee2fb99b5fe88fca6db500",
+        "tail": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "ventral": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241"
+      },
+      "rank": {
+        "body": 28,
+        "dorsal": 2,
+        "head": 41,
+        "skin": 41,
+        "tail": 28,
+        "ventral": 15
+      },
+      "tailEnabled": false,
+      "referenceExact": true
+    },
+    "jackmack": {
+      "id": "jackmack",
+      "name": "竹荚鱼",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "jackmack",
+      "breedNote": "仅允许同种繁育",
+      "notes": "蓝青长身；金色纵侧线；银腹；金色高背鳍和叉尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        30,
+        25,
+        200,
+        105
+      ],
+      "bounds": {
+        "dorsal": [
+          80,
+          25,
+          130,
+          49
+        ],
+        "head": [
+          30,
+          45,
+          80,
+          90
+        ],
+        "skin": [
+          80,
+          49,
+          161,
+          84
+        ],
+        "tail": [
+          161,
+          30,
+          200,
+          105
+        ],
+        "ventral": [
+          80,
+          84,
+          161,
+          105
+        ]
+      },
+      "sha256": "d5b4543b0d0994d1ecab6a7203b7f0facf6bbfaffcd101f7a6b5490a07597474",
+      "layerSha256": {
+        "dorsal": "871a5ce82c00e6127e91c910a263a3db145e988270353544a2529744c75444a0",
+        "head": "3fb4c9601388cdcb351a2adbdd49aa64520690ea64274b65eefa2d21a10860da",
+        "skin": "084b095b6ca3610503c146749e442c568ae96df84691dc3b3b734c67f2790572",
+        "tail": "e86881c99c541e27cce82916a5be829f90f25343c8ee2609c9eadd5d4db27fe4",
+        "ventral": "e6050f5d688c6f576111b3d18388901b9bd48e38cccd16f1fd4c4280090fa657"
+      },
+      "rank": {
+        "body": 45,
+        "dorsal": 19,
+        "head": 6,
+        "skin": 6,
+        "tail": 45,
+        "ventral": 32
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "koi": {
+      "id": "koi",
+      "name": "黄金锦鲤",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "cyprinid-carp",
+      "breedNote": "锦鲤按鲤鱼观赏品系处理",
+      "notes": "金黄底色；乳白与橙色大斑；黑眼；金叉尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        30,
+        25,
+        200,
+        110
+      ],
+      "bounds": {
+        "dorsal": [
+          80,
+          40,
+          161,
+          50
+        ],
+        "head": [
+          30,
+          40,
+          80,
+          95
+        ],
+        "skin": [
+          80,
+          50,
+          161,
+          88
+        ],
+        "tail": [
+          161,
+          25,
+          200,
+          110
+        ],
+        "ventral": [
+          80,
+          88,
+          161,
+          110
+        ]
+      },
+      "sha256": "a88ce79d6bf4aced792d977d2bdbcd0a2036d5f42b524113d50acf5c4f4fb8c7",
+      "layerSha256": {
+        "dorsal": "e368cf92f687bf92e20ebd0140489306c7c67baa692cf390bcfec0e9c43458a8",
+        "head": "28f6948a42865c17fa774a6eefa4075ce83152887f8259ca7d048731c2dbe946",
+        "skin": "c37a9464844f9207f010d07fd29b2544ea43c5fdc128ef6b86a3e62cf758cce6",
+        "tail": "397c798877ac81e330eb9c80f3986ccf71e3d9c6f42ed2e4d92fa9fce408e1ea",
+        "ventral": "aa8e40d487e02582be1b316ba3648b3f7c9ee794249c201c9d2727933517de3e"
+      },
+      "rank": {
+        "body": 10,
+        "dorsal": 36,
+        "head": 23,
+        "skin": 23,
+        "tail": 10,
+        "ventral": 49
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "leviathan": {
+      "id": "leviathan",
+      "name": "海王·利维坦",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "leviathan",
+      "breedNote": "仅允许同种繁育",
+      "notes": "青蓝巨身；浅蓝腹；金色角冠与棘背；金边叉尾；口须",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        10,
+        10,
+        215,
+        120
+      ],
+      "bounds": {
+        "dorsal": [
+          70,
+          10,
+          168,
+          42
+        ],
+        "head": [
+          10,
+          10,
+          70,
+          105
+        ],
+        "skin": [
+          70,
+          42,
+          168,
+          91
+        ],
+        "tail": [
+          168,
+          10,
+          215,
+          120
+        ],
+        "ventral": [
+          70,
+          91,
+          168,
+          120
+        ]
+      },
+      "sha256": "759f711f2d3a9693ab85079158549c2a1a9cea646880e7046d306d2a2009500c",
+      "layerSha256": {
+        "dorsal": "96d9bf22a24963292a851b46694815031a92b0c128fe57233cffdaa15d059c30",
+        "head": "c46f77aac36a3bd03c348383a680ddd152ab2159a6253caa00bd12a19ce22b3d",
+        "skin": "4faa7a3d302873904605f4b8f8c140a5f9912738048b1fc8ab4cde909d5776e8",
+        "tail": "842dcb12af61b59962b08e0366fc3e80de84b6a3391602a26867a74d48ce1f69",
+        "ventral": "926cdd4f8c05c26dd960a88f372642c1f139e5b059cd087ee4d10ecd8951fa50"
+      },
+      "rank": {
+        "body": 27,
+        "dorsal": 1,
+        "head": 40,
+        "skin": 40,
+        "tail": 27,
+        "ventral": 14
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "loach": {
+      "id": "loach",
+      "name": "泥鳅",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "loach",
+      "breedNote": "仅允许同种繁育",
+      "notes": "棕色极细长身；浅色纵线；短须；小眼；低鳍短尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        25,
+        60,
+        215,
+        85
+      ],
+      "bounds": {
+        "dorsal": [
+          81,
+          60,
+          170,
+          68
+        ],
+        "head": [
+          25,
+          60,
+          81,
+          85
+        ],
+        "skin": [
+          81,
+          68,
+          172,
+          79
+        ],
+        "tail": [
+          172,
+          60,
+          215,
+          85
+        ],
+        "ventral": [
+          81,
+          79,
+          170,
+          85
+        ]
+      },
+      "sha256": "8277a0b29ce42a3a42809c893a603600bb75398231adf4ed50d0c4945e9bbba9",
+      "layerSha256": {
+        "dorsal": "0836072b4b244f9f45e79ebb8bee6fa71a5ba7eeaa4ccf06abfbefd16ea7d291",
+        "head": "e1beccd1c86b00e6493cffdaad11eee52e48d6001b8889829d69f6132369ebd2",
+        "skin": "97829ae59701dcbe86e45b1f5cdb24c66ebf7ec334f2581ea425d739a3b6d9f1",
+        "tail": "c597c4a059c3a11ca9a1f6e445e61b2fa09565656481969143ab7d193483b2ef",
+        "ventral": "5e92adcad3b5c4afe506f76c1da75703d86f318dc6ac34fa1fd1e13775fc2d6b"
+      },
+      "rank": {
+        "body": 44,
+        "dorsal": 18,
+        "head": 5,
+        "skin": 5,
+        "tail": 44,
+        "ventral": 31
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "mackerel": {
+      "id": "mackerel",
+      "name": "马鲛鱼",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "mackerel",
+      "breedNote": "仅允许同种繁育",
+      "notes": "蓝灰长身；五条深蓝竖纹；浅腹；叉尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        30,
+        25,
+        210,
+        105
+      ],
+      "bounds": {
+        "dorsal": [
+          85,
+          25,
+          130,
+          49
+        ],
+        "head": [
+          30,
+          50,
+          83,
+          90
+        ],
+        "skin": [
+          83,
+          49,
+          169,
+          84
+        ],
+        "tail": [
+          169,
+          35,
+          210,
+          100
+        ],
+        "ventral": [
+          83,
+          84,
+          150,
+          105
+        ]
+      },
+      "sha256": "c72865189a64e12a9b30409b658257fa74a349f00b2c9103b77ae1f62f23201b",
+      "layerSha256": {
+        "dorsal": "14a372b072530a72047095e3c692ceef4875a5fae8ebb4ecf51829d832900d4f",
+        "head": "bf2003dee1ae8f2077725d7fe3c676b8fb8b7aeada42d359071d3fd984dc02ab",
+        "skin": "87aaa7e9120ad7d162f6b688b5d3b114fd84aad12296bf742dee80ef5f3d134d",
+        "tail": "a41bf8cf14729577ca061cdda88eb86dfaf9f053d805d18770a984237b63e044",
+        "ventral": "1fceb75647e2246a19127a3e0f9c097b194acf7b6fd599f14ff6f93f711225f6"
+      },
+      "rank": {
+        "body": 9,
+        "dorsal": 35,
+        "head": 22,
+        "skin": 22,
+        "tail": 9,
+        "ventral": 48
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "mahimahi": {
+      "id": "mahimahi",
+      "name": "鬼头刀",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "mahimahi",
+      "breedNote": "仅允许同种繁育",
+      "notes": "青绿色长身；高额；蓝色大块斑；长背鳍；叉尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        25,
+        20,
+        205,
+        110
+      ],
+      "bounds": {
+        "dorsal": [
+          78,
+          20,
+          160,
+          47
+        ],
+        "head": [
+          25,
+          20,
+          78,
+          95
+        ],
+        "skin": [
+          78,
+          47,
+          164,
+          86
+        ],
+        "tail": [
+          164,
+          25,
+          205,
+          110
+        ],
+        "ventral": [
+          78,
+          86,
+          145,
+          110
+        ]
+      },
+      "sha256": "38a03d68312396d4048dd28ecb5ddcaf7f6d000f3fae237e7bb573423fa77759",
+      "layerSha256": {
+        "dorsal": "901c119383715d924c40ce401cb6facc13d0b64553e44efac4dc2960d673c297",
+        "head": "01ab4bb3a8b43ee0c664050913bcea8771b8eb0382f794a7e9b39b409f49d798",
+        "skin": "5cbe9e7744d63a8e20e1261af5fc1c264c3db8841b378d3bd0ece5cb2861c02d",
+        "tail": "770a5d5a98fd989e1c79fb3acead10e030a5e11c7fb09e9f180a20e9d60b6f07",
+        "ventral": "9d0fa075e38f5c70a4c474f7d63c9d6a4e37689fa06eebbd3f3c07c3ea1c6ace"
+      },
+      "rank": {
+        "body": 26,
+        "dorsal": 52,
+        "head": 39,
+        "skin": 39,
+        "tail": 26,
+        "ventral": 13
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "mandarin": {
+      "id": "mandarin",
+      "name": "鳜鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "mandarin",
+      "breedNote": "仅允许同种繁育",
+      "notes": "草绿短身；深绿散斑；高尖背鳍；浅腹；短扇尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        40,
+        20,
+        190,
+        110
+      ],
+      "bounds": {
+        "dorsal": [
+          84,
+          20,
+          155,
+          47
+        ],
+        "head": [
+          40,
+          35,
+          84,
+          95
+        ],
+        "skin": [
+          84,
+          47,
+          156,
+          86
+        ],
+        "tail": [
+          156,
+          50,
+          190,
+          85
+        ],
+        "ventral": [
+          84,
+          86,
+          155,
+          110
+        ]
+      },
+      "sha256": "7656f4cdbeba2b6a9845eb92ebdd3bb7d0d279bd444cbf192ff7d5fdb9f1db82",
+      "layerSha256": {
+        "dorsal": "c6a4401f1cc615490ff13e0f829e4550f37853f7e74ecdc945c7f62a0519055a",
+        "head": "07e508f64d95f1e5153eeb3f018887a0089924bda719ca370ba9c41fa273e290",
+        "skin": "77f05e2c217bdce5dddc1e2c2a928867ed772152b155d8e782ab9ecadba20c3d",
+        "tail": "683fa14af43d8993f06b32cfe7fede52db27fde246ded20158823015d6fa6d65",
+        "ventral": "a80d39c9d331c5d65f817c84b151c1c3842c3eff867e508ead79f6dfed27edf3"
+      },
+      "rank": {
+        "body": 43,
+        "dorsal": 17,
+        "head": 4,
+        "skin": 4,
+        "tail": 43,
+        "ventral": 30
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "megamouth": {
+      "id": "megamouth",
+      "name": "巨口鲨",
+      "family": "shark",
+      "group": "fish",
+      "breedGroup": "megamouth",
+      "breedNote": "仅允许同种繁育",
+      "notes": "灰蓝鲨形身；宽大平口；三道鳃裂；三角背鳍；异形叉尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        15,
+        10,
+        210,
+        120
+      ],
+      "bounds": {
+        "dorsal": [
+          72,
+          10,
+          166,
+          42
+        ],
+        "head": [
+          15,
+          35,
+          72,
+          100
+        ],
+        "skin": [
+          72,
+          42,
+          166,
+          91
+        ],
+        "tail": [
+          166,
+          15,
+          210,
+          120
+        ],
+        "ventral": [
+          72,
+          91,
+          166,
+          115
+        ]
+      },
+      "sha256": "0b12e2bb1eed452b2ebf6670dda44d69623f615341fba564a200fbf69bddb21f",
+      "layerSha256": {
+        "dorsal": "bf80bc1efa0eb5fbdffe2fce8fd163a2764383abdd615d82e7165310aa73244b",
+        "head": "c5c42a8bc2a1df4e19f617574d329bcaff57e0d9a7730cf6879d78085b7b854c",
+        "skin": "50a8566b04cc477c31b6457bc35276cebaa9f013a97316490fde013ff990388d",
+        "tail": "e2a8c2d6420fa1aa313520b73f2f39ab338573b18a7b953c783e86903ded86ac",
+        "ventral": "b9deab77ab7c01101e86cca3ada03e432514870738562d7f0c428a04bb59edee"
+      },
+      "rank": {
+        "body": 8,
+        "dorsal": 34,
+        "head": 21,
+        "skin": 21,
+        "tail": 8,
+        "ventral": 47
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "minnow": {
+      "id": "minnow",
+      "name": "麦穗鱼",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "minnow",
+      "breedNote": "仅允许同种繁育",
+      "notes": "棕金小长身；宽黑纵向头鳃带；方背鳍与腹鳍；小叉尾",
+      "width": 138,
+      "height": 68,
+      "bbox": [
+        0,
+        0,
+        138,
+        68
+      ],
+      "bounds": {
+        "dorsal": [
+          41,
+          0,
+          81,
+          20
+        ],
+        "head": [
+          0,
+          13,
+          41,
+          54
+        ],
+        "skin": [
+          41,
+          20,
+          107,
+          50
+        ],
+        "tail": [
+          107,
+          13,
+          138,
+          52
+        ],
+        "ventral": [
+          41,
+          50,
+          96,
+          68
+        ]
+      },
+      "sha256": "bb8e4a93f8d1d3217ace4ed0c6fae3aef6883c1b4fe78a11d94d62d0d57b095c",
+      "layerSha256": {
+        "dorsal": "4b6a605bbf245f0bedee3b2c76b8f5d4b95310a1ff7440a81bc6e6e8302b4bce",
+        "head": "1dee844a1ba7fff7bf5ea34e6ab367f91a0b9c425bc483e697183e8488219226",
+        "skin": "ce50c278abc888098111ebee93ec9a1ef41b4814b67a9dd928e52109cc1358ed",
+        "tail": "b2b3c0762c55f9a240783f1f283c9aed84f7bda9673e57ec4605670c749417b2",
+        "ventral": "1eca2b491e4ddb7b237e725dfdf27608fa3391fced64cd7679f0957345a3aba8"
+      },
+      "rank": {
+        "body": 25,
+        "dorsal": 51,
+        "head": 38,
+        "skin": 38,
+        "tail": 25,
+        "ventral": 12
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "moonkoi": {
+      "id": "moonkoi",
+      "name": "月光鲤",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "moonkoi",
+      "breedNote": "仅允许同种繁育",
+      "notes": "月白长身；淡蓝块斑；蓝色轮廓；白色叉尾与外光",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        25,
+        20,
+        205,
+        115
+      ],
+      "bounds": {
+        "dorsal": [
+          78,
+          35,
+          164,
+          48
+        ],
+        "head": [
+          25,
+          35,
+          78,
+          100
+        ],
+        "skin": [
+          78,
+          48,
+          164,
+          90
+        ],
+        "tail": [
+          164,
+          20,
+          205,
+          115
+        ],
+        "ventral": [
+          78,
+          90,
+          164,
+          115
+        ]
+      },
+      "sha256": "47b4f435cb20c1af2272a6b3e67718b1534088875d8e71af04dd319e7c2af2b4",
+      "layerSha256": {
+        "dorsal": "aee2758fdb29a496df9ba81dea3e6e4272d9e22efd684ed0ff5c86ac869f6b64",
+        "head": "87cca8bc6c537de45d3ffb0d7a4bb164746da71f4ae79cf86a33a42ba5546419",
+        "skin": "a225264374fa76672f3ed7826abc2d3ba38abec494b967515d024ba416871723",
+        "tail": "2894e1d5afa9815b1cdbf071e11514b7f32de52108755b7579c3d2e0e99d7c1c",
+        "ventral": "8eb2c1aa58a3ffaeed7d53965bae4c73fa79cd66a7566598dcb285690bbb3b8e"
+      },
+      "rank": {
+        "body": 42,
+        "dorsal": 16,
+        "head": 3,
+        "skin": 3,
+        "tail": 42,
+        "ventral": 29
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "mullet": {
+      "id": "mullet",
+      "name": "鲻鱼",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "mullet",
+      "breedNote": "仅允许同种繁育",
+      "notes": "银灰长身；水平灰侧线；双背部起伏；尖叉尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        25,
+        25,
+        205,
+        105
+      ],
+      "bounds": {
+        "dorsal": [
+          78,
+          25,
+          130,
+          49
+        ],
+        "head": [
+          25,
+          45,
+          78,
+          90
+        ],
+        "skin": [
+          78,
+          49,
+          164,
+          84
+        ],
+        "tail": [
+          164,
+          30,
+          205,
+          105
+        ],
+        "ventral": [
+          78,
+          84,
+          164,
+          105
+        ]
+      },
+      "sha256": "18a0513f243d561eabe8e5994bfab5f67ccb263ad5f9a4b397dd9eaeb3e1e69a",
+      "layerSha256": {
+        "dorsal": "5f218888f4c4ee2c73f170b84a2cc867be52b95ff12517d953d5fcb806a20b4a",
+        "head": "3362f377151eb59d7a89e38f906b4ad227ba895c8929e32a2defc5fa6b900a78",
+        "skin": "adaec5d93f9722254e75657171072bc1f9df5fa15b0da4957fb0f4f84d23d014",
+        "tail": "caed7f26849975fdda68874e248934b310576270d983fc3f2cddcdb5c54754d2",
+        "ventral": "696794ad9cec034042c14fb58f4c1ce5975bce0389c514ead59682d80403a0a4"
+      },
+      "rank": {
+        "body": 7,
+        "dorsal": 33,
+        "head": 20,
+        "skin": 20,
+        "tail": 7,
+        "ventral": 46
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "octo": {
+      "id": "octo",
+      "name": "小章鱼",
+      "family": "octopus",
+      "group": "cephalopod",
+      "breedGroup": "octo",
+      "breedNote": "仅允许同种繁育",
+      "notes": "粉紫圆头；白眼；下方八腕轮廓；腕间空隙与吸盘块",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        10,
+        10,
+        175,
+        120
+      ],
+      "bounds": {
+        "dorsal": null,
+        "head": [
+          73,
+          15,
+          98,
+          74
+        ],
+        "skin": [
+          60,
+          10,
+          155,
+          74
+        ],
+        "tail": null,
+        "ventral": [
+          10,
+          74,
+          175,
+          120
+        ]
+      },
+      "sha256": "653d03d441f0fd1ad9863274aed9bc7ba2e67da6836a2d436746e39989a95d82",
+      "layerSha256": {
+        "dorsal": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "head": "9469689eda7307bbd44491b0cc8082449beae1b1c52b986bec5650a94f48aa4f",
+        "skin": "7ac1102cc7e23d3e8b38062f6c854155202170ee548df37c50182df071c4ad84",
+        "tail": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "ventral": "fd9a85dd40c0c1381682a21d77a24a69c293021dae808963ec51b3d452a94e5f"
+      },
+      "rank": {
+        "body": 24,
+        "dorsal": 50,
+        "head": 37,
+        "skin": 37,
+        "tail": 24,
+        "ventral": 11
+      },
+      "tailEnabled": false,
+      "referenceExact": true
+    },
+    "pearl": {
+      "id": "pearl",
+      "name": "深海珍珠贝",
+      "family": "shell",
+      "group": "shell",
+      "breedGroup": "pearl",
+      "breedNote": "仅允许同种繁育",
+      "notes": "紫色双片贝壳；放射壳纹；中央乳白珍珠与高光",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        45,
+        15,
+        180,
+        120
+      ],
+      "bounds": {
+        "dorsal": null,
+        "head": null,
+        "skin": [
+          45,
+          15,
+          180,
+          120
+        ],
+        "tail": null,
+        "ventral": null
+      },
+      "sha256": "1e31d47fa4438c6320590566bac0e15836471281535fc098fd097be71f2c7a56",
+      "layerSha256": {
+        "dorsal": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "head": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "skin": "e8e67655042bd5266b2486b0df0e19fd5028923d3915f728e289741ef6c2f7e3",
+        "tail": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "ventral": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241"
+      },
+      "rank": {
+        "body": 41,
+        "dorsal": 15,
+        "head": 2,
+        "skin": 2,
+        "tail": 41,
+        "ventral": 28
+      },
+      "tailEnabled": false,
+      "referenceExact": true
+    },
+    "riverperch": {
+      "id": "riverperch",
+      "name": "河鲈",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "riverperch",
+      "breedNote": "仅允许同种繁育",
+      "notes": "橄榄黄高身；多条黑色竖带；橙红腹尾鳍；黑眼",
+      "width": 269,
+      "height": 149,
+      "bbox": [
+        0,
+        0,
+        269,
+        149
+      ],
+      "bounds": {
+        "dorsal": [
+          79,
+          0,
+          165,
+          44
+        ],
+        "head": [
+          0,
+          32,
+          79,
+          139
+        ],
+        "skin": [
+          79,
+          44,
+          208,
+          109
+        ],
+        "tail": [
+          208,
+          29,
+          269,
+          140
+        ],
+        "ventral": [
+          79,
+          109,
+          208,
+          149
+        ]
+      },
+      "sha256": "5b8817d0872b6fbb3b7f2c509d2808d434ff6479e776175d65edf354ff23c94a",
+      "layerSha256": {
+        "dorsal": "475c60ccb89ee2b8d657a4b16f84f92a8bcd493b05eac47d92c943686b959003",
+        "head": "cb6b2dd49c22ba86e8c5f4c369aaae762bbab5dacf0ba6a01ee82fe161f97a1a",
+        "skin": "77b11217810be8c1306c02f2535a06a9232a18f252729abfda5204902a6546a6",
+        "tail": "493af5ca7e36707aea203be5333d788c1dad2c16774a7a64545961c6071ab688",
+        "ventral": "a47f350cabf02642d406dc309a5da5d1135f0967cf7c90657202871e407083dd"
+      },
+      "rank": {
+        "body": 6,
+        "dorsal": 32,
+        "head": 19,
+        "skin": 19,
+        "tail": 6,
+        "ventral": 45
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "rubysnapper": {
+      "id": "rubysnapper",
+      "name": "金目鲷",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "rubysnapper",
+      "breedNote": "仅允许同种繁育",
+      "notes": "宝石红身；浅粉腹；金边大黑眼；尖背鳍；红叉尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        35,
+        15,
+        195,
+        115
+      ],
+      "bounds": {
+        "dorsal": [
+          82,
+          15,
+          159,
+          44
+        ],
+        "head": [
+          35,
+          35,
+          82,
+          95
+        ],
+        "skin": [
+          82,
+          44,
+          159,
+          89
+        ],
+        "tail": [
+          159,
+          20,
+          195,
+          115
+        ],
+        "ventral": [
+          82,
+          89,
+          159,
+          115
+        ]
+      },
+      "sha256": "9bb074cc95216c7eeb7cc89fe993b70b3367ea91b694255e0157acd3f8fc59ca",
+      "layerSha256": {
+        "dorsal": "549efca98d639529c13285f8e2d45daad9897681668091f251d6d317d08e0674",
+        "head": "5cbfab4cc463a389acfe435421d3245a0d3a778b77e9b7591259d981a5e162ae",
+        "skin": "9c77929640d974481bd5b75836e095222fec9ecde35f6678dddf04ba11233daf",
+        "tail": "2c55d35469b5b05b535868d00a5acf9c92262228183a0c5a750795ab464c2104",
+        "ventral": "3e9293e8e6dce3d9228f4dfee1335e542df2b4465a4599d62d4335f0c19ca388"
+      },
+      "rank": {
+        "body": 23,
+        "dorsal": 49,
+        "head": 36,
+        "skin": 36,
+        "tail": 23,
+        "ventral": 10
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "sardine": {
+      "id": "sardine",
+      "name": "沙丁鱼",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "sardine",
+      "breedNote": "仅允许同种繁育",
+      "notes": "蓝色长背；银白腹；黑眼白鳃；蓝色腹鳍与叉尾",
+      "width": 293,
+      "height": 102,
+      "bbox": [
+        0,
+        0,
+        293,
+        102
+      ],
+      "bounds": {
+        "dorsal": [
+          85,
+          0,
+          226,
+          30
+        ],
+        "head": [
+          0,
+          16,
+          85,
+          89
+        ],
+        "skin": [
+          85,
+          30,
+          226,
+          75
+        ],
+        "tail": [
+          226,
+          10,
+          293,
+          90
+        ],
+        "ventral": [
+          175,
+          75,
+          218,
+          102
+        ]
+      },
+      "sha256": "aeb2d66b61e4520f6cbe22018d0f9cb0e29914f364b767ad866da5df04c69eaf",
+      "layerSha256": {
+        "dorsal": "826789b695df00a07df96f9e23737460a20e80eca9517ee91a61b3b4a8ffdfbd",
+        "head": "b994715f196345772acbd654f5112b0d88c1896152ae5b94ee7e3ef26b69865e",
+        "skin": "ecc29a4cdf67fec241a7315eb319caf7954ab53a191d2cb0999ae1a66bdc12b5",
+        "tail": "95794a2907d93eb1d4e0ff8a6f835facb93bb0e17c1f39d563a63180ffe49cdf",
+        "ventral": "62507550ca3ac6dee0186b7fc47fa9cf1ab4a2365e855cb87b7a735d69a91184"
+      },
+      "rank": {
+        "body": 40,
+        "dorsal": 14,
+        "head": 1,
+        "skin": 1,
+        "tail": 40,
+        "ventral": 27
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "seabass": {
+      "id": "seabass",
+      "name": "海鲈",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "seabass",
+      "breedNote": "仅允许同种繁育",
+      "notes": "银灰宽身；白腹；深灰高背鳍；黑眼；叉尾",
+      "width": 297,
+      "height": 157,
+      "bbox": [
+        0,
+        0,
+        297,
+        157
+      ],
+      "bounds": {
+        "dorsal": [
+          87,
+          0,
+          188,
+          46
+        ],
+        "head": [
+          0,
+          31,
+          87,
+          130
+        ],
+        "skin": [
+          87,
+          46,
+          229,
+          115
+        ],
+        "tail": [
+          229,
+          31,
+          297,
+          133
+        ],
+        "ventral": [
+          87,
+          115,
+          220,
+          157
+        ]
+      },
+      "sha256": "c980e807f75daa725d18360c757703ab793432cccd3ddbc2c97f5508a126d636",
+      "layerSha256": {
+        "dorsal": "c9aa5e607699b57bcac005292bd8db333c190199d2019a18a048f42343aed168",
+        "head": "e68bd4357adfb793ecd3522b76707c04bb0f717a80d064ca8a3adf2551dccd39",
+        "skin": "f4902217c3a926afc2a2184695000809165863f893ecc362fd1bae0fa9a5502a",
+        "tail": "7ac0d148aed024ee214a46d1a7434896ef7bf5c09aa8da2b378b7dcf4d7efa94",
+        "ventral": "0a08938c755fe8abf8a512f21d86e553e193cbc683706e1260db9acb15488c3f"
+      },
+      "rank": {
+        "body": 5,
+        "dorsal": 31,
+        "head": 18,
+        "skin": 18,
+        "tail": 5,
+        "ventral": 44
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "silvercarp": {
+      "id": "silvercarp",
+      "name": "鲢鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "hypophthalmichthys",
+      "breedNote": "鲢鱼可与鳙鱼形成现实记录中的杂交组合",
+      "notes": "银灰宽厚身；大白鳃盖；小眼；三角背鳍；短叉尾",
+      "width": 282,
+      "height": 154,
+      "bbox": [
+        0,
+        0,
+        282,
+        154
+      ],
+      "bounds": {
+        "dorsal": [
+          82,
+          0,
+          201,
+          45
+        ],
+        "head": [
+          0,
+          22,
+          82,
+          148
+        ],
+        "skin": [
+          82,
+          45,
+          218,
+          113
+        ],
+        "tail": [
+          218,
+          40,
+          282,
+          133
+        ],
+        "ventral": [
+          82,
+          113,
+          216,
+          154
+        ]
+      },
+      "sha256": "0d34966173bc5f03a7536e3c3cbdc12b658a94fffd0fcaaeb580a0b1a4d9c8a6",
+      "layerSha256": {
+        "dorsal": "6f567fbadfca796c8e84e618ba512bcf45cfdc29bdf5a94d76291e99e1a1fa4c",
+        "head": "036e8601f1fb66a3cd5062c0c6d28b4618033a52fefbd89d0ee9d473163de6b0",
+        "skin": "ad8c4b64b58f642f3051f967aae05a996db9ac5a03312a87d16b1f476192c2ae",
+        "tail": "e45920b513126fce4883d583e9740e90c6db7cbb314b95dce51c010c671ebe97",
+        "ventral": "98978a58327c7fa1433b9402047d1ecbb98fcff4c76c822d078b00cec5195757"
+      },
+      "rank": {
+        "body": 22,
+        "dorsal": 48,
+        "head": 35,
+        "skin": 35,
+        "tail": 22,
+        "ventral": 9
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "squid": {
+      "id": "squid",
+      "name": "小鱿鱼",
+      "family": "squid",
+      "group": "cephalopod",
+      "breedGroup": "squid",
+      "breedNote": "仅允许同种繁育",
+      "notes": "乳粉长胴体；白眼黑瞳；左侧细长触腕；侧鳍",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        15,
+        20,
+        190,
+        95
+      ],
+      "bounds": {
+        "dorsal": null,
+        "head": [
+          82,
+          35,
+          108,
+          85
+        ],
+        "skin": [
+          108,
+          20,
+          190,
+          90
+        ],
+        "tail": null,
+        "ventral": [
+          15,
+          30,
+          82,
+          95
+        ]
+      },
+      "sha256": "401839296cfee8a424fb77ce89979ea67460ee690ab89ba6805a7f22793ade16",
+      "layerSha256": {
+        "dorsal": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "head": "29076dfe5900cb0fe93e461a16bb2eb68e8aca7b9db4be6b048cdc5a2ef1cf65",
+        "skin": "66e75c7c643558c4951b45dccd1956ea9953faf321018ea6929b879eab3e21e5",
+        "tail": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "ventral": "1cc11a4922841af3f0aacc2f2da93a0bd5e0cfc0bff2ce1495cb7de3a89d42ff"
+      },
+      "rank": {
+        "body": 39,
+        "dorsal": 13,
+        "head": 52,
+        "skin": 52,
+        "tail": 39,
+        "ventral": 26
+      },
+      "tailEnabled": false,
+      "referenceExact": true
+    },
+    "sturgeon": {
+      "id": "sturgeon",
+      "name": "远古巨鲟",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "sturgeon",
+      "breedNote": "仅允许同种繁育",
+      "notes": "灰褐细长身；尖吻；上下成排白色骨板；异形短尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        25,
+        30,
+        205,
+        100
+      ],
+      "bounds": {
+        "dorsal": [
+          78,
+          30,
+          160,
+          51
+        ],
+        "head": [
+          25,
+          45,
+          78,
+          90
+        ],
+        "skin": [
+          78,
+          51,
+          164,
+          82
+        ],
+        "tail": [
+          164,
+          55,
+          205,
+          80
+        ],
+        "ventral": [
+          78,
+          82,
+          160,
+          100
+        ]
+      },
+      "sha256": "192d8041b4df17f34de1817dac8c6699e85de2129be85090a8825000ada380b4",
+      "layerSha256": {
+        "dorsal": "13d84b3afb41859c945afbab4c8daaf2f438f237e62c5da8e6e4f0d554d6478b",
+        "head": "7c030edcfc158bae668183d0b0a49fd2eed1bd692ca53b06a24b0ecc9be91031",
+        "skin": "385091eede8229f86a2e03fc5e95c1b9623995749db03b81ab32ecd2238c06cc",
+        "tail": "9704da6ab982b16a08cd98e86ab5b2e4ba7129f604d3c1c200993fd04e762f59",
+        "ventral": "82f48281585d6acc4c73d37b162534a8f591b8852f129665186021e7b2e7b428"
+      },
+      "rank": {
+        "body": 4,
+        "dorsal": 30,
+        "head": 17,
+        "skin": 17,
+        "tail": 4,
+        "ventral": 43
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "sunfish": {
+      "id": "sunfish",
+      "name": "翻车鱼",
+      "family": "round",
+      "group": "fish",
+      "breedGroup": "sunfish",
+      "breedNote": "仅允许同种繁育",
+      "notes": "蓝灰近圆高身；浅色横腹；上下对称高鳍；截短尾缘；小口",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        60,
+        0,
+        165,
+        130
+      ],
+      "bounds": {
+        "dorsal": null,
+        "head": [
+          60,
+          40,
+          87,
+          94
+        ],
+        "skin": [
+          70,
+          0,
+          165,
+          130
+        ],
+        "tail": null,
+        "ventral": null
+      },
+      "sha256": "fd5c2a0be16fcbaa3ccf0af2e923b9bc92c947579498f434fa0cc605c94eb14c",
+      "layerSha256": {
+        "dorsal": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "head": "751f9c1242a4382ed34fd959a94da99af9ee924541d2c5fc6d0c74274e128f6f",
+        "skin": "824e8b2b41fe63a76722cdb6ac8acef4dbd192dd97f6686fc36c10c027e8545f",
+        "tail": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "ventral": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241"
+      },
+      "rank": {
+        "body": 21,
+        "dorsal": 47,
+        "head": 34,
+        "skin": 34,
+        "tail": 21,
+        "ventral": 8
+      },
+      "tailEnabled": false,
+      "referenceExact": true
+    },
+    "swordfish": {
+      "id": "swordfish",
+      "name": "剑鱼",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "swordfish",
+      "breedNote": "仅允许同种繁育",
+      "notes": "蓝色流线身；长剑吻；高尖背鳍；小黑眼；短尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        10,
+        15,
+        205,
+        110
+      ],
+      "bounds": {
+        "dorsal": [
+          75,
+          15,
+          135,
+          43
+        ],
+        "head": [
+          10,
+          50,
+          67,
+          85
+        ],
+        "skin": [
+          67,
+          43,
+          161,
+          85
+        ],
+        "tail": [
+          161,
+          50,
+          205,
+          85
+        ],
+        "ventral": [
+          75,
+          85,
+          140,
+          110
+        ]
+      },
+      "sha256": "0fa5108978221f6bb5b2acebd420b646d9f3ee98f5759f61608bc22481ca3548",
+      "layerSha256": {
+        "dorsal": "e9757cc5beb7df2e59e32d4d8dc88713c00a159c6b30a5b4fa477e2b0d363208",
+        "head": "63dab17449fe818fed1ab07c2a2f93df81de20e439483c941b60776f24b4420c",
+        "skin": "85c01f8eb225f5d6f932c327fa429f89603e3901098836549e0c39497dd95a54",
+        "tail": "fcdf2d39f10d6cd4383239870099accb3aebb37e06361d472dcabed9af78c94e",
+        "ventral": "6e9aedb321b62431e1116ab5805f95da47f1f56fa6f8f2ba8d146645e63c59db"
+      },
+      "rank": {
+        "body": 38,
+        "dorsal": 12,
+        "head": 51,
+        "skin": 51,
+        "tail": 38,
+        "ventral": 25
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "tilapia": {
+      "id": "tilapia",
+      "name": "罗非鱼",
+      "family": "deep",
+      "group": "fish",
+      "breedGroup": "tilapia",
+      "breedNote": "仅允许同种繁育",
+      "notes": "灰绿宽身；四条宽黑竖带；浅腹；长棘背鳍；短尾",
+      "width": 284,
+      "height": 163,
+      "bbox": [
+        0,
+        0,
+        284,
+        163
+      ],
+      "bounds": {
+        "dorsal": [
+          83,
+          0,
+          216,
+          48
+        ],
+        "head": [
+          0,
+          16,
+          83,
+          163
+        ],
+        "skin": [
+          83,
+          48,
+          219,
+          119
+        ],
+        "tail": [
+          219,
+          47,
+          284,
+          151
+        ],
+        "ventral": [
+          83,
+          119,
+          217,
+          163
+        ]
+      },
+      "sha256": "e6011f8e8827b1d79b8a6acc9a2b20c2c870549e7dd2a14b87555a7e55920d36",
+      "layerSha256": {
+        "dorsal": "7f22e8f05b138a1c4b22bdd75e534b1ef240c274c3039348b7c010f1c824e729",
+        "head": "8eae1ca91cb74753fed85cea6e46a3ff42beea7b4152a66c4940173a74a27846",
+        "skin": "f5fb54ad141d0ae1c92c35fcd7475d8e3263b2dcec14f23f0e7d01cdbf85809a",
+        "tail": "669169d664465d97811b8abbe18760225bad1e66f1eeb0718055e10e5f6fd89f",
+        "ventral": "593fc471f69193cf6d10f4593b4901d836e0b092a1544feec1bde80ea1de7e1e"
+      },
+      "rank": {
+        "body": 3,
+        "dorsal": 29,
+        "head": 16,
+        "skin": 16,
+        "tail": 3,
+        "ventral": 42
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "tuna": {
+      "id": "tuna",
+      "name": "黄金枪鱼",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "tuna",
+      "breedNote": "仅允许同种繁育",
+      "notes": "深蓝粗纺锤身；金色背鳍及小离鳍；深蓝叉尾；小眼",
+      "width": 275,
+      "height": 197,
+      "bbox": [
+        0,
+        0,
+        275,
+        197
+      ],
+      "bounds": {
+        "dorsal": [
+          80,
+          0,
+          186,
+          58
+        ],
+        "head": [
+          0,
+          33,
+          80,
+          165
+        ],
+        "skin": [
+          80,
+          58,
+          212,
+          144
+        ],
+        "tail": [
+          212,
+          45,
+          275,
+          152
+        ],
+        "ventral": [
+          80,
+          144,
+          186,
+          197
+        ]
+      },
+      "sha256": "42303223e4253c350539b15c1e369d2d5c7f3074bcacd83cdbdb4375dbbd9a84",
+      "layerSha256": {
+        "dorsal": "4c1bd5b41833d500d38440ff6c8fcf1823f763fa4aae93eeeb491ff8f87e31a0",
+        "head": "40f4414b34dfd865a9ed40c16b80d6250e1ad35419e753c240f571790a13ac0a",
+        "skin": "322dce8a7a4e8097c8a1dd02fb844cb7df31a72d4c2deb8e586f97010f799dc9",
+        "tail": "08028e18c96f0b1cb80b99ea8fdc73825f30f4ed7470e9e5f21606d3c7ab7dc8",
+        "ventral": "0447fab37519d97372bdfe8427c7312aaa89e954847a28e1595484f779b4e2ba"
+      },
+      "rank": {
+        "body": 20,
+        "dorsal": 46,
+        "head": 33,
+        "skin": 33,
+        "tail": 20,
+        "ventral": 7
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "voltaiceel": {
+      "id": "voltaiceel",
+      "name": "电光鳗",
+      "family": "eel",
+      "group": "fish",
+      "breedGroup": "voltaiceel",
+      "breedNote": "仅允许同种繁育",
+      "notes": "蜿蜒深蓝鳗身；青蓝电弧斑纹；连续尾缘；无普通分离尾鳍",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        15,
+        30,
+        220,
+        95
+      ],
+      "bounds": {
+        "dorsal": null,
+        "head": [
+          20,
+          50,
+          67,
+          77
+        ],
+        "skin": [
+          15,
+          30,
+          220,
+          95
+        ],
+        "tail": null,
+        "ventral": null
+      },
+      "sha256": "2bab3d62226152825e07ac07e88fc47a56a73f365040b8be514d65169f88dee2",
+      "layerSha256": {
+        "dorsal": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "head": "233dd123d7f91988417f24ed088b31efd453e6d0920ca60fedcaf5156730a98b",
+        "skin": "57050157bab9c32ac930ecc840f3af473832db010be4e0c9c88d5e3d3cb414b5",
+        "tail": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241",
+        "ventral": "0582ed1212e7bcf0b13f44d6c3ade21f02c0bc98dcb916068d21af38f5bc2241"
+      },
+      "rank": {
+        "body": 37,
+        "dorsal": 11,
+        "head": 50,
+        "skin": 50,
+        "tail": 37,
+        "ventral": 24
+      },
+      "tailEnabled": false,
+      "referenceExact": true
+    },
+    "white": {
+      "id": "white",
+      "name": "白条",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "white",
+      "breedNote": "仅允许同种繁育",
+      "notes": "亮银细长身；浅灰平背；竖黑眼；窄尾柄与叉尾",
+      "width": 184,
+      "height": 43,
+      "bbox": [
+        0,
+        0,
+        184,
+        43
+      ],
+      "bounds": {
+        "dorsal": [
+          54,
+          0,
+          142,
+          13
+        ],
+        "head": [
+          0,
+          0,
+          54,
+          27
+        ],
+        "skin": [
+          54,
+          13,
+          142,
+          23
+        ],
+        "tail": [
+          142,
+          0,
+          184,
+          43
+        ],
+        "ventral": null
+      },
+      "sha256": "177b352ad9fb90159382188deef7e32a11ea18e5602fae57b7bd9afb5ce9f52c",
+      "layerSha256": {
+        "dorsal": "259f49db1a199e8c6e56d747ce945673299a423a65cf298dadf8de3c99f331f9",
+        "head": "f2633d9ba6216ecbace9c48e3d9b5d4150898fd90b556f1fa991a322e58858f0",
+        "skin": "7c444a1a66ffb29659161def5008e7fe68faf7f6841be9b94ddd0b8d121e0e6a",
+        "tail": "b5d2ba3c0860b3179786580a280f89066eb0e54ea7ff398701799b656e4aa6b3",
+        "ventral": "6f991f039c3d30f67b64c8d58eee4c1b474401aad7a4826d27730651e8fd8288"
+      },
+      "rank": {
+        "body": 2,
+        "dorsal": 28,
+        "head": 15,
+        "skin": 15,
+        "tail": 2,
+        "ventral": 41
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "yellowcat": {
+      "id": "yellowcat",
+      "name": "黄辣丁",
+      "family": "streamlined",
+      "group": "fish",
+      "breedGroup": "yellowcat",
+      "breedNote": "仅允许同种繁育",
+      "notes": "棕金身；深背棘；长口须；方鳃部；金色叉尾",
+      "width": 284,
+      "height": 141,
+      "bbox": [
+        0,
+        0,
+        284,
+        141
+      ],
+      "bounds": {
+        "dorsal": [
+          83,
+          4,
+          216,
+          41
+        ],
+        "head": [
+          0,
+          0,
+          83,
+          141
+        ],
+        "skin": [
+          83,
+          41,
+          219,
+          103
+        ],
+        "tail": [
+          219,
+          36,
+          284,
+          111
+        ],
+        "ventral": [
+          83,
+          103,
+          216,
+          141
+        ]
+      },
+      "sha256": "5b33553680df26f8402a97305be89504f3275140dafd1714ce6a67ae5be2c998",
+      "layerSha256": {
+        "dorsal": "7393bf28c1ed4dd604b17f0b6e1208832cd4c61a70d7f69b85f308020e5071c7",
+        "head": "e7514814843550060da2cd0a6f1f4eccdf61c0ea4648bc348ef14fb9262bd08d",
+        "skin": "ed4c376da53a6a7ee3b20017e880cbecd3642ebd9e4d77b092b5019cfb229218",
+        "tail": "b583a8115ff8aa9c019f0ec68d58600ef09f659d2e478df0f1609ee2920e0a9f",
+        "ventral": "b99cfd6f880b9625a32196cf4b364d82a52d8295c9894cb11b2333f891384566"
+      },
+      "rank": {
+        "body": 19,
+        "dorsal": 45,
+        "head": 32,
+        "skin": 32,
+        "tail": 19,
+        "ventral": 6
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    },
+    "yellowcheek": {
+      "id": "yellowcheek",
+      "name": "鳡鱼",
+      "family": "elongate",
+      "group": "fish",
+      "breedGroup": "yellowcheek",
+      "breedNote": "仅允许同种繁育",
+      "notes": "黄绿长身；金黄颊；浅腹；尖背鳍；叉尾",
+      "width": 220,
+      "height": 130,
+      "bbox": [
+        25,
+        30,
+        215,
+        100
+      ],
+      "bounds": {
+        "dorsal": [
+          81,
+          30,
+          140,
+          51
+        ],
+        "head": [
+          25,
+          50,
+          81,
+          90
+        ],
+        "skin": [
+          81,
+          51,
+          172,
+          82
+        ],
+        "tail": [
+          172,
+          40,
+          215,
+          95
+        ],
+        "ventral": [
+          81,
+          82,
+          140,
+          100
+        ]
+      },
+      "sha256": "6e6f7a25bdc7528bfa17f136d01e15240cf34d17edd6c9d7d750a4ac48b9821c",
+      "layerSha256": {
+        "dorsal": "b491bf9eed7d63c4f680154a43ee8d48a3d55729498d0fdd9cce0291444f01de",
+        "head": "825134726515c8734a1ad136cf50b5da1b74d5fe03814e7d794b6e9a238afab0",
+        "skin": "4c72ebe874d2028c67e67aeb135eabd1a21a2b3e617d12fff6deea1ff33a764e",
+        "tail": "f0ff6149144e2def7f25602e0f4bcc8502fe93081b8cf38cfc0b9782a38da669",
+        "ventral": "636244c321bb3d2c352cfd2884b0aa0dfab213a11051ffb33c5f449ec5745926"
+      },
+      "rank": {
+        "body": 36,
+        "dorsal": 10,
+        "head": 49,
+        "skin": 49,
+        "tail": 36,
+        "ventral": 23
+      },
+      "tailEnabled": true,
+      "referenceExact": true
+    }
+  }
+}

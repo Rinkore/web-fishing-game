@@ -1,5 +1,5 @@
 'use strict';
-// 渔屋（v0.24.0）玩家端：四个页签可切换、钓竿页行为不变、广播时渔屋页不重建、幂等 requestKey 复用。
+// 渔屋玩家端：五个页签可切换、钓竿页行为不变、广播时渔屋页不重建、幂等 requestKey 复用。
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
@@ -51,8 +51,9 @@ const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+nam
     && await page.evaluate(()=>fetchHouseCalls===1));
   await page.evaluate(()=>{window.houseReady=true;Engine.state.house=window.house;UI.refreshAll('house');});
   await host.locator('[data-house-pending]').waitFor();
-  check('Sidebar character entry is now the fish house',await page.locator('#nav .nav-item').filter({hasText:'渔屋'}).count()===1);
-  check('Four tabs render on the fish house page',await host.locator('.section-tabs button').count()===4
+  check('Character entry is now the fish house',await page.evaluate(()=>GameData.NAV.some(x=>x.id==='character'&&x.name==='渔屋')));
+  check('Five tabs render on the fish house page',await host.locator('.section-tabs button').count()===5
+    && await host.locator('[data-sectiontab="breeding"]').count()===1
     && await host.locator('[data-sectiontab="rod"]').count()===1 && await host.locator('[data-sectiontab="yard"]').count()===1);
   check('Yard tab lands first and shows the offline pool',await host.locator('.section-tabs button.on').innerText().then(t=>t.includes('晒场'))
     && await host.locator('[data-house-pending]').innerText().then(t=>t.includes('442')));

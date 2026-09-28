@@ -185,6 +185,8 @@ func newAPI(pool *pgxpool.Pool, mfaKey []byte, locations []*time.Location, front
 	r.Post("/api/house/pet", a.legacyHouse("pet"))
 	r.Post("/api/house/role", a.legacyHouse("role"))
 	r.Post("/api/house/steal", a.legacyHouse("steal"))
+	r.Get("/api/house/breeding", a.breedingView)
+	r.Post("/api/house/breeding", a.breedingAction)
 	r.Get("/api/admin/house", a.adminHouse)
 	r.Post("/api/admin/house/config", a.adminHouseConfig)
 	r.Post("/api/admin/house/simulate", a.adminHouseSimulate)

@@ -316,6 +316,8 @@ window.Net = (function () {
     return r;
   });
   const houseAction = (action, body) => authed('/api/house/' + action, body || {});
+  const breedingGet = () => apiFetch('GET', '/api/house/breeding?token=' + encodeURIComponent(me ? me.token : ''));
+  const breedingAction = (body) => authed('/api/house/breeding', body || {});
   const partyFetch = () => apiFetch('GET', '/api/party?token=' + encodeURIComponent(me ? me.token : ''));
   const partyAction = (action, target) => authed('/api/party', { action: action, target: target });
   // 自动售出规则（玩家自助）：单件 { id, ... } / 批量 { bulk:'fish'|'material'|'all', ... }；
@@ -973,6 +975,7 @@ window.Net = (function () {
     seaExpedition: seaExpedition, seaGet: seaGet, seaShipUp: seaShipUp, seaChart: seaChart, seaVoyage: seaVoyage,
     seaQuestClaim: seaQuestClaim, seaAnchor: seaAnchor, partyFetch: partyFetch, partyAction: partyAction,
     houseGet: houseGet, fetchHouse: fetchHouse, houseAction: houseAction,
+    breedingGet: breedingGet, breedingAction: breedingAction,
     autoSellGet: autoSellGet, autoSellSet: autoSellSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,

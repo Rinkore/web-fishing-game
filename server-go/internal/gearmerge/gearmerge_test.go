@@ -180,3 +180,37 @@ func TestAutoMigrateIdempotent(t *testing.T) {
 		t.Fatal("head not published")
 	}
 }
+
+func TestAutoMigrateDefersOnFreshDatabase(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	db := testdb.New(t, true)
+	ctx := context.Background()
+	if err := AutoMigrate(ctx, db.App, func(string, ...any) {}); err != nil {
+		t.Fatalf("fresh database should start without an admin: %v", err)
+	}
+	var releaseID int64
+	if err := db.App.QueryRow(ctx, `SELECT COALESCE(release_id,0) FROM fishing.catalog_head WHERE singleton`).Scan(&releaseID); err != nil {
+		t.Fatal(err)
+	}
+	if releaseID != 0 {
+		t.Fatalf("catalog publication must wait for an audited admin actor, got %d", releaseID)
+	}
+	var admin int64
+	if err := db.Admin.QueryRow(ctx, `INSERT INTO fishing.accounts DEFAULT VALUES RETURNING id`).Scan(&admin); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Admin.Exec(ctx, `INSERT INTO fishing.identities(account_id,username,display_name,qq,password_hash,admin) VALUES ($1,'merge_admin','迁移','10000','x',true)`, admin); err != nil {
+		t.Fatal(err)
+	}
+	if err := AutoMigrate(ctx, db.App, func(string, ...any) {}); err != nil {
+		t.Fatalf("deferred publication should finish once an admin exists: %v", err)
+	}
+	if err := db.App.QueryRow(ctx, `SELECT COALESCE(release_id,0) FROM fishing.catalog_head WHERE singleton`).Scan(&releaseID); err != nil {
+		t.Fatal(err)
+	}
+	if releaseID == 0 {
+		t.Fatal("deferred catalog was not published")
+	}
+}

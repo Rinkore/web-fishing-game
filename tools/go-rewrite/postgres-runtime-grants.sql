@@ -84,3 +84,4 @@ GRANT SELECT, INSERT, UPDATE ON fishing.mail_batches, fishing.mail_recipients TO
 -- The fish house owns one state row per player and an append-only steal ledger.
 GRANT SELECT, INSERT, UPDATE, DELETE ON fishing.house_state TO fishing_runtime;
 GRANT SELECT, INSERT ON fishing.house_steals TO fishing_runtime;
+GRANT SELECT, INSERT, UPDATE ON fishing.breeding_fish TO fishing_runtime;

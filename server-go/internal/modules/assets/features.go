@@ -39,6 +39,8 @@ func FeatureOf(kind string) string {
 		return "character.role"
 	case "house_steal":
 		return "character.steal"
+	case "fish_breeding":
+		return "character.breeding"
 	}
 	return ""
 }

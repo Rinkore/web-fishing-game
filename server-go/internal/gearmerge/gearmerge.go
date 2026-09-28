@@ -20,6 +20,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var errNoAdmin = errors.New("gearmerge: no admin account available as migration actor")
+
 // Aliases extracts the retired → canonical base id map from the catalog.
 func Aliases(c *rules.Catalog) map[string]string {
 	out := map[string]string{}
@@ -227,6 +229,14 @@ func AutoMigrate(ctx context.Context, pool *pgxpool.Pool, logf func(string, ...a
 	}
 	if !headHas {
 		actor, err := MaintenanceActor(ctx, pool)
+		// A fresh game (or a game with no provisioned administrator yet) has
+		// nothing to rewrite. Keep it available for registration and retry the
+		// audited catalog publication on a later startup. Existing alias
+		// references still require an administrator and fail closed.
+		if errors.Is(err, errNoAdmin) && rem.Instances+rem.Mail+rem.Codex == 0 {
+			logf("gearmerge: catalog publication deferred until an admin account exists")
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -265,7 +275,10 @@ func MaintenanceActor(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 	}
 	err = pool.QueryRow(ctx, `SELECT i.account_id FROM fishing.identities i WHERE i.admin AND NOT i.banned ORDER BY i.account_id LIMIT 1`).Scan(&actor)
 	if err != nil {
-		return 0, fmt.Errorf("gearmerge: no admin account available as migration actor")
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, errNoAdmin
+		}
+		return 0, err
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO fishing.player_state(account_id) VALUES ($1) ON CONFLICT DO NOTHING`, actor); err != nil {
 		return 0, err
