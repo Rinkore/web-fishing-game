@@ -11536,6 +11536,30 @@ window.UI = (function () {
     renderNav();
   }
   function authMsg(text) { $('auth-msg').textContent = text || ''; }
+  // 认证失败文案：服务端按契约返回错误码（invalid_credentials / username_exists…），
+  // 直接显示对玩家没有意义，这里统一翻成中文。
+  const AUTH_ERR_TEXT = {
+    invalid_credentials: '用户名或密码错误',
+    invalid_input: '用户名或密码格式不正确',
+    username_exists: '该用户名已被注册',
+    account_banned: '账号已被封禁，请联系管理员',
+    admin_required: '需要管理员权限',
+    MFA_SETUP_REQUIRED: '需要先完成管理员安全验证',
+    rate_limited: '尝试过于频繁，请稍后再试',
+    unavailable: '服务器暂时不可用，请稍后重试',
+    commit_unknown: '服务器繁忙，请稍后重试',
+    not_found: '接口不存在，请刷新页面后重试',
+    origin_rejected: '请求来源被拒，请刷新页面后重试',
+  };
+  // 只翻译「代码形状」的错误串：注册验证超时等已经是人话的提示（含中文 / 空格）原样保留，
+  // 表里没有的未知错误码也不要暴露给玩家，退回通用文案。
+  function authErrText(r) {
+    const d = (r && r.data) || {};
+    const raw = String(d.code || d.error || '').trim();
+    if (AUTH_ERR_TEXT[raw]) return AUTH_ERR_TEXT[raw];
+    if (raw && /^[A-Za-z][A-Za-z0-9_]*$/.test(raw)) return '操作失败，请重试';
+    return raw || '操作失败，请重试';
+  }
   function onAuthSubmit() {
     const user = $('auth-user').value.trim();
     const pass = $('auth-pass').value;
@@ -11567,7 +11591,7 @@ window.UI = (function () {
       btn.disabled = false; btn.textContent = oldLabel;
       if (!r || !r.ok) {
         if (r && r.status === 0) { authMsg('无法连接服务器，请确认已运行 run.bat'); return; }
-        authMsg((r && r.data && r.data.error) || '操作失败，请重试');
+        authMsg(authErrText(r));
         return;
       }
       if (!r.data || !r.data.token) { authMsg('服务器返回异常，请重试'); return; }
