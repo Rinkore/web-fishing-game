@@ -81,7 +81,8 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
 
     await page.click('.h-dir-body .nav-item[data-feature="workshop"]');
     await page.waitForFunction(() => !document.getElementById('h-panel').hidden).catch(() => {});
-    check('目录进入工坊：面板打开、标题与面包屑正确', await page.evaluate(() => !document.getElementById('h-panel').hidden && document.getElementById('h-p-title').textContent === '工坊' && document.getElementById('h-p-crumb').textContent === '港湾 › 工坊'));
+    // 设计稿 v2 阶段 F：木梁标题用「地点名 · 页面名」，面包屑补上当前一级页签
+    check('目录进入工坊：面板打开、标题与面包屑正确', await page.evaluate(() => !document.getElementById('h-panel').hidden && document.getElementById('h-p-title').textContent === '工坊' && document.getElementById('h-p-crumb').textContent === '港湾 › 工坊 › 工作台'));
     check('进入内景后目录收起，占位场景让位给面板', await page.evaluate(() => document.getElementById('h-dirbox').hidden && getComputedStyle(document.getElementById('h-scene')).display === 'none'));
     check('进入内景会同步哈希路由', await page.evaluate(() => location.hash === '#/workshop'));
 
@@ -90,17 +91,17 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
 
     await page.evaluate(() => { location.hash = '#/inventory'; });
     await page.waitForFunction(() => !document.getElementById('h-panel').hidden).catch(() => {});
-    check('哈希深链直接打开内景（#/inventory）', await page.evaluate(() => UI.getView() === 'inventory' && document.getElementById('h-p-title').textContent === '背包'));
+    check('哈希深链直接打开内景（#/inventory）', await page.evaluate(() => UI.getView() === 'inventory' && document.getElementById('h-p-title').textContent === '仓库 · 背包'));
 
     await page.click('#h-cast');
     await page.waitForFunction(() => UI.getView() === 'fishing').catch(() => {});
-    check('HUD 出海钓鱼按钮切到钓鱼页', await page.evaluate(() => UI.getView() === 'fishing' && document.getElementById('h-p-title').textContent === '钓鱼'));
+    check('HUD 出海钓鱼按钮切到钓鱼页', await page.evaluate(() => UI.getView() === 'fishing' && document.getElementById('h-p-title').textContent === '栈桥 · 钓鱼'));
     check('出海按钮副标题反映当前状态', await page.evaluate(() => document.getElementById('h-cast-sub').textContent.length > 0));
 
     await page.evaluate(() => PlayerSettings.set('theme', 'harbor'));
     await page.click('#h-status .coins[data-view="mall"]');
     await page.waitForFunction(() => !document.getElementById('h-panel').hidden).catch(() => {});
-    check('HUD 金币块打开集市内景', await page.evaluate(() => UI.getView() === 'mall' && document.getElementById('h-p-title').textContent === '商城'));
+    check('HUD 金币块打开集市内景', await page.evaluate(() => UI.getView() === 'mall' && document.getElementById('h-p-title').textContent === '集市 · 商城'));
     await page.keyboard.press('l');
     check('L 键打开目录（列表模式）', await page.evaluate(() => !document.getElementById('h-dirbox').hidden));
     await page.keyboard.press('Escape');

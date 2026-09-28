@@ -189,8 +189,11 @@
     Promise.resolve(window.Net.fetchFriends('', 1)).then(function (r) {
       friendsLoading = false;
       if (r && r.ok && r.data) { friends = r.data.friends || []; friendsAt = Date.now(); }
+      // 失败也要落定成空列表：drawFriends 在 friends 为 null 时会再调 loadFriends，
+      // 不落定就会 drawFriends ↔ loadFriends 无限互相递归（整页卡死）。
+      else if (!friends) friends = [];
       drawFriends(host);
-    }).catch(function () { friendsLoading = false; drawFriends(host); });
+    }).catch(function () { friendsLoading = false; if (!friends) friends = []; drawFriends(host); });
   }
   function friendsHtml(h, c) {
     if (!friends) return '<p class="hint">正在载入好友…</p>';
@@ -232,38 +235,44 @@
     const msg = (host.querySelector('[data-house-message]') || {}).textContent || '';
     const steal = h.steal || {};
     const box = el('div', 'hut-panel');
+    // 设计稿 v2 a-room-character.png：左「晒场收益」盒（金币 / 进度条 / 收取）+ 右「下一级」盒（成本 / 升级）。
+    // 数据钩子（data-house-*）保持原样，fill() 的增量刷新路径不受影响。
+    const fullPct = capacity > 0 ? Math.min(100, hours / capacity * 100) : 0;
     box.innerHTML =
-      '<h3>🏠 晒场</h3>' +
-      '<p class="hint">离线时晒场自动攒金币：<b>单次最多结算 ' + capacity + ' 小时</b>、<b>领取次数不限</b>' +
-      '（一天只有 24 小时，这就是天然上限；金币本身没有硬锁，投入多少就按速率产出多少）。</p>' +
-      '<div class="exp-metrics"><b>Lv' + num(h.level, 1) + ' 渔屋</b>' +
-      '<span data-house-rate>' + money(num(h.rate, 0)) + ' 金币/小时</span>' +
-      '<span>晒场容量 ' + capacity + ' 小时</span>' +
-      '<span data-house-hours>已积累 ' + hours.toFixed(1) + ' 小时</span>' +
-      '<span data-house-pending>待领取 ' + money(pendingCoins) + ' 金币</span>' +
-      (num(h.endless, 0) ? '<span>无尽翻新 R' + num(h.endless, 0) + '</span>' : '') +
-      (num(h.prestige, 0) ? '<span>声望 ' + num(h.prestige, 0) + '</span>' : '') + '</div>' +
-      '<div class="exp-actions">' +
-      '<button class="btn primary" data-house-action="collect" data-feature="character.collect"' + (pendingCoins > 0 ? '' : ' disabled') + '>' +
-      (pendingCoins > 0 ? '领取 ' + money(pendingCoins) + ' 金币' : '还没有可领取的鱼干') + '</button>' +
-      '<span class="hint">' + (hours >= capacity ? '晒场已满，再离线也不会多攒。' : '距晒场满池还有 ' + Math.max(0, capacity - hours).toFixed(1) + ' 小时。') + '</span></div>' +
-      bonusHtml(b, c) +
-      '<h3>' + (many ? '♾ 无尽翻新' : '⬆ 渔屋升级') + '</h3>' +
-      '<p class="hint">' + (many
-        ? '无尽层用指数渐近线逼近 ' + money(num(c.asymptoteRate, 0)) + '/小时：每级都有正收益，但数学上永远追不到上限（边际收益递减）。'
-        : '升级只提高每小时产出，晒场容量与领取次数不变；消耗以「当前没有配方消耗」的风暴遗物为主。') + '</p>' +
-      '<div class="exp-metrics">' + costHtml(cost) + '</div>' +
-      '<div class="exp-actions"><button class="btn primary" data-house-action="' + (many ? 'renovate' : 'upgrade') +
-      '" data-feature="character.upgrade">' + (many ? '投入 1 级无尽翻新' : '升级到 Lv' + (num(h.level, 1) + 1)) + '</button></div>' +
-      '<h3>🕵 好友偷取</h3>' +
-      '<p class="hint">偷的是好友的「溢出晒场」：<b>不扣原主收益</b>。每对好友每天 1 次、每天最多 ' + num(c.stealPicksPerDay, 0) +
-      ' 次（商人方向 / 声望可提升）；单次 min(对方渔屋 Lv × ' + num(c.stealPerLevel, 0) + ', ' + num(c.stealPerPickCap, 0) +
-      ') 金币 + 1 个普通鱼饵材料；偷取金币另有 ' + money(c.stealDailyCoinCap) + '/天 的独立上限。需要好友关系满 ' +
-      num(c.relationshipMinHours, 24) + ' 小时。</p>' +
-      (steal.picksMax != null ? '<div class="exp-metrics"><b data-house-steal-count>今日剩余 ' + num(steal.picksLeft, 0) + ' / ' + num(steal.picksMax, 0) + ' 次</b>' +
-        '<span>偷取金币 ' + money(steal.coinUsed) + ' / ' + money(steal.coinCap) + '</span>' +
-        (steal.heat != null ? '<span>晒场热度 ' + num(steal.heat, 0) + '</span>' : '') + '</div>' : '') +
-      '<div data-house-friends></div>' +
+      '<div class="room2 hut-top">' +
+        '<section class="box"><h5>晒场收益</h5>' +
+          '<div class="px gold hut-income" data-house-pending-big>' + money(pendingCoins) + ' 💰</div>' +
+          '<div class="meter gold" data-house-meter><i style="width:' + fullPct.toFixed(1) + '%"></i></div>' +
+          '<p class="note"><span data-house-hours>已积累 ' + hours.toFixed(1) + ' 小时</span> / ' + capacity + ' 小时 · ' +
+            '<span data-house-rate>' + money(num(h.rate, 0)) + ' 金币/小时</span> · <span data-house-pending>待领取 ' + money(pendingCoins) + ' 金币</span></p>' +
+          '<p class="note">离线自动攒金币：单次最多结算 ' + capacity + ' 小时、领取次数不限' +
+            (num(h.endless, 0) ? ' · 无尽翻新 R' + num(h.endless, 0) : '') +
+            (num(h.prestige, 0) ? ' · 声望 ' + num(h.prestige, 0) : '') + '。</p>' +
+          '<div class="row">' +
+            '<button class="mini gold" data-house-action="collect" data-feature="character.collect"' + (pendingCoins > 0 ? '' : ' disabled') + '>' +
+              (pendingCoins > 0 ? '领取 ' + money(pendingCoins) + ' 金币' : '还没有可领取的鱼干') + '</button>' +
+            '<span class="hint">' + (hours >= capacity ? '晒场满了，不再累积。' : '距晒场满池还有 ' + Math.max(0, capacity - hours).toFixed(1) + ' 小时。') + '</span>' +
+          '</div>' +
+        '</section>' +
+        '<section class="box"><h5>下一级</h5>' +
+          '<div class="exp-metrics hut-cost">' + costHtml(cost) + '</div>' +
+          '<p class="note">' + (many
+            ? '无尽层用指数渐近线逼近 ' + money(num(c.asymptoteRate, 0)) + '/小时：每级都有正收益，边际收益递减。'
+            : '升级只提高每小时产出，晒场容量与领取次数不变。') + '</p>' +
+          '<div class="row"><button class="mini go" data-house-action="' + (many ? 'renovate' : 'upgrade') +
+            '" data-feature="character.upgrade">' + (many ? '投入 1 级无尽翻新' : '升级到 Lv' + (num(h.level, 1) + 1)) + '</button></div>' +
+        '</section>' +
+      '</div>' +
+      '<section class="box">' + bonusHtml(b, c) + '</section>' +
+      '<section class="box"><h5>🕵 好友偷取</h5>' +
+        '<p class="note">偷的是好友的「溢出晒场」：不扣原主收益。每对好友每天 1 次、每天最多 ' + num(c.stealPicksPerDay, 0) +
+        ' 次（商人方向 / 声望可提升）；单次 min(对方渔屋 Lv × ' + num(c.stealPerLevel, 0) + ', ' + num(c.stealPerPickCap, 0) +
+        ') 金币 + 1 个普通鱼饵材料；偷取金币另有 ' + money(c.stealDailyCoinCap) + '/天 的独立上限。需要好友关系满 ' +
+        num(c.relationshipMinHours, 24) + ' 小时。</p>' +
+        (steal.picksMax != null ? '<div class="exp-metrics"><b data-house-steal-count>今日剩余 ' + num(steal.picksLeft, 0) + ' / ' + num(steal.picksMax, 0) + ' 次</b>' +
+          '<span>偷取金币 ' + money(steal.coinUsed) + ' / ' + money(steal.coinCap) + '</span>' +
+          (steal.heat != null ? '<span>晒场热度 ' + num(steal.heat, 0) + '</span>' : '') + '</div>' : '') +
+        '<div data-house-friends></div></section>' +
       '<p role="status" class="hint" data-house-message>' + esc(msg) + '</p>';
     host.appendChild(box);
     drawFriends(host);
@@ -385,6 +394,10 @@
     set('[data-house-rate]', money(num(h.rate, 0)) + ' 金币/小时');
     set('[data-house-hours]', '已积累 ' + hours.toFixed(1) + ' 小时');
     set('[data-house-pending]', '待领取 ' + money(pendingCoins) + ' 金币');
+    // 大号收益数字与金色进度条也要跟着走，否则「就地刷新」时文字变了、条还停在旧位置
+    set('[data-house-pending-big]', money(pendingCoins) + ' 💰');
+    const meter = host.querySelector('[data-house-meter] > i');
+    if (meter) meter.style.width = (capacity > 0 ? Math.min(100, hours / capacity * 100) : 0).toFixed(1) + '%';
     const btn = host.querySelector('[data-house-action="collect"]');
     if (btn) {
       btn.textContent = pendingCoins > 0 ? '领取 ' + money(pendingCoins) + ' 金币' : '还没有可领取的鱼干';

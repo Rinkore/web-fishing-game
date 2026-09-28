@@ -243,9 +243,27 @@ window.HarborShell = (function () {
   function route() {
     if (!on) return;
     const hp = hashPlace();
-    // 告示板的子视图（codex / logs / feedback / wiki）也可以直接路由
-    if (hp.id && isPlace(hp.id)) {
+    // 告示板的四个内容子视图（codex / records / logs / feedback）在 D.NAV 里也有同名条目，
+    // 所以 isPlace 会把它们判成「独立地点」，打开成一页没有外壳标题、也不在场景里的内容。
+    // 设计稿 v2 把告示板收成一个地点 + 挂签，这里必须先按子视图拦截，转成 #/board/序号。
+    const boardSub = hp.id && hp.id !== 'wiki' && BOARD_SUB_IDS.indexOf(hp.id) >= 0 ? hp.id : null;
+    if (boardSub) { openBoardView(boardSub); return; }
+    // 设计稿 v2 阶段 F：告示板不在 D.NAV / placeIds 里（它由 openPlace 单独分支处理），
+    // 但它是可深链的地点（#/board/2 = 打开「日志」），所以这里和普通地点一起判定。
+    if (hp.id && (hp.id === 'board' || isPlace(hp.id))) {
       if (statePlace !== hp.id) openPlace(hp.id, hp.tab);
+      // 同一地点内的页签深链（如待在仓库里把地址改成 #/inventory/3）：外壳不必重建，
+      // 只把序号翻成页签 key 转发给 UI.panelTab。目标已经是当前项就什么都不做——
+      // 点击挂签时外壳自己已经 setHash，这里再切一次会白重绘一遍整页。
+      else if (window.UI && UI.panelTabs && UI.panelTab) {
+        const meta = UI.panelTabs();
+        const items = meta && meta.items;
+        if (items && items.length) {
+          const kv = items[Math.min(hp.tab, items.length - 1)];
+          if (kv && kv.key !== meta.active) UI.panelTab(kv.key);
+        }
+      }
+      // WIKI 是外链：按旧口径交给 openBoardView 走 window.open
     } else if (hp.id && BOARD_SUB_IDS.indexOf(hp.id) >= 0) {
       openBoardView(hp.id);
     } else if (statePlace) showHome();

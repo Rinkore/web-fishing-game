@@ -1,0 +1,85 @@
+/* ============================================================
+   内景功能页 · 告示板（设计稿 v2 §7 / a-room-board.png）
+   零件 .cork（软木板）/ .paper（纸条 + 图钉）/ .meter 在 css/harbor.css 的
+   「内景功能页」段；这里只写告示板独有的排版，以及把沿用下来的深色组件
+   压回纸条的浅底深字——图鉴 / 记录 / 日志 / 反馈四张纸共用同一套规则。
+
+   选择器统一带 body.harbor-on 前缀：harbor.css 的「内景皮肤」用的是
+   `body.harbor-on .h-pbody X`（0,2,2），不带前缀的 `.h-pbody .paper X`
+   只有（0,2,1），会输给它的金色标题 / 浅色提示文字，在纸条上变成浅底浅字。
+   ============================================================ */
+
+/* 面板底色改成木头，软木板由 .board-content.cork 自己铺（四周留出木框） */
+body.harbor-on .h-panel[data-place="board"] .h-pbody { background: #6b4631; }
+body.harbor-on .h-panel[data-place="board"] #main.content { background: transparent; padding: 12px 14px 16px; }
+
+/* .cork 默认是「多张纸并排」的 auto-fill 网格；告示板一页一张纸，改成单列铺满，
+   并压掉 .paper 奇偶行的 ±1° 倾斜 —— 整页宽的纸条歪着会露出底板边角。 */
+body.harbor-on .h-pbody .board-content.cork { display: block; padding: 16px; min-height: 100%; }
+body.harbor-on .h-pbody .board-content.cork > .paper { margin: 0 0 16px; }
+body.harbor-on .h-pbody .board-content.cork > .paper:last-child { margin-bottom: 0; }
+body.harbor-on .h-pbody .board-content.cork > .paper:nth-child(odd),
+body.harbor-on .h-pbody .board-content.cork > .paper:nth-child(even) { transform: none; }
+
+/* ---------- 纸条上的通用文字 ---------- */
+body.harbor-on .h-pbody .paper .hint,
+body.harbor-on .h-pbody .paper .note,
+body.harbor-on .h-pbody .paper .rc-meta.un,
+body.harbor-on .h-pbody .paper .rc-base { color: #6b5040; }
+body.harbor-on .h-pbody .paper h3 {
+  font: 12px var(--px); color: #6b3a1c; letter-spacing: 1px;
+  margin: 12px 0 6px; border-left: 0; padding-left: 0; text-shadow: none;
+}
+body.harbor-on .h-pbody .paper .meter { background: #e2d5b8; border-color: #b8a080; margin: 0 0 10px; }
+
+/* ---------- 图鉴：概要三块 + 6 列图标墙（对齐设计稿 .paper .dex 的密度） ---------- */
+body.harbor-on .h-pbody .paper .codex-summary { gap: 8px; margin-bottom: 12px; }
+body.harbor-on .h-pbody .paper .cs-box { background: rgba(0, 0, 0, .05); border-color: #cbb894; border-radius: 0; padding: 8px; }
+body.harbor-on .h-pbody .paper .cs-box b { color: #6b3a1c; font-size: 20px; }
+body.harbor-on .h-pbody .paper .cs-box span { color: #6b5040; }
+body.harbor-on .h-pbody .paper .codex-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+body.harbor-on .h-pbody .paper .codex-cell {
+  background: rgba(0, 0, 0, .05) !important; border: 0 !important; border-radius: 0 !important;
+  box-shadow: none !important; padding: 4px 3px; min-height: 0;
+}
+body.harbor-on .h-pbody .paper .codex-cell.got:hover { transform: none; }
+body.harbor-on .h-pbody .paper .codex-cell .cx-icon { width: 100%; max-height: 48px; object-fit: contain; }
+body.harbor-on .h-pbody .paper .codex-cell .cx-name { font-size: 11px; color: #3a2c20; text-shadow: none; }
+body.harbor-on .h-pbody .paper .codex-cell .cx-meta { font-size: 10px; color: #6b5040; }
+body.harbor-on .h-pbody .paper .codex-cell:not(.got):not(.k-spots) { background: rgba(0, 0, 0, .03) !important; }
+body.harbor-on .h-pbody .paper .codex-cell:not(.got):not(.k-spots) .cx-name,
+body.harbor-on .h-pbody .paper .codex-cell:not(.got):not(.k-spots) .cx-meta { color: #8a7a66; }
+@media (max-width: 640px) {
+  body.harbor-on .h-pbody .paper .codex-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ---------- 记录：最大纪录条 + 分鱼种卡片 ---------- */
+body.harbor-on .h-pbody .paper .record-hero { background: rgba(0, 0, 0, .05); border-color: #cbb894; border-radius: 0; }
+body.harbor-on .h-pbody .paper .record-hero .rh-size { color: #6b3a1c; }
+body.harbor-on .h-pbody .paper .record-hero .rh-who { color: #6b5040; }
+body.harbor-on .h-pbody .paper .record-hero .rh-text { color: #2a2018; }
+body.harbor-on .h-pbody .paper .record-cell { background: rgba(0, 0, 0, .05); border-color: #cbb894; border-radius: 0; }
+body.harbor-on .h-pbody .paper .record-cell.with-rec:hover { border-color: #6b3a1c; box-shadow: none; }
+body.harbor-on .h-pbody .paper .rc-name { color: #2a2018; }
+
+/* ---------- 日志：时间 / 分类标签 / 正文 ---------- */
+body.harbor-on .h-pbody .paper .log-page {
+  max-height: 56vh; background: transparent; border: 0; border-radius: 0; padding: 0;
+}
+body.harbor-on .h-pbody .paper .log-row { border-bottom-color: #cdbb99; color: #2a2018; }
+body.harbor-on .h-pbody .paper .log-row .log-time { color: #6b5040; }
+body.harbor-on .h-pbody .paper .log-tag { border-radius: 0; border-color: #b8a080; color: #6b3a1c; }
+body.harbor-on .h-pbody .paper .log-foot { margin-top: 10px; }
+
+/* ---------- 反馈：冷却横幅 / 表单 / 我的反馈列表 ---------- */
+body.harbor-on .h-pbody .paper .fb-banner { background: rgba(0, 0, 0, .05); border-color: #cbb894; border-radius: 0; color: #2a2018; }
+body.harbor-on .h-pbody .paper .fb-banner.ready { border-color: #2f9c6a; background: rgba(47, 156, 106, .12); }
+body.harbor-on .h-pbody .paper .fb-banner.cooling { border-color: #c8961e; background: rgba(200, 150, 30, .12); }
+body.harbor-on .h-pbody .paper .fb-banner.cooling b { color: #8a6510; }
+body.harbor-on .h-pbody .paper .fb-form { background: rgba(0, 0, 0, .04); border-color: #cbb894; border-radius: 0; }
+body.harbor-on .h-pbody .paper .fb-input { background: #fffaf0; border-color: #b8a080; border-radius: 0; color: #2a2018; }
+body.harbor-on .h-pbody .paper .fb-count { color: #6b5040; }
+body.harbor-on .h-pbody .paper .fb-entry { background: rgba(0, 0, 0, .04); border-color: #cbb894; border-radius: 0; }
+body.harbor-on .h-pbody .paper .fb-text { color: #2a2018; }
+body.harbor-on .h-pbody .paper .fb-reply { background: rgba(0, 0, 0, .05); color: #2a2018; }
+body.harbor-on .h-pbody .paper .fb-status { border-radius: 0; }

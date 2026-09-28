@@ -60,9 +60,12 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     });
     const onlinePlayersPane = page.locator('[data-online-pane="players"]');
     const onlineFeedPane = page.locator('[data-online-pane="feed"]');
-    check('Online view defaults to the player pane with a visible first-level switch',
-      await onlinePlayersPane.isVisible() && !await onlineFeedPane.isVisible() &&
-      await page.locator('[data-online-pane-tab="players"]').getAttribute('aria-selected') === 'true');
+    // 设计稿 v2 §5：在线动态 = 左「玩家卡网格」+ 右「最新动态」盒，同屏并列；
+    // 一级切换是港湾木梁下的挂签（在线动态 / 好友 / 编队），页内不再有二级玩家/动态切换行。
+    check('Online view shows player cards and the latest feed side by side',
+      await onlinePlayersPane.isVisible() && await onlineFeedPane.isVisible() &&
+      await page.locator('[data-online-pane-tab]').count() === 0 &&
+      await page.locator('.ground-side').isVisible());
     await page.evaluate(() => {
       const list = document.querySelector('[data-online-pane="players"] [data-region="peeps"]');
       list.style.maxHeight = '24px';
@@ -70,17 +73,15 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
       window.socialPlayerListNode = list;
     });
     const socialPlayerScroll = await onlinePlayersPane.locator('[data-region="peeps"]').evaluate(e => e.scrollTop);
-    await page.locator('[data-online-pane-tab="feed"]').click();
-    check('Latest feed shows only its content while retaining the spot sidebar',
-      await onlineFeedPane.isVisible() && !await onlinePlayersPane.isVisible() &&
+    check('Latest feed keeps the spot sidebar and both panes stay in place',
+      await onlineFeedPane.isVisible() && await onlinePlayersPane.isVisible() &&
       socialPlayerScroll > 0 && await page.locator('.ground-side').isVisible() &&
-      await page.locator('[data-online-pane]:visible').count() === 1);
+      await page.locator('[data-online-pane]:visible').count() === 2);
     await page.evaluate(() => UI.renderView());
-    check('Live patch keeps the hidden player pane intact',
+    check('Live patch keeps the player pane intact',
       await page.evaluate(() => window.socialPlayerListNode === document.querySelector('[data-online-pane="players"] [data-region="peeps"]')));
-    await page.locator('[data-online-pane-tab="players"]').click();
-    check('Switching back restores the same player list and scroll position',
-      await onlinePlayersPane.isVisible() && !await onlineFeedPane.isVisible() &&
+    check('Re-render restores the same player list and scroll position',
+      await onlinePlayersPane.isVisible() && await onlineFeedPane.isVisible() &&
       await page.evaluate(() => window.socialPlayerListNode === document.querySelector('[data-online-pane="players"] [data-region="peeps"]')) &&
       await onlinePlayersPane.locator('[data-region="peeps"]').evaluate((e, top) => e.scrollTop === top, socialPlayerScroll));
     const online = onlinePlayersPane.locator('[data-region="peeps"]');

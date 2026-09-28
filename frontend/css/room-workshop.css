@@ -3,3 +3,104 @@
    设计稿：output/design-review/redesign/v2/harbor-rooms.js 的 workshop / character / sea
    公共零件在 css/harbor.css 的「内景功能页」段；这里只写这三页独有的布局。
    ============================================================ */
+
+/* ---------- 工坊 · 工作台（a-room-workshop.png）---------- */
+/* 三张 bench 卡：图标在上、标题金色、说明两行，整卡可点进对应页签。 */
+body.harbor-on .h-pbody .ws-bench-panel { max-width: none; }
+body.harbor-on .h-pbody .ws-bench-panel .bench { align-items: stretch; }
+body.harbor-on .h-pbody .bench-card {
+  display: grid; justify-items: center; align-content: start; gap: 2px;
+  padding: 18px 14px; cursor: pointer; text-align: center;
+}
+body.harbor-on .h-pbody .bench-card .ic { width: 64px; height: 64px; margin-bottom: 6px; }
+body.harbor-on .h-pbody .bench-card .sub { color: var(--ink); font-size: 13px; }
+body.harbor-on .h-pbody .bench-card .bench-status { color: var(--accent); }
+body.harbor-on .h-pbody .bench-card:hover { border-color: var(--gold); }
+
+/* 熔炼流程条：主组件 + 副组件 + 催化 → 产物（设计稿 .forge 口径，只读展示当前草稿）。 */
+body.harbor-on .h-pbody .ws-forge-summary {
+  padding: 6px 0 14px; margin-bottom: 12px; border-bottom: 3px solid #25405f;
+}
+body.harbor-on .h-pbody .ws-forge-summary .slot { cursor: default; }
+body.harbor-on .h-pbody .ws-forge-summary .slot img { width: 78%; height: 78%; object-fit: contain; image-rendering: pixelated; }
+
+/* ---------- 工坊 · 装备成长 / 钓鱼套装（gear.js 的 v2 皮肤）----------
+   gear.css 是经典口径（2px 描边 + 3px 圆角 + 14px 系统字），这里统一刷成港湾的
+   「3px 描边 + 无圆角 + 像素字标题」，和 .box / .mini / .pcard 同一套观感。 */
+body.harbor-on .h-pbody .gear-system { --gear-accent: var(--accent); color: var(--ink); }
+body.harbor-on .h-pbody .gear-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+body.harbor-on .h-pbody .gear-metrics { gap: 6px; margin: 0; }
+body.harbor-on .h-pbody .gear-metrics > span {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #0a1628; border: 2px solid #2c4f74; border-radius: 0 !important;
+  padding: 4px 10px; font-size: 12px;
+}
+body.harbor-on .h-pbody .gear-metrics b { font: 12px var(--px); color: var(--gold); margin-left: 4px; }
+body.harbor-on .h-pbody .gear-card {
+  background: #0a1628; border: 3px solid #25405f !important; border-radius: 0 !important; padding: 12px;
+}
+body.harbor-on .h-pbody .gear-card h3,
+body.harbor-on .h-pbody .gear-card h4 {
+  font: 12px var(--px); font-weight: 400; color: var(--gold); letter-spacing: 1px; margin: 0 0 8px;
+}
+body.harbor-on .h-pbody .gear-system button,
+body.harbor-on .h-pbody .gear-system select,
+body.harbor-on .h-pbody .gear-system input {
+  border: 3px solid #2c4f74 !important; border-radius: 0 !important;
+  background: #16304f; color: #fff; font: 12px var(--px);
+}
+body.harbor-on .h-pbody .gear-system button { box-shadow: 0 3px 0 rgba(0, 0, 0, .4) !important; }
+body.harbor-on .h-pbody .gear-system button.primary,
+body.harbor-on .h-pbody .gear-system button.selected,
+body.harbor-on .h-pbody .gear-system .selected {
+  background: var(--accent) !important; color: #032 !important; border-color: #0d6d5d !important;
+}
+body.harbor-on .h-pbody .gear-system button:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .4) !important; }
+body.harbor-on .h-pbody .gear-system label { font-size: 12px; color: var(--muted); }
+body.harbor-on .h-pbody .gear-system .hint { color: var(--muted); }
+body.harbor-on .h-pbody .gear-item { background: #0a1628; border: 2px solid #2c4f74; border-radius: 0; }
+/* 一级页签（工作台 / 装备成长 / 钓鱼套装 / 熔炼）在木梁挂签上，页面里这一行彻底收起。 */
+body.harbor-on .h-pbody .gear-tabs { display: none !important; }
+/* 7 部位环形（装备成长页）：复用 harbor.css 的 .partmap / .slot 零件，只补外距与高度。 */
+body.harbor-on .h-pbody .gear-partmap { height: 300px; margin: 0 0 12px; }
+@media (max-width: 640px) { body.harbor-on .h-pbody .gear-partmap { height: 340px; } }
+
+/* ---------- 渔屋（a-room-character.png）---------- */
+/* 场景带：设计稿只有约 140px 高的一条，不再是占满整页的 9/4 展示台。 */
+body.harbor-on .h-pbody .char-view .char-stage {
+  aspect-ratio: auto; height: 150px; min-height: 0; border-radius: 0 !important;
+}
+body.harbor-on .h-pbody .char-tag {
+  position: absolute; left: 10px; bottom: 8px;
+  font: 12px var(--px); color: #fff;
+  background: rgba(6, 14, 28, .85); border: 2px solid #3d5f8a; padding: 2px 8px;
+}
+body.harbor-on .h-pbody .hut-top { margin-top: 10px; }
+body.harbor-on .h-pbody .hut-panel { display: flex; flex-direction: column; gap: 10px; }
+body.harbor-on .h-pbody .hut-income { font: 24px var(--px); margin: 2px 0 8px; }
+body.harbor-on .h-pbody .hut-panel .box { margin: 0; }
+body.harbor-on .h-pbody .hut-panel .box > h3 { font: 12px var(--px); font-weight: 400; color: var(--gold); letter-spacing: 1px; margin: 0 0 8px; }
+body.harbor-on .h-pbody .hut-panel .exp-metrics { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+body.harbor-on .h-pbody .hut-cost > span,
+body.harbor-on .h-pbody .hut-panel .exp-metrics > span,
+body.harbor-on .h-pbody .hut-panel .exp-metrics > b {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #16304f; border: 2px solid #2c4f74; padding: 1px 6px; margin: 0;
+  font-size: 12px; font-weight: 400;
+}
+body.harbor-on .h-pbody .hut-panel .exp-metrics > b { border-color: var(--accent); color: var(--accent); }
+body.harbor-on .h-pbody .hut-panel .exp-metrics small { color: var(--muted); }
+body.harbor-on .h-pbody .hut-panel .exp-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+body.harbor-on .h-pbody .hut-panel .exp-route {
+  background: #0a1628; border: 2px solid #25405f !important; border-radius: 0;
+}
+
+/* ---------- 远洋码头（a-room-sea.png）---------- */
+/* 一级挂签（远航 / 船只）在木梁上；页内的三段切换改成可见的像素胶囊二级页签。 */
+body.harbor-on .h-pbody .sea-subnav { margin: 0 0 10px; }
+body.harbor-on .h-pbody .sea-subnav button { padding: 4px 12px; }
+body.harbor-on .h-pbody .sea-subnav .sea-tab-title { font: 12px var(--px); }
+body.harbor-on .h-pbody .sea-subnav small { display: block; font-size: 12px; color: var(--muted); }
+body.harbor-on .h-pbody .sea-topbar { display: block; }
+body.harbor-on .h-pbody .sea-topbar h2 { font: 12px var(--px); color: var(--gold); margin: 0 0 6px; }
+body.harbor-on .h-pbody .sea-loading { margin-top: 4px; }

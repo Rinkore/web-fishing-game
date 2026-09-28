@@ -819,6 +819,16 @@ window.UI = (function () {
       };
     }
     if (currentView === 'workshop') {
+      // 装备成长系统关闭时（历史工坊口径：只有熔炼 / 重铸 / 锻造），木梁上只留「熔炼」一个页签，
+      // 免得出一个点进去是空的「装备成长」。
+      const gearOn = !!(D.GEAR_SYSTEM && D.GEAR_SYSTEM.enabled);
+      if (!gearOn) {
+        return {
+          items: [['smelt', '熔炼']],
+          active: 'smelt',
+          set: function (k) { wsPanelTab = k; },
+        };
+      }
       return {
         items: orderedFeatureTabs('workshop', [['bench', '工作台'], ['growth', '装备成长'], ['sets', '钓鱼套装'], ['smelt', '熔炼']],
           { bench: 'growth', growth: 'growth', sets: 'sets', smelt: ['smelt', 'recast', 'forge'] }),
@@ -2053,7 +2063,9 @@ window.UI = (function () {
     const st = S();
     const isSelf = st.me && b.id === st.me.id;
     const color = safeColor(b.color) || colorFor(b.name || '?');
-    const card = el('div', 'peep' + (isSelf ? ' self' : ''));
+    // 设计稿 v2 §5：玩家是一张竖版名片（头像 / 名字 Lv / 状态 / 操作），所以挂 .pcard；
+    // 里面的 .peep-info / .peep-acts 两个锚点保持不变 —— 广播仍按它们原地更新。
+    const card = el('article', 'pcard peep' + (isSelf ? ' self' : ''));
     // 信息块单独成函数（peepInfoHtml）：广播只重写这一块，右部按钮原地不动
     card.innerHTML =
       '<span class="avatar" style="background:' + color + '">' + esc((b.name || '?').slice(0, 1)) + '</span>' +
@@ -3474,22 +3486,11 @@ window.UI = (function () {
   }
   function paintOnlinePane(panel) {
     if (!panel) return;
-    panel.querySelectorAll('[data-online-pane]').forEach(function (pane) {
-      const on = pane.getAttribute('data-online-pane') === onlinePane;
-      if (!pane.hidden && !on) {
-        pane._onlineScroll = {};
-        pane.querySelectorAll('[data-region="peeps"], [data-region="gfeed"]').forEach(function (node) {
-          pane._onlineScroll[node.getAttribute('data-region')] = node.scrollTop;
-        });
-      }
-      pane.hidden = !on;
-      if (on && pane._onlineScroll) {
-        pane.querySelectorAll('[data-region="peeps"], [data-region="gfeed"]').forEach(function (node) {
-          const top = pane._onlineScroll[node.getAttribute('data-region')];
-          if (top != null) node.scrollTop = top;
-        });
-      }
-    });
+    // 设计稿 v2 §5：在线动态 = 左「玩家卡网格」+ 右「最新动态」盒，**同屏并列**。
+    // 所以两个 pane 都不再互斥隐藏（二级切换行 .online-pane-tabs 也已被港湾 CSS 收起，
+    // 换句话说旧口径下「最新动态」根本切不过去）。这里只同步切换行的选中态，
+    // 万一以后把那行恢复出来也不会失联。
+    panel.querySelectorAll('[data-online-pane]').forEach(function (pane) { pane.hidden = false; });
     panel.querySelectorAll('[data-online-pane-tab]').forEach(function (button) {
       const on = button.getAttribute('data-online-pane-tab') === onlinePane;
       button.classList.toggle('on', on);
@@ -3559,7 +3560,7 @@ window.UI = (function () {
       return peepInfoHtml(p) + (p.username ? '<span class="peep-uname">@' + esc(p.username) + '</span>' : '');
     }
     function friendRow(player, isSaved) {
-      const row = el('div', 'peep');
+        const row = el('article', 'pcard peep');
       const info = el('div', 'peep-info');
       info.innerHTML = friendInfoHtml(player);
       row.appendChild(info);
@@ -3605,7 +3606,9 @@ window.UI = (function () {
         (player.online ? '<span class="dot on"></span>' : '<span class="dot idle"></span>');
     }
     function reqRow(player, isIn) {
-      const row = el('div', 'peep');
+        // 好友申请是一条待处理条目（设计稿 §5 的 .lrow）：横向一行 + 同意 / 拒绝，
+        // 不跟着玩家名片走竖版卡片。
+        const row = el('div', 'peep req-card');
       const info = el('div', 'peep-info');
       info.innerHTML = reqInfoHtml(player);
       row.appendChild(info);
@@ -3743,7 +3746,7 @@ window.UI = (function () {
     main.appendChild(panel);
     function meId() { return String(S().me && S().me.id || ''); }
     function memberRow(p, party) {
-      const row = el('div', 'peep party-member');
+        const row = el('article', 'pcard peep party-member');
       row.setAttribute('data-m', p.id);
       const info = el('div', 'peep-info');
       info.innerHTML = (party.leader === p.id ? '👑 ' : '') + '<b>' + esc(p.name || p.id) + '</b>' +
@@ -3829,6 +3832,16 @@ window.UI = (function () {
       box.appendChild(head);
       const list = el('div', 'peeps');
       party.members.forEach(function (m) { list.appendChild(memberRow(m, party)); });
+        // 设计稿 §5：空位也画出来（虚线「＋ 邀请队友」），一眼能看出还能拉几个人。
+        // 只用 members/max 推导，没有新状态；partySigOf 已按成员 id 列表算签名，人数变了会重建。
+        for (let i = party.members.length; i < (party.max || 4); i++) {
+          const slot = el('article', 'pcard peep party-slot');
+          const add = el('button', 'mini', '＋ 邀请队友');
+          add.title = '邀请互为好友的玩家加入编队';
+          add.onclick = function () { partyShowInvite = true; panel._refresh(true); };
+          slot.appendChild(add);
+          list.appendChild(slot);
+        }
       box.appendChild(list);
       const btns = el('div', 'sa-row');
       const amLeader = party.leader === me;
@@ -3857,7 +3870,7 @@ window.UI = (function () {
           });
           if (!friends.length) { invList.appendChild(el('div', 'hint', '没有可邀请的好友（编队邀请限互为好友）。')); return; }
           friends.forEach(function (f) {
-            const row = el('div', 'peep');
+              const row = el('article', 'pcard peep');
             const info = el('div', 'peep-info');
             info.innerHTML = '<b>' + esc(f.name || f.id) + '</b>' + (f.online ? '<span class="dot on"></span>' : '<span class="dot idle"></span>');
             row.appendChild(info);
@@ -3920,6 +3933,22 @@ window.UI = (function () {
       });
     };
     panel._refresh(true);
+    // 设计稿 §5（编队）：数据还没回来 / 拉取失败时也得有内容 —— 先铺四格空位，
+    // 否则切到这个页签看到的是整片空白（render(data) 会先清空 body，不会与新数据叠加）。
+    (function placeholder() {
+      if (body.childElementCount) return;
+      const box = el('div', 'sub');
+      box.appendChild(el('h3', '', '⚓ 我的编队（—/4）'));
+      const list = el('div', 'peeps');
+      for (let i = 0; i < 4; i++) {
+        const slot = el('article', 'pcard peep party-slot');
+        slot.appendChild(el('span', 'hint', '空位'));
+        list.appendChild(slot);
+      }
+      box.appendChild(list);
+      box.appendChild(el('div', 'hint', '正在读取编队状态……编队最多 4 人，同钓场有上钩加成。'));
+      body.appendChild(box);
+    })();
     const partyTimer = setInterval(function () {
       if (!panel.isConnected) { clearInterval(partyTimer); return; }
       panel._refresh(false);
@@ -3951,7 +3980,6 @@ window.UI = (function () {
     const mapName = mapTab === 'voyage' ? '远洋' : '近岸';
     // 在线动态页直接从页签进入内容，不再显示「近岸 / 远洋实时动态」标题行。
     panel.appendChild(socialTabs());
-    panel.appendChild(onlinePaneTabs(panel));
     if (groundFilterId) {
       const back = el('button', 'mini ground-back', '🌐 返回全服');
       back.addEventListener('click', function () { groundFilterId = null; gotoPeepPage(1); renderView(); });
@@ -5767,6 +5795,7 @@ window.UI = (function () {
   let invSearch = '', invPage = 1, invFilterSig = '';
   const invEquipmentFilters = {};
   const INV_PAGE_SIZE = 12;
+  const INV_SLOTS = 120;     // 设计稿 v2 §8 的背包格数（容量条展示口径，与「一键出售」无关）
   // 子分类筛选（随分类页签切换显示）：
   //   鱼类/材料 → 品质；组件 → 一级「部位」 + 二级「词条 + 数值范围」
   let invSubRar = 'all';
@@ -5780,6 +5809,10 @@ window.UI = (function () {
   let invAffixMax = '';
   let invOpen = {};          // 组件按底材名分组的展开状态（{ baseId: true }）
   let invFocus = false;      // 子筛选控件聚焦时暂停广播重绘（避免下拉被关闭）
+  // 设计稿 v2 仓库页：格子墙 / 列表两种视图 + 右侧「物品明细」里选中的那一格 + 排序口径
+  let invViewMode = 'grid';  // 'grid'（8 列格子墙）| 'list'（旧版宽行列表）
+  let invSel = null;         // 右侧明细卡当前展示的物品（格子墙点击切换；不在列表里时回落到第一项）
+  let invSort = 'price';     // 'price'（现价）| 'rarity'（品质）| 'count'（持有数量）
   let bulkCat = 'all';
   let bulkRar = 'all';
 
@@ -6397,6 +6430,10 @@ window.UI = (function () {
   // 各分类实际存在的品质（来自物品目录，不是背包）：材料与鱼类没有神话，宝匣只有稀有/史诗。
   // 品质档按「该分类真实存在的档位」渲染，避免出现「神话 0」这种永远点不出东西的按钮。
   const RAR_ORDER = [['common', '普通'], ['rare', '稀有'], ['epic', '史诗'], ['mythic', '神话']];
+  function rarityRank(r) {
+    const i = RAR_ORDER.findIndex(function (kv) { return kv[0] === r; });
+    return i < 0 ? 0 : i;
+  }
   function raritiesOfKind(kind) {
     // 组件是「实例化」物品：品质在生成时按权重掷出（普通 / 稀有 / 史诗），宝匣突破件与重铸件是神话；
     // 目录里的 30 个底材条目只承担词缀池展示、rarity 恒为 common，照它算会只剩「普通」一档。
@@ -6679,7 +6716,8 @@ window.UI = (function () {
   // 返回 false 表示没找到对应行（例如被筛选隐藏）→ 调用方退回整页重绘兜底。
   function patchInventoryRow(id) {
     const st = S();
-    const row = document.querySelector('.inv-page-row[data-id="' + id + '"]');
+    // 格子墙（.slot[data-id]）与列表行（.inv-page-row[data-id]）共用这一份就地补丁
+    const row = document.querySelector('.inv-page-row[data-id="' + id + '"], .slot[data-id="' + id + '"]');
     if (!row) return false;
     const meta = itemMeta(id);
     const total = st.inventory[id] || 0;
@@ -6690,6 +6728,8 @@ window.UI = (function () {
     if (cnt > 0) {
       const c = row.querySelector('.cnt');
       if (c) c.textContent = '×' + cnt;
+      const q = row.querySelector('.q');   // 格子墙的数量角标
+      if (q) q.textContent = cnt;
       const sub = row.querySelector('.subtotal');
       if (sub) sub.textContent = '小计 ' + (unitPriceOf(id) * cnt) + '💰';
       const tot = row.querySelector('.inv-total');
@@ -6698,6 +6738,11 @@ window.UI = (function () {
       // 普通量归零 → 去掉一般行（与 renderInventory 同口径：鱼若还有预留量，下面的档位行仍在）
       const gk = row.getAttribute('data-group');
       row.remove();
+      // 格子墙：售罄移除后补一个空槽，保持整行不缺角（列表视图没有空槽这回事）
+      if (row.classList.contains('slot')) {
+        const wall = row.parentNode;
+        if (wall && wall.classList.contains('slots')) wall.appendChild(el('span', 'slot empty'));
+      }
       if (gk) {
         const head = document.querySelector('.inv-group-head[data-group="' + gk + '"]');
         // 组头件数按「筛选后的全量」重算（与渲染同一套 helper）；整组卖光才去掉组头
@@ -6771,7 +6816,7 @@ window.UI = (function () {
     const host = main.querySelector('.inv-page');
     const st = S();
     if (!host || host.getAttribute('data-sig') !== invSigOf(st)) return false;
-    main.querySelectorAll('.inv-page-row[data-id]').forEach(function (row) {
+    main.querySelectorAll('.inv-page-row[data-id], .slot[data-id]').forEach(function (row) {
       const key = row.getAttribute('data-id');
       // v0.16.2：档位行必须按**类名**判断，不能从 id 里切 '@' —— 组件实例签名的词条 token 带
       // @src（如 rod_carbon#mythic#rare+3@bt,skl+4@bt），会被误判成档位行，于是那一行永远补不上
@@ -6837,7 +6882,7 @@ window.UI = (function () {
     const st = S();
     if (!main || !main.querySelector('.inv-page-tabs')) return false;
     const price = function (id) { return unitPriceOf(id); };
-    main.querySelectorAll('.inv-page-row[data-id]').forEach(function (row) {
+    main.querySelectorAll('.inv-page-row[data-id], .slot[data-id]').forEach(function (row) {
       const id = row.getAttribute('data-id');
       if ((st.inventory[id] || 0) <= 0) return;
       const up = row.querySelector('.unit-price');
@@ -7211,8 +7256,18 @@ window.UI = (function () {
         return tierShown === 'N' ? shownAvailOf(id) > 0 : reservedCountOf(id, tierShown) > 0;
       });
     }
-    // 按单价排序：出售/获得不改变行位置（排序与数量无关）
-    if (invCategory !== 'component') keys.sort(function (a, b) { return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1); });
+    // 排序：默认按现价（出售 / 获得不改变行位置），也可按品质或持有数量（设计稿 v2 的排序下拉）。
+    // 无论选哪种，同档内始终用 id 兜底比较，保证顺序稳定、重绘不跳位。
+    if (invCategory !== 'component') keys.sort(function (a, b) {
+      if (invSort === 'rarity') {
+        const d = rarityRank(itemMeta(b).rarity) - rarityRank(itemMeta(a).rarity);
+        if (d) return d;
+      } else if (invSort === 'count') {
+        const d = (st.inventory[b] || 0) - (st.inventory[a] || 0);
+        if (d) return d;
+      }
+      return unitPriceOf(b) - unitPriceOf(a) || (a < b ? -1 : 1);
+    });
     const query = invSearch.trim().toLocaleLowerCase();
     if (query) keys = keys.filter(function (id) {
       const m = itemMeta(id);
@@ -7220,7 +7275,7 @@ window.UI = (function () {
         .concat((m.affixes || []).map(affixText)).join(' ').toLocaleLowerCase();
       return query.split(/\s+/).every(function (word) { return text.indexOf(word) >= 0; });
     });
-    const filterSig = JSON.stringify([invCategory, invSubRar, invTier, invPart,
+    const filterSig = JSON.stringify([invCategory, invSort, invViewMode, invSubRar, invTier, invPart,
       invBase, invAffixCount, invAffixType, invAffixMin, invAffixMax, query, invEquipmentFilters]);
     if (filterSig !== invFilterSig) { invPage = 1; invFilterSig = filterSig; }
     // 组件：分页单位是「行」而不是「物品」——组头恒占一行，展开的成员各占一行（折叠组只占 1 行）。
@@ -7266,7 +7321,7 @@ window.UI = (function () {
     const rowsPart = plan.component
       ? plan.rows.map(function (r) { return r.kind === 'group' ? 'G:' + r.gk + (r.open ? '+' : '-') : r.id; }).join(',')
       : invRowsPlan(plan, st).join(',');
-    return 'inv|' + invCategory + '|' + invSubRar + '|' + invTier + '|' + invPart + '|' + invBase + '|' + invAffixCount + '|' +
+    return 'inv|' + invCategory + '|' + invSort + '|' + invViewMode + '|' + invSubRar + '|' + invTier + '|' + invPart + '|' + invBase + '|' + invAffixCount + '|' +
       invAffixType + '|' + invAffixMin + '|' + invAffixMax + '|' + invSearch + '|' + invPage + '|' + plan.total + '|' + rowsPart + '|' + myListingSig(st);
   }
   // 我的挂单结构（下架 / 被买走后要重建这一块）：只在挂单本身变化时才让签名变
@@ -7289,7 +7344,7 @@ window.UI = (function () {
     // 否则会留下「神话 / 大型」这类对当前分类不存在的筛选，界面上一片空列表且无处可清。
     normalizeInvFilters();
     main.innerHTML = '';
-    const panel = el('div', 'panel wide two-col inventory-panel');
+    const panel = el('div', 'panel wide two-col inventory-panel inv2');
     panel.innerHTML = '';
     // 交易进行中：背包内容锁定（新渔获不会自动刷新列表，避免交易选物品时被冲掉）
     if (tradeLockOn()) panel.appendChild(tradeLockBar());
@@ -7329,8 +7384,12 @@ window.UI = (function () {
     });
 
     const colMain = el('div', 'col-main');
-    colMain.appendChild(el('h3', null, '📦 物品明细'));
+    // 一级页签行留在 DOM 里但已被港湾 CSS 收起（.inv-page-tabs）：它仍是分类计数与右栏概览的
+    // 唯一来源（patchInventoryNumbers 按它回填）；视觉上的一级页签由木梁下方的挂签承载。
     colMain.appendChild(tabs);
+
+    // 工具栏（设计稿 v2 §8 仓库）：搜索 + 排序 + 格子 / 列表
+    const tool = el('div', 'toolbar inv-tool');
     const searchForm = el('form', 'inv-search');
     const searchInput = el('input', 'ipt');
     searchInput.type = 'search'; searchInput.value = invSearch;
@@ -7345,14 +7404,166 @@ window.UI = (function () {
       ev.preventDefault(); invSearch = searchInput.value.trim(); invPage = 1; renderView();
     });
     clearSearch.addEventListener('click', function () { invSearch = ''; invPage = 1; renderView(); });
-    colMain.appendChild(searchForm);
+    tool.appendChild(searchForm);
+
+    const sortSel = el('select', 'inv-sort');
+    sortSel.setAttribute('aria-label', '排序方式');
+    [['price', '按现价'], ['rarity', '按品质'], ['count', '按数量']].forEach(function (kv) {
+      const o = el('option', null, kv[1]); o.value = kv[0]; if (kv[0] === invSort) o.selected = true; sortSel.appendChild(o);
+    });
+    sortSel.addEventListener('change', function () { invSort = sortSel.value; invPage = 1; renderView(); });
+    tool.appendChild(sortSel);
+
+    const gridBtn = el('button', 'mini' + (invViewMode === 'grid' ? ' primary-mini' : ''), '格子');
+    gridBtn.type = 'button';
+    gridBtn.title = '格子墙：8 列缩略图 + 右侧物品明细';
+    gridBtn.addEventListener('click', function () { if (invViewMode !== 'grid') { invViewMode = 'grid'; renderView(); } });
+    const listBtn = el('button', 'mini' + (invViewMode === 'list' ? ' primary-mini' : ''), '列表');
+    listBtn.type = 'button';
+    listBtn.title = '列表：每行一件，带现价 / 小计与操作';
+    listBtn.addEventListener('click', function () { if (invViewMode !== 'list') { invViewMode = 'list'; renderView(); } });
+    tool.appendChild(gridBtn);
+    tool.appendChild(listBtn);
+    colMain.appendChild(tool);
     colMain.appendChild(renderInvSubFilters(st)); // 子分类行（品质 / 部位 / 词条+数值）
     const list = el('div', 'inv-page');
     // 行计划（筛选 / 排序）与结构签名：就地补丁（patchInventoryLive）按同一个签名判断能否不重建
     const plan = invListPlan(st);
     const keys = plan.keys;
     const tierShown = plan.tierShown;
+    // 格子墙只用于「全部 / 鱼类 / 材料 / 宝匣」；组件是实例化的（同底材成组、要展开看词条），
+    // 继续走分组行列表，列表视图也保持原样。
+    const gridMode = invViewMode === 'grid' && invCategory !== 'component';
+    list.className = 'inv-page' + (gridMode ? ' inv-grid' : '');
     list.setAttribute('data-sig', invSigOf(st));
+
+    // 大型 / 巨型鱼单独预留（普通出售 / 上架 / 交易动不了它们）：两种视图下都各自成一行，
+    // 出售走 +50% / +150% 加成通道。就地补丁（patchInventoryTierRow）按 .inv-tier-row[data-id] 定位。
+    function appendTierRows(host, id, meta) {
+      if (meta.kind !== 'fish' || reservedOf(id) <= 0) return;
+      [['L', '大型', 'tag-large'], ['G', '巨型', 'tag-giant']].forEach(function (tk) {
+        const t = tk[0], n = shownReservedOf(id, t);   // 显示量 = 服务器预留量 − 在途出售量
+        if (n <= 0) return;
+        if (tierShown !== 'all' && tierShown !== t) return;
+        const bonus = tierBonus(id, t, 1);
+        const trow = el('div', 'inv-row inv-page-row inv-tier-row');
+        trow.setAttribute('data-id', id + '@' + t);
+        trow.innerHTML =
+          '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
+          '<span class="kind-tag ' + tk[2] + '">' + tk[1] + '</span>' +
+          '<span class="cnt">×' + n + '</span>' +
+          '<span class="unit-price">现价 ' + unitPrice(id) + '💰 +' + bonus + '💰</span>' +
+          '<span class="subtotal">小计 ' + (unitPrice(id) * n + tierBonus(id, t, n)) + '💰</span>';
+        const tact = el('span', 'inv-acts');
+        const tsb = el('button', 'mini primary-mini', '出售 1');
+        markFeature(tsb, 'mall.sell');
+        tsb.disabled = tradableCountOf(id, t) < 1;
+        tsb.title = '出售' + (t === 'G' ? '巨型' : '大型') + '（额外 +' + (t === 'G' ? '150' : '50') + '% 金币加成）';
+        tsb.addEventListener('click', function () { doSell(id, 1, t); });
+        tact.appendChild(tsb);
+        const tall = el('button', 'mini', '批量出售');
+        markFeature(tall, 'mall.sell');
+        tall.title = '打开批量出售窗口：一般 / 大型 / 巨型 三档都能填数量，一次结算';
+        tall.addEventListener('click', function () { openBatchSellModal(id); });
+        tact.appendChild(tall);
+        trow.appendChild(tact);
+        trow.insertAdjacentHTML('beforeend', rewardBindingBadge(id, t));
+        wireItemIntro(trow, id);
+        host.appendChild(trow);
+      });
+    }
+
+    // ---- 右侧「物品明细」卡（设计稿 v2 §8）：选中格子的放大图 / 属性 / 操作 ----
+    const detailId = (invSel && (st.inventory[invSel] || 0) > 0)
+      ? invSel
+      : ((invCategory === 'component' ? (plan.allKeys || []) : keys)[0] || null);
+    invSel = detailId;
+    function detailHtml(id) {
+      const meta = itemMeta(id);
+      const total = st.inventory[id] || 0;
+      const cnt = meta.kind === 'fish' ? Math.min(total, shownAvailOf(id)) : total;
+      const rows = [['品质', '<span class="' + qualityClass(meta) + '">' + qualityName(meta) + '</span>'],
+        ['持有', '×' + total]];
+      if (meta.kind === 'component') rows.push(['部位', esc(partNameOf(meta.part) || meta.part || '—')]);
+      rows.push(['现价', unitPrice(id) + ' 💰']);
+      rows.push(['小计', (unitPrice(id) * cnt) + ' 💰']);
+      if (meta.kind === 'fish') {
+        const L = shownReservedOf(id, 'L'), G = shownReservedOf(id, 'G');
+        if (L || G) rows.push(['大型 / 巨型', L + ' / ' + G]);
+      }
+      const src = itemIconSrc(meta);
+      return (src ? '<img class="big" src="' + esc(src) + '" alt="" loading="lazy" draggable="false" onerror="__imgFail(this)">' : '') +
+        '<div class="dn ' + qualityClass(meta) + '">' + esc(meta.name) + '</div>' +
+        '<dl class="kv">' + rows.map(function (kv) { return '<dt>' + kv[0] + '</dt><dd>' + kv[1] + '</dd>'; }).join('') + '</dl>' +
+        '<div class="row detail-acts"></div>';
+    }
+    // 明细卡里的按钮每次重画后都要重新接线（innerHTML 会丢掉上一批监听器）
+    function bindDetail(id) {
+      const host = $('inv-detail');
+      if (!host) return;
+      const acts = host.querySelector('.detail-acts');
+      if (!acts) return;
+      const meta = itemMeta(id);
+      // 宝匣只能市集交易（系统商店不收购），所以不出售按钮，只给「去开箱」
+      if (meta.kind === 'chest') {
+        const go = el('button', 'mini gold', '🎁 去开箱');
+        go.type = 'button';
+        go.title = '宝匣只能在「🎁 开箱」页开箱；系统商店不收购宝匣';
+        go.addEventListener('click', function () { currentView = 'chest'; renderNav(); renderView(); loadViewData('chest'); });
+        acts.appendChild(go);
+      } else if (!meta.noSell) {
+        const s1 = el('button', 'mini primary-mini', '出售 1');
+        markFeature(s1, 'mall.sell');
+        s1.type = 'button';
+        s1.disabled = tradableCountOf(id) < 1;
+        s1.title = '按当前系统收购价出售 1 个';
+        s1.addEventListener('click', function () { doSell(id, 1); });
+        const s2 = el('button', 'mini', '批量出售');
+        markFeature(s2, 'mall.sell');
+        s2.type = 'button';
+        s2.title = '打开批量出售子窗口：可填数量或用滑块，并查看价格趋势';
+        s2.addEventListener('click', function () { openBatchSellModal(id); });
+        acts.appendChild(s1); acts.appendChild(s2);
+      }
+      if (meta.kind !== 'chest') {
+        if (meta.kind === 'fish' && !MARKET_FISH_LIST) {
+          // v0.14.0：鱼类暂时不能上市集（见顶部 MARKET_FISH_LIST）——不出按钮，说明去哪儿卖
+          const off = el('span', 'mini locked mk-off', '上架暂停');
+          off.title = '鱼类暂时不能上市集（改版中）：渔获请在「商城 · 收购」出售；大型/巨型鱼可按档位卖，另有 +50% / +150% 加成';
+          acts.appendChild(off);
+        } else {
+          const lb = el('button', 'mini', '上架');
+          markFeature(lb, 'mall.list');
+          lb.type = 'button';
+          lb.title = '挂到开放市集（选择时长，支付对应上架费，下架不退）';
+          lb.addEventListener('click', function () { openListModal(id); });
+          acts.appendChild(lb);
+        }
+      }
+      if (meta.kind === 'component') {
+        const d = el('button', 'mini', '🔧 属性');
+        d.type = 'button';
+        d.title = '查看词条与数值区间';
+        d.addEventListener('click', function () { openComponentDetail(id); });
+        acts.appendChild(d);
+      }
+      if (rewardBoundCount(id) > 0) acts.insertAdjacentHTML('beforeend', rewardBindingBadge(id));
+      wireItemIntro(host, id);
+    }
+    // 点格子：只换选中态与明细卡（不整页重建，滚动位置与展开状态都不动）
+    function selectInvCard(id) {
+      invSel = id;
+      const wall = document.querySelector('.inv-page');
+      if (wall) {
+        Array.prototype.forEach.call(wall.querySelectorAll('.slot[data-id]'), function (s) {
+          s.classList.toggle('sel', s.getAttribute('data-id') === id);
+        });
+      }
+      const host = $('inv-detail');
+      if (!host) { renderView(); return; }
+      host.innerHTML = detailHtml(id);
+      bindDetail(id);
+    }
     // 组件分类走「行计划」（组头 + 成员行）分页：判断空列表要看行数而不是物品数
     const emptyList = invCategory === 'component' ? !(plan.rows && plan.rows.length) : keys.length === 0;
     if (emptyList) {
@@ -7361,6 +7572,34 @@ window.UI = (function () {
         : el('div', 'hint', '该筛选条件下没有物品。'));
     } else if (invCategory === 'component') {
       renderComponentRows(list, plan, st, unitPrice, itemValue, doSell);
+    } else if (gridMode) {
+      // 设计稿 v2 §8：8 列格子墙（品质描边 + 数量角标 + 选中高亮），空槽补齐整行
+      const wall = el('div', 'slots inv-wall');
+      keys.forEach(function (id) {
+        const meta = itemMeta(id);
+        const total = st.inventory[id];
+        // 一般格代表「普通量」= 总量 − 大型/巨型预留（与行列表、出售校验同一口径）
+        const cnt = meta.kind === 'fish' ? Math.min(total, shownAvailOf(id)) : total;
+        if (cnt > 0 && (tierShown === 'all' || tierShown === 'N')) {
+          // 也带上 .inv-page-row：就地补丁与既有脚本都按这一族选择器找「当前页的一格 / 一行」
+          const b = el('button', 'slot inv-page-row ' + (meta.rarity || 'common') + (invSel === id ? ' sel' : ''));
+          b.type = 'button';
+          b.setAttribute('data-id', id);
+          b.setAttribute('aria-label', meta.name + ' ' + qualityName(meta) + ' ×' + cnt);
+          b.title = meta.name + ' · ' + qualityName(meta) + ' ×' + cnt + ' · 现价 ' + unitPrice(id) + '💰';
+          const src = itemIconSrc(meta);
+          b.innerHTML = (src ? '<img src="' + esc(src) + '" alt="" loading="lazy" draggable="false" onerror="__imgFail(this)">' : '') +
+            '<span class="q">' + cnt + '</span>' + rodLockBadge(id);
+          b.addEventListener('click', function () { selectInvCard(id); });
+          wall.appendChild(b);
+        }
+      });
+      const need = Math.max(24, Math.ceil(Math.max(1, wall.children.length) / 8) * 8);
+      for (let i = wall.children.length; i < need; i++) wall.appendChild(el('span', 'slot empty'));
+      list.appendChild(wall);
+      const tiers = el('div', 'list-rows inv-tiers');
+      keys.forEach(function (id) { appendTierRows(tiers, id, itemMeta(id)); });
+      if (tiers.children.length) list.appendChild(tiers);
     } else {
       keys.forEach(function (id) {
         const meta = itemMeta(id);
@@ -7421,40 +7660,7 @@ window.UI = (function () {
         }
         // v0.13.6：大型/巨型鱼单独存放——紧跟普通行之后各出一行带标签的独立行，出售走加成通道
         // v0.13.10：选了体型档筛选时只画该档行（一般 / 大型 / 巨型 三档互斥显示）
-        if (meta.kind === 'fish' && reservedOf(id) > 0) {
-          [['L', '大型', 'tag-large'], ['G', '巨型', 'tag-giant']].forEach(function (tk) {
-            const t = tk[0], n = shownReservedOf(id, t);   // 显示量 = 服务器预留量 − 在途出售量
-            if (n <= 0) return;
-            if (tierShown !== 'all' && tierShown !== t) return;
-            const bonus = tierBonus(id, t, 1);
-            const trow = el('div', 'inv-row inv-page-row inv-tier-row');
-            trow.setAttribute('data-id', id + '@' + t);
-            trow.innerHTML =
-              '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
-              '<span class="kind-tag ' + tk[2] + '">' + tk[1] + '</span>' +
-              '<span class="cnt">×' + n + '</span>' +
-              '<span class="unit-price">现价 ' + unitPrice(id) + '💰 +' + bonus + '💰</span>' +
-              '<span class="subtotal">小计 ' + (unitPrice(id) * n + tierBonus(id, t, n)) + '💰</span>';
-            const tact = el('span', 'inv-acts');
-            const tsb = el('button', 'mini primary-mini', '出售 1');
-            markFeature(tsb, 'mall.sell');
-            tsb.disabled=tradableCountOf(id,t)<1;
-            tsb.title = '出售' + (t === 'G' ? '巨型' : '大型') + '（额外 +' + (t === 'G' ? '150' : '50') + '% 金币加成）';
-            tsb.addEventListener('click', function () { doSell(id, 1, t); });
-            tact.appendChild(tsb);
-            // v0.14.0：批量出售入口也放到档位行上——「一般量为 0、只剩预留」的鱼本来一个入口都没有，
-            // 只能一条一条点（批量窗口里三档都能填数量，见 openBatchSellModal）
-            const tall = el('button', 'mini', '批量出售');
-            markFeature(tall, 'mall.sell');
-            tall.title = '打开批量出售窗口：一般 / 大型 / 巨型 三档都能填数量，一次结算';
-            tall.addEventListener('click', function () { openBatchSellModal(id); });
-            tact.appendChild(tall);
-            trow.appendChild(tact);
-            trow.insertAdjacentHTML('beforeend',rewardBindingBadge(id,t));
-            wireItemIntro(trow, id);
-            list.appendChild(trow);
-          });
-        }
+        appendTierRows(list, id, meta);
       });
     }
     colMain.appendChild(list);
@@ -7474,6 +7680,23 @@ window.UI = (function () {
     panel.appendChild(colMain);
 
     const side = el('div', 'col-side');
+    // 设计稿 v2 §8：右列第一块是选中物品的明细卡（格子墙的搭档）
+    const dHost = el('div', 'box detail inv-detail');
+    dHost.id = 'inv-detail';
+    dHost.innerHTML = detailId
+      ? detailHtml(detailId)
+      : '<div class="sec-h">物品明细</div><p class="note">这一页还没有可展示的物品。</p>';
+    side.appendChild(dHost);
+    if (detailId) bindDetail(detailId);
+
+    // 容量条（设计稿 §8 底部）：已用 n / 120 格 + 进度条（「一键出售」按钮接在同一行后面）
+    const capbar = el('div', 'capbar inv-cap');
+    capbar.appendChild(el('span', 'meta', '已用 ' + invKeys.length + ' / ' + INV_SLOTS + ' 格'));
+    const capMeter = el('div', 'meter');
+    capMeter.innerHTML = '<i style="width:' + Math.min(100, invKeys.length / INV_SLOTS * 100).toFixed(1) + '%"></i>';
+    capbar.appendChild(capMeter);
+    side.appendChild(capbar);
+
     side.appendChild(el('h3', null, '📊 背包概览'));
     const kinds = {}; let totalCnt = 0, totalValue = 0, totalReserved = 0;
     invKeys.forEach(function (id) {
@@ -7496,11 +7719,11 @@ window.UI = (function () {
 
     // 一键出售（预览弹窗）+ 组件订阅提醒入口
     const bulk = el('div', 'bulk-sell');
-    const bbtn = el('button', 'primary big', '⚡ 一键出售（预览）');
+    const bbtn = el('button', 'mini gold', '⚡ 一键出售（预览）');
     markFeature(bbtn, 'mall.sell');
     bbtn.title = '打开预览子窗口：筛选后可逐项勾选与调整数量，确认后才会出售';
     bbtn.addEventListener('click', openBulkSellModal);
-    bulk.appendChild(bbtn);
+    capbar.appendChild(bbtn);   // 设计稿 v2 §8：和容量条同一行
     const subBtn = el('button', 'mini sub-entry', '🔔 组件订阅提醒' + (subUnseen > 0 ? '（' + subUnseen + ' 条未读）' : ''));
     subBtn.title = '设置组件到货提醒：筛选条件 + 提醒方式（背包红标 / 浏览器图标闪烁）';
     subBtn.addEventListener('click', openSubscribeModal);
@@ -8362,6 +8585,7 @@ window.UI = (function () {
     const stationed = (house.stationed || []).filter(Boolean).slice(0, 2);
     const pets = stationed.length ? stationed : [st.dog];
     const stage = el('div', 'char-stage');
+    const bgName = (CHAR2_BGS.find(function (x) { return x[0] === (st.bg || 'stillwater'); }) || ['', '静水湖'])[1];
     stage.innerHTML =
       '<img class="cs-bg" src="assets/scene/stillwater.png" alt="" draggable="false">' +
       '<div class="cs-scene"></div>' +
@@ -8371,7 +8595,9 @@ window.UI = (function () {
         const pos = i === 0 ? '' : ' style="left:38%"';
         return '<img class="cs-dog" src="assets/ui/char/dog_' + esc(id) + '.png" alt="" draggable="false"' + pos +
           ' onerror="__imgFail(this)">';
-      }).join('');
+      }).join('') +
+      // 设计稿 v2 a-room-character.png：场景带左下角的「🏠 渔屋 Lv.n · 地点」标签
+      '<span class="tag2 char-tag">🏠 渔屋 Lv' + (Number(house.level) || 1) + ' · ' + esc(bgName) + '</span>';
     if (window.PxScene) window.PxScene.mount(stage.querySelector('.cs-scene'), st.bg || 'stillwater');
     return stage;
   }
@@ -8809,12 +9035,13 @@ window.UI = (function () {
   // 开箱页内容（原「宝匣合成」整页 → 并入工坊时只画页签内容区 → 独立成页后由 renderChest 承载）
   function wsRenderOpen(body) {
     const st = S();
-    const info = st.chest;
+    // 服务端快照还没到也不把页面空着：卡片数据全部来自 D.CHESTS，先按「残片 0 / 持有以背包为准」
+    // 画出来（设计稿 §3 的宝匣卡始终可见），快照到达后的广播重绘再补上保底计数与残片名。
+    const info = st.chest || { chests: [], pityN: 0, relicName: '沉船宝匣残片' };
+    const loadingNote = st.chest ? '' : '（宝匣状态加载中，持有量与保底计数稍后自动刷新）';
+    // 一级页签（木梁挂签）区分「开箱 / 合成」：同一份卡片数据，主按钮与说明按页签换位
+    const craftMode = chestTab === 'craft';
     body.innerHTML = '';
-    if (!info) {
-      body.appendChild(el('div', 'hint ld-state', '宝匣数据加载中…（若长时间无响应请刷新页面）'));
-      return;
-    }
     // 残片与宝匣持有量以背包为权威（SSE assets 会持续刷新），不用服务端快照里可能已过期的 have
     const invNow = st.inventory || {};
     const relicHave = invNow.relic || 0;
@@ -8836,6 +9063,13 @@ window.UI = (function () {
       const pityLine = (chest.extra && pityN > 0)
         ? '<div class="cc-pity' + (cur.pityNow >= pityN - 1 ? ' hit' : '') + '">' + chestPityText(pityN, cur) + '</div>'
         : '';
+      // 设计稿 v2 §3：宝匣卡按品质描边；「合成」进度条按残片持有量填（craft 页签才强调它）
+      card.className = 'chest-card' + (chest.rarity ? ' r-' + chest.rarity : '');
+      const relicNeed = chest.costRelic || 0;
+      const relicMeter = relicNeed
+        ? '<div class="meter"><i style="width:' + Math.min(100, relicHave / relicNeed * 100).toFixed(1) + '%"></i></div>' +
+          '<div class="cc-plan">' + esc(info.relicName || '残片') + ' ' + relicHave + ' / ' + relicNeed + '</div>'
+        : '';
       card.innerHTML =
         '<img class="cc-icon" src="' + esc(D.itemIcon(chest.id)) + '" alt="" draggable="false">' +
         '<div class="cc-head"><span class="cc-name ' + (D.QUALITY[chest.rarity] ? D.QUALITY[chest.rarity].cls : '') + '">' + esc(chest.name) + '</span>' +
@@ -8845,15 +9079,16 @@ window.UI = (function () {
         '<div class="cc-plan">' + esc(chestPlanText(chest)) + '</div>' +
         '<div class="cc-cost">消耗：' + esc(info.relicName || '残片') + ' ×<b>' + chest.costRelic + '</b>' +
           ' + 💰<b>' + chest.costCoins + '</b></div>' +
+        relicMeter +
         pityLine +
         '<div class="cc-acts"></div>';
       const acts = card.querySelector('.cc-acts');
-      const b1 = el('button', 'mini primary-mini', '合成 ×1');
+      const b1 = el('button', 'mini' + (craftMode ? ' primary-mini' : ''), '合成 ×1');
       markFeature(b1, 'chest.craft');
       b1.disabled = maxN < 1;
       b1.title = maxN < 1 ? '残片或金币不足' : '消耗 ' + chest.costRelic + ' 残片 + ' + chest.costCoins + ' 金币';
       b1.addEventListener('click', function () { craftChest(chest, 1); });
-      acts.appendChild(b1);
+      const allBtns = [];
       if (maxN > 1) {
         const bAll = el('button', 'mini', '合成最多 ×' + maxN);
         markFeature(bAll, 'chest.craft');
@@ -8864,19 +9099,23 @@ window.UI = (function () {
               (chest.costRelic * maxN) + ' 个' + esc(info.relicName || '残片') + ' + 💰' + (chest.costCoins * maxN) + '。' })
             .then(function (ok) { if (ok) craftChest(chest, maxN); });
         });
-        acts.appendChild(bAll);
+        allBtns.push(bAll);
       }
-      const b2 = el('button', 'mini', '开箱');
+      // 「开箱」页签下它才是主按钮（金色）；「合成」页签下让位给合成
+      const b2 = el('button', 'mini' + (craftMode ? '' : ' gold'), '开箱');
       markFeature(b2, 'chest.open');
       b2.disabled = have < 1;
       b2.title = have < 1 ? '先合成宝匣' : '消耗 1 个「' + chest.name + '」开箱';
       b2.addEventListener('click', function () { openChestModal(chest); });
-      acts.appendChild(b2);
+      if (craftMode) { acts.appendChild(b1); allBtns.forEach(function (b) { acts.appendChild(b); }); acts.appendChild(b2); }
+      else { acts.appendChild(b2); acts.appendChild(b1); allBtns.forEach(function (b) { acts.appendChild(b); }); }
       grid.appendChild(card);
     });
     body.appendChild(grid);
+    if (loadingNote) body.appendChild(el('div', 'hint', loadingNote));
     body.appendChild(el('div', 'hint',
-      '宝匣可到「开放市集」出售或与玩家交易（系统商店不收购）。开箱产出的组件直接进背包，可装备 / 出售 / 上架。'));
+      '开箱先摇三下，再按掉落品质播放光效；普通掉落只弹提示。宝匣可到「开放市集」出售或与玩家交易' +
+      '（系统商店不收购）。开箱产出的组件直接进背包，可装备 / 出售 / 上架。'));
   }
   // ---- 开箱页（v0.23.5：从工坊独立出来的整页）----
   // 只画内容：页名由侧栏「🎁 开箱」入口承载（与商城/图鉴同口径，不另加大标题栏）。
@@ -9304,20 +9543,56 @@ window.UI = (function () {
       },
     });
   }
+  // 工作台（设计稿 v2 a-room-workshop.png）：3 张 bench 卡，点进对应页签。
+  // 一级页签（工作台 / 装备成长 / 钓鱼套装 / 熔炼）由木梁下的挂签承载，
+  // 所以这一页只负责把三条入口画成卡片，不再重复一行页签。
+  function renderWorkshopBench() {
+    const main = $('main');
+    main.innerHTML = '';
+    const maxLv = (D.GEAR_SYSTEM && D.GEAR_SYSTEM.maxLevel) || 12;
+    const wrap = el('section', 'panel wide ws-panel ws-bench-panel');
+    const bench = el('div', 'bench');
+    [
+      ['rod_carbon', '装备成长', '用航程凭证与精工热量强化配件', '最高 +' + maxLv + ' · 按部位强化', 'growth'],
+      ['charm_trident', '钓鱼套装', '集齐两件套装核心，激活套装效果', '同套竿身与饰品同时装配后生效', 'sets'],
+      ['resonance_crystal', '熔炼', '主副组件熔炼：主件留底材，副件搬词条', '熔炼台 / 重铸 / 锻造', 'smelt'],
+    ].forEach(function (c) {
+      const card = el('article', 'pcard bench-card');
+      card.setAttribute('data-tab-go', c[4]);
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.innerHTML = '<img class="ic" src="' + esc(D.itemIcon(c[0])) + '" alt="" loading="lazy" draggable="false" onerror="__imgFail(this)">' +
+        '<b class="gold">' + esc(c[1]) + '</b>' +
+        '<span class="sub">' + esc(c[2]) + '</span>' +
+        '<span class="note bench-status">' + esc(c[3]) + '</span>';
+      const go = function () { if (wsPanelTab !== c[4]) panelTab(c[4]); };
+      card.addEventListener('click', go);
+      card.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } });
+      bench.appendChild(card);
+    });
+    wrap.appendChild(bench);
+    main.appendChild(wrap);
+  }
   function renderWorkshop() {
     const main = $('main');
-    if(D.GEAR_SYSTEM.enabled && window.GearUI){
-      // v0.23.5：开箱独立成页后，工坊只剩「装备与套装成长」一个功能页，
-      // 原来的「⚒ 工坊」标题 + 主页签那一行不再承担切换职责 → 删掉，功能页直接从页面顶部开始。
-      let body=main.querySelector('[data-modern-body]');
-      if(!body){
-        main.innerHTML='<section class="panel wide workshop-shell" data-modern-workshop>'+
+    const gearOn = !!(D.GEAR_SYSTEM.enabled && window.GearUI);
+    // 历史工坊口径（装备成长系统关闭）：没有装备成长 / 钓鱼套装两页，直接进熔炼工作台，
+    // 木梁挂签也只留「熔炼」（见 panelTabDefs）。
+    if (!gearOn) wsPanelTab = 'smelt';
+    // 工作台：三张 bench 卡（任何配置下都有，因为它只做页签跳转）
+    if (wsPanelTab === 'bench') { renderWorkshopBench(); return; }
+    if (gearOn && (wsPanelTab === 'growth' || wsPanelTab === 'sets')) {
+      // v0.23.5：开箱独立成页后，工坊只剩「装备与套装成长」两个功能页，
+      // 页面里不再画一级页签行（改由木梁下的挂签驱动 wsPanelTab → GearUI.setTab）。
+      let body = main.querySelector('[data-modern-body]');
+      if (!body) {
+        main.innerHTML = '<section class="panel wide workshop-shell" data-modern-workshop>' +
           '<div class="workshop-body workshop-growth" data-modern-body></div></section>';
-        body=main.querySelector('[data-modern-body]');
+        body = main.querySelector('[data-modern-body]');
       }
-      body.className='workshop-body workshop-growth';
-      body.innerHTML='';
-      GearUI.mount(body);
+      body.className = 'workshop-body workshop-growth';
+      body.innerHTML = '';
+      GearUI.mount(body, wsPanelTab);
       return;
     }
     const st = S();
@@ -9325,7 +9600,9 @@ window.UI = (function () {
     main.innerHTML = '';
     if (wsTab === 'open') wsTab = 'smelt'; // 开箱已独立成页：旧会话里的开箱页签回到熔炼
     const panel = el('div', 'panel wide ws-panel');
-    panel.innerHTML = '<div class="inv-cats ws-tabs section-tabs" role="tablist">' +
+    // 熔炼 / 重铸 / 锻造 是页内二级切换：港湾把一级页签放到木梁挂签后，
+    // 这一行仍要可见，所以用 .sub-cats（不是已被收起的 .section-tabs）。
+    panel.innerHTML = '<div class="inv-cats ws-tabs sub-cats" role="tablist">' +
       orderedFeatureTabs('workshop', [['smelt', '🔥 熔炼'], ['recast', '♻ 重铸'], ['forge', '⚒ 锻造']], {}).map(function (kv) {
         return '<button class="inv-cat' + (wsTab === kv[0] ? ' on' : '') + '" data-wstab="' + kv[0] +
           '" role="tab" aria-selected="' + (wsTab === kv[0] ? 'true' : 'false') + '">' + kv[1] + '</button>';
@@ -9347,13 +9624,34 @@ window.UI = (function () {
     wsRenderSmelt(body);
   }
 
+  // 熔炼流程一览（设计稿 v2 a-room-workshop.png 的 .forge）：主 + 副 + 催化 → 产物。
+  // 只读展示当前草稿（真正的选择 / 份数控制仍在下面工作台里），让港湾内景多一段设计稿口径的流程条。
+  function wsForgeSlot(id, cap, n) {
+    if (!id) return '<span class="slot empty"><span class="cap">' + esc(cap) + '</span>?</span>';
+    const rarity = (D.itemOf && D.itemOf(id) ? D.itemOf(id).rarity : '') || 'common';
+    return '<span class="slot ' + rarity + '"><span class="cap">' + esc(cap) + '</span>' +
+      '<img src="' + esc(D.itemIcon(id)) + '" alt="" loading="lazy" draggable="false" onerror="__imgFail(this)">' +
+      (n ? '<span class="q">' + n + '</span>' : '') + '</span>';
+  }
+  function wsForgeSummaryHtml() {
+    const matQty = wsMatPick ? wsMatQty() : 0;
+    return '<div class="forge ws-forge-summary" aria-hidden="true">' +
+      wsForgeSlot(wsMain, '主组件', 0) +
+      '<span class="arrow">+</span>' + wsForgeSlot(wsSub, '副组件', 0) +
+      '<span class="arrow">+</span>' + wsForgeSlot(wsMatPick, '催化', matQty) +
+      '<span class="arrow">→</span>' + wsForgeSlot(wsMain, '产物', 0) +
+      '</div>';
+  }
   function wsRenderSmelt(body) {
     const st = S(), comps = wsComponents();
     const mainC = comps.find(function (c) { return c.id === wsMain; }) || null;
     const subC = comps.find(function (c) { return c.id === wsSub; }) || null;
     const rt = wsRetainInfo(mainC);
     body.classList.add('smelt-workbench');
-    body.innerHTML = '<fieldset class="sm-draft"' + (wsBusy ? ' disabled' : '') + '><legend class="sr-only">熔炼方案</legend>' +
+    // 流程一览条是设计稿 v2 的内景零件：只在港湾内景里铺，经典布局（无面板外壳）里不占高度，
+    // 否则低分辨率下工作台会被顶出视口（旧验收口径要求整块工作台免滚动可见）。
+    const forgeSummary = document.body.classList.contains('harbor-on') ? wsForgeSummaryHtml() : '';
+    body.innerHTML = forgeSummary + '<fieldset class="sm-draft"' + (wsBusy ? ' disabled' : '') + '><legend class="sr-only">熔炼方案</legend>' +
       '<div class="sm-step-title"><h3>01 <span>选择组件与词条</span></h3><span id="ws-step-feedback" role="status" aria-live="polite"></span></div>' +
       '<div class="ws-grid">' + wsCompCardHtml('main', mainC) + wsCompCardHtml('sub', subC) + '</div>' +
       (!comps.length ? '<div class="sm-empty-inventory">暂无组件 <button class="mini" id="ws-find-components">去开箱</button></div>' : '') +
@@ -10006,16 +10304,19 @@ window.UI = (function () {
       const iconSrc = it.kind === 'fish' ? 'assets/fish/' + esc(it.id) + '.png'
         : (it.kind === 'material' || it.kind === 'component') ? '' + esc(D.itemIcon(it.id)) + '' : null;
       const limitText = it.limit > 0
-        ? '今日限购 ' + it.limit + ' · 剩余 <b>' + it.remain + '</b>'
+        ? '剩余 <b>' + it.remain + '</b> / ' + it.limit
         : '不限购 · 本期已购 ' + it.bought;
+      // 设计稿 v2 §4：库存条＝剩余 / 限购；不限购的商品整条铺满。
+      const stockPct = it.limit > 0 ? Math.max(0, Math.min(100, Math.round(it.remain / it.limit * 100))) : 100;
       card.innerHTML =
         (iconSrc ? '<img class="mc-icon" src="' + iconSrc + '" alt="" draggable="false" onerror="__imgFail(this)">' : '') +
         '<div class="mc-name ' + cls + '">' + esc(it.name) + '</div>' +
-        '<div class="mc-price">' + it.price + '<span class="u">💰</span></div>' +
         '<div class="mc-limit' + (soldOut ? ' out' : '') + '">' + limitText + '</div>' +
+        '<div class="meter mc-meter"><i style="width:' + stockPct + '%"></i></div>' +
         '<div class="mc-have hint">持有 ' + (it.have || 0) + '</div>';
       const acts = el('div', 'mc-acts');
-      const b1 = el('button', 'mini primary-mini', soldOut ? '今日已售罄' : '购买');
+      // 价格写进按钮（设计稿的按钮就是「480 💰」），不再单占一行
+      const b1 = el('button', 'mini ' + (soldOut ? '' : 'go'), soldOut ? '已售罄' : it.price.toLocaleString() + ' 💰');
       markFeature(b1, 'mall.buy');
       b1.disabled = soldOut;
       b1.title = soldOut ? '今日限购已用完，等刷新后重置'
@@ -10123,8 +10424,9 @@ window.UI = (function () {
     });
     panel.appendChild(tabNav);
 
-    // 添加页签内容容器
-    const content = el('div', 'board-content');
+    // 设计稿 v2 §7：内容区本身就是软木板（.cork），每个页签渲染一张钉在上面的纸条（.paper）。
+    // 四个子渲染函数仍按 .board-content 找容器，所以这个类名保留（样式见 css/room-board.css）。
+    const content = el('div', 'cork board-content');
     panel.appendChild(content);
     main.appendChild(panel);
 
@@ -10150,7 +10452,7 @@ window.UI = (function () {
     const caught = st.codex || {};
     const total = Object.keys(caught).length;
 
-    const card = el('div', 'board-card');
+    const card = el('div', 'paper board-card');
 
     const summary = el('div', 'codex-summary');
     const items = D.allItems().filter(function (i) {
@@ -10161,6 +10463,12 @@ window.UI = (function () {
     summary.innerHTML = '<div class="cs-box"><b id="cx-sum-got">' + gotFish + ' / ' + fishItems.length + '</b><span>鱼类收集</span></div>' +
       '<div class="cs-box"><b id="cx-sum-entries">' + total + '</b><span>图鉴条目</span></div>' +
       '<div class="cs-box"><b id="cx-sum-catch">' + (st.catchCount || 0) + '</b><span>累计渔获</span></div>';
+    // 设计稿的纸条抬头是「图鉴 · 已收集 / 总数」+ 一条进度条；下面的概要三块沿用原来的
+    // #cx-sum-* 锚点（软刷新 softRefreshCodex 按它们回填），不重复造新的统计。
+    card.appendChild(el('h6', null, '📖 图鉴 · ' + gotFish + ' / ' + fishItems.length));
+    const dexMeter = el('div', 'meter');
+    dexMeter.innerHTML = '<i style="width:' + (fishItems.length ? Math.round(gotFish / fishItems.length * 100) : 0) + '%"></i>';
+    card.appendChild(dexMeter);
     card.appendChild(summary);
 
     const tabs = el('div', 'inv-cats sub-cats');
@@ -10250,7 +10558,8 @@ window.UI = (function () {
     const recs = Object.keys(st.records || {}).map(function (id) { return st.records[id]; })
       .sort(function (a, b) { return b.size - a.size; });
 
-    const card = el('div', 'board-card');
+    const card = el('div', 'paper board-card');
+    card.appendChild(el('h6', null, '🏆 纪录'));
 
     const rc = S().recordsCfg || { scale: 175, x: 0, y: 0 };
     const last = st.recordsLast || null;
@@ -10311,7 +10620,8 @@ window.UI = (function () {
     loadLog();
     content.innerHTML = '';
 
-    const card = el('div', 'board-paper');
+    const card = el('div', 'paper board-paper');
+    card.appendChild(el('h6', null, '📜 日志'));
 
     const counts = { all: msgLog.length };
     Object.keys(LOG_KINDS).forEach(function (k) { counts[k] = msgLog.filter(function (e) { return e.kind === k; }).length; });
@@ -10366,7 +10676,8 @@ window.UI = (function () {
     const cdText = cdHours >= 1 ? (cdHours + ' 小时') : Math.round(cdHours * 60) + ' 分钟';
     const mine = (fb.mine || []);
 
-    const card = el('div', 'board-paper');
+    const card = el('div', 'paper board-paper');
+    card.appendChild(el('h6', null, '✍ 反馈'));
 
     const banner = el('div', 'fb-banner' + (status.ready ? ' ready' : ' cooling'));
     banner.dataset.orderFeature = 'feedback.skip';
@@ -11176,7 +11487,8 @@ window.UI = (function () {
       return q.id + ':' + q.need + ':' + JSON.stringify(q.reward || null) + ':' + JSON.stringify(q.submit || null);
     }).join(',');
     const anc = D.SEA.anchor || {};
-    return ['ship' + ((d.ship && d.ship.lv) || 1) + (d.ship && d.ship.max ? 'M' : ''),
+    // 一级挂签（远航 / 船只）也进签名：切换页签要重建一次 DOM，否则命中增量分支看不到变化。
+    return ['tab' + seaPanelTab, 'ship' + ((d.ship && d.ship.lv) || 1) + (d.ship && d.ship.max ? 'M' : ''),
       'z' + zones, 'q' + quests, 'g' + (d.glow ? 1 : 0),
       'cfg' + D.SEA.zoneMax + ':' + anc.coins + ':' + anc.scales + ':' + anc.maxTimes + ':' + anc.extendMin +
       ':' + ((D.SEA.nightglow || {}).on ? 1 : 0) + ((D.SEA.nightglow || {}).from) + '-' + ((D.SEA.nightglow || {}).to)].join('|');
@@ -11295,7 +11607,9 @@ window.UI = (function () {
       node.classList.toggle('is-now', at === Math.min(now, 4));
     });
   }
-  let seaSection = 'expedition';
+  // 默认落在「船坞与海图」：远征面板要等 ExpeditionUI 拉到数据才有内容，
+  // 空数据时先展示海图 / 临时海域，避免进页就是一块空白。
+  let seaSection = 'exploration';
   function renderSea() {
     // 不能传 force：强刷会让「渲染→拉取→再渲染」成环，页面每秒重绘一次（按钮永远点不中）。
     // 8 秒节流在 ensureSea 内部（过短会在广播重绘时频繁打接口，过长则升级材料攒够后按钮迟迟不亮）；动作回包各自直接更新 seaInfo，无需依赖这里的刷新。
@@ -11311,12 +11625,22 @@ window.UI = (function () {
     wrap.setAttribute('data-sig', sig);
     wrap.innerHTML = '';
     main.appendChild(wrap);
-    if (!d) { wrap.appendChild(el('div', 'hint ld-state', '正在读取远洋状态……')); return; }
+    if (!d) {
+      // 港湾 v2：未取到数据时也铺出设计稿的骨架（左航图 + 右状态卡），
+      // 不再只留一行「正在读取远洋状态……」的空页面。
+      const sk = el('div', 'room2 sea-loading');
+      sk.innerHTML = '<div class="voy"><span class="ship" style="left:18%;top:70%">⛵</span></div>' +
+        '<div class="box"><h5>船在港内</h5><p class="note">正在读取远洋状态……数据同步完成后自动刷新。</p></div>';
+      wrap.appendChild(sk);
+      return;
+    }
     // 顶部：标题与三个功能页签排在同一行（原「远洋航海中心」介绍行与四个大指标格已删除，
     // 功能页从屏幕顶部开始）。页签顺序跟随后台的功能排序，与工坊主页面签同一口径。
     const top = el('div', 'sea-topbar');
     top.innerHTML = '<h2>⛵ 远洋港口</h2>';
-    const nav = el('nav', 'section-tabs sea-nav');
+    // 港湾 v2：一级挂签（远航 / 船只）由木梁承载，这一行改成页内二级切换（保持可见，
+    // 否则海图工台 / 临时海域 / 每日悬赏三个子页在港湾里点不到）。
+    const nav = el('nav', 'sub-cats sea-subnav');
     nav.setAttribute('role', 'tablist');
     nav.setAttribute('aria-label', '远洋功能');
     const sections = {};
@@ -11345,7 +11669,17 @@ window.UI = (function () {
     }).join('') + '</div>';
     wrap.appendChild(bar);
     function selectSection() {
-      Object.keys(sections).forEach(function (key) { sections[key].hidden = key !== seaSection; });
+      // 「船只」页签只看船坞整备卡；「远航」页签放开三段二级切换（出海准备 / 海图与临时海域 / 每日悬赏）。
+      const shipOnly = seaPanelTab === 'ship';
+      nav.hidden = shipOnly;
+      Object.keys(sections).forEach(function (key) {
+        // 船坞整备卡在 exploration 段里（见下方 cardGrid），船只页签要显示的是它而不是空的 expedition 段
+        sections[key].hidden = shipOnly ? key !== 'exploration' : key !== seaSection;
+      });
+      // 船只页签只留船坞整备：流程引导 / 海图工台 / 临时海域都归「远航」，两页不重复铺同一批卡片
+      wrap.querySelectorAll('.sea-guide, .sea-chart-card, .sea-zone-card').forEach(function (n) {
+        n.hidden = shipOnly;
+      });
       nav.querySelectorAll('button').forEach(function (button) {
         const active = button.dataset.seaSection === seaSection;
         button.classList.toggle('primary', active);
@@ -11497,6 +11831,9 @@ window.UI = (function () {
     });
     // 首屏也走同一套填充函数（两条路渲染出同一份 DOM）
     seaFill();
+    // 卡片建好后再收敛一次可见性：上面第一次 selectSection() 跑在 pChart / pZone 生成之前，
+    // 那时按选择器找不到它们，船只页签会连带把海图与临时海域一起露出来。
+    selectSection();
   }
   // 从「远洋」页直达临时海域下竿：复用地图 chooseSpot 的乐观更新 + 回包对账流程
   function goSeaFishing(gid, sid, label) {

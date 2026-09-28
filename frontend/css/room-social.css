@@ -3,3 +3,83 @@
    设计稿：output/design-review/redesign/v2/harbor-rooms.js 的 mall / ground / board
    公共零件在 css/harbor.css 的「内景功能页」段；这里只写这三页独有的布局。
    ============================================================ */
+
+/* ============================================================
+   酒馆（设计稿 §5 / a-room-ground.png）
+   在线动态＝左「玩家卡网格」+ 右「最新动态」盒；好友＝申请条 + 名片；
+   编队＝成员名片网格 + 队伍共享海域。
+   ============================================================ */
+
+/* 三栏（钓点筛选 / 玩家 / 动态）改成「筛选横铺一行 + 下面两栏」。
+   style.css 里 .ground-cols-3 > [data-online-pane] 把两个 pane 都按 2/-1 摆，
+   两栏同屏后必须显式分开，否则它们会叠在同一格里。 */
+body.harbor-on .h-pbody .ground-cols-3 { grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; }
+body.harbor-on .h-pbody .ground-cols-3 > .ground-side { grid-column: 1 / -1; }
+body.harbor-on .h-pbody .ground-cols-3 > [data-online-pane="players"] { grid-column: 1; }
+body.harbor-on .h-pbody .ground-cols-3 > [data-online-pane="feed"] { grid-column: 2; }
+body.harbor-on .h-pbody .ground-side .ground-counts { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+body.harbor-on .h-pbody .ground-side .gc-box { flex: 0 1 auto; min-width: 132px; }
+/* 筛选行的「点击筛选 / 暂未开放」不能被折成两行（窄栏时「筛选」会掉到第二行） */
+body.harbor-on .h-pbody .ground-side .gcb-hint { white-space: nowrap; font-size: 11px; }
+
+/* 玩家 / 好友 / 编队成员：竖版名片（头像 → 名字 Lv → 状态 → 操作） */
+body.harbor-on .h-pbody .peeps { display: grid; grid-template-columns: repeat(auto-fill, minmax(186px, 1fr)); gap: 10px; }
+body.harbor-on .h-pbody .peep.pcard {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  text-align: center; padding: 12px 10px;
+}
+body.harbor-on .h-pbody .peep .avatar { width: 56px; height: 56px; font-size: 24px; }
+body.harbor-on .h-pbody .peep-info { text-align: center; }
+body.harbor-on .h-pbody .peep-acts { margin-left: 0; justify-content: center; }
+/* 好友申请 / 搜索结果这类待处理条目保持横向一行（不套竖版名片） */
+body.harbor-on .h-pbody .peep.req-card { display: flex; flex-direction: row; align-items: center; text-align: left; }
+body.harbor-on .h-pbody .peep.req-card .peep-info { text-align: left; flex: 1; }
+/* 申请行里的按钮必须整词不折行（窄栏时「同意」会被拆成两行） */
+body.harbor-on .h-pbody .peep.req-card .mini { white-space: nowrap; flex: none; }
+/* 编队空位：虚线卡片，和成员名片同高 */
+body.harbor-on .h-pbody .peep.party-slot {
+  display: grid; place-items: center; border-style: dashed; min-height: 108px;
+}
+
+/* 右栏「最新动态」：设计稿是钉在旁边的小盒子，滚动条细一格 */
+body.harbor-on .h-pbody .feed-big { max-height: min(560px, calc(100vh - 380px)); }
+
+@media (max-width: 900px) {
+  body.harbor-on .h-pbody .ground-cols-3 { grid-template-columns: 1fr; }
+  body.harbor-on .h-pbody .ground-cols-3 > [data-online-pane="feed"] { grid-column: 1; }
+}
+
+/* ============================================================
+   集市（设计稿 §4 / a-room-mall.png）
+   限购＝刷新 chip + 商品卡（图标 / 名称 / 剩余 x/y / 库存条 / 价格按钮）；
+   收购与市集沿用既有卡片与行列表，这里只把描边 / 圆角 / 字体统一到港湾皮肤。
+   ============================================================ */
+body.harbor-on .h-pbody .mall-bar {
+  border: 2px solid #2c4f74; border-radius: 0; background: #0a1628;
+  padding: 6px 10px; gap: 10px; font: 12px var(--body);
+}
+body.harbor-on .h-pbody .mall-bar .mall-coins { font: 12px var(--px); color: var(--gold); }
+body.harbor-on .h-pbody .mall-grid { grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 12px; }
+body.harbor-on .h-pbody .mall-card {
+  display: flex; flex-direction: column; gap: 4px;
+  border: 3px solid #25405f; border-radius: 0; background: #0a1628; padding: 12px 10px;
+}
+body.harbor-on .h-pbody .mall-card.soldout { opacity: .55; }
+body.harbor-on .h-pbody .mall-card .mc-icon { width: 64px; height: 48px; margin: 0 auto 4px; }
+body.harbor-on .h-pbody .mall-card .mc-name { font: 12px var(--px); }
+body.harbor-on .h-pbody .mall-card .mc-limit { font-size: 12px; }
+body.harbor-on .h-pbody .mall-card .mc-limit b { color: var(--gold); }
+body.harbor-on .h-pbody .mall-card .mc-meter { margin: 2px 0; }
+body.harbor-on .h-pbody .mall-card .mc-have { font-size: 12px; }
+body.harbor-on .h-pbody .mall-card .mc-acts { margin-top: 6px; gap: 6px; }
+body.harbor-on .h-pbody .mall-card .mc-acts .mini { flex: 1; }
+
+/* 收购 / 市集：卡片与挂单行统一描边口径 */
+body.harbor-on .h-pbody .shop-card,
+body.harbor-on .h-pbody .mk-row {
+  border: 3px solid #25405f; border-radius: 0; background: #0a1628;
+}
+body.harbor-on .h-pbody .shop-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+body.harbor-on .h-pbody .shop-qtybar { border: 2px solid #2c4f74; border-radius: 0; background: #0a1628; }
+body.harbor-on .h-pbody .sqb-btn { border-radius: 0; }
+body.harbor-on .h-pbody .bf-cat { border-radius: 0; }

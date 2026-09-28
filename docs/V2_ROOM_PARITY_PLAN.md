@@ -53,6 +53,7 @@
 - A：`frontend/css/room-inventory.css`
 - B：`frontend/css/room-workshop.css`
 - C：`frontend/css/room-social.css`
+- 告示板：`frontend/css/room-board.css`（C 组里告示板单独一份，避免和集市 / 酒馆的规则互相牵制）
 
 ## 验收（每轮只跑这两条，别做全量测试）
 

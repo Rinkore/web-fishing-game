@@ -80,7 +80,22 @@
      if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}}});
    pickerGrid(box);box.querySelector('.modal-close').focus();}
   // 装备成长工作台：组件选择收进「强化路径」框体内的卡片，详情只展示当前选中配件的成长操作。
-  function growthTab(){const c=view.config,list=pickerList(),e=list.find(x=>x.id===selected)||null;let h='<div class="gear-workbench"><section class="gear-detail">'+guide(e,list.length);
+  // 7 部位环形（设计稿 v2 a-room-growth.png 的 .partmap）：展示每个部位当前可成长的配件与强化等级，
+  // 点一下按该部位打开组件选取窗口 —— 与「强化路径」用的是同一份 equipmentFilters，不新建交互。
+  // D.itemIcon 在精简宿主（单测桩 / 老页面）里可能没有：取不到图标就退化成纯文字格子，
+  // 不要让一个可选依赖把整页 draw() 打崩。
+  function iconOf(e){const m=D.componentOf&&D.componentOf(e.id);const id=(m&&m.baseId)?m.baseId:String(e.signature||'').split('#')[0];return D.itemIcon?D.itemIcon(id):'';}
+  function partRing(){const c=view.config,parts=Object.keys(c.parts||{});if(parts.length<2)return '';
+    const pos=parts.map((p,i)=>{const a=-Math.PI/2+i*2*Math.PI/parts.length;return [50+Math.cos(a)*36,46+Math.sin(a)*34];});
+    const pick=p=>pickerList().filter(x=>x.part===p).sort(equippedFirst)[0]||null;
+    const rod=pick('rod')||pickerList()[0]||null;
+    return '<div class="partmap gear-partmap">'+(rod&&iconOf(rod)?'<img class="rod" src="'+esc(iconOf(rod))+'" alt="" draggable="false">':'')+
+      parts.map((p,i)=>{const it=pick(p),q=it?String(it.signature||'').split('#')[1]||'common':'common';
+        return '<button type="button" class="slot '+q+(it&&it.id===selected?' sel':'')+'" data-part-slot="'+esc(p)+'" style="left:calc('+pos[i][0]+'% - 32px);top:calc('+pos[i][1]+'% - 22px)" title="'+esc(labels[p]||p)+(it?' +'+it.growth.level:'')+'">'+
+          '<span class="lvl">'+(it?'+'+it.growth.level:'—')+'</span>'+
+          (it&&iconOf(it)?'<img src="'+esc(iconOf(it))+'" alt="" draggable="false" onerror="__imgFail(this)">':'')+
+          '<span class="pn">'+esc(labels[p]||p)+'</span></button>';}).join('')+'</div>';}
+  function growthTab(){const c=view.config,list=pickerList(),e=list.find(x=>x.id===selected)||null;let h=partRing()+'<div class="gear-workbench"><section class="gear-detail">'+guide(e,list.length);
    if(!e){const [icon,title,note]=EMPTY.growth;
     h+=list.length?'<section class="gear-card gear-pick-empty"><h3>还没有选择组件</h3><p>在「强化路径」的卡片里挑一件配件，这里会显示材料强化、副属性方向、精工锻造与成长转移。</p><button type="button" class="primary" data-pick-card="open">选择组件</button></section>'
      :'<div class="gear-empty"><span class="gear-empty-icon" aria-hidden="true">'+icon+'</span><b>'+title+'</b><small>'+note+'</small><button data-open-chest class="primary">去开箱获取装备</button></div>';
@@ -144,12 +159,16 @@
    root.querySelectorAll('[data-pick-card]').forEach(b=>b.onclick=()=>{if(b.dataset.pickCard==='clear'){selected='';selectedSub='';selectedDirection='main';draw();}else openPicker();});
    if(pickerEl){if(!pickerEl.isConnected||!view)pickerEl=null;else pickerGrid(pickerEl);}
    const transferFilter=root.querySelector('[data-transfer-binding]');if(transferFilter)transferFilter.onchange=()=>{transferBinding=transferFilter.value;draw();};
-  root.querySelectorAll('[data-equipment-select]').forEach(el=>el.onchange=()=>{equipmentFilters[el.dataset.equipmentSelect]=el.value;draw();});const reset=root.querySelector('[data-equipment-reset]');if(reset)reset.onclick=()=>{equipmentFilter='';Object.keys(equipmentFilters).forEach(k=>equipmentFilters[k]='');draw();};
+    root.querySelectorAll('[data-equipment-select]').forEach(el=>el.onchange=()=>{equipmentFilters[el.dataset.equipmentSelect]=el.value;draw();});const reset=root.querySelector('[data-equipment-reset]');if(reset)reset.onclick=()=>{equipmentFilter='';Object.keys(equipmentFilters).forEach(k=>equipmentFilters[k]='');draw();};
+    // 部件环形：点某个部位 = 按该部位打开选取窗口（沿用「强化路径」的筛选状态）
+    root.querySelectorAll('[data-part-slot]').forEach(b=>b.onclick=()=>{if(!view)return;equipmentFilters.part=b.dataset.partSlot;openPicker();});
   root.querySelectorAll('[data-action]').forEach(b=>{if(!modifiable(view.equipment.find(e=>e.id===selected)))b.disabled=true;b.onclick=async()=>{const a=b.dataset.action,body={action:a==='heat'?'engrave':a,id:selected,sub:selectedSub||view.equipment.find(e=>e.id===selected)?.affixes.find(a=>a.type!==view.config.parts[view.equipment.find(e=>e.id===selected)?.part]?.main)?.type||view.config.parts[view.equipment.find(e=>e.id===selected)?.part]?.subs[0]||'',direction:selectedDirection||'main',useHeat:a==='heat',otherId:root.querySelector('[data-transfer]')?.value||''};if(a==='transfer'&&!await UI.confirmModal({title:'确认成长转移',html:'将消耗来源和目标两件配件，生成一件继承成长的配件。',okText:'确认继续'}))return;action(body);};});
   root.querySelectorAll('[data-stage],[data-unlock]').forEach(b=>b.onclick=()=>action({action:b.dataset.stage?'stage':'unlock',set:b.dataset.stage||b.dataset.unlock}));
   // 未达三阶时名单字段不渲染；此时按空名单提交，避免读到空节点并符合服务端的进阶门槛校验。
   const queue=root.querySelector('[data-queue]');const target=root.querySelector('[data-target-save]');if(target)target.onclick=()=>action({action:'target',target:root.querySelector('[data-target]').value,goal:Number(root.querySelector('[data-goal]').value),queue:queue?queue.value.split(',').map(s=>s.trim()).filter(Boolean):[]});
   const harvest=root.querySelector('[data-harvest-save]');if(harvest)harvest.onclick=()=>action({action:'harvest_mode',mode:root.querySelector('[data-harvest]').value});if(busy)root.querySelectorAll('button,input,select').forEach(b=>b.disabled=true);
  }
- window.GearUI={mount(host){if(!root){root=document.createElement('div');root.className='gear-system';draw();}host.append(root);load(false);},invalidate(){last=0;if(root?.isConnected&&!busy)load(true);},cost,effect,value,delta,labels,esc,option,affixes,errors};
+ // mount(host, tab)：港湾 v2 的一级挂签（工作台 / 装备成长 / 钓鱼套装 / 熔炼）驱动这里的 tab，
+ // 页面里不再画 .gear-tabs 那一行（已被港湾 CSS 收起）。setTab 供外部同步页签。
+ window.GearUI={mount(host,t){if(t==='growth'||t==='sets')tab=t;if(!root){root=document.createElement('div');root.className='gear-system';}host.append(root);draw();load(false);},setTab(t){if((t==='growth'||t==='sets')&&t!==tab){tab=t;if(root)draw();}},invalidate(){last=0;if(root?.isConnected&&!busy)load(true);},cost,effect,value,delta,labels,esc,option,affixes,errors};
 })();

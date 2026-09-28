@@ -73,7 +73,8 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     check('告示板直接打开内景面板，页签含五个子视图', await page.evaluate(() => {
       const panel = document.getElementById('h-panel');
       const tabs = document.querySelectorAll('#h-tabs button[role=tab]');
-      return !panel.hidden && tabs.length === 5 && UI.getView() === 'codex';
+      // 告示板是一个地点 + 五个挂签页签；视图 id 是 board，首屏默认「图鉴」
+      return !panel.hidden && tabs.length === 5 && UI.getView() === 'board';
     }));
     check('告示板内景面板显示「图鉴」为第一个选中页签', await page.evaluate(() => {
       const first = document.querySelector('#h-tabs button[role=tab]');
