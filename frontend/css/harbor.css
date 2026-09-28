@@ -158,26 +158,24 @@ html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animati
 
 /* v3 F3: 告示板 cork 背景（图鉴/记录/日志/反馈页面的通用背景） */
 .h-panel[data-place="board"] .h-pbody { background: #d4c4a8; }
-.h-panel[data-place="board"] #main.content { background: transparent; }
+.h-panel[data-place="board"] #main.content { background: transparent; padding: 16px; }
+
+/* 告示板内容区域：paper card layout */
+.h-panel[data-place="board"] .board-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
 
 /* 告示板纸张卡片样式：白色背景，阴影，像软木板上钉的纸 */
-.h-panel[data-place="board"] .panel.wide {
+.h-panel[data-place="board"] .board-card,
+.h-panel[data-place="board"] .board-paper {
   background: #fff;
   border: 1px solid #ddd;
   box-shadow: 0 4px 8px rgba(0, 0, 0, .15);
   padding: 16px 20px;
   margin-bottom: 14px;
-}
-
-/* 告示板上的内容区域保持白色纸张外观 */
-.h-panel[data-place="board"] .codex-grid,
-.h-panel[data-place="board"] .record-list,
-.h-panel[data-place="board"] .feedback-panel,
-.h-panel[data-place="board"] .logs-panel {
-  background: #fff;
-  padding: 14px;
-  border-radius: 6px;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, .12);
+  position: relative;
 }
 
 /* ---------- 目录（列表模式）：直接复用 renderNav 渲染的 #nav ---------- */

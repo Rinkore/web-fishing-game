@@ -207,12 +207,11 @@ window.HarborShell = (function () {
     }).join('');
   }
   function openPlace(id, tab) {
-    // v3 F3：告示板（board）不在 D.NAV 里，单独处理：用对应子视图打开 UI，但外壳以 'board' 跟踪地点
+    // v3 F3：告示板（board）不在 D.NAV 里，单独处理：用统一的 board 视图打开 UI，传入页签索引
     if (id === 'board') {
       if (!window.UI || !window.UI.openView) return false;
-      const subView = BOARD_VIEWS[tab || 0] || BOARD_VIEWS[0];
       let ok = false;
-      try { ok = window.UI.openView(subView) !== false; } catch (e) { ok = false; }
+      try { ok = window.UI.openView('board', tab || 0) !== false; } catch (e) { ok = false; }
       if (!ok) return false;
       showPlace('board', tab || 0);
       return true;

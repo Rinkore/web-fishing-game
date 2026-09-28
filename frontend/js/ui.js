@@ -200,6 +200,10 @@ window.UI = (function () {
   // 钓竿仍是 bd 功能组（parent=fishing）的宿主页签，所以 pageIdOf 必须把它折算回 bd。
   let charTab = 'yard';
   let fbTab = 'submit';         // submit | mine
+  // v3 F3：告示板改为内景面板，四个子视图作为页签。boardTab 跟踪当前页签。
+  let boardTab = 'codex';       // codex | records | logs | feedback
+  let codexCategory = 'fish';   // 图鉴内分类（fish | material | component | spots）
+  let codexSortRarity = false;  // 图鉴品级倒序开关
 
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, html) {
@@ -772,8 +776,9 @@ window.UI = (function () {
       });
     });
   }
-  function navigateView(view) {
+  function navigateView(view, tabIndex) {
     if (view === 'bd') { currentView = 'character'; charTab = 'rod'; return; }
+    if (view === 'board') { currentView = 'board'; boardTab = ['codex', 'records', 'logs', 'feedback'][tabIndex || 0] || 'codex'; return; }
     if (view === 'records') { currentView = 'codex'; codexMainTab = 'records'; return; }
     currentView = view;
   }
@@ -783,7 +788,12 @@ window.UI = (function () {
     if (id === 'wiki') { window.open('/wiki/', '_blank', 'noopener'); return true; }
     if (!featureGuard(id)) return false;
     resetSectionTab(id);
-    navigateView(id);
+    // v3 F3：board 视图用 tab 参数设置初始页签
+    if (id === 'board') {
+      navigateView('board', tab);
+    } else {
+      navigateView(id);
+    }
     if (id === 'inventory') clearSubAlerts();
     if (id !== 'ground') peepComposing = false;
     renderNav(); renderView(); loadViewData(id);
@@ -791,12 +801,12 @@ window.UI = (function () {
     return true;
   }
   // v3 F1：深链 #/place/tab —— 渲染完成后按 0 基序号点选该视图自己的页签按钮。
-  // 直接点 DOM 上真实存在的页签（data-sectiontab / data-wstab / data-malltab），既复用各页签
+  // 直接点 DOM 上真实存在的页签（data-sectiontab / data-wstab / data-malltab / data-board-tab），既复用各页签
   // 自己的处理逻辑，也自动跟随后台功能排序；越界取最后一个，视图没有页签就什么都不做。
   function applyTabDeepLink(tab) {
     if (typeof tab !== 'number' || !isFinite(tab) || tab < 0) return;
     const main = $('main'); if (!main) return;
-    let list = main.querySelectorAll('[data-sectiontab], [data-wstab], [data-malltab]');
+    let list = main.querySelectorAll('[data-sectiontab], [data-wstab], [data-malltab], [data-board-tab]');
     if (!list.length) list = main.querySelectorAll('[role="tab"]');
     if (!list.length) return;
     const b = list[Math.min(tab, list.length - 1)];
@@ -818,6 +828,7 @@ window.UI = (function () {
   // 合并页按「当前页签」折算回原页面 id，功能锁定、广播重绘范围都以它为准。
   function pageIdOf() {
     if (currentView === 'character' && charTab === 'rod') return 'bd';
+    if (currentView === 'board') return boardTab === 'records' ? 'records' : boardTab === 'logs' ? 'logs' : boardTab === 'feedback' ? 'feedback' : 'codex';
     if (currentView === 'codex') return codexMainTab === 'records' ? 'records' : 'codex';
     return currentView === 'shop' || currentView === 'market' ? 'mall' : currentView;
   }
@@ -9917,6 +9928,374 @@ window.UI = (function () {
     return n > 0;
   }
 
+  // v3 F3：告示板统一面板 — 四个子视图作为页签（图鉴 / 记录 / 日志 / 反馈）
+  function renderBoard() {
+    const main = $('main');
+    const BOARD_TABS = [
+      ['codex', '📖 图鉴'],
+      ['records', '🏆 记录'],
+      ['logs', '📜 日志'],
+      ['feedback', '✍ 反馈']
+    ];
+
+    // 清空并创建外壳面板
+    main.innerHTML = '';
+    const panel = el('div', 'panel wide board-panel');
+
+    // 添加页签导航
+    const tabNav = el('div', 'inv-cats section-tabs board-tabs');
+    tabNav.setAttribute('role', 'tablist');
+    BOARD_TABS.forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (boardTab === kv[0] ? ' on' : ''), kv[1]);
+      b.setAttribute('data-board-tab', kv[0]);
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', boardTab === kv[0] ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        if (boardTab !== kv[0]) {
+          boardTab = kv[0];
+          renderView();
+        }
+      });
+      tabNav.appendChild(b);
+    });
+    panel.appendChild(tabNav);
+
+    // 添加页签内容容器
+    const content = el('div', 'board-content');
+    panel.appendChild(content);
+    main.appendChild(panel);
+
+    // 按当前页签分发渲染
+    if (boardTab === 'codex') {
+      renderBoardCodex();
+    } else if (boardTab === 'records') {
+      renderBoardRecords();
+    } else if (boardTab === 'logs') {
+      renderBoardLogs();
+    } else if (boardTab === 'feedback') {
+      renderBoardFeedback();
+    }
+  }
+
+  // 4 个子视图的内部渲染函数（从外壳面板的内容区域渲染）
+  function renderBoardCodex() {
+    const content = document.querySelector('.board-content');
+    if (!content) return;
+    if (softRefreshCodex()) return;
+    content.innerHTML = '';
+    const st = S();
+    const caught = st.codex || {};
+    const total = Object.keys(caught).length;
+
+    const card = el('div', 'board-card');
+
+    const summary = el('div', 'codex-summary');
+    const items = D.allItems().filter(function (i) {
+      return i.kind !== 'chest' && !(i.kind === 'component' && (i.legacy || i.id === 'comp_generic'));
+    });
+    const fishItems = items.filter(function (i) { return i.kind === 'fish'; });
+    const gotFish = fishItems.filter(function (i) { return caught[i.id]; }).length;
+    summary.innerHTML = '<div class="cs-box"><b id="cx-sum-got">' + gotFish + ' / ' + fishItems.length + '</b><span>鱼类收集</span></div>' +
+      '<div class="cs-box"><b id="cx-sum-entries">' + total + '</b><span>图鉴条目</span></div>' +
+      '<div class="cs-box"><b id="cx-sum-catch">' + (st.catchCount || 0) + '</b><span>累计渔获</span></div>';
+    card.appendChild(summary);
+
+    const tabs = el('div', 'inv-cats sub-cats');
+    const spotTotal = D.GROUNDS.reduce(function (n, g) { return n + (g.spots || []).length + ((g.spots || []).length ? 0 : 1); }, 0);
+    [['fish', '🐟 鱼类', fishItems.length],
+     ['material', '🧵 材料', items.filter(function (i) { return i.kind === 'material'; }).length],
+     ['component', '🔧 组件', items.filter(function (i) { return i.kind === 'component'; }).length],
+     ['spots', '📍 钓点', spotTotal]].forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (codexCategory === kv[0] ? ' on' : ''), kv[1] + ' ' + kv[2]);
+      b.title = kv[0] === 'spots' ? '查看每个钓点能钓到什么（点开看实时产出概率）' : '';
+      b.addEventListener('click', function () { if (codexCategory !== kv[0]) { codexCategory = kv[0]; renderView(); } });
+      tabs.appendChild(b);
+    });
+    if (codexCategory !== 'spots') {
+      const sortBtn = el('button', 'inv-cat codex-sort' + (codexSortRarity ? ' on' : ''), '⬇ 品级倒序');
+      sortBtn.title = '按品级从高到低排序';
+      sortBtn.addEventListener('click', function () { codexSortRarity = !codexSortRarity; renderView(); });
+      tabs.appendChild(sortBtn);
+    }
+    card.appendChild(tabs);
+
+    const grid = el('div', 'codex-grid');
+    if (codexCategory === 'spots') {
+      D.GROUNDS.forEach(function (g) {
+        (g.spots || []).forEach(function (sp) {
+          const pool = sp.pool || [];
+          const canGo = !g.locked;
+          const cell = el('div', 'codex-cell k-spots ' + (canGo ? 'unlocked' : 'locked'));
+          cell.innerHTML =
+            '<img class="cx-icon spot-icon" src="assets/spot/' + esc(sp.id) + '.png" alt="" draggable="false">' +
+            '<div class="cx-name' + (canGo ? '' : ' locked-name') + '">' + esc(g.name + ' · ' + sp.name) + '</div>' +
+            '<div class="cx-meta">' + (pool.length ? '产出 ' + pool.length + ' 项' : '未配置掉落池') + '</div>' +
+            '<div class="cx-meta locked-line">' + (canGo ? '✅ 已解锁 · 可前往垂钓' : '🔒 尚未开放') + '</div>' +
+            ((sp.buffs && sp.buffs.length) ? '<div class="cx-meta cx-spots">⚡ 增益 ' + sp.buffs.length + ' 项</div>' : '') +
+            '<div class="cx-meta cx-spots">🎯 点看产出概率</div>';
+          cell.title = '点击查看该钓点的实时产出概率（与后台掉落池同步）';
+          cell.addEventListener('click', function () { openSpotDetail(g.id, sp.id); });
+          grid.appendChild(cell);
+        });
+        if (!(g.spots || []).length) {
+          const cell = el('div', 'codex-cell k-spots locked');
+          cell.innerHTML =
+            '<img class="cx-icon spot-icon" src="assets/ground/' + esc(g.id) + '.png" alt="" draggable="false">' +
+            '<div class="cx-name locked-name">' + esc(g.name) + '</div>' +
+            '<div class="cx-meta">限时活动钓场</div>' +
+            '<div class="cx-meta locked-line">🔒 尚未开放</div>' +
+            '<div class="cx-meta cx-spots">' + esc(g.desc || '') + '</div>';
+          grid.appendChild(cell);
+        }
+      });
+      card.appendChild(grid);
+      content.appendChild(card);
+      return;
+    }
+    const baseList = codexCategory === 'all' ? items : items.filter(function (i) { return i.kind === codexCategory; });
+    const TIER_ORDER = { epic: 4, rare: 3, big: 2, common: 1 };
+    const shown = codexSortRarity
+      ? baseList.slice().sort(function (a, b) { return (TIER_ORDER[b.rarity] || 0) - (TIER_ORDER[a.rarity] || 0); })
+      : baseList;
+    shown.forEach(function (it) {
+      const rec = caught[it.id];
+      const tierCls = !rec ? '' : (it.kind !== 'fish' ? ' k-nosize'
+        : (rec.tier === 'G' ? ' tier-gold' : rec.tier === 'L' ? ' tier-silver' : ' tier-bronze'));
+      const tierLine = (rec && it.kind === 'fish')
+        ? '<div class="cx-meta cx-tier">' + (rec.tier === 'G' ? '🥇 巨型 · 金框' : rec.tier === 'L' ? '🥈 大型 · 银框' : '🥉 普通 · 铜框') + '</div>'
+        : '';
+      const cell = el('div', 'codex-cell' + (rec ? ' got' + tierCls : '') + ' k-' + it.kind);
+      cell.setAttribute('data-cxid', it.id);
+      cell.innerHTML = '<img class="cx-icon" src="assets/' + (it.kind === 'fish' ? 'fish' : 'items') + '/' + esc(it.id) +
+        '.png" alt="" draggable="false">' +
+        '<div class="cx-name" + (rec ? '' : ' un') + '">' + esc(it.name) + '</div>' +
+        (rec ? '<div class="cx-meta">已获得 ' + rec.count + ' 次</div>' : '<div class="cx-meta">🔒 未解锁</div>') +
+        (rec ? '<div class="cx-meta">' + timeStr(rec.first) + '</div>' : '<div class="cx-meta un">去产地' + (it.kind === 'fish' ? '垂钓' : '获得') + '即可解锁</div>') +
+        tierLine;
+      grid.appendChild(cell);
+    });
+    card.appendChild(grid);
+    content.appendChild(card);
+    codexSigCache = codexStructureSig();
+  }
+
+  function renderBoardRecords() {
+    const content = document.querySelector('.board-content');
+    if (!content) return;
+    content.innerHTML = '';
+    const st = S();
+    const recs = Object.keys(st.records || {}).map(function (id) { return st.records[id]; })
+      .sort(function (a, b) { return b.size - a.size; });
+
+    const card = el('div', 'board-card');
+
+    const rc = S().recordsCfg || { scale: 175, x: 0, y: 0 };
+    const last = st.recordsLast || null;
+    const heroRec = last || (recs.length ? recs[0] : null);
+    if (heroRec) {
+      const topMeta = itemMeta(heroRec.id);
+      const hero = el('div', 'record-hero' + (last ? ' live' : ''));
+      hero.innerHTML =
+        '<img class="rh-icon" style="--rh-scale:' + (rc.scale / 100).toFixed(4) +
+        ';--rh-dx:' + (rc.x || 0) + 'px;--rh-dy:' + (rc.y || 0) + 'px" src="assets/fish/' + esc(heroRec.id) + '.png" alt="" draggable="false">' +
+        '<div class="rh-crown">' + (last ? '🔔 最新播报' : '👑 全场最大') + '</div>' +
+        '<div class="rh-name ' + rarityClass(topMeta.rarity) + '">' + esc(heroRec.name) + '</div>' +
+        (heroRec.size != null ? '<div class="rh-size">' + heroRec.size + '<span class="u">cm</span></div>' : '') +
+        (last && last.text ? '<div class="rh-text">' + esc(last.text) + '</div>' : '') +
+        '<div class="rh-who">' + (last ? '播报于' : '纪录保持者：') + esc(heroRec.who) + ' · ' + dateTimeStr(heroRec.t) + '</div>';
+      card.appendChild(hero);
+    } else {
+      card.appendChild(el('div', 'hint', '还没有渔获纪录。钓到一条鱼就会生成它的最大/最小纪录。'));
+    }
+
+    card.appendChild(el('h3', null, '🐟 分鱼类纪录（最大 / 最小）'));
+    card.appendChild(el('div', 'hint', '每张卡同时给出该鱼的最大与最小纪录：上行＝最大、下行（蓝字）＝最小；鱼名后的灰字是该鱼的基准体型。点击卡片查看排行榜。'));
+    const withRec = [], without = [];
+    D.allItems().filter(function (i) { return i.kind === 'fish'; }).forEach(function (f) {
+      const big = st.records && st.records[f.id];
+      const sm = st.smallRecords && st.smallRecords[f.id];
+      ((big || sm) ? withRec : without).push({ f: f, big: big, sm: sm });
+    });
+    withRec.sort(function (a, b) { return ((b.big && b.big.size) || 0) - ((a.big && a.big.size) || 0); });
+    const grid = el('div', 'record-grid');
+    withRec.concat(without).forEach(function (e) {
+      const any = !!(e.big || e.sm);
+      const cell = el('div', 'record-cell' + (any ? ' with-rec' : ' none'));
+      cell.addEventListener('click', function () { openRecordsModal(e.f.id, 'big', 'day'); });
+      if (!any) {
+        cell.innerHTML = '<div class="rc-fish"><img class="rc-icon" src="assets/fish/' + esc(e.f.id) + '.png" alt="" draggable="false"></div>' +
+          '<div class="rc-name">' + esc(e.f.name) + '</div><div class="rc-meta un">去钓一条该鱼种就会出现在这里</div>';
+      } else {
+        const base = fishBaseOf(e.f.id);
+        const renderRec = function (rec, label) {
+          const pct = rec && base && (base.length > 0) ? Math.round((rec.size - base[0]) / base[1] * 1000) / 10 : '';
+          return '<div class="rc-rec' + (label === '📉' ? ' small-rec' : '') + '"><img class="rc-icon" src="assets/fish/' + esc(e.f.id) + '.png" alt="" draggable="false">' +
+            '<span class="rc-label">' + label + ' <b>' + (rec ? rec.size : '—') + '</b></span>' +
+            (pct ? '<span class="rc-pct">' + (pct >= 0 ? '+' : '') + pct + '%</span>' : '') + '</div>';
+        };
+        cell.innerHTML = '<div class="rc-fish">' + renderRec(e.big, '📈') + renderRec(e.sm, '📉') + '</div>' +
+          '<div class="rc-name">' + esc(e.f.name) + '<span class="rc-base">' + (base && base[0] ? '基准 ' + base[0] + '~' + (base[0] + base[1]) : '') + '</span></div>';
+      }
+      grid.appendChild(cell);
+    });
+    card.appendChild(grid);
+    content.appendChild(card);
+  }
+
+  function renderBoardLogs() {
+    const content = document.querySelector('.board-content');
+    if (!content) return;
+    loadLog();
+    content.innerHTML = '';
+
+    const card = el('div', 'board-paper');
+
+    const counts = { all: msgLog.length };
+    Object.keys(LOG_KINDS).forEach(function (k) { counts[k] = msgLog.filter(function (e) { return e.kind === k; }).length; });
+    const tabs = el('div', 'inv-cats sub-cats');
+    const kindOrder = ['catch', 'system', 'trade', 'record', 'subscribe'].filter(function (k) { return !!LOG_KINDS[k]; });
+    [['all', '📜 全部']].concat(kindOrder.map(function (k) { return [k, LOG_KINDS[k][0] + ' ' + LOG_KINDS[k][1]]; })).forEach(function (kv) {
+      const b = el('button', 'inv-cat' + (logFilter === kv[0] ? ' on' : ''), kv[1] + ' ' + (counts[kv[0]] || 0));
+      b.addEventListener('click', function () { if (logFilter !== kv[0]) { logFilter = kv[0]; renderView(); } });
+      tabs.appendChild(b);
+    });
+    card.appendChild(tabs);
+
+    const list = el('div', 'log-page');
+    const rows = msgLog.filter(function (e) { return logFilter === 'all' || e.kind === logFilter; });
+    if (!rows.length) {
+      list.appendChild(el('div', 'hint', msgLog.length ? '该分类下没有记录。' : '还没有收到服务器消息。公告、系统提示、交易与订阅提醒都会记录在这里。'));
+    } else {
+      rows.forEach(function (e) {
+        const kind = LOG_KINDS[e.kind] || LOG_KINDS.system;
+        const row = el('div', 'log-row');
+        row.innerHTML = '<span class="log-time">' + dateTimeStr(e.t) + '</span>' +
+          '<span class="log-tag log-' + e.kind + '">' + kind[0] + ' ' + kind[1] + '</span>' +
+          '<span class="log-msg">' + esc(e.msg) + logItemsHtml(e.items) + '</span>';
+        list.appendChild(row);
+      });
+    }
+    card.appendChild(list);
+    const foot = el('div', 'log-foot');
+    const clr = el('button', 'mini danger-mini', '清空日志');
+    clr.addEventListener('click', function () {
+      confirmModal({ title: '清空日志', html: '确定清空本账号的全部日志记录吗？此操作不可恢复。', okText: '清空', danger: true }).then(function (ok) {
+        if (!ok) return;
+        clearLog();
+        renderView();
+        toast('日志已清空');
+      });
+    });
+    foot.appendChild(clr);
+    foot.appendChild(el('span', 'hint', '日志仅保存在本机浏览器（按账号区分），不上传服务器。'));
+    card.appendChild(foot);
+    content.appendChild(card);
+  }
+
+  function renderBoardFeedback() {
+    const content = document.querySelector('.board-content');
+    if (!content) return;
+    content.innerHTML = '';
+    const st = S();
+    const fb = st.feedback || {};
+    const status = fb.status || { ready: true, remainingMs: 0, nextAt: 0, skipCost: 10000, cdHours: 24 };
+    const cdHours = status.cdHours != null ? status.cdHours : 24;
+    const cdText = cdHours >= 1 ? (cdHours + ' 小时') : Math.round(cdHours * 60) + ' 分钟';
+    const mine = (fb.mine || []);
+
+    const card = el('div', 'board-paper');
+
+    const banner = el('div', 'fb-banner' + (status.ready ? ' ready' : ' cooling'));
+    banner.dataset.orderFeature = 'feedback.skip';
+    if (status.ready) {
+      banner.innerHTML = '✅ 现在可以提交反馈（提交后进入 ' + cdText + ' 冷却）';
+    } else {
+      const cost = status.skipCost;
+      const canPay = (st.player.coins || 0) >= cost;
+      banner.innerHTML = '⏳ 冷却中 · 剩余 <b id="fb-remaining">' + fmtRemain(status.remainingMs) + '</b>';
+      const skip = el('button', 'mini primary-mini' + (canPay ? '' : ' locked'), '💸 花 ' + cost + ' 金币立即结束 CD');
+      markFeature(skip, 'feedback.skip');
+      skip.addEventListener('click', function () {
+        if (!canPay) { toast('金币不足（需 ' + cost + '）'); return; }
+        confirmModal({ title: '结束反馈冷却', html: '花费 <b>' + cost + '</b> 金币立即结束反馈冷却？', okText: '确认支付' }).then(function (ok) {
+          if (!ok) return;
+          call(window.Net.feedbackSkip(), '已结束冷却，现在可以提交反馈').then(function (r) {
+            if (r && r.ok) { st.feedback = Object.assign({}, st.feedback, { status: r.data.status }); renderTopbar(); renderView(); }
+          });
+        });
+      });
+      banner.appendChild(skip);
+    }
+    card.appendChild(banner);
+
+    if (fbTab === 'submit') {
+      const form = el('div', 'fb-form');
+      form.dataset.orderFeature = 'feedback.submit';
+      const kindWrap = el('div', 'fb-kinds');
+      FB_KINDS.forEach(function (kv) {
+        const b = el('button', 'inv-cat' + (fbKind === kv[0] ? ' on' : ''), kv[1]);
+        b.addEventListener('click', function () { fbKind = kv[0]; renderView(); });
+        kindWrap.appendChild(b);
+      });
+      form.appendChild(kindWrap);
+      const ta = el('textarea', 'fb-input');
+      ta.placeholder = '描述你遇到的问题或建议（最多 1000 字）…';
+      form.appendChild(ta);
+      const cnt = el('div', 'fb-count', '0 / 1000');
+      ta.addEventListener('input', function () { cnt.textContent = ta.value.length + ' / 1000'; });
+      form.appendChild(cnt);
+      const submit = el('button', 'primary big' + (status.ready ? '' : ' locked'), status.ready ? '提交反馈' : '冷却中…');
+      markFeature(submit, 'feedback.submit');
+      submit.disabled = !status.ready;
+      submit.addEventListener('click', function () {
+        const text = ta.value.trim();
+        if (!text) { toast('请填写反馈内容'); return; }
+        submit.disabled = true;
+        submit.textContent = '提交中…';
+        call(window.Net.feedbackSubmit(text, fbKind), '感谢反馈！已进入 24 小时冷却').then(function (r) {
+          if (r && r.ok) {
+            ta.value = '';
+            st.feedback = { status: r.data.status, mine: [r.data.entry].concat((fb.mine || [])) };
+            fbTab = 'mine';
+            renderTopbar(); renderView();
+          } else {
+            submit.disabled = false; submit.textContent = '提交反馈';
+          }
+        });
+      });
+      form.appendChild(submit);
+      card.appendChild(form);
+    }
+
+    if (fbTab === 'mine') {
+      card.appendChild(el('h3', null, '📜 我的反馈'));
+      if (!mine.length) {
+        card.appendChild(el('div', 'hint', '还没有提交过反馈。分享你的想法或建议吧～'));
+      } else {
+        const list = el('div', 'fb-list');
+        mine.forEach(function (entry) {
+          const row = el('div', 'fb-entry');
+          const head = el('div', 'fb-head');
+          head.innerHTML = '<span class="fb-type">' + esc(FB_KINDS.find(function (kv) { return kv[0] === entry.kind; })[1] || entry.kind) + '</span>' +
+            '<span class="fb-date">' + dateTimeStr(entry.t) + '</span>';
+          if (entry.status) {
+            const stName = (FB_STATUSES || {})[entry.status] || entry.status;
+            head.appendChild(el('span', 'fb-status', stName));
+          }
+          row.appendChild(head);
+          row.appendChild(el('div', 'fb-text', esc(entry.text)));
+          if (entry.replyText) {
+            row.appendChild(el('div', 'fb-reply', '<b>官方回复</b><p>' + esc(entry.replyText) + '</p>'));
+          }
+          list.appendChild(row);
+        });
+        card.appendChild(list);
+      }
+    }
+
+    content.appendChild(card);
+  }
+
   function renderCodex() {
     const main = $('main');
     const st = S();
@@ -10528,6 +10907,12 @@ window.UI = (function () {
     // 渔屋（原角色页）：进页拉一次权威视图；写操作之后直接用响应里的 house 重绘，不再额外请求
     else if (view === 'character') { window.Net.fetchHouse(); }
     else if (view === 'market') { S().marketQuery = null; }
+    else if (view === 'board') {
+      // 告示板：按当前页签拉取数据
+      if (boardTab === 'codex') window.Net.fetchCodex();
+      else if (boardTab === 'records') window.Net.fetchRecords();
+      else if (boardTab === 'feedback') window.Net.fetchFeedback();
+    }
     else if (view === 'codex') window.Net.fetchCodex();
     else if (view === 'records') window.Net.fetchRecords();
     else if (view === 'feedback') window.Net.fetchFeedback();
@@ -11055,6 +11440,7 @@ window.UI = (function () {
       else if (currentView === 'mall') renderMall();
       else if (currentView === 'shop') renderShop();
       else if (currentView === 'market') renderMarket();
+      else if (currentView === 'board') renderBoard();
       else if (currentView === 'codex') { if (codexMainTab === 'records') renderRecords(); else renderCodex(); }
       else if (currentView === 'records') renderRecords();
       else if (currentView === 'feedback') renderFeedback();
