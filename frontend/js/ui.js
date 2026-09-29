@@ -1505,7 +1505,8 @@ window.UI = (function () {
   function fishingSig(st) {
     const parts = [(seaInfo && seaInfo.ship ? seaInfo.ship.lv : 0), (window.VoyageMap ? 1 : 0),
       st.selected.groundId || '', st.selected.spotId || '',
-      st.player.groundId || '', st.player.spotId || '', st.fishing.active ? 1 : 0];
+      st.player.groundId || '', st.player.spotId || '', st.fishing.active ? 1 : 0,
+      modelOf(char2()), char2().hat, char2().outfit, char2().skin];
     D.GROUNDS.forEach(function (g) {
       parts.push(g.id + ':' + g.name + ':' + (g.locked ? 'L' : '') + ':' + g.type);
       (g.spots || []).forEach(function (sp) {
@@ -1779,22 +1780,25 @@ window.UI = (function () {
           (g.zoneShared ? '<span class="pn-soon">（' + esc(g.ownerName || '队友') + ' 的海域）</span>' : '') +
           (unavailable ? '<span class="pn-soon">（暂未开放）</span>' : locked ? '<span class="pn-soon">（需 ' + need + ' 级船）</span>' : '') +
           (buffed ? '<span class="pn-buff">⚡</span>' : '') + '</span>' +
-          (here ? '<img class="pn-fisher" src="' + charSrc('hold') + '" alt="">' : '');
+          (here ? '<img class="pn-fisher" data-avatar="' + modelOf(char2()) + '" src="' + charIdleSrc() + '" alt="">' : '');
         map.appendChild(node);
       });
     });
     left.appendChild(map);
-    // 甩杆动画（纯视觉）：侠客后摆→前挥→入水。换钓点/开始钓鱼时播一次；
-    // 上鱼广播重绘时位置没变就不重播（lastFisherSpotKey 记忆）。
+    // 五帧参考动作：起势→蓄力→挥竿→出线→收势。换钓点或重新开钓时播一次；
+    // 上鱼广播重绘时状态没变就不重播。
     const hereKey = st.player.groundId && st.player.spotId ? st.player.groundId + '/' + st.player.spotId : null;
     const fisherImg = map.querySelector('.pn-fisher');
-    if (fisherImg && hereKey && lastFisherSpotKey !== hereKey) {
-      const seq = [charSrc('a'), charSrc('b'), charSrc('hold')];
+    const castKey = hereKey ? hereKey + '/' + !!st.fishing.active + '/' + charIdleSrc() : null;
+    if (fisherImg && castKey && st.fishing.active && lastFisherSpotKey !== castKey) {
+      const seq = [1, 2, 3, 4, 5].map(charSrc);
       fisherImg.src = seq[0];
-      setTimeout(function () { if (fisherImg.isConnected) fisherImg.src = seq[1]; }, 150);
-      setTimeout(function () { if (fisherImg.isConnected) fisherImg.src = seq[2]; }, 320);
+      [140, 290, 440, 590].forEach(function (delay, index) {
+        setTimeout(function () { if (fisherImg.isConnected) fisherImg.src = seq[index + 1]; }, delay);
+      });
+      setTimeout(function () { if (fisherImg.isConnected) fisherImg.src = charIdleSrc(); }, 920);
     }
-    lastFisherSpotKey = hereKey;
+    lastFisherSpotKey = castKey;
     const ctrl = el('div', 'fish-ctrl');
     ctrl.title = '点击钓点开始垂钓，再点当前钓点停止；每小时期望为成功上钩次数';
     const stateBar = el('div', 'fish-state' + (st.fishing.active ? ' on' : ''));
@@ -8478,34 +8482,29 @@ window.UI = (function () {
   let mapTab = 'nearshore'; // 社交动态分类：nearshore 近岸 / voyage 远洋
   let lastFisherSpotKey = null; // 甩杆动画记忆：同一钓点重绘不重复播放
 
-  // ---- 角色模块：钓鱼小人皮肤可更换（本地偏好，后续可升级进服务器存档）----
-  // 贴图由 assets/ui/fisher_{a,b,hold}.png 换色重制，剪影与地图甩杆小人完全一致，
-  // 地图节点 / 实况场景 / 甩杆三帧全部走 charSrc()，换装即时生效。
-  const CHARS = [
-    { id: 'classic', name: '云游侠客' },
-    { id: 'teal',    name: '青衫客' },
-    { id: 'red',     name: '赤焰渔郎' },
-    { id: 'ink',     name: '墨衣钓叟' },
-    { id: 'amber',   name: '金秋蓑翁' },
-  ];
-  const CHAR_KEY = 'fishing_char_v1';
-  function charId() {
-    try {
-      const v = localStorage.getItem(CHAR_KEY);
-      if (v && CHARS.some(function (c) { return c.id === v; })) return v;
-    } catch (e) { /* 忽略 */ }
-    return 'classic';
+  // 地图节点和甩杆帧与渔屋选中的同一位角色同步。
+  function charSrc(pose) {
+    const s = char2();
+    if (modelOf(s) === 'twin') return 'assets/ui/chars/twin-cast-' + pose + '.png';
+    if (modelOf(s) === 'pony') return 'assets/ui/chars/pony-cast-' + pose + '.png';
+    return 'assets/ui/chars/cast_' + s.hat + '_' + s.outfit + '_' + s.skin + '_' + pose + '.png';
   }
-  function charSrc(pose) { return 'assets/ui/chars/' + charId() + '_' + pose + '.png'; }
+  function charIdleSrc() {
+    const s = char2();
+    if (modelOf(s) === 'twin') return 'assets/ui/chars/twin-cast-idle.png';
+    if (modelOf(s) === 'pony') return 'assets/ui/chars/pony-cast-idle.png';
+    return charSrc(5);
+  }
 
   // ---- 角色系统（v2）：人 + 狗 + 船的展示与搭配（本地偏好，后续可升级服务器存档）----
-  // 贴图为官方 angler 风格生成后像素化（assets/ui/char/），外观 = 帽子×服装×肤色 48 组合预渲染，
+  // 玩家参考图的透明像素角色，外观 = 发色×水手服×肤色 48 组合预渲染，
   // 选哪套就换哪张图，无需运行时叠加。同伴与船先开放基础款，其余占位（后续接商城/掉落）。
   const CHAR2_KEY = 'fishing_char_v2';
-  const CHAR2_DEF = { hat: 'orange', outfit: 'green', skin: 'light', dog: 'golden', boat: 'wood', bg: 'stillwater' };
-  const CHAR2_HATS = [['orange', '橙线帽'], ['teal', '青线帽'], ['red', '红线帽'], ['cream', '米线帽']];
-  const CHAR2_OUTFITS = [['green', '苔绿工装'], ['yellow', '雨黄工装'], ['red', '砖红工装'], ['blue', '海蓝工装']];
-  const CHAR2_SKINS = [['light', '浅麦'], ['tan', '小麦'], ['dark', '深麦']];
+  const CHAR2_DEF = { model: 'lilac', hat: 'orange', outfit: 'green', skin: 'light', dog: 'golden', boat: 'wood', bg: 'stillwater' };
+  const CHAR2_MODELS = [['lilac', '淡紫发水手', 'assets/ui/char/chibi-base.png'], ['twin', '红发双马尾登山者', 'assets/ui/char/twin-base.png'], ['pony', '白发单马尾吊带裤', 'assets/ui/char/pony-base.png']];
+  const CHAR2_HATS = [['orange', '淡紫发·原色'], ['teal', '湖青发'], ['red', '莓粉发'], ['cream', '月白发']];
+  const CHAR2_OUTFITS = [['green', '黑蓝水手服·原色'], ['yellow', '茶棕水手服'], ['red', '莓红水手服'], ['blue', '海蓝水手服']];
+  const CHAR2_SKINS = [['light', '原图肤色'], ['tan', '暖麦肤色'], ['dark', '深麦肤色']];
   // 原「同伴」的 8 只宠物清单已升级为服务端权威的宠物养成，清单搬到 house.js 的 PETS
   // （id 与 assets/ui/char/dog_<id>.png 一致）；本文件只保留 dog 这个本地偏好键作为展示台兜底。
   // 船贴图为 Cast n Chill 官方图标（unpack.wiki 游戏资源），名称沿用官方中文译名
@@ -8523,6 +8522,7 @@ window.UI = (function () {
     } catch (e) { /* 忽略 */ }
     return Object.assign({}, CHAR2_DEF);
   }
+  function modelOf(s) { return s && (s.model === 'twin' || s.model === 'pony') ? s.model : 'lilac'; }
   // 展示台可选场景背景（v0.19.0：原钓鱼页「渔场实况」画布挪到角色页，纯装饰不做钓点逻辑）
   const CHAR2_BGS = [
     ['stillwater', '静水湖'], ['rapids', '溪谷清晨'], ['sunset', '落日海湾'],
@@ -8533,7 +8533,16 @@ window.UI = (function () {
     try { localStorage.setItem(CHAR2_KEY, JSON.stringify(s)); } catch (e) { /* 忽略 */ }
     return s;
   }
-  function anglerSrc(s) { return 'assets/ui/char/angler_' + s.hat + '_' + s.outfit + '_' + s.skin + '.png'; }
+  function anglerSrc(s) {
+    if (modelOf(s) === 'twin') return 'assets/ui/char/twin-stand.png';
+    if (modelOf(s) === 'pony') return 'assets/ui/char/pony-stand.png';
+    return 'assets/ui/char/chibi_stand_' + s.hat + '_' + s.outfit + '_' + s.skin + '.png';
+  }
+  function boatPoseSrc(s) {
+    if (modelOf(s) === 'twin') return 'assets/ui/char/twin-boat.png';
+    if (modelOf(s) === 'pony') return 'assets/ui/char/pony-boat.png';
+    return 'assets/ui/char/chibi_boat_' + s.hat + '_' + s.outfit + '_' + s.skin + '.png';
+  }
 
   function renderCharacter() {
     const main = $('main');
@@ -8541,7 +8550,7 @@ window.UI = (function () {
     // 结构签名：页签 / 同伴 / 船 / 背景都没变、渔屋结构也没变就不重建 —— 广播触发的重绘不会重启场景画布，
     // 也不会重建渔屋页（每竿一次的 assets 广播只让 HouseUI.fill 就地改写纯数据）。
     const houseSig = charTab === 'rod' || charTab === 'breeding' ? '' : (window.HouseUI ? window.HouseUI.sig(S().house) : JSON.stringify(S().house || null));
-    const sig = 'char|' + charTab + '|' + st0.dog + '|' + st0.boat + '|' + (st0.bg || 'stillwater') +
+    const sig = 'char|' + charTab + '|' + modelOf(st0) + '|' + st0.hat + '|' + st0.outfit + '|' + st0.skin + '|' + st0.dog + '|' + st0.boat + '|' + (st0.bg || 'stillwater') +
       (charTab === 'rod' ? '|' + JSON.stringify(S().bd) + '|' + JSON.stringify(S().inventory) : '|' + houseSig);
     const prevWrap = main.querySelector('.char-view');
     if (prevWrap && prevWrap.getAttribute('data-sig') === sig) {
@@ -8575,12 +8584,12 @@ window.UI = (function () {
       wrap.appendChild(renderCharStage(st));
       if (charTab === 'yard') wrap.appendChild(charBgRow(st));
     }
+    if (charTab === 'role') wrap.appendChild(charLook());
     // 服务端权威面板（晒场 / 宠物 / 角色）：页签骨架在上面，数据面板在同目录的 house.js 里
     if (window.HouseUI) window.HouseUI.render(wrap, charTab);
     else wrap.appendChild(el('p', 'hint', '渔屋脚本未加载，请强制刷新页面（Ctrl+F5）后重试。'));
     // 角色页签的本地装饰层：外观（48 套预渲染贴图）+ 船型（原「船型」页签的内容，纯装饰不接服务端）
     if (charTab === 'role') {
-      wrap.appendChild(charLook());
       wrap.appendChild(charBoatRow(st));
     }
     main.appendChild(wrap);
@@ -8597,9 +8606,10 @@ window.UI = (function () {
       '<div class="cs-scene"></div>' +
       '<img class="cs-dock" src="assets/ui/char/dock.png" alt="" draggable="false">' +
       '<img class="cs-boat" src="assets/ui/char/boat_' + st.boat + '.png" alt="" draggable="false">' +
+      '<img class="cs-angler" data-char-model="' + modelOf(st) + '" src="' + boatPoseSrc(st) + '" alt="当前角色在船上钓鱼" draggable="false">' +
+      '<img class="cs-boat-front" src="assets/ui/char/boat_' + st.boat + '.png" alt="" aria-hidden="true" draggable="false">' +
       pets.map(function (id, i) {
-        const pos = i === 0 ? '' : ' style="left:38%"';
-        return '<img class="cs-dog" src="assets/ui/char/dog_' + esc(id) + '.png" alt="" draggable="false"' + pos +
+        return '<img class="cs-dog" data-pet-slot="' + i + '" src="assets/ui/char/dog_' + esc(id) + '.png" alt="" draggable="false"' +
           ' onerror="__imgFail(this)">';
       }).join('') +
       // 设计稿 v2 a-room-character.png：场景带左下角的「🏠 渔屋 Lv.n · 地点」标签
@@ -8631,13 +8641,34 @@ window.UI = (function () {
       const st = char2();
       box.innerHTML = '';
       box.appendChild(el('h3', null, '🧍 外观'));
+      const roster = el('div', 'char-models');
+      CHAR2_MODELS.forEach(function (entry) {
+        const choice = el('button', 'char-model' + (modelOf(st) === entry[0] ? ' on' : ''));
+        choice.type = 'button';
+        choice.setAttribute('aria-pressed', modelOf(st) === entry[0] ? 'true' : 'false');
+        choice.innerHTML = '<img src="' + entry[2] + '" alt="" draggable="false"><span>' + entry[1] + '</span>';
+        choice.addEventListener('click', function () {
+          if (!featureGuard('character.role')) return;
+          char2Save({ model: entry[0] });
+          draw();
+        });
+        markFeature(choice, 'character.role');
+        roster.appendChild(choice);
+      });
+      box.appendChild(roster);
+      const preview = el('div', 'char-look-preview');
       const img = el('img');
       img.src = anglerSrc(st);
-      img.alt = '';
+      img.alt = '当前角色外观';
       img.setAttribute('draggable', 'false');
-      img.style.cssText = 'width:120px;max-width:100%;image-rendering:pixelated';
-      box.appendChild(img);
-      [['hat', '帽子', CHAR2_HATS], ['outfit', '服装', CHAR2_OUTFITS], ['skin', '肤色', CHAR2_SKINS]].forEach(function (row) {
+      preview.appendChild(img);
+      box.appendChild(preview);
+      if (modelOf(st) !== 'lilac') {
+        const note = modelOf(st) === 'twin' ? '红发双马尾使用参考图原本的发色与登山装；' : '白发单马尾使用参考图原本的发色与吊带裤；';
+        box.appendChild(el('p', 'hint', note + '切回淡紫发角色后，原有配色搭配仍会保留。'));
+        return;
+      }
+      [['hat', '发色', CHAR2_HATS], ['outfit', '水手服', CHAR2_OUTFITS], ['skin', '肤色', CHAR2_SKINS]].forEach(function (row) {
         const line = el('div', 'char-bgs');
         line.appendChild(el('span', 'cb-title', row[1]));
         row[2].forEach(function (v) {
@@ -8664,9 +8695,10 @@ window.UI = (function () {
     box.appendChild(el('h3', null, '⛵ 船型'));
     const boats = el('div', 'char-cards');
     CHAR2_BOATS.forEach(function (b) {
-      const card = el('button', 'cc-card wide' + (st.boat === b[0] ? ' on' : '') + (b[2] ? '' : ' locked'));
-      card.innerHTML = '<img src="assets/ui/char/boat_' + b[0] + '.png" alt="" draggable="false"' +
-        ' onerror="this.outerHTML=\'<span class=cc-lock>🔒</span>\'">' +
+      const card = el('button', 'cc-card wide boat-card' + (st.boat === b[0] ? ' on' : '') + (b[2] ? '' : ' locked'));
+      card.setAttribute('aria-pressed', st.boat === b[0] ? 'true' : 'false');
+      card.innerHTML = '<span class="boat-card-art"><img src="assets/ui/char/boat_' + b[0] + '.png" alt="" draggable="false"' +
+        ' onerror="this.outerHTML=\'<span class=cc-lock>🔒</span>\'"></span>' +
         '<b>' + b[1] + (b[2] ? '' : ' 🔒') + '</b><i>' + b[3] + '</i>';
       card.addEventListener('click', function () {
         if (!b[2]) { toast('「' + b[1] + '」即将在商城上架'); return; }

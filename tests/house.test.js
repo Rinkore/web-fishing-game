@@ -7,6 +7,7 @@ const {chromium}=require('playwright-core');
 const root=path.resolve(__dirname,'../frontend');
 let count=0;
 const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+name);};
+const shot=async(page,name)=>{if(!process.env.FISHING_HOUSE_SCREENSHOT_DIR)return;fs.mkdirSync(process.env.FISHING_HOUSE_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.FISHING_HOUSE_SCREENSHOT_DIR,name)});};
 (async()=>{
  const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  try{
@@ -51,6 +52,13 @@ const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+nam
     && await page.evaluate(()=>fetchHouseCalls===1));
   await page.evaluate(()=>{window.houseReady=true;Engine.state.house=window.house;UI.refreshAll('house');});
   await host.locator('[data-house-pending]').waitFor();
+  await shot(page,'house-yard-desktop.png');
+  check('Boat gunwale layers in front of the seated pose',await host.locator('.char-stage').evaluate(stage=>{
+    const boat=stage.querySelector('.cs-boat'), person=stage.querySelector('.cs-angler'), front=stage.querySelector('.cs-boat-front');
+    if(!boat||!person||!front||boat.getAttribute('src')!==front.getAttribute('src'))return false;
+    const back=getComputedStyle(boat), middle=getComputedStyle(person), top=getComputedStyle(front);
+    return Number(back.zIndex)<Number(middle.zIndex)&&Number(middle.zIndex)<Number(top.zIndex)&&top.clipPath.includes('57%');
+  }));
   check('Character entry is now the fish house',await page.evaluate(()=>GameData.NAV.some(x=>x.id==='character'&&x.name==='渔屋')));
   check('Five tabs render on the fish house page',await host.locator('.section-tabs button').count()===5
     && await host.locator('[data-sectiontab="breeding"]').count()===1
@@ -84,6 +92,7 @@ const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+nam
   // 宠物页签
   await host.locator('[data-sectiontab="pet"]').click();
   await host.locator('[data-pet-card="golden"]').waitFor();
+  await shot(page,'house-pet-desktop.png');
   check('Pet tab lists all eight pets with affinity and station controls',await host.locator('[data-pet-card]').count()===8
     && await host.locator('[data-pet-card="golden"]').innerText().then(t=>t.includes('亲和 2 / 10')&&t.includes('驻守中'))
     && await host.locator('[data-pet-card="corgi"] [data-pet-op="station"]').count()===1);
@@ -93,10 +102,38 @@ const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+nam
   // 角色页签
   await host.locator('[data-sectiontab="role"]').click();
   await host.locator('[data-track="cook"]').waitFor();
+  await shot(page,'house-boat-desktop.png');
   check('Role tab exposes the three training tracks',await host.locator('[data-track]').count()===3
     && await host.locator('[data-track="cook"]').isDisabled()===false);
-  check('Role tab keeps the 48-set appearance gallery as a local decoration layer',await host.locator('.char-look img').count()===1
+  check('Role tab offers three characters and keeps the original 48 looks',await host.locator('.char-model').count()===3
     && await host.locator('.char-look .cb-chip').count()===11);
+  check('Reference character is the loaded default appearance',await host.locator('.char-look-preview img').evaluate(img=>
+    img.getAttribute('src')==='assets/ui/char/chibi_stand_orange_green_light.png'&&img.complete&&img.naturalWidth>0));
+  await host.locator('.char-look .cb-chip', {hasText:'湖青发'}).click();
+  await host.locator('.char-look .cb-chip', {hasText:'海蓝水手服'}).click();
+  await host.locator('.char-look .cb-chip', {hasText:'暖麦肤色'}).click();
+  check('Hair, sailor uniform and skin choices share the new sprite',await host.locator('.char-look-preview img').evaluate(img=>
+    img.getAttribute('src')==='assets/ui/char/chibi_stand_teal_blue_tan.png'&&img.complete&&img.naturalWidth>0));
+  await host.locator('.char-model', {hasText:'红发双马尾登山者'}).click();
+  check('Twin-tail character uses her own reference stand pose',await host.locator('.char-look-preview img').evaluate(img=>
+    img.getAttribute('src')==='assets/ui/char/twin-stand.png'&&img.complete&&img.naturalWidth>0)
+    && await host.locator('.char-look .cb-chip').count()===0
+    && await page.evaluate(()=>JSON.parse(localStorage.getItem('fishing_char_v2')).model==='twin'));
+  await host.locator('[data-sectiontab="yard"]').click();
+  check('Yard stage switches to the twin-tail boat pose',await host.locator('.cs-angler').getAttribute('src')==='assets/ui/char/twin-boat.png');
+  await host.locator('[data-sectiontab="role"]').click();
+  await host.locator('.char-model', {hasText:'白发单马尾吊带裤'}).click();
+  check('Single-ponytail character keeps her own reference palette and stand pose',await host.locator('.char-look-preview img').evaluate(img=>
+    img.getAttribute('src')==='assets/ui/char/pony-stand.png'&&img.complete&&img.naturalWidth>0)
+    && await host.locator('.char-look .cb-chip').count()===0
+    && await page.evaluate(()=>JSON.parse(localStorage.getItem('fishing_char_v2')).model==='pony'));
+  await host.locator('[data-sectiontab="yard"]').click();
+  check('Yard stage switches to the single-ponytail boat pose',await host.locator('.cs-angler').getAttribute('src')==='assets/ui/char/pony-boat.png');
+  await host.locator('[data-sectiontab="role"]').click();
+  await host.locator('.char-model', {hasText:'淡紫发水手'}).click();
+  check('Switching back retains the first character colour choices',await host.locator('.char-look-preview img').getAttribute('src')==='assets/ui/char/chibi_stand_teal_blue_tan.png');
+  await host.locator('[data-sectiontab="yard"]').click();
+  check('Yard stage displays the boat-adapted seated pose',await host.locator('.cs-angler').getAttribute('src')==='assets/ui/char/chibi_boat_teal_blue_tan.png');
   // 钓竿页签：行为与改造前一致（bd 的渲染与 pageIdOf 折算都没动）
   await host.locator('[data-sectiontab="rod"]').click();
   await host.locator('.rod-slots').waitFor();

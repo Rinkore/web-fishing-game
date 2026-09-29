@@ -131,6 +131,10 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     // Map click still reaches original start/stop flow behind the overlay controls.
     await page.locator('.px-node[data-s="dock"] .pn-name').click();
     await page.waitForFunction(() => Engine.state.fishing.active && Engine.state.castInfo);
+    await page.waitForTimeout(720);
+    check(await page.locator('.pn-fisher').evaluate(img => img.complete && img.naturalWidth === 1000 && /cast_orange_green_light_5\.png$/.test(img.src)), 'map casting ends on supplied fifth frame');
+    check(await page.evaluate(() => [1,2,3,4,5].every(n => performance.getEntriesByType('resource').some(e => e.name.includes('cast_orange_green_light_' + n + '.png')))), 'all five supplied cast poses load in order');
+    check(await page.locator('.pn-fisher').evaluate(img => img.getBoundingClientRect().width >= 125 && img.getBoundingClientRect().width <= 175), 'cast frames are scaled to the map');
     check(await page.locator('.px-map').evaluate(e => e.style.getPropertyValue('--map-scale')) === selectedZoom, 'selecting a spot preserves the zoom level');
     check((await page.locator('.fish-state').innerText()).includes('360 次/时'), 'server interval and bite rate produce expected hourly hook count');
     check(await page.locator('#player-status [data-view="bd"] .meta-txt').innerText() === '🎣 抛竿间隔 8.00s', 'topbar cast interval shows only the final value');
@@ -323,6 +327,27 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
     const savedShore = savedPositions.list.find(s => s.spotId === 'shore');
     check(savedShore.map === '' && Math.abs(savedShore.pos[0] - 32.6) < .2, 'crossing the midline switches the coordinate band and submits the map ownership');
     await admin.close();
+    await page.evaluate(() => {
+      const look = JSON.parse(localStorage.getItem('fishing_char_v2') || '{}');
+      look.model = 'twin';
+      localStorage.setItem('fishing_char_v2', JSON.stringify(look));
+      Engine.state.fishing.active = true;
+      UI.setView('fishing'); UI.renderView();
+    });
+    await page.waitForTimeout(720);
+    check(await page.locator('.pn-fisher').evaluate(img => img.dataset.avatar === 'twin' && /twin-cast-5\.png$/.test(img.src) && img.complete && img.naturalWidth === 1000), 'second character plays her own fifth cast frame');
+    await page.waitForTimeout(300);
+    check(await page.locator('.pn-fisher').getAttribute('src') === 'assets/ui/chars/twin-cast-idle.png', 'second character settles into the supplied standing-fishing pose');
+    if (process.env.FISHING_SCREENSHOT_DIR) await page.screenshot({ path: path.join(process.env.FISHING_SCREENSHOT_DIR, 'fishing-twin-desktop.png') });
+    await page.evaluate(() => {
+      const look = JSON.parse(localStorage.getItem('fishing_char_v2') || '{}');
+      look.model = 'pony'; localStorage.setItem('fishing_char_v2', JSON.stringify(look));
+      UI.setView('fishing'); UI.renderView();
+    });
+    await page.waitForTimeout(720);
+    check(await page.locator('.pn-fisher').evaluate(img => img.dataset.avatar === 'pony' && /pony-cast-5\.png$/.test(img.src) && img.complete && img.naturalWidth === 1000), 'third character plays her own fifth cast frame');
+    await page.waitForTimeout(300);
+    check(await page.locator('.pn-fisher').getAttribute('src') === 'assets/ui/chars/pony-cast-idle.png', 'third character settles into the supplied standing-fishing pose');
     await page.evaluate(() => { UI.setView('codex'); UI.renderNav(); UI.renderView(); });
     const codexState = await page.evaluate(() => ({
       active: document.querySelector('#main .codex-summary + .inv-cats .inv-cat.on')?.innerText || '',

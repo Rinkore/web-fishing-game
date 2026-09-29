@@ -2,7 +2,7 @@
   "format": 1,
   "version": "v0.28.0",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "edb3410127f78a9c7ee36377f24a5d2491ba17219e7dd14399f269e57214cce3",
+  "sourceSHA256": "34402df34c4b0d2667b57f68d507357127118b9645d5895e4a557a63ec055080",
   "constants": {
     "GEAR_SYSTEM": {
       "enabled": true,
@@ -1297,6 +1297,11 @@
         "price": 600,
         "size": null
       },
+      { "id": "gene_albino", "name": "白化导向剂", "rarity": "rare", "price": 0, "size": null, "noSell": true },
+      { "id": "gene_star", "name": "星点导向剂", "rarity": "rare", "price": 0, "size": null, "noSell": true },
+      { "id": "gene_veil", "name": "流纱导向剂", "rarity": "rare", "price": 0, "size": null, "noSell": true },
+      { "id": "gene_glow", "name": "荧光导向剂", "rarity": "rare", "price": 0, "size": null, "noSell": true },
+      { "id": "gene_prism", "name": "异色棱镜剂", "rarity": "epic", "price": 0, "size": null, "noSell": true },
       {
         "id": "chartfrag",
         "name": "海图碎片",
@@ -2045,7 +2050,12 @@
           "id": "relic",
           "price": 3800,
           "limit": 3
-        }
+        },
+        { "id": "gene_albino", "price": 1500, "limit": 3 },
+        { "id": "gene_star", "price": 1500, "limit": 3 },
+        { "id": "gene_veil", "price": 1800, "limit": 3 },
+        { "id": "gene_glow", "price": 1800, "limit": 3 },
+        { "id": "gene_prism", "price": 2200, "limit": 3 }
       ]
     },
     "DEFAULT_EXTRA_AFFIX_RANGES": {
@@ -5267,6 +5277,11 @@
       "noSell": false,
       "expeditionOnly": false
     },
+    { "id": "gene_albino", "name": "白化导向剂", "rarity": "rare", "price": 0, "size": null, "kind": "material", "noSell": true, "expeditionOnly": false },
+    { "id": "gene_star", "name": "星点导向剂", "rarity": "rare", "price": 0, "size": null, "kind": "material", "noSell": true, "expeditionOnly": false },
+    { "id": "gene_veil", "name": "流纱导向剂", "rarity": "rare", "price": 0, "size": null, "kind": "material", "noSell": true, "expeditionOnly": false },
+    { "id": "gene_glow", "name": "荧光导向剂", "rarity": "rare", "price": 0, "size": null, "kind": "material", "noSell": true, "expeditionOnly": false },
+    { "id": "gene_prism", "name": "异色棱镜剂", "rarity": "epic", "price": 0, "size": null, "kind": "material", "noSell": true, "expeditionOnly": false },
     {
       "id": "chartfrag",
       "name": "海图碎片",
@@ -7408,7 +7423,12 @@
           "id": "relic",
           "price": 3800,
           "limit": 3
-        }
+        },
+        { "id": "gene_albino", "price": 1500, "limit": 3 },
+        { "id": "gene_star", "price": 1500, "limit": 3 },
+        { "id": "gene_veil", "price": 1800, "limit": 3 },
+        { "id": "gene_glow", "price": 1800, "limit": 3 },
+        { "id": "gene_prism", "price": 2200, "limit": 3 }
       ]
     }
   }

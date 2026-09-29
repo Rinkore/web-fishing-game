@@ -66,10 +66,31 @@ body.harbor-on .h-pbody .gear-partmap { height: 300px; margin: 0 0 12px; }
 @media (max-width: 640px) { body.harbor-on .h-pbody .gear-partmap { height: 340px; } }
 
 /* ---------- 渔屋（a-room-character.png）---------- */
-/* 场景带：设计稿只有约 140px 高的一条，不再是占满整页的 9/4 展示台。 */
+/* 让展示台随窗口长大：150px 横条会裁掉码头，只留下宠物和船的小剪影。 */
 body.harbor-on .h-pbody .char-view .char-stage {
-  aspect-ratio: auto; height: 150px; min-height: 0; border-radius: 0 !important;
+  aspect-ratio: auto; height: clamp(210px, min(32vh, 32vw), 320px); min-height: 0; border-radius: 0 !important;
+  border-color: #466880; box-shadow: inset 0 0 0 2px rgba(12, 32, 48, .65), 0 4px 0 rgba(0, 0, 0, .4);
 }
+body.harbor-on .h-pbody .char-view .cs-dock { left: 3%; bottom: -8%; width: auto; height: 65%; max-width: none; }
+body.harbor-on .h-pbody .char-view .cs-dog { left: 18%; bottom: 44%; width: auto; height: 28%; filter: drop-shadow(2px 3px 0 rgba(8, 20, 31, .55)); }
+body.harbor-on .h-pbody .char-view .cs-boat,
+body.harbor-on .h-pbody .char-view .cs-boat-front { right: 6%; bottom: 18%; width: 32%; height: auto; }
+body.harbor-on .h-pbody .char-view .cs-boat { z-index: 1; filter: drop-shadow(2px 4px 0 rgba(8, 27, 46, .5)); }
+body.harbor-on .h-pbody .char-view .cs-boat-front { z-index: 3; clip-path: inset(57% 0 0 0); }
+body.harbor-on .h-pbody .char-view .cs-angler { right: 5%; bottom: 28%; width: auto; height: 39%; max-width: none; z-index: 2; filter: drop-shadow(2px 3px 0 rgba(8, 20, 31, .58)); }
+body.harbor-on .h-pbody .char-view .cs-dog[data-pet-slot="1"] { left: 29%; height: 26%; }
+.char-look-preview {
+  display: flex; align-items: flex-end; justify-content: center; box-sizing: border-box;
+  width: min(100%, 280px); height: 238px; padding: 8px; overflow: hidden;
+  border: 3px solid #4c6b85; box-shadow: inset 0 0 0 2px #142a40, 3px 3px 0 #071521;
+  background: linear-gradient(#354d69 0 56%, #2d5263 56% 74%, #3e5249 74% 100%);
+}
+.char-models { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+.char-model { display: flex; align-items: center; gap: 8px; min-width: 170px; min-height: 78px; padding: 5px 9px; border: 2px solid #41627d !important; background: #12283e !important; color: #dbe9f1; cursor: pointer; text-align: left; }
+.char-model.on { border-color: #e7bd68 !important; background: #303c4a !important; }
+.char-model img { width: 55px; height: 65px; object-fit: contain; image-rendering: pixelated; }
+.char-model span { font: 12px var(--px); }
+.char-look-preview img { display: block; flex: 0 1 auto; width: auto; height: 100%; max-width: 100%; min-height: 0; object-fit: contain; object-position: center bottom; image-rendering: pixelated; }
 body.harbor-on .h-pbody .char-tag {
   position: absolute; left: 10px; bottom: 8px;
   font: 12px var(--px); color: #fff;
@@ -93,6 +114,53 @@ body.harbor-on .h-pbody .hut-panel .exp-metrics small { color: var(--muted); }
 body.harbor-on .h-pbody .hut-panel .exp-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 body.harbor-on .h-pbody .hut-panel .exp-route {
   background: #0a1628; border: 2px solid #25405f !important; border-radius: 0;
+}
+body.harbor-on .h-pbody .hut-panel .exp-routes:has(.hut-pet-card) { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 10px; }
+body.harbor-on .h-pbody .hut-pet-card { display: flex; flex-direction: column; gap: 8px; padding: 9px; background: #12283c !important; }
+body.harbor-on .h-pbody .hut-pet-card.stationed { border-color: var(--gold) !important; box-shadow: inset 0 0 0 1px rgba(242, 193, 78, .25); }
+body.harbor-on .h-pbody .hut-pet-card h4 { margin: 0; min-height: 32px; color: #f4dfae; font: 12px var(--px); }
+body.harbor-on .h-pbody .hut-pet-card h4 small { display: block; margin-top: 3px; color: #aac1d0; font: 11px var(--body); opacity: 1; }
+.hut-pet-art { position: relative; display: grid; place-items: end center; height: 102px; overflow: hidden; border: 2px solid #3f6176;
+  background: linear-gradient(180deg, #365b76 0%, #274965 58%, #52644a 59%, #344b38 75%, #22372e 100%); }
+.hut-pet-art::before { content: ''; position: absolute; inset: 60% 0 0; opacity: .5; pointer-events: none;
+  background: repeating-linear-gradient(102deg, transparent 0 7px, #7a8960 8px 9px, transparent 10px 16px); }
+.hut-pet-art img { position: relative; z-index: 1; width: 88%; height: 94%; object-fit: contain; object-position: center bottom; image-rendering: pixelated;
+  filter: drop-shadow(2px 3px 0 rgba(8, 20, 31, .6)); }
+.hut-pet-meter { height: 7px; border: 1px solid #35576e; background: #071a2b; }
+.hut-pet-meter i { display: block; height: 100%; background: linear-gradient(90deg, #9c8144, #e5bb69); }
+.hut-pet-card.stationed .hut-pet-meter i { background: linear-gradient(90deg, #21a994, #60e0be); }
+body.harbor-on .h-pbody .hut-pet-card .exp-actions { margin-top: auto; gap: 5px; }
+body.harbor-on .h-pbody .hut-pet-card .exp-actions .btn { flex: 1 1 auto; }
+
+body.harbor-on .h-pbody .char-boats .char-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 10px; }
+body.harbor-on .h-pbody .char-boats .boat-card { width: auto; min-width: 0; min-height: 156px; padding: 8px; gap: 6px;
+  background: #10283d !important; border: 3px solid #355974 !important; border-radius: 0 !important; color: #e5e8dc; text-align: center; }
+body.harbor-on .h-pbody .char-boats .boat-card:hover { border-color: #83a48b !important; }
+body.harbor-on .h-pbody .char-boats .boat-card.on { border-color: var(--gold) !important; background: #1d3946 !important; }
+body.harbor-on .h-pbody .char-boats .boat-card.locked { opacity: .7; }
+.boat-card-art { position: relative; display: grid; place-items: center; width: 100%; height: 92px; overflow: hidden; border: 2px solid #355b72;
+  background: linear-gradient(180deg, #5d86a0 0%, #9dc2bd 44%, #326884 45%, #194563 100%); }
+.boat-card-art::after { content: ''; position: absolute; left: 0; right: 0; top: 54%; height: 18%; opacity: .5; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, #9bc3c9 4px 5px, transparent 6px 9px); }
+body.harbor-on .h-pbody .char-boats .boat-card-art img { position: relative; z-index: 1; width: 94%; height: 88%; max-width: none; object-fit: contain;
+  filter: drop-shadow(2px 3px 0 rgba(7, 23, 37, .55)); }
+body.harbor-on .h-pbody .char-boats .boat-card.locked img { filter: grayscale(.35) drop-shadow(2px 3px 0 rgba(7, 23, 37, .55)); }
+body.harbor-on .h-pbody .char-boats .boat-card b { color: #f3e1b5; }
+body.harbor-on .h-pbody .char-boats .boat-card i { color: #a9c0cf; opacity: 1; }
+@media (max-width: 640px) {
+  body.harbor-on .h-pbody .char-view .char-stage { height: clamp(176px, 23vh, 200px); }
+  body.harbor-on .h-pbody .char-view .cs-dock { left: 0; height: 65%; }
+  body.harbor-on .h-pbody .char-view .cs-dog { left: 20%; height: 29%; }
+  body.harbor-on .h-pbody .char-view .cs-boat,
+  body.harbor-on .h-pbody .char-view .cs-boat-front { right: 2%; bottom: 17%; width: 42%; }
+  body.harbor-on .h-pbody .char-view .cs-angler { right: 4%; bottom: 27%; height: 44%; }
+  body.harbor-on .h-pbody .char-view .cs-dog[data-pet-slot="1"] { left: 33%; }
+  body.harbor-on .h-pbody .hut-pet-card { display: grid; grid-template-columns: 108px minmax(0, 1fr); grid-template-areas: 'art title' 'art meter' 'art actions'; align-items: center; min-height: 126px; }
+  body.harbor-on .h-pbody .hut-pet-card h4 { grid-area: title; min-height: 0; }
+  body.harbor-on .h-pbody .hut-pet-card .hut-pet-art { grid-area: art; height: 108px; }
+  body.harbor-on .h-pbody .hut-pet-card .hut-pet-meter { grid-area: meter; }
+  body.harbor-on .h-pbody .hut-pet-card .exp-actions { grid-area: actions; }
+  body.harbor-on .h-pbody .char-boats .char-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ---------- 远洋码头（a-room-sea.png）---------- */

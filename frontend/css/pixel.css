@@ -531,16 +531,17 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* 渔夫标记：当前垂钓位置 */
 .pn-fisher {
-  position: absolute; left: 50%; top: -36px; width: 34px; height: auto;
-  transform: translateX(-50%) scaleX(-1);
+  position: absolute; left: 50%; top: -66px; width: clamp(125px, 13vw, 175px); height: auto;
+  transform: translateX(-48%); pointer-events: none;
   image-rendering: pixelated;
   animation: px-fisher-sit 2.8s ease-in-out infinite;
   filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, .5));
 }
 @keyframes px-fisher-sit {
-  0%, 100% { transform: translateX(-50%) scaleX(-1) translateY(0); }
-  50% { transform: translateX(-50%) scaleX(-1) translateY(-2px); }
+  0%, 100% { transform: translateX(-48%) translateY(0); }
+  50% { transform: translateX(-48%) translateY(-2px); }
 }
+@media (max-width: 640px) { .pn-fisher { top: -51px; } }
 
 /* 飞鸟掠过近岸地图 */
 .px-bird {
@@ -747,7 +748,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .cs-bg { inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .cs-dock { left: -2%; bottom: -14%; width: 55%; }
 .cs-dog { left: 20%; bottom: 41%; height: 26%; }
-.cs-boat { right: 4%; bottom: 12%; width: 34%; }
+.cs-boat { right: 4%; bottom: 12%; width: 34%; z-index: 1; }
+.cs-angler { right: 17%; bottom: 24%; width: auto; height: 34%; z-index: 2; }
+.cs-boat-front { right: 4%; bottom: 12%; width: 34%; z-index: 3; clip-path: inset(57% 0 0 0); }
 
 /* 外观三层 */
 .char-sec { display: flex; flex-direction: column; gap: 6px; }

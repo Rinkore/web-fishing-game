@@ -35,10 +35,36 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     // ---- 场景与缩放 ----
     check('港湾首页画出场景画布（480×240 原生像素）', await page.evaluate(() => { const c = document.querySelector('#h-scene canvas'); return !!c && c.width === 480 && c.height === 240; }));
     check('画布不是空白', await page.evaluate(() => { const c = document.querySelector('#h-scene canvas'), d = c.getContext('2d').getImageData(0, 0, 480, 240).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n > 480 * 240 * .9; }));
-    check('桌面：整数倍缩放且整幅放得下', await page.evaluate(() => {
+    await page.evaluate(() => PlayerSettings.set('motion', 'off'));
+    await page.waitForTimeout(150);
+    const lilacScene = await sceneRef();
+    await page.evaluate(() => localStorage.setItem('fishing_char_v2', JSON.stringify({model:'twin'})));
+    await page.waitForTimeout(150);
+    check('港岸栈桥小人跟随新角色切换', (await sceneRef()) !== lilacScene);
+    const twinScene = await sceneRef();
+    await page.evaluate(() => localStorage.setItem('fishing_char_v2', JSON.stringify({model:'pony'})));
+    await page.waitForTimeout(150);
+    check('港岸栈桥小人也能切换为白发单马尾', (await sceneRef()) !== twinScene);
+    await page.evaluate(() => { localStorage.removeItem('fishing_char_v2'); PlayerSettings.set('motion', 'system'); });
+    check('桌面：场景铺满可用空间，不再上下留白', await page.evaluate(() => {
       const w = document.querySelector('.h-world'), s = document.getElementById('h-scene').getBoundingClientRect();
-      const k = w.offsetWidth / 480; return Number.isInteger(k) && k >= 1 && w.offsetHeight === 240 * k && w.offsetWidth <= s.width && w.offsetHeight <= s.height;
+      const k = w.offsetWidth / 480; return Number.isInteger(k * 4) && k >= 1 && w.offsetHeight === 240 * k && w.offsetWidth >= s.width - 1 && w.offsetHeight >= s.height - 1;
     }));
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForTimeout(150);
+    check('桌面中等宽度使用四分之一倍缩放并可横向浏览', await page.evaluate(() => {
+      const w = document.querySelector('.h-world'), s = document.getElementById('h-scene').getBoundingClientRect();
+      const k = w.offsetWidth / 480;
+      const pan = document.querySelector('.h-pan');
+      return k > 2 && Number.isInteger(k * 4) && w.offsetWidth >= s.width && w.offsetHeight >= s.height && pan.scrollWidth >= pan.clientWidth;
+    }));
+    const scrollBefore = await page.locator('.h-pan').evaluate(p => p.scrollLeft);
+    await page.locator('.h-pan').hover(); await page.mouse.wheel(0, 120);
+    check('桌面鼠标滚轮可以查看被裁切的岸边', await page.locator('.h-pan').evaluate(p => p.scrollLeft) > scrollBefore);
+    fs.mkdirSync(path.join(__dirname, 'shots'), { recursive: true });
+    await page.screenshot({ path: path.join(__dirname, 'shots/harbor-b-medium.png') });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForTimeout(150);
 
     // ---- 热区 ----
     check('10 个建筑热区都是真按钮', await page.evaluate(() => document.querySelectorAll('#h-scene button.h-hot[data-place]').length === 10));

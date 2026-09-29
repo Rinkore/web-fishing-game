@@ -2,6 +2,7 @@ package breeding
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"fishing.local/server/internal/modules/assets"
@@ -26,9 +27,10 @@ func TestIntegrationFounderBreedIdempotencyAndRelease(t *testing.T) {
 	}
 	for _, statement := range []string{
 		`INSERT INTO fishing.player_state(account_id) VALUES($1)`,
-		`INSERT INTO fishing.wallets(account_id,coins) VALUES($1,1000)`,
+		`INSERT INTO fishing.wallets(account_id,coins) VALUES($1,5000)`,
 		`INSERT INTO fishing.identities(account_id,username,display_name,qq,password_hash) VALUES($1,'breed_player','繁育玩家','123456','x')`,
 		`INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity) VALUES ($1,'koi','fish','normal',2),($1,'bass','fish','normal',1)`,
+		`INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity) VALUES ($1,'gene_star','material','normal',1)`,
 	} {
 		if _, err = db.Admin.Exec(ctx, statement, owner); err != nil {
 			t.Fatal(err)
@@ -64,14 +66,57 @@ func TestIntegrationFounderBreedIdempotencyAndRelease(t *testing.T) {
 		t.Fatalf("view after breed: %#v %v", view, err)
 	}
 	var coins int64
-	if err = db.Admin.QueryRow(ctx, `SELECT coins FROM fishing.wallets WHERE account_id=$1`, owner).Scan(&coins); err != nil || coins != 900 {
-		t.Fatalf("breed charged %d coins, want 100: %v", 1000-coins, err)
+	if err = db.Admin.QueryRow(ctx, `SELECT coins FROM fishing.wallets WHERE account_id=$1`, owner).Scan(&coins); err != nil || coins != 4900 {
+		t.Fatalf("breed charged %d coins, want 100: %v", 5000-coins, err)
+	}
+	if view.Reagents["gene_star"] != 1 {
+		t.Fatalf("directed reagent stock missing: %#v", view.Reagents)
+	}
+	directed, err := service.Apply(session, owner, Command{Action: "breed", RequestKey: "breed-directed-star", ID: a.ResourceID, OtherID: b.ResourceID, ItemID: "gene_star"})
+	if err != nil || directed.Status != "offspring_born" {
+		t.Fatalf("directed breed: %#v %v", directed, err)
+	}
+	view, err = service.View(ctx, owner)
+	if err != nil || len(view.Fish) != 4 {
+		t.Fatalf("directed view: %#v %v", view, err)
+	}
+	star := view.Fish[3].Genes["star"]
+	if view.Reagents["gene_star"] != 0 || (star[0] != "s" && star[1] != "s") {
+		t.Fatalf("reagent did not direct one inherited allele: %#v %v", view, err)
+	}
+	buy := Command{Action: "buy_reagent", RequestKey: "breed-buy-prism", ItemID: "gene_prism"}
+	purchased, err := service.Apply(session, owner, buy)
+	if err != nil || purchased.Status != "reagent_bought" {
+		t.Fatalf("buy reagent: %#v %v", purchased, err)
+	}
+	replayedBuy, err := service.Apply(session, owner, buy)
+	if err != nil || replayedBuy.Status != "reagent_bought" {
+		t.Fatalf("buy retry: %#v %v", replayedBuy, err)
+	}
+	view, err = service.View(ctx, owner)
+	if err != nil || view.Reagents["gene_prism"] != 1 {
+		t.Fatalf("bought reagent absent: %#v %v", view.Reagents, err)
+	}
+	if err = db.Admin.QueryRow(ctx, `SELECT coins FROM fishing.wallets WHERE account_id=$1`, owner).Scan(&coins); err != nil || coins != 2600 {
+		t.Fatalf("buy/retry charged unexpected coins: %d %v", coins, err)
 	}
 	if result, releaseErr := service.Apply(session, owner, Command{Action: "release", RequestKey: "breed-release-one", ID: child.ResourceID}); releaseErr != nil || result.Status != "released" {
 		t.Fatalf("release: %#v %v", result, releaseErr)
 	}
 	view, err = service.View(ctx, owner)
-	if err != nil || len(view.Fish) != 3 || view.Fish[2].Active {
+	if err != nil || len(view.Fish) != 4 || view.Fish[2].Active {
 		t.Fatalf("release should retain inactive ancestry: %#v %v", view, err)
+	}
+	parentID := directed.ResourceID
+	for generation := 2; generation <= 4; generation++ {
+		result, breedErr := service.Apply(session, owner, Command{Action: "breed", RequestKey: fmt.Sprintf("breed-generation-%d", generation), ID: parentID, OtherID: a.ResourceID})
+		if breedErr != nil || result.Status != "offspring_born" {
+			t.Fatalf("generation %d: %#v %v", generation, result, breedErr)
+		}
+		parentID = result.ResourceID
+	}
+	view, err = service.View(ctx, owner)
+	if err != nil || len(view.Fish) != 7 || view.Fish[6].Generation != 4 {
+		t.Fatalf("database did not accept generation four: %#v %v", view, err)
 	}
 }

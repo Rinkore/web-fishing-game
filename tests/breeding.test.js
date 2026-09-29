@@ -39,11 +39,14 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
         out.star = { alleles: ['S', 'S'], winner: 'S', source: 'S', dominant: 'S', mode: 'recessive', zygosity: 'homozygous', carrier: false, hidden: false };
         out.veil = { alleles: ['v', 'v'], winner: 'v', source: 'v', dominant: 'v', mode: 'dominant', zygosity: 'homozygous', carrier: false, hidden: false };
         out.glow = { alleles: ['g', 'g'], winner: 'g', source: 'g', dominant: 'g', mode: 'dominant', zygosity: 'homozygous', carrier: false, hidden: false };
+        [['crimson','R'],['golden','Y'],['azure','B'],['melanic','D'],['opal','O']].forEach(([locus,wild]) => {
+          out[locus] = { alleles: [wild,wild], winner: wild, source: wild, dominant: wild, mode: 'recessive', zygosity: 'homozygous', carrier: false, hidden: false };
+        });
         return out;
       };
-      const fish = (id, species, generation) => ({ id, species, generation, parents: generation ? ['1', '2'] : ['', ''], genes: {}, mutations: [], active: true, bornAt: 1, referenceSha256: 'abcdef0123456789', phenotype: { body: species, size: 'normal', traits: traits(species, 'normal'), mutations: {}, referenceExact: true, referenceSha256: 'abcdef0123456789' } });
+      const fish = (id, species, generation) => ({ id, species, generation, parents: generation ? ['1', '2'] : ['', ''], genes: {}, mutations: [], active: true, bornAt: 1, referenceSha256: 'abcdef0123456789', phenotype: { body: species, size: 'normal', traits: traits(species, 'normal'), mutations: {}, colors: {}, referenceExact: true, referenceSha256: 'abcdef0123456789' } });
       window.makeBreedFish = fish;
-      window.breedView = { fish: [fish('1', 'koi', 0), fish('2', 'koi', 0), fish('3', 'bass', 0), fish('4', 'koi', 3)], stock: [{ species: 'koi', tier: 'normal', quantity: 2 }], maxGeneration: 3, capacity: 60, breedCost: 100, mutationRate: .01 };
+      window.breedView = { fish: [fish('1', 'koi', 0), fish('2', 'koi', 0), fish('3', 'bass', 0), fish('4', 'koi', 3)], stock: [{ species: 'koi', tier: 'normal', quantity: 2 }], reagents: { gene_star: 1, gene_prism: 1 }, reagentPrices: {gene_albino:1500,gene_star:1500,gene_veil:1800,gene_glow:1800,gene_prism:2200}, capacity: 60, breedCost: 100, mutationRate: .01 };
       window.breedCalls = [];
       window.failBreed = false;
       Net.breedingGet = async () => ({ ok: true, status: 200, data: { ok: true, breeding: window.breedView } });
@@ -51,6 +54,9 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
         breedCalls.push(body);
         if (window.failBreed) return { ok: false, status: 0, data: {} };
         if (body.action === 'breed' && !breedView.fish.some(x => x.id === '5')) breedView.fish.push(fish('5', 'koi', 1));
+        if (body.action === 'breed' && body.id === '4' && !breedView.fish.some(x => x.id === '7')) breedView.fish.push(fish('7', 'koi', 4));
+        if (body.itemId && body.action === 'breed') breedView.reagents[body.itemId]--;
+        if (body.action === 'buy_reagent') breedView.reagents[body.itemId] = (breedView.reagents[body.itemId] || 0) + 1;
         return { ok: true, status: 200, data: { ok: true, breeding: breedView, result: { status: body.action === 'breed' ? 'offspring_born' : 'founder_added' } } };
       };
       UI.setView('character');
@@ -63,7 +69,7 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     check('Breeding is a first-class fish-house tab', await host.locator('[data-sectiontab="breeding"].on').count() === 1);
     check('Generation-zero parent is rebuilt from exact reference layers', await host.locator('.breed-layer-skin[src="assets/genetics/koi-skin.png"]').count() >= 1 && await host.locator('.breed-reference-seal').first().innerText() === '参考图一致');
     await host.locator('[data-pick="A"][data-id="1"]').click();
-    check('Inspector distinguishes every structural, size and mutation locus', await host.locator('.breed-genes tbody tr').count() === 11 && await host.locator('.breed-genes').innerText().then(text => text.includes('纯合') && text.includes('体型骨架') && text.includes('白化红眼')));
+    check('Inspector distinguishes structural, size, five hidden colour and mutation loci', await host.locator('.breed-genes tbody tr').count() === 16 && await host.locator('.breed-genes').innerText().then(text => text.includes('纯合') && text.includes('体型骨架') && text.includes('绯红色素') && text.includes('白化红眼')));
 
     await host.locator('[data-pick="B"][data-id="2"]').click();
     check('Same-species parents are accepted', await host.locator('[data-breed]').isEnabled() && await host.locator('.breed-pair-status').innerText().then(text => text.includes('锦鲤')));
@@ -81,7 +87,17 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
     check('Unlisted cross-species pairing is blocked', await host.locator('[data-breed]').isDisabled() && await host.locator('.breed-pair-status').innerText().then(text => text.includes('白名单')));
     await host.locator('[data-pick="A"][data-id="4"]').click();
     await host.locator('[data-pick="B"][data-id="2"]').click();
-    check('Third generation cannot produce a fourth', await host.locator('[data-breed]').isDisabled() && await host.locator('.breed-pair-status').innerText().then(text => text.includes('第四代')));
+    check('Third generation can produce a fourth', await host.locator('[data-breed]').isEnabled() && await host.locator('[data-breed]').innerText().then(text => text.includes('第 4 代')));
+    await host.locator('[data-reagent="gene_star"]').click();
+    await host.locator('[data-breed]').click();
+    await page.waitForFunction(() => breedCalls.length === 3 && breedView.fish.some(x => x.id === '7'));
+    check('Directed reagent is sent once and fourth generation enters the pool', await page.evaluate(() => breedCalls[2].itemId === 'gene_star' && breedCalls[2].id === '4') && await host.locator('.breed-pool').innerText().then(text => text.includes('第 4 代')));
+    await host.locator('[data-reagent="gene_prism"]').click();
+    await host.locator('[data-color-target]').selectOption('azure');
+    check('Prism reagent offers five selectable hidden colour loci', await host.locator('[data-color-target] option').count() === 5 && await host.locator('[data-color-target]').inputValue() === 'azure');
+    await host.locator('[data-buy-reagent="gene_albino"]').click();
+    await page.waitForFunction(() => breedCalls.length === 4);
+    check('A directed reagent can be bought within the breeding room', await page.evaluate(() => breedCalls[3].action === 'buy_reagent' && breedCalls[3].itemId === 'gene_albino') && await host.locator('[data-reagent="gene_albino"]').isEnabled());
 
     await page.evaluate(() => {
       const hybrid = makeBreedFish('6', 'koi', 1);
@@ -115,9 +131,33 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
       return { changed, gentle, silhouette, width: art.width, height: art.height };
     });
     check('Hybrid traits blend inside the body silhouette with intermediate seam colours', pixels.silhouette && pixels.width === 220 && pixels.height === 130 && pixels.changed > 20 && pixels.gentle > 10);
+    await page.evaluate(() => {
+      const coloured = makeBreedFish('8', 'koi', 5);
+      coloured.phenotype.referenceExact = false;
+      coloured.phenotype.colors.crimson = true;
+      coloured.phenotype.traits.crimson = { alleles: ['r', 'r'], winner: 'r', source: 'r', dominant: 'r', mode: 'recessive', zygosity: 'homozygous', carrier: false, hidden: false };
+      breedView.fish.push(coloured);
+      BreedUI.mount(document.querySelector('.char-view'));
+    });
+    await host.locator('.breed-pool [data-fish-id="8"] .breed-hybrid-ready').waitFor();
+    check('Expressed colour gene has a real texture and preserves the fish silhouette', await page.evaluate(async () => {
+      const canvas = document.querySelector('.breed-pool [data-fish-id="8"] canvas');
+      const actual = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      const base = new Image(); base.src = 'assets/fish/koi.png'; await base.decode();
+      const source = document.createElement('canvas'); source.width = canvas.width; source.height = canvas.height;
+      const ctx = source.getContext('2d'); ctx.drawImage(base, 0, 0);
+      const original = ctx.getImageData(0, 0, source.width, source.height).data;
+      let changed = 0;
+      for (let i = 0; i < actual.length; i += 4) {
+        if (actual[i + 3] !== original[i + 3]) return false;
+        if (original[i + 3] && Math.abs(actual[i] - original[i]) > 12) changed++;
+      }
+      return changed > 50;
+    }));
     if (process.env.FISHING_BREEDING_SCREENSHOT) {
       fs.mkdirSync(path.dirname(process.env.FISHING_BREEDING_SCREENSHOT), { recursive: true });
       await host.locator('.breed-pool [data-fish-id="6"]').screenshot({ path: process.env.FISHING_BREEDING_SCREENSHOT });
+      await host.locator('.breed-pool [data-fish-id="8"]').screenshot({ path: path.join(path.dirname(process.env.FISHING_BREEDING_SCREENSHOT), 'colour-'+path.basename(process.env.FISHING_BREEDING_SCREENSHOT)) });
     }
     check('No browser script errors', errors.length === 0);
     console.log('通过 ' + count + ' 项，失败 0 项');

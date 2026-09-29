@@ -168,7 +168,9 @@
   // ---------- sprites ----------
   const S = {
     dog: ['.......yy.', '......yyyy', '......yky.', '......yyyn', '....yyyyy.', '..yyyyyyy.', '..yyyyyyy.', '..y.y..y.y'],
-    angler: ['..hhhh...', '.hhhhhh..', '...ss....', '...sk....', '..cccc...', '.cccccaa.', '.cccc..a.', '.cccc....', '..cccc...', '..pp.pp..', '..pp.pp..', '.bbb.bbb.'],
+    angler: ['..hhhh...', '.hhhhhh..', '.hhhhh...', '.hhhsse..', '..ssse...', '.kkwkkss.', '.kktkkk..', '.kkkkkk..', '..pppp...', '..pppp...', '..ss.ss..', '..bb.bb..'],
+    twin: ['.h.hhh.h.', 'hhhhhhhhh', 'hhssesshh', '.hsssss..', '.rrkrrr..', '.rrrrrrs.', '.rrrrrr..', '..rrrr...', '..pppp...', '..pp.pp..', '..pp.pp..', '..bb.bb..'],
+    pony: ['.hhhhhh..', 'hhhhhhhh.', 'hhsssehh.', '.hsssss..', '.wkkwss..', '.wpppwss.', '.wppppw..', '..pppp...', '..pppp...', '..pp.pp..', '..pp.pp..', '..bb.bb..'],
     chest: ['..wwwwwwwwww..', '.wWWWWWWWWWWw.', '.wWggWWWWggWw.', 'wwwwwwwwwwwwww', 'gggggggggggggg', 'wWWWWWggWWWWWw', 'wWWWWWgkWWWWWw', 'wWWWWWggWWWWWw', 'wWWWWWWWWWWWWw', 'wwwwwwwwwwwwww'],
     anvil: ['skkkkkkkk.', '.kkkkkkkkk', '...kkkk...', '...kkkk...', '..kkkkkk..', '.kkkkkkkk.'],
     lock: ['.ggg.', 'g...g', 'ggggg', 'gGkGg', 'ggggg'],
@@ -178,7 +180,34 @@
     fishling: ['.fff.', 'ffffk', '.fff.'],
   };
   const DOG = { y: '#d9a441', k: 'ink', n: 'ink' };
-  const MAN = { h: '#3b4a6b', s: '#f0c090', k: 'ink', c: '#2f8c7a', a: '#f0c090', p: '#34425e', b: '#3a2618' };
+  const MAN = { h: '#c4d0f5', s: '#f1c9ad', e: '#88a149', k: '#24212d', w: '#f4f1e6', t: '#ca4057', p: '#464477', b: '#262531' };
+  const TWIN = { h: '#d95969', s: '#f6d2bb', e: '#e7ac45', r: '#a8454f', k: '#302c31', p: '#aaa092', b: '#302d2a' };
+  const PONY = { h: '#e7e8f3', s: '#f4d9c8', e: '#7596b0', w: '#e7e2d5', k: '#334863', p: '#3b5579', b: '#483a31' };
+  function activeAngler() {
+    try {
+      const look = JSON.parse(localStorage.getItem('fishing_char_v2') || '{}');
+      if (look.model === 'twin') return { rows: S.twin, palette: TWIN };
+      if (look.model === 'pony') return { rows: S.pony, palette: PONY };
+    } catch (_) { /* 离线或私密模式保持默认角色 */ }
+    return { rows: S.angler, palette: anglerPalette() };
+  }
+  function anglerPalette() {
+    const palette = Object.assign({}, MAN);
+    try {
+      const look = JSON.parse(localStorage.getItem('fishing_char_v2') || '{}');
+      const hairs = { teal: '#81d0db', red: '#dd94b5', cream: '#e2e1d1' };
+      const uniforms = {
+        yellow: ['#5c4730', '#7f5b3b', '#e1b556'],
+        red: ['#5d2b3d', '#7d385b', '#eeafbe'],
+        blue: ['#284563', '#32648d', '#69cdd6'],
+      };
+      const skins = { tan: '#c7a08c', dark: '#8e6f64' };
+      if (hairs[look.hat]) palette.h = hairs[look.hat];
+      if (uniforms[look.outfit]) [palette.k, palette.p, palette.t] = uniforms[look.outfit];
+      if (skins[look.skin]) palette.s = skins[look.skin];
+    } catch (_) { /* 私密浏览模式保持原色 */ }
+    return palette;
+  }
   const CHEST = { w: 'woodDk', W: 'wood', g: '#e8b83a', k: 'ink' };
   const IRON = { s: 'stoneHi', k: 'ink' };
   const LOCK = { g: '#e8b83a', G: '#b8862a', k: 'ink' };
@@ -348,14 +377,15 @@
     g.line(397, 111, 422, 164, 'ink'); g.line(396, 111, 376, 164, 'ink');
   }
   function drawPier(g, st) {
+    const player = activeAngler();
     g.r(196, 150, 6, 16, 'woodDk'); for (let y = 152; y < 166; y += 3) g.r(197, y, 4, 1, 'woodHi');
     g.r(196, 166, 112, 5, 'wood'); g.r(196, 166, 112, 1, 'woodHi'); for (let x = 199; x < 308; x += 4) g.r(x, 167, 1, 4, 'woodDk');
     [200, 232, 264, 302].forEach(x => { g.r(x, 171, 3, 26, 'woodDk'); g.r(x, 171, 1, 26, 'wood'); g.a(.3, () => g.r(x, 199, 3, 10, 'woodDk')); });
     g.line(203, 173, 231, 194, 'woodDk'); g.line(235, 173, 263, 194, 'woodDk'); g.line(267, 173, 301, 194, 'woodDk');
     g.r(304, 148, 1, 18, 'ink'); g.r(303, 145, 3, 4, 'ink');
     g.r(250, 161, 6, 5, '#6a7a8e'); g.r(250, 161, 6, 1, '#8a9aae');
-    if (st.fishing) { g.spr(266, 154, S.angler, MAN); g.line(273, 159, 300, 139, 'woodHi'); }
-    else { g.spr(274, 154, S.angler, MAN); g.line(279, 160, 284, 136, 'woodHi'); }
+    if (st.fishing) { g.spr(266, 154, player.rows, player.palette); g.line(273, 159, 300, 139, 'woodHi'); }
+    else { g.spr(274, 154, player.rows, player.palette); g.line(279, 160, 284, 136, 'woodHi'); }
   }
   function lightPier(g, st, t) {
     g.r(304, 146, 1, 2, 'light'); if (g.P.lamps > .05) g.glow(304, 147, 10, 'light', .5 * g.P.lamps);

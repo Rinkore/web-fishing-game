@@ -111,6 +111,12 @@
     { id: 'tide_sand', name: '潮汐砂', rarity: 'rare', price: 260, size: null },
     { id: 'dragon_scale', name: '龙鳞碎屑', rarity: 'epic', price: 720, size: null },
     { id: 'dragonpearl', name: '龙宫宝珠', rarity: 'epic', price: 600, size: null },
+    // 繁育定向试剂：商城限购，在繁育时消耗 1 瓶；不能卖回系统。
+    { id: 'gene_albino', name: '白化导向剂', rarity: 'rare', price: 0, size: null, noSell: true },
+    { id: 'gene_star', name: '星点导向剂', rarity: 'rare', price: 0, size: null, noSell: true },
+    { id: 'gene_veil', name: '流纱导向剂', rarity: 'rare', price: 0, size: null, noSell: true },
+    { id: 'gene_glow', name: '荧光导向剂', rarity: 'rare', price: 0, size: null, noSell: true },
+    { id: 'gene_prism', name: '异色棱镜剂', rarity: 'epic', price: 0, size: null, noSell: true },
     // v0.19.0 远洋：海图碎片（远洋掉落 / 随机事件，3 片合成 1 张未知海图）与深海鳞片（船升级材料）
     { id: 'chartfrag', name: '海图碎片', rarity: 'rare', price: 120, size: null },
     { id: 'deepscale', name: '深海鳞片', rarity: 'rare', price: 180, size: null },
@@ -2611,6 +2617,11 @@
       { id: 'lure', price: 60, limit: 20 },
       { id: 'rope', price: 35, limit: 20 },
       { id: 'relic', price: 3800, limit: 3 },
+      { id: 'gene_albino', price: 1500, limit: 3 },
+      { id: 'gene_star', price: 1500, limit: 3 },
+      { id: 'gene_veil', price: 1800, limit: 3 },
+      { id: 'gene_glow', price: 1800, limit: 3 },
+      { id: 'gene_prism', price: 2200, limit: 3 },
     ],
   };
   function defaultMallCfg() {

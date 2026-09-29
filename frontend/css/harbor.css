@@ -262,6 +262,7 @@ html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animati
 .h-pan { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .h-scene.h-phone .h-pan { justify-content: flex-start; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; }
 .h-scene.h-phone .h-pan::-webkit-scrollbar { display: none; }
+.h-scene.h-cover .h-pan { justify-content: flex-start; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; overscroll-behavior-x: contain; }
 .h-world { position: relative; flex: none; }
 .h-world canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
 
@@ -347,6 +348,7 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
   z-index: 4; pointer-events: none; white-space: nowrap;
 }
 .h-scene.h-phone ~ .h-pan-hint { display: block !important; animation: h-pan-hint-fade 4.5s forwards; }
+.h-scene.h-cover ~ .h-pan-hint { display: block !important; animation: h-pan-hint-fade 4.5s forwards; }
 #harbor.h-compass-home .h-pan-hint { display: none !important; }
 @keyframes h-pan-hint-fade { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .h-stage .h-scene ~ .h-pan-hint { display: none !important; } }
@@ -397,6 +399,7 @@ html[data-motion="off"] .h-stage .h-scene ~ .h-pan-hint { display: none !importa
 .h-pan { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .h-scene.h-phone .h-pan { justify-content: flex-start; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; }
 .h-scene.h-phone .h-pan::-webkit-scrollbar { display: none; }
+.h-scene.h-cover .h-pan { justify-content: flex-start; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; overscroll-behavior-x: contain; }
 .h-world { position: relative; flex: none; }
 .h-world canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
 

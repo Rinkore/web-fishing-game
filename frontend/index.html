@@ -12,7 +12,7 @@
   <!-- 加载顺序：tokens（色板 / 断点 / 全局焦点环）→ 基础 → 组件 → 响应式 → mobile 最后 -->
   <link rel="stylesheet" href="css/tokens.css?v=0.28.0" />
   <link rel="stylesheet" href="css/style.css?v=0.28.0" />
-  <link rel="stylesheet" href="css/pixel.css?v=0.28.0" />
+  <link rel="stylesheet" href="css/pixel.css?v=0.28.0-cast8" />
   <link rel="stylesheet" href="css/voyage-map.css?v=0.28.0-coast1" />
   <link rel="stylesheet" href="css/smelt.css?v=0.28.0" />
   <link rel="stylesheet" href="css/expedition.css?v=0.28.0" />
@@ -23,11 +23,11 @@
   <link rel="stylesheet" href="css/responsive.css?v=0.28.0" />
   <link rel="stylesheet" href="css/mobile.css?v=0.28.0" />
   <!-- 港湾外壳（设计稿 v2 · 阶段 A–E）：放在最后，用来覆盖 responsive/mobile 对 .nav 的横排与底栏规则 -->
-  <link rel="stylesheet" href="css/harbor.css?v=0.28.0" />
+  <link rel="stylesheet" href="css/harbor.css?v=0.28.0-cover2" />
   <!-- 内景功能页（设计稿 v2 · 阶段 F）：按页面拆开，避免十页样式挤在一个文件里互相牵制 -->
   <link rel="stylesheet" href="css/room-inventory.css?v=0.28.0" />
-  <link rel="stylesheet" href="css/room-workshop.css?v=0.28.0" />
-  <link rel="stylesheet" href="css/breeding.css?v=0.28.0-breeding2" />
+  <link rel="stylesheet" href="css/room-workshop.css?v=0.28.0-twin1" />
+  <link rel="stylesheet" href="css/breeding.css?v=0.28.0-genes5" />
   <link rel="stylesheet" href="css/room-social.css?v=0.28.0" />
   <link rel="stylesheet" href="css/room-board.css?v=0.28.0" />
   <script src="js/settings.js?v=0.28.0" defer></script>
@@ -150,7 +150,7 @@
   <!-- 全部 defer：settings.js 原先比 UI.init() 晚跑，导致设置界面读到未初始化的 UI。
        统一 defer 后按文档顺序执行，init 等 DOMContentLoaded（defer 全部跑完）再启动。 -->
   <script src="js/config.js?v=0.28.0" defer></script>
-  <script src="js/data.js?v=0.28.0" defer></script>
+  <script src="js/data.js?v=0.28.0-genes4" defer></script>
   <script src="js/features.js?v=0.28.0-breeding1" defer></script>
   <script src="js/room-ui.js?v=0.28.0" defer></script>
   <script src="js/engine.js?v=0.28.0" defer></script>
@@ -161,11 +161,11 @@
   <script src="js/gear.js?v=0.28.0" defer></script>
   <script src="js/expedition-growth.js?v=0.28.0" defer></script>
   <script src="js/mail.js?v=0.28.0" defer></script>
-  <script src="js/house.js?v=0.28.0" defer></script>
-  <script src="js/breeding.js?v=0.28.0-breeding2" defer></script>
-  <script src="js/ui.js?v=0.28.0-breeding1" defer></script>
-  <script src="js/harbor-art.js?v=0.28.0-coast1" defer></script>
-  <script src="js/harbor.js?v=0.28.0" defer></script>
+  <script src="js/house.js?v=0.28.0-chibi2" defer></script>
+  <script src="js/breeding.js?v=0.28.0-genes5" defer></script>
+  <script src="js/ui.js?v=0.28.0-pony1" defer></script>
+  <script src="js/harbor-art.js?v=0.28.0-pony1" defer></script>
+  <script src="js/harbor.js?v=0.28.0-twin1" defer></script>
   <script src="js/harbor-rooms.js?v=0.28.0" defer></script>
   <script>
     window.addEventListener('DOMContentLoaded', function () {

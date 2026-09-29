@@ -373,6 +373,13 @@ window.HarborShell = (function () {
     scene.built = true;
     els.scene.innerHTML = '';
     scene.pan = document.createElement('div'); scene.pan.className = 'h-pan';
+    scene.pan.tabIndex = 0;
+    scene.pan.setAttribute('aria-label', '港湾全景，可左右滚动查看两岸');
+    scene.pan.addEventListener('wheel', function (event) {
+      if (!els.scene.classList.contains('h-cover') || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+      scene.pan.scrollLeft += event.deltaY;
+      event.preventDefault();
+    }, { passive: false });
     scene.world = document.createElement('div'); scene.world.className = 'h-world';
     scene.cv = document.createElement('canvas'); scene.cv.width = A.W; scene.cv.height = A.H;
     scene.cv.setAttribute('aria-hidden', 'true');
@@ -394,6 +401,7 @@ window.HarborShell = (function () {
     });
     scene.pan.appendChild(scene.world); els.scene.appendChild(scene.pan);
     window.addEventListener('resize', layoutScene);
+    if (window.ResizeObserver) new ResizeObserver(layoutScene).observe(els.stage || els.scene);
     requestAnimationFrame(sceneLoop);
   }
   function enterPlace(id, from) {
@@ -416,15 +424,27 @@ window.HarborShell = (function () {
     // 罗盘首页：手机布局设为「compass」，或「auto」且动效关闭/减少（省电）
     const wantCompass = scene.phone && (ps.mobile === 'compass' || (ps.mobile !== 'panorama' && (motion === 'reduced' || motion === 'off')));
     els.root.classList.toggle('h-compass-home', wantCompass);
-    // 只用整数倍缩放（像素不糊）。手机按高度取倍数、横向滑动浏览全景；桌面整幅放得下为准。
-    const s = scene.phone ? Math.max(1, Math.floor(r.height / A.H)) : Math.max(1, Math.floor(Math.min(r.width / A.W, r.height / A.H)));
+    // 桌面铺满可用空间；比例不同时通过左右滚动看岸边，避免整幅缩小后上下留白。
+    // 手机仍用整数倍横向浏览，保留触摸拖动。
+    const cover = Math.max(r.width / A.W, r.height / A.H);
+    const s = scene.phone ? Math.max(1, Math.floor(r.height / A.H)) : Math.max(1, Math.ceil(cover * 4) / 4);
     const first = !scene.scale;
-    if (s !== scene.scale) {
+    const scaleChanged = s !== scene.scale;
+    const oldRange = Math.max(0, scene.pan.scrollWidth - scene.pan.clientWidth);
+    const oldPosition = oldRange ? scene.pan.scrollLeft / oldRange : .52;
+    if (scaleChanged) {
       scene.scale = s;
       scene.world.style.width = A.W * s + 'px'; scene.world.style.height = A.H * s + 'px';
+      scene.world.style.setProperty('--h-scene-scale', String(s));
     }
     els.scene.classList.toggle('h-phone', scene.phone);
-    if (scene.phone && !wantCompass && (first || scene.pan.scrollLeft === 0)) scene.pan.scrollLeft = Math.max(0, (A.W * s - r.width) * 0.52);
+    const cropped = A.W * s > r.width + 1;
+    els.scene.classList.toggle('h-cover', !scene.phone && cropped);
+    const panHint = els.stage && els.stage.querySelector('.h-pan-hint');
+    if (panHint) panHint.textContent = scene.phone ? '← 左右滑动浏览港湾 →' : '← 鼠标滚轮浏览港岸两侧 →';
+    if (cropped && !wantCompass && (first || scaleChanged || oldRange === 0)) {
+      scene.pan.scrollLeft = Math.max(0, A.W * s - r.width) * oldPosition;
+    }
     // 罗盘首页：把场景条带画进 #h-strip（如果存在）
     if (wantCompass && els.strip && scene.cv) {
       const sc = els.strip.getContext('2d');
@@ -469,7 +489,12 @@ window.HarborShell = (function () {
       const d = new Date(); m = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
       pal = A.paletteAt(m, as);
     }
-    const key = pal.key + '|' + scene.stateSig;
+    let avatarKey = '';
+    try {
+      const look = JSON.parse(localStorage.getItem('fishing_char_v2') || '{}');
+      avatarKey = [look.model || 'lilac', look.hat || 'orange', look.outfit || 'green', look.skin || 'light'].join('/');
+    } catch (_) { /* 保留默认形象 */ }
+    const key = pal.key + '|' + scene.stateSig + '|' + avatarKey;
     if (key !== scene.layerKey) { scene.layers = A.makeLayers(pal.P, scene.state); scene.layerKey = key; force = true;
       // 画布外的留白用同一时段的天空 / 海面色补齐，桌面整数倍缩放放不满时不会露出一圈黑边
       scene.pan.style.background = 'linear-gradient(' + pal.P.sky[0] + ' 0%,' + pal.P.sky[3] + ' 49%,' + pal.P.sea[0] + ' 49%,' + pal.P.sea[3] + ' 100%)';

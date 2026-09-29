@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"math"
 	"math/rand/v2"
 )
 
@@ -14,7 +15,6 @@ import (
 var catalogJSON []byte
 
 const (
-	MaxGeneration = 3
 	// MutationRate applies independently to each wild mutation allele copied
 	// into an offspring. Existing mutation alleles follow ordinary inheritance.
 	MutationRate = 0.01
@@ -24,6 +24,15 @@ const (
 )
 
 var mutationLoci = []string{"albino", "star", "veil", "glow"}
+var colorLoci = []string{"crimson", "golden", "azure", "melanic", "opal"}
+
+// Earlier founders retain the digest of the damaged cutout in their immutable
+// genome. Accept those exact historical digests after restoring white pixels.
+var legacyReferenceSHA = map[string]string{
+	"white":      "177b352ad9fb90159382188deef7e32a11ea18e5602fae57b7bd9afb5ce9f52c",
+	"silvercarp": "0d34966173bc5f03a7536e3c3cbdc12b658a94fffd0fcaaeb580a0b1a4d9c8a6",
+	"sardine":    "aeb2d66b61e4520f6cbe22018d0f9cb0e29914f364b767ad866da5df04c69eaf",
+}
 
 type Species struct {
 	ID             string         `json:"id"`
@@ -52,6 +61,7 @@ type Definitions struct {
 	Loci      []string            `json:"loci"`
 	Labels    map[string]string   `json:"labels"`
 	Mutations map[string]Mutation `json:"mutations"`
+	Colors    map[string]Mutation `json:"colors"`
 	Species   map[string]Species  `json:"species"`
 }
 
@@ -95,6 +105,7 @@ type Phenotype struct {
 	Size            string                `json:"size"`
 	Traits          map[string]Expression `json:"traits"`
 	Mutations       map[string]bool       `json:"mutations"`
+	Colors          map[string]bool       `json:"colors"`
 	ReferenceExact  bool                  `json:"referenceExact"`
 	ReferenceSHA256 string                `json:"referenceSha256"`
 }
@@ -128,6 +139,10 @@ func Founder(species string, tiers ...string) (Fish, error) {
 		m := Catalog.Mutations[locus]
 		f.Genes[locus] = [2]string{m.Wild, m.Wild}
 	}
+	for _, locus := range colorLoci {
+		m := Catalog.Colors[locus]
+		f.Genes[locus] = [2]string{m.Wild, m.Wild}
+	}
 	return f, nil
 }
 
@@ -148,11 +163,27 @@ func CanPair(a, b Fish) bool {
 }
 
 func Valid(f Fish) bool {
-	if f.Generation < 0 || f.Generation > MaxGeneration || len(f.Genes) != len(Catalog.Loci)+len(mutationLoci)+1 {
+	if f.Generation < 0 || len(f.Genes) < len(Catalog.Loci)+len(mutationLoci)+1 || len(f.Genes) > len(Catalog.Loci)+len(mutationLoci)+len(colorLoci)+1 {
 		return false
 	}
+	for locus := range f.Genes {
+		known := locus == sizeLocus
+		for _, candidate := range append(append(append([]string{}, Catalog.Loci...), mutationLoci...), colorLoci...) {
+			if locus == candidate {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return false
+		}
+	}
 	species, ok := Catalog.Species[f.Species]
-	if !ok || species.Group != "fish" || f.ReferenceSHA256 != species.SHA256 || !species.ReferenceExact {
+	referenceValid := f.ReferenceSHA256 == species.SHA256
+	if legacy, known := legacyReferenceSHA[f.Species]; known && f.ReferenceSHA256 == legacy {
+		referenceValid = true
+	}
+	if !ok || species.Group != "fish" || !referenceValid || !species.ReferenceExact {
 		return false
 	}
 	for _, locus := range Catalog.Loci {
@@ -183,7 +214,31 @@ func Valid(f Fish) bool {
 			}
 		}
 	}
+	// Archived genomes created before colour loci existed remain valid; absent
+	// loci are interpreted as homozygous wild type and normalized when read.
+	for _, locus := range colorLoci {
+		pair, exists := f.Genes[locus]
+		if !exists {
+			continue
+		}
+		m := Catalog.Colors[locus]
+		for _, allele := range pair {
+			if allele != m.Wild && allele != m.Allele {
+				return false
+			}
+		}
+	}
 	return true
+}
+
+func normalizeLegacy(f Fish) Fish {
+	for _, locus := range colorLoci {
+		if _, exists := f.Genes[locus]; !exists {
+			m := Catalog.Colors[locus]
+			f.Genes[locus] = [2]string{m.Wild, m.Wild}
+		}
+	}
+	return f
 }
 
 func structuralWinner(locus string, pair [2]string) string {
@@ -240,6 +295,7 @@ func Express(f Fish) (Phenotype, error) {
 		Body:            body,
 		Traits:          map[string]Expression{},
 		Mutations:       map[string]bool{},
+		Colors:          map[string]bool{},
 		ReferenceExact:  true,
 		ReferenceSHA256: Catalog.Species[body].SHA256,
 	}
@@ -289,19 +345,57 @@ func Express(f Fish) (Phenotype, error) {
 		p.Traits[locus] = e
 		p.Mutations[locus] = on
 	}
+	for _, locus := range colorLoci {
+		m := Catalog.Colors[locus]
+		pair, exists := f.Genes[locus]
+		if !exists {
+			pair = [2]string{m.Wild, m.Wild}
+		}
+		count := 0
+		for _, allele := range pair {
+			if allele == m.Allele {
+				count++
+			}
+		}
+		on := count == 2 || count == 1 && m.Dominance == "dominant"
+		winner := m.Wild
+		if on {
+			winner = m.Allele
+			p.ReferenceExact = false
+		}
+		e := expression(pair, winner, m.Dominance)
+		if count == 1 && !on {
+			e.Hidden = true
+			e.Reason = "杂合携带：异色基因潜伏，需两份等位基因才表达"
+		}
+		p.Traits[locus] = e
+		p.Colors[locus] = on
+	}
 	return p, nil
 }
 
-func Breed(a, b Fish, seed []byte) (Fish, error) {
+func Breed(a, b Fish, seed []byte, directed ...string) (Fish, error) {
 	if !Valid(a) || !Valid(b) {
 		return Fish{}, errors.New("亲代基因无效")
 	}
 	if a.ID == "" || a.ID == b.ID || !a.Active || !b.Active {
 		return Fish{}, errors.New("请选择两条不同的在养亲本")
 	}
+	if max(a.Generation, b.Generation) == math.MaxInt {
+		return Fish{}, errors.New("繁育代数超出可表示范围")
+	}
 	generation := max(a.Generation, b.Generation) + 1
-	if generation > MaxGeneration {
-		return Fish{}, errors.New("第三代已达繁育上限，不能产生第四代")
+	target := ""
+	if len(directed) > 1 {
+		return Fish{}, errors.New("每次只能定向一个基因")
+	}
+	if len(directed) == 1 && directed[0] != "" {
+		target = directed[0]
+		if _, mutation := Catalog.Mutations[target]; !mutation {
+			if _, color := Catalog.Colors[target]; !color {
+				return Fish{}, errors.New("无效定向基因")
+			}
+		}
 	}
 	if !CanPair(a, b) {
 		return Fish{}, errors.New("仅同种鱼或现实中有杂交记录的鱼可以配对")
@@ -309,21 +403,41 @@ func Breed(a, b Fish, seed []byte) (Fish, error) {
 	hash := sha256.Sum256(seed)
 	rng := rand.New(rand.NewPCG(binary.LittleEndian.Uint64(hash[:8]), binary.LittleEndian.Uint64(hash[8:16])))
 	f := Fish{Generation: generation, Parents: [2]string{a.ID, b.ID}, Active: true, Genes: Genome{}, Mutations: []string{}}
-	loci := append(append(append([]string{}, Catalog.Loci...), sizeLocus), mutationLoci...)
+	loci := append(append(append(append([]string{}, Catalog.Loci...), sizeLocus), mutationLoci...), colorLoci...)
 	mutated := map[string]bool{}
 	for _, locus := range loci {
-		pair := [2]string{a.Genes[locus][rng.IntN(2)], b.Genes[locus][rng.IntN(2)]}
-		if mutation, ok := Catalog.Mutations[locus]; ok {
+		parentA, parentB := a.Genes[locus], b.Genes[locus]
+		mutation, special := Catalog.Mutations[locus]
+		if color, ok := Catalog.Colors[locus]; ok {
+			mutation, special = color, true
+		}
+		if _, exists := a.Genes[locus]; !exists && special {
+			parentA = [2]string{mutation.Wild, mutation.Wild}
+		}
+		if _, exists := b.Genes[locus]; !exists && special {
+			parentB = [2]string{mutation.Wild, mutation.Wild}
+		}
+		pair := [2]string{parentA[rng.IntN(2)], parentB[rng.IntN(2)]}
+		if special {
 			for i := range pair {
 				if pair[i] == mutation.Wild && rng.Float64() < MutationRate {
 					pair[i] = mutation.Allele
 					mutated[locus] = true
 				}
 			}
+			if locus == target {
+				if pair[0] == mutation.Wild {
+					pair[0] = mutation.Allele
+					mutated[locus] = true
+				} else if pair[1] == mutation.Wild {
+					pair[1] = mutation.Allele
+					mutated[locus] = true
+				}
+			}
 		}
 		f.Genes[locus] = pair
 	}
-	for _, locus := range mutationLoci {
+	for _, locus := range append(append([]string{}, mutationLoci...), colorLoci...) {
 		if mutated[locus] {
 			f.Mutations = append(f.Mutations, locus)
 		}

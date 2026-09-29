@@ -104,6 +104,7 @@ type catalog struct {
 	Loci      []string           `json:"loci"`
 	Labels    map[string]string  `json:"labels"`
 	Mutations map[string]any     `json:"mutations"`
+	Colors    map[string]any     `json:"colors"`
 	Species   map[string]species `json:"species"`
 }
 
@@ -131,13 +132,19 @@ func run(root string) error {
 		return err
 	}
 	sort.Strings(entries)
-	c := catalog{Version: 2, Loci: loci, Labels: map[string]string{
+	c := catalog{Version: 3, Loci: loci, Labels: map[string]string{
 		"body": "体型骨架", "head": "头部（眼、吻、鳃、须）", "dorsal": "背部（背鳍、棘、冠）", "ventral": "腹部（腹鳍、足、腕）", "tail": "尾部", "skin": "体表（底色、纹理、鳞、发光）",
 	}, Mutations: map[string]any{
 		"albino": map[string]string{"label": "白化红眼", "allele": "a", "wild": "A", "dominance": "recessive", "description": "aa 表达，Aa 携带；减少体色并将眼部染红"},
 		"star":   map[string]string{"label": "星点鳞", "allele": "s", "wild": "S", "dominance": "recessive", "description": "ss 表达，Ss 携带；身体表面出现金色星点"},
 		"veil":   map[string]string{"label": "流纱尾", "allele": "V", "wild": "v", "dominance": "dominant", "description": "Vv / VV 表达；仅有独立尾鳍的体型可表达"},
 		"glow":   map[string]string{"label": "荧光边缘", "allele": "G", "wild": "g", "dominance": "dominant", "description": "Gg / GG 表达；沿身体外轮廓产生青色光点"},
+	}, Colors: map[string]any{
+		"crimson": map[string]string{"label": "绯红色素", "allele": "r", "wild": "R", "dominance": "recessive", "description": "rr 表达绯红色，Rr 隐性携带"},
+		"golden":  map[string]string{"label": "金黄色素", "allele": "y", "wild": "Y", "dominance": "recessive", "description": "yy 表达金黄色，Yy 隐性携带"},
+		"azure":   map[string]string{"label": "湖蓝色素", "allele": "b", "wild": "B", "dominance": "recessive", "description": "bb 表达湖蓝色，Bb 隐性携带"},
+		"melanic": map[string]string{"label": "墨色素", "allele": "d", "wild": "D", "dominance": "recessive", "description": "dd 表达墨色，Dd 隐性携带"},
+		"opal":    map[string]string{"label": "虹彩素", "allele": "o", "wild": "O", "dominance": "recessive", "description": "oo 表达虹彩，Oo 隐性携带"},
 	}, Species: map[string]species{}}
 	for index, path := range entries {
 		id := strings.TrimSuffix(filepath.Base(path), ".png")

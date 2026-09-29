@@ -10,7 +10,7 @@ func TestReferenceFounderIsExactHomozygousPhenotype(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !Valid(fish) || len(fish.Genes) != len(Catalog.Loci)+len(mutationLoci)+1 {
+	if !Valid(fish) || len(fish.Genes) != len(Catalog.Loci)+len(mutationLoci)+len(colorLoci)+1 {
 		t.Fatalf("invalid founder: %#v", fish)
 	}
 	phenotype, err := Express(fish)
@@ -58,7 +58,7 @@ func TestPairingUsesConservativeRealWorldGroups(t *testing.T) {
 	}
 }
 
-func TestThirdGenerationCap(t *testing.T) {
+func TestGenerationsContinueBeyondThree(t *testing.T) {
 	a, _ := Founder("koi")
 	b, _ := Founder("koi")
 	a.ID, b.ID = "a", "b"
@@ -76,9 +76,69 @@ func TestThirdGenerationCap(t *testing.T) {
 	if err != nil || third.Generation != 3 {
 		t.Fatalf("third generation: %#v %v", third, err)
 	}
-	third.ID = "e"
-	if _, err = Breed(third, a, []byte("generation-four")); err == nil {
-		t.Fatal("fourth generation should be rejected")
+	parent := third
+	for generation := 4; generation <= 12; generation++ {
+		parent.ID = fmt.Sprintf("g%d", generation-1)
+		child, breedErr := Breed(parent, a, []byte(fmt.Sprintf("generation-%d", generation)))
+		if breedErr != nil || child.Generation != generation || !Valid(child) {
+			t.Fatalf("generation %d: %#v %v", generation, child, breedErr)
+		}
+		parent = child
+	}
+}
+
+func TestFiveHiddenColourLociAndDirectedAllele(t *testing.T) {
+	a, _ := Founder("koi")
+	b, _ := Founder("koi")
+	a.ID, b.ID = "a", "b"
+	for _, locus := range colorLoci {
+		child, err := Breed(a, b, []byte("direct-"+locus), locus)
+		if err != nil || !Valid(child) {
+			t.Fatalf("%s: %#v %v", locus, child, err)
+		}
+		m := Catalog.Colors[locus]
+		pair := child.Genes[locus]
+		if pair[0] != m.Allele && pair[1] != m.Allele {
+			t.Fatalf("%s was not directed: %#v", locus, pair)
+		}
+		phenotype, expressErr := Express(child)
+		if expressErr != nil {
+			t.Fatal(expressErr)
+		}
+		if !phenotype.Traits[locus].Hidden || phenotype.Colors[locus] {
+			t.Fatalf("%s did not remain latent: %#v", locus, phenotype.Traits[locus])
+		}
+	}
+	legacy := a
+	legacy.Genes = Genome{}
+	for locus, pair := range a.Genes {
+		if _, color := Catalog.Colors[locus]; !color {
+			legacy.Genes[locus] = pair
+		}
+	}
+	if !Valid(legacy) {
+		t.Fatal("pre-v3 genome became invalid")
+	}
+	child, err := Breed(legacy, b, []byte("legacy"))
+	if err != nil || !Valid(child) || len(child.Genes) != len(a.Genes) {
+		t.Fatalf("legacy inheritance: %#v %v", child, err)
+	}
+}
+
+func TestWhitePixelRepairKeepsExistingFoundersValid(t *testing.T) {
+	for id, historical := range legacyReferenceSHA {
+		fish, err := Founder(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fish.ReferenceSHA256 = historical
+		if !Valid(fish) {
+			t.Fatalf("%s historical genome rejected", id)
+		}
+		phenotype, err := Express(fish)
+		if err != nil || phenotype.ReferenceSHA256 != Catalog.Species[id].SHA256 {
+			t.Fatalf("%s did not display repaired source: %#v %v", id, phenotype, err)
+		}
 	}
 }
 

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "loci": [
     "body",
     "head",
@@ -44,6 +44,43 @@
       "dominance": "dominant",
       "label": "流纱尾",
       "wild": "v"
+    }
+  },
+  "colors": {
+    "azure": {
+      "allele": "b",
+      "description": "bb 表达湖蓝色，Bb 隐性携带",
+      "dominance": "recessive",
+      "label": "湖蓝色素",
+      "wild": "B"
+    },
+    "crimson": {
+      "allele": "r",
+      "description": "rr 表达绯红色，Rr 隐性携带",
+      "dominance": "recessive",
+      "label": "绯红色素",
+      "wild": "R"
+    },
+    "golden": {
+      "allele": "y",
+      "description": "yy 表达金黄色，Yy 隐性携带",
+      "dominance": "recessive",
+      "label": "金黄色素",
+      "wild": "Y"
+    },
+    "melanic": {
+      "allele": "d",
+      "description": "dd 表达墨色，Dd 隐性携带",
+      "dominance": "recessive",
+      "label": "墨色素",
+      "wild": "D"
+    },
+    "opal": {
+      "allele": "o",
+      "description": "oo 表达虹彩，Oo 隐性携带",
+      "dominance": "recessive",
+      "label": "虹彩素",
+      "wild": "O"
     }
   },
   "species": {
@@ -2607,19 +2644,19 @@
           90
         ],
         "ventral": [
-          175,
+          85,
           75,
           218,
           102
         ]
       },
-      "sha256": "aeb2d66b61e4520f6cbe22018d0f9cb0e29914f364b767ad866da5df04c69eaf",
+      "sha256": "351b64c9f222bee8a82382a02f037e5542b200172a418870dfd49ad9a52c6f80",
       "layerSha256": {
         "dorsal": "826789b695df00a07df96f9e23737460a20e80eca9517ee91a61b3b4a8ffdfbd",
-        "head": "b994715f196345772acbd654f5112b0d88c1896152ae5b94ee7e3ef26b69865e",
-        "skin": "ecc29a4cdf67fec241a7315eb319caf7954ab53a191d2cb0999ae1a66bdc12b5",
+        "head": "228a6f663af87f13ebf700078e9f6b6707a800aa364351eba21fee9a4abcbed9",
+        "skin": "c6b40e170890bc13d2967b263cc3f68ded1a71a8eba0c130299e8200c9e00c5c",
         "tail": "95794a2907d93eb1d4e0ff8a6f835facb93bb0e17c1f39d563a63180ffe49cdf",
-        "ventral": "62507550ca3ac6dee0186b7fc47fa9cf1ab4a2365e855cb87b7a735d69a91184"
+        "ventral": "626d3e1f058347a43f9dcf5e98a20b8993cc3164d3b6131c4acfb1d52993b0e0"
       },
       "rank": {
         "body": 40,
@@ -2747,13 +2784,13 @@
           154
         ]
       },
-      "sha256": "0d34966173bc5f03a7536e3c3cbdc12b658a94fffd0fcaaeb580a0b1a4d9c8a6",
+      "sha256": "2321d96f11fa1e98e64326deaab2dd0674f3785defe70007d11ad77d599ef16a",
       "layerSha256": {
-        "dorsal": "6f567fbadfca796c8e84e618ba512bcf45cfdc29bdf5a94d76291e99e1a1fa4c",
+        "dorsal": "71c386411e76f9d889ba7f1a3123f24666262afbdadced23a2fc48d78f764c6b",
         "head": "036e8601f1fb66a3cd5062c0c6d28b4618033a52fefbd89d0ee9d473163de6b0",
-        "skin": "ad8c4b64b58f642f3051f967aae05a996db9ac5a03312a87d16b1f476192c2ae",
-        "tail": "e45920b513126fce4883d583e9740e90c6db7cbb314b95dce51c010c671ebe97",
-        "ventral": "98978a58327c7fa1433b9402047d1ecbb98fcff4c76c822d078b00cec5195757"
+        "skin": "0b38d46d34d0bc953d282aa0fcda994d374d8f41bf86c6f3d2a8e5620755c19e",
+        "tail": "0bab8ed8f86ca24e4beb44db15fc070750555e93835d72584139f1d10770948e",
+        "ventral": "17e8a047983fe96d9ae460eb6f0e60ad5052dda3efabce2e5cadb27beddc87fe"
       },
       "rank": {
         "body": 22,
@@ -3222,13 +3259,13 @@
           0,
           0,
           54,
-          27
+          34
         ],
         "skin": [
           54,
           13,
           142,
-          23
+          32
         ],
         "tail": [
           142,
@@ -3236,15 +3273,20 @@
           184,
           43
         ],
-        "ventral": null
+        "ventral": [
+          54,
+          32,
+          82,
+          34
+        ]
       },
-      "sha256": "177b352ad9fb90159382188deef7e32a11ea18e5602fae57b7bd9afb5ce9f52c",
+      "sha256": "a9575af814e3f1d8da0b588d3af8df1f77a512c36ebfe6dc5b057ddd1746df14",
       "layerSha256": {
-        "dorsal": "259f49db1a199e8c6e56d747ce945673299a423a65cf298dadf8de3c99f331f9",
-        "head": "f2633d9ba6216ecbace9c48e3d9b5d4150898fd90b556f1fa991a322e58858f0",
-        "skin": "7c444a1a66ffb29659161def5008e7fe68faf7f6841be9b94ddd0b8d121e0e6a",
-        "tail": "b5d2ba3c0860b3179786580a280f89066eb0e54ea7ff398701799b656e4aa6b3",
-        "ventral": "6f991f039c3d30f67b64c8d58eee4c1b474401aad7a4826d27730651e8fd8288"
+        "dorsal": "a6e54bd43d6ab3d605e332520bd74893fc85d6aa1a723b39cc698898cc1957d7",
+        "head": "710ef2663146ab87078b50b03a70bfac4e9249af6a267a3f52164d03b34a9358",
+        "skin": "94b2c5f8a7ed85ad1ac076518d661a332f255d2a374dc8bfb4c6b3f70ad35744",
+        "tail": "0c97f5c3611e113803e2da6ac7b30217e794bdc0ad7a105244bbd295d697e36b",
+        "ventral": "dc6b6a233f37751f13653a710c043b558a45caabe2ba65561538434a18dbc660"
       },
       "rank": {
         "body": 2,

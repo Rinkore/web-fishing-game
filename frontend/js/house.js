@@ -297,9 +297,11 @@
       '<span>宠物加成 +' + pct(bonus.pet) + '</span><span>渔屋 Lv' + num(h.level, 1) + '</span></div>' +
       '<div class="exp-routes">' + PETS.map(function (p) {
         const id = p[0], affinity = num(pets[id], 0), on = stationed.indexOf(id) >= 0;
-        return '<article class="exp-route" data-pet-card="' + id + '">' +
+        const progress = max > 0 ? Math.max(0, Math.min(100, Math.round(affinity / max * 100))) : 0;
+        return '<article class="exp-route hut-pet-card' + (on ? ' stationed' : '') + '" data-pet-card="' + id + '">' +
           '<h4>' + esc(p[1]) + ' <small>亲和 ' + affinity + ' / ' + max + (on ? ' · 驻守中' : '') + '</small></h4>' +
-          '<img src="assets/ui/char/dog_' + id + '.png" alt="" draggable="false" style="width:72px;height:56px;object-fit:contain;image-rendering:pixelated" onerror="__imgFail(this)">' +
+          '<div class="hut-pet-art"><img src="assets/ui/char/dog_' + id + '.png" alt="" draggable="false" onerror="__imgFail(this)"></div>' +
+          '<div class="hut-pet-meter" role="meter" aria-label="' + esc(p[1]) + '亲和" aria-valuemin="0" aria-valuemax="' + max + '" aria-valuenow="' + affinity + '"><i style="width:' + progress + '%"></i></div>' +
           '<div class="exp-actions">' +
           '<button class="btn mini" data-house-action="pet" data-pet-id="' + id + '" data-pet-op="feed" data-feature="character.pet">喂养</button>' +
           '<button class="btn mini" data-house-action="pet" data-pet-id="' + id + '" data-pet-op="' + (on ? 'unstow' : 'station') + '" data-feature="character.pet">' +

@@ -12,6 +12,7 @@ var breedingSuccess = map[string]bool{
 	"founder_added":  true,
 	"offspring_born": true,
 	"released":       true,
+	"reagent_bought": true,
 }
 
 func (a *API) breedingView(w http.ResponseWriter, r *http.Request) {

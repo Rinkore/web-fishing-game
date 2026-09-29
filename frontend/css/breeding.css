@@ -34,7 +34,22 @@
 .breed-mut-glow { box-shadow: inset 0 0 18px rgba(105,235,255,.72); }
 .breed-mut-veil .breed-fish-stack { filter: drop-shadow(13px 0 1px rgba(220,178,255,.55)); }
 .breed-mutation-spark { position: absolute; color: #ffe37a; font-size: 18px; letter-spacing: 15px; text-shadow: 0 0 8px #ffd35d; pointer-events: none; }
+.breed-color-badge { position: absolute; left: 4px; top: 4px; padding: 2px 5px; background: #2d2446; border: 1px solid #b894ee; color: #f1d9ff; font-size: 9px; }
 .breed-reference-seal { position: absolute; right: 4px; bottom: 4px; padding: 2px 5px; background: rgba(4,18,30,.88); border: 1px solid var(--breed-green); color: var(--breed-green); font-size: 9px; }
+.breed-reagents { padding: 10px; border: 2px solid #3d5b75; background: #10243a; }
+.breed-reagents .sec-h { margin-bottom: 8px; color: var(--breed-gold); font: 12px var(--px, monospace); }
+.breed-reagents .sec-h small { color: var(--muted, #a9bdd1); font: 11px sans-serif; }
+.breed-reagent-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.breed-reagent-entry { display: grid; gap: 3px; min-width: 98px; }
+.breed-reagent-entry .mini { font-size: 10px; padding: 3px 5px; }
+.breed-reagent { display: inline-flex; align-items: center; gap: 5px; min-height: 42px; padding: 3px 7px; border: 2px solid #315574 !important; background: #173149; color: #dce8ef; cursor: pointer; }
+.breed-reagent.on { border-color: #e0bd6a !important; background: #394052; }
+.breed-reagent:disabled { opacity: .48; cursor: not-allowed; }
+.breed-reagent img { width: 30px; height: 30px; object-fit: contain; image-rendering: pixelated; }
+.breed-reagent span { display: grid; gap: 1px; text-align: left; font-size: 11px; }
+.breed-reagent small { color: #b5c9d7; }
+.breed-color-target { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #dce8ef; font-size: 11px; }
+.breed-color-target select { padding: 4px 6px; color: #f8edcf; background: #0c2034; border: 2px solid #497091; }
 .breed-section { padding: 10px; border: 3px solid #25405f; background: #0a1628; }
 .breed-section .sec-h, .breed-lower .sec-h { margin-bottom: 8px; color: var(--breed-gold); font: 12px var(--px, monospace); }
 .breed-section .sec-h small, .breed-lower .sec-h small { color: var(--muted, #a9bdd1); font: 11px sans-serif; }
