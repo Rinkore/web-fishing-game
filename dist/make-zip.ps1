@@ -21,7 +21,7 @@ $files = @(& git -c core.quotepath=false ls-files --cached --others --exclude-st
 if ($LASTEXITCODE -ne 0) { throw 'Cannot list package sources' }
 $packageFiles = @($files | Where-Object {
     ($_ -match '^frontend/.+\.(html|js|css|json|png|svg|jpe?g|webp|ico|woff2?|ttf|ogg|mp3|webmanifest|txt)$' -or
-     $_ -match '^(tools/(update\.ps1|start-go\.ps1|start-go\.js|start-https\.ps1)|run\.bat|update\.bat|Start-Game-HTTPS\.bat|start-frontend\.bat|package\.json|config\.env\.example|README\.md|GUIDE\.md|VERSIONS\.md|SECURITY\.md|server-go/README\.md)$') -and
+     $_ -match '^(tools/(update\.ps1|start-go\.ps1|start-https\.ps1)|run\.bat|update\.bat|Start-Game-HTTPS\.bat|config\.env\.example|README\.md|GUIDE\.md|VERSIONS\.md|server-go/README\.md)$') -and
     (Test-Path -LiteralPath (Join-Path $root $_) -PathType Leaf)
 })
 # Keep just the latest staging tree and zip. Replacement is recoverable.

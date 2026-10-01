@@ -245,7 +245,7 @@ func legacyCatalogProjection(c *rules.Catalog) (map[string]any, []map[string]any
 }
 
 // Preserve display-only properties (position, description, etc.) while
-// replacing each pool with the same zero-equipment distribution used by Node.
+// replacing each pool with the same zero-equipment distribution used by legacy server.
 func legacyGroundCatalog(c *rules.Catalog) ([]map[string]any, error) {
 	var grounds []map[string]any
 	if err := json.Unmarshal(c.Constants["GROUNDS"], &grounds); err != nil {

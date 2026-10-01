@@ -33,6 +33,10 @@ jobs:
         with:
           ref: ${{ inputs.version || github.ref }}
           fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: server-go/go.mod
+          cache: false
       - name: Verify tag, main ancestry and release version
         id: verify
         env:
@@ -44,7 +48,7 @@ jobs:
           commit="$(git rev-parse "refs/tags/$RELEASE_VERSION^{commit}")"
           test "$commit" = "$(git rev-parse HEAD)"
           git merge-base --is-ancestor "$commit" origin/main
-          actual_version="$(node -e "process.stdout.write(require('./frontend/js/data.js').VERSION)")"
+          actual_version="$(go -C server-go run ./cmd/repo-tool version)"
           test "$actual_version" = "$RELEASE_VERSION"
           test -s "dist/notes-$RELEASE_VERSION.md"
           printf 'version=%s\ncommit=%s\n' "$RELEASE_VERSION" "$commit" >> "$GITHUB_OUTPUT"
@@ -73,9 +77,6 @@ jobs:
         with:
           go-version-file: server-go/go.mod
           cache: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '24.14.0'
       - name: Build Linux amd64 package and integrity manifest
         env:
           RELEASE_VERSION: ${{ needs.source.outputs.version }}
@@ -85,12 +86,7 @@ jobs:
       - name: Export tested package identity
         id: manifest
         run: |
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const manifest = JSON.parse(fs.readFileSync('output/release/linux-release.json', 'utf8'));
-          fs.appendFileSync(process.env.GITHUB_OUTPUT,
-            `sha256=${manifest.sha256}\nmigrationsSha256=${manifest.migrationsSha256}\n`);
-          NODE
+          go -C server-go run ./cmd/repo-tool manifest-outputs output/release/linux-release.json
       - name: Publish through the repository release entry point
         shell: pwsh
         env:

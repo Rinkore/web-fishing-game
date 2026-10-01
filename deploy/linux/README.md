@@ -29,7 +29,7 @@ manifest 字段为 `version`、`sourceCommit`、`migrationsSha256`、`asset`、`
 这一节需要服务器管理员执行一次。安装脚本创建受限部署账号和固定 sudo 入口，但不停止/重启服务，也不执行任何数据库操作。服务器需 Bash、Python 3、systemd、sudo/visudo 和基础账户工具。
 
 1. 为 GitHub Actions 单独生成 ed25519 SSH 密钥。私钥只放仓库 `linux-go` 环境的 `SSH_KEY` secret；安装时只使用公钥 `.pub` 文件。不要复用个人管理密钥。完整工作流设置见 [Linux 自动发版](../../docs/CICD.md)。
-2. 把本目录的 `install.sh`、`deploy.sh`、`deploy.py` 放入服务器临时目录，核对内容。确认当前 `SOURCE_COMMIT` 对应的 Git SQL 迁移集合，把该提交的 SQL 文件导出到隔离目录，用 `node tools/release/migration-hash.js /path/to/exported/migrations` 得到基线摘要。不能根据“当前分支大概相同”随意填摘要。
+2. 把本目录的 `install.sh`、`deploy.sh`、`deploy.py` 放入服务器临时目录，核对内容。确认当前 `SOURCE_COMMIT` 对应的 Git SQL 迁移集合，把该提交的 SQL 文件导出到隔离目录，用 `go -C server-go run ./cmd/repo-tool migration-hash /path/to/exported/migrations` 得到基线摘要。不能根据“当前分支大概相同”随意填摘要。
 3. 在服务器以管理员执行下面的安装命令。`BASELINE_COMMIT` 必须精确匹配当前发行 `SOURCE_COMMIT` 或 `SOURCE_COMMIT.txt`；安装器会校验服务路径、当前发行和版本，并拒绝覆盖不同的已记录基线。
 
 ```bash

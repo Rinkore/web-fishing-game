@@ -1,6 +1,6 @@
 // Package wiki holds the official Wiki content snapshot embedded in the Go
 // server. The snapshot is generated from frontend/wiki/content/content.json by
-// tools/go-rewrite/wiki-content.js and checked in, so the binary stays hermetic
+// the reviewed source snapshot and checked in, so the binary stays hermetic
 // and CI fails when the source changes without a reviewed regeneration.
 //
 // Only the reviewed official content is served here. Player submissions and the
@@ -27,7 +27,7 @@ import (
 var defaultContent []byte
 
 // Limits mirror WIKI_OFFICIAL_SECTION_LIMITS and normalizeWikiContent in
-// the retired Node server (recoverable from Git history). Lengths count runes,
+// the retired legacy server server (recoverable from Git history). Lengths count runes,
 // which matches the UTF-16 unit counts
 // of the legacy checker for every character outside the astral planes and is
 // marginally more permissive for the rest.

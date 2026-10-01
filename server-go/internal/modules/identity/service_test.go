@@ -16,11 +16,11 @@ import (
 const testPassword = "synthetic-test-Pass42"
 
 func TestPasswordCompatibility(t *testing.T) {
-	// Test-only Node crypto.scrypt vector (salt is ASCII hex, not decoded bytes).
+	// Test-only legacy server crypto.scrypt vector (salt is ASCII hex, not decoded bytes).
 	const salt = "000102030405060708090a0b0c0d0e0f"
 	vector, err := VerifyPassword("scrypt$v1$"+salt+"$a4456d296d0b62297fabd952a5fa151d2080c8c05eff33f57fa79d9d43ffa514", "", testPassword)
 	if err != nil || !vector {
-		t.Fatal("Node scrypt vector mismatch")
+		t.Fatal("legacy server scrypt vector mismatch")
 	}
 	hash, err := HashPassword(testPassword)
 	if err != nil {

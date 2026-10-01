@@ -47,7 +47,7 @@ func TestCatchNodeOracle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Immutable oracle captured before the Node backend was retired.
+	// Immutable oracle captured before the legacy server backend was retired.
 	if fixture.Version != "v0.21.4" {
 		t.Fatal("oracle version drift")
 	}

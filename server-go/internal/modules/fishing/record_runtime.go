@@ -16,7 +16,7 @@ const legacyRecordsRuntimeSetting = "legacy:records_runtime"
 // persistLegacyRecordRuntime stores the latest board announcement in the same
 // asset transaction as the catch ledger. The gateway still recomputes the
 // complete historical projection for replay, while this marker preserves the
-// Node lastRec contract across restarts and HTTP reads.
+// legacy server lastRec contract across restarts and HTTP reads.
 func (s *NativeService) persistLegacyRecordRuntime(ctx context.Context, t *assets.Transaction, owner int64, catches []rules.Catch, now time.Time) error {
 	if len(catches) == 0 {
 		return nil

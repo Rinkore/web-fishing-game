@@ -32,7 +32,7 @@ func TestNodeOracles(t *testing.T) {
 		if err := json.Unmarshal(data, &fixture); err != nil {
 			t.Fatal(err)
 		}
-		// These snapshots were captured from the retired Node server. Keep their
+		// These snapshots were captured from the retired legacy server server. Keep their
 		// original provenance while testing the current implementation against them.
 		expectedVersion := c.Version
 		if name == "legacy-rules.json" || name == "economy-rules.json" || name == "sea-rules.json" {

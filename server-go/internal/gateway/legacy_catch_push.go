@@ -132,7 +132,7 @@ func (p *legacyCatchPush) history(ctx context.Context) []map[string]any {
 	if rows.Err() != nil {
 		return nil
 	}
-	// The SQL order is newest first; Node's feed is newest first as well.
+	// The SQL order is newest first; legacy server's feed is newest first as well.
 	return entries
 }
 
@@ -279,7 +279,7 @@ func legacyFeedVisible(c *rules.Catalog, item rules.Catch, record bool, mode str
 
 func catchKeyIsZero(k legacyCatchKey) bool { return k.operation == 0 && k.ordinal == 0 }
 
-// catchBoards computes the same priority inputs as Node's boardAnnouncement:
+// catchBoards computes the same priority inputs as legacy server's boardAnnouncement:
 // global max, per-fish max/min, then full daily top-ten boards. The immutable
 // catch ledger is the source of truth, while moderation hides are projections.
 func (p *legacyCatchPush) catchBoards(ctx context.Context, now time.Time) (legacyCatchBoards, error) {
@@ -576,7 +576,7 @@ func (p *legacyCatchPush) poll(ctx context.Context) []string {
 			})
 		}
 		if row.item.Kind == "fish" && row.item.Size != nil {
-			// Node invalidates the pull-based records view for every fish catch;
+			// legacy server invalidates the pull-based records view for every fish catch;
 			// the daily/weekly board may change even when no banner is emitted.
 			recordsChanged = true
 		}

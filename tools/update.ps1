@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Self-update for the Windows release package (no Node runtime required).
+# Self-update for the Windows Go release package.
 #   powershell -File tools\update.ps1            check and install the newest release
 #   powershell -File tools\update.ps1 -Check     only report whether an update exists
 # Game data lives in PostgreSQL and is never touched by this script.

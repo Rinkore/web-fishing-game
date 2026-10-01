@@ -92,7 +92,7 @@ func (t *Transaction) recordRod(ctx context.Context, owner int64, before []byte)
 }
 
 // ReturnOrderEquipment restores whole rods into a free saved slot. On seller
-// cancellation/expiry only, a full rod rack returns the components loose, as Node does.
+// cancellation/expiry only, a full rod rack returns the components loose, as legacy server does.
 func (t *Transaction) ReturnOrderEquipment(ctx context.Context, seller, buyer, order int64, rod bool, name string) error {
 	if !t.players[seller] || !t.players[buyer] || order < 1 {
 		return ErrInvalid

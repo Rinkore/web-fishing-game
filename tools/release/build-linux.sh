@@ -14,10 +14,10 @@ if [[ -n "$(git status --porcelain --untracked-files=all -- server-go frontend)"
   echo 'Release sources must be a clean checkout of the selected commit' >&2
   exit 1
 fi
-actual_version="$(node -e "process.stdout.write(require('./frontend/js/data.js').VERSION)")"
+actual_version="$(go -C server-go run ./cmd/repo-tool version)"
 [[ "$actual_version" == "$version" ]] || { echo 'Tag and frontend version differ' >&2; exit 1; }
 
-migrations_sha256="$(node tools/release/migration-hash.js)"
+migrations_sha256="$(go -C server-go run ./cmd/repo-tool migration-hash)"
 stage="$(mktemp -d)"
 trap 'rm -rf -- "$stage"' EXIT
 mkdir -p "$stage/bin" "$stage/licenses"
@@ -37,16 +37,6 @@ tar --sort=name --mtime="@$(git show -s --format=%ct "$source_commit")" \
 asset_sha256="$(sha256sum "$output/$asset" | cut -d ' ' -f 1)"
 RELEASE_VERSION="$version" SOURCE_COMMIT="$source_commit" MIGRATIONS_SHA256="$migrations_sha256" \
   RELEASE_ASSET="$asset" ASSET_SHA256="$asset_sha256" MANIFEST_PATH="$output/linux-release.json" \
-  node - <<'NODE'
-const fs = require('node:fs');
-const env = process.env;
-fs.writeFileSync(env.MANIFEST_PATH, JSON.stringify({
-  version: env.RELEASE_VERSION,
-  sourceCommit: env.SOURCE_COMMIT,
-  migrationsSha256: env.MIGRATIONS_SHA256,
-  asset: env.RELEASE_ASSET,
-  sha256: env.ASSET_SHA256,
-}, null, 2) + '\n');
-NODE
+  go -C server-go run ./cmd/repo-tool manifest
 printf '%s  %s\n' "$asset_sha256" "$asset" > "$output/SHA256SUMS.txt"
 printf 'Built %s from %s\nSHA256 %s\n' "$version" "$source_commit" "$asset_sha256"

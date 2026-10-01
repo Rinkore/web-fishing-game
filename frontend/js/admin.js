@@ -88,6 +88,8 @@ window.Admin = (function () {
   function adminApi(method, path, body) {
     return api(method, path, body).then(function (r) {
       if (r.status === 403) { logout('登录已失效或管理员权限被收回，请重新登录'); }
+      // 任何一次成功的写请求都视为「已保存」：清空本页的未保存标记与吸底保存条
+      if (r.ok && method !== 'GET') clearDirty();
       return r;
     });
   }
@@ -163,39 +165,459 @@ window.Admin = (function () {
   // ================================
   // 导航 / 视图切换
   // ================================
-  const NAV = [
-    { id: 'overview', name: '📊 概览' },
-    { id: 'features', name: '🔒 功能开关' },
-    { id: 'accountmgr', name: '👥 账号管理' },
-    { id: 'security', name: '🛡 安全' },   // v0.16.0：封禁名单 + 管理操作审计 + 异常登录
-    { id: 'grounds', name: '🎣 钓点管理' },
-    { id: 'market', name: '💱 市集管理' },
-    { id: 'gear', name: '🧩 装备与套装' },
-    { id: 'fishsize', name: '🐟 鱼类体型' },
-    { id: 'economy', name: '💰 经济参数' },
-    { id: 'chest', name: '🎁 宝匣配置' },
-    { id: 'sea', name: '⛵ 远洋配置' },
-    { id: 'expedition', name: '🧭 远航与套装' },
-    { id: 'mail', name: '✉️ 邮件管理' },
-    { id: 'party', name: '⚓ 编队管理' },
-    { id: 'mall', name: '🛒 商城配置' },
-    { id: 'formula', name: '🧮 公式管理' },
-    { id: 'notify', name: '🔔 通知等级' },
-    { id: 'banner', name: '📢 横幅管理' },
-    { id: 'wiki', name: '📚 Wiki攻略' },
-    { id: 'feedback', name: '📮 反馈' },
-    { id: 'records', name: '🏆 纪录贴图' },
+  // v0.23.0：侧栏按业务分组 + 搜索。只改变「怎么找页面」，页面 id、渲染函数、
+  // 组内顺序和点击行为都与以前一致（21 项一个不少）。
+  const NAV_GROUPS = [
+    { id: 'overview', name: '总览' },
+    { id: 'player', name: '玩家与社区' },
+    { id: 'play', name: '玩法与产出' },
+    { id: 'ocean', name: '远洋' },
+    { id: 'ops', name: '运营' },
+    { id: 'content', name: '内容' },
   ];
+  // desc：页头的一句话说明（这页管什么、改完什么时候生效），以前只在代码注释里
+  const NAV = [
+    { id: 'overview', group: 'overview', name: '📊 概览', desc: '在线人数、渔获、挂单与热力图的实时看板；每 5 秒自动刷新，切页后停止刷新。' },
+    { id: 'features', group: 'overview', name: '🔒 功能开关', desc: '玩家端各页面与子操作的开放开关，以及客户端菜单顺序；保存后对在线玩家立即生效。' },
+    { id: 'accountmgr', group: 'player', name: '👥 账号管理', desc: '账号查询、封禁、资产快照编辑与回档；保存按快照版本校验，冲突时会要求重新载入。' },
+    { id: 'security', group: 'player', name: '🛡 安全', desc: '封禁名单、管理员操作审计与异常登录统计；排查「谁改了什么」的第一站。' },   // v0.16.0：封禁名单 + 管理操作审计 + 异常登录
+    { id: 'party', group: 'player', name: '⚓ 编队管理', desc: '查看当前编队并解散；只影响正在组队的玩家。' },
+    { id: 'feedback', group: 'player', name: '📮 反馈', desc: '玩家提交的 Bug / 建议 / 平衡反馈；可改状态、发放奖励，反馈规则折叠在顶部。' },
+    { id: 'grounds', group: 'play', name: '🎣 钓点管理', desc: '钓点增删、地图坐标、掉落池权重与钓点增益；保存后新的抛竿立即按新配置结算。' },
+    { id: 'gear', group: 'play', name: '🧩 装备与套装', desc: '装备成长、套装与远航专精的权威配置；保存即发布，已出发的远航保留出发快照。' },
+    { id: 'fishsize', group: 'play', name: '🐟 鱼类体型', desc: '各鱼种的体型区间与权重；保存后新渔获按新区间判定。' },
+    { id: 'economy', group: 'play', name: '💰 经济参数', desc: '金币、经验、产出与容量等经济参数；保存后新的结算立即生效。' },
+    { id: 'chest', group: 'play', name: '🎁 宝匣配置', desc: '宝匣档位、成本、产出池与保底期望；覆盖表留空表示沿用目录里的出厂值。' },
+    { id: 'formula', group: 'play', name: '🧮 公式管理', desc: '上钩公式编辑与试算沙盒；试算只验证不改配置，保存后新的抛竿生效。' },
+    { id: 'sea', group: 'ocean', name: '⛵ 远洋配置', desc: '船级成长、远洋产出与随机事件；保存后新的航行按新配置结算。' },
+    { id: 'expedition', group: 'ocean', name: '🧭 远航与套装', desc: '远航时长、航线、催化剂与套装兑换；已经出发的奖励保持出发时的结果。' },
+    { id: 'market', group: 'ops', name: '💱 市集管理', desc: '全服挂单查询、退回、补货与批量上架；退回会把物品寄回玩家邮箱。' },
+    { id: 'mail', group: 'ops', name: '✉️ 邮件管理', desc: '奖励发放与全服补偿：选人 → 邮件与附件 → 预览 → 投递，可暂停、撤回、查询。' },
+    { id: 'mall', group: 'ops', name: '🛒 商城配置', desc: '商城商品、金币价格与每日限购；保存后玩家端商城立即刷新。' },
+    { id: 'notify', group: 'ops', name: '🔔 通知等级', desc: '全服动态的通知等级与自动通知规则；保存后用于新的渔获播报。' },
+    { id: 'banner', group: 'ops', name: '📢 横幅管理', desc: '顶部横幅队列、配色与滚播间隔；保存后在线玩家立即看到新内容。' },
+    { id: 'wiki', group: 'content', name: '📚 Wiki攻略', desc: 'Wiki 条目热更新与玩家投稿审核；发布后玩家端攻略页立即更新。' },
+    { id: 'records', group: 'content', name: '🏆 纪录贴图', desc: '破纪录展示图片与榜单清理；改动立即影响玩家端纪录页。' },
+  ];
+  const NAV_BY_ID = {};
+  NAV.forEach(function (n) { NAV_BY_ID[n.id] = n; });
+  let navFilter = '';
+  function navGroupName(id) {
+    const g = NAV_GROUPS.filter(function (x) { return x.id === id; })[0];
+    return g ? g.name : '后台管理';
+  }
+  function navDrawerOpen() { return document.body.classList.contains('nav-open'); }
+  function setNavDrawer(open) {
+    document.body.classList.toggle('nav-open', !!open);
+    const t = $('nav-toggle');
+    if (t) t.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { const f = $('nav-filter'); if (f) f.focus(); }
+  }
+  function closeNavDrawer() { if (navDrawerOpen()) setNavDrawer(false); }
+  // 搜索只隐藏不匹配的条目，不重排、不重建，所以点击行为和顺序都和以前一样
+  function applyNavFilter() {
+    const nav = $('nav');
+    if (!nav) return;
+    const q = navFilter.trim().toLowerCase();
+    nav.querySelectorAll('.nav-group').forEach(function (g) {
+      const title = g.querySelector('.nav-group-title');
+      const groupHit = !!q && !!title && title.textContent.toLowerCase().indexOf(q) >= 0;
+      let shown = 0;
+      g.querySelectorAll('.nav-item').forEach(function (b) {
+        const hit = !q || groupHit || b.textContent.toLowerCase().indexOf(q) >= 0;
+        b.classList.toggle('hide', !hit);
+        if (hit) shown++;
+      });
+      g.classList.toggle('hide', shown === 0);
+    });
+    const box = $('nav-search');
+    if (box) box.classList.toggle('has-value', !!navFilter);
+  }
   function renderNav() {
     const nav = $('nav');
+    if (!nav) return;
     nav.innerHTML = '';
-    NAV.forEach(function (n) {
-      const b = document.createElement('button');
-      b.className = 'nav-item' + (n.id === view ? ' active' : '');
-      b.textContent = n.name;
-      b.onclick = function () { switchView(n.id); };
-      nav.appendChild(b);
+    NAV_GROUPS.forEach(function (g) {
+      const items = NAV.filter(function (n) { return n.group === g.id; });
+      if (!items.length) return;
+      const box = document.createElement('div');
+      box.className = 'nav-group';
+      box.setAttribute('data-nav-group', g.id);
+      const title = document.createElement('div');
+      title.className = 'nav-group-title';
+      title.textContent = g.name;
+      box.appendChild(title);
+      items.forEach(function (n) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'nav-item' + (n.id === view ? ' active' : '');
+        b.textContent = n.name;
+        b.title = n.desc || n.name;
+        b.setAttribute('data-view', n.id);
+        if (n.id === view) b.setAttribute('aria-current', 'page');
+        b.onclick = function () { closeNavDrawer(); switchView(n.id); };
+        box.appendChild(b);
+      });
+      nav.appendChild(box);
     });
+    applyNavFilter();
+  }
+
+  // ================================
+  // 页面外壳：页头 + 页内目录 + 页面操作（v0.23.0）
+  // 21 个页面各写各的 <h2> 和一长段 hint，保存按钮又散在页尾——3000px 的长页要一路
+  // 滚到底才知道怎么存。这里在渲染完成后统一补一层壳，纯 DOM 装饰：
+  //   页头   = 面包屑（分组）+ 原标题 + 一句话说明
+  //   页内目录 = 本页所有小标题，点一下滚过去并高亮
+  //   页面操作 = 本页的主按钮 / 危险按钮清单，点一下跳到那个按钮
+  //   快捷保存 = 本页只有一个主按钮时，页头直接给一个等效入口（点的是同一个按钮）
+  // 不新增接口、不改提交内容、不拦截任何原有交互。
+  // ================================
+  function visible(el) { return !!(el && el.offsetParent !== null); }
+  function cleanText(el) { return el ? String(el.textContent || '').replace(/\s+/g, ' ').trim() : ''; }
+  function firstHeading(host) {
+    const kids = host.children || [];
+    for (let i = 0; i < kids.length; i++) {
+      const c = kids[i];
+      if (c.tagName === 'H2' || c.tagName === 'H3' || c.classList.contains('panel-head')) return c;
+    }
+    return host.querySelector('h3');
+  }
+  function flashTarget(el) {
+    if (!el || !el.classList) return;
+    el.classList.remove('flash');
+    void el.offsetWidth;
+    el.classList.add('flash');
+    setTimeout(function () { el.classList.remove('flash'); }, 1500);
+  }
+  function jumpTo(el) {
+    if (!el) return;
+    const box = el.closest('.panel, .ops-card, fieldset, section') || el;
+    try { box.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { box.scrollIntoView(); }
+    flashTarget(box);
+  }
+  function collectSections(main) {
+    const out = [];
+    main.querySelectorAll('h3, legend, .panel-head').forEach(function (h) {
+      if (out.length >= 16) return;
+      if (h.closest('.page-head')) return;
+      if (!visible(h)) return;
+      const label = cleanText(h);
+      if (!label || label.length > 42) return;
+      out.push({ el: h, label: label });
+    });
+    return out;
+  }
+  // 数据表统一进滚动容器：表头吸顶、窄屏横向滚动、面板不再被宽表撑破
+  // （只包一层 div，表格本身、id、data-* 和事件绑定都不动）
+  function wrapTables(main) {
+    main.querySelectorAll('table.tbl').forEach(function (t) {
+      const parent = t.parentNode;
+      if (!parent) return;
+      if (parent.classList && parent.classList.contains('tbl-wrap')) return;
+      if (t.closest('.snap-inv')) return;
+      const box = document.createElement('div');
+      box.className = 'tbl-wrap';
+      parent.insertBefore(box, t);
+      box.appendChild(t);
+    });
+  }
+  function collectActions(main) {
+    const out = [];
+    main.querySelectorAll('button, input[type=submit], a.btn').forEach(function (b) {
+      if (out.length >= 14) return;
+      if (b.closest('.page-head')) return;
+      if (b.disabled || !visible(b)) return;
+      const cls = String(b.className || '');
+      const kind = /danger/.test(cls) ? 'danger' : (/primary/.test(cls) || b.type === 'submit' ? 'primary' : '');
+      if (!kind) return;
+      const label = cleanText(b) || b.value || '';
+      if (!label) return;
+      out.push({ el: b, kind: kind, label: label.length > 18 ? label.slice(0, 18) + '…' : label });
+    });
+    return out;
+  }
+  function popMenu(title, entries, caption) {
+    const d = document.createElement('details');
+    d.className = 'ph-menu';
+    const s = document.createElement('summary');
+    s.textContent = title;
+    d.appendChild(s);
+    const pop = document.createElement('div');
+    pop.className = 'ph-pop';
+    if (!entries.length) {
+      const e = document.createElement('div');
+      e.className = 'ph-pop-empty';
+      e.textContent = '本页没有可跳转的条目';
+      pop.appendChild(e);
+    } else {
+      const cap = document.createElement('div');
+      cap.className = 'ph-pop-title';
+      cap.textContent = caption;
+      pop.appendChild(cap);
+      entries.forEach(function (en, i) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        if (en.kind === 'danger') b.className = 'danger';
+        const idx = document.createElement('span');
+        idx.className = 'ph-idx';
+        idx.textContent = (i + 1 < 10 ? '0' : '') + (i + 1);
+        const txt = document.createElement('span');
+        txt.textContent = en.label;
+        b.appendChild(idx); b.appendChild(txt);
+        b.onclick = function () { d.removeAttribute('open'); jumpTo(en.el); };
+        pop.appendChild(b);
+      });
+    }
+    d.appendChild(pop);
+    // 同时只展开一个下拉，避免两个浮层叠在一起
+    d.addEventListener('toggle', function () {
+      if (!d.open || !d.parentNode) return;
+      d.parentNode.querySelectorAll('details.ph-menu[open]').forEach(function (o) {
+        if (o !== d) o.removeAttribute('open');
+      });
+    });
+    return d;
+  }
+  function buildPageHead() {
+    const head = document.createElement('div');
+    head.className = 'page-head';
+    const ph = document.createElement('div');
+    ph.className = 'ph-main';
+    const crumb = document.createElement('div');
+    crumb.className = 'ph-crumb';
+    const slot = document.createElement('div');   // 占位：页面自己的 <h2> 会被搬进来
+    slot.className = 'ph-title';
+    const desc = document.createElement('div');
+    desc.className = 'ph-desc hint';
+    ph.appendChild(crumb); ph.appendChild(slot); ph.appendChild(desc);
+    const tools = document.createElement('div');
+    tools.className = 'ph-tools';
+    head.appendChild(ph); head.appendChild(tools);
+    return head;
+  }
+  function pageTitleOf(main) {
+    const list = main.querySelectorAll('h2');
+    for (let i = 0; i < list.length; i++) {
+      const h = list[i];
+      if (h.closest('.gear-header')) continue;    // 装备页自带 .gear-header，不抢它的标题
+      if (h.classList.contains('ph-title')) continue;
+      return h;
+    }
+    const inHead = main.querySelector('.page-head .ph-title');
+    return inHead && inHead.tagName === 'H2' ? inHead : null;
+  }
+  function decorateView() {
+    const main = $('main');
+    if (!main) return;
+    let head = main.querySelector('.page-head');
+    const h2 = pageTitleOf(main);
+    if (!head && !h2) return;
+    if (!head) { head = buildPageHead(); main.insertBefore(head, main.firstChild); }
+    const slot = head.querySelector('.ph-title');
+    if (h2 && h2 !== slot) {
+      h2.classList.add('ph-title');
+      slot.replaceWith(h2);
+    }
+    const titleEl = head.querySelector('h2.ph-title');
+    if (!titleEl) return;
+    wrapTables(main);
+    snapshotFields();   // 渲染完成时记录每个字段的基线值（判断「旧值 → 新值」用）
+    const meta = NAV_BY_ID[view] || {};
+    const sections = collectSections(main);
+    const actions = collectActions(main);
+    const sig = [view, cleanText(titleEl), meta.desc || '',
+      sections.map(function (s) { return s.label; }).join('|'),
+      actions.map(function (a) { return a.kind + ':' + a.label; }).join('|')].join('§');
+    if (head.dataset && head.dataset.sig === sig) return;   // 内容没变就不重建（也避免观察器自激）
+    if (head.dataset) head.dataset.sig = sig;
+    head.querySelector('.ph-crumb').innerHTML =
+      '<span>🛡 后台管理</span><i>/</i><span>' + esc(navGroupName(meta.group)) + '</span><i>/</i><b>' +
+      esc(cleanText(titleEl).replace(/^[^\u4e00-\u9fa5A-Za-z0-9]+/, '')) + '</b>';
+    head.querySelector('.ph-desc').textContent = meta.desc || '';
+    const tools = head.querySelector('.ph-tools');
+    tools.innerHTML = '';
+    const primaries = actions.filter(function (a) { return a.kind === 'primary'; });
+    if (primaries.length === 1) {
+      const src = primaries[0];
+      const saveLike = /保存|提交|应用|发布|同步|确定/.test(src.label);
+      const quick = document.createElement('button');
+      quick.type = 'button';
+      quick.className = 'btn mini primary';
+      quick.textContent = (saveLike ? '💾 ' : '▶ ') + (src.label.length > 10 ? (saveLike ? '保存本页' : '本页主操作') : src.label);
+      quick.title = '等同于点页面里的「' + src.label + '」';
+      quick.onclick = function () { src.el.click(); };
+      tools.appendChild(quick);
+    }
+    if (actions.length) tools.appendChild(popMenu('⌄ 页面操作', actions, '点一下跳到该按钮（危险操作标红）'));
+    if (sections.length > 1) tools.appendChild(popMenu('⌄ 页内目录', sections, '点一下跳到该段落并高亮'));
+  }
+  let decorateQueued = false;
+  function scheduleDecorate() {
+    if (decorateQueued) return;
+    decorateQueued = true;
+    setTimeout(function () { decorateQueued = false; decorateView(); }, 0);
+  }
+  let shellObserver = null;
+  function startShellObserver() {
+    if (shellObserver || typeof MutationObserver !== 'function') return;
+    const main = $('main');
+    if (!main) return;
+    // 各页面都是「先出骨架、数据回来再填内容」，用观察器保证异步渲染后页头/目录跟着更新
+    shellObserver = new MutationObserver(function () { scheduleDecorate(); });
+    shellObserver.observe(main, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'hidden'] });
+  }
+  function getScrollTop() { return window.pageYOffset || document.documentElement.scrollTop || 0; }
+  function updateScrollTop() {
+    const b = $('scroll-top');
+    if (b) b.classList.toggle('show', getScrollTop() > 320);
+  }
+
+  // ================================
+  // 改动跟踪 + 吸底保存条（v0.23.0）
+  // 所有页面共用：编辑任意表单控件就在内存里记一笔「字段 旧值 → 新值」，
+  // 于是折叠分组能显示「已改 N 项」、页底能常驻一条保存条、切页时能提示未保存。
+  // 只读 DOM 与事件，不改任何接口 / 提交内容；任何一次成功的写请求都会清空记录。
+  // ================================
+  const dirtyMap = new Map();
+  // 每个控件在「渲染完成时」的值：没有它就无法判断「旧值 → 新值」（事件只在改动之后才到）
+  const baseValues = new WeakMap();
+  let dirtyExpanded = false;
+  function fieldValueOf(el) {
+    return el.type === 'checkbox' ? (el.checked ? '开' : '关') : String(el.value == null ? '' : el.value);
+  }
+  function snapshotFields() {
+    const main = $('main');
+    if (!main) return;
+    main.querySelectorAll('input, select, textarea').forEach(function (el) {
+      if (el.type === 'file') return;
+      if (!baseValues.has(el)) baseValues.set(el, fieldValueOf(el));
+    });
+  }
+  function fieldKeyOf(el) {
+    return el.id || el.getAttribute('data-path') || el.getAttribute('data-text-path') ||
+      el.getAttribute('data-field') || el.getAttribute('data-amount') && (el.parentNode && el.parentNode.getAttribute('data-material')) || '';
+  }
+  function fieldLabelOf(el) {
+    const lb = el.closest('label');
+    if (lb) {
+      const copy = lb.cloneNode(true);
+      // 去掉控件本体、单位后缀和说明文字，只留字段名
+      copy.querySelectorAll('input, select, textarea, button, .set-unit, .set-hint, .hint, .unit').forEach(function (n) { n.remove(); });
+      const t = cleanText(copy);
+      if (t) return t.length > 24 ? t.slice(0, 24) + '…' : t;
+    }
+    return el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.id || '字段';
+  }
+  function noteChange(el) {
+    const key = fieldKeyOf(el);
+    if (!key) return;
+    const cur = fieldValueOf(el);
+    const before = baseValues.has(el) ? baseValues.get(el) : cur;
+    if (!baseValues.has(el)) baseValues.set(el, before);
+    if (before === cur) dirtyMap.delete(key);
+    else dirtyMap.set(key, { el: el, label: fieldLabelOf(el), before: before, after: cur });
+    el.classList.toggle('is-dirty', dirtyMap.has(key));
+    paintDirty();
+  }
+  function clearDirty() {
+    dirtyMap.forEach(function (r) { if (r.el && r.el.classList) r.el.classList.remove('is-dirty'); });
+    dirtyMap.clear();
+    dirtyExpanded = false;
+    paintDirty();
+  }
+  function dirtyCount() { return dirtyMap.size; }
+  function paintDirty() {
+    const n = dirtyMap.size;
+    // 折叠分组上的「已改 N 项」：有改动就自动展开该组
+    document.querySelectorAll('[data-fold-group]').forEach(function (fold) {
+      const gid = fold.getAttribute('data-fold-group');
+      let hit = 0;
+      dirtyMap.forEach(function (r, k) { if (k === gid || k.indexOf('costs.' + gid) === 0) hit++; });
+      const badge = fold.querySelector('.fold-badge');
+      if (badge) { badge.hidden = !hit; badge.textContent = '已改 ' + hit + ' 项'; }
+      if (hit) fold.classList.add('open');
+    });
+    const bar = $('save-bar');
+    if (!bar) return;
+    bar.hidden = n === 0;
+    const cnt = bar.querySelector('[data-save-count]');
+    if (cnt) cnt.textContent = n ? n + ' 项未保存' : '';
+    const diff = bar.querySelector('[data-save-diff]');
+    if (diff) {
+      diff.hidden = n === 0;
+      diff.innerHTML = dirtyExpanded ? Array.from(dirtyMap.values()).map(function (r) {
+        return '<div class="save-diff-row"><span>' + esc(r.label) + '</span><i>' + esc(r.before) + ' → <b>' + esc(r.after) + '</b></i></div>';
+      }).join('') : '';
+    }
+  }
+  function primarySaveButton() {
+    const main = $('main');
+    if (!main) return null;
+    const list = collectActions(main).filter(function (a) { return a.kind === 'primary'; });
+    return list.length ? list[0].el : null;
+  }
+  function buildSaveBar() {
+    if ($('save-bar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'save-bar';
+    bar.className = 'save-bar';
+    bar.hidden = true;
+    bar.innerHTML =
+      '<span class="dirty">● <b data-save-count></b></span>' +
+      '<button type="button" class="btn ghost mini" data-save-toggle>查看改动</button>' +
+      '<div class="save-diff" data-save-diff hidden></div>' +
+      '<span class="grow"></span>' +
+      '<button type="button" class="btn ghost mini" data-save-discard>全部放弃</button>' +
+      '<button type="button" class="btn primary" data-save-apply>保存</button>';
+    document.body.appendChild(bar);
+    bar.querySelector('[data-save-toggle]').onclick = function () {
+      dirtyExpanded = !dirtyExpanded;
+      bar.classList.toggle('show-diff', dirtyExpanded);
+      paintDirty();
+    };
+    bar.querySelector('[data-save-discard]').onclick = function () {
+      confirmModalLocal('放弃本页所有未保存的修改？页面会重新载入当前配置。').then(function (ok) {
+        if (!ok) return;
+        clearDirty();
+        worldCfg = null;
+        switchView(view, { force: true });
+      });
+    };
+    bar.querySelector('[data-save-apply]').onclick = function () {
+      const btn = primarySaveButton();
+      if (!btn) { toast('这一页没有可用的保存按钮，请在下方表单里保存', true); return; }
+      btn.click();
+    };
+  }
+  // 表单控件的编辑事件统一入口（capture，避免各页面 stopPropagation）
+  function wireDirtyTracking() {
+    const main = $('main');
+    if (!main) return;
+    // 折叠分组：点标题行 / 右侧按钮都能开合（装备消耗、远航航线等共用）
+    main.addEventListener('click', function (e) {
+      const hit = e.target.closest && (e.target.closest('[data-fold-toggle]') || e.target.closest('[data-fold-btn]'));
+      if (!hit) return;
+      const fold = hit.closest('.fold');
+      if (!fold) return;
+      fold.classList.toggle('open');
+      const btn = fold.querySelector('[data-fold-btn]');
+      if (btn) btn.textContent = fold.classList.contains('open') ? '收起' : '展开';
+    }, true);
+    ['input', 'change'].forEach(function (type) {
+      main.addEventListener(type, function (e) {
+        const el = e.target;
+        if (!el || !el.tagName) return;
+        if (el.tagName !== 'INPUT' && el.tagName !== 'SELECT' && el.tagName !== 'TEXTAREA') return;
+        if (el.type === 'file' || el.type === 'range' && type === 'input') return;
+        noteChange(el);
+      }, true);
+    });
+    buildSaveBar();
+  }
+  function confirmLeaveDirty() {
+    if (!dirtyMap.size) return Promise.resolve(true);
+    return confirmModalLocal('本页还有 ' + dirtyMap.size + ' 项未保存的修改，确定离开并丢弃吗？');
   }
   function renderFeatures() {
     const main = $('main');
@@ -822,11 +1244,26 @@ window.Admin = (function () {
     loadOfficial();
     loadReview();
   }
-  function switchView(v) {
+  function switchView(v, opts) {
+    // 有未保存改动时先问一句（内部重绘 / 保存后刷新走 force 分支）
+    if (!(opts && opts.force) && dirtyMap.size && v !== view) {
+      confirmLeaveDirty().then(function (ok) {
+        if (ok) { clearDirty(); switchView(v, { force: true }); }
+      });
+      return;
+    }
     view = v;
     stopOverviewTimer();
     stopBannerTimer();
     renderNav();
+    // 切页回到顶部：长页面（邮件三步表单、钓点编辑器）以前会保留上一页的滚动位置，很容易迷路
+    try { window.scrollTo(0, 0); } catch (e) {}
+    renderCurrentView(v);
+    decorateView();        // 首屏先套上页头 / 页内目录
+    scheduleDecorate();    // 异步数据回来后（新面板、新按钮）再对齐一次
+    updateScrollTop();
+  }
+  function renderCurrentView(v) {
     if (v === 'overview') return renderOverview();
     if (v === 'features') return renderFeatures();
     if (v === 'accountmgr') return renderAccountMgr();
@@ -1486,7 +1923,7 @@ window.Admin = (function () {
       '<div class="mgr-row" style="margin-bottom:10px">' +
       '<label>🔍 搜索</label>' +
       '<span style="position:relative;display:inline-block;vertical-align:middle">' +
-      '<input id="mgr-q" class="ipt" style="width:300px" placeholder="账号 ID / 显示名 / QQ 号" value="' + esc(mgrQuery) + '" autocomplete="off" />' +
+      '<input id="mgr-q" class="ipt" placeholder="账号 ID / 显示名 / QQ 号" value="' + esc(mgrQuery) + '" autocomplete="off" />' +
       '<div id="mgr-sug" class="mgr-sug"></div></span>' +
       '<button class="btn mini" id="mgr-q-clear">清空</button>' +
       '<label>每页</label>' +
@@ -1639,7 +2076,7 @@ window.Admin = (function () {
         '<td><label class="switch"><input type="checkbox" data-admin="' + esc(u.key) + '"' + (u.admin ? ' checked' : '') + (self ? ' disabled title="不能撤销自己的权限"' : '') + '><span class="sl"></span></label></td>' +
         '<td class="mgr-cap">' +
         // 留空 = 用默认 40；0 = 不限。改完立刻生效（玩家再上架时按这个数卡）
-        '<input class="ipt mk-num" type="number" min="0" max="100000" data-cap="' + esc(u.key) + '" value="' +
+        '<input class="ipt mk-num" aria-label="同时挂单上限（件）" type="number" min="0" max="100000" data-cap="' + esc(u.key) + '" value="' +
         (u.capSet ? u.listingCap : '') + '" placeholder="40" title="同时挂单上限；0 = 不限；留空 = 默认 40" />' +
         '<div class="hint">在用 ' + (u.listings || 0) + (u.listingCap > 0 ? ' / ' + u.listingCap : ' / 不限') + '</div></td>' +
         '<td class="mgr-acts">' +
@@ -1849,8 +2286,8 @@ window.Admin = (function () {
       [['1', '1 小时'], ['6', '6 小时'], ['24', '1 天'], ['72', '3 天'], ['720', '30 天'], ['-1', '永久']].map(function (kv) {
         return '<button class="btn mini ban-preset" data-h="' + kv[0] + '" style="margin-right:6px">' + kv[1] + '</button>';
       }).join('') + '</span></div>' +
-      '<div class="mgr-row"><label>时长（小时）</label><input id="ban-hours" class="ipt" type="number" step="0.5" value="24" style="width:160px" /></div>' +
-      '<div class="mgr-row"><label>原因（可选）</label><input id="ban-reason" class="ipt" maxlength="60" placeholder="会显示给对方看" style="width:320px" /></div>' +
+      '<div class="mgr-row"><label>时长（小时）</label><input id="ban-hours" class="ipt" type="number" step="0.5" value="24" /></div>' +
+      '<div class="mgr-row"><label>原因（可选）</label><input id="ban-reason" class="ipt" maxlength="60" placeholder="会显示给对方看" /></div>' +
       '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn danger" id="ban-go">确认封禁</button></div>' +
       '<span id="ban-msg" class="hint"></span>' +
       '</div></div>';
@@ -2492,7 +2929,7 @@ window.Admin = (function () {
       '<div class="mgr-row" style="margin-top:10px"><input id="ns-name" class="ipt gi-name" placeholder="新钓点名称" maxlength="20" />' +
       '<select id="ns-preset" class="ipt gi-type">' + presetOpts + '</select>' +
       '<label class="hint">所属图</label><select id="ns-map" class="ipt gi-type"><option value=""' + (spotMapTab === 'nearshore' ? ' selected' : '') + '>近岸图</option><option value="voyage"' + (spotMapTab === 'voyage' ? ' selected' : '') + '>远洋图</option></select>' +
-      '<label class="hint">船级门槛</label><input id="ns-ship" class="ipt mk-num" type="number" min="0" max="5" step="1" placeholder="0=不限" style="width:70px" />' +
+      '<label class="hint">船级门槛</label><input id="ns-ship" class="ipt mk-num" type="number" min="0" max="5" step="1" placeholder="0=不限" />' +
       '<button class="btn mini" id="ns-add">＋ 新建钓点（一键填充）</button>' +
       (curSpots.length ? '<button class="btn mini danger" id="ns-del">🗑 删除当前钓点</button>' : '') +
       '</div></div>' +
@@ -2505,7 +2942,7 @@ window.Admin = (function () {
       '<div id="lg-list"></div>' +
       '<div class="mgr-row" style="margin-top:10px">' +
       '<input id="lg-name" class="ipt gi-name" placeholder="新战利品组名称" maxlength="20" />' +
-      '<input id="lg-weight" class="ipt mk-num" type="number" min="0" max="1000000" step="1" value="10" style="width:96px" title="组在掉落池里的默认权重" />' +
+      '<input id="lg-weight" class="ipt mk-num" type="number" min="0" max="1000000" step="1" value="10" title="组在掉落池里的默认权重" />' +
       '<button class="btn mini" id="lg-add">＋ 新建战利品组</button>' +
       '<span id="lg-state" class="hint"></span></div>' +
       '<div id="lg-edit"></div></div>';
@@ -3044,7 +3481,7 @@ window.Admin = (function () {
         '<div class="mgr-row"><label>名称</label>' +
         '<input id="lge-name" class="ipt gi-name" maxlength="20" placeholder="组名称" value="' + esc(lgDraft.name) + '" />' +
         '<label class="hint">默认权重</label>' +
-        '<input id="lge-weight" class="ipt mk-num" type="number" min="0" max="1000000" step="1" style="width:96px" value="' + esc(lgDraft.weight) + '" />' +
+        '<input id="lge-weight" class="ipt mk-num" type="number" min="0" max="1000000" step="1" value="' + esc(lgDraft.weight) + '" />' +
         '<span class="hint">加进钓点掉落池时的建议权重（可在池子里逐条改）</span></div>' +
         '<div class="hint" style="margin:10px 0 6px">组内条目（只允许 鱼 / 材料 / 组件；权重只决定组内占比）：</div>' +
         '<div id="lge-rows"></div>' +
@@ -3541,8 +3978,8 @@ window.Admin = (function () {
       const changed = c.costRelic !== c.baseRelic || c.costCoins !== c.baseCoins;
       return '<tr><td><b>' + esc(c.name) + '</b>' + (changed ? ' <span class="tag on">已改</span>' : '') + '</td>' +
         '<td>' + esc(MODE[c.mode] || c.mode) + '</td>' +
-        '<td class="num"><input class="ipt mk-num ch-cost" data-cid="' + esc(c.id) + '" data-k="costRelic" type="number" min="0" max="' + CM.relic + '" step="1" value="' + c.costRelic + '"></td>' +
-        '<td class="num"><input class="ipt mk-num ch-cost" data-cid="' + esc(c.id) + '" data-k="costCoins" type="number" min="0" max="' + CM.coins + '" step="1" value="' + c.costCoins + '"></td>' +
+        '<td class="num"><input class="ipt mk-num ch-cost" aria-label="合成残片（片）" data-cid="' + esc(c.id) + '" data-k="costRelic" type="number" min="0" max="' + CM.relic + '" step="1" value="' + c.costRelic + '"></td>' +
+        '<td class="num"><input class="ipt mk-num ch-cost" aria-label="合成金币（金币）" data-cid="' + esc(c.id) + '" data-k="costCoins" type="number" min="0" max="' + CM.coins + '" step="1" value="' + c.costCoins + '"></td>' +
         '<td>' + (c.hasExtra
           ? '神话 · 50% 突破（' + c.missCount + '~' + c.hitCount + ' 条）'
           : (c.id === 'chest_abyss' ? '史诗 · 满词条（填满该底材词缀池）' : '稀有 / 史诗')) + '</td></tr>';
@@ -3892,7 +4329,7 @@ window.Admin = (function () {
       '<h3>🛡 熔炼 · 残片保留（海王遗匣产出的神话主件专享）</h3>' +
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
       '<span class="ch-fix"><label>每片残片保留概率 %（公式）</label>' +
-      '<input id="ws-cfg-retainFormula" class="ipt" spellcheck="false" type="text" style="width:220px" value="' +
+      '<input id="ws-cfg-retainFormula" class="ipt" spellcheck="false" type="text" value="' +
       esc(SC.retainFormula != null ? SC.retainFormula : retainFormulaDefault()) + '"></span>' +
       '<span class="hint">默认 <code>' + esc(retainFormulaDefault()) + '</code>' +
       '<button class="btn mini" id="ws-cfg-retainFormula-reset" style="margin-left:6px">恢复默认</button></span>' +
@@ -3955,9 +4392,9 @@ window.Admin = (function () {
           const tip = label + '：允许范围 ' + env[0] + ' ~ ' + env[1] +
             '（下限不得低于 ' + env[0] + '，上限不得超过 ' + env[1] + '）';
           return '<td style="padding:2px 4px;white-space:nowrap" title="' + esc(tip) + '">' +
-            '<input id="' + catId(pt, t, 'min') + '" class="ipt mk-num cat-cell" type="number" step="0.1" style="width:60px" ' +
+            '<input id="' + catId(pt, t, 'min') + '" class="ipt mk-num cat-cell" type="number" step="0.1" ' +
             'min="' + env[0] + '" max="' + env[1] + '" placeholder="min" value="' + esc(mn) + '"> ~ ' +
-            '<input id="' + catId(pt, t, 'max') + '" class="ipt mk-num cat-cell" type="number" step="0.1" style="width:60px" ' +
+            '<input id="' + catId(pt, t, 'max') + '" class="ipt mk-num cat-cell" type="number" step="0.1" ' +
             'min="' + env[0] + '" max="' + env[1] + '" placeholder="max" value="' + esc(mx) + '">' +
             '<span class="hint" style="font-size:11px">' + env[0] + '~' + env[1] + '</span></td>';
         };
@@ -4109,7 +4546,7 @@ window.Admin = (function () {
     body.innerHTML =
       '<div class="mgr-row" style="flex-wrap:wrap;gap:8px">' +
       '<span class="ch-fix"><label>缩放 %</label>' +
-      '<input id="rc-scale" class="ipt mk-num" type="range" min="' + L.scaleMin + '" max="' + L.scaleMax + '" step="5" value="' + C.scale + '" style="width:220px">' +
+      '<input id="rc-scale" class="ipt mk-num" type="range" min="' + L.scaleMin + '" max="' + L.scaleMax + '" step="5" value="' + C.scale + '">' +
       '<input id="rc-scale-num" class="ipt mk-num" type="number" min="' + L.scaleMin + '" max="' + L.scaleMax + '" step="5" value="' + C.scale + '"></span>' +
       '<span class="ch-fix"><label>横向偏移</label><input id="rc-x" class="ipt mk-num" type="number" min="' + L.offsetMin + '" max="' + L.offsetMax + '" step="1" value="' + C.x + '"><span class="hint">px</span></span>' +
       '<span class="ch-fix"><label>纵向偏移</label><input id="rc-y" class="ipt mk-num" type="number" min="' + L.offsetMin + '" max="' + L.offsetMax + '" step="1" value="' + C.y + '"><span class="hint">px</span></span>' +
@@ -4124,7 +4561,7 @@ window.Admin = (function () {
       '<h3 style="margin-top:18px">🗑 纪录管理</h3>' +
       '<div class="hint" style="margin-bottom:6px">点鱼名展开该鱼种的 <b>日 / 周 / 总榜</b>，按名次单独删掉某一条；' +
       '「删除该鱼种全部」才会连它的最大 / 最小纪录一起清。只动纪录，不动玩家背包与图鉴；删除后玩家端记录页即时刷新。</div>' +
-      '<div class="mgr-row"><label class="hint">搜索</label><input id="rc-del-search" class="ipt" placeholder="鱼名 / ID" style="width:200px">' +
+      '<div class="mgr-row"><label class="hint">搜索</label><input id="rc-del-search" class="ipt" placeholder="鱼名 / ID">' +
       '<span class="hint" id="rc-del-count"></span>' +
       '<button class="btn danger" id="rc-del-all" style="margin-left:auto">清空全部纪录</button></div>' +
       '<div id="rc-del-list">…</div>';
@@ -4545,7 +4982,7 @@ window.Admin = (function () {
       '基础上钩 1 条；掷 &lt; P 成功追加 +1，再掷 &lt; P 成功再 +1，最多 3 条。分布 1−P / P(1−P) / P²，期望 1+P+P²。' +
       '若配置基础双钓率 B，最终概率 <code>1 − (1−B)(1−P)</code>。</div>' +
       '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">基础双钓率 B</label>' +
-      '<input id="db-base" class="ipt" type="number" min="0" max="100" step="1" style="width:110px" />' +
+      '<input id="db-base" class="ipt" type="number" min="0" max="100" step="1" />' +
       '<span class="hint">%</span>' +
       '<button id="db-save" class="btn primary">保存</button><span id="db-state" class="hint"></span></div>' +
       '<div id="db-preview" class="hint"></div></div>' +
@@ -4555,16 +4992,16 @@ window.Admin = (function () {
       '有效钓速 = 钓竿词缀 + <b>全服钓速加成</b>，并按<b>钓速上限</b>截断。上钩率由上方公式决定，默认随钓速下降、技巧上升。' +
       '保存后正在钓鱼的玩家循环会立即按新间隔重启。</div>' +
       '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">基础间隔</label>' +
-      '<input id="cast-base" class="ipt" type="number" min="200" max="60000" step="100" style="width:110px" />' +
+      '<input id="cast-base" class="ipt" type="number" min="200" max="60000" step="100" />' +
       '<span class="hint">ms（默认 10000）</span>' +
       '<label style="width:110px;color:var(--txt-dim);font-size:13px;margin-left:12px">最短间隔</label>' +
-      '<input id="cast-min" class="ipt" type="number" min="100" max="60000" step="100" style="width:110px" />' +
+      '<input id="cast-min" class="ipt" type="number" min="100" max="60000" step="100" />' +
       '<span class="hint">ms（默认 800）</span></div>' +
       '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">全服钓速加成</label>' +
-      '<input id="cast-bonus" class="ipt" type="number" min="-100" max="500" step="5" style="width:110px" />' +
+      '<input id="cast-bonus" class="ipt" type="number" min="-100" max="500" step="5" />' +
       '<span class="hint">%（加到每位玩家的有效钓速上，默认 0）</span>' +
       '<label style="width:110px;color:var(--txt-dim);font-size:13px;margin-left:12px">钓速上限</label>' +
-      '<input id="cast-cap" class="ipt" type="number" min="0" max="100" step="5" style="width:110px" />' +
+      '<input id="cast-cap" class="ipt" type="number" min="0" max="100" step="5" />' +
       '<span class="hint">%（默认 100）</span>' +
       '<button id="cast-save" class="btn primary" style="margin-left:12px">保存</button><span id="cast-state" class="hint"></span>' +
       '<button id="cast-reset" class="btn mini" style="margin-left:8px">恢复默认</button></div>' +
@@ -4577,12 +5014,12 @@ window.Admin = (function () {
       '<b>降低普通品质物品的权重</b>：生成战利品时，<b>普通品质</b>条目的权重 × <code>K/(K+R)</code>，' +
       '其中 R 是该玩家的稀有度值、K 是下方的全局常数。非普通品质条目的权重不变。</div>' +
       '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">K（默认 2）</label>' +
-      '<input id="rk-k" class="ipt mk-num" type="number" min="0.01" step="0.1" style="width:110px" value="2" />' +
+      '<input id="rk-k" class="ipt mk-num" type="number" min="0.01" step="0.1" value="2" />' +
       '<span class="hint">必须 &gt; 0；K 越大 = 稀有度的效果越弱</span>' +
       '<button id="rk-save" class="btn primary" style="margin-left:12px">保存</button><span id="rk-state" class="hint"></span></div>' +
       '<h4 style="margin-bottom:4px">试算（本地换算，不发请求）</h4>' +
       '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">稀有度 R</label>' +
-      '<input id="rk-r" class="ipt mk-num" type="number" step="0.5" style="width:110px" value="3" />' +
+      '<input id="rk-r" class="ipt mk-num" type="number" step="0.5" value="3" />' +
       '<button id="rk-eval" class="btn" style="margin-left:12px">试算</button><span id="rk-out" class="hint"></span></div>' +
       '<h4 style="margin-bottom:4px">钓点战利品表测试（服务器实际生效值）</h4>' +
       '<div class="pool-row"><label style="width:150px;color:var(--txt-dim);font-size:13px">钓点</label>' +
@@ -5229,7 +5666,7 @@ window.Admin = (function () {
       withSize.map(function (f) {
         return '<option value="' + esc(f.id) + '">' + esc(f.name) + '（基准 ' + f.size[0] + '~' + f.size[1] + ' cm）</option>';
       }).join('') + '</select>' +
-      '<label class="hint">体型加成</label><input id="fish-bonus" class="ipt mk-num" type="number" step="5" value="0" style="width:80px" />' +
+      '<label class="hint">体型加成</label><input id="fish-bonus" class="ipt mk-num" type="number" step="5" value="0" />' +
       '<span class="hint">%（模拟体型词缀，0 = 无加成）</span>' +
       '<button class="btn mini" id="fish-sim">刷新预览</button></div>' +
       '<div id="fish-chart" class="hint" style="margin-top:10px">…</div>' +
@@ -5391,34 +5828,34 @@ window.Admin = (function () {
       const t = tiers[key] || null;
       const follow = !t;
       return '<div class="mgr-row" style="margin-bottom:6px">' +
-        '<label style="width:60px">' + name + '</label>' +
+        '<label>' + name + '</label>' +
         '<label class="chk"><input type="checkbox" id="pc-t-' + key + '-follow"' + (follow ? ' checked' : '') + '><span>跟随全局</span></label>' +
-        '<label class="hint">每件下压</label><input id="pc-t-' + key + '-div" class="ipt mk-num" type="number" step="0.05" min="0.1" max="5" style="width:90px" value="' + (t && t.saleDivisor != null ? (t.saleDivisor * 100) : '') + '" placeholder="' + (D.saleDivisor != null ? (D.saleDivisor * 100) : 0.75) + '">' +
+        '<label class="hint">每件下压</label><input id="pc-t-' + key + '-div" class="ipt mk-num" type="number" step="0.05" min="0.1" max="5" value="' + (t && t.saleDivisor != null ? (t.saleDivisor * 100) : '') + '" placeholder="' + (D.saleDivisor != null ? (D.saleDivisor * 100) : 0.75) + '">' +
         '<span class="hint">%</span>' +
-        '<label class="hint" style="margin-left:10px">回升</label><input id="pc-t-' + key + '-tau" class="ipt mk-num" type="number" step="1" min="5" max="1440" style="width:90px" value="' + (t && t.riseTauMin != null ? t.riseTauMin : '') + '" placeholder="' + (P.riseTauMin != null ? P.riseTauMin : 60) + '">' +
+        '<label class="hint" style="margin-left:10px">回升</label><input id="pc-t-' + key + '-tau" class="ipt mk-num" type="number" step="1" min="5" max="1440" value="' + (t && t.riseTauMin != null ? t.riseTauMin : '') + '" placeholder="' + (P.riseTauMin != null ? P.riseTauMin : 60) + '">' +
         '<span class="hint">分钟</span></div>';
     };
     body.innerHTML =
       '<h3 style="margin-top:0">📈 价格模型参数</h3>' +
       '<div class="hint" style="margin-bottom:8px">乘数 m ∈ [地板, 天花板]；售出按「每件下压」逐件压低，闲置时以「回升时间常数」向「回升目标」靠拢（高于目标会缓慢回落）。</div>' +
-      '<div class="mgr-row"><label style="width:110px">地板价</label><input id="pc-floor" class="ipt mk-num" type="number" min="10" max="100" step="5" value="' + (P.floorPct != null ? P.floorPct : 40) + '" style="width:100px">' +
+      '<div class="mgr-row"><label>地板价</label><input id="pc-floor" class="ipt mk-num" type="number" min="10" max="100" step="5" value="' + (P.floorPct != null ? P.floorPct : 40) + '">' +
       '<span class="hint">% 基准价（10-100）</span>' +
-      '<label class="hint" style="margin-left:16px">天花板价</label><input id="pc-ceil" class="ipt mk-num" type="number" min="100" max="500" step="10" value="' + (P.ceilPct != null ? P.ceilPct : 200) + '" style="width:100px">' +
+      '<label class="hint" style="margin-left:16px">天花板价</label><input id="pc-ceil" class="ipt mk-num" type="number" min="100" max="500" step="10" value="' + (P.ceilPct != null ? P.ceilPct : 200) + '">' +
       '<span class="hint">%（100-500）</span></div>' +
-      '<div class="mgr-row"><label style="width:110px">每件下压</label><input id="pc-div" class="ipt mk-num" type="number" min="0.1" max="5" step="0.05" value="' + (P.saleDivisor != null ? Math.round(P.saleDivisor * 10000) / 100 : 0.75) + '" style="width:100px">' +
+      '<div class="mgr-row"><label>每件下压</label><input id="pc-div" class="ipt mk-num" type="number" min="0.1" max="5" step="0.05" value="' + (P.saleDivisor != null ? Math.round(P.saleDivisor * 10000) / 100 : 0.75) + '">' +
       '<span class="hint">%（0.1-5，即每卖一件乘数 ÷(1+x)）</span>' +
-      '<label class="hint" style="margin-left:16px">回升时间常数</label><input id="pc-tau" class="ipt mk-num" type="number" min="5" max="1440" step="5" value="' + (P.riseTauMin != null ? P.riseTauMin : 60) + '" style="width:100px">' +
+      '<label class="hint" style="margin-left:16px">回升时间常数</label><input id="pc-tau" class="ipt mk-num" type="number" min="5" max="1440" step="5" value="' + (P.riseTauMin != null ? P.riseTauMin : 60) + '">' +
       '<span class="hint">分钟（5-1440）</span></div>' +
-      '<div class="mgr-row"><label style="width:110px">回升目标</label><input id="pc-target" class="ipt mk-num" type="number" min="100" max="300" step="10" value="' + (P.riseTargetPct != null ? P.riseTargetPct : 200) + '" style="width:100px">' +
+      '<div class="mgr-row"><label>回升目标</label><input id="pc-target" class="ipt mk-num" type="number" min="100" max="300" step="10" value="' + (P.riseTargetPct != null ? P.riseTargetPct : 200) + '">' +
       '<span class="hint">%（100-300，默认=天花板）</span>' +
-      '<label class="hint" style="margin-left:16px">采样间隔</label><input id="pc-sample" class="ipt mk-num" type="number" min="15" max="300" step="15" value="' + (P.sampleSec != null ? P.sampleSec : 60) + '" style="width:100px">' +
+      '<label class="hint" style="margin-left:16px">采样间隔</label><input id="pc-sample" class="ipt mk-num" type="number" min="15" max="300" step="15" value="' + (P.sampleSec != null ? P.sampleSec : 60) + '">' +
       '<span class="hint">秒（15-300）</span>' +
-      '<label class="hint" style="margin-left:16px">历史保留</label><input id="pc-history" class="ipt mk-num" type="number" min="60" max="1440" step="60" value="' + (P.historyMin != null ? P.historyMin : 360) + '" style="width:100px">' +
+      '<label class="hint" style="margin-left:16px">历史保留</label><input id="pc-history" class="ipt mk-num" type="number" min="60" max="1440" step="60" value="' + (P.historyMin != null ? P.historyMin : 360) + '">' +
       '<span class="hint">分钟（60-1440）</span></div>' +
       '<h3 style="margin-top:16px">🎚 品质层覆盖（空 = 跟随全局）</h3>' +
       trow('common', '普通') + trow('big', '大鱼') + trow('rare', '稀有') +
       '<div class="effect-line" id="eco-cap" style="margin:10px 0 4px">—</div>' +
-      '<div class="mgr-row" style="margin-top:8px"><label style="width:110px">预设</label>' +
+      '<div class="mgr-row" style="margin-top:8px"><label>预设</label>' +
       ECO_PRESETS.map(function (p) { return '<button class="btn mini" data-preset="' + p.k + '" title="' + esc(p.desc) + '">' + p.name + '</button>'; }).join('') +
       '<button class="btn primary" id="pc-save" style="margin-left:10px">保存价格参数</button>' +
       '<button class="btn danger" id="pc-reset">恢复默认</button>' +
@@ -5426,22 +5863,22 @@ window.Admin = (function () {
       '<div class="mgr-row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">' +
       '<h3 style="margin:0">🌊 产出倍率（掉落池权重倍率；组件只吃全局）</h3></div>' +
       '<div class="mgr-row">' +
-      '<label style="width:80px">全局</label><input id="dc-global" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.global != null ? DC.global : 100) + '" style="width:90px"><span class="hint">%</span>' +
-      '<label class="hint" style="margin-left:12px">普通鱼</label><input id="dc-common" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.common != null ? DC.common : 100) + '" style="width:90px"><span class="hint">%</span>' +
-      '<label class="hint" style="margin-left:12px">大鱼</label><input id="dc-big" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.big != null ? DC.big : 100) + '" style="width:90px"><span class="hint">%</span>' +
-      '<label class="hint" style="margin-left:12px">稀有鱼</label><input id="dc-rare" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.rare != null ? DC.rare : 100) + '" style="width:90px"><span class="hint">%</span>' +
-      '<label class="hint" style="margin-left:12px">材料</label><input id="dc-material" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.material != null ? DC.material : 100) + '" style="width:90px"><span class="hint">%</span></div>' +
+      '<label>全局</label><input id="dc-global" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.global != null ? DC.global : 100) + '"><span class="hint">%</span>' +
+      '<label class="hint" style="margin-left:12px">普通鱼</label><input id="dc-common" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.common != null ? DC.common : 100) + '"><span class="hint">%</span>' +
+      '<label class="hint" style="margin-left:12px">大鱼</label><input id="dc-big" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.big != null ? DC.big : 100) + '"><span class="hint">%</span>' +
+      '<label class="hint" style="margin-left:12px">稀有鱼</label><input id="dc-rare" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.rare != null ? DC.rare : 100) + '"><span class="hint">%</span>' +
+      '<label class="hint" style="margin-left:12px">材料</label><input id="dc-material" class="ipt mk-num" type="number" min="0" max="500" step="10" value="' + (DC.material != null ? DC.material : 100) + '"><span class="hint">%</span></div>' +
       '<div class="mgr-row"><button class="btn mini" data-dpreset="daily">日常 ×1</button><button class="btn mini" data-dpreset="event">活动 ×2</button><button class="btn mini" data-dpreset="big">大鱼季（大鱼 ×2）</button>' +
       '<button class="btn primary" id="dc-save" style="margin-left:10px">保存产出倍率</button>' +
       '<button class="btn danger" id="dc-reset">恢复默认</button><span id="dc-state" class="hint"></span></div>' +
       '<div class="mgr-row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">' +
       '<h3 style="margin:0">🤖 自动出售打包阈值</h3></div>' +
       '<div class="hint" style="margin-bottom:6px">玩家的自动售出规则现在是「攒够一包才成交一次」：可卖余量（持有 − 保留数量）≥ 此值且价格达标时整批卖出，一次推送结算全部物品。设 1 = 退回「钓到即逐条卖」。</div>' +
-      '<div class="mgr-row"><label style="width:110px">打包阈值</label><input id="as-batch" class="ipt mk-num" type="number" min="1" max="10000" step="10" value="' + (ASC.batch != null ? ASC.batch : 100) + '" style="width:100px">' +
+      '<div class="mgr-row"><label>打包阈值</label><input id="as-batch" class="ipt mk-num" type="number" min="1" max="10000" step="10" value="' + (ASC.batch != null ? ASC.batch : 100) + '">' +
       '<span class="hint">条（1-10000，默认 ' + (ASC.def != null ? ASC.def : 100) + '）</span>' +
       '<button class="btn primary" id="as-batch-save" style="margin-left:10px">保存打包阈值</button><span id="as-batch-state" class="hint"></span></div>' +
       '<h3 style="margin-top:18px">🎯 单品干预（覆盖基准价 / 锁定乘数；分钟留空 = 永久）</h3>' +
-      '<div class="mgr-row"><label class="hint">搜索</label><input id="eco-search" class="ipt" placeholder="鱼名 / ID" value="' + esc(ecoSearch) + '" style="width:200px">' +
+      '<div class="mgr-row"><label class="hint">搜索</label><input id="eco-search" class="ipt" placeholder="鱼名 / ID" value="' + esc(ecoSearch) + '">' +
       '<span class="hint" id="eco-count"></span></div>' +
       '<div id="eco-list">…</div>' +
       '<h3 style="margin-top:18px">📝 最近改动</h3>' +
@@ -5564,15 +6001,15 @@ window.Admin = (function () {
       const o = it.ov;
       const ovTag = o ? ('<span class="tag' + (o.until ? '' : ' big') + '" title="' + (o.until ? '到期 ' + fmtTime(o.until) : '永久') + '">' + (o.base ? '基准 ' + o.base : '') + (o.base && o.m ? ' · ' : '') + (o.m ? '锁 ×' + o.m : '') + (o.until ? ' · 限时' : '') + '</span>') : '';
       return '<div class="inv-row" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)">' +
-        '<span style="width:120px" class="' + cls.trim() + '">' + esc(it.name) + '</span>' +
-        '<span class="hint" style="width:48px">' + (TIER_NAME[it.tier] || it.tier) + '</span>' +
-        '<span style="width:110px">基准 <b>' + it.base + '</b> · 现价 <b>' + it.price + '</b> 💰</span>' +
-        '<span style="width:70px">' + it.m + '%</span>' +
-        '<span class="hint" style="width:100px">今日 ' + it.soldToday + '</span>' +
-        '<span style="width:150px">' + ovTag + '</span>' +
-        '<input class="ipt mk-num eco-ov-base" data-id="' + esc(it.id) + '" type="number" min="1" placeholder="基准价" style="width:90px" value="' + (it.ov && it.ov.base ? it.ov.base : '') + '">' +
-        '<input class="ipt mk-num eco-ov-m" data-id="' + esc(it.id) + '" type="number" min="0.05" max="10" step="0.05" placeholder="锁价×" style="width:80px" value="' + (it.ov && it.ov.m ? it.ov.m : '') + '">' +
-        '<input class="ipt mk-num eco-ov-min" data-id="' + esc(it.id) + '" type="number" min="0" placeholder="分钟" style="width:70px">' +
+        '<span class="' + cls.trim() + '">' + esc(it.name) + '</span>' +
+        '<span class="hint">' + (TIER_NAME[it.tier] || it.tier) + '</span>' +
+        '<span>基准 <b>' + it.base + '</b> · 现价 <b>' + it.price + '</b> 💰</span>' +
+        '<span>' + it.m + '%</span>' +
+        '<span class="hint">今日 ' + it.soldToday + '</span>' +
+        '<span>' + ovTag + '</span>' +
+        '<input class="ipt mk-num eco-ov-base" data-id="' + esc(it.id) + '" type="number" min="1" placeholder="基准价" value="' + (it.ov && it.ov.base ? it.ov.base : '') + '">' +
+        '<input class="ipt mk-num eco-ov-m" data-id="' + esc(it.id) + '" type="number" min="0.05" max="10" step="0.05" placeholder="锁价×" value="' + (it.ov && it.ov.m ? it.ov.m : '') + '">' +
+        '<input class="ipt mk-num eco-ov-min" data-id="' + esc(it.id) + '" type="number" min="0" placeholder="分钟">' +
         '<button class="btn mini primary eco-ov-set" data-id="' + esc(it.id) + '">设置</button>' +
         '<button class="btn mini eco-ov-clear" data-id="' + esc(it.id) + '">清除</button>' +
         '</div>';
@@ -5840,6 +6277,49 @@ window.Admin = (function () {
     });
     $('login-user').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
     $('logout-btn').onclick = function () { logout(); };
+    // ---- v0.23.0 外壳交互：页面搜索 / 抽屉侧栏 / 回到顶部（元素缺失时静默跳过，不影响登录）----
+    const navFilterEl = $('nav-filter');
+    if (navFilterEl) {
+      navFilterEl.addEventListener('input', function () { navFilter = navFilterEl.value; applyNavFilter(); });
+      navFilterEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { navFilterEl.value = ''; navFilter = ''; applyNavFilter(); navFilterEl.blur(); return; }
+        if (e.key === 'Enter') {
+          const hit = document.querySelector('.nav-item:not(.hide)');
+          if (hit) { closeNavDrawer(); hit.click(); }
+        }
+      });
+    }
+    const navClearEl = $('nav-filter-clear');
+    if (navClearEl) navClearEl.onclick = function () {
+      if (navFilterEl) { navFilterEl.value = ''; navFilterEl.focus(); }
+      navFilter = ''; applyNavFilter();
+    };
+    const navToggleEl = $('nav-toggle');
+    if (navToggleEl) navToggleEl.onclick = function () { setNavDrawer(!navDrawerOpen()); };
+    const navScrimEl = $('nav-scrim');
+    if (navScrimEl) navScrimEl.onclick = function () { setNavDrawer(false); };
+    const scrollTopEl = $('scroll-top');
+    if (scrollTopEl) scrollTopEl.onclick = function () {
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+    };
+    window.addEventListener('scroll', updateScrollTop, { passive: true });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('details.ph-menu[open]').forEach(function (d) { d.removeAttribute('open'); });
+        setNavDrawer(false);
+        return;
+      }
+      // 「/」快速聚焦页面搜索：正在输入时不抢按键
+      if (e.key !== '/') return;
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (!navFilterEl) return;
+      if (window.innerWidth <= 860 && !navDrawerOpen()) setNavDrawer(true);
+      e.preventDefault();
+      navFilterEl.focus();
+    });
+    startShellObserver();
+    wireDirtyTracking();
     let saved = 'cookie';
     try { localStorage.removeItem('fishing_admin_token'); } catch (e) {}
     if (saved) {
@@ -5852,7 +6332,8 @@ window.Admin = (function () {
     }
   }
 
-  return { init: init };
+  // dirtyCount / clearDirty 供离线预览与自检脚本查询未保存状态，不参与业务逻辑
+  return { init: init, dirtyCount: dirtyCount, clearDirty: clearDirty, noteChange: noteChange };
 })();
 
 window.Admin.init();

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>钓鱼后台管理</title>
-  <link rel="stylesheet" href="css/admin.css?v=0.22.0" />
+  <link rel="stylesheet" href="css/admin.css?v=0.23.0-admin1" />
   <!-- 远洋 CSS 像素海图：后台「🎣 钓点管理 · 远洋图」页签与玩家端共用同一份底图 -->
   <link rel="stylesheet" href="css/voyage-map.css?v=0.22.0" />
   <link rel="stylesheet" href="css/mail.css?v=0.22.0-mail1" />
@@ -27,7 +27,11 @@
 
   <!-- 主界面 -->
   <header class="topbar">
-    <div class="brand">🛡 钓鱼后台管理 <span class="ver">admin</span></div>
+    <div class="brand">
+      <!-- 窄屏用：侧栏收成抽屉，这个键负责打开/关闭 -->
+      <button id="nav-toggle" class="btn mini nav-toggle" type="button" aria-controls="nav-sidebar" aria-expanded="false" title="打开页面菜单">☰ 页面</button>
+      <span>🛡 钓鱼后台管理 <span class="ver">admin</span></span>
+    </div>
     <div class="top-right">
       <span id="who" class="who"></span>
       <button id="logout-btn" class="btn ghost">退出</button>
@@ -35,12 +39,19 @@
   </header>
 
   <div class="layout">
-    <aside class="sidebar">
+    <aside id="nav-sidebar" class="sidebar">
+      <!-- 21 个页面按业务分组展示，搜索框按关键词过滤（只隐藏，不改变页面顺序） -->
+      <div class="nav-search" id="nav-search">
+        <input id="nav-filter" class="ipt" type="search" placeholder="搜索页面…" aria-label="搜索后台页面" autocomplete="off" />
+        <button id="nav-filter-clear" class="nav-search-clear" type="button" title="清空搜索" aria-label="清空搜索">✕</button>
+      </div>
       <nav id="nav" class="nav"></nav>
     </aside>
+    <div id="nav-scrim" class="nav-scrim"></div>
     <main id="main" class="content"></main>
   </div>
 
+  <button id="scroll-top" class="scroll-top" type="button" title="回到页头" aria-label="回到页头">↑</button>
   <div id="toast" class="toast"></div>
 
   <!-- 数据目录（UMD，与游戏前端共用）：账号管理的物品名称显示 / 新增物品下拉 / 定制配件生成依赖它 -->
@@ -52,6 +63,6 @@
   <script src="js/admin-operations.js?v=0.22.0-mail1"></script>
   <script src="js/gear.js?v=0.22.0-mail1"></script>
   <script src="js/admin-gear.js?v=0.22.0-mail1"></script>
-  <script src="js/admin.js?v=0.22.0"></script>
+  <script src="js/admin.js?v=0.23.0-admin1"></script>
 </body>
 </html>

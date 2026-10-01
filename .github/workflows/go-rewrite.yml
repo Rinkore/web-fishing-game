@@ -9,9 +9,9 @@ on:
         type: string
         default: ''
   push:
-    paths: ['server-go/**', 'tools/go-rewrite/**', 'tools/release/**', 'deploy/go-test/**', 'deploy/linux/**', 'tests/go-rewrite-route-coverage.test.js', 'tests/linux-deploy.test.py', 'tests/release-*.test.*', 'dist/release.ps1', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'tools/start-go.js', 'run.bat', 'package.json', '.github/workflows/**']
+    paths: ['server-go/**', 'tools/release/**', 'deploy/go-test/**', 'deploy/linux/**', 'tests/linux-deploy.test.py', 'tests/release-*.test.*', 'dist/release.ps1', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'run.bat', '.github/workflows/**']
   pull_request:
-    paths: ['server-go/**', 'tools/go-rewrite/**', 'tools/release/**', 'deploy/go-test/**', 'deploy/linux/**', 'tests/go-rewrite-route-coverage.test.js', 'tests/linux-deploy.test.py', 'tests/release-*.test.*', 'dist/release.ps1', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'tools/start-go.js', 'run.bat', 'package.json', '.github/workflows/**']
+    paths: ['server-go/**', 'tools/release/**', 'deploy/go-test/**', 'deploy/linux/**', 'tests/linux-deploy.test.py', 'tests/release-*.test.*', 'dist/release.ps1', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'run.bat', '.github/workflows/**']
 
 permissions:
   contents: read
@@ -31,35 +31,18 @@ jobs:
         with:
           go-version-file: server-go/go.mod
           cache: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '24.14.0'
-      - name: Check generated catalog, rule fixtures and wiki snapshot
+      - name: Check Go snapshots and release metadata
         shell: bash
         run: |
           set -euo pipefail
-          node tools/go-rewrite/catalog.js --check
-          node tools/go-rewrite/native-rules-fixture.js --check
-          node tools/go-rewrite/workshop-fixture.js --check
-          node tools/go-rewrite/mall-fixture.js --check
-          node tools/go-rewrite/chest-fixture.js --check
-          node tools/go-rewrite/wiki-content.js --check
-      - name: Check legacy route coverage of the Go gateway
-        shell: bash
-        run: |
-          set -euo pipefail
-          node tools/go-rewrite/route-coverage.js --check
-          node --test tests/go-rewrite-route-coverage.test.js 2>&1 | tail -40
+          go -C server-go run ./cmd/repo-tool check
       - name: Check Linux release tooling and deployment failure handling
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           bash -n tools/release/build-linux.sh deploy/linux/install.sh deploy/linux/deploy.sh
-          node --check tools/release/migration-hash.js
-          node tools/release/migration-hash.js
           python3 tests/linux-deploy.test.py 2>&1 | tail -40
-          node --test tests/release-start.test.js 2>&1 | tail -40
       - name: Check release publisher without network writes
         shell: pwsh
         run: |

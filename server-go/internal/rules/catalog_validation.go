@@ -6,7 +6,7 @@ import (
 )
 
 // ValidateCatalog rejects unusable snapshots before publication. Default
-// source fixtures remain independently checked against the Node oracle.
+// source fixtures remain independently checked against the legacy server oracle.
 func ValidateCatalog(c *Catalog) error {
 	bad := errors.New("invalid catalog configuration")
 	if c == nil || len(c.Version) > 32 || strings.ContainsAny(c.Version, " :\r\n") || len(c.Items) > 4096 {

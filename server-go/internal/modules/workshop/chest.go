@@ -66,7 +66,7 @@ func (s *Service) Chest(ctx context.Context, r ChestCommand) (assets.Result, err
 		}
 		// The legacy console's pityN is an operator setting layered into the
 		// effective catalog. A trigger at N means the Nth consecutive miss is
-		// converted to a guaranteed breakthrough, matching Node's before>=N-1
+		// converted to a guaranteed breakthrough, matching legacy server's before>=N-1
 		// check. Non-breakthrough chests ignore the setting.
 		pityN := s.catalog.ChestPityN()
 		forced := chest.Extra && pityN > 0 && misses >= pityN-1

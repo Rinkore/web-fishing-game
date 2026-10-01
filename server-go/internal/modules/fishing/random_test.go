@@ -3,7 +3,7 @@ package fishing
 import "testing"
 
 func TestStableRandomVectors(t *testing.T) {
-	// Independently computed with Node crypto.createHmac for the documented
+	// Independently computed with legacy server crypto.createHmac for the documented
 	// domain and four big-endian uint64 fields, using an all-zero synthetic seed.
 	seed := make([]byte, 32)
 	for i, want := range []uint64{309391, 765697, 743875} {

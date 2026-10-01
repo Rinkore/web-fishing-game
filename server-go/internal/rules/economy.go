@@ -60,7 +60,7 @@ func (c *Catalog) EconomyBase(id string, nowMS int64) float64 {
 func DefaultPriceDynamics() PriceDynamics { return PriceDynamics{.0075, 60, .4, 2, 2} }
 
 // PriceDynamicsFor applies the legacy operator economy settings to one item.
-// Values are clamped to the same ranges as the Node console, so old or
+// Values are clamped to the same ranges as the legacy server console, so old or
 // hand-edited rows cannot produce invalid price arithmetic. Tier overrides use
 // the fish tier name (common/big/rare) and fall back to the global values.
 func (c *Catalog) PriceDynamicsFor(id string) PriceDynamics {
