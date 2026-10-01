@@ -162,10 +162,6 @@ window.Net = (function () {
     if (d.priceCfg) state().priceCfg = d.priceCfg;
     if (d.dropCfg) state().dropCfg = d.dropCfg;
     if (d.autoSellCfg) state().autoSellCfg = d.autoSellCfg;
-    if (d.smeltCfg && window.GameData.setSmeltCfg) {
-      window.GameData.setSmeltCfg(d.smeltCfg);
-      state().smeltCfg = window.GameData.getSmeltCfg();
-    }
     if (d.recordsCfg) state().recordsCfg = d.recordsCfg;
   }
   function guardVersion() {
@@ -462,21 +458,6 @@ window.Net = (function () {
     return r;
   });
   const mallBuy = (id, qty) => authed('/api/mall/buy', { id: id, qty: qty === undefined ? 1 : qty });
-  // 工坊：熔炼参数（材料→词缀对照 / 成功率与花费系数）
-  const fetchWorkshop = () => apiFetch('GET', '/api/workshop?token=' + encodeURIComponent(me ? me.token : '')).then(function (r) {
-    if (r && r.ok) {
-      state().workshop = r.data;
-      if (r.data.coins != null) state().player.coins = r.data.coins;
-      if (window.UI) window.UI.refreshAll('workshop');
-    }
-    return r;
-  });
-  // 熔炼：payload = { mainId, subId, mainAffix, subAffix, materials:[{id,qty}], pearl }
-  const smelt = (payload) => rewardCraft('/api/workshop/smelt', payload || {},[payload.mainId,payload.subId].concat((payload.materials||[]).filter(m=>(m.qty||m.quantity)>0).map(m=>m.id),payload.relics>0?['relic']:[],payload.pearl?['dragonpearl']:[]));
-  // 重铸：用残片重 roll 宝匣神话件的全部词条数值
-  // affixIndex 可选：指定只重铸第几条词条（0 基下标）；不传 = 重 roll 全部词条
-  const recast = (id, affixIndex) => rewardCraft('/api/workshop/recast', (affixIndex == null || affixIndex < 0) ? { id: id } : { id: id, affixIndex: affixIndex },[id,'dragonpearl']);
-  const forge = (id, materialId, pearl) => rewardCraft('/api/workshop/forge', { id: id, materialId: materialId, pearl: !!pearl },[id,materialId].concat(pearl?['dragonpearl']:[]));
   // v0.13.6：tier='L'|'G' → 按大型/巨型通道出售（额外金币加成）
   const sell = (id, qty, tier) => authed('/api/sell', tier ? { id: id, qty: qty, tier: tier } : { id: id, qty: qty });
   const marketList = (id, qty, price, hours) => authed('/api/market/list', { id: id, qty: qty, price: price, hours: hours });
@@ -727,13 +708,6 @@ window.Net = (function () {
         } else if (m.type === 'mallcfg') {
           // 后台改了商城商品/限购刷新时间：重新拉取当前周期视图
           window.Net.fetchMall();
-        } else if (m.type === 'smeltcfg') {
-          // 后台改了熔炼参数：更新预览用的系数
-          if (m.smeltCfg) {
-            S.smeltCfg = m.smeltCfg;
-            if (window.GameData.setSmeltCfg) window.GameData.setSmeltCfg(m.smeltCfg);
-          }
-          if (ui) ui.refreshAll('smeltcfg');
         } else if (m.type === 'componentcfg') {
           // 后台改了组件生成配置（含池外/突破词缀数值区间）：工坊补缀与宝匣突破件的预览区间都要跟着变
           if (m.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(m.componentCfg);
@@ -983,7 +957,7 @@ window.Net = (function () {
     fetchFriends: fetchFriends, friendUpdate: friendUpdate, friendRelations: friendRelations,
     fetchFeedback: fetchFeedback,
     fetchChest: fetchChest, chestCraft: chestCraft, chestOpen: chestOpen,
-    fetchMall: fetchMall, mallBuy: mallBuy, fetchWorkshop: fetchWorkshop, smelt: smelt, recast: recast, forge: forge,
+    fetchMall: fetchMall, mallBuy: mallBuy,
     fetchBanners: fetchBanners, fetchGrounds: fetchGrounds,
     bannerPlaying: bannerPlaying,
     feedbackStatus: feedbackStatus, feedbackSubmit: feedbackSubmit, feedbackSkip: feedbackSkip,

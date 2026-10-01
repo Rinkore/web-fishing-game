@@ -82,18 +82,6 @@ func (h HutConfig) Rate(level, endless int) float64 {
 	return h.AsymptoteRate - (h.AsymptoteRate-base)*math.Exp(-float64(endless)/h.EndlessTau)
 }
 
-// EffectiveHours clamps an elapsed duration to the yard capacity. Callers must
-// still clamp against the server clock; this only applies the rule.
-func (h HutConfig) EffectiveHours(elapsed float64) float64 {
-	if elapsed <= 0 {
-		return 0
-	}
-	if elapsed > h.CapacityHours {
-		return h.CapacityHours
-	}
-	return elapsed
-}
-
 // Bonus is the pet + role multiplier. It never applies before
 // BonusUnlockLevel and is halved up to BonusHalfUntilLevel, so the early game
 // cannot be pushed over its share budget by rushing companions.

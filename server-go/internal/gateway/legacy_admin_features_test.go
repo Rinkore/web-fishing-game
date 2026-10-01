@@ -8,7 +8,7 @@ import (
 func TestLegacyAdminFeatureProjectionPreservesClosedNativeGates(t *testing.T) {
 	flags := map[string]bool{"market": false, "trade": false, "workshop": false, "chest": false, "mall": false, "sell": false, "autosell": false, "friends": true}
 	view := legacyAdminFeatureFlags(flags)
-	for _, key := range []string{"mall.buy", "mall.sell", "mall.autosell", "mall.list", "mall.marketbuy", "ground.trade", "workshop.smelt", "chest.open"} {
+	for _, key := range []string{"mall.buy", "mall.sell", "mall.autosell", "mall.list", "mall.marketbuy", "ground.trade", "chest.open"} {
 		if view[key] {
 			t.Errorf("closed native gate projected as enabled: %s", key)
 		}

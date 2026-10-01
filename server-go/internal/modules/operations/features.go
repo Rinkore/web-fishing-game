@@ -88,7 +88,7 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 			"character.collect", "character.upgrade", "character.pet", "character.role", "character.steal", "character.breeding",
 			"ground", "ground.trade", "ground.party", "inventory", "inventory.subscribe",
 			"chest.craft", "chest.open",
-			"workshop.craft", "workshop.open", "workshop.smelt", "workshop.recast", "workshop.forge",
+			"workshop.craft", "workshop.open",
 			"workshop.growth", "workshop.sets",
 			"mall.buy", "mall.sell", "mall.autosell", "mall.list", "mall.marketbuy",
 			"codex", "records", "feedback", "feedback.submit", "feedback.skip", "logs", "wiki", "mail", "adminBypass":

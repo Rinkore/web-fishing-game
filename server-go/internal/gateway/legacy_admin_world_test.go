@@ -150,7 +150,6 @@ func TestIntegrationLegacyAdminWorldPreservesEditorState(t *testing.T) {
 	if values, ok := addedSpot["pool"].([]any); !ok || len(values) == 0 {
 		t.Fatalf("spot add did not retain the requested preset pool: %v", addedSpot)
 	}
-	post("/api/admin/smelt/config", map[string]any{"baseRate": 1})
 
 	code, after := f.admin("GET", "/api/admin/world", "")
 	f.expect(code, after, 200, "")
@@ -167,9 +166,6 @@ func TestIntegrationLegacyAdminWorldPreservesEditorState(t *testing.T) {
 		if _, exists := after[key]; !exists {
 			t.Fatalf("world editor lost %s", key)
 		}
-	}
-	if after["smeltCfg"].(map[string]any)["baseRate"] != float64(1) {
-		t.Fatal("world editor lost the additional legacy settings")
 	}
 	foundSpot, foundAddedSpot := false, false
 	for _, value := range after["grounds"].([]any) {

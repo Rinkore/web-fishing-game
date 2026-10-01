@@ -61,7 +61,6 @@ func (a *API) legacyAdminWorld(w http.ResponseWriter, r *http.Request) {
 		"castDefaults":       legacyCastConfig(defaults),
 		"priceDefaults":      legacyEffectivePriceConfig(defaults),
 		"dropDefaults":       legacyDropConfig(defaults),
-		"smeltCfg":           legacyDefaultObject(c, "smelt"),
 		"smeltDefaults":      worldDefaults("smelt"),
 		"mallCfg":            legacyDefaultObject(c, "mall"),
 		"mallDefaults":       worldDefaults("mall"),

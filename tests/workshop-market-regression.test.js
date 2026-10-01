@@ -27,40 +27,10 @@ async function run() {
   await page.goto('http://127.0.0.1:' + server.address().port);
   await page.evaluate(() => {
     document.querySelector('#auth').remove();
-    // 熔炼 / 重铸属于「历史工坊」页签：关闭装备成长系统后才会渲染，见 tests/smelt-workbench.test.js。
-    GameData.GEAR_SYSTEM.enabled = false;
     const st = Engine.state;
-    st.me = { id: 'buyer', name: 'Buyer' }; st.player.coins = 100000;
-    window.recastId = 'rod_dragonbone#mythic#spd+18,dbl+12@bt,rare+4@ct';
-    st.inventory = { [recastId]: 1, dragonpearl: 100, relic: 100 };
-    st.workshop = { materials: GameData.smeltMaterialIds().map(id => { st.inventory[id] = 12; return { id }; }) };
-    Net.recast = async (id, target) => {
-      window.lastTarget = target;
-      const next = id.includes('spd+18') ? id.replace('spd+18', 'spd+19') : id.replace('spd+19', 'spd+20');
-      const inv = Object.assign({}, st.inventory); delete inv[id]; inv[next] = 1;
-      return { ok: true, data: { coins: st.player.coins, inventory: inv, id: next, item: GameData.componentOf(next), target, pearlNeed: 2, materials: [] } };
-    };
-    UI.setView('workshop'); UI.renderView();
-  });
-  await page.locator('[data-wstab="recast"]').click();
-  await page.locator('[data-recast-pick]').click();
-  await page.locator('.bec-card .bec-acts button:not([disabled])').first().click();
-  await page.locator('[data-recast-target="0"]').click();
-  await page.locator('#ws-recast-go').click(); await page.locator('.cf-ok').click();
-  await page.locator('.cr-ok').waitFor();
-  check('Recast retains target after successful roll', await page.locator('[data-recast-target="0"]').evaluate(n => n.classList.contains('on')));
-  await page.locator('.cr-ok').click();
-  await page.locator('#ws-recast-quiet').check();
-  await page.locator('#ws-recast-go').click(); await page.locator('.cf-ok').click();
-  await page.waitForFunction(() => Engine.state.inventory['rod_dragonbone#mythic#spd+20,dbl+12@bt,rare+4@ct'] === 1);
-  check('Quiet repeat recast keeps target and suppresses result dialog', await page.locator('.chest-result-modal').count() === 0 && await page.evaluate(() => lastTarget === 0 && localStorage.getItem('fish.recast.quiet') === '1'));
-  await page.locator('[data-wstab="smelt"]').click();
-  await page.locator('[data-pick="main"]').click(); await page.locator('.bec-card .bec-acts button:not([disabled])').first().click();
-  await page.locator('#ws-material-open').click({ position: { x: 8, y: 8 } });
-  check('Every catalyst displays its configured affix range', await page.locator('#ws-material-modal [data-affix]:not([data-affix=""]) .wm-aff').evaluateAll(nodes => nodes.length > 0 && nodes.every(n => /[+-]?\d.*~.*%/.test(n.textContent))));
-  await page.locator('#ws-material-modal .modal-close').click();
-  await page.evaluate(() => {
-    const st = Engine.state; st.player.coins = 0;
+    st.me = { id: 'buyer', name: 'Buyer' };
+    st.inventory = { dragonpearl: 100, relic: 100 };
+    st.player.coins = 0;
     st.mall = { items: [{ id: 'relic', name: '残片', price: 100, limit: 3, remain: 3, have: 0 }], resetAt: Date.now() + 100000 };
     UI.setView('mall'); UI.renderView();
   });

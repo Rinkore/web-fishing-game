@@ -12,7 +12,7 @@ const SRC = path.join(ROOT, 'frontend', 'wiki');
 const REQUIRED = [
   'index.html', 'grounds/index.html', 'guides/index.html', 'guides/submit.html', 'updates/index.html', 'search/index.html',
   'css/wiki.css', 'content/content.json', 'content/versions.json', 'js/content.js', 'js/core.js', 'js/pages.js',
-  'tools/build.html', 'tools/build.js', 'tools/smelt.html', 'tools/smelt.js', 'tools/tool.css',
+  'tools/build.html', 'tools/build.js', 'tools/tool.css',
 ];
 
 function walk(dir, out) {

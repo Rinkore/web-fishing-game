@@ -252,7 +252,6 @@
   function toolEntries() {
     return [
       { id: 'build', name: '配装模拟器', kind: 'tool', type: 'tool', desc: '七部位编辑、钓点条件、双方案对比、保存与分享。', rarity: null },
-      { id: 'smelt', name: '熔炼模拟器', kind: 'tool', type: 'tool', desc: '主副件词缀、投料、宝珠、残片、概率和批量模拟。', rarity: null }
     ];
   }
   function searchIndex(s) {

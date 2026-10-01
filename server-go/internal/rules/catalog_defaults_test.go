@@ -55,11 +55,11 @@ func cloneRaw(raw map[string]json.RawMessage) map[string]json.RawMessage {
 // existed, so HutConfig reported an empty level curve (every hut command was
 // rejected) and the console projection panicked on it.
 func TestFillMissingDefaultsRestoresSectionsAnOlderReleaseLacks(t *testing.T) {
-	c, err := DecodeCatalog(legacyRelease(t, []string{"HUT"}, []string{"smelt"}))
+	c, err := DecodeCatalog(legacyRelease(t, []string{"HUT"}, []string{"mall"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.HutConfig().Levels) != 0 || len(c.Defaults["smelt"]) != 0 {
+	if len(c.HutConfig().Levels) != 0 || len(c.Defaults["mall"]) != 0 {
 		t.Fatal("precondition: the legacy release already carries the newer sections")
 	}
 	if err := c.FillMissingDefaults(); err != nil {
@@ -72,8 +72,8 @@ func TestFillMissingDefaultsRestoresSectionsAnOlderReleaseLacks(t *testing.T) {
 	if got := c.HutConfig(); !reflect.DeepEqual(got, want.HutConfig()) {
 		t.Fatalf("backfilled hut config = %+v, want %+v", got, want.HutConfig())
 	}
-	if got := c.WorkshopConfig(); !reflect.DeepEqual(got, want.WorkshopConfig()) {
-		t.Fatalf("backfilled workshop defaults = %+v, want %+v", got, want.WorkshopConfig())
+	if got := c.MallConfig(); !reflect.DeepEqual(got, want.MallConfig()) {
+		t.Fatalf("backfilled mall defaults = %+v, want %+v", got, want.MallConfig())
 	}
 }
 

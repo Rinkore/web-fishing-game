@@ -4,7 +4,7 @@
  *   环境变量：
  *     FISHING_TEST_JOBS    并行单元数（默认 = 套件数，上限 8）
  *     FISHING_TEST_TIMEOUT 单套件超时 ms（默认 480000）
- *     FISHING_TEST_ONLY    仅跑指定套件，逗号分隔（如 settings,smelt-workbench）
+ *     FISHING_TEST_ONLY    仅跑指定套件，逗号分隔（如 settings,social-friends）
  *     FISHING_TEST_MODULES / NODE_PATH / CHROME_PATH 见下
  *
  * 这些套件只用真实浏览器渲染前端（页面内自带桩服务或 page.route 拦截），
@@ -19,7 +19,7 @@ const ROOT = path.join(__dirname, '..');
 const NODE = process.execPath;
 
 // 套件清单：全部为前端渲染回归，互不占用端口
-const ALL_SUITES = ['mail-admin', 'admin-interactions', 'admin-growth-ui', 'admin-pool-import', 'breeding', 'desktop-zoom', 'expedition', 'fishing-overlay', 'harbor-phase-a', 'harbor-phase-b', 'harbor-phase-cd', 'inventory-pagination', 'mobile-layout', 'scene-performance', 'settings', 'smelt-workbench', 'social-friends', 'workshop-market-regression'];
+const ALL_SUITES = ['mail-admin', 'admin-interactions', 'admin-growth-ui', 'admin-pool-import', 'breeding', 'desktop-zoom', 'expedition', 'fishing-overlay', 'harbor-phase-a', 'harbor-phase-b', 'harbor-phase-cd', 'inventory-pagination', 'mobile-layout', 'scene-performance', 'settings', 'social-friends', 'workshop-market-regression'];
 const ONLY = (process.env.FISHING_TEST_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
 const SUITES = ONLY.length ? ALL_SUITES.filter(s => ONLY.indexOf(s) >= 0) : ALL_SUITES;
 

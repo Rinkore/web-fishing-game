@@ -68,7 +68,6 @@
     '/api/rod/rename': 'bd.save', '/api/rod/use': 'bd.save', '/api/rod/stow': 'bd.save', '/api/rod/delete': 'bd.save',
     '/api/chest/craft': 'chest.craft', '/api/chest/open': 'chest.open',
     '/api/gear/action': 'workshop',
-    '/api/workshop/smelt': 'workshop.smelt', '/api/workshop/recast': 'workshop.recast', '/api/workshop/forge': 'workshop.forge',
     '/api/mall/buy': 'mall.buy', '/api/sell': 'mall.sell', '/api/autosell': 'mall.autosell',
     '/api/market/list': 'mall.list', '/api/market/buy': 'mall.marketbuy',
     '/api/trade/invite': 'ground.trade', '/api/trade/respond': 'ground.trade',

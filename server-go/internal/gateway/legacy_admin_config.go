@@ -21,8 +21,6 @@ import (
 )
 
 const (
-	legacyMallSetting    = "legacy:mall"
-	legacySmeltSetting   = "legacy:smelt"
 	legacyRecordsSetting = "legacy:records"
 	legacyRecordsRuntime = "legacy:records_runtime"
 	legacySettingsKey    = "legacy:settings"
@@ -89,22 +87,6 @@ func legacyStoredConfigFrames(values map[string]any) []map[string]any {
 		}
 	}
 	return frames
-}
-
-func mergeLegacyWorkshopConfig(base *rules.WorkshopConfig, raw any) {
-	baseRaw, _ := json.Marshal(base)
-	overrideRaw, _ := json.Marshal(raw)
-	var merged map[string]json.RawMessage
-	_ = json.Unmarshal(baseRaw, &merged)
-	var patch map[string]json.RawMessage
-	if json.Unmarshal(overrideRaw, &patch) != nil {
-		return
-	}
-	for key, value := range patch {
-		merged[key] = value
-	}
-	encoded, _ := json.Marshal(merged)
-	_ = json.Unmarshal(encoded, base)
 }
 
 func (a *API) legacySettingRaw(ctx context.Context, key string) ([]byte, error) {
@@ -398,147 +380,6 @@ func (a *API) legacyAdminMallConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, map[string]any{"ok": true, "mallCfg": cfg})
-}
-
-func (a *API) legacyAdminSmeltConfig(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.authorize(w, r, true)
-	if !ok {
-		return
-	}
-	var in map[string]json.RawMessage
-	if !decode(w, r, &in) {
-		return
-	}
-	delete(in, "token")
-	reset := false
-	if raw, exists := in["reset"]; exists {
-		_ = json.Unmarshal(raw, &reset)
-		delete(in, "reset")
-	}
-	c, revision, err := catalog.Current(r.Context(), a.pool)
-	if err != nil {
-		failure(w, err)
-		return
-	}
-	if reset {
-		defaults, defaultErr := rules.Default()
-		if defaultErr != nil {
-			failure(w, identity.ErrInvalid)
-			return
-		}
-		cfg := defaults.WorkshopConfig()
-		if err := legacyCatalogDefault(c, "smelt", cfg); err != nil {
-			failure(w, identity.ErrInvalid)
-			return
-		}
-		if err := a.legacyPublishCatalog(r, actor, "/api/admin/smelt/config", "恢复熔炼配置", c, revision, nil); err != nil {
-			failure(w, err)
-			return
-		}
-		write(w, 200, map[string]any{"ok": true, "smeltCfg": cfg})
-		return
-	}
-	base := c.WorkshopConfig()
-	baseRaw, _ := json.Marshal(base)
-	cfg := map[string]any{}
-	_ = json.Unmarshal(baseRaw, &cfg)
-	// Keep the old endpoint's numeric knobs bounded; unknown keys are rejected
-	// so a typo cannot silently create an ineffective operator setting.
-	limits := map[string][2]float64{"baseRate": {0, 100}, "failPerMaterial": {-50, 50}, "extraRatePerMaterial": {0, 100}, "extraRatePearl": {0, 100}, "extraRateMax": {0, 100}, "rateMin": {0, 100}, "rateMax": {0, 100}, "goldBase": {0, 1e8}, "goldPerMaterial": {0, 1e7}, "goldPearl": {0, 1e8}, "maxMaterials": {0, 99}, "maxTypes": {0, 8}, "recastPearl": {0, 999}, "recastGold": {0, 1e8}, "retainMaxRelic": {0, 99}, "addAffixCap": {1, 6}}
-	for key, raw := range in {
-		if key == "retainFormula" {
-			var value string
-			if json.Unmarshal(raw, &value) != nil || len(value) > 500 {
-				legacyTradeError(w, 400, "保留概率公式无效")
-				return
-			}
-			if _, err := rules.Compile(value, []string{"breakthrough"}); err != nil {
-				legacyTradeError(w, 400, "保留概率公式无效")
-				return
-			}
-			cfg[key] = strings.TrimSpace(value)
-			continue
-		}
-		if bounds, exists := limits[key]; exists {
-			n, valid := legacyNumber(raw, bounds[0], bounds[1])
-			if !valid {
-				legacyTradeError(w, 400, "熔炼配置数值无效："+key)
-				return
-			}
-			cfg[key] = math.Round(n*10) / 10
-			if key == "maxMaterials" || key == "maxTypes" || key == "recastPearl" || key == "retainMaxRelic" || key == "addAffixCap" {
-				cfg[key] = math.Round(n)
-			}
-			continue
-		}
-		if key == "recastMinValue" {
-			value, valid := rawBool(raw)
-			if !valid {
-				n, numeric := legacyNumber(raw, 0, 1)
-				if !numeric || n != math.Trunc(n) {
-					legacyTradeError(w, 400, "重铸下限开关无效")
-					return
-				}
-				value = n == 1
-			}
-			cfg[key] = 0
-			if value {
-				cfg[key] = 1
-			}
-			continue
-		}
-		if key == "catalystRanges" {
-			var ranges map[string]map[string][]float64
-			if json.Unmarshal(raw, &ranges) != nil || ranges == nil {
-				legacyTradeError(w, 400, "催化词缀范围无效")
-				return
-			}
-			for part, types := range ranges {
-				if len(types) == 0 {
-					legacyTradeError(w, 400, "催化词缀范围无效")
-					return
-				}
-				for kind, pair := range types {
-					envelope := c.CatalystEnvelope(c.ComponentConfig(), part, kind)
-					if len(pair) != 2 || len(envelope) != 2 || pair[0] > pair[1] || pair[0] < envelope[0] || pair[1] > envelope[1] {
-						legacyTradeError(w, 400, "催化词缀范围超出部位允许区间")
-						return
-					}
-				}
-			}
-			cfg[key] = ranges
-			continue
-		}
-		boolean, booleanOK := rawBool(raw)
-		if (key == "pearlRollTwice" || key == "subRangeFromSub" || key == "addAnyAffix" || key == "addAffixExtraRange" || key == "forgeAnyAffix") && booleanOK {
-			cfg[key] = boolean
-			continue
-		}
-		if key == "catalystRatio" {
-			n, valid := legacyNumber(raw, 0, 200)
-			if !valid {
-				legacyTradeError(w, 400, "催化区间比例无效")
-				return
-			}
-			cfg[key] = n
-			continue
-		}
-		legacyTradeError(w, 400, "未知熔炼配置："+key)
-		return
-	}
-	if cfg["rateMin"].(float64) > cfg["rateMax"].(float64) {
-		legacyTradeError(w, 400, "成功率下限不能高于上限")
-		return
-	}
-	if err := legacyCatalogDefault(c, "smelt", cfg); err != nil {
-		failure(w, identity.ErrInvalid)
-		return
-	}
-	if err := a.legacyPublishCatalog(r, actor, "/api/admin/smelt/config", "保存熔炼配置", c, revision, nil); err != nil {
-		failure(w, err)
-		return
-	}
-	write(w, 200, map[string]any{"ok": true, "smeltCfg": cfg})
 }
 
 func (a *API) legacyAdminRecordsConfig(w http.ResponseWriter, r *http.Request) {

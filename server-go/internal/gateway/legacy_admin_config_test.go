@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"testing"
 
@@ -31,36 +30,13 @@ func TestLegacyCastSpeedCapValidationBounds(t *testing.T) {
 func TestIntegrationLegacyAdminConfigAuditContracts(t *testing.T) {
 	f := newAdminFixture(t)
 	ctx := context.Background()
-	c, _, err := catalog.Current(ctx, f.db.App)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The workshop submits every numeric field as a form string and this
-	// checkbox as a boolean. Exercise the actual complete editor payload.
-	raw, _ := json.Marshal(c.WorkshopConfig())
-	var form map[string]any
-	_ = json.Unmarshal(raw, &form)
-	for key, value := range form {
-		if _, ok := value.(float64); ok {
-			form[key] = fmt.Sprint(value)
-		}
-	}
-	form["token"], form["recastMinValue"] = "", true
-	form["catalystRanges"] = map[string]any{}
-	raw, _ = json.Marshal(form)
-	code, body := f.admin("POST", "/api/admin/smelt/config", string(raw))
-	f.expect(code, body, 200, "")
-	c, _, err = catalog.Current(ctx, f.db.App)
-	if err != nil || c.WorkshopConfig().RecastMinValue != 1 {
-		t.Fatalf("workshop form not applied: %v", err)
-	}
 	for _, patch := range []string{`{"priceCfg":{"saleDivisor":3}}`, `{"dropCfg":{"material":-10}}`, `{"biteFormula":"unknown + 1","validateOnly":true}`, `{"chestCfg":{"costs":{"chest_abyss":{"costCoins":-1}}}}`} {
 		if code, body := f.admin("POST", "/api/admin/settings", patch); code != 400 {
 			t.Fatalf("invalid config accepted: %s %d %v", patch, code, body)
 		}
 	}
 	_, revision, _ := catalog.Current(ctx, f.db.App)
-	code, body = f.admin("POST", "/api/admin/settings", `{"biteFormula":"clamp(50 + skill, 0, 100)","evalVars":{"skill":25},"validateOnly":true}`)
+	code, body := f.admin("POST", "/api/admin/settings", `{"biteFormula":"clamp(50 + skill, 0, 100)","evalVars":{"skill":25},"validateOnly":true}`)
 	f.expect(code, body, 200, "")
 	if body["prob"] != float64(75) {
 		t.Fatalf("formula result: %v", body)
@@ -131,7 +107,6 @@ func TestIntegrationLegacyAdminConfigResetPublishesDefaults(t *testing.T) {
 	p.poll(ctx)
 	for _, tc := range []struct{ path, changed, field, frame string }{
 		{"/api/admin/mall/config", `{"refreshTime":"07:15"}`, "mallCfg", "mallcfg"},
-		{"/api/admin/smelt/config", `{"baseRate":1}`, "smeltCfg", "smeltcfg"},
 		{"/api/admin/records/config", `{"scale":200,"x":10,"y":20}`, "recordsCfg", "recordscfg"},
 	} {
 		code, body := f.admin("POST", tc.path, tc.changed)

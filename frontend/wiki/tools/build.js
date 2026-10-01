@@ -1,7 +1,6 @@
 'use strict';
 (function () {
   const STORE_KEY = 'fishing-wiki:builds:v1';
-  const SMELT_RESULT_KEY = 'fishing-wiki:smelt-result:v1';
   const $ = id => document.getElementById(id);
   const state = { snapshot:null, plans:{ A:emptyPlan('方案 A'), B:emptyPlan('方案 B') }, active:'A', research:false };
   function emptyPlan(name) {
@@ -263,11 +262,6 @@
     $('export-code').addEventListener('click', function () { if (!state.snapshot || Wiki.unavailable) { setStatus('当前规则快照不可用，暂不能导出官方方案。'); return; } $('share-code').value=Wiki.encodeShare(shareObject()); });
     $('import-code').addEventListener('click', function () { try { applyImport(Wiki.decodeShare($('share-code').value.trim()), true); } catch(e) { setStatus('导入失败：' + e.message); } });
     $('adopt-import').addEventListener('click', function () { const plan=state.plans[state.active]; if (!plan.mismatch) return; plan.mismatch=false; setStatus('已按当前规则另存，官方计算恢复。'); renderAll(); });
-    $('load-smelt').addEventListener('click', function () {
-      const item=Wiki.storage.readJSON(SMELT_RESULT_KEY, null); if (!item) { setStatus('没有可读取的熔炼产物'); return; }
-      const part=(GameData.componentBase(item.baseId) || {}).part; if (!part) { setStatus('熔炼产物底材无效'); return; }
-      state.plans[state.active].slots[part] = slotFromImported(part, item); renderAll();
-    });
     Wiki.onChange(function (s, unavailable) {
       const r=$('status-card'); r.className='status-card ' + (unavailable ? 'status-bad' : 'status-ok'); r.innerHTML='<div class="status-line"><span class="status-dot"></span>' + (unavailable ? '规则不可用' : '规则可用') + '</div><p class="status-message">' + (unavailable ? '无法确认最新规则，数值与模拟器已禁用。' : '已连接当前服务端规则快照。') + '</p>';
       const key = s ? s.snapshotId : '';

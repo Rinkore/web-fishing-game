@@ -8,7 +8,7 @@ const constants = Object.fromEntries(Object.entries(D).filter(([k, v]) => typeof
 const catalog = { format: 1, version: D.VERSION, source: 'frontend/js/data.js',
   sourceSHA256: crypto.createHash('sha256').update(fs.readFileSync(source, 'utf8').replace(/\r\n/g, '\n')).digest('hex'),
   constants, items: D.allItems(), defaults: { component: D.getComponentCfg(), fish: D.getFishCfg(),
-    smelt: D.defaultSmeltCfg(), snapshot: D.defaultSnapshotCfg(), mall: D.defaultMallCfg() } };
+    snapshot: D.defaultSnapshotCfg(), mall: D.defaultMallCfg() } };
 const output = path.resolve(__dirname, '../../server-go/internal/rules/catalog.json');
 const content = JSON.stringify(catalog, null, 2) + '\n';
 if (process.argv[2] === '--write') {

@@ -1961,39 +1961,6 @@
       perCast: perCast, castsPerHour: castsPerHour, fishPerHour: fishPerHour };
   }
 
-  // ---- 工坊 · 熔炼 ----
-  // 玩家放两件组件（主 / 副），各选一条词条，熔炼后**主件的词条就是选中的那两条**（重新 roll 数值）：
-  //   主件选中的那条 → 在原底材区间内重 roll（突破件的池外词缀则按「池外词缀区间」）。
-  //   副件选中的那条（v0.11.5 改）：**副件一并提供它的取值区间** —— 该词缀在副件底材池内就按副件区间 roll，
-  //     不在副件池内（副件本身是突破件）才回退「池外词缀区间」；后台关掉「副件区间」开关则回退旧行为
-  //     （在主件池内按主件区间，否则池外区间）。
-  // 投料（可选）：从**全部词缀类型**里再补一条熔炼结果尚未拥有的词缀并 roll 值；投料越多，补缀成功率越高。
-  //   不受主件底材词缀池限制（后台开关 addAnyAffix），补缀后词条数上限默认 3（后台可调 addAffixCap，
-  //   即普通/稀有底材也能被补到 3 条）；补缀词缀默认按**池外（突破）区间**取值（与宝匣突破件同一套区间，
-  //   后台改「池外词缀数值区间」即时生效；开关 addAffixExtraRange 可切回旧行为）。
-  // 龙宫宝珠（可选）：roll 值改为掷两次取靠近区间边界的那次（与海王遗匣同一规则，见 rollAffixValueBoundary）。
-  // 残片保留（可选，v0.11.3 新增，只对海王遗匣产出的神话主件）：投入至多 10 片沉船宝匣残片，
-  //   成功时按概率把主件的池外（突破）词缀原值保留到结果上，见 smeltExtraAffixesOf / smeltRetainChance。
-  // 失败（v0.11.3 起）：副件与投料熔毁、残片烧掉、金币花掉，**主件被熔掉选中的那条词条**（其余词条与品质保留）。
-  // 熔炼花费金币：材料越多越贵。全部参数由管理后台「⚒ 工坊配置」覆盖（world.smeltCfg）。
-  //
-  // 材料即「词缀定向器」：每种材料只对应一个词缀类型，投料量最大的那种材料决定要补的词缀
-  // （并列时按本表顺序取先出现的）。龙宫宝珠不是定向材料，而是催化剂，单列。
-  const SMELT_MATERIAL_AFFIX = {
-  "tide_sand": "speed",
-  "grindstone": "skill",
-  "stardust": "rare",
-  "humus": "material",
-  "boneash": "size",
-  "dragon_scale": "double",
-  "ballast": "stability",
-  "resonance_crystal": "resonance",
-  "curesalt": "settle"
-};
-  const SMELT_PEARL = 'dragonpearl'; // 龙宫宝珠：催化剂（roll 两次取边界值）
-  // 补缀（投料新增词缀）的候选：默认 = **全部 6 类词缀**里熔炼结果尚未拥有的那些（不再受主件底材词缀池限制）。
-  function smeltMaterialAffix(id) { return SMELT_MATERIAL_AFFIX[id] || null; }
-  function smeltMaterialIds() { return Object.keys(SMELT_MATERIAL_AFFIX); }
   // 装备成长材料的用途：从当前配置（GEAR_SYSTEM.costs）反查这份材料参与哪些操作与消耗量。
   // 游戏内物品详情与 Wiki 资料页共用这一份，管理员改了配方两处一起变。
   function gearMaterialUses(id) {
@@ -2025,92 +1992,17 @@
     });
   }
 
-  const SMELT_DEFAULTS = {
-    baseRate: 50,              // 熔炼基础成功率（%）：失败 = 副件/材料被熔毁、主件失去选中的那条词条
-    failPerMaterial: -2,       // 每份材料对**失败率**的加成（%点）：负数 = 投料越多越不易失败
-    extraRatePerMaterial: 8,   // 每份材料对「新增词缀」成功率的加成（%点）
-    extraRatePearl: 0,         // 龙宫宝珠对「新增词缀」成功率的加成（%点）
-    extraRateMax: 95,          // 新增词缀成功率上限（%）
-    rateMin: 5,                // 熔炼成功率下限（%）
-    rateMax: 99,               // 熔炼成功率上限（%）
-    goldBase: 5000,            // 基础金币花费
-    goldPerMaterial: 900,      // 每份材料追加金币
-    goldPearl: 20000,          // 龙宫宝珠追加金币
-    maxMaterials: 20,          // 单次最多投料份数
-    maxTypes: 4,               // 单次最多投料种类
-    pearlRollTwice: true,      // 龙宫宝珠是否启用「掷两次取边界值」
-    // ---- 重铸（v0.16.0 改版：材料改为龙宫宝珠，并支持「指定单条词条」）----
-    // 基础消耗 recastPearl 颗宝珠 = 重 roll 全部词条；
-    // 额外投入宝珠可把重铸目标指定为某一条词条，第 n 条额外消耗 n 颗（见 recastPearlExtra）。
-    recastPearl: 1,            // 每次重铸的基础宝珠消耗（重 roll 全部词条）
-    recastGold: 0,             // 重铸**每颗宝珠**的金币（v0.16.3：不再是每次的固定价；0 = 只收宝珠）
-                               //   总手续费 = 消耗的宝珠数 × 这个值，见 recastGoldFor()
-    recastMinValue: 0,         // 重铸是否强制「至少不比原来差」：0 = 完全重 roll，1 = 每条取更高值
-    // ---- 残片保留（海王遗匣产出的神话主件专用）----
-    // v0.13：每片残片的保留概率改为**公式控制**（后台「⚒ 工坊配置」可改），而不是固定 10%。
-    // 公式变量 breakthrough = 主组件身上的突破词缀条数；默认 10 - breakthrough * 0.5，
-    // 即突破词缀越多、每片能保留的概率越低（保底仍随片数线性累加到 100%）。
-    retainFormula: '10 - breakthrough * 0.5',
-    retainMaxRelic: 10,        // 单次熔炼最多可投入的残片数
-    // ---- 词缀搬移与补缀（v0.11.5 新增，均可在后台「⚒ 工坊配置」里改）----
-    subRangeFromSub: true,     // 副件搬来的词缀按**副件自己的区间**取值（关闭 = 旧行为：主件池内按主件区间，否则池外区间）
-    addAnyAffix: true,         // 补缀不再受主件底材词缀池限制：可取任意尚未拥有的词缀
-    addAffixCap: 3,            // 补缀后主件允许的词条数上限（默认 3 = 主 + 副 + 补缀，可越过品质上限与池长）
-    addAffixExtraRange: true,  // 补缀词缀按**池外（突破）区间**取值，与宝匣突破件同一套区间（随后台改动即时生效）
-    // ---- 材料催化词缀范围（v0.12.2 新增，后台「⚒ 工坊配置 → 材料 → 词缀对照」按部位设置）----
-    // { [部位]: { [词缀类型]: [min, max] } }：材料催化成功赋予的词条按主件部位 + 词缀类型取该范围；
-    // 未配置的组合回退突破区间。催化产生的词缀范围来源记为 'ct'（显示为「催化词缀」）。
-    catalystRanges: {},
-    catalystRatio: 90,
-    forgeAnyAffix: true,
-  };
+  // 历史催化词缀仍需按存档中的区间配置展示。
+  const SMELT_DEFAULTS = { catalystRanges: {}, catalystRatio: 90 };
   let smeltCfg = Object.assign({}, SMELT_DEFAULTS);
-  // 保留概率公式可用的变量（当前只有突破词缀条数）
-  const RETAIN_VAR_NAMES = ['breakthrough'];
   function defaultSmeltCfg() { return Object.assign({}, SMELT_DEFAULTS); }
   function setSmeltCfg(cfg) {
-    const d = defaultSmeltCfg();
     const c = (cfg && typeof cfg === 'object') ? cfg : {};
-    Object.keys(d).forEach(function (k) {
-      if (c[k] === undefined || c[k] === null || c[k] === '') return;
-      // 字符串型配置（保留概率公式）单独处理：数值化会把公式吃掉
-      if (typeof d[k] === 'string') { d[k] = String(c[k]); return; }
-      const v = (typeof d[k] === 'boolean') ? !!c[k] : Number(c[k]);
-      if (typeof d[k] === 'boolean' ? true : isFinite(v)) d[k] = v;
-    });
-    d.catalystRatio = Math.max(0, Math.min(200, d.catalystRatio));
-    d.maxMaterials = Math.max(0, Math.min(99, Math.floor(d.maxMaterials)));
-    d.maxTypes = Math.max(0, Math.min(8, Math.floor(d.maxTypes)));
-    d.retainMaxRelic = Math.max(0, Math.min(99, Math.floor(d.retainMaxRelic)));
-    // 保留概率公式：无法编译时回退出厂默认（服务器保存路径已先做严格校验，这里只是兜底）
-    if (!compileExpr(d.retainFormula, RETAIN_VAR_NAMES).ok) d.retainFormula = SMELT_DEFAULTS.retainFormula;
-    // 补缀词条数上限：1 条（等于禁止补缀）~ 6 条（词缀类型全集）；非数字回退出厂默认 3
-    d.addAffixCap = Math.max(1, Math.min(AFFIX_TYPES.length, Math.floor(Number(d.addAffixCap) || SMELT_DEFAULTS.addAffixCap)));
-    // 材料催化词缀范围：{ [part]: { [type]: [min, max] } }，逐项校验（非法/缺省条目剔除，全部清空 = 回退突破区间）。
-    // 同时把区间夹进该部位的包络：催化上限不得高于该部位最高值、下限不得低于最低值
-    // （越界条目按包络截断，保证运行时永远拿不到比该部位自然产出更强的催化区间）。
-    const crIn = c.catalystRanges;
-    const crOut = {};
-    if (crIn && typeof crIn === 'object') {
-      Object.keys(crIn).forEach(function (part) {
-        const row = crIn[part];
-        if (!row || typeof row !== 'object') return;
-        const okRow = {};
-        AFFIX_TYPES.forEach(function (t) {
-          const r = row[t];
-          const mn = Array.isArray(r) ? Number(r[0]) : NaN, mx = Array.isArray(r) ? Number(r[1]) : NaN;
-          if (!isFinite(mn) || !isFinite(mx) || mx < mn) return;
-          const env = catalystEnvelopeOf(part, t);
-          let lo = mn, hi = mx;
-          if (env) { lo = Math.max(env[0], Math.min(env[1], mn)); hi = Math.max(env[0], Math.min(env[1], mx)); }
-          if (hi < lo) hi = lo;
-          okRow[t] = [Math.round(lo * 10) / 10, Math.round(hi * 10) / 10];
-        });
-        if (Object.keys(okRow).length) crOut[part] = okRow;
-      });
-    }
-    d.catalystRanges = crOut;
-    smeltCfg = d;
+    const ratio = Number(c.catalystRatio);
+    smeltCfg = {
+      catalystRatio: c.catalystRatio != null && isFinite(ratio) ? Math.max(0, Math.min(200, ratio)) : 90,
+      catalystRanges: c.catalystRanges && typeof c.catalystRanges === 'object' ? c.catalystRanges : {},
+    };
     return smeltCfg;
   }
   function getSmeltCfg() { return smeltCfg; }
@@ -2134,86 +2026,7 @@
   }
   function getSnapshotCfg() { return snapshotCfg; }
 
-  // 投料清单 [{ id, qty }] → 汇总（总份数 / 各词缀份数 / 主词缀 = 投料量最大的那个）
-  function smeltLoadOf(list) {
-    const byAffix = {};
-    let total = 0, pearl = 0;
-    const order = smeltMaterialIds();
-    (Array.isArray(list) ? list : []).forEach(function (e) {
-      const id = String((e && e.id) || '');
-      const qty = Math.max(0, Math.floor(Number(e && e.qty) || 0));
-      if (!qty) return;
-      if (id === SMELT_PEARL) { pearl += qty; return; }
-      const affix = SMELT_MATERIAL_AFFIX[id];
-      if (!affix) { if (['bait_pack','rope','lure'].indexOf(id)>=0) total+=qty; return; }
-      byAffix[affix] = (byAffix[affix] || 0) + qty;
-      total += qty;
-    });
-    let dominant = null, best = 0;
-    order.forEach(function (id) {
-      const affix = SMELT_MATERIAL_AFFIX[id];
-      const n = byAffix[affix] || 0;
-      if (n > best) { best = n; dominant = affix; }
-    });
-    return { total: total, pearl: pearl, byAffix: byAffix, dominant: dominant, types: Object.keys(byAffix).length };
-  }
-  // 成功率：熔炼成功率受投料影响（默认投料越多越不易失败）；补缀成功率随投料单调上升
-  function smeltRatesOf(load, hasPearl) {
-    const c = smeltCfg;
-    const total = Math.max(0, Number(load && load.total) || 0);
-    const pearl = hasPearl != null ? !!hasPearl : !!(load && load.pearl > 0);
-    const raw = c.baseRate - c.failPerMaterial * total;
-    const rate = Math.max(c.rateMin, Math.min(c.rateMax, raw));
-    const catalysts = Object.values((load && load.byAffix) || {}).reduce((sum, n) => sum + n, 0);
-    const extraRaw = c.extraRatePerMaterial * catalysts + (pearl ? c.extraRatePearl : 0);
-    const extraRate = Math.max(0, Math.min(c.extraRateMax, extraRaw));
-    return {
-      rate: Math.round(rate * 10) / 10,
-      extraRate: Math.round(extraRate * 10) / 10,
-      failRate: Math.round((100 - rate) * 10) / 10,
-    };
-  }
-  // 熔炼里每一条词缀的「落成概率」：保留 / 副件搬入 只需熔炼成功；补缀新增还要补缀掷骰命中
-  // （服务端两次掷骰相互独立，都在熔炼成功之后）。完全成功 = 词缀全部落成，界面要单独高亮。
-  function smeltSuccessProbs(rates, hasExtra) {
-    const clamp = function (v) { return Math.max(0, Math.min(100, Number(v) || 0)); };
-    const round1 = function (v) { return Math.round(v * 10) / 10; };
-    const rate = clamp(rates && rates.rate);
-    const extra = clamp(rates && rates.extraRate);
-    const keep = round1(rate);
-    const add = round1(rate * extra / 100);
-    return { keep: keep, add: add, full: hasExtra ? add : keep };
-  }
-  function smeltGoldOf(load, hasPearl) {
-    const c = smeltCfg;
-    const total = Math.max(0, Number(load && load.total) || 0);
-    const pearl = hasPearl != null ? !!hasPearl : !!(load && load.pearl > 0);
-    return Math.max(0, Math.round(c.goldBase + c.goldPerMaterial * total + (pearl ? c.goldPearl : 0)));
-  }
-  // 本次熔炼可补的词缀候选（服务器校验与前端预览共用同一份，保证两端口径一致）：
-  //   addAnyAffix 开启（默认）→ 全部 6 类词缀里熔炼结果还没有的那些（可越过底材词缀池边界）
-  //   关闭 → 旧行为：只列主件底材池内、且结果还没有的词缀
-  function smeltAddableAffixes(baseId, currentTypes) {
-    const base = BASE_MAP[baseId];
-    const have = {};
-    (currentTypes || []).forEach(function (t) { have[t] = 1; });
-    const anyAffix = smeltCfg.addAnyAffix !== false;
-    if (base && base.setId) return [];
-    if (anyAffix) return AFFIX_TYPES.filter(function (t) { return !have[t] && (!base || base.legacy || (PART_AFFIXES[base.part] || []).indexOf(t)>=0); });
-    if (!base) return [];
-    return base.pool.filter(function (p) { return !have[p.type]; }).map(function (p) { return p.type; });
-  }
-  // 补缀（投料新增词缀）后允许的词条数上限：默认 3（主 + 副 + 补缀），可越过品质上限与底材池长
-  function smeltAddAffixCap() { return smeltCfg.addAffixCap; }
-
-  // 熔炼取值区间（服务器掷骰与前端展示共用）。v0.12.2 重构：词缀自带「范围来源」（见 affixToken），
-  // roll 一律按**词缀带来的范围**取值，而不是「结果底材的池区间」——修复熔炼/重铸把范围错变成底材区间的 bug：
-  //   kind = 'main' → 主件选中的那条：按它自己的 src（解析时已按池内/池外推断，见 instanceOf）
-  //   kind = 'sub'  → 副件搬来的那条：默认按它自己的 src（副件连区间一起提供）；
-  //                   subRangeFromSub 关闭时回退旧行为（主件池内 → 主件区间；否则突破区间）
-  //   kind = 'add'  → 投料补缀的那条：主件部位配置了「材料催化词缀范围」→ 催化区间（src='ct'）；
-  //                   否则 addAffixExtraRange 开启 → 突破区间（src='bt'）；关闭回退旧行为
-  // 返回 { range, src }；smeltRangeOf 保留为只取区间的兼容入口。
+  // 历史组件词缀来源与区间解析。
   function poolRangeOf(baseId, type) {
     const b = BASE_MAP[baseId];
     if (!b) return null;
@@ -2283,309 +2096,8 @@
     });
     return out;
   }
-  // 返回 { range, src, explicit }：
-  //   explicit = 该来源是否**可证并可写回签名**。可证有两种情形：
-  //     (a) 词缀所属组件的签名里字面记录了来源（o.srcExplicit === true，如 @bt / @ct / @附件底材）；
-  //     (b) 该词缀类型就在**提供它的那件组件自己的词缀池内** —— 此时它的区间按定义就是那件底材的
-  //         池区间，来源为该底材是确定事实，不需要推断。
-  //   反之（不在池内、签名也没记来源）只能靠数值猜测，explicit = false：调用方不得把该 src
-  //   写进新签名，否则会把「猜出来的来源」固化成「突破词缀」这种身份断言。
-  function smeltRangeEx(mainBaseId, subBaseId, kind, type, opts) {
-    const o = opts || {};
-    const mainBase = BASE_MAP[mainBaseId] || null;
-    const subBase = BASE_MAP[subBaseId] || null;
-    const part = o.part || (mainBase && mainBase.part) || null;
-    const mainHas = !!(mainBase && mainBase.pool.some(function (p) { return p.type === type; }));
-    const subHas = !!(subBase && subBase.pool.some(function (p) { return p.type === type; }));
-    // 未显式传 src 时的缺省推断（兼容旧调用 / 防御）：main 按主件池、sub 按副件池、池外 → 突破
-    const fallbackSrc = kind === 'sub' ? (subHas ? subBaseId : 'bt') : (mainHas ? mainBaseId : 'bt');
-    const src = o.src || fallbackSrc;
-    // 来源可证性：签名显式记录，或该类型就在对应底材的词缀池内（池内 ⇒ 区间按定义来自该底材）
-    const provable = (o.src == null)
-      ? true
-      : (o.srcExplicit === true || (kind === 'sub' ? (subHas && src === subBaseId) : (mainHas && src === mainBaseId)));
-    if (kind === 'main' || kind === 'sub') {
-      if (kind === 'sub' && smeltCfg.subRangeFromSub === false) {
-        // 旧行为（后台显式关闭「副件区间」时才走）：主件池内按主件区间，否则按池外区间。
-        // 池外这一支的**取值范围**保持旧行为，但身份上不能宣称突破 —— 这条词缀是副件搬来的，
-        // 不是海王遗匣产出，所以 explicit = false（不写回签名，识别为「普通池外词缀」）。
-        return mainHas
-          ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId, explicit: true }
-          : { range: extraAffixRangeOf(type), src: 'bt', explicit: false };
-      }
-      return { range: affixSrcRangeOf(src, type, part), src: src, explicit: provable };
-    }
-    if (kind === 'add') {
-      // 投料补缀 = **催化剂产生的词缀**：来源一律记 'ct'（催化词缀），与是否给该部位/该词缀
-      // 配置了「材料催化词缀范围」无关 —— 有配置就按催化区间取值，没配置时
-      // affixSrcRangeOf('ct', …) 会自动回退到池外（突破）区间，取值范围与旧版完全一致，
-      // 区别只在「词缀身份」不再被误认成突破词缀。
-      const cr = catalystRangeOf(part, type);
-      if (cr) return { range: cr, src: 'ct', explicit: true };
-      if (smeltCfg.addAffixExtraRange !== false) return { range: extraAffixRangeOf(type), src: 'ct', explicit: true };
-      return mainHas
-        ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId, explicit: true }
-        : { range: extraAffixRangeOf(type), src: 'ct', explicit: true };
-    }
-    // 防御性兜底（未知 kind，生产代码不会走到）：取值保持池外区间，但不敢断言是突破词缀
-    return mainHas
-      ? { range: poolRangeOf(mainBaseId, type), src: mainBaseId, explicit: true }
-      : { range: extraAffixRangeOf(type), src: 'bt', explicit: false };
-  }
-  function smeltRangeOf(mainBaseId, subBaseId, kind, type, opts) {
-    return smeltRangeEx(mainBaseId, subBaseId, kind, type, opts).range;
-  }
-
-  // ---- 熔炼 · 残片保留（只对海王遗匣产出的神话主件开放）----
-  // 熔炼成功后主件的词条会被改写成「主件选中 + 副件搬入」（+ 可选补缀），主件原有的**池外词缀**
-  // （底材词缀池里本来没有的那些）会随之消失。投入沉船宝匣残片后，成功时按概率把这些池外词缀
-  // **按原值**追加回熔炼结果：
-  //   概率 = 投入片数 × 每片概率（默认每片 10 - breakthrough×0.5%，见 retainChancePerRelic），上限 100%。
-  //   残片不参与投料计算 —— 既不影响熔炼成功率/补缀成功率，也不改变金币花费（只消耗残片本身）。
-  //   只有主件确实带池外词缀时才有意义（没有可保留的词条时服务器会直接拒绝，避免白烧残片）。
-  //   「每片概率」公式的 breakthrough 变量取**突破词缀（src='bt'）条数**：一件组件身上往往还有
-  //   附件搬来的普通池外词缀与催化词缀，它们不算「突破」，不该把保留概率拉低（见 affixKindOf）。
-  function smeltExtraAffixesOf(baseId, affixes) {
-    const base = BASE_MAP[baseId];
-    if (!base) return [];
-    const poolTypes = {};
-    base.pool.forEach(function (p) { poolTypes[p.type] = 1; });
-    // 保留时连范围来源（src）一起带回：残片保留是「按原值追加」，来源不变。
-    // srcExplicit 一并保留：保留下来的词缀要保持原本的身份（突破/催化/普通池外）。
-    return (affixes || []).filter(function (a) { return !poolTypes[a.type]; })
-      .map(function (a) { return { type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit }; });
-  }
-  // 主件身上「突破词缀」的条数（残片保留概率公式的 breakthrough 变量）
   function breakthroughCountOf(affixes) {
     return (affixes || []).filter(function (a) { return affixKindOf(a) === 'breakthrough'; }).length;
-  }
-  // 投入 n 片残片时的总保留概率（%）：夹在 [0, 100]，保留一位小数。
-  // 总概率 = 片数 × 每片概率（每片概率由公式给出，见 retainChancePerRelic）。
-  //   breakthrough = 主组件身上的突破词缀条数（默认公式里唯一的变量）。
-  // 第二参数省略时按 0 计算（兼容只传片数的旧调用），但服务器与前端都会显式传突破词缀数。
-  function smeltRetainChance(relics, breakthrough) {
-    const n = Math.max(0, Math.min(smeltCfg.retainMaxRelic, Math.floor(Number(relics) || 0)));
-    const per = retainChancePerRelic(breakthrough);
-    return Math.max(0, Math.min(100, Math.round(n * per * 10) / 10));
-  }
-  // 每片残片的保留概率（%）：由后台公式给出（默认 10 - breakthrough * 0.5），夹在 [0, 100] 并保留一位小数。
-  // 公式不可用时回退出厂公式，保证任何存档/配置下都有确定的概率。
-  function retainChancePerRelic(breakthrough) {
-    const bt = Math.max(0, Math.floor(Number(breakthrough) || 0));
-    const src = String(smeltCfg.retainFormula || SMELT_DEFAULTS.retainFormula);
-    const c = compileExpr(src, RETAIN_VAR_NAMES);
-    const fn = c.ok ? c.fn : (compileExpr(SMELT_DEFAULTS.retainFormula, RETAIN_VAR_NAMES).fn);
-    let v;
-    try { v = Number(fn({ breakthrough: bt })); } catch (e) { v = 0; }
-    if (!isFinite(v)) v = 0;
-    return Math.max(0, Math.min(100, Math.round(v * 10) / 10));
-  }
-
-
-  // ---- 熔炼方案与结果模拟（服务端正式路径与 Wiki 模拟器共用） ----
-  // d = { mainId, subId, mainAffix, subAffix, materials, relics }
-  // 这里只做纯规则校验与预览，不检查背包、金币或装备锁定；调用方负责资产校验与结算。
-  function smeltPlanOf(d) {
-    const cfg = getSmeltCfg();
-    const mainRaw = String((d && d.mainId) || '');
-    const subRaw = String((d && d.subId) || '');
-    const mainMeta = componentOf(mainRaw);
-    const subMeta = componentOf(subRaw);
-    const partName = function (key) {
-      const p = ROD_PARTS.find(function (x) { return x.key === key; });
-      return p ? p.name : String(key || '?');
-    };
-    const materialName = function (id) {
-      const m = MATERIALS.find(function (x) { return x.id === id; });
-      return m ? m.name : id;
-    };
-    if (!mainMeta || !isInstance(mainRaw)) return { error: '主组件必须是已生成的组件实例' };
-    if (!subMeta || !isInstance(subRaw)) return { error: '副组件必须是已生成的组件实例' };
-    if ((componentBase(mainMeta.baseId) || {}).setId || (componentBase(subMeta.baseId) || {}).setId) return { error: '套装核心不可熔炼或改造' };
-    if (mainMeta.part !== subMeta.part) {
-      return { error: '主件与副件必须是同一部位的组件（当前：' + partName(mainMeta.part) + ' / ' + partName(subMeta.part) + '）' };
-    }
-    const mainAffix = mainMeta.affixes.find(function (a) { return a.type === d.mainAffix; });
-    const subAffix = subMeta.affixes.find(function (a) { return a.type === d.subAffix; });
-    if (!componentBase(mainMeta.baseId).legacy && !(PART_AFFIXES[mainMeta.part] || []).includes(d.subAffix)) return { error: '副件词条不属于主件的部位属性池' };
-    if (!mainAffix) return { error: '请选择主组件上的一条词条' };
-    if (!subAffix) return { error: '请选择副组件上的一条词条' };
-    if (mainAffix.type === subAffix.type) return { error: '主副选中的词条类型不能相同（熔炼后两条词条会合成同一条）' };
-
-    const maxM = Math.max(0, Math.floor(Number(cfg.maxMaterials) || 0));
-    const list = Array.isArray(d.materials) ? d.materials : [];
-    const matList = [];
-    let pearl = !!(d && d.pearl);
-    let pearlQty = 0;
-    let total = 0;
-    const types = {};
-    for (const e of list) {
-      const id = String((e && e.id) || '');
-      const qty = e && e.qty;
-      if (matList.some(function (x) { return x.id === id; })) return { error: '投料物品重复' };
-      if (id === SMELT_PEARL) { pearl = true; pearlQty += qty; continue; }
-      if (!smeltMaterialAffix(id) && ['bait_pack','rope','lure'].indexOf(id)<0) return { error: '「' + materialName(id) + '」不是熔炼材料' };
-      matList.push({ id: id, qty: qty });
-      if (smeltMaterialAffix(id)) types[smeltMaterialAffix(id)] = 1;
-      total += Math.max(0, Math.floor(Number(qty) || 0));
-    }
-    if (pearlQty > 1) return { error: '龙宫宝珠一次最多投入 1 个' };
-    if (total > maxM) return { error: '投料最多 ' + maxM + ' 份（当前 ' + total + ' 份）' };
-    if (Object.keys(types).length > cfg.maxTypes) return { error: '投料最多 ' + cfg.maxTypes + ' 种（当前 ' + Object.keys(types).length + ' 种）' };
-
-    const consume = matList.slice();
-    if (pearl) consume.push({ id: SMELT_PEARL, qty: 1 });
-    const relicId = 'relic';
-    const relicMax = Math.max(0, Math.min(99, Math.floor(Number(cfg.retainMaxRelic) || 0)));
-    const relicQty = d && d.relics === undefined ? 0 : d.relics;
-    if (!isFinite(Number(relicQty)) || Number(relicQty) < 0 || Math.floor(Number(relicQty)) !== Number(relicQty)) {
-      return { error: '残片数量需为不小于 0 的整数' };
-    }
-    if (relicQty > relicMax) return { error: '残片超过单次投入上限' };
-    const extraAffixes = smeltExtraAffixesOf(mainMeta.baseId, mainMeta.affixes);
-    if (relicQty > 0) {
-      if (!canRecast(mainMeta)) {
-        return { error: '只有海王遗匣产出的神话主件才能加入' + materialName(relicId) + '（当前：' + mainMeta.qualityName + '品质）' };
-      }
-      if (!extraAffixes.length) return { error: '该主件没有池外词缀，投入' + materialName(relicId) + '没有可保留的词条' };
-      consume.push({ id: relicId, qty: relicQty });
-    }
-
-    const load = smeltLoadOf(matList);
-    const afterTypes = [mainAffix.type, subAffix.type];
-    let extraType = null;
-    if (load.dominant) {
-      extraType = load.dominant;
-      const addable = smeltAddableAffixes(mainMeta.baseId, afterTypes);
-      if (!extraType || addable.indexOf(extraType) < 0) {
-        const already = extraType ? afterTypes.indexOf(extraType) >= 0 : false;
-        return { error: '投料对应的词缀「' + (AFFIX_LABEL[extraType] || extraType || '?') + '」无法补进该主件（' + (already ? '熔炼结果里已经有这条词缀了' : '主件词缀池里已经没有可补的该类词缀') + '）' };
-      }
-      if (afterTypes.length + 1 > smeltAddAffixCap()) {
-        return { error: '补缀后词条数会超过上限（当前 ' + afterTypes.length + ' 条 +1 > 上限 ' + smeltAddAffixCap() + ' 条，可在后台「⚒ 工坊配置」调整）' };
-      }
-    }
-    const rates = smeltRatesOf(load, pearl);
-    const gold = smeltGoldOf(load, pearl);
-    const rrMain = smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'main', mainAffix.type, { part: mainMeta.part, src: mainAffix.src, srcExplicit: mainAffix.srcExplicit });
-    const rrSub = smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'sub', subAffix.type, { part: mainMeta.part, src: subAffix.src, srcExplicit: subAffix.srcExplicit });
-    const rrAdd = extraType ? smeltRangeEx(mainMeta.baseId, subMeta.baseId, 'add', extraType, { part: mainMeta.part }) : null;
-    const breakthrough = breakthroughCountOf(mainMeta.affixes);
-    return {
-      ok: true, cfg: cfg, mainId: mainMeta.id, subId: subMeta.id,
-      mainMeta: mainMeta, subMeta: subMeta, mainAffix: mainAffix, subAffix: subAffix,
-      materials: matList, consume: consume, load: load, pearl: pearl,
-      extraType: extraType, rates: rates, gold: gold,
-      rollBoundary: !!(pearl && cfg.pearlRollTwice),
-      relicId: relicId, relics: relicQty, extraAffixes: extraAffixes,
-      protectAffix: relicQty > 0, breakthrough: breakthrough,
-      retainChance: smeltRetainChance(relicQty, breakthrough),
-      perRelic: retainChancePerRelic(breakthrough),
-      retainFormula: String(cfg.retainFormula || ''),
-      ranges: {
-        main: rrMain.range, sub: rrSub.range, add: rrAdd ? rrAdd.range : null,
-        mainSrc: rrMain.src, subSrc: rrSub.src, addSrc: rrAdd ? rrAdd.src : null,
-        mainExplicit: rrMain.explicit, subExplicit: rrSub.explicit, addExplicit: rrAdd ? rrAdd.explicit : false,
-      },
-    };
-  }
-
-  function smeltRollWithRng(range, useBoundary, rng) {
-    const model = (getComponentCfg() || {}).rollModel || 'linear';
-    return useBoundary
-      ? rollAffixValueBoundaryWithRng(range[0], range[1], model, rng)
-      : rollAffixValueWithRng(range[0], range[1], model, rng);
-  }
-
-  // 模拟一次熔炼。不修改任何资产；服务端正式接口与 Wiki 模拟器都调用本函数。
-  // rng 可注入，默认 Math.random；Wiki 批量模拟使用带种子的随机数保证可复现。
-  function simulateSmeltPlan(plan, rng) {
-    const rand = typeof rng === 'function' ? rng : Math.random;
-    const p = plan || {};
-    const success = rand() * 100 < p.rates.rate;
-    let extraOk = false, retainOk = false;
-    const retained = [];
-    let resultId = null, result = null, mainAfterId = null, mainAfter = null;
-    if (success) {
-      const rr = p.ranges || {};
-      const affixes = [];
-      affixes.push({ type: p.mainAffix.type, value: smeltRollWithRng(rr.main, p.rollBoundary, rand), src: rr.mainSrc, srcExplicit: rr.mainExplicit });
-      affixes.push({ type: p.subAffix.type, value: smeltRollWithRng(rr.sub, p.rollBoundary, rand), src: rr.subSrc, srcExplicit: rr.subExplicit });
-      if (p.extraType) {
-        extraOk = rand() * 100 < p.rates.extraRate;
-        if (extraOk) affixes.push({ type: p.extraType, value: smeltRollWithRng(rr.add, p.rollBoundary, rand), src: rr.addSrc, srcExplicit: rr.addExplicit });
-      }
-      if (p.relics > 0) {
-        retainOk = rand() * 100 < p.retainChance;
-        if (retainOk) {
-          const have = {};
-          affixes.forEach(function (a) { have[a.type] = 1; });
-          (p.extraAffixes || []).forEach(function (a) {
-            if (have[a.type]) return;
-            have[a.type] = 1;
-            affixes.push({ type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit });
-            retained.push({ type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit });
-          });
-        }
-      }
-      resultId = instanceId(p.mainMeta.baseId, p.mainMeta.quality, affixes);
-      result = componentOf(resultId);
-    } else {
-      const left = (p.mainMeta && p.mainMeta.affixes || [])
-        .filter(function (a) { return p.protectAffix || a.type !== p.mainAffix.type; })
-        .map(function (a) { return { type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit }; });
-      mainAfterId = instanceId(p.mainMeta.baseId, p.mainMeta.quality, left);
-      mainAfter = componentOf(mainAfterId);
-    }
-    return {
-      success: success, extraOk: extraOk, retainOk: retainOk, retained: retained,
-      protectAffix: !success && !!p.protectAffix,
-      removedAffix: (success || p.protectAffix) ? null : p.mainAffix.type,
-      resultId: resultId, result: result, mainAfterId: mainAfterId, mainAfter: mainAfter,
-    };
-  }
-
-  // ---- 重铸（海王遗匣产出的神话件）----
-  // 允许重铸的品质：全游戏只有「海王遗匣」产出神话件（后台掉落权重刻意不含 mythic），
-  // 所以神话品质就是「宝匣产出的组件」这一身份标识；工坊熔炼保留主件品质，熔出来的神话件同样可重铸。
-  const RECAST_QUALITY = 'mythic';
-  function canRecast(meta) { return !!(meta && meta.kind === 'component' && !((componentBase(meta.baseId) || {}).setId) && meta.quality === RECAST_QUALITY); }
-  // 重铸·指定词条的额外宝珠数量：第 1 条额外 1 颗、第 2 条额外 2 颗……（1-based = 索引 + 1）。
-  // 传 null / undefined / 负数 = 不指定（重 roll 全部词条），额外消耗为 0。
-  function recastPearlExtra(idx) {
-    const i = Math.floor(Number(idx));
-    return (isFinite(i) && i >= 0) ? i + 1 : 0;
-  }
-  // 重铸总消耗 = 后台配置的基础消耗 + 指定词条的额外消耗
-  function recastPearlNeed(idx, base) {
-    const b = Math.max(0, Math.floor(Number(base) || 0));
-    return b + recastPearlExtra(idx);
-  }
-  // 重铸手续费（v0.16.3）：**按消耗的宝珠数计**，每颗 recastGold 金币 —— 不再是每次一个固定价。
-  // 指定第 n 条词条会多花 n 颗宝珠，手续费也就跟着涨（0 = 只收宝珠）。
-  function recastGoldFor(pearls) {
-    const n = Math.max(0, Math.floor(Number(pearls) || 0));
-    return Math.max(0, Math.round((smeltCfg.recastGold || 0) * n));
-  }
-  // 重铸取值：保持词缀**类型与条数不变**，按当前 roll 模型重新取值。
-  // v0.12.2 修复：每条词条按**它自己的范围来源**（a.src：底材区间 / 突破区间 / 催化区间）重 roll，
-  // 不再「词缀类型在底材池里就按底材区间」——修复重铸把范围错变成该底材范围的 bug。
-  // v0.16.0：targetIdx 传入词条下标时**只重 roll 那一条**（其余原样保留），即「重铸目标指定为某一条词条」。
-  function recastAffixes(baseId, affixes, targetIdx) {
-    const base = BASE_MAP[baseId];
-    if (!base) return null;
-    const keepBetter = !!smeltCfg.recastMinValue; // 开启后「至少不比原来差」：取重 roll 与原值里更好的那个
-    const only = Math.floor(Number(targetIdx));
-    const hasTarget = isFinite(only) && only >= 0;
-    return (affixes || []).map(function (a, i) {
-      if (hasTarget && i !== only) return { type: a.type, value: a.value, src: a.src || null, srcExplicit: a.srcExplicit };
-      const rng = affixSrcRangeOf(a.src, a.type, base.part);
-      const v = rollAffixValue(rng[0], rng[1], componentCfg.rollModel);
-      // 数值越大越好（负词缀同理：-5 优于 -12），所以「更好」= Math.max
-      // srcExplicit 一并带过：重铸只改数值、不改词缀身份（突破/催化/普通池外）。
-      // 丢了它会把「解析时推断出来的来源」当成事实写回签名，导致同一件组件重铸后签名变化。
-      return { type: a.type, value: keepBetter ? Math.max(v, a.value) : v, src: a.src || null, srcExplicit: a.srcExplicit };
-    });
   }
 
   // ---- 稀有度（rare 词缀）----
@@ -3500,24 +3012,15 @@
     rodEffectsOf: rodEffectsOf, mergedEffectsOf: mergedEffectsOf, castInfoOf: castInfoOf, castIntervalOf: castIntervalOf,
     effectiveSpeedOf: effectiveSpeedOf, spotSpeedOf: spotSpeedOf, spotBiteRateOf: spotBiteRateOf,
     biteProbabilityOf: biteProbabilityOf, doubleProbOf: doubleProbOf, simulateRodPlan: simulateRodPlan,
-    SMELT_MATERIAL_AFFIX: SMELT_MATERIAL_AFFIX, SMELT_PEARL: SMELT_PEARL,
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     SNAPSHOT_DEFAULTS: SNAPSHOT_DEFAULTS, defaultSnapshotCfg: defaultSnapshotCfg, setSnapshotCfg: setSnapshotCfg, getSnapshotCfg: getSnapshotCfg,
-    smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds, smeltFuelIds: function(){return ['bait_pack','rope','lure'];},
     gearMaterialUses: gearMaterialUses,
-    smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltSuccessProbs: smeltSuccessProbs, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
-    smeltPlanOf: smeltPlanOf, simulateSmeltPlan: simulateSmeltPlan, smeltRollWithRng: smeltRollWithRng,
-    smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,
     affixSrcRangeOf: affixSrcRangeOf, catalystRangeOf: catalystRangeOf, catalystRangeFor: catalystRangeFor, scaleCatalystRange: scaleCatalystRange,
-    smeltExtraAffixesOf: smeltExtraAffixesOf, smeltRetainChance: smeltRetainChance,
     breakthroughCountOf: breakthroughCountOf,
     affixKindOf: affixKindOf, extraKindName: extraKindName, extraKindDesc: extraKindDesc,
-    retainChancePerRelic: retainChancePerRelic, RETAIN_VAR_NAMES: RETAIN_VAR_NAMES,
     compileExpr: compileExpr, EXPR_FUNCS: EXPR_FUNCS,
     catalystEnvelopeOf: catalystEnvelopeOf, catalystPreset: catalystPreset,
     RARE_K_DEFAULT: RARE_K_DEFAULT, rareKOf: rareKOf, rareCommonMult: rareCommonMult,
-    RECAST_QUALITY: RECAST_QUALITY, canRecast: canRecast, recastAffixes: recastAffixes,
-    recastPearlExtra: recastPearlExtra, recastPearlNeed: recastPearlNeed, recastGoldFor: recastGoldFor,
     MALL_DEFAULTS: MALL_DEFAULTS, defaultMallCfg: defaultMallCfg,
     parseRefreshTime: parseRefreshTime, mallCycleOf: mallCycleOf,
     DEFAULT_EXTRA_AFFIX_RANGES: DEFAULT_EXTRA_AFFIX_RANGES, extraAffixRangeOf: extraAffixRangeOf,

@@ -49,7 +49,7 @@ window.UI = (function () {
   }, true);
   function applyFeatureControls() {
     // 渔屋（v0.24.0）：页签内的写操作按钮各自带 data-feature（见 house.js），这里补上元素级的标记与提示。
-    const selectors = { '#sea-ship-up': 'sea.upgrade', '#sea-chart-craft': 'sea.chart', '#sea-voyage': 'sea.voyage', '[data-sea="voyage-empty"]': 'sea.voyage', '#ws-go': 'workshop.smelt', '#ws-recast-go': 'workshop.recast', '#ws-forge-go': 'workshop.forge', '.sub-entry': 'inventory.subscribe', '.ab-open-btn': 'bd.autobuild', '#sa-open-list': 'mall.autosell', '#sa-tier': 'mall.autosell', '[data-house-action="collect"]': 'character.collect', '[data-house-action="upgrade"]': 'character.upgrade', '[data-house-action="renovate"]': 'character.upgrade', '[data-house-action="pet"]': 'character.pet', '[data-house-action="role"]': 'character.role', '[data-house-action="steal"]': 'character.steal' };
+    const selectors = { '#sea-ship-up': 'sea.upgrade', '#sea-chart-craft': 'sea.chart', '#sea-voyage': 'sea.voyage', '[data-sea="voyage-empty"]': 'sea.voyage', '.sub-entry': 'inventory.subscribe', '.ab-open-btn': 'bd.autobuild', '#sa-open-list': 'mall.autosell', '#sa-tier': 'mall.autosell', '[data-house-action="collect"]': 'character.collect', '[data-house-action="upgrade"]': 'character.upgrade', '[data-house-action="renovate"]': 'character.upgrade', '[data-house-action="pet"]': 'character.pet', '[data-house-action="role"]': 'character.role', '[data-house-action="steal"]': 'character.steal' };
     Object.keys(selectors).forEach(function (selector) { document.querySelectorAll(selector).forEach(function (b) { markFeature(b, selectors[selector]); }); });
   }
   let featureOrderQueued = false;
@@ -206,7 +206,7 @@ window.UI = (function () {
   let codexSortRarity = false;  // 图鉴品级倒序开关
   // 设计稿 v2 阶段 F：这三页的一级页签由港湾木梁下方的挂签承载（见 panelTabDefs），
   // 页面自身不再画一行页签按钮。
-  let wsPanelTab = 'bench';     // 工坊：bench 工作台 | growth 装备成长 | sets 钓鱼套装 | smelt 熔炼
+  let wsPanelTab = 'bench';     // 工坊：bench 工作台 | growth 装备成长 | sets 钓鱼套装
   let chestTab = 'open';        // 宝匣：open 开箱 | craft 合成
   let seaPanelTab = 'voyage';   // 远洋码头：voyage 远航 | ship 船只
 
@@ -819,19 +819,9 @@ window.UI = (function () {
       };
     }
     if (currentView === 'workshop') {
-      // 装备成长系统关闭时（历史工坊口径：只有熔炼 / 重铸 / 锻造），木梁上只留「熔炼」一个页签，
-      // 免得出一个点进去是空的「装备成长」。
-      const gearOn = !!(D.GEAR_SYSTEM && D.GEAR_SYSTEM.enabled);
-      if (!gearOn) {
-        return {
-          items: [['smelt', '熔炼']],
-          active: 'smelt',
-          set: function (k) { wsPanelTab = k; },
-        };
-      }
       return {
-        items: orderedFeatureTabs('workshop', [['bench', '工作台'], ['growth', '装备成长'], ['sets', '钓鱼套装'], ['smelt', '熔炼']],
-          { bench: 'growth', growth: 'growth', sets: 'sets', smelt: ['smelt', 'recast', 'forge'] }),
+        items: orderedFeatureTabs('workshop', [['bench', '工作台'], ['growth', '装备成长'], ['sets', '钓鱼套装']],
+          { bench: 'growth', growth: 'growth', sets: 'sets' }),
         active: wsPanelTab,
         set: function (k) { wsPanelTab = k; },
       };
@@ -6939,13 +6929,6 @@ window.UI = (function () {
     if (it.kind === 'material') {
       const gear = gearCostUses(it.id);
       if (gear.length) return '装备成长材料 → ' + gear.join(' · ') + '。';
-      if (it.id === D.SMELT_PEARL) return '熔炼时让每条词条掷两次取更靠近区间边界的值；锻造时可用于宝珠护持，恢复催化词条的完整数值范围。';
-      const aff = D.smeltMaterialAffix(it.id);
-      if (aff) {
-        return '熔炼催化剂 → 定向补「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀' +
-          (it.id === 'relic' ? '；另用于合成宝匣、熔炼残片保留与重铸。' : '。');
-      }
-      if (D.smeltFuelIds().indexOf(it.id) >= 0) return '熔炼燃料：投进熔炼只增加投料量（补缀率更高、熔炼更稳），不补任何词缀。';
       if (it.id === 'chartfrag') return '远洋海图碎片：' + ((D.SEA && D.SEA.chartCost) || 3) + ' 片合成 1 张未知海图，出航后随机发现一片临时海域。';
       if (it.id === 'deepscale') return '远洋船坞材料：船升级按等级需要，也是远航每日悬赏的上交物。';
       if (it.id === 'storm_relic') return '远洋风暴特产：风暴深入模式（需风暴专精）产出，可在远航里作为定向货物指定收取。';
@@ -6955,7 +6938,6 @@ window.UI = (function () {
   }
   // 用途条目（数值与开关全部读当前后台配置）
   function itemUses(it) {
-    const cfg = (D.getSmeltCfg && D.getSmeltCfg()) || {};
     const out = [];
     if (it.kind === 'chest') {
       const c = it.chest || {};
@@ -6979,22 +6961,8 @@ window.UI = (function () {
     } else {
       const gear = gearCostUses(it.id);
       if (gear.length) out.push('装备成长：' + gear.join(' · '));
-      const aff = D.smeltMaterialAffix && D.smeltMaterialAffix(it.id);
-      if (it.id === D.SMELT_PEARL) {
-        out.push('熔炼：每次至多 1 颗，让每条词条掷两次取更靠近边界的值');
-        out.push('锻造 · 宝珠护持：消耗 1 颗，恢复催化词条的完整数值范围');
-      }
-      else if (aff) {
-        out.push('熔炼催化剂：对应「' + (D.AFFIX_LABEL[aff] || aff) + '」词缀 —— 投得最多的那种材料决定补哪条，每份 ' +
-          (cfg.extraRatePerMaterial || 0) + '% 补缀率、失败率 ' + (cfg.failPerMaterial || 0) + '%');
-      }
-      else if (D.smeltFuelIds().indexOf(it.id) >= 0) {
-        out.push('熔炼燃料：只增加投料量（补缀率更高、熔炼更稳），不补任何词缀');
-      }
       if (it.id === 'relic') {
         out.push('开箱 · 合成宝匣：各档宝匣的主材料（' + (D.CHESTS || []).map(function (c) { return c.name + ' ' + c.costRelic + ' 片'; }).join(' · ') + '）');
-        out.push('熔炼 · 残片保留：按后台公式 ' + (cfg.retainFormula || '?') + ' 计算每片保留池外词缀的概率（公式变量 breakthrough 只数突破词缀），失败时也护住主件选中的词条');
-        out.push('重铸：神话组件重掷词条数值时的消耗');
       }
       if (it.id === 'chartfrag') out.push('远洋 · 海图：' + ((D.SEA && D.SEA.chartCost) || 3) + ' 片合成 1 张未知海图，出航后随机发现一片临时海域');
       if (it.id === 'deepscale') out.push('远洋 · 船坞：船升级按等级需要（见船坞当前需求），也是远航每日悬赏的上交物');
@@ -9190,397 +9158,6 @@ window.UI = (function () {
   //   可选残片保留（v0.11.3，仅海王遗匣产出的神话主件）：投至多 10 片沉船宝匣残片，成功时按概率
   //     （每片概率由后台公式按主件突破词缀条数算，默认 10 - 突破数×0.5，见 D.retainChancePerRelic）
   //     把主件的池外词缀按原值保留到结果上（突破/催化/附件搬来的都算）；残片不计入催化剂 → 不改成功率与花费。
-  //   失败（v0.11.3 起）：副件 / 催化剂 / 残片熔毁、金币花掉，主件被熔掉**选中的那条词条**（其余词条与品质保留）；
-  //     但若投入了残片，主件选中的词条在失败时也受保护（服务端回传 protectedAffix）。
-  // 重铸：把宝匣产出的**神话**组件放进去，用沉船宝匣残片重 roll 全部词条的数值（类型与条数不变）。
-  //   成功率和花费都由后台「⚒ 工坊配置」决定，服务器权威。
-  let wsTab = 'smelt';          // 'smelt' | 'recast' | 'forge'（开箱 v0.23.5 起独立成页，不再挂在这里）
-  let wsMain = '', wsSub = '', wsMainAffix = '', wsSubAffix = '', wsPearl = false;
-  let wsMatPick = '';           // 催化剂：当前选中的材料 id（'' = 未选择；份数在熔炼页面用 +1 / +5 / 清空 调）
-  let wsMats = {};              // { 材料id: 份数 }（催化剂草稿，重绘间保留；只会保留选中的这一种）
-  let wsBusy = false;
-  let wsRelics = 0;             // 残片保留：投入的沉船宝匣残片片数（0 ~ smeltCfg.retainMaxRelic）
-  let wsRecast = '';            // 重铸选中的组件签名
-  let wsRecastTarget = -1;      // 重铸指定的词条下标（-1 = 不指定，重 roll 全部词条）
-  let wsRecastQuiet = false;
-  try { wsRecastQuiet = localStorage.getItem('fish.recast.quiet') === '1'; } catch (_) {}
-  let wsForge = '';             // 锻造选中的组件签名
-  let wsForgeMat = '';          // 锻造选中的催化剂材料 id
-  let wsForgePearl = false;     // 消耗宝珠，使用未缩减的催化区间
-
-  // 选中的组件实例是否还在背包里（被熔炼 / 重铸消耗、出售、上架、交易后就不在了）
-  function wsAlive(id) { return !!(id && D.componentOf(id) && (S().inventory[id] || 0) > 0); }
-  // 清掉指向「已不存在的组件」的选中项：否则工坊会停在「卡片还是旧组件、点熔炼/重铸却报错」的悬空状态。
-  // 装备到钓竿上的组件不在背包里，同样按不可选处理（与选择列表的口径一致）。
-  function wsPruneStale() {
-    if (wsMain && !wsAlive(wsMain)) { wsMain = ''; wsMainAffix = ''; wsRelics = 0; }
-    if (wsSub && !wsAlive(wsSub)) { wsSub = ''; wsSubAffix = ''; }
-    if (wsRecast && !wsAlive(wsRecast)) wsRecast = '';
-    if (wsForge && !wsAlive(wsForge)) wsForge = '';
-    // 主件换了部位（或已失效）后，原副件必须与主件同部位，否则清掉
-    const a = D.componentOf(wsMain), b = D.componentOf(wsSub);
-    if (wsSub && (!b || !a || a.part !== b.part)) { wsSub = ''; wsSubAffix = ''; }
-  }
-
-  // 背包里可作为素材的组件实例（按价格降序，稳定展示）
-  function wsComponents() {
-    const st = S();
-    const out = [];
-    Object.keys(st.inventory || {}).forEach(function (id) {
-      const meta = D.componentOf(id);
-      if (!meta || meta.setId || !D.isInstance(id)) return;
-      out.push({ id: id, meta: meta, count: st.inventory[id] });
-    });
-    out.sort(function (a, b) {
-      return (b.meta.price || 0) - (a.meta.price || 0) || (a.id < b.id ? -1 : 1);
-    });
-    return out;
-  }
-  // 主/副件卡片（点击打开与「装备组件」同一个组件选择子页面）
-  // 「卸下」：清空该槽位（纯草稿操作，组件本身一直在背包里）。
-  //   主件卸下会连带清掉副件与已选词条（副件依赖主件部位）；催化剂份数保留——玩家通常只是想换一件。
-  function wsUnload(which) {
-    if (which === 'main') { wsMain = ''; wsMainAffix = ''; wsSub = ''; wsSubAffix = ''; wsRelics = 0; }
-    else if (which === 'sub') { wsSub = ''; wsSubAffix = ''; }
-    else if (which === 'recast') { wsRecast = ''; wsRecastTarget = -1; }
-    else if (which === 'forge') { wsForge = ''; wsForgeMat = ''; wsForgePearl = false; }
-    renderView();
-  }
-
-  function wsCompCardHtml(which, comp) {
-    const isMain = which === 'main', selected = isMain ? wsMainAffix : wsSubAffix;
-    const title = isMain ? '主组件' : '副组件';
-    return '<section class="ws-col" data-slot="' + which + '"><header class="sm-slot-head"><h3>' + title + '</h3>' +
-      '<span class="sm-badge">' + (isMain ? '保留底材' : '熔炼后消耗') + '</span></header>' +
-      (comp ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-pick="' + which + '">' +
-        '<img class="ws-pick-icon" src="' + esc(D.itemIcon(comp.meta.baseId)) + '" alt="" />' +
-        '<span class="sm-item-copy"><strong class="ws-pick-name ' + qualityClass(comp.meta) + '">' + esc(comp.meta.name) + '</strong>' +
-        '<span class="ws-pick-meta">' + esc(partNameOf(comp.meta.part)) + ' · ' + esc(comp.meta.qualityName) + '</span>' +
-        '<span class="ws-pick-change">更换 ↗</span></span></button>' +
-        '<button class="mini ws-unload" data-unload="' + which + '" aria-label="移除' + title + '">移除</button></div>' +
-        '<div class="sm-slot-hint" data-slot-hint="' + which + '">' + (isMain ? '选择保留词条' : '选择搬入词条') + '</div>' +
-        '<div class="ws-affs" role="group" aria-label="' + title + '词条">' + comp.meta.affixes.map(function (a) {
-          return '<button class="ws-aff' + (selected === a.type ? ' on' : '') + (a.value < 0 ? ' neg' : '') +
-            '" data-which="' + which + '" data-type="' + esc(a.type) + '" aria-pressed="' + (selected === a.type) + '">' +
-            '<span class="sm-choice" aria-hidden="true"></span>' + affSpanOpen(a) +
-            '<span>' + esc(D.AFFIX_LABEL[a.type] || a.type) + '</span><b>' + esc((a.value > 0 ? '+' : '') + a.value) + '%</b></span></button>';
-        }).join('') + '</div>'
-      : '<button class="ws-pick empty" data-pick="' + which + '"' + (!isMain && !wsMain ? ' disabled' : '') +
-        '><span class="sm-slot-plus" aria-hidden="true">＋</span>' + (!isMain && !wsMain ? '先选择主组件' : '选择' + title) + '</button>') + '</section>';
-  }
-  // 残片保留信息（只对海王遗匣产出的神话主件开放，判据与「重铸」一致 = 神话品质）
-  //   eligible：主件是神话件且**确实带池外词缀**（突破/催化/附件搬来的都算）——没有可保留的词条时投入残片没有意义
-  //   cap：还能投入几片（后台上限与背包持有量取小）；qty：当前草稿夹紧后的片数
-  //   bt：与服务端 planSmelt 一致，使用 smeltExtraAffixesOf 返回的全部池外词缀条数。
-  function wsRetainInfo(comp) {
-    const cfg = D.getSmeltCfg();
-    const max = Math.max(0, Math.min(99, Math.floor(Number(cfg.retainMaxRelic) || 0)));
-    const meta = comp && comp.meta;
-    const affixes = meta ? D.smeltExtraAffixesOf(meta.baseId, meta.affixes) : [];
-    const eligible = !!(meta && D.canRecast(meta) && affixes.length > 0);
-    const bt = affixes.length;
-    const per = D.retainChancePerRelic(bt);
-    const have = S().inventory.relic || 0;
-    const cap = Math.max(0, Math.min(max, have));
-    const qty = eligible ? Math.max(0, Math.min(cap, Math.floor(wsRelics) || 0)) : 0;
-    return {
-      eligible: eligible, max: max, per: per, bt: bt, formula: cfg.retainFormula || '', affixes: affixes,
-      have: have, cap: cap, qty: qty, chance: D.smeltRetainChance(qty, bt),
-    };
-  }
-  function wsPlan() {
-    const cfg = D.getSmeltCfg();
-    const comps = wsComponents();
-    const mainC = comps.find(function (c) { return c.id === wsMain; });
-    const subC = comps.find(function (c) { return c.id === wsSub; });
-    const mats = Object.keys(wsMats).map(function (id) { return { id: id, qty: Number(wsMats[id]) || 0 }; })
-      .filter(function (e) { return e.qty > 0; });
-    const load = D.smeltLoadOf(mats);
-    const pearl = !!wsPearl && (S().inventory[D.SMELT_PEARL] || 0) > 0;
-    const rates = D.smeltRatesOf(load, pearl);
-    const gold = D.smeltGoldOf(load, pearl);
-    const retain = wsRetainInfo(mainC);
-    const addCap = D.smeltAddAffixCap();
-    let error = '';
-    if (!mainC) error = '请选择主组件';
-    else if (!subC) error = '请选择副组件';
-    else if (mainC.meta.part !== subC.meta.part) {
-      error = '主件与副件必须是同一部位的组件（当前：' + partNameOf(mainC.meta.part) + ' / ' + partNameOf(subC.meta.part) + '）';
-    } else if (!wsMainAffix) error = '请选择主件上要保留的词条';
-    else if (!wsSubAffix) error = '请选择副件上要搬运的词条';
-    else if (wsMainAffix === wsSubAffix) error = '主副选中的词条类型不能相同';
-    else if (!D.componentBase(mainC.meta.baseId).legacy && !(D.PART_AFFIXES[mainC.meta.part] || []).includes(wsSubAffix)) error = '副件词条不属于主件的部位属性池';
-    else if (load.total > Number(cfg.maxMaterials)) {
-      error = '催化剂最多 ' + cfg.maxMaterials + ' 份（当前 ' + load.total + ' 份），请减少份数';
-    } else if (Object.keys(load.byAffix).length > Number(cfg.maxTypes)) {
-      error = '催化剂最多 ' + cfg.maxTypes + ' 种（当前 ' + Object.keys(load.byAffix).length + ' 种），请清空多余材料';
-    } else if (load.dominant) {
-      const addable = D.smeltAddableAffixes(mainC.meta.baseId, [wsMainAffix, wsSubAffix]);
-      if (load.dominant && addable.indexOf(load.dominant) < 0) {
-        error = '催化剂对应「' + (D.AFFIX_LABEL[load.dominant] || load.dominant) + '」，但熔炼结果里已经有这条词缀了';
-      } else if (2 + 1 > addCap) {
-        error = '本次词条数已达上限（' + addCap + ' 条）';
-      }
-    }
-    // 预览里要点出的三条词缀区间（与服务端掷骰同一份口径，见 data.js 的 smeltRangeEx）。
-    // v0.12.2：按词缀自己的范围来源取区间（副件那条按副件带来的区间、补缀按催化/突破区间）。
-    const mid = mainC ? mainC.meta.baseId : null, sid = subC ? subC.meta.baseId : null;
-    const extraType = load.total > 0 ? load.dominant : null;
-    const mPart = mainC ? mainC.meta.part : null;
-    const mainAff = mainC && wsMainAffix ? mainC.meta.affixes.find(function (a) { return a.type === wsMainAffix; }) : null;
-    const subAff = subC && wsSubAffix ? subC.meta.affixes.find(function (a) { return a.type === wsSubAffix; }) : null;
-    const ranges = (mainC && subC) ? {
-      main: wsMainAffix ? D.smeltRangeEx(mid, sid, 'main', wsMainAffix, { part: mPart, src: mainAff && mainAff.src, srcExplicit: mainAff && mainAff.srcExplicit }) : null,
-      sub: wsSubAffix ? D.smeltRangeEx(mid, sid, 'sub', wsSubAffix, { part: mPart, src: subAff && subAff.src, srcExplicit: subAff && subAff.srcExplicit }) : null,
-      add: extraType ? D.smeltRangeEx(mid, sid, 'add', extraType, { part: mPart }) : null,
-    } : null;
-    return {
-      ok: !error, error: error, main: mainC, sub: subC, materials: mats, load: load,
-      pearl: pearl, rates: rates, gold: gold, extraType: extraType, ranges: ranges, addCap: addCap,
-      rollBoundary: pearl && (D.getSmeltCfg().pearlRollTwice !== false),
-      retain: retain,
-    };
-  }
-  // 催化剂份数上限：没选齐两条词条 / 词条数已满 / 该词缀无法新增 / 库存不足 → 0（0 时 +1 / +5 禁用）
-  function wsMatLimit(id) {
-    if (!id) return 0;
-    const meta = D.componentOf(wsMain), known = !!(meta && wsMainAffix && wsSubAffix);
-    const addable = known ? D.smeltAddableAffixes(meta.baseId, [wsMainAffix, wsSubAffix]) : [];
-    const cfg = D.getSmeltCfg(), capOk = 3 <= D.smeltAddAffixCap();
-    const fit = known && (D.smeltFuelIds().includes(id) || capOk && addable.indexOf(D.smeltMaterialAffix(id)) >= 0);
-    const have = S().inventory[id] || 0;
-    return fit ? Math.max(0, Math.min(have, Number(cfg.maxMaterials) || 0)) : 0;
-  }
-  function wsMatQty() { return wsMatPick ? Math.max(0, Number(wsMats[wsMatPick]) || 0) : 0; }
-  // 催化剂草稿只留选中的那一种，份数夹紧在 0 ~ wsMatLimit（子页面选材料、主页面按钮改份数都走这里）
-  function wsSetMatQty(qty) {
-    wsMats = {};
-    if (!wsMatPick) return;
-    const q = Math.max(0, Math.min(wsMatLimit(wsMatPick), Math.floor(Number(qty) || 0)));
-    if (q > 0) wsMats[wsMatPick] = q;
-  }
-  // 残片：+1 / +5 按可投上限夹紧（上限 = 后台 retainMaxRelic 与背包持有量取小）
-  function wsAddRelics(step) {
-    const rt = wsRetainInfo(wsComponents().find(function (c) { return c.id === wsMain; }) || null);
-    wsRelics = Math.max(0, Math.min(rt.eligible ? rt.cap : 0, (Math.floor(Number(wsRelics)) || 0) + step));
-    wsRefreshPreview();
-  }
-  // Keep unavailable materials visible with a reason; clamp the draft to current stock and rules.
-  function wsFitMaterials() {
-    const ids = D.smeltMaterialIds().concat(D.smeltFuelIds());
-    const before = wsMatQty();
-    let removed = false;
-    if (wsMatPick && (ids.indexOf(wsMatPick) < 0 || wsMatLimit(wsMatPick) <= 0)) { wsMatPick = ''; removed = true; }
-    wsSetMatQty(before);
-    if (wsMatQty() !== before) removed = true;
-    const note = $('ws-mats-note');
-    if (note) note.textContent = removed ? '不适用或超出库存的催化剂已移除' : '';
-  }
-  // 催化剂子页面：只负责选材料，份数一律回主页面用 +1 / +5 / 清空 控制
-  function wsSyncMaterialDialog() {
-    const box = $('ws-material-modal');
-    if (!box) return;
-    const meta = D.componentOf(wsMain), known = !!(meta && wsMainAffix && wsSubAffix);
-    const addable = known ? D.smeltAddableAffixes(meta.baseId, [wsMainAffix, wsSubAffix]) : [];
-    const capOk = 3 <= D.smeltAddAffixCap();
-    box.querySelectorAll('.ws-mat').forEach(function (row) {
-      const id = row.getAttribute('data-mat');
-      const fit = known && (D.smeltFuelIds().includes(id) || capOk && addable.indexOf(D.smeltMaterialAffix(id)) >= 0);
-      const have = S().inventory[id] || 0;
-      row.classList.toggle('unavailable', !fit || !have);
-      row.classList.toggle('selected', wsMatPick === id);
-      row.setAttribute('aria-pressed', String(wsMatPick === id));
-      row.disabled = !fit || !have;
-      const haveEl = row.querySelector('.wm-have');
-      if (haveEl) haveEl.textContent = !known ? '先选两条词条' : !capOk ? '词条数已达上限'
-        : !fit ? '该词条无法新增' : !have ? '库存不足' : '持有 ' + have;
-    });
-    const feed = $('ws-material-feedback');
-    if (feed) feed.textContent = wsMatPick
-      ? '已选 ' + itemMeta(wsMatPick).name + ' · 回到熔炼页面用 +1 / +5 / 清空 调整份数'
-      : '请选择一种催化剂';
-  }
-  function wsOpenMaterials() {
-    if (wsBusy) return;
-    closeOverlays();
-    const close = function () { overlay.remove(); wsRefreshPreview(); if ($('ws-material-open')) $('ws-material-open').focus(); };
-    const overlay = buildOverlay(close), box = el('div', 'modal-box sm-material-dialog');
-    box.id = 'ws-material-modal'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
-    box.setAttribute('aria-labelledby', 'ws-material-title');
-    box.innerHTML = '<div class="modal-head"><span class="modal-title" id="ws-material-title">选择催化剂</span>' +
-      '<button class="mini modal-close" aria-label="关闭催化剂选择">✕</button></div><div class="modal-body">' +
-      '<div class="sm-material-limit">每种催化剂补一条对应词缀 · 份数在熔炼页面用 +1 / +5 / 清空 调整</div>' +
-      '<div class="ws-mat-grid">' + D.smeltMaterialIds().concat(D.smeltFuelIds()).map(function (id) {
-        const meta = D.itemOf(id), aff = D.smeltMaterialAffix(id);
-        const main = D.componentOf(wsMain), sub = D.componentOf(wsSub);
-        const range = main ? D.smeltRangeOf(main.baseId, sub && sub.baseId, 'add', aff, { part: main.part }) : null;
-        const rangeLabel = range ? ' · ' + rangeText({ min: range[0], max: range[1] }) + '%' : ' · 选择主件后显示区间';
-        return '<button type="button" class="ws-mat" data-mat="' + esc(id) + '" data-affix="' + esc(aff) + '" aria-pressed="false">' +
-          '<img class="sm-material-icon" src="' + esc(D.itemIcon(id)) + '" alt="" />' +
-          '<span class="sm-mat-info"><strong class="wm-name">' + esc(meta.name) + '</strong><span class="wm-aff">' + esc(aff ? (D.AFFIX_LABEL[aff] || aff) + rangeLabel : '基础燃料 · 只降低失败率') + '</span><small class="wm-have"></small></span></button>';
-      }).join('') + '</div><div id="ws-mats-note" role="status"></div></div>' +
-      '<footer class="sm-material-footer"><div id="ws-material-feedback" role="status" aria-live="polite"></div><button class="mini primary-mini sm-material-done">完成</button></footer>';
-    overlay.appendChild(box); document.body.appendChild(overlay);
-    box.querySelector('.modal-close').onclick = close; box.querySelector('.sm-material-done').onclick = close;
-    box.querySelectorAll('.ws-mat').forEach(function (b) {
-      b.onclick = function () {
-        if (b.disabled) return;
-        if (wsMatPick !== b.dataset.mat) { wsMatPick = b.dataset.mat; wsSetMatQty(0); }
-        wsRefreshPreview();
-      };
-    });
-    box.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); close(); }
-      if (ev.key === 'Tab') {
-        const nodes = Array.from(box.querySelectorAll('button:not(:disabled), input:not(:disabled)'));
-        const first = nodes[0], last = nodes[nodes.length - 1];
-        if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
-        else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
-      }
-    });
-    wsRefreshPreview(); box.querySelector('.modal-close').focus();
-  }
-
-  function wsFailureText(p) {
-    return p.retain.qty > 0 ? '失败时：主件词条受残片保护。' : '失败时：主件失去选中的词条，其余词条保留。';
-  }
-  function wsRefreshPreview() {
-    const panel = $('ws-preview');
-    if (!panel) return;
-    if ((wsMain && !wsAlive(wsMain)) || (wsSub && !wsAlive(wsSub))) {
-      wsPruneStale(); renderWorkshop(); return;
-    }
-    wsFitMaterials();
-    const p = wsPlan(), canGold = (S().player.coins || 0) >= p.gold;
-    const go = $('ws-go');
-    document.querySelectorAll('.smelt-workbench .ws-aff').forEach(function (b) {
-      const main = b.dataset.which === 'main', selected = main ? wsMainAffix : wsSubAffix;
-      const clash = b.dataset.type === (main ? wsSubAffix : wsMainAffix);
-      b.disabled = clash; b.classList.toggle('on', selected === b.dataset.type);
-      b.setAttribute('aria-pressed', String(selected === b.dataset.type));
-      b.setAttribute('aria-label', (D.AFFIX_LABEL[b.dataset.type] || b.dataset.type) + (clash ? '，另一组件已选择同类词条' : ''));
-    });
-    ['main', 'sub'].forEach(function (which) {
-      const hint = document.querySelector('[data-slot-hint="' + which + '"]');
-      const chosen = which === 'main' ? wsMainAffix : wsSubAffix;
-      if (hint) hint.textContent = chosen ? '✓ ' + (which === 'main' ? '保留 ' : '搬入 ') + (D.AFFIX_LABEL[chosen] || chosen)
-        : which === 'main' ? '选择保留词条' : '选择搬入词条 · 同类不可重复';
-      const card = document.querySelector('[data-slot="' + which + '"]');
-      if (card) card.classList.toggle('complete', !!chosen);
-    });
-    const pearl = $('ws-pearl'), havePearl = S().inventory[D.SMELT_PEARL] || 0;
-    if (pearl) {
-      pearl.disabled = !havePearl || wsBusy;
-      pearl.classList.toggle('selected', !!p.pearl);
-      pearl.setAttribute('aria-pressed', String(!!p.pearl));
-    }
-    if (!havePearl) wsPearl = false;
-    const pearlStatus = $('ws-pearl-status');
-    if (pearlStatus) pearlStatus.textContent = !havePearl ? '库存不足' : p.pearl
-      ? (p.rollBoundary ? '已启用 · 掷两次取边界' : '已加入 · 边界取值未启用') : '未加入';
-    wsRelics = p.retain.qty;
-    // 残片：+1 / +5 / 清空（超出可投上限或未投入时禁用）
-    ['ws-relic-plus1', 'ws-relic-plus5'].forEach(function (id) {
-      const b = $(id); if (b) b.disabled = wsBusy || !p.retain.eligible || wsRelics >= p.retain.cap;
-    });
-    const relicMinus = $('ws-relic-minus1');
-    if (relicMinus) relicMinus.disabled = wsBusy || !p.retain.eligible || wsRelics <= 0;
-    const relicClear = $('ws-relic-clear');
-    if (relicClear) relicClear.disabled = wsBusy || wsRelics <= 0;
-    const relicCount = $('ws-relic-count');
-    if (relicCount) relicCount.textContent = p.retain.eligible ? '已投入 ' + wsRelics + ' / ' + p.retain.cap + ' 片' : '未投入';
-    const relicChance = $('ws-relic-chance');
-    if (relicChance) relicChance.textContent = wsRelics ? '保留概率 ' + p.retain.chance + '% · 失败保护已启用' : '未投入';
-    // 催化剂：份数只在熔炼主页面用 +1 / +5 / 清空 控制（未选材料时全部禁用）
-    const matQty = wsMatQty(), matLimit = wsMatLimit(wsMatPick);
-    ['ws-mat-plus1', 'ws-mat-plus5'].forEach(function (id) {
-      const b = $(id); if (b) b.disabled = wsBusy || !wsMatPick || matQty >= matLimit;
-    });
-    const matMinus = $('ws-mat-minus1');
-    if (matMinus) matMinus.disabled = wsBusy || !wsMatPick || matQty <= 0;
-    const matClear = $('ws-mat-clear');
-    if (matClear) matClear.disabled = wsBusy || !wsMatPick;
-    const summary = $('ws-material-summary');
-    if (summary) summary.textContent = !wsMatPick ? '点击选择催化剂' : itemMeta(wsMatPick).name + ' ×' + matQty + ' · 点击更换';
-    const matIcon = $('ws-material-icon'), matName = $('ws-material-name');
-    if (matIcon) matIcon.setAttribute('src', D.itemIcon(wsMatPick || 'lure'));
-    if (matName) matName.textContent = wsMatPick ? itemMeta(wsMatPick).name : '催化剂';
-    wsSyncMaterialDialog();
-    const announce = $('ws-step-feedback');
-    const instruction = !p.main ? '选择主组件' : !p.sub ? '选择同部位副组件' : !wsMainAffix ? '选择主件保留词条'
-      : !wsSubAffix ? '选择副件搬入词条' : !p.ok ? p.error : !canGold ? '金币不足，还差 ' + Math.ceil(p.gold - (S().player.coins || 0)) : '方案已就绪';
-    if (announce && announce.textContent !== instruction) announce.textContent = instruction;
-    if (go) { go.disabled = !p.ok || !canGold || wsBusy; go.textContent = wsBusy ? '熔炼中…' : p.ok && canGold ? '确认方案 · 开始熔炼' : instruction; }
-    const rr = p.ranges || {}, pr = D.smeltSuccessProbs(p.rates, !!p.extraType);
-    function affRow(kind, type, range, current, probability) {
-      if (!type || !range) return '';
-      const name = D.AFFIX_LABEL[type] || type;
-      return '<li class="sm-result-aff ' + kind + '"><div><strong>' + esc(name) + '</strong><span class="ws-src-tag ' + kind + '">' +
-        (kind === 'main' ? '主件保留' : kind === 'sub' ? '副件搬入' : '催化新增') + '</span>' +
-        '<span class="ws-aff-prob">获得概率 ' + probability + '%</span></div><div class="sm-range">' +
-        '<span class="ws-cur">当前 ' + (current == null ? '无' : (current > 0 ? '+' : '') + current + '%') + '</span>' +
-        '<span aria-hidden="true">→</span><b>' + esc(rangeText({ min: range.range[0], max: range.range[1] })) + '%</b></div></li>';
-    }
-    function current(comp, type) { const a = comp && comp.meta.affixes.find(function (a) { return a.type === type; }); return a ? a.value : null; }
-    const retained = p.retain.qty > 0 ? p.retain.affixes.filter(function (a) { return a.type !== wsMainAffix && a.type !== wsSubAffix; }) : [];
-    const resultCard = p.main ? '<div class="ws-result-card"><img class="ws-result-icon" src="' + esc(D.itemIcon(p.main.meta.baseId)) + '" alt="" />' +
-      '<div><strong class="' + qualityClass(p.main.meta) + '">' + esc(p.main.meta.baseName || p.main.meta.name) + '</strong>' +
-      '<span>' + esc(p.main.meta.qualityName) + ' · ' + esc(partNameOf(p.main.meta.part)) + '</span><small>底材与品质不变</small></div></div>'
-      : '<div class="sm-result-empty"><span aria-hidden="true">◇</span>选入主件后，产物在这里预览</div>';
-    const html = resultCard + (p.ok ? '<ul class="ws-res-affs">' +
-      affRow('main', wsMainAffix, rr.main, current(p.main, wsMainAffix), pr.keep) +
-      affRow('sub', wsSubAffix, rr.sub, current(p.sub, wsSubAffix), pr.keep) +
-      affRow('add', p.extraType, rr.add, null, pr.add) + '</ul>' +
-      (retained.length ? '<div class="sm-retained"><div class="sm-retained-title">沉船宝匣残片 · ' + retained.length + ' 类额外词条 · 成功概率 ' + p.retain.chance + '%</div>' +
-        retained.map(function (a) { return '<div class="sm-retained-row">' + esc(affixText(a)) + ' · ' + (a.type === p.extraType ? '未新增同类词条时可保留' : '原值保留') + '</div>'; }).join('') +
-        '</div>' : '') +
-      '<div class="sm-probabilities"><div><span>熔炼成功</span><b>' + p.rates.rate + '%</b></div><div><span>' +
-      (p.extraType ? '三条全部获得' : '两条全部获得') + '</span><b class="ws-full-prob">' + pr.full + '%</b></div><div><span>失败</span><b>' + p.rates.failRate + '%</b></div></div>' +
-      '<div class="sm-risk">' + wsFailureText(p) + '</div>' +
-      '<details class="sm-details"><summary>数值与消耗</summary><p>词条数值重新随机生成。' +
-      (p.pearl ? (p.rollBoundary ? '宝珠已启用：掷两次取靠近边界的值。' : '当前配置未启用宝珠边界取值。') : '') + '</p>' +
-      '<p>成功后，仅生成预览中的词条；其余原词条不保留。</p>' +
-      '<p>无论成功或失败，均消耗副件、所投材料' + (p.pearl ? '、宝珠' : '') + (p.retain.qty ? '、残片' : '') + '与金币。</p></details>'
-      : '<div class="sm-preview-pending">' + esc(instruction) + '</div>') +
-      '<div class="sm-cost"><span>本次花费</span><b class="' + (canGold ? '' : 'err') + '">' + (p.main && p.sub ? p.gold.toLocaleString() + ' 金币' : '—') + '</b></div>' +
-      (p.retain.qty ? '<div class="sm-extra-cost">残片 ×' + p.retain.qty + '</div>' : '');
-    // Asset broadcasts must not repeatedly rebuild or close a player's expanded explanation.
-    if (panel._smHtml !== html) {
-      const open = Array.from(panel.querySelectorAll('details[open]')).map(function (x) { return x.className; });
-      panel.innerHTML = html; panel._smHtml = html;
-      panel.querySelectorAll('details').forEach(function (x) { x.open = open.indexOf(x.className) >= 0; });
-    }
-  }
-  // 打开组件选择子页面（与钓竿页「装备组件」同一个子页面）
-  function wsOpenPicker(which) {
-    const mainC = which === 'sub' ? D.componentOf(wsMain) : null;
-    openCompPicker({
-      mode: 'pick',
-      part: which === 'sub' ? (mainC ? mainC.part : null) : null,
-      title: which === 'main' ? '选择主组件' : ('选择副组件（需与主件同部位：' + (mainC ? partNameOf(mainC.part) : '?') + '）'),
-      note: which === 'main'
-        ? '从背包里挑一件组件作为主件（保留的那件）。可按部位与词条筛选。'
-        : '副件会被熔毁，且必须与主件**同部位**——这里只列出与主件同部位的组件。',
-      pickLabel: which === 'main' ? '选为主件' : '选为副件',
-      filter: function (c) { return !c.setId; },
-      exclude: which === 'main' ? [wsSub] : [wsMain],
-      getCurrent: function () { return which === 'main' ? wsMain : wsSub; },
-      onPick: function (id) {
-        if (which === 'main') {
-          const before = D.componentOf(wsMain);
-          const after = D.componentOf(id);
-          wsMain = id; wsMainAffix = '';
-          // 主件换了，残片保留的目标词缀也可能换人：片数草稿清零，避免带着上一件的片数过夜
-          wsRelics = 0;
-          // 主件换部位后，原副件若不同部位就不再合法：直接清掉，避免提交时才报错
-          if (before && after && before.part !== after.part) { wsSub = ''; wsSubAffix = ''; }
-        } else {
-          wsSub = id; wsSubAffix = '';
-        }
-        renderView();
-      },
-    });
-  }
   // 工作台（设计稿 v2 a-room-workshop.png）：3 张 bench 卡，点进对应页签。
   // 一级页签（工作台 / 装备成长 / 钓鱼套装 / 熔炼）由木梁下的挂签承载，
   // 所以这一页只负责把三条入口画成卡片，不再重复一行页签。
@@ -9593,7 +9170,6 @@ window.UI = (function () {
     [
       ['rod_carbon', '装备成长', '用航程凭证与精工热量强化配件', '最高 +' + maxLv + ' · 按部位强化', 'growth'],
       ['charm_trident', '钓鱼套装', '集齐两件套装核心，激活套装效果', '同套竿身与饰品同时装配后生效', 'sets'],
-      ['resonance_crystal', '熔炼', '主副组件熔炼：主件留底材，副件搬词条', '熔炼台 / 重铸 / 锻造', 'smelt'],
     ].forEach(function (c) {
       const card = el('article', 'pcard bench-card');
       card.setAttribute('data-tab-go', c[4]);
@@ -9616,7 +9192,7 @@ window.UI = (function () {
     const gearOn = !!(D.GEAR_SYSTEM.enabled && window.GearUI);
     // 历史工坊口径（装备成长系统关闭）：没有装备成长 / 钓鱼套装两页，直接进熔炼工作台，
     // 木梁挂签也只留「熔炼」（见 panelTabDefs）。
-    if (!gearOn) wsPanelTab = 'smelt';
+    if (!gearOn) wsPanelTab = 'bench';
     // 工作台：三张 bench 卡（任何配置下都有，因为它只做页签跳转）
     if (wsPanelTab === 'bench') { renderWorkshopBench(); return; }
     if (gearOn && (wsPanelTab === 'growth' || wsPanelTab === 'sets')) {
@@ -9633,599 +9209,7 @@ window.UI = (function () {
       GearUI.mount(body, wsPanelTab);
       return;
     }
-    const st = S();
-    wsPruneStale(); // 选中的组件若已被消耗 / 出售（悬空引用），先清掉再渲染
-    main.innerHTML = '';
-    if (wsTab === 'open') wsTab = 'smelt'; // 开箱已独立成页：旧会话里的开箱页签回到熔炼
-    const panel = el('div', 'panel wide ws-panel');
-    // 熔炼 / 重铸 / 锻造 是页内二级切换：港湾把一级页签放到木梁挂签后，
-    // 这一行仍要可见，所以用 .sub-cats（不是已被收起的 .section-tabs）。
-    panel.innerHTML = '<div class="inv-cats ws-tabs sub-cats" role="tablist">' +
-      orderedFeatureTabs('workshop', [['smelt', '🔥 熔炼'], ['recast', '♻ 重铸'], ['forge', '⚒ 锻造']], {}).map(function (kv) {
-        return '<button class="inv-cat' + (wsTab === kv[0] ? ' on' : '') + '" data-wstab="' + kv[0] +
-          '" role="tab" aria-selected="' + (wsTab === kv[0] ? 'true' : 'false') + '">' + kv[1] + '</button>';
-      }).join('') + '</div>';
-    const bindingChoice=el('label','ops-row');
-    bindingChoice.innerHTML='<span>消耗来源</span><select class="ipt" data-workshop-source title="奖励本身不可出售或交易；产物按管理员规则继承绑定"><option value="bound">优先使用奖励绑定物品</option><option value="free">仅使用普通物品</option></select>';
-    bindingChoice.querySelector('select').value=st.unboundInputs?'free':'bound';
-    bindingChoice.querySelector('select').onchange=function(e){st.unboundInputs=e.target.value==='free';};
-    panel.appendChild(bindingChoice);
-    const body = el('div', 'ws-body');
-    panel.appendChild(body);
-    main.appendChild(panel);
-    // 页签按钮在 panel 上（body 是它下面的内容容器），绑定要查 panel 而不是 body
-    panel.querySelectorAll('[data-wstab]').forEach(function (b) {
-      b.addEventListener('click', function () { const t = b.getAttribute('data-wstab'); if (t !== wsTab) { wsTab = t; renderView(); } });
-    });
-    if (wsTab === 'recast') return wsRenderRecast(body);
-    if (wsTab === 'forge') return wsRenderForge(body);
-    wsRenderSmelt(body);
-  }
-
-  // 熔炼流程一览（设计稿 v2 a-room-workshop.png 的 .forge）：主 + 副 + 催化 → 产物。
-  // 只读展示当前草稿（真正的选择 / 份数控制仍在下面工作台里），让港湾内景多一段设计稿口径的流程条。
-  function wsForgeSlot(id, cap, n) {
-    if (!id) return '<span class="slot empty"><span class="cap">' + esc(cap) + '</span>?</span>';
-    const rarity = (D.itemOf && D.itemOf(id) ? D.itemOf(id).rarity : '') || 'common';
-    return '<span class="slot ' + rarity + '"><span class="cap">' + esc(cap) + '</span>' +
-      '<img src="' + esc(D.itemIcon(id)) + '" alt="" loading="lazy" draggable="false" onerror="__imgFail(this)">' +
-      (n ? '<span class="q">' + n + '</span>' : '') + '</span>';
-  }
-  function wsForgeSummaryHtml() {
-    const matQty = wsMatPick ? wsMatQty() : 0;
-    return '<div class="forge ws-forge-summary" aria-hidden="true">' +
-      wsForgeSlot(wsMain, '主组件', 0) +
-      '<span class="arrow">+</span>' + wsForgeSlot(wsSub, '副组件', 0) +
-      '<span class="arrow">+</span>' + wsForgeSlot(wsMatPick, '催化', matQty) +
-      '<span class="arrow">→</span>' + wsForgeSlot(wsMain, '产物', 0) +
-      '</div>';
-  }
-  function wsRenderSmelt(body) {
-    const st = S(), comps = wsComponents();
-    const mainC = comps.find(function (c) { return c.id === wsMain; }) || null;
-    const subC = comps.find(function (c) { return c.id === wsSub; }) || null;
-    const rt = wsRetainInfo(mainC);
-    body.classList.add('smelt-workbench');
-    // 流程一览条是设计稿 v2 的内景零件：只在港湾内景里铺，经典布局（无面板外壳）里不占高度，
-    // 否则低分辨率下工作台会被顶出视口（旧验收口径要求整块工作台免滚动可见）。
-    const forgeSummary = document.body.classList.contains('harbor-on') ? wsForgeSummaryHtml() : '';
-    body.innerHTML = forgeSummary + '<fieldset class="sm-draft"' + (wsBusy ? ' disabled' : '') + '><legend class="sr-only">熔炼方案</legend>' +
-      '<div class="sm-step-title"><h3>01 <span>选择组件与词条</span></h3><span id="ws-step-feedback" role="status" aria-live="polite"></span></div>' +
-      '<div class="ws-grid">' + wsCompCardHtml('main', mainC) + wsCompCardHtml('sub', subC) + '</div>' +
-      (!comps.length ? '<div class="sm-empty-inventory">暂无组件 <button class="mini" id="ws-find-components">去开箱</button></div>' : '') +
-      '<div class="sm-step-title"><h3>02 <span>辅助材料</span></h3><span>可选</span></div>' +
-      '<div class="sm-options sm-options-3">' +
-      '<div class="sm-option sm-catalyst" id="ws-material-open" role="button" tabindex="0" aria-haspopup="dialog" aria-label="选择催化剂">' +
-      '<img id="ws-material-icon" src="assets/item/lure.png" alt="" />' +
-      '<div class="sm-option-copy"><strong id="ws-material-name">催化剂</strong><small id="ws-material-summary">点击选择催化剂</small></div>' +
-      '<div class="sm-mat-controls">' +
-      '<button type="button" class="mini" id="ws-mat-minus1" aria-label="催化剂 -1">-1</button>' +
-      '<button type="button" class="mini" id="ws-mat-plus1" aria-label="催化剂 +1">+1</button>' +
-      '<button type="button" class="mini" id="ws-mat-plus5" aria-label="催化剂 +5">+5</button>' +
-      '<button type="button" class="mini" id="ws-mat-clear">清空</button></div></div>' +
-      '<button type="button" id="ws-pearl" class="sm-option ws-pearl" aria-pressed="false"><img src="' + esc(D.itemIcon(D.SMELT_PEARL)) + '" alt="" />' +
-      '<span><strong>龙宫宝珠</strong><small>持有 <span data-have="' + esc(D.SMELT_PEARL) + '">' + (st.inventory[D.SMELT_PEARL] || 0) + '</span></small><small id="ws-pearl-status"></small></span>' +
-      '</button>' +
-      '<div class="sm-option sm-relic"><img src="assets/item/relic.png" alt="" /><div class="sm-relic-copy"><strong>沉船宝匣残片</strong>' +
-      (rt.eligible ? '<small>持有 <span data-have="relic">' + rt.have + '</span> · 最多 ' + rt.max + ' 片</small>' +
-        '<small id="ws-relic-count"></small><small id="ws-relic-chance"></small></div>' +
-        '<div class="sm-mat-controls"><button type="button" class="mini" id="ws-relic-minus1" aria-label="残片 -1">-1</button>' +
-        '<button type="button" class="mini" id="ws-relic-plus1" aria-label="残片 +1">+1</button>' +
-        '<button type="button" class="mini" id="ws-relic-plus5" aria-label="残片 +5">+5</button>' +
-        '<button type="button" class="mini" id="ws-relic-clear">清空</button></div>'
-        : '<small>' + (!mainC ? '先选主件' : !D.canRecast(mainC.meta) ? '需神话主件' : '没有可保留的额外词条') + '</small></div>') +
-      '</div></div></fieldset>' +
-      '<aside class="sm-preview-panel" aria-label="产物预览"><header><h3>产物预览</h3><span>实时更新</span></header>' +
-      '<div id="ws-preview" class="ws-preview"></div><div id="ws-submit-error" role="alert"></div>' +
-      '<button class="primary big" id="ws-go" aria-describedby="ws-step-feedback">选择主组件</button></aside>';
-    body.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { wsOpenPicker(b.dataset.pick); }; });
-    body.querySelectorAll('[data-unload]').forEach(function (b) { b.onclick = function () { wsUnload(b.dataset.unload); }; });
-    body.querySelectorAll('.ws-aff').forEach(function (b) { b.onclick = function () {
-      if (b.dataset.which === 'main') wsMainAffix = b.dataset.type; else wsSubAffix = b.dataset.type;
-      wsRefreshPreview();
-    }; });
-    // 点催化剂框体（份数按钮除外）打开子窗口；键盘 Enter / 空格同样可开
-    const matCard = $('ws-material-open');
-    matCard.onclick = function (ev) { if (ev.target.closest('.sm-mat-controls')) return; wsOpenMaterials(); };
-    matCard.onkeydown = function (ev) { if (ev.target === matCard && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); wsOpenMaterials(); } };
-    [['ws-mat-minus1', -1], ['ws-mat-plus1', 1], ['ws-mat-plus5', 5]].forEach(function (pair) {
-      if ($(pair[0])) $(pair[0]).onclick = function () { wsSetMatQty(wsMatQty() + pair[1]); wsRefreshPreview(); };
-    });
-    if ($('ws-mat-clear')) $('ws-mat-clear').onclick = function () { wsMatPick = ''; wsMats = {}; wsRefreshPreview(); };
-    $('ws-pearl').onclick = function () { wsPearl = !wsPearl; wsRefreshPreview(); };
-    [['ws-relic-minus1', -1], ['ws-relic-plus1', 1], ['ws-relic-plus5', 5]].forEach(function (pair) {
-      if ($(pair[0])) $(pair[0]).onclick = function () { wsAddRelics(pair[1]); };
-    });
-    if ($('ws-relic-clear')) $('ws-relic-clear').onclick = function () { wsRelics = 0; wsRefreshPreview(); };
-    if ($('ws-find-components')) $('ws-find-components').onclick = function () { currentView = 'chest'; renderNav(); renderView(); loadViewData('chest'); };
-    $('ws-go').onclick = wsDoSmelt;
-    wsRefreshPreview();
-  }
-  // 熔炼执行（二次确认 → 服务器掷骰 → 结果子窗口）
-
-  function wsDoSmelt() {
-    if (wsBusy || !featureGuard('workshop.smelt')) return;
-    const p = wsPlan();
-    if (!p.ok || (S().player.coins || 0) < p.gold) { wsRefreshPreview(); return; }
-    if ($('ws-submit-error')) $('ws-submit-error').textContent = '';
-    // Freeze the reviewed draft: asset updates/navigation must not change the submitted ingredients.
-    const request = { mainId: wsMain, subId: wsSub, mainAffix: wsMainAffix, subAffix: wsSubAffix,
-      materials: p.materials, pearl: p.pearl, relics: p.retain.qty };
-    wsBusy = true;
-    const draft = document.querySelector('.sm-draft'); if (draft) draft.disabled = true;
-    wsRefreshPreview();
-    confirmModal({
-      title: '确认熔炼', okText: '消耗 ' + p.gold + ' 金币 · 熔炼',
-      html: '<div class="sm-confirm"><p><b>' + esc(p.main.meta.name) + '</b> ← ' + esc(D.AFFIX_LABEL[wsSubAffix] || wsSubAffix) + '</p>' +
-        '<p>必定消耗：' + esc(p.sub.meta.name) + ' ×1' + p.materials.map(function (m) { return '、' + esc(itemMeta(m.id).name) + ' ×' + m.qty; }).join('') +
-      (p.pearl ? '、龙宫宝珠 ×1' : '') + (p.retain.qty ? '、残片 ×' + p.retain.qty : '') + '。</p>' +
-        '<p>熔炼成功 <b>' + p.rates.rate + '%</b>' + (p.extraType ? ' · 三条全部获得 <b>' + D.smeltSuccessProbs(p.rates, true).full + '%</b>' : '') + '</p>' +
-        '<p>成功后仅保留预览中的词条，数值重新随机生成。</p>' +
-        '<p class="sm-risk">' + wsFailureText(p) + '</p></div>',
-    }).then(function (ok) {
-      if (!ok) return;
-      if (!featureGuard('workshop.smelt')) return;
-      return Promise.resolve(window.Net.smelt(request)).then(function (r) {
-        if (!r || !r.ok) throw new Error((r && r.data && r.data.error) || '熔炼未完成，请重试');
-        S().player.coins = r.data.coins; applyInvFrom(r.data);
-        wsMatPick = ''; wsMats = {}; wsPearl = false; wsRelics = 0;
-        wsMain = ''; wsSub = ''; wsMainAffix = ''; wsSubAffix = '';
-        renderTopbar(); renderView(); wsShowResult(r.data, request);
-      });
-    }).catch(function (err) {
-      const target = $('ws-submit-error');
-      if (target) target.textContent = err.message || '网络错误，请检查后重试';
-      else toast(err.message || '网络错误');
-    }).finally(function () {
-      wsBusy = false;
-      const draft = document.querySelector('.sm-draft'); if (draft) draft.disabled = false;
-      wsRefreshPreview();
-    });
-  }
-  // Shared result layout follows the live preview; values always come from the server.
-  function wsResultRow(before, after, label) {
-    return '<div class="sm-result-aff sm-outcome-row' + (after ? '' : ' lost') + '">' +
-      '<div><span>' + esc(before) + '</span><span class="sm-outcome-arrow" aria-hidden="true">→</span>' +
-      '<strong>' + (after ? affSpanOpen(after) + esc(affixText(after)) + '</span>' : '未保留') + '</strong></div>' +
-      '<small>' + esc(label) + '</small></div>';
-  }
-  function wsResultDialog(title, item, rows, note) {
-    closeOverlays();
-    const previous = document.activeElement;
-    const close = function () { overlay.remove(); if (previous && previous.isConnected) previous.focus(); };
-    const overlay = buildOverlay(close), box = el('div', 'modal-box confirm-modal chest-result-modal sm-result-dialog');
-    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'ws-result-title');
-    box.innerHTML = '<div class="modal-head"><span class="modal-title" id="ws-result-title">' + esc(title) +
-      '</span><button class="mini modal-close" aria-label="关闭结果">✕</button></div>' +
-      '<div class="modal-body"><section class="sm-preview-panel"><header><h3>产物结算</h3><span>实际结果</span></header>' +
-      (item ? '<div class="ws-result-card"><img class="ws-result-icon" src="' + esc(D.itemIcon(item.baseId)) + '" alt="" />' +
-        '<div><strong class="' + qualityClass(item) + '">' + esc(item.name) + '</strong><span>' +
-        esc(partNameOf(item.part)) + ' · ' + esc(qualityName(item)) + ' · ' + item.affixes.length + ' 词条</span></div></div>' : '') +
-      '<div class="ws-res-affs">' + rows + '</div></section>' + note + '</div>' +
-      '<footer class="sm-material-footer"><span>结算已同步至背包</span><button class="mini primary-mini cr-ok">知道了</button></footer>';
-    overlay.appendChild(box); document.body.appendChild(overlay);
-    box.querySelector('.modal-close').onclick = close; box.querySelector('.cr-ok').onclick = close;
-    box.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); close(); }
-      if (ev.key === 'Tab') {
-        const first = box.querySelector('.modal-close'), last = box.querySelector('.cr-ok');
-        if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
-        else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
-      }
-    });
-    box.querySelector('.cr-ok').focus();
-  }
-  function wsShowResult(d, request) {
-    const item = d.success ? (d.result || d.item) : d.mainAfter;
-    const main = D.componentOf(d.mainId || request.mainId), sub = D.componentOf(d.subId || request.subId);
-    const affixes = item ? item.affixes : [], used = {};
-    let rows = '';
-    (main ? main.affixes : []).forEach(function (a) {
-      const after = affixes.find(function (x) { return x.type === a.type; });
-      // A matching secondary/catalyst type replaces this main affix; it was not retained.
-      const replaced = d.success && a.type !== request.mainAffix && (a.type === request.subAffix || a.type === d.extraType);
-      const kept = replaced ? null : after;
-      if (kept) used[a.type] = true;
-      rows += wsResultRow('主件 · ' + affixText(a), kept,
-        !kept ? '原词条未保留' : !d.success ? (d.protectAffix && a.type === request.mainAffix ? '残片保护 · 原值保留' : '原值保留')
-          : a.type === request.mainAffix ? '类型保留 · 数值重掷' : '残片命中 · 原值保留');
-    });
-    const subAffix = sub && sub.affixes.find(function (a) { return a.type === request.subAffix; });
-    if (subAffix) {
-      const after = d.success && affixes.find(function (a) { return a.type === request.subAffix; });
-      if (after) used[after.type] = true;
-      rows += wsResultRow('副件 · ' + affixText(subAffix), after, after ? '搬入成功 · 数值重掷' : '搬入失败 · 副件已消耗');
-    }
-    if (d.extraType) {
-      const after = d.extraOk && affixes.find(function (a) { return a.type === d.extraType; });
-      if (after) used[after.type] = true;
-      rows += wsResultRow('催化剂 · ' + (D.AFFIX_LABEL[d.extraType] || d.extraType), after, after ? '补缀成功 · 新增词条' : '补缀未成功');
-    }
-    affixes.forEach(function (a) { if (!used[a.type]) rows += wsResultRow('产物词条', a, '实际获得'); });
-    wsResultDialog(d.success ? '⚒ 熔炼成功' : '⚒ 熔炼失败', item, rows,
-      (!d.success ? '<div class="cr-fail sm-risk">熔炼失败：副件 / 催化剂 / 残片已消耗；' +
-        (d.protectAffix ? '主件选中的词条已被残片保护。' : '主件选中的词条已熔毁。') + '</div>' : '') +
-      '<div class="sm-cost">花费 <b>' + d.gold + ' 💰</b><span>成功率 ' + d.rate + '%</span></div>' +
-      (d.relics ? '<p class="hint">残片 ' + d.relics + ' 片 · 保留概率 ' + d.retainChance + '% · ' +
-        (d.success ? (d.retainOk ? '保留命中' : '保留未命中') : '已保护主件所选词条') + '</p>' : ''));
-  }
-
-  // ---- 工坊 · 重铸 ----
-  // 放一件宝匣产出的神话组件 → 自动列出所需材料（龙宫宝珠）→ 重 roll 词条数值。
-  // v0.16.0：点词条行可以把重铸**指定到那一条**——第 n 条额外消耗 n 颗宝珠，只重掷这一条；
-  // 不指定时（基础消耗）重 roll 全部词条。
-  function recastPearlExtra(idx) { return D.recastPearlExtra ? D.recastPearlExtra(idx) : 0; }
-  function wsRecastInfo() {
-    const ws = S().workshop || {};
-    const r = ws.recast || {};
-    const cfg = D.getSmeltCfg();
-    const pearlId = r.pearlId || D.SMELT_PEARL || 'dragonpearl';
-    return {
-      quality: r.quality || D.RECAST_QUALITY,
-      qualityName: r.qualityName || '神话',
-      pearlId: pearlId,
-      pearlName: r.pearlName || itemMeta(pearlId).name || '龙宫宝珠',
-      pearlBase: r.pearlBase != null ? r.pearlBase : (cfg.recastPearl != null ? cfg.recastPearl : 1),
-      pearlHave: S().inventory[pearlId] || 0,
-      // v0.16.3：这里是**每颗宝珠的单价**；本次总手续费 = 宝珠数 × 它，在 wsRecastCost 里算
-      goldPerPearl: r.goldPerPearl != null ? r.goldPerPearl : (cfg.recastGold || 0),
-      minValue: r.minValue != null ? !!r.minValue : !!cfg.recastMinValue,
-    };
-  }
-  // 当前重铸的总消耗：基础 + 指定词条的额外宝珠（第 n 条 = n 颗），手续费按宝珠数计
-  function wsRecastCost(info) {
-    const extra = recastPearlExtra(wsRecastTarget);
-    const pearl = info.pearlBase + extra;
-    return { extra: extra, pearl: pearl, gold: D.recastGoldFor(pearl) };
-  }
-  function wsRenderRecast(body) {
-    const st = S();
-    const info = wsRecastInfo();
-    body.classList.add('smelt-workbench', 'recast-workbench');
-    const comp = wsRecast ? D.componentOf(wsRecast) : null;
-    const eligible = comp && D.canRecast(comp) ? comp : null;
-    const cost = wsRecastCost(info);
-    const enough = info.pearlHave >= cost.pearl && (st.player.coins || 0) >= cost.gold;
-    body.innerHTML =
-      '<fieldset class="sm-draft"' + (wsBusy ? ' disabled' : '') + '><legend class="sr-only">重铸方案</legend>' +
-      '<details class="ws-help"><summary>重铸规则</summary>重铸只针对<b>宝匣产出的神话组件</b>（海王遗匣的产出，含突破件）：' +
-      '保持词条类型与条数不变，按当前 roll 模型重新掷数值。消耗 <b>' + esc(info.pearlName) + '</b>：' +
-      '基础 <b>' + info.pearlBase + ' 颗</b>重 roll 全部词条；再<b>点下面的某一条词条</b>即可把重铸指定到它——' +
-      '第 n 条额外消耗 n 颗宝珠，此时只有这一条会变。' +
-      (info.minValue ? '<b class="ok">当前设置为「至少不比原来差」</b>：每条取新旧里更好的那个。' : '') +
-      '</details>' +
-      '<div class="ws-grid">' +
-      '<div class="ws-col"><h3>♻ 待重铸组件（' + esc(info.qualityName) + '品质）</h3>' +
-      (eligible
-        ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-recast-pick="1">' +
-          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="__imgFail(this)">' +
-          '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
-          '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + ' 词条 · 基准价 ' + eligible.price + '💰</span>' +
-          '<span class="ws-pick-change">更换</span></button>' +
-          '<button class="mini ws-unload" data-unload="recast" title="清空待重铸组件（同时取消词条指定）">卸下</button></div>' +
-          '<div class="hint">点一行 = 把重铸指定到那条词条（再点一次取消指定）</div>' +
-          '<div class="rc-pick-list">' + eligible.affixes.map(function (a, i) {
-            const rng = affixRangeIn(eligible, a);
-            const on = wsRecastTarget === i;
-            const extra = recastPearlExtra(i);
-            return '<button class="rc-pick' + (on ? ' on' : '') + '" data-recast-target="' + i + '" title="' +
-              (on ? '取消指定（回到「重 roll 全部词条」）' : '把重铸指定到第 ' + (i + 1) + ' 条词条（额外 ' + extra + ' 颗' + esc(info.pearlName) + '）') + '">' +
-              '<span class="rc-pick-idx">第 ' + (i + 1) + ' 条</span>' +
-              affSpanOpen(a) + esc(affixText(a)) +
-              (rng ? '<span class="ws-aff-rng">（' + esc(rangeText({ min: rng[0], max: rng[1] })) + '%）</span>' : '') + '</span>' +
-              '<span class="rc-pick-cost">' + (on ? '✅ 已指定 · 额外 ' + extra + ' 颗' : '指定 +' + extra + ' 颗') + '</span>' +
-              '</button>';
-          }).join('') + '</div>'
-        : '<button class="ws-pick empty" data-recast-pick="1">＋ 点击选择组件</button>' +
-          '<div class="hint">只有' + esc(info.qualityName) + '品质（宝匣产出）的组件可以重铸；背包里没有符合条件的组件时会列不出来。</div>') +
-      '</div>' +
-      '<div class="ws-col sm-preview-panel"><h3>🧾 重铸材料（自动识别）</h3>' +
-      '<div class="ws-mat-grid" id="ws-recast-mats">' +
-      '<label class="ws-mat' + (info.pearlHave >= cost.pearl ? '' : ' none') + '" data-mat="' + esc(info.pearlId) + '" data-need="' + cost.pearl + '">' +
-      '<span class="wm-name">' + esc(info.pearlName) + '</span>' +
-      '<span class="wm-aff">' + (wsRecastTarget >= 0 ? '→ 指定第 ' + (wsRecastTarget + 1) + ' 条词条' : '→ 重铸全部词条') + '</span>' +
-      '<span class="wm-have">持有 ' + info.pearlHave + '</span>' +
-      '<span class="wm-unit">需要 ' + cost.pearl + '</span></label>' +
-      (cost.gold > 0 ? '<label class="ws-mat' + ((st.player.coins || 0) >= cost.gold ? '' : ' none') +
-        '" data-mat="@coins" data-need="' + cost.gold + '"><span class="wm-name">金币</span><span class="wm-aff">→ 手续费</span>' +
-        '<span class="wm-have">持有 ' + Math.round(st.player.coins || 0) + '</span>' +
-        '<span class="wm-unit">需要 ' + cost.gold + '</span></label>' : '') +
-      '</div>' +
-      (cost.extra > 0 ? '<div class="ws-line muted">基础 ' + info.pearlBase + ' 颗 + 指定第 ' + (wsRecastTarget + 1) +
-        ' 条 ' + cost.extra + ' 颗 = <b>' + cost.pearl + ' 颗</b>（第 n 条词条额外要 n 颗）</div>' : '') +
-      '<div class="ws-preview">' +
-      '<div class="ws-line" id="ws-recast-state">' + (eligible
-        ? (enough ? '<b class="ok">材料充足</b>' : '<b class="err">材料不足</b>') +
-          '：' + esc(info.pearlName) + ' ×' + cost.pearl + (cost.gold > 0 ? ' + 💰' + cost.gold : '') +
-          ' · ' + (wsRecastTarget >= 0
-            ? '只重掷第 ' + (wsRecastTarget + 1) + ' 条（' + esc(affixText(eligible.affixes[wsRecastTarget])) + '）'
-            : '重 roll 全部 ' + eligible.affixes.length + ' 条词条的数值')
-        : '<span class="muted">先放入一件待重铸的组件</span>') + '</div>' +
-      '<div class="ws-line muted">重铸不改变品质 / 底材 / 词条类型与条数，也不会失败——只有数值会变。</div>' +
-      '<label class="ws-line"><input type="checkbox" id="ws-recast-quiet"' + (wsRecastQuiet ? ' checked' : '') + '> 不再弹出重铸成功页面</label>' +
-      '</div>' +
-      '<button class="primary big" id="ws-recast-go"' + (eligible && enough ? '' : ' disabled') + '>开始重铸（' +
-      cost.pearl + ' 颗' + esc(info.pearlName) + (cost.gold > 0 ? ' + ' + cost.gold + '💰' : '') + '）</button>' +
-      '</div></div></fieldset>';
-    body.querySelectorAll('[data-recast-pick]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        openCompPicker({
-          mode: 'pick', part: null, quality: info.quality,
-          title: '选择要重铸的组件（' + info.qualityName + '）',
-          note: '只列出' + info.qualityName + '品质的组件——目前只有「海王遗匣」的产出（含突破件）符合条件。',
-          pickLabel: '选为重铸件',
-          exclude: [], getCurrent: function () { return wsRecast; },
-          onPick: function (id) { wsRecast = id; wsRecastTarget = -1; renderView(); },
-        });
-      });
-    });
-    body.querySelectorAll('[data-recast-target]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        const i = Number(b.getAttribute('data-recast-target'));
-        wsRecastTarget = (wsRecastTarget === i) ? -1 : i;
-        renderView();
-      });
-    });
-    body.querySelectorAll('[data-unload]').forEach(function (b) {
-      b.addEventListener('click', function () { wsUnload(b.getAttribute('data-unload')); });
-    });
-    if ($('ws-recast-go')) $('ws-recast-go').addEventListener('click', function () { wsDoRecast(); });
-    $('ws-recast-quiet').addEventListener('change', function () {
-      wsRecastQuiet = this.checked;
-      try { localStorage.setItem('fish.recast.quiet', wsRecastQuiet ? '1' : '0'); } catch (_) {}
-    });
-  }
-
-  function wsOpenForgeMaterials() {
-    if (wsBusy) return;
-    closeOverlays();
-    const close = function () { overlay.remove(); renderView(); if ($('ws-forge-material-open')) $('ws-forge-material-open').focus(); };
-    const overlay = buildOverlay(close), box = el('div', 'modal-box sm-material-dialog');
-    box.id = 'ws-forge-material-modal'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
-    box.setAttribute('aria-labelledby', 'ws-forge-material-title');
-    function refresh() {
-      const comp = D.componentOf(wsForge);
-      box.innerHTML = '<div class="modal-head"><span class="modal-title" id="ws-forge-material-title">选择锻造催化剂</span>' +
-        '<button class="mini modal-close" aria-label="关闭催化剂选择">✕</button></div><div class="modal-body">' +
-        '<p class="sm-material-limit">每次消耗 1 个 · 新增一条催化词条 · 原词条按原值保留</p><div class="ws-mat-grid">' +
-        D.smeltMaterialIds().map(function (id) {
-          const type = D.smeltMaterialAffix(id), have = S().inventory[id] || 0;
-          const range = comp && D.catalystRangeFor(comp.part, type);
-          const full = comp && comp.affixes.length >= (D.QUALITY[comp.quality] || {}).cap;
-          const exists = comp && comp.affixes.some(function (a) { return a.type === type; });
-          const outside = comp && ((!(D.componentBase(comp.baseId)||{}).legacy && (D.PART_AFFIXES[comp.part]||[]).indexOf(type)<0) || (!D.getSmeltCfg().forgeAnyAffix && !D.COMPONENT_BASES.find(function (b) { return b.id === comp.baseId; }).pool.some(function (a) { return a.type === type; })));
-          const reason = !comp ? '请先选择组件' : outside ? '当前禁止锻造池外词条' : full ? '词条数已达上限' : exists ? '已有该词条' : !range ? '无法新增该词条' : !have ? '库存不足' : '';
-          return '<button type="button" class="ws-mat forge-mat' + (wsForgeMat === id ? ' selected' : '') + (reason ? ' unavailable' : '') +
-            '" data-forge-mat="' + esc(id) + '" aria-pressed="' + (wsForgeMat === id) + '"' + (reason ? ' disabled' : '') + '>' +
-            '<img class="sm-material-icon" src="' + esc(D.itemIcon(id)) + '" alt="" /><span class="sm-mat-info"><strong class="wm-name">' + esc(D.itemName(id)) +
-            '</strong><span class="wm-aff">→ ' + esc(D.AFFIX_LABEL[type] || type) + (range ? ' ' + esc(rangeText({ min: range[0], max: range[1] })) + '%' : '') +
-            '</span><small class="wm-have">持有 ' + have + (reason ? ' · ' + reason : ' · 消耗 1') + '</small></span></button>';
-        }).join('') + '</div></div><footer class="sm-material-footer"><span role="status">' +
-        (wsForgeMat ? '已选 ' + esc(D.itemName(wsForgeMat)) : '请选择一种催化剂') + '</span><button class="mini primary-mini sm-material-done">完成</button></footer>';
-      box.querySelector('.modal-close').onclick = close; box.querySelector('.sm-material-done').onclick = close;
-      box.querySelectorAll('[data-forge-mat]').forEach(function (button) {
-        button.onclick = function () { wsForgeMat = button.dataset.forgeMat; refresh(); box.querySelector('[aria-pressed="true"]').focus(); };
-      });
-    }
-    box.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); close(); }
-      if (ev.key === 'Tab') {
-        const nodes = box.querySelectorAll('button:not(:disabled)'), first = nodes[0], last = nodes[nodes.length - 1];
-        if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
-        else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
-      }
-    });
-    refresh(); overlay.appendChild(box); document.body.appendChild(overlay); box.querySelector('.modal-close').focus();
-  }
-
-  function wsRenderForge(body) {
-    const st = S();
-    const pearlHave = st.inventory[D.SMELT_PEARL] || 0;
-    if (!pearlHave) wsForgePearl = false;
-    const comp = wsForge ? D.componentOf(wsForge) : null;
-    const cap = comp ? (((D.QUALITY[comp.quality] || {}).cap) || 0) : 0;
-    const eligible = comp && !comp.setId && cap > 0 && (comp.affixes || []).length < cap ? comp : null;
-    const chosenType = wsForgeMat ? D.smeltMaterialAffix(wsForgeMat) : '';
-    const range = eligible && chosenType ? D.catalystRangeFor(eligible.part, chosenType, wsForgePearl) : null;
-    const have = wsForgeMat ? (st.inventory[wsForgeMat] || 0) : 0;
-    const already = eligible && chosenType && (eligible.affixes || []).some(function (a) { return a.type === chosenType; });
-    const forgeBase = eligible && D.COMPONENT_BASES.find(function (b) { return b.id === eligible.baseId; });
-    const forgeAllowed = !eligible || ((forgeBase.legacy || (D.PART_AFFIXES[eligible.part] || []).includes(chosenType)) && (D.getSmeltCfg().forgeAnyAffix || forgeBase.pool.some(function (a) { return a.type === chosenType; })));
-    const canGo = !!(eligible && chosenType && range && have > 0 && !already && forgeAllowed && !wsBusy);
-    body.classList.add('smelt-workbench');
-    body.innerHTML = '<fieldset class="sm-draft"' + (wsBusy ? ' disabled' : '') + '><legend class="sr-only">锻造方案</legend>' +
-      '<div class="sm-step-title"><h3>01 <span>选择组件</span></h3><span>仅限词条未达上限</span></div>' +
-      (eligible
-        ? '<div class="ws-pick-row"><button class="ws-pick chosen" data-forge-pick="1">' +
-          '<img class="ws-pick-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" draggable="false" onerror="__imgFail(this)">' +
-          '<span class="ws-pick-name ' + qualityClass(eligible) + '">' + esc(eligible.name) + '</span>' + itemTag(eligible) +
-          '<span class="ws-pick-meta">' + esc(partNameOf(eligible.part)) + ' · ' + eligible.affixes.length + '/' + cap + ' 词条 · ' + esc(qualityName(eligible)) + '</span>' +
-          '<span class="ws-pick-change">更换</span></button>' +
-          '<button class="mini ws-unload" data-unload="forge" title="清空待锻造组件">卸下</button></div>' +
-          '<div class="ws-affs">' + (eligible.affixes || []).map(function (a) {
-            return '<div class="ws-aff"><span class="inst-aff">' + affSpanOpen(a) + esc(affixText(a)) + '</span></div>';
-          }).join('') + '</div>'
-        : '<button class="ws-pick empty" data-forge-pick="1">＋ 点击选择词条未达上限的组件</button>') +
-      '<div class="sm-step-title"><h3>02 <span>选择催化剂</span></h3><span>消耗 1 个</span></div>' +
-      '<button type="button" class="sm-materials" id="ws-forge-material-open" aria-haspopup="dialog">' +
-      (wsForgeMat ? '<img class="sm-material-icon" src="' + esc(D.itemIcon(wsForgeMat)) + '" alt="" />' : '') +
-      '<span class="sm-item-copy"><strong>' + (wsForgeMat ? esc(D.itemName(wsForgeMat)) : '选择催化剂') +
-      '</strong><small>' + (wsForgeMat ? '持有 ' + have + ' · 消耗 1 个 · 点击更换' : '查看材料库存与可新增词条') + '</small></span><span>→</span></button>' +
-      '<div class="sm-step-title"><h3>03 <span>辅助材料</span></h3><span>可选</span></div>' +
-      '<button type="button" id="ws-forge-pearl" class="sm-option ws-pearl' + (wsForgePearl ? ' selected' : '') +
-      '" aria-pressed="' + wsForgePearl + '"' + (!pearlHave || wsBusy ? ' disabled' : '') + '>' +
-      '<img src="' + esc(D.itemIcon(D.SMELT_PEARL)) + '" alt=""><span><strong>龙宫宝珠</strong>' +
-      '<small>宝珠护持</small><small>消耗 1 颗龙宫宝珠，恢复催化词条的完整数值范围</small>' +
-      '<small>持有 ' + pearlHave + ' · ' + (wsForgePearl ? '已启用 · 本次消耗 1 颗' : '未启用') + '</small></span></button></fieldset>' +
-      '<aside class="sm-preview-panel" aria-label="锻造预览"><header><h3>锻造预览</h3><span>催化剂词条</span></header>' +
-      '<div class="ws-preview"><div class="ws-line" id="ws-forge-state">' +
-      (!eligible ? '<span class="muted">先选择一件词条未达上限的组件</span>'
-        : (!chosenType ? '<span class="muted">选择一种催化剂材料</span>'
-          : (!forgeAllowed ? '<b class="err">当前禁止锻造池外词条</b>' : already ? '<b class="err">该组件已经拥有这条词缀</b>'
-            : (have > 0 ? '<b class="ok">可以锻造</b>' : '<b class="err">催化剂材料不足</b>')))) + '</div>' +
-      (eligible && chosenType && range ? '<div class="ws-result-card"><img class="ws-result-icon" src="' + esc(D.itemIcon(eligible.baseId)) + '" alt="" />' +
-        '<div><strong class="' + qualityClass(eligible) + '">' + esc(eligible.name) + '</strong>' +
-        '<span>新增 ' + esc(D.AFFIX_LABEL[chosenType] || chosenType) + ' ' + esc(rangeText({ min: range[0], max: range[1] })) + '%</span>' +
-        '<small>词条 ' + eligible.affixes.length + ' → ' + (eligible.affixes.length + 1) + ' / ' + cap + '</small></div></div>' : '') +
-      '</div><div id="ws-submit-error" role="alert"></div>' +
-      '<button class="primary big" id="ws-forge-go"' + (canGo ? '' : ' disabled') + '>开始锻造</button></aside>';
-    body.querySelectorAll('[data-forge-pick]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        openCompPicker({
-          mode: 'pick', part: null, title: '选择要锻造的组件',
-          note: '只列出词条数量未达到品质上限的组件。',
-          pickLabel: '选为锻造件', exclude: [], getCurrent: function () { return wsForge; },
-          filter: function (c) {
-            const ccap = (((D.QUALITY[c.quality] || {}).cap) || 0);
-            return !c.setId && ccap > 0 && (c.affixes || []).length < ccap;
-          },
-          onPick: function (id) { wsForge = id; wsForgeMat = ''; wsForgePearl = false; renderView(); },
-        });
-      });
-    });
-    $('ws-forge-material-open').onclick = wsOpenForgeMaterials;
-    $('ws-forge-pearl').onclick = function () { wsForgePearl = !wsForgePearl; renderView(); $('ws-forge-pearl').focus(); };
-    body.querySelectorAll('[data-unload]').forEach(function (b) {
-      b.addEventListener('click', function () { wsUnload(b.getAttribute('data-unload')); });
-    });
-    if ($('ws-forge-go')) $('ws-forge-go').addEventListener('click', function () {
-      if (!canGo || wsBusy) return;
-      wsBusy = true;
-      const before = comp;
-      renderView();
-      window.Net.forge(wsForge, wsForgeMat, wsForgePearl).then(function (r) {
-        wsBusy = false;
-        if (!r || !r.ok) { toast((r && r.data && r.data.error) || '锻造失败', true); renderView(); return; }
-        if (r.data.inventory) applyInvFrom(r.data);
-        if (r.data.coins != null) S().player.coins = r.data.coins;
-        const rows = r.data.item.affixes.map(function (a) {
-          const old = before.affixes.find(function (x) { return x.type === a.type; });
-          return wsResultRow(old ? affixText(old) : '催化剂 · ' + r.data.material.name, a, old ? '原值保留' : '锻造成功 · 新增词条');
-        }).join('');
-        wsForge = ''; wsForgeMat = ''; wsForgePearl = false;
-        renderTopbar(); renderView();
-        wsResultDialog('⚒ 锻造成功', r.data.item, rows, '<p class="hint">消耗 ' + esc(r.data.material.name) + ' ×1' + (r.data.pearl ? '、龙宫宝珠 ×1' : '') + '</p>');
-      }).catch(function () {
-        wsBusy = false; renderView();
-        if ($('ws-submit-error')) $('ws-submit-error').textContent = '网络错误，请检查背包后重试';
-      });
-    });
-  }
-
-  // 重铸页的「材料充足 / 不足」与按钮禁用态：资产变化后原地更新（.none 与「持有」数字由 wsPatchAssets 处理）
-  function wsRecastPatchState() {
-    const st = S();
-    const info = wsRecastInfo();
-    const comp = wsRecast ? D.componentOf(wsRecast) : null;
-    const eligible = comp && D.canRecast(comp) ? comp : null;
-    const cost = wsRecastCost(info);
-    const enough = info.pearlHave >= cost.pearl && (st.player.coins || 0) >= cost.gold;
-    const line = $('ws-recast-state');
-    if (line) {
-      const html = eligible
-        ? (enough ? '<b class="ok">材料充足</b>' : '<b class="err">材料不足</b>') +
-          '：' + esc(info.pearlName) + ' ×' + cost.pearl + (cost.gold > 0 ? ' + 💰' + cost.gold : '') +
-          ' · ' + (wsRecastTarget >= 0
-            ? '只重掷第 ' + (wsRecastTarget + 1) + ' 条（' + esc(affixText(eligible.affixes[wsRecastTarget])) + '）'
-            : '重 roll 全部 ' + eligible.affixes.length + ' 条词条的数值')
-        : '<span class="muted">先放入一件待重铸的组件</span>';
-      if (line.innerHTML !== html) line.innerHTML = html;
-    }
-    const go = $('ws-recast-go');
-    if (go) go.disabled = !(eligible && enough);
-  }
-
-  // 工坊：纯资产广播（上鱼 / 售出 / 交易只改背包与金币）不整页重建——
-  // 只更新「持有 N」数字与下方预览，输入框的焦点、光标与已填份数全部保留
-  //（此前每次上鱼都整页重画，正在填的份数会被重建冲掉）。返回 false 表示当前不在工坊页。
-  function wsPatchAssets() {
-    // Forge has its own ingredient state; rebuild it when inventories change.
-    if (wsTab === 'forge') return false;
-    const main = $('main');
-    const st = S();
-    if (!main || !main.querySelector('.ws-panel')) return false;
-    const have = function (id) {
-      return id === '@coins' ? Math.round(st.player.coins || 0) : ((st.inventory && st.inventory[id]) || 0);
-    };
-    main.querySelectorAll('.ws-mat[data-mat]').forEach(function (lab) {
-      const n = have(lab.getAttribute('data-mat'));
-      const box = lab.querySelector('.wm-have');
-      if (box && box.textContent !== '持有 ' + n) box.textContent = '持有 ' + n;
-      const need = Number(lab.getAttribute('data-need')) || 0;
-      lab.classList.toggle('none', need > 0 ? n < need : n <= 0);
-    });
-    main.querySelectorAll('[data-have]').forEach(function (sp) {
-      const n = String(have(sp.getAttribute('data-have')));
-      if (sp.textContent !== n) sp.textContent = n;
-    });
-    if (wsTab === 'recast') wsRecastPatchState(); else wsRefreshPreview();
-    return true;
-  }
-  function wsDoRecast() {
-    const info = wsRecastInfo();
-    const comp = D.componentOf(wsRecast);
-    if (!comp || !D.canRecast(comp)) { toast('请先选择一件宝匣产出的神话组件'); return; }
-    const cost = wsRecastCost(info);
-    const target = wsRecastTarget;
-    const targetText = target >= 0 ? '第 ' + (target + 1) + ' 条词条（' + affixText(comp.affixes[target]) + '）' : '';
-    confirmModal({
-      title: '♻ 确认重铸',
-      okText: '开始重铸（' + cost.pearl + ' 颗）',
-      html: '重铸 <b>' + esc(comp.name) + '</b>？<br/>消耗 <b>' + esc(info.pearlName) + ' ×' + cost.pearl + '</b>' +
-        (cost.extra > 0 ? '（基础 ' + info.pearlBase + ' + 指定词条 ' + cost.extra + '）' : '') +
-        (cost.gold > 0 ? ' + 💰' + cost.gold : '') + '。<br/>' +
-        (target >= 0
-          ? '只重掷 <b>' + esc(targetText) + '</b> 的数值，其余 ' + (comp.affixes.length - 1) + ' 条原样保留'
-          : '全部 ' + comp.affixes.length + ' 条词条会重新掷数值') +
-        '（类型与条数不变）' +
-        (info.minValue ? '，且每条都保证不比原来差' : '') + '。',
-    }).then(function (ok) {
-      if (!ok) return;
-      Promise.resolve(window.Net.recast(wsRecast, target >= 0 ? target : undefined)).then(function (r) {
-        if (!r || !r.ok) { toast((r && r.data && r.data.error) || '重铸失败'); return; }
-        const st = S();
-        st.player.coins = r.data.coins;
-        applyInvFrom(r.data);
-        wsRecast = r.data.id || '';
-        const after = D.componentOf(wsRecast);
-        wsRecastTarget = after && target < after.affixes.length ? target : -1;
-        renderTopbar(); renderView();
-        if (wsRecastQuiet) toast(target >= 0 ? '重铸完成，已保留指定词条' : '重铸完成');
-        else wsShowRecastResult(comp, r.data, target);
-      }).catch(function () { toast('网络错误'); });
-    });
-  }
-  function wsShowRecastResult(before, d, target) {
-    const overlay = buildOverlay(function () { overlay.remove(); });
-    const box = el('div', 'modal-box confirm-modal chest-result-modal');
-    const tgt = (target != null && target >= 0) ? target : (d.target != null && d.target >= 0 ? d.target : -1);
-    const lines = (d.item ? d.item.affixes : []).map(function (a, i) {
-      const b = (before && before.affixes[i]) || { value: null };
-      const up = b.value != null && a.value > b.value;
-      const same = b.value != null && a.value === b.value;
-      return '<div class="rc-line' + (tgt >= 0 ? (i === tgt ? ' rc-target' : ' rc-kept') : '') + '">' +
-        (tgt >= 0 ? '<span class="rc-tag">' + (i === tgt ? '重铸' : '保留') + '</span>' : '') +
-        esc(D.AFFIX_LABEL[a.type] || a.type) +
-        '<span class="rc-old">' + (b.value == null ? '—' : (b.value > 0 ? '+' : '') + b.value) + '</span>' +
-        '<span class="rc-arrow">→</span>' +
-        '<span class="rc-new ' + (up ? 'up' : (same ? 'same' : 'down')) + '">' + (a.value > 0 ? '+' : '') + a.value + '</span>' +
-        (a.extra ? '<span class="aff-extra-tag ' + (affixKind(a) === 'breakthrough' ? 'bt' : (affixKind(a) === 'catalyst' ? 'ct' : 'ex')) + '">' + esc(extraAffixName(a)) + '</span>' : '') + '</div>';
-    }).join('');
-    box.innerHTML = '<div class="modal-head"><span class="modal-title">♻ 重铸完成</span>' +
-      '<button class="mini modal-close">✕ 关闭</button></div>' +
-      '<div class="modal-body">' +
-      (d.item ? chestItemCardHtml(d.item) : '') +
-      (tgt >= 0 ? '<div class="hint">本次只重铸了第 ' + (tgt + 1) + ' 条词条，其余词条原样保留。</div>' : '') +
-      '<div class="rc-diff">' + lines + '</div>' +
-      '<div class="hint" style="margin-top:6px">消耗 ' + esc((d.materials && d.materials[0] && d.materials[0].name) || '材料') + ' ×' +
-      (d.pearlNeed != null ? d.pearlNeed : d.relicNeed) +
-      (d.gold ? ' + 💰' + d.gold : '') + ' · 剩余 ' + (d.materials && d.materials[0] ? d.materials[0].have : '—') + ' 个</div>' +
-      '<div class="cf-actions"><button class="mini primary-mini cr-ok">知道了</button></div></div>';
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-    const close = function () { overlay.remove(); };
-    box.querySelector('.modal-close').addEventListener('click', close);
-    box.querySelector('.cr-ok').addEventListener('click', close);
+    renderWorkshopBench();
   }
 
   // ---- 商城（每日限购）----
@@ -11413,7 +10397,6 @@ window.UI = (function () {
     if (view === 'inventory') window.Net.fetchMyMarket();
     // 商城 = 限购 + 收购 + 市集 三合一：进页把三份数据都拉齐，页签切换不再单独请求
     else if (view === 'mall') { window.Net.fetchMall(); window.Net.fetchShop(); window.Net.fetchMyMarket(); }
-    else if (view === 'workshop') { window.Net.fetchWorkshop(); }
     // 开箱（v0.23.5 自工坊独立成页）：宝匣档位 / 保底进度 / 持有量
     else if (view === 'chest') { window.Net.fetchChest(); }
     // 渔屋（原角色页）：进页拉一次权威视图；写操作之后直接用响应里的 house 重绘，不再额外请求
@@ -11923,7 +10906,7 @@ window.UI = (function () {
   function paintPageBanner() {
     const main = $('main');
     const b = PAGE_BANNERS[currentView];
-    const on = !!b && !(currentView === 'workshop' && wsTab === 'smelt');
+    const on = !!b;
     main.classList.toggle('has-banner', on);
     if (!on) { delete main.dataset.bannerTitle; delete main.dataset.bannerSub; return; }
     // 远洋 / 邮件还没有像素导航图标：标题前改用菜单里的 emoji
@@ -11946,7 +10929,6 @@ window.UI = (function () {
     // 承担纵向滚动，避免被旧版熔炼页的 overflow 规则或网格行高截断。
     $('main').classList.toggle('workshop-page', currentView === 'workshop');
     if (!fishingPage && disposeFishingViewport) disposeFishingViewport();
-    $('main').classList.toggle('smelt-page', currentView === 'workshop' && wsTab === 'smelt');
     paintPageBanner();
     if (featureBlocked(pageId)) {
       const main = $('main'); main.innerHTML = '';
@@ -12181,7 +11163,7 @@ window.UI = (function () {
   // ⚠️ 底层刷新纪律（加新页面 / 加新广播前先读这一段，别再重犯）：
   //  1) 广播只有两类：**数据广播**（上鱼 feed/catch、资产 assets、玩家状态 players/playersPage、
   //     地图人数 grounds、市集 market、商店 shop/pricecfg、宝匣 chest…）与**结构广播**
-  //     （后台改配置：groundcfg/castcfg/smeltcfg/componentcfg/chestcfg/mall，以及视图自身完成
+    //     （后台改配置：groundcfg/castcfg/componentcfg/chestcfg/mall，以及视图自身完成
   //     拉取后的自绘 scope）。
   //  2) **数据广播永远不许重建页面骨架**。带本地交互状态的容器（搜索框、分页、展开/收起、
   //     勾选、独立滚动条）必须走就地更新：`main.innerHTML=''` 会把滚动位置、焦点、输入法候选、
@@ -12211,12 +11193,12 @@ window.UI = (function () {
     // 远洋页（v0.21.3）：船经验 / 金币 / 碎片 / 倒计时 / 悬赏进度全是纯数据，由 seaFill 就地改写；
     // 结构变了（船升级、出航、后台改配置）才重建。缺这一项时任何广播都会整页重建（上鱼即闪）。
     sea: ['assets'],
-    // 商城/工坊：末位是视图自身 id——fetchMall / fetchWorkshop 完成后用 refreshAll('mall'|'workshop')
+    // 商城/工坊：末位是视图自身 id——fetchMall 完成后用 refreshAll('mall')
     // 触发重绘；少了它就会命中「scope 不在列表内 → 不重绘」，页面永远停在「加载中…」。
     // mall 三合一（限购/收购/市集）：三份数据源的广播都要能重绘本页
     mall: ['assets', 'mall', 'shop', 'market', 'pricecfg', 'autosellcfg'],
     // componentcfg（后台改池外/突破区间）也要重绘：工坊补缀与副件搬词的预览区间都取自它。
-    workshop: ['assets', 'smeltcfg', 'componentcfg', 'workshop'],
+    workshop: ['assets', 'componentcfg', 'workshop'],
     // 开箱（v0.23.5 独立成页）：宝匣数据源的广播（chestcfg 后台配置 / chest 数据到达 /
     // 资产变化中的宝匣数量）都要能重绘本页——fetchChest 完成后 refreshAll('chest') 命中 'chest' scope。
     chest: ['assets', 'chestcfg', 'chest'],
@@ -12306,7 +11288,6 @@ window.UI = (function () {
     if (bulkFocus && scope && scope !== 'all') { renderTopbar(); renderNav(); return; }
     // 弹窗打开时（批量出售/订阅/组件属性等）不重绘背后的页面列表，避免广播把弹窗下的操作上下文冲掉
     if (document.querySelector('.modal-overlay') && currentView !== 'trade' && scope) {
-      if ($('ws-material-modal') && currentView === 'workshop' && scope === 'assets') wsRefreshPreview();
       return;
     }
     // 交易进行中：背包与交易页锁定（新渔获等广播只更新数据，不重绘列表；可点锁定条手动刷新）
@@ -12328,12 +11309,6 @@ window.UI = (function () {
     }
     // 市集筛选控件（词条下拉/数值输入）获得焦点时暂停重绘：否则广播会重建 DOM 导致下拉框被关闭。
     if (inMarketView() && marketFilterActive && scope && scope !== 'all') {
-      renderTopbar(); renderNav();
-      return;
-    }
-    // 工坊：纯资产广播（上鱼 / 售出只改背包与金币）原地更新「持有」数字与预览，
-    // 不整页重建——正在填的催化剂份数、输入焦点与光标都不受影响。
-    if (currentView === 'workshop' && scope === 'assets' && wsPatchAssets()) {
       renderTopbar(); renderNav();
       return;
     }

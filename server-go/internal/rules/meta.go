@@ -37,7 +37,6 @@ var defaultAdjectiveRules = []AdjectiveRule{
 
 func boolPtr(v bool) *bool        { return &v }
 func floatPtr(v float64) *float64 { return &v }
-func intPtr(v int) *int           { return &v }
 
 // AdjectiveRules returns the ordered display rules from the component
 // configuration, falling back to the data.js defaults when unset.

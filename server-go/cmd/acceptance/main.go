@@ -152,7 +152,7 @@ func performanceThresholds(snapshot map[string]any) map[string]any {
 		return strings.Contains(name, ".read.") || strings.HasPrefix(name, "legacy.read.")
 	})
 	writeP95, writeEndpoint, writeRequests := maxP95(func(name string) bool {
-		return strings.Contains(name, ".rod") || strings.Contains(name, ".market.list") || strings.Contains(name, ".market.buy") || strings.Contains(name, ".workshop") || strings.Contains(name, ".chest") || (strings.Contains(name, ".autosell") && !strings.Contains(name, ".read.")) || strings.Contains(name, ".sell") || strings.Contains(name, "legacy.autosell.write")
+		return strings.Contains(name, ".rod") || strings.Contains(name, ".market.list") || strings.Contains(name, ".market.buy") || strings.Contains(name, ".chest") || (strings.Contains(name, ".autosell") && !strings.Contains(name, ".read.")) || strings.Contains(name, ".sell") || strings.Contains(name, "legacy.autosell.write")
 	})
 	lag, _ := snapshot["notificationLagMs"].(map[string]any)
 	lagP95, _ := numberValue(lag["p95"])
@@ -531,8 +531,6 @@ func (a *acceptance) action(ctx context.Context, p *player, tick int) {
 				_, _, _ = a.post(ctx, p, "/api/v1/market/buy", "v1.market.buy", key+":buy", map[string]any{"requestKey": key + ":buy", "orderId": order, "quantity": 1, "expectedUnitPrice": 10})
 			}
 		}
-	case choice < 19:
-		_, _, _ = a.post(ctx, p, "/api/v1/workshop", "v1.workshop", key+":workshop", map[string]any{"requestKey": key + ":workshop", "action": "recast", "mainId": strconv.FormatInt(p.equipmentID.Load(), 10), "target": 0})
 	case choice < 20:
 		_, _, _ = a.post(ctx, p, "/api/v1/chest", "v1.chest", key+":chest", map[string]any{"requestKey": key + ":chest", "action": "open", "chestId": a.chestID})
 	case choice < 30:

@@ -147,7 +147,6 @@ window.WikiPage = (function () {
     const toolGrid = W().el('div', 'home-tool-list');
     [
       { name: '配装模拟器', icon: '🧠', desc: '七部位编辑、当前钓点试算、A/B 对比、保存与分享。', href: 'tools/build.html' },
-      { name: '熔炼模拟器', icon: '🔥', desc: '主副件、投料、概率、失败分支与批量模拟。', href: 'tools/smelt.html' }
     ].forEach(function (x) {
       const a = W().el('a', 'home-tool'); a.href = x.href;
       a.append(W().el('h3', 'tile-title', x.icon + ' ' + x.name), W().el('p', 'tile-desc', x.desc));
@@ -223,8 +222,6 @@ window.WikiPage = (function () {
     if (id === 'chartfrag') return '远洋海图碎片：' + ((D && D.SEA && D.SEA.chartCost) || 3) + ' 片合成 1 张未知海图，出航后随机发现一片临时海域。';
     if (id === 'deepscale') return '远洋船坞材料：船升级按等级需要（见船坞当前需求），也是远航每日悬赏的上交物。';
     if (id === 'storm_relic') return '远洋风暴特产：风暴深入模式（需风暴专精）产出，可在远航里作为定向货物指定收取。';
-    if (D && D.smeltMaterialAffix && D.smeltMaterialAffix(id)) return lead + '熔炼催化剂：补缀 ' + W().affixLabelOf(D.smeltMaterialAffix(id));
-    if (D && D.smeltFuelIds && D.smeltFuelIds().indexOf(id) >= 0) return lead + '熔炼燃料：只增加投料量（补缀率更高、熔炼更稳），不补任何词缀。';
     return lead || '以当前工坊与商城配方为准。';
   }
   function renderItemDetail(entry) {
@@ -276,9 +273,6 @@ window.WikiPage = (function () {
     const tools = W().el('div', 'toolbar');
     if (entry.kind === 'component') {
       const a = W().el('a', 'button primary', '在配装模拟器里试用'); a.href = '/wiki/tools/build.html?base=' + encodeURIComponent(entry.id); tools.append(a);
-    }
-    if (entry.kind === 'material' || entry.kind === 'chest' || entry.kind === 'affix' || entry.kind === 'component') {
-      const b = W().el('a', 'button', '打开熔炼模拟器'); b.href = '/wiki/tools/smelt.html'; tools.append(b);
     }
     const clear = W().el('a', 'button', '清除条目详情');
     clear.href = '/wiki/search/index.html?q=' + encodeURIComponent(qs('q')) + (qs('type') ? '&type=' + encodeURIComponent(qs('type')) : '');
@@ -559,7 +553,7 @@ window.WikiPage = (function () {
     side.open = window.matchMedia('(min-width: 1001px)').matches;
     side.append(W().el('summary', 'guide-side-title', '本文目录与相关工具'));
     const rg = W().el('div', 'grid');
-    [['配装模拟器', '🧠', '/wiki/tools/build.html'], ['熔炼模拟器', '🔥', '/wiki/tools/smelt.html']].forEach(function (x) {
+    [['配装模拟器', '🧠', '/wiki/tools/build.html']].forEach(function (x) {
       const a = W().el('a', 'tile compact'); a.href = x[2];
       a.append(W().el('span', 'tile-emoji', x[1]), W().el('h3', 'tile-title', x[0]));
       rg.append(a);

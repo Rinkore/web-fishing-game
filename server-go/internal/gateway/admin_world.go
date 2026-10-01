@@ -548,16 +548,6 @@ func setWorldDefault(c *rules.Catalog, name string, value any) error {
 	return err
 }
 
-func worldComponents(c *rules.Catalog) []rules.Item {
-	out := []rules.Item{}
-	for _, it := range c.Items {
-		if it.Kind == "component" && it.Part != "" {
-			out = append(out, it)
-		}
-	}
-	return out
-}
-
 func worldComponentSim(c *rules.Catalog, n int) map[string]any {
 	if n < 1 {
 		n = 1
@@ -967,23 +957,6 @@ func worldLootRows(c *rules.Catalog, spot map[string]any, rare, material float64
 	return rows, commonBefore, commonAfter, nil
 }
 
-func (a *API) adminWorld(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.authorize(w, r, true); !ok {
-		return
-	}
-	c, _, err := worldCurrent(r.Context(), a)
-	if err != nil {
-		failure(w, err)
-		return
-	}
-	grounds, err := worldGrounds(c)
-	if err != nil {
-		failure(w, err)
-		return
-	}
-	write(w, 200, worldView(c, grounds))
-}
-
 func worldView(c *rules.Catalog, grounds []map[string]any) map[string]any {
 	fish, materials, components, chests := []map[string]any{}, []map[string]any{}, []map[string]any{}, []map[string]any{}
 	for _, it := range c.Items {
@@ -1331,13 +1304,6 @@ func worldFind(c *rules.Catalog, groundID, spotID string) ([]map[string]any, map
 	}
 	s, _ := worldSpot(g, spotID)
 	return grounds, g, s, nil
-}
-
-func worldMapEntry(v any) map[string]any {
-	b, _ := json.Marshal(v)
-	var m map[string]any
-	_ = json.Unmarshal(b, &m)
-	return m
 }
 
 func worldTime(v any) (int64, bool, bool) {

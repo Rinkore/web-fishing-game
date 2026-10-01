@@ -64,12 +64,6 @@ func rwObject(v any) any {
 	}
 	return v
 }
-func rwArray(v any) any {
-	if v == nil {
-		return []any{}
-	}
-	return v
-}
 func rwID(rc *RealContext, value any) int64 {
 	return rc.IDs[strings.ToLower(strings.TrimSpace(rwString(value)))]
 }

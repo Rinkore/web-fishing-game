@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
-	"strings"
 
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/rules"
@@ -622,5 +621,3 @@ func restoreLoadoutSlots(ctx context.Context, t *assets.Transaction, owner, id i
 	}
 	return nil
 }
-
-func IsModern(sig string) bool { return strings.Contains(sig, "@g") }

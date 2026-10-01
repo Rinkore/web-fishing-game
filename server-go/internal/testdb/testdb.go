@@ -20,20 +20,6 @@ type DB struct {
 	Role       string
 }
 
-// Grant adds SELECT/INSERT/UPDATE on the given schema-qualified, comma
-// separated tables to the restricted application role. Bridged legacy domains
-// that add their own migration call this before seeding; the grant stays
-// explicit per table so the fixture keeps its least-privilege property (the app
-// role must remain unable to touch operator and audit data).
-func (db DB) Grant(t *testing.T, tables string) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON "+tables+" TO "+pgx.Identifier{db.Role}.Sanitize()); err != nil {
-		t.Fatal("cannot grant extra legacy permissions")
-	}
-}
-
 func New(t *testing.T, migrate bool) DB {
 	t.Helper()
 	dsn := os.Getenv("FISHING_GO_TEST_DATABASE_URL")

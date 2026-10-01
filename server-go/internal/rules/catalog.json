@@ -2,7 +2,7 @@
   "format": 1,
   "version": "v0.28.0",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "34402df34c4b0d2667b57f68d507357127118b9645d5895e4a557a63ec055080",
+  "sourceSHA256": "a25388be115076a3ff2e82c3607a451445309450db891899242303a19c6c034a",
   "constants": {
     "GEAR_SYSTEM": {
       "enabled": true,
@@ -1297,11 +1297,46 @@
         "price": 600,
         "size": null
       },
-      { "id": "gene_albino", "name": "白化导向剂", "rarity": "rare", "price": 0, "size": null, "noSell": true },
-      { "id": "gene_star", "name": "星点导向剂", "rarity": "rare", "price": 0, "size": null, "noSell": true },
-      { "id": "gene_veil", "name": "流纱导向剂", "rarity": "rare", "price": 0, "size": null, "noSell": true },
-      { "id": "gene_glow", "name": "荧光导向剂", "rarity": "rare", "price": 0, "size": null, "noSell": true },
-      { "id": "gene_prism", "name": "异色棱镜剂", "rarity": "epic", "price": 0, "size": null, "noSell": true },
+      {
+        "id": "gene_albino",
+        "name": "白化导向剂",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true
+      },
+      {
+        "id": "gene_star",
+        "name": "星点导向剂",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true
+      },
+      {
+        "id": "gene_veil",
+        "name": "流纱导向剂",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true
+      },
+      {
+        "id": "gene_glow",
+        "name": "荧光导向剂",
+        "rarity": "rare",
+        "price": 0,
+        "size": null,
+        "noSell": true
+      },
+      {
+        "id": "gene_prism",
+        "name": "异色棱镜剂",
+        "rarity": "epic",
+        "price": 0,
+        "size": null,
+        "noSell": true
+      },
       {
         "id": "chartfrag",
         "name": "海图碎片",
@@ -1979,55 +2014,16 @@
       "double",
       "interval"
     ],
-    "SMELT_MATERIAL_AFFIX": {
-      "tide_sand": "speed",
-      "grindstone": "skill",
-      "stardust": "rare",
-      "humus": "material",
-      "boneash": "size",
-      "dragon_scale": "double",
-      "ballast": "stability",
-      "resonance_crystal": "resonance",
-      "curesalt": "settle"
-    },
-    "SMELT_PEARL": "dragonpearl",
     "SMELT_DEFAULTS": {
-      "baseRate": 50,
-      "failPerMaterial": -2,
-      "extraRatePerMaterial": 8,
-      "extraRatePearl": 0,
-      "extraRateMax": 95,
-      "rateMin": 5,
-      "rateMax": 99,
-      "goldBase": 5000,
-      "goldPerMaterial": 900,
-      "goldPearl": 20000,
-      "maxMaterials": 20,
-      "maxTypes": 4,
-      "pearlRollTwice": true,
-      "recastPearl": 1,
-      "recastGold": 0,
-      "recastMinValue": 0,
-      "retainFormula": "10 - breakthrough * 0.5",
-      "retainMaxRelic": 10,
-      "subRangeFromSub": true,
-      "addAnyAffix": true,
-      "addAffixCap": 3,
-      "addAffixExtraRange": true,
       "catalystRanges": {},
-      "catalystRatio": 90,
-      "forgeAnyAffix": true
+      "catalystRatio": 90
     },
     "SNAPSHOT_DEFAULTS": {
       "enabled": true,
       "intervalMin": 30,
       "keep": 5
     },
-    "RETAIN_VAR_NAMES": [
-      "breakthrough"
-    ],
     "RARE_K_DEFAULT": 2,
-    "RECAST_QUALITY": "mythic",
     "MALL_DEFAULTS": {
       "refreshTime": "04:00",
       "items": [
@@ -2051,11 +2047,31 @@
           "price": 3800,
           "limit": 3
         },
-        { "id": "gene_albino", "price": 1500, "limit": 3 },
-        { "id": "gene_star", "price": 1500, "limit": 3 },
-        { "id": "gene_veil", "price": 1800, "limit": 3 },
-        { "id": "gene_glow", "price": 1800, "limit": 3 },
-        { "id": "gene_prism", "price": 2200, "limit": 3 }
+        {
+          "id": "gene_albino",
+          "price": 1500,
+          "limit": 3
+        },
+        {
+          "id": "gene_star",
+          "price": 1500,
+          "limit": 3
+        },
+        {
+          "id": "gene_veil",
+          "price": 1800,
+          "limit": 3
+        },
+        {
+          "id": "gene_glow",
+          "price": 1800,
+          "limit": 3
+        },
+        {
+          "id": "gene_prism",
+          "price": 2200,
+          "limit": 3
+        }
       ]
     },
     "DEFAULT_EXTRA_AFFIX_RANGES": {
@@ -5277,11 +5293,56 @@
       "noSell": false,
       "expeditionOnly": false
     },
-    { "id": "gene_albino", "name": "白化导向剂", "rarity": "rare", "price": 0, "size": null, "kind": "material", "noSell": true, "expeditionOnly": false },
-    { "id": "gene_star", "name": "星点导向剂", "rarity": "rare", "price": 0, "size": null, "kind": "material", "noSell": true, "expeditionOnly": false },
-    { "id": "gene_veil", "name": "流纱导向剂", "rarity": "rare", "price": 0, "size": null, "kind": "material", "noSell": true, "expeditionOnly": false },
-    { "id": "gene_glow", "name": "荧光导向剂", "rarity": "rare", "price": 0, "size": null, "kind": "material", "noSell": true, "expeditionOnly": false },
-    { "id": "gene_prism", "name": "异色棱镜剂", "rarity": "epic", "price": 0, "size": null, "kind": "material", "noSell": true, "expeditionOnly": false },
+    {
+      "id": "gene_albino",
+      "name": "白化导向剂",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": false
+    },
+    {
+      "id": "gene_star",
+      "name": "星点导向剂",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": false
+    },
+    {
+      "id": "gene_veil",
+      "name": "流纱导向剂",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": false
+    },
+    {
+      "id": "gene_glow",
+      "name": "荧光导向剂",
+      "rarity": "rare",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": false
+    },
+    {
+      "id": "gene_prism",
+      "name": "异色棱镜剂",
+      "rarity": "epic",
+      "price": 0,
+      "size": null,
+      "kind": "material",
+      "noSell": true,
+      "expeditionOnly": false
+    },
     {
       "id": "chartfrag",
       "name": "海图碎片",
@@ -7369,33 +7430,6 @@
     "fish": {
       "sizeModel": "normal"
     },
-    "smelt": {
-      "baseRate": 50,
-      "failPerMaterial": -2,
-      "extraRatePerMaterial": 8,
-      "extraRatePearl": 0,
-      "extraRateMax": 95,
-      "rateMin": 5,
-      "rateMax": 99,
-      "goldBase": 5000,
-      "goldPerMaterial": 900,
-      "goldPearl": 20000,
-      "maxMaterials": 20,
-      "maxTypes": 4,
-      "pearlRollTwice": true,
-      "recastPearl": 1,
-      "recastGold": 0,
-      "recastMinValue": 0,
-      "retainFormula": "10 - breakthrough * 0.5",
-      "retainMaxRelic": 10,
-      "subRangeFromSub": true,
-      "addAnyAffix": true,
-      "addAffixCap": 3,
-      "addAffixExtraRange": true,
-      "catalystRanges": {},
-      "catalystRatio": 90,
-      "forgeAnyAffix": true
-    },
     "snapshot": {
       "enabled": true,
       "intervalMin": 30,
@@ -7424,11 +7458,31 @@
           "price": 3800,
           "limit": 3
         },
-        { "id": "gene_albino", "price": 1500, "limit": 3 },
-        { "id": "gene_star", "price": 1500, "limit": 3 },
-        { "id": "gene_veil", "price": 1800, "limit": 3 },
-        { "id": "gene_glow", "price": 1800, "limit": 3 },
-        { "id": "gene_prism", "price": 2200, "limit": 3 }
+        {
+          "id": "gene_albino",
+          "price": 1500,
+          "limit": 3
+        },
+        {
+          "id": "gene_star",
+          "price": 1500,
+          "limit": 3
+        },
+        {
+          "id": "gene_veil",
+          "price": 1800,
+          "limit": 3
+        },
+        {
+          "id": "gene_glow",
+          "price": 1800,
+          "limit": 3
+        },
+        {
+          "id": "gene_prism",
+          "price": 2200,
+          "limit": 3
+        }
       ]
     }
   }

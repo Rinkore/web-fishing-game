@@ -161,7 +161,7 @@ func TestIntegrationLegacyConfigInitWindowAndFeatureMapping(t *testing.T) {
 		t.Fatalf("feature event: %v", got)
 	}
 	projected := got[0]["features"].(map[string]any)
-	for _, id := range []string{"mall.list", "mall.marketbuy", "ground.trade", "workshop.smelt", "workshop.recast", "workshop.forge", "mall.buy", "mall.sell", "mall.autosell"} {
+	for _, id := range []string{"mall.list", "mall.marketbuy", "ground.trade", "mall.buy", "mall.sell", "mall.autosell"} {
 		if projected[id] != false {
 			t.Fatalf("unmapped disabled action %s: %v", id, projected)
 		}

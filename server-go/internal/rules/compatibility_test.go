@@ -15,7 +15,7 @@ func TestNodeOracles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"legacy-rules.json", "native-rules.json", "economy-rules.json", "workshop-rules.json", "mall-rules.json", "chest-rules.json", "sea-rules.json"} {
+	for _, name := range []string{"legacy-rules.json", "native-rules.json", "economy-rules.json", "mall-rules.json", "chest-rules.json", "sea-rules.json"} {
 		data, err := os.ReadFile("../../testdata/" + name)
 		if err != nil {
 			t.Fatal(err)
@@ -85,28 +85,6 @@ func TestNodeOracles(t *testing.T) {
 						t.Fatal(err)
 					}
 					got = MallCycleOf(args[0].(string), time.UnixMilli(int64(Number(args[1]))).In(location))
-				case "smelt":
-					var in SmeltInput
-					if err := json.Unmarshal(tc.Args[0], &in); err != nil {
-						t.Fatal(err)
-					}
-					p, err := c.SmeltPlan(in, c.ComponentConfig(), c.WorkshopConfig())
-					if err != nil {
-						t.Fatal(err)
-					}
-					n := 0
-					seed := int(Number(args[1]))
-					rng := func() float64 { v := float64((n*37+seed)%101) / 101; n++; return v }
-					out := p.Roll(rng)
-					got = map[string]any{"outcome": out, "draws": n, "gold": p.Gold, "rate": p.Rate, "extraRate": p.ExtraRate, "retainChance": p.RetainChance}
-				case "recast":
-					n := 0
-					rng := func() float64 { v := float64((n*37+13)%101) / 101; n++; return v }
-					id, pearls, gold, err := c.Recast(args[0].(string), int(Number(args[1])), c.ComponentConfig(), c.WorkshopConfig(), rng)
-					if err != nil {
-						t.Fatal(err)
-					}
-					got = map[string]any{"id": id, "draws": n, "pearls": pearls, "gold": gold}
 				case "castInfoOf":
 					var bd map[string]struct {
 						CompID string `json:"compId"`

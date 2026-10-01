@@ -49,9 +49,6 @@ func ApplyLegacySettings(c *rules.Catalog, values map[string]json.RawMessage) {
 	if raw := values["legacy:mall"]; len(raw) > 0 {
 		mergeDefault("mall", raw)
 	}
-	if raw := values["legacy:smelt"]; len(raw) > 0 {
-		mergeDefault("smelt", raw)
-	}
 	if c.Runtime == nil {
 		c.Runtime = map[string]any{}
 	}

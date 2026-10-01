@@ -15,8 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const ConnectionTTL = 15 * time.Second
-
 type Service struct {
 	pool   *pgxpool.Pool
 	assets *assets.Service

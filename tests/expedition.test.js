@@ -23,7 +23,6 @@ const check=(name,value)=>{assert.ok(value,name);count++;console.log('PASS '+nam
    document.querySelector('#auth').remove();const D=GameData;
    // 本套件覆盖的是「远洋页 + 历史远征面板」的契约：只有关闭装备成长系统时，
    // ExpeditionUI 才会走 legacy 渲染（enabled 时由远航中心接管，见 tests/expedition-growth.test.js）。
-   // 与 tests/smelt-workbench.test.js 关闭装备成长后再测熔炼的口径一致。
    D.GEAR_SYSTEM.enabled=false;
    window.fixture={ship:{lv:1,name:'木划艇',xp:0,xpNeed:40,xpOk:false,upCoins:20000,upScale:5},coins:1000,deepscale:0,chartfrag:0,charts:0,chartCost:3,zones:[],quests:[],partyZones:[],
     expedition:{now:Date.now(),captain:{marks:0,voyages:0,successes:0,starter:0,clears:{},heat:0,clues:0,samples:0,tracking:0},config:D.EXPEDITION,sets:D.GEAR_SETS,gear:{level:1,set:'',effects:{stability:0,resonance:0,settle:0}},active:null,last:null}};

@@ -21,8 +21,6 @@ const CHROME = process.env.CHROME_PATH || [
     const componentWorld = {
       catalog: { components: catalog.items.filter(item => item.kind === 'component') },
       componentCfg: catalog.defaults.component,
-      smeltCfg: catalog.defaults.smelt,
-      smeltDefaults: catalog.defaults.smelt,
       snapshotCfg: { enabled: false, intervalMin: 7, keep: 3 },
       notifyLevel: 'all',
       notifyLevels: { all: '全部渔获', uncommon: '大鱼、稀有鱼与组件', offrange: '超出基准体型', records: '破纪录', none: '关闭全服渔获动态' },

@@ -111,8 +111,7 @@ func legacyFeatureFlags(flags map[string]bool) map[string]bool {
 	out := map[string]bool{}
 	for native, legacy := range map[string][]string{
 		"market": {"mall.list", "mall.marketbuy"}, "trade": {"ground.trade"},
-		"workshop": {"workshop.smelt", "workshop.recast", "workshop.forge"},
-		"chest":    {"chest", "chest.craft", "chest.open"}, "mall": {"mall.buy"},
+		"chest": {"chest", "chest.craft", "chest.open"}, "mall": {"mall.buy"},
 		"sell": {"mall.sell"}, "autosell": {"mall.autosell"},
 		"sea": {"sea"}, "party": {"ground.party"}, "fishing": {"fishing.cast"},
 	} {
@@ -210,19 +209,18 @@ func legacyCatalogProjection(c *rules.Catalog) (map[string]any, []map[string]any
 	}
 	// Keep the raw component object: OrderedWeights is a decoding helper, not
 	// the JSON object shape expected by GameData.setComponentCfg.
-	var component, smelt, mall any
+	var component, mall any
 	for _, entry := range []struct {
 		name   string
 		target *any
-	}{{"component", &component}, {"smelt", &smelt}, {"mall", &mall}} {
+	}{{"component", &component}, {"mall", &mall}} {
 		if err := json.Unmarshal(c.Defaults[entry.name], entry.target); err != nil {
 			return nil, nil, err
 		}
 	}
-	fields := map[string]any{"groundCfg": grounds, "componentCfg": component, "smeltCfg": smelt, "castCfg": castCfg, "dropCfg": dropCfg, "priceCfg": priceCfg, "autoSellCfg": autoSellCfg, "chestCfg": chestCfg}
+	fields := map[string]any{"groundCfg": grounds, "componentCfg": component, "castCfg": castCfg, "dropCfg": dropCfg, "priceCfg": priceCfg, "autoSellCfg": autoSellCfg, "chestCfg": chestCfg}
 	frames := []map[string]any{
 		{"type": "componentcfg", "componentCfg": component},
-		{"type": "smeltcfg", "smeltCfg": smelt},
 		{"type": "castcfg", "baseMs": cast.BaseMS, "minMs": cast.MinMS, "speedBonus": cast.SpeedBonus, "speedCap": cast.SpeedCap, "formula": cast.Formula},
 		{"type": "bitecfg", "formula": cast.BiteFormula},
 		{"type": "groundcfg", "grounds": grounds},
