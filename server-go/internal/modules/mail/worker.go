@@ -136,6 +136,12 @@ func deliver(ctx context.Context, tx pgx.Tx, batch, recipient int64, in Send) er
 		return err
 	}
 	for _, a := range in.Attachments {
+		if a.Coins > 0 {
+			if _, err := tx.Exec(ctx, `INSERT INTO fishing.mail_attachments(mail_id,item_id,quantity,tier,custom_name,custom_description,reward_bound,bind_outputs) VALUES($1,'__coins__',$2,'normal','','',false,false)`, id, a.Coins); err != nil {
+				return err
+			}
+			continue
+		}
 		inherit := a.BindOutputs == nil || *a.BindOutputs
 		if _, err := tx.Exec(ctx, `INSERT INTO fishing.mail_attachments(mail_id,item_id,quantity,tier,custom_name,custom_description,reward_bound,bind_outputs) VALUES($1,$2,$3,$4,$5,$6,true,$7)`, id, a.ItemID, a.Quantity, a.Tier, a.Name, a.Description, inherit); err != nil {
 			return err
