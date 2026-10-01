@@ -44,6 +44,7 @@ func verifyOTP(secret, code string, nowStep, lastStep int64) (int64, bool) {
 	}
 	return 0, false
 }
+
 // VerifyMFA reports whether code matches secret's current time step (or one
 // step either side, to tolerate clock skew). Console enrollment uses it to
 // confirm the administrator really captured the pending secret before that

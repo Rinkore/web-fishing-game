@@ -104,12 +104,12 @@ func (a *API) legacyAutoSellSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Tier       *bool   `json:"tier"`
-		ID         string  `json:"id"`
-		Scope      string  `json:"scope"`
-		Bulk       string  `json:"bulk"`
-		On         *bool   `json:"on"`
-		Remove     bool    `json:"remove"`
+		Tier       *bool         `json:"tier"`
+		ID         string        `json:"id"`
+		Scope      string        `json:"scope"`
+		Bulk       string        `json:"bulk"`
+		On         *bool         `json:"on"`
+		Remove     bool          `json:"remove"`
 		MinPct     *lenientFloat `json:"minPct"`
 		MinPrice   *lenientFloat `json:"minPrice"`
 		SlackPct   *lenientFloat `json:"slackPct"`
