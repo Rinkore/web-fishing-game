@@ -1,18 +1,20 @@
 # Go 重写剩余任务与执行顺序
 
-核对日期：2026-09-22。范围为当前 `codex/go-rewrite`，使用合成测试数据；生产迁移、切服与部署仍单独验收。
+历史核对日期：2026-09-22。以下验收数字对应当时的 `codex/go-rewrite` 候选，使用合成测试数据；生产迁移、切服与部署仍单独验收。
 
-## 当前基线
+## 历史基线与当前退役范围
+
+下文的 152/152 等数字为 2026-09-22 冻结结果，不代表当前路由状态。当前工作树的 `go:coverage` 精确排除已退役的 `GET /api/workshop`、`POST /api/workshop/smelt`、`POST /api/workshop/forge`、`POST /api/workshop/recast` 和 `POST /api/admin/smelt/config` 五条旧路由；`--ref` 检查历史提交时不排除。旧熔炼、重铸、锻造已退役，宝匣与现代装备成长继续保留。
 
 `server-go/api/legacy-inventory.json` 当前包含 157 个静态候选，其中 5 个开发专用接口不计入分母。本轮集成候选按唯一且完全相同的 **method + path** 重算为 **152/152，未注册 0 条**；Go 共注册 192 个唯一 method + path，另 40 条为新协议。`inventory --check` 通过，未发现重复或未解析注册表达式；候选 SHA 以 [集成验收报告](reports/INTEGRATION_ACCEPTANCE_2026-09-22.md) 所在最终提交为准。
 
-| 验证层次 | 当前结论 |
+| 验证层次 | 2026-09-22 历史结论 |
 |---|---|
 | 路由存在 | 152/152；只证明静态注册存在，未执行接口行为 |
 | HTTP/SSE 契约 | 已有分域真实 PostgreSQL 回归；尚无 152 条逐项全通过的验收结论，仍需 Node/Go 同输入对照、权限、错误与结算语义复验 |
 | 浏览器 | 已有原 Chrome 定向回归；完整 Node/Go A/B 未完成，不由路由数或 Go 包级测试通过替代 |
 
-复现：仓库根执行 `npm run go:inventory`、`npm run go:coverage`；最终路由 JSON 在 `output/go-rewrite/final-route-coverage-20260922.json`。`--json` 输出逐路由结果、源码摘要和验证对象；`--check` 在缺失路由时退出非零。历史批次数字保留在专项报告中，不作为当前行为通过。
+历史复现：仓库根执行 `npm run go:inventory`，并用 `node tools/go-rewrite/route-coverage.js --ref <历史提交> --check` 核对冻结路由；最终路由 JSON 在 `output/go-rewrite/final-route-coverage-20260922.json`。当前工作树可执行 `npm run go:coverage`，结果采用上述五条退役路由排除规则。`--json` 输出逐路由结果、源码摘要和验证对象；`--check` 在缺失路由时退出非零。历史批次数字不作为当前行为通过。
 
 已具备的核心包括身份/MFA、资产事务、交易/市集、工坊/宝匣、商城、好友/编队、供需/自动出售，以及普通地图和远洋结算。`0019` 已持久化递归段与随机游标，`0020` 已提供不可变 catalog 发布，`0021` 已提供多标签页租约；不要再按早期文档把这些列为未开发。旧 HTTP 接口的已知偏差继续以 DELIVERY 日志及实际测试为准。
 
@@ -43,7 +45,7 @@ P1/P2 的兼容实现与 P4/P5 工具可按 [PARALLEL_ACCEPTANCE.md](PARALLEL_AC
 | 功能开关 | GET/POST `admin/features`；层级、排序、adminBypass 与服务端实际权限门禁 |
 | 世界/掉落 | GET `admin/world`、`admin/loot/groups`、`admin/loot/spots`；POST `admin/component/config|reset|simulate`、`admin/fish/config|reset|simulate`、`admin/loot/group`、`admin/pool/preset`、`admin/ground/add|remove|restore|update`、`admin/spot/add|buffs|pool|remove|rate|pos` |
 | 锁定/模拟 | POST `admin/ground/lock`、`admin/spot/lock`、`admin/simulate`、`admin/loot/test` |
-| 经济/玩法/纪录 | POST `admin/market/return`；GET/POST `admin/market/supply`；POST `admin/market/bulk`、`admin/records/delete`、`admin/records/delone`、`admin/settings`、`admin/mall/config`、`admin/smelt/config`、`admin/records/config` |
+| 经济/玩法/纪录 | POST `admin/market/return`；GET/POST `admin/market/supply`；POST `admin/market/bulk`、`admin/records/delete`、`admin/records/delone`、`admin/settings`、`admin/mall/config`、`admin/records/config` |
 | 快照/回滚 | GET/POST `admin/users/snapshot`；GET `admin/users/snapshots`；POST `admin/users/snapshot-now`、`admin/users/rollback`、`admin/snapshot/config` |
 | Wiki 后台 | GET/POST `admin/wiki/content`；GET `admin/wiki/guides`；POST `admin/wiki/guides/review`、`admin/wiki/guides/delete` |
 | 玩家 Wiki | POST `wiki/guides/submit`；GET `wiki/guides/my`；POST `wiki/guides/delete` |

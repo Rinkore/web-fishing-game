@@ -14,6 +14,13 @@ const unsupported = new Set(['Method', 'MethodFunc', 'Handle', 'HandleFunc', 'Ro
 const normalized = value => value.replace(/\r\n/g, '\n');
 const sha256 = value => crypto.createHash('sha256').update(normalized(value)).digest('hex');
 const key = route => `${route.method} ${route.path}`;
+const retiredRoutes = new Set([
+  'GET /api/workshop',
+  'POST /api/workshop/smelt',
+  'POST /api/workshop/forge',
+  'POST /api/workshop/recast',
+  'POST /api/admin/smelt/config',
+]);
 
 function tokens(source) {
   // Tokenize comments and Go strings first so commented registrations and
@@ -51,7 +58,7 @@ function scanGoRoutes(source) {
   return { routes, unresolved };
 }
 
-function compareCoverage(inventory, registration) {
+function compareCoverage(inventory, registration, excludedRoutes = new Set()) {
   const duplicates = (routes, source) => {
     const seen = new Set(), found = [];
     for (const route of routes) {
@@ -60,7 +67,9 @@ function compareCoverage(inventory, registration) {
     }
     return found;
   };
-  const candidates = inventory.routes.filter(route => !route.developmentOnly);
+  const nondevelopment = inventory.routes.filter(route => !route.developmentOnly);
+  const excludedRetired = nondevelopment.filter(route => excludedRoutes.has(key(route)));
+  const candidates = nondevelopment.filter(route => !excludedRoutes.has(key(route)));
   const expected = new Map(candidates.map(route => [key(route), route]));
   const actual = new Map(registration.routes.map(route => [key(route), route]));
   const registered = [], missing = [];
@@ -74,7 +83,9 @@ function compareCoverage(inventory, registration) {
     denominator: expected.size,
     registeredCount: registered.length,
     missingCount: missing.length,
-    excludedDevelopmentCount: inventory.routes.length - candidates.length,
+    excludedDevelopmentCount: inventory.routes.length - nondevelopment.length,
+    excludedRetiredCount: excludedRetired.length,
+    excludedRetired: sort(excludedRetired.map(route => ({ method: route.method, path: route.path, legacyLine: route.line }))),
     goRegistrationCount: actual.size,
     registered: sort(registered), missing: sort(missing),
     additionalGoRoutes: sort(registration.routes.filter(route => !expected.has(key(route)))),
@@ -103,7 +114,7 @@ function coverage(root, ref) {
     rulesVersion: inventory.version,
     sharedRulesSha256: inventory.sharedRulesSha256,
     inputs: { inventory: { path: inventoryPath, sha256: sha256(inventoryText) }, gateway: { path: gatewayPath, sha256: sha256(gatewayText) } },
-    ...compareCoverage(inventory, scanGoRoutes(gatewayText)),
+    ...compareCoverage(inventory, scanGoRoutes(gatewayText), ref ? new Set() : retiredRoutes),
   };
 }
 
@@ -120,7 +131,7 @@ function main() {
   if (json) console.log(JSON.stringify(report, null, 2));
   else {
     console.log(`Subject: ${report.subject.kind} ${report.subject.revision}${report.subject.worktreeDirty ? ' (dirty)' : ''}`);
-    console.log(`Legacy ${report.rulesVersion}: ${report.registeredCount}/${report.denominator} method+path registered; ${report.missingCount} missing; ${report.excludedDevelopmentCount} development routes excluded.`);
+    console.log(`Legacy ${report.rulesVersion}: ${report.registeredCount}/${report.denominator} method+path registered; ${report.missingCount} missing; ${report.excludedDevelopmentCount} development routes excluded; ${report.excludedRetiredCount} retired routes excluded.`);
     console.log(`Go: ${report.goRegistrationCount} unique registrations; ${report.duplicates.length} duplicates; ${report.unresolved.length} unresolved expressions.`);
     for (const route of report.missing) console.log(`MISSING ${key(route)}`);
     for (const item of report.duplicates) console.log(`DUPLICATE ${item.source} ${key(item)}`);

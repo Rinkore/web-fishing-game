@@ -47,12 +47,46 @@ test('duplicate registrations and unresolved inventory methods cannot produce a 
   assert.equal(result.unresolved[0].reason, 'unresolved-http-method');
 });
 
+test('retired exclusions match exact method and path without hiding other missing routes', () => {
+  const inventory = { routes: [
+    { method: 'GET', path: '/api/workshop', line: 1 },
+    { method: 'POST', path: '/api/workshop', line: 2 },
+    { method: 'GET', path: '/api/workshop/smelt', line: 3 },
+    { method: 'POST', path: '/api/other', line: 4 },
+  ] };
+  const excluded = new Set(['GET /api/workshop']);
+  const result = compareCoverage(inventory, scanGoRoutes(''), excluded);
+  assert.equal(result.denominator, 3);
+  assert.equal(result.excludedRetiredCount, 1);
+  assert.deepEqual(result.excludedRetired, [{ method: 'GET', path: '/api/workshop', legacyLine: 1 }]);
+  assert.deepEqual(result.missing.map(route => `${route.method} ${route.path}`), [
+    'GET /api/workshop/smelt', 'POST /api/other', 'POST /api/workshop',
+  ]);
+  assert.equal(compareCoverage(inventory, scanGoRoutes('')).excludedRetiredCount, 0);
+});
+
 test('current Go registry covers every nondevelopment legacy method+path', () => {
   const result = coverage(path.join(__dirname, '..'));
   assert.deepEqual(result.unresolved, []);
   assert.deepEqual(result.duplicates, []);
   assert.deepEqual(result.missing, []);
   assert.equal(result.registeredCount, result.denominator);
+  assert.deepEqual(result.excludedRetired.map(route => `${route.method} ${route.path}`), [
+    'GET /api/workshop',
+    'POST /api/admin/smelt/config',
+    'POST /api/workshop/forge',
+    'POST /api/workshop/recast',
+    'POST /api/workshop/smelt',
+  ]);
   assert(result.registered.some(route => route.path === '/api/wiki/guides/{id}'));
   assert(result.registered.some(route => route.method === 'GET' && route.path === '/events'));
+});
+
+test('commit coverage retains the original historical denominator', () => {
+  const root = path.join(__dirname, '..');
+  const current = coverage(root);
+  const committed = coverage(root, 'HEAD');
+  assert.equal(committed.excludedRetiredCount, 0);
+  assert.deepEqual(committed.excludedRetired, []);
+  assert.equal(committed.denominator, current.denominator + current.excludedRetiredCount);
 });
