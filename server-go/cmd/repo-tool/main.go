@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"fishing.local/server/internal/rules"
-	"fishing.local/server/internal/wiki"
 )
 
 type manifest struct {
@@ -24,7 +23,6 @@ type manifest struct {
 	Asset            string `json:"asset"`
 	SHA256           string `json:"sha256"`
 }
-
 var versionPattern = regexp.MustCompile(`(?m)^\s*const\s+VERSION\s*=\s*['"](v[0-9]+\.[0-9]+\.[0-9]+)['"]\s*;`)
 
 func main() {
@@ -125,56 +123,12 @@ func checkSnapshots(root string) error {
 	if catalog.SourceSHA256 != digest || catalog.Version != version {
 		return errors.New("Go catalog and browser data differ; review and update both sources")
 	}
-	content, err := wiki.Default()
-	if err != nil {
-		return err
-	}
-	digest, err = sourceDigest(filepath.Join(root, "frontend/wiki/content/content.json"))
-	if err != nil {
-		return err
-	}
-	if content.SourceSHA256 != digest {
-		return errors.New("Wiki snapshot differs; run repo-tool sync-wiki after reviewing content")
-	}
 	return nil
-}
-
-func syncWiki(root string) error {
-	data, err := os.ReadFile(filepath.Join(root, "frontend/wiki/content/content.json"))
-	if err != nil {
-		return err
-	}
-	var source struct {
-		Guides  []wiki.Guide  `json:"guides"`
-		Updates []wiki.Update `json:"updates"`
-	}
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&source); err != nil {
-		return err
-	}
-	for i := range source.Guides {
-		source.Guides[i].Kind = "official"
-		source.Guides[i].Status = "published"
-	}
-	digest, err := sourceDigest(filepath.Join(root, "frontend/wiki/content/content.json"))
-	if err != nil {
-		return err
-	}
-	bundle := wiki.Bundle{Format: 1, Source: "frontend/wiki/content/content.json", SourceSHA256: digest, GuideList: source.Guides, UpdateList: source.Updates}
-	encoded, err := json.Marshal(bundle)
-	if err != nil {
-		return err
-	}
-	if _, err = wiki.Decode(encoded); err != nil {
-		return err
-	}
-	return writeJSON(filepath.Join(root, "server-go/internal/wiki/content.json"), bundle)
 }
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: repo-tool version|migration-hash|check|sync-wiki|sync-versions|manifest|manifest-outputs")
+		return errors.New("usage: repo-tool version|migration-hash|check|manifest|manifest-outputs")
 	}
 	root, err := repositoryRoot()
 	if err != nil {
@@ -205,11 +159,7 @@ func run(args []string) error {
 		if err := checkSnapshots(root); err != nil {
 			return err
 		}
-		fmt.Println("Catalog and Wiki snapshots match their sources")
-	case "sync-wiki":
-		return syncWiki(root)
-	case "sync-versions":
-		return syncVersions(root)
+		fmt.Println("Catalog snapshot matches its source")
 	case "manifest":
 		m := manifest{os.Getenv("RELEASE_VERSION"), os.Getenv("SOURCE_COMMIT"), os.Getenv("MIGRATIONS_SHA256"), os.Getenv("RELEASE_ASSET"), os.Getenv("ASSET_SHA256")}
 		if err := validateManifest(m); err != nil {
@@ -255,32 +205,4 @@ func validateManifest(m manifest) error {
 		return errors.New("invalid release manifest")
 	}
 	return nil
-}
-
-func syncVersions(root string) error {
-	data, err := os.ReadFile(filepath.Join(root, "VERSIONS.md"))
-	if err != nil {
-		return err
-	}
-	type entry struct {
-		Version string `json:"version"`
-		Date    string `json:"date"`
-		Summary string `json:"summary"`
-	}
-	pattern := regexp.MustCompile(`^\|\s*(v[0-9][0-9.]*)\s*\|\s*([^|]+?)\s*\|\s*(.+?)\s*\|\s*$`)
-	var entries []entry
-	for _, line := range strings.Split(string(data), "\n") {
-		m := pattern.FindStringSubmatch(strings.TrimSpace(line))
-		if len(m) != 0 {
-			entries = append(entries, entry{m[1], strings.TrimSpace(m[2]), strings.ReplaceAll(strings.TrimSpace(m[3]), "**", "")})
-		}
-	}
-	if len(entries) == 0 {
-		return errors.New("no version records found")
-	}
-	return writeJSON(filepath.Join(root, "frontend/wiki/content/versions.json"), struct {
-		Source   string  `json:"source"`
-		Count    int     `json:"count"`
-		Versions []entry `json:"versions"`
-	}{"VERSIONS.md", len(entries), entries})
 }

@@ -145,7 +145,6 @@ class DeploymentTests(unittest.TestCase):
         deployment.check_health(self.config, self.previous, self.old, self.systemctl, fetch)
         self.assertEqual(urls[:2], ['http://127.0.0.1:9001/healthz',
                                    'http://127.0.0.1:9001/readyz'])
-        self.assertIn(self.config['publicUrl'] + '/wiki/', urls)
 
     def test_inactive_web_rejected_before_service_changes(self):
         manifest, _ = self.package()

@@ -230,17 +230,6 @@ func TestPrivateImportedRestoreHTTPReadViews(t *testing.T) {
 	for _, path := range []string{"/api/admin/session", "/api/admin/overview", "/api/admin/users", "/api/admin/world", "/api/admin/stats", "/api/admin/feedback"} {
 		get(path, adminToken)
 	}
-	wiki := get("/api/wiki/content", "")
-	if guides, ok := wiki["guides"].([]any); !ok || len(guides) == 0 {
-		t.Fatal("imported Wiki empty")
-	}
-	listing := get("/api/wiki/guides?pageSize=1", "")
-	guides, _ := listing["guides"].([]any)
-	if len(guides) == 0 {
-		t.Fatal("Wiki listing empty")
-	}
-	guideID := privateString(privateMap(guides[0])["id"])
-	get("/api/wiki/guides/"+url.PathEscape(guideID), "")
 	records := get("/api/records", "")
 	if len(records) == 0 {
 		t.Fatal("record projection empty")

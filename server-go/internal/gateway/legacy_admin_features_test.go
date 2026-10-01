@@ -48,7 +48,7 @@ func TestIntegrationLegacyAdminFeaturesContract(t *testing.T) {
 	code, body = f.admin("POST", "/api/admin/features", `{"features":{"mall.buy":false},"featureOrder":{"menu":["mall"]}}`)
 	f.expect(code, body, 400, "菜单排序包含未知、重复或缺失项")
 
-	order := `{"menu":["mall","fishing","sea","character","ground","inventory","workshop","codex","feedback","logs","wiki"],"mall":["mall.marketbuy","mall.list","mall.buy","mall.sell","mall.autosell"]}`
+	order := `{"menu":["mall","fishing","sea","character","ground","inventory","workshop","codex","feedback","logs"],"mall":["mall.marketbuy","mall.list","mall.buy","mall.sell","mall.autosell"]}`
 	code, body = f.admin("POST", "/api/admin/features", `{"features":{"mall.buy":false,"adminBypass":true},"featureOrder":`+order+`}`)
 	f.expect(code, body, 200, "")
 	features = body["features"].(map[string]any)

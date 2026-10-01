@@ -196,7 +196,6 @@ window.Admin = (function () {
     { id: 'mall', group: 'ops', name: '🛒 商城配置', desc: '商城商品、金币价格与每日限购；保存后玩家端商城立即刷新。' },
     { id: 'notify', group: 'ops', name: '🔔 通知等级', desc: '全服动态的通知等级与自动通知规则；保存后用于新的渔获播报。' },
     { id: 'banner', group: 'ops', name: '📢 横幅管理', desc: '顶部横幅队列、配色与滚播间隔；保存后在线玩家立即看到新内容。' },
-    { id: 'wiki', group: 'content', name: '📚 Wiki攻略', desc: 'Wiki 条目热更新与玩家投稿审核；发布后玩家端攻略页立即更新。' },
     { id: 'records', group: 'content', name: '🏆 纪录贴图', desc: '破纪录展示图片与榜单清理；改动立即影响玩家端纪录页。' },
   ];
   const NAV_BY_ID = {};
@@ -1085,165 +1084,6 @@ window.Admin = (function () {
   }
 
   // ================================
-  // Wiki 攻略热更新与用户投稿审核
-  // ================================
-  let wikiOfficialRevision = 1;
-  let wikiReviewStatus = 'pending';
-  function renderWiki() {
-    const main = $('main');
-    main.innerHTML = '<h2>📚 Wiki 攻略管理</h2>' +
-      '<div class="hint" style="margin-bottom:12px">官方攻略可热更新；用户投稿当前为自动通过（提交后立即公开，可在“全部”里删除）。如需人工审核，用 WIKI_GUIDE_AUTO_APPROVE=0 重启服务端。两者互不覆盖。</div>' +
-      '<div class="panel wiki-panel">' +
-      '<div class="mgr-row"><label>官方内容</label><span id="wiki-meta" class="hint">加载中…</span>' +
-      '<span style="flex:1"></span><button class="btn mini" id="wiki-refresh">刷新</button>' +
-      '<button class="btn mini" id="wiki-format">格式化</button>' +
-      '<button class="btn mini danger" id="wiki-reset">恢复内置</button>' +
-      '<button class="btn primary" id="wiki-save">保存并发布</button></div>' +
-      '<div id="wiki-list" class="wiki-list">加载中…</div>' +
-      '<textarea id="wiki-json" class="ipt wiki-json" spellcheck="false" aria-label="官方 Wiki 内容 JSON"></textarea>' +
-      '<div id="wiki-msg" class="hint"></div></div>' +
-      '<div class="panel wiki-panel" style="margin-top:16px">' +
-      '<div class="mgr-row"><label>用户投稿</label><span id="wiki-review-meta" class="hint">加载中…</span>' +
-      '<span style="flex:1"></span><select id="wiki-review-status" class="ipt" aria-label="审核状态">' +
-      '<option value="pending">待审核</option><option value="approved">已通过</option><option value="rejected">已拒绝</option><option value="all">全部</option></select>' +
-      '<button class="btn mini" id="wiki-review-refresh">刷新</button></div>' +
-      '<div id="wiki-review-list">加载中…</div></div>';
-    function drawOfficial(data) {
-      if (view !== 'wiki') return;
-      const meta = $('wiki-meta'), list = $('wiki-list'), editor = $('wiki-json');
-      if (!meta || !list || !editor) return;
-      wikiOfficialRevision = data.officialRevision || data.revision || 1;
-      const guides = data.guides || [], updates = data.updates || [];
-      meta.textContent = '官方版本 ' + wikiOfficialRevision + ' · 攻略 ' + guides.length + ' 篇 · 更新记录 ' + updates.length + ' 条' +
-        (data.updatedAt ? ' · 保存于 ' + new Date(data.updatedAt).toLocaleString('zh-CN') : ' · 内置内容');
-      list.innerHTML = guides.map(function (g) {
-        return '<div class="wiki-card"><b>' + esc(g.title) + '</b><span>' + esc(g.category || '-') + '</span>' +
-          '<span>' + esc((g.sections || []).length) + ' 段</span><span>' + esc(g.updatedAt || '-') + '</span></div>';
-      }).join('') || '<div class="hint">暂无官方攻略。</div>';
-      editor.value = JSON.stringify({ guides: guides, updates: updates }, null, 2);
-      setHint('wiki-msg', '');
-    }
-    function loadOfficial() {
-      adminApi('GET', '/api/admin/wiki/content').then(function (r) {
-        if (view !== 'wiki') return;
-        if (!r.ok) { setHint('wiki-list', '官方内容加载失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
-        drawOfficial(r.data);
-      });
-    }
-    function parseOfficialEditor() {
-      const value = JSON.parse($('wiki-json').value);
-      if (!value || !Array.isArray(value.guides) || !Array.isArray(value.updates)) throw new Error('顶层必须包含 guides 和 updates 数组');
-      return value;
-    }
-    function saveOfficial(payload) {
-      adminApi('POST', '/api/admin/wiki/content', Object.assign({ target: 'official-content' }, payload)).then(function (r) {
-        if (view !== 'wiki') return;
-        if (!r.ok) { setHint('wiki-msg', '保存失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
-        drawOfficial(r.data);
-        toast('官方 Wiki 内容已发布');
-      });
-    }
-    $('wiki-refresh').onclick = loadOfficial;
-    $('wiki-format').onclick = function () {
-      try { $('wiki-json').value = JSON.stringify(parseOfficialEditor(), null, 2); setHint('wiki-msg', '已格式化；尚未保存。'); }
-      catch (e) { setHint('wiki-msg', 'JSON 格式错误：' + e.message); }
-    };
-    $('wiki-save').onclick = function () {
-      const button = this;
-      let content;
-      try { content = parseOfficialEditor(); }
-      catch (e) { setHint('wiki-msg', 'JSON 格式错误：' + e.message); return; }
-      button.disabled = true; button.textContent = '保存中…';
-      adminApi('POST', '/api/admin/wiki/content', { target: 'official-content', content: content, baseRevision: wikiOfficialRevision }).then(function (r) {
-        button.disabled = false; button.textContent = '保存并发布';
-        if (view !== 'wiki') return;
-        if (!r.ok) { setHint('wiki-msg', '保存失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
-        drawOfficial(r.data);
-        toast('官方 Wiki 内容已发布');
-      });
-    };
-    $('wiki-reset').onclick = function () {
-      confirmModalLocal('恢复内置官方攻略？当前线上官方攻略和更新记录会被替换，用户投稿不会受影响。').then(function (ok) {
-        if (!ok) return;
-        saveOfficial({ reset: true, baseRevision: wikiOfficialRevision });
-      });
-    };
-    function drawReview(data) {
-      if (view !== 'wiki') return;
-      const meta = $('wiki-review-meta'), box = $('wiki-review-list');
-      if (!meta || !box) return;
-      const counts = data.counts || {};
-      if (data.autoApprove && wikiReviewStatus === 'pending' && !(counts.pending || 0)) {
-        wikiReviewStatus = 'approved';
-        const sel = $('wiki-review-status'); if (sel) sel.value = 'approved';
-        loadReview(); return;
-      }
-      meta.textContent = (data.autoApprove ? '自动审核已开启（投稿直接公开） · ' : '') +
-        '投稿版本 ' + (data.revision || 1) + ' · 待审核 ' + (counts.pending || 0) +
-        ' · 已通过 ' + (counts.approved || 0) + ' · 已拒绝 ' + (counts.rejected || 0);
-      if (!(data.guides || []).length) { box.innerHTML = '<div class="hint">当前状态下暂无投稿。</div>'; return; }
-      box.innerHTML = data.guides.map(function (g) {
-        return '<article class="wiki-review-card"><header><b>' + esc(g.title) + '</b>' +
-          '<span class="wiki-status ' + esc(g.status) + '">' + esc(g.status === 'pending' ? '待审核' : g.status === 'approved' ? (g.autoApproved ? '已通过（自动）' : '已通过') : '已拒绝') + '</span></header>' +
-          '<div class="wiki-review-meta"><span>' + esc(g.authorName || '未知作者') + '</span><span>' + esc(g.category || '-') + '</span>' +
-          '<span>' + new Date(g.submittedAt).toLocaleString('zh-CN') + '</span></div>' +
-          '<p>' + esc(g.summary) + '</p>' +
-          '<div class="wiki-review-body">' + (g.sections || []).map(function (s) {
-            return '<section><h4>' + esc(s.h) + '</h4><div>' +
-              (s.type === 'ol' || s.type === 'ul' ? '<' + s.type + '>' + (s.items || []).map(x => '<li>' + esc(x) + '</li>').join('') + '</' + s.type + '>' : esc(s.text)) +
-              '</div></section>';
-          }).join('') + '</div>' +
-          ((g.reviewNote && g.status !== 'pending') ? '<div class="hint">审核备注：' + esc(g.reviewNote) + '</div>' : '') +
-          '<div class="wiki-review-acts">' +
-          (g.status === 'pending' ? '<button class="btn mini primary" data-wiki-approve="' + esc(g.id) + '">通过</button>' : '') +
-          (g.status === 'pending' ? '<button class="btn mini" data-wiki-reject="' + esc(g.id) + '">拒绝</button>' : '') +
-          '<button class="btn mini danger" data-wiki-delete="' + esc(g.id) + '">删除</button></div></article>';
-      }).join('');
-      box.querySelectorAll('[data-wiki-approve]').forEach(function (b) {
-        b.onclick = function () {
-          adminApi('POST', '/api/admin/wiki/guides/review', { target: b.getAttribute('data-wiki-approve'), action: 'approve', expectedStatus: 'pending', note: '' }).then(function (r) {
-            if (!r.ok) { toast((r.data && r.data.error) || '审核失败', true); return; }
-            toast('已通过该投稿'); loadReview();
-          });
-        };
-      });
-      box.querySelectorAll('[data-wiki-reject]').forEach(function (b) {
-        b.onclick = function () {
-          promptModalLocal({ title: '拒绝攻略', label: '拒绝原因', value: '', hint: '作者会在“我的攻略”看到这个原因。' }).then(function (note) {
-            if (note == null) return null;
-            if (!note.trim()) { toast('拒绝原因不能为空', true); return null; }
-            return adminApi('POST', '/api/admin/wiki/guides/review', { target: b.getAttribute('data-wiki-reject'), action: 'reject', expectedStatus: 'pending', note: note }).then(function (r) {
-              if (!r.ok) { toast((r.data && r.data.error) || '审核失败', true); return null; }
-              toast('已拒绝该投稿'); loadReview();
-            });
-          });
-        };
-      });
-      box.querySelectorAll('[data-wiki-delete]').forEach(function (b) {
-        b.onclick = function () {
-          promptModalLocal({ title: '删除投稿', label: '删除原因', value: '', hint: '删除为软删除，历史会保留。' }).then(function (reason) {
-            if (reason == null) return null;
-            if (!reason.trim()) { toast('删除原因不能为空', true); return null; }
-            return adminApi('POST', '/api/admin/wiki/guides/delete', { target: b.getAttribute('data-wiki-delete'), reason: reason }).then(function (r) {
-              if (!r.ok) { toast((r.data && r.data.error) || '删除失败', true); return null; }
-              toast('已删除该投稿'); loadReview();
-            });
-          });
-        };
-      });
-    }
-    function loadReview() {
-      adminApi('GET', '/api/admin/wiki/guides?status=' + encodeURIComponent(wikiReviewStatus)).then(function (r) {
-        if (view !== 'wiki') return;
-        if (!r.ok) { setHint('wiki-review-list', '投稿加载失败：' + ((r.data && r.data.error) || 'HTTP ' + r.status)); return; }
-        drawReview(r.data);
-      });
-    }
-    $('wiki-review-status').onchange = function () { wikiReviewStatus = this.value; loadReview(); };
-    $('wiki-review-refresh').onclick = loadReview;
-    loadOfficial();
-    loadReview();
-  }
   function switchView(v, opts) {
     // 有未保存改动时先问一句（内部重绘 / 保存后刷新走 force 分支）
     if (!(opts && opts.force) && dirtyMap.size && v !== view) {
@@ -1283,7 +1123,6 @@ window.Admin = (function () {
     if (v === 'formula') return renderFormula();
     if (v === 'notify') return renderNotify();
     if (v === 'banner') return renderBanner();
-    if (v === 'wiki') return renderWiki();
     if (v === 'feedback') return renderFeedback();
   }
 

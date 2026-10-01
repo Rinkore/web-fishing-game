@@ -175,7 +175,7 @@ func legacyAdminFeatureFlags(flags map[string]bool) map[string]bool {
 			continue
 		}
 		switch key {
-		case "bd", "character", "ground", "inventory", "codex", "records", "feedback", "logs", "wiki":
+		case "bd", "character", "ground", "inventory", "codex", "records", "feedback", "logs":
 			out[key] = enabled
 		}
 	}

@@ -1730,7 +1730,7 @@
     return weightedKey(componentCfg.qualityWeights, 'common');
   }
   // 数值 roll 模型：取出 [0,1] 上的随机位置，供词缀数值与鱼类体型共用。
-  // rng 可注入：正式服务端默认仍用 Math.random；Wiki 批量模拟用带种子随机数保证可复现。
+  // rng 可注入：正式服务端默认仍用 Math.random；测试可用带种子随机数保证可复现。
   function rollRatioWithRng(model, rng) {
     const rand = typeof rng === 'function' ? rng : Math.random;
     if (model === 'normal') {
@@ -1961,7 +1961,7 @@
     } catch (e) { return { error: e.message || '公式无效' }; }
   }
 
-  // ---- 抛竿 / 上鱼 / 双钓共享计算（服务端正式路径与 Wiki 模拟器共用） ----
+  // ---- 抛竿 / 上鱼 / 双钓共享计算 ----
   // rules = { cast: {baseMs,minMs,speedBonus,speedCap,formula}, biteFormula, doubleBase }
   const SIM_VAR_NAMES = ['speed', 'skill', 'big', 'rare', 'material', 'size', 'double', 'interval'];
   const CAST_FORMULA_DEFAULT = 'interval / (1 + speed / 100)';
@@ -2482,7 +2482,7 @@
   }
 
 
-  // ---- 熔炼方案与结果模拟（服务端正式路径与 Wiki 模拟器共用） ----
+  // ---- 熔炼方案与结果模拟 ----
   // d = { mainId, subId, mainAffix, subAffix, materials, relics }
   // 这里只做纯规则校验与预览，不检查背包、金币或装备锁定；调用方负责资产校验与结算。
   function smeltPlanOf(d) {
@@ -2597,8 +2597,7 @@
       : rollAffixValueWithRng(range[0], range[1], model, rng);
   }
 
-  // 模拟一次熔炼。不修改任何资产；服务端正式接口与 Wiki 模拟器都调用本函数。
-  // rng 可注入，默认 Math.random；Wiki 批量模拟使用带种子的随机数保证可复现。
+  // 模拟一次熔炼。不修改任何资产；rng 可注入，默认 Math.random。
   function simulateSmeltPlan(plan, rng) {
     const rand = typeof rng === 'function' ? rng : Math.random;
     const p = plan || {};
@@ -3428,8 +3427,6 @@
     { id: 'codex', name: '图鉴', icon: '📖', implemented: true },
     { id: 'feedback', name: '反馈', icon: '📮', implemented: true },
     { id: 'logs', name: '日志', icon: '📜', implemented: true },
-    // WIKI 与玩家端同域托管；从日志下方进入，保持主功能入口之后资料区不抢占常用功能。
-    { id: 'wiki', name: 'WIKI', icon: '📚', implemented: true },
   ];
 
   // ---- 物品索引（供 UI / 引擎统一查询） ----

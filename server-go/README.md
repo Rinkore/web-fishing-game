@@ -1,6 +1,6 @@
 # Go 游戏服务
 
-`server-go` 是仓库唯一的服务端实现，使用 Go 和 PostgreSQL。服务进程同时托管 `frontend/` 静态文件、游戏 API、SSE、Wiki API、管理 API 和数据库迁移。
+`server-go` 是仓库唯一的服务端实现，使用 Go 和 PostgreSQL。服务进程同时托管 `frontend/` 静态文件、游戏 API、SSE、管理 API 和数据库迁移。
 
 ## 构建与验证
 
@@ -32,7 +32,7 @@ $env:FISHING_GO_LISTEN = '127.0.0.1:9000'
 go run ./cmd/game --role=all
 ```
 
-`cmd/migrate` 只维护 PostgreSQL schema；它不导入旧离线存档。`cmd/repo-tool` 负责 Go 快照校验、Wiki 快照同步、版本读取、SQL 迁移摘要和发行清单生成。
+`cmd/migrate` 只维护 PostgreSQL schema；它不导入旧离线存档。`cmd/repo-tool` 负责 Go 快照校验、版本读取、SQL 迁移摘要和发行清单生成。
 
 ## 数据与安全边界
 
@@ -48,6 +48,6 @@ go run ./cmd/game --role=all
 - `cmd/admin`：管理员 MFA 配置入口
 - `cmd/repo-tool`：仓库快照、版本和发行元数据工具
 - `internal/gateway`：HTTP/SSE 兼容网关
-- `internal/modules`：身份、资产、钓鱼、远航、交易、市场、工坊、Wiki 等业务模块
+- `internal/modules`：身份、资产、钓鱼、远航、交易、市场和工坊等业务模块
 - `migrations`：按完整文件名记录的 SQL 迁移
-- `internal/rules/catalog.json`、`internal/wiki/content.json`：审阅后的内置快照
+- `internal/rules/catalog.json`：审阅后的内置规则快照

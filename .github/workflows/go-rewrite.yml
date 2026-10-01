@@ -9,9 +9,9 @@ on:
         type: string
         default: ''
   push:
-    paths: ['server-go/**', 'tools/release/**', 'deploy/go-test/**', 'deploy/linux/**', 'tests/linux-deploy.test.py', 'tests/release-*.test.*', 'dist/release.ps1', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'run.bat', '.github/workflows/**']
+    paths: ['server-go/**', 'tools/release/**', 'deploy/go-test/**', 'deploy/linux/**', 'tests/linux-deploy.test.py', 'tests/release-*.test.*', 'dist/release.ps1', 'frontend/js/data.js', 'docker/**', 'run.bat', '.github/workflows/**']
   pull_request:
-    paths: ['server-go/**', 'tools/release/**', 'deploy/go-test/**', 'deploy/linux/**', 'tests/linux-deploy.test.py', 'tests/release-*.test.*', 'dist/release.ps1', 'frontend/js/data.js', 'frontend/wiki/content/content.json', 'docker/**', 'docker-compose.wiki-test.yml', 'run.bat', '.github/workflows/**']
+    paths: ['server-go/**', 'tools/release/**', 'deploy/go-test/**', 'deploy/linux/**', 'tests/linux-deploy.test.py', 'tests/release-*.test.*', 'dist/release.ps1', 'frontend/js/data.js', 'docker/**', 'run.bat', '.github/workflows/**']
 
 permissions:
   contents: read

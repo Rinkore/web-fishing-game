@@ -195,7 +195,6 @@ def check_health(config, directory, release, systemctl, fetch):
             require(hashlib.sha256(public_data).hexdigest() == file_hash(directory / "frontend/js/data.js"),
                     "Public frontend digest mismatch.")
             fetch(origin + "/")
-            fetch(origin + "/wiki/")
             return
         except (OSError, ValueError, DeploymentError, subprocess.SubprocessError) as error:
             last = error

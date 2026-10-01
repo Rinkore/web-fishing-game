@@ -17,7 +17,6 @@ import (
 
 	"fishing.local/server/internal/modules/identity"
 	"fishing.local/server/internal/platform/httpserver"
-	"fishing.local/server/internal/wiki"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -52,7 +51,6 @@ type API struct {
 	viewMu    sync.Mutex
 	views     map[int64]legacyPlayersView
 	shopCache legacyShopCache
-	wikiStore *wiki.Store
 }
 type bucket struct {
 	start time.Time
@@ -70,7 +68,7 @@ func NewWithFrontend(pool *pgxpool.Pool, mfaKey []byte, location *time.Location,
 }
 
 func newAPI(pool *pgxpool.Pool, mfaKey []byte, locations []*time.Location, frontendDir string) http.Handler {
-	a := &API{pool: pool, identity: identity.New(pool, mfaKey), limits: map[string]bucket{}, streams: make(chan struct{}, 128), views: map[int64]legacyPlayersView{}, started: time.Now(), wikiStore: wiki.NewStore(pool)}
+	a := &API{pool: pool, identity: identity.New(pool, mfaKey), limits: map[string]bucket{}, streams: make(chan struct{}, 128), views: map[int64]legacyPlayersView{}, started: time.Now()}
 	a.registrationPolicy = registrationLimits()
 	a.location = time.Local
 	if len(locations) > 0 && locations[0] != nil {
@@ -235,19 +233,6 @@ func newAPI(pool *pgxpool.Pool, mfaKey []byte, locations []*time.Location, front
 	r.Post("/api/admin/banner/update", a.legacyBannerChange("update"))
 	r.Post("/api/admin/banner/stop", a.legacyBannerChange("stop"))
 	r.Post("/api/admin/banner/clear", a.legacyBannerChange("clear"))
-	r.Get("/api/wiki/content", a.legacyWikiContent)
-	r.Get("/api/admin/wiki/content", a.legacyAdminWikiContent)
-	r.Post("/api/admin/wiki/content", a.legacyAdminWikiContentSave)
-	r.Get("/api/wiki/guides", a.legacyWikiGuides)
-	r.Get("/api/wiki/guides/session", a.legacyWikiGuideSession)
-	r.Post("/api/wiki/guides/submit", a.legacyWikiGuideSubmit)
-	r.Get("/api/wiki/guides/my", a.legacyWikiGuideMine)
-	r.Post("/api/wiki/guides/delete", a.legacyWikiGuideDelete)
-	r.Get("/api/wiki/guides/{id}", a.legacyWikiGuideDetail)
-	r.Get("/api/admin/wiki/guides", a.legacyAdminWikiGuides)
-	r.Post("/api/admin/wiki/guides/review", a.legacyAdminWikiGuideReview)
-	r.Post("/api/admin/wiki/guides/delete", a.legacyAdminWikiGuideDelete)
-	r.Get("/api/wiki/simulator/inventory", a.legacyWikiSimulatorInventory)
 	r.Post("/api/mall/buy", a.legacyMallBuy)
 	r.Post("/api/bd/set", a.legacyBdSet)
 	r.Get("/events", a.legacyEvents)

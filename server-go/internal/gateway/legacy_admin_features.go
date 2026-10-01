@@ -27,10 +27,9 @@ var legacyFeatureGroups = []map[string]any{
 	{"id": "feedback", "name": "反馈", "parent": nil, "children": []map[string]any{{"id": "feedback.submit", "name": "提交反馈", "parent": "feedback"}, {"id": "feedback.skip", "name": "付费跳过冷却", "parent": "feedback"}}},
 	{"id": "mail", "name": "邮件", "parent": nil, "children": []map[string]any{}},
 	{"id": "logs", "name": "日志", "parent": nil, "children": []map[string]any{}},
-	{"id": "wiki", "name": "WIKI", "parent": nil, "children": []map[string]any{}},
 }
 
-var legacyFeatureMenuIDs = []string{"fishing", "sea", "character", "ground", "inventory", "mail", "workshop", "mall", "codex", "feedback", "logs", "wiki"}
+var legacyFeatureMenuIDs = []string{"fishing", "sea", "character", "ground", "inventory", "mail", "workshop", "mall", "codex", "feedback", "logs"}
 
 type legacyFeatureMetadata struct {
 	Order       map[string][]string `json:"order"`

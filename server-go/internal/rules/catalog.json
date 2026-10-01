@@ -4231,12 +4231,6 @@
         "name": "日志",
         "icon": "📜",
         "implemented": true
-      },
-      {
-        "id": "wiki",
-        "name": "WIKI",
-        "icon": "📚",
-        "implemented": true
       }
     ],
     "SHIP": {

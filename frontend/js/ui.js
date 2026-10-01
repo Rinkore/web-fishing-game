@@ -763,8 +763,6 @@ window.UI = (function () {
           toast('「' + item.name + '」功能尚未开放（框架占位）');
           return; // 未完成功能：不可跳转
         }
-        // WIKI 是同域资料站，不是游戏视图；保留当前钓鱼状态并新标签打开。
-        if (item.id === 'wiki') { window.open('/wiki/', '_blank', 'noopener'); return; }
         resetSectionTab(item.id);
         navigateView(item.id);
         if (item.id === 'inventory') clearSubAlerts();
