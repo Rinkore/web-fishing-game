@@ -198,6 +198,10 @@ func TestIntegrationFailedGrowthRollsBack(t *testing.T) {
 }
 func TestIntegrationStagesAndEngraving(t *testing.T) {
 	f := setup(t)
+	// Exercise core retention even when the default stage costs no longer consume cores.
+	cfg := f.c.GearConfig()
+	cfg.Costs.Stage[0].Cores = 1
+	f.c.Constants["GEAR_SYSTEM"], _ = json.Marshal(cfg)
 	for _, part := range []string{"rod", "charm"} {
 		sig, _ := f.c.GearCoreSignature("research", part)
 		f.add(sig)
@@ -328,7 +332,7 @@ func TestIntegrationIndependentSpecializationProgress(t *testing.T) {
 		t.Fatal("advanced beyond maximum", r)
 	}
 	v, err = Read(f.ctx, f.db.Admin, f.owner)
-	if err != nil || v.Tiers["tide"] != 3 || v.Receipts != 97 || f.num("SELECT coins FROM fishing.wallets WHERE account_id=$1", f.owner) != 875000 || f.num("SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id='gear_crystal'", f.owner) != 938 {
+	if err != nil || v.Tiers["tide"] != 3 || v.Receipts != 97 || f.num("SELECT coins FROM fishing.wallets WHERE account_id=$1", f.owner) != 875000 || f.num("SELECT quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND item_id='gear_crystal'", f.owner) != 908 {
 		t.Fatal("wrong specialization costs", v, err)
 	}
 	if r := f.apply(Command{Action: "preferences", Set: "tide"}); r.Status != "crafted" || f.num("SELECT count(*) FROM fishing.equipment_instances WHERE id=$1 AND lifecycle='available'", legacyID) != 1 {
