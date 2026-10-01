@@ -77,3 +77,6 @@ ALTER TABLE fishing.mail_messages
 ALTER TABLE fishing.mail_attachments
  ADD COLUMN reward_bound boolean NOT NULL DEFAULT false,
  ADD COLUMN bind_outputs boolean NOT NULL DEFAULT false;
+ALTER TABLE fishing.mail_attachments ADD CONSTRAINT mail_attachment_coins CHECK (
+ (item_id='__coins__' AND reward_bound=false AND bind_outputs=false) OR item_id<>'__coins__'
+);

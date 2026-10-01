@@ -18,6 +18,7 @@ import (
 )
 
 type Attachment struct {
+	Coins       int64  `json:"coins,omitempty"`
 	RewardBound bool   `json:"rewardBound"`
 	BindOutputs *bool  `json:"bindOutputs"`
 	ItemID      string `json:"itemId"`
@@ -108,6 +109,11 @@ func (s *Service) ListFiltered(ctx context.Context, owner int64, page int, summa
 				rows.Close()
 				return v, err
 			}
+			if a.ItemID == "__coins__" {
+				a.Coins = a.Quantity
+				a.ItemID = ""
+				a.Quantity = 0
+			}
 			v.Messages[i].Attachments = append(v.Messages[i].Attachments, a)
 		}
 		err = rows.Err()
@@ -124,21 +130,37 @@ func (s *Service) validate(in *Send) error {
 		return assets.ErrInvalid
 	}
 	seen := map[string]bool{}
+	coinCount := 0
 	equipmentCount := int64(0)
 	for i := range in.Attachments {
 		a := &in.Attachments[i]
-		a.RewardBound = true
-		if a.BindOutputs == nil {
-			value := true
-			a.BindOutputs = &value
+		if a.Coins == 0 {
+			a.RewardBound = true
+			if a.BindOutputs == nil {
+				value := true
+				a.BindOutputs = &value
+			}
 		}
-		if len(a.ItemID) > 128 {
+		if a.Coins == 0 && len(a.ItemID) > 128 {
 			return assets.ErrInvalid
 		}
-		if a.Tier == "" {
+		if a.Coins == 0 && a.Tier == "" {
 			a.Tier = "normal"
 		}
-		if a.Quantity < 1 || a.Quantity > 1000000 || seen[a.ItemID+":"+a.Tier] {
+		if a.Coins > 0 && (a.Tier != "" && a.Tier != "normal" || a.BindOutputs != nil && *a.BindOutputs || a.RewardBound) {
+			return assets.ErrInvalid
+		}
+		if a.Coins < 0 || a.Coins > assets.MaxCoins || (a.Coins > 0 && (a.ItemID != "" || a.Quantity != 0)) {
+			return assets.ErrInvalid
+		}
+		if a.Coins > 0 {
+			coinCount++
+			if coinCount > 1 {
+				return assets.ErrInvalid
+			}
+			continue
+		}
+		if a.Quantity < 1 || a.Quantity > 1000000 || a.ItemID == "" || seen[a.ItemID+":"+a.Tier] {
 			return assets.ErrInvalid
 		}
 		seen[a.ItemID+":"+a.Tier] = true
@@ -235,6 +257,12 @@ func (s *Service) Send(ctx context.Context, actor int64, actorName, key string, 
 			return assets.Result{}, err
 		}
 		for _, a := range in.Attachments {
+			if a.Coins > 0 {
+				if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.mail_attachments(mail_id,item_id,quantity,tier,custom_name,custom_description,reward_bound,bind_outputs) VALUES($1,'__coins__',$2,'normal','','',false,false)`, id, a.Coins); err != nil {
+					return assets.Result{}, err
+				}
+				continue
+			}
 			if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.mail_attachments(mail_id,item_id,quantity,tier,custom_name,custom_description,reward_bound,bind_outputs) VALUES($1,$2,$3,$4,$5,$6,true,$7)`, id, a.ItemID, a.Quantity, a.Tier, a.Name, a.Description, *a.BindOutputs); err != nil {
 				return assets.Result{}, err
 			}
@@ -297,6 +325,12 @@ func (s *Service) Change(ctx context.Context, owner int64, key string, id int64,
 		}
 		deltas := []assets.StackDelta{}
 		for _, a := range items {
+			if a.ItemID == "__coins__" {
+				if err = t.Coins(ctx, owner, a.Quantity); err != nil {
+					return assets.Result{}, err
+				}
+				continue
+			}
 			if strings.Contains(a.ItemID, "#") {
 				base, _, _, ok := s.catalog.Instance(a.ItemID)
 				if !ok {
@@ -321,7 +355,7 @@ func (s *Service) Change(ctx context.Context, owner int64, key string, id int64,
 			return assets.Result{}, err
 		}
 		for _, a := range items {
-			if a.RewardBound && !strings.Contains(a.ItemID, "#") {
+			if a.RewardBound && a.ItemID != "__coins__" && !strings.Contains(a.ItemID, "#") {
 				if err = t.BindStacks(ctx, owner, []assets.StackDelta{{ItemID: a.ItemID, Tier: a.Tier, Quantity: a.Quantity}}, *a.BindOutputs); err != nil {
 					return assets.Result{}, err
 				}

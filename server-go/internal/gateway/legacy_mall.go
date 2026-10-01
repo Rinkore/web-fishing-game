@@ -31,7 +31,7 @@ func (a *API) legacyMall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	have := map[string]int64{}
-	rows, err := a.pool.Query(r.Context(), `SELECT item_id,quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND quantity>0`, session.AccountID)
+	rows, err := a.pool.Query(r.Context(), `SELECT item_id,quantity-bound_quantity FROM fishing.inventory_stacks WHERE owner_id=$1 AND quantity-bound_quantity>0`, session.AccountID)
 	if err != nil {
 		failure(w, identity.ErrStorage)
 		return
