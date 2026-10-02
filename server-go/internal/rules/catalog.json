@@ -1,8 +1,8 @@
 {
   "format": 1,
-  "version": "v0.27.0",
+  "version": "v0.27.1",
   "source": "frontend/js/data.js",
-  "sourceSHA256": "edb3410127f78a9c7ee36377f24a5d2491ba17219e7dd14399f269e57214cce3",
+  "sourceSHA256": "4ca7403a6e6fe4871e50879c77d36854a77cf2fa3c70f000fd5a080ac2381d70",
   "constants": {
     "GEAR_SYSTEM": {
       "enabled": true,
@@ -723,7 +723,7 @@
         }
       }
     },
-    "VERSION": "v0.27.0",
+    "VERSION": "v0.27.1",
     "BUILD": "2026-09-27",
     "FISH": {
       "common": [

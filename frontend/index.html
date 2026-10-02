@@ -10,21 +10,21 @@
   <!-- 像素字体体积较大（~900 KB）：预加载，避免字体到达后再回流一次 -->
   <link rel="preload" href="assets/fonts/fusion-pixel-12px.woff2" as="font" type="font/woff2" crossorigin />
   <!-- 加载顺序：tokens（色板 / 断点 / 全局焦点环）→ 基础 → 组件 → 响应式 → mobile 最后 -->
-  <link rel="stylesheet" href="css/tokens.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/style.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/pixel.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/voyage-map.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/smelt.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/expedition.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/mail.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/gear.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/settings.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/fishing.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/responsive.css?v=0.27.0" />
-  <link rel="stylesheet" href="css/mobile.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/tokens.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/style.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/pixel.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/voyage-map.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/smelt.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/expedition.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/mail.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/gear.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/settings.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/fishing.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/responsive.css?v=v0.27.1" />
+  <link rel="stylesheet" href="css/mobile.css?v=v0.27.1" />
   <!-- 港湾外壳（设计稿 v2 · 阶段 A–E）：放在最后，用来覆盖 responsive/mobile 对 .nav 的横排与底栏规则 -->
-  <link rel="stylesheet" href="css/harbor.css?v=0.27.0" />
-  <script src="js/settings.js?v=0.27.0" defer></script>
+  <link rel="stylesheet" href="css/harbor.css?v=v0.27.1" />
+  <script src="js/settings.js?v=v0.27.1" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -139,21 +139,21 @@
 
   <!-- 全部 defer：settings.js 原先比 UI.init() 晚跑，导致设置界面读到未初始化的 UI。
        统一 defer 后按文档顺序执行，init 等 DOMContentLoaded（defer 全部跑完）再启动。 -->
-  <script src="js/config.js?v=0.27.0" defer></script>
-  <script src="js/data.js?v=0.27.0" defer></script>
-  <script src="js/features.js?v=0.27.0" defer></script>
-  <script src="js/engine.js?v=0.27.0" defer></script>
-  <script src="js/scene.js?v=0.27.0" defer></script>
-  <script src="js/net.js?v=0.27.0" defer></script>
-  <script src="js/voyage-map.js?v=0.27.0" defer></script>
-  <script src="js/expedition.js?v=0.27.0" defer></script>
-  <script src="js/gear.js?v=0.27.0" defer></script>
-  <script src="js/expedition-growth.js?v=0.27.0" defer></script>
-  <script src="js/mail.js?v=0.27.0" defer></script>
-  <script src="js/house.js?v=0.27.0" defer></script>
-  <script src="js/ui.js?v=0.27.0" defer></script>
-  <script src="js/harbor-art.js?v=0.27.0" defer></script>
-  <script src="js/harbor.js?v=0.27.0" defer></script>
+  <script src="js/config.js?v=v0.27.1" defer></script>
+  <script src="js/data.js?v=v0.27.1" defer></script>
+  <script src="js/features.js?v=v0.27.1" defer></script>
+  <script src="js/engine.js?v=v0.27.1" defer></script>
+  <script src="js/scene.js?v=v0.27.1" defer></script>
+  <script src="js/net.js?v=v0.27.1" defer></script>
+  <script src="js/voyage-map.js?v=v0.27.1" defer></script>
+  <script src="js/expedition.js?v=v0.27.1" defer></script>
+  <script src="js/gear.js?v=v0.27.1" defer></script>
+  <script src="js/expedition-growth.js?v=v0.27.1" defer></script>
+  <script src="js/mail.js?v=v0.27.1" defer></script>
+  <script src="js/house.js?v=v0.27.1" defer></script>
+  <script src="js/ui.js?v=v0.27.1" defer></script>
+  <script src="js/harbor-art.js?v=v0.27.1" defer></script>
+  <script src="js/harbor.js?v=v0.27.1" defer></script>
   <script>
     window.addEventListener('DOMContentLoaded', function () {
       window.Engine.init();

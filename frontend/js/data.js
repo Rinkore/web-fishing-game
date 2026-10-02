@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.27.0';
+  const VERSION = 'v0.27.1';
   // 图片加载失败自动重试（发版切流 / 网络抖动时瞬时 404 会让图片永久消失）：
   // 重试 3 次、间隔递增；仍失败才隐藏占位。onerror 内联调用 window.__imgFail(this)。
   if (typeof window !== 'undefined') window.__imgFail = function (img) {
@@ -32,7 +32,7 @@
       else img.style.display = 'none';
     } catch (e) {}
   };
-  const BUILD = '2026-09-27';   // 构建日期（仅 /api/version 暴露，界面不展示）
+  const BUILD = '2026-10-02';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。

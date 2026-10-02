@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "version": "v0.27.0",
-  "sourceSHA256": "34013fe605e071a16cd8585fea5a0451dd7c1f773827cb19e1b3c6204e107d89",
+  "version": "v0.27.1",
+  "sourceSHA256": "4ca7403a6e6fe4871e50879c77d36854a77cf2fa3c70f000fd5a080ac2381d70",
   "cases": [
     {
       "id": "mall-0",
