@@ -53,7 +53,7 @@
           ]
         },
         "hook": {
-          "name": "倒刺�?,
+          "name": "倒刺钩",
           "main": "size",
           "subs": [
             "skill",
@@ -129,7 +129,7 @@
           ]
         },
         "reel": {
-          "name": "顺滑卷线�?,
+          "name": "顺滑卷线器",
           "main": "speed",
           "subs": [
             "skill",
@@ -398,8 +398,8 @@
       },
       "sets": {
         "forge": {
-          "name": "锻造工�?,
-          "description": "有效钓鱼积累热量，用于优惠精工和精工预设切换�?,
+          "name": "锻造工匠",
+          "description": "有效钓鱼积累热量，用于优惠精工和精工预设切换。",
           "coreAttributes": {
             "rod": {
               "skill": 10
@@ -437,7 +437,7 @@
         },
         "harvest": {
           "name": "丰收渔获",
-          "description": "成功上鱼积累丰收进度，额外获得可出售鱼获，不重复写入纪录�?,
+          "description": "成功上鱼积累丰收进度，额外获得可出售鱼获，不重复写入纪录。",
           "coreAttributes": {
             "rod": {
               "double": 10
@@ -483,7 +483,7 @@
         },
         "apex": {
           "name": "猎王追踪",
-          "description": "追踪当前钓点已有目标鱼种，积累权重并按鱼种稀缺度保底�?,
+          "description": "追踪当前钓点已有目标鱼种，积累权重并按鱼种稀缺度保底。",
           "coreAttributes": {
             "rod": {
               "skill": 10
@@ -532,8 +532,8 @@
           ]
         },
         "research": {
-          "name": "生态培�?,
-          "description": "少量混入同区间均匀分布，轻微增加大小两端的个体，不扩大体型上限�?,
+          "name": "生态培育",
+          "description": "少量混入同区间均匀分布，轻微增加大小两端的个体，不扩大体型上限。",
           "coreAttributes": {
             "rod": {
               "size": 10
@@ -561,7 +561,7 @@
       "specializations": {
         "tide": {
           "name": "潮汐采集",
-          "description": "增加航线合法材料；可选择采集方向�?,
+          "description": "增加航线合法材料；可选择采集方向。",
           "stages": [
             {
               "bonus": 0.2,
@@ -591,7 +591,7 @@
         },
         "wreck": {
           "name": "沉船考古",
-          "description": "稳定宝匣碎片，独立惊喜宝匣与按时长累计保底�?,
+          "description": "稳定宝匣碎片，独立惊喜宝匣与按时长累计保底。",
           "stages": [
             {
               "fragmentsPerHour": 1,
@@ -625,7 +625,7 @@
         },
         "storm": {
           "name": "风暴远洋",
-          "description": "风暴与高危航线提供特殊收益，深入风暴需承担额外风险�?,
+          "description": "风暴与高危航线提供特殊收益，深入风暴需承担额外风险。",
           "stages": [
             {
               "bonus": 0.15,
@@ -663,7 +663,7 @@
         },
         "rescue": {
           "name": "救生护航",
-          "description": "减少事故损失，指定货物保护或提前撤离�?,
+          "description": "减少事故损失，指定货物保护或提前撤离。",
           "stages": [
             {
               "retain": 0.75,
@@ -769,7 +769,7 @@
         },
         {
           "id": "tilapia",
-          "name": "罗非�?,
+          "name": "罗非鱼",
           "rarity": "common",
           "price": 10,
           "size": [
@@ -779,7 +779,7 @@
         },
         {
           "id": "minnow",
-          "name": "麦穗�?,
+          "name": "麦穗鱼",
           "rarity": "common",
           "price": 5,
           "size": [
@@ -799,7 +799,7 @@
         },
         {
           "id": "sardine",
-          "name": "沙丁�?,
+          "name": "沙丁鱼",
           "rarity": "common",
           "price": 6,
           "size": [
@@ -809,7 +809,7 @@
         },
         {
           "id": "croaker",
-          "name": "小黄�?,
+          "name": "小黄鱼",
           "rarity": "common",
           "price": 11,
           "size": [
@@ -819,7 +819,7 @@
         },
         {
           "id": "yellowcat",
-          "name": "黄辣�?,
+          "name": "黄辣丁",
           "rarity": "common",
           "price": 13,
           "size": [
@@ -869,7 +869,7 @@
         },
         {
           "id": "culter",
-          "name": "翘嘴�?,
+          "name": "翘嘴鲌",
           "rarity": "common",
           "price": 18,
           "size": [
@@ -899,7 +899,7 @@
         },
         {
           "id": "jackmack",
-          "name": "竹荚�?,
+          "name": "竹荚鱼",
           "rarity": "common",
           "price": 10,
           "size": [
@@ -909,7 +909,7 @@
         },
         {
           "id": "squid",
-          "name": "小鱿�?,
+          "name": "小鱿鱼",
           "rarity": "common",
           "price": 12,
           "size": [
@@ -919,7 +919,7 @@
         },
         {
           "id": "octo",
-          "name": "小章�?,
+          "name": "小章鱼",
           "rarity": "common",
           "price": 14,
           "size": [
@@ -1011,7 +1011,7 @@
         },
         {
           "id": "mackerel",
-          "name": "马鲛�?,
+          "name": "马鲛鱼",
           "rarity": "epic",
           "price": 210,
           "size": [
@@ -1021,7 +1021,7 @@
         },
         {
           "id": "grouper",
-          "name": "石斑�?,
+          "name": "石斑鱼",
           "rarity": "epic",
           "price": 230,
           "size": [
@@ -1031,7 +1031,7 @@
         },
         {
           "id": "cobia",
-          "name": "军曹�?,
+          "name": "军曹鱼",
           "rarity": "epic",
           "price": 250,
           "size": [
@@ -1041,7 +1041,7 @@
         },
         {
           "id": "rubysnapper",
-          "name": "金目�?,
+          "name": "金目鲷",
           "rarity": "epic",
           "price": 280,
           "size": [
@@ -1051,7 +1051,7 @@
         },
         {
           "id": "sunfish",
-          "name": "翻车�?,
+          "name": "翻车鱼",
           "rarity": "epic",
           "price": 300,
           "size": [
@@ -1123,7 +1123,7 @@
         },
         {
           "id": "pearl",
-          "name": "深海珍珠�?,
+          "name": "深海珍珠贝",
           "rarity": "rare",
           "price": 300,
           "size": [
@@ -1143,7 +1143,7 @@
         },
         {
           "id": "voltaiceel",
-          "name": "电光�?,
+          "name": "电光鳗",
           "rarity": "rare",
           "price": 380,
           "size": [
@@ -1153,7 +1153,7 @@
         },
         {
           "id": "ghostray",
-          "name": "幽灵�?,
+          "name": "幽灵魟",
           "rarity": "rare",
           "price": 420,
           "size": [
@@ -1163,7 +1163,7 @@
         },
         {
           "id": "arowana",
-          "name": "金龙�?,
+          "name": "金龙鱼",
           "rarity": "rare",
           "price": 450,
           "size": [
@@ -1173,7 +1173,7 @@
         },
         {
           "id": "moonkoi",
-          "name": "月光�?,
+          "name": "月光鲤",
           "rarity": "rare",
           "price": 480,
           "size": [
@@ -1203,7 +1203,7 @@
         },
         {
           "id": "bluefin",
-          "name": "蓝鳍金枪�?,
+          "name": "蓝鳍金枪鱼",
           "rarity": "rare",
           "price": 560,
           "size": [
@@ -1213,7 +1213,7 @@
         },
         {
           "id": "coelacanth",
-          "name": "腔棘�?,
+          "name": "腔棘鱼",
           "rarity": "rare",
           "price": 600,
           "size": [
@@ -1223,7 +1223,7 @@
         },
         {
           "id": "megamouth",
-          "name": "巨口�?,
+          "name": "巨口鲨",
           "rarity": "rare",
           "price": 700,
           "size": [
@@ -1233,7 +1233,7 @@
         },
         {
           "id": "leviathan",
-          "name": "海王·利维�?,
+          "name": "海王·利维坦",
           "rarity": "rare",
           "price": 900,
           "size": [
@@ -1246,14 +1246,14 @@
     "MATERIALS": [
       {
         "id": "bait_pack",
-        "name": "诱饵�?,
+        "name": "诱饵包",
         "rarity": "common",
         "price": 5,
         "size": null
       },
       {
         "id": "rope",
-        "name": "耐磨�?,
+        "name": "耐磨绳",
         "rarity": "common",
         "price": 4,
         "size": null
@@ -1274,7 +1274,7 @@
       },
       {
         "id": "tide_sand",
-        "name": "潮汐�?,
+        "name": "潮汐砂",
         "rarity": "rare",
         "price": 0,
         "size": null,
@@ -1299,7 +1299,7 @@
       },
       {
         "id": "gene_albino",
-        "name": "白化导向�?,
+        "name": "白化导向剂",
         "rarity": "rare",
         "price": 0,
         "size": null,
@@ -1307,7 +1307,7 @@
       },
       {
         "id": "gene_star",
-        "name": "星点导向�?,
+        "name": "星点导向剂",
         "rarity": "rare",
         "price": 0,
         "size": null,
@@ -1315,7 +1315,7 @@
       },
       {
         "id": "gene_veil",
-        "name": "流纱导向�?,
+        "name": "流纱导向剂",
         "rarity": "rare",
         "price": 0,
         "size": null,
@@ -1323,7 +1323,7 @@
       },
       {
         "id": "gene_glow",
-        "name": "荧光导向�?,
+        "name": "荧光导向剂",
         "rarity": "rare",
         "price": 0,
         "size": null,
@@ -1331,7 +1331,7 @@
       },
       {
         "id": "gene_prism",
-        "name": "异色棱镜�?,
+        "name": "异色棱镜剂",
         "rarity": "epic",
         "price": 0,
         "size": null,
@@ -1353,7 +1353,7 @@
       },
       {
         "id": "grindstone",
-        "name": "磨石�?,
+        "name": "磨石粉",
         "rarity": "rare",
         "price": 0,
         "size": null,
@@ -1362,7 +1362,7 @@
       },
       {
         "id": "stardust",
-        "name": "星辉�?,
+        "name": "星辉粉",
         "rarity": "rare",
         "price": 0,
         "size": null,
@@ -1371,7 +1371,7 @@
       },
       {
         "id": "humus",
-        "name": "腐殖�?,
+        "name": "腐殖泥",
         "rarity": "rare",
         "price": 0,
         "size": null,
@@ -1407,7 +1407,7 @@
       },
       {
         "id": "curesalt",
-        "name": "防腐�?,
+        "name": "防腐盐",
         "rarity": "rare",
         "price": 0,
         "size": null,
@@ -1434,7 +1434,7 @@
       },
       {
         "id": "gear_crystal",
-        "name": "熔炼催化�?,
+        "name": "熔炼催化晶",
         "rarity": "rare",
         "price": 0,
         "size": null,
@@ -1487,7 +1487,7 @@
           "level": 3,
           "success": 80,
           "coins": 4000,
-          "description": "宝匣残片、强化合金与熔炼催化�?
+          "description": "宝匣残片、强化合金与熔炼催化晶"
         },
         {
           "id": "danger",
@@ -1495,7 +1495,7 @@
           "level": 4,
           "success": 65,
           "coins": 6000,
-          "description": "高危航线，产出精工合金与熔炼催化�?
+          "description": "高危航线，产出精工合金与熔炼催化晶"
         },
         {
           "id": "king",
@@ -1503,34 +1503,34 @@
           "level": 5,
           "success": 65,
           "coins": 8000,
-          "description": "满级单人挑战，提高高级成长材料产�?
+          "description": "满级单人挑战，提高高级成长材料产出"
         }
       ],
       "catalysts": [
         {
           "id": "tide_sand",
-          "name": "潮汐�?,
+          "name": "潮汐砂",
           "affix": "speed",
           "route": "trade",
           "minHours": 2
         },
         {
           "id": "grindstone",
-          "name": "磨石�?,
+          "name": "磨石粉",
           "affix": "skill",
           "route": "gather",
           "minHours": 2
         },
         {
           "id": "stardust",
-          "name": "星辉�?,
+          "name": "星辉粉",
           "affix": "rare",
           "route": "danger",
           "minHours": 2
         },
         {
           "id": "humus",
-          "name": "腐殖�?,
+          "name": "腐殖泥",
           "affix": "material",
           "route": "gather",
           "minHours": 2
@@ -1565,7 +1565,7 @@
         },
         {
           "id": "curesalt",
-          "name": "防腐�?,
+          "name": "防腐盐",
           "affix": "settle",
           "route": "trade",
           "minHours": 8
@@ -1578,7 +1578,7 @@
         "name": "潮汐采集",
         "level": 1,
         "cost": 20,
-        "effect": "增加航线合法材料；可选择采集方向�?,
+        "effect": "增加航线合法材料；可选择采集方向。",
         "pending": false,
         "pieces": [
           {
@@ -1600,7 +1600,7 @@
         "name": "猎王追踪",
         "level": 2,
         "cost": 25,
-        "effect": "追踪当前钓点已有目标鱼种，积累权重并按鱼种稀缺度保底�?,
+        "effect": "追踪当前钓点已有目标鱼种，积累权重并按鱼种稀缺度保底。",
         "pending": false,
         "pieces": [
           {
@@ -1622,7 +1622,7 @@
         "name": "风暴远洋",
         "level": 4,
         "cost": 30,
-        "effect": "风暴与高危航线提供特殊收益，深入风暴需承担额外风险�?,
+        "effect": "风暴与高危航线提供特殊收益，深入风暴需承担额外风险。",
         "pending": false,
         "pieces": [
           {
@@ -1641,21 +1641,21 @@
       },
       {
         "id": "forge",
-        "name": "锻造工�?,
+        "name": "锻造工匠",
         "level": 2,
         "cost": 25,
-        "effect": "有效钓鱼积累热量，用于优惠精工和精工预设切换�?,
+        "effect": "有效钓鱼积累热量，用于优惠精工和精工预设切换。",
         "pending": false,
         "pieces": [
           {
             "part": "rod",
-            "name": "锻造工匠核�?,
+            "name": "锻造工匠核心",
             "type": "skill",
             "value": 10
           },
           {
             "part": "charm",
-            "name": "锻造工匠徽�?,
+            "name": "锻造工匠徽记",
             "type": "speed",
             "value": 10
           }
@@ -1666,7 +1666,7 @@
         "name": "沉船考古",
         "level": 3,
         "cost": 30,
-        "effect": "稳定宝匣碎片，独立惊喜宝匣与按时长累计保底�?,
+        "effect": "稳定宝匣碎片，独立惊喜宝匣与按时长累计保底。",
         "pending": false,
         "pieces": [
           {
@@ -1685,21 +1685,21 @@
       },
       {
         "id": "research",
-        "name": "生态培�?,
+        "name": "生态培育",
         "level": 3,
         "cost": 25,
-        "effect": "少量混入同区间均匀分布，轻微增加大小两端的个体，不扩大体型上限�?,
+        "effect": "少量混入同区间均匀分布，轻微增加大小两端的个体，不扩大体型上限。",
         "pending": false,
         "pieces": [
           {
             "part": "rod",
-            "name": "生态研究核�?,
+            "name": "生态研究核心",
             "type": "size",
             "value": 10
           },
           {
             "part": "charm",
-            "name": "生态研究徽�?,
+            "name": "生态研究徽记",
             "type": "skill",
             "value": 8
           }
@@ -1710,7 +1710,7 @@
         "name": "救生护航",
         "level": 4,
         "cost": 30,
-        "effect": "减少事故损失，指定货物保护或提前撤离�?,
+        "effect": "减少事故损失，指定货物保护或提前撤离。",
         "pending": false,
         "pieces": [
           {
@@ -1732,7 +1732,7 @@
         "name": "商路观测",
         "level": 5,
         "cost": 30,
-        "effect": "企划中，暂未开放兑换�?,
+        "effect": "企划中，暂未开放兑换。",
         "pending": true,
         "pieces": [
           {
@@ -1754,7 +1754,7 @@
         "name": "丰收渔获",
         "level": 1,
         "cost": 20,
-        "effect": "成功上鱼积累丰收进度，额外获得可出售鱼获，不重复写入纪录�?,
+        "effect": "成功上鱼积累丰收进度，额外获得可出售鱼获，不重复写入纪录。",
         "pending": false,
         "pieces": [
           {
@@ -1816,23 +1816,23 @@
       },
       {
         "key": "hook",
-        "name": "�?,
+        "name": "钩",
         "default": {
-          "name": "标准�?
+          "name": "标准钩"
         }
       },
       {
         "key": "bait",
-        "name": "�?,
+        "name": "饵",
         "default": {
-          "name": "标准�?
+          "name": "标准饵"
         }
       },
       {
         "key": "reel",
-        "name": "卷线�?,
+        "name": "卷线器",
         "default": {
-          "name": "标准卷线�?
+          "name": "标准卷线器"
         }
       },
       {
@@ -1847,13 +1847,13 @@
         "name": "饰品栏位",
         "isCharm": true,
         "default": {
-          "name": "（空�?
+          "name": "（空）"
         }
       }
     ],
     "AFFIX_LABEL": {
-      "speed": "钓�?,
-      "skill": "技�?,
+      "speed": "钓速",
+      "skill": "技巧",
       "rare": "稀有度",
       "material": "材料概率",
       "size": "体型",
@@ -1887,14 +1887,14 @@
     "QUALITY": {
       "common": {
         "key": "common",
-        "name": "普�?,
+        "name": "普通",
         "cap": 1,
         "mult": 1,
         "cls": "q-common"
       },
       "rare": {
         "key": "rare",
-        "name": "稀�?,
+        "name": "稀有",
         "cap": 2,
         "mult": 1.5,
         "cls": "q-rare"
@@ -1925,7 +1925,7 @@
         "id": "chest_wreck",
         "name": "沉船宝匣",
         "rarity": "rare",
-        "desc": "沉船里的随机打捞件，至少 2 条词缀�?,
+        "desc": "沉船里的随机打捞件，至少 2 条词缀。",
         "costRelic": 8,
         "costCoins": 8000,
         "mode": "random",
@@ -1940,7 +1940,7 @@
         "id": "chest_deep",
         "name": "深潜宝匣",
         "rarity": "rare",
-        "desc": "自选部位，沉得更深、捞得更准，至少 2 条词缀�?,
+        "desc": "自选部位，沉得更深、捞得更准，至少 2 条词缀。",
         "costRelic": 20,
         "costCoins": 30000,
         "mode": "part",
@@ -1955,7 +1955,7 @@
         "id": "chest_abyss",
         "name": "深渊宝匣",
         "rarity": "epic",
-        "desc": "自选底材，必定史诗，且词条填满该底材的全部词缀池�?,
+        "desc": "自选底材，必定史诗，且词条填满该底材的全部词缀池。",
         "costRelic": 45,
         "costCoins": 90000,
         "mode": "base",
@@ -1969,7 +1969,7 @@
         "id": "chest_king",
         "name": "海王遗匣",
         "rarity": "mythic",
-        "desc": "自选底材，必定神话�?0% 概率突破词缀池边界，获得一�?b>突破词缀</b>（该部位本没有的词缀）�?,
+        "desc": "自选底材，必定神话：50% 概率突破词缀池边界，获得一条<b>突破词缀</b>（该部位本没有的词缀）。",
         "costRelic": 100,
         "costCoins": 300000,
         "mode": "base",
@@ -2239,7 +2239,7 @@
       },
       {
         "id": "line_titan",
-        "name": "钛芯�?,
+        "name": "钛芯线",
         "part": "line",
         "price": 170,
         "pool": [
@@ -2258,7 +2258,7 @@
       },
       {
         "id": "line_dragon",
-        "name": "龙筋�?,
+        "name": "龙筋线",
         "part": "line",
         "price": 250,
         "pool": [
@@ -2282,7 +2282,7 @@
       },
       {
         "id": "hook_barb",
-        "name": "倒刺�?,
+        "name": "倒刺钩",
         "part": "hook",
         "price": 50,
         "pool": [
@@ -2444,7 +2444,7 @@
       },
       {
         "id": "reel_smooth",
-        "name": "顺滑卷线�?,
+        "name": "顺滑卷线器",
         "part": "reel",
         "price": 55,
         "pool": [
@@ -2463,7 +2463,7 @@
       },
       {
         "id": "reel_magnetic",
-        "name": "磁力刹车卷线�?,
+        "name": "磁力刹车卷线器",
         "part": "reel",
         "price": 160,
         "pool": [
@@ -2482,7 +2482,7 @@
       },
       {
         "id": "reel_electric",
-        "name": "电动卷线�?,
+        "name": "电动卷线器",
         "part": "reel",
         "price": 240,
         "pool": [
@@ -2501,7 +2501,7 @@
       },
       {
         "id": "reel_turbo",
-        "name": "涡轮卷线�?,
+        "name": "涡轮卷线器",
         "part": "reel",
         "price": 270,
         "pool": [
@@ -2577,7 +2577,7 @@
       },
       {
         "id": "acc_sonar",
-        "name": "智能探鱼�?,
+        "name": "智能探鱼器",
         "part": "accessory",
         "price": 255,
         "pool": [
@@ -2831,7 +2831,7 @@
       },
       {
         "id": "gear_hook_1",
-        "name": "磨石�?,
+        "name": "磨石钩",
         "part": "hook",
         "price": 60,
         "pool": [
@@ -2877,7 +2877,7 @@
       },
       {
         "id": "gear_hook_3",
-        "name": "精准�?,
+        "name": "精准钩",
         "part": "hook",
         "price": 170,
         "pool": [
@@ -2923,7 +2923,7 @@
       },
       {
         "id": "gear_hook_5",
-        "name": "猎王�?,
+        "name": "猎王钩",
         "part": "hook",
         "price": 280,
         "pool": [
@@ -3061,7 +3061,7 @@
       },
       {
         "id": "gear_reel_1",
-        "name": "疾风卷线�?,
+        "name": "疾风卷线器",
         "part": "reel",
         "price": 60,
         "pool": [
@@ -3084,7 +3084,7 @@
       },
       {
         "id": "gear_reel_2",
-        "name": "航海卷线�?,
+        "name": "航海卷线器",
         "part": "reel",
         "price": 115,
         "pool": [
@@ -3107,7 +3107,7 @@
       },
       {
         "id": "gear_reel_3",
-        "name": "稳帆卷线�?,
+        "name": "稳帆卷线器",
         "part": "reel",
         "price": 170,
         "pool": [
@@ -3130,7 +3130,7 @@
       },
       {
         "id": "gear_reel_4",
-        "name": "长航卷线�?,
+        "name": "长航卷线器",
         "part": "reel",
         "price": 225,
         "pool": [
@@ -3153,7 +3153,7 @@
       },
       {
         "id": "gear_reel_5",
-        "name": "涡轮航海�?,
+        "name": "涡轮航海轮",
         "part": "reel",
         "price": 280,
         "pool": [
@@ -3222,7 +3222,7 @@
       },
       {
         "id": "gear_accessory_3",
-        "name": "防腐收纳�?,
+        "name": "防腐收纳箱",
         "part": "accessory",
         "price": 170,
         "pool": [
@@ -3245,7 +3245,7 @@
       },
       {
         "id": "gear_accessory_4",
-        "name": "远洋采集�?,
+        "name": "远洋采集器",
         "part": "accessory",
         "price": 225,
         "pool": [
@@ -3358,7 +3358,7 @@
       },
       {
         "id": "set_forge_rod",
-        "name": "锻造工匠核�?,
+        "name": "锻造工匠核心",
         "part": "rod",
         "price": 0,
         "setId": "forge",
@@ -3373,7 +3373,7 @@
       },
       {
         "id": "set_forge_charm",
-        "name": "锻造工匠徽�?,
+        "name": "锻造工匠徽记",
         "part": "charm",
         "price": 0,
         "setId": "forge",
@@ -3418,7 +3418,7 @@
       },
       {
         "id": "set_research_rod",
-        "name": "生态培育核�?,
+        "name": "生态培育核心",
         "part": "rod",
         "price": 0,
         "setId": "research",
@@ -3433,7 +3433,7 @@
       },
       {
         "id": "set_research_charm",
-        "name": "生态培育徽�?,
+        "name": "生态培育徽记",
         "part": "charm",
         "price": 0,
         "setId": "research",
@@ -3548,11 +3548,11 @@
         "id": "map",
         "name": "世界地图",
         "type": "normal",
-        "desc": "钓点直接分布在世界地图与远洋图上；后台可增删改、按玩家规模一键布点�?,
+        "desc": "钓点直接分布在世界地图与远洋图上；后台可增删改、按玩家规模一键布点。",
         "spots": [
           {
             "id": "dock",
-            "name": "湖畔老码�?,
+            "name": "湖畔老码头",
             "pos": [
               62,
               47
@@ -3590,7 +3590,7 @@
           },
           {
             "id": "reed",
-            "name": "芦苇�?,
+            "name": "芦苇荡",
             "pos": [
               67,
               56
@@ -3855,7 +3855,7 @@
           },
           {
             "id": "lighthouse",
-            "name": "灯塔�?,
+            "name": "灯塔礁",
             "pos": [
               33,
               20
@@ -4200,19 +4200,19 @@
       {
         "id": "workshop",
         "name": "工坊",
-        "icon": "�?,
+        "icon": "⚒",
         "implemented": true
       },
       {
         "id": "chest",
-        "name": "开�?,
+        "name": "开箱",
         "icon": "🎁",
         "implemented": true
       },
       {
         "id": "sea",
         "name": "远洋",
-        "icon": "�?,
+        "icon": "⛵",
         "implemented": true
       },
       {
@@ -4262,7 +4262,7 @@
       "levels": [
         {
           "lv": 1,
-          "name": "木划�?
+          "name": "木划艇"
         },
         {
           "lv": 2,
@@ -4313,19 +4313,19 @@
         "沉星海域",
         "鲸落平原",
         "翡翠环礁",
-        "风暴�?,
+        "风暴湾",
         "幽蓝裂隙",
         "珍珠环礁"
       ],
       "spotNames": [
-        "沉星�?,
+        "沉星湾",
         "月光潮径",
         "珊瑚台地",
         "鲸落浅滩",
-        "风暴�?,
+        "风暴眼",
         "幽蓝水道",
         "珍珠浅滩",
-        "海雾�?,
+        "海雾岬",
         "琥珀暗礁",
         "极光海脊",
         "遗弃船坞",
@@ -4432,7 +4432,7 @@
       "quests": [
         {
           "id": "q_ocean_catch",
-          "title": "远洋渔汛：在远洋钓上 15 条渔�?,
+          "title": "远洋渔汛：在远洋钓上 15 条渔获",
           "kind": "catch_ocean",
           "need": 15,
           "reward": {
@@ -4445,7 +4445,7 @@
         },
         {
           "id": "q_zone_catch",
-          "title": "探索未知：在临时海域钓上 10 条渔�?,
+          "title": "探索未知：在临时海域钓上 10 条渔获",
           "kind": "catch_zone",
           "need": 10,
           "reward": {
@@ -4457,7 +4457,7 @@
         },
         {
           "id": "q_deadly_catch",
-          "title": "直面凶险：在凶险海域钓上 3 条渔�?,
+          "title": "直面凶险：在凶险海域钓上 3 条渔获",
           "kind": "catch_deadly",
           "need": 3,
           "reward": {
@@ -4469,7 +4469,7 @@
         },
         {
           "id": "q_big_catch",
-          "title": "大物猎人：钓�?2 条大型或巨型海鱼",
+          "title": "大物猎人：钓上 2 条大型或巨型海鱼",
           "kind": "catch_big_ocean",
           "need": 2,
           "reward": {
@@ -4481,7 +4481,7 @@
         },
         {
           "id": "q_tide_hunter",
-          "title": "潮汐寻宝：撞�?3 次漂流宝箱或沉船残骸",
+          "title": "潮汐寻宝：撞上 3 次漂流宝箱或沉船残骸",
           "kind": "sea_event",
           "need": 3,
           "reward": {
@@ -4493,7 +4493,7 @@
         },
         {
           "id": "q_voyage",
-          "title": "整装出航：发�?2 片新的临时海�?,
+          "title": "整装出航：发现 2 片新的临时海域",
           "kind": "voyage",
           "need": 2,
           "reward": {
@@ -4503,7 +4503,7 @@
         },
         {
           "id": "q_submit_scale",
-          "title": "上贡鳞片：上�?8 片深海鳞�?,
+          "title": "上贡鳞片：上交 8 片深海鳞片",
           "kind": "submit",
           "need": 1,
           "submit": {
@@ -4651,37 +4651,37 @@
       {
         "id": "catch_ocean",
         "name": "远洋钓上渔获",
-        "unit": "�?
+        "unit": "条"
       },
       {
         "id": "catch_zone",
         "name": "临时海域钓上渔获",
-        "unit": "�?
+        "unit": "条"
       },
       {
         "id": "catch_deadly",
         "name": "凶险海域钓上渔获",
-        "unit": "�?
+        "unit": "条"
       },
       {
         "id": "catch_big_ocean",
         "name": "钓上大型/巨型海鱼",
-        "unit": "�?
+        "unit": "条"
       },
       {
         "id": "sea_event",
         "name": "撞上漂流宝箱/沉船残骸",
-        "unit": "�?
+        "unit": "次"
       },
       {
         "id": "voyage",
         "name": "发现新的临时海域",
-        "unit": "�?
+        "unit": "片"
       },
       {
         "id": "submit",
         "name": "上交指定物品",
-        "unit": "�?
+        "unit": "次"
       }
     ]
   },
@@ -4732,7 +4732,7 @@
     },
     {
       "id": "tilapia",
-      "name": "罗非�?,
+      "name": "罗非鱼",
       "rarity": "common",
       "price": 10,
       "size": [
@@ -4743,7 +4743,7 @@
     },
     {
       "id": "minnow",
-      "name": "麦穗�?,
+      "name": "麦穗鱼",
       "rarity": "common",
       "price": 5,
       "size": [
@@ -4765,7 +4765,7 @@
     },
     {
       "id": "sardine",
-      "name": "沙丁�?,
+      "name": "沙丁鱼",
       "rarity": "common",
       "price": 6,
       "size": [
@@ -4776,7 +4776,7 @@
     },
     {
       "id": "croaker",
-      "name": "小黄�?,
+      "name": "小黄鱼",
       "rarity": "common",
       "price": 11,
       "size": [
@@ -4787,7 +4787,7 @@
     },
     {
       "id": "yellowcat",
-      "name": "黄辣�?,
+      "name": "黄辣丁",
       "rarity": "common",
       "price": 13,
       "size": [
@@ -4842,7 +4842,7 @@
     },
     {
       "id": "culter",
-      "name": "翘嘴�?,
+      "name": "翘嘴鲌",
       "rarity": "common",
       "price": 18,
       "size": [
@@ -4875,7 +4875,7 @@
     },
     {
       "id": "jackmack",
-      "name": "竹荚�?,
+      "name": "竹荚鱼",
       "rarity": "common",
       "price": 10,
       "size": [
@@ -4886,7 +4886,7 @@
     },
     {
       "id": "squid",
-      "name": "小鱿�?,
+      "name": "小鱿鱼",
       "rarity": "common",
       "price": 12,
       "size": [
@@ -4897,7 +4897,7 @@
     },
     {
       "id": "octo",
-      "name": "小章�?,
+      "name": "小章鱼",
       "rarity": "common",
       "price": 14,
       "size": [
@@ -4996,7 +4996,7 @@
     },
     {
       "id": "mackerel",
-      "name": "马鲛�?,
+      "name": "马鲛鱼",
       "rarity": "epic",
       "price": 210,
       "size": [
@@ -5007,7 +5007,7 @@
     },
     {
       "id": "grouper",
-      "name": "石斑�?,
+      "name": "石斑鱼",
       "rarity": "epic",
       "price": 230,
       "size": [
@@ -5018,7 +5018,7 @@
     },
     {
       "id": "cobia",
-      "name": "军曹�?,
+      "name": "军曹鱼",
       "rarity": "epic",
       "price": 250,
       "size": [
@@ -5029,7 +5029,7 @@
     },
     {
       "id": "rubysnapper",
-      "name": "金目�?,
+      "name": "金目鲷",
       "rarity": "epic",
       "price": 280,
       "size": [
@@ -5040,7 +5040,7 @@
     },
     {
       "id": "sunfish",
-      "name": "翻车�?,
+      "name": "翻车鱼",
       "rarity": "epic",
       "price": 300,
       "size": [
@@ -5117,7 +5117,7 @@
     },
     {
       "id": "pearl",
-      "name": "深海珍珠�?,
+      "name": "深海珍珠贝",
       "rarity": "rare",
       "price": 300,
       "size": [
@@ -5139,7 +5139,7 @@
     },
     {
       "id": "voltaiceel",
-      "name": "电光�?,
+      "name": "电光鳗",
       "rarity": "rare",
       "price": 380,
       "size": [
@@ -5150,7 +5150,7 @@
     },
     {
       "id": "ghostray",
-      "name": "幽灵�?,
+      "name": "幽灵魟",
       "rarity": "rare",
       "price": 420,
       "size": [
@@ -5161,7 +5161,7 @@
     },
     {
       "id": "arowana",
-      "name": "金龙�?,
+      "name": "金龙鱼",
       "rarity": "rare",
       "price": 450,
       "size": [
@@ -5172,7 +5172,7 @@
     },
     {
       "id": "moonkoi",
-      "name": "月光�?,
+      "name": "月光鲤",
       "rarity": "rare",
       "price": 480,
       "size": [
@@ -5205,7 +5205,7 @@
     },
     {
       "id": "bluefin",
-      "name": "蓝鳍金枪�?,
+      "name": "蓝鳍金枪鱼",
       "rarity": "rare",
       "price": 560,
       "size": [
@@ -5216,7 +5216,7 @@
     },
     {
       "id": "coelacanth",
-      "name": "腔棘�?,
+      "name": "腔棘鱼",
       "rarity": "rare",
       "price": 600,
       "size": [
@@ -5227,7 +5227,7 @@
     },
     {
       "id": "megamouth",
-      "name": "巨口�?,
+      "name": "巨口鲨",
       "rarity": "rare",
       "price": 700,
       "size": [
@@ -5238,7 +5238,7 @@
     },
     {
       "id": "leviathan",
-      "name": "海王·利维�?,
+      "name": "海王·利维坦",
       "rarity": "rare",
       "price": 900,
       "size": [
@@ -5249,7 +5249,7 @@
     },
     {
       "id": "bait_pack",
-      "name": "诱饵�?,
+      "name": "诱饵包",
       "rarity": "common",
       "price": 5,
       "size": null,
@@ -5259,7 +5259,7 @@
     },
     {
       "id": "rope",
-      "name": "耐磨�?,
+      "name": "耐磨绳",
       "rarity": "common",
       "price": 4,
       "size": null,
@@ -5289,7 +5289,7 @@
     },
     {
       "id": "tide_sand",
-      "name": "潮汐�?,
+      "name": "潮汐砂",
       "rarity": "rare",
       "price": 0,
       "size": null,
@@ -5319,7 +5319,7 @@
     },
     {
       "id": "gene_albino",
-      "name": "白化导向�?,
+      "name": "白化导向剂",
       "rarity": "rare",
       "price": 0,
       "size": null,
@@ -5329,7 +5329,7 @@
     },
     {
       "id": "gene_star",
-      "name": "星点导向�?,
+      "name": "星点导向剂",
       "rarity": "rare",
       "price": 0,
       "size": null,
@@ -5339,7 +5339,7 @@
     },
     {
       "id": "gene_veil",
-      "name": "流纱导向�?,
+      "name": "流纱导向剂",
       "rarity": "rare",
       "price": 0,
       "size": null,
@@ -5349,7 +5349,7 @@
     },
     {
       "id": "gene_glow",
-      "name": "荧光导向�?,
+      "name": "荧光导向剂",
       "rarity": "rare",
       "price": 0,
       "size": null,
@@ -5359,7 +5359,7 @@
     },
     {
       "id": "gene_prism",
-      "name": "异色棱镜�?,
+      "name": "异色棱镜剂",
       "rarity": "epic",
       "price": 0,
       "size": null,
@@ -5389,7 +5389,7 @@
     },
     {
       "id": "grindstone",
-      "name": "磨石�?,
+      "name": "磨石粉",
       "rarity": "rare",
       "price": 0,
       "size": null,
@@ -5399,7 +5399,7 @@
     },
     {
       "id": "stardust",
-      "name": "星辉�?,
+      "name": "星辉粉",
       "rarity": "rare",
       "price": 0,
       "size": null,
@@ -5409,7 +5409,7 @@
     },
     {
       "id": "humus",
-      "name": "腐殖�?,
+      "name": "腐殖泥",
       "rarity": "rare",
       "price": 0,
       "size": null,
@@ -5449,7 +5449,7 @@
     },
     {
       "id": "curesalt",
-      "name": "防腐�?,
+      "name": "防腐盐",
       "rarity": "rare",
       "price": 0,
       "size": null,
@@ -5479,7 +5479,7 @@
     },
     {
       "id": "gear_crystal",
-      "name": "熔炼催化�?,
+      "name": "熔炼催化晶",
       "rarity": "rare",
       "price": 0,
       "size": null,
@@ -5508,7 +5508,7 @@
         "id": "chest_wreck",
         "name": "沉船宝匣",
         "rarity": "rare",
-        "desc": "沉船里的随机打捞件，至少 2 条词缀�?,
+        "desc": "沉船里的随机打捞件，至少 2 条词缀。",
         "costRelic": 8,
         "costCoins": 8000,
         "mode": "random",
@@ -5531,7 +5531,7 @@
         "id": "chest_deep",
         "name": "深潜宝匣",
         "rarity": "rare",
-        "desc": "自选部位，沉得更深、捞得更准，至少 2 条词缀�?,
+        "desc": "自选部位，沉得更深、捞得更准，至少 2 条词缀。",
         "costRelic": 20,
         "costCoins": 30000,
         "mode": "part",
@@ -5554,7 +5554,7 @@
         "id": "chest_abyss",
         "name": "深渊宝匣",
         "rarity": "epic",
-        "desc": "自选底材，必定史诗，且词条填满该底材的全部词缀池�?,
+        "desc": "自选底材，必定史诗，且词条填满该底材的全部词缀池。",
         "costRelic": 45,
         "costCoins": 90000,
         "mode": "base",
@@ -5576,7 +5576,7 @@
         "id": "chest_king",
         "name": "海王遗匣",
         "rarity": "mythic",
-        "desc": "自选底材，必定神话�?0% 概率突破词缀池边界，获得一�?b>突破词缀</b>（该部位本没有的词缀）�?,
+        "desc": "自选底材，必定神话：50% 概率突破词缀池边界，获得一条<b>突破词缀</b>（该部位本没有的词缀）。",
         "costRelic": 100,
         "costCoins": 300000,
         "mode": "base",
@@ -5746,7 +5746,7 @@
     },
     {
       "id": "line_titan",
-      "name": "钛芯�?,
+      "name": "钛芯线",
       "rarity": "common",
       "price": 170,
       "size": null,
@@ -5770,7 +5770,7 @@
     },
     {
       "id": "line_dragon",
-      "name": "龙筋�?,
+      "name": "龙筋线",
       "rarity": "common",
       "price": 250,
       "size": null,
@@ -5799,7 +5799,7 @@
     },
     {
       "id": "hook_barb",
-      "name": "倒刺�?,
+      "name": "倒刺钩",
       "rarity": "common",
       "price": 50,
       "size": null,
@@ -6001,7 +6001,7 @@
     },
     {
       "id": "reel_smooth",
-      "name": "顺滑卷线�?,
+      "name": "顺滑卷线器",
       "rarity": "common",
       "price": 55,
       "size": null,
@@ -6025,7 +6025,7 @@
     },
     {
       "id": "reel_magnetic",
-      "name": "磁力刹车卷线�?,
+      "name": "磁力刹车卷线器",
       "rarity": "common",
       "price": 160,
       "size": null,
@@ -6049,7 +6049,7 @@
     },
     {
       "id": "reel_electric",
-      "name": "电动卷线�?,
+      "name": "电动卷线器",
       "rarity": "common",
       "price": 240,
       "size": null,
@@ -6073,7 +6073,7 @@
     },
     {
       "id": "reel_turbo",
-      "name": "涡轮卷线�?,
+      "name": "涡轮卷线器",
       "rarity": "common",
       "price": 270,
       "size": null,
@@ -6169,7 +6169,7 @@
     },
     {
       "id": "acc_sonar",
-      "name": "智能探鱼�?,
+      "name": "智能探鱼器",
       "rarity": "common",
       "price": 255,
       "size": null,
@@ -6487,7 +6487,7 @@
     },
     {
       "id": "gear_hook_1",
-      "name": "倒刺�?,
+      "name": "倒刺钩",
       "rarity": "common",
       "price": 60,
       "size": null,
@@ -6546,7 +6546,7 @@
     },
     {
       "id": "gear_hook_3",
-      "name": "精准�?,
+      "name": "精准钩",
       "rarity": "common",
       "price": 170,
       "size": null,
@@ -6606,7 +6606,7 @@
     },
     {
       "id": "gear_hook_5",
-      "name": "猎王�?,
+      "name": "猎王钩",
       "rarity": "common",
       "price": 280,
       "size": null,
@@ -6785,7 +6785,7 @@
     },
     {
       "id": "gear_reel_1",
-      "name": "顺滑卷线�?,
+      "name": "顺滑卷线器",
       "rarity": "common",
       "price": 60,
       "size": null,
@@ -6814,7 +6814,7 @@
     },
     {
       "id": "gear_reel_2",
-      "name": "航海卷线�?,
+      "name": "航海卷线器",
       "rarity": "common",
       "price": 115,
       "size": null,
@@ -6844,7 +6844,7 @@
     },
     {
       "id": "gear_reel_3",
-      "name": "稳帆卷线�?,
+      "name": "稳帆卷线器",
       "rarity": "common",
       "price": 170,
       "size": null,
@@ -6874,7 +6874,7 @@
     },
     {
       "id": "gear_reel_4",
-      "name": "长航卷线�?,
+      "name": "长航卷线器",
       "rarity": "common",
       "price": 225,
       "size": null,
@@ -6904,7 +6904,7 @@
     },
     {
       "id": "gear_reel_5",
-      "name": "涡轮航海�?,
+      "name": "涡轮航海轮",
       "rarity": "common",
       "price": 280,
       "size": null,
@@ -6993,7 +6993,7 @@
     },
     {
       "id": "gear_accessory_3",
-      "name": "防腐收纳�?,
+      "name": "防腐收纳箱",
       "rarity": "common",
       "price": 170,
       "size": null,
@@ -7023,7 +7023,7 @@
     },
     {
       "id": "gear_accessory_4",
-      "name": "远洋采集�?,
+      "name": "远洋采集器",
       "rarity": "common",
       "price": 225,
       "size": null,
@@ -7167,7 +7167,7 @@
     },
     {
       "id": "set_forge_rod",
-      "name": "锻造工匠核�?,
+      "name": "锻造工匠核心",
       "rarity": "common",
       "price": 0,
       "size": null,
@@ -7186,7 +7186,7 @@
     },
     {
       "id": "set_forge_charm",
-      "name": "锻造工匠徽�?,
+      "name": "锻造工匠徽记",
       "rarity": "common",
       "price": 0,
       "size": null,
@@ -7243,7 +7243,7 @@
     },
     {
       "id": "set_research_rod",
-      "name": "生态培育核�?,
+      "name": "生态培育核心",
       "rarity": "common",
       "price": 0,
       "size": null,
@@ -7262,7 +7262,7 @@
     },
     {
       "id": "set_research_charm",
-      "name": "生态培育徽�?,
+      "name": "生态培育徽记",
       "rarity": "common",
       "price": 0,
       "size": null,
@@ -7430,24 +7430,24 @@
       "extraAffixRanges": {},
       "adjectiveRules": [
         {
-          "name": "完美�?,
+          "name": "完美的",
           "full": true,
           "noNeg": true
         },
         {
-          "name": "饱满�?,
+          "name": "饱满的",
           "full": true
         },
         {
-          "name": "精良�?,
+          "name": "精良的",
           "noNeg": true
         },
         {
-          "name": "平衡�?,
+          "name": "平衡的",
           "netMin": 1
         },
         {
-          "name": "粗糙�?
+          "name": "粗糙的"
         }
       ]
     },
