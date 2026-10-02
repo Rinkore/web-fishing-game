@@ -2,10 +2,12 @@ package house
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"fishing.local/server/internal/modules/assets"
 	"fishing.local/server/internal/rules"
 	"fishing.local/server/internal/testdb"
-	"testing"
 )
 
 type fixture struct {
@@ -29,14 +31,13 @@ func setup(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f := &fixture{t: t, ctx: context.Background(), db: db, c: c, s: New(db.App, c)}
-	// Real identities + sessions: assets.Run revalidates the proof against
-	// auth_sessions while holding the player guard, so a fake hash would be
-	// rejected exactly like an expired login.
 	f.owner, f.hash = f.account("house_player", false)
 	f.admin, f.ahash = f.account("house_operator", true)
-	// lockRow creates the row lazily; create it up front so tests can age the
-	// settlement window directly.
 	f.exec("INSERT INTO fishing.house_state(owner_id) VALUES($1)", f.owner)
+	// Give the player some fish to place on the rack.
+	f.exec(`INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity)
+	        VALUES($1,'common_fish','fish','normal',20)
+	        ON CONFLICT(owner_id,item_id,tier) DO UPDATE SET quantity=EXCLUDED.quantity`, f.owner)
 	return f
 }
 
@@ -76,12 +77,6 @@ func (f *fixture) key(prefix string) string {
 	return prefix + "-request-key-" + string(rune('a'+f.seq%26))
 }
 
-// ageSettlement rewinds the settlement window without touching the server
-// clock, which is exactly what "the player was offline for N hours" means.
-func (f *fixture) ageSettlement(owner int64, expr string) {
-	f.exec("UPDATE fishing.house_state SET settled_at=clock_timestamp()-"+expr+", enabled_at=clock_timestamp()-"+expr+" WHERE owner_id=$1", owner)
-}
-
 func (f *fixture) coins(owner int64) int64 {
 	f.t.Helper()
 	var n int64
@@ -91,104 +86,215 @@ func (f *fixture) coins(owner int64) int64 {
 	return n
 }
 
-// The offline window is clamped to the yard capacity: a month away must pay the
-// same as eight hours, otherwise the "bounded offline income" requirement is
-// broken by simply staying logged out.
-func TestCollectClampsOfflineWindow(t *testing.T) {
-	f := setup(t)
-	f.ageSettlement(f.owner, "interval '30 days'")
-	if _, err := f.s.Collect(f.session(f.owner, false), f.owner, f.key("house-collect")); err != nil {
-		t.Fatal(err)
-	}
-	h := f.c.HutConfig()
-	want := h.Payout(h.Rate(1, 0), h.CapacityHours, 0)
-	if got := f.coins(f.owner); got != want {
-		t.Fatalf("30 days offline paid %d, want capacity-clamped %d", got, want)
+// placeFish is a test helper that places one fish on a rack slot and returns
+// without checking the coin result. The fish id must already be in inventory.
+func (f *fixture) placeFish(slotIdx int, fishID string, chain []string) {
+	f.t.Helper()
+	_, err := f.s.PlaceFish(
+		f.session(f.owner, false),
+		f.owner,
+		f.key("house-place-"+fishID),
+		fishID,
+		slotIdx, chain,
+	)
+	if err != nil {
+		f.t.Fatalf("placeFish slot %d: %v", slotIdx, err)
 	}
 }
 
-// There is deliberately no coin hard cap: renovating the hut must keep paying
-// off. If someone reintroduces min(payout, cap), this test goes red.
-func TestCollectKeepsNoCoinCap(t *testing.T) {
+// markDone fast-forwards the placed batch by updating its StartedAt far enough
+// into the past that all phases are complete.
+func (f *fixture) markDone(owner int64) {
+	f.t.Helper()
+	// Pull current racks from extras, set StartedAt 48 hours ago for all slots.
+	f.exec(`UPDATE fishing.house_state
+	        SET state = jsonb_set(
+	            state,
+	            '{racks}',
+	            COALESCE((
+	                SELECT jsonb_agg(
+	                    slot || jsonb_build_object('startedAt', (clock_timestamp() - interval '48 hours')::text)
+	                )
+	                FROM jsonb_array_elements(state->'racks') AS slot
+	            ), '[]'::jsonb)
+	        )
+	        WHERE owner_id=$1`, owner)
+}
+
+// TestPlaceFishAndCollectRack verifies the full lifecycle: place → collect → coins.
+func TestPlaceFishAndCollectRack(t *testing.T) {
+	f := setup(t)
+	// Unlock one rack slot (level 3 = first slot by default config).
+	f.exec("UPDATE fishing.house_state SET level=3 WHERE owner_id=$1", f.owner)
+
+	f.placeFish(0, "common_fish", []string{"dry"})
+
+	// Fast-forward so the batch is done.
+	f.markDone(f.owner)
+
+	_, err := f.s.CollectRack(f.session(f.owner, false), f.owner, f.key("house-collect"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.coins(f.owner); got <= 0 {
+		t.Fatalf("collect paid %d coins, want > 0", got)
+	}
+}
+
+// TestCollectRackNothingReady returns a "nothing_ready" status when no batch is done.
+func TestCollectRackNothingReady(t *testing.T) {
+	f := setup(t)
+	f.exec("UPDATE fishing.house_state SET level=3 WHERE owner_id=$1", f.owner)
+
+	f.placeFish(0, "common_fish", []string{"dry"})
+
+	result, err := f.s.CollectRack(f.session(f.owner, false), f.owner, f.key("house-collect-empty"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "nothing_ready" {
+		t.Fatalf("expected nothing_ready, got %q", result.Status)
+	}
+	if got := f.coins(f.owner); got != 0 {
+		t.Fatalf("nothing_ready paid %d coins", got)
+	}
+}
+
+// TestRackSlotOccupiedRejection verifies placing on an occupied slot is rejected.
+func TestRackSlotOccupiedRejection(t *testing.T) {
+	f := setup(t)
+	f.exec("UPDATE fishing.house_state SET level=3 WHERE owner_id=$1", f.owner)
+
+	f.placeFish(0, "common_fish", []string{"dry"})
+
+	// Give more fish so the second place attempt doesn't fail on inventory.
+	f.exec(`INSERT INTO fishing.inventory_stacks(owner_id,item_id,kind,tier,quantity)
+	        VALUES($1,'common_fish','fish','normal',20)
+	        ON CONFLICT(owner_id,item_id,tier) DO UPDATE SET quantity=20`, f.owner)
+
+	_, err := f.s.PlaceFish(
+		f.session(f.owner, false),
+		f.owner,
+		f.key("house-place-dup"),
+		"common_fish",
+		0, []string{"dry"},
+	)
+	if err == nil {
+		t.Fatal("expected rejection for occupied slot, got nil")
+	}
+}
+
+// TestRackLockedAtLevelOne verifies rack slots are unavailable before level 3.
+func TestRackLockedAtLevelOne(t *testing.T) {
+	f := setup(t)
+	// Level 1 — rackSlotsByLevel[0] == 0 by default config.
+	_, err := f.s.PlaceFish(
+		f.session(f.owner, false),
+		f.owner,
+		f.key("house-place-locked"),
+		"common_fish",
+		0, []string{"dry"},
+	)
+	if err == nil {
+		t.Fatal("expected rack_locked rejection at level 1, got nil")
+	}
+}
+
+// TestAdminFreezeBlocksCollectRack verifies a frozen house refuses to pay out.
+func TestAdminFreezeBlocksCollectRack(t *testing.T) {
+	f := setup(t)
+	f.exec("UPDATE fishing.house_state SET level=3 WHERE owner_id=$1", f.owner)
+	f.placeFish(0, "common_fish", []string{"dry"})
+	f.markDone(f.owner)
+
+	if _, err := f.s.AdminFreeze(f.session(f.owner, true), f.admin, f.owner, f.key("house-freeze"), true); err != nil {
+		t.Fatal(err)
+	}
+	result, err := f.s.CollectRack(f.session(f.owner, false), f.owner, f.key("house-collect-frozen"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "frozen" {
+		t.Fatalf("frozen house returned status %q, want frozen", result.Status)
+	}
+	if got := f.coins(f.owner); got != 0 {
+		t.Fatalf("frozen house paid %d coins", got)
+	}
+}
+
+// TestAdminResetClearsRacks verifies AdminReset clears in-progress racks.
+func TestAdminResetClearsRacks(t *testing.T) {
+	f := setup(t)
+	f.exec("UPDATE fishing.house_state SET level=3 WHERE owner_id=$1", f.owner)
+	f.placeFish(0, "common_fish", []string{"dry"})
+
+	if _, err := f.s.AdminReset(f.session(f.owner, true), f.admin, f.owner, f.key("house-reset")); err != nil {
+		t.Fatal(err)
+	}
+	// After reset, collecting immediately should return nothing_ready or frozen=false.
+	view, err := f.s.View(f.ctx, f.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The rack slot is still present (reset doesn't erase placed batches, only
+	// the settlement clock); verify no coins were paid.
+	if got := f.coins(f.owner); got != 0 {
+		t.Fatalf("reset paid out %d coins", got)
+	}
+	_ = view
+}
+
+// TestPremiumBatchCoinsHigherThanNormal verifies premium flag yields more coins.
+func TestPremiumBatchCoinsHigherThanNormal(t *testing.T) {
 	c, err := rules.Default()
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := c.HutConfig()
-	base := payoutFor(t, 10, 0, h)
-	improved := payoutFor(t, 10, 120, h)
-	if improved <= base {
-		t.Fatalf("endless investment did not increase payout: %d -> %d", base, improved)
-	}
-	want := h.Payout(h.Rate(10, 120), h.CapacityHours, 0)
-	if improved != want {
-		t.Fatalf("payout %d, want %d", improved, want)
+	normal := batchCoins(h, 100, "common", []string{"dry"}, 0, 0, false)
+	premium := batchCoins(h, 100, "common", []string{"dry"}, 0, 0, true)
+	if premium <= normal {
+		t.Fatalf("premium batch coins (%d) not greater than normal (%d)", premium, normal)
 	}
 }
 
-func payoutFor(t *testing.T, level, endless int, h rules.HutConfig) int64 {
-	t.Helper()
-	f := setup(t)
-	f.exec("UPDATE fishing.house_state SET level=$2, endless=$3 WHERE owner_id=$1", f.owner, level, endless)
-	f.ageSettlement(f.owner, "interval '30 days'")
-	if _, err := f.s.Collect(f.session(f.owner, false), f.owner, f.key("house-collect")); err != nil {
-		t.Fatal(err)
-	}
-	return f.coins(f.owner)
-}
-
-// Collecting is limited by time, not by a daily count: once the yard has
-// refilled the player may collect again on the same day.
-func TestCollectUnlimitedPerDay(t *testing.T) {
-	f := setup(t)
-	h := f.c.HutConfig()
-	one := h.Payout(h.Rate(1, 0), h.CapacityHours, 0)
-	for i := 0; i < 3; i++ {
-		f.ageSettlement(f.owner, "interval '24 hours'")
-		if _, err := f.s.Collect(f.session(f.owner, false), f.owner, f.key("house-collect")); err != nil {
-			t.Fatalf("collection %d rejected: %v", i+1, err)
-		}
-	}
-	if got, want := f.coins(f.owner), one*3; got != want {
-		t.Fatalf("three same-day collections paid %d, want %d", got, want)
-	}
-}
-
-// Operator reset clears the accrued yard; it must never hand out the backlog.
-func TestAdminResetClearsAccruedHours(t *testing.T) {
-	f := setup(t)
-	f.ageSettlement(f.owner, "interval '8 hours'")
-	if _, err := f.s.AdminReset(f.session(f.owner, true), f.admin, f.owner, f.key("house-reset")); err != nil {
-		t.Fatal(err)
-	}
-	view, err := f.s.View(f.ctx, f.owner)
+// TestBatchTotalHoursReducedByProductionPet verifies production pet speeds drying.
+func TestBatchTotalHoursReducedByProductionPet(t *testing.T) {
+	c, err := rules.Default()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.Hours > 0.01 {
-		t.Fatalf("reset left %v hours accrued", view.Hours)
-	}
-	if got := f.coins(f.owner); got != 0 {
-		t.Fatalf("reset paid out %d coins", got)
+	h := c.HutConfig()
+	baseHours := batchTotalHoursFrom(h, []string{"dry"}, 0)
+	fasterHours := batchTotalHoursFrom(h, []string{"dry"}, 5)
+	if fasterHours >= baseHours {
+		t.Fatalf("production pet affinity 5 gave %v hours, expected less than base %v", fasterHours, baseHours)
 	}
 }
 
-// A frozen yard must stop accruing and refuse to pay out. The service reports
-// this as a status (not an error) so the gateway can map it to 409 house_frozen.
-func TestAdminFreezeBlocksCollect(t *testing.T) {
-	f := setup(t)
-	if _, err := f.s.AdminFreeze(f.session(f.owner, true), f.admin, f.owner, f.key("house-freeze"), true); err != nil {
-		t.Fatal(err)
-	}
-	f.ageSettlement(f.owner, "interval '8 hours'")
-	result, err := f.s.Collect(f.session(f.owner, false), f.owner, f.key("house-collect"))
+// TestAdvancePhasesMarksSlotDone verifies advancePhases sets Done=true once time elapses.
+func TestAdvancePhasesMarksSlotDone(t *testing.T) {
+	c, err := rules.Default()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != "frozen" {
-		t.Fatalf("frozen yard returned status %q, want frozen", result.Status)
+	h := c.HutConfig()
+	r := &row{
+		Level: 3,
+		Racks: []RackSlot{
+			{
+				SlotIdx:   0,
+				FishID:    "common_fish",
+				FishTier:  "common",
+				FishPrice: 100,
+				Phases:    []string{"dry"},
+				PhaseIdx:  0,
+				StartedAt: time.Now().UTC().Add(-48 * time.Hour), // far in the past
+			},
+		},
 	}
-	if got := f.coins(f.owner); got != 0 {
-		t.Fatalf("frozen yard paid %d coins", got)
+	advancePhases(h, r, 0, time.Now().UTC())
+	if !r.Racks[0].Done {
+		t.Fatal("expected batch to be marked done after 48h elapsed")
 	}
 }

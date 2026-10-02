@@ -2645,27 +2645,26 @@
     upCoins: [0, 20000, 80000, 200000, 500000],
     upScale: [0, 5, 15, 40, 90],
   };
-  // ---- 渔屋（v0.24.0，前后端同一份配置；服务端 catalog 常量段 HUT）----
-  // 定位：前期过渡设施。**唯一的限制是时间** —— 单次最多结算 capacityHours 小时，
-  // 一天只有 24 小时，所以日上限 = 速率 × 24 × 加成；金币没有硬上限、领取次数也不限。
-  // 无尽层用指数渐近线逼近 asymptoteRate：每级都有正收益，但永远追不到上限。
-  // 三条养成线（渔屋/宠物/角色）只作用于渔屋自身产出，不进入 SimulationVariables。
+  // ---- 渔屋（v0.25.0，前后端同一份配置；服务端 catalog 常量段 HUT）----
+  // 收益来源：晒架投鱼 → 离线计时 → 收取完成批次（折算金币）；无被动离线金币。
+  // 无尽层用指数渐近线逼近 asymptoteRate：每级升级费用递增，但每级都有正效益。
+  // 三条养成线（渔屋/宠物/角色）作用于晒架批次收益，不进入 SimulationVariables。
   const HUT = {
-    levels: [45, 51, 57, 63, 68, 74, 80, 86, 92, 98],  // Lv1~Lv10 金币/小时
-    capacityHours: 8,        // 晒场容量：单次最多结算的小时数
-    asymptoteRate: 103,      // 无尽翻新的渐近线（永不超过）
-    endlessTau: 10,          // 渐近速度
-    petPerLevel: 0.02,       // 每级亲和 +2% 渔屋速率
+    levels: [45, 51, 57, 63, 68, 74, 80, 86, 92, 98],  // 保留用于升级成本曲线参考
+    capacityHours: 8,        // 保留（admin 模拟用）
+    asymptoteRate: 103,
+    endlessTau: 10,
+    petPerLevel: 0.02,       // 每级亲和对批次收益 +2%
     petBonusCap: 0.20,
-    petSlots: 2,             // 同时驻守的宠物数
-    rolePerPoint: 0.03,      // 每点 +3%（只有厨师方向作用于金币）
+    petSlots: 2,
+    rolePerPoint: 0.03,      // 厨师方向每点 +3% 批次收益
     roleBonusCap: 0.09,
-    rolePointsMax: 9,        // 三个方向合计
-    bonusUnlockLevel: 5,     // 加成在渔屋 Lv5 才解锁
-    bonusHalfUntilLevel: 7,  // Lv5~7 只生效 50%
-    stealPerLevel: 15,       // 单次偷取 = min(目标Lv × 15, stealPerPickCap)
+    rolePointsMax: 9,
+    bonusUnlockLevel: 5,
+    bonusHalfUntilLevel: 7,
+    stealPerLevel: 15,
     stealPerPickCap: 100,
-    stealDailyCoinCap: 200,  // 偷取金币部分的独立日硬顶（不占渔屋预算）
+    stealDailyCoinCap: 200,
     stealPicksPerDay: 2,
     relationshipMinHours: 24,
     upgradeCosts: [
@@ -2680,8 +2679,38 @@
       { coins: 30000, items: { gear_alloy: 16, storm_relic: 2 } },
     ],
     renovateCost: { coins: 30000, coinsGrowth: 1.35, stormRelic: 1, alloyPerLevel: 5 },
-    // 只允许消耗「无作用或封顶后溢出」的材料；关键路径材料（催化晶/精工合金/深海鳞片等）禁止入内
     materialWhitelist: ['storm_relic', 'gear_alloy', 'bait_pack', 'rope', 'lure'],
+
+    // ── 晒架 ────────────────────────────────────────────────────────────────
+    // rackSlotsByLevel[i] = 渔屋 Lv(i+1) 时的晒架位数（0=未解锁）
+    rackSlotsByLevel: [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
+    // 加工链三个阶段：pre（腌制）、dry（晒干，必选）、post（后处理）
+    rackStages: [
+      { id: 'pre',  hours: 2,  multiplier: 1.4, materialCost: 'bait_pack', materialQty: 1, minBrineLevel: 1 },
+      { id: 'dry',  hours: 8,  multiplier: 1.0 },
+      { id: 'post', hours: 3,  multiplier: 1.5, minCookLevel: 1 },
+    ],
+    fishTierMultipliers: { common: 1.0, uncommon: 1.3, rare: 1.8, epic: 2.8, legendary: 5.0 },
+    premiumBatchBaseChance: 0.05,   // 5% 基础精品概率
+    premiumBatchMultiplier: 3.0,    // 精品批次价值 ×3
+
+    // ── 宠物职能 ────────────────────────────────────────────────────────────
+    petRoles: [
+      { id: 'guard',      guardRate: 0.05 },           // 每级亲和拦截概率 +5%
+      { id: 'production', speedBonus: 0.03, premiumBonus: 0.01 }, // 每级 -3% 晒干时间，+1% 精品
+      { id: 'collect',    autoCollect: true, collectLoss: 0.05 },  // 自动收取，扣 5% 碎损
+    ],
+    // 8 只宠物的职能分配（与 house.js PETS 顺序一致）
+    petDefs: [
+      { id: 'golden',    role: 'production' },
+      { id: 'corgi',     role: 'guard' },
+      { id: 'malamute',  role: 'guard' },
+      { id: 'basset',    role: 'collect' },
+      { id: 'shepherd',  role: 'guard' },
+      { id: 'dachshund', role: 'production' },
+      { id: 'bernese',   role: 'collect' },
+      { id: 'mainecoon', role: 'production' },
+    ],
   };
   // 随机海域（方案 E）：未知海图出航后的临时海域配置。mood 决定掉落倾向与钓点增益。
   const SEA = {

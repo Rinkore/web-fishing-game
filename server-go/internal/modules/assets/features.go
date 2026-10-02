@@ -29,8 +29,10 @@ func FeatureOf(kind string) string {
 		return "sea"
 	// 渔屋复用「角色」页入口 id，因此门禁也用 character.* 子开关：
 	// 带点的键会被 legacy_config_push 原样下发到玩家端（顶层键不会）。
-	case "house_collect":
-		return "character.collect"
+	case "house_place":
+		return "character.place_fish"
+	case "house_collect_rack":
+		return "character.collect_rack"
 	case "house_upgrade", "house_prestige":
 		return "character.upgrade"
 	case "house_pet":

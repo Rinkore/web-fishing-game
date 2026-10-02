@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"math"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -18,19 +19,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const ruleVersion = "house-v1"
+const ruleVersion = "house-v2"
 
 // secondSlotLevel opens the second companion slot. The design pins it to Lv8;
 // HutConfig carries the unlock level and the slot count, so the split lives here.
 const secondSlotLevel = 8
 
-// workerInterval keeps settlement latency well inside the documented
-// one-minute budget (design §9.4).
-const workerInterval = 30 * time.Second
+// workerInterval keeps the auto-collect sweep well below a 2-minute cadence.
+const workerInterval = 90 * time.Second
 
 // stealPickCeiling is the hard ceiling on daily picks. Roles and prestige can
-// raise the budget, never past this (design §5.2).
+// raise the budget, never past this.
 const stealPickCeiling = 5
+
+// autoCollectLossDefault is the default coin-loss fraction when a collect-pet
+// auto-harvests a batch (5%).
+const autoCollectLossDefault = 0.05
 
 type Service struct {
 	pool *pgxpool.Pool
@@ -44,7 +48,7 @@ func New(pool *pgxpool.Pool, c *rules.Catalog) *Service {
 
 func (s *Service) hut() rules.HutConfig { return s.c.HutConfig() }
 
-// affinityMax is the affinity cap of a single companion (+20% over ten levels).
+// affinityMax is the affinity cap of a single companion.
 func affinityMax(h rules.HutConfig) int {
 	if h.PetPerLevel <= 0 {
 		return 0
@@ -52,7 +56,7 @@ func affinityMax(h rules.HutConfig) int {
 	return int(math.Round(h.PetBonusCap / h.PetPerLevel))
 }
 
-// trackCap is the per-track point cap (three points for the shipped config).
+// trackCap is the per-track point cap.
 func trackCap(h rules.HutConfig) int {
 	if h.RolePerPoint <= 0 {
 		return h.RolePointsMax
@@ -75,24 +79,7 @@ func slotsFor(h rules.HutConfig, level int) int {
 	return h.PetSlots
 }
 
-// guardCoins is the red-team backstop (design §10.3 ⑤): a single settlement can
-// never exceed one full day of the asymptotic rate. In a valid catalog it never
-// binds — the real bound is the 8h pond — it only stops an implementation that
-// forgot to clamp the elapsed window.
-func guardCoins(h rules.HutConfig) int64 {
-	return int64(math.Ceil(h.DailyMax(h.AsymptoteRate, h.PetBonusCap+h.RoleBonusCap)))
-}
-
-func (s *Service) bonus(h rules.HutConfig, r row) float64 {
-	stationed := make([]int, 0, len(r.Stationed))
-	for _, id := range r.Stationed {
-		stationed = append(stationed, r.Pets[id])
-	}
-	return h.Bonus(r.Level, stationed, r.Roles)
-}
-
-// input is the immutable, server-built command input. Two requests that reuse a
-// request key with different parameters are rejected as key conflicts.
+// input is the immutable, server-built command input.
 type input struct {
 	Op       string `json:"op"`
 	PetID    string `json:"petId,omitempty"`
@@ -101,6 +88,10 @@ type input struct {
 	Points   int    `json:"points,omitempty"`
 	Target   string `json:"target,omitempty"`
 	TargetID int64  `json:"targetId,omitempty,string"`
+	SlotIdx  int    `json:"slotIdx,omitempty"`
+	FishID   string `json:"fishId,omitempty"`
+	FishTier string `json:"fishTier,omitempty"`
+	Phases   string `json:"phases,omitempty"` // comma-separated phase ids
 }
 
 func (s *Service) run(ctx context.Context, actor int64, key, kind string, players []int64, in input, apply func(context.Context, *assets.Transaction) (assets.Result, error)) (assets.Result, error) {
@@ -140,45 +131,6 @@ func lockRow(ctx context.Context, t *assets.Transaction, owner int64) (row, erro
 	return r, nil
 }
 
-// consume empties the pond: it locks the row, measures the accrual against the
-// server clock and advances settled_at in the same snapshot. Because the window
-// is always measured against the previous settled_at, the lazy path and the
-// worker can never pay for the same hours twice.
-func consume(ctx context.Context, t *assets.Transaction, owner int64, capacity float64) (row, float64, error) {
-	if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.house_state(owner_id) VALUES($1) ON CONFLICT(owner_id) DO NOTHING`, owner); err != nil {
-		return row{}, 0, err
-	}
-	r := row{Level: 1, Pets: Pets{}, Roles: Roles{}}
-	var pets, roles, extra []byte
-	var hours float64
-	err := t.SQL().QueryRow(ctx, `
-WITH prev AS (
- SELECT level,endless,prestige,pets,roles,state,settled_at,enabled_at,clock_timestamp() AS now_ts
-   FROM fishing.house_state WHERE owner_id=$1 FOR UPDATE
-), emptied AS (
- UPDATE fishing.house_state h SET settled_at=prev.now_ts FROM prev WHERE h.owner_id=$1
-)
-SELECT level,endless,prestige,pets,roles,state,
-       GREATEST(LEAST(EXTRACT(EPOCH FROM (now_ts-GREATEST(settled_at,enabled_at)))/3600.0,$2::float8),0)
-  FROM prev`, owner, capacity).Scan(&r.Level, &r.Endless, &r.Prestige, &pets, &roles, &extra, &hours)
-	if err != nil {
-		return row{}, 0, err
-	}
-	for _, pair := range []struct {
-		raw []byte
-		out any
-	}{{pets, &r.Pets}, {roles, &r.Roles}, {extra, &r.extras}} {
-		if len(pair.raw) == 0 {
-			continue
-		}
-		if err := json.Unmarshal(pair.raw, pair.out); err != nil {
-			return row{}, 0, err
-		}
-	}
-	r.normalize()
-	return r, hours, nil
-}
-
 // holdings reads the player's material stock for the requested ids.
 func holdings(ctx context.Context, q assets.SQL, owner int64, ids []string) (map[string]int64, error) {
 	out := map[string]int64{}
@@ -201,8 +153,7 @@ func holdings(ctx context.Context, q assets.SQL, owner int64, ids []string) (map
 	return out, rows.Err()
 }
 
-// charge spends coins and materials with the module's own rejection codes, then
-// delegates the actual transfer to the shared asset transaction.
+// charge spends coins and materials.
 func charge(ctx context.Context, t *assets.Transaction, owner int64, coins int64, items map[string]int64) error {
 	if coins > 0 {
 		var balance int64
@@ -244,8 +195,7 @@ func charge(ctx context.Context, t *assets.Transaction, owner int64, coins int64
 
 // ── read side ───────────────────────────────────────────────────────────────
 
-// View is the authoritative projection. It also materialises the row so that a
-// first visit starts the pond instead of silently dropping the elapsed window.
+// View materialises the house row and returns the authoritative projection.
 func (s *Service) View(ctx context.Context, owner int64) (View, error) {
 	h := s.hut()
 	if _, err := s.pool.Exec(ctx, `INSERT INTO fishing.house_state(owner_id) VALUES($1) ON CONFLICT(owner_id) DO NOTHING`, owner); err != nil {
@@ -253,11 +203,8 @@ func (s *Service) View(ctx context.Context, owner int64) (View, error) {
 	}
 	r := row{Level: 1, Pets: Pets{}, Roles: Roles{}}
 	var pets, roles, extra []byte
-	var hours float64
-	err := s.pool.QueryRow(ctx, `SELECT level,endless,prestige,pets,roles,state,
-GREATEST(LEAST(EXTRACT(EPOCH FROM (clock_timestamp()-GREATEST(settled_at,enabled_at)))/3600.0,$2::float8),0)
-FROM fishing.house_state WHERE owner_id=$1`, owner, h.CapacityHours).
-		Scan(&r.Level, &r.Endless, &r.Prestige, &pets, &roles, &extra, &hours)
+	err := s.pool.QueryRow(ctx, `SELECT level,endless,prestige,pets,roles,state FROM fishing.house_state WHERE owner_id=$1`, owner).
+		Scan(&r.Level, &r.Endless, &r.Prestige, &pets, &roles, &extra)
 	if err != nil {
 		return View{}, err
 	}
@@ -273,25 +220,29 @@ FROM fishing.house_state WHERE owner_id=$1`, owner, h.CapacityHours).
 		}
 	}
 	r.normalize()
-	if hours < 0 {
-		hours = 0
+
+	prodAffinity := stationedProductionAffinity(h, r.Stationed, r.Pets)
+	now := time.Now().UTC()
+
+	slots := make([]RackSlotView, 0, len(r.Racks))
+	for _, rs := range r.Racks {
+		sv := rackSlotToView(h, rs, prodAffinity, now)
+		slots = append(slots, sv)
 	}
 
 	view := View{
-		OwnerID:   owner,
-		Level:     r.Level,
-		Endless:   r.Endless,
-		Prestige:  r.Prestige,
-		Rate:      h.Rate(r.Level, r.Endless),
-		Capacity:  h.CapacityHours,
-		Hours:     hours,
-		Pets:      r.Pets,
-		Roles:     r.Roles,
-		Stationed: append([]string{}, r.Stationed...),
-		Slots:     slotsFor(h, r.Level),
-		Steal:     StealView{CoinCap: h.StealDailyCoinCap, Heat: r.Heat},
+		OwnerID:      owner,
+		Level:        r.Level,
+		Endless:      r.Endless,
+		Prestige:     r.Prestige,
+		Pets:         r.Pets,
+		Roles:        r.Roles,
+		Stationed:    append([]string{}, r.Stationed...),
+		Slots:        slotsFor(h, r.Level),
+		RackSlots:    slots,
+		RackCapacity: rackCapacityFor(h, r.Level),
+		Steal:        StealView{CoinCap: h.StealDailyCoinCap, Heat: r.Heat},
 	}
-	view.Pending = h.Payout(view.Rate, hours, s.bonus(h, r))
 	if cost, ok := h.Cost(r.Level); ok {
 		view.NextCost = &Cost{Coins: cost.Coins, Items: cost.Items}
 	}
@@ -312,8 +263,52 @@ FROM fishing.house_state WHERE owner_id=$1`, owner, h.CapacityHours).
 	return view, nil
 }
 
-// readStealBudget fills today's picks and coin usage from the append-only
-// ledger, keyed by the UTC day bucket the server wrote.
+// rackSlotToView converts an internal RackSlot to its client projection.
+func rackSlotToView(h rules.HutConfig, rs RackSlot, prodAffinity int, now time.Time) RackSlotView {
+	sv := RackSlotView{
+		SlotIdx:  rs.SlotIdx,
+		FishID:   rs.FishID,
+		FishTier: rs.FishTier,
+		Phases:   rs.Phases,
+		PhaseIdx: rs.PhaseIdx,
+		Done:     rs.Done,
+		Premium:  rs.Premium,
+	}
+	if !rs.Done && len(rs.Phases) > 0 {
+		elapsed := now.Sub(rs.StartedAt).Hours()
+		remaining := 0.0
+		for i := rs.PhaseIdx; i < len(rs.Phases); i++ {
+			if sc, ok := rackStageConfig(h, rs.Phases[i]); ok {
+				if i == rs.PhaseIdx {
+					stageH := sc.Hours
+					if prodAffinity > 0 {
+						for _, rc := range h.PetRoles {
+							if rc.ID == "production" && rc.SpeedBonus > 0 {
+								frac := float64(prodAffinity) * rc.SpeedBonus
+								if frac > 0.5 {
+									frac = 0.5
+								}
+								stageH *= (1.0 - frac)
+								break
+							}
+						}
+					}
+					rem := stageH - elapsed
+					if rem < 0 {
+						rem = 0
+					}
+					remaining += rem
+				} else {
+					remaining += sc.Hours
+				}
+			}
+		}
+		sv.ReadyAt = now.Add(time.Duration(remaining * float64(time.Hour)))
+	}
+	return sv
+}
+
+// readStealBudget fills today's picks and coin usage.
 func readStealBudget(ctx context.Context, q assets.SQL, h rules.HutConfig, owner int64, r row, out *StealView) error {
 	max := h.StealPicksPerDay
 	if r.Roles != nil {
@@ -344,51 +339,206 @@ func readStealBudget(ctx context.Context, q assets.SQL, h rules.HutConfig, owner
 	return nil
 }
 
-// dayBucketSQL is the server-clock UTC day, as an epoch-day integer. Both the
-// steal guard and the ledger writer use this exact expression, so the "one pick
-// per pair per day" rule cannot drift between read and write.
 const dayBucketSQL = `extract(epoch FROM date_trunc('day', clock_timestamp() AT TIME ZONE 'UTC'))/86400`
 
 // ── write side ──────────────────────────────────────────────────────────────
 
-// Collect empties the pond and pays rate × min(elapsed, capacity). There is no
-// daily collection counter and no payout cap: time is the only limit.
-func (s *Service) Collect(ctx context.Context, owner int64, key string) (assets.Result, error) {
-	return s.run(ctx, owner, key, "house_collect", []int64{owner}, input{Op: "collect"}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
-		return s.settle(ctx, t, owner, "collected")
+// PlaceFish puts a fish on a rack slot with the chosen processing chain.
+// fishID must be a catalog item of kind "fish". Price and tier are resolved
+// from the catalog — the caller must not supply them.
+// chain must contain "dry" exactly once; "pre" and "post" are optional.
+func (s *Service) PlaceFish(ctx context.Context, owner int64, key, fishID string, slotIdx int, chain []string) (assets.Result, error) {
+	if fishID == "" || slotIdx < 0 {
+		return assets.Result{}, assets.ErrInvalid
+	}
+	for _, p := range chain {
+		if p != PhasePrep && p != PhaseDry && p != PhasePost {
+			return assets.Result{}, assets.ErrInvalid
+		}
+	}
+	// Resolve price and tier from the catalog server-side — never trust the client.
+	item, ok := s.c.Item(fishID)
+	if !ok || item.Kind != "fish" {
+		return assets.Result{}, assets.Rejection("house_fish_unknown")
+	}
+	fishPrice := int64(item.Price)
+	fishTier := s.c.FishTier(fishID)
+	if fishTier == "" {
+		fishTier = item.Rarity // fall back to item rarity when tier index is absent
+	}
+
+	chainStr := strings.Join(chain, ",")
+	return s.run(ctx, owner, key, "house_place", []int64{owner}, input{Op: "place", FishID: fishID, FishTier: fishTier, SlotIdx: slotIdx, Phases: chainStr}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
+		h := s.hut()
+		r, err := lockRow(ctx, t, owner)
+		if err != nil {
+			return assets.Result{}, err
+		}
+		cap := rackCapacityFor(h, r.Level)
+		if cap <= 0 {
+			return assets.Result{}, assets.Rejection("house_rack_locked")
+		}
+		if slotIdx >= cap {
+			return assets.Result{}, assets.Rejection("house_rack_slot_invalid")
+		}
+		for _, rs := range r.Racks {
+			if rs.SlotIdx == slotIdx {
+				return assets.Result{}, assets.Rejection("house_rack_slot_occupied")
+			}
+		}
+		hasDry := false
+		for _, p := range chain {
+			if p == PhaseDry {
+				hasDry = true
+			}
+		}
+		if !hasDry {
+			return assets.Result{}, assets.Rejection("house_rack_chain_invalid")
+		}
+		for _, p := range chain {
+			if sc, ok2 := rackStageConfig(h, p); ok2 {
+				if sc.MinCookLevel > 0 && r.Roles["cook"] < sc.MinCookLevel {
+					return assets.Result{}, assets.Rejection("house_stage_locked_cook")
+				}
+				if sc.MinBrineLevel > 0 && r.Roles["brine"] < sc.MinBrineLevel {
+					return assets.Result{}, assets.Rejection("house_stage_locked_brine")
+				}
+			}
+		}
+		if err = charge(ctx, t, owner, 0, map[string]int64{fishID: 1}); err != nil {
+			return assets.Result{}, err
+		}
+		for _, p := range chain {
+			if p == PhasePrep {
+				if sc, ok2 := rackStageConfig(h, PhasePrep); ok2 && sc.MaterialCost != "" && sc.MaterialQty > 0 {
+					if err = charge(ctx, t, owner, 0, map[string]int64{sc.MaterialCost: sc.MaterialQty}); err != nil {
+						return assets.Result{}, err
+					}
+				}
+			}
+		}
+		rs := RackSlot{
+			SlotIdx:   slotIdx,
+			FishID:    fishID,
+			FishTier:  fishTier,
+			FishPrice: fishPrice,
+			Phases:    chain,
+			PhaseIdx:  0,
+			StartedAt: time.Now().UTC(),
+		}
+		r.Racks = append(r.Racks, rs)
+		if err = writeRow(ctx, t, owner, r); err != nil {
+			return assets.Result{}, err
+		}
+		return assets.Result{Status: "placed", ResourceID: strconv.Itoa(slotIdx)}, nil
 	})
 }
 
-func (s *Service) settle(ctx context.Context, t *assets.Transaction, owner int64, status string) (assets.Result, error) {
-	h := s.hut()
-	r, hours, err := consume(ctx, t, owner, h.CapacityHours)
-	if err != nil {
-		return assets.Result{}, err
-	}
-	if r.Frozen {
-		return assets.Result{Status: "frozen"}, nil
-	}
-	payout := int64(0)
-	if hours > 0 {
-		payout = h.Payout(h.Rate(r.Level, r.Endless), hours, s.bonus(h, r))
-	}
-	if guard := guardCoins(h); payout > guard {
-		payout = guard
-	}
-	if payout > 0 {
-		if err = t.Coins(ctx, owner, payout); err != nil {
+// CollectRack collects all finished batches, pays their coin value, and
+// clears those slots. lossy=true applies the auto-collect pet loss fraction
+// (used by the worker sweep); player-triggered collect is always lossless.
+func (s *Service) CollectRack(ctx context.Context, owner int64, key string, lossy bool) (assets.Result, error) {
+	return s.run(ctx, owner, key, "house_collect_rack", []int64{owner}, input{Op: "collect_rack"}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
+		h := s.hut()
+		now := time.Now().UTC()
+		r, err := lockRow(ctx, t, owner)
+		if err != nil {
 			return assets.Result{}, err
 		}
-	}
-	var balance int64
-	if err = t.SQL().QueryRow(ctx, `SELECT coins FROM fishing.wallets WHERE account_id=$1`, owner).Scan(&balance); err != nil {
-		return assets.Result{}, err
-	}
-	return assets.Result{Status: status, RecipientBalance: balance, ResourceID: strconv.FormatInt(payout, 10)}, nil
+		if r.Frozen {
+			return assets.Result{Status: "frozen"}, nil
+		}
+
+		prodAffinity := stationedProductionAffinity(h, r.Stationed, r.Pets)
+		advancePhases(h, &r, prodAffinity, now)
+
+		total := int64(0)
+		kept := r.Racks[:0]
+		for _, rs := range r.Racks {
+			if !rs.Done {
+				kept = append(kept, rs)
+				continue
+			}
+			coins := batchCoins(h, rs.FishPrice, rs.FishTier, rs.Phases, r.Roles["cook"], prodAffinity, rs.Premium)
+			if lossy {
+				loss := autoCollectLossDefault
+				for _, rc := range h.PetRoles {
+					if rc.ID == "collect" && rc.CollectLoss > 0 {
+						loss = rc.CollectLoss
+						break
+					}
+				}
+				coins = int64(float64(coins) * (1.0 - loss))
+			}
+			total += coins
+		}
+		r.Racks = kept
+
+		if total <= 0 {
+			return assets.Result{Status: "nothing_ready"}, nil
+		}
+		if err = t.Coins(ctx, owner, total); err != nil {
+			return assets.Result{}, err
+		}
+		if err = writeRow(ctx, t, owner, r); err != nil {
+			return assets.Result{}, err
+		}
+		var balance int64
+		if err = t.SQL().QueryRow(ctx, `SELECT coins FROM fishing.wallets WHERE account_id=$1`, owner).Scan(&balance); err != nil {
+			return assets.Result{}, err
+		}
+		return assets.Result{Status: "collected", RecipientBalance: balance, ResourceID: strconv.FormatInt(total, 10)}, nil
+	})
 }
 
-// Upgrade walks the main track Lv1 → Lv10. Materials and coins come from the
-// published HUT section; the module never invents a price.
+// advancePhases updates all rack slots: completes phases whose time has
+// elapsed, rolls the premium die on the final phase, and marks Done.
+func advancePhases(h rules.HutConfig, r *row, prodAffinity int, now time.Time) {
+	pchance := premiumChance(h, prodAffinity)
+	updated := make([]RackSlot, len(r.Racks))
+	copy(updated, r.Racks)
+	for i, rs := range updated {
+		if rs.Done || len(rs.Phases) == 0 {
+			continue
+		}
+		elapsed := now.Sub(rs.StartedAt).Hours()
+		for rs.PhaseIdx < len(rs.Phases) {
+			phase := rs.Phases[rs.PhaseIdx]
+			sc, ok := rackStageConfig(h, phase)
+			if !ok {
+				rs.PhaseIdx++
+				continue
+			}
+			stageH := sc.Hours
+			if prodAffinity > 0 {
+				for _, rc := range h.PetRoles {
+					if rc.ID == "production" && rc.SpeedBonus > 0 {
+						frac := float64(prodAffinity) * rc.SpeedBonus
+						if frac > 0.5 {
+							frac = 0.5
+						}
+						stageH *= (1.0 - frac)
+						break
+					}
+				}
+			}
+			if elapsed < stageH {
+				break
+			}
+			elapsed -= stageH
+			rs.StartedAt = rs.StartedAt.Add(time.Duration(stageH * float64(time.Hour)))
+			rs.PhaseIdx++
+		}
+		if rs.PhaseIdx >= len(rs.Phases) {
+			rs.Done = true
+			rs.Premium = rand.Float64() < pchance //nolint:gosec
+		}
+		updated[i] = rs
+	}
+	r.Racks = updated
+}
+
+// Upgrade walks the main track Lv1 → Lv10.
 func (s *Service) Upgrade(ctx context.Context, owner int64, key string) (assets.Result, error) {
 	return s.run(ctx, owner, key, "house_upgrade", []int64{owner}, input{Op: "upgrade"}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
 		h := s.hut()
@@ -414,9 +564,7 @@ func (s *Service) Upgrade(ctx context.Context, owner int64, key string) (assets.
 	})
 }
 
-// Renovate is the endless layer: it stays available at the level cap and each
-// renovation buys an asymptotically smaller rate bump plus one prestige point.
-// It shares the house_upgrade feature gate.
+// Renovate is the endless layer.
 func (s *Service) Renovate(ctx context.Context, owner int64, key string) (assets.Result, error) {
 	return s.run(ctx, owner, key, "house_upgrade", []int64{owner}, input{Op: "renovate"}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
 		h := s.hut()
@@ -447,8 +595,7 @@ func (s *Service) Renovate(ctx context.Context, owner int64, key string) (assets
 	})
 }
 
-// Pet feeds affinity and manages the station list. Feeding costs one common
-// bait material, exactly like the design's "普通鱼饵材料" rule.
+// Pet feeds affinity and manages the station list.
 func (s *Service) Pet(ctx context.Context, owner int64, key, petID, action string) (assets.Result, error) {
 	petID = strings.TrimSpace(petID)
 	if petID == "" || len(petID) > 32 || !petIDValid(petID) {
@@ -490,8 +637,7 @@ func (s *Service) Pet(ctx context.Context, owner int64, key, petID, action strin
 	})
 }
 
-// Role invests points into one of the three tracks. Only "cook" feeds the coin
-// rate; "brine" and "trader" drive the brine exchange and the social budget.
+// Role invests points into one of the three tracks.
 func (s *Service) Role(ctx context.Context, owner int64, key, track string, points int) (assets.Result, error) {
 	if !trackValid(track) || points < 1 {
 		return assets.Result{}, assets.ErrInvalid
@@ -517,8 +663,8 @@ func (s *Service) Role(ctx context.Context, owner int64, key, track string, poin
 	})
 }
 
-// Steal takes coins and one common material from a friend's overflow pond. The
-// victim's own pond is never debited; they gain heat instead.
+// Steal takes coins and one bait material from a friend's overflow.
+// Guard pets intercept the steal probabilistically.
 func (s *Service) Steal(ctx context.Context, actor int64, key, targetName string) (assets.Result, error) {
 	targetName = strings.ToLower(strings.TrimSpace(targetName))
 	if targetName == "" {
@@ -567,6 +713,24 @@ WHERE r.a_id=LEAST($1::bigint,$2::bigint) AND r.b_id=GREATEST($1::bigint,$2::big
 	actorRow, err := lockRow(ctx, t, actor)
 	if err != nil {
 		return assets.Result{}, err
+	}
+
+	// Guard pet interception.
+	guardAffinity := stationedGuardAffinity(h, victim.Stationed, victim.Pets)
+	if guardAffinity > 0 {
+		interceptProb := 0.0
+		for _, rc := range h.PetRoles {
+			if rc.ID == "guard" && rc.GuardRate > 0 {
+				interceptProb = float64(guardAffinity) * rc.GuardRate
+				if interceptProb > 0.85 {
+					interceptProb = 0.85
+				}
+				break
+			}
+		}
+		if rand.Float64() < interceptProb { //nolint:gosec
+			return assets.Result{}, assets.Rejection("house_steal_intercepted")
+		}
 	}
 
 	var bucket int64
@@ -624,8 +788,7 @@ WHERE r.a_id=LEAST($1::bigint,$2::bigint) AND r.b_id=GREATEST($1::bigint,$2::big
 	return assets.Result{Status: "stolen", RecipientBalance: amount, ResourceID: strconv.FormatInt(amount, 10)}, nil
 }
 
-// AdminReset discards the accrual window without paying for it. The operator
-// can only ever move the clock forward, never mint coins.
+// AdminReset discards any in-progress rack state without paying out.
 func (s *Service) AdminReset(ctx context.Context, actor, owner int64, key string) (assets.Result, error) {
 	return s.run(ctx, actor, key, "house_settle", []int64{actor, owner}, input{Op: "admin_reset", TargetID: owner}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
 		if _, err := lockRow(ctx, t, owner); err != nil {
@@ -638,8 +801,7 @@ func (s *Service) AdminReset(ctx context.Context, actor, owner int64, key string
 	})
 }
 
-// AdminFreeze stops or resumes accrual. Resuming pushes the window forward, so
-// a paused house never pays for the hours it was paused.
+// AdminFreeze stops or resumes the rack worker for one player.
 func (s *Service) AdminFreeze(ctx context.Context, actor, owner int64, key string, freeze bool) (assets.Result, error) {
 	status := "unfrozen"
 	if freeze {
@@ -663,19 +825,16 @@ func (s *Service) AdminFreeze(ctx context.Context, actor, owner int64, key strin
 	})
 }
 
-// ── offline settlement worker ───────────────────────────────────────────────
+// ── auto-collect worker ──────────────────────────────────────────────────────
 
-// Sweep settles the ponds of connected players so an active session never
-// overflows the 8h pond. It deliberately skips absent players: their pond must
-// hold at most one capacity window until they come back (design §1.1 / §10.1 #7).
-// This mirrors the autosell worker, which also only serves live connections.
+// Sweep advances phase timers and auto-collects finished racks for online
+// players who have a stationed collect-role pet.
 func (s *Service) Sweep(ctx context.Context, after int64) (int64, error) {
 	rows, err := s.pool.Query(ctx, `SELECT h.owner_id
 FROM fishing.house_state h
 JOIN fishing.fishing_connections c ON c.owner_id=h.owner_id AND c.expires_at>clock_timestamp()
 JOIN fishing.identities i ON i.account_id=h.owner_id AND NOT i.banned
 WHERE h.owner_id>$1 AND NOT COALESCE((h.state->>'frozen')::boolean,false)
-  AND h.enabled_at<=clock_timestamp() AND h.settled_at<=clock_timestamp()-interval '1 hour'
 ORDER BY h.owner_id LIMIT 64`, after)
 	if err != nil {
 		return after, err
@@ -695,10 +854,8 @@ ORDER BY h.owner_id LIMIT 64`, after)
 		return after, err
 	}
 	for _, id := range list {
-		key := "house:settle:" + strconv.FormatInt(id, 10) + ":" + strconv.FormatInt(s.settleBucket(ctx), 10)
-		_, err = s.run(ctx, id, key, "house_settle", []int64{id}, input{Op: "worker_settle"}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
-			return s.settle(ctx, t, id, "settled")
-		})
+		key := "house:auto:" + strconv.FormatInt(id, 10) + ":" + strconv.FormatInt(s.sweepBucket(ctx), 10)
+		_, err = s.CollectRack(ctx, id, key, true)
 		if err != nil && !errors.Is(err, assets.ErrDeferred) {
 			return after, err
 		}
@@ -710,14 +867,13 @@ ORDER BY h.owner_id LIMIT 64`, after)
 	return after, nil
 }
 
-func (s *Service) settleBucket(ctx context.Context) int64 {
+func (s *Service) sweepBucket(ctx context.Context) int64 {
 	var bucket int64
-	_ = s.pool.QueryRow(ctx, `SELECT floor(extract(epoch FROM clock_timestamp())/3600)::bigint`).Scan(&bucket)
+	_ = s.pool.QueryRow(ctx, `SELECT floor(extract(epoch FROM clock_timestamp())/1800)::bigint`).Scan(&bucket)
 	return bucket
 }
 
-// Run keeps the connected players' ponds settled. Every failed sweep is retried
-// on the next tick; the lazy collect path remains the safety net.
+// Run keeps the collect-pet sweep ticking.
 func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 	ticker := time.NewTicker(workerInterval)
 	defer ticker.Stop()
@@ -740,7 +896,7 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 		cancel()
 		after = next
 		if err != nil && ctx.Err() == nil && time.Since(warned) > time.Minute {
-			logger.Warn("house_settle_retry")
+			logger.Warn("house_sweep_retry")
 			warned = time.Now()
 		}
 	}

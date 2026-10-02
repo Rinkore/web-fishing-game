@@ -8,21 +8,16 @@ import (
 )
 
 // houseSuccess lists the terminal statuses a successful house command returns.
-// Anything else is one of the design's rejection codes, which the command
-// boundary reports through Result.Status instead of an error.
 var houseSuccess = map[string]bool{
-	"collected": true, "upgraded": true, "renovated": true,
+	"placed": true, "collected": true, "nothing_ready": true,
+	"upgraded": true, "renovated": true,
 	"pet_feed": true, "pet_station": true, "pet_unstow": true,
 	"role_invested": true, "stolen": true, "settled": true,
 }
 
-// houseFrozenStatus is reported by the service when the yard is frozen. It is
-// deliberately NOT in houseSuccess: a frozen yard must surface as the
-// rejection code house_frozen (409), not as a successful zero payout.
+// houseFrozenStatus is reported when the yard is frozen.
 const houseFrozenStatus = "frozen"
 
-// houseRejection turns a terminal failure status into the code the panel
-// translates through its own errors{} table (see frontend/js/house.js).
 func houseRejection(result assets.Result) string {
 	if result.Status == "" || houseSuccess[result.Status] {
 		return ""
@@ -33,10 +28,7 @@ func houseRejection(result assets.Result) string {
 	return result.Status
 }
 
-// House follows the expedition contract: every command carries a client-side
-// stable request key, so a retried request after an ambiguous transport failure
-// returns the original result instead of paying twice.
-//
+// legacyHouse handles all /api/house/* write commands plus the view.
 // action is "view" for the read-only view, or one of the write commands.
 func (a *API) legacyHouse(action string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -62,12 +54,20 @@ func (a *API) legacyHouse(action string) http.HandlerFunc {
 		}
 
 		var in struct {
-			RequestKey string `json:"requestKey"`
-			PetID      string `json:"petId"`
-			PetAction  string `json:"petAction"`
-			Track      string `json:"track"`
-			Points     int    `json:"points"`
-			Target     string `json:"target"`
+			RequestKey string   `json:"requestKey"`
+			// pet
+			PetID      string   `json:"petId"`
+			PetAction  string   `json:"petAction"`
+			// role
+			Track      string   `json:"track"`
+			Points     int      `json:"points"`
+			// steal
+			Target     string   `json:"target"`
+			// place_fish — price and tier are resolved server-side from the catalog;
+			// the client only supplies the fish item id, slot index, and processing chain.
+			FishID  string   `json:"fishId"`
+			SlotIdx int      `json:"slotIdx"`
+			Phases  []string `json:"phases"`
 		}
 		if !decode(w, r, &in) {
 			return
@@ -76,8 +76,6 @@ func (a *API) legacyHouse(action string) http.HandlerFunc {
 			write(w, 400, map[string]any{"error": "invalid_request_key"})
 			return
 		}
-		// Player keys are opaque client-generated tokens. Rejecting ':' keeps a
-		// client from forging the reserved system keys the settlement worker uses.
 		if strings.Contains(in.RequestKey, ":") {
 			write(w, 400, map[string]any{"error": "invalid_request_key"})
 			return
@@ -85,8 +83,11 @@ func (a *API) legacyHouse(action string) http.HandlerFunc {
 		ctx := assets.WithSession(r.Context(), session.AccountID, session.Hash, false)
 		var result assets.Result
 		switch action {
-		case "collect":
-			result, err = svc.Collect(ctx, session.AccountID, in.RequestKey)
+		case "place_fish":
+			result, err = svc.PlaceFish(ctx, session.AccountID, in.RequestKey,
+				in.FishID, in.SlotIdx, in.Phases)
+		case "collect_rack":
+			result, err = svc.CollectRack(ctx, session.AccountID, in.RequestKey, false)
 		case "upgrade":
 			result, err = svc.Upgrade(ctx, session.AccountID, in.RequestKey)
 		case "renovate":

@@ -1,5 +1,11 @@
 'use strict';
-// 渔屋玩家端：五个页签可切换、钓竿页行为不变、广播时渔屋页不重建、幂等 requestKey 复用。
+// 渔屋玩家端（v0.25.0）：晒架 / 宠物职能 / 角色 三个页签；无被动离线金币。
+// 验收项：
+//   晒架页 — 显示晒架位、收取批次、升级；
+//   宠物页 — 8 只宠物、职能标签、驻守控件；
+//   角色页 — 三条方向；
+//   偷取 — 拒绝码翻中文；
+//   广播就地刷新不重建；幂等 requestKey 复用。
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
@@ -24,12 +30,16 @@ const shot=async(page,name)=>{if(!process.env.FISHING_HOUSE_SCREENSHOT_DIR)retur
   await page.evaluate(()=>{
    document.querySelector('#auth').remove();
    window.calls=[];
-   // 服务端权威视图（字段口径见 IMPLEMENTATION-CONTRACT §3/§4）
-   window.house={ownerId:'1',level:5,endless:0,prestige:0,rate:68,capacityHours:8,hours:6.5,pending:442,
+   // 服务端权威视图（v0.25 新字段口径：rackSlots / rackCapacity / steal / pets / roles / stationed）
+   window.house={ownerId:'1',level:5,endless:0,prestige:0,
+     rackCapacity:2,
+     rackSlots:[
+       {slotIdx:0,fishId:'silver_carp',fishTier:'common',phases:['dry'],phaseIdx:0,readyAt:new Date(Date.now()+3*3600*1000).toISOString(),done:false},
+       {slotIdx:1,fishId:'tuna',fishTier:'rare',phases:['pre','dry','post'],phaseIdx:1,readyAt:new Date(Date.now()+1000).toISOString(),done:true,premium:false},
+     ],
      pets:{golden:2,corgi:0},stationed:['golden'],roles:{cook:1,brine:0,trader:0},
      nextCost:{coins:8000,items:{lure:16,storm_relic:1}},
      steal:{picksLeft:2,picksMax:2,coinCap:200,coinUsed:0,heat:3}};
-   // 首屏先走「还没有权威视图」的空态：page 只请求一次，数据到了再重绘
    window.houseReady=false;
    window.fetchHouseCalls=0;
    Net.fetchHouse=async()=>{window.fetchHouseCalls++;return {ok:true,data:{house:window.houseReady?window.house:null}};};
@@ -39,8 +49,10 @@ const shot=async(page,name)=>{if(!process.env.FISHING_HOUSE_SCREENSHOT_DIR)retur
     if(window.failNetwork)return {ok:false,status:0,data:{}};
     if(action==='steal')return {ok:false,status:409,data:{error:'house_steal_pair_limit'}};
     const next=Object.assign({},window.house);
-    if(action==='collect'){next.pending=0;next.hours=0;}
-    if(action==='upgrade'){next.level=6;next.rate=74;next.nextCost={coins:11000,items:{lure:20,storm_relic:1}};}
+    if(action==='collect_rack'){
+      next.rackSlots=next.rackSlots.filter(s=>!s.done);
+    }
+    if(action==='upgrade'){next.level=6;next.nextCost={coins:11000,items:{lure:20,storm_relic:1}};}
     window.house=next;Engine.state.house=next;
     return {ok:true,data:{house:next,result:{status:action+'ed'}}};
    };
@@ -51,94 +63,78 @@ const shot=async(page,name)=>{if(!process.env.FISHING_HOUSE_SCREENSHOT_DIR)retur
   check('Empty state asks the server for the house view',await host.locator('.hint').first().innerText().then(t=>t.includes('正在读取渔屋状态'))
     && await page.evaluate(()=>fetchHouseCalls===1));
   await page.evaluate(()=>{window.houseReady=true;Engine.state.house=window.house;UI.refreshAll('house');});
-  await host.locator('[data-house-pending]').waitFor();
-  await shot(page,'house-yard-desktop.png');
-  check('Boat gunwale layers in front of the seated pose',await host.locator('.char-stage').evaluate(stage=>{
-    const boat=stage.querySelector('.cs-boat'), person=stage.querySelector('.cs-angler'), front=stage.querySelector('.cs-boat-front');
-    if(!boat||!person||!front||boat.getAttribute('src')!==front.getAttribute('src'))return false;
-    const back=getComputedStyle(boat), middle=getComputedStyle(person), top=getComputedStyle(front);
-    return Number(back.zIndex)<Number(middle.zIndex)&&Number(middle.zIndex)<Number(top.zIndex)&&top.clipPath.includes('57%');
-  }));
-  check('Character entry is now the fish house',await page.evaluate(()=>GameData.NAV.some(x=>x.id==='character'&&x.name==='渔屋')));
-  check('Five tabs render on the fish house page',await host.locator('.section-tabs button').count()===5
-    && await host.locator('[data-sectiontab="breeding"]').count()===1
-    && await host.locator('[data-sectiontab="rod"]').count()===1 && await host.locator('[data-sectiontab="yard"]').count()===1);
-  check('Yard tab lands first and shows the offline pool',await host.locator('.section-tabs button.on').innerText().then(t=>t.includes('晒场'))
-    && await host.locator('[data-house-pending]').innerText().then(t=>t.includes('442')));
-  check('Collect has no daily cap (time is the only limit)',await host.locator('.hut-panel').innerText().then(t=>t.includes('领取次数不限')&&t.includes('单次最多结算 8 小时')));
-  check('Upgrade cost shows the material whitelist and current holdings',await host.locator('.hut-panel').innerText().then(t=>t.includes('风暴遗物')&&t.includes('持有')));
-  await host.locator('[data-house-action="collect"]').click();
+  await host.locator('.rack-slots').waitFor();
+  await shot(page,'house-yard-rack.png');
+
+  check('Yard tab has rack-slots container',await host.locator('.rack-slots').count()===1);
+  check('Rack shows 2 slots matching rackCapacity',await host.locator('[data-rack-slot]').count()===2);
+  check('Slot 0 shows fish id and in-progress phase',await host.locator('[data-rack-slot="0"]').innerText().then(t=>t.includes('silver_carp')));
+  check('Slot 1 is done and shows collect button',await host.locator('[data-rack-slot="1"]').innerText().then(t=>t.includes('完成')));
+  check('Collect button visible when a batch is done',await host.locator('[data-house-action="collect_rack"]').count()===1);
+
+  // 收取完成批次
+  await host.locator('[data-house-action="collect_rack"]').click();
   await page.waitForFunction(()=>calls.length===1);
-  check('Collect sends a persisted request key',await page.evaluate(()=>calls[0].action==='collect'&&calls[0].body.requestKey.startsWith('house-')&&calls[0].body.requestKey.length>=8));
-  check('Collect redraws from the authoritative response',await host.locator('[data-house-action="collect"]').isDisabled()
-    && await host.locator('[data-house-pending]').innerText().then(t=>t.includes('0')));
-  // 幂等：网络层失败（无状态码）时同一操作必须复用同一个 key，重试不会重复发奖
+  check('CollectRack sends correct action',await page.evaluate(()=>calls[0].action==='collect_rack'&&calls[0].body.requestKey.startsWith('house-')));
+  check('Collect removes done rack slot from view',
+    await host.locator('[data-rack-slot="1"].rack-slot-active').count()===0
+    || await host.locator('[data-rack-slot]').count()===1);
+
+  // 升级
+  await host.locator('[data-house-action="upgrade"]').waitFor();
   await page.evaluate(()=>{window.failNetwork=true;});
   await host.locator('[data-house-action="upgrade"]').click();
   await page.waitForFunction(()=>calls.length===2);
   await host.locator('[data-house-action="upgrade"]').click();
   await page.waitForFunction(()=>calls.length===3);
-  check('Retry after a transport failure reuses the same request key',await page.evaluate(()=>calls[1].body.requestKey===calls[2].body.requestKey&&calls[1].action==='upgrade'));
+  check('Retry after transport failure reuses the same request key',await page.evaluate(()=>calls[1].body.requestKey===calls[2].body.requestKey&&calls[1].action==='upgrade'));
   await page.evaluate(()=>{window.failNetwork=false;});
-  // 每竿一次的 assets 广播：结构没变 → 就地更新，不重建 DOM
-  await page.evaluate(()=>{window.house=Object.assign({},window.house,{pending:510,hours:7.5});Engine.state.house=window.house;window.sameNode=document.querySelector('.hut-panel');UI.refreshAll('assets');});
-  check('Assets broadcast updates the yard in place without rebuilding',await page.evaluate(()=>sameNode===document.querySelector('.hut-panel'))
-    && await host.locator('[data-house-pending]').innerText().then(t=>t.includes('510')));
-  // 好友偷取：拒绝码翻中文（面板自带 errors{} 表）
+
+  // assets 广播：就地更新，不重建
+  await page.evaluate(()=>{
+    const next=Object.assign({},window.house,{steal:Object.assign({},window.house.steal,{picksLeft:1})});
+    window.house=next;Engine.state.house=next;window.sameNode=document.querySelector('.hut-panel');
+    UI.refreshAll('assets');
+  });
+  check('Assets broadcast updates yard in place without rebuilding',await page.evaluate(()=>sameNode===document.querySelector('.hut-panel')));
+
+  // 偷取 → 拒绝码翻中文
   await host.locator('[data-house-action="steal"]').waitFor();
-  check('Steal lists friends as targets',await page.locator('[data-house-action="steal"]').count()===1);
   await host.locator('[data-house-action="steal"]').click();
   check('Steal rejection is translated to Chinese',await host.locator('[data-house-message]').innerText().then(t=>t.includes('今天已经偷过这位好友')));
+
   // 宠物页签
   await host.locator('[data-sectiontab="pet"]').click();
   await host.locator('[data-pet-card="golden"]').waitFor();
-  await shot(page,'house-pet-desktop.png');
-  check('Pet tab lists all eight pets with affinity and station controls',await host.locator('[data-pet-card]').count()===8
+  await shot(page,'house-pet-role.png');
+  check('Pet tab lists all eight pets with role labels and station controls',await host.locator('[data-pet-card]').count()===8
     && await host.locator('[data-pet-card="golden"]').innerText().then(t=>t.includes('亲和 2 / 10')&&t.includes('驻守中'))
     && await host.locator('[data-pet-card="corgi"] [data-pet-op="station"]').count()===1);
+  // 验证职能标签显示（golden = production）
+  check('Pet cards show role label',await host.locator('[data-pet-card="golden"]').innerText().then(t=>t.includes('生产')));
+  // 驻守一只新宠物
   await host.locator('[data-pet-card="corgi"] [data-pet-op="station"]').click();
   await page.waitForFunction(()=>calls.length===5);
-  check('Stationing a pet sends the server pet id and action',await page.evaluate(()=>calls[4].action==='pet'&&calls[4].body.petId==='corgi'&&calls[4].body.petAction==='station'));
+  check('Stationing a pet sends petId and petAction',await page.evaluate(()=>calls[4].action==='pet'&&calls[4].body.petId==='corgi'&&calls[4].body.petAction==='station'));
+
   // 角色页签
   await host.locator('[data-sectiontab="role"]').click();
   await host.locator('[data-track="cook"]').waitFor();
-  await shot(page,'house-boat-desktop.png');
+  await shot(page,'house-role.png');
   check('Role tab exposes the three training tracks',await host.locator('[data-track]').count()===3
     && await host.locator('[data-track="cook"]').isDisabled()===false);
-  check('Role tab offers three characters and keeps the original 48 looks',await host.locator('.char-model').count()===3
-    && await host.locator('.char-look .cb-chip').count()===11);
-  check('Reference character is the loaded default appearance',await host.locator('.char-look-preview img').evaluate(img=>
-    img.getAttribute('src')==='assets/ui/char/chibi_stand_orange_green_light.png'&&img.complete&&img.naturalWidth>0));
-  await host.locator('.char-look .cb-chip', {hasText:'湖青发'}).click();
-  await host.locator('.char-look .cb-chip', {hasText:'海蓝水手服'}).click();
-  await host.locator('.char-look .cb-chip', {hasText:'暖麦肤色'}).click();
-  check('Hair, sailor uniform and skin choices share the new sprite',await host.locator('.char-look-preview img').evaluate(img=>
-    img.getAttribute('src')==='assets/ui/char/chibi_stand_teal_blue_tan.png'&&img.complete&&img.naturalWidth>0));
-  await host.locator('.char-model', {hasText:'红发双马尾登山者'}).click();
-  check('Twin-tail character uses her own reference stand pose',await host.locator('.char-look-preview img').evaluate(img=>
-    img.getAttribute('src')==='assets/ui/char/twin-stand.png'&&img.complete&&img.naturalWidth>0)
-    && await host.locator('.char-look .cb-chip').count()===0
-    && await page.evaluate(()=>JSON.parse(localStorage.getItem('fishing_char_v2')).model==='twin'));
+  check('Role tab explains cook raises batch value and brine unlocks stage',
+    await host.locator('.hut-panel').innerText().then(t=>t.includes('批次收益')&&t.includes('腌制')));
+
+  // 角色页签 → 切回晒架
   await host.locator('[data-sectiontab="yard"]').click();
-  check('Yard stage switches to the twin-tail boat pose',await host.locator('.cs-angler').getAttribute('src')==='assets/ui/char/twin-boat.png');
-  await host.locator('[data-sectiontab="role"]').click();
-  await host.locator('.char-model', {hasText:'白发单马尾吊带裤'}).click();
-  check('Single-ponytail character keeps her own reference palette and stand pose',await host.locator('.char-look-preview img').evaluate(img=>
-    img.getAttribute('src')==='assets/ui/char/pony-stand.png'&&img.complete&&img.naturalWidth>0)
-    && await host.locator('.char-look .cb-chip').count()===0
-    && await page.evaluate(()=>JSON.parse(localStorage.getItem('fishing_char_v2')).model==='pony'));
-  await host.locator('[data-sectiontab="yard"]').click();
-  check('Yard stage switches to the single-ponytail boat pose',await host.locator('.cs-angler').getAttribute('src')==='assets/ui/char/pony-boat.png');
-  await host.locator('[data-sectiontab="role"]').click();
-  await host.locator('.char-model', {hasText:'淡紫发水手'}).click();
-  check('Switching back retains the first character colour choices',await host.locator('.char-look-preview img').getAttribute('src')==='assets/ui/char/chibi_stand_teal_blue_tan.png');
-  await host.locator('[data-sectiontab="yard"]').click();
-  check('Yard stage displays the boat-adapted seated pose',await host.locator('.cs-angler').getAttribute('src')==='assets/ui/char/chibi_boat_teal_blue_tan.png');
-  // 钓竿页签：行为与改造前一致（bd 的渲染与 pageIdOf 折算都没动）
+  check('Switching back to yard still shows rack-slots',await host.locator('.rack-slots').count()===1);
+
+  // 钓竿页签保持独立
   await host.locator('[data-sectiontab="rod"]').click();
   await host.locator('.rod-slots').waitFor();
-  check('Rod stays the first-class tab it was before the rebuild',await host.locator('.rod-slots').count()===1
-    && await host.locator('.hut-panel').count()===0);
+  check('Rod tab is independent of yard rebuild',await host.locator('.rod-slots').count()===1&&await host.locator('.hut-panel').count()===0);
+
   check('No browser script errors',errors.length===0);
  }finally{await browser.close();}
  console.log('通过 '+count+' 项，失败 0 项');

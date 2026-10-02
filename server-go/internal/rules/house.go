@@ -25,6 +25,49 @@ type HutRenovateCost struct {
 	StormRelic    int64   `json:"stormRelic"`
 	AlloyPerLevel int64   `json:"alloyPerLevel"`
 }
+// RackStageConfig defines one optional or required phase of the drying chain.
+// The three built-in IDs are "pre" (brining/cure), "dry" (the mandatory drying),
+// and "post" (pressing/fermentation). Duration is in hours. Multiplier stacks
+// multiplicatively with the other stages chosen for the same batch.
+type RackStageConfig struct {
+	ID           string  `json:"id"`
+	Hours        float64 `json:"hours"`
+	Multiplier   float64 `json:"multiplier"`
+	MaterialCost string  `json:"materialCost,omitempty"`
+	MaterialQty  int64   `json:"materialQty,omitempty"`
+	// MinCookLevel / MinBrineLevel are the minimum role points the owner needs
+	// to unlock this stage (0 = always available).
+	MinCookLevel  int `json:"minCookLevel,omitempty"`
+	MinBrineLevel int `json:"minBrineLevel,omitempty"`
+}
+
+// PetRoleConfig describes the functional behaviour of one pet role archetype.
+// GuardRate is the per-affinity-level intercept probability (0–1).
+// SpeedBonus is the fractional drying-time reduction per affinity level of a
+// stationed production pet (applied once, not per batch).
+// PremiumBonus is the extra premium-batch probability per affinity level.
+// AutoCollect marks the collect archetype; CollectLoss is the fraction (0–1)
+// of coins lost when the pet auto-collects rather than the player.
+type PetRoleConfig struct {
+	ID           string  `json:"id"`
+	GuardRate    float64 `json:"guardRate,omitempty"`
+	SpeedBonus   float64 `json:"speedBonus,omitempty"`
+	PremiumBonus float64 `json:"premiumBonus,omitempty"`
+	AutoCollect  bool    `json:"autoCollect,omitempty"`
+	CollectLoss  float64 `json:"collectLoss,omitempty"`
+}
+
+// PetDef pairs a pet's display id with its role archetype ("guard", "production",
+// "collect", or "scout" — scout is reserved for a future fishing integration).
+type PetDef struct {
+	ID   string `json:"id"`
+	Role string `json:"role"`
+}
+
+// FishTierMultipliers maps a fish rarity tier ("common", "uncommon", "rare",
+// "epic", "legendary") to a base value multiplier applied before chain bonuses.
+type FishTierMultipliers map[string]float64
+
 type HutConfig struct {
 	Levels        []float64 `json:"levels"`
 	CapacityHours float64   `json:"capacityHours"`
@@ -49,6 +92,37 @@ type HutConfig struct {
 	UpgradeCosts      []HutCost       `json:"upgradeCosts"`
 	RenovateCost      HutRenovateCost `json:"renovateCost"`
 	MaterialWhitelist []string        `json:"materialWhitelist"`
+
+	// ── drying rack ────────────────────────────────────────────────────────
+	// RackSlotsByLevel[i] is the number of rack slots at house level i+1.
+	// The slice must be exactly len(Levels) long; a zero entry means no slots.
+	RackSlotsByLevel []int `json:"rackSlotsByLevel"`
+
+	// RackStages lists pre/dry/post stages in processing order. "dry" must
+	// appear exactly once; "pre" and "post" are optional.
+	RackStages []RackStageConfig `json:"rackStages"`
+
+	// FishTierMultipliers maps rarity tier → base multiplier (default 1.0).
+	FishTierMultipliers FishTierMultipliers `json:"fishTierMultipliers"`
+
+	// PremiumBatchBaseChance is the base probability of a premium outcome
+	// (before production-pet bonus).
+	PremiumBatchBaseChance float64 `json:"premiumBatchBaseChance"`
+
+	// PremiumBatchMultiplier is the extra coin multiplier when a batch is premium.
+	PremiumBatchMultiplier float64 `json:"premiumBatchMultiplier"`
+
+	// ── pet roles ──────────────────────────────────────────────────────────
+	// PetRoles lists the archetype configs; len must equal len(PetDefs).
+	// Valid IDs: "guard", "production", "collect".
+	PetRoles []PetRoleConfig `json:"petRoles"`
+
+	// PetDefs lists all pets with their role assignment. The ID must match
+	// the asset filename (dog_<id>.png or similar). The "guard" archetype is
+	// checked as the interception layer for steals; "production" pets apply
+	// SpeedBonus and PremiumBonus to the drying cycle; "collect" pets
+	// auto-collect finished batches.
+	PetDefs []PetDef `json:"petDefs"`
 }
 
 func (c *Catalog) HutConfig() HutConfig {
@@ -209,6 +283,36 @@ func (c *Catalog) ValidateHut() error {
 				return errors.New("渔屋配置无效：升级消耗只能使用材料白名单内的物品（风暴遗物 / 强化合金 / 普通鱼饵材料）")
 			}
 		}
+	}
+	// Rack stage validation: "dry" must appear exactly once; other stage ids must be unique.
+	if len(h.RackStages) > 0 {
+		dryCount := 0
+		seen := map[string]bool{}
+		for _, s := range h.RackStages {
+			if s.ID == "" {
+				return errors.New("渔屋配置无效：晒架阶段必须有非空 id")
+			}
+			if seen[s.ID] {
+				return errors.New("渔屋配置无效：晒架阶段 id 重复：" + s.ID)
+			}
+			seen[s.ID] = true
+			if s.ID == "dry" {
+				dryCount++
+			}
+			if !finite(s.Hours) || s.Hours <= 0 {
+				return errors.New("渔屋配置无效：晒架阶段 " + s.ID + " 耗时必须大于 0")
+			}
+			if !finite(s.Multiplier) || s.Multiplier <= 0 {
+				return errors.New("渔屋配置无效：晒架阶段 " + s.ID + " 倍率必须大于 0")
+			}
+		}
+		if dryCount != 1 {
+			return errors.New("渔屋配置无效：晒架阶段必须包含且仅包含一个 dry（晒干）阶段")
+		}
+	}
+	// rackSlotsByLevel must match the level curve length when present.
+	if len(h.RackSlotsByLevel) > 0 && len(h.RackSlotsByLevel) != len(h.Levels) {
+		return errors.New("渔屋配置无效：rackSlotsByLevel 长度必须与等级曲线长度相同")
 	}
 	return nil
 }

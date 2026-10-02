@@ -178,8 +178,10 @@ func newAPI(pool *pgxpool.Pool, mfaKey []byte, locations []*time.Location, front
 	r.Get("/api/gear", a.gearView)
 	r.Post("/api/gear/action", a.gearAction)
 	// 渔屋：读接口直接返回权威视图，写接口沿用远洋派遣的命令契约（requestKey 幂等）。
+	// 收益来源改为晒架投鱼（place_fish）+ 收取完成批次（collect_rack），不再有被动离线金币。
 	r.Get("/api/house", a.legacyHouse("view"))
-	r.Post("/api/house/collect", a.legacyHouse("collect"))
+	r.Post("/api/house/place_fish", a.legacyHouse("place_fish"))
+	r.Post("/api/house/collect_rack", a.legacyHouse("collect_rack"))
 	r.Post("/api/house/upgrade", a.legacyHouse("upgrade"))
 	r.Post("/api/house/renovate", a.legacyHouse("renovate"))
 	r.Post("/api/house/pet", a.legacyHouse("pet"))

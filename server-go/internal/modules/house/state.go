@@ -1,19 +1,21 @@
-// Package house owns the fish house ("渔屋"): a time-bounded offline income
-// facility, its two growth lines (companions and roles) and the friend-steal
+// Package house owns the fish house ("渔屋"): a multi-phase drying-rack income
+// system, its two growth lines (companions and roles) and the friend-steal
 // ledger. Every write goes through the shared asset command boundary, so
 // idempotency, feature gates and the operator audit trail behave exactly like
 // the rest of the game.
 //
-// The only income limit is time: a settlement never covers more than
-// HutConfig.CapacityHours, and a day only holds 24 hours. There is deliberately
-// no coin cap, no daily collection counter and no per-collection clamp; see
-// rules.HutConfig for the load-bearing assertions.
+// Income comes exclusively from placing fish on drying racks and collecting
+// finished batches. There is no passive time-based income. Pets have four
+// functional archetypes: guard (intercepts steals), production (speeds drying
+// and raises premium chance), collect (auto-harvests finished batches), and
+// scout (reserved for future fishing integration).
 package house
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"fishing.local/server/internal/modules/assets"
 	"github.com/jackc/pgx/v5"
@@ -24,6 +26,33 @@ type Pets map[string]int
 
 // Roles maps a growth track ("cook"|"brine"|"trader") to invested points.
 type Roles map[string]int
+
+// RackPhase is one step in a batch's processing chain.
+// "pre"  = brining/curing  (optional, requires brine role points)
+// "dry"  = drying          (mandatory)
+// "post" = pressing/fermentation (optional, requires cook role points)
+type RackPhase = string
+
+const (
+	PhasePrep = "pre"
+	PhaseDry  = "dry"
+	PhasePost = "post"
+)
+
+// RackSlot is one drying-rack position. It is stored in the house_state jsonb
+// extras and carries the full lifecycle of one batch: placed → drying (each
+// phase completes in sequence) → ready (awaiting collect).
+type RackSlot struct {
+	SlotIdx   int        `json:"slotIdx"`              // position on the rack (0-based)
+	FishID    string     `json:"fishId"`               // catalog item id of the raw fish
+	FishTier  string     `json:"fishTier"`             // rarity tier ("common"…"legendary")
+	FishPrice int64      `json:"fishPrice"`            // base sell price of the raw fish
+	Phases    []RackPhase `json:"phases"`              // ordered processing chain
+	PhaseIdx  int        `json:"phaseIdx"`             // index of the current active phase
+	StartedAt time.Time  `json:"startedAt"`            // wall time when current phase started
+	Premium   bool       `json:"premium,omitempty"`    // set at collect time when premium roll succeeds
+	Done      bool       `json:"done,omitempty"`       // true once all phases finished
+}
 
 // State is the player-owned part of a house row.
 type State struct {
@@ -50,32 +79,44 @@ type StealView struct {
 	Heat      int   `json:"heat"`
 }
 
+// RackSlotView is the client-facing projection of one rack slot.
+// ReadyAt is zero when the batch is still processing.
+type RackSlotView struct {
+	SlotIdx   int         `json:"slotIdx"`
+	FishID    string      `json:"fishId"`
+	FishTier  string      `json:"fishTier"`
+	Phases    []RackPhase `json:"phases"`
+	PhaseIdx  int         `json:"phaseIdx"`
+	ReadyAt   time.Time   `json:"readyAt"`   // estimated wall time all phases finish
+	Done      bool        `json:"done"`
+	Premium   bool        `json:"premium,omitempty"`
+}
+
 // View is the authoritative player projection returned by GET /api/house and by
 // every write command.
 type View struct {
-	OwnerID      int64     `json:"ownerId,string"`
-	Level        int       `json:"level"`
-	Endless      int       `json:"endless"`
-	Prestige     int       `json:"prestige"`
-	Rate         float64   `json:"rate"`
-	Capacity     float64   `json:"capacityHours"`
-	Hours        float64   `json:"hours"`
-	Pending      int64     `json:"pending"`
-	Pets         Pets      `json:"pets"`
-	Roles        Roles     `json:"roles"`
-	Stationed    []string  `json:"stationed"`
-	Slots        int       `json:"slots"`
-	NextCost     *Cost     `json:"nextCost,omitempty"`
-	RenovateCost *Cost     `json:"renovateCost,omitempty"`
-	Steal        StealView `json:"steal"`
+	OwnerID      int64          `json:"ownerId,string"`
+	Level        int            `json:"level"`
+	Endless      int            `json:"endless"`
+	Prestige     int            `json:"prestige"`
+	Pets         Pets           `json:"pets"`
+	Roles        Roles          `json:"roles"`
+	Stationed    []string       `json:"stationed"`
+	Slots        int            `json:"slots"`
+	RackSlots    []RackSlotView `json:"rackSlots"`
+	RackCapacity int            `json:"rackCapacity"` // total rack positions at current level
+	NextCost     *Cost          `json:"nextCost,omitempty"`
+	RenovateCost *Cost          `json:"renovateCost,omitempty"`
+	Steal        StealView      `json:"steal"`
 }
 
 // extras is the part of a house row without a dedicated column. It lives in the
 // row's state jsonb, mirroring how gear keeps its whole state in one column.
 type extras struct {
-	Stationed []string `json:"stationed,omitempty"`
-	Frozen    bool     `json:"frozen,omitempty"`
-	Heat      int      `json:"heat,omitempty"`
+	Stationed []string   `json:"stationed,omitempty"`
+	Frozen    bool       `json:"frozen,omitempty"`
+	Heat      int        `json:"heat,omitempty"`
+	Racks     []RackSlot `json:"racks,omitempty"`
 }
 
 // row is a full house row: the columns plus the jsonb extras.

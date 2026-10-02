@@ -130,18 +130,23 @@
   function playerHTML(name, v) {
     const pets = Object.entries(v.pets || {}).map(([id, lv]) => esc(id) + ' 亲和 ' + lv).join('、') || '无';
     const roles = Object.entries(v.roles || {}).map(([id, n]) => esc(id) + ' ' + n + ' 点').join('、') || '无';
+    const rackSlots = (v.rackSlots || []);
+    const rackSummary = rackSlots.length === 0
+      ? '空'
+      : rackSlots.map(function (s) {
+          return '位' + s.slotIdx + ':' + esc(s.fishId || '?') + (s.done ? '✅' : '⏳');
+        }).join(' / ');
     return '<div class="gear-card"><h3>' + esc(name) + ' · 渔屋进度</h3>'
       + '<div class="gear-metrics"><span>等级<b>' + v.level + '</b></span><span>无尽<b>' + v.endless + '</b></span><span>声望<b>' + (v.prestige || 0) + '</b></span>'
-      + '<span>速率<b>' + round(v.rate) + '/h</b></span><span>容量<b>' + round(v.capacityHours) + 'h</b></span>'
-      + '<span>已攒<b>' + round(v.hours) + 'h</b></span><span>待领取<b>' + v.pending + ' 金</b></span></div>'
+      + '<span>晒架位<b>' + (v.rackCapacity || 0) + '</b></span><span>晒架状态<b>' + rackSummary + '</b></span></div>'
       + '<p class="hint">驻守：' + esc((v.stationed || []).join('、') || '无') + ' · 宠物：' + pets + ' · 角色：' + roles
       + ' · 偷取 ' + (v.steal ? (v.steal.picksLeft + '/' + v.steal.picksMax + ' 次，金币 ' + v.steal.coinUsed + '/' + v.steal.coinCap) : '—') + '</p>'
       + '<div class="ops-row"><input data-house-target hidden value="' + esc(name) + '">'
-      + '<button data-house-op="reset">清空已攒时长</button>'
+      + '<button data-house-op="reset">清空晒架计时</button>'
       + '<button data-house-op="freeze">冻结结算</button>'
       + '<button data-house-op="unfreeze">恢复结算</button>'
       + '<span role="status" data-player-status></span></div>'
-      + '<p class="hint">清空只把结算时刻前推到「现在」（绝不提前发奖）；冻结期间晒场不再累积，恢复后从恢复时刻重新计时。</p></div>';
+      + '<p class="hint">清空只把结算时刻前推到「现在」（绝不提前发奖）；冻结期间晒架不再推进，恢复后从恢复时刻重新计时。</p></div>';
   }
 
   async function render(host, api, confirm) {

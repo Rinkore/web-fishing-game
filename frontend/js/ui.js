@@ -7669,74 +7669,16 @@ window.UI = (function () {
     capbar.appendChild(capMeter);
     side.appendChild(capbar);
 
-    side.appendChild(el('h3', null, '📊 背包概览'));
-    const kinds = {}; let totalCnt = 0, totalValue = 0, totalReserved = 0;
-    invKeys.forEach(function (id) {
-      kinds[itemMeta(id).kind] = (kinds[itemMeta(id).kind] || 0) + 1;
-      totalCnt += st.inventory[id];
-      totalValue += itemMeta(id).price * st.inventory[id]; // 预估总价：按基准价，不随市场浮动
-      totalReserved += itemMeta(id).kind === 'fish' ? reservedOf(id) : 0;
-    });
-    const summary = el('div', 'codex-summary');
-    summary.innerHTML =
-      '<div class="cs-box"><b>' + invKeys.length + '</b><span>物品种类</span></div>' +
-      '<div class="cs-box"><b>' + totalCnt + '</b><span>总件数</span></div>' +
-      '<div class="cs-box"><b>' + totalValue + '</b><span>预估总价（基准）</span></div>';
-    side.appendChild(summary);
-    // 大型/巨型鱼单独预留（普通出售 / 上架 / 交易动不了它们）——概览里明说，免得对不上列表数字
-    side.appendChild(el('div', 'hint inv-reserved',
-      totalReserved > 0
-        ? '其中大型/巨型预留 <b>' + totalReserved + '</b> 件（共 ' + (totalCnt - totalReserved) + ' 件普通量可在本页出售 / 上架 / 交易）'
-        : ''));
-
-    // 一键出售（预览弹窗）+ 组件订阅提醒入口
-    const bulk = el('div', 'bulk-sell');
-    const bbtn = el('button', 'mini gold', '⚡ 一键出售（预览）');
+    // 一键出售（预览弹窗）和组件订阅入口移入容量条行，不再单独占右侧区块
+    const bbtn = el('button', 'mini gold', '⚡ 一键出售');
     markFeature(bbtn, 'mall.sell');
     bbtn.title = '打开预览子窗口：筛选后可逐项勾选与调整数量，确认后才会出售';
     bbtn.addEventListener('click', openBulkSellModal);
-    capbar.appendChild(bbtn);   // 设计稿 v2 §8：和容量条同一行
-    const subBtn = el('button', 'mini sub-entry', '🔔 组件订阅提醒' + (subUnseen > 0 ? '（' + subUnseen + ' 条未读）' : ''));
-    subBtn.title = '设置组件到货提醒：筛选条件 + 提醒方式（背包红标 / 浏览器图标闪烁）';
+    capbar.appendChild(bbtn);
+    const subBtn = el('button', 'mini sub-entry', '🔔' + (subUnseen > 0 ? '（' + subUnseen + '）' : ''));
+    subBtn.title = '组件订阅提醒：设置筛选条件与提醒方式';
     subBtn.addEventListener('click', openSubscribeModal);
-    bulk.appendChild(subBtn);
-    side.appendChild(bulk);
-
-    const breakdown = el('div', 'inv-breakdown');
-    [['fish', '🐟 鱼类'], ['material', '🧵 材料'], ['chest', '🎁 宝匣'], ['component', '🔧 组件']].forEach(function (kv) {
-      if (!kinds[kv[0]]) return;
-      breakdown.appendChild(el('div', 'inv-kind-line', kv[1] + '　' + kinds[kv[0]] + ' 种'));
-    });
-    side.appendChild(breakdown);
-
-    // 我的挂单（可下架；上架费不退）
-    const mine = (st.marketMine || []).filter(function (l) { return st.me && st.me.id != null && String(l.seller).toLowerCase() === String(st.me.id).toLowerCase(); })
-      .sort(function (a, b) { return b.t - a.t; });
-    side.appendChild(el('h3', null, '🏷️ 我的挂单（' + ((st.marketMinePage || {}).total || 0) + '）'));
-    marketPager(side, st.marketMinePage, function (page) { window.Net.fetchMyMarket(page); });
-    const ml = el('div', 'my-listings');
-    if (!mine.length) {
-      ml.appendChild(el('div', 'hint', '暂无在售挂单。在左侧物品行点「上架」挂到开放市集。'));
-    } else {
-      mine.forEach(function (l) {
-        const row = el('div', 'inv-row my-listing-row');
-        row.innerHTML = '<span class="' + qualityClass(itemMeta(l.id)) + '">' + esc(l.name) + '</span>' +
-          '<span class="cnt">×' + l.qty + ' @ ' + l.price + '💰</span>';
-        const acts = el('span', 'inv-acts');
-        const cb = el('button', 'mini', '下架');
-        cb.title = '下架取回物品（上架费不退）';
-        cb.addEventListener('click', function () {
-          call(window.Net.marketCancel(l.lid), '已下架，物品退回背包（上架费不退）').then(function (r) {
-            if (r && r.ok) { applyInvFrom(r.data); applyRodState(r.data); renderTopbar(); renderView(); }
-          });
-        });
-        acts.appendChild(cb);
-        row.appendChild(acts);
-        ml.appendChild(row);
-      });
-    }
-    side.appendChild(ml);
-    side.appendChild(el('div', 'hint', '现价随全服售出量浮动，可在「系统商店」看趋势；大鱼与稀有物品建议挂市集卖高价。'));
+    capbar.appendChild(subBtn);
     panel.appendChild(side);
     main.appendChild(panel);
   }

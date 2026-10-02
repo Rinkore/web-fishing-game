@@ -16,10 +16,11 @@ import (
 var legacyFeatureGroups = []map[string]any{
 	{"id": "fishing", "name": "钓鱼", "parent": nil, "children": []map[string]any{{"id": "fishing.cast", "name": "抛竿与自动钓鱼", "parent": "fishing"}}},
 	{"id": "bd", "name": "钓竿（角色页签）", "parent": "fishing", "children": []map[string]any{{"id": "bd.equip", "name": "装备组件", "parent": "bd"}, {"id": "bd.slots", "name": "购买槽位", "parent": "bd"}, {"id": "bd.save", "name": "保存与管理钓竿", "parent": "bd"}, {"id": "bd.autobuild", "name": "自动配装", "parent": "bd"}}},
-	// v0.24.0：「角色」页升级为「渔屋」（晒场 / 宠物 / 角色 / 钓竿四个页签），
-	// 因此这里保留 character 这个入口 id（旧存档与旧广播都指向它），只换名字并加渔屋子项。
+	// v0.25.0：晒场收益改为「投鱼 → 离线计时 → 收取」，旧的 collect 开关拆分为 place_fish / collect_rack。
+	// character.collect 保留为别名以兼容旧存档的功能发布记录，但不再对应任何命令。
 	{"id": "character", "name": "渔屋", "parent": nil, "children": []map[string]any{
-		{"id": "character.collect", "name": "晒场领取与升级", "parent": "character"},
+		{"id": "character.place_fish",  "name": "晒架投入鱼干原料", "parent": "character"},
+		{"id": "character.collect_rack","name": "晒架收取完成批次", "parent": "character"},
 		{"id": "character.upgrade", "name": "渔屋升级与翻新", "parent": "character"},
 		{"id": "character.breeding", "name": "鱼类繁育", "parent": "character"},
 		{"id": "character.pet", "name": "宠物养成", "parent": "character"},

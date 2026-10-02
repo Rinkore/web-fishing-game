@@ -4621,6 +4621,30 @@
         "bait_pack",
         "rope",
         "lure"
+      ],
+      "rackSlotsByLevel": [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
+      "rackStages": [
+        { "id": "pre",  "hours": 2.0, "multiplier": 1.4, "materialCost": "bait_pack", "materialQty": 1, "minBrineLevel": 1 },
+        { "id": "dry",  "hours": 8.0, "multiplier": 1.0 },
+        { "id": "post", "hours": 3.0, "multiplier": 1.5, "minCookLevel": 1 }
+      ],
+      "fishTierMultipliers": { "common": 1.0, "uncommon": 1.3, "rare": 1.8, "epic": 2.8, "legendary": 5.0 },
+      "premiumBatchBaseChance": 0.05,
+      "premiumBatchMultiplier": 3.0,
+      "petRoles": [
+        { "id": "guard",      "guardRate": 0.05 },
+        { "id": "production", "speedBonus": 0.03, "premiumBonus": 0.01 },
+        { "id": "collect",    "autoCollect": true, "collectLoss": 0.05 }
+      ],
+      "petDefs": [
+        { "id": "golden",    "role": "production" },
+        { "id": "corgi",     "role": "guard" },
+        { "id": "malamute",  "role": "guard" },
+        { "id": "basset",    "role": "collect" },
+        { "id": "shepherd",  "role": "guard" },
+        { "id": "dachshund", "role": "production" },
+        { "id": "bernese",   "role": "collect" },
+        { "id": "mainecoon", "role": "production" }
       ]
     },
     "SEA_QUEST_KINDS": [
