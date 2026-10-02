@@ -21,7 +21,7 @@ migrations_sha256="$(go -C server-go run ./cmd/repo-tool migration-hash)"
 stage="$(mktemp -d)"
 trap 'rm -rf -- "$stage"' EXIT
 mkdir -p "$stage/bin" "$stage/licenses"
-for command in game migrate catalog admin; do
+for command in game migrate catalog admin reset; do
   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go -C server-go build -trimpath -buildvcs=false \
     -o "$stage/bin/$command" "./cmd/$command"
 done

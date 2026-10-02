@@ -20,8 +20,8 @@
 .scale-mark { position: absolute; top: 0; transform: translateX(-50%); text-align: center; line-height: 1.25; white-space: nowrap; color: #7f9fbb; }
 .scale-mark.first { transform: none; text-align: left; }
 .scale-mark.last { transform: translateX(-100%); text-align: right; }
-.scale-mark b { display: block; font-size: 11px; }
-.scale-mark i { font-style: normal; font-size: 10px; opacity: .85; }
+.scale-mark b { display: block; font-size: 12px; }
+.scale-mark i { font-style: normal; font-size: 12px; opacity: .85; }
 .scale-mark::before { content: ""; position: absolute; top: -5px; left: 50%; width: 2px; height: 4px; background: currentColor; opacity: .45; }
 .scale-mark.first::before { left: 2px; }
 .scale-mark.last::before { left: auto; right: 2px; }

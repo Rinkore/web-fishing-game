@@ -6,23 +6,28 @@
   position: relative; isolation: isolate; min-height: 420px; overflow: hidden;
   background: #0a2034;
 }
-.fishing-stage .fish-select { position: absolute; inset: 0; }
+.fishing-stage .fish-select { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; }
+.fishing-stage .fish-select.is-dragging, .fishing-stage .fish-select.is-dragging .px-node { cursor: grabbing; }
 .fishing-stage .px-map {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   border: 0; border-radius: 0; box-shadow: none;
 }
 .fishing-stage .px-map-img { width: 100%; height: 100%; object-fit: contain; }
-.fishing-stage .fishing-toolbar {
-  position: absolute; z-index: 4; top: var(--fish-edge); left: var(--fish-edge); right: var(--fish-edge);
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
-  pointer-events: none;
+.fishing-stage .px-map-world { overflow: visible; transform-origin: center; }
+.fishing-stage .px-map-world .px-node,
+.fishing-stage .px-map-world .px-node:active {
+  /* The map grows by layout during zoom, so fixed-size labels and hit targets
+     must not be inversely scaled as they were when the map used transform:scale. */
+  transform: translate(-50%, -50%) !important;
 }
-.fishing-toolbar .px-map-tabs, .fishing-switches {
-  display: flex; flex-wrap: nowrap; gap: 6px; margin: 0; padding: 6px;
+.fishing-switches {
+  /* 收起时只剩图标，整排按内容宽度收缩并靠右，不再横着占满右栏。 */
+  display: flex; flex-wrap: nowrap; gap: 6px; margin: 0 0 0 auto; padding: 6px;
+  width: fit-content; max-width: 100%;
   background: rgba(10, 29, 48, .95); border: 1px solid var(--px-line); border-radius: 4px;
   pointer-events: auto;
 }
-.fishing-stage .px-map-tab { min-height: 40px; padding: 7px 12px; font-size: 13px; letter-spacing: 0; white-space: nowrap; }
+.fishing-stage .px-map-tab { min-height: 40px; padding: 7px 12px; font-size: 12px; letter-spacing: 0; white-space: nowrap; }
 .fishing-dock {
   position: absolute; z-index: 5; top: var(--fish-edge); right: var(--fish-edge); bottom: 76px;
   width: min(390px, calc(100% - 64px)); pointer-events: none;
@@ -31,8 +36,14 @@
 .fishing-dock.collapsed { transform: translateX(calc(100% + var(--fish-edge))); }
 .fishing-dock-content { height: 100%; }
 .fishing-switches { pointer-events: auto; }
-.fishing-switches button { flex: 1; min-width: 0; }
+/* 按钮按内容排布（原来 flex:1 会把它们摊满整行）；只显示图标时也要够点。 */
+.fishing-switches button { flex: 0 0 auto; min-width: 0; }
+.fishing-switches .px-map-tab { padding: 7px 11px; min-width: 40px; }
+/* 名字默认只留图标：选中后（.on）才展开完整名字，压缩开关条的横向占用。 */
+.fishing-switches .pt-name { display: none; }
+.fishing-switches .px-map-tab.on .pt-name { display: inline; margin-left: 5px; }
 .fishing-dock-toggle {
+  /* 左偏移由 alignDockToggle() 按开关条左缘写入（-28 是收起态的兜底值）。 */
   position: absolute; top: 8px; left: -28px; width: 26px; height: 38px; padding: 0;
   font-size: 28px; line-height: 28px; color: var(--accent); background: #102d43;
   pointer-events: auto; cursor: pointer;
@@ -45,7 +56,7 @@
 }
 .fishing-stage [hidden] { display: none !important; }
 .fishing-overlay-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
-.fishing-overlay-head h2 { margin: 0; font-size: 16px; }
+.fishing-overlay-head h2 { margin: 0; font-size: 12px; }
 .fishing-overlay-close {
   width: 36px; height: 36px; flex: none; font-size: 22px; cursor: pointer;
   background: var(--px-bg2); color: var(--text);
@@ -56,7 +67,7 @@
 }
 .fishing-stage .live-head { align-items: center; }
 .fishing-stage .live-head h3 { font-size: 12px; }
-.fishing-stage .live-head > span { font-size: 11px; }
+.fishing-stage .live-head > span { font-size: 12px; }
 .fishing-stage .live-buffs { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .fishing-stage .live-buff-row { min-height: 40px; padding: 8px; }
 .fishing-stage .live-buff-row b { white-space: normal; overflow-wrap: anywhere; }
@@ -65,10 +76,24 @@
 .fishing-stage .peep-acts { flex-wrap: wrap; }
 .fishing-stage .fishing-log-block > h3 { margin-top: 0; font-size: 12px; }
 .fishing-stage .catch-log { max-height: none; min-height: 0; overflow: visible; }
+/* 「📍 钓点信息」区块：右栏只有 ~390px，沿用「图鉴 · 钓点」的掉落池标记，
+   但把列宽收窄成紧凑网格；名字列走 style.css 的 > span:first-child 省略号规则，
+   所以窄栏里只会截断，不会横向撑破右栏。 */
+.fishing-stage .spot-info .cd-line { margin-bottom: 2px; font-size: 12px; }
+.fishing-stage .spot-info .cd-sub { margin: 8px 0 3px; font-size: 12px; }
+.fishing-stage .spot-pool { gap: 4px; }
+.fishing-stage .spot-pool-row {
+  grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1.2fr) 44px 54px;
+  gap: 5px; padding: 3px 0; font-size: 12px;
+}
+.fishing-stage .spot-pool-row .sp-bar { height: 7px; }
+.fishing-stage .spot-pool-row .sp-type { font-size: 12px; }
+/* 覆盖 .fish-live .live-block .hint 的 margin-top，避免每行权重被顶偏。 */
+.fishing-stage .spot-pool-row .hint { margin-top: 0; font-size: 12px; }
 .fishing-stage .px-legend {
   position: absolute; z-index: 2; bottom: var(--fish-edge); left: var(--fish-edge);
   height: var(--fish-footer-height); margin: 0; padding: 6px 10px; align-items: center;
-  gap: 10px; flex-wrap: nowrap; font-size: 10px; background: rgba(8, 24, 40, .95);
+  gap: 10px; flex-wrap: nowrap; font-size: 12px; background: rgba(8, 24, 40, .95);
 }
 .fishing-stage .fish-ctrl {
   position: absolute; z-index: 2; bottom: var(--fish-edge); right: var(--fish-edge);
@@ -83,7 +108,7 @@
 .fishing-stage .fish-state.on { background: rgba(17, 56, 65, .96); }
 .fish-metric { min-width: 0; padding: 0 6px; border-right: 1px solid var(--line); text-align: center; }
 .fish-metric:last-child { border: 0; }
-.fish-metric > span { display: block; color: var(--muted); font-size: 10px; line-height: 14px; }
+.fish-metric > span { display: block; color: var(--muted); font-size: 12px; line-height: 14px; }
 .fish-metric strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; line-height: 18px; }
 .fish-state.on .fish-metric:first-child strong { color: var(--accent); }
 .fish-metric:last-child strong { color: var(--px-gold); }
@@ -97,8 +122,7 @@
 }
 @media (max-width: 640px) {
   .fishing-stage { --fish-edge: 8px; }
-  .fishing-stage .fishing-toolbar { flex-wrap: wrap; gap: 8px; }
-  .fishing-toolbar .px-map-tabs { padding: 3px; }
+  .fishing-switches { padding: 3px; }
   .fishing-dock { top: 66px; bottom: 112px; }
   .fishing-switches { padding: 3px; }
   .fishing-stage .px-map-tab { min-height: 40px; padding: 6px 7px; font-size: 12px; }
@@ -107,9 +131,20 @@
   .fishing-stage .fish-ctrl { width: calc(100% - 16px); }
   .fishing-stage .fish-state { padding: 4px 2px; }
   .fish-metric { padding: 0 2px; }
-  .fish-metric strong { font-size: 11px; }
+  .fish-metric strong { font-size: 12px; }
   .fish-metric .dot { display: none; }
-  .fishing-stage .px-legend { max-width: calc(100% - 16px); gap: 8px; padding: 6px; font-size: 10px; }
+  .fishing-stage .px-legend { max-width: calc(100% - 16px); gap: 8px; padding: 6px; font-size: 12px; }
+  /* 窄屏五列会被压扁到不可读，掉落池行改成「名字+类型 / 条形+占比+权重」两行。 */
+  .fishing-stage .spot-pool-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "name name type" "bar pct weight";
+    row-gap: 3px;
+  }
+  .fishing-stage .spot-pool-row .sp-name { grid-area: name; }
+  .fishing-stage .spot-pool-row .sp-type { grid-area: type; }
+  .fishing-stage .spot-pool-row .sp-bar { grid-area: bar; }
+  .fishing-stage .spot-pool-row .sp-pct { grid-area: pct; }
+  .fishing-stage .spot-pool-row .hint { grid-area: weight; }
 }
 @media (prefers-reduced-motion: reduce) { .fishing-dock { transition: none; } }
 html:is([data-motion=reduced], [data-motion=off]) .fishing-dock { transition: none; }

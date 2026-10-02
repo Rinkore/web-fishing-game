@@ -41,7 +41,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash -n tools/release/build-linux.sh deploy/linux/install.sh deploy/linux/deploy.sh
+          bash -n tools/release/build-linux.sh tools/release/push-linux-package.sh \
+            tools/release/tune-lossy-path.sh \
+            deploy/linux/install.sh deploy/linux/deploy.sh
+          bash tests/release-push-linux-package.test.sh 2>&1 | tail -40
           python3 tests/linux-deploy.test.py 2>&1 | tail -40
       - name: Check release publisher without network writes
         shell: pwsh

@@ -30,10 +30,14 @@ type adminFixture struct {
 	playerID    int64
 }
 
+// consoleMFAKey stands in for FISHING_GO_MFA_KEY. Console TOTP enrollment seals
+// the plaintext secret with the same key material the operator CLI uses.
+var consoleMFAKey = []byte("0123456789abcdef0123456789abcdef")
+
 func newAdminFixture(t *testing.T) *adminFixture {
 	t.Helper()
 	db := testdb.New(t, true)
-	server := httptest.NewServer(New(db.App, nil))
+	server := httptest.NewServer(New(db.App, consoleMFAKey))
 	t.Cleanup(server.Close)
 	f := &adminFixture{t: t, db: db, server: server, adminKey: "console_admin", playerKey: "console_target"}
 	f.playerToken, f.playerID = f.register(f.playerKey, "目标玩家")

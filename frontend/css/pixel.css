@@ -31,7 +31,18 @@
 }
 
 /* ---------- 全局字体与背景 ---------- */
-body, button, input, select, textarea { font-family: var(--px-font) !important; }
+/* 字体分工：像素字按 12px 网格绘制，小字号或非整数倍缩放会糊，大段说明读起来吃力。
+   所以正文、说明、表格与输入框用系统中文字体（body 继承 --font-body）；
+   像素字体只挂在「游戏感」元素上：品牌、面板标题、按钮 / 页签 / 导航、卡片名与统计数字。 */
+body, input, select, textarea { font-family: var(--font-body); }
+button, .brand, .brand-big, .panel h2, .panel h3, .nav-item, .cx-name, .cs-box b, .ver {
+  font-family: var(--px-font);
+  /* 像素字体没有粗体字形：600/700 会被浏览器「伪加粗」把笔画糊成一团，这里禁掉 */
+  font-synthesis: none;
+}
+/* 字号吸附到像素网格：12px 原生、24px 两倍，其它字号都是非整数缩放 */
+button, .nav-item, .cx-name, .panel h3 { font-size: 12px; }
+.brand, .brand-big, .panel h2, .cs-box b { font-size: 24px; }
 body {
   background:
     radial-gradient(900px 420px at 75% -8%, rgba(62, 201, 240, .10), transparent 60%),
@@ -75,6 +86,8 @@ body::before {
 .panel h2, .panel h3 { text-shadow: 2px 2px 0 rgba(0, 0, 0, .5); letter-spacing: 1px; }
 .panel h2 { color: var(--accent2); }
 .panel h3 { color: var(--px-gold); }
+/* 小节标题：像素字固定 12px 与正文同高，层级靠左侧色条 + 字距拉开，而不是放大字号 */
+.panel h3 { border-left: 4px solid var(--px-gold); padding-left: 8px; letter-spacing: 2px; line-height: 1.6; }
 
 /* ---------- 按钮：像素块 + 按压 ---------- */
 button, .nav-item, .spot-btn, .inv-cat, .mini, .primary, .primary-big,
@@ -108,7 +121,7 @@ button:not(:disabled):active, .nav-item:active, .spot-btn:active, .inv-cat:activ
   backdrop-filter: none;
   box-shadow: 0 4px 0 var(--px-shadow);
 }
-.brand { text-shadow: 2px 2px 0 rgba(0, 0, 0, .6); color: var(--px-gold); font-size: 19px; }
+.brand { text-shadow: 2px 2px 0 rgba(0, 0, 0, .6); color: var(--px-gold); }
 .brand .ver { color: var(--accent); }
 .player-status .meta {
   padding: 3px 9px; border: 2px solid var(--px-line); border-radius: 3px;
@@ -205,8 +218,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .codex-cell .cx-tier { color: var(--px-gold); font-weight: 700; }
 .codex-cell.got:hover { transform: translate(-2px, -3px); }
 .codex-cell .cx-icon { animation: px-swim 3.6s ease-in-out infinite; transform-origin: center; }
-.codex-cell:not(.got) .cx-icon { animation: none; filter: grayscale(.55) brightness(.75); }
-.codex-cell:not(.got) > * { opacity: .55; }
+/* 未解锁：贴图压成剪影（留一圈淡描边看得出轮廓），文字改用弱化色而不是整卡半透明——
+   半透明的像素小字几乎读不出来；剪影则留下「还差这条」的收集悬念 */
+.codex-cell:not(.got):not(.k-spots) .cx-icon { animation: none; filter: brightness(0) drop-shadow(0 0 1px rgba(150, 190, 230, .75)); opacity: .85; }
+.codex-cell:not(.got):not(.k-spots) { background: rgba(6, 16, 30, .75); }
+.codex-cell:not(.got):not(.k-spots) .cx-name { color: #7f98b0; }
+.codex-cell:not(.got):not(.k-spots) .cx-meta { color: #7f98b0; }
+.codex-cell.k-spots:not(.got) > * { opacity: .55; }
 .codex-cell .cx-icon.spot-icon { animation: none; }
 /* 图鉴 · 钓点：可前往的钓点＝已解锁，整卡点亮（跳出上面「未解锁压暗」那条通用规则）；
    锁定的钓场（后台锁定 / 限时未开窗）保持灰暗 + 灰色贴图，一眼分清「能去」与「还不能去」。 */
@@ -224,13 +242,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   0%, 100% { transform: translateX(-4px) rotate(-2deg); }
   50% { transform: translateX(4px) rotate(2deg); }
 }
-/* 已解锁稀有/史诗卡片：呼吸金光 */
+/* 已解锁稀有/史诗卡片：呼吸光晕取文字本身的品质色（稀有蓝光、史诗金光），不再一律金光 */
 .codex-cell.got .cx-name.r-rare, .codex-cell.got .cx-name.r-epic, .codex-cell.got .cx-name.r-big {
   animation: px-rare-glow 2.2s ease-in-out infinite;
 }
 @keyframes px-rare-glow {
-  0%, 100% { text-shadow: 0 0 4px rgba(255, 210, 62, .35), 2px 2px 0 rgba(0, 0, 0, .5); }
-  50% { text-shadow: 0 0 14px rgba(255, 210, 62, .8), 2px 2px 0 rgba(0, 0, 0, .5); }
+  0%, 100% { text-shadow: 0 0 3px currentColor, 2px 2px 0 rgba(0, 0, 0, .5); }
+  50% { text-shadow: 0 0 12px currentColor, 2px 2px 0 rgba(0, 0, 0, .5); }
 }
 
 /* ---------- 钓鱼场景（装饰性，由 ui.js 插入） ---------- */
@@ -368,10 +386,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 }
 .cd-icon { animation: px-swim 3.6s ease-in-out infinite; }
 
-/* ---------- 品质配色强化 ---------- */
-.r-big { color: var(--px-gold); }
-.r-rare, .q-rare { color: #ffe08a; }
-.q-epic { color: #d09aff; }
+/* ---------- 品质配色强化 ----------
+   普通 / 稀有 / 史诗的颜色只在 style.css（--common / --rare / --epic）定义一次。
+   这里曾把 .q-epic 改成紫、.r-rare 改成浅金：组件史诗变紫而渔获史诗仍是金，
+   同一个「史诗」两种颜色；稀有那条又被 style.css 的 !important 盖掉，从未生效。 */
 .q-mythic {
   background: linear-gradient(90deg, #ff6b6b, #ffd23e, #34e0c0, #3ec9f0, #d09aff);
   -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -419,6 +437,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   user-select: none;
 }
 .px-map-img { display: block; width: 100%; image-rendering: pixelated; }
+.fishing-stage .fish-select.is-previewing .px-map-world { will-change: transform; }
 
 /* 区域名标签 */
 .px-region {
@@ -493,27 +512,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* 地图状态条：与旧版同款，位置在地图下方 */
 .fish-ctrl { margin-top: 12px; }
 
-/* ---------- 地图图例 ---------- */
-.px-legend {
-  display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px;
-  padding: 8px 14px; font-size: 12px; color: var(--muted);
-  border: 3px solid var(--px-line); border-radius: 4px;
-  background: rgba(0, 0, 0, .25);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .05), 4px 4px 0 var(--px-shadow);
-}
-.px-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.px-legend .lg-bob {
-  position: relative; display: inline-block; width: 10px; height: 14px;
-}
-.px-legend .lg-bob::before { content: ''; position: absolute; left: 1px; top: 0; width: 8px; height: 6px; background: #f2f2f2; }
-.px-legend .lg-bob::after { content: ''; position: absolute; left: 0; bottom: 0; width: 10px; height: 8px; background: #e84a3a; border-radius: 0 0 3px 3px; }
-.px-legend .lg-ring { display: inline-block; width: 14px; height: 14px; border: 3px solid var(--px-gold); border-radius: 50%; }
-.px-legend .lg-buff { color: var(--px-gold); }
-
 /* ---------- 地图页签 ---------- */
 .px-map-tabs { display: flex; gap: 10px; margin-bottom: 12px; }
 .px-map-tab {
-  padding: 8px 18px; font-size: 14px; letter-spacing: 2px; cursor: pointer;
+  padding: 8px 18px; font-size: 12px; letter-spacing: 2px; cursor: pointer;
   color: #b8d4ea; background: rgba(0, 0, 0, .3);
 }
 .px-map-tab.on {
@@ -592,7 +594,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* 增益钓点的常驻提示（无需悬浮） */
 .pn-bufftip {
-  display: inline-block; padding: 1px 7px; font-size: 11px; white-space: nowrap;
+  display: inline-block; padding: 1px 7px; font-size: 12px; white-space: nowrap;
   color: var(--px-gold); background: rgba(6, 16, 30, .85);
   border: 2px solid rgba(255, 210, 62, .55); border-radius: 3px;
   text-shadow: 1px 1px 0 rgba(0, 0, 0, .6);
@@ -676,7 +678,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ---------- 装配器双滑块（下限青 / 上限金） ---------- */
 .ab-slider-grp { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; }
-.ab-grp-tag { font-style: normal; font-size: 11px; color: var(--accent2); flex: none; width: 26px; text-align: center; }
+.ab-grp-tag { font-style: normal; font-size: 12px; color: var(--accent2); flex: none; width: 26px; text-align: center; }
 .ab-grp-tag.max { color: var(--px-gold); }
 .ab-row .ab-slider-grp .ab-num { flex: none; width: 56px; }
 .ab-row .ab-range-min { accent-color: var(--accent2); flex: 1; min-width: 60px; }
@@ -721,7 +723,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .ab-dual input.ab-range-max { z-index: 4; }
 /* 行结构：下限 [数字框] [同轨双滑块] [数字框] 上限 */
 .ab-row .ab-slider-grp { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
-.ab-grp-tag { font-style: normal; font-size: 11px; color: var(--accent2); flex: none; width: 26px; text-align: center; }
+.ab-grp-tag { font-style: normal; font-size: 12px; color: var(--accent2); flex: none; width: 26px; text-align: center; }
 .ab-grp-tag.max { color: var(--px-gold); }
 .ab-row .ab-slider-grp .ab-num { flex: none; width: 56px; }
 
@@ -771,7 +773,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .cc-card img { width: 72px; height: 56px; object-fit: contain; image-rendering: pixelated; }
 .cc-card.wide img { width: 110px; }
 .cc-card b { font-size: 12px; }
-.cc-card i { font-style: normal; font-size: 10px; opacity: .6; text-align: center; }
+.cc-card i { font-style: normal; font-size: 12px; opacity: .6; text-align: center; }
 .cc-card .cc-lock { font-size: 26px; line-height: 56px; opacity: .5; }
 .cc-card:hover { border-color: var(--px-line); }
 .cc-card.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .1); }
@@ -789,3 +791,131 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 }
 .cb-chip:hover { border-color: var(--px-line); }
 .cb-chip.on { border-color: var(--acc2, #ffd23e); background: rgba(255, 210, 62, .12); }
+
+/* ---------- 顶栏：资源徽章 ----------
+   状态块原来都是一样的深色描边方框，看着像输入框；金币这个主资源反而最不起眼。
+   现在普通状态块只留淡底，悬停才出描边；金币改成金色徽章 + 24px 像素数字，排在玩家名之后。 */
+.player-status .meta {
+  border-color: transparent; background: rgba(255, 255, 255, .04); box-shadow: none;
+}
+.player-status .meta-btn:first-child { order: -2; }
+.player-status .meta.coins {
+  order: -1; cursor: pointer; gap: 6px; padding: 2px 12px 2px 8px;
+  border: 2px solid rgba(255, 210, 62, .55); background: rgba(255, 210, 62, .10);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .08), 0 3px 0 var(--px-shadow);
+}
+.player-status .meta-btn.coins:hover { background: rgba(255, 210, 62, .18); }
+.player-status .coins .res-ico { font-size: 18px; line-height: 1; }
+.player-status .coins .res-num {
+  font-family: var(--px-font); font-size: 24px; line-height: 1; font-weight: 400; font-synthesis: none;
+  color: var(--px-gold); text-shadow: 2px 2px 0 rgba(0, 0, 0, .55); font-variant-numeric: tabular-nums;
+}
+/* 状态块是 <button>：上面的通用按钮规则带 !important（粗描边 + 按压阴影），这里只能同样用 !important 收回 */
+.player-status .meta-btn { border: 2px solid transparent !important; box-shadow: none !important; }
+.player-status .meta-btn:hover { border-color: var(--px-line-hi) !important; }
+.player-status .meta-btn.coins {
+  border-color: rgba(255, 210, 62, .55) !important;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .08), 0 3px 0 var(--px-shadow) !important;
+}
+.player-status .meta-btn.coins:hover { border-color: var(--px-gold) !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+.logout-btn[hidden] { display: none !important; }
+#settings-logout { color: #ffb4b4; border-color: #8a4444 !important; background: rgba(90, 42, 42, .6); }
+
+/* ---------- 侧栏：分组标题与「更多」 ---------- */
+.nav-group {
+  margin: 10px 4px 2px; padding-left: 6px; border-left: 3px solid var(--px-line-hi);
+  font-family: var(--px-font); font-size: 12px; letter-spacing: 2px; color: #7f98b0;
+}
+.nav > .nav-group:first-child { margin-top: 0; }
+.nav-item { padding-top: 8px; padding-bottom: 8px; }
+.nav-sheet { display: contents; }
+.nav-more { display: none !important; }
+@media (max-width: 880px) {
+  .nav-group { display: none; }
+}
+
+/* ---------- 页首横幅（数据见 ui.js paintPageBanner） ----------
+   画在 #main 的伪元素上，模块直接改写 #main.innerHTML 也不会把它抹掉。
+   ::before 是横幅本体 + 像素大标题；::after 是一行系统字副标题，与 ::before 叠在网格第 1 行、贴底对齐
+   （伪元素里没法给第二行换字体；#main 是网格容器，::first-line 也不生效）。
+   工坊的 #main 是 display: block（见 style.css），叠不了，只显示标题。
+   背景借用登录页夜景（ui/hero.png）的月亮与水面一段，左侧压暗保证文字可读。 */
+#main.has-banner::before {
+  content: attr(data-banner-title);
+  grid-column: 1 / -1; grid-row: 1; order: -2; display: block;
+  min-height: 76px; padding: 12px 16px 30px 72px; box-sizing: border-box;
+  font-family: var(--px-font); font-size: 24px; line-height: 1.4; color: var(--px-gold);
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, .6);
+  border: 3px solid var(--px-line); border-radius: 4px;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .07), 4px 4px 0 var(--px-shadow);
+  background:
+    var(--banner-icon, none) 16px center / 40px 40px no-repeat,
+    linear-gradient(90deg, rgba(8, 20, 38, .95) 0%, rgba(8, 20, 38, .70) 40%, rgba(8, 20, 38, 0) 85%),
+    url('../assets/ui/hero.png') right 22% / cover no-repeat,
+    var(--px-bg2);
+  image-rendering: pixelated;
+}
+/* 网格行默认会被拉伸填满 #main 的高度：第 1 行一被拉高，贴底的副标题就掉到横幅下面去了 */
+#main.has-banner { align-content: start; }
+#main.has-banner::after {
+  content: attr(data-banner-sub);
+  grid-column: 1 / -1; grid-row: 1; order: -1; align-self: end;
+  padding: 0 16px 12px 75px; font-size: 14px; line-height: 1.4; color: #b8d4ea; pointer-events: none;
+}
+#main.has-banner.banner-noicon::before { padding-left: 16px; }
+#main.has-banner.banner-noicon::after { padding-left: 19px; }
+#main.has-banner.workshop-page::before { padding-bottom: 12px; margin-bottom: 18px; min-height: 0; }
+#main.has-banner.workshop-page::after { content: none; }
+@media (max-width: 640px) {
+  #main.has-banner::before { min-height: 64px; padding: 8px 10px 28px 58px; background-size: 36px 36px, auto, cover, auto; background-position: 12px center, 0 0, right 22%, 0 0; }
+  #main.has-banner::after { padding: 0 10px 8px 61px; font-size: 12px; }
+  #main.has-banner.banner-noicon::before { padding-left: 10px; }
+  #main.has-banner.banner-noicon::after { padding-left: 13px; }
+}
+
+/* ---------- 读取中：骨架条 + 浮漂 ----------
+   原来只有一行「加载中…」灰字挂在一大片空白上面，看起来像页面坏了。 */
+.ld-state { position: relative; padding-top: 74px !important; min-height: 110px; }
+.ld-state::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 60px;
+  background:
+    linear-gradient(90deg, transparent 0, rgba(255, 255, 255, .07) 50%, transparent 100%) -40% 0 / 40% 100% no-repeat,
+    linear-gradient(rgba(44, 79, 116, .55), rgba(44, 79, 116, .55)) 0 0 / 70% 14px no-repeat,
+    linear-gradient(rgba(44, 79, 116, .40), rgba(44, 79, 116, .40)) 0 23px / 92% 14px no-repeat,
+    linear-gradient(rgba(44, 79, 116, .30), rgba(44, 79, 116, .30)) 0 46px / 55% 14px no-repeat;
+  animation: ld-shimmer 1.4s linear infinite;
+}
+.ld-state::after {
+  content: ''; position: absolute; right: 8px; top: 18px; width: 8px; height: 14px;
+  background: linear-gradient(#ff5a4e 0 50%, #f4f4f4 50% 100%); box-shadow: 0 2px 0 rgba(0, 0, 0, .4);
+  animation: ld-bob 1.2s ease-in-out infinite;
+}
+@keyframes ld-shimmer { to { background-position: 140% 0, 0 0, 0 23px, 0 46px; } }
+@keyframes ld-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
+html:is([data-motion=reduced], [data-motion=off]) .ld-state::before,
+html:is([data-motion=reduced], [data-motion=off]) .ld-state::after { animation: none; }
+
+/* ---------- 空状态 ---------- */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  padding: 28px 16px; border: 3px dashed var(--px-line); border-radius: 4px; background: rgba(0, 0, 0, .18);
+}
+.empty-state .es-icon { width: 80px; height: 80px; image-rendering: pixelated; animation: ld-bob 2.4s ease-in-out infinite; }
+.empty-state .es-title { font-family: var(--px-font); font-size: 24px; color: var(--px-gold); text-shadow: 2px 2px 0 rgba(0, 0, 0, .5); }
+.empty-state .es-text { color: #b8d4ea; font-size: 14px; }
+.empty-state .es-go { margin-top: 6px; min-width: 160px; }
+html:is([data-motion=reduced], [data-motion=off]) .empty-state .es-icon { animation: none; }
+
+/* ---------- 规则说明（收起的长提示） ---------- */
+.rule-tip { margin: 8px 0; font-size: 12px; color: var(--muted); }
+.rule-tip > summary {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer; list-style: none;
+  padding: 2px 8px; border: 2px solid var(--px-line); border-radius: 3px; color: var(--accent2);
+  font-family: var(--px-font); font-size: 12px;
+}
+.rule-tip > summary::-webkit-details-marker { display: none; }
+.rule-tip > summary:hover { border-color: var(--accent2); }
+.rule-tip > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rule-tip[open] > summary { border-color: var(--accent2); }
+.rule-tip-body { margin-top: 6px; padding: 8px 10px; border-left: 3px solid var(--accent2); background: rgba(62, 201, 240, .06); line-height: 1.7; color: #b8d4ea; }

@@ -21,5 +21,15 @@ func frontendHandler(root string) http.Handler {
 	if info, err := os.Stat(root); err != nil || !info.IsDir() {
 		return nil
 	}
-	return http.FileServer(http.Dir(root))
+	fileServer := http.FileServer(http.Dir(root))
+	// 发版后用户必须尽快拿到新前端：带 ?v= 的资源 URL 随版本变化，可长期缓存；
+	// 其余（HTML、图片等无版本资源）每次回源校验，防止浏览器启发式缓存停在旧版。
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("v") != "" {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 }

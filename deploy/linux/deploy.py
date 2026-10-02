@@ -140,7 +140,7 @@ def extract_release(archive, target, release):
             require(member.isdir() or member.isfile(), "Archive links/devices are not permitted.")
             permitted = (name in allowed_metadata or name in ("bin", "frontend", "licenses")
                          or name.startswith("frontend/") or name in
-                         {"bin/game", "bin/migrate", "bin/catalog", "bin/admin",
+                         {"bin/game", "bin/migrate", "bin/catalog", "bin/admin", "bin/reset",
                           "licenses/THIRD_PARTY_NOTICES.md", "licenses/GO_LICENSE.txt"})
             require(permitted, "Unexpected release archive member.")
             destination = target.joinpath(*path.parts)
@@ -157,7 +157,7 @@ def extract_release(archive, target, release):
     for filename, key in [("VERSION.txt", "version"), ("SOURCE_COMMIT.txt", "sourceCommit"),
                           ("MIGRATIONS_SHA256.txt", "migrationsSha256")]:
         require((target / filename).read_text().strip() == release[key], "Archive metadata mismatch: " + key)
-    for filename in ("bin/game", "bin/migrate", "bin/catalog", "bin/admin", "frontend/js/data.js"):
+    for filename in ("bin/game", "bin/migrate", "bin/catalog", "bin/admin", "bin/reset", "frontend/js/data.js"):
         require((target / filename).is_file(), "Required release file missing: " + filename)
     data = (target / "frontend/js/data.js").read_text(encoding="utf-8")
     match = re.search(r"const\s+VERSION\s*=\s*['\"]([^'\"]+)['\"]", data)

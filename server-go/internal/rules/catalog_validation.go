@@ -15,6 +15,9 @@ func ValidateCatalog(c *Catalog) error {
 	if err := c.ValidateGear(); err != nil {
 		return err
 	}
+	if err := c.ValidateHut(); err != nil {
+		return err
+	}
 	base, err := Default()
 	if err != nil {
 		return err

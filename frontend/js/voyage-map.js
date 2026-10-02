@@ -1,9 +1,9 @@
-/* 远洋 CSS 像素海图。640×400 逻辑网格，按同宽色段合并为 box-shadow。
+/* 连续的 CSS 像素世界图。960×480 逻辑网格，按同宽色段合并为 box-shadow。
    无位图、canvas 或 SVG；固定种子只影响装饰，不参与游戏随机数。
    地貌构建一次并缓存，钓点继续由 UI 按百分比独立定位。 */
 (function () {
   'use strict';
-  const W = 640, H = 400;
+  const W = 960, H = 480;
   const COLORS = [
     '', '#103753', '#153d60', '#1b4467', '#244f70', '#315f79', '#416c7b',
     '#527c86', '#709291', '#8ea79d', '#b2baaa', '#7b8777',
@@ -51,30 +51,29 @@
         }
       }
     }
-    // 分散群岛替代单个巨大的环形岛；出发大陆仅露出西南一角。
-    // 第五个参数为岩质岛。三个固定钓点周围留出可读的海面。
+    // 西侧大陆包含高山、湖泊和河口，沿南岸出港即可抵达东侧群岛。
+    // 第五个参数为岩质岛；历史地图坐标通过 project 投影，服务端数据不变。
     const islands = [
-      [-9, 387, 69, 65, 0], [27, 354, 23, 22, 0], [56, 339, 10, 7, 1],
-      [98, 319, 16, 10, 0], [116, 306, 9, 7, 1], [130, 325, 5, 4, 1], [149, 301, 4, 3, 1],
-      [84, 88, 24, 13, 0], [106, 102, 12, 8, 0], [67, 107, 7, 5, 1], [118, 77, 5, 4, 1],
-      [193, 161, 6, 4, 1], [203, 151, 3, 2, 1],
-      [354, 165, 13, 7, 0], [370, 148, 15, 8, 0], [393, 143, 8, 4, 1],
-      [421, 163, 9, 6, 1], [427, 189, 5, 8, 1], [405, 204, 12, 5, 0],
-      [377, 207, 7, 4, 1], [347, 191, 8, 5, 1], [336, 178, 3, 3, 1],
-      [510, 65, 7, 4, 1], [524, 53, 4, 3, 1], [576, 141, 4, 3, 1],
-      [577, 294, 16, 9, 0], [559, 308, 8, 6, 1], [597, 278, 5, 4, 1],
-      [282, 337, 5, 3, 1], [299, 345, 3, 2, 1]
+      [345, 84, 122, 112, 0], [369, 226, 112, 137, 0], [315, 315, 84, 48, 0],
+      [375, 366, 44, 30, 0], [188, 105, 24, 17, 0], [165, 124, 8, 6, 1],
+      [88, 305, 20, 11, 1], [119, 325, 7, 5, 1], [214, 401, 18, 12, 0],
+      [509, 324, 27, 17, 0], [541, 309, 13, 9, 1], [565, 295, 6, 4, 1],
+      [613, 116, 30, 16, 0], [640, 128, 15, 9, 0], [586, 137, 8, 5, 1],
+      [721, 192, 16, 11, 0], [747, 177, 20, 10, 0], [780, 183, 10, 7, 1],
+      [792, 218, 7, 10, 1], [770, 249, 15, 8, 0], [733, 254, 9, 6, 1],
+      [708, 229, 7, 5, 1], [896, 358, 22, 14, 0], [870, 377, 11, 8, 1],
+      [909, 331, 6, 5, 1], [813, 63, 8, 5, 1], [661, 401, 8, 5, 1]
     ];
     // 细小、成簇的短水纹，跟随近岸图的海蓝配色。
-    for (let i = 0; i < 7600; i++) {
+    for (let i = 0; i < 10500; i++) {
       const x = Math.floor(random() * W), y = Math.floor(random() * H);
       const c = random() < .09 ? 5 : 2 + Math.floor(random() * 3);
       if (noise(x, y, 22) > .3) line(x, y, x + Math.floor(random() * 3), y, c);
     }
     // 深海裂谷藏于水下，以低对比海底等深层表达，不画成地表黑色裂缝。
-    for (let y = 40; y < 224; y++) {
-      const t = (y - 40) / 184;
-      const cx = 572 - t * 66 + Math.sin(t * 9) * 6;
+    for (let y = 54; y < 262; y++) {
+      const t = (y - 54) / 208;
+      const cx = 887 - t * 66 + Math.sin(t * 9) * 6;
       const width = 5 + Math.sin(t * Math.PI) * 10;
       for (let x = Math.floor(cx - width * 2); x < cx + width * 2; x++) {
         const d = Math.abs(x - cx) / width + (noise(x, y, 9) - .5) * .4;
@@ -82,6 +81,17 @@
         else if (d < 1.2 && hash(x, y) > .23) put(x, y, 1);
       }
     }
+    // 水下沙脊随群岛铺开，先画浅滩再叠海岸，避免覆盖既有岛屿。
+    [[586, 126, 55, 22], [752, 219, 57, 39], [889, 367, 43, 28]].forEach(function (shoal) {
+      const [cx, cy, rx, ry] = shoal;
+      for (let y = cy - ry; y <= cy + ry; y++) {
+        for (let x = cx - rx; x <= cx + rx; x++) {
+          const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
+          const ripple = Math.sin(x * .17 + y * .3 + noise(x, y, 12) * 3);
+          if (d < .9 && ripple > .65 && hash(x, y) > .28) put(x, y, d < .5 ? 5 : 4);
+        }
+      }
+    });
     const land = [];
     islands.forEach(function (isle, index) {
       const [cx, cy, rx, ry, rocky] = isle;
@@ -101,10 +111,35 @@
           else if (elevation > -.115) c = speck > .36 ? 9 + (speck > .82 ? 1 : 0) : 6;
           else if (elevation > -.25) c = 5 + Math.floor(speck * 3);
           else if (elevation > -.5 && speck > .36) c = 3 + Math.floor(speck * 3);
-          if (c) put(x, y, c);
+          // 合并大陆地块时保留已经绘制的内陆，避免沿交界重复描海岸。
+          const old = pixels[y * W + x];
+          if (c && !(old >= 12 && old <= 22 && c < 12)) put(x, y, c);
         }
       }
     });
+    // 湖心、芦苇浅湾、落瀑潭与出海河道，水面和陆地使用同一像素网格。
+    function lake(cx, cy, rx, ry, frozen) {
+      for (let y = Math.floor(cy - ry - 5); y <= cy + ry + 5; y++) {
+        for (let x = Math.floor(cx - rx - 5); x <= cx + rx + 5; x++) {
+          const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 + (noise(x, y, 9) - .5) * .13;
+          if (d < 1.1) put(x, y, d > .96 ? 9 : frozen ? (hash(x, y) > .7 ? 10 : 9) : d > .8 ? 6 : (hash(x, y) > .94 ? 4 : 3));
+        }
+      }
+    }
+    lake(366, 219, 51, 47, false); lake(343, 259, 23, 17, false);
+    lake(410, 144, 19, 16, false); lake(332, 78, 26, 14, true);
+    function river(points, width) {
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i], steps = Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]));
+        for (let n = 0; n <= steps; n++) {
+          const x = a[0] + (b[0] - a[0]) * n / steps, y = a[1] + (b[1] - a[1]) * n / steps;
+          ellipse(x, y, width + 2, width + 1, 7); ellipse(x, y, width, width - 1, 4);
+        }
+      }
+    }
+    river([[409, 157], [402, 174], [386, 179], [379, 194]], 4);
+    river([[322, 238], [302, 243], [290, 230], [275, 232], [254, 244], [232, 247]], 6);
+    for (let y = 158; y < 172; y++) { line(404, y, 411, y, y % 3 ? 10 : 47); }
     function tree(x, y, size) {
       ellipse(x + 2, y + 1, size * .6, 2, 29);
       rect(x, y - 3, 1, 4, 38);
@@ -121,7 +156,23 @@
       put(x - 1, y - size + 1, 27);
     }
     land.sort(function (a, b) { return a[1] - b[1]; });
-    land.forEach(function (p) { if (random() > .74) tree(p[0], p[1], 5 + Math.floor(random() * 7)); });
+    land.forEach(function (p) {
+      const c = pixels[p[1] * W + p[0]];
+      if (c >= 17 && c <= 22 && random() > .86) tree(p[0], p[1], 5 + Math.floor(random() * 7));
+    });
+    function mountain(cx, cy, height) {
+      for (let y = 0; y < height; y++) {
+        const half = Math.floor(y * .72 + Math.sin(y * .7) * 1.4);
+        for (let x = -half; x <= half; x++) {
+          const snow = y < height * .3 + Math.sin(x * .8) * 3;
+          const ridge = x < Math.sin(y * .35) * 3;
+          const speck = hash(cx + x, cy + y);
+          put(cx + x, cy - height + y, snow ? (ridge ? 47 : 10) : (ridge ? 35 : 33) + (speck > .75 ? 1 : 0));
+        }
+      }
+    }
+    [[278, 70, 38], [309, 55, 42], [360, 57, 49], [395, 80, 43], [431, 110, 38], [450, 132, 31]]
+      .forEach(p => mountain(...p));
     // 小型岩柱、暗礁和白浪。远处地物与近处遵守相同海图比例。
     function rock(x, y, size) {
       ellipse(x, y + 2, size + 2, 2, 7);
@@ -137,24 +188,86 @@
         rock(p[0] - 4, p[1] + 2, 3);
       }
     });
-    [[128, 308, 4], [151, 295, 3], [88, 334, 4], [328, 177, 3], [352, 156, 4],
-      [399, 138, 3], [435, 184, 3], [412, 210, 4], [512, 61, 4], [525, 49, 3],
-      [579, 139, 3], [585, 285, 4], [560, 313, 3], [288, 340, 3]].forEach(p => rock(...p));
+    [[134, 331, 4], [154, 319, 3], [529, 332, 4], [567, 298, 3], [697, 226, 4],
+      [769, 171, 3], [804, 212, 3], [779, 259, 4], [883, 352, 4]].forEach(p => rock(...p));
     function house(x, y) {
+      ellipse(x + 4, y + 3, 5, 1, 29);
       rect(x, y - 3, 7, 5, 40); rect(x + 5, y - 3, 2, 5, 39);
       for (let row = 0; row < 4; row++) rect(x - 1 + Math.floor(row / 2), y - 5 + row, 9 - row, 1, row % 2 ? 43 : 44);
+      rect(x + 5, y - 7, 1, 3, 34); put(x + 5, y - 7, 36);
+      line(x, y - 5, x + 6, y - 5, 45);
       rect(x + 2, y, 2, 3, 38); put(x + 5, y - 1, 46);
     }
-    // 港口退到大陆边缘；海上船长约地图宽度的 1.5%，强化远航距离。
-    line(25, 352, 43, 358, 13); line(16, 369, 37, 359, 12);
-    house(29, 350); house(15, 365); house(34, 369);
-    rect(43, 358, 19, 3, 39);
-    for (let x = 43; x < 63; x += 3) rect(x, 358, 1, 3, 41);
-    line(43, 357, 64, 357, 42); rect(60, 355, 2, 9, 40);
-    // 灯塔比近岸更小，仍保留砂岩塔身、暗色顶和暖色灯室。
-    rect(105, 93, 3, 9, 32); rect(107, 93, 1, 9, 30);
-    rect(104, 91, 5, 2, 45); put(106, 91, 47);
-    line(104, 90, 108, 90, 43); put(106, 89, 43);
+    // 湖畔小径与村港共用房屋、码头构件，延续游戏的细像素风格。
+    line(310, 225, 294, 277, 13); line(294, 277, 325, 322, 13); line(325, 322, 373, 369, 13);
+    [[304, 225, 289, 221], [299, 260, 278, 270], [310, 300, 287, 301],
+      [342, 339, 351, 355], [366, 363, 383, 365]].forEach(p => line(...p, 13));
+    // 菜畦与围栏放在聚落的空地上，保留湖岸、河面与钓点的视野。
+    function field(x, y, w, h) {
+      rect(x, y, w, h, 39); line(x, y + h, x + w, y + h, 16);
+      for (let row = 2; row < h - 1; row += 3) {
+        line(x + 1, y + row, x + w - 2, y + row, 40);
+        for (let col = 2; col < w - 1; col += 3) {
+          put(x + col, y + row - 1, 26); put(x + col + 1, y + row - 1, 22);
+        }
+      }
+      line(x - 2, y - 2, x + w, y - 2, 31);
+      line(x - 2, y - 2, x - 2, y + h, 31);
+      for (let col = -2; col <= w; col += 4) rect(x + col, y - 4, 1, 4, 41);
+      for (let row = 2; row <= h; row += 4) rect(x - 2, y + row - 2, 1, 4, 41);
+    }
+    field(279, 212, 13, 9); field(280, 290, 17, 10); field(332, 341, 13, 8);
+    // 旧石桥接上西岸小径，桥下留出河水和拱洞的暗部。
+    rect(302, 237, 8, 13, 34); rect(304, 236, 4, 15, 32);
+    line(302, 237, 302, 249, 37); line(309, 237, 309, 249, 35);
+    for (let y = 238; y < 250; y += 4) line(304, y, 307, y, 31);
+    rect(309, 240, 2, 5, 43); rect(310, 241, 1, 3, 1);
+    [[302, 236], [309, 236], [302, 249], [309, 249]].forEach(function (p) {
+      rect(p[0], p[1], 1, 3, 35); put(p[0], p[1], 37);
+    });
+    [[298, 221], [306, 234], [287, 270], [345, 355], [359, 365], [374, 357], [382, 370]].forEach(p => house(...p));
+    function dock(x, y, vertical) {
+      for (let n = 0; n < 23; n++) rect(x + (vertical ? 0 : n), y + (vertical ? n : 0), vertical ? 5 : 1, vertical ? 1 : 5, n % 3 ? 41 : 39);
+    }
+    dock(307, 224, false); dock(373, 373, true);
+    function crate(x, y) {
+      rect(x, y, 4, 4, 39); rect(x, y, 3, 3, 41);
+      line(x, y, x + 2, y + 2, 14); put(x + 2, y, 38); put(x, y + 2, 38);
+    }
+    [[309, 221], [314, 220], [367, 375], [365, 380], [380, 374]].forEach(p => crate(...p));
+    [[297, 226], [378, 363]].forEach(function (p) {
+      const [x, y] = p;
+      rect(x, y, 7, 4, 43);
+      for (let col = 0; col < 7; col += 2) line(x + col, y, x + col, y + 3, 31);
+      line(x, y + 1, x + 6, y + 1, 32); line(x, y + 3, x + 6, y + 3, 32);
+      rect(x - 1, y - 2, 1, 6, 39); rect(x + 7, y - 2, 1, 6, 39);
+    });
+    [[319, 224], [327, 224], [373, 380], [373, 390]].forEach(function (p) {
+      rect(p[0], p[1] - 1, 1, 3, 38); put(p[0], p[1] - 1, 46);
+    });
+    rect(184, 91, 5, 18, 32); rect(187, 91, 2, 18, 30);
+    rect(182, 87, 9, 4, 45); rect(185, 88, 3, 2, 47);
+    line(181, 86, 192, 86, 43); line(184, 83, 189, 83, 43);
+    // 芦苇沿浅湾边缘生长，沉船斜卧西南礁群。
+    for (let i = 0; i < 36; i++) { const x = 320 + random() * 40, y = 274 + random() * 5; line(x, y, x - 1, y - 4 - random() * 4, 22); }
+    // 睡莲只落在近岸浅水；碎石、灌木按小簇排列，避免铺满水面。
+    [[325, 204], [328, 208], [331, 205], [399, 243], [403, 241], [335, 269], [340, 270]].forEach(function (p, index) {
+      ellipse(p[0], p[1] + 1, 2, 1, 5); line(p[0] - 1, p[1], p[0] + 1, p[1], 26);
+      put(p[0], p[1] - 1, 27); put(p[0] + 1, p[1], 6);
+      if (index % 3 === 0) put(p[0] - 1, p[1] - 1, 46);
+    });
+    [[316, 204], [318, 200], [320, 198], [409, 245], [407, 249], [404, 252],
+      [365, 270], [366, 273], [401, 130], [404, 128]].forEach(function (p, index) {
+      ellipse(p[0], p[1], index % 3 ? 1 : 2, 1, 34); put(p[0] - 1, p[1] - 1, 36);
+    });
+    [[312, 205], [408, 252], [370, 273], [396, 127]].forEach(function (p) {
+      ellipse(p[0], p[1], 3, 2, 24); ellipse(p[0] - 1, p[1] - 1, 2, 1, 27);
+    });
+    [[315, 76, 323, 79], [323, 79, 329, 76], [329, 76, 338, 78],
+      [329, 76, 331, 71], [338, 82, 344, 84], [344, 84, 350, 81]].forEach(p => line(...p, 8));
+    line(317, 75, 322, 77, 10); line(338, 81, 342, 82, 10);
+    for (let i = 0; i < 18; i++) line(103 + i, 337 + i / 4, 104 + i, 342 + i / 4, i % 3 ? 39 : 41);
+    line(110, 337, 117, 327, 40);
     function ship(x, y, left) {
       line(x - 6, y + 3, x + 7, y + 3, 6);
       line(x - 4, y + 4, x + 2, y + 4, 8);
@@ -166,7 +279,91 @@
         for (let xx = 1; xx <= width; xx++) put(x + (left ? -xx : xx), y + yy, xx < 3 ? 46 : 32);
       }
     }
-    ship(164, 274, false); ship(278, 204, true); ship(472, 299, false);
+    ship(471, 389, false); ship(627, 331, true); ship(823, 329, false);
+    // 海上细节也烘入同一份静态地形；不增加计时器或逐物件 DOM。
+    function water(x, y) {
+      const c = pixels[Math.round(y) * W + Math.round(x)];
+      return c <= 8;
+    }
+    function waterline(x0, y0, x1, y1, c) {
+      const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+      for (let i = 0; i <= steps; i++) {
+        const x = x0 + (x1 - x0) * i / steps, y = y0 + (y1 - y0) * i / steps;
+        if (water(x, y)) put(x, y, c);
+      }
+    }
+    // 弧形涌浪与礁湖水纹保留间隙，让海面有方向而非均匀噪点。
+    [[120, 181, 26], [168, 207, 18], [94, 395, 22], [550, 224, 26],
+      [678, 278, 23], [724, 367, 21], [858, 416, 25], [576, 87, 17]].forEach(function (swell) {
+      const [cx, cy, width] = swell;
+      for (let row = 0; row < 3; row++) {
+        for (let x = -width + row * 4; x < width - row * 4; x++) {
+          const y = cy + row * 5 + Math.round(x * x / (width * 7));
+          if ((x + width + row * 3) % 17 < 12 && water(cx + x, y)) put(cx + x, y, row ? 4 : 6);
+        }
+      }
+    });
+    // 珊瑚、海草与潮池只落在岛外浅水，保持海岸轮廓完整。
+    [[606, 143], [649, 138], [716, 208], [774, 232], [782, 262], [878, 393]].forEach(function (reef) {
+      for (let i = 0; i < 7; i++) {
+        const x = reef[0] + i * 3, y = reef[1] + Math.round(Math.sin(i * 1.8) * 3);
+        if (!water(x, y)) continue;
+        waterline(x, y, x - 1, y - 4, 6);
+        waterline(x - 1, y - 2, x - 3, y - 3, 7);
+        waterline(x, y - 1, x + 2, y - 3, 5);
+        waterline(x - 2, y + 2, x + 3, y + 2, 4);
+      }
+    });
+    function buoy(x, y) {
+      ellipse(x + 1, y + 2, 4, 1, 5);
+      rect(x - 1, y - 2, 3, 3, 40); put(x, y - 2, 47);
+      line(x, y - 6, x, y - 3, 38); line(x, y - 6, x + 2, y - 5, 42);
+      line(x - 3, y + 3, x, y + 3, 8);
+    }
+    [[365, 405], [393, 393], [445, 381], [503, 365], [584, 344], [687, 319], [809, 282]]
+      .forEach(p => buoy(...p));
+    // 船尾两道渐细的水痕，港外另有两只低矮的小渔舟。
+    [[471, 389, -1], [627, 331, 1], [823, 329, -1]].forEach(function (boat) {
+      const [x, y, direction] = boat;
+      for (let i = 0; i < 3; i++) {
+        const start = x + direction * (9 + i * 8), end = start + direction * (5 - i);
+        waterline(start, y + 2 + i, end, y + 3 + i, i ? 4 : 7);
+        waterline(start, y - 1 - i, end, y - 2 - i, 5);
+      }
+    });
+    [[407, 385], [594, 160]].forEach(function (boat) {
+      const [x, y] = boat;
+      ellipse(x, y + 2, 7, 2, 5);
+      line(x - 5, y, x + 5, y, 41); line(x - 3, y + 1, x + 3, y + 1, 38);
+      rect(x - 2, y - 1, 4, 1, 32); line(x, y - 3, x + 3, y + 3, 40);
+    });
+    // 鱼群用低对比剪影，飞鸟用两折短翅，避免误认作可点击的钓点。
+    [[80, 242], [224, 358], [535, 183], [667, 86], [710, 397], [851, 296]].forEach(function (school) {
+      for (let i = 0; i < 6; i++) {
+        const x = school[0] + i * 5, y = school[1] + (i % 3) * 4;
+        if (!water(x, y)) continue;
+        waterline(x - 2, y, x + 1, y, 2);
+        waterline(x + 2, y - 1, x + 2, y + 1, 3);
+        if (i % 2 === 0) waterline(x - 3, y - 3, x, y - 3, 5);
+      }
+    });
+    [[172, 78], [179, 82], [166, 84], [429, 355], [438, 351], [449, 356],
+      [619, 152], [630, 155], [778, 306], [787, 302]].forEach(function (bird) {
+      const [x, y] = bird;
+      line(x - 3, y - 1, x, y + 1, 9); line(x, y + 1, x + 3, y - 1, 9);
+      put(x - 3, y - 2, 10); put(x + 3, y - 2, 10);
+    });
+    // 远海鲸背露出一角，尺度与帆船保持一致。
+    ellipse(852, 96, 9, 3, 2); ellipse(849, 94, 5, 1, 5);
+    line(858, 96, 864, 98, 2); line(864, 98, 867, 95, 2); line(864, 98, 868, 100, 2);
+    line(846, 92, 845, 89, 7); line(845, 89, 842, 88, 6); line(845, 89, 847, 87, 6);
+    waterline(843, 101, 854, 101, 5);
+    // 群岛上的旧瞭望台与小渔棚为远洋提供可辨认的地标。
+    rect(744, 167, 7, 12, 33); rect(744, 167, 3, 12, 35);
+    rect(743, 166, 9, 2, 36); rect(743, 163, 2, 3, 35); rect(747, 164, 2, 2, 35); rect(750, 163, 2, 3, 34);
+    rect(747, 173, 2, 4, 29); put(745, 169, 37);
+    house(610, 119); dock(616, 129, true);
+    house(893, 353); house(900, 359);
     // 将连续色段合并：一个元素绘制一种长度的全部色段，而非逐像素 DOM。
     const runs = new Map();
     for (let y = 0; y < H; y++) {
@@ -189,9 +386,16 @@
     });
     const atmosphere = document.createElement('span'); atmosphere.className = 'vm-atmosphere';
     art.appendChild(atmosphere);
+    [['雾松大陆', 33, 32], ['西风海', 11, 45], ['潮汐群岛', 65, 39], ['无尽远洋', 85, 57]].forEach(function (entry) {
+      const label = document.createElement('span'); label.className = 'vm-region'; label.textContent = entry[0];
+      label.style.left = entry[1] + '%'; label.style.top = entry[2] + '%'; art.appendChild(label);
+    });
+    const compass = document.createElement('span'); compass.className = 'vm-compass'; compass.textContent = 'N'; art.appendChild(compass);
     return art;
   }
   window.VoyageMap = {
+    project: function (pos, voyage) { return [(voyage ? 53 : 5) + pos[0] * (voyage ? .42 : .46), 8 + pos[1] * .84]; },
+    unproject: function (pos, voyage) { return [Math.max(0, Math.min(100, (pos[0] - (voyage ? 53 : 5)) / (voyage ? .42 : .46))), Math.max(0, Math.min(100, (pos[1] - 8) / .84))]; },
     create: function () {
       if (!template) template = build();
       return template.cloneNode(true);

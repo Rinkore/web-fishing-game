@@ -6,27 +6,34 @@
   <meta name="theme-color" content="#0b1f33" />
   <!-- 版本号唯一来源是前端共享目录里的 VERSION 常量；这里的标题与下方 [data-ver] 占位符由 ui 脚本启动时填入，
        避免同一版本号在 HTML 与 JS 里各写一份而漂移（曾出现「功能已是新版、界面仍显示旧版本号」）。 -->
-  <title>钓鱼网站</title>
-  <link rel="stylesheet" href="css/style.css?v=0.22.0" />
-  <link rel="stylesheet" href="css/pixel.css?v=0.22.0" />
-  <link rel="stylesheet" href="css/voyage-map.css?v=0.22.0" />
-  <link rel="stylesheet" href="css/responsive.css?v=0.22.0" />
-  <link rel="stylesheet" href="css/mobile.css?v=0.22.0" />
-  <link rel="stylesheet" href="css/smelt.css?v=0.22.0" />
-  <link rel="stylesheet" href="css/expedition.css?v=0.22.0" />
-  <link rel="stylesheet" href="css/mail.css?v=0.22.0-mail1" />
-  <link rel="stylesheet" href="css/gear.css?v=0.22.0" />
-  <link rel="stylesheet" href="css/settings.css?v=0.22.0" />
-  <link rel="stylesheet" href="css/fishing.css?v=0.22.0" />
-  <script src="js/settings.js?v=0.22.0" defer></script>
+  <title>DeepFish</title>
+  <!-- 像素字体体积较大（~900 KB）：预加载，避免字体到达后再回流一次 -->
+  <link rel="preload" href="assets/fonts/fusion-pixel-12px.woff2" as="font" type="font/woff2" crossorigin />
+  <!-- 加载顺序：tokens（色板 / 断点 / 全局焦点环）→ 基础 → 组件 → 响应式 → mobile 最后 -->
+  <link rel="stylesheet" href="css/tokens.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/style.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/pixel.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/voyage-map.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/smelt.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/expedition.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/mail.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/gear.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/settings.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/fishing.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/responsive.css?v=0.27.0" />
+  <link rel="stylesheet" href="css/mobile.css?v=0.27.0" />
+  <!-- 港湾外壳（设计稿 v2 · 阶段 A–E）：放在最后，用来覆盖 responsive/mobile 对 .nav 的横排与底栏规则 -->
+  <link rel="stylesheet" href="css/harbor.css?v=0.27.0" />
+  <script src="js/settings.js?v=0.27.0" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <div id="brand-logo" class="brand">🎣 钓鱼网站 <span class="ver" data-ver></span></div>
+    <div id="brand-logo" class="brand">🎣 DeepFish <span class="ver" data-ver></span></div>
     <div id="player-status" class="player-status"></div>
     <div class="topbar-actions">
       <button id="settings-btn" type="button" aria-haspopup="dialog" aria-controls="settings-dialog">⚙ 设置</button>
-      <button id="logout-btn" class="logout-btn" title="退出登录">退出登录</button>
+      <!-- 退出登录入口在「设置」对话框里；这个隐藏按钮保留原有的登出流程与监听（ui.js wireAuth） -->
+      <button id="logout-btn" class="logout-btn" type="button" hidden>退出登录</button>
     </div>
   </header>
 
@@ -37,47 +44,124 @@
   <div class="layout">
     <aside class="sidebar">
       <nav id="nav" class="nav"></nav>
-      <div class="side-foot">选择功能 · 页内切换子功能</div>
     </aside>
     <main id="main" class="content"></main>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <!-- 港湾界面外壳（设计稿 v2 · 阶段 A–E）。阶段 E 起港湾是默认界面风格；
+       「⚙ 设置 → 界面风格」仍可切回经典侧栏。
+       阶段 A：HUD、内景面板（承载既有页面，原有 render* 不改）、目录列表模式、路由与设置；
+       阶段 B：港湾场景、建筑热区、罗盘与告示板；C：时段设置；D：手机布局（横向全景 / 罗盘首页）；E：港湾默认。
+       见 output/design-review/redesign/v2/index.html §13。
+       注意：#nav 与 #main 由 js/harbor.js 在两种外壳之间搬移，不要在别处缓存它们的父节点。 -->
+  <div id="harbor" class="harbor" hidden>
+    <div class="h-hud h-hud-top">
+      <div class="h-hud-id" id="h-status"></div>
+      <button class="h-timechip" id="h-tchip" type="button" aria-label="港湾时间，打开设置"><span class="h-ticon">🌙</span><span class="h-tlabel">--:--</span></button>
+    </div>
 
-  <div id="auth" class="auth-overlay">
-    <div class="auth-card">
-      <div class="brand-big">🎣 钓鱼网站</div>
-      <div class="auth-sub"><span data-ver></span> · 注册或登录后开始（支持真实多人联机）</div>
-      <div class="auth-tabs">
-        <button id="tab-login" class="active" data-tab="login">登录</button>
-        <button id="tab-register" data-tab="register">注册</button>
+    <!-- 场景区（阶段 B）：js/harbor.js 在 #h-scene 里放入港湾画布（js/harbor-art.js 绘制）与建筑热区按钮。
+         目录（列表模式）、罗盘、告示板与内景面板都叠在它上面；HUD 在上下两条，不会互相遮挡。
+         阶段 D：#h-home 是手机罗盘首页布局（js/harbor.js 在 .h-compass-home 时显示） -->
+    <div class="h-stage" id="h-stage">
+      <div class="h-scene" id="h-scene"></div>
+
+      <!-- 罗盘首页（阶段 D · 手机布局：条带 + 地点磁贴网格） -->
+      <div class="h-home" id="h-home" aria-label="罗盘首页">
+        <canvas class="h-strip" id="h-strip" width="480" height="120" aria-hidden="true"></canvas>
+        <div class="h-home-tiles" id="h-home-tiles"></div>
       </div>
-      <input id="auth-user" class="auth-input" placeholder="用户名（3-20 位字母/数字/下划线）" autocomplete="username" />
-      <input id="auth-pass" class="auth-input" type="password" placeholder="密码（注册至少 8 位）" autocomplete="current-password" />
-      <!-- 仅注册时显示 -->
-      <input id="auth-pass2" class="auth-input" type="password" placeholder="确认密码（再次输入）" autocomplete="new-password" style="display:none" />
-      <input id="auth-qq" class="auth-input" placeholder="QQ 号（必填，5-12 位数字）" autocomplete="off" style="display:none" />
-      <input id="auth-name" class="auth-input" placeholder="显示名（注册可选，留空等同用户名）" style="display:none" />
-      <button id="auth-submit" class="primary big">登录</button>
-      <div id="auth-msg" class="auth-msg"></div>
+
+      <div class="h-overlay h-compass" id="h-compass" role="dialog" aria-label="罗盘：快速前往" hidden>
+        <div class="h-ring" id="h-ring"><div class="h-needle" aria-hidden="true">罗盘<br><small>Esc 关闭</small></div></div>
+      </div>
+      <div class="h-overlay" id="h-board" role="dialog" aria-labelledby="h-board-title" hidden>
+        <div class="h-sheet h-board-sheet">
+          <div class="h-board-head"><b id="h-board-title">📜 告示板</b><button class="h-mini" id="h-board-close" type="button">✕ 关闭</button></div>
+          <div class="h-board-body" id="h-board-body"></div>
+        </div>
+      </div>
+
+      <!-- 目录与内景面板都不锁 HUD（设计稿里 HUD 始终可用），所以不加 aria-modal。 -->
+      <div class="h-overlay" id="h-dirbox" role="dialog" aria-label="目录" hidden>
+        <div class="h-sheet">
+          <button class="h-mini" id="h-dir-close" type="button">✕ 返回港湾</button>
+          <div class="h-dir-body" id="h-dir-body"></div>
+        </div>
+      </div>
+
+      <section class="h-panel" id="h-panel" role="dialog" aria-labelledby="h-p-title" hidden>
+        <div class="h-plank">
+          <button class="h-back" id="h-back" type="button">← 回港湾</button>
+          <div class="h-plank-title"><div class="h-ttl" id="h-p-title"></div><div class="h-crumb" id="h-p-crumb"></div></div>
+          <button class="h-x" id="h-close" type="button" aria-label="关闭">✕</button>
+        </div>
+        <!-- 阶段 B：告示板（图鉴 / 记录 / 日志 / 反馈 / WIKI）的子页签落在这里；阶段 A 为空，CSS 用 :empty 隐藏 -->
+        <div class="h-tabs" id="h-tabs" role="tablist"></div>
+        <div class="h-pbody" id="h-pbody"></div>
+      </section>
+    </div>
+
+    <div class="h-hud h-hud-bottom">
+      <button class="h-btn" id="h-dir" type="button" aria-haspopup="dialog" aria-controls="h-dirbox">☰<span>目录</span></button>
+      <button class="h-btn" id="h-set" type="button">⚙<span>设置</span></button>
+      <button class="h-cast" id="h-cast" type="button">🎣 出海钓鱼<small id="h-cast-sub"></small></button>
+      <button class="h-btn" id="h-bag" type="button">🎒<span>背包</span></button>
+      <button class="h-btn" id="h-compass-btn" type="button" aria-haspopup="dialog" aria-controls="h-compass" aria-keyshortcuts="C">🧭<span>罗盘</span></button>
     </div>
   </div>
 
-  <script src="js/config.js?v=0.22.0"></script>
-  <script src="js/data.js?v=0.22.0"></script>
-  <script src="js/features.js?v=0.22.0"></script>
-  <script src="js/engine.js?v=0.22.0-mail1"></script>
-  <script src="js/scene.js?v=0.22.0"></script>
-  <script src="js/net.js?v=0.22.0-mail1"></script>
-  <script src="js/voyage-map.js?v=0.22.0"></script>
-  <script src="js/expedition.js?v=0.22.0"></script>
-  <script src="js/gear.js?v=0.22.0-mail1"></script>
-  <script src="js/expedition-growth.js?v=0.22.0"></script>
-  <script src="js/mail.js?v=0.22.0-mail1"></script>
-  <script src="js/ui.js?v=0.22.0-mail1"></script>
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <div id="auth" class="auth-overlay">
+    <form id="auth-form" class="auth-card" autocomplete="on">
+      <div class="brand-big">🎣 DeepFish</div>
+      <div class="auth-sub"><span data-ver></span> · 注册或登录后开始（支持真实多人联机）</div>
+      <div class="auth-tabs">
+        <button id="tab-login" class="active" type="button" data-tab="login">登录</button>
+        <button id="tab-register" type="button" data-tab="register">注册</button>
+      </div>
+      <label class="sr-only" for="auth-user">用户名</label>
+      <input id="auth-user" class="auth-input" placeholder="用户名（3-20 位字母/数字/下划线）" autocomplete="username" />
+      <label class="sr-only" for="auth-pass">密码</label>
+      <input id="auth-pass" class="auth-input" type="password" placeholder="密码（注册至少 8 位）" autocomplete="current-password" />
+      <!-- 仅注册时显示 -->
+      <label class="sr-only" for="auth-pass2">确认密码</label>
+      <input id="auth-pass2" class="auth-input" type="password" placeholder="确认密码（再次输入）" autocomplete="new-password" style="display:none" />
+      <label class="sr-only" for="auth-qq">QQ 号</label>
+      <input id="auth-qq" class="auth-input" placeholder="QQ 号（必填，5-12 位数字）" autocomplete="off" style="display:none" />
+      <label class="sr-only" for="auth-name">显示名</label>
+      <input id="auth-name" class="auth-input" placeholder="显示名（注册可选，留空等同用户名）" style="display:none" />
+      <button id="auth-submit" class="primary big" type="submit">登录</button>
+      <div id="auth-msg" class="auth-msg" role="status" aria-live="polite"></div>
+    </form>
+  </div>
+
+  <!-- 全部 defer：settings.js 原先比 UI.init() 晚跑，导致设置界面读到未初始化的 UI。
+       统一 defer 后按文档顺序执行，init 等 DOMContentLoaded（defer 全部跑完）再启动。 -->
+  <script src="js/config.js?v=0.27.0" defer></script>
+  <script src="js/data.js?v=0.27.0" defer></script>
+  <script src="js/features.js?v=0.27.0" defer></script>
+  <script src="js/engine.js?v=0.27.0" defer></script>
+  <script src="js/scene.js?v=0.27.0" defer></script>
+  <script src="js/net.js?v=0.27.0" defer></script>
+  <script src="js/voyage-map.js?v=0.27.0" defer></script>
+  <script src="js/expedition.js?v=0.27.0" defer></script>
+  <script src="js/gear.js?v=0.27.0" defer></script>
+  <script src="js/expedition-growth.js?v=0.27.0" defer></script>
+  <script src="js/mail.js?v=0.27.0" defer></script>
+  <script src="js/house.js?v=0.27.0" defer></script>
+  <script src="js/ui.js?v=0.27.0" defer></script>
+  <script src="js/harbor-art.js?v=0.27.0" defer></script>
+  <script src="js/harbor.js?v=0.27.0" defer></script>
   <script>
-    window.Engine.init();
-    window.UI.init();
+    window.addEventListener('DOMContentLoaded', function () {
+      window.Engine.init();
+      window.UI.init();
+      // 港湾外壳在 UI.init() 之后接管：只负责换外壳与搬动 #nav / #main，
+      // 页面内容仍由 ui.js 的 render* 渲染（它会回调 HarborShell.sync*）。
+      if (window.HarborShell) window.HarborShell.init();
+    });
   </script>
 </body>
 </html>

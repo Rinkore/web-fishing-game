@@ -21,8 +21,18 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.22.0';
-  const BUILD = '2026-09-23';   // 构建日期（仅 /api/version 暴露，界面不展示）
+  const VERSION = 'v0.27.0';
+  // 图片加载失败自动重试（发版切流 / 网络抖动时瞬时 404 会让图片永久消失）：
+  // 重试 3 次、间隔递增；仍失败才隐藏占位。onerror 内联调用 window.__imgFail(this)。
+  if (typeof window !== 'undefined') window.__imgFail = function (img) {
+    try {
+      const n = Number(img.dataset.retry || 0) + 1;
+      img.dataset.retry = String(n);
+      if (n <= 3) setTimeout(function () { img.style.display = ''; img.src = img.src; }, 1200 * n);
+      else img.style.display = 'none';
+    } catch (e) {}
+  };
+  const BUILD = '2026-09-27';   // 构建日期（仅 /api/version 暴露，界面不展示）
 
   // ---- 渔获定义 ----
   // price = 系统商店基准收购价；size = [min, max] 体型范围（cm），用于渔获纪录。
@@ -649,194 +659,54 @@
   "engraveLevel": 8,
   "parts": {
     "line": {
-      "name": "稳定线组",
+      "name": "轻潮线组",
       "main": "skill",
       "subs": [
         "speed",
         "size"
       ],
-      "mainValues": [
-        3,
-        3.35,
-        3.7,
-        4.05,
-        4.4,
-        4.75,
-        5.1,
-        5.45,
-        5.8,
-        6.15,
-        6.5,
-        6.85,
-        7.2
-      ],
-      "subValues": [
-        0,
-        0,
-        0,
-        0,
-        1,
-        1.4,
-        1.8,
-        2.2,
-        2.6,
-        3,
-        3.4,
-        3.8,
-        4.2
-      ]
+      "mainValues": [4, 5.2, 6.4, 7.6, 9, 10.4, 11.8, 13.2, 14.6, 16, 17.4, 18.8, 20.2],
+      "subValues": [0, 0, 0, 0, 3, 4.2, 5.4, 6.6, 7.8, 9, 10.2, 11.4, 12.6]
     },
     "hook": {
-      "name": "巨物钩",
+      "name": "倒刺钩",
       "main": "size",
       "subs": [
         "skill",
         "double"
       ],
-      "mainValues": [
-        8,
-        9.5,
-        11,
-        12.5,
-        14,
-        15.5,
-        17,
-        18.5,
-        20,
-        21.5,
-        23,
-        24.5,
-        26
-      ],
-      "subValues": [
-        0,
-        0,
-        0,
-        0,
-        1,
-        1.4,
-        1.8,
-        2.2,
-        2.6,
-        3,
-        3.4,
-        3.8,
-        4.2
-      ]
+      "mainValues": [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34],
+      "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     },
     "bait": {
-      "name": "双生拟饵",
+      "name": "玉米拟饵",
       "main": "double",
       "subs": [
         "skill",
         "size"
       ],
-      "mainValues": [
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        17
-      ],
-      "subValues": [
-        0,
-        0,
-        0,
-        0,
-        1,
-        1.4,
-        1.8,
-        2.2,
-        2.6,
-        3,
-        3.4,
-        3.8,
-        4.2
-      ]
+      "mainValues": [4, 4.6, 5.2, 5.8, 6.4, 7, 7.6, 8.2, 8.8, 9.4, 10, 10.6, 11.2],
+      "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     },
     "reel": {
-      "name": "疾风卷线器",
+      "name": "顺滑卷线器",
       "main": "speed",
       "subs": [
         "skill",
         "double"
       ],
-      "mainValues": [
-        8,
-        9.2,
-        10.4,
-        11.6,
-        12.8,
-        14,
-        15.2,
-        16.4,
-        17.6,
-        18.8,
-        20,
-        21.2,
-        22.4
-      ],
-      "subValues": [
-        0,
-        0,
-        0,
-        0,
-        1,
-        1.4,
-        1.8,
-        2.2,
-        2.6,
-        3,
-        3.4,
-        3.8,
-        4.2
-      ]
+      "mainValues": [12, 14.5, 17, 19.5, 22, 24.5, 27, 29.5, 32, 34.5, 37, 40, 44],
+      "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     },
     "accessory": {
-      "name": "稳流浮漂",
+      "name": "共鸣声呐",
       "main": "skill",
       "subs": [
         "double",
         "size"
       ],
-      "mainValues": [
-        2,
-        2.3,
-        2.6,
-        2.9,
-        3.2,
-        3.5,
-        3.8,
-        4.1,
-        4.4,
-        4.7,
-        5,
-        5.3,
-        5.6
-      ],
-      "subValues": [
-        0,
-        0,
-        0,
-        0,
-        1,
-        1.4,
-        1.8,
-        2.2,
-        2.6,
-        3,
-        3.4,
-        3.8,
-        4.2
-      ]
+      "mainValues": [5, 5.6, 6.2, 6.8, 7.4, 8, 8.6, 9.2, 9.8, 10.4, 11, 11.6, 12.2],
+      "subValues": [0, 0, 0, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     }
   },
   "costs": {
@@ -984,13 +854,6 @@
       "heat": 0,
       "cores": 0
     },
-    "convert": {
-      "coins": 0,
-      "items": {},
-      "receipts": 0,
-      "heat": 0,
-      "cores": 0
-    },
     "preset": {
       "coins": 1000,
       "items": {},
@@ -1011,29 +874,29 @@
       {
         "coins": 20000,
         "items": {
-          "gear_crystal": 10
+          "gear_crystal": 15
         },
         "receipts": 1,
         "heat": 0,
-        "cores": 1
+        "cores": 0
       },
       {
         "coins": 40000,
-        "items": {
-          "gear_crystal": 20
-        },
-        "receipts": 1,
-        "heat": 0,
-        "cores": 2
-      },
-      {
-        "coins": 60000,
         "items": {
           "gear_crystal": 30
         },
         "receipts": 1,
         "heat": 0,
-        "cores": 3
+        "cores": 0
+      },
+      {
+        "coins": 60000,
+        "items": {
+          "gear_crystal": 45
+        },
+        "receipts": 1,
+        "heat": 0,
+        "cores": 0
       }
     ]
   },
@@ -1043,10 +906,10 @@
       "description": "有效钓鱼积累热量，用于优惠精工和精工预设切换。",
       "coreAttributes": {
         "rod": {
-          "skill": 3
+          "skill": 10
         },
         "charm": {
-          "speed": 2
+          "speed": 10
         }
       },
       "stages": [
@@ -1081,10 +944,10 @@
       "description": "成功上鱼积累丰收进度，额外获得可出售鱼获，不重复写入纪录。",
       "coreAttributes": {
         "rod": {
-          "double": 3
+          "double": 10
         },
         "charm": {
-          "skill": 2
+          "skill": 8
         }
       },
       "stages": [
@@ -1127,10 +990,10 @@
       "description": "追踪当前钓点已有目标鱼种，积累权重并按鱼种稀缺度保底。",
       "coreAttributes": {
         "rod": {
-          "skill": 3
+          "skill": 10
         },
         "charm": {
-          "size": 2
+          "size": 10
         }
       },
       "stages": [
@@ -1177,10 +1040,10 @@
       "description": "少量混入同区间均匀分布，轻微增加大小两端的个体，不扩大体型上限。",
       "coreAttributes": {
         "rod": {
-          "size": 3
+          "size": 10
         },
         "charm": {
-          "skill": 2
+          "skill": 8
         }
       },
       "stages": [
@@ -1363,12 +1226,6 @@
       "gear_crystal": 1.5
     }
   },
-  "legacyConvertReceipts": {
-    "common": 0,
-    "rare": 0,
-    "epic": 1,
-    "mythic": 2
-  }
 };
   function setGearSystem(cfg) { if(!cfg || !cfg.enabled)return; Object.keys(GEAR_SYSTEM).forEach(k=>delete GEAR_SYSTEM[k]);Object.assign(GEAR_SYSTEM,cfg); }
   function gearState(id) { const m=String(id).match(/@g(\d+)_(none|main|sub)_(\d+)/);return m?{level:+m[1],engrave:m[2],presets:+m[3]}:null; }
@@ -1377,12 +1234,17 @@
   // 历史底材只读兼容，新掉落使用 24 个按部位分工的普通底材。
   const PART_AFFIXES = {"line":["speed","stability","material"],"hook":["skill","size"],"bait":["rare","double","resonance"],"reel":["speed","settle","stability"],"accessory":["material","resonance","settle"]};
   COMPONENT_BASES.forEach(function(b){ b.legacy = true; });
-  const ORDINARY_NAMES = {"line":["轻潮线组","稳舵线组","丰收线组","远洋线组","龙筋航线"],"hook":["磨石钩","巨兽骨钩","精准钩","重型海钩","猎王钩"],"bait":["星辉拟饵","双生拟饵","回声拟饵","深海诱饵","共鸣香饵"],"reel":["疾风卷线器","航海卷线器","稳帆卷线器","长航卷线器","涡轮航海轮"],"accessory":["收获网袋","共鸣声呐","防腐收纳箱","远洋采集器"]};
-  Object.keys(ORDINARY_NAMES).forEach(function(part){ ORDINARY_NAMES[part].forEach(function(name,i){
-    COMPONENT_BASES.push({id:'gear_'+part+'_'+(i+1),name:name,part:part,price:60+i*55,pool:PART_AFFIXES[part].map(function(t,j){
-      const main=j<2; return {type:t,min:main?2+i:0,max:main?8+i*4:4+i};
-    })});
-  }); });
+  // 每部位只保留一个普通底材；历史 2..5 档 id 通过别名继续可读（存量实例/钓竿配置里的旧签名）。
+  const ORDINARY_NAMES = {"line":"轻潮线组","hook":"倒刺钩","bait":"玉米拟饵","reel":"顺滑卷线器","accessory":"共鸣声呐"};
+  const ORDINARY_LEGACY = {"line":["稳舵线组","丰收线组","远洋线组","龙筋航线"],"hook":["磨石钩","巨兽骨钩","精准钩","重型海钩","猎王钩"],"bait":["星辉拟饵","双生拟饵","回声拟饵","深海诱饵","共鸣香饵"],"reel":["航海卷线器","稳帆卷线器","长航卷线器","涡轮航海轮"],"accessory":["收获网袋","防腐收纳箱","远洋采集器"]};
+  const ORDINARY_BASES = {};
+  Object.keys(ORDINARY_NAMES).forEach(function(part){
+    const b={id:'gear_'+part+'_1',name:ORDINARY_NAMES[part],part:part,price:60,pool:PART_AFFIXES[part].map(function(t,j){
+      const main=j<2; return {type:t,min:main?2:0,max:main?8:4};
+    })};
+    COMPONENT_BASES.push(b); ORDINARY_BASES[part]=b;
+  });
+
   // 套装核心固定属性，只能由远航自选或印记兑换获得。
   GEAR_SETS.forEach(function (set) { set.pieces.forEach(function (p) {
     COMPONENT_BASES.push({id:'set_'+set.id+'_'+p.part,name:p.name,part:p.part,price:0,setId:set.id,noSell:true,pool:[{type:p.type,min:p.value,max:p.value}]});
@@ -1394,9 +1256,11 @@
   GEAR_SETS.forEach(s=>{const x=GEAR_SYSTEM.sets[s.id]||GEAR_SYSTEM.specializations[s.id];if(x){s.name=x.name;s.effect=x.description;if(GEAR_SYSTEM.sets[s.id])s.pieces.forEach(p=>{p.type=Object.keys(x.coreAttributes[p.part])[0];p.value=x.coreAttributes[p.part][p.type];const b=COMPONENT_BASES.find(b=>b.id==='set_'+s.id+'_'+p.part);if(b){b.name=x.name+(p.part==='rod'?'核心':'徽记');b.pool=[{type:p.type,min:p.value,max:p.value}];}});}});
   [['gear_alloy','强化合金'],['gear_fine','精工合金'],['gear_crystal','熔炼催化晶'],['storm_relic','风暴遗物']].forEach(([id,name])=>{if(!MATERIALS.some(m=>m.id===id))MATERIALS.push({id,name,rarity:'rare',price:0,size:null,noSell:true,expeditionOnly:true});});
   // Only growth materials are voyage-exclusive. Ship and chest resources retain their existing sources.
-  AFFIX_LABEL.skill='稳定';
+  AFFIX_LABEL.skill='技巧';
   const BASE_MAP = {};
   COMPONENT_BASES.forEach(function (b) { b.pool = b.pool.map(function (a) { return { type: a.type, min: a.min, max: a.max }; }); BASE_MAP[b.id] = b; });
+  // 历史底材 id → canonical 底材对象（不出现在任何枚举列表里）。
+  Object.keys(ORDINARY_LEGACY).forEach(function(part){ for(let i=0;i<ORDINARY_LEGACY[part].length;i++) BASE_MAP['gear_'+part+'_'+(i+2)] = BASE_MAP['gear_'+part+'_1']; });
   function componentBase(id) { return BASE_MAP[id] || null; }
 
   // ---- 实例签名 ----
@@ -1980,7 +1844,7 @@
         baseMs: num(c.baseMs, 10000, 200, 3600000),
         minMs: num(c.minMs, 800, 100, 3600000),
         speedBonus: num(c.speedBonus, 0, -100, 500),
-        speedCap: num(c.speedCap, 100, 0, 100),
+        speedCap: num(c.speedCap, 100, 0, 10000),
         formula: c.formula == null ? CAST_FORMULA_DEFAULT : String(c.formula),
       },
       biteFormula: r.biteFormula == null ? BITE_FORMULA_DEFAULT : String(r.biteFormula),
@@ -2124,6 +1988,36 @@
   // 补缀（投料新增词缀）的候选：默认 = **全部 6 类词缀**里熔炼结果尚未拥有的那些（不再受主件底材词缀池限制）。
   function smeltMaterialAffix(id) { return SMELT_MATERIAL_AFFIX[id] || null; }
   function smeltMaterialIds() { return Object.keys(SMELT_MATERIAL_AFFIX); }
+  // 装备成长材料的用途：从当前配置（GEAR_SYSTEM.costs）反查这份材料参与哪些操作与消耗量。
+  // 游戏内物品详情与 Wiki 资料页共用这一份，管理员改了配方两处一起变。
+  function gearMaterialUses(id) {
+    const costs = (GEAR_SYSTEM && GEAR_SYSTEM.costs) || {};
+    const seen = {}, out = [];
+    const add = function (name, c) {
+      if (!c || !c.items || !c.items[id]) return;
+      const n = c.items[id], cur = seen[name];
+      if (!cur) { out.push(seen[name] = { name: name, lo: n, hi: n, coinsLo: c.coins || 0, coinsHi: c.coins || 0, receipts: c.receipts || 0, heat: c.heat || 0, cores: c.cores || 0 }); return; }
+      cur.lo = Math.min(cur.lo, n); cur.hi = Math.max(cur.hi, n);
+      cur.coinsLo = Math.min(cur.coinsLo, c.coins || 0); cur.coinsHi = Math.max(cur.coinsHi, c.coins || 0);
+      cur.receipts = Math.max(cur.receipts, c.receipts || 0); cur.heat = Math.max(cur.heat, c.heat || 0); cur.cores = Math.max(cur.cores, c.cores || 0);
+    };
+    (costs.upgrade || []).forEach(function (c) { add('强化', c); });
+    add('副属性调校', costs.tune);
+    add('纯材料精工', costs.engrave);
+    add('热量优惠精工', costs.heatEngrave);
+    add('成长转移', costs.transfer);
+    add('精工预设切换', costs.preset);
+    add('远航专精认证', costs.unlock);
+    (costs.stage || []).forEach(function (c) { add('套装／专精进阶', c); });
+    return out.map(function (u) {
+      const bits = ['材料 ×' + u.lo + (u.hi > u.lo ? '~' + u.hi : '')];
+      if (u.coinsHi) bits.push(u.coinsLo === u.coinsHi ? u.coinsHi + '💰' : u.coinsLo + '~' + u.coinsHi + '💰');
+      if (u.receipts) bits.push('航程凭证 ×' + u.receipts);
+      if (u.heat) bits.push('精工热量 ×' + u.heat);
+      if (u.cores) bits.push('同套重复核心 ×' + u.cores);
+      return u.name + '（每次 ' + bits.join(' + ') + '）';
+    });
+  }
 
   const SMELT_DEFAULTS = {
     baseRate: 50,              // 熔炼基础成功率（%）：失败 = 副件/材料被熔毁、主件失去选中的那条词条
@@ -2818,13 +2712,42 @@
     AFFIX_TYPES.forEach(function (t) { v[t] = (a[t] || 0) + (b[t] || 0); });
     return v;
   }
-  function autoBuildDom(x, y) {          // y 是否被 x 逐项压制（含相等）
-    for (let i = 0; i < AFFIX_TYPES.length; i++) { const t = AFFIX_TYPES[i]; if (x[t] < y[t]) return false; }
-    return true;
-  }
   // cfg: { parts?:[部位…], candidates:{ 部位:[组件id…] }, order:[词条…], enabled:{词条:bool},
   //        min:{词条:数值}, max:{词条:数值}, dir:{词条:'min'|'max'}, maxStates? }
   // → { vec, picks:{部位:组件id|null}, order, relaxed:null|'max'|'all', miss:{词条:实际值} }
+  // 背包与当前装配均属于可用装备；选择套装时先固定两件核心。
+  function autoBuildOptions(state, selection) {
+    state = state || {}; selection = selection || {};
+    const owned = {}, sets = [], candidates = {}, fixed = selection.fixed || {};
+    ROD_PARTS.forEach(function (p) {
+      owned[p.key] = [];
+      const id = state.bd && state.bd[p.key] && state.bd[p.key].compId;
+      const c = id && componentOf(id);
+      if (c && c.part === p.key) owned[p.key].push(id);
+    });
+    Object.keys(state.inventory || {}).forEach(function (id) {
+      const c = componentOf(id);
+      if (state.inventory[id] > 0 && c && owned[c.part] && owned[c.part].indexOf(id) < 0) owned[c.part].push(id);
+    });
+    Object.keys(GEAR_SYSTEM.sets || {}).forEach(function (id) {
+      const picks = {};
+      ['rod', 'charm'].forEach(function (part) { picks[part] = owned[part].find(function (key) { return componentOf(key).setId === id; }); });
+      if (picks.rod && picks.charm) sets.push({ id: id, name: GEAR_SYSTEM.sets[id].name, description: GEAR_SYSTEM.sets[id].description, picks: picks });
+    });
+    const selected = sets.find(function (x) { return x.id === selection.set; });
+    let error = selection.set && selection.set !== 'current' && !selected ? '所选套装核心已不完整，请重新选择。' : '';
+    ROD_PARTS.forEach(function (p) {
+      const cur = state.bd && state.bd[p.key] && state.bd[p.key].compId;
+      if (selected && selected.picks[p.key]) candidates[p.key] = [selected.picks[p.key]];
+      else if (Object.prototype.hasOwnProperty.call(fixed, p.key)) {
+        const id = fixed[p.key];
+        if (id && owned[p.key].indexOf(id) < 0) error = '固定配件已不在背包中，请重新选择。';
+        candidates[p.key] = id && owned[p.key].indexOf(id) >= 0 ? [id] : [];
+      } else if (p.key === 'rod' || p.key === 'charm') candidates[p.key] = cur ? [cur] : [];
+      else candidates[p.key] = owned[p.key].filter(function (id) { return !componentOf(id).setId; });
+    });
+    return { owned: owned, sets: sets, selected: selected, candidates: candidates, error: error };
+  }
   function autoBuildPlan(cfg) {
     cfg = cfg || {};
     const enabled = cfg.enabled || null;   // null = 全部属性参与
@@ -2838,6 +2761,15 @@
     const bound = function (src, t) { return src[t] != null && src[t] !== '' && isFinite(Number(src[t])); };
     const minKeys = AFFIX_TYPES.filter(function (t) { return bound(mins, t); });
     const maxKeys = AFFIX_TYPES.filter(function (t) { return bound(maxs, t); });
+    // 有上限时更高不一定更好；最小值探针也不能沿用逐项最大化剪枝。
+    function dominates(a, b) {
+      for (let i = 0; i < AFFIX_TYPES.length; i++) {
+        const t = AFFIX_TYPES[i];
+        if (bound(maxs, t) && a[t] !== b[t]) return false;
+        if (dirs[t] === 'min' ? a[t] > b[t] : a[t] < b[t]) return false;
+      }
+      return true;
+    }
 
     function lexOrd(order, a, b) {
       for (let i = 0; i < order.length; i++) {
@@ -2865,11 +2797,21 @@
       });
       list.sort(function (a, b) { return lex(b.vec, a.vec) || (a.id < b.id ? -1 : 1); });
       const keep = [];
-      list.forEach(function (it) {              // 单部位内被逐项压制的件永远不可能被选
-        for (let i = 0; i < keep.length; i++) if (keep[i].set===it.set && keep[i].resonance===it.resonance && autoBuildDom(keep[i].vec, it.vec)) return;
+      list.forEach(function (it) {              // 仅剪掉在当前约束下被支配的候选
+        for (let i = 0; i < keep.length; i++) if (keep[i].set===it.set && keep[i].resonance===it.resonance && dominates(keep[i].vec, it.vec)) return;
         keep.push(it);
       });
       cand[key] = keep.slice(0, AUTO_BUILD_CANDS);
+      // 保留每个属性的端点，避免大量不同等级装备挤掉可达下限。
+      AFFIX_TYPES.forEach(function (t) {
+        let lo = null, hi = null;
+        keep.forEach(function (it) {
+          if (!lo || it.vec[t] < lo.vec[t]) lo = it;
+          if (!hi || it.vec[t] > hi.vec[t]) hi = it;
+        });
+        if (lo && cand[key].indexOf(lo) < 0) cand[key].push(lo);
+        if (hi && cand[key].indexOf(hi) < 0) cand[key].push(hi);
+      });
     });
 
     let frontier = [{ vec: autoBuildZero(), picks: {}, set:'', resonance:0 }];
@@ -2908,7 +2850,7 @@
       const keep = [];
       for (let i = 0; i < next.length && keep.length < slot; i++) {
         let dom = false;
-        for (let j = 0; j < keep.length; j++) if (keep[j].set===next[i].set && keep[j].resonance===next[i].resonance && autoBuildDom(keep[j].vec, next[i].vec)) { dom = true; break; }
+        for (let j = 0; j < keep.length; j++) if (keep[j].set===next[i].set && keep[j].resonance===next[i].resonance && dominates(keep[j].vec, next[i].vec)) { dom = true; break; }
         if (!dom) keep.push(next[i]);
       }
       AFFIX_TYPES.forEach(function (t) {
@@ -2953,7 +2895,8 @@
     }
     const miss = {};
     minKeys.forEach(function (t) { if (res.vec[t] < Number(mins[t])) miss[t] = res.vec[t]; });
-    return { vec: res.vec, picks: res.picks, order: prio, relaxed: relaxed, miss: miss };
+    return { vec: res.vec, picks: res.picks, order: prio, relaxed: relaxed, miss: miss,
+      error: frontier.length ? '' : '固定配件无法组成合法装配，请检查套装与共鸣配件。' };
   }
   // 单属性「可达」探针：把它排到优先级首位、去掉它自己的目标区间，
   // 在其余属性的目标区间约束下求它的最大值（dir='max'，默认）或最小值（dir='min'）。
@@ -3177,6 +3120,44 @@
     xpNeed: [0, 40, 120, 280, 560],
     upCoins: [0, 20000, 80000, 200000, 500000],
     upScale: [0, 5, 15, 40, 90],
+  };
+  // ---- 渔屋（v0.24.0，前后端同一份配置；服务端 catalog 常量段 HUT）----
+  // 定位：前期过渡设施。**唯一的限制是时间** —— 单次最多结算 capacityHours 小时，
+  // 一天只有 24 小时，所以日上限 = 速率 × 24 × 加成；金币没有硬上限、领取次数也不限。
+  // 无尽层用指数渐近线逼近 asymptoteRate：每级都有正收益，但永远追不到上限。
+  // 三条养成线（渔屋/宠物/角色）只作用于渔屋自身产出，不进入 SimulationVariables。
+  const HUT = {
+    levels: [45, 51, 57, 63, 68, 74, 80, 86, 92, 98],  // Lv1~Lv10 金币/小时
+    capacityHours: 8,        // 晒场容量：单次最多结算的小时数
+    asymptoteRate: 103,      // 无尽翻新的渐近线（永不超过）
+    endlessTau: 10,          // 渐近速度
+    petPerLevel: 0.02,       // 每级亲和 +2% 渔屋速率
+    petBonusCap: 0.20,
+    petSlots: 2,             // 同时驻守的宠物数
+    rolePerPoint: 0.03,      // 每点 +3%（只有厨师方向作用于金币）
+    roleBonusCap: 0.09,
+    rolePointsMax: 9,        // 三个方向合计
+    bonusUnlockLevel: 5,     // 加成在渔屋 Lv5 才解锁
+    bonusHalfUntilLevel: 7,  // Lv5~7 只生效 50%
+    stealPerLevel: 15,       // 单次偷取 = min(目标Lv × 15, stealPerPickCap)
+    stealPerPickCap: 100,
+    stealDailyCoinCap: 200,  // 偷取金币部分的独立日硬顶（不占渔屋预算）
+    stealPicksPerDay: 2,
+    relationshipMinHours: 24,
+    upgradeCosts: [
+      { coins: 800,   items: { bait_pack: 4 } },
+      { coins: 1800,  items: { bait_pack: 6 } },
+      { coins: 3200,  items: { rope: 9 } },
+      { coins: 5500,  items: { rope: 12 } },
+      { coins: 8000,  items: { lure: 16, storm_relic: 1 } },
+      { coins: 11000, items: { lure: 20, storm_relic: 1 } },
+      { coins: 15000, items: { gear_alloy: 9, storm_relic: 1 } },
+      { coins: 21000, items: { gear_alloy: 12, storm_relic: 2 } },
+      { coins: 30000, items: { gear_alloy: 16, storm_relic: 2 } },
+    ],
+    renovateCost: { coins: 30000, coinsGrowth: 1.35, stormRelic: 1, alloyPerLevel: 5 },
+    // 只允许消耗「无作用或封顶后溢出」的材料；关键路径材料（催化晶/精工合金/深海鳞片等）禁止入内
+    materialWhitelist: ['storm_relic', 'gear_alloy', 'bait_pack', 'rope', 'lure'],
   };
   // 随机海域（方案 E）：未知海图出航后的临时海域配置。mood 决定掉落倾向与钓点增益。
   const SEA = {
@@ -3414,19 +3395,23 @@
   //   页签页的功能开关 id 仍是 bd / records（见 features.js），旧 view id 由 navigateView 兜底兼容。
   const NAV = [
     { id: 'fishing', name: '钓鱼', icon: '🎣', implemented: true },
-    { id: 'sea', name: '远洋', icon: '⛵', implemented: true },
-    { id: 'character', name: '角色', icon: '🧍', implemented: true },
-    { id: 'ground', name: '社交', icon: '🌊', implemented: true },
+    // v0.24.0：「角色」升级为「渔屋」（晒场 / 宠物 / 角色 / 钓竿四个页签）。
+    // 入口 id 保留 character：旧存档、旧广播与 bd 页签的兼容分支都指向它。
+    { id: 'character', name: '渔屋', icon: '🏠', implemented: true },
     { id: 'inventory', name: '背包', icon: '🎒', implemented: true },
-    { id: 'mail', name: '邮件', icon: '✉️', implemented: true },
-    // 「宝匣合成」不再是独立页面：并入「工坊」页（熔炼/重铸同款页签切换），改名「开箱」，见 ui.js 的 renderWorkshop。
+    // 「开箱」（原「宝匣合成」）自 v0.23.5 起从工坊独立成页：入口在工坊之后，页面见 ui.js 的 renderChest。
     { id: 'workshop', name: '工坊', icon: '⚒', implemented: true },
+    { id: 'chest', name: '开箱', icon: '🎁', implemented: true },
+    { id: 'sea', name: '远洋', icon: '⛵', implemented: true },
+    { id: 'ground', name: '社交', icon: '🌊', implemented: true },
     // 「系统商店」「开放市集」不再是独立页面：合并进「商城」页（工坊熔炼/重铸同款页签切换），
     // 系统商店改名「收购」、开放市集改名「市集」，见 ui.js 的 renderMall。
     { id: 'mall', name: '商城', icon: '🛒', implemented: true },
     { id: 'codex', name: '图鉴', icon: '📖', implemented: true },
     { id: 'feedback', name: '反馈', icon: '📮', implemented: true },
     { id: 'logs', name: '日志', icon: '📜', implemented: true },
+    // 邮件属于低频通知，放在主要玩法入口之后，和反馈/日志归在功能尾部。
+    { id: 'mail', name: '邮件', icon: '✉️', implemented: true },
   ];
 
   // ---- 物品索引（供 UI / 引擎统一查询） ----
@@ -3505,6 +3490,7 @@
     SMELT_DEFAULTS: SMELT_DEFAULTS, defaultSmeltCfg: defaultSmeltCfg, setSmeltCfg: setSmeltCfg, getSmeltCfg: getSmeltCfg,
     SNAPSHOT_DEFAULTS: SNAPSHOT_DEFAULTS, defaultSnapshotCfg: defaultSnapshotCfg, setSnapshotCfg: setSnapshotCfg, getSnapshotCfg: getSnapshotCfg,
     smeltMaterialAffix: smeltMaterialAffix, smeltMaterialIds: smeltMaterialIds, smeltFuelIds: function(){return ['bait_pack','rope','lure'];},
+    gearMaterialUses: gearMaterialUses,
     smeltLoadOf: smeltLoadOf, smeltRatesOf: smeltRatesOf, smeltSuccessProbs: smeltSuccessProbs, smeltGoldOf: smeltGoldOf, smeltAddableAffixes: smeltAddableAffixes,
     smeltPlanOf: smeltPlanOf, simulateSmeltPlan: simulateSmeltPlan, smeltRollWithRng: smeltRollWithRng,
     smeltRangeOf: smeltRangeOf, smeltRangeEx: smeltRangeEx, smeltAddAffixCap: smeltAddAffixCap,
@@ -3532,11 +3518,11 @@
     adjectiveOf: adjectiveOf, affixCeilingOf: affixCeilingOf, instanceMeta: instanceMeta, componentOf: componentOf,
     legacyToInstance: legacyToInstance, normalizeItemId: normalizeItemId,
     ROD_SET_PREFIX: ROD_SET_PREFIX, isRodSet: isRodSet, rodPartsOf: rodPartsOf, rodSetId: rodSetId, rodMeta: rodMeta,
-    autoBuildPlan: autoBuildPlan, autoBuildPeek: autoBuildPeek, autoBuildVec: autoBuildVec,
+    autoBuildOptions: autoBuildOptions, autoBuildPlan: autoBuildPlan, autoBuildPeek: autoBuildPeek, autoBuildVec: autoBuildVec,
     autoBuildRange: autoBuildRange,
     normalizeRodSetId: normalizeRodSetId,
     fishTierOf: fishTierOf, spotsOf: spotsOf,
-    GROUNDS: GROUNDS, NAV: NAV, SHIP: SHIP, SEA: SEA, applySeaCfg: applySeaCfg,
+    GROUNDS: GROUNDS, NAV: NAV, SHIP: SHIP, SEA: SEA, HUT: HUT, applySeaCfg: applySeaCfg,
     SEA_QUEST_KINDS: SEA_QUEST_KINDS, seaQuestKindName: seaQuestKindName, seaZoneLayout: seaZoneLayout,
     seaQuestSubmitOf: seaQuestSubmitOf, rewardItemChoices: rewardItemChoices, isSeaQuestRewardId: isSeaQuestRewardId,
     allItems: allItems, itemOf: itemOf, itemName: itemName, isSellable: isSellable,

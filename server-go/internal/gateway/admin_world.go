@@ -2231,6 +2231,25 @@ func (a *API) adminSpotPos(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		s := spots[spotIndex]
+		// 可选 map 字段：钓点跨过世界地图中线时，后台会连带切换它属于哪一侧历史坐标带
+		// （近岸 = 左带 / 远洋 = 右带；玩家端按该字段选投影带，所以必须与 pos 一起改）。
+		if mv, present := m["map"]; present {
+			ms, _ := mv.(string)
+			if ms != "" && ms != "voyage" {
+				failure(w, identity.ErrInvalid)
+				return
+			}
+			oldMap, hadMap := s["map"]
+			if ms == "voyage" {
+				if !hadMap || oldMap != "voyage" {
+					s["map"] = "voyage"
+					changed++
+				}
+			} else if hadMap {
+				delete(s, "map")
+				changed++
+			}
+		}
 		old, had := s["pos"]
 		if isNull {
 			if had {

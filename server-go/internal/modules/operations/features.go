@@ -8,6 +8,7 @@ import (
 	"fishing.local/server/internal/modules/assets"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"strconv"
+	"strings"
 )
 
 type Service struct {
@@ -16,6 +17,21 @@ type Service struct {
 }
 
 func New(pool *pgxpool.Pool) *Service { return &Service{pool, assets.New(pool)} }
+
+// featureClosed reports whether a gate was explicitly turned off in this
+// release, either directly or through its page group. An absent key stays
+// enabled, matching the COALESCE(...,true) default the command gate uses.
+func featureClosed(flags map[string]bool, key string) bool {
+	if enabled, ok := flags[key]; ok && !enabled {
+		return true
+	}
+	if i := strings.IndexByte(key, '.'); i > 0 {
+		if enabled, ok := flags[key[:i]]; ok && !enabled {
+			return true
+		}
+	}
+	return false
+}
 
 type Features struct {
 	Revision int64           `json:"revision,string"`
@@ -69,7 +85,9 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 		case "market", "trade", "workshop", "chest", "mall", "sell", "autosell", "friends", "sea", "party", "fishing",
 			"fishing.cast", "bd", "bd.equip", "bd.slots", "bd.save", "bd.autobuild",
 			"character", "character.companion", "character.boat", "sea.upgrade", "sea.chart", "sea.voyage", "sea.quest", "sea.anchor", "sea.expedition",
+			"character.collect", "character.upgrade", "character.pet", "character.role", "character.steal",
 			"ground", "ground.trade", "ground.party", "inventory", "inventory.subscribe",
+			"chest.craft", "chest.open",
 			"workshop.craft", "workshop.open", "workshop.smelt", "workshop.recast", "workshop.forge",
 			"workshop.growth", "workshop.sets",
 			"mall.buy", "mall.sell", "mall.autosell", "mall.list", "mall.marketbuy",
@@ -113,6 +131,14 @@ func (s *Service) Publish(ctx context.Context, r Publish) (assets.Result, error)
 		}
 		if enabled, ok := r.Flags["trade"]; ok && !enabled {
 			if _, err := t.SQL().Exec(ctx, `UPDATE fishing.trades SET state='cancelled',revision=revision+1,a_confirm=false,b_confirm=false WHERE state IN ('invited','accepted')`); err != nil {
+				return assets.Result{}, err
+			}
+		}
+		// A closed fish house must never back-pay the paused window, so closing
+		// the collect gate rolls both clocks forward under this same publication
+		// lock. Reopening therefore starts a fresh pond (design §10.3).
+		if featureClosed(r.Flags, "character.collect") {
+			if _, err := t.SQL().Exec(ctx, `UPDATE fishing.house_state SET settled_at=clock_timestamp(),enabled_at=clock_timestamp()`); err != nil {
 				return assets.Result{}, err
 			}
 		}

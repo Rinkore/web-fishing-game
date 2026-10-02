@@ -51,6 +51,16 @@ type API struct {
 	viewMu    sync.Mutex
 	views     map[int64]legacyPlayersView
 	shopCache legacyShopCache
+	// totpPending holds in-flight console TOTP enrollments: a freshly minted
+	// secret that has been shown to the administrator but not yet confirmed
+	// with a code from the new authenticator. Per-process, expires quickly.
+	totpMu      sync.Mutex
+	totpPending map[int64]totpPendingEnrollment
+}
+
+type totpPendingEnrollment struct {
+	secret  string
+	expires time.Time
 }
 type bucket struct {
 	start time.Time
@@ -166,6 +176,18 @@ func newAPI(pool *pgxpool.Pool, mfaKey []byte, locations []*time.Location, front
 	r.Post("/api/market/cancel", a.legacyMarketCancel)
 	r.Get("/api/gear", a.gearView)
 	r.Post("/api/gear/action", a.gearAction)
+	// 渔屋：读接口直接返回权威视图，写接口沿用远洋派遣的命令契约（requestKey 幂等）。
+	r.Get("/api/house", a.legacyHouse("view"))
+	r.Post("/api/house/collect", a.legacyHouse("collect"))
+	r.Post("/api/house/upgrade", a.legacyHouse("upgrade"))
+	r.Post("/api/house/renovate", a.legacyHouse("renovate"))
+	r.Post("/api/house/pet", a.legacyHouse("pet"))
+	r.Post("/api/house/role", a.legacyHouse("role"))
+	r.Post("/api/house/steal", a.legacyHouse("steal"))
+	r.Get("/api/admin/house", a.adminHouse)
+	r.Post("/api/admin/house/config", a.adminHouseConfig)
+	r.Post("/api/admin/house/simulate", a.adminHouseSimulate)
+	r.Post("/api/admin/house/player", a.adminHousePlayer)
 	r.Get("/api/admin/gear", a.adminGear)
 	r.Post("/api/admin/gear/config", a.adminGearConfig)
 	r.Post("/api/admin/gear/player", a.adminGearPlayer)
@@ -209,6 +231,7 @@ func newAPI(pool *pgxpool.Pool, mfaKey []byte, locations []*time.Location, front
 	r.Post("/api/admin/users/update", a.legacyAdminUserUpdate)
 	r.Post("/api/admin/users/ban", a.legacyAdminUserBan)
 	r.Post("/api/admin/users/setadmin", a.legacyAdminUserSetAdmin)
+	r.Post("/api/admin/users/totp", a.legacyAdminUserTOTP)
 	r.Post("/api/admin/users/delete", a.legacyAdminUserDelete)
 	r.Get("/api/admin/feedback", a.legacyAdminFeedback)
 	r.Post("/api/admin/feedback/status", a.legacyAdminFeedbackStatus)

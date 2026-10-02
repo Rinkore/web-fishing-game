@@ -10,8 +10,10 @@ import (
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func totp(secret string, step int64) string {
@@ -42,6 +44,14 @@ func verifyOTP(secret, code string, nowStep, lastStep int64) (int64, bool) {
 	}
 	return 0, false
 }
+// VerifyMFA reports whether code matches secret's current time step (or one
+// step either side, to tolerate clock skew). Console enrollment uses it to
+// confirm the administrator really captured the pending secret before that
+// secret is written, so a mistyped key can never lock the account out.
+func VerifyMFA(secret, code string) bool {
+	_, ok := verifyOTP(secret, strings.TrimSpace(code), time.Now().Unix()/30, -1)
+	return ok
+}
 func mfaCipher(key []byte) (cipher.AEAD, error) {
 	if len(key) != 32 {
 		return nil, ErrMFASetup
@@ -66,6 +76,37 @@ func EncryptMFA(key []byte, accountID int64, secret string) ([]byte, error) {
 	}
 	return a.Seal(nonce, nonce, []byte(secret), []byte(strconv.FormatInt(accountID, 10))), nil
 }
+
+// NewMFASecret mints a fresh authenticator secret: 20 random bytes rendered as
+// unpadded Base32, the same encoding the operator CLI accepts. Enrollment
+// callers show it exactly once and never persist or log the plaintext.
+func NewMFASecret() (string, error) {
+	var raw [20]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", ErrBusy
+	}
+	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(raw[:]), nil
+}
+
+// MFAAuthURL renders the otpauth:// enrollment link for one account. The
+// parameters mirror verifyOTP: SHA-1, six digits and a 30 second step.
+func MFAAuthURL(issuer, account, secret string) string {
+	query := url.Values{
+		"secret":    {secret},
+		"issuer":    {issuer},
+		"algorithm": {"SHA1"},
+		"digits":    {"6"},
+		"period":    {"30"},
+	}
+	return "otpauth://totp/" + url.PathEscape(issuer+":"+account) + "?" + query.Encode()
+}
+
+// SealMFA encrypts one account's authenticator secret with the service key, so
+// console enrollment writes exactly the ciphertext the operator CLI writes.
+func (s *Service) SealMFA(accountID int64, secret string) ([]byte, error) {
+	return EncryptMFA(s.mfaKey, accountID, secret)
+}
+
 func decryptMFA(key []byte, accountID int64, sealed []byte) (string, error) {
 	a, err := mfaCipher(key)
 	if err != nil || len(sealed) < a.NonceSize() {

@@ -114,7 +114,8 @@ func (s *Service) Anchor(ctx context.Context, owner int64, key, zoneID string) (
 		if err := t.Stacks(ctx, owner, []assets.StackDelta{{ItemID: "deepscale", Tier: "normal", Quantity: -cfg.Scales}}); err != nil {
 			return assets.Result{}, err
 		}
-		zone.Expire = now.UnixMilli() + cfg.ExtendMin*60000
+		// 续期是在原到期时间上追加，不能以当前时刻重算——否则会吞掉海域剩余的存续时间。
+		zone.Expire = max(zone.Expire, now.UnixMilli()) + cfg.ExtendMin*60000
 		zone.Anchors++
 		for i := range zone.Spots {
 			for _, buff := range cfg.Buffs {

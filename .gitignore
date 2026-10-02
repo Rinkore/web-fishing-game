@@ -38,3 +38,4 @@ output/
 server-go/bin/
 server-go/coverage.out
 migration-private/
+runs.json

@@ -1,0 +1,13 @@
+v0.24.0 · 渔屋上线：晒场离线收益 / 宠物驻守与角色方向 / 好友偷取
+
+- 「角色」页升级为「渔屋」：侧栏入口 id 仍是 `character`（旧存档、旧广播与旧控制台菜单不用改），页签为 🏠 晒场 / 🐶 宠物 / 🧍 角色 / 🎣 钓竿。钓竿页签原样保留并继续由 `bd` 功能组单独管（`navigateView('bd')` 与顶栏快捷入口不失效），展示台（码头 / 泊船 / 道具）留在页面里。渔屋是前期过渡设施，**唯一的限制是时间**：晒场单次最多结算 8 小时，一天只有 24 小时，所以日上限 = 速率 × 24 × 加成；金币没有硬上限，领取次数也不限，投进去总是有收益。
+- **晒场**：离线自动攒金币，`/api/house/collect` 结算入账；Lv1~Lv10 金币/小时 45 → 98，升级消耗金币与前期材料（诱饵包 / 耐磨绳 / 反光假饵），Lv5 之后引入风暴遗物；满级后转入「♾ 无尽翻新」，用指数渐近线逼近 103/小时（每级都有正收益、永远追不到上限），成本按 1.35× 增长并逐级增加强化合金与风暴遗物。升级只提高每小时产出，晒场容量与领取次数不变。
+- **宠物**：8 只同伴（金毛 / 柯基 / 阿拉斯加 / 巴吉度 / 德牧 / 腊肠 / 伯恩山 / 缅因猫，贴图沿用旧「同伴」资源）从本地装饰改为服务端权威养成，亲和每级 +2% 渔屋速率（单只上限 +20%），最多同时驻守 2 只（第 2 格 Lv8 解锁），驻守只决定「溢出晒场」的材料掉落倾向，不影响原主收益。
+- **角色方向**：厨师 / 腌制师 / 商人三条线共用 9 点（每线 3 点、每点 +3%），厨师直接进渔屋金币速率，腌制师提高晒场腌制（材料 → 声望）兑换效率，商人提高偷取次数上限与晒场热度收益；三条养成线的加成在渔屋 Lv5 解锁、Lv5~7 只生效 50%，且只作用于渔屋自身产出，不进入 `SimulationVariables`，原有钓鱼数值不变。
+- **好友偷取**：偷的是好友的「溢出晒场」，**不扣原主收益**；每对好友每天 1 次、每天默认 2 次（商人方向 / 声望可提升，硬顶 5 次），单次 `min(对方渔屋 Lv × 15, 100)` 金币 + 1 份普通鱼饵材料，要求好友关系满 24 小时，金币部分另有 200/天 的独立上限。好友列表复用既有 `/api/friends`，不新建好友系统。
+- **服务端**：新增 `modules/house`（collect / upgrade / renovate / pet / role / steal 与 30 秒结算 worker）、迁移 `0034_fish_house.sql`（含运行权限）、catalog 常量段 `HUT` 与 `ValidateHut` 断言（满级 + 无尽层的后期占比保持在 5% 以内）。全部写操作复用既有 `assets.Run` 幂等命令（客户端持久化 requestKey，重试复用同一个 key）、gear 式 jsonb 状态、autosell worker 形态与资产事务的拒绝码映射（13 个码）；关闭 `character.collect` 时在同一发布锁内把结算时钟与启用时钟一起前推，避免功能关闭期间被事后补发收益。
+- **后台**：新增「🏠 渔屋配置」页（`admin-house.js`，与 `admin-gear.js` 同构）：全量配置编辑走既有 catalog 发布链（`POST /api/admin/house/config` 带 `expectedRevision`，冲突拒绝），附平衡模拟（各阶段渔屋日收益 / 基准日收入 / 占比）、玩家查询（重置已攒时长 / 冻结结算 / 恢复结算）与不变量检查；功能开关按 `character.collect` / `character.upgrade` / `character.pet` / `character.role` / `character.steal` 分别生效，元素级 `data-feature` 标记与旧控制台菜单补全同步到位。
+
+验收：前端 14 个套件 893 项断言全部通过（`node tests/run-all.js`，含 desktop-zoom 401、mobile-layout 106、fishing-overlay 89、smelt-workbench 81），另跑 house 18 项、equipment-filters 10 项、auto-build-ui 8 项、expedition-growth 5 项、gear-growth 1 项、mail-gear 1 项、request-key-regression 1 项全部通过；`route-coverage --check`（Legacy 152/152、Go 222 条注册、0 重复、0 悬空）与 `go-rewrite-route-coverage` 4 项、`release-start` 9 项、`migration-fixture` 全部通过。Go catalog 与 native / workshop / mall / chest 四份规则 fixtures、wiki-content 快照已按当前 `frontend/js/data.js` 重新生成并通过 `--check` 一致性校验（版本、sourceSHA256 与 v0.24.0 一致）。Go 侧复用上一轮留在本机的临时工具链（go1.27.1）：`gofmt -l` 无输出、`go build ./...`、`go vet ./...`、`go test -count=1 ./...` 全部退出 0（house / rules / gateway 等包全 ok，需要 PostgreSQL 的集成用例按设计 skip）；`go test -race` 与真库事务测试由标签流水线执行。
+
+部署提示：本次发行包含新迁移 `0034_fish_house.sql`，迁移摘要与线上已记录基线不同，更新器会在停服前拒绝自动部署；正式服需要先在隔离库完成升级、权限与备份恢复演练，再按维护窗口执行迁移并接入新的已验证基线。

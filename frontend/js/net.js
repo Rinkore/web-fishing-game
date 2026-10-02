@@ -39,7 +39,10 @@ window.Net = (function () {
 
   // 请求超时：偶发请求悬挂时页面会停在旧状态（按钮点了没反应），超时后中断并当网络错误报出，
   // GET 再自动重试一次；写操作不重试，避免重复提交。
+  // 写操作超时放宽到 30s：中断的只是浏览器等待，服务端仍会完成交易（限购曾出现
+  // 「跳网络错误但实际购买成功」）；超时只是放弃等待，不回滚也不重发。
   const API_TIMEOUT_MS = 8000;
+  const API_WRITE_TIMEOUT_MS = 30000;
   function apiOnce(method, u, body) {
     return new Promise(function (resolve) {
       // Keep legacy call sites' state marker out of URLs and JSON; only HttpOnly cookies authenticate.
@@ -53,7 +56,7 @@ window.Net = (function () {
       if (typeof AbortController !== 'undefined') {
         ctrl = new AbortController();
         opts.signal = ctrl.signal;
-        timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, API_TIMEOUT_MS);
+        timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, method === 'GET' ? API_TIMEOUT_MS : API_WRITE_TIMEOUT_MS);
       }
       const done = function () { if (timer) { clearTimeout(timer); timer = null; } };
       fetch(API_BASE + u, opts)
@@ -300,6 +303,19 @@ window.Net = (function () {
   // v0.21.0：悬赏领取 / 锚地下锚 / 编队
   const seaQuestClaim = (id) => authed('/api/sea/quest/claim', { id: id });
   const seaAnchor = (zoneId) => authed('/api/sea/anchor', { zoneId: zoneId });
+  // 渔屋（v0.24.0）：晒场离线收益 / 宠物驻守 / 角色方向 / 好友偷取。
+  // 写操作照抄远洋离线派遣：客户端生成并持久化 requestKey，服务端在 command_results 上做去重，
+  // 重放返回首次结果（见 assets/command.go）；拒绝码原样透出给面板的 errors{} 翻中文。
+  const houseGet = () => apiFetch('GET', '/api/house?token=' + encodeURIComponent(me ? me.token : ''));
+  const fetchHouse = () => houseGet().then(function (r) {
+    if (r && r.ok && r.data && r.data.house) {
+      state().house = r.data.house;
+      if (r.data.coins != null) state().player.coins = r.data.coins;
+      if (window.UI) window.UI.refreshAll('house');
+    }
+    return r;
+  });
+  const houseAction = (action, body) => authed('/api/house/' + action, body || {});
   const partyFetch = () => apiFetch('GET', '/api/party?token=' + encodeURIComponent(me ? me.token : ''));
   const partyAction = (action, target) => authed('/api/party', { action: action, target: target });
   // 自动售出规则（玩家自助）：单件 { id, ... } / 批量 { bulk:'fish'|'material'|'all', ... }；
@@ -376,17 +392,21 @@ window.Net = (function () {
     return r;
   });
   // perf-9：玩家列表分页 / 搜索（服务端分页）。target 区分存储槽：'playersPage'=渔场页玩家列表，'peepsPage'=同钓点列表
+  // 每个 target 一个请求序号：慢的旧请求（如 5s 轮询）晚到时会覆盖新搜索/翻页的结果，序号对不上就丢弃。
+  const pageRequestSeq = { playersPage: 0, peepsPage: 0 };
   const fetchPlayersPage = (opts) => {
     const o = opts || {};
+    const target = o.target || 'playersPage';
+    const seq = (pageRequestSeq[target] = (pageRequestSeq[target] || 0) + 1);
     const t = me ? me.token : '';
     return apiFetch('GET', '/api/players/page?token=' + encodeURIComponent(t) +
       '&page=' + (o.page || 1) + '&size=' + (o.size || 30) +
       '&q=' + encodeURIComponent(o.q || '') +
       (o.ground ? '&ground=' + encodeURIComponent(o.ground) : '') +
       (o.spot ? '&spot=' + encodeURIComponent(o.spot) : '')).then(function (r) {
-      if (r && r.ok) {
+      if (r && r.ok && seq === pageRequestSeq[target]) {
         const d = r.data;
-        state()[o.target || 'playersPage'] = { page: d.page, pages: d.pages, total: d.total, list: d.players || [] };
+        state()[target] = { page: d.page, pages: d.pages, total: d.total, list: d.players || [] };
         if (o.target === 'peepsPage') state().peepsLoading = false;   // 拉到了就撤掉「同步中」
         if (d.totalOnline != null) state().onlineTotal = d.totalOnline;
         if (window.UI) window.UI.refreshAll(o.target === 'peepsPage' ? 'fishing' : 'players');
@@ -537,7 +557,14 @@ window.Net = (function () {
         lastMsgAt = Date.now();   // 心跳看门狗据此判断连接是否假死
         let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
         if (m && m.type === 'batch' && Array.isArray(m.list)) {
-          for (let bi = 0; bi < m.list.length; bi++) handleServerEvent(m.list[bi]);
+          // 一批事件里每个事件都会调 UI.refreshAll(scope)；用 batchRefresh 把它们并起来，
+          // 这一批只重绘一次（下一帧），而不是每条事件各整页重绘一次。
+          const ui = window.UI;
+          if (ui && ui.batchRefresh) {
+            ui.batchRefresh(function () { for (let bi = 0; bi < m.list.length; bi++) handleServerEvent(m.list[bi]); });
+          } else {
+            for (let bi = 0; bi < m.list.length; bi++) handleServerEvent(m.list[bi]);
+          }
           return;
         }
         handleServerEvent(m);
@@ -709,6 +736,10 @@ window.Net = (function () {
           // 后台改了组件生成配置（含池外/突破词缀数值区间）：工坊补缀与宝匣突破件的预览区间都要跟着变
           if (m.componentCfg && window.GameData.setComponentCfg) window.GameData.setComponentCfg(m.componentCfg);
           if (ui) ui.refreshAll('componentcfg');
+        } else if (m.type === 'house') {
+          // 渔屋权威视图（结算 / 升级 / 被偷等）：整体替换后重绘渔屋页；
+          // 结构签名没变时 ui.js 走就地更新，不会重建 DOM。
+          if (m.house) { S.house = m.house; if (ui) ui.refreshAll('house'); }
         } else if (m.type === 'recordscfg') {
           // 后台改了「全场最大鱼」贴图的缩放/偏移：就地更新并重绘纪录页
           if (m.recordsCfg) S.recordsCfg = m.recordsCfg;
@@ -905,6 +936,7 @@ window.Net = (function () {
 
   // perf-9：同钓点玩家列表——钓鱼中每 5s 拉取当前钓点的分页数据（拉取制，不占推送带宽）
   setInterval(function () {
+    if (document.hidden) return;   // 后台标签页不轮询：省流量，避免返回前台时被一串过期回包刷屏
     const S = state();
     if (!(S.fishing && S.fishing.active && S.player && S.player.groundId)) return;
     const pv = S.peepView = S.peepView || { page: 1, size: 100, q: '' };
@@ -912,6 +944,15 @@ window.Net = (function () {
     fetchPlayersPage({ target: 'peepsPage', page: pv.page, size: pv.size, q: pv.q,
       ground: S.player.groundId, spot: S.player.spotId });
   }, 5000);
+  // 回到前台立刻补一次，避免恢复后最多 5s 的空白
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    const S = state();
+    if (!(S.fishing && S.fishing.active && S.player && S.player.groundId)) return;
+    const pv = S.peepView = S.peepView || { page: 1, size: 100, q: '' };
+    fetchPlayersPage({ target: 'peepsPage', page: pv.page, size: pv.size, q: pv.q,
+      ground: S.player.groundId, spot: S.player.spotId });
+  });
 
   return {
     gearApi:apiFetch,
@@ -922,6 +963,7 @@ window.Net = (function () {
     fishingStart: fishingStart, fishingStop: fishingStop, bdSet: bdSet,
     seaExpedition: seaExpedition, seaGet: seaGet, seaShipUp: seaShipUp, seaChart: seaChart, seaVoyage: seaVoyage,
     seaQuestClaim: seaQuestClaim, seaAnchor: seaAnchor, partyFetch: partyFetch, partyAction: partyAction,
+    houseGet: houseGet, fetchHouse: fetchHouse, houseAction: houseAction,
     autoSellGet: autoSellGet, autoSellSet: autoSellSet,
     shopHistory: shopHistory, marketHistory: marketHistory, recordsTop: recordsTop,
     fetchShop: fetchShop, fetchMarket: fetchMarket, fetchCodex: fetchCodex, fetchRecords: fetchRecords,

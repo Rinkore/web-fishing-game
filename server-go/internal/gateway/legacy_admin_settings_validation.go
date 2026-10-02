@@ -64,7 +64,7 @@ func validateLegacySettings(in map[string]json.RawMessage) (map[string]any, erro
 				return nil, errors.New("重置标志必须为布尔值")
 			}
 		case "castBaseMs", "castMinMs", "castSpeedBonus", "castSpeedCap":
-			bounds := map[string][2]float64{"castBaseMs": {200, 3600000}, "castMinMs": {100, 3600000}, "castSpeedBonus": {-100, 500}, "castSpeedCap": {0, 100}}[key]
+			bounds := map[string][2]float64{"castBaseMs": {200, 3600000}, "castMinMs": {100, 3600000}, "castSpeedBonus": {-100, 500}, "castSpeedCap": {0, 10000}}[key]
 			n, ok := legacyNumber(raw, bounds[0], bounds[1])
 			if !ok {
 				return nil, errors.New("抛竿配置数值无效：" + key)

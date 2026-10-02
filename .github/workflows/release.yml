@@ -9,6 +9,16 @@ on:
         description: Existing release tag, for example v0.21.5
         required: true
         type: string
+      skip_tests:
+        description: Skip repeated CI only when this exact release commit has passed local acceptance
+        required: false
+        type: boolean
+        default: false
+      reuse_release:
+        description: Deploy the existing verified release assets without rebuilding or republishing
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,12 +65,14 @@ jobs:
 
   test:
     needs: source
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_tests }}
     uses: ./.github/workflows/go-rewrite.yml
     with:
       source-ref: ${{ needs.source.outputs.commit }}
 
   publish:
     needs: [source, test]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && (needs.test.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.skip_tests && needs.test.result == 'skipped')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -74,20 +86,55 @@ jobs:
           ref: ${{ needs.source.outputs.commit }}
           fetch-depth: 0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        if: ${{ !inputs.reuse_release }}
         with:
           go-version-file: server-go/go.mod
           cache: false
       - name: Build Linux amd64 package and integrity manifest
+        if: ${{ !inputs.reuse_release }}
         env:
           RELEASE_VERSION: ${{ needs.source.outputs.version }}
         run: |
           set -euo pipefail
           bash tools/release/build-linux.sh "$RELEASE_VERSION" 2>&1 | tail -40
+      - name: Download and verify existing release assets
+        if: ${{ inputs.reuse_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.source.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.source.outputs.commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p output/release
+          gh release download "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern linux-release.json --pattern web-fishing-game-linux-amd64.tar.gz \
+            --dir output/release
+          export MIGRATIONS_SHA256="$(node tools/release/migration-hash.js)"
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const root = 'output/release/';
+          const manifest = JSON.parse(fs.readFileSync(root + 'linux-release.json', 'utf8'));
+          const expected = {
+            version: process.env.RELEASE_VERSION,
+            sourceCommit: process.env.SOURCE_COMMIT,
+            migrationsSha256: process.env.MIGRATIONS_SHA256,
+            asset: 'web-fishing-game-linux-amd64.tar.gz',
+          };
+          if (Object.entries(expected).some(([key, value]) => manifest[key] !== value)
+              || !/^[0-9a-f]{64}$/.test(manifest.sha256)) {
+            throw new Error('Published manifest differs from the selected release source');
+          }
+          const digest = crypto.createHash('sha256').update(fs.readFileSync(root + manifest.asset)).digest('hex');
+          if (digest !== manifest.sha256) throw new Error('Published package checksum mismatch');
+          console.log(`Reusing verified ${manifest.version} package from ${manifest.sourceCommit}`);
+          NODE
       - name: Export tested package identity
         id: manifest
         run: |
           go -C server-go run ./cmd/repo-tool manifest-outputs output/release/linux-release.json
       - name: Publish through the repository release entry point
+        if: ${{ !inputs.reuse_release }}
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -98,8 +145,9 @@ jobs:
 
   deploy:
     needs: [source, publish]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.publish.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 40
     environment: linux-go
     concurrency:
       group: linux-go-deploy
@@ -110,6 +158,11 @@ jobs:
       ASSET_SHA256: ${{ needs.publish.outputs.asset-sha256 }}
       MIGRATIONS_SHA256: ${{ needs.publish.outputs.migrations-sha256 }}
     steps:
+      # The transfer tool comes from the workflow revision itself, so a retry of
+      # an older tag still runs the current uploader.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
       - name: Download and verify the published package
         env:
           GH_TOKEN: ${{ github.token }}
@@ -157,19 +210,75 @@ jobs:
           chmod 600 "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts"
           printf 'DEPLOY_SSH_HOST=%s\nDEPLOY_SSH_USER=%s\nDEPLOY_SSH_PORT=%s\nDEPLOY_ROOT=%s\n' \
             "$SSH_HOST" "$SSH_USER" "$port" "$DEPLOY_PATH" >> "$GITHUB_ENV"
+      - name: Tune the sender for the long-haul transfer path
+        run: bash tools/release/tune-lossy-path.sh
       - name: Transfer package and run the installed Linux deployer
         env:
           GH_TOKEN: ${{ github.token }}
+          DEPLOY_TRANSFER_STREAMS: ${{ vars.DEPLOY_TRANSFER_STREAMS }}
         run: |
           set -euo pipefail
+          # Short helper calls below share one multiplexed connection: repeated
+          # handshakes and per-connection stalls used to dominate this step.
+          # The package itself does not travel over that connection. This host
+          # sits behind a ~245 ms, ~13% loss international path where a single
+          # TCP flow collapses to roughly 25 KB/s, which is why one sequential
+          # stream needed about three minutes per 4 MiB and exhausted its
+          # budget on every release. The step above tunes the runner side of the
+          # path, and tools/release/push-linux-package.sh spreads the archive
+          # over several parallel flows, verifies every chunk and resumes from
+          # the chunks that already match. Transfers still avoid the SFTP
+          # subsystem: scp starts it before the first byte, so a stalled
+          # sftp-server holds the step until the wall-clock timeout kills it.
           options=(-i "$RUNNER_TEMP/release-ssh/key" -o BatchMode=yes -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/release-ssh/known_hosts" -o ConnectTimeout=15)
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/release-ssh/known_hosts" \
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+            -o ControlMaster=auto -o "ControlPath=$RUNNER_TEMP/release-ssh/control" -o ControlPersist=120)
           destination="$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST"
           incoming="$DEPLOY_ROOT/incoming/$SOURCE_COMMIT"
-          ssh "${options[@]}" -p "$DEPLOY_SSH_PORT" "$destination" "mkdir -p -- '$incoming'"
-          scp "${options[@]}" -P "$DEPLOY_SSH_PORT" \
-            "$RUNNER_TEMP/release/linux-release.json" "$RUNNER_TEMP/release/web-fishing-game-linux-amd64.tar.gz" \
-            "$destination:$incoming/"
+          remote_package="$incoming/web-fishing-game-linux-amd64.tar.gz"
+          step_started=$(date -u +%s)
+          phase_started=$step_started
+          mark() {
+            local now
+            now=$(date -u +%s)
+            printf '%s [step %ss, phase %ss]\n' "$1" "$((now - step_started))" "$((now - phase_started))"
+            phase_started=$now
+          }
+          remote() {
+            # Bound every short remote helper: a stalled session channel must not
+            # hold the deployment job for its whole wall-clock budget.
+            timeout 120 ssh "${options[@]}" -p "$DEPLOY_SSH_PORT" "$destination" "$1"
+          }
+          archive_verified() {
+            remote "test -f '$1' && printf '%s  %s\n' '$ASSET_SHA256' '$1' | sha256sum --check --status"
+          }
+          remote "mkdir -p -- '$incoming'"
+          mark 'Prepared the incoming directory.'
+          # An operator can stage the published package through another connection.
+          # Treat it as untrusted: require the exact verified hash before reuse.
+          staged="/var/tmp/fishing-release-$ASSET_SHA256/web-fishing-game-linux-amd64.tar.gz"
+          if remote "test -f '$staged' && cp -- '$staged' '$remote_package'" && archive_verified "$remote_package"; then
+            mark 'Reused the staged package after SHA-256 verification.'
+          else
+            # The transfer script owns its own connections: every worker holds a
+            # separate TCP flow, which is what the failing single-stream loop
+            # could not do. It reuses a target that already matches ASSET_SHA256,
+            # so a rerun after a partial upload only sends the missing chunks.
+            bash tools/release/push-linux-package.sh \
+              --host "$DEPLOY_SSH_HOST" --port "$DEPLOY_SSH_PORT" --user "$DEPLOY_SSH_USER" \
+              --key "$RUNNER_TEMP/release-ssh/key" --known-hosts "$RUNNER_TEMP/release-ssh/known_hosts" \
+              --control-path "$RUNNER_TEMP/release-ssh/control" \
+              --local "$RUNNER_TEMP/release/web-fishing-game-linux-amd64.tar.gz" \
+              --remote "$remote_package" --sha256 "$ASSET_SHA256" \
+              --streams "${DEPLOY_TRANSFER_STREAMS:-8}" --deadline 1200 \
+              || { echo 'Package upload failed; stage the package and rerun the deployment job.'; exit 1; }
+            archive_verified "$remote_package" || { echo 'Uploaded package SHA-256 mismatch; stage the package and rerun the deployment job.'; exit 1; }
+            mark 'Uploaded the release package.'
+          fi
+          timeout 120 ssh "${options[@]}" -p "$DEPLOY_SSH_PORT" "$destination" \
+            "cat > '$incoming/linux-release.json'" < "$RUNNER_TEMP/release/linux-release.json"
+          mark 'Uploaded the release manifest.'
           read -r kind current_commit <<< "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_VERSION" --jq '.object | [.type, .sha] | @tsv')"
           for attempt in {1..8}; do
             [[ "$kind" == commit ]] && break
@@ -177,8 +286,15 @@ jobs:
             read -r kind current_commit <<< "$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$current_commit" --jq '.object | [.type, .sha] | @tsv')"
           done
           [[ "$kind" == commit && "$current_commit" == "$SOURCE_COMMIT" ]] || { echo 'Release tag moved after build; refusing deployment'; exit 1; }
+          mark 'Verified the release tag for the deployer.'
+          echo 'Starting the installed deployer and health checks.'
           ssh "${options[@]}" -p "$DEPLOY_SSH_PORT" "$destination" \
-            "sudo -n /usr/local/sbin/fishing-release-deploy '$incoming/linux-release.json'" 2>&1 | tail -40
+            "sudo -n /usr/local/sbin/fishing-release-deploy '$incoming/linux-release.json'"
+          mark 'Deployer finished; services and probes verified.'
       - name: Remove temporary SSH identity
         if: always()
-        run: rm -f -- "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts"
+        run: |
+          set -euo pipefail
+          control="$RUNNER_TEMP/release-ssh/control"
+          timeout 15 ssh -o "ControlPath=$control" -O exit "${DEPLOY_SSH_USER:-fishing-deploy}@${DEPLOY_SSH_HOST:-localhost}" >/dev/null 2>&1 || true
+          rm -f -- "$RUNNER_TEMP/release-ssh/key" "$RUNNER_TEMP/release-ssh/known_hosts" "$control"

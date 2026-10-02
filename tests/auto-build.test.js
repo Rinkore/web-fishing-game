@@ -1,0 +1,38 @@
+'use strict';
+const assert = require('node:assert/strict');
+const D = require('../frontend/js/data');
+
+const lineBase = D.COMPONENT_BASES.find(b => b.part === 'line' && /^gear_/.test(b.id));
+const low = D.gearSignature(lineBase.id, 4, 'speed', 'none', 0);
+const high = D.gearSignature(lineBase.id, 12, 'speed', 'main', 0);
+const rod = D.instanceId('set_harvest_rod', 'common', [{ type: 'double', value: 3 }]);
+const charm = D.instanceId('set_harvest_charm', 'common', [{ type: 'skill', value: 2 }]);
+const state = { bd: { rod: { compId: rod }, line: { compId: low } }, inventory: { [charm]: 1, [high]: 1 } };
+const options = D.autoBuildOptions(state, { set: 'harvest', fixed: { line: low } });
+assert.equal(options.error, '');
+assert.deepEqual(options.sets.map(s => s.id), ['harvest']);
+assert.deepEqual(options.candidates.rod, [rod]);
+assert.deepEqual(options.candidates.charm, [charm]);
+assert.deepEqual(options.candidates.line, [low]);
+assert.deepEqual(D.autoBuildOptions(state, { fixed: { line: null } }).candidates.line, []);
+assert.ok(D.autoBuildOptions(state, { fixed: { hook: high } }).error);
+assert.ok(D.autoBuildOptions({ bd: state.bd, inventory: {} }, { set: 'harvest' }).error);
+
+const cfg = { parts: ['line'], candidates: { line: [low, high] }, order: ['skill'] };
+const plan = D.autoBuildPlan(cfg);
+assert.equal(plan.picks.line, high);
+assert.equal(plan.vec.skill, Math.round(D.GEAR_SYSTEM.parts.line.mainValues[12] * 1.05 * 100) / 100);
+assert.equal(plan.vec.speed, D.GEAR_SYSTEM.parts.line.subValues[12]);
+assert.equal(D.autoBuildRange(cfg, 'skill').min, D.GEAR_SYSTEM.parts.line.mainValues[4]);
+const capped = D.autoBuildPlan(Object.assign({}, cfg, { max: { skill: 10 } }));
+assert.equal(capped.picks.line, low);
+assert.equal(capped.relaxed, null);
+const fixed = D.autoBuildPlan({ candidates: options.candidates });
+assert.equal(fixed.picks.rod, rod);
+assert.equal(fixed.picks.charm, charm);
+assert.equal(fixed.picks.line, low);
+assert.equal(fixed.error, '');
+const otherCharm = D.instanceId('set_forge_charm', 'common', [{ type: 'skill', value: 2 }]);
+const invalid = D.autoBuildPlan({ parts: ['rod', 'charm'], candidates: { rod: [rod], charm: [otherCharm] } });
+assert.ok(invalid.error);
+console.log('PASS auto-build: owned sets, fixed parts, growth stats, range bounds and incompatible cores');

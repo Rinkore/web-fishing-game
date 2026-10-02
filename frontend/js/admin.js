@@ -98,6 +98,11 @@ window.Admin = (function () {
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   let toastTimer = null;
+  // 未保存改动标记：编辑类控件一旦 input/change 就置位，成功保存（非 GET 请求成功）或切换页面时清零。
+  // 用于切换页面与关闭/刷新前的提醒，避免几十个输入框里刚改的东西被无声丢掉。
+  let adminDirty = false;
+  function markDirty() { adminDirty = true; }
+  function clearDirty() { adminDirty = false; }
   function toast(msg, err) {
     const t = $('toast');
     t.textContent = msg; t.classList.toggle('err', !!err); t.classList.add('show');
@@ -109,6 +114,12 @@ window.Admin = (function () {
   function setHint(id, html) {
     const el = $(id);
     if (el) el.innerHTML = html;
+    return !!el;
+  }
+  // 纯文本提示走这里：服务端返回的错误文本一律当文本写，绝不拼进 innerHTML
+  function setHintText(id, text) {
+    const el = $(id);
+    if (el) el.textContent = text == null ? '' : String(text);
     return !!el;
   }
   function fmtTime(ts) { return ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '—'; }
@@ -166,7 +177,7 @@ window.Admin = (function () {
   // 导航 / 视图切换
   // ================================
   // v0.23.0：侧栏按业务分组 + 搜索。只改变「怎么找页面」，页面 id、渲染函数、
-  // 组内顺序和点击行为都与以前一致（21 项一个不少）。
+  // 组内顺序和点击行为都与以前一致。
   const NAV_GROUPS = [
     { id: 'overview', name: '总览' },
     { id: 'player', name: '玩家与社区' },
@@ -185,6 +196,7 @@ window.Admin = (function () {
     { id: 'feedback', group: 'player', name: '📮 反馈', desc: '玩家提交的 Bug / 建议 / 平衡反馈；可改状态、发放奖励，反馈规则折叠在顶部。' },
     { id: 'grounds', group: 'play', name: '🎣 钓点管理', desc: '钓点增删、地图坐标、掉落池权重与钓点增益；保存后新的抛竿立即按新配置结算。' },
     { id: 'gear', group: 'play', name: '🧩 装备与套装', desc: '装备成长、套装与远航专精的权威配置；保存即发布，已出发的远航保留出发快照。' },
+    { id: 'house', group: 'play', name: '🏠 渔屋配置', desc: '渔屋等级、晒场速率与容量、宠物与角色加成、好友偷取规则；保存后玩家端立即生效。' },
     { id: 'fishsize', group: 'play', name: '🐟 鱼类体型', desc: '各鱼种的体型区间与权重；保存后新渔获按新区间判定。' },
     { id: 'economy', group: 'play', name: '💰 经济参数', desc: '金币、经验、产出与容量等经济参数；保存后新的结算立即生效。' },
     { id: 'chest', group: 'play', name: '🎁 宝匣配置', desc: '宝匣档位、成本、产出池与保底期望；覆盖表留空表示沿用目录里的出厂值。' },
@@ -254,7 +266,15 @@ window.Admin = (function () {
         b.title = n.desc || n.name;
         b.setAttribute('data-view', n.id);
         if (n.id === view) b.setAttribute('aria-current', 'page');
-        b.onclick = function () { closeNavDrawer(); switchView(n.id); };
+        b.onclick = function () {
+          if (n.id === view) return;
+          // 有未保存的修改时先确认，避免在几十个输入框之间切换时无声丢掉改动
+          if (adminDirty) {
+            confirmModalLocal('当前页面有未保存的修改，离开后这些修改会丢失。确定要切换吗？').then(function (ok) { if (ok) { closeNavDrawer(); switchView(n.id); } });
+            return;
+          }
+          closeNavDrawer(); switchView(n.id);
+        };
         box.appendChild(b);
       });
       nav.appendChild(box);
@@ -778,8 +798,8 @@ window.Admin = (function () {
       if ($('feat-open-all')) $('feat-open-all').addEventListener('click', function () { setAll(true); });
       if ($('feat-close-all')) {
         $('feat-close-all').addEventListener('click', function () {
-          confirmModalLocal('确定把「所有页面与单项操作」都设为关闭吗？保存后所有玩家将无法钓鱼、交易与买卖。' +
-            '（已开启管理员穿透时，管理员本人仍可操作。）').then(function (ok) { if (ok) setAll(false); });
+          confirmDangerous({ title: '关闭全部功能', confirmWord: '关闭', okText: '全部关闭',
+            text: '确定把「所有页面与单项操作」都设为关闭吗？保存后所有玩家将无法钓鱼、交易与买卖。（已开启管理员穿透时，管理员本人仍可操作。）' }).then(function (ok) { if (ok) setAll(false); });
         });
       }
       sync();
@@ -811,7 +831,7 @@ window.Admin = (function () {
       adminApi('GET', '/api/admin/parties?token=' + encodeURIComponent(token)).then(function (r) {
         const body = $('party-body');
         if (!body || view !== 'party') return;
-        if (!r.ok || !r.data || !r.data.ok) { body.innerHTML = '<div class="hint">' + ((r.data && r.data.error) || '加载失败') + '</div>'; return; }
+        if (!r.ok || !r.data || !r.data.ok) { body.innerHTML = '<div class="hint"></div>'; body.firstChild.textContent = (r.data && r.data.error) || '加载失败'; return; }
         const list = r.data.parties || [];
         if (!list.length) { body.innerHTML = '<div class="hint">当前没有编队。玩家在「社交 · 编队」创建队伍后这里会出现。</div>'; return; }
         body.innerHTML = '<table class="tbl"><thead><tr><th>队长</th><th>成员</th><th>人数</th><th>操作</th></tr></thead><tbody>' +
@@ -845,15 +865,31 @@ window.Admin = (function () {
       drawSeaCfg(cfg);
     });
   }
+  // 本页原先会把越界输入静默夹到范围内、把空值静默换成默认值，运营以为存进去的是自己填的值。
+  // 每次保存前清空，保存后把被改动的字段报出来。
+  let seaClampLog = [];
+  function seaClampNote(id, raw, value) {
+    const el = $(id);
+    if (!el) return;
+    const lab = el.closest('label');
+    const name = String((lab ? lab.textContent : el.getAttribute('aria-label')) || id).replace(/\s+/g, ' ').trim().slice(0, 24);
+    seaClampLog.push(name + '：' + (isFinite(raw) ? raw : '空') + ' → ' + value);
+  }
   function seaNum(id, min, max, dflt) {
-    let v = Math.floor(Number(($(id) || {}).value));
+    const raw = Number(($(id) || {}).value);
+    let v = Math.floor(raw);
     if (!isFinite(v)) v = dflt;
-    return Math.min(max, Math.max(min, v));
+    const out = Math.min(max, Math.max(min, v));
+    if (out !== raw) seaClampNote(id, raw, out);
+    return out;
   }
   function seaFloat(id, min, max, dflt) { // v0.21.0：漩涡/沉船概率支持 0.5 步进
-    let v = Number(($(id) || {}).value);
+    const raw = Number(($(id) || {}).value);
+    let v = raw;
     if (!isFinite(v)) v = dflt;
-    return Math.min(max, Math.max(min, v));
+    const out = Math.min(max, Math.max(min, v));
+    if (out !== raw) seaClampNote(id, raw, out);
+    return out;
   }
   function drawSeaCfg(cfg) {
     const body = $('sea-body');
@@ -1025,6 +1061,7 @@ window.Admin = (function () {
     function seaName(id) { const el = $(id); return el && el.value.trim() ? el.value.trim() : null; }
     function saveSeaCfg(reset) {
       if (!reset) syncQuestDraft();   // 悬赏那一块的输入框值先收回草稿再提交
+      seaClampLog = [];
       const payload = reset ? {} : {
         ship: {
           names: [0, 1, 2, 3, 4].map(function (i) { return seaName('sea-name-' + i); }),
@@ -1077,8 +1114,15 @@ window.Admin = (function () {
       adminApi('POST', '/api/admin/settings', { token: token, seaCfg: payload }).then(function (r) {
         if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
         worldCfg = null;
-        setHint('sea-state', '<span style="color:var(--ok)">已保存，立即生效（玩家端 ≤8 秒同步）</span>');
-        toast('⛵ 远洋配置已保存');
+        if (seaClampLog.length) {
+          const shown = seaClampLog.slice(0, 6).join('；');
+          const more = seaClampLog.length > 6 ? '；另有 ' + (seaClampLog.length - 6) + ' 项' : '';
+          setHint('sea-state', '<span style="color:var(--warn)">已保存，但有 ' + seaClampLog.length + ' 个字段被自动修正：' + esc(shown + more) + '</span>');
+          toast('⛵ 已保存，' + seaClampLog.length + ' 个字段被自动修正', true);
+        } else {
+          setHint('sea-state', '<span style="color:var(--ok)">已保存，立即生效（玩家端 ≤8 秒同步）</span>');
+          toast('⛵ 远洋配置已保存');
+        }
       });
     }
   }
@@ -1093,6 +1137,7 @@ window.Admin = (function () {
       return;
     }
     view = v;
+    clearDirty(); // 进入新页面 = 上一页的编辑态已结束（未保存的会在 renderNav 的点击处先确认）
     stopOverviewTimer();
     stopBannerTimer();
     renderNav();
@@ -1111,13 +1156,13 @@ window.Admin = (function () {
     if (v === 'grounds') return renderGrounds();
     if (v === 'market') return renderMarket();
     if (v === 'gear'||v === 'component'||v === 'workshop') return window.AdminGear.render($('main'),adminApi,confirmModalLocal);
+    if (v === 'house') return window.AdminHouse.render($('main'),adminApi,confirmModalLocal);
     if (v === 'fishsize') return renderFishSize();
     if (v === 'economy') return renderEconomy();
     if (v === 'chest') return renderChest();
     if (v === 'sea') return renderSeaCfg();
-    if(v==='expedition'||v==='mail')return window.AdminOperations[v]($('main'),adminApi,confirmModalLocal);
+    if(v==='expedition'||v==='mail')return window.AdminOperations[v]($('main'),adminApi,confirmModalLocal,switchView);
     if (v === 'party') return renderPartyMgr();
-    if (v === 'workshop') return renderWorkshop();
     if (v === 'mall') return renderMall();
     if (v === 'records') return renderRecords();
     if (v === 'formula') return renderFormula();
@@ -1758,7 +1803,7 @@ window.Admin = (function () {
   function renderAccountMgr() {
     const main = $('main');
     main.innerHTML = '<h2>👥 账号管理</h2>' +
-      '<div class="hint" style="margin-bottom:12px">可改密码 / 显示名 / 金币，开关「管理员」授权（开启后该账号即可打开 admin.html，<b>不能撤销自己的权限</b>），查看并编辑玩家快照（金币与背包），或删除账号（需二次确认）。修改密码会使其所有登录会话失效。点击表头可排序。</div>' +
+      '<div class="hint" style="margin-bottom:12px">可改密码 / 显示名 / 金币，开关「管理员」授权（开启后该账号即可打开 admin.html，<b>不能撤销自己的权限</b>），为管理员生成 / 轮换<b>验证器密钥</b>（需二次确认，旧验证器立即失效），查看并编辑玩家快照（金币与背包），或删除账号（需二次确认）。修改密码会使其所有登录会话失效。点击表头可排序。</div>' +
       '<div class="mgr-row" style="margin-bottom:10px">' +
       '<label>🔍 搜索</label>' +
       '<span style="position:relative;display:inline-block;vertical-align:middle">' +
@@ -1903,6 +1948,11 @@ window.Admin = (function () {
     const pageRows = rows.slice(from, from + size);
     const body = pageRows.map(function (u) {
       const self = u.key === meKey;
+      // 只有已授权且未封禁的管理员能生成验证器密钥（后端同样拒绝其余目标），
+      // 按钮只在有意义的行上出现，避免点了才被拒。
+      const totpBtn = (u.admin && !u.banned)
+        ? '<button class="btn mini" data-totp="' + esc(u.key) + '" title="为该管理员生成 / 轮换 TOTP 验证器密钥；旧验证器立即失效">验证器</button>'
+        : '';
       return '<tr>' +
         '<td><b>' + esc(u.name) + '</b> <span class="hint">' + esc(u.username) + (self ? '（你）' : '') + '</span>' +
         (u.qq ? '<div class="hint">QQ：' + esc(u.qq) + '</div>' : '') + '</td>' +
@@ -1922,6 +1972,7 @@ window.Admin = (function () {
         '<button class="btn mini" data-edit="' + esc(u.key) + '">编辑</button>' +
         '<button class="btn mini" data-snap="' + esc(u.key) + '">快照</button>' +
         '<button class="btn mini" data-snaps="' + esc(u.key) + '" title="查看这个账号的历史存档，可回档到任意一份">存档/回档</button>' +
+        totpBtn +
         (u.banned
           ? '<button class="btn mini" data-unban="' + esc(u.key) + '"' + (self ? ' disabled title="不能操作自己"' : '') + '>解封</button>'
           : '<button class="btn mini danger" data-ban="' + esc(u.key) + '"' + (self ? ' disabled title="不能封禁自己"' : '') + '>封禁</button>') +
@@ -2022,6 +2073,25 @@ window.Admin = (function () {
           if (row) row.admin = want;
           toast(want ? '已授予管理员权限' : '已收回管理员权限');
           if (want) loadWorldCfg(); // 目录可能变化，预取
+          drawMgrList();            // 授权状态决定「验证器」按钮是否出现
+        });
+      };
+    });
+    // 生成 / 轮换管理员验证器密钥（原来只能由运维在服务端跑 cmd/admin provision）
+    $('mgr-list').querySelectorAll('[data-totp]').forEach(function (b) {
+      b.onclick = function () {
+        const key = b.getAttribute('data-totp');
+        confirmDangerous({ title: '轮换验证器密钥', confirmWord: key, okText: '生成密钥',
+          text: '为「' + key + '」生成 / 轮换验证器（TOTP）密钥？旧验证器会立即失效，该账号已登录的后台会话会被注销' +
+            (key === meKey ? '（你正在使用的这个会话会保留）' : '') +
+            '。第一步只是生成密钥，你必须在验证器里输入一次新验证码后才会真正生效；中途关闭不会有任何改动。' }).then(function (ok) {
+          if (!ok) return;
+          b.disabled = true;
+          adminApi('POST', '/api/admin/users/totp', { token: token, target: key, confirm: true, stage: 'begin' }).then(function (r) {
+            b.disabled = false;
+            if (!r.ok) { toast((r.data && r.data.error) || '生成失败', true); return; }
+            showTotpSecret(r.data);
+          });
         });
       };
     });
@@ -2658,22 +2728,84 @@ window.Admin = (function () {
   }
   // 删除账号（二次确认）
   function confirmDeleteUser(key) {
+    // 不可恢复的删除：要求管理员手动输入账号名后才能点确认（默认焦点在取消）
+    confirmDangerous({ title: '删除账号', confirmWord: key, okText: '确认删除',
+      text: '确定删除账号 ' + key + '？此操作不可恢复：账号、背包、图鉴将被移除，该账号挂单也会一并清空。' }).then(function (ok) {
+      if (!ok) return;
+      adminApi('POST', '/api/admin/users/delete', { token: token, target: key, confirm: true }).then(function (r) {
+        if (!r.ok) { toast(r.data.error || '删除失败', true); return; }
+        toast('已删除账号 ' + key); loadMgrList();
+      });
+    });
+  }
+  // 验证器密钥弹窗：服务端只在这一次 200 里返回 Base32 与 otpauth 链接，
+  // 关闭后无法再查（账号列表与审计都不含密钥），所以这里把它放在只读输入框里让管理员抄写。
+  function showTotpSecret(data) {
     document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
     const ov = document.createElement('div');
     ov.className = 'modal-overlay';
-    ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">删除账号</span></div>' +
-      '<div class="modal-body"><div class="cf-text">确定删除账号 <b>' + esc(key) + '</b>？<br>此操作不可恢复：账号、背包、图鉴将被移除，该账号挂单也会一并清空。</div>' +
-      '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn danger" id="del-ok">确认删除</button></div></div></div>';
+    ov.innerHTML = '<div class="modal-box confirm-modal totp-modal" role="dialog" aria-modal="true" aria-label="验证器密钥 · ' + esc(data.target) + '">' +
+      '<div class="modal-head"><span class="modal-title">验证器密钥 · ' + esc(data.target) + '</span></div>' +
+      '<div class="modal-body"><div class="cf-text">用验证器 App 扫描下面的二维码，或手动输入密钥。' +
+      '<b>这一步还没有生效：</b>请把下面 6 位验证码填进来并点「确认启用」，密钥才会写入。中途关闭不会做任何改动。</div>' +
+      '<div class="cf-row"><div id="totp-qr" class="totp-qr" aria-label="验证器二维码"></div></div>' +
+      '<div class="cf-row"><label class="hint">密钥（Base32）</label>' +
+      '<input class="ipt" id="totp-secret" readonly value="' + esc(data.secret) + '" /></div>' +
+      '<div class="cf-row"><label class="hint">otpauth 链接（SHA-1 / 6 位 / 30 秒）</label>' +
+      '<input class="ipt" id="totp-url" readonly value="' + esc(data.otpauthUrl) + '" /></div>' +
+      '<div class="cf-row"><label class="hint" for="totp-code">验证器里的 6 位验证码</label>' +
+      '<input class="ipt" id="totp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 位数字" /></div>' +
+      '<div class="cf-hint" id="totp-tip">输入新验证器的验证码后，旧验证器立即失效。</div>' +
+      '<div class="cf-actions"><button class="btn mini" id="totp-copy">复制密钥</button>' +
+      '<button class="btn mini cf-x">关闭（不启用）</button>' +
+      '<button class="btn mini primary" id="totp-apply" disabled>确认启用</button></div></div></div>';
     document.body.appendChild(ov);
-    ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
-    ov.querySelector('.cf-no').onclick = function () { ov.remove(); };
-    ov.querySelector('#del-ok').onclick = function () {
-      const btn = ov.querySelector('#del-ok'); btn.disabled = true; btn.textContent = '删除中…';
-      adminApi('POST', '/api/admin/users/delete', { token: token, target: key, confirm: true }).then(function (r) {
-        if (!r.ok) { toast(r.data.error || '删除失败', true); ov.remove(); return; }
-        toast('已删除账号 ' + key); ov.remove(); loadMgrList();
+    const secretBox = ov.querySelector('#totp-secret'), tip = ov.querySelector('#totp-tip');
+    const codeBox = ov.querySelector('#totp-code'), applyBtn = ov.querySelector('#totp-apply');
+    // 本地渲染二维码：不依赖任何外部图片服务（后台可能部署在内网 / 离线环境）。
+    try {
+      if (typeof qrcode === 'function') {
+        const qr = qrcode(0, 'M'); qr.addData(data.otpauthUrl); qr.make();
+        ov.querySelector('#totp-qr').innerHTML = qr.createSvgTag(4, 8);
+      } else {
+        ov.querySelector('#totp-qr').textContent = '（二维码生成库未加载，请改用下面的密钥或链接手动添加）';
+      }
+    } catch (e) {
+      ov.querySelector('#totp-qr').textContent = '（二维码生成失败，请改用下面的密钥或链接手动添加）';
+    }
+    function copyFallback() {
+      try { secretBox.focus(); secretBox.select(); document.execCommand('copy'); tip.textContent = '密钥已复制到剪贴板。'; }
+      catch (e) { tip.textContent = '浏览器不允许自动复制，请手动选中上面的密钥复制。'; }
+    }
+    // 注意：这里刻意不做「点背景关闭」。这是密钥唯一一次显示的机会，误点一下就会把它丢掉。
+    ov.querySelector('.cf-x').onclick = function () { ov.remove(); };
+    ov.querySelector('#totp-copy').onclick = function () {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(secretBox.value).then(function () { tip.textContent = '密钥已复制到剪贴板。'; }, copyFallback);
+      } else copyFallback();
+    };
+    codeBox.addEventListener('input', function () { applyBtn.disabled = !/^\d{6}$/.test(codeBox.value.trim()); });
+    codeBox.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !applyBtn.disabled) applyBtn.click(); });
+    applyBtn.onclick = function () {
+      const otp = codeBox.value.trim();
+      if (!/^\d{6}$/.test(otp)) { tip.textContent = '请输入 6 位数字验证码。'; return; }
+      applyBtn.disabled = true; applyBtn.textContent = '校验中…';
+      adminApi('POST', '/api/admin/users/totp', { token: token, target: data.target, confirm: true, stage: 'finish', otp: otp }).then(function (r) {
+        if (!r.ok) {
+          applyBtn.disabled = false; applyBtn.textContent = '确认启用';
+          tip.textContent = (r.data && r.data.error) || '校验失败，请核对验证器时间后重试。';
+          return;
+        }
+        ov.remove();
+        toast('已启用新的验证器密钥');
+        loadMgrList();
       });
     };
+    document.addEventListener('keydown', function onKey(e) {
+      if (!ov.isConnected) { document.removeEventListener('keydown', onKey, true); return; }
+      if (e.key === 'Escape') { e.preventDefault(); ov.remove(); }
+    }, true);
+    codeBox.focus();
   }
 
   // ================================
@@ -2703,27 +2835,43 @@ window.Admin = (function () {
   // ================================
   // 服务端仍以「钓场」为内部容器：全部钓点挂在唯一隐式钓场 'map' 下（出海临时海域 sea:* 不在这里管理）。
   const MAP_GID = 'map';
-  // v0.21.2：近岸图 / 远洋图分开管理（与玩家端「🎣 钓鱼」页的两个地图页签同口径）。
-  // 以前两张图的钓点混在同一张近岸底图上拖动，远洋点的坐标看着毫无意义。
-  let spotMapTab = 'nearshore';
-  const mapTabOf = function (sp) { return sp && sp.map === 'voyage' ? 'voyage' : 'nearshore'; };
+  // 世界地图已统一为单一钓区。历史数据仍保留 map 字段，用于坐标投影和玩家端兼容。
+  // 与玩家端同一套兜底坐标：服务器配置里没存过 pos 的钓点，用 data.js 的出厂坐标；
+  // 两者都没有时按玩家端同款环形排布（索引取自钓点在地图下的顺序）。
+  function spotFactoryPos(sid) {
+    const gs = (window.GameData && window.GameData.GROUNDS) || [];
+    const g = gs.find(function (x) { return x.id === MAP_GID; }) || gs[0];
+    const spots = (g && g.spots) || [];
+    const idx = spots.findIndex(function (s) { return s.id === sid; });
+    if (idx < 0) return null;
+    const sp = spots[idx];
+    if (Array.isArray(sp.pos) && sp.pos.length === 2) return sp.pos;
+    const ang = (-90 + idx * 60) * Math.PI / 180;
+    return [50 + 9 * Math.cos(ang), 50 + 9 * Math.sin(ang)];
+  }
   function renderGrounds() {
     const main = $('main');
     main.innerHTML = '<h2>🎣 钓点管理</h2>' +
       '<div class="hint" style="margin-bottom:12px">钓点直接铺在世界地图上：列表选中钓点后编辑上鱼率/速率、掉落池（权重实时换算百分比）与增益，或在地图上拖动定位。保存后全服即时生效，正在钓鱼的玩家下一竿即按新配置掷骰。</div>' +
-      '<div id="gd-body">加载中…</div>';
+      '<div id="gd-body">加载中…</div>' +
+      '<div id="gd-import"></div>';
     loadWorldCfg(true).then(function (cfg) {
-      if (cfg && view === 'grounds') drawGrounds(cfg);
+      if (cfg && view === 'grounds') { drawGrounds(cfg); mountPoolImport(cfg); }
     });
+  }
+  // 鱼池文档一键导入：换地图时不用手点几十次；导出/导入用同一份文档格式
+  function mountPoolImport(cfg) {
+    const host = $('gd-import');
+    if (!host || !window.AdminPoolImport) return;
+    const fresh = function () { return loadWorldCfg(true); };
+    window.AdminPoolImport.render(host, cfg, adminApi, confirmModalLocal, function () {
+      return fresh().then(function (next) { if (next && view === 'grounds') drawGrounds(next); });
+    }, fresh);
   }
   function drawGrounds(cfg) {
     const g = cfg.grounds.find(function (x) { return x.id === MAP_GID; }) || cfg.grounds[0];
     if (!g) return;
-    // 当前页签（近岸/远洋）下的钓点；切换页签时选中项也跟着换到该图的第一个点
-    const mapSpots = function (tab) {
-      return (g.spots || []).filter(function (s) { return mapTabOf(s) === tab; });
-    };
-    const curSpots = mapSpots(spotMapTab);
+    const curSpots = g.spots || [];
     if (!selSpot || !curSpots.some(function (s) { return s.id === selSpot; })) selSpot = curSpots.length ? curSpots[0].id : null;
     const body = $('gd-body');
     // 拉数据期间页面可能已被切走或重绘（例如快速来回切页签）：容器不在就什么都不做
@@ -2745,26 +2893,23 @@ window.Admin = (function () {
       '</div>' +
       // —— 钓点列表 + 新建 ——
       '<div class="panel">' +
-      '<h3 style="margin-top:0">🎣 钓点列表（近岸 ' + mapSpots('nearshore').length + ' / 远洋 ' + mapSpots('voyage').length + '）</h3>' +
-      '<div class="gd-tabs">' +
-      [['nearshore', '🏞 近岸图'], ['voyage', '⛵ 远洋图']].map(function (kv) {
-        return '<button class="btn mini gd-tab' + (spotMapTab === kv[0] ? ' on' : '') + '" data-mtab="' + kv[0] + '">' + kv[1] +
-          '<span class="hint">（' + mapSpots(kv[0]).length + '）</span></button>';
-      }).join('') +
-      '<span class="hint">两张图分别定位：下面的地图与列表只显示当前这张图的钓点</span></div>' +
+      '<h3 style="margin-top:0">🎣 钓点列表（共 ' + curSpots.length + ' 个）</h3>' +
+      '<div class="gd-tabs"><span class="hint">所有钓点均属于统一世界地图，地图与列表保持同步</span></div>' +
       '<div class="spot-rows">' + (curSpots.length ? curSpots.map(function (s) {
-        const pos = Array.isArray(s.pos) ? s.pos : null;
+        const pos = Array.isArray(s.pos) ? s.pos : spotFactoryPos(s.id);
         return '<div class="spot-row' + (s.id === selSpot ? ' sel' : '') + (s.locked ? ' locked' : '') + '" data-s="' + esc(s.id) + '">' +
           '<b>' + esc(s.name) + '</b>' + (s.locked ? ' 🔒' : '') +
           (s.minShip ? ' <span class="gd-badge limited" title="船级门槛">⛵ ' + s.minShip + ' 级船</span>' : '') +
-          '<span class="gi">' + (pos ? '坐标 ' + pos[0] + ', ' + pos[1] : '未定位（在下方地图上拖一下）') +
+          '<span class="gi">' + (pos
+            ? (Array.isArray(s.pos) ? '坐标 ' : '出厂坐标 ') + pos[0] + ', ' + pos[1]
+            : '未定位（在下方地图上拖一下）') +
           ' · 池 ' + (s.pool || []).length + ' 条' +
           ((s.buffs || []).length ? ' · 增益 ' + s.buffs.length + ' 条' : '') +
           (s.biteRate != null && s.biteRate !== '' ? ' · 上鱼率 ' + s.biteRate + '%' : '') +
           (s.intervalMs != null && s.intervalMs !== '' ? ' · 间隔 ' + s.intervalMs + 'ms' : '') + '</span>' +
           '<button class="btn mini" data-lock="' + esc(s.id) + '">' + (s.locked ? '解锁' : '锁定') + '</button>' +
           '</div>';
-      }).join('') : '<div class="hint">这张图上还没有钓点，用下面的「＋ 新建钓点」添加（所属图已按当前页签预选）。</div>') + '</div>' +
+      }).join('') : '<div class="hint">此区域还没有钓点，用下面的「＋ 新建钓点」添加。</div>') + '</div>' +
       '<div class="mgr-row" style="margin-top:10px"><input id="ns-name" class="ipt gi-name" placeholder="新钓点名称" maxlength="20" />' +
       '<select id="ns-preset" class="ipt gi-type">' + presetOpts + '</select>' +
       '<label class="hint">所属图</label><select id="ns-map" class="ipt gi-type"><option value=""' + (spotMapTab === 'nearshore' ? ' selected' : '') + '>近岸图</option><option value="voyage"' + (spotMapTab === 'voyage' ? ' selected' : '') + '>远洋图</option></select>' +
@@ -2786,22 +2931,12 @@ window.Admin = (function () {
       '<span id="lg-state" class="hint"></span></div>' +
       '<div id="lg-edit"></div></div>';
 
-    // —— 钓点列表：切图 / 选中 / 锁定 / 恢复 ——
-    body.querySelectorAll('[data-mtab]').forEach(function (b) {
-      b.onclick = function () {
-        const tab = b.getAttribute('data-mtab');
-        if (tab === spotMapTab) return;
-        spotMapTab = tab;
-        selSpot = null;            // 交给 drawGrounds 在新图里重新选（选到该图第一个钓点）
-        poolDirty = buffsDirty = false; posDraft = {};
-        drawGrounds(cfg);
-      };
-    });
+    // —— 钓点列表：选中 / 锁定 / 恢复 ——
     body.querySelectorAll('.spot-row').forEach(function (row) {
       row.onclick = function (ev) {
         if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-lock')) return;
         selSpot = row.getAttribute('data-s');
-        poolDirty = buffsDirty = false; posDraft = {};
+        poolDirty = buffsDirty = false;
         drawGrounds(cfg);
       };
     });
@@ -2835,12 +2970,11 @@ window.Admin = (function () {
       adminApi('POST', '/api/admin/spot/add', {
         token: token, groundId: MAP_GID, id: autoId, name: name,
         preset: $('ns-preset').value, fill: true,
-        map: $('ns-map').value || null, minShip: Number($('ns-ship').value) || 0,
+        minShip: Number($('ns-ship').value) || 0,
       }).then(function (r) {
         if (!r.ok) { toast(r.data.error || '创建失败', true); return; }
         toast('钓点「' + name + '」已创建（掉落池已按预设填充）');
         selSpot = r.data.spot.id;
-        spotMapTab = mapTabOf(r.data.spot);   // 新点建在另一张图上时自动切过去，否则看不到它
         poolDirty = buffsDirty = false; posDraft = {};
         loadWorldCfg(true).then(function (c2) { if (view === 'grounds' && c2) drawGrounds(c2); });
       });
@@ -2864,7 +2998,7 @@ window.Admin = (function () {
     drawLootGroupManager(cfg);
     drawSpotMap(g, curSpots, g.spots);
     const sp = curSpots.find(function (x) { return x.id === selSpot; });
-    if (!sp) { $('ed-body').innerHTML = '<div class="hint">这张图上还没有钓点，可用上方「＋ 新建钓点」添加（自动填充掉落池）。</div>'; return; }
+    if (!sp) { $('ed-body').innerHTML = '<div class="hint">此区域还没有钓点，可用上方「＋ 新建钓点」添加（自动填充掉落池）。</div>'; return; }
     // 草稿：首次进入或切换钓点时从服务器数据拷贝
     if (!poolDirty && !buffsDirty) {
       poolDraft = (sp.pool || []).map(function (e) { return poolToRow(e.pick, e.weight); });
@@ -2873,28 +3007,24 @@ window.Admin = (function () {
     drawEditors(cfg, g, sp);
   }
   // ---- 钓点地图定位（拖动设置）----
-  // 玩家端「钓鱼」页的两张图各有一套坐标：近岸图 = assets/worldmap.png，远洋图 = voyage-map.js 的 CSS 像素海图
-  // （与玩家端「⛵ 远洋」页签同一份底图，坐标口径一致，后台看到的pos 就是玩家看到的pos）。
-  // 拖动节点 = 改坐标，坐标以地图宽高的百分比保存（2~98，防止拖出视野）。
+  // 与玩家端共用 CSS 世界地图及坐标投影；后台拖动逆投影后沿用现有保存接口。
   // 草稿存在 posDraft（模块级），因此上鱼广播/切页重绘都不会丢掉尚未保存的拖动结果。
   function drawSpotMap(g, spots, allSpots) {
     const host = $('gd-map');
     if (!host) return;
-    spots = spots || [];
-    host.innerHTML = '<h3>🗺 地图定位 — ' + (spotMapTab === 'voyage' ? '远洋图' : '近岸图') + ' · ' + esc(g.name) + '</h3>';
+    spots = allSpots || spots || [];
+    host.innerHTML = '<h3>🗺 世界地图定位 · ' + esc(g.name) + '</h3>';
     if (!spots.length) {
-      host.innerHTML += '<div class="hint">这张图上还没有钓点。切到「' + (spotMapTab === 'voyage' ? '🏞 近岸图' : '⛵ 远洋图') +
-        '」可编辑另一张图的钓点；新建时「所属图」记得选对。</div>';
+      host.innerHTML += '<div class="hint">世界地图还没有钓点，请先新建钓点。</div>';
       return;
     }
-    const posOf = function (sp) { return posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) || [50, 50]; };
+    const posOf = function (sp) { return posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) || spotFactoryPos(sp.id) || [50, 50]; };
     host.innerHTML +=
-      '<div class="hint" style="margin-bottom:8px">直接拖动节点调整钓点在玩家端世界地图上的位置（坐标 = 地图宽高的百分比）。' +
+      '<div class="hint" style="margin-bottom:8px">直接拖动节点调整位置；所有钓点共用这张世界地图，拖过中线会自动切换到另一侧坐标带（与玩家端投影保持一致）。' +
       '「恢复出厂」把该钓点退回 data.js 的默认坐标。改完点「保存坐标」立即对全服生效。</div>' +
-      '<div class="gd-map' + (spotMapTab === 'voyage' ? ' gd-map-voyage' : '') + '" id="gd-map-canvas">' +
-      (spotMapTab === 'voyage' ? '' : '<img class="gd-map-img" src="assets/worldmap.png" alt="" draggable="false">') +
+      '<div class="gd-map px-map-voyage" id="gd-map-canvas">' +
       spots.map(function (sp) {
-        const p = posOf(sp);
+        const p = window.VoyageMap.project(posOf(sp), sp.map === 'voyage');
         return '<button class="gd-node" data-s="' + esc(sp.id) + '" style="left:' + p[0] + '%;top:' + p[1] + '%" title="拖动调整位置">' +
           '<span class="gd-node-dot"></span><span class="gd-node-name">' + esc(sp.name) + '</span></button>';
       }).join('') +
@@ -2904,24 +3034,27 @@ window.Admin = (function () {
       '<span id="gd-map-state" class="hint" style="margin-left:10px">拖动节点后记得保存</span></div>';
 
     const canvas = $('gd-map-canvas');
-    // 远洋底图：与玩家端同一份 CSS 像素海图（节点百分比坐标口径一致），垫在所有节点下面
-    if (spotMapTab === 'voyage') {
-      const wrap = document.createElement('div');
-      wrap.className = 'px-map-voyage';
-      if (window.VoyageMap) wrap.appendChild(window.VoyageMap.create());
-      else wrap.innerHTML = '<img class="gd-map-img" src="assets/voyagemap.png" alt="" draggable="false">';
-      canvas.insertBefore(wrap, canvas.firstChild);
-    }
+    canvas.insertBefore(window.VoyageMap.create(), canvas.firstChild);
     let drag = null;
+    // 世界地图的坐标分成左右两条历史坐标带（近岸 = 左带 / 远洋 = 右带），玩家端按钓点的
+    // map 字段选带投影。拖过中线时自动切换到光标所在的一带并连带改 map，节点就能自由跨越。
+    const MIDLINE_X = 52;
+    let mapDraft = {};
     function setPos(node, sid, x, y) {
-      const nx = Math.max(2, Math.min(98, Math.round(x * 10) / 10));
-      const ny = Math.max(2, Math.min(98, Math.round(y * 10) / 10));
-      node.style.left = nx + '%';
-      node.style.top = ny + '%';
+      const sp = spots.find(function (s) { return s.id === sid; });
+      const voyage = x >= MIDLINE_X;
+      const local = window.VoyageMap.unproject([x, y], voyage);
+      const nx = Math.max(2, Math.min(98, Math.round(local[0] * 10) / 10));
+      const ny = Math.max(2, Math.min(98, Math.round(local[1] * 10) / 10));
+      const world = window.VoyageMap.project([nx, ny], voyage);
+      node.style.left = world[0] + '%';
+      node.style.top = world[1] + '%';
       posDraft[sid] = [nx, ny];
+      mapDraft[sid] = voyage ? 'voyage' : '';
     }
     canvas.querySelectorAll('.gd-node').forEach(function (node) {
       node.addEventListener('pointerdown', function (ev) {
+        if (ev.button !== 0) return;
         ev.preventDefault();
         const rect = canvas.getBoundingClientRect();
         drag = { node: node, sid: node.getAttribute('data-s'), rect: rect };
@@ -2938,6 +3071,11 @@ window.Admin = (function () {
         $('gd-map-state').innerHTML = '<span style="color:var(--warn)">未保存：' + esc(node.getAttribute('data-s')) +
           ' → ' + posDraft[node.getAttribute('data-s')].join(', ') + '</span>';
       });
+      node.addEventListener('pointercancel', function () {
+        if (!drag || drag.node !== node) return;
+        node.classList.remove('dragging');
+        drag = null;
+      });
       function onMove(ev) {
         const r = drag.rect;
         if (!r.width || !r.height) return;
@@ -2945,19 +3083,27 @@ window.Admin = (function () {
       }
     });
     $('gd-map-save').onclick = function () {
-      // 两张图的钓点一起保存：切页签之前的拖动也在这个 posDraft 里，别只存当前这张图
+      // 两个区域一起保存，切换列表分类时保留尚未提交的坐标草稿。
       const list = (allSpots || spots).map(function (sp) {
-        return { spotId: sp.id, pos: posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) };
+        const entry = { spotId: sp.id, pos: posDraft[sp.id] || (Array.isArray(sp.pos) ? sp.pos : null) };
+        if (mapDraft[sp.id] != null) entry.map = mapDraft[sp.id];
+        return entry;
       }).filter(function (e) { return e.pos; });
       adminApi('POST', '/api/admin/spot/pos', { token: token, groundId: g.id, list: list }).then(function (r) {
         if (!r.ok) { toast((r.data && r.data.error) || '保存失败', true); return; }
-        posDraft = {};
+        list.forEach(function (entry) {
+          const sp = spots.find(function (s) { return s.id === entry.spotId; });
+          if (!sp) return;
+          if (entry.pos) sp.pos = entry.pos.slice();
+          if (entry.map != null) { if (entry.map) sp.map = 'voyage'; else delete sp.map; }
+        });
+        posDraft = {}; mapDraft = {};
         setHint('gd-map-state', '<span style="color:var(--ok)">已保存 ' + (r.data.changed || 0) + ' 处坐标，玩家端地图立即生效</span>');
         toast('钓点坐标已保存');
       });
     };
     $('gd-map-reset').onclick = function () {
-      confirmModalLocal('把「近岸图 + 远洋图」的钓点坐标全部恢复为出厂值？').then(function (ok) {
+      confirmModalLocal('把世界地图中近岸与远洋钓点的坐标全部恢复为出厂值？').then(function (ok) {
         if (!ok) return;
         adminApi('POST', '/api/admin/spot/pos', {
           token: token, groundId: g.id,
@@ -3720,15 +3866,52 @@ window.Admin = (function () {
       document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
       const ov = document.createElement('div');
       ov.className = 'modal-overlay';
-      ov.innerHTML = '<div class="modal-box confirm-modal"><div class="modal-head"><span class="modal-title">请确认</span></div>' +
+      ov.innerHTML = '<div class="modal-box confirm-modal" role="dialog" aria-modal="true" aria-label="请确认"><div class="modal-head"><span class="modal-title">请确认</span></div>' +
         '<div class="modal-body"><div class="cf-text">' + esc(text) + '</div>' +
         '<div class="cf-actions"><button class="btn mini cf-no">取消</button><button class="btn mini danger cf-yes">确定</button></div></div></div>';
       document.body.appendChild(ov);
       ov.addEventListener('click', function (e) { if (e.target === ov) { ov.remove(); resolve(false); } });
       ov.querySelector('.cf-no').onclick = function () { ov.remove(); resolve(false); };
       ov.querySelector('.cf-yes').onclick = function () { ov.remove(); resolve(true); };
+      ov.querySelector('.cf-no').focus(); // 默认焦点在「取消」，避免回车误触销毁
+      document.addEventListener('keydown', function onKey(e) {
+        if (!ov.isConnected) { document.removeEventListener('keydown', onKey, true); return; }
+        if (e.key === 'Escape') { e.preventDefault(); ov.remove(); resolve(false); }
+      }, true);
     });
   }
+  // 危险操作二次确认：必须手动输入指定词（账号名 / 数量 / 「关闭」等）才能点确定，
+  // 默认焦点在「取消」上。用于删账号、轮换验证器、关闭全部功能、全服发奖、导池等不可逆操作。
+  function confirmDangerous(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      document.querySelectorAll('.modal-overlay').forEach(function (m) { m.remove(); });
+      const word = String(opts.confirmWord == null ? '' : opts.confirmWord);
+      const ov = document.createElement('div');
+      ov.className = 'modal-overlay';
+      ov.innerHTML = '<div class="modal-box confirm-modal" role="dialog" aria-modal="true" aria-label="' + esc(opts.title || '危险操作确认') + '">' +
+        '<div class="modal-head"><span class="modal-title">' + esc(opts.title || '危险操作确认') + '</span></div>' +
+        '<div class="modal-body"><div class="cf-text">' + esc(opts.text || '') + '</div>' +
+        (word ? '<div class="cf-row"><label class="hint" for="cd-word">请输入「' + esc(word) + '」以确认</label>' +
+          '<input class="ipt" id="cd-word" autocomplete="off" /></div>' : '') +
+        '<div class="cf-actions"><button class="btn mini cf-no">取消</button>' +
+        '<button class="btn mini danger cf-yes" disabled>' + esc(opts.okText || '确定') + '</button></div></div></div>';
+      document.body.appendChild(ov);
+      const input = ov.querySelector('#cd-word'), yes = ov.querySelector('.cf-yes'), no = ov.querySelector('.cf-no');
+      function close(v) { document.removeEventListener('keydown', onKey, true); ov.remove(); resolve(v); }
+      function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); close(false); } }
+      document.addEventListener('keydown', onKey, true);
+      if (input) {
+        input.addEventListener('input', function () { yes.disabled = input.value.trim().toLowerCase() !== word.toLowerCase(); });
+        input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !yes.disabled) close(true); });
+      }
+      yes.onclick = function () { if (!yes.disabled) close(true); };
+      no.onclick = function () { close(false); };
+      if (input) input.focus(); else no.focus();
+    });
+  }
+  // 供 admin-mail.js / admin-pool-import.js 等子模块复用（它们只拿到一个 confirm 回调）
+  window.confirmDangerous = confirmDangerous;
   // 子窗口输入（数字/文本；替代浏览器 prompt）
   function promptModalLocal(opts) {
     opts = opts || {};
@@ -6115,6 +6298,9 @@ window.Admin = (function () {
       if (/^\d{6}$/.test(this.value.trim()) && $('login-user').value.trim() && $('login-pass').value) doLogin();
     });
     $('login-user').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+    // 登录表单本身也要拦 submit：<form> 里的回车默认会提交并跳转，把当前页面刷掉
+    const loginForm = $('login-form');
+    if (loginForm) loginForm.addEventListener('submit', function (e) { e.preventDefault(); doLogin(); });
     $('logout-btn').onclick = function () { logout(); };
     // ---- v0.23.0 外壳交互：页面搜索 / 抽屉侧栏 / 回到顶部（元素缺失时静默跳过，不影响登录）----
     const navFilterEl = $('nav-filter');
@@ -6159,16 +6345,29 @@ window.Admin = (function () {
     });
     startShellObserver();
     wireDirtyTracking();
-    let saved = 'cookie';
-    try { localStorage.removeItem('fishing_admin_token'); } catch (e) {}
-    if (saved) {
-      api('GET', '/api/admin/session?token=' + encodeURIComponent(saved)).then(function (r) {
-        if (r.ok) { token = saved; me = { username: r.data.username, name: r.data.name }; enter(); }
-        else showLogin();
-      });
-    } else {
-      showLogin();
+    // 编辑类控件改动即置「未保存」；搜索 / 标记 data-nodirty 的控件不算
+    const main = $('main');
+    function isDirtySource(t) {
+      if (!t || !/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return false;
+      if (t.type === 'search' || t.hasAttribute('data-nodirty')) return false;
+      // 只认真正的「配置编辑器」控件：带 data-path 的数值框、[data-config] 表单、
+      // 功能开关的勾选框、装备/渔屋编辑区。动作类下拉（如反馈状态选择）不算改动，
+      // 否则会被误判成「有未保存的修改」而挡住正常的页面切换。
+      return !!(t.hasAttribute('data-path') || t.closest('[data-config]') ||
+        t.closest('.feature-group') || t.closest('.gear-system') || t.closest('.house-admin'));
     }
+    if (main) {
+      main.addEventListener('input', function (e) { if (isDirtySource(e.target)) markDirty(); });
+      main.addEventListener('change', function (e) { if (isDirtySource(e.target)) markDirty(); });
+    }
+    // 关闭 / 刷新前提醒：避免几十个输入框里刚改的东西被无声丢掉
+    window.addEventListener('beforeunload', function (e) { if (adminDirty) { e.preventDefault(); e.returnValue = ''; return ''; } });
+    try { localStorage.removeItem('fishing_admin_token'); } catch (e) {}
+    // 会话走 Cookie：服务器从请求里读会话，前端不再持有 token（apiOnce 也会丢掉 token 参数）
+    api('GET', '/api/admin/session').then(function (r) {
+      if (r.ok) { token = 'cookie'; me = { username: r.data.username, name: r.data.name }; enter(); }
+      else showLogin();
+    });
   }
 
   // dirtyCount / clearDirty 供离线预览与自检脚本查询未保存状态，不参与业务逻辑

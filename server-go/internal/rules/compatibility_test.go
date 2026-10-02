@@ -256,6 +256,33 @@ func TestNodeOracles(t *testing.T) {
 		}
 	}
 }
+
+func TestCastSpeedCapAllowsTenThousand(t *testing.T) {
+	c, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := map[string]any{"cast": map[string]any{
+		"baseMs": 10000, "minMs": 800, "speedBonus": 0, "speedCap": 10000,
+		"formula": "interval / (1 + speed / 100)",
+	}}
+	r := c.CastRules(input)
+	if r.SpeedBonus != 0 || r.SpeedCap != 10000 {
+		t.Fatalf("cast bounds not applied: bonus=%v cap=%v", r.SpeedBonus, r.SpeedCap)
+	}
+	info := r.Info(Effects{"speed": 10000}, Spot{})
+	if math.IsNaN(info.Interval) || math.IsInf(info.Interval, 0) || info.Interval < r.MinMS || info.Interval > 3600000 {
+		t.Fatalf("unsafe interval at 10000%% speed: %v", info.Interval)
+	}
+	if info.Interval != 800 {
+		t.Fatalf("shortest interval floor not applied: %v", info.Interval)
+	}
+	invalid := c.CastRules(map[string]any{"cast": map[string]any{"speedBonus": 501, "speedCap": 10001}})
+	if invalid.SpeedBonus != 0 || invalid.SpeedCap != 100 {
+		t.Fatalf("out-of-range values did not use existing defaults: bonus=%v cap=%v", invalid.SpeedBonus, invalid.SpeedCap)
+	}
+}
+
 func jsonFloat(f float64) any {
 	if !finite(f) {
 		return nil

@@ -12,6 +12,22 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+func TestLegacyCastSpeedCapValidationBounds(t *testing.T) {
+	settings := func(raw string) map[string]json.RawMessage {
+		return map[string]json.RawMessage{"castSpeedCap": json.RawMessage(raw)}
+	}
+	if _, err := validateLegacySettings(settings("10000")); err != nil {
+		t.Fatalf("10000%% cap rejected: %v", err)
+	}
+	if _, err := validateLegacySettings(settings("10001")); err == nil {
+		t.Fatal("10001% cap accepted")
+	}
+	bonus := map[string]json.RawMessage{"castSpeedBonus": json.RawMessage("501")}
+	if _, err := validateLegacySettings(bonus); err == nil {
+		t.Fatal("speed bonus range was expanded")
+	}
+}
+
 func TestIntegrationLegacyAdminConfigAuditContracts(t *testing.T) {
 	f := newAdminFixture(t)
 	ctx := context.Background()
@@ -53,8 +69,11 @@ func TestIntegrationLegacyAdminConfigAuditContracts(t *testing.T) {
 	if after != revision {
 		t.Fatal("formula validation published a release")
 	}
-	code, body = f.admin("POST", "/api/admin/settings", `{"castSpeedBonus":12,"castSpeedCap":80,"castFormula":"interval / 2"}`)
+	code, body = f.admin("POST", "/api/admin/settings", `{"castSpeedBonus":12,"castSpeedCap":10000,"castFormula":"interval / 2"}`)
 	f.expect(code, body, 200, "")
+	if body["castSpeedCap"] != float64(10000) {
+		t.Fatalf("cast speed cap not persisted: %v", body)
+	}
 	code, body = f.admin("POST", "/api/admin/settings", `{"resetCastSpeed":true}`)
 	f.expect(code, body, 200, "")
 	if body["castSpeedBonus"] != float64(0) || body["castSpeedCap"] != float64(100) || body["castFormula"] == "" {

@@ -15,28 +15,30 @@ import (
 )
 
 type State struct {
-	Tiers            map[string]int  `json:"tiers"`
-	Unlocked         map[string]bool `json:"unlocked"`
-	Receipts         int64           `json:"receipts"`
-	ReceiptRemainder int             `json:"receiptRemainder"`
-	Heat             int             `json:"heat"`
-	HeatMS           float64         `json:"heatMs"`
-	Harvest          int             `json:"harvest"`
-	Recent           []rules.Catch   `json:"recent"`
-	HarvestMode      string          `json:"harvestMode"`
-	Target           string          `json:"target"`
-	Tracking         int             `json:"tracking"`
-	TargetQueue      []string        `json:"targetQueue"`
-	TargetGoal       int             `json:"targetGoal"`
-	TargetCaught     int             `json:"targetCaught"`
-	Selected         string          `json:"selected"`
-	Focus            string          `json:"focus"`
-	VoyageMode       string          `json:"voyageMode"`
-	ArchaeologyHours int             `json:"archaeologyHours"`
-	StormFailures    int             `json:"stormFailures"`
-	LastCast         string          `json:"lastCast"`
-	CastHit          bool            `json:"castHit"`
-	CastProgressed   bool            `json:"castProgressed"`
+	Tiers                map[string]int  `json:"tiers"`
+	Unlocked             map[string]bool `json:"unlocked"`
+	Receipts             int64           `json:"receipts"`
+	ReceiptRemainder     int             `json:"receiptRemainder"`
+	Heat                 int             `json:"heat"`
+	HeatMS               float64         `json:"heatMs"`
+	Harvest              int             `json:"harvest"`
+	Recent               []rules.Catch   `json:"recent"`
+	HarvestMode          string          `json:"harvestMode"`
+	Target               string          `json:"target"`
+	Tracking             int             `json:"tracking"`
+	TargetQueue          []string        `json:"targetQueue"`
+	TargetGoal           int             `json:"targetGoal"`
+	TargetCaught         int             `json:"targetCaught"`
+	Allocations          map[string]int  `json:"allocations"`
+	ArchaeologyRemainder int             `json:"archaeologyRemainder"`
+	Selected             string          `json:"selected"`
+	Focus                string          `json:"focus"`
+	VoyageMode           string          `json:"voyageMode"`
+	ArchaeologyHours     int             `json:"archaeologyHours"`
+	StormFailures        int             `json:"stormFailures"`
+	LastCast             string          `json:"lastCast"`
+	CastHit              bool            `json:"castHit"`
+	CastProgressed       bool            `json:"castProgressed"`
 }
 
 func Read(ctx context.Context, q assets.SQL, owner int64) (State, error) {
@@ -55,6 +57,9 @@ func Read(ctx context.Context, q assets.SQL, owner int64) (State, error) {
 	}
 	if v.Unlocked == nil {
 		v.Unlocked = map[string]bool{}
+	}
+	if v.Allocations == nil {
+		v.Allocations = LegacyAllocation(v.Selected)
 	}
 	return v, err
 }
@@ -153,20 +158,22 @@ func (s *Service) View(ctx context.Context, owner int64) (map[string]any, error)
 }
 
 type Command struct {
-	UnboundInputs bool     `json:"unboundInputs"`
-	Action        string   `json:"action"`
-	RequestKey    string   `json:"requestKey"`
-	ID            string   `json:"id"`
-	OtherID       string   `json:"otherId"`
-	Sub           string   `json:"sub"`
-	Direction     string   `json:"direction"`
-	UseHeat       bool     `json:"useHeat"`
-	Set           string   `json:"set"`
-	Focus         string   `json:"focus"`
-	Mode          string   `json:"mode"`
-	Target        string   `json:"target"`
-	Queue         []string `json:"queue"`
-	Goal          int      `json:"goal"`
+	Allocations   map[string]int `json:"allocations"`
+	UnboundInputs bool           `json:"unboundInputs"`
+	Action        string         `json:"action"`
+	RequestKey    string         `json:"requestKey"`
+	ID            string         `json:"id"`
+	IDs           []string       `json:"ids,omitempty"`
+	OtherID       string         `json:"otherId"`
+	Sub           string         `json:"sub"`
+	Direction     string         `json:"direction"`
+	UseHeat       bool           `json:"useHeat"`
+	Set           string         `json:"set"`
+	Focus         string         `json:"focus"`
+	Mode          string         `json:"mode"`
+	Target        string         `json:"target"`
+	Queue         []string       `json:"queue"`
+	Goal          int            `json:"goal"`
 }
 
 func Pay(ctx context.Context, t *assets.Transaction, owner int64, cost rules.GearCost, v *State) error {
@@ -192,6 +199,84 @@ func Pay(ctx context.Context, t *assets.Transaction, owner int64, cost rules.Gea
 	v.Heat -= cost.Heat
 	return nil
 }
+
+func LegacyAllocation(selected string) map[string]int {
+	out := map[string]int{}
+	if selected != "" {
+		out[selected] = 3
+	}
+	return out
+}
+
+// AllocationSelection retains the legacy display field only for one specialization.
+func AllocationSelection(allocation map[string]int) string {
+	if len(allocation) == 1 {
+		for id := range allocation {
+			return id
+		}
+	}
+	return ""
+}
+
+func ValidateAllocation(cfg rules.GearConfig, state State, allocation map[string]int, mode string) (map[string]int, error) {
+	out := map[string]int{}
+	total := 0
+	for id, points := range allocation {
+		if points < 0 || points > 3 {
+			return nil, assets.ErrInvalid
+		}
+		if _, ok := cfg.Specializations[id]; !ok {
+			return nil, assets.ErrInvalid
+		}
+		if points == 0 {
+			continue
+		}
+		if !state.Unlocked[id] {
+			return nil, assets.Rejection("specialization_locked")
+		}
+		out[id] = points
+		total += points
+	}
+	if total > 3 {
+		return nil, assets.Rejection("specialization_points_exceeded")
+	}
+	selected := map[string]string{"deep": "storm", "evacuate": "rescue", "concentrate": "tide"}[mode]
+	if out[selected] == 0 {
+		selected = ""
+	}
+	var effects map[string]float64
+	if selected != "" {
+		effects = cfg.Specializations[selected].AllocationEffect(state.Tiers[selected], out[selected])
+	}
+	if err := ValidateVoyageMode(selected, mode, effects); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ValidateVoyageMode is shared by saved preferences and departure snapshots.
+func ValidateVoyageMode(selected, mode string, effects map[string]float64) error {
+	switch mode {
+	case "", "normal":
+		return nil
+	case "deep":
+		if selected == "storm" && effects["deepRisk"] != 0 {
+			return nil
+		}
+	case "evacuate":
+		if selected == "rescue" && effects["evacuate"] != 0 {
+			return nil
+		}
+	case "concentrate":
+		if selected == "tide" && effects["concentrate"] != 0 {
+			return nil
+		}
+	default:
+		return assets.ErrInvalid
+	}
+	return assets.Rejection("specialization_mode_locked")
+}
+
 func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Result, error) {
 	if len(in.RequestKey) < 8 || len(in.RequestKey) > 100 || !s.c.GearConfig().Enabled {
 		return assets.Result{}, assets.ErrInvalid
@@ -216,10 +301,13 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 		result := map[string]any{}
 		switch in.Action {
 		case "preferences":
-			if in.Set != "" {
-				if _, ok := cfg.Specializations[in.Set]; !ok || !v.Unlocked[in.Set] {
-					return assets.Result{}, assets.Rejection("请先认证该远航专精")
-				}
+			allocation := in.Allocations
+			if allocation == nil {
+				allocation = LegacyAllocation(in.Set)
+			}
+			allocation, err = ValidateAllocation(cfg, v, allocation, in.Mode)
+			if err != nil {
+				return assets.Result{}, err
 			}
 			if in.Focus != "" {
 				it, ok := s.c.Item(in.Focus)
@@ -227,10 +315,8 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 					return assets.Result{}, assets.ErrInvalid
 				}
 			}
-			if in.Mode != "" && in.Mode != "normal" && in.Mode != "deep" && in.Mode != "evacuate" && in.Mode != "concentrate" {
-				return assets.Result{}, assets.ErrInvalid
-			}
-			v.Selected = in.Set
+			v.Allocations = allocation
+			v.Selected = AllocationSelection(allocation)
 			v.Focus = in.Focus
 			v.VoyageMode = in.Mode
 		case "target":
@@ -282,7 +368,11 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 				}
 				cost = cfg.Costs.Stage[v.Tiers[in.Set]]
 			}
-			if fish || in.Action == "unlock" {
+			// Voyage specialization progress is independent of equipment ownership.
+			if spec {
+				cost.Cores = 0
+			}
+			if fish {
 				var count int
 				err = t.SQL().QueryRow(ctx, `SELECT count(DISTINCT part) FROM fishing.equipment_instances WHERE owner_id=$1 AND lifecycle='available' AND definition_id=ANY($2::text[])`, owner, []string{"set_" + in.Set + "_rod", "set_" + in.Set + "_charm"}).Scan(&count)
 				if err != nil {
@@ -348,14 +438,20 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 			id, _ := strconv.ParseInt(in.ID, 10, 64)
 			var sig string
 			var bound bool
-			err = t.SQL().QueryRow(ctx, `SELECT attributes->>'signature',COALESCE((attributes->>'bound')::boolean,false) FROM fishing.equipment_instances e WHERE id=$1 AND owner_id=$2 AND lifecycle='available' AND NOT EXISTS(SELECT 1 FROM fishing.rod_components r WHERE r.equipment_id=e.id)`, id, owner).Scan(&sig, &bound)
+			err = t.SQL().QueryRow(ctx, `SELECT attributes->>'signature',COALESCE((attributes->>'bound')::boolean,false) FROM fishing.equipment_instances e WHERE id=$1 AND owner_id=$2 AND lifecycle='available'`, id, owner).Scan(&sig, &bound)
 			if errors.Is(err, pgx.ErrNoRows) {
-				return assets.Result{}, assets.Rejection("请先卸下装备并解除保存配装占用")
+				return assets.Result{}, assets.Rejection("请选择可用的配件")
 			}
 			if err != nil {
 				return assets.Result{}, err
 			}
-			base, quality, aa, ok := s.c.Instance(sig)
+			// 工坊允许直接修改已装备的组件：先把来源从配装槽位摘下（否则消耗会被
+			// equipment_locked 拒绝），成长结果生成后再放回同一个槽位。
+			var slots []loadoutSlot
+			if slots, err = takeLoadoutSlots(ctx, t, owner, id); err != nil {
+				return assets.Result{}, err
+			}
+			base, _, aa, ok := s.c.Instance(sig)
 			p, ordinary := cfg.Parts[base.Part]
 			if !ok || !ordinary || base.SetID != "" {
 				return assets.Result{}, assets.Rejection("请选择普通配件")
@@ -375,14 +471,6 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 			}
 			targetBase := base.ID
 			switch in.Action {
-			case "convert":
-				if modern {
-					return assets.Result{}, assets.Rejection("该配件已是新制")
-				}
-				cost = cfg.Costs.Convert
-				targetBase = "gear_" + base.Part + "_1"
-				v.Receipts += cfg.LegacyConvertReceipts[quality]
-				result["compensationReceipts"] = cfg.LegacyConvertReceipts[quality]
 			case "upgrade":
 				if !modern {
 					return assets.Result{}, assets.Rejection("请先转为新制配件")
@@ -469,6 +557,9 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 			if err != nil {
 				return assets.Result{}, err
 			}
+			if err = restoreLoadoutSlots(ctx, t, owner, newid, slots); err != nil {
+				return assets.Result{}, err
+			}
 			result["id"] = strconv.FormatInt(newid, 10)
 			result["signature"] = newsig
 		}
@@ -486,4 +577,50 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 		return assets.Result{Status: "crafted", Details: raw}, nil
 	})
 }
+
+// loadoutSlot is one rod_components row: which saved loadout slot holds which part.
+type loadoutSlot struct {
+	slot int
+	part string
+}
+
+// takeLoadoutSlots detaches an equipped instance from its saved loadouts so the growth
+// command may consume it (moveEquipment rejects equipped equipment with
+// equipment_locked). The caller restores the rows onto the result instance, so the
+// workshop can modify an equipped component without the player unequipping it first.
+func takeLoadoutSlots(ctx context.Context, t *assets.Transaction, owner, id int64) ([]loadoutSlot, error) {
+	rows, err := t.SQL().Query(ctx, `SELECT slot,part FROM fishing.rod_components WHERE owner_id=$1 AND equipment_id=$2 ORDER BY slot`, owner, id)
+	if err != nil {
+		return nil, err
+	}
+	var slots []loadoutSlot
+	for rows.Next() {
+		var s loadoutSlot
+		if err = rows.Scan(&s.slot, &s.part); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		slots = append(slots, s)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil || len(slots) == 0 {
+		return nil, err
+	}
+	if _, err = t.SQL().Exec(ctx, `DELETE FROM fishing.rod_components WHERE owner_id=$1 AND equipment_id=$2`, owner, id); err != nil {
+		return nil, err
+	}
+	return slots, nil
+}
+
+// restoreLoadoutSlots puts the growth result back into the slots the source occupied.
+func restoreLoadoutSlots(ctx context.Context, t *assets.Transaction, owner, id int64, slots []loadoutSlot) error {
+	for _, s := range slots {
+		if _, err := t.SQL().Exec(ctx, `INSERT INTO fishing.rod_components(owner_id,slot,part,equipment_id) VALUES($1,$2,$3,$4)`, owner, s.slot, s.part, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func IsModern(sig string) bool { return strings.Contains(sig, "@g") }

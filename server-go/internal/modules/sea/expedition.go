@@ -28,29 +28,33 @@ type Captain struct {
 	Tracking  int             `json:"tracking"`
 }
 type ExpeditionSnapshot struct {
-	Growth         bool               `json:"growth"`
-	Stage          int                `json:"stage"`
-	Focus          string             `json:"focus"`
-	Mode           string             `json:"mode"`
-	ReceiptHours   int                `json:"receiptHours"`
-	SpecialEffects map[string]float64 `json:"specialEffects,omitempty"`
-	Level          int                `json:"level"`
-	Set            string             `json:"set"`
-	Effects        rules.Effects      `json:"effects"`
-	Success        float64            `json:"success"`
+	Allocations           map[string]int                `json:"allocations,omitempty"`
+	SpecializationStages  map[string]int                `json:"specializationStages,omitempty"`
+	SpecializationEffects map[string]map[string]float64 `json:"specializationEffects,omitempty"`
+	Growth                bool                          `json:"growth"`
+	Stage                 int                           `json:"stage"`
+	Focus                 string                        `json:"focus"`
+	Mode                  string                        `json:"mode"`
+	ReceiptHours          int                           `json:"receiptHours"`
+	SpecialEffects        map[string]float64            `json:"specialEffects,omitempty"`
+	Level                 int                           `json:"level"`
+	Set                   string                        `json:"set"`
+	Effects               rules.Effects                 `json:"effects"`
+	Success               float64                       `json:"success"`
 }
 type ExpeditionReward struct {
-	ArchaeologyHours int              `json:"archaeologyHours"`
-	Receipts         int64            `json:"receipts"`
-	Success          bool             `json:"success"`
-	Event            string           `json:"event"`
-	Coins            int64            `json:"coins"`
-	XP               int64            `json:"xp"`
-	Marks            int64            `json:"marks"`
-	Items            map[string]int64 `json:"items"`
-	Heat             int              `json:"heat"`
-	Clues            int              `json:"clues"`
-	SamplesUsed      int              `json:"samplesUsed"`
+	ArchaeologyRemainder int              `json:"archaeologyRemainder,omitempty"`
+	ArchaeologyHours     int              `json:"archaeologyHours"`
+	Receipts             int64            `json:"receipts"`
+	Success              bool             `json:"success"`
+	Event                string           `json:"event"`
+	Coins                int64            `json:"coins"`
+	XP                   int64            `json:"xp"`
+	Marks                int64            `json:"marks"`
+	Items                map[string]int64 `json:"items"`
+	Heat                 int              `json:"heat"`
+	Clues                int              `json:"clues"`
+	SamplesUsed          int              `json:"samplesUsed"`
 }
 type Expedition struct {
 	ID        string             `json:"id"`
@@ -133,6 +137,15 @@ func (s *Service) expeditionGear(ctx context.Context, q assets.SQL, owner int64)
 }
 func (s *Service) ExpeditionView(ctx context.Context, owner int64) (ExpeditionView, error) {
 	v := ExpeditionView{Config: s.catalog.ExpeditionConfig(), Sets: s.catalog.GearSets()}
+	if cfg := s.catalog.GearConfig(); cfg.Enabled {
+		sets := make([]rules.GearSet, 0, len(cfg.Sets))
+		for _, set := range v.Sets {
+			if _, ok := cfg.Sets[set.ID]; ok {
+				sets = append(sets, set)
+			}
+		}
+		v.Sets = sets
+	}
 	var now time.Time
 	if err := s.pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
 		return v, err
@@ -311,21 +324,28 @@ func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID
 			if e != nil {
 				return assets.Result{}, e
 			}
-			selected, focus, mode := progress.Selected, progress.Focus, progress.VoyageMode
+			allocation, focus, mode := progress.Allocations, progress.Focus, progress.VoyageMode
+			if allocation == nil {
+				allocation = gear.LegacyAllocation(progress.Selected)
+			}
 			if len(choices) == 3 {
-				selected, focus, mode = choices[0], choices[1], choices[2]
+				allocation, focus, mode = gear.LegacyAllocation(choices[0]), choices[1], choices[2]
 			}
 			gc := s.catalog.GearConfig()
+			allocation, e = gear.ValidateAllocation(gc, progress, allocation, mode)
+			if e != nil {
+				return assets.Result{}, e
+			}
+			selected := gear.AllocationSelection(allocation)
 			ability, exists := gc.Specializations[selected]
 			if selected != "" && (!exists || !progress.Unlocked[selected]) {
 				return assets.Result{}, assets.Rejection("specialization_locked")
 			}
-			if mode != "" && mode != "normal" && mode != "deep" && mode != "evacuate" && mode != "concentrate" {
-				return assets.Result{}, assets.ErrInvalid
-			}
-			fx := ability.Effect(progress.Tiers[selected])
-			if (mode == "deep" && (selected != "storm" || fx["deepRisk"] == 0)) || (mode == "evacuate" && (selected != "rescue" || fx["evacuate"] == 0)) || (mode == "concentrate" && (selected != "tide" || fx["concentrate"] == 0)) {
-				return assets.Result{}, assets.Rejection("specialization_mode_locked")
+			// Resolve each allocated specialization independently. The old single
+			// selected field remains a display/compatibility field only.
+			fx := map[string]float64{}
+			if selected != "" {
+				fx = ability.AllocationEffect(progress.Tiers[selected], allocation[selected])
 			}
 			if focus != "" {
 				it, ok := s.catalog.Item(focus)
@@ -342,10 +362,18 @@ func (s *Service) StartExpedition(ctx context.Context, owner int64, key, routeID
 			snap.Success = route.Success
 			snap.ReceiptHours = gc.ReceiptHours
 			snap.SpecialEffects = fx
+			snap.Allocations = allocation
+			snap.SpecializationStages = map[string]int{}
+			snap.SpecializationEffects = map[string]map[string]float64{}
+			for id, points := range allocation {
+				snap.SpecializationStages[id] = progress.Tiers[id]
+				snap.SpecializationEffects[id] = gc.Specializations[id].AllocationEffect(progress.Tiers[id], points)
+			}
 			if selected == "storm" && mode == "deep" && route.Level >= int(fx["minRouteLevel"]) {
 				snap.Success = math.Max(0, snap.Success-fx["deepRisk"])
 			}
 			reward = growthExpeditionReward(s.catalog, route, hours, snap, progress, rules.Stream(seed, "growth-expedition"))
+			progress.Allocations = allocation
 			progress.Selected = selected
 			progress.Focus = focus
 			progress.VoyageMode = mode
@@ -431,7 +459,8 @@ func (s *Service) claimExpedition(ctx context.Context, actor, owner int64, key s
 			reward.Receipts = int64(v.ReceiptRemainder / unit)
 			v.Receipts += reward.Receipts
 			v.ReceiptRemainder %= unit
-			if snap.Set == "wreck" {
+			if snap.Set == "wreck" || snap.Allocations["wreck"] > 0 {
+				v.ArchaeologyRemainder = reward.ArchaeologyRemainder
 				v.ArchaeologyHours = reward.ArchaeologyHours
 			}
 			if e = gear.Write(ctx, t, owner, v); e != nil {
@@ -529,6 +558,11 @@ func (s *Service) RedeemSet(ctx context.Context, owner int64, key, setID, part s
 		Starter   bool
 	}{setID, part, starter}
 	return s.assets.Run(ctx, assets.Command{ActorID: owner, RequestKey: key, Kind: "sea_set_redeem", RuleVersion: "expedition-v1", Players: []int64{owner}, Input: input}, func(ctx context.Context, t *assets.Transaction) (assets.Result, error) {
+		if cfg := s.catalog.GearConfig(); cfg.Enabled {
+			if _, ok := cfg.Sets[setID]; !ok {
+				return assets.Result{}, assets.Rejection("远航专精请在专精菜单独立解锁")
+			}
+		}
 		v, err := state(ctx, t, owner)
 		if err != nil {
 			return assets.Result{}, err

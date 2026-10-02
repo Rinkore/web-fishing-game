@@ -142,11 +142,30 @@ def i_workshop(cv):
     cv.set(13, 11, hex2rgb('#9aa4ae'))               # 旁边工具
     cv.line(13, 11, 14, 13, hex2rgb('#9aa4ae'))
 
+def i_sea(cv):
+    """远洋：帆船 + 波浪"""
+    cv.fill(5, 4, 10, 4, hex2rgb('#e8e4d8'))          # 帆
+    cv.line(7, 4, 7, 10, hex2rgb('#8a6a42'))
+    cv.line(4, 10, 11, 10, hex2rgb('#8a6a42'))        # 船身
+    cv.fill(3, 11, 12, 12, hex2rgb('#7d5e33'))
+    for x in range(2, 14):
+        y = 13 + (x % 3 // 2)
+        cv.set(x, y, hex2rgb('#3ec9f0'))              # 波浪
+
+def i_mail(cv):
+    """邮件：信封 + 封蜡"""
+    cv.fill(2, 4, 13, 12, hex2rgb('#e8e4d8'))
+    cv.line(2, 4, 7, 9, hex2rgb('#b8a888'))
+    cv.line(7, 9, 13, 4, hex2rgb('#b8a888'))
+    cv.set(2, 4, hex2rgb('#7d5e33')); cv.set(13, 4, hex2rgb('#7d5e33'))
+    cv.set(2, 12, hex2rgb('#7d5e33')); cv.set(13, 12, hex2rgb('#7d5e33'))
+    cv.fill(6, 6, 9, 8, hex2rgb('#e84a3a'))           # 封蜡
+
 ICONS = {
     'fishing': i_fishing, 'character': i_character, 'bd': i_bd, 'ground': i_ground, 'inventory': i_inventory,
     'chest': i_chest, 'workshop': i_workshop, 'shop': i_shop, 'market': i_market, 'trade': i_trade,
     'mall': i_mall, 'codex': i_codex, 'records': i_records, 'feedback': i_feedback,
-    'logs': i_logs,
+    'logs': i_logs, 'sea': i_sea, 'mail': i_mail,
 }
 
 if __name__ == '__main__':

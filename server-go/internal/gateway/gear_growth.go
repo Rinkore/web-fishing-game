@@ -111,6 +111,15 @@ func (a *API) adminGearConfig(w http.ResponseWriter, r *http.Request) {
 		if ability, ok := cfg.Sets[sets[i].ID]; ok {
 			sets[i].Name = ability.Name
 			sets[i].Effect = ability.Description
+			for j := range sets[i].Pieces {
+				if attrs, exists := ability.CoreAttributes[sets[i].Pieces[j].Part]; exists {
+					for kind, value := range attrs {
+						sets[i].Pieces[j].Type = kind
+						sets[i].Pieces[j].Value = value
+						break
+					}
+				}
+			}
 		} else if ability, ok := cfg.Specializations[sets[i].ID]; ok {
 			sets[i].Name = ability.Name
 			sets[i].Effect = ability.Description
@@ -166,6 +175,20 @@ func (a *API) adminGearPlayer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	allocation, e := gear.ValidateAllocation(cfg, v, v.Allocations, v.VoyageMode)
+	if e != nil {
+		write(w, 400, map[string]any{"error": "专精配置无效"})
+		return
+	}
+	if v.Focus != "" {
+		it, ok := c.Item(v.Focus)
+		if !ok || it.Kind != "material" {
+			write(w, 400, map[string]any{"error": "定向货物无效"})
+			return
+		}
+	}
+	v.Allocations = allocation
+	v.Selected = gear.AllocationSelection(allocation)
 	players := []int64{owner}
 	if owner != session.AccountID {
 		players = append(players, session.AccountID)

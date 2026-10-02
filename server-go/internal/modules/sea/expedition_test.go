@@ -127,12 +127,28 @@ func TestIntegrationExpeditionLifecycleAndRewards(t *testing.T) {
 	if err = db.Admin.QueryRow(ctx, `SELECT count(*) FROM fishing.inventory_stacks i JOIN fishing.item_definitions d ON d.id=i.item_id WHERE owner_id=$1 AND d.kind='fish'`, owner).Scan(&fish); err != nil || fish != 0 {
 		t.Fatal("expedition produced fish", err)
 	}
-	r, err = svc.RedeemSet(ctx, owner, "starter-choice", "tide", "", true)
+	if len(view.Sets) != 4 {
+		t.Fatalf("expected four fishing sets, got %d", len(view.Sets))
+	}
+	for _, set := range view.Sets {
+		if _, ok := c.GearConfig().Sets[set.ID]; !ok {
+			t.Fatal("specialization offered as equipment", set.ID)
+		}
+	}
+	for _, starter := range []bool{true, false} {
+		part := "rod"
+		if starter {
+			part = ""
+		}
+		r, err = svc.RedeemSet(ctx, owner, fmt.Sprintf("reject-specialization-%t", starter), "tide", part, starter)
+		want(r, err, "远航专精请在专精菜单独立解锁")
+	}
+	r, err = svc.RedeemSet(ctx, owner, "starter-choice", "harvest", "", true)
 	want(r, err, "redeemed")
-	r, err = svc.RedeemSet(ctx, owner, "starter-again", "tide", "", true)
+	r, err = svc.RedeemSet(ctx, owner, "starter-again", "harvest", "", true)
 	want(r, err, "starter_unavailable")
 	var pieces int
-	if err = db.Admin.QueryRow(ctx, `SELECT count(*) FROM fishing.equipment_instances WHERE owner_id=$1 AND definition_id LIKE 'set_tide_%'`, owner).Scan(&pieces); err != nil || pieces != 2 {
+	if err = db.Admin.QueryRow(ctx, `SELECT count(*) FROM fishing.equipment_instances WHERE owner_id=$1 AND definition_id LIKE 'set_harvest_%'`, owner).Scan(&pieces); err != nil || pieces != 2 {
 		t.Fatal("starter set", pieces, err)
 	}
 	// Force a failed risky voyage and confirm partial rewards but no marks.

@@ -78,6 +78,7 @@ func (s *Service) Run(ctx context.Context, c Command, apply func(context.Context
 	case "feedback_skip":
 	case "admin_grant":
 	case "mail_send", "mail_read", "mail_claim":
+	case "house_collect", "house_upgrade", "house_pet", "house_role", "house_steal", "house_prestige", "house_settle":
 	case "fishing_connection", "fishing_start", "fishing_stop", "fishing_settle", "market_list", "market_buy", "market_close", "trade_invite", "trade_respond", "trade_offer", "trade_confirm", "trade_cancel", "trade_expire", "workshop_smelt", "workshop_recast", "workshop_forge", "chest_craft", "chest_open":
 	default:
 		return Result{}, ErrInvalid
