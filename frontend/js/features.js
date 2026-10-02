@@ -8,9 +8,12 @@
     // 侧栏入口与页面是多对一：钓竿 / 记录分别是「渔屋」「图鉴」页里的页签，
     // 这里仍保留独立 id —— 管理员可以只关掉某一个页签，关闭主页面会连带它一起关。
     ['bd', '钓竿（渔屋页签）', [['equip', '装备组件'], ['slots', '购买槽位'], ['save', '保存与管理钓竿'], ['autobuild', '自动配装']]],
-    // 渔屋（原「角色」页）—— 晒场 / 鱼类繁育 / 宠物驻守 / 角色方向 / 好友偷取。
+    // 渔屋（原「角色」页）—— 晒架 / 鱼类繁育 / 宠物驻守 / 角色方向 / 好友偷取。
     // 入口 id 仍是 character（旧存档与旧广播不受影响）；钓竿页签继续由 bd 组（parent=fishing）单独管。
-    ['character', '渔屋', [['collect', '领取晒场收益'], ['upgrade', '渔屋升级与翻新'], ['breeding', '鱼类繁育'], ['pet', '宠物驻守'], ['role', '角色方向'], ['steal', '好友偷取']]],
+    // v0.25.0 把晒场收益拆成「投入晒架」与「收取完成批次」：旧的 collect 已由服务端移除
+    // （legacy_admin_features.go 里只留注释，不再下发该键），所以这里同步换成这两个 id，
+    // 与服务端 featureOrder.character 保持一致，否则两边对不上、开关无法生效。
+    ['character', '渔屋', [['place_fish', '投入晒架'], ['collect_rack', '收取完成批次'], ['upgrade', '渔屋升级与翻新'], ['breeding', '鱼类繁育'], ['pet', '宠物驻守'], ['role', '角色方向'], ['steal', '好友偷取']]],
     ['inventory', '背包', [['subscribe', '组件订阅提醒']]],
     ['workshop', '工坊', [['growth', '装备成长'], ['sets', '套装成长与偏好']]],
     // v0.23.5：开箱从工坊独立成页（原工坊页的「开箱」页签），合成宝匣/开启宝匣归到这一页。
@@ -75,6 +78,9 @@
     '/api/friends': 'ground', '/api/party': 'ground.party',
     '/api/subscribe': 'inventory.subscribe', '/api/feedback/submit': 'feedback.submit', '/api/feedback/skip': 'feedback.skip',
     // 渔屋：漏了这几条，功能开关对渔屋完全失效（见 recon/contracts.md §4.1 第 4 条）
+    // v0.25.0 起晒场收益改为「投鱼 → 计时 → 收菜」，旧的 /api/house/collect 已不存在，
+    // 对应命令换成 place_fish / collect_rack，这里同步补上，否则这两个写操作绕过后台开关。
+    '/api/house/place_fish': 'character.place_fish', '/api/house/collect_rack': 'character.collect_rack',
     '/api/house/collect': 'character.collect', '/api/house/upgrade': 'character.upgrade', '/api/house/renovate': 'character.upgrade',
     '/api/house/pet': 'character.pet', '/api/house/role': 'character.role', '/api/house/steal': 'character.steal',
     '/api/house/breeding': 'character.breeding',
