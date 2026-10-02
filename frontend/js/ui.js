@@ -10847,6 +10847,7 @@ window.UI = (function () {
   };
   function paintPageBanner() {
     const main = $('main');
+    if (!main) return;   // #main 被港湾外壳搬走/暂时不在文档里：横幅是装饰，不能因此抛异常
     const b = PAGE_BANNERS[currentView];
     const on = !!b;
     main.classList.toggle('has-banner', on);
@@ -10864,19 +10865,26 @@ window.UI = (function () {
   const BANNER_ICONS = ['inventory', 'workshop', 'chest', 'ground', 'mall', 'codex', 'feedback', 'logs'];
   function renderView() {
     const pageId = pageIdOf();
+    // #main 可能暂时不在文档里：港湾外壳（harbor.js apply()）会把它搬进 #h-pbody，
+    // 搬移期间或外壳重建失败时 getElementById 会返回 null。这里必须先取一次并判空，
+    // 否则下面的 classList 抛出的异常会穿透 renderView（它在 try 之外），
+    // 让 applyFeatureControls / restoreScroll / syncView 全部跳过 —— 界面停在半渲染
+    // 状态、点什么都没反应（真机事故：index.html 结构损坏导致 #main 丢失）。
+    const mainEl = $('main');
+    if (!mainEl) return;
     const fishingPage = currentView === 'fishing' && !featureBlocked(pageId);
-    $('main').classList.toggle('fishing-page', fishingPage);
-    $('main').classList.toggle('character-page', currentView === 'character' || currentView === 'bd');
+    mainEl.classList.toggle('fishing-page', fishingPage);
+    mainEl.classList.toggle('character-page', currentView === 'character' || currentView === 'bd');
     // 工坊内容（尤其是装备成长工作台与套装卡片）可能超过视口高度。统一让主内容区
     // 承担纵向滚动，避免被旧版熔炼页的 overflow 规则或网格行高截断。
-    $('main').classList.toggle('workshop-page', currentView === 'workshop');
+    mainEl.classList.toggle('workshop-page', currentView === 'workshop');
     if (!fishingPage && disposeFishingViewport) disposeFishingViewport();
     paintPageBanner();
     if (featureBlocked(pageId)) {
-      const main = $('main'); main.innerHTML = '';
       const panel = el('div', 'panel wide feature-closed');
       panel.textContent = '🔒 ' + window.GameFeatures.message(S().features, pageId);
-      main.appendChild(panel); return;
+      mainEl.innerHTML = '';
+      mainEl.appendChild(panel); return;
     }
     hideItemTip();   // 整页重绘会把行换掉（mouseleave 不一定触发），浮标先收起来
     syncSeaGrounds(); // v0.19.0：临时海域重灌进 D.GROUNDS（其他路径重建目录后也能自愈）
