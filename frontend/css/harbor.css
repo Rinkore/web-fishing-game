@@ -1109,3 +1109,71 @@ html[data-motion="off"] .h-panel.h-house-mode .h-pbody { animation: none; }
 @media (max-width: 640px) {
   .h-panel.h-house-mode.h-drawer-open .h-pbody { width: 100%; border-left: 0; box-shadow: none; }
 }
+
+/* ============================================================
+   渔屋独立场景（#fishhouse，与 #harbor 同级）
+   ============================================================ */
+body.fishhouse-on .topbar { display: none; }
+body.fishhouse-on { padding-bottom: 0; background-attachment: fixed; }
+
+#fishhouse {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  top: var(--banner-h, 0px);
+  z-index: 4;
+  display: flex; flex-direction: column; gap: 0;
+  background: radial-gradient(1200px 600px at 50% 20%, #3a1808 0%, #1a0c04 60%);
+}
+#fishhouse[hidden] { display: none; }
+
+/* 渔屋场景区：全屏画布 + 热区，物件面板叠在右侧 */
+#fishhouse .h-stage { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
+#fishhouse .h-scene {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #1a0c04;
+}
+
+/* 渔屋内景画布容器 */
+.h-house { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.h-house-world { position: relative; flex: none; }
+.h-house-world canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+
+/* 物件热区：透明按钮叠在画布上 */
+.h-house .h-hot {
+  position: absolute; padding: 0;
+  background: transparent !important; border: 2px dashed transparent !important;
+  filter: none !important; cursor: pointer; touch-action: manipulation;
+  box-shadow: none !important; transform: none !important;
+}
+.h-house .h-hot:focus-visible { border-color: rgba(255,210,62,.85) !important; outline: none; }
+.h-house .h-hot:hover { border-color: rgba(255,210,62,.5) !important; }
+.h-house .h-hot.active { border-color: rgba(255,210,62,.85) !important; border-style: solid !important; }
+.h-house .h-hot.locked { cursor: not-allowed; }
+.h-house .h-hot.locked .h-sign { background: #2a2f3a; border-color: #5b6475; color: #aab4c4; }
+
+/* 招牌 */
+.h-house .h-sign {
+  position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%);
+  white-space: nowrap; pointer-events: none;
+  font-family: var(--px-font); font-size: 10px; line-height: 1.4; color: #ffe9a8;
+  background: #3a2618; border: 2px solid #8a5a34; box-shadow: 0 2px 0 rgba(0,0,0,.4); padding: 0 6px;
+}
+.h-house .h-hot:hover .h-sign,
+.h-house .h-hot:focus-visible .h-sign,
+.h-house .h-hot.active .h-sign { border-color: var(--px-gold, #ffd23e); color: #fff; }
+
+/* 渔屋内景面板（右侧抽屉，与港湾 .h-panel 同结构） */
+#fishhouse .h-panel {
+  position: absolute; right: 0; top: 0; bottom: 0; width: 46%;
+  z-index: 2; display: flex; flex-direction: column;
+  background: #0e1d33; border-left: 2px solid #2c4f74;
+  box-shadow: -4px 0 12px rgba(0,0,0,.4);
+  animation: h-drawer-in 200ms ease-out;
+}
+#fishhouse .h-panel[hidden] { display: none; }
+@media (max-width: 640px) { #fishhouse .h-panel { width: 100%; border-left: 0; } }
+
+/* 底部 HUD：渔屋里中央按钮改为「回港湾」 */
+#fishhouse .h-hud-bottom { position: fixed; bottom: 0; left: 0; right: 0; z-index: 3; display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
+#fishhouse .h-cast { background: linear-gradient(#8a6230, #6a4820); border-color: #5a3a18 !important; box-shadow: 0 3px 0 rgba(0,0,0,.4) !important; color: #ffe9a8; font-size: 15px; }
+#fishhouse .h-cast:hover { background: linear-gradient(#9a7240, #7a5830) !important; }

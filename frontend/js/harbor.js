@@ -68,6 +68,7 @@ window.HarborShell = (function () {
   // ---- 外壳状态 ----
   let els = null, originMain = null, originStatus = null, originStatusNext = null;
   let on = false, statePlace = null, dirOpen = false, suppressHash = false, returnFocus = null, dirReturnFocus = null;
+  let currentScene = 'harbor';  // 'harbor' | 'fishhouse'
 
   function theme() {
     const ps = window.PlayerSettings;
@@ -168,11 +169,8 @@ window.HarborShell = (function () {
   function showHome() {
     const wasPlace = statePlace;
     statePlace = null;
-    house.drawer = false;
-    if (els.panel) els.panel.classList.remove('h-house-mode', 'h-drawer-open');
     if (els.panel) {
       els.panel.hidden = true;
-      // 清除 data-place 属性
       delete els.panel.dataset.place;
     }
     if (els.root) els.root.classList.add('home');
@@ -195,43 +193,25 @@ window.HarborShell = (function () {
     if (els.root) els.root.classList.remove('home');
     if (els.panel) {
       els.panel.hidden = false;
-      // v3 F3: 设置 data-place 属性以便 CSS 针对不同地点应用特定样式（如告示板的 cork 背景）
       els.panel.dataset.place = id;
     }
-    // v2 阶段 F：标题用设计稿的「地点名 · 页面名」（§1 .plank），面包屑到大类 + 当前页签
     const full = (PLACES[id] && PLACES[id].full) || placeName(id);
     const place = (PLACES[id] && PLACES[id].name) || placeName(id);
     const meta = window.UI && UI.panelTabs ? UI.panelTabs() : null;
     const activeItem = meta && meta.items ? meta.items.filter(function (t) { return t.key === meta.active; })[0] : null;
     if (els.title) els.title.textContent = full;
     if (els.crumb) els.crumb.textContent = '港湾 › ' + place + (activeItem ? ' › ' + activeItem.label.replace(/ ↗$/, '') : '');
-    // 渔屋：场景化内景 —— 先显示屋内画面，点物件才打开右侧抽屉（即 #main）
-    const houseMode = id === 'character' && !!window.HouseArt;
-    if (els.panel) {
-      els.panel.classList.toggle('h-house-mode', houseMode);
-      els.panel.classList.toggle('h-drawer-open', houseMode && house.drawer);
-    }
-    if (houseMode) {
-      buildHouse(); refreshHouse();
-      if (els.title) els.title.textContent = house.drawer && activeItem ? '渔屋 · ' + activeItem.label : '渔屋';
-      if (els.back) els.back.textContent = house.drawer ? '↩ 回屋里' : '↩ 回港湾';
-      requestAnimationFrame(layoutHouse);
-    } else if (els.back) els.back.textContent = '↩ 回港湾';
-    // v2 阶段 F：木梁下方的挂签由 ui.js 的页签定义渲染（渔屋场景模式不显示挂签，改由物件切换）
+    if (els.back) els.back.textContent = '↩ 回港湾';
     buildPanelTabs();
     showDir(false);
-    // v3 F1：页签路由 — 把当前一级页签写进 URL（与 ui.js 的页签顺序一致），关闭时恢复到 #/
     const tabIdx = meta && meta.items ? Math.max(0, meta.items.map(function (t) { return t.key; }).indexOf(meta.active)) : 0;
-    if (houseMode) setHash('#/character' + (house.drawer ? '/' + tabIdx : ''));
-    else setHash('#/' + id + (tabIdx ? '/' + tabIdx : ''));
-    if (houseMode && !house.drawer) { const hb = house.hots[house.lastKey]; (hb && !hb.hidden ? hb : els.back).focus(); }
-    else if (els.back) els.back.focus();
+    setHash('#/' + id + (tabIdx ? '/' + tabIdx : ''));
+    if (els.back) els.back.focus();
   }
   // v2 阶段 F：内景一级页签（挂签）——页签清单由 ui.js 按当前页面提供（UI.panelTabs），
   // 外壳只负责渲染成木梁下方的吊牌并转发点击；没有一级页签的页面（邮筒 / 栈桥）整条收起。
   function buildPanelTabs() {
     if (!els.tabs) return;
-    if (statePlace === 'character' && window.HouseArt) { els.tabs.innerHTML = ''; return; }
     const meta = window.UI && UI.panelTabs ? UI.panelTabs() : null;
     if (!meta || !meta.items || meta.items.length < 2) { els.tabs.innerHTML = ''; return; }
     els.tabs.innerHTML = meta.items.map(function (t) {
@@ -277,13 +257,18 @@ window.HarborShell = (function () {
     // 设计稿 v2 把告示板收成一个地点 + 挂签，这里必须先按子视图拦截，转成 #/board/序号。
     const boardSub = hp.id && hp.id !== 'wiki' && BOARD_SUB_IDS.indexOf(hp.id) >= 0 ? hp.id : null;
     if (boardSub) { openBoardView(boardSub); return; }
-    // 设计稿 v2 阶段 F：告示板不在 D.NAV / placeIds 里（它由 openPlace 单独分支处理），
-    // 但它是可深链的地点（#/board/2 = 打开「日志」），所以这里和普通地点一起判定。
+    // #/house 或 #/house/序号 → 进渔屋场景
+    if (hp.id === 'house') {
+      if (currentScene !== 'fishhouse') enterFishhouse();
+      // 冷启动直接落在 #/house/序号（刷新 / 分享链接 / 书签）时，enterFishhouse()
+      // 里会 setHash('#/house') 把序号冲掉，抽屉于是不会自己弹开。这里在进场景之后再
+      // 按序号打开对应物件，让深链在冷启动与场景内切换时表现一致。
+      // 只有带序号的地址才开抽屉：裸 #/house 必须停在屋里（抽屉收起）。
+      if (hp.explicit) fhHouseOpen(houseKeyAt(hp.tab));
+      return;
+    }
     if (hp.id && (hp.id === 'board' || isPlace(hp.id))) {
-      // 渔屋场景：#/character 只进屋（抽屉收起），#/character/序号 直接打开对应物件的抽屉
-      if (hp.id === 'character') house.drawer = hp.explicit;
       if (statePlace !== hp.id) openPlace(hp.id, hp.tab);
-      else if (hp.id === 'character') { if (hp.explicit) houseOpen(houseKeyAt(hp.tab), true); else houseCloseDrawer(true); }
       // 同一地点内的页签深链（如待在仓库里把地址改成 #/inventory/3）：外壳不必重建，
       // 只把序号翻成页签 key 转发给 UI.panelTab。目标已经是当前项就什么都不做——
       // 点击挂签时外壳自己已经 setHash，这里再切一次会白重绘一遍整页。
@@ -399,21 +384,112 @@ window.HarborShell = (function () {
     openPlace('board', idx >= 0 ? idx : 0);
   }
 
-  // ---- 渔屋场景化内景（设计稿 output/design-review/fishhouse）：画面见 js/house-art.js ----
-  // 进渔屋先看屋内画面；点物件 = 切到对应一级页签并打开右侧抽屉（抽屉就是 #h-pbody / #main）。
-  const house = { built: false, wrap: null, world: null, cv: null, ctx: null, hots: {}, layers: null, layerKey: '',
-    state: {}, hover: null, drawer: false, lastKey: 'yard', lastFrame: 0, lastStill: 0 };
-  function houseMode() { return statePlace === 'character' && !!window.HouseArt && house.built; }
-  function houseItems() { const m = window.UI && UI.panelTabs ? UI.panelTabs() : null; return (m && m.items) || []; }
+  // ---- 渔屋独立场景（与港湾同级）----
+  const house = { built: false, wrap: null, world: null, cv: null, ctx: null, hots: {},
+    layers: null, layerKey: '', state: {}, hover: null, lastKey: 'yard', lastFrame: 0, lastStill: 0, drawnOnce: false };
+  let fhEls = null, fhPlace = null, fhReturnFocus = null;
+
+  function houseItems() { if (currentScene !== 'fishhouse') { if (window.UI && UI.openView) UI.openView('character'); } const m = window.UI && UI.panelTabs ? UI.panelTabs() : null; return (m && m.items) || []; }
   function houseKeyAt(i) { const it = houseItems(); return it.length ? it[Math.min(Math.max(0, i), it.length - 1)].key : 'yard'; }
-  function buildHouse() {
-    if (house.built || !els.panel || !window.HouseArt) return;
+
+  function initFhEls() {
+    if (fhEls) return;
+    fhEls = {
+      root: document.getElementById('fishhouse'), scene: document.getElementById('fh-scene'),
+      stage: document.getElementById('fh-stage'), panel: document.getElementById('fh-panel'),
+      back: document.getElementById('fh-back'), close: document.getElementById('fh-close'),
+      title: document.getElementById('fh-p-title'), crumb: document.getElementById('fh-p-crumb'),
+      pbody: document.getElementById('fh-pbody'), tabs: document.getElementById('fh-tabs'),
+      toharbor: document.getElementById('fh-toharbor'), set: document.getElementById('fh-set'),
+      bag: document.getElementById('fh-bag'),
+    };
+    if (!fhEls.root) { fhEls = null; return; }
+    if (fhEls.back) fhEls.back.addEventListener('click', function () { showFhScene(); });
+    if (fhEls.close) fhEls.close.addEventListener('click', function () { showFhScene(); });
+    if (fhEls.toharbor) fhEls.toharbor.addEventListener('click', function () { exitFishhouse(); });
+    if (fhEls.set) fhEls.set.addEventListener('click', function () { if (window.PlayerSettings) PlayerSettings.open(); });
+    if (fhEls.bag) fhEls.bag.addEventListener('click', function () { exitFishhouse(); openPlace('inventory'); });
+    if (fhEls.panel) fhEls.panel.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Tab') return;
+      const focusable = Array.prototype.slice.call(fhEls.panel.querySelectorAll('button,input,select,textarea,[tabindex]')).filter(function (x) { return !x.disabled && x.offsetParent !== null; });
+      if (!focusable.length) return;
+      if (ev.shiftKey && document.activeElement === focusable[0]) { focusable[focusable.length - 1].focus(); ev.preventDefault(); }
+      else if (!ev.shiftKey && document.activeElement === focusable[focusable.length - 1]) { focusable[0].focus(); ev.preventDefault(); }
+    });
+  }
+
+  function enterFishhouse() {
+    if (!on || !window.HouseArt) return;
+    initFhEls(); if (!fhEls) return;
+    fhReturnFocus = document.activeElement;
+    currentScene = 'fishhouse';
+    if (els.root) els.root.hidden = true;
+    fhEls.root.hidden = false;
+    document.body.classList.add('fishhouse-on');
+    // 触发 character 视图（让 ui.js 把内容写进 #main）
+    if (window.UI && UI.openView) UI.openView('character');
+    moveTo(els.main, fhEls.pbody);
+    if (!house.built) buildFhScene();
+    refreshHouse();
+    showFhScene();
+    requestAnimationFrame(layoutFhScene);
+    setHash('#/house');
+  }
+
+  function exitFishhouse() {
+    if (currentScene !== 'fishhouse') return;
+    if (!fhEls) return;
+    currentScene = 'harbor';
+    moveTo(els.main, els.pbody);
+    fhEls.root.hidden = true;
+    if (els.root) els.root.hidden = false;
+    document.body.classList.remove('fishhouse-on');
+    fhPlace = null;
+    if (fhEls.panel) fhEls.panel.hidden = true;
+    const back = fhReturnFocus && fhReturnFocus.isConnected && fhReturnFocus.offsetParent ? fhReturnFocus : els.cast;
+    if (back) back.focus();
+    fhReturnFocus = null;
+    setHash('#/');
+  }
+
+  function showFhScene() {
+    fhPlace = null;
+    if (!fhEls) return;
+    if (fhEls.panel) fhEls.panel.hidden = true;
+    Object.values(house.hots).forEach(function (b) { b.classList.remove('active'); });
+    // 收起面板后把地址栏收回 #/house：否则 #/house/序号 会留在 URL 里，
+    // 刷新或后退会重新把抽屉弹开，跟当前画面不一致。
+    setHash('#/house');
+    const lastHot = house.hots && house.hots[house.lastKey];
+    if (lastHot && lastHot.offsetParent) lastHot.focus();
+  }
+
+  function showFhPlace(key) {
+    if (!fhEls) return;
+    fhPlace = key;
+    const A = window.HouseArt, p = A.PLACES[key];
+    if (fhEls.title) fhEls.title.textContent = '渔屋 · ' + p.name;
+    if (fhEls.crumb) fhEls.crumb.textContent = '渔屋 › ' + p.name;
+    if (fhEls.tabs) fhEls.tabs.innerHTML = '';
+    if (fhEls.panel) fhEls.panel.hidden = false;
+    // 标记活跃物件
+    Object.keys(house.hots).forEach(function (k) { house.hots[k].classList.toggle('active', k === key); });
+    if (fhEls.back) fhEls.back.focus();
+    const items = houseItems();
+    const it = items.filter(function (x) { return x.key === key; })[0];
+    const tabIdx = Math.max(0, items.indexOf(it));
+    setHash('#/house/' + tabIdx);
+  }
+
+  function buildFhScene() {
+    if (house.built || !fhEls || !fhEls.scene || !window.HouseArt) return;
     const A = window.HouseArt;
     house.built = true;
     house.wrap = document.createElement('div'); house.wrap.className = 'h-house'; house.wrap.id = 'h-house';
     house.wrap.setAttribute('role', 'group'); house.wrap.setAttribute('aria-label', '渔屋内景，点击物件打开功能');
     house.world = document.createElement('div'); house.world.className = 'h-house-world';
-    house.cv = document.createElement('canvas'); house.cv.width = A.W; house.cv.height = A.H; house.cv.setAttribute('aria-hidden', 'true');
+    house.cv = document.createElement('canvas'); house.cv.width = A.W; house.cv.height = A.H;
+    house.cv.setAttribute('aria-hidden', 'true');
     house.ctx = house.cv.getContext('2d'); house.ctx.imageSmoothingEnabled = false;
     house.world.appendChild(house.cv);
     A.DRAW_ORDER.forEach(function (key, i) {
@@ -427,25 +503,35 @@ window.HarborShell = (function () {
       b.addEventListener('mouseleave', function () { if (house.hover === key) house.hover = null; });
       b.addEventListener('focus', function () { house.hover = key; });
       b.addEventListener('blur', function () { if (house.hover === key) house.hover = null; });
-      b.addEventListener('click', function () { houseOpen(key); });
+      b.addEventListener('click', function () { fhHouseOpen(key); });
       house.hots[key] = b; house.world.appendChild(b);
     });
     house.wrap.appendChild(house.world);
-    els.panel.insertBefore(house.wrap, els.tabs || els.pbody);
-    if (window.ResizeObserver) new ResizeObserver(layoutHouse).observe(house.wrap);
-    window.addEventListener('resize', layoutHouse);
+    fhEls.scene.appendChild(house.wrap);
+    if (window.ResizeObserver) new ResizeObserver(layoutFhScene).observe(fhEls.stage || fhEls.scene);
+    window.addEventListener('resize', layoutFhScene);
   }
+
+  function layoutFhScene() {
+    if (!house.built || !fhEls || !fhEls.stage) return;
+    const A = window.HouseArt, r = fhEls.stage.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const s = Math.max(1, Math.min(Math.floor(r.width / A.W), Math.floor(r.height / A.H)));
+    house.world.style.width = (A.W * s) + 'px'; house.world.style.height = (A.H * s) + 'px';
+  }
+
   function refreshHouse() {
-    if (!house.built) return;
-    const A = window.HouseArt, items = houseItems();
-    const meta = window.UI && UI.panelTabs ? UI.panelTabs() : null;
+    if (!house.built || !window.HouseArt) return;
+    const A = window.HouseArt;
+    if (window.UI && UI.panelTabs) { /* 确保 character 视图已激活 */ }
     house.state = A.houseState((window.Engine && Engine.state) || {});
+    const items = houseItems();
     A.DRAW_ORDER.forEach(function (key) {
-      const b = house.hots[key], p = A.PLACES[key];
+      const b = house.hots[key]; if (!b) return;
+      const p = A.PLACES[key];
       const it = items.filter(function (x) { return x.key === key; })[0];
-      const lk = !it;   // 后台关掉的子项不会出现在页签清单里
+      const lk = !it;
       b.classList.toggle('locked', lk);
-      b.classList.toggle('active', !!(house.drawer && meta && meta.active === key));
       b.querySelector('.h-sign').textContent = (lk ? '🔒 ' : p.icon + ' ') + p.name;
       let bd = b.querySelector('.h-badge');
       const badge = (it && it.badge) || (key === 'yard' && house.state.houseFull ? '!' : '');
@@ -455,42 +541,30 @@ window.HarborShell = (function () {
     });
     house.layerKey = '';
   }
-  function layoutHouse() {
-    if (!house.built || !house.wrap.offsetParent) return;
-    const A = window.HouseArt, r = house.wrap.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    // 整幅放进可用区域（像素画按 pixelated 放大），抽屉叠在右侧，不挤压画面
-    const s = Math.max(.5, Math.min(r.width / A.W, r.height / A.H));
-    house.world.style.width = Math.floor(A.W * s) + 'px'; house.world.style.height = Math.floor(A.H * s) + 'px';
-    if (els.panel) els.panel.style.setProperty('--h-house-top', house.wrap.offsetTop + 'px');
+
+  function fhHouseOpen(key) {
+    if (!house.built) return;
+    if (house.hots[key] && house.hots[key].classList.contains('locked')) { toastMsg('🔒 「' + window.HouseArt.PLACES[key].name + '」暂未开放'); return; }
+    house.lastKey = key;
+    if (window.UI && UI.panelTab) UI.panelTab(key);
+    showFhPlace(key);
   }
+
   function housePeriod() {
     const ps = window.PlayerSettings && PlayerSettings.get ? PlayerSettings.get() : {};
     return ps.timeMode && ps.timeMode !== 'clock' && META[ps.timeMode] ? ps.timeMode : nowInfo().id;
   }
+
   function drawHouse(ts) {
     const A = window.HouseArt; if (!A || !house.built) return;
     const period = housePeriod(), P = A.PAL[period] || A.PAL.night;
     if (house.layerKey !== period) { house.layers = A.makeLayers(P, house.state); house.layerKey = period; }
     const still = motionOff();
-    if (still && ts - house.lastStill < 20000 && house.layerKey === period && house.drawnOnce && !house.hover) return;
+    if (still && ts - house.lastStill < 20000 && house.drawnOnce && !house.hover) return;
     if (still) house.lastStill = ts;
     house.drawnOnce = true;
+    house.ctx.clearRect(0, 0, A.W, A.H);
     A.drawFrame(house.ctx, house.layers, P, house.state, still ? 0 : ts / 1000, house.hover);
-  }
-  function houseOpen(key) {
-    if (!house.built) return;
-    if (house.hots[key] && house.hots[key].classList.contains('locked')) {
-      toastMsg('🔒 「' + window.HouseArt.PLACES[key].name + '」暂未开放'); return;
-    }
-    house.drawer = true; house.lastKey = key;
-    const meta = window.UI && UI.panelTabs ? UI.panelTabs() : null;
-    if (!meta || meta.active !== key) { if (window.UI && UI.panelTab) UI.panelTab(key); }
-    showPlace('character');
-  }
-  function houseCloseDrawer() {
-    house.drawer = false;
-    if (statePlace === 'character') showPlace('character');
   }
 
   function buildScene() {
@@ -532,7 +606,8 @@ window.HarborShell = (function () {
   }
   function enterPlace(id, from) {
     if (placeLocked(id)) { toastMsg('🔒 「' + PLACES[id].name + '」暂未开放'); return; }
-    // v3 F3：告示板（board）的 view 为 null，openPlace 对它单独处理；其余地点传 view id
+    // 渔屋改为独立场景入口，不再走内景面板
+    if (id === 'character') { enterFishhouse(); return; }
     var placeId = (id === 'board') ? 'board' : PLACES[id].view;
     openPlace(placeId);
   }
@@ -633,10 +708,12 @@ window.HarborShell = (function () {
   }
   function sceneLoop(ts) {
     requestAnimationFrame(sceneLoop);
-    // 渔屋内景：港湾画面收起，改画屋内（同样 12 帧 / 秒）
-    if (on && !document.hidden && houseMode() && ts - house.lastFrame >= 83) { house.lastFrame = ts; drawHouse(ts); return; }
-    // 12 帧 / 秒就够像素画用；页面隐藏、没接管港湾、或正在看内景（场景被收起）时整个跳过
-    if (!on || document.hidden || statePlace || ts - scene.lastFrame < 83) return;
+    // 渔屋独立场景：只要渔屋可见就画渔屋（12 帧/秒）
+    if (on && !document.hidden && currentScene === 'fishhouse' && house.built && ts - house.lastFrame >= 83) {
+      house.lastFrame = ts; drawHouse(ts); return;
+    }
+    // 港湾场景：页面隐藏、未接管、在内景面板时跳过
+    if (!on || document.hidden || currentScene !== 'harbor' || statePlace || ts - scene.lastFrame < 83) return;
     scene.lastFrame = ts;
     drawScene(ts, !!scene.hover);
     // 罗盘首页：每帧把场景条带刷进 #h-strip
@@ -752,12 +829,19 @@ window.HarborShell = (function () {
     }
     // Phase G：#nav 已从 index.html 移除，目录列表改为直接渲染到 #h-dir-body；
     // #main 仍然在 #h-pbody 里，render* 不用改。
-    moveTo(els.main, els.pbody);
+    // 渔屋独立场景开着时不能把 #main 抢回港湾面板：#main 那时属于 #fh-pbody，
+    // 否则点开屋内物件后 UI 重绘会触发 apply()，把内容搬走、屋内面板变空白
+    // （面板虽然在港湾里是 hidden 的，但搬走就是搬走了）。
+    if (currentScene === 'fishhouse' && fhEls && fhEls.pbody) moveTo(els.main, fhEls.pbody);
+    else moveTo(els.main, els.pbody);
     moveTo(els.status, els.statusSlot);
     buildScene();
     // 设置变化（手机布局 / 动效 / 界面风格）也要立刻重排，不能等到下一次 resize
     requestAnimationFrame(layoutScene);
     refreshScene();
+    // 渔屋开着时，UI 重绘（renderView → syncShell）也是屋内挂签与红标唯一的刷新时机：
+    // refreshHouse() 只在进场景时调过一次，之后晒场满仓不会自己长出「!」。
+    if (currentScene === 'fishhouse') refreshHouse();
     paintTime();
     syncHud();
     // v2 阶段 F：页面重绘（renderView → syncView）后同步挂签的清单与选中态
@@ -807,7 +891,7 @@ window.HarborShell = (function () {
     if (els.bag) els.bag.addEventListener('click', function () { openPlace('inventory'); });
     if (els.cast) els.cast.addEventListener('click', function () { openPlace('fishing'); });
     // 渔屋抽屉打开时「回屋里」只收抽屉；其余情况回港湾
-    if (els.back) els.back.addEventListener('click', function () { if (houseMode() && house.drawer) { houseCloseDrawer(); return; } showHome(); setHash('#/'); });
+    if (els.back) els.back.addEventListener('click', function () { showHome(); setHash('#/'); });
     if (els.close) els.close.addEventListener('click', function () { showHome(); setHash('#/'); });
     // v2 阶段 F：内景一级页签（挂签）点击 —— 页签清单由 ui.js 的 UI.panelTab 提供，
     // 外壳不关心具体是哪个页面，只把 key 转回去并同步选中态。
@@ -869,7 +953,8 @@ window.HarborShell = (function () {
         if (document.querySelector('dialog[open], .modal-overlay')) return;
         if (closeOverlays()) return;
         if (dirOpen) { showDir(false); return; }
-        if (houseMode() && house.drawer) { houseCloseDrawer(); return; }
+        // 渔屋场景：Esc 先关面板，再回港湾
+        if (currentScene === 'fishhouse') { if (fhPlace) { showFhScene(); return; } exitFishhouse(); return; }
         if (statePlace) { showHome(); setHash('#/'); }
         return;
       }
@@ -877,8 +962,8 @@ window.HarborShell = (function () {
       if (document.querySelector('dialog[open], .modal-overlay') || ev.ctrlKey || ev.metaKey || ev.altKey) return;
       // C = 罗盘，数字键 1–9、0 = 按后台菜单顺序直达前 10 个入口（设计稿 §7）
       if (ev.key === 'c' || ev.key === 'C') { if (overlayOpen()) closeOverlays(); else openCompass(); ev.preventDefault(); return; }
-      // 渔屋内景：1–5 直达屋内物件（晒场 / 繁育 / 宠物 / 角色 / 钓竿）
-      if (houseMode() && /^[1-5]$/.test(ev.key)) { houseOpen(window.HouseArt.DRAW_ORDER[+ev.key - 1]); ev.preventDefault(); return; }
+      // 渔屋场景内：1–5 直达屋内物件
+      if (currentScene === 'fishhouse' && /^[1-5]$/.test(ev.key)) { fhHouseOpen(window.HouseArt.DRAW_ORDER[+ev.key - 1]); ev.preventDefault(); return; }
       if (/^[0-9]$/.test(ev.key)) {
         const ids = menuIds(), i = ev.key === '0' ? 9 : +ev.key - 1;
         if (ids[i]) { closeOverlays(); showDir(false); openPlace(ids[i]); ev.preventDefault(); }
