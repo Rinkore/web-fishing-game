@@ -6598,29 +6598,6 @@ window.UI = (function () {
         rarRow.appendChild(b);
       });
       row.appendChild(rarRow);
-      // v0.13.6：体型档筛选（只在「🐟 鱼类」页签出现）——一般量 / 大型 / 巨型在背包中各自成行
-      if (invCategory === 'fish') {
-        const tc = { all: 0, N: 0, L: 0, G: 0 };
-        invKeys.forEach(function (id) {
-          if (itemMeta(id).kind !== 'fish') return;
-          tc.all += 1;
-          if (shownAvailOf(id) > 0) tc.N += 1;          // 一般量（可走普通通道）尚存的鱼种
-          const bf = st.bigfish && st.bigfish[id];
-          if (bf && (bf.L || 0) > 0) tc.L += 1;
-          if (bf && (bf.G || 0) > 0) tc.G += 1;
-        });
-        const tierRow = el('div', 'inv-subrow');
-        tierRow.appendChild(el('span', 'sub-label', '体型档'));
-        [['all', '全部'], ['N', '一般'], ['L', '大型'], ['G', '巨型']].forEach(function (kv) {
-          const b = el('button', 'inv-cat sub' + (invTier === kv[0] ? ' on' : ''), kv[1] + ' ' + (tc[kv[0]] || 0));
-          b.title = kv[0] === 'all' ? '显示全部鱼（一般量 + 大型/巨型档行）'
-            : kv[0] === 'N' ? '只显示一般量的鱼（可走普通通道出售 / 上架 / 交易）'
-            : '只显示' + kv[1] + '档行（超出默认最大体型' + (kv[0] === 'G' ? '80% 以上' : ' 0~80%') + '，售出额外 +' + (kv[0] === 'G' ? '150' : '50') + '%💰）';
-          b.addEventListener('click', function () { if (invTier !== kv[0]) { invTier = kv[0]; renderView(); } });
-          tierRow.appendChild(b);
-        });
-        row.appendChild(tierRow);
-      }
     }
     return row;
   }
@@ -7220,14 +7197,7 @@ window.UI = (function () {
     // ⚠️ 必须限定在「🐟 鱼类」页签：这个筛选行只在鱼类页签渲染，若让它跨分类生效，
     // 切到材料/宝匣时会被静默过滤成空列表，而且界面上去不掉（v0.13.8 修）。
     // v0.13.10：筛选同时作用到「行」——选一般只看一般行事，选大型/巨型只看该档行（与一键出售预览同口径）。
-    const tierShown = (invTier !== 'all' && invCategory === 'fish') ? invTier : 'all';
-    if (tierShown !== 'all') {
-      keys = keys.filter(function (id) {
-        const meta0 = itemMeta(id);
-        if (meta0.kind !== 'fish') return false;
-        return tierShown === 'N' ? shownAvailOf(id) > 0 : reservedCountOf(id, tierShown) > 0;
-      });
-    }
+    const tierShown = 'all';
     // 排序：默认按现价（出售 / 获得不改变行位置），也可按品质或持有数量（设计稿 v2 的排序下拉）。
     // 无论选哪种，同档内始终用 id 兜底比较，保证顺序稳定、重绘不跳位。
     if (invCategory !== 'component') keys.sort(function (a, b) {
@@ -7409,42 +7379,6 @@ window.UI = (function () {
     list.className = 'inv-page' + (gridMode ? ' inv-grid' : '');
     list.setAttribute('data-sig', invSigOf(st));
 
-    // 大型 / 巨型鱼单独预留（普通出售 / 上架 / 交易动不了它们）：两种视图下都各自成一行，
-    // 出售走 +50% / +150% 加成通道。就地补丁（patchInventoryTierRow）按 .inv-tier-row[data-id] 定位。
-    function appendTierRows(host, id, meta) {
-      if (meta.kind !== 'fish' || reservedOf(id) <= 0) return;
-      [['L', '大型', 'tag-large'], ['G', '巨型', 'tag-giant']].forEach(function (tk) {
-        const t = tk[0], n = shownReservedOf(id, t);   // 显示量 = 服务器预留量 − 在途出售量
-        if (n <= 0) return;
-        if (tierShown !== 'all' && tierShown !== t) return;
-        const bonus = tierBonus(id, t, 1);
-        const trow = el('div', 'inv-row inv-page-row inv-tier-row');
-        trow.setAttribute('data-id', id + '@' + t);
-        trow.innerHTML =
-          '<span class="' + qualityClass(meta) + '">' + esc(meta.name) + '</span>' +
-          '<span class="kind-tag ' + tk[2] + '">' + tk[1] + '</span>' +
-          '<span class="cnt">×' + n + '</span>' +
-          '<span class="unit-price">现价 ' + unitPrice(id) + '💰 +' + bonus + '💰</span>' +
-          '<span class="subtotal">小计 ' + (unitPrice(id) * n + tierBonus(id, t, n)) + '💰</span>';
-        const tact = el('span', 'inv-acts');
-        const tsb = el('button', 'mini primary-mini', '出售 1');
-        markFeature(tsb, 'mall.sell');
-        tsb.disabled = tradableCountOf(id, t) < 1;
-        tsb.title = '出售' + (t === 'G' ? '巨型' : '大型') + '（额外 +' + (t === 'G' ? '150' : '50') + '% 金币加成）';
-        tsb.addEventListener('click', function () { doSell(id, 1, t); });
-        tact.appendChild(tsb);
-        const tall = el('button', 'mini', '批量出售');
-        markFeature(tall, 'mall.sell');
-        tall.title = '打开批量出售窗口：一般 / 大型 / 巨型 三档都能填数量，一次结算';
-        tall.addEventListener('click', function () { openBatchSellModal(id); });
-        tact.appendChild(tall);
-        trow.appendChild(tact);
-        trow.insertAdjacentHTML('beforeend', rewardBindingBadge(id, t));
-        wireItemIntro(trow, id);
-        host.appendChild(trow);
-      });
-    }
-
     // ---- 右侧「物品明细」卡（设计稿 v2 §8）：选中格子的放大图 / 属性 / 操作 ----
     const detailId = (invSel && (st.inventory[invSel] || 0) > 0)
       ? invSel
@@ -7569,9 +7503,9 @@ window.UI = (function () {
       const need = Math.max(24, Math.ceil(Math.max(1, wall.children.length) / 8) * 8);
       for (let i = wall.children.length; i < need; i++) wall.appendChild(el('span', 'slot empty'));
       list.appendChild(wall);
-      const tiers = el('div', 'list-rows inv-tiers');
-      keys.forEach(function (id) { appendTierRows(tiers, id, itemMeta(id)); });
-      if (tiers.children.length) list.appendChild(tiers);
+      
+      
+      
     } else {
       keys.forEach(function (id) {
         const meta = itemMeta(id);
@@ -7630,9 +7564,6 @@ window.UI = (function () {
           wireItemIntro(row, id);   // 悬停出简介浮标 + 点击开完整简介（鱼 / 材料 / 宝匣）
           list.appendChild(row);
         }
-        // v0.13.6：大型/巨型鱼单独存放——紧跟普通行之后各出一行带标签的独立行，出售走加成通道
-        // v0.13.10：选了体型档筛选时只画该档行（一般 / 大型 / 巨型 三档互斥显示）
-        appendTierRows(list, id, meta);
       });
     }
     colMain.appendChild(list);
@@ -10938,6 +10869,10 @@ window.UI = (function () {
 
   // ---- 认证流程 ----
   let authTab = 'login';
+  function authFocusable() {
+    return Array.prototype.slice.call(document.querySelectorAll('#auth button, #auth input, #auth [tabindex]:not([tabindex="-1"])'))
+      .filter(function (el) { return !el.disabled && !el.hidden && el.offsetParent !== null; });
+  }
   function wireAuth() {
     $('tab-login').onclick = function () { setAuthTab('login'); };
     $('tab-register').onclick = function () { setAuthTab('register'); };
@@ -10947,6 +10882,16 @@ window.UI = (function () {
     // （表现为登录「没反应」或登录成功后仍停在登录页）。这里只拦默认行为，
     // 发放请求仍走下面的 onclick / keydown 处理器，避免一条路径重复绑定两次。
     $('auth-form').onsubmit = function (e) { e.preventDefault(); };
+    $('auth').addEventListener('keydown', function (e) {
+      if (e.key !== 'Tab') return;
+      const focusable = authFocusable();
+      if (!focusable.length) return;
+      if (e.shiftKey && document.activeElement === focusable[0]) {
+        e.preventDefault(); focusable[focusable.length - 1].focus();
+      } else if (!e.shiftKey && document.activeElement === focusable[focusable.length - 1]) {
+        e.preventDefault(); focusable[0].focus();
+      }
+    });
     $('auth-pass').addEventListener('keydown', function (e) { if (e.key === 'Enter') onAuthSubmit(); });
     $('auth-user').addEventListener('keydown', function (e) { if (e.key === 'Enter') onAuthSubmit(); });
     $('auth-pass2').addEventListener('keydown', function (e) { if (e.key === 'Enter') onAuthSubmit(); });
@@ -10988,16 +10933,26 @@ window.UI = (function () {
   }
   function setAuthTab(t) {
     authTab = t;
-    $('tab-login').classList.toggle('active', t === 'login');
-    $('tab-register').classList.toggle('active', t === 'register');
+    const loginTab = $('tab-login');
+    const registerTab = $('tab-register');
+    loginTab.classList.toggle('active', t === 'login');
+    registerTab.classList.toggle('active', t === 'register');
+    loginTab.setAttribute('aria-selected', t === 'login' ? 'true' : 'false');
+    registerTab.setAttribute('aria-selected', t === 'register' ? 'true' : 'false');
+    loginTab.tabIndex = t === 'login' ? 0 : -1;
+    registerTab.tabIndex = t === 'register' ? 0 : -1;
     const reg = t === 'register';
-    $('auth-name').style.display = reg ? 'block' : 'none';
-    $('auth-pass2').style.display = reg ? 'block' : 'none';
-    $('auth-qq').style.display = reg ? 'block' : 'none';
+    $('auth-register-fields').hidden = !reg;
     $('auth-submit').textContent = reg ? '注册' : '登录';
     $('auth-msg').textContent = '';
   }
-  function showAuth() { $('auth').style.display = 'flex'; syncBrandAdmin(); }
+  function showAuth() {
+    const auth = $('auth');
+    auth.style.display = 'flex';
+    auth.setAttribute('aria-hidden', 'false');
+    syncBrandAdmin();
+    requestAnimationFrame(function () { $('auth-user').focus(); });
+  }
   // 顶号/会话失效：回到登录界面并提示原因
   function forceLogout(msg) {
     window.MailUI.stop();
@@ -11087,7 +11042,9 @@ window.UI = (function () {
     msgLogOwner = null; // 切换账号后日志按新账号重新加载
     window.Net.setAuth(token, profile);
     window.MailUI.reset();window.MailUI.refresh(true);
-    $('auth').style.display = 'none';
+    const auth = $('auth');
+    auth.style.display = 'none';
+    auth.setAttribute('aria-hidden', 'true');
     renderNav();
     renderTopbar();
     renderView();

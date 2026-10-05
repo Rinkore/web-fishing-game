@@ -38,7 +38,7 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
 .h-hud { flex: none; display: flex; gap: 0; }
 .h-hud-top {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 6px 12px; background: rgba(10, 29, 48, .92);
+  padding: calc(6px + env(safe-area-inset-top, 0px)) 12px 6px; background: rgba(10, 29, 48, .92);
   border-bottom: 2px solid #2c4f74; flex-wrap: nowrap;
 }
 .h-hud-id { min-width: 0; flex: 1 1 auto; }
@@ -81,7 +81,7 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
 
 /* 出海钓鱼按钮：居中浮动，紧凑 */
 .h-cast {
-  position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 3; pointer-events: auto;
+  position: fixed; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); z-index: 3; pointer-events: auto;
   display: inline-flex; align-items: center; justify-content: center;
   flex-direction: column; padding: 6px 20px; line-height: 1.2;
   font: 18px var(--px-font); color: #032;
@@ -103,10 +103,10 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
   position: fixed; z-index: 3; pointer-events: auto;
 }
 .h-hud-bottom .h-btn:nth-child(1) {
-  bottom: 52px; left: 12px;
+  bottom: calc(52px + env(safe-area-inset-bottom, 0px)); left: 12px;
 }
 .h-hud-bottom .h-btn:nth-child(2) {
-  bottom: 12px; left: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: 12px;
 }
 
 /* 右下角控制组（背包、罗盘） */
@@ -115,15 +115,15 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
   position: fixed; z-index: 3; pointer-events: auto;
 }
 .h-hud-bottom .h-btn:nth-child(4) {
-  bottom: 52px; right: 12px;
+  bottom: calc(52px + env(safe-area-inset-bottom, 0px)); right: 12px;
 }
 .h-hud-bottom .h-btn:nth-child(5) {
-  bottom: 12px; right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px)); right: 12px;
 }
 
 /* 内景面板：覆盖整个舞台 */
 .h-panel {
-  position: absolute; inset: 40px 0 104px; z-index: 4; display: flex; flex-direction: column;
+  position: absolute; inset: 40px 0 calc(104px + env(safe-area-inset-bottom, 0px)); z-index: 4; display: flex; flex-direction: column;
   background: #0e1d33; border: 2px solid #2c4f74;
   box-shadow: none; overflow: hidden;
   animation: h-panel-in 220ms ease-out;
@@ -133,7 +133,7 @@ body.harbor-on { padding-bottom: 0; background-attachment: fixed; }
 html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animation: none; }
 @media (prefers-reduced-motion: reduce) { .h-panel { animation: none; } }
 /* 手机：全宽，顶部入场（设计稿 §9） */
-@media (max-width: 640px) { .h-panel { inset: 0 0 104px; border-width: 3px 0 0; box-shadow: 0 -4px 0 #3a2618; } }
+@media (max-width: 640px) { .h-panel { inset: 0 0 calc(104px + env(safe-area-inset-bottom, 0px)); border-width: 3px 0 0; box-shadow: 0 -4px 0 #3a2618; } }
 
 /* 木板横梁：紧凑版 */
 .h-plank {
@@ -241,7 +241,7 @@ html[data-motion="reduced"] .h-panel, html[data-motion="off"] .h-panel { animati
 /* ---------- 手机：HUD 紧凑、目录铺满 ---------- */
 @media (max-width: 640px) {
   #harbor { padding: 0; gap: 0; }
-  .h-hud-top { padding: 4px 8px; font-size: 11px; }
+  .h-hud-top { padding: calc(4px + env(safe-area-inset-top, 0px)) 8px 4px; font-size: 11px; }
   .h-hud-id .player-status { font-size: 11px; gap: 8px 12px; }
   .h-timechip { padding: 2px 4px; font-size: 10px; }
   .h-stage { min-height: 0; }
@@ -556,7 +556,7 @@ html[data-motion="reduced"] .h-badge, html[data-motion="off"] .h-badge { animati
 .btn-link:disabled { opacity: .45; cursor: not-allowed; text-decoration: none; }
 
 body.harbor-on #toast {
-  position: fixed; z-index: 14; left: 50%; bottom: 70px; transform: translateX(-50%);
+  position: fixed; z-index: 14; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
   font: 10px var(--px-font); background: #0f243c;
   border: 2px solid var(--px-gold, #ffd23e) !important;
   border-radius: 0 !important;
@@ -1081,3 +1081,31 @@ body.harbor-on .fishing-page .px-node.on .pn-name,
 body.harbor-on .fishing-page .px-node.here .pn-name { border-color: var(--accent); color: var(--accent); }
 body.harbor-on .fishing-page .px-node.locked .pn-name { border-color: #3d5f8a; color: #8a97a8; }
 body.harbor-on .fishing-page .px-legend { border-radius: 0; border: 3px solid #25405f; }
+
+/* ============================================================
+   渔屋场景化内景（设计稿 output/design-review/fishhouse）
+   .h-house-mode：先显示屋内画面；.h-drawer-open：右侧抽屉承载 #h-pbody
+   ============================================================ */
+.h-house { display: none; }
+.h-panel.h-house-mode { overflow: hidden; }
+.h-panel.h-house-mode .h-house {
+  display: flex; flex: 1 1 auto; min-height: 0; align-items: center; justify-content: center;
+  background: #241810; overflow: hidden; position: relative;
+}
+.h-house-world { position: relative; flex: none; }
+.h-house-world canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.h-house .h-hot.active { border-color: rgba(255, 210, 62, .85) !important; }
+.h-panel.h-house-mode .h-tabs { display: none; }
+.h-panel.h-house-mode:not(.h-drawer-open) .h-pbody { display: none; }
+.h-panel.h-house-mode.h-drawer-open .h-pbody {
+  position: absolute; right: 0; bottom: 0; top: var(--h-house-top, 40px); width: 46%; z-index: 2;
+  background: #0e1d33; border-left: 2px solid #2c4f74; box-shadow: -4px 0 0 rgba(0, 0, 0, .3);
+  animation: h-drawer-in 200ms ease-out;
+}
+@keyframes h-drawer-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+html[data-motion="reduced"] .h-panel.h-house-mode .h-pbody,
+html[data-motion="off"] .h-panel.h-house-mode .h-pbody { animation: none; }
+@media (prefers-reduced-motion: reduce) { .h-panel.h-house-mode .h-pbody { animation: none; } }
+@media (max-width: 640px) {
+  .h-panel.h-house-mode.h-drawer-open .h-pbody { width: 100%; border-left: 0; box-shadow: none; }
+}

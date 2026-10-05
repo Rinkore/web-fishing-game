@@ -22,9 +22,6 @@ body.harbor-on .h-pbody .inv-tool select.inv-sort { flex: none; }
 /* 列表视图下 .inv-page 仍是纵向列表（沿用 style.css 的 .inv-page-row） */
 .inv-page.inv-grid { gap: 8px; }
 
-/* 大型 / 巨型鱼的预留行：跟在格子墙后面，逐行显示数量与加成价 */
-.inv-tiers { margin-top: 10px; }
-
 /* 右侧物品明细卡（设计稿 §8 .box.detail） */
 body.harbor-on .h-pbody .inv-detail { text-align: center; }
 body.harbor-on .h-pbody .inv-detail .big { margin: 2px auto 6px; }

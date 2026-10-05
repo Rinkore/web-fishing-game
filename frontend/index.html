@@ -123,25 +123,28 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-  <div id="auth" class="auth-overlay">
+  <div id="auth" class="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-sub" aria-hidden="true">
     <form id="auth-form" class="auth-card" autocomplete="on">
-      <div class="brand-big">🎣 DeepFish</div>
-      <div class="auth-sub"><span data-ver></span> · 注册或登录后开始（支持真实多人联机</div>
-      <div class="auth-tabs">
-        <button id="tab-login" class="active" type="button" data-tab="login">登录</button>
-        <button id="tab-register" type="button" data-tab="register">注册</button>
+      <div id="auth-title" class="brand-big">🎣 DeepFish</div>
+      <div id="auth-sub" class="auth-sub"><span data-ver></span> · 注册或登录后开始（支持真实多人联机）</div>
+      <div class="auth-tabs" role="tablist" aria-label="认证方式">
+        <button id="tab-login" class="active" type="button" role="tab" aria-selected="true" aria-controls="auth-login-fields" tabindex="0" data-tab="login">登录</button>
+        <button id="tab-register" type="button" role="tab" aria-selected="false" aria-controls="auth-register-fields" tabindex="-1" data-tab="register">注册</button>
       </div>
-      <label class="sr-only" for="auth-user">用户</label>
-      <input id="auth-user" class="auth-input" placeholder="用户名（3-20 位字母/数字/下划线）" autocomplete="username" />
-      <label class="sr-only" for="auth-pass">密码</label>
-      <input id="auth-pass" class="auth-input" type="password" placeholder="密码（注册至少 8 位）" autocomplete="current-password" />
-      <!-- 仅注册时显示 -->
-      <label class="sr-only" for="auth-pass2">确认密码</label>
-      <input id="auth-pass2" class="auth-input" type="password" placeholder="确认密码（再次输入）" autocomplete="new-password" style="display:none" />
-      <label class="sr-only" for="auth-qq">QQ </label>
-      <input id="auth-qq" class="auth-input" placeholder="QQ 号（必填，5-12 位数字）" autocomplete="off" style="display:none" />
-      <label class="sr-only" for="auth-name">显示</label>
-      <input id="auth-name" class="auth-input" placeholder="显示名（注册可选，留空等同用户名）" style="display:none" />
+      <div id="auth-login-fields" role="group" aria-label="登录信息">
+        <label class="sr-only" for="auth-user">用户</label>
+        <input id="auth-user" class="auth-input" placeholder="用户名（3-20 位字母/数字/下划线）" autocomplete="username" />
+        <label class="sr-only" for="auth-pass">密码</label>
+        <input id="auth-pass" class="auth-input" type="password" placeholder="密码（注册至少 8 位）" autocomplete="current-password" />
+      </div>
+      <div id="auth-register-fields" role="group" aria-label="注册信息" hidden>
+        <label class="sr-only" for="auth-pass2">确认密码</label>
+        <input id="auth-pass2" class="auth-input" type="password" placeholder="确认密码（再次输入）" autocomplete="new-password" />
+        <label class="sr-only" for="auth-qq">QQ </label>
+        <input id="auth-qq" class="auth-input" placeholder="QQ 号（必填，5-12 位数字）" autocomplete="off" />
+        <label class="sr-only" for="auth-name">显示</label>
+        <input id="auth-name" class="auth-input" placeholder="显示名（注册可选，留空等同用户名）" />
+      </div>
       <button id="auth-submit" class="primary big" type="submit">登录</button>
       <div id="auth-msg" class="auth-msg" role="status" aria-live="polite"></div>
     </form>
@@ -165,6 +168,7 @@
   <script src="js/breeding.js?v=v0.31.0" defer></script>
   <script src="js/ui.js?v=v0.31.0" defer></script>
   <script src="js/harbor-art.js?v=v0.31.0" defer></script>
+  <script src="js/house-art.js?v=v0.31.0" defer></script>
   <script src="js/harbor.js?v=v0.31.0" defer></script>
   <script>
     window.addEventListener('DOMContentLoaded', function () {
