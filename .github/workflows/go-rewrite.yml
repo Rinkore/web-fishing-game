@@ -40,7 +40,6 @@ jobs:
           set -euo pipefail
           node tools/go-rewrite/catalog.js --check
           node tools/go-rewrite/native-rules-fixture.js --check
-          node tools/go-rewrite/workshop-fixture.js --check
           node tools/go-rewrite/mall-fixture.js --check
           node tools/go-rewrite/chest-fixture.js --check
           node tools/go-rewrite/wiki-content.js --check

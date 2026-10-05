@@ -54,15 +54,15 @@ func (a *API) legacyHouse(action string) http.HandlerFunc {
 		}
 
 		var in struct {
-			RequestKey string   `json:"requestKey"`
+			RequestKey string `json:"requestKey"`
 			// pet
-			PetID      string   `json:"petId"`
-			PetAction  string   `json:"petAction"`
+			PetID     string `json:"petId"`
+			PetAction string `json:"petAction"`
 			// role
-			Track      string   `json:"track"`
-			Points     int      `json:"points"`
+			Track  string `json:"track"`
+			Points int    `json:"points"`
 			// steal
-			Target     string   `json:"target"`
+			Target string `json:"target"`
 			// place_fish — price and tier are resolved server-side from the catalog;
 			// the client only supplies the fish item id, slot index, and processing chain.
 			FishID  string   `json:"fishId"`

@@ -43,15 +43,15 @@ const (
 // extras and carries the full lifecycle of one batch: placed → drying (each
 // phase completes in sequence) → ready (awaiting collect).
 type RackSlot struct {
-	SlotIdx   int        `json:"slotIdx"`              // position on the rack (0-based)
-	FishID    string     `json:"fishId"`               // catalog item id of the raw fish
-	FishTier  string     `json:"fishTier"`             // rarity tier ("common"…"legendary")
-	FishPrice int64      `json:"fishPrice"`            // base sell price of the raw fish
-	Phases    []RackPhase `json:"phases"`              // ordered processing chain
-	PhaseIdx  int        `json:"phaseIdx"`             // index of the current active phase
-	StartedAt time.Time  `json:"startedAt"`            // wall time when current phase started
-	Premium   bool       `json:"premium,omitempty"`    // set at collect time when premium roll succeeds
-	Done      bool       `json:"done,omitempty"`       // true once all phases finished
+	SlotIdx   int         `json:"slotIdx"`           // position on the rack (0-based)
+	FishID    string      `json:"fishId"`            // catalog item id of the raw fish
+	FishTier  string      `json:"fishTier"`          // rarity tier ("common"…"legendary")
+	FishPrice int64       `json:"fishPrice"`         // base sell price of the raw fish
+	Phases    []RackPhase `json:"phases"`            // ordered processing chain
+	PhaseIdx  int         `json:"phaseIdx"`          // index of the current active phase
+	StartedAt time.Time   `json:"startedAt"`         // wall time when current phase started
+	Premium   bool        `json:"premium,omitempty"` // set at collect time when premium roll succeeds
+	Done      bool        `json:"done,omitempty"`    // true once all phases finished
 }
 
 // State is the player-owned part of a house row.
@@ -82,14 +82,14 @@ type StealView struct {
 // RackSlotView is the client-facing projection of one rack slot.
 // ReadyAt is zero when the batch is still processing.
 type RackSlotView struct {
-	SlotIdx   int         `json:"slotIdx"`
-	FishID    string      `json:"fishId"`
-	FishTier  string      `json:"fishTier"`
-	Phases    []RackPhase `json:"phases"`
-	PhaseIdx  int         `json:"phaseIdx"`
-	ReadyAt   time.Time   `json:"readyAt"`   // estimated wall time all phases finish
-	Done      bool        `json:"done"`
-	Premium   bool        `json:"premium,omitempty"`
+	SlotIdx  int         `json:"slotIdx"`
+	FishID   string      `json:"fishId"`
+	FishTier string      `json:"fishTier"`
+	Phases   []RackPhase `json:"phases"`
+	PhaseIdx int         `json:"phaseIdx"`
+	ReadyAt  time.Time   `json:"readyAt"` // estimated wall time all phases finish
+	Done     bool        `json:"done"`
+	Premium  bool        `json:"premium,omitempty"`
 }
 
 // View is the authoritative player projection returned by GET /api/house and by

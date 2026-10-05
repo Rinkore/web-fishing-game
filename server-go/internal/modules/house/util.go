@@ -239,4 +239,3 @@ func premiumChance(h rules.HutConfig, prodAffinity int) float64 {
 	}
 	return p
 }
-

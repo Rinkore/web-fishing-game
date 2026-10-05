@@ -25,6 +25,7 @@ type HutRenovateCost struct {
 	StormRelic    int64   `json:"stormRelic"`
 	AlloyPerLevel int64   `json:"alloyPerLevel"`
 }
+
 // RackStageConfig defines one optional or required phase of the drying chain.
 // The three built-in IDs are "pre" (brining/cure), "dry" (the mandatory drying),
 // and "post" (pressing/fermentation). Duration is in hours. Multiplier stacks
