@@ -46,12 +46,36 @@ v0.31.5 · 渔屋改成独立场景（屋里点物件）+ 修三处回归
   ⚠️ `frontend/assets/voyagemap.png` **保留**：它仍被 `css/harbor.css`
   （`.voy` 出海面板底图）和 `wiki/js/core.js`（shore / trench 地图）引用，删掉会破图。
 
+发版配套（易漏，本次已补齐）
+
+`/api/version` 读的不是二进制里写死的版本，而是
+`server-go/internal/gateway/application_version.go` 里 `rules.Default()` 解出的
+**内嵌 catalog**（`server-go/internal/rules/catalog.json`）的 `constants.VERSION`；
+该文件由 `frontend/js/data.js` 生成。因此只改前端、不做下面两步时：
+
+- 部署器健康检查会以 `Public version mismatch.` 拒绝上线（本次首次部署正是撞到这里）；
+- CI 的 `node tools/go-rewrite/catalog.js --check` 会报 `Go catalog is stale`。
+
+本次补齐：
+
+1. `node tools/go-rewrite/catalog.js --write` → `catalog.json` 的
+   `version` / `sourceSHA256` / `constants.VERSION` 升到 v0.31.5。
+2. 三个跟随 catalog 版本的规则样例重新生成：
+   `native-rules-fixture.js` / `mall-fixture.js` / `chest-fixture.js`（`--write`）。
+   `legacy-rules.json`、`economy-rules.json`、`sea-rules.json` 按测试约定保留
+   v0.21.4 溯源，**不动**。
+3. `frontend/js/data.js` 的 `VERSION` 与 `index.html` / `admin.html` 的缓存串
+   一并升到 v0.31.5。
+
 测试
 
 `tests/fishhouse-scene.test.js` 原先断言的是已废弃的 `h-panel` / `h-house-mode` 设计，
 本次重写为对 `#fishhouse` 独立场景的断言，35 项检查全绿（含进入/退出、物件点击、
 键盘、深链、满仓红标、手机端全屏、无 JS 错误）。
 `harbor-phase-a` / `-b` / `-cd` 与 `scene-performance` 同步回归通过。
+Go 侧 `gofmt` / `go build ./...` / `go vet ./...` / `go test -count=1 ./...` 全绿；
+四个生成器 `--check` 全部通过。规则样例的差异**仅为版本号与 sourceSHA256**，
+用例数据一行未动——渔屋改版没有改动任何玩法规则。
 
 上线与回退
 
