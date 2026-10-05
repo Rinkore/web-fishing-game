@@ -21,7 +21,7 @@
   // ---- 版本标识（前后端唯一来源）----
   // 前端页面内置此版本号，启动时与服务器 /api/version 比对：不一致即带缓存参数强制刷新，
   // 修复「版本更新后，浏览器缓存旧前端无法进入新版页面」的问题。
-  const VERSION = 'v0.31.2';
+  const VERSION = 'v0.31.3';
   // 图片加载失败自动重试（发版切流 / 网络抖动时瞬时 404 会让图片永久消失）：
   // 重试 3 次、间隔递增；仍失败才隐藏占位。onerror 内联调用 window.__imgFail(this)。
   if (typeof window !== 'undefined') window.__imgFail = function (img) {
