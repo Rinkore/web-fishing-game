@@ -97,6 +97,8 @@ type species struct {
 	Rank           map[string]int    `json:"rank"`
 	TailEnabled    bool              `json:"tailEnabled"`
 	ReferenceExact bool              `json:"referenceExact"`
+	Habitat        string            `json:"habitat"`
+	Ornamental     bool              `json:"ornamental"`
 }
 
 type catalog struct {
@@ -105,6 +107,8 @@ type catalog struct {
 	Labels    map[string]string  `json:"labels"`
 	Mutations map[string]any     `json:"mutations"`
 	Colors    map[string]any     `json:"colors"`
+	Ornaments map[string]any     `json:"ornaments"`
+	Pairs     [][2]string        `json:"pairs"`
 	Species   map[string]species `json:"species"`
 }
 
@@ -132,7 +136,7 @@ func run(root string) error {
 		return err
 	}
 	sort.Strings(entries)
-	c := catalog{Version: 3, Loci: loci, Labels: map[string]string{
+	c := catalog{Version: 4, Loci: loci, Labels: map[string]string{
 		"body": "体型骨架", "head": "头部（眼、吻、鳃、须）", "dorsal": "背部（背鳍、棘、冠）", "ventral": "腹部（腹鳍、足、腕）", "tail": "尾部", "skin": "体表（底色、纹理、鳞、发光）",
 	}, Mutations: map[string]any{
 		"albino": map[string]string{"label": "白化红眼", "allele": "a", "wild": "A", "dominance": "recessive", "description": "aa 表达，Aa 携带；减少体色并将眼部染红"},
@@ -145,7 +149,10 @@ func run(root string) error {
 		"azure":   map[string]string{"label": "湖蓝色素", "allele": "b", "wild": "B", "dominance": "recessive", "description": "bb 表达湖蓝色，Bb 隐性携带"},
 		"melanic": map[string]string{"label": "墨色素", "allele": "d", "wild": "D", "dominance": "recessive", "description": "dd 表达墨色，Dd 隐性携带"},
 		"opal":    map[string]string{"label": "虹彩素", "allele": "o", "wild": "O", "dominance": "recessive", "description": "oo 表达虹彩，Oo 隐性携带"},
-	}, Species: map[string]species{}}
+	}, Ornaments: map[string]any{
+		"goldscale": map[string]string{"label": "黄金鳞光", "allele": "K", "wild": "k", "dominance": "dominant", "reference": "koi", "description": "KK / Kk 表达黄金鳞光，来自黄金锦鲤；纯亲代保持原图"},
+		"moonlight": map[string]string{"label": "月白蓝斑", "allele": "m", "wild": "M", "dominance": "recessive", "reference": "moonkoi", "description": "mm 表达月白蓝斑与冷光，Mm 隐性携带，来自月光鲤；纯亲代保持原图"},
+	}, Pairs: [][2]string{{"carp", "koi"}, {"carp", "crucian"}, {"koi", "crucian"}, {"bighead", "silvercarp"}, {"koi", "moonkoi"}}, Species: map[string]species{}}
 	for index, path := range entries {
 		id := strings.TrimSuffix(filepath.Base(path), ".png")
 		p, ok := profiles[id]
@@ -257,7 +264,9 @@ func buildSpecies(path, out, id, name string, p profile, index, count int) (spec
 	case "carp":
 		breedGroup, breedNote = "cyprinid-carp", "鲤鱼品系；可与锦鲤、鲫鱼形成现实记录中的杂交组合"
 	case "koi":
-		breedGroup, breedNote = "cyprinid-carp", "锦鲤按鲤鱼观赏品系处理"
+		breedGroup, breedNote = "cyprinid-carp", "黄金锦鲤；可与月光鲤繁育，黄金鳞光显性遗传"
+	case "moonkoi":
+		breedGroup, breedNote = "cyprinid-carp", "月光鲤；可与黄金锦鲤繁育，月白蓝斑隐性遗传"
 	case "crucian":
 		breedGroup, breedNote = "cyprinid-carp", "鲫鱼与鲤鱼存在现实记录中的杂交组合"
 	case "bighead":
@@ -274,7 +283,13 @@ func buildSpecies(path, out, id, name string, p profile, index, count int) (spec
 		rank[locus] = 1 + ((index*17 + j*13) % count)
 	}
 	tail := p.family == "streamlined" || p.family == "elongate" || p.family == "deep" || p.family == "shark" || p.family == "lobster"
-	return species{ID: id, Name: name, Family: p.family, Group: group, BreedGroup: breedGroup, BreedNote: breedNote, Notes: p.notes, Width: bounds.Dx(), Height: bounds.Dy(), BBox: bbox, Bounds: layerBounds, SHA256: hex.EncodeToString(h[:]), LayerSHA256: layerHashes, Rank: rank, TailEnabled: tail, ReferenceExact: true}, nil
+	habitat := "freshwater"
+	marine := map[string]bool{"sardine": true, "croaker": true, "seabass": true, "tuna": true, "mackerel": true, "grouper": true, "cobia": true, "rubysnapper": true, "sunfish": true, "mahimahi": true, "amberjack": true, "halibut": true, "jackmack": true, "mullet": true, "ghostray": true, "dragonfish": true, "swordfish": true, "bluefin": true, "coelacanth": true, "megamouth": true, "leviathan": true}
+	if marine[id] {
+		habitat = "marine"
+	}
+	ornamental := id == "koi" || id == "moonkoi" || id == "arowana" || id == "minnow" || id == "loach"
+	return species{ID: id, Name: name, Family: p.family, Group: group, BreedGroup: breedGroup, BreedNote: breedNote, Notes: p.notes, Width: bounds.Dx(), Height: bounds.Dy(), BBox: bbox, Bounds: layerBounds, SHA256: hex.EncodeToString(h[:]), LayerSHA256: layerHashes, Rank: rank, TailEnabled: tail, ReferenceExact: true, Habitat: habitat, Ornamental: ornamental}, nil
 }
 
 func region(family string, u, v float64) string {

@@ -125,7 +125,7 @@ func (s *Service) executeOnce(ctx context.Context, c command, apply func(context
 		if err = tx.QueryRow(ctx, `INSERT INTO fishing.asset_operations(actor_id,request_key,kind,rule_version) VALUES ($1,$2,$3,$4) RETURNING id`, c.actor, c.key, c.kind, c.rule).Scan(&unit.op); err != nil {
 			return Result{}, err
 		}
-		err = featureAllowed(ctx, tx, c.kind)
+		err = featureAllowed(ctx, tx, c.kind, c.key)
 		if err == nil {
 			result, err = apply(ctx, unit)
 			if err == nil {

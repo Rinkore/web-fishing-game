@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"fishing.local/server/internal/modules/assets"
@@ -18,19 +19,22 @@ type Service struct{ pool *pgxpool.Pool }
 func New(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
 
 type Command struct {
-	Action     string `json:"action"`
-	RequestKey string `json:"requestKey"`
-	Species    string `json:"species"`
-	Tier       string `json:"tier"`
-	ID         string `json:"id"`
-	OtherID    string `json:"otherId"`
-	ItemID     string `json:"itemId"`
-	TargetGene string `json:"targetGene"`
+	Action      string `json:"action"`
+	RequestKey  string `json:"requestKey"`
+	Species     string `json:"species"`
+	Tier        string `json:"tier"`
+	ID          string `json:"id"`
+	OtherID     string `json:"otherId"`
+	ItemID      string `json:"itemId"`
+	TargetGene  string `json:"targetGene"`
+	HabitatID   string `json:"habitatId"`
+	HabitatKind string `json:"habitatKind"`
 }
 
 type Individual struct {
 	Fish
 	Phenotype Phenotype `json:"phenotype"`
+	HabitatID string    `json:"habitatId"`
 }
 
 type Stock struct {
@@ -40,14 +44,19 @@ type Stock struct {
 }
 
 type View struct {
-	Fish          []Individual     `json:"fish"`
-	Stock         []Stock          `json:"stock"`
-	Capacity      int              `json:"capacity"`
-	BreedCost     int              `json:"breedCost"`
-	MutationRate  float64          `json:"mutationRate"`
-	Catalog       int              `json:"catalogVersion"`
-	Reagents      map[string]int64 `json:"reagents"`
-	ReagentPrices map[string]int64 `json:"reagentPrices"`
+	Fish                 []Individual     `json:"fish"`
+	Stock                []Stock          `json:"stock"`
+	Capacity             int              `json:"capacity"`
+	AquacultureCapacity  int              `json:"aquacultureCapacity"`
+	BreedCost            int              `json:"breedCost"`
+	MutationRate         float64          `json:"mutationRate"`
+	Catalog              int              `json:"catalogVersion"`
+	Reagents             map[string]int64 `json:"reagents"`
+	ReagentPrices        map[string]int64 `json:"reagentPrices"`
+	Habitats             []Habitat        `json:"habitats"`
+	HabitatCapacities    map[string]int   `json:"habitatCapacities"`
+	HabitatLimit         int              `json:"habitatLimit"`
+	SpawnIntervalSeconds int64            `json:"spawnIntervalSeconds"`
 }
 
 var directedItems = map[string]string{
@@ -109,15 +118,16 @@ func read(ctx context.Context, q assets.SQL, owner int64, id string) (Fish, erro
 }
 
 func (s *Service) View(ctx context.Context, owner int64) (View, error) {
-	view := View{Fish: []Individual{}, Stock: []Stock{}, Reagents: map[string]int64{}, ReagentPrices: reagentPrices, Capacity: Capacity, BreedCost: BreedCost, MutationRate: MutationRate, Catalog: Catalog.Version}
-	rows, err := s.pool.Query(ctx, `SELECT genome FROM fishing.breeding_fish WHERE owner_id=$1 ORDER BY born_at,id`, owner)
+	view := View{Fish: []Individual{}, Stock: []Stock{}, Reagents: map[string]int64{}, ReagentPrices: reagentPrices, Capacity: Capacity, AquacultureCapacity: 2 * (habitatCaps["aquarium"] + habitatCaps["freshwater"] + habitatCaps["marine"]), BreedCost: BreedCost, MutationRate: MutationRate, Catalog: Catalog.Version, Habitats: []Habitat{}, HabitatCapacities: habitatCaps, HabitatLimit: 2, SpawnIntervalSeconds: int64(SpawnInterval / time.Second)}
+	rows, err := s.pool.Query(ctx, `SELECT genome,COALESCE(habitat_id::text,'') FROM fishing.breeding_fish WHERE owner_id=$1 ORDER BY born_at,id`, owner)
 	if err != nil {
 		return View{}, err
 	}
 	for rows.Next() {
 		var raw []byte
 		var fish Fish
-		if err = rows.Scan(&raw); err != nil {
+		var habitatID string
+		if err = rows.Scan(&raw, &habitatID); err != nil {
 			rows.Close()
 			return View{}, err
 		}
@@ -131,10 +141,14 @@ func (s *Service) View(ctx context.Context, owner int64) (View, error) {
 			rows.Close()
 			return View{}, expressErr
 		}
-		view.Fish = append(view.Fish, Individual{Fish: fish, Phenotype: phenotype})
+		view.Fish = append(view.Fish, Individual{Fish: fish, Phenotype: phenotype, HabitatID: habitatID})
 	}
 	err = rows.Err()
 	rows.Close()
+	if err != nil {
+		return View{}, err
+	}
+	view.Habitats, err = s.habitats(ctx, owner, view.Fish)
 	if err != nil {
 		return View{}, err
 	}
@@ -179,6 +193,16 @@ func (s *Service) View(ctx context.Context, owner int64) (View, error) {
 }
 
 func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Result, error) {
+	// Natural cycles are exclusively submitted by Spawn, never by a player.
+	if strings.HasPrefix(in.RequestKey, "habitat:auto:") {
+		return assets.Result{}, assets.ErrInvalid
+	}
+	if in.Action == "habitat_create" || in.Action == "stock" || in.Action == "unstock" {
+		return s.habitatAction(ctx, owner, in)
+	}
+	if in.HabitatKind != "" || (in.Action != "founder" && in.HabitatID != "") {
+		return assets.Result{}, assets.ErrInvalid
+	}
 	if in.Action != "founder" && in.Action != "breed" && in.Action != "release" && in.Action != "buy_reagent" {
 		return assets.Result{}, assets.ErrInvalid
 	}
@@ -230,16 +254,21 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 				return assets.Result{}, err
 			}
 			n, _ := parseID(in.ID)
-			_, err = tx.SQL().Exec(ctx, `UPDATE fishing.breeding_fish SET active=false,genome=$3 WHERE owner_id=$1 AND id=$2`, owner, n, raw)
+			previous, lookupErr := fishHabitat(ctx, tx.SQL(), owner, in.ID)
+			if lookupErr != nil {
+				return assets.Result{}, lookupErr
+			}
+			_, err = tx.SQL().Exec(ctx, `UPDATE fishing.breeding_fish SET active=false,genome=$3,habitat_id=NULL WHERE owner_id=$1 AND id=$2`, owner, n, raw)
+			if err == nil {
+				err = resetHabitat(ctx, tx.SQL(), owner, previous)
+			}
 			return assets.Result{Status: "released", ResourceID: in.ID}, err
 		}
 
-		var active int
-		if err := tx.SQL().QueryRow(ctx, `SELECT count(*) FROM fishing.breeding_fish WHERE owner_id=$1 AND active`, owner).Scan(&active); err != nil {
-			return assets.Result{}, err
-		}
-		if active >= Capacity {
-			return assets.Result{}, assets.Rejection("breeding_capacity")
+		if in.Action == "breed" || in.HabitatID == "" {
+			if err := checkWorkbenchRoom(ctx, tx.SQL(), owner); err != nil {
+				return assets.Result{}, err
+			}
 		}
 
 		var fish Fish
@@ -249,6 +278,11 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 			fish, err = Founder(in.Species, in.Tier)
 			if err != nil {
 				return assets.Result{}, assets.Rejection("breeding_invalid_founder")
+			}
+			if in.HabitatID != "" {
+				if err = checkRoom(ctx, tx.SQL(), owner, in.HabitatID, fish); err != nil {
+					return assets.Result{}, err
+				}
 			}
 			if err = tx.Stacks(ctx, owner, []assets.StackDelta{{ItemID: in.Species, Tier: in.Tier, Quantity: -1}}); err != nil {
 				return assets.Result{}, err
@@ -261,6 +295,13 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 			b, err := read(ctx, tx.SQL(), owner, in.OtherID)
 			if err != nil {
 				return assets.Result{}, err
+			}
+			var inHabitat bool
+			if err = tx.SQL().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fishing.breeding_fish WHERE owner_id=$1 AND id IN ($2::bigint,$3::bigint) AND habitat_id IS NOT NULL)`, owner, in.ID, in.OtherID).Scan(&inHabitat); err != nil {
+				return assets.Result{}, err
+			}
+			if inHabitat {
+				return assets.Result{}, assets.Rejection("breeding_parent_in_habitat")
 			}
 			fish, err = Breed(a, b, seed, target)
 			if err != nil {
@@ -283,7 +324,10 @@ func (s *Service) Apply(ctx context.Context, owner int64, in Command) (assets.Re
 		if err != nil {
 			return assets.Result{}, err
 		}
-		if _, err = tx.SQL().Exec(ctx, `INSERT INTO fishing.breeding_fish(id,owner_id,generation,active,genome) VALUES($1,$2,$3,true,$4)`, tx.OperationID(), owner, fish.Generation, raw); err != nil {
+		if _, err = tx.SQL().Exec(ctx, `INSERT INTO fishing.breeding_fish(id,owner_id,generation,active,genome,habitat_id) VALUES($1,$2,$3,true,$4,NULLIF($5,'')::bigint)`, tx.OperationID(), owner, fish.Generation, raw, in.HabitatID); err != nil {
+			return assets.Result{}, err
+		}
+		if err = resetHabitat(ctx, tx.SQL(), owner, in.HabitatID); err != nil {
 			return assets.Result{}, err
 		}
 		return assets.Result{Status: status, ResourceID: fish.ID}, nil

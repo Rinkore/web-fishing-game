@@ -10,7 +10,7 @@ func TestReferenceFounderIsExactHomozygousPhenotype(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !Valid(fish) || len(fish.Genes) != len(Catalog.Loci)+len(mutationLoci)+len(colorLoci)+1 {
+	if !Valid(fish) || len(fish.Genes) != len(Catalog.Loci)+len(mutationLoci)+len(colorLoci)+len(ornamentLoci)+1 {
 		t.Fatalf("invalid founder: %#v", fish)
 	}
 	phenotype, err := Express(fish)
@@ -47,7 +47,7 @@ func TestPairingUsesConservativeRealWorldGroups(t *testing.T) {
 	for i, fish := range []*Fish{&carp, &koi, &crucian, &moonkoi, &bighead, &silver, &bass} {
 		fish.ID = string(rune('a' + i))
 	}
-	if !CanPair(carp, koi) || !CanPair(carp, crucian) || !CanPair(bighead, silver) {
+	if !CanPair(carp, koi) || !CanPair(carp, crucian) || !CanPair(bighead, silver) || !CanPair(koi, moonkoi) {
 		t.Fatal("documented hybrid groups should pair")
 	}
 	if CanPair(carp, bass) || CanPair(bighead, carp) || CanPair(carp, moonkoi) {
@@ -55,6 +55,41 @@ func TestPairingUsesConservativeRealWorldGroups(t *testing.T) {
 	}
 	if _, err := Breed(carp, bass, []byte("incompatible")); err == nil {
 		t.Fatal("unlisted cross-species breeding should be rejected")
+	}
+}
+
+func TestOrnamentalCarpTraitsAndExactFounders(t *testing.T) {
+	gold, _ := Founder("koi")
+	moon, _ := Founder("moonkoi")
+	gold.ID = "gold"
+	moon.ID = "moon"
+	for _, parent := range []Fish{gold, moon} {
+		p, err := Express(parent)
+		if err != nil || !p.ReferenceExact {
+			t.Fatalf("reference founder altered: %#v %v", p, err)
+		}
+	}
+	child, err := Breed(gold, moon, []byte("gold-moon"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Express(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Genes["goldscale"] != [2]string{"K", "k"} || child.Genes["moonlight"] != [2]string{"M", "m"} {
+		t.Fatalf("ornamental inheritance: %#v", child.Genes)
+	}
+	if !p.Ornaments["goldscale"] || p.Ornaments["moonlight"] || !p.Traits["moonlight"].Hidden {
+		t.Fatalf("dominance/carrier wrong: %#v", p)
+	}
+	moon.Genes["moonlight"] = [2]string{"M", "m"}
+	gold.Genes["goldscale"] = [2]string{"k", "k"}
+	for _, segregated := range []Fish{moon, gold} {
+		p, err := Express(segregated)
+		if err != nil || p.ReferenceExact || p.Ornaments["goldscale"] || p.Ornaments["moonlight"] {
+			t.Fatalf("reference sprite bypassed hidden/lost ornamental gene: %#v %v", p, err)
+		}
 	}
 }
 

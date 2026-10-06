@@ -1171,7 +1171,10 @@ body.fishhouse-on { padding-bottom: 0; background-attachment: fixed; }
   animation: h-drawer-in 200ms ease-out;
 }
 #fishhouse .h-panel[hidden] { display: none; }
+#fishhouse .h-panel[data-house-view="breeding"] { width:min(980px,84%); background:#251f1b; border-left-color:#86613c; }
+#fishhouse .h-panel[data-house-view="breeding"] .h-pbody > #main.content { padding-bottom:calc(86px + env(safe-area-inset-bottom,0px)); }
 @media (max-width: 640px) { #fishhouse .h-panel { width: 100%; border-left: 0; } }
+@media (max-width: 640px) { #fishhouse .h-panel[data-house-view="breeding"] { width:100%; } }
 
 /* 底部 HUD：渔屋里中央按钮改为「回港湾」 */
 #fishhouse .h-hud-bottom { position: fixed; bottom: 0; left: 0; right: 0; z-index: 3; display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }

@@ -57,6 +57,11 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
       const cv = document.querySelector('#fishhouse .h-house canvas');
       return !!cv && cv.width === 480 && cv.height === 240;
     }));
+    check('桌面渔屋连续缩放至可用空间，消除整数倍跳档', await page.evaluate(() => {
+      const stage=document.getElementById('fh-stage').getBoundingClientRect(),world=document.querySelector('.h-house-world').getBoundingClientRect();
+      const fit=Math.min(stage.width/480,stage.height/240);
+      return Math.abs(world.width/480-fit)<.01 && world.width<=stage.width+1 && world.height<=stage.height+1;
+    }));
     check('五个物件热区按钮存在', await page.evaluate(() => document.querySelectorAll('#fishhouse .h-hot[data-house]').length === 5));
     check('#main 已移入 fh-pbody', await page.evaluate(() =>
       document.getElementById('fh-pbody').querySelector('#main') !== null));
@@ -138,6 +143,10 @@ function check(name, value) { assert.ok(value, name); count++; console.log('PASS
       return p ? p.getBoundingClientRect().width : 0;
     });
     check('手机端面板全屏（宽度 >= 370）', panelWidth >= 370);
+    check('手机渔屋整幅入屏，不再强制 480px 裁切', await page.evaluate(() => {
+      const stage=document.getElementById('fh-stage').getBoundingClientRect(),world=document.querySelector('.h-house-world').getBoundingClientRect();
+      return world.width<=stage.width+1 && world.height<=stage.height+1 && world.width<480;
+    }));
 
     check('没有 JS 错误', errors.length === 0);
     console.log('\n✓ 渔屋独立场景：' + count + ' 项检查通过');

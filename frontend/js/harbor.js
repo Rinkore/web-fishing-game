@@ -472,6 +472,7 @@ window.HarborShell = (function () {
     if (fhEls.crumb) fhEls.crumb.textContent = '渔屋 › ' + p.name;
     if (fhEls.tabs) fhEls.tabs.innerHTML = '';
     if (fhEls.panel) fhEls.panel.hidden = false;
+    if (fhEls.panel) fhEls.panel.dataset.houseView = key;
     // 标记活跃物件
     Object.keys(house.hots).forEach(function (k) { house.hots[k].classList.toggle('active', k === key); });
     if (fhEls.back) fhEls.back.focus();
@@ -516,7 +517,9 @@ window.HarborShell = (function () {
     if (!house.built || !fhEls || !fhEls.stage) return;
     const A = window.HouseArt, r = fhEls.stage.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    const s = Math.max(1, Math.min(Math.floor(r.width / A.W), Math.floor(r.height / A.H)));
+    // Fit continuously: whole-number steps left large gaps on desktop, and a
+    // forced minimum of 1 clipped the 480px room on smaller phone viewports.
+    const s = Math.max(.1, Math.min(r.width / A.W, r.height / A.H));
     house.world.style.width = (A.W * s) + 'px'; house.world.style.height = (A.H * s) + 'px';
   }
 

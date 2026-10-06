@@ -171,7 +171,7 @@ window.Net = (function () {
       setConn(true);
       applyServerCfg(r.data);
       return reloadForVersion(r.data.version);
-    }).catch(function () { return false; });
+    }).catch(function () { setConn(false); return false; });
   }
 
   // ---- 连接健康 + 兜底版本轮询 ----
@@ -179,11 +179,23 @@ window.Net = (function () {
   // 只有「版本变了」才强刷；断线只作为界面提示，重连成功后自动消失。
   const VERSION_POLL_MS = 5 * 60 * 1000;
   const CONN_FAILS_TO_OFFLINE = 2;  // 连续失败几次才算断线（避开偶发抖动）
+  const UPDATE_GRACE_MS = 8000;     // 短暂重启只提示连接状态，不盖住整个游戏
+  const OUTAGE_PAGE_MS = 12000;     // 非计划断线须持续确认，才显示整页提示
   let verTimer = null;
   let probeFails = 0;
   let connOk = true;
   let updateTimer = null;
   let updateProbePending = false;
+  let maintenanceTimer = null;
+  let maintenancePending = false;
+  let offlineSince = 0;
+  function keepProbing() {
+    if (!updateTimer) updateTimer = setInterval(function () {
+      if (updateProbePending) return;
+      updateProbePending = true;
+      probeServer().finally(function () { updateProbePending = false; });
+    }, 3000);
+  }
   function showUpdatePage(version) {
     let panel = document.getElementById('server-update-page');
     if (!panel) {
@@ -194,20 +206,29 @@ window.Net = (function () {
         '<p class="server-update-version"></p><p>请稍候，恢复连接后将自动进入游戏。</p></div>';
       document.body.appendChild(panel);
     }
+    panel.querySelector('h1').textContent = maintenancePending ? '服务器正在更新中' : '连接暂时中断';
     panel.querySelector('.server-update-version').textContent = '当前版本：' + (version || localVersion());
-    if (!updateTimer) updateTimer = setInterval(function () {
-      if (updateProbePending) return;
-      updateProbePending = true;
-      probeServer().finally(function () { updateProbePending = false; });
-    }, 3000);
+    keepProbing();
+  }
+  function scheduleMaintenancePage(version) {
+    maintenancePending = true;
+    if (maintenanceTimer) clearTimeout(maintenanceTimer);
+    maintenanceTimer = setTimeout(function () {
+      maintenanceTimer = null;
+      if (!connOk && maintenancePending) showUpdatePage(version);
+    }, UPDATE_GRACE_MS);
   }
   function hideUpdatePage() {
     const panel = document.getElementById('server-update-page');
     if (panel) panel.remove();
     if (updateTimer) { clearInterval(updateTimer); updateTimer = null; }
+    if (maintenanceTimer) { clearTimeout(maintenanceTimer); maintenanceTimer = null; }
+    maintenancePending = false;
+    offlineSince = 0;
   }
   function setConn(ok) {
-    if (ok) hideUpdatePage(); else showUpdatePage();
+    if (ok) { probeFails = 0; hideUpdatePage(); }
+    else { if (!offlineSince) offlineSince = Date.now(); keepProbing(); }
     if (connOk === ok) return;
     connOk = ok;
     if (window.UI && window.UI.onConnChange) window.UI.onConnChange(ok);
@@ -216,21 +237,25 @@ window.Net = (function () {
   function probeServer() {
     return apiFetch('GET', '/api/version').then(function (r) {
       if (!r || !r.ok) throw new Error('probe failed');
-      probeFails = 0;
-      setConn(true);
-      applyServerCfg(r.data);
-      if (reloadForVersion(r.data.version)) return true; // 版本不同 → 强刷（刷新后自然重建连接）
-      // 顺带确认登录态还有效：会话过期（默认 30 天）或服务器侧被清理时，把玩家送回登录页
-      if (me && me.token) {
-        return apiFetch('GET', '/api/me?token=' + encodeURIComponent(me.token)).then(function (mr) {
+      // 收到明确的维护广播后，旧进程仍可能短暂回答 /api/version；
+      // 必须等 readiness 恢复，不能立刻关掉整页提示又在断线时弹回来。
+      const readiness = maintenancePending ? apiFetch('GET', '/readyz') : Promise.resolve({ ok: true });
+      return readiness.then(function (ready) {
+        if (!ready || !ready.ok) throw new Error('server still draining');
+        setConn(true);
+        applyServerCfg(r.data);
+        if (reloadForVersion(r.data.version)) return true; // 版本不同 → 强刷（刷新后自然重建连接）
+        // 顺带确认登录态还有效：会话过期（默认 30 天）或服务器侧被清理时，把玩家送回登录页
+        if (me && me.token) return apiFetch('GET', '/api/me?token=' + encodeURIComponent(me.token)).then(function (mr) {
           if (mr && mr.status === 401) dropSession('登录状态已失效，请重新登录');
           return false;
         }).catch(function () { return false; });
-      }
-      return false;
+        return false;
+      });
     }).catch(function () {
       probeFails++;
       if (probeFails >= CONN_FAILS_TO_OFFLINE) setConn(false);
+      if (probeFails >= CONN_FAILS_TO_OFFLINE && offlineSince && Date.now() - offlineSince >= OUTAGE_PAGE_MS) showUpdatePage();
       return false;
     });
   }
@@ -557,7 +582,7 @@ window.Net = (function () {
         const ui = window.UI;
         if (m.type === 'maintenance') {
           setConn(false);
-          showUpdatePage(m.version);
+          scheduleMaintenancePage(m.version);
         } else if (m.type === 'features') {
           S.features = m.features || {};
           S.featureOrder = m.featureOrder || {};

@@ -90,3 +90,82 @@
   .breed-inspect-head { grid-template-columns: 100px 1fr; }
 }
 @media (max-width: 430px) { .breed-pool { grid-template-columns: 1fr; } }
+
+/* House workbench: warm wood and brass around cool glass/pond water. */
+.breed-system {
+  container-type: inline-size; --breed-gold:#edc786; --breed-green:#a5d4b5;
+  --muted:#c6b79f; color:#f1e1c5; min-width:0; padding:10px;
+  border:3px solid #715236; box-shadow:inset 0 0 0 2px #251b16;
+  background:repeating-linear-gradient(90deg,#291f1b 0 36px,#30241d 37px 71px,#221a17 72px 74px);
+}
+.breed-header { display:block; padding:11px; border:2px solid #8a643d; background:#1e2726; }
+.breed-header h2 { color:#ffe0a4; letter-spacing:1px; }
+.breed-header .gear-eyebrow { color:#d6b584; }
+.breed-header p { font-size:12px; color:#d2c7ae; }
+.breed-metrics { justify-content:flex-start; margin-top:10px; }
+.breed-metrics span { min-width:0; flex:1 1 105px; border-color:#775835; background:#30271e; color:#cbbb9f; }
+.breed-notice,.breed-loading,.breed-pair-status { border-color:#83633e; background:#242d2b; color:#e2cfac; }
+.breed-pair-status.ok { border-color:#668b73; }
+.breed-slot,.breed-section,.breed-inspector,.breed-reagents { border-color:#785a3a; background:#252823; box-shadow:inset 0 0 0 1px #171d1a; }
+.breed-slot.selected { border-color:#e3c27a; }
+.breed-system .sec-h { color:#efcc8c; }
+.breed-system .sec-h small { color:#bcad92; font:11px var(--body, sans-serif); }
+.breed-stock-card { border-color:#77593d; background:#323027; }
+.breed-card-copy span,.breed-card-copy small,.breed-inspect-head small { color:#c8bda7; }
+.breed-reagent { border-color:#876843 !important; background:#372e23; color:#f0dfbf; }
+.breed-reagent.on { border-color:#edcc83 !important; background:#58452e; }
+.breed-reagents .sec-h small { color:#c9b899; }
+.breed-system select { max-width:100%; min-width:0; padding:5px; border:2px solid #8a6d49; color:#f0dfbf; background:#1d2827; font:11px var(--body,sans-serif); }
+.breed-system .mini { border-radius:0; }
+.breed-system .breed-lower { grid-template-columns:1fr; }
+.breed-pool { grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr)); }
+.breed-genes th,.breed-genes td { border-color:#6c583e; }
+.breed-genes th { color:#ead3a6; }
+.breed-habitats { min-width:0; }
+.breed-habitat-toolbar { display:flex; flex-wrap:wrap; gap:8px; justify-content:space-between; align-items:center; }
+.breed-habitat-tabs { display:flex; gap:5px; flex-wrap:wrap; }
+.breed-habitat-tabs .on { color:#ffe2a3; border-color:#ddbe79 !important; background:#594832 !important; }
+.breed-habitat-rule { color:#c8b798; font-size:11px; line-height:1.7; margin:8px 0; }
+.breed-habitat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); gap:10px; }
+.breed-habitat-card { min-width:0; padding:8px; border:3px solid #785535; background:#362a20; box-shadow:3px 3px 0 #151b18; }
+.breed-habitat-card.selected { border-color:#dab975; }
+.breed-habitat-card header { display:flex; gap:8px; justify-content:space-between; align-items:center; margin-bottom:8px; color:#f6db9f; font:12px var(--px); }
+.breed-habitat-card header span { flex:none; padding:3px 5px; color:#e7d1aa; border:1px solid #896744; background:#211c17; font:11px var(--body,sans-serif); }
+.breed-habitat-scene { position:relative; height:196px; overflow:hidden; border:6px solid #8d6b42; outline:2px solid #1b2424; box-shadow:inset 0 0 0 3px #7893a0,inset 0 -22px 0 #4b5e48;
+  background:linear-gradient(#3b707d 0%,#245364 56%,#193b46 87%,#405346 88%); }
+.breed-habitat-scene::before { content:''; position:absolute; inset:0; pointer-events:none; opacity:.34;
+  background:linear-gradient(115deg,transparent 0 12%,#c3ded7 13% 15%,transparent 16% 24%,#91c5cf 25% 27%,transparent 28% 100%); }
+.breed-habitat-scene::after { content:''; position:absolute; left:4%; right:4%; bottom:0; height:27px; pointer-events:none;
+  background:repeating-linear-gradient(85deg,transparent 0 9px,#7a9264 10px 12px,transparent 13px 21px,#567354 22px 25px,transparent 26px 34px); }
+.breed-habitat-freshwater { border-color:#756d57; box-shadow:inset 0 0 0 3px #a0a68b,inset 0 -22px 0 #394c39; background:linear-gradient(#62898a,#325951 70%,#213b35 88%,#3c5340 89%); }
+.breed-habitat-marine { border-color:#706f6c; box-shadow:inset 0 0 0 3px #9eb4b8,inset 0 -22px 0 #384956; background:linear-gradient(#608f9d,#2d5974 65%,#173c55 88%,#455769 89%); }
+.breed-water-glints { position:absolute; inset:0; opacity:.18; pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent 0 19px,#cae9e1 20px 21px,transparent 22px 32px); }
+.breed-residents { position:absolute; inset:18px 7px 28px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); grid-auto-rows:minmax(36px,1fr); align-items:center; }
+.breed-swimmer { min-width:0; width:100%; height:48px; padding:0; border:0 !important; background:transparent !important; box-shadow:none !important; cursor:pointer; animation:breed-swim 4.2s ease-in-out infinite alternate; animation-delay:var(--swim-delay); }
+.breed-swimmer:focus-visible { outline:2px solid #f2d38c; outline-offset:0; }
+.breed-swimmer .breed-fish-art { height:100%; border:0; overflow:visible; background:transparent; box-shadow:none; }
+.breed-swimmer .breed-reference-seal,.breed-swimmer .breed-color-badge,.breed-swimmer .sr-only { display:none; }
+.breed-swimmer .breed-fish-stack { width:100%; transform:none; }
+.breed-swimmer .breed-mutation-spark { font-size:10px; letter-spacing:2px; }
+.breed-habitat-empty { position:absolute; inset:0; display:grid; place-items:center; padding:20px; color:#d2e7dc; text-align:center; font-size:12px; }
+.breed-habitat-status { min-height:30px; margin:8px 0; color:#d2c09a; font-size:11px; line-height:1.5; }
+.breed-habitat-placeholder { padding:25px 15px; border:3px dashed #866645; background:#252c27; color:#d3c5aa; font-size:12px; line-height:1.8; }
+.breed-stock-target,.breed-housing { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:8px; font-size:11px; }
+.breed-housing { margin:8px 0 0; }
+.breed-housing select { flex:1 1 120px; }
+.breed-workbench-title { margin-top:6px; border-bottom:2px solid #795735; padding-bottom:7px; }
+.breed-mode-tabs { display:flex; gap:8px; flex-wrap:wrap; padding:8px; background:#1e2726; border:2px solid #785a3a; }
+.breed-mode-tabs .mini { flex:1 1 150px; min-height:40px; }
+.breed-mode-tabs .on { border-color:#e6c77f !important; background:#594832 !important; color:#ffe2a3; }
+.breed-mode-note { padding:10px; color:#dfcba6; background:#25312b; border-left:4px solid #b69864; font-size:12px; line-height:1.8; }
+.breed-transfer { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.breed-transfer .sec-h { width:100%; }
+.breed-transfer select { flex:1 1 200px; }
+.breed-ornament-moonlight { box-shadow:inset 0 0 14px #8aaad15c; }
+.breed-ornament-goldscale { border-color:#c9a24b; }
+@keyframes breed-swim { from { transform:translate(-4px,2px); } to { transform:translate(5px,-3px); } }
+@container (max-width:460px) { .breed-pair { grid-template-columns:1fr; } .breed-cross { height:28px; transform:rotate(90deg); } .breed-stock-card { grid-template-columns:50px minmax(0,1fr); } .breed-stock-card > button { grid-column:1/-1; } }
+@container (min-width:900px) { .breed-system .breed-lower { grid-template-columns:minmax(0,1fr) minmax(320px,.8fr); } }
+@media (prefers-reduced-motion:reduce) { .breed-swimmer { animation:none; } }
+html[data-motion="off"] .breed-swimmer,html[data-motion="reduced"] .breed-swimmer { animation:none; }

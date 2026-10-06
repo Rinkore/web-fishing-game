@@ -10,6 +10,7 @@ import (
 	"net"
 	"sync"
 
+	"fishing.local/server/internal/modules/breeding"
 	"fishing.local/server/internal/modules/economy"
 	"fishing.local/server/internal/modules/fishing"
 	"fishing.local/server/internal/modules/house"
@@ -77,7 +78,7 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 	}
 	work, stopWork := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	workers.Add(11)
+	workers.Add(12)
 	go func() { defer workers.Done(); mail.New(pool, nil).Run(work, logger) }()
 	go func() { defer workers.Done(); fishing.New(pool).Run(work, logger) }()
 	go func() { defer workers.Done(); fishing.NewLiveNative(pool, c.Location).Run(work, logger) }()
@@ -92,6 +93,7 @@ func Run(ctx context.Context, c config.Config, logger *slog.Logger) error {
 	go func() { defer workers.Done(); gateway.RunLegacySnapshots(work, pool, logger) }()
 	// 渔屋：小时粒度的离线结算（玩家回来看页面时的惰性结算走同一条 settle 路径与同一把 requestKey，不会双发）。
 	go func() { defer workers.Done(); house.New(pool, catalog).Run(work, logger) }()
+	go func() { defer workers.Done(); breeding.New(pool).Run(work, logger) }()
 	defer func() { stopWork(); workers.Wait() }()
 	logger.Info("server_started", "address", listener.Addr().String(), "role", c.Role, "node_id", c.NodeID, "stage", "infrastructure")
 	return httpserver.Serve(ctx, listener, health, handler, c.ShutdownTimeout, logger)

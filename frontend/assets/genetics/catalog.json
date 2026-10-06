@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "loci": [
     "body",
     "head",
@@ -83,6 +83,46 @@
       "wild": "O"
     }
   },
+  "ornaments": {
+    "goldscale": {
+      "allele": "K",
+      "description": "KK / Kk 表达黄金鳞光，来自黄金锦鲤；纯亲代保持原图",
+      "dominance": "dominant",
+      "label": "黄金鳞光",
+      "reference": "koi",
+      "wild": "k"
+    },
+    "moonlight": {
+      "allele": "m",
+      "description": "mm 表达月白蓝斑与冷光，Mm 隐性携带，来自月光鲤；纯亲代保持原图",
+      "dominance": "recessive",
+      "label": "月白蓝斑",
+      "reference": "moonkoi",
+      "wild": "M"
+    }
+  },
+  "pairs": [
+    [
+      "carp",
+      "koi"
+    ],
+    [
+      "carp",
+      "crucian"
+    ],
+    [
+      "koi",
+      "crucian"
+    ],
+    [
+      "bighead",
+      "silvercarp"
+    ],
+    [
+      "koi",
+      "moonkoi"
+    ]
+  ],
   "species": {
     "amberjack": {
       "id": "amberjack",
@@ -149,7 +189,9 @@
         "ventral": 40
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "amberlobster": {
       "id": "amberlobster",
@@ -216,7 +258,9 @@
         "ventral": 5
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "arapaima": {
       "id": "arapaima",
@@ -283,7 +327,9 @@
         "ventral": 22
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "arowana": {
       "id": "arowana",
@@ -350,7 +396,9 @@
         "ventral": 39
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": true
     },
     "bass": {
       "id": "bass",
@@ -417,7 +465,9 @@
         "ventral": 4
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "bighead": {
       "id": "bighead",
@@ -484,7 +534,9 @@
         "ventral": 21
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "blackbass": {
       "id": "blackbass",
@@ -551,7 +603,9 @@
         "ventral": 38
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "blackcarp": {
       "id": "blackcarp",
@@ -618,7 +672,9 @@
         "ventral": 3
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "bluefin": {
       "id": "bluefin",
@@ -685,7 +741,9 @@
         "ventral": 20
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "bream": {
       "id": "bream",
@@ -752,7 +810,9 @@
         "ventral": 37
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "carp": {
       "id": "carp",
@@ -819,7 +879,9 @@
         "ventral": 2
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "catfish": {
       "id": "catfish",
@@ -886,7 +948,9 @@
         "ventral": 19
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "cobia": {
       "id": "cobia",
@@ -953,7 +1017,9 @@
         "ventral": 36
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "coelacanth": {
       "id": "coelacanth",
@@ -1020,7 +1086,9 @@
         "ventral": 1
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "croaker": {
       "id": "croaker",
@@ -1087,7 +1155,9 @@
         "ventral": 18
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "crucian": {
       "id": "crucian",
@@ -1154,7 +1224,9 @@
         "ventral": 35
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "culter": {
       "id": "culter",
@@ -1221,7 +1293,9 @@
         "ventral": 52
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "dragonfish": {
       "id": "dragonfish",
@@ -1283,7 +1357,9 @@
         "ventral": 17
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "dragonpearl": {
       "id": "dragonpearl",
@@ -1330,7 +1406,9 @@
         "ventral": 34
       },
       "tailEnabled": false,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "ghostray": {
       "id": "ghostray",
@@ -1382,7 +1460,9 @@
         "ventral": 51
       },
       "tailEnabled": false,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "giantquid": {
       "id": "giantquid",
@@ -1439,7 +1519,9 @@
         "ventral": 16
       },
       "tailEnabled": false,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "grass": {
       "id": "grass",
@@ -1506,7 +1588,9 @@
         "ventral": 33
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "grouper": {
       "id": "grouper",
@@ -1573,7 +1657,9 @@
         "ventral": 50
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "halibut": {
       "id": "halibut",
@@ -1625,7 +1711,9 @@
         "ventral": 15
       },
       "tailEnabled": false,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "jackmack": {
       "id": "jackmack",
@@ -1692,7 +1780,9 @@
         "ventral": 32
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "koi": {
       "id": "koi",
@@ -1700,7 +1790,7 @@
       "family": "streamlined",
       "group": "fish",
       "breedGroup": "cyprinid-carp",
-      "breedNote": "锦鲤按鲤鱼观赏品系处理",
+      "breedNote": "黄金锦鲤；可与月光鲤繁育，黄金鳞光显性遗传",
       "notes": "金黄底色；乳白与橙色大斑；黑眼；金叉尾",
       "width": 220,
       "height": 130,
@@ -1759,7 +1849,9 @@
         "ventral": 49
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": true
     },
     "leviathan": {
       "id": "leviathan",
@@ -1826,7 +1918,9 @@
         "ventral": 14
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "loach": {
       "id": "loach",
@@ -1893,7 +1987,9 @@
         "ventral": 31
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": true
     },
     "mackerel": {
       "id": "mackerel",
@@ -1960,7 +2056,9 @@
         "ventral": 48
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "mahimahi": {
       "id": "mahimahi",
@@ -2027,7 +2125,9 @@
         "ventral": 13
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "mandarin": {
       "id": "mandarin",
@@ -2094,7 +2194,9 @@
         "ventral": 30
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "megamouth": {
       "id": "megamouth",
@@ -2161,7 +2263,9 @@
         "ventral": 47
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "minnow": {
       "id": "minnow",
@@ -2228,15 +2332,17 @@
         "ventral": 12
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": true
     },
     "moonkoi": {
       "id": "moonkoi",
       "name": "月光鲤",
       "family": "streamlined",
       "group": "fish",
-      "breedGroup": "moonkoi",
-      "breedNote": "仅允许同种繁育",
+      "breedGroup": "cyprinid-carp",
+      "breedNote": "月光鲤；可与黄金锦鲤繁育，月白蓝斑隐性遗传",
       "notes": "月白长身；淡蓝块斑；蓝色轮廓；白色叉尾与外光",
       "width": 220,
       "height": 130,
@@ -2295,7 +2401,9 @@
         "ventral": 29
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": true
     },
     "mullet": {
       "id": "mullet",
@@ -2362,7 +2470,9 @@
         "ventral": 46
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "octo": {
       "id": "octo",
@@ -2419,7 +2529,9 @@
         "ventral": 11
       },
       "tailEnabled": false,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "pearl": {
       "id": "pearl",
@@ -2466,7 +2578,9 @@
         "ventral": 28
       },
       "tailEnabled": false,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "riverperch": {
       "id": "riverperch",
@@ -2533,7 +2647,9 @@
         "ventral": 45
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "rubysnapper": {
       "id": "rubysnapper",
@@ -2600,7 +2716,9 @@
         "ventral": 10
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "sardine": {
       "id": "sardine",
@@ -2667,7 +2785,9 @@
         "ventral": 27
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "seabass": {
       "id": "seabass",
@@ -2734,7 +2854,9 @@
         "ventral": 44
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "silvercarp": {
       "id": "silvercarp",
@@ -2801,7 +2923,9 @@
         "ventral": 9
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "squid": {
       "id": "squid",
@@ -2858,7 +2982,9 @@
         "ventral": 26
       },
       "tailEnabled": false,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "sturgeon": {
       "id": "sturgeon",
@@ -2925,7 +3051,9 @@
         "ventral": 43
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "sunfish": {
       "id": "sunfish",
@@ -2977,7 +3105,9 @@
         "ventral": 8
       },
       "tailEnabled": false,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "swordfish": {
       "id": "swordfish",
@@ -3044,7 +3174,9 @@
         "ventral": 25
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "tilapia": {
       "id": "tilapia",
@@ -3111,7 +3243,9 @@
         "ventral": 42
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "tuna": {
       "id": "tuna",
@@ -3178,7 +3312,9 @@
         "ventral": 7
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "marine",
+      "ornamental": false
     },
     "voltaiceel": {
       "id": "voltaiceel",
@@ -3230,7 +3366,9 @@
         "ventral": 24
       },
       "tailEnabled": false,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "white": {
       "id": "white",
@@ -3297,7 +3435,9 @@
         "ventral": 41
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "yellowcat": {
       "id": "yellowcat",
@@ -3364,7 +3504,9 @@
         "ventral": 6
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     },
     "yellowcheek": {
       "id": "yellowcheek",
@@ -3431,7 +3573,9 @@
         "ventral": 23
       },
       "tailEnabled": true,
-      "referenceExact": true
+      "referenceExact": true,
+      "habitat": "freshwater",
+      "ornamental": false
     }
   }
 }

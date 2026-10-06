@@ -46,13 +46,15 @@ func FeatureOf(kind string) string {
 	}
 	return ""
 }
-func featureAllowed(ctx context.Context, tx pgx.Tx, kind string) error {
+func featureAllowed(ctx context.Context, tx pgx.Tx, kind, key string) error {
 	feature := FeatureOf(kind)
 	if feature == "" {
 		return nil
 	}
 	err := requireFeature(ctx, tx, feature)
-	if err == Rejection("feature_disabled") && kind == "autosell_run" {
+	// Scheduled commands retain their cycle key while a feature is closed.
+	// Do not cache a rejection that would strand the cycle after reopening.
+	if err == Rejection("feature_disabled") && (kind == "autosell_run" || kind == "fish_breeding" && systemKind(key) == kind) {
 		return ErrDeferred
 	}
 	return err

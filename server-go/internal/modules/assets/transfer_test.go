@@ -15,7 +15,7 @@ import (
 
 func TestInvalidTransferNeverAccessesDB(t *testing.T) {
 	s := New(nil)
-	for _, r := range []Transfer{{}, {1, 1, 1, "same"}, {1, 2, 0, "zero"}, {1, 2, MaxCoins + 1, "overflow"}, {1, 2, 1, "space key"}} {
+	for _, r := range []Transfer{{}, {1, 1, 1, "same"}, {1, 2, 0, "zero"}, {1, 2, MaxCoins + 1, "overflow"}, {1, 2, 1, "space key"}, {1, 2, 1, "habitat:auto:1:2:0"}} {
 		if _, err := s.TransferCoins(context.Background(), r); !errors.Is(err, ErrInvalid) {
 			t.Fatal("invalid request accepted")
 		}

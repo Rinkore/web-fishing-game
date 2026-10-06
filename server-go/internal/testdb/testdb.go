@@ -99,6 +99,9 @@ func New(t *testing.T, migrate bool) DB {
 	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.breeding_fish TO "+quote(role)); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Admin.Exec(ctx, "GRANT SELECT,INSERT,UPDATE ON fishing.fish_habitats TO "+quote(role)); err != nil {
+		t.Fatal(err)
+	}
 	grants := "GRANT USAGE ON SCHEMA fishing TO " + quote(role) + `; GRANT SELECT ON public.fishing_schema_migrations TO ` + quote(role) + `; GRANT SELECT ON fishing.accounts TO ` + quote(role) + `; GRANT SELECT, UPDATE ON fishing.player_state, fishing.wallets TO ` + quote(role) + `; GRANT SELECT, INSERT, UPDATE ON fishing.command_results TO ` + quote(role) + `; GRANT SELECT, INSERT ON fishing.asset_operations, fishing.asset_entries, fishing.outbox_events TO ` + quote(role) + `; GRANT SELECT ON fishing.item_definitions TO ` + quote(role) + `; GRANT SELECT,INSERT,UPDATE ON fishing.inventory_stacks,fishing.equipment_instances,fishing.rod_loadouts TO ` + quote(role) + `; GRANT SELECT,INSERT,UPDATE,DELETE ON fishing.rod_components TO ` + quote(role) + `; GRANT SELECT,INSERT ON fishing.inventory_entries,fishing.equipment_entries,fishing.rod_entries TO ` + quote(role) + `; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fishing TO ` + quote(role)
 	if _, err := db.Admin.Exec(ctx, grants); err != nil {
 		t.Fatal("cannot grant test application permissions")

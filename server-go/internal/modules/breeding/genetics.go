@@ -25,6 +25,7 @@ const (
 
 var mutationLoci = []string{"albino", "star", "veil", "glow"}
 var colorLoci = []string{"crimson", "golden", "azure", "melanic", "opal"}
+var ornamentLoci = []string{"goldscale", "moonlight"}
 
 // Earlier founders retain the digest of the damaged cutout in their immutable
 // genome. Accept those exact historical digests after restoring white pixels.
@@ -46,6 +47,8 @@ type Species struct {
 	TailEnabled    bool           `json:"tailEnabled"`
 	SHA256         string         `json:"sha256"`
 	ReferenceExact bool           `json:"referenceExact"`
+	Habitat        string         `json:"habitat"`
+	Ornamental     bool           `json:"ornamental"`
 }
 
 type Mutation struct {
@@ -54,6 +57,7 @@ type Mutation struct {
 	Wild        string `json:"wild"`
 	Dominance   string `json:"dominance"`
 	Description string `json:"description"`
+	Reference   string `json:"reference,omitempty"`
 }
 
 type Definitions struct {
@@ -62,6 +66,8 @@ type Definitions struct {
 	Labels    map[string]string   `json:"labels"`
 	Mutations map[string]Mutation `json:"mutations"`
 	Colors    map[string]Mutation `json:"colors"`
+	Ornaments map[string]Mutation `json:"ornaments"`
+	Pairs     [][2]string         `json:"pairs"`
 	Species   map[string]Species  `json:"species"`
 }
 
@@ -106,6 +112,7 @@ type Phenotype struct {
 	Traits          map[string]Expression `json:"traits"`
 	Mutations       map[string]bool       `json:"mutations"`
 	Colors          map[string]bool       `json:"colors"`
+	Ornaments       map[string]bool       `json:"ornaments"`
 	ReferenceExact  bool                  `json:"referenceExact"`
 	ReferenceSHA256 string                `json:"referenceSha256"`
 }
@@ -143,6 +150,9 @@ func Founder(species string, tiers ...string) (Fish, error) {
 		m := Catalog.Colors[locus]
 		f.Genes[locus] = [2]string{m.Wild, m.Wild}
 	}
+	for _, locus := range ornamentLoci {
+		f.Genes[locus] = inheritedOrnament(f, locus)
+	}
 	return f, nil
 }
 
@@ -159,16 +169,27 @@ func sameBreedingLine(a, b Species) bool {
 func CanPair(a, b Fish) bool {
 	sa, oka := Catalog.Species[a.Species]
 	sb, okb := Catalog.Species[b.Species]
-	return oka && okb && sameBreedingLine(sa, sb)
+	if !oka || !okb {
+		return false
+	}
+	if sa.ID == sb.ID {
+		return true
+	}
+	for _, pair := range Catalog.Pairs {
+		if pair == [2]string{sa.ID, sb.ID} || pair == [2]string{sb.ID, sa.ID} {
+			return true
+		}
+	}
+	return false
 }
 
 func Valid(f Fish) bool {
-	if f.Generation < 0 || len(f.Genes) < len(Catalog.Loci)+len(mutationLoci)+1 || len(f.Genes) > len(Catalog.Loci)+len(mutationLoci)+len(colorLoci)+1 {
+	if f.Generation < 0 || len(f.Genes) < len(Catalog.Loci)+len(mutationLoci)+1 || len(f.Genes) > len(Catalog.Loci)+len(mutationLoci)+len(colorLoci)+len(ornamentLoci)+1 {
 		return false
 	}
 	for locus := range f.Genes {
 		known := locus == sizeLocus
-		for _, candidate := range append(append(append([]string{}, Catalog.Loci...), mutationLoci...), colorLoci...) {
+		for _, candidate := range append(append(append(append([]string{}, Catalog.Loci...), mutationLoci...), colorLoci...), ornamentLoci...) {
 			if locus == candidate {
 				known = true
 				break
@@ -228,7 +249,33 @@ func Valid(f Fish) bool {
 			}
 		}
 	}
+	for _, locus := range ornamentLoci {
+		pair, exists := f.Genes[locus]
+		if !exists {
+			continue
+		}
+		m := Catalog.Ornaments[locus]
+		for _, allele := range pair {
+			if allele != m.Wild && allele != m.Allele {
+				return false
+			}
+		}
+	}
 	return true
+}
+
+func inheritedOrnament(f Fish, locus string) [2]string {
+	if pair, exists := f.Genes[locus]; exists {
+		return pair
+	}
+	m := Catalog.Ornaments[locus]
+	pair := [2]string{m.Wild, m.Wild}
+	for i, donor := range f.Genes["skin"] {
+		if donor == m.Reference {
+			pair[i] = m.Allele
+		}
+	}
+	return pair
 }
 
 func normalizeLegacy(f Fish) Fish {
@@ -237,6 +284,9 @@ func normalizeLegacy(f Fish) Fish {
 			m := Catalog.Colors[locus]
 			f.Genes[locus] = [2]string{m.Wild, m.Wild}
 		}
+	}
+	for _, locus := range ornamentLoci {
+		f.Genes[locus] = inheritedOrnament(f, locus)
 	}
 	return f
 }
@@ -296,6 +346,7 @@ func Express(f Fish) (Phenotype, error) {
 		Traits:          map[string]Expression{},
 		Mutations:       map[string]bool{},
 		Colors:          map[string]bool{},
+		Ornaments:       map[string]bool{},
 		ReferenceExact:  true,
 		ReferenceSHA256: Catalog.Species[body].SHA256,
 	}
@@ -371,6 +422,38 @@ func Express(f Fish) (Phenotype, error) {
 		p.Traits[locus] = e
 		p.Colors[locus] = on
 	}
+	for _, locus := range ornamentLoci {
+		m := Catalog.Ornaments[locus]
+		pair := inheritedOrnament(f, locus)
+		count := 0
+		for _, allele := range pair {
+			if allele == m.Allele {
+				count++
+			}
+		}
+		on := count == 2 || count == 1 && m.Dominance == "dominant"
+		winner := m.Wild
+		if on {
+			winner = m.Allele
+		}
+		e := expression(pair, winner, m.Dominance)
+		if count == 1 && !on {
+			e.Hidden = true
+			e.Reason = "杂合携带：月光性状尚未成对"
+		}
+		if on {
+			e.Source = m.Reference
+			if p.Traits["skin"].Source != m.Reference {
+				p.ReferenceExact = false
+			}
+		} else if p.Traits["skin"].Source == m.Reference {
+			// A native-looking skin must not bypass a segregated ornament locus.
+			// The renderer removes its special colour before applying other genes.
+			p.ReferenceExact = false
+		}
+		p.Traits[locus] = e
+		p.Ornaments[locus] = on
+	}
 	return p, nil
 }
 
@@ -403,10 +486,14 @@ func Breed(a, b Fish, seed []byte, directed ...string) (Fish, error) {
 	hash := sha256.Sum256(seed)
 	rng := rand.New(rand.NewPCG(binary.LittleEndian.Uint64(hash[:8]), binary.LittleEndian.Uint64(hash[8:16])))
 	f := Fish{Generation: generation, Parents: [2]string{a.ID, b.ID}, Active: true, Genes: Genome{}, Mutations: []string{}}
-	loci := append(append(append(append([]string{}, Catalog.Loci...), sizeLocus), mutationLoci...), colorLoci...)
+	loci := append(append(append(append(append([]string{}, Catalog.Loci...), sizeLocus), mutationLoci...), colorLoci...), ornamentLoci...)
 	mutated := map[string]bool{}
 	for _, locus := range loci {
 		parentA, parentB := a.Genes[locus], b.Genes[locus]
+		if _, ornament := Catalog.Ornaments[locus]; ornament {
+			parentA = inheritedOrnament(a, locus)
+			parentB = inheritedOrnament(b, locus)
+		}
 		mutation, special := Catalog.Mutations[locus]
 		if color, ok := Catalog.Colors[locus]; ok {
 			mutation, special = color, true

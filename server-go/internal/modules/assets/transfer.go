@@ -92,6 +92,9 @@ func systemKind(key string) string {
 	if strings.HasPrefix(key, "house:settle:") {
 		return "house_settle"
 	}
+	if strings.HasPrefix(key, "habitat:auto:") {
+		return "fish_breeding"
+	}
 	return ""
 }
 func validRequestKey(key string) bool { return validKey(key) && systemKind(key) == "" }
